@@ -222,7 +222,7 @@ namespace ThirdPersonSimulation
         internal static void WriteSourceMapTable(CanonicalWriter writer, IReadOnlyList<ProgramSourceMapEntry> values)
         {
             writer.WriteInt32(SourceMapStringTableVersion);
-            var strings = new SortedSet<string>(StringComparer.Ordinal) { string.Empty };
+            var strings = new HashSet<string>(StringComparer.Ordinal) { string.Empty };
             for (int i = 0; i < values.Count; i++)
             {
                 ProgramSourceMapEntry value = values[i];
@@ -247,10 +247,13 @@ namespace ThirdPersonSimulation
                     strings.Add(segments[segmentIndex]);
             }
 
+            var ordered = new string[strings.Count];
+            strings.CopyTo(ordered);
+            Array.Sort(ordered, StringComparer.Ordinal);
             var stringIndex = new Dictionary<string, int>(strings.Count, StringComparer.Ordinal);
             writer.WriteInt32(strings.Count);
             int index = 0;
-            foreach (string value in strings)
+            foreach (string value in ordered)
             {
                 writer.WriteText(value);
                 stringIndex.Add(value, index++);
