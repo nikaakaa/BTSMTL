@@ -52,7 +52,7 @@ namespace BTSMTL.Diagnostics.Editor
         long m_QueryStateVersion;
         long m_ResultVersion;
         bool m_Found;
-        Snapshot m_QuerySnapshot;
+        RuntimeCaptureSnapshot m_QuerySnapshot;
         RuntimeCaptureQuery m_Query;
         ExceptionDispatchInfo m_Failure;
         RuntimeTraceDomain m_LastDomain;
@@ -171,10 +171,11 @@ namespace BTSMTL.Diagnostics.Editor
         {
             Seal();
             if (detail > m_Detail) m_Detail = detail;
-            return new Snapshot(this, channels | m_Channels, m_Detail, Version, SegmentCount, m_LogicTime, m_PresentationTime);
+            return new RuntimeCaptureSnapshot(this, CaptureId, channels | m_Channels, m_Detail,
+                Version, SegmentCount, m_LogicTime, m_PresentationTime);
         }
 
-        long Request(Snapshot snapshot, in RuntimeCaptureQuery query, long stateVersion)
+        public long BeginRead(in RuntimeCaptureSnapshot snapshot, in RuntimeCaptureQuery query, long stateVersion)
         {
             Volatile.Read(ref m_Failure)?.Throw();
             lock (m_Gate)
@@ -188,7 +189,7 @@ namespace BTSMTL.Diagnostics.Editor
             }
         }
 
-        bool Take(long request, ref RuntimeCaptureReadWindow result,
+        public bool TryTakeRead(long request, ref RuntimeCaptureReadWindow result,
             (double Logic, double Presentation)? latestTime, out RuntimeCaptureReadStatus status)
         {
             Volatile.Read(ref m_Failure)?.Throw();
@@ -201,17 +202,17 @@ namespace BTSMTL.Diagnostics.Editor
                 if (status == RuntimeCaptureReadStatus.Found)
                     (result, m_Result) = (m_Result, result);
                 m_ResultVersion = 0;
-                m_QuerySnapshot = null;
+                m_QuerySnapshot = default;
                 return true;
             }
         }
 
-        void CancelRead()
+        public void CancelRead()
         {
             lock (m_Gate)
             {
                 m_QueryVersion++;
-                m_QuerySnapshot = null;
+                m_QuerySnapshot = default;
                 if (!m_Finished) m_Wake.Set();
             }
         }
@@ -276,7 +277,7 @@ namespace BTSMTL.Diagnostics.Editor
                     int page = -1;
                     long request = 0;
                     long stateVersion = 0;
-                    Snapshot snapshot = null;
+                    RuntimeCaptureSnapshot snapshot = default;
                     RuntimeCaptureQuery query = default;
                     bool reset = false;
                     lock (m_Gate)
@@ -284,7 +285,7 @@ namespace BTSMTL.Diagnostics.Editor
                         if (m_Stop) break;
                         if (m_Pending.Count != 0) page = m_Pending.Dequeue();
                         else if (m_ResetRequested) reset = true;
-                        else if (m_QuerySnapshot != null && m_ResultVersion != m_QueryVersion)
+                        else if (m_QuerySnapshot.IsValid && m_ResultVersion != m_QueryVersion)
                         { request = m_QueryVersion; snapshot = m_QuerySnapshot; query = m_Query; stateVersion = m_QueryStateVersion; }
                     }
                     if (page >= 0)
@@ -469,7 +470,7 @@ namespace BTSMTL.Diagnostics.Editor
             m_Checkpoint.CheckpointSymbolCount = m_WriterCodec.SymbolCount;
         }
 
-        ReadResult ReadQuery(Snapshot snapshot, in RuntimeCaptureQuery query, long request, long stateVersion)
+        ReadResult ReadQuery(RuntimeCaptureSnapshot snapshot, in RuntimeCaptureQuery query, long request, long stateVersion)
         {
             if (!IsCurrentRead(request))
                 return ReadResult.Cancelled;
@@ -696,7 +697,7 @@ namespace BTSMTL.Diagnostics.Editor
             return true;
         }
 
-        long SegmentEnd(int segment, Snapshot snapshot) => segment + 1 == snapshot.SegmentCount ? snapshot.Version : ReadSegment(segment + 1);
+        long SegmentEnd(int segment, RuntimeCaptureSnapshot snapshot) => segment + 1 == snapshot.SegmentCount ? snapshot.Version : ReadSegment(segment + 1);
         long ReadSegment(int segment) { m_SegmentReader.BaseStream.Position = segment * sizeof(long); return m_SegmentReader.ReadInt64(); }
         bool FindSegment(long ordinal, int count, long request, out int segment)
         {
@@ -861,28 +862,5 @@ namespace BTSMTL.Diagnostics.Editor
             public void Dispose() { m_Writer.Dispose(); m_Reader.Dispose(); }
         }
 
-        sealed class Snapshot : RuntimeCaptureSnapshot
-        {
-            readonly RuntimeCaptureFileArchive m_Owner;
-            readonly int m_SegmentCount;
-            public override double LatestLogicTimeSeconds { get; }
-            public override double LatestPresentationTimeSeconds { get; }
-            internal Snapshot(RuntimeCaptureFileArchive owner, RuntimeTraceChannel channels, RuntimeDiagnosticsCaptureDetail detail,
-                long version, int segments, double logicTime, double presentationTime)
-                : base(owner.CaptureId, channels, detail, Array.Empty<RuntimeCaptureSegmentSnapshot>(), version)
-            { m_Owner = owner; m_SegmentCount = segments; LatestLogicTimeSeconds = logicTime; LatestPresentationTimeSeconds = presentationTime; }
-            public override int SegmentCount => m_SegmentCount;
-            public override ReadOnlySpan<RuntimeCaptureSegmentSnapshot> Segments =>
-                throw new InvalidOperationException("文件历史必须通过 BeginRead / TryTakeRead 按时间读取。");
-            public override ReadOnlySpan<RuntimeTraceEvent> GetEvents(int historyOffset, ulong throughSequence = ulong.MaxValue) =>
-                throw new InvalidOperationException("文件历史必须通过 BeginRead / TryTakeRead 按时间读取。");
-            public override int GetHistoryOffset(ulong throughSequence) =>
-                throw new InvalidOperationException("历史偏移由完成的读取结果提供。");
-            public override long BeginRead(in RuntimeCaptureQuery query, long stateVersion) => m_Owner.Request(this, in query, stateVersion);
-            public override bool TryTakeRead(long request, ref RuntimeCaptureReadWindow window,
-                (double Logic, double Presentation)? latestTime, out RuntimeCaptureReadStatus status) =>
-                m_Owner.Take(request, ref window, latestTime, out status);
-            public override void CancelRead() => m_Owner.CancelRead();
-        }
     }
 }

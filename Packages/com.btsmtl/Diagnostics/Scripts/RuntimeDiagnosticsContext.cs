@@ -48,6 +48,10 @@ namespace BTSMTL.Diagnostics
         public Guid ExecutionBranchId => m_ExecutionBranchId;
         public IDebugSourceMap SourceMap { get; private set; }
         public Dictionary<RuntimeContentRevision, IDebugSourceMap>.ValueCollection SourceMaps => m_SourceMaps.Values;
+        public int SourceMapCapacity => m_SourceMaps.EnsureCapacity(0);
+
+        public void ReserveSourceMaps(int additionalCapacity) =>
+            m_SourceMaps.EnsureCapacity(m_SourceMaps.Count + additionalCapacity);
 
         public bool TryGetSourceMap(RuntimeContentRevision revision, out IDebugSourceMap sourceMap) =>
             m_SourceMaps.TryGetValue(revision, out sourceMap);

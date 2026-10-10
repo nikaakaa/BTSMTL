@@ -10,6 +10,10 @@ namespace BTSMTL.Diagnostics
         int SegmentCount { get; }
         void Publish(in RuntimeTraceEvent traceEvent);
         RuntimeCaptureSnapshot Freeze(RuntimeTraceChannel channels, RuntimeDiagnosticsCaptureDetail detail);
+        long BeginRead(in RuntimeCaptureSnapshot snapshot, in RuntimeCaptureQuery query, long stateVersion);
+        bool TryTakeRead(long request, ref RuntimeCaptureReadWindow window,
+            (double Logic, double Presentation)? latestTime, out RuntimeCaptureReadStatus status);
+        void CancelRead();
     }
 
     public enum RuntimeCaptureQueryKind
@@ -512,23 +516,6 @@ namespace BTSMTL.Diagnostics
                 m_ClipSamples[key] = index;
             if (span.State == RuntimeCaptureSpanState.MissingStart)
                 m_MissingStartCount++;
-        }
-
-        public void CaptureDisplayText()
-        {
-            m_Open.Clear();
-            m_ClipSamples.Clear();
-            for (int i = 0; i < m_Count; i++)
-            {
-                ref RuntimeCaptureSpanData span = ref Writable(i);
-                RuntimeTraceEvent start = span.Start.CaptureDisplayText();
-                RuntimeTraceEvent end = span.End.CaptureDisplayText();
-                span.Start.Release();
-                span.End.Release();
-                span.Start = start;
-                span.End = end;
-            }
-            RebuildIndices();
         }
 
         public bool TrimBefore(double logicTime, double presentationTime)

@@ -69,31 +69,13 @@ namespace BTSMTL.Diagnostics.Editor
     {
         readonly RuntimeExecutionTimelineBuilder.SpanAccumulator.ProjectedSpans m_Spans;
 
-        internal RuntimeExecutionTimeline(
-            Guid captureId,
-            RuntimeTraceChannel channels,
-            RuntimeDiagnosticsCaptureDetail detail,
-            long version,
-            long evictedEvents,
-            bool complete,
-            int unmappedEventCount,
-            double latestLogicTimeSeconds,
-            double latestPresentationTimeSeconds,
-            RuntimeExecutionTimelineBuilder.SpanAccumulator.ProjectedSpans spans)
+        internal RuntimeExecutionTimeline(RuntimeExecutionTimelineBuilder.SpanAccumulator.ProjectedSpans spans)
         {
-            CaptureId = captureId;
-            Channels = channels;
-            Detail = detail;
-            Version = version;
-            EvictedEvents = evictedEvents;
-            IsComplete = complete;
-            UnmappedEventCount = unmappedEventCount;
-            LatestLogicTimeSeconds = latestLogicTimeSeconds;
-            LatestPresentationTimeSeconds = latestPresentationTimeSeconds;
             m_Spans = spans;
         }
 
-        public Guid CaptureId { get; }
+        public Guid CaptureId { get; private set; }
+        public long ProjectionRevision => m_Spans.Revision;
         public RuntimeTraceChannel Channels { get; private set; }
         public RuntimeDiagnosticsCaptureDetail Detail { get; private set; }
         public long Version { get; private set; }
@@ -119,13 +101,15 @@ namespace BTSMTL.Diagnostics.Editor
             return Math.Max(span.End.TimeSeconds, m_Spans.GetClockTime(domain, span.Start.ExecutionBranchId, span.Start.RuntimeEpoch));
         }
 
-        internal void Update(RuntimeCaptureRead capture, bool complete, int unmappedEventCount,
+        internal void Update(Guid captureId, RuntimeTraceChannel channels, RuntimeDiagnosticsCaptureDetail detail,
+            long version, long evictedEvents, bool complete, int unmappedEventCount,
             double latestLogicTimeSeconds, double latestPresentationTimeSeconds)
         {
-            Channels = capture.Channels;
-            Detail = capture.Detail;
-            Version = capture.Version;
-            EvictedEvents = capture.EvictedEvents;
+            CaptureId = captureId;
+            Channels = channels;
+            Detail = detail;
+            Version = version;
+            EvictedEvents = evictedEvents;
             IsComplete = complete;
             UnmappedEventCount = unmappedEventCount;
             LatestLogicTimeSeconds = latestLogicTimeSeconds;
@@ -452,10 +436,10 @@ namespace BTSMTL.Diagnostics.Editor
             SpanAccumulator spans)
         {
             spans.Import(ref window.TimelineSpans, sourceMap, sourceMaps);
-            return new RuntimeExecutionTimeline(capture.CaptureId, capture.Channels, capture.Detail,
+            spans.Timeline.Update(capture.CaptureId, capture.Channels, capture.Detail,
                 window.TimelineVersion, capture.EvictedEvents, spans.IsComplete(capture.EvictedEvents),
-                spans.UnmappedEventCount, window.LatestLogicTime, window.LatestPresentationTime,
-                spans.Spans);
+                spans.UnmappedEventCount, window.LatestLogicTime, window.LatestPresentationTime);
+            return spans.Timeline;
         }
 
         internal static RuntimeExecutionTimeline Build(
@@ -487,7 +471,7 @@ namespace BTSMTL.Diagnostics.Editor
             RuntimeInstanceKey instance,
             ulong throughSequence)
         {
-            if (capture == null)
+            if (!capture.IsValid)
                 throw new ArgumentNullException(nameof(capture));
             if (!sourceMap.IsValid)
                 throw new ArgumentNullException(nameof(sourceMap));
@@ -501,11 +485,11 @@ namespace BTSMTL.Diagnostics.Editor
             var spans = new SpanAccumulator();
             for (int i = 0; i < selected.Count; i++)
                 spans.Append(selected[i], sourceMap, sourceMaps);
-            return new RuntimeExecutionTimeline(
+            spans.Timeline.Update(
                 capture.CaptureId, capture.Channels, capture.Detail, capture.Version, capture.EvictedEvents,
                 spans.IsComplete(capture.EvictedEvents), spans.UnmappedEventCount,
-                spans.LatestLogicTimeSeconds, spans.LatestPresentationTimeSeconds,
-                spans.Spans);
+                spans.LatestLogicTimeSeconds, spans.LatestPresentationTimeSeconds);
+            return spans.Timeline;
         }
 
         internal sealed class SpanAccumulator
@@ -522,6 +506,8 @@ namespace BTSMTL.Diagnostics.Editor
             SourceBinding[] m_Sources;
             int m_Processed;
             internal ProjectedSpans Spans => m_Spans;
+            internal RuntimeExecutionTimeline Timeline { get; }
+            internal long ProjectionRevision { get; private set; }
             internal int UnmappedEventCount { get; private set; }
             internal double LatestLogicTimeSeconds => m_Facts.LatestLogicTimeSeconds;
             internal double LatestPresentationTimeSeconds => m_Facts.LatestPresentationTimeSeconds;
@@ -532,6 +518,7 @@ namespace BTSMTL.Diagnostics.Editor
                 m_Displayed = new List<int>(capacity);
                 m_Sources = new SourceBinding[capacity];
                 m_Spans = new ProjectedSpans(this);
+                Timeline = new RuntimeExecutionTimeline(m_Spans);
             }
 
             internal void Reset()
@@ -542,6 +529,7 @@ namespace BTSMTL.Diagnostics.Editor
 
             void ClearProjection()
             {
+                ProjectionRevision++;
                 Array.Clear(m_Sources, 0, m_Facts.SourceCount);
                 m_Displayed.Clear();
                 m_Processed = 0;
@@ -550,15 +538,14 @@ namespace BTSMTL.Diagnostics.Editor
 
             internal bool IsComplete(long evictedEvents) => m_Facts.IsComplete(evictedEvents, Spans.Count, UnmappedEventCount);
 
-            internal bool TrimBefore(double logicTime, double presentationTime)
+            internal void TrimBefore(double logicTime, double presentationTime)
             {
-                int previous = m_Displayed.Count;
                 if (!m_Facts.TrimBefore(logicTime, presentationTime))
-                    return false;
+                    return;
+                ProjectionRevision++;
                 m_Displayed.Clear();
                 m_Processed = 0;
                 ProjectNewSpans();
-                return previous != m_Displayed.Count;
             }
 
             SourceBinding Resolve(RuntimeSourceElementHandle handle, RuntimeContentRevision revision,
@@ -614,7 +601,6 @@ namespace BTSMTL.Diagnostics.Editor
             {
                 ClearProjection();
                 (m_Facts, facts) = (facts, m_Facts);
-                m_Facts.CaptureDisplayText();
                 for (int i = 0; i < m_Facts.SourceCount; i++)
                 {
                     RuntimeCaptureSpanSource group = m_Facts.GetSource(i);
@@ -635,6 +621,7 @@ namespace BTSMTL.Diagnostics.Editor
                 readonly SpanAccumulator m_Owner;
                 internal ProjectedSpans(SpanAccumulator owner) => m_Owner = owner;
                 public int Count => m_Owner.m_Displayed.Count;
+                internal long Revision => m_Owner.ProjectionRevision;
                 internal ref readonly RuntimeCaptureSpanData GetSpanData(int index) =>
                     ref m_Owner.m_Facts.GetSpan(m_Owner.m_Displayed[index]);
                 internal ref readonly RuntimeSourceElementKey GetSpanSource(int index) =>
@@ -681,7 +668,7 @@ namespace BTSMTL.Diagnostics.Editor
             RuntimeInstanceKey instance = default,
             ulong throughSequence = ulong.MaxValue)
         {
-            if (capture == null)
+            if (!capture.IsValid)
                 throw new ArgumentNullException(nameof(capture));
             if (historyOffset < 0)
                 throw new ArgumentOutOfRangeException(nameof(historyOffset));

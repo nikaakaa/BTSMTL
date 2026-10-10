@@ -237,6 +237,7 @@ namespace BTSMTL.Timeline.Editor
             Track[] m_Tracks = Array.Empty<Track>();
             readonly Dictionary<(string Timeline, string Track), Track> m_TrackMap;
             RuntimeExecutionTimeline m_Timeline;
+            long m_ProjectionRevision = -1;
             long m_HistoryBranchRevision = -1;
             int m_Processed;
             float m_Cursor;
@@ -337,7 +338,9 @@ namespace BTSMTL.Timeline.Editor
                 float previousEnd = Length;
                 RuntimeDebugSession session = RuntimeDebugSession.Shared;
                 bool historyChanged = m_HistoryBranchRevision != session.HistoryBranchRevision;
-                bool reset = !ReferenceEquals(m_Timeline, timeline) || historyChanged;
+                bool reset = !ReferenceEquals(m_Timeline, timeline) ||
+                    m_ProjectionRevision != timeline.ProjectionRevision || historyChanged;
+                m_ProjectionRevision = timeline.ProjectionRevision;
                 m_HistoryBranchRevision = session.HistoryBranchRevision;
                 m_Timeline = timeline;
                 if (timeline.Spans.Count > m_Clips.Length)

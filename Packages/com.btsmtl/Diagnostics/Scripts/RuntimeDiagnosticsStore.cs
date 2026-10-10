@@ -179,7 +179,82 @@ namespace BTSMTL.Diagnostics
         public ReadOnlySpan<RuntimeTraceEvent> Events => m_Events;
     }
 
-    public class RuntimeCaptureSnapshot : IDisposable
+    public readonly struct RuntimeCaptureSnapshot : IDisposable
+    {
+        readonly RuntimeCaptureMemorySnapshot m_Memory;
+        readonly IRuntimeCaptureArchive m_Archive;
+        readonly int m_SegmentCount;
+        readonly double m_LogicTime;
+        readonly double m_PresentationTime;
+
+        public RuntimeCaptureSnapshot(Guid captureId, RuntimeTraceChannel channels, RuntimeDiagnosticsCaptureDetail detail,
+            RuntimeCaptureSegmentSnapshot[] segments, long version, long evictedEvents = 0)
+        {
+            m_Memory = new RuntimeCaptureMemorySnapshot(segments);
+            m_Archive = null;
+            m_SegmentCount = 0;
+            m_LogicTime = m_PresentationTime = 0;
+            CaptureId = captureId;
+            Channels = channels & RuntimeTraceChannel.All;
+            Detail = detail;
+            Version = version;
+            EvictedEvents = evictedEvents;
+        }
+
+        public RuntimeCaptureSnapshot(IRuntimeCaptureArchive archive, Guid captureId, RuntimeTraceChannel channels,
+            RuntimeDiagnosticsCaptureDetail detail, long version, int segments, double logicTime, double presentationTime)
+        {
+            m_Memory = null;
+            m_Archive = archive;
+            m_SegmentCount = segments;
+            m_LogicTime = logicTime;
+            m_PresentationTime = presentationTime;
+            CaptureId = captureId;
+            Channels = channels & RuntimeTraceChannel.All;
+            Detail = detail;
+            Version = version;
+            EvictedEvents = 0;
+        }
+
+        public bool IsValid => m_Memory != null || m_Archive != null;
+        public Guid CaptureId { get; }
+        public RuntimeTraceChannel Channels { get; }
+        public RuntimeDiagnosticsCaptureDetail Detail { get; }
+        public long Version { get; }
+        public long EvictedEvents { get; }
+        public double LatestLogicTimeSeconds => m_Archive != null ? m_LogicTime : m_Memory.LatestLogicTimeSeconds;
+        public double LatestPresentationTimeSeconds => m_Archive != null ? m_PresentationTime : m_Memory.LatestPresentationTimeSeconds;
+        public int SegmentCount => m_Archive != null ? m_SegmentCount : m_Memory.SegmentCount;
+        public ReadOnlySpan<RuntimeCaptureSegmentSnapshot> Segments => m_Archive == null
+            ? m_Memory.Segments : throw new InvalidOperationException("文件历史必须通过 BeginRead / TryTakeRead 按时间读取。");
+
+        public ReadOnlySpan<RuntimeTraceEvent> GetEvents(int historyOffset, ulong throughSequence = ulong.MaxValue) =>
+            m_Archive == null ? m_Memory.GetEvents(historyOffset, throughSequence)
+                : throw new InvalidOperationException("文件历史必须通过 BeginRead / TryTakeRead 按时间读取。");
+
+        public int GetHistoryOffset(ulong throughSequence) => m_Archive == null
+            ? m_Memory.GetHistoryOffset(throughSequence)
+            : throw new InvalidOperationException("历史偏移由完成的读取结果提供。");
+
+        public long BeginRead(in RuntimeCaptureQuery query, long stateVersion) => m_Archive != null
+            ? m_Archive.BeginRead(in this, in query, stateVersion) : m_Memory.BeginRead(in query, Version);
+
+        public bool TryTakeRead(long request, ref RuntimeCaptureReadWindow window,
+            (double Logic, double Presentation)? latestTime, out RuntimeCaptureReadStatus status) => m_Archive != null
+            ? m_Archive.TryTakeRead(request, ref window, latestTime, out status)
+            : m_Memory.TryTakeRead(request, ref window, latestTime, out status);
+
+        public void CancelRead()
+        {
+            if (m_Archive != null) m_Archive.CancelRead();
+            else m_Memory.CancelRead();
+        }
+
+        // 文件快照只借用档案，释放由原档案 owner 完成。
+        public void Dispose() => m_Memory?.Dispose();
+    }
+
+    sealed class RuntimeCaptureMemorySnapshot : IDisposable
     {
         RuntimeCaptureReadWindow m_ReadWindow;
         bool m_ReadFound;
@@ -187,11 +262,8 @@ namespace BTSMTL.Diagnostics
         readonly RuntimeTraceEvent[] m_Events;
         readonly int[] m_SegmentEnds;
 
-        public RuntimeCaptureSnapshot(Guid captureId, RuntimeTraceChannel channels, RuntimeDiagnosticsCaptureDetail detail, RuntimeCaptureSegmentSnapshot[] segments, long version, long evictedEvents = 0)
+        internal RuntimeCaptureMemorySnapshot(RuntimeCaptureSegmentSnapshot[] segments)
         {
-            CaptureId = captureId;
-            Channels = channels & RuntimeTraceChannel.All;
-            Detail = detail;
             m_Segments = segments ?? Array.Empty<RuntimeCaptureSegmentSnapshot>();
             int eventCount = 0;
             for (int i = 0; i < m_Segments.Length; i++)
@@ -215,28 +287,21 @@ namespace BTSMTL.Diagnostics
                 eventIndex += segmentEvents.Length;
                 m_SegmentEnds[i] = eventIndex;
             }
-            Version = version;
-            EvictedEvents = evictedEvents;
         }
 
-        public Guid CaptureId { get; }
-        public RuntimeTraceChannel Channels { get; }
-        public RuntimeDiagnosticsCaptureDetail Detail { get; }
-        public long Version { get; }
-        public virtual double LatestLogicTimeSeconds { get; }
-        public virtual double LatestPresentationTimeSeconds { get; }
-        public virtual ReadOnlySpan<RuntimeCaptureSegmentSnapshot> Segments => m_Segments;
-        public long EvictedEvents { get; }
-        public virtual int SegmentCount => m_Segments.Length;
+        internal double LatestLogicTimeSeconds { get; }
+        internal double LatestPresentationTimeSeconds { get; }
+        internal ReadOnlySpan<RuntimeCaptureSegmentSnapshot> Segments => m_Segments;
+        internal int SegmentCount => m_Segments.Length;
 
-        public virtual long BeginRead(in RuntimeCaptureQuery query, long stateVersion)
+        internal long BeginRead(in RuntimeCaptureQuery query, long version)
         {
             m_ReadWindow ??= new RuntimeCaptureReadWindow(4096, 32768);
-            m_ReadFound = ReadQuery(in query, m_ReadWindow);
+            m_ReadFound = ReadQuery(in query, m_ReadWindow, version);
             return 1;
         }
 
-        public virtual bool TryTakeRead(long request, ref RuntimeCaptureReadWindow window,
+        internal bool TryTakeRead(long request, ref RuntimeCaptureReadWindow window,
             (double Logic, double Presentation)? latestTime, out RuntimeCaptureReadStatus status)
         {
             status = m_ReadWindow.GetReadStatus(m_ReadFound, latestTime);
@@ -245,9 +310,9 @@ namespace BTSMTL.Diagnostics
             return true;
         }
 
-        public virtual void CancelRead() => m_ReadWindow.Clear();
+        internal void CancelRead() => m_ReadWindow.Clear();
 
-        public virtual void Dispose()
+        public void Dispose()
         {
             m_ReadWindow?.Clear();
             for (int i = 0; i < m_Events.Length; i++)
@@ -255,7 +320,7 @@ namespace BTSMTL.Diagnostics
             Array.Clear(m_Events, 0, m_Events.Length);
         }
 
-        public virtual ReadOnlySpan<RuntimeTraceEvent> GetEvents(int historyOffset, ulong throughSequence = ulong.MaxValue)
+        internal ReadOnlySpan<RuntimeTraceEvent> GetEvents(int historyOffset, ulong throughSequence = ulong.MaxValue)
         {
             int visibleSegments = Math.Max(0, m_Segments.Length - Math.Max(0, historyOffset));
             int end = visibleSegments == 0 ? 0 : m_SegmentEnds[visibleSegments - 1];
@@ -271,7 +336,7 @@ namespace BTSMTL.Diagnostics
             return m_Events.AsSpan(0, begin);
         }
 
-        public virtual int GetHistoryOffset(ulong throughSequence)
+        internal int GetHistoryOffset(ulong throughSequence)
         {
             int eventCount = GetEvents(0, throughSequence).Length;
             int begin = 0;
@@ -287,7 +352,7 @@ namespace BTSMTL.Diagnostics
             return Math.Max(0, m_Segments.Length - begin - 1);
         }
 
-        bool ReadQuery(in RuntimeCaptureQuery query, RuntimeCaptureReadWindow result)
+        bool ReadQuery(in RuntimeCaptureQuery query, RuntimeCaptureReadWindow result, long version)
         {
             ReadOnlySpan<RuntimeTraceEvent> events = GetEvents(
                 query.Kind == RuntimeCaptureQueryKind.Segment ? query.HistoryOffset : 0,
@@ -311,7 +376,7 @@ namespace BTSMTL.Diagnostics
             result.Clear();
             result.Selected = events[selected];
             if (query.IncludeExecutionWindow)
-                result.TimelineVersion = Version;
+                result.TimelineVersion = version;
             result.HistoryOffset = GetHistoryOffset(result.Selected.Sequence);
             result.NextTimeSeconds = double.PositiveInfinity;
             for (int i = 0; i < events.Length; i++)
@@ -1003,7 +1068,7 @@ namespace BTSMTL.Diagnostics
             lock (m_Gate)
             {
                 if (m_CaptureChannels == RuntimeTraceChannel.None)
-                    return null;
+                    return default;
 
                 RuntimeCaptureSnapshot snapshot = m_Archive?.Freeze(m_CaptureChannels, m_CaptureDetail) ?? m_Capture.Freeze(m_CaptureChannels);
                 m_Capture.Clear();
@@ -1017,7 +1082,7 @@ namespace BTSMTL.Diagnostics
         public RuntimeCaptureSnapshot FreezeActiveCapture()
         {
             lock (m_Gate)
-                return m_CaptureChannels == RuntimeTraceChannel.None ? null : m_Archive?.Freeze(m_CaptureChannels, m_CaptureDetail) ?? m_Capture.Freeze(m_CaptureChannels);
+                return m_CaptureChannels == RuntimeTraceChannel.None ? default : m_Archive?.Freeze(m_CaptureChannels, m_CaptureDetail) ?? m_Capture.Freeze(m_CaptureChannels);
         }
 
         public void SetCaptureArchive(IRuntimeCaptureArchive archive)

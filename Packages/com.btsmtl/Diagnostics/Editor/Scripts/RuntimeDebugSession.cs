@@ -122,7 +122,7 @@ namespace BTSMTL.Diagnostics.Editor
         public bool IsCaptureRecording => m_Target != null && m_Target.Store.IsCaptureRecording;
         public RuntimeTraceChannel RecordingChannels => m_Target?.Store.RecordingChannels ?? RuntimeTraceChannel.None;
         public RuntimeCaptureSnapshot CaptureSnapshot => m_CaptureSnapshot;
-        public bool HasCaptureHistory => m_CaptureSnapshot != null;
+        public bool HasCaptureHistory => m_CaptureSnapshot.IsValid;
         public int HistoryOffset => m_HistoryOffset;
         public ulong HistorySequence => m_HistoryCursor?.Sequence ?? ulong.MaxValue;
         public (RuntimeTraceDomain Domain, double TimeSeconds, Guid? Branch, ulong? Epoch)? HistoryCursor
@@ -142,10 +142,10 @@ namespace BTSMTL.Diagnostics.Editor
         }
         public int ExecutionSpanCapacity => 32768;
         public Guid CaptureId => m_AttachmentState is RuntimeDebugAttachmentState.Frozen or RuntimeDebugAttachmentState.CaptureHistory or RuntimeDebugAttachmentState.Ended
-            ? m_CaptureSnapshot?.CaptureId ?? Guid.Empty
+            ? m_CaptureSnapshot.CaptureId
             : m_Provider?.CaptureId ?? Guid.Empty;
         public long CaptureVersion => m_AttachmentState is RuntimeDebugAttachmentState.Frozen or RuntimeDebugAttachmentState.CaptureHistory or RuntimeDebugAttachmentState.Ended
-            ? m_CaptureSnapshot?.Version ?? 0
+            ? m_CaptureSnapshot.Version
             : m_Provider?.CaptureVersion ?? 0;
 
         public void GetExecutionAuthoringCapacity(out int timelines, out int tracks)
@@ -171,7 +171,7 @@ namespace BTSMTL.Diagnostics.Editor
                 return m_Provider.ExecutionTimeline ?? m_WindowTimeline;
             CaptureSourceMaps();
             RuntimeExecutionTimeline timeline = m_Provider.ReadExecutionTimeline(m_SourceMaps, out bool requiresArchiveSync);
-            requiresArchiveSync |= !IsCaptureRecording && m_CaptureSnapshot != null &&
+            requiresArchiveSync |= !IsCaptureRecording && m_CaptureSnapshot.IsValid &&
                 (timeline?.Version ?? 0) < m_CaptureSnapshot.Version;
             if (requiresArchiveSync && m_ReadRequest == 0 && HistoryError.Length == 0)
             {
@@ -241,7 +241,7 @@ namespace BTSMTL.Diagnostics.Editor
                 return true;
             }
             RuntimeCaptureSnapshot snapshot = GetExecutionCapture();
-            if (snapshot == null)
+            if (!snapshot.IsValid)
                 return false;
             QueueRead(snapshot, new RuntimeCaptureQuery(RuntimeCaptureQueryKind.Time, domain, timeSeconds,
                 0, 0, ReadWindowStart, m_WindowEnd,
@@ -273,7 +273,7 @@ namespace BTSMTL.Diagnostics.Editor
             {
                 if (m_Target != null && m_Target.Store.IsCaptureRecording)
                     return m_Target.Store.CaptureSegmentCount;
-                return m_CaptureSnapshot?.SegmentCount ?? 0;
+                return m_CaptureSnapshot.IsValid ? m_CaptureSnapshot.SegmentCount : 0;
             }
         }
 
@@ -344,7 +344,7 @@ namespace BTSMTL.Diagnostics.Editor
             ClearSourceMaps();
             m_Frozen = null;
             m_ViewModel = RuntimeDebugViewModel.Detached;
-            m_CaptureSnapshot = null;
+            m_CaptureSnapshot = default;
             m_HistoryCursor = null;
             m_CaptureSegmentLimit = 0;
             m_NextCaptureRefreshTime = 0d;
@@ -431,6 +431,7 @@ namespace BTSMTL.Diagnostics.Editor
 
         public void BeginTimeReplay()
         {
+            m_SourceMaps.EnsureCapacity(m_Target.Context.SourceMapCapacity);
             m_CaptureSnapshot = GetExecutionCapture();
             if (m_ReadRequest != 0) m_PendingSnapshot.CancelRead();
             m_ReadRequest = 0;
@@ -446,7 +447,7 @@ namespace BTSMTL.Diagnostics.Editor
             m_HistoryBranches.Add((branch, epoch, double.NegativeInfinity, double.NegativeInfinity));
             HistoryBranchRevision++;
             ProjectionVersion++;
-            m_CaptureSnapshot = null;
+            m_CaptureSnapshot = default;
             m_WindowTimeline = null;
             m_InvalidHistoryStart = null;
             SetHistoryNavigationEnabled(true);
@@ -578,7 +579,7 @@ namespace BTSMTL.Diagnostics.Editor
             if (!CanStartCapture)
                 return false;
 
-            Guid previousCapture = m_CaptureSnapshot != null ? m_CaptureSnapshot.CaptureId : m_Provider.CaptureId;
+            Guid previousCapture = m_CaptureSnapshot.IsValid ? m_CaptureSnapshot.CaptureId : m_Provider.CaptureId;
             if (!m_Provider.BeginCapture(channels, detail, out Guid captureId))
                 return false;
 
@@ -597,7 +598,7 @@ namespace BTSMTL.Diagnostics.Editor
                 m_WindowChanged = false;
             }
 
-            m_CaptureSnapshot = null;
+            m_CaptureSnapshot = default;
             m_HistoryCursor = null;
             m_CaptureSegmentLimit = maximumSegments;
             m_NextCaptureRefreshTime = 0d;
@@ -626,7 +627,7 @@ namespace BTSMTL.Diagnostics.Editor
 
             CaptureSourceMaps();
             RuntimeCaptureSnapshot snapshot = m_Provider.EndCapture();
-            if (snapshot == null)
+            if (!snapshot.IsValid)
                 return false;
 
             m_CaptureSnapshot = snapshot;
@@ -644,7 +645,7 @@ namespace BTSMTL.Diagnostics.Editor
             if (!m_HistoryNavigationEnabled)
                 return false;
             RuntimeCaptureSnapshot snapshot = GetExecutionCapture();
-            if (snapshot == null || snapshot.CaptureId != captureId)
+            if (!snapshot.IsValid || snapshot.CaptureId != captureId)
                 return false;
             QueueRead(snapshot, new RuntimeCaptureQuery(RuntimeCaptureQueryKind.Event, m_WindowDomain, 0,
                 sequence, 0, ReadWindowStart, m_WindowEnd,
@@ -655,7 +656,7 @@ namespace BTSMTL.Diagnostics.Editor
 
         public void SetHistoryOffset(int offset)
         {
-            if (!m_HistoryNavigationEnabled || m_CaptureSnapshot == null)
+            if (!m_HistoryNavigationEnabled || !m_CaptureSnapshot.IsValid)
                 return;
             int clamped = Math.Max(0, Math.Min(offset, m_CaptureSnapshot.SegmentCount - 1));
             QueueRead(m_CaptureSnapshot, new RuntimeCaptureQuery(RuntimeCaptureQueryKind.Segment,
@@ -773,7 +774,7 @@ namespace BTSMTL.Diagnostics.Editor
                 m_PendingSnapshot.CancelRead();
             m_ReadRequest = 0;
             m_HasHistoryEvent = false;
-            m_PendingSnapshot = null;
+            m_PendingSnapshot = default;
             m_WindowTimeline = null;
             m_ArchiveProjection = false;
             m_BrowsingPastExecution = false;
@@ -895,7 +896,7 @@ namespace BTSMTL.Diagnostics.Editor
             AddSourceMap(m_Provider.SourceMap);
             m_Frozen = null;
             m_ViewModel = m_Provider.LiveModel;
-            m_CaptureSnapshot = null;
+            m_CaptureSnapshot = default;
             m_HistoryCursor = null;
             m_AttachmentState = RuntimeDebugAttachmentState.Live;
             m_NextLiveRefreshTime = 0d;
@@ -910,7 +911,7 @@ namespace BTSMTL.Diagnostics.Editor
             if (m_Disposed || m_TimeReplay)
                 return;
             CompleteRead();
-            if (m_WindowChanged && m_ReadRequest == 0 && m_CaptureSnapshot != null &&
+            if (m_WindowChanged && m_ReadRequest == 0 && m_CaptureSnapshot.IsValid &&
                 m_AttachmentState is RuntimeDebugAttachmentState.Frozen or RuntimeDebugAttachmentState.CaptureHistory or RuntimeDebugAttachmentState.Ended)
             {
                 RuntimeCaptureQueryKind kind = m_HistoryCursor.HasValue
@@ -940,7 +941,7 @@ namespace BTSMTL.Diagnostics.Editor
                     return;
                 m_NextLiveRefreshTime = now + LiveRefreshIntervalSeconds;
             }
-            if (m_Target.Store.HasCaptureArchive && (IsCaptureRecording || m_CaptureSnapshot != null) &&
+            if (m_Target.Store.HasCaptureArchive && (IsCaptureRecording || m_CaptureSnapshot.IsValid) &&
                 (m_ReadRequest == 0 || m_ReadPurpose == CaptureReadPurpose.LiveProjection))
             {
                 double liveTime = GetLiveExecutionTime(m_WindowDomain);
@@ -1049,13 +1050,13 @@ namespace BTSMTL.Diagnostics.Editor
             m_Frozen = m_AttachmentState == RuntimeDebugAttachmentState.Frozen
                 ? new RuntimeDebugFrozenDiagnostics(m_ViewModel, m_Provider.SourceMap, m_CaptureSnapshot, m_SourceMaps)
                 : m_Provider?.Freeze(m_SourceMaps);
-            RuntimeCaptureSnapshot activeCapture = m_Frozen?.ActiveCapture;
-            if (m_AttachmentState != RuntimeDebugAttachmentState.CaptureHistory && activeCapture != null)
+            RuntimeCaptureSnapshot activeCapture = m_Frozen?.ActiveCapture ?? default;
+            if (m_AttachmentState != RuntimeDebugAttachmentState.CaptureHistory && activeCapture.IsValid)
                 m_CaptureSnapshot = activeCapture;
             m_ViewModel = m_AttachmentState == RuntimeDebugAttachmentState.CaptureHistory && m_HistoryModel != null
                 ? m_HistoryModel : m_Frozen?.LiveModel ?? RuntimeDebugViewModel.Detached;
             if (m_AttachmentState == RuntimeDebugAttachmentState.Live && !m_ArchiveProjection &&
-                m_CaptureSnapshot != null && m_CaptureSnapshot.Version > 0 &&
+                m_CaptureSnapshot.IsValid && m_CaptureSnapshot.Version > 0 &&
                 (m_ReadRequest == 0 || m_ReadPurpose == CaptureReadPurpose.LiveProjection))
             {
                 m_WindowTimeline = m_Provider.ExecutionTimeline ?? m_WindowTimeline;

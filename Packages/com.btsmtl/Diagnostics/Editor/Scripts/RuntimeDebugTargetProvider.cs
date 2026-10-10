@@ -116,25 +116,21 @@ namespace BTSMTL.Diagnostics.Editor
                 if (capture.CaptureId != projectionCaptureId || capture.RequiresFullSync)
                 {
                     m_ExecutionSpans.Reset();
-                    m_ExecutionTimeline = new RuntimeExecutionTimeline(
-                        capture.CaptureId, capture.Channels, capture.Detail, capture.Version, capture.EvictedEvents,
-                        false, 0, 0, 0, m_ExecutionSpans.Spans);
+                    m_ExecutionTimeline = m_ExecutionSpans.Timeline;
                 }
                 for (int i = 0; i < m_CaptureChanges.Count; i++)
                     m_ExecutionSpans.Append(m_CaptureChanges[i].TraceEvent, m_SourceMap, sourceMaps);
                 if (m_Target.Store.HasCaptureArchive && m_ExecutionSpans.LatestLogicTimeSeconds > m_LastProjectionTrim + 5)
                 {
                     m_LastProjectionTrim = m_ExecutionSpans.LatestLogicTimeSeconds;
-                    if (m_ExecutionSpans.TrimBefore(m_LastProjectionTrim - RuntimeCaptureReadWindow.LiveProjectionDurationSeconds,
-                        m_ExecutionSpans.LatestPresentationTimeSeconds - RuntimeCaptureReadWindow.LiveProjectionDurationSeconds))
-                        m_ExecutionTimeline = new RuntimeExecutionTimeline(
-                            capture.CaptureId, capture.Channels, capture.Detail, capture.Version, 0,
-                            false, 0, 0, 0, m_ExecutionSpans.Spans);
+                    m_ExecutionSpans.TrimBefore(m_LastProjectionTrim - RuntimeCaptureReadWindow.LiveProjectionDurationSeconds,
+                        m_ExecutionSpans.LatestPresentationTimeSeconds - RuntimeCaptureReadWindow.LiveProjectionDurationSeconds);
                 }
                 if (m_Target.Store.HasCaptureArchive)
                     capture = new RuntimeCaptureRead(capture.CaptureId, capture.Channels, capture.Detail,
                         capture.Version, 0, capture.RequiresFullSync, capture.Changes);
-                m_ExecutionTimeline.Update(capture, m_ExecutionSpans.IsComplete(capture.EvictedEvents),
+                m_ExecutionTimeline.Update(capture.CaptureId, capture.Channels, capture.Detail, capture.Version,
+                    capture.EvictedEvents, m_ExecutionSpans.IsComplete(capture.EvictedEvents),
                     m_ExecutionSpans.UnmappedEventCount, m_ExecutionSpans.LatestLogicTimeSeconds,
                     m_ExecutionSpans.LatestPresentationTimeSeconds);
             }
