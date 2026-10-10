@@ -796,6 +796,11 @@ namespace BTSMTL.Timeline.Editor
         public void Rebuild()
         {
             m_Timeline = m_Request.Timeline;
+            if (TimeRangeOnly)
+            {
+                SynchronizeTimeRangeBindings();
+                return;
+            }
             string selectedId = m_Selected?.AuthoringId ?? string.Empty;
             BuildBindings();
             if (m_Clips.TryGetValue(selectedId, out BtsmtlTimelineClipBinding clip))
@@ -808,6 +813,34 @@ namespace BTSMTL.Timeline.Editor
                 Select(section);
             else
                 Select(null);
+        }
+
+        void SynchronizeTimeRangeBindings()
+        {
+            for (int trackIndex = 0; trackIndex < Timeline.Tracks.Count; trackIndex++)
+            {
+                Track source = Timeline.Tracks[trackIndex];
+                m_Tracks[source.AuthoringId].Source = source;
+                for (int markerIndex = 0; markerIndex < source.Markers.Count; markerIndex++)
+                {
+                    TimelineMarker marker = source.Markers[markerIndex];
+                    m_Markers[marker.AuthoringId].Source = marker;
+                }
+                for (int clipIndex = 0; clipIndex < source.Clips.Count; clipIndex++)
+                {
+                    Clip clip = source.Clips[clipIndex];
+                    m_Clips[clip.AuthoringId].BindTimeRangeSource(clip);
+                }
+            }
+            for (int sectionIndex = 0; sectionIndex < Timeline.Sections.Count; sectionIndex++)
+            {
+                TimelineSection section = Timeline.Sections[sectionIndex];
+                m_SectionsById[section.AuthoringId].Source = section;
+            }
+            m_SourceRevision = Timeline.AuthoringRevision;
+            m_CurrentTime = Mathf.Clamp(m_CurrentTime, 0f, Length);
+            Select(m_Selected);
+            RequestRepaint();
         }
 
         bool ApplyImmediate(Action mutation, string undoName)
@@ -1274,7 +1307,7 @@ namespace BTSMTL.Timeline.Editor
             }
             public BtsmtlSlateTimelineBinding Owner { get; }
             public BtsmtlTimelineGroupBinding Group { get; }
-            public Track Source { get; }
+            public Track Source { get; internal set; }
             public string AuthoringId => Source.AuthoringId;
             public string DisplayName => string.IsNullOrEmpty(Source.Name) ? Source.ContractKind : Source.Name;
             public bool IsActive { get => !Source.PersistentMuted; set => Source.PersistentMuted = !value; }
@@ -1351,7 +1384,7 @@ namespace BTSMTL.Timeline.Editor
                 m_InitialTime = m_Time;
             }
 
-            public TimelineMarker Source { get; }
+            public TimelineMarker Source { get; internal set; }
             public BtsmtlTimelineTrackBinding FormalTrack => m_Track;
             IEmbeddedTimelineTrackBinding IEmbeddedTimelineMarkerBinding.Track => m_Track;
             public string AuthoringId => Source.AuthoringId;
@@ -1425,14 +1458,14 @@ namespace BTSMTL.Timeline.Editor
                 }
                 if (source is MotionCurveClip sourceMotion && sourceMotion.SourceCurve != null)
                 {
-                    AddReferenceParameter(sourceMotion, "source.position-x", "Position X", sourceMotion.SourcePositionX);
-                    AddReferenceParameter(sourceMotion, "source.position-y", "Position Y", sourceMotion.SourcePositionY);
-                    AddReferenceParameter(sourceMotion, "source.position-z", "Position Z", sourceMotion.SourcePositionZ);
-                    AddReferenceParameter(sourceMotion, "source.yaw", "Yaw", sourceMotion.SourceYaw);
+                    AddReferenceParameter("source.position-x", "Position X", sourceMotion.SourcePositionX);
+                    AddReferenceParameter("source.position-y", "Position Y", sourceMotion.SourcePositionY);
+                    AddReferenceParameter("source.position-z", "Position Z", sourceMotion.SourcePositionZ);
+                    AddReferenceParameter("source.yaw", "Yaw", sourceMotion.SourceYaw);
                 }
             }
 
-            public Clip Source { get; }
+            public Clip Source { get; private set; }
             internal BtsmtlSlateTimelineBinding Owner => m_Owner;
             public BtsmtlTimelineTrackBinding Track => m_Track;
             IEmbeddedTimelineTrackBinding IEmbeddedTimelineClipBinding.Track => m_Track;
@@ -1526,14 +1559,14 @@ namespace BTSMTL.Timeline.Editor
                 }
             }
 
-            void AddReferenceParameter(MotionCurveClip motion, string channelId, string displayName, AnimationCurve source)
+            void AddReferenceParameter(string channelId, string displayName, AnimationCurve source)
             {
                 m_Parameters.Add(new BtsmtlTimelineReferenceParameterBinding(
                     this,
                     channelId,
                     displayName,
-                    motion.SourceCurve.name,
-                    curve => motion.UpdateSourceDisplayCurve(curve, source, m_SourceStartTime, m_SourceEndTime, Length)));
+                    ((MotionCurveClip)Source).SourceCurve.name,
+                    curve => ((MotionCurveClip)Source).UpdateSourceDisplayCurve(curve, source, m_SourceStartTime, m_SourceEndTime, Length)));
             }
 
             void RefreshReferenceCurves()
@@ -1598,8 +1631,17 @@ namespace BTSMTL.Timeline.Editor
 
             internal void CaptureGestureTimeRange() => m_GestureTimeRange = Source.CaptureTimeRange();
 
+            internal void BindTimeRangeSource(Clip source)
+            {
+                Source = source;
+                SynchronizeTimeRange();
+            }
+
             internal void SynchronizeTimeRange()
             {
+                float previousLength = Length;
+                float previousSourceStart = m_SourceStartTime;
+                float previousSourceEnd = m_SourceEndTime;
                 m_StartTime = Source.StartTime.ToSingle();
                 m_EndTime = Source.EndTime.ToSingle();
                 m_BlendIn = m_InitialBlendIn = Source.SelfEaseInTime.ToSingle();
@@ -1613,6 +1655,9 @@ namespace BTSMTL.Timeline.Editor
                     m_SourceStartTime = motion.SourceStartTime;
                     m_SourceEndTime = motion.SourceEndTime;
                 }
+                if (previousLength != Length || previousSourceStart != m_SourceStartTime ||
+                    previousSourceEnd != m_SourceEndTime)
+                    RefreshReferenceCurves();
             }
 
             float SnapTime(float value)
@@ -1806,10 +1851,12 @@ namespace BTSMTL.Timeline.Editor
         {
             readonly BtsmtlTimelineClipBinding m_Clip;
             readonly BtsmtlTimelineCurveBinding m_Curve;
+            readonly IEmbeddedTimelineCurveBinding[] m_Curves;
             public BtsmtlTimelineParameterBinding(BtsmtlTimelineClipBinding clip, BtsmtlTimelineCurveBinding curve)
             {
                 m_Clip = clip;
                 m_Curve = curve;
+                m_Curves = new IEmbeddedTimelineCurveBinding[] { curve };
             }
             public string ParameterId => m_Curve.ChannelId;
             public string DisplayName => m_Curve.DisplayName;
@@ -1819,7 +1866,7 @@ namespace BTSMTL.Timeline.Editor
                 m_Clip.Owner.CurrentTime - m_Clip.StartTime,
                 0f,
                 m_Curve.Duration));
-            public IReadOnlyList<IEmbeddedTimelineCurveBinding> Curves => new[] { m_Curve };
+            public IReadOnlyList<IEmbeddedTimelineCurveBinding> Curves => m_Curves;
             public void AddKey(float localTime)
             {
                 float snappedTime = m_Curve.SnapTime(localTime);
@@ -1930,7 +1977,7 @@ namespace BTSMTL.Timeline.Editor
                 Time = source.Time.ToSingle();
                 m_InitialTime = Time;
             }
-            public TimelineSection Source { get; }
+            public TimelineSection Source { get; internal set; }
             public string AuthoringId => Source.AuthoringId;
             public string DisplayName => Name;
             public bool IsLocked { get; set; }

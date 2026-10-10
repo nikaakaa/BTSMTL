@@ -477,7 +477,20 @@ namespace BTSMTL.Timeline.Editor
         void OnBindingRepaint()
         {
             if (!m_Disposed)
+            {
+                SynchronizeObservedTimeline();
                 m_EmbeddedEditor.RequestEmbeddedRepaint();
+            }
+        }
+
+        void SynchronizeObservedTimeline()
+        {
+            TimelineData timeline = m_Request.Timeline;
+            if (ReferenceEquals(m_ObservedTimeline, timeline))
+                return;
+            m_ObservedTimeline.OnValueChanged -= OnSourceTimelineChanged;
+            m_ObservedTimeline = timeline;
+            m_ObservedTimeline.OnValueChanged += OnSourceTimelineChanged;
         }
 
         void OnSourceTimelineChanged()
@@ -493,9 +506,7 @@ namespace BTSMTL.Timeline.Editor
             {
                 if (!m_Request.TimeRangePreview.SynchronizeUndo())
                     return;
-                m_ObservedTimeline.OnValueChanged -= OnSourceTimelineChanged;
-                m_ObservedTimeline = m_Request.Timeline;
-                m_ObservedTimeline.OnValueChanged += OnSourceTimelineChanged;
+                SynchronizeObservedTimeline();
             }
             QueueRebuildBinding();
         }
@@ -513,6 +524,11 @@ namespace BTSMTL.Timeline.Editor
             m_RebuildQueued = false;
             if (m_Disposed)
                 return;
+            if (m_Binding.TimeRangeOnly)
+            {
+                m_Binding.Rebuild();
+                return;
+            }
             BtsmtlSlateTimelineViewState state = CaptureViewState();
             m_Binding.Rebuild();
             m_EmbeddedEditor.InvalidateEmbeddedClipBindings();
