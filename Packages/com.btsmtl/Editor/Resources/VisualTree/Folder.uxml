@@ -1,5 +1,5 @@
 ﻿<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" xsi="http://www.w3.org/2001/XMLSchema-instance" engine="UnityEngine.UIElements" editor="UnityEditor.UIElements" noNamespaceSchemaLocation="../../../../../UIElementsSchema/UIElements.xsd" editor-extension-mode="False">
-    <Style src="project://database/Assets/Addon/BTSMTL/Editor/Resources/StyleSheet/Folder.uss?fileID=7433441132597879392&amp;guid=e1ac16046f8464d46adc83917aee5bbc&amp;type=3#Folder" />
+    <Style src="project://database/Packages/com.btsmtl/Editor/Resources/StyleSheet/Folder.uss?fileID=7433441132597879392&amp;guid=e1ac16046f8464d46adc83917aee5bbc&amp;type=3#Folder" />
     <ui:VisualElement name="top">
         <ui:VisualElement name="folder-button" class="m_button" />
         <ui:VisualElement name="folder-icon" />
