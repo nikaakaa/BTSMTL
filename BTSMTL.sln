@@ -20,12 +20,18 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ThirdPersonSimulation.Serve
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ThirdPersonSimulation.ServerAuthoritative.Transport", "Projects\ThirdPersonSimulation.ServerAuthoritative.Transport\ThirdPersonSimulation.ServerAuthoritative.Transport.csproj", "{C2C3C4D2-66AA-4A97-B87E-160545B1955F}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ThirdPersonSimulation.BlackboardConfiguration", "Projects\ThirdPersonSimulation.BlackboardConfiguration\ThirdPersonSimulation.BlackboardConfiguration.csproj", "{58C7F145-4B14-436E-8C0C-93345E852B43}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{58C7F145-4B14-436E-8C0C-93345E852B43}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{58C7F145-4B14-436E-8C0C-93345E852B43}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{58C7F145-4B14-436E-8C0C-93345E852B43}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{58C7F145-4B14-436E-8C0C-93345E852B43}.Release|Any CPU.Build.0 = Release|Any CPU
 		{FBEC3C68-FC6E-44D6-9E00-393865AA334B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{FBEC3C68-FC6E-44D6-9E00-393865AA334B}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{FBEC3C68-FC6E-44D6-9E00-393865AA334B}.Release|Any CPU.ActiveCfg = Release|Any CPU

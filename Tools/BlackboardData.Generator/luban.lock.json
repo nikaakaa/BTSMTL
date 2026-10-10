@@ -1,0 +1,10 @@
+{
+  "version": "5.1.0",
+  "commit": "df34215d2e22035073d1af83d44e3ac0744dc3b3",
+  "archiveUrl": "https://github.com/focus-creative-games/luban/releases/download/v5.1.0/Luban.7z",
+  "archiveSha256": "BAC9A1B8D69CFEAA7EF1D8C67B34A007324D1CD158E0B14294521B3879BA5213",
+  "runtimeRepository": "focus-creative-games/luban_examples",
+  "runtimeCommit": "c52e273f1f50a263e9257dddb35c8e222d9777b8",
+  "runtimeDirectory": "Projects/Csharp_DotNet_bin/LubanLib",
+  "nativeRuntimeDirectory": "Projects/Cpp_rawptr_bin/luban"
+}

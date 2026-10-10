@@ -1,0 +1,13 @@
+{
+    "name": "ThirdPersonSimulation.BlackboardConfiguration",
+    "rootNamespace": "ThirdPersonSimulation.Configuration",
+    "references": [
+        "ThirdPerson.Shared.Contracts",
+        "ThirdPersonSimulation.Core",
+        "ThirdPersonSimulation.Fixed",
+        "ThirdPersonSimulation.Float32"
+    ],
+    "allowUnsafeCode": true,
+    "autoReferenced": true,
+    "noEngineReferences": true
+}
