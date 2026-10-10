@@ -187,10 +187,13 @@ namespace ThirdPersonSimulation
         public override string ToString() => Value.ToString();
     }
 
-    public readonly struct NumericProfileId : IEquatable<NumericProfileId>, IComparable<NumericProfileId>
+    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+    public readonly partial struct NumericProfileId : IEquatable<NumericProfileId>, IComparable<NumericProfileId>
     {
-        public NumericProfileId(string value) { Value = SimulationIdentity.Require(value, nameof(value)); }
+        public NumericProfileId(string value) { Value = value; RequireValid(); }
         public string Value { get; }
+        [CanonicalValidation]
+        void RequireValid() => SimulationIdentity.Require(Value, "value");
         public bool IsValid => !string.IsNullOrEmpty(Value);
         public int CompareTo(NumericProfileId other) => string.CompareOrdinal(Value, other.Value);
         public bool Equals(NumericProfileId other) => string.Equals(Value, other.Value, StringComparison.Ordinal);
@@ -212,15 +215,21 @@ namespace ThirdPersonSimulation
         public override string ToString() => Value ?? string.Empty;
     }
 
-    public readonly struct TargetAbiVersion : IEquatable<TargetAbiVersion>
+    [CanonicalContract]
+    public readonly partial struct TargetAbiVersion : IEquatable<TargetAbiVersion>
     {
         public TargetAbiVersion(int value)
         {
-            if (value <= 0)
-                throw new ArgumentOutOfRangeException(nameof(value));
             Value = value;
+            RequireValid();
         }
         public int Value { get; }
+        [CanonicalValidation]
+        void RequireValid()
+        {
+            if (Value <= 0)
+                throw new ArgumentOutOfRangeException("value");
+        }
         public bool IsValid => Value > 0;
         public bool Equals(TargetAbiVersion other) => Value == other.Value;
         public override bool Equals(object obj) => obj is TargetAbiVersion other && Equals(other);

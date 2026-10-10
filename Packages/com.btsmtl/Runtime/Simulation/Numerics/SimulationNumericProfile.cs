@@ -17,7 +17,8 @@ namespace ThirdPersonSimulation
         RejectOverflow = 2
     }
 
-    public readonly struct SimulationNumericProfile : IEquatable<SimulationNumericProfile>
+    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+    public readonly partial struct SimulationNumericProfile : IEquatable<SimulationNumericProfile>
     {
         public SimulationNumericProfile(
             NumericProfileId id,
@@ -29,14 +30,20 @@ namespace ThirdPersonSimulation
         {
             if (!id.IsValid || !abiVersion.IsValid)
                 throw new ArgumentException("Numeric profile identity is incomplete.");
-            if (scalarBits <= 0)
-                throw new ArgumentOutOfRangeException(nameof(scalarBits));
             Id = id;
             AbiVersion = abiVersion;
             ScalarBits = scalarBits;
             Rounding = rounding;
             Overflow = overflow;
             DeterministicReplay = deterministicReplay;
+            RequireValid();
+        }
+
+        [CanonicalValidation]
+        void RequireValid()
+        {
+            if (ScalarBits <= 0)
+                throw new ArgumentOutOfRangeException("scalarBits");
         }
 
         public NumericProfileId Id { get; }
