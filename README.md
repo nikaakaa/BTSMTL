@@ -23,6 +23,8 @@ dotnet build-server shutdown
 
 服务端按实际数值域引用 `Projects/ThirdPersonSimulation.Fixed` 或 `ThirdPersonSimulation.Float32`，需要 Timeline 时引用 `Projects/ThirdPersonSimulation.Timeline/ThirdPersonSimulation.Timeline.csproj`。项目引用自动带入本仓库的公共合同、Core、数值与物理依赖及编译期生成器。旧 3C Core／Fixed 的 Portable 包装工程已移除，3C 的调用工程直接引用本仓库项目。
 
+服务端权威模拟与传输工程也位于 `Projects/ThirdPersonSimulation.ServerAuthoritative`、`Projects/ThirdPersonSimulation.ServerAuthoritative.Transport`，编译包内对应 Network 源码。3C 网络产品引用这些正式项目；独立解决方案共包含 8 个运行库与编译期生成器。
+
 服务端提供编译后的图／Timeline 内容、逻辑时间、输入、播放控制和 TreeClip 调用者；共用运行器执行并提交或丢弃候选，输出玩法结果、播放结果和快照，由宿主消费。服务端不需要 UnityEngine。普通 .NET 编译范围不包含 Unity 作者对象、Editor 或 Unity 组件；动画、场景和声音表现仍由 Unity 客户端消费。
 
 ## 源码职责
