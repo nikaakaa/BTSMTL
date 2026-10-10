@@ -1,7 +1,6 @@
 using System;
 using ThirdPersonSimulation.Fixed;
 using System.Collections.Generic;
-using System.Linq;
 using System.Reflection;
 using BTSMTL.Timeline;
 using UnityEditor;
@@ -17,9 +16,23 @@ namespace BTSMTL.Timeline.Editor
         VisualElement m_Root;
         string m_ConfigurationError;
         string m_SourceRevision = string.Empty;
+        TimelineContractCatalog m_Contracts;
+        TimelineAuthoringClipConfiguration m_ClipConfiguration;
+        PropertyBinding[] m_ClipProperties = Array.Empty<PropertyBinding>();
+        ulong m_ClipRevision;
+
+        sealed class PropertyBinding
+        {
+            internal TimelineAuthoringPropertyAttribute Attribute;
+            internal PropertyInfo Property;
+            internal string Label;
+            internal object Value;
+            internal AnimationCurve Curve;
+        }
 
         void OnEnable()
         {
+            m_Contracts = TimelineTreeContractComposition.Create();
             TimelineInspectorSelection.Changed += Rebuild;
         }
 
@@ -40,6 +53,8 @@ namespace BTSMTL.Timeline.Editor
             if (m_Root == null)
                 return;
             m_Root.Clear();
+            m_ClipConfiguration = null;
+            m_ClipProperties = Array.Empty<PropertyBinding>();
             TimelineAsset asset = (TimelineAsset)target;
             m_SourceRevision = TimelineAuthoringFingerprint.Compute(asset.Data);
             m_Root.Add(new Button(() =>
@@ -61,12 +76,14 @@ namespace BTSMTL.Timeline.Editor
 
             if (TimelineInspectorSelection.TryGetElement(asset, out object selected))
             {
+                if (selected is Clip clip && !asset.Data.IsTimeRangeWorkspace)
+                    PrepareClipProperties(clip);
                 m_Root.Add(new Label("Selected Timeline Element"));
                 m_Root.Add(new IMGUIContainer(() => DrawSelectedInspector(asset, selected)));
             }
 
             var errors = new List<string>();
-            if (!asset.ValidateContent(TimelineTreeContractComposition.Create(), errors))
+            if (!asset.ValidateContent(m_Contracts, errors))
                 m_Root.Add(new HelpBox(string.Join("\n", errors), HelpBoxMessageType.Error));
             if (!string.IsNullOrEmpty(m_ConfigurationError))
                 m_Root.Add(new HelpBox(m_ConfigurationError, HelpBoxMessageType.Error));
@@ -107,9 +124,12 @@ namespace BTSMTL.Timeline.Editor
                 if (EditorGUI.EndChangeCheck())
                     TimelineEditorWindow.FindOpen(asset).ApplyClipTimeRangeNumbers(clip.AuthoringId,
                         FixedScalar.FromDouble(start), FixedScalar.FromDouble(end));
-                EditorGUILayout.LabelField("ClipIn", clip.ClipInTime.ToString());
-                EditorGUILayout.LabelField("混合进入", clip.SelfEaseInTime.ToString());
-                EditorGUILayout.LabelField("混合退出", clip.SelfEaseOutTime.ToString());
+                using (new EditorGUI.DisabledScope(true))
+                {
+                    EditorGUILayout.DoubleField("ClipIn", clip.ClipInTime.ToDouble());
+                    EditorGUILayout.DoubleField("混合进入", clip.SelfEaseInTime.ToDouble());
+                    EditorGUILayout.DoubleField("混合退出", clip.SelfEaseOutTime.ToDouble());
+                }
                 return;
             }
             if (!string.IsNullOrEmpty(m_ConfigurationError))
@@ -125,20 +145,8 @@ namespace BTSMTL.Timeline.Editor
                     nextExitSource = (TimelineClipExitSource)EditorGUILayout.EnumPopup("Exit Source", exitSource);
                 else
                     EditorGUILayout.LabelField("Exit Source", TimelineClipExitSource.TreeDecision.ToString());
-                if (nextExitSource != exitSource && TryBeginMutation(asset))
-                {
-                    try
-                    {
-                        asset.Data.ApplyModify(() => selectedTree.SetExitSource(nextExitSource), "Edit TreeClip Exit Source");
-                        asset.Data.Init();
-                        m_SourceRevision = TimelineAuthoringFingerprint.Compute(asset.Data);
-                        m_ConfigurationError = null;
-                    }
-                    catch (Exception exception)
-                    {
-                        m_ConfigurationError = exception.Message;
-                    }
-                }
+                if (nextExitSource != exitSource)
+                    ApplyTreeExitSource(asset, selectedTree, nextExitSource);
             }
             FixedScalar startTime = clip.StartTime;
             FixedScalar endTime = clip.EndTime;
@@ -178,38 +186,80 @@ namespace BTSMTL.Timeline.Editor
             if (EditorGUI.EndChangeCheck())
                 ApplyTimeRange(asset, clip, startTime, endTime, easeIn, easeOut, clipInSeconds, clipInChanged);
 
-            TimelineAuthoringClipConfiguration configuration;
-            try
+            if (m_ClipRevision != asset.Data.AuthoringRevision)
+                SynchronizeClipProperties(clip);
+            for (int index = 0; index < m_ClipProperties.Length; index++)
             {
-                configuration = TimelineAuthoringClipBinding.Read(clip);
-            }
-            catch (Exception exception)
-            {
-                EditorGUILayout.HelpBox(exception.Message, MessageType.Error);
-                return;
-            }
-
-            PropertyInfo[] properties = typeof(TimelineAuthoringClipConfiguration).GetProperties(BindingFlags.Instance | BindingFlags.Public);
-            object[] attributes = clip.GetType().GetCustomAttributes(typeof(TimelineAuthoringPropertyAttribute), true);
-            for (int index = 0; index < attributes.Length; index++)
-            {
-                TimelineAuthoringPropertyAttribute attribute = (TimelineAuthoringPropertyAttribute)attributes[index];
-                PropertyInfo property = FindProperty(properties, attribute.PropertyId);
-                if (property == null || !property.CanRead || !property.CanWrite)
+                PropertyBinding binding = m_ClipProperties[index];
+                object before = binding.Value;
+                object after = DrawProperty(binding);
+                if (ReferenceEquals(before, after))
                     continue;
-                object before = property.GetValue(configuration, null);
-                EditorGUI.BeginChangeCheck();
-                object after = DrawProperty(attribute, property, before);
-                if (!EditorGUI.EndChangeCheck())
-                    continue;
-                if (attribute.Trimmed && after is string text)
+                if (binding.Attribute.Trimmed && after is string text)
                     after = text.Trim();
                 if (ValuesDiffer(before, after))
                 {
-                    property.SetValue(configuration, after, null);
-                    ApplyConfiguration(asset, clip, configuration);
+                    binding.Property.SetValue(m_ClipConfiguration, after, null);
+                    ApplyConfiguration(asset, clip, m_ClipConfiguration);
+                    SynchronizeClipProperties(clip);
                     break;
                 }
+            }
+        }
+
+        void PrepareClipProperties(Clip clip)
+        {
+            PropertyInfo[] properties = typeof(TimelineAuthoringClipConfiguration).GetProperties(BindingFlags.Instance | BindingFlags.Public);
+            object[] attributes = clip.GetType().GetCustomAttributes(typeof(TimelineAuthoringPropertyAttribute), true);
+            var bindings = new List<PropertyBinding>(attributes.Length);
+            for (int i = 0; i < attributes.Length; i++)
+            {
+                var attribute = (TimelineAuthoringPropertyAttribute)attributes[i];
+                PropertyInfo property = FindProperty(properties, attribute.PropertyId);
+                if (property == null || !property.CanRead || !property.CanWrite)
+                    continue;
+                bindings.Add(new PropertyBinding
+                {
+                    Attribute = attribute,
+                    Property = property,
+                    Label = ObjectNames.NicifyVariableName(attribute.PropertyId)
+                });
+            }
+            m_ClipProperties = bindings.ToArray();
+            SynchronizeClipProperties(clip);
+        }
+
+        void SynchronizeClipProperties(Clip clip)
+        {
+            m_ClipConfiguration = TimelineAuthoringClipBinding.Read(clip);
+            for (int i = 0; i < m_ClipProperties.Length; i++)
+            {
+                PropertyBinding binding = m_ClipProperties[i];
+                binding.Value = binding.Property.GetValue(m_ClipConfiguration, null);
+                if (binding.Property.PropertyType == typeof(AnimationCurve))
+                    binding.Curve = binding.Value is AnimationCurve curve ? new AnimationCurve(curve.keys)
+                    {
+                        preWrapMode = curve.preWrapMode,
+                        postWrapMode = curve.postWrapMode
+                    } : new AnimationCurve();
+            }
+            m_ClipRevision = clip.Track.Timeline.AuthoringRevision;
+        }
+
+        void ApplyTreeExitSource(TimelineAsset asset, TreeClip clip, TimelineClipExitSource exitSource)
+        {
+            if (!TryBeginMutation(asset))
+                return;
+            try
+            {
+                asset.Data.ApplyModify(() => clip.SetExitSource(exitSource), "Edit TreeClip Exit Source");
+                asset.Data.Init();
+                m_SourceRevision = TimelineAuthoringFingerprint.Compute(asset.Data);
+                m_ConfigurationError = null;
+            }
+            catch (Exception exception)
+            {
+                m_ConfigurationError = exception.Message;
             }
         }
 
@@ -231,12 +281,19 @@ namespace BTSMTL.Timeline.Editor
                 false);
             if (!timeChanged && graph == marker.Graph && forceTriggerOnInitialSeek == marker.ForceTriggerOnInitialSeek)
                 return;
+            ApplyMarkerConfiguration(asset, marker, timeChanged ? FixedScalar.FromDouble(seconds) : marker.Time,
+                graph, forceTriggerOnInitialSeek);
+        }
+
+        void ApplyMarkerConfiguration(TimelineAsset asset, TimelineMarker marker, FixedScalar time,
+            ScriptableObject graph, bool forceTriggerOnInitialSeek)
+        {
             if (!TryBeginMutation(asset))
                 return;
             try
             {
                 asset.Data.ApplyModify(() => TimelineWorkspaceModeBridge.Authoring.MutateOwnedContent(
-                    asset.Data, () => marker.Configure(timeChanged ? FixedScalar.FromDouble(seconds) : marker.Time, graph, forceTriggerOnInitialSeek)), "Edit Timeline Marker");
+                    asset.Data, () => marker.Configure(time, graph, forceTriggerOnInitialSeek)), "Edit Timeline Marker");
                 m_SourceRevision = TimelineAuthoringFingerprint.Compute(asset.Data);
                 m_ConfigurationError = null;
             }
@@ -263,7 +320,7 @@ namespace BTSMTL.Timeline.Editor
             try
             {
                 asset.Data.ConfigureTrackAuthoring(track, name, muted, executionDomain,
-                    TimelineTreeContractComposition.Create());
+                    m_Contracts);
                 m_SourceRevision = TimelineAuthoringFingerprint.Compute(asset.Data);
                 m_ConfigurationError = null;
             }
@@ -281,13 +338,18 @@ namespace BTSMTL.Timeline.Editor
             bool timeChanged = EditorGUI.EndChangeCheck();
             if (name == section.Name && !timeChanged)
                 return;
+            ApplySectionConfiguration(asset, section, name, timeChanged ? FixedScalar.FromDouble(seconds) : section.Time);
+        }
+
+        void ApplySectionConfiguration(TimelineAsset asset, TimelineSection section, string name, FixedScalar time)
+        {
             if (!TryBeginMutation(asset))
                 return;
             try
             {
                 asset.Data.ApplyModify(() =>
                 {
-                    asset.Data.ConfigureSection(section, name, timeChanged ? FixedScalar.FromDouble(seconds) : section.Time);
+                    asset.Data.ConfigureSection(section, name, time);
                     asset.Data.Init();
                 }, "Edit Timeline Section");
                 m_SourceRevision = TimelineAuthoringFingerprint.Compute(asset.Data);
@@ -365,45 +427,46 @@ namespace BTSMTL.Timeline.Editor
             return null;
         }
 
-        static object DrawProperty(TimelineAuthoringPropertyAttribute attribute, PropertyInfo property, object value)
+        static object DrawProperty(PropertyBinding binding)
         {
-            string label = ObjectNames.NicifyVariableName(attribute.PropertyId);
+            TimelineAuthoringPropertyAttribute attribute = binding.Attribute;
+            string label = binding.Label;
+            object value = binding.Value;
+            EditorGUI.BeginChangeCheck();
             switch (attribute.Kind)
             {
                 case TimelineAuthoringPropertyKind.Text:
-                    return EditorGUILayout.TextField(label, value as string ?? string.Empty);
+                    string text = EditorGUILayout.TextField(label, value as string ?? string.Empty);
+                    return EditorGUI.EndChangeCheck() ? text : value;
                 case TimelineAuthoringPropertyKind.Boolean:
-                    return EditorGUILayout.Toggle(label, value is bool boolean && boolean);
+                    bool boolean = EditorGUILayout.Toggle(label, (bool)value);
+                    return EditorGUI.EndChangeCheck() ? boolean : value;
                 case TimelineAuthoringPropertyKind.Integer:
-                    return EditorGUILayout.IntField(label, value is int integer ? integer : 0);
+                    int integer = EditorGUILayout.IntField(label, (int)value);
+                    return EditorGUI.EndChangeCheck() ? integer : value;
                 case TimelineAuthoringPropertyKind.Float:
-                    float floatValue = value is float number ? number : 0f;
-                    floatValue = EditorGUILayout.FloatField(label, floatValue);
+                    float floatValue = EditorGUILayout.FloatField(label, (float)value);
                     if (attribute.HasMinimum)
                         floatValue = Mathf.Max((float)attribute.Minimum, floatValue);
                     if (attribute.HasMaximum)
                         floatValue = Mathf.Min((float)attribute.Maximum, floatValue);
-                    return floatValue;
+                    return EditorGUI.EndChangeCheck() ? floatValue : value;
                 case TimelineAuthoringPropertyKind.Enum:
-                    Enum enumValue = value as Enum;
-                    if (enumValue == null && attribute.EnumType != null)
-                        enumValue = (Enum)Enum.ToObject(attribute.EnumType, 0);
-                    return enumValue == null ? value : EditorGUILayout.EnumPopup(label, enumValue);
+                    Enum enumValue = EditorGUILayout.EnumPopup(label, (Enum)value);
+                    return EditorGUI.EndChangeCheck() ? enumValue : value;
                 case TimelineAuthoringPropertyKind.Vector2:
-                    return EditorGUILayout.Vector2Field(label, value is Vector2 vector ? vector : Vector2.zero);
+                    Vector2 vector = EditorGUILayout.Vector2Field(label, (Vector2)value);
+                    return EditorGUI.EndChangeCheck() ? vector : value;
                 case TimelineAuthoringPropertyKind.Object:
-                    if (property.PropertyType == typeof(AnimationCurve))
+                    if (binding.Property.PropertyType == typeof(AnimationCurve))
                     {
-                        AnimationCurve curve = value as AnimationCurve;
-                        AnimationCurve copy = curve == null ? new AnimationCurve() : new AnimationCurve(curve.keys)
-                        {
-                            preWrapMode = curve.preWrapMode,
-                            postWrapMode = curve.postWrapMode
-                        };
-                        return EditorGUILayout.CurveField(label, copy);
+                        AnimationCurve curve = EditorGUILayout.CurveField(label, binding.Curve);
+                        return EditorGUI.EndChangeCheck() ? curve : value;
                     }
-                    return EditorGUILayout.ObjectField(label, value as UnityEngine.Object, property.PropertyType, false);
+                    UnityEngine.Object asset = EditorGUILayout.ObjectField(label, value as UnityEngine.Object, binding.Property.PropertyType, false);
+                    return EditorGUI.EndChangeCheck() ? asset : value;
                 default:
+                    EditorGUI.EndChangeCheck();
                     return value;
             }
         }

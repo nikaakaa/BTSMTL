@@ -96,17 +96,11 @@ namespace BTSMTL.Timeline
         public void CopyFrom(TimelineClipTimeEditBuffer source) => source.m_Ranges.AsSpan().CopyTo(m_Ranges);
         public void SetRanges(ReadOnlySpan<TimelineClipTimeRange> source) => source.CopyTo(m_Ranges);
 
-        public bool HasChangesIn(TimelineData timeline)
+        public bool HasChangesIn(TimelineClipTimeEditBuffer source)
         {
-            for (int i = 0; i < timeline.Tracks.Count; i++)
-                for (int j = 0; j < timeline.Tracks[i].Clips.Count; j++)
-                    for (int slot = 0; slot < m_Clips.Length; slot++)
-                        if (m_ClipIdentities[slot] == timeline.Tracks[i].Clips[j].AuthoringId)
-                        {
-                            if (!m_Ranges[slot].Equals(timeline.Tracks[i].Clips[j].CaptureTimeRange()))
-                                return true;
-                            break;
-                        }
+            for (int i = 0; i < m_Ranges.Length; i++)
+                if (!m_Ranges[i].Equals(source.m_Ranges[i]))
+                    return true;
             return false;
         }
 
