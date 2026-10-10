@@ -18,6 +18,7 @@ namespace BTSMTL.Timeline.Editor
 
     public interface ITimelineWorkspaceModeController
     {
+        ITimelineEditorAuthoringHost Authoring { get; }
         Type PreviewConfigurationType { get; }
         UnityEngine.Object PreviewConfiguration { get; }
         void OpenPreview(UnityEngine.Object configuration, UnityEngine.Object animationProfile);
@@ -40,6 +41,7 @@ namespace BTSMTL.Timeline.Editor
         public static event Action PreviewTargetChanged;
 
         public static Type PreviewConfigurationType => s_Controller.PreviewConfigurationType;
+        public static ITimelineEditorAuthoringHost Authoring => s_Controller.Authoring;
         public static UnityEngine.Object PreviewConfiguration => s_Controller.PreviewConfiguration;
         public static void OpenPreview(UnityEngine.Object configuration, UnityEngine.Object animationProfile) =>
             s_Controller.OpenPreview(configuration, animationProfile);

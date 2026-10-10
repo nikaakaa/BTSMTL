@@ -3,7 +3,6 @@ using System;
 using ThirdPersonSimulation.Fixed;
 using System.Collections.Generic;
 using ThirdPersonCamera;
-using ThirdPersonCharacter.Control.Authoring;
 using ThirdPersonCharacter.Pipeline.Motion.RootMotion;
 using ThirdPersonSimulation;
 using UnityEditor;
@@ -44,7 +43,8 @@ namespace BTSMTL.Timeline.Editor
         public float YawResponseWeight = 1f;
         public string TargetBindingId = string.Empty;
         public string ParameterBindingId = string.Empty;
-        public BtsmtlSkillFlowGraph TreeGraph;
+        public ScriptableObject TreeGraph;
+        public Type TreeGraphType;
         public string NewTreeGraphName = string.Empty;
         public TimelineClipExitSource TreeExitSource = TimelineClipExitSource.FrameBoundary;
     }
@@ -106,10 +106,10 @@ namespace BTSMTL.Timeline.Editor
                 {
                     if (m_Request.ExecutionDomain == TimelineExecutionDomain.Presentation)
                         m_Request.TreeExitSource = (TimelineClipExitSource)EditorGUILayout.EnumPopup("Exit Source", m_Request.TreeExitSource);
-                    m_Request.TreeGraph = (BtsmtlSkillFlowGraph)EditorGUILayout.ObjectField(
+                    m_Request.TreeGraph = (ScriptableObject)EditorGUILayout.ObjectField(
                         "Skill Graph",
                         m_Request.TreeGraph,
-                        typeof(BtsmtlSkillFlowGraph),
+                        m_Request.TreeGraphType,
                         false);
                     m_Request.NewTreeGraphName = EditorGUILayout.TextField("New Graph Name", m_Request.NewTreeGraphName);
                     EditorGUILayout.HelpBox("Skill Graph 为空时按名称在 Timeline 资产内创建子资产图。", MessageType.Info);

@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.Linq;
 using BTSMTL.Timeline;
 using Slate;
-using ThirdPersonCharacter.Control.Authoring;
 using UnityEditor;
 using UnityEngine;
 
@@ -94,8 +93,8 @@ namespace BTSMTL.Timeline.Editor
             {
                 TimelineEditorSessionContext session = m_Owner.Session;
                 EditorGUILayout.LabelField("Timeline 时间网格", EditorStyles.boldLabel);
-                var pipeline = (ThirdPersonCharacter.Pipeline.CharacterPipelineDefinition)EditorGUILayout.ObjectField(
-                    "参考 Pipeline", session.GridPipeline, typeof(ThirdPersonCharacter.Pipeline.CharacterPipelineDefinition), false);
+                var pipeline = (ScriptableObject)EditorGUILayout.ObjectField(
+                    "参考 Pipeline", session.GridPipeline, m_Owner.m_Request.AuthoringHost.TimeGridSourceType, false);
                 if (pipeline != session.GridPipeline)
                     session.ConfigureGrid(pipeline, !pipeline && session.SnapMode == TimelineAuthoringSnapMode.LogicTick
                         ? TimelineAuthoringSnapMode.None : session.SnapMode);
@@ -112,7 +111,7 @@ namespace BTSMTL.Timeline.Editor
                 }
                 using (new EditorGUI.DisabledScope(!pipeline))
                     if (GUILayout.Toggle(session.SnapMode == TimelineAuthoringSnapMode.LogicTick,
-                        pipeline ? $"逻辑 tick：{pipeline.SimulationTickRate} Hz" : "逻辑 tick：请先选择 Pipeline", EditorStyles.radioButton))
+                        pipeline ? $"逻辑 tick：{session.TickRate} Hz" : "逻辑 tick：请先选择 Pipeline", EditorStyles.radioButton))
                         session.ConfigureGrid(pipeline, TimelineAuthoringSnapMode.LogicTick);
                 bool hasSource = session.Selection.Clip is AnimationClip animation && animation.Clip;
                 using (new EditorGUI.DisabledScope(!hasSource))
@@ -468,7 +467,7 @@ namespace BTSMTL.Timeline.Editor
                 ReportIssue("当前 Track 已锁定，不能删除。");
                 return;
             }
-            ApplyImmediate(() => TimelineGraphAuthoring.MutateOwnedContent(
+            ApplyImmediate(() => m_Request.AuthoringHost.MutateOwnedContent(
                 Timeline, () => Timeline.RemoveTrack(formalTrack.Source)), "Delete Timeline Track");
         }
 
@@ -484,8 +483,8 @@ namespace BTSMTL.Timeline.Editor
             TimelineMarker added = null;
             if (ApplyImmediate(() =>
             {
-                BtsmtlSkillFlowGraph graph = TimelineGraphAuthoring.CreateSubAsset(
-                    m_Request.SerializedOwner, $"{formalTrack.Source.Name} Marker {time:0.#########}s", BtsmtlSkillFlowGraphRole.TimelineTrigger);
+                ScriptableObject graph = m_Request.AuthoringHost.CreateGraph(
+                    m_Request.SerializedOwner, $"{formalTrack.Source.Name} Marker {time:0.#########}s", true);
                 added = formalTrack.Source.AddMarker(m_Session.SnapTime(FixedScalar.FromDouble(Math.Max(0d, time))), graph);
             }, "Add Timeline Marker") && m_Markers.TryGetValue(added.AuthoringId, out BtsmtlTimelineMarkerBinding binding))
                 Select(binding);
@@ -500,7 +499,7 @@ namespace BTSMTL.Timeline.Editor
                 ReportIssue("当前 Marker 或所属 Track 已锁定，不能删除。");
                 return;
             }
-            ApplyImmediate(() => TimelineGraphAuthoring.MutateOwnedContent(
+            ApplyImmediate(() => m_Request.AuthoringHost.MutateOwnedContent(
                 Timeline, () => formalMarker.FormalTrack.Source.RemoveMarker(formalMarker.Source)), "Delete Timeline Marker");
         }
 
@@ -525,7 +524,7 @@ namespace BTSMTL.Timeline.Editor
         public void OpenMarker(IEmbeddedTimelineMarkerBinding marker)
         {
             if (marker is BtsmtlTimelineMarkerBinding binding)
-                TimelineGraphAuthoring.Open(binding.Source.Graph);
+                m_Request.AuthoringHost.OpenGraph(binding.Source.Graph);
         }
 
         public bool TryGetMarkerBinding(string authoringId, out IEmbeddedTimelineMarkerBinding binding)
@@ -1015,6 +1014,7 @@ namespace BTSMTL.Timeline.Editor
                 : startTime + FixedScalar.FromDecimal(0.05m);
             var request = new TimelineClipCreationRequest
             {
+                TreeGraphType = m_Request.AuthoringHost.TreeGraphType,
                 TrackAuthoringId = trackAuthoringId,
                 Kind = kind,
                 ExecutionDomain = executionDomain,
@@ -1078,7 +1078,7 @@ namespace BTSMTL.Timeline.Editor
                     {
                         treeGraph = request.TreeGraph;
                         if (treeGraph == null)
-                            treeGraph = TimelineGraphAuthoring.CreateSubAsset(m_Request.SerializedOwner, request.NewTreeGraphName, BtsmtlSkillFlowGraphRole.TimelineBody);
+                            treeGraph = m_Request.AuthoringHost.CreateGraph(m_Request.SerializedOwner, request.NewTreeGraphName, false);
                     }
                     added = request.Kind == TimelineContractKinds.AnimationClip
                         ? TimelineAuthoringTrackBinding.CreateClip(Timeline, ContractCatalog, track.Source, request.Resource as UnityEngine.AnimationClip, request.StartTime)

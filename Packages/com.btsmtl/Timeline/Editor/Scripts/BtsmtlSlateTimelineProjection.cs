@@ -27,7 +27,7 @@ namespace BTSMTL.Timeline.Editor
         [SerializeField] bool m_DisplayFrames;
         [SerializeField] TimelineAuthoringSnapMode m_SnapMode;
         [SerializeField] float m_SecondsInterval;
-        [SerializeField] ThirdPersonCharacter.Pipeline.CharacterPipelineDefinition m_GridPipeline;
+        [SerializeField] ScriptableObject m_GridPipeline;
 
         public BtsmtlSlateTimelineViewState(
             float viewTimeMin,
@@ -45,7 +45,7 @@ namespace BTSMTL.Timeline.Editor
             bool displayFrames = false,
             TimelineAuthoringSnapMode snapMode = TimelineAuthoringSnapMode.None,
             float secondsInterval = 0.01f,
-            ThirdPersonCharacter.Pipeline.CharacterPipelineDefinition gridPipeline = null)
+            ScriptableObject gridPipeline = null)
         {
             m_ViewTimeMin = viewTimeMin;
             m_ViewTimeMax = viewTimeMax;
@@ -86,7 +86,7 @@ namespace BTSMTL.Timeline.Editor
         public bool DisplayFrames => m_DisplayFrames;
         public TimelineAuthoringSnapMode SnapMode => m_SnapMode;
         public float SecondsInterval => m_SecondsInterval;
-        public ThirdPersonCharacter.Pipeline.CharacterPipelineDefinition GridPipeline => m_GridPipeline;
+        public ScriptableObject GridPipeline => m_GridPipeline;
         public bool HasSelection => !string.IsNullOrEmpty(TrackAuthoringId) ||
                                     !string.IsNullOrEmpty(ClipAuthoringId) ||
                                     !string.IsNullOrEmpty(MarkerAuthoringId) ||

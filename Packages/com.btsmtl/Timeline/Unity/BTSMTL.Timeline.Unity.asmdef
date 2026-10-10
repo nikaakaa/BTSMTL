@@ -7,7 +7,6 @@
         "BTSMTL.Timeline",
         "ThirdPersonSimulation.Core",
         "ThirdPersonSimulation.Float32",
-        "ThirdPersonSimulation.Unity",
         "UnityEngine.UI"
     ],
     "includePlatforms": [],

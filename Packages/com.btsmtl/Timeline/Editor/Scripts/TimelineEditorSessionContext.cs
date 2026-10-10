@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using ThirdPersonSimulation;
 using ThirdPersonSimulation.Fixed;
-using ThirdPersonCharacter.Pipeline;
 using UnityEngine;
 
 namespace BTSMTL.Timeline.Editor
@@ -176,6 +175,7 @@ namespace BTSMTL.Timeline.Editor
             string ownershipLabel,
             ITimelineEditorRuntimeDebugBinding runtimeDebugBinding,
             TimelineContractCatalog contractCatalog,
+            ITimelineEditorAuthoringHost authoringHost,
             int previewFrameRate = TimelineUtility.FrameRate,
             ITimelineTimeRangePreview timeRangePreview = null)
         {
@@ -187,6 +187,7 @@ namespace BTSMTL.Timeline.Editor
             OwnershipLabel = ownershipLabel ?? string.Empty;
             RuntimeDebugBinding = runtimeDebugBinding;
             ContractCatalog = contractCatalog ?? throw new ArgumentNullException(nameof(contractCatalog));
+            AuthoringHost = authoringHost;
             if (previewFrameRate <= 0)
                 throw new ArgumentOutOfRangeException(nameof(previewFrameRate));
             PreviewFrameRate = previewFrameRate;
@@ -199,6 +200,7 @@ namespace BTSMTL.Timeline.Editor
         public string OwnershipLabel { get; }
         public ITimelineEditorRuntimeDebugBinding RuntimeDebugBinding { get; }
         public TimelineContractCatalog ContractCatalog { get; }
+        public ITimelineEditorAuthoringHost AuthoringHost { get; }
         public int PreviewFrameRate { get; }
         public ITimelineTimeRangePreview TimeRangePreview { get; }
     }
@@ -230,12 +232,12 @@ namespace BTSMTL.Timeline.Editor
         public TimelineEditorSelection Selection => m_Selection;
         public bool IsReadOnly => m_IsReadOnly != null && m_IsReadOnly();
         public int FrameRate => m_Request.PreviewFrameRate;
-        public CharacterPipelineDefinition GridPipeline { get; private set; }
+        public ScriptableObject GridPipeline { get; private set; }
         public TimelineAuthoringSnapMode SnapMode { get; private set; }
         public float SecondsInterval { get; private set; } = 0.01f;
-        public int TickRate => GridPipeline ? GridPipeline.SimulationTickRate : 0;
+        public int TickRate => GridPipeline ? m_Request.AuthoringHost.GetTimeGridTickRate(GridPipeline) : 0;
 
-        public void ConfigureGrid(CharacterPipelineDefinition pipeline, TimelineAuthoringSnapMode mode)
+        public void ConfigureGrid(ScriptableObject pipeline, TimelineAuthoringSnapMode mode)
         {
             GridPipeline = pipeline;
             SnapMode = mode;

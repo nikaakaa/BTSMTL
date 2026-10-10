@@ -34,15 +34,9 @@ namespace BTSMTL.Timeline
     public sealed class CameraEffectClip : Clip, ITimelineContentClosureSource
     {
         public override string ContractKind => TimelineContractKinds.CameraEffectClip;
-        public override TimelineContentParameters CaptureContentParameters() => new TimelineContentCameraEffect(
-            Effect switch
-            {
-                CameraOverrideTrackAsset => TimelineCameraResourceKind.Override,
-                CameraZoomAsset => TimelineCameraResourceKind.Zoom,
-                CameraStretchAsset => TimelineCameraResourceKind.Stretch,
-                CameraShotAsset => TimelineCameraResourceKind.Shot,
-                _ => throw new InvalidOperationException($"Camera effect clip '{AuthoringId}' has no supported resource.")
-            }, Effect.EffectId, Effect.EffectPriority);
+        public override TimelineContentParameters CaptureContentParameters() => Effect is ITimelineCameraEffectAsset resource
+            ? new TimelineContentCameraEffect(resource.ResourceKind, Effect.EffectId, Effect.EffectPriority)
+            : throw new InvalidOperationException($"Camera effect clip '{AuthoringId}' has no supported resource.");
 
         [ShowInInspector, OnValueChanged("RebindTimeline")]
         public CameraEffectAsset Effect;
