@@ -1,0 +1,22 @@
+﻿{
+    "name": "BTSMTL.Timeline",
+    "rootNamespace": "",
+    "references": [
+        "ThirdPerson.Shared.Contracts",
+        "GUID:3af8e02729705434aa5c2d77c4a5103a",
+        "GUID:349d62e8ffbe48b8ad6e03ccd8cbaf71",
+        "GUID:8f6e9e98d8b94eb8a793b692eaf18b6b",
+        "ThirdPersonCharacter.Pipeline.RootMotion",
+        "ThirdPersonSimulation.Core",
+        "BTSMTL.Timeline.Runtime"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

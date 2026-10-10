@@ -1,0 +1,34 @@
+{
+    "name": "BTSMTL.Timeline.Editor",
+    "rootNamespace": "",
+    "references": [
+        "GUID:3af8e02729705434aa5c2d77c4a5103a",
+        "GUID:349d62e8ffbe48b8ad6e03ccd8cbaf71",
+        "GUID:d29a36fc3af64c7a9c0ed51cc35110bd",
+        "GUID:4bc7b3aab6fa118449e1df49b33fa56c",
+        "GUID:86c5ca7848482b044b178731a524146c",
+        "GUID:8f6e9e98d8b94eb8a793b692eaf18b6b",
+        "GUID:478a2357cc57436488a56e564b08d223",
+        "GUID:8b1b654162f79f947a2aceb988ac315a",
+        "GUID:70e39ffa3435d9c4e82d5f30745e28c5",
+        "GUID:61a68efbb0c03dc42ad7614dc4858ec4",
+        "GUID:2b7a3e8f4c5d4f2d9a1b0c6e3f8d7a42",
+        "GUID:ad2f696d8ed24f38a061c52c6b7ed9f7",
+        "NodeCanvas",
+        "ParadoxNotion",
+        "FlowCanvas",
+        "ThirdPersonCamera.Runtime",
+        "ThirdPerson.Shared.Contracts"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

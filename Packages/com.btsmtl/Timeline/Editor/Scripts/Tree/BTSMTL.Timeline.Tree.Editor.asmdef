@@ -1,0 +1,32 @@
+{
+    "name": "BTSMTL.Timeline.Tree.Editor",
+    "rootNamespace": "",
+    "references": [
+        "ThirdPerson.Shared.Contracts",
+        "BTSMTL.Authoring",
+        "ThirdPersonSimulation.Core",
+        "GUID:3af8e02729705434aa5c2d77c4a5103a",
+        "GUID:349d62e8ffbe48b8ad6e03ccd8cbaf71",
+        "GUID:d29a36fc3af64c7a9c0ed51cc35110bd",
+        "GUID:4bc7b3aab6fa118449e1df49b33fa56c",
+        "GUID:86c5ca7848482b044b178731a524146c",
+        "GUID:c188785927363d34cac787bbe8b507a9",
+        "BTSMTL.Timeline.Runtime",
+        "GUID:8b1b654162f79f947a2aceb988ac315a",
+        "GUID:478a2357cc57436488a56e564b08d223",
+        "GUID:61a68efbb0c03dc42ad7614dc4858ec4",
+        "GUID:8f6e9e98d8b94eb8a793b692eaf18b6b",
+        "ThirdPersonGameplay"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

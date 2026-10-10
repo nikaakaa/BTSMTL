@@ -1,0 +1,20 @@
+{
+    "name": "BTSMTL.Diagnostics.Editor",
+    "rootNamespace": "BTSMTL.Diagnostics.Editor",
+    "references": [
+        "GUID:349d62e8ffbe48b8ad6e03ccd8cbaf71",
+        "ThirdPerson.Shared.Contracts",
+        "ThirdPersonSimulation.Core"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

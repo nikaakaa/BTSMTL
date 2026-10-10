@@ -1,0 +1,22 @@
+{
+    "name": "BTSMTL.EventGraphs",
+    "rootNamespace": "BTSMTL.EventGraphs",
+    "references": [
+        "BTSMTL",
+        "ParadoxNotion",
+        "NodeCanvas",
+        "FlowCanvas",
+        "ThirdPersonSimulation.Core",
+        "ThirdPersonSimulation.Float32",
+        "ThirdPerson.Shared.Contracts"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

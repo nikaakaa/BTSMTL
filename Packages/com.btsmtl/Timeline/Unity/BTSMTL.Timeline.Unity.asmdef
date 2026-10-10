@@ -1,0 +1,22 @@
+{
+    "name": "BTSMTL.Timeline.Unity",
+    "rootNamespace": "BTSMTL.Timeline.Unity",
+    "references": [
+        "ThirdPerson.Shared.Contracts",
+        "BTSMTL.Timeline.Runtime",
+        "BTSMTL.Timeline",
+        "ThirdPersonSimulation.Core",
+        "ThirdPersonSimulation.Float32",
+        "ThirdPersonSimulation.Unity",
+        "UnityEngine.UI"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
