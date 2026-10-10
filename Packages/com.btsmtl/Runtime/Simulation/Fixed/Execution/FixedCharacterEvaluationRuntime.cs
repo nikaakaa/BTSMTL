@@ -1,0 +1,422 @@
+using System;
+using System.Collections.Generic;
+using ThirdPersonSimulation;
+
+namespace ThirdPersonSimulation.Fixed
+{
+    internal static class FixedCharacterEvaluationRuntime
+    {
+        [ThirdPersonPerformance.Instrumentation.PerformanceProbe("simulation.character.evaluate")]
+        public static FixedCharacterEvaluationResult Evaluate(
+            FixedCharacterRuntime characterRuntime,
+            SimulationActorBinding actor,
+            FixedCharacterRuntimeState sourceState,
+            SimulationTick tick,
+            SimulationInput input,
+            SimulationIngress[] ingress,
+            int ingressCount,
+            WorldBodyState beforeBody,
+            FixedCombatRuntime combat,
+            bool diagnosticsEnabled,
+            bool captureMotion,
+            bool captureValues,
+            bool captureControlFlow,
+            bool captureBlackboard,
+            bool applyBlackboardCommands,
+            out CharacterWorldSolveRequest worldRequest)
+        {
+            if (characterRuntime == null)
+                throw new ArgumentNullException(nameof(characterRuntime));
+            if (actor == null)
+                throw new ArgumentNullException(nameof(actor));
+            if (sourceState.NumericProfile != characterRuntime.NumericProfile ||
+                beforeBody.ActorId != actor.ActorId ||
+                input.NumericProfile != characterRuntime.NumericProfile)
+                throw new InvalidOperationException("Fixed Character evaluation identity does not match the active Character Runtime.");
+
+            FixedGameplayEffectRuntimeCatalog effectCatalog = actor.AbilityInstallations.GameplayEffectCatalog;
+            actor.EvaluationOutput.BeginMotionWarpState(actor.MotionWarpPages, sourceState.MotionWarpStates);
+            var roleState = actor.RuntimeState.Restart(
+                sourceState,
+                tick,
+                characterRuntime.TickRate,
+                effectCatalog,
+                actor.InputRequestState,
+                actor.ActionState,
+                actor.ControlState,
+                actor.EventSequenceState,
+                actor.HandleAllocatorState,
+                actor.GameplayEffectState,
+                actor.EquipmentState,
+                actor.EvaluationOutput.MotionWarpStates);
+            FixedAbilityInvocationRuntime[] invocations = actor.Invocations;
+            int invocationCount = invocations.Length;
+            Dictionary<CharacterSkillId, IFixedAbilityActivationPort> actionRuntimes = actor.ActionRuntimes;
+            FixedGameplayEffectExecutionScratch sharedEffectScratch = actor.EffectExecutionScratch;
+            FixedGameplayEffectOperationRuntime gameplayEffects = null;
+            if (actor.EvaluationOutput.IngressAdmission.Accepted)
+                sharedEffectScratch.CommandsThisTick = (int)actor.EvaluationOutput.IngressAdmission.RequestedCommands;
+            FixedAbilityExecutionWorkspace[] workspaces = actor.Workspaces;
+            List<AbilityTimelineAdvancePending> timelineAdvances = actor.TimelineAdvances;
+            List<AbilityTimelineStopPending> timelineStops = actor.TimelineStops;
+            List<AbilityTimelineLogicMotion> timelineLogicMotion = actor.TimelineLogicMotion;
+            FixedCharacterEvaluationOutput evaluationOutput = actor.EvaluationOutput;
+            evaluationOutput.BindValueTraces(workspaces);
+            List<SimulationTraceRecord> trace = evaluationOutput.Trace;
+            List<SimulationTraceRecord> characterTrace = evaluationOutput.CharacterTrace;
+            Dictionary<ulong, FixedAbilityInvocationRuntime> actionOwners = actor.ActionOwnerByInstanceId;
+            FixedAbilityExecutionInput abilityInput = actor.AbilityExecutionInput;
+            try
+            {
+                actor.CombatQueries.Clear();
+                evaluationOutput.BeginDiagnostics(diagnosticsEnabled || captureMotion);
+                abilityInput.Begin(input, ingress, ingressCount);
+                actor.CaptureAvailabilityFrameEvents(ingress, ingressCount);
+                ApplyReactionTargets(actor.ActorId, roleState.ActionState, ingress, ingressCount);
+                actionOwners.Clear();
+                ReadOnlySpan<FixedActionInstanceState> sourceActions = sourceState.ActionInstances;
+                for (int i = 0; i < sourceActions.Length; i++)
+                {
+                    FixedActionInstanceState action = sourceActions[i];
+                    actionOwners.Add(action.InstanceId, actor.GetInvocation(action.SkillId));
+                }
+                var bodyFacts = new FixedAbilityBodyFacts(actor.ActorId, beforeBody);
+                FixedMotionContributionScratch motionContributions = actor.MotionContributions;
+                motionContributions.Begin();
+                FixedCharacterControlMotionRuntime controlMotion = actor.ControlMotion;
+                controlMotion.Begin(
+                    abilityInput,
+                    bodyFacts,
+                    tick,
+                    characterRuntime.TickRate,
+                    combat.ActionTimeScale(actor.ActorId));
+                FixedCharacterTraceSink characterTraceSink = actor.CharacterTraceSink;
+                characterTraceSink.Bind(evaluationOutput);
+                characterTraceSink.Begin(
+                    characterRuntime.NumericProfile,
+                    actor.GameplayContentHash,
+                    actor.ActorId,
+                    tick,
+                    diagnosticsEnabled,
+                    captureMotion);
+                for (int i = 0; i < actor.AbilityInstallations.Installations.Count; i++)
+                {
+                    FixedGameplayAbilityExecutionInstallation installation = actor.AbilityInstallations.Installations[i];
+                    FixedAbilityInvocationRuntime invocation = invocations[i];
+                    invocation.Begin(new FixedAbilityInvocationContext(
+                        actor.ActorId,
+                        tick,
+                        abilityInput,
+                        bodyFacts,
+                        roleState.BindAbility(installation.Identity.AbilityId),
+                        roleState,
+                        roleState.InputRequests,
+                        roleState.ActionState,
+                        roleState.HandleAllocatorState,
+                        roleState.EventSequenceState,
+                        roleState.GameplayEffectState,
+                        roleState.EquipmentState,
+                        actor.CombatQueries,
+                        combat));
+                    if (gameplayEffects == null && invocation.HasGameplayEffects)
+                    {
+                        gameplayEffects = invocation.GameplayEffects;
+                        gameplayEffects.BeginEvaluation();
+                    }
+                    invocation.BeginEvaluation(diagnosticsEnabled, captureMotion, captureValues, captureControlFlow, captureBlackboard);
+                    actionRuntimes.Add(invocation.AbilityId, invocation.Actions);
+                }
+
+                roleState.InputRequests.ApplyRequests(input.Requests);
+
+                bool effectAdvanced = false;
+                for (int i = 0; i < invocationCount; i++)
+                {
+                    FixedAbilityInvocationRuntime invocation = invocations[i];
+                    ApplyIngress(invocation, ingress, ingressCount, actionOwners);
+                    if (!effectAdvanced && invocation.HasGameplayEffects)
+                    {
+                        ApplyGameplayEffectIngress(invocation, ingress, ingressCount);
+                        invocation.AdvanceGameplayEffects();
+                        effectAdvanced = true;
+                    }
+                    invocation.ApplyInputBindings();
+                }
+
+                if (!effectAdvanced)
+                    RequireNoGameplayEffectIngress(ingress, ingressCount);
+
+                FixedCharacterControlRuntime control = characterRuntime.ControlRuntime(actor.ActorId);
+                control.Begin(
+                    roleState,
+                    tick,
+                    bodyFacts,
+                    combat.ActionTimeScale(actor.ActorId));
+                control.PrepareDecision();
+                FixedAbilityActivationRuleRuntime rules = actor.ActivationRules;
+                rules.BeforeAbility(control, roleState.InputRequests, roleState.ActionState);
+                control.Tick(rules.BlockMovingTurn);
+                controlMotion.CopyContributionsTo(motionContributions);
+
+                for (int i = 0; i < invocationCount; i++)
+                {
+                    FixedAbilityInvocationRuntime invocation = invocations[i];
+                    invocation.Tick(applyBlackboardCommands);
+                    invocation.CopyMotionContributionsTo(motionContributions);
+                }
+
+                control.ApplyMovementIntent(rules.AfterAbility());
+
+                for (int i = 0; i < timelineAdvances.Count; i++)
+                {
+                    actor.TimelineMotionReader.CopyPendingMotion(
+                        timelineAdvances[i].RuntimeHandle,
+                        timelineLogicMotion);
+                    AppendTimelineMotion(motionContributions, timelineLogicMotion);
+                }
+
+                ResolvedGameplayMotion gameplayMotion = ResolveMotion(
+                    motionContributions.Values,
+                    motionContributions.Count,
+                    beforeBody.Yaw,
+                    invocations,
+                    invocationCount,
+                    characterTraceSink);
+                for (int i = 0; i < invocationCount; i++)
+                {
+                    FixedAbilityInvocationRuntime invocation = invocations[i];
+                    invocation.Complete(evaluationOutput);
+                    invocation.Accept(roleState);
+                }
+                trace.AddRange(characterTrace);
+                FixedScalar tickDelta = FixedScalar.One / FixedScalar.FromInt64(characterRuntime.TickRate);
+                BodyMotionPrepareResult bodyMotion = CharacterBodyMotionRuntime.Prepare(
+                    actor.ActorId,
+                    tick,
+                    beforeBody,
+                    gameplayMotion,
+                    actor.BodyMotionBinding,
+                    tickDelta);
+                WorldCapability requiredCapabilities = characterRuntime.RequiredWorldCapabilities |
+                    actor.BodyMotionBinding.RequiredWorldCapability;
+                worldRequest = new CharacterWorldSolveRequest(
+                    characterRuntime.NumericProfile,
+                    actor.ActorId,
+                    new WorldRequestId(actor.ActorId, tick, 1),
+                    tick,
+                    beforeBody,
+                    bodyMotion.Motion,
+                    bodyMotion.Plan,
+                    requiredCapabilities);
+                FixedCharacterRuntimeState candidateState = roleState.Commit();
+                evaluationOutput.RetainStatePages(candidateState);
+                evaluationOutput.RetainOutputText();
+                roleState.Dispose();
+                FixedCharacterEvaluationResult result = actor.EvaluationResult.Reset(
+                    tick,
+                    candidateState,
+                    evaluationOutput,
+                    timelineAdvances,
+                    timelineStops);
+                actor.RotateEvaluationOutput();
+                actor.ClearActionRuntimes();
+                actor.ClearWorkspaces();
+                actor.ClearTimelineTransfers();
+                actor.ClearTimelineMotionScratches();
+                abilityInput.Clear();
+                return result;
+            }
+            catch
+            {
+                DiscardTimelineAdvances(actor.TimelineRuntime, timelineAdvances);
+                DiscardTimelineStops(actor.TimelineRuntime, timelineStops);
+                for (int i = 0; i < invocationCount; i++)
+                    invocations[i].Abort();
+                actor.ClearActionRuntimes();
+                actor.ClearWorkspaces();
+                actor.ClearTimelineTransfers();
+                actor.ClearTimelineMotionScratches();
+                evaluationOutput.Clear();
+                abilityInput.Clear();
+                actor.ControlMotion.ClearContributions();
+                actor.MotionContributions.Clear();
+                roleState.Dispose();
+                throw;
+            }
+            finally
+            {
+                gameplayEffects?.EndEvaluation();
+                sharedEffectScratch.Reset();
+            }
+        }
+
+        static void DiscardTimelineStops(
+            IAbilityTimelineRuntime timelineRuntime,
+            IReadOnlyList<AbilityTimelineStopPending> stops)
+        {
+            if (timelineRuntime == null)
+                return;
+            for (int i = 0; i < stops.Count; i++)
+            {
+                if (!stops[i].IsValid)
+                    throw new InvalidOperationException("Fixed Character evaluation has an empty Timeline stop.");
+                timelineRuntime.DiscardStop(stops[i]);
+            }
+        }
+
+        static void DiscardTimelineAdvances(
+            IAbilityTimelineRuntime timelineRuntime,
+            IReadOnlyList<AbilityTimelineAdvancePending> advances)
+        {
+            if (timelineRuntime == null)
+                return;
+            for (int i = 0; i < advances.Count; i++)
+            {
+                if (!advances[i].IsValid)
+                    throw new InvalidOperationException("Fixed Character evaluation has an empty Timeline advance.");
+                timelineRuntime.Discard(advances[i]);
+            }
+        }
+
+        static void ApplyIngress(
+            FixedAbilityInvocationRuntime invocation,
+            SimulationIngress[] ingress,
+            int ingressCount,
+            Dictionary<ulong, FixedAbilityInvocationRuntime> actionOwners)
+        {
+            for (int i = 0; i < ingressCount; i++)
+            {
+                SimulationIngress value = ingress[i];
+                if (value.Header.Kind != SimulationIngressKind.ActionLifecycle ||
+                    !actionOwners.TryGetValue(value.ActionLifecycle.ActionInstanceId, out FixedAbilityInvocationRuntime owner) ||
+                    !ReferenceEquals(owner, invocation))
+                    continue;
+                invocation.ApplyActionIngress(value);
+            }
+        }
+
+        static void ApplyGameplayEffectIngress(
+            FixedAbilityInvocationRuntime invocation,
+            SimulationIngress[] ingress,
+            int ingressCount)
+        {
+            for (int i = 0; i < ingressCount; i++)
+                if (ingress[i].Header.Kind != SimulationIngressKind.ActionLifecycle &&
+                    ingress[i].Header.Kind != SimulationIngressKind.ActionEvent &&
+                    (ingress[i].Header.Kind != SimulationIngressKind.GameplayResult || ingress[i].GameplayResult.HasEffect))
+                    invocation.ApplyGameplayEffectIngress(ingress[i]);
+        }
+
+        static void RequireNoGameplayEffectIngress(SimulationIngress[] ingress, int ingressCount)
+        {
+            for (int i = 0; i < ingressCount; i++)
+                if (ingress[i].Header.Kind != SimulationIngressKind.ActionLifecycle &&
+                    ingress[i].Header.Kind != SimulationIngressKind.ActionEvent &&
+                    (ingress[i].Header.Kind != SimulationIngressKind.GameplayResult || ingress[i].GameplayResult.HasEffect))
+                    throw new InvalidOperationException(
+                        "Fixed Character evaluation received Gameplay Effect ingress without an installed Gameplay Effect service.");
+        }
+
+        internal static (bool Found, EquipmentActionContext Context) ReadEquipmentActionContext(
+            FixedAbilityInvocationRuntime[] invocations,
+            EquipmentActionRouteId route)
+        {
+            for (int i = 0; i < invocations.Length; i++)
+            {
+                IEquipmentActionContextReader equipment = invocations[i].Equipment;
+                if (equipment == null || !equipment.HasActionRoute(route))
+                    continue;
+                return equipment.TryReadActionContext(route, out EquipmentActionContext context)
+                    ? (true, context)
+                    : (false, default);
+            }
+            return (false, default);
+        }
+
+        static void ApplyReactionTargets(
+            ActorId actorId,
+            IFixedActionRuntimeStatePort actions,
+            SimulationIngress[] ingress,
+            int ingressCount)
+        {
+            for (int i = 0; i < ingressCount; i++)
+            {
+                SimulationIngress value = ingress[i];
+                if (value.Header.Kind != SimulationIngressKind.GameplayResult || value.GameplayResult.HasEffect)
+                    continue;
+                CombatHitResult hit = value.GameplayResult.Hit;
+                if (hit.TargetActor != actorId ||
+                    hit.Disposition != CombatHitDisposition.Parried && hit.Disposition != CombatHitDisposition.Evaded)
+                    continue;
+                if (!actions.TryFindActionInstanceIndex(hit.TargetActionInstanceId, out int index))
+                    continue;
+                FixedActionInstanceState action = actions.GetActionInstances()[index];
+                if (action.IsActive)
+                    actions.ReplaceActionInstanceAt(index, action.WithTargetSnapshot(hit.SourceTargetSnapshot));
+            }
+        }
+
+        static ResolvedGameplayMotion ResolveMotion(
+            SimulationMotionContribution[] contributions,
+            int contributionCount,
+            FixedYaw bodyYaw,
+            FixedAbilityInvocationRuntime[] invocations,
+            int invocationCount,
+            FixedCharacterTraceSink trace)
+        {
+            ResolvedMotionChannel locomotion = FixedCharacterMotionResolver.ResolveChannel(
+                contributions,
+                contributionCount,
+                bodyYaw,
+                SimulationMotionChannel.Locomotion);
+            ResolvedMotionChannel action = FixedCharacterMotionResolver.ResolveChannel(
+                contributions,
+                contributionCount,
+                bodyYaw,
+                SimulationMotionChannel.Action);
+            ResolvedMotionChannel gameplayResult = FixedCharacterMotionResolver.ResolveChannel(
+                contributions,
+                contributionCount,
+                bodyYaw,
+                SimulationMotionChannel.GameplayResult);
+            for (int i = 0; i < invocationCount; i++)
+                invocations[i].ApplyTimelineMotionWarps(ref action);
+            trace.AddMotionChannel(locomotion);
+            trace.AddMotionChannel(action);
+            trace.AddMotionChannel(gameplayResult);
+            ResolvedGameplayMotion motion = FixedCharacterMotionResolver.Compose(locomotion, action, gameplayResult);
+            ResolvedMotionChannel source = gameplayResult.TraceSource.IsValid ? gameplayResult :
+                action.TraceSource.IsValid ? action : locomotion;
+            if (source.TraceSource.IsValid)
+                trace.AddResolvedMotion(motion, source);
+            return motion;
+        }
+
+        static void AppendTimelineMotion(
+            FixedMotionContributionScratch contributions,
+            IReadOnlyList<AbilityTimelineLogicMotion> timelineMotion)
+        {
+            for (int i = 0; i < timelineMotion.Count; i++)
+            {
+                AbilityTimelineLogicMotion value = timelineMotion[i];
+                contributions.Append(new SimulationMotionContribution(
+                    value.Source,
+                    value.SourceIdentity,
+                    value.AbilityId,
+                    value.SourceGeneration,
+                    new FixedVector3(value.DisplacementX, value.DisplacementY, value.DisplacementZ),
+                    value.YawDegrees,
+                    FixedVector2.Zero,
+                    (SimulationMotionContributionSpace)value.Space,
+                    value.Weight,
+                    value.Priority,
+                    (SimulationMotionChannel)value.Channel,
+                    (SimulationMotionBlendMode)value.BlendMode,
+                    value.ConsumeLowerChannels,
+                    default,
+                    default));
+            }
+        }
+
+}
+}

@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AssemblyName>ThirdPerson.BepuQueries</AssemblyName>
+    <QuerySourceRoot>$(MSBuildThisFileDirectory)..\..\Packages\com.btsmtl\Runtime\Physics\BepuQueries</QuerySourceRoot>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="$(QuerySourceRoot)\**\*.cs" LinkBase="Source" />
+  </ItemGroup>
+</Project>

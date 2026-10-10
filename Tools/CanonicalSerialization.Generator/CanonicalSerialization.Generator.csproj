@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AssemblyName>ThirdPerson.CanonicalSerialization.Generator</AssemblyName>
+    <RootNamespace>ThirdPerson.CanonicalSerialization.Generator</RootNamespace>
+    <IsRoslynComponent>true</IsRoslynComponent>
+    <Deterministic>true</Deterministic>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <UnityAnalyzerDirectory>$(MSBuildThisFileDirectory)..\..\Packages\com.btsmtl\Analyzers</UnityAnalyzerDirectory>
+  </PropertyGroup>
+  <ItemGroup>
+    <AdditionalFiles Include="AnalyzerReleases.Shipped.md" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="3.8.0" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="3.3.2" PrivateAssets="all" />
+  </ItemGroup>
+  <Target Name="InstallUnityAnalyzer" AfterTargets="Build" Condition="'$(InstallUnityAnalyzer)' == 'true'">
+    <MakeDir Directories="$(UnityAnalyzerDirectory)" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(UnityAnalyzerDirectory)" SkipUnchangedFiles="true" />
+  </Target>
+</Project>

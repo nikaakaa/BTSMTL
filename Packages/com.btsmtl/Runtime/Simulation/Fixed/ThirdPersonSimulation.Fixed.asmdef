@@ -1,0 +1,19 @@
+{
+    "name": "ThirdPersonSimulation.Fixed",
+    "rootNamespace": "ThirdPersonSimulation.Fixed",
+    "references": [
+        "ThirdPerson.Shared.Contracts",
+        "ThirdPerson.Performance.Instrumentation.Contracts",
+        "ThirdPersonSimulation.Core",
+        "ThirdPerson.BepuQueries"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": true
+}

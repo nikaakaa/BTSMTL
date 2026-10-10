@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AssemblyName>ThirdPersonSimulation.Core</AssemblyName>
+    <RootNamespace>ThirdPersonSimulation</RootNamespace>
+    <SimulationSourceRoot>$(MSBuildThisFileDirectory)..\..\Packages\com.btsmtl\Runtime\Simulation</SimulationSourceRoot>
+    <PerformanceContractSource>$(MSBuildThisFileDirectory)..\..\Packages\com.btsmtl\Foundation\Performance\PerformanceMetricDefinition.cs</PerformanceContractSource>
+    <InstrumentationContractSource>$(MSBuildThisFileDirectory)..\..\Packages\com.btsmtl\Foundation\Instrumentation\PerformanceInstrumentationContracts.cs</InstrumentationContractSource>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\ThirdPerson.Shared.Contracts\ThirdPerson.Shared.Contracts.csproj" />
+    <Compile Include="$(SimulationSourceRoot)\**\*.cs" Exclude="$(SimulationSourceRoot)\Float32\**\*.cs;$(SimulationSourceRoot)\Fixed\**\*.cs" LinkBase="Source" />
+    <Compile Include="$(PerformanceContractSource)" Link="Source\Performance\PerformanceMetricDefinition.cs" />
+    <Compile Include="$(InstrumentationContractSource)" Link="Source\Performance\PerformanceInstrumentationContracts.cs" />
+  </ItemGroup>
+</Project>

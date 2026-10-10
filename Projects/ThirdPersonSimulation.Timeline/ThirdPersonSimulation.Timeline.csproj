@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AssemblyName>ThirdPersonSimulation.Timeline</AssemblyName>
+    <TimelineSourceRoot>$(MSBuildThisFileDirectory)..\..\Packages\com.btsmtl\Timeline\Runtime</TimelineSourceRoot>
+  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="ThirdPersonSimulation.Timeline.Tests" />
+    <ProjectReference Include="..\ThirdPersonSimulation.Core\ThirdPersonSimulation.Core.csproj" />
+    <ProjectReference Include="..\ThirdPersonSimulation.Fixed\ThirdPersonSimulation.Fixed.csproj" />
+    <ProjectReference Include="..\ThirdPersonSimulation.Float32\ThirdPersonSimulation.Float32.csproj" />
+    <Compile Include="$(TimelineSourceRoot)\**\*.cs" LinkBase="Source" />
+  </ItemGroup>
+</Project>

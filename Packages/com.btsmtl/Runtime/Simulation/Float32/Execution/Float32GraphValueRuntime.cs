@@ -1,0 +1,321 @@
+using System;
+using System.Collections.Generic;
+
+namespace ThirdPersonSimulation
+{
+    internal sealed class Float32ValueInputBuffer
+    {
+        public List<AbilityStateValue> Values { get; } = new List<AbilityStateValue>();
+
+        public void Clear()
+        {
+            Values.Clear();
+        }
+    }
+
+    public readonly struct Float32ValueInputLease : IDisposable
+    {
+        readonly Float32GraphValueRuntime m_Owner;
+        readonly Float32ValueInputBuffer m_Buffer;
+        readonly int m_Depth;
+
+        internal Float32ValueInputLease(
+            Float32GraphValueRuntime owner,
+            Float32ValueInputBuffer buffer,
+            int depth)
+        {
+            m_Owner = owner;
+            m_Buffer = buffer;
+            m_Depth = depth;
+        }
+
+        public int Count => m_Buffer.Values.Count;
+        public AbilityStateValue this[int index] => m_Buffer.Values[index];
+
+        public AbilityStateValue FindByKind(ProgramStateValueKind kind)
+        {
+            for (int i = 0; i < m_Buffer.Values.Count; i++)
+            {
+                if (m_Buffer.Values[i].Kind == kind)
+                    return m_Buffer.Values[i];
+            }
+            return default;
+        }
+
+        public void Dispose()
+        {
+            m_Owner?.ReleaseInputBuffer(m_Buffer, m_Depth);
+        }
+    }
+
+    public sealed class Float32GraphValueWorkspace
+    {
+        internal readonly bool[] ActiveValueSlots;
+        internal readonly List<Float32ValueInputBuffer> InputBuffers = new();
+
+        public Float32GraphValueWorkspace(Float32GraphExecutionData data)
+        {
+            int depthCapacity = checked(data.Operations.Count + 1);
+            ActiveValueSlots = new bool[data.ValueLayout.ValueEvaluationSlotCount];
+            int inputCapacity = 0;
+            for (int index = 0; index < data.Operations.Count; index++)
+                inputCapacity = Math.Max(inputCapacity, data.ValueLayout.ValueInputs(data.Operations[index].Handle).Length);
+            while (InputBuffers.Count < depthCapacity)
+                InputBuffers.Add(new Float32ValueInputBuffer());
+            for (int index = 0; index < InputBuffers.Count; index++)
+                if (InputBuffers[index].Values.Capacity < inputCapacity)
+                    InputBuffers[index].Values.Capacity = inputCapacity;
+        }
+    }
+
+    public interface IFloat32GraphValueContext
+    {
+        void RequireExecution(OperationHandle operation);
+        AbilityStateValue EvaluateDomainValue(SimulationOperation operation, string outputPort, int outputPortIndex, Float32ValueInputLease inputs);
+        void TraceResult(SimulationOperation operation, string outputPort, int outputPortIndex, AbilityStateValue value);
+        void TraceInput(SimulationOperation operation, CompiledValueInputBinding input, AbilityStateValue value);
+    }
+
+    public sealed class Float32GraphValueRuntime
+    {
+        readonly Float32GraphExecutionData m_Ability;
+        readonly Float32GraphValueLayout m_Layout;
+        readonly bool[] m_ActiveValueSlots;
+        readonly List<Float32ValueInputBuffer> m_InputBuffers;
+        int m_InputBufferDepth;
+#if UNITY_EDITOR
+        readonly Float32GraphPortValues m_Ports;
+#endif
+
+        public Float32GraphValueRuntime(Float32GraphExecutionData data, Float32GraphValueWorkspace workspace
+#if UNITY_EDITOR
+            , Float32GraphPortValues ports
+#endif
+            )
+        {
+            m_Ability = data ?? throw new ArgumentNullException(nameof(data));
+            m_Layout = data.ValueLayout;
+            m_ActiveValueSlots = workspace.ActiveValueSlots;
+            m_InputBuffers = workspace.InputBuffers;
+#if UNITY_EDITOR
+            m_Ports = ports;
+#endif
+        }
+
+        public void BeginEvaluation()
+        {
+            if (m_InputBufferDepth != 0)
+                throw new InvalidOperationException("Float32 value runtime retained recursion state across evaluations.");
+        }
+
+
+		public AbilityStateValue Evaluate<TContext>(
+			ref TContext context,
+			OperationHandle handle,
+			string outputPort = "",
+			int outputPortIndex = -1)
+			where TContext : struct, IFloat32GraphValueContext
+		{
+            context.RequireExecution(handle);
+			int valueSlot = m_Layout.ValueEvaluationSlot(handle, outputPortIndex);
+#if UNITY_EDITOR
+            if (m_Ports != null && m_Ports.TryRead(valueSlot, out AbilityStateValue overridden))
+            {
+                context.TraceResult(m_Ability.Operations[handle.Value], outputPort, outputPortIndex, overridden);
+                return overridden;
+            }
+#endif
+			if (m_ActiveValueSlots[valueSlot])
+				throw new InvalidOperationException($"Value operation cycle reached '{handle}/{outputPort}'.");
+			m_ActiveValueSlots[valueSlot] = true;
+			try
+			{
+				SimulationOperation operation = m_Ability.Operations[handle.Value];
+				using Float32ValueInputLease inputs = ReadInputs(ref context, operation);
+				AbilityStateValue result;
+				switch (operation.Code)
+                {
+                    case SimulationOperationCode.ConditionResult:
+						result = AbilityStateValue.FromBoolean(inputs.Count > 0 && ToBoolean(inputs[0]));
+						break;
+                    case SimulationOperationCode.Calculate:
+                        result = Float32GraphCalculations.Evaluate((GraphCalculationKind)operation.Integer0, inputs);
+                        break;
+                    case SimulationOperationCode.IdentityValue:
+                        result = inputs[0];
+                        break;
+                    case SimulationOperationCode.SelectValue:
+                        result = inputs[1];
+                        break;
+                    case SimulationOperationCode.Compare:
+						result = AbilityStateValue.FromBoolean(Compare(operation.Integer0, inputs));
+						break;
+                    case SimulationOperationCode.And:
+						result = AbilityStateValue.FromBoolean(inputs.Count >= 2 && ToBoolean(inputs[0]) && ToBoolean(inputs[1]));
+						break;
+                    case SimulationOperationCode.Or:
+						result = AbilityStateValue.FromBoolean(inputs.Count > 0 && (ToBoolean(inputs[0]) || inputs.Count > 1 && ToBoolean(inputs[1])));
+						break;
+                    case SimulationOperationCode.Not:
+						result = AbilityStateValue.FromBoolean(inputs.Count == 0 || !ToBoolean(inputs[0]));
+						break;
+                    case SimulationOperationCode.Constant:
+						result = operation.ConstantReferences.Count > 0
+							? ValueFromConstant(m_Ability.Constants[operation.ConstantReferences[0]])
+							: AbilityStateValue.FromBoolean(false);
+						break;
+                    default:
+                        result = context.EvaluateDomainValue(operation, outputPort, outputPortIndex, inputs);
+                        break;
+                }
+                context.TraceResult(operation, outputPort, outputPortIndex, result);
+				return result;
+			}
+			finally
+			{
+				m_ActiveValueSlots[valueSlot] = false;
+			}
+		}
+
+        public Float32ValueInputLease ReadInputs<TContext>(
+            ref TContext context,
+            SimulationOperation operation)
+            where TContext : struct, IFloat32GraphValueContext
+        {
+            ReadOnlySpan<CompiledValueInputBinding> inputs = m_Layout.ValueInputs(operation.Handle);
+            int depth = m_InputBufferDepth;
+            Float32ValueInputBuffer buffer = RequireInputBuffer(depth);
+            m_InputBufferDepth++;
+            try
+            {
+                for (int i = 0; i < inputs.Length; i++)
+                {
+                    if (operation.Code == SimulationOperationCode.SelectValue && i > 0)
+                        i = ToBoolean(buffer.Values[0]) ? 1 : 2;
+                    ref readonly CompiledValueInputBinding input = ref inputs[i];
+                    AbilityStateValue value;
+#if UNITY_EDITOR
+                    int portSlot = m_Layout.InputPortSlot(operation.Handle, input.TargetPortIndex);
+                    if (m_Ports == null || !m_Ports.TryRead(portSlot, out value))
+#endif
+                    value = input.SourceKind == CompiledValueInputSourceKind.Operation
+                        ? Evaluate(
+                            ref context,
+                            input.SourceOperation,
+                            input.SourceOutputPortIdentity,
+                            input.SourceOutputPortIndex)
+                        : ValueFromConstant(m_Ability.Constants[input.ConstantIndex]);
+                    buffer.Values.Add(value);
+                    context.TraceInput(operation, input, value);
+                    if (operation.Code == SimulationOperationCode.SelectValue && i > 0)
+                        break;
+                    if (i == 0 &&
+                        (operation.Code == SimulationOperationCode.And && !ToBoolean(value) ||
+                         operation.Code == SimulationOperationCode.Or && ToBoolean(value)))
+                        break;
+                }
+                return new Float32ValueInputLease(this, buffer, depth);
+            }
+            catch
+            {
+                ReleaseInputBuffer(buffer, depth);
+                throw;
+            }
+        }
+
+        Float32ValueInputBuffer RequireInputBuffer(int depth)
+        {
+            if (depth >= m_InputBuffers.Count)
+                throw new InvalidOperationException("Graph value recursion exceeds its prepared operation bound.");
+            return m_InputBuffers[depth];
+        }
+
+        internal void ReleaseInputBuffer(Float32ValueInputBuffer buffer, int depth)
+        {
+            if (depth != m_InputBufferDepth - 1 || !ReferenceEquals(buffer, m_InputBuffers[depth]))
+                throw new InvalidOperationException("Float32 value input buffers must be released in recursion order.");
+            buffer.Clear();
+            m_InputBufferDepth--;
+        }
+
+        static bool Compare(int comparison, Float32ValueInputLease inputs)
+        {
+            if (inputs.Count < 2)
+                return false;
+            if (inputs[0].Kind == ProgramStateValueKind.Int32 && inputs[1].Kind == ProgramStateValueKind.Int32)
+            {
+                int a = inputs[0].Int32, b = inputs[1].Int32;
+                return comparison switch { 0 => a == b, 1 => a != b, 2 => a < b, 3 => a <= b, 4 => a >= b, 5 => a > b,
+                    _ => throw new InvalidOperationException($"比较操作 '{comparison}' 不受支持。") };
+            }
+            Float32Scalar left = ToScalar(inputs[0]);
+            Float32Scalar right = ToScalar(inputs[1]);
+            return comparison switch
+            {
+                0 => left == right,
+                1 => left != right,
+                2 => left < right,
+                3 => left <= right,
+                4 => left >= right,
+                5 => left > right,
+                _ => false
+            };
+        }
+
+        public static Float32Scalar ToScalar(AbilityStateValue value)
+        {
+            return value.Kind switch
+            {
+                ProgramStateValueKind.Int32 => Float32Scalar.FromInt64(value.Int32),
+                ProgramStateValueKind.UInt64 when value.UInt64 <= long.MaxValue => Float32Scalar.FromInt64((long)value.UInt64),
+                ProgramStateValueKind.Scalar => value.Scalar,
+                ProgramStateValueKind.Boolean => value.Boolean ? Float32Scalar.One : Float32Scalar.Zero,
+                _ => throw new InvalidOperationException($"State value '{value.Kind}' is not numeric.")
+            };
+        }
+
+        public static bool ToBoolean(AbilityStateValue value)
+        {
+            return value.Kind switch
+            {
+                ProgramStateValueKind.Boolean => value.Boolean,
+                ProgramStateValueKind.Int32 => value.Int32 != 0,
+                ProgramStateValueKind.UInt64 => value.UInt64 != 0,
+                ProgramStateValueKind.Scalar => value.Scalar != Float32Scalar.Zero,
+                ProgramStateValueKind.Identity => !CanonicalTextValue.IsNullOrEmpty(value.Identity),
+                _ => false
+            };
+        }
+
+        public static AbilityStateValue ConvertValue(AbilityStateValue value, ProgramStateValueKind expected)
+        {
+            if (value.Kind == expected)
+                return value;
+            if (expected == ProgramStateValueKind.Scalar)
+                return AbilityStateValue.FromScalar(ToScalar(value));
+            if (expected == ProgramStateValueKind.Int32 && value.Kind == ProgramStateValueKind.Scalar)
+                return AbilityStateValue.FromInt32(checked((int)value.Scalar.ToSingle()));
+            throw new InvalidOperationException($"Cannot assign '{value.Kind}' to '{expected}'.");
+        }
+
+        public static AbilityStateValue ValueFromConstant(ProgramConstant constant)
+        {
+            return constant.Kind switch
+            {
+                ProgramConstantKind.Boolean => AbilityStateValue.FromBoolean(constant.Boolean),
+                ProgramConstantKind.Int32 => AbilityStateValue.FromInt32(constant.Int32),
+                ProgramConstantKind.UInt64 => AbilityStateValue.FromUInt64(constant.UInt64),
+                ProgramConstantKind.Scalar => AbilityStateValue.FromScalar(constant.Scalar),
+                ProgramConstantKind.Vector2 => AbilityStateValue.FromVector2(constant.Vector2),
+                ProgramConstantKind.Vector3 => AbilityStateValue.FromVector3(constant.Vector3),
+                ProgramConstantKind.Yaw => AbilityStateValue.FromYaw(constant.Yaw),
+                ProgramConstantKind.String => AbilityStateValue.FromIdentity(constant.Text),
+                ProgramConstantKind.Quaternion => AbilityStateValue.FromQuaternion(constant.Quaternion),
+                ProgramConstantKind.Enum => AbilityStateValue.FromEnum(constant.Text, constant.Int32),
+                ProgramConstantKind.Bytes => throw new InvalidOperationException(
+                    $"Bytes constant '{constant.Identity}' cannot enter typed Character state evaluation."),
+                _ => throw new ArgumentOutOfRangeException(nameof(constant.Kind))
+            };
+        }
+    }
+}

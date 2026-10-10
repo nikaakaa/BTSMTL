@@ -1,0 +1,14 @@
+{
+  "name": "ThirdPerson.Performance.Instrumentation.Contracts",
+  "rootNamespace": "ThirdPersonPerformance.Instrumentation",
+  "references": [],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": true
+}

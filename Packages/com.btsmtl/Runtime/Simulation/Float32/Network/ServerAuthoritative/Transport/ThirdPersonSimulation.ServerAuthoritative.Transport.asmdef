@@ -1,0 +1,19 @@
+{
+    "name": "ThirdPersonSimulation.ServerAuthoritative.Transport",
+    "rootNamespace": "ThirdPersonSimulation.ServerAuthoritative.Transport",
+    "references": [
+        "ThirdPerson.Shared.Contracts",
+        "ThirdPersonSimulation.Core",
+        "ThirdPersonSimulation.Float32",
+        "ThirdPersonSimulation.ServerAuthoritative"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": true
+}

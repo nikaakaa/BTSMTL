@@ -1,0 +1,16 @@
+{
+    "name": "ThirdPerson.Shared.Contracts",
+    "rootNamespace": "",
+    "references": [
+        "KK.GeneratedDiagnosticSampling.Annotations"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": true
+}
