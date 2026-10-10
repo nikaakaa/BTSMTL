@@ -223,6 +223,7 @@ namespace ThirdPersonSimulation
         {
             writer.WriteInt32(SourceMapStringTableVersion);
             var strings = new HashSet<string>(StringComparer.Ordinal) { string.Empty };
+            var pathSegments = new string[values.Count][];
             for (int i = 0; i < values.Count; i++)
             {
                 ProgramSourceMapEntry value = values[i];
@@ -243,6 +244,7 @@ namespace ThirdPersonSimulation
                 strings.Add(value.InvocationCallerId);
                 strings.Add(value.InvocationCallerClipId);
                 string[] segments = SplitDisplayPath(value.DisplayPath);
+                pathSegments[i] = segments;
                 for (int segmentIndex = 0; segmentIndex < segments.Length; segmentIndex++)
                     strings.Add(segments[segmentIndex]);
             }
@@ -283,7 +285,7 @@ namespace ThirdPersonSimulation
                 writer.WriteByte((byte)value.InvocationCallerKind);
                 writer.WriteInt32(stringIndex[value.InvocationCallerId]);
                 writer.WriteInt32(stringIndex[value.InvocationCallerClipId]);
-                string[] segments = SplitDisplayPath(value.DisplayPath);
+                string[] segments = pathSegments[i];
                 writer.WriteInt32(segments.Length);
                 for (int segmentIndex = 0; segmentIndex < segments.Length; segmentIndex++)
                     writer.WriteInt32(stringIndex[segments[segmentIndex]]);
