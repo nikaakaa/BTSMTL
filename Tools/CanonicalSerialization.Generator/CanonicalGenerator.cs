@@ -97,6 +97,7 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                     .Append(Escape(member.Symbol.Name)).AppendLine(" { get; }");
             code.Append("public const string CanonicalSchema = \"").Append(plan.Schema).AppendLine("\";");
             code.Append("public const int CanonicalMinimumSize = ").Append(plan.MinimumSize).AppendLine(";");
+            code.Append("public const bool CanonicalHasResources = ").Append(plan.HasResources ? "true" : "false").AppendLine(";");
             code.Append("public static readonly ").Append(Runtime).Append("StableHash CanonicalSchemaHash = new ")
                 .Append(Runtime).AppendLine("StableHash(CanonicalSchema);");
             code.Append("public static void CanonicalRequireSchema(").Append(Runtime)
@@ -107,7 +108,7 @@ namespace ThirdPerson.CanonicalSerialization.Generator
             if (union)
                 code.Append("public ").Append(plan.KindType).AppendLine(" Kind { get; }");
 
-            if (type.TypeKind == TypeKind.Struct)
+            if (type.TypeKind == TypeKind.Struct && (type.IsReadOnly || union))
             {
                 code.Append("private ").Append(name).Append('(').Append(Runtime)
                     .Append("CanonicalConstruction construction");
@@ -138,8 +139,8 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                 code.AppendLine("); }");
             }
 
-            code.Append("public static void CanonicalWrite(").Append(Runtime).Append("CanonicalWriter writer, in ")
-                .Append(fullType).AppendLine(" value) {");
+            code.Append("public static void CanonicalWrite<TWriter>(TWriter writer, in ")
+                .Append(fullType).Append(" value) where TWriter : class, ").Append(Runtime).AppendLine("ICanonicalValueWriter {");
             foreach (Member member in common)
                 Write(code, member.Type, "value." + Escape(member.Symbol.Name));
             if (union)
@@ -151,7 +152,7 @@ namespace ThirdPerson.CanonicalSerialization.Generator
 
             code.Append("public static void CanonicalReadInto(").Append(Runtime).Append("CanonicalReader reader, ")
                 .Append(type.TypeKind == TypeKind.Struct ? "ref " : "").Append(fullType).AppendLine(" value) {");
-            if (type.TypeKind == TypeKind.Struct)
+            if (type.TypeKind == TypeKind.Struct && (type.IsReadOnly || union))
             {
                 if (union)
                 {
@@ -187,12 +188,14 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                         else
                             code.Append(TypeName(element)).Append(".CanonicalReadInto(reader, ref ")
                                 .Append(target).AppendLine(".Element(i));");
-                        Hold(code, "Retain", element, target + ".Element(i)");
+                        Hold(code, "Retain", element, target + ".Element(i)", plan);
                         code.Append(target).AppendLine(".CompleteReadElement();");
                         code.AppendLine("} }");
                     }
                     else if (member.Type.TypeKind == TypeKind.Class && Identity(member.Type) != TextType)
                         code.Append(TypeName(member.Type)).Append(".CanonicalReadInto(reader, ").Append(target).AppendLine(");");
+                    else if (Primitive(member.Type) == null && Identity(member.Type) != TextType && member.Symbol is IFieldSymbol)
+                        code.Append(TypeName(member.Type)).Append(".CanonicalReadInto(reader, ref ").Append(target).AppendLine(");");
                     else
                         code.Append(target).Append(" = ").Append(Read(member.Type)).AppendLine(";");
                 }
@@ -200,13 +203,13 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                     code.Append("value.").Append(Escape(validation.Name)).AppendLine("();");
             }
             code.AppendLine("}");
-            if (type.TypeKind == TypeKind.Struct)
+            if (type.TypeKind == TypeKind.Struct && (type.IsReadOnly || union || plan.MaterializedRead))
             {
                 code.Append("public static ").Append(fullType).Append(" CanonicalRead(").Append(Runtime).AppendLine("CanonicalReader reader) {");
                 code.Append(fullType).AppendLine(" value = default;");
                 code.AppendLine("CanonicalReadInto(reader, ref value); return value; }");
             }
-            else
+            else if (type.TypeKind == TypeKind.Class && plan.MaterializedRead)
             {
                 code.Append("private ").Append(name).Append('(').Append(Runtime).Append("CanonicalConstruction construction, ")
                     .Append(Runtime).AppendLine("CanonicalReader reader) {");
@@ -276,9 +279,9 @@ namespace ThirdPerson.CanonicalSerialization.Generator
             {
                 code.Append("public static void Canonical").Append(operation).Append("(in ").Append(fullType).AppendLine(" value) {");
                 foreach (Member member in common)
-                    Hold(code, operation, member.Type, "value." + Escape(member.Symbol.Name));
-                if (union)
-                    Switch(code, plan, "value.Kind", member => Hold(code, operation, member.Type, "value." + Escape(member.Symbol.Name)), false);
+                    Hold(code, operation, member.Type, "value." + Escape(member.Symbol.Name), plan);
+                if (union && plan.Cases.Any(m => HasResources(plan, m.Type)))
+                    Switch(code, plan, "value.Kind", member => Hold(code, operation, member.Type, "value." + Escape(member.Symbol.Name), plan), false);
                 code.AppendLine("}");
             }
             code.AppendLine("} }");
@@ -324,7 +327,8 @@ namespace ThirdPerson.CanonicalSerialization.Generator
         {
             string primitive = Primitive(type);
             string value = primitive != null ? "reader.Read" + primitive + "()" :
-                Identity(type) == TextType ? "reader.ReadText()" : TypeName(type) + ".CanonicalRead(reader)";
+                Identity(type) == TextType ? "reader.ReadText()" : TypeName(type) +
+                (type.TypeKind == TypeKind.Class ? ".CanonicalReadMaterialized(reader)" : ".CanonicalRead(reader)");
             return type.TypeKind == TypeKind.Enum ? "(" + TypeName(type) + ")" + value : value;
         }
 
@@ -365,13 +369,18 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                 TypeName(type) + ".CanonicalMeasure(" + value + ")";
         }
 
-        static void Hold(StringBuilder code, string operation, ITypeSymbol type, string value)
+        static bool HasResources(Plan plan, ITypeSymbol type) => Identity(type) == TextType ||
+            (BufferElement(type) is ITypeSymbol element ? HasResources(plan, element) : plan.ResourceTypes.Contains(Identity(type)));
+
+        static void Hold(StringBuilder code, string operation, ITypeSymbol type, string value, Plan plan)
         {
+            if (!HasResources(plan, type))
+                return;
             ITypeSymbol element = BufferElement(type);
             if (element != null)
             {
                 code.Append("for (int i = 0; i < ").Append(value).AppendLine(".Count; i++) {");
-                Hold(code, operation, element, value + ".Element(i)");
+                Hold(code, operation, element, value + ".Element(i)", plan);
                 code.AppendLine("}");
                 return;
             }
@@ -462,12 +471,16 @@ namespace ThirdPerson.CanonicalSerialization.Generator
             public bool Valid = true;
             public bool Complete;
             public int MinimumSize;
+            public bool MaterializedRead;
+            public bool HasResources;
+            public HashSet<string> ResourceTypes;
         }
 
         sealed class Planner
         {
             readonly GeneratorExecutionContext m_Context;
             readonly Dictionary<string, Plan> m_Plans = new Dictionary<string, Plan>(StringComparer.Ordinal);
+            readonly HashSet<string> m_ResourceTypes = new HashSet<string>(StringComparer.Ordinal);
             public IEnumerable<Plan> Plans => m_Plans.Values;
             public Planner(GeneratorExecutionContext context) => m_Context = context;
 
@@ -479,7 +492,9 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                         Error(existing, type, "正式记录不能递归引用自身；页引用必须由所属存储显式承载");
                     return existing;
                 }
-                var plan = new Plan { Type = type };
+                var plan = new Plan { Type = type, ResourceTypes = m_ResourceTypes,
+                    MaterializedRead = type.GetAttributes().Single(a => Identity(a.AttributeClass) == ContractAttribute)
+                        .NamedArguments.Any(a => a.Key == "MaterializedRead" && a.Value.Value is true) };
                 m_Plans.Add(Identity(type), plan);
                 if (type.ContainingType != null || type.Arity != 0 || type.IsAbstract ||
                     type.BaseType != null && type.BaseType.SpecialType != SpecialType.System_Object && type.TypeKind == TypeKind.Class)
@@ -534,7 +549,18 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                         member.Type.TypeKind != TypeKind.Class && (member.Symbol is IFieldSymbol field && field.IsReadOnly ||
                         member.Symbol is IPropertySymbol property && property.SetMethod == null))
                         Error(plan, member.Symbol, "类记录必须能直接写入原候选存储，不通过构造副本恢复");
+                    if (type.TypeKind == TypeKind.Struct && !type.IsReadOnly && plan.Cases.Length == 0 &&
+                        (member.Symbol is IFieldSymbol storedField && storedField.IsReadOnly ||
+                         member.Symbol is IPropertySymbol storedProperty && storedProperty.SetMethod == null))
+                        Error(plan, member.Symbol, "可变状态必须逐字段写入原存储，正式成员需要可写访问");
+                    if (!type.IsReadOnly && plan.Cases.Length == 0 && member.Symbol is IPropertySymbol &&
+                        member.Type is INamedTypeSymbol storedRecord && storedRecord.TypeKind == TypeKind.Struct &&
+                        !storedRecord.IsReadOnly && Primitive(storedRecord) == null)
+                        Error(plan, member.Symbol, "嵌套可变状态必须由真实字段提供 ref 访问，不能通过属性复制整份状态");
                 }
+                plan.HasResources = plan.Members.Any(m => HasResources(plan, m.Type));
+                if (plan.HasResources)
+                    m_ResourceTypes.Add(Identity(type));
                 plan.Descriptor = descriptor.ToString();
                 plan.MinimumSize = plan.Members.Where(m => !m.IsCase).Sum(m => MinimumSize(m.Type));
                 if (plan.Cases.Length > 0)
@@ -568,7 +594,7 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                 ITypeSymbol element = BufferElement(type);
                 if (element != null)
                 {
-                    if (plan.Type.TypeKind != TypeKind.Class)
+                    if (plan.Type.IsReadOnly || plan.Cases.Length != 0)
                         Error(plan, member, "预分配集合必须由原候选页持有，不能通过值构造复制");
                     return "prepared-sequence<" + Shape(plan, element, member) + ">";
                 }
@@ -592,8 +618,13 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                         return Identity(type) + "#" + child.Schema;
                     }
                     var schema = record.GetMembers("CanonicalSchema").OfType<IFieldSymbol>().SingleOrDefault();
-                    if (schema != null && schema.HasConstantValue)
+                    var resources = record.GetMembers("CanonicalHasResources").OfType<IFieldSymbol>().SingleOrDefault();
+                    if (schema != null && schema.HasConstantValue && resources != null && resources.HasConstantValue)
+                    {
+                        if ((bool)resources.ConstantValue)
+                            m_ResourceTypes.Add(Identity(type));
                         return Identity(type) + "#" + schema.ConstantValue;
+                    }
                 }
                 Error(plan, member, "成员类型 " + Identity(type) + " 尚未声明可直接重建的 canonical 合同或存储形状");
                 return Identity(type);

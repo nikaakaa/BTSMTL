@@ -162,8 +162,15 @@ namespace ThirdPersonSimulation
                 }
             }
 
-            internal StableHash Complete() => SimulationCanonicalPayloadHash.Complete(
-                m_Block, m_Buffered, m_ByteLength, m_Words.AsSpan(0, 8), m_Words.AsSpan(8));
+            internal StableHash Complete()
+            {
+                Span<uint> state = stackalloc uint[8];
+                Span<byte> block = stackalloc byte[64];
+                m_Words.AsSpan(0, 8).CopyTo(state);
+                m_Block.AsSpan().CopyTo(block);
+                return SimulationCanonicalPayloadHash.Complete(
+                    block, m_Buffered, m_ByteLength, state, m_Words.AsSpan(8));
+            }
         }
 
         static void ProcessBlock(ReadOnlySpan<byte> block, Span<uint> state, Span<uint> schedule)

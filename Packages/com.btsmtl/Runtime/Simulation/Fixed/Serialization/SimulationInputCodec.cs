@@ -8,14 +8,14 @@ namespace ThirdPersonSimulation.Fixed
             2 * (sizeof(int) + 64) + SimulationInputHeader.CanonicalMeasure(input.Header) +
             SimulationInputValues.CanonicalMeasure(input.CanonicalValues);
 
-        public static void Write(CanonicalWriter writer, SimulationInput input)
+        public static void Write<TWriter>(TWriter writer, SimulationInput input) where TWriter : class, ICanonicalValueWriter
         {
             writer.WriteHash(SimulationInputHeader.CanonicalSchemaHash);
             SimulationInputHeader.CanonicalWrite(writer, input.Header);
             WriteValuesAndRequests(writer, input);
         }
 
-        public static void WriteValuesAndRequests(CanonicalWriter writer, SimulationInput input)
+        public static void WriteValuesAndRequests<TWriter>(TWriter writer, SimulationInput input) where TWriter : class, ICanonicalValueWriter
         {
             writer.WriteHash(SimulationInputValues.CanonicalSchemaHash);
             SimulationInputValues.CanonicalWrite(writer, input.CanonicalValues);

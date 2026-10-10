@@ -881,7 +881,7 @@ namespace ThirdPersonSimulation
         }
     }
 
-    public sealed class CanonicalWriter : IDisposable
+    public sealed class CanonicalWriter : IDisposable, ICanonicalValueWriter
     {
         const int InitialCapacity = 256;
 

@@ -2,7 +2,7 @@ using System;
 
 namespace ThirdPersonSimulation
 {
-    [CanonicalContract]
+    [CanonicalContract(MaterializedRead = true)]
     public partial struct SimulationInputHeader
     {
         public SimulationInputHeader(SimulationTickSourceIdentity tickSource, CanonicalTextValue inputSourceIdentity, ulong sequence)
@@ -14,8 +14,8 @@ namespace ThirdPersonSimulation
         }
 
         public SimulationTickSourceIdentity TickSource { get; private set; }
-        public CanonicalTextValue InputSourceIdentity { get; }
-        public ulong Sequence { get; }
+        public CanonicalTextValue InputSourceIdentity { get; private set; }
+        public ulong Sequence { get; private set; }
 
         public SimulationInputHeader BindStepSource(SimulationTickSourceIdentity source)
         {

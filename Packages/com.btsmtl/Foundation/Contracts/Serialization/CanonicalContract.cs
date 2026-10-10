@@ -5,6 +5,7 @@ namespace ThirdPersonSimulation
     [AttributeUsage(AttributeTargets.Struct | AttributeTargets.Class)]
     public sealed class CanonicalContractAttribute : Attribute
     {
+        public bool MaterializedRead { get; set; }
     }
 
     [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]

@@ -1,6 +1,6 @@
 namespace ThirdPersonSimulation
 {
-    [CanonicalContract]
+    [CanonicalContract(MaterializedRead = true)]
     internal sealed partial class SimulationInputValues
     {
         internal SimulationInputValues(int valueCapacity, int requestCapacity)
