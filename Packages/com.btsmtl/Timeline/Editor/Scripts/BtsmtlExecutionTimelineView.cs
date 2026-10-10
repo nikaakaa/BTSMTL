@@ -629,6 +629,7 @@ namespace BTSMTL.Timeline.Editor
                 public double ClipInTime { get => 0; set => throw ReadOnly(); }
                 public bool CanBlendIn => false;
                 public bool CanBlendOut => false;
+                public ulong CurveRevision => 0;
                 public IReadOnlyList<IEmbeddedTimelineParameterBinding> Parameters => Array.Empty<IEmbeddedTimelineParameterBinding>();
                 public IReadOnlyList<IEmbeddedTimelineCurveBinding> Curves => Array.Empty<IEmbeddedTimelineCurveBinding>();
                 public bool CanCrossBlend(IEmbeddedTimelineClipBinding other) => false;

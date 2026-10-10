@@ -40,6 +40,11 @@ namespace BTSMTL.Timeline.Editor
         float m_ViewTimeMin;
         float m_ViewTimeMax;
         Vector2 m_PopupPosition;
+        int m_LabelTickRate;
+        float m_LabelSecondsInterval;
+        string m_TickSnapLabel = "吸附 缺少 Pipeline";
+        string m_TickSettingsLabel = "逻辑 tick：请先选择 Pipeline";
+        string m_SecondsSnapLabel;
 
         public BtsmtlSlateTimelineBinding(
             TimelineEditorOpenRequest request,
@@ -74,11 +79,44 @@ namespace BTSMTL.Timeline.Editor
             FixedScalar.FromDouble(Math.Max(0d, time)), m_Session.Selection.Clip).ToSingle();
         public string SnapLabel => m_Session.SnapMode switch
         {
-            TimelineAuthoringSnapMode.LogicTick => TickRate > 0 ? $"吸附 {TickRate}Hz" : "吸附 缺少 Pipeline",
+            TimelineAuthoringSnapMode.LogicTick => TickSnapLabel,
             TimelineAuthoringSnapMode.SourceFrame => "吸附 素材帧",
-            TimelineAuthoringSnapMode.Seconds => $"吸附 {m_Session.SecondsInterval:0.######} s",
+            TimelineAuthoringSnapMode.Seconds => SecondsSnapLabel,
             _ => "吸附 关闭"
         };
+
+        string TickSnapLabel
+        {
+            get
+            {
+                SynchronizeTickLabels();
+                return m_TickSnapLabel;
+            }
+        }
+
+        string SecondsSnapLabel
+        {
+            get
+            {
+                float interval = m_Session.SecondsInterval;
+                if (m_LabelSecondsInterval != interval)
+                {
+                    m_LabelSecondsInterval = interval;
+                    m_SecondsSnapLabel = $"吸附 {interval:0.######} s";
+                }
+                return m_SecondsSnapLabel;
+            }
+        }
+
+        void SynchronizeTickLabels()
+        {
+            int rate = TickRate;
+            if (m_LabelTickRate == rate)
+                return;
+            m_LabelTickRate = rate;
+            m_TickSnapLabel = rate > 0 ? $"吸附 {rate}Hz" : "吸附 缺少 Pipeline";
+            m_TickSettingsLabel = rate > 0 ? $"逻辑 tick：{rate} Hz" : "逻辑 tick：请先选择 Pipeline";
+        }
         public void ShowSnapSettings(Rect rect) => PopupWindow.Show(rect, new GridSettingsPopup(this));
 
         sealed class GridSettingsPopup : PopupWindowContent
@@ -110,9 +148,12 @@ namespace BTSMTL.Timeline.Editor
                         session.ConfigureSecondsInterval(nextIndex == 0 ? 0.001f : nextIndex == 1 ? 0.01f : 0.1f);
                 }
                 using (new EditorGUI.DisabledScope(!pipeline))
+                {
+                    m_Owner.SynchronizeTickLabels();
                     if (GUILayout.Toggle(session.SnapMode == TimelineAuthoringSnapMode.LogicTick,
-                        pipeline ? $"逻辑 tick：{session.TickRate} Hz" : "逻辑 tick：请先选择 Pipeline", EditorStyles.radioButton))
+                        m_Owner.m_TickSettingsLabel, EditorStyles.radioButton))
                         session.ConfigureGrid(pipeline, TimelineAuthoringSnapMode.LogicTick);
+                }
                 bool hasSource = session.Selection.Clip is AnimationClip animation && animation.Clip;
                 using (new EditorGUI.DisabledScope(!hasSource))
                     if (GUILayout.Toggle(session.SnapMode == TimelineAuthoringSnapMode.SourceFrame,
@@ -1497,6 +1538,7 @@ namespace BTSMTL.Timeline.Editor
                     if (nextEnd == m_EndTime)
                         return;
                     m_EndTime = nextEnd;
+                    CurveRevision++;
                     RefreshReferenceCurves();
                 }
             }
@@ -1524,6 +1566,7 @@ namespace BTSMTL.Timeline.Editor
             }
             public bool CanBlendIn => Source.IsMixable();
             public bool CanBlendOut => Source.IsMixable();
+            public ulong CurveRevision { get; private set; }
             public IReadOnlyList<IEmbeddedTimelineParameterBinding> Parameters => m_Parameters;
             public IReadOnlyList<IEmbeddedTimelineCurveBinding> Curves => m_Curves;
 
@@ -1535,12 +1578,18 @@ namespace BTSMTL.Timeline.Editor
             {
                 if (Source is not MotionCurveClip motion || motion.SourceCurve == null)
                     return;
+                float previousStart = m_SourceStartTime;
+                float previousEnd = m_SourceEndTime;
                 double duration = Math.Max(0d, currentEndTime - currentStartTime);
                 if (trimStart)
                     m_SourceStartTime = (float)Math.Max(0d,
                         Math.Min(m_GestureTimeRange.SourceEnd, m_GestureTimeRange.SourceStart + currentStartTime - originalStartTime));
                 m_SourceEndTime = (float)Math.Min(motion.SourceCurve.Duration, m_SourceStartTime + duration);
-                RefreshReferenceCurves();
+                if (previousStart != m_SourceStartTime || previousEnd != m_SourceEndTime)
+                {
+                    CurveRevision++;
+                    RefreshReferenceCurves();
+                }
             }
 
             public bool CanCrossBlend(IEmbeddedTimelineClipBinding other)
@@ -1608,6 +1657,7 @@ namespace BTSMTL.Timeline.Editor
                 m_InitialBlendIn = m_BlendIn;
                 m_InitialBlendOut = m_BlendOut;
                 Source.Track.UpdateMix();
+                CurveRevision++;
                 return true;
             }
 
@@ -1657,7 +1707,10 @@ namespace BTSMTL.Timeline.Editor
                 }
                 if (previousLength != Length || previousSourceStart != m_SourceStartTime ||
                     previousSourceEnd != m_SourceEndTime)
+                {
+                    CurveRevision++;
                     RefreshReferenceCurves();
+                }
             }
 
             float SnapTime(float value)
