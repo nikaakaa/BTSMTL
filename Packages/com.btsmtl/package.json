@@ -5,6 +5,7 @@
   "description": "BTSMTL 作者工具、共用 Timeline 运行核心、Unity 接入与诊断源码。",
   "unity": "2022.3",
   "dependencies": {
+    "com.unity.editorcoroutines": "1.0.0",
     "com.unity.ugui": "1.0.0"
   }
 }

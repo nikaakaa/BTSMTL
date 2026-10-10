@@ -33,7 +33,7 @@ Unity 通过包内原有 asmdef 编译源码。编辑源码直接修改本仓库
 
 共用 Timeline 核心继续依赖 3C 的 `ThirdPerson.Shared.Contracts`、`ThirdPersonSimulation.Core`、`ThirdPersonSimulation.Fixed` 和 `ThirdPersonSimulation.Float32`；内容协议、数值类型及技能执行合同由这些现有程序集持有。
 
-Unity 作者和编辑器还依赖宿主提供的 NodeCanvas、FlowCanvas、ParadoxNotion、Slate、角色 RootMotion、Control 作者合同、Gameplay、Camera 和 Simulation.Unity 程序集。`com.unity.ugui` 由包声明。这次迁移改变源码归属与引用位置，未把宿主合同复制进包；单独克隆本仓库仍需提供上述依赖。
+Unity 作者和编辑器还依赖宿主提供的 NodeCanvas、FlowCanvas、ParadoxNotion、Slate、角色 RootMotion、Control 作者合同、Client.Runtime、Gameplay、Camera 和 Simulation.Unity 程序集。`com.unity.editorcoroutines` 与 `com.unity.ugui` 由包声明。这次迁移改变源码归属与引用位置，未把宿主合同复制进包；单独克隆本仓库仍需提供上述依赖。
 
 ## 开发约束
 
