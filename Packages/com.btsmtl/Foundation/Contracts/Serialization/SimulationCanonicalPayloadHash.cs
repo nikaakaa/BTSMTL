@@ -1,6 +1,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace ThirdPersonSimulation
 {
@@ -177,15 +178,24 @@ namespace ThirdPersonSimulation
         {
             unchecked
             {
+                ref byte blockStart = ref MemoryMarshal.GetReference(block);
+                ref uint scheduleStart = ref MemoryMarshal.GetReference(schedule);
+                ref uint constantStart = ref s_RoundConstants[0];
                 for (int index = 0; index < 16; index++)
-                    schedule[index] = BinaryPrimitives.ReadUInt32BigEndian(block.Slice(index * 4));
+                {
+                    uint word = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref blockStart, index * sizeof(uint)));
+                    Unsafe.Add(ref scheduleStart, index) = BitConverter.IsLittleEndian
+                        ? BinaryPrimitives.ReverseEndianness(word)
+                        : word;
+                }
                 for (int index = 16; index < 64; index++)
                 {
-                    uint first = schedule[index - 15];
-                    uint second = schedule[index - 2];
+                    uint first = Unsafe.Add(ref scheduleStart, index - 15);
+                    uint second = Unsafe.Add(ref scheduleStart, index - 2);
                     uint sigma0 = RotateRight(first, 7) ^ RotateRight(first, 18) ^ (first >> 3);
                     uint sigma1 = RotateRight(second, 17) ^ RotateRight(second, 19) ^ (second >> 10);
-                    schedule[index] = schedule[index - 16] + sigma0 + schedule[index - 7] + sigma1;
+                    Unsafe.Add(ref scheduleStart, index) = Unsafe.Add(ref scheduleStart, index - 16)
+                        + sigma0 + Unsafe.Add(ref scheduleStart, index - 7) + sigma1;
                 }
                 uint a = state[0];
                 uint b = state[1];
@@ -195,17 +205,24 @@ namespace ThirdPersonSimulation
                 uint f = state[5];
                 uint g = state[6];
                 uint h = state[7];
-                uint[] constants = s_RoundConstants;
                 for (int index = 0; index < 64; index += 8)
                 {
-                    Round(a, b, c, ref d, e, f, g, ref h, schedule[index], constants[index]);
-                    Round(h, a, b, ref c, d, e, f, ref g, schedule[index + 1], constants[index + 1]);
-                    Round(g, h, a, ref b, c, d, e, ref f, schedule[index + 2], constants[index + 2]);
-                    Round(f, g, h, ref a, b, c, d, ref e, schedule[index + 3], constants[index + 3]);
-                    Round(e, f, g, ref h, a, b, c, ref d, schedule[index + 4], constants[index + 4]);
-                    Round(d, e, f, ref g, h, a, b, ref c, schedule[index + 5], constants[index + 5]);
-                    Round(c, d, e, ref f, g, h, a, ref b, schedule[index + 6], constants[index + 6]);
-                    Round(b, c, d, ref e, f, g, h, ref a, schedule[index + 7], constants[index + 7]);
+                    Round(a, b, c, ref d, e, f, g, ref h,
+                        Unsafe.Add(ref scheduleStart, index), Unsafe.Add(ref constantStart, index));
+                    Round(h, a, b, ref c, d, e, f, ref g,
+                        Unsafe.Add(ref scheduleStart, index + 1), Unsafe.Add(ref constantStart, index + 1));
+                    Round(g, h, a, ref b, c, d, e, ref f,
+                        Unsafe.Add(ref scheduleStart, index + 2), Unsafe.Add(ref constantStart, index + 2));
+                    Round(f, g, h, ref a, b, c, d, ref e,
+                        Unsafe.Add(ref scheduleStart, index + 3), Unsafe.Add(ref constantStart, index + 3));
+                    Round(e, f, g, ref h, a, b, c, ref d,
+                        Unsafe.Add(ref scheduleStart, index + 4), Unsafe.Add(ref constantStart, index + 4));
+                    Round(d, e, f, ref g, h, a, b, ref c,
+                        Unsafe.Add(ref scheduleStart, index + 5), Unsafe.Add(ref constantStart, index + 5));
+                    Round(c, d, e, ref f, g, h, a, ref b,
+                        Unsafe.Add(ref scheduleStart, index + 6), Unsafe.Add(ref constantStart, index + 6));
+                    Round(b, c, d, ref e, f, g, h, ref a,
+                        Unsafe.Add(ref scheduleStart, index + 7), Unsafe.Add(ref constantStart, index + 7));
                 }
                 state[0] += a;
                 state[1] += b;
