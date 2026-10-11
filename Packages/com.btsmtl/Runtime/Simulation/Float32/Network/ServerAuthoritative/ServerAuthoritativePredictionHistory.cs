@@ -17,6 +17,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         int m_Count;
 
         readonly ServerAuthoritativeRemoteBodyTimeline m_RemoteBodies;
+        readonly ServerAuthoritativePredictionHistoryCheckpoint[] m_Checkpoints;
 
         public ServerAuthoritativePredictionHistory(
             int capacity,
@@ -43,6 +44,10 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 tickRate,
                 maximumExtrapolationTicks,
                 lockedRemoteActors);
+            m_Checkpoints = new ServerAuthoritativePredictionHistoryCheckpoint[2];
+            for (int index = 0; index < m_Checkpoints.Length; index++)
+                m_Checkpoints[index] = new ServerAuthoritativePredictionHistoryCheckpoint(capacity,
+                    m_RemoteBodies.PrepareCheckpointStorage());
         }
 
         public int Count => m_Count;
@@ -187,24 +192,6 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             previous.ReleaseStorage();
         }
 
-        public ServerAuthoritativePredictionHistoryCheckpoint PreparePruneConfirmedThrough(ulong inputSequence)
-        {
-            int count = 0;
-            for (int i = 0; i < m_Count; i++)
-            {
-                if (m_Records[i].Input.InputSequence > inputSequence)
-                    count = checked(count + 1);
-            }
-            var records = new KeyValuePair<ulong, ServerAuthoritativePredictionHistoryRecord>[count];
-            int outputIndex = 0;
-            for (int i = 0; i < m_Count; i++)
-            {
-                if (m_Records[i].Input.InputSequence > inputSequence)
-                    records[outputIndex++] = new KeyValuePair<ulong, ServerAuthoritativePredictionHistoryRecord>(m_Ticks[i], m_Records[i]);
-            }
-            return new ServerAuthoritativePredictionHistoryCheckpoint(records, m_RemoteBodies.Capture());
-        }
-
         public void PruneConfirmedThrough(ulong inputSequence)
         {
             int outputIndex = 0;
@@ -228,7 +215,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         }
 
         public ServerAuthoritativePredictionHistoryCheckpoint PrepareClear() =>
-            ServerAuthoritativePredictionHistoryCheckpoint.Empty(m_RemoteBodies.Capture());
+            Capture(0);
 
         public void WriteState(CanonicalWriter writer)
         {
@@ -238,12 +225,30 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             m_RemoteBodies.WriteState(writer);
         }
 
-        public ServerAuthoritativePredictionHistoryCheckpoint Capture()
+        public ServerAuthoritativePredictionHistoryCheckpoint Capture() => Capture(m_Count);
+
+        ServerAuthoritativePredictionHistoryCheckpoint Capture(int recordCount)
         {
-            var records = new KeyValuePair<ulong, ServerAuthoritativePredictionHistoryRecord>[m_Count];
-            for (int i = 0; i < records.Length; i++)
-                records[i] = new KeyValuePair<ulong, ServerAuthoritativePredictionHistoryRecord>(m_Ticks[i], m_Records[i]);
-            return new ServerAuthoritativePredictionHistoryCheckpoint(records, m_RemoteBodies.Capture());
+            for (int index = 0; index < m_Checkpoints.Length; index++)
+            {
+                ServerAuthoritativePredictionHistoryCheckpoint checkpoint = m_Checkpoints[index];
+                if (checkpoint.IsHeld)
+                    continue;
+                checkpoint.Begin();
+                try
+                {
+                    for (int record = 0; record < recordCount; record++)
+                        checkpoint.CaptureRecord(m_Ticks[record], m_Records[record]);
+                    m_RemoteBodies.CaptureInto(checkpoint.RemoteBodies);
+                    return checkpoint;
+                }
+                catch
+                {
+                    checkpoint.Dispose();
+                    throw;
+                }
+            }
+            throw new InvalidOperationException("Prediction history checkpoints exceeded their prepared transaction capacity.");
         }
 
         public void Restore(ServerAuthoritativePredictionHistoryCheckpoint checkpoint)
@@ -350,7 +355,16 @@ namespace ThirdPersonSimulation.ServerAuthoritative
 
     internal sealed class ServerAuthoritativePredictionHistoryCheckpoint : IDisposable
     {
-        readonly KeyValuePair<ulong, ServerAuthoritativePredictionHistoryRecord>[] m_Records;
+        readonly IReadOnlyList<KeyValuePair<ulong, ServerAuthoritativePredictionHistoryRecord>> m_Records;
+        readonly List<KeyValuePair<ulong, ServerAuthoritativePredictionHistoryRecord>> m_PreparedRecords;
+
+        internal ServerAuthoritativePredictionHistoryCheckpoint(int capacity,
+            ServerAuthoritativeRemoteBodyTimelineCheckpoint remoteBodies)
+        {
+            m_PreparedRecords = new List<KeyValuePair<ulong, ServerAuthoritativePredictionHistoryRecord>>(capacity);
+            m_Records = m_PreparedRecords;
+            RemoteBodies = remoteBodies;
+        }
 
         public ServerAuthoritativePredictionHistoryCheckpoint(
             KeyValuePair<ulong, ServerAuthoritativePredictionHistoryRecord>[] records,
@@ -373,11 +387,19 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             RemoteBodies.RetainStorage();
         }
 
-        public static ServerAuthoritativePredictionHistoryCheckpoint Empty(
-            ServerAuthoritativeRemoteBodyTimelineCheckpoint remoteBodies) =>
-            new ServerAuthoritativePredictionHistoryCheckpoint(
-                Array.Empty<KeyValuePair<ulong, ServerAuthoritativePredictionHistoryRecord>>(),
-                remoteBodies);
+        internal bool IsHeld { get; private set; }
+
+        internal void Begin()
+        {
+            IsHeld = true;
+            RemoteBodies.RetainStorage();
+        }
+
+        internal void CaptureRecord(ulong tick, ServerAuthoritativePredictionHistoryRecord record)
+        {
+            record.RetainStorage();
+            m_PreparedRecords.Add(new KeyValuePair<ulong, ServerAuthoritativePredictionHistoryRecord>(tick, record));
+        }
 
         public IReadOnlyList<KeyValuePair<ulong, ServerAuthoritativePredictionHistoryRecord>> Records => m_Records;
         public ServerAuthoritativeRemoteBodyTimelineCheckpoint RemoteBodies { get; }
@@ -386,8 +408,14 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         public void Dispose()
         {
             RemoteBodies.ReleaseStorage();
-            for (int index = 0; index < m_Records.Length; index++)
+            for (int index = 0; index < m_Records.Count; index++)
                 m_Records[index].Value.ReleaseStorage();
+            if (m_PreparedRecords != null)
+            {
+                m_PreparedRecords.Clear();
+                RemoteBodies.ClearPrepared();
+                IsHeld = false;
+            }
         }
     }
 
@@ -674,17 +702,18 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             }
         }
 
-        public ServerAuthoritativeRemoteBodyTimelineCheckpoint Capture()
+        internal ServerAuthoritativeRemoteBodyTimelineCheckpoint PrepareCheckpointStorage()
         {
             var actors = new ServerAuthoritativeRemoteBodyActorCheckpoint[m_LockedActors.Length];
             for (int i = 0; i < m_LockedActors.Length; i++)
-            {
-                ActorId actorId = m_LockedActors[i];
-                var values = new CharacterBodySample[m_Counts[i]];
-                Array.Copy(m_SampleTracks[i], values, m_Counts[i]);
-                actors[i] = new ServerAuthoritativeRemoteBodyActorCheckpoint(actorId, values);
-            }
+                actors[i] = new ServerAuthoritativeRemoteBodyActorCheckpoint(m_LockedActors[i], m_CapacityPerActor);
             return new ServerAuthoritativeRemoteBodyTimelineCheckpoint(actors);
+        }
+
+        internal void CaptureInto(ServerAuthoritativeRemoteBodyTimelineCheckpoint checkpoint)
+        {
+            for (int actor = 0; actor < m_LockedActors.Length; actor++)
+                checkpoint.Actors[actor].CaptureSamples(m_SampleTracks[actor].AsSpan(0, m_Counts[actor]));
         }
 
         public void Restore(ServerAuthoritativeRemoteBodyTimelineCheckpoint checkpoint)
@@ -965,6 +994,12 @@ namespace ThirdPersonSimulation.ServerAuthoritative
 
         public IReadOnlyList<ServerAuthoritativeRemoteBodyActorCheckpoint> Actors => m_Actors;
 
+        internal void ClearPrepared()
+        {
+            for (int actor = 0; actor < m_Actors.Length; actor++)
+                m_Actors[actor].ClearPrepared();
+        }
+
         internal void RetainStorage()
         {
             for (int actorIndex = 0; actorIndex < m_Actors.Length; actorIndex++)
@@ -990,9 +1025,28 @@ namespace ThirdPersonSimulation.ServerAuthoritative
 
     internal sealed class ServerAuthoritativeRemoteBodyActorCheckpoint
     {
-        readonly CharacterBodySample[] m_Samples;
+        readonly IReadOnlyList<CharacterBodySample> m_Samples;
+        readonly List<CharacterBodySample> m_PreparedSamples;
         static readonly Comparison<CharacterBodySample> s_CompareSamplesByTick =
             (left, right) => left.Tick.CompareTo(right.Tick);
+
+        internal ServerAuthoritativeRemoteBodyActorCheckpoint(ActorId actorId, int sampleCapacity)
+        {
+            ActorId = actorId;
+            m_PreparedSamples = new List<CharacterBodySample>(sampleCapacity);
+            m_Samples = m_PreparedSamples;
+        }
+
+        internal void CaptureSamples(ReadOnlySpan<CharacterBodySample> samples)
+        {
+            for (int index = 0; index < samples.Length; index++)
+            {
+                ServerAuthoritativeRemoteBodyTimeline.RetainSample(samples[index]);
+                m_PreparedSamples.Add(samples[index]);
+            }
+        }
+
+        internal void ClearPrepared() => m_PreparedSamples.Clear();
 
         public ServerAuthoritativeRemoteBodyActorCheckpoint(
             ActorId actorId,
