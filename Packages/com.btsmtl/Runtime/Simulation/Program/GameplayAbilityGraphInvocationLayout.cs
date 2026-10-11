@@ -66,45 +66,45 @@ namespace ThirdPersonSimulation
         }
 
         public int GenerationSlot(OperationHandle operation) =>
-            ResolveGenerationSlot(operation, null);
+            ResolveGenerationSlot(operation, null, default);
 
-        public int GenerationSlot(OperationHandle operation, AbilityTreeClipInvocation treeClipInvocation) =>
-            ResolveGenerationSlot(operation, treeClipInvocation);
+        public int GenerationSlot(OperationHandle operation, in AbilityTreeClipInvocation treeClipInvocation) =>
+            ResolveGenerationSlot(operation, treeClipInvocation.ClipAuthoringId, treeClipInvocation.Hook);
 
         public int ParentGenerationSlot(OperationHandle operation) =>
-            ResolveParentGenerationSlot(operation, null);
+            ResolveParentGenerationSlot(operation, null, default);
 
-        public int ParentGenerationSlot(OperationHandle operation, AbilityTreeClipInvocation treeClipInvocation) =>
-            ResolveParentGenerationSlot(operation, treeClipInvocation);
+        public int ParentGenerationSlot(OperationHandle operation, in AbilityTreeClipInvocation treeClipInvocation) =>
+            ResolveParentGenerationSlot(operation, treeClipInvocation.ClipAuthoringId, treeClipInvocation.Hook);
 
         public ProgramSourceMapEntry Invocation(string path) => m_Invocations[path];
 
         public string InvocationPath(OperationHandle operation) =>
-            ResolveOperationInvocation(operation, null).GraphInvocationPath;
+            ResolveOperationInvocation(operation, null, default).GraphInvocationPath;
 
         public string InvocationPath(OperationHandle operation, in AbilityTreeClipInvocation treeClipInvocation) =>
-            ResolveOperationInvocation(operation, treeClipInvocation).GraphInvocationPath;
+            ResolveOperationInvocation(operation, treeClipInvocation.ClipAuthoringId, treeClipInvocation.Hook).GraphInvocationPath;
 
-        int ResolveGenerationSlot(OperationHandle operation, AbilityTreeClipInvocation? treeClipInvocation)
+        int ResolveGenerationSlot(OperationHandle operation, CanonicalTextValue? clipId, AbilityTreeClipHook hook)
         {
-            ProgramSourceMapEntry invocation = ResolveOperationInvocation(operation, treeClipInvocation);
+            ProgramSourceMapEntry invocation = ResolveOperationInvocation(operation, clipId, hook);
             return m_GenerationSlots[invocation.GraphInvocationPath];
         }
 
-        int ResolveParentGenerationSlot(OperationHandle operation, AbilityTreeClipInvocation? treeClipInvocation)
+        int ResolveParentGenerationSlot(OperationHandle operation, CanonicalTextValue? clipId, AbilityTreeClipHook hook)
         {
-            ProgramSourceMapEntry invocation = ResolveOperationInvocation(operation, treeClipInvocation);
+            ProgramSourceMapEntry invocation = ResolveOperationInvocation(operation, clipId, hook);
             if (string.IsNullOrEmpty(invocation.ParentInvocationPath))
                 return -1;
             ProgramSourceMapEntry parent = ResolveInvocation(
                 invocation.ParentInvocationPath,
-                treeClipInvocation);
+                clipId, hook);
             return m_GenerationSlots[parent.GraphInvocationPath];
         }
 
         ProgramSourceMapEntry ResolveOperationInvocation(
             OperationHandle operation,
-            AbilityTreeClipInvocation? treeClipInvocation)
+            CanonicalTextValue? clipId, AbilityTreeClipHook hook)
         {
             if (!operation.IsValid || operation.Value >= m_OperationSources.Length ||
                 m_OperationSources[operation.Value] == null)
@@ -113,12 +113,12 @@ namespace ThirdPersonSimulation
             }
             return ResolveInvocation(
                 m_OperationSources[operation.Value].GraphInvocationPath,
-                treeClipInvocation);
+                clipId, hook);
         }
 
         ProgramSourceMapEntry ResolveInvocation(
             string sourcePath,
-            AbilityTreeClipInvocation? treeClipInvocation)
+            CanonicalTextValue? clipId, AbilityTreeClipHook hook)
         {
             if (!m_InvocationsBySourcePath.TryGetValue(sourcePath, out List<ProgramSourceMapEntry> invocations) ||
                 invocations.Count == 0)
@@ -127,13 +127,12 @@ namespace ThirdPersonSimulation
             }
             if (invocations.Count == 1)
                 return invocations[0];
-            if (!treeClipInvocation.HasValue)
+            if (!clipId.HasValue)
                 throw new InvalidOperationException("多入口TreeClip图调用缺少当前入口。");
-            AbilityTreeClipInvocation treeClip = treeClipInvocation.Value;
             if (!m_TreeClipInvocations.TryGetValue((
                     sourcePath,
-                    treeClip.ClipAuthoringId,
-                    HookName(treeClip.Hook)), out ProgramSourceMapEntry invocation))
+                    clipId.Value,
+                    HookName(hook)), out ProgramSourceMapEntry invocation))
             {
                 throw new InvalidOperationException("TreeClip图调用入口未声明。");
             }

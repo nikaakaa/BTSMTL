@@ -366,9 +366,15 @@ namespace ThirdPersonSimulation.Fixed
 
         internal ulong TreeClipActionInstanceId => m_TreeClipInvocation.ActionInstanceId;
 
-        internal AbilityTreeClipInvocation TreeClipInvocation => HasTreeClipInvocation
-            ? m_TreeClipInvocation
-            : throw new InvalidOperationException("Camera presentation requires an active TreeClip invocation.");
+        internal ref readonly AbilityTreeClipInvocation TreeClipInvocation
+        {
+            get
+            {
+                if (!HasTreeClipInvocation)
+                    throw new InvalidOperationException("Camera presentation requires an active TreeClip invocation.");
+                return ref m_TreeClipInvocation;
+            }
+        }
 
         internal AbilityTreeClipInvocation ExchangeTreeClipInvocation(in AbilityTreeClipInvocation invocation)
         {
@@ -736,7 +742,7 @@ namespace ThirdPersonSimulation.Fixed
 
         internal bool HasTreeClipInvocation => m_Frame.HasTreeClipInvocation;
         internal ulong TreeClipActionInstanceId => m_Frame.TreeClipActionInstanceId;
-        internal AbilityTreeClipInvocation TreeClipInvocation => m_Frame.TreeClipInvocation;
+        internal ref readonly AbilityTreeClipInvocation TreeClipInvocation => ref m_Frame.TreeClipInvocation;
 
         internal AbilityTreeClipInvocation ExchangeTreeClipInvocation(in AbilityTreeClipInvocation invocation)
             => m_Frame.ExchangeTreeClipInvocation(invocation);
