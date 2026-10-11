@@ -167,15 +167,12 @@ namespace ThirdPersonSimulation
                     }
                     completed.Add(completedStep);
                     m_Target.ApplyCompletedStep(working, completedStep);
-                    string stepCompletedDetail = m_Target.DiagnosticsEnabled
-                        ? $"Simulation Step {stepIndex + 1}/{executionPlan.Steps.Count} completed."
-                        : null;
                     PublishPipeline(
                         step.Source,
                         step.Tick.Value,
                         PipelineTransactionTraceKind.StepCompleted,
                         true,
-                        stepCompletedDetail,
+                        "Simulation Step completed.",
                         scheduleStatus: executionPlan.Status,
                         restoreRequested: executionPlan.Restore != null,
                         stepCount: executionPlan.Steps.Count);
