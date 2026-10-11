@@ -362,7 +362,7 @@ namespace BTSMTL.Timeline.Runtime
                 m_EvaluationStoragePool.Prepare(prepared, playbackModes[index]);
                 var key = (prepared.Content, playbackModes[index]);
                 if (!m_RecycledPlaybacks.ContainsKey(key))
-                    m_RecycledPlaybacks.Add(key, new Stack<TimelineRuntimePlayback>(4));
+                    m_RecycledPlaybacks.Add(key, PreparePlaybackStorage(prepared.Content, playbackModes[index]));
             }
             return prepared;
         }
@@ -374,7 +374,7 @@ namespace BTSMTL.Timeline.Runtime
             for (int i = 0; i < playbackModes.Count; i++)
             {
                 m_EvaluationStoragePool.Prepare(prepared, playbackModes[i]);
-                m_RecycledPlaybacks.Add((content, playbackModes[i]), new Stack<TimelineRuntimePlayback>(4));
+                m_RecycledPlaybacks.Add((content, playbackModes[i]), PreparePlaybackStorage(content, playbackModes[i]));
             }
             return prepared;
         }
@@ -391,6 +391,15 @@ namespace BTSMTL.Timeline.Runtime
                 m_RecycledPlaybacks.Remove((content, mode));
                 m_EvaluationStoragePool.RetireContent(content, mode);
             }
+        }
+
+        Stack<TimelineRuntimePlayback> PreparePlaybackStorage(TimelineContentUnit content, TimelinePlaybackMode mode)
+        {
+            var recycled = new Stack<TimelineRuntimePlayback>(4);
+            var playback = new TimelineRuntimePlayback(content, mode, m_TickRate, m_EvaluationStoragePool);
+            playback.SnapshotStorage.PrepareCapacity(m_SnapshotMaximumSteps);
+            recycled.Push(playback);
+            return recycled;
         }
 
         public bool RequestTimelinePlayback(

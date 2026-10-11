@@ -137,14 +137,11 @@ namespace ThirdPersonSimulation
             GetSnapshotCapacity(out int clips, out _, out int pending, out _);
             m_Pool = new Playback[count];
             TimelineContentUnit first = m_Artifact.Timelines[0];
-            var preparation = new TimelineRuntimePreparationResult(new TimelineRuntimePrepareRequest("timeline:prepare",
-                m_Contents[first.Identity], new TimelineExecutionIdentity(first.Identity, "timeline:prepare", 1), m_CapacityModes[0]));
             for (int i = 0; i < count; i++)
             {
-                var runtime = new TimelineRuntimePlayback(new TimelineRuntimePlaybackHandle(1), 1, preparation,
+                var runtime = new TimelineRuntimePlayback(first, m_CapacityModes[0],
                     m_TickRate, m_Evaluations, clips, pending);
                 runtime.SnapshotStorage.PrepareCapacity(capacity.StatePageCount);
-                runtime.ReleaseForReuse();
                 m_Pool[i] = new Playback(storage) { Runtime = runtime };
             }
         }

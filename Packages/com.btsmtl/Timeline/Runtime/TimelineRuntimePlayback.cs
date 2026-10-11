@@ -39,11 +39,23 @@ namespace BTSMTL.Timeline.Runtime
             int tickRate,
             TimelineRuntimeEvaluationStoragePool evaluationStoragePool,
             int maximumClips = 0, int maximumPendingExits = 0)
+            : this(preparation.Content, preparation.PlaybackMode, tickRate, evaluationStoragePool,
+                maximumClips, maximumPendingExits)
+        {
+            ResetForReuse(handle, generation, preparation);
+        }
+
+        internal TimelineRuntimePlayback(
+            TimelineContentUnit content,
+            TimelinePlaybackMode mode,
+            int tickRate,
+            TimelineRuntimeEvaluationStoragePool evaluationStoragePool,
+            int maximumClips = 0, int maximumPendingExits = 0)
         {
             if (tickRate <= 0)
                 throw new ArgumentOutOfRangeException(nameof(tickRate));
             m_TickRate = tickRate;
-            GetSnapshotCapacity(preparation.Content, preparation.PlaybackMode,
+            GetSnapshotCapacity(content, mode,
                 out int clipCapacity, out _, out int pendingExitCapacity, out _);
             clipCapacity = Math.Max(clipCapacity, maximumClips);
             pendingExitCapacity = Math.Max(pendingExitCapacity, maximumPendingExits);
@@ -57,10 +69,9 @@ namespace BTSMTL.Timeline.Runtime
             m_AdvanceProducedTreeClipExits = new List<AbilityTimelineTreeClipExit>(pendingExitCapacity);
             m_AdvanceExitedTreeDecisionClips = new List<AbilityTimelineTreeClipExit>(pendingExitCapacity);
             m_ActiveClipIdsView = new ReadOnlyCollection<CanonicalTextValue>(m_ActiveClipIds);
-            m_CandidateEvaluation = evaluationStoragePool.Rent(preparation);
-            m_CommittedEvaluation = evaluationStoragePool.Rent(preparation);
+            m_CandidateEvaluation = evaluationStoragePool.Rent(content, mode);
+            m_CommittedEvaluation = evaluationStoragePool.Rent(content, mode);
             State = TimelineRuntimePlaybackState.Disposed;
-            ResetForReuse(handle, generation, preparation);
         }
 
         public static void GetSnapshotCapacity(TimelineContentUnit content, TimelinePlaybackMode mode,

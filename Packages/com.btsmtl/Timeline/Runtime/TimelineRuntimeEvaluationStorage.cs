@@ -39,13 +39,13 @@ namespace BTSMTL.Timeline.Runtime
             }
         }
 
-        public TimelineRuntimeEvaluationStorage Rent(TimelineRuntimePreparationResult preparation)
+        public TimelineRuntimeEvaluationStorage Rent(TimelineContentUnit content, TimelinePlaybackMode mode)
         {
             if (m_Shared != null) return m_Shared.Pop();
-            var key = (preparation.Content, preparation.PlaybackMode);
+            var key = (content, mode);
             Stack<TimelineRuntimeEvaluationStorage> recycled = m_Recycled[key];
             return recycled.Count == 0
-                ? new TimelineRuntimeEvaluationStorage(preparation.Content, preparation.PlaybackMode, recycled) : recycled.Pop();
+                ? new TimelineRuntimeEvaluationStorage(content, mode, recycled) : recycled.Pop();
         }
 
         public void RetireContent(TimelineContentUnit timeline, TimelinePlaybackMode mode) =>
