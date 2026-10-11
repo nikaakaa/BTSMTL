@@ -86,8 +86,9 @@ namespace ThirdPersonSimulation
         public List<PresentationCommand> Presentation { get; } = new List<PresentationCommand>();
         public List<SimulationTraceRecord> Trace { get; } = new List<SimulationTraceRecord>();
         public List<SimulationTraceRecord> CharacterTrace { get; } = new List<SimulationTraceRecord>();
-        public List<Float32GameplayEffectPendingProjection> GameplayEffectProjections { get; } =
-            new List<Float32GameplayEffectPendingProjection>();
+        internal Float32GameplayEffectPendingProjection[] GameplayEffectProjections { get; private set; } =
+            Array.Empty<Float32GameplayEffectPendingProjection>();
+        internal int GameplayEffectProjectionCount { get; set; }
         internal MotionWarpStatePageReference<Float32MotionWarpState> MotionWarpStates { get; private set; }
         Float32CharacterRuntimeState m_StatePageOwner;
 
@@ -137,22 +138,23 @@ namespace ThirdPersonSimulation
             ValueTraces.Clear();
             m_TraceRecordCount = 0;
             if (m_TraceRecordsPerTick != 0) StructuredTraces.Clear();
-            for (int i = 0; i < GameplayEffectProjections.Count; i++) GameplayEffectProjections[i].Release();
-            GameplayEffectProjections.Clear();
+            for (int i = 0; i < GameplayEffectProjectionCount; i++) GameplayEffectProjections[i].Release();
+            Array.Clear(GameplayEffectProjections, 0, GameplayEffectProjectionCount);
+            GameplayEffectProjectionCount = 0;
             IngressAdmission = default;
             CommandBatchRejections.Clear();
         }
 
         internal void PrepareGameplayEffectOutputs(int changes, int facts, int presentation)
         {
-            GameplayEffectProjections.Capacity = changes;
+            GameplayEffectProjections = new Float32GameplayEffectPendingProjection[changes];
             Facts.Capacity = facts;
             Presentation.Capacity = presentation;
         }
 
         internal void FinalizeGameplayEffects()
         {
-            for (int index = 0; index < GameplayEffectProjections.Count; index++)
+            for (int index = 0; index < GameplayEffectProjectionCount; index++)
                 GameplayEffectProjections[index].Project(Facts, Presentation);
         }
     }

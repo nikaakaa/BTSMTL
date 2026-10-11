@@ -407,18 +407,16 @@ namespace ThirdPersonSimulation
         internal bool HasActionTraceContext => m_ActionTraceInstanceId != 0;
 
         internal Float32AbilityOutputSavepoint CreateOutputSavepoint() =>
-            new Float32AbilityOutputSavepoint(m_Facts.Count, m_Presentation.Count, m_Workspace.GameplayEffectProjections.Count,
+            new Float32AbilityOutputSavepoint(m_Facts.Count, m_Presentation.Count, m_Workspace.GameplayEffectProjectionCount,
                 m_Workspace.GameplayEffectCueCount, m_Workspace.GameplayEffectSuccessfulChangeCount);
 
         internal void RestoreOutput(Float32AbilityOutputSavepoint savepoint)
         {
             for (int i = savepoint.FactCount; i < m_Facts.Count; i++) m_Facts[i].Release();
             for (int i = savepoint.PresentationCount; i < m_Presentation.Count; i++) m_Presentation[i].Release();
-            for (int i = savepoint.GameplayEffectCount; i < m_Workspace.GameplayEffectProjections.Count; i++) m_Workspace.GameplayEffectProjections[i].Release();
+            m_Workspace.TruncateGameplayEffectProjections(savepoint.GameplayEffectCount);
             m_Facts.RemoveRange(savepoint.FactCount, m_Facts.Count - savepoint.FactCount);
             m_Presentation.RemoveRange(savepoint.PresentationCount, m_Presentation.Count - savepoint.PresentationCount);
-            m_Workspace.GameplayEffectProjections.RemoveRange(savepoint.GameplayEffectCount,
-                m_Workspace.GameplayEffectProjections.Count - savepoint.GameplayEffectCount);
             m_Workspace.GameplayEffectCueCount = savepoint.GameplayEffectCueCount;
             m_Workspace.GameplayEffectSuccessfulChangeCount = savepoint.GameplayEffectSuccessfulChangeCount;
         }
@@ -448,7 +446,8 @@ namespace ThirdPersonSimulation
             var projection = new Float32GameplayEffectPendingProjection(
                 change, factHeader, factIndex, presentationHeader, presentationIndex, producerId, sampleTime, cause);
             projection.Retain();
-            m_Workspace.GameplayEffectProjections.Add(projection);
+            m_Workspace.GameplayEffectProjections[m_Workspace.GameplayEffectProjectionCount] = projection;
+            m_Workspace.GameplayEffectProjectionCount++;
             if (change.IsSuccessfulOutput)
                 m_Workspace.GameplayEffectSuccessfulChangeCount++;
             if (change.Kind == PortableEffectChangeKind.Cue)

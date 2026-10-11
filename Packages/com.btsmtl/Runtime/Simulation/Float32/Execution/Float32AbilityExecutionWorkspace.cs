@@ -39,8 +39,9 @@ namespace ThirdPersonSimulation
         internal SimulationStructuredTraceStorage StructuredTraces;
         internal int ValueTraceInvocation;
         public List<GameplayCommandBatchAdmission> CommandBatchRejections { get; } = new List<GameplayCommandBatchAdmission>();
-        public List<Float32GameplayEffectPendingProjection> GameplayEffectProjections { get; } =
-            new List<Float32GameplayEffectPendingProjection>();
+        internal Float32GameplayEffectPendingProjection[] GameplayEffectProjections { get; private set; } =
+            Array.Empty<Float32GameplayEffectPendingProjection>();
+        internal int GameplayEffectProjectionCount { get; set; }
         internal int GameplayEffectCueCount { get; set; }
         internal int GameplayEffectSuccessfulChangeCount { get; set; }
         public Float32GameplayEffectExecutionScratch GameplayEffects { get; }
@@ -64,8 +65,7 @@ namespace ThirdPersonSimulation
             for (int index = 0; index < Trace.Count; index++)
                 Trace[index].Release();
             Trace.Clear();
-            for (int i = 0; i < GameplayEffectProjections.Count; i++) GameplayEffectProjections[i].Release();
-            GameplayEffectProjections.Clear();
+            TruncateGameplayEffectProjections(0);
             CommandBatchRejections.Clear();
             GameplayEffectCueCount = 0;
             GameplayEffectSuccessfulChangeCount = 0;
@@ -93,9 +93,17 @@ namespace ThirdPersonSimulation
 
         internal void PrepareGameplayEffectOutputs(int changes, int facts, int presentation)
         {
-            GameplayEffectProjections.Capacity = changes;
+            GameplayEffectProjections = new Float32GameplayEffectPendingProjection[changes];
             Facts.Capacity = checked(m_OutputCapacity + facts);
             Presentation.Capacity = checked(m_OutputCapacity + presentation);
+        }
+
+        internal void TruncateGameplayEffectProjections(int count)
+        {
+            for (int index = count; index < GameplayEffectProjectionCount; index++)
+                GameplayEffectProjections[index].Release();
+            Array.Clear(GameplayEffectProjections, count, GameplayEffectProjectionCount - count);
+            GameplayEffectProjectionCount = count;
         }
 
         public void CopyMotionContributionsTo(Float32MotionContributionScratch contributions)

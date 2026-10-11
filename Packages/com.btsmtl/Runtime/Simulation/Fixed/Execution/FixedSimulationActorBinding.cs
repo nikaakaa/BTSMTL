@@ -89,8 +89,9 @@ namespace ThirdPersonSimulation.Fixed
         public List<PresentationCommand> Presentation { get; } = new List<PresentationCommand>();
         public List<SimulationTraceRecord> Trace { get; } = new List<SimulationTraceRecord>();
         public List<SimulationTraceRecord> CharacterTrace { get; } = new List<SimulationTraceRecord>();
-        public List<FixedGameplayEffectPendingProjection> GameplayEffectProjections { get; } =
-            new List<FixedGameplayEffectPendingProjection>();
+        internal FixedGameplayEffectPendingProjection[] GameplayEffectProjections { get; private set; } =
+            Array.Empty<FixedGameplayEffectPendingProjection>();
+        internal int GameplayEffectProjectionCount { get; set; }
         internal MotionWarpStatePageReference<FixedMotionWarpState> MotionWarpStates { get; private set; }
         FixedCharacterRuntimeState m_StatePageOwner;
         int m_RetainedFactTexts;
@@ -104,14 +105,14 @@ namespace ThirdPersonSimulation.Fixed
                 Facts[index].Retain();
             for (int index = m_RetainedPresentationTexts; index < Presentation.Count; index++)
                 Presentation[index].Retain();
-            for (int index = m_RetainedProjectionTexts; index < GameplayEffectProjections.Count; index++)
+            for (int index = m_RetainedProjectionTexts; index < GameplayEffectProjectionCount; index++)
                 GameplayEffectProjections[index].Retain();
             for (int index = m_RetainedTraceTexts; index < Trace.Count; index++)
                 Trace[index].Retain();
             m_RetainedTraceTexts = Trace.Count;
             m_RetainedFactTexts = Facts.Count;
             m_RetainedPresentationTexts = Presentation.Count;
-            m_RetainedProjectionTexts = GameplayEffectProjections.Count;
+            m_RetainedProjectionTexts = GameplayEffectProjectionCount;
         }
 
         internal void RetainStatePages(FixedCharacterRuntimeState state)
@@ -167,7 +168,8 @@ namespace ThirdPersonSimulation.Fixed
             CharacterTrace.Clear();
             ValueTraces.Clear();
             m_TraceRecordCount = 0;
-            GameplayEffectProjections.Clear();
+            Array.Clear(GameplayEffectProjections, 0, GameplayEffectProjectionCount);
+            GameplayEffectProjectionCount = 0;
             IngressAdmission = default;
             CommandBatchRejections.Clear();
             AttackResults.Clear();
@@ -175,14 +177,14 @@ namespace ThirdPersonSimulation.Fixed
 
         internal void PrepareGameplayEffectOutputs(int changes, int facts, int presentation)
         {
-            GameplayEffectProjections.Capacity = changes;
+            GameplayEffectProjections = new FixedGameplayEffectPendingProjection[changes];
             Facts.Capacity = facts;
             Presentation.Capacity = presentation;
         }
 
         internal void FinalizeGameplayEffects()
         {
-            for (int index = 0; index < GameplayEffectProjections.Count; index++)
+            for (int index = 0; index < GameplayEffectProjectionCount; index++)
                 GameplayEffectProjections[index].Project(Facts, Presentation);
         }
     }

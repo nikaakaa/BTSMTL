@@ -390,9 +390,12 @@ namespace ThirdPersonSimulation.Fixed
             output.Presentation.AddRange(m_Workspace.Presentation);
             output.Trace.AddRange(m_Workspace.Trace);
             output.CommandBatchRejections.AddRange(m_Workspace.CommandBatchRejections);
-            for (int index = 0; index < m_Workspace.GameplayEffectProjections.Count; index++)
-                output.GameplayEffectProjections.Add(
-                    m_Workspace.GameplayEffectProjections[index].Offset(factOffset, presentationOffset));
+            for (int index = 0; index < m_Workspace.GameplayEffectProjectionCount; index++)
+            {
+                output.GameplayEffectProjections[output.GameplayEffectProjectionCount] =
+                    m_Workspace.GameplayEffectProjections[index].Offset(factOffset, presentationOffset);
+                output.GameplayEffectProjectionCount++;
+            }
             m_Frame.End();
             m_Completed = true;
         }

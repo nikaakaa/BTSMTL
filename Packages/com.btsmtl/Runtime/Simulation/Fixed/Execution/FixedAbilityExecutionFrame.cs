@@ -439,17 +439,14 @@ namespace ThirdPersonSimulation.Fixed
         internal bool HasActionTraceContext => m_ActionTraceInstanceId != 0;
 
         internal FixedAbilityOutputSavepoint CreateOutputSavepoint() =>
-            new FixedAbilityOutputSavepoint(m_Facts.Count, m_Presentation.Count, m_Workspace.GameplayEffectProjections.Count,
+            new FixedAbilityOutputSavepoint(m_Facts.Count, m_Presentation.Count, m_Workspace.GameplayEffectProjectionCount,
                 m_Workspace.GameplayEffectCueCount, m_Workspace.GameplayEffectSuccessfulChangeCount);
 
         internal void RestoreOutput(FixedAbilityOutputSavepoint savepoint)
         {
             m_Facts.RemoveRange(savepoint.FactCount, m_Facts.Count - savepoint.FactCount);
             m_Presentation.RemoveRange(savepoint.PresentationCount, m_Presentation.Count - savepoint.PresentationCount);
-            for (int index = savepoint.GameplayEffectCount; index < m_Workspace.GameplayEffectProjections.Count; index++)
-                m_Workspace.GameplayEffectProjections[index].Release();
-            m_Workspace.GameplayEffectProjections.RemoveRange(savepoint.GameplayEffectCount,
-                m_Workspace.GameplayEffectProjections.Count - savepoint.GameplayEffectCount);
+            m_Workspace.TruncateGameplayEffectProjections(savepoint.GameplayEffectCount);
             m_Workspace.GameplayEffectCueCount = savepoint.GameplayEffectCueCount;
             m_Workspace.GameplayEffectSuccessfulChangeCount = savepoint.GameplayEffectSuccessfulChangeCount;
         }
@@ -477,7 +474,8 @@ namespace ThirdPersonSimulation.Fixed
             var projection = new FixedGameplayEffectPendingProjection(
                 change, factHeader, factIndex, presentationHeader, presentationIndex, producerId, sampleTime, cause);
             projection.Retain();
-            m_Workspace.GameplayEffectProjections.Add(projection);
+            m_Workspace.GameplayEffectProjections[m_Workspace.GameplayEffectProjectionCount] = projection;
+            m_Workspace.GameplayEffectProjectionCount++;
             if (change.IsSuccessfulOutput)
                 m_Workspace.GameplayEffectSuccessfulChangeCount++;
             if (change.Kind == PortableEffectChangeKind.Cue)

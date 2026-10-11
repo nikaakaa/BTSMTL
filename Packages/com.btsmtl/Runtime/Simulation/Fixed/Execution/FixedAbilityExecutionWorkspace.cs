@@ -46,8 +46,9 @@ namespace ThirdPersonSimulation.Fixed
         internal FixedCharacterEvaluationOutput TraceOutput;
         internal int ValueTraceInvocation;
         public List<GameplayCommandBatchAdmission> CommandBatchRejections { get; } = new List<GameplayCommandBatchAdmission>();
-        public List<FixedGameplayEffectPendingProjection> GameplayEffectProjections { get; } =
-            new List<FixedGameplayEffectPendingProjection>();
+        internal FixedGameplayEffectPendingProjection[] GameplayEffectProjections { get; private set; } =
+            Array.Empty<FixedGameplayEffectPendingProjection>();
+        internal int GameplayEffectProjectionCount { get; set; }
         internal int GameplayEffectCueCount { get; set; }
         internal int GameplayEffectSuccessfulChangeCount { get; set; }
         public FixedGameplayEffectExecutionScratch GameplayEffects { get; }
@@ -70,9 +71,7 @@ namespace ThirdPersonSimulation.Fixed
             for (int index = 0; index < Trace.Count; index++)
                 Trace[index].Release();
             Trace.Clear();
-            for (int index = 0; index < GameplayEffectProjections.Count; index++)
-                GameplayEffectProjections[index].Release();
-            GameplayEffectProjections.Clear();
+            TruncateGameplayEffectProjections(0);
             CommandBatchRejections.Clear();
             GameplayEffectCueCount = 0;
             GameplayEffectSuccessfulChangeCount = 0;
@@ -101,9 +100,17 @@ namespace ThirdPersonSimulation.Fixed
 
         internal void PrepareGameplayEffectOutputs(int changes, int facts, int presentation)
         {
-            GameplayEffectProjections.Capacity = changes;
+            GameplayEffectProjections = new FixedGameplayEffectPendingProjection[changes];
             Facts.Capacity = checked(m_OutputCapacity + facts);
             Presentation.Capacity = checked(m_OutputCapacity + presentation);
+        }
+
+        internal void TruncateGameplayEffectProjections(int count)
+        {
+            for (int index = count; index < GameplayEffectProjectionCount; index++)
+                GameplayEffectProjections[index].Release();
+            Array.Clear(GameplayEffectProjections, count, GameplayEffectProjectionCount - count);
+            GameplayEffectProjectionCount = count;
         }
 
         public void CopyMotionContributionsTo(FixedMotionContributionScratch contributions)
