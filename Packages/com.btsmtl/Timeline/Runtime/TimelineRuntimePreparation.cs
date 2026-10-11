@@ -288,8 +288,8 @@ namespace BTSMTL.Timeline.Runtime
         readonly FixedScalar[] m_Ends;
         readonly FixedScalar[] m_SubtreeEnds;
         readonly Func<TimelineContentClip, FixedScalar> m_EndTime;
-        readonly IComparer<int> m_StartComparer;
-        readonly IComparer<int> m_EndComparer;
+        readonly Comparison<int> m_StartComparison;
+        readonly Comparison<int> m_EndComparison;
 
         public TimelineRuntimeClipIndex(List<TimelineRuntimeIndexedClip> clips, Func<TimelineContentClip, FixedScalar> endTime)
         {
@@ -299,8 +299,8 @@ namespace BTSMTL.Timeline.Runtime
             m_Ends = new FixedScalar[clips.Count];
             m_SubtreeEnds = new FixedScalar[clips.Count];
             m_EndTime = endTime;
-            m_StartComparer = Comparer<int>.Create(CompareStart);
-            m_EndComparer = Comparer<int>.Create(CompareEnd);
+            m_StartComparison = CompareStart;
+            m_EndComparison = CompareEnd;
             RefreshTimeRanges();
         }
 
@@ -312,8 +312,8 @@ namespace BTSMTL.Timeline.Runtime
                 m_EndOrder[index] = index;
                 m_Ends[index] = m_EndTime(m_Clips[index].Clip);
             }
-            Array.Sort(m_StartOrder, m_StartComparer);
-            Array.Sort(m_EndOrder, m_EndComparer);
+            Array.Sort(m_StartOrder, m_StartComparison);
+            Array.Sort(m_EndOrder, m_EndComparison);
             BuildSubtreeEnds(0, m_Clips.Length);
         }
 
