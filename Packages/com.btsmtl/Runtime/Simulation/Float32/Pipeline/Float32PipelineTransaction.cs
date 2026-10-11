@@ -149,6 +149,7 @@ namespace ThirdPersonSimulation
                 m_StepResults.Add(new SimulationTickResult(m_Roster.Count));
             m_StateStore = stateStore ?? throw new ArgumentNullException(nameof(stateStore));
             m_Solver = solver ?? throw new ArgumentNullException(nameof(solver));
+            m_Solver.PrepareStepStorage(checked(maximumSteps + services.Descriptor.RecordedFrameCapacity));
             m_Diagnostics = diagnostics ?? throw new ArgumentNullException(nameof(diagnostics));
             m_RestoreSource = restoreSource;
             m_SnapshotCodec = snapshotCodec ?? throw new ArgumentNullException(nameof(snapshotCodec));

@@ -384,6 +384,7 @@ namespace ThirdPersonSimulation
         internal void CompleteCandidate(ulong tick, WorldSimulationState world)
         {
             ValidatePrepared(m_Actors, world);
+            world.RetainStateStorage();
             SetPrepared(tick, world);
         }
 
@@ -453,6 +454,7 @@ namespace ThirdPersonSimulation
                 if (--References != 0)
                     return;
                 Array.Clear(State.ActorArray, 0, State.ActorArray.Length);
+                State.WorldState?.ReleaseStateStorage();
                 State.SetPrepared(0, null);
                 World?.ClearPrepared();
             }
@@ -541,6 +543,7 @@ namespace ThirdPersonSimulation
         {
             if (state.Storage != null)
                 state.Storage.References++;
+            state.WorldState.RetainStateStorage();
             RetainActorStatePages(state);
         }
 
@@ -554,6 +557,7 @@ namespace ThirdPersonSimulation
 
         internal static void ReleaseStatePages(SimulationWorldStateSet state)
         {
+            state.WorldState.ReleaseStateStorage();
             for (int index = 0; index < state.Actors.Count; index++)
             {
                 state.Actors[index].State.ReleaseStatePages();

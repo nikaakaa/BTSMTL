@@ -53,6 +53,7 @@ namespace ThirdPersonSimulation
     {
         readonly IReadOnlyList<WorldBodyState> m_Bodies;
         readonly byte[] m_SolverStatePayload;
+        readonly WorldSimulationStateStorage.Page m_Storage;
         int m_SolverPayloadLength;
 
         public WorldSimulationState(
@@ -125,6 +126,15 @@ namespace ThirdPersonSimulation
             m_SolverStatePayload = new byte[maximumPayloadBytes];
         }
 
+        internal WorldSimulationState(int actorCount, int maximumPayloadBytes, WorldSimulationStateStorage.Page storage)
+            : this(actorCount, maximumPayloadBytes)
+        {
+            m_Storage = storage;
+        }
+
+        public void RetainStateStorage() => m_Storage?.Retain();
+        public void ReleaseStateStorage() => m_Storage?.Release();
+
         internal WorldBodyState[] BodyArray => (WorldBodyState[])m_Bodies;
 
         internal void SetPrepared(SimulationNumericProfile numeric, SolverImplementationId solver,
@@ -182,6 +192,90 @@ namespace ThirdPersonSimulation
             solverStatePayload == null || solverStatePayload.Length == 0
                 ? Array.Empty<byte>()
                 : (byte[])solverStatePayload.Clone();
+    }
+
+    public sealed class WorldSimulationStateStorage
+    {
+        public sealed class Page
+        {
+            int m_References;
+
+            internal Page(int actorCount, int payloadCapacity)
+            {
+                World = new WorldSimulationState(actorCount, payloadCapacity, this);
+                Result = new WorldSolveBatchResult(actorCount);
+            }
+
+            internal bool IsReleased => m_References == 0;
+            public WorldSimulationState World { get; }
+            public WorldSolveBatchResult Result { get; }
+            public WorldBodyState[] Bodies => World.BodyArray;
+            public CharacterWorldSolveResult[] Results => Result.ResultArray;
+
+            internal void BeginWrite() => m_References = 1;
+            internal void Retain() => m_References++;
+
+            public WorldSimulationState CompleteState(SimulationNumericProfile numeric, SolverImplementationId solver,
+                string version, WorldRevision revision, WorldStatePersistenceMode persistence, ReadOnlySpan<byte> payload)
+            {
+                World.SetPrepared(numeric, solver, version, revision, persistence, payload);
+                return World;
+            }
+
+            public WorldSolveBatchResult CompleteResult(WorldSolveBatchRequest request, SolverImplementationId solver, string version)
+            {
+                return Result.Reset(request, solver, version, World);
+            }
+
+            public void CopyState(WorldSimulationState state)
+            {
+                for (int i = 0; i < Bodies.Length; i++)
+                    Bodies[i] = state.Bodies[i];
+                World.SetPrepared(state.NumericProfile, state.SolverId, state.SolverVersion,
+                    state.WorldRevision, state.PersistenceMode, state.SolverStatePayload.Span);
+            }
+
+            public void Release()
+            {
+                if (--m_References != 0)
+                    return;
+                Result.ClearPrepared();
+                World.ClearPrepared();
+            }
+        }
+
+        readonly int m_ActorCount;
+        readonly int m_PayloadCapacity;
+        readonly List<Page> m_Pages = new List<Page>(2);
+
+        public WorldSimulationStateStorage(int actorCount, int payloadCapacity)
+        {
+            m_ActorCount = actorCount;
+            m_PayloadCapacity = payloadCapacity;
+            m_Pages.Add(new Page(actorCount, payloadCapacity));
+            m_Pages.Add(new Page(actorCount, payloadCapacity));
+        }
+
+        public void PrepareStepStorage(int maximumSteps)
+        {
+            int count = checked(maximumSteps + 4);
+            m_Pages.Capacity = Math.Max(m_Pages.Capacity, count);
+            while (m_Pages.Count < count)
+                m_Pages.Add(new Page(m_ActorCount, m_PayloadCapacity));
+        }
+
+        public Page BeginWrite()
+        {
+            for (int i = 0; i < m_Pages.Count; i++)
+            {
+                Page page = m_Pages[i];
+                if (!page.IsReleased)
+                    continue;
+                page.BeginWrite();
+                return page;
+            }
+            throw new InvalidOperationException("World state storage exceeded its prepared transaction capacity.");
+        }
     }
 
     public static class WorldSimulationStateCodec
