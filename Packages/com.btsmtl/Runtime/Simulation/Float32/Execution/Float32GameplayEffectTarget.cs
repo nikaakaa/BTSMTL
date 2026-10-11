@@ -70,30 +70,38 @@ namespace ThirdPersonSimulation
             var scope = new GameplayEffectReconciliationScope(GameplayEffectReconciliationScopeKind.PredictionKey,
                 predictionKey, string.Empty, 0);
             var context = new GameplayEffectContextIdentity(m_ActorId, m_ActorId, actionInstanceId, predictionKey, 0, m_Tick.Value, false);
-            if (commands.Count == 0 && m_State.HasUnresolvedAction(actionInstanceId, predictionKey, m_ActorId))
+            if (commands.Count == 0)
             {
-                var missing = new GameplayEffectReconciliationResult(GameplayEffectReconciliationResultKind.IncompleteCorrection,
-                    scope, 0, 0, 0, reason: "ActionEffectCommandsMissing");
-
-
-                AddReconciliation(missing, context);
-                return missing;
+                if (m_State.HasUnresolvedAction(actionInstanceId, predictionKey, m_ActorId))
+                {
+                    var missing = new GameplayEffectReconciliationResult(GameplayEffectReconciliationResultKind.IncompleteCorrection,
+                        scope, 0, 0, 0, reason: "ActionEffectCommandsMissing");
+                    AddReconciliation(missing, context);
+                    return missing;
+                }
+                return new GameplayEffectReconciliationResult(transition switch
+                {
+                    AbilityLifecycleTransition.Confirm => GameplayEffectReconciliationResultKind.Confirmed,
+                    AbilityLifecycleTransition.Reject => GameplayEffectReconciliationResultKind.Rejected,
+                    AbilityLifecycleTransition.Correct => GameplayEffectReconciliationResultKind.Corrected,
+                    _ => throw new ArgumentOutOfRangeException(nameof(transition))
+                }, scope, 0, 0, 0);
             }
             Float32AbilityExecutionSavepoint savepoint = m_SavepointPort.CreateSavepoint();
             int changeCount = m_Changes.Count;
             GameplayEffectReconciliationResult result = default;
             try
             {
+                SimulationGameplayEffectLifecycleOperation operation = transition switch
+                {
+                    AbilityLifecycleTransition.Confirm => SimulationGameplayEffectLifecycleOperation.Confirmed,
+                    AbilityLifecycleTransition.Reject => SimulationGameplayEffectLifecycleOperation.Rejected,
+                    AbilityLifecycleTransition.Correct => SimulationGameplayEffectLifecycleOperation.Corrected,
+                    _ => throw new ArgumentOutOfRangeException(nameof(transition))
+                };
                 for (int i = 0; i < commands.Count; i++)
                 {
                     SimulationGameplayEffectLifecycleIngress command = commands[i];
-                    SimulationGameplayEffectLifecycleOperation operation = transition switch
-                    {
-                        AbilityLifecycleTransition.Confirm => SimulationGameplayEffectLifecycleOperation.Confirmed,
-                        AbilityLifecycleTransition.Reject => SimulationGameplayEffectLifecycleOperation.Rejected,
-                        AbilityLifecycleTransition.Correct => SimulationGameplayEffectLifecycleOperation.Corrected,
-                        _ => throw new ArgumentOutOfRangeException(nameof(transition))
-                    };
                     if (command.Context.SourceActorId != m_ActorId || command.Context.TargetActorId != m_ActorId ||
                         command.Scope.PredictionKey != predictionKey || command.Operation != operation)
                     {
@@ -126,14 +134,6 @@ namespace ThirdPersonSimulation
                     return result;
                 }
                 m_SavepointPort.Release(savepoint);
-                if (commands.Count == 0)
-                    result = new GameplayEffectReconciliationResult(transition switch
-                    {
-                        AbilityLifecycleTransition.Confirm => GameplayEffectReconciliationResultKind.Confirmed,
-                        AbilityLifecycleTransition.Reject => GameplayEffectReconciliationResultKind.Rejected,
-                        AbilityLifecycleTransition.Correct => GameplayEffectReconciliationResultKind.Corrected,
-                        _ => throw new ArgumentOutOfRangeException(nameof(transition))
-                    }, scope, 0, 0, 0);
                 return result;
             }
             catch
