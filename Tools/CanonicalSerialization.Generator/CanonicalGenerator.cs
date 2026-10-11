@@ -22,6 +22,8 @@ namespace ThirdPerson.CanonicalSerialization.Generator
         const string SchemaConstantAttribute = "ThirdPersonSimulation.CanonicalSchemaConstantAttribute";
         const string TextType = "ThirdPersonSimulation.CanonicalTextValue";
         const string BufferType = "ThirdPersonSimulation.CanonicalBuffer<T>";
+        const string HashValueType = "ThirdPersonSimulation.ICanonicalHashValue";
+        const string HashType = "ThirdPersonSimulation.StableHash";
         const string Runtime = "global::ThirdPersonSimulation.";
 
         static readonly DiagnosticDescriptor InvalidContract = new DiagnosticDescriptor(
@@ -105,6 +107,14 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                 .Append(SymbolDisplay.FormatLiteral(Identity(type), true)).AppendLine(");");
             code.Append("public const string CanonicalStructure = ")
                 .Append(SymbolDisplay.FormatLiteral(plan.Descriptor, true)).AppendLine(";");
+            if (plan.HashValue)
+            {
+                code.Append("public ").Append(Runtime).Append("StableHash CanonicalHashValue => this.")
+                    .Append(Escape(plan.Members[0].Symbol.Name)).AppendLine(";");
+                code.Append("public static ").Append(fullType).Append(" CanonicalFromHash(").Append(Runtime)
+                    .Append("StableHash value) => new ").Append(fullType).Append("(default(")
+                    .Append(Runtime).AppendLine("CanonicalConstruction), value);");
+            }
             if (union)
                 code.Append("public ").Append(plan.KindType).AppendLine(" Kind { get; }");
 
@@ -517,6 +527,7 @@ namespace ThirdPerson.CanonicalSerialization.Generator
             public int MinimumSize;
             public bool MaterializedRead;
             public bool PreparedRead;
+            public bool HashValue;
             public bool HasResources;
             public HashSet<string> ResourceTypes;
         }
@@ -538,6 +549,7 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                     return existing;
                 }
                 var plan = new Plan { Type = type, ResourceTypes = m_ResourceTypes, PreparedRead = UsesPreparedRead(type),
+                    HashValue = type.AllInterfaces.Any(i => Identity(i) == HashValueType),
                     MaterializedRead = type.GetAttributes().Single(a => Identity(a.AttributeClass) == ContractAttribute)
                         .NamedArguments.Any(a => a.Key == "MaterializedRead" && a.Value.Value is true) };
                 m_Plans.Add(Identity(type), plan);
@@ -565,6 +577,9 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                     plan.Members = plan.Members.Concat(generated).OrderBy(m => m.Symbol.Name, StringComparer.Ordinal).ToArray();
                 }
                 plan.Cases = Cases(plan.Members);
+                if (plan.HashValue && (type.TypeKind != TypeKind.Struct || !type.IsReadOnly ||
+                    plan.Cases.Length != 0 || plan.Members.Length != 1 || Identity(plan.Members[0].Type) != HashType))
+                    Error(plan, type, "正式 Hash 包装必须由 readonly struct 的唯一 StableHash 存储成员持有");
                 INamedTypeSymbol kindOwner = plan.UnionDefinition ?? type;
                 plan.KindType = "global::" + kindOwner.ContainingNamespace.ToDisplayString() + "." + Escape(kindOwner.Name) + "Kind";
                 plan.Validations = type.GetMembers().OfType<IMethodSymbol>()

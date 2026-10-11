@@ -108,7 +108,8 @@ namespace ThirdPersonSimulation
         public override string ToString() => $"{Role}:{ComponentId}@{SemanticVersion}/{ConfigurationHash}";
     }
 
-    public readonly struct SimulationSessionCompositionIdentity : IEquatable<SimulationSessionCompositionIdentity>
+    [CanonicalContract]
+    public readonly partial struct SimulationSessionCompositionIdentity : IEquatable<SimulationSessionCompositionIdentity>, ICanonicalHashValue
     {
         public SimulationSessionCompositionIdentity(StableHash value) { Value = value; }
         public StableHash Value { get; }

@@ -164,8 +164,8 @@ namespace ThirdPersonSimulation
                 writer.WriteUInt32(Magic);
                 writer.WriteInt32(Version);
                 long hashPosition = writer.Position;
-                writer.WriteHash(m_Composition.Identity.Value);
-                writer.WriteHash(m_Composition.Identity.Value);
+                writer.WriteHash(m_Composition.Identity);
+                writer.WriteHash(m_Composition.Identity);
                 SimulationWorldSnapshotCodec.CapturePrepared(writer, m_Runtime, in state, m_Deterministic,
                     descriptors.World, page.Text);
                 WritePreparedPipeline(writer, descriptors, state.LastCompletedTick, recordedParticipants, page.Text);
@@ -242,7 +242,7 @@ namespace ThirdPersonSimulation
             if (reader.ReadUInt32() != Magic || reader.ReadInt32() != Version)
                 throw new InvalidDataException("Float32 Session snapshot header is invalid.");
             StableHash expectedHash = reader.ReadHash();
-            var composition = new SimulationSessionCompositionIdentity(reader.ReadHash());
+            var composition = SimulationSessionCompositionIdentity.CanonicalFromHash(reader.ReadHash());
             if (!composition.Equals(m_Composition.Identity))
                 throw new InvalidDataException("Session snapshot composition does not match the prepared checkpoint owner.");
             ArraySegment<byte> world = reader.ReadBytesSegment();
@@ -314,7 +314,7 @@ namespace ThirdPersonSimulation
             writer.WriteUInt32(Magic);
             writer.WriteInt32(Version);
             writer.WriteHash(snapshot.SnapshotHash);
-            writer.WriteHash(snapshot.CompositionIdentity.Value);
+            writer.WriteHash(snapshot.CompositionIdentity);
             SimulationWorldSnapshotCodec.WriteLengthPrefixed(writer, snapshot.World);
             WritePipeline(writer, snapshot.Pipeline);
         }

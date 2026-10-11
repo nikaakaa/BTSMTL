@@ -18,6 +18,7 @@ namespace ThirdPersonSimulation
         void WriteDoubleBits(double value);
         void WriteText(in CanonicalTextValue value);
         void WriteHash(StableHash value);
+        void WriteHash<TValue>(TValue value) where TValue : struct, ICanonicalHashValue;
         void WriteRawBytes(ReadOnlySpan<byte> value);
     }
 }

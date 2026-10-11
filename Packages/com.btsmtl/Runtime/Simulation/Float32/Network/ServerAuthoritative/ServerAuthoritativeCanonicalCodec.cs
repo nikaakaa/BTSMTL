@@ -111,10 +111,10 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             SimulationNumericProfile numericProfile = SimulationNumericProfileCodec.Read(reader, Float32SimulationNumericProfile.Value);
             var targetAbiVersion = new TargetAbiVersion(reader.ReadInt32());
             string stateCodecIdentity = CanonicalTextEncoding.DecodeString(reader.ReadTextSegment());
-            var gameplayContentHash = new GameplayContentHash(reader.ReadHash());
+            var gameplayContentHash = GameplayContentHash.CanonicalFromHash(reader.ReadHash());
             var operationSet = new OperationSetVersion(CanonicalTextEncoding.DecodeString(reader.ReadTextSegment()));
             byte[] stateBytes = reader.ReadBytes();
-            var stateHash = new CharacterStateHash(reader.ReadHash());
+            var stateHash = CharacterStateHash.CanonicalFromHash(reader.ReadHash());
             var worldRevision = new WorldRevision(CanonicalTextEncoding.DecodeString(reader.ReadTextSegment()));
             var solverId = new SolverImplementationId(CanonicalTextEncoding.DecodeString(reader.ReadTextSegment()));
             string solverVersion = CanonicalTextEncoding.DecodeString(reader.ReadTextSegment());

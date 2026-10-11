@@ -218,11 +218,11 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             if (reader.ReadUInt32() != FullMagic || reader.ReadInt32() != FullVersion ||
                 !reader.ReadHash().Equals(layout.LayoutIdentity))
                 throw new InvalidDataException("Full Network Checkpoint identity is invalid.");
-            var contentHash = new GameplayContentHash(reader.ReadHash());
+            var contentHash = GameplayContentHash.CanonicalFromHash(reader.ReadHash());
             string stateCodecIdentity = CanonicalTextEncoding.DecodeString(reader.ReadTextSegment());
             var actorId = new ActorId(CanonicalTextEncoding.DecodeString(reader.ReadTextSegment()));
             var tick = new SimulationTick(reader.ReadUInt64());
-            var stateHash = new CharacterStateHash(reader.ReadHash());
+            var stateHash = CharacterStateHash.CanonicalFromHash(reader.ReadHash());
             var worldRevision = new WorldRevision(CanonicalTextEncoding.DecodeString(reader.ReadTextSegment()));
             var solverId = new SolverImplementationId(CanonicalTextEncoding.DecodeString(reader.ReadTextSegment()));
             string solverVersion = CanonicalTextEncoding.DecodeString(reader.ReadTextSegment());
@@ -307,11 +307,11 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 !reader.ReadHash().Equals(layout.LayoutIdentity) ||
                 !reader.ReadHash().Equals(baseline.CheckpointHash))
                 throw new InvalidDataException("Delta Network Checkpoint identity is invalid.");
-            var contentHash = new GameplayContentHash(reader.ReadHash());
+            var contentHash = GameplayContentHash.CanonicalFromHash(reader.ReadHash());
             string stateCodecIdentity = CanonicalTextEncoding.DecodeString(reader.ReadTextSegment());
             var actorId = new ActorId(CanonicalTextEncoding.DecodeString(reader.ReadTextSegment()));
             var authorityTick = new SimulationTick(reader.ReadUInt64());
-            var stateHash = new CharacterStateHash(reader.ReadHash());
+            var stateHash = CharacterStateHash.CanonicalFromHash(reader.ReadHash());
             var worldRevision = new WorldRevision(CanonicalTextEncoding.DecodeString(reader.ReadTextSegment()));
             var solverId = new SolverImplementationId(CanonicalTextEncoding.DecodeString(reader.ReadTextSegment()));
             string solverVersion = CanonicalTextEncoding.DecodeString(reader.ReadTextSegment());

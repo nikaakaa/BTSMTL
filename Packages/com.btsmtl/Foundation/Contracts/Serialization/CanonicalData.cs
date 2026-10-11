@@ -1060,6 +1060,9 @@ namespace ThirdPersonSimulation
         public void WriteHash(SimulationWorldHash value) => WriteHash(value.Value);
         public void WriteHash(SimulationPipelineHash value) => WriteHash(value.Value);
 
+        public void WriteHash<TValue>(TValue value) where TValue : struct, ICanonicalHashValue =>
+            WriteHash(value.CanonicalHashValue);
+
         public void WriteHash(StableHash value)
         {
             WriteInt32(value.IsValid ? 64 : 0);

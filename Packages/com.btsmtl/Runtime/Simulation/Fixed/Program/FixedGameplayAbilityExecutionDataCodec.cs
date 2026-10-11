@@ -190,7 +190,7 @@ namespace ThirdPersonSimulation.Fixed
             OperationSetVersion operationSetVersion = new OperationSetVersion(CanonicalTextEncoding.DecodeString(reader.ReadTextSegment()));
             int tickRate = reader.ReadInt32();
             ProgramRevision sourceRevision = new ProgramRevision(CanonicalTextEncoding.DecodeString(reader.ReadTextSegment()));
-            SemanticHash semanticHash = new SemanticHash(reader.ReadHash());
+            SemanticHash semanticHash = SemanticHash.CanonicalFromHash(reader.ReadHash());
             SimulationNumericProfile numericProfile = SimulationNumericProfileCodec.Read(reader);
             string executionIdentity = CanonicalTextEncoding.DecodeString(reader.ReadTextSegment());
             StableHash contentHash = reader.ReadHash();

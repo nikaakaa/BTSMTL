@@ -134,7 +134,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             writer.WriteUInt64(record.Input.SourceTick);
             writer.WriteUInt64(record.Input.InputSequence);
             ServerAuthoritativeCanonicalCodec.WriteLengthPrefixedInput(writer, record.Input.Input);
-            writer.WriteHash(record.CompositionIdentity.Value);
+            writer.WriteHash(record.CompositionIdentity);
             SimulationWorldSnapshotCodec.WriteLengthPrefixed(writer, record.World);
             long pipelinePrefix = writer.BeginLengthPrefixedBlock();
             WritePipelineProjection(writer, record.PipelineProjection);
@@ -159,7 +159,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 SimulationInput input = ServerAuthoritativeCanonicalCodec.ReadInput(reader.ReadBytesSegment(), inputReader,
                     reader.TextResolver);
                 var ownerInput = new OwnerCanonicalInputBatch(actorId, sourceTick, inputSequence, input);
-                var composition = new SimulationSessionCompositionIdentity(reader.ReadHash());
+                var composition = SimulationSessionCompositionIdentity.CanonicalFromHash(reader.ReadHash());
                 SimulationWorldSnapshot world = SimulationWorldSnapshotCodec.Read(reader.ReadBytes());
                 SimulationPipelineStateSnapshot pipeline = ReadPipelineProjection(reader.ReadBytes());
                 ObservedWorldConstraintFrame observed = ReadObservedFrame(reader);
@@ -372,7 +372,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 new SimulationPipelineId(CanonicalTextEncoding.DecodeString(reader.ReadTextSegment())),
                 new SimulationPipelineRevision(CanonicalTextEncoding.DecodeString(reader.ReadTextSegment())),
                 new SimulationPipelineSchemaVersion(reader.ReadInt32()),
-                new SimulationPipelineHash(reader.ReadHash()));
+                SimulationPipelineHash.CanonicalFromHash(reader.ReadHash()));
             var backend = new SimulationComponentIdentity(
                 (SimulationComponentRole)reader.ReadByte(),
                 CanonicalTextEncoding.DecodeString(reader.ReadTextSegment()),

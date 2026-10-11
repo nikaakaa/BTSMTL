@@ -59,7 +59,8 @@ namespace ThirdPersonSimulation
         public static bool operator !=(ActorId left, ActorId right) => !left.Equals(right);
     }
 
-    public readonly struct StableHash : IEquatable<StableHash>, IComparable<StableHash>
+    [CanonicalContract]
+    public readonly partial struct StableHash : IEquatable<StableHash>, IComparable<StableHash>
     {
         [ThreadStatic] static CanonicalWriter s_HashWriter;
         readonly ulong m_A;
@@ -176,7 +177,8 @@ namespace ThirdPersonSimulation
         public override string ToString() => Value ?? string.Empty;
     }
 
-    public readonly struct SemanticHash : IEquatable<SemanticHash>
+    [CanonicalContract]
+    public readonly partial struct SemanticHash : IEquatable<SemanticHash>, ICanonicalHashValue
     {
         public SemanticHash(StableHash value) { Value = value; }
         public StableHash Value { get; }
@@ -237,7 +239,8 @@ namespace ThirdPersonSimulation
         public override string ToString() => Value.ToString(CultureInfo.InvariantCulture);
     }
 
-    public readonly struct LayoutHash : IEquatable<LayoutHash>
+    [CanonicalContract]
+    public readonly partial struct LayoutHash : IEquatable<LayoutHash>, ICanonicalHashValue
     {
         public LayoutHash(StableHash value) { Value = value; }
         public StableHash Value { get; }
@@ -248,7 +251,8 @@ namespace ThirdPersonSimulation
         public override string ToString() => Value.ToString();
     }
 
-    public readonly struct GameplayContentHash : IEquatable<GameplayContentHash>
+    [CanonicalContract]
+    public readonly partial struct GameplayContentHash : IEquatable<GameplayContentHash>, ICanonicalHashValue
     {
         public GameplayContentHash(StableHash value) { Value = value; }
         public StableHash Value { get; }
@@ -566,7 +570,8 @@ namespace ThirdPersonSimulation
         public override string ToString() => $"{ActorId}/{Tick}/{Sequence}";
     }
 
-    public readonly struct CharacterStateHash : IEquatable<CharacterStateHash>
+    [CanonicalContract]
+    public readonly partial struct CharacterStateHash : IEquatable<CharacterStateHash>, ICanonicalHashValue
     {
         public CharacterStateHash(StableHash value) { Value = value; }
         public StableHash Value { get; }
@@ -577,7 +582,8 @@ namespace ThirdPersonSimulation
         public override string ToString() => Value.ToString();
     }
 
-    public readonly struct SimulationWorldHash : IEquatable<SimulationWorldHash>
+    [CanonicalContract]
+    public readonly partial struct SimulationWorldHash : IEquatable<SimulationWorldHash>, ICanonicalHashValue
     {
         public SimulationWorldHash(StableHash value) { Value = value; }
         public StableHash Value { get; }

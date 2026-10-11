@@ -208,7 +208,7 @@ namespace ThirdPersonSimulation
             if (tickRate <= 0)
                 throw new InvalidDataException("Gameplay Semantic IR tick rate is invalid.");
             var sourceRevision = new ProgramRevision(CanonicalTextEncoding.DecodeString(reader.ReadTextSegment()));
-            var semanticHash = new SemanticHash(reader.ReadHash());
+            var semanticHash = SemanticHash.CanonicalFromHash(reader.ReadHash());
             int capabilityCount = GameplayAbilitySemanticsCodec.ReadCount(reader);
             var gameplayCapabilities = new string[capabilityCount];
             for (int i = 0; i < capabilityCount; i++)

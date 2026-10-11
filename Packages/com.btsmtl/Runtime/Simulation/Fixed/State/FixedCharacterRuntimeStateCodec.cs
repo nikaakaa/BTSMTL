@@ -127,7 +127,7 @@ namespace ThirdPersonSimulation.Fixed
             }
             reader.RequireText(CodecIdentity);
             SimulationNumericProfile numericProfile = SimulationNumericProfileCodec.Read(reader, FixedSimulationNumericProfile.Value);
-            GameplayContentHash gameplayContentHash = new GameplayContentHash(reader.ReadHash());
+            GameplayContentHash gameplayContentHash = GameplayContentHash.CanonicalFromHash(reader.ReadHash());
             if (!gameplayContentHash.Equals(expectedGameplayContentHash))
                 throw new InvalidDataException("Fixed Character runtime state GameplayContentHash does not match the active Character Runtime.");
             StableHash stateSchemaHash = reader.ReadHash();
@@ -282,7 +282,7 @@ namespace ThirdPersonSimulation.Fixed
             writer.WriteInt32(Version);
             writer.WriteText(CodecIdentity);
             SimulationNumericProfileCodec.Write(writer, state.NumericProfile);
-            writer.WriteHash(state.GameplayContentHash.Value);
+            writer.WriteHash(state.GameplayContentHash);
             writer.WriteHash(state.StateSchemaHash);
             writer.WriteUInt64(state.LastCompletedTick);
             writer.WriteInt32(state.Abilities.Count);

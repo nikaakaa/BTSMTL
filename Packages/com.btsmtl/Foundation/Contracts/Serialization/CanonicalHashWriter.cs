@@ -73,6 +73,9 @@ namespace ThirdPersonSimulation
                 m_Accumulator.AppendHash(value);
         }
 
+        public void WriteHash<TValue>(TValue value) where TValue : struct, ICanonicalHashValue =>
+            WriteHash(value.CanonicalHashValue);
+
         public void WriteRawBytes(ReadOnlySpan<byte> value) => m_Accumulator.Append(value);
     }
 }
