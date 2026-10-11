@@ -32,6 +32,7 @@ namespace ThirdPersonSimulation
         readonly TimelinePlaybackMode[] m_CapacityModes;
         readonly Dictionary<string, TimelineRuntimePreparedContent> m_Contents = new(StringComparer.Ordinal);
         readonly Dictionary<ulong, Playback> m_Playbacks = new();
+        readonly HashSet<ulong> m_RetainedPlaybackIds = new(AbilityTimelineRuntimeLimits.MaximumPlaybackCount);
         readonly TimelineRuntimeEvaluationStoragePool m_Evaluations = new();
         readonly char[] m_RequestCharacters = new char[29];
         Playback[] m_Pool;
@@ -397,14 +398,14 @@ namespace ThirdPersonSimulation
 
         void RemoveUnreferenced(IReadOnlyList<AbilityTimelineRuntimeSnapshot> snapshots)
         {
+            m_RetainedPlaybackIds.Clear();
+            for (int i = 0; i < snapshots.Count; i++)
+                m_RetainedPlaybackIds.Add(snapshots[i].RuntimeHandle);
             for (int i = 0; i < m_Pool.Length; i++)
             {
                 Playback playback = m_Pool[i];
                 if (playback.Runtime.State == TimelineRuntimePlaybackState.Disposed) continue;
-                bool retained = false;
-                for (int j = 0; j < snapshots.Count; j++)
-                    retained |= snapshots[j].RuntimeHandle == playback.Runtime.Handle.Value;
-                if (retained) continue;
+                if (m_RetainedPlaybackIds.Contains(playback.Runtime.Handle.Value)) continue;
                 m_Playbacks.Remove(playback.Runtime.Handle.Value);
                 playback.Runtime.ReleaseForReuse();
                 playback.Request.Release();
