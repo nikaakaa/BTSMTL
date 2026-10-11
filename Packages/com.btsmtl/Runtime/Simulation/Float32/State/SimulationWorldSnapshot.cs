@@ -305,7 +305,8 @@ namespace ThirdPersonSimulation
                 throw new InvalidOperationException("Character runtime state, Character Runtime and World body rosters do not match.");
             Float32CharacterRuntimeStateCodec.PreparePayloads(actorStates);
             var snapshots = new SimulationActorSnapshot[actorStates.Length];
-            bool abilitiesDeterministic = true;
+            bool deterministicValidity = characterRuntime.NumericProfile.DeterministicReplay &&
+                (solverCapabilities & WorldCapability.DeterministicReplay) != 0;
             for (int i = 0; i < actorStates.Length; i++)
             {
                 SimulationActorState actor = actorStates[i];
@@ -331,14 +332,12 @@ namespace ThirdPersonSimulation
                     payload.Hash,
                     Float32CharacterRuntimeStateCodec.CodecIdentity,
                     stateBytes);
-                for (int abilityIndex = 0; abilityIndex < binding.AbilityInstallations.Installations.Count; abilityIndex++)
+                for (int abilityIndex = 0; deterministicValidity && abilityIndex < binding.AbilityInstallations.Installations.Count; abilityIndex++)
                 {
                     Float32GameplayAbilityExecutionData ability = binding.AbilityInstallations.Installations[abilityIndex].Data;
-                    abilitiesDeterministic &= ability.NumericProfile.DeterministicReplay && ability.Capabilities.HasGameplayCapability("DeterministicReplay");
+                    deterministicValidity = ability.NumericProfile.DeterministicReplay && ability.Capabilities.HasGameplayCapability("DeterministicReplay");
                 }
             }
-            bool deterministicValidity = characterRuntime.NumericProfile.DeterministicReplay && abilitiesDeterministic &&
-                (solverCapabilities & WorldCapability.DeterministicReplay) != 0;
             return new SimulationWorldSnapshot(
                 characterRuntime.NumericProfile,
                 characterRuntime.GameplayContentHash,
