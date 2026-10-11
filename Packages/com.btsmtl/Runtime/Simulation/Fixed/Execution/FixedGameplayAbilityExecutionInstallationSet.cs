@@ -14,7 +14,7 @@ namespace ThirdPersonSimulation.Fixed
             GameplayAbilityExecutionDataSet<FixedGameplayAbilityExecutionData> data,
             CharacterInputRuntimeBinding inputRuntimeBinding,
             CharacterGameplayEffectRuntimeBinding gameplayEffectBinding,
-            CharacterEquipmentRuntimeBinding equipmentRuntimeBinding)
+            CharacterEquipmentRuntimeBinding equipmentRuntimeBinding, ActorId actorId)
         {
             if (data == null)
                 throw new ArgumentNullException(nameof(data));
@@ -50,7 +50,7 @@ namespace ThirdPersonSimulation.Fixed
                     ability,
                     inputRuntimeBinding.RequireAbilityGrant(ability.AbilityId),
                     gameplayEffectCatalog,
-                    equipmentLayout);
+                    equipmentLayout, actorId);
                 values.Add(installation);
                 m_ByAbility.Add(installation.Data.AbilityId, installation);
             }

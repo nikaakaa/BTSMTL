@@ -4,6 +4,23 @@ using System.Globalization;
 
 namespace ThirdPersonSimulation
 {
+    public readonly struct EventIdentityPrefix
+    {
+        internal EventIdentityPrefix(SimulationExecutionSource source, ReadOnlySpan<byte> block, ulong length,
+            uint a, uint b, uint c, uint d, uint e, uint f, uint g, uint h)
+        {
+            Source = source;
+            Block = block.ToArray();
+            Length = length;
+            A = a; B = b; C = c; D = d; E = e; F = f; G = g; H = h;
+        }
+
+        public SimulationExecutionSource Source { get; }
+        internal readonly byte[] Block;
+        internal readonly ulong Length;
+        internal readonly uint A, B, C, D, E, F, G, H;
+    }
+
     public ref struct EventIdBuilder
     {
         public static EventId Create(GameplayContentHash sourceContent, ActorId actor,
@@ -42,15 +59,7 @@ namespace ThirdPersonSimulation
             builder.Append(tick.Value);
             builder.Append(sequence);
             builder.Append(channel);
-            builder.Append(treeClip.TreeGraphId);
-            builder.Append(treeClip.TreeGraphRevision);
-            builder.Append(treeClip.NodeAuthoringId);
-            builder.Append(treeClip.PlaybackGeneration);
-            builder.Append(treeClip.BranchRevision);
-            builder.Append(treeClip.TimelineRuntimeHandle);
-            builder.Append((ulong)treeClip.Time.Raw);
-            builder.Append((ulong)treeClip.Cycle);
-            builder.Append(treeClip.ActionInstanceId);
+            builder.Append(in treeClip);
             return builder.Build();
         }
 
@@ -72,6 +81,43 @@ namespace ThirdPersonSimulation
             m_Built = false;
             m_A = 0x6a09e667; m_B = 0xbb67ae85; m_C = 0x3c6ef372; m_D = 0xa54ff53a;
             m_E = 0x510e527f; m_F = 0x9b05688c; m_G = 0x1f83d9ab; m_H = 0x5be0cd19;
+        }
+
+        public static EventIdentityPrefix Prepare(GameplayContentHash sourceContent, ActorId actor,
+            SimulationExecutionSource source)
+        {
+            Span<byte> block = stackalloc byte[64];
+            var builder = new EventIdBuilder(block);
+            builder.Append(sourceContent.Value);
+            builder.Append(actor.Value);
+            builder.AppendActivationSource(source);
+            return new EventIdentityPrefix(source, builder.m_Block.Slice(0, builder.m_Count), builder.m_Length,
+                builder.m_A, builder.m_B, builder.m_C, builder.m_D, builder.m_E, builder.m_F, builder.m_G, builder.m_H);
+        }
+
+        public EventIdBuilder(Span<byte> block, in EventIdentityPrefix prefix)
+        {
+            m_Block = block.Slice(0, 64);
+            prefix.Block.AsSpan().CopyTo(m_Block);
+            m_Count = prefix.Block.Length;
+            m_Length = prefix.Length;
+            m_HasField = true;
+            m_Built = false;
+            m_A = prefix.A; m_B = prefix.B; m_C = prefix.C; m_D = prefix.D;
+            m_E = prefix.E; m_F = prefix.F; m_G = prefix.G; m_H = prefix.H;
+        }
+
+        public void Append(in AbilityTreeClipInvocation treeClip)
+        {
+            Append(treeClip.TreeGraphId);
+            Append(treeClip.TreeGraphRevision);
+            Append(treeClip.NodeAuthoringId);
+            Append(treeClip.PlaybackGeneration);
+            Append(treeClip.BranchRevision);
+            Append(treeClip.TimelineRuntimeHandle);
+            Append((ulong)treeClip.Time.Raw);
+            Append((ulong)treeClip.Cycle);
+            Append(treeClip.ActionInstanceId);
         }
 
         public void Append(CanonicalTextValue value, bool startField = true)
@@ -110,8 +156,13 @@ namespace ThirdPersonSimulation
 
         public void Append(ActivationId value)
         {
+            AppendActivationSource(value.Source);
+            WriteNumber(value.Generation);
+        }
+
+        public void AppendActivationSource(SimulationExecutionSource source)
+        {
             BeginField();
-            SimulationExecutionSource source = value.Source;
             if (source.IsAbilityRule)
             {
                 WriteText("ability-rule:".AsSpan());
@@ -145,7 +196,6 @@ namespace ThirdPersonSimulation
                 WriteText(source.TransitionId.Value.AsSpan());
             }
             WriteByte((byte)'/');
-            WriteNumber(value.Generation);
         }
 
         void BeginField(bool startField = true)

@@ -546,7 +546,7 @@ namespace ThirdPersonSimulation.Fixed
                 abilityData ?? throw new ArgumentNullException(nameof(abilityData)),
                 inputRuntimeBinding,
                 gameplayEffectRuntimeBinding,
-                equipmentRuntimeBinding);
+                equipmentRuntimeBinding, actorId);
             m_EvaluationOutput = new FixedCharacterEvaluationOutput(AbilityInstallations.Installations.Count, combatBinding == null ? 0 : combatBinding.ResultCapacity);
             RuntimeStatePages = new FixedCharacterRuntimeStatePageBank();
             AbilityDirectories = new FixedAbilityStateDirectoryBank(AbilityInstallations.Installations.Count);

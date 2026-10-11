@@ -8,12 +8,12 @@ namespace ThirdPersonSimulation.Fixed
         public FixedAbilityExecutionContext(
             FixedGameplayAbilityExecutionData data,
             GameplayAbilityExecutionLayout layout,
-            FixedGameplayAbilityExecutionServices services)
+            FixedGameplayAbilityExecutionServices services, ActorId actorId)
         {
             Data = data ?? throw new ArgumentNullException(nameof(data));
             Layout = layout ?? throw new ArgumentNullException(nameof(layout));
             Services = services ?? throw new ArgumentNullException(nameof(services));
-            Trace = new FixedTraceSink(data, layout);
+            Trace = new FixedTraceSink(data, layout, actorId);
         }
 
         public FixedGameplayAbilityExecutionData Data { get; }
@@ -32,7 +32,7 @@ namespace ThirdPersonSimulation.Fixed
             FixedGameplayAbilityExecutionData data,
             GameplayAbilityGrantInputBinding inputBinding,
             FixedGameplayEffectRuntimeCatalog gameplayEffectCatalog,
-            EquipmentProgramLayout equipmentLayout)
+            EquipmentProgramLayout equipmentLayout, ActorId actorId)
         {
             data = data ?? throw new ArgumentNullException(nameof(data));
             data = data.WithInputBinding(in inputBinding);
@@ -58,7 +58,7 @@ namespace ThirdPersonSimulation.Fixed
             m_Execution = new FixedAbilityExecutionContext(
                 data,
                 layout,
-                services);
+                services, actorId);
             m_Control = new FixedAbilityOperationControlRuntime(data);
         }
 

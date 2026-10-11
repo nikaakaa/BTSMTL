@@ -770,14 +770,23 @@ namespace ThirdPersonSimulation.Fixed
                 operation.Handle,
                 ProgramStateSemantic.RunnableActivationGeneration);
             ulong generation = generationSlot < 0 ? 1UL : m_Frame.ReadState(generationSlot).UInt64;
-            return Next(
-                SimulationExecutionSource.FromSkillOperation(
-                    operation.Handle,
-                    m_Frame.Services.SourcePath(operation.Handle)),
-                generation);
+            ref readonly EventIdentityPrefix prefix = ref m_Frame.Trace.IdentityPrefix(operation.Handle);
+            Span<byte> block = stackalloc byte[64];
+            var builder = new EventIdBuilder(block, in prefix);
+            return Complete(ref builder, prefix.Source, generation);
         }
 
         public SimulationEventHeader Next(SimulationExecutionSource source, ulong generation = 1)
+        {
+            Span<byte> block = stackalloc byte[64];
+            var builder = new EventIdBuilder(block);
+            builder.Append(m_Frame.Identity.ContentHash);
+            builder.Append(m_Frame.ActorId.Value);
+            builder.AppendActivationSource(source);
+            return Complete(ref builder, source, generation);
+        }
+
+        SimulationEventHeader Complete(ref EventIdBuilder builder, SimulationExecutionSource source, ulong generation)
         {
             ulong sequence = checked(++m_Sequence);
             if (generation == 0)
@@ -786,11 +795,13 @@ namespace ThirdPersonSimulation.Fixed
             AbilityTreeClipInvocation? treeClipInvocation = m_Frame.HasTreeClipInvocation
                 ? m_Frame.TreeClipInvocation
                 : null;
-            GameplayContentHash contentHash = new GameplayContentHash(m_Frame.Identity.ContentHash);
-            EventId eventId = treeClipInvocation.HasValue
-                ? EventIdBuilder.CreateTreeClip(contentHash, m_Frame.ActorId, activation, m_Frame.Tick,
-                    sequence, "Trace", treeClipInvocation.Value)
-                : EventIdBuilder.Create(contentHash, m_Frame.ActorId, activation, m_Frame.Tick, sequence, "Trace");
+            builder.Append(generation, false);
+            builder.Append(m_Frame.Tick.Value);
+            builder.Append(sequence);
+            builder.Append("Trace");
+            if (treeClipInvocation.HasValue)
+                builder.Append(treeClipInvocation.Value);
+            EventId eventId = builder.Build();
             return new SimulationEventHeader(
                 m_Frame.NumericProfile,
                 eventId,
@@ -808,6 +819,7 @@ namespace ThirdPersonSimulation.Fixed
         readonly HashSet<(int Operation, string Port, ProgramValuePortDirection Direction)> m_ValuePorts = new();
         readonly HashSet<string> m_EdgeIds = new(StringComparer.Ordinal);
         readonly GameplayAbilityGraphInvocationLayout m_Invocations;
+        readonly EventIdentityPrefix[] m_IdentityPrefixes;
         readonly Dictionary<(int Target, string Port), ProgramControlFlowEdge> m_ValueEdges = new();
         int m_ValueSampleCount;
         FixedAbilityExecutionFrame m_Frame;
@@ -816,8 +828,17 @@ namespace ThirdPersonSimulation.Fixed
 
         public FixedTraceSink(
             FixedGameplayAbilityExecutionData data,
-            GameplayAbilityExecutionLayout layout)
+            GameplayAbilityExecutionLayout layout, ActorId actorId)
         {
+            m_IdentityPrefixes = new EventIdentityPrefix[data.Operations.Count];
+            var contentHash = new GameplayContentHash(data.ContentHash);
+            for (int index = 0; index < m_IdentityPrefixes.Length; index++)
+            {
+                var operation = new OperationHandle(index);
+                SimulationExecutionSource source = SimulationExecutionSource.FromSkillOperation(
+                    operation, layout.SourcePath(operation));
+                m_IdentityPrefixes[index] = EventIdBuilder.Prepare(contentHash, actorId, source);
+            }
             m_Invocations = new GameplayAbilityGraphInvocationLayout(data.SourceMap, layout.Operations.Count,
                 owner => layout.FindOperationStateSlot(owner, ProgramStateSemantic.RunnableActivationGeneration));
             foreach (ProgramSourceMapEntry source in data.SourceMap)
@@ -833,6 +854,9 @@ namespace ThirdPersonSimulation.Fixed
                 }
             }
         }
+
+        internal ref readonly EventIdentityPrefix IdentityPrefix(OperationHandle operation) =>
+            ref m_IdentityPrefixes[operation.Value];
 
         internal void Bind(FixedAbilityExecutionFrame frame)
         {
