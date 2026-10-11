@@ -142,6 +142,8 @@ namespace ThirdPersonSimulation
 
         public static bool Equals(CanonicalTextValue left, CanonicalTextValue right, StringComparison comparison)
         {
+            if (comparison == StringComparison.Ordinal)
+                return left.Equals(right);
             if (left.IsNull || right.IsNull)
                 return left.IsNull && right.IsNull;
             using TextComparisonReadLease read = new TextComparisonReadLease(in left, in right);
@@ -166,6 +168,10 @@ namespace ThirdPersonSimulation
         {
             if (IsNull || other.IsNull)
                 return IsNull && other.IsNull;
+            if (m_Length != other.m_Length)
+                return false;
+            if (ReferenceEquals(m_Owner, other.m_Owner) && m_Offset == other.m_Offset)
+                return true;
             using TextComparisonReadLease read = new TextComparisonReadLease(in this, in other);
             return Span.SequenceEqual(other.Span);
         }
@@ -178,6 +184,8 @@ namespace ThirdPersonSimulation
                 return other.IsNull ? 0 : -1;
             if (other.IsNull)
                 return 1;
+            if (ReferenceEquals(m_Owner, other.m_Owner) && m_Offset == other.m_Offset && m_Length == other.m_Length)
+                return 0;
             using TextComparisonReadLease read = new TextComparisonReadLease(in this, in other);
             return Span.SequenceCompareTo(other.Span);
         }
