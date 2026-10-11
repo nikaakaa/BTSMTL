@@ -476,12 +476,13 @@ namespace ThirdPersonSimulation.Fixed
             }
         }
 
-        public static ArraySegment<byte> ReadSolverStatePayloadSegment(ReadOnlyMemory<byte> bytes)
+        public static ArraySegment<byte> ReadSolverStatePayloadSegment(
+            ReadOnlyMemory<byte> bytes, in SimulationNumericProfile expectedNumericProfile, CanonicalReader reader)
         {
-            var reader = new CanonicalReader(bytes);
+            reader.Reset(bytes);
             if (reader.ReadUInt32() != Magic || reader.ReadInt32() != Version)
                 throw new InvalidDataException("World state header is invalid.");
-            SimulationNumericProfileCodec.Skip(reader);
+            SimulationNumericProfileCodec.Read(reader, expectedNumericProfile);
             reader.ReadTextSegment();
             reader.ReadTextSegment();
             reader.ReadTextSegment();

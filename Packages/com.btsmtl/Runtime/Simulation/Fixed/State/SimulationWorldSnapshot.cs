@@ -267,7 +267,7 @@ namespace ThirdPersonSimulation.Fixed
 
         public StableHash ComputeSolverStatePayloadHash() =>
             SimulationCanonicalPayloadHash.Compute(
-                WorldSimulationStateCodec.ReadSolverStatePayloadSegment(m_WorldStateBytes).AsSpan());
+                WorldSimulationStateCodec.ReadSolverStatePayloadSegment(m_WorldStateBytes, NumericProfile, m_WorldReader).AsSpan());
 
         static void ValidatePreparedActors(SimulationActorSnapshot[] actors)
         {
