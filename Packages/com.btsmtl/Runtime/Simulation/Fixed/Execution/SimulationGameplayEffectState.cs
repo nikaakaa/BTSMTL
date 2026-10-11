@@ -166,7 +166,7 @@ namespace ThirdPersonSimulation.Fixed
 
         internal void Clear()
         {
-            Context = default;
+            SetContext(default);
             SetByCaller.Clear();
             SourceAttributes.Clear();
             TargetAttributes.Clear();
@@ -181,15 +181,13 @@ namespace ThirdPersonSimulation.Fixed
 
         public PortableEffectDefinition Definition;
         SimulationGameplayEffectContext m_Context;
-        public SimulationGameplayEffectContext Context
+        public ref readonly SimulationGameplayEffectContext Context => ref m_Context;
+
+        internal void SetContext(in SimulationGameplayEffectContext context)
         {
-            get => m_Context;
-            set
-            {
-                value.Retain();
-                m_Context.Release();
-                m_Context = value;
-            }
+            context.Retain();
+            m_Context.Release();
+            m_Context = context;
         }
         public SortedList<string, FixedScalar> SetByCaller { get; } = new SortedList<string, FixedScalar>(StringComparer.Ordinal);
         public SortedList<string, FixedScalar> SourceAttributes { get; } = new SortedList<string, FixedScalar>(StringComparer.Ordinal);

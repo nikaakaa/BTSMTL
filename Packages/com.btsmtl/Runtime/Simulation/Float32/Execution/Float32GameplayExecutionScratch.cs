@@ -90,20 +90,20 @@ namespace ThirdPersonSimulation
         internal int AvailableActiveCount => m_AvailableActiveStates.Count;
         internal int AvailablePredictionCount => m_AvailablePredictions.Count;
 
-        internal PortableEffectSpecState AcquireSpec(PortableEffectDefinition definition, SimulationGameplayEffectContext context)
+        internal PortableEffectSpecState AcquireSpec(PortableEffectDefinition definition, in SimulationGameplayEffectContext context)
         {
-            PortableEffectSpecState spec = AcquireDecodedSpec(definition, context);
+            PortableEffectSpecState spec = AcquireDecodedSpec(definition, in context);
             m_CreatedSpecLeases.Add(spec);
             return spec;
         }
 
-        internal PortableEffectSpecState AcquireDecodedSpec(PortableEffectDefinition definition, SimulationGameplayEffectContext context)
+        internal PortableEffectSpecState AcquireDecodedSpec(PortableEffectDefinition definition, in SimulationGameplayEffectContext context)
         {
             int index = m_AvailableSpecs.Count - 1;
             PortableEffectSpecState spec = m_AvailableSpecs[index];
             m_AvailableSpecs.RemoveAt(index);
             spec.Definition = definition;
-            spec.Context = context;
+            spec.SetContext(in context);
             spec.Retain();
             return spec;
         }
