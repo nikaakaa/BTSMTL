@@ -353,6 +353,7 @@ namespace BTSMTL.Diagnostics.Editor
             m_PresentationTimeOrigin = 0;
             m_AttachmentState = RuntimeDebugAttachmentState.Detached;
             m_TargetRevision++;
+            HistoryCursorChanged?.Invoke();
             NotifyChanged();
         }
 
@@ -537,6 +538,7 @@ namespace BTSMTL.Diagnostics.Editor
             m_ViewModel = m_Provider.LiveModel;
             RebindLiveInterests();
             RefreshProvider();
+            HistoryCursorChanged?.Invoke();
             NotifyChanged();
         }
 
@@ -603,6 +605,7 @@ namespace BTSMTL.Diagnostics.Editor
             m_CaptureSegmentLimit = maximumSegments;
             m_NextCaptureRefreshTime = 0d;
             RefreshProvider();
+            HistoryCursorChanged?.Invoke();
             NotifyChanged();
             return true;
         }
@@ -617,6 +620,7 @@ namespace BTSMTL.Diagnostics.Editor
             m_WindowEnd += shift;
             m_WindowChanged = true;
             m_HistoryCursor = null;
+            HistoryCursorChanged?.Invoke();
             NotifyChanged();
         }
 
@@ -695,8 +699,7 @@ namespace BTSMTL.Diagnostics.Editor
                     m_AttachmentState = state;
                     NotifyChanged();
                 }
-                else
-                    HistoryCursorChanged?.Invoke();
+                HistoryCursorChanged?.Invoke();
             }
         }
 
@@ -764,6 +767,7 @@ namespace BTSMTL.Diagnostics.Editor
                 m_HistoryModel.ApplyRecordedState(m_ReadWindow.State, m_SourceMaps);
                 m_HistoryStateCursor = (m_PendingSnapshot.CaptureId, m_ReadWindow.State.Version);
                 m_ViewModel = m_HistoryModel;
+                HistoryCursorChanged?.Invoke();
             }
             NotifyChanged();
         }
@@ -903,6 +907,7 @@ namespace BTSMTL.Diagnostics.Editor
             RebindLiveInterests();
             RefreshProvider();
             m_TargetRevision++;
+            HistoryCursorChanged?.Invoke();
             NotifyChanged();
         }
 
