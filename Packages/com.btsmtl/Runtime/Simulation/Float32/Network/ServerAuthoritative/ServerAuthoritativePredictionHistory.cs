@@ -248,19 +248,10 @@ namespace ThirdPersonSimulation.ServerAuthoritative
 
         public void Restore(ServerAuthoritativePredictionHistoryCheckpoint checkpoint)
         {
-            if (checkpoint == null)
-                throw new ArgumentNullException(nameof(checkpoint));
-            if (checkpoint.Records.Count > m_Capacity)
-                throw new InvalidOperationException("Prediction history checkpoint exceeds its configured capacity.");
             ClearRecords();
             for (int i = 0; i < checkpoint.Records.Count; i++)
             {
                 KeyValuePair<ulong, ServerAuthoritativePredictionHistoryRecord> pair = checkpoint.Records[i];
-                if (pair.Value == null || pair.Value.Tick.Value != pair.Key ||
-                    i > 0 && checkpoint.Records[i - 1].Key >= pair.Key)
-                {
-                    throw new InvalidOperationException("Prediction history checkpoint Tick order is invalid.");
-                }
                 pair.Value.RetainStorage();
                 m_Ticks[m_Count] = pair.Key;
                 m_Records[m_Count++] = pair.Value;
@@ -366,20 +357,10 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             KeyValuePair<ulong, ServerAuthoritativePredictionHistoryRecord>[] records,
             ServerAuthoritativeRemoteBodyTimelineCheckpoint remoteBodies)
         {
-            KeyValuePair<ulong, ServerAuthoritativePredictionHistoryRecord>[] values = records ??
-                throw new ArgumentNullException(nameof(records));
-            for (int i = 0; i < values.Length; i++)
-            {
-                if (values[i].Value == null || values[i].Value.Tick.Value != values[i].Key ||
-                    i > 0 && values[i - 1].Key >= values[i].Key)
-                {
-                    throw new ArgumentException("Prediction history checkpoint Tick order is invalid.", nameof(records));
-                }
-            }
-            RemoteBodies = remoteBodies ?? throw new ArgumentNullException(nameof(remoteBodies));
-            m_Records = values;
-            for (int index = 0; index < values.Length; index++)
-                values[index].Value.RetainStorage();
+            RemoteBodies = remoteBodies;
+            m_Records = records;
+            for (int index = 0; index < records.Length; index++)
+                records[index].Value.RetainStorage();
             RemoteBodies.RetainStorage();
         }
 
@@ -714,25 +695,13 @@ namespace ThirdPersonSimulation.ServerAuthoritative
 
         public void Restore(ServerAuthoritativeRemoteBodyTimelineCheckpoint checkpoint)
         {
-            if (checkpoint == null || checkpoint.Actors.Count != m_LockedActors.Length)
+            if (checkpoint.Actors.Count != m_LockedActors.Length)
                 throw new InvalidOperationException("Remote body timeline checkpoint roster does not match the locked roster.");
             for (int i = 0; i < m_LockedActors.Length; i++)
             {
                 ServerAuthoritativeRemoteBodyActorCheckpoint actor = checkpoint.Actors[i];
                 if (actor.ActorId != m_LockedActors[i])
                     throw new InvalidOperationException("Remote body timeline checkpoint Actor order does not match the locked roster.");
-                if (actor.Samples.Count > m_CapacityPerActor)
-                    throw new InvalidOperationException("Remote body timeline checkpoint exceeds its configured capacity.");
-                for (int sampleIndex = 1; sampleIndex < actor.Samples.Count; sampleIndex++)
-                {
-                    if (actor.Samples[sampleIndex - 1].Tick.Value + 1 == actor.Samples[sampleIndex].Tick.Value &&
-                        !WorldSolveBatchRequest.BodyEquals(
-                            actor.Samples[sampleIndex - 1].FinalBody,
-                            actor.Samples[sampleIndex].BeforeBody))
-                    {
-                        throw new InvalidOperationException("Remote body timeline contains a discontinuous consecutive BeforeBody.");
-                    }
-                }
                 for (int sampleIndex = 0; sampleIndex < actor.Samples.Count; sampleIndex++)
                     RetainSample(actor.Samples[sampleIndex]);
                 ReleaseSamples(i);
@@ -1057,6 +1026,11 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             {
                 if (values[i].ActorId != actorId || i > 0 && values[i - 1].Tick == values[i].Tick)
                     throw new ArgumentException("Remote body checkpoint sample order is invalid.", nameof(samples));
+                if (i > 0 && values[i - 1].Tick.Value + 1 == values[i].Tick.Value &&
+                    !WorldSolveBatchRequest.BodyEquals(values[i - 1].FinalBody, values[i].BeforeBody))
+                {
+                    throw new InvalidOperationException("Remote body timeline contains a discontinuous consecutive BeforeBody.");
+                }
             }
             m_Samples = values;
         }

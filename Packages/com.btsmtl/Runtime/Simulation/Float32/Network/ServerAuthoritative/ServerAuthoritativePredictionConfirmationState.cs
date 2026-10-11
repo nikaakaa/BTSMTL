@@ -105,15 +105,6 @@ namespace ThirdPersonSimulation.ServerAuthoritative
 
         public void Restore(ServerAuthoritativePredictionCorrectionCheckpoint checkpoint)
         {
-            if (checkpoint == null)
-                throw new ArgumentNullException(nameof(checkpoint));
-            if (checkpoint.PendingRequests.Count > m_RequestCapacity)
-                throw new InvalidOperationException("Prediction pending request checkpoint exceeds its configured capacity.");
-            for (int i = 1; i < checkpoint.PendingRequests.Count; i++)
-            {
-                if (checkpoint.PendingRequests[i - 1].Sequence >= checkpoint.PendingRequests[i].Sequence)
-                    throw new InvalidOperationException("Prediction pending request checkpoint sequence order is invalid.");
-            }
             Array.Clear(m_RequestSequences, 0, m_RequestCount);
             Array.Clear(m_Requests, 0, m_RequestCount);
             for (int i = 0; i < checkpoint.PendingRequests.Count; i++)
@@ -249,18 +240,12 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             ulong lastAuthorityClockEstimate,
             SimulationInputRequest[] pendingRequests)
         {
-            SimulationInputRequest[] requests = pendingRequests ?? Array.Empty<SimulationInputRequest>();
-            for (int i = 1; i < requests.Length; i++)
-            {
-                if (requests[i - 1].Sequence >= requests[i].Sequence)
-                    throw new ArgumentException("Prediction pending request checkpoint sequence order is invalid.", nameof(pendingRequests));
-            }
             ConfirmedInputSequence = confirmedInputSequence;
             ConfirmedEventHorizon = confirmedEventHorizon;
             LastAuthorityAckTick = lastAuthorityAckTick;
             LastBaselineTick = lastBaselineTick;
             LastAuthorityClockEstimate = lastAuthorityClockEstimate;
-            m_PendingRequests = requests;
+            m_PendingRequests = pendingRequests;
         }
 
         public ulong ConfirmedInputSequence { get; private set; }
