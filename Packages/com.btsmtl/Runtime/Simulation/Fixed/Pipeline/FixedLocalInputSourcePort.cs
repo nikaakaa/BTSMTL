@@ -111,6 +111,11 @@ namespace ThirdPersonSimulation.Fixed
         FixedCharacterControlSourceDiagnosticsSnapshot CaptureDiagnostics();
     }
 
+    public interface IFixedCharacterInputFrameConsumer
+    {
+        void ReceiveInput(SimulationInput input);
+    }
+
     public sealed class FixedLocalSimulationInputBinding
     {
         public FixedLocalSimulationInputBinding(ActorId actorId, IFixedCharacterControlSourceRuntime controlSource)
@@ -748,6 +753,8 @@ namespace ThirdPersonSimulation.Fixed
                         throw new InvalidOperationException($"Fixed Control Source '{controlSource.SourceIdentity}' returned input outside the Local Source contract.");
                     }
                     CaptureInputValues(i, input.Values);
+                    if (controlSource is IFixedCharacterInputFrameConsumer consumer)
+                        consumer.ReceiveInput(input);
                     inputs[i] = new SimulationPipelineActorInput<FixedStepInput>(
                         actor.ActorId,
                         source.SourceTick,
