@@ -9,7 +9,7 @@ namespace ThirdPersonSimulation
 {
     public sealed class TimelineContentArtifact
     {
-        public const string CodecIdentity = "timeline-content-artifact/v4";
+        public const string CodecIdentity = "timeline-content-artifact/v5";
         readonly ReadOnlyCollection<TimelineContentUnit> m_Timelines;
 
         public TimelineContentArtifact(IEnumerable<TimelineContentUnit> timelines)
@@ -43,7 +43,7 @@ namespace ThirdPersonSimulation
     public static class TimelineContentArtifactCodec
     {
         const uint Magic = 0x4c544150;
-        const int Version = 4;
+        const int Version = 5;
 
         public static byte[] Write(TimelineContentArtifact artifact)
         {
@@ -79,6 +79,7 @@ namespace ThirdPersonSimulation
         internal static void WriteTimeline(CanonicalWriter writer, TimelineContentUnit content)
         {
             writer.WriteText(content.Identity);
+            writer.WriteText(content.AuthoringId);
             writer.WriteText(content.Revision);
             writer.WriteText(content.SourceRevision);
             writer.WriteText(content.Name);
@@ -175,7 +176,7 @@ namespace ThirdPersonSimulation
 
         static TimelineContentUnit ReadTimeline(CanonicalReader reader)
         {
-            string identity = Text(reader), revision = Text(reader), sourceRevision = Text(reader), name = Text(reader);
+            string identity = Text(reader), authoringId = Text(reader), revision = Text(reader), sourceRevision = Text(reader), name = Text(reader);
             FixedScalar duration = Scalar(reader);
             bool loop = reader.ReadBoolean();
             var tracks = new TimelineContentTrack[Count(reader)];
@@ -227,7 +228,7 @@ namespace ThirdPersonSimulation
             var dependencies = new TimelineContentDependency[Count(reader)];
             for (int i = 0; i < dependencies.Length; i++)
                 dependencies[i] = new TimelineContentDependency(Text(reader), Text(reader), Text(reader), Text(reader));
-            return new TimelineContentUnit(identity, revision, sourceRevision, name, duration, loop,
+            return new TimelineContentUnit(identity, authoringId, revision, sourceRevision, name, duration, loop,
                 tracks, clips, markers, sections, bindings, dependencies);
         }
 

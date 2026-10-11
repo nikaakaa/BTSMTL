@@ -56,7 +56,7 @@ namespace BTSMTL.Timeline.Runtime
             if (weight <= 0f)
                 return;
             output.Add(new TimelineAnimationContribution(indexed.TrackIndex, indexed.ClipIndex,
-                content.Identity, clip.TrackAuthoringId, clip.AuthoringId, content.Identity, content.Name,
+                content.AuthoringId, clip.TrackAuthoringId, clip.AuthoringId, content.Identity, content.Name,
                 indexed.Track.Name, animation.ResourceId, animation.ChannelId, animation.SlotId,
                 animation.BlendProfileId, local + clip.ClipInTime.ToSingle(), normalized, weight,
                 loop, clip.ClipInTime.ToSingle(), clip.DurationTime.ToSingle(), cycle));

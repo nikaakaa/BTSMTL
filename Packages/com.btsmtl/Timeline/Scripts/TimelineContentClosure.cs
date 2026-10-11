@@ -258,6 +258,7 @@ namespace BTSMTL.Timeline
             return new TimelineContentDiscoveryResult(
                 new TimelineContentUnit(
                     $"timeline:{timeline.AuthoringId}",
+                    timeline.AuthoringId,
                     SourceContentHasher.Hash(hashParts.ToArray()),
                     rootFingerprint,
                     timeline.Name,

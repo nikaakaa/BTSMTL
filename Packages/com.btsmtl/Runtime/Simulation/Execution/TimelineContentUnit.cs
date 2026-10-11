@@ -351,6 +351,7 @@ namespace BTSMTL.Timeline
         public CanonicalTextValue SourceRevision { get; private set; }
         public TimelineContentUnit(
             string identity,
+            string authoringId,
             string contentHash,
             string rootFingerprint,
             string name,
@@ -364,6 +365,7 @@ namespace BTSMTL.Timeline
             IReadOnlyList<TimelineContentDependency> dependencies)
         {
             Identity = identity ?? string.Empty;
+            AuthoringId = authoringId;
             Revision = contentHash;
             SourceRevision = rootFingerprint;
             Name = name ?? string.Empty;
@@ -378,6 +380,7 @@ namespace BTSMTL.Timeline
         }
 
         public string Identity { get; }
+        public string AuthoringId { get; }
         public string ContentHash => Revision.ToString();
         public string RootFingerprint => SourceRevision.ToString();
         public string Name { get; }
@@ -392,7 +395,7 @@ namespace BTSMTL.Timeline
 
         public TimelineContentUnit CreateTimeRangeCandidate(ReadOnlySpan<int> authoringSlots)
         {
-            var candidate = new TimelineContentUnit(Identity, ContentHash, RootFingerprint, Name, Duration, Loop,
+            var candidate = new TimelineContentUnit(Identity, AuthoringId, ContentHash, RootFingerprint, Name, Duration, Loop,
                 Tracks, Clips, Markers, Sections, Bindings, Dependencies);
             candidate.m_TimeClips = new TimelineContentClip[Clips.Count];
             candidate.m_TimeClipSlots = authoringSlots.ToArray();
@@ -415,6 +418,7 @@ namespace BTSMTL.Timeline
             Revision = revision;
         }
         public bool IsValid => !string.IsNullOrEmpty(Identity) &&
+            !string.IsNullOrEmpty(AuthoringId) &&
             !Revision.IsEmpty &&
             !SourceRevision.IsEmpty &&
             Duration >= FixedScalar.Zero;
