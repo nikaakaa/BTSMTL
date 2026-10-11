@@ -383,10 +383,11 @@ namespace ThirdPersonSimulation
             return new GameplayAbilityExecutionAggregate<TValue>(frames, true);
         }
 
-        internal GameplayAbilityExecutionAggregate<TValue> CloneForActiveFrameMutation(ulong actionInstanceId)
+        internal GameplayAbilityExecutionAggregate<TValue> CloneForActiveFrameMutation(
+            ulong actionInstanceId, out GameplayAbilityExecutionFrame<TValue> frame)
         {
             GameplayAbilityExecutionAggregate<TValue> mutable = CreateMutableShell();
-            mutable.MakeFrameMutable(actionInstanceId);
+            frame = mutable.MakeFrameMutable(actionInstanceId);
             return mutable;
         }
 
@@ -661,21 +662,15 @@ namespace ThirdPersonSimulation
             EnsureStates();
             if (m_StatesShared)
             {
-                m_States = m_States.CloneForActiveFrameMutation(m_Active.ActionInstanceId);
+                m_States = m_States.CloneForActiveFrameMutation(m_Active.ActionInstanceId, out m_Active);
                 m_StatesShared = false;
                 m_ActiveFrameCloned = true;
             }
-            if (!m_ActiveFrameCloned)
+            else if (!m_ActiveFrameCloned)
             {
                 m_Active = m_States.MakeFrameMutable(m_Active.ActionInstanceId);
                 m_ActiveFrameCloned = true;
             }
-            else
-            {
-                m_Active = m_States.Find(m_Active.ActionInstanceId);
-            }
-            if (m_Active == null)
-                throw new InvalidOperationException("Skill execution active frame disappeared while preparing state changes.");
         }
 
         void Exit(ulong actionInstanceId)
