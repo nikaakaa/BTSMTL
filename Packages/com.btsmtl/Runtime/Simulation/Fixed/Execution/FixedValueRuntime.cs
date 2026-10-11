@@ -536,7 +536,7 @@ namespace ThirdPersonSimulation.Fixed
             };
         }
 
-        static FixedScalar ToScalar(AbilityStateValue value)
+        static FixedScalar ToScalar(in AbilityStateValue value)
         {
             return value.Kind switch
             {
@@ -548,7 +548,7 @@ namespace ThirdPersonSimulation.Fixed
             };
         }
 
-        public static bool ToBoolean(AbilityStateValue value)
+        public static bool ToBoolean(in AbilityStateValue value)
         {
             return value.Kind switch
             {
@@ -561,7 +561,7 @@ namespace ThirdPersonSimulation.Fixed
             };
         }
 
-        static AbilityStateValue ConvertValue(AbilityStateValue value, ProgramStateValueKind expected)
+        static AbilityStateValue ConvertValue(in AbilityStateValue value, ProgramStateValueKind expected)
         {
             if (value.Kind == expected)
                 return value;
