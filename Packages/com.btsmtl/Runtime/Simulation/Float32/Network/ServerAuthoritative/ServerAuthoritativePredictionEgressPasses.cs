@@ -55,6 +55,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         ISimulationPipelineSnapshotRetentionCapacity
     {
         readonly ServerAuthoritativePredictionState m_State;
+        readonly SimulationPipelinePassStateCheckpoint m_Checkpoint;
+        ServerAuthoritativePredictionHistoryCheckpoint m_CapturedHistory;
 
         public PredictionHistoryEgressPassRuntime(
             SimulationPipelinePassDescriptor descriptor,
@@ -67,6 +69,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 ServerAuthoritativePredictionPassIds.HistoryStateOwner,
                 ServerAuthoritativePredictionPassIds.HistoryStateSchema,
                 ServerAuthoritativePredictionPassIds.HistoryStateSchemaVersion);
+            m_Checkpoint = new SimulationPipelinePassStateCheckpoint(StateIdentity, RestoreCheckpoint, ReleaseCheckpoint);
         }
 
         ServerAuthoritativePassStateRestoreTransaction m_StateStorage;
@@ -88,10 +91,25 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         public ISimulationPipelinePassStateCheckpoint CaptureCheckpoint()
         {
             RequireCaptureOrRestore();
-            ServerAuthoritativePredictionHistoryCheckpoint checkpoint = m_State.CaptureHistoryCheckpoint();
-            return new SimulationPipelinePassStateCheckpoint(
-                StateIdentity,
-                () => m_State.RestoreHistoryCheckpoint(checkpoint), checkpoint);
+            m_Checkpoint.Begin();
+            try
+            {
+                m_CapturedHistory = m_State.CaptureHistoryCheckpoint();
+                return m_Checkpoint;
+            }
+            catch
+            {
+                m_Checkpoint.Dispose();
+                throw;
+            }
+        }
+
+        void RestoreCheckpoint() => m_State.RestoreHistoryCheckpoint(m_CapturedHistory);
+
+        void ReleaseCheckpoint()
+        {
+            m_CapturedHistory?.Dispose();
+            m_CapturedHistory = null;
         }
 
         public void Execute(
@@ -130,7 +148,12 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             }
         }
 
-        protected override void OnDispose() { m_StateStorage.ReleaseStorage(); m_State.ReleaseHistoryStorage(); }
+        protected override void OnDispose()
+        {
+            m_Checkpoint.Dispose();
+            m_StateStorage.ReleaseStorage();
+            m_State.ReleaseHistoryStorage();
+        }
 
         public void WriteCheckpointState(CanonicalWriter writer)
         {
@@ -220,6 +243,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative
     {
         readonly ServerAuthoritativePredictionState m_State;
         readonly SimulationOutputDispositionBuffer m_Dispositions;
+        readonly SimulationPipelinePassStateCheckpoint m_Checkpoint;
+        ServerAuthoritativePredictionJournalCheckpoint m_CapturedJournal;
 
         public PredictionOutputDispositionPassRuntime(
             SimulationPipelinePassDescriptor descriptor,
@@ -234,6 +259,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 ServerAuthoritativePredictionPassIds.JournalStateOwner,
                 ServerAuthoritativePredictionPassIds.JournalStateSchema,
                 ServerAuthoritativePredictionPassIds.JournalStateSchemaVersion);
+            m_Checkpoint = new SimulationPipelinePassStateCheckpoint(StateIdentity, RestoreCheckpoint, ReleaseCheckpoint);
         }
 
         ServerAuthoritativePassStateRestoreTransaction m_StateStorage;
@@ -254,11 +280,21 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         public ISimulationPipelinePassStateCheckpoint CaptureCheckpoint()
         {
             RequireCaptureOrRestore();
-            ServerAuthoritativePredictionJournalCheckpoint checkpoint = m_State.CaptureJournalCheckpoint();
-            return new SimulationPipelinePassStateCheckpoint(
-                StateIdentity,
-                () => m_State.RestoreJournalCheckpoint(checkpoint));
+            m_Checkpoint.Begin();
+            try
+            {
+                m_CapturedJournal = m_State.CaptureJournalCheckpoint();
+                return m_Checkpoint;
+            }
+            catch
+            {
+                m_Checkpoint.Dispose();
+                throw;
+            }
         }
+
+        void RestoreCheckpoint() => m_State.RestoreJournalCheckpoint(m_CapturedJournal);
+        void ReleaseCheckpoint() => m_CapturedJournal = null;
 
         public void Execute(
             SimulationPipelineEgressContext context,
@@ -370,7 +406,12 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                     : ServerAuthoritativeEventDisposition.PredictedCommitted);
         }
 
-        protected override void OnDispose() { m_StateStorage.ReleaseStorage(); m_Dispositions.Begin(); }
+        protected override void OnDispose()
+        {
+            m_Checkpoint.Dispose();
+            m_StateStorage.ReleaseStorage();
+            m_Dispositions.Begin();
+        }
 
         public void WriteCheckpointState(CanonicalWriter writer)
         {

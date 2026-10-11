@@ -256,6 +256,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         public int MaximumStepCount => GameplayEffectCapacity.MaximumStepCount;
         readonly ServerAuthoritativeModelPolicy m_Policy;
         readonly ServerAuthoritativePredictionState m_State;
+        readonly SimulationPipelinePassStateCheckpoint m_Checkpoint;
+        ServerAuthoritativePredictionCorrectionCheckpoint m_CapturedCorrection;
         ulong m_DecisionCount;
         ulong m_CorrectionCount;
         ulong m_ReplayTickCount;
@@ -279,6 +281,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 ServerAuthoritativePredictionPassIds.CorrectionStateOwner,
                 ServerAuthoritativePredictionPassIds.CorrectionStateSchema,
                 3);
+            m_Checkpoint = new SimulationPipelinePassStateCheckpoint(StateIdentity, RestoreCheckpoint, ReleaseCheckpoint);
         }
 
         ServerAuthoritativePassStateRestoreTransaction m_StateStorage;
@@ -300,11 +303,21 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         public ISimulationPipelinePassStateCheckpoint CaptureCheckpoint()
         {
             RequireCaptureOrRestore();
-            ServerAuthoritativePredictionCorrectionCheckpoint checkpoint = m_State.CaptureCorrectionCheckpoint();
-            return new SimulationPipelinePassStateCheckpoint(
-                StateIdentity,
-                () => m_State.RestoreCorrectionCheckpoint(checkpoint));
+            m_Checkpoint.Begin();
+            try
+            {
+                m_CapturedCorrection = m_State.CaptureCorrectionCheckpoint();
+                return m_Checkpoint;
+            }
+            catch
+            {
+                m_Checkpoint.Dispose();
+                throw;
+            }
         }
+
+        void RestoreCheckpoint() => m_State.RestoreCorrectionCheckpoint(m_CapturedCorrection);
+        void ReleaseCheckpoint() => m_CapturedCorrection = null;
 
         public void Execute(
             SimulationPipelineScheduleContext context,
@@ -502,7 +515,11 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             }
         }
 
-        protected override void OnDispose() => m_StateStorage.ReleaseStorage();
+        protected override void OnDispose()
+        {
+            m_Checkpoint.Dispose();
+            m_StateStorage.ReleaseStorage();
+        }
 
         public void WriteCheckpointState(CanonicalWriter writer)
         {
