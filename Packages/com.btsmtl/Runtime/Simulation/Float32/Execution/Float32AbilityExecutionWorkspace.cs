@@ -42,6 +42,7 @@ namespace ThirdPersonSimulation
         public List<Float32GameplayEffectPendingProjection> GameplayEffectProjections { get; } =
             new List<Float32GameplayEffectPendingProjection>();
         internal int GameplayEffectCueCount { get; set; }
+        internal int GameplayEffectSuccessfulChangeCount { get; set; }
         public Float32GameplayEffectExecutionScratch GameplayEffects { get; }
         public Float32GraphValueWorkspace Values { get; }
         public List<AbilityTimelineLogicMotionWarp> TimelineMotionWarps { get; } =
@@ -67,6 +68,7 @@ namespace ThirdPersonSimulation
             GameplayEffectProjections.Clear();
             CommandBatchRejections.Clear();
             GameplayEffectCueCount = 0;
+            GameplayEffectSuccessfulChangeCount = 0;
             TimelineMotionWarps.Clear();
             ActionWindowProjections.Clear();
             ActionWindowProjectionKeys.Clear();

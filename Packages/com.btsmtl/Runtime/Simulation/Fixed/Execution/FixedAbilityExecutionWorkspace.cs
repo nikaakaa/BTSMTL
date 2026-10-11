@@ -49,6 +49,7 @@ namespace ThirdPersonSimulation.Fixed
         public List<FixedGameplayEffectPendingProjection> GameplayEffectProjections { get; } =
             new List<FixedGameplayEffectPendingProjection>();
         internal int GameplayEffectCueCount { get; set; }
+        internal int GameplayEffectSuccessfulChangeCount { get; set; }
         public FixedGameplayEffectExecutionScratch GameplayEffects { get; }
         public HashSet<long> ValueStack { get; } = new HashSet<long>();
         public List<FixedValueInputBuffer> ValueBuffers { get; } = new List<FixedValueInputBuffer>();
@@ -74,6 +75,7 @@ namespace ThirdPersonSimulation.Fixed
             GameplayEffectProjections.Clear();
             CommandBatchRejections.Clear();
             GameplayEffectCueCount = 0;
+            GameplayEffectSuccessfulChangeCount = 0;
             ValueStack.Clear();
             TimelineMotionWarps.Clear();
             ActionWindowProjections.Clear();

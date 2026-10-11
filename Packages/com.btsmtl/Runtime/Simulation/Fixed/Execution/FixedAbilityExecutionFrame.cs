@@ -160,18 +160,21 @@ namespace ThirdPersonSimulation.Fixed
 
     internal readonly struct FixedAbilityOutputSavepoint
     {
-        public FixedAbilityOutputSavepoint(int factCount, int presentationCount, int gameplayEffectCount, int gameplayEffectCueCount)
+        public FixedAbilityOutputSavepoint(int factCount, int presentationCount, int gameplayEffectCount, int gameplayEffectCueCount,
+            int gameplayEffectSuccessfulChangeCount)
         {
             FactCount = factCount;
             PresentationCount = presentationCount;
             GameplayEffectCount = gameplayEffectCount;
             GameplayEffectCueCount = gameplayEffectCueCount;
+            GameplayEffectSuccessfulChangeCount = gameplayEffectSuccessfulChangeCount;
         }
 
         public int FactCount { get; }
         public int PresentationCount { get; }
         public int GameplayEffectCount { get; }
         public int GameplayEffectCueCount { get; }
+        public int GameplayEffectSuccessfulChangeCount { get; }
     }
 
     internal readonly struct FixedAbilityInvocationContext
@@ -436,7 +439,8 @@ namespace ThirdPersonSimulation.Fixed
         internal bool HasActionTraceContext => m_ActionTraceInstanceId != 0;
 
         internal FixedAbilityOutputSavepoint CreateOutputSavepoint() =>
-            new FixedAbilityOutputSavepoint(m_Facts.Count, m_Presentation.Count, m_Workspace.GameplayEffectProjections.Count, m_Workspace.GameplayEffectCueCount);
+            new FixedAbilityOutputSavepoint(m_Facts.Count, m_Presentation.Count, m_Workspace.GameplayEffectProjections.Count,
+                m_Workspace.GameplayEffectCueCount, m_Workspace.GameplayEffectSuccessfulChangeCount);
 
         internal void RestoreOutput(FixedAbilityOutputSavepoint savepoint)
         {
@@ -447,6 +451,7 @@ namespace ThirdPersonSimulation.Fixed
             m_Workspace.GameplayEffectProjections.RemoveRange(savepoint.GameplayEffectCount,
                 m_Workspace.GameplayEffectProjections.Count - savepoint.GameplayEffectCount);
             m_Workspace.GameplayEffectCueCount = savepoint.GameplayEffectCueCount;
+            m_Workspace.GameplayEffectSuccessfulChangeCount = savepoint.GameplayEffectSuccessfulChangeCount;
         }
 
         internal void RecordCommandBatchRejection(in GameplayCommandBatchAdmission rejection) =>
@@ -463,7 +468,6 @@ namespace ThirdPersonSimulation.Fixed
             FixedScalar sampleTime = default;
             if (change.Kind == PortableEffectChangeKind.Cue)
             {
-                m_Workspace.GameplayEffectCueCount++;
                 producerId = Services.RequireGameplayCueProducer(change.Definition.Id, change.CueId).Identity;
                 presentationHeader = Presentation.Next(source);
                 presentationIndex = m_Presentation.Count;
@@ -474,6 +478,10 @@ namespace ThirdPersonSimulation.Fixed
                 change, factHeader, factIndex, presentationHeader, presentationIndex, producerId, sampleTime, cause);
             projection.Retain();
             m_Workspace.GameplayEffectProjections.Add(projection);
+            if (change.IsSuccessfulOutput)
+                m_Workspace.GameplayEffectSuccessfulChangeCount++;
+            if (change.Kind == PortableEffectChangeKind.Cue)
+                m_Workspace.GameplayEffectCueCount++;
         }
 
         internal void ResetState(int slotIndex)

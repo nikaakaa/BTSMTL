@@ -123,6 +123,10 @@ namespace ThirdPersonSimulation.Fixed
         public GameplayEffectExecutionFailure Failure { get; }
         public GameplayEffectReconciliationResult Reconciliation { get; }
         public GameplayTagRuntimeChange Tag { get; }
+        internal bool IsSuccessfulOutput => Kind != PortableEffectChangeKind.Failure &&
+            (Kind != PortableEffectChangeKind.Reconciliation || Reconciliation.Succeeded) &&
+            (Kind != PortableEffectChangeKind.Tag || !Tag.SourceIdentity.IsExternalSource ||
+                Tag.AfterCount >= Tag.BeforeCount);
         internal void Retain()
         {
             Context.Retain(); CauseEffectId.Retain(); Failure.Retain(); Reconciliation.Retain(); Tag.Retain();

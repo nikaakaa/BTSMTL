@@ -162,9 +162,8 @@ namespace ThirdPersonSimulation.Fixed
             cues = 0;
             for (int workspace = 0; workspace < m_OutputWorkspaces.Length; workspace++)
             {
-                List<FixedGameplayEffectPendingProjection> projections = m_OutputWorkspaces[workspace].GameplayEffectProjections;
-                for (int index = 0; index < projections.Count; index++)
-                    CountOutput(projections[index].Change, ref successfulChanges, ref cues);
+                successfulChanges += m_OutputWorkspaces[workspace].GameplayEffectSuccessfulChangeCount;
+                cues += m_OutputWorkspaces[workspace].GameplayEffectCueCount;
             }
             for (int index = 0; index < m_Changes.Count; index++)
                 CountOutput(m_Changes[index], ref successfulChanges, ref cues);
@@ -172,11 +171,7 @@ namespace ThirdPersonSimulation.Fixed
 
         static void CountOutput(in PortableEffectRuntimeChange change, ref int successfulChanges, ref int cues)
         {
-            bool failureOutput = change.Kind == PortableEffectChangeKind.Failure ||
-                change.Kind == PortableEffectChangeKind.Reconciliation && !change.Reconciliation.Succeeded;
-            bool externalTagRemoval = change.Kind == PortableEffectChangeKind.Tag &&
-                change.Tag.SourceIdentity.IsExternalSource && change.Tag.AfterCount < change.Tag.BeforeCount;
-            if (!failureOutput && !externalTagRemoval)
+            if (change.IsSuccessfulOutput)
                 successfulChanges++;
             if (change.Kind == PortableEffectChangeKind.Cue)
                 cues++;
