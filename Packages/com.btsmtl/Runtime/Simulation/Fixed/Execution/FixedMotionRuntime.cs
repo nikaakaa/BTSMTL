@@ -366,7 +366,7 @@ namespace ThirdPersonSimulation.Fixed
             bool hasOverride = false;
             for (int i = 0; i < contributionCount; i++)
             {
-                SimulationMotionContribution contribution = contributions[i];
+                ref readonly SimulationMotionContribution contribution = ref contributions[i];
                 if (contribution.Channel != channel || !contribution.CanResolve)
                     continue;
                 if (!traceSource.IsValid)
@@ -376,7 +376,7 @@ namespace ThirdPersonSimulation.Fixed
                     traceSourceGeneration = contribution.SourceGeneration;
                 }
                 sourceCount++;
-                sourceFingerprint = MixSource(sourceFingerprint, contribution.SourceIdentity);
+                sourceFingerprint = MixSource(sourceFingerprint, contribution.SourceIdentity.Span);
                 FixedVector3 resolved = contribution.Space == SimulationMotionContributionSpace.ActorLocal
                     ? FixedAngle.RotatePlanar(contribution.Displacement, bodyYaw)
                     : contribution.Displacement;
@@ -493,13 +493,13 @@ namespace ThirdPersonSimulation.Fixed
             yaw += channel.YawDegrees;
         }
 
-        static ulong MixSource(ulong hash, CanonicalTextValue identity)
+        static ulong MixSource(ulong hash, ReadOnlySpan<char> identity)
         {
             unchecked
             {
                 for (int i = 0; i < identity.Length; i++)
                 {
-                    hash ^= identity.Span[i];
+                    hash ^= identity[i];
                     hash *= 1099511628211UL;
                 }
                 return hash;
