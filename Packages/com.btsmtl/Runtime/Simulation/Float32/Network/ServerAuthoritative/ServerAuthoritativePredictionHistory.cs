@@ -826,7 +826,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             int exactIndex = Find(ticks, count, targetTick.Value);
             if (exactIndex >= 0)
             {
-                CharacterBodySample exact = samples[exactIndex];
+                ref readonly CharacterBodySample exact = ref samples[exactIndex];
                 return new ServerAuthoritativeRemoteBodySelection(
                     actorId,
                     targetTick,
@@ -870,16 +870,16 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             int insertionIndex = ~exactIndex;
             if (targetTick < ulong.MaxValue && insertionIndex < count && ticks[insertionIndex] == targetTick + 1)
             {
-                CharacterBodySample nextExact = samples[insertionIndex];
+                ref readonly CharacterBodySample nextExact = ref samples[insertionIndex];
                 return new BodySelection(nextExact.BeforeBody, nextExact.Tick, nextExact.Tick, ObservedWorldConstraintSamplingKind.Exact);
             }
 
             bool hasLower = insertionIndex > 0;
             bool hasUpper = insertionIndex < count;
-            CharacterBodySample lower = hasLower ? samples[insertionIndex - 1] : default;
-            CharacterBodySample upper = hasUpper ? samples[insertionIndex] : default;
             if (hasLower && hasUpper)
             {
+                ref readonly CharacterBodySample lower = ref samples[insertionIndex - 1];
+                ref readonly CharacterBodySample upper = ref samples[insertionIndex];
                 Float32Scalar amount = Float32Scalar.FromDouble(
                     (targetTick - lower.Tick.Value) /
                     (double)(upper.Tick.Value - lower.Tick.Value));
@@ -895,7 +895,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             }
             if (count == 0)
                 throw new InvalidOperationException("Remote body timeline Actor track is empty.");
-            CharacterBodySample latest = samples[count - 1];
+            ref readonly CharacterBodySample latest = ref samples[count - 1];
             if (targetTick < latest.Tick.Value)
                 throw new InvalidOperationException($"Remote Actor '{actorId}' has no observation interval for Tick '{targetTick}'.");
             ulong extrapolationTicks = targetTick - latest.Tick.Value;
@@ -937,7 +937,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 amount < Float32Scalar.FromDouble(0.5d) ? from.Collision : to.Collision);
         }
 
-        static bool SampleEquals(CharacterBodySample left, CharacterBodySample right) =>
+        static bool SampleEquals(in CharacterBodySample left, in CharacterBodySample right) =>
             left.ActorId == right.ActorId && left.Tick == right.Tick &&
             WorldSolveBatchRequest.BodyEquals(left.BeforeBody, right.BeforeBody) &&
             WorldSolveBatchRequest.BodyEquals(left.FinalBody, right.FinalBody) &&
