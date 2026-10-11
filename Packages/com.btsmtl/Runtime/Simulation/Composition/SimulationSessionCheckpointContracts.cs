@@ -109,9 +109,9 @@ namespace ThirdPersonSimulation
             MaximumPayloadBytes = PayloadPageCount == 0 ? 0 : descriptor.MaximumSessionCheckpointPayloadBytes;
             TextEntriesPerPayload = PayloadPageCount == 0 ? 0 : maximumTextValuesPerPayload;
             CharactersPerPayload = MaximumPayloadBytes / sizeof(char);
-            MaximumTextValues = PayloadPageCount == 0 ? 0 : checked(
+            MaximumTextValues = PayloadPageCount == 0 || !descriptor.Endpoint.HasValue ? 0 : checked(
                 TextEntriesPerPayload * (PayloadPageCount + capacity.StatePageCount) + maximumDetachedTextReferences);
-            TotalCharacters = PayloadPageCount == 0 ? 0 : checked(CharactersPerPayload *
+            TotalCharacters = PayloadPageCount == 0 || !descriptor.Endpoint.HasValue ? 0 : checked(CharactersPerPayload *
                 (PayloadPageCount + capacity.StatePageCount + maximumDetachedTextPayloads));
         }
 
@@ -202,7 +202,8 @@ namespace ThirdPersonSimulation
             SimulationSessionCheckpointPayloadLayout layout)
         {
             Layout = layout;
-            TextStorage = new CanonicalTextStorage(Layout.MaximumTextValues, Layout.TotalCharacters);
+            TextStorage = descriptor.Endpoint.HasValue
+                ? new CanonicalTextStorage(Layout.MaximumTextValues, Layout.TotalCharacters) : null;
             m_Pages = new Page[Layout.PayloadPageCount];
             for (int index = 0; index < m_Pages.Length; index++)
                 m_Pages[index] = new Page(this, index, Layout.MaximumPayloadBytes, descriptor);
@@ -227,6 +228,8 @@ namespace ThirdPersonSimulation
 
         internal Page Receive(SimulationSessionCheckpoint checkpoint)
         {
+            if (TextStorage == null)
+                throw new InvalidOperationException("Local Session checkpoint restore requires its captured payload and text owner.");
             Page page = Acquire();
             if (checkpoint.Payload.Length > page.Buffer.Length)
             {

@@ -21,6 +21,14 @@ namespace ThirdPersonSimulation
             writer.Write(text == null ? -1 : text.Length);
             writer.WriteSpan(text.AsSpan());
         }
+
+        public static void WriteText<TWriter>(this ref TWriter writer, CanonicalTextValue text)
+            where TWriter : struct, IRecordedRuntimeStateWriter
+        {
+            writer.Write(text.IsNull ? -1 : text.Length);
+            using CanonicalTextReadLease read = text.AcquireRead();
+            writer.WriteSpan(text.Span);
+        }
     }
 
     public ref struct RecordedRuntimeStateReader
@@ -365,7 +373,7 @@ namespace ThirdPersonSimulation
     public sealed class CanonicalTextCapacityException : InvalidOperationException
     {
         public CanonicalTextCapacityException(in CanonicalTextCapacityFailure failure)
-            : base("Canonical text exceeds the declared owner capacity.")
+            : base($"Canonical text exceeds the declared owner capacity: {failure.Kind}, required {failure.Required}, available {failure.Available}.")
         {
             Failure = failure;
         }
