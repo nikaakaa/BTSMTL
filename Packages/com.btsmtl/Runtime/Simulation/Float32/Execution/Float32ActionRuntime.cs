@@ -190,7 +190,7 @@ namespace ThirdPersonSimulation
                 inputRequest, ability.ConsumeSourceInputRequest, ability.TargetKey,
                 grantTarget, SimulationExecutionSource.FromAbilityRule(ability.SkillId, rule.Id, rule.Phase),
                 default, replacementSource: source, activationEntryId: rule.ActivationEntryId,
-                targetPolicy: rule.TargetPolicy);
+                targetPolicy: rule.TargetPolicy, requiresSourceInputRequest: string.IsNullOrEmpty(rule.TriggerEventId));
 		}
 
         public ActionActivationSubmission SubmitRule(GameplayAbilityExecutionBinding ability,
