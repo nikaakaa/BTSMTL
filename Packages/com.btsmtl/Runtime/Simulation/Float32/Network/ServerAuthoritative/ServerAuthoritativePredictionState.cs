@@ -44,7 +44,23 @@ namespace ThirdPersonSimulation.ServerAuthoritative
 
     public sealed class ServerAuthoritativePredictionHistoryRecord
     {
+        readonly ServerAuthoritativePredictionHistory.RecordPage m_Storage;
+
+        internal ServerAuthoritativePredictionHistoryRecord(ServerAuthoritativePredictionHistory.RecordPage storage) =>
+            m_Storage = storage;
+
         public ServerAuthoritativePredictionHistoryRecord(
+            OwnerCanonicalInputBatch input,
+            SimulationSessionCompositionIdentity compositionIdentity,
+            SimulationWorldSnapshot world,
+            SimulationPipelineStateSnapshot pipelineProjection,
+            ObservedWorldConstraintFrame observedWorldConstraints,
+            ulong journalCursor)
+        {
+            Initialize(input, compositionIdentity, world, pipelineProjection, observedWorldConstraints, journalCursor);
+        }
+
+        internal void Initialize(
             OwnerCanonicalInputBatch input,
             SimulationSessionCompositionIdentity compositionIdentity,
             SimulationWorldSnapshot world,
@@ -70,16 +86,17 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         }
 
         public SimulationTick Tick => World.Tick;
-        public OwnerCanonicalInputBatch Input { get; }
-        public SimulationSessionCompositionIdentity CompositionIdentity { get; }
-        public SimulationWorldSnapshot World { get; }
-        public SimulationPipelineStateSnapshot PipelineProjection { get; }
-        public ObservedWorldConstraintFrame ObservedWorldConstraints { get; }
-        public ulong JournalCursor { get; }
+        public OwnerCanonicalInputBatch Input { get; private set; }
+        public SimulationSessionCompositionIdentity CompositionIdentity { get; private set; }
+        public SimulationWorldSnapshot World { get; private set; }
+        public SimulationPipelineStateSnapshot PipelineProjection { get; private set; }
+        public ObservedWorldConstraintFrame ObservedWorldConstraints { get; private set; }
+        public ulong JournalCursor { get; private set; }
         public SimulationActorSnapshot Character => World.Actors[0];
 
         internal void RetainStorage()
         {
+            m_Storage?.Retain();
             Input.ActorId.Retain();
             Input.Input.RetainText();
             for (int index = 0; index < World.Actors.Count; index++)
@@ -108,16 +125,18 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 World.Actors[index].ActorId.Release();
             Input.Input.ReleaseText();
             Input.ActorId.Release();
+            m_Storage?.Release();
         }
 
-        public ServerAuthoritativePredictionHistoryRecord WithJournalCursor(ulong journalCursor) =>
-            new ServerAuthoritativePredictionHistoryRecord(
-                Input,
-                CompositionIdentity,
-                World,
-                PipelineProjection,
-                ObservedWorldConstraints,
-                journalCursor);
+        internal void Clear()
+        {
+            Input = default;
+            CompositionIdentity = default;
+            World = null;
+            PipelineProjection = null;
+            ObservedWorldConstraints = null;
+            JournalCursor = 0;
+        }
     }
 
     public sealed class ServerAuthoritativePredictionState

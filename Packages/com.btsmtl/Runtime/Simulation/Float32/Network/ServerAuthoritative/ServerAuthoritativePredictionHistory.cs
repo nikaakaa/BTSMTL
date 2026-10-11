@@ -11,6 +11,9 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         readonly int m_Capacity;
         readonly ulong[] m_Ticks;
         readonly ServerAuthoritativePredictionHistoryRecord[] m_Records;
+        readonly RecordPage[] m_RecordPages;
+        readonly int[] m_FreeRecords;
+        int m_FreeRecordCount;
         int m_Count;
 
         readonly ServerAuthoritativeRemoteBodyTimeline m_RemoteBodies;
@@ -26,6 +29,15 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             m_Capacity = capacity;
             m_Ticks = new ulong[capacity];
             m_Records = new ServerAuthoritativePredictionHistoryRecord[capacity];
+            int recordCapacity = checked(capacity * 2 + 1);
+            m_RecordPages = new RecordPage[recordCapacity];
+            m_FreeRecords = new int[recordCapacity];
+            for (int index = 0; index < recordCapacity; index++)
+            {
+                m_RecordPages[index] = new RecordPage(this, index);
+                m_FreeRecords[index] = index;
+            }
+            m_FreeRecordCount = recordCapacity;
             m_RemoteBodies = new ServerAuthoritativeRemoteBodyTimeline(
                 checked(capacity * 4),
                 tickRate,
@@ -129,13 +141,14 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             if (insertionIndex >= 0)
                 throw new InvalidOperationException($"Prediction history already contains Tick '{completed.Step.Tick}'.");
             insertionIndex = ~insertionIndex;
-            var record = new ServerAuthoritativePredictionHistoryRecord(
+            using RecordPage page = AcquireRecord(
                 input,
                 completed.StepSnapshot.CompositionIdentity,
                 completed.StepSnapshot.World,
                 completed.StepSnapshot.PipelineProjection,
                 completed.Step.ObservedWorldConstraints,
                 journalCursor);
+            ServerAuthoritativePredictionHistoryRecord record = page.Record;
 
             if (m_Count >= m_Capacity)
             {
@@ -166,7 +179,9 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             if (index < 0)
                 throw new InvalidOperationException($"Prediction history has no Current Tick '{tick}' to seal its journal cursor.");
             ServerAuthoritativePredictionHistoryRecord previous = m_Records[index];
-            ServerAuthoritativePredictionHistoryRecord replacement = previous.WithJournalCursor(journalCursor);
+            using RecordPage page = AcquireRecord(previous.Input, previous.CompositionIdentity, previous.World,
+                previous.PipelineProjection, previous.ObservedWorldConstraints, journalCursor);
+            ServerAuthoritativePredictionHistoryRecord replacement = page.Record;
             replacement.RetainStorage();
             m_Records[index] = replacement;
             previous.ReleaseStorage();
@@ -266,6 +281,53 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             Array.Clear(m_Ticks, 0, m_Count);
             Array.Clear(m_Records, 0, m_Count);
             m_Count = 0;
+        }
+
+        internal sealed class RecordPage : IDisposable
+        {
+            readonly ServerAuthoritativePredictionHistory m_Owner;
+            readonly int m_Index;
+            int m_References;
+
+            internal RecordPage(ServerAuthoritativePredictionHistory owner, int index)
+            {
+                m_Owner = owner;
+                m_Index = index;
+                Record = new ServerAuthoritativePredictionHistoryRecord(this);
+            }
+
+            internal ServerAuthoritativePredictionHistoryRecord Record { get; }
+            internal void Begin() => m_References = 1;
+            internal void Retain() => m_References++;
+            public void Dispose() => Release();
+
+            internal void Release()
+            {
+                if (--m_References != 0)
+                    return;
+                Record.Clear();
+                m_Owner.m_FreeRecords[m_Owner.m_FreeRecordCount++] = m_Index;
+            }
+        }
+
+        RecordPage AcquireRecord(OwnerCanonicalInputBatch input, SimulationSessionCompositionIdentity compositionIdentity,
+            SimulationWorldSnapshot world, SimulationPipelineStateSnapshot pipelineProjection,
+            ObservedWorldConstraintFrame observedWorldConstraints, ulong journalCursor)
+        {
+            if (m_FreeRecordCount == 0)
+                throw new InvalidOperationException("Prediction history record storage exceeded its transaction retention capacity.");
+            RecordPage page = m_RecordPages[m_FreeRecords[--m_FreeRecordCount]];
+            page.Begin();
+            try
+            {
+                page.Record.Initialize(input, compositionIdentity, world, pipelineProjection, observedWorldConstraints, journalCursor);
+                return page;
+            }
+            catch
+            {
+                page.Release();
+                throw;
+            }
         }
 
         int Find(ulong tick)
