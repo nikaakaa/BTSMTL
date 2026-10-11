@@ -50,6 +50,8 @@ namespace BTSMTL.Timeline.Runtime
         readonly Dictionary<ulong, PresentationPlaybackState> m_Playbacks =
             new Dictionary<ulong, PresentationPlaybackState>();
         readonly Dictionary<(TimelineContentUnit Timeline, TimelinePlaybackMode Mode), Stack<PresentationPlaybackState>> m_RecycledPlaybacks = new();
+        PresentationPlaybackState m_FirstPendingFrame;
+        PresentationPlaybackState m_LastPendingFrame;
 
         public void RetireContent(TimelineContentUnit timeline, TimelinePlaybackMode mode) =>
             m_RecycledPlaybacks.Remove((timeline, mode));
@@ -159,7 +161,12 @@ namespace BTSMTL.Timeline.Runtime
                 currentTime,
                 currentCycle);
             state.PendingFrame = frame;
-            state.HasPendingFrame = true;
+            state.PreviousPendingFrame = m_LastPendingFrame;
+            if (m_LastPendingFrame == null)
+                m_FirstPendingFrame = state;
+            else
+                m_LastPendingFrame.NextPendingFrame = state;
+            m_LastPendingFrame = state;
             return true;
         }
 
@@ -169,6 +176,8 @@ namespace BTSMTL.Timeline.Runtime
             TimelinePresentationSampleReason reason = hasState ? state.SampleReason : TimelinePresentationSampleReason.Advance;
             if (hasState && state.Generation != playback.Generation)
             {
+                if (state.HasPendingFrame)
+                    ReleasePendingFrame(state);
                 state.Recycle();
                 m_Playbacks.Remove(playback.Handle.Value);
                 hasState = false;
@@ -226,44 +235,65 @@ namespace BTSMTL.Timeline.Runtime
 
         public void CommitPresentationFrame(ulong presentationFrame)
         {
-            foreach (PresentationPlaybackState state in m_Playbacks.Values)
+            PresentationPlaybackState state = m_FirstPendingFrame;
+            while (state != null)
             {
-                if (!state.HasPendingFrame || state.PendingFrame.PresentationFrame != presentationFrame)
-                    continue;
-                Array.Copy(state.PendingMarkerLastTraversal, state.MarkerLastTraversal, state.MarkerLastTraversal.Length);
-                Array.Copy(state.PendingTreeCycles, state.TreeCycles, state.TreeCycles.Length);
-                Array.Copy(state.PendingTreeExitCycles, state.TreeExitCycles, state.TreeExitCycles.Length);
-                state.CursorTime = state.PendingTime;
-                state.Cycle = state.PendingCycle;
-                state.Finished = state.PendingFinished;
-                state.InitialBoundaryConsumed = state.PendingInitialBoundaryConsumed;
-                state.SampleReason = TimelinePresentationSampleReason.Advance;
-                state.Cache(state.PendingFrame);
-                state.PendingFrame = default;
-                state.HasPendingFrame = false;
+                PresentationPlaybackState next = state.NextPendingFrame;
+                if (state.PendingFrame.PresentationFrame == presentationFrame)
+                {
+                    Array.Copy(state.PendingMarkerLastTraversal, state.MarkerLastTraversal, state.MarkerLastTraversal.Length);
+                    Array.Copy(state.PendingTreeCycles, state.TreeCycles, state.TreeCycles.Length);
+                    Array.Copy(state.PendingTreeExitCycles, state.TreeExitCycles, state.TreeExitCycles.Length);
+                    state.CursorTime = state.PendingTime;
+                    state.Cycle = state.PendingCycle;
+                    state.Finished = state.PendingFinished;
+                    state.InitialBoundaryConsumed = state.PendingInitialBoundaryConsumed;
+                    state.SampleReason = TimelinePresentationSampleReason.Advance;
+                    state.Cache(state.PendingFrame);
+                    ReleasePendingFrame(state);
+                }
+                state = next;
             }
         }
 
         public void DiscardPresentationFrame(ulong presentationFrame)
         {
-            foreach (PresentationPlaybackState state in m_Playbacks.Values)
+            PresentationPlaybackState state = m_FirstPendingFrame;
+            while (state != null)
             {
-                if (!state.HasPendingFrame || state.PendingFrame.PresentationFrame != presentationFrame)
-                    continue;
-                state.Candidate.Clear();
-                state.PendingFrame = default;
-                state.HasPendingFrame = false;
+                PresentationPlaybackState next = state.NextPendingFrame;
+                if (state.PendingFrame.PresentationFrame == presentationFrame)
+                {
+                    state.Candidate.Clear();
+                    ReleasePendingFrame(state);
+                }
+                state = next;
             }
+        }
+
+        void ReleasePendingFrame(PresentationPlaybackState state)
+        {
+            if (state.PreviousPendingFrame == null)
+                m_FirstPendingFrame = state.NextPendingFrame;
+            else
+                state.PreviousPendingFrame.NextPendingFrame = state.NextPendingFrame;
+            if (state.NextPendingFrame == null)
+                m_LastPendingFrame = state.PreviousPendingFrame;
+            else
+                state.NextPendingFrame.PreviousPendingFrame = state.PreviousPendingFrame;
+            state.PreviousPendingFrame = null;
+            state.NextPendingFrame = null;
+            state.PendingFrame = default;
         }
 
         public void SuspendPresentationPlayback(TimelineRuntimePlaybackHandle handle, ulong generation)
         {
             if (!m_Playbacks.TryGetValue(handle.Value, out PresentationPlaybackState state) || state.Generation != generation)
                 return;
+            if (state.HasPendingFrame)
+                ReleasePendingFrame(state);
             state.Clear();
-            state.PendingFrame = default;
             state.CachedFrame = default;
-            state.HasPendingFrame = false;
             state.HasCachedFrame = false;
             state.Finished = false;
         }
@@ -272,6 +302,8 @@ namespace BTSMTL.Timeline.Runtime
         {
             if (m_Playbacks.TryGetValue(handle.Value, out PresentationPlaybackState state) && state.Generation == generation)
             {
+                if (state.HasPendingFrame)
+                    ReleasePendingFrame(state);
                 state.Recycle();
                 m_Playbacks.Remove(handle.Value);
             }
@@ -299,6 +331,8 @@ namespace BTSMTL.Timeline.Runtime
 
         public void Clear()
         {
+            while (m_FirstPendingFrame != null)
+                ReleasePendingFrame(m_FirstPendingFrame);
             foreach (PresentationPlaybackState state in m_Playbacks.Values)
                 state.Clear();
             m_Playbacks.Clear();
@@ -517,7 +551,9 @@ namespace BTSMTL.Timeline.Runtime
             public bool PendingFinished;
             public bool PendingInitialBoundaryConsumed;
             public TimelineRuntimePresentationFrame PendingFrame;
-            public bool HasPendingFrame;
+            public bool HasPendingFrame => PendingFrame.PresentationFrame != 0;
+            public PresentationPlaybackState PreviousPendingFrame;
+            public PresentationPlaybackState NextPendingFrame;
             public ulong Generation { get; private set; }
             public FixedScalar CursorTime;
             public int Cycle;
@@ -538,7 +574,6 @@ namespace BTSMTL.Timeline.Runtime
                 PendingFinished = false;
                 PendingInitialBoundaryConsumed = false;
                 PendingFrame = default;
-                HasPendingFrame = false;
                 CursorTime = startTime;
                 Cycle = cycle;
                 InitialBoundaryConsumed = false;
