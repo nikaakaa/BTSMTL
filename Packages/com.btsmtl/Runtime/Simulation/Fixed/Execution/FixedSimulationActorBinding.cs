@@ -47,6 +47,14 @@ namespace ThirdPersonSimulation.Fixed
             Presentation.Capacity = presentationCapacity;
         }
         internal SimulationValueTraceStorage ValueTraces { get; }
+#if UNITY_EDITOR
+        internal long EvaluationStateElapsedStopwatchTicks;
+        internal long EvaluationInputsElapsedStopwatchTicks;
+        internal long EvaluationControlElapsedStopwatchTicks;
+        internal long EvaluationAbilitiesElapsedStopwatchTicks;
+        internal long EvaluationMotionElapsedStopwatchTicks;
+        internal long EvaluationCommitElapsedStopwatchTicks;
+#endif
         int m_TraceRecordsPerTick;
         int m_TraceRecordCount;
         SimulationSessionCompositionException m_TraceCapacityFailure;
@@ -167,6 +175,14 @@ namespace ThirdPersonSimulation.Fixed
                 CharacterTrace[index].Release();
             CharacterTrace.Clear();
             ValueTraces.Clear();
+#if UNITY_EDITOR
+            EvaluationStateElapsedStopwatchTicks = 0;
+            EvaluationInputsElapsedStopwatchTicks = 0;
+            EvaluationControlElapsedStopwatchTicks = 0;
+            EvaluationAbilitiesElapsedStopwatchTicks = 0;
+            EvaluationMotionElapsedStopwatchTicks = 0;
+            EvaluationCommitElapsedStopwatchTicks = 0;
+#endif
             m_TraceRecordCount = 0;
             Array.Clear(GameplayEffectProjections, 0, GameplayEffectProjectionCount);
             GameplayEffectProjectionCount = 0;

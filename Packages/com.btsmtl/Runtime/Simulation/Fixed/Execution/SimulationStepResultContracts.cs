@@ -101,6 +101,14 @@ namespace ThirdPersonSimulation.Fixed
         public IReadOnlyList<CombatHitResult> AttackResults => m_Output.AttackResults;
         public IReadOnlyList<PresentationCommand> PresentationCommands => m_Output.Presentation;
         public IReadOnlyList<SimulationTraceRecord> TraceRecords => m_Output.Trace;
+#if UNITY_EDITOR
+        public long EvaluationStateElapsedStopwatchTicks => m_Output.EvaluationStateElapsedStopwatchTicks;
+        public long EvaluationInputsElapsedStopwatchTicks => m_Output.EvaluationInputsElapsedStopwatchTicks;
+        public long EvaluationControlElapsedStopwatchTicks => m_Output.EvaluationControlElapsedStopwatchTicks;
+        public long EvaluationAbilitiesElapsedStopwatchTicks => m_Output.EvaluationAbilitiesElapsedStopwatchTicks;
+        public long EvaluationMotionElapsedStopwatchTicks => m_Output.EvaluationMotionElapsedStopwatchTicks;
+        public long EvaluationCommitElapsedStopwatchTicks => m_Output.EvaluationCommitElapsedStopwatchTicks;
+#endif
 
         void IFixedPipelineProductValueRelease.ReleaseOwnedValue()
         {

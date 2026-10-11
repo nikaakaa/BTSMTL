@@ -25,6 +25,9 @@ namespace ThirdPersonSimulation.Fixed
             bool applyBlackboardCommands,
             out CharacterWorldSolveRequest worldRequest)
         {
+#if UNITY_EDITOR
+            long stageStarted = System.Diagnostics.Stopwatch.GetTimestamp();
+#endif
             if (characterRuntime == null)
                 throw new ArgumentNullException(nameof(characterRuntime));
             if (actor == null)
@@ -66,6 +69,11 @@ namespace ThirdPersonSimulation.Fixed
             List<SimulationTraceRecord> characterTrace = evaluationOutput.CharacterTrace;
             Dictionary<ulong, FixedAbilityInvocationRuntime> actionOwners = actor.ActionOwnerByInstanceId;
             FixedAbilityExecutionInput abilityInput = actor.AbilityExecutionInput;
+#if UNITY_EDITOR
+            long stageFinished = System.Diagnostics.Stopwatch.GetTimestamp();
+            evaluationOutput.EvaluationStateElapsedStopwatchTicks = stageFinished - stageStarted;
+            stageStarted = stageFinished;
+#endif
             try
             {
                 actor.CombatQueries.Clear();
@@ -146,6 +154,11 @@ namespace ThirdPersonSimulation.Fixed
                 if (!effectAdvanced)
                     RequireNoGameplayEffectIngress(ingress, ingressCount);
 
+#if UNITY_EDITOR
+                stageFinished = System.Diagnostics.Stopwatch.GetTimestamp();
+                evaluationOutput.EvaluationInputsElapsedStopwatchTicks = stageFinished - stageStarted;
+                stageStarted = stageFinished;
+#endif
                 FixedCharacterControlRuntime control = characterRuntime.ControlRuntime(actor.ActorId);
                 control.Begin(
                     roleState,
@@ -157,6 +170,11 @@ namespace ThirdPersonSimulation.Fixed
                 rules.BeforeAbility(control, roleState.InputRequests, roleState.ActionState);
                 control.Tick(rules.BlockMovingTurn);
                 controlMotion.CopyContributionsTo(motionContributions);
+#if UNITY_EDITOR
+                stageFinished = System.Diagnostics.Stopwatch.GetTimestamp();
+                evaluationOutput.EvaluationControlElapsedStopwatchTicks = stageFinished - stageStarted;
+                stageStarted = stageFinished;
+#endif
 
                 for (int i = 0; i < invocationCount; i++)
                 {
@@ -166,6 +184,11 @@ namespace ThirdPersonSimulation.Fixed
                 }
 
                 control.ApplyMovementIntent(rules.AfterAbility());
+#if UNITY_EDITOR
+                stageFinished = System.Diagnostics.Stopwatch.GetTimestamp();
+                evaluationOutput.EvaluationAbilitiesElapsedStopwatchTicks = stageFinished - stageStarted;
+                stageStarted = stageFinished;
+#endif
 
                 for (int i = 0; i < timelineAdvances.Count; i++)
                 {
@@ -182,6 +205,11 @@ namespace ThirdPersonSimulation.Fixed
                     invocations,
                     invocationCount,
                     characterTraceSink);
+#if UNITY_EDITOR
+                stageFinished = System.Diagnostics.Stopwatch.GetTimestamp();
+                evaluationOutput.EvaluationMotionElapsedStopwatchTicks = stageFinished - stageStarted;
+                stageStarted = stageFinished;
+#endif
                 for (int i = 0; i < invocationCount; i++)
                 {
                     FixedAbilityInvocationRuntime invocation = invocations[i];
@@ -224,6 +252,10 @@ namespace ThirdPersonSimulation.Fixed
                 actor.ClearTimelineTransfers();
                 actor.ClearTimelineMotionScratches();
                 abilityInput.Clear();
+#if UNITY_EDITOR
+                stageFinished = System.Diagnostics.Stopwatch.GetTimestamp();
+                evaluationOutput.EvaluationCommitElapsedStopwatchTicks = stageFinished - stageStarted;
+#endif
                 return result;
             }
             catch
