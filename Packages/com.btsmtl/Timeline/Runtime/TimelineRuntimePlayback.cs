@@ -330,7 +330,6 @@ namespace BTSMTL.Timeline.Runtime
                     hasUnexitedTreeDecisionClip = true;
                     break;
                 }
-            m_AdvanceInjectedTreeClipExits.Clear();
             m_AdvanceInjectedTreeClipExits.AddRange(m_PendingTreeClipExits);
             List<AbilityTimelineTreeClipExit> evaluationExitedTreeDecisionClips = m_AdvanceExitedTreeDecisionClips;
             evaluationExitedTreeDecisionClips.Clear();
@@ -401,6 +400,7 @@ namespace BTSMTL.Timeline.Runtime
                 if (!m_ExitedTreeDecisionClips.Contains(exitedClipId))
                     m_ExitedTreeDecisionClips.Add(exitedClipId);
             }
+            m_AdvanceInjectedTreeClipExits.Clear();
             m_PendingAdvance = default;
             for (int index = 0; index < m_AdvanceProducedTreeClipExits.Count; index++)
                 m_PendingTreeClipExits.Add(m_AdvanceProducedTreeClipExits[index]);
