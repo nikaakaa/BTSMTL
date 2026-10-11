@@ -105,6 +105,7 @@ namespace ThirdPersonSimulation.Fixed
                     $"TreeClip '{invocation.ClipAuthoringId}' has no compiled OnEnable invocation in Ability '{m_AbilityId}'.");
             }
             AbilityTreeClipInvocation previousInvocation = m_Services.Target.ExchangeTreeClipInvocation(invocation);
+            int firstTrace = m_Services.TraceRecords.Count;
             OperationExecutionResult result;
             try
             {
@@ -116,8 +117,25 @@ namespace ThirdPersonSimulation.Fixed
             }
             if (result == OperationExecutionResult.Failure)
                 throw new InvalidOperationException(
-                    $"TreeClip '{invocation.ClipAuthoringId}' {invocation.Hook} invocation failed in Ability '{m_AbilityId}'.");
+                    $"TreeClip '{invocation.ClipAuthoringId}' {invocation.Hook} invocation failed in Ability '{m_AbilityId}'.{DescribeInvocationTrace(firstTrace)}");
             return true;
+        }
+
+        string DescribeInvocationTrace(int firstTrace)
+        {
+            var detail = new System.Text.StringBuilder();
+            IReadOnlyList<SimulationTraceRecord> traces = m_Services.TraceRecords;
+            for (int index = firstTrace; index < traces.Count; index++)
+            {
+                SimulationTraceRecord trace = traces[index];
+                if (trace.Code != "operation_complete")
+                    continue;
+                OperationHandle operation = trace.Header.Activation.Source.Operation;
+                detail.Append("; ").Append(operation.Value).Append(' ')
+                    .Append(m_Topology.Operation(operation).CodeName).Append(" = ")
+                    .Append(trace.Detail.ToString());
+            }
+            return detail.ToString();
         }
 
         static Dictionary<(CanonicalTextValue ClipAuthoringId, int Hook), OperationHandle> BuildTreeClipEntries(FixedGameplayAbilityExecutionData data)

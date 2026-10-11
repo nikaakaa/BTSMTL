@@ -508,6 +508,8 @@ namespace ThirdPersonSimulation.Fixed
             ProgramValuePortDirection direction, in AbilityStateValue value) =>
             m_Workspace.ValueTraces.Capture(m_Workspace.ValueTraceInvocation, portId, direction, in value);
 
+        internal IReadOnlyList<SimulationTraceRecord> TraceRecords => m_Trace;
+
         internal void AddTrace(in SimulationTraceRecord value)
         {
             m_Workspace.TraceOutput.ReserveTraceRecord();

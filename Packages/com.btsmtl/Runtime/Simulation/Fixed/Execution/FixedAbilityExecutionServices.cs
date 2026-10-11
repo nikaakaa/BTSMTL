@@ -35,6 +35,7 @@ namespace ThirdPersonSimulation.Fixed
         }
 
         public FixedAbilityExecutionTarget Target { get; }
+        internal IReadOnlyList<SimulationTraceRecord> TraceRecords => m_Frame.TraceRecords;
         public IReadOnlyList<AbilityTimelineAdvancePending> TimelineAdvances => m_TimelineAdvances;
         public IReadOnlyList<AbilityTimelineStopPending> TimelineStops => m_TimelineStops;
 
