@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Reflection;
 using UnityEngine;
 
@@ -8,6 +9,9 @@ namespace BTSMTL.Timeline
 {
     public static class ManagedReferenceCloneUtility
     {
+        static readonly ConcurrentDictionary<Type, FieldInfo[]> s_Fields = new ConcurrentDictionary<Type, FieldInfo[]>();
+        static readonly Func<Type, FieldInfo[]> s_DiscoverFields = SerializableFields;
+
         public static T Clone<T>(T source)
         {
             return (T)CloneValue(source, new Dictionary<object, object>(ReferenceComparer.Instance));
@@ -62,13 +66,14 @@ namespace BTSMTL.Timeline
                 clone = System.Runtime.Serialization.FormatterServices.GetUninitializedObject(type);
             }
             visited.Add(source, clone);
-            foreach (FieldInfo field in SerializableFields(type))
+            foreach (FieldInfo field in s_Fields.GetOrAdd(type, s_DiscoverFields))
                 field.SetValue(clone, CloneValue(field.GetValue(source), visited));
             return clone;
         }
 
-        static IEnumerable<FieldInfo> SerializableFields(Type type)
+        static FieldInfo[] SerializableFields(Type type)
         {
+            var result = new List<FieldInfo>();
             for (Type current = type; current != null && current != typeof(object); current = current.BaseType)
             {
                 FieldInfo[] fields = current.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly);
@@ -78,9 +83,10 @@ namespace BTSMTL.Timeline
                     if (field.IsStatic || field.IsInitOnly || field.IsNotSerialized || typeof(Delegate).IsAssignableFrom(field.FieldType))
                         continue;
                     if (field.IsPublic || field.IsDefined(typeof(SerializeField), true) || field.IsDefined(typeof(SerializeReference), true))
-                        yield return field;
+                        result.Add(field);
                 }
             }
+            return result.ToArray();
         }
 
         sealed class ReferenceComparer : IEqualityComparer<object>
