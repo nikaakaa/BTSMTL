@@ -49,8 +49,8 @@ namespace ThirdPersonSimulation
         public static BodyMotionPrepareResult Prepare(
             ActorId actorId,
             SimulationTick tick,
-            WorldBodyState beforeBody,
-            ResolvedGameplayMotion gameplayMotion,
+            in WorldBodyState beforeBody,
+            in ResolvedGameplayMotion gameplayMotion,
             CharacterBodyMotionBinding binding,
             Float32Scalar tickDelta)
         {
@@ -98,8 +98,8 @@ namespace ThirdPersonSimulation
         }
 
         public static WorldBodyState Finalize(
-            WorldBodyState beforeBody,
-            BodyMotionIntegrationPlan plan,
+            in WorldBodyState beforeBody,
+            in BodyMotionIntegrationPlan plan,
             Float32Vector3 finalPosition,
             Float32Yaw finalYaw,
             Float32Vector3 appliedDisplacement,
@@ -107,7 +107,7 @@ namespace ThirdPersonSimulation
             WorldCollisionSummary collision,
             Float32Scalar tickDelta)
         {
-            RequirePlan(beforeBody, plan, tickDelta);
+            RequirePlan(in beforeBody, in plan, tickDelta);
             Float32Scalar verticalVelocity = plan.CandidateVerticalVelocity;
             if (verticalVelocity < Float32Scalar.Zero && grounded)
                 verticalVelocity = Float32Scalar.Zero;
@@ -126,7 +126,7 @@ namespace ThirdPersonSimulation
                 collision);
         }
 
-        static void RequirePlan(WorldBodyState beforeBody, BodyMotionIntegrationPlan plan, Float32Scalar tickDelta)
+        static void RequirePlan(in WorldBodyState beforeBody, in BodyMotionIntegrationPlan plan, Float32Scalar tickDelta)
         {
             if (beforeBody.ActorId != plan.ActorId || tickDelta <= Float32Scalar.Zero || tickDelta != plan.TickDelta ||
                 beforeBody.VerticalVelocity != plan.PreviousVerticalVelocity)
