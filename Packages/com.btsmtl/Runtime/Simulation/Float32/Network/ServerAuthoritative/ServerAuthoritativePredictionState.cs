@@ -77,7 +77,6 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         public ObservedWorldConstraintFrame ObservedWorldConstraints { get; }
         public ulong JournalCursor { get; }
         public SimulationActorSnapshot Character => World.Actors[0];
-        public WorldBodyState Body => World.DecodeWorldState().Bodies[0];
 
         internal void RetainStorage()
         {
@@ -150,6 +149,9 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         }
 
         public ServerAuthoritativeModelPolicy Policy { get; }
+        internal void PrepareWorldReadStorage(int maximumPayloadBytes) =>
+            m_Reconciler.PrepareWorldReadStorage(maximumPayloadBytes);
+
         public ulong ConfirmedInputSequence => m_Confirmation.ConfirmedInputSequence;
         public ServerAuthoritativeEventHorizon ConfirmedEventHorizon => m_Confirmation.ConfirmedEventHorizon;
         public ulong LastAuthorityAckTick => m_Confirmation.LastAuthorityAckTick;

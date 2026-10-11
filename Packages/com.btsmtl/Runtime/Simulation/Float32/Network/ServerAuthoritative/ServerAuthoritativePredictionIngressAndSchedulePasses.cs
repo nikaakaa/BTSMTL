@@ -285,6 +285,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
 
         internal CorrectionScheduleRuntime PrepareStateStorage(SimulationSessionCompositionDescriptor composition)
         {
+            m_State.PrepareWorldReadStorage(composition.MaximumSessionCheckpointPayloadBytes);
             m_StateStorage = new ServerAuthoritativePassStateRestoreTransaction(this,
                 composition.MaximumSessionCheckpointPayloadBytes, MaximumTextValues,
                 checked(1 + m_Policy.PredictionGameplayEffectCapacity.MaximumStepCount +

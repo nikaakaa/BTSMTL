@@ -10,6 +10,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         readonly Float32CharacterRuntime m_CharacterRuntime;
         readonly ServerAuthoritativePipelineCompatibilityIdentity m_Compatibility;
         readonly ServerAuthoritativeWorldIdentity m_AuthorityWorld;
+        WorldSimulationState m_DecodedWorld;
 
         public ServerAuthoritativePredictionReconciler(
             Float32CharacterRuntime characterRuntime,
@@ -32,6 +33,9 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 throw new InvalidOperationException("Authority World does not satisfy the locked ServerAuthoritative Solver capability contract.");
             }
         }
+
+        internal void PrepareWorldReadStorage(int maximumPayloadBytes) =>
+            m_DecodedWorld = new WorldSimulationState(m_CharacterRuntime.Roster.Count, maximumPayloadBytes);
 
         public void ValidateBaselineIdentity(
             AuthoritativeActorBaseline baseline,
@@ -92,7 +96,15 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                     Float32Scalar.Zero,
                     Float32Scalar.Zero);
             }
-            WorldBodyState localBody = local.Body;
+            WorldBodyState localBody;
+            try
+            {
+                localBody = local.World.DecodeWorldState(m_DecodedWorld).Bodies[0];
+            }
+            finally
+            {
+                m_DecodedWorld.ClearPrepared();
+            }
             Float32Scalar positionError = PositionError(localBody, baseline.Body);
             Float32Scalar yawError = YawError(localBody, baseline.Body);
             bool stateMatches = local.Character.StateHash.Equals(baseline.StateHash);
@@ -188,26 +200,33 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 baseline.StateHash,
                 Float32CharacterRuntimeStateCodec.CodecIdentity,
                 baseline.StateBuffer);
-            WorldSimulationState localWorld = local.DecodeWorldState();
-            var world = WorldSimulationState.FromOwnedState(
-                localWorld.NumericProfile,
-                localWorld.SolverId,
-                localWorld.SolverVersion,
-                localWorld.WorldRevision,
-                localWorld.PersistenceMode,
-                new[] { baseline.Body },
-                localWorld.SolverStatePayload.ToArray());
-            return new SimulationWorldSnapshot(
-                local.NumericProfile,
-                local.GameplayContentHash,
-                m_CharacterRuntime.StateSchemaHash,
-                local.SolverId,
-                local.SolverVersion,
-                local.WorldRevision,
-                baseline.AuthorityTick,
-                new[] { actor },
-                WorldSimulationStateCodec.Write(world),
-                false);
+            try
+            {
+                WorldSimulationState localWorld = local.DecodeWorldState(m_DecodedWorld);
+                var world = WorldSimulationState.FromOwnedState(
+                    localWorld.NumericProfile,
+                    localWorld.SolverId,
+                    localWorld.SolverVersion,
+                    localWorld.WorldRevision,
+                    localWorld.PersistenceMode,
+                    new[] { baseline.Body },
+                    localWorld.SolverStatePayload.ToArray());
+                return new SimulationWorldSnapshot(
+                    local.NumericProfile,
+                    local.GameplayContentHash,
+                    m_CharacterRuntime.StateSchemaHash,
+                    local.SolverId,
+                    local.SolverVersion,
+                    local.WorldRevision,
+                    baseline.AuthorityTick,
+                    new[] { actor },
+                    WorldSimulationStateCodec.Write(world),
+                    false);
+            }
+            finally
+            {
+                m_DecodedWorld.ClearPrepared();
+            }
         }
 
         static SimulationPipelineStateSnapshot MergePipeline(
