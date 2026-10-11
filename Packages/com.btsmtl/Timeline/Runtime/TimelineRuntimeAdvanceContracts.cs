@@ -145,7 +145,7 @@ namespace BTSMTL.Timeline.Runtime
         public string SectionId { get; }
         public TimelineRuntimeSampleView<CanonicalTextValue> ActiveClipIds { get; }
         public TimelineRuntimeSampleView<TimelineRuntimeClipBoundary> Boundaries { get; }
-        public TimelineRuntimeEvaluationResult Evaluation { get; }
+        public readonly TimelineRuntimeEvaluationResult Evaluation;
         public bool Completes { get; }
     }
 }

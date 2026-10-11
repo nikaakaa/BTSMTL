@@ -284,7 +284,7 @@ namespace BTSMTL.Timeline.Runtime
         public string ContentIdentity { get; }
         public CanonicalTextValue ContentRevision { get; }
         public TimelineExecutionIdentity ExecutionIdentity { get; }
-        public TimelineRuntimeEvaluationResult Evaluation { get; }
+        public readonly TimelineRuntimeEvaluationResult Evaluation;
         public TimelineRuntimeSampleView<CanonicalTextValue> ActiveClipIds { get; }
         public bool Completes { get; }
         public AbilityTimelinePlaybackControl Control { get; }

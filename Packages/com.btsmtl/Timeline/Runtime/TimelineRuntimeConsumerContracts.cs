@@ -25,7 +25,7 @@ namespace BTSMTL.Timeline.Runtime
 
         public TimelineRuntimePlayback Playback { get; }
         public TimelineRuntimeAdvanceRequest Request { get; }
-        public TimelineRuntimeAdvanceResult Advance { get; }
+        public readonly TimelineRuntimeAdvanceResult Advance;
     }
 
     public interface ITimelineRuntimeStepConsumer
