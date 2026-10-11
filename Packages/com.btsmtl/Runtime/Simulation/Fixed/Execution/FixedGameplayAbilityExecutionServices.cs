@@ -188,7 +188,7 @@ namespace ThirdPersonSimulation.Fixed
         public bool TryGetGameplayCueProducer(string effectId, string cueId, out ProgramProducer producer) =>
             m_GameplayCueProducers.TryGetValue(new GameplayCueProducerKey(effectId, cueId), out producer);
 
-        public SimulationBlackboardSlotGroup BlackboardGroup(int stateSlot) => m_BlackboardGroups[stateSlot];
+        public ref readonly SimulationBlackboardSlotGroup BlackboardGroup(int stateSlot) => ref m_BlackboardGroups[stateSlot];
 
         public IReadOnlyList<SimulationBlackboardSlotGroup> BlackboardGroups(ProgramScopeLayout scope) =>
             m_ScopeBlackboardGroups[scope.CompiledOwnerIndex];
@@ -197,7 +197,7 @@ namespace ThirdPersonSimulation.Fixed
 
         public bool TryGetInitialBlackboardOwnerToken(int stateSlot, out BlackboardOwnerToken token)
         {
-            SimulationBlackboardSlotGroup group = m_BlackboardGroups[stateSlot];
+            ref readonly SimulationBlackboardSlotGroup group = ref m_BlackboardGroups[stateSlot];
             if (group.Scope != null && group.OwnerToken == stateSlot &&
                 (group.Scope.Kind == ProgramScopeKind.Character ||
                  group.Scope.Kind == ProgramScopeKind.Graph && group.LifetimeKind == ProgramBlackboardLifetime.Config))

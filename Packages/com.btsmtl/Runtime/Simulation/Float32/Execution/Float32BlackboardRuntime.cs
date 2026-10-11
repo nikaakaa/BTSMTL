@@ -166,7 +166,7 @@ namespace ThirdPersonSimulation
 
         public void WriteGraphCallParameter(int valueSlot, AbilityStateValue value)
         {
-            SimulationBlackboardSlotGroup group = Access.Services.BlackboardGroup(valueSlot);
+            ref readonly SimulationBlackboardSlotGroup group = ref Access.Services.BlackboardGroup(valueSlot);
             if (value.Kind != m_Ability.StateSlots[valueSlot].ValueKind)
                 throw new InvalidOperationException($"Graph call parameter state '{valueSlot}' expects '{m_Ability.StateSlots[valueSlot].ValueKind}', received '{value.Kind}'.");
             m_State.Set(group.Value, value);
@@ -174,13 +174,13 @@ namespace ThirdPersonSimulation
 
         public AbilityStateValue ReadGraphCallParameter(int valueSlot)
         {
-            SimulationBlackboardSlotGroup group = Access.Services.BlackboardGroup(valueSlot);
+            ref readonly SimulationBlackboardSlotGroup group = ref Access.Services.BlackboardGroup(valueSlot);
             return m_State.Get(group.Value);
         }
 
         public void ResetGraphCallParameter(int valueSlot)
         {
-            SimulationBlackboardSlotGroup group = Access.Services.BlackboardGroup(valueSlot);
+            ref readonly SimulationBlackboardSlotGroup group = ref Access.Services.BlackboardGroup(valueSlot);
             m_State.Reset(group.Value);
         }
 
@@ -213,12 +213,12 @@ namespace ThirdPersonSimulation
             if (!CanonicalTextValue.Equals(binding.InputId, value.InputId, StringComparison.Ordinal) ||
                 (byte)binding.InputKind != (byte)value.Kind)
                 throw new InvalidOperationException($"Blackboard Input Binding '{binding.InputId}/{binding.InputKind}' received '{value.InputId}/{value.Kind}'.");
-            SimulationBlackboardSlotGroup group = Access.Services.BlackboardGroup(binding.StateAddress.SlotIndex);
+            ref readonly SimulationBlackboardSlotGroup group = ref Access.Services.BlackboardGroup(binding.StateAddress.SlotIndex);
             if (group.Scope.Kind != ProgramScopeKind.Character || group.LifetimeKind != ProgramBlackboardLifetime.Spawn)
                 throw new InvalidOperationException($"Blackboard Input Binding '{binding.InputId}' must use Character/Spawn ownership.");
             var owner = new BlackboardOwnerToken(ProgramScopeKind.Character, group.CompiledOwnerIndex, 1);
             if (m_State.Get(group.OwnerToken).BlackboardOwnerToken != owner)
-                MaterializeGroup(group, owner);
+                MaterializeGroup(in group, owner);
             m_State.Set(group.Value, ToStateValue(value));
             m_State.Set(group.WriteStamp, AbilityStateValue.FromBlackboardWriteStamp(new BlackboardWriteStamp(
                 m_Layout.RootOperation,
@@ -249,12 +249,12 @@ namespace ThirdPersonSimulation
             int valueSlot)
             where TTarget : struct, IOperationControlTarget<TTarget>
         {
-            SimulationBlackboardSlotGroup group = Access.Services.BlackboardGroup(valueSlot);
+            ref readonly SimulationBlackboardSlotGroup group = ref Access.Services.BlackboardGroup(valueSlot);
             if (TryReadActiveGraphCallInput(cursor, valueSlot, out AbilityStateValue graphInput))
                 return graphInput;
-            BlackboardOwnerToken expected = ResolveBlackboardOwnerToken(cursor, operation, group, false, out _);
+            BlackboardOwnerToken expected = ResolveBlackboardOwnerToken(cursor, operation, in group, false, out _);
             if (m_State.Get(group.OwnerToken).BlackboardOwnerToken != expected)
-                return DefaultValue(group);
+                return DefaultValue(in group);
             return m_State.Get(valueSlot);
         }
 
@@ -288,12 +288,12 @@ namespace ThirdPersonSimulation
             AbilityStateValue value)
             where TTarget : struct, IOperationControlTarget<TTarget>
         {
-            SimulationBlackboardSlotGroup group = Access.Services.BlackboardGroup(valueSlot);
+            ref readonly SimulationBlackboardSlotGroup group = ref Access.Services.BlackboardGroup(valueSlot);
             ProgramBlackboardLifetime lifetime = group.LifetimeKind;
             if (lifetime == ProgramBlackboardLifetime.Config)
                 throw new InvalidOperationException($"Blackboard config '{m_Ability.StateSlots[valueSlot].OwnerIdentity}' is read-only.");
-            BlackboardOwnerToken expected = ResolveBlackboardOwnerToken(cursor, operation, group, true, out Float32ActionInstanceState action);
-            StoreValue(group, value, expected, BuildBlackboardWriteStamp(operation, action));
+            BlackboardOwnerToken expected = ResolveBlackboardOwnerToken(cursor, operation, in group, true, out Float32ActionInstanceState action);
+            StoreValue(in group, value, expected, BuildBlackboardWriteStamp(operation, in action));
             ProjectBlackboardWrite(cursor,
                 SimulationExecutionSource.FromSkillOperation(operation.Handle, SourcePath(operation)),
                 0, group, value, action);
@@ -301,7 +301,7 @@ namespace ThirdPersonSimulation
                 m_Trace.AddBlackboard(operation, valueSlot, value, expected, group.LifetimeKind);
         }
 
-        void StoreValue(SimulationBlackboardSlotGroup group, AbilityStateValue value,
+        void StoreValue(in SimulationBlackboardSlotGroup group, AbilityStateValue value,
             BlackboardOwnerToken expected, BlackboardWriteStamp stamp)
         {
             BlackboardOwnerToken current = m_State.Get(group.OwnerToken).BlackboardOwnerToken;
@@ -312,7 +312,7 @@ namespace ThirdPersonSimulation
                     throw new InvalidOperationException(
                         $"ActionInstance Blackboard scope '{group.Scope.Identity}' cannot bind active instances '{current.Generation}' and '{expected.Generation}' to one state address.");
                 }
-                MaterializeGroup(group, expected);
+                MaterializeGroup(in group, expected);
             }
             m_State.Set(group.Value, value);
             m_State.Set(group.WriteStamp, AbilityStateValue.FromBlackboardWriteStamp(stamp));
@@ -321,7 +321,7 @@ namespace ThirdPersonSimulation
         BlackboardOwnerToken ResolveBlackboardOwnerToken<TTarget>(
             OperationControlCursor<TTarget> cursor,
             SimulationOperation operation,
-            SimulationBlackboardSlotGroup group,
+            in SimulationBlackboardSlotGroup group,
             bool writing,
             out Float32ActionInstanceState action)
             where TTarget : struct, IOperationControlTarget<TTarget>
@@ -406,7 +406,7 @@ namespace ThirdPersonSimulation
             return m_Actions.FindOnlyActive();
         }
 
-        BlackboardWriteStamp BuildBlackboardWriteStamp(SimulationOperation operation, Float32ActionInstanceState action)
+        BlackboardWriteStamp BuildBlackboardWriteStamp(SimulationOperation operation, in Float32ActionInstanceState action)
         {
             if (m_TimelineBlackboardContexts.Count == 0)
             {
@@ -592,15 +592,15 @@ namespace ThirdPersonSimulation
             return scope.Begin(this);
         }
 
-        AbilityStateValue DefaultValue(SimulationBlackboardSlotGroup group)
+        AbilityStateValue DefaultValue(in SimulationBlackboardSlotGroup group)
         {
             ProgramStateSlot value = m_Ability.StateSlots[group.Value];
             return AbilityStateValue.FromConstant(m_Ability.Constants[value.DefaultConstantIndex], value.ValueKind);
         }
 
-        void MaterializeGroup(SimulationBlackboardSlotGroup group, BlackboardOwnerToken ownerToken)
+        void MaterializeGroup(in SimulationBlackboardSlotGroup group, BlackboardOwnerToken ownerToken)
         {
-            m_State.Set(group.Value, DefaultValue(group));
+            m_State.Set(group.Value, DefaultValue(in group));
             m_State.Set(group.OwnerToken, AbilityStateValue.FromBlackboardOwnerToken(ownerToken));
             m_State.Set(group.WriteStamp, AbilityStateValue.FromBlackboardWriteStamp(default));
         }
