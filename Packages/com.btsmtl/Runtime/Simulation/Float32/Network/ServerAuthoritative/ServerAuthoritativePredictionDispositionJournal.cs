@@ -259,7 +259,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 Prune(keys, entries, ref count, firstRetainedHistoryTick);
                 if (count >= capacity)
                     throw new InvalidOperationException("Prediction disposition journal capacity is exhausted by live predicted events.");
-                entryIndex = ~entryIndex;
+                entryIndex = ~Find(keys, count, entry.EventId);
                 Array.Copy(keys, entryIndex, keys, entryIndex + 1, count - entryIndex);
                 Array.Copy(entries, entryIndex, entries, entryIndex + 1, count - entryIndex);
                 count++;
