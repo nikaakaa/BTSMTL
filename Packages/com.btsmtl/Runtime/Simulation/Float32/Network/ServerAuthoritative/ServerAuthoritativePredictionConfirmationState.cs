@@ -9,6 +9,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         readonly int m_RequestCapacity;
         readonly ulong[] m_RequestSequences;
         readonly SimulationInputRequest[] m_Requests;
+        readonly List<SimulationInputRequest> m_ScheduledRequests;
         readonly ServerAuthoritativePredictionCorrectionCheckpoint[] m_Checkpoints;
         int m_RequestCount;
 
@@ -19,6 +20,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             m_RequestCapacity = requestCapacity;
             m_RequestSequences = new ulong[requestCapacity];
             m_Requests = new SimulationInputRequest[requestCapacity];
+            m_ScheduledRequests = new List<SimulationInputRequest>(requestCapacity);
             m_Checkpoints = new ServerAuthoritativePredictionCorrectionCheckpoint[2];
             for (int index = 0; index < m_Checkpoints.Length; index++)
                 m_Checkpoints[index] = new ServerAuthoritativePredictionCorrectionCheckpoint(requestCapacity);
@@ -46,10 +48,11 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 RetainRequest(incoming[i]);
             if (!consume || m_RequestCount == 0)
                 return Array.Empty<SimulationInputRequest>();
-            var result = new SimulationInputRequest[m_RequestCount];
-            Array.Copy(m_Requests, result, m_RequestCount);
+            m_ScheduledRequests.Clear();
+            for (int index = 0; index < m_RequestCount; index++)
+                m_ScheduledRequests.Add(m_Requests[index]);
             m_RequestCount = 0;
-            return result;
+            return m_ScheduledRequests;
         }
 
         public void ApplyAck(AuthoritativeInputAck ack)

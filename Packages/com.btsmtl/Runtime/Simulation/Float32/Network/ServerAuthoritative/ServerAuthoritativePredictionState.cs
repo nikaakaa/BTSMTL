@@ -201,7 +201,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         internal ServerAuthoritativeRemoteBodySelectionFrame SelectRemoteBodyFrame(SimulationTick tick) =>
             m_History.SelectRemoteBodyFrame(tick);
 
-        public IReadOnlyList<SimulationInputRequest> ScheduleRequests(
+        internal IReadOnlyList<SimulationInputRequest> ScheduleRequests(
             IReadOnlyList<SimulationInputRequest> incoming,
             bool consume) => m_Confirmation.ScheduleRequests(incoming, consume);
 
