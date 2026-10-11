@@ -322,8 +322,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             bool reuse = fresh || m_Policy.MissingInputPolicy == ServerAuthoritativeMissingInputPolicy.ReuseLastCanonicalInput &&
                 age <= m_Policy.MaximumInputLagTicks;
             SimulationInputValue[] values = reuse
-                ? GetNeutralValues(heldIndex, held.Input.Values)
-                : held.Input.OwnedValues;
+                ? held.Input.OwnedValues
+                : GetNeutralValues(heldIndex, held.Input.Values);
             SimulationInputRequest[] requests = fresh
                 ? held.Input.OwnedRequests
                 : Array.Empty<SimulationInputRequest>();
