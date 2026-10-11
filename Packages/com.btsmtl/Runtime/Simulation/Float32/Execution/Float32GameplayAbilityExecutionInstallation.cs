@@ -64,6 +64,7 @@ namespace ThirdPersonSimulation
         public Float32GameplayAbilityExecutionData Data => m_Execution.Data;
         public GameplayAbilityExecutionLayout Layout => m_Execution.Layout;
         public GameplayAbilityExecutionIdentity Identity => m_Execution.Services.Identity;
+        public int EquipmentSlotCapacity => m_EquipmentLayout?.Slots.Count ?? 0;
         internal EquipmentProgramLayout EquipmentLayout => m_EquipmentLayout;
         internal Float32GameplayAbilityExecutionServices Services => m_Execution.Services;
         internal Float32AbilityExecutionContext Execution => m_Execution;
