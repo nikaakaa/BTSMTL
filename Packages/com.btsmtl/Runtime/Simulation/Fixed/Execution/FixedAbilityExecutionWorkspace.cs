@@ -29,7 +29,7 @@ namespace ThirdPersonSimulation.Fixed
             int inputCapacity = 0;
             for (int index = 0; index < data.Operations.Count; index++)
                 inputCapacity = Math.Max(inputCapacity, layout.ValueInputs(data.Operations[index].Handle).Length);
-            ValueStack.EnsureCapacity(depthCapacity);
+            ActiveValueSlots = new bool[layout.ValueEvaluationSlotCount];
             while (ValueBuffers.Count < depthCapacity)
                 ValueBuffers.Add(new FixedValueInputBuffer());
             for (int index = 0; index < ValueBuffers.Count; index++)
@@ -51,7 +51,7 @@ namespace ThirdPersonSimulation.Fixed
         internal int GameplayEffectCueCount { get; set; }
         internal int GameplayEffectSuccessfulChangeCount { get; set; }
         public FixedGameplayEffectExecutionScratch GameplayEffects { get; }
-        public HashSet<long> ValueStack { get; } = new HashSet<long>();
+        internal bool[] ActiveValueSlots { get; }
         public List<FixedValueInputBuffer> ValueBuffers { get; } = new List<FixedValueInputBuffer>();
         public List<AbilityTimelineLogicMotionWarp> TimelineMotionWarps { get; } =
             new List<AbilityTimelineLogicMotionWarp>();
@@ -76,7 +76,6 @@ namespace ThirdPersonSimulation.Fixed
             CommandBatchRejections.Clear();
             GameplayEffectCueCount = 0;
             GameplayEffectSuccessfulChangeCount = 0;
-            ValueStack.Clear();
             TimelineMotionWarps.Clear();
             ActionWindowProjections.Clear();
             ActionWindowProjectionKeys.Clear();

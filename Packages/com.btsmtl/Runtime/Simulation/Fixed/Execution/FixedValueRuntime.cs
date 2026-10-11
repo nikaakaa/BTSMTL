@@ -59,7 +59,7 @@ namespace ThirdPersonSimulation.Fixed
         readonly IFixedBlackboardPort m_Blackboard;
         readonly FixedAbilityExecutionFrame m_Frame;
         readonly FixedStatePort m_ControlState;
-        readonly HashSet<long> m_ValueStack;
+        readonly bool[] m_ActiveValueSlots;
         readonly List<FixedValueInputBuffer> m_InputBuffers;
         readonly string[][] m_InputPortIds;
         int m_InputBufferDepth;
@@ -87,7 +87,7 @@ namespace ThirdPersonSimulation.Fixed
             m_ControlState = controlState;
             if (workspace == null)
                 throw new ArgumentNullException(nameof(workspace));
-            m_ValueStack = workspace.ValueStack;
+            m_ActiveValueSlots = workspace.ActiveValueSlots;
             m_InputBuffers = workspace.ValueBuffers;
             m_InputPortIds = new string[frame.Data.Operations.Count][];
             for (int operation = 0; operation < m_InputPortIds.Length; operation++)
@@ -105,7 +105,7 @@ namespace ThirdPersonSimulation.Fixed
 
         public void BeginEvaluation()
         {
-            if (m_InputBufferDepth != 0 || m_ValueStack.Count != 0)
+            if (m_InputBufferDepth != 0)
                 throw new InvalidOperationException("Fixed value runtime retained recursion state across evaluations.");
         }
 
@@ -136,9 +136,10 @@ namespace ThirdPersonSimulation.Fixed
 		{
             if (m_Frame.RuleEvaluationMode != GameplayAbilityRuleEvaluationMode.Availability)
                 cursor.RequireExecution(handle);
-			long valueKey = (long)handle.Value << 32 | (uint)outputPortIndex;
-			if (!m_ValueStack.Add(valueKey))
+			int valueSlot = m_Layout.ValueEvaluationSlot(handle, outputPortIndex);
+			if (m_ActiveValueSlots[valueSlot])
 				throw new InvalidOperationException($"Value operation cycle reached '{handle}/{outputPort}'.");
+			m_ActiveValueSlots[valueSlot] = true;
 			try
 			{
 				SimulationOperation operation = Access.Operation(handle);
@@ -303,7 +304,7 @@ namespace ThirdPersonSimulation.Fixed
 			}
 			finally
 			{
-				m_ValueStack.Remove(valueKey);
+				m_ActiveValueSlots[valueSlot] = false;
 			}
 		}
 

@@ -100,6 +100,7 @@ namespace ThirdPersonSimulation.Fixed
         readonly IReadOnlyList<ProgramProducer> m_Producers;
         readonly OperationValueInputRange[] m_ValueInputRanges;
         readonly CompiledValueInputBinding[] m_ValueInputs;
+        readonly int[] m_ValueEvaluationSlotOffsets;
         readonly int[] m_NamedConstantIndexes;
         readonly int[] m_FirstStateSlots;
         readonly Dictionary<string, int>[] m_StateSlotsByOwner;
@@ -160,7 +161,8 @@ namespace ThirdPersonSimulation.Fixed
                 m_StateSlots,
                 m_GraphCallFrames,
                 out m_ValueInputRanges,
-                out m_ValueInputs);
+                out m_ValueInputs,
+                out m_ValueEvaluationSlotOffsets);
             m_NamedConstantIndexes = BuildNamedConstantIndexes(m_Operations, m_Constants);
             BuildGlobalStateSlots(
                 m_StateSlots,
@@ -245,6 +247,11 @@ namespace ThirdPersonSimulation.Fixed
             OperationValueInputRange range = m_ValueInputRanges[operation.Value];
             return new ReadOnlySpan<CompiledValueInputBinding>(m_ValueInputs, range.Offset, range.Count);
         }
+
+        internal int ValueEvaluationSlotCount => m_ValueEvaluationSlotOffsets[m_Operations.Count];
+
+        internal int ValueEvaluationSlot(OperationHandle operation, int outputPortIndex) =>
+            m_ValueEvaluationSlotOffsets[operation.Value] + outputPortIndex + 1;
 
         public IReadOnlyList<ProgramControlFlowEdge> Outgoing(OperationHandle source, ProgramControlFlowKind kind) =>
             Topology.Outgoing(source, kind);
@@ -370,10 +377,12 @@ namespace ThirdPersonSimulation.Fixed
             IReadOnlyList<ProgramStateSlot> stateSlots,
             IReadOnlyList<ProgramGraphCallFrame> graphCallFrames,
             out OperationValueInputRange[] ranges,
-            out CompiledValueInputBinding[] bindings)
+            out CompiledValueInputBinding[] bindings,
+            out int[] evaluationSlotOffsets)
         {
             int operationCount = operations.Count;
             var grouped = new CompiledValueInputBinding?[operationCount][];
+            evaluationSlotOffsets = new int[operationCount + 1];
             for (int i = 0; i < operationCount; i++)
             {
                 OperationValuePortContract contract = GameplayAbilityValuePortContracts.Require(
@@ -381,6 +390,7 @@ namespace ThirdPersonSimulation.Fixed
                     operations[i].Handle,
                     graphCallFrames);
                 grouped[i] = new CompiledValueInputBinding?[contract.Inputs.Count];
+                evaluationSlotOffsets[i + 1] = checked(evaluationSlotOffsets[i] + contract.Outputs.Count + 1);
             }
             for (int i = 0; i < controlFlow.Count; i++)
             {
