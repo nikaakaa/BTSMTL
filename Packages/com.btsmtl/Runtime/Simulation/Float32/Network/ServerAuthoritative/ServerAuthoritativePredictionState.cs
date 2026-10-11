@@ -269,14 +269,12 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 local = m_History.LastRecord();
 
             using ServerAuthoritativePredictionCorrectionCheckpoint confirmation = m_Confirmation.PrepareBaseline(baseline);
-            ServerAuthoritativePredictionJournalCheckpoint reconciledJournal = m_Journal.PrepareConfirmation(
+            using ServerAuthoritativePredictionJournalCheckpoint journal = m_Journal.PrepareConfirmation(
                 baseline.AuthorityTick,
                 confirmation.ConfirmedEventHorizon,
                 m_History.FirstRetainedTick);
             using ServerAuthoritativePredictionHistoryCheckpoint history = m_History.PrepareClear();
-            ServerAuthoritativePredictionJournalCheckpoint journal = m_Journal.PreparePrune(
-                reconciledJournal,
-                history.FirstRetainedTick);
+            m_Journal.Prune(journal, history.FirstRetainedTick);
 
             ServerAuthoritativePredictionRestorePlan plan = m_Reconciler.BuildRestorePlan(
                 local,
@@ -344,7 +342,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
 
         internal void RestoreJournalState(CanonicalReader reader, CanonicalReader inputReader, CanonicalWriter canonicalScratch)
         {
-            ServerAuthoritativePredictionJournalCheckpoint checkpoint =
+            using ServerAuthoritativePredictionJournalCheckpoint checkpoint =
                 ServerAuthoritativePredictionStateCodec.ReadJournal(reader, Policy.HistoryCapacity);
             m_Journal.Restore(checkpoint);
         }
@@ -364,7 +362,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 m_Confirmation.ConfirmedEventHorizon,
                 m_History.FirstRetainedTick);
             m_History.PruneConfirmedThrough(baseline.ConfirmedInputSequence);
-            m_Journal.ApplyPrune(m_History.FirstRetainedTick);
+            m_Journal.Prune(m_History.FirstRetainedTick);
         }
     }
 

@@ -19,8 +19,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             4 + 4 * MaximumProjectedParticipantCount + 3 * MaximumObservedActorCount;
         static readonly Comparison<SimulationInputRequest> s_CompareRequestsBySequence =
             (left, right) => left.Sequence.CompareTo(right.Sequence);
-        static readonly Comparison<KeyValuePair<EventId, ServerAuthoritativeJournalEntry>> s_CompareJournalEntries =
-            (left, right) => left.Key.CompareTo(right.Key);
+        static readonly Comparison<ServerAuthoritativeJournalEntry> s_CompareJournalEntries =
+            (left, right) => left.EventId.CompareTo(right.EventId);
 
         public static byte[] WriteCorrection(ServerAuthoritativePredictionCorrectionCheckpoint checkpoint)
         {
@@ -197,12 +197,10 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             if (checkpoint == null)
                 throw new ArgumentNullException(nameof(checkpoint));
             using var writer = new CanonicalWriter();
-            WriteJournalHeader(writer, checkpoint.Cursor, checkpoint.Entries.Count);
-            for (int i = 0; i < checkpoint.Entries.Count; i++)
-            {
-                KeyValuePair<EventId, ServerAuthoritativeJournalEntry> pair = checkpoint.Entries[i];
-                WriteJournalEntry(writer, pair.Key, pair.Value);
-            }
+            WriteJournalHeader(writer, checkpoint.Cursor, checkpoint.Count);
+            ReadOnlySpan<ServerAuthoritativeJournalEntry> entries = checkpoint.Entries;
+            for (int i = 0; i < entries.Length; i++)
+                WriteJournalEntry(writer, entries[i]);
             return writer.ToArray();
         }
 
@@ -214,9 +212,9 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             writer.WriteInt32(count);
         }
 
-        internal static void WriteJournalEntry(CanonicalWriter writer, EventId key, ServerAuthoritativeJournalEntry entry)
+        internal static void WriteJournalEntry(CanonicalWriter writer, in ServerAuthoritativeJournalEntry entry)
         {
-            writer.WriteEventId(key);
+            writer.WriteEventId(entry.EventId);
             writer.WriteUInt64(entry.Tick.Value);
             writer.WriteUInt64(entry.Sequence);
             writer.WriteByte((byte)entry.Disposition);
@@ -229,7 +227,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             RequireHeader(reader, JournalMagic, ServerAuthoritativePredictionPassIds.JournalStateSchemaVersion);
             ulong cursor = reader.ReadUInt64();
             int count = RequireCount(reader.ReadInt32(), checked(historyCapacity * 64));
-            var entries = new KeyValuePair<EventId, ServerAuthoritativeJournalEntry>[count];
+            var entries = new ServerAuthoritativeJournalEntry[count];
             for (int i = 0; i < count; i++)
             {
                 var eventId = reader.ReadEventId();
@@ -241,14 +239,12 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 {
                     throw new InvalidDataException("Prediction disposition journal payload is invalid.");
                 }
-                entries[i] = new KeyValuePair<EventId, ServerAuthoritativeJournalEntry>(
-                    eventId,
-                    new ServerAuthoritativeJournalEntry(eventId, tick, sequence, disposition));
+                entries[i] = new ServerAuthoritativeJournalEntry(eventId, tick, sequence, disposition);
             }
             Array.Sort(entries, s_CompareJournalEntries);
             for (int i = 1; i < entries.Length; i++)
             {
-                if (entries[i - 1].Key.Equals(entries[i].Key))
+                if (entries[i - 1].EventId.Equals(entries[i].EventId))
                     throw new InvalidDataException("Prediction disposition journal payload contains a duplicate EventId.");
             }
             reader.RequireComplete();

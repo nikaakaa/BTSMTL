@@ -294,7 +294,11 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         }
 
         void RestoreCheckpoint() => m_State.RestoreJournalCheckpoint(m_CapturedJournal);
-        void ReleaseCheckpoint() => m_CapturedJournal = null;
+        void ReleaseCheckpoint()
+        {
+            m_CapturedJournal?.Dispose();
+            m_CapturedJournal = null;
+        }
 
         public void Execute(
             SimulationPipelineEgressContext context,
