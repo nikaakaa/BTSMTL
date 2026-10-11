@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Buffers;
 using System.Linq;
 using ThirdPersonSimulation;
 
@@ -509,6 +508,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         readonly CharacterBodySample[][] m_SampleTracks;
         readonly int[] m_Counts;
         readonly ServerAuthoritativeRemoteBodySelection[] m_SelectionScratch;
+        readonly CharacterBodySample[] m_ObservationScratch;
         ulong m_EvictionCount;
         public int MaximumTextValues => checked(m_LockedActors.Length * (1 + 3 * m_CapacityPerActor));
 
@@ -542,6 +542,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 m_SampleTracks[i] = new CharacterBodySample[capacityPerActor];
             }
             m_SelectionScratch = new ServerAuthoritativeRemoteBodySelection[actors.Length];
+            m_ObservationScratch = new CharacterBodySample[capacityPerActor];
             for (int index = 0; index < actors.Length; index++)
                 actors[index].Retain();
         }
@@ -610,43 +611,63 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             if (actorIndex < 0)
                 throw new InvalidOperationException($"Remote body sample targets unlocked Actor '{batch.ActorId}'.");
 
-            int inputCount = batch.BodySamples.Count;
+            IReadOnlyList<CharacterBodySample> input = batch.BodySamples;
+            int inputCount = input.Count;
             if (inputCount == 0)
                 return;
 
-            int mergedCapacity = m_Counts[actorIndex] + inputCount;
-            ulong[] mergedTicks = ArrayPool<ulong>.Shared.Rent(mergedCapacity);
-            CharacterBodySample[] mergedSamples = ArrayPool<CharacterBodySample>.Shared.Rent(mergedCapacity);
+            ulong[] ticks = m_TickTracks[actorIndex];
+            CharacterBodySample[] samples = m_SampleTracks[actorIndex];
+            int count = m_Counts[actorIndex];
+            int mergedCount = CountMergedSamples(ticks, samples, count, input);
+            int retainedCount = Math.Min(mergedCount, m_CapacityPerActor);
+            int skippedCount = mergedCount - retainedCount;
+            CharacterBodySample[] mergedSamples = m_ObservationScratch;
             try
             {
-                int mergedCount = m_Counts[actorIndex];
-                Array.Copy(m_TickTracks[actorIndex], mergedTicks, mergedCount);
-                Array.Copy(m_SampleTracks[actorIndex], mergedSamples, mergedCount);
-                for (int i = 0; i < inputCount; i++)
-                    Insert(mergedTicks, mergedSamples, ref mergedCount, batch.BodySamples[i]);
-
-                for (int i = 1; i < mergedCount; i++)
+                int existingIndex = 0;
+                int inputIndex = 0;
+                CharacterBodySample incoming = input[0];
+                CharacterBodySample previous = default;
+                for (int i = 0; i < mergedCount; i++)
                 {
-                    if (mergedTicks[i - 1] + 1UL == mergedTicks[i] &&
-                        !WorldSolveBatchRequest.BodyEquals(mergedSamples[i - 1].FinalBody, mergedSamples[i].BeforeBody))
+                    CharacterBodySample sample;
+                    bool consumesInput;
+                    if (inputIndex == inputCount ||
+                        existingIndex < count && ticks[existingIndex] <= incoming.Tick.Value)
+                    {
+                        sample = samples[existingIndex++];
+                        consumesInput = inputIndex < inputCount && sample.Tick == incoming.Tick;
+                    }
+                    else
+                    {
+                        sample = incoming;
+                        consumesInput = true;
+                    }
+                    if (consumesInput && ++inputIndex < inputCount)
+                        incoming = input[inputIndex];
+                    if (i > 0 && previous.Tick.Value + 1UL == sample.Tick.Value &&
+                        !WorldSolveBatchRequest.BodyEquals(previous.FinalBody, sample.BeforeBody))
                     {
                         throw new InvalidOperationException("Remote body timeline contains a discontinuous consecutive BeforeBody.");
                     }
+                    if (i >= skippedCount)
+                        mergedSamples[i - skippedCount] = sample;
+                    previous = sample;
                 }
 
-                int retainedCount = Math.Min(mergedCount, m_CapacityPerActor);
-                for (int index = mergedCount - retainedCount; index < mergedCount; index++)
+                for (int index = 0; index < retainedCount; index++)
                     RetainSample(mergedSamples[index]);
                 ReleaseSamples(actorIndex);
-                Array.Copy(mergedTicks, mergedCount - retainedCount, m_TickTracks[actorIndex], 0, retainedCount);
-                Array.Copy(mergedSamples, mergedCount - retainedCount, m_SampleTracks[actorIndex], 0, retainedCount);
+                for (int index = 0; index < retainedCount; index++)
+                    ticks[index] = mergedSamples[index].Tick.Value;
+                Array.Copy(mergedSamples, 0, samples, 0, retainedCount);
                 m_Counts[actorIndex] = retainedCount;
-                m_EvictionCount = checked(m_EvictionCount + (ulong)(mergedCount - retainedCount));
+                m_EvictionCount = checked(m_EvictionCount + (ulong)skippedCount);
             }
             finally
             {
-                ArrayPool<ulong>.Shared.Return(mergedTicks);
-                ArrayPool<CharacterBodySample>.Shared.Return(mergedSamples);
+                Array.Clear(mergedSamples, 0, retainedCount);
             }
         }
 
@@ -748,25 +769,32 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             sample.ActorId.Release();
         }
 
-        static void Insert(
+        static int CountMergedSamples(
             ulong[] ticks,
             CharacterBodySample[] samples,
-            ref int count,
-            CharacterBodySample sample)
+            int count,
+            IReadOnlyList<CharacterBodySample> input)
         {
-            int insertionIndex = Find(ticks, count, sample.Tick.Value);
-            if (insertionIndex >= 0)
+            int existingIndex = Find(ticks, count, input[0].Tick.Value);
+            if (existingIndex < 0)
+                existingIndex = ~existingIndex;
+            int mergedCount = count;
+            for (int index = 0; index < input.Count; index++)
             {
-                if (!SampleEquals(samples[insertionIndex], sample))
-                    throw new InvalidOperationException($"Remote body timeline Tick '{sample.Tick}' changed canonical value.");
-                return;
+                CharacterBodySample sample = input[index];
+                while (existingIndex < count && ticks[existingIndex] < sample.Tick.Value)
+                    existingIndex++;
+                if (existingIndex < count && ticks[existingIndex] == sample.Tick.Value)
+                {
+                    if (!SampleEquals(samples[existingIndex], sample))
+                        throw new InvalidOperationException($"Remote body timeline Tick '{sample.Tick}' changed canonical value.");
+                }
+                else
+                {
+                    mergedCount++;
+                }
             }
-            insertionIndex = ~insertionIndex;
-            Array.Copy(ticks, insertionIndex, ticks, insertionIndex + 1, count - insertionIndex);
-            Array.Copy(samples, insertionIndex, samples, insertionIndex + 1, count - insertionIndex);
-            ticks[insertionIndex] = sample.Tick.Value;
-            samples[insertionIndex] = sample;
-            count++;
+            return mergedCount;
         }
 
         int FindActor(ActorId actorId) => Array.BinarySearch(m_LockedActors, actorId);
