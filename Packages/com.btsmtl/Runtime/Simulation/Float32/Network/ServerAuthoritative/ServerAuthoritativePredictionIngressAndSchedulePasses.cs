@@ -263,6 +263,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             new SimulationPipelineStepSourceMapping[1],
             new SimulationPipelineStepSourceMapping[2]
         };
+        readonly CharacterBodySample[][] m_SelectedBodyStorage;
         ServerAuthoritativePredictionCorrectionCheckpoint m_CapturedCorrection;
         ulong m_DecisionCount;
         ulong m_CorrectionCount;
@@ -281,6 +282,13 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             m_ReplayClockId = string.Concat(sourceClockId, ".replay");
             m_Policy = policy ?? throw new ArgumentNullException(nameof(policy));
             m_State = state ?? throw new ArgumentNullException(nameof(state));
+            int remoteActorCount = m_State.RemoteBodyActorCount;
+            m_SelectedBodyStorage = new[]
+            {
+                Array.Empty<CharacterBodySample>(),
+                new CharacterBodySample[remoteActorCount],
+                new CharacterBodySample[checked(2 * remoteActorCount)]
+            };
             StateIdentity = new SimulationPipelineStateParticipantIdentity(
                 descriptor.PassId,
                 descriptor.ImplementationVersion,
@@ -436,7 +444,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                     throw new InvalidOperationException("HardRecovery requires an explicit restore Tick for the remote visual reset anchor.");
                 ServerAuthoritativeRemoteBodySelectionFrame recoverySelection =
                     m_State.SelectRemoteBodyFrame(restore.Tick);
-                selectedRemoteBodies = new CharacterBodySample[recoverySelection.Selections.Count];
+                selectedRemoteBodies = m_SelectedBodyStorage[1];
                 recoverySelection.CopyBodySamples(selectedRemoteBodies);
                 if (selectedRemoteBodies.Length == 0)
                     throw new InvalidOperationException("HardRecovery produced no selected remote Body reset anchor.");
@@ -531,6 +539,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             m_StateStorage.ReleaseStorage();
             for (int index = 1; index < m_SourceMappingStorage.Length; index++)
                 Array.Clear(m_SourceMappingStorage[index], 0, m_SourceMappingStorage[index].Length);
+            for (int index = 1; index < m_SelectedBodyStorage.Length; index++)
+                Array.Clear(m_SelectedBodyStorage[index], 0, m_SelectedBodyStorage[index].Length);
         }
 
         public void WriteCheckpointState(CanonicalWriter writer)
@@ -613,9 +623,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             var steps = new Float32SimulationStep[replay.Count + currentStepCount];
             SimulationPipelineStepSourceMapping[] mappings = m_SourceMappingStorage[
                 (currentStepCount > 0 ? 1 : 0) + (replay.Count > 0 ? 1 : 0)];
-            CharacterBodySample[] selectedBodies = currentStepCount == 0
-                ? Array.Empty<CharacterBodySample>()
-                : null;
+            CharacterBodySample[] selectedBodies = m_SelectedBodyStorage[currentStepCount];
             int selectedBodyCount = 0;
             string replayClock = replay.Count == 0
                 ? null
@@ -661,8 +669,6 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 var tick = new SimulationTick(tickValue);
                 ServerAuthoritativeRemoteBodySelectionFrame selection = m_State.SelectRemoteBodyFrame(tick);
                 int sampleCount = selection.Selections.Count;
-                if (selectedBodies == null)
-                    selectedBodies = new CharacterBodySample[currentStepCount * sampleCount];
                 selection.CopyBodySamples(selectedBodies.AsSpan(selectedBodyCount, sampleCount));
                 selectedBodyCount += sampleCount;
                 ObservedWorldConstraintFrame observed = observedContactEnabled

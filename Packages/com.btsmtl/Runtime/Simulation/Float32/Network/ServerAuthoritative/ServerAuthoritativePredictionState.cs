@@ -180,6 +180,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         public int JournalCount => m_Journal.Count;
         public int HistoryCount => m_History.Count;
         internal int MaximumHistoryTextValues => m_History.MaximumTextValues;
+        internal int RemoteBodyActorCount => m_History.RemoteBodyActorCount;
         public int RemoteBodySampleCount => m_History.RemoteBodySampleCount;
         public int RemoteBodyCapacityPerActor => m_History.RemoteBodyCapacityPerActor;
         public ulong RemoteBodyFirstSampleTick => m_History.RemoteBodyFirstSampleTick;

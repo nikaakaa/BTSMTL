@@ -56,6 +56,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             ServerAuthoritativePredictionStateCodec.MaximumHistoryRecordTextValues + m_RemoteBodies.MaximumTextValues);
         public ulong FirstRetainedTick => m_Count == 0 ? ulong.MaxValue : m_Ticks[0];
         public bool IsRemoteObservationPrimed => m_RemoteBodies.IsPrimed;
+        internal int RemoteBodyActorCount => m_RemoteBodies.ActorCount;
         public int RemoteBodySampleCount => m_RemoteBodies.SampleCount;
         public int RemoteBodyCapacityPerActor => m_RemoteBodies.CapacityPerActor;
         public ulong RemoteBodyFirstSampleTick => m_RemoteBodies.FirstSampleTick;
@@ -510,6 +511,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         readonly ServerAuthoritativeRemoteBodySelection[] m_SelectionScratch;
         readonly CharacterBodySample[] m_ObservationScratch;
         ulong m_EvictionCount;
+        internal int ActorCount => m_LockedActors.Length;
         public int MaximumTextValues => checked(m_LockedActors.Length * (1 + 3 * m_CapacityPerActor));
 
         public ServerAuthoritativeRemoteBodyTimeline(
