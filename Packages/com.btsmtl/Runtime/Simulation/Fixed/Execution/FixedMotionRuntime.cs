@@ -606,7 +606,7 @@ namespace ThirdPersonSimulation.Fixed
                 MotionModifierDiagnosticCode.WindowEntered);
         }
 
-        public void ApplyTimelineMotionWarp(AbilityTimelineLogicMotionWarp warp, ref ResolvedMotionChannel channel)
+        public void ApplyTimelineMotionWarp(in AbilityTimelineLogicMotionWarp warp, ref ResolvedMotionChannel channel)
         {
             FixedMotionWarpState storedState = m_Frame.SkillState.GetMotionWarpState(warp.StateOperation);
             if (storedState.Decision != MotionWarpWindowDecision.Accepted)
@@ -745,7 +745,7 @@ namespace ThirdPersonSimulation.Fixed
         }
 
         void ApplyTargetResponse(
-            AbilityTimelineLogicMotionWarp warp,
+            in AbilityTimelineLogicMotionWarp warp,
             FixedMotionWarpState state,
             ref ResolvedMotionChannel channel)
         {
@@ -811,7 +811,7 @@ namespace ThirdPersonSimulation.Fixed
         }
 
         void ResolveDirectTarget(
-            AbilityTimelineLogicMotionWarp warp,
+            in AbilityTimelineLogicMotionWarp warp,
             FixedVector3 targetPosition,
             FixedYaw targetYaw,
             FixedVector3 bodyPosition,
@@ -900,7 +900,7 @@ namespace ThirdPersonSimulation.Fixed
         }
 
         FixedVector3 ResolveDirectTargetPosition(
-            AbilityTimelineLogicMotionWarp warp,
+            in AbilityTimelineLogicMotionWarp warp,
             FixedVector3 targetPosition,
             FixedYaw targetYaw,
             FixedVector3 startBodyPosition,
@@ -951,7 +951,7 @@ namespace ThirdPersonSimulation.Fixed
         }
 
         void EvaluateDirectPose(
-            AbilityTimelineLogicMotionWarp warp,
+            in AbilityTimelineLogicMotionWarp warp,
             FixedScalar sourcePositionX,
             FixedScalar sourcePositionY,
             FixedScalar sourcePositionZ,

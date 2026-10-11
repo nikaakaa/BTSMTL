@@ -489,7 +489,7 @@ namespace ThirdPersonSimulation
     {
         void CaptureWindowEntry(in AbilityTimelineLogicMotionWarp warp);
         void TraceSourceNotResolved(in AbilityTimelineLogicMotionWarp warp);
-        void ApplyTimelineMotionWarp(AbilityTimelineLogicMotionWarp warp, ref TChannel channel);
+        void ApplyTimelineMotionWarp(in AbilityTimelineLogicMotionWarp warp, ref TChannel channel);
         void FailTimelineMotionWarp(OperationHandle operation, string code, string detail);
     }
 
@@ -522,14 +522,17 @@ namespace ThirdPersonSimulation
                     target.TraceSourceNotResolved(in warp);
                     continue;
                 }
-                if (selected >= 0 && !IsLoopContinuation(warps[selected], warp))
+                if (selected >= 0)
                 {
                     AbilityTimelineLogicMotionWarp previous = warps[selected];
-                    target.FailTimelineMotionWarp(warp.StateOperation, MotionModifierDiagnosticCode.AmbiguousModifier,
-                        $"Action channel owner '{resolvedOwner}' has conflicting Timeline MotionWarps: " +
-                        $"'{previous.StateOperation}' cycle {previous.Cycle} [{previous.PreviousTime}, {previous.CurrentTime}] and " +
-                        $"'{warp.StateOperation}' cycle {warp.Cycle} [{warp.PreviousTime}, {warp.CurrentTime}].");
-                    return;
+                    if (!IsLoopContinuation(in previous, in warp))
+                    {
+                        target.FailTimelineMotionWarp(warp.StateOperation, MotionModifierDiagnosticCode.AmbiguousModifier,
+                            $"Action channel owner '{resolvedOwner}' has conflicting Timeline MotionWarps: " +
+                            $"'{previous.StateOperation}' cycle {previous.Cycle} [{previous.PreviousTime}, {previous.CurrentTime}] and " +
+                            $"'{warp.StateOperation}' cycle {warp.Cycle} [{warp.PreviousTime}, {warp.CurrentTime}].");
+                        return;
+                    }
                 }
                 selected = index;
             }
@@ -537,11 +540,11 @@ namespace ThirdPersonSimulation
             {
                 AbilityTimelineLogicMotionWarp warp = warps[index];
                 if (warp.Source.Operation.Equals(resolvedOwner) && warp.SourceMotionClipId == resolvedMotionClipId)
-                    target.ApplyTimelineMotionWarp(warp, ref channel);
+                    target.ApplyTimelineMotionWarp(in warp, ref channel);
             }
         }
 
-        static bool IsLoopContinuation(AbilityTimelineLogicMotionWarp previous, AbilityTimelineLogicMotionWarp current) =>
+        static bool IsLoopContinuation(in AbilityTimelineLogicMotionWarp previous, in AbilityTimelineLogicMotionWarp current) =>
             previous.StateOperation.Equals(current.StateOperation) &&
             previous.Source.Equals(current.Source) &&
             previous.AbilityId.Equals(current.AbilityId) &&
