@@ -366,9 +366,10 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             bool observationPriming = !m_State.IsRemoteObservationPrimed;
             if (observationPriming)
                 currentStepCount = 0;
-            current = WithRequests(
-                current,
-                m_State.ScheduleRequests(current.Input.Requests, currentStepCount > 0));
+            IReadOnlyList<SimulationInputRequest> requests =
+                m_State.ScheduleRequests(current.Input.Requests, currentStepCount > 0);
+            if (currentStepCount > 0)
+                current = WithRequests(current, requests);
             ulong lastPredictedInputSequence = m_State.LastPredictedInputSequence;
             AuthoritativeActorBaseline baseline = FindOwnerBaseline(observations, current.ActorId);
             PredictionCorrectionDecision decision;
@@ -721,15 +722,10 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 template.Input.TickSource.Kind,
                 template.Input.TickSource.ClockId,
                 targetTick);
-            var input = new SimulationInput(
-                template.Input.NumericProfile,
+            SimulationInput input = template.Input.RebindOwned(
                 source,
-                template.Input.InputSourceIdentity,
                 inputSequence,
-                template.Input.Values,
-                includeRequests
-                    ? template.Input.Requests
-                    : Array.Empty<SimulationInputRequest>());
+                includeRequests);
             return new OwnerCanonicalInputBatch(template.ActorId, targetTick, inputSequence, input);
         }
 
@@ -761,13 +757,10 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         {
             SimulationInput rebound = input.Input.TickSource.Equals(source)
                 ? input.Input
-                : new SimulationInput(
-                    input.Input.NumericProfile,
+                : input.Input.RebindOwned(
                     source,
-                    input.Input.InputSourceIdentity,
                     input.Input.Sequence,
-                    input.Input.Values,
-                    input.Input.Requests);
+                    true);
             return new Float32SimulationStep(
                 tick,
                 new SimulationPipelineStepProvenance(kind, source, planSequence),

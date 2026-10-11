@@ -96,6 +96,18 @@ namespace ThirdPersonSimulation
         public IReadOnlyList<SimulationInputRequest> Requests => m_Storage.Requests;
         public SimulationInputValue[] OwnedValues => m_Storage.OwnedValues;
         public SimulationInputRequest[] OwnedRequests => m_Storage.OwnedRequests;
+        internal SimulationInput RebindOwned(
+            SimulationTickSourceIdentity tickSource,
+            ulong sequence,
+            bool includeRequests) =>
+            new SimulationInput(
+                NumericProfile,
+                tickSource,
+                InputSourceIdentity,
+                sequence,
+                OwnedValues,
+                includeRequests ? OwnedRequests : Array.Empty<SimulationInputRequest>());
+
         public void RetainText()
         {
             SimulationInputHeader.CanonicalRetain(Header);
