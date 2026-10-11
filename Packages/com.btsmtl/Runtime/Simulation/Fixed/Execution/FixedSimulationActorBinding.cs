@@ -52,6 +52,9 @@ namespace ThirdPersonSimulation.Fixed
         internal long EvaluationInputsElapsedStopwatchTicks;
         internal long EvaluationControlElapsedStopwatchTicks;
         internal long EvaluationAbilitiesElapsedStopwatchTicks;
+        internal long EvaluationAbilitiesTickElapsedStopwatchTicks;
+        internal long EvaluationAbilitiesMotionElapsedStopwatchTicks;
+        internal long EvaluationAbilitiesRulesElapsedStopwatchTicks;
         internal long EvaluationMotionElapsedStopwatchTicks;
         internal long EvaluationCommitElapsedStopwatchTicks;
 #endif
@@ -180,6 +183,9 @@ namespace ThirdPersonSimulation.Fixed
             EvaluationInputsElapsedStopwatchTicks = 0;
             EvaluationControlElapsedStopwatchTicks = 0;
             EvaluationAbilitiesElapsedStopwatchTicks = 0;
+            EvaluationAbilitiesTickElapsedStopwatchTicks = 0;
+            EvaluationAbilitiesMotionElapsedStopwatchTicks = 0;
+            EvaluationAbilitiesRulesElapsedStopwatchTicks = 0;
             EvaluationMotionElapsedStopwatchTicks = 0;
             EvaluationCommitElapsedStopwatchTicks = 0;
 #endif

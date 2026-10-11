@@ -176,17 +176,31 @@ namespace ThirdPersonSimulation.Fixed
                 stageStarted = stageFinished;
 #endif
 
+#if UNITY_EDITOR
+                long abilitiesStarted = stageStarted;
+#endif
                 for (int i = 0; i < invocationCount; i++)
                 {
                     FixedAbilityInvocationRuntime invocation = invocations[i];
                     invocation.Tick(applyBlackboardCommands);
+#if UNITY_EDITOR
+                    stageFinished = System.Diagnostics.Stopwatch.GetTimestamp();
+                    evaluationOutput.EvaluationAbilitiesTickElapsedStopwatchTicks += stageFinished - stageStarted;
+                    stageStarted = stageFinished;
+#endif
                     invocation.CopyMotionContributionsTo(motionContributions);
+#if UNITY_EDITOR
+                    stageFinished = System.Diagnostics.Stopwatch.GetTimestamp();
+                    evaluationOutput.EvaluationAbilitiesMotionElapsedStopwatchTicks += stageFinished - stageStarted;
+                    stageStarted = stageFinished;
+#endif
                 }
 
                 control.ApplyMovementIntent(rules.AfterAbility());
 #if UNITY_EDITOR
                 stageFinished = System.Diagnostics.Stopwatch.GetTimestamp();
-                evaluationOutput.EvaluationAbilitiesElapsedStopwatchTicks = stageFinished - stageStarted;
+                evaluationOutput.EvaluationAbilitiesRulesElapsedStopwatchTicks = stageFinished - stageStarted;
+                evaluationOutput.EvaluationAbilitiesElapsedStopwatchTicks = stageFinished - abilitiesStarted;
                 stageStarted = stageFinished;
 #endif
 
