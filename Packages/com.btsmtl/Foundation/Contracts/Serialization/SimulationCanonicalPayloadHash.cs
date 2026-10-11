@@ -174,7 +174,7 @@ namespace ThirdPersonSimulation
             }
         }
 
-        static void ProcessBlock(ReadOnlySpan<byte> block, Span<uint> state, Span<uint> schedule)
+        internal static void ProcessBlock(ReadOnlySpan<byte> block, Span<uint> state, Span<uint> schedule)
         {
             unchecked
             {
