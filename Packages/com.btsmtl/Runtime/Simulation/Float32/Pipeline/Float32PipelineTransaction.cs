@@ -161,7 +161,8 @@ namespace ThirdPersonSimulation
             for (int actor = 0; actor < m_Roster.Count; actor++)
                 m_Roster[actor].PrepareExecutionTextBudget(services.Descriptor.MaximumSessionCheckpointPayloadBytes);
             GameplayEffectSessionCapacity sessionCapacity = m_Roster[0].SessionCapacity;
-            m_StateStore.PrepareRestoreStorage(sessionCapacity.StatePageCount, solver.MaximumStatePayloadBytes);
+            m_StateStore.PrepareStateStorage(sessionCapacity.StatePageCount);
+            m_StateStore.PrepareRestoreStorage(solver.MaximumStatePayloadBytes);
             int maximumWorldPayloadBytes = WorldSimulationStateCodec.MaximumEncodedBytes(m_StateStore.Current.WorldState,
                 solver.MaximumStatePayloadBytes);
             m_SnapshotCodec.PrepareCheckpointStorage(services.Descriptor, characterRuntime,
@@ -438,13 +439,13 @@ namespace ThirdPersonSimulation
                     SimulationPipelineProducts.WorldSolveBatchResult)
                 .Read();
             ValidateWorldResult(worldResult, step.Tick);
-            var nextActors = new SimulationActorState[actorResults.Length];
+            SimulationWorldStateStore.StatePage candidateStorage = m_StateStore.AcquireStatePage();
+            tickResult.SetCandidateStorage(candidateStorage);
+            SimulationActorState[] nextActors = candidateStorage.State.ActorArray;
             for (int i = 0; i < actorResults.Length; i++)
                 nextActors[i] = new SimulationActorState(actorResults[i].ActorId, actorResults[i].State);
-            var candidateState = SimulationWorldStateSet.FromPreparedActors(
-                step.Tick.Value,
-                nextActors,
-                worldResult.NextWorldState);
+            SimulationWorldStateSet candidateState = candidateStorage.State;
+            candidateState.CompleteCandidate(step.Tick.Value, worldResult.NextWorldState);
             bool capture = (executionPlan.Requirements &
                 (SimulationSessionPlanRequirement.Snapshot | SimulationSessionPlanRequirement.StateHash)) != 0;
             SimulationPipelineStateSnapshot pipelineSnapshot = capture

@@ -41,6 +41,7 @@ namespace ThirdPersonSimulation
         static readonly Comparison<SimulationActorTickResult> s_CompareActors = CompareActors;
         readonly SimulationActorTickResult[] m_Actors;
         SimulationPipelineStateSnapshot m_PipelineProjection;
+        SimulationWorldStateStore.StatePage m_CandidateStorage;
 
         internal SimulationTickResult(int actorCount)
         {
@@ -63,10 +64,14 @@ namespace ThirdPersonSimulation
 
         internal void SetPipelineProjection(SimulationPipelineStateSnapshot projection) => m_PipelineProjection = projection;
 
+        internal void SetCandidateStorage(SimulationWorldStateStore.StatePage storage) => m_CandidateStorage = storage;
+
         internal void ReleaseFrame()
         {
             m_PipelineProjection?.ReleaseStepStorage();
             m_PipelineProjection = null;
+            m_CandidateStorage?.Release();
+            m_CandidateStorage = null;
             Array.Clear(m_Actors, 0, m_Actors.Length);
             CandidateSnapshot = null;
         }
