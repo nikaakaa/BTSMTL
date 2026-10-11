@@ -56,7 +56,8 @@ namespace ThirdPersonSimulation.Fixed
         AnimationVariable,
         PortInput,
         AnimationPort,
-        TimelineTimeEdit
+        TimelineTimeEdit,
+        InputDisplay
     }
 
     public readonly struct FixedBlackboardWriteRecord
