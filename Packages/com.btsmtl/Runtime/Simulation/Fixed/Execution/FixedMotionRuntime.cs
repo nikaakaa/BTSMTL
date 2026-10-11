@@ -1102,6 +1102,8 @@ namespace ThirdPersonSimulation.Fixed
             m_Profiles = BuildProfiles(Access.Layout, Access.Services);
         }
 
+        internal int DurationTicks(OperationHandle operation) => m_Profiles[operation.Value].DurationTicks;
+
         public void Submit<TTarget>(
             OperationControlCursor<TTarget> cursor,
             SimulationOperation operation,

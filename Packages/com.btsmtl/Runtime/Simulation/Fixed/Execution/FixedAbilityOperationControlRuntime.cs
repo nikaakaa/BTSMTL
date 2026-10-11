@@ -382,15 +382,7 @@ namespace ThirdPersonSimulation.Fixed
             if (mode != LocomotionInputMotionExecutionMode.Timed)
                 throw new InvalidOperationException(
                     $"Locomotion operation '{m_Access.SourcePath(operation)}' has invalid execution mode '{operation.Integer0}'.");
-            ProgramConstant duration = m_Access.FindConstant(operation, OperationNamedConstant.DurationSeconds);
-            if (duration == null || duration.Kind != ProgramConstantKind.Scalar)
-                throw new InvalidOperationException(
-                    $"Locomotion operation '{m_Access.SourcePath(operation)}' has no duration.");
-            int requiredTicks = checked((int)Math.Ceiling(duration.Scalar.ToDouble() * m_Access.Data.TickRate));
-            if (requiredTicks <= 0)
-                throw new InvalidOperationException(
-                    $"Locomotion operation '{m_Access.SourcePath(operation)}' has a non-positive timed duration.");
-            return committedTicks >= requiredTicks
+            return committedTicks >= m_Locomotion.DurationTicks(operation.Handle)
                 ? OperationExecutionResult.Success
                 : OperationExecutionResult.Running;
         }
