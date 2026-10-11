@@ -16,6 +16,9 @@ namespace ThirdPersonSimulation.Fixed
         readonly FixedBlackboardRuntime m_Blackboard;
         readonly List<FixedActionInstanceState> m_CurrentActions;
         readonly HashSet<ulong> m_StoppingInstances;
+#if UNITY_EDITOR
+        readonly FixedAbilityExecutionWorkspace m_Workspace;
+#endif
 
         public FixedAbilityDomainRuntime(
             GameplayAbilityExecutionBinding skill,
@@ -33,6 +36,9 @@ namespace ThirdPersonSimulation.Fixed
             m_Control = control ?? throw new ArgumentNullException(nameof(control));
             m_CurrentActions = workspace.ActionTickSnapshot;
             m_StoppingInstances = workspace.StoppingActionInstances;
+#if UNITY_EDITOR
+            m_Workspace = workspace;
+#endif
             m_Blackboard = blackboard;
         }
 
@@ -64,15 +70,33 @@ namespace ThirdPersonSimulation.Fixed
             GameplayAbilityExecutionBinding skill = m_Skill;
             try
             {
+#if UNITY_EDITOR
+                FixedCharacterEvaluationOutput output = m_Workspace.TraceOutput;
+                long stageStarted = System.Diagnostics.Stopwatch.GetTimestamp();
+#endif
                 m_ActionStore.CopyCurrentActions(skill.SkillId, m_CurrentActions);
                 for (int i = 0; i < m_CurrentActions.Count; i++)
                     ProcessExisting(m_CurrentActions[i], skill, m_StoppingInstances);
+#if UNITY_EDITOR
+                long stageFinished = System.Diagnostics.Stopwatch.GetTimestamp();
+                output.EvaluationAbilitiesExistingElapsedStopwatchTicks += stageFinished - stageStarted;
+                stageStarted = stageFinished;
+#endif
 
                 m_Actions.TryCommitPending(skill.SkillId);
+#if UNITY_EDITOR
+                stageFinished = System.Diagnostics.Stopwatch.GetTimestamp();
+                output.EvaluationAbilitiesPendingElapsedStopwatchTicks += stageFinished - stageStarted;
+                stageStarted = stageFinished;
+#endif
                 m_CurrentActions.Clear();
                 m_ActionStore.CopyCurrentActions(skill.SkillId, m_CurrentActions);
                 for (int i = 0; i < m_CurrentActions.Count; i++)
                     TickActive(m_CurrentActions[i], skill, m_StoppingInstances);
+#if UNITY_EDITOR
+                output.EvaluationAbilitiesActiveElapsedStopwatchTicks +=
+                    System.Diagnostics.Stopwatch.GetTimestamp() - stageStarted;
+#endif
             }
             finally
             {

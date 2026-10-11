@@ -107,6 +107,9 @@ namespace ThirdPersonSimulation.Fixed
         public long EvaluationControlElapsedStopwatchTicks => m_Output.EvaluationControlElapsedStopwatchTicks;
         public long EvaluationAbilitiesElapsedStopwatchTicks => m_Output.EvaluationAbilitiesElapsedStopwatchTicks;
         public long EvaluationAbilitiesTickElapsedStopwatchTicks => m_Output.EvaluationAbilitiesTickElapsedStopwatchTicks;
+        public long EvaluationAbilitiesExistingElapsedStopwatchTicks => m_Output.EvaluationAbilitiesExistingElapsedStopwatchTicks;
+        public long EvaluationAbilitiesPendingElapsedStopwatchTicks => m_Output.EvaluationAbilitiesPendingElapsedStopwatchTicks;
+        public long EvaluationAbilitiesActiveElapsedStopwatchTicks => m_Output.EvaluationAbilitiesActiveElapsedStopwatchTicks;
         public long EvaluationAbilitiesMotionElapsedStopwatchTicks => m_Output.EvaluationAbilitiesMotionElapsedStopwatchTicks;
         public long EvaluationAbilitiesRulesElapsedStopwatchTicks => m_Output.EvaluationAbilitiesRulesElapsedStopwatchTicks;
         public long EvaluationMotionElapsedStopwatchTicks => m_Output.EvaluationMotionElapsedStopwatchTicks;
