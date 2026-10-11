@@ -172,6 +172,9 @@ namespace ThirdPersonSimulation
                         maximumSteps = Math.Max(maximumSteps, ((ISimulationScheduleCapacity)runtimes[passIndex]).MaximumStepCount);
                 int retainedSnapshots = request.Committer is ISimulationPipelineSnapshotRetentionCapacity retention
                     ? retention.MaximumRetainedStepSnapshots : 0;
+                for (int participant = 0; participant < stateParticipants.Count; participant++)
+                    if (stateParticipants[participant] is ISimulationPipelineSnapshotRetentionCapacity holder)
+                        retainedSnapshots = checked(retainedSnapshots + holder.MaximumRetainedStepSnapshots);
                 int snapshotCapacity = checked(1 + maximumSteps + request.Descriptor.RecordedFrameCapacity + retainedSnapshots);
                 for (int participant = 0; participant < stateParticipants.Count; participant++)
                     if (stateParticipants[participant] is ISimulationPipelineStepStateStorage storage)

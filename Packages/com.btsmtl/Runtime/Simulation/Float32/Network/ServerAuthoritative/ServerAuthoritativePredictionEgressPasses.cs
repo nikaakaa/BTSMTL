@@ -51,7 +51,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative
     public sealed class PredictionHistoryEgressPassRuntime :
         Float32PipelinePassRuntimeBase,
         ISimulationEgressPassRuntime<PredictionHistoryEgressReads, EmptyServerAuthoritativeWritePorts>,
-        ISimulationPipelineStateParticipant
+        ISimulationPipelineStateParticipant,
+        ISimulationPipelineSnapshotRetentionCapacity
     {
         readonly ServerAuthoritativePredictionState m_State;
 
@@ -82,6 +83,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         public SimulationPipelineStateParticipantIdentity StateIdentity { get; }
         public SimulationPipelineStepProjectionMode StepProjectionMode => SimulationPipelineStepProjectionMode.ReconstructForRestore;
         public int MaximumTextValues => m_State.MaximumHistoryTextValues;
+        public int MaximumRetainedStepSnapshots => m_State.Policy.HistoryCapacity;
 
         public ISimulationPipelinePassStateCheckpoint CaptureCheckpoint()
         {
