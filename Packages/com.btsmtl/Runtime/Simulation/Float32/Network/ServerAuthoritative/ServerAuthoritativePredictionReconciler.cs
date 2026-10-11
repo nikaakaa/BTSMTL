@@ -92,8 +92,9 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                     Float32Scalar.Zero,
                     Float32Scalar.Zero);
             }
-            Float32Scalar positionError = PositionError(local.Body, baseline.Body);
-            Float32Scalar yawError = YawError(local.Body, baseline.Body);
+            WorldBodyState localBody = local.Body;
+            Float32Scalar positionError = PositionError(localBody, baseline.Body);
+            Float32Scalar yawError = YawError(localBody, baseline.Body);
             bool stateMatches = local.Character.StateHash.Equals(baseline.StateHash);
             bool positionMatches = positionError.Value <= policy.BodyPositionTolerance;
             bool yawMatches = yawError.Value <= policy.BodyYawToleranceDegrees;
