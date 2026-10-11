@@ -812,9 +812,24 @@ namespace ThirdPersonSimulation.Fixed
         internal static void CapturePrepared(
             CanonicalWriter writer, FixedCharacterRuntime runtime, in SimulationWorldStateSet state,
             bool deterministic, SimulationWorldSnapshot snapshot,
-            ICanonicalTextResolver resolver)
+            ICanonicalTextResolver resolver
+#if UNITY_EDITOR
+            , ref SimulationSnapshotCaptureProfile profile
+#endif
+            )
         {
-            FixedCharacterRuntimeStateCodec.PreparePayloads(state.Actors);
+#if UNITY_EDITOR
+            long actorStarted = System.Diagnostics.Stopwatch.GetTimestamp();
+#endif
+            FixedCharacterRuntimeStateCodec.PreparePayloads(state.Actors
+#if UNITY_EDITOR
+                , ref profile
+#endif
+                );
+#if UNITY_EDITOR
+            long worldStarted = System.Diagnostics.Stopwatch.GetTimestamp();
+            profile.ActorPayloadElapsedStopwatchTicks = worldStarted - actorStarted;
+#endif
             long prefix = writer.BeginLengthPrefixedBlock();
             writer.WriteUInt32(Magic);
             writer.WriteInt32(Version);
@@ -851,7 +866,14 @@ namespace ThirdPersonSimulation.Fixed
             long worldPrefix = writer.Position;
             WorldSimulationStateCodec.WriteLengthPrefixed(writer, state.WorldState);
             int end = checked((int)writer.Position);
+#if UNITY_EDITOR
+            long hashStarted = System.Diagnostics.Stopwatch.GetTimestamp();
+            profile.WorldEncodeElapsedStopwatchTicks = hashStarted - worldStarted;
+#endif
             StableHash worldHash = SimulationCanonicalPayloadHash.Compute(writer.WrittenSpan.Slice(hashPayloadStart, end - hashPayloadStart));
+#if UNITY_EDITOR
+            profile.WorldHashElapsedStopwatchTicks = System.Diagnostics.Stopwatch.GetTimestamp() - hashStarted;
+#endif
             writer.Position = hashPosition;
             writer.WriteHash(worldHash);
             writer.Position = end;

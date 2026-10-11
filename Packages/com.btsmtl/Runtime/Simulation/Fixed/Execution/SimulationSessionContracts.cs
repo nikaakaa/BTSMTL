@@ -195,6 +195,23 @@ namespace ThirdPersonSimulation.Fixed
         OuterTickFailed = 14
     }
 
+#if UNITY_EDITOR
+    public struct SimulationSnapshotCaptureProfile
+    {
+        public int Calls { get; internal set; }
+        public long TotalElapsedStopwatchTicks { get; internal set; }
+        public long ActorPayloadElapsedStopwatchTicks { get; internal set; }
+        public long ActorEncodeElapsedStopwatchTicks { get; internal set; }
+        public long ActorHashElapsedStopwatchTicks { get; internal set; }
+        public long WorldEncodeElapsedStopwatchTicks { get; internal set; }
+        public long WorldHashElapsedStopwatchTicks { get; internal set; }
+        public long PipelineEncodeElapsedStopwatchTicks { get; internal set; }
+        public long ParticipantHashElapsedStopwatchTicks { get; internal set; }
+        public long PipelineHashElapsedStopwatchTicks { get; internal set; }
+        public long SessionHashElapsedStopwatchTicks { get; internal set; }
+    }
+#endif
+
     public readonly struct SimulationPipelineTraceRecord
     {
         public SimulationPipelineTraceRecord(
@@ -215,7 +232,11 @@ namespace ThirdPersonSimulation.Fixed
             string productInputs = "",
             string productOutputs = "",
             string snapshotParticipant = "",
-            StableHash snapshotHash = default)
+            StableHash snapshotHash = default
+#if UNITY_EDITOR
+            , SimulationSnapshotCaptureProfile snapshotCaptureProfile = default
+#endif
+            )
         {
             if (!session.IsValid || !pipeline.IsValid || CanonicalTextValue.IsNullOrEmpty(source.ClockId) || source.SourceTick == 0 ||
                 kind is not (SimulationPipelineTraceKind.OuterTickStarted or
@@ -262,6 +283,9 @@ namespace ThirdPersonSimulation.Fixed
             ProductOutputs = productOutputs ?? string.Empty;
             SnapshotParticipant = snapshotParticipant ?? string.Empty;
             SnapshotHash = snapshotHash;
+#if UNITY_EDITOR
+            SnapshotCaptureProfile = snapshotCaptureProfile;
+#endif
         }
 
         public SimulationSessionCompositionIdentity Session { get; }
@@ -282,6 +306,9 @@ namespace ThirdPersonSimulation.Fixed
         public string ProductOutputs { get; }
         public string SnapshotParticipant { get; }
         public StableHash SnapshotHash { get; }
+#if UNITY_EDITOR
+        public SimulationSnapshotCaptureProfile SnapshotCaptureProfile { get; }
+#endif
     }
 
     public enum SimulationModelTraceKind : byte

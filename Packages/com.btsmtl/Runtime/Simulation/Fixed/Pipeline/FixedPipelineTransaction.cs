@@ -166,9 +166,16 @@ namespace ThirdPersonSimulation.Fixed
             m_SnapshotCodec.PrepareCheckpointStorage(services.Descriptor, m_CharacterRuntime, services.StateParticipants, in checkpointCapacity, m_StateStore.Current.WorldState);
             using (SimulationCharacterStatePayloadStorage.Page initialEncoding = m_Roster[0].RuntimeStatePages.EncodingStorage?.Acquire())
             {
+#if UNITY_EDITOR
+                SimulationSnapshotCaptureProfile initialProfile = default;
+#endif
                 if (initialEncoding != null)
                     for (int actor = 0; actor < m_Roster.Count; actor++)
-                        FixedCharacterRuntimeStateCodec.Encode(m_StateStore.Current.Actors[actor].State, initialEncoding, actor);
+                        FixedCharacterRuntimeStateCodec.Encode(m_StateStore.Current.Actors[actor].State, initialEncoding, actor
+#if UNITY_EDITOR
+                            , ref initialProfile
+#endif
+                            );
             }
             if (committer is IFixedSimulationSnapshotRetentionOwner snapshotOwner)
                 snapshotOwner.PrepareSnapshotStorage(m_SnapshotCodec, in checkpointCapacity);
@@ -647,7 +654,13 @@ namespace ThirdPersonSimulation.Fixed
                 trace.ProductInputs,
                 trace.ProductOutputs,
                 trace.SnapshotParticipant,
-                trace.SnapshotHash));
+                trace.SnapshotHash
+#if UNITY_EDITOR
+                , trace.Kind == PipelineTransactionTraceKind.StepCompleted
+                    ? m_StepSnapshots[m_ActiveStepResultCount - 1]?.CaptureProfile ?? default
+                    : default
+#endif
+                ));
         }
 
         void ValidateWorldResult(WorldSolveBatchResult result, SimulationTick tick)

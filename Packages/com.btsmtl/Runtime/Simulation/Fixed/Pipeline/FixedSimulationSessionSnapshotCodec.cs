@@ -233,6 +233,10 @@ namespace ThirdPersonSimulation.Fixed
         void CaptureInto(SimulationSessionCheckpointPayloadStorage.Page page, CheckpointDescriptors descriptors,
             in SimulationWorldStateSet state, SimulationPipelinePassStateSnapshot[] recordedParticipants)
         {
+#if UNITY_EDITOR
+            long captureStarted = System.Diagnostics.Stopwatch.GetTimestamp();
+            SimulationSnapshotCaptureProfile profile = default;
+#endif
             CanonicalWriter writer = page.Writer;
             writer.WriteUInt32(Magic);
             writer.WriteInt32(Version);
@@ -240,19 +244,45 @@ namespace ThirdPersonSimulation.Fixed
             writer.WriteHash(m_Composition.Identity.Value);
             writer.WriteHash(m_Composition.Identity.Value);
             SimulationWorldSnapshotCodec.CapturePrepared(writer, m_Runtime, in state, m_Deterministic,
-                descriptors.World, page.Text);
-            WritePreparedPipeline(writer, descriptors, state.LastCompletedTick, recordedParticipants, page.Text);
+                descriptors.World, page.Text
+#if UNITY_EDITOR
+                , ref profile
+#endif
+                );
+            WritePreparedPipeline(writer, descriptors, state.LastCompletedTick, recordedParticipants, page.Text
+#if UNITY_EDITOR
+                , ref profile
+#endif
+                );
+#if UNITY_EDITOR
+            long sessionHashStarted = System.Diagnostics.Stopwatch.GetTimestamp();
+#endif
             descriptors.Session.SetPrepared(descriptors.World, descriptors.Pipeline, m_HashWriter);
+#if UNITY_EDITOR
+            profile.SessionHashElapsedStopwatchTicks = System.Diagnostics.Stopwatch.GetTimestamp() - sessionHashStarted;
+#endif
             long end = writer.Position;
             writer.Position = hashPosition;
             writer.WriteHash(descriptors.Session.SnapshotHash);
             writer.Position = end;
             page.PreparedCheckpoint.CommitPayload(page, descriptors.Session.Tick, descriptors.Session.SnapshotHash);
+#if UNITY_EDITOR
+            profile.Calls = 1;
+            profile.TotalElapsedStopwatchTicks = System.Diagnostics.Stopwatch.GetTimestamp() - captureStarted;
+            descriptors.Session.CaptureProfile = profile;
+#endif
         }
 
         void WritePreparedPipeline(CanonicalWriter writer, CheckpointDescriptors descriptors, ulong tick,
-            SimulationPipelinePassStateSnapshot[] recordedParticipants, CanonicalTextReferences text)
+            SimulationPipelinePassStateSnapshot[] recordedParticipants, CanonicalTextReferences text
+#if UNITY_EDITOR
+            , ref SimulationSnapshotCaptureProfile profile
+#endif
+            )
         {
+#if UNITY_EDITOR
+            long pipelineStarted = System.Diagnostics.Stopwatch.GetTimestamp();
+#endif
             long hashPosition = writer.Position;
             writer.WriteHash(m_Composition.Pipeline.Hash);
             writer.WriteText(m_Composition.Pipeline.Id.Value);
@@ -284,18 +314,34 @@ namespace ThirdPersonSimulation.Fixed
                     writer.WriteRawBytes(recorded.Payload.Span);
                 }
                 int end = checked((int)writer.Position);
+#if UNITY_EDITOR
+                long participantHashStarted = System.Diagnostics.Stopwatch.GetTimestamp();
+#endif
                 StableHash hash = SimulationCanonicalPayloadHash.Compute(writer.WrittenSpan.Slice(start, end - start));
+#if UNITY_EDITOR
+                profile.ParticipantHashElapsedStopwatchTicks += System.Diagnostics.Stopwatch.GetTimestamp() - participantHashStarted;
+#endif
                 writer.EndLengthPrefixedBlock(prefix);
                 writer.Position = participantHashPosition;
                 writer.WriteHash(hash);
                 writer.Position = end;
                 descriptors.Participants[index].SetPreparedPayload(writer.WrittenSegment.Array.AsMemory(start, end - start), hash, text);
             }
+#if UNITY_EDITOR
+            long pipelineHashStarted = System.Diagnostics.Stopwatch.GetTimestamp();
+#endif
             descriptors.Pipeline.SetPreparedTick(tick, m_HashWriter);
+#if UNITY_EDITOR
+            profile.PipelineHashElapsedStopwatchTicks = System.Diagnostics.Stopwatch.GetTimestamp() - pipelineHashStarted;
+#endif
             long pipelineEnd = writer.Position;
             writer.Position = hashPosition;
             writer.WriteHash(descriptors.Pipeline.SnapshotHash);
             writer.Position = pipelineEnd;
+#if UNITY_EDITOR
+            profile.PipelineEncodeElapsedStopwatchTicks = System.Diagnostics.Stopwatch.GetTimestamp() - pipelineStarted -
+                profile.ParticipantHashElapsedStopwatchTicks - profile.PipelineHashElapsedStopwatchTicks;
+#endif
         }
 
         public FixedSimulationSessionSnapshot ReadCheckpoint(SimulationSessionCheckpoint checkpoint)

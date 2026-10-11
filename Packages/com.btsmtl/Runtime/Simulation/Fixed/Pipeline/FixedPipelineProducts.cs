@@ -374,6 +374,9 @@ namespace ThirdPersonSimulation.Fixed
         public SimulationPipelineStateSnapshot Pipeline { get; private set; }
         public SimulationTick Tick => World.Tick;
         public StableHash SnapshotHash { get; private set; }
+#if UNITY_EDITOR
+        internal SimulationSnapshotCaptureProfile CaptureProfile { get; set; }
+#endif
         SimulationSessionCheckpointPayloadStorage.Page m_Storage;
         int m_PayloadLength;
 
@@ -404,6 +407,9 @@ namespace ThirdPersonSimulation.Fixed
 
         internal void ClearStorage()
         {
+#if UNITY_EDITOR
+            CaptureProfile = default;
+#endif
             m_Storage = null;
             m_PayloadLength = 0;
             World = null;

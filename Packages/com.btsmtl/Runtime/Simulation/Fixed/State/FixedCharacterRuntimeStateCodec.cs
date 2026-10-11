@@ -47,7 +47,11 @@ namespace ThirdPersonSimulation.Fixed
             return new CharacterStateHash(writer.ComputeHash());
         }
 
-        internal static void PreparePayloads(IReadOnlyList<SimulationActorState> actors)
+        internal static void PreparePayloads(IReadOnlyList<SimulationActorState> actors
+#if UNITY_EDITOR
+            , ref SimulationSnapshotCaptureProfile profile
+#endif
+            )
         {
             int first = 0;
             while (first < actors.Count && !actors[first].State.CanonicalPayload.Bytes.IsEmpty)
@@ -60,15 +64,26 @@ namespace ThirdPersonSimulation.Fixed
             {
                 FixedCharacterRuntimeState state = actors[index].State;
                 if (state.CanonicalPayload.Bytes.IsEmpty)
-                    Encode(state, encoding, state.StatePages.EncodingActorIndex);
+                    Encode(state, encoding, state.StatePages.EncodingActorIndex
+#if UNITY_EDITOR
+                        , ref profile
+#endif
+                        );
             }
         }
 
         internal static int HashPrefixBytes => sizeof(int) + CanonicalTextEncoding.ByteCount(HashIdentity.AsSpan());
 
         internal static CharacterStateHash Encode(FixedCharacterRuntimeState state,
-            SimulationCharacterStatePayloadStorage.Page page, int actorIndex)
+            SimulationCharacterStatePayloadStorage.Page page, int actorIndex
+#if UNITY_EDITOR
+            , ref SimulationSnapshotCaptureProfile profile
+#endif
+            )
         {
+#if UNITY_EDITOR
+            long encodeStarted = System.Diagnostics.Stopwatch.GetTimestamp();
+#endif
             CanonicalWriter writer = page.Writer;
             int hashStart = checked((int)writer.Position);
             writer.SetTextCapture(null);
@@ -78,8 +93,15 @@ namespace ThirdPersonSimulation.Fixed
             writer.SetTextCapture(text);
             WriteCanonical(writer, state);
             int end = checked((int)writer.Position);
+#if UNITY_EDITOR
+            long hashStarted = System.Diagnostics.Stopwatch.GetTimestamp();
+            profile.ActorEncodeElapsedStopwatchTicks += hashStarted - encodeStarted;
+#endif
             var hash = new CharacterStateHash(SimulationCanonicalPayloadHash.Compute(
                 writer.WrittenSpan.Slice(hashStart, end - hashStart)));
+#if UNITY_EDITOR
+            profile.ActorHashElapsedStopwatchTicks += System.Diagnostics.Stopwatch.GetTimestamp() - hashStarted;
+#endif
             state.SetCanonicalPayload(new SimulationCharacterStatePayload(page,
                 writer.WrittenSegment.Array.AsMemory(start, end - start), hash, text));
             return hash;
@@ -180,7 +202,14 @@ namespace ThirdPersonSimulation.Fixed
                 motionWarpStates);
             if (encoding != null)
             {
-                stateHash = Encode(state, encoding, actor.RuntimeStatePages.EncodingActorIndex);
+#if UNITY_EDITOR
+                SimulationSnapshotCaptureProfile profile = default;
+#endif
+                stateHash = Encode(state, encoding, actor.RuntimeStatePages.EncodingActorIndex
+#if UNITY_EDITOR
+                    , ref profile
+#endif
+                    );
                 if (!state.CanonicalPayload.Bytes.Span.SequenceEqual(bytes.Span))
                     throw new InvalidDataException("Fixed Character runtime state is not canonical.");
             }
