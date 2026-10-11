@@ -128,6 +128,8 @@ namespace BTSMTL.Timeline.Runtime
         }
         internal TimelineRuntimePreparationResult Preparation { get; private set; }
         public CanonicalTextValue ContentRevision => Content.Revision;
+        internal int ConsumedMarkerCount;
+        internal int ConsumedTreeClipCount;
         public TimelineRuntimePreparedDependencies PreparedDependencies { get; private set; }
         public TimelinePreparedBindings PreparedBindings { get; private set; }
         public TimelineRuntimePlaybackState State { get; private set; }
