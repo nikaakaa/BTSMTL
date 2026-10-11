@@ -11,6 +11,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         readonly int m_Capacity;
         readonly ulong[] m_Ticks;
         readonly ServerAuthoritativePredictionHistoryRecord[] m_Records;
+        readonly List<ServerAuthoritativePredictionHistoryRecord> m_ReplayRecords;
         readonly RecordPage[] m_RecordPages;
         readonly int[] m_FreeRecords;
         int m_FreeRecordCount;
@@ -30,6 +31,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             m_Capacity = capacity;
             m_Ticks = new ulong[capacity];
             m_Records = new ServerAuthoritativePredictionHistoryRecord[capacity];
+            m_ReplayRecords = new List<ServerAuthoritativePredictionHistoryRecord>(capacity);
             int recordCapacity = checked(capacity * 2 + 1);
             m_RecordPages = new RecordPage[recordCapacity];
             m_FreeRecords = new int[recordCapacity];
@@ -100,20 +102,13 @@ namespace ThirdPersonSimulation.ServerAuthoritative
 
         public IReadOnlyList<ServerAuthoritativePredictionHistoryRecord> GetReplayAfter(ulong confirmedInputSequence)
         {
-            int count = 0;
+            m_ReplayRecords.Clear();
             for (int i = 0; i < m_Count; i++)
             {
                 if (m_Records[i].Input.InputSequence > confirmedInputSequence)
-                    count = checked(count + 1);
+                    m_ReplayRecords.Add(m_Records[i]);
             }
-            var values = new ServerAuthoritativePredictionHistoryRecord[count];
-            int index = 0;
-            for (int i = 0; i < m_Count; i++)
-            {
-                if (m_Records[i].Input.InputSequence > confirmedInputSequence)
-                    values[index++] = m_Records[i];
-            }
-            return values;
+            return m_ReplayRecords;
         }
 
         public int CountReplayAfter(ulong confirmedInputSequence)
@@ -275,6 +270,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
 
         internal void ReleaseStateStorage()
         {
+            m_ReplayRecords.Clear();
             ClearRecords();
             m_RemoteBodies.ReleaseStorage();
         }

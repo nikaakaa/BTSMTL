@@ -209,7 +209,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             SimulationTick tick,
             out ServerAuthoritativePredictionHistoryRecord record) => m_History.TryGet(tick, out record);
 
-        public IReadOnlyList<ServerAuthoritativePredictionHistoryRecord> GetReplayAfter(
+        internal IReadOnlyList<ServerAuthoritativePredictionHistoryRecord> GetReplayAfter(
             ulong confirmedInputSequence) => m_History.GetReplayAfter(confirmedInputSequence);
 
         public int CountReplayAfter(ulong confirmedInputSequence) =>
