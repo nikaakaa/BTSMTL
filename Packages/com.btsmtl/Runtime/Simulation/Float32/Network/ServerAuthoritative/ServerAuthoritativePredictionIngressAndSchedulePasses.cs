@@ -317,7 +317,11 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         }
 
         void RestoreCheckpoint() => m_State.RestoreCorrectionCheckpoint(m_CapturedCorrection);
-        void ReleaseCheckpoint() => m_CapturedCorrection = null;
+        void ReleaseCheckpoint()
+        {
+            m_CapturedCorrection?.Dispose();
+            m_CapturedCorrection = null;
+        }
 
         public void Execute(
             SimulationPipelineScheduleContext context,
@@ -530,7 +534,6 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         public SimulationPipelinePassStateSnapshot CaptureState()
         {
             RequireCaptureOrRestore();
-            byte[] payload = m_State.CaptureCorrectionState();
             return m_StateStorage.CaptureState();
         }
 

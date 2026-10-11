@@ -268,7 +268,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             if (!m_History.TryGet(baseline.AuthorityTick, out ServerAuthoritativePredictionHistoryRecord local))
                 local = m_History.LastRecord();
 
-            ServerAuthoritativePredictionCorrectionCheckpoint confirmation = m_Confirmation.PrepareBaseline(baseline);
+            using ServerAuthoritativePredictionCorrectionCheckpoint confirmation = m_Confirmation.PrepareBaseline(baseline);
             ServerAuthoritativePredictionJournalCheckpoint reconciledJournal = m_Journal.PrepareConfirmation(
                 baseline.AuthorityTick,
                 confirmation.ConfirmedEventHorizon,
@@ -311,9 +311,6 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         public void WriteHistoryState(CanonicalWriter writer) => m_History.WriteState(writer);
         public void WriteJournalState(CanonicalWriter writer) => m_Journal.WriteState(writer);
 
-        public byte[] CaptureCorrectionState() =>
-            ServerAuthoritativePredictionStateCodec.WriteCorrection(m_Confirmation.Capture());
-
         internal void RestoreCorrectionState(CanonicalReader reader, CanonicalReader inputReader, CanonicalWriter canonicalScratch)
         {
             ServerAuthoritativePredictionCorrectionCheckpoint checkpoint =
@@ -327,12 +324,6 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         internal void RestoreCorrectionCheckpoint(ServerAuthoritativePredictionCorrectionCheckpoint checkpoint)
         {
             m_Confirmation.Restore(checkpoint);
-        }
-
-        public byte[] CaptureHistoryState()
-        {
-            using ServerAuthoritativePredictionHistoryCheckpoint checkpoint = m_History.Capture();
-            return ServerAuthoritativePredictionStateCodec.WriteHistory(checkpoint);
         }
 
         internal void RestoreHistoryState(CanonicalReader reader, CanonicalReader inputReader, CanonicalWriter canonicalScratch)
@@ -350,9 +341,6 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         {
             m_History.Restore(checkpoint);
         }
-
-        public byte[] CaptureJournalState() =>
-            ServerAuthoritativePredictionStateCodec.WriteJournal(m_Journal.Capture());
 
         internal void RestoreJournalState(CanonicalReader reader, CanonicalReader inputReader, CanonicalWriter canonicalScratch)
         {

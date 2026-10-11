@@ -9,6 +9,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         readonly int m_RequestCapacity;
         readonly ulong[] m_RequestSequences;
         readonly SimulationInputRequest[] m_Requests;
+        readonly ServerAuthoritativePredictionCorrectionCheckpoint[] m_Checkpoints;
         int m_RequestCount;
 
         public ServerAuthoritativePredictionConfirmationState(int requestCapacity)
@@ -18,6 +19,9 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             m_RequestCapacity = requestCapacity;
             m_RequestSequences = new ulong[requestCapacity];
             m_Requests = new SimulationInputRequest[requestCapacity];
+            m_Checkpoints = new ServerAuthoritativePredictionCorrectionCheckpoint[2];
+            for (int index = 0; index < m_Checkpoints.Length; index++)
+                m_Checkpoints[index] = new ServerAuthoritativePredictionCorrectionCheckpoint(requestCapacity);
         }
 
         public ulong ConfirmedInputSequence { get; private set; }
@@ -46,23 +50,6 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             Array.Copy(m_Requests, result, m_RequestCount);
             m_RequestCount = 0;
             return result;
-        }
-
-        public ServerAuthoritativePredictionCorrectionCheckpoint PrepareAck(AuthoritativeInputAck ack)
-        {
-            if (!ack.IsValid)
-                throw new ArgumentException("Authority input ack is incomplete.", nameof(ack));
-            if (ack.AuthorityTick.Value < LastAuthorityAckTick)
-            {
-                throw new InvalidOperationException(
-                    $"Authority input ack cursor regressed: actor={ack.ActorId};incomingTick={ack.AuthorityTick.Value};lastTick={LastAuthorityAckTick};incomingSequence={ack.ConfirmedInputSequence};confirmedSequence={ConfirmedInputSequence}.");
-            }
-            return CreateCheckpoint(
-                Math.Max(ConfirmedInputSequence, ack.ConfirmedInputSequence),
-                MergeConfirmationHorizon(ConfirmedEventHorizon, ack.ConfirmedEventHorizon),
-                ack.AuthorityTick.Value,
-                LastBaselineTick,
-                LastAuthorityClockEstimate);
         }
 
         public void ApplyAck(AuthoritativeInputAck ack)
@@ -160,15 +147,16 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             ulong lastBaselineTick,
             ulong lastAuthorityClockEstimate)
         {
-            var requests = new SimulationInputRequest[m_RequestCount];
-            Array.Copy(m_Requests, requests, m_RequestCount);
-            return new ServerAuthoritativePredictionCorrectionCheckpoint(
-                confirmedInputSequence,
-                confirmedEventHorizon,
-                lastAuthorityAckTick,
-                lastBaselineTick,
-                lastAuthorityClockEstimate,
-                requests);
+            for (int index = 0; index < m_Checkpoints.Length; index++)
+            {
+                ServerAuthoritativePredictionCorrectionCheckpoint checkpoint = m_Checkpoints[index];
+                if (checkpoint.IsHeld)
+                    continue;
+                checkpoint.Begin(confirmedInputSequence, confirmedEventHorizon, lastAuthorityAckTick,
+                    lastBaselineTick, lastAuthorityClockEstimate, m_Requests.AsSpan(0, m_RequestCount));
+                return checkpoint;
+            }
+            throw new InvalidOperationException("Prediction correction checkpoints exceeded their prepared transaction capacity.");
         }
 
         void RetainRequest(SimulationInputRequest request)
@@ -214,9 +202,41 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         }
     }
 
-    internal sealed class ServerAuthoritativePredictionCorrectionCheckpoint
+    internal sealed class ServerAuthoritativePredictionCorrectionCheckpoint : IDisposable
     {
-        readonly SimulationInputRequest[] m_PendingRequests;
+        readonly IReadOnlyList<SimulationInputRequest> m_PendingRequests;
+        readonly List<SimulationInputRequest> m_PreparedRequests;
+
+        internal ServerAuthoritativePredictionCorrectionCheckpoint(int requestCapacity)
+        {
+            m_PreparedRequests = new List<SimulationInputRequest>(requestCapacity);
+            m_PendingRequests = m_PreparedRequests;
+        }
+
+        internal bool IsHeld { get; private set; }
+
+        internal void Begin(ulong confirmedInputSequence, ServerAuthoritativeEventHorizon confirmedEventHorizon,
+            ulong lastAuthorityAckTick, ulong lastBaselineTick, ulong lastAuthorityClockEstimate,
+            ReadOnlySpan<SimulationInputRequest> pendingRequests)
+        {
+            IsHeld = true;
+            ConfirmedInputSequence = confirmedInputSequence;
+            ConfirmedEventHorizon = confirmedEventHorizon;
+            LastAuthorityAckTick = lastAuthorityAckTick;
+            LastBaselineTick = lastBaselineTick;
+            LastAuthorityClockEstimate = lastAuthorityClockEstimate;
+            for (int index = 0; index < pendingRequests.Length; index++)
+                m_PreparedRequests.Add(pendingRequests[index]);
+        }
+
+        public void Dispose()
+        {
+            if (m_PreparedRequests != null)
+            {
+                m_PreparedRequests.Clear();
+                IsHeld = false;
+            }
+        }
 
         public ServerAuthoritativePredictionCorrectionCheckpoint(
             ulong confirmedInputSequence,
@@ -240,11 +260,11 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             m_PendingRequests = requests;
         }
 
-        public ulong ConfirmedInputSequence { get; }
-        public ServerAuthoritativeEventHorizon ConfirmedEventHorizon { get; }
-        public ulong LastAuthorityAckTick { get; }
-        public ulong LastBaselineTick { get; }
-        public ulong LastAuthorityClockEstimate { get; }
+        public ulong ConfirmedInputSequence { get; private set; }
+        public ServerAuthoritativeEventHorizon ConfirmedEventHorizon { get; private set; }
+        public ulong LastAuthorityAckTick { get; private set; }
+        public ulong LastBaselineTick { get; private set; }
+        public ulong LastAuthorityClockEstimate { get; private set; }
         public IReadOnlyList<SimulationInputRequest> PendingRequests => m_PendingRequests;
     }
 }
