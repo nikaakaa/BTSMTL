@@ -456,9 +456,9 @@ namespace ThirdPersonSimulation
         }
 
         public static ResolvedGameplayMotion Compose(
-            ResolvedMotionChannel locomotion,
-            ResolvedMotionChannel action,
-            ResolvedMotionChannel gameplayResult)
+            in ResolvedMotionChannel locomotion,
+            in ResolvedMotionChannel action,
+            in ResolvedMotionChannel gameplayResult)
         {
             Float32Vector3 displacement = Float32Vector3.Zero;
             Float32Scalar yaw = Float32Scalar.Zero;
@@ -477,7 +477,7 @@ namespace ThirdPersonSimulation
         }
 
         static void ComposeChannel(
-            ResolvedMotionChannel channel,
+            in ResolvedMotionChannel channel,
             ref Float32Vector3 displacement,
             ref Float32Scalar yaw)
         {

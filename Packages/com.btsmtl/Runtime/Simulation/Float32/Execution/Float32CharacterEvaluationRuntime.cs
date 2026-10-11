@@ -353,8 +353,8 @@ namespace ThirdPersonSimulation
             trace.AddMotionChannel(action);
             trace.AddMotionChannel(gameplayResult);
             ResolvedGameplayMotion motion = Float32CharacterMotionResolver.Compose(locomotion, action, gameplayResult);
-            ResolvedMotionChannel source = gameplayResult.TraceSource.IsValid ? gameplayResult :
-                action.TraceSource.IsValid ? action : locomotion;
+            ref readonly ResolvedMotionChannel source = ref (gameplayResult.TraceSource.IsValid ? ref gameplayResult :
+                ref (action.TraceSource.IsValid ? ref action : ref locomotion));
             if (source.TraceSource.IsValid)
                 trace.AddResolvedMotion(motion, source);
             return motion;

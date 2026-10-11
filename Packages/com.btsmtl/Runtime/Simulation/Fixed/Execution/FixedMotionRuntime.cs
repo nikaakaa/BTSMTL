@@ -456,9 +456,9 @@ namespace ThirdPersonSimulation.Fixed
         }
 
         public static ResolvedGameplayMotion Compose(
-            ResolvedMotionChannel locomotion,
-            ResolvedMotionChannel action,
-            ResolvedMotionChannel gameplayResult)
+            in ResolvedMotionChannel locomotion,
+            in ResolvedMotionChannel action,
+            in ResolvedMotionChannel gameplayResult)
         {
             FixedVector3 displacement = FixedVector3.Zero;
             FixedScalar yaw = FixedScalar.Zero;
@@ -477,7 +477,7 @@ namespace ThirdPersonSimulation.Fixed
         }
 
         static void ComposeChannel(
-            ResolvedMotionChannel channel,
+            in ResolvedMotionChannel channel,
             ref FixedVector3 displacement,
             ref FixedScalar yaw)
         {

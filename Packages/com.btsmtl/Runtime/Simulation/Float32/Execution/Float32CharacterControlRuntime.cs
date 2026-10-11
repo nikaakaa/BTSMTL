@@ -208,7 +208,7 @@ namespace ThirdPersonSimulation
             m_Sequence = 0;
         }
 
-        public void AddMotionChannel(ResolvedMotionChannel channel)
+        public void AddMotionChannel(in ResolvedMotionChannel channel)
         {
             if (!m_Enabled || !channel.TraceSource.IsValid)
                 return;
@@ -221,7 +221,7 @@ namespace ThirdPersonSimulation
                 string.Empty, channel.TraceSourceGeneration, structured: m_Structured.CaptureCharacterMotion(in detail));
         }
 
-        public void AddResolvedMotion(ResolvedGameplayMotion motion, ResolvedMotionChannel source)
+        public void AddResolvedMotion(in ResolvedGameplayMotion motion, in ResolvedMotionChannel source)
         {
             if (!m_Enabled)
                 return;
