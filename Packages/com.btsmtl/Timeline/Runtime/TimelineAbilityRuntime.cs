@@ -36,6 +36,7 @@ namespace ThirdPersonSimulation
         readonly TimelineRuntimeEvaluationStoragePool m_Evaluations = new();
         readonly char[] m_RequestCharacters = new char[29];
         Playback[] m_Pool;
+        int m_AcquiredPoolLength;
         IAbilityTreeClipInvoker m_Invoker;
         ulong m_NextSequence;
 
@@ -161,9 +162,11 @@ namespace ThirdPersonSimulation
 
         Playback Acquire()
         {
-            for (int i = 0; i < m_Pool.Length; i++)
+            for (int i = 0; i < m_AcquiredPoolLength; i++)
                 if (m_Pool[i].Runtime.State == TimelineRuntimePlaybackState.Disposed)
                     return m_Pool[i];
+            if (m_AcquiredPoolLength < m_Pool.Length)
+                return m_Pool[m_AcquiredPoolLength++];
             throw new InvalidOperationException("Timeline playbacks exceed the installed execution capacity.");
         }
 
@@ -401,11 +404,16 @@ namespace ThirdPersonSimulation
             m_RetainedPlaybackIds.Clear();
             for (int i = 0; i < snapshots.Count; i++)
                 m_RetainedPlaybackIds.Add(snapshots[i].RuntimeHandle);
-            for (int i = 0; i < m_Pool.Length; i++)
+            int retainedPoolLength = 0;
+            for (int i = 0; i < m_AcquiredPoolLength; i++)
             {
                 Playback playback = m_Pool[i];
                 if (playback.Runtime.State == TimelineRuntimePlaybackState.Disposed) continue;
-                if (m_RetainedPlaybackIds.Contains(playback.Runtime.Handle.Value)) continue;
+                if (m_RetainedPlaybackIds.Contains(playback.Runtime.Handle.Value))
+                {
+                    retainedPoolLength = i + 1;
+                    continue;
+                }
                 m_Playbacks.Remove(playback.Runtime.Handle.Value);
                 playback.Runtime.ReleaseForReuse();
                 playback.Request.Release();
@@ -414,6 +422,7 @@ namespace ThirdPersonSimulation
                 playback.Stop = default;
                 playback.Text.Reset();
             }
+            m_AcquiredPoolLength = retainedPoolLength;
         }
 
         static AbilityTimelineRuntimeStatus Status(TimelineRuntimePlaybackState state) => state switch
