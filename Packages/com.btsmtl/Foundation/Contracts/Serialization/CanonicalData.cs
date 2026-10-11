@@ -235,14 +235,14 @@ namespace ThirdPersonSimulation
             if (text == null)
                 return;
             Monitor.Enter(text.Owner.ReadGate);
-            text.Retain();
+            text.RetainLocked();
         }
 
         public void Dispose()
         {
             if (m_Text == null)
                 return;
-            m_Text.Release();
+            m_Text.ReleaseLocked();
             Monitor.Exit(m_Text.Owner.ReadGate);
         }
     }
@@ -422,14 +422,21 @@ namespace ThirdPersonSimulation
             internal void Retain()
             {
                 lock (m_Owner.ReadGate)
-                    m_References++;
+                    RetainLocked();
             }
 
             internal void Release()
             {
                 lock (m_Owner.ReadGate)
-                    if (--m_References == 0)
-                        m_Owner.Release(this);
+                    ReleaseLocked();
+            }
+
+            internal void RetainLocked() => m_References++;
+
+            internal void ReleaseLocked()
+            {
+                if (--m_References == 0)
+                    m_Owner.ReleaseLocked(this);
             }
         }
 
@@ -568,41 +575,38 @@ namespace ThirdPersonSimulation
             m_FreeRanges[m_FreeRangeCount] = default;
         }
 
-        void Release(Text text)
+        void ReleaseLocked(Text text)
         {
-            lock (m_Free)
+            int next = 0;
+            while (next < m_FreeRangeCount && m_FreeRanges[next].Start < text.Start)
+                next++;
+            bool joinsPrevious = next > 0 &&
+                m_FreeRanges[next - 1].Start + m_FreeRanges[next - 1].Length == text.Start;
+            bool joinsNext = next < m_FreeRangeCount &&
+                text.Start + text.Length == m_FreeRanges[next].Start;
+            if (joinsPrevious)
             {
-                int next = 0;
-                while (next < m_FreeRangeCount && m_FreeRanges[next].Start < text.Start)
-                    next++;
-                bool joinsPrevious = next > 0 &&
-                    m_FreeRanges[next - 1].Start + m_FreeRanges[next - 1].Length == text.Start;
-                bool joinsNext = next < m_FreeRangeCount &&
-                    text.Start + text.Length == m_FreeRanges[next].Start;
-                if (joinsPrevious)
+                m_FreeRanges[next - 1].Length += text.Length;
+                if (joinsNext)
                 {
-                    m_FreeRanges[next - 1].Length += text.Length;
-                    if (joinsNext)
-                    {
-                        m_FreeRanges[next - 1].Length += m_FreeRanges[next].Length;
-                        RemoveRange(next);
-                    }
+                    m_FreeRanges[next - 1].Length += m_FreeRanges[next].Length;
+                    RemoveRange(next);
                 }
-                else if (joinsNext)
-                {
-                    m_FreeRanges[next].Start = text.Start;
-                    m_FreeRanges[next].Length += text.Length;
-                }
-                else
-                {
-                    Array.Copy(m_FreeRanges, next, m_FreeRanges, next + 1, m_FreeRangeCount - next);
-                    m_FreeRanges[next] = new CharacterRange { Start = text.Start, Length = text.Length };
-                    m_FreeRangeCount++;
-                }
-                m_AvailableCharacters += text.Length;
-                text.Start = text.Length = 0;
-                m_Free[m_FreeCount++] = text.Index;
             }
+            else if (joinsNext)
+            {
+                m_FreeRanges[next].Start = text.Start;
+                m_FreeRanges[next].Length += text.Length;
+            }
+            else
+            {
+                Array.Copy(m_FreeRanges, next, m_FreeRanges, next + 1, m_FreeRangeCount - next);
+                m_FreeRanges[next] = new CharacterRange { Start = text.Start, Length = text.Length };
+                m_FreeRangeCount++;
+            }
+            m_AvailableCharacters += text.Length;
+            text.Start = text.Length = 0;
+            m_Free[m_FreeCount++] = text.Index;
         }
     }
 
