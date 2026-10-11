@@ -73,9 +73,12 @@ namespace BTSMTL.Diagnostics.Editor
             ? $"{value.OwnerIdentity}@{value.Generation}:{value.ContinuousTicks}/{value.TickRate}#tick{value.AuthorityTick.Value}"
             : "none";
 
-        public static RuntimeTraceEvent ForDisplay(in RuntimeTraceEvent value)
+        public static RuntimeTraceEvent ForDisplay(in RuntimeTraceEvent value) => ForDisplay(in value, out _);
+
+        internal static RuntimeTraceEvent ForDisplay(in RuntimeTraceEvent value, out RuntimeLiveStateKey stateKey)
         {
             RuntimeTraceEvent display = value.CaptureDisplayText();
+            stateKey = new RuntimeLiveStateKey(in display);
             RuntimeTracePayload payload = display.Payload;
             payload.Detail = Detail(in payload);
             if (payload.DetailKind == RuntimeTraceDetailKind.AnimationCommand)
@@ -629,7 +632,7 @@ namespace BTSMTL.Diagnostics.Editor
                 RuntimeTraceEvent value = change.TraceEvent;
                 if (m_EventSlots.ContainsKey(key))
                     Remove(in key);
-                Apply(in key, in value, sourceMaps[value.ContentRevision]);
+                Apply(in value, sourceMaps[value.ContentRevision]);
             }
             CommitUpdate();
         }
@@ -668,12 +671,10 @@ namespace BTSMTL.Diagnostics.Editor
         }
 
         internal void Apply(
-            in RuntimeLiveStateKey sourceKey,
             in RuntimeTraceEvent sourceTrace,
             RuntimeDebugSourceMapSnapshot sourceMap)
         {
-            RuntimeTraceEvent traceEvent = RuntimeTraceDisplay.ForDisplay(in sourceTrace);
-            var key = new RuntimeLiveStateKey(in traceEvent);
+            RuntimeTraceEvent traceEvent = RuntimeTraceDisplay.ForDisplay(in sourceTrace, out RuntimeLiveStateKey key);
             RuntimeSourceElementKey source = default;
             string sourceName = string.Empty;
             if (traceEvent.Source.IsValid)

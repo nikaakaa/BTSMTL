@@ -82,7 +82,7 @@ namespace BTSMTL.Diagnostics.Editor
                         m_LiveModel.Remove(change.Key);
                         continue;
                     }
-                    m_LiveModel.Apply(change.Key, change.TraceEvent, sourceMaps[change.TraceEvent.ContentRevision]);
+                    m_LiveModel.Apply(change.TraceEvent, sourceMaps[change.TraceEvent.ContentRevision]);
                 }
             }
             using (s_Commit.Auto())
