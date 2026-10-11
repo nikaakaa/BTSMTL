@@ -72,7 +72,7 @@ namespace ThirdPersonSimulation.Fixed
                     return CorrectionFailure(command, "AuthoritativeAttributeOutsideScope", out result,
                         GameplayEffectReconciliationResultKind.Conflict, attributeId: attribute.AttributeId);
             }
-            int cueStart = m_Changes.Count;
+            int cueStart = m_ChangeCount;
             for (int i = 0; i < cueCount; i++)
             {
                 GameplayCueFact cue = correction.Cues[i];
@@ -102,7 +102,7 @@ namespace ThirdPersonSimulation.Fixed
                     bool covered = false;
                     for (int c = 0; c < cueCount; c++)
                     {
-                        PortableEffectRuntimeChange cue = m_Changes[cueStart + c];
+                        ref readonly PortableEffectRuntimeChange cue = ref Changes[cueStart + c];
                         if (ReferenceEquals(cue.Definition, record.Spec.Definition) &&
                             cue.InstanceId == CorrectionInstanceId(record, command, activeCovered, handle) &&
                             CorrectionContextsMatch(cue.Context, record.Spec.Context) &&
@@ -399,19 +399,19 @@ namespace ThirdPersonSimulation.Fixed
         {
             if (count == 0)
                 return;
-            int mutationCount = m_Changes.Count - start - count;
-            m_Changes.Reverse(start, count);
-            m_Changes.Reverse(start + count, mutationCount);
-            m_Changes.Reverse(start, count + mutationCount);
+            int mutationCount = m_ChangeCount - start - count;
+            Array.Reverse(Changes, start, count);
+            Array.Reverse(Changes, start + count, mutationCount);
+            Array.Reverse(Changes, start, count + mutationCount);
             int cueStart = start + mutationCount;
             for (int i = 0; i < count; i++)
             {
-                PortableEffectRuntimeChange cue = m_Changes[cueStart + i];
+                ref readonly PortableEffectRuntimeChange cue = ref Changes[cueStart + i];
                 PortableEffectRuntimeChange ordered = new PortableEffectRuntimeChange(NextChangeCursor(), cue.CueId,
                     cue.Trigger, cue.Definition, cue.InstanceId, cue.Context);
                 ordered.Retain();
                 cue.Release();
-                m_Changes[cueStart + i] = ordered;
+                Changes[cueStart + i] = ordered;
             }
         }
 

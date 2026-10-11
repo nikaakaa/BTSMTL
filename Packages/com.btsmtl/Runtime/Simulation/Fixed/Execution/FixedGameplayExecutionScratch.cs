@@ -17,7 +17,7 @@ namespace ThirdPersonSimulation.Fixed
         readonly Dictionary<IReadOnlyList<SimulationSetByCallerValue>, List<SimulationAttributeCapture>> m_AdditionalLeases =
             new Dictionary<IReadOnlyList<SimulationSetByCallerValue>, List<SimulationAttributeCapture>>();
 
-        public List<PortableEffectRuntimeChange> Changes { get; } = new List<PortableEffectRuntimeChange>();
+        public PortableEffectRuntimeChange[] Changes { get; private set; } = Array.Empty<PortableEffectRuntimeChange>();
         public ulong[] RemovedHandles { get; private set; } = Array.Empty<ulong>();
         public int RemovedHandleCount { get; set; }
         public Dictionary<ulong, PortableEffectCause> Causes { get; } = new Dictionary<ulong, PortableEffectCause>();
@@ -75,7 +75,7 @@ namespace ThirdPersonSimulation.Fixed
             m_AdditionalValues = new GameplayEffectListBank<SimulationSetByCallerValue>(capacity.AdditionalQueueWidth, capacity.ParameterWidth);
             m_AdditionalAttributes = new GameplayEffectListBank<SimulationAttributeCapture>(capacity.AdditionalQueueWidth, capacity.SourceCaptureWidth);
             m_AdditionalLeases.EnsureCapacity(capacity.AdditionalQueueWidth);
-            Changes.Capacity = capacity.TentativeChangeWidth;
+            Changes = new PortableEffectRuntimeChange[capacity.TentativeChangeWidth];
             Causes.EnsureCapacity(capacity.ActiveObjectCount);
             ActiveIdentities.Capacity = capacity.ActiveEffectWidth;
             SuppliedSourceAttributes.EnsureCapacity(capacity.SourceCaptureWidth);
@@ -168,7 +168,7 @@ namespace ThirdPersonSimulation.Fixed
 
         public void Reset()
         {
-            Changes.Clear();
+            Target.ClearChanges();
             CommandsThisTick = 0;
             SpecApplicationsThisTick = 0;
             LifecycleExecutionsThisTick = 0;

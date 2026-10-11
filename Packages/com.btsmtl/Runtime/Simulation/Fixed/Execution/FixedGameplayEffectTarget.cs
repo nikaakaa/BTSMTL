@@ -26,7 +26,8 @@ namespace ThirdPersonSimulation.Fixed
         FixedGameplayAbilityExecutionServices m_CueServices;
         int m_TickRate;
         Func<ulong> m_AllocateHandle;
-        readonly List<PortableEffectRuntimeChange> m_Changes;
+        PortableEffectRuntimeChange[] Changes => m_Scratch.Changes;
+        int m_ChangeCount;
         readonly Dictionary<ulong, PortableEffectCause> m_Causes;
         readonly FixedGameplayEffectExecutionScratch m_Scratch;
         readonly GameplayEffectControlRuntime<
@@ -48,7 +49,6 @@ namespace ThirdPersonSimulation.Fixed
             if (scratch == null)
                 throw new ArgumentNullException(nameof(scratch));
             m_Scratch = scratch;
-            m_Changes = scratch.Changes;
             m_Causes = scratch.Causes;
             m_Control = new GameplayEffectControlRuntime<
                 SimulationGameplayEffectApplication,
@@ -88,7 +88,7 @@ namespace ThirdPersonSimulation.Fixed
                 }, scope, 0, 0, 0);
             }
             FixedAbilityExecutionSavepoint savepoint = m_SavepointPort.CreateSavepoint();
-            int changeCount = m_Changes.Count;
+            int changeCount = m_ChangeCount;
             GameplayEffectReconciliationResult result = default;
             try
             {
@@ -165,8 +165,8 @@ namespace ThirdPersonSimulation.Fixed
                 successfulChanges += m_OutputWorkspaces[workspace].GameplayEffectSuccessfulChangeCount;
                 cues += m_OutputWorkspaces[workspace].GameplayEffectCueCount;
             }
-            for (int index = 0; index < m_Changes.Count; index++)
-                CountOutput(m_Changes[index], ref successfulChanges, ref cues);
+            for (int index = 0; index < m_ChangeCount; index++)
+                CountOutput(in Changes[index], ref successfulChanges, ref cues);
         }
 
         static void CountOutput(in PortableEffectRuntimeChange change, ref int successfulChanges, ref int cues)
@@ -314,7 +314,7 @@ namespace ThirdPersonSimulation.Fixed
                 return new GameplayEffectApplyResult(failure);
             }
             FixedAbilityExecutionSavepoint savepoint = m_SavepointPort.CreateSavepoint();
-            int changeCount = m_Changes.Count;
+            int changeCount = m_ChangeCount;
             ulong causeHandle = 0;
             if (ingress.CauseEffectInstanceId != 0)
             {
@@ -385,18 +385,13 @@ namespace ThirdPersonSimulation.Fixed
             SetTags(sourceId, Array.Empty<string>(), default);
         }
 
-        public IReadOnlyList<PortableEffectRuntimeChange> PendingChanges => m_Changes;
-        public void ClearChanges()
-        {
-            for (int index = 0; index < m_Changes.Count; index++)
-                m_Changes[index].Release();
-            m_Changes.Clear();
-        }
+        public ReadOnlySpan<PortableEffectRuntimeChange> PendingChanges => Changes.AsSpan(0, m_ChangeCount);
+        public void ClearChanges() => TrimChanges(0);
 
         void AddChange(in PortableEffectRuntimeChange change)
         {
             change.Retain();
-            m_Changes.Add(change);
+            Changes[m_ChangeCount++] = change;
         }
 
         public void CancelMutation()
@@ -786,10 +781,10 @@ namespace ThirdPersonSimulation.Fixed
 
         void TrimChanges(int count)
         {
-            for (int index = count; index < m_Changes.Count; index++)
-                m_Changes[index].Release();
-            if (m_Changes.Count > count)
-                m_Changes.RemoveRange(count, m_Changes.Count - count);
+            for (int index = count; index < m_ChangeCount; index++)
+                Changes[index].Release();
+            Array.Clear(Changes, count, m_ChangeCount - count);
+            m_ChangeCount = count;
         }
 
         void RebuildCauses()

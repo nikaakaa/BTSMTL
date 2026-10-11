@@ -287,18 +287,18 @@ namespace ThirdPersonSimulation
 
 		void RecordChanges(SimulationOperation source, CanonicalTextValue cause)
 		{
-			if (m_GameplayEffects.PendingChanges.Count != 0)
+			if (m_GameplayEffects.PendingChanges.Length != 0)
 				RecordChanges(m_Facts.Activation(source), cause);
 		}
 
 		void RecordChanges(ActivationId source, CanonicalTextValue cause)
 		{
-			IReadOnlyList<PortableEffectRuntimeChange> changes = m_GameplayEffects.PendingChanges;
+			ReadOnlySpan<PortableEffectRuntimeChange> changes = m_GameplayEffects.PendingChanges;
 			try
 			{
-				for (int i = 0; i < changes.Count; i++)
+				for (int i = 0; i < changes.Length; i++)
 				{
-					PortableEffectRuntimeChange change = changes[i];
+					ref readonly PortableEffectRuntimeChange change = ref changes[i];
 					m_Frame.RecordGameplayEffectChange(in change, source, cause);
 				}
 			}

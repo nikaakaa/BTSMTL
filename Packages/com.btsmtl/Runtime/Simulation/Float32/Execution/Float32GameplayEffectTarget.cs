@@ -26,7 +26,8 @@ namespace ThirdPersonSimulation
         Float32GameplayAbilityExecutionServices m_CueServices;
         int m_TickRate;
         Func<ulong> m_AllocateHandle;
-        readonly List<PortableEffectRuntimeChange> m_Changes;
+        PortableEffectRuntimeChange[] Changes => m_Scratch.Changes;
+        int m_ChangeCount;
         readonly Dictionary<ulong, PortableEffectCause> m_Causes;
         readonly Float32GameplayEffectExecutionScratch m_Scratch;
         readonly GameplayEffectControlRuntime<
@@ -48,7 +49,6 @@ namespace ThirdPersonSimulation
             if (scratch == null)
                 throw new ArgumentNullException(nameof(scratch));
             m_Scratch = scratch;
-            m_Changes = scratch.Changes;
             m_Causes = scratch.Causes;
             m_Control = new GameplayEffectControlRuntime<
                 SimulationGameplayEffectApplication,
@@ -88,7 +88,7 @@ namespace ThirdPersonSimulation
                 }, scope, 0, 0, 0);
             }
             Float32AbilityExecutionSavepoint savepoint = m_SavepointPort.CreateSavepoint();
-            int changeCount = m_Changes.Count;
+            int changeCount = m_ChangeCount;
             GameplayEffectReconciliationResult result = default;
             try
             {
@@ -165,8 +165,8 @@ namespace ThirdPersonSimulation
                 successfulChanges += m_OutputWorkspaces[workspace].GameplayEffectSuccessfulChangeCount;
                 cues += m_OutputWorkspaces[workspace].GameplayEffectCueCount;
             }
-            for (int index = 0; index < m_Changes.Count; index++)
-                CountOutput(m_Changes[index], ref successfulChanges, ref cues);
+            for (int index = 0; index < m_ChangeCount; index++)
+                CountOutput(in Changes[index], ref successfulChanges, ref cues);
         }
 
         static void CountOutput(in PortableEffectRuntimeChange change, ref int successfulChanges, ref int cues)
@@ -314,7 +314,7 @@ namespace ThirdPersonSimulation
                 return new GameplayEffectApplyResult(failure);
             }
             Float32AbilityExecutionSavepoint savepoint = m_SavepointPort.CreateSavepoint();
-            int changeCount = m_Changes.Count;
+            int changeCount = m_ChangeCount;
             ulong causeHandle = 0;
             if (ingress.CauseEffectInstanceId != 0)
             {
@@ -385,7 +385,7 @@ namespace ThirdPersonSimulation
             SetTags(sourceId, Array.Empty<string>(), default);
         }
 
-        public IReadOnlyList<PortableEffectRuntimeChange> PendingChanges => m_Changes;
+        public ReadOnlySpan<PortableEffectRuntimeChange> PendingChanges => Changes.AsSpan(0, m_ChangeCount);
         public void ClearChanges() => TrimChanges(0);
 
         public void CancelMutation()
@@ -783,15 +783,15 @@ namespace ThirdPersonSimulation
         void AppendChange(in PortableEffectRuntimeChange change)
         {
             change.Retain();
-            m_Changes.Add(change);
+            Changes[m_ChangeCount++] = change;
         }
 
         void TrimChanges(int count)
         {
-            for (int i = count; i < m_Changes.Count; i++)
-                m_Changes[i].Release();
-            if (m_Changes.Count > count)
-                m_Changes.RemoveRange(count, m_Changes.Count - count);
+            for (int i = count; i < m_ChangeCount; i++)
+                Changes[i].Release();
+            Array.Clear(Changes, count, m_ChangeCount - count);
+            m_ChangeCount = count;
         }
 
         void RebuildCauses()

@@ -127,7 +127,7 @@ namespace ThirdPersonSimulation
             PortableActiveEffectState, PortablePredictionRecord, PortableTagQuery, Float32AbilityExecutionSavepoint>.TryReserveChanges(
             int changeStart, out GameplayEffectExecutionFailure failure)
         {
-            if (m_Changes.Count == changeStart)
+            if (m_ChangeCount == changeStart)
             {
                 failure = default;
                 return true;
@@ -161,7 +161,7 @@ namespace ThirdPersonSimulation
                 required = cues;
                 available = actor.PresentationRequestsPerTick;
             }
-            PortableEffectRuntimeChange change = m_Changes[changeStart];
+            ref readonly PortableEffectRuntimeChange change = ref Changes[changeStart];
             CanonicalTextValue effectId = change.Kind == PortableEffectChangeKind.Tag
                 ? change.Tag.CauseEffectId : change.Definition?.Id ?? change.CauseEffectId;
             GameplayEffectContextIdentity context = change.Kind == PortableEffectChangeKind.Tag
@@ -205,7 +205,7 @@ namespace ThirdPersonSimulation
             }
             int cues = predictedCueRemovals + ((correction.Coverage & GameplayEffectCorrectionCoverage.Cues) != 0
                 ? correction.Cues.Count : 0);
-            int tentative = m_Changes.Count + cues;
+            int tentative = m_ChangeCount + cues;
             if (tentative > capacity.TentativeChangeWidth)
             {
                 failure = CapacityFailure(command.EffectId, command.InstanceId, command.Context, command.Kind,

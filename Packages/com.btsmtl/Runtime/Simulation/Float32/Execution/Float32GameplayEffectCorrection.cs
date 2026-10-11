@@ -72,7 +72,7 @@ namespace ThirdPersonSimulation
                     return CorrectionFailure(command, "AuthoritativeAttributeOutsideScope", out result,
                         GameplayEffectReconciliationResultKind.Conflict, attributeId: attribute.AttributeId);
             }
-            int cueStart = m_Changes.Count;
+            int cueStart = m_ChangeCount;
             for (int i = 0; i < cueCount; i++)
             {
                 GameplayCueFact cue = correction.Cues[i];
@@ -89,7 +89,7 @@ namespace ThirdPersonSimulation
                     !m_CueServices.TryGetGameplayCueProducer(owner.Spec.Definition.Id, cue.CueId, out _))
                     return CorrectionFailure(command, "AuthoritativeCueProducerInvalid", out result,
                         parameter: cue.CueId, effectId: owner.Spec.Definition.Id);
-                m_Changes.Add(new PortableEffectRuntimeChange(0, cue.CueId, trigger,
+                AppendChange(new PortableEffectRuntimeChange(0, cue.CueId, trigger,
                     owner.Spec.Definition, cue.SourceInstanceId, cue.EffectContext));
             }
             for (int i = 0; i < records.Count; i++)
@@ -102,7 +102,7 @@ namespace ThirdPersonSimulation
                     bool covered = false;
                     for (int c = 0; c < cueCount; c++)
                     {
-                        PortableEffectRuntimeChange cue = m_Changes[cueStart + c];
+                        ref readonly PortableEffectRuntimeChange cue = ref Changes[cueStart + c];
                         if (ReferenceEquals(cue.Definition, record.Spec.Definition) &&
                             cue.InstanceId == CorrectionInstanceId(record, command, activeCovered, handle) &&
                             CorrectionContextsMatch(cue.Context, record.Spec.Context) &&
@@ -375,16 +375,19 @@ namespace ThirdPersonSimulation
         {
             if (count == 0)
                 return;
-            int mutationCount = m_Changes.Count - start - count;
-            m_Changes.Reverse(start, count);
-            m_Changes.Reverse(start + count, mutationCount);
-            m_Changes.Reverse(start, count + mutationCount);
+            int mutationCount = m_ChangeCount - start - count;
+            Array.Reverse(Changes, start, count);
+            Array.Reverse(Changes, start + count, mutationCount);
+            Array.Reverse(Changes, start, count + mutationCount);
             int cueStart = start + mutationCount;
             for (int i = 0; i < count; i++)
             {
-                PortableEffectRuntimeChange cue = m_Changes[cueStart + i];
-                m_Changes[cueStart + i] = new PortableEffectRuntimeChange(NextChangeCursor(), cue.CueId,
+                ref readonly PortableEffectRuntimeChange cue = ref Changes[cueStart + i];
+                PortableEffectRuntimeChange ordered = new PortableEffectRuntimeChange(NextChangeCursor(), cue.CueId,
                     cue.Trigger, cue.Definition, cue.InstanceId, cue.Context);
+                ordered.Retain();
+                cue.Release();
+                Changes[cueStart + i] = ordered;
             }
         }
 
