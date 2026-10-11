@@ -70,7 +70,7 @@ namespace ThirdPersonSimulation.Fixed
             writer.WriteText(data.OperationSetVersion.Value);
             writer.WriteText(data.SourceRevision.Value);
             writer.WriteHash(data.SemanticHash);
-            FixedGameplayAbilityNumericProfileCodec.Write(writer, data.NumericProfile);
+            SimulationNumericProfileCodec.Write(writer, data.NumericProfile);
             writer.WriteText(data.ExecutionIdentity);
             writer.WriteHash(data.ContentHash);
             writer.WriteHash(data.StateSchemaHash);
@@ -100,7 +100,7 @@ namespace ThirdPersonSimulation.Fixed
             string operationSetVersion = CanonicalTextEncoding.DecodeString(reader.ReadTextSegment());
             string sourceRevision = CanonicalTextEncoding.DecodeString(reader.ReadTextSegment());
             string semanticHash = reader.ReadHash().ToString();
-            SimulationNumericProfile numericProfile = FixedGameplayAbilityNumericProfileCodec.Read(reader);
+            SimulationNumericProfile numericProfile = SimulationNumericProfileCodec.Read(reader);
             string executionIdentity = CanonicalTextEncoding.DecodeString(reader.ReadTextSegment());
             string contentHash = reader.ReadHash().ToString();
             string stateSchemaHash = reader.ReadHash().ToString();
@@ -157,7 +157,7 @@ namespace ThirdPersonSimulation.Fixed
             writer.WriteInt32(data.TickRate);
             writer.WriteText(data.SourceRevision.Value);
             writer.WriteHash(data.SemanticHash);
-            FixedGameplayAbilityNumericProfileCodec.Write(writer, data.NumericProfile);
+            SimulationNumericProfileCodec.Write(writer, data.NumericProfile);
             writer.WriteText(data.ExecutionIdentity);
             writer.WriteHash(data.ContentHash);
             writer.WriteHash(data.StateSchemaHash);
@@ -191,7 +191,7 @@ namespace ThirdPersonSimulation.Fixed
             int tickRate = reader.ReadInt32();
             ProgramRevision sourceRevision = new ProgramRevision(CanonicalTextEncoding.DecodeString(reader.ReadTextSegment()));
             SemanticHash semanticHash = new SemanticHash(reader.ReadHash());
-            SimulationNumericProfile numericProfile = FixedGameplayAbilityNumericProfileCodec.Read(reader);
+            SimulationNumericProfile numericProfile = SimulationNumericProfileCodec.Read(reader);
             string executionIdentity = CanonicalTextEncoding.DecodeString(reader.ReadTextSegment());
             StableHash contentHash = reader.ReadHash();
             StableHash stateSchemaHash = reader.ReadHash();
@@ -321,46 +321,6 @@ namespace ThirdPersonSimulation.Fixed
                       (c >= 'a' && c <= 'f') ||
                       (c >= 'A' && c <= 'F')))
                     throw new InvalidDataException("Gameplay Ability definition GUID is invalid.");
-            }
-        }
-
-        sealed class FixedGameplayAbilityNumericProfileCodec
-        {
-            public static void Write(CanonicalWriter writer, SimulationNumericProfile profile)
-            {
-                writer.WriteText(profile.Id.Value);
-                writer.WriteInt32(profile.AbiVersion.Value);
-                writer.WriteInt32(profile.ScalarBits);
-                writer.WriteByte((byte)profile.Rounding);
-                writer.WriteByte((byte)profile.Overflow);
-                writer.WriteBoolean(profile.DeterministicReplay);
-            }
-
-            public static SimulationNumericProfile Read(CanonicalReader reader)
-            {
-                return new SimulationNumericProfile(
-                    new NumericProfileId(CanonicalTextEncoding.DecodeString(reader.ReadTextSegment())),
-                    new TargetAbiVersion(reader.ReadInt32()),
-                    reader.ReadInt32(),
-                    ReadRoundingMode(reader.ReadByte()),
-                    ReadOverflowMode(reader.ReadByte()),
-                    reader.ReadBoolean());
-            }
-
-            static SimulationNumericRoundingMode ReadRoundingMode(byte value)
-            {
-                if (value < (byte)SimulationNumericRoundingMode.Ieee754NearestEven ||
-                    value > (byte)SimulationNumericRoundingMode.FixedNearestEven)
-                    throw new InvalidDataException($"Enum value '{value}' is invalid for 'SimulationNumericRoundingMode'.");
-                return (SimulationNumericRoundingMode)value;
-            }
-
-            static SimulationNumericOverflowMode ReadOverflowMode(byte value)
-            {
-                if (value < (byte)SimulationNumericOverflowMode.RejectNonFinite ||
-                    value > (byte)SimulationNumericOverflowMode.RejectOverflow)
-                    throw new InvalidDataException($"Enum value '{value}' is invalid for 'SimulationNumericOverflowMode'.");
-                return (SimulationNumericOverflowMode)value;
             }
         }
 
