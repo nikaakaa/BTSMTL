@@ -94,10 +94,15 @@ namespace ThirdPersonSimulation.Fixed
             for (int keyIndex = 0; keyIndex < m_RequestIds.Count; keyIndex++)
             {
                 CanonicalTextValue requestId = m_RequestIds[keyIndex];
-                SimulationInputRequestState state = GetInputRequest(requestId);
+                int index = FindRequest(m_Requests.Values, requestId);
+                if (index < 0)
+                {
+                    SetInputRequest(requestId, default);
+                    continue;
+                }
+                SimulationInputRequestState state = m_Requests.Page.Values[index].Value;
                 if (state.IsValid && state.ExpireTick < m_Tick.Value)
-                    state = default;
-                SetInputRequest(requestId, state);
+                    SetInputRequest(requestId, default);
             }
             for (int inputIndex = 0; inputIndex < requests.Count; inputIndex++)
             {
