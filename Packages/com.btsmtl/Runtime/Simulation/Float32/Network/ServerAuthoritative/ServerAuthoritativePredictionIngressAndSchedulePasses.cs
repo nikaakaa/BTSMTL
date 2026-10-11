@@ -257,6 +257,12 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         readonly ServerAuthoritativeModelPolicy m_Policy;
         readonly ServerAuthoritativePredictionState m_State;
         readonly SimulationPipelinePassStateCheckpoint m_Checkpoint;
+        readonly SimulationPipelineStepSourceMapping[][] m_SourceMappingStorage =
+        {
+            Array.Empty<SimulationPipelineStepSourceMapping>(),
+            new SimulationPipelineStepSourceMapping[1],
+            new SimulationPipelineStepSourceMapping[2]
+        };
         ServerAuthoritativePredictionCorrectionCheckpoint m_CapturedCorrection;
         ulong m_DecisionCount;
         ulong m_CorrectionCount;
@@ -523,6 +529,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         {
             m_Checkpoint.Dispose();
             m_StateStorage.ReleaseStorage();
+            for (int index = 1; index < m_SourceMappingStorage.Length; index++)
+                Array.Clear(m_SourceMappingStorage[index], 0, m_SourceMappingStorage[index].Length);
         }
 
         public void WriteCheckpointState(CanonicalWriter writer)
@@ -603,7 +611,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             if (currentStepCount < 0 || currentStepCount > 2)
                 throw new ArgumentOutOfRangeException(nameof(currentStepCount));
             var steps = new Float32SimulationStep[replay.Count + currentStepCount];
-            var mappings = new SimulationPipelineStepSourceMapping[
+            SimulationPipelineStepSourceMapping[] mappings = m_SourceMappingStorage[
                 (currentStepCount > 0 ? 1 : 0) + (replay.Count > 0 ? 1 : 0)];
             CharacterBodySample[] selectedBodies = currentStepCount == 0
                 ? Array.Empty<CharacterBodySample>()
