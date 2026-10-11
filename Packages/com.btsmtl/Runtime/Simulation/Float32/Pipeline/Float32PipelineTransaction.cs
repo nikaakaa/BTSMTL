@@ -31,6 +31,7 @@ namespace ThirdPersonSimulation
             Float32WorkingStatePort workingStatePort,
             Float32CompletedStepPort completedStepPort,
             int maximumSteps,
+            SimulationPipelineStepSnapshotStorage stepProjections,
             IFloat32CommittedInputReadPort availabilityInput)
         {
             var services = new PipelineTransactionRuntimeServices(
@@ -52,6 +53,7 @@ namespace ThirdPersonSimulation
                 workingStatePort,
                 completedStepPort,
                 maximumSteps,
+                stepProjections,
                 availabilityInput);
             m_Coordinator = new PipelineTransactionCoordinator<
                 Float32SimulationStep,
@@ -101,6 +103,7 @@ namespace ThirdPersonSimulation
         readonly ICharacterWorldSolver m_Solver;
         readonly ISimulationDiagnosticsSink m_Diagnostics;
         readonly IFloat32SimulationSessionSnapshotCodec m_SnapshotCodec;
+        SimulationPipelineStepSnapshotStorage m_StepProjections;
         readonly IFloat32SimulationCommitter m_Committer;
         readonly Float32PipelineProductStore m_Products;
         readonly IReadOnlySimulationPipelineProductPort<Float32CharacterEvaluationResultBatch> m_CharacterEvaluationResults;
@@ -132,6 +135,7 @@ namespace ThirdPersonSimulation
             Float32WorkingStatePort workingStatePort,
             Float32CompletedStepPort completedStepPort,
             int maximumSteps,
+            SimulationPipelineStepSnapshotStorage stepProjections,
             IFloat32CommittedInputReadPort availabilityInput)
         {
             m_Services = services ?? throw new ArgumentNullException(nameof(services));
@@ -153,6 +157,7 @@ namespace ThirdPersonSimulation
             m_Diagnostics = diagnostics ?? throw new ArgumentNullException(nameof(diagnostics));
             m_RestoreSource = restoreSource;
             m_SnapshotCodec = snapshotCodec ?? throw new ArgumentNullException(nameof(snapshotCodec));
+            m_StepProjections = stepProjections;
             m_Committer = committer ?? throw new ArgumentNullException(nameof(committer));
             m_Products = products ?? throw new ArgumentNullException(nameof(products));
             m_CharacterEvaluationResults = m_Products.GetRequired<Float32ExclusiveProductSlot<Float32CharacterEvaluationResultBatch>>(
@@ -381,6 +386,7 @@ namespace ThirdPersonSimulation
         {
             ClearTransientState();
             m_SnapshotCodec.DisposeCheckpointStorage();
+            m_StepProjections = null;
         }
 
         public bool TryGetCoreStepStage(
@@ -450,10 +456,7 @@ namespace ThirdPersonSimulation
             bool capture = (executionPlan.Requirements &
                 (SimulationSessionPlanRequirement.Snapshot | SimulationSessionPlanRequirement.StateHash)) != 0;
             SimulationPipelineStateSnapshot pipelineSnapshot = capture
-                ? SimulationPipelineStateSnapshotCoordinator.CaptureStepProjection(
-                    m_Services.Plan,
-                    step.Tick.Value,
-                    m_Services.StateParticipants)
+                ? m_StepProjections.Capture(step.Tick.Value)
                 : null;
             tickResult.SetPipelineProjection(pipelineSnapshot);
             SimulationWorldSnapshot worldSnapshot = capture

@@ -47,6 +47,7 @@ namespace ThirdPersonSimulation
     public sealed class SimulationPipelineStateSnapshot : IDisposable
     {
         readonly IReadOnlyList<SimulationPipelinePassStateSnapshot> m_Participants;
+        readonly SimulationPipelineStepSnapshotStorage.Page m_StepStorage;
 
         [ThreadStatic] static CanonicalWriter s_HashWriter;
 
@@ -93,12 +94,22 @@ namespace ThirdPersonSimulation
 
         public void RetainStepStorage()
         {
+            if (m_StepStorage != null)
+            {
+                m_StepStorage.Retain();
+                return;
+            }
             for (int i = 0; i < m_Participants.Count; i++)
                 m_Participants[i].RetainStepStorage();
         }
 
         public void ReleaseStepStorage()
         {
+            if (m_StepStorage != null)
+            {
+                m_StepStorage.Release();
+                return;
+            }
             for (int i = 0; i < m_Participants.Count; i++)
                 m_Participants[i].ReleaseStepStorage();
         }
@@ -107,11 +118,13 @@ namespace ThirdPersonSimulation
 
         internal SimulationPipelineStateSnapshot(
             SimulationPipelineIdentity pipeline, SimulationComponentIdentity backend,
-            SimulationPipelinePassStateSnapshot[] preparedParticipants)
+            SimulationPipelinePassStateSnapshot[] preparedParticipants,
+            SimulationPipelineStepSnapshotStorage.Page stepStorage = null)
         {
             Pipeline = pipeline;
             Backend = backend;
             m_Participants = preparedParticipants;
+            m_StepStorage = stepStorage;
         }
 
         internal void SetPreparedTick(ulong tick, CanonicalWriter writer)
@@ -643,9 +656,8 @@ namespace ThirdPersonSimulation
             }
         }
 
-        public static SimulationPipelineStateSnapshot CaptureStepProjection(
+        internal static ISimulationPipelineStateParticipant[] PrepareStepProjection(
             CompiledSimulationPipelinePlan plan,
-            ulong lastCompletedTick,
             IReadOnlyList<ISimulationPipelineStateParticipant> participants)
         {
             if (plan == null)
@@ -663,30 +675,14 @@ namespace ThirdPersonSimulation
                 if (projectionMode == SimulationPipelineStepProjectionMode.Include)
                     snapshotCount++;
             }
-            var snapshots = snapshotCount == 0
-                ? Array.Empty<SimulationPipelinePassStateSnapshot>()
-                : new SimulationPipelinePassStateSnapshot[snapshotCount];
+            var projected = new ISimulationPipelineStateParticipant[snapshotCount];
             int snapshotIndex = 0;
-            try
+            for (int i = 0; i < values.Length; i++)
             {
-                for (int i = 0; i < values.Length; i++)
-                {
-                    if (values[i].StepProjectionMode == SimulationPipelineStepProjectionMode.ReconstructForRestore)
-                        continue;
-                    SimulationPipelinePassStateSnapshot snapshot = (values[i] is ISimulationPipelineStepStateStorage storage
-                        ? storage.CaptureStepState() : values[i].CaptureState()) ??
-                        throw Failure("pipeline_state_capture_missing", values[i].StateIdentity.PassId, "State participant returned no snapshot.");
-                    snapshots[snapshotIndex++] = snapshot;
-                    RequireSnapshotIdentity(values[i].StateIdentity, snapshot);
-                }
-                return SimulationPipelineStateSnapshot.FromOwnedParticipants(plan.Identity, plan.Backend, lastCompletedTick, snapshots);
+                if (values[i].StepProjectionMode == SimulationPipelineStepProjectionMode.Include)
+                    projected[snapshotIndex++] = values[i];
             }
-            catch
-            {
-                for (int i = 0; i < snapshotIndex; i++)
-                    snapshots[i].ReleaseStepStorage();
-                throw;
-            }
+            return projected;
         }
 
         public static SimulationPipelineStateRestoreTransaction PrepareRestore(
@@ -788,7 +784,7 @@ namespace ThirdPersonSimulation
             return values;
         }
 
-        static void RequireSnapshotIdentity(
+        internal static void RequireSnapshotIdentity(
             SimulationPipelineStateParticipantIdentity expected,
             SimulationPipelinePassStateSnapshot snapshot)
         {

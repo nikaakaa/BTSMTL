@@ -179,6 +179,10 @@ namespace ThirdPersonSimulation
                 for (int participant = 0; participant < stateParticipants.Count; participant++)
                     if (stateParticipants[participant] is ISimulationPipelineStepStateStorage storage)
                         storage.PrepareStepStorage(snapshotCapacity);
+                SimulationPipelineStepSnapshotStorage stepProjections = request.Descriptor.MaximumSessionCheckpointPayloadBytes > 0
+                    ? new SimulationPipelineStepSnapshotStorage(request.CompiledPipeline, stateParticipants,
+                        snapshotCapacity, request.Descriptor.MaximumSessionCheckpointPayloadBytes)
+                    : null;
 
                 if (request.PipelineInitialState.Mode == SimulationPipelineInitialStateMode.RestoreProvidedSnapshot)
                 {
@@ -233,6 +237,7 @@ namespace ThirdPersonSimulation
                     workingStatePort,
                     completedStepPort,
                     maximumSteps,
+                    stepProjections,
                     availabilityInput);
                 resources.Register(SimulationSessionResourceReleasePhase.RuntimeAndPasses, transaction);
                 SimulationSessionLaunchPlan launchPlan = BuildLaunchPlan(request, initialPipelineState);
