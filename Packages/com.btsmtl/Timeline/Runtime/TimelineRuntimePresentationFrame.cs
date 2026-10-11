@@ -132,7 +132,7 @@ namespace BTSMTL.Timeline.Runtime
         public float PresentationDeltaSeconds { get; }
         public float InterpolationAlpha { get; }
         public TimelineExecutionIdentity ExecutionIdentity { get; }
-        public TimelineRuntimePresentationOperations Operations { get; }
+        public readonly TimelineRuntimePresentationOperations Operations;
         public TimelinePresentationSampleReason Reason { get; }
         public FixedScalar Time { get; }
         public int Cycle { get; }
