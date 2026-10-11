@@ -750,13 +750,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             OwnerCanonicalInputBatch template,
             IReadOnlyList<SimulationInputRequest> requests)
         {
-            var input = new SimulationInput(
-                template.Input.NumericProfile,
-                template.Input.TickSource,
-                template.Input.InputSourceIdentity,
-                template.Input.Sequence,
-                template.Input.Values,
-                requests);
+            SimulationInput input = template.Input.CopyWithOrderedRequests(requests);
             return new OwnerCanonicalInputBatch(
                 template.ActorId,
                 template.SourceTick,
