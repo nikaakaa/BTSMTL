@@ -241,7 +241,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 context.Products.BindExclusiveWriter<SimulationSessionExecutionPlan<Float32SimulationStep>>(SimulationPipelineProducts.ExecutionPlan));
             return new Float32SchedulePassRuntimeAdapter<CorrectionScheduleReads, CorrectionScheduleWrites>(
                 new CorrectionScheduleRuntime(context.Pass.Descriptor, m_Policy, reads.PredictionState.State,
-                    context.Composition.SourceClockId.Value).PrepareStateStorage(context.Composition),
+                    context.Composition.SourceClockId.Value,
+                    reads.CharacterRuntime.Runtime.RosterDescriptor.Actors).PrepareStateStorage(context.Composition),
                 reads,
                 writes);
         }
@@ -264,6 +265,9 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             new SimulationPipelineStepSourceMapping[2]
         };
         readonly CharacterBodySample[][] m_SelectedBodyStorage;
+        readonly Float32SimulationStep[] m_StepStorage;
+        readonly SimulationPipelineActorInput<Float32StepInput>[][] m_StepInputStorage;
+        readonly List<Float32SimulationStep> m_Steps;
         ServerAuthoritativePredictionCorrectionCheckpoint m_CapturedCorrection;
         ulong m_DecisionCount;
         ulong m_CorrectionCount;
@@ -277,11 +281,20 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         public CorrectionScheduleRuntime(
             SimulationPipelinePassDescriptor descriptor,
             ServerAuthoritativeModelPolicy policy,
-            ServerAuthoritativePredictionState state, string sourceClockId) : base(descriptor)
+            ServerAuthoritativePredictionState state, string sourceClockId,
+            IReadOnlyList<ActorId> actors) : base(descriptor)
         {
             m_ReplayClockId = string.Concat(sourceClockId, ".replay");
             m_Policy = policy ?? throw new ArgumentNullException(nameof(policy));
             m_State = state ?? throw new ArgumentNullException(nameof(state));
+            m_StepStorage = new Float32SimulationStep[MaximumStepCount];
+            m_StepInputStorage = new SimulationPipelineActorInput<Float32StepInput>[MaximumStepCount][];
+            m_Steps = new List<Float32SimulationStep>(MaximumStepCount);
+            for (int index = 0; index < m_StepStorage.Length; index++)
+            {
+                m_StepStorage[index] = new Float32SimulationStep(actors);
+                m_StepInputStorage[index] = new SimulationPipelineActorInput<Float32StepInput>[1];
+            }
             int remoteActorCount = m_State.RemoteBodyActorCount;
             m_SelectedBodyStorage = new[]
             {
@@ -536,6 +549,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
 
         protected override void OnDispose()
         {
+            ClearSteps();
             m_Checkpoint.Dispose();
             m_StateStorage.ReleaseStorage();
             for (int index = 1; index < m_SourceMappingStorage.Length; index++)
@@ -621,7 +635,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 throw new InvalidOperationException("Prediction Schedule owner does not match the Character roster.");
             if (currentStepCount < 0 || currentStepCount > 2)
                 throw new ArgumentOutOfRangeException(nameof(currentStepCount));
-            var steps = new Float32SimulationStep[replay.Count + currentStepCount];
+            ClearSteps();
+            List<Float32SimulationStep> steps = m_Steps;
             SimulationPipelineStepSourceMapping[] mappings = m_SourceMappingStorage[
                 (currentStepCount > 0 ? 1 : 0) + (replay.Count > 0 ? 1 : 0)];
             CharacterBodySample[] selectedBodies = m_SelectedBodyStorage[currentStepCount];
@@ -642,13 +657,14 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                     SimulationTickSourceKind.Replay,
                     replayClock,
                     record.Input.SourceTick);
-                steps[stepIndex++] = CreateStep(
+                steps.Add(CreateStep(
+                    stepIndex++,
                     new SimulationTick(checked(++nextTick)),
                     SimulationPipelineStepExecutionKind.Replay,
                     replaySource,
                     planSequence++,
                     record.Input,
-                    record.ObservedWorldConstraints);
+                    record.ObservedWorldConstraints));
             }
             if (currentStepCount > 0)
             {
@@ -675,13 +691,14 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 ObservedWorldConstraintFrame observed = observedContactEnabled
                     ? selection.ToObservedWorldConstraints(contactShapeConfigurationHash)
                     : ObservedWorldConstraintFrame.Empty(tick);
-                steps[stepIndex++] = CreateStep(
+                steps.Add(CreateStep(
+                    stepIndex++,
                     tick,
                     SimulationPipelineStepExecutionKind.Current,
                     rebound.Input.TickSource,
                     planSequence++,
                     rebound,
-                    observed);
+                    observed));
             }
             if (replay.Count > 0)
             {
@@ -690,7 +707,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                     context.Source.ClockId,
                     SimulationTickSourceKind.Replay);
             }
-            SimulationSessionPlanRequirement requirements = steps.Length == 0
+            SimulationSessionPlanRequirement requirements = steps.Count == 0
                 ? SimulationSessionPlanRequirement.WorkingState |
                   SimulationSessionPlanRequirement.OutputDisposition
                 : SimulationSessionPlanRequirement.WorkingState |
@@ -698,8 +715,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                   SimulationSessionPlanRequirement.StateHash |
                   SimulationSessionPlanRequirement.Snapshot;
             selectedRemoteBodies = selectedBodies;
-            return SimulationSessionExecutionPlan<Float32SimulationStep>.FromOwnedArrays(
-                steps.Length == 0
+            return SimulationSessionExecutionPlan<Float32SimulationStep>.FromOwnedCollections(
+                steps.Count == 0
                     ? SimulationSessionExecutionPlanStatus.NoStep
                     : SimulationSessionExecutionPlanStatus.Executable,
                 context.Source,
@@ -747,7 +764,23 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 input);
         }
 
-        static Float32SimulationStep CreateStep(
+        void ClearSteps()
+        {
+            for (int index = 0; index < m_Steps.Count; index++)
+            {
+                Array.Clear(m_StepInputStorage[index], 0, m_StepInputStorage[index].Length);
+                m_Steps[index].Reset(
+                    default,
+                    default,
+                    Array.Empty<SimulationPipelineActorInput<Float32StepInput>>(),
+                    Array.Empty<SimulationPipelineTypedIngress<SimulationIngress>>(),
+                    null);
+            }
+            m_Steps.Clear();
+        }
+
+        Float32SimulationStep CreateStep(
+            int stepIndex,
             SimulationTick tick,
             SimulationPipelineStepExecutionKind kind,
             SimulationTickSourceIdentity source,
@@ -755,24 +788,29 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             OwnerCanonicalInputBatch input,
             ObservedWorldConstraintFrame observedWorldConstraints)
         {
+            if (observedWorldConstraints.Tick != tick)
+                throw new ArgumentException("Observed world constraint frame Tick does not match the Step.", nameof(observedWorldConstraints));
             SimulationInput rebound = input.Input.TickSource.Equals(source)
                 ? input.Input
                 : input.Input.RebindOwned(
                     source,
                     input.Input.Sequence,
                     true);
-            return new Float32SimulationStep(
+            var actorInput = new SimulationPipelineActorInput<Float32StepInput>(
+                input.ActorId,
+                input.InputSequence,
+                new Float32StepInput(rebound));
+            var provenance = new SimulationPipelineStepProvenance(kind, source, planSequence);
+            SimulationPipelineActorInput<Float32StepInput>[] inputs = m_StepInputStorage[stepIndex];
+            inputs[0] = actorInput;
+            Float32SimulationStep step = m_StepStorage[stepIndex];
+            step.Reset(
                 tick,
-                new SimulationPipelineStepProvenance(kind, source, planSequence),
-                new[]
-                {
-                    new SimulationPipelineActorInput<Float32StepInput>(
-                        input.ActorId,
-                        input.InputSequence,
-                        new Float32StepInput(rebound))
-                },
+                provenance,
+                inputs,
                 Array.Empty<SimulationPipelineTypedIngress<SimulationIngress>>(),
                 observedWorldConstraints);
+            return step;
         }
     }
 

@@ -102,7 +102,7 @@ namespace ThirdPersonSimulation.Fixed
                 context.Source.ClockId,
                 context.Source.ClockId,
                 context.Source.Kind);
-            return SimulationSessionExecutionPlan<FixedSimulationStep>.FromOwnedArrays(
+            return SimulationSessionExecutionPlan<FixedSimulationStep>.FromOwnedCollections(
                 SimulationSessionExecutionPlanStatus.Executable,
                 context.Source,
                 characterRuntime.Runtime.GameplayContentHash,

@@ -478,7 +478,7 @@ namespace ThirdPersonSimulation
             SimulationActorRosterDescriptor roster,
             SimulationPipelineStepSourceMapping[] sourceMappings,
             SimulationRestoreDirective restore,
-            TStep[] steps,
+            IReadOnlyList<TStep> steps,
             SimulationSessionPlanRequirement requirements,
             bool _)
         {
@@ -492,7 +492,7 @@ namespace ThirdPersonSimulation
             m_SourceMappings = FreezeMappings(sourceMappings, outerSource.ClockId);
             if (status == SimulationSessionExecutionPlanStatus.Pending)
             {
-                if (restore != null || steps.Length != 0 || requirements != SimulationSessionPlanRequirement.None)
+                if (restore != null || steps.Count != 0 || requirements != SimulationSessionPlanRequirement.None)
                     throw new ArgumentException("Pending ExecutionPlan cannot contain restore, steps or execution requirements.");
             }
             else if (status == SimulationSessionExecutionPlanStatus.NoStep)
@@ -500,7 +500,7 @@ namespace ThirdPersonSimulation
                 const SimulationSessionPlanRequirement required =
                     SimulationSessionPlanRequirement.WorkingState |
                     SimulationSessionPlanRequirement.OutputDisposition;
-                if (steps.Length != 0 || (requirements & required) != required)
+                if (steps.Count != 0 || (requirements & required) != required)
                     throw new ArgumentException("NoStep ExecutionPlan requires working state and output disposition without ordered Steps.");
             }
             else
@@ -508,9 +508,9 @@ namespace ThirdPersonSimulation
                 const SimulationSessionPlanRequirement required =
                     SimulationSessionPlanRequirement.WorkingState |
                     SimulationSessionPlanRequirement.OutputDisposition;
-                if (steps.Length == 0 || (requirements & required) != required)
+                if (steps.Count == 0 || (requirements & required) != required)
                     throw new ArgumentException("Executable ExecutionPlan requires ordered Steps, working state and output disposition.");
-                for (int i = 0; i < steps.Length; i++)
+                for (int i = 0; i < steps.Count; i++)
                 {
                     if (steps[i] == null || i > 0 && steps[i - 1].Tick.CompareTo(steps[i].Tick) >= 0)
                         throw new ArgumentException("ExecutionPlan Steps must have strictly increasing SimulationTick values.", nameof(steps));
@@ -520,7 +520,7 @@ namespace ThirdPersonSimulation
                         throw new ArgumentException("ExecutionPlan Step provenance sequence must be strictly increasing.", nameof(steps));
                 }
             }
-            if (steps.Length > 0 && restore != null && restore.Tick.CompareTo(steps[0].Tick) >= 0)
+            if (steps.Count > 0 && restore != null && restore.Tick.CompareTo(steps[0].Tick) >= 0)
                 throw new ArgumentException("Restore Tick must precede the first ExecutionPlan Step.", nameof(restore));
             Status = status;
             OuterSource = outerSource;
@@ -532,7 +532,7 @@ namespace ThirdPersonSimulation
             m_Steps = steps;
         }
 
-        public static SimulationSessionExecutionPlan<TStep> FromOwnedArrays(
+        public static SimulationSessionExecutionPlan<TStep> FromOwnedCollections(
             SimulationSessionExecutionPlanStatus status,
             SimulationTickSourceIdentity outerSource,
             GameplayContentHash gameplayContentHash,
@@ -540,7 +540,7 @@ namespace ThirdPersonSimulation
             SimulationActorRosterDescriptor roster,
             SimulationPipelineStepSourceMapping[] sourceMappings,
             SimulationRestoreDirective restore,
-            TStep[] steps,
+            IReadOnlyList<TStep> steps,
             SimulationSessionPlanRequirement requirements) =>
             new SimulationSessionExecutionPlan<TStep>(
                 status,

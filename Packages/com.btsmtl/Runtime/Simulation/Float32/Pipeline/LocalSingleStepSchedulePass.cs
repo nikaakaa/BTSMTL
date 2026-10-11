@@ -104,7 +104,7 @@ namespace ThirdPersonSimulation
                 context.Source.ClockId,
                 context.Source.ClockId,
                 context.Source.Kind);
-            return SimulationSessionExecutionPlan<Float32SimulationStep>.FromOwnedArrays(
+            return SimulationSessionExecutionPlan<Float32SimulationStep>.FromOwnedCollections(
                 SimulationSessionExecutionPlanStatus.Executable,
                 context.Source,
                 characterRuntime.Runtime.GameplayContentHash,
