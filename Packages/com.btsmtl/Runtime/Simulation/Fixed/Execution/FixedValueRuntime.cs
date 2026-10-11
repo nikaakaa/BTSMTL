@@ -6,11 +6,20 @@ namespace ThirdPersonSimulation.Fixed
 {
     internal sealed class FixedValueInputBuffer
     {
-        public List<AbilityStateValue> Values { get; } = new List<AbilityStateValue>();
+        public FixedValueInputBuffer(int capacity)
+        {
+            Values = new AbilityStateValue[capacity];
+        }
+
+        public AbilityStateValue[] Values { get; }
+        public int Count { get; private set; }
+
+        public void Add(in AbilityStateValue value) => Values[Count++] = value;
 
         public void Clear()
         {
-            Values.Clear();
+            Array.Clear(Values, 0, Count);
+            Count = 0;
         }
     }
 
@@ -30,12 +39,12 @@ namespace ThirdPersonSimulation.Fixed
             m_Depth = depth;
         }
 
-        public int Count => m_Buffer.Values.Count;
-        public AbilityStateValue this[int index] => m_Buffer.Values[index];
+        public int Count => m_Buffer.Count;
+        public ref readonly AbilityStateValue this[int index] => ref m_Buffer.Values[index];
 
         public AbilityStateValue FindByKind(ProgramStateValueKind kind)
         {
-            for (int i = 0; i < m_Buffer.Values.Count; i++)
+            for (int i = 0; i < m_Buffer.Count; i++)
             {
                 if (m_Buffer.Values[i].Kind == kind)
                     return m_Buffer.Values[i];
@@ -386,7 +395,7 @@ namespace ThirdPersonSimulation.Fixed
                         value = input.SourceKind == CompiledValueInputSourceKind.Operation
                             ? Evaluate(cursor, input.SourceOperation, input.SourceOutputPortIdentity, input.SourceOutputPortIndex)
                             : ValueFromConstant(m_Ability.Constants[input.ConstantIndex]);
-                    buffer.Values.Add(value);
+                    buffer.Add(in value);
                     if (!cursor.IsPredictiveEvaluation && m_Frame.RuleEvaluationMode != GameplayAbilityRuleEvaluationMode.Availability && (m_Frame.Trace.CaptureValues ||
                         m_Frame.Trace.CaptureControlFlow && input.SourceKind == CompiledValueInputSourceKind.Operation))
                     {

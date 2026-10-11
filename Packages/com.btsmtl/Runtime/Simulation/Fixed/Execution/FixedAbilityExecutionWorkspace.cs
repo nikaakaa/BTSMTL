@@ -31,10 +31,7 @@ namespace ThirdPersonSimulation.Fixed
                 inputCapacity = Math.Max(inputCapacity, layout.ValueInputs(data.Operations[index].Handle).Length);
             ActiveValueSlots = new bool[layout.ValueEvaluationSlotCount];
             while (ValueBuffers.Count < depthCapacity)
-                ValueBuffers.Add(new FixedValueInputBuffer());
-            for (int index = 0; index < ValueBuffers.Count; index++)
-                if (ValueBuffers[index].Values.Capacity < inputCapacity)
-                    ValueBuffers[index].Values.Capacity = inputCapacity;
+                ValueBuffers.Add(new FixedValueInputBuffer(inputCapacity));
         }
 
         public List<GameplayFact> Facts { get; } = new List<GameplayFact>();
