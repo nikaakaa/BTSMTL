@@ -143,7 +143,7 @@ namespace ThirdPersonSimulation.Fixed
             Cause = cause;
         }
 
-        internal PortableEffectRuntimeChange Change { get; }
+        internal readonly PortableEffectRuntimeChange Change;
         internal SimulationEventHeader FactHeader { get; }
         internal int FactIndex { get; }
         internal SimulationEventHeader PresentationHeader { get; }
@@ -164,7 +164,7 @@ namespace ThirdPersonSimulation.Fixed
 
         internal void Project(List<GameplayFact> facts, List<PresentationCommand> presentation)
         {
-            PortableEffectRuntimeChange change = Change;
+            ref readonly PortableEffectRuntimeChange change = ref Change;
             GameplayFact fact = change.Kind switch
             {
                 PortableEffectChangeKind.Lifecycle => new GameplayFact(FactHeader, new GameplayEffectFact(

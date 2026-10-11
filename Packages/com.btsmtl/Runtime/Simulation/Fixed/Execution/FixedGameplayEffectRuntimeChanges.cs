@@ -109,20 +109,20 @@ namespace ThirdPersonSimulation.Fixed
         public ulong Cursor { get; }
         public PortableEffectDefinition Definition { get; }
         public ulong InstanceId { get; }
-        public SimulationGameplayEffectContext Context { get; }
+        public readonly SimulationGameplayEffectContext Context;
         public SimulationGameplayEffectLifecycleOperation Operation { get; }
         public ulong StartTick { get; }
         public ulong EndTick { get; }
         public int StackCount { get; }
         public ulong LifecycleRevision { get; }
         public bool Instant { get; }
-        public PortableAttributeChange Value { get; }
+        public readonly PortableAttributeChange Value;
         public CanonicalTextValue CauseEffectId { get; }
         public string CueId { get; }
         public PortableCueTrigger Trigger { get; }
-        public GameplayEffectExecutionFailure Failure { get; }
-        public GameplayEffectReconciliationResult Reconciliation { get; }
-        public GameplayTagRuntimeChange Tag { get; }
+        public readonly GameplayEffectExecutionFailure Failure;
+        public readonly GameplayEffectReconciliationResult Reconciliation;
+        public readonly GameplayTagRuntimeChange Tag;
         internal bool IsSuccessfulOutput => Kind != PortableEffectChangeKind.Failure &&
             (Kind != PortableEffectChangeKind.Reconciliation || Reconciliation.Succeeded) &&
             (Kind != PortableEffectChangeKind.Tag || !Tag.SourceIdentity.IsExternalSource ||
