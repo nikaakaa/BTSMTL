@@ -7,15 +7,13 @@ namespace ThirdPersonSimulation
     {
         public SimulationActionEventIngress(ulong actionInstanceId, string eventId)
         {
-            if (actionInstanceId == 0)
-                throw new ArgumentOutOfRangeException(nameof(actionInstanceId));
             ActionInstanceId = actionInstanceId;
             EventId = SimulationIdentity.Require(eventId, nameof(eventId));
         }
 
         public ulong ActionInstanceId { get; }
         public string EventId { get; }
-        public bool IsValid => ActionInstanceId != 0 && !string.IsNullOrEmpty(EventId);
+        public bool IsValid => !string.IsNullOrEmpty(EventId);
     }
 
     public enum SimulationActionResultKind : byte
@@ -114,7 +112,7 @@ namespace ThirdPersonSimulation
             (!SourceInputRequest.IsValid || !SourceInputRequest.Consumed &&
                 SourceInputRequest.Sequence == InputSequence && SourceInputRequest.ExpireTick >= StartTick) &&
             (ReplacementSource.InstanceId == 0 || ReplacementSource.IsValid) &&
-            (!Source.IsAbilityRule || SkillId.IsValid && SkillEntryOperation.IsValid && SourceInputRequest.IsValid);
+            (!Source.IsAbilityRule || SkillId.IsValid && SkillEntryOperation.IsValid);
 
         public void Retain()
         {
