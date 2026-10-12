@@ -293,10 +293,11 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         public static NetworkCheckpoint ReadDelta(
             NetworkCheckpointLayout layout,
             NetworkCheckpoint baseline,
-            byte[] payload,
+            ReadOnlyMemory<byte> payload,
+            CanonicalReader reader,
             out RemotePresentationBatch remote)
         {
-            var reader = new CanonicalReader(payload ?? throw new ArgumentNullException(nameof(payload)));
+            reader.Reset(payload);
             if (reader.ReadUInt32() != DeltaMagic || reader.ReadInt32() != DeltaVersion ||
                 !reader.ReadHash().Equals(layout.LayoutIdentity) ||
                 !reader.ReadHash().Equals(baseline.CheckpointHash))

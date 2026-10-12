@@ -317,7 +317,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
 
     public readonly struct SnapshotDatagram
     {
-        readonly byte[] m_DeltaPayload;
+        readonly ReadOnlyMemory<byte> m_DeltaPayload;
 
         public SnapshotDatagram(
             ulong snapshotSequence,
@@ -327,7 +327,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
             ulong reliableEventHorizon,
             byte[] deltaPayload)
             : this(snapshotSequence, baseSnapshotSequence, authorityTick, acknowledgedInputSequence,
-                reliableEventHorizon, deltaPayload, deltaPayload?.Length ?? 0)
+                reliableEventHorizon, new ArraySegment<byte>(deltaPayload ?? throw new ArgumentNullException(nameof(deltaPayload))))
         {
         }
 
@@ -338,33 +338,17 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
             ulong acknowledgedInputSequence,
             ulong reliableEventHorizon,
             ArraySegment<byte> deltaPayload)
-            : this(snapshotSequence, baseSnapshotSequence, authorityTick, acknowledgedInputSequence,
-                reliableEventHorizon, deltaPayload.Array ?? throw new ArgumentNullException(nameof(deltaPayload)), deltaPayload.Count)
-        {
-        }
-
-        internal SnapshotDatagram(
-            ulong snapshotSequence,
-            ulong baseSnapshotSequence,
-            ulong authorityTick,
-            ulong acknowledgedInputSequence,
-            ulong reliableEventHorizon,
-            byte[] deltaPayload,
-            int deltaPayloadLength)
         {
             if (snapshotSequence == 0 || authorityTick == 0)
                 throw new ArgumentException("Snapshot datagram identity is invalid.");
-            if (deltaPayload == null)
+            if (deltaPayload.Array == null)
                 throw new ArgumentNullException(nameof(deltaPayload));
-            if (deltaPayloadLength < 0 || deltaPayloadLength > deltaPayload.Length)
-                throw new ArgumentException("Snapshot delta payload length is invalid.", nameof(deltaPayload));
             SnapshotSequence = snapshotSequence;
             BaseSnapshotSequence = baseSnapshotSequence;
             AuthorityTick = authorityTick;
             AcknowledgedInputSequence = acknowledgedInputSequence;
             ReliableEventHorizon = reliableEventHorizon;
-            m_DeltaPayload = deltaPayload;
-            DeltaPayloadLength = deltaPayloadLength;
+            m_DeltaPayload = deltaPayload.Array.AsMemory(deltaPayload.Offset, deltaPayload.Count);
         }
 
         public ulong SnapshotSequence { get; }
@@ -372,15 +356,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
         public ulong AuthorityTick { get; }
         public ulong AcknowledgedInputSequence { get; }
         public ulong ReliableEventHorizon { get; }
-        internal int DeltaPayloadLength { get; }
-        public bool IsValid => SnapshotSequence != 0 && AuthorityTick != 0 && m_DeltaPayload != null;
-        public ReadOnlySpan<byte> DeltaPayload => m_DeltaPayload.AsSpan(0, DeltaPayloadLength);
-        public byte[] CopyDeltaPayload()
-        {
-            var payload = new byte[DeltaPayloadLength];
-            Buffer.BlockCopy(m_DeltaPayload, 0, payload, 0, DeltaPayloadLength);
-            return payload;
-        }
+        public bool IsValid => SnapshotSequence != 0 && AuthorityTick != 0;
+        public ReadOnlyMemory<byte> DeltaPayload => m_DeltaPayload;
     }
 
     public static class ServerAuthoritativeDatagramPayloadCodec
@@ -471,12 +448,13 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
             writer.WriteUInt64(value.AuthorityTick);
             writer.WriteUInt64(value.AcknowledgedInputSequence);
             writer.WriteUInt64(value.ReliableEventHorizon);
-            writer.WriteBytes(value.DeltaPayload);
+            writer.WriteBytes(value.DeltaPayload.Span);
         }
 
-        public static SnapshotDatagram ReadSnapshot(ReadOnlyMemory<byte> bytes)
+        public static SnapshotDatagram ReadSnapshot(ReadOnlyMemory<byte> bytes, CanonicalReader reader)
         {
-            CanonicalReader reader = Reader(bytes, ServerAuthoritativeDatagramKind.Snapshot);
+            reader.Reset(bytes);
+            ReadHeader(reader, ServerAuthoritativeDatagramKind.Snapshot);
             var value = new SnapshotDatagram(
                 reader.ReadUInt64(),
                 reader.ReadUInt64(),
@@ -500,13 +478,18 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
         static CanonicalReader Reader(ReadOnlyMemory<byte> bytes, ServerAuthoritativeDatagramKind expectedKind)
         {
             var reader = new CanonicalReader(bytes);
+            ReadHeader(reader, expectedKind);
+            return reader;
+        }
+
+        static void ReadHeader(CanonicalReader reader, ServerAuthoritativeDatagramKind expectedKind)
+        {
             int version = reader.ReadInt32();
             if (version != SchemaVersion)
                 throw new InvalidDataException($"Datagram payload schema version '{version}' is unsupported.");
             var kind = (ServerAuthoritativeDatagramKind)reader.ReadByte();
             if (kind != expectedKind)
                 throw new InvalidDataException($"Datagram payload kind '{kind}' does not match '{expectedKind}'.");
-            return reader;
         }
     }
 }
