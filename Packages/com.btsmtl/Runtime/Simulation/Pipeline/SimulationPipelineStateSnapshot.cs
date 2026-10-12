@@ -3,6 +3,7 @@ using System.Buffers.Binary;
 using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Runtime.ExceptionServices;
 using System.Text;
 
 namespace ThirdPersonSimulation
@@ -376,14 +377,16 @@ namespace ThirdPersonSimulation
             if (m_Stage == CheckpointStage.Released || m_Stage == CheckpointStage.Releasing)
                 return;
             m_Stage = CheckpointStage.Releasing;
-            for (int i = m_CheckpointCount - 1; i >= 0; i--)
-            {
-                ISimulationPipelinePassStateCheckpoint checkpoint = m_Checkpoints[i];
-                m_Checkpoints[i] = null;
-                checkpoint.Dispose();
-            }
+            int checkpointCount = m_CheckpointCount;
             m_CheckpointCount = 0;
-            m_Stage = CheckpointStage.Released;
+            try
+            {
+                SimulationPipelineStateSnapshotCoordinator.ReleaseOwnedTransactions(m_Checkpoints, checkpointCount);
+            }
+            finally
+            {
+                m_Stage = CheckpointStage.Released;
+            }
         }
     }
 
@@ -460,9 +463,16 @@ namespace ThirdPersonSimulation
                     m_Participants[i].Apply();
                 }
             }
-            catch
+            catch (Exception restoreFailure)
             {
-                Rollback();
+                try
+                {
+                    Rollback();
+                }
+                catch (Exception rollbackFailure)
+                {
+                    throw new AggregateException("Pipeline restore and its rollback both failed.", restoreFailure, rollbackFailure);
+                }
                 throw;
             }
         }
@@ -499,15 +509,17 @@ namespace ThirdPersonSimulation
 
         public void Dispose()
         {
-            if (!m_Completed)
-                Rollback();
-            for (int i = m_Participants.Length - 1; i >= 0; i--)
+            try
             {
-                m_Participants[i].Dispose();
-                m_Participants[i] = null;
+                if (!m_Completed)
+                    Rollback();
             }
-            Snapshot = null;
-            m_Completed = true;
+            finally
+            {
+                Snapshot = null;
+                m_Completed = true;
+                SimulationPipelineStateSnapshotCoordinator.ReleaseOwnedTransactions(m_Participants, m_Participants.Length);
+            }
         }
 
         void RequireOpen()
@@ -562,9 +574,16 @@ namespace ThirdPersonSimulation
                     m_Participants[i].ValidateApplied();
                 m_Validated = true;
             }
-            catch
+            catch (Exception restoreFailure)
             {
-                Rollback();
+                try
+                {
+                    Rollback();
+                }
+                catch (Exception rollbackFailure)
+                {
+                    throw new AggregateException("Session restore and its rollback both failed.", restoreFailure, rollbackFailure);
+                }
                 throw;
             }
         }
@@ -591,14 +610,16 @@ namespace ThirdPersonSimulation
 
         public void Dispose()
         {
-            if (!m_Completed)
-                Rollback();
-            for (int i = m_Participants.Length - 1; i >= 0; i--)
+            try
             {
-                m_Participants[i].Dispose();
-                m_Participants[i] = null;
+                if (!m_Completed)
+                    Rollback();
             }
-            m_Completed = true;
+            finally
+            {
+                m_Completed = true;
+                SimulationPipelineStateSnapshotCoordinator.ReleaseOwnedTransactions(m_Participants, m_Participants.Length);
+            }
         }
 
         void RequireOpen()
@@ -614,6 +635,27 @@ namespace ThirdPersonSimulation
 
     public static class SimulationPipelineStateSnapshotCoordinator
     {
+        internal static void ReleaseOwnedTransactions<T>(T[] transactions, int count) where T : class, IDisposable
+        {
+            Exception failure = null;
+            for (int index = count - 1; index >= 0; index--)
+            {
+                T transaction = transactions[index];
+                transactions[index] = null;
+                try
+                {
+                    transaction?.Dispose();
+                }
+                catch (Exception exception)
+                {
+                    failure = failure == null ? exception : new AggregateException(
+                        "Releasing owned state transactions failed.", failure, exception);
+                }
+            }
+            if (failure != null)
+                ExceptionDispatchInfo.Capture(failure).Throw();
+        }
+
         internal static IReadOnlyList<ISimulationPipelineStateParticipant> CreateParticipantSet(
             CompiledSimulationPipelinePlan plan,
             IReadOnlyList<ISimulationPipelineStateParticipant> participants)
@@ -721,9 +763,7 @@ namespace ThirdPersonSimulation
             }
             catch
             {
-                for (int i = preparedCount - 1; i >= 0; i--)
-                    transactions[i].Dispose();
-                Array.Clear(transactions, 0, preparedCount);
+                ReleaseOwnedTransactions(transactions, preparedCount);
                 throw;
             }
         }

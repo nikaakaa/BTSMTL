@@ -80,6 +80,7 @@ namespace ThirdPersonSimulation
             ExecutionWorkspaceLease workspaceLease = default;
             bool solverTouched = false;
             bool statePublished = false;
+            Exception transactionFailure = null;
             try
             {
                 workspaceLease = m_Workspace.BeginTransaction();
@@ -224,6 +225,7 @@ namespace ThirdPersonSimulation
             }
             catch (Exception exception)
             {
+                transactionFailure = exception;
                 PublishPipeline(
                     outer.Source,
                     beforeCompletedTick,
@@ -236,17 +238,26 @@ namespace ThirdPersonSimulation
                     {
                         try
                         {
-                            m_Target.DiscardUnconsumedEvaluations();
+                            try
+                            {
+                                m_Target.DiscardUnconsumedEvaluations();
+                            }
+                            finally
+                            {
+                                restoreTransaction?.Dispose();
+                            }
                         }
                         finally
                         {
-                            restoreTransaction?.Dispose();
+                            RestoreFailedTransaction(beforePipeline, solverTouched);
+                            restoreTransaction = null;
                         }
                     }
-                    finally
+                    catch (Exception rollbackFailure)
                     {
-                        RestoreFailedTransaction(beforePipeline, solverTouched);
-                        restoreTransaction = null;
+                        transactionFailure = new AggregateException(
+                            "Pipeline transaction and its rollback both failed.", exception, rollbackFailure);
+                        throw transactionFailure;
                     }
                 }
                 throw;
@@ -255,33 +266,41 @@ namespace ThirdPersonSimulation
             {
                 try
                 {
-                    m_Target.DiscardUnconsumedEvaluations();
-                }
-                finally
-                {
                     try
                     {
-                        restoreTransaction?.Dispose();
+                        m_Target.DiscardUnconsumedEvaluations();
                     }
                     finally
                     {
                         try
                         {
-                            m_Target.ClearTransientState();
+                            restoreTransaction?.Dispose();
                         }
                         finally
                         {
                             try
                             {
-                                if (workspaceLease.IsValid)
-                                    m_Workspace.EndTransaction(workspaceLease);
+                                m_Target.ClearTransientState();
                             }
                             finally
                             {
-                                beforePipeline.Dispose();
+                                try
+                                {
+                                    if (workspaceLease.IsValid)
+                                        m_Workspace.EndTransaction(workspaceLease);
+                                }
+                                finally
+                                {
+                                    beforePipeline.Dispose();
+                                }
                             }
                         }
                     }
+                }
+                catch (Exception cleanupFailure) when (transactionFailure != null)
+                {
+                    throw new AggregateException(
+                        "Pipeline transaction and its cleanup both failed.", transactionFailure, cleanupFailure);
                 }
             }
         }
