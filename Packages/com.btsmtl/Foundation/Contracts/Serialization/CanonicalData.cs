@@ -1172,7 +1172,7 @@ namespace ThirdPersonSimulation
 
     }
 
-    public sealed class CanonicalReader
+    public sealed class CanonicalReader : ICanonicalValueReader
     {
         byte[] m_Bytes;
         int m_End;
@@ -1245,6 +1245,8 @@ namespace ThirdPersonSimulation
         }
         // 返回原文本 owner 的借用视图；持久保存方在原持有边界 Retain/Release。
         public CanonicalTextValue ReadText() => ResolveText(ReadTextSegment());
+
+        public string ReadString() => CanonicalTextEncoding.DecodeString(ReadTextSegment());
 
         public void RequireText(in CanonicalTextValue expected)
         {
@@ -1324,6 +1326,8 @@ namespace ThirdPersonSimulation
         {
             return ReadRawBytesSegment(ReadLength());
         }
+
+        public void SkipBytes() => ReadBytesSegment();
         public ArraySegment<byte> ReadRawBytesSegment(int length)
         {
             if (length < 0)

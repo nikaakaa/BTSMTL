@@ -40,6 +40,33 @@ namespace ThirdPersonSimulation
     {
     }
 
+    public interface ICanonicalValueReader
+    {
+        int Remaining { get; }
+        byte ReadByte();
+        sbyte ReadSByte();
+        bool ReadBoolean();
+        short ReadInt16();
+        ushort ReadUInt16();
+        char ReadChar();
+        int ReadInt32();
+        uint ReadUInt32();
+        long ReadInt64();
+        ulong ReadUInt64();
+        float ReadSingleBits();
+        double ReadDoubleBits();
+        string ReadString();
+        CanonicalTextValue ReadText();
+        byte[] ReadBytes();
+        void SkipBytes();
+        void SkipText();
+    }
+
+    public interface ICanonicalTextVisitor
+    {
+        void Visit(in CanonicalTextValue value);
+    }
+
     public static class CanonicalContractProtocol
     {
         public const int Version = 1;
