@@ -205,8 +205,98 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                 SourceText.From(code.ToString(), Encoding.UTF8));
         }
 
+        static void EmitBorrowedSequenceReader(StringBuilder code, ITypeSymbol sequence, Plan plan, bool root = false)
+        {
+            ITypeSymbol element = SequenceElement(sequence);
+            code.Append(root ? "public static " : "private static ").Append(TypeName(sequence)).Append(' ').Append(root ? "CanonicalRead" : SequenceReader(sequence))
+                .Append("<TReader>(TReader reader, ").Append(TypeName(BorrowedStorage(sequence)))
+                .Append(" storage) where TReader : class, ").Append(Runtime).AppendLine("ICanonicalValueReader {");
+            code.AppendLine("int count = reader.ReadInt32();");
+            code.AppendLine("var values = storage.Reserve(count, out var items);");
+            bool retainStorage = BorrowedSemantic(sequence, "RetainStorageOnRead", false);
+            if (retainStorage) code.AppendLine("items.RetainStateStorage(); try {");
+            code.AppendLine("for (int i = 0; i < count; i++) {");
+            if (BorrowedObjectStorage(element) != null)
+                code.Append(TypeName(element)).AppendLine(".CanonicalReadInto(reader, values[i], storage);");
+            else
+                code.Append("values[i] = ").Append(element.SpecialType == SpecialType.System_String &&
+                    BorrowedSemantic(sequence, "DeclaredText", false) ? "reader.ReadDeclaredString()" : Read(element)).AppendLine(";");
+            if (BorrowedSemantic(sequence, "SortedUnique", false))
+                code.Append("if (i > 0 && ").Append(Compare(element, "values[i - 1]", "values[i]"))
+                    .AppendLine(" >= 0) throw new global::System.IO.InvalidDataException(\"Canonical set elements are not strictly ordered.\");");
+            if (BorrowedSemantic(sequence, "RetainElementsOnRead", false))
+            {
+                Hold(code, "Retain", element, "values[i]", plan);
+                code.AppendLine("storage.CompleteReadElement();");
+            }
+            code.AppendLine("}");
+            code.AppendLine("return items;");
+            if (retainStorage) code.AppendLine("} catch { items.ReleaseStateStorage(); throw; }");
+            code.AppendLine("}");
+}
+
+        static string EmitSequenceRoot(Plan plan)
+        {
+            INamedTypeSymbol type = plan.Type;
+            ITypeSymbol view = type.AllInterfaces.Single(item => Identity(item.OriginalDefinition) == "System.Collections.Generic.IReadOnlyList<T>");
+            string fullType = TypeName(type);
+            var code = new StringBuilder();
+            code.Append("namespace ").Append(type.ContainingNamespace.ToDisplayString()).AppendLine(" {");
+            code.Append(type.DeclaredAccessibility == Accessibility.Public ? "public" : "internal")
+                .Append(" partial ").Append(type.TypeKind == TypeKind.Struct ? "struct " : "class ")
+                .Append(Escape(type.Name)).AppendLine(" {");
+            code.Append("public const string CanonicalSchema = ").Append(SymbolDisplay.FormatLiteral(plan.Schema, true)).AppendLine(";");
+            code.Append("public const string CanonicalStructure = ").Append(SymbolDisplay.FormatLiteral(plan.Descriptor, true)).AppendLine(";");
+            code.Append("public static readonly ").Append(Runtime).Append("StableHash CanonicalSchemaHash = new ")
+                .Append(Runtime).AppendLine("StableHash(CanonicalSchema);");
+            code.Append("public static void CanonicalRequireSchema(").Append(Runtime)
+                .Append("CanonicalReader reader) => reader.RequireSchema(CanonicalSchemaHash, ")
+                .Append(SymbolDisplay.FormatLiteral(Identity(type), true)).AppendLine(");");
+            code.AppendLine("public const int CanonicalMinimumSize = 4;");
+            code.AppendLine("public const bool CanonicalHasFiniteSize = false;");
+            code.Append("public const bool CanonicalHasResources = ").Append(plan.HasResources ? "true" : "false").AppendLine(";");
+            code.Append("public const bool CanonicalHasTexts = ").Append(plan.HasTexts ? "true" : "false").AppendLine(";");
+            code.AppendLine("public const bool CanonicalHasPayload = false;");
+            code.Append("public static void CanonicalWrite<TWriter>(TWriter writer, ").Append(TypeName(view))
+                .Append(" value) where TWriter : class, ").Append(Runtime).AppendLine("ICanonicalValueWriter {");
+            Write(code, view, "value");
+            code.AppendLine("}");
+            EmitBorrowedSequenceReader(code, type, plan, true);
+            code.Append("public static void CanonicalReadInto<TReader>(TReader reader, ref ").Append(fullType)
+                .Append(" value, ").Append(TypeName(plan.PreparedStorage)).Append(" storage) where TReader : class, ")
+                .Append(Runtime).AppendLine("ICanonicalValueReader {");
+            code.AppendLine("var next = CanonicalRead(reader, storage);");
+            if (!BorrowedSemantic(type, "RetainStorageOnRead", false)) Hold(code, "Retain", type, "next", plan);
+            Hold(code, "Release", type, "value", plan);
+            code.AppendLine("value = next; }");
+            code.Append("public static void CanonicalSkip<TReader>(TReader reader) where TReader : class, ")
+                .Append(Runtime).AppendLine("ICanonicalValueReader {");
+            Skip(code, type);
+            code.AppendLine("}");
+            code.Append("public static int CanonicalMeasure(").Append(TypeName(view)).AppendLine(" value) { int length = 0;");
+            MeasureMember(code, view, "value");
+            code.AppendLine("return length; }");
+            code.Append("public static int CanonicalMeasureCapacity(").Append(TypeName(view))
+                .AppendLine(" value, int maximumTextCharacters) { int length = 0;");
+            MeasureCapacity(code, plan, view, "value");
+            code.AppendLine("return length; }");
+            code.Append("public static void CanonicalVisitTexts<TVisitor>(TVisitor visitor, ").Append(TypeName(view))
+                .Append(" value) where TVisitor : class, ").Append(Runtime).AppendLine("ICanonicalTextVisitor {");
+            VisitTexts(code, view, "value", plan);
+            code.AppendLine("}");
+            foreach (string action in new[] { "Retain", "Release" })
+            {
+                code.Append("public static void Canonical").Append(action).Append("(in ").Append(fullType).AppendLine(" value) {");
+                Hold(code, action, type, "value", plan);
+                code.AppendLine("}");
+            }
+            code.AppendLine("} }");
+            return code.ToString();
+        }
+
         static string Emit(Plan plan)
         {
+            if (plan.SequenceRoot) return EmitSequenceRoot(plan);
             var code = new StringBuilder();
             INamedTypeSymbol type = plan.Type;
             string fullType = TypeName(type);
@@ -703,34 +793,8 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                         Read(NullableElement(nullable), !plan.PreparedRead) + ") : default;");
             }
             foreach (ITypeSymbol sequence in BorrowedSequences(plan.Members.Select(m => m.Type)))
-            {
-                ITypeSymbol element = SequenceElement(sequence);
-                code.Append("private static ").Append(TypeName(sequence)).Append(' ').Append(SequenceReader(sequence))
-                    .Append("<TReader>(TReader reader, ").Append(TypeName(BorrowedStorage(sequence)))
-                    .Append(" storage) where TReader : class, ").Append(Runtime).AppendLine("ICanonicalValueReader {");
-                code.AppendLine("int count = reader.ReadInt32();");
-                code.AppendLine("var values = storage.Reserve(count, out var items);");
-                bool retainStorage = BorrowedSemantic(sequence, "RetainStorageOnRead", false);
-                if (retainStorage) code.AppendLine("items.RetainStateStorage(); try {");
-                code.AppendLine("for (int i = 0; i < count; i++) {");
-                if (BorrowedObjectStorage(element) != null)
-                    code.Append(TypeName(element)).AppendLine(".CanonicalReadInto(reader, values[i], storage);");
-                else
-                    code.Append("values[i] = ").Append(element.SpecialType == SpecialType.System_String &&
-                        BorrowedSemantic(sequence, "DeclaredText", false) ? "reader.ReadDeclaredString()" : Read(element)).AppendLine(";");
-                if (BorrowedSemantic(sequence, "SortedUnique", false))
-                    code.Append("if (i > 0 && ").Append(Compare(element, "values[i - 1]", "values[i]"))
-                        .AppendLine(" >= 0) throw new global::System.IO.InvalidDataException(\"Canonical set elements are not strictly ordered.\");");
-                if (BorrowedSemantic(sequence, "RetainElementsOnRead", false))
-                {
-                    Hold(code, "Retain", element, "values[i]", plan);
-                    code.AppendLine("storage.CompleteReadElement();");
-                }
-                code.AppendLine("}");
-                code.AppendLine("return items;");
-                if (retainStorage) code.AppendLine("} catch { items.ReleaseStateStorage(); throw; }");
-                code.AppendLine("}");
-            }
+                if (!HasAttribute(sequence, ContractAttribute)) EmitBorrowedSequenceReader(code, sequence, plan);
+
             foreach (ITypeSymbol sequence in InitializationSequences(plan.Members.Select(m => m.Type))
                 .Where(_ => !plan.PreparedRead || plan.MaterializedRead))
             {
@@ -1173,8 +1237,11 @@ namespace ThirdPerson.CanonicalSerialization.Generator
             if (CaseSemantic(member, "NormalizeZero") || CaseSemantic(member, "NormalizeNull"))
                 return "__CanonicalRead_" + member.Symbol.Name + "(reader)";
             if (BorrowedStorage(member.Type) != null)
-                return SequenceReader(member.Type) + "(reader, " + (SymbolEqualityComparer.Default.Equals(plan.PreparedStorage, BorrowedStorage(member.Type))
+            {
+                return (HasAttribute(member.Type, ContractAttribute) ? TypeName(member.Type) + ".CanonicalRead" : SequenceReader(member.Type)) +
+                    "(reader, " + (SymbolEqualityComparer.Default.Equals(plan.PreparedStorage, BorrowedStorage(member.Type))
                     ? "storage" : (OwnsSequenceStorage(member.Type) ? "value." : "storage.") + Escape(member.Symbol.Name)) + ")";
+            }
             if (member.Type.SpecialType == SpecialType.System_String && HasAttribute(member.Symbol, DeclaredTextAttribute) && plan.PreparedRead)
                 return "reader.ReadDeclaredString()";
             if (plan.PreparedRead && PreparedStorage(member.Type) != null)
@@ -1820,6 +1887,7 @@ namespace ThirdPerson.CanonicalSerialization.Generator
             public bool PreparedRead;
             public bool PublishedRead;
             public bool PreparedObject;
+            public bool SequenceRoot;
             public bool OwnsMemberResources;
             public string TextCapacity;
             public bool FiniteSize;
@@ -1881,13 +1949,20 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                     .Single(a => Identity(a.AttributeClass) == ContractAttribute).NamedArguments
                     .Where(a => a.Key == "PreparedStorage").Select(a => a.Value.Value).SingleOrDefault();
                 plan.PreparedObject = BorrowedObjectStorage(type) != null;
+                plan.SequenceRoot = BorrowedStorage(type) != null;
+                if (plan.SequenceRoot)
+                {
+                    plan.PreparedStorage = BorrowedStorage(type);
+                    if (!plan.PreparedRead || plan.MaterializedRead)
+                        Error(plan, type, "借用序列直接使用原Bank读取，不能初始化物化");
+                }
                 if (plan.PreparedObject)
                 {
                     plan.PreparedStorage = BorrowedObjectStorage(type);
                     if (type.TypeKind != TypeKind.Class || !plan.PreparedRead || plan.MaterializedRead)
                         Error(plan, type, "借用对象必须直接恢复原预分配 class，不能物化或构造替代对象");
                 }
-                plan.OwnsMemberResources = plan.PreparedObject || type.GetAttributes()
+                plan.OwnsMemberResources = plan.PreparedObject || plan.SequenceRoot || type.GetAttributes()
                     .Single(a => Identity(a.AttributeClass) == ContractAttribute).NamedArguments
                     .Any(a => a.Key == "OwnsMemberResources" && a.Value.Value is true);
                 if (plan.OwnsMemberResources && (type.IsReadOnly || !plan.PreparedRead))
@@ -1904,6 +1979,21 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                 foreach (SyntaxReference syntax in type.DeclaringSyntaxReferences)
                     if (syntax.GetSyntax() is TypeDeclarationSyntax declaration && !declaration.Modifiers.Any(SyntaxKind.PartialKeyword))
                         Error(plan, type, "类型必须声明为 partial，生成访问进入原正式类型");
+                if (plan.SequenceRoot)
+                {
+                    plan.Members = Array.Empty<Member>();
+                    plan.Cases = Array.Empty<Member>();
+                    plan.Validations = Array.Empty<IMethodSymbol>();
+                    plan.Descriptor = "canonical-sequence/1|" + Identity(type) + "|" + Shape(plan, type, type);
+                    plan.MinimumSize = 4;
+                    plan.HasResources = HasResources(plan, type);
+                    plan.HasTexts = HasTexts(plan, type);
+                    using (var sha = SHA256.Create())
+                        plan.Schema = string.Concat(sha.ComputeHash(Encoding.UTF8.GetBytes(plan.Descriptor))
+                            .Select(b => b.ToString("x2", CultureInfo.InvariantCulture)));
+                    plan.Complete = true;
+                    return plan;
+                }
                 plan.Members = StorageMembers(type);
                 AttributeData union = type.GetAttributes().SingleOrDefault(a => Identity(a.AttributeClass) == UnionAttribute);
                 if (union != null)
@@ -2176,7 +2266,8 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                 }
                 if (type.SpecialType == SpecialType.System_String)
                 {
-                    if (plan.PreparedRead && !HasAttribute(member, DeclaredTextAttribute))
+                    if (plan.PreparedRead && !HasAttribute(member, DeclaredTextAttribute) &&
+                        !(plan.SequenceRoot && BorrowedSemantic(plan.Type, "DeclaredText", false)))
                         Error(plan, member, "程序字符串只允许初始化物化读取；实时文本必须由正式文本 owner 持有");
                     return Identity(type);
                 }

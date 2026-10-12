@@ -5,8 +5,9 @@ using System.IO;
 
 namespace ThirdPersonSimulation
 {
+    [CanonicalContract]
     [CanonicalBorrowedSequence(typeof(GameplayTagSnapshotBank), RetainStorageOnRead = true, DeclaredText = true, SortedUnique = true)]
-    internal sealed class GameplayTagSnapshot : IReadOnlyList<string>
+    internal sealed partial class GameplayTagSnapshot : IReadOnlyList<string>
     {
         readonly GameplayTagSnapshotBank m_Owner;
         readonly int m_Index;

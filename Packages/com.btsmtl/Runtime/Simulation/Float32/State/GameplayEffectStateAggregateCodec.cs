@@ -13,23 +13,22 @@ namespace ThirdPersonSimulation
         const uint ActiveMagic = 0x32464745;
         const uint PeriodsMagic = 0x32504745;
         const uint JournalMagic = 0x324A4745;
-        const int StateVersion = 15;
+        const int StateVersion = 16;
         internal static readonly string CanonicalSchema = CanonicalContractProtocol.ComposeSchema(
             "gameplay-effect-state/" + StateVersion,
-            PortableEffectSpecData.CanonicalSchema, PortableAttributeData.CanonicalSchema, PortableAttributeModifierState.CanonicalSchema, SimulationGameplayEffectContext.CanonicalSchema,
+            GameplayTagSnapshot.CanonicalSchema, PortableEffectSpecData.CanonicalSchema, PortableAttributeData.CanonicalSchema, PortableAttributeModifierState.CanonicalSchema, SimulationGameplayEffectContext.CanonicalSchema,
             GameplayEffectPredictionStateData.CanonicalSchema, GameplayEffectActiveStateData.CanonicalSchema, GameplayEffectActiveControlSnapshot.CanonicalSchema, GameplayEffectLifecycleRevisionKey.CanonicalSchema,
             GameplayEffectLifecycleRevisionEntry.CanonicalSchema);
         static readonly StableHash CanonicalSchemaHash = new StableHash(CanonicalSchema);
 
         internal static void Write(CanonicalWriter writer, GameplayEffectStateAggregate aggregate)
         {
-            Float32GameplayEffectRuntimeCatalog catalog = aggregate.Catalog;
             writer.WriteHash(CanonicalSchemaHash);
-            WriteTags(writer, aggregate.TagSources, catalog);
-            WriteAttributes(writer, aggregate.Attributes, catalog);
-            WriteActiveEffects(writer, aggregate.ActiveEffects, catalog);
+            WriteTags(writer, aggregate.TagSources);
+            WriteAttributes(writer, aggregate.Attributes);
+            WriteActiveEffects(writer, aggregate.ActiveEffects);
             WritePeriods(writer, aggregate.Periods);
-            WriteJournal(writer, aggregate.Journal, aggregate.LastLifecycleRevisions, catalog);
+            WriteJournal(writer, aggregate.Journal, aggregate.LastLifecycleRevisions);
             writer.WriteUInt64(aggregate.ChangeCursor);
         }
 
@@ -60,8 +59,7 @@ namespace ThirdPersonSimulation
         }
 
         static void WriteTags(CanonicalWriter writer,
-            ReadOnlySpan<KeyValuePair<GameplayTagSourceIdentityValue, IReadOnlyList<string>>> tagSources,
-            Float32GameplayEffectRuntimeCatalog catalog)
+            ReadOnlySpan<KeyValuePair<GameplayTagSourceIdentityValue, IReadOnlyList<string>>> tagSources)
         {
             long prefixPosition = BeginBlock(writer, TagsMagic);
             writer.WriteHash(GameplayTagSourceIdentityValue.CanonicalSchemaHash);
@@ -69,7 +67,7 @@ namespace ThirdPersonSimulation
             for (int i = 0; i < tagSources.Length; i++)
             {
                 GameplayTagSourceIdentityValue.CanonicalWrite(writer, tagSources[i].Key);
-                WriteTags(writer, tagSources[i].Value, catalog);
+                GameplayTagSnapshot.CanonicalWrite(writer, tagSources[i].Value);
             }
             writer.EndLengthPrefixedBlock(prefixPosition);
         }
@@ -101,9 +99,14 @@ namespace ThirdPersonSimulation
                 }
                 else if (source.Kind == 2 && ++effectSources > catalog.CapacityLayout.ActiveEffectWidth)
                     throw new InvalidDataException("Gameplay Tag sources exceed the declared Active Effect capacity.");
-                GameplayTagSnapshot tags = ReadTags(reader, catalog, pages, true, width);
+                GameplayTagSnapshot tags = GameplayTagSnapshot.CanonicalRead(reader, pages);
                 source.Retain();
                 tagSources.Add(source, tags);
+                if (tags.Count > width)
+                    throw new InvalidDataException("Gameplay Tag source exceeds its declared capacity.");
+                for (int tag = 0; tag < tags.Count; tag++)
+                    if (!catalog.ContainsTag(tags[tag]))
+                        throw new InvalidDataException("Gameplay Tag is absent from the published catalog.");
                 if (tags.Count == 0)
                     throw new InvalidDataException("Gameplay Tag source must contain its installed tags.");
                 totalTags += tags.Count;
@@ -126,8 +129,7 @@ namespace ThirdPersonSimulation
         }
 
         static void WriteAttributes(CanonicalWriter writer,
-            ReadOnlySpan<KeyValuePair<string, PortableAttributeSnapshot>> attributes,
-            Float32GameplayEffectRuntimeCatalog catalog)
+            ReadOnlySpan<KeyValuePair<string, PortableAttributeSnapshot>> attributes)
         {
             long prefixPosition = BeginBlock(writer, AttributesMagic);
             writer.WriteInt32(attributes.Length);
@@ -171,14 +173,14 @@ namespace ThirdPersonSimulation
         }
 
         static void WriteActiveEffects(CanonicalWriter writer,
-            ReadOnlySpan<PortableActiveEffectSnapshot> activeEffects, Float32GameplayEffectRuntimeCatalog catalog)
+            ReadOnlySpan<PortableActiveEffectSnapshot> activeEffects)
         {
             long prefixPosition = BeginBlock(writer, ActiveMagic);
             writer.WriteInt32(activeEffects.Length);
             for (int i = 0; i < activeEffects.Length; i++)
             {
                 ref readonly PortableActiveEffectSnapshot active = ref activeEffects[i];
-                WriteSpec(writer, active.Spec, catalog);
+                PortableEffectSpecData.CanonicalWrite(writer, in active.Spec.Data);
                 GameplayEffectActiveStateData.CanonicalWrite(writer, in active.Data);
             }
             writer.EndLengthPrefixedBlock(prefixPosition);
@@ -194,7 +196,7 @@ namespace ThirdPersonSimulation
             scratch.ActiveInstances.Clear();
             for (int i = 0; i < count; i++)
             {
-                PortableEffectSpecState spec = ReadSpec(reader, catalog, scratch, tagPages);
+                PortableEffectSpecState spec = ReadSpec(reader, scratch, tagPages);
                 PortableActiveEffectState active = scratch.AcquireActiveState();
                 active.Spec = spec;
                 activeEffects.Add(active);
@@ -241,8 +243,7 @@ namespace ThirdPersonSimulation
 
         static void WriteJournal(CanonicalWriter writer,
             ReadOnlySpan<KeyValuePair<ulong, List<PortablePredictionRecord>>> journal,
-            ReadOnlySpan<KeyValuePair<GameplayEffectLifecycleRevisionKey, GameplayEffectLifecycleRevisionEntry>> revisions,
-            Float32GameplayEffectRuntimeCatalog catalog)
+            ReadOnlySpan<KeyValuePair<GameplayEffectLifecycleRevisionKey, GameplayEffectLifecycleRevisionEntry>> revisions)
         {
             long prefixPosition = BeginBlock(writer, JournalMagic);
             writer.WriteInt32(journal.Length);
@@ -252,7 +253,11 @@ namespace ThirdPersonSimulation
                 writer.WriteUInt64(pair.Key);
                 writer.WriteInt32(pair.Value.Count);
                 for (int i = 0; i < pair.Value.Count; i++)
-                    WritePredictionRecord(writer, pair.Value[i], catalog);
+                {
+                    PortablePredictionRecord record = pair.Value[i];
+                    PortableEffectSpecData.CanonicalWrite(writer, in record.Spec.Data);
+                    GameplayEffectPredictionStateData.CanonicalWrite(writer, in record.Data);
+                }
             }
             writer.WriteInt32(revisions.Length);
             for (int i = 0; i < revisions.Length; i++)
@@ -298,11 +303,7 @@ namespace ThirdPersonSimulation
             reader.RequireComplete();
         }
 
-        static void WriteSpec(CanonicalWriter writer, PortableEffectSpecState spec,
-            Float32GameplayEffectRuntimeCatalog catalog) =>
-            PortableEffectSpecData.CanonicalWrite(writer, in spec.Data);
-
-        static PortableEffectSpecState ReadSpec(CanonicalReader reader, Float32GameplayEffectRuntimeCatalog catalog,
+        static PortableEffectSpecState ReadSpec(CanonicalReader reader,
             Float32GameplayEffectExecutionScratch scratch, GameplayTagSnapshotBank tagPages)
         {
             RequireResource(1, scratch.AvailableSpecCount);
@@ -319,18 +320,11 @@ namespace ThirdPersonSimulation
             }
         }
 
-        static void WritePredictionRecord(CanonicalWriter writer, PortablePredictionRecord record,
-            Float32GameplayEffectRuntimeCatalog catalog)
-        {
-            WriteSpec(writer, record.Spec, catalog);
-            GameplayEffectPredictionStateData.CanonicalWrite(writer, in record.Data);
-        }
-
         static void ReadPredictionRecord(CanonicalReader reader, Float32GameplayEffectRuntimeCatalog catalog,
             Float32GameplayEffectExecutionScratch scratch, GameplayTagSnapshotBank tagPages,
             ulong predictionKey, List<PortablePredictionRecord> records)
         {
-            PortableEffectSpecState spec = ReadSpec(reader, catalog, scratch, tagPages);
+            PortableEffectSpecState spec = ReadSpec(reader, scratch, tagPages);
             PortablePredictionRecord record = scratch.AcquirePredictionRecord();
             record.Spec = spec;
             record.Retain();
@@ -356,46 +350,6 @@ namespace ThirdPersonSimulation
             return modifier;
         }
 
-
-
-
-
-        static void WriteTags(CanonicalWriter writer, IReadOnlyList<string> tags, Float32GameplayEffectRuntimeCatalog catalog)
-        {
-            writer.WriteInt32(tags.Count);
-            for (int i = 0; i < tags.Count; i++)
-                writer.WriteInt32(catalog.TagIndex(tags[i]));
-        }
-
-        static GameplayTagSnapshot ReadTags(CanonicalReader reader, Float32GameplayEffectRuntimeCatalog catalog,
-            GameplayTagSnapshotBank pages, bool unique, int width)
-        {
-            int count = ReadCount(reader, width);
-            if (count == 0)
-                return GameplayTagSnapshot.Empty;
-            RequireResource(1, pages.AvailableCount);
-            GameplayTagSnapshot tags = pages.Begin(count);
-            tags.RetainStateStorage();
-            try
-            {
-                int previous = -1;
-                for (int i = 0; i < count; i++)
-                {
-                    int index = ReadIndex(reader, catalog.ContentLayout.TagCount);
-                    if (unique ? index <= previous : index < previous)
-                        throw new InvalidDataException("Gameplay Tags are not canonically ordered.");
-                    previous = index;
-                    tags.Write(i, catalog.TagId(index));
-                }
-                return tags;
-            }
-            catch
-            {
-                tags.ReleaseStateStorage();
-                throw;
-            }
-        }
-
         static long BeginBlock(CanonicalWriter writer, uint magic)
         {
             long position = writer.BeginLengthPrefixedBlock();
@@ -417,14 +371,6 @@ namespace ThirdPersonSimulation
             if (count < 0 || count > capacity)
                 throw new InvalidDataException("Gameplay Effect state count exceeds the declared capacity.");
             return count;
-        }
-
-        static int ReadIndex(CanonicalReader reader, int count)
-        {
-            int index = reader.ReadInt32();
-            if (index < 0 || index >= count)
-                throw new InvalidDataException("Gameplay Effect state identity is absent from the published catalog.");
-            return index;
         }
 
         static void RequireResource(int required, int available)
