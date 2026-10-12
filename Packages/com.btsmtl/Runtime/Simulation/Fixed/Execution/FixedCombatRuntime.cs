@@ -285,7 +285,7 @@ namespace ThirdPersonSimulation.Fixed
                 }
             }
             string[] publishedStateIdentities = stateIdentities.Where(value => value != null).ToArray();
-            var stateIdentityReader = new GameplayEffectPublishedIdentityReader(publishedStateIdentities);
+            var stateIdentityReader = new CanonicalDeclaredIdentityReader(publishedStateIdentities);
             m_StateIdentityReader = stateIdentityReader.ReadPublished;
             m_StateMaximumIdentityCharacters = publishedStateIdentities.Length == 0 ? 0 :
                 publishedStateIdentities.Max(value => value.Length);

@@ -833,7 +833,7 @@ namespace ThirdPersonSimulation
             uniqueIdentities.Remove(null);
             uniqueIdentities.Remove(string.Empty);
             DeclaredCheckpointIdentityCount = uniqueIdentities.Count;
-            var published = new GameplayEffectPublishedIdentityReader(identities);
+            var published = new CanonicalDeclaredIdentityReader(identities);
             DeclaredIdentityReader = published.ReadPublished;
         }
 

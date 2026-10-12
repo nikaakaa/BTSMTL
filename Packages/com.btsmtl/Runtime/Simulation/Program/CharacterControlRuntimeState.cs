@@ -8,8 +8,8 @@ namespace ThirdPersonSimulation
     public sealed class CharacterControlStateSchema
     {
         readonly Dictionary<CharacterControlStateFieldId, int> m_Indexes;
-        readonly GameplayEffectPublishedIdentityReader m_StateIdentities;
-        readonly GameplayEffectPublishedIdentityReader m_TransitionIdentities;
+        readonly CanonicalDeclaredIdentityReader m_StateIdentities;
+        readonly CanonicalDeclaredIdentityReader m_TransitionIdentities;
 
         public CharacterControlStateSchema(CharacterControlModuleContract contract)
         {
@@ -30,8 +30,8 @@ namespace ThirdPersonSimulation
             var transitions = new string[contract.Transitions.Count];
             for (int index = 0; index < transitions.Length; index++)
                 transitions[index] = contract.Transitions[index].Id.Value;
-            m_StateIdentities = new GameplayEffectPublishedIdentityReader(states);
-            m_TransitionIdentities = new GameplayEffectPublishedIdentityReader(transitions);
+            m_StateIdentities = new CanonicalDeclaredIdentityReader(states);
+            m_TransitionIdentities = new CanonicalDeclaredIdentityReader(transitions);
             Declaration = new CharacterControlSchemaDeclaration(contract.ModuleId, contract.SemanticVersion, fields.AsReadOnly());
             SchemaHash = ComputeSchemaHash(Declaration);
         }
@@ -75,7 +75,7 @@ namespace ThirdPersonSimulation
         public string ResolvePublishedIdentity(int fieldIndex, in CanonicalTextValue value) =>
             IdentityDirectory(fieldIndex).ResolvePublished(in value);
 
-        GameplayEffectPublishedIdentityReader IdentityDirectory(int fieldIndex) =>
+        CanonicalDeclaredIdentityReader IdentityDirectory(int fieldIndex) =>
             Fields[fieldIndex].Semantic switch
             {
                 CharacterControlStateSemantic.ActiveState => m_StateIdentities,

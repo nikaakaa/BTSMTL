@@ -301,7 +301,7 @@ namespace ThirdPersonSimulation.Fixed
         internal CharacterControlStateSchema CheckpointControlSchema { get; private set; }
         internal Func<CanonicalReader, string> DeclaredIdentityReader { get; private set; }
         internal int DeclaredCheckpointIdentityCount { get; private set; }
-        GameplayEffectPublishedIdentityReader m_DeclaredIdentities;
+        CanonicalDeclaredIdentityReader m_DeclaredIdentities;
 
         public string ResolveDeclaredIdentity(in CanonicalTextValue value) =>
             m_DeclaredIdentities.ResolvePublished(in value);
@@ -350,7 +350,7 @@ namespace ThirdPersonSimulation.Fixed
             uniqueIdentities.Remove(null);
             uniqueIdentities.Remove(string.Empty);
             DeclaredCheckpointIdentityCount = uniqueIdentities.Count;
-            m_DeclaredIdentities = new GameplayEffectPublishedIdentityReader(identities);
+            m_DeclaredIdentities = new CanonicalDeclaredIdentityReader(identities);
             DeclaredIdentityReader = m_DeclaredIdentities.ReadPublished;
         }
 

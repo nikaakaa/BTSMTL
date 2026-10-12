@@ -709,7 +709,7 @@ namespace ThirdPersonSimulation.Fixed
             }
             m_EffectIdentityOrder = Enumerable.Range(0, m_EffectsByIndex.Length)
                 .OrderBy(index => m_EffectsByIndex[index].Id, StringComparer.Ordinal).ToArray();
-            LifecycleIdentities = new GameplayEffectPublishedIdentityReader(
+            LifecycleIdentities = new CanonicalDeclaredIdentityReader(
                 m_EffectsByIndex.Select(effect => effect.Id)
                     .Concat(m_Attributes.Keys)
                     .Concat(m_TagIds)
@@ -727,7 +727,7 @@ namespace ThirdPersonSimulation.Fixed
         public GameplayEffectContentLayout ContentLayout { get; }
         public GameplayEffectRuntimeCapacityLayout CapacityLayout { get; private set; }
         public IReadOnlyDictionary<string, PortableEffectDefinition> Effects => m_Effects;
-        internal GameplayEffectPublishedIdentityReader LifecycleIdentities { get; }
+        internal CanonicalDeclaredIdentityReader LifecycleIdentities { get; }
         internal CanonicalPublishedValues PublishedValues { get; } = new CanonicalPublishedValues();
         public int TagIndex(string tagId) => m_TagIndices[tagId];
         public bool ContainsTag(string tagId) => m_TagIndices.ContainsKey(tagId);
