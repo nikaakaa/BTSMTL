@@ -10,7 +10,6 @@ namespace ThirdPersonSimulation.Fixed
         readonly FixedActionStateStore m_ActionStore;
         readonly FixedEquipmentRuntime m_Equipment;
         readonly FixedValueRuntime m_Values;
-        readonly FixedBlackboardRuntime m_Blackboard;
         readonly IReadOnlyList<AbilityTimelineAdvancePending> m_TimelineAdvances;
         readonly IReadOnlyList<AbilityTimelineStopPending> m_TimelineStops;
 
@@ -20,7 +19,6 @@ namespace ThirdPersonSimulation.Fixed
             FixedActionStateStore actionStore,
             FixedEquipmentRuntime equipment,
             FixedValueRuntime values,
-            FixedBlackboardRuntime blackboard,
             IReadOnlyList<AbilityTimelineAdvancePending> timelineAdvances,
             IReadOnlyList<AbilityTimelineStopPending> timelineStops)
         {
@@ -29,7 +27,6 @@ namespace ThirdPersonSimulation.Fixed
             m_ActionStore = actionStore ?? throw new ArgumentNullException(nameof(actionStore));
             m_Equipment = equipment;
             m_Values = values ?? throw new ArgumentNullException(nameof(values));
-            m_Blackboard = blackboard ?? throw new ArgumentNullException(nameof(blackboard));
             m_TimelineAdvances = timelineAdvances ?? throw new ArgumentNullException(nameof(timelineAdvances));
             m_TimelineStops = timelineStops ?? throw new ArgumentNullException(nameof(timelineStops));
         }
@@ -53,7 +50,6 @@ namespace ThirdPersonSimulation.Fixed
         public void EndEvaluation()
         {
             m_Equipment?.EndEvaluation();
-            m_Blackboard.EndFrame();
             m_ActionStore.EndEvaluation();
         }
 

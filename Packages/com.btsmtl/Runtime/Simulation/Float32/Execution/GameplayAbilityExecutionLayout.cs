@@ -70,10 +70,11 @@ namespace ThirdPersonSimulation
         public BlackboardInputStateBinding(
             string inputId,
             ProgramInputValueKind inputKind,
-            TypedStateAddress stateAddress)
+            TypedStateAddress stateAddress, ProgramBlackboardInputProjection projection)
         {
             InputId = SimulationIdentity.Require(inputId, nameof(inputId));
             InputKind = inputKind;
+            Projection = projection;
             StateAddress = stateAddress.IsValid
                 ? stateAddress
                 : throw new ArgumentException("Blackboard Input Binding state address is invalid.", nameof(stateAddress));
@@ -81,6 +82,7 @@ namespace ThirdPersonSimulation
 
         public string InputId { get; }
         public ProgramInputValueKind InputKind { get; }
+        public ProgramBlackboardInputProjection Projection { get; }
         public TypedStateAddress StateAddress { get; }
     }
 
@@ -107,9 +109,9 @@ namespace ThirdPersonSimulation
         readonly int[] m_MotionWarpOperationIds;
         readonly int[] m_SkillExecutionStateSlots;
         readonly IReadOnlyList<BlackboardInputStateBinding> m_BlackboardInputBindings;
-        readonly TypedStateAddress[] m_ActionTargetSnapshotByOperation;
+        readonly BlackboardTargetProjection[] m_ActionTargetSnapshotByOperation;
         readonly string[] m_OperationSourcePaths;
-        readonly Dictionary<int, (ProgramSourceMapEntry Source, int Count)> m_OperationSources;
+        readonly Dictionary<int, (ProgramExecutionSource Source, int Count)> m_OperationSources;
         readonly TimelineAnimationProducerIndex m_TimelineAnimationProducers;
 
         public GameplayAbilityExecutionLayout(
@@ -169,13 +171,12 @@ namespace ThirdPersonSimulation
                 out m_InputRequestIds,
                 out m_ActionCapacities,
                 out m_ActionInstanceCapacity,
-                out HashSet<int> motionWarpOperations,
-                out IReadOnlyDictionary<string, TypedStateAddress> actionTargetSnapshots);
+                out HashSet<int> motionWarpOperations);
             m_MotionWarpOperationIds = SortedIndexes(motionWarpOperations);
-            m_ActionTargetSnapshotByOperation = BuildActionTargetSnapshotIndex(
-                m_Operations,
-                m_Constants,
-                actionTargetSnapshots);
+            var operationCodes = new SimulationOperationCode[m_Operations.Count];
+            for (int index = 0; index < operationCodes.Length; index++)
+                operationCodes[index] = m_Operations[index].Code;
+            m_ActionTargetSnapshotByOperation = BlackboardTargetProjection.Build(operationCodes, m_References, m_StateSlots);
             m_BlackboardInputBindings = BuildBlackboardInputBindings(
                 m_Constants,
                 m_StateSlots,
@@ -284,12 +285,7 @@ namespace ThirdPersonSimulation
             operation.IsValid && Array.BinarySearch(m_MotionWarpOperationIds, operation.Value) >= 0;
         public bool IsSkillExecutionStateSlot(int slotIndex) =>
             Array.BinarySearch(m_SkillExecutionStateSlots, slotIndex) >= 0;
-        public bool TryGetActionTargetSnapshot(OperationHandle operation, out TypedStateAddress address)
-        {
-            RequireOperation(operation);
-            address = m_ActionTargetSnapshotByOperation[operation.Value];
-            return address.IsValid;
-        }
+        public BlackboardTargetProjection TargetProjection(OperationHandle operation) => m_ActionTargetSnapshotByOperation[operation.Value];
 
         public IReadOnlyList<OperationHandle> TimelineAnimationRepresentatives(OperationHandle timeline) =>
             m_TimelineAnimationProducers.Representatives(timeline);
@@ -300,7 +296,7 @@ namespace ThirdPersonSimulation
             return m_OperationSourcePaths[operation.Value];
         }
 
-        public (ProgramSourceMapEntry Source, int Count) OperationSources(OperationHandle operation)
+        public (ProgramExecutionSource Source, int Count) OperationSources(OperationHandle operation)
         {
             m_OperationSources.TryGetValue(operation.Value, out var sources);
             return sources;
@@ -478,8 +474,7 @@ namespace ThirdPersonSimulation
             out string[] inputRequestIds,
             out Dictionary<string, int> actionCapacities,
             out int actionInstanceCapacity,
-            out HashSet<int> motionWarpOperations,
-            out IReadOnlyDictionary<string, TypedStateAddress> actionTargetSnapshots)
+            out HashSet<int> motionWarpOperations)
         {
             var inputs = new HashSet<string>(StringComparer.Ordinal);
             var capacities = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -488,7 +483,6 @@ namespace ThirdPersonSimulation
             for (int index = 0; index < operations.Count; index++)
                 if (operations[index].Code == SimulationOperationCode.MotionWarp)
                     motionWarp.Add(index);
-            var targets = new Dictionary<string, TypedStateAddress>(StringComparer.Ordinal);
             for (int i = 0; i < catalogEntries.Count; i++)
             {
                 ProgramCatalogEntry entry = catalogEntries[i];
@@ -512,19 +506,9 @@ namespace ThirdPersonSimulation
             }
 
             inputRequestIds = SortedStrings(inputs);
-            for (int i = 0; i < stateSlots.Count; i++)
-            {
-                ProgramStateSlot slot = stateSlots[i];
-                if (slot.Semantic == ProgramStateSemantic.BlackboardValue &&
-                    slot.ValueKind == ProgramStateValueKind.ActionTargetSnapshot)
-                {
-                    AddUnique(targets, slot.OwnerIdentity, addresses[i], "Action target snapshot");
-                }
-            }
             actionCapacities = capacities;
             actionInstanceCapacity = totalActionCapacity;
             motionWarpOperations = motionWarp;
-            actionTargetSnapshots = targets;
         }
 
         static int ReadInt32Constant(IReadOnlyList<ProgramConstant> constants, int constantIndex)
@@ -563,9 +547,12 @@ namespace ThirdPersonSimulation
                     throw new InvalidDataException($"Input '{input.Identity}' has unknown value kind '{valueType}'.");
                 if (!stateByOwner.TryGetValue(declaration.Identity, out TypedStateAddress address))
                     throw new InvalidDataException($"Blackboard Input Binding '{declaration.Identity}' has no state slot.");
-                if (address.ValueKind != StateKind(kind))
+                var projection = (ProgramBlackboardInputProjection)ReadInt32(constants, catalog, declaration, ProgramCatalogFieldId.InputProjection);
+                if (projection != ProgramBlackboardInputProjection.Direct && kind != ProgramInputValueKind.ActionTargetSnapshot)
+                    throw new InvalidDataException($"Blackboard Input Binding '{declaration.Identity}' target projection requires ActionTargetSnapshot input.");
+                if (address.ValueKind != StateKind(kind, projection))
                     throw new InvalidDataException($"Blackboard Input Binding '{declaration.Identity}' state kind '{address.ValueKind}' does not match input kind '{kind}'.");
-                bindings.Add(new BlackboardInputStateBinding(inputId, kind, address));
+                bindings.Add(new BlackboardInputStateBinding(inputId, kind, address, projection));
             }
             bindings.Sort((left, right) => string.CompareOrdinal(left.InputId, right.InputId));
             return bindings.AsReadOnly();
@@ -605,56 +592,21 @@ namespace ThirdPersonSimulation
             return true;
         }
 
-        static ProgramStateValueKind StateKind(ProgramInputValueKind kind) =>
-            kind switch
+        static ProgramStateValueKind StateKind(ProgramInputValueKind kind, ProgramBlackboardInputProjection projection) =>
+            projection switch
+            {
+                ProgramBlackboardInputProjection.ActionTargetIdentity => ProgramStateValueKind.Identity,
+                ProgramBlackboardInputProjection.ActionTargetPosition => ProgramStateValueKind.Vector3,
+                ProgramBlackboardInputProjection.ActionTargetYaw => ProgramStateValueKind.Scalar,
+                _ => kind switch
             {
                 ProgramInputValueKind.Boolean => ProgramStateValueKind.Boolean,
                 ProgramInputValueKind.Scalar => ProgramStateValueKind.Scalar,
                 ProgramInputValueKind.Vector2 => ProgramStateValueKind.Vector2,
                 ProgramInputValueKind.Vector3 => ProgramStateValueKind.Vector3,
-                ProgramInputValueKind.Yaw => ProgramStateValueKind.Yaw,
-                ProgramInputValueKind.ActionTargetSnapshot => ProgramStateValueKind.ActionTargetSnapshot,
                 _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null)
+                }
             };
-
-        static TypedStateAddress[] BuildActionTargetSnapshotIndex(
-            IReadOnlyList<SimulationOperation> operations,
-            IReadOnlyList<ProgramConstant> constants,
-            IReadOnlyDictionary<string, TypedStateAddress> snapshots)
-        {
-            var result = new TypedStateAddress[operations.Count];
-            for (int i = 0; i < operations.Count; i++)
-            {
-                string declarationId = FindStringConstant(constants, operations[i], "TargetSnapshotDeclaration");
-                if (string.IsNullOrEmpty(declarationId))
-                    continue;
-                string ownerId = FindStringConstant(constants, operations[i], "TargetSnapshotOwner");
-                string identity = $"blackboard:{ownerId}:{declarationId}";
-                if (!snapshots.TryGetValue(identity, out TypedStateAddress address))
-                    throw new InvalidDataException($"Action operation '{operations[i].Handle}' has no target snapshot state address '{identity}'.");
-                result[i] = address;
-            }
-            return result;
-        }
-
-        static string FindStringConstant(
-            IReadOnlyList<ProgramConstant> constants,
-            SimulationOperation operation,
-            string field)
-        {
-            const string marker = "/constant/";
-            for (int i = 0; i < operation.ConstantReferences.Count; i++)
-            {
-                ProgramConstant constant = constants[operation.ConstantReferences[i]];
-                int markerIndex = constant.Identity.LastIndexOf(marker, StringComparison.Ordinal);
-                if (markerIndex < 0 || !string.Equals(constant.Identity.Substring(markerIndex + marker.Length), field, StringComparison.Ordinal))
-                    continue;
-                if (constant.Kind != ProgramConstantKind.String)
-                    throw new InvalidDataException($"Operation '{operation.Handle}' constant '{field}' is not String.");
-                return constant.Text;
-            }
-            return string.Empty;
-        }
 
         static int[] BuildSkillExecutionStateSlots(
             int operationCount,
@@ -745,16 +697,17 @@ namespace ThirdPersonSimulation
             CharacterSkillId abilityId,
             int operationCount,
             IReadOnlyList<ProgramSourceMapEntry> sourceMap,
-            out Dictionary<int, (ProgramSourceMapEntry Source, int Count)> sources)
+            out Dictionary<int, (ProgramExecutionSource Source, int Count)> sources)
         {
-            sources = new Dictionary<int, (ProgramSourceMapEntry Source, int Count)>();
+            sources = new Dictionary<int, (ProgramExecutionSource Source, int Count)>();
             var result = new string[operationCount];
             var assigned = new bool[operationCount];
             for (int i = 0; i < result.Length; i++)
                 result[i] = $"ability:{abilityId.Value}/operation:{i}";
             for (int i = 0; i < (sourceMap?.Count ?? 0); i++)
             {
-                ProgramSourceMapEntry source = sourceMap[i];
+                ProgramSourceMapEntry diagnostic = sourceMap[i];
+                ProgramExecutionSource source = diagnostic.Source;
                 if (source.TargetKind != ProgramSourceTargetKind.Operation)
                     continue;
                 if (sources.TryGetValue(source.TargetIndex, out var indexed))
@@ -765,7 +718,7 @@ namespace ThirdPersonSimulation
                     source.TargetIndex >= result.Length ||
                     assigned[source.TargetIndex])
                     continue;
-                result[source.TargetIndex] = source.DisplayPath;
+                result[source.TargetIndex] = diagnostic.DisplayPath;
                 assigned[source.TargetIndex] = true;
             }
             return result;

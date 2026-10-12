@@ -8,9 +8,6 @@ namespace ThirdPersonSimulation
 {
     public enum ProgramCatalogFieldId : byte
     {
-        ActionWindowDigest = 0,
-        ActionWindowId = 1,
-        ActionWindowType = 2,
         BlendMode = 3,
         Channel = 4,
         ConsumeLowerChannels = 5,
@@ -23,7 +20,6 @@ namespace ThirdPersonSimulation
         PositionY = 12,
         PositionZ = 13,
         Priority = 14,
-        Projection = 15,
         Space = 16,
         Timeline = 17,
         Track = 18,
@@ -33,12 +29,12 @@ namespace ThirdPersonSimulation
         ValueType = 22,
         InputValueId = 23,
         SectionCount = 24,
-        ActionWindowTag = 25
+        InputProjection = 26
     }
 
     public sealed class ProgramCatalogRuntimeIndex
     {
-        const int FieldCount = 26;
+        const int FieldCount = 27;
         readonly IReadOnlyList<ProgramCatalogEntry> m_Entries;
         readonly int m_KindCount;
         readonly int[] m_OperationEntries;
@@ -278,7 +274,11 @@ namespace ThirdPersonSimulation
         FollowDelaySeconds = 65,
         FollowDurationSeconds = 66,
         AimDelaySeconds = 67,
-        AimDurationSeconds = 68
+        AimDurationSeconds = 68,
+        SuccessEvent = 69,
+        SuccessEventTag = 70,
+        CandidateAbility = 71,
+        AttackIntervalEffect = 72
     }
 
     public static class OperationNamedConstantSchema
@@ -375,7 +375,7 @@ namespace ThirdPersonSimulation
             IEnumerable<ProgramControlFlowEdge> controlFlow,
             IEnumerable<ProgramReference> references,
             IReadOnlyList<ProgramStateSlot> stateSlots,
-            IReadOnlyList<ProgramSourceMapEntry> sourceMap,
+            IReadOnlyList<ProgramExecutionSource> sourceMap,
             OperationHandle rootOperation,
             IReadOnlyList<ProgramGraphCallFrame> graphCallFrames = null)
         {
@@ -423,11 +423,55 @@ namespace ThirdPersonSimulation
             BuildStateEdges(operationList, edges, out m_StateOnEnter, out m_StateRoot, out m_StateOnExit);
             m_StateSingleLocomotions = BuildStateSingleLocomotions(operationList, m_StateRoot, m_Outgoing);
             m_GraphCallFrames = BuildGraphCallFrames(operationList, graphCallFrames);
+            BuildOutputRecordCapacities(operationList, out int facts, out int presentation);
+            FactRecordCapacity = facts;
+            PresentationRecordCapacity = presentation;
             RootOperation = rootOperation;
         }
 
         public IReadOnlyList<OperationExecutionDescriptor> Operations => m_Operations;
         public OperationHandle RootOperation { get; }
+        public int FactRecordCapacity { get; }
+        public int PresentationRecordCapacity { get; }
+
+        static void BuildOutputRecordCapacities(IReadOnlyList<OperationExecutionDescriptor> operations,
+            out int facts, out int presentation)
+        {
+            facts = 0;
+            presentation = 0;
+            for (int index = 0; index < operations.Count; index++)
+                switch (operations[index].Code)
+                {
+                    case SimulationOperationCode.StateMachine:
+                    case SimulationOperationCode.BlackboardSet:
+                    case SimulationOperationCode.ActivateActionInstance:
+                    case SimulationOperationCode.SetActionPhase:
+                    case SimulationOperationCode.SubmitActionLifecycle:
+                    case SimulationOperationCode.GameplayEffectApply:
+                    case SimulationOperationCode.GameplayEffectRemove:
+                    case SimulationOperationCode.AttackQuery:
+                    case SimulationOperationCode.RequestEquipmentChange:
+                    case SimulationOperationCode.BeginEquipmentChange:
+                    case SimulationOperationCode.CommitEquipmentChange:
+                    case SimulationOperationCode.CancelEquipmentChange:
+                        facts = checked(facts + 2);
+                        break;
+                    case SimulationOperationCode.Timeline:
+                    case SimulationOperationCode.TimelineAnimation:
+                    case SimulationOperationCode.TimelineCameraState:
+                    case SimulationOperationCode.TimelineCameraResponse:
+                    case SimulationOperationCode.TimelineScenePresentationParameter:
+                    case SimulationOperationCode.TimelineClipExitRequest:
+                    case SimulationOperationCode.CameraStateRequest:
+                    case SimulationOperationCode.CameraEffectRequest:
+                    case SimulationOperationCode.CameraResponse:
+                    case SimulationOperationCode.CameraTarget:
+                    case SimulationOperationCode.VfxRequest:
+                    case SimulationOperationCode.AudioRequest:
+                        presentation = checked(presentation + 2);
+                        break;
+                }
+        }
 
         public IReadOnlyList<ProgramGraphCallFrame> GraphCallFrames(OperationHandle owner)
         {

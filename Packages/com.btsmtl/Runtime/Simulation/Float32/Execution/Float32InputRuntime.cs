@@ -17,9 +17,9 @@ namespace ThirdPersonSimulation
         {
             if (blackboard == null)
                 throw new ArgumentNullException(nameof(blackboard));
-            for (int i = 0; i < m_Frame.Layout.BlackboardInputBindings.Count; i++)
+            for (int i = 0; i < m_Frame.Services.BlackboardInputBindings.Count; i++)
             {
-                BlackboardInputStateBinding binding = m_Frame.Layout.BlackboardInputBindings[i];
+                BlackboardInputStateBinding binding = m_Frame.Services.BlackboardInputBindings[i];
                 blackboard.ProjectBlackboardInput(binding, ReadValue(binding.InputId, binding.InputKind));
             }
         }

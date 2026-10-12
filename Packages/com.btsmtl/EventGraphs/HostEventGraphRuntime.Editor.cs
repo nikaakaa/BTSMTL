@@ -10,40 +10,37 @@ namespace BTSMTL.EventGraphs
     public sealed partial class HostEventGraphRuntime
     {
         readonly Dictionary<(string Node, string Port, bool Input), EventGraphRuntimePort> m_EditorPorts = new();
-        readonly List<EventGraphRuntimePort> m_EditorTriggers = new();
         EventGraphRuntimePort[] m_RuntimePorts;
-        Float32GraphPortValues m_PortValues;
-        AbilityStateValue[] m_VariableOverrides;
-        bool[] m_VariableLocks;
+        Float32GraphPortValues m_PortValues => m_Runtime.PortValues;
         public IReadOnlyList<EventGraphRuntimePort> RuntimePorts => m_RuntimePorts;
         public EventGraphRuntimePort RequireRuntimePort(string node, string port, bool input) => m_EditorPorts[(node, port, input)];
-        public void QueuePortTrigger(string node, string port, bool input) =>
-            m_EditorTriggers.Add(RequireRuntimePort(node, port, input));
+        public void QueuePortTrigger(string node, string port, bool input)
+        {
+            EventGraphRuntimePort target = RequireRuntimePort(node, port, input);
+            m_Runtime.QueueTrigger(target.Operation, target.PortId, target.IsInput);
+        }
 
         public void MutateRuntimeVariable(string variableId, EventGraphValue value, EventGraphVariableMutation operation)
         {
-            int slot = m_Bindings.PublishedSlots[VariableContract.Layout.Bind(variableId).Index];
+            m_Runtime.RequireIdle();
+            int slot = m_Bindings.Runtime.PublishedSlots[VariableContract.Layout.Bind(variableId).Index];
             if (operation != EventGraphVariableMutation.Release)
                 RequireValue(value, m_Bindings.StateTypes[slot]);
             AbilityStateValue state = operation == EventGraphVariableMutation.Release ? default :
-                EventGraphCompiledValues.ToState(value, m_Bindings.Data.DefaultStateValue(slot).Identity);
+                EventGraphCompiledValues.ToState(value, m_Bindings.Runtime.Data.DefaultStateValue(slot).Identity);
             if (operation == EventGraphVariableMutation.Assign)
-                WriteState(slot, state);
-            else if (operation == EventGraphVariableMutation.Override)
-                state.Retain();
-            m_VariableOverrides[slot].Release();
-            m_VariableOverrides[slot] = operation == EventGraphVariableMutation.Override ? state : default;
-            m_VariableLocks[slot] = operation == EventGraphVariableMutation.Override;
+                m_Runtime.WriteState(slot, state);
+            m_Runtime.SetVariableOverride(slot, state, operation == EventGraphVariableMutation.Override);
         }
 
         public EventGraphValue ReadRuntimeVariable(string variableId)
         {
-            int slot = m_Bindings.PublishedSlots[VariableContract.Layout.Bind(variableId).Index];
-            return EventGraphCompiledValues.FromState(ReadState(slot), m_Bindings.StateTypes[slot]);
+            int slot = m_Bindings.Runtime.PublishedSlots[VariableContract.Layout.Bind(variableId).Index];
+            return EventGraphCompiledValues.FromState(m_Runtime.ReadState(slot), m_Bindings.StateTypes[slot]);
         }
 
         public bool IsRuntimeVariableLocked(string variableId) =>
-            m_VariableLocks[m_Bindings.PublishedSlots[VariableContract.Layout.Bind(variableId).Index]];
+            m_Runtime.IsVariableLocked(m_Bindings.Runtime.PublishedSlots[VariableContract.Layout.Bind(variableId).Index]);
 
         internal EventGraphValue ReadPort(EventGraphRuntimePort port, bool input)
         {
@@ -56,6 +53,7 @@ namespace BTSMTL.EventGraphs
 
         internal void MutatePort(EventGraphRuntimePort port, EventGraphValue value, EventGraphVariableMutation operation)
         {
+            m_Runtime.RequireIdle();
             if (operation == EventGraphVariableMutation.Release)
                 m_PortValues.Release(port.ValueSlot);
             else
@@ -75,12 +73,8 @@ namespace BTSMTL.EventGraphs
 
         void PrepareEditor()
         {
-            m_PortValues = new Float32GraphPortValues(m_Bindings.Data.ValueLayout);
-            m_VariableOverrides = new AbilityStateValue[m_State.Length];
-            m_VariableLocks = new bool[m_State.Length];
-            m_EditorPorts.Clear();
-            var maps = new Dictionary<(string Node, string Port, ProgramValuePortDirection Direction), ProgramSourceMapEntry>();
-            foreach (ProgramSourceMapEntry map in m_Bindings.Data.SourceMap)
+            var maps = new Dictionary<(string Node, string Port, ProgramValuePortDirection Direction), ProgramExecutionSource>();
+            foreach (ProgramExecutionSource map in m_Bindings.Runtime.Data.ExecutionSources)
                 if (map.GraphId == Source.AuthoringId && map.TargetKind == ProgramSourceTargetKind.OperationPort)
                     maps.Add((map.NodeId, map.PortId, map.ValuePortDirection), map);
             foreach (Node node in Source.allNodes)
@@ -93,75 +87,38 @@ namespace BTSMTL.EventGraphs
             }
             m_RuntimePorts = new EventGraphRuntimePort[m_EditorPorts.Count];
             m_EditorPorts.Values.CopyTo(m_RuntimePorts, 0);
-            m_EditorTriggers.Capacity = m_RuntimePorts.Length;
 
             void Add(Port port, bool input)
             {
                 bool trigger = port.type == typeof(Flow);
                 ProgramValuePortDirection direction = trigger ? ProgramValuePortDirection.None :
                     input ? ProgramValuePortDirection.Input : ProgramValuePortDirection.Output;
-                ProgramSourceMapEntry map = maps[(port.parent.UID, port.ID, direction)];
+                ProgramExecutionSource map = maps[(port.parent.UID, port.ID, direction)];
                 var operation = new OperationHandle(map.TargetIndex);
                 int slot = -1;
                 if (!trigger)
                 {
-                    SimulationOperation definition = m_Bindings.Data.Operations[operation.Value];
+                    SimulationOperation definition = m_Bindings.Runtime.Data.Operations[operation.Value];
                     OperationValuePortContract contract = GameplayAbilityValuePortContracts.Require(definition.Code, definition.Integer0);
                     slot = input
-                        ? m_Bindings.Data.ValueLayout.InputPortSlot(operation, contract.RequireInput(map.CompiledPortId).Order)
-                        : m_Bindings.Data.ValueLayout.OutputPortSlot(operation, contract.RequireSelection(map.CompiledPortId).Order);
+                        ? m_Bindings.Runtime.Data.ValueLayout.InputPortSlot(operation, contract.RequireInput(map.CompiledPortId).Order)
+                        : m_Bindings.Runtime.Data.ValueLayout.OutputPortSlot(operation, contract.RequireSelection(map.CompiledPortId).Order);
                 }
                 m_EditorPorts.Add((port.parent.UID, port.ID, input), new EventGraphRuntimePort(this, port, input, operation, slot));
-            }
-        }
-
-        void ExecuteTriggers(ref Context context)
-        {
-            for (int i = 0; i < m_EditorTriggers.Count; i++)
-            {
-                EventGraphRuntimePort port = m_EditorTriggers[i];
-                if (port.IsInput)
-                    OperationCompositeRuntime.ExecuteSynchronous(m_Bindings.Data.Topology, ref context, port.Operation, port.PortId);
-                else
-                    OperationCompositeRuntime.ExecuteOutput(m_Bindings.Data.Topology, ref context, port.Operation, port.PortId);
-            }
-            m_EditorTriggers.Clear();
-        }
-
-        void ResetEditor()
-        {
-            m_PortValues.Reset();
-            m_EditorTriggers.Clear();
-            for (int i = 0; i < m_VariableOverrides.Length; i++)
-            {
-                m_VariableOverrides[i].Release();
-                m_VariableOverrides[i] = default;
-                m_VariableLocks[i] = false;
             }
         }
 
         public void WriteRecordedFrameState<TWriter>(ref TWriter writer)
             where TWriter : struct, IRecordedRuntimeStateWriter
         {
-            writer.Write(m_ResetGeneration);
-            writer.Write(m_Started);
-            writer.Write(m_Faulted);
-            writer.WriteText(m_LastInvocation.SourceId);
-            writer.Write(m_LastInvocation.Sequence);
-            if (m_Faulted)
+            m_Runtime.RequireIdle();
+            m_Runtime.WriteRecordedLifecycle(ref writer);
+            for (int i = 0; i < m_Bindings.Runtime.Data.StateSlots.Count; i++)
             {
-                writer.WriteText(m_LastFailure.GraphId);
-                writer.WriteText(m_LastFailure.EventId);
-                writer.WriteText(m_LastFailure.NodeId);
-                writer.WriteText(m_LastFailure.Message);
-                writer.WriteText(m_LastFailure.ExceptionType);
-            }
-            for (int i = 0; i < m_State.Length; i++)
-            {
-                EventGraphCompiledValues.FromState(m_State[i], m_Bindings.StateTypes[i]).WriteRecordedFrameState(ref writer);
-                writer.Write(m_VariableLocks[i]);
-                if (m_VariableLocks[i])
-                    EventGraphCompiledValues.FromState(m_VariableOverrides[i], m_Bindings.StateTypes[i]).WriteRecordedFrameState(ref writer);
+                EventGraphCompiledValues.FromState(m_Runtime.ReadStoredState(i), m_Bindings.StateTypes[i]).WriteRecordedFrameState(ref writer);
+                writer.Write(m_Runtime.IsVariableLocked(i));
+                if (m_Runtime.IsVariableLocked(i))
+                    EventGraphCompiledValues.FromState(m_Runtime.ReadVariableOverride(i), m_Bindings.StateTypes[i]).WriteRecordedFrameState(ref writer);
             }
             for (int i = 0; i < m_RuntimePorts.Length; i++)
             {
@@ -174,36 +131,23 @@ namespace BTSMTL.EventGraphs
                 if (observed.Kind != default)
                     EventGraphCompiledValues.FromState(observed, port.ValueType).WriteRecordedFrameState(ref writer);
             }
-            writer.Write(m_EditorTriggers.Count);
-            for (int i = 0; i < m_EditorTriggers.Count; i++)
-                writer.Write(Array.IndexOf(m_RuntimePorts, m_EditorTriggers[i]));
         }
 
         public void RestoreRecordedFrameState(ref RecordedRuntimeStateReader reader)
         {
-            ResetEditor();
-            m_Output.Invalidate();
-            m_ResetGeneration = reader.Read<ulong>();
-            m_Started = reader.Read<bool>();
-            m_Faulted = reader.Read<bool>();
-            string invocationSource = reader.ReadText();
-            ulong sequence = reader.Read<ulong>();
-            m_LastInvocation = sequence == 0 ? default : new EventGraphInvocationIdentity(invocationSource, sequence);
-            m_LastFailure = m_Faulted ? new EventGraphExecutionFailure(reader.ReadText(), reader.ReadText(),
-                reader.ReadText(), reader.ReadText(), null, reader.ReadText()) : null;
-            for (int i = 0; i < m_State.Length; i++)
+            m_Runtime.RestoreRecordedLifecycle(ref reader);
+            for (int i = 0; i < m_Bindings.Runtime.Data.StateSlots.Count; i++)
             {
-                WriteState(i, EventGraphCompiledValues.ToState(
+                m_Runtime.WriteState(i, EventGraphCompiledValues.ToState(
                     EventGraphValue.ReadRecordedFrameState(ref reader, m_Bindings.StateTypes[i]),
-                    m_Bindings.Data.DefaultStateValue(i).Identity));
-                m_VariableLocks[i] = reader.Read<bool>();
-                if (m_VariableLocks[i])
+                    m_Bindings.Runtime.Data.DefaultStateValue(i).Identity));
+                bool locked = reader.Read<bool>();
+                if (locked)
                 {
                     AbilityStateValue value = EventGraphCompiledValues.ToState(
                         EventGraphValue.ReadRecordedFrameState(ref reader, m_Bindings.StateTypes[i]),
-                        m_Bindings.Data.DefaultStateValue(i).Identity);
-                    value.Retain();
-                    m_VariableOverrides[i] = value;
+                        m_Bindings.Runtime.Data.DefaultStateValue(i).Identity);
+                    m_Runtime.SetVariableOverride(i, value, true);
                 }
             }
             for (int i = 0; i < m_RuntimePorts.Length; i++)
@@ -216,9 +160,6 @@ namespace BTSMTL.EventGraphs
                     m_PortValues.Observe(port.ValueSlot, EventGraphCompiledValues.ToState(
                         EventGraphValue.ReadRecordedFrameState(ref reader, port.ValueType), port.EnumIdentity));
             }
-            int triggerCount = reader.Read<int>();
-            for (int i = 0; i < triggerCount; i++)
-                m_EditorTriggers.Add(m_RuntimePorts[reader.Read<int>()]);
         }
     }
 }

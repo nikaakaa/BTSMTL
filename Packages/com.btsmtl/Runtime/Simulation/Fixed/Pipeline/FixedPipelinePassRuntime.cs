@@ -197,9 +197,11 @@ namespace ThirdPersonSimulation.Fixed
             SimulationRuntimePortSet targetPorts,
             SimulationRuntimePortSet solverPorts,
             SimulationRuntimePortSet diagnosticsPorts,
-            SimulationSessionCompositionDescriptor composition)
+            SimulationSessionCompositionDescriptor composition,
+            GraphBatchExecution graphBatchExecution)
         {
             Composition = composition;
+            GraphBatchExecution = graphBatchExecution;
             Pass = pass ?? throw new ArgumentNullException(nameof(pass));
             Products = products.Bind(pass.Descriptor);
             m_PortSets = new[]
@@ -214,6 +216,7 @@ namespace ThirdPersonSimulation.Fixed
 
         public CompiledSimulationPipelinePass Pass { get; }
         public SimulationSessionCompositionDescriptor Composition { get; }
+        public GraphBatchExecution GraphBatchExecution { get; }
         public FixedPipelineProductPortBinder Products { get; }
 
         public TPort BindSourcePort<TPort>(string portId) where TPort : class, ISimulationRuntimePort =>

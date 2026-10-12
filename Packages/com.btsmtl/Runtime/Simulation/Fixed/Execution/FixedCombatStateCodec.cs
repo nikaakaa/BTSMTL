@@ -39,6 +39,46 @@ namespace ThirdPersonSimulation.Fixed
 
         internal int StateTextCapacity => checked(3 * m_AttackStates.Length + 3 * m_ResultCapacity);
 
+        internal int GetMaximumStatePayloadBytes(int maximumSessionPayloadBytes)
+        {
+            int skillCharacters = 0;
+            int clipCharacters = 0;
+            int eventCharacters = 0;
+            for (int actor = 0; actor < m_Characters.Roster.Count; actor++)
+                foreach (FixedGameplayAbilityExecutionInstallation installation in m_Characters.Roster[actor].AbilityInstallations.Installations)
+                {
+                    FixedGameplayAbilityExecutionData data = installation.Data;
+                    skillCharacters = Math.Max(skillCharacters, data.AbilityId.Value.Length);
+                    foreach (ProgramExecutionSource entry in data.ExecutionSources)
+                        if (entry.TargetKind == ProgramSourceTargetKind.GraphInvocation &&
+                            entry.InvocationCallerKind == ProgramInvocationCallerKind.TimelineClip &&
+                            !string.IsNullOrEmpty(entry.InvocationCallerClipId))
+                            clipCharacters = Math.Max(clipCharacters, entry.InvocationCallerClipId.Length);
+                    foreach (ProgramConstant constant in data.Constants)
+                        if (constant.Kind == ProgramConstantKind.String)
+                            eventCharacters = Math.Max(eventCharacters, constant.Text.Length);
+                }
+            long identityBytes = sizeof(byte) + sizeof(ulong) * 5L + sizeof(int) * 4L +
+                sizeof(char) * ((long)skillCharacters + clipCharacters);
+            foreach (FixedPreparedAttack enemy in m_EnemyAttacks)
+            {
+                long localIdentityBytes = sizeof(byte) + sizeof(ulong) + sizeof(int) * 2L +
+                    sizeof(char) * ((long)m_Participants[enemy.ActorIndex].ActorId.Value.Length + enemy.ContentId.Length);
+                identityBytes = Math.Max(identityBytes, localIdentityBytes);
+                eventCharacters = Math.Max(eventCharacters, enemy.ContentId.Length);
+            }
+            long eventTextBytes = sizeof(char) * (long)eventCharacters;
+            long attackBytes = sizeof(byte) + sizeof(int) * 4L + sizeof(long) * 5L +
+                identityBytes + eventTextBytes + (sizeof(int) + sizeof(ulong)) * (long)m_Participants.Length;
+            long hitBytes = sizeof(ulong) * 20L + sizeof(int) * 4L + sizeof(byte) * 2L +
+                identityBytes + eventTextBytes;
+            long payloadBytes = checked(sizeof(int) * 5L + sizeof(ulong) * 2L +
+                (sizeof(byte) + sizeof(long) * 2L) * (m_SelfTimeSlows.Length + 1L) +
+                attackBytes * m_AttackStates.Length + (sizeof(int) + sizeof(ulong) * 2L) * m_Halts.Length +
+                hitBytes * m_ResultCapacity);
+            return checked((int)Math.Min(maximumSessionPayloadBytes, payloadBytes));
+        }
+
         internal void CaptureTo(StateBank bank)
         {
             for (int i = 0; i < m_AttackStates.Length; i++)

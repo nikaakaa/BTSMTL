@@ -7,13 +7,13 @@ namespace ThirdPersonSimulation
     {
         sealed class InvocationBinding
         {
-            public InvocationBinding(ProgramSourceMapEntry source, int generationSlot)
+            public InvocationBinding(ProgramExecutionSource source, int generationSlot)
             {
                 Source = source;
                 GenerationSlot = generationSlot;
             }
 
-            public readonly ProgramSourceMapEntry Source;
+            public readonly ProgramExecutionSource Source;
             public readonly int GenerationSlot;
             public InvocationGroup Parent;
         }
@@ -35,7 +35,7 @@ namespace ThirdPersonSimulation
                 m_TreeClips = new Dictionary<(CanonicalTextValue, string), InvocationBinding>(invocations.Count);
                 foreach (InvocationBinding invocation in invocations)
                 {
-                    ProgramSourceMapEntry source = invocation.Source;
+                    ProgramExecutionSource source = invocation.Source;
                     if (source.InvocationCallerKind == ProgramInvocationCallerKind.TimelineClip &&
                         !m_TreeClips.TryAdd((source.InvocationCallerClipId, source.InvocationCallerId), invocation))
                         throw new InvalidOperationException("TreeClip图调用重复。");
@@ -57,12 +57,12 @@ namespace ThirdPersonSimulation
         readonly Dictionary<string, InvocationBinding> m_Invocations = new(StringComparer.Ordinal);
         readonly InvocationGroup[] m_OperationInvocations;
 
-        public GameplayAbilityGraphInvocationLayout(IReadOnlyList<ProgramSourceMapEntry> sources, int operationCount,
+        public GameplayAbilityGraphInvocationLayout(IReadOnlyList<ProgramExecutionSource> sources, int operationCount,
             Func<OperationHandle, int> generationSlot)
         {
             m_OperationInvocations = new InvocationGroup[operationCount];
             var groups = new Dictionary<string, List<InvocationBinding>>(StringComparer.Ordinal);
-            foreach (ProgramSourceMapEntry source in sources)
+            foreach (ProgramExecutionSource source in sources)
             {
                 if (source.TargetKind != ProgramSourceTargetKind.GraphInvocation)
                     continue;
@@ -89,7 +89,7 @@ namespace ThirdPersonSimulation
                 if (!bindings.TryGetValue(invocation.Source.ParentInvocationPath, out invocation.Parent))
                     throw new InvalidOperationException("图调用来源未声明。");
             }
-            foreach (ProgramSourceMapEntry source in sources)
+            foreach (ProgramExecutionSource source in sources)
             {
                 if (source.TargetKind != ProgramSourceTargetKind.Operation || string.IsNullOrEmpty(source.GraphInvocationPath))
                     continue;
@@ -99,7 +99,7 @@ namespace ThirdPersonSimulation
                     throw new InvalidOperationException("操作图调用来源重复。");
                 m_OperationInvocations[source.TargetIndex] = group;
             }
-            foreach (ProgramSourceMapEntry source in sources)
+            foreach (ProgramExecutionSource source in sources)
             {
                 if (source.TargetKind != ProgramSourceTargetKind.OperationPort)
                     continue;
@@ -126,7 +126,7 @@ namespace ThirdPersonSimulation
         public int ParentGenerationSlot(OperationHandle operation, in AbilityTreeClipInvocation treeClipInvocation) =>
             ResolveParentGenerationSlot(operation, treeClipInvocation.ClipAuthoringId, treeClipInvocation.Hook);
 
-        public ProgramSourceMapEntry Invocation(string path) => m_Invocations[path].Source;
+        public ProgramExecutionSource Invocation(string path) => m_Invocations[path].Source;
 
         public string InvocationPath(OperationHandle operation) =>
             ResolveOperationInvocation(operation, null, default).Source.GraphInvocationPath;

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.IO;
 using FlowCanvas;
 using FlowCanvas.Macros;
 using FlowCanvas.Nodes;
@@ -20,30 +21,55 @@ namespace BTSMTL.EventGraphs
         [SerializeField] string m_ContentRevision = "1";
 
         [SerializeField, HideInInspector] byte[] m_ExecutionData = Array.Empty<byte>();
-        [SerializeField, HideInInspector] string m_ExecutionRevision = string.Empty;
+        [SerializeField, HideInInspector] byte[] m_ExecutionIdentity = Array.Empty<byte>();
+        [NonSerialized] GraphExecutionIdentity m_PreparedIdentity;
         [NonSerialized] Float32GraphExecutionData m_PreparedExecutionData;
         [NonSerialized] byte[] m_PreparedExecutionBytes;
 
         public string AuthoringId => m_AuthoringId ?? string.Empty;
         public string ContentRevision => m_ContentRevision ?? string.Empty;
 
+        public GraphExecutionIdentity ExecutionIdentity => m_PreparedIdentity;
+
         public Float32GraphExecutionData RequireExecutionData()
         {
-            if (m_ExecutionData.Length == 0 || m_ExecutionRevision != ContentRevision)
-                throw new InvalidOperationException($"事件图 '{AuthoringId}' 的执行数据未生成或已过期，请显式编译该图。");
+            if (m_ExecutionData.Length == 0 || m_ExecutionIdentity.Length == 0)
+                throw new InvalidOperationException($"事件图 '{AuthoringId}' 尚未发布执行数据，请显式编译该图。");
+#if UNITY_EDITOR
+            GraphExecutionIdentity expected = new BtsmtlGraphFingerprint().CreateIdentity(this, AuthoringId,
+                Float32GraphExecutionDataCodec.ContractIdentity, "Float32");
+#else
+            GraphExecutionIdentity expected = GraphExecutionIdentity.CanonicalReadMaterialized(new CanonicalReader(m_ExecutionIdentity));
+            if (expected.GraphId != AuthoringId)
+                throw new InvalidOperationException($"事件图 '{AuthoringId}' 的发布身份不匹配。");
+#endif
             if (!ReferenceEquals(m_PreparedExecutionBytes, m_ExecutionData))
             {
-                m_PreparedExecutionData = Float32GraphExecutionDataCodec.Read(m_ExecutionData);
+                Float32GraphExecutionData data = Float32GraphExecutionDataCodec.Read(m_ExecutionData, expected);
+                m_PreparedExecutionData = data;
+                m_PreparedIdentity = expected;
                 m_PreparedExecutionBytes = m_ExecutionData;
             }
+            else
+                m_PreparedIdentity.RequireMatches(expected);
             return m_PreparedExecutionData;
         }
 
-#if UNITY_EDITOR
-        public void SetExecutionData(byte[] bytes)
+        public void WriteExecutionData(Stream destination, Stream expectedIdentity)
         {
+            RequireExecutionData();
+            destination.Write(m_ExecutionData, 0, m_ExecutionData.Length);
+            expectedIdentity.Write(m_ExecutionIdentity, 0, m_ExecutionIdentity.Length);
+        }
+
+#if UNITY_EDITOR
+        public void SetExecutionData(byte[] bytes, GraphExecutionIdentity identity)
+        {
+            using var writer = new CanonicalWriter();
+            GraphExecutionIdentity.CanonicalWrite(writer, in identity);
+            byte[] binding = writer.ToArray();
             m_ExecutionData = bytes;
-            m_ExecutionRevision = ContentRevision;
+            m_ExecutionIdentity = binding;
         }
 #endif
 

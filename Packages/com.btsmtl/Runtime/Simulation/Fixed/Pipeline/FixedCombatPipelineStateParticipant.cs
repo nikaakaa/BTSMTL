@@ -13,7 +13,7 @@ namespace ThirdPersonSimulation.Fixed
         public FixedCombatPipelineStateParticipant(SimulationPipelinePassDescriptor descriptor, FixedCombatRuntime combat, int maximumSessionCheckpointPayloadBytes)
         {
             m_Combat = combat;
-            MaximumPayloadBytes = maximumSessionCheckpointPayloadBytes;
+            MaximumPayloadBytes = combat.GetMaximumStatePayloadBytes(maximumSessionCheckpointPayloadBytes);
             MaximumTextValues = m_Combat.StateTextCapacity;
             m_Writer = new CanonicalWriter(new byte[MaximumPayloadBytes]);
             StateIdentity = new SimulationPipelineStateParticipantIdentity(descriptor.PassId,
@@ -27,7 +27,7 @@ namespace ThirdPersonSimulation.Fixed
         public int MaximumTextValues { get; }
         public SimulationPipelineStepProjectionMode StepProjectionMode => SimulationPipelineStepProjectionMode.Include;
         public void PrepareStepStorage(int snapshotCapacity) =>
-            m_StepStorage = new SimulationPipelinePassStateStorage(StateIdentity, snapshotCapacity, MaximumPayloadBytes, MaximumTextValues);
+            m_StepStorage = new SimulationPipelinePassStateStorage(StateIdentity, snapshotCapacity, MaximumPayloadBytes, MaximumTextValues, null);
 
         public SimulationPipelinePassStateSnapshot CaptureStepState()
         {

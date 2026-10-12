@@ -48,7 +48,8 @@ namespace ThirdPersonSimulation.Fixed
             FixedGameplayAbilityExecutionData data,
             GameplayAbilityExecutionLayout layout,
             string[] operationSourcePaths,
-            FixedGameplayEffectRuntimeCatalog gameplayEffectCatalog)
+            FixedGameplayEffectRuntimeCatalog gameplayEffectCatalog,
+            GeneratedBlackboardConfiguration<AbilityStateValue> blackboards)
         {
             if (data == null)
                 throw new ArgumentNullException(nameof(data));
@@ -60,6 +61,7 @@ namespace ThirdPersonSimulation.Fixed
                 throw new InvalidOperationException("Ability execution layout topology does not match its data.");
 
             m_Layout = layout;
+            BlackboardInputBindings = layout.BlackboardInputBindings;
             m_OperationSourcePaths = operationSourcePaths;
             m_OperationSourceIdentities = BuildOperationSourceIdentities(operationSourcePaths);
             Identity = new GameplayAbilityExecutionIdentity(
@@ -77,11 +79,14 @@ namespace ThirdPersonSimulation.Fixed
                 ? new Dictionary<GameplayCueProducerKey, ProgramProducer>()
                 : BuildGameplayCueProducers(data, gameplayEffectCatalog);
             BuildAdmissionProfiles(data, layout, gameplayEffectCatalog, out m_AdmissionProfilesByOperation, out m_AdmissionProfilesById);
+            BlackboardDeclarations = data.CatalogIndex.BindBlackboardDeclarations(data.StateSlots, data.References);
             BuildBlackboardGroups(
-                data,
+                data, BlackboardDeclarations,
                 out m_BlackboardGroups,
                 out m_ScopeBlackboardGroups);
             m_GraphInputOwners = BuildGraphInputOwners(data);
+            Blackboards = GeneratedBlackboardStateBinding<AbilityStateValue>.Build(blackboards, "Fixed",
+                data.StateSlots, data.Scopes, BlackboardDeclarations);
             ControlPolicy = new FixedStateAccessPolicy(
                 ProgramStateSemantic.RunnableLifecycle,
                 ProgramStateSemantic.RunnableChildCursor,
@@ -105,6 +110,23 @@ namespace ThirdPersonSimulation.Fixed
 
         public FixedGameplayAbilityExecutionAccess Access { get; }
         public GameplayAbilityExecutionIdentity Identity { get; }
+        public GeneratedBlackboardStateBinding<AbilityStateValue> Blackboards { get; }
+        internal IReadOnlyList<BlackboardInputStateBinding> BlackboardInputBindings { get; private set; }
+
+        internal void BindCharacterInputs(int[] characterSlots, HashSet<int> projected)
+        {
+            var bindings = new List<BlackboardInputStateBinding>();
+            for (int index = 0; index < BlackboardInputBindings.Count; index++)
+            {
+                BlackboardInputStateBinding binding = BlackboardInputBindings[index];
+                if (projected.Add(characterSlots[binding.StateAddress.SlotIndex]))
+                    bindings.Add(binding);
+            }
+            BlackboardInputBindings = bindings.ToArray();
+        }
+        internal ProgramCatalogEntry[] BlackboardDeclarations { get; }
+        public AbilityStateValue DefaultValue(int slot) => Blackboards.Contains(slot)
+            ? Blackboards.DefaultValue(slot) : Access.Data.DefaultStateValue(slot);
         public OperationExecutionTopology Topology { get; }
         public FixedGameplayEffectRuntimeCatalog GameplayEffectCatalog { get; }
         public FixedStateAccessPolicy ControlPolicy { get; }
@@ -311,8 +333,7 @@ namespace ThirdPersonSimulation.Fixed
             for (int index = 0; index < data.Operations.Count; index++)
             {
                 SimulationOperationCode code = data.Operations[index].Code;
-                if (code == SimulationOperationCode.AbilityActive ||
-                    code == SimulationOperationCode.SelectedSourceWindowActive)
+                if (code == SimulationOperationCode.AbilityActive)
                     return true;
             }
             for (int index = 0; index < data.Binding.ActivationRules.Count; index++)
@@ -329,8 +350,7 @@ namespace ThirdPersonSimulation.Fixed
                 SimulationOperation operation = data.Operations[operationIndex];
                 if (operation.Code != SimulationOperationCode.GameplayEffectMatchTags &&
                     operation.Code != SimulationOperationCode.GameplayEffectRemove &&
-                    operation.Code != SimulationOperationCode.AbilityActive &&
-                    operation.Code != SimulationOperationCode.SelectedSourceWindowActive)
+                    operation.Code != SimulationOperationCode.AbilityActive)
                     continue;
                 var all = new List<string>();
                 var any = new List<string>();
@@ -475,10 +495,10 @@ namespace ThirdPersonSimulation.Fixed
 
         static void BuildBlackboardGroups(
             FixedGameplayAbilityExecutionData data,
+            ProgramCatalogEntry[] declarations,
             out SimulationBlackboardSlotGroup[] groups,
             out IReadOnlyList<SimulationBlackboardSlotGroup>[] scopeGroups)
         {
-            ProgramCatalogEntry[] declarations = data.CatalogIndex.BindBlackboardDeclarations(data.StateSlots, data.References);
             var byOwner = new Dictionary<string, SimulationBlackboardSlotGroup>(StringComparer.Ordinal);
             var byScope = new IReadOnlyList<SimulationBlackboardSlotGroup>[data.Scopes.Count];
             var bySlot = new SimulationBlackboardSlotGroup[data.StateSlots.Count];
@@ -497,7 +517,7 @@ namespace ThirdPersonSimulation.Fixed
                     SimulationBlackboardSlotGroup group = BuildBlackboardGroup(
                         data,
                         scope,
-                        scope.CompiledOwnerIndex,
+                        scope.Kind == ProgramScopeKind.Character ? 0 : scope.CompiledOwnerIndex,
                         slot.OwnerIdentity,
                         declarations[slot.Index]);
                     if (byOwner.ContainsKey(slot.OwnerIdentity))

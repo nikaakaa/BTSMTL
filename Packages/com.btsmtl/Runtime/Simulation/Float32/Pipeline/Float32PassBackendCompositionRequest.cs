@@ -31,12 +31,16 @@ namespace ThirdPersonSimulation
             Float32PipelinePassRuntimeFactoryCatalog passRuntimeFactories,
             Float32PipelineProductRuntimeCatalog productRuntimeFactories,
             IEnumerable<IDisposable> sourceResources = null,
-            IEnumerable<IDisposable> actorResources = null)
+            IEnumerable<IDisposable> actorResources = null,
+            GraphBatchExecutionOptions graphBatchOptions = default,
+            IGraphBatchExecutionResource graphBatchResource = null)
         {
             Descriptor = descriptor ?? throw new ArgumentNullException(nameof(descriptor));
             Backend = backend ?? throw new ArgumentNullException(nameof(backend));
             CompiledPipeline = compiledPipeline ?? throw new ArgumentNullException(nameof(compiledPipeline));
             CharacterRuntime = characterRuntime ?? throw new ArgumentNullException(nameof(characterRuntime));
+            GraphBatchOptions = graphBatchOptions;
+            GraphBatchResource = graphBatchResource;
             InitialState = initialState ?? throw new ArgumentNullException(nameof(initialState));
             PipelineInitialState = pipelineInitialState ?? throw new ArgumentNullException(nameof(pipelineInitialState));
             SourcePorts = sourcePorts ?? throw new ArgumentNullException(nameof(sourcePorts));
@@ -62,6 +66,8 @@ namespace ThirdPersonSimulation
         public SimulationExecutionBackendDescriptor Backend { get; }
         public CompiledSimulationPipelinePlan CompiledPipeline { get; }
         public Float32CharacterRuntime CharacterRuntime { get; }
+        public GraphBatchExecutionOptions GraphBatchOptions { get; }
+        public IGraphBatchExecutionResource GraphBatchResource { get; }
         public IReadOnlyList<SimulationActorBinding> Roster => m_Roster;
         public SimulationWorldStateSet InitialState { get; }
         public SimulationPipelineInitialStateSource PipelineInitialState { get; }

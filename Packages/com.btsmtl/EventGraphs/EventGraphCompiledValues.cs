@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace BTSMTL.EventGraphs
 {
-    static class EventGraphCompiledValues
+    public static class EventGraphCompiledValues
     {
         internal static Type ValueType(AbilityStateValue value) => value.Kind switch
         {
@@ -15,11 +15,11 @@ namespace BTSMTL.EventGraphs
             ProgramStateValueKind.Vector3 => typeof(Vector3),
             ProgramStateValueKind.Quaternion => typeof(Quaternion),
             ProgramStateValueKind.Identity => typeof(CanonicalTextValue),
-            ProgramStateValueKind.Enum => Type.GetType(value.Identity.ToString(), true),
+            ProgramStateValueKind.Enum => Type.GetType(value.Enum.TypeIdentity.ToString(), true),
             _ => throw new InvalidOperationException($"事件图状态类型 '{value.Kind}' 不受支持。")
         };
 
-        internal static AbilityStateValue ToState(EventGraphValue value, CanonicalTextValue enumIdentity) => value.Kind switch
+        public static AbilityStateValue ToState(EventGraphValue value, CanonicalTextValue enumIdentity) => value.Kind switch
         {
             EventGraphValueKind.Bool => AbilityStateValue.FromBoolean(value.BoolValue),
             EventGraphValueKind.Int32 => AbilityStateValue.FromInt32(value.Int32Value),
@@ -42,7 +42,7 @@ namespace BTSMTL.EventGraphs
             ProgramStateValueKind.Vector3 => EventGraphValue.FromVector3(new Vector3(value.Vector3.X.ToSingle(), value.Vector3.Y.ToSingle(), value.Vector3.Z.ToSingle())),
             ProgramStateValueKind.Quaternion => EventGraphValue.FromQuaternion(new Quaternion(
                 value.Quaternion.X.ToSingle(), value.Quaternion.Y.ToSingle(), value.Quaternion.Z.ToSingle(), value.Quaternion.W.ToSingle())),
-            ProgramStateValueKind.Enum => EventGraphValue.FromEnum(enumType, value.Int32),
+            ProgramStateValueKind.Enum => EventGraphValue.FromEnum(enumType, value.Enum.Value),
             ProgramStateValueKind.Identity => EventGraphValue.FromText(value.Identity),
             _ => throw new InvalidOperationException($"事件图输出类型 '{value.Kind}' 不受支持。")
         };

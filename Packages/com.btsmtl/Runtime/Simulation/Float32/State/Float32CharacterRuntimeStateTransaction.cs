@@ -51,6 +51,8 @@ namespace ThirdPersonSimulation
     internal sealed class Float32CharacterRuntimeStateTransaction : IFloat32AbilityExecutionSavepointPort, IFloat32ControlRuntimeStatePort
     {
         Float32CharacterRuntimeState m_BaseState;
+        AbilityStateValuePageReference<AbilityStateValue> m_CharacterBlackboards;
+        GeneratedCharacterBlackboardLayout<AbilityStateValue> m_CharacterBlackboardLayout;
         MotionWarpStatePageReference<Float32MotionWarpState> m_MotionWarpStates;
         Dictionary<CharacterSkillId, Float32AbilityRuntimeState> m_AbilityStates;
         Dictionary<CharacterSkillId, Float32SkillExecutionState> m_SkillStates;
@@ -76,8 +78,9 @@ namespace ThirdPersonSimulation
         }
 
         internal void Initialize(IReadOnlyList<Float32GameplayAbilityExecutionInstallation> installations,
-            MotionWarpStatePageLayout motionWarpLayout)
+            MotionWarpStatePageLayout motionWarpLayout, GeneratedCharacterBlackboardLayout<AbilityStateValue> characterBlackboards)
         {
+            m_CharacterBlackboardLayout = characterBlackboards;
             m_AbilityStates = new Dictionary<CharacterSkillId, Float32AbilityRuntimeState>(installations.Count);
             m_SkillStates = new Dictionary<CharacterSkillId, Float32SkillExecutionState>(installations.Count);
             for (int index = 0; index < installations.Count; index++)
@@ -85,7 +88,8 @@ namespace ThirdPersonSimulation
                 Float32GameplayAbilityExecutionInstallation installation = installations[index];
                 m_SkillStates.Add(installation.Identity.AbilityId,
                     new Float32SkillExecutionState(this, installation.Identity, installation.Layout,
-                        installation.Data, motionWarpLayout.Partition(installation.Identity.AbilityId)));
+                        installation.Data, motionWarpLayout.Partition(installation.Identity.AbilityId),
+                        characterBlackboards.Slots(installation.Identity.AbilityId)));
             }
         }
 
@@ -104,6 +108,7 @@ namespace ThirdPersonSimulation
             MotionWarpStatePageReference<Float32MotionWarpState> motionWarpStates)
         {
             m_BaseState = baseState ?? throw new ArgumentNullException(nameof(baseState));
+            m_CharacterBlackboards = baseState.CharacterBlackboards;
             m_MotionWarpStates = motionWarpStates;
             if (!tick.IsValid || tickRate <= 0)
                 throw new ArgumentException("Float32 Character runtime transaction timing is incomplete.");
@@ -135,6 +140,28 @@ namespace ThirdPersonSimulation
             baseState.RetainStatePages();
             m_Disposed = false;
             return this;
+        }
+
+        internal AbilityStateValue ReadCharacterBlackboard(int slot)
+        {
+            if (m_CharacterBlackboards.TryGetValue(slot, out AbilityStateValue value))
+                return value;
+            if (m_CharacterBlackboardLayout.Binding.Contains(slot))
+                return m_CharacterBlackboardLayout.Binding.DefaultValue(slot);
+            if (m_CharacterBlackboardLayout.Kinds[slot] == ProgramStateValueKind.BlackboardOwnerToken)
+                return AbilityStateValue.FromBlackboardOwnerToken(default);
+            if (m_CharacterBlackboardLayout.Kinds[slot] == ProgramStateValueKind.Int32)
+                return AbilityStateValue.FromInt32((int)m_CharacterBlackboardLayout.Lifetimes[slot]);
+            return AbilityStateValue.FromBlackboardWriteStamp(default);
+        }
+
+        internal void WriteCharacterBlackboard(int slot, AbilityStateValue value)
+        {
+            if (ReadCharacterBlackboard(slot).Equals(value))
+                return;
+            if (ReferenceEquals(m_CharacterBlackboards.Set, m_BaseState.CharacterBlackboards.Set))
+                m_CharacterBlackboards = m_CharacterBlackboards.Set.Bank.BeginWrite(m_CharacterBlackboards);
+            m_CharacterBlackboards.Set.Set(slot, value);
         }
 
         internal IFloat32SkillExecutionState BindAbility(
@@ -280,6 +307,8 @@ namespace ThirdPersonSimulation
                 ability.Value.StateValues.Release();
                 ability.Value.AbilityExecutionState.ReleaseStateStorage();
             }
+            if (!ReferenceEquals(m_CharacterBlackboards.Set, m_BaseState.CharacterBlackboards.Set))
+                m_CharacterBlackboards.Release();
             m_BaseState.ReleaseStatePages();
             m_Disposed = true;
         }
@@ -296,6 +325,7 @@ namespace ThirdPersonSimulation
             CharacterControlRuntimeState control = m_ControlStateBound
                 ? m_ControlState.Capture(page.ControlStorage)
                 : m_BaseState.ControlState.IsValid ? page.ControlStorage.CopyFrom(m_BaseState.ControlState) : default;
+            page.Data.CharacterBlackboards = m_CharacterBlackboards;
             return Float32CharacterRuntimeState.AdoptPrepared(
                 page,
                 m_BaseState.NumericProfile,
@@ -348,7 +378,8 @@ namespace ThirdPersonSimulation
 
     internal sealed class Float32SkillExecutionState : IFloat32SkillExecutionState
     {
-        readonly object m_BindingIdentity;
+        readonly Float32CharacterRuntimeStateTransaction m_BindingIdentity;
+        readonly int[] m_CharacterSlots;
         readonly GameplayAbilityExecutionLayout m_Layout;
         readonly Float32GameplayAbilityExecutionData m_Ability;
         Float32AbilityRuntimeState m_CommittedState;
@@ -360,11 +391,11 @@ namespace ThirdPersonSimulation
         bool m_Disposed;
 
         public Float32SkillExecutionState(
-            object bindingIdentity,
+            Float32CharacterRuntimeStateTransaction bindingIdentity,
             GameplayAbilityExecutionIdentity identity,
             GameplayAbilityExecutionLayout layout,
             Float32GameplayAbilityExecutionData ability,
-            int motionWarpPartition)
+            int motionWarpPartition, int[] characterSlots)
         {
             m_BindingIdentity = bindingIdentity ?? throw new ArgumentNullException(nameof(bindingIdentity));
             if (!identity.IsValid)
@@ -374,6 +405,7 @@ namespace ThirdPersonSimulation
             if (m_Ability.AbilityId != identity.AbilityId)
                 throw new ArgumentException("Float32 Ability execution data does not match its identity.", nameof(ability));
             m_MotionWarpPartition = motionWarpPartition;
+            m_CharacterSlots = characterSlots;
             m_Disposed = true;
         }
 
@@ -397,6 +429,9 @@ namespace ThirdPersonSimulation
         public AbilityStateValue Get(TypedStateAddress address)
         {
             RequireActive();
+            int character = m_CharacterSlots[address.SlotIndex];
+            if (character >= 0)
+                return m_BindingIdentity.ReadCharacterBlackboard(character);
             if (!m_StateValues.Set.TryGetValue(address.SlotIndex, out AbilityStateValue value))
                 value = DefaultValue(address.SlotIndex);
             if (value.Kind != address.ValueKind)
@@ -411,6 +446,12 @@ namespace ThirdPersonSimulation
             RequireActive();
             if (value.Kind != address.ValueKind)
                 throw new InvalidOperationException($"State slot '{address.SlotIndex}' expects '{address.ValueKind}', received '{value.Kind}'.");
+            int character = m_CharacterSlots[address.SlotIndex];
+            if (character >= 0)
+            {
+                m_BindingIdentity.WriteCharacterBlackboard(character, value);
+                return;
+            }
             AbilityStateValue current = m_StateValues.Set.TryGetValue(address.SlotIndex, out AbilityStateValue existing)
                 ? existing
                 : DefaultValue(address.SlotIndex);
@@ -514,6 +555,8 @@ namespace ThirdPersonSimulation
 
         AbilityStateValue DefaultValue(int slotIndex)
         {
+            if (m_StateValues.Set.Bank.Blackboards.Contains(slotIndex))
+                return m_StateValues.Set.Bank.Blackboards.DefaultValue(slotIndex);
             ProgramStateSlot slot = m_Layout.StateSlots[slotIndex];
             return slot.DefaultConstantIndex >= 0
                 ? AbilityStateValue.FromConstant(m_Ability.Constants[slot.DefaultConstantIndex], slot.ValueKind)

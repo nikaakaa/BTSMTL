@@ -93,6 +93,7 @@ namespace ThirdPersonSimulation.Fixed
         public IReadOnlyList<FixedAbilityRuntimeState> Abilities => Data.Abilities.Values;
         internal FixedAbilityStateDirectoryReference AbilityDirectory => Data.Abilities;
         internal MotionWarpStatePageReference<FixedMotionWarpState> MotionWarpStates => Data.MotionWarpStates;
+        internal AbilityStateValuePageReference<AbilityStateValue> CharacterBlackboards => Data.CharacterBlackboards;
 
         internal void RetainStatePages()
         {
@@ -104,6 +105,7 @@ namespace ThirdPersonSimulation.Fixed
             ActionStatePage.Retain();
             InputRequestPage.Retain();
             Data.Abilities.Retain();
+            CharacterBlackboards.Retain();
             FixedAbilityRuntimeState[] values = Data.Abilities.Page.Values;
             for (int index = 0; index < values.Length; index++)
             {
@@ -121,6 +123,7 @@ namespace ThirdPersonSimulation.Fixed
                 values[index].AbilityExecutionState.ReleaseStateStorage();
             }
             Data.Abilities.Release();
+            CharacterBlackboards.Release();
             InputRequestPage.Release();
             ActionStatePage.Release();
             Data.TimelineSnapshots.Release();
@@ -255,18 +258,20 @@ namespace ThirdPersonSimulation.Fixed
             for (int i = 0; i < advances.Count; i++)
             {
                 AbilityTimelineRuntimeSnapshot snapshot = timelineRuntime.CaptureRuntimeSnapshot(advances[i].RuntimeHandle);
-                int replacedIndex = -1;
-                for (int index = 0; index < snapshots.Count; index++)
+                int first = 0;
+                int last = snapshots.Count;
+                while (first < last)
                 {
-                    if (snapshots[index].RuntimeHandle == snapshot.RuntimeHandle)
-                    {
-                        replacedIndex = index;
-                        break;
-                    }
+                    int middle = first + ((last - first) >> 1);
+                    if (snapshots[middle].RuntimeHandle < snapshot.RuntimeHandle)
+                        first = middle + 1;
+                    else
+                        last = middle;
                 }
-                if (replacedIndex >= 0)
-                    snapshots.RemoveAt(replacedIndex);
-                snapshots.Add(snapshot);
+                if (first < snapshots.Count && snapshots[first].RuntimeHandle == snapshot.RuntimeHandle)
+                    snapshots[first] = snapshot;
+                else
+                    snapshots.Insert(first, snapshot);
             }
             for (int i = 0; i < stops.Count; i++)
                 for (int index = 0; index < snapshots.Count; index++)
@@ -293,6 +298,7 @@ namespace ThirdPersonSimulation.Fixed
                 return this;
             FixedTimelineSnapshotPageReference committedSnapshots = Data.TimelineSnapshots.Page.Bank.Capture(snapshots);
             FixedCharacterRuntimeStatePage page = m_Page.Bank.Begin();
+            page.Data.CharacterBlackboards = CharacterBlackboards;
             return FromStateStorage(
                 page,
                 NumericProfile,
@@ -314,7 +320,7 @@ namespace ThirdPersonSimulation.Fixed
 
         bool RetainTimelineSnapshot(in AbilityTimelineRuntimeSnapshot snapshot)
         {
-            if (snapshot.State != AbilityTimelineSnapshotState.Completed && snapshot.State != AbilityTimelineSnapshotState.Stopped)
+            if (snapshot.State != BTSMTL.Timeline.TimelineRuntimePlaybackState.Completed && snapshot.State != BTSMTL.Timeline.TimelineRuntimePlaybackState.Stopped)
                 return true;
             ReadOnlySpan<FixedActionInstanceState> actions = ActionInstances;
             for (int index = 0; index < actions.Length; index++)
@@ -456,6 +462,7 @@ namespace ThirdPersonSimulation.Fixed
 
         internal static FixedCharacterRuntimeState CreateInitial(
             FixedCharacterRuntimeStatePageBank statePages,
+            AbilityStateValuePageReference<AbilityStateValue> characterBlackboards,
             FixedAbilityStateDirectoryReference abilities,
             FixedActionStatePageReference actions,
             FixedInputRequestPageReference inputRequests,
@@ -470,6 +477,7 @@ namespace ThirdPersonSimulation.Fixed
         {
             Array.Sort(abilities.Page.Values, s_AbilityStateComparison);
             FixedCharacterRuntimeStatePage page = statePages.Begin();
+            page.Data.CharacterBlackboards = characterBlackboards;
             return FromStateStorage(
                 page,
                 numericProfile,
@@ -493,6 +501,7 @@ namespace ThirdPersonSimulation.Fixed
 
     internal struct FixedCharacterRuntimeStateData
     {
+        internal AbilityStateValuePageReference<AbilityStateValue> CharacterBlackboards;
         internal SimulationNumericProfile NumericProfile;
         internal GameplayContentHash GameplayContentHash;
         internal StableHash StateSchemaHash;
@@ -558,7 +567,6 @@ namespace ThirdPersonSimulation.Fixed
         readonly List<FixedCharacterRuntimeStatePage> m_Pages = new List<FixedCharacterRuntimeStatePage>();
         int m_ControlValueCount;
         internal SimulationCharacterStatePayloadStorage EncodingStorage { get; set; }
-        internal int EncodingActorIndex { get; set; }
 
         internal void ReleaseEncodingStorage()
         {
@@ -637,6 +645,7 @@ namespace ThirdPersonSimulation.Fixed
     {
         internal const int MaximumSnapshotCount = AbilityTimelineRuntimeLimits.MaximumPlaybackCount;
         readonly List<FixedTimelineSnapshotPage> m_Pages = new List<FixedTimelineSnapshotPage>();
+        AbilityTimelineSnapshotStorageBank m_DecodeStorage;
         internal AbilityTimelineSnapshotDecodeLayout DecodeLayout { get; private set; }
 
         internal FixedTimelineSnapshotPageBank()
@@ -662,18 +671,18 @@ namespace ThirdPersonSimulation.Fixed
                 clips, exits, pendingExits, trees);
         }
 
-        internal void PrepareDecodeStorage()
+        internal void PrepareDecodeStorage(int capacity)
         {
-            for (int index = 0; index < m_Pages.Count; index++)
-                m_Pages[index].DecodeStorage = new AbilityTimelineSnapshotStorage(
-                    DecodeLayout.ActiveClips, DecodeLayout.TreeDecisionExits,
-                    DecodeLayout.PendingTreeDecisionExits, DecodeLayout.ActiveTreeClips);
+            m_DecodeStorage = new AbilityTimelineSnapshotStorageBank(
+                DecodeLayout.ActiveClips, DecodeLayout.TreeDecisionExits,
+                DecodeLayout.PendingTreeDecisionExits, DecodeLayout.ActiveTreeClips);
+            m_DecodeStorage.PrepareCapacity(capacity);
         }
 
-        internal FixedTimelineSnapshotPageReference BeginDecode()
+        internal FixedTimelineSnapshotPageReference BeginDecode(out AbilityTimelineSnapshotStorage storage)
         {
             FixedTimelineSnapshotPageReference result = Begin();
-            result.Page.DecodeStorage.BeginDecode();
+            storage = m_DecodeStorage.BeginDecode();
             return result;
         }
 
@@ -713,7 +722,6 @@ namespace ThirdPersonSimulation.Fixed
         internal readonly FixedTimelineSnapshotPageBank Bank;
         internal readonly List<AbilityTimelineRuntimeSnapshot> Values;
         internal readonly ReadOnlyCollection<AbilityTimelineRuntimeSnapshot> Snapshots;
-        internal AbilityTimelineSnapshotStorage DecodeStorage;
         internal ulong Generation;
         internal int Retainers;
     }

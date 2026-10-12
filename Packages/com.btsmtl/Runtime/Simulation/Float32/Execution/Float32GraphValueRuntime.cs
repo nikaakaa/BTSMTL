@@ -51,7 +51,12 @@ namespace ThirdPersonSimulation
     public sealed class Float32GraphValueWorkspace
     {
         internal readonly bool[] ActiveValueSlots;
+        internal readonly BorrowedValueObservationScratch<AbilityStateValue> ObservationValues;
         internal readonly List<Float32ValueInputBuffer> InputBuffers = new();
+
+        internal Float32GraphValueWorkspace(Float32GameplayAbilityExecutionData data)
+            : this((Float32GraphExecutionData)data) =>
+            ObservationValues = new BorrowedValueObservationScratch<AbilityStateValue>(data.ValueLayout.ValueEvaluationSlotCount);
 
         public Float32GraphValueWorkspace(Float32GraphExecutionData data)
         {
@@ -70,37 +75,49 @@ namespace ThirdPersonSimulation
 
     public interface IFloat32GraphValueContext
     {
+        bool IsReadOnlyObservation { get; }
         void RequireExecution(OperationHandle operation);
         AbilityStateValue EvaluateDomainValue(SimulationOperation operation, string outputPort, int outputPortIndex, Float32ValueInputLease inputs);
         void TraceResult(SimulationOperation operation, string outputPort, int outputPortIndex, AbilityStateValue value);
         void TraceInput(SimulationOperation operation, CompiledValueInputBinding input, AbilityStateValue value);
     }
 
+#if UNITY_EDITOR
+    public interface IFloat32GraphValuePortInputs
+    {
+        bool TryRead(OperationHandle operation, int portIndex, bool input, out AbilityStateValue value);
+    }
+#endif
+
     public sealed class Float32GraphValueRuntime
     {
         readonly Float32GraphExecutionData m_Ability;
         readonly Float32GraphValueLayout m_Layout;
         readonly bool[] m_ActiveValueSlots;
+        readonly BorrowedValueObservationScratch<AbilityStateValue> m_ObservationValues;
         readonly List<Float32ValueInputBuffer> m_InputBuffers;
         int m_InputBufferDepth;
 #if UNITY_EDITOR
-        readonly Float32GraphPortValues m_Ports;
+        readonly IFloat32GraphValuePortInputs m_Ports;
 #endif
 
         public Float32GraphValueRuntime(Float32GraphExecutionData data, Float32GraphValueWorkspace workspace
 #if UNITY_EDITOR
-            , Float32GraphPortValues ports
+            , IFloat32GraphValuePortInputs ports
 #endif
             )
         {
             m_Ability = data ?? throw new ArgumentNullException(nameof(data));
             m_Layout = data.ValueLayout;
             m_ActiveValueSlots = workspace.ActiveValueSlots;
+            m_ObservationValues = workspace.ObservationValues;
             m_InputBuffers = workspace.InputBuffers;
 #if UNITY_EDITOR
             m_Ports = ports;
 #endif
         }
+
+        internal void ClearObservedValues() => m_ObservationValues.Clear();
 
         public void BeginEvaluation()
         {
@@ -118,8 +135,9 @@ namespace ThirdPersonSimulation
 		{
             context.RequireExecution(handle);
 			int valueSlot = m_Layout.ValueEvaluationSlot(handle, outputPortIndex);
+            bool readOnlyObservation = context.IsReadOnlyObservation;
 #if UNITY_EDITOR
-            if (m_Ports != null && m_Ports.TryRead(valueSlot, out AbilityStateValue overridden))
+            if (m_Ports != null && m_Ports.TryRead(handle, outputPortIndex, false, out AbilityStateValue overridden))
             {
                 context.TraceResult(m_Ability.Operations[handle.Value], outputPort, outputPortIndex, overridden);
                 return overridden;
@@ -127,6 +145,9 @@ namespace ThirdPersonSimulation
 #endif
 			if (m_ActiveValueSlots[valueSlot])
 				throw new InvalidOperationException($"Value operation cycle reached '{handle}/{outputPort}'.");
+
+            if (readOnlyObservation && m_ObservationValues.IsWritten(valueSlot))
+                return m_ObservationValues.Read(valueSlot);
 			m_ActiveValueSlots[valueSlot] = true;
 			try
 			{
@@ -169,6 +190,7 @@ namespace ThirdPersonSimulation
                         break;
                 }
                 context.TraceResult(operation, outputPort, outputPortIndex, result);
+                if (readOnlyObservation) m_ObservationValues.Write(valueSlot, in result);
 				return result;
 			}
 			finally
@@ -193,18 +215,7 @@ namespace ThirdPersonSimulation
                     if (operation.Code == SimulationOperationCode.SelectValue && i > 0)
                         i = ToBoolean(buffer.Values[0]) ? 1 : 2;
                     ref readonly CompiledValueInputBinding input = ref inputs[i];
-                    AbilityStateValue value;
-#if UNITY_EDITOR
-                    int portSlot = m_Layout.InputPortSlot(operation.Handle, input.TargetPortIndex);
-                    if (m_Ports == null || !m_Ports.TryRead(portSlot, out value))
-#endif
-                    value = input.SourceKind == CompiledValueInputSourceKind.Operation
-                        ? Evaluate(
-                            ref context,
-                            input.SourceOperation,
-                            input.SourceOutputPortIdentity,
-                            input.SourceOutputPortIndex)
-                        : ValueFromConstant(m_Ability.Constants[input.ConstantIndex]);
+                    AbilityStateValue value = ReadInputValue(ref context, operation, in input);
                     buffer.Values.Add(value);
                     context.TraceInput(operation, input, value);
                     if (operation.Code == SimulationOperationCode.SelectValue && i > 0)
@@ -228,6 +239,19 @@ namespace ThirdPersonSimulation
             if (depth >= m_InputBuffers.Count)
                 throw new InvalidOperationException("Graph value recursion exceeds its prepared operation bound.");
             return m_InputBuffers[depth];
+        }
+
+        internal AbilityStateValue ReadInputValue<TContext>(ref TContext context,
+            SimulationOperation operation, in CompiledValueInputBinding input)
+            where TContext : struct, IFloat32GraphValueContext
+        {
+#if UNITY_EDITOR
+            if (m_Ports != null && m_Ports.TryRead(operation.Handle, input.TargetPortIndex, true, out AbilityStateValue value))
+                return value;
+#endif
+            return input.SourceKind == CompiledValueInputSourceKind.Operation
+                ? Evaluate(ref context, input.SourceOperation, input.SourceOutputPortIdentity, input.SourceOutputPortIndex)
+                : ValueFromConstant(m_Ability.Constants[input.ConstantIndex]);
         }
 
         internal void ReleaseInputBuffer(Float32ValueInputBuffer buffer, int depth)
@@ -311,7 +335,7 @@ namespace ThirdPersonSimulation
                 ProgramConstantKind.Yaw => AbilityStateValue.FromYaw(constant.Yaw),
                 ProgramConstantKind.String => AbilityStateValue.FromIdentity(constant.Text),
                 ProgramConstantKind.Quaternion => AbilityStateValue.FromQuaternion(constant.Quaternion),
-                ProgramConstantKind.Enum => AbilityStateValue.FromEnum(constant.Text, constant.Int32),
+                ProgramConstantKind.Enum => AbilityStateValue.FromEnum(constant.Enum.TypeIdentity, constant.Enum.Value),
                 ProgramConstantKind.Bytes => throw new InvalidOperationException(
                     $"Bytes constant '{constant.Identity}' cannot enter typed Character state evaluation."),
                 _ => throw new ArgumentOutOfRangeException(nameof(constant.Kind))

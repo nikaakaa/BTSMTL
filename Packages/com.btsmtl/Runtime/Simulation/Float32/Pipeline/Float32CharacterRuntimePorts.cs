@@ -180,6 +180,7 @@ namespace ThirdPersonSimulation
             EquipmentStateAggregate equipmentState = null;
             CreateEquipmentInitialState(actor, out equipmentState);
             Float32CharacterRuntimeStatePage page = actor.RuntimeStatePages.Begin();
+            page.Data.CharacterBlackboards = actor.CharacterBlackboardPages.BeginEmpty();
             for (int index = 0; index < actor.AbilityInstallations.Installations.Count; index++)
             {
                 GameplayAbilityExecutionIdentity identity = actor.AbilityInstallations.Installations[index].Identity;

@@ -7,9 +7,7 @@ namespace ThirdPersonSimulation
 {
     public sealed class CharacterControlStateSchema
     {
-        readonly ReadOnlyCollection<CharacterControlStateFieldDescriptor> m_Fields;
         readonly Dictionary<CharacterControlStateFieldId, int> m_Indexes;
-        readonly Dictionary<CharacterControlStateFieldId, CharacterControlStateValueKind> m_Kinds;
         readonly GameplayEffectPublishedIdentityReader m_StateIdentities;
         readonly GameplayEffectPublishedIdentityReader m_TransitionIdentities;
 
@@ -19,27 +17,13 @@ namespace ThirdPersonSimulation
                 throw new ArgumentNullException(nameof(contract));
             var fields = new List<CharacterControlStateFieldDescriptor>(contract.StateFields.Count);
             m_Indexes = new Dictionary<CharacterControlStateFieldId, int>();
-            m_Kinds = new Dictionary<CharacterControlStateFieldId, CharacterControlStateValueKind>();
-            var hashParts = new List<string>
-            {
-                "character-control-state-schema/3",
-                contract.ModuleId.Value,
-                contract.SemanticVersion.ToString(System.Globalization.CultureInfo.InvariantCulture)
-            };
             for (int i = 0; i < contract.StateFields.Count; i++)
             {
                 CharacterControlStateFieldDescriptor field = contract.StateFields[i];
-                if (!IsSupported(field.ValueKind))
-                    throw new InvalidDataException($"Character control state field '{field.Id}' has unsupported kind '{field.ValueKind}'.");
                 fields.Add(field);
                 if (!m_Indexes.TryAdd(field.Id, i))
                     throw new InvalidDataException($"Character control state field '{field.Id}' is duplicated.");
-                m_Kinds.Add(field.Id, field.ValueKind);
-                hashParts.Add(field.Id.Value);
-                hashParts.Add(((int)field.ValueKind).ToString(System.Globalization.CultureInfo.InvariantCulture));
-                hashParts.Add(((int)field.Semantic).ToString(System.Globalization.CultureInfo.InvariantCulture));
             }
-            m_Fields = fields.AsReadOnly();
             var states = new string[contract.States.Count];
             for (int index = 0; index < states.Length; index++)
                 states[index] = contract.States[index].Id.Value;
@@ -48,9 +32,8 @@ namespace ThirdPersonSimulation
                 transitions[index] = contract.Transitions[index].Id.Value;
             m_StateIdentities = new GameplayEffectPublishedIdentityReader(states);
             m_TransitionIdentities = new GameplayEffectPublishedIdentityReader(transitions);
-            ModuleId = contract.ModuleId;
-            SemanticVersion = contract.SemanticVersion;
-            SchemaHash = StableHash.Compute(hashParts.ToArray());
+            Declaration = new CharacterControlSchemaDeclaration(contract.ModuleId, contract.SemanticVersion, fields.AsReadOnly());
+            SchemaHash = ComputeSchemaHash(Declaration);
         }
 
         internal CharacterControlStateSchema(
@@ -62,37 +45,23 @@ namespace ThirdPersonSimulation
                 throw new ArgumentException("Character control state schema identity is incomplete.");
             var copied = new List<CharacterControlStateFieldDescriptor>(fields.Count);
             m_Indexes = new Dictionary<CharacterControlStateFieldId, int>();
-            m_Kinds = new Dictionary<CharacterControlStateFieldId, CharacterControlStateValueKind>();
-            var hashParts = new List<string>
-            {
-                "character-control-state-schema/3",
-                moduleId.Value,
-                semanticVersion.ToString(System.Globalization.CultureInfo.InvariantCulture)
-            };
             for (int i = 0; i < fields.Count; i++)
             {
                 CharacterControlStateFieldDescriptor field = fields[i]
                     ?? throw new ArgumentException("Character control state schema contains a missing field.", nameof(fields));
-                if (!IsSupported(field.ValueKind))
-                    throw new InvalidDataException($"Character control state field '{field.Id}' has unsupported kind '{field.ValueKind}'.");
                 copied.Add(field);
                 if (!m_Indexes.TryAdd(field.Id, i))
                     throw new InvalidDataException($"Character control state field '{field.Id}' is duplicated.");
-                m_Kinds.Add(field.Id, field.ValueKind);
-                hashParts.Add(field.Id.Value);
-                hashParts.Add(((int)field.ValueKind).ToString(System.Globalization.CultureInfo.InvariantCulture));
-                hashParts.Add(((int)field.Semantic).ToString(System.Globalization.CultureInfo.InvariantCulture));
             }
-            m_Fields = copied.AsReadOnly();
-            ModuleId = moduleId;
-            SemanticVersion = semanticVersion;
-            SchemaHash = StableHash.Compute(hashParts.ToArray());
+            Declaration = new CharacterControlSchemaDeclaration(moduleId, semanticVersion, copied.AsReadOnly());
+            SchemaHash = ComputeSchemaHash(Declaration);
         }
 
-        public CharacterControlModuleId ModuleId { get; }
-        public int SemanticVersion { get; }
-        public IReadOnlyList<CharacterControlStateFieldDescriptor> Fields => m_Fields;
-        public int FieldCount => m_Fields.Count;
+        public CharacterControlSchemaDeclaration Declaration { get; }
+        public CharacterControlModuleId ModuleId => Declaration.ModuleId;
+        public int SemanticVersion => Declaration.SemanticVersion;
+        public IReadOnlyList<CharacterControlStateFieldDescriptor> Fields => Declaration.Fields;
+        public int FieldCount => Declaration.Fields.Count;
         public StableHash SchemaHash { get; }
 
         public int RequireIndex(CharacterControlStateFieldId field) =>
@@ -101,99 +70,90 @@ namespace ThirdPersonSimulation
                 : throw new InvalidOperationException($"Character control state field '{field}' is not declared.");
 
         public CharacterControlStateValueKind RequireKind(CharacterControlStateFieldId field) =>
-            m_Kinds.TryGetValue(field, out CharacterControlStateValueKind kind)
-                ? kind
-                : throw new InvalidOperationException($"Character control state field '{field}' is not declared.");
+            Fields[RequireIndex(field)].ValueKind;
 
         public string ResolvePublishedIdentity(int fieldIndex, in CanonicalTextValue value) =>
             IdentityDirectory(fieldIndex).ResolvePublished(in value);
 
-        internal CanonicalTextValue ReadPublishedIdentity(CanonicalReader reader, int fieldIndex) =>
-            CanonicalTextValue.FromString(IdentityDirectory(fieldIndex).ReadPublished(reader));
-
         GameplayEffectPublishedIdentityReader IdentityDirectory(int fieldIndex) =>
-            m_Fields[fieldIndex].Semantic switch
+            Fields[fieldIndex].Semantic switch
             {
                 CharacterControlStateSemantic.ActiveState => m_StateIdentities,
                 CharacterControlStateSemantic.Transition => m_TransitionIdentities,
                 _ => throw new InvalidOperationException("Control field is an open identity value.")
             };
 
-        static bool IsSupported(CharacterControlStateValueKind kind) =>
-            kind == CharacterControlStateValueKind.Identity ||
-            kind == CharacterControlStateValueKind.Boolean ||
-            kind == CharacterControlStateValueKind.Int32 ||
-            kind == CharacterControlStateValueKind.UInt64 ||
-            kind == CharacterControlStateValueKind.Number;
+        static StableHash ComputeSchemaHash(CharacterControlSchemaDeclaration declaration)
+        {
+            var hash = new CanonicalHashWriter();
+            hash.WriteHash(CharacterControlSchemaDeclaration.CanonicalSchemaHash);
+            hash.WriteHash(CharacterControlStateValue.CanonicalSchemaHash);
+            CharacterControlSchemaDeclaration.CanonicalWrite(hash, declaration);
+            return hash.ComputeHash();
+        }
     }
 
-    public readonly struct CharacterControlStateValue
+    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+    public sealed partial class CharacterControlSchemaDeclaration
     {
-        CharacterControlStateValue(
-            CharacterControlStateValueKind kind,
-            bool boolean,
-            int int32,
-            ulong uint64,
-            CanonicalTextValue identity)
+        public CharacterControlSchemaDeclaration(CharacterControlModuleId moduleId, int semanticVersion,
+            ReadOnlyCollection<CharacterControlStateFieldDescriptor> fields)
         {
-            Kind = kind;
-            Boolean = boolean;
-            Int32 = int32;
-            UInt64 = uint64;
-            Identity = identity.IsNull ? CanonicalTextValue.Empty : identity;
+            ModuleId = moduleId;
+            SemanticVersion = semanticVersion;
+            Fields = fields;
         }
 
-        public CharacterControlStateValueKind Kind { get; }
+        public CharacterControlModuleId ModuleId { get; }
+        public int SemanticVersion { get; }
+        public ReadOnlyCollection<CharacterControlStateFieldDescriptor> Fields { get; }
+    }
+
+    [CanonicalContract]
+    public readonly partial struct CharacterControlStateValue
+    {
+        [CanonicalUnionCase]
         public bool Boolean { get; }
+        [CanonicalUnionCase]
         public int Int32 { get; }
+        [CanonicalUnionCase]
         public ulong UInt64 { get; }
-        public double Number => BitConverter.Int64BitsToDouble(unchecked((long)UInt64));
+        [CanonicalUnionCase(NormalizeNull = true)]
         public CanonicalTextValue Identity { get; }
+        [CanonicalUnionCase(NormalizeZero = true)]
+        public double Number { get; }
+
+        [CanonicalValidation]
+        void RequireValid()
+        {
+            if (Kind == CharacterControlStateValueKind.Number && (double.IsNaN(Number) || double.IsInfinity(Number)))
+                throw new ArgumentOutOfRangeException(nameof(Number));
+        }
 
         public bool Equals(CharacterControlStateValue other) =>
-            Kind == other.Kind &&
-            Boolean == other.Boolean &&
-            Int32 == other.Int32 &&
-            UInt64 == other.UInt64 &&
-            (Kind != CharacterControlStateValueKind.Identity ||
-                Identity.Equals(other.Identity));
+            Kind == other.Kind && Boolean == other.Boolean && Int32 == other.Int32 &&
+            UInt64 == other.UInt64 && Number.Equals(other.Number) && Identity.Equals(other.Identity);
 
-        public void Retain() => Identity.Retain();
-        public void Release() => Identity.Release();
+        public void Retain() => CanonicalRetain(this);
+        public void Release() => CanonicalRelease(this);
+    }
 
-        public static CharacterControlStateValue FromBoolean(bool value) =>
-            new CharacterControlStateValue(CharacterControlStateValueKind.Boolean, value, 0, 0, string.Empty);
-
-        public static CharacterControlStateValue FromInt32(int value) =>
-            new CharacterControlStateValue(CharacterControlStateValueKind.Int32, false, value, 0, string.Empty);
-
-        public static CharacterControlStateValue FromUInt64(ulong value) =>
-            new CharacterControlStateValue(CharacterControlStateValueKind.UInt64, false, 0, value, string.Empty);
-
-        public static CharacterControlStateValue FromIdentity(CanonicalTextValue value) =>
-            new CharacterControlStateValue(CharacterControlStateValueKind.Identity, false, 0, 0, value);
-
-        public static CharacterControlStateValue FromNumber(double value) =>
-            new CharacterControlStateValue(CharacterControlStateValueKind.Number, false, 0,
-                unchecked((ulong)BitConverter.DoubleToInt64Bits(value == 0d ? 0d : value)), string.Empty);
-
-        public static CharacterControlStateValue Default(CharacterControlStateValueKind kind)
+    [CanonicalContract(PreparedStorage = typeof(CharacterControlRuntimeStateStorage))]
+    public readonly partial struct CharacterControlStateFrame
+    {
+        public CharacterControlStateFrame(ulong lastCompletedTick, CanonicalArraySlice<CharacterControlStateValue> items)
         {
-            return kind switch
-            {
-                CharacterControlStateValueKind.Boolean => FromBoolean(false),
-                CharacterControlStateValueKind.Int32 => FromInt32(0),
-                CharacterControlStateValueKind.UInt64 => FromUInt64(0),
-                CharacterControlStateValueKind.Identity => FromIdentity(string.Empty),
-                CharacterControlStateValueKind.Number => FromNumber(0d),
-                _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null)
-            };
+            LastCompletedTick = lastCompletedTick;
+            Items = items;
         }
+
+        public ulong LastCompletedTick { get; }
+        public CanonicalArraySlice<CharacterControlStateValue> Items { get; }
     }
 
     public readonly struct CharacterControlRuntimeState
     {
-        readonly CharacterControlStateValue[] m_ValueArray;
+        readonly CharacterControlStateFrame m_Frame;
         readonly CharacterControlRuntimeStateStorage m_Storage;
         readonly uint m_StorageGeneration;
         readonly StableHash m_StateHash;
@@ -216,20 +176,17 @@ namespace ThirdPersonSimulation
                 if (copied[i].Kind != schema.Fields[i].ValueKind)
                     throw new ArgumentException($"Character control runtime state field '{schema.Fields[i].Id}' kind does not match its schema.", nameof(values));
             }
-            ModuleId = schema.ModuleId;
-            SemanticVersion = schema.SemanticVersion;
-            LastCompletedTick = lastCompletedTick;
-            m_ValueArray = copied;
+            m_Frame = new CharacterControlStateFrame(lastCompletedTick, new CanonicalArraySlice<CharacterControlStateValue>(copied));
             m_Storage = null;
             m_StorageGeneration = 0;
-            m_StateHash = ComputeHash(schema, lastCompletedTick, copied, new SimulationCanonicalPayloadHash.Accumulator());
+            m_StateHash = ComputeHash(schema, lastCompletedTick, copied, new CanonicalHashWriter());
             Retain();
         }
 
         public CharacterControlStateSchema Schema { get; }
-        public CharacterControlModuleId ModuleId { get; }
-        public int SemanticVersion { get; }
-        public ulong LastCompletedTick { get; }
+        public CharacterControlModuleId ModuleId => Schema.ModuleId;
+        public int SemanticVersion => Schema.SemanticVersion;
+        public ulong LastCompletedTick => m_Frame.LastCompletedTick;
         public IReadOnlyList<CharacterControlStateValue> Values => ValueArray;
         public StableHash StateHash
         {
@@ -242,35 +199,29 @@ namespace ThirdPersonSimulation
             }
         }
         internal StableHash StoredHash => m_Storage == null ? m_StateHash : m_Storage.StateHash;
-        public bool IsValid => Schema != null && m_ValueArray != null;
+        public bool IsValid => Schema != null && m_Frame.Items.Array != null;
+
+        internal CharacterControlStateFrame Frame
+        {
+            get
+            {
+                m_Storage?.RequireGeneration(m_StorageGeneration);
+                return m_Frame;
+            }
+        }
 
         internal static StableHash ComputeHash(
             CharacterControlStateSchema schema,
             ulong lastCompletedTick,
-            ReadOnlySpan<CharacterControlStateValue> values,
-            SimulationCanonicalPayloadHash.Accumulator hash)
+            CharacterControlStateValue[] values,
+            CanonicalHashWriter hash)
         {
-            hash.Begin();
-            hash.AppendText("character-control-runtime-state/3");
-            hash.AppendAscii(0x1f);
-            hash.AppendHash(schema.SchemaHash);
-            hash.AppendAscii(0x1f);
-            hash.AppendUInt64(lastCompletedTick);
-            for (int index = 0; index < values.Length; index++)
-            {
-                CharacterControlStateValue value = values[index];
-                hash.AppendAscii(0x1f);
-                hash.AppendInt32((int)value.Kind);
-                hash.AppendAscii(0x1f);
-                hash.AppendAscii(value.Boolean ? (byte)'1' : (byte)'0');
-                hash.AppendAscii(0x1f);
-                hash.AppendInt32(value.Int32);
-                hash.AppendAscii(0x1f);
-                hash.AppendUInt64(value.UInt64);
-                hash.AppendAscii(0x1f);
-                hash.AppendText(value.Identity);
-            }
-            return hash.Complete();
+            hash.Reset();
+            hash.WriteHash(CharacterControlStateFrame.CanonicalSchemaHash);
+            hash.WriteHash(schema.SchemaHash);
+            CharacterControlStateFrame.CanonicalWrite(hash,
+                new CharacterControlStateFrame(lastCompletedTick, new CanonicalArraySlice<CharacterControlStateValue>(values)));
+            return hash.ComputeHash();
         }
 
         internal CharacterControlRuntimeState(
@@ -280,10 +231,7 @@ namespace ThirdPersonSimulation
             StableHash stateHash)
         {
             Schema = schema;
-            ModuleId = schema.ModuleId;
-            SemanticVersion = schema.SemanticVersion;
-            LastCompletedTick = lastCompletedTick;
-            m_ValueArray = values;
+            m_Frame = new CharacterControlStateFrame(lastCompletedTick, new CanonicalArraySlice<CharacterControlStateValue>(values));
             m_Storage = null;
             m_StorageGeneration = 0;
             m_StateHash = stateHash;
@@ -297,40 +245,20 @@ namespace ThirdPersonSimulation
             StableHash stateHash)
         {
             Schema = schema;
-            ModuleId = schema.ModuleId;
-            SemanticVersion = schema.SemanticVersion;
-            LastCompletedTick = lastCompletedTick;
-            m_ValueArray = storage.Values;
+            m_Frame = new CharacterControlStateFrame(lastCompletedTick, new CanonicalArraySlice<CharacterControlStateValue>(storage.Values));
             m_Storage = storage;
             m_StorageGeneration = storage.Generation;
             m_StateHash = default;
             storage.StateHash = stateHash;
         }
 
-        public void Retain()
-        {
-            CharacterControlStateValue[] values = ValueArray;
-            for (int index = 0; index < values.Length; index++)
-                values[index].Retain();
-        }
+        public void Retain() => CharacterControlStateFrame.CanonicalRetain(Frame);
 
-        public void Release()
-        {
-            CharacterControlStateValue[] values = ValueArray;
-            for (int index = 0; index < values.Length; index++)
-                values[index].Release();
-        }
+        public void Release() => CharacterControlStateFrame.CanonicalRelease(Frame);
 
         internal bool OwnsValueArray => m_Storage == null;
 
-        internal CharacterControlStateValue[] ValueArray
-        {
-            get
-            {
-                m_Storage?.RequireGeneration(m_StorageGeneration);
-                return m_ValueArray;
-            }
-        }
+        internal CharacterControlStateValue[] ValueArray => Frame.Items.Array;
 
         public CharacterControlStateValue Get(CharacterControlStateFieldId field) =>
             ValueArray[Schema.RequireIndex(field)];
@@ -367,7 +295,7 @@ namespace ThirdPersonSimulation
             for (int i = 0; i < values.Length; i++)
                 values[i] = schema.Fields[i].Semantic == CharacterControlStateSemantic.ActiveState
                     ? CharacterControlStateValue.FromIdentity(contract.InitialState.Value)
-                    : CharacterControlStateValue.Default(schema.Fields[i].ValueKind);
+                    : CharacterControlStateValue.CanonicalDefault(schema.Fields[i].ValueKind);
             return new CharacterControlRuntimeState(schema, 0, values);
         }
 
@@ -376,10 +304,11 @@ namespace ThirdPersonSimulation
     public sealed class CharacterControlRuntimeStateStorage
     {
         public CharacterControlRuntimeStateStorage(int fieldCount) =>
-            Values = new CharacterControlStateValue[fieldCount];
+            Items = new CanonicalBuffer<CharacterControlStateValue>(fieldCount);
 
-        internal CharacterControlStateValue[] Values { get; }
-        internal SimulationCanonicalPayloadHash.Accumulator Hash { get; } = new SimulationCanonicalPayloadHash.Accumulator();
+        internal CharacterControlStateValue[] Values => Items.OwnedArray;
+        internal CanonicalBuffer<CharacterControlStateValue> Items { get; }
+        internal CanonicalHashWriter Hash { get; } = new CanonicalHashWriter();
         internal StableHash StateHash { get; set; }
         internal uint Generation { get; private set; }
 
@@ -398,9 +327,10 @@ namespace ThirdPersonSimulation
 
         public void Clear()
         {
-            for (int index = 0; index < Values.Length; index++)
-                Values[index].Release();
+            CharacterControlStateFrame.CanonicalRelease(
+                new CharacterControlStateFrame(0, new CanonicalArraySlice<CharacterControlStateValue>(Values)));
             Array.Clear(Values, 0, Values.Length);
+            Items.PrepareRead(0);
             StateHash = default;
         }
 
@@ -447,7 +377,7 @@ namespace ThirdPersonSimulation
         SimulationTick m_Tick;
         CharacterControlStateValue[] m_Values;
         CharacterControlStateValue[] m_MutableValues = Array.Empty<CharacterControlStateValue>();
-        readonly SimulationCanonicalPayloadHash.Accumulator m_Hash = new SimulationCanonicalPayloadHash.Accumulator();
+        readonly CanonicalHashWriter m_Hash = new CanonicalHashWriter();
         CharacterControlRuntimeStateTransactionStatus m_Status;
         bool m_ValuesChanged;
 
@@ -626,8 +556,8 @@ namespace ThirdPersonSimulation
     public static class CharacterControlRuntimeStateCodec
     {
         const uint Magic = 0x54535243;
-        const int Version = 5;
-        public const string CodecIdentity = "character-control-runtime-state/v5";
+        const int Version = 7;
+        public const string CodecIdentity = "character-control-runtime-state/v7";
 
         public static void WriteLengthPrefixed(CanonicalWriter writer, CharacterControlRuntimeState state)
         {
@@ -647,179 +577,99 @@ namespace ThirdPersonSimulation
 
         public static CharacterControlRuntimeState Read(ArraySegment<byte> bytes, ICanonicalTextResolver resolver)
         {
-            return Read(bytes, new CanonicalReader(Array.Empty<byte>()), new CanonicalWriter(), resolver);
+            return Read(bytes, new CanonicalReader(Array.Empty<byte>()), resolver);
         }
 
         public static CharacterControlRuntimeState Read(ArraySegment<byte> bytes,
-            CanonicalReader reader, CanonicalWriter writer, ICanonicalTextResolver resolver)
+            CanonicalReader reader, ICanonicalTextResolver resolver)
         {
             reader.Reset(bytes);
             reader.SetTextResolver(resolver);
+            ReadHeader(reader);
             CharacterControlStateSchema schema = ReadSchema(reader);
-            return ReadCore(bytes, schema, new CharacterControlRuntimeStateStorage(schema.FieldCount), reader, writer,
-                resolver, false);
+            return ReadFrame(schema, new CharacterControlRuntimeStateStorage(schema.FieldCount), reader, false);
         }
 
         public static CharacterControlRuntimeState Read(
             ArraySegment<byte> bytes,
             CharacterControlStateSchema schema)
         {
-            return Read(bytes, schema, new CanonicalReader(Array.Empty<byte>()), new CanonicalWriter(), null);
+            return Read(bytes, schema, new CanonicalReader(Array.Empty<byte>()), null);
         }
 
         public static CharacterControlRuntimeState Read(ArraySegment<byte> bytes, CharacterControlStateSchema schema,
-            CanonicalReader reader, CanonicalWriter writer, ICanonicalTextResolver resolver)
+            CanonicalReader reader, ICanonicalTextResolver resolver)
         {
             if (schema == null)
                 throw new ArgumentNullException(nameof(schema));
-            return Read(bytes, schema, new CharacterControlRuntimeStateStorage(schema.FieldCount), reader, writer, resolver);
+            return Read(bytes, schema, new CharacterControlRuntimeStateStorage(schema.FieldCount), reader, resolver);
         }
 
         public static CharacterControlRuntimeState Read(ArraySegment<byte> bytes, CharacterControlStateSchema schema,
-            CharacterControlRuntimeStateStorage storage, CanonicalReader reader, CanonicalWriter writer,
-            ICanonicalTextResolver resolver) => ReadCore(bytes, schema, storage, reader, writer, resolver, true);
+            CharacterControlRuntimeStateStorage storage, CanonicalReader reader,
+            ICanonicalTextResolver resolver) => ReadCore(bytes, schema, storage, reader, resolver, true);
 
         static CharacterControlRuntimeState ReadCore(ArraySegment<byte> bytes, CharacterControlStateSchema schema,
-            CharacterControlRuntimeStateStorage storage, CanonicalReader reader, CanonicalWriter writer,
+            CharacterControlRuntimeStateStorage storage, CanonicalReader reader,
             ICanonicalTextResolver resolver, bool consumePublishedIdentities)
         {
             reader.Reset(bytes);
             reader.SetTextResolver(resolver);
-            if (reader.ReadUInt32() != Magic || reader.ReadInt32() != Version)
-                throw new InvalidDataException("Character control runtime state header is invalid.");
-            reader.RequireText(CodecIdentity);
-            reader.RequireText(schema.ModuleId.Value);
-            int semanticVersion = reader.ReadInt32();
-            StableHash schemaHash = reader.ReadHash();
-            ulong lastCompletedTick = reader.ReadUInt64();
-            int count = reader.ReadInt32();
-            if (semanticVersion != schema.SemanticVersion ||
-                !schemaHash.Equals(schema.SchemaHash) || count < 0 || count != schema.FieldCount)
-                throw new InvalidDataException("Character control runtime state schema binding is stale or mismatched.");
+            ReadHeader(reader);
+            CharacterControlSchemaDeclaration.CanonicalWrite(reader.MatchWriter, schema.Declaration);
+            return ReadFrame(schema, storage, reader, consumePublishedIdentities);
+        }
+
+        static CharacterControlRuntimeState ReadFrame(CharacterControlStateSchema schema,
+            CharacterControlRuntimeStateStorage storage, CanonicalReader reader, bool consumePublishedIdentities)
+        {
+            storage.Clear();
+            CharacterControlStateFrame frame = CharacterControlStateFrame.CanonicalRead(reader, storage);
+            if (frame.Items.Count != schema.FieldCount)
+                throw new InvalidDataException("Character control runtime state values do not match its schema.");
             CharacterControlStateValue[] values = storage.Values;
             for (int i = 0; i < values.Length; i++)
             {
-                reader.RequireText(schema.Fields[i].Id.Value);
-                CharacterControlStateValueKind kind = ReadValueKind(reader.ReadByte());
-                CharacterControlStateSemantic semantic = ReadSemantic(reader.ReadUInt16());
-                if (kind != schema.Fields[i].ValueKind || semantic != schema.Fields[i].Semantic)
-                    throw new InvalidDataException($"Character control runtime state field '{schema.Fields[i].Id}' does not match schema index '{i}'.");
-                CharacterControlStateValue value = consumePublishedIdentities &&
-                    kind == CharacterControlStateValueKind.Identity &&
-                    (semantic == CharacterControlStateSemantic.ActiveState || semantic == CharacterControlStateSemantic.Transition)
-                    ? CharacterControlStateValue.FromIdentity(schema.ReadPublishedIdentity(reader, i))
-                    : ReadValue(reader, kind);
-                storage.SetValue(i, value);
+                CharacterControlStateFieldDescriptor field = schema.Fields[i];
+                CharacterControlStateValue value = values[i];
+                if (value.Kind != field.ValueKind)
+                    throw new InvalidDataException("Character control runtime state field kind does not match its schema.");
+                if (consumePublishedIdentities && field.ValueKind == CharacterControlStateValueKind.Identity &&
+                    (field.Semantic == CharacterControlStateSemantic.ActiveState || field.Semantic == CharacterControlStateSemantic.Transition))
+                    storage.SetValue(i, CharacterControlStateValue.FromIdentity(schema.ResolvePublishedIdentity(i, value.Identity)));
             }
             StableHash expectedHash = reader.ReadHash();
             reader.RequireComplete();
-            StableHash hash = CharacterControlRuntimeState.ComputeHash(schema, lastCompletedTick, values, storage.Hash);
-            var result = new CharacterControlRuntimeState(schema, lastCompletedTick, storage, hash);
-            if (!result.StateHash.Equals(expectedHash))
+            StableHash hash = CharacterControlRuntimeState.ComputeHash(schema, frame.LastCompletedTick, values, storage.Hash);
+            if (!hash.Equals(expectedHash))
                 throw new InvalidDataException("Character control runtime state hash is invalid.");
-            writer.SetTextCapture(null);
-            writer.Reset();
-            WriteCanonical(writer, result);
-            if (!writer.ContentEquals(bytes.AsSpan()))
-                throw new InvalidDataException("Character control runtime state is not canonical.");
-            return result;
+            return new CharacterControlRuntimeState(schema, frame.LastCompletedTick, storage, hash);
         }
 
         static CharacterControlStateSchema ReadSchema(CanonicalReader reader)
         {
+            CharacterControlSchemaDeclaration declaration = CharacterControlSchemaDeclaration.CanonicalReadMaterialized(reader);
+            return new CharacterControlStateSchema(declaration.ModuleId, declaration.SemanticVersion, declaration.Fields);
+        }
+
+        static void ReadHeader(CanonicalReader reader)
+        {
             if (reader.ReadUInt32() != Magic || reader.ReadInt32() != Version)
                 throw new InvalidDataException("Character control runtime state header is invalid.");
-            reader.RequireText(CodecIdentity);
-            var moduleId = new CharacterControlModuleId(CanonicalTextEncoding.DecodeString(reader.ReadTextSegment()));
-            int semanticVersion = reader.ReadInt32();
-            StableHash schemaHash = reader.ReadHash();
-            reader.ReadUInt64();
-            int count = reader.ReadInt32();
-            if (count < 0 || count > 1024)
-                throw new InvalidDataException($"Character control runtime state field count '{count}' is invalid.");
-            var fields = new CharacterControlStateFieldDescriptor[count];
-            for (int i = 0; i < fields.Length; i++)
-            {
-                var fieldId = new CharacterControlStateFieldId(CanonicalTextEncoding.DecodeString(reader.ReadTextSegment()));
-                CharacterControlStateValueKind kind = ReadValueKind(reader.ReadByte());
-                CharacterControlStateSemantic semantic = ReadSemantic(reader.ReadUInt16());
-                if (kind == CharacterControlStateValueKind.Identity)
-                    reader.SkipText();
-                else
-                    ReadValue(reader, kind);
-                fields[i] = new CharacterControlStateFieldDescriptor(fieldId, kind, semantic);
-            }
-            reader.ReadHash();
-            reader.RequireComplete();
-            var schema = new CharacterControlStateSchema(moduleId, semanticVersion, fields);
-            if (!schema.SchemaHash.Equals(schemaHash))
-                throw new InvalidDataException("Character control runtime state schema hash is invalid.");
-            return schema;
+            CharacterControlSchemaDeclaration.CanonicalRequireSchema(reader);
+            CharacterControlStateFrame.CanonicalRequireSchema(reader);
         }
 
         static void WriteCanonical(CanonicalWriter writer, CharacterControlRuntimeState state)
         {
             writer.WriteUInt32(Magic);
             writer.WriteInt32(Version);
-            writer.WriteText(CodecIdentity);
-            writer.WriteText(state.ModuleId.Value);
-            writer.WriteInt32(state.SemanticVersion);
-            writer.WriteHash(state.Schema.SchemaHash);
-            writer.WriteUInt64(state.LastCompletedTick);
-            writer.WriteInt32(state.Values.Count);
-            for (int i = 0; i < state.Values.Count; i++)
-            {
-                CharacterControlStateValue value = state.Values[i];
-                writer.WriteText(state.Schema.Fields[i].Id.Value);
-                writer.WriteByte((byte)value.Kind);
-                writer.WriteUInt16((ushort)state.Schema.Fields[i].Semantic);
-                WriteValue(writer, value);
-            }
+            writer.WriteHash(CharacterControlSchemaDeclaration.CanonicalSchemaHash);
+            writer.WriteHash(CharacterControlStateFrame.CanonicalSchemaHash);
+            CharacterControlSchemaDeclaration.CanonicalWrite(writer, state.Schema.Declaration);
+            CharacterControlStateFrame.CanonicalWrite(writer, state.Frame);
             writer.WriteHash(state.StateHash);
         }
 
-        static void WriteValue(CanonicalWriter writer, CharacterControlStateValue value)
-        {
-            switch (value.Kind)
-            {
-                case CharacterControlStateValueKind.Boolean: writer.WriteBoolean(value.Boolean); break;
-                case CharacterControlStateValueKind.Int32: writer.WriteInt32(value.Int32); break;
-                case CharacterControlStateValueKind.UInt64: writer.WriteUInt64(value.UInt64); break;
-                case CharacterControlStateValueKind.Identity: writer.WriteText(value.Identity); break;
-                case CharacterControlStateValueKind.Number: writer.WriteUInt64(value.UInt64); break;
-                default: throw new InvalidDataException($"Unsupported character control runtime state value kind '{value.Kind}'.");
-            }
-        }
-
-        static CharacterControlStateValue ReadValue(CanonicalReader reader, CharacterControlStateValueKind kind)
-        {
-            return kind switch
-            {
-                CharacterControlStateValueKind.Boolean => CharacterControlStateValue.FromBoolean(reader.ReadBoolean()),
-                CharacterControlStateValueKind.Int32 => CharacterControlStateValue.FromInt32(reader.ReadInt32()),
-                CharacterControlStateValueKind.UInt64 => CharacterControlStateValue.FromUInt64(reader.ReadUInt64()),
-                CharacterControlStateValueKind.Identity => CharacterControlStateValue.FromIdentity(reader.ReadText()),
-                CharacterControlStateValueKind.Number => CharacterControlStateValue.FromNumber(reader.ReadDouble()),
-                _ => throw new InvalidDataException($"Unsupported character control runtime state value kind '{kind}'.")
-            };
-        }
-
-        static CharacterControlStateValueKind ReadValueKind(byte value)
-        {
-            var result = (CharacterControlStateValueKind)value;
-            if (result is not (CharacterControlStateValueKind.Boolean or CharacterControlStateValueKind.Int32 or
-                CharacterControlStateValueKind.UInt64 or CharacterControlStateValueKind.Identity or CharacterControlStateValueKind.Number))
-                throw new InvalidDataException($"Character control runtime state control state value kind '{value}' is invalid.");
-            return result;
-        }
-
-        static CharacterControlStateSemantic ReadSemantic(ushort value)
-        {
-            var result = (CharacterControlStateSemantic)value;
-            if (result is not (CharacterControlStateSemantic.ActiveState or CharacterControlStateSemantic.EnteredTick or
-                CharacterControlStateSemantic.Transition or CharacterControlStateSemantic.StateValue))
-                throw new InvalidDataException($"Character control runtime state control state semantic '{value}' is invalid.");
-            return result;
-        }
     }
 }

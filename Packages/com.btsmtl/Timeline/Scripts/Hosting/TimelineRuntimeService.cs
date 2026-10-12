@@ -248,7 +248,7 @@ namespace BTSMTL.Timeline.Runtime
         public string Schema => m_Snapshot.Schema;
         public TimelineRuntimePlaybackHandle Handle => m_Snapshot.Handle;
         public ulong Generation => m_Snapshot.Generation;
-        public TimelineExecutionIdentity ExecutionIdentity => m_Snapshot.ExecutionIdentity;
+        public TimelineExecutionIdentity ExecutionIdentity => m_Snapshot.Playback.ExecutionIdentity;
         public TimelineRuntimeNumericTarget NumericTarget => m_Snapshot.NumericTarget;
         public CanonicalTextValue ContentRevision => m_Preparation.ContentRevision;
 
@@ -259,7 +259,6 @@ namespace BTSMTL.Timeline.Runtime
         {
             if (!ReferenceEquals(m_Service, service))
                 throw new InvalidOperationException("Timeline restore candidate belongs to another runtime service.");
-            Validate();
         }
 
         internal TimelineRuntimePlayback CreatePlayback()
@@ -275,25 +274,24 @@ namespace BTSMTL.Timeline.Runtime
         internal void ApplyTo(TimelineRuntimePlayback playback)
         {
             if (playback.Handle != m_Snapshot.Handle || playback.Generation != m_Snapshot.Generation ||
-                playback.ExecutionIdentity != m_Snapshot.ExecutionIdentity || playback.PlaybackMode != m_Snapshot.PlaybackMode ||
+                playback.ExecutionIdentity != m_Snapshot.Playback.ExecutionIdentity || playback.PlaybackMode != m_Snapshot.PlaybackMode ||
                 playback.NumericTarget != m_Snapshot.NumericTarget || playback.TickRate != m_Snapshot.TickRate ||
-                !playback.RequestId.Equals(m_Snapshot.RequestId) ||
-                !m_Snapshot.ContentRevision.Equals(playback.ContentRevision))
+                !playback.RequestId.Equals(m_Snapshot.Playback.RequestId) ||
+                !m_Snapshot.Playback.ContentRevision.Equals(playback.ContentRevision))
                 throw new InvalidOperationException("Timeline restore targets a different playback identity or content.");
-            if (!playback.RestoreCommittedState(
-                    m_Snapshot.State,
-                    m_Snapshot.CursorTime,
-                    m_Snapshot.Cycle,
-                    m_Snapshot.TimeCarry,
-                    m_Snapshot.Control,
-                    m_Snapshot.SectionId,
-                    m_Snapshot.ActiveClipIds.Span,
-                    m_Snapshot.TreeDecisionExits.Span,
-                    m_Snapshot.PendingTreeDecisionExits.Span,
-                    m_Snapshot.HasStopContext,
-                    m_Snapshot.StopContext,
-                    m_Snapshot.InitialBoundaryPending))
-                throw new InvalidOperationException("Timeline restore candidate is not a committed state.");
+            playback.RestoreCommittedState(
+                m_Snapshot.Playback.State,
+                m_Snapshot.Playback.CursorTime,
+                m_Snapshot.Playback.Cycle,
+                m_Snapshot.Playback.TimeCarry,
+                m_Snapshot.Playback.Control,
+                m_Snapshot.Playback.SectionId,
+                m_Snapshot.Playback.ActiveClipIds.Span,
+                m_Snapshot.Playback.TreeDecisionExits.Span,
+                m_Snapshot.Playback.PendingTreeDecisionExits.Span,
+                m_Snapshot.Playback.HasStopContext,
+                m_Snapshot.Playback.StopContext,
+                m_Snapshot.Playback.InitialBoundaryPending);
         }
 
         void Validate()
@@ -301,15 +299,15 @@ namespace BTSMTL.Timeline.Runtime
             if (!string.Equals(m_Snapshot.Schema, TimelineRuntimePlaybackSnapshot.CurrentSchema, StringComparison.Ordinal) ||
                 !m_Snapshot.Handle.IsValid ||
                 m_Snapshot.Generation == 0 ||
-                m_Snapshot.State == TimelineRuntimePlaybackState.Disposed ||
-                m_Snapshot.State == TimelineRuntimePlaybackState.Failed ||
+                m_Snapshot.Playback.State == TimelineRuntimePlaybackState.Disposed ||
+                m_Snapshot.Playback.State == TimelineRuntimePlaybackState.Failed ||
                 !m_Preparation.IsReady ||
-                m_Snapshot.ExecutionIdentity != m_Preparation.ExecutionIdentity ||
-                !m_Snapshot.RequestId.Equals(m_Preparation.RequestId) ||
+                m_Snapshot.Playback.ExecutionIdentity != m_Preparation.ExecutionIdentity ||
+                !m_Snapshot.Playback.RequestId.Equals(m_Preparation.RequestId) ||
                 m_Snapshot.PlaybackMode != m_Preparation.PlaybackMode ||
                 m_Snapshot.NumericTarget != m_Preparation.NumericTarget ||
                 m_Snapshot.TickRate != m_Service.TickRate ||
-                !m_Snapshot.ContentRevision.Equals(m_Preparation.ContentRevision))
+                !m_Snapshot.Playback.ContentRevision.Equals(m_Preparation.ContentRevision))
                 throw new InvalidOperationException("Timeline restore snapshot does not match the prepared content.");
         }
     }

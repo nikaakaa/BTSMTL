@@ -18,24 +18,30 @@ namespace BTSMTL.Timeline
         Disposed = 7
     }
 
-    public readonly struct TimelineExecutionIdentity : IEquatable<TimelineExecutionIdentity>
+    [CanonicalContract]
+    public readonly partial struct TimelineExecutionIdentity : IEquatable<TimelineExecutionIdentity>
     {
         public TimelineExecutionIdentity(CanonicalTextValue ownerIdentity, CanonicalTextValue callIdentity, ulong instanceId)
         {
-            if (CanonicalTextValue.IsNullOrWhiteSpace(ownerIdentity))
-                throw new ArgumentException("Timeline identity is required.", nameof(ownerIdentity));
-            if (CanonicalTextValue.IsNullOrWhiteSpace(callIdentity))
-                throw new ArgumentException("Timeline identity is required.", nameof(callIdentity));
             OwnerIdentity = ownerIdentity.Trim();
             CallIdentity = callIdentity.Trim();
-            if (instanceId == 0)
-                throw new ArgumentOutOfRangeException(nameof(instanceId));
             InstanceId = instanceId;
+            RequireValid();
         }
 
         public CanonicalTextValue OwnerIdentity { get; }
         public CanonicalTextValue CallIdentity { get; }
         public ulong InstanceId { get; }
+        [CanonicalValidation]
+        void RequireValid()
+        {
+            if (CanonicalTextValue.IsNullOrWhiteSpace(OwnerIdentity))
+                throw new ArgumentException("Timeline identity is required.", "ownerIdentity");
+            if (CanonicalTextValue.IsNullOrWhiteSpace(CallIdentity))
+                throw new ArgumentException("Timeline identity is required.", "callIdentity");
+            if (InstanceId == 0)
+                throw new ArgumentOutOfRangeException("instanceId");
+        }
         public bool IsValid => !CanonicalTextValue.IsNullOrEmpty(OwnerIdentity) &&
             !CanonicalTextValue.IsNullOrEmpty(CallIdentity) &&
             InstanceId != 0;
@@ -43,8 +49,8 @@ namespace BTSMTL.Timeline
             OwnerIdentity.Equals(other.OwnerIdentity) &&
             CallIdentity.Equals(other.CallIdentity) &&
             InstanceId == other.InstanceId;
-        public void Retain() { OwnerIdentity.Retain(); CallIdentity.Retain(); }
-        public void Release() { CallIdentity.Release(); OwnerIdentity.Release(); }
+        public void Retain() => CanonicalRetain(this);
+        public void Release() => CanonicalRelease(this);
         public override bool Equals(object obj) => obj is TimelineExecutionIdentity other && Equals(other);
         public override int GetHashCode() => HashCode.Combine(OwnerIdentity, CallIdentity, InstanceId);
         public static bool operator ==(TimelineExecutionIdentity left, TimelineExecutionIdentity right) => left.Equals(right);
@@ -526,7 +532,8 @@ namespace BTSMTL.Timeline
         Shutdown
     }
 
-    public readonly struct TimelinePlaybackStopContext
+    [CanonicalContract]
+    public readonly partial struct TimelinePlaybackStopContext
     {
         public TimelinePlaybackStopContext(TimelinePlaybackStopCause cause, ulong localLogicTick)
         {

@@ -21,17 +21,15 @@ namespace ThirdPersonSimulation
         readonly SimulationCharacterStatePayloadStorage.Page m_Page;
 
         internal SimulationCharacterStatePayload(SimulationCharacterStatePayloadStorage.Page page,
-            ReadOnlyMemory<byte> bytes, CharacterStateHash hash, CanonicalTextReferences text)
+            ReadOnlyMemory<byte> bytes, CharacterStateHash hash)
         {
             m_Page = page;
             Bytes = bytes;
             Hash = hash;
-            Text = text;
         }
 
         internal ReadOnlyMemory<byte> Bytes { get; }
         internal CharacterStateHash Hash { get; }
-        internal CanonicalTextReferences Text { get; }
         internal void Retain() => m_Page.Retain();
         internal void Release() => m_Page?.Release();
     }
@@ -42,17 +40,13 @@ namespace ThirdPersonSimulation
         {
             int m_Retainers;
 
-            internal Page(int maximumPayloadBytes, int hashPrefixBytes, int[] maximumTextValues)
+            internal Page(int maximumPayloadBytes, int hashPrefixBytes, int actorCount)
             {
                 Writer = new CanonicalWriter(new byte[checked(maximumPayloadBytes +
-                    hashPrefixBytes * maximumTextValues.Length)]);
-                Text = new CanonicalTextReferences[maximumTextValues.Length];
-                for (int index = 0; index < Text.Length; index++)
-                    Text[index] = new CanonicalTextReferences(maximumTextValues[index], null);
+                    hashPrefixBytes * actorCount)]);
             }
 
             internal CanonicalWriter Writer { get; }
-            internal CanonicalTextReferences[] Text { get; }
             internal bool IsReleased => m_Retainers == 0;
             internal void Retain() => m_Retainers++;
             public void Dispose() => Release();
@@ -61,21 +55,18 @@ namespace ThirdPersonSimulation
             {
                 if (--m_Retainers != 0)
                     return;
-                Writer.SetTextCapture(null);
                 Writer.Reset();
-                for (int index = 0; index < Text.Length; index++)
-                    Text[index].Reset();
             }
         }
 
         readonly Page[] m_Pages;
 
         internal SimulationCharacterStatePayloadStorage(int pageCount, int maximumPayloadBytes,
-            int hashPrefixBytes, int[] maximumTextValues)
+            int hashPrefixBytes, int actorCount)
         {
             m_Pages = new Page[pageCount];
             for (int index = 0; index < m_Pages.Length; index++)
-                m_Pages[index] = new Page(maximumPayloadBytes, hashPrefixBytes, maximumTextValues);
+                m_Pages[index] = new Page(maximumPayloadBytes, hashPrefixBytes, actorCount);
         }
 
         internal Page Acquire()
@@ -95,24 +86,16 @@ namespace ThirdPersonSimulation
     internal readonly struct SimulationSessionCheckpointPayloadLayout
     {
         internal SimulationSessionCheckpointPayloadLayout(SimulationSessionCompositionDescriptor descriptor,
-            in GameplayEffectSessionCapacity capacity, int maximumTextValuesPerPayload, int maximumDetachedTextReferences, int maximumDetachedTextPayloads)
-            : this(descriptor, checked(capacity.EncodedCheckpoints + capacity.CapturePayloads + capacity.RestorePayloads), in capacity, maximumTextValuesPerPayload, maximumDetachedTextReferences, maximumDetachedTextPayloads)
+            in GameplayEffectSessionCapacity capacity,
+            int maximumDetachedTextPayloads, int stepSnapshotCapacity)
         {
-        }
-
-        internal SimulationSessionCheckpointPayloadLayout(SimulationSessionCompositionDescriptor descriptor, int pageCount,
-            in GameplayEffectSessionCapacity capacity, int maximumTextValuesPerPayload, int maximumDetachedTextReferences, int maximumDetachedTextPayloads)
-        {
-            PayloadPageCount = pageCount;
-            if (PayloadPageCount > 0 && descriptor.MaximumSessionCheckpointPayloadBytes <= 0)
+            PayloadPageCount = checked(capacity.EncodedCheckpoints + capacity.CapturePayloads + capacity.RestorePayloads);
+            int activePayloadPages = checked(PayloadPageCount + stepSnapshotCapacity);
+            if (activePayloadPages > 0 && descriptor.MaximumSessionCheckpointPayloadBytes <= 0)
                 throw new InvalidOperationException("Session checkpoint storage requires MaximumSessionCheckpointPayloadBytes.");
-            MaximumPayloadBytes = PayloadPageCount == 0 ? 0 : descriptor.MaximumSessionCheckpointPayloadBytes;
-            TextEntriesPerPayload = PayloadPageCount == 0 ? 0 : maximumTextValuesPerPayload;
-            CharactersPerPayload = MaximumPayloadBytes / sizeof(char);
-            MaximumTextValues = PayloadPageCount == 0 || !descriptor.Endpoint.HasValue ? 0 : checked(
-                TextEntriesPerPayload * (PayloadPageCount + capacity.StatePageCount) + maximumDetachedTextReferences);
-            TotalCharacters = PayloadPageCount == 0 || !descriptor.Endpoint.HasValue ? 0 : checked(CharactersPerPayload *
-                (PayloadPageCount + capacity.StatePageCount + maximumDetachedTextPayloads));
+            MaximumPayloadBytes = activePayloadPages == 0 ? 0 : descriptor.MaximumSessionCheckpointPayloadBytes;
+            RetainedPayloadPageCount = activePayloadPages == 0 ? 0 : checked(
+                activePayloadPages + capacity.DecodedStatePageCount + maximumDetachedTextPayloads);
         }
 
         internal static int MaximumNonEmptyTextValues(int maximumPayloadBytes,
@@ -130,39 +113,32 @@ namespace ThirdPersonSimulation
 
         internal readonly int PayloadPageCount;
         internal readonly int MaximumPayloadBytes;
-        internal readonly int TextEntriesPerPayload;
-        internal readonly int CharactersPerPayload;
-        internal readonly int MaximumTextValues;
-        internal readonly int TotalCharacters;
+        internal readonly int RetainedPayloadPageCount;
     }
 
     internal sealed class SimulationSessionCheckpointPayloadStorage
     {
         internal sealed class Page
         {
-            internal Page(SimulationSessionCheckpointPayloadStorage owner, int index, int bytes,
+            internal Page(SimulationSessionCheckpointPayloadStorage owner, int index,
                 SimulationSessionCompositionDescriptor descriptor)
             {
                 Owner = owner;
                 Index = index;
-                Buffer = new byte[bytes];
-                Writer = new CanonicalWriter(Buffer);
                 Reader = new CanonicalReader(Array.Empty<byte>());
-                Text = new CanonicalTextReferences(owner.Layout.TextEntriesPerPayload, owner.TextStorage);
-                Writer.SetTextCapture(Text);
                 PreparedCheckpoint = new SimulationSessionCheckpoint(descriptor);
             }
 
             internal readonly SimulationSessionCheckpointPayloadStorage Owner;
             internal readonly int Index;
-            internal readonly byte[] Buffer;
-            internal readonly CanonicalWriter Writer;
+            internal CanonicalBytePayloadStorage.Page Payload;
+            internal byte[] Buffer => Payload.Buffer;
+            internal CanonicalWriter Writer => Payload.Writer;
             internal readonly CanonicalReader Reader;
-            internal readonly CanonicalTextReferences Text;
+            internal ICanonicalTextResolver Text => Payload;
             internal readonly SimulationSessionCheckpoint PreparedCheckpoint;
             internal SimulationSessionCheckpoint Lease;
             internal Action ClearDescriptors;
-            internal bool ReceptionComplete;
             internal int Retainers;
 
             internal void Retain() => Retainers++;
@@ -173,40 +149,39 @@ namespace ThirdPersonSimulation
                     return;
                 Lease.ClearPayload();
                 ClearDescriptors();
-                Text.Reset();
-                Writer.Reset();
                 Reader.SetTextResolver(null);
                 Reader.Reset(Array.Empty<byte>());
-                ReceptionComplete = false;
+                Payload.Release();
+                Payload = null;
                 Lease = null;
             }
         }
 
         readonly Page[] m_Pages;
-        internal SimulationSessionCheckpointPayloadLayout Layout { get; }
-        internal CanonicalTextStorage TextStorage { get; }
+        internal CanonicalBytePayloadStorage ByteStorage { get; }
 
         internal SimulationSessionCheckpointPayloadStorage(
-            SimulationSessionCompositionDescriptor descriptor, in GameplayEffectSessionCapacity capacity, int maximumTextValuesPerPayload, int maximumDetachedTextReferences, int maximumDetachedTextPayloads)
-            : this(descriptor, new SimulationSessionCheckpointPayloadLayout(descriptor, in capacity, maximumTextValuesPerPayload, maximumDetachedTextReferences, maximumDetachedTextPayloads))
+            SimulationSessionCompositionDescriptor descriptor, in GameplayEffectSessionCapacity capacity,
+            int maximumDetachedTextPayloads, int stepSnapshotCapacity)
+            : this(descriptor, new SimulationSessionCheckpointPayloadLayout(descriptor, in capacity,
+                maximumDetachedTextPayloads, stepSnapshotCapacity))
         {
         }
 
         internal SimulationSessionCheckpointPayloadStorage(SimulationSessionCompositionDescriptor descriptor, int pageCount,
-            in GameplayEffectSessionCapacity capacity, int maximumTextValuesPerPayload, int maximumDetachedTextReferences, int maximumDetachedTextPayloads)
-            : this(descriptor, new SimulationSessionCheckpointPayloadLayout(descriptor, pageCount, in capacity, maximumTextValuesPerPayload, maximumDetachedTextReferences, maximumDetachedTextPayloads))
+            CanonicalBytePayloadStorage byteStorage)
         {
+            ByteStorage = byteStorage;
+            m_Pages = new Page[pageCount];
+            for (int index = 0; index < m_Pages.Length; index++)
+                m_Pages[index] = new Page(this, index, descriptor);
         }
 
         SimulationSessionCheckpointPayloadStorage(SimulationSessionCompositionDescriptor descriptor,
             SimulationSessionCheckpointPayloadLayout layout)
+            : this(descriptor, layout.PayloadPageCount,
+                new CanonicalBytePayloadStorage(layout.RetainedPayloadPageCount, layout.MaximumPayloadBytes))
         {
-            Layout = layout;
-            TextStorage = descriptor.Endpoint.HasValue
-                ? new CanonicalTextStorage(Layout.MaximumTextValues, Layout.TotalCharacters) : null;
-            m_Pages = new Page[Layout.PayloadPageCount];
-            for (int index = 0; index < m_Pages.Length; index++)
-                m_Pages[index] = new Page(this, index, Layout.MaximumPayloadBytes, descriptor);
         }
 
         internal int Count => m_Pages.Length;
@@ -219,6 +194,7 @@ namespace ThirdPersonSimulation
                 Page page = m_Pages[index];
                 if (page.Lease != null)
                     continue;
+                page.Payload = ByteStorage.Acquire();
                 page.Lease = page.PreparedCheckpoint;
                 page.Retainers = 1;
                 return page;
@@ -228,8 +204,6 @@ namespace ThirdPersonSimulation
 
         internal Page Receive(SimulationSessionCheckpoint checkpoint)
         {
-            if (TextStorage == null)
-                throw new InvalidOperationException("Local Session checkpoint restore requires its captured payload and text owner.");
             Page page = Acquire();
             if (checkpoint.Payload.Length > page.Buffer.Length)
             {
@@ -318,14 +292,12 @@ namespace ThirdPersonSimulation
             m_Payload = payload;
         }
 
-        internal void CommitPayload(SimulationSessionCheckpointPayloadStorage.Page page, SimulationTick tick, StableHash hash,
-            bool receptionComplete = true)
+        internal void CommitPayload(SimulationSessionCheckpointPayloadStorage.Page page, SimulationTick tick, StableHash hash)
         {
             m_Page = page;
             Tick = tick;
             SnapshotHash = hash;
             m_Payload = page.Buffer.AsMemory(0, checked((int)page.Writer.Length));
-            page.ReceptionComplete = receptionComplete;
         }
 
         internal void AdoptPayloadPage(SimulationSessionCheckpointPayloadStorage.Page page)

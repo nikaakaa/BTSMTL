@@ -322,7 +322,7 @@ namespace BTSMTL.Timeline.Runtime
                 m_ExitedTreeDecisionClips,
                 m_PendingTreeClipExits);
             TimelineRuntimeSampleBuffer<CanonicalTextValue> activeClipIds = m_CandidateEvaluation.ActiveClipIds;
-            UpdateActiveClips(nextCycle, boundaries);
+            CaptureActiveClips(nextTime, nextCycle);
             bool hasUnexitedTreeDecisionClip = false;
             for (int index = 0; index < activeClipIds.Count; index++)
                 if (Content.Clips[Index.FindContent(activeClipIds[index])].ExitSource == TimelineClipExitSource.TreeDecision)
@@ -490,7 +490,7 @@ namespace BTSMTL.Timeline.Runtime
         internal bool InitialBoundaryPending => m_InitialBoundaryPending;
         internal IReadOnlyList<AbilityTimelineTreeClipExit> PendingTreeDecisionClips => m_PendingTreeClipExits;
 
-        internal bool RestoreCommittedState(
+        internal void RestoreCommittedState(
             TimelineRuntimePlaybackState state,
             FixedScalar cursorTime,
             int cycle,
@@ -505,29 +505,24 @@ namespace BTSMTL.Timeline.Runtime
             bool initialBoundaryPending)
         {
             if (m_PendingAdvance.IsValid || m_StopPending)
-                return false;
+                throw new InvalidOperationException($"Timeline restore '{RequestId}' has an uncommitted operation: advance={m_PendingAdvance.IsValid}, stop={m_StopPending}.");
             if (cursorTime < FixedScalar.Zero || cycle < 0 || cursorTime > Content.Duration)
-                return false;
+                throw new InvalidOperationException($"Timeline restore '{RequestId}' cursor is outside its content: time={cursorTime}, duration={Content.Duration}, cycle={cycle}.");
             if (Math.Abs((long)timeCarry) * 2 > m_TickRate)
-                return false;
+                throw new InvalidOperationException($"Timeline restore '{RequestId}' has an invalid time carry: carry={timeCarry}, tickRate={m_TickRate}.");
             if (state != TimelineRuntimePlaybackState.Prepared &&
                 state != TimelineRuntimePlaybackState.Running &&
                 state != TimelineRuntimePlaybackState.Stopping &&
                 state != TimelineRuntimePlaybackState.Completed &&
                 state != TimelineRuntimePlaybackState.Stopped)
-                return false;
+                throw new InvalidOperationException($"Timeline restore '{RequestId}' has an invalid committed state '{state}'.");
             bool requiresStopContext = state == TimelineRuntimePlaybackState.Stopping ||
                                        state == TimelineRuntimePlaybackState.Stopped;
             if (requiresStopContext != hasStopContext)
-                return false;
-            if (!ValidateRestoredSection(sectionId, cursorTime, out string declaredSection) ||
-                !ValidateRestoredActiveClips(
-                    activeClipIds,
-                    state,
-                    cursorTime,
-                    cycle,
-                    exitedTreeDecisionClips))
-                return false;
+                throw new InvalidOperationException($"Timeline restore '{RequestId}' stop context does not match state '{state}': hasStopContext={hasStopContext}.");
+            if (!ValidateRestoredSection(sectionId, cursorTime, out string declaredSection))
+                throw new InvalidOperationException($"Timeline restore '{RequestId}' section '{sectionId}' is not committed at time '{cursorTime}'.");
+            RequireRestoredActiveClips(activeClipIds, state, cursorTime, cycle, exitedTreeDecisionClips);
             m_CandidateEvaluation.Clear();
             m_CommittedEvaluation.Clear();
             m_CursorTime = cursorTime;
@@ -553,7 +548,6 @@ namespace BTSMTL.Timeline.Runtime
             HasStopContext = hasStopContext;
             StopContext = stopContext;
             State = state;
-            return true;
         }
 
         bool ValidateRestoredSection(CanonicalTextValue sectionId, FixedScalar cursorTime, out string declaredSection)
@@ -573,7 +567,7 @@ namespace BTSMTL.Timeline.Runtime
             return false;
         }
 
-        bool ValidateRestoredActiveClips(
+        void RequireRestoredActiveClips(
             ReadOnlySpan<CanonicalTextValue> activeClipIds,
             TimelineRuntimePlaybackState state,
             FixedScalar cursorTime,
@@ -582,7 +576,11 @@ namespace BTSMTL.Timeline.Runtime
         {
             int suppliedCount = activeClipIds.Length;
             if (state != TimelineRuntimePlaybackState.Running)
-                return suppliedCount == 0;
+            {
+                if (suppliedCount != 0)
+                    throw new InvalidOperationException($"Timeline restore '{RequestId}' state '{state}' contains '{suppliedCount}' active clips at time '{cursorTime}'.");
+                return;
+            }
             int expectedCount = 0;
             List<int> selected = m_CandidateEvaluation.SamplingClips;
             selected.Clear();
@@ -601,9 +599,10 @@ namespace BTSMTL.Timeline.Runtime
                     if (activeClipIds[index].Equals(clip.AuthoringId))
                         occurrences++;
                 if (occurrences != 1)
-                    return false;
+                    throw new InvalidOperationException($"Timeline restore '{RequestId}' active clip '{clip.AuthoringId}' has '{occurrences}' occurrences at time '{cursorTime}', cycle '{cycle}'.");
             }
-            return expectedCount == suppliedCount;
+            if (expectedCount != suppliedCount)
+                throw new InvalidOperationException($"Timeline restore '{RequestId}' active clip count does not match time '{cursorTime}', cycle '{cycle}': expected={expectedCount}, supplied={suppliedCount}, clips=[{string.Join(", ", activeClipIds.ToArray())}].");
         }
 
         internal static bool ContainsExit(IReadOnlyList<AbilityTimelineTreeClipExit> exits, string clipId, int cycle)
@@ -634,59 +633,31 @@ namespace BTSMTL.Timeline.Runtime
         void RefreshActiveState()
         {
             m_ActiveClipIds.Clear();
+            CaptureActiveClips(m_CursorTime, m_Cycle);
+            TimelineRuntimeSampleBuffer<CanonicalTextValue> active = m_CandidateEvaluation.ActiveClipIds;
+            for (int index = 0; index < active.Count; index++)
+                m_ActiveClipIds.Add(active[index]);
+            m_SectionId = Index.SectionAt(m_CursorTime);
+        }
+
+        void CaptureActiveClips(FixedScalar cursorTime, int cycle)
+        {
+            TimelineRuntimeSampleBuffer<CanonicalTextValue> active = m_CandidateEvaluation.ActiveClipIds;
             List<int> selected = m_CandidateEvaluation.SamplingClips;
             selected.Clear();
             TimelineRuntimeClipIndex lifetimes = Index.Logic.Lifetimes;
-            lifetimes.Select(m_CursorTime, m_CursorTime, true, selected);
+            lifetimes.Select(cursorTime, cursorTime, true, selected);
             for (int index = 0; index < selected.Count; index++)
             {
                 TimelineContentClip clip = Content.Clips[lifetimes[selected[index]].ContentIndex];
                 bool treeDecision = clip.ExitSource == TimelineClipExitSource.TreeDecision;
                 if (treeDecision
-                    ? !m_ExitedTreeDecisionClips.Contains(new AbilityTimelineTreeClipExit(clip.AuthoringId, m_Cycle)) &&
-                      !m_PendingTreeClipExits.Contains(new AbilityTimelineTreeClipExit(clip.AuthoringId, m_Cycle))
-                    : m_CursorTime < clip.EndTime)
-                    m_ActiveClipIds.Add(clip.AuthoringId);
-            }
-            m_SectionId = Index.SectionAt(m_CursorTime);
-        }
-
-        void UpdateActiveClips(int cycle, IReadOnlyList<TimelineRuntimeClipBoundary> boundaries)
-        {
-            TimelineRuntimeSampleBuffer<CanonicalTextValue> active = m_CandidateEvaluation.ActiveClipIds;
-            if (cycle == m_Cycle)
-                for (int index = 0; index < m_ActiveClipIds.Count; index++)
-                    active.Add(m_ActiveClipIds[index]);
-            for (int index = 0; index < boundaries.Count; index++)
-            {
-                TimelineRuntimeClipBoundary boundary = boundaries[index];
-                if (boundary.Cycle != cycle)
-                    continue;
-                int lower = 0;
-                int upper = active.Count;
-                while (lower < upper)
-                {
-                    int middle = lower + (upper - lower) / 2;
-                    if (CanonicalTextValue.CompareOrdinal(active[middle], boundary.AuthoringId) < 0)
-                        lower = middle + 1;
-                    else
-                        upper = middle;
-                }
-                bool present = lower < active.Count && active[lower].Equals(boundary.AuthoringId);
-                if (boundary.Kind == TimelineRuntimeClipBoundaryKind.Exit)
-                {
-                    if (present)
-                        active.RemoveAt(lower);
-                    continue;
-                }
-                TimelineContentClip clip = Content.Clips[Index[boundary.AuthoringId].ContentIndex];
-                bool treeDecision = clip.ExitSource == TimelineClipExitSource.TreeDecision;
-                if (!present && (treeDecision
                     ? !ContainsExit(m_ExitedTreeDecisionClips, clip.AuthoringId, cycle) &&
                       !ContainsExit(m_PendingTreeClipExits, clip.AuthoringId, cycle)
-                    : clip.StartTime < clip.EndTime))
-                    active.Insert(lower, clip.AuthoringId);
+                    : cursorTime < clip.EndTime)
+                    active.Add(clip.AuthoringId);
             }
+            active.Sort(s_CompareClipIds);
         }
 
         TimelineRuntimeSampleBuffer<TimelineRuntimeClipBoundary> CollectBoundaries(

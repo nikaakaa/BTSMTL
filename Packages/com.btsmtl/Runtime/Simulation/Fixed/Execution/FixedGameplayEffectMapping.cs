@@ -58,6 +58,8 @@ namespace ThirdPersonSimulation.Fixed
                         ? GameplayEffectModifierPhase.BaseValue
                         : GameplayEffectModifierPhase.CurrentValue),
                 PortableGrantedTagsComponent => new GameplayEffectComponentDescriptor(GameplayEffectComponentKind.GrantedTags),
+                PortableBlockAbilitiesComponent => new GameplayEffectComponentDescriptor(GameplayEffectComponentKind.BlockAbilities),
+                PortableReplacementSourceRequirementComponent => new GameplayEffectComponentDescriptor(GameplayEffectComponentKind.ReplacementSourceRequirement),
                 PortableTagRequirementsComponent requirement => new GameplayEffectComponentDescriptor(
                     GameplayEffectComponentKind.TagRequirement,
                     requirementPhase: ToCommon(requirement.Phase)),
@@ -115,7 +117,8 @@ namespace ThirdPersonSimulation.Fixed
                         ingress.Context.PredictionKey,
                         ingress.Context.GameplayResultId,
                         ingress.Context.SourceTick,
-                        SimulationGameplayEffectApplicationMode.Confirmed),
+                        SimulationGameplayEffectApplicationMode.Confirmed,
+                        ingress.Context.Scope, ingress.Context.Holder, ingress.Context.Success, ingress.Context.SuccessTarget),
                     ingress.SetByCallerValues,
                     ingress.SourceAttributeSnapshots,
                     ingress.SourceTagSnapshot);
@@ -134,12 +137,12 @@ namespace ThirdPersonSimulation.Fixed
                 ingress.Correction);
         }
 
-        static SimulationGameplayEffectContext ToTarget(GameplayEffectContextIdentity context) =>
+        static SimulationGameplayEffectContext ToTarget(GameplayEffectContextIdentity context, SimulationActionTargetSnapshot successTarget = default) =>
             new SimulationGameplayEffectContext(context.SourceActor, context.TargetActor,
                 context.SourceActionInstanceId, context.PredictionKey, context.GameplayResultId,
                 context.SourceTick, context.Predicted
                     ? SimulationGameplayEffectApplicationMode.Predicted
-                    : SimulationGameplayEffectApplicationMode.Confirmed);
+                    : SimulationGameplayEffectApplicationMode.Confirmed, context.Scope, context.Holder, context.Success, successTarget);
 
         static GameplayEffectContextIdentity ToCommon(SimulationGameplayEffectContext context)
         {
@@ -151,7 +154,7 @@ namespace ThirdPersonSimulation.Fixed
                     context.PredictionKey,
                     context.GameplayResultId,
                     context.SourceTick,
-                    context.IsPredicted)
+                    context.IsPredicted, context.Scope, context.Holder, context.Success)
                 : default;
         }
 

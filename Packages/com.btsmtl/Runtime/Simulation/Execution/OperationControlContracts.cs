@@ -2,6 +2,23 @@ using System;
 
 namespace ThirdPersonSimulation
 {
+    public enum GraphExecutionContract : byte
+    {
+        Complete,
+        Resumable
+    }
+
+    public readonly struct GraphExecutionEntry
+    {
+        public GraphExecutionEntry(OperationHandle operation, GraphExecutionContract contract)
+        {
+            Operation = operation;
+            Contract = contract;
+        }
+        public OperationHandle Operation { get; }
+        public GraphExecutionContract Contract { get; }
+    }
+
     public enum OperationWaitReason
     {
         ChildCompletion,

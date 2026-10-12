@@ -12,7 +12,7 @@ namespace ThirdPersonSimulation.Fixed
         const uint ActiveMagic = 0x32464745;
         const uint PeriodsMagic = 0x32504745;
         const uint JournalMagic = 0x324A4745;
-        const int StateVersion = 7;
+        const int StateVersion = 9;
 
         internal static void Write(CanonicalWriter writer, GameplayEffectStateAggregate aggregate)
         {
@@ -55,10 +55,11 @@ namespace ThirdPersonSimulation.Fixed
             FixedGameplayEffectRuntimeCatalog catalog)
         {
             long prefixPosition = BeginBlock(writer, TagsMagic);
+            writer.WriteHash(GameplayTagSourceIdentityValue.CanonicalSchemaHash);
             writer.WriteInt32(tagSources.Length);
             for (int i = 0; i < tagSources.Length; i++)
             {
-                tagSources[i].Key.Write(writer);
+                GameplayTagSourceIdentityValue.CanonicalWrite(writer, tagSources[i].Key);
                 WriteTags(writer, tagSources[i].Value, catalog);
             }
             writer.EndLengthPrefixedBlock(prefixPosition);
@@ -68,6 +69,7 @@ namespace ThirdPersonSimulation.Fixed
             GameplayTagSnapshotBank pages, EquipmentStatePageBank equipment,
             SortedList<GameplayTagSourceIdentityValue, IReadOnlyList<string>> tagSources)
         {
+            GameplayTagSourceIdentityValue.CanonicalRequireSchema(reader);
             int count = ReadCount(reader, catalog.CapacityLayout.SourceWidth);
             GameplayTagSourceIdentityValue previous = default;
             int externalSources = 0;
@@ -104,28 +106,14 @@ namespace ThirdPersonSimulation.Fixed
 
         static GameplayTagSourceIdentityValue ReadTagSource(CanonicalReader reader, EquipmentStatePageBank equipment)
         {
-            switch (reader.ReadByte())
+            GameplayTagSourceIdentityValue source = GameplayTagSourceIdentityValue.CanonicalRead(reader);
+            if (source.Kind == 3)
             {
-                case 0:
-                    return GameplayTagSourceIdentityValue.Literal(reader.ReadText());
-                case 1:
-                    return GameplayTagSourceIdentityValue.Action(reader.ReadUInt64());
-                case 2:
-                    return GameplayTagSourceIdentityValue.Effect(reader.ReadUInt64());
-                case 3:
-                    if (equipment == null)
-                        throw new InvalidDataException("Gameplay Tag Equipment source requires the published Equipment layout.");
-                    ActorId actor = new ActorId(reader.ReadText());
-                    EquipmentSlotId slot = new EquipmentSlotId(equipment.ReadIdentity(reader));
-                    bool declared = false;
-                    for (int i = 0; i < equipment.Layout.Slots.Count; i++)
-                        declared |= equipment.Layout.Slots[i].SlotId == slot;
-                    if (!declared)
-                        throw new InvalidDataException("Gameplay Tag Equipment source Slot is absent from the published layout.");
-                    return GameplayTagSourceIdentityValue.Equipment(actor, slot, reader.ReadUInt64());
-                default:
-                    throw new InvalidDataException("Gameplay Tag source kind is invalid.");
+                if (equipment == null)
+                    throw new InvalidDataException("Gameplay Tag Equipment source requires the published Equipment layout.");
+                equipment.Layout.RequireSlot(source.Slot);
             }
+            return source;
         }
 
         static void WriteAttributes(CanonicalWriter writer,
@@ -491,12 +479,18 @@ namespace ThirdPersonSimulation.Fixed
             writer.WriteUInt64(context.GameplayResultId);
             writer.WriteUInt64(context.SourceTick);
             writer.WriteByte((byte)context.ApplicationMode);
+            GameplayEffectScope.CanonicalWrite(writer, context.Scope);
+            context.Holder.Write(writer);
+            context.Success.Write(writer);
+            context.WriteSuccessTarget(writer);
         }
 
         static SimulationGameplayEffectContext ReadContext(CanonicalReader reader) =>
             new SimulationGameplayEffectContext(new ActorId(reader.ReadText()), new ActorId(reader.ReadText()),
                 reader.ReadUInt64(), reader.ReadUInt64(), reader.ReadUInt64(), reader.ReadUInt64(),
-                (SimulationGameplayEffectApplicationMode)reader.ReadByte());
+                (SimulationGameplayEffectApplicationMode)reader.ReadByte(),
+                GameplayEffectScope.CanonicalRead(reader), GameplayEffectHolderIdentity.Read(reader),
+                GameplayEffectSuccessContext.Read(reader), SimulationGameplayEffectContext.ReadSuccessTarget(reader));
 
         static void WriteContextIdentity(CanonicalWriter writer, GameplayEffectContextIdentity context)
         {
@@ -507,11 +501,15 @@ namespace ThirdPersonSimulation.Fixed
             writer.WriteUInt64(context.GameplayResultId);
             writer.WriteUInt64(context.SourceTick);
             writer.WriteBoolean(context.Predicted);
+            GameplayEffectScope.CanonicalWrite(writer, context.Scope);
+            context.Holder.Write(writer);
+            context.Success.Write(writer);
         }
 
         static GameplayEffectContextIdentity ReadContextIdentity(CanonicalReader reader) =>
             new GameplayEffectContextIdentity(new ActorId(reader.ReadText()), new ActorId(reader.ReadText()),
-                reader.ReadUInt64(), reader.ReadUInt64(), reader.ReadUInt64(), reader.ReadUInt64(), reader.ReadBoolean());
+                reader.ReadUInt64(), reader.ReadUInt64(), reader.ReadUInt64(), reader.ReadUInt64(), reader.ReadBoolean(),
+                GameplayEffectScope.CanonicalRead(reader), GameplayEffectHolderIdentity.Read(reader), GameplayEffectSuccessContext.Read(reader));
 
         static void WriteModifier(CanonicalWriter writer, PortableAttributeModifierState modifier)
         {

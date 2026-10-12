@@ -15,7 +15,6 @@ namespace ThirdPersonSimulation
         SimulationInputRequestState ReadInputRequest(string requestId);
         bool IsInputRequestPending(in SimulationInputRequestState request);
         bool HasGameplayEvent(string eventId);
-        bool IsActionWindowActive(in GameplayAbilitySourceContext source, string windowTag);
         bool EvaluateRuleCondition(CharacterSkillId skillId, in GameplayAbilitySourceContext source, OperationHandle condition);
         void PreviewRule(GameplayAbilityExecutionBinding ability, GameplayAbilityActivationRuleBinding rule,
             in GameplayAbilitySourceContext source, in SimulationInputRequestState inputRequest, out ActionAdmissionDecision admission);
@@ -140,6 +139,10 @@ namespace ThirdPersonSimulation
             ? m_Actor.AbilityExecutionInput.HasGameplayEvent(m_Actor.ActorId, eventId)
             : m_AvailabilityRead.HasGameplayEvent(eventId);
 
+        public bool HasOpportunity(CharacterSkillId candidate, OperationHandle query, in GameplayAbilitySourceContext source) =>
+            m_Actor.EffectExecutionScratch.Target.TryFindOpportunity(GameplayEffectScope.Action(source),
+                m_Actor.AbilityInstallations.Require(candidate).Services.RequireTagQuery(query), out _, out _);
+
         public int GetSourceSlotCount(CharacterSkillId abilityId) => m_AvailabilityRead != null
             ? m_AvailabilityRead.ActionCount : m_Actions.GetActionInstanceIndices(abilityId).Count;
 
@@ -209,29 +212,26 @@ namespace ThirdPersonSimulation
             return false;
         }
 
-        public bool IsSelectedSourceWindowActive(in GameplayAbilitySourceContext source,
-            CharacterSkillId queryOwner, OperationHandle queryOperation, string windowTag)
-        {
-            if (!TryReadSource(in source, out _))
-                return false;
-            var query = m_Actor.AbilityInstallations.Require(queryOwner).Services.RequireTagQuery(queryOperation);
-            var installation = m_Actor.AbilityInstallations.Require(source.SkillId);
-            GameplayAbilityExecutionBinding ability = installation.Data.Binding;
-            return m_Actor.AbilityInstallations.GameplayEffectCatalog.Matches(query,
-                ability.Tags) &&
-                (m_AvailabilityRead == null
-                    ? m_Actor.GetInvocation(source.SkillId).HasActionWindowProjection(in source, windowTag)
-                    : m_AvailabilityRead.IsActionWindowActive(in source, windowTag));
-        }
-
         public bool IsSelectedSourcePhase(in GameplayAbilitySourceContext source, AbilityLifecyclePhase expectedPhase) =>
             TryReadSource(in source, out AbilityLifecyclePhase phase) && phase == expectedPhase;
+
+        public bool SelectedSourceEffectsAllowCandidate(CharacterSkillId candidate, in GameplayAbilitySourceContext source)
+        {
+            IReadOnlyList<string> candidateTags = m_Actor.AbilityInstallations.Require(candidate).Data.Binding.Tags;
+            bool hasSource = source.IsValid && TryReadSource(in source, out _);
+            IReadOnlyList<string> sourceTags = hasSource
+                ? m_Actor.AbilityInstallations.Require(source.SkillId).Data.Binding.Tags : Array.Empty<string>();
+            Float32GameplayEffectTarget effects = m_Actor.EffectExecutionScratch.Target;
+            return !effects.TryFindAbilityBlock(candidateTags, GameplayEffectScope.Actor, out _) &&
+                !effects.TryFindReplacementSourceRejection(candidateTags, sourceTags, hasSource, out _) &&
+                (!hasSource || !effects.TryFindAbilityBlock(candidateTags, GameplayEffectScope.Action(source), out _));
+        }
 
         public bool Evaluate(CharacterSkillId abilityId, OperationHandle condition,
             in GameplayAbilitySourceContext source, GameplayAbilityRuleEvaluationMode mode) =>
             mode == GameplayAbilityRuleEvaluationMode.Availability
                 ? m_AvailabilityRead.EvaluateRuleCondition(abilityId, in source, condition)
-                : m_Actor.GetInvocation(abilityId).EvaluateRuleCondition(this, in source, condition, mode);
+                : m_Actor.GetInvocation(abilityId).EvaluateRuleCondition(in source, condition, mode);
 
         public void Preview(GameplayAbilityExecutionBinding ability,
             GameplayAbilityActivationRuleBinding rule, in GameplayAbilitySourceContext source,

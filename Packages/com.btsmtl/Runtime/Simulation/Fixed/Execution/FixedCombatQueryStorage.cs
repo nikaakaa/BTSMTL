@@ -117,6 +117,14 @@ namespace ThirdPersonSimulation.Fixed
             set { value.Retain(); m_Action.Release(); m_Action = value; }
         }
         public PortableEffectDefinition Definition;
+        public ulong IntervalEffectHandle;
+        public GameplayEffectScope IntervalScope;
+        GameplayEffectHolderIdentity m_IntervalHolder;
+        public GameplayEffectHolderIdentity IntervalHolder
+        {
+            get => m_IntervalHolder;
+            set { value.Retain(); m_IntervalHolder.Release(); m_IntervalHolder = value; }
+        }
         CanonicalTextValue m_NodeId;
         public CanonicalTextValue NodeId
         {
@@ -142,6 +150,7 @@ namespace ThirdPersonSimulation.Fixed
         internal void ClearText()
         {
             Identity = default; Action = default; NodeId = default; Header = default;
+            IntervalEffectHandle = 0; IntervalScope = default; IntervalHolder = default;
         }
     }
 
@@ -164,9 +173,13 @@ namespace ThirdPersonSimulation.Fixed
         }
         public void Clear()
         {
-            for (int index = 0; index < Count; index++)
+            Truncate(0);
+        }
+        internal void Truncate(int count)
+        {
+            for (int index = count; index < Count; index++)
                 m_Queries[index].ClearText();
-            Count = 0;
+            Count = count;
         }
     }
 

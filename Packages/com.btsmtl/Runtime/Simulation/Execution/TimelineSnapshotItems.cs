@@ -9,6 +9,7 @@ namespace ThirdPersonSimulation
         void Release();
     }
 
+    [CanonicalBorrowedSequence(typeof(TimelineSnapshotItemBuffer<>))]
     public readonly struct TimelineSnapshotItems<T>
     {
         readonly object m_Items;
@@ -92,7 +93,7 @@ namespace ThirdPersonSimulation
         internal Span<T> Reserve(int count, out TimelineSnapshotItems<T> items)
         {
             int start = m_Count;
-            if (count > m_Items.Length - start)
+            if (count < 0 || count > m_Items.Length - start)
                 throw new InvalidOperationException("Timeline snapshot items exceed the prepared payload capacity.");
             m_Count += count;
             items = new TimelineSnapshotItems<T>(this, start, count);
@@ -121,6 +122,18 @@ namespace ThirdPersonSimulation
         {
             Array.Clear(m_Items, 0, m_Count);
             m_Count = 0;
+        }
+
+        internal void RetainItems()
+        {
+            for (int index = 0; index < m_Count; index++)
+                m_RetainItem(m_Items[index]);
+        }
+
+        internal void ReleaseItems()
+        {
+            for (int index = 0; index < m_Count; index++)
+                m_ReleaseItem(m_Items[index]);
         }
     }
 
@@ -176,34 +189,12 @@ namespace ThirdPersonSimulation
 
         void RetainText()
         {
-            ReadOnlySpan<CanonicalTextValue> clips = ActiveClipIds.Read(Generation, 0, ActiveClipIds.Count);
-            for (int index = 0; index < clips.Length; index++)
-                clips[index].Retain();
-            ReadOnlySpan<AbilityTimelineTreeClipExit> exits = TreeDecisionExits.Read(Generation, 0, TreeDecisionExits.Count);
-            for (int index = 0; index < exits.Length; index++)
-                exits[index].Retain();
-            exits = PendingTreeDecisionExits.Read(Generation, 0, PendingTreeDecisionExits.Count);
-            for (int index = 0; index < exits.Length; index++)
-                exits[index].Retain();
-            ReadOnlySpan<AbilityTimelineTreeClipState> trees = ActiveTreeClips.Read(Generation, 0, ActiveTreeClips.Count);
-            for (int index = 0; index < trees.Length; index++)
-                trees[index].Retain();
+            AbilityTimelineRuntimeSnapshot.CanonicalRetainStorageItems(this);
         }
 
         void ReleaseText()
         {
-            ReadOnlySpan<CanonicalTextValue> clips = ActiveClipIds.Read(Generation, 0, ActiveClipIds.Count);
-            for (int index = 0; index < clips.Length; index++)
-                clips[index].Release();
-            ReadOnlySpan<AbilityTimelineTreeClipExit> exits = TreeDecisionExits.Read(Generation, 0, TreeDecisionExits.Count);
-            for (int index = 0; index < exits.Length; index++)
-                exits[index].Release();
-            exits = PendingTreeDecisionExits.Read(Generation, 0, PendingTreeDecisionExits.Count);
-            for (int index = 0; index < exits.Length; index++)
-                exits[index].Release();
-            ReadOnlySpan<AbilityTimelineTreeClipState> trees = ActiveTreeClips.Read(Generation, 0, ActiveTreeClips.Count);
-            for (int index = 0; index < trees.Length; index++)
-                trees[index].Release();
+            AbilityTimelineRuntimeSnapshot.CanonicalReleaseStorageItems(this);
         }
 
         internal void Release()
@@ -286,17 +277,30 @@ namespace ThirdPersonSimulation
 
         public AbilityTimelineSnapshotStorage BeginWrite()
         {
+            AbilityTimelineSnapshotStorage page = RentPage();
+            page.BeginWrite(ContentLifetime);
+            ReleaseCurrent();
+            m_Current = page;
+            return page;
+        }
+
+        internal AbilityTimelineSnapshotStorage BeginDecode()
+        {
+            AbilityTimelineSnapshotStorage page = RentPage();
+            page.BeginDecode();
+            return page;
+        }
+
+        AbilityTimelineSnapshotStorage RentPage()
+        {
             for (int index = 0; index < m_Pages.Count; index++)
             {
                 AbilityTimelineSnapshotStorage page = m_Pages[index];
                 if (page.Retainers != 0)
                     continue;
-                page.BeginWrite(ContentLifetime);
-                ReleaseCurrent();
-                m_Current = page;
                 return page;
             }
-            throw new InvalidOperationException("Timeline snapshot page capacity does not cover retained steps.");
+            throw new InvalidOperationException("Timeline snapshot page capacity does not cover retained state.");
         }
 
         public void ReleaseCurrent()

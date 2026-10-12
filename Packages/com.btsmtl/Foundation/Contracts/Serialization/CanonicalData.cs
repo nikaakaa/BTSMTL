@@ -11,37 +11,48 @@ namespace ThirdPersonSimulation
     {
         void Write<T>(T value) where T : unmanaged;
         void WriteSpan<T>(ReadOnlySpan<T> values) where T : unmanaged;
-    }
-
-    public static class RecordedRuntimeStateWriterExtensions
-    {
-        public static void WriteText<TWriter>(this ref TWriter writer, string text)
-            where TWriter : struct, IRecordedRuntimeStateWriter
-        {
-            writer.Write(text == null ? -1 : text.Length);
-            writer.WriteSpan(text.AsSpan());
-        }
-
-        public static void WriteText<TWriter>(this ref TWriter writer, CanonicalTextValue text)
-            where TWriter : struct, IRecordedRuntimeStateWriter
-        {
-            writer.Write(text.IsNull ? -1 : text.Length);
-            using CanonicalTextReadLease read = text.AcquireRead();
-            writer.WriteSpan(text.Span);
-        }
+        void WriteText(CanonicalTextValue text);
     }
 
     public ref struct RecordedRuntimeStateReader
     {
         ReadOnlySpan<byte> m_Bytes;
+        readonly CanonicalTextValue m_Text;
+        CanonicalTextWriteBuffer m_TextCapture;
+        int m_TextOffset;
 
-        public RecordedRuntimeStateReader(ReadOnlySpan<byte> bytes) => m_Bytes = bytes;
+        public RecordedRuntimeStateReader(ReadOnlySpan<byte> bytes, CanonicalTextValue text)
+        {
+            m_Bytes = bytes;
+            m_Text = text;
+            m_TextCapture = default;
+            m_TextOffset = 0;
+        }
 
-        public string ReadText()
+        public RecordedRuntimeStateReader(ReadOnlySpan<byte> bytes, CanonicalTextWriteBuffer textCapture)
+        {
+            m_Bytes = bytes;
+            m_Text = default;
+            m_TextCapture = textCapture;
+            m_TextOffset = 0;
+        }
+
+        public CanonicalTextValue ReadText()
         {
             int length = Read<int>();
-            return length < 0 ? null : new string(ReadSpan<char>(length));
+            if (length < 0)
+                return default;
+            if (length == 0)
+                return CanonicalTextValue.Empty;
+            ReadOnlySpan<char> characters = ReadSpan<char>(length);
+            if (m_TextCapture.IsValid)
+                return m_TextCapture.Append(characters);
+            CanonicalTextValue value = m_Text.Substring(m_TextOffset, length);
+            m_TextOffset += length;
+            return value;
         }
+
+        public void Dispose() => m_TextCapture.Dispose();
 
         public T Read<T>() where T : unmanaged
         {
@@ -57,6 +68,58 @@ namespace ThirdPersonSimulation
             m_Bytes = m_Bytes.Slice(bytes);
             return result;
         }
+    }
+
+    public struct CanonicalTextWriteBuffer : IDisposable
+    {
+        CanonicalTextStorage.Text m_Text;
+        int m_Written;
+
+        internal CanonicalTextWriteBuffer(CanonicalTextStorage.Text text)
+        {
+            m_Text = text;
+            m_Written = 0;
+        }
+
+        public bool IsValid => m_Text != null;
+
+        public CanonicalTextValue Append(ReadOnlySpan<char> characters)
+        {
+            m_Text.CaptureAt(m_Written, characters);
+            var value = new CanonicalTextValue(m_Text, m_Written, characters.Length);
+            m_Written += characters.Length;
+            return value;
+        }
+
+        public CanonicalTextValue DetachWritten()
+        {
+            var value = new CanonicalTextValue(m_Text, 0, m_Written);
+            this = default;
+            return value;
+        }
+
+        public void Dispose()
+        {
+            m_Text?.Release();
+            this = default;
+        }
+    }
+
+    internal interface ICanonicalTextOwner
+    {
+        ReadOnlySpan<char> Span { get; }
+        object ReadGate { get; }
+        long LockOrder { get; }
+        void Retain();
+        void Release();
+        void RetainLocked();
+        void ReleaseLocked();
+    }
+
+    internal static class CanonicalTextOwnerOrdering
+    {
+        static long s_Next;
+        internal static long Next() => Interlocked.Increment(ref s_Next);
     }
 
     public readonly struct CanonicalTextValue : IEquatable<CanonicalTextValue>, IComparable<CanonicalTextValue>
@@ -75,7 +138,7 @@ namespace ThirdPersonSimulation
             m_Length = length;
         }
 
-        internal CanonicalTextValue(CanonicalTextStorage.Text text, int offset, int length)
+        internal CanonicalTextValue(ICanonicalTextOwner text, int offset, int length)
             : this((object)text, offset, length)
         {
         }
@@ -87,22 +150,22 @@ namespace ThirdPersonSimulation
         public bool IsNull => m_Owner == null;
         public bool IsEmpty => m_Length == 0;
         public int Length => m_Length;
-        internal CanonicalTextStorage TextStorage => (m_Owner as CanonicalTextStorage.Text)?.Owner;
+        internal ICanonicalTextOwner TextOwner => m_Owner as ICanonicalTextOwner;
 
-        public CanonicalTextReadLease AcquireRead() => new CanonicalTextReadLease(m_Owner as CanonicalTextStorage.Text);
+        public CanonicalTextReadLease AcquireRead() => new CanonicalTextReadLease(TextOwner);
 
 #if KK_DIAGNOSTIC_SAMPLING
         public KK.GeneratedDiagnosticSampling.DiagnosticIdentityValue CaptureIdentity() => m_Owner is string value
             ? KK.GeneratedDiagnosticSampling.DiagnosticIdentityValue.FromString(value, m_Offset, m_Length)
             : m_Owner == null ? KK.GeneratedDiagnosticSampling.DiagnosticIdentityValue.FromString(null)
             : KK.GeneratedDiagnosticSampling.DiagnosticIdentityValue.FromOwner(
-                (CanonicalTextStorage.Text)m_Owner, m_Offset, m_Length);
+                (KK.GeneratedDiagnosticSampling.IDiagnosticIdentityTextOwner)m_Owner, m_Offset, m_Length);
 #endif
 
         public ReadOnlySpan<char> Span => m_Owner is string value
             ? value.AsSpan(m_Offset, m_Length)
             : m_Owner == null ? ReadOnlySpan<char>.Empty
-            : ((CanonicalTextStorage.Text)m_Owner).Span.Slice(m_Offset, m_Length);
+            : ((ICanonicalTextOwner)m_Owner).Span.Slice(m_Offset, m_Length);
 
         public CanonicalTextValue Trim()
         {
@@ -162,13 +225,13 @@ namespace ThirdPersonSimulation
 
         public void Retain()
         {
-            if (m_Owner is CanonicalTextStorage.Text text)
+            if (m_Owner is ICanonicalTextOwner text)
                 text.Retain();
         }
 
         public void Release()
         {
-            if (m_Owner is CanonicalTextStorage.Text text)
+            if (m_Owner is ICanonicalTextOwner text)
                 text.Release();
         }
 
@@ -222,8 +285,8 @@ namespace ThirdPersonSimulation
 
             internal TextComparisonReadLease(in CanonicalTextValue left, in CanonicalTextValue right)
             {
-                CanonicalTextStorage leftStorage = left.TextStorage;
-                CanonicalTextStorage rightStorage = right.TextStorage;
+                ICanonicalTextOwner leftStorage = left.TextOwner;
+                ICanonicalTextOwner rightStorage = right.TextOwner;
                 bool reverse = leftStorage != null && rightStorage != null && leftStorage.LockOrder > rightStorage.LockOrder;
                 m_First = reverse ? right.AcquireRead() : left.AcquireRead();
                 m_Second = reverse ? left.AcquireRead() : right.AcquireRead();
@@ -243,14 +306,14 @@ namespace ThirdPersonSimulation
 
     public readonly struct CanonicalTextReadLease : IDisposable
     {
-        readonly CanonicalTextStorage.Text m_Text;
+        readonly ICanonicalTextOwner m_Text;
 
-        internal CanonicalTextReadLease(CanonicalTextStorage.Text text)
+        internal CanonicalTextReadLease(ICanonicalTextOwner text)
         {
             m_Text = text;
             if (text == null)
                 return;
-            Monitor.Enter(text.Owner.ReadGate);
+            Monitor.Enter(text.ReadGate);
             text.RetainLocked();
         }
 
@@ -259,7 +322,7 @@ namespace ThirdPersonSimulation
             if (m_Text == null)
                 return;
             m_Text.ReleaseLocked();
-            Monitor.Exit(m_Text.Owner.ReadGate);
+            Monitor.Exit(m_Text.ReadGate);
         }
     }
 
@@ -349,6 +412,119 @@ namespace ThirdPersonSimulation
         CanonicalTextValue ResolveText(ArraySegment<byte> utf16);
     }
 
+    public sealed class CanonicalBytePayloadStorage
+    {
+        public sealed class Page : ICanonicalTextResolver
+        {
+            sealed class TextView : ICanonicalTextOwner
+#if KK_DIAGNOSTIC_SAMPLING
+                , KK.GeneratedDiagnosticSampling.IDiagnosticIdentityTextOwner
+#endif
+            {
+                readonly Page m_Page;
+                readonly int m_Alignment;
+
+                internal TextView(Page page, int alignment)
+                {
+                    m_Page = page;
+                    m_Alignment = alignment;
+                }
+
+                public ReadOnlySpan<char> Span => MemoryMarshal.Cast<byte, char>(
+                    m_Page.Buffer.AsSpan(m_Alignment, (m_Page.Buffer.Length - m_Alignment) & ~1));
+                public object ReadGate => m_Page.m_Owner.m_Free;
+                public long LockOrder => m_Page.m_Owner.m_LockOrder;
+                public void Retain() => m_Page.Retain();
+                public void Release() => m_Page.Release();
+                public void RetainLocked() => m_Page.RetainLocked();
+                public void ReleaseLocked() => m_Page.ReleaseLocked();
+
+#if KK_DIAGNOSTIC_SAMPLING
+                object KK.GeneratedDiagnosticSampling.IDiagnosticIdentityTextOwner.ReadGate => ReadGate;
+                ReadOnlySpan<char> KK.GeneratedDiagnosticSampling.IDiagnosticIdentityTextOwner.Text => Span;
+                void KK.GeneratedDiagnosticSampling.IDiagnosticIdentityTextOwner.RetainText() => Retain();
+                void KK.GeneratedDiagnosticSampling.IDiagnosticIdentityTextOwner.ReleaseText() => Release();
+#endif
+            }
+
+            readonly CanonicalBytePayloadStorage m_Owner;
+            readonly int m_Index;
+            readonly TextView m_EvenText;
+            readonly TextView m_OddText;
+            int m_References;
+
+            internal Page(CanonicalBytePayloadStorage owner, int index, int maximumPayloadBytes)
+            {
+                m_Owner = owner;
+                m_Index = index;
+                Buffer = new byte[maximumPayloadBytes];
+                Writer = new CanonicalWriter(Buffer);
+                m_EvenText = new TextView(this, 0);
+                m_OddText = new TextView(this, 1);
+            }
+
+            public byte[] Buffer { get; }
+            public CanonicalWriter Writer { get; }
+            internal void Begin() => m_References = 1;
+
+            public CanonicalTextValue ResolveText(ArraySegment<byte> utf16) =>
+                new CanonicalTextValue((utf16.Offset & 1) == 0 ? m_EvenText : m_OddText,
+                    utf16.Offset / sizeof(char), utf16.Count / sizeof(char));
+
+            void Retain()
+            {
+                lock (m_Owner.m_Free)
+                    RetainLocked();
+            }
+
+            internal void RetainLocked() => m_References++;
+
+            public void Release()
+            {
+                lock (m_Owner.m_Free)
+                    ReleaseLocked();
+            }
+
+            internal void ReleaseLocked()
+            {
+                if (--m_References != 0)
+                    return;
+                Writer.Reset();
+                m_Owner.m_Free[m_Owner.m_FreeCount++] = m_Index;
+            }
+        }
+
+        readonly Page[] m_Pages;
+        readonly int[] m_Free;
+        readonly long m_LockOrder;
+        int m_FreeCount;
+
+        public CanonicalBytePayloadStorage(int pageCount, int maximumPayloadBytes)
+        {
+            m_LockOrder = CanonicalTextOwnerOrdering.Next();
+            m_Pages = new Page[pageCount];
+            m_Free = new int[pageCount];
+            for (int index = 0; index < pageCount; index++)
+            {
+                m_Pages[index] = new Page(this, index, maximumPayloadBytes);
+                m_Free[index] = index;
+            }
+            m_FreeCount = pageCount;
+        }
+
+        public Page Acquire()
+        {
+            lock (m_Free)
+            {
+                if (m_FreeCount == 0)
+                    throw new InvalidOperationException("Canonical payload storage exceeded its prepared retained batch capacity.");
+                Page page = m_Pages[m_Free[--m_FreeCount]];
+                page.Begin();
+                return page;
+            }
+        }
+    }
+
     public enum CanonicalTextCapacityKind : byte
     {
         Entries = 1,
@@ -383,9 +559,9 @@ namespace ThirdPersonSimulation
 
     public sealed class CanonicalTextStorage
     {
-        internal sealed class Text
+        internal sealed class Text : ICanonicalTextOwner
 #if KK_DIAGNOSTIC_SAMPLING
-            : KK.GeneratedDiagnosticSampling.IDiagnosticIdentityTextOwner
+            , KK.GeneratedDiagnosticSampling.IDiagnosticIdentityTextOwner
 #endif
         {
             readonly CanonicalTextStorage m_Owner;
@@ -400,8 +576,15 @@ namespace ThirdPersonSimulation
                 Index = index;
             }
 
-            internal CanonicalTextStorage Owner => m_Owner;
             internal ReadOnlySpan<char> Span => m_Owner.m_Characters.AsSpan(Start, Length);
+
+            ReadOnlySpan<char> ICanonicalTextOwner.Span => Span;
+            object ICanonicalTextOwner.ReadGate => m_Owner.ReadGate;
+            long ICanonicalTextOwner.LockOrder => m_Owner.LockOrder;
+            void ICanonicalTextOwner.Retain() => Retain();
+            void ICanonicalTextOwner.Release() => Release();
+            void ICanonicalTextOwner.RetainLocked() => RetainLocked();
+            void ICanonicalTextOwner.ReleaseLocked() => ReleaseLocked();
 
 #if KK_DIAGNOSTIC_SAMPLING
             object KK.GeneratedDiagnosticSampling.IDiagnosticIdentityTextOwner.ReadGate => m_Owner.ReadGate;
@@ -417,12 +600,13 @@ namespace ThirdPersonSimulation
                 m_References = 1;
             }
 
-            internal CanonicalTextValue Receive(ArraySegment<byte> utf16)
+            internal CanonicalTextValue Receive(ArraySegment<byte> utf16, int offset)
             {
                 lock (m_Owner.ReadGate)
                 {
-                    CanonicalTextEncoding.Decode(utf16.AsSpan(), m_Owner.m_Characters.AsSpan(Start, Length));
-                    return new CanonicalTextValue(this, 0, Length);
+                    int length = utf16.Count / sizeof(char);
+                    CanonicalTextEncoding.Decode(utf16.AsSpan(), m_Owner.m_Characters.AsSpan(Start + offset, length));
+                    return new CanonicalTextValue(this, offset, length);
                 }
             }
 
@@ -433,6 +617,12 @@ namespace ThirdPersonSimulation
                     characters.CopyTo(m_Owner.m_Characters.AsSpan(Start, Length));
                     return new CanonicalTextValue(this, 0, Length);
                 }
+            }
+
+            internal void CaptureAt(int offset, ReadOnlySpan<char> characters)
+            {
+                lock (m_Owner.ReadGate)
+                    characters.CopyTo(m_Owner.m_Characters.AsSpan(Start + offset, characters.Length));
             }
 
             internal void Retain()
@@ -462,7 +652,6 @@ namespace ThirdPersonSimulation
             internal int Length;
         }
 
-        static long s_NextLockOrder;
         readonly char[] m_Characters;
         readonly Text[] m_Values;
         readonly int[] m_Free;
@@ -473,7 +662,7 @@ namespace ThirdPersonSimulation
 
         public CanonicalTextStorage(int maximumTextValues, int totalCharacters)
         {
-            LockOrder = Interlocked.Increment(ref s_NextLockOrder);
+            LockOrder = CanonicalTextOwnerOrdering.Next();
             m_Characters = new char[totalCharacters];
             m_Values = new Text[maximumTextValues];
             m_Free = new int[maximumTextValues];
@@ -495,6 +684,13 @@ namespace ThirdPersonSimulation
         public int AvailableCharacters => Volatile.Read(ref m_AvailableCharacters);
         internal object ReadGate => m_Free;
         internal long LockOrder { get; }
+
+        public CanonicalTextWriteBuffer BeginWrite(int maximumCharacters)
+        {
+            if (!TryAcquire(maximumCharacters, out Text text, out CanonicalTextCapacityFailure failure))
+                throw new CanonicalTextCapacityException(in failure);
+            return new CanonicalTextWriteBuffer(text);
+        }
 
         internal bool TryAcquire(int characterCount, out Text text, out CanonicalTextCapacityFailure failure)
         {
@@ -528,17 +724,71 @@ namespace ThirdPersonSimulation
                     Compact();
                     rangeIndex = 0;
                 }
-                ref CharacterRange range = ref m_FreeRanges[rangeIndex];
                 text = m_Values[m_Free[--m_FreeCount]];
-                text.Begin(range.Start, characterCount);
-                range.Start += characterCount;
-                range.Length -= characterCount;
-                if (range.Length == 0)
-                    RemoveRange(rangeIndex);
-                m_AvailableCharacters -= characterCount;
+                text.Begin(ReserveCharacters(rangeIndex, characterCount), characterCount);
                 failure = default;
                 return true;
             }
+        }
+
+        internal bool TryAppend(Text text, int characterCount, out int offset, out CanonicalTextCapacityFailure failure)
+        {
+            lock (m_Free)
+            {
+                if (characterCount > m_AvailableCharacters)
+                {
+                    offset = 0;
+                    failure = new CanonicalTextCapacityFailure(CanonicalTextCapacityKind.Characters,
+                        characterCount, m_AvailableCharacters);
+                    return false;
+                }
+                int rangeIndex = -1;
+                for (int index = 0; index < m_FreeRangeCount; index++)
+                    if (m_FreeRanges[index].Start == text.Start + text.Length &&
+                        m_FreeRanges[index].Length >= characterCount)
+                    {
+                        rangeIndex = index;
+                        break;
+                    }
+                if (rangeIndex < 0)
+                {
+                    Compact();
+                    int end = m_Characters.Length - m_AvailableCharacters;
+                    int start = text.Start;
+                    if (start + text.Length != end)
+                    {
+                        // 原地把接收块移到已占用区末尾，保留所有字段范围并继续写入。
+                        Array.Reverse(m_Characters, start, text.Length);
+                        Array.Reverse(m_Characters, start + text.Length, end - start - text.Length);
+                        Array.Reverse(m_Characters, start, end - start);
+                        for (int index = 0; index < m_Values.Length; index++)
+                        {
+                            Text value = m_Values[index];
+                            if (value.Length != 0 && value.Start > start)
+                                value.Start -= text.Length;
+                        }
+                        text.Start = end - text.Length;
+                    }
+                    rangeIndex = 0;
+                }
+                offset = text.Length;
+                ReserveCharacters(rangeIndex, characterCount);
+                text.Length += characterCount;
+                failure = default;
+                return true;
+            }
+        }
+
+        int ReserveCharacters(int rangeIndex, int characterCount)
+        {
+            ref CharacterRange range = ref m_FreeRanges[rangeIndex];
+            int start = range.Start;
+            range.Start += characterCount;
+            range.Length -= characterCount;
+            if (range.Length == 0)
+                RemoveRange(rangeIndex);
+            m_AvailableCharacters -= characterCount;
+            return start;
         }
 
         void Compact()
@@ -628,15 +878,16 @@ namespace ThirdPersonSimulation
 
     public sealed class CanonicalTextReferences : ICanonicalTextCapture, ICanonicalTextResolver
     {
-        readonly Entry[] m_Entries;
+        readonly CanonicalTextValue[] m_Entries;
         readonly int[] m_Buckets;
         readonly CanonicalTextStorage m_Storage;
+        CanonicalTextStorage.Text m_Reception;
         int m_Count;
         long m_CharacterCount;
 
         public CanonicalTextReferences(int entryCapacity, CanonicalTextStorage storage)
         {
-            m_Entries = new Entry[entryCapacity];
+            m_Entries = new CanonicalTextValue[entryCapacity];
             m_Buckets = new int[checked(entryCapacity * 2 + 1)];
             m_Storage = storage;
             ReceptionResolver = new TextReception(this);
@@ -650,17 +901,30 @@ namespace ThirdPersonSimulation
         public void CopyTo(ICanonicalTextCapture capture)
         {
             for (int index = 0; index < m_Count; index++)
-                capture.CaptureText(in m_Entries[index].Value);
+                capture.CaptureText(in m_Entries[index]);
         }
 
         public void Reset()
         {
             for (int index = 0; index < m_Count; index++)
             {
-                m_Entries[index].Value.Release();
-                m_Buckets[m_Entries[index].Bucket] = 0;
+                ref readonly CanonicalTextValue value = ref m_Entries[index];
+                ulong hash;
+                using (CanonicalTextReadLease read = value.AcquireRead())
+                    hash = CanonicalTextEncoding.Hash(value.Span);
+                int bucket = (int)(hash % (ulong)m_Buckets.Length);
+                while (m_Buckets[bucket] != index + 1)
+                {
+                    bucket++;
+                    if (bucket == m_Buckets.Length)
+                        bucket = 0;
+                }
+                m_Buckets[bucket] = 0;
+                value.Release();
             }
             Array.Clear(m_Entries, 0, m_Count);
+            m_Reception?.Release();
+            m_Reception = null;
             m_Count = 0;
             m_CharacterCount = 0;
         }
@@ -688,7 +952,7 @@ namespace ThirdPersonSimulation
             int index = m_Buckets[bucket] - 1;
             if (index >= 0)
             {
-                captured = m_Entries[index].Value;
+                captured = m_Entries[index];
                 failure = default;
                 return true;
             }
@@ -697,7 +961,7 @@ namespace ThirdPersonSimulation
                 captured = default;
                 return false;
             }
-            StoreText(in value, hash, bucket);
+            StoreText(in value, bucket);
             captured = value;
             return true;
         }
@@ -723,7 +987,7 @@ namespace ThirdPersonSimulation
             int index = m_Buckets[bucket] - 1;
             if (index >= 0)
             {
-                value = m_Entries[index].Value;
+                value = m_Entries[index];
                 failure = default;
                 return true;
             }
@@ -738,7 +1002,7 @@ namespace ThirdPersonSimulation
                 return false;
             }
             value = text.Capture(characters);
-            StoreText(in value, hash, bucket);
+            StoreText(in value, bucket);
             value.Release();
             return true;
         }
@@ -770,7 +1034,7 @@ namespace ThirdPersonSimulation
             int index = m_Buckets[bucket] - 1;
             if (index >= 0)
             {
-                value = m_Entries[index].Value;
+                value = m_Entries[index];
                 failure = default;
                 return true;
             }
@@ -779,14 +1043,23 @@ namespace ThirdPersonSimulation
                 value = default;
                 return false;
             }
-            if (!m_Storage.TryAcquire(utf16.Count / sizeof(char), out CanonicalTextStorage.Text text, out failure))
+            int offset;
+            if (m_Reception == null)
+            {
+                if (!m_Storage.TryAcquire(utf16.Count / sizeof(char), out m_Reception, out failure))
+                {
+                    value = default;
+                    return false;
+                }
+                offset = 0;
+            }
+            else if (!m_Storage.TryAppend(m_Reception, utf16.Count / sizeof(char), out offset, out failure))
             {
                 value = default;
                 return false;
             }
-            value = text.Receive(utf16);
-            StoreText(in value, hash, bucket);
-            value.Release();
+            value = m_Reception.Receive(utf16, offset);
+            StoreText(in value, bucket);
             return true;
         }
 
@@ -799,7 +1072,7 @@ namespace ThirdPersonSimulation
             int index = m_Buckets[FindEncodedBucket(utf16.AsSpan(), CanonicalTextEncoding.HashEncoded(utf16.AsSpan()))] - 1;
             if (index < 0)
                 throw new InvalidOperationException("Canonical text is not held by the payload owner.");
-            return m_Entries[index].Value;
+            return m_Entries[index];
         }
 
         bool TryAdmit(out CanonicalTextCapacityFailure failure)
@@ -813,10 +1086,10 @@ namespace ThirdPersonSimulation
             return true;
         }
 
-        void StoreText(in CanonicalTextValue value, ulong hash, int bucket)
+        void StoreText(in CanonicalTextValue value, int bucket)
         {
             value.Retain();
-            m_Entries[m_Count] = new Entry(value, hash, bucket);
+            m_Entries[m_Count] = value;
             m_Buckets[bucket] = ++m_Count;
             m_CharacterCount += value.Length;
         }
@@ -826,8 +1099,8 @@ namespace ThirdPersonSimulation
             int bucket = (int)(hash % (ulong)m_Buckets.Length);
             while (m_Buckets[bucket] != 0)
             {
-                Entry entry = m_Entries[m_Buckets[bucket] - 1];
-                if (entry.Hash == hash && entry.Value.Equals(value))
+                ref readonly CanonicalTextValue entry = ref m_Entries[m_Buckets[bucket] - 1];
+                if (entry.Equals(value))
                     return bucket;
                 bucket++;
                 if (bucket == m_Buckets.Length)
@@ -841,13 +1114,10 @@ namespace ThirdPersonSimulation
             int bucket = (int)(hash % (ulong)m_Buckets.Length);
             while (m_Buckets[bucket] != 0)
             {
-                Entry entry = m_Entries[m_Buckets[bucket] - 1];
-                if (entry.Hash == hash)
-                {
-                    using CanonicalTextReadLease read = entry.Value.AcquireRead();
-                    if (entry.Value.Span.SequenceEqual(value))
+                ref readonly CanonicalTextValue entry = ref m_Entries[m_Buckets[bucket] - 1];
+                using (CanonicalTextReadLease read = entry.AcquireRead())
+                    if (entry.Span.SequenceEqual(value))
                         return bucket;
-                }
                 bucket++;
                 if (bucket == m_Buckets.Length)
                     bucket = 0;
@@ -860,13 +1130,10 @@ namespace ThirdPersonSimulation
             int bucket = (int)(hash % (ulong)m_Buckets.Length);
             while (m_Buckets[bucket] != 0)
             {
-                Entry entry = m_Entries[m_Buckets[bucket] - 1];
-                if (entry.Hash == hash)
-                {
-                    using CanonicalTextReadLease read = entry.Value.AcquireRead();
-                    if (CanonicalTextEncoding.EqualsEncoded(encoded, entry.Value.Span))
+                ref readonly CanonicalTextValue entry = ref m_Entries[m_Buckets[bucket] - 1];
+                using (CanonicalTextReadLease read = entry.AcquireRead())
+                    if (CanonicalTextEncoding.EqualsEncoded(encoded, entry.Span))
                         return bucket;
-                }
                 bucket++;
                 if (bucket == m_Buckets.Length)
                     bucket = 0;
@@ -886,19 +1153,6 @@ namespace ThirdPersonSimulation
             public CanonicalTextValue ResolveText(ArraySegment<byte> utf16) => m_Owner.ReceiveText(utf16);
         }
 
-        readonly struct Entry
-        {
-            internal Entry(CanonicalTextValue value, ulong hash, int bucket)
-            {
-                Value = value;
-                Hash = hash;
-                Bucket = bucket;
-            }
-
-            internal readonly CanonicalTextValue Value;
-            internal readonly ulong Hash;
-            internal readonly int Bucket;
-        }
     }
 
     public sealed class CanonicalWriter : IDisposable, ICanonicalValueWriter
@@ -1053,12 +1307,6 @@ namespace ThirdPersonSimulation
                 bytes[i] = (byte)characters[i];
             WriteRaw(bytes);
         }
-
-        public void WriteHash(SemanticHash value) => WriteHash(value.Value);
-        public void WriteHash(GameplayContentHash value) => WriteHash(value.Value);
-        public void WriteHash(CharacterStateHash value) => WriteHash(value.Value);
-        public void WriteHash(SimulationWorldHash value) => WriteHash(value.Value);
-        public void WriteHash(SimulationPipelineHash value) => WriteHash(value.Value);
 
         public void WriteHash<TValue>(TValue value) where TValue : struct, ICanonicalHashValue =>
             WriteHash(value.CanonicalHashValue);

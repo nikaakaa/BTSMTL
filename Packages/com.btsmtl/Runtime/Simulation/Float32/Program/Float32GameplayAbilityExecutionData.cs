@@ -8,49 +8,18 @@ namespace ThirdPersonSimulation
     {
         GameplayAbilityExecutionLayout m_ExecutionLayout;
 
-        Float32GameplayAbilityExecutionData(
-            CharacterSkillId abilityId,
-            GameplayAbilityExecutionBinding binding,
-            GameplayAbilityProviderContract providerContract,
-            string compilerVersion,
-            OperationSetVersion operationSetVersion,
-            int tickRate,
-            ProgramRevision sourceRevision,
-            SemanticHash semanticHash,
-            SimulationNumericProfile numericProfile,
-            GameplayAbilityCapabilityManifest capabilities,
-            GameplayAbilityRootDescriptor root,
-            string executionIdentity,
-            StableHash stateSchemaHash,
+        internal Float32GameplayAbilityExecutionData(GameplayAbilityExecutionManifest manifest,
+            GameplayAbilityExecutionBinding binding, GameplayAbilityProviderContract providerContract,
             Float32GraphExecutionData graph)
             : base(graph)
         {
-            if (!root.IsAbility)
-                throw new InvalidOperationException("Float32 Ability execution data requires an Ability root.");
-            AbilityId = abilityId;
+            Manifest = manifest;
             Binding = binding ?? throw new ArgumentNullException(nameof(binding));
             ProviderContract = providerContract ?? throw new ArgumentNullException(nameof(providerContract));
-            CompilerVersion = SimulationIdentity.Require(compilerVersion, nameof(compilerVersion));
-            OperationSetVersion = operationSetVersion;
-            TickRate = tickRate;
-            SourceRevision = sourceRevision;
-            SemanticHash = semanticHash;
-            NumericProfile = numericProfile;
-            Capabilities = capabilities ?? throw new ArgumentNullException(nameof(capabilities));
-            Root = root;
-            ExecutionIdentity = SimulationIdentity.Require(executionIdentity, nameof(executionIdentity));
-            StateSchemaHash = stateSchemaHash.IsValid
-                ? stateSchemaHash
-                : throw new ArgumentException("Ability state schema hash is invalid.", nameof(stateSchemaHash));
-            ContentHash = StableHash.Compute(
-                "gameplay-ability-execution-data/1",
-                abilityId.Value,
-                Root.ContentIdentity,
-                ExecutionIdentity,
-                StateSchemaHash.ToString());
         }
 
-        public CharacterSkillId AbilityId { get; }
+        public GameplayAbilityExecutionManifest Manifest { get; }
+        public CharacterSkillId AbilityId => Manifest.AbilityId;
         public GameplayAbilityExecutionBinding Binding { get; private set; }
 
         internal Float32GameplayAbilityExecutionData WithInputBinding(in GameplayAbilityGrantInputBinding input)
@@ -64,17 +33,17 @@ namespace ThirdPersonSimulation
         public GameplayAbilityExecutionLayout ExecutionLayout =>
             m_ExecutionLayout ??= Float32GameplayAbilityExecutionLayoutFactory.Create(this);
         public GameplayAbilityProviderContract ProviderContract { get; }
-        public string CompilerVersion { get; }
-        public OperationSetVersion OperationSetVersion { get; }
-        public int TickRate { get; }
-        public ProgramRevision SourceRevision { get; }
-        public SemanticHash SemanticHash { get; }
-        public SimulationNumericProfile NumericProfile { get; }
-        public GameplayAbilityCapabilityManifest Capabilities { get; }
-        public GameplayAbilityRootDescriptor Root { get; }
-        public string ExecutionIdentity { get; }
-        public StableHash StateSchemaHash { get; }
-        public StableHash ContentHash { get; }
+        public string CompilerVersion => Manifest.CompilerVersion;
+        public OperationSetVersion OperationSetVersion => Manifest.OperationSetVersion;
+        public int TickRate => Manifest.TickRate;
+        public ProgramRevision SourceRevision => Manifest.SourceRevision;
+        public SemanticHash SemanticHash => Manifest.SemanticHash;
+        public SimulationNumericProfile NumericProfile => Manifest.NumericProfile;
+        public GameplayAbilityCapabilityManifest Capabilities => Manifest.Capabilities;
+        public GameplayAbilityRootDescriptor Root => Manifest.Root;
+        public string ExecutionIdentity => Manifest.ExecutionIdentity;
+        public StableHash StateSchemaHash => Manifest.StateSchemaHash;
+        public StableHash ContentHash => Manifest.ContentHash;
         internal static Float32GameplayAbilityExecutionData Create(
             CharacterSkillId abilityId,
             GameplayAbilityExecutionBinding binding,
@@ -91,23 +60,11 @@ namespace ThirdPersonSimulation
             StableHash stateSchemaHash,
             Float32GraphExecutionData graph)
         {
-            if (!abilityId.IsValid)
-                throw new ArgumentException("Ability identity is invalid.", nameof(abilityId));
-            return new Float32GameplayAbilityExecutionData(
-                abilityId,
-                binding,
-                providerContract,
-                compilerVersion,
-                operationSetVersion,
-                tickRate,
-                sourceRevision,
-                semanticHash,
-                numericProfile,
-                capabilities,
-                root,
-                executionIdentity,
-                stateSchemaHash,
-                graph);
+            var manifest = new GameplayAbilityExecutionManifest(abilityId, compilerVersion,
+                operationSetVersion, tickRate, sourceRevision, semanticHash, numericProfile, capabilities,
+                root, executionIdentity, stateSchemaHash,
+                graph.Chunks.ComputeContentHash(semanticHash, numericProfile, tickRate, abilityId.Value));
+            return new Float32GameplayAbilityExecutionData(manifest, binding, providerContract, graph);
         }
 
         internal static OperationHandle ResolveRootOperation(IReadOnlyList<ProgramReference> references)

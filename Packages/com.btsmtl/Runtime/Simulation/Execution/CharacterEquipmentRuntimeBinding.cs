@@ -53,7 +53,8 @@ namespace ThirdPersonSimulation
         Identity = 8
     }
 
-    public sealed class EquipmentRuntimeStateValue
+    [CanonicalContract]
+    public readonly partial struct EquipmentRuntimeStateValue : IEquatable<EquipmentRuntimeStateValue>
     {
         public EquipmentRuntimeStateValue(
             EquipmentRuntimeStateValueKind kind,
@@ -65,13 +66,8 @@ namespace ThirdPersonSimulation
             double z,
             CanonicalTextValue identity)
         {
-            if (!IsValidKind(kind) ||
-                double.IsNaN(x) || double.IsInfinity(x) ||
-                double.IsNaN(y) || double.IsInfinity(y) ||
-                double.IsNaN(z) || double.IsInfinity(z))
-            {
-                throw new ArgumentException("Equipment runtime state value is invalid.");
-            }
+            if (!IsValidKind(kind))
+                throw new ArgumentException("Equipment runtime state value kind is invalid.");
             Kind = kind;
             Boolean = boolean;
             Int32 = int32;
@@ -80,6 +76,7 @@ namespace ThirdPersonSimulation
             Y = y;
             Z = z;
             Identity = identity.IsNull ? CanonicalTextValue.Empty : identity;
+            RequireFinite();
         }
 
         public EquipmentRuntimeStateValueKind Kind { get; }
@@ -88,32 +85,24 @@ namespace ThirdPersonSimulation
                 EquipmentRuntimeStateValueKind.UInt64 or EquipmentRuntimeStateValueKind.Scalar or
                 EquipmentRuntimeStateValueKind.Vector2 or EquipmentRuntimeStateValueKind.Vector3 or
                 EquipmentRuntimeStateValueKind.Yaw or EquipmentRuntimeStateValueKind.Identity;
-        public bool Boolean { get; private set; }
-        public int Int32 { get; private set; }
-        public ulong UInt64 { get; private set; }
-        public double X { get; private set; }
-        public double Y { get; private set; }
-        public double Z { get; private set; }
-        public CanonicalTextValue Identity { get; private set; }
+        public bool Boolean { get; }
+        public int Int32 { get; }
+        public ulong UInt64 { get; }
+        public double X { get; }
+        public double Y { get; }
+        public double Z { get; }
+        public CanonicalTextValue Identity { get; }
 
-        internal void CopyFrom(EquipmentRuntimeStateValue value)
+        [CanonicalValidation]
+        void RequireFinite()
         {
-            Restore(value.Boolean, value.Int32, value.UInt64, value.X, value.Y, value.Z, value.Identity);
-        }
-
-        internal void Restore(bool boolean, int int32, ulong uint64, double x, double y, double z, CanonicalTextValue identity)
-        {
-            Boolean = boolean;
-            Int32 = int32;
-            UInt64 = uint64;
-            X = x;
-            Y = y;
-            Z = z;
-            Identity = identity;
+            if (double.IsNaN(X) || double.IsInfinity(X) ||
+                double.IsNaN(Y) || double.IsInfinity(Y) ||
+                double.IsNaN(Z) || double.IsInfinity(Z))
+                throw new ArgumentException("Equipment runtime state value is invalid.");
         }
 
         public bool Equals(EquipmentRuntimeStateValue other) =>
-            other != null &&
             Kind == other.Kind &&
             Boolean == other.Boolean &&
             Int32 == other.Int32 &&

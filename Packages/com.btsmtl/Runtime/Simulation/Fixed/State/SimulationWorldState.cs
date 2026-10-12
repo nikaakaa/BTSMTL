@@ -291,7 +291,7 @@ namespace ThirdPersonSimulation.Fixed
     public static class WorldSimulationStateCodec
     {
         const uint Magic = 0x54535743;
-        const int Version = 4;
+        const int Version = 5;
 
         [ThreadStatic] static CanonicalWriter s_Writer;
 
@@ -341,7 +341,7 @@ namespace ThirdPersonSimulation.Fixed
         {
             writer.WriteUInt32(Magic);
             writer.WriteInt32(Version);
-            SimulationNumericProfileCodec.Write(writer, state.NumericProfile);
+            SimulationNumericProfile.CanonicalWrite(writer, state.NumericProfile);
             writer.WriteText(state.SolverId.Value);
             writer.WriteText(state.SolverVersion);
             writer.WriteText(state.WorldRevision.Value);
@@ -376,7 +376,7 @@ namespace ThirdPersonSimulation.Fixed
             reader.SetTextResolver(resolver);
             if (reader.ReadUInt32() != Magic || reader.ReadInt32() != Version)
                 throw new InvalidDataException("World state header is invalid.");
-            SimulationNumericProfile numericProfile = SimulationNumericProfileCodec.Read(reader, expectedNumericProfile);
+            SimulationNumericProfile numericProfile = SimulationNumericProfile.ReadPublished(reader, expectedNumericProfile);
             reader.RequireText(expectedSolverId.Value);
             reader.RequireText(expectedSolverVersion);
             reader.RequireText(expectedWorldRevision.Value);
@@ -432,7 +432,7 @@ namespace ThirdPersonSimulation.Fixed
                 reader.SetTextResolver(resolver);
                 if (reader.ReadUInt32() != Magic || reader.ReadInt32() != Version)
                     throw new InvalidDataException("World state header is invalid.");
-                SimulationNumericProfile numericProfile = SimulationNumericProfileCodec.Read(reader, expectedNumericProfile);
+                SimulationNumericProfile numericProfile = SimulationNumericProfile.ReadPublished(reader, expectedNumericProfile);
                 reader.RequireText(expectedSolverId.Value);
                 reader.RequireText(expectedSolverVersion);
                 reader.RequireText(expectedWorldRevision.Value);
@@ -482,7 +482,7 @@ namespace ThirdPersonSimulation.Fixed
             reader.Reset(bytes);
             if (reader.ReadUInt32() != Magic || reader.ReadInt32() != Version)
                 throw new InvalidDataException("World state header is invalid.");
-            SimulationNumericProfileCodec.Read(reader, expectedNumericProfile);
+            SimulationNumericProfile.ReadPublished(reader, expectedNumericProfile);
             reader.ReadTextSegment();
             reader.ReadTextSegment();
             reader.ReadTextSegment();

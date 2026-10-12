@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using System.IO;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -21,6 +22,24 @@ namespace ThirdPersonSimulation
         public float camera_basis_yaw_degrees;
         public FixedInputTraceFrameDocument[] frames;
         public string content_hash;
+
+        public void RequireValid()
+        {
+            if (schema != CurrentSchema ||
+                string.IsNullOrWhiteSpace(trace_id) || string.IsNullOrWhiteSpace(actor_id) ||
+                tick_rate <= 0 || first_tick == 0 || frame_count <= 0 ||
+                frames == null || frames.Length != frame_count)
+                throw new InvalidDataException("Canonical Fixed input trace document is incomplete.");
+            for (int i = 0; i < frames.Length; i++)
+            {
+                FixedInputTraceFrameDocument frame = frames[i];
+                if (frame == null || frame.simulation_tick == 0 || frame.simulation_tick != first_tick + (ulong)i ||
+                    string.IsNullOrWhiteSpace(frame.input_payload_base64))
+                    throw new InvalidDataException($"Canonical Fixed input trace frame {i} is incomplete.");
+            }
+            if (!string.Equals(content_hash, ComputeContentHash(), StringComparison.Ordinal))
+                throw new InvalidDataException("Canonical Fixed input trace content hash is invalid.");
+        }
 
         public string ComputeContentHash()
         {

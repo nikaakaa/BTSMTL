@@ -119,6 +119,7 @@ namespace ThirdPersonSimulation
         ReadOnlyMemory<byte> m_WorldStateBytes;
         readonly CanonicalReader m_WorldReader;
         readonly CanonicalWriter m_CanonicalWriter;
+        readonly SimulationWorldSnapshotStorage.Page m_Storage;
         ICanonicalTextResolver m_TextResolver;
 
         public SimulationWorldSnapshot(
@@ -206,6 +207,16 @@ namespace ThirdPersonSimulation
             m_CanonicalWriter = writer;
         }
 
+        internal SimulationWorldSnapshot(SimulationActorSnapshot[] actors, CanonicalWriter writer,
+            WorldSimulationState publishedWorld, SimulationWorldSnapshotStorage.Page storage)
+            : this(actors, writer, publishedWorld)
+        {
+            m_Storage = storage;
+        }
+
+        public void RetainStateStorage() => m_Storage?.Retain();
+        public void ReleaseStateStorage() => m_Storage?.Release();
+
         internal void SetPrepared(
             SimulationNumericProfile numericProfile, GameplayContentHash content, StableHash schema,
             SolverImplementationId solverId, string solverVersion, WorldRevision worldRevision,
@@ -284,12 +295,13 @@ namespace ThirdPersonSimulation
     public static class SimulationWorldSnapshotFactory
     {
         [ThirdPersonPerformance.Instrumentation.PerformanceProbe("simulation.snapshot.world-capture")]
-        public static SimulationWorldSnapshot Capture(
+        internal static SimulationWorldSnapshot Capture(
             Float32CharacterRuntime characterRuntime,
             SimulationTick tick,
             SimulationActorState[] actorStates,
             WorldSimulationState worldState,
-            WorldCapability solverCapabilities)
+            CanonicalWriter writer, SimulationWorldSnapshot snapshot, ICanonicalTextResolver resolver,
+            bool deterministicValidity)
         {
             if (characterRuntime == null)
                 throw new ArgumentNullException(nameof(characterRuntime));
@@ -303,10 +315,6 @@ namespace ThirdPersonSimulation
                 throw new InvalidOperationException("Character runtime state roster contains no entry.");
             if (actorStates.Length != worldState.Bodies.Count || actorStates.Length != characterRuntime.Roster.Count)
                 throw new InvalidOperationException("Character runtime state, Character Runtime and World body rosters do not match.");
-            Float32CharacterRuntimeStateCodec.PreparePayloads(actorStates);
-            var snapshots = new SimulationActorSnapshot[actorStates.Length];
-            bool deterministicValidity = characterRuntime.NumericProfile.DeterministicReplay &&
-                (solverCapabilities & WorldCapability.DeterministicReplay) != 0;
             for (int i = 0; i < actorStates.Length; i++)
             {
                 SimulationActorState actor = actorStates[i];
@@ -323,32 +331,83 @@ namespace ThirdPersonSimulation
                     throw new InvalidOperationException($"Actor '{actor.ActorId}' Character runtime state schema does not match Character Runtime binding.");
                 if (actor.State.NumericProfile != characterRuntime.NumericProfile)
                     throw new InvalidOperationException($"Actor '{actor.ActorId}' Character runtime state Numeric Profile does not match Character Runtime.");
-                SimulationCharacterStatePayload payload = actor.State.CanonicalPayload;
-                byte[] stateBytes = payload.Bytes.ToArray();
-                snapshots[i] = new SimulationActorSnapshot(
-                    actor.ActorId,
-                    actor.State.GameplayContentHash,
-                    actor.State.StateSchemaHash,
-                    payload.Hash,
-                    Float32CharacterRuntimeStateCodec.CodecIdentity,
-                    stateBytes);
-                for (int abilityIndex = 0; deterministicValidity && abilityIndex < binding.AbilityInstallations.Installations.Count; abilityIndex++)
-                {
-                    Float32GameplayAbilityExecutionData ability = binding.AbilityInstallations.Installations[abilityIndex].Data;
-                    deterministicValidity = ability.NumericProfile.DeterministicReplay && ability.Capabilities.HasGameplayCapability("DeterministicReplay");
-                }
             }
-            return new SimulationWorldSnapshot(
-                characterRuntime.NumericProfile,
-                characterRuntime.GameplayContentHash,
-                characterRuntime.StateSchemaHash,
-                worldState.SolverId,
-                worldState.SolverVersion,
-                worldState.WorldRevision,
-                tick,
-                snapshots,
-                WorldSimulationStateCodec.Write(worldState),
-                deterministicValidity);
+            SimulationWorldSnapshotCodec.CapturePrepared(writer, characterRuntime, tick, actorStates, worldState,
+                deterministicValidity, snapshot, resolver);
+            return snapshot;
+        }
+    }
+
+    internal sealed class SimulationWorldSnapshotStorage
+    {
+        internal sealed class Page
+        {
+            readonly SimulationWorldSnapshotStorage m_Owner;
+            readonly int m_Index;
+            int m_References;
+            CanonicalBytePayloadStorage.Page m_Payload;
+
+            internal Page(SimulationWorldSnapshotStorage owner, int index, Float32CharacterRuntime runtime,
+                CanonicalWriter hashWriter, WorldSimulationState publishedWorld)
+            {
+                m_Owner = owner;
+                m_Index = index;
+                var actors = new SimulationActorSnapshot[runtime.Roster.Count];
+                for (int actor = 0; actor < actors.Length; actor++)
+                    actors[actor] = new SimulationActorSnapshot(runtime.Roster[actor], hashWriter);
+                Snapshot = new SimulationWorldSnapshot(actors, hashWriter, publishedWorld, this);
+            }
+
+            internal SimulationWorldSnapshot Snapshot { get; }
+            internal CanonicalWriter Writer => m_Payload.Writer;
+            internal ICanonicalTextResolver Text => m_Payload;
+
+            internal void Begin(CanonicalBytePayloadStorage.Page payload)
+            {
+                m_Payload = payload;
+                m_References = 1;
+            }
+
+            internal void Retain() => m_References++;
+
+            internal void Release()
+            {
+                if (--m_References != 0)
+                    return;
+                Snapshot.ClearPreparedPayload();
+                m_Payload.Release();
+                m_Payload = null;
+                m_Owner.m_Free[m_Owner.m_FreeCount++] = m_Index;
+            }
+        }
+
+        readonly Page[] m_Pages;
+        readonly int[] m_Free;
+        readonly CanonicalBytePayloadStorage m_Bytes;
+        int m_FreeCount;
+
+        internal SimulationWorldSnapshotStorage(int snapshotCapacity, CanonicalBytePayloadStorage bytes,
+            Float32CharacterRuntime runtime, CanonicalWriter hashWriter, WorldSimulationState publishedWorld)
+        {
+            m_Bytes = bytes;
+            m_Pages = new Page[snapshotCapacity];
+            m_Free = new int[snapshotCapacity];
+            for (int index = 0; index < m_Pages.Length; index++)
+            {
+                m_Pages[index] = new Page(this, index, runtime, hashWriter, publishedWorld);
+                m_Free[index] = index;
+            }
+            m_FreeCount = snapshotCapacity;
+        }
+
+        internal Page Acquire()
+        {
+            if (m_FreeCount == 0)
+                throw new InvalidOperationException("World Step snapshot storage exceeded its prepared retention capacity.");
+            CanonicalBytePayloadStorage.Page payload = m_Bytes.Acquire();
+            Page page = m_Pages[m_Free[--m_FreeCount]];
+            page.Begin(payload);
+            return page;
         }
     }
 
@@ -669,40 +728,39 @@ namespace ThirdPersonSimulation
     public static class SimulationWorldSnapshotCodec
     {
         const uint Magic = 0x504e5343;
-        const int Version = 7;
+        const int Version = 8;
 
         [ThreadStatic] static CanonicalWriter s_HashWriter;
         [ThreadStatic] static CanonicalWriter s_CanonicalWriter;
 
         internal static void CapturePrepared(
-            CanonicalWriter writer, Float32CharacterRuntime runtime, in SimulationWorldStateSet state,
-            bool deterministic, SimulationWorldSnapshot snapshot,
-            ICanonicalTextResolver resolver)
+            CanonicalWriter writer, Float32CharacterRuntime runtime, SimulationTick tick,
+            IReadOnlyList<SimulationActorState> actors, WorldSimulationState world,
+            bool deterministic, SimulationWorldSnapshot snapshot, ICanonicalTextResolver resolver)
         {
-            Float32CharacterRuntimeStateCodec.PreparePayloads(state.Actors);
+            Float32CharacterRuntimeStateCodec.PreparePayloads(actors);
             long prefix = writer.BeginLengthPrefixedBlock();
             writer.WriteUInt32(Magic);
             writer.WriteInt32(Version);
             long hashPosition = writer.Position;
             writer.WriteHash(runtime.StateSchemaHash);
             int hashPayloadStart = checked((int)writer.Position);
-            SimulationNumericProfileCodec.Write(writer, runtime.NumericProfile);
+            SimulationNumericProfile.CanonicalWrite(writer, runtime.NumericProfile);
             writer.WriteHash(runtime.GameplayContentHash);
             writer.WriteHash(runtime.StateSchemaHash);
-            writer.WriteText(state.WorldState.SolverId.Value);
-            writer.WriteText(state.WorldState.SolverVersion);
-            writer.WriteText(state.WorldState.WorldRevision.Value);
-            writer.WriteUInt64(state.LastCompletedTick);
+            writer.WriteText(world.SolverId.Value);
+            writer.WriteText(world.SolverVersion);
+            writer.WriteText(world.WorldRevision.Value);
+            writer.WriteUInt64(tick.Value);
             writer.WriteBoolean(deterministic);
-            writer.WriteInt32(state.Actors.Count);
-            for (int index = 0; index < state.Actors.Count; index++)
+            writer.WriteInt32(actors.Count);
+            for (int index = 0; index < actors.Count; index++)
             {
-                SimulationActorState actor = state.Actors[index];
+                SimulationActorState actor = actors[index];
                 writer.WriteText(actor.ActorId.Value);
                 writer.WriteHash(actor.State.GameplayContentHash);
                 writer.WriteHash(actor.State.StateSchemaHash);
                 SimulationCharacterStatePayload payload = actor.State.CanonicalPayload;
-                payload.Text.CopyTo(writer.TextCapture);
                 writer.WriteHash(payload.Hash);
                 writer.WriteText(Float32CharacterRuntimeStateCodec.CodecIdentity);
                 long actorPrefix = writer.BeginLengthPrefixedBlock();
@@ -714,7 +772,7 @@ namespace ThirdPersonSimulation
                     writer.WrittenSegment.Array.AsMemory(actorStart, actorEnd - actorStart), resolver);
             }
             long worldPrefix = writer.Position;
-            WorldSimulationStateCodec.WriteLengthPrefixed(writer, state.WorldState);
+            WorldSimulationStateCodec.WriteLengthPrefixed(writer, world);
             int end = checked((int)writer.Position);
             StableHash worldHash = SimulationCanonicalPayloadHash.Compute(writer.WrittenSpan.Slice(hashPayloadStart, end - hashPayloadStart));
             writer.Position = hashPosition;
@@ -722,8 +780,8 @@ namespace ThirdPersonSimulation
             writer.Position = end;
             writer.EndLengthPrefixedBlock(prefix);
             snapshot.SetPrepared(runtime.NumericProfile, runtime.GameplayContentHash, runtime.StateSchemaHash,
-                state.WorldState.SolverId, state.WorldState.SolverVersion, state.WorldState.WorldRevision,
-                new SimulationTick(state.LastCompletedTick), deterministic,
+                world.SolverId, world.SolverVersion, world.WorldRevision,
+                tick, deterministic,
                 writer.WrittenSegment.Array.AsMemory(checked((int)worldPrefix + sizeof(int)), end - checked((int)worldPrefix) - sizeof(int)),
                 new SimulationWorldHash(worldHash), resolver);
         }
@@ -738,7 +796,7 @@ namespace ThirdPersonSimulation
                 throw new InvalidDataException("Simulation World Snapshot header is invalid.");
             var expectedHash = SimulationWorldHash.CanonicalFromHash(reader.ReadHash());
             int hashPayloadStart = bytes.Length - reader.Remaining;
-            SimulationNumericProfile numeric = SimulationNumericProfileCodec.Read(reader, snapshot.NumericProfile);
+            SimulationNumericProfile numeric = SimulationNumericProfile.ReadPublished(reader, snapshot.NumericProfile);
             var content = GameplayContentHash.CanonicalFromHash(reader.ReadHash());
             StableHash schema = reader.ReadHash();
             reader.RequireText(snapshot.SolverId.Value);
@@ -789,7 +847,7 @@ namespace ThirdPersonSimulation
             if (reader.ReadUInt32() != Magic || reader.ReadInt32() != Version)
                 throw new InvalidDataException("Simulation World Snapshot header is invalid.");
             var expectedHash = SimulationWorldHash.CanonicalFromHash(reader.ReadHash());
-            SimulationNumericProfile numericProfile = SimulationNumericProfileCodec.Read(reader, Float32SimulationNumericProfile.Value);
+            SimulationNumericProfile numericProfile = SimulationNumericProfile.ReadPublished(reader, Float32SimulationNumericProfile.Value);
             var gameplayContentHash = GameplayContentHash.CanonicalFromHash(reader.ReadHash());
             var stateSchemaHash = reader.ReadHash();
             var solverId = new SolverImplementationId(CanonicalTextEncoding.DecodeString(reader.ReadTextSegment()));
@@ -850,7 +908,7 @@ namespace ThirdPersonSimulation
 
         static void WriteHashPayload(CanonicalWriter writer, SimulationWorldSnapshot snapshot)
         {
-            SimulationNumericProfileCodec.Write(writer, snapshot.NumericProfile);
+            SimulationNumericProfile.CanonicalWrite(writer, snapshot.NumericProfile);
             writer.WriteHash(snapshot.GameplayContentHash);
             writer.WriteHash(snapshot.StateSchemaHash);
             writer.WriteText(snapshot.SolverId.Value);

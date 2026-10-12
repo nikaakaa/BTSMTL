@@ -99,6 +99,27 @@ namespace ThirdPersonSimulation
             return false;
         }
 
+        public bool TryReadActionEvent(ActorId actorId, in Float32ActionInstanceState action, CanonicalTextValue eventId,
+            out ulong identity, out ulong sourceTick, out SimulationActionTargetSnapshot target)
+        {
+            for (int i = 0; i < m_IngressCount; i++)
+            {
+                ref readonly SimulationIngress ingress = ref m_Ingress[i];
+                if (ingress.Header.Kind != SimulationIngressKind.ActionEvent ||
+                    ingress.ActionEvent.ActionInstanceId != action.InstanceId ||
+                    !CanonicalTextValue.Equals(eventId, ingress.ActionEvent.EventId, StringComparison.Ordinal))
+                    continue;
+                identity = ingress.Header.Sequence;
+                sourceTick = ingress.Header.SourceTick;
+                target = action.TargetSnapshot;
+                return true;
+            }
+            identity = 0;
+            sourceTick = 0;
+            target = default;
+            return false;
+        }
+
         public void Clear()
         {
             Sequence = 0;
@@ -797,9 +818,9 @@ namespace ThirdPersonSimulation
             Float32GameplayAbilityExecutionData data,
             GameplayAbilityExecutionLayout layout)
         {
-            m_Invocations = new GameplayAbilityGraphInvocationLayout(data.SourceMap, layout.Operations.Count,
+            m_Invocations = new GameplayAbilityGraphInvocationLayout(data.ExecutionSources, layout.Operations.Count,
                 owner => layout.FindOperationStateSlot(owner, ProgramStateSemantic.RunnableActivationGeneration));
-            foreach (ProgramSourceMapEntry source in data.SourceMap)
+            foreach (ProgramExecutionSource source in data.ExecutionSources)
             {
                 if (source.TargetKind == ProgramSourceTargetKind.OperationPort && source.ValuePortDirection != ProgramValuePortDirection.None)
                     m_ValuePorts.Add((source.TargetIndex, source.CompiledPortId, source.ValuePortDirection));
@@ -982,6 +1003,16 @@ namespace ThirdPersonSimulation
                 timelineCycle: warp.Cycle));
         }
 
+        SimulationValueTrace? CaptureAdmissionEffect(ulong handle, SimulationActionResultKind result)
+        {
+            if (handle == 0)
+                return null;
+            AbilityStateValue value = AbilityStateValue.FromUInt64(handle);
+            return m_Frame.CaptureValueTrace(
+                result == SimulationActionResultKind.Rejected ? "GE.BlockingHandle" : "GE.OpportunityHandle",
+                ProgramValuePortDirection.None, in value);
+        }
+
         public void AddActionResult(
             SimulationOperation operation,
             string actionId,
@@ -990,7 +1021,8 @@ namespace ThirdPersonSimulation
             ulong inputSequence,
             SimulationActionResultKind result,
             CanonicalTextValue reason,
-            in GameplayAbilitySourceContext ruleSource = default)
+            in GameplayAbilitySourceContext ruleSource = default,
+            ulong effectHandle = 0)
         {
             if (!m_Enabled)
                 return;
@@ -1009,6 +1041,7 @@ namespace ThirdPersonSimulation
                 actionId: actionId,
                 inputSequence: inputSequence,
                 actionResult: result,
+                valueTrace: CaptureAdmissionEffect(effectHandle, result),
                 ruleSource: in ruleSource));
         }
 
@@ -1022,7 +1055,8 @@ namespace ThirdPersonSimulation
             CanonicalTextValue reason,
             ulong generation = 0,
             ulong parentInvocationGeneration = 0,
-            in GameplayAbilitySourceContext ruleSource = default)
+            in GameplayAbilitySourceContext ruleSource = default,
+            ulong effectHandle = 0)
         {
             if (!m_Enabled)
                 return;
@@ -1055,6 +1089,7 @@ namespace ThirdPersonSimulation
                 actionId: actionId,
                 inputSequence: inputSequence,
                 actionResult: result,
+                valueTrace: CaptureAdmissionEffect(effectHandle, result),
                 ruleSource: in ruleSource));
         }
 

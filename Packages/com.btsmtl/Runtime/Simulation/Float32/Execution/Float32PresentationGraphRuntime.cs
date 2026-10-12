@@ -129,13 +129,14 @@ namespace ThirdPersonSimulation
         readonly Dictionary<CanonicalTextValue, string> m_InvocationSources = new();
         readonly Dictionary<BindingKey, int> m_Bindings;
         readonly GameplayAbilityExecutionLayout m_Layout;
-        readonly ProgramSourceMapEntry[] m_Entries;
+        readonly ProgramExecutionSource[] m_Entries;
         readonly AbilityStateValue[] m_Defaults;
         readonly AbilityStateValue[] m_State;
         readonly int[] m_ResetStateSlots;
-        readonly ProgramSourceMapEntry[] m_OutputSources;
+        readonly ProgramExecutionSource[] m_OutputSources;
+        readonly string[] m_OutputSourceRevisions;
         readonly string[][] m_InputPortNames;
-        readonly string[] m_DefaultOutputPortNames;
+        readonly string[][] m_OutputPortNames;
         readonly bool[] m_Parameters;
         readonly Values m_Values;
         readonly OperationControlRuntime<Target> m_Control;
@@ -156,12 +157,16 @@ namespace ThirdPersonSimulation
         readonly PresentationVfxRequest[] m_VfxRequests;
         readonly PresentationAudioRequest[] m_AudioRequests;
 
-        public Float32PresentationGraphRuntime(Float32GameplayAbilityExecutionData data)
+        public Float32PresentationGraphRuntime(Float32GameplayAbilityExecutionData data
+#if UNITY_EDITOR
+            , IFloat32GraphValuePortInputs ports
+#endif
+            )
         {
             m_Data = data ?? throw new ArgumentNullException(nameof(data));
             m_Layout = data.ExecutionLayout;
-            var entries = new List<ProgramSourceMapEntry>();
-            foreach (ProgramSourceMapEntry source in data.SourceMap)
+            var entries = new List<ProgramExecutionSource>();
+            foreach (ProgramExecutionSource source in data.ExecutionSources)
             {
                 if (source.TargetKind != ProgramSourceTargetKind.GraphInvocation)
                     continue;
@@ -176,9 +181,10 @@ namespace ThirdPersonSimulation
             m_Bindings = new Dictionary<BindingKey, int>(m_Entries.Length);
             m_Hooks = new AbilityTreeClipHook[m_Entries.Length];
             m_Producers = new string[data.Operations.Count];
-            m_OutputSources = new ProgramSourceMapEntry[data.Operations.Count];
+            m_OutputSources = new ProgramExecutionSource[data.Operations.Count];
+            m_OutputSourceRevisions = new string[data.Operations.Count];
             m_InputPortNames = new string[data.Operations.Count][];
-            m_DefaultOutputPortNames = new string[data.Operations.Count];
+            m_OutputPortNames = new string[data.Operations.Count][];
             m_Activations = new PresentationCameraRequest[data.Operations.Count];
             m_Retirements = new PresentationCameraRequest[data.Operations.Count];
             m_VfxRequests = new PresentationVfxRequest[data.Operations.Count];
@@ -196,7 +202,7 @@ namespace ThirdPersonSimulation
             var visited = new byte[data.Operations.Count];
             for (int index = 0; index < m_Entries.Length; index++)
             {
-                ProgramSourceMapEntry entry = m_Entries[index];
+                ProgramExecutionSource entry = m_Entries[index];
                 SimulationOperation entryOperation = m_Layout.Operation(new OperationHandle(entry.TargetIndex));
                 m_Hooks[index] = entryOperation.Code == SimulationOperationCode.Root
                     ? AbilityTreeClipHook.Root : entryOperation.Code == SimulationOperationCode.TimelineEnter
@@ -208,7 +214,7 @@ namespace ThirdPersonSimulation
                 string caller = marker ? entry.InvocationCallerId
                     : entry.InvocationCallerId.Substring(0, entry.InvocationCallerId.LastIndexOf('/'));
                 var key = new BindingKey(entry.ParentInvocationPath, caller, entry.InvocationCallerClipId,
-                    "tree:" + entry.GraphId, entry.ContentHash, entry.InvocationCallerKind, m_Hooks[index]);
+                    "tree:" + entry.GraphId, data.GraphSourceRevisions.Require(entry.GraphId), entry.InvocationCallerKind, m_Hooks[index]);
                 if (!m_Bindings.TryAdd(key, index))
                     m_Bindings[key] = -1;
                 PrepareOperation(new OperationHandle(entry.TargetIndex), visited);
@@ -224,32 +230,23 @@ namespace ThirdPersonSimulation
             m_ResetStateSlots = new int[resetSlots.Count];
             resetSlots.CopyTo(m_ResetStateSlots);
             Array.Sort(m_ResetStateSlots);
-            m_Values = new Values(this, new Float32GraphValueWorkspace(data));
+            m_Values = new Values(this, new Float32GraphValueWorkspace(data)
+#if UNITY_EDITOR
+                , ports
+#endif
+                );
             m_Control = new OperationControlRuntime<Target>(data.Topology, new Target(this),
                 checked(Math.Max(1024, data.Operations.Count * 128)));
-
+            m_Control.PrepareStateExecutionText(new CanonicalTextStorage(0, 0), 0);
         }
 
-        public void PrepareStateExecutionText(int maximumSessionCheckpointPayloadBytes,
-            in GameplayEffectSessionCapacity sessionCapacity)
-        {
-            int stateCount = 0;
-            for (int operation = 0; operation < m_Data.Topology.Operations.Count; operation++)
-                if (m_Data.Topology.Operations[operation].Code == SimulationOperationCode.State)
-                    stateCount++;
-            int handleDigits = 1;
-            for (int maximum = m_Data.Topology.Operations.Count - 1; maximum >= 10; maximum /= 10)
-                handleDigits++;
-            int generatedCharacters = checked(stateCount * (4 + handleDigits + 7 + handleDigits + 1 + 20));
-            int receivedCharacters = maximumSessionCheckpointPayloadBytes / sizeof(char);
-            if (maximumSessionCheckpointPayloadBytes > 0 && generatedCharacters > receivedCharacters)
-                throw new InvalidOperationException("Compiled presentation execution paths exceed MaximumSessionCheckpointPayloadBytes.");
-            int maximumPathCharacters = maximumSessionCheckpointPayloadBytes == 0 ? generatedCharacters : receivedCharacters;
-            int holders = checked(sessionCapacity.StatePageCount + 1 + sessionCapacity.CandidateTicks + sessionCapacity.RetainedOutputs);
-            int maximumExecutions = checked(Math.Max(1024, m_Data.Operations.Count * 128));
-            int values = checked(holders * m_State.Length + maximumExecutions);
-            m_Control.PrepareStateExecutionText(new CanonicalTextStorage(values, checked(values * generatedCharacters)), maximumPathCharacters);
-        }
+#if UNITY_EDITOR
+        public Float32GameplayAbilityExecutionData Data => m_Data;
+
+        public string ValuePortIdentity(OperationHandle operation, int portIndex, bool input) => input
+            ? m_InputPortNames[operation.Value][portIndex]
+            : m_OutputPortNames[operation.Value][portIndex < 0 ? 0 : portIndex];
+#endif
 
         void SetState(int slot, AbilityStateValue value)
         {
@@ -268,7 +265,7 @@ namespace ThirdPersonSimulation
 
         public CharacterSkillId AbilityId => m_Data.AbilityId;
         public int EntryCount => m_Entries.Length;
-        public ProgramSourceMapEntry Entry(int binding) => m_Entries[binding];
+        public ProgramExecutionSource Entry(int binding) => m_Entries[binding];
         public bool TryBind(CanonicalTextValue parentInvocationPath, CanonicalTextValue timelineNodeId, CanonicalTextValue markerId, CanonicalTextValue graphId, CanonicalTextValue revision,
             ProgramInvocationCallerKind callerKind, AbilityTreeClipHook hook, out int binding)
         {
@@ -291,7 +288,7 @@ namespace ThirdPersonSimulation
                 throw new InvalidOperationException("Presentation graph evaluation is already active.");
             if (facts.RenderFrame == 0)
                 throw new InvalidOperationException("Presentation Marker requires its current read-only fact frame.");
-            ProgramSourceMapEntry entry = m_Entries[binding];
+            ProgramExecutionSource entry = m_Entries[binding];
             m_Facts = facts;
             m_Output = output ?? throw new ArgumentNullException(nameof(output));
             m_CaptureGraphTrace = output.CaptureGraphTrace;
@@ -311,7 +308,8 @@ namespace ThirdPersonSimulation
             {
                 m_Values.BeginEvaluation();
                 m_Control.BeginEvaluation();
-                OperationExecutionResult result = m_Control.Tick(new OperationHandle(entry.TargetIndex));
+                OperationExecutionResult result = OperationControlRuntime.Execute(m_Control,
+                    new GraphExecutionEntry(new OperationHandle(entry.TargetIndex), GraphExecutionContract.Resumable));
                 if (result != OperationExecutionResult.Success && result != OperationExecutionResult.Failure)
                     throw new InvalidOperationException($"Presentation Marker '{entry.InvocationCallerClipId}' did not complete its OnEnable graph: {result}.");
                 return m_ExitRequested;
@@ -374,6 +372,7 @@ namespace ThirdPersonSimulation
                     if (producer == null || CanonicalTextValue.IsNullOrWhiteSpace(producer.ExternalIdentity))
                         throw new InvalidOperationException("Presentation output operation requires its compiled producer identity.");
                     m_OutputSources[handle.Value] = RequireOperationSource(handle);
+                    m_OutputSourceRevisions[handle.Value] = m_Data.GraphSourceRevisions.Require(m_OutputSources[handle.Value].GraphId);
                     m_Producers[handle.Value] = producer.ExternalIdentity;
                     if (operation.Code == SimulationOperationCode.VfxRequest)
                     {
@@ -406,7 +405,10 @@ namespace ThirdPersonSimulation
             for (int i = 0; i < inputNames.Length; i++)
                 inputNames[i] = ports.Inputs[i].Identity;
             m_InputPortNames[handle.Value] = inputNames;
-            m_DefaultOutputPortNames[handle.Value] = ports.Outputs.Count == 1 ? ports.Outputs[0].Identity : string.Empty;
+            var outputNames = ports.Outputs.Count == 0 ? Array.Empty<string>() : new string[ports.Outputs.Count];
+            for (int i = 0; i < outputNames.Length; i++)
+                outputNames[i] = ports.Outputs[i].Identity;
+            m_OutputPortNames[handle.Value] = outputNames;
             foreach (int slot in operation.StateSlots)
                 m_Defaults[slot] = InitialValue(m_Data.StateSlots[slot]);
             ReadOnlySpan<CompiledValueInputBinding> inputs = m_Layout.ValueLayout.ValueInputs(handle);
@@ -436,7 +438,7 @@ namespace ThirdPersonSimulation
             return reference.TargetIndex;
         }
 
-        ProgramSourceMapEntry RequireOperationSource(OperationHandle operation)
+        ProgramExecutionSource RequireOperationSource(OperationHandle operation)
         {
             var sources = m_Layout.OperationSources(operation);
             if (sources.Count > 1)
@@ -487,19 +489,20 @@ namespace ThirdPersonSimulation
 
         Float32PresentationGraphOutputIdentity CreateOutputIdentity(SimulationOperation operation)
         {
-            ProgramSourceMapEntry source = m_OutputSources[operation.Handle.Value];
+            ProgramExecutionSource source = m_OutputSources[operation.Handle.Value];
+            string sourceRevision = m_OutputSourceRevisions[operation.Handle.Value];
             Span<byte> block = stackalloc byte[64];
             var builder = new EventIdBuilder(block);
             builder.Append("presentation-treeclip-output");
             builder.Append(source.GraphId);
-            builder.Append(source.ContentHash);
+            builder.Append(sourceRevision);
             builder.Append(source.NodeId);
             builder.Append(m_PlaybackGeneration);
             builder.Append(m_BranchRevision);
             return new Float32PresentationGraphOutputIdentity(
                 builder.Build(),
                 source.GraphId,
-                source.ContentHash,
+                sourceRevision,
                 source.NodeId,
                 m_PlaybackGeneration,
                 m_BranchRevision);
@@ -519,9 +522,22 @@ namespace ThirdPersonSimulation
         {
             readonly Float32PresentationGraphRuntime m_Owner;
             protected override bool IsAvailabilityQuery => false;
+            protected override bool CaptureValues => m_Owner.m_CaptureValueTrace;
+            protected override void TraceObservedValue(SimulationOperation operation, in OperationValueObservationPort port,
+                AbilityStateValue value) => m_Owner.m_Output.TraceValue(operation.Handle, port.Identity, value,
+                    port.Direction == ProgramValuePortDirection.Input);
+            protected override AbilityStateValue ReadDefaultState(int slot) => m_Owner.m_Defaults[slot];
 
-            internal Values(Float32PresentationGraphRuntime owner, Float32GraphValueWorkspace workspace)
-                : base(owner.m_Data, owner.m_Layout, workspace) => m_Owner = owner;
+            internal Values(Float32PresentationGraphRuntime owner, Float32GraphValueWorkspace workspace
+#if UNITY_EDITOR
+                , IFloat32GraphValuePortInputs ports
+#endif
+                )
+                : base(owner.m_Data, owner.m_Layout, workspace
+#if UNITY_EDITOR
+                    , ports
+#endif
+                    ) => m_Owner = owner;
 
             internal static AbilityStateValue FromConstant(ProgramConstant constant) => ValueFromConstant(constant);
 
@@ -553,7 +569,7 @@ namespace ThirdPersonSimulation
             {
                 if (!predictive && m_Owner.m_CaptureValueTrace)
                     m_Owner.m_Output.TraceValue(operation.Handle, CanonicalTextValue.IsNullOrEmpty(port)
-                        ? m_Owner.m_DefaultOutputPortNames[operation.Handle.Value] : port, value, false);
+                        ? m_Owner.m_OutputPortNames[operation.Handle.Value][0] : port, value, false);
             }
             protected override void TraceInput(SimulationOperation operation, CompiledValueInputBinding input, AbilityStateValue value, bool predictive)
             {

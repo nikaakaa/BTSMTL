@@ -53,6 +53,13 @@ namespace ThirdPersonSimulation
         public SimulationNumericOverflowMode Overflow { get; }
         public bool DeterministicReplay { get; }
         public bool IsValid => Id.IsValid && AbiVersion.IsValid && ScalarBits > 0;
+
+        internal static SimulationNumericProfile ReadPublished(CanonicalReader reader, in SimulationNumericProfile publishedProfile)
+        {
+            CanonicalWrite(reader.MatchWriter, in publishedProfile);
+            return publishedProfile;
+        }
+
         public bool Equals(SimulationNumericProfile other)
         {
             return Id == other.Id &&

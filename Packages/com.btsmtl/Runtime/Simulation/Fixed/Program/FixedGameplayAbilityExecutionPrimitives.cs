@@ -5,85 +5,36 @@ using System.Collections.ObjectModel;
 
 namespace ThirdPersonSimulation.Fixed
 {
-    public enum ProgramConstantKind : byte
+    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+    public sealed partial class ProgramConstant
     {
-        Boolean = 1,
-        Int32 = 2,
-        UInt64 = 3,
-        Scalar = 4,
-        Vector2 = 5,
-        Vector3 = 6,
-        Yaw = 7,
-        String = 8,
-        Bytes = 9
-    }
-
-    public sealed class ProgramConstant
-    {
-        readonly byte[] m_Bytes;
-
-        ProgramConstant(
-            int index,
-            string identity,
-            ProgramConstantKind kind,
-            bool boolean,
-            int int32,
-            ulong uint64,
-            FixedScalar scalar,
-            FixedVector2 vector2,
-            FixedVector3 vector3,
-            FixedYaw yaw,
-            string text,
-            byte[] bytes)
-        {
-            if (index < 0)
-                throw new ArgumentOutOfRangeException(nameof(index));
-            Index = index;
-            Identity = SimulationIdentity.Require(identity, nameof(identity));
-            Kind = kind;
-            Boolean = boolean;
-            Int32 = int32;
-            UInt64 = uint64;
-            Scalar = scalar;
-            Vector2 = vector2;
-            Vector3 = vector3;
-            Yaw = yaw;
-            Text = text ?? string.Empty;
-            m_Bytes = bytes == null ? Array.Empty<byte>() : (byte[])bytes.Clone();
-        }
-
         public int Index { get; }
-        public string Identity { get; }
-        public ProgramConstantKind Kind { get; }
-        public bool Boolean { get; }
-        public int Int32 { get; }
-        public ulong UInt64 { get; }
-        public FixedScalar Scalar { get; }
-        public FixedVector2 Vector2 { get; }
-        public FixedVector3 Vector3 { get; }
-        public FixedYaw Yaw { get; }
-        public string Text { get; }
-        public ReadOnlyMemory<byte> Bytes => m_Bytes;
-        public static ProgramConstant FromBoolean(int index, string identity, bool value) => new ProgramConstant(index, identity, ProgramConstantKind.Boolean, value, default, default, default, default, default, default, null, null);
-        public static ProgramConstant FromInt32(int index, string identity, int value) => new ProgramConstant(index, identity, ProgramConstantKind.Int32, default, value, default, default, default, default, default, null, null);
-        public static ProgramConstant FromUInt64(int index, string identity, ulong value) => new ProgramConstant(index, identity, ProgramConstantKind.UInt64, default, default, value, default, default, default, default, null, null);
-        public static ProgramConstant FromScalar(int index, string identity, FixedScalar value) => new ProgramConstant(index, identity, ProgramConstantKind.Scalar, default, default, default, value, default, default, default, null, null);
-        public static ProgramConstant FromVector2(int index, string identity, FixedVector2 value) => new ProgramConstant(index, identity, ProgramConstantKind.Vector2, default, default, default, default, value, default, default, null, null);
-        public static ProgramConstant FromVector3(int index, string identity, FixedVector3 value) => new ProgramConstant(index, identity, ProgramConstantKind.Vector3, default, default, default, default, default, value, default, null, null);
-        public static ProgramConstant FromYaw(int index, string identity, FixedYaw value) => new ProgramConstant(index, identity, ProgramConstantKind.Yaw, default, default, default, default, default, default, value, null, null);
-        public static ProgramConstant FromString(int index, string identity, string value) => new ProgramConstant(index, identity, ProgramConstantKind.String, default, default, default, default, default, default, default, value, null);
-        public static ProgramConstant FromBytes(int index, string identity, byte[] value) => new ProgramConstant(index, identity, ProgramConstantKind.Bytes, default, default, default, default, default, default, default, null, value);
+        public string Identity { get; private set; }
+        [CanonicalUnionCase] public bool Boolean { get; }
+        [CanonicalUnionCase] public int Int32 { get; }
+        [CanonicalUnionCase] public ulong UInt64 { get; }
+        [CanonicalUnionCase] public FixedScalar Scalar { get; }
+        [CanonicalUnionCase] public FixedVector2 Vector2 { get; }
+        [CanonicalUnionCase] public FixedVector3 Vector3 { get; }
+        [CanonicalUnionCase] public FixedYaw Yaw { get; }
+        [CanonicalUnionCase] public string String { get; private set; }
+        [CanonicalUnionCase] public ReadOnlyMemory<byte> Bytes { get; }
+        public string Text => String;
+
+        [CanonicalValidation]
+        void RequireRecord()
+        {
+            if (Index < 0)
+                throw new ArgumentOutOfRangeException(nameof(Index));
+            Identity = SimulationIdentity.Require(Identity, nameof(Identity));
+            String = String ?? string.Empty;
+        }
     }
 
-    public sealed class SimulationOperationDefinition
+    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+    public readonly partial struct SimulationOperationParameterValues
     {
-        readonly ReadOnlyCollection<int> m_ConstantReferences;
-
-        public SimulationOperationDefinition(
-            int index,
-            string identity,
-            SimulationOperationCode code,
-            IEnumerable<int> constantReferences,
+        public SimulationOperationParameterValues(
             int integer0,
             int integer1,
             ulong unsigned0,
@@ -91,31 +42,52 @@ namespace ThirdPersonSimulation.Fixed
             string text0,
             uint flags)
         {
-            if (index < 0)
-                throw new ArgumentOutOfRangeException(nameof(index));
-            Index = index;
-            Identity = SimulationIdentity.Require(identity, nameof(identity));
-            Code = code;
-            m_ConstantReferences = ReadOnly(constantReferences);
             Integer0 = integer0;
             Integer1 = integer1;
             Unsigned0 = unsigned0;
             Scalar0 = scalar0;
-            Text0 = text0 ?? string.Empty;
+            Text0 = text0;
             Flags = flags;
         }
 
-        public int Index { get; }
-        public string Identity { get; }
-        public SimulationOperationCode Code { get; }
-        public IReadOnlyList<int> ConstantReferences => m_ConstantReferences;
         public int Integer0 { get; }
         public int Integer1 { get; }
         public ulong Unsigned0 { get; }
         public FixedScalar Scalar0 { get; }
         public string Text0 { get; }
         public uint Flags { get; }
+    }
 
+    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+    public sealed partial class SimulationOperationDefinition
+    {
+        readonly ReadOnlyCollection<int> m_ConstantReferences;
+
+        public SimulationOperationDefinition(
+            int index,
+            string identity,
+            SimulationOperationCode code,
+            IEnumerable<int> constantReferences)
+        {
+            Index = index;
+            Identity = identity.Trim();
+            Code = code;
+            m_ConstantReferences = ReadOnly(constantReferences);
+            RequireRecord();
+        }
+
+        public int Index { get; }
+        public string Identity { get; }
+        public SimulationOperationCode Code { get; }
+        public IReadOnlyList<int> ConstantReferences => m_ConstantReferences;
+
+        [CanonicalValidation]
+        void RequireRecord()
+        {
+            if (Index < 0)
+                throw new ArgumentOutOfRangeException(nameof(Index));
+            SimulationIdentity.Require(Identity, nameof(Identity));
+        }
         static ReadOnlyCollection<int> ReadOnly(IEnumerable<int> source)
         {
             var values = source == null ? new List<int>() : new List<int>(source);
@@ -125,41 +97,44 @@ namespace ThirdPersonSimulation.Fixed
 
     public sealed class SimulationOperation
     {
-        readonly ReadOnlyCollection<int> m_Operands;
-        readonly ReadOnlyCollection<int> m_StateSlots;
+        readonly SimulationOperationParameterValues[] m_Parameters;
 
-        public SimulationOperation(
-            OperationHandle handle,
-            SimulationOperationDefinition definition,
-            IEnumerable<int> operands,
-            IEnumerable<int> stateSlots)
+        public SimulationOperation(OperationHandle handle, SimulationOperationDefinition definition,
+            IEnumerable<int> operands, IEnumerable<int> stateSlots,
+            SimulationOperationParameterValues[] parameters, int parameterIndex)
+            : this(new ProgramOperationLayout(handle, definition.Index, parameterIndex, operands, stateSlots),
+                definition, parameters)
         {
-            if (!handle.IsValid)
-                throw new ArgumentException("Operation handle is invalid.", nameof(handle));
-            Handle = handle;
-            Definition = definition ?? throw new ArgumentNullException(nameof(definition));
-            m_Operands = ReadOnly(operands);
-            m_StateSlots = ReadOnly(stateSlots);
         }
 
-        public OperationHandle Handle { get; }
+        internal SimulationOperation(ProgramOperationLayout layout, SimulationOperationDefinition definition,
+            SimulationOperationParameterValues[] parameters)
+        {
+            Layout = layout;
+            Definition = definition;
+            m_Parameters = parameters;
+        }
+
+        internal SimulationOperation(SimulationOperation source, SimulationOperationParameterValues[] parameters)
+            : this(source.Layout, source.Definition, parameters)
+        {
+        }
+
+        public ProgramOperationLayout Layout { get; }
+        public OperationHandle Handle => Layout.Handle;
         public SimulationOperationDefinition Definition { get; }
-        public int DefinitionIndex => Definition.Index;
+        public int DefinitionIndex => Layout.DefinitionIndex;
+        public int ParameterIndex => Layout.ParameterIndex;
+        internal SimulationOperationParameterValues[] ParameterValues => m_Parameters;
         public SimulationOperationCode Code => Definition.Code;
-        public IReadOnlyList<int> Operands => m_Operands;
+        public IReadOnlyList<int> Operands => Layout.Operands;
         public IReadOnlyList<int> ConstantReferences => Definition.ConstantReferences;
-        public IReadOnlyList<int> StateSlots => m_StateSlots;
-        public int Integer0 => Definition.Integer0;
-        public int Integer1 => Definition.Integer1;
-        public ulong Unsigned0 => Definition.Unsigned0;
-        public FixedScalar Scalar0 => Definition.Scalar0;
-        public string Text0 => Definition.Text0;
-        public uint Flags => Definition.Flags;
-
-        static ReadOnlyCollection<int> ReadOnly(IEnumerable<int> source)
-        {
-            var values = source == null ? new List<int>() : new List<int>(source);
-            return values.AsReadOnly();
-        }
+        public IReadOnlyList<int> StateSlots => Layout.StateSlots;
+        public int Integer0 => m_Parameters[ParameterIndex].Integer0;
+        public int Integer1 => m_Parameters[ParameterIndex].Integer1;
+        public ulong Unsigned0 => m_Parameters[ParameterIndex].Unsigned0;
+        public FixedScalar Scalar0 => m_Parameters[ParameterIndex].Scalar0;
+        public string Text0 => m_Parameters[ParameterIndex].Text0;
+        public uint Flags => m_Parameters[ParameterIndex].Flags;
     }
 }

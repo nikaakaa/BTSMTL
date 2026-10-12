@@ -29,7 +29,8 @@ namespace ThirdPersonSimulation
         Turning = 3
     }
 
-    public readonly struct GameplayAbilitySourceContext : IEquatable<GameplayAbilitySourceContext>
+    [CanonicalContract]
+    public readonly partial struct GameplayAbilitySourceContext : IEquatable<GameplayAbilitySourceContext>
     {
         public GameplayAbilitySourceContext(CharacterSkillId skillId, ulong instanceId,
             ulong skillExecutionGeneration, ulong segmentGeneration)
@@ -131,9 +132,8 @@ namespace ThirdPersonSimulation
         bool HasMoveInput { get; }
         CharacterLocomotionMode LocomotionMode { get; }
         bool IsAbilityActive(CharacterSkillId queryOwner, OperationHandle query);
-        bool IsSelectedSourceWindowActive(in GameplayAbilitySourceContext source,
-            CharacterSkillId queryOwner, OperationHandle query, string windowTag);
         bool IsSelectedSourcePhase(in GameplayAbilitySourceContext source, AbilityLifecyclePhase phase);
+        bool SelectedSourceEffectsAllowCandidate(CharacterSkillId candidate, in GameplayAbilitySourceContext source);
     }
 
     public sealed class GameplayAbilityActivationRuleBinding
@@ -150,7 +150,8 @@ namespace ThirdPersonSimulation
             GameplayAbilityRuleTargetPolicy targetPolicy,
             GameplayAbilityRuleContinuation onFailure,
             GameplayAbilityRuleContinuation onSubmitted,
-            string triggerEventId = "")
+            string triggerEventId = "",
+            OperationHandle opportunityQuery = default)
         {
             Id = id;
             Phase = phase;
@@ -164,6 +165,7 @@ namespace ThirdPersonSimulation
             OnFailure = onFailure;
             OnSubmitted = onSubmitted;
             TriggerEventId = triggerEventId;
+            OpportunityQuery = opportunityQuery;
         }
 
         public string Id { get; }
@@ -178,6 +180,7 @@ namespace ThirdPersonSimulation
         public GameplayAbilityRuleContinuation OnFailure { get; }
         public GameplayAbilityRuleContinuation OnSubmitted { get; }
         public string TriggerEventId { get; }
+        public OperationHandle OpportunityQuery { get; }
     }
 
     public readonly struct GameplayAbilityMovementExitRuleBinding
@@ -209,6 +212,7 @@ namespace ThirdPersonSimulation
         string[] PrepareTriggerRequests(GameplayAbilityExecutionBinding ability);
         bool TryReadInputRequest(string requestId, out SimulationInputRequestState request);
         bool HasGameplayEvent(string eventId);
+        bool HasOpportunity(CharacterSkillId candidate, OperationHandle query, in GameplayAbilitySourceContext source);
         int GetSourceSlotCount(CharacterSkillId abilityId);
         bool TryReadActiveSource(CharacterSkillId abilityId, int slot,
             out GameplayAbilitySourceContext source, out ulong startTick);
@@ -515,7 +519,9 @@ namespace ThirdPersonSimulation
                         earliestApplicable = candidate;
                         applicableStartTick = startTick;
                     }
-                    if (!port.Evaluate(prepared.Ability.SkillId, prepared.Rule.Condition, in candidate, mode))
+                    if (prepared.Rule.OpportunityQuery.IsValid &&
+                        !port.HasOpportunity(prepared.Ability.SkillId, prepared.Rule.OpportunityQuery, in candidate) ||
+                        !port.Evaluate(prepared.Ability.SkillId, prepared.Rule.Condition, in candidate, mode))
                         continue;
                     if (!source.IsValid || IsEarlier(in candidate, startTick, in source, selectedStartTick))
                     {

@@ -2,9 +2,12 @@ using System;
 
 namespace ThirdPersonSimulation
 {
-    public readonly struct CharacterControlModuleId : IEquatable<CharacterControlModuleId>, IComparable<CharacterControlModuleId>
+    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+    public readonly partial struct CharacterControlModuleId : IEquatable<CharacterControlModuleId>, IComparable<CharacterControlModuleId>
     {
-        public CharacterControlModuleId(string value) => Value = SimulationIdentity.Require(value, nameof(value));
+        public CharacterControlModuleId(string value) { Value = SimulationIdentity.Require(value, nameof(value)); }
+        [CanonicalValidation]
+        void RequireValid() => SimulationIdentity.Require(Value, "value");
         public string Value { get; }
         public bool IsValid => !string.IsNullOrEmpty(Value);
         public int CompareTo(CharacterControlModuleId other) => string.CompareOrdinal(Value, other.Value);
@@ -44,9 +47,11 @@ namespace ThirdPersonSimulation
         public static bool operator !=(CharacterControlTransitionId left, CharacterControlTransitionId right) => !left.Equals(right);
     }
 
-    public readonly struct CharacterSkillId : IEquatable<CharacterSkillId>, IComparable<CharacterSkillId>
+    [CanonicalContract(MaterializedRead = true)]
+    public readonly partial struct CharacterSkillId : IEquatable<CharacterSkillId>, IComparable<CharacterSkillId>
     {
         public CharacterSkillId(string value) => Value = SimulationIdentity.Require(value, nameof(value));
+        [CanonicalDeclaredText]
         public string Value { get; }
         public bool IsValid => !string.IsNullOrEmpty(Value);
         public int CompareTo(CharacterSkillId other) => string.CompareOrdinal(Value, other.Value);
@@ -86,7 +91,8 @@ namespace ThirdPersonSimulation
         public static bool operator !=(SimulationInputValueId left, SimulationInputValueId right) => !left.Equals(right);
     }
 
-    public readonly struct CharacterControlStateFieldId : IEquatable<CharacterControlStateFieldId>, IComparable<CharacterControlStateFieldId>
+    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+    public readonly partial struct CharacterControlStateFieldId : IEquatable<CharacterControlStateFieldId>, IComparable<CharacterControlStateFieldId>
     {
         public CharacterControlStateFieldId(string value) => Value = SimulationIdentity.Require(value, nameof(value));
         public string Value { get; }

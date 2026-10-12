@@ -9,6 +9,23 @@ namespace ThirdPersonSimulation
         {
             GameplayEffectRuntimeCapacityLayout capacity = m_Scratch.Capacity;
             GameplayEffectContextIdentity context = ToCommon(application.Context);
+            if (context.Scope.Kind != definition.Scope || context.Holder.Lifetime != definition.Lifetime ||
+                (definition.Scope == GameplayEffectScopeKind.ActionInstance || definition.Lifetime != GameplayEffectLifetimeKind.Independent) &&
+                context.SourceActionInstanceId == 0 ||
+                context.Success.IsValid && (context.Scope.Kind != GameplayEffectScopeKind.ActionInstance ||
+                    !GameplayEffectScope.Action(context.Success.SourceInstanceId,
+                        context.Success.SourceSkillExecutionGeneration).Equals(context.Scope)))
+            {
+                failure = new GameplayEffectApplyResult(GameplayEffectApplyResultKind.InvalidContext,
+                    0, application.AuthoritativeInstanceId, "EffectScopeOrHolderMismatch");
+                return false;
+            }
+            if (context.Success.IsValid && !m_Catalog.TryResolveTagIdentity(context.Success.EventTag, out _))
+            {
+                failure = new GameplayEffectApplyResult(GameplayEffectApplyResultKind.InvalidContext,
+                    0, application.AuthoritativeInstanceId, "SuccessEventTagUnregistered");
+                return false;
+            }
             GameplayEffectExecutionFailure rejection;
             if (m_Scratch.SpecApplicationsThisTick == capacity.ApplicationsPerTick)
                 rejection = CapacityFailure(definition.Id, application.AuthoritativeInstanceId, context,

@@ -120,6 +120,40 @@ namespace ThirdPersonSimulation.Fixed
             return false;
         }
 
+        public bool TryReadActionEvent(ActorId actorId, in FixedActionInstanceState action, CanonicalTextValue eventId,
+            out ulong identity, out ulong sourceTick, out SimulationActionTargetSnapshot target)
+        {
+            for (int i = 0; i < m_IngressCount; i++)
+            {
+                ref readonly SimulationIngress ingress = ref m_Ingress[i];
+                if (ingress.Header.Kind == SimulationIngressKind.ActionEvent &&
+                    ingress.ActionEvent.ActionInstanceId == action.InstanceId &&
+                    CanonicalTextValue.Equals(eventId, ingress.ActionEvent.EventId, StringComparison.Ordinal))
+                {
+                    identity = ingress.Header.Sequence;
+                    sourceTick = ingress.Header.SourceTick;
+                    target = action.TargetSnapshot;
+                    return true;
+                }
+                if (ingress.Header.Kind != SimulationIngressKind.GameplayResult || ingress.GameplayResult.HasEffect)
+                    continue;
+                CombatHitResult hit = ingress.GameplayResult.Hit;
+                if (hit.TargetActor == actorId && hit.TargetActionInstanceId == action.InstanceId &&
+                    (hit.Disposition != CombatHitDisposition.Parried || hit.SourceActor.Value.Equals(action.TargetSnapshot.TargetId)) &&
+                    CanonicalTextValue.Equals(eventId, hit.TargetFeedbackEvent, StringComparison.Ordinal))
+                {
+                    identity = hit.ResultId;
+                    sourceTick = hit.SourceTick;
+                    target = hit.SourceTargetSnapshot;
+                    return true;
+                }
+            }
+            identity = 0;
+            sourceTick = 0;
+            target = default;
+            return false;
+        }
+
         public void Clear()
         {
             Sequence = 0;
@@ -161,13 +195,14 @@ namespace ThirdPersonSimulation.Fixed
     internal readonly struct FixedAbilityOutputSavepoint
     {
         public FixedAbilityOutputSavepoint(int factCount, int presentationCount, int gameplayEffectCount, int gameplayEffectCueCount,
-            int gameplayEffectSuccessfulChangeCount)
+            int gameplayEffectSuccessfulChangeCount, int attackQueryCount)
         {
             FactCount = factCount;
             PresentationCount = presentationCount;
             GameplayEffectCount = gameplayEffectCount;
             GameplayEffectCueCount = gameplayEffectCueCount;
             GameplayEffectSuccessfulChangeCount = gameplayEffectSuccessfulChangeCount;
+            AttackQueryCount = attackQueryCount;
         }
 
         public int FactCount { get; }
@@ -175,6 +210,7 @@ namespace ThirdPersonSimulation.Fixed
         public int GameplayEffectCount { get; }
         public int GameplayEffectCueCount { get; }
         public int GameplayEffectSuccessfulChangeCount { get; }
+        public int AttackQueryCount { get; }
     }
 
     internal readonly struct FixedAbilityInvocationContext
@@ -193,7 +229,7 @@ namespace ThirdPersonSimulation.Fixed
             IFixedGameplayEffectStatePort gameplayEffectState,
             IFixedEquipmentStatePort equipmentState,
             FixedCombatQueryStorage combatQueries,
-            FixedCombatRuntime combat)
+            FixedCombatEvaluation combat)
         {
             ActorId = actorId;
             Tick = tick;
@@ -224,7 +260,7 @@ namespace ThirdPersonSimulation.Fixed
         public IFixedGameplayEffectStatePort GameplayEffectState { get; }
         public IFixedEquipmentStatePort EquipmentState { get; }
         internal FixedCombatQueryStorage CombatQueries { get; }
-        internal FixedCombatRuntime Combat { get; }
+        internal FixedCombatEvaluation Combat { get; }
     }
 
     internal sealed class FixedAbilityExecutionFrame
@@ -267,6 +303,9 @@ namespace ThirdPersonSimulation.Fixed
         }
 
         internal IFixedAbilityFrameReadPort AvailabilityRead { get; private set; }
+#if UNITY_EDITOR
+        internal FixedCharacterEvaluationOutput TraceOutput => m_Workspace.TraceOutput;
+#endif
         internal IFixedAbilityFrameReadPort ExchangeAvailabilityRead(IFixedAbilityFrameReadPort read)
         {
             IFixedAbilityFrameReadPort previous = AvailabilityRead;
@@ -359,8 +398,9 @@ namespace ThirdPersonSimulation.Fixed
         internal FixedFactSink Facts { get; }
         internal FixedPresentationSink Presentation { get; }
         internal FixedCombatQueryStorage CombatQueries { get; private set; }
-        internal FixedCombatRuntime Combat { get; private set; }
+        internal FixedCombatEvaluation Combat { get; private set; }
         internal FixedTraceSink Trace { get; }
+        internal IReadOnlyList<SimulationTraceRecord> TraceRecords => m_Trace;
 
         internal bool HasTreeClipInvocation => m_TreeClipInvocation.ActionInstanceId != 0;
 
@@ -446,7 +486,7 @@ namespace ThirdPersonSimulation.Fixed
 
         internal FixedAbilityOutputSavepoint CreateOutputSavepoint() =>
             new FixedAbilityOutputSavepoint(m_Facts.Count, m_Presentation.Count, m_Workspace.GameplayEffectProjectionCount,
-                m_Workspace.GameplayEffectCueCount, m_Workspace.GameplayEffectSuccessfulChangeCount);
+                m_Workspace.GameplayEffectCueCount, m_Workspace.GameplayEffectSuccessfulChangeCount, CombatQueries.Count);
 
         internal void RestoreOutput(FixedAbilityOutputSavepoint savepoint)
         {
@@ -455,6 +495,7 @@ namespace ThirdPersonSimulation.Fixed
             m_Workspace.TruncateGameplayEffectProjections(savepoint.GameplayEffectCount);
             m_Workspace.GameplayEffectCueCount = savepoint.GameplayEffectCueCount;
             m_Workspace.GameplayEffectSuccessfulChangeCount = savepoint.GameplayEffectSuccessfulChangeCount;
+            CombatQueries.Truncate(savepoint.AttackQueryCount);
         }
 
         internal void RecordCommandBatchRejection(in GameplayCommandBatchAdmission rejection) =>
@@ -514,13 +555,19 @@ namespace ThirdPersonSimulation.Fixed
             ProgramValuePortDirection direction, in AbilityStateValue value) =>
             m_Workspace.ValueTraces.Capture(m_Workspace.ValueTraceInvocation, portId, direction, in value);
 
-        internal IReadOnlyList<SimulationTraceRecord> TraceRecords => m_Trace;
-
         internal void AddTrace(in SimulationTraceRecord value)
         {
+#if UNITY_EDITOR
+            long traceStoreStarted = System.Diagnostics.Stopwatch.GetTimestamp();
+#endif
             m_Workspace.TraceOutput.ReserveTraceRecord();
             value.Retain();
             m_Trace.Add(value);
+#if UNITY_EDITOR
+            m_Workspace.TraceOutput.EvaluationTraceStoreElapsedStopwatchTicks +=
+                System.Diagnostics.Stopwatch.GetTimestamp() - traceStoreStarted;
+            m_Workspace.TraceOutput.EvaluationTraceStoreCalls++;
+#endif
         }
 
         internal struct ActionTraceContextScope : IDisposable
@@ -766,6 +813,9 @@ namespace ThirdPersonSimulation.Fixed
 
         public SimulationEventHeader Next(SimulationOperation operation)
         {
+#if UNITY_EDITOR
+            long headerStarted = System.Diagnostics.Stopwatch.GetTimestamp();
+#endif
             int generationSlot = m_Frame.Layout.FindOperationStateSlot(
                 operation.Handle,
                 ProgramStateSemantic.RunnableActivationGeneration);
@@ -773,17 +823,32 @@ namespace ThirdPersonSimulation.Fixed
             ref readonly EventIdentityPrefix prefix = ref m_Frame.Trace.IdentityPrefix(operation.Handle);
             Span<byte> block = stackalloc byte[64];
             var builder = new EventIdBuilder(block, in prefix);
-            return Complete(ref builder, prefix.Source, generation);
+            SimulationEventHeader header = Complete(ref builder, prefix.Source, generation);
+#if UNITY_EDITOR
+            m_Frame.TraceOutput.EvaluationTraceHeaderElapsedStopwatchTicks +=
+                System.Diagnostics.Stopwatch.GetTimestamp() - headerStarted;
+            m_Frame.TraceOutput.EvaluationTraceHeaderCalls++;
+#endif
+            return header;
         }
 
         public SimulationEventHeader Next(SimulationExecutionSource source, ulong generation = 1)
         {
+#if UNITY_EDITOR
+            long headerStarted = System.Diagnostics.Stopwatch.GetTimestamp();
+#endif
             Span<byte> block = stackalloc byte[64];
             var builder = new EventIdBuilder(block);
             builder.Append(m_Frame.Identity.ContentHash);
             builder.Append(m_Frame.ActorId.Value);
             builder.AppendActivationSource(source);
-            return Complete(ref builder, source, generation);
+            SimulationEventHeader header = Complete(ref builder, source, generation);
+#if UNITY_EDITOR
+            m_Frame.TraceOutput.EvaluationTraceHeaderElapsedStopwatchTicks +=
+                System.Diagnostics.Stopwatch.GetTimestamp() - headerStarted;
+            m_Frame.TraceOutput.EvaluationTraceHeaderCalls++;
+#endif
+            return header;
         }
 
         SimulationEventHeader Complete(ref EventIdBuilder builder, SimulationExecutionSource source, ulong generation)
@@ -839,9 +904,9 @@ namespace ThirdPersonSimulation.Fixed
                     operation, layout.SourcePath(operation));
                 m_IdentityPrefixes[index] = EventIdBuilder.Prepare(contentHash, actorId, source);
             }
-            m_Invocations = new GameplayAbilityGraphInvocationLayout(data.SourceMap, layout.Operations.Count,
+            m_Invocations = new GameplayAbilityGraphInvocationLayout(data.ExecutionSources, layout.Operations.Count,
                 owner => layout.FindOperationStateSlot(owner, ProgramStateSemantic.RunnableActivationGeneration));
-            foreach (ProgramSourceMapEntry source in data.SourceMap)
+            foreach (ProgramExecutionSource source in data.ExecutionSources)
             {
                 if (source.TargetKind == ProgramSourceTargetKind.OperationPort && source.ValuePortDirection != ProgramValuePortDirection.None)
                     m_ValuePorts.Add((source.TargetIndex, source.CompiledPortId, source.ValuePortDirection));
@@ -1041,6 +1106,16 @@ namespace ThirdPersonSimulation.Fixed
                 timelineCycle: warp.Cycle));
         }
 
+        SimulationValueTrace? CaptureAdmissionEffect(ulong handle, SimulationActionResultKind result)
+        {
+            if (handle == 0)
+                return null;
+            AbilityStateValue value = AbilityStateValue.FromUInt64(handle);
+            return m_Frame.CaptureValueTrace(
+                result == SimulationActionResultKind.Rejected ? "GE.BlockingHandle" : "GE.OpportunityHandle",
+                ProgramValuePortDirection.None, in value);
+        }
+
         public void AddActionResult(
             SimulationOperation operation,
             string actionId,
@@ -1049,7 +1124,8 @@ namespace ThirdPersonSimulation.Fixed
             ulong inputSequence,
             SimulationActionResultKind result,
             CanonicalTextValue reason,
-            in GameplayAbilitySourceContext ruleSource = default)
+            in GameplayAbilitySourceContext ruleSource = default,
+            ulong effectHandle = 0)
         {
             if (!m_Enabled)
                 return;
@@ -1068,6 +1144,7 @@ namespace ThirdPersonSimulation.Fixed
                 actionId: actionId,
                 inputSequence: inputSequence,
                 actionResult: result,
+                valueTrace: CaptureAdmissionEffect(effectHandle, result),
                 ruleSource: in ruleSource));
         }
 
@@ -1081,7 +1158,8 @@ namespace ThirdPersonSimulation.Fixed
             CanonicalTextValue reason,
             ulong generation = 0,
             ulong parentInvocationGeneration = 0,
-            in GameplayAbilitySourceContext ruleSource = default)
+            in GameplayAbilitySourceContext ruleSource = default,
+            ulong effectHandle = 0)
         {
             if (!m_Enabled)
                 return;
@@ -1114,6 +1192,7 @@ namespace ThirdPersonSimulation.Fixed
                 actionId: actionId,
                 inputSequence: inputSequence,
                 actionResult: result,
+                valueTrace: CaptureAdmissionEffect(effectHandle, result),
                 ruleSource: in ruleSource));
         }
 

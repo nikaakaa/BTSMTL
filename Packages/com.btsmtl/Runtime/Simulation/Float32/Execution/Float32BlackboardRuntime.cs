@@ -56,82 +56,12 @@ namespace ThirdPersonSimulation
         public bool IsValid => Timeline.IsValid && Clip.IsValid;
     }
 
-    internal readonly struct SimulationActionWindowProjectionCandidate
-    {
-        public SimulationActionWindowProjectionCandidate(
-            SimulationExecutionSource source,
-            ulong generation,
-            ActorId actorId,
-            ulong logicTick,
-            string declarationId,
-            string actionId,
-            GameplayAbilitySourceContext sourceContext,
-            string windowId,
-            string windowType,
-            string windowTag,
-            ulong digest)
-        {
-            Source = source;
-            Generation = generation;
-            ActorId = actorId;
-            LogicTick = logicTick;
-            DeclarationId = declarationId;
-            ActionId = actionId;
-            SourceContext = sourceContext;
-            WindowId = windowId;
-            WindowType = windowType;
-            WindowTag = windowTag;
-            Digest = digest;
-        }
-
-        public SimulationExecutionSource Source { get; }
-        public ulong Generation { get; }
-        public ActorId ActorId { get; }
-        public ulong LogicTick { get; }
-        public string DeclarationId { get; }
-        public string ActionId { get; }
-        public GameplayAbilitySourceContext SourceContext { get; }
-        public ulong ActionInstanceId => SourceContext.InstanceId;
-        public string WindowId { get; }
-        public string WindowType { get; }
-        public string WindowTag { get; }
-        public ulong Digest { get; }
-    }
-
-    internal readonly struct SimulationActionWindowProjectionKey : IEquatable<SimulationActionWindowProjectionKey>
-    {
-        readonly string m_DeclarationId;
-        readonly GameplayAbilitySourceContext m_SourceContext;
-
-        public SimulationActionWindowProjectionKey(string declarationId, in GameplayAbilitySourceContext sourceContext)
-        {
-            m_DeclarationId = declarationId ?? string.Empty;
-            m_SourceContext = sourceContext;
-        }
-
-        public bool Equals(SimulationActionWindowProjectionKey other) =>
-            m_SourceContext.Equals(other.m_SourceContext) &&
-            CanonicalTextValue.Equals(m_DeclarationId, other.m_DeclarationId, StringComparison.Ordinal);
-
-        public override bool Equals(object obj) =>
-            obj is SimulationActionWindowProjectionKey other && Equals(other);
-
-        public override int GetHashCode() =>
-            unchecked((m_DeclarationId == null
-                ? 0
-                : StringComparer.Ordinal.GetHashCode(m_DeclarationId)) * 397 ^
-                m_SourceContext.GetHashCode());
-    }
-
     internal sealed class Float32BlackboardRuntime : Float32OperationModule, IFloat32BlackboardPort
     {
         readonly Float32StatePort m_State;
         readonly Float32AbilityExecutionFrame m_Frame;
         readonly IFloat32ActionContextReader m_Actions;
-        readonly Float32FactSink m_Facts;
         readonly Float32TraceSink m_Trace;
-        readonly List<SimulationActionWindowProjectionCandidate> m_ActionWindowProjections;
-        readonly HashSet<SimulationActionWindowProjectionKey> m_ActionWindowProjectionKeys;
         readonly Stack<SimulationTimelineBlackboardContext> m_TimelineBlackboardContexts;
         readonly Stack<TimelineBlackboardScope> m_TimelineBlackboardScopePool = new();
 
@@ -140,7 +70,6 @@ namespace ThirdPersonSimulation
             Float32StatePort state,
             Float32AbilityExecutionFrame frame,
             IFloat32ActionContextReader actions,
-            Float32FactSink facts,
             Float32TraceSink trace,
             Float32AbilityExecutionWorkspace workspace)
             : base(access)
@@ -148,20 +77,10 @@ namespace ThirdPersonSimulation
             m_State = state;
             m_Frame = frame ?? throw new ArgumentNullException(nameof(frame));
             m_Actions = actions ?? throw new ArgumentNullException(nameof(actions));
-            m_Facts = facts;
             m_Trace = trace ?? throw new ArgumentNullException(nameof(trace));
             if (workspace == null)
                 throw new ArgumentNullException(nameof(workspace));
-            m_ActionWindowProjections = workspace.ActionWindowProjections;
-            m_ActionWindowProjectionKeys = workspace.ActionWindowProjectionKeys;
             m_TimelineBlackboardContexts = workspace.TimelineBlackboardContexts;
-        }
-
-        public void EndFrame()
-        {
-            FlushBlackboardProjections();
-            m_ActionWindowProjections.Clear();
-            m_ActionWindowProjectionKeys.Clear();
         }
 
         public void WriteGraphCallParameter(int valueSlot, AbilityStateValue value)
@@ -219,7 +138,7 @@ namespace ThirdPersonSimulation
             var owner = new BlackboardOwnerToken(ProgramScopeKind.Character, group.CompiledOwnerIndex, 1);
             if (m_State.Get(group.OwnerToken).BlackboardOwnerToken != owner)
                 MaterializeGroup(in group, owner);
-            m_State.Set(group.Value, ToStateValue(value));
+            m_State.Set(group.Value, ToStateValue(value, binding.Projection));
             m_State.Set(group.WriteStamp, AbilityStateValue.FromBlackboardWriteStamp(new BlackboardWriteStamp(
                 m_Layout.RootOperation,
                 m_Frame.Tick.Value,
@@ -229,16 +148,23 @@ namespace ThirdPersonSimulation
                 0)));
         }
 
-        static AbilityStateValue ToStateValue(SimulationInputValue value)
+        static AbilityStateValue ToStateValue(SimulationInputValue value, ProgramBlackboardInputProjection projection)
         {
+            switch (projection)
+            {
+                case ProgramBlackboardInputProjection.ActionTargetIdentity:
+                    return AbilityStateValue.FromIdentity(value.ActionTargetSnapshot.TargetId);
+                case ProgramBlackboardInputProjection.ActionTargetPosition:
+                    return AbilityStateValue.FromVector3(value.ActionTargetSnapshot.Position);
+                case ProgramBlackboardInputProjection.ActionTargetYaw:
+                    return AbilityStateValue.FromScalar(value.ActionTargetSnapshot.Yaw.Degrees);
+            }
             return value.Kind switch
             {
                 ProgramInputValueKind.Boolean => AbilityStateValue.FromBoolean(value.Boolean),
                 ProgramInputValueKind.Scalar => AbilityStateValue.FromScalar(value.Scalar),
                 ProgramInputValueKind.Vector2 => AbilityStateValue.FromVector2(value.Vector2),
                 ProgramInputValueKind.Vector3 => AbilityStateValue.FromVector3(value.Vector3),
-                ProgramInputValueKind.Yaw => AbilityStateValue.FromYaw(value.Yaw),
-                ProgramInputValueKind.ActionTargetSnapshot => AbilityStateValue.FromActionTargetSnapshot(value.ActionTargetSnapshot),
                 _ => throw new InvalidOperationException($"Blackboard Input Binding value kind '{value.Kind}' is unsupported.")
             };
         }
@@ -252,7 +178,7 @@ namespace ThirdPersonSimulation
             ref readonly SimulationBlackboardSlotGroup group = ref Access.Services.BlackboardGroup(valueSlot);
             if (TryReadActiveGraphCallInput(cursor, valueSlot, out AbilityStateValue graphInput))
                 return graphInput;
-            BlackboardOwnerToken expected = ResolveBlackboardOwnerToken(cursor, operation, in group, false, out _);
+            BlackboardOwnerToken expected = ResolveBlackboardOwnerToken(cursor, operation, in group, out _);
             if (m_State.Get(group.OwnerToken).BlackboardOwnerToken != expected)
                 return DefaultValue(in group);
             return m_State.Get(valueSlot);
@@ -292,11 +218,8 @@ namespace ThirdPersonSimulation
             ProgramBlackboardLifetime lifetime = group.LifetimeKind;
             if (lifetime == ProgramBlackboardLifetime.Config)
                 throw new InvalidOperationException($"Blackboard config '{m_Ability.StateSlots[valueSlot].OwnerIdentity}' is read-only.");
-            BlackboardOwnerToken expected = ResolveBlackboardOwnerToken(cursor, operation, in group, true, out Float32ActionInstanceState action);
+            BlackboardOwnerToken expected = ResolveBlackboardOwnerToken(cursor, operation, in group, out Float32ActionInstanceState action);
             StoreValue(in group, value, expected, BuildBlackboardWriteStamp(operation, in action));
-            ProjectBlackboardWrite(cursor,
-                SimulationExecutionSource.FromSkillOperation(operation.Handle, SourcePath(operation)),
-                0, group, value, action);
             if (m_Trace.CaptureBlackboard && !cursor.IsPredictiveEvaluation)
                 m_Trace.AddBlackboard(operation, valueSlot, value, expected, group.LifetimeKind);
         }
@@ -322,7 +245,6 @@ namespace ThirdPersonSimulation
             OperationControlCursor<TTarget> cursor,
             SimulationOperation operation,
             in SimulationBlackboardSlotGroup group,
-            bool writing,
             out Float32ActionInstanceState action)
             where TTarget : struct, IOperationControlTarget<TTarget>
         {
@@ -352,15 +274,13 @@ namespace ThirdPersonSimulation
                     expectedGeneration = cursor.ReadGeneration(scope.OwnerOperation);
                     break;
                 case ProgramScopeKind.ActionInstance:
-                    action = ResolveBlackboardActionContext(operation, writing && BlackboardRequiresActionWindowProjection(group));
+                    action = ResolveBlackboardActionContext(operation);
                     if (!action.IsActive)
                         throw new InvalidOperationException($"Blackboard access '{SourcePath(operation)}' requires an explicit active Action Context.");
                     expectedGeneration = action.InstanceId;
                     break;
                 case ProgramScopeKind.Frame:
                     expectedGeneration = m_Frame.Tick.Value;
-                    if (writing && BlackboardRequiresActionWindowProjection(group))
-                        action = ResolveBlackboardActionContext(operation, true);
                     break;
                 default:
                     throw new InvalidOperationException($"Blackboard scope '{scope.Kind}' is unsupported.");
@@ -368,7 +288,7 @@ namespace ThirdPersonSimulation
             return new BlackboardOwnerToken(scope.Kind, group.CompiledOwnerIndex, expectedGeneration);
         }
 
-        Float32ActionInstanceState ResolveBlackboardActionContext(SimulationOperation operation, bool requiresProjection)
+        Float32ActionInstanceState ResolveBlackboardActionContext(SimulationOperation operation)
         {
             if (m_TimelineBlackboardContexts.Count > 0)
             {
@@ -401,8 +321,6 @@ namespace ThirdPersonSimulation
                 return slot >= 0 ? explicitAction : default;
             }
 
-            if (requiresProjection)
-                return default;
             return m_Actions.FindOnlyActive();
         }
 
@@ -428,152 +346,6 @@ namespace ThirdPersonSimulation
                 context.Cycle);
         }
 
-        void ProjectBlackboardWrite<TTarget>(
-            OperationControlCursor<TTarget> cursor,
-            SimulationExecutionSource source,
-            ulong commandSequence,
-            SimulationBlackboardSlotGroup group,
-            AbilityStateValue value,
-            Float32ActionInstanceState action)
-            where TTarget : struct, IOperationControlTarget<TTarget>
-        {
-            ProgramCatalogEntry declaration = group.Declaration;
-            if (!TryCatalogInt32(declaration, ProgramCatalogFieldId.Projection, out int projectionValue))
-                return;
-            ProgramBlackboardFactProjectionKind projection =
-                (ProgramBlackboardFactProjectionKind)projectionValue;
-            if (projection != ProgramBlackboardFactProjectionKind.ActionWindow ||
-                value.Kind != ProgramStateValueKind.Boolean)
-            {
-                throw new InvalidOperationException($"Blackboard projection '{declaration.Identity}' is not a valid Bool ActionWindow projection.");
-            }
-            if (!value.Boolean)
-                return;
-            if (group.Scope.Kind != ProgramScopeKind.Frame || group.LifetimeKind != ProgramBlackboardLifetime.Frame)
-                throw new InvalidOperationException($"ActionWindow projection '{declaration.Identity}' is not Frame/Frame.");
-            if (!action.IsActive)
-                throw new InvalidOperationException($"ActionWindow projection '{declaration.Identity}' has no active Action Context at tick '{m_Frame.Tick.Value}'.");
-
-            if (!m_ActionWindowProjectionKeys.Add(new SimulationActionWindowProjectionKey(
-                    declaration.Identity,
-                    action.SourceContext)))
-                return;
-            m_ActionWindowProjections.Add(new SimulationActionWindowProjectionCandidate(
-                source,
-                source.IsBlackboardCommand ? commandSequence : cursor.ReadGeneration(source.Operation),
-                m_Frame.ActorId,
-                m_Frame.Tick.Value,
-                declaration.Identity,
-                action.ActionId,
-                action.SourceContext,
-                CatalogString(declaration, ProgramCatalogFieldId.ActionWindowId),
-                CatalogString(declaration, ProgramCatalogFieldId.ActionWindowType),
-                CatalogIdentity(declaration, ProgramCatalogFieldId.ActionWindowTag),
-                CatalogUInt64(declaration, ProgramCatalogFieldId.ActionWindowDigest)));
-        }
-
-        public bool IsActionWindowActive(SimulationOperation operation, in GameplayAbilitySourceContext source)
-        {
-            string windowTag = operation.Text0;
-            for (int i = 0; i < m_ActionWindowProjections.Count; i++)
-            {
-                SimulationActionWindowProjectionCandidate candidate = m_ActionWindowProjections[i];
-                if (candidate.ActorId == m_Frame.ActorId &&
-                    candidate.LogicTick == m_Frame.Tick.Value &&
-                    candidate.SourceContext.Equals(source) &&
-                    Access.Services.GameplayEffectCatalog.IsTagOrParent(candidate.WindowTag, windowTag))
-                {
-                    if (m_Trace.Enabled)
-                        m_Trace.Add(operation, "action_window_active", SimulationTraceSeverity.Detail, candidate.WindowId);
-                    return true;
-                }
-            }
-            if (m_Trace.Enabled)
-                m_Trace.Add(operation, "action_window_inactive", SimulationTraceSeverity.Detail, windowTag);
-            return false;
-        }
-
-        internal static bool IsFrameWindowActive(Float32GameplayAbilityExecutionInstallation installation,
-            Float32CharacterRuntimeState character, in GameplayAbilitySourceContext source, string windowTag)
-		{
-            Float32AbilityRuntimeState ability = default;
-            for (int i = 0; i < character.Abilities.Count; i++)
-                if (character.Abilities[i].AbilityIdentity.AbilityId == installation.Data.AbilityId)
-                {
-                    ability = character.Abilities[i];
-                    break;
-                }
-            var frames = ability.AbilityExecutionState.Frames;
-            for (int frameIndex = 0; frameIndex < frames.Count; frameIndex++)
-			{
-                var frame = frames[frameIndex];
-                if (frame.ActionInstanceId != source.InstanceId || frame.SkillId != source.SkillId ||
-                    frame.Generation != source.SkillExecutionGeneration)
-                    continue;
-                for (int scopeIndex = 0; scopeIndex < installation.Data.Scopes.Count; scopeIndex++)
-                {
-                    ProgramScopeLayout scope = installation.Data.Scopes[scopeIndex];
-                    if (scope.Kind != ProgramScopeKind.Frame)
-                        continue;
-                    var groups = installation.Services.BlackboardGroups(scope);
-                    for (int groupIndex = 0; groupIndex < groups.Count; groupIndex++)
-                    {
-                        SimulationBlackboardSlotGroup group = groups[groupIndex];
-                        if (!installation.Layout.TryGetCatalogIdentity(group.Declaration, ProgramCatalogFieldId.ActionWindowTag, out string windowIdentity) ||
-                            !installation.Services.GameplayEffectCatalog.IsTagOrParent(windowIdentity, windowTag))
-                            continue;
-                        var owner = new BlackboardOwnerToken(ProgramScopeKind.Frame, group.CompiledOwnerIndex, character.LastCompletedTick);
-                        if (ReadSnapshotValue(installation, ability, frame, group.OwnerToken).BlackboardOwnerToken == owner &&
-                            ReadSnapshotValue(installation, ability, frame, group.WriteStamp).BlackboardWriteStamp.SourceContext.Equals(source) &&
-                            ReadSnapshotValue(installation, ability, frame, group.Value).Boolean)
-                            return true;
-                    }
-                }
-			}
-			return false;
-        }
-
-
-        static AbilityStateValue ReadSnapshotValue(Float32GameplayAbilityExecutionInstallation installation,
-            Float32AbilityRuntimeState ability, GameplayAbilityExecutionFrame<AbilityStateValue> frame, int slot)
-        {
-            AbilityStateValue value;
-            bool stored = frame != null && installation.Layout.IsSkillExecutionStateSlot(slot)
-                ? frame.TryGetValue(slot, out value)
-                : ability.StateValues.TryGetValue(slot, out value);
-            return stored ? value : installation.Data.DefaultStateValue(slot);
-		}
-
-        bool BlackboardRequiresActionWindowProjection(SimulationBlackboardSlotGroup group)
-        {
-            ProgramCatalogEntry declaration = group.Declaration;
-            if (!TryCatalogInt32(declaration, ProgramCatalogFieldId.Projection, out int projection))
-                return false;
-            if (projection != (int)ProgramBlackboardFactProjectionKind.ActionWindow)
-                throw new InvalidOperationException($"Blackboard projection '{declaration.Identity}' is unsupported.");
-            return true;
-        }
-
-        void FlushBlackboardProjections()
-        {
-            for (int i = 0; i < m_ActionWindowProjections.Count; i++)
-            {
-                SimulationActionWindowProjectionCandidate candidate = m_ActionWindowProjections[i];
-                SimulationEventHeader header = m_Facts.Next(candidate.Source, candidate.Generation);
-                var window = new ActionWindowFact(
-                    candidate.SourceContext,
-                    candidate.ActionId,
-                    candidate.WindowId,
-                    candidate.WindowType,
-                    candidate.WindowTag,
-                    m_Frame.Tick.Value,
-                    m_Frame.Tick.Value,
-                    candidate.Digest);
-                m_Facts.Add(new GameplayFact(header, window));
-                if (m_Trace.Enabled)
-                    m_Trace.Add(candidate.Source, "blackboard_action_window_projected", SimulationTraceSeverity.Information, candidate.DeclarationId, candidate.Generation);
-            }
-        }
 
         public IDisposable PushTimelineContext(
             SimulationOperation timeline,
@@ -594,8 +366,7 @@ namespace ThirdPersonSimulation
 
         AbilityStateValue DefaultValue(in SimulationBlackboardSlotGroup group)
         {
-            ProgramStateSlot value = m_Ability.StateSlots[group.Value];
-            return AbilityStateValue.FromConstant(m_Ability.Constants[value.DefaultConstantIndex], value.ValueKind);
+            return Access.Services.Blackboards.DefaultValue(group.Value);
         }
 
         void MaterializeGroup(in SimulationBlackboardSlotGroup group, BlackboardOwnerToken ownerToken)

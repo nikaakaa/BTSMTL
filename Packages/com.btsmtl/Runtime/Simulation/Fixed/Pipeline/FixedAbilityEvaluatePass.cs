@@ -1,6 +1,7 @@
 using ThirdPersonSimulation;
 using System;
 using System.Collections.Generic;
+using ThirdPersonPerformance.Instrumentation;
 
 namespace ThirdPersonSimulation.Fixed
 {
@@ -26,7 +27,7 @@ namespace ThirdPersonSimulation.Fixed
                 context.Products.BindExclusiveWriter<FixedCharacterEvaluationResultBatch>(SimulationPipelineProducts.CharacterEvaluationResults),
                 context.Products.BindExclusiveWriter<WorldSolveBatchRequest>(SimulationPipelineProducts.WorldSolveBatchRequest));
             return new FixedStepPassRuntimeAdapter<FixedAbilityEvaluateReadPorts, FixedAbilityEvaluateWritePorts>(
-                new FixedAbilityEvaluatePassRuntime(context.Pass.Descriptor, reads.CharacterRuntime.Runtime.Roster, reads.Combat.Combat),
+                new FixedAbilityEvaluatePassRuntime(context.Pass.Descriptor, reads.CharacterRuntime.Runtime.Roster, reads.Combat.Combat, context.GraphBatchExecution),
                 reads,
                 writes);
         }
@@ -34,9 +35,18 @@ namespace ThirdPersonSimulation.Fixed
 
     public sealed class FixedAbilityEvaluatePassRuntime :
         FixedPipelinePassRuntimeBase,
-        ISimulationStepPassRuntime<FixedAbilityEvaluateReadPorts, FixedAbilityEvaluateWritePorts>
+        ISimulationStepPassRuntime<FixedAbilityEvaluateReadPorts, FixedAbilityEvaluateWritePorts>, IGraphBatchWork
     {
         readonly FixedCharacterEvaluationResult[] m_Evaluations;
+        readonly FixedCharacterEvaluationInput[] m_EvaluationInputs;
+        readonly IReadOnlyList<SimulationActorBinding> m_Roster;
+        readonly Exception[] m_Failures;
+#if UNITY_EDITOR
+        readonly long[] m_InputPreparationElapsedStopwatchTicks;
+#endif
+        public GraphBatchExecution BatchExecution { get; }
+        public int FailureActorIndex => BatchExecution.FailureInstanceIndex;
+        public Exception LastFailure => BatchExecution.LastFailure;
         readonly CharacterWorldSolveRequest[] m_Requests;
         readonly SimulationIngress[][] m_Ingress;
         readonly int[] m_IngressCounts;
@@ -51,13 +61,21 @@ namespace ThirdPersonSimulation.Fixed
         public FixedAbilityEvaluatePassRuntime(
             SimulationPipelinePassDescriptor descriptor,
             IReadOnlyList<SimulationActorBinding> roster,
-            FixedCombatRuntime combat)
+            FixedCombatRuntime combat,
+            GraphBatchExecution batchExecution)
             : base(descriptor)
         {
             m_Combat = combat;
             int actorCount = roster.Count;
             if (actorCount <= 0)
                 throw new ArgumentOutOfRangeException(nameof(actorCount));
+            m_Roster = roster;
+            BatchExecution = batchExecution;
+            m_EvaluationInputs = new FixedCharacterEvaluationInput[actorCount];
+            m_Failures = new Exception[actorCount];
+#if UNITY_EDITOR
+            m_InputPreparationElapsedStopwatchTicks = new long[actorCount];
+#endif
             m_Evaluations = new FixedCharacterEvaluationResult[actorCount];
             m_Requests = new CharacterWorldSolveRequest[actorCount];
             m_Ingress = new SimulationIngress[actorCount][];
@@ -114,29 +132,50 @@ namespace ThirdPersonSimulation.Fixed
                         !step.Inputs[i].ActorId.Equals(actor.ActorId))
                         throw new InvalidOperationException("Ability Evaluate Pass Actor order does not match the locked roster.");
                     actor.EvaluationOutput.IngressAdmission = m_IngressAdmissions[i];
+#if UNITY_EDITOR
+                    long inputPreparationStarted = System.Diagnostics.Stopwatch.GetTimestamp();
+#endif
+                    actor.CaptureAvailabilityFrameEvents(m_Ingress[i], m_IngressCounts[i]);
+                    for (int ability = 0; ability < actor.Invocations.Length; ability++)
+                        actor.Invocations[ability].PrepareEvaluationInputs();
+#if UNITY_EDITOR
+                    m_InputPreparationElapsedStopwatchTicks[i] =
+                        System.Diagnostics.Stopwatch.GetTimestamp() - inputPreparationStarted;
+#endif
                     SimulationInput input = step.Inputs[i].Value.Input;
-                    CharacterWorldSolveRequest worldRequest;
-                    m_Evaluations[i] = FixedCharacterEvaluationRuntime.Evaluate(
-                        readPorts.CharacterRuntime.Runtime,
-                        actor,
-                        state.Actors[i].State,
-                        step.Tick,
-                        input,
-                        m_Ingress[i],
-                        m_IngressCounts[i],
-                        state.WorldState.Bodies[i],
-                        readPorts.Combat.Combat,
+                    if (state.Actors[i].State.NumericProfile != readPorts.CharacterRuntime.Runtime.NumericProfile ||
+                        input.NumericProfile != readPorts.CharacterRuntime.Runtime.NumericProfile)
+                        throw new InvalidOperationException("角色求值输入的数值目标与已准备内容不同。");
+                    m_EvaluationInputs[i] = new FixedCharacterEvaluationInput(
+                        readPorts.CharacterRuntime.Runtime, actor, state.Actors[i].State, step.Tick, input,
+                        m_Ingress[i], m_IngressCounts[i], state.WorldState.Bodies[i],
                         readPorts.Diagnostics.Sink.IsEnabled,
-                        readPorts.Diagnostics.Sink.IsCaptureRequested(actor.ActorId, SimulationDiagnosticChannel.Motion),
                         readPorts.Diagnostics.Sink is ISimulationValueTraceInterest valueInterest &&
                         valueInterest.IsValueCaptureRequested(actor.ActorId),
                         readPorts.Diagnostics.Sink is ISimulationControlTraceInterest controlInterest &&
                         controlInterest.IsControlCaptureRequested(actor.ActorId),
                         readPorts.Diagnostics.Sink is ISimulationBlackboardTraceInterest blackboardInterest &&
                         blackboardInterest.IsBlackboardCaptureRequested(actor.ActorId),
+                        readPorts.Diagnostics.Sink.IsCaptureRequested(actor.ActorId, SimulationDiagnosticChannel.Motion),
                         step.ExecutionKind == SimulationPipelineStepExecutionKind.Forward,
-                        out worldRequest);
-                    m_Requests[i] = worldRequest;
+                        m_Combat.PrepareEvaluation(i));
+                }
+                BatchExecution.Execute(this, m_Evaluations.Length);
+                for (int i = 0; i < m_Failures.Length; i++)
+                    if (m_Failures[i] != null)
+                    {
+                        BatchExecution.ReportFailure(i, m_Failures[i]);
+                        System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(LastFailure).Throw();
+                    }
+                for (int i = 0; i < m_Evaluations.Length; i++)
+                {
+#if UNITY_EDITOR
+                    m_Evaluations[i].Output.EvaluationInputSnapshotPrepareElapsedStopwatchTicks =
+                        m_InputPreparationElapsedStopwatchTicks[i];
+#endif
+                    m_Combat.AdoptEvaluation(i);
+                    for (int ability = 0; ability < m_Roster[i].Invocations.Length; ability++)
+                        m_Roster[i].Invocations[ability].AdoptEvaluationInputs();
                 }
                 writePorts.CharacterEvaluationResults.Write(m_EvaluationBatch.Reset(step.Tick, m_Evaluations));
                 writePorts.WorldBatch.Write(m_WorldBatch.Reset(step.Tick, state.WorldState, m_Requests, readPorts.Inputs.Read().KinematicBodies));
@@ -151,7 +190,20 @@ namespace ThirdPersonSimulation.Fixed
             {
                 for (int i = 0; i < m_Evaluations.Length; i++)
                 {
+#if UNITY_EDITOR
+                    FixedCharacterEvaluationOutput inputTimingOutput = m_Evaluations[i]?.Output;
+                    long inputDiscardStarted = System.Diagnostics.Stopwatch.GetTimestamp();
+#endif
                     m_Evaluations[i] = null;
+                    m_EvaluationInputs[i] = default;
+                    for (int ability = 0; ability < m_Roster[i].Invocations.Length; ability++)
+                        m_Roster[i].Invocations[ability].DiscardEvaluationInputs();
+#if UNITY_EDITOR
+                    if (inputTimingOutput != null)
+                        inputTimingOutput.EvaluationInputSnapshotDiscardElapsedStopwatchTicks =
+                            System.Diagnostics.Stopwatch.GetTimestamp() - inputDiscardStarted;
+#endif
+                    m_Failures[i] = null;
                     m_Requests[i] = default;
                     Array.Clear(m_Ingress[i], 0, m_IngressCounts[i]);
                     m_IngressCounts[i] = 0;
@@ -160,6 +212,28 @@ namespace ThirdPersonSimulation.Fixed
                     m_IngressAdmissions[i] = default;
                 }
             }
+        }
+
+        void IGraphBatchWork.Compute(int instanceIndex)
+        {
+            try
+            {
+                m_Evaluations[instanceIndex] = FixedCharacterEvaluationRuntime.Evaluate(
+                    m_Roster[instanceIndex], in m_EvaluationInputs[instanceIndex], out m_Requests[instanceIndex]);
+            }
+            catch (Exception exception)
+            {
+                m_Failures[instanceIndex] = exception;
+            }
+        }
+
+        PerformanceInstrumentationContext IGraphBatchWork.GetInstrumentationContext(int instanceIndex)
+        {
+            CanonicalTextValue actorIdentity = m_Roster[instanceIndex].ActorId.Value;
+            using CanonicalTextReadLease read = actorIdentity.AcquireRead();
+            return new(0, m_EvaluationInputs[instanceIndex].Tick.Value,
+                PerformanceInstrumentationIdentity.Hash64(actorIdentity.Span), 0, 0,
+                PerformanceInstrumentationContextFlags.LogicTick | PerformanceInstrumentationContextFlags.Actor);
         }
 
         void PrepareIngress(FixedSimulationStep step, IFixedCharacterRuntimePort runtime)

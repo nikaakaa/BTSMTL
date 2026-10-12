@@ -54,6 +54,7 @@ namespace ThirdPersonSimulation
         public IReadOnlyList<Float32AbilityRuntimeState> Abilities => m_Page.Abilities;
         internal Float32AbilityRuntimeState[] AbilitiesArray => m_Page.Abilities;
         internal MotionWarpStatePageReference<Float32MotionWarpState> MotionWarpStates => m_Page.Data.MotionWarpStates;
+        internal AbilityStateValuePageReference<AbilityStateValue> CharacterBlackboards => m_Page.Data.CharacterBlackboards;
         internal Float32ActionStatePageReference ActionStatePage => m_Page.Data.ActionStatePage;
         internal ReadOnlySpan<SimulationActionActivationRequestState> ActionActivationRequests => ActionStatePage.Requests;
         internal ReadOnlySpan<Float32ActionInstanceState> ActionInstances => ActionStatePage.Actions;
@@ -89,6 +90,7 @@ namespace ThirdPersonSimulation
         {
             m_Page.Retainers++;
             MotionWarpStates.Retain();
+            CharacterBlackboards.Retain();
             ActionStatePage.Retain();
             InputRequestPage.Retain();
             GameplayEffectState.RetainSnapshots();
@@ -105,6 +107,7 @@ namespace ThirdPersonSimulation
 
         internal void ReleaseStatePages()
         {
+            CharacterBlackboards.Release();
             for (int index = 0; index < m_Page.TimelineValues.Count; index++)
                 m_Page.TimelineValues[index].ReleaseStateStorage();
             for (int index = 0; index < m_Page.Abilities.Length; index++)
@@ -187,7 +190,7 @@ namespace ThirdPersonSimulation
 
         bool RetainTimelineSnapshot(in AbilityTimelineRuntimeSnapshot snapshot)
         {
-            if (snapshot.State != AbilityTimelineSnapshotState.Completed && snapshot.State != AbilityTimelineSnapshotState.Stopped)
+            if (snapshot.State != BTSMTL.Timeline.TimelineRuntimePlaybackState.Completed && snapshot.State != BTSMTL.Timeline.TimelineRuntimePlaybackState.Stopped)
                 return true;
             ReadOnlySpan<Float32ActionInstanceState> actions = ActionInstances;
             for (int index = 0; index < actions.Length; index++)
@@ -264,6 +267,7 @@ namespace ThirdPersonSimulation
 
     internal struct Float32CharacterRuntimeStateData
     {
+        internal AbilityStateValuePageReference<AbilityStateValue> CharacterBlackboards;
         internal SimulationNumericProfile NumericProfile;
         internal GameplayContentHash GameplayContentHash;
         internal StableHash StateSchemaHash;
@@ -297,18 +301,9 @@ namespace ThirdPersonSimulation
         internal readonly List<AbilityTimelineRuntimeSnapshot> TimelineValues;
         internal readonly ReadOnlyCollection<AbilityTimelineRuntimeSnapshot> TimelineView;
         internal CharacterControlRuntimeStateStorage ControlStorage;
-        internal AbilityTimelineSnapshotStorage DecodeStorage;
         internal Float32CharacterRuntimeStateData Data;
         internal SimulationCharacterStatePayload CanonicalPayload;
         internal int Retainers;
-
-        internal AbilityTimelineSnapshotStorage BeginTimelineDecode()
-        {
-            AbilityTimelineSnapshotStorage storage = DecodeStorage ??
-                throw new InvalidOperationException("Float32 Character Timeline decode storage requires the published checkpoint payload capacity.");
-            storage.BeginDecode();
-            return storage;
-        }
 
         internal void Clear()
         {
@@ -332,8 +327,8 @@ namespace ThirdPersonSimulation
         readonly List<Float32CharacterRuntimeStatePage> m_Pages = new List<Float32CharacterRuntimeStatePage>();
         readonly int m_AbilityCount;
         int m_ControlValueCount;
+        AbilityTimelineSnapshotStorageBank m_DecodeStorage;
         internal SimulationCharacterStatePayloadStorage EncodingStorage { get; set; }
-        internal int EncodingActorIndex { get; set; }
 
         internal void ReleaseEncodingStorage()
         {
@@ -368,20 +363,21 @@ namespace ThirdPersonSimulation
                 maximumPayloadBytes, clips, exits, pendingExits, trees);
         }
 
-        internal void PrepareDecodeStorage()
+        internal void PrepareDecodeStorage(int capacity)
         {
-            for (int index = 0; index < m_Pages.Count; index++)
-                m_Pages[index].DecodeStorage = new AbilityTimelineSnapshotStorage(DecodeLayout.ActiveClips,
-                    DecodeLayout.TreeDecisionExits, DecodeLayout.PendingTreeDecisionExits, DecodeLayout.ActiveTreeClips);
+            m_DecodeStorage = new AbilityTimelineSnapshotStorageBank(DecodeLayout.ActiveClips,
+                DecodeLayout.TreeDecisionExits, DecodeLayout.PendingTreeDecisionExits, DecodeLayout.ActiveTreeClips);
+            m_DecodeStorage.PrepareCapacity(capacity);
         }
 
-        internal Float32CharacterRuntimeStatePage Begin(Float32CharacterRuntimeStatePage source = null, bool decode = false)
+        internal AbilityTimelineSnapshotStorage BeginTimelineDecode() => m_DecodeStorage.BeginDecode();
+
+        internal Float32CharacterRuntimeStatePage Begin(Float32CharacterRuntimeStatePage source = null)
         {
             for (int index = 0; index < m_Pages.Count; index++)
             {
                 Float32CharacterRuntimeStatePage page = m_Pages[index];
-                if (page.Retainers != 0 || ReferenceEquals(page, source) ||
-                    decode && page.DecodeStorage != null && page.DecodeStorage.Retainers != 0)
+                if (page.Retainers != 0 || ReferenceEquals(page, source))
                     continue;
                 page.Clear();
                 page.ControlStorage.BeginWrite();

@@ -240,7 +240,8 @@ namespace ThirdPersonSimulation.Fixed
         }
     }
 
-    internal readonly struct FixedActionInstanceReference
+    [CanonicalContract]
+    internal readonly partial struct FixedActionInstanceReference
     {
         public FixedActionInstanceReference(
             string actionId,
@@ -262,6 +263,7 @@ namespace ThirdPersonSimulation.Fixed
             SkillExecutionGeneration = skillExecutionGeneration;
         }
 
+        [CanonicalDeclaredText]
         public string ActionId { get; }
         public CanonicalTextValue ContextId { get; }
         public ulong InstanceId { get; }
@@ -911,7 +913,7 @@ namespace ThirdPersonSimulation.Fixed
             value.Kind == m_Ability.StateSlots[slotIndex].ValueKind;
 
         AbilityStateValue IGameplayAbilityExecutionStorage<AbilityStateValue>.DefaultValue(int slotIndex) =>
-            m_Ability.DefaultStateValue(slotIndex);
+            Access.Services.DefaultValue(slotIndex);
 
         GameplayAbilityExecutionAggregate<AbilityStateValue> IGameplayAbilityExecutionStorage<AbilityStateValue>.ReadAggregate() =>
 			m_Frame.ReadAbilityState();

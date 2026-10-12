@@ -100,13 +100,15 @@ namespace ThirdPersonSimulation.Fixed
 
     public sealed class FixedCombatBatchResult
     {
-        internal FixedCombatBatchResult(FixedCombatResultStorage hits, int cameraCapacity)
+        internal FixedCombatBatchResult(FixedCombatResultStorage hits, int hitCapacity, int cameraCapacity)
         {
             Hits = hits;
+            HitHeaders = new SimulationEventHeader[hitCapacity];
             Cameras = new FixedCombatCameraRequest[cameraCapacity];
         }
         public ulong Tick { get; internal set; }
         public IReadOnlyList<CombatHitResult> Hits { get; }
+        internal SimulationEventHeader[] HitHeaders { get; }
         internal FixedCombatCameraRequest[] Cameras { get; }
         internal int CameraCount { get; set; }
     }
@@ -155,6 +157,7 @@ namespace ThirdPersonSimulation.Fixed
         readonly int[] m_AttackStateOffsets;
         readonly FixedCombatHalt[] m_Halts;
         readonly FixedCombatTimeSlowState[] m_SelfTimeSlows;
+        readonly FixedCombatEvaluation[] m_Evaluations;
         readonly FixedGameplayAbilityCurve[] m_TimeSlowCurves;
         FixedCombatTimeSlowState m_WorldTimeSlow;
         int m_WorldTimeSlowOwner;
@@ -302,6 +305,10 @@ namespace ThirdPersonSimulation.Fixed
             m_AttackStates = states.ToArray();
             m_Halts = new FixedCombatHalt[haltCapacity];
             m_SelfTimeSlows = new FixedCombatTimeSlowState[characters.Roster.Count];
+            m_Evaluations = new FixedCombatEvaluation[characters.Roster.Count];
+            for (int i = 0; i < m_Evaluations.Length; i++)
+                m_Evaluations[i] = new FixedCombatEvaluation(m_Halts, i,
+                    m_AttackStateOffsets[i + 1] - m_AttackStateOffsets[i]);
             SweepShape<FixedScalar>[] preparedShapes = shapes.ToArray();
             m_Backend = new FixedSweepQueryBackend(preparedShapes);
 #if UNITY_EDITOR
@@ -312,7 +319,7 @@ namespace ThirdPersonSimulation.Fixed
 #endif
             m_QueryResults = new SweepResultBuffer<FixedScalar>(actorCount);
             m_Pending = new FixedCombatResultStorage(resultCapacity);
-            m_Batch = new FixedCombatBatchResult(m_Pending, cameraCapacity);
+            m_Batch = new FixedCombatBatchResult(m_Pending, resultCapacity, cameraCapacity);
         }
 
         static PortableEffectDefinition PrepareResponseEffect(SimulationActorBinding actor, string effectId)
@@ -394,22 +401,10 @@ namespace ThirdPersonSimulation.Fixed
             return count;
         }
 
-        public bool IsHalted(ActorId actor, ulong actionInstanceId, ulong tick)
-        {
-            int actorIndex = m_Characters.GetActorIndex(actor);
-            for (int i = 0; i < m_Halts.Length; i++)
-                if (m_Halts[i].ActorIndex == actorIndex && m_Halts[i].ActionInstanceId == actionInstanceId &&
-                    tick < m_Halts[i].ResumeTick)
-                    return true;
-            return false;
-        }
-
         public FixedScalar WorldTimeScale => m_WorldTimeSlow.CurrentRate;
 
         public FixedScalar OwnerTimeScale(ActorId actor) =>
             m_SelfTimeSlows[m_Characters.GetActorIndex(actor)].CurrentRate;
-
-        public FixedScalar ActionTimeScale(ActorId actor) => WorldTimeScale * OwnerTimeScale(actor);
 
         internal void AdvanceTimeSlows()
         {
@@ -453,12 +448,30 @@ namespace ThirdPersonSimulation.Fixed
             }
         }
 
-        internal void OnActionCommitted(ActorId actor, CharacterSkillId skill)
+        internal FixedCombatEvaluation PrepareEvaluation(int actorIndex)
         {
-            int actorIndex = m_Characters.GetActorIndex(actor);
-            if (m_SelfTimeSlows[actorIndex].Active &&
-                skill == m_Characters.Roster[actorIndex].CombatBinding.PerfectEvadeTimeSlow.CounterSkillId)
-                m_SelfTimeSlows[actorIndex] = default;
+            FixedCombatEvaluation evaluation = m_Evaluations[actorIndex];
+            evaluation.WorldTimeScale = WorldTimeScale;
+            evaluation.SelfTimeSlow = m_SelfTimeSlows[actorIndex];
+            evaluation.SelfTimeSlowChanged = false;
+            evaluation.CounterSkill = evaluation.SelfTimeSlow.Active
+                ? m_Characters.Roster[actorIndex].CombatBinding.PerfectEvadeTimeSlow.CounterSkillId : default;
+            evaluation.HitCount = 0;
+            for (int i = m_AttackStateOffsets[actorIndex]; i < m_AttackStateOffsets[actorIndex + 1]; i++)
+            {
+                FixedCombatAttackState state = m_AttackStates[i];
+                if (state.Active && state.HitCount != 0)
+                    evaluation.AcceptedHits[evaluation.HitCount++] = new FixedAcceptedHitFact(
+                        state.Identity.ActionInstanceId, state.Identity.SegmentGeneration, state.EventId);
+            }
+            return evaluation;
+        }
+
+        internal void AdoptEvaluation(int actorIndex)
+        {
+            FixedCombatEvaluation evaluation = m_Evaluations[actorIndex];
+            if (evaluation.SelfTimeSlowChanged)
+                m_SelfTimeSlows[actorIndex] = evaluation.SelfTimeSlow;
         }
 
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
@@ -469,22 +482,6 @@ namespace ThirdPersonSimulation.Fixed
         }
 #endif
 
-        public bool HasAcceptedHit(ActorId actor, ulong actionInstanceId, ulong segmentGeneration, string attackEventId)
-        {
-            int actorIndex = m_Characters.GetActorIndex(actor);
-            int start = m_AttackStateOffsets[actorIndex];
-            int end = m_AttackStateOffsets[actorIndex + 1];
-            for (int i = start; i < end; i++)
-            {
-                FixedCombatAttackState state = m_AttackStates[i];
-                if (state.Active && state.Identity.ActionInstanceId == actionInstanceId &&
-                    state.Identity.SegmentGeneration == segmentGeneration && state.HitCount != 0 &&
-                    state.EventId.Equals(attackEventId))
-                    return true;
-            }
-            return false;
-        }
-
         internal FixedCombatBatchResult Resolve(FixedCharacterEvaluationResultBatch evaluations, WorldSolveBatchResult world,
             IReadOnlyList<FixedLocalEnemyInput> localEnemies)
         {
@@ -494,6 +491,7 @@ namespace ThirdPersonSimulation.Fixed
             if (m_QueryDiagnostics.CaptureEnabled)
                 m_QueryDiagnostics.BeginTick(tick);
 #endif
+            Array.Clear(m_Batch.HitHeaders, 0, m_Pending.Count);
             m_Pending.Clear();
             m_Batch.Tick = tick;
             m_Batch.CameraCount = 0;
@@ -641,7 +639,7 @@ namespace ThirdPersonSimulation.Fixed
             FixedCombatQueryDiagnostic diagnostic = null;
             if (captureQuery)
                 diagnostic = m_QueryDiagnostics.Append(m_Participants[actorIndex].ActorId, prepared.ContentId,
-                    request.AttackEventId, request.NodeId, query.Segments,
+                    request, query.Segments,
                     query.TargetModel, query.Filter, query.Targets);
 #endif
             try
@@ -740,10 +738,11 @@ namespace ThirdPersonSimulation.Fixed
             FixedCharacterEvaluationResult target = targetParticipant.CharacterIndex >= 0
                 ? evaluations.Evaluations[targetParticipant.CharacterIndex] : null;
             ulong evadeAction = 0;
-            if (targetParticipant.CharacterIndex >= 0 && FindWindow(target, m_Characters.Roster[targetParticipant.CharacterIndex], targetBinding.InvulnerableWindowTag) != 0)
+            if (targetParticipant.CharacterIndex >= 0 &&
+                target.CandidateState.GameplayEffectState.HasTag(targetBinding.InvulnerableTag, GameplayEffectScope.Actor))
             {
-                evadeAction = FindWindow(target, m_Characters.Roster[targetParticipant.CharacterIndex], targetBinding.PerfectEvadeWindowTag);
-                if (evadeAction == 0 || FindWindow(target, m_Characters.Roster[targetParticipant.CharacterIndex], targetBinding.PerfectEvadeReadyWindowTag) != 0)
+                evadeAction = FindDefensiveAction(target.CandidateState, targetBinding, true);
+                if (evadeAction == 0)
                     return;
                 for (int i = 0; i < m_Pending.Count; i++)
                     if (m_Pending[i].Disposition == CombatHitDisposition.Evaded &&
@@ -751,7 +750,8 @@ namespace ThirdPersonSimulation.Fixed
                         m_Pending[i].TargetActionInstanceId == evadeAction)
                         return;
             }
-            ulong parryAction = evadeAction == 0 && targetParticipant.CharacterIndex >= 0 ? FindWindow(target, m_Characters.Roster[targetParticipant.CharacterIndex], targetBinding.ParryWindowTag) : 0;
+            ulong parryAction = evadeAction == 0 && targetParticipant.CharacterIndex >= 0
+                ? FindDefensiveAction(target.CandidateState, targetBinding, false) : 0;
             ulong targetAction = evadeAction != 0 ? evadeAction :
                 parryAction != 0 ? parryAction : targetParticipant.CharacterIndex >= 0 ? FindActiveAction(target.CandidateState) : 0;
             CombatHitResult hit = m_Pending.Append();
@@ -794,6 +794,8 @@ namespace ThirdPersonSimulation.Fixed
             hit.Point = new FixedVector3(candidate.Point.X, candidate.Point.Y, candidate.Point.Z);
             hit.Normal = new FixedVector3(candidate.Normal.X, candidate.Normal.Y, candidate.Normal.Z);
             hit.DefinitionIndex = definition.Index;
+            m_Batch.HitHeaders[m_Pending.Count - 1] = request.Identity.SourceKind == CombatAttackSourceKind.CharacterAction
+                ? request.Header : CreateIngressHitHeader(hit);
             if (evadeAction != 0)
             {
                 StartPerfectEvadeTimeSlow(targetParticipant.CharacterIndex);
@@ -896,24 +898,22 @@ namespace ThirdPersonSimulation.Fixed
             return instanceId;
         }
 
-        static bool IsWindowSourceActive(FixedCharacterRuntimeState state, in GameplayAbilitySourceContext source)
+        static ulong FindDefensiveAction(FixedCharacterRuntimeState state, CharacterCombatRuntimeBinding binding, bool evade)
         {
             ReadOnlySpan<FixedActionInstanceState> actions = state.ActionInstances;
-            for (int i = 0; i < actions.Length; i++)
-                if (actions[i].SourceContext.Equals(source))
-                    return actions[i].IsActive;
-            return false;
-        }
-
-        static ulong FindWindow(FixedCharacterEvaluationResult evaluation, SimulationActorBinding actor, string windowTag)
-        {
-            IReadOnlyList<GameplayFact> facts = evaluation.Output.Facts;
-            for (int i = 0; i < facts.Count; i++)
-                if (facts[i].Kind == GameplayFactKind.ActionWindow &&
-                    actor.AbilityInstallations.GameplayEffectCatalog.IsTagOrParent(facts[i].ActionWindow.WindowTag, windowTag) &&
-                    facts[i].ActionWindow.StartTick <= evaluation.Tick.Value && evaluation.Tick.Value <= facts[i].ActionWindow.EndTick &&
-                    IsWindowSourceActive(evaluation.CandidateState, facts[i].ActionWindow.SourceContext))
-                    return facts[i].ActionWindow.ActionInstanceId;
+            for (int index = 0; index < actions.Length; index++)
+            {
+                ref readonly FixedActionInstanceState action = ref actions[index];
+                GameplayAbilitySourceContext source = action.SourceContext;
+                GameplayEffectScope scope = GameplayEffectScope.Action(source);
+                if (!action.IsActive || !state.GameplayEffectState.HasTag(
+                        evade ? binding.EvadingTag : binding.GuardingTag, scope))
+                    continue;
+                if (!evade || state.GameplayEffectState.HasTagFromAction(binding.InvulnerableTag,
+                        GameplayEffectScope.Actor, in source) &&
+                    !state.GameplayEffectState.HasTag(binding.CounterOpportunityTag, scope))
+                    return action.InstanceId;
+            }
             return 0;
         }
 
@@ -978,12 +978,20 @@ namespace ThirdPersonSimulation.Fixed
             ActorId actor = m_Characters.Roster[actorIndex].ActorId;
             for (int i = 0; i < batch.Hits.Count; i++)
                 if (batch.Hits[i].SourceActor == actor || batch.Hits[i].TargetActor == actor)
-                    output.AttackResults.Append().CopyFrom(batch.Hits[i]);
+                {
+                    CombatHitResult hit = output.AttackResults.Append();
+                    hit.CopyFrom(batch.Hits[i]);
+                    ProjectHitFeedback(actor, hit, batch.HitHeaders[i], output);
+                }
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
             CombatHitResult[] simulated = m_Characters.Roster[actorIndex].SimulatedIncomingAttackResults;
             for (int i = 0; i < simulated.Length; i++)
                 if (simulated[i].SourceTick == batch.Tick)
-                    output.AttackResults.Append().CopyFrom(simulated[i]);
+                {
+                    CombatHitResult hit = output.AttackResults.Append();
+                    hit.CopyFrom(simulated[i]);
+                    ProjectHitFeedback(actor, hit, CreateIngressHitHeader(hit), output);
+                }
 #endif
             for (int i = 0; i < batch.CameraCount; i++)
             {
@@ -997,6 +1005,38 @@ namespace ThirdPersonSimulation.Fixed
                     definition.Definition.Id, FixedScalar.Zero, FixedScalar.One,
                     item.Header.Activation.Generation, sourceActionInstanceId: item.ActionInstanceId, cameraRequest: request));
             }
+        }
+
+        SimulationEventHeader CreateIngressHitHeader(CombatHitResult hit)
+        {
+            Span<byte> block = stackalloc byte[64];
+            var builder = new EventIdBuilder(block);
+            builder.Append("combat-gameplay-result/1");
+            builder.Append(hit.SourceActor.Value);
+            builder.Append(hit.SourceTick);
+            builder.Append(hit.ResultId);
+            return new SimulationEventHeader(m_Characters.NumericProfile, builder.Build(), hit.SourceActor,
+                new SimulationTick(hit.SourceTick), new ActivationId(SimulationExecutionSource.FromGameplayEffect(), 1),
+                hit.ResultId, "combat-gameplay-result");
+        }
+
+        static void ProjectHitFeedback(ActorId actor, CombatHitResult hit, SimulationEventHeader source,
+            FixedCharacterEvaluationOutput output)
+        {
+            bool attacker = hit.SourceActor == actor && hit.Disposition != CombatHitDisposition.Evaded;
+            bool parryReceiver = hit.TargetActor == actor && hit.Disposition == CombatHitDisposition.Parried;
+            if (!attacker && !parryReceiver)
+                return;
+            Span<byte> block = stackalloc byte[64];
+            var builder = new EventIdBuilder(block);
+            builder.Append("combat-hit-output/1");
+            builder.Append(source.EventId);
+            builder.Append(actor.Value);
+            builder.Append(hit.ResultId);
+            var header = new SimulationEventHeader(source.NumericProfile, builder.Build(), actor,
+                new SimulationTick(hit.SourceTick), source.Activation, hit.ResultId, "combat-hit", source.TreeClipInvocation);
+            output.Presentation.Add(new PresentationCommand(header, PresentationCommandKind.CombatHit,
+                "combat-hit", FixedScalar.Zero, FixedScalar.One, combatHit: hit));
         }
     }
 }

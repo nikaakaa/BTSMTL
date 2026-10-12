@@ -35,7 +35,7 @@ namespace ThirdPersonSimulation
 
         public void PrepareStateExecutionText(CanonicalTextStorage storage, int maximumPathCharacters)
         {
-            m_ExecutionPathText = new CanonicalTextReferences(m_MaxExecutionCount, storage);
+            m_ExecutionPathText = new CanonicalTextReferences(Math.Min(m_MaxExecutionCount, storage.MaximumTextValues), storage);
             m_ExecutionPathCharacters = new char[maximumPathCharacters];
         }
 

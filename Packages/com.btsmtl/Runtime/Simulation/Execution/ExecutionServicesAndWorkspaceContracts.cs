@@ -82,7 +82,8 @@ namespace ThirdPersonSimulation
     internal enum ActionAdmissionEvaluationMode : byte
     {
         PreviewReplacement = 1,
-        CommitActivation = 2
+        CommitActivation = 2,
+        CommitAcceptedRequest = 3
     }
 
     public enum ActionAdmissionRejectReason : byte
@@ -96,7 +97,11 @@ namespace ThirdPersonSimulation
         ActionCapacityExceeded = 6,
         ReplacementSourceMissing = 7,
         StartupRequirementsFailed = 8,
-        ActivationRequestPending = 9
+        ActivationRequestPending = 9,
+        ActorAbilityBlocked = 10,
+        SourceAbilityBlocked = 11,
+        ReplacementSourceRequirementFailed = 12,
+        OpportunityUnavailable = 13
     }
 
     internal readonly struct ActionAdmissionActiveAction
@@ -127,12 +132,14 @@ namespace ThirdPersonSimulation
     internal readonly struct ActionAdmissionRequest
     {
         public ActionAdmissionRequest(
+            CharacterSkillId candidateSkillId,
             ActionAdmissionProfile targetProfile,
             ActionAdmissionTargetCandidate targetCandidate,
             ActionAdmissionEvaluationMode mode,
             ActionAdmissionActiveAction replacementActiveAction = default,
             ulong executingActionInstanceId = 0)
         {
+            CandidateSkillId = candidateSkillId;
             TargetProfile = targetProfile ?? throw new ArgumentNullException(nameof(targetProfile));
             TargetCandidate = targetCandidate;
             Mode = mode;
@@ -140,6 +147,7 @@ namespace ThirdPersonSimulation
             ExecutingActionInstanceId = executingActionInstanceId;
         }
 
+        public CharacterSkillId CandidateSkillId { get; }
         public ActionAdmissionProfile TargetProfile { get; }
         public ActionAdmissionTargetCandidate TargetCandidate { get; }
         public ActionAdmissionEvaluationMode Mode { get; }
@@ -155,7 +163,8 @@ namespace ThirdPersonSimulation
             ActionAdmissionRejectReason rejectReason,
             string activeSourceActionId,
             ulong activeSourceActionInstanceId = 0,
-            GameplayEffectApplyResult startupFailure = default)
+            GameplayEffectApplyResult startupFailure = default,
+            ulong blockingEffectHandle = 0)
         {
             if (allowed && rejectReason != ActionAdmissionRejectReason.None)
                 throw new ArgumentException("Allowed Action admission cannot carry a rejection reason.", nameof(rejectReason));
@@ -166,6 +175,7 @@ namespace ThirdPersonSimulation
             ActiveSourceActionId = activeSourceActionId ?? string.Empty;
             ActiveSourceActionInstanceId = activeSourceActionInstanceId;
             StartupFailure = startupFailure;
+            BlockingEffectHandle = blockingEffectHandle;
         }
 
         public bool Allowed { get; }
@@ -173,6 +183,7 @@ namespace ThirdPersonSimulation
         public string ActiveSourceActionId { get; }
         public ulong ActiveSourceActionInstanceId { get; }
         public GameplayEffectApplyResult StartupFailure { get; }
+        public ulong BlockingEffectHandle { get; }
     }
 
     internal interface IActionAdmissionReadPort
@@ -183,7 +194,9 @@ namespace ThirdPersonSimulation
         bool TryReadActiveAction(int index, out ActionAdmissionActiveAction action);
         IReadOnlyList<string> ReadAbilityTags(CharacterSkillId skillId);
         bool TryGetGameplayTagParent(string tag, out string parentTag);
-        GameplayEffectApplyResult EvaluateStartupEffects();
+        GameplayEffectApplyResult EvaluateStartupEffects(CharacterSkillId candidateSkillId);
+        bool TryFindAbilityBlock(CharacterSkillId candidateSkillId, GameplayEffectScope scope, out ulong effectHandle);
+        bool TryFindReplacementSourceRejection(CharacterSkillId candidateSkillId, in GameplayAbilitySourceContext source, out ulong effectHandle);
     }
 
     internal sealed class ActionTagQuery
@@ -393,7 +406,7 @@ namespace ThirdPersonSimulation
             m_ActiveSourceTags.Clear();
             try
             {
-                GameplayEffectApplyResult startup = m_Port.EvaluateStartupEffects();
+                GameplayEffectApplyResult startup = m_Port.EvaluateStartupEffects(request.CandidateSkillId);
                 if (!startup.AcceptedMutation)
                     return new ActionAdmissionDecision(false, ActionAdmissionRejectReason.StartupRequirementsFailed,
                         string.Empty, startupFailure: startup);
@@ -415,8 +428,14 @@ namespace ThirdPersonSimulation
                 }
 
                 int activeTargetCount = 0;
+                if (m_Port.TryFindAbilityBlock(request.CandidateSkillId, GameplayEffectScope.Actor, out ulong actorBlock))
+                    return Reject(ActionAdmissionRejectReason.ActorAbilityBlocked, string.Empty, 0, actorBlock);
                 ulong activeTargetInstanceId = 0;
                 ActionAdmissionActiveAction replacementSource = request.ReplacementActiveAction;
+                if (request.Mode != ActionAdmissionEvaluationMode.CommitAcceptedRequest &&
+                    m_Port.TryFindReplacementSourceRejection(request.CandidateSkillId, request.ReplacementSource, out ulong relationshipBlock))
+                    return Reject(ActionAdmissionRejectReason.ReplacementSourceRequirementFailed,
+                        replacementSource.ActionId, replacementSource.InstanceId, relationshipBlock);
                 for (int index = 0; index < m_Port.ActionCount; index++)
                 {
                     if (!m_Port.TryReadActiveAction(index, out ActionAdmissionActiveAction active))
@@ -431,8 +450,11 @@ namespace ThirdPersonSimulation
                 if (request.ReplacementSource.IsValid)
                 {
 
-                    if (request.Mode == ActionAdmissionEvaluationMode.CommitActivation)
+                    if (request.Mode != ActionAdmissionEvaluationMode.PreviewReplacement)
                         return Reject(ActionAdmissionRejectReason.SourceActionStillActive, replacementSource.ActionId, replacementSource.InstanceId);
+                    if (m_Port.TryFindAbilityBlock(request.CandidateSkillId, GameplayEffectScope.Action(request.ReplacementSource), out ulong sourceBlock))
+                        return Reject(ActionAdmissionRejectReason.SourceAbilityBlocked,
+                            replacementSource.ActionId, replacementSource.InstanceId, sourceBlock);
                     AddTags(m_ActiveSourceTags, m_Port.ReadAbilityTags(replacementSource.SkillId));
                     return !request.TargetProfile.Cancel.IsEmpty &&
                            MatchesQuery(request.TargetProfile.Cancel, m_ActiveSourceTags)
@@ -461,9 +483,11 @@ namespace ThirdPersonSimulation
         ActionAdmissionDecision Reject(
             ActionAdmissionRejectReason reason,
             string activeSourceActionId,
-            ulong activeSourceActionInstanceId)
+            ulong activeSourceActionInstanceId,
+            ulong blockingEffectHandle = 0)
         {
-            return new ActionAdmissionDecision(false, reason, activeSourceActionId, activeSourceActionInstanceId);
+            return new ActionAdmissionDecision(false, reason, activeSourceActionId, activeSourceActionInstanceId,
+                blockingEffectHandle: blockingEffectHandle);
         }
 
         bool MatchesQuery(ActionTagQuery query, HashSet<string> owned)

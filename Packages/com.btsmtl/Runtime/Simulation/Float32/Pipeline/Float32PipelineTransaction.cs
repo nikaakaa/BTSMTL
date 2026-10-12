@@ -32,6 +32,7 @@ namespace ThirdPersonSimulation
             Float32CompletedStepPort completedStepPort,
             int maximumSteps,
             SimulationPipelineStepSnapshotStorage stepProjections,
+            int snapshotCapacity,
             IFloat32CommittedInputReadPort availabilityInput)
         {
             var services = new PipelineTransactionRuntimeServices(
@@ -54,6 +55,7 @@ namespace ThirdPersonSimulation
                 completedStepPort,
                 maximumSteps,
                 stepProjections,
+                snapshotCapacity,
                 availabilityInput);
             m_Coordinator = new PipelineTransactionCoordinator<
                 Float32SimulationStep,
@@ -136,6 +138,7 @@ namespace ThirdPersonSimulation
             Float32CompletedStepPort completedStepPort,
             int maximumSteps,
             SimulationPipelineStepSnapshotStorage stepProjections,
+            int snapshotCapacity,
             IFloat32CommittedInputReadPort availabilityInput)
         {
             m_Services = services ?? throw new ArgumentNullException(nameof(services));
@@ -168,29 +171,32 @@ namespace ThirdPersonSimulation
                 m_Roster[actor].PrepareExecutionTextBudget(services.Descriptor.MaximumSessionCheckpointPayloadBytes);
             GameplayEffectSessionCapacity sessionCapacity = m_Roster[0].SessionCapacity;
             m_StateStore.PrepareStateStorage(sessionCapacity.StatePageCount);
-            m_StateStore.PrepareRestoreStorage(solver.MaximumStatePayloadBytes);
-            int maximumWorldPayloadBytes = WorldSimulationStateCodec.MaximumEncodedBytes(m_StateStore.Current.WorldState,
-                solver.MaximumStatePayloadBytes);
             m_SnapshotCodec.PrepareCheckpointStorage(services.Descriptor, characterRuntime,
-                services.StateParticipants, in sessionCapacity, m_StateStore.Current.WorldState);
+                services.StateParticipants, in sessionCapacity, m_StateStore.Current.WorldState, snapshotCapacity);
             using (SimulationCharacterStatePayloadStorage.Page initialEncoding = m_Roster[0].RuntimeStatePages.EncodingStorage?.Acquire())
             {
                 if (initialEncoding != null)
                     for (int actor = 0; actor < m_Roster.Count; actor++)
-                        Float32CharacterRuntimeStateCodec.Encode(m_StateStore.Current.Actors[actor].State, initialEncoding, actor);
+                        Float32CharacterRuntimeStateCodec.Encode(m_StateStore.Current.Actors[actor].State, initialEncoding);
             }
             m_WorkingStateShell = new Float32PipelineWorkingState(m_StateStore.Current);
-            m_CheckpointWorkingState = new Float32PipelineWorkingState(m_StateStore.Current);
-            m_CheckpointCharacterRestore = new Float32CharacterRestoreTransaction(m_CheckpointWorkingState, m_Roster);
-            m_CheckpointWorldRestore = new Float32WorldRestoreTransaction(m_CheckpointWorkingState, m_Solver,
-                new CanonicalWriter(new byte[maximumWorldPayloadBytes]));
-            m_CheckpointPipelineRestore = new SimulationPipelineStateRestoreTransaction(services.Plan, services.StateParticipants);
-            m_CheckpointRestore = new SimulationSessionRestoreTransaction();
-            m_SourceCharacterRestore = new Float32CharacterRestoreTransaction(m_WorkingStateShell, m_Roster);
-            m_SourceWorldRestore = new Float32WorldRestoreTransaction(m_WorkingStateShell, m_Solver,
-                new CanonicalWriter(new byte[maximumWorldPayloadBytes]));
-            m_SourcePipelineRestore = new SimulationPipelineStateRestoreTransaction(services.Plan, services.StateParticipants);
-            m_SourceRestore = new SimulationSessionRestoreTransaction();
+            if (services.Descriptor.CapturesState)
+            {
+                m_StateStore.PrepareRestoreStorage(solver.MaximumStatePayloadBytes);
+                int maximumWorldPayloadBytes = WorldSimulationStateCodec.MaximumEncodedBytes(m_StateStore.Current.WorldState,
+                    solver.MaximumStatePayloadBytes);
+                m_CheckpointWorkingState = new Float32PipelineWorkingState(m_StateStore.Current);
+                m_CheckpointCharacterRestore = new Float32CharacterRestoreTransaction(m_CheckpointWorkingState, m_Roster);
+                m_CheckpointWorldRestore = new Float32WorldRestoreTransaction(m_CheckpointWorkingState, m_Solver,
+                    new CanonicalWriter(new byte[maximumWorldPayloadBytes]));
+                m_CheckpointPipelineRestore = new SimulationPipelineStateRestoreTransaction(services.Plan, services.StateParticipants);
+                m_CheckpointRestore = new SimulationSessionRestoreTransaction();
+                m_SourceCharacterRestore = new Float32CharacterRestoreTransaction(m_WorkingStateShell, m_Roster);
+                m_SourceWorldRestore = new Float32WorldRestoreTransaction(m_WorkingStateShell, m_Solver,
+                    new CanonicalWriter(new byte[maximumWorldPayloadBytes]));
+                m_SourcePipelineRestore = new SimulationPipelineStateRestoreTransaction(services.Plan, services.StateParticipants);
+                m_SourceRestore = new SimulationSessionRestoreTransaction();
+            }
         }
 
         public string TransactionIdentityDomain => "float32-pipeline-transaction/1";
@@ -264,7 +270,6 @@ namespace ThirdPersonSimulation
                 m_StateStore.ReplaceValidated(restored);
                 restore.CompleteAfterAtomicSessionPublish();
                 PublishTimelineOwners(in restored);
-                m_SnapshotCodec.CompleteCheckpointReception(checkpoint);
             }
         }
 
@@ -460,13 +465,9 @@ namespace ThirdPersonSimulation
                 : null;
             tickResult.SetPipelineProjection(pipelineSnapshot);
             SimulationWorldSnapshot worldSnapshot = capture
-                ? SimulationWorldSnapshotFactory.Capture(
-                    m_CharacterRuntime,
-                    step.Tick,
-                    nextActors,
-                    worldResult.NextWorldState,
-                    m_Solver.Descriptor.Capabilities)
+                ? m_SnapshotCodec.CaptureStepWorldSnapshot(in candidateState)
                 : null;
+            tickResult.SetWorldSnapshot(worldSnapshot);
             Float32SimulationStepSnapshot stepSnapshot = capture
                 ? new Float32SimulationStepSnapshot(m_Services.Descriptor.Identity, worldSnapshot, pipelineSnapshot)
                 : default;

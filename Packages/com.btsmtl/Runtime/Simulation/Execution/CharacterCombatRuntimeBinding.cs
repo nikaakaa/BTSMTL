@@ -36,13 +36,13 @@ namespace ThirdPersonSimulation
         public CharacterCombatRuntimeBinding(
             string sourceId, StableHash contentHash, int factionId, bool neutral,
             double radius, double halfLength, double centerX, double centerY, double centerZ,
-            string invulnerableWindowTag, string parryWindowTag,
+            string invulnerableTag, string guardingTag,
             string landedEvent, string hitLightEvent, string hitHeavyEvent,
             string parryLightEvent, string parryHeavyEvent,
             int attackCapacity, int resultCapacity,
             string parryLightEffectId, string parryHeavyEffectId,
             string hitLightEffectId = "", string hitHeavyEffectId = "",
-            string perfectEvadeWindowTag = "", string perfectEvadeReadyWindowTag = "", string perfectEvadeEvent = "",
+            string evadingTag = "", string counterOpportunityTag = "", string perfectEvadeEvent = "",
             CharacterTimeSlowRuntimeBinding perfectEvadeTimeSlow = null)
         {
             if (radius <= 0 || halfLength < 0 || attackCapacity <= 0 || resultCapacity <= 0 || !neutral && factionId <= 0)
@@ -56,8 +56,8 @@ namespace ThirdPersonSimulation
             CenterX = centerX;
             CenterY = centerY;
             CenterZ = centerZ;
-            InvulnerableWindowTag = string.IsNullOrEmpty(invulnerableWindowTag) ? string.Empty : GameplayEffectRuntimeIdentity.Tag(invulnerableWindowTag);
-            ParryWindowTag = string.IsNullOrEmpty(parryWindowTag) ? string.Empty : GameplayEffectRuntimeIdentity.Tag(parryWindowTag);
+            InvulnerableTag = string.IsNullOrEmpty(invulnerableTag) ? string.Empty : GameplayEffectRuntimeIdentity.Tag(invulnerableTag);
+            GuardingTag = string.IsNullOrEmpty(guardingTag) ? string.Empty : GameplayEffectRuntimeIdentity.Tag(guardingTag);
             LandedEvent = landedEvent;
             HitLightEvent = hitLightEvent;
             HitHeavyEvent = hitHeavyEvent;
@@ -69,8 +69,8 @@ namespace ThirdPersonSimulation
             HitHeavyEffectId = hitHeavyEffectId;
             ParryLightEffectId = parryLightEffectId;
             ParryHeavyEffectId = parryHeavyEffectId;
-            PerfectEvadeWindowTag = string.IsNullOrEmpty(perfectEvadeWindowTag) ? string.Empty : GameplayEffectRuntimeIdentity.Tag(perfectEvadeWindowTag);
-            PerfectEvadeReadyWindowTag = string.IsNullOrEmpty(perfectEvadeReadyWindowTag) ? string.Empty : GameplayEffectRuntimeIdentity.Tag(perfectEvadeReadyWindowTag);
+            EvadingTag = string.IsNullOrEmpty(evadingTag) ? string.Empty : GameplayEffectRuntimeIdentity.Tag(evadingTag);
+            CounterOpportunityTag = string.IsNullOrEmpty(counterOpportunityTag) ? string.Empty : GameplayEffectRuntimeIdentity.Tag(counterOpportunityTag);
             PerfectEvadeEvent = perfectEvadeEvent;
             PerfectEvadeTimeSlow = perfectEvadeTimeSlow;
         }
@@ -84,8 +84,8 @@ namespace ThirdPersonSimulation
         public double CenterX { get; }
         public double CenterY { get; }
         public double CenterZ { get; }
-        public string InvulnerableWindowTag { get; }
-        public string ParryWindowTag { get; }
+        public string InvulnerableTag { get; }
+        public string GuardingTag { get; }
         public string LandedEvent { get; }
         public string HitLightEvent { get; }
         public string HitHeavyEvent { get; }
@@ -97,8 +97,8 @@ namespace ThirdPersonSimulation
         public string HitHeavyEffectId { get; }
         public string ParryLightEffectId { get; }
         public string ParryHeavyEffectId { get; }
-        public string PerfectEvadeWindowTag { get; }
-        public string PerfectEvadeReadyWindowTag { get; }
+        public string EvadingTag { get; }
+        public string CounterOpportunityTag { get; }
         public string PerfectEvadeEvent { get; }
         public CharacterTimeSlowRuntimeBinding PerfectEvadeTimeSlow { get; }
     }

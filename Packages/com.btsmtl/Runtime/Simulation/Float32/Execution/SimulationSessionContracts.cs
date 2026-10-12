@@ -42,6 +42,7 @@ namespace ThirdPersonSimulation
         readonly SimulationActorTickResult[] m_Actors;
         SimulationPipelineStateSnapshot m_PipelineProjection;
         SimulationWorldStateStore.StatePage m_CandidateStorage;
+        SimulationWorldSnapshot m_WorldSnapshot;
 
         internal SimulationTickResult(int actorCount)
         {
@@ -66,10 +67,14 @@ namespace ThirdPersonSimulation
 
         internal void SetCandidateStorage(SimulationWorldStateStore.StatePage storage) => m_CandidateStorage = storage;
 
+        internal void SetWorldSnapshot(SimulationWorldSnapshot snapshot) => m_WorldSnapshot = snapshot;
+
         internal void ReleaseFrame()
         {
             m_PipelineProjection?.ReleaseStepStorage();
             m_PipelineProjection = null;
+            m_WorldSnapshot?.ReleaseStateStorage();
+            m_WorldSnapshot = null;
             m_CandidateStorage?.Release();
             m_CandidateStorage = null;
             Array.Clear(m_Actors, 0, m_Actors.Length);

@@ -223,6 +223,191 @@ namespace ThirdPersonSimulation.Fixed
 
         public IReadOnlyList<string> OwnedTags => m_State != null ? m_State.OwnedTagsSnapshot : m_CommittedState.CopyOwnedTags();
 
+        public bool HasTag(string tagId, GameplayEffectScope scope)
+        {
+            if (m_State != null)
+                return m_State.HasTag(tagId, scope);
+            return m_CommittedState.HasTag(tagId, scope);
+        }
+
+        public bool Matches(PortableTagQuery query, GameplayEffectScope scope)
+        {
+            if (scope.Kind == GameplayEffectScopeKind.Actor)
+                return Matches(query);
+            List<string> tags = m_Scratch.ScopeTags;
+            tags.Clear();
+            if (m_State != null)
+                m_State.CopyScopeTagsTo(scope, tags);
+            else
+                foreach (KeyValuePair<GameplayTagSourceIdentityValue, IReadOnlyList<string>> source in m_CommittedState.TagSources)
+                {
+                    if (!source.Key.Scope.Equals(scope))
+                        continue;
+                    for (int i = 0; i < source.Value.Count; i++)
+                        tags.Add(source.Value[i]);
+                }
+            return m_Catalog.Matches(query, tags);
+        }
+
+        public bool TryFindAbilityBlock(IReadOnlyList<string> candidateTags, GameplayEffectScope scope, out ulong effectHandle)
+        {
+            if (m_State != null)
+            {
+                for (int i = 0; i < m_State.ActiveEffects.Count; i++)
+                {
+                    PortableActiveEffectState active = m_State.ActiveEffects[i];
+                    if (!active.Inhibited && active.Spec.Context.Scope.Equals(scope) &&
+                        BlocksAbility(active.Spec.Definition, candidateTags))
+                    {
+                        effectHandle = active.Handle;
+                        return true;
+                    }
+                }
+            }
+            else
+            {
+                foreach (PortableActiveEffectSnapshot active in m_CommittedState.ActiveEffects)
+                {
+                    if (!active.Inhibited && active.Spec.Context.Scope.Equals(scope) &&
+                        BlocksAbility(active.Spec.Definition, candidateTags))
+                    {
+                        effectHandle = active.Handle;
+                        return true;
+                    }
+                }
+            }
+            effectHandle = 0;
+            return false;
+        }
+
+        bool BlocksAbility(PortableEffectDefinition definition, IReadOnlyList<string> candidateTags)
+        {
+            for (int i = 0; i < definition.Components.Length; i++)
+                if (definition.Components[i] is PortableBlockAbilitiesComponent blocked &&
+                    m_Catalog.Matches(blocked.Query, candidateTags))
+                    return true;
+            return false;
+        }
+
+        public bool TryFindReplacementSourceRejection(IReadOnlyList<string> candidateTags,
+            IReadOnlyList<string> selectedSourceTags, bool hasSource, out ulong effectHandle)
+        {
+            if (m_State != null)
+            {
+                for (int i = 0; i < m_State.ActiveEffects.Count; i++)
+                {
+                    PortableActiveEffectState active = m_State.ActiveEffects[i];
+                    if (!active.Inhibited && active.Spec.Context.Scope.Kind == GameplayEffectScopeKind.Actor &&
+                        RejectsReplacementSource(active.Spec.Definition, candidateTags, selectedSourceTags, hasSource))
+                    {
+                        effectHandle = active.Handle;
+                        return true;
+                    }
+                }
+            }
+            else
+            {
+                foreach (PortableActiveEffectSnapshot active in m_CommittedState.ActiveEffects)
+                {
+                    if (!active.Inhibited && active.Spec.Context.Scope.Kind == GameplayEffectScopeKind.Actor &&
+                        RejectsReplacementSource(active.Spec.Definition, candidateTags, selectedSourceTags, hasSource))
+                    {
+                        effectHandle = active.Handle;
+                        return true;
+                    }
+                }
+            }
+            effectHandle = 0;
+            return false;
+        }
+
+        bool RejectsReplacementSource(PortableEffectDefinition definition, IReadOnlyList<string> candidateTags,
+            IReadOnlyList<string> selectedSourceTags, bool hasSource)
+        {
+            for (int i = 0; i < definition.Components.Length; i++)
+                if (definition.Components[i] is PortableReplacementSourceRequirementComponent requirement &&
+                    m_Catalog.Matches(requirement.CandidateQuery, candidateTags) &&
+                    (!hasSource || !m_Catalog.Matches(requirement.SelectedSourceQuery, selectedSourceTags)))
+                    return true;
+            return false;
+        }
+
+        public bool TryFindOpportunity(GameplayEffectScope scope, PortableTagQuery query,
+            out GameplayEffectOpportunityReference opportunity, out SimulationActionTargetSnapshot target)
+        {
+            if (m_State != null)
+            {
+                for (int i = 0; i < m_State.ActiveEffects.Count; i++)
+                {
+                    PortableActiveEffectState effect = m_State.ActiveEffects[i];
+                    if (!effect.Inhibited && MatchesOpportunity(effect.Spec.Context, effect.Spec.Definition, scope, query))
+                    {
+                        opportunity = new GameplayEffectOpportunityReference(effect.Handle, effect.Spec.Context.Success);
+                        target = effect.Spec.Context.SuccessTarget;
+                        return true;
+                    }
+                }
+            }
+            else
+                foreach (PortableActiveEffectSnapshot effect in m_CommittedState.ActiveEffects)
+                    if (!effect.Inhibited && MatchesOpportunity(effect.Spec.Context, effect.Spec.Definition, scope, query))
+                    {
+                        opportunity = new GameplayEffectOpportunityReference(effect.Handle, effect.Spec.Context.Success);
+                        target = effect.Spec.Context.SuccessTarget;
+                        return true;
+                    }
+            opportunity = default;
+            target = default;
+            return false;
+        }
+
+        public bool TryFindEffect(CanonicalTextValue effectId, GameplayEffectScope scope,
+            out ulong handle, out SimulationGameplayEffectContext context, GameplayEffectHolderIdentity? holder = null)
+        {
+            if (m_State != null)
+            {
+                for (int i = 0; i < m_State.ActiveEffects.Count; i++)
+                {
+                    PortableActiveEffectState effect = m_State.ActiveEffects[i];
+                    if (!effect.Inhibited && effect.Spec.Context.Scope.Equals(scope) &&
+                        (!holder.HasValue || effect.Spec.Context.Holder.Equals(holder.Value)) &&
+                        CanonicalTextValue.Equals(effectId, effect.Spec.Definition.Id, StringComparison.Ordinal))
+                    {
+                        handle = effect.Handle;
+                        context = effect.Spec.Context;
+                        return true;
+                    }
+                }
+            }
+            else
+                foreach (PortableActiveEffectSnapshot effect in m_CommittedState.ActiveEffects)
+                    if (!effect.Inhibited && effect.Spec.Context.Scope.Equals(scope) &&
+                        (!holder.HasValue || effect.Spec.Context.Holder.Equals(holder.Value)) &&
+                        CanonicalTextValue.Equals(effectId, effect.Spec.Definition.Id, StringComparison.Ordinal))
+                    {
+                        handle = effect.Handle;
+                        context = effect.Spec.Context;
+                        return true;
+                    }
+            handle = 0;
+            context = default;
+            return false;
+        }
+
+        bool MatchesOpportunity(in SimulationGameplayEffectContext context, PortableEffectDefinition definition,
+            GameplayEffectScope scope, PortableTagQuery query)
+        {
+            if (!context.Success.IsValid || !context.Scope.Equals(scope))
+                return false;
+            List<string> tags = m_Scratch.ScopeTags;
+            tags.Clear();
+            for (int i = 0; i < definition.GrantedTags.Length; i++)
+                tags.Add(definition.GrantedTags[i]);
+            m_Catalog.TryResolveTagIdentity(context.Success.EventTag, out string eventTag);
+            tags.Add(eventTag);
+            return m_Catalog.Matches(query, tags);
+        }
+
         public bool HasTag(string tagId)
         {
             if (m_State != null)
@@ -277,6 +462,25 @@ namespace ThirdPersonSimulation.Fixed
             EnsureWorkingState();
             return m_Control.Remove(request);
         }
+
+        internal bool HasHeldEffects(GameplayEffectHolderIdentity holder, ulong actionInstanceId = 0)
+        {
+            if (m_State != null)
+            {
+                for (int i = 0; i < m_State.ActiveEffects.Count; i++)
+                    if (MatchesHolder(m_State.ActiveEffects[i].Spec.Context.Holder, holder, actionInstanceId))
+                        return true;
+            }
+            else
+                foreach (PortableActiveEffectSnapshot effect in m_CommittedState.ActiveEffects)
+                    if (MatchesHolder(effect.Spec.Context.Holder, holder, actionInstanceId))
+                        return true;
+            return false;
+        }
+
+        static bool MatchesHolder(GameplayEffectHolderIdentity actual, GameplayEffectHolderIdentity holder, ulong actionInstanceId) =>
+            actionInstanceId == 0 ? actual.Equals(holder) :
+                actual.Lifetime != GameplayEffectLifetimeKind.Independent && actual.ActionInstanceId == actionInstanceId;
 
         [ThirdPersonPerformance.Instrumentation.PerformanceProbe("simulation.gameplay-effect.advance")]
         public GameplayEffectExecutionFailure Advance() => m_Control.Advance();
@@ -475,7 +679,7 @@ namespace ThirdPersonSimulation.Fixed
                     continue;
                 }
                 string tag = order < 0 ? previous[left++] : tags[right++];
-                int before = m_State.TagCount(tag);
+                int before = m_State.TagCount(tag, source.Scope);
                 AddChange(new PortableEffectRuntimeChange(NextChangeCursor(),
                     new GameplayTagRuntimeChange(source, tag, before, before + (order < 0 ? -1 : 1),
                         cause.Definition?.Id, cause.InstanceId, context)));
@@ -485,7 +689,7 @@ namespace ThirdPersonSimulation.Fixed
 
         void ActivateGrantedTags(PortableActiveEffectState active)
         {
-            SetTags(GameplayTagSourceIdentityValue.Effect(active.Handle), active.Spec.Definition.GrantedTags,
+            SetTags(GameplayTagSourceIdentityValue.Effect(active.Handle, active.Spec.Context.Scope), active.Spec.Definition.GrantedTags,
                 m_Causes[active.Handle]);
         }
 
@@ -494,7 +698,7 @@ namespace ThirdPersonSimulation.Fixed
             PortableModifierRemovalCursor cursor = m_State.BeginModifierRemoval(active.Handle);
             while (m_State.RemoveNextModifier(ref cursor, out IReadOnlyList<PortableAttributeChange> changes))
                 AddAttributeChanges(changes);
-            SetTags(GameplayTagSourceIdentityValue.Effect(active.Handle), Array.Empty<string>(),
+            SetTags(GameplayTagSourceIdentityValue.Effect(active.Handle, active.Spec.Context.Scope), Array.Empty<string>(),
                 m_Causes[active.Handle]);
         }
 
@@ -795,7 +999,7 @@ namespace ThirdPersonSimulation.Fixed
                 for (int i = 0; i < m_State.ActiveEffects.Count; i++)
                 {
                     PortableActiveEffectState active = m_State.ActiveEffects[i];
-                    m_Causes.Add(active.Handle, new PortableEffectCause(active.Spec.Definition, active.InstanceId, ToTarget(active.LifecycleContext)));
+                    m_Causes.Add(active.Handle, new PortableEffectCause(active.Spec.Definition, active.InstanceId, ToTarget(active.LifecycleContext, active.Spec.Context.SuccessTarget)));
                 }
                 return;
             }

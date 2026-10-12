@@ -209,7 +209,8 @@ namespace ThirdPersonSimulation
         public void Release() { EquipmentContext.SlotId.Release(); Reason.Release(); Source.Release(); TargetSnapshot.Release(); TargetKey.Release(); SourceInputRequestId.Release(); ContextId.Release(); }
     }
 
-    internal readonly struct Float32ActionInstanceReference
+    [CanonicalContract]
+    internal readonly partial struct Float32ActionInstanceReference
     {
         public Float32ActionInstanceReference(
             string actionId,
@@ -231,6 +232,7 @@ namespace ThirdPersonSimulation
             SkillExecutionGeneration = skillExecutionGeneration;
         }
 
+        [CanonicalDeclaredText]
         public string ActionId { get; }
         public CanonicalTextValue ContextId { get; }
         public ulong InstanceId { get; }
@@ -880,7 +882,7 @@ namespace ThirdPersonSimulation
 			value.Kind == m_Ability.StateSlots[slotIndex].ValueKind;
 
 		AbilityStateValue IGameplayAbilityExecutionStorage<AbilityStateValue>.DefaultValue(int slotIndex) =>
-			m_Ability.DefaultStateValue(slotIndex);
+            Access.Services.DefaultValue(slotIndex);
 
 		GameplayAbilityExecutionAggregate<AbilityStateValue> IGameplayAbilityExecutionStorage<AbilityStateValue>.ReadAggregate() =>
 			m_Frame.ReadAbilityState();

@@ -7,6 +7,84 @@ using ThirdPersonSimulation;
 
 namespace ThirdPersonSimulation.Fixed
 {
+    public enum FixedInputSequenceState : byte
+    {
+        Idle,
+        Pending,
+        Running,
+        Completed,
+        Cancelled,
+        Rejected
+    }
+
+    public enum FixedInputSequenceFailure : byte
+    {
+        None,
+        Busy,
+        ReplaySource,
+        UnknownAction,
+        ValueKind,
+        OverlappingAction
+    }
+
+    public readonly struct FixedInputActionStep
+    {
+        public const int MaximumSteps = 64;
+        public const int MaximumDurationTicks = 3600;
+        public const int MaximumActionCharacters = 128;
+
+        public FixedInputActionStep(CanonicalTextValue action, int offsetTicks, int durationTicks,
+            ProgramInputValueKind kind, FixedScalar x, FixedScalar y)
+        {
+            Action = action;
+            OffsetTicks = offsetTicks;
+            DurationTicks = durationTicks;
+            Kind = kind;
+            X = x;
+            Y = y;
+        }
+
+        public CanonicalTextValue Action { get; }
+        public int OffsetTicks { get; }
+        public int DurationTicks { get; }
+        public ProgramInputValueKind Kind { get; }
+        public FixedScalar X { get; }
+        public FixedScalar Y { get; }
+    }
+
+    public readonly struct FixedInputSequenceStatus
+    {
+        public FixedInputSequenceStatus(ulong commandId, FixedInputSequenceState state, ulong startTick,
+            ulong lastInputTick, int totalTicks, FixedInputSequenceFailure failure = FixedInputSequenceFailure.None,
+            int failedStep = -1)
+        {
+            CommandId = commandId;
+            State = state;
+            StartTick = startTick;
+            LastInputTick = lastInputTick;
+            TotalTicks = totalTicks;
+            Failure = failure;
+            FailedStep = failedStep;
+        }
+
+        public ulong CommandId { get; }
+        public FixedInputSequenceState State { get; }
+        public ulong StartTick { get; }
+        public ulong LastInputTick { get; }
+        public int TotalTicks { get; }
+        public FixedInputSequenceFailure Failure { get; }
+        public int FailedStep { get; }
+    }
+
+    public interface IFixedCharacterInputSequenceSource
+    {
+        int InputActionCount { get; }
+        FixedInputActionStep DescribeInputAction(int index);
+        FixedInputSequenceStatus InputSequenceStatus { get; }
+        FixedInputSequenceStatus BeginInputSequence(ulong commandId, FixedInputActionStep[] steps, int count);
+        FixedInputSequenceStatus CancelInputSequence();
+    }
+
     public readonly struct FixedCharacterInputBuildContext
     {
         public FixedCharacterInputBuildContext(
@@ -719,7 +797,7 @@ namespace ThirdPersonSimulation.Fixed
                 if (roster[i] == null || !committedObservation.TryGetActor(roster[i].ActorId, out _))
                     throw new InvalidOperationException("Fixed Local input Source committed observation Actor identities do not match its locked roster.");
             }
-            ValuePorts.BeginTick();
+            ValuePorts.BeginTick(simulationTick.Value);
             SimulationPipelineActorInput<FixedStepInput>[] inputs = m_InputScratch;
             bool prepared = false;
             try

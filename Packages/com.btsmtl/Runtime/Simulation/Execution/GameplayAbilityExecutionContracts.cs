@@ -52,7 +52,8 @@ namespace ThirdPersonSimulation
             EquipmentActionContext equipmentContext = default,
             GameplayAbilitySourceContext replacementSource = default,
             string activationEntryId = "",
-            bool consumeSourceInputRequest = true)
+            bool consumeSourceInputRequest = true,
+            GameplayEffectOpportunityReference opportunity = default)
         {
             ActionId = SimulationIdentity.Require(actionId, nameof(actionId));
             SkillId = skillId;
@@ -70,6 +71,7 @@ namespace ThirdPersonSimulation
             EquipmentContext = equipmentContext;
             ReplacementSource = replacementSource;
             ActivationEntryId = activationEntryId ?? string.Empty;
+            Opportunity = opportunity;
         }
 
         public string ActionId { get; }
@@ -88,6 +90,7 @@ namespace ThirdPersonSimulation
         public EquipmentActionContext EquipmentContext { get; }
         public GameplayAbilitySourceContext ReplacementSource { get; }
         public string ActivationEntryId { get; }
+        public GameplayEffectOpportunityReference Opportunity { get; }
         public bool Equals(SimulationActionActivationRequestState<TTargetSnapshot> other) =>
             string.Equals(ActionId, other.ActionId, StringComparison.Ordinal) &&
             SkillId.Equals(other.SkillId) &&
@@ -102,7 +105,7 @@ namespace ThirdPersonSimulation
             Source.Equals(other.Source) &&
             EquipmentContext.Equals(other.EquipmentContext) &&
             ReplacementSource.Equals(other.ReplacementSource) &&
-            string.Equals(ActivationEntryId, other.ActivationEntryId, StringComparison.Ordinal);
+            string.Equals(ActivationEntryId, other.ActivationEntryId, StringComparison.Ordinal) && Opportunity.Equals(other.Opportunity);
         public bool IsValid =>
             !string.IsNullOrEmpty(ActionId) &&
             !ContextId.IsEmpty &&
@@ -121,6 +124,7 @@ namespace ThirdPersonSimulation
             TargetKey.Retain();
             Source.Retain();
             EquipmentContext.SlotId.Retain();
+            Opportunity.Retain();
         }
 
         public void Release()
@@ -130,6 +134,7 @@ namespace ThirdPersonSimulation
             TargetKey.Release();
             Source.Release();
             EquipmentContext.SlotId.Release();
+            Opportunity.Release();
         }
     }
 
@@ -185,7 +190,9 @@ namespace ThirdPersonSimulation
             GameplayAbilitySourceContext replacementSource = default,
             string activationEntryId = "",
             GameplayAbilityRuleTargetPolicy targetPolicy = GameplayAbilityRuleTargetPolicy.Grant,
-            bool requiresSourceInputRequest = true)
+            bool requiresSourceInputRequest = true,
+            bool requiresOpportunity = false,
+            GameplayEffectOpportunityReference opportunity = default)
         {
             if (!source.IsValid)
                 throw new ArgumentException("Action activation source is invalid.", nameof(source));
@@ -203,6 +210,8 @@ namespace ThirdPersonSimulation
             ReplacementSource = replacementSource;
             TargetPolicy = targetPolicy;
             ActivationEntryId = activationEntryId ?? string.Empty;
+            RequiresOpportunity = requiresOpportunity;
+            Opportunity = opportunity;
         }
 
         public CharacterSkillId SkillId { get; }
@@ -220,6 +229,8 @@ namespace ThirdPersonSimulation
         public TOperation Operation { get; }
         public GameplayAbilitySourceContext ReplacementSource { get; }
         public GameplayAbilityRuleTargetPolicy TargetPolicy { get; }
+        public bool RequiresOpportunity { get; }
+        public GameplayEffectOpportunityReference Opportunity { get; }
         public string ActivationEntryId { get; }
 
         public void Retain()
@@ -229,6 +240,7 @@ namespace ThirdPersonSimulation
             TargetKey.Retain();
             Source.Retain();
             EquipmentContext.SlotId.Retain();
+            Opportunity.Retain();
         }
 
         public void Release()
@@ -238,6 +250,7 @@ namespace ThirdPersonSimulation
             TargetKey.Release();
             Source.Release();
             EquipmentContext.SlotId.Release();
+            Opportunity.Release();
         }
     }
 
@@ -258,7 +271,8 @@ namespace ThirdPersonSimulation
             EquipmentActionContext equipmentContext,
             GameplayAbilitySourceContext replacementSource = default,
             string activationEntryId = "",
-            bool consumeSourceInputRequest = true)
+            bool consumeSourceInputRequest = true,
+            GameplayEffectOpportunityReference opportunity = default)
         {
             ActionId = SimulationIdentity.Require(actionId, nameof(actionId));
             ContextId = SimulationIdentity.Require(contextId, nameof(contextId));
@@ -279,6 +293,7 @@ namespace ThirdPersonSimulation
             EquipmentContext = equipmentContext;
             ReplacementSource = replacementSource;
             ActivationEntryId = activationEntryId ?? string.Empty;
+            Opportunity = opportunity;
         }
 
         public string ActionId { get; }
@@ -298,6 +313,8 @@ namespace ThirdPersonSimulation
         public GameplayAbilitySourceContext ReplacementSource { get; }
         public string ActivationEntryId { get; }
 
+        public GameplayEffectOpportunityReference Opportunity { get; }
+
         public void Retain()
         {
             ContextId.Retain();
@@ -305,6 +322,7 @@ namespace ThirdPersonSimulation
             TargetKey.Retain();
             Source.Retain();
             EquipmentContext.SlotId.Retain();
+            Opportunity.Retain();
         }
 
         public void Release()
@@ -314,6 +332,7 @@ namespace ThirdPersonSimulation
             TargetKey.Release();
             Source.Release();
             EquipmentContext.SlotId.Release();
+            Opportunity.Release();
         }
     }
 
@@ -359,6 +378,7 @@ namespace ThirdPersonSimulation
         bool TryReadInputRequest(CanonicalTextValue requestId, out SimulationInputRequestState request);
         bool IsInputRequestPending(in SimulationInputRequestState request);
         void ClearInputRequest(CanonicalTextValue requestId);
+        bool ConsumeOpportunity(GameplayEffectOpportunityReference opportunity, SimulationExecutionSource source);
         TTargetSnapshot NoneTarget { get; }
         bool TryReadReplacementSource(in GameplayAbilitySourceContext source,
             out ActionAdmissionActiveAction activeSource, out TTargetSnapshot targetSnapshot);
@@ -378,7 +398,7 @@ namespace ThirdPersonSimulation
             ulong actionInstanceId,
             ulong inputSequence,
             SimulationActionResultKind result,
-            CanonicalTextValue reason, in GameplayAbilitySourceContext ruleSource);
+            CanonicalTextValue reason, in GameplayAbilitySourceContext ruleSource, ulong effectHandle = 0);
         void TraceActionResult(
             SimulationExecutionSource source,
             string actionId,
@@ -386,7 +406,7 @@ namespace ThirdPersonSimulation
             ulong actionInstanceId,
             ulong inputSequence,
             SimulationActionResultKind result,
-            CanonicalTextValue reason, in GameplayAbilitySourceContext ruleSource);
+            CanonicalTextValue reason, in GameplayAbilitySourceContext ruleSource, ulong effectHandle = 0);
     }
 
     public enum AbilityLifecyclePhase : byte

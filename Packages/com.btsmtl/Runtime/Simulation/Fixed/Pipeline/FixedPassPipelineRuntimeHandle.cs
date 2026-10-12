@@ -31,9 +31,11 @@ namespace ThirdPersonSimulation.Fixed
             SimulationSessionResourceRegistry resources,
             ICharacterFutureBodyTranslationSource futureBodyTranslationSource,
             SimulationRuntimePortSet sourcePorts,
-            FixedCombatRuntime combat)
+            FixedCombatRuntime combat,
+            GraphBatchExecution graphBatchExecution)
         {
             Descriptor = descriptor ?? throw new ArgumentNullException(nameof(descriptor));
+            GraphBatchExecution = graphBatchExecution;
             m_Pipeline = pipeline ?? throw new ArgumentNullException(nameof(pipeline));
             m_StateStore = stateStore ?? throw new ArgumentNullException(nameof(stateStore));
             m_Transaction = transaction ?? throw new ArgumentNullException(nameof(transaction));
@@ -69,13 +71,17 @@ namespace ThirdPersonSimulation.Fixed
             m_LocalInputs.TryTakeRuntimeIngressResult(sequence, out tick);
 
         public void QueryAbilityAvailability(ActorId actorId, GameplayAbilityRulePhase phase,
-            out GameplayAbilityAvailabilityResult result) =>
+            out GameplayAbilityAvailabilityResult result)
+        {
+            GraphBatchExecution.RequireIdle();
             m_Transaction.QueryAbilityAvailability(actorId, phase, out result);
+        }
 
         public SimulationSessionCompositionDescriptor Descriptor { get; }
         public SimulationSessionLifecycleState LifecycleState => m_Lifecycle.State;
         public SimulationSessionFailure Failure => m_Lifecycle.Failure;
         public SimulationSessionDiagnosticsSnapshot Diagnostics => BuildDiagnostics();
+        public GraphBatchExecution GraphBatchExecution { get; }
         float ISimulationSessionLocalCombatClock.WorldTimeScale => m_Combat.WorldTimeScale.ToSingle();
         public void PrepareRecordedFrames(int capacity) => m_Transaction.PrepareRecordedFrames(capacity);
         public ReadOnlyMemory<byte> RecordFrame(ulong presentationFrame) => m_Transaction.RecordFrame(presentationFrame);
@@ -95,6 +101,7 @@ namespace ThirdPersonSimulation.Fixed
         {
             if (m_Disposed)
                 throw new ObjectDisposedException(nameof(FixedPassPipelineRuntimeHandle));
+            GraphBatchExecution.RequireIdle();
             return m_Transaction.CaptureCheckpoint();
         }
 
@@ -104,6 +111,7 @@ namespace ThirdPersonSimulation.Fixed
         {
             if (m_Disposed)
                 throw new ObjectDisposedException(nameof(FixedPassPipelineRuntimeHandle));
+            GraphBatchExecution.RequireIdle();
             m_Transaction.RestoreCheckpoint(checkpoint);
             m_LatestOuterTick = checkpoint.Tick.Value;
         }
@@ -242,7 +250,7 @@ namespace ThirdPersonSimulation.Fixed
             bool replayPrepared = false;
             try
             {
-                rollback = m_Transaction.CaptureCheckpoint();
+                rollback = CaptureCheckpoint();
                 RestoreCheckpoint(checkpoint);
                 TryGetCurrentBody(actorId, out body);
                 using var trace = new FixedCharacterInputTrace(
@@ -336,6 +344,7 @@ namespace ThirdPersonSimulation.Fixed
         {
             if (m_Disposed)
                 return;
+            GraphBatchExecution.RequireIdle();
             m_Disposed = true;
             FixedCharacterInputTraceModule.ClearCompletedTrace();
             m_LocalInputs?.ReleaseRuntimeIngress();
@@ -376,7 +385,7 @@ namespace ThirdPersonSimulation.Fixed
 
         SimulationSessionDiagnosticsSnapshot BuildDiagnostics()
         {
-            var components = new SimulationSessionComponentDiagnostic[6 + m_Passes.Count];
+            var components = new SimulationSessionComponentDiagnostic[7 + m_Passes.Count];
             components[0] = Component("ExecutionBackend", Descriptor.ExecutionBackend);
             components[1] = Component("SessionSource", Descriptor.SessionSource);
             components[2] = Component("WorldSolver", Descriptor.WorldSolver);
@@ -388,12 +397,15 @@ namespace ThirdPersonSimulation.Fixed
                     DiagnosticState());
             for (int i = 0; i < m_Passes.Count; i++)
             {
-                components[6 + i] = new SimulationSessionComponentDiagnostic(
+                components[7 + i] = new SimulationSessionComponentDiagnostic(
                     "Pass",
                     $"{i}:{m_Passes[i].Descriptor.VersionedIdentity}",
                     DiagnosticState(),
                     m_PassPhaseNames[i]);
             }
+            components[6] = new SimulationSessionComponentDiagnostic(
+                "GraphBatch", Descriptor.SessionId.ToString(), DiagnosticState(),
+                $"请求={GraphBatchExecution.RequestedMode};执行={GraphBatchExecution.ResolvedMode};实例={GraphBatchExecution.IndependentInstanceCount};能力={GraphBatchExecution.ExecutionUnits};在途={GraphBatchExecution.IsInFlight};失败实例={GraphBatchExecution.FailureInstanceIndex};原因={GraphBatchExecution.LastFailure?.Message}");
             return new SimulationSessionDiagnosticsSnapshot(
                 Descriptor,
                 LifecycleState,

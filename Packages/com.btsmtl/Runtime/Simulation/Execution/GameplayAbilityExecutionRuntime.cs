@@ -111,25 +111,8 @@ namespace ThirdPersonSimulation
         where TValue : struct, IEquatable<TValue>
     {
         readonly GameplayAbilityExecutionStateBank<TValue> m_Bank;
-        readonly Dictionary<int, TValue> m_Values;
         AbilityStateValuePageReference<TValue> m_StateValues;
         int m_Retainers;
-
-        public GameplayAbilityExecutionFrame(CharacterSkillId skillId, OperationHandle entryOperation,
-            ulong actionInstanceId, ulong predictionKey, ulong generation, Dictionary<int, TValue> values = null)
-        {
-            if (!skillId.IsValid || !entryOperation.IsValid || actionInstanceId == 0 || predictionKey == 0)
-                throw new ArgumentException("Skill execution frame identity is incomplete.");
-            SkillId = skillId;
-            EntryOperation = entryOperation;
-            ActionInstanceId = actionInstanceId;
-            PredictionKey = predictionKey;
-            Generation = generation;
-            m_Values = values == null ? new Dictionary<int, TValue>() : new Dictionary<int, TValue>(values);
-            foreach (KeyValuePair<int, TValue> value in m_Values)
-                if (value.Key < 0)
-                    throw new ArgumentException("Skill execution frame state values are invalid.", nameof(values));
-        }
 
         internal GameplayAbilityExecutionFrame(GameplayAbilityExecutionStateBank<TValue> bank)
         {
@@ -141,11 +124,8 @@ namespace ThirdPersonSimulation
         public ulong ActionInstanceId { get; private set; }
         public ulong PredictionKey { get; private set; }
         public ulong Generation { get; private set; }
-        internal bool OwnsValues => m_Bank == null;
-        internal Dictionary<int, TValue> OwnedValues => m_Values;
         internal AbilityStateValuePageReference<TValue> StateValues => m_StateValues;
         internal int Retainers => m_Retainers;
-        internal int ValueCount => OwnsValues ? m_Values.Count : m_StateValues.Set.Count;
 
         internal void Begin(AbilityExecutionContext identity)
         {
@@ -166,41 +146,28 @@ namespace ThirdPersonSimulation
             ActionInstanceId = source.ActionInstanceId;
             PredictionKey = source.PredictionKey;
             Generation = source.Generation;
-            if (source.OwnsValues)
-            {
-                m_StateValues = m_Bank.Values.BeginEmpty();
-                m_StateValues.Retain();
-                foreach (KeyValuePair<int, TValue> value in source.m_Values)
-                    m_StateValues.Set.RestoreValue(value.Key, value.Value);
-            }
-            else
-                m_StateValues = m_Bank.Values.BeginWrite(source.m_StateValues);
+            m_StateValues = m_Bank.Values.BeginWrite(source.m_StateValues);
             m_Retainers = 1;
         }
 
         internal void RetainStateStorage()
         {
-            if (!OwnsValues)
-                m_Retainers++;
+            m_Retainers++;
         }
 
         internal void ReleaseStateStorage()
         {
-            if (OwnsValues || --m_Retainers != 0)
+            if (--m_Retainers != 0)
                 return;
             m_StateValues.Release();
             m_StateValues = default;
         }
 
-        public bool TryGetValue(int slotIndex, out TValue value) => OwnsValues
-            ? m_Values.TryGetValue(slotIndex, out value) : m_StateValues.TryGetValue(slotIndex, out value);
+        public bool TryGetValue(int slotIndex, out TValue value) => m_StateValues.TryGetValue(slotIndex, out value);
 
         public void SetValue(int slotIndex, TValue value)
         {
-            if (OwnsValues)
-                m_Values[slotIndex] = value;
-            else
-                m_StateValues.Set.Set(slotIndex, value);
+            m_StateValues.Set.Set(slotIndex, value);
         }
 
         public void BindGeneration(ulong generation)
@@ -212,47 +179,13 @@ namespace ThirdPersonSimulation
             Generation = generation;
         }
 
-        public GameplayAbilityExecutionFrame<TValue> Clone() => new GameplayAbilityExecutionFrame<TValue>(this);
-
-        GameplayAbilityExecutionFrame(GameplayAbilityExecutionFrame<TValue> source)
-        {
-            SkillId = source.SkillId;
-            EntryOperation = source.EntryOperation;
-            ActionInstanceId = source.ActionInstanceId;
-            PredictionKey = source.PredictionKey;
-            Generation = source.Generation;
-            m_Values = new Dictionary<int, TValue>(source.ValueCount);
-            if (source.OwnsValues)
-                foreach (KeyValuePair<int, TValue> value in source.m_Values)
-                    m_Values.Add(value.Key, value.Value);
-            else
-            {
-                AbilityStateValuePageSet<TValue>.Enumerator enumerator = source.m_StateValues.GetEnumerator();
-                while (enumerator.MoveNext(out int slot, out TValue value))
-                    m_Values.Add(slot, value);
-            }
-        }
-
         public bool Equals(GameplayAbilityExecutionFrame<TValue> other)
         {
-            if (other == null || ValueCount != other.ValueCount || SkillId != other.SkillId ||
+            if (other == null || SkillId != other.SkillId ||
                 !EntryOperation.Equals(other.EntryOperation) || ActionInstanceId != other.ActionInstanceId ||
                 PredictionKey != other.PredictionKey || Generation != other.Generation)
                 return false;
-            if (OwnsValues)
-            {
-                foreach (KeyValuePair<int, TValue> value in m_Values)
-                    if (!other.TryGetValue(value.Key, out TValue otherValue) || !value.Value.Equals(otherValue))
-                        return false;
-            }
-            else
-            {
-                AbilityStateValuePageSet<TValue>.Enumerator enumerator = m_StateValues.GetEnumerator();
-                while (enumerator.MoveNext(out int slot, out TValue value))
-                    if (!other.TryGetValue(slot, out TValue otherValue) || !value.Equals(otherValue))
-                        return false;
-            }
-            return true;
+            return m_StateValues.Set.SharesValuesWith(other.m_StateValues.Set);
         }
     }
 
@@ -262,19 +195,6 @@ namespace ThirdPersonSimulation
         readonly List<GameplayAbilityExecutionFrame<TValue>> m_Frames;
         readonly GameplayAbilityExecutionStateBank<TValue> m_Bank;
         int m_Retainers;
-
-        public GameplayAbilityExecutionAggregate(IReadOnlyList<GameplayAbilityExecutionFrame<TValue>> frames = null)
-        {
-            m_Frames = new List<GameplayAbilityExecutionFrame<TValue>>(frames?.Count ?? 0);
-            if (frames != null)
-                for (int index = 0; index < frames.Count; index++)
-                {
-                    GameplayAbilityExecutionFrame<TValue> frame = frames[index];
-                    if (frame == null || Find(frame.ActionInstanceId) != null)
-                        throw new ArgumentException("Skill execution state frames are invalid or duplicated.", nameof(frames));
-                    InsertOrdered(frame.Clone());
-                }
-        }
 
         internal GameplayAbilityExecutionAggregate(GameplayAbilityExecutionStateBank<TValue> bank, int frameCapacity)
         {
@@ -301,23 +221,19 @@ namespace ThirdPersonSimulation
 
         internal void RetainStateStorage()
         {
-            if (m_Bank != null)
-                m_Retainers++;
+            m_Retainers++;
         }
 
         internal void ReleaseStateStorage()
         {
-            if (m_Bank == null || --m_Retainers != 0)
+            if (--m_Retainers != 0)
                 return;
             for (int index = 0; index < m_Frames.Count; index++)
                 m_Frames[index].ReleaseStateStorage();
             m_Frames.Clear();
         }
 
-        internal GameplayAbilityExecutionFrame<TValue> CreateFrame(AbilityExecutionContext identity) => m_Bank == null
-            ? new GameplayAbilityExecutionFrame<TValue>(identity.SkillId, identity.EntryOperation,
-                identity.ActionInstanceId, identity.PredictionKey, identity.Generation)
-            : m_Bank.CreateFrame(identity);
+        internal GameplayAbilityExecutionFrame<TValue> CreateFrame(AbilityExecutionContext identity) => m_Bank.CreateFrame(identity);
 
         internal GameplayAbilityExecutionFrame<TValue> AppendRestoredFrame(AbilityExecutionContext identity)
         {
@@ -338,7 +254,7 @@ namespace ThirdPersonSimulation
         {
             if (frame == null || Find(frame.ActionInstanceId) != null)
                 throw new ArgumentException("Skill execution state frame is invalid or duplicated.", nameof(frame));
-            if (m_Bank != null && m_Frames.Count == m_Frames.Capacity)
+            if (m_Frames.Count == m_Frames.Capacity)
                 throw new InvalidOperationException("Skill execution frame count exceeds the declared Action capacity.");
             InsertOrdered(frame);
         }
@@ -364,24 +280,14 @@ namespace ThirdPersonSimulation
             {
                 if (m_Frames[index].ActionInstanceId != actionInstanceId)
                     continue;
-                if (m_Bank != null)
-                    m_Frames[index].ReleaseStateStorage();
+                m_Frames[index].ReleaseStateStorage();
                 m_Frames.RemoveAt(index);
                 return true;
             }
             return false;
         }
 
-        public GameplayAbilityExecutionAggregate<TValue> Clone() => new GameplayAbilityExecutionAggregate<TValue>(m_Frames);
-
-        internal GameplayAbilityExecutionAggregate<TValue> CreateMutableShell()
-        {
-            if (m_Bank != null)
-                return m_Bank.Capture(this);
-            var frames = new List<GameplayAbilityExecutionFrame<TValue>>(m_Frames.Count);
-            frames.AddRange(m_Frames);
-            return new GameplayAbilityExecutionAggregate<TValue>(frames, true);
-        }
+        internal GameplayAbilityExecutionAggregate<TValue> CreateMutableShell() => m_Bank.Capture(this);
 
         internal GameplayAbilityExecutionAggregate<TValue> CloneForActiveFrameMutation(
             ulong actionInstanceId, out GameplayAbilityExecutionFrame<TValue> frame)
@@ -398,18 +304,15 @@ namespace ThirdPersonSimulation
                 GameplayAbilityExecutionFrame<TValue> source = m_Frames[index];
                 if (source.ActionInstanceId != actionInstanceId)
                     continue;
-                if (m_Bank != null && source.Retainers == 1)
+                if (source.Retainers == 1)
                     return source;
-                GameplayAbilityExecutionFrame<TValue> frame = m_Bank == null ? source.Clone() : m_Bank.CopyFrame(source);
+                GameplayAbilityExecutionFrame<TValue> frame = m_Bank.CopyFrame(source);
                 m_Frames[index] = frame;
-                if (m_Bank != null)
-                    source.ReleaseStateStorage();
+                source.ReleaseStateStorage();
                 return frame;
             }
             throw new InvalidOperationException($"Skill execution frame '{actionInstanceId}' is absent from the mutable aggregate.");
         }
-
-        GameplayAbilityExecutionAggregate(List<GameplayAbilityExecutionFrame<TValue>> frames, bool adopted) => m_Frames = frames;
 
         public bool Equals(GameplayAbilityExecutionAggregate<TValue> other)
         {
@@ -436,10 +339,13 @@ namespace ThirdPersonSimulation
         GameplayAbilityExecutionAggregate<TValue> m_Current;
 
         internal GameplayAbilityExecutionStateBank(GameplayAbilityExecutionIdentity identity, int slotCount,
-            int actionCapacity, Func<int, bool> ownsSlot, Action<TValue> retainValue, Action<TValue> releaseValue)
+            int actionCapacity, Func<int, bool> ownsSlot, Action<TValue> retainValue, Action<TValue> releaseValue,
+            GeneratedBlackboardStateBinding<TValue> blackboards, Func<int, ProgramStateValueKind> valueKind,
+            AbilityStateValueWriter<TValue> writeValue, Func<CanonicalReader, int, TValue> readValueCase)
         {
             m_FrameCapacity = checked(actionCapacity + 1);
-            Values = new AbilityStateValuePageBank<TValue>(identity, slotCount, ownsSlot, retainValue, releaseValue);
+            Values = new AbilityStateValuePageBank<TValue>(identity, slotCount, ownsSlot, retainValue, releaseValue,
+                blackboards, valueKind, writeValue, readValueCase);
             PrepareCapacity(0);
         }
 
@@ -782,13 +688,13 @@ namespace ThirdPersonSimulation
             ActionAdmissionProfile profile)
         {
             TTargetSnapshot targetSnapshot = NormalizeTarget(profile, candidate.TargetSnapshot);
-            ActionAdmissionDecision admission = Evaluate(profile, targetSnapshot,
+            ActionAdmissionDecision admission = Evaluate(candidate.SkillId, profile, targetSnapshot,
                 ActionAdmissionEvaluationMode.CommitActivation);
             if (!admission.Allowed)
             {
                 ReportAdmissionFailure(candidate.Source, admission);
                 TraceActionResult(candidate, profile.ActionId, candidate.SkillId, 0,
-                    InputSequenceFor(candidate), SimulationActionResultKind.Rejected, AdmissionReason(admission));
+                    InputSequenceFor(candidate), SimulationActionResultKind.Rejected, AdmissionReason(admission), admission.BlockingEffectHandle);
                 return false;
             }
             GameplayCommandBatchAdmission commandBatch = m_Port.ReceiveStartupCommands(candidate.Source);
@@ -821,7 +727,7 @@ namespace ThirdPersonSimulation
                 m_Port.ReleaseMutation(savepoint);
                 TraceActivated(candidate, request, profile, instanceId);
                 TraceActionResult(candidate, request.ActionId, request.SkillId, instanceId,
-                    request.InputSequence, SimulationActionResultKind.Accepted, string.Empty);
+                    request.InputSequence, SimulationActionResultKind.Accepted, string.Empty, request.Opportunity.Handle);
                 return true;
             }
             finally
@@ -832,6 +738,7 @@ namespace ThirdPersonSimulation
         }
 
         public ActionAdmissionDecision Preview(
+            CharacterSkillId candidateSkillId,
             ActionAdmissionProfile profile,
             TTargetSnapshot targetSnapshot,
             in GameplayAbilitySourceContext replacementSource,
@@ -839,7 +746,7 @@ namespace ThirdPersonSimulation
         {
             if (!TryResolveSource(in replacementSource, out ActionAdmissionActiveAction activeSource, out _))
                 return new ActionAdmissionDecision(false, ActionAdmissionRejectReason.ReplacementSourceMissing, string.Empty);
-            return Evaluate(profile, NormalizeTarget(profile, targetSnapshot),
+            return Evaluate(candidateSkillId, profile, NormalizeTarget(profile, targetSnapshot),
                 ActionAdmissionEvaluationMode.PreviewReplacement, activeSource, executingActionInstanceId);
         }
 
@@ -852,8 +759,11 @@ namespace ThirdPersonSimulation
                 return new ActionAdmissionDecision(false, ActionAdmissionRejectReason.ActivationRequestPending, string.Empty);
             if (!TryResolveCandidateTarget(candidate, profile, out TTargetSnapshot target,
                     out ActionAdmissionActiveAction activeSource))
-                return new ActionAdmissionDecision(false, ActionAdmissionRejectReason.ReplacementSourceMissing, string.Empty);
-            return Evaluate(profile, target, ActionAdmissionEvaluationMode.PreviewReplacement,
+                return new ActionAdmissionDecision(false,
+                    candidate.RequiresOpportunity && !candidate.Opportunity.IsValid
+                        ? ActionAdmissionRejectReason.OpportunityUnavailable
+                        : ActionAdmissionRejectReason.ReplacementSourceMissing, string.Empty);
+            return Evaluate(candidate.SkillId, profile, target, ActionAdmissionEvaluationMode.PreviewReplacement,
                 activeSource, executingActionInstanceId);
         }
 
@@ -861,8 +771,6 @@ namespace ThirdPersonSimulation
         {
             if (!m_Port.TryReadPendingRequest(skillId, out ActionSkillActivationRequest<TTargetSnapshot> request))
                 return false;
-            if (request.SourceInputRequest.IsValid && !InputIsCurrent(request.SourceInputRequest))
-                return RejectPending(request, "InputRequestUnavailable");
             if (request.ReplacementSource.IsValid)
             {
                 ActionReplacementStopStatus stop = m_Port.ReadReplacementStopStatus(request.ReplacementSource);
@@ -871,14 +779,14 @@ namespace ThirdPersonSimulation
                 if (stop == ActionReplacementStopStatus.Waiting)
                     return false;
             }
-            ActionAdmissionDecision admission = Evaluate(profile, request.TargetSnapshot,
-                ActionAdmissionEvaluationMode.CommitActivation);
+            ActionAdmissionDecision admission = Evaluate(request.SkillId, profile, request.TargetSnapshot,
+                ActionAdmissionEvaluationMode.CommitAcceptedRequest);
             if (!admission.Allowed)
             {
                 m_Port.ClearPendingRequest(request);
                 ReportAdmissionFailure(request.Source, admission);
                 m_Port.TraceActionResult(request.Source, profile.ActionId, request.SkillId, 0,
-                    request.InputSequence, SimulationActionResultKind.Rejected, AdmissionReason(admission), request.ReplacementSource);
+                    request.InputSequence, SimulationActionResultKind.Rejected, AdmissionReason(admission), request.ReplacementSource, admission.BlockingEffectHandle);
                 return false;
             }
             GameplayCommandBatchAdmission commandBatch = m_Port.ReceiveStartupCommands(request.Source);
@@ -892,7 +800,6 @@ namespace ThirdPersonSimulation
             TSavepoint savepoint = m_Port.CreateMutationSavepoint(0);
             try
             {
-                ConsumeInput(request);
                 if (!m_Commit.TryCommit(request, profile, out ulong instanceId, out GameplayEffectApplyResult failure))
                 {
                     m_Port.RestoreMutation(savepoint);
@@ -905,7 +812,7 @@ namespace ThirdPersonSimulation
                 m_Port.ReleaseMutation(savepoint);
                 TraceActivated(request.Source, request, profile, instanceId);
                 m_Port.TraceActionResult(request.Source, request.ActionId, request.SkillId, instanceId,
-                    request.InputSequence, SimulationActionResultKind.Accepted, string.Empty, request.ReplacementSource);
+                    request.InputSequence, SimulationActionResultKind.Accepted, string.Empty, request.ReplacementSource, request.Opportunity.Handle);
                 return true;
             }
             finally
@@ -929,10 +836,12 @@ namespace ThirdPersonSimulation
                     out ActionAdmissionActiveAction activeSource))
             {
                 TraceActionResult(candidate, profile.ActionId, candidate.SkillId, 0,
-                    InputSequenceFor(candidate), SimulationActionResultKind.Rejected, "ReplacementSourceMissing");
+                    InputSequenceFor(candidate), SimulationActionResultKind.Rejected,
+                    candidate.RequiresOpportunity && !candidate.Opportunity.IsValid
+                        ? "OpportunityUnavailable" : "ReplacementSourceMissing");
                 return ActionActivationSubmission.Rejected;
             }
-            ActionAdmissionDecision admission = Evaluate(profile, targetSnapshot,
+            ActionAdmissionDecision admission = Evaluate(candidate.SkillId, profile, targetSnapshot,
                 candidate.ReplacementSource.IsValid
                     ? ActionAdmissionEvaluationMode.PreviewReplacement
                     : ActionAdmissionEvaluationMode.CommitActivation,
@@ -941,7 +850,7 @@ namespace ThirdPersonSimulation
             {
                 ReportAdmissionFailure(candidate.Source, admission);
                 TraceActionResult(candidate, profile.ActionId, candidate.SkillId, 0,
-                    InputSequenceFor(candidate), SimulationActionResultKind.Rejected, AdmissionReason(admission));
+                    InputSequenceFor(candidate), SimulationActionResultKind.Rejected, AdmissionReason(admission), admission.BlockingEffectHandle);
                 return admission.RejectReason == ActionAdmissionRejectReason.StartupRequirementsFailed
                     ? ActionActivationSubmission.StartupRejected : ActionActivationSubmission.Rejected;
             }
@@ -955,6 +864,13 @@ namespace ThirdPersonSimulation
                         InputSequenceFor(candidate), SimulationActionResultKind.Rejected, "InputRequestUnavailable");
                     return ActionActivationSubmission.Rejected;
                 }
+                if (request.Opportunity.IsValid && !m_Port.ConsumeOpportunity(request.Opportunity, request.Source))
+                {
+                    m_Port.RestoreMutation(savepoint);
+                    TraceActionResult(candidate, profile.ActionId, candidate.SkillId, 0,
+                        request.InputSequence, SimulationActionResultKind.Rejected, "OpportunityUnavailable");
+                    return ActionActivationSubmission.Rejected;
+                }
                 if (candidate.ReplacementSource.IsValid)
                 {
                     if (!m_Port.InterruptActive(candidate.ReplacementSource, candidate.Source, "SkillReplacement"))
@@ -966,6 +882,7 @@ namespace ThirdPersonSimulation
                     }
                 }
                 m_Port.StageRequest(request);
+                ConsumeInput(request);
                 m_Port.ReleaseMutation(savepoint);
                 return ActionActivationSubmission.Submitted;
             }
@@ -993,10 +910,14 @@ namespace ThirdPersonSimulation
             ActionAdmissionRejectReason.ReplacementSourceMissing => "ReplacementSourceMissing",
             ActionAdmissionRejectReason.StartupRequirementsFailed => "GameplayEffectStartupRequirementsFailed",
             ActionAdmissionRejectReason.ActivationRequestPending => "ActivationRequestPending",
+            ActionAdmissionRejectReason.ActorAbilityBlocked => "ActorAbilityBlocked",
+            ActionAdmissionRejectReason.SourceAbilityBlocked => "SourceAbilityBlocked",
+            ActionAdmissionRejectReason.ReplacementSourceRequirementFailed => "ReplacementSourceRequirementFailed",
             _ => string.Empty
         };
 
         ActionAdmissionDecision Evaluate(
+            CharacterSkillId candidateSkillId,
             ActionAdmissionProfile profile,
             TTargetSnapshot targetSnapshot,
             ActionAdmissionEvaluationMode mode,
@@ -1004,6 +925,7 @@ namespace ThirdPersonSimulation
             ulong executingActionInstanceId = 0)
         {
             return m_Admission.Evaluate(new ActionAdmissionRequest(
+                candidateSkillId,
                 profile,
                 new ActionAdmissionTargetCandidate(m_Port.TargetId(targetSnapshot)),
                 mode,
@@ -1027,7 +949,8 @@ namespace ThirdPersonSimulation
             out TTargetSnapshot targetSnapshot,
             out ActionAdmissionActiveAction activeSource)
         {
-            if (candidate.TargetPolicy == GameplayAbilityRuleTargetPolicy.SelectedSource && !candidate.ReplacementSource.IsValid ||
+            if (candidate.RequiresOpportunity && !candidate.Opportunity.IsValid ||
+                candidate.TargetPolicy == GameplayAbilityRuleTargetPolicy.SelectedSource && !candidate.ReplacementSource.IsValid ||
                 !TryResolveSource(candidate.ReplacementSource, out activeSource, out TTargetSnapshot sourceTarget))
             {
                 targetSnapshot = default;
@@ -1035,8 +958,9 @@ namespace ThirdPersonSimulation
                 return false;
             }
             targetSnapshot = NormalizeTarget(profile,
-                candidate.TargetPolicy == GameplayAbilityRuleTargetPolicy.SelectedSource
-                    ? sourceTarget : candidate.TargetSnapshot);
+                candidate.Opportunity.IsValid ? candidate.TargetSnapshot :
+                    candidate.TargetPolicy == GameplayAbilityRuleTargetPolicy.SelectedSource
+                        ? sourceTarget : candidate.TargetSnapshot);
             return true;
         }
 
@@ -1072,7 +996,7 @@ namespace ThirdPersonSimulation
                 candidate.EquipmentContext,
                 candidate.ReplacementSource,
                 candidate.ActivationEntryId,
-                candidate.ConsumeSourceInputRequest);
+                candidate.ConsumeSourceInputRequest, candidate.Opportunity);
             return true;
         }
 
@@ -1133,7 +1057,8 @@ namespace ThirdPersonSimulation
             ulong actionInstanceId,
             ulong inputSequence,
             SimulationActionResultKind result,
-            CanonicalTextValue reason)
+            CanonicalTextValue reason,
+            ulong effectHandle = 0)
         {
             if (!m_Port.TraceEnabled)
                 return;
@@ -1145,7 +1070,7 @@ namespace ThirdPersonSimulation
                     actionInstanceId,
                     inputSequence,
                     result,
-                    reason, candidate.ReplacementSource);
+                    reason, candidate.ReplacementSource, effectHandle);
             else
                 m_Port.TraceActionResult(
                     candidate.Source,
@@ -1154,7 +1079,7 @@ namespace ThirdPersonSimulation
                     actionInstanceId,
                     inputSequence,
                     result,
-                    reason, candidate.ReplacementSource);
+                    reason, candidate.ReplacementSource, effectHandle);
         }
 
         void TraceActivated(

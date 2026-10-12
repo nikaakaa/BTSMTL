@@ -113,7 +113,7 @@ namespace ThirdPersonSimulation.Fixed
             return Services.SourcePath(operation.Handle);
         }
 
-        public ProgramSourceMapEntry RequireOperationSource(SimulationOperation operation)
+        public ProgramExecutionSource RequireOperationSource(SimulationOperation operation)
         {
             if (operation == null)
                 throw new ArgumentNullException(nameof(operation));

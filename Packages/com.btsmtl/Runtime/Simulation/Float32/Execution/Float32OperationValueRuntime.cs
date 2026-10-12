@@ -8,15 +8,28 @@ namespace ThirdPersonSimulation
         protected readonly Float32GameplayAbilityExecutionData m_Ability;
         protected readonly GameplayAbilityExecutionLayout m_Layout;
         readonly Float32GraphValueRuntime m_Values;
+        readonly OperationValueObservationLayout m_ObservationLayout;
+        bool m_ObservingValues;
 
         protected Float32OperationValueRuntime(Float32GameplayAbilityExecutionData data,
-            GameplayAbilityExecutionLayout layout, Float32GraphValueWorkspace workspace)
+            GameplayAbilityExecutionLayout layout, Float32GraphValueWorkspace workspace
+#if UNITY_EDITOR
+            , IFloat32GraphValuePortInputs ports
+#endif
+            )
         {
             m_Ability = data;
             m_Layout = layout;
+            m_ObservationLayout = new OperationValueObservationLayout(data.Operations.Count, data.ExecutionSources,
+                index =>
+                {
+                    SimulationOperation operation = data.Operations[index];
+                    return GameplayAbilityValuePortContracts.Require(operation.Code, operation.Handle,
+                        data.GraphCallFrames, operation.Integer0);
+                });
             m_Values = new Float32GraphValueRuntime(data, workspace
 #if UNITY_EDITOR
-                , null
+                , ports
 #endif
                 );
         }
@@ -25,9 +38,13 @@ namespace ThirdPersonSimulation
             SimulationOperation operation, string outputPort, Float32ValueInputLease inputs)
             where TTarget : struct, IOperationControlTarget<TTarget>;
         protected abstract void ResetGraphCallParameter(int slot);
+        protected abstract AbilityStateValue ReadDefaultState(int slot);
         protected abstract void WriteGraphCallParameter(int slot, AbilityStateValue value);
         protected abstract AbilityStateValue ReadGraphCallParameter(int slot);
         protected abstract bool IsAvailabilityQuery { get; }
+        protected abstract bool CaptureValues { get; }
+        protected abstract void TraceObservedValue(SimulationOperation operation, in OperationValueObservationPort port,
+            AbilityStateValue value);
         protected abstract void TraceResult(SimulationOperation operation, string outputPort, AbilityStateValue value, bool predictive);
         protected abstract void TraceInput(SimulationOperation operation, CompiledValueInputBinding input, AbilityStateValue value, bool predictive);
 
@@ -56,7 +73,35 @@ namespace ThirdPersonSimulation
             where TTarget : struct, IOperationControlTarget<TTarget>
         {
             var context = new Context<TTarget>(this, cursor);
-            return m_Values.Evaluate(ref context, operation, outputPort, outputPortIndex);
+            AbilityStateValue value = m_Values.Evaluate(ref context, operation, outputPort, outputPortIndex);
+            if (!m_ObservingValues && CaptureValues && !context.IsPredictiveEvaluation)
+                ObserveGraphValues(ref context, operation);
+            return value;
+        }
+
+        void ObserveGraphValues<TTarget>(ref Context<TTarget> context, OperationHandle handle)
+            where TTarget : struct, IOperationControlTarget<TTarget>
+        {
+            m_ObservingValues = true;
+            try
+            {
+                foreach (ref readonly OperationValueObservationPort port in m_ObservationLayout.Ports(handle))
+                {
+                    SimulationOperation operation = m_Ability.Operations[port.Operation.Value];
+                    AbilityStateValue value;
+                    if (port.Direction == ProgramValuePortDirection.Output)
+                        value = m_Values.Evaluate(ref context, port.Operation, port.Identity, port.Index);
+                    else
+                    {
+                        ReadOnlySpan<CompiledValueInputBinding> inputs = m_Layout.ValueLayout.ValueInputs(port.Operation);
+                        int index = 0;
+                        while (inputs[index].TargetPortIndex != port.Index) index++;
+                        value = m_Values.ReadInputValue(ref context, operation, in inputs[index]);
+                    }
+                    TraceObservedValue(operation, in port, value);
+                }
+            }
+            finally { m_Values.ClearObservedValues(); m_ObservingValues = false; }
         }
 
         public Float32ValueInputLease ReadInputs<TTarget>(OperationControlCursor<TTarget> cursor,
@@ -82,7 +127,7 @@ namespace ThirdPersonSimulation
             if (stateSlot < 0)
                 throw new InvalidOperationException($"Graph call frame '{frame.Identity}' has no output port '{outputPort}'.");
             if (cursor.ReadStatus(frame.EntryOperation) != OperationRunnableStatus.Success)
-                return m_Ability.DefaultStateValue(stateSlot);
+                return ReadDefaultState(stateSlot);
             return ReadGraphCallParameter(stateSlot);
         }
 
@@ -99,9 +144,10 @@ namespace ThirdPersonSimulation
             }
 
             public bool IsPredictiveEvaluation => m_Cursor.IsPredictiveEvaluation || m_Owner.IsAvailabilityQuery;
+            public bool IsReadOnlyObservation => m_Owner.m_ObservingValues;
             public void RequireExecution(OperationHandle operation)
             {
-                if (!m_Owner.IsAvailabilityQuery)
+                if (!m_Owner.IsAvailabilityQuery && !m_Owner.m_ObservingValues)
                     m_Cursor.RequireExecution(operation);
             }
             public AbilityStateValue EvaluateDomainValue(SimulationOperation operation, string outputPort,
@@ -109,10 +155,16 @@ namespace ThirdPersonSimulation
                     ? m_Owner.ReadSubGraphOutput(m_Cursor, operation, outputPort,
                         m_Owner.m_Layout.ValueLayout.ValueEvaluationSlot(operation.Handle, outputPortIndex))
                     : m_Owner.EvaluateDomainValue(m_Cursor, operation, outputPort, inputs);
-            public void TraceResult(SimulationOperation operation, string outputPort, int outputPortIndex, AbilityStateValue value) =>
-                m_Owner.TraceResult(operation, outputPort, value, IsPredictiveEvaluation);
-            public void TraceInput(SimulationOperation operation, CompiledValueInputBinding input, AbilityStateValue value) =>
-                m_Owner.TraceInput(operation, input, value, IsPredictiveEvaluation);
+            public void TraceResult(SimulationOperation operation, string outputPort, int outputPortIndex, AbilityStateValue value)
+            {
+                if (!m_Owner.m_ObservingValues)
+                    m_Owner.TraceResult(operation, outputPort, value, IsPredictiveEvaluation);
+            }
+            public void TraceInput(SimulationOperation operation, CompiledValueInputBinding input, AbilityStateValue value)
+            {
+                if (!m_Owner.m_ObservingValues)
+                    m_Owner.TraceInput(operation, input, value, IsPredictiveEvaluation);
+            }
         }
     }
 }

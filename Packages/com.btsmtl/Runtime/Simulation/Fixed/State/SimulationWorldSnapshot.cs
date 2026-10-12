@@ -71,8 +71,6 @@ namespace ThirdPersonSimulation.Fixed
             m_TextResolver = resolver;
         }
 
-        internal void SetPreparedTextResolver(ICanonicalTextResolver resolver) => m_TextResolver = resolver;
-
         internal void ClearPreparedPayload()
         {
             m_StateBytes = ReadOnlyMemory<byte>.Empty;
@@ -223,13 +221,6 @@ namespace ThirdPersonSimulation.Fixed
             m_WorldStateBytes = payload;
             WorldHash = hash;
             m_TextResolver = resolver;
-        }
-
-        internal void SetPreparedTextResolver(ICanonicalTextResolver resolver)
-        {
-            m_TextResolver = resolver;
-            for (int index = 0; index < m_Actors.Count; index++)
-                m_Actors[index].SetPreparedTextResolver(resolver);
         }
 
         internal void ClearPreparedPayload()
@@ -804,7 +795,7 @@ namespace ThirdPersonSimulation.Fixed
     public static class SimulationWorldSnapshotCodec
     {
         const uint Magic = 0x504e5343;
-        const int Version = 7;
+        const int Version = 8;
 
         [ThreadStatic] static CanonicalWriter s_HashWriter;
         [ThreadStatic] static CanonicalWriter s_CanonicalWriter;
@@ -836,7 +827,7 @@ namespace ThirdPersonSimulation.Fixed
             long hashPosition = writer.Position;
             writer.WriteHash(runtime.StateSchemaHash);
             int hashPayloadStart = checked((int)writer.Position);
-            SimulationNumericProfileCodec.Write(writer, runtime.NumericProfile);
+            SimulationNumericProfile.CanonicalWrite(writer, runtime.NumericProfile);
             writer.WriteHash(runtime.GameplayContentHash);
             writer.WriteHash(runtime.StateSchemaHash);
             writer.WriteText(state.WorldState.SolverId.Value);
@@ -852,12 +843,11 @@ namespace ThirdPersonSimulation.Fixed
                 writer.WriteHash(actor.State.GameplayContentHash);
                 writer.WriteHash(actor.State.StateSchemaHash);
                 SimulationCharacterStatePayload payload = actor.State.CanonicalPayload;
-                payload.Text.CopyTo(writer.TextCapture);
                 writer.WriteHash(payload.Hash);
                 writer.WriteText(FixedCharacterRuntimeStateCodec.CodecIdentity);
                 long actorPrefix = writer.BeginLengthPrefixedBlock();
                 int actorStart = checked((int)writer.Position);
-                writer.WriteRawBytes(payload.Bytes.Span);
+                FixedCharacterRuntimeStateCodec.WriteCanonical(writer, actor.State);
                 int actorEnd = checked((int)writer.Position);
                 writer.EndLengthPrefixedBlock(actorPrefix);
                 snapshot.Actors[index].SetPreparedPayload(payload.Hash,
@@ -895,7 +885,7 @@ namespace ThirdPersonSimulation.Fixed
                 throw new InvalidDataException("Simulation World Snapshot header is invalid.");
             var expectedHash = SimulationWorldHash.CanonicalFromHash(reader.ReadHash());
             int hashPayloadStart = bytes.Length - reader.Remaining;
-            SimulationNumericProfile numeric = SimulationNumericProfileCodec.Read(reader, snapshot.NumericProfile);
+            SimulationNumericProfile numeric = SimulationNumericProfile.ReadPublished(reader, snapshot.NumericProfile);
             var content = GameplayContentHash.CanonicalFromHash(reader.ReadHash());
             StableHash schema = reader.ReadHash();
             reader.RequireText(snapshot.SolverId.Value);
@@ -946,7 +936,7 @@ namespace ThirdPersonSimulation.Fixed
             if (reader.ReadUInt32() != Magic || reader.ReadInt32() != Version)
                 throw new InvalidDataException("Simulation World Snapshot header is invalid.");
             var expectedHash = SimulationWorldHash.CanonicalFromHash(reader.ReadHash());
-            SimulationNumericProfile numericProfile = SimulationNumericProfileCodec.Read(reader);
+            SimulationNumericProfile numericProfile = SimulationNumericProfile.CanonicalReadMaterialized(reader);
             var gameplayContentHash = GameplayContentHash.CanonicalFromHash(reader.ReadHash());
             var stateSchemaHash = reader.ReadHash();
             var solverId = new SolverImplementationId(CanonicalTextEncoding.DecodeString(reader.ReadTextSegment()));
@@ -1007,7 +997,7 @@ namespace ThirdPersonSimulation.Fixed
 
         static void WriteHashPayload(CanonicalWriter writer, SimulationWorldSnapshot snapshot)
         {
-            SimulationNumericProfileCodec.Write(writer, snapshot.NumericProfile);
+            SimulationNumericProfile.CanonicalWrite(writer, snapshot.NumericProfile);
             writer.WriteHash(snapshot.GameplayContentHash);
             writer.WriteHash(snapshot.StateSchemaHash);
             writer.WriteText(snapshot.SolverId.Value);

@@ -711,7 +711,6 @@ namespace ThirdPersonSimulation.Fixed
         public CanonicalTextValue Cause { get; }
         public ulong MutationCursor { get; }
 
-        internal const int MaximumTextReferences = 23;
         internal void Retain()
         {
             Header.Retain();
@@ -779,12 +778,12 @@ namespace ThirdPersonSimulation.Fixed
         DomainEvent = 10,
         ForceReleaseProducer = 11,
         TimelineProgress = 12,
-        Audio = 13
+        Audio = 13,
+        CombatHit = 14
     }
 
     public readonly struct PresentationCommand
     {
-        internal const int MaximumTextReferences = 13;
         public PresentationCommand(
             SimulationEventHeader header,
             PresentationCommandKind kind,
@@ -800,7 +799,8 @@ namespace ThirdPersonSimulation.Fixed
             AbilityTimelineProgress timelineProgress = default,
             PresentationAudioRequest audioRequest = default,
             AudioPlaybackOwner audioOwner = default,
-            ActorId audioTargetActor = default)
+            ActorId audioTargetActor = default,
+            CombatHitResult combatHit = null)
         {
             Header = header;
             Kind = kind;
@@ -817,6 +817,9 @@ namespace ThirdPersonSimulation.Fixed
             AudioRequest = audioRequest;
             AudioOwner = audioOwner;
             AudioTargetActor = audioTargetActor;
+            CombatHit = combatHit;
+            if ((kind == PresentationCommandKind.CombatHit) != (combatHit != null))
+                throw new ArgumentException("Combat feedback commands require their accepted hit result.", nameof(combatHit));
             if ((kind == PresentationCommandKind.TimelineProgress) != timelineProgress.IsValid ||
                 timelineProgress.IsValid && (sourceActionInstanceId == 0 || timelineProgress.LogicTick != header.Tick.Value))
                 throw new ArgumentException("Timeline progress requires its exact logic tick and Action identity.", nameof(timelineProgress));
@@ -855,6 +858,29 @@ namespace ThirdPersonSimulation.Fixed
         public PresentationAudioRequest AudioRequest { get; }
         public AudioPlaybackOwner AudioOwner { get; }
         public ActorId AudioTargetActor { get; }
+        public CombatHitResult CombatHit { get; }
+
+        PresentationCommand(in PresentationCommand command, CombatHitResult combatHit)
+        {
+            Header = command.Header;
+            Kind = command.Kind;
+            ProducerId = command.ProducerId;
+            SampleTime = command.SampleTime;
+            Weight = command.Weight;
+            ProducerGeneration = command.ProducerGeneration;
+            Cycle = command.Cycle;
+            SourceActionInstanceId = command.SourceActionInstanceId;
+            VisualTimeScale = command.VisualTimeScale;
+            DomainPayload = command.DomainPayload;
+            CameraRequest = command.CameraRequest;
+            TimelineProgress = command.TimelineProgress;
+            AudioRequest = command.AudioRequest;
+            AudioOwner = command.AudioOwner;
+            AudioTargetActor = command.AudioTargetActor;
+            CombatHit = combatHit;
+        }
+
+        internal PresentationCommand WithCombatHit(CombatHitResult combatHit) => new PresentationCommand(in this, combatHit);
 
         internal void Retain()
         {
@@ -916,10 +942,14 @@ namespace ThirdPersonSimulation.Fixed
         int[] m_Counts = Array.Empty<int>();
         readonly int m_Invocations;
         int m_Stride;
+#if UNITY_EDITOR
+        internal long ObservationElapsedStopwatchTicks;
+        internal int ObservationCalls;
+#endif
         internal SimulationValueTraceStorage(int invocationCount) => m_Invocations = invocationCount;
         internal void PrepareCapacity(int traceRecordsPerTick)
         {
-            m_Stride = Math.Min(SimulationValueTraceLimits.MaxSamplesPerEvaluation, checked(traceRecordsPerTick + 1));
+            m_Stride = checked(traceRecordsPerTick + 1);
             m_Values = new Entry[checked(m_Invocations * m_Stride)];
             m_Counts = new int[m_Invocations];
         }
@@ -933,6 +963,10 @@ namespace ThirdPersonSimulation.Fixed
         internal ref readonly Entry Read(int index) => ref m_Values[index];
         internal void Clear()
         {
+#if UNITY_EDITOR
+            ObservationElapsedStopwatchTicks = 0;
+            ObservationCalls = 0;
+#endif
             for (int invocation = 0; invocation < m_Counts.Length; invocation++)
             {
                 Array.Clear(m_Values, invocation * m_Stride, m_Counts[invocation]);

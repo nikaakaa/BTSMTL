@@ -163,7 +163,11 @@ namespace ThirdPersonSimulation.Fixed
             m_RestoreSource = restoreSource;
             m_SnapshotCodec = snapshotCodec ?? throw new ArgumentNullException(nameof(snapshotCodec));
             GameplayEffectSessionCapacity checkpointCapacity = m_Roster[0].SessionCapacity;
-            m_SnapshotCodec.PrepareCheckpointStorage(services.Descriptor, m_CharacterRuntime, services.StateParticipants, in checkpointCapacity, m_StateStore.Current.WorldState);
+            var snapshotOwner = committer as IFixedSimulationSnapshotRetentionOwner;
+            int stepSnapshotCapacity = snapshotOwner == null ? 0 :
+                checked(snapshotOwner.MaximumRetainedStepSnapshots + checkpointCapacity.CandidateTicks);
+            m_SnapshotCodec.PrepareCheckpointStorage(services.Descriptor, m_CharacterRuntime, services.StateParticipants,
+                in checkpointCapacity, m_StateStore.Current.WorldState, stepSnapshotCapacity);
             using (SimulationCharacterStatePayloadStorage.Page initialEncoding = m_Roster[0].RuntimeStatePages.EncodingStorage?.Acquire())
             {
 #if UNITY_EDITOR
@@ -171,25 +175,28 @@ namespace ThirdPersonSimulation.Fixed
 #endif
                 if (initialEncoding != null)
                     for (int actor = 0; actor < m_Roster.Count; actor++)
-                        FixedCharacterRuntimeStateCodec.Encode(m_StateStore.Current.Actors[actor].State, initialEncoding, actor
+                        FixedCharacterRuntimeStateCodec.Encode(m_StateStore.Current.Actors[actor].State, initialEncoding
 #if UNITY_EDITOR
                             , ref initialProfile
 #endif
                             );
             }
-            if (committer is IFixedSimulationSnapshotRetentionOwner snapshotOwner)
+            if (snapshotOwner != null)
                 snapshotOwner.PrepareSnapshotStorage(m_SnapshotCodec, in checkpointCapacity);
-            m_StateStore.PrepareRestoreStorage(checkpointCapacity.StatePageCount, solver.MaximumStatePayloadBytes);
-            int maximumWorldPayloadBytes = WorldSimulationStateCodec.MaximumEncodedBytes(m_StateStore.Current.WorldState, solver.MaximumStatePayloadBytes);
-            m_CheckpointWorking = new FixedPipelineWorkingState(m_StateStore.Current);
-            m_CheckpointCharacterRestore = new FixedCharacterRestoreTransaction(m_Roster);
-            m_SourceCharacterRestore = new FixedCharacterRestoreTransaction(m_Roster);
-            m_CheckpointWorldRestore = new FixedWorldRestoreTransaction(m_Solver, maximumWorldPayloadBytes);
-            m_SourceWorldRestore = new FixedWorldRestoreTransaction(m_Solver, maximumWorldPayloadBytes);
-            m_CheckpointPipelineRestore = new SimulationPipelineStateRestoreTransaction(services.Plan, services.StateParticipants);
-            m_SourcePipelineRestore = new SimulationPipelineStateRestoreTransaction(services.Plan, services.StateParticipants);
-            m_CheckpointRestore = new SimulationSessionRestoreTransaction();
-            m_SourceRestore = new SimulationSessionRestoreTransaction();
+            if (services.Descriptor.CapturesState)
+            {
+                m_StateStore.PrepareRestoreStorage(checkpointCapacity.StatePageCount, solver.MaximumStatePayloadBytes);
+                int maximumWorldPayloadBytes = WorldSimulationStateCodec.MaximumEncodedBytes(m_StateStore.Current.WorldState, solver.MaximumStatePayloadBytes);
+                m_CheckpointWorking = new FixedPipelineWorkingState(m_StateStore.Current);
+                m_CheckpointCharacterRestore = new FixedCharacterRestoreTransaction(m_Roster);
+                m_SourceCharacterRestore = new FixedCharacterRestoreTransaction(m_Roster);
+                m_CheckpointWorldRestore = new FixedWorldRestoreTransaction(m_Solver, maximumWorldPayloadBytes);
+                m_SourceWorldRestore = new FixedWorldRestoreTransaction(m_Solver, maximumWorldPayloadBytes);
+                m_CheckpointPipelineRestore = new SimulationPipelineStateRestoreTransaction(services.Plan, services.StateParticipants);
+                m_SourcePipelineRestore = new SimulationPipelineStateRestoreTransaction(services.Plan, services.StateParticipants);
+                m_CheckpointRestore = new SimulationSessionRestoreTransaction();
+                m_SourceRestore = new SimulationSessionRestoreTransaction();
+            }
             m_Committer = committer ?? throw new ArgumentNullException(nameof(committer));
             m_Products = products ?? throw new ArgumentNullException(nameof(products));
             m_CharacterEvaluationResults = m_Products.GetRequired<FixedExclusiveProductSlot<FixedCharacterEvaluationResultBatch>>(
@@ -327,7 +334,6 @@ namespace ThirdPersonSimulation.Fixed
                 restore.CompleteAfterAtomicSessionPublish();
             }
             PublishTimelineOwners(in restored);
-            m_SnapshotCodec.CompleteCheckpointReception(checkpoint);
         }
 
         public void DisposeCheckpointStorage()

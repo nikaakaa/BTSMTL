@@ -281,7 +281,9 @@ namespace ThirdPersonSimulation
             ISimulationDiagnosticsSink diagnostics,
             IEnumerable<SimulationOutputRouteDescriptor> outputRoutes,
             IEnumerable<IDisposable> sourceResources = null,
-            IEnumerable<IDisposable> actorResources = null)
+            IEnumerable<IDisposable> actorResources = null,
+            GraphBatchExecutionOptions graphBatchOptions = default,
+            IGraphBatchExecutionResource graphBatchResource = null)
         {
             if (!sessionId.IsValid || !worldId.IsValid || !sourceClockId.IsValid || tickRate <= 0)
                 throw new ArgumentException("Float32 Session composition identity is incomplete.");
@@ -292,6 +294,8 @@ namespace ThirdPersonSimulation
             RecordedFrameCapacity = recordedFrameCapacity;
             MaximumSessionCheckpointPayloadBytes = maximumSessionCheckpointPayloadBytes;
             CharacterRuntime = characterRuntime ?? throw new ArgumentNullException(nameof(characterRuntime));
+            GraphBatchOptions = graphBatchOptions;
+            GraphBatchResource = graphBatchResource;
             Backend = backend ?? throw new ArgumentNullException(nameof(backend));
             PipelineRuntimePackage = pipelineRuntimePackage ?? throw new ArgumentNullException(nameof(pipelineRuntimePackage));
             Source = source ?? throw new ArgumentNullException(nameof(source));
@@ -319,6 +323,8 @@ namespace ThirdPersonSimulation
         public int RecordedFrameCapacity { get; }
         public int MaximumSessionCheckpointPayloadBytes { get; }
         public Float32CharacterRuntime CharacterRuntime { get; }
+        public GraphBatchExecutionOptions GraphBatchOptions { get; }
+        public IGraphBatchExecutionResource GraphBatchResource { get; }
         public SimulationExecutionBackendDescriptor Backend { get; }
         public Float32SimulationPipelineRuntimePackage PipelineRuntimePackage { get; }
         public SimulationSessionSourceDescriptor Source { get; }
@@ -439,7 +445,9 @@ namespace ThirdPersonSimulation
                 request.PipelineRuntimePackage.PassRuntimeFactories,
                 request.PipelineRuntimePackage.ProductRuntimeFactories,
                 request.SourceResources,
-                request.ActorResources);
+                request.ActorResources,
+                request.GraphBatchOptions,
+                request.GraphBatchResource);
             return Float32PassExecutionBackend.Create(backendRequest);
         }
 

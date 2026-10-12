@@ -100,7 +100,6 @@ namespace ThirdPersonSimulation
                 frame.CreateStatePort("Blackboard", executionServices.BlackboardPolicy),
                 frame,
                 actionStore,
-                frame.Facts,
                 frame.Trace,
                 workspace);
             Float32AbilityDomainRuntimeServices domainServices = domainRuntimeFactory.Create(
@@ -179,7 +178,6 @@ namespace ThirdPersonSimulation
                 actionStore,
                 equipment,
                 values,
-                blackboard,
                 workspace.TimelineAdvances,
                 workspace.TimelineStops);
             control.Bind(services);

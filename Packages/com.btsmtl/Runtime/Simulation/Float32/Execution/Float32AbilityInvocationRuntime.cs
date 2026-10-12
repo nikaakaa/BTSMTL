@@ -90,6 +90,7 @@ namespace ThirdPersonSimulation
         readonly Float32AbilityOperationControlRuntime m_Control;
         Float32AbilityDomainRuntime m_Domain;
         readonly Float32AbilityExecutionContext m_Execution;
+        readonly Float32TraceSink m_Trace;
         readonly IFloat32AbilityActionBindingProvider m_ActionBindings;
         readonly IFloat32AbilityDomainRuntimeFactory m_DomainRuntimeFactory;
         readonly EquipmentProgramLayout m_EquipmentLayout;
@@ -105,20 +106,19 @@ namespace ThirdPersonSimulation
             IFloat32AbilityDomainRuntimeFactory domainRuntimeFactory,
             EquipmentProgramLayout equipmentLayout,
             Float32AbilityExecutionWorkspace workspace,
-            Float32AbilityOperationControlRuntime control,
             IFloat32AbilityExecutionServiceFactory serviceFactory)
         {
             execution = execution ?? throw new ArgumentNullException(nameof(execution));
             AbilityId = execution.Data.AbilityId;
             m_Execution = execution;
+            m_Trace = new Float32TraceSink(execution.Data, execution.Layout);
             actionBindings = actionBindings ?? throw new ArgumentNullException(nameof(actionBindings));
             domainRuntimeFactory = domainRuntimeFactory ?? throw new ArgumentNullException(nameof(domainRuntimeFactory));
-            control = control ?? throw new ArgumentNullException(nameof(control));
             m_Workspace = workspace ?? throw new ArgumentNullException(nameof(workspace));
             m_ActionBindings = actionBindings;
             m_DomainRuntimeFactory = domainRuntimeFactory;
             m_EquipmentLayout = equipmentLayout;
-            m_Control = control;
+            m_Control = new Float32AbilityOperationControlRuntime(execution.Data);
             m_ServiceFactory = serviceFactory ?? throw new ArgumentNullException(nameof(serviceFactory));
         }
 
@@ -129,7 +129,7 @@ namespace ThirdPersonSimulation
                     m_Execution.Layout,
                     m_Execution.Services,
                     actorId,
-                    m_Execution.Trace,
+                    m_Trace,
                     m_Workspace);
 
                 Float32AbilityExecutionAssembly assembly = m_ServiceFactory.Create(
@@ -152,9 +152,12 @@ namespace ThirdPersonSimulation
         }
 
         public CharacterSkillId AbilityId { get; }
+        internal Float32AbilityOperationControlRuntime Control => m_Control;
 
         internal void BindAvailabilityRead(IFloat32AbilityFrameReadPort read) =>
             m_Frame.ExchangeAvailabilityRead(read);
+
+        internal void BindDecisionRead(IGameplayAbilityDecisionReadPort read) => m_Frame.DecisionRead = read;
 
         internal void PreviewAvailability(GameplayAbilityExecutionBinding ability,
             GameplayAbilityActivationRuleBinding rule, in GameplayAbilitySourceContext source,
@@ -172,13 +175,11 @@ namespace ThirdPersonSimulation
             }
         }
 
-        public bool EvaluateRuleCondition(IGameplayAbilityDecisionReadPort read,
-            in GameplayAbilitySourceContext source, OperationHandle condition, GameplayAbilityRuleEvaluationMode mode)
+        public bool EvaluateRuleCondition(in GameplayAbilitySourceContext source,
+            OperationHandle condition, GameplayAbilityRuleEvaluationMode mode)
         {
-            IGameplayAbilityDecisionReadPort previousRead = m_Frame.DecisionRead;
             GameplayAbilitySourceContext previousSource = m_Frame.SelectedSource;
             GameplayAbilityRuleEvaluationMode previousMode = m_Frame.RuleEvaluationMode;
-            m_Frame.DecisionRead = read;
             m_Frame.SelectedSource = source;
             m_Frame.RuleEvaluationMode = mode;
             try
@@ -187,7 +188,6 @@ namespace ThirdPersonSimulation
             }
             finally
             {
-                m_Frame.DecisionRead = previousRead;
                 m_Frame.SelectedSource = previousSource;
                 m_Frame.RuleEvaluationMode = previousMode;
             }
@@ -232,16 +232,6 @@ namespace ThirdPersonSimulation
         internal Float32GameplayEffectOperationRuntime GameplayEffects => m_GameplayEffects;
         public bool HasGameplayEffects => m_GameplayEffects != null;
         public IEquipmentActionContextReader Equipment => m_Equipment;
-
-        public bool HasActionWindowProjection(in GameplayAbilitySourceContext source, string windowTag)
-        {
-            IReadOnlyList<SimulationActionWindowProjectionCandidate> projections = m_Workspace.ActionWindowProjections;
-            for (int i = 0; i < projections.Count; i++)
-                if (projections[i].SourceContext.Equals(source) &&
-                    m_Execution.Services.GameplayEffectCatalog.IsTagOrParent(projections[i].WindowTag, windowTag))
-                    return true;
-            return false;
-        }
 
         public void BeginEvaluation(
             bool diagnosticsEnabled,

@@ -7,39 +7,27 @@ namespace ThirdPersonSimulation
     {
         [ThirdPersonPerformance.Instrumentation.PerformanceProbe("simulation.character.evaluate")]
         public static Float32CharacterEvaluationResult Evaluate(
-            Float32CharacterRuntime characterRuntime,
             SimulationActorBinding actor,
-            Float32CharacterRuntimeState sourceState,
-            SimulationTick tick,
-            SimulationInput input,
-            SimulationIngress[] ingress,
-            int ingressCount,
-            WorldBodyState beforeBody,
-            bool diagnosticsEnabled,
-            bool captureValues,
-            bool captureControlFlow,
-            bool captureBlackboard,
+            in Float32CharacterEvaluationInput evaluation,
             out CharacterWorldSolveRequest worldRequest)
         {
-            if (characterRuntime == null)
-                throw new ArgumentNullException(nameof(characterRuntime));
-            if (actor == null)
-                throw new ArgumentNullException(nameof(actor));
-            if (sourceState == null)
-                throw new ArgumentNullException(nameof(sourceState));
-            if (input == null)
-                throw new ArgumentNullException(nameof(input));
-            if (sourceState.NumericProfile != characterRuntime.NumericProfile ||
-                beforeBody.ActorId != actor.ActorId ||
-                input.NumericProfile != characterRuntime.NumericProfile)
-                throw new InvalidOperationException("Float32 Character evaluation identity does not match the active Character Runtime.");
+            Float32CharacterRuntimeState sourceState = evaluation.State;
+            SimulationTick tick = evaluation.Tick;
+            SimulationInput input = evaluation.Input;
+            SimulationIngress[] ingress = evaluation.Ingress;
+            int ingressCount = evaluation.IngressCount;
+            WorldBodyState beforeBody = evaluation.Body;
+            bool diagnosticsEnabled = evaluation.DiagnosticsEnabled;
+            bool captureValues = evaluation.CaptureValues;
+            bool captureControlFlow = evaluation.CaptureControlFlow;
+            bool captureBlackboard = evaluation.CaptureBlackboard;
 
             Float32GameplayEffectRuntimeCatalog effectCatalog = actor.AbilityInstallations.GameplayEffectCatalog;
             actor.EvaluationOutput.BeginMotionWarpState(actor.MotionWarpPages, sourceState.MotionWarpStates);
             var roleState = actor.RuntimeState.Restart(
                 sourceState,
                 tick,
-                characterRuntime.TickRate,
+                evaluation.TickRate,
                 effectCatalog,
                 actor.InputRequestState,
                 actor.ActionState,
@@ -70,7 +58,6 @@ namespace ThirdPersonSimulation
             {
                 evaluationOutput.BeginDiagnostics(diagnosticsEnabled);
                 abilityInput.Begin(input, ingress, ingressCount);
-                actor.CaptureAvailabilityFrameEvents(ingress, ingressCount);
                 actionOwners.Clear();
                 for (int i = 0; i < sourceState.ActionInstances.Length; i++)
                 {
@@ -85,11 +72,11 @@ namespace ThirdPersonSimulation
                     abilityInput,
                     bodyFacts,
                     tick,
-                    characterRuntime.TickRate);
+                    evaluation.TickRate);
                 Float32CharacterTraceSink characterTraceSink = actor.CharacterTraceSink;
                 characterTraceSink.Bind(evaluationOutput);
                 characterTraceSink.Begin(
-                    characterRuntime.NumericProfile,
+                    evaluation.NumericProfile,
                     actor.GameplayContentHash,
                     actor.ActorId,
                     tick,
@@ -139,7 +126,7 @@ namespace ThirdPersonSimulation
                 if (!effectAdvanced)
                     RequireNoGameplayEffectIngress(ingress, ingressCount);
 
-                Float32CharacterControlRuntime control = characterRuntime.ControlRuntime(actor.ActorId);
+                Float32CharacterControlRuntime control = evaluation.Control;
                 control.Begin(
                     roleState,
                     tick,
@@ -183,7 +170,7 @@ namespace ThirdPersonSimulation
                 for (int index = 0; index < characterTrace.Count; index++)
                     characterTrace[index].Retain();
                 trace.AddRange(characterTrace);
-                Float32Scalar tickDelta = Float32Scalar.One / Float32Scalar.FromInt64(characterRuntime.TickRate);
+                Float32Scalar tickDelta = Float32Scalar.One / Float32Scalar.FromInt64(evaluation.TickRate);
                 BodyMotionPrepareResult bodyMotion = CharacterBodyMotionRuntime.Prepare(
                     actor.ActorId,
                     tick,
@@ -191,10 +178,10 @@ namespace ThirdPersonSimulation
                     gameplayMotion,
                     actor.BodyMotionBinding,
                     tickDelta);
-                WorldCapability requiredCapabilities = characterRuntime.RequiredWorldCapabilities |
+                WorldCapability requiredCapabilities = evaluation.RequiredWorldCapabilities |
                     actor.BodyMotionBinding.RequiredWorldCapability;
                 worldRequest = new CharacterWorldSolveRequest(
-                    characterRuntime.NumericProfile,
+                    evaluation.NumericProfile,
                     actor.ActorId,
                     new WorldRequestId(actor.ActorId, tick, 1),
                     tick,

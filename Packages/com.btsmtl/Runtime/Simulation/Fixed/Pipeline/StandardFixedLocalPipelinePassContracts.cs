@@ -12,7 +12,7 @@ namespace ThirdPersonSimulation.Fixed
         public const string LocalImmediateOutputPassId = "thirdperson.simulation.fixed-local-immediate-output";
         public const string LocalControlInputStateOwner = "fixed-local-control-input";
         public const string LocalControlInputStateSchemaId = "fixed-local-control-input-state";
-        public const int LocalControlInputStateSchemaVersion = 2;
+        public const int LocalControlInputStateSchemaVersion = 3;
 
         static readonly SimulationPipelinePassDescriptor s_LocalInputIngress = Create(
             LocalInputIngressPassId,

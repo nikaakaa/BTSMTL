@@ -77,11 +77,12 @@ namespace ThirdPersonSimulation.Fixed
                 if (!action.IsActive)
                     continue;
                 CharacterCombatRuntimeBinding binding = m_Roster[actorIndex].CombatBinding;
-                var installation = actor.AbilityInstallations.Require(action.SkillId);
                 GameplayAbilitySourceContext source = action.SourceContext;
-                bool parry = FixedBlackboardSnapshotReader.IsFrameWindowActive(installation, state, in source, binding.ParryWindowTag);
-                bool evade = FixedBlackboardSnapshotReader.IsFrameWindowActive(installation, state, in source, binding.PerfectEvadeWindowTag) &&
-                    !FixedBlackboardSnapshotReader.IsFrameWindowActive(installation, state, in source, binding.PerfectEvadeReadyWindowTag);
+                GameplayEffectScope scope = GameplayEffectScope.Action(source);
+                bool parry = state.GameplayEffectState.HasTag(binding.GuardingTag, scope);
+                bool evade = state.GameplayEffectState.HasTag(binding.EvadingTag, scope) &&
+                    state.GameplayEffectState.HasTagFromAction(binding.InvulnerableTag, GameplayEffectScope.Actor, in source) &&
+                    !state.GameplayEffectState.HasTag(binding.CounterOpportunityTag, scope);
                 if (!parry && !evade)
                     break;
                 for (int type = 0; type < 2; type++)
@@ -292,6 +293,7 @@ namespace ThirdPersonSimulation.Fixed
             }
             return FixedCharacterRuntimeState.CreateInitial(
                 actor.RuntimeStatePages,
+                actor.CharacterBlackboardPages.BeginEmpty(),
                 abilityDirectory,
                 actor.ActionStatePages.Begin(),
                 actor.InputRequestPages.Begin(0),

@@ -149,11 +149,9 @@ namespace ThirdPersonSimulation
         ActivateActionInstance = 80,
         ActionContextActive = 81,
         SubmitActionLifecycle = 82,
-        ActionWindowActive = 83,
         CanActivateAction = 84,
         ActionEventReceived = 85,
         AbilityActive = 86,
-        SelectedSourceWindowActive = 87,
         LocomotionDecision = 88,
         SelectedSourcePhase = 89,
         SetActionPhase = 91,
@@ -175,6 +173,8 @@ namespace ThirdPersonSimulation
         GameplayEffectRemove = 114,
         AttackQuery = 115,
         AttackHitQuery = 116,
+        GameplayEffectSourceAllowsCandidate = 117,
+        GameplayEffectActive = 118,
         CameraStateRequest = 120,
         CameraEffectRequest = 121,
         CameraResponse = 122,
@@ -196,7 +196,7 @@ namespace ThirdPersonSimulation
     public static class GameplayAbilityOperationSet
     {
         public const string Id = "character-gameplay-operations";
-        public static readonly OperationSetVersion Version = new OperationSetVersion(Id + "/31");
+        public static readonly OperationSetVersion Version = new OperationSetVersion(Id + "/32");
 
         static readonly ReadOnlyCollection<SimulationOperationCode> s_Operations =
             Array.AsReadOnly(new[]
@@ -237,11 +237,9 @@ namespace ThirdPersonSimulation
                 SimulationOperationCode.ActivateActionInstance,
                 SimulationOperationCode.ActionContextActive,
                 SimulationOperationCode.SubmitActionLifecycle,
-                SimulationOperationCode.ActionWindowActive,
                 SimulationOperationCode.CanActivateAction,
                 SimulationOperationCode.ActionEventReceived,
                 SimulationOperationCode.AbilityActive,
-                SimulationOperationCode.SelectedSourceWindowActive,
                 SimulationOperationCode.LocomotionDecision,
                 SimulationOperationCode.SelectedSourcePhase,
                 SimulationOperationCode.SetActionPhase,
@@ -254,6 +252,8 @@ namespace ThirdPersonSimulation
                 SimulationOperationCode.Constant,
                 SimulationOperationCode.GameplayEffectHasTag,
                 SimulationOperationCode.GameplayEffectMatchTags,
+                SimulationOperationCode.GameplayEffectSourceAllowsCandidate,
+                SimulationOperationCode.GameplayEffectActive,
                 SimulationOperationCode.GameplayAttributeRead,
                 SimulationOperationCode.GameplayEffectApply,
                 SimulationOperationCode.GameplayEffectRemove,
@@ -583,11 +583,11 @@ namespace ThirdPersonSimulation
             SemanticLiteral literal = RequireLiteral(operation, literals, field);
             if (literal.Kind != SemanticLiteralKind.String)
                 throw Invalid(operation, $"field '{field}' must be String");
-            if (requireValue && string.IsNullOrWhiteSpace(literal.Text))
+            if (requireValue && string.IsNullOrWhiteSpace(literal.String))
                 throw Invalid(operation, $"field '{field}' is required");
-            if (!string.Equals(literal.Text, literal.Text.Trim(), StringComparison.Ordinal))
+            if (!string.Equals(literal.String, literal.String.Trim(), StringComparison.Ordinal))
                 throw Invalid(operation, $"field '{field}' must not contain leading or trailing whitespace");
-            return literal.Text;
+            return literal.String;
         }
 
         internal static void RequireUnit(SemanticOperation operation, IReadOnlyList<SemanticLiteral> literals, string field)
@@ -608,7 +608,7 @@ namespace ThirdPersonSimulation
             SemanticLiteral literal = RequireLiteral(operation, literals, field);
             if (literal.Kind != SemanticLiteralKind.Number)
                 throw Invalid(operation, $"field '{field}' must be Number");
-            return literal.X;
+            return literal.Number.Value;
         }
 
         static SemanticLiteral RequireLiteral(
@@ -640,6 +640,50 @@ namespace ThirdPersonSimulation
         }
     }
 
+    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+    public readonly partial struct ProgramEnumConstant
+    {
+        public ProgramEnumConstant(string typeIdentity, int value)
+        {
+            TypeIdentity = typeIdentity ?? string.Empty;
+            Value = value;
+        }
+
+        public string TypeIdentity { get; }
+        public int Value { get; }
+    }
+
+    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+    public sealed partial class ProgramOperationLayout
+    {
+        readonly ReadOnlyCollection<int> m_Operands;
+        readonly ReadOnlyCollection<int> m_StateSlots;
+
+        public ProgramOperationLayout(OperationHandle handle, int definitionIndex, int parameterIndex,
+            IEnumerable<int> operands, IEnumerable<int> stateSlots)
+        {
+            Handle = handle;
+            DefinitionIndex = definitionIndex;
+            ParameterIndex = parameterIndex;
+            m_Operands = new List<int>(operands ?? Array.Empty<int>()).AsReadOnly();
+            m_StateSlots = new List<int>(stateSlots ?? Array.Empty<int>()).AsReadOnly();
+            RequireRecord();
+        }
+
+        public OperationHandle Handle { get; }
+        public int DefinitionIndex { get; }
+        public int ParameterIndex { get; }
+        public IReadOnlyList<int> Operands => m_Operands;
+        public IReadOnlyList<int> StateSlots => m_StateSlots;
+
+        [CanonicalValidation]
+        void RequireRecord()
+        {
+            if (!Handle.IsValid)
+                throw new ArgumentException("Operation handle is invalid.");
+        }
+    }
+
     public enum ProgramControlFlowKind : byte
     {
         Child = 1,
@@ -658,7 +702,8 @@ namespace ThirdPersonSimulation
         Both = 3
     }
 
-    public sealed class ProgramControlFlowEdge
+    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+    public sealed partial class ProgramControlFlowEdge
     {
         public ProgramControlFlowEdge(
             string identity,
@@ -673,9 +718,7 @@ namespace ThirdPersonSimulation
             bool hasCondition,
             OperationHandle condition)
         {
-            Identity = SimulationIdentity.Require(identity, nameof(identity));
-            if (!source.IsValid || !target.IsValid || hasCondition && !condition.IsValid)
-                throw new ArgumentException("Control-flow edge contains an invalid operation handle.");
+            Identity = identity.Trim();
             Source = source;
             Target = target;
             SourcePort = sourcePort ?? string.Empty;
@@ -686,6 +729,7 @@ namespace ThirdPersonSimulation
             AbortPolicy = abortPolicy;
             HasCondition = hasCondition;
             Condition = condition;
+            RequireRecord();
         }
 
         public string Identity { get; }
@@ -699,9 +743,18 @@ namespace ThirdPersonSimulation
         public ProgramAbortPolicy AbortPolicy { get; }
         public bool HasCondition { get; }
         public OperationHandle Condition { get; }
+
+        [CanonicalValidation]
+        void RequireRecord()
+        {
+            SimulationIdentity.Require(Identity, nameof(Identity));
+            if (!Source.IsValid || !Target.IsValid || HasCondition && !Condition.IsValid)
+                throw new ArgumentException("Control-flow edge contains an invalid operation handle.");
+        }
     }
 
-    public sealed class ProgramConstantInputBinding
+    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+    public sealed partial class ProgramConstantInputBinding
     {
         public ProgramConstantInputBinding(
             OperationHandle targetOperation,
@@ -709,20 +762,27 @@ namespace ThirdPersonSimulation
             int constantIndex,
             SemanticValueKind resolvedValueKind)
         {
-            if (!targetOperation.IsValid)
-                throw new ArgumentException("Target operation is invalid.", nameof(targetOperation));
-            if (constantIndex < 0)
-                throw new ArgumentOutOfRangeException(nameof(constantIndex));
             TargetOperation = targetOperation;
-            TargetPort = SimulationIdentity.Require(targetPort, nameof(targetPort));
+            TargetPort = targetPort.Trim();
             ConstantIndex = constantIndex;
             ResolvedValueKind = resolvedValueKind;
+            RequireRecord();
         }
 
         public OperationHandle TargetOperation { get; }
         public string TargetPort { get; }
         public int ConstantIndex { get; }
         public SemanticValueKind ResolvedValueKind { get; }
+
+        [CanonicalValidation]
+        void RequireRecord()
+        {
+            if (!TargetOperation.IsValid)
+                throw new ArgumentException("Target operation is invalid.");
+            if (ConstantIndex < 0)
+                throw new ArgumentOutOfRangeException(nameof(ConstantIndex));
+            SimulationIdentity.Require(TargetPort, nameof(TargetPort));
+        }
     }
 
     public enum ProgramReferenceKind : byte
@@ -736,17 +796,17 @@ namespace ThirdPersonSimulation
         CatalogEntry = 8
     }
 
-    public sealed class ProgramReference
+    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+    public sealed partial class ProgramReference
     {
         public ProgramReference(string identity, OperationHandle sourceOperation, ProgramReferenceKind kind, int targetIndex, string externalIdentity)
         {
-            if (targetIndex < 0)
-                throw new ArgumentOutOfRangeException(nameof(targetIndex));
-            Identity = SimulationIdentity.Require(identity, nameof(identity));
+            Identity = identity.Trim();
             SourceOperation = sourceOperation;
             Kind = kind;
             TargetIndex = targetIndex;
             ExternalIdentity = externalIdentity ?? string.Empty;
+            RequireRecord();
         }
         public string Identity { get; }
         public OperationHandle SourceOperation { get; }
@@ -754,6 +814,14 @@ namespace ThirdPersonSimulation
         public ProgramReferenceKind Kind { get; }
         public int TargetIndex { get; }
         public string ExternalIdentity { get; }
+
+        [CanonicalValidation]
+        void RequireRecord()
+        {
+            if (TargetIndex < 0)
+                throw new ArgumentOutOfRangeException(nameof(TargetIndex));
+            SimulationIdentity.Require(Identity, nameof(Identity));
+        }
     }
 
     public enum ProgramGraphParameterDirection : byte
@@ -762,7 +830,8 @@ namespace ThirdPersonSimulation
         Output = 2
     }
 
-    public sealed class ProgramGraphParameterBinding
+    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+    public sealed partial class ProgramGraphParameterBinding
     {
         public ProgramGraphParameterBinding(
             ProgramGraphParameterDirection direction,
@@ -773,17 +842,15 @@ namespace ThirdPersonSimulation
             SemanticValueKind valueKind)
         {
             if (!Enum.IsDefined(typeof(ProgramGraphParameterDirection), direction) ||
-                stateSlot < 0 ||
                 !Enum.IsDefined(typeof(SemanticValueKind), valueKind))
-            {
                 throw new ArgumentException("Program graph parameter binding is incomplete.");
-            }
             Direction = direction;
-            ParameterName = SimulationIdentity.Require(parameterName, nameof(parameterName));
-            DeclarationIdentity = SimulationIdentity.Require(declarationIdentity, nameof(declarationIdentity));
+            ParameterName = parameterName.Trim();
+            DeclarationIdentity = declarationIdentity.Trim();
             StateSlot = stateSlot;
-            PortId = SimulationIdentity.Require(portId, nameof(portId));
+            PortId = portId.Trim();
             ValueKind = valueKind;
+            RequireRecord();
         }
 
         public ProgramGraphParameterDirection Direction { get; }
@@ -792,9 +859,20 @@ namespace ThirdPersonSimulation
         public int StateSlot { get; }
         public string PortId { get; }
         public SemanticValueKind ValueKind { get; }
+
+        [CanonicalValidation]
+        void RequireRecord()
+        {
+            if (StateSlot < 0)
+                throw new ArgumentException("Program graph parameter binding is incomplete.");
+            SimulationIdentity.Require(ParameterName, nameof(ParameterName));
+            SimulationIdentity.Require(DeclarationIdentity, nameof(DeclarationIdentity));
+            SimulationIdentity.Require(PortId, nameof(PortId));
+        }
     }
 
-    public sealed class ProgramGraphCallFrame
+    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+    public sealed partial class ProgramGraphCallFrame
     {
         readonly ReadOnlyCollection<ProgramGraphParameterBinding> m_Inputs;
         readonly ReadOnlyCollection<ProgramGraphParameterBinding> m_Outputs;
@@ -808,15 +886,14 @@ namespace ThirdPersonSimulation
             IEnumerable<ProgramGraphParameterBinding> inputs,
             IEnumerable<ProgramGraphParameterBinding> outputs)
         {
-            if (index < 0 || !ownerOperation.IsValid || !entryOperation.IsValid)
-                throw new ArgumentException("Program graph call frame identity is incomplete.");
             Index = index;
-            Identity = SimulationIdentity.Require(identity, nameof(identity));
+            Identity = identity.Trim();
             OwnerOperation = ownerOperation;
             EntryOperation = entryOperation;
-            ChildGraphIdentity = SimulationIdentity.Require(childGraphIdentity, nameof(childGraphIdentity));
-            m_Inputs = Freeze(inputs, ProgramGraphParameterDirection.Input, "input");
-            m_Outputs = Freeze(outputs, ProgramGraphParameterDirection.Output, "output");
+            ChildGraphIdentity = childGraphIdentity.Trim();
+            m_Inputs = Freeze(inputs);
+            m_Outputs = Freeze(outputs);
+            RequireRecord();
         }
 
         public int Index { get; }
@@ -828,9 +905,7 @@ namespace ThirdPersonSimulation
         public IReadOnlyList<ProgramGraphParameterBinding> Outputs => m_Outputs;
 
         static ReadOnlyCollection<ProgramGraphParameterBinding> Freeze(
-            IEnumerable<ProgramGraphParameterBinding> source,
-            ProgramGraphParameterDirection direction,
-            string label)
+            IEnumerable<ProgramGraphParameterBinding> source)
         {
             var values = new List<ProgramGraphParameterBinding>(source ?? Array.Empty<ProgramGraphParameterBinding>());
             values.Sort((left, right) =>
@@ -838,16 +913,31 @@ namespace ThirdPersonSimulation
                 int byParameter = string.CompareOrdinal(left.ParameterName, right.ParameterName);
                 return byParameter != 0 ? byParameter : string.CompareOrdinal(left.PortId, right.PortId);
             });
+            return values.AsReadOnly();
+        }
+
+        [CanonicalValidation]
+        void RequireRecord()
+        {
+            if (Index < 0 || !OwnerOperation.IsValid || !EntryOperation.IsValid)
+                throw new ArgumentException("Program graph call frame identity is incomplete.");
+            SimulationIdentity.Require(Identity, nameof(Identity));
+            SimulationIdentity.Require(ChildGraphIdentity, nameof(ChildGraphIdentity));
+            RequireBindings(m_Inputs, ProgramGraphParameterDirection.Input, "input");
+            RequireBindings(m_Outputs, ProgramGraphParameterDirection.Output, "output");
+        }
+
+        static void RequireBindings(IReadOnlyList<ProgramGraphParameterBinding> values,
+            ProgramGraphParameterDirection direction, string label)
+        {
             var names = new HashSet<string>(StringComparer.Ordinal);
             var ports = new HashSet<string>(StringComparer.Ordinal);
             for (int i = 0; i < values.Count; i++)
             {
-                ProgramGraphParameterBinding value = values[i]
-                    ?? throw new ArgumentException($"Program graph call frame {label} binding is missing.", nameof(source));
+                ProgramGraphParameterBinding value = values[i];
                 if (value.Direction != direction || !names.Add(value.ParameterName) || !ports.Add(value.PortId))
-                    throw new ArgumentException($"Program graph call frame {label} bindings are duplicated or use the wrong direction.", nameof(source));
+                    throw new ArgumentException($"Program graph call frame {label} bindings are duplicated or use the wrong direction.");
             }
-            return values.AsReadOnly();
         }
     }
 
@@ -901,21 +991,36 @@ namespace ThirdPersonSimulation
         }
     }
 
-    public enum ProgramStateValueKind : byte
+    [CanonicalUnionTemplate]
+    public readonly struct ProgramStateValue<TScalar, TVector2, TVector3, TYaw, TQuaternion, TEnum, TActionTargetSnapshot>
     {
-        Boolean = 1,
-        Int32 = 2,
-        UInt64 = 3,
-        Scalar = 4,
-        Vector2 = 5,
-        Vector3 = 6,
-        Yaw = 7,
-        Identity = 8,
-        BlackboardOwnerToken = 9,
-        BlackboardWriteStamp = 10,
-        Quaternion = 11,
-        Enum = 12,
-        ActionTargetSnapshot = 24
+        [CanonicalUnionCase] public readonly bool Boolean;
+        [CanonicalUnionCase] public readonly int Int32;
+        [CanonicalUnionCase] public readonly ulong UInt64;
+        [CanonicalUnionCase] public readonly TScalar Scalar;
+        [CanonicalUnionCase] public readonly TVector2 Vector2;
+        [CanonicalUnionCase] public readonly TVector3 Vector3;
+        [CanonicalUnionCase] public readonly TYaw Yaw;
+        [CanonicalUnionCase(NormalizeNull = true)] public readonly CanonicalTextValue Identity;
+        [CanonicalUnionCase] public readonly BlackboardOwnerToken BlackboardOwnerToken;
+        [CanonicalUnionCase] public readonly BlackboardWriteStamp BlackboardWriteStamp;
+        [CanonicalUnionCase(DefaultMember = "Identity")] public readonly TQuaternion Quaternion;
+        [CanonicalUnionCase] public readonly TEnum Enum;
+        [CanonicalUnionCase(DefaultMember = "None")] public readonly TActionTargetSnapshot ActionTargetSnapshot;
+    }
+
+    [CanonicalContract]
+    public readonly partial struct ProgramEnumState : IEquatable<ProgramEnumState>
+    {
+        public ProgramEnumState(CanonicalTextValue typeIdentity, int value)
+        {
+            TypeIdentity = typeIdentity;
+            Value = value;
+        }
+
+        public CanonicalTextValue TypeIdentity { get; }
+        public int Value { get; }
+        public bool Equals(ProgramEnumState other) => TypeIdentity.Equals(other.TypeIdentity) && Value == other.Value;
     }
 
     public enum ProgramStateOwnerKind : byte
@@ -950,7 +1055,8 @@ namespace ThirdPersonSimulation
         AIWaitElapsedTicks = 130
     }
 
-    public sealed class ProgramStateSlot
+    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+    public sealed partial class ProgramStateSlot
     {
         public ProgramStateSlot(int index, string identity, ProgramStateValueKind valueKind, ProgramStateOwnerKind ownerKind, ProgramStateSemantic semantic, string ownerIdentity, int defaultConstantIndex)
             : this(index, identity, valueKind, ownerKind, semantic, ownerIdentity, null, defaultConstantIndex)
@@ -967,19 +1073,17 @@ namespace ThirdPersonSimulation
             string stateCodecIdentity,
             int defaultConstantIndex)
         {
-            if (index < 0 || defaultConstantIndex < -1)
-                throw new ArgumentOutOfRangeException();
             Index = index;
-            Identity = SimulationIdentity.Require(identity, nameof(identity));
+            Identity = identity.Trim();
             ValueKind = valueKind;
             OwnerKind = ownerKind;
             Semantic = semantic;
-            OwnerIdentity = SimulationIdentity.Require(ownerIdentity, nameof(ownerIdentity));
+            OwnerIdentity = ownerIdentity.Trim();
             DefaultConstantIndex = defaultConstantIndex;
             StateCodecIdentity = stateCodecIdentity == null
                 ? ProgramStateSchema.CodecIdentity(valueKind)
-                : SimulationIdentity.Require(stateCodecIdentity, nameof(stateCodecIdentity));
-            ProgramStateSchema.RequireSlot(valueKind, ownerKind, semantic);
+                : stateCodecIdentity.Trim();
+            RequireRecord();
         }
         public int Index { get; }
         public string Identity { get; }
@@ -989,6 +1093,17 @@ namespace ThirdPersonSimulation
         public string OwnerIdentity { get; }
         public int DefaultConstantIndex { get; }
         public string StateCodecIdentity { get; }
+
+        [CanonicalValidation]
+        void RequireRecord()
+        {
+            if (Index < 0 || DefaultConstantIndex < -1)
+                throw new ArgumentOutOfRangeException();
+            SimulationIdentity.Require(Identity, nameof(Identity));
+            SimulationIdentity.Require(OwnerIdentity, nameof(OwnerIdentity));
+            SimulationIdentity.Require(StateCodecIdentity, nameof(StateCodecIdentity));
+            ProgramStateSchema.RequireSlot(ValueKind, OwnerKind, Semantic);
+        }
     }
 
     public static class ProgramStateSchema
@@ -1071,15 +1186,15 @@ namespace ThirdPersonSimulation
         Frame = 5
     }
 
-    public readonly struct BlackboardOwnerToken : IEquatable<BlackboardOwnerToken>
+    [CanonicalContract]
+    public readonly partial struct BlackboardOwnerToken : IEquatable<BlackboardOwnerToken>
     {
         public BlackboardOwnerToken(ProgramScopeKind scopeKind, int compiledOwnerIndex, ulong generation)
         {
-            if (!IsDefined(scopeKind) || compiledOwnerIndex < 0 || generation == 0)
-                throw new ArgumentException("Blackboard owner token is incomplete.");
             ScopeKind = scopeKind;
             CompiledOwnerIndex = compiledOwnerIndex;
             Generation = generation;
+            RequirePopulated();
         }
 
         public ProgramScopeKind ScopeKind { get; }
@@ -1095,11 +1210,25 @@ namespace ThirdPersonSimulation
         public static bool operator ==(BlackboardOwnerToken left, BlackboardOwnerToken right) => left.Equals(right);
         public static bool operator !=(BlackboardOwnerToken left, BlackboardOwnerToken right) => !left.Equals(right);
 
+        [CanonicalValidation]
+        void RequireCanonical()
+        {
+            if (!Equals(default))
+                RequirePopulated();
+        }
+
+        void RequirePopulated()
+        {
+            if (!IsDefined(ScopeKind) || CompiledOwnerIndex < 0 || Generation == 0)
+                throw new ArgumentException("Blackboard owner token is incomplete.");
+        }
+
         static bool IsDefined(ProgramScopeKind kind) =>
             kind >= ProgramScopeKind.Character && kind <= ProgramScopeKind.Frame;
     }
 
-    public readonly struct BlackboardWriteStamp : IEquatable<BlackboardWriteStamp>
+    [CanonicalContract]
+    public readonly partial struct BlackboardWriteStamp : IEquatable<BlackboardWriteStamp>
     {
         public BlackboardWriteStamp(
             OperationHandle sourceOperation,
@@ -1110,12 +1239,6 @@ namespace ThirdPersonSimulation
             int cycle,
             ulong commandSequence = 0)
         {
-            if (sourceOperation.IsValid == (commandSequence != 0) || logicTick == 0 ||
-                timelineOperation.IsValid != clipOperation.IsValid || cycle < 0 ||
-                commandSequence != 0 && (timelineOperation.IsValid || cycle != 0))
-            {
-                throw new ArgumentException("Blackboard write stamp is incomplete.");
-            }
             SourceOperation = sourceOperation;
             LogicTick = logicTick;
             SourceContext = sourceContext;
@@ -1123,6 +1246,24 @@ namespace ThirdPersonSimulation
             ClipOperation = clipOperation;
             Cycle = cycle;
             CommandSequence = commandSequence;
+            RequirePopulated();
+        }
+
+        [CanonicalValidation]
+        void RequireCanonical()
+        {
+            if (!Equals(default))
+                RequirePopulated();
+        }
+
+        void RequirePopulated()
+        {
+            if (SourceOperation.IsValid == (CommandSequence != 0) || LogicTick == 0 ||
+                TimelineOperation.IsValid != ClipOperation.IsValid || Cycle < 0 ||
+                CommandSequence != 0 && (TimelineOperation.IsValid || Cycle != 0))
+            {
+                throw new ArgumentException("Blackboard write stamp is incomplete.");
+            }
         }
 
         public OperationHandle SourceOperation { get; }
@@ -1157,11 +1298,8 @@ namespace ThirdPersonSimulation
         GraphInstance = 6
     }
 
-    public enum ProgramBlackboardFactProjectionKind : byte
-    {
-        ActionWindow = 0
-    }
-    public sealed class ProgramScopeLayout
+    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+    public sealed partial class ProgramScopeLayout
     {
         readonly ReadOnlyCollection<int> m_StateSlots;
 
@@ -1173,21 +1311,29 @@ namespace ThirdPersonSimulation
             OperationHandle ownerOperation,
             IEnumerable<int> stateSlots)
         {
-            if (compiledOwnerIndex < 0)
-                throw new ArgumentOutOfRangeException(nameof(compiledOwnerIndex));
             CompiledOwnerIndex = compiledOwnerIndex;
-            Identity = SimulationIdentity.Require(identity, nameof(identity));
+            Identity = identity.Trim();
             Kind = kind;
-            OwnerIdentity = SimulationIdentity.Require(ownerIdentity, nameof(ownerIdentity));
+            OwnerIdentity = ownerIdentity.Trim();
             OwnerOperation = ownerOperation;
             var values = stateSlots == null ? new List<int>() : new List<int>(stateSlots);
             values.Sort();
-            for (int i = 0; i < values.Count; i++)
-            {
-                if (values[i] < 0 || i > 0 && values[i - 1] == values[i])
-                    throw new ArgumentException("Program scope state slots must be non-negative and unique.", nameof(stateSlots));
-            }
             m_StateSlots = values.AsReadOnly();
+            RequireRecord();
+        }
+
+        [CanonicalValidation]
+        void RequireRecord()
+        {
+            if (CompiledOwnerIndex < 0)
+                throw new ArgumentOutOfRangeException(nameof(CompiledOwnerIndex));
+            SimulationIdentity.Require(Identity, nameof(Identity));
+            SimulationIdentity.Require(OwnerIdentity, nameof(OwnerIdentity));
+            for (int i = 0; i < m_StateSlots.Count; i++)
+            {
+                if (m_StateSlots[i] < 0 || i > 0 && m_StateSlots[i - 1] >= m_StateSlots[i])
+                    throw new ArgumentException("Program scope state slots must be non-negative, sorted and unique.");
+            }
         }
 
         public int CompiledOwnerIndex { get; }
@@ -1205,20 +1351,28 @@ namespace ThirdPersonSimulation
         Trace = 3
     }
 
-    public sealed class ProgramOutputChannelLayout
+    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+    public sealed partial class ProgramOutputChannelLayout
     {
         public ProgramOutputChannelLayout(int index, string identity, ProgramOutputChannelKind kind)
         {
-            if (index < 0)
-                throw new ArgumentOutOfRangeException(nameof(index));
             Index = index;
-            Identity = SimulationIdentity.Require(identity, nameof(identity));
+            Identity = identity.Trim();
             Kind = kind;
+            RequireRecord();
         }
 
         public int Index { get; }
         public string Identity { get; }
         public ProgramOutputChannelKind Kind { get; }
+
+        [CanonicalValidation]
+        void RequireRecord()
+        {
+            if (Index < 0)
+                throw new ArgumentOutOfRangeException(nameof(Index));
+            SimulationIdentity.Require(Identity, nameof(Identity));
+        }
     }
 
     public enum ProgramSourceTargetKind : byte
@@ -1255,12 +1409,12 @@ namespace ThirdPersonSimulation
         AbilityRule
     }
 
-	public sealed class ProgramSourceMapEntry
+    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+	public sealed partial class ProgramExecutionSource
 	{
-		public ProgramSourceMapEntry(
+		public ProgramExecutionSource(
 			ProgramSourceTargetKind targetKind,
 			int targetIndex,
-			string sourceType,
 			string graphId,
 			string nodeId,
 			string portId,
@@ -1269,8 +1423,6 @@ namespace ThirdPersonSimulation
 			string timelineId,
 			string trackId,
 			string clipId,
-			string displayPath,
-			string contentHash,
 			string graphInvocationPath = "",
 			string compiledPortId = "",
 			ProgramValuePortDirection valuePortDirection = ProgramValuePortDirection.None,
@@ -1280,11 +1432,8 @@ namespace ThirdPersonSimulation
 			string invocationCallerId = "",
 			string invocationCallerClipId = "")
 		{
-			if (targetIndex < 0)
-				throw new ArgumentOutOfRangeException(nameof(targetIndex));
 			TargetKind = targetKind;
 			TargetIndex = targetIndex;
-			SourceType = SimulationIdentity.Require(sourceType, nameof(sourceType));
 			GraphId = graphId ?? string.Empty;
 			NodeId = nodeId ?? string.Empty;
 			PortId = portId ?? string.Empty;
@@ -1293,8 +1442,6 @@ namespace ThirdPersonSimulation
 			TimelineId = timelineId ?? string.Empty;
 			TrackId = trackId ?? string.Empty;
 			ClipId = clipId ?? string.Empty;
-			DisplayPath = displayPath ?? string.Empty;
-			ContentHash = contentHash ?? string.Empty;
 			GraphInvocationPath = graphInvocationPath ?? string.Empty;
 			CompiledPortId = compiledPortId ?? string.Empty;
 			ValuePortDirection = valuePortDirection;
@@ -1303,13 +1450,20 @@ namespace ThirdPersonSimulation
 			InvocationCallerKind = invocationCallerKind;
 			InvocationCallerId = invocationCallerId ?? string.Empty;
 			InvocationCallerClipId = invocationCallerClipId ?? string.Empty;
-			if (GraphId.Length == 0 && TimelineId.Length == 0 && targetKind != ProgramSourceTargetKind.BodyMotion)
-				throw new ArgumentException("Source map entry requires a graph or timeline identity.");
+			RequireRecord();
 		}
+
+        [CanonicalValidation]
+        void RequireRecord()
+        {
+            if (TargetIndex < 0)
+                throw new ArgumentOutOfRangeException(nameof(TargetIndex));
+			if (GraphId.Length == 0 && TimelineId.Length == 0 && TargetKind != ProgramSourceTargetKind.BodyMotion)
+				throw new ArgumentException("Source map entry requires a graph or timeline identity.");
+        }
 
 		public ProgramSourceTargetKind TargetKind { get; }
 		public int TargetIndex { get; }
-		public string SourceType { get; }
 		public string GraphId { get; }
 		public string NodeId { get; }
 		public string PortId { get; }
@@ -1318,8 +1472,6 @@ namespace ThirdPersonSimulation
 		public string TimelineId { get; }
 		public string TrackId { get; }
 		public string ClipId { get; }
-		public string DisplayPath { get; }
-		public string ContentHash { get; }
 		public string GraphInvocationPath { get; }
 		public string CompiledPortId { get; }
 		public ProgramValuePortDirection ValuePortDirection { get; }
@@ -1330,10 +1482,187 @@ namespace ThirdPersonSimulation
 		public string InvocationCallerClipId { get; }
 	}
 
-    public static class ProgramSourceMapCoverage
+    public sealed class ProgramExecutionSourceLayout
+    {
+        GraphExecutionChunk m_Chunk;
+
+        public ProgramExecutionSourceLayout(IReadOnlyList<ProgramExecutionSource> entries)
+        {
+            Entries = entries;
+        }
+
+        public IReadOnlyList<ProgramExecutionSource> Entries { get; }
+        public GraphExecutionChunk Chunk => m_Chunk ??= GraphExecutionChunk.Encode(
+            writer => GameplayAbilitySemanticsCodec.WriteExecutionSourceTable(writer, Entries));
+        public StableHash Hash => Chunk.Hash;
+
+        public void Write(CanonicalWriter writer) => writer.WriteBytes(Chunk.Bytes.Span);
+
+        public static ProgramExecutionSourceLayout Read(CanonicalReader reader)
+        {
+            return FromChunk(new GraphExecutionChunk(reader.ReadBytes()));
+        }
+
+        internal static ProgramExecutionSourceLayout FromChunk(GraphExecutionChunk chunk)
+        {
+            CanonicalReader entries = chunk.CreateReader();
+            var layout = new ProgramExecutionSourceLayout(GameplayAbilitySemanticsCodec.ReadExecutionSourceTable(entries));
+            entries.RequireComplete();
+            layout.m_Chunk = chunk;
+            return layout;
+        }
+    }
+
+    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+    public sealed partial class ProgramSourceMapText
+    {
+        public ProgramSourceMapText(string sourceType, IReadOnlyList<string> displayPathSegments)
+        {
+            SourceType = sourceType;
+            DisplayPathSegments = displayPathSegments;
+        }
+
+        public string SourceType { get; }
+        public IReadOnlyList<string> DisplayPathSegments { get; }
+    }
+
+    public sealed class ProgramSourceMapEntry
+    {
+        public ProgramSourceMapEntry(ProgramExecutionSource source, string sourceType, string displayPath)
+            : this(source, new ProgramSourceMapText(sourceType, displayPath.Split('/')))
+        {
+        }
+
+        internal ProgramSourceMapEntry(ProgramExecutionSource source, ProgramSourceMapText text)
+        {
+            Source = source;
+            Text = text;
+            DisplayPath = string.Join("/", text.DisplayPathSegments);
+        }
+
+        public ProgramExecutionSource Source { get; }
+        public ProgramSourceMapText Text { get; }
+        public string SourceType => Text.SourceType;
+        public string DisplayPath { get; }
+    }
+
+    public sealed class ProgramGraphSources
+    {
+        GraphExecutionChunk m_DiagnosticChunk;
+
+        public ProgramGraphSources(ProgramExecutionSourceLayout layout, IReadOnlyList<ProgramSourceMapEntry> diagnostics,
+            ProgramGraphSourceRevisionTable revisions)
+        {
+            Layout = layout;
+            Diagnostics = diagnostics;
+            Revisions = revisions;
+        }
+
+        public ProgramExecutionSourceLayout Layout { get; }
+        public IReadOnlyList<ProgramSourceMapEntry> Diagnostics { get; }
+        public ProgramGraphSourceRevisionTable Revisions { get; }
+        public GraphExecutionChunk DiagnosticChunk => m_DiagnosticChunk ??= GraphExecutionChunk.Encode(writer =>
+        {
+            writer.WriteHash(Layout.Hash);
+            GameplayAbilitySemanticsCodec.WriteSourceMapTable(writer, Diagnostics);
+        });
+
+        public ProgramGraphSources WithRevisions(IEnumerable<ProgramGraphSourceRevision> revisions)
+        {
+            var sources = new ProgramGraphSources(Layout, Diagnostics, new ProgramGraphSourceRevisionTable(revisions));
+            sources.m_DiagnosticChunk = DiagnosticChunk;
+            return sources;
+        }
+
+        public static ProgramGraphSources Read(ProgramExecutionSourceLayout layout,
+            GraphExecutionChunk diagnostics, IEnumerable<ProgramGraphSourceRevision> revisions)
+        {
+            CanonicalReader reader = diagnostics.CreateReader();
+            if (reader.ReadHash() != layout.Hash)
+                throw new InvalidDataException("Graph diagnostic sources use a different execution source layout.");
+            ProgramSourceMapEntry[] entries = GameplayAbilitySemanticsCodec.ReadSourceMapTable(reader, layout.Entries);
+            reader.RequireComplete();
+            var sources = new ProgramGraphSources(layout, Array.AsReadOnly(entries), new ProgramGraphSourceRevisionTable(revisions));
+            sources.m_DiagnosticChunk = diagnostics;
+            return sources;
+        }
+
+        public static ProgramGraphSources Create(IEnumerable<ProgramSourceMapEntry> diagnostics,
+            IEnumerable<ProgramGraphSourceRevision> revisions)
+        {
+            var entries = new List<ProgramSourceMapEntry>(diagnostics);
+            entries.Sort(Compare);
+            var sources = new ProgramExecutionSource[entries.Count];
+            for (int i = 0; i < sources.Length; i++)
+                sources[i] = entries[i].Source;
+            return new ProgramGraphSources(new ProgramExecutionSourceLayout(Array.AsReadOnly(sources)),
+                entries.AsReadOnly(), new ProgramGraphSourceRevisionTable(revisions));
+        }
+
+        static int Compare(ProgramSourceMapEntry left, ProgramSourceMapEntry right)
+        {
+            ProgramExecutionSource a = left.Source;
+            ProgramExecutionSource b = right.Source;
+            int result = a.TargetKind.CompareTo(b.TargetKind);
+            if (result != 0) return result;
+            result = a.TargetIndex.CompareTo(b.TargetIndex);
+            if (result != 0) return result;
+            result = string.CompareOrdinal(a.GraphId, b.GraphId);
+            if (result != 0) return result;
+            result = string.CompareOrdinal(a.GraphInvocationPath, b.GraphInvocationPath);
+            if (result != 0) return result;
+            result = string.CompareOrdinal(a.NodeId, b.NodeId);
+            if (result != 0) return result;
+            result = string.CompareOrdinal(a.PortId, b.PortId);
+            if (result != 0) return result;
+            result = string.CompareOrdinal(a.CompiledPortId, b.CompiledPortId);
+            if (result != 0) return result;
+            return a.ValuePortDirection.CompareTo(b.ValuePortDirection);
+        }
+    }
+
+    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+    public readonly partial struct ProgramGraphSourceRevision
+    {
+        public ProgramGraphSourceRevision(string graphId, string revision)
+        {
+            GraphId = graphId;
+            Revision = revision;
+        }
+
+        public string GraphId { get; }
+        public string Revision { get; }
+    }
+
+    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+    public sealed partial class ProgramGraphSourceRevisions
+    {
+        public ProgramGraphSourceRevisions(IReadOnlyList<ProgramGraphSourceRevision> sources) => Sources = sources;
+        public IReadOnlyList<ProgramGraphSourceRevision> Sources { get; }
+    }
+
+    public sealed class ProgramGraphSourceRevisionTable
+    {
+        readonly Dictionary<string, string> m_Revisions = new(StringComparer.Ordinal);
+
+        public ProgramGraphSourceRevisionTable(IEnumerable<ProgramGraphSourceRevision> sources)
+        {
+            var values = new List<ProgramGraphSourceRevision>(sources);
+            values.Sort((left, right) => string.CompareOrdinal(left.GraphId, right.GraphId));
+            foreach (ProgramGraphSourceRevision value in values)
+                m_Revisions.Add(value.GraphId, value.Revision);
+            Data = new ProgramGraphSourceRevisions(values.AsReadOnly());
+        }
+
+        internal ProgramGraphSourceRevisions Data { get; }
+        public IReadOnlyList<ProgramGraphSourceRevision> Sources => Data.Sources;
+        public string Require(string graphId) => m_Revisions[graphId];
+    }
+
+    public static class ProgramExecutionSourceCoverage
     {
         public static void Require(
-            IReadOnlyList<ProgramSourceMapEntry> entries,
+            IReadOnlyList<ProgramExecutionSource> entries,
             int operationCount,
             int stateSlotCount)
         {
@@ -1346,11 +1675,11 @@ namespace ThirdPersonSimulation
 
             var operations = new bool[operationCount];
             var stateSlots = new bool[stateSlotCount];
-            var invocations = new Dictionary<string, ProgramSourceMapEntry>(StringComparer.Ordinal);
-            var invocationSources = new Dictionary<string, List<ProgramSourceMapEntry>>(StringComparer.Ordinal);
+            var invocations = new Dictionary<string, ProgramExecutionSource>(StringComparer.Ordinal);
+            var invocationSources = new Dictionary<string, List<ProgramExecutionSource>>(StringComparer.Ordinal);
             for (int i = 0; i < entries.Count; i++)
             {
-                ProgramSourceMapEntry entry = entries[i] ??
+                ProgramExecutionSource entry = entries[i] ??
                     throw new InvalidDataException("Program source map contains a missing entry.");
                 switch (entry.TargetKind)
                 {
@@ -1376,17 +1705,16 @@ namespace ThirdPersonSimulation
                              entry.InvocationCallerKind == ProgramInvocationCallerKind.PresentationMarker ||
                              entry.InvocationCallerKind == ProgramInvocationCallerKind.PresentationTreeClip) != !string.IsNullOrEmpty(entry.InvocationCallerClipId))
                             throw new InvalidDataException("Program graph invocation source is incomplete.");
-                        if (!invocationSources.TryGetValue(entry.SourceInvocationPath, out List<ProgramSourceMapEntry> sourceInvocations))
+                        if (!invocationSources.TryGetValue(entry.SourceInvocationPath, out List<ProgramExecutionSource> sourceInvocations))
                         {
-                            sourceInvocations = new List<ProgramSourceMapEntry>();
+                            sourceInvocations = new List<ProgramExecutionSource>();
                             invocationSources.Add(entry.SourceInvocationPath, sourceInvocations);
                         }
                         sourceInvocations.Add(entry);
                         break;
                     case ProgramSourceTargetKind.OptimizedAway:
                         if (string.IsNullOrEmpty(entry.GraphId) ||
-                            string.IsNullOrEmpty(entry.NodeId) ||
-                            string.IsNullOrEmpty(entry.ContentHash))
+                            string.IsNullOrEmpty(entry.NodeId))
                             throw new InvalidDataException("Program optimized source is incomplete.");
                         break;
                     case ProgramSourceTargetKind.StateSlot:
@@ -1395,7 +1723,7 @@ namespace ThirdPersonSimulation
                 }
             }
 
-            foreach (KeyValuePair<string, List<ProgramSourceMapEntry>> source in invocationSources)
+            foreach (KeyValuePair<string, List<ProgramExecutionSource>> source in invocationSources)
             {
                 string parent = source.Value[0].ParentInvocationPath;
                 for (int i = 1; i < source.Value.Count; i++)
@@ -1404,7 +1732,7 @@ namespace ThirdPersonSimulation
                 var visited = new HashSet<string>(StringComparer.Ordinal) { source.Key };
                 while (!string.IsNullOrEmpty(parent))
                 {
-                    if (!visited.Add(parent) || !invocationSources.TryGetValue(parent, out List<ProgramSourceMapEntry> owners))
+                    if (!visited.Add(parent) || !invocationSources.TryGetValue(parent, out List<ProgramExecutionSource> owners))
                         throw new InvalidDataException("Program graph invocation hierarchy is invalid.");
                     parent = owners[0].ParentInvocationPath;
                 }
@@ -1432,7 +1760,8 @@ namespace ThirdPersonSimulation
         }
     }
 
-    public sealed class ProgramProducer
+    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+    public sealed partial class ProgramProducer
     {
         public ProgramProducer(
             int index,
@@ -1441,21 +1770,29 @@ namespace ThirdPersonSimulation
             string sourceIdentity,
             ProgramOutputChannelKind channelKind)
         {
-            if (index < 0)
-                throw new ArgumentOutOfRangeException(nameof(index));
-            if (!animationChannelId.IsValid)
-                throw new ArgumentException("Program Producer Animation Channel identity is invalid.", nameof(animationChannelId));
             Index = index;
-            Identity = SimulationIdentity.Require(identity, nameof(identity));
+            Identity = identity.Trim();
             AnimationChannelId = animationChannelId;
-            SourceIdentity = SimulationIdentity.Require(sourceIdentity, nameof(sourceIdentity));
+            SourceIdentity = sourceIdentity.Trim();
             ChannelKind = channelKind;
+            RequireRecord();
         }
         public int Index { get; }
         public string Identity { get; }
         public AnimationChannelId AnimationChannelId { get; }
         public string SourceIdentity { get; }
         public ProgramOutputChannelKind ChannelKind { get; }
+
+        [CanonicalValidation]
+        void RequireRecord()
+        {
+            if (Index < 0)
+                throw new ArgumentOutOfRangeException(nameof(Index));
+            if (!AnimationChannelId.IsValid)
+                throw new ArgumentException("Program Producer Animation Channel identity is invalid.");
+            SimulationIdentity.Require(Identity, nameof(Identity));
+            SimulationIdentity.Require(SourceIdentity, nameof(SourceIdentity));
+        }
     }
 
     public enum ProgramCatalogEntryKind : byte
@@ -1497,74 +1834,95 @@ namespace ThirdPersonSimulation
         Identity = 2
     }
 
-    public sealed class ProgramCatalogField
+    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+    public sealed partial class ProgramCatalogField
     {
         public ProgramCatalogField(string name, ProgramCatalogFieldKind kind, int constantIndex, string identity)
         {
-            Name = SimulationIdentity.Require(name, nameof(name));
+            Name = name.Trim();
             Kind = kind;
-            if (kind == ProgramCatalogFieldKind.Constant && constantIndex < 0)
-                throw new ArgumentOutOfRangeException(nameof(constantIndex));
             ConstantIndex = constantIndex;
             Identity = kind == ProgramCatalogFieldKind.Identity
-                ? SimulationIdentity.Require(identity, nameof(identity))
+                ? identity.Trim()
                 : string.Empty;
+            RequireRecord();
         }
         public string Name { get; }
         public ProgramCatalogFieldKind Kind { get; }
         public int ConstantIndex { get; }
         public string Identity { get; }
+
+        [CanonicalValidation]
+        void RequireRecord()
+        {
+            SimulationIdentity.Require(Name, nameof(Name));
+            if (Kind == ProgramCatalogFieldKind.Constant && ConstantIndex < 0)
+                throw new ArgumentOutOfRangeException(nameof(ConstantIndex));
+            if (Kind == ProgramCatalogFieldKind.Identity)
+                SimulationIdentity.Require(Identity, nameof(Identity));
+        }
     }
 
-    public sealed class ProgramCatalogEntry
+    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+    public sealed partial class ProgramCatalogEntry
     {
         readonly ReadOnlyCollection<ProgramCatalogField> m_Fields;
 
         public ProgramCatalogEntry(int index, ProgramCatalogEntryKind kind, string identity, int revision, IEnumerable<ProgramCatalogField> fields)
         {
-            if (index < 0 || revision < 0)
-                throw new ArgumentOutOfRangeException();
             Index = index;
             Kind = kind;
-            Identity = SimulationIdentity.Require(identity, nameof(identity));
+            Identity = identity.Trim();
             Revision = revision;
             var copied = fields == null ? new List<ProgramCatalogField>() : new List<ProgramCatalogField>(fields);
-            for (int i = 0; i < copied.Count; i++)
-            {
-                if (copied[i] == null)
-                    throw new ArgumentException($"Catalog entry '{identity}' fields must be non-null and unique.", nameof(fields));
-            }
             copied.Sort((left, right) => string.CompareOrdinal(left.Name, right.Name));
-            for (int i = 0; i < copied.Count; i++)
-            {
-                if (i > 0 && string.Equals(copied[i - 1].Name, copied[i].Name, StringComparison.Ordinal))
-                    throw new ArgumentException($"Catalog entry '{identity}' fields must be non-null and unique.", nameof(fields));
-            }
             m_Fields = copied.AsReadOnly();
+            RequireRecord();
         }
         public int Index { get; }
         public ProgramCatalogEntryKind Kind { get; }
         public string Identity { get; }
         public int Revision { get; }
         public IReadOnlyList<ProgramCatalogField> Fields => m_Fields;
+
+        [CanonicalValidation]
+        void RequireRecord()
+        {
+            if (Index < 0 || Revision < 0)
+                throw new ArgumentOutOfRangeException();
+            SimulationIdentity.Require(Identity, nameof(Identity));
+            for (int i = 1; i < m_Fields.Count; i++)
+                if (string.CompareOrdinal(m_Fields[i - 1].Name, m_Fields[i].Name) >= 0)
+                    throw new ArgumentException($"Catalog entry '{Identity}' fields must be sorted and unique.");
+        }
     }
 
-    public sealed class GameplayAbilityCapabilityManifest
+    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+    public sealed partial class GameplayAbilityCapabilityManifest
     {
         readonly ReadOnlyCollection<string> m_GameplayCapabilities;
 
         public GameplayAbilityCapabilityManifest(IEnumerable<string> gameplayCapabilities)
         {
             var values = gameplayCapabilities == null ? new List<string>() : new List<string>(gameplayCapabilities);
-            values.Sort(StringComparer.Ordinal);
             for (int i = 0; i < values.Count; i++)
-            {
                 values[i] = SimulationIdentity.Require(values[i], nameof(gameplayCapabilities));
-                if (i > 0 && string.Equals(values[i - 1], values[i], StringComparison.Ordinal))
-                    throw new ArgumentException($"Duplicate gameplay capability '{values[i]}'.", nameof(gameplayCapabilities));
-            }
+            values.Sort(StringComparer.Ordinal);
             m_GameplayCapabilities = values.AsReadOnly();
+            RequireRecord();
         }
+
+        [CanonicalValidation]
+        void RequireRecord()
+        {
+            for (int i = 0; i < m_GameplayCapabilities.Count; i++)
+            {
+                SimulationIdentity.Require(m_GameplayCapabilities[i], nameof(GameplayCapabilities));
+                if (i > 0 && string.CompareOrdinal(m_GameplayCapabilities[i - 1], m_GameplayCapabilities[i]) >= 0)
+                    throw new ArgumentException("Gameplay capabilities must be sorted and unique.");
+            }
+        }
+
         public IReadOnlyList<string> GameplayCapabilities => m_GameplayCapabilities;
         public bool HasGameplayCapability(string capability)
         {
@@ -1576,6 +1934,59 @@ namespace ThirdPersonSimulation
                     return true;
             }
             return false;
+        }
+    }
+
+    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+    public sealed partial class GameplayAbilityExecutionManifest
+    {
+        internal GameplayAbilityExecutionManifest(CharacterSkillId abilityId, string compilerVersion,
+            OperationSetVersion operationSetVersion, int tickRate, ProgramRevision sourceRevision,
+            SemanticHash semanticHash, SimulationNumericProfile numericProfile,
+            GameplayAbilityCapabilityManifest capabilities, GameplayAbilityRootDescriptor root,
+            string executionIdentity, StableHash stateSchemaHash, StableHash contentHash)
+        {
+            AbilityId = abilityId;
+            CompilerVersion = compilerVersion;
+            OperationSetVersion = operationSetVersion;
+            TickRate = tickRate;
+            SourceRevision = sourceRevision;
+            SemanticHash = semanticHash;
+            NumericProfile = numericProfile;
+            Capabilities = capabilities;
+            Root = root;
+            ExecutionIdentity = executionIdentity;
+            StateSchemaHash = stateSchemaHash;
+            ContentHash = contentHash;
+            RequireRecord();
+        }
+
+        public CharacterSkillId AbilityId { get; }
+        public string CompilerVersion { get; private set; }
+        public OperationSetVersion OperationSetVersion { get; }
+        public int TickRate { get; }
+        public ProgramRevision SourceRevision { get; }
+        public SemanticHash SemanticHash { get; }
+        public SimulationNumericProfile NumericProfile { get; }
+        public GameplayAbilityCapabilityManifest Capabilities { get; }
+        public GameplayAbilityRootDescriptor Root { get; }
+        public string ExecutionIdentity { get; private set; }
+        public StableHash StateSchemaHash { get; }
+        public StableHash ContentHash { get; }
+
+        [CanonicalValidation]
+        void RequireRecord()
+        {
+            if (!AbilityId.IsValid)
+                throw new ArgumentException("Ability identity is invalid.");
+            if (!Root.IsAbility)
+                throw new InvalidOperationException("Ability execution data requires an Ability root.");
+            CompilerVersion = SimulationIdentity.Require(CompilerVersion, nameof(CompilerVersion));
+            ExecutionIdentity = SimulationIdentity.Require(ExecutionIdentity, nameof(ExecutionIdentity));
+            if (Capabilities == null)
+                throw new ArgumentNullException(nameof(Capabilities));
+            if (!StateSchemaHash.IsValid)
+                throw new ArgumentException("Ability state schema hash is invalid.");
         }
     }
 
@@ -1616,13 +2027,13 @@ namespace ThirdPersonSimulation
         PresentationCameraRequest(
             PresentationCameraRequestKind kind,
             PresentationCameraRequestLifecycle lifecycle,
-            string requestId,
-            string sequenceId,
-            string resourceId,
+            CanonicalTextValue requestId,
+            CanonicalTextValue sequenceId,
+            CanonicalTextValue resourceId,
             CanonicalTextValue targetKey,
-            string anchorKey,
-            string aimPointKey,
-            string preferredBoneKey,
+            CanonicalTextValue anchorKey,
+            CanonicalTextValue aimPointKey,
+            CanonicalTextValue preferredBoneKey,
             int mode,
             int effectKind,
             int interruptPolicy,
@@ -1667,13 +2078,13 @@ namespace ThirdPersonSimulation
 
         public PresentationCameraRequestKind Kind { get; }
         public PresentationCameraRequestLifecycle Lifecycle { get; }
-        public string RequestId { get; }
-        public string SequenceId { get; }
-        public string ResourceId { get; }
+        public CanonicalTextValue RequestId { get; }
+        public CanonicalTextValue SequenceId { get; }
+        public CanonicalTextValue ResourceId { get; }
         public CanonicalTextValue TargetKey { get; }
-        public string AnchorKey { get; }
-        public string AimPointKey { get; }
-        public string PreferredBoneKey { get; }
+        public CanonicalTextValue AnchorKey { get; }
+        public CanonicalTextValue AimPointKey { get; }
+        public CanonicalTextValue PreferredBoneKey { get; }
         public int Mode { get; }
         public int EffectKind { get; }
         public int InterruptPolicy { get; }
@@ -1689,8 +2100,16 @@ namespace ThirdPersonSimulation
         public PresentationCameraTargetTiming AimTiming { get; }
         public bool IsValid => IsDefined(Kind) && IsDefined(Lifecycle);
 
-        public void Retain() => TargetKey.Retain();
-        public void Release() => TargetKey.Release();
+        public void Retain()
+        {
+            RequestId.Retain(); SequenceId.Retain(); ResourceId.Retain();
+            TargetKey.Retain(); AnchorKey.Retain(); AimPointKey.Retain(); PreferredBoneKey.Retain();
+        }
+        public void Release()
+        {
+            PreferredBoneKey.Release(); AimPointKey.Release(); AnchorKey.Release(); TargetKey.Release();
+            ResourceId.Release(); SequenceId.Release(); RequestId.Release();
+        }
 
         public PresentationCameraRequest WithActionTarget(CanonicalTextValue targetActorId) =>
             new PresentationCameraRequest(
@@ -1702,7 +2121,7 @@ namespace ThirdPersonSimulation
 
         public static PresentationCameraRequest Sequence(
             PresentationCameraRequestLifecycle lifecycle,
-            string sequenceId,
+            CanonicalTextValue sequenceId,
             int mode,
             int interruptPolicy,
             int priority,
@@ -1734,9 +2153,9 @@ namespace ThirdPersonSimulation
 
         public static PresentationCameraRequest Effect(
             PresentationCameraRequestLifecycle lifecycle,
-            string requestId,
+            CanonicalTextValue requestId,
             int effectKind,
-            string resourceId,
+            CanonicalTextValue resourceId,
             int priority,
             float weight,
             bool captureLockStartOnSubmit) =>
@@ -1795,9 +2214,9 @@ namespace ThirdPersonSimulation
         public static PresentationCameraRequest Target(
             PresentationCameraRequestLifecycle lifecycle,
             CanonicalTextValue targetKey,
-            string anchorKey,
-            string aimPointKey,
-            string preferredBoneKey,
+            CanonicalTextValue anchorKey,
+            CanonicalTextValue aimPointKey,
+            CanonicalTextValue preferredBoneKey,
             int priority,
             float weight,
             PresentationCameraTargetTiming followTiming,
@@ -1826,11 +2245,11 @@ namespace ThirdPersonSimulation
                 followTiming,
                 aimTiming);
 
-        static string Normalize(string value)
+        static CanonicalTextValue Normalize(CanonicalTextValue value)
         {
-            if (string.IsNullOrEmpty(value))
-                return string.Empty;
-            if (!string.Equals(value, value.Trim(), StringComparison.Ordinal))
+            if (value.IsEmpty)
+                return CanonicalTextValue.Empty;
+            if (!value.Equals(value.Trim()))
                 throw new ArgumentException("Camera request identity must be trimmed.");
             return value;
         }

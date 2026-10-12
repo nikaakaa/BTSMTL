@@ -30,6 +30,7 @@ namespace ThirdPersonSimulation
         public HashSet<ulong> ActiveInstances { get; } = new HashSet<ulong>();
         public List<GameplayEffectActiveIdentity> ActiveIdentities { get; } = new List<GameplayEffectActiveIdentity>();
         public HashSet<string> FrozenOwnedTags { get; } = new HashSet<string>(StringComparer.Ordinal);
+        internal List<string> ScopeTags { get; } = new List<string>();
         internal GameplayEffectRuntimeCapacityLayout Capacity { get; private set; }
         internal int CommandsThisTick;
         internal GameplayCommandBatchAdmission ReceiveCommandBatch(ActorId actorId, ulong tick, int commands, SimulationExecutionSource source)
@@ -83,6 +84,7 @@ namespace ThirdPersonSimulation
             ActiveHandles.EnsureCapacity(capacity.ActiveEffectWidth);
             ActiveInstances.EnsureCapacity(capacity.ActiveEffectWidth);
             FrozenOwnedTags.EnsureCapacity(capacity.FrozenTagWidth);
+            ScopeTags.Capacity = checked(capacity.QueryTagWidth + 1);
             Target.Prepare(capacity);
         }
 
@@ -195,6 +197,7 @@ namespace ThirdPersonSimulation
             ActiveInstances.Clear();
             ActiveIdentities.Clear();
             FrozenOwnedTags.Clear();
+            ScopeTags.Clear();
         }
     }
 }

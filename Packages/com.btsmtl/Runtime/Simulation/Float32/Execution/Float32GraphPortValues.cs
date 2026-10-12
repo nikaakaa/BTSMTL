@@ -1,14 +1,16 @@
 #if UNITY_EDITOR
 namespace ThirdPersonSimulation
 {
-    public sealed class Float32GraphPortValues
+    public sealed class Float32GraphPortValues : IFloat32GraphValuePortInputs
     {
+        readonly Float32GraphValueLayout m_Layout;
         readonly AbilityStateValue[] m_Inputs;
         readonly AbilityStateValue[] m_Observed;
         readonly byte[] m_Flags;
 
         public Float32GraphPortValues(Float32GraphValueLayout layout)
         {
+            m_Layout = layout;
             m_Inputs = new AbilityStateValue[layout.PortSlotCount];
             m_Observed = new AbilityStateValue[layout.PortSlotCount];
             m_Flags = new byte[layout.PortSlotCount];
@@ -17,6 +19,9 @@ namespace ThirdPersonSimulation
         public AbilityStateValue Read(int slot) => m_Observed[slot];
         public AbilityStateValue ReadInput(int slot) => m_Flags[slot] != 0 ? m_Inputs[slot] : default;
         public bool IsLocked(int slot) => m_Flags[slot] == 3;
+        bool IFloat32GraphValuePortInputs.TryRead(OperationHandle operation, int portIndex, bool input, out AbilityStateValue value) =>
+            TryRead(input ? m_Layout.InputPortSlot(operation, portIndex) : m_Layout.OutputPortSlot(operation, portIndex), out value);
+
         public bool TryRead(int slot, out AbilityStateValue value)
         {
             value = m_Inputs[slot];

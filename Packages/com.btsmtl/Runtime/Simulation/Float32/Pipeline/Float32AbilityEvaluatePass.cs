@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using ThirdPersonPerformance.Instrumentation;
 
 namespace ThirdPersonSimulation
 {
@@ -23,7 +24,7 @@ namespace ThirdPersonSimulation
                 context.Products.BindExclusiveWriter<Float32CharacterEvaluationResultBatch>(SimulationPipelineProducts.CharacterEvaluationResults),
                 context.Products.BindExclusiveWriter<WorldSolveBatchRequest>(SimulationPipelineProducts.WorldSolveBatchRequest));
             return new Float32StepPassRuntimeAdapter<Float32AbilityEvaluateReadPorts, Float32AbilityEvaluateWritePorts>(
-                new Float32AbilityEvaluatePassRuntime(context.Pass.Descriptor, reads.CharacterRuntime.Runtime.Roster),
+                new Float32AbilityEvaluatePassRuntime(context.Pass.Descriptor, reads.CharacterRuntime.Runtime.Roster, context.GraphBatchExecution),
                 reads,
                 writes);
         }
@@ -31,9 +32,15 @@ namespace ThirdPersonSimulation
 
     public sealed class Float32AbilityEvaluatePassRuntime :
         Float32PipelinePassRuntimeBase,
-        ISimulationStepPassRuntime<Float32AbilityEvaluateReadPorts, Float32AbilityEvaluateWritePorts>
+        ISimulationStepPassRuntime<Float32AbilityEvaluateReadPorts, Float32AbilityEvaluateWritePorts>, IGraphBatchWork
     {
         readonly Float32CharacterEvaluationResult[] m_Evaluations;
+        readonly Float32CharacterEvaluationInput[] m_EvaluationInputs;
+        readonly IReadOnlyList<SimulationActorBinding> m_Roster;
+        readonly Exception[] m_Failures;
+        public GraphBatchExecution BatchExecution { get; }
+        public int FailureActorIndex => BatchExecution.FailureInstanceIndex;
+        public Exception LastFailure => BatchExecution.LastFailure;
         readonly CharacterWorldSolveRequest[] m_Requests;
         readonly SimulationIngress[][] m_Ingress;
         readonly int[] m_IngressCounts;
@@ -46,12 +53,17 @@ namespace ThirdPersonSimulation
 
         public Float32AbilityEvaluatePassRuntime(
             SimulationPipelinePassDescriptor descriptor,
-            IReadOnlyList<SimulationActorBinding> roster)
+            IReadOnlyList<SimulationActorBinding> roster,
+            GraphBatchExecution batchExecution)
             : base(descriptor)
         {
             int actorCount = roster.Count;
             if (actorCount <= 0)
                 throw new ArgumentOutOfRangeException(nameof(roster));
+            m_Roster = roster;
+            BatchExecution = batchExecution;
+            m_EvaluationInputs = new Float32CharacterEvaluationInput[actorCount];
+            m_Failures = new Exception[actorCount];
             m_Evaluations = new Float32CharacterEvaluationResult[actorCount];
             m_Requests = new CharacterWorldSolveRequest[actorCount];
             m_Ingress = new SimulationIngress[actorCount][];
@@ -97,27 +109,29 @@ namespace ThirdPersonSimulation
                         !step.Inputs[i].ActorId.Equals(actor.ActorId))
                         throw new InvalidOperationException("Ability Evaluate Pass Actor order does not match the locked roster.");
                     actor.EvaluationOutput.IngressAdmission = m_IngressAdmissions[i];
+                    actor.CaptureAvailabilityFrameEvents(m_Ingress[i], m_IngressCounts[i]);
                     SimulationInput input = step.Inputs[i].Value.Input;
-                    CharacterWorldSolveRequest worldRequest;
-                    m_Evaluations[i] = Float32CharacterEvaluationRuntime.Evaluate(
-                        readPorts.CharacterRuntime.Runtime,
-                        actor,
-                        state.Actors[i].State,
-                        step.Tick,
-                        input,
-                        m_Ingress[i],
-                        m_IngressCounts[i],
-                        state.WorldState.Bodies[i],
+                    if (state.Actors[i].State.NumericProfile != readPorts.CharacterRuntime.Runtime.NumericProfile ||
+                        input.NumericProfile != readPorts.CharacterRuntime.Runtime.NumericProfile)
+                        throw new InvalidOperationException("角色求值输入的数值目标与已准备内容不同。");
+                    m_EvaluationInputs[i] = new Float32CharacterEvaluationInput(
+                        readPorts.CharacterRuntime.Runtime, actor, state.Actors[i].State, step.Tick, input,
+                        m_Ingress[i], m_IngressCounts[i], state.WorldState.Bodies[i],
                         readPorts.Diagnostics.Sink.IsEnabled,
                         readPorts.Diagnostics.Sink is ISimulationValueTraceInterest valueInterest &&
                         valueInterest.IsValueCaptureRequested(actor.ActorId),
                         readPorts.Diagnostics.Sink is ISimulationControlTraceInterest controlInterest &&
                         controlInterest.IsControlCaptureRequested(actor.ActorId),
                         readPorts.Diagnostics.Sink is ISimulationBlackboardTraceInterest blackboardInterest &&
-                        blackboardInterest.IsBlackboardCaptureRequested(actor.ActorId),
-                        out worldRequest);
-                    m_Requests[i] = worldRequest;
+                        blackboardInterest.IsBlackboardCaptureRequested(actor.ActorId));
                 }
+                BatchExecution.Execute(this, m_Evaluations.Length);
+                for (int i = 0; i < m_Failures.Length; i++)
+                    if (m_Failures[i] != null)
+                    {
+                        BatchExecution.ReportFailure(i, m_Failures[i]);
+                        System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(LastFailure).Throw();
+                    }
                 writePorts.CharacterEvaluationResults.Write(m_EvaluationBatch.Reset(step.Tick, m_Evaluations));
                 writePorts.WorldBatch.Write(m_WorldBatch.Reset(
                     step.Tick,
@@ -136,6 +150,8 @@ namespace ThirdPersonSimulation
                 for (int i = 0; i < m_Evaluations.Length; i++)
                 {
                     m_Evaluations[i] = null;
+                    m_EvaluationInputs[i] = default;
+                    m_Failures[i] = null;
                     m_Requests[i] = default;
                     Array.Clear(m_Ingress[i], 0, m_IngressCounts[i]);
                     m_IngressCounts[i] = 0;
@@ -144,6 +160,28 @@ namespace ThirdPersonSimulation
                     m_IngressAdmissions[i] = default;
                 }
             }
+        }
+
+        void IGraphBatchWork.Compute(int instanceIndex)
+        {
+            try
+            {
+                m_Evaluations[instanceIndex] = Float32CharacterEvaluationRuntime.Evaluate(
+                    m_Roster[instanceIndex], in m_EvaluationInputs[instanceIndex], out m_Requests[instanceIndex]);
+            }
+            catch (Exception exception)
+            {
+                m_Failures[instanceIndex] = exception;
+            }
+        }
+
+        PerformanceInstrumentationContext IGraphBatchWork.GetInstrumentationContext(int instanceIndex)
+        {
+            CanonicalTextValue actorIdentity = m_Roster[instanceIndex].ActorId.Value;
+            using CanonicalTextReadLease read = actorIdentity.AcquireRead();
+            return new(0, m_EvaluationInputs[instanceIndex].Tick.Value,
+                PerformanceInstrumentationIdentity.Hash64(actorIdentity.Span), 0, 0,
+                PerformanceInstrumentationContextFlags.LogicTick | PerformanceInstrumentationContextFlags.Actor);
         }
 
         void PrepareIngress(Float32SimulationStep step, IFloat32CharacterRuntimePort runtime)

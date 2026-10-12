@@ -104,6 +104,8 @@ namespace ThirdPersonSimulation.Fixed
                     resources.Register(SimulationSessionResourceReleasePhase.ActorAndPresentationRegistration, request.ActorResources[i]);
                 for (int i = 0; i < request.CharacterRuntime.Roster.Count; i++)
                     resources.Register(SimulationSessionResourceReleasePhase.ActorAndPresentationRegistration, request.CharacterRuntime.Roster[i]);
+                var graphBatchExecution = new GraphBatchExecution(
+                    request.GraphBatchOptions, request.Roster.Count, request.GraphBatchResource);
 
                 FixedPipelineProductStore products = request.ProductRuntimeFactories.CreateStore(request.CompiledPipeline.Products);
                 var stateStore = new SimulationWorldStateStore(request.CharacterRuntime, request.InitialState);
@@ -124,8 +126,9 @@ namespace ThirdPersonSimulation.Fixed
                             SimulationActorBinding binding = request.Roster[actor];
                             for (int ability = 0; ability < binding.AbilityInstallations.Installations.Count; ability++)
                             {
-                                var data = binding.AbilityInstallations.Installations[ability].Data;
-                                binding.GetInvocation(data.AbilityId).BindValuePorts(localInput.ValuePorts.Declare(binding.ActorId, data));
+                                var installation = binding.AbilityInstallations.Installations[ability];
+                                binding.GetInvocation(installation.Data.AbilityId).BindValuePorts(localInput.ValuePorts.Declare(binding.ActorId, installation,
+                                    request.Descriptor.RecordedFrameCapacity > 0));
                             }
                         }
                         localInput.ValuePorts.Prepare();
@@ -163,7 +166,8 @@ namespace ThirdPersonSimulation.Fixed
                         targetPorts,
                         solverPorts,
                         diagnosticsPorts,
-                        request.Descriptor);
+                        request.Descriptor,
+                        graphBatchExecution);
                     IFixedCompiledPipelinePassRuntime runtime = factory.Create(context) ??
                         throw Failure("pass_runtime_missing", $"Factory for Pass '{pass.Descriptor.PassId}' returned no runtime.", pass.Descriptor.PassId);
                     context.CompleteBindings();
@@ -263,7 +267,8 @@ namespace ThirdPersonSimulation.Fixed
                     resources,
                     request.Solver as ICharacterFutureBodyTranslationSource,
                     request.SourcePorts,
-                    combatPort.Combat);
+                    combatPort.Combat,
+                    graphBatchExecution);
                 return new FixedPassBackendCompositionResult(
                     launchPlan,
                     initialPipelineState,

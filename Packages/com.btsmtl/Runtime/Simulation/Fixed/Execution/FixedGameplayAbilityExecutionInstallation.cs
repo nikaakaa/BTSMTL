@@ -8,31 +8,29 @@ namespace ThirdPersonSimulation.Fixed
         public FixedAbilityExecutionContext(
             FixedGameplayAbilityExecutionData data,
             GameplayAbilityExecutionLayout layout,
-            FixedGameplayAbilityExecutionServices services, ActorId actorId)
+            FixedGameplayAbilityExecutionServices services)
         {
             Data = data ?? throw new ArgumentNullException(nameof(data));
             Layout = layout ?? throw new ArgumentNullException(nameof(layout));
             Services = services ?? throw new ArgumentNullException(nameof(services));
-            Trace = new FixedTraceSink(data, layout, actorId);
         }
 
         public FixedGameplayAbilityExecutionData Data { get; }
         public GameplayAbilityExecutionLayout Layout { get; }
         public FixedGameplayAbilityExecutionServices Services { get; }
-        internal FixedTraceSink Trace { get; }
     }
 
     public sealed class FixedGameplayAbilityExecutionInstallation
     {
         readonly FixedAbilityExecutionContext m_Execution;
         readonly EquipmentProgramLayout m_EquipmentLayout;
-        readonly FixedAbilityOperationControlRuntime m_Control;
 
         internal FixedGameplayAbilityExecutionInstallation(
             FixedGameplayAbilityExecutionData data,
             GameplayAbilityGrantInputBinding inputBinding,
             FixedGameplayEffectRuntimeCatalog gameplayEffectCatalog,
-            EquipmentProgramLayout equipmentLayout, ActorId actorId)
+            EquipmentProgramLayout equipmentLayout,
+            GeneratedBlackboardConfiguration<AbilityStateValue> blackboards)
         {
             data = data ?? throw new ArgumentNullException(nameof(data));
             data = data.WithInputBinding(in inputBinding);
@@ -53,13 +51,13 @@ namespace ThirdPersonSimulation.Fixed
                 data,
                 layout,
                 BuildOperationSourcePaths(layout),
-                executionGameplayEffectCatalog);
+                executionGameplayEffectCatalog,
+                blackboards);
             m_EquipmentLayout = executionEquipmentLayout;
             m_Execution = new FixedAbilityExecutionContext(
                 data,
                 layout,
-                services, actorId);
-            m_Control = new FixedAbilityOperationControlRuntime(data);
+                services);
         }
 
         public void AppendBlackboardSnapshot(FixedCharacterRuntimeState state,
@@ -69,11 +67,17 @@ namespace ThirdPersonSimulation.Fixed
         public FixedGameplayAbilityExecutionData Data => m_Execution.Data;
         public GameplayAbilityExecutionLayout Layout => m_Execution.Layout;
         public GameplayAbilityExecutionIdentity Identity => m_Execution.Services.Identity;
+        public GeneratedBlackboardStateBinding<AbilityStateValue> Blackboards => m_Execution.Services.Blackboards;
+        internal ProgramCatalogEntry[] BlackboardDeclarations => m_Execution.Services.BlackboardDeclarations;
+        internal void BindCharacterInputs(System.Collections.Generic.HashSet<int> projected) =>
+            m_Execution.Services.BindCharacterInputs(CharacterBlackboardSlots, projected);
+        internal int[] CharacterBlackboardSlots { get; set; }
+        public AbilityStateValue DefaultStateValue(int slot) => m_Execution.Services.DefaultValue(slot);
         public int EquipmentSlotCapacity => m_EquipmentLayout?.Slots.Count ?? 0;
         internal EquipmentProgramLayout EquipmentLayout => m_EquipmentLayout;
         internal FixedGameplayAbilityExecutionServices Services => m_Execution.Services;
         internal FixedAbilityExecutionContext Execution => m_Execution;
-        internal FixedAbilityOperationControlRuntime Control => m_Control;
+        internal int MaximumOperationEvaluations => OperationControlRuntime.EvaluationCapacity(Data.Operations.Count);
 
         static string[] BuildOperationSourcePaths(GameplayAbilityExecutionLayout layout)
         {

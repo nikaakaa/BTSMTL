@@ -19,6 +19,107 @@ namespace ThirdPersonSimulation
         public const int MaxSamplesPerEvaluation = 4096;
     }
 
+    internal sealed class BorrowedValueObservationScratch<TValue>
+    {
+        readonly TValue[] m_Values;
+        readonly bool[] m_Written;
+        readonly int[] m_Slots;
+        int m_Count;
+
+        internal BorrowedValueObservationScratch(int capacity)
+        {
+            m_Values = new TValue[capacity];
+            m_Written = new bool[capacity];
+            m_Slots = new int[capacity];
+        }
+
+        internal bool IsWritten(int slot) => m_Written[slot];
+
+        internal ref readonly TValue Read(int slot) => ref m_Values[slot];
+
+        internal void Write(int slot, in TValue value)
+        {
+            m_Values[slot] = value;
+            m_Written[slot] = true;
+            m_Slots[m_Count++] = slot;
+        }
+
+        internal void Clear()
+        {
+            for (int index = 0; index < m_Count; index++)
+            {
+                int slot = m_Slots[index];
+                ref TValue value = ref m_Values[slot];
+                value = default;
+                m_Written[slot] = false;
+            }
+            m_Count = 0;
+        }
+    }
+
+    internal readonly struct OperationValueObservationPort
+    {
+        public OperationValueObservationPort(OperationHandle operation, string identity, int index,
+            ProgramValuePortDirection direction)
+        {
+            Operation = operation;
+            Identity = identity;
+            Index = index;
+            Direction = direction;
+        }
+
+        public OperationHandle Operation { get; }
+        public string Identity { get; }
+        public int Index { get; }
+        public ProgramValuePortDirection Direction { get; }
+    }
+
+    internal sealed class OperationValueObservationLayout
+    {
+        readonly OperationValueObservationPort[][] m_Ports;
+
+        public OperationValueObservationLayout(int operationCount, IReadOnlyList<ProgramExecutionSource> sources,
+            Func<int, OperationValuePortContract> requireContract)
+        {
+            m_Ports = new OperationValueObservationPort[operationCount][];
+            var groups = new Dictionary<string, List<OperationValueObservationPort>>(StringComparer.Ordinal);
+            var contracts = new OperationValuePortContract[operationCount];
+            for (int i = 0; i < sources.Count; i++)
+            {
+                ProgramExecutionSource source = sources[i];
+                if (source.TargetKind != ProgramSourceTargetKind.OperationPort ||
+                    source.ValuePortDirection == ProgramValuePortDirection.None)
+                    continue;
+                OperationValuePortContract contract = contracts[source.TargetIndex] ??=
+                    requireContract(source.TargetIndex);
+                if (source.ValuePortDirection == ProgramValuePortDirection.Output && contract.OutputsRequireExecution)
+                    continue;
+                int index = source.ValuePortDirection == ProgramValuePortDirection.Input
+                    ? contract.RequireInput(source.CompiledPortId).Order
+                    : contract.RequireSelection(source.CompiledPortId).Order;
+                if (!groups.TryGetValue(source.SourceInvocationPath, out var ports))
+                {
+                    ports = new List<OperationValueObservationPort>();
+                    groups.Add(source.SourceInvocationPath, ports);
+                }
+                ports.Add(new OperationValueObservationPort(new OperationHandle(source.TargetIndex), source.CompiledPortId,
+                    index, source.ValuePortDirection));
+            }
+            var prepared = new Dictionary<string, OperationValueObservationPort[]>(StringComparer.Ordinal);
+            foreach (var group in groups)
+                prepared.Add(group.Key, group.Value.ToArray());
+            for (int i = 0; i < sources.Count; i++)
+            {
+                ProgramExecutionSource source = sources[i];
+                if (source.TargetKind == ProgramSourceTargetKind.Operation &&
+                    prepared.TryGetValue(source.GraphInvocationPath, out var ports))
+                    m_Ports[source.TargetIndex] = ports;
+            }
+        }
+
+        public ReadOnlySpan<OperationValueObservationPort> Ports(OperationHandle operation) => m_Ports[operation.Value];
+    }
+
     public enum SemanticValueKind : byte
     {
         Boolean = 1,
@@ -174,16 +275,19 @@ namespace ThirdPersonSimulation
         public OperationValuePortContract(
             SimulationOperationCode operationCode,
             IEnumerable<OperationValuePortDefinition> inputs,
-            IEnumerable<OperationValuePortDefinition> outputs)
+            IEnumerable<OperationValuePortDefinition> outputs,
+            bool outputsRequireExecution = false)
         {
             OperationCode = operationCode;
             m_Inputs = Build(inputs, out m_InputByIdentity, "input");
             m_Outputs = Build(outputs, out m_OutputByIdentity, "output");
+            OutputsRequireExecution = outputsRequireExecution;
         }
 
         public SimulationOperationCode OperationCode { get; }
         public IReadOnlyList<OperationValuePortDefinition> Inputs => m_Inputs;
         public IReadOnlyList<OperationValuePortDefinition> Outputs => m_Outputs;
+        public bool OutputsRequireExecution { get; }
 
         public OperationValuePortDefinition RequireInput(string identity) => Require(m_InputByIdentity, identity, "input");
         public OperationValuePortDefinition RequireSelection(string identity) => Require(m_OutputByIdentity, identity, "output");
@@ -390,12 +494,10 @@ namespace ThirdPersonSimulation
 				new[] { Fixed("m_MoveInput", 0, SemanticValueKind.Vector2) },
 				new[] { Fixed("m_Output", 0, SemanticValueKind.Number) }));
 			Set(values, Output(SimulationOperationCode.CharacterStateRead, Dynamic("m_Output", 0)));
-			Set(values, Output(SimulationOperationCode.ActivateActionInstance, Fixed("m_Activated", 0, SemanticValueKind.Boolean)));
+			Set(values, Result(SimulationOperationCode.ActivateActionInstance, Array.Empty<OperationValuePortDefinition>(), Fixed("m_Activated", 0, SemanticValueKind.Boolean)));
 			Set(values, Output(SimulationOperationCode.ActionContextActive, Fixed("m_Output", 0, SemanticValueKind.Boolean)));
-			Set(values, Output(SimulationOperationCode.SubmitActionLifecycle, Fixed("m_Submitted", 0, SemanticValueKind.Boolean)));
-			Set(values, Output(SimulationOperationCode.ActionWindowActive, Fixed("m_Output", 0, SemanticValueKind.Boolean)));
+			Set(values, Result(SimulationOperationCode.SubmitActionLifecycle, Array.Empty<OperationValuePortDefinition>(), Fixed("m_Submitted", 0, SemanticValueKind.Boolean)));
 			Set(values, Output(SimulationOperationCode.AbilityActive, Fixed("m_Output", 0, SemanticValueKind.Boolean)));
-			Set(values, Output(SimulationOperationCode.SelectedSourceWindowActive, Fixed("m_Output", 0, SemanticValueKind.Boolean)));
 			Set(values, Output(SimulationOperationCode.SelectedSourcePhase, Fixed("m_Output", 0, SemanticValueKind.Boolean)));
 			Set(values, Output(SimulationOperationCode.LocomotionDecision, Fixed("m_Output", 0, SemanticValueKind.Boolean)));
 			Set(values, Output(SimulationOperationCode.CanActivateAction, Fixed("m_Output", 0, SemanticValueKind.Boolean)));
@@ -416,6 +518,18 @@ namespace ThirdPersonSimulation
 				new[] { Fixed("m_Output", 0, SemanticValueKind.Boolean) }));
 			Set(values, Output(SimulationOperationCode.Constant, Dynamic("m_Output", 0)));
 			Set(values, Output(SimulationOperationCode.GameplayEffectHasTag, Fixed("m_Result", 0, SemanticValueKind.Boolean)));
+			Set(values, Output(SimulationOperationCode.GameplayEffectSourceAllowsCandidate, Fixed("m_Result", 0, SemanticValueKind.Boolean)));
+			Set(values, Output(SimulationOperationCode.GameplayEffectActive,
+				Fixed("m_Result", 0, SemanticValueKind.Boolean),
+				Fixed("m_Handle", 1, SemanticValueKind.UInt64),
+				Fixed("m_EventTag", 2, SemanticValueKind.Identity),
+				Fixed("m_EventId", 3, SemanticValueKind.UInt64),
+				Fixed("m_SourceTick", 4, SemanticValueKind.UInt64),
+				Fixed("m_AcceptedTick", 5, SemanticValueKind.UInt64),
+				Fixed("m_SourceActionId", 6, SemanticValueKind.UInt64),
+				Fixed("m_TargetId", 7, SemanticValueKind.Identity),
+				Fixed("m_Position", 8, SemanticValueKind.Vector3),
+				Fixed("m_Yaw", 9, SemanticValueKind.Number)));
 			Set(values, Output(SimulationOperationCode.GameplayEffectMatchTags, Fixed("m_Result", 0, SemanticValueKind.Boolean)));
 			Set(values, Output(SimulationOperationCode.GameplayAttributeRead,
 				Fixed("m_Valid", 0, SemanticValueKind.Boolean),
@@ -440,10 +554,10 @@ namespace ThirdPersonSimulation
 				Fixed("m_Revision", 2, SemanticValueKind.UInt64),
 				Fixed("m_Equipped", 3, SemanticValueKind.Boolean)));
 			Set(values, Both(SimulationOperationCode.ReadEquipmentParameter, new[] { Fixed("m_ExpectedRevision", 0, SemanticValueKind.UInt64) }, new[] { Dynamic("m_Output", 0) }));
-			Set(values, Both(SimulationOperationCode.RequestEquipmentChange, new[] { Fixed("m_ExpectedRevision", 0, SemanticValueKind.UInt64) }, new[] { Fixed("m_Accepted", 0, SemanticValueKind.Boolean), Fixed("m_Failure", 1, SemanticValueKind.Int32) }));
-			Set(values, Both(SimulationOperationCode.BeginEquipmentChange, new[] { Fixed("m_ExpectedRevision", 0, SemanticValueKind.UInt64) }, new[] { Fixed("m_Begun", 0, SemanticValueKind.Boolean), Fixed("m_ChangeId", 1, SemanticValueKind.UInt64), Fixed("m_Failure", 2, SemanticValueKind.Int32) }));
-			Set(values, Both(SimulationOperationCode.CommitEquipmentChange, new[] { Fixed("m_ChangeId", 0, SemanticValueKind.UInt64) }, new[] { Fixed("m_Committed", 0, SemanticValueKind.Boolean), Fixed("m_Failure", 1, SemanticValueKind.Int32) }));
-			Set(values, Both(SimulationOperationCode.CancelEquipmentChange, new[] { Fixed("m_ChangeId", 0, SemanticValueKind.UInt64) }, new[] { Fixed("m_Cancelled", 0, SemanticValueKind.Boolean), Fixed("m_Failure", 1, SemanticValueKind.Int32) }));
+			Set(values, Result(SimulationOperationCode.RequestEquipmentChange, new[] { Fixed("m_ExpectedRevision", 0, SemanticValueKind.UInt64) }, Fixed("m_Accepted", 0, SemanticValueKind.Boolean), Fixed("m_Failure", 1, SemanticValueKind.Int32)));
+			Set(values, Result(SimulationOperationCode.BeginEquipmentChange, new[] { Fixed("m_ExpectedRevision", 0, SemanticValueKind.UInt64) }, Fixed("m_Begun", 0, SemanticValueKind.Boolean), Fixed("m_ChangeId", 1, SemanticValueKind.UInt64), Fixed("m_Failure", 2, SemanticValueKind.Int32)));
+			Set(values, Result(SimulationOperationCode.CommitEquipmentChange, new[] { Fixed("m_ChangeId", 0, SemanticValueKind.UInt64) }, Fixed("m_Committed", 0, SemanticValueKind.Boolean), Fixed("m_Failure", 1, SemanticValueKind.Int32)));
+			Set(values, Result(SimulationOperationCode.CancelEquipmentChange, new[] { Fixed("m_ChangeId", 0, SemanticValueKind.UInt64) }, Fixed("m_Cancelled", 0, SemanticValueKind.Boolean), Fixed("m_Failure", 1, SemanticValueKind.Int32)));
 
 			return new ReadOnlyDictionary<SimulationOperationCode, OperationValuePortContract>(values);
 		}
@@ -466,6 +580,9 @@ namespace ThirdPersonSimulation
 
         static OperationValuePortContract Both(SimulationOperationCode code, OperationValuePortDefinition[] inputs, OperationValuePortDefinition[] outputs) =>
             new OperationValuePortContract(code, inputs, outputs);
+
+        static OperationValuePortContract Result(SimulationOperationCode code, OperationValuePortDefinition[] inputs,
+            params OperationValuePortDefinition[] outputs) => new OperationValuePortContract(code, inputs, outputs, true);
 
         static OperationValuePortDefinition Fixed(string identity, int order, SemanticValueKind kind) =>
             new OperationValuePortDefinition(identity, order, OperationValuePortConstraint.Fixed, kind);

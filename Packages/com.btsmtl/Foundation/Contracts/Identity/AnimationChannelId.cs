@@ -2,7 +2,8 @@ using System;
 
 namespace ThirdPersonSimulation
 {
-    public readonly struct AnimationChannelId : IEquatable<AnimationChannelId>, IComparable<AnimationChannelId>
+    [CanonicalContract]
+    public readonly partial struct AnimationChannelId : IEquatable<AnimationChannelId>, IComparable<AnimationChannelId>
     {
         public AnimationChannelId(CanonicalTextValue value)
         {

@@ -102,6 +102,8 @@ namespace ThirdPersonSimulation
                     resources.Register(SimulationSessionResourceReleasePhase.ActorAndPresentationRegistration, request.ActorResources[i]);
                 for (int i = 0; i < request.CharacterRuntime.Roster.Count; i++)
                     resources.Register(SimulationSessionResourceReleasePhase.ActorAndPresentationRegistration, request.CharacterRuntime.Roster[i]);
+                var graphBatchExecution = new GraphBatchExecution(
+                    request.GraphBatchOptions, request.Roster.Count, request.GraphBatchResource);
 
                 Float32PipelineProductStore products = request.ProductRuntimeFactories.CreateStore(request.CompiledPipeline.Products);
                 var stateStore = new SimulationWorldStateStore(request.CharacterRuntime, request.InitialState);
@@ -141,7 +143,8 @@ namespace ThirdPersonSimulation
                         targetPorts,
                         solverPorts,
                         diagnosticsPorts,
-                        request.Descriptor);
+                        request.Descriptor,
+                        graphBatchExecution);
                     IFloat32CompiledPipelinePassRuntime runtime = factory.Create(context) ??
                         throw Failure("pass_runtime_missing", $"Factory for Pass '{pass.Descriptor.PassId}' returned no runtime.", pass.Descriptor.PassId);
                     context.CompleteBindings();
@@ -238,6 +241,7 @@ namespace ThirdPersonSimulation
                     completedStepPort,
                     maximumSteps,
                     stepProjections,
+                    snapshotCapacity,
                     availabilityInput);
                 resources.Register(SimulationSessionResourceReleasePhase.RuntimeAndPasses, transaction);
                 SimulationSessionLaunchPlan launchPlan = BuildLaunchPlan(request, initialPipelineState);
@@ -247,7 +251,8 @@ namespace ThirdPersonSimulation
                     stateStore,
                     transaction,
                     runtimes.AsReadOnly(),
-                    resources);
+                    resources,
+                    graphBatchExecution);
                 return new Float32PassBackendCompositionResult(
                     launchPlan,
                     initialPipelineState,

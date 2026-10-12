@@ -29,7 +29,7 @@ namespace ThirdPersonSimulation
             m_TreeClipEntries = BuildTreeClipEntries(data);
             m_AbilityId = data.AbilityId.Value;
             m_Topology = data.Topology;
-            m_MaxExecutionCount = checked(Math.Max(1024, data.Operations.Count * 128));
+            m_MaxExecutionCount = OperationControlRuntime.EvaluationCapacity(data.Operations.Count);
             m_Runtime = new OperationControlRuntime<Float32AbilityExecutionTarget>(m_Topology, default, m_MaxExecutionCount);
         }
 
@@ -39,22 +39,21 @@ namespace ThirdPersonSimulation
             int maximumReceivedCharacters = payloadBytes / sizeof(char);
             if (payloadBytes > 0 && maximumGeneratedCharacters > maximumReceivedCharacters)
                 throw new InvalidOperationException("Compiled state execution paths exceed MaximumSessionCheckpointPayloadBytes.");
-            int maximumPathCharacters = payloadBytes == 0 ? maximumGeneratedCharacters : maximumReceivedCharacters;
-            int values = checked(maximumRetainedTextReferences + m_MaxExecutionCount);
+            int values = maximumGeneratedCharacters == 0 ? 0 : checked(maximumRetainedTextReferences + m_MaxExecutionCount);
             int characters = checked(values * maximumGeneratedCharacters);
-            m_Runtime.PrepareStateExecutionText(new CanonicalTextStorage(values, characters), maximumPathCharacters);
+            m_Runtime.PrepareStateExecutionText(new CanonicalTextStorage(values, characters), maximumGeneratedCharacters);
         }
 
         int MaximumGeneratedStatePathCharacters()
         {
-            int stateCount = 0;
+            int stateMachineCount = 0;
             for (int i = 0; i < m_Topology.Operations.Count; i++)
-                if (m_Topology.Operations[i].Code == SimulationOperationCode.State)
-                    stateCount++;
+                if (m_Topology.Operations[i].Code == SimulationOperationCode.StateMachine)
+                    stateMachineCount++;
             int handleDigits = 1;
             for (int maximum = m_Topology.Operations.Count - 1; maximum >= 10; maximum /= 10)
                 handleDigits++;
-            return checked(stateCount * (4 + handleDigits + 7 + handleDigits + 1 + 20));
+            return checked(stateMachineCount * (4 + handleDigits + 7 + handleDigits + 1 + 20));
         }
 
         internal void Dispose() => m_Runtime?.Dispose();
@@ -91,7 +90,10 @@ namespace ThirdPersonSimulation
             OperationExecutionResult result;
             try
             {
-                result = m_Runtime.Tick(entry);
+                result = OperationControlRuntime.Execute(m_Runtime, new GraphExecutionEntry(entry, GraphExecutionContract.Resumable));
+                if ((invocation.Hook == AbilityTreeClipHook.OnDisable || invocation.Hook == AbilityTreeClipHook.OnDestroy) &&
+                    !m_Services.Target.ReleaseTreeClipEffects(invocation))
+                    result = OperationExecutionResult.Failure;
             }
             finally
             {
@@ -106,7 +108,7 @@ namespace ThirdPersonSimulation
         static Dictionary<(CanonicalTextValue ClipAuthoringId, int Hook), OperationHandle> BuildTreeClipEntries(Float32GameplayAbilityExecutionData data)
         {
             var entries = new Dictionary<(CanonicalTextValue ClipAuthoringId, int Hook), OperationHandle>();
-            foreach (ProgramSourceMapEntry entry in data.SourceMap)
+            foreach (ProgramExecutionSource entry in data.ExecutionSources)
             {
                 if (entry.TargetKind != ProgramSourceTargetKind.GraphInvocation ||
                     entry.InvocationCallerKind != ProgramInvocationCallerKind.TimelineClip ||
@@ -125,7 +127,8 @@ namespace ThirdPersonSimulation
         public bool EvaluateRuleCondition(OperationHandle condition) =>
             m_Services.EvaluateRuleCondition(m_Runtime.Cursor, condition);
 
-        public OperationExecutionResult Tick(OperationHandle operation) => m_Runtime.Tick(operation);
+        public OperationExecutionResult Tick(OperationHandle operation) =>
+            OperationControlRuntime.Execute(m_Runtime, new GraphExecutionEntry(operation, GraphExecutionContract.Resumable));
 
         public bool IsActive(OperationHandle operation) => m_Runtime.IsActive(operation);
         public bool IsStopping(OperationHandle operation) => m_Runtime.IsStopping(operation);
@@ -218,6 +221,9 @@ namespace ThirdPersonSimulation
         internal AbilityTreeClipInvocation ExchangeTreeClipInvocation(in AbilityTreeClipInvocation invocation) =>
             m_Presentation.ExchangeTreeClipInvocation(invocation);
 
+        internal bool ReleaseTreeClipEffects(in AbilityTreeClipInvocation invocation) =>
+            m_GameplayEffects == null || m_GameplayEffects.ReleaseTreeClipEffects(invocation);
+
         public bool EvaluateCondition(
             OperationControlCursor<Float32AbilityExecutionTarget> cursor,
             ProgramControlFlowEdge edge) => m_Values.EvaluateCondition(cursor, edge);
@@ -284,12 +290,12 @@ namespace ThirdPersonSimulation
                 case SimulationOperationCode.ActionTargetRead:
                 case SimulationOperationCode.ActionContextActive:
                 case SimulationOperationCode.ActionEventReceived:
-                case SimulationOperationCode.ActionWindowActive:
                 case SimulationOperationCode.AbilityActive:
-                case SimulationOperationCode.SelectedSourceWindowActive:
                 case SimulationOperationCode.LocomotionDecision:
                 case SimulationOperationCode.CanActivateAction:
                 case SimulationOperationCode.GameplayEffectHasTag:
+                case SimulationOperationCode.GameplayEffectActive:
+                case SimulationOperationCode.GameplayEffectSourceAllowsCandidate:
                 case SimulationOperationCode.GameplayEffectMatchTags:
                 case SimulationOperationCode.GameplayAttributeRead:
                 case SimulationOperationCode.CameraBasisRead:
@@ -386,6 +392,8 @@ namespace ThirdPersonSimulation
                 invocation.TimelineRuntimeHandle,
                 invocation.ClipAuthoringId,
                 invocation.Cycle);
+            if (m_GameplayEffects != null && !m_GameplayEffects.ReleaseTreeClipEffects(invocation))
+                return OperationExecutionResult.Failure;
             return OperationExecutionResult.Success;
         }
 
@@ -412,7 +420,7 @@ namespace ThirdPersonSimulation
                 var request = new AbilityTimelineStartRequest(
                     operation.Text0,
                     new Float32HandleAllocator(m_Frame).Next(),
-                    (AbilityTimelinePlaybackMode)operation.Integer0,
+                    (BTSMTL.Timeline.TimelinePlaybackMode)operation.Integer0,
                     actionContext,
                     CreateTimelineInvocationSource(operation),
                     action.InputSequence,
@@ -463,7 +471,7 @@ namespace ThirdPersonSimulation
 
         AbilityTimelineInvocationSource CreateTimelineInvocationSource(SimulationOperation operation)
         {
-            ProgramSourceMapEntry source = m_Access.RequireOperationSource(operation);
+            ProgramExecutionSource source = m_Access.RequireOperationSource(operation);
             ulong generation = m_Trace.ReadInvocationGeneration(operation.Handle);
             if (generation == 0)
                 throw new InvalidOperationException($"Ability Timeline operation '{m_Access.SourcePath(operation)}' has no active invocation generation.");

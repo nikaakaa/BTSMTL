@@ -8,11 +8,10 @@ namespace ThirdPersonSimulation.Fixed
         SimulationComponentIdentity Identity { get; }
         void PrepareCheckpointStorage(SimulationSessionCompositionDescriptor descriptor, FixedCharacterRuntime runtime,
             System.Collections.Generic.IReadOnlyList<ISimulationPipelineStateParticipant> participants,
-            in GameplayEffectSessionCapacity capacity, WorldSimulationState publishedWorld);
+            in GameplayEffectSessionCapacity capacity, WorldSimulationState publishedWorld, int stepSnapshotCapacity);
         SimulationSessionCheckpoint CaptureCheckpoint(in SimulationWorldStateSet state,
             SimulationPipelinePassStateSnapshot[] recordedParticipants = null);
         FixedSimulationSessionSnapshot ReadCheckpoint(SimulationSessionCheckpoint checkpoint);
-        void CompleteCheckpointReception(SimulationSessionCheckpoint checkpoint);
         void DisposeCheckpointStorage();
         FixedSimulationSessionSnapshotStorage PrepareStepSnapshotStorage(int retainedSnapshots, int candidateSnapshots);
         FixedSimulationSessionSnapshot CaptureStepSnapshot(in SimulationWorldStateSet state);
@@ -29,7 +28,7 @@ namespace ThirdPersonSimulation.Fixed
     public sealed class FixedSimulationSessionSnapshotCodec : IFixedSimulationSessionSnapshotCodec
     {
         const uint Magic = 0x53534643;
-        const int Version = 6;
+        const int Version = 7;
 
         SimulationSessionCheckpointPayloadStorage m_Checkpoints;
         CheckpointDescriptors[] m_Descriptors;
@@ -40,11 +39,7 @@ namespace ThirdPersonSimulation.Fixed
         CanonicalWriter m_CanonicalWriter;
         bool m_Deterministic;
         FixedSimulationSessionSnapshotStorage m_StepSnapshots;
-        GameplayEffectSessionCapacity m_SessionCapacity;
         WorldSimulationState m_PublishedWorld;
-        int m_MaximumDetachedTextReferences;
-        int m_MaximumDetachedTextPayloads;
-        int m_MaximumTextValuesPerPayload;
 
         internal sealed class CheckpointDescriptors
         {
@@ -94,11 +89,12 @@ namespace ThirdPersonSimulation.Fixed
         public void PrepareCheckpointStorage(
             SimulationSessionCompositionDescriptor descriptor, FixedCharacterRuntime runtime,
             System.Collections.Generic.IReadOnlyList<ISimulationPipelineStateParticipant> participants,
-            in GameplayEffectSessionCapacity capacity, WorldSimulationState publishedWorld)
+            in GameplayEffectSessionCapacity capacity, WorldSimulationState publishedWorld, int stepSnapshotCapacity)
         {
             m_Composition = descriptor;
             m_Runtime = runtime;
-            m_SessionCapacity = capacity;
+            if (!descriptor.CapturesState)
+                return;
             m_PublishedWorld = publishedWorld;
             for (int actor = 0; actor < runtime.Roster.Count; actor++)
             {
@@ -106,45 +102,26 @@ namespace ThirdPersonSimulation.Fixed
                     runtime.ControlModules.RequireContract(runtime.Roster[actor].ControlRuntimeBinding.ModuleId));
                 runtime.Roster[actor].TimelineSnapshotPages.PrepareDecodeLayout(runtime.Roster[actor].TimelineRuntime,
                     descriptor.MaximumSessionCheckpointPayloadBytes);
+                runtime.Roster[actor].TimelineSnapshotPages.PrepareDecodeStorage(capacity.DecodedStatePageCount);
             }
-            long scalarTextValues = checked(12 + 2 * runtime.Roster.Count + publishedWorld.Bodies.Count);
-            long exitTextValues = 0;
-            long treeTextValues = 0;
-            var actorTextValues = new int[runtime.Roster.Count];
-            for (int index = 0; index < participants.Count; index++)
-                scalarTextValues = checked(scalarTextValues + 4 + participants[index].MaximumTextValues);
+            int maximumDetachedTextPayloads = 0;
             for (int actor = 0; actor < runtime.Roster.Count; actor++)
             {
-                SimulationActorBinding binding = runtime.Roster[actor];
-                AbilityTimelineSnapshotDecodeLayout timeline = binding.TimelineSnapshotPages.DecodeLayout;
-                long actorScalars = checked(
-                    FixedCharacterRuntimeStateCodec.MaximumTextValues(binding, binding.CheckpointControlSchema, 0) +
-                    timeline.ScalarTextValues(binding.DeclaredCheckpointIdentityCount));
-                actorTextValues[actor] = SimulationSessionCheckpointPayloadLayout.MaximumNonEmptyTextValues(
-                    descriptor.MaximumSessionCheckpointPayloadBytes, actorScalars, timeline.ExitTextValues, timeline.TreeTextValues);
-                scalarTextValues = checked(scalarTextValues + actorScalars);
-                exitTextValues = checked(exitTextValues + timeline.ExitTextValues);
-                treeTextValues = checked(treeTextValues + timeline.TreeTextValues);
-                m_MaximumDetachedTextReferences = checked(m_MaximumDetachedTextReferences +
-                    runtime.Roster[actor].MaximumDetachedCheckpointTextReferences);
-                m_MaximumDetachedTextPayloads = checked(m_MaximumDetachedTextPayloads +
+                maximumDetachedTextPayloads = checked(maximumDetachedTextPayloads +
                     runtime.Roster[actor].MaximumDetachedCheckpointTextPayloads);
             }
             if (descriptor.MaximumSessionCheckpointPayloadBytes > 0)
             {
                 var encoding = new SimulationCharacterStatePayloadStorage(
                     checked(capacity.StatePageCount + runtime.Roster.Count), descriptor.MaximumSessionCheckpointPayloadBytes,
-                    FixedCharacterRuntimeStateCodec.HashPrefixBytes, actorTextValues);
+                    FixedCharacterRuntimeStateCodec.HashPrefixBytes, runtime.Roster.Count);
                 for (int actor = 0; actor < runtime.Roster.Count; actor++)
                 {
                     runtime.Roster[actor].RuntimeStatePages.EncodingStorage = encoding;
-                    runtime.Roster[actor].RuntimeStatePages.EncodingActorIndex = actor;
                 }
             }
-            m_MaximumTextValuesPerPayload = SimulationSessionCheckpointPayloadLayout.MaximumNonEmptyTextValues(
-                descriptor.MaximumSessionCheckpointPayloadBytes, scalarTextValues, exitTextValues, treeTextValues);
             m_Checkpoints = new SimulationSessionCheckpointPayloadStorage(descriptor, in capacity,
-                m_MaximumTextValuesPerPayload, m_MaximumDetachedTextReferences, m_MaximumDetachedTextPayloads);
+                maximumDetachedTextPayloads, stepSnapshotCapacity);
             m_Participants = new ISimulationPipelineStateParticipant[participants.Count];
             for (int index = 0; index < participants.Count; index++)
                 m_Participants[index] = participants[index];
@@ -174,8 +151,6 @@ namespace ThirdPersonSimulation.Fixed
             m_HashWriter = new CanonicalWriter(new byte[checked(m_Composition.MaximumSessionCheckpointPayloadBytes +
                 FixedCharacterRuntimeStateCodec.HashPrefixBytes)]);
             m_CanonicalWriter = new CanonicalWriter(new byte[m_Composition.MaximumSessionCheckpointPayloadBytes]);
-            for (int actor = 0; actor < m_Runtime.Roster.Count; actor++)
-                m_Runtime.Roster[actor].TimelineSnapshotPages.PrepareDecodeStorage();
         }
 
         public FixedSimulationSessionSnapshotStorage PrepareStepSnapshotStorage(int retainedSnapshots, int candidateSnapshots)
@@ -189,7 +164,8 @@ namespace ThirdPersonSimulation.Fixed
             for (int index = 0; index < m_Participants.Length; index++)
                 if (m_Participants[index].StepProjectionMode == SimulationPipelineStepProjectionMode.Include)
                     participants[target++] = m_Participants[index];
-            var storage = new SimulationSessionCheckpointPayloadStorage(m_Composition, checked(retainedSnapshots + candidateSnapshots), in m_SessionCapacity, m_MaximumTextValuesPerPayload, m_MaximumDetachedTextReferences, m_MaximumDetachedTextPayloads);
+            var storage = new SimulationSessionCheckpointPayloadStorage(m_Composition,
+                checked(retainedSnapshots + candidateSnapshots), m_Checkpoints.ByteStorage);
             if (m_Checkpoints.Count == 0)
                 PrepareEncodingStorage();
             m_StepSnapshots = new FixedSimulationSessionSnapshotStorage(storage, m_Composition, m_Runtime, participants,
@@ -217,6 +193,8 @@ namespace ThirdPersonSimulation.Fixed
         public SimulationSessionCheckpoint CaptureCheckpoint(
             in SimulationWorldStateSet state, SimulationPipelinePassStateSnapshot[] recordedParticipants = null)
         {
+            if (!m_Composition.CapturesState)
+                throw new InvalidOperationException("当前会话未准备历史采集或网络状态保存。");
             SimulationSessionCheckpointPayloadStorage.Page page = m_Checkpoints.Acquire();
             try
             {
@@ -274,7 +252,7 @@ namespace ThirdPersonSimulation.Fixed
         }
 
         void WritePreparedPipeline(CanonicalWriter writer, CheckpointDescriptors descriptors, ulong tick,
-            SimulationPipelinePassStateSnapshot[] recordedParticipants, CanonicalTextReferences text
+            SimulationPipelinePassStateSnapshot[] recordedParticipants, ICanonicalTextResolver text
 #if UNITY_EDITOR
             , ref SimulationSnapshotCaptureProfile profile
 #endif
@@ -310,7 +288,6 @@ namespace ThirdPersonSimulation.Fixed
                 else
                 {
                     SimulationPipelinePassStateSnapshot recorded = recordedParticipants[index];
-                    recorded.TextReferences.CopyTo(text);
                     writer.WriteRawBytes(recorded.Payload.Span);
                 }
                 int end = checked((int)writer.Position);
@@ -348,8 +325,7 @@ namespace ThirdPersonSimulation.Fixed
         {
             SimulationSessionCheckpointPayloadStorage.Page page = checkpoint.PayloadPage ?? m_Checkpoints.Receive(checkpoint);
             CheckpointDescriptors descriptors = m_Descriptors[page.Index];
-            ICanonicalTextResolver resolver = page.ReceptionComplete ? page.Text : page.Text.ReceptionResolver;
-            return ReadStored(page, descriptors, checkpoint.Payload, resolver);
+            return ReadStored(page, descriptors, checkpoint.Payload, page.Text);
         }
 
         FixedSimulationSessionSnapshot ReadStored(SimulationSessionCheckpointPayloadStorage.Page page,
@@ -413,11 +389,10 @@ namespace ThirdPersonSimulation.Fixed
                 throw new InvalidDataException("Checkpoint Pipeline snapshot hash is invalid.");
         }
 
-        public void CompleteCheckpointReception(SimulationSessionCheckpoint checkpoint) =>
-            checkpoint.PayloadPage.ReceptionComplete = true;
-
         public void DisposeCheckpointStorage()
         {
+            if (!m_Composition.CapturesState)
+                return;
             for (int actor = 0; actor < m_Runtime.Roster.Count; actor++)
                 m_Runtime.Roster[actor].RuntimeStatePages.ReleaseEncodingStorage();
             m_Checkpoints.Dispose();
@@ -439,8 +414,8 @@ namespace ThirdPersonSimulation.Fixed
                 page.Writer.WriteRawBytes(bytes);
                 CheckpointDescriptors descriptors = m_StepSnapshots.Descriptors[page.Index];
                 FixedSimulationSessionSnapshot snapshot = ReadStored(page, descriptors,
-                    page.Buffer.AsMemory(0, bytes.Length), page.Text.ReceptionResolver);
-                page.PreparedCheckpoint.CommitPayload(page, snapshot.Tick, snapshot.SnapshotHash, false);
+                    page.Buffer.AsMemory(0, bytes.Length), page.Text);
+                page.PreparedCheckpoint.CommitPayload(page, snapshot.Tick, snapshot.SnapshotHash);
                 snapshot.SetStorage(page);
                 return snapshot;
             }

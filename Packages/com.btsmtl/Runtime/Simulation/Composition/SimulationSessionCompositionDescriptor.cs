@@ -121,6 +121,7 @@ namespace ThirdPersonSimulation
         public SimulationComponentIdentity SnapshotCodec { get; }
         public SimulationComponentIdentity Committer { get; }
         public SimulationComponentIdentity? Model { get; }
+        public bool CapturesState => Model.HasValue || RecordedFrameCapacity > 0;
         public SimulationComponentIdentity? Endpoint { get; }
         public SimulationProtocolIdentity? Protocol { get; }
 

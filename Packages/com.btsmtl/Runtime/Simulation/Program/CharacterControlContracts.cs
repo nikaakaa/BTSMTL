@@ -154,15 +154,6 @@ namespace ThirdPersonSimulation
         public int EvaluationOrder { get; }
     }
 
-    public enum CharacterControlStateValueKind : byte
-    {
-        Boolean = 1,
-        Int32 = 2,
-        UInt64 = 3,
-        Identity = 4,
-        Number = 5
-    }
-
     public enum CharacterControlStateSemantic : ushort
     {
         ActiveState = 1,
@@ -171,23 +162,30 @@ namespace ThirdPersonSimulation
         StateValue = 4
     }
 
-    public sealed class CharacterControlStateFieldDescriptor
+    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+    public sealed partial class CharacterControlStateFieldDescriptor
     {
         public CharacterControlStateFieldDescriptor(
             CharacterControlStateFieldId id,
             CharacterControlStateValueKind valueKind,
             CharacterControlStateSemantic semantic)
         {
-            if (!id.IsValid || !IsValid(valueKind, semantic))
-                throw new ArgumentException("Character control state field is incomplete.");
             Id = id;
             ValueKind = valueKind;
             Semantic = semantic;
+            RequireValid();
         }
 
         public CharacterControlStateFieldId Id { get; }
         public CharacterControlStateValueKind ValueKind { get; }
         public CharacterControlStateSemantic Semantic { get; }
+
+        [CanonicalValidation]
+        void RequireValid()
+        {
+            if (!Id.IsValid || !IsValid(ValueKind, Semantic))
+                throw new ArgumentException("Character control state field is incomplete.");
+        }
 
         static bool IsValid(CharacterControlStateValueKind valueKind, CharacterControlStateSemantic semantic)
         {

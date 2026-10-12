@@ -2,35 +2,38 @@ using System;
 
 namespace ThirdPersonSimulation
 {
-    public readonly struct GameplayTagSourceIdentityValue : IComparable<GameplayTagSourceIdentityValue>, IEquatable<GameplayTagSourceIdentityValue>
+    [CanonicalContract]
+    public readonly partial struct GameplayTagSourceIdentityValue : IComparable<GameplayTagSourceIdentityValue>, IEquatable<GameplayTagSourceIdentityValue>
     {
         readonly CanonicalTextValue m_Literal;
         readonly ulong m_Number;
         readonly byte m_Kind;
         readonly ActorId m_Actor;
         readonly EquipmentSlotId m_Slot;
+        readonly GameplayEffectScope m_Scope;
 
         public static readonly GameplayTagSourceIdentityValue Empty = Literal(string.Empty);
 
-        GameplayTagSourceIdentityValue(CanonicalTextValue literal, ulong number, byte kind)
+        GameplayTagSourceIdentityValue(CanonicalTextValue literal, ulong number, byte kind, GameplayEffectScope scope = default)
         {
             m_Literal = literal;
             m_Number = number;
             m_Kind = kind;
             m_Actor = default;
             m_Slot = default;
+            m_Scope = scope;
+            RequireRecord();
         }
 
         public static GameplayTagSourceIdentityValue Literal(CanonicalTextValue source) => new GameplayTagSourceIdentityValue(source, 0, 0);
 
         public static GameplayTagSourceIdentityValue Action(ulong actionInstanceId)
         {
-            if (actionInstanceId == 0)
-                throw new ArgumentOutOfRangeException(nameof(actionInstanceId));
             return new GameplayTagSourceIdentityValue(null, actionInstanceId, 1);
         }
 
-        public static GameplayTagSourceIdentityValue Effect(ulong effectHandle) => new GameplayTagSourceIdentityValue(null, effectHandle, 2);
+        public static GameplayTagSourceIdentityValue Effect(ulong effectHandle, GameplayEffectScope scope) =>
+            new GameplayTagSourceIdentityValue(null, effectHandle, 2, scope);
 
         GameplayTagSourceIdentityValue(ActorId actor, EquipmentSlotId slot, ulong revision)
         {
@@ -39,6 +42,8 @@ namespace ThirdPersonSimulation
             m_Kind = 3;
             m_Actor = actor;
             m_Slot = slot;
+            m_Scope = default;
+            RequireRecord();
         }
 
         public static GameplayTagSourceIdentityValue Equipment(ActorId actor, EquipmentSlotId slot, ulong revision) =>
@@ -49,36 +54,22 @@ namespace ThirdPersonSimulation
             m_Kind == 0 && m_Literal != "initial";
         public ActorId Actor => m_Actor;
         public EquipmentSlotId Slot => m_Slot;
+        public GameplayEffectScope Scope => m_Scope;
         int IdentityBufferLength => m_Kind == 3 ? 14 + DigitCount((ulong)m_Actor.Value.Length) +
             m_Actor.Value.Length + DigitCount((ulong)m_Slot.Value.Length) + m_Slot.Value.Length + 20 : 27;
         public byte Kind => m_Kind;
         public CanonicalTextValue LiteralIdentity => m_Literal;
         public ulong NumericIdentity => m_Number;
 
-        public void Retain()
-        {
-            if (m_Kind == 0)
-                m_Literal.Retain();
-            else if (m_Kind == 3)
-            {
-                CanonicalTextValue actor = m_Actor.Value;
-                CanonicalTextValue slot = m_Slot.Value;
-                actor.Retain();
-                slot.Retain();
-            }
-        }
+        public void Retain() => CanonicalRetain(in this);
+        public void Release() => CanonicalRelease(in this);
 
-        public void Release()
+        [CanonicalValidation]
+        void RequireRecord()
         {
-            if (m_Kind == 0)
-                m_Literal.Release();
-            else if (m_Kind == 3)
-            {
-                CanonicalTextValue actor = m_Actor.Value;
-                CanonicalTextValue slot = m_Slot.Value;
-                actor.Release();
-                slot.Release();
-            }
+            if (m_Kind > 3 || (m_Kind == 1 || m_Kind == 2) && m_Number == 0 ||
+                m_Kind == 3 && (!m_Actor.IsValid || !m_Slot.IsValid || m_Number == 0))
+                throw new ArgumentException("Gameplay Tag source identity is incomplete.");
         }
 
         public int CompareTo(GameplayTagSourceIdentityValue other)
@@ -90,7 +81,14 @@ namespace ThirdPersonSimulation
                 if (m_Kind != other.m_Kind)
                     return m_Kind < other.m_Kind ? -1 : 1;
                 if (m_Kind != 3)
-                    return CompareNumbers(m_Number, other.m_Number);
+                {
+                    int numberOrder = CompareNumbers(m_Number, other.m_Number);
+                    if (numberOrder != 0)
+                        return numberOrder;
+                    int actionOrder = m_Scope.ActionInstanceId.CompareTo(other.m_Scope.ActionInstanceId);
+                    return actionOrder != 0 ? actionOrder :
+                        m_Scope.ExecutionGeneration.CompareTo(other.m_Scope.ExecutionGeneration);
+                }
             }
             Span<char> leftBuffer = stackalloc char[IdentityBufferLength];
             Span<char> rightBuffer = stackalloc char[other.IdentityBufferLength];
@@ -109,7 +107,7 @@ namespace ThirdPersonSimulation
             uint hash = 2166136261;
             for (int index = 0; index < identity.Length; index++)
                 hash = unchecked((hash ^ identity[index]) * 16777619);
-            return unchecked((int)hash);
+            return HashCode.Combine(unchecked((int)hash), m_Scope);
         }
 
         static int CompareNumbers(ulong left, ulong right)
@@ -177,37 +175,6 @@ namespace ThirdPersonSimulation
             offset += written;
         }
 
-        internal void Write(CanonicalWriter writer)
-        {
-            writer.WriteByte(m_Kind);
-            switch (m_Kind)
-            {
-                case 0:
-                    writer.WriteText(in m_Literal);
-                    break;
-                case 3:
-                    writer.WriteText(m_Actor.Value);
-                    writer.WriteText(m_Slot.Value);
-                    writer.WriteUInt64(m_Number);
-                    break;
-                default:
-                    writer.WriteUInt64(m_Number);
-                    break;
-            }
-        }
-
-        static readonly Func<CanonicalReader, CanonicalTextValue> s_ReadIdentity = reader => reader.ReadText();
-
-        public static GameplayTagSourceIdentityValue Read(CanonicalReader reader) => Read(reader, s_ReadIdentity);
-
-        internal static GameplayTagSourceIdentityValue Read(CanonicalReader reader, Func<CanonicalReader, CanonicalTextValue> readIdentity) => reader.ReadByte() switch
-        {
-            0 => Literal(readIdentity(reader)),
-            1 => Action(reader.ReadUInt64()),
-            2 => Effect(reader.ReadUInt64()),
-            3 => Equipment(new ActorId(readIdentity(reader)), new EquipmentSlotId(readIdentity(reader)), reader.ReadUInt64()),
-            _ => throw new System.IO.InvalidDataException("Gameplay Tag source kind is invalid.")
-        };
     }
 }
 

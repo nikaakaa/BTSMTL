@@ -103,8 +103,8 @@ namespace ThirdPersonSimulation
             SimulationInputRequestState inputRequest = m_Frame.ReadInputRequest(requestId);
 			return m_Activation.ActivateImmediate(
 				new ActionSkillActivationCandidate<SimulationActionTargetSnapshot, SimulationOperation>(
-					default,
-					OperationHandle.Invalid,
+					m_Frame.Data.AbilityId,
+					RequireAbility(m_Frame.Data.AbilityId).EntryOperation,
 					GetStringConstant(operation, OperationNamedConstant.ActionContext, string.Empty),
                     inputRequest,
                     GetBooleanConstant(operation, OperationNamedConstant.ConsumeSourceInputRequest, true),
@@ -116,18 +116,6 @@ namespace ThirdPersonSimulation
                     requiresSourceInputRequest: !string.IsNullOrEmpty(requestId)),
                 profile);
 		}
-
-        public bool IsWindowActive(SimulationOperation operation)
-        {
-            if (!m_Actions.TryGetCurrentSkillExecution(out Float32ActionInstanceState action) || !action.IsActive)
-            {
-                if (m_Trace.Enabled)
-                    m_Trace.Add(operation, "action_window_inactive", SimulationTraceSeverity.Detail, operation.Text0);
-                return false;
-            }
-            GameplayAbilitySourceContext source = action.SourceContext;
-            return m_Blackboard.IsActionWindowActive(operation, in source);
-        }
 
 		public bool IsContextActive(CanonicalTextValue contextId) => m_Actions.IsContextActive(contextId);
 		public bool IsAbilityActive(CharacterSkillId abilityId) => m_Actions.IsAbilityActive(abilityId);
@@ -168,10 +156,12 @@ namespace ThirdPersonSimulation
             in GameplayAbilitySourceContext replacementSource)
 			where TTarget : struct, IOperationControlTarget<TTarget>
 		{
-			ActionAdmissionProfile profile = RequireAdmissionProfile(operation);
+			CharacterSkillId candidateSkillId = new CharacterSkillId(GetStringConstant(operation, OperationNamedConstant.CandidateAbility, string.Empty));
+            GameplayAbilityExecutionBinding candidate = RequireAbility(candidateSkillId);
+            ActionAdmissionProfile profile = m_ActionBindings.RequireAdmissionProfile(candidateSkillId, candidate.AdmissionProfileId);
 			ulong executingInstanceId = m_Actions.TryGetCurrentSkillExecution(out Float32ActionInstanceState action)
 				? action.InstanceId : 0;
-            return m_Activation.Preview(profile, ReadActionTargetSnapshot(cursor, operation),
+            return m_Activation.Preview(candidateSkillId, profile, ReadActionTargetSnapshot(cursor, operation),
                 in replacementSource, executingInstanceId);
         }
 
@@ -185,12 +175,17 @@ namespace ThirdPersonSimulation
                 string.IsNullOrEmpty(ability.TargetInputValueId)
                     ? SimulationActionTargetSnapshot.None
                     : m_InputRuntime.ReadValue(ability.TargetInputValueId, ProgramInputValueKind.ActionTargetSnapshot).ActionTargetSnapshot;
+            GameplayEffectOpportunityReference opportunity = default;
+            if (rule.OpportunityQuery.IsValid)
+                m_GameplayEffectActions.TryFindOpportunity(GameplayEffectScope.Action(source),
+                    Access.Services.RequireTagQuery(rule.OpportunityQuery), out opportunity, out grantTarget);
             return new ActionSkillActivationCandidate<SimulationActionTargetSnapshot, SimulationOperation>(
                 ability.SkillId, ability.EntryOperation, ability.ActionContextId,
                 inputRequest, ability.ConsumeSourceInputRequest, ability.TargetKey,
                 grantTarget, SimulationExecutionSource.FromAbilityRule(ability.SkillId, rule.Id, rule.Phase),
                 default, replacementSource: source, activationEntryId: rule.ActivationEntryId,
-                targetPolicy: rule.TargetPolicy, requiresSourceInputRequest: string.IsNullOrEmpty(rule.TriggerEventId));
+                targetPolicy: rule.TargetPolicy, requiresSourceInputRequest: string.IsNullOrEmpty(rule.TriggerEventId),
+                requiresOpportunity: rule.OpportunityQuery.IsValid, opportunity: opportunity);
 		}
 
         public ActionActivationSubmission SubmitRule(GameplayAbilityExecutionBinding ability,
@@ -285,7 +280,10 @@ namespace ThirdPersonSimulation
 				payload.Reason), payload.GameplayEffectCommands);
 		}
 
-        GameplayEffectApplyResult IActionAdmissionReadPort.EvaluateStartupEffects()
+        GameplayEffectApplyResult IActionAdmissionReadPort.EvaluateStartupEffects(CharacterSkillId candidateSkillId) =>
+            ((Float32ActionRuntime)m_ActionRuntimes[candidateSkillId]).EvaluateStartupEffects();
+
+        GameplayEffectApplyResult EvaluateStartupEffects()
         {
             for (int i = 0; i < m_StartupEffects.Count; i++)
             {
@@ -390,8 +388,13 @@ namespace ThirdPersonSimulation
         {
             if (m_GameplayEffectActions != null)
             {
+                GameplayEffectRemoveResult released = m_GameplayEffectActions.ReleaseActionEffects(action.InstanceId);
+                if (released.Kind != GameplayEffectRemoveResultKind.Removed && released.Kind != GameplayEffectRemoveResultKind.NoMatch)
+                    throw new InvalidOperationException($"Action effect release failed: {released.Failure.Reason}.");
                 m_GameplayEffectActions.RemoveActionTags(action.InstanceId);
-                m_GameplayEffectActions.CommitActionMutation(source);
+                GameplayEffectApplyResult committed = m_GameplayEffectActions.CommitActionMutation(source);
+                if (!committed.AcceptedMutation)
+                    throw new InvalidOperationException($"Action effect mutation failed: {committed.Reason}.");
             }
         }
 
@@ -462,6 +465,23 @@ namespace ThirdPersonSimulation
         IReadOnlyList<string> IActionAdmissionReadPort.ReadAbilityTags(CharacterSkillId skillId) =>
             m_ActionBindings.RequireActionBinding(skillId).Tags;
 
+        bool IActionAdmissionReadPort.TryFindAbilityBlock(CharacterSkillId candidateSkillId, GameplayEffectScope scope, out ulong effectHandle)
+        {
+            effectHandle = 0;
+            return m_GameplayEffectActions != null && m_GameplayEffectActions.TryFindAbilityBlock(
+                m_ActionBindings.RequireActionBinding(candidateSkillId).Tags, scope, out effectHandle);
+        }
+
+        bool IActionAdmissionReadPort.TryFindReplacementSourceRejection(CharacterSkillId candidateSkillId, in GameplayAbilitySourceContext source,
+            out ulong effectHandle)
+        {
+            effectHandle = 0;
+            return m_GameplayEffectActions != null && m_GameplayEffectActions.TryFindReplacementSourceRejection(
+                m_ActionBindings.RequireActionBinding(candidateSkillId).Tags,
+                source.IsValid ? m_ActionBindings.RequireActionBinding(source.SkillId).Tags : Array.Empty<string>(),
+                source.IsValid, out effectHandle);
+        }
+
         int IActionAdmissionReadPort.GameplayTagCapacity => Access.Services.GameplayEffectCatalog == null
             ? 0 : Access.Services.GameplayEffectCatalog.TagParents.Count;
 
@@ -482,6 +502,10 @@ namespace ThirdPersonSimulation
             m_Actions.IsInputRequestPending(in request);
 
 		void IActionSkillActivationPort<SimulationActionTargetSnapshot, SimulationOperation, Float32ActionActivationSavepoint>.ClearInputRequest(CanonicalTextValue requestId) => m_InputRuntime.ClearRequest(requestId);
+
+        bool IActionSkillActivationPort<SimulationActionTargetSnapshot, SimulationOperation, Float32ActionActivationSavepoint>.ConsumeOpportunity(
+            GameplayEffectOpportunityReference opportunity, SimulationExecutionSource source) =>
+            m_GameplayEffectActions.ConsumeOpportunity(opportunity, source);
 
 		SimulationActionTargetSnapshot IActionSkillActivationPort<SimulationActionTargetSnapshot, SimulationOperation, Float32ActionActivationSavepoint>.NoneTarget =>
 			SimulationActionTargetSnapshot.None;
@@ -526,7 +550,7 @@ namespace ThirdPersonSimulation
 					request.Source,
 					request.EquipmentContext,
                     request.ReplacementSource, request.ActivationEntryId,
-                    request.ConsumeSourceInputRequest));
+                    request.ConsumeSourceInputRequest, request.Opportunity));
 		}
 
 		bool IActionSkillActivationPort<SimulationActionTargetSnapshot, SimulationOperation, Float32ActionActivationSavepoint>.TryReadPendingRequest(
@@ -552,7 +576,7 @@ namespace ThirdPersonSimulation
 				staged.Source,
 				staged.EquipmentContext,
                 staged.ReplacementSource, staged.ActivationEntryId,
-                staged.ConsumeSourceInputRequest);
+                staged.ConsumeSourceInputRequest, staged.Opportunity);
 			return true;
 		}
 
@@ -696,14 +720,14 @@ namespace ThirdPersonSimulation
             ulong actionInstanceId,
             ulong inputSequence,
             SimulationActionResultKind result,
-            CanonicalTextValue reason, in GameplayAbilitySourceContext ruleSource) => m_Trace.AddActionResult(
+            CanonicalTextValue reason, in GameplayAbilitySourceContext ruleSource, ulong effectHandle) => m_Trace.AddActionResult(
                 operation,
                 actionId,
                 skillId,
                 actionInstanceId,
                 inputSequence,
                 result,
-                reason, ruleSource: in ruleSource);
+                reason, ruleSource: in ruleSource, effectHandle: effectHandle);
 
         void IActionSkillActivationPort<SimulationActionTargetSnapshot, SimulationOperation, Float32ActionActivationSavepoint>.TraceActionResult(
             SimulationExecutionSource source,
@@ -712,14 +736,14 @@ namespace ThirdPersonSimulation
             ulong actionInstanceId,
             ulong inputSequence,
             SimulationActionResultKind result,
-            CanonicalTextValue reason, in GameplayAbilitySourceContext ruleSource) => m_Trace.AddActionResult(
+            CanonicalTextValue reason, in GameplayAbilitySourceContext ruleSource, ulong effectHandle) => m_Trace.AddActionResult(
                 source,
                 actionId,
                 skillId,
                 actionInstanceId,
                 inputSequence,
                 result,
-                reason, ruleSource: in ruleSource);
+                reason, ruleSource: in ruleSource, effectHandle: effectHandle);
 
 		ulong IAbilityLifecyclePort<Float32ActionInstanceState, SimulationGameplayEffectLifecycleIngress>.Tick => m_Frame.Tick.Value;
 
@@ -845,12 +869,13 @@ namespace ThirdPersonSimulation
 			SimulationOperation operation)
 			where TTarget : struct, IOperationControlTarget<TTarget>
 		{
-			if (!m_Layout.TryGetActionTargetSnapshot(operation.Handle, out TypedStateAddress address))
-				return SimulationActionTargetSnapshot.None;
-			AbilityStateValue value = m_Blackboard.Read(cursor, operation, address.SlotIndex);
-			if (value.Kind != ProgramStateValueKind.ActionTargetSnapshot)
-				throw new InvalidOperationException($"Action target snapshot for '{SourcePath(operation)}' has kind '{value.Kind}'.");
-			return value.ActionTargetSnapshot;
+            BlackboardTargetProjection target = m_Layout.TargetProjection(operation.Handle);
+            if (!target.IsValid)
+                return SimulationActionTargetSnapshot.None;
+            return new SimulationActionTargetSnapshot(
+                m_Blackboard.Read(cursor, operation, target.Identity).Identity,
+                m_Blackboard.Read(cursor, operation, target.Position).Vector3,
+                new Float32Yaw(m_Blackboard.Read(cursor, operation, target.Yaw).Scalar));
 		}
 
 		static SimulationTraceSeverity ToTraceSeverity(ActionSkillTraceSeverity severity) =>

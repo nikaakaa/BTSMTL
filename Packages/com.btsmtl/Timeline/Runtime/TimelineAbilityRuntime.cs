@@ -38,7 +38,6 @@ namespace ThirdPersonSimulation
         Playback[] m_Pool;
         int m_AcquiredPoolLength;
         IAbilityTreeClipInvoker m_Invoker;
-        ulong m_NextSequence;
 
         public TimelineAbilityRuntime(TimelineContentArtifact artifact, CharacterControlRuntimeBinding controlBinding,
             int tickRate, IReadOnlyList<Float32GameplayAbilityExecutionData> abilityData)
@@ -50,23 +49,24 @@ namespace ThirdPersonSimulation
             {
                 m_CapacityModes[i] = TimelinePlaybackMode.Once;
                 for (int program = 0; program < abilityData.Count; program++)
-                    for (int op = 0; op < abilityData[program].OperationDefinitions.Count; op++)
+                    for (int op = 0; op < abilityData[program].Operations.Count; op++)
                     {
-                        SimulationOperationDefinition operation = abilityData[program].OperationDefinitions[op];
+                        SimulationOperation operation = abilityData[program].Operations[op];
                         if (operation.Code == SimulationOperationCode.Timeline && operation.Text0 == artifact.Timelines[i].Identity &&
-                            operation.Integer0 == (int)AbilityTimelinePlaybackMode.Loop)
+                            operation.Integer0 == (int)BTSMTL.Timeline.TimelinePlaybackMode.Loop)
                             m_CapacityModes[i] = TimelinePlaybackMode.Loop;
                     }
             }
             var graphs = new Dictionary<string, string>(StringComparer.Ordinal);
             for (int i = 0; i < abilityData.Count; i++)
-                for (int j = 0; j < abilityData[i].SourceMap.Count; j++)
+                for (int j = 0; j < abilityData[i].ExecutionSources.Count; j++)
                 {
-                    ProgramSourceMapEntry source = abilityData[i].SourceMap[j];
+                    ProgramExecutionSource source = abilityData[i].ExecutionSources[j];
                     string identity = "tree:" + source.GraphId;
-                    if (graphs.TryGetValue(identity, out string revision) && revision != source.ContentHash)
+                    string sourceRevision = abilityData[i].GraphSourceRevisions.Require(source.GraphId);
+                    if (graphs.TryGetValue(identity, out string revision) && revision != sourceRevision)
                         throw new InvalidOperationException($"Timeline graph '{identity}' has conflicting installed revisions.");
-                    graphs[identity] = source.ContentHash;
+                    graphs[identity] = sourceRevision;
                 }
             for (int i = 0; i < artifact.Timelines.Count; i++)
             {
@@ -124,7 +124,7 @@ namespace ThirdPersonSimulation
 
         public int MaximumMotionContributionsPerAdvance => m_Evaluations.MaximumMotionContributionsPerAdvance;
 
-        public void PrepareSnapshotStorage(in GameplayEffectSessionCapacity capacity, int maximumSessionCheckpointPayloadBytes)
+        public void PrepareSnapshotStorage(in GameplayEffectSessionCapacity capacity)
         {
             int count = AbilityTimelineRuntimeLimits.MaximumPlaybackCount;
             var storage = new CanonicalTextStorage(checked(count * (capacity.StatePageCount + 1)),
@@ -197,7 +197,7 @@ namespace ThirdPersonSimulation
                 return new AbilityTimelineTickResult(Status(runtime.State), default);
             playback.Advance = runtime.Advance(runtime.CreateAdvanceRequest(logicTick, tickCount, control));
             TimelineRuntimeAdvanceResult advance = playback.Advance;
-            playback.Pending = new AbilityTimelineAdvancePending(runtimeHandle, checked(++m_NextSequence),
+            playback.Pending = new AbilityTimelineAdvancePending(runtimeHandle, advance.AdvanceSequence,
                 Progress(playback, logicTick, advance.PreviousTime, advance.Time, advance.PreviousCycle, advance.Cycle,
                     advance.Completes ? AbilityTimelineProgressState.Completed : AbilityTimelineProgressState.Active, control));
             try
@@ -263,7 +263,7 @@ namespace ThirdPersonSimulation
             Playback playback = m_Playbacks[runtimeHandle];
             if (!playback.Runtime.RequestStop(new TimelinePlaybackStopContext(TimelinePlaybackStopCause.ExplicitParentStop, logicTick)))
                 return new AbilityTimelineStopResult(Status(playback.Runtime.State), default, playback.Request.ActionContext.InstanceId);
-            playback.Stop = new AbilityTimelineStopPending(runtimeHandle, checked(++m_NextSequence),
+            playback.Stop = new AbilityTimelineStopPending(runtimeHandle, playback.Runtime.PendingStopSequence,
                 Progress(playback, logicTick, playback.Runtime.CursorTime, playback.Runtime.CursorTime,
                     playback.Runtime.Cycle, playback.Runtime.Cycle, AbilityTimelineProgressState.Stopped, playback.Runtime.Control));
             try
@@ -312,8 +312,9 @@ namespace ThirdPersonSimulation
             if (playback.Runtime.HasPendingAdvance || playback.Runtime.HasPendingStop)
                 throw new InvalidOperationException("Timeline Capture requires a committed boundary.");
             AbilityTimelineSnapshotStorage storage = playback.Runtime.SnapshotStorage.BeginWrite();
-            return TimelineAbilitySnapshotCodec.Capture(new TimelineRuntimePlaybackSnapshot(playback.Runtime, storage),
-                playback.Request, storage.ActiveTreeClips.Capture(playback.Runtime.ActiveTreeClips));
+            return new AbilityTimelineRuntimeSnapshot(playback.Request,
+                new TimelineRuntimePlaybackSnapshot(playback.Runtime, storage).Playback,
+                storage.ActiveTreeClips.Capture(playback.Runtime.ActiveTreeClips));
         }
 
         public ulong ApplyRestore(AbilityTimelineRuntimeSnapshot snapshot, ulong logicTick)
@@ -331,18 +332,17 @@ namespace ThirdPersonSimulation
                 playback.Runtime.ReleaseForReuse();
             }
             playback.SetRequest(new AbilityTimelineStartRequest(snapshot.TimelineId, snapshot.RuntimeHandle,
-                (AbilityTimelinePlaybackMode)snapshot.PlaybackMode, snapshot.ActionContext, snapshot.InvocationSource,
+                (BTSMTL.Timeline.TimelinePlaybackMode)snapshot.PlaybackMode, snapshot.ActionContext, snapshot.InvocationSource,
                 snapshot.InputSequence, snapshot.StartTick, snapshot.StartTime));
             var identity = new TimelineExecutionIdentity(snapshot.OwnerIdentity, snapshot.CallIdentity, snapshot.ExecutionInstanceId);
             var preparation = new TimelineRuntimePreparationResult(new TimelineRuntimePrepareRequest(snapshot.RequestId,
                 m_Contents[content.Identity], identity, (TimelinePlaybackMode)snapshot.PlaybackMode, snapshot.StartTime));
             playback.Runtime.ResetForReuse(new TimelineRuntimePlaybackHandle(snapshot.RuntimeHandle), snapshot.Generation, preparation);
-            TimelineRuntimePlaybackSnapshot native = TimelineAbilitySnapshotCodec.Restore(snapshot, playback.Runtime.Handle,
-                snapshot.Generation, identity, (TimelinePlaybackMode)snapshot.PlaybackMode, TimelineRuntimeNumericTarget.Float32, m_TickRate);
-            if (!playback.Runtime.RestoreCommittedState(native.State, native.CursorTime, native.Cycle, native.TimeCarry,
-                    native.Control, native.SectionId, native.ActiveClipIds.Span, native.TreeDecisionExits.Span,
-                    native.PendingTreeDecisionExits.Span, native.HasStopContext, native.StopContext, native.InitialBoundaryPending))
-                throw new InvalidOperationException("Timeline restore candidate is not a committed state.");
+            TimelineRuntimePlaybackSnapshot native = new TimelineRuntimePlaybackSnapshot(playback.Runtime.Handle,
+                snapshot.Generation, snapshot.PlaybackMode, TimelineRuntimeNumericTarget.Float32, m_TickRate, snapshot.Playback);
+            playback.Runtime.RestoreCommittedState(native.Playback.State, native.Playback.CursorTime, native.Playback.Cycle, native.Playback.TimeCarry,
+                native.Playback.Control, native.Playback.SectionId, native.Playback.ActiveClipIds.Span, native.Playback.TreeDecisionExits.Span,
+                native.Playback.PendingTreeDecisionExits.Span, native.Playback.HasStopContext, native.Playback.StopContext, native.Playback.InitialBoundaryPending);
             TimelineRuntimeTreeClipLifecycle.Restore(playback.Runtime, snapshot.ActiveTreeClips);
             playback.Pending = default;
             playback.Stop = default;

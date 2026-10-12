@@ -8,41 +8,33 @@ namespace ThirdPersonSimulation.Fixed
     {
         [ThirdPersonPerformance.Instrumentation.PerformanceProbe("simulation.character.evaluate")]
         public static FixedCharacterEvaluationResult Evaluate(
-            FixedCharacterRuntime characterRuntime,
             SimulationActorBinding actor,
-            FixedCharacterRuntimeState sourceState,
-            SimulationTick tick,
-            SimulationInput input,
-            SimulationIngress[] ingress,
-            int ingressCount,
-            WorldBodyState beforeBody,
-            FixedCombatRuntime combat,
-            bool diagnosticsEnabled,
-            bool captureMotion,
-            bool captureValues,
-            bool captureControlFlow,
-            bool captureBlackboard,
-            bool applyBlackboardCommands,
+            in FixedCharacterEvaluationInput evaluation,
             out CharacterWorldSolveRequest worldRequest)
         {
 #if UNITY_EDITOR
             long stageStarted = System.Diagnostics.Stopwatch.GetTimestamp();
 #endif
-            if (characterRuntime == null)
-                throw new ArgumentNullException(nameof(characterRuntime));
-            if (actor == null)
-                throw new ArgumentNullException(nameof(actor));
-            if (sourceState.NumericProfile != characterRuntime.NumericProfile ||
-                beforeBody.ActorId != actor.ActorId ||
-                input.NumericProfile != characterRuntime.NumericProfile)
-                throw new InvalidOperationException("Fixed Character evaluation identity does not match the active Character Runtime.");
+            FixedCharacterRuntimeState sourceState = evaluation.State;
+            SimulationTick tick = evaluation.Tick;
+            SimulationInput input = evaluation.Input;
+            SimulationIngress[] ingress = evaluation.Ingress;
+            int ingressCount = evaluation.IngressCount;
+            WorldBodyState beforeBody = evaluation.Body;
+            bool diagnosticsEnabled = evaluation.DiagnosticsEnabled;
+            bool captureValues = evaluation.CaptureValues;
+            bool captureControlFlow = evaluation.CaptureControlFlow;
+            bool captureBlackboard = evaluation.CaptureBlackboard;
+            bool captureMotion = evaluation.CaptureMotion;
+            bool applyBlackboardCommands = evaluation.ApplyBlackboardCommands;
+            FixedCombatEvaluation combat = evaluation.Combat;
 
             FixedGameplayEffectRuntimeCatalog effectCatalog = actor.AbilityInstallations.GameplayEffectCatalog;
             actor.EvaluationOutput.BeginMotionWarpState(actor.MotionWarpPages, sourceState.MotionWarpStates);
             var roleState = actor.RuntimeState.Restart(
                 sourceState,
                 tick,
-                characterRuntime.TickRate,
+                evaluation.TickRate,
                 effectCatalog,
                 actor.InputRequestState,
                 actor.ActionState,
@@ -79,7 +71,6 @@ namespace ThirdPersonSimulation.Fixed
                 actor.CombatQueries.Clear();
                 evaluationOutput.BeginDiagnostics(diagnosticsEnabled || captureMotion);
                 abilityInput.Begin(input, ingress, ingressCount);
-                actor.CaptureAvailabilityFrameEvents(ingress, ingressCount);
                 ApplyReactionTargets(actor.ActorId, roleState.ActionState, ingress, ingressCount);
                 actionOwners.Clear();
                 ReadOnlySpan<FixedActionInstanceState> sourceActions = sourceState.ActionInstances;
@@ -96,12 +87,12 @@ namespace ThirdPersonSimulation.Fixed
                     abilityInput,
                     bodyFacts,
                     tick,
-                    characterRuntime.TickRate,
-                    combat.ActionTimeScale(actor.ActorId));
+                    evaluation.TickRate,
+                    combat.ActionTimeScale);
                 FixedCharacterTraceSink characterTraceSink = actor.CharacterTraceSink;
                 characterTraceSink.Bind(evaluationOutput);
                 characterTraceSink.Begin(
-                    characterRuntime.NumericProfile,
+                    evaluation.NumericProfile,
                     actor.GameplayContentHash,
                     actor.ActorId,
                     tick,
@@ -137,10 +128,17 @@ namespace ThirdPersonSimulation.Fixed
 
                 roleState.InputRequests.ApplyRequests(input.Requests);
 
+#if UNITY_EDITOR
+                long inputStarted = System.Diagnostics.Stopwatch.GetTimestamp();
+                evaluationOutput.EvaluationInputsPrepareElapsedStopwatchTicks = inputStarted - stageStarted;
+#endif
                 bool effectAdvanced = false;
                 for (int i = 0; i < invocationCount; i++)
                 {
                     FixedAbilityInvocationRuntime invocation = invocations[i];
+#if UNITY_EDITOR
+                    inputStarted = System.Diagnostics.Stopwatch.GetTimestamp();
+#endif
                     ApplyIngress(invocation, ingress, ingressCount, actionOwners);
                     if (!effectAdvanced && invocation.HasGameplayEffects)
                     {
@@ -148,23 +146,39 @@ namespace ThirdPersonSimulation.Fixed
                         invocation.AdvanceGameplayEffects();
                         effectAdvanced = true;
                     }
+#if UNITY_EDITOR
+                    long inputFinished = System.Diagnostics.Stopwatch.GetTimestamp();
+                    evaluationOutput.EvaluationInputsIngressElapsedStopwatchTicks += inputFinished - inputStarted;
+                    inputStarted = inputFinished;
+#endif
                     invocation.ApplyInputBindings();
+#if UNITY_EDITOR
+                    evaluationOutput.EvaluationInputsBindingsElapsedStopwatchTicks +=
+                        System.Diagnostics.Stopwatch.GetTimestamp() - inputStarted;
+#endif
                 }
 
                 if (!effectAdvanced)
                     RequireNoGameplayEffectIngress(ingress, ingressCount);
 
 #if UNITY_EDITOR
+                inputStarted = System.Diagnostics.Stopwatch.GetTimestamp();
+#endif
+                for (int index = 0; index < invocationCount; index++)
+                    invocations[index].ApplyBlackboardInputs(applyBlackboardCommands);
+
+#if UNITY_EDITOR
                 stageFinished = System.Diagnostics.Stopwatch.GetTimestamp();
+                evaluationOutput.EvaluationInputsBlackboardElapsedStopwatchTicks = stageFinished - inputStarted;
                 evaluationOutput.EvaluationInputsElapsedStopwatchTicks = stageFinished - stageStarted;
                 stageStarted = stageFinished;
 #endif
-                FixedCharacterControlRuntime control = characterRuntime.ControlRuntime(actor.ActorId);
+                FixedCharacterControlRuntime control = evaluation.Control;
                 control.Begin(
                     roleState,
                     tick,
                     bodyFacts,
-                    combat.ActionTimeScale(actor.ActorId));
+                    combat.ActionTimeScale);
                 control.PrepareDecision();
                 FixedAbilityActivationRuleRuntime rules = actor.ActivationRules;
                 rules.BeforeAbility(control, roleState.InputRequests, roleState.ActionState);
@@ -182,7 +196,7 @@ namespace ThirdPersonSimulation.Fixed
                 for (int i = 0; i < invocationCount; i++)
                 {
                     FixedAbilityInvocationRuntime invocation = invocations[i];
-                    invocation.Tick(applyBlackboardCommands);
+                    invocation.Tick();
 #if UNITY_EDITOR
                     stageFinished = System.Diagnostics.Stopwatch.GetTimestamp();
                     evaluationOutput.EvaluationAbilitiesTickElapsedStopwatchTicks += stageFinished - stageStarted;
@@ -231,7 +245,7 @@ namespace ThirdPersonSimulation.Fixed
                     invocation.Accept(roleState);
                 }
                 trace.AddRange(characterTrace);
-                FixedScalar tickDelta = FixedScalar.One / FixedScalar.FromInt64(characterRuntime.TickRate);
+                FixedScalar tickDelta = FixedScalar.One / FixedScalar.FromInt64(evaluation.TickRate);
                 BodyMotionPrepareResult bodyMotion = CharacterBodyMotionRuntime.Prepare(
                     actor.ActorId,
                     tick,
@@ -239,10 +253,10 @@ namespace ThirdPersonSimulation.Fixed
                     gameplayMotion,
                     actor.BodyMotionBinding,
                     tickDelta);
-                WorldCapability requiredCapabilities = characterRuntime.RequiredWorldCapabilities |
+                WorldCapability requiredCapabilities = evaluation.RequiredWorldCapabilities |
                     actor.BodyMotionBinding.RequiredWorldCapability;
                 worldRequest = new CharacterWorldSolveRequest(
-                    characterRuntime.NumericProfile,
+                    evaluation.NumericProfile,
                     actor.ActorId,
                     new WorldRequestId(actor.ActorId, tick, 1),
                     tick,

@@ -6,28 +6,47 @@ namespace ThirdPersonSimulation
 {
     public class Float32GraphExecutionData
     {
+        internal GraphExecutionChunks m_Chunks;
         readonly AbilityStateValue[] m_DefaultStateValues;
 
         protected Float32GraphExecutionData(Float32GraphExecutionData source)
         {
-            OperationDefinitions = source.OperationDefinitions;
+            Tables = source.Tables;
             Operations = source.Operations;
-            Constants = source.Constants;
-            ConstantInputBindings = source.ConstantInputBindings;
-            ControlFlow = source.ControlFlow;
-            References = source.References;
-            GraphCallFrames = source.GraphCallFrames;
-            StateSlots = source.StateSlots;
-            Scopes = source.Scopes;
-            OutputChannels = source.OutputChannels;
-            CatalogEntries = source.CatalogEntries;
-            SourceMap = source.SourceMap;
-            Producers = source.Producers;
+            m_Chunks = source.Chunks;
+            GraphSources = source.GraphSources;
             CatalogIndex = source.CatalogIndex;
             Topology = source.Topology;
             ValueLayout = source.ValueLayout;
             m_DefaultStateValues = source.m_DefaultStateValues;
         }
+
+        Float32GraphExecutionData(Float32GraphExecutionData structure, SimulationOperation[] operations,
+            ProgramConstant[] constants, ProgramGraphSources sources)
+            : this(structure)
+        {
+            Operations = Array.AsReadOnly(operations);
+            Tables = new Float32GraphExecutionTables(structure.Tables.Structure, Array.AsReadOnly(constants), operations[0].ParameterValues);
+            GraphSources = sources;
+            m_DefaultStateValues = BuildDefaultStateValues(Constants, StateSlots);
+            GraphExecutionChunk values = GraphExecutionChunk.Encode(writer =>
+                Float32GraphExecutionDataCodec.WriteParameters(writer, this, structure.Chunks.Structure.Hash));
+            m_Chunks = new GraphExecutionChunks(structure.Chunks.Structure, values, sources.DiagnosticChunk);
+        }
+
+        Float32GraphExecutionData(Float32GraphExecutionData structure, ProgramGraphSources sources)
+            : this(structure)
+        {
+            GraphSources = sources;
+            m_Chunks = new GraphExecutionChunks(structure.Chunks.Structure, structure.Chunks.Parameters, sources.DiagnosticChunk);
+        }
+
+        internal Float32GraphExecutionData WithSources(ProgramGraphSources sources) =>
+            new Float32GraphExecutionData(this, sources);
+
+        internal Float32GraphExecutionData WithParameters(SimulationOperation[] operations,
+            ProgramConstant[] constants, ProgramGraphSources sources) =>
+            new Float32GraphExecutionData(this, operations, constants, sources);
 
         public Float32GraphExecutionData(
             OperationHandle rootOperation,
@@ -42,61 +61,89 @@ namespace ThirdPersonSimulation
             IEnumerable<ProgramScopeLayout> scopes,
             IEnumerable<ProgramOutputChannelLayout> outputChannels,
             IEnumerable<ProgramCatalogEntry> catalogEntries,
-            IEnumerable<ProgramSourceMapEntry> sourceMap,
+            ProgramGraphSources graphSources,
             IEnumerable<ProgramProducer> producers)
         {
-            OperationDefinitions = Copy(operationDefinitions);
             Operations = Copy(operations);
-            Constants = Copy(constants);
-            ConstantInputBindings = Copy(constantInputBindings);
-            ControlFlow = Copy(controlFlow);
-            References = Copy(references);
-            GraphCallFrames = Copy(graphCallFrames);
-            StateSlots = Copy(stateSlots);
-            Scopes = Copy(scopes);
-            OutputChannels = Copy(outputChannels);
-            CatalogEntries = Copy(catalogEntries);
-            SourceMap = Copy(sourceMap);
-            Producers = Copy(producers);
+            Tables = new Float32GraphExecutionTables(new Float32GraphExecutionStructure(rootOperation,
+                operationDefinitions, Operations, constantInputBindings, controlFlow, references, graphCallFrames,
+                stateSlots, scopes, outputChannels, catalogEntries, graphSources.Layout.Chunk, producers),
+                Copy(constants), Operations[0].ParameterValues);
+            GraphSources = graphSources;
             CatalogIndex = new ProgramCatalogRuntimeIndex(Operations.Count, References, CatalogEntries);
             Topology = new OperationExecutionTopology(
                 BuildOperationDescriptors(Operations),
                 ControlFlow,
                 References,
                 StateSlots,
-                SourceMap,
+                ExecutionSources,
                 rootOperation,
                 GraphCallFrames);
             ValueLayout = new Float32GraphValueLayout(this);
-            m_DefaultStateValues = new AbilityStateValue[StateSlots.Count];
-            for (int index = 0; index < m_DefaultStateValues.Length; index++)
-            {
-                ProgramStateSlot slot = StateSlots[index];
-                m_DefaultStateValues[index] = slot.DefaultConstantIndex >= 0
-                    ? AbilityStateValue.FromConstant(Constants[slot.DefaultConstantIndex], slot.ValueKind)
-                    : AbilityStateValue.Default(slot.ValueKind);
-            }
+            m_DefaultStateValues = BuildDefaultStateValues(Constants, StateSlots);
         }
 
+        internal Float32GraphExecutionTables Tables { get; }
+        internal Float32GraphExecutionData(Float32GraphExecutionTables tables, ProgramGraphSources sources)
+        {
+            Tables = tables;
+            GraphSources = sources;
+            var operations = new SimulationOperation[tables.Structure.OperationLayouts.Count];
+            for (int i = 0; i < operations.Length; i++)
+            {
+                ProgramOperationLayout layout = tables.Structure.OperationLayouts[i];
+                if (layout.ParameterIndex < 0 || layout.ParameterIndex >= tables.OperationParameters.Length)
+                    throw new System.IO.InvalidDataException($"Operation '{layout.Handle}' parameter index '{layout.ParameterIndex}' is invalid.");
+                if (layout.DefinitionIndex < 0 || layout.DefinitionIndex >= tables.Structure.OperationDefinitions.Count)
+                    throw new System.IO.InvalidDataException($"Operation '{layout.Handle}' definition index '{layout.DefinitionIndex}' is invalid.");
+                operations[i] = new SimulationOperation(layout, tables.Structure.OperationDefinitions[layout.DefinitionIndex], tables.OperationParameters);
+            }
+            Operations = Array.AsReadOnly(operations);
+            CatalogIndex = new ProgramCatalogRuntimeIndex(Operations.Count, References, CatalogEntries);
+            Topology = new OperationExecutionTopology(BuildOperationDescriptors(Operations), ControlFlow, References,
+                StateSlots, ExecutionSources, tables.Structure.RootOperation, GraphCallFrames);
+            ValueLayout = new Float32GraphValueLayout(this);
+            m_DefaultStateValues = BuildDefaultStateValues(Constants, StateSlots);
+        }
+
+        public GraphExecutionChunks Chunks => m_Chunks ??= Float32GraphExecutionDataCodec.CreateChunks(this);
         public Float32GraphValueLayout ValueLayout { get; }
-        public IReadOnlyList<SimulationOperationDefinition> OperationDefinitions { get; }
+        public IReadOnlyList<SimulationOperationDefinition> OperationDefinitions => Tables.Structure.OperationDefinitions;
         public IReadOnlyList<SimulationOperation> Operations { get; }
-        public IReadOnlyList<ProgramConstant> Constants { get; }
-        public IReadOnlyList<ProgramConstantInputBinding> ConstantInputBindings { get; }
-        public IReadOnlyList<ProgramControlFlowEdge> ControlFlow { get; }
-        public IReadOnlyList<ProgramReference> References { get; }
-        public IReadOnlyList<ProgramGraphCallFrame> GraphCallFrames { get; }
-        public IReadOnlyList<ProgramStateSlot> StateSlots { get; }
-        public IReadOnlyList<ProgramScopeLayout> Scopes { get; }
-        public IReadOnlyList<ProgramOutputChannelLayout> OutputChannels { get; }
+        public IReadOnlyList<ProgramConstant> Constants => Tables.Constants;
+        public IReadOnlyList<ProgramConstantInputBinding> ConstantInputBindings => Tables.Structure.ConstantInputBindings;
+        public IReadOnlyList<ProgramControlFlowEdge> ControlFlow => Tables.Structure.ControlFlow;
+        public IReadOnlyList<ProgramReference> References => Tables.Structure.References;
+        public IReadOnlyList<ProgramGraphCallFrame> GraphCallFrames => Tables.Structure.GraphCallFrames;
+        public IReadOnlyList<ProgramStateSlot> StateSlots => Tables.Structure.StateSlots;
+        public IReadOnlyList<ProgramScopeLayout> Scopes => Tables.Structure.Scopes;
+        public IReadOnlyList<ProgramOutputChannelLayout> OutputChannels => Tables.Structure.OutputChannels;
         public AbilityStateValue DefaultStateValue(int slotIndex) => m_DefaultStateValues[slotIndex];
-        public IReadOnlyList<ProgramCatalogEntry> CatalogEntries { get; }
-        public IReadOnlyList<ProgramSourceMapEntry> SourceMap { get; }
-        public IReadOnlyList<ProgramProducer> Producers { get; }
+        public IReadOnlyList<ProgramCatalogEntry> CatalogEntries => Tables.Structure.CatalogEntries;
+        public ProgramGraphSources GraphSources { get; }
+        public IReadOnlyList<ProgramSourceMapEntry> SourceMap => GraphSources.Diagnostics;
+        public ProgramExecutionSourceLayout ExecutionSourceLayout => GraphSources.Layout;
+        public IReadOnlyList<ProgramExecutionSource> ExecutionSources => GraphSources.Layout.Entries;
+        public ProgramGraphSourceRevisionTable GraphSourceRevisions => GraphSources.Revisions;
+        public IReadOnlyList<ProgramProducer> Producers => Tables.Structure.Producers;
         public ProgramCatalogRuntimeIndex CatalogIndex { get; }
         public OperationExecutionTopology Topology { get; }
         public OperationHandle RootOperation => Topology.RootOperation;
 
+
+        static AbilityStateValue[] BuildDefaultStateValues(IReadOnlyList<ProgramConstant> constants,
+            IReadOnlyList<ProgramStateSlot> stateSlots)
+        {
+            var values = new AbilityStateValue[stateSlots.Count];
+            for (int i = 0; i < values.Length; i++)
+            {
+                ProgramStateSlot slot = stateSlots[i];
+                values[i] = slot.DefaultConstantIndex >= 0
+                    ? AbilityStateValue.FromConstant(constants[slot.DefaultConstantIndex], slot.ValueKind)
+                    : AbilityStateValue.Default(slot.ValueKind);
+            }
+            return values;
+        }
 
         static IReadOnlyList<OperationExecutionDescriptor> BuildOperationDescriptors(
             IReadOnlyList<SimulationOperation> operations)
@@ -121,4 +168,67 @@ namespace ThirdPersonSimulation
         static ReadOnlyCollection<T> Copy<T>(IEnumerable<T> values) =>
             new ReadOnlyCollection<T>(new List<T>(values ?? Array.Empty<T>()));
     }
+    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+    internal sealed partial class Float32GraphExecutionStructure
+    {
+        internal Float32GraphExecutionStructure(OperationHandle rootOperation,
+            IEnumerable<SimulationOperationDefinition> operationDefinitions, IReadOnlyList<SimulationOperation> operations,
+            IEnumerable<ProgramConstantInputBinding> constantInputBindings, IEnumerable<ProgramControlFlowEdge> controlFlow,
+            IEnumerable<ProgramReference> references, IEnumerable<ProgramGraphCallFrame> graphCallFrames,
+            IEnumerable<ProgramStateSlot> stateSlots, IEnumerable<ProgramScopeLayout> scopes,
+            IEnumerable<ProgramOutputChannelLayout> outputChannels, IEnumerable<ProgramCatalogEntry> catalogEntries,
+            GraphExecutionChunk executionSources, IEnumerable<ProgramProducer> producers)
+        {
+            RootOperation = rootOperation;
+            OperationDefinitions = Copy(operationDefinitions);
+            var layouts = new ProgramOperationLayout[operations.Count];
+            for (int i = 0; i < layouts.Length; i++)
+                layouts[i] = operations[i].Layout;
+            OperationLayouts = Array.AsReadOnly(layouts);
+            ConstantInputBindings = Copy(constantInputBindings);
+            ControlFlow = Copy(controlFlow);
+            References = Copy(references);
+            GraphCallFrames = Copy(graphCallFrames);
+            StateSlots = Copy(stateSlots);
+            Scopes = Copy(scopes);
+            OutputChannels = Copy(outputChannels);
+            CatalogEntries = Copy(catalogEntries);
+            ExecutionSources = executionSources;
+            Producers = Copy(producers);
+        }
+
+        public OperationHandle RootOperation { get; }
+        public GraphExecutionChunk ExecutionSources { get; }
+        public IReadOnlyList<SimulationOperationDefinition> OperationDefinitions { get; }
+        public IReadOnlyList<ProgramOperationLayout> OperationLayouts { get; }
+        public IReadOnlyList<ProgramConstantInputBinding> ConstantInputBindings { get; }
+        public IReadOnlyList<ProgramControlFlowEdge> ControlFlow { get; }
+        public IReadOnlyList<ProgramReference> References { get; }
+        public IReadOnlyList<ProgramGraphCallFrame> GraphCallFrames { get; }
+        public IReadOnlyList<ProgramStateSlot> StateSlots { get; }
+        public IReadOnlyList<ProgramScopeLayout> Scopes { get; }
+        public IReadOnlyList<ProgramOutputChannelLayout> OutputChannels { get; }
+        public IReadOnlyList<ProgramCatalogEntry> CatalogEntries { get; }
+        public IReadOnlyList<ProgramProducer> Producers { get; }
+
+        static ReadOnlyCollection<T> Copy<T>(IEnumerable<T> values) =>
+            new List<T>(values ?? Array.Empty<T>()).AsReadOnly();
+    }
+
+    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+    internal sealed partial class Float32GraphExecutionTables
+    {
+        internal Float32GraphExecutionTables(Float32GraphExecutionStructure structure,
+            IReadOnlyList<ProgramConstant> constants, SimulationOperationParameterValues[] operationParameters)
+        {
+            Structure = structure;
+            Constants = constants;
+            OperationParameters = operationParameters;
+        }
+
+        public Float32GraphExecutionStructure Structure { get; }
+        public IReadOnlyList<ProgramConstant> Constants { get; }
+        [CanonicalPayload] public SimulationOperationParameterValues[] OperationParameters { get; }
+    }
+
 }

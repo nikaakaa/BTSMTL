@@ -22,7 +22,8 @@ namespace ThirdPersonSimulation
         }
     }
 
-    public readonly struct ProgramId : IEquatable<ProgramId>, IComparable<ProgramId>
+    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+    public readonly partial struct ProgramId : IEquatable<ProgramId>, IComparable<ProgramId>
     {
         public ProgramId(string value) { Value = SimulationIdentity.Require(value, nameof(value)); }
         public string Value { get; }
@@ -36,7 +37,8 @@ namespace ThirdPersonSimulation
         public static bool operator !=(ProgramId left, ProgramId right) => !left.Equals(right);
     }
 
-    public readonly struct ActorId : IEquatable<ActorId>, IComparable<ActorId>
+    [CanonicalContract]
+    public readonly partial struct ActorId : IEquatable<ActorId>, IComparable<ActorId>
     {
         public ActorId(string value) => Value = CanonicalTextValue.FromString(SimulationIdentity.Require(value, nameof(value)));
 
@@ -167,7 +169,8 @@ namespace ThirdPersonSimulation
         public static bool operator !=(StableHash left, StableHash right) => !left.Equals(right);
     }
 
-    public readonly struct ProgramRevision : IEquatable<ProgramRevision>
+    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+    public readonly partial struct ProgramRevision : IEquatable<ProgramRevision>
     {
         public ProgramRevision(string value) { Value = SimulationIdentity.Require(value, nameof(value)); }
         public string Value { get; }
@@ -206,7 +209,8 @@ namespace ThirdPersonSimulation
         public static bool operator !=(NumericProfileId left, NumericProfileId right) => !left.Equals(right);
     }
 
-    public readonly struct OperationSetVersion : IEquatable<OperationSetVersion>
+    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+    public readonly partial struct OperationSetVersion : IEquatable<OperationSetVersion>
     {
         public OperationSetVersion(string value) { Value = SimulationIdentity.Require(value, nameof(value)); }
         public string Value { get; }
@@ -297,15 +301,21 @@ namespace ThirdPersonSimulation
         public static bool operator !=(HostProductId left, HostProductId right) => !left.Equals(right);
     }
 
-    public readonly struct SimulationTick : IEquatable<SimulationTick>, IComparable<SimulationTick>
+    [CanonicalContract]
+    public readonly partial struct SimulationTick : IEquatable<SimulationTick>, IComparable<SimulationTick>
     {
         public SimulationTick(ulong value)
         {
-            if (value == 0)
-                throw new ArgumentOutOfRangeException(nameof(value));
             Value = value;
+            RequireValid();
         }
         public ulong Value { get; }
+        [CanonicalValidation]
+        void RequireValid()
+        {
+            if (Value == 0)
+                throw new ArgumentOutOfRangeException("value");
+        }
         public bool IsValid => Value != 0;
         public int CompareTo(SimulationTick other) => Value.CompareTo(other.Value);
         public bool Equals(SimulationTick other) => Value == other.Value;
@@ -528,7 +538,8 @@ namespace ThirdPersonSimulation
         public override int GetHashCode() => HashCode.Combine((int)Kind, ClockId.GetHashCode(), SourceTick);
     }
 
-    public readonly struct OperationHandle : IEquatable<OperationHandle>, IComparable<OperationHandle>
+    [CanonicalContract]
+    public readonly partial struct OperationHandle : IEquatable<OperationHandle>, IComparable<OperationHandle>
     {
         readonly int m_EncodedValue;
 

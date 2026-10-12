@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
+using System.Runtime.CompilerServices;
 
 namespace ThirdPersonSimulation
 {
@@ -11,18 +12,41 @@ namespace ThirdPersonSimulation
 
         public Float32GameplayAbilityExecutionCompilationResult(
             Float32GameplayAbilityExecutionData data,
-            IEnumerable<Float32ScalarConversion> conversions)
+            IEnumerable<Float32ScalarConversion> conversions, GraphCompilationWork work)
         {
             Data = data ?? throw new ArgumentNullException(nameof(data));
+            Work = work;
             m_Conversions = new List<Float32ScalarConversion>(conversions ?? Array.Empty<Float32ScalarConversion>()).AsReadOnly();
         }
 
+        internal Float32GameplayAbilityExecutionCompilationResult(Float32GameplayAbilityExecutionCompilationResult previous, Float32GameplayAbilityExecutionData data, GraphCompilationWork work)
+        {
+            Data = data;
+            Work = work;
+            m_Conversions = previous.m_Conversions;
+        }
+
+        public GraphCompilationWork Work { get; }
         public Float32GameplayAbilityExecutionData Data { get; }
         public IReadOnlyList<Float32ScalarConversion> Conversions => m_Conversions;
     }
 
     public static class Float32GameplayAbilityTargetCompiler
     {
+        sealed class CachedTarget
+        {
+            internal readonly GameplayAbilitySemanticIr Ir;
+            internal readonly Float32GameplayAbilityExecutionCompilationResult Result;
+
+            internal CachedTarget(GameplayAbilitySemanticIr ir, Float32GameplayAbilityExecutionCompilationResult result)
+            {
+                Ir = ir;
+                Result = result;
+            }
+        }
+
+        static readonly ConditionalWeakTable<GraphExecutionChunk, CachedTarget> s_Targets = new();
+
         static readonly HashSet<string> s_SupportedGameplayCapabilities = new HashSet<string>(StringComparer.Ordinal)
         {
             "Action",
@@ -48,19 +72,35 @@ namespace ThirdPersonSimulation
             {
                 throw new InvalidOperationException("Validated Semantic IR artifact identity is inconsistent.");
             }
-            GameplayAbilityOperationSet.RequireVersion(header.OperationSetVersion);
-            GameplayAbilityOperationSet.RequireCompleteBackend(
-                header.OperationSetVersion,
-                Float32SimulationTarget.Manifest.ExecutionTarget.SupportedOperations,
-                Float32SimulationTarget.Manifest.ExecutionTarget.BackendIdentity);
-            for (int i = 0; i < header.GameplayCapabilities.Count; i++)
+            Float32GameplayAbilityExecutionCompilationResult result;
+            GraphExecutionChunk structure = semanticIr.Chunks.Structure;
+            if (s_Targets.TryGetValue(structure, out CachedTarget cached))
             {
-                if (!s_SupportedGameplayCapabilities.Contains(header.GameplayCapabilities[i]))
-                    throw new InvalidOperationException($"Float32 Target does not support gameplay capability '{header.GameplayCapabilities[i]}'.");
+                if (ReferenceEquals(cached.Ir, semanticIr))
+                    return new Float32GameplayAbilityExecutionCompilationResult(cached.Result, cached.Result.Data, GraphCompilationWork.Unchanged);
+                if (cached.Ir.Chunks.Parameters.Hash == semanticIr.Chunks.Parameters.Hash)
+                {
+                    Float32GameplayAbilityExecutionData data = Float32GameplayAbilityExecutionDataLowerer.Bind(semanticIr, cached.Result.Data,
+                        cached.Result.Data.WithSources(semanticIr.GraphSources));
+                    result = new Float32GameplayAbilityExecutionCompilationResult(cached.Result, data, GraphCompilationWork.Sources);
+                }
+                else
+                    result = Float32GameplayAbilityExecutionDataLowerer.LowerParameters(semanticIr, cached.Result.Data);
             }
-            ValidateLiteralPrecision(semanticIr);
-            Float32GameplayAbilityExecutionCompilationResult result =
-                Float32GameplayAbilityExecutionDataLowerer.Lower(semanticIr);
+            else
+            {
+                GameplayAbilityOperationSet.RequireVersion(header.OperationSetVersion);
+                GameplayAbilityOperationSet.RequireCompleteBackend(
+                    header.OperationSetVersion,
+                    Float32SimulationTarget.Manifest.ExecutionTarget.SupportedOperations,
+                    Float32SimulationTarget.Manifest.ExecutionTarget.BackendIdentity);
+                for (int i = 0; i < header.GameplayCapabilities.Count; i++)
+                {
+                    if (!s_SupportedGameplayCapabilities.Contains(header.GameplayCapabilities[i]))
+                        throw new InvalidOperationException($"Float32 Target does not support gameplay capability '{header.GameplayCapabilities[i]}'.");
+                }
+                result = Float32GameplayAbilityExecutionDataLowerer.Lower(semanticIr);
+            }
             if (!result.Data.Root.Equals(header.Root) ||
                 !string.Equals(result.Data.CompilerVersion, header.CompilerVersion, StringComparison.Ordinal) ||
                 !result.Data.OperationSetVersion.Equals(header.OperationSetVersion) ||
@@ -71,22 +111,30 @@ namespace ThirdPersonSimulation
             {
                 throw new InvalidOperationException("Float32 Ability execution data does not preserve its Semantic IR artifact identity.");
             }
+            s_Targets.Remove(structure);
+            s_Targets.Add(structure, new CachedTarget(semanticIr, result));
             return result;
         }
 
-        static void ValidateLiteralPrecision(GameplayAbilitySemanticIr semanticIr)
-        {
-            for (int i = 0; i < semanticIr.Literals.Count; i++)
-            {
-                SemanticNumericPrecision precision = semanticIr.Literals[i].Precision;
-                if (precision != SemanticNumericPrecision.Exact && precision != SemanticNumericPrecision.TargetRounded)
-                    throw new InvalidOperationException($"Float32 Target does not support literal precision '{precision}' at '{semanticIr.Literals[i].Identity}'.");
-            }
-        }
     }
 
     static class Float32GameplayAbilityExecutionDataLowerer
     {
+        internal static Float32GameplayAbilityExecutionCompilationResult LowerParameters(GameplayAbilitySemanticIr semanticIr, Float32GameplayAbilityExecutionData structure)
+        {
+            var conversions = new List<Float32ScalarConversion>();
+            Float32GraphExecutionData graph = Float32GraphDataLowerer.LowerParameters(semanticIr, structure, conversions);
+            return new Float32GameplayAbilityExecutionCompilationResult(Bind(semanticIr, structure, graph), conversions, GraphCompilationWork.Parameters);
+        }
+
+        internal static Float32GameplayAbilityExecutionData Bind(GameplayAbilitySemanticIr semanticIr, Float32GameplayAbilityExecutionData previous,
+            Float32GraphExecutionData graph) =>
+            Float32GameplayAbilityExecutionData.Create(previous.AbilityId, previous.Binding, previous.ProviderContract,
+                semanticIr.Manifest.CompilerVersion, semanticIr.Manifest.OperationSetVersion, semanticIr.Manifest.TickRate,
+                semanticIr.Manifest.SourceRevision, semanticIr.SemanticHash, previous.NumericProfile,
+                semanticIr.Manifest.Capabilities, semanticIr.Manifest.Root, semanticIr.Manifest.ProgramId.Value,
+                previous.StateSchemaHash, graph);
+
         internal static Float32GameplayAbilityExecutionCompilationResult Lower(GameplayAbilitySemanticIr semanticIr)
         {
             if (semanticIr == null)
@@ -117,8 +165,8 @@ namespace ThirdPersonSimulation
                 semanticIr.CatalogEntries,
                 index => constants[index].Int32);
             StableHash stateSchemaHash = StableHash.Compute(
-                "float32-gameplay-ability-execution-layout/1",
-                semanticIr.SemanticHash.ToString(),
+                "float32-gameplay-ability-execution-layout/2",
+                semanticIr.StateLayoutHash.ToString(),
                 semanticIr.StateDeclarations.Count.ToString(CultureInfo.InvariantCulture),
                 semanticIr.GraphCallFrames.Count.ToString(CultureInfo.InvariantCulture));
             Float32GameplayAbilityExecutionData data = Float32GameplayAbilityExecutionData.Create(
@@ -139,8 +187,8 @@ namespace ThirdPersonSimulation
                     Float32GameplayAbilityExecutionData.ResolveRootOperation(semanticIr.References),
                     definitions, operations, constants, constantInputs, semanticIr.ControlFlow, semanticIr.References,
                     semanticIr.GraphCallFrames, semanticIr.StateDeclarations, semanticIr.Scopes,
-                    semanticIr.OutputChannels, semanticIr.CatalogEntries, semanticIr.SourceMap, semanticIr.Producers));
-            return new Float32GameplayAbilityExecutionCompilationResult(data, conversions);
+                    semanticIr.OutputChannels, semanticIr.CatalogEntries, semanticIr.GraphSources, semanticIr.Producers));
+            return new Float32GameplayAbilityExecutionCompilationResult(data, conversions, GraphCompilationWork.Structure);
         }
 
         static CharacterSkillId RequireAbilityId(string entryIdentity)

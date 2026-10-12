@@ -11,7 +11,8 @@ namespace ThirdPersonSimulation
         public const int MaximumCycleAdvance = 20;
     }
 
-    public readonly struct AbilityTimelineTreeClipExit : IEquatable<AbilityTimelineTreeClipExit>
+    [CanonicalContract]
+    public readonly partial struct AbilityTimelineTreeClipExit : IEquatable<AbilityTimelineTreeClipExit>
     {
         public AbilityTimelineTreeClipExit(CanonicalTextValue clipAuthoringId, int cycle)
         {
@@ -23,8 +24,8 @@ namespace ThirdPersonSimulation
         public int Cycle { get; }
         public bool Equals(AbilityTimelineTreeClipExit other) =>
             Cycle == other.Cycle && CanonicalTextValue.Equals(ClipAuthoringId, other.ClipAuthoringId, StringComparison.Ordinal);
-        public void Retain() => ClipAuthoringId.Retain();
-        public void Release() => ClipAuthoringId.Release();
+        public void Retain() => CanonicalRetain(this);
+        public void Release() => CanonicalRelease(this);
         public override bool Equals(object value) => value is AbilityTimelineTreeClipExit other && Equals(other);
         public override int GetHashCode() => HashCode.Combine(ClipAuthoringId, Cycle);
     }
@@ -79,7 +80,8 @@ namespace ThirdPersonSimulation
         Error = 4
     }
 
-    public readonly struct TimelineActionContextIdentity : IEquatable<TimelineActionContextIdentity>
+    [CanonicalContract]
+    public readonly partial struct TimelineActionContextIdentity : IEquatable<TimelineActionContextIdentity>
     {
         public TimelineActionContextIdentity(
             string actionId,
@@ -91,8 +93,6 @@ namespace ThirdPersonSimulation
             OperationHandle skillEntryOperation = default,
             ulong skillExecutionGeneration = 0)
         {
-            if (skillId.IsValid != skillEntryOperation.IsValid || !skillId.IsValid && skillExecutionGeneration != 0)
-                throw new ArgumentException("Timeline Action Context skill execution identity is incomplete.");
             ActionId = actionId ?? string.Empty;
             ContextId = contextId.IsNull ? CanonicalTextValue.Empty : contextId;
             InstanceId = instanceId;
@@ -101,8 +101,17 @@ namespace ThirdPersonSimulation
             SkillId = skillId;
             SkillEntryOperation = skillEntryOperation;
             SkillExecutionGeneration = skillExecutionGeneration;
+            RequireValid();
         }
 
+        [CanonicalValidation]
+        void RequireValid()
+        {
+            if (SkillId.IsValid != SkillEntryOperation.IsValid || !SkillId.IsValid && SkillExecutionGeneration != 0)
+                throw new ArgumentException("Timeline Action Context skill execution identity is incomplete.");
+        }
+
+        [CanonicalDeclaredText]
         public string ActionId { get; }
         public CanonicalTextValue ContextId { get; }
         public ulong InstanceId { get; }
@@ -129,14 +138,12 @@ namespace ThirdPersonSimulation
 
         public void Retain()
         {
-            ContextId.Retain();
-            TargetActorId.Retain();
+            CanonicalRetain(this);
         }
 
         public void Release()
         {
-            ContextId.Release();
-            TargetActorId.Release();
+            CanonicalRelease(this);
         }
 
         public override int GetHashCode() => HashCode.Combine(ActionId, ContextId, InstanceId, PredictionKey, SkillId, SkillEntryOperation, SkillExecutionGeneration);
@@ -447,7 +454,8 @@ namespace ThirdPersonSimulation
                                    RotationMethod == ProgramMotionWarpRotationMethod.ConstantRate;
     }
 
-    public readonly struct AbilityTimelineInvocationSource
+    [CanonicalContract]
+    public readonly partial struct AbilityTimelineInvocationSource
     {
         public AbilityTimelineInvocationSource(
             int operationIndex,
@@ -457,16 +465,30 @@ namespace ThirdPersonSimulation
             CanonicalTextValue operationExecutionPath,
             ulong invocationGeneration)
         {
-            if (operationIndex < 0)
-                throw new ArgumentOutOfRangeException(nameof(operationIndex));
             OperationIndex = operationIndex;
-            GraphAuthoringId = SimulationIdentity.Require(graphAuthoringId, nameof(graphAuthoringId));
-            NodeAuthoringId = SimulationIdentity.Require(nodeAuthoringId, nameof(nodeAuthoringId));
-            GraphInvocationPath = SimulationIdentity.Require(graphInvocationPath, nameof(graphInvocationPath));
-            OperationExecutionPath = SimulationIdentity.Require(operationExecutionPath, nameof(operationExecutionPath));
-            if (invocationGeneration == 0)
-                throw new ArgumentOutOfRangeException(nameof(invocationGeneration));
+            GraphAuthoringId = graphAuthoringId.Trim();
+            NodeAuthoringId = nodeAuthoringId.Trim();
+            GraphInvocationPath = graphInvocationPath.Trim();
+            OperationExecutionPath = operationExecutionPath.Trim();
             InvocationGeneration = invocationGeneration;
+            RequireValid();
+        }
+
+        [CanonicalValidation]
+        void RequireValid()
+        {
+            if (OperationIndex < 0)
+                throw new ArgumentOutOfRangeException("operationIndex");
+            if (GraphAuthoringId.IsEmpty)
+                throw new ArgumentException("Identity is required.", "graphAuthoringId");
+            if (NodeAuthoringId.IsEmpty)
+                throw new ArgumentException("Identity is required.", "nodeAuthoringId");
+            if (GraphInvocationPath.IsEmpty)
+                throw new ArgumentException("Identity is required.", "graphInvocationPath");
+            if (OperationExecutionPath.IsEmpty)
+                throw new ArgumentException("Identity is required.", "operationExecutionPath");
+            if (InvocationGeneration == 0)
+                throw new ArgumentOutOfRangeException("invocationGeneration");
         }
 
         public int OperationIndex { get; }
@@ -475,8 +497,8 @@ namespace ThirdPersonSimulation
         public CanonicalTextValue GraphInvocationPath { get; }
         public CanonicalTextValue OperationExecutionPath { get; }
         public ulong InvocationGeneration { get; }
-        public void Retain() { GraphAuthoringId.Retain(); NodeAuthoringId.Retain(); GraphInvocationPath.Retain(); OperationExecutionPath.Retain(); }
-        public void Release() { OperationExecutionPath.Release(); GraphInvocationPath.Release(); NodeAuthoringId.Release(); GraphAuthoringId.Release(); }
+        public void Retain() => CanonicalRetain(this);
+        public void Release() => CanonicalRelease(this);
         public bool IsValid => OperationIndex >= 0 &&
                                !CanonicalTextValue.IsNullOrEmpty(GraphAuthoringId) &&
                                !CanonicalTextValue.IsNullOrEmpty(NodeAuthoringId) &&
@@ -690,13 +712,6 @@ namespace ThirdPersonSimulation
         public TimelineActionContextIdentity ActionContext { get; }
     }
 
-    public enum AbilityTimelinePlaybackMode : byte
-    {
-        Once = 0,
-        Loop = 1,
-        HoldLastFrame = 2
-    }
-
     public enum AbilityTimelineRuntimeStatus : byte
     {
         Running = 1,
@@ -705,61 +720,76 @@ namespace ThirdPersonSimulation
         Cancelled = 4
     }
 
-    public readonly struct AbilityTimelineStartRequest
+    [CanonicalContract]
+    public readonly partial struct AbilityTimelineStartRequest
     {
         public AbilityTimelineStartRequest(
             CanonicalTextValue timelineId,
             ulong playbackIdentity,
-            AbilityTimelinePlaybackMode playbackMode,
+            BTSMTL.Timeline.TimelinePlaybackMode playbackMode,
             TimelineActionContextIdentity actionContext,
             AbilityTimelineInvocationSource invocationSource,
             ulong inputSequence,
             SimulationTick tick,
             FixedScalar startTime)
         {
-            TimelineId = SimulationIdentity.Require(timelineId, nameof(timelineId));
-            if (playbackIdentity == 0)
-                throw new ArgumentOutOfRangeException(nameof(playbackIdentity));
+            TimelineId = timelineId.Trim();
             PlaybackIdentity = playbackIdentity;
-            if (!actionContext.IsValid || !actionContext.HasSkillExecution || actionContext.SkillExecutionGeneration == 0)
-                throw new ArgumentException("Ability Timeline Action context is incomplete.", nameof(actionContext));
-            if (!invocationSource.IsValid)
-                throw new ArgumentException("Ability Timeline invocation source is incomplete.", nameof(invocationSource));
             PlaybackMode = playbackMode;
             InputSequence = inputSequence;
             ActionContext = actionContext;
             InvocationSource = invocationSource;
             Tick = tick;
             StartTime = startTime;
-            if (!tick.IsValid)
-                throw new ArgumentOutOfRangeException(nameof(tick));
+            RequireValid();
+        }
+
+        [CanonicalValidation]
+        void RequireValid()
+        {
+            if (TimelineId.IsEmpty)
+                throw new ArgumentException("Identity is required.", "timelineId");
+            if (PlaybackIdentity == 0)
+                throw new ArgumentOutOfRangeException("playbackIdentity");
+            if (!ActionContext.IsValid || !ActionContext.HasSkillExecution || ActionContext.SkillExecutionGeneration == 0)
+                throw new ArgumentException("Ability Timeline Action context is incomplete.", "actionContext");
+            if (!InvocationSource.IsValid)
+                throw new ArgumentException("Ability Timeline invocation source is incomplete.", "invocationSource");
+            if (!Tick.IsValid)
+                throw new ArgumentOutOfRangeException("tick");
         }
 
         public CanonicalTextValue TimelineId { get; }
         public ulong PlaybackIdentity { get; }
-        public AbilityTimelinePlaybackMode PlaybackMode { get; }
+        public BTSMTL.Timeline.TimelinePlaybackMode PlaybackMode { get; }
         public TimelineActionContextIdentity ActionContext { get; }
         public AbilityTimelineInvocationSource InvocationSource { get; }
         public SimulationTick Tick { get; }
         public ulong InputSequence { get; }
         public FixedScalar StartTime { get; }
 
-        public void Retain() { TimelineId.Retain(); ActionContext.Retain(); InvocationSource.Retain(); }
-        public void Release() { InvocationSource.Release(); ActionContext.Release(); TimelineId.Release(); }
+        public void Retain() => CanonicalRetain(this);
+        public void Release() => CanonicalRelease(this);
     }
 
-    public readonly struct AbilityTimelinePlaybackControl : IEquatable<AbilityTimelinePlaybackControl>
+    [CanonicalContract]
+    public readonly partial struct AbilityTimelinePlaybackControl : IEquatable<AbilityTimelinePlaybackControl>
     {
         public AbilityTimelinePlaybackControl(FixedScalar rate, bool paused)
         {
-            if (rate < FixedScalar.Zero)
-                throw new ArgumentOutOfRangeException(nameof(rate));
             Rate = rate;
             Paused = paused;
+            RequireValid();
         }
 
         public FixedScalar Rate { get; }
         public bool Paused { get; }
+        [CanonicalValidation]
+        void RequireValid()
+        {
+            if (Rate < FixedScalar.Zero)
+                throw new ArgumentOutOfRangeException("rate");
+        }
         public bool IsPaused => Paused || Rate == FixedScalar.Zero;
         public static AbilityTimelinePlaybackControl Normal => new AbilityTimelinePlaybackControl(FixedScalar.One, false);
         public bool Equals(AbilityTimelinePlaybackControl other) => Rate == other.Rate && Paused == other.Paused;
@@ -774,7 +804,8 @@ namespace ThirdPersonSimulation
         Stopped = 2
     }
 
-    public readonly struct AbilityTimelineProgress : IEquatable<AbilityTimelineProgress>
+    [CanonicalContract]
+    public readonly partial struct AbilityTimelineProgress : IEquatable<AbilityTimelineProgress>
     {
         public AbilityTimelineProgress(
             CanonicalTextValue timelineId,
@@ -790,16 +821,8 @@ namespace ThirdPersonSimulation
             AbilityTimelineProgressState state,
             AbilityTimelinePlaybackControl control)
         {
-            TimelineId = SimulationIdentity.Require(timelineId, nameof(timelineId));
-            ContentRevision = SimulationIdentity.Require(contentRevision, nameof(contentRevision));
-            if (generation == 0 || logicTick == 0)
-                throw new ArgumentOutOfRangeException(nameof(generation));
-            if (duration < FixedScalar.Zero || previousTime < FixedScalar.Zero ||
-                previousTime > duration || time < FixedScalar.Zero || time > duration ||
-                previousCycle < 0 || cycle < previousCycle ||
-                cycle == previousCycle && time < previousTime ||
-                !loop && (previousCycle != 0 || cycle != 0))
-                throw new ArgumentException("Timeline progress must describe a forward interval within its content.");
+            TimelineId = timelineId.Trim();
+            ContentRevision = contentRevision.Trim();
             Generation = generation;
             LogicTick = logicTick;
             Duration = duration;
@@ -808,10 +831,28 @@ namespace ThirdPersonSimulation
             PreviousCycle = previousCycle;
             Cycle = cycle;
             Loop = loop;
-            if (state > AbilityTimelineProgressState.Stopped)
-                throw new ArgumentOutOfRangeException(nameof(state));
             State = state;
             Control = control;
+            if (state > AbilityTimelineProgressState.Stopped)
+                throw new ArgumentOutOfRangeException(nameof(state));
+            RequireValid();
+        }
+
+        [CanonicalValidation]
+        void RequireValid()
+        {
+            if (TimelineId.IsEmpty)
+                throw new ArgumentException("Identity is required.", "timelineId");
+            if (ContentRevision.IsEmpty)
+                throw new ArgumentException("Identity is required.", "contentRevision");
+            if (Generation == 0 || LogicTick == 0)
+                throw new ArgumentOutOfRangeException("generation");
+            if (Duration < FixedScalar.Zero || PreviousTime < FixedScalar.Zero ||
+                PreviousTime > Duration || Time < FixedScalar.Zero || Time > Duration ||
+                PreviousCycle < 0 || Cycle < PreviousCycle ||
+                Cycle == PreviousCycle && Time < PreviousTime ||
+                !Loop && (PreviousCycle != 0 || Cycle != 0))
+                throw new ArgumentException("Timeline progress must describe a forward interval within its content.");
         }
 
         public CanonicalTextValue TimelineId { get; }
@@ -837,8 +878,12 @@ namespace ThirdPersonSimulation
             PreviousCycle == other.PreviousCycle && Cycle == other.Cycle &&
             Loop == other.Loop && State == other.State && Control.Equals(other.Control);
 
-        public void Retain() { TimelineId.Retain(); ContentRevision.Retain(); }
-        public void Release() { TimelineId.Release(); ContentRevision.Release(); }
+        public void Retain() {
+            CanonicalRetain(this);
+        }
+        public void Release() {
+            CanonicalRelease(this);
+        }
 
         public override bool Equals(object obj) => obj is AbilityTimelineProgress other && Equals(other);
         public override int GetHashCode() => HashCode.Combine(TimelineId, ContentRevision, Generation, LogicTick, Time.Raw, Cycle);
@@ -909,36 +954,8 @@ namespace ThirdPersonSimulation
         public ulong SourceActionInstanceId { get; }
         public AbilityTimelineProgress Progress => Pending.Progress;
     }
-    public enum AbilityTimelineSnapshotMode : byte
-    {
-        Once = 0,
-        Loop = 1,
-        HoldLastFrame = 2
-    }
-
-    public enum AbilityTimelineSnapshotState : byte
-    {
-        Prepared = 0,
-        Running = 1,
-        Stopping = 2,
-        Completed = 3,
-        Stopped = 4,
-        Failed = 5,
-        Disposed = 6
-    }
-
-    public enum AbilityTimelineSnapshotStopCause : byte
-    {
-        None = 0,
-        SelfAbort = 1,
-        LowerPriorityAbort = 2,
-        ExplicitParentStop = 3,
-        StateTransition = 4,
-        Reset = 5,
-        Shutdown = 6
-    }
-
-    public readonly struct AbilityTimelineTreeClipState
+    [CanonicalContract]
+    public readonly partial struct AbilityTimelineTreeClipState
     {
         public AbilityTimelineTreeClipState(
             CanonicalTextValue clipAuthoringId,
@@ -949,15 +966,29 @@ namespace ThirdPersonSimulation
             ulong branchRevision,
             int cycle)
         {
-            ClipAuthoringId = SimulationIdentity.Require(clipAuthoringId, nameof(clipAuthoringId));
-            TreeGraphId = SimulationIdentity.Require(treeGraphId, nameof(treeGraphId));
-            TreeGraphRevision = SimulationIdentity.Require(treeGraphRevision, nameof(treeGraphRevision));
-            NodeAuthoringId = SimulationIdentity.Require(nodeAuthoringId, nameof(nodeAuthoringId));
-            if (playbackGeneration == 0 || branchRevision == 0 || cycle < 0)
-                throw new ArgumentOutOfRangeException(nameof(playbackGeneration));
+            ClipAuthoringId = clipAuthoringId.Trim();
+            TreeGraphId = treeGraphId.Trim();
+            TreeGraphRevision = treeGraphRevision.Trim();
+            NodeAuthoringId = nodeAuthoringId.Trim();
             PlaybackGeneration = playbackGeneration;
             BranchRevision = branchRevision;
             Cycle = cycle;
+            RequireValid();
+        }
+
+        [CanonicalValidation]
+        void RequireValid()
+        {
+            if (ClipAuthoringId.IsEmpty)
+                throw new ArgumentException("Identity is required.", "clipAuthoringId");
+            if (TreeGraphId.IsEmpty)
+                throw new ArgumentException("Identity is required.", "treeGraphId");
+            if (TreeGraphRevision.IsEmpty)
+                throw new ArgumentException("Identity is required.", "treeGraphRevision");
+            if (NodeAuthoringId.IsEmpty)
+                throw new ArgumentException("Identity is required.", "nodeAuthoringId");
+            if (PlaybackGeneration == 0 || BranchRevision == 0 || Cycle < 0)
+                throw new ArgumentOutOfRangeException("playbackGeneration");
         }
 
         public CanonicalTextValue ClipAuthoringId { get; }
@@ -967,156 +998,68 @@ namespace ThirdPersonSimulation
         public ulong PlaybackGeneration { get; }
         public ulong BranchRevision { get; }
         public int Cycle { get; }
-        public void Retain() { ClipAuthoringId.Retain(); TreeGraphId.Retain(); TreeGraphRevision.Retain(); NodeAuthoringId.Retain(); }
-        public void Release() { NodeAuthoringId.Release(); TreeGraphRevision.Release(); TreeGraphId.Release(); ClipAuthoringId.Release(); }
+        public void Retain() {
+            CanonicalRetain(this);
+        }
+        public void Release() {
+            CanonicalRelease(this);
+        }
     }
 
-    public readonly struct AbilityTimelineRuntimeSnapshot
+    [CanonicalContract(PreparedStorage = typeof(AbilityTimelineSnapshotStorage))]
+    public readonly partial struct AbilityTimelineRuntimeSnapshot
     {
-        public bool IsValid => RuntimeHandle != 0 && Generation != 0;
-        public AbilityTimelineRuntimeSnapshot(
-            ulong runtimeHandle,
-            ulong generation,
-            CanonicalTextValue requestId,
-            CanonicalTextValue ownerIdentity,
-            CanonicalTextValue callIdentity,
-            ulong executionInstanceId,
-            AbilityTimelineSnapshotMode playbackMode,
-            CanonicalTextValue contentRevision,
-            AbilityTimelineSnapshotState state,
-            FixedScalar cursorTime,
-            int cycle,
-            int timeCarry,
-            AbilityTimelinePlaybackControl control,
-            TimelineSnapshotItems<AbilityTimelineTreeClipExit> treeDecisionExits,
-            TimelineSnapshotItems<AbilityTimelineTreeClipExit> pendingTreeDecisionExits,
-            CanonicalTextValue sectionId,
-            TimelineSnapshotItems<CanonicalTextValue> activeClipIds,
-            TimelineSnapshotItems<AbilityTimelineTreeClipState> activeTreeClips,
-            bool hasStopContext,
-            AbilityTimelineSnapshotStopCause stopCause,
-            ulong stopLocalLogicTick,
-            bool initialBoundaryPending,
-            CanonicalTextValue timelineId,
-            TimelineActionContextIdentity actionContext,
-            AbilityTimelineInvocationSource invocationSource,
-            ulong inputSequence,
-            SimulationTick startTick,
-            FixedScalar startTime)
+        public AbilityTimelineRuntimeSnapshot(AbilityTimelineStartRequest request,
+            BTSMTL.Timeline.TimelinePlaybackState playback,
+            TimelineSnapshotItems<AbilityTimelineTreeClipState> activeTreeClips)
         {
-            if (runtimeHandle == 0)
-                throw new ArgumentOutOfRangeException(nameof(runtimeHandle));
-            if (generation != runtimeHandle)
-                throw new ArgumentOutOfRangeException(nameof(generation));
-            RequestId = SimulationIdentity.Require(requestId, nameof(requestId));
-            OwnerIdentity = SimulationIdentity.Require(ownerIdentity, nameof(ownerIdentity));
-            CallIdentity = SimulationIdentity.Require(callIdentity, nameof(callIdentity));
-            if (executionInstanceId == 0)
-                throw new ArgumentOutOfRangeException(nameof(executionInstanceId));
-            if ((byte)playbackMode > (byte)AbilityTimelineSnapshotMode.HoldLastFrame)
-                throw new ArgumentOutOfRangeException(nameof(playbackMode));
-            ContentRevision = SimulationIdentity.Require(contentRevision, nameof(contentRevision));
-            if ((byte)state > (byte)AbilityTimelineSnapshotState.Disposed)
-                throw new ArgumentOutOfRangeException(nameof(state));
-            if (cursorTime < FixedScalar.Zero || cycle < 0)
-                throw new ArgumentOutOfRangeException(nameof(cursorTime));
-            TimeCarry = timeCarry;
-            Control = control;
-            TreeDecisionExits = treeDecisionExits;
-            PendingTreeDecisionExits = pendingTreeDecisionExits;
-            SectionId = sectionId.IsNull ? CanonicalTextValue.Empty : sectionId;
-            ActiveClipIds = activeClipIds;
-            for (int index = 0; index < activeTreeClips.Count; index++)
-            {
-                AbilityTimelineTreeClipState clip = activeTreeClips[index];
-                if (CanonicalTextValue.IsNullOrWhiteSpace(clip.ClipAuthoringId) || CanonicalTextValue.IsNullOrWhiteSpace(clip.TreeGraphId) ||
-                    clip.Cycle < 0 || clip.Cycle > cycle)
-                    throw new ArgumentException("Timeline active TreeClip identity or cycle is invalid.", nameof(activeTreeClips));
-            }
+            Request = request;
+            Playback = playback;
             ActiveTreeClips = activeTreeClips;
-            StopCause = stopCause;
-            StopLocalLogicTick = stopLocalLogicTick;
-            if (hasStopContext && StopCause == AbilityTimelineSnapshotStopCause.None)
-                throw new ArgumentException("A Timeline stop context requires a stop cause.", nameof(stopCause));
-            TimelineId = SimulationIdentity.Require(timelineId, nameof(timelineId));
-            if (!actionContext.IsValid || !actionContext.HasSkillExecution || actionContext.SkillExecutionGeneration == 0)
-                throw new ArgumentException("Ability Timeline snapshot Action context is incomplete.", nameof(actionContext));
-            if (!invocationSource.IsValid)
-                throw new ArgumentException("Ability Timeline snapshot invocation source is incomplete.", nameof(invocationSource));
-            ActionContext = actionContext;
-            InvocationSource = invocationSource;
-            StartTick = startTick;
-            StartTime = startTime;
-            if (!startTick.IsValid)
-                throw new ArgumentException("Ability Timeline snapshot start tick is invalid.", nameof(startTick));
-            RuntimeHandle = runtimeHandle;
-            Generation = generation;
-            ExecutionInstanceId = executionInstanceId;
-            PlaybackMode = playbackMode;
-            State = state;
-            CursorTime = cursorTime;
-            Cycle = cycle;
-            HasStopContext = hasStopContext;
-            InitialBoundaryPending = initialBoundaryPending;
-            InputSequence = inputSequence;
+            RequireValid();
         }
 
-        public void RetainStateStorage()
-        {
-            RequestId.Retain();
-            OwnerIdentity.Retain();
-            CallIdentity.Retain();
-            ContentRevision.Retain();
-            SectionId.Retain();
-            TimelineId.Retain();
-            ActionContext.Retain();
-            InvocationSource.Retain();
-            ActiveClipIds.RetainStateStorage();
-        }
-
-        public void ReleaseStateStorage()
-        {
-            ActiveClipIds.ReleaseStateStorage();
-            InvocationSource.Release();
-            ActionContext.Release();
-            TimelineId.Release();
-            SectionId.Release();
-            ContentRevision.Release();
-            CallIdentity.Release();
-            OwnerIdentity.Release();
-            RequestId.Release();
-        }
-
-        public ulong RuntimeHandle { get; }
-        public ulong Generation { get; }
-        public CanonicalTextValue RequestId { get; }
-        public CanonicalTextValue OwnerIdentity { get; }
-        public CanonicalTextValue CallIdentity { get; }
-        public ulong ExecutionInstanceId { get; }
-        public AbilityTimelineSnapshotMode PlaybackMode { get; }
-        public CanonicalTextValue ContentRevision { get; }
-        public AbilityTimelineSnapshotState State { get; }
-        public FixedScalar CursorTime { get; }
-        public int Cycle { get; }
-        public int TimeCarry { get; }
-        public AbilityTimelinePlaybackControl Control { get; }
-        public TimelineSnapshotItems<AbilityTimelineTreeClipExit> TreeDecisionExits { get; }
-        public TimelineSnapshotItems<AbilityTimelineTreeClipExit> PendingTreeDecisionExits { get; }
-        public CanonicalTextValue SectionId { get; }
-        public TimelineSnapshotItems<CanonicalTextValue> ActiveClipIds { get; }
+        public AbilityTimelineStartRequest Request { get; }
+        public BTSMTL.Timeline.TimelinePlaybackState Playback { get; }
         public TimelineSnapshotItems<AbilityTimelineTreeClipState> ActiveTreeClips { get; }
-        public bool HasStopContext { get; }
-        public AbilityTimelineSnapshotStopCause StopCause { get; }
-        public ulong StopLocalLogicTick { get; }
-        public bool InitialBoundaryPending { get; }
-        public CanonicalTextValue TimelineId { get; }
-        public TimelineActionContextIdentity ActionContext { get; }
-        public AbilityTimelineInvocationSource InvocationSource { get; }
-        public ulong InputSequence { get; }
-        public SimulationTick StartTick { get; }
-        public FixedScalar StartTime { get; }
+        public bool IsValid => RuntimeHandle != 0;
+        public ulong RuntimeHandle => Request.PlaybackIdentity;
+        public ulong Generation => Request.PlaybackIdentity;
+        public CanonicalTextValue RequestId => Playback.RequestId;
+        public CanonicalTextValue OwnerIdentity => Playback.ExecutionIdentity.OwnerIdentity;
+        public CanonicalTextValue CallIdentity => Playback.ExecutionIdentity.CallIdentity;
+        public ulong ExecutionInstanceId => Playback.ExecutionIdentity.InstanceId;
+        public BTSMTL.Timeline.TimelinePlaybackMode PlaybackMode => Request.PlaybackMode;
+        public CanonicalTextValue ContentRevision => Playback.ContentRevision;
+        public BTSMTL.Timeline.TimelineRuntimePlaybackState State => Playback.State;
+        public FixedScalar CursorTime => Playback.CursorTime;
+        public int Cycle => Playback.Cycle;
+        public int TimeCarry => Playback.TimeCarry;
+        public AbilityTimelinePlaybackControl Control => Playback.Control;
+        public TimelineSnapshotItems<AbilityTimelineTreeClipExit> TreeDecisionExits => Playback.TreeDecisionExits;
+        public TimelineSnapshotItems<AbilityTimelineTreeClipExit> PendingTreeDecisionExits => Playback.PendingTreeDecisionExits;
+        public CanonicalTextValue SectionId => Playback.SectionId;
+        public TimelineSnapshotItems<CanonicalTextValue> ActiveClipIds => Playback.ActiveClipIds;
+        public bool HasStopContext => Playback.HasStopContext;
+        public BTSMTL.Timeline.TimelinePlaybackStopContext StopContext => Playback.StopContext;
+        public bool InitialBoundaryPending => Playback.InitialBoundaryPending;
+        public CanonicalTextValue TimelineId => Request.TimelineId;
+        public TimelineActionContextIdentity ActionContext => Request.ActionContext;
+        public AbilityTimelineInvocationSource InvocationSource => Request.InvocationSource;
+        public ulong InputSequence => Request.InputSequence;
+        public SimulationTick StartTick => Request.Tick;
+        public FixedScalar StartTime => Request.StartTime;
 
+        [CanonicalValidation]
+        void RequireValid()
+        {
+            for (int index = 0; index < ActiveTreeClips.Count; index++)
+                if (ActiveTreeClips.Span[index].Cycle > Cycle)
+                    throw new ArgumentException("Timeline active TreeClip cycle exceeds the playback cycle.", nameof(ActiveTreeClips));
+        }
 
+        public void RetainStateStorage() => CanonicalRetain(this);
+        public void ReleaseStateStorage() => CanonicalRelease(this);
     }
     public enum AbilityTreeClipHook : byte
     {
@@ -1227,7 +1170,7 @@ namespace ThirdPersonSimulation
         void Discard(AbilityTimelineAdvancePending pending);
         AbilityTimelineRuntimeSnapshot Capture(ulong runtimeHandle);
         AbilityTimelineRuntimeSnapshot CaptureRuntimeSnapshot(ulong runtimeHandle);
-        void PrepareSnapshotStorage(in GameplayEffectSessionCapacity capacity, int maximumSessionCheckpointPayloadBytes);
+        void PrepareSnapshotStorage(in GameplayEffectSessionCapacity capacity);
         void GetSnapshotCapacity(out int clips, out int exits, out int pendingExits, out int trees);
         ulong ApplyRestore(AbilityTimelineRuntimeSnapshot snapshot, ulong logicTick);
         void DiscardUnpublishedPlaybacks(IReadOnlyList<AbilityTimelineRuntimeSnapshot> snapshots);

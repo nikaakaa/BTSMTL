@@ -13,7 +13,8 @@ namespace ThirdPersonSimulation
             GameplayAbilityExecutionDataSet<Float32GameplayAbilityExecutionData> data,
             CharacterInputRuntimeBinding inputRuntimeBinding,
             CharacterGameplayEffectRuntimeBinding gameplayEffectBinding,
-            CharacterEquipmentRuntimeBinding equipmentRuntimeBinding)
+            CharacterEquipmentRuntimeBinding equipmentRuntimeBinding,
+            GeneratedBlackboardConfiguration<AbilityStateValue> blackboards)
         {
             if (data == null)
                 throw new ArgumentNullException(nameof(data));
@@ -49,17 +50,37 @@ namespace ThirdPersonSimulation
                     ability,
                     inputRuntimeBinding.RequireAbilityGrant(ability.AbilityId),
                     gameplayEffectCatalog,
-                    equipmentLayout);
+                    equipmentLayout,
+                    blackboards);
                 values.Add(installation);
                 m_ByAbility.Add(installation.Data.AbilityId, installation);
             }
             values.Sort((left, right) => left.Data.AbilityId.CompareTo(right.Data.AbilityId));
             m_Installations = values.AsReadOnly();
+            var sources = new GeneratedCharacterBlackboardSource<AbilityStateValue>[values.Count];
+            for (int index = 0; index < sources.Length; index++)
+            {
+                Float32GameplayAbilityExecutionInstallation installation = values[index];
+                sources[index] = new GeneratedCharacterBlackboardSource<AbilityStateValue>(installation.Data.AbilityId,
+                    installation.Data.StateSlots, installation.Data.Scopes,
+                    installation.BlackboardDeclarations,
+                    installation.Blackboards);
+            }
+            CharacterBlackboards = new GeneratedCharacterBlackboardLayout<AbilityStateValue>(blackboards, sources);
+            BlackboardContentHash = blackboards.ContentHash;
+            var projectedInputs = new HashSet<int>();
+            for (int index = 0; index < values.Count; index++)
+            {
+                values[index].CharacterBlackboardSlots = CharacterBlackboards.Slots(values[index].Data.AbilityId);
+                values[index].BindCharacterInputs(projectedInputs);
+            }
             RequiresEquipment = hasEquipmentAbility;
             GameplayEffectCatalog = gameplayEffectCatalog;
         }
 
         public IReadOnlyList<Float32GameplayAbilityExecutionInstallation> Installations => m_Installations;
+        internal GeneratedCharacterBlackboardLayout<AbilityStateValue> CharacterBlackboards { get; }
+        internal StableHash BlackboardContentHash { get; }
         public bool RequiresEquipment { get; }
         internal Float32GameplayEffectRuntimeCatalog GameplayEffectCatalog { get; }
 

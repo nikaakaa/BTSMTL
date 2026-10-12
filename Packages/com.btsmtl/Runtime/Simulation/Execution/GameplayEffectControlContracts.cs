@@ -3,6 +3,198 @@ using System.Collections.Generic;
 
 namespace ThirdPersonSimulation
 {
+    public enum GameplayEffectScopeKind : byte
+    {
+        Actor = 0,
+        ActionInstance = 1
+    }
+
+    public enum GameplayEffectQueryTarget : byte
+    {
+        Actor = 0,
+        CurrentAction = 1,
+        SelectedSource = 2
+    }
+
+    [CanonicalContract]
+    public readonly partial struct GameplayEffectScope : IEquatable<GameplayEffectScope>
+    {
+        GameplayEffectScope(ulong actionInstanceId, ulong executionGeneration)
+        {
+            ActionInstanceId = actionInstanceId;
+            ExecutionGeneration = executionGeneration;
+        }
+
+        public static GameplayEffectScope Actor => default;
+        public static GameplayEffectScope Action(ulong actionInstanceId, ulong executionGeneration) =>
+            new GameplayEffectScope(actionInstanceId, executionGeneration);
+        public static GameplayEffectScope Action(in GameplayAbilitySourceContext source) =>
+            Action(source.InstanceId, source.SkillExecutionGeneration);
+        public GameplayEffectScopeKind Kind => ActionInstanceId == 0
+            ? GameplayEffectScopeKind.Actor : GameplayEffectScopeKind.ActionInstance;
+        public ulong ActionInstanceId { get; }
+        public ulong ExecutionGeneration { get; }
+        public bool Equals(GameplayEffectScope other) => ActionInstanceId == other.ActionInstanceId &&
+            ExecutionGeneration == other.ExecutionGeneration;
+        public override bool Equals(object value) => value is GameplayEffectScope other && Equals(other);
+        public override int GetHashCode() => HashCode.Combine(ActionInstanceId, ExecutionGeneration);
+    }
+
+    public enum GameplayEffectLifetimeKind : byte
+    {
+        Independent = 0,
+        Action = 1,
+        Invocation = 2
+    }
+
+    public readonly struct GameplayEffectHolderIdentity : IEquatable<GameplayEffectHolderIdentity>
+    {
+        GameplayEffectHolderIdentity(GameplayEffectLifetimeKind lifetime, ulong actionInstanceId,
+            ulong executionGeneration, ulong runtimeHandle, CanonicalTextValue contentId,
+            ulong generation, ulong branchRevision, int cycle)
+        {
+            Lifetime = lifetime;
+            ActionInstanceId = actionInstanceId;
+            ExecutionGeneration = executionGeneration;
+            RuntimeHandle = runtimeHandle;
+            ContentId = contentId;
+            Generation = generation;
+            BranchRevision = branchRevision;
+            Cycle = cycle;
+        }
+
+        public static GameplayEffectHolderIdentity Independent => default;
+        public static GameplayEffectHolderIdentity Action(ulong actionInstanceId, ulong executionGeneration) =>
+            new GameplayEffectHolderIdentity(GameplayEffectLifetimeKind.Action, actionInstanceId,
+                executionGeneration, 0, default, 0, 0, 0);
+        public static GameplayEffectHolderIdentity Invocation(ulong actionInstanceId, ulong executionGeneration,
+            ulong runtimeHandle, CanonicalTextValue contentId, ulong generation, ulong branchRevision, int cycle) =>
+            new GameplayEffectHolderIdentity(GameplayEffectLifetimeKind.Invocation, actionInstanceId,
+                executionGeneration, runtimeHandle, contentId, generation, branchRevision, cycle);
+        public GameplayEffectLifetimeKind Lifetime { get; }
+        public ulong ActionInstanceId { get; }
+        public ulong ExecutionGeneration { get; }
+        public ulong RuntimeHandle { get; }
+        public CanonicalTextValue ContentId { get; }
+        public ulong Generation { get; }
+        public ulong BranchRevision { get; }
+        public int Cycle { get; }
+        public bool Equals(GameplayEffectHolderIdentity other) => Lifetime == other.Lifetime &&
+            ActionInstanceId == other.ActionInstanceId && ExecutionGeneration == other.ExecutionGeneration &&
+            RuntimeHandle == other.RuntimeHandle && ContentId.Equals(other.ContentId) &&
+            Generation == other.Generation && BranchRevision == other.BranchRevision && Cycle == other.Cycle;
+        public override bool Equals(object value) => value is GameplayEffectHolderIdentity other && Equals(other);
+        public override int GetHashCode() => HashCode.Combine((byte)Lifetime, ActionInstanceId,
+            ExecutionGeneration, RuntimeHandle, ContentId, Generation, BranchRevision, Cycle);
+        public void Retain() => ContentId.Retain();
+        public void Release() => ContentId.Release();
+        internal void Write(CanonicalWriter writer)
+        {
+            writer.WriteByte((byte)Lifetime);
+            if (Lifetime == GameplayEffectLifetimeKind.Independent)
+                return;
+            writer.WriteUInt64(ActionInstanceId);
+            writer.WriteUInt64(ExecutionGeneration);
+            if (Lifetime == GameplayEffectLifetimeKind.Action)
+                return;
+            writer.WriteUInt64(RuntimeHandle);
+            writer.WriteText(ContentId);
+            writer.WriteUInt64(Generation);
+            writer.WriteUInt64(BranchRevision);
+            writer.WriteInt32(Cycle);
+        }
+        internal static GameplayEffectHolderIdentity Read(CanonicalReader reader)
+        {
+            GameplayEffectLifetimeKind lifetime = (GameplayEffectLifetimeKind)reader.ReadByte();
+            if (lifetime == GameplayEffectLifetimeKind.Independent)
+                return Independent;
+            ulong actionInstanceId = reader.ReadUInt64();
+            ulong executionGeneration = reader.ReadUInt64();
+            return lifetime switch
+            {
+                GameplayEffectLifetimeKind.Action => Action(actionInstanceId, executionGeneration),
+                GameplayEffectLifetimeKind.Invocation => Invocation(actionInstanceId, executionGeneration,
+                    reader.ReadUInt64(), reader.ReadText(), reader.ReadUInt64(), reader.ReadUInt64(), reader.ReadInt32()),
+                _ => throw new System.IO.InvalidDataException("Gameplay Effect holder lifetime is invalid.")
+            };
+        }
+    }
+
+    public readonly struct GameplayEffectSuccessContext : IEquatable<GameplayEffectSuccessContext>
+    {
+        public GameplayEffectSuccessContext(CanonicalTextValue eventTag, ulong eventId, ulong sourceTick,
+            ulong acceptedTick, CanonicalTextValue sourceSkillId, ulong sourceInstanceId,
+            ulong sourceSkillExecutionGeneration, ulong sourceSegmentGeneration)
+        {
+            EventTag = eventTag;
+            EventId = eventId;
+            SourceTick = sourceTick;
+            AcceptedTick = acceptedTick;
+            SourceSkillId = sourceSkillId;
+            SourceInstanceId = sourceInstanceId;
+            SourceSkillExecutionGeneration = sourceSkillExecutionGeneration;
+            SourceSegmentGeneration = sourceSegmentGeneration;
+        }
+
+        public CanonicalTextValue EventTag { get; }
+        public ulong EventId { get; }
+        public ulong SourceTick { get; }
+        public ulong AcceptedTick { get; }
+        public CanonicalTextValue SourceSkillId { get; }
+        public ulong SourceInstanceId { get; }
+        public ulong SourceSkillExecutionGeneration { get; }
+        public ulong SourceSegmentGeneration { get; }
+        public bool IsValid => EventId != 0;
+        public bool Equals(GameplayEffectSuccessContext other) => EventTag.Equals(other.EventTag) &&
+            EventId == other.EventId && SourceTick == other.SourceTick && AcceptedTick == other.AcceptedTick &&
+            SourceSkillId.Equals(other.SourceSkillId) && SourceInstanceId == other.SourceInstanceId &&
+            SourceSkillExecutionGeneration == other.SourceSkillExecutionGeneration &&
+            SourceSegmentGeneration == other.SourceSegmentGeneration;
+        public override bool Equals(object value) => value is GameplayEffectSuccessContext other && Equals(other);
+        public override int GetHashCode() => HashCode.Combine(EventTag, EventId, SourceTick, AcceptedTick,
+            SourceSkillId, SourceInstanceId, SourceSkillExecutionGeneration, SourceSegmentGeneration);
+        public void Retain() { EventTag.Retain(); SourceSkillId.Retain(); }
+        public void Release() { SourceSkillId.Release(); EventTag.Release(); }
+        internal void Write(CanonicalWriter writer)
+        {
+            writer.WriteBoolean(IsValid);
+            if (!IsValid)
+                return;
+            writer.WriteText(EventTag);
+            writer.WriteUInt64(EventId);
+            writer.WriteUInt64(SourceTick);
+            writer.WriteUInt64(AcceptedTick);
+            writer.WriteText(SourceSkillId);
+            writer.WriteUInt64(SourceInstanceId);
+            writer.WriteUInt64(SourceSkillExecutionGeneration);
+            writer.WriteUInt64(SourceSegmentGeneration);
+        }
+        internal static GameplayEffectSuccessContext Read(CanonicalReader reader) => reader.ReadBoolean()
+            ? new GameplayEffectSuccessContext(reader.ReadText(), reader.ReadUInt64(), reader.ReadUInt64(),
+                reader.ReadUInt64(), SimulationIdentity.Require(reader.ReadText(), "value"),
+                reader.ReadUInt64(), reader.ReadUInt64(), reader.ReadUInt64()) : default;
+    }
+
+    public readonly struct GameplayEffectOpportunityReference : IEquatable<GameplayEffectOpportunityReference>
+    {
+        public GameplayEffectOpportunityReference(ulong handle, GameplayEffectSuccessContext success)
+        {
+            Handle = handle;
+            Success = success;
+        }
+        public ulong Handle { get; }
+        public GameplayEffectSuccessContext Success { get; }
+        public bool IsValid => Handle != 0;
+        public bool Equals(GameplayEffectOpportunityReference other) => Handle == other.Handle && Success.Equals(other.Success);
+        public override bool Equals(object value) => value is GameplayEffectOpportunityReference other && Equals(other);
+        public override int GetHashCode() => HashCode.Combine(Handle, Success);
+        public void Retain() => Success.Retain();
+        public void Release() => Success.Release();
+        internal void Write(CanonicalWriter writer) { writer.WriteUInt64(Handle); Success.Write(writer); }
+        internal static GameplayEffectOpportunityReference Read(CanonicalReader reader) =>
+            new GameplayEffectOpportunityReference(reader.ReadUInt64(), GameplayEffectSuccessContext.Read(reader));
+    }
+
     internal enum GameplayEffectDurationKind : byte
     {
         Instant = 1,
@@ -74,7 +266,9 @@ namespace ThirdPersonSimulation
         Handle = 0,
         EffectId = 1,
         SourceActor = 2,
-        EffectTagQuery = 3
+        EffectTagQuery = 3,
+        Holder = 4,
+        HeldByAction = 5
     }
 
     internal enum GameplayEffectComponentKind : byte
@@ -85,7 +279,9 @@ namespace ThirdPersonSimulation
         AttributeRequirement = 4,
         Execution = 5,
         AdditionalEffects = 6,
-        Cue = 7
+        Cue = 7,
+        BlockAbilities = 8,
+        ReplacementSourceRequirement = 9
     }
 
     internal enum GameplayEffectRequirementPhase : byte
@@ -147,7 +343,10 @@ namespace ThirdPersonSimulation
             ulong predictionKey,
             ulong gameplayResultId,
             ulong sourceTick,
-            bool predicted)
+            bool predicted,
+            GameplayEffectScope scope = default,
+            GameplayEffectHolderIdentity holder = default,
+            GameplayEffectSuccessContext success = default)
         {
             if (!sourceActor.IsValid || !targetActor.IsValid || sourceTick == 0)
                 throw new ArgumentException("Gameplay Effect context identity is incomplete.");
@@ -160,6 +359,9 @@ namespace ThirdPersonSimulation
             GameplayResultId = gameplayResultId;
             SourceTick = sourceTick;
             Predicted = predicted;
+            Scope = scope;
+            Holder = holder;
+            Success = success;
         }
 
         public ActorId SourceActor { get; }
@@ -169,6 +371,9 @@ namespace ThirdPersonSimulation
         public ulong GameplayResultId { get; }
         public ulong SourceTick { get; }
         public bool Predicted { get; }
+        public GameplayEffectScope Scope { get; }
+        public GameplayEffectHolderIdentity Holder { get; }
+        public GameplayEffectSuccessContext Success { get; }
         public bool IsValid => SourceActor.IsValid && TargetActor.IsValid && SourceTick != 0;
         public void Retain()
         {
@@ -176,6 +381,8 @@ namespace ThirdPersonSimulation
             CanonicalTextValue target = TargetActor.Value;
             source.Retain();
             target.Retain();
+            Holder.Retain();
+            Success.Retain();
         }
 
         public void Release()
@@ -184,6 +391,8 @@ namespace ThirdPersonSimulation
             CanonicalTextValue target = TargetActor.Value;
             source.Release();
             target.Release();
+            Holder.Release();
+            Success.Release();
         }
     }
 
@@ -607,13 +816,17 @@ namespace ThirdPersonSimulation
             ulong handle,
             CanonicalTextValue effectId,
             ActorId sourceActor,
-            TTagQuery tagQuery)
+            TTagQuery tagQuery,
+            GameplayEffectHolderIdentity holder = default,
+            ulong holderActionInstanceId = 0)
         {
             Selector = selector;
             Handle = handle;
             EffectId = effectId.IsNull ? CanonicalTextValue.Empty : effectId;
             SourceActor = sourceActor;
             TagQuery = tagQuery;
+            Holder = holder;
+            HolderActionInstanceId = holderActionInstanceId;
         }
 
         public GameplayEffectRemoveSelector Selector { get; }
@@ -621,6 +834,8 @@ namespace ThirdPersonSimulation
         public CanonicalTextValue EffectId { get; }
         public ActorId SourceActor { get; }
         public TTagQuery TagQuery { get; }
+        public GameplayEffectHolderIdentity Holder { get; }
+        public ulong HolderActionInstanceId { get; }
     }
 
     public readonly struct GameplayEffectActiveControlSnapshot

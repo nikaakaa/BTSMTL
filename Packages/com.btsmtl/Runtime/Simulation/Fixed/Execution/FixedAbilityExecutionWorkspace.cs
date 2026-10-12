@@ -8,7 +8,8 @@ namespace ThirdPersonSimulation.Fixed
     {
         SimulationMotionContribution[] m_MotionContributions = Array.Empty<SimulationMotionContribution>();
         int m_MotionContributionCount;
-        readonly int m_OutputCapacity;
+        readonly int m_FactCapacity;
+        readonly int m_PresentationCapacity;
 
         public FixedAbilityExecutionWorkspace(
             FixedGameplayEffectExecutionScratch gameplayEffects,
@@ -21,15 +22,17 @@ namespace ThirdPersonSimulation.Fixed
             TimelineAdvances = timelineAdvances ?? throw new ArgumentNullException(nameof(timelineAdvances));
             TimelineStops = timelineStops ?? throw new ArgumentNullException(nameof(timelineStops));
             int depthCapacity = checked(data.Operations.Count + 1);
-            m_OutputCapacity = checked(data.Operations.Count * 2);
-            Facts.Capacity = m_OutputCapacity;
-            Presentation.Capacity = m_OutputCapacity;
+            m_FactCapacity = layout.Topology.FactRecordCapacity;
+            m_PresentationCapacity = layout.Topology.PresentationRecordCapacity;
+            Facts.Capacity = m_FactCapacity;
+            Presentation.Capacity = m_PresentationCapacity;
             ActionTickSnapshot = new List<FixedActionInstanceState>(layout.ActionInstanceCapacity);
             StoppingActionInstances = new HashSet<ulong>(layout.ActionInstanceCapacity);
             int inputCapacity = 0;
             for (int index = 0; index < data.Operations.Count; index++)
                 inputCapacity = Math.Max(inputCapacity, layout.ValueInputs(data.Operations[index].Handle).Length);
             ActiveValueSlots = new bool[layout.ValueEvaluationSlotCount];
+            ObservationValues = new BorrowedValueObservationScratch<AbilityStateValue>(layout.ValueEvaluationSlotCount);
             while (ValueBuffers.Count < depthCapacity)
                 ValueBuffers.Add(new FixedValueInputBuffer(inputCapacity));
         }
@@ -50,12 +53,10 @@ namespace ThirdPersonSimulation.Fixed
         internal int GameplayEffectSuccessfulChangeCount { get; set; }
         public FixedGameplayEffectExecutionScratch GameplayEffects { get; }
         internal bool[] ActiveValueSlots { get; }
+        internal BorrowedValueObservationScratch<AbilityStateValue> ObservationValues { get; }
         public List<FixedValueInputBuffer> ValueBuffers { get; } = new List<FixedValueInputBuffer>();
         public List<AbilityTimelineLogicMotionWarp> TimelineMotionWarps { get; } =
             new List<AbilityTimelineLogicMotionWarp>();
-        public List<SimulationActionWindowProjectionCandidate> ActionWindowProjections { get; } =
-            new List<SimulationActionWindowProjectionCandidate>();
-        public HashSet<SimulationActionWindowProjectionKey> ActionWindowProjectionKeys { get; } = new();
         public List<AbilityTimelineAdvancePending> TimelineAdvances { get; }
         public List<AbilityTimelineStopPending> TimelineStops { get; }
         public Stack<SimulationTimelineBlackboardContext> TimelineBlackboardContexts { get; } =
@@ -73,8 +74,6 @@ namespace ThirdPersonSimulation.Fixed
             GameplayEffectCueCount = 0;
             GameplayEffectSuccessfulChangeCount = 0;
             TimelineMotionWarps.Clear();
-            ActionWindowProjections.Clear();
-            ActionWindowProjectionKeys.Clear();
             TimelineBlackboardContexts.Clear();
             ClearMotionContributions();
         }
@@ -98,8 +97,8 @@ namespace ThirdPersonSimulation.Fixed
         internal void PrepareGameplayEffectOutputs(int changes, int facts, int presentation)
         {
             GameplayEffectProjections = new FixedGameplayEffectPendingProjection[changes];
-            Facts.Capacity = checked(m_OutputCapacity + facts);
-            Presentation.Capacity = checked(m_OutputCapacity + presentation);
+            Facts.Capacity = checked(m_FactCapacity + facts);
+            Presentation.Capacity = checked(m_PresentationCapacity + presentation);
         }
 
         internal void TruncateGameplayEffectProjections(int count)
@@ -156,7 +155,6 @@ namespace ThirdPersonSimulation.Fixed
         internal FixedScalar SampleTime { get; }
         internal CanonicalTextValue Cause { get; }
 
-        internal const int MaximumTextReferences = 29;
         internal void Retain()
         {
             Change.Retain(); FactHeader.Retain(); PresentationHeader.Retain(); Cause.Retain();

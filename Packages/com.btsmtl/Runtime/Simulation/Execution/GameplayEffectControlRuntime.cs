@@ -715,7 +715,8 @@ namespace ThirdPersonSimulation
 
         static GameplayEffectContextIdentity ConfirmedContext(GameplayEffectContextIdentity context) =>
             new GameplayEffectContextIdentity(context.SourceActor, context.TargetActor,
-                context.SourceActionInstanceId, context.PredictionKey, context.GameplayResultId, context.SourceTick, false);
+                context.SourceActionInstanceId, context.PredictionKey, context.GameplayResultId, context.SourceTick, false,
+                context.Scope, context.Holder, context.Success);
 
         bool BeginLifecyclePrediction(TActive active, GameplayEffectPreparedSpec<TSpec> spec,
             GameplayEffectLifecycleKind mutationKind, out GameplayEffectExecutionFailure failure)
@@ -823,6 +824,8 @@ namespace ThirdPersonSimulation
                     GameplayEffectPreparedSpec<TSpec> existing = m_Port.DescribeSpec(active.Spec);
                     if (!string.Equals(existing.Descriptor.EffectId, incoming.Descriptor.EffectId, StringComparison.Ordinal))
                         continue;
+                    if (!existing.Context.Scope.Equals(incoming.Context.Scope))
+                        continue;
                     if (incoming.Descriptor.Stacking == GameplayEffectStackingKind.BySource &&
                         existing.Context.SourceActor != incoming.Context.SourceActor)
                     {
@@ -846,8 +849,17 @@ namespace ThirdPersonSimulation
                 GameplayEffectRemoveSelector.EffectId => m_Port.MatchesEffectId(active.Spec, request.EffectId),
                 GameplayEffectRemoveSelector.SourceActor => m_Port.DescribeSpec(active.Spec).Context.SourceActor == request.SourceActor,
                 GameplayEffectRemoveSelector.EffectTagQuery => m_Port.MatchesEffectTagQuery(active.Spec, request.TagQuery),
+                GameplayEffectRemoveSelector.Holder => m_Port.DescribeSpec(active.Spec).Context.Holder.Equals(request.Holder),
+                GameplayEffectRemoveSelector.HeldByAction => IsHeldByAction(active, request.HolderActionInstanceId),
                 _ => false
             };
+        }
+
+        bool IsHeldByAction(TActive active, ulong actionInstanceId)
+        {
+            GameplayEffectHolderIdentity holder = m_Port.DescribeSpec(active.Spec).Context.Holder;
+            return holder.Lifetime != GameplayEffectLifetimeKind.Independent &&
+                holder.ActionInstanceId == actionInstanceId;
         }
 
         bool RemovalRequestIsValid(GameplayEffectRemoveRequest<TTagQuery> request)
@@ -858,6 +870,8 @@ namespace ThirdPersonSimulation
                 GameplayEffectRemoveSelector.EffectId => !request.EffectId.IsEmpty,
                 GameplayEffectRemoveSelector.SourceActor => request.SourceActor.IsValid,
                 GameplayEffectRemoveSelector.EffectTagQuery => m_Port.RemoveQueryIsValid(request.TagQuery),
+                GameplayEffectRemoveSelector.Holder => request.Holder.Lifetime != GameplayEffectLifetimeKind.Independent,
+                GameplayEffectRemoveSelector.HeldByAction => request.HolderActionInstanceId != 0,
                 _ => false
             };
         }

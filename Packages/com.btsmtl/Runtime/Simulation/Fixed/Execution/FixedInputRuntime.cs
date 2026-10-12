@@ -14,14 +14,31 @@ namespace ThirdPersonSimulation.Fixed
             m_Frame = frame ?? throw new ArgumentNullException(nameof(frame));
         }
 
-        public void ApplyBlackboardInputBindings(IFixedBlackboardPort blackboard)
+        public void ApplyBlackboardInputBindings(IFixedBlackboardPort blackboard
+#if UNITY_EDITOR
+            , FixedCharacterEvaluationOutput output
+#endif
+            )
         {
             if (blackboard == null)
                 throw new ArgumentNullException(nameof(blackboard));
-            for (int i = 0; i < m_Frame.Layout.BlackboardInputBindings.Count; i++)
+            for (int i = 0; i < m_Frame.Services.BlackboardInputBindings.Count; i++)
             {
-                BlackboardInputStateBinding binding = m_Frame.Layout.BlackboardInputBindings[i];
-                blackboard.ProjectBlackboardInput(binding, ReadValue(binding.InputId, binding.InputKind));
+                BlackboardInputStateBinding binding = m_Frame.Services.BlackboardInputBindings[i];
+#if UNITY_EDITOR
+                long readStarted = System.Diagnostics.Stopwatch.GetTimestamp();
+#endif
+                SimulationInputValue value = ReadValue(binding.InputId, binding.InputKind);
+#if UNITY_EDITOR
+                long projectStarted = System.Diagnostics.Stopwatch.GetTimestamp();
+                output.EvaluationInputBindingReadElapsedStopwatchTicks += projectStarted - readStarted;
+#endif
+                blackboard.ProjectBlackboardInput(binding, value);
+#if UNITY_EDITOR
+                output.EvaluationInputBindingProjectElapsedStopwatchTicks +=
+                    System.Diagnostics.Stopwatch.GetTimestamp() - projectStarted;
+                output.EvaluationInputBindingCalls++;
+#endif
             }
         }
 

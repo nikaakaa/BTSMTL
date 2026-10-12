@@ -64,7 +64,7 @@ namespace ThirdPersonSimulation.Fixed
     {
         internal FixedBlackboardWriteRecord(ActorId actor, ulong tick, CharacterSkillId ability,
             ulong actionInstanceId, ulong skillGeneration, int stateSlot, AbilityStateValue value,
-            FixedActionReplayIdentity origin)
+            FixedActionReplayIdentity origin, FixedPortInputMutation mutation)
         {
             Actor = actor;
             Tick = tick;
@@ -74,6 +74,7 @@ namespace ThirdPersonSimulation.Fixed
             StateSlot = stateSlot;
             Value = value;
             Origin = origin;
+            Mutation = mutation;
         }
 
         public ActorId Actor { get; }
@@ -84,6 +85,7 @@ namespace ThirdPersonSimulation.Fixed
         public int StateSlot { get; }
         public AbilityStateValue Value { get; }
         public FixedActionReplayIdentity Origin { get; }
+        public FixedPortInputMutation Mutation { get; }
 
         public void Retain()
         {
@@ -102,13 +104,15 @@ namespace ThirdPersonSimulation.Fixed
         public static void Write(CanonicalWriter writer, ActorId actor, in FixedBlackboardWriteResult result,
             in FixedActionReplayIdentity origin)
         {
+            writer.WriteHash(AbilityStateValue.CanonicalSchemaHash);
             writer.WriteText(actor.Value);
             writer.WriteUInt64(result.Tick);
             writer.WriteText(result.Command.Ability.AbilityId.Value);
             writer.WriteUInt64(result.Command.ActionInstanceId);
             writer.WriteUInt64(result.Command.SkillGeneration);
             writer.WriteInt32(result.Command.StateSlot);
-            FixedCharacterRuntimeStateCodec.WriteValue(writer, result.Command.Value);
+            writer.WriteByte((byte)result.Command.Mutation);
+            AbilityStateValue.CanonicalWrite(writer, result.Command.Value);
             writer.WriteBoolean(result.Command.ActionInstanceId != 0);
             if (result.Command.ActionInstanceId != 0)
                 origin.Write(writer);
@@ -116,22 +120,26 @@ namespace ThirdPersonSimulation.Fixed
 
         public static FixedBlackboardWriteRecord Read(CanonicalReader reader, System.Func<CanonicalReader, string> identity)
         {
+            AbilityStateValue.CanonicalRequireSchema(reader);
+            reader.DeclaredIdentityReader = identity;
             var actor = new ActorId(reader.ReadText());
             ulong tick = reader.ReadUInt64();
             var ability = new CharacterSkillId(identity(reader));
             ulong action = reader.ReadUInt64();
             ulong generation = reader.ReadUInt64();
             int slot = reader.ReadInt32();
-            AbilityStateValue value = FixedCharacterRuntimeStateCodec.ReadValue(reader, identity);
+            var mutation = (FixedPortInputMutation)reader.ReadByte();
+            AbilityStateValue value = AbilityStateValue.CanonicalRead(reader);
             FixedActionReplayIdentity origin = reader.ReadBoolean() ? FixedActionReplayIdentity.Read(reader, identity) : default;
-            return new FixedBlackboardWriteRecord(actor, tick, ability, action, generation, slot, value, origin);
+            return new FixedBlackboardWriteRecord(actor, tick, ability, action, generation, slot, value, origin, mutation);
         }
     }
 
     public readonly struct FixedBlackboardWriteCommand
     {
         public FixedBlackboardWriteCommand(GameplayAbilityExecutionIdentity ability, ulong actionInstanceId,
-            ulong skillGeneration, int stateSlot, BlackboardOwnerToken owner, AbilityStateValue value)
+            ulong skillGeneration, int stateSlot, BlackboardOwnerToken owner, AbilityStateValue value,
+            FixedPortInputMutation mutation = FixedPortInputMutation.Assign)
         {
             Ability = ability;
             ActionInstanceId = actionInstanceId;
@@ -139,6 +147,7 @@ namespace ThirdPersonSimulation.Fixed
             StateSlot = stateSlot;
             Owner = owner;
             Value = value;
+            Mutation = mutation;
         }
 
         public GameplayAbilityExecutionIdentity Ability { get; }
@@ -147,6 +156,7 @@ namespace ThirdPersonSimulation.Fixed
         public int StateSlot { get; }
         public BlackboardOwnerToken Owner { get; }
         public AbilityStateValue Value { get; }
+        public FixedPortInputMutation Mutation { get; }
         public void Retain() => Value.Retain();
         public void Release() => Value.Release();
     }

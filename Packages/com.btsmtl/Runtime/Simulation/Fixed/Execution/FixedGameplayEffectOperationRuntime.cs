@@ -85,6 +85,74 @@ namespace ThirdPersonSimulation.Fixed
         public IReadOnlyList<string> OwnedTags => m_GameplayEffects.OwnedTags;
         public bool HasTag(string tag) => m_GameplayEffects.HasTag(tag);
         public bool Matches(PortableTagQuery query) => m_GameplayEffects.Matches(query);
+        public bool HasTag(string tag, GameplayEffectScope scope) => m_GameplayEffects.HasTag(tag, scope);
+        public bool Matches(PortableTagQuery query, GameplayEffectScope scope) => m_GameplayEffects.Matches(query, scope);
+        public bool TryFindOpportunity(GameplayEffectScope scope, PortableTagQuery query,
+            out GameplayEffectOpportunityReference opportunity, out SimulationActionTargetSnapshot target) =>
+            m_GameplayEffects.TryFindOpportunity(scope, query, out opportunity, out target);
+
+        public bool ConsumeOpportunity(GameplayEffectOpportunityReference opportunity, SimulationExecutionSource source)
+        {
+            if (!ReceiveCommandBatch(1, source).Accepted)
+                return false;
+            GameplayEffectRemoveResult result = m_GameplayEffects.Remove(new GameplayEffectRemoveRequest<PortableTagQuery>(
+                GameplayEffectRemoveSelector.Handle, opportunity.Handle, default, default, null));
+            RecordChanges(new ActivationId(source, 1), "action:consume-opportunity");
+            return result.Kind == GameplayEffectRemoveResultKind.Removed;
+        }
+        public bool HasTag(string tag, GameplayEffectQueryTarget target) =>
+            TryResolveQueryScope(target, out GameplayEffectScope scope) && m_GameplayEffects.HasTag(tag, scope);
+        public AbilityStateValue ReadEffect(SimulationOperation operation, string outputPort)
+        {
+            ulong handle = 0;
+            SimulationGameplayEffectContext context = default;
+            bool found = TryResolveQueryScope((GameplayEffectQueryTarget)operation.Integer0, out GameplayEffectScope scope) &&
+                m_GameplayEffects.TryFindEffect(operation.Text0, scope, out handle, out context);
+            return outputPort switch
+            {
+                "m_Result" => AbilityStateValue.FromBoolean(found),
+                "m_Handle" => AbilityStateValue.FromUInt64(handle),
+                "m_EventTag" => AbilityStateValue.FromIdentity(context.Success.EventTag),
+                "m_EventId" => AbilityStateValue.FromUInt64(context.Success.EventId),
+                "m_SourceTick" => AbilityStateValue.FromUInt64(context.Success.SourceTick),
+                "m_AcceptedTick" => AbilityStateValue.FromUInt64(context.Success.AcceptedTick),
+                "m_SourceActionId" => AbilityStateValue.FromUInt64(context.SourceActionInstanceId),
+                "m_TargetId" => AbilityStateValue.FromIdentity(context.SuccessTarget.TargetId),
+                "m_Position" => AbilityStateValue.FromVector3(context.SuccessTarget.Position),
+                "m_Yaw" => AbilityStateValue.FromScalar(context.SuccessTarget.Yaw.Degrees),
+                _ => throw new InvalidOperationException("Gameplay Effect context output is unsupported.")
+            };
+        }
+        public bool Matches(PortableTagQuery query, GameplayEffectQueryTarget target) =>
+            TryResolveQueryScope(target, out GameplayEffectScope scope) && m_GameplayEffects.Matches(query, scope);
+
+        bool TryResolveQueryScope(GameplayEffectQueryTarget target, out GameplayEffectScope scope)
+        {
+            switch (target)
+            {
+                case GameplayEffectQueryTarget.Actor:
+                    scope = GameplayEffectScope.Actor;
+                    return true;
+                case GameplayEffectQueryTarget.SelectedSource:
+                    scope = GameplayEffectScope.Action(m_Frame.SelectedSource);
+                    return m_Frame.SelectedSource.IsValid;
+                case GameplayEffectQueryTarget.CurrentAction:
+                    if (m_Actions.TryGetCurrentSkillExecution(out FixedActionInstanceState action))
+                    {
+                        scope = GameplayEffectScope.Action(action.SourceContext);
+                        return true;
+                    }
+                    scope = default;
+                    return false;
+                default:
+                    throw new InvalidOperationException("Gameplay Effect query target is unsupported.");
+            }
+        }
+        public bool TryFindAbilityBlock(IReadOnlyList<string> candidateTags, GameplayEffectScope scope, out ulong effectHandle) =>
+            m_GameplayEffects.TryFindAbilityBlock(candidateTags, scope, out effectHandle);
+        public bool TryFindReplacementSourceRejection(IReadOnlyList<string> candidateTags,
+            IReadOnlyList<string> selectedSourceTags, bool hasSource, out ulong effectHandle) =>
+            m_GameplayEffects.TryFindReplacementSourceRejection(candidateTags, selectedSourceTags, hasSource, out effectHandle);
         public GameplayEffectApplyResult PreviewStartupEffect(string effectId, IReadOnlyList<SimulationSetByCallerValue> values) =>
             m_GameplayEffects.PreviewStartupEffect(effectId, values);
 
@@ -213,28 +281,59 @@ namespace ThirdPersonSimulation.Fixed
                 throw new InvalidOperationException($"Gameplay Effect operation '{SourcePath(operation)}' revision '{configuredRevision}' does not match catalog revision '{definition.Revision}'.");
 
             CanonicalTextValue contextId = GetStringConstant(operation, OperationNamedConstant.ActionContext, string.Empty);
+            PortableEffectDefinition effect = Access.Services.GameplayEffectCatalog.RequireEffect(definition.Identity);
+            CanonicalTextValue successEvent = GetStringConstant(operation, OperationNamedConstant.SuccessEvent, string.Empty);
             ulong actionInstanceId = 0;
             ulong predictionKey = 0;
-            if (!CanonicalTextValue.IsNullOrEmpty(contextId))
+            ulong executionGeneration = 0;
+            FixedActionInstanceState action = default;
+            if (!contextId.IsEmpty || effect.Scope == GameplayEffectScopeKind.ActionInstance ||
+                effect.Lifetime != GameplayEffectLifetimeKind.Independent || !successEvent.IsEmpty)
             {
-                if (m_Actions.FindActive(contextId, out FixedActionInstanceState action) < 0)
+                if (!m_Actions.TryGetCurrentSkillExecution(out action) ||
+                    !action.IsActive || !contextId.IsEmpty && !action.ContextId.Equals(contextId))
                     return false;
                 actionInstanceId = action.InstanceId;
                 predictionKey = action.PredictionKey;
+                executionGeneration = action.SkillExecutionGeneration;
             }
             bool predicted = GetBooleanConstant(operation, OperationNamedConstant.Predicted, false);
             if (predicted && (actionInstanceId == 0 || predictionKey == 0))
                 return false;
 
             SimulationSetByCallerValue[] values = m_Frame.Services.SetByCallerValues(operation.Handle);
+            GameplayEffectSuccessContext success = default;
+            SimulationActionTargetSnapshot successTarget = default;
+            ulong sourceTick = m_Frame.Tick.Value;
+            ulong resultId = 0;
+            if (!successEvent.IsEmpty)
+            {
+                if (!m_Frame.Input.TryReadActionEvent(m_Frame.ActorId, in action, successEvent,
+                        out resultId, out sourceTick, out successTarget))
+                    return false;
+                success = new GameplayEffectSuccessContext(
+                    GetStringConstant(operation, OperationNamedConstant.SuccessEventTag, string.Empty),
+                    resultId, sourceTick, m_Frame.Tick.Value, action.SkillId.Value, action.InstanceId,
+                    action.SkillExecutionGeneration, action.SegmentGeneration);
+            }
+            GameplayEffectScope scope = effect.Scope == GameplayEffectScopeKind.Actor
+                ? GameplayEffectScope.Actor : GameplayEffectScope.Action(actionInstanceId, executionGeneration);
+            GameplayEffectHolderIdentity holder = effect.Lifetime switch
+            {
+                GameplayEffectLifetimeKind.Independent => GameplayEffectHolderIdentity.Independent,
+                GameplayEffectLifetimeKind.Action => GameplayEffectHolderIdentity.Action(actionInstanceId, executionGeneration),
+                GameplayEffectLifetimeKind.Invocation => ClipHolder(m_Frame.TreeClipInvocation, executionGeneration),
+                _ => throw new InvalidOperationException("Gameplay Effect lifetime is unsupported.")
+            };
             var context = new SimulationGameplayEffectContext(
                 m_Frame.ActorId,
                 m_Frame.ActorId,
                 actionInstanceId,
                 predictionKey,
-                0,
-                m_Frame.Tick.Value,
-                predicted ? SimulationGameplayEffectApplicationMode.Predicted : SimulationGameplayEffectApplicationMode.Confirmed);
+                resultId,
+                sourceTick,
+                predicted ? SimulationGameplayEffectApplicationMode.Predicted : SimulationGameplayEffectApplicationMode.Confirmed,
+                scope, holder, success, successTarget);
             SimulationGameplayEffectApplication application = SimulationGameplayEffectApplication.FromCompiled(
                 definition.Identity,
                 checked((uint)definition.Revision),
@@ -250,7 +349,40 @@ namespace ThirdPersonSimulation.Fixed
             return result.Succeeded;
         }
 
-        public void SubmitAttack(SimulationOperation operation)
+        static GameplayEffectHolderIdentity ClipHolder(in AbilityTreeClipInvocation invocation, ulong executionGeneration) =>
+            GameplayEffectHolderIdentity.Invocation(invocation.ActionInstanceId, executionGeneration,
+                invocation.TimelineRuntimeHandle, invocation.ClipAuthoringId, invocation.PlaybackGeneration,
+                invocation.BranchRevision, invocation.Cycle);
+
+        public bool ReleaseTreeClipEffects(in AbilityTreeClipInvocation invocation)
+        {
+            if (!m_Actions.TryGetInstance(invocation.ActionInstanceId, out FixedActionInstanceState action))
+                throw new InvalidOperationException("TreeClip effect holder has no owning Action instance.");
+            GameplayEffectHolderIdentity holder = ClipHolder(invocation, action.SkillExecutionGeneration);
+            if (!m_GameplayEffects.HasHeldEffects(holder))
+                return true;
+            if (!ReceiveCommandBatch(1, SimulationExecutionSource.FromGameplayEffect()).Accepted)
+                return false;
+            var request = new GameplayEffectRemoveRequest<PortableTagQuery>(GameplayEffectRemoveSelector.Holder,
+                0, default, default, null, holder);
+            GameplayEffectRemoveResult result = m_GameplayEffects.Remove(request);
+            RecordChanges(new ActivationId(SimulationExecutionSource.FromGameplayEffect(), invocation.PlaybackGeneration),
+                "timeline:release-effects");
+            return result.Kind == GameplayEffectRemoveResultKind.Removed || result.Kind == GameplayEffectRemoveResultKind.NoMatch;
+        }
+
+        public GameplayEffectRemoveResult ReleaseActionEffects(ulong actionInstanceId)
+        {
+            if (!m_GameplayEffects.HasHeldEffects(default, actionInstanceId))
+                return new GameplayEffectRemoveResult(GameplayEffectRemoveResultKind.NoMatch, default);
+            if (!ReceiveCommandBatch(1, SimulationExecutionSource.FromGameplayEffect()).Accepted)
+                return new GameplayEffectRemoveResult(GameplayEffectRemoveResultKind.NotReceived, default);
+            var request = new GameplayEffectRemoveRequest<PortableTagQuery>(GameplayEffectRemoveSelector.HeldByAction,
+                0, default, default, null, holderActionInstanceId: actionInstanceId);
+            return m_GameplayEffects.Remove(request);
+        }
+
+        public bool SubmitAttack(SimulationOperation operation)
         {
             ProgramCatalogEntry catalog = RequireGameplayEffectCatalog(operation);
             PortableEffectDefinition definition = Access.Services.GameplayEffectCatalog.RequireEffect(catalog.Identity);
@@ -258,7 +390,15 @@ namespace ThirdPersonSimulation.Fixed
             if (!m_Actions.TryGetCurrentSkillExecution(out action) || !action.IsActive)
                 throw new InvalidOperationException("Attack query has no owning Action instance.");
             AbilityTreeClipInvocation clip = m_Frame.TreeClipInvocation;
+            GameplayEffectScope scope = GameplayEffectScope.Action(action.SourceContext);
+            GameplayEffectHolderIdentity holder = ClipHolder(clip, action.SkillExecutionGeneration);
+            if (!m_GameplayEffects.TryFindEffect(GetStringConstant(operation, OperationNamedConstant.AttackIntervalEffect, string.Empty),
+                    scope, out ulong intervalHandle, out _, holder))
+                return false;
             FixedCombatQuery query = m_Frame.CombatQueries.Append();
+            query.IntervalEffectHandle = intervalHandle;
+            query.IntervalScope = scope;
+            query.IntervalHolder = holder;
             query.Identity = new CombatAttackIdentity(action.InstanceId, action.SegmentGeneration,
                 action.SkillId, operation.Handle, clip.ClipAuthoringId,
                 clip.PlaybackGeneration, clip.BranchRevision, clip.Cycle, clip.TimelineRuntimeHandle);
@@ -277,6 +417,7 @@ namespace ThirdPersonSimulation.Fixed
             query.BodyEndFraction = clip.BodyEndFraction;
             query.Header = m_Facts.Next(operation);
             query.RequestId = query.Header.Sequence;
+            return true;
         }
 
         public GameplayEffectRemoveResult Remove(SimulationOperation operation, ulong handle)

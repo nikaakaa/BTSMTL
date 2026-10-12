@@ -299,21 +299,41 @@ namespace ThirdPersonSimulation
 
     public interface ISynchronousOperationTarget
     {
-        void Enter(OperationExecutionDescriptor operation, string inputPort);
+        void Enter(OperationExecutionDescriptor operation);
         void ExecuteLeaf(OperationExecutionDescriptor operation);
         bool ReadCondition(OperationExecutionDescriptor operation);
         int ReadCycleCursor(OperationExecutionDescriptor operation);
         void WriteCycleCursor(OperationExecutionDescriptor operation, int cursor);
     }
 
-    public static class OperationCompositeRuntime
+    public static class OperationControlRuntime
     {
-        public static void ExecuteSynchronous<TTarget>(OperationExecutionTopology topology, ref TTarget target,
-            OperationHandle handle, string inputPort = "")
+        internal static int EvaluationCapacity(int operationCount) => checked(Math.Max(1024, operationCount * 128));
+
+        public static OperationExecutionResult Execute<TTarget>(OperationControlRuntime<TTarget> runtime,
+            GraphExecutionEntry entry) where TTarget : struct, IOperationControlTarget<TTarget>
+        {
+            OperationExecutionResult result = runtime.Tick(entry.Operation);
+            if (entry.Contract == GraphExecutionContract.Complete && result == OperationExecutionResult.Running)
+                throw new InvalidOperationException("同次完成的图入口不能返回跨次等待。");
+            return result;
+        }
+
+        public static void Execute<TTarget>(OperationExecutionTopology topology, ref TTarget target,
+            GraphExecutionEntry entry, CanonicalTextValue inputPort = default)
+            where TTarget : struct, ISynchronousOperationTarget
+        {
+            if (entry.Contract != GraphExecutionContract.Complete)
+                throw new InvalidOperationException("同步目标没有跨次生命周期存储。");
+            ExecuteSynchronous(topology, ref target, entry.Operation, inputPort);
+        }
+
+        static void ExecuteSynchronous<TTarget>(OperationExecutionTopology topology, ref TTarget target,
+            OperationHandle handle, CanonicalTextValue inputPort = default)
             where TTarget : struct, ISynchronousOperationTarget
         {
             OperationExecutionDescriptor operation = topology.Operation(handle);
-            target.Enter(operation, inputPort);
+            target.Enter(operation);
             switch (operation.Code)
             {
                 case SimulationOperationCode.Root:
@@ -345,11 +365,11 @@ namespace ThirdPersonSimulation
         }
 
         public static void ExecuteOutput<TTarget>(OperationExecutionTopology topology, ref TTarget target,
-            OperationHandle operation, string outputPort) where TTarget : struct, ISynchronousOperationTarget
+            OperationHandle operation, CanonicalTextValue outputPort) where TTarget : struct, ISynchronousOperationTarget
         {
             IReadOnlyList<ProgramControlFlowEdge> children = topology.Outgoing(operation, ProgramControlFlowKind.Child);
             for (int i = 0; i < children.Count; i++)
-                if (string.Equals(children[i].SourcePort, outputPort, StringComparison.Ordinal))
+                if (outputPort.Equals(children[i].SourcePort))
                     ExecuteSynchronous(topology, ref target, children[i].Target, children[i].TargetPort);
         }
 

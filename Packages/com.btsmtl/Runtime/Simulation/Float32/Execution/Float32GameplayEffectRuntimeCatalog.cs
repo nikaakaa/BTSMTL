@@ -248,6 +248,28 @@ namespace ThirdPersonSimulation
         public string[] Tags { get; }
     }
 
+    internal sealed class PortableBlockAbilitiesComponent : PortableEffectComponent
+    {
+        public PortableBlockAbilitiesComponent(PortableTagQuery query)
+        {
+            Query = query;
+        }
+
+        public PortableTagQuery Query { get; }
+    }
+
+    internal sealed class PortableReplacementSourceRequirementComponent : PortableEffectComponent
+    {
+        public PortableReplacementSourceRequirementComponent(PortableTagQuery candidateQuery, PortableTagQuery selectedSourceQuery)
+        {
+            CandidateQuery = candidateQuery;
+            SelectedSourceQuery = selectedSourceQuery;
+        }
+
+        public PortableTagQuery CandidateQuery { get; }
+        public PortableTagQuery SelectedSourceQuery { get; }
+    }
+
     internal sealed class PortableTagRequirementsComponent : PortableEffectComponent
     {
         public PortableTagRequirementsComponent(PortableRequirementPhase phase, PortableTagQuery source, PortableTagQuery target)
@@ -564,6 +586,8 @@ namespace ThirdPersonSimulation
             PortableEffectPeriodUpdatePolicy periodUpdate,
             PortableEffectOverflowPolicy overflowPolicy,
             string[] setByCallerParameters,
+            GameplayEffectScopeKind scope,
+            GameplayEffectLifetimeKind lifetime,
             PortableEffectComponent[] components)
         {
             Id = id;
@@ -580,6 +604,8 @@ namespace ThirdPersonSimulation
             PeriodUpdate = periodUpdate;
             OverflowPolicy = overflowPolicy;
             SetByCallerParameters = setByCallerParameters ?? Array.Empty<string>();
+            Scope = scope;
+            Lifetime = lifetime;
             Components = components ?? Array.Empty<PortableEffectComponent>();
             GrantedTags = CollectGrantedTags();
             CueIds = Components.OfType<PortableCueComponent>().Select(cue => cue.CueId)
@@ -600,6 +626,8 @@ namespace ThirdPersonSimulation
         public PortableEffectPeriodUpdatePolicy PeriodUpdate { get; }
         public PortableEffectOverflowPolicy OverflowPolicy { get; }
         public string[] SetByCallerParameters { get; }
+        public GameplayEffectScopeKind Scope { get; }
+        public GameplayEffectLifetimeKind Lifetime { get; }
         public PortableEffectComponent[] Components { get; }
         public IReadOnlyList<string> GrantedTags { get; }
         public string[] CueIds { get; }
@@ -889,12 +917,14 @@ namespace ThirdPersonSimulation
         {
             var reader = new CanonicalReader(bytes);
             int version = reader.ReadInt32();
-            if (version != 1)
+            if (version != 2)
                 throw new InvalidDataException($"Gameplay Effect '{entryIdentity}' format '{version}' is unsupported.");
             string id = NormalizeEffect(CanonicalTextEncoding.DecodeString(reader.ReadTextSegment()));
             uint revision = reader.ReadUInt32();
             if (!string.Equals(id, NormalizeEffect(entryIdentity), StringComparison.Ordinal) || revision != entryRevision || revision == 0)
                 throw new InvalidDataException($"Gameplay Effect '{entryIdentity}' runtime identity or revision does not match its definition bytes.");
+            GameplayEffectScopeKind scope = EnumValue<GameplayEffectScopeKind>(reader.ReadInt32(), "effect scope");
+            GameplayEffectLifetimeKind lifetime = EnumValue<GameplayEffectLifetimeKind>(reader.ReadInt32(), "effect lifetime");
             PortableEffectDurationPolicy durationPolicy = EnumValue<PortableEffectDurationPolicy>(reader.ReadInt32(), "duration policy");
             PortableMagnitude duration = ReadMagnitude(reader, true);
             bool hasPeriod = reader.ReadBoolean();
@@ -925,6 +955,8 @@ namespace ThirdPersonSimulation
                 periodUpdate,
                 overflow,
                 setByCaller,
+                scope,
+                lifetime,
                 components);
         }
 
@@ -982,6 +1014,14 @@ namespace ThirdPersonSimulation
                 else if (type.EndsWith(".GrantedTagsComponentDefinition", StringComparison.Ordinal))
                 {
                     result[i] = new PortableGrantedTagsComponent(ReadStrings(reader, true));
+                }
+                else if (type.EndsWith(".BlockAbilitiesComponentDefinition", StringComparison.Ordinal))
+                {
+                    result[i] = new PortableBlockAbilitiesComponent(ReadQuery(reader));
+                }
+                else if (type.EndsWith(".ReplacementSourceRequirementComponentDefinition", StringComparison.Ordinal))
+                {
+                    result[i] = new PortableReplacementSourceRequirementComponent(ReadQuery(reader), ReadQuery(reader));
                 }
                 else if (type.EndsWith(".GameplayTagRequirementsComponentDefinition", StringComparison.Ordinal))
                 {
@@ -1212,6 +1252,10 @@ namespace ThirdPersonSimulation
                 ValidateMagnitude(effect.Id, effect.DurationMagnitude);
                 if (effect.HasPeriod)
                     ValidateMagnitude(effect.Id, effect.PeriodMagnitude);
+                if (effect.Lifetime != GameplayEffectLifetimeKind.Independent &&
+                    (effect.DurationPolicy == PortableEffectDurationPolicy.Instant ||
+                     effect.StackingPolicy != PortableEffectStackingPolicy.Independent))
+                    throw new InvalidDataException($"Gameplay Effect '{effect.Id}' held lifetime requires an Independent active effect.");
                 for (int i = 0; i < effect.Components.Length; i++)
                     ValidateComponent(effect, effect.Components[i]);
             }
@@ -1222,6 +1266,8 @@ namespace ThirdPersonSimulation
             switch (component)
             {
                 case PortableModifierComponent modifier:
+                    if (owner.Scope == GameplayEffectScopeKind.ActionInstance)
+                        throw new InvalidDataException($"Gameplay Effect '{owner.Id}' cannot modify Actor attributes in ActionInstance scope.");
                     RequireAttribute(owner.Id, modifier.AttributeId);
                     ValidateMagnitude(owner.Id, modifier.Magnitude);
                     break;
@@ -1232,11 +1278,22 @@ namespace ThirdPersonSimulation
                     ValidateQuery(owner.Id, tags.Source);
                     ValidateQuery(owner.Id, tags.Target);
                     break;
+                case PortableBlockAbilitiesComponent blocked:
+                    ValidateQuery(owner.Id, blocked.Query);
+                    break;
+                case PortableReplacementSourceRequirementComponent replacement:
+                    if (owner.Scope != GameplayEffectScopeKind.Actor)
+                        throw new InvalidDataException($"Gameplay Effect '{owner.Id}' replacement source requirements must use Actor scope.");
+                    ValidateQuery(owner.Id, replacement.CandidateQuery);
+                    ValidateQuery(owner.Id, replacement.SelectedSourceQuery);
+                    break;
                 case PortableAttributeRequirementsComponent attributes:
                     RequireAttribute(owner.Id, attributes.AttributeId);
                     ValidateMagnitude(owner.Id, attributes.Threshold);
                     break;
                 case PortableExecutionComponent execution:
+                    if (owner.Scope == GameplayEffectScopeKind.ActionInstance)
+                        throw new InvalidDataException($"Gameplay Effect '{owner.Id}' cannot execute Actor attribute mutations in ActionInstance scope.");
                     for (int i = 0; i < execution.Mutations.Length; i++)
                     {
                         RequireAttribute(owner.Id, execution.Mutations[i].AttributeId);

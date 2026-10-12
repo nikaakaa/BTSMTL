@@ -69,9 +69,15 @@ namespace ThirdPersonSimulation.Fixed
         readonly FixedAbilityExecutionFrame m_Frame;
         readonly FixedStatePort m_ControlState;
         readonly bool[] m_ActiveValueSlots;
+        readonly BorrowedValueObservationScratch<AbilityStateValue> m_ObservationValues;
         readonly List<FixedValueInputBuffer> m_InputBuffers;
         readonly string[][] m_InputPortIds;
+        readonly OperationValueObservationLayout m_ObservationLayout;
         int m_InputBufferDepth;
+        bool m_ObservingValues;
+#if UNITY_EDITOR
+        readonly FixedAbilityExecutionWorkspace m_ObservationWorkspace;
+#endif
 
         public FixedValueRuntime(
             FixedGameplayAbilityExecutionAccess access,
@@ -96,8 +102,19 @@ namespace ThirdPersonSimulation.Fixed
             m_ControlState = controlState;
             if (workspace == null)
                 throw new ArgumentNullException(nameof(workspace));
+#if UNITY_EDITOR
+            m_ObservationWorkspace = workspace;
+#endif
             m_ActiveValueSlots = workspace.ActiveValueSlots;
+            m_ObservationValues = workspace.ObservationValues;
             m_InputBuffers = workspace.ValueBuffers;
+            m_ObservationLayout = new OperationValueObservationLayout(frame.Data.Operations.Count,
+                frame.Data.ExecutionSources, index =>
+                {
+                    SimulationOperation operation = frame.Data.Operations[index];
+                    return GameplayAbilityValuePortContracts.Require(operation.Code, operation.Handle,
+                        frame.Data.GraphCallFrames, operation.Integer0);
+                });
             m_InputPortIds = new string[frame.Data.Operations.Count][];
             for (int operation = 0; operation < m_InputPortIds.Length; operation++)
             {
@@ -136,26 +153,78 @@ namespace ThirdPersonSimulation.Fixed
                 m_Blackboard.WriteGraphCallParameter(frame.Inputs[i].StateSlot, inputs[i]);
         }
 
-		public AbilityStateValue Evaluate<TTarget>(
+        public AbilityStateValue Evaluate<TTarget>(OperationControlCursor<TTarget> cursor,
+            OperationHandle handle, string outputPort = "", int outputPortIndex = -1)
+            where TTarget : struct, IOperationControlTarget<TTarget>
+        {
+            AbilityStateValue value = EvaluateValue(cursor, handle, outputPort, outputPortIndex);
+            if (!m_ObservingValues && m_InputBufferDepth == 0 && m_Frame.Trace.CaptureValues &&
+                !cursor.IsPredictiveEvaluation && m_Frame.RuleEvaluationMode != GameplayAbilityRuleEvaluationMode.Availability)
+                ObserveGraphValues(cursor, handle);
+            return value;
+        }
+
+        void ObserveGraphValues<TTarget>(OperationControlCursor<TTarget> cursor, OperationHandle handle)
+            where TTarget : struct, IOperationControlTarget<TTarget>
+        {
+            m_ObservingValues = true;
+#if UNITY_EDITOR
+            long observationStarted = System.Diagnostics.Stopwatch.GetTimestamp();
+#endif
+            try
+            {
+                foreach (ref readonly OperationValueObservationPort port in m_ObservationLayout.Ports(handle))
+                {
+                    SimulationOperation operation = Access.Operation(port.Operation);
+                    AbilityStateValue value;
+                    if (port.Direction == ProgramValuePortDirection.Output)
+                        value = EvaluateValue(cursor, port.Operation, port.Identity, port.Index);
+                    else
+                    {
+                        ReadOnlySpan<CompiledValueInputBinding> inputs = m_Layout.ValueInputs(port.Operation);
+                        int index = 0;
+                        while (inputs[index].TargetPortIndex != port.Index) index++;
+                        value = ReadInputValue(cursor, operation, port.Identity, in inputs[index]);
+                    }
+                    m_Frame.Trace.AddValue(operation, port.Identity, port.Direction, in value);
+                }
+            }
+            finally
+            {
+                m_ObservationValues.Clear();
+#if UNITY_EDITOR
+                m_ObservationWorkspace.ValueTraces.ObservationElapsedStopwatchTicks +=
+                    System.Diagnostics.Stopwatch.GetTimestamp() - observationStarted;
+                m_ObservationWorkspace.ValueTraces.ObservationCalls++;
+#endif
+                m_ObservingValues = false;
+            }
+        }
+
+		AbilityStateValue EvaluateValue<TTarget>(
 			OperationControlCursor<TTarget> cursor,
 			OperationHandle handle,
 			string outputPort = "",
 			int outputPortIndex = -1)
 			where TTarget : struct, IOperationControlTarget<TTarget>
 		{
-            if (m_Frame.RuleEvaluationMode != GameplayAbilityRuleEvaluationMode.Availability)
+            if (!m_ObservingValues && m_Frame.RuleEvaluationMode != GameplayAbilityRuleEvaluationMode.Availability)
                 cursor.RequireExecution(handle);
 			int valueSlot = m_Layout.ValueEvaluationSlot(handle, outputPortIndex);
 			if (m_ActiveValueSlots[valueSlot])
 				throw new InvalidOperationException($"Value operation cycle reached '{handle}/{outputPort}'.");
+            bool readOnlyObservation = m_ObservingValues;
+            if (readOnlyObservation && m_ObservationValues.IsWritten(valueSlot))
+                return m_ObservationValues.Read(valueSlot);
 			m_ActiveValueSlots[valueSlot] = true;
 			try
 			{
 				SimulationOperation operation = Access.Operation(handle);
-                if (m_Frame.ValuePorts != null && m_Frame.ValuePorts.TryRead(handle.Value, outputPort, ProgramValuePortDirection.Output, out AbilityStateValue supplied))
+                if (m_Frame.ValuePorts != null && m_Frame.ValuePorts.TryReadPrepared(handle.Value, outputPort, ProgramValuePortDirection.Output, out AbilityStateValue supplied))
                 {
-                    if (!cursor.IsPredictiveEvaluation && m_Frame.RuleEvaluationMode != GameplayAbilityRuleEvaluationMode.Availability)
+                    if (!m_ObservingValues && !cursor.IsPredictiveEvaluation && m_Frame.RuleEvaluationMode != GameplayAbilityRuleEvaluationMode.Availability)
                         m_Frame.Trace.AddValue(operation, outputPort, ProgramValuePortDirection.Output, supplied);
+                    if (readOnlyObservation) m_ObservationValues.Write(valueSlot, in supplied);
                     return supplied;
                 }
 				using FixedValueInputLease inputs = ReadInputs(cursor, operation);
@@ -215,9 +284,9 @@ namespace ThirdPersonSimulation.Fixed
                     case SimulationOperationCode.AbilityActive:
                         result = AbilityStateValue.FromBoolean(m_Frame.DecisionRead.IsAbilityActive(m_Ability.AbilityId, operation.Handle));
                         break;
-                    case SimulationOperationCode.SelectedSourceWindowActive:
-                        result = AbilityStateValue.FromBoolean(m_Frame.DecisionRead.IsSelectedSourceWindowActive(
-                            in m_Frame.SelectedSource, m_Ability.AbilityId, operation.Handle, operation.Text0));
+                    case SimulationOperationCode.GameplayEffectSourceAllowsCandidate:
+                        result = AbilityStateValue.FromBoolean(m_Frame.DecisionRead.SelectedSourceEffectsAllowCandidate(
+                            m_Ability.AbilityId, in m_Frame.SelectedSource));
                         break;
                     case SimulationOperationCode.SelectedSourcePhase:
                         result = AbilityStateValue.FromBoolean(m_Frame.DecisionRead.IsSelectedSourcePhase(
@@ -228,9 +297,6 @@ namespace ThirdPersonSimulation.Fixed
                             ? m_Frame.DecisionRead.HasMoveInput
                             : m_Frame.DecisionRead.LocomotionMode == (CharacterLocomotionMode)operation.Integer1);
                         break;
-                    case SimulationOperationCode.ActionWindowActive:
-						result = AbilityStateValue.FromBoolean(m_ActionAdmission.IsWindowActive(operation));
-						break;
 					case SimulationOperationCode.CanActivateAction:
 						result = AbilityStateValue.FromBoolean(m_ActionAdmission.PreviewActivation(cursor, operation, in m_Frame.SelectedSource).Allowed);
 						break;
@@ -248,18 +314,23 @@ namespace ThirdPersonSimulation.Fixed
                     case SimulationOperationCode.AttackHitQuery:
                         result = AbilityStateValue.FromBoolean(
                             m_Actions.TryGetCurrentSkillExecution(out FixedActionInstanceState hitAction) &&
-                            m_Frame.Combat.HasAcceptedHit(m_Frame.ActorId, hitAction.InstanceId,
+                            m_Frame.Combat.HasAcceptedHit(hitAction.InstanceId,
                                 hitAction.SegmentGeneration, operation.Text0));
                         break;
                     case SimulationOperationCode.GameplayEffectRemove:
                         result = AbilityStateValue.FromBoolean(cursor.ReadStatus(operation.Handle) == OperationRunnableStatus.Success);
                         break;
+                    case SimulationOperationCode.GameplayEffectActive:
+                        result = RequireGameplayTags().ReadEffect(operation, outputPort);
+                        break;
                     case SimulationOperationCode.GameplayEffectHasTag:
-                        result = AbilityStateValue.FromBoolean(RequireGameplayTags().HasTag(operation.Text0));
+                        result = AbilityStateValue.FromBoolean(RequireGameplayTags().HasTag(operation.Text0,
+                            (GameplayEffectQueryTarget)operation.Integer0));
                         break;
                     case SimulationOperationCode.GameplayEffectMatchTags:
                         result = AbilityStateValue.FromBoolean(
-                            RequireGameplayTags().Matches(Access.Services.RequireTagQuery(operation.Handle)));
+                            RequireGameplayTags().Matches(Access.Services.RequireTagQuery(operation.Handle),
+                                (GameplayEffectQueryTarget)operation.Integer0));
                         break;
                     case SimulationOperationCode.GameplayAttributeRead:
                         result = RequireGameplayTags().ReadAttribute(operation, outputPort);
@@ -307,8 +378,9 @@ namespace ThirdPersonSimulation.Fixed
 					default:
 						throw new InvalidOperationException($"Operation '{handle}' code '{operation.Code}' is not a value operation.");
 				}
-                if (!cursor.IsPredictiveEvaluation && m_Frame.RuleEvaluationMode != GameplayAbilityRuleEvaluationMode.Availability)
+                if (!m_ObservingValues && !cursor.IsPredictiveEvaluation && m_Frame.RuleEvaluationMode != GameplayAbilityRuleEvaluationMode.Availability)
                     m_Frame.Trace.AddValue(operation, outputPort, ProgramValuePortDirection.Output, result);
+                if (readOnlyObservation) m_ObservationValues.Write(valueSlot, in result);
 				return result;
 			}
 			finally
@@ -323,14 +395,17 @@ namespace ThirdPersonSimulation.Fixed
             string outputPort)
             where TTarget : struct, IOperationControlTarget<TTarget>
         {
-            SimulationActionTargetSnapshot target = ReadBlackboard(cursor, operation).ActionTargetSnapshot;
-            FixedVector3 direction = target.Position - m_Frame.BodyFacts.Position;
+            BlackboardTargetProjection target = m_Layout.TargetProjection(operation.Handle);
+            if (outputPort == "m_PlanarDistance")
+            {
+                FixedVector3 direction = m_Blackboard.Read(cursor, operation, target.Position).Vector3 - m_Frame.BodyFacts.Position;
+                return AbilityStateValue.FromScalar(new FixedVector2(direction.X, direction.Z).Magnitude);
+            }
             return outputPort switch
             {
-                "m_HasTarget" => AbilityStateValue.FromBoolean(target.HasTarget),
-                "m_Position" => AbilityStateValue.FromVector3(target.Position),
-                "m_Yaw" => AbilityStateValue.FromScalar(target.Yaw.Degrees),
-                "m_PlanarDistance" => AbilityStateValue.FromScalar(new FixedVector2(direction.X, direction.Z).Magnitude),
+                "m_HasTarget" => AbilityStateValue.FromBoolean(!CanonicalTextValue.IsNullOrEmpty(m_Blackboard.Read(cursor, operation, target.Identity).Identity)),
+                "m_Position" => m_Blackboard.Read(cursor, operation, target.Position),
+                "m_Yaw" => AbilityStateValue.FromScalar(new FixedYaw(m_Blackboard.Read(cursor, operation, target.Yaw).Scalar).Degrees),
                 _ => throw new InvalidOperationException($"Action target output '{outputPort}' is unsupported.")
             };
         }
@@ -356,8 +431,10 @@ namespace ThirdPersonSimulation.Fixed
         {
             if (!m_Actions.TryGetCurrentSkillExecution(out FixedActionInstanceState action))
                 throw new InvalidOperationException("捕获动作目标必须在当前技能动作内执行。");
-            ProgramReference reference = m_Layout.Topology.FirstReference(operation.Handle, ProgramReferenceKind.StateSlot);
-            m_Blackboard.Write(cursor, operation, reference.TargetIndex, AbilityStateValue.FromActionTargetSnapshot(action.TargetSnapshot));
+            BlackboardTargetProjection target = m_Layout.TargetProjection(operation.Handle);
+            m_Blackboard.Write(cursor, operation, target.Identity, AbilityStateValue.FromIdentity(action.TargetSnapshot.TargetId));
+            m_Blackboard.Write(cursor, operation, target.Position, AbilityStateValue.FromVector3(action.TargetSnapshot.Position));
+            m_Blackboard.Write(cursor, operation, target.Yaw, AbilityStateValue.FromScalar(action.TargetSnapshot.Yaw.Degrees));
         }
 
         public bool SetBlackboard<TTarget>(
@@ -390,13 +467,9 @@ namespace ThirdPersonSimulation.Fixed
                 {
                     ref readonly CompiledValueInputBinding input = ref inputs[i];
                     string port = m_InputPortIds[operation.Handle.Value][input.TargetPortIndex];
-                    AbilityStateValue value;
-                    if (m_Frame.ValuePorts == null || !m_Frame.ValuePorts.TryRead(operation.Handle.Value, port, ProgramValuePortDirection.Input, out value))
-                        value = input.SourceKind == CompiledValueInputSourceKind.Operation
-                            ? Evaluate(cursor, input.SourceOperation, input.SourceOutputPortIdentity, input.SourceOutputPortIndex)
-                            : ValueFromConstant(m_Ability.Constants[input.ConstantIndex]);
+                    AbilityStateValue value = ReadInputValue(cursor, operation, port, in input);
                     buffer.Add(in value);
-                    if (!cursor.IsPredictiveEvaluation && m_Frame.RuleEvaluationMode != GameplayAbilityRuleEvaluationMode.Availability && (m_Frame.Trace.CaptureValues ||
+                    if (!m_ObservingValues && !cursor.IsPredictiveEvaluation && m_Frame.RuleEvaluationMode != GameplayAbilityRuleEvaluationMode.Availability && (m_Frame.Trace.CaptureValues ||
                         m_Frame.Trace.CaptureControlFlow && input.SourceKind == CompiledValueInputSourceKind.Operation))
                     {
                         m_Frame.Trace.AddValue(operation, port, ProgramValuePortDirection.Input, value);
@@ -421,6 +494,18 @@ namespace ThirdPersonSimulation.Fixed
             if (depth >= m_InputBuffers.Count)
                 throw new InvalidOperationException("Fixed value recursion exceeds its prepared operation bound.");
             return m_InputBuffers[depth];
+        }
+
+        AbilityStateValue ReadInputValue<TTarget>(OperationControlCursor<TTarget> cursor,
+            SimulationOperation operation, string port, in CompiledValueInputBinding input)
+            where TTarget : struct, IOperationControlTarget<TTarget>
+        {
+            if (m_Frame.ValuePorts != null && m_Frame.ValuePorts.TryReadPrepared(operation.Handle.Value, port,
+                    ProgramValuePortDirection.Input, out AbilityStateValue value))
+                return value;
+            return input.SourceKind == CompiledValueInputSourceKind.Operation
+                ? Evaluate(cursor, input.SourceOperation, input.SourceOutputPortIdentity, input.SourceOutputPortIndex)
+                : ValueFromConstant(m_Ability.Constants[input.ConstantIndex]);
         }
 
         internal void ReleaseInputBuffer(FixedValueInputBuffer buffer, int depth)

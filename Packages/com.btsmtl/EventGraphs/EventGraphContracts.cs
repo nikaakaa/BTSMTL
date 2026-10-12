@@ -713,87 +713,6 @@ namespace BTSMTL.EventGraphs
                 : value.Trim();
     }
 
-    public readonly struct EventGraphInvocationIdentity : IEquatable<EventGraphInvocationIdentity>
-    {
-        public EventGraphInvocationIdentity(string sourceId, ulong sequence)
-        {
-            SourceId = string.IsNullOrWhiteSpace(sourceId)
-                ? throw new ArgumentException("Event graph invocation source identity is missing.", nameof(sourceId))
-                : sourceId.Trim();
-            if (sequence == 0)
-                throw new ArgumentOutOfRangeException(nameof(sequence));
-            Sequence = sequence;
-        }
-
-        public string SourceId { get; }
-        public ulong Sequence { get; }
-        public bool IsValid => !string.IsNullOrWhiteSpace(SourceId) && Sequence != 0;
-
-        public bool Equals(EventGraphInvocationIdentity other) =>
-            string.Equals(SourceId, other.SourceId, StringComparison.Ordinal) && Sequence == other.Sequence;
-        public override bool Equals(object obj) => obj is EventGraphInvocationIdentity other && Equals(other);
-        public override int GetHashCode() => HashCode.Combine(SourceId, Sequence);
-        public override string ToString() => $"{SourceId}:{Sequence}";
-    }
-
-    public readonly struct EventGraphInvocationContext
-    {
-        public EventGraphInvocationContext(
-            EventGraphInvocationIdentity identity,
-            string eventId,
-            float deltaSeconds)
-        {
-            if (!identity.IsValid)
-                throw new ArgumentException("Event graph invocation identity is invalid.", nameof(identity));
-            EventId = string.IsNullOrWhiteSpace(eventId)
-                ? throw new ArgumentException("Event graph event identity is missing.", nameof(eventId))
-                : eventId.Trim();
-            if (!float.IsFinite(deltaSeconds) || deltaSeconds < 0f)
-                throw new ArgumentOutOfRangeException(nameof(deltaSeconds));
-            Identity = identity;
-            DeltaSeconds = deltaSeconds;
-        }
-
-        public EventGraphInvocationIdentity Identity { get; }
-        public string EventId { get; }
-        public float DeltaSeconds { get; }
-    }
-
-    public interface IEventGraphHostContext
-    {
-        EventGraphInvocationContext Invocation { get; }
-        bool TryRead(string inputId, EventGraphValueKind expectedKind, out EventGraphValue value);
-    }
-
-    public sealed class EventGraphExecutionFailure
-    {
-        public EventGraphExecutionFailure(
-            string graphId,
-            string eventId,
-            string nodeId,
-            string message,
-            Exception exception,
-            string exceptionType = "")
-        {
-            GraphId = graphId ?? string.Empty;
-            EventId = eventId ?? string.Empty;
-            NodeId = nodeId ?? string.Empty;
-            Message = string.IsNullOrWhiteSpace(message)
-                ? exception?.Message ?? "Event graph execution failed."
-                : message.Trim();
-            ExceptionType = exception?.GetType().FullName ?? exceptionType;
-        }
-
-        public string GraphId { get; }
-        public string EventId { get; }
-        public string NodeId { get; }
-        public string Message { get; }
-        public string ExceptionType { get; }
-
-        public override string ToString() =>
-            $"EventGraphFailure graph={GraphId} event={EventId} node={NodeId} message={Message}";
-    }
-
     internal static class EventGraphEnumValue<T>
     {
         static readonly TypeCode s_Code = Type.GetTypeCode(Enum.GetUnderlyingType(typeof(T)));
@@ -828,114 +747,22 @@ namespace BTSMTL.EventGraphs
         }
     }
 
-    internal sealed class EventGraphVariableBuffer
-    {
-        internal sealed class Page
-        {
-            readonly EventGraphValue[] m_Values;
-            ulong m_Version;
-            int m_References;
-
-            internal Page(int count) => m_Values = new EventGraphValue[count];
-            internal bool IsAvailable => m_References == 0;
-            internal ulong Version => m_Version;
-            internal bool IsCurrent(ulong version) => m_References != 0 && version == m_Version;
-            internal void Acquire()
-            {
-                m_Version = checked(m_Version + 1);
-                m_References = 1;
-            }
-            internal void Retain() => m_References = checked(m_References + 1);
-            internal void Write(int index, in EventGraphValue value)
-            {
-                value.Retain();
-                m_Values[index].Release();
-                m_Values[index] = value;
-            }
-            internal EventGraphValue Read(int index) => m_Values[index];
-            internal void Release()
-            {
-                m_References--;
-                if (m_References != 0)
-                    return;
-                for (int i = 0; i < m_Values.Length; i++)
-                {
-                    m_Values[i].Release();
-                    m_Values[i] = default;
-                }
-            }
-        }
-
-        readonly Page[] m_Pages;
-        Page m_Published;
-        Page m_Writing;
-
-        internal EventGraphVariableBuffer(int count)
-        {
-            m_Pages = new[] { new Page(count), new Page(count) };
-        }
-
-        internal void BeginWrite()
-        {
-            for (int i = 0; i < m_Pages.Length; i++)
-            {
-                if (!m_Pages[i].IsAvailable)
-                    continue;
-                m_Writing = m_Pages[i];
-                m_Writing.Acquire();
-                return;
-            }
-            throw new InvalidOperationException("Event graph frame ownership exceeds the prepared old/new publication boundary.");
-        }
-
-        internal void Write(int index, in EventGraphValue value) => m_Writing.Write(index, in value);
-        internal void Invalidate()
-        {
-            m_Writing?.Release();
-            m_Writing = null;
-            m_Published?.Release();
-            m_Published = null;
-        }
-
-        internal EventGraphVariableFrame Publish(EventGraphVariableContract contract,
-            EventGraphInvocationIdentity invocation, ulong resetGeneration)
-        {
-            m_Published?.Release();
-            m_Published = m_Writing;
-            m_Writing = null;
-            return new EventGraphVariableFrame(contract, invocation, resetGeneration, m_Published, m_Published.Version);
-        }
-    }
-
     public readonly struct EventGraphVariableFrame
     {
-        readonly EventGraphVariableBuffer.Page m_Page;
-        readonly ulong m_Version;
+        readonly Float32GraphVariableFrame m_Values;
 
-        internal EventGraphVariableFrame(
-            EventGraphVariableContract contract,
-            EventGraphInvocationIdentity invocation,
-            ulong resetGeneration,
-            EventGraphVariableBuffer.Page page,
-            ulong version)
+        internal EventGraphVariableFrame(EventGraphVariableContract contract, Float32GraphVariableFrame values)
         {
-            Contract = contract ?? throw new ArgumentNullException(nameof(contract));
-            if (!invocation.IsValid)
-                throw new ArgumentException("Event graph frame invocation identity is invalid.", nameof(invocation));
-            if (resetGeneration == 0)
-                throw new ArgumentOutOfRangeException(nameof(resetGeneration));
-            Invocation = invocation;
-            ResetGeneration = resetGeneration;
-            m_Page = page;
-            m_Version = version;
+            Contract = contract;
+            m_Values = values;
         }
 
         public EventGraphVariableContract Contract { get; }
-        public EventGraphInvocationIdentity Invocation { get; }
-        public ulong ResetGeneration { get; }
-        public bool IsValid => m_Page != null && m_Page.IsCurrent(m_Version);
-        public void Retain() => m_Page?.Retain();
-        public void Release() => m_Page?.Release();
+        public EventGraphInvocationIdentity Invocation => m_Values.Invocation;
+        public ulong ResetGeneration => m_Values.ResetGeneration;
+        public bool IsValid => m_Values.IsValid;
+        public void Retain() => m_Values.Retain();
+        public void Release() => m_Values.Release();
         public string GraphId => Contract.GraphId;
         public string ContractRevision => Contract.Revision;
         public string LayoutId => Contract.Layout.LayoutId;
@@ -944,7 +771,7 @@ namespace BTSMTL.EventGraphs
         {
             if (IsValid && Contract.Layout.TryGet(variableId, out EventGraphVariableLayoutEntry entry))
             {
-                value = m_Page.Read(entry.Index);
+                value = EventGraphCompiledValues.FromState(m_Values.Read(entry.Index), entry.Descriptor.ValueType);
                 return true;
             }
             value = default;
@@ -964,7 +791,7 @@ namespace BTSMTL.EventGraphs
         {
             if (IsValid && ReferenceEquals(Contract.Layout, binding.Layout))
             {
-                value = m_Page.Read(binding.Index);
+                value = EventGraphCompiledValues.FromState(m_Values.Read(binding.Index), Contract.PublishedDescriptors[binding.Index].ValueType);
                 return true;
             }
             value = default;

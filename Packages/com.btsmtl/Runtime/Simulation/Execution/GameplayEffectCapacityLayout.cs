@@ -240,6 +240,7 @@ namespace ThirdPersonSimulation
         public int RestorePayloads { get; }
         public int RecordedFrameCapacity { get; }
         public int StatePageCount { get; }
+        public int DecodedStatePageCount => StatePageCount - CandidateTicks;
 
         public static GameplayEffectSessionCapacity Prepare(SimulationSessionId sessionId, StableHash rosterHash,
             int actorCount, in GameplayEffectScheduleCapacity schedule, in GameplayEffectCheckpointCapacity checkpoints,

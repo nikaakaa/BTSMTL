@@ -36,6 +36,9 @@ namespace ThirdPersonSimulation.Fixed
         public string ContentId { get; private set; }
         public string AttackEventId { get; private set; }
         public CanonicalTextValue NodeId { get; private set; }
+        public ulong IntervalEffectHandle { get; private set; }
+        public GameplayEffectScope IntervalScope { get; private set; }
+        public GameplayEffectHolderIdentity IntervalHolder { get; private set; }
         public int SegmentCount { get; private set; }
         public ReadOnlySpan<SweepSegment<FixedScalar>> Segments => m_Segments.AsSpan(0, SegmentCount);
         public SweepTargetModel TargetModel { get; private set; }
@@ -47,15 +50,20 @@ namespace ThirdPersonSimulation.Fixed
 
         internal void Set(ActorId sourceActor, string contentId, string eventId, CanonicalTextValue nodeId,
             ReadOnlySpan<SweepSegment<FixedScalar>> segments, SweepTargetModel targetModel, SweepFilter filter,
-            ReadOnlySpan<SweepTarget<FixedScalar>> targets)
+            ReadOnlySpan<SweepTarget<FixedScalar>> targets, ulong intervalEffectHandle,
+            GameplayEffectScope intervalScope, GameplayEffectHolderIdentity intervalHolder)
         {
             sourceActor.Value.Retain();
             nodeId.Retain();
+            intervalHolder.Retain();
             ClearText();
             SourceActor = sourceActor;
             ContentId = contentId;
             AttackEventId = eventId;
             NodeId = nodeId;
+            IntervalEffectHandle = intervalEffectHandle;
+            IntervalScope = intervalScope;
+            IntervalHolder = intervalHolder;
             SegmentCount = segments.Length;
             segments.CopyTo(m_Segments);
             TargetModel = targetModel;
@@ -69,8 +77,12 @@ namespace ThirdPersonSimulation.Fixed
         {
             SourceActor.Value.Release();
             NodeId.Release();
+            IntervalHolder.Release();
             SourceActor = default;
             NodeId = default;
+            IntervalEffectHandle = 0;
+            IntervalScope = default;
+            IntervalHolder = default;
         }
 
         internal void AddContact(in SweepCandidate<FixedScalar> candidate,
@@ -80,7 +92,8 @@ namespace ThirdPersonSimulation.Fixed
         internal void CopyFrom(FixedCombatQueryDiagnostic source)
         {
             Set(source.SourceActor, source.ContentId, source.AttackEventId, source.NodeId,
-                source.Segments, source.TargetModel, source.Filter, source.Targets);
+                source.Segments, source.TargetModel, source.Filter, source.Targets,
+                source.IntervalEffectHandle, source.IntervalScope, source.IntervalHolder);
             source.Contacts.CopyTo(m_Contacts);
             ContactCount = source.ContactCount;
         }
@@ -136,12 +149,13 @@ namespace ThirdPersonSimulation.Fixed
             m_Writing.Clear();
         }
 
-        internal FixedCombatQueryDiagnostic Append(ActorId actor, string content, string eventId,
-            CanonicalTextValue nodeId, ReadOnlySpan<SweepSegment<FixedScalar>> segments, SweepTargetModel model, SweepFilter filter,
+        internal FixedCombatQueryDiagnostic Append(ActorId actor, string content, FixedCombatQuery request,
+            ReadOnlySpan<SweepSegment<FixedScalar>> segments, SweepTargetModel model, SweepFilter filter,
             ReadOnlySpan<SweepTarget<FixedScalar>> targets)
         {
             FixedCombatQueryDiagnostic query = m_Writing.Queries[m_Writing.Count++];
-            query.Set(actor, content, eventId, nodeId, segments, model, filter, targets);
+            query.Set(actor, content, request.AttackEventId, request.NodeId, segments, model, filter, targets,
+                request.IntervalEffectHandle, request.IntervalScope, request.IntervalHolder);
             return query;
         }
 

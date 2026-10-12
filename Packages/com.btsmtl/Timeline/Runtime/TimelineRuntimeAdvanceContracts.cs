@@ -127,7 +127,7 @@ namespace BTSMTL.Timeline.Runtime
         }
 
         public bool IsValid => Owner != null;
-        internal ulong AdvanceSequence { get; }
+        public ulong AdvanceSequence { get; }
         internal TimelineRuntimePlayback Owner { get; }
         internal TimelineRuntimeAdvanceRequest Request { get; }
         internal int TimeCarry { get; }

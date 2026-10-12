@@ -152,7 +152,7 @@ namespace ThirdPersonSimulation
                         code == SimulationOperationCode.Compare || code == SimulationOperationCode.And || code == SimulationOperationCode.Or ||
                         code == SimulationOperationCode.Not || code == SimulationOperationCode.ConditionResult;
                 }
-                int executions = Math.Min(installation.Control.MaximumOperationEvaluations, checked(traceRecordsPerTick + 1));
+                int executions = Math.Min(installation.MaximumOperationEvaluations, checked(traceRecordsPerTick + 1));
                 if (hasMotion) motions = checked(motions + executions);
                 if (hasChange) changes = checked(changes + executions);
                 if (hasCondition) conditions = checked(conditions + executions);

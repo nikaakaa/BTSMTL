@@ -16,6 +16,10 @@ namespace ThirdPersonSimulation
         readonly Float32StatePort m_ControlState;
         readonly Float32GameplayAbilityExecutionAccess Access;
         protected override bool IsAvailabilityQuery => m_Frame.RuleEvaluationMode == GameplayAbilityRuleEvaluationMode.Availability;
+        protected override bool CaptureValues => m_Frame.Trace.CaptureValues;
+        protected override void TraceObservedValue(SimulationOperation operation, in OperationValueObservationPort port,
+            AbilityStateValue value) => m_Frame.Trace.AddValue(operation, port.Identity, port.Direction, value);
+        protected override AbilityStateValue ReadDefaultState(int slot) => Access.Services.DefaultValue(slot);
 
         public Float32ValueRuntime(
             Float32GameplayAbilityExecutionAccess access,
@@ -28,7 +32,11 @@ namespace ThirdPersonSimulation
             Float32AbilityExecutionFrame frame,
             Float32StatePort controlState,
             Float32AbilityExecutionWorkspace workspace)
-            : base(access.Data, access.Layout, workspace.Values)
+            : base(access.Data, access.Layout, workspace.Values
+#if UNITY_EDITOR
+                , null
+#endif
+                )
         {
             m_Input = input;
             m_Actions = actions ?? throw new ArgumentNullException(nameof(actions));
@@ -91,9 +99,9 @@ namespace ThirdPersonSimulation
                     case SimulationOperationCode.AbilityActive:
                         result = AbilityStateValue.FromBoolean(m_Frame.DecisionRead.IsAbilityActive(m_Ability.AbilityId, operation.Handle));
                         break;
-                    case SimulationOperationCode.SelectedSourceWindowActive:
-                        result = AbilityStateValue.FromBoolean(m_Frame.DecisionRead.IsSelectedSourceWindowActive(
-                            in m_Frame.SelectedSource, m_Ability.AbilityId, operation.Handle, operation.Text0));
+                    case SimulationOperationCode.GameplayEffectSourceAllowsCandidate:
+                        result = AbilityStateValue.FromBoolean(m_Frame.DecisionRead.SelectedSourceEffectsAllowCandidate(
+                            m_Ability.AbilityId, in m_Frame.SelectedSource));
                         break;
                     case SimulationOperationCode.SelectedSourcePhase:
                         result = AbilityStateValue.FromBoolean(m_Frame.DecisionRead.IsSelectedSourcePhase(
@@ -104,9 +112,6 @@ namespace ThirdPersonSimulation
                             ? m_Frame.DecisionRead.HasMoveInput
                             : m_Frame.DecisionRead.LocomotionMode == (CharacterLocomotionMode)operation.Integer1);
                         break;
-                    case SimulationOperationCode.ActionWindowActive:
-						result = AbilityStateValue.FromBoolean(m_ActionAdmission.IsWindowActive(operation));
-						break;
                 case SimulationOperationCode.CanActivateAction:
 						result = AbilityStateValue.FromBoolean(m_ActionAdmission.PreviewActivation(cursor, operation, in m_Frame.SelectedSource).Allowed);
 						break;
@@ -121,12 +126,17 @@ namespace ThirdPersonSimulation
                     case SimulationOperationCode.GameplayEffectRemove:
                         result = AbilityStateValue.FromBoolean(cursor.ReadStatus(operation.Handle) == OperationRunnableStatus.Success);
                         break;
+                    case SimulationOperationCode.GameplayEffectActive:
+                        result = RequireGameplayTags().ReadEffect(operation, outputPort);
+                        break;
                     case SimulationOperationCode.GameplayEffectHasTag:
-                        result = AbilityStateValue.FromBoolean(RequireGameplayTags().HasTag(operation.Text0));
+                        result = AbilityStateValue.FromBoolean(RequireGameplayTags().HasTag(operation.Text0,
+                            (GameplayEffectQueryTarget)operation.Integer0));
                         break;
                 case SimulationOperationCode.GameplayEffectMatchTags:
                         result = AbilityStateValue.FromBoolean(
-                            RequireGameplayTags().Matches(Access.Services.RequireTagQuery(operation.Handle)));
+                            RequireGameplayTags().Matches(Access.Services.RequireTagQuery(operation.Handle),
+                                (GameplayEffectQueryTarget)operation.Integer0));
                         break;
                 case SimulationOperationCode.GameplayAttributeRead:
                         result = RequireGameplayTags().ReadAttribute(operation, outputPort);
@@ -212,14 +222,17 @@ namespace ThirdPersonSimulation
             string outputPort)
             where TTarget : struct, IOperationControlTarget<TTarget>
         {
-            SimulationActionTargetSnapshot target = ReadBlackboard(cursor, operation).ActionTargetSnapshot;
-            Float32Vector3 direction = target.Position - m_Frame.BodyFacts.Position;
+            BlackboardTargetProjection target = m_Layout.TargetProjection(operation.Handle);
+            if (outputPort == "m_PlanarDistance")
+            {
+                Float32Vector3 direction = m_Blackboard.Read(cursor, operation, target.Position).Vector3 - m_Frame.BodyFacts.Position;
+                return AbilityStateValue.FromScalar(new Float32Vector2(direction.X, direction.Z).Magnitude);
+            }
             return outputPort switch
             {
-                "m_HasTarget" => AbilityStateValue.FromBoolean(target.HasTarget),
-                "m_Position" => AbilityStateValue.FromVector3(target.Position),
-                "m_Yaw" => AbilityStateValue.FromScalar(target.Yaw.Degrees),
-                "m_PlanarDistance" => AbilityStateValue.FromScalar(new Float32Vector2(direction.X, direction.Z).Magnitude),
+                "m_HasTarget" => AbilityStateValue.FromBoolean(!CanonicalTextValue.IsNullOrEmpty(m_Blackboard.Read(cursor, operation, target.Identity).Identity)),
+                "m_Position" => m_Blackboard.Read(cursor, operation, target.Position),
+                "m_Yaw" => AbilityStateValue.FromScalar(new Float32Yaw(m_Blackboard.Read(cursor, operation, target.Yaw).Scalar).Degrees),
                 _ => throw new InvalidOperationException($"Action target output '{outputPort}' is unsupported.")
             };
         }
@@ -237,8 +250,10 @@ namespace ThirdPersonSimulation
         {
             if (!m_Actions.TryGetCurrentSkillExecution(out Float32ActionInstanceState action))
                 throw new InvalidOperationException("捕获动作目标必须在当前技能动作内执行。");
-            ProgramReference reference = m_Layout.Topology.FirstReference(operation.Handle, ProgramReferenceKind.StateSlot);
-            m_Blackboard.Write(cursor, operation, reference.TargetIndex, AbilityStateValue.FromActionTargetSnapshot(action.TargetSnapshot));
+            BlackboardTargetProjection target = m_Layout.TargetProjection(operation.Handle);
+            m_Blackboard.Write(cursor, operation, target.Identity, AbilityStateValue.FromIdentity(action.TargetSnapshot.TargetId));
+            m_Blackboard.Write(cursor, operation, target.Position, AbilityStateValue.FromVector3(action.TargetSnapshot.Position));
+            m_Blackboard.Write(cursor, operation, target.Yaw, AbilityStateValue.FromScalar(action.TargetSnapshot.Yaw.Degrees));
         }
 
         public bool SetBlackboard<TTarget>(

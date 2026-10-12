@@ -16,7 +16,8 @@ namespace ThirdPersonSimulation
         public static int Hash(string value) => value == null ? 0 : StringComparer.Ordinal.GetHashCode(value);
     }
 
-    public readonly struct EquipmentSlotId : IEquatable<EquipmentSlotId>, IComparable<EquipmentSlotId>
+    [CanonicalContract(MaterializedRead = true)]
+    public readonly partial struct EquipmentSlotId : IEquatable<EquipmentSlotId>, IComparable<EquipmentSlotId>
     {
         public EquipmentSlotId(string value) => Value = CanonicalTextValue.FromString(CharacterEquipmentIdentity.Require(value, nameof(value)));
 
@@ -39,9 +40,11 @@ namespace ThirdPersonSimulation
         public static bool operator !=(EquipmentSlotId left, EquipmentSlotId right) => !left.Equals(right);
     }
 
-    public readonly struct EquipmentActionRouteId : IEquatable<EquipmentActionRouteId>, IComparable<EquipmentActionRouteId>
+    [CanonicalContract(MaterializedRead = true)]
+    public readonly partial struct EquipmentActionRouteId : IEquatable<EquipmentActionRouteId>, IComparable<EquipmentActionRouteId>
     {
         public EquipmentActionRouteId(string value) { Value = CharacterEquipmentIdentity.Require(value, nameof(value)); }
+        [CanonicalDeclaredText]
         public string Value { get; }
         public bool IsValid => !string.IsNullOrEmpty(Value);
         public int CompareTo(EquipmentActionRouteId other) => CharacterEquipmentIdentity.Compare(Value, other.Value);
@@ -53,9 +56,11 @@ namespace ThirdPersonSimulation
         public static bool operator !=(EquipmentActionRouteId left, EquipmentActionRouteId right) => !left.Equals(right);
     }
 
-    public readonly struct EquipmentId : IEquatable<EquipmentId>, IComparable<EquipmentId>
+    [CanonicalContract(MaterializedRead = true)]
+    public readonly partial struct EquipmentId : IEquatable<EquipmentId>, IComparable<EquipmentId>
     {
         public EquipmentId(string value) { Value = CharacterEquipmentIdentity.Require(value, nameof(value)); }
+        [CanonicalDeclaredText]
         public string Value { get; }
         public bool IsValid => !string.IsNullOrEmpty(Value);
         public int CompareTo(EquipmentId other) => CharacterEquipmentIdentity.Compare(Value, other.Value);
@@ -67,9 +72,11 @@ namespace ThirdPersonSimulation
         public static bool operator !=(EquipmentId left, EquipmentId right) => !left.Equals(right);
     }
 
-    public readonly struct EquipmentFeatureId : IEquatable<EquipmentFeatureId>, IComparable<EquipmentFeatureId>
+    [CanonicalContract(MaterializedRead = true)]
+    public readonly partial struct EquipmentFeatureId : IEquatable<EquipmentFeatureId>, IComparable<EquipmentFeatureId>
     {
         public EquipmentFeatureId(string value) { Value = CharacterEquipmentIdentity.Require(value, nameof(value)); }
+        [CanonicalDeclaredText]
         public string Value { get; }
         public bool IsValid => !string.IsNullOrEmpty(Value);
         public int CompareTo(EquipmentFeatureId other) => CharacterEquipmentIdentity.Compare(Value, other.Value);
@@ -81,7 +88,8 @@ namespace ThirdPersonSimulation
         public static bool operator !=(EquipmentFeatureId left, EquipmentFeatureId right) => !left.Equals(right);
     }
 
-    public readonly struct EquipmentFeatureRevision : IEquatable<EquipmentFeatureRevision>, IComparable<EquipmentFeatureRevision>
+    [CanonicalContract(MaterializedRead = true)]
+    public readonly partial struct EquipmentFeatureRevision : IEquatable<EquipmentFeatureRevision>, IComparable<EquipmentFeatureRevision>
     {
         public EquipmentFeatureRevision(ulong value)
         {
@@ -101,9 +109,11 @@ namespace ThirdPersonSimulation
         public static bool operator !=(EquipmentFeatureRevision left, EquipmentFeatureRevision right) => !left.Equals(right);
     }
 
-    public readonly struct EquipmentParameterId : IEquatable<EquipmentParameterId>, IComparable<EquipmentParameterId>
+    [CanonicalContract(MaterializedRead = true)]
+    public readonly partial struct EquipmentParameterId : IEquatable<EquipmentParameterId>, IComparable<EquipmentParameterId>
     {
         public EquipmentParameterId(string value) { Value = CharacterEquipmentIdentity.Require(value, nameof(value)); }
+        [CanonicalDeclaredText]
         public string Value { get; }
         public bool IsValid => !string.IsNullOrEmpty(Value);
         public int CompareTo(EquipmentParameterId other) => CharacterEquipmentIdentity.Compare(Value, other.Value);
@@ -115,9 +125,11 @@ namespace ThirdPersonSimulation
         public static bool operator !=(EquipmentParameterId left, EquipmentParameterId right) => !left.Equals(right);
     }
 
-    public readonly struct EquipmentLocalStateId : IEquatable<EquipmentLocalStateId>, IComparable<EquipmentLocalStateId>
+    [CanonicalContract(MaterializedRead = true)]
+    public readonly partial struct EquipmentLocalStateId : IEquatable<EquipmentLocalStateId>, IComparable<EquipmentLocalStateId>
     {
         public EquipmentLocalStateId(string value) { Value = CharacterEquipmentIdentity.Require(value, nameof(value)); }
+        [CanonicalDeclaredText]
         public string Value { get; }
         public bool IsValid => !string.IsNullOrEmpty(Value);
         public int CompareTo(EquipmentLocalStateId other) => CharacterEquipmentIdentity.Compare(Value, other.Value);
@@ -129,9 +141,11 @@ namespace ThirdPersonSimulation
         public static bool operator !=(EquipmentLocalStateId left, EquipmentLocalStateId right) => !left.Equals(right);
     }
 
-    public readonly struct EquipmentVisualBindingId : IEquatable<EquipmentVisualBindingId>, IComparable<EquipmentVisualBindingId>
+    [CanonicalContract(MaterializedRead = true)]
+    public readonly partial struct EquipmentVisualBindingId : IEquatable<EquipmentVisualBindingId>, IComparable<EquipmentVisualBindingId>
     {
         public EquipmentVisualBindingId(string value) { Value = CharacterEquipmentIdentity.Require(value, nameof(value)); }
+        [CanonicalDeclaredText]
         public string Value { get; }
         public bool IsValid => !string.IsNullOrEmpty(Value);
         public int CompareTo(EquipmentVisualBindingId other) => CharacterEquipmentIdentity.Compare(Value, other.Value);
@@ -143,7 +157,8 @@ namespace ThirdPersonSimulation
         public static bool operator !=(EquipmentVisualBindingId left, EquipmentVisualBindingId right) => !left.Equals(right);
     }
 
-    public readonly struct EquipmentChangeId : IEquatable<EquipmentChangeId>, IComparable<EquipmentChangeId>
+    [CanonicalContract(MaterializedRead = true)]
+    public readonly partial struct EquipmentChangeId : IEquatable<EquipmentChangeId>, IComparable<EquipmentChangeId>
     {
         public EquipmentChangeId(ulong value)
         {
@@ -217,7 +232,8 @@ namespace ThirdPersonSimulation
         KeepWhileEquipped = 1
     }
 
-    public readonly struct EquipmentActionContext : IEquatable<EquipmentActionContext>
+    [CanonicalContract]
+    public readonly partial struct EquipmentActionContext : IEquatable<EquipmentActionContext>
     {
         public EquipmentActionContext(
             EquipmentSlotId slotId,
@@ -226,13 +242,19 @@ namespace ThirdPersonSimulation
             ulong equipmentRevision,
             EquipmentActionRouteId routeId)
         {
-            if (!slotId.IsValid || !equipmentId.IsValid || !featureId.IsValid || equipmentRevision == 0 || !routeId.IsValid)
-                throw new ArgumentException("Equipment Action Context is incomplete.");
             SlotId = slotId;
             EquipmentId = equipmentId;
             FeatureId = featureId;
             EquipmentRevision = equipmentRevision;
             RouteId = routeId;
+            RequireRecord();
+        }
+
+        [CanonicalValidation]
+        void RequireRecord()
+        {
+            if (!SlotId.IsValid || !EquipmentId.IsValid || !FeatureId.IsValid || EquipmentRevision == 0 || !RouteId.IsValid)
+                throw new ArgumentException("Equipment Action Context is incomplete.");
         }
 
         public EquipmentSlotId SlotId { get; }

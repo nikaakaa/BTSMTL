@@ -73,7 +73,11 @@ namespace ThirdPersonSimulation.Fixed
             ulong predictionKey,
             ulong gameplayResultId,
             ulong sourceTick,
-            SimulationGameplayEffectApplicationMode applicationMode)
+            SimulationGameplayEffectApplicationMode applicationMode,
+            GameplayEffectScope scope = default,
+            GameplayEffectHolderIdentity holder = default,
+            GameplayEffectSuccessContext success = default,
+            SimulationActionTargetSnapshot successTarget = default)
         {
             if (!sourceActorId.IsValid || !targetActorId.IsValid || sourceTick == 0)
                 throw new ArgumentException("Gameplay Effect context identity is incomplete.");
@@ -89,6 +93,10 @@ namespace ThirdPersonSimulation.Fixed
             GameplayResultId = gameplayResultId;
             SourceTick = sourceTick;
             ApplicationMode = applicationMode;
+            Scope = scope;
+            Holder = holder;
+            Success = success;
+            SuccessTarget = successTarget;
         }
 
         public ActorId SourceActorId { get; }
@@ -98,10 +106,27 @@ namespace ThirdPersonSimulation.Fixed
         public ulong GameplayResultId { get; }
         public ulong SourceTick { get; }
         public SimulationGameplayEffectApplicationMode ApplicationMode { get; }
+        public GameplayEffectScope Scope { get; }
+        public GameplayEffectHolderIdentity Holder { get; }
+        public GameplayEffectSuccessContext Success { get; }
+        public SimulationActionTargetSnapshot SuccessTarget { get; }
+
+        internal void WriteSuccessTarget(CanonicalWriter writer)
+        {
+            writer.WriteBoolean(SuccessTarget.HasTarget);
+            if (!SuccessTarget.HasTarget)
+                return;
+            writer.WriteText(SuccessTarget.TargetId);
+            writer.WriteVector3(SuccessTarget.Position);
+            writer.WriteYaw(SuccessTarget.Yaw);
+        }
+
+        internal static SimulationActionTargetSnapshot ReadSuccessTarget(CanonicalReader reader) => reader.ReadBoolean()
+            ? new SimulationActionTargetSnapshot(reader.ReadText(), reader.ReadVector3(), reader.ReadYaw()) : default;
         public bool IsPredicted => ApplicationMode == SimulationGameplayEffectApplicationMode.Predicted;
         public bool IsValid => SourceActorId.IsValid && TargetActorId.IsValid && SourceTick != 0;
-        public void Retain() { SourceActorId.Value.Retain(); TargetActorId.Value.Retain(); }
-        public void Release() { SourceActorId.Value.Release(); TargetActorId.Value.Release(); }
+        public void Retain() { SourceActorId.Value.Retain(); TargetActorId.Value.Retain(); Holder.Retain(); Success.Retain(); SuccessTarget.Retain(); }
+        public void Release() { SourceActorId.Value.Release(); TargetActorId.Value.Release(); Holder.Release(); Success.Release(); SuccessTarget.Release(); }
     }
 
     public readonly struct SimulationGameplayEffectApplication

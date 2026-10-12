@@ -377,11 +377,15 @@ namespace ThirdPersonSimulation
             writer.WriteUInt64(context.GameplayResultId);
             writer.WriteUInt64(context.SourceTick);
             writer.WriteBoolean(context.Predicted);
+            GameplayEffectScope.CanonicalWrite(writer, context.Scope);
+            context.Holder.Write(writer);
+            context.Success.Write(writer);
         }
 
         static GameplayEffectContextIdentity ReadContext(CanonicalReader reader) =>
             reader.ReadBoolean() ? new GameplayEffectContextIdentity(new ActorId(reader.ReadText()),
                 new ActorId(reader.ReadText()), reader.ReadUInt64(), reader.ReadUInt64(),
-                reader.ReadUInt64(), reader.ReadUInt64(), reader.ReadBoolean()) : default;
+                reader.ReadUInt64(), reader.ReadUInt64(), reader.ReadBoolean(),
+                GameplayEffectScope.CanonicalRead(reader), GameplayEffectHolderIdentity.Read(reader), GameplayEffectSuccessContext.Read(reader)) : default;
     }
 }

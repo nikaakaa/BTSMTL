@@ -99,6 +99,17 @@ namespace ThirdPersonSimulation.Fixed
         readonly List<(ulong Sequence, FixedBlackboardWriteCommand Command)> m_BlackboardCommands = new();
         readonly List<FixedBlackboardWriteResult> m_BlackboardCandidates = new();
         readonly List<FixedBlackboardWriteResult> m_BlackboardResults = new();
+        readonly List<FixedBlackboardWriteCommand> m_ExpiredBlackboardOverrides = new();
+        int m_PreparedCommandCount;
+
+        internal void PrepareEvaluationInputs()
+        {
+            m_PreparedCommandCount = m_BlackboardCommands.Count;
+            m_Frame.ValuePorts?.PrepareEvaluation();
+        }
+
+        internal void AdoptEvaluationInputs() => m_Frame.ValuePorts?.AdoptEvaluation();
+        internal void DiscardEvaluationInputs() => m_Frame.ValuePorts?.DiscardEvaluation();
 
         public FixedAbilityInvocationRuntime(
             FixedAbilityExecutionContext execution,
@@ -107,7 +118,6 @@ namespace ThirdPersonSimulation.Fixed
             IFixedAbilityDomainRuntimeFactory domainRuntimeFactory,
             EquipmentProgramLayout equipmentLayout,
             FixedAbilityExecutionWorkspace workspace,
-            FixedAbilityOperationControlRuntime control,
             IFixedAbilityExecutionServiceFactory serviceFactory)
         {
             execution = execution ?? throw new ArgumentNullException(nameof(execution));
@@ -115,15 +125,14 @@ namespace ThirdPersonSimulation.Fixed
             m_Execution = execution;
             actionBindings = actionBindings ?? throw new ArgumentNullException(nameof(actionBindings));
             domainRuntimeFactory = domainRuntimeFactory ?? throw new ArgumentNullException(nameof(domainRuntimeFactory));
-            control = control ?? throw new ArgumentNullException(nameof(control));
             m_Workspace = workspace ?? throw new ArgumentNullException(nameof(workspace));
-            m_Control = control;
+            m_Control = new FixedAbilityOperationControlRuntime(execution.Data);
             serviceFactory = serviceFactory ?? throw new ArgumentNullException(nameof(serviceFactory));
             m_Frame = new FixedAbilityExecutionFrame(execution.Data, execution.Layout,
-                execution.Services, actorId, execution.Trace, workspace);
+                execution.Services, actorId, new FixedTraceSink(execution.Data, execution.Layout, actorId), workspace);
             FixedAbilityExecutionAssembly assembly = serviceFactory.Create(execution.Data,
                 execution.Services, actionBindings, domainRuntimeFactory, equipmentLayout,
-                m_Frame, control, workspace);
+                m_Frame, m_Control, workspace);
             m_Input = assembly.Input;
             m_Actions = assembly.ActionRuntime;
             m_GameplayEffects = assembly.GameplayEffects;
@@ -134,10 +143,15 @@ namespace ThirdPersonSimulation.Fixed
         }
 
         public CharacterSkillId AbilityId { get; }
+        internal bool IsBlackboardLocked(ulong action, ulong generation, int slot) =>
+            m_Frame.ValuePorts != null && m_Frame.ValuePorts.IsBlackboardLocked(action, generation, slot);
+
         internal void BindValuePorts(FixedValuePortInputs values)
         {
             m_Frame.ValuePorts = values;
             m_Domain.ValuePorts = values;
+            values.BlackboardCommands = m_BlackboardCommands;
+            m_ExpiredBlackboardOverrides.Capacity = values.BlackboardOverrides.Capacity;
         }
 
         internal void PrepareStateExecutionText(int maximumSessionCheckpointPayloadBytes,
@@ -159,10 +173,13 @@ namespace ThirdPersonSimulation.Fixed
             m_BlackboardCommands.Clear();
             m_BlackboardResults.Clear();
             m_BlackboardCandidates.Clear();
+            m_ExpiredBlackboardOverrides.Clear();
         }
 
         internal void BindAvailabilityRead(IFixedAbilityFrameReadPort read) =>
             m_Frame.ExchangeAvailabilityRead(read);
+
+        internal void BindDecisionRead(IGameplayAbilityDecisionReadPort read) => m_Frame.DecisionRead = read;
 
         internal void PreviewAvailability(GameplayAbilityExecutionBinding ability,
             GameplayAbilityActivationRuleBinding rule, in GameplayAbilitySourceContext source,
@@ -180,13 +197,11 @@ namespace ThirdPersonSimulation.Fixed
             }
         }
 
-        public bool EvaluateRuleCondition(IGameplayAbilityDecisionReadPort read,
-            in GameplayAbilitySourceContext source, OperationHandle condition, GameplayAbilityRuleEvaluationMode mode)
+        public bool EvaluateRuleCondition(in GameplayAbilitySourceContext source,
+            OperationHandle condition, GameplayAbilityRuleEvaluationMode mode)
         {
-            IGameplayAbilityDecisionReadPort previousRead = m_Frame.DecisionRead;
             GameplayAbilitySourceContext previousSource = m_Frame.SelectedSource;
             GameplayAbilityRuleEvaluationMode previousMode = m_Frame.RuleEvaluationMode;
-            m_Frame.DecisionRead = read;
             m_Frame.SelectedSource = source;
             m_Frame.RuleEvaluationMode = mode;
             try
@@ -195,7 +210,6 @@ namespace ThirdPersonSimulation.Fixed
             }
             finally
             {
-                m_Frame.DecisionRead = previousRead;
                 m_Frame.SelectedSource = previousSource;
                 m_Frame.RuleEvaluationMode = previousMode;
             }
@@ -203,6 +217,13 @@ namespace ThirdPersonSimulation.Fixed
 
         internal ulong QueueBlackboardWrite(FixedBlackboardWriteCommand command)
         {
+            if (command.Mutation != FixedPortInputMutation.Assign && command.Mutation != FixedPortInputMutation.Override &&
+                command.Mutation != FixedPortInputMutation.Release)
+                throw new ArgumentException("黑板输入仅支持赋值、锁定或解除。", nameof(command));
+            if (command.Mutation != FixedPortInputMutation.Assign && m_Frame.ValuePorts == null)
+                throw new InvalidOperationException("当前 Session Source 未装配黑板覆盖输入。");
+            if (command.Mutation != FixedPortInputMutation.Assign && !m_Frame.ValuePorts.BlackboardOverrides.IsPrepared)
+                throw new InvalidOperationException("当前会话未准备黑板覆盖输入；请从录制预览入口重新启动。");
             if (!m_Execution.Services.Identity.Equals(command.Ability))
                 throw new InvalidOperationException("黑板写入目标编译版本已变化。");
             if (command.StateSlot < 0 || command.StateSlot >= m_Execution.Data.StateSlots.Count ||
@@ -233,15 +254,24 @@ namespace ThirdPersonSimulation.Fixed
             return sequence;
         }
 
-        internal void BeginBlackboardTransaction() => m_BlackboardCandidates.Clear();
+        internal void BeginBlackboardTransaction()
+        {
+            m_BlackboardCandidates.Clear();
+            m_ExpiredBlackboardOverrides.Clear();
+        }
 
         internal void PublishBlackboardResults()
         {
+            for (int index = 0; index < m_ExpiredBlackboardOverrides.Count; index++)
+                m_Frame.ValuePorts.BlackboardOverrides.Expire(m_ExpiredBlackboardOverrides[index]);
+            m_ExpiredBlackboardOverrides.Clear();
             for (int i = 0; i < m_BlackboardCandidates.Count; i++)
             {
                 FixedBlackboardWriteResult result = m_BlackboardCandidates[i];
                 if (result.Status == FixedBlackboardWriteStatus.Applied)
                 {
+                    if (result.Command.Mutation != FixedPortInputMutation.Assign)
+                        m_Frame.ValuePorts.CommitBlackboardInput(result.Command, result.Sequence, result.Tick);
                     FixedActionReplayIdentity origin = default;
                     if (result.Command.ActionInstanceId != 0)
                     {
@@ -314,16 +344,6 @@ namespace ThirdPersonSimulation.Fixed
         public bool HasGameplayEffects => m_GameplayEffects != null;
         public IEquipmentActionContextReader Equipment => m_Equipment;
 
-        public bool HasActionWindowProjection(in GameplayAbilitySourceContext source, string windowTag)
-        {
-            IReadOnlyList<SimulationActionWindowProjectionCandidate> projections = m_Workspace.ActionWindowProjections;
-            for (int i = 0; i < projections.Count; i++)
-                if (projections[i].SourceContext.Equals(source) &&
-                    m_Execution.Services.GameplayEffectCatalog.IsTagOrParent(projections[i].WindowTag, windowTag))
-                    return true;
-            return false;
-        }
-
         public void BeginEvaluation(
             bool diagnosticsEnabled,
             bool captureMotion,
@@ -362,19 +382,39 @@ namespace ThirdPersonSimulation.Fixed
         public void ApplyInputBindings()
         {
             RequireEvaluation();
-            m_Input.ApplyBlackboardInputBindings(m_Blackboard);
+            m_Input.ApplyBlackboardInputBindings(m_Blackboard
+#if UNITY_EDITOR
+                , m_Workspace.TraceOutput
+#endif
+                );
         }
 
-        public void Tick(bool applyBlackboardCommands)
+        internal void ApplyBlackboardInputs(bool applyBlackboardCommands)
         {
             RequireEvaluation();
+            if (m_Frame.ValuePorts != null)
+            {
+                FixedBlackboardInputOverrides overrides = m_Frame.ValuePorts.BlackboardOverrides;
+                for (int index = 0; index < overrides.Count; index++)
+                {
+                    ref readonly FixedBlackboardInputOverrides.Entry entry = ref overrides.At(index);
+                    bool superseded = applyBlackboardCommands && m_Frame.ValuePorts.HasPendingBlackboardInput(entry.Command);
+                    if (!superseded && m_Domain.ApplyBlackboardCommand(entry.Command, entry.Sequence) != FixedBlackboardWriteStatus.Applied)
+                        m_ExpiredBlackboardOverrides.Add(entry.Command);
+                }
+            }
             if (applyBlackboardCommands)
-                for (int i = m_BlackboardCandidates.Count; i < m_BlackboardCommands.Count; i++)
+                for (int i = m_BlackboardCandidates.Count; i < m_PreparedCommandCount; i++)
                 {
                     var request = m_BlackboardCommands[i];
                     FixedBlackboardWriteStatus status = m_Domain.ApplyBlackboardCommand(request.Command, request.Sequence);
                     m_BlackboardCandidates.Add(new FixedBlackboardWriteResult(request.Sequence, request.Command, m_Frame.Tick.Value, status));
                 }
+        }
+
+        public void Tick()
+        {
+            RequireEvaluation();
             m_Domain.Tick();
         }
 

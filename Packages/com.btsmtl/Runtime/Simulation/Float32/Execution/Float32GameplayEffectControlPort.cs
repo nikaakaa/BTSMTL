@@ -118,7 +118,7 @@ namespace ThirdPersonSimulation
                 spec.TargetSpec,
                 componentIndex,
                 effectIndex,
-                ToTarget(spec.Context));
+                ToTarget(spec.Context, spec.TargetSpec.Context.SuccessTarget));
 
         void IGameplayEffectControlPort<SimulationGameplayEffectApplication, PortableEffectSpecState, PortableActiveEffectState, PortablePredictionRecord, PortableTagQuery, Float32AbilityExecutionSavepoint>.ReleaseAdditionalApplication(SimulationGameplayEffectApplication application) =>
             ReleaseAdditionalApplication(application);
@@ -130,13 +130,13 @@ namespace ThirdPersonSimulation
             bool trackPrediction)
         {
             var cue = (PortableCueComponent)spec.TargetSpec.Definition.Components[componentIndex];
-            AddCue(cue.CueId, cue.Trigger, spec.TargetSpec.Definition, instanceId, ToTarget(spec.Context), trackPrediction);
+            AddCue(cue.CueId, cue.Trigger, spec.TargetSpec.Definition, instanceId, ToTarget(spec.Context, spec.TargetSpec.Context.SuccessTarget), trackPrediction);
         }
 
         void IGameplayEffectControlPort<SimulationGameplayEffectApplication, PortableEffectSpecState, PortableActiveEffectState, PortablePredictionRecord, PortableTagQuery, Float32AbilityExecutionSavepoint>.RegisterCause(
             ulong handle,
             GameplayEffectPreparedSpec<PortableEffectSpecState> spec,
-            ulong instanceId) => m_Causes[handle] = new PortableEffectCause(spec.TargetSpec.Definition, instanceId, ToTarget(spec.Context));
+            ulong instanceId) => m_Causes[handle] = new PortableEffectCause(spec.TargetSpec.Definition, instanceId, ToTarget(spec.Context, spec.TargetSpec.Context.SuccessTarget));
 
         void IGameplayEffectControlPort<SimulationGameplayEffectApplication, PortableEffectSpecState, PortableActiveEffectState, PortablePredictionRecord, PortableTagQuery, Float32AbilityExecutionSavepoint>.EmitLifecycle(PortableActiveEffectState active, GameplayEffectLifecycleKind lifecycle) => AddLifecycle(active, ToTarget(lifecycle));
 
@@ -148,7 +148,7 @@ namespace ThirdPersonSimulation
             ulong endTick,
             int stackCount,
             ulong revision,
-            bool instant) => AddLifecycle(spec.TargetSpec.Definition, instanceId, ToTarget(lifecycle), ToTarget(spec.Context), startTick, endTick, stackCount, revision, instant);
+            bool instant) => AddLifecycle(spec.TargetSpec.Definition, instanceId, ToTarget(lifecycle), ToTarget(spec.Context, spec.TargetSpec.Context.SuccessTarget), startTick, endTick, stackCount, revision, instant);
 
         void IGameplayEffectControlPort<SimulationGameplayEffectApplication, PortableEffectSpecState, PortableActiveEffectState, PortablePredictionRecord, PortableTagQuery, Float32AbilityExecutionSavepoint>.EmitFailure(
             GameplayEffectExecutionFailure failure) => AddFailure(failure);
@@ -321,7 +321,7 @@ namespace ThirdPersonSimulation
             out GameplayEffectReconciliationResult result) => TryApplyAuthoritativeCorrection(command, out result);
 
         void IGameplayEffectControlPort<SimulationGameplayEffectApplication, PortableEffectSpecState, PortableActiveEffectState, PortablePredictionRecord, PortableTagQuery, Float32AbilityExecutionSavepoint>.EmitPredictionCueRemoval(PortablePredictionRecord prediction, string cueId) =>
-            AddCue(cueId, PortableCueTrigger.Removed, prediction.Spec.Definition, prediction.InstanceId, ToTarget(prediction.CausalContext), false);
+            AddCue(cueId, PortableCueTrigger.Removed, prediction.Spec.Definition, prediction.InstanceId, ToTarget(prediction.CausalContext, prediction.Spec.Context.SuccessTarget), false);
 
         void IGameplayEffectControlPort<SimulationGameplayEffectApplication, PortableEffectSpecState, PortableActiveEffectState, PortablePredictionRecord, PortableTagQuery, Float32AbilityExecutionSavepoint>.TrimLifecycleRevisions()
         {

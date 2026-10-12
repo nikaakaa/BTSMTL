@@ -8,20 +8,23 @@ namespace ThirdPersonSimulation
     {
         SimulationMotionContribution[] m_MotionContributions = Array.Empty<SimulationMotionContribution>();
         int m_MotionContributionCount;
-        readonly int m_OutputCapacity;
+        readonly int m_FactCapacity;
+        readonly int m_PresentationCapacity;
 
         public Float32AbilityExecutionWorkspace(
             Float32GameplayEffectExecutionScratch gameplayEffects,
             List<AbilityTimelineAdvancePending> timelineAdvances,
             List<AbilityTimelineStopPending> timelineStops,
             Float32GraphValueWorkspace values,
+            int factCapacity,
             int presentationCapacity,
             int actionInstanceCapacity)
         {
             Values = values ?? throw new ArgumentNullException(nameof(values));
-            m_OutputCapacity = presentationCapacity;
-            Facts.Capacity = m_OutputCapacity;
-            Presentation.Capacity = presentationCapacity;
+            m_FactCapacity = factCapacity;
+            m_PresentationCapacity = presentationCapacity;
+            Facts.Capacity = m_FactCapacity;
+            Presentation.Capacity = m_PresentationCapacity;
             ActionTickSnapshot = new List<Float32ActionInstanceState>(actionInstanceCapacity);
             StoppingActionInstances = new HashSet<ulong>(actionInstanceCapacity);
             GameplayEffects = gameplayEffects ?? throw new ArgumentNullException(nameof(gameplayEffects));
@@ -48,9 +51,6 @@ namespace ThirdPersonSimulation
         public Float32GraphValueWorkspace Values { get; }
         public List<AbilityTimelineLogicMotionWarp> TimelineMotionWarps { get; } =
             new List<AbilityTimelineLogicMotionWarp>();
-        public List<SimulationActionWindowProjectionCandidate> ActionWindowProjections { get; } =
-            new List<SimulationActionWindowProjectionCandidate>();
-        public HashSet<SimulationActionWindowProjectionKey> ActionWindowProjectionKeys { get; } = new();
         public List<AbilityTimelineAdvancePending> TimelineAdvances { get; }
         public List<AbilityTimelineStopPending> TimelineStops { get; }
         public Stack<SimulationTimelineBlackboardContext> TimelineBlackboardContexts { get; } =
@@ -70,8 +70,6 @@ namespace ThirdPersonSimulation
             GameplayEffectCueCount = 0;
             GameplayEffectSuccessfulChangeCount = 0;
             TimelineMotionWarps.Clear();
-            ActionWindowProjections.Clear();
-            ActionWindowProjectionKeys.Clear();
             TimelineBlackboardContexts.Clear();
             ClearMotionContributions();
         }
@@ -94,8 +92,8 @@ namespace ThirdPersonSimulation
         internal void PrepareGameplayEffectOutputs(int changes, int facts, int presentation)
         {
             GameplayEffectProjections = new Float32GameplayEffectPendingProjection[changes];
-            Facts.Capacity = checked(m_OutputCapacity + facts);
-            Presentation.Capacity = checked(m_OutputCapacity + presentation);
+            Facts.Capacity = checked(m_FactCapacity + facts);
+            Presentation.Capacity = checked(m_PresentationCapacity + presentation);
         }
 
         internal void TruncateGameplayEffectProjections(int count)
@@ -190,7 +188,6 @@ namespace ThirdPersonSimulation
             new Float32GameplayEffectPendingProjection(
                 Change, FactHeader, FactIndex + facts, PresentationHeader,
                 PresentationIndex + presentation, ProducerId, SampleTime, Cause);
-            internal const int MaximumTextReferences = 31;
         internal void Retain()
         { Change.Retain(); FactHeader.Retain(); PresentationHeader.Retain(); Cause.Retain(); }
         internal void Release()

@@ -525,6 +525,34 @@ namespace ThirdPersonSimulation.Fixed
         internal ReadOnlySpan<KeyValuePair<GameplayTagSourceIdentityValue, IReadOnlyList<string>>> TagSources => m_TagSources.Values;
         internal ReadOnlySpan<KeyValuePair<string, PortableAttributeSnapshot>> Attributes => m_Attributes.Values;
         internal ReadOnlySpan<PortableActiveEffectSnapshot> ActiveEffects => m_ActiveEffects.Values;
+        internal bool HasTag(string tag, GameplayEffectScope scope)
+        {
+            foreach (KeyValuePair<GameplayTagSourceIdentityValue, IReadOnlyList<string>> source in TagSources)
+            {
+                if (!source.Key.Scope.Equals(scope))
+                    continue;
+                for (int index = 0; index < source.Value.Count; index++)
+                    if (m_Catalog.IsTagOrParent(source.Value[index], tag))
+                        return true;
+            }
+            return false;
+        }
+
+        internal bool HasTagFromAction(string tag, GameplayEffectScope scope, in GameplayAbilitySourceContext source)
+        {
+            foreach (PortableActiveEffectSnapshot effect in ActiveEffects)
+            {
+                GameplayEffectHolderIdentity holder = effect.Spec.Context.Holder;
+                if (effect.Inhibited || !effect.Spec.Context.Scope.Equals(scope) ||
+                    holder.ActionInstanceId != source.InstanceId ||
+                    holder.ExecutionGeneration != source.SkillExecutionGeneration)
+                    continue;
+                for (int index = 0; index < effect.Spec.Definition.GrantedTags.Length; index++)
+                    if (m_Catalog.IsTagOrParent(effect.Spec.Definition.GrantedTags[index], tag))
+                        return true;
+            }
+            return false;
+        }
         internal ReadOnlySpan<KeyValuePair<ulong, ulong>> Periods => m_Periods.Values;
         internal ReadOnlySpan<KeyValuePair<ulong, List<PortablePredictionRecord>>> Journal => m_Journal.Values;
         internal ReadOnlySpan<KeyValuePair<GameplayEffectLifecycleRevisionKey, GameplayEffectLifecycleRevisionEntry>> LastLifecycleRevisions => m_LastLifecycleRevisions.Values;
@@ -680,6 +708,8 @@ namespace ThirdPersonSimulation.Fixed
                 left.CausalContext.GameplayResultId == right.CausalContext.GameplayResultId &&
                 left.CausalContext.SourceTick == right.CausalContext.SourceTick &&
                 left.CausalContext.Predicted == right.CausalContext.Predicted &&
+                left.CausalContext.Scope.Equals(right.CausalContext.Scope) &&
+                left.CausalContext.Holder.Equals(right.CausalContext.Holder) &&
                 left.CreatedActive == right.CreatedActive &&
                 left.HasActiveBefore == right.HasActiveBefore &&
                 left.MutationKind == right.MutationKind &&
@@ -710,7 +740,8 @@ namespace ThirdPersonSimulation.Fixed
             left.SourceActor == right.SourceActor && left.TargetActor == right.TargetActor &&
             left.SourceActionInstanceId == right.SourceActionInstanceId && left.PredictionKey == right.PredictionKey &&
             left.GameplayResultId == right.GameplayResultId && left.SourceTick == right.SourceTick &&
-            left.Predicted == right.Predicted;
+            left.Predicted == right.Predicted && left.Scope.Equals(right.Scope) &&
+            left.Holder.Equals(right.Holder) && left.Success.Equals(right.Success);
 
         static bool MatchesSpec(PortableEffectSpecState left, PortableEffectSpecState right)
         {
@@ -728,6 +759,10 @@ namespace ThirdPersonSimulation.Fixed
                 left.Context.GameplayResultId == right.Context.GameplayResultId &&
                 left.Context.SourceTick == right.Context.SourceTick &&
                 left.Context.ApplicationMode == right.Context.ApplicationMode &&
+                left.Context.Scope.Equals(right.Context.Scope) &&
+                left.Context.Holder.Equals(right.Context.Holder) &&
+                left.Context.Success.Equals(right.Context.Success) &&
+                left.Context.SuccessTarget.Equals(right.Context.SuccessTarget) &&
                 left.SourceTagSnapshotProvided == right.SourceTagSnapshotProvided &&
                 MatchesValues(left.SetByCaller, right.SetByCaller) &&
                 MatchesValues(left.SourceAttributes, right.SourceAttributes) &&
@@ -813,7 +848,9 @@ namespace ThirdPersonSimulation.Fixed
                         active.LifecycleContext.SourceActionInstanceId, active.LifecycleContext.PredictionKey,
                         active.LifecycleContext.GameplayResultId, active.LifecycleContext.SourceTick,
                         active.LifecycleContext.Predicted ? SimulationGameplayEffectApplicationMode.Predicted :
-                            SimulationGameplayEffectApplicationMode.Confirmed)));
+                            SimulationGameplayEffectApplicationMode.Confirmed,
+                        active.LifecycleContext.Scope, active.LifecycleContext.Holder,
+                        active.LifecycleContext.Success, active.Spec.Context.SuccessTarget)));
             }
         }
 
@@ -1010,8 +1047,12 @@ namespace ThirdPersonSimulation.Fixed
         {
             tags.Clear();
             foreach (KeyValuePair<GameplayTagSourceIdentityValue, IReadOnlyList<string>> source in sources)
+            {
+                if (source.Key.Scope.Kind != GameplayEffectScopeKind.Actor)
+                    continue;
                 for (int i = 0; i < source.Value.Count; i++)
                     tags.Add(source.Value[i]);
+            }
             bool matches = tags.Count == baseline.Count;
             for (int i = 0; matches && i < baseline.Count; i++)
                 matches = tags.Contains(baseline[i]);
@@ -1740,12 +1781,15 @@ namespace ThirdPersonSimulation.Fixed
                     return m_OwnedTagsSnapshot;
                 int count = 0;
                 for (int i = 0; i < m_TagSources.Count; i++)
-                    count += m_TagSources.Values[i].Count;
+                    if (m_TagSources.Keys[i].Scope.Kind == GameplayEffectScopeKind.Actor)
+                        count += m_TagSources.Values[i].Count;
                 GameplayTagSnapshot snapshot = m_TagSnapshotPages.Begin(count);
                 snapshot.Retain();
                 int offset = 0;
                 for (int i = 0; i < m_TagSources.Count; i++)
                 {
+                    if (m_TagSources.Keys[i].Scope.Kind != GameplayEffectScopeKind.Actor)
+                        continue;
                     IReadOnlyList<string> tags = m_TagSources.Values[i];
                     for (int j = 0; j < tags.Count; j++)
                         snapshot.Write(offset++, tags[j]);
@@ -1783,6 +1827,32 @@ namespace ThirdPersonSimulation.Fixed
             return m_Catalog.Matches(query, OwnedTagsSnapshot);
         }
 
+        public bool HasTag(string tagId, GameplayEffectScope scope)
+        {
+            for (int i = 0; i < m_TagSources.Count; i++)
+            {
+                if (!m_TagSources.Keys[i].Scope.Equals(scope))
+                    continue;
+                IReadOnlyList<string> tags = m_TagSources.Values[i];
+                for (int j = 0; j < tags.Count; j++)
+                    if (m_Catalog.IsTagOrParent(tags[j], tagId))
+                        return true;
+            }
+            return false;
+        }
+
+        internal void CopyScopeTagsTo(GameplayEffectScope scope, List<string> output)
+        {
+            for (int i = 0; i < m_TagSources.Count; i++)
+            {
+                if (!m_TagSources.Keys[i].Scope.Equals(scope))
+                    continue;
+                IReadOnlyList<string> tags = m_TagSources.Values[i];
+                for (int j = 0; j < tags.Count; j++)
+                    output.Add(tags[j]);
+            }
+        }
+
         internal void SetCompiledTags(GameplayTagSourceIdentityValue source, IReadOnlyList<string> values)
         {
             m_TagSources.TryGetValue(source, out IReadOnlyList<string> current);
@@ -1812,11 +1882,13 @@ namespace ThirdPersonSimulation.Fixed
         internal IReadOnlyList<string> SourceTags(GameplayTagSourceIdentityValue source) =>
             m_TagSources.TryGetValue(source, out IReadOnlyList<string> tags) ? tags : Array.Empty<string>();
 
-        internal int TagCount(string tag)
+        internal int TagCount(string tag, GameplayEffectScope scope)
         {
             int count = 0;
             for (int i = 0; i < m_TagSources.Count; i++)
             {
+                if (!m_TagSources.Keys[i].Scope.Equals(scope))
+                    continue;
                 IReadOnlyList<string> values = m_TagSources.Values[i];
                 for (int j = 0; j < values.Count; j++)
                     if (string.Equals(values[j], tag, StringComparison.Ordinal))

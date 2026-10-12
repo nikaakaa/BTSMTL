@@ -104,6 +104,22 @@ namespace ThirdPersonSimulation.Fixed
 #if UNITY_EDITOR
         public long EvaluationStateElapsedStopwatchTicks => m_Output.EvaluationStateElapsedStopwatchTicks;
         public long EvaluationInputsElapsedStopwatchTicks => m_Output.EvaluationInputsElapsedStopwatchTicks;
+        public long EvaluationInputProjectionOwnerElapsedStopwatchTicks => m_Output.EvaluationInputProjectionOwnerElapsedStopwatchTicks;
+        public long EvaluationInputProjectionValueElapsedStopwatchTicks => m_Output.EvaluationInputProjectionValueElapsedStopwatchTicks;
+        public long EvaluationInputProjectionStampElapsedStopwatchTicks => m_Output.EvaluationInputProjectionStampElapsedStopwatchTicks;
+        public long EvaluationTraceHeaderElapsedStopwatchTicks => m_Output.EvaluationTraceHeaderElapsedStopwatchTicks;
+        public long EvaluationTraceStoreElapsedStopwatchTicks => m_Output.EvaluationTraceStoreElapsedStopwatchTicks;
+        public int EvaluationTraceHeaderCalls => m_Output.EvaluationTraceHeaderCalls;
+        public int EvaluationTraceStoreCalls => m_Output.EvaluationTraceStoreCalls;
+        public long EvaluationInputSnapshotPrepareElapsedStopwatchTicks => m_Output.EvaluationInputSnapshotPrepareElapsedStopwatchTicks;
+        public long EvaluationInputSnapshotDiscardElapsedStopwatchTicks => m_Output.EvaluationInputSnapshotDiscardElapsedStopwatchTicks;
+        public long EvaluationInputBindingReadElapsedStopwatchTicks => m_Output.EvaluationInputBindingReadElapsedStopwatchTicks;
+        public long EvaluationInputBindingProjectElapsedStopwatchTicks => m_Output.EvaluationInputBindingProjectElapsedStopwatchTicks;
+        public int EvaluationInputBindingCalls => m_Output.EvaluationInputBindingCalls;
+        public long EvaluationInputsPrepareElapsedStopwatchTicks => m_Output.EvaluationInputsPrepareElapsedStopwatchTicks;
+        public long EvaluationInputsIngressElapsedStopwatchTicks => m_Output.EvaluationInputsIngressElapsedStopwatchTicks;
+        public long EvaluationInputsBindingsElapsedStopwatchTicks => m_Output.EvaluationInputsBindingsElapsedStopwatchTicks;
+        public long EvaluationInputsBlackboardElapsedStopwatchTicks => m_Output.EvaluationInputsBlackboardElapsedStopwatchTicks;
         public long EvaluationControlElapsedStopwatchTicks => m_Output.EvaluationControlElapsedStopwatchTicks;
         public long EvaluationAbilitiesElapsedStopwatchTicks => m_Output.EvaluationAbilitiesElapsedStopwatchTicks;
         public long EvaluationAbilitiesTickElapsedStopwatchTicks => m_Output.EvaluationAbilitiesTickElapsedStopwatchTicks;
@@ -118,6 +134,8 @@ namespace ThirdPersonSimulation.Fixed
         public long EvaluationAbilitiesRulesElapsedStopwatchTicks => m_Output.EvaluationAbilitiesRulesElapsedStopwatchTicks;
         public long EvaluationMotionElapsedStopwatchTicks => m_Output.EvaluationMotionElapsedStopwatchTicks;
         public long EvaluationCommitElapsedStopwatchTicks => m_Output.EvaluationCommitElapsedStopwatchTicks;
+        public long ValueObservationElapsedStopwatchTicks => m_Output.ValueTraces.ObservationElapsedStopwatchTicks;
+        public int ValueObservationCalls => m_Output.ValueTraces.ObservationCalls;
 #endif
 
         void IFixedPipelineProductValueRelease.ReleaseOwnedValue()

@@ -9,7 +9,8 @@ namespace ThirdPersonSimulation
         Ability = 3
     }
 
-    public readonly struct GameplayAbilityRootDescriptor : IEquatable<GameplayAbilityRootDescriptor>
+    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+    public readonly partial struct GameplayAbilityRootDescriptor : IEquatable<GameplayAbilityRootDescriptor>
     {
         public GameplayAbilityRootDescriptor(
             SimulationRootKind kind,
@@ -29,6 +30,12 @@ namespace ThirdPersonSimulation
         public string RootIdentity { get; }
         public string EntryIdentity { get; }
         public string ContentIdentity { get; }
+        [CanonicalValidation]
+        void RequireCanonicalIdentity()
+        {
+            if (!IsValid)
+                throw new ArgumentException("Ability root descriptor is invalid.");
+        }
         public bool IsValid =>
             Enum.IsDefined(typeof(SimulationRootKind), Kind) &&
             IsGuid(RootIdentity) &&
@@ -127,29 +134,4 @@ namespace ThirdPersonSimulation
         }
     }
 
-    public static class GameplayAbilityRootDescriptorCodec
-    {
-        public static void Write(CanonicalWriter writer, GameplayAbilityRootDescriptor root)
-        {
-            if (writer == null)
-                throw new ArgumentNullException(nameof(writer));
-            if (!root.IsValid)
-                throw new ArgumentException("Ability root descriptor is invalid.", nameof(root));
-            writer.WriteByte((byte)root.Kind);
-            writer.WriteText(root.RootIdentity);
-            writer.WriteText(root.EntryIdentity);
-            writer.WriteText(root.ContentIdentity);
-        }
-
-        public static GameplayAbilityRootDescriptor Read(CanonicalReader reader)
-        {
-            if (reader == null)
-                throw new ArgumentNullException(nameof(reader));
-            return new GameplayAbilityRootDescriptor(
-                (SimulationRootKind)reader.ReadByte(),
-                CanonicalTextEncoding.DecodeString(reader.ReadTextSegment()),
-                CanonicalTextEncoding.DecodeString(reader.ReadTextSegment()),
-                CanonicalTextEncoding.DecodeString(reader.ReadTextSegment()));
-        }
-    }
 }

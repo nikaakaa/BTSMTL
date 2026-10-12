@@ -945,7 +945,7 @@ namespace ThirdPersonSimulation
         internal SimulationValueTraceStorage(int invocationCount) => m_Invocations = invocationCount;
         internal void PrepareCapacity(int traceRecordsPerTick)
         {
-            m_Stride = Math.Min(SimulationValueTraceLimits.MaxSamplesPerEvaluation, checked(traceRecordsPerTick + 1));
+            m_Stride = checked(traceRecordsPerTick + 1);
             m_Values = new Entry[checked(m_Invocations * m_Stride)];
             m_Counts = new int[m_Invocations];
         }

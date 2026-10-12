@@ -33,6 +33,14 @@ namespace ThirdPersonSimulation.Fixed
                 spec = null;
                 return false;
             }
+            if (application.Context.Scope.Kind != definition.Scope ||
+                application.Context.Holder.Lifetime != definition.Lifetime)
+            {
+                spec = null;
+                failure = new GameplayEffectApplyResult(GameplayEffectApplyResultKind.InvalidContext,
+                    0, application.AuthoritativeInstanceId, "EffectScopeOrHolderMismatch");
+                return false;
+            }
             spec = m_Scratch.AcquireSpec(definition, application.Context);
             spec.SourceTagSnapshotProvided = application.HasSourceTagSnapshot;
             failure = default;

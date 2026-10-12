@@ -231,6 +231,7 @@ namespace ThirdPersonSimulation.Fixed
             SimulationSessionSourceDescriptor source,
             SimulationRuntimePortSet sourcePorts,
             IFixedSimulationRestoreSource restoreSource,
+            IFixedSimulationSessionSnapshotCodec snapshotCodec,
             SimulationWorldSolverDefinitionDescriptor solverDefinition,
             ICharacterWorldSolver solver,
             WorldFeature requiredSolverFeatures,
@@ -241,7 +242,9 @@ namespace ThirdPersonSimulation.Fixed
             ISimulationDiagnosticsSink diagnostics,
             IEnumerable<SimulationOutputRouteDescriptor> outputRoutes,
             IEnumerable<IDisposable> sourceResources = null,
-            IEnumerable<IDisposable> actorResources = null)
+            IEnumerable<IDisposable> actorResources = null,
+            GraphBatchExecutionOptions graphBatchOptions = default,
+            IGraphBatchExecutionResource graphBatchResource = null)
         {
             if (!sessionId.IsValid || !worldId.IsValid || !sourceClockId.IsValid || tickRate <= 0)
                 throw new ArgumentException("Fixed Session composition identity is incomplete.");
@@ -252,11 +255,14 @@ namespace ThirdPersonSimulation.Fixed
             RecordedFrameCapacity = recordedFrameCapacity;
             MaximumSessionCheckpointPayloadBytes = maximumSessionCheckpointPayloadBytes;
             CharacterRuntime = characterRuntime ?? throw new ArgumentNullException(nameof(characterRuntime));
+            GraphBatchOptions = graphBatchOptions;
+            GraphBatchResource = graphBatchResource;
             Backend = backend ?? throw new ArgumentNullException(nameof(backend));
             PipelineRuntimePackage = pipelineRuntimePackage ?? throw new ArgumentNullException(nameof(pipelineRuntimePackage));
             Source = source ?? throw new ArgumentNullException(nameof(source));
             SourcePorts = sourcePorts ?? throw new ArgumentNullException(nameof(sourcePorts));
             RestoreSource = restoreSource;
+            SnapshotCodec = snapshotCodec;
             SolverDefinition = solverDefinition ?? throw new ArgumentNullException(nameof(solverDefinition));
             Solver = solver ?? throw new ArgumentNullException(nameof(solver));
             RequiredSolverFeatures = requiredSolverFeatures;
@@ -279,11 +285,14 @@ namespace ThirdPersonSimulation.Fixed
         public int RecordedFrameCapacity { get; }
         public int MaximumSessionCheckpointPayloadBytes { get; }
         public FixedCharacterRuntime CharacterRuntime { get; }
+        public GraphBatchExecutionOptions GraphBatchOptions { get; }
+        public IGraphBatchExecutionResource GraphBatchResource { get; }
         public SimulationExecutionBackendDescriptor Backend { get; }
         public FixedSimulationPipelineRuntimePackage PipelineRuntimePackage { get; }
         public SimulationSessionSourceDescriptor Source { get; }
         public SimulationRuntimePortSet SourcePorts { get; }
         public IFixedSimulationRestoreSource RestoreSource { get; }
+        public IFixedSimulationSessionSnapshotCodec SnapshotCodec { get; }
         public SimulationWorldSolverDefinitionDescriptor SolverDefinition { get; }
         public ICharacterWorldSolver Solver { get; }
         public WorldFeature RequiredSolverFeatures { get; }
@@ -320,7 +329,7 @@ namespace ThirdPersonSimulation.Fixed
                 target.NumericProfile.Id,
                 target.NumericProfile.AbiVersion,
                 request.PipelineRuntimePackage.Pipeline.SchemaVersion);
-            SimulationComponentIdentity snapshotIdentity = BuildSnapshotCodecIdentity(target, request.Backend);
+            SimulationComponentIdentity snapshotIdentity = request.SnapshotCodec.Identity;
             SimulationPipelineCompilationResult compilation = SimulationPipelineCompiler.Compile(
                 request.PipelineRuntimePackage.Pipeline,
                 request.PipelineRuntimePackage.PassFactories,
@@ -360,7 +369,6 @@ namespace ThirdPersonSimulation.Fixed
                 request.Source.Model,
                 request.Source.Endpoint,
                 request.Source.Protocol);
-            var snapshotCodec = new FixedSimulationSessionSnapshotCodec(snapshotIdentity);
             var backendRequest = new FixedPassBackendCompositionRequest(
                 descriptor,
                 request.Backend,
@@ -372,7 +380,7 @@ namespace ThirdPersonSimulation.Fixed
                 PortDescriptors(request.SourcePorts),
                 request.RestoreSource,
                 request.Solver,
-                snapshotCodec,
+                request.SnapshotCodec,
                 request.Committer,
                 request.DiagnosticsIdentity,
                 request.Diagnostics,
@@ -380,7 +388,9 @@ namespace ThirdPersonSimulation.Fixed
                 request.PipelineRuntimePackage.PassRuntimeFactories,
                 request.PipelineRuntimePackage.ProductRuntimeFactories,
                 request.SourceResources,
-                request.ActorResources);
+                request.ActorResources,
+                request.GraphBatchOptions,
+                request.GraphBatchResource);
             return FixedPassExecutionBackend.Create(backendRequest);
         }
 

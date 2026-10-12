@@ -210,7 +210,8 @@ namespace ThirdPersonSimulation.Fixed
         }
     }
 
-    internal readonly struct FixedMotionWarpState
+    [CanonicalContract]
+    internal readonly partial struct FixedMotionWarpState
     {
         public FixedMotionWarpState(
             bool active,
@@ -258,8 +259,8 @@ namespace ThirdPersonSimulation.Fixed
             CapturedTargetYaw = capturedTargetYaw;
         }
 
-        public void Retain() => ActionInstance.Retain();
-        public void Release() => ActionInstance.Release();
+        public void Retain() => CanonicalRetain(this);
+        public void Release() => CanonicalRelease(this);
         public bool Active { get; }
         public bool Initialized { get; }
         public ulong PlaybackGeneration { get; }

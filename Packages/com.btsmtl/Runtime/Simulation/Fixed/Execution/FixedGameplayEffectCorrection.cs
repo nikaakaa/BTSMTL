@@ -159,7 +159,7 @@ namespace ThirdPersonSimulation.Fixed
                             m_State.RemapActiveInstance(active, correction.Active.InstanceId);
                         RestoreCorrectedActive(active, correction.Active, command.Context);
                     }
-                    m_Causes[handle] = new PortableEffectCause(definition, active.InstanceId, ToTarget(active.LifecycleContext));
+                    m_Causes[handle] = new PortableEffectCause(definition, active.InstanceId, ToTarget(active.LifecycleContext, active.Spec.Context.SuccessTarget));
                     m_State.SetNextPeriod(active.InstanceId, correction.Active.NextPeriodTick);
                     if (!active.Inhibited)
                     {
@@ -339,11 +339,13 @@ namespace ThirdPersonSimulation.Fixed
         static bool CorrectionContextsMatch(SimulationGameplayEffectContext left, SimulationGameplayEffectContext right) =>
             left.SourceActorId == right.SourceActorId && left.TargetActorId == right.TargetActorId &&
             left.SourceActionInstanceId == right.SourceActionInstanceId && left.PredictionKey == right.PredictionKey &&
-            left.GameplayResultId == right.GameplayResultId;
+            left.GameplayResultId == right.GameplayResultId && left.Scope.Equals(right.Scope) &&
+            left.Holder.Equals(right.Holder) && left.Success.Equals(right.Success) && left.SuccessTarget.Equals(right.SuccessTarget);
 
         static SimulationGameplayEffectContext AuthoritativeCorrectionContext(SimulationGameplayEffectContext source, ulong sourceTick) =>
             new SimulationGameplayEffectContext(source.SourceActorId, source.TargetActorId, source.SourceActionInstanceId,
-                source.PredictionKey, source.GameplayResultId, sourceTick, SimulationGameplayEffectApplicationMode.Confirmed);
+                source.PredictionKey, source.GameplayResultId, sourceTick, SimulationGameplayEffectApplicationMode.Confirmed,
+                source.Scope, source.Holder, source.Success, source.SuccessTarget);
 
         static int CompareCorrectionCues(GameplayCueFact left, GameplayCueFact right)
         {
@@ -441,7 +443,8 @@ namespace ThirdPersonSimulation.Fixed
             active.Inhibited = snapshot.Inhibited;
             active.LifecycleRevision = snapshot.LifecycleRevision;
             active.LifecycleContext = new GameplayEffectContextIdentity(context.SourceActor, context.TargetActor,
-                context.SourceActionInstanceId, context.PredictionKey, context.GameplayResultId, context.SourceTick, false);
+                context.SourceActionInstanceId, context.PredictionKey, context.GameplayResultId, context.SourceTick, false,
+                context.Scope, context.Holder, context.Success);
         }
 
         static bool CorrectionScopeMatches(PortablePredictionRecord record, GameplayEffectReconciliationScope scope, ActorId sourceActor) =>

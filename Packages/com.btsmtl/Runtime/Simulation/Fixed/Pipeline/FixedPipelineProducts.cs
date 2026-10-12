@@ -417,17 +417,6 @@ namespace ThirdPersonSimulation.Fixed
             SnapshotHash = default;
         }
 
-        internal void CompleteReception()
-        {
-            if (m_Storage != null && !m_Storage.ReceptionComplete)
-            {
-                World.SetPreparedTextResolver(m_Storage.Text);
-                for (int index = 0; index < Pipeline.Participants.Count; index++)
-                    Pipeline.Participants[index].SetPreparedTextResolver(m_Storage.Text);
-                m_Storage.ReceptionComplete = true;
-            }
-        }
-
         internal FixedSimulationSessionSnapshot(SimulationSessionCompositionIdentity compositionIdentity)
         {
             CompositionIdentity = compositionIdentity;

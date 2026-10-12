@@ -87,7 +87,6 @@ namespace ThirdPersonSimulation.Fixed
                 throw new InvalidOperationException("Character restore transaction was not applied and validated before Session publish.");
             SimulationWorldStateStore.ReleaseStatePages(m_Restored);
             SimulationWorldStateStore.ReleaseStatePages(m_Previous);
-            m_Snapshot?.CompleteReception();
             m_Completed = true;
         }
 
@@ -115,18 +114,25 @@ namespace ThirdPersonSimulation.Fixed
 
         public void Dispose()
         {
-            if (!m_Completed)
+            try
             {
-                Rollback();
-                SimulationWorldStateStore.ReleaseStatePages(m_Restored);
-                SimulationWorldStateStore.ReleaseStatePages(m_Previous);
+                if (!m_Completed)
+                    Rollback();
             }
-            m_Completed = true;
-            m_Working = null;
-            m_Previous = default;
-            m_Restored = default;
-            m_Snapshot?.ReleaseStorage();
-            m_Snapshot = null;
+            finally
+            {
+                if (!m_Completed)
+                {
+                    SimulationWorldStateStore.ReleaseStatePages(m_Restored);
+                    SimulationWorldStateStore.ReleaseStatePages(m_Previous);
+                }
+                m_Completed = true;
+                m_Working = null;
+                m_Previous = default;
+                m_Restored = default;
+                m_Snapshot?.ReleaseStorage();
+                m_Snapshot = null;
+            }
         }
 
         void RequireOpen()

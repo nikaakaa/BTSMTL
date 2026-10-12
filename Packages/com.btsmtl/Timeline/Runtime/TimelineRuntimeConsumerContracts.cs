@@ -100,6 +100,7 @@ namespace BTSMTL.Timeline.Runtime
         public TimelineRuntimePlaybackHandle Handle => Playback.Handle;
         public TimelineExecutionIdentity ExecutionIdentity => Playback.ExecutionIdentity;
         public ulong Generation => Playback.Generation;
+        public ulong Sequence => m_Sequence;
         internal bool IsPendingFor(TimelineRuntimePlayback playback) =>
             ReferenceEquals(Playback, playback) && m_Sequence != 0 &&
             m_Sequence == playback.PendingStopSequence;

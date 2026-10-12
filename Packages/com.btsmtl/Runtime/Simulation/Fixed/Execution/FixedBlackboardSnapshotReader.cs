@@ -7,7 +7,7 @@ namespace ThirdPersonSimulation.Fixed
     {
         internal FixedBlackboardValueSnapshot(CharacterSkillId ability, ulong actionInstanceId, ulong skillGeneration,
             int stateSlot, string scopeIdentity, ProgramScopeKind scopeKind, int compiledOwnerIndex, ProgramBlackboardLifetime lifetime, BlackboardOwnerToken owner,
-            bool active, AbilityStateValue value)
+            bool active, bool usesDefault, AbilityStateValue value)
         {
             Ability = ability;
             ActionInstanceId = actionInstanceId;
@@ -19,6 +19,7 @@ namespace ThirdPersonSimulation.Fixed
             Lifetime = lifetime;
             Owner = owner;
             IsActive = active;
+            UsesDefault = usesDefault;
             Value = value;
         }
 
@@ -32,6 +33,7 @@ namespace ThirdPersonSimulation.Fixed
         public ProgramBlackboardLifetime Lifetime { get; }
         public BlackboardOwnerToken Owner { get; }
         public bool IsActive { get; }
+        public bool UsesDefault { get; }
         public bool IsReadOnly => Lifetime == ProgramBlackboardLifetime.Config;
         public AbilityStateValue Value { get; }
     }
@@ -61,46 +63,6 @@ namespace ThirdPersonSimulation.Fixed
             return true;
         }
 
-        internal static bool IsFrameWindowActive(FixedGameplayAbilityExecutionInstallation installation,
-            FixedCharacterRuntimeState character, in GameplayAbilitySourceContext source, string windowTag)
-        {
-            FixedAbilityRuntimeState ability = default;
-            for (int i = 0; i < character.Abilities.Count; i++)
-                if (character.Abilities[i].AbilityIdentity.AbilityId == installation.Data.AbilityId)
-                {
-                    ability = character.Abilities[i];
-                    break;
-                }
-            var frames = ability.AbilityExecutionState.Frames;
-            for (int frameIndex = 0; frameIndex < frames.Count; frameIndex++)
-            {
-                var frame = frames[frameIndex];
-                if (frame.ActionInstanceId != source.InstanceId || frame.SkillId != source.SkillId ||
-                    frame.Generation != source.SkillExecutionGeneration)
-                    continue;
-                for (int scopeIndex = 0; scopeIndex < installation.Data.Scopes.Count; scopeIndex++)
-                {
-                    ProgramScopeLayout scope = installation.Data.Scopes[scopeIndex];
-                    if (scope.Kind != ProgramScopeKind.Frame)
-                        continue;
-                    var groups = installation.Services.BlackboardGroups(scope);
-                    for (int groupIndex = 0; groupIndex < groups.Count; groupIndex++)
-                    {
-                        SimulationBlackboardSlotGroup group = groups[groupIndex];
-                        if (!installation.Layout.TryGetCatalogIdentity(group.Declaration, ProgramCatalogFieldId.ActionWindowTag, out string windowIdentity) ||
-                            !installation.Services.GameplayEffectCatalog.IsTagOrParent(windowIdentity, windowTag))
-                            continue;
-                        var owner = new BlackboardOwnerToken(ProgramScopeKind.Frame, group.CompiledOwnerIndex, character.LastCompletedTick);
-                        if (Read(installation, ability, frame, group.OwnerToken).BlackboardOwnerToken == owner &&
-                            Read(installation, ability, frame, group.WriteStamp).BlackboardWriteStamp.SourceContext.Equals(source) &&
-                            Read(installation, ability, frame, group.Value).Boolean)
-                            return true;
-                    }
-                }
-            }
-            return false;
-        }
-
 
         internal static void Append(FixedGameplayAbilityExecutionInstallation installation,
             FixedCharacterRuntimeState character, List<FixedBlackboardValueSnapshot> destination)
@@ -124,6 +86,8 @@ namespace ThirdPersonSimulation.Fixed
                 else
                 {
                     var frames = ability.AbilityExecutionState.Frames;
+                    if (frames.Count == 0)
+                        AppendScope(installation, character, ability, null, groups, destination);
                     for (int frameIndex = 0; frameIndex < frames.Count; frameIndex++)
                         AppendScope(installation, character, ability, frames[frameIndex], groups, destination);
                 }
@@ -139,28 +103,31 @@ namespace ThirdPersonSimulation.Fixed
             {
                 SimulationBlackboardSlotGroup group = groups[i];
                 bool active = TryOwner(installation, character, ability, frame, group, out BlackboardOwnerToken owner);
-                BlackboardOwnerToken stored = Read(installation, ability, frame, group.OwnerToken).BlackboardOwnerToken;
+                BlackboardOwnerToken stored = Read(installation, character, ability, frame, group.OwnerToken).BlackboardOwnerToken;
                 AbilityStateValue value;
-                if (!active || !TryReadGraphInput(installation, ability, frame, group.Value, out value))
+                bool usesDefault = !active || stored != owner;
+                if (!active || !TryReadGraphInput(installation, character, ability, frame, group.Value, out value))
                     value = active && stored == owner
-                        ? Read(installation, ability, frame, group.Value)
-                        : installation.Data.DefaultStateValue(group.Value);
+                        ? Read(installation, character, ability, frame, group.Value)
+                        : installation.DefaultStateValue(group.Value);
+                else
+                    usesDefault = false;
                 destination.Add(new FixedBlackboardValueSnapshot(installation.Data.AbilityId,
                     frame?.ActionInstanceId ?? 0, frame?.Generation ?? 0, group.Value,
-                    group.Scope.Identity, group.Scope.Kind, group.CompiledOwnerIndex, group.LifetimeKind, active ? owner : stored, active, value));
+                    group.Scope.Identity, group.Scope.Kind, group.CompiledOwnerIndex, group.LifetimeKind, active ? owner : stored, active, usesDefault, value));
             }
         }
 
         static bool TryReadGraphInput(FixedGameplayAbilityExecutionInstallation installation,
-            FixedAbilityRuntimeState ability, GameplayAbilityExecutionFrame<AbilityStateValue> frame,
+            FixedCharacterRuntimeState character, FixedAbilityRuntimeState ability, GameplayAbilityExecutionFrame<AbilityStateValue> frame,
             int slot, out AbilityStateValue value)
         {
             ReadOnlySpan<OperationHandle> owners = installation.Services.GraphInputOwners(slot);
             for (int i = 0; i < owners.Length; i++)
             {
-                if (!IsActiveOperation(installation, ability, frame, owners[i]))
+                if (!IsActiveOperation(installation, character, ability, frame, owners[i]))
                     continue;
-                value = Read(installation, ability, frame, slot);
+                value = Read(installation, character, ability, frame, slot);
                 return true;
             }
             value = default;
@@ -174,6 +141,8 @@ namespace ThirdPersonSimulation.Fixed
         {
             owner = default;
             ProgramScopeLayout scope = group.Scope;
+            if (scope.Kind != ProgramScopeKind.Character && frame == null)
+                return false;
             ulong generation;
             switch (scope.Kind)
             {
@@ -186,20 +155,20 @@ namespace ThirdPersonSimulation.Fixed
                         generation = 1;
                         break;
                     }
-                    if (!IsActiveOperation(installation, ability, frame, scope.OwnerOperation))
+                    if (!IsActiveOperation(installation, character, ability, frame, scope.OwnerOperation))
                         return false;
-                    generation = ReadGeneration(installation, ability, frame, scope.OwnerOperation);
+                    generation = ReadGeneration(installation, character, ability, frame, scope.OwnerOperation);
                     break;
                 case ProgramScopeKind.State:
                     OperationHandle machine = installation.Layout.Topology.StateMachineOwner(scope.OwnerOperation);
                     string stateId = installation.Layout.Topology.OperationIdentity(scope.OwnerOperation);
                     int activeSlot = installation.Layout.FindOperationStateSlot(machine, ProgramStateSemantic.StateMachineActive);
                     int exitingSlot = installation.Layout.FindOperationStateSlot(machine, ProgramStateSemantic.StateMachineExiting);
-                    if (!IsActiveOperation(installation, ability, frame, scope.OwnerOperation) ||
-                        (Read(installation, ability, frame, activeSlot).Identity != stateId &&
-                         Read(installation, ability, frame, exitingSlot).Identity != stateId))
+                    if (!IsActiveOperation(installation, character, ability, frame, scope.OwnerOperation) ||
+                        (Read(installation, character, ability, frame, activeSlot).Identity != stateId &&
+                         Read(installation, character, ability, frame, exitingSlot).Identity != stateId))
                         return false;
-                    generation = ReadGeneration(installation, ability, frame, scope.OwnerOperation);
+                    generation = ReadGeneration(installation, character, ability, frame, scope.OwnerOperation);
                     break;
                 case ProgramScopeKind.ActionInstance:
                     bool active = false;
@@ -227,28 +196,31 @@ namespace ThirdPersonSimulation.Fixed
         }
 
         static bool IsActiveOperation(FixedGameplayAbilityExecutionInstallation installation,
-            FixedAbilityRuntimeState ability, GameplayAbilityExecutionFrame<AbilityStateValue> frame, OperationHandle operation)
+            FixedCharacterRuntimeState character, FixedAbilityRuntimeState ability, GameplayAbilityExecutionFrame<AbilityStateValue> frame, OperationHandle operation)
         {
             int slot = installation.Layout.FindOperationStateSlot(operation, ProgramStateSemantic.RunnableLifecycle);
-            var status = (OperationRunnableStatus)Read(installation, ability, frame, slot).Int32;
+            var status = (OperationRunnableStatus)Read(installation, character, ability, frame, slot).Int32;
             return status == OperationRunnableStatus.Running || status == OperationRunnableStatus.Stopping;
         }
 
         static ulong ReadGeneration(FixedGameplayAbilityExecutionInstallation installation,
-            FixedAbilityRuntimeState ability, GameplayAbilityExecutionFrame<AbilityStateValue> frame, OperationHandle operation)
+            FixedCharacterRuntimeState character, FixedAbilityRuntimeState ability, GameplayAbilityExecutionFrame<AbilityStateValue> frame, OperationHandle operation)
         {
             int slot = installation.Layout.FindOperationStateSlot(operation, ProgramStateSemantic.RunnableActivationGeneration);
-            return Read(installation, ability, frame, slot).UInt64;
+            return Read(installation, character, ability, frame, slot).UInt64;
         }
 
         static AbilityStateValue Read(FixedGameplayAbilityExecutionInstallation installation,
-            FixedAbilityRuntimeState ability, GameplayAbilityExecutionFrame<AbilityStateValue> frame, int slot)
+            FixedCharacterRuntimeState character, FixedAbilityRuntimeState ability, GameplayAbilityExecutionFrame<AbilityStateValue> frame, int slot)
         {
+            int characterSlot = installation.CharacterBlackboardSlots[slot];
             AbilityStateValue value;
+            if (characterSlot >= 0)
+                return character.CharacterBlackboards.TryGetValue(characterSlot, out value) ? value : installation.DefaultStateValue(slot);
             bool stored = frame != null && installation.Layout.IsSkillExecutionStateSlot(slot)
                 ? frame.TryGetValue(slot, out value)
                 : ability.StateValues.TryGetValue(slot, out value);
-            return stored ? value : installation.Data.DefaultStateValue(slot);
+            return stored ? value : installation.DefaultStateValue(slot);
         }
     }
 }

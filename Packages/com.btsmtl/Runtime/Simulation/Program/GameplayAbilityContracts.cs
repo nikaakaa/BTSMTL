@@ -327,7 +327,8 @@ namespace ThirdPersonSimulation
                     Enum.Parse<GameplayAbilityRuleTargetPolicy>(RequireIdentity(entry, "TargetPolicy", null)),
                     Enum.Parse<GameplayAbilityRuleContinuation>(RequireIdentity(entry, "OnFailure", null)),
                     Enum.Parse<GameplayAbilityRuleContinuation>(RequireIdentity(entry, "OnSubmitted", null)),
-                    OptionalIdentity(entry, "TriggerEvent", null)));
+                    OptionalIdentity(entry, "TriggerEvent", null),
+                    ReadRuleOperation(entry, references, "OpportunityQuery", false)));
             }
             rules.Sort((left, right) =>
             {

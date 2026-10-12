@@ -9,7 +9,6 @@ namespace ThirdPersonSimulation
         readonly Float32ActionStateStore m_ActionStore;
         readonly Float32EquipmentRuntime m_Equipment;
         readonly Float32ValueRuntime m_Values;
-        readonly Float32BlackboardRuntime m_Blackboard;
         readonly IReadOnlyList<AbilityTimelineAdvancePending> m_TimelineAdvances;
         readonly IReadOnlyList<AbilityTimelineStopPending> m_TimelineStops;
 
@@ -19,7 +18,6 @@ namespace ThirdPersonSimulation
             Float32ActionStateStore actionStore,
             Float32EquipmentRuntime equipment,
             Float32ValueRuntime values,
-            Float32BlackboardRuntime blackboard,
             IReadOnlyList<AbilityTimelineAdvancePending> timelineAdvances,
             IReadOnlyList<AbilityTimelineStopPending> timelineStops)
         {
@@ -28,7 +26,6 @@ namespace ThirdPersonSimulation
             m_ActionStore = actionStore ?? throw new ArgumentNullException(nameof(actionStore));
             m_Equipment = equipment;
             m_Values = values ?? throw new ArgumentNullException(nameof(values));
-            m_Blackboard = blackboard ?? throw new ArgumentNullException(nameof(blackboard));
             m_TimelineAdvances = timelineAdvances ?? throw new ArgumentNullException(nameof(timelineAdvances));
             m_TimelineStops = timelineStops ?? throw new ArgumentNullException(nameof(timelineStops));
         }
@@ -51,7 +48,6 @@ namespace ThirdPersonSimulation
         public void EndEvaluation()
         {
             m_Equipment?.EndEvaluation();
-            m_Blackboard.EndFrame();
             m_ActionStore.EndEvaluation();
         }
 
