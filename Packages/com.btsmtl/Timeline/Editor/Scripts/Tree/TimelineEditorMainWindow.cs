@@ -96,7 +96,7 @@ namespace BTSMTL.Timeline.Editor
         static readonly List<TimelineEditorWindow> s_Windows = new();
         internal static IReadOnlyList<TimelineEditorWindow> OpenWindows => s_Windows;
         public static event Action<TimelineAsset> AssetOpened;
-        public static event Action<TimelineAsset, TreeClip> AssetTreeOpened;
+        public static event Action<TimelineEditorWindow, TreeClip> AssetTreeOpened;
         public static event Func<TreeClip, bool> TreeClipOpenRequested;
         internal static event Action<TimelineEditorWindow> WindowOpened;
         public static event Action<TimelineEditorWindow> WindowClosed;
@@ -198,7 +198,7 @@ namespace BTSMTL.Timeline.Editor
             return m_RuntimeObservationSummaries;
         }
 
-        internal bool TryResolveRuntimeObservation(
+        public bool TryResolveRuntimeObservation(
             out RuntimeTimelinePlaybackDebugSummary summary,
             out string message)
         {
@@ -601,7 +601,7 @@ namespace BTSMTL.Timeline.Editor
             {
                 if (OpenAssetTree(assetClip))
                 {
-                    AssetTreeOpened?.Invoke(m_SerializedOwner as TimelineAsset, assetClip);
+                    AssetTreeOpened?.Invoke(this, assetClip);
                     return;
                 }
                 ShowNotification(new GUIContent("TreeClip 的正式 FlowCanvas SkillGraph 打开失败。"));
