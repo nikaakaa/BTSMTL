@@ -31,7 +31,7 @@ namespace ThirdPersonSimulation
             StableHash stateSchemaHash,
             CharacterStateHash stateHash,
             string stateCodecIdentity,
-            byte[] ownedStateBytes)
+            ReadOnlyMemory<byte> stateBytes)
         {
             if (!actorId.IsValid || !gameplayContentHash.IsValid || !stateSchemaHash.IsValid || !stateHash.IsValid ||
                 !CanonicalTextValue.Equals(stateCodecIdentity, Float32CharacterRuntimeStateCodec.CodecIdentity, StringComparison.Ordinal))
@@ -43,9 +43,9 @@ namespace ThirdPersonSimulation
             StateSchemaHash = stateSchemaHash;
             StateHash = stateHash;
             StateCodecIdentity = stateCodecIdentity;
-            m_StateBytes = ownedStateBytes == null
-                ? throw new ArgumentNullException(nameof(ownedStateBytes))
-                : ownedStateBytes;
+            m_StateBytes = stateBytes.Equals(default(ReadOnlyMemory<byte>))
+                ? throw new ArgumentNullException(nameof(stateBytes))
+                : stateBytes;
             m_StateReader = new CanonicalReader(Array.Empty<byte>());
             m_CanonicalWriter = new CanonicalWriter();
         }

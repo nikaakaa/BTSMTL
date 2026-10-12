@@ -129,25 +129,23 @@ namespace ThirdPersonSimulation.ServerAuthoritative
 
     public readonly struct NetworkCheckpoint
     {
-        readonly byte[] m_StateBytes;
-
         internal NetworkCheckpoint(AuthoritativeActorBaseline baseline, CanonicalHashWriter hashWriter)
         {
             if (!baseline.IsValid)
                 throw new ArgumentOutOfRangeException(nameof(baseline));
             Baseline = baseline;
-            m_StateBytes = baseline.StateBuffer;
-            CheckpointHash = ComputeHash(baseline, m_StateBytes, hashWriter);
+            CheckpointHash = ComputeHash(baseline, hashWriter);
         }
 
         public AuthoritativeActorBaseline Baseline { get; }
-        internal ReadOnlySpan<byte> StateSpan => m_StateBytes;
-        internal ReadOnlyMemory<byte> StateMemory => m_StateBytes;
+        internal ReadOnlySpan<byte> StateSpan => Baseline.CharacterStateBytes.Span;
+        internal ReadOnlyMemory<byte> StateMemory => Baseline.CharacterStateBytes;
         public StableHash CheckpointHash { get; }
-        public bool IsValid => Baseline.IsValid && m_StateBytes != null;
+        public bool IsValid => Baseline.IsValid;
 
-        static StableHash ComputeHash(AuthoritativeActorBaseline baseline, byte[] stateBytes, CanonicalHashWriter writer)
+        static StableHash ComputeHash(AuthoritativeActorBaseline baseline, CanonicalHashWriter writer)
         {
+            ReadOnlySpan<byte> stateBytes = baseline.CharacterStateBytes.Span;
             writer.Reset();
             writer.WriteText("server-authoritative-network-checkpoint/14");
             writer.WriteText(baseline.ActorId.Value);
@@ -318,7 +316,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 baseline.Baseline.ConfirmedEventHorizon,
                 reader.ReadUInt64());
             bool stateChanged = reader.ReadBoolean();
-            byte[] stateBytes = stateChanged ? reader.ReadBytes() : baseline.Baseline.StateBuffer;
+            ReadOnlyMemory<byte> stateBytes = stateChanged ? reader.ReadBytes() : baseline.StateMemory;
             remote = ReadCompactRemote(reader, layout, authorityTick, actorId);
             StableHash expectedCheckpointHash = reader.ReadHash();
             reader.RequireComplete();
@@ -359,7 +357,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             WorldBodyState body,
             ulong inputSequence,
             ServerAuthoritativeEventHorizon horizon,
-            byte[] stateBytes)
+            ReadOnlyMemory<byte> stateBytes)
         {
             SimulationActorBinding actor = layout.RequireActor(actorId);
             GameplayContentHash expectedContentHash = new GameplayContentHash(actor.GameplayContentHash);

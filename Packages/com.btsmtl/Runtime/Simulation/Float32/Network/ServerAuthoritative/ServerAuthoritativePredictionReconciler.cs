@@ -193,7 +193,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 RequireActor(baseline.ActorId).StateSchemaHash,
                 baseline.StateHash,
                 Float32CharacterRuntimeStateCodec.CodecIdentity,
-                baseline.StateBuffer);
+                baseline.CharacterStateBytes);
             try
             {
                 WorldSimulationState localWorld = local.DecodeWorldState(m_DecodedWorld);

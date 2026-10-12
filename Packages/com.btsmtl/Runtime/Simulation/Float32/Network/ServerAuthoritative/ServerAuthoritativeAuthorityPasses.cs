@@ -985,7 +985,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 Float32CharacterRuntimeStateCodec.CodecIdentity,
                 actor.State.GameplayContentHash,
                 ports.CharacterRuntime.Runtime.OperationSetVersion,
-                actor.State.CanonicalPayload.Bytes.ToArray(),
+                actor.State.CanonicalPayload.Bytes,
                 actor.State.CanonicalPayload.Hash,
                 completed.State.WorldState.WorldRevision,
                 completed.State.WorldState.SolverId,

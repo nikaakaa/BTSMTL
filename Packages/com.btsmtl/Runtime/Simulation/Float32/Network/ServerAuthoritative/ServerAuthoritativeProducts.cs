@@ -159,7 +159,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
 
     public readonly struct AuthoritativeActorBaseline
     {
-        readonly byte[] m_CharacterStateBytes;
+        readonly ReadOnlyMemory<byte> m_CharacterStateBytes;
 
         public AuthoritativeActorBaseline(
             ActorId actorId,
@@ -169,7 +169,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             string stateCodecIdentity,
             GameplayContentHash gameplayContentHash,
             OperationSetVersion operationSetVersion,
-            byte[] ownedCharacterStateBytes,
+            ReadOnlyMemory<byte> characterStateBytes,
             CharacterStateHash stateHash,
             WorldRevision worldRevision,
             SolverImplementationId solverId,
@@ -188,8 +188,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             {
                 throw new ArgumentException("Authoritative baseline identity is incomplete.");
             }
-            if (ownedCharacterStateBytes == null || ownedCharacterStateBytes.Length == 0)
-                throw new ArgumentException("Authoritative baseline requires full Character state bytes.", nameof(ownedCharacterStateBytes));
+            if (characterStateBytes.IsEmpty)
+                throw new ArgumentException("Authoritative baseline requires full Character state bytes.", nameof(characterStateBytes));
             ActorId = actorId;
             AuthorityTick = authorityTick;
             NumericProfile = numericProfile;
@@ -197,7 +197,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             StateCodecIdentity = stateCodecIdentity;
             GameplayContentHash = gameplayContentHash;
             OperationSetVersion = operationSetVersion;
-            m_CharacterStateBytes = ownedCharacterStateBytes;
+            m_CharacterStateBytes = characterStateBytes;
             StateHash = stateHash;
             WorldRevision = worldRevision;
             SolverId = solverId;
@@ -228,8 +228,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         public StableHash BodyHash { get; }
         public ulong ConfirmedInputSequence { get; }
         public ServerAuthoritativeEventHorizon ConfirmedEventHorizon { get; }
-        public bool IsValid => ActorId.IsValid && AuthorityTick.IsValid && m_CharacterStateBytes != null;
-        internal byte[] StateBuffer => m_CharacterStateBytes;
+        public bool IsValid => ActorId.IsValid && AuthorityTick.IsValid && !m_CharacterStateBytes.IsEmpty;
     }
 
     public enum PredictionCorrectionDecisionKind : byte
