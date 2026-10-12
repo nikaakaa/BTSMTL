@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>Btsmtl.GameplayConfig.Generator</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\Projects\ThirdPersonGameplay.Configuration\ThirdPersonGameplay.Configuration.csproj" />
+    <None Include="..\BlackboardData.Generator\luban.lock.json" Link="luban.lock.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Templates\**\*.sbn" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\Packages\com.btsmtl\GameplayConfiguration\Reader\**\*.cs" />
+    <ProjectReference Include="..\ThirdPersonGameplay.Configuration\ThirdPersonGameplay.Configuration.csproj" />
+    <ProjectReference Include="..\ThirdPerson.Luban\ThirdPerson.Luban.csproj" />
+  </ItemGroup>
+</Project>

@@ -3,6 +3,7 @@
     "rootNamespace": "ThirdPersonSimulation.Configuration",
     "references": [
         "ThirdPerson.Shared.Contracts",
+        "ThirdPerson.Luban",
         "ThirdPersonSimulation.Core",
         "ThirdPersonSimulation.Fixed",
         "ThirdPersonSimulation.Float32"

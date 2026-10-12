@@ -1,0 +1,75 @@
+using Luban;
+using System;
+using System.Collections.Generic;
+
+{{namespace_with_grace_begin __namespace_with_top_module}}
+public {{class_modifier __bean}} partial class {{__name}}{{if __bean.parent_def_type}} : {{__bean.parent}}{{end}}
+{
+    public {{__name}}(ByteBuf buffer){{if __bean.parent_def_type}} : base(buffer){{end}}
+    {
+        {{~for field in __bean.export_fields~}}
+        {{~if has_tag field "btsmtl.csharpType"~}}
+        {{declaring_type_name field.ctype}} value_{{field.name}};
+        {{deserialize "buffer" ("value_" + field.name) field.ctype}}
+        {{field.name}} = checked(({{get_tag field "btsmtl.csharpType"}})value_{{field.name}});
+        {{~else if field.ctype.type_name == "array"~}}
+        {{declaring_type_name field.ctype}} value_{{field.name}};
+        {{deserialize "buffer" ("value_" + field.name) field.ctype}}
+        {{field.name}} = Array.AsReadOnly(value_{{field.name}});
+        {{~else~}}
+        {{deserialize "buffer" field.name field.ctype}}
+        {{~end~}}
+        {{~end~}}
+    }
+
+    public static {{__name}} Deserialize{{__name}}(ByteBuf buffer)
+    {
+        {{~if __bean.is_abstract_type~}}
+        switch (buffer.ReadInt())
+        {
+            {{~for child in __bean.hierarchy_not_abstract_children~}}
+            case {{child.id}}: return new {{child.full_name}}(buffer);
+            {{~end~}}
+            default: throw new SerializationException("配置组件类型不属于当前 schema。");
+        }
+        {{~else~}}
+        return new {{__name}}(buffer);
+        {{~end~}}
+    }
+
+    {{~for field in __bean.export_fields~}}
+    {{~if has_tag field "btsmtl.csharpType"~}}
+    public readonly {{get_tag field "btsmtl.csharpType"}} {{field.name}};
+    {{~else if field.ctype.type_name == "array"~}}
+    {{array_type = declaring_type_name field.ctype}}
+    public readonly IReadOnlyList<{{string.replace array_type "[]" ""}}> {{field.name}};
+    {{~else~}}
+    public readonly {{declaring_type_name field.ctype}} {{field.name}};
+    {{~end~}}
+    {{~if can_generate_ref field~}}
+    public {{declaring_type_name (get_ref_type field)}} {{field.name}}_Ref { get; private set; }
+    {{~else if can_generate_collection_ref field~}}
+    public IReadOnlyList<{{declaring_type_name (get_collection_ref_table field).value_ttype}}> {{field.name}}_Ref { get; private set; }
+    {{~end~}}
+    {{~end~}}
+
+    public {{if __bean.parent_def_type}}override{{else if __bean.is_abstract_type}}virtual{{end}} void ResolveRef({{__manager_name}} tables)
+    {
+        {{~if __bean.parent_def_type~}}
+        base.ResolveRef(tables);
+        {{~end~}}
+        {{~for field in __bean.export_fields~}}
+        {{~if can_generate_ref field~}}
+        {{field.name}}_Ref = tables.{{(get_ref_table field).name}}.Get({{field.name}});
+        {{~else if can_generate_collection_ref field~}}
+        var refs_{{field.name}} = new {{declaring_type_name (get_collection_ref_table field).value_ttype}}[{{field.name}}.Count];
+        for (int index = 0; index < refs_{{field.name}}.Length; index++)
+            refs_{{field.name}}[index] = tables.{{(get_collection_ref_table field).name}}.Get({{field.name}}[index]);
+        {{field.name}}_Ref = Array.AsReadOnly(refs_{{field.name}});
+        {{~else if is_field_bean_need_resolve_ref field~}}
+        {{field.name}}.ResolveRef(tables);
+        {{~end~}}
+        {{~end~}}
+    }
+}
+{{namespace_with_grace_end __namespace_with_top_module}}
