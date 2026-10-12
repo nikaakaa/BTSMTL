@@ -654,45 +654,6 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         readonly IReadOnlyList<AuthoritativeActorBaseline> m_Baselines;
         readonly IReadOnlyList<RemotePresentationBatch> m_RemotePresentation;
 
-        public AuthorityReplicationBatch(
-            SimulationTick authorityTick,
-            AuthoritativeInputAck[] acks,
-            AuthoritativeActorBaseline[] baselines,
-            RemotePresentationBatch[] remotePresentation)
-        {
-            if (!authorityTick.IsValid || acks == null || baselines == null || remotePresentation == null)
-                throw new ArgumentException("Authority replication Tick is invalid.", nameof(authorityTick));
-            AuthorityTick = authorityTick;
-            Array.Sort(acks, CompareAcks);
-            Array.Sort(baselines, CompareBaselines);
-            Array.Sort(remotePresentation, CompareRemote);
-            if (acks.Length == 0 || remotePresentation.Length == 0)
-                throw new ArgumentException("Authority replication requires Actor acks and presentation streams.", nameof(acks));
-            for (int i = 0; i < acks.Length; i++)
-            {
-                if (!acks[i].IsValid ||
-                    i > 0 && acks[i - 1].ActorId == acks[i].ActorId ||
-                    acks[i].AuthorityTick != authorityTick)
-                    throw new ArgumentException("Authority replication ack set is invalid or does not match the batch.", nameof(acks));
-            }
-            for (int i = 0; i < baselines.Length; i++)
-            {
-                if (!baselines[i].IsValid ||
-                    i > 0 && baselines[i - 1].ActorId == baselines[i].ActorId ||
-                    baselines[i].AuthorityTick != authorityTick)
-                    throw new ArgumentException("Authority replication baseline set is invalid or does not match the batch.", nameof(baselines));
-            }
-            for (int i = 0; i < remotePresentation.Length; i++)
-            {
-                if (!remotePresentation[i].IsValid ||
-                    i > 0 && remotePresentation[i - 1].ActorId == remotePresentation[i].ActorId)
-                    throw new ArgumentException("Authority replication presentation set is invalid.", nameof(remotePresentation));
-            }
-            m_Acks = acks;
-            m_Baselines = baselines;
-            m_RemotePresentation = remotePresentation;
-        }
-
         AuthorityReplicationBatch(
             SimulationTick authorityTick,
             IReadOnlyList<AuthoritativeInputAck> acks,
@@ -711,15 +672,6 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             IReadOnlyList<AuthoritativeActorBaseline> baselines,
             IReadOnlyList<RemotePresentationBatch> remotePresentation) =>
             new AuthorityReplicationBatch(authorityTick, acks, baselines, remotePresentation);
-
-        static int CompareAcks(AuthoritativeInputAck left, AuthoritativeInputAck right) =>
-            left.ActorId.CompareTo(right.ActorId);
-
-        static int CompareBaselines(AuthoritativeActorBaseline left, AuthoritativeActorBaseline right) =>
-            left.ActorId.CompareTo(right.ActorId);
-
-        static int CompareRemote(RemotePresentationBatch left, RemotePresentationBatch right) =>
-            left.ActorId.CompareTo(right.ActorId);
 
         public SimulationTick AuthorityTick { get; }
         public IReadOnlyList<AuthoritativeInputAck> Acks => m_Acks;

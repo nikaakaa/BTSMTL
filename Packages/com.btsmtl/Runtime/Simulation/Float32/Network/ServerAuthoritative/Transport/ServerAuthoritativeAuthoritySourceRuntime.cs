@@ -18,6 +18,9 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
         readonly ISimulationDiagnosticsSink m_Diagnostics;
         readonly NetworkCheckpointLayout m_CheckpointLayout;
         readonly CanonicalHashWriter m_BodyHashWriter = new CanonicalHashWriter();
+        readonly CanonicalBuffer<AuthoritativeInputAck> m_ReplicationAcks;
+        readonly CanonicalBuffer<AuthoritativeActorBaseline> m_ReplicationBaselines;
+        readonly CanonicalBuffer<RemotePresentationBatch> m_ReplicationRemote;
         readonly ActorId[] m_ExpectedActors;
         readonly ServerAuthoritativeRosterEntry[] m_Roster;
         readonly ActorId[] m_RouteActors;
@@ -105,6 +108,9 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
             m_CommandText = new CanonicalTextReferences(maximumCommandTextValues,
                 new CanonicalTextStorage(commandTextPages, checked(commandTextPages * maximumCommandCharacters)));
             m_ExpectedActors = actors;
+            m_ReplicationAcks = new CanonicalBuffer<AuthoritativeInputAck>(actors.Length);
+            m_ReplicationBaselines = new CanonicalBuffer<AuthoritativeActorBaseline>(actors.Length);
+            m_ReplicationRemote = new CanonicalBuffer<RemotePresentationBatch>(actors.Length);
             m_Roster = new ServerAuthoritativeRosterEntry[actors.Length];
             m_RouteActors = new ActorId[actors.Length];
             m_Routes = new ServerAuthoritativeAuthorityClientRoute[actors.Length];
@@ -232,20 +238,30 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
             {
                 throw new InvalidOperationException("Authority Source accepts only canonical AuthorityReplication egress.");
             }
-            AuthorityReplicationBatch batch = ServerAuthoritativeEgressCodec.ReadAuthorityReplication(record.Payload,
-                record.PayloadReader, record.ElementReader, record.CanonicalScratch, m_BodyHashWriter, record.TextResolver);
-            if (batch.AuthorityTick.Value != checked(m_LatestAuthorityTick + 1))
-                throw new InvalidOperationException("Authority replication Tick is not contiguous with the Authority Source clock.");
-            m_LatestAuthorityTick = batch.AuthorityTick.Value;
-            CaptureCheckpoints(batch);
-            QueueReliableEvents(batch);
-            WriteAuthorityEvidence(batch);
-            ulong interval = checked((ulong)(m_Policy.ModelPolicy.SimulationTickRate / m_Policy.ModelPolicy.SnapshotPacketRate));
-            if (batch.AuthorityTick.Value == 1 || batch.AuthorityTick.Value % interval == 0)
-                SendSnapshots(batch);
-            m_FullBaselineRequested = HasPendingCheckpointRequest();
-            FlushControlOutputs();
-            m_Data.PumpSend();
+            try
+            {
+                AuthorityReplicationBatch batch = ServerAuthoritativeEgressCodec.ReadAuthorityReplication(record.Payload,
+                    record.PayloadReader, record.ElementReader, record.CanonicalScratch, m_BodyHashWriter, record.TextResolver,
+                    m_ReplicationAcks, m_ReplicationBaselines, m_ReplicationRemote);
+                if (batch.AuthorityTick.Value != checked(m_LatestAuthorityTick + 1))
+                    throw new InvalidOperationException("Authority replication Tick is not contiguous with the Authority Source clock.");
+                m_LatestAuthorityTick = batch.AuthorityTick.Value;
+                CaptureCheckpoints(batch);
+                QueueReliableEvents(batch);
+                WriteAuthorityEvidence(batch);
+                ulong interval = checked((ulong)(m_Policy.ModelPolicy.SimulationTickRate / m_Policy.ModelPolicy.SnapshotPacketRate));
+                if (batch.AuthorityTick.Value == 1 || batch.AuthorityTick.Value % interval == 0)
+                    SendSnapshots(batch);
+                m_FullBaselineRequested = HasPendingCheckpointRequest();
+                FlushControlOutputs();
+                m_Data.PumpSend();
+            }
+            finally
+            {
+                m_ReplicationAcks.Clear();
+                m_ReplicationBaselines.Clear();
+                m_ReplicationRemote.Clear();
+            }
         }
 
         void PumpControl()

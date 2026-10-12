@@ -100,28 +100,55 @@ namespace ThirdPersonSimulation.ServerAuthoritative
 
         public static AuthorityReplicationBatch ReadAuthorityReplication(ReadOnlyMemory<byte> bytes,
             CanonicalReader reader, CanonicalReader elementReader, CanonicalWriter canonicalScratch,
-            CanonicalHashWriter bodyHashWriter, ICanonicalTextResolver textResolver)
+            CanonicalHashWriter bodyHashWriter, ICanonicalTextResolver textResolver,
+            CanonicalBuffer<AuthoritativeInputAck> acks,
+            CanonicalBuffer<AuthoritativeActorBaseline> baselines,
+            CanonicalBuffer<RemotePresentationBatch> remote)
         {
             reader.Reset(bytes);
             reader.SetTextResolver(textResolver);
             if (reader.ReadUInt32() != ReplicationMagic || reader.ReadInt32() != ReplicationVersion)
                 throw new InvalidDataException("ServerAuthoritative authority replication schema is invalid.");
             var tick = new SimulationTick(reader.ReadUInt64());
+            if (!tick.IsValid)
+                throw new InvalidDataException("Authority replication Tick is invalid.");
             int ackCount = ReadCount(reader, "input ack");
-            var acks = new AuthoritativeInputAck[ackCount];
+            if (ackCount == 0)
+                throw new InvalidDataException("Authority replication requires Actor acks and presentation streams.");
+            acks.PrepareRead(ackCount);
             for (int i = 0; i < ackCount; i++)
-                acks[i] = ReadAck(reader);
+            {
+                AuthoritativeInputAck ack = ReadAck(reader);
+                if (ack.AuthorityTick != tick || i > 0 && acks.Element(i - 1).ActorId.CompareTo(ack.ActorId) >= 0)
+                    throw new InvalidDataException("Authority replication ack set is invalid or does not match the batch.");
+                acks.Element(i) = ack;
+                acks.CompleteReadElement();
+            }
             int baselineCount = ReadCount(reader, "baseline");
-            var baselines = new AuthoritativeActorBaseline[baselineCount];
+            baselines.PrepareRead(baselineCount);
             for (int i = 0; i < baselineCount; i++)
-                baselines[i] = ServerAuthoritativeCanonicalCodec.ReadBaseline(reader.ReadBytesSegment(),
+            {
+                AuthoritativeActorBaseline baseline = ServerAuthoritativeCanonicalCodec.ReadBaseline(reader.ReadBytesSegment(),
                     elementReader, bodyHashWriter);
+                if (baseline.AuthorityTick != tick || i > 0 && baselines.Element(i - 1).ActorId.CompareTo(baseline.ActorId) >= 0)
+                    throw new InvalidDataException("Authority replication baseline set is invalid or does not match the batch.");
+                baselines.Element(i) = baseline;
+                baselines.CompleteReadElement();
+            }
             int remoteCount = ReadCount(reader, "remote presentation");
-            var remote = new RemotePresentationBatch[remoteCount];
+            if (remoteCount == 0)
+                throw new InvalidDataException("Authority replication requires Actor acks and presentation streams.");
+            remote.PrepareRead(remoteCount);
             for (int i = 0; i < remoteCount; i++)
-                remote[i] = ReadRemotePresentation(reader.ReadBytesSegment(), elementReader, canonicalScratch, textResolver);
+            {
+                RemotePresentationBatch presentation = ReadRemotePresentation(reader.ReadBytesSegment(), elementReader, canonicalScratch, textResolver);
+                if (i > 0 && remote.Element(i - 1).ActorId.CompareTo(presentation.ActorId) >= 0)
+                    throw new InvalidDataException("Authority replication presentation set is invalid.");
+                remote.Element(i) = presentation;
+                remote.CompleteReadElement();
+            }
             reader.RequireComplete();
-            var result = new AuthorityReplicationBatch(tick, acks, baselines, remote);
+            AuthorityReplicationBatch result = AuthorityReplicationBatch.FromPreparedOutputs(tick, acks, baselines, remote);
             canonicalScratch.Reset();
             WriteAuthorityReplication(canonicalScratch, result);
             RequireCanonical(bytes.Span, canonicalScratch, "authority replication");
@@ -139,16 +166,12 @@ namespace ThirdPersonSimulation.ServerAuthoritative
 
         static AuthoritativeInputAck ReadAck(CanonicalReader reader)
         {
-            var actorId = new ActorId(CanonicalTextEncoding.DecodeString(reader.ReadTextSegment()));
+            var actorId = new ActorId(reader.ReadText());
             var tick = new SimulationTick(reader.ReadUInt64());
             ulong inputSequence = reader.ReadUInt64();
             ulong eventSequence = reader.ReadUInt64();
             EventId eventId = reader.ReadEventId();
-            if ((eventSequence == 0) != !eventId.IsValid)
-                throw new InvalidDataException("Authority input ack Event horizon is invalid.");
-            ServerAuthoritativeEventHorizon horizon = eventSequence == 0
-                ? ServerAuthoritativeEventHorizon.Empty
-                : new ServerAuthoritativeEventHorizon(eventSequence, eventId);
+            var horizon = new ServerAuthoritativeEventHorizon(eventSequence, eventId);
             return new AuthoritativeInputAck(actorId, tick, inputSequence, horizon);
         }
 
