@@ -427,28 +427,14 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             }
 
             Array.Sort(sampleCommands, ServerAuthoritativeProductOrder.CompareCommands);
-            int sampleCount = 0;
-            for (int i = 0; i < sampleCommands.Length; i++)
+            for (int i = 1; i < sampleCommands.Length; i++)
             {
-                bool replaces = sampleCount > 0 &&
-                    CanonicalTextValue.Equals(sampleCommands[sampleCount - 1].ProducerId, sampleCommands[i].ProducerId, StringComparison.Ordinal) &&
-                    sampleCommands[sampleCount - 1].ProducerGeneration == sampleCommands[i].ProducerGeneration;
-                if (replaces)
-                {
-                    if (sampleCommands[sampleCount - 1].SourceActionInstanceId != sampleCommands[i].SourceActionInstanceId)
-                        throw new ArgumentException(
-                            "Remote presentation playback changed its source Action instance.",
-                            nameof(sampleCommands));
-                    sampleCount--;
-                }
-                sampleCount++;
-            }
-
-            if (sampleCount != sampleCommands.Length)
-            {
-                var values = new PresentationCommand[sampleCount];
-                Array.Copy(sampleCommands, values, sampleCount);
-                sampleCommands = values;
+                if (CanonicalTextValue.Equals(sampleCommands[i - 1].ProducerId, sampleCommands[i].ProducerId, StringComparison.Ordinal) &&
+                    sampleCommands[i - 1].ProducerGeneration == sampleCommands[i].ProducerGeneration &&
+                    sampleCommands[i - 1].SourceActionInstanceId != sampleCommands[i].SourceActionInstanceId)
+                    throw new ArgumentException(
+                        "Remote presentation playback changed its source Action instance.",
+                        nameof(sampleCommands));
             }
 
             Array.Sort(reliableEvents, ServerAuthoritativeProductOrder.CompareEvents);

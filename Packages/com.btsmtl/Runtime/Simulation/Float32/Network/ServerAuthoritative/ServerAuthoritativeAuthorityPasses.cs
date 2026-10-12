@@ -842,18 +842,6 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             internal void Sort()
             {
                 Samples.Sort(m_SampleComparison);
-                int sampleCount = 0;
-                for (int index = 0; index < Samples.Count; index++)
-                {
-                    bool replaces = sampleCount > 0 &&
-                        CanonicalTextValue.Equals(Samples[sampleCount - 1].ProducerId, Samples[index].ProducerId,
-                            StringComparison.Ordinal) &&
-                        Samples[sampleCount - 1].ProducerGeneration == Samples[index].ProducerGeneration;
-                    if (replaces)
-                        sampleCount--;
-                    sampleCount++;
-                }
-                Samples.RemoveRange(sampleCount, Samples.Count - sampleCount);
                 Reliable.Sort();
             }
 
