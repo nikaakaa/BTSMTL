@@ -165,7 +165,7 @@ namespace ThirdPersonSimulation
 
         static ulong RemapTick(ulong value, ulong before, ulong after) =>
             value == 0 || value < before ? value : checked(after + value - before);
-        internal void Release() => Begin();
+        public void Release() => Begin();
 
         void SortValues()
         {

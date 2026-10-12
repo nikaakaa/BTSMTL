@@ -51,14 +51,29 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         public static SimulationInput ReadInput(ArraySegment<byte> bytes, CanonicalReader reader,
             ICanonicalTextResolver textResolver)
         {
+            SimulationNumericProfile profile = BeginReadInput(bytes, reader, textResolver);
+            SimulationInput result = Float32SimulationInputCodec.Read(reader, profile);
+            reader.RequireComplete();
+            return result;
+        }
+
+        public static SimulationInput ReadInput(ArraySegment<byte> bytes, CanonicalReader reader,
+            ICanonicalTextResolver textResolver, Float32SimulationInputFrameStorage storage)
+        {
+            SimulationNumericProfile profile = BeginReadInput(bytes, reader, textResolver);
+            SimulationInput result = Float32SimulationInputCodec.Read(reader, profile, storage);
+            reader.RequireComplete();
+            return result;
+        }
+
+        static SimulationNumericProfile BeginReadInput(ArraySegment<byte> bytes, CanonicalReader reader,
+            ICanonicalTextResolver textResolver)
+        {
             reader.Reset(bytes);
             reader.SetTextResolver(textResolver);
             if (reader.ReadUInt32() != InputMagic || reader.ReadInt32() != InputSchemaVersion)
                 throw new InvalidDataException("ServerAuthoritative canonical input header is invalid.");
-            SimulationNumericProfile profile = SimulationNumericProfileCodec.Read(reader, Float32SimulationNumericProfile.Value);
-            SimulationInput result = Float32SimulationInputCodec.Read(reader, profile);
-            reader.RequireComplete();
-            return result;
+            return SimulationNumericProfileCodec.Read(reader, Float32SimulationNumericProfile.Value);
         }
 
         public static byte[] WriteBaseline(AuthoritativeActorBaseline baseline)

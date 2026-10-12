@@ -53,7 +53,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         }
 
         public static OwnerCanonicalInputBatch ReadOwnerInput(ReadOnlyMemory<byte> bytes, CanonicalReader reader,
-            CanonicalReader inputReader, CanonicalWriter canonicalScratch, ICanonicalTextResolver textResolver)
+            CanonicalReader inputReader, Float32SimulationInputFrameStorage inputStorage,
+            CanonicalWriter canonicalScratch, ICanonicalTextResolver textResolver)
         {
             reader.Reset(bytes);
             reader.SetTextResolver(textResolver);
@@ -63,7 +64,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             ulong sourceTick = reader.ReadUInt64();
             ulong inputSequence = reader.ReadUInt64();
             SimulationInput input = ServerAuthoritativeCanonicalCodec.ReadInput(reader.ReadBytesSegment(),
-                inputReader, reader.TextResolver);
+                inputReader, reader.TextResolver, inputStorage);
             reader.RequireComplete();
             var result = new OwnerCanonicalInputBatch(actorId, sourceTick, inputSequence, input);
             canonicalScratch.Reset();
