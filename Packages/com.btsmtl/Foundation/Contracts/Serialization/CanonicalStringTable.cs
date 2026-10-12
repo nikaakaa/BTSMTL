@@ -96,6 +96,7 @@ namespace ThirdPersonSimulation
         }
 
         public CanonicalTextValue ReadText() => CanonicalTextValue.FromString(ReadString());
+        public string ReadDeclaredString() => ReadString();
         public byte[] ReadBytes() => m_Reader.ReadBytes();
         public void SkipBytes() => m_Reader.SkipBytes();
         public void SkipText() => ReadString();

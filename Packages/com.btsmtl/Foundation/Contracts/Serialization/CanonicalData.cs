@@ -1212,6 +1212,7 @@ namespace ThirdPersonSimulation
         }
 
         public int Remaining => m_End - m_Offset;
+        public Func<CanonicalReader, string> DeclaredIdentityReader { private get; set; }
         public ICanonicalTextResolver TextResolver => m_TextResolver;
         public void SetTextResolver(ICanonicalTextResolver resolver) => m_TextResolver = resolver;
         public byte ReadByte()
@@ -1247,6 +1248,8 @@ namespace ThirdPersonSimulation
         public CanonicalTextValue ReadText() => ResolveText(ReadTextSegment());
 
         public string ReadString() => CanonicalTextEncoding.DecodeString(ReadTextSegment());
+
+        public string ReadDeclaredString() => DeclaredIdentityReader(this);
 
         public void RequireText(in CanonicalTextValue expected)
         {

@@ -7,6 +7,19 @@ namespace ThirdPersonSimulation
     {
         public bool MaterializedRead { get; set; }
         public bool PreparedRead { get; set; } = true;
+        public Type PreparedStorage { get; set; }
+    }
+
+    [AttributeUsage(AttributeTargets.Struct)]
+    public sealed class CanonicalBorrowedSequenceAttribute : Attribute
+    {
+        public CanonicalBorrowedSequenceAttribute(Type storage) => Storage = storage;
+        public Type Storage { get; }
+    }
+
+    [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
+    public sealed class CanonicalDeclaredTextAttribute : Attribute
+    {
     }
 
     [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
@@ -61,6 +74,7 @@ namespace ThirdPersonSimulation
         float ReadSingleBits();
         double ReadDoubleBits();
         string ReadString();
+        string ReadDeclaredString();
         CanonicalTextValue ReadText();
         byte[] ReadBytes();
         void SkipBytes();
