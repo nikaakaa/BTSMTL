@@ -7,7 +7,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
     {
         readonly int m_Capacity;
         readonly CanonicalInputSample[] m_Inputs;
-        readonly ulong[] m_InputTargetTicks;
+        int m_InputHead;
         int m_InputCount;
         readonly ulong[] m_SentSequenceOrder;
         readonly NetworkCheckpoint[] m_SentCheckpoints;
@@ -31,7 +31,6 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
             Roster = roster;
             m_Capacity = capacity;
             m_Inputs = new CanonicalInputSample[capacity];
-            m_InputTargetTicks = new ulong[capacity];
             m_SentSequenceOrder = new ulong[capacity + 1];
             m_SentCheckpoints = new NetworkCheckpoint[capacity + 1];
         }
@@ -87,6 +86,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
             int index = FindInputIndex(sample.TargetAuthorityTick);
             if (index >= 0)
             {
+                index = InputStorageIndex(index);
                 if (sample.InputSequence <= m_Inputs[index].InputSequence)
                     return;
                 sample.Input.RetainText();
@@ -102,22 +102,30 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
         {
             CanonicalInputSample selected = default;
             int expiredCount = 0;
-            while (expiredCount < m_InputCount && m_InputTargetTicks[expiredCount] <= authorityTick)
+            int nextHead = m_InputHead;
+            while (expiredCount < m_InputCount && m_Inputs[nextHead].TargetAuthorityTick <= authorityTick)
             {
-                selected = m_Inputs[expiredCount];
+                selected = m_Inputs[nextHead];
                 expiredCount++;
+                nextHead++;
+                if (nextHead == m_Capacity)
+                    nextHead = 0;
             }
 
             if (expiredCount > 0)
             {
                 selected.Input.RetainText();
-                for (int index = 0; index < expiredCount; index++) m_Inputs[index].Input.ReleaseText();
-                int remaining = m_InputCount - expiredCount;
-                Array.Copy(m_Inputs, expiredCount, m_Inputs, 0, remaining);
-                Array.Copy(m_InputTargetTicks, expiredCount, m_InputTargetTicks, 0, remaining);
-                Array.Clear(m_Inputs, remaining, expiredCount);
-                Array.Clear(m_InputTargetTicks, remaining, expiredCount);
-                m_InputCount = remaining;
+                int storageIndex = m_InputHead;
+                for (int index = 0; index < expiredCount; index++)
+                {
+                    m_Inputs[storageIndex].Input.ReleaseText();
+                    m_Inputs[storageIndex] = default;
+                    storageIndex++;
+                    if (storageIndex == m_Capacity)
+                        storageIndex = 0;
+                }
+                m_InputHead = nextHead;
+                m_InputCount -= expiredCount;
             }
 
             if (selected.IsValid)
@@ -288,9 +296,10 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
             while (low <= high)
             {
                 int middle = low + (high - low) / 2;
-                if (m_InputTargetTicks[middle] == targetTick)
+                ulong middleTick = m_Inputs[InputStorageIndex(middle)].TargetAuthorityTick;
+                if (middleTick == targetTick)
                     return middle;
-                if (m_InputTargetTicks[middle] < targetTick)
+                if (middleTick < targetTick)
                     low = middle + 1;
                 else
                     high = middle - 1;
@@ -300,21 +309,35 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
 
         public void Dispose()
         {
-            for (int index = 0; index < m_InputCount; index++) m_Inputs[index].Input.ReleaseText();
+            int storageIndex = m_InputHead;
+            for (int index = 0; index < m_InputCount; index++)
+            {
+                m_Inputs[storageIndex].Input.ReleaseText();
+                m_Inputs[storageIndex] = default;
+                storageIndex++;
+                if (storageIndex == m_Capacity)
+                    storageIndex = 0;
+            }
             if (m_Held.IsValid) m_Held.Input.ReleaseText();
-            Array.Clear(m_Inputs, 0, m_InputCount);
+            m_InputHead = 0;
             m_InputCount = 0;
             m_Held = default;
         }
 
         void InsertInput(int index, CanonicalInputSample sample)
         {
-            Array.Copy(m_Inputs, index, m_Inputs, index + 1, m_InputCount - index);
-            Array.Copy(m_InputTargetTicks, index, m_InputTargetTicks, index + 1, m_InputCount - index);
+            int storageIndex = InputStorageIndex(m_InputCount);
+            for (int i = m_InputCount; i > index; i--)
+            {
+                int previousIndex = storageIndex == 0 ? m_Capacity - 1 : storageIndex - 1;
+                m_Inputs[storageIndex] = m_Inputs[previousIndex];
+                storageIndex = previousIndex;
+            }
             sample.Input.RetainText();
-            m_Inputs[index] = sample;
-            m_InputTargetTicks[index] = sample.TargetAuthorityTick;
+            m_Inputs[storageIndex] = sample;
             m_InputCount++;
         }
+
+        int InputStorageIndex(int index) => (m_InputHead + index) % m_Capacity;
     }
 }
