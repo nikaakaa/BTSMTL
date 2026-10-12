@@ -343,6 +343,7 @@ namespace ThirdPersonSimulation
     public interface ISimulationSessionInputReplayRuntime
     {
         bool IsInputRecording { get; }
+        bool IsInputReplaying { get; }
         bool TryStartInputRecording(out string error);
         bool TryStopInputRecording(out string error);
         bool TryCancelInputReplay(out string error);

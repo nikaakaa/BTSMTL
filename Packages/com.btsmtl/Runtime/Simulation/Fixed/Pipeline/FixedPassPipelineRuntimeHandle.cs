@@ -6,7 +6,7 @@ namespace ThirdPersonSimulation.Fixed
 {
     public sealed class FixedPassPipelineRuntimeHandle : ISimulationSessionRuntimeHandle, ISimulationSessionLocalCombatClock, ICharacterFutureBodyTranslationSource,
         ISimulationSessionCheckpointRuntime, ISimulationSessionInputReplayRuntime,
-        ISimulationSessionFrameHistoryRuntime, IGameplayAbilityAvailabilitySessionReadPort, IFixedSessionIngressWritePort
+        ISimulationSessionFrameHistoryRuntime, IGameplayAbilityAvailabilitySessionReadPort, IFixedActorStateReadPort
     {
         readonly SimulationSessionLifecycleController m_Lifecycle;
         readonly CompiledSimulationPipelinePlan m_Pipeline;
@@ -55,7 +55,6 @@ namespace ThirdPersonSimulation.Fixed
             m_Lifecycle.Activate(descriptor);
         }
 
-        public bool CanWriteRuntimeIngress => m_LocalInputs != null;
         public FixedCharacterRuntimeState ReadActorState(ActorId actor)
         {
             var actors = m_StateStore.Current.Actors;
@@ -64,11 +63,6 @@ namespace ThirdPersonSimulation.Fixed
                     return actors[i].State;
             throw new InvalidOperationException("输入命令的角色不属于当前 Session 的已提交状态。");
         }
-        public FixedValuePortInputs GetValuePorts(ActorId actor, CharacterSkillId ability) => m_LocalInputs.ValuePorts.Require(actor, ability);
-        public ulong QueueRuntimeIngress(ActorId actor, SimulationActionEventIngress actionEvent, SimulationAttributeValueIngress attribute) =>
-            m_LocalInputs.QueueRuntimeIngress(actor, actionEvent, attribute);
-        public bool TryTakeRuntimeIngressResult(ulong sequence, out ulong tick) =>
-            m_LocalInputs.TryTakeRuntimeIngressResult(sequence, out tick);
 
         public void QueryAbilityAvailability(ActorId actorId, GameplayAbilityRulePhase phase,
             out GameplayAbilityAvailabilityResult result)
@@ -107,6 +101,7 @@ namespace ThirdPersonSimulation.Fixed
         }
 
         public bool IsInputRecording => FixedCharacterInputTraceModule.IsRecording;
+        public bool IsInputReplaying => FixedCharacterInputTraceModule.IsSessionHistoryReplaying;
 
         public void RestoreCheckpoint(SimulationSessionCheckpoint checkpoint)
         {

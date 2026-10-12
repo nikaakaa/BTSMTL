@@ -273,9 +273,7 @@ namespace ThirdPersonSimulation.Fixed
 
     public interface IFixedSessionIngressWritePort
     {
-        FixedCharacterRuntimeState ReadActorState(ActorId actor);
-        bool CanWriteRuntimeIngress { get; }
-        FixedValuePortInputs GetValuePorts(ActorId actor, CharacterSkillId ability);
+        FixedValuePortInputBank ValuePorts { get; }
         ulong QueueRuntimeIngress(ActorId actor, SimulationActionEventIngress actionEvent, SimulationAttributeValueIngress attribute);
         bool TryTakeRuntimeIngressResult(ulong sequence, out ulong tick);
     }
@@ -431,9 +429,8 @@ namespace ThirdPersonSimulation.Fixed
         }
     }
 
-    public interface IFixedLocalInputSourcePort : ISimulationRuntimePort
+    public interface IFixedLocalInputSourcePort : ISimulationRuntimePort, IFixedSessionIngressWritePort
     {
-        FixedValuePortInputBank ValuePorts { get; }
         IReadOnlyList<FixedLocalEnemyBinding> LocalEnemies { get; }
         void PrepareInputStorage(int frameCapacity);
         void ReleaseInputFrames();
@@ -452,8 +449,6 @@ namespace ThirdPersonSimulation.Fixed
         bool HasActionEvent(ActorId actorId, ulong instanceId, string eventId, CanonicalTextValue targetId);
         bool HasGameplayEvent(ActorId actorId, string eventId);
 
-        ulong QueueRuntimeIngress(ActorId actor, SimulationActionEventIngress actionEvent, SimulationAttributeValueIngress attribute);
-        bool TryTakeRuntimeIngressResult(ulong sequence, out ulong tick);
         void ReleaseRuntimeIngress();
         void ReleaseAvailabilityInputs();
         void WriteState(CanonicalWriter writer);

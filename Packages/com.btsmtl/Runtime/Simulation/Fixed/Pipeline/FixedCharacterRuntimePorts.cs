@@ -5,6 +5,11 @@ using ThirdPersonSimulation;
 
 namespace ThirdPersonSimulation.Fixed
 {
+    public interface IFixedActorStateReadPort
+    {
+        FixedCharacterRuntimeState ReadActorState(ActorId actor);
+    }
+
     public static class FixedPipelineRuntimePortIds
     {
         public const string CharacterRuntime = "simulation.target.fixed-character-runtime";

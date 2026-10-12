@@ -61,6 +61,7 @@ namespace ThirdPersonSimulation
         }
 
         public bool IsInputRecording => Float32CharacterInputTraceModule.IsRecording;
+        public bool IsInputReplaying => Float32CharacterInputTraceModule.IsReplayActive;
 
         public void RestoreCheckpoint(SimulationSessionCheckpoint checkpoint)
         {
