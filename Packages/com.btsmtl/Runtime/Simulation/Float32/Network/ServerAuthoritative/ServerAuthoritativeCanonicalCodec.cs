@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
 using ThirdPersonSimulation;
 
@@ -118,9 +117,16 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             writer.WriteEventId(baseline.ConfirmedEventHorizon.EventId);
         }
 
-        public static AuthoritativeActorBaseline ReadBaseline(ArraySegment<byte> bytes)
+        internal static AuthoritativeActorBaseline ReadBaseline(ArraySegment<byte> bytes,
+            CanonicalReader reader, CanonicalHashWriter bodyHashWriter)
         {
-            var reader = Reader(bytes, BaselineMagic, BaselineSchemaVersion, "ServerAuthoritative baseline");
+            reader.Reset(bytes);
+            reader.SetTextResolver(CanonicalInitializationTextResolver.Instance);
+            if (reader.ReadUInt32() != BaselineMagic)
+                throw new InvalidDataException("ServerAuthoritative baseline magic is invalid.");
+            int version = reader.ReadInt32();
+            if (version != BaselineSchemaVersion)
+                throw new InvalidDataException($"ServerAuthoritative baseline schema version '{version}' is unsupported.");
             var actorId = new ActorId(CanonicalTextEncoding.DecodeString(reader.ReadTextSegment()));
             var tick = new SimulationTick(reader.ReadUInt64());
             SimulationNumericProfile numericProfile = SimulationNumericProfileCodec.Read(reader, Float32SimulationNumericProfile.Value);
@@ -140,11 +146,6 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             ulong eventSequence = reader.ReadUInt64();
             EventId eventId = reader.ReadEventId();
             reader.RequireComplete();
-            if (body.ActorId != actorId)
-                throw new InvalidDataException("Authoritative baseline body ActorId does not match the baseline.");
-            StableHash actualBodyHash = ComputeBodyHash(body);
-            if (!actualBodyHash.Equals(encodedBodyHash))
-                throw new InvalidDataException("Authoritative baseline body hash does not match its canonical body.");
             var result = new AuthoritativeActorBaseline(
                 actorId,
                 tick,
@@ -161,29 +162,30 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 solverCapabilities,
                 body,
                 confirmedInputSequence,
-                new ServerAuthoritativeEventHorizon(eventSequence, eventId));
-            using var writer = new CanonicalWriter();
-            WriteBaseline(writer, result);
-            RequireCanonical(bytes.AsSpan(), writer, "ServerAuthoritative baseline");
+                new ServerAuthoritativeEventHorizon(eventSequence, eventId),
+                bodyHashWriter);
+            if (!result.BodyHash.Equals(encodedBodyHash))
+                throw new InvalidDataException("Authoritative baseline body hash does not match its canonical body.");
             return result;
         }
 
-        public static StableHash ComputeBodyHash(WorldBodyState body)
+        public static StableHash ComputeBodyHash(WorldBodyState body, CanonicalHashWriter writer)
         {
-            using var writer = new CanonicalWriter();
+            writer.Reset();
             writer.WriteText("server-authoritative-body/2");
             WriteBody(writer, body);
             return writer.ComputeHash();
         }
 
 
-        static void WriteBody(CanonicalWriter writer, WorldBodyState body)
+        static void WriteBody<TWriter>(TWriter writer, WorldBodyState body)
+            where TWriter : class, ICanonicalValueWriter
         {
             writer.WriteText(body.ActorId.Value);
-            writer.WriteVector3(body.Position);
-            writer.WriteYaw(body.Yaw);
-            writer.WriteVector3(body.Velocity);
-            writer.WriteScalar(body.VerticalVelocity);
+            Float32Vector3.CanonicalWrite(writer, body.Position);
+            Float32Yaw.CanonicalWrite(writer, body.Yaw);
+            Float32Vector3.CanonicalWrite(writer, body.Velocity);
+            Float32Scalar.CanonicalWrite(writer, body.VerticalVelocity);
             writer.WriteBoolean(body.Grounded);
             writer.WriteUInt32((uint)body.Collision);
         }
@@ -200,31 +202,5 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 (WorldCollisionSummary)reader.ReadUInt32());
         }
 
-        static CanonicalReader Reader(ArraySegment<byte> bytes, uint magic, int expectedVersion, string label)
-        {
-            if (bytes.Array == null)
-                throw new ArgumentNullException(nameof(bytes));
-            var reader = new CanonicalReader(bytes);
-            if (reader.ReadUInt32() != magic)
-                throw new InvalidDataException($"{label} magic is invalid.");
-            int version = reader.ReadInt32();
-            if (version != expectedVersion)
-                throw new InvalidDataException($"{label} schema version '{version}' is unsupported.");
-            return reader;
-        }
-
-        static int ReadCount(CanonicalReader reader, string label)
-        {
-            int count = reader.ReadInt32();
-            if (count < 0 || count > MaximumCollectionCount)
-                throw new InvalidDataException($"Canonical {label} count '{count}' is invalid.");
-            return count;
-        }
-
-        static void RequireCanonical(ReadOnlySpan<byte> source, CanonicalWriter canonical, string label)
-        {
-            if (!canonical.ContentEquals(source))
-                throw new InvalidDataException($"{label} is not canonical.");
-        }
     }
 }

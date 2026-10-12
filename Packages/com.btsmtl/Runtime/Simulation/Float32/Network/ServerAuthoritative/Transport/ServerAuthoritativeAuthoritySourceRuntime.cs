@@ -17,6 +17,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
         readonly IServerAuthoritativeAuthorityDataTransport m_Data;
         readonly ISimulationDiagnosticsSink m_Diagnostics;
         readonly NetworkCheckpointLayout m_CheckpointLayout;
+        readonly CanonicalHashWriter m_BodyHashWriter = new CanonicalHashWriter();
         readonly ActorId[] m_ExpectedActors;
         readonly ServerAuthoritativeRosterEntry[] m_Roster;
         readonly ActorId[] m_RouteActors;
@@ -227,7 +228,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
                 throw new InvalidOperationException("Authority Source accepts only canonical AuthorityReplication egress.");
             }
             AuthorityReplicationBatch batch = ServerAuthoritativeEgressCodec.ReadAuthorityReplication(record.Payload,
-                record.PayloadReader, record.ElementReader, record.CanonicalScratch, record.TextResolver);
+                record.PayloadReader, record.ElementReader, record.CanonicalScratch, m_BodyHashWriter, record.TextResolver);
             if (batch.AuthorityTick.Value != checked(m_LatestAuthorityTick + 1))
                 throw new InvalidOperationException("Authority replication Tick is not contiguous with the Authority Source clock.");
             m_LatestAuthorityTick = batch.AuthorityTick.Value;

@@ -366,8 +366,6 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             if (!CanonicalTextValue.Equals(stateCodecIdentity, layout.StateCodecIdentity, StringComparison.Ordinal))
                 throw new InvalidDataException("Network Checkpoint Character state codec identity is invalid.");
             layout.ValidateState(actor, tick, stateBytes, expectedStateHash);
-            if (body.ActorId != actorId)
-                throw new InvalidDataException("Network Checkpoint body ActorId does not match Character state.");
             return new AuthoritativeActorBaseline(
                 actorId,
                 tick,
@@ -384,7 +382,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 capabilities,
                 body,
                 inputSequence,
-                horizon);
+                horizon,
+                layout.CheckpointHashWriter);
         }
 
         static void WriteCompactRemote(

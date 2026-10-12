@@ -177,7 +177,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             WorldCapability solverCapabilities,
             WorldBodyState body,
             ulong confirmedInputSequence,
-            ServerAuthoritativeEventHorizon confirmedEventHorizon)
+            ServerAuthoritativeEventHorizon confirmedEventHorizon,
+            CanonicalHashWriter bodyHashWriter)
         {
             if (!actorId.IsValid || !authorityTick.IsValid || !numericProfile.IsValid ||
                 !targetAbiVersion.Equals(numericProfile.AbiVersion) ||
@@ -206,7 +207,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 : solverVersion.Trim();
             SolverCapabilities = solverCapabilities;
             Body = body;
-            BodyHash = ServerAuthoritativeCanonicalCodec.ComputeBodyHash(body);
+            BodyHash = ServerAuthoritativeCanonicalCodec.ComputeBodyHash(body, bodyHashWriter);
             ConfirmedInputSequence = confirmedInputSequence;
             ConfirmedEventHorizon = confirmedEventHorizon;
         }

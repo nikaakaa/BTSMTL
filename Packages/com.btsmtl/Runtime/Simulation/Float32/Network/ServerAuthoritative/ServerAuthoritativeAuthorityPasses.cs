@@ -628,6 +628,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         readonly List<AuthoritativeInputAck> m_Acks;
         readonly List<RemotePresentationBatch> m_Remote;
         readonly RemoteActorOutputs[] m_RemoteOutputs;
+        readonly CanonicalHashWriter m_BodyHashWriter = new CanonicalHashWriter();
         readonly SimulationOutputDispositionBuffer m_Dispositions;
         readonly long m_MaximumEgressTextValues;
         CanonicalTextReferences m_EgressText;
@@ -993,7 +994,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 ports.Solver.Solver.Descriptor.Capabilities,
                 actor.BodySample.FinalBody,
                 inputSequence,
-                horizon);
+                horizon,
+                m_BodyHashWriter);
         }
 
         static int FindActorInput(Float32SimulationStep step, ActorId actorId)

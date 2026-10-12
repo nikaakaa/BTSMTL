@@ -99,8 +99,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         }
 
         public static AuthorityReplicationBatch ReadAuthorityReplication(ReadOnlyMemory<byte> bytes,
-            CanonicalReader reader, CanonicalReader remoteReader, CanonicalWriter canonicalScratch,
-            ICanonicalTextResolver textResolver)
+            CanonicalReader reader, CanonicalReader elementReader, CanonicalWriter canonicalScratch,
+            CanonicalHashWriter bodyHashWriter, ICanonicalTextResolver textResolver)
         {
             reader.Reset(bytes);
             reader.SetTextResolver(textResolver);
@@ -114,11 +114,12 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             int baselineCount = ReadCount(reader, "baseline");
             var baselines = new AuthoritativeActorBaseline[baselineCount];
             for (int i = 0; i < baselineCount; i++)
-                baselines[i] = ServerAuthoritativeCanonicalCodec.ReadBaseline(reader.ReadBytesSegment());
+                baselines[i] = ServerAuthoritativeCanonicalCodec.ReadBaseline(reader.ReadBytesSegment(),
+                    elementReader, bodyHashWriter);
             int remoteCount = ReadCount(reader, "remote presentation");
             var remote = new RemotePresentationBatch[remoteCount];
             for (int i = 0; i < remoteCount; i++)
-                remote[i] = ReadRemotePresentation(reader.ReadBytesSegment(), remoteReader, canonicalScratch, textResolver);
+                remote[i] = ReadRemotePresentation(reader.ReadBytesSegment(), elementReader, canonicalScratch, textResolver);
             reader.RequireComplete();
             var result = new AuthorityReplicationBatch(tick, acks, baselines, remote);
             canonicalScratch.Reset();
