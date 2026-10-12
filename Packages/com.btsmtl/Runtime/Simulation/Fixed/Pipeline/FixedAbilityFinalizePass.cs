@@ -48,71 +48,12 @@ namespace ThirdPersonSimulation.Fixed
             FixedAbilityFinalizeWritePorts writePorts)
         {
             RequireExecution();
-            FixedCharacterEvaluationResultBatch evaluations = readPorts.CharacterEvaluationResults.Read();
-            WorldSolveBatchResult world = readPorts.World.Read();
-            FixedSimulationStep step = readPorts.WorkingState.Step ??
-                throw new InvalidOperationException("Ability Finalize Pass has no current Step.");
-            if (evaluations.Tick != context.Tick || world.Tick != context.Tick || step.Tick != context.Tick ||
-                evaluations.Evaluations.Count != world.Results.Count ||
-                evaluations.Evaluations.Count != readPorts.CharacterRuntime.Runtime.Roster.Count)
-                throw new InvalidOperationException("Ability Finalize Pass inputs do not match the current Step roster.");
-            for (int i = 0; i < evaluations.Evaluations.Count; i++)
-            {
-                FixedCharacterEvaluationResult evaluation = evaluations.Evaluations[i];
-                CharacterWorldSolveResult worldResult = world.Results[i];
-                SimulationActorBinding actor = readPorts.CharacterRuntime.Runtime.Roster[i];
-                if (!evaluation.ActorId.Equals(actor.ActorId) || !worldResult.ActorId.Equals(actor.ActorId))
-                    throw new InvalidOperationException("Ability Finalize Pass Actor order does not match the locked roster.");
-                CharacterWorldSolveRequest expected = world.Request.Requests[i];
-                if (worldResult.NumericProfile != readPorts.CharacterRuntime.Runtime.NumericProfile ||
-                    !worldResult.RequestId.Equals(expected.RequestId) ||
-                    worldResult.Tick != expected.Tick ||
-                    !worldResult.SolverId.Equals(world.SolverId) ||
-                    worldResult.FinalBody.ActorId != evaluation.ActorId)
-                {
-                    throw new InvalidOperationException(
-                        $"World result '{worldResult.RequestId}' does not match character evaluation request '{expected.RequestId}'.");
-                }
-                var bodySample = new CharacterBodySample(
-                    evaluation.ActorId,
-                    evaluation.Tick,
-                    expected.BeforeBody,
-                    worldResult.FinalBody,
-                    worldResult.AppliedDisplacement,
-                    worldResult.AppliedYawDegrees,
-                    readPorts.Combat.Combat.WorldTimeScale,
-                    readPorts.Combat.Combat.OwnerTimeScale(actor.ActorId));
-                evaluation.Consume();
-                FixedCharacterRuntimeState finalState = evaluation.CandidateState;
-                FixedCharacterEvaluationOutput output = null;
-                try
-                {
-                    evaluation.TakeOutputs(out output);
-                    readPorts.Combat.Combat.Project(i, readPorts.CombatResults.Read(), output);
-                    SimulationActorTickResult result = SimulationActorTickResult.FromOwnedOutputs(
-                        evaluation.ActorId,
-                        evaluation.Tick,
-                        finalState,
-                        bodySample,
-                        expected.Motion,
-                        output,
-                        actor);
-                    writePorts.Results.Append(
-                        new SimulationPipelineAppendEntryIdentity(
-                            actor.ActorId,
-                            context.Tick,
-                            1,
-                            step.Source),
-                        result);
-                    output = null;
-                }
-                finally
-                {
-                    if (output != null)
-                        actor.ReturnEvaluationOutput(output);
-                }
-
-            }
+            FixedSimulationStep step = readPorts.WorkingState.Step;
+            if (step.Tick != context.Tick)
+                throw new InvalidOperationException("Ability Finalize Pass belongs to another Step.");
+            FixedGameplayStep.Finalize(readPorts.CharacterRuntime.Runtime, step,
+                readPorts.CharacterEvaluationResults.Read(), readPorts.World.Read(),
+                readPorts.Combat.Combat, readPorts.CombatResults.Read(), writePorts.Results);
         }
     }
 

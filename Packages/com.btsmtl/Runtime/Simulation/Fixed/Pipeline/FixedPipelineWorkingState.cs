@@ -52,7 +52,7 @@ namespace ThirdPersonSimulation.Fixed
             m_Applied = false;
             m_Validated = false;
             m_Completed = false;
-            SimulationWorldStateStore.RetainStatePages(m_Previous);
+            m_Previous.Retain();
             m_Snapshot = snapshot;
             m_Snapshot?.RetainStorage();
             return this;
@@ -85,8 +85,8 @@ namespace ThirdPersonSimulation.Fixed
             RequireOpen();
             if (!m_Applied || !m_Validated)
                 throw new InvalidOperationException("Character restore transaction was not applied and validated before Session publish.");
-            SimulationWorldStateStore.ReleaseStatePages(m_Restored);
-            SimulationWorldStateStore.ReleaseStatePages(m_Previous);
+            m_Restored.Release();
+            m_Previous.Release();
             m_Completed = true;
         }
 
@@ -123,8 +123,8 @@ namespace ThirdPersonSimulation.Fixed
             {
                 if (!m_Completed)
                 {
-                    SimulationWorldStateStore.ReleaseStatePages(m_Restored);
-                    SimulationWorldStateStore.ReleaseStatePages(m_Previous);
+                    m_Restored.Release();
+                    m_Previous.Release();
                 }
                 m_Completed = true;
                 m_Working = null;

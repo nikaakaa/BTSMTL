@@ -65,17 +65,12 @@ namespace ThirdPersonSimulation.Fixed
             WorldSolveBatchRequest request = readPorts.Request.Read();
             if (request.Tick != context.Tick)
                 throw new InvalidOperationException("World Resolve Pass request belongs to another Step.");
-            ICharacterWorldSolver solver = readPorts.Solver.Solver;
-            WorldSolveBatchResult result = solver.ResolveBatch(request, readPorts.Diagnostics.Sink);
-            if (result.Tick != context.Tick || !ReferenceEquals(result.Request, request) ||
-                !result.SolverId.Equals(solver.Descriptor.ImplementationId) ||
-                !string.Equals(result.SolverVersion, solver.Descriptor.Version, StringComparison.Ordinal) ||
-                result.Results.Count != request.Requests.Count)
-            {
-                throw new InvalidOperationException("World Solver returned a batch for another request, Tick or Solver identity.");
-            }
+            WorldSolveBatchResult result = FixedGameplayStep.WorldResolveBatch(
+                readPorts.Solver.Solver, readPorts.Diagnostics.Sink, request,
+                readPorts.Evaluations.Read(), readPorts.Combat.Combat, readPorts.Inputs.Read().LocalEnemies,
+                out FixedCombatBatchResult combatResults);
             writePorts.Result.Write(result);
-            writePorts.Combat.Write(readPorts.Combat.Combat.Resolve(readPorts.Evaluations.Read(), result, readPorts.Inputs.Read().LocalEnemies));
+            writePorts.Combat.Write(combatResults);
         }
     }
 

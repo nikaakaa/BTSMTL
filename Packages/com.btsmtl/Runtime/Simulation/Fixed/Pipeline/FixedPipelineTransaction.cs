@@ -526,16 +526,10 @@ namespace ThirdPersonSimulation.Fixed
                     SimulationPipelineProducts.WorldSolveBatchResult)
                 .Read();
             ValidateWorldResult(worldResult, step.Tick);
-            SimulationWorldStateSetStorage.Page statePage = m_StateStore.BeginCandidateState();
+            SimulationWorldStateSet candidateState = m_StateStore.StateStorage.CreateCandidate(
+                step.Tick, actorResults, worldResult.NextWorldState);
             try
             {
-                SimulationActorState[] nextActors = statePage.Actors;
-                for (int i = 0; i < actorResults.Length; i++)
-                    nextActors[i] = new SimulationActorState(actorResults[i].ActorId, actorResults[i].State);
-                var candidateState = SimulationWorldStateSet.FromStateStorage(
-                    step.Tick.Value,
-                    statePage,
-                    worldResult.NextWorldState);
                 bool capture = (executionPlan.Requirements &
                     (SimulationSessionPlanRequirement.Snapshot | SimulationSessionPlanRequirement.StateHash)) != 0;
                 FixedSimulationSessionSnapshot snapshot = capture
@@ -556,7 +550,7 @@ namespace ThirdPersonSimulation.Fixed
             }
             finally
             {
-                statePage.Release();
+                candidateState.Release();
             }
         }
 

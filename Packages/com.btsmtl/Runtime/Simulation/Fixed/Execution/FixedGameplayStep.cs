@@ -1,0 +1,101 @@
+using System;
+using System.Collections.Generic;
+
+namespace ThirdPersonSimulation.Fixed
+{
+    public static class FixedGameplayStep
+    {
+        public static WorldSolveBatchResult WorldResolveBatch(
+            ICharacterWorldSolver solver,
+            ISimulationDiagnosticsSink diagnostics,
+            WorldSolveBatchRequest request,
+            FixedCharacterEvaluationResultBatch evaluations,
+            FixedCombatRuntime combat,
+            IReadOnlyList<FixedLocalEnemyInput> localEnemies,
+            out FixedCombatBatchResult combatResults)
+        {
+            WorldSolveBatchResult result = solver.ResolveBatch(request, diagnostics);
+            if (result.Tick != request.Tick || !ReferenceEquals(result.Request, request) ||
+                !result.SolverId.Equals(solver.Descriptor.ImplementationId) ||
+                !string.Equals(result.SolverVersion, solver.Descriptor.Version, StringComparison.Ordinal) ||
+                result.Results.Count != request.Requests.Count)
+            {
+                throw new InvalidOperationException("World Solver returned a batch for another request, Tick or Solver identity.");
+            }
+            combatResults = combat.Resolve(evaluations, result, localEnemies);
+            return result;
+        }
+
+        public static void Finalize(
+            FixedCharacterRuntime characters,
+            FixedSimulationStep step,
+            FixedCharacterEvaluationResultBatch evaluations,
+            WorldSolveBatchResult world,
+            FixedCombatRuntime combat,
+            FixedCombatBatchResult combatResults,
+            IAppendOnlySimulationPipelineProductWriter<SimulationActorTickResult> results)
+        {
+            if (evaluations.Tick != step.Tick || world.Tick != step.Tick ||
+                evaluations.Evaluations.Count != world.Results.Count ||
+                evaluations.Evaluations.Count != characters.Roster.Count)
+                throw new InvalidOperationException("角色 Finalize 输入与当前 Step roster 不匹配。");
+            for (int i = 0; i < evaluations.Evaluations.Count; i++)
+            {
+                FixedCharacterEvaluationResult evaluation = evaluations.Evaluations[i];
+                CharacterWorldSolveResult worldResult = world.Results[i];
+                SimulationActorBinding actor = characters.Roster[i];
+                if (!evaluation.ActorId.Equals(actor.ActorId) || !worldResult.ActorId.Equals(actor.ActorId))
+                    throw new InvalidOperationException("角色 Finalize 的 Actor 顺序与已锁定 roster 不匹配。");
+                CharacterWorldSolveRequest expected = world.Request.Requests[i];
+                if (worldResult.NumericProfile != characters.NumericProfile ||
+                    !worldResult.RequestId.Equals(expected.RequestId) ||
+                    worldResult.Tick != expected.Tick ||
+                    !worldResult.SolverId.Equals(world.SolverId) ||
+                    worldResult.FinalBody.ActorId != evaluation.ActorId)
+                {
+                    throw new InvalidOperationException(
+                        $"World result '{worldResult.RequestId}' does not match character evaluation request '{expected.RequestId}'.");
+                }
+                var bodySample = new CharacterBodySample(
+                    evaluation.ActorId,
+                    evaluation.Tick,
+                    expected.BeforeBody,
+                    worldResult.FinalBody,
+                    worldResult.AppliedDisplacement,
+                    worldResult.AppliedYawDegrees,
+                    combat.WorldTimeScale,
+                    combat.OwnerTimeScale(actor.ActorId));
+                evaluation.Consume();
+                FixedCharacterRuntimeState finalState = evaluation.CandidateState;
+                FixedCharacterEvaluationOutput output = null;
+                try
+                {
+                    evaluation.TakeOutputs(out output);
+                    combat.Project(i, combatResults, output);
+                    SimulationActorTickResult result = SimulationActorTickResult.FromOwnedOutputs(
+                        evaluation.ActorId,
+                        evaluation.Tick,
+                        finalState,
+                        bodySample,
+                        expected.Motion,
+                        output,
+                        actor);
+                    results.Append(
+                        new SimulationPipelineAppendEntryIdentity(
+                            actor.ActorId,
+                            step.Tick,
+                            1,
+                            step.Source),
+                        result);
+                    output = null;
+                }
+                finally
+                {
+                    if (output != null)
+                        actor.ReturnEvaluationOutput(output);
+                }
+
+            }
+        }
+    }
+}

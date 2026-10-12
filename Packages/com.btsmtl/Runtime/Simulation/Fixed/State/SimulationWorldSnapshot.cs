@@ -409,6 +409,28 @@ namespace ThirdPersonSimulation.Fixed
             m_StorageGeneration == other.m_StorageGeneration &&
             LastCompletedTick == other.LastCompletedTick;
 
+        public void Retain()
+        {
+            RetainActorStorage();
+            WorldState.RetainStateStorage();
+            for (int index = 0; index < Actors.Count; index++)
+            {
+                Actors[index].State.MotionWarpStates.Retain();
+                Actors[index].State.RetainStatePages();
+            }
+        }
+
+        public void Release()
+        {
+            WorldState.ReleaseStateStorage();
+            for (int index = 0; index < Actors.Count; index++)
+            {
+                Actors[index].State.MotionWarpStates.Release();
+                Actors[index].State.ReleaseStatePages();
+            }
+            ReleaseActorStorage();
+        }
+
         static void ValidatePrepared(
             SimulationActorState[] actors,
             WorldSimulationState worldState)
@@ -441,7 +463,7 @@ namespace ThirdPersonSimulation.Fixed
         }
     }
 
-    internal sealed class SimulationWorldStateSetStorage
+    public sealed class SimulationWorldStateSetStorage
     {
         internal sealed class Page
         {
@@ -480,7 +502,7 @@ namespace ThirdPersonSimulation.Fixed
         readonly int m_ActorCount;
         readonly List<Page> m_Pages = new List<Page>(2);
 
-        internal SimulationWorldStateSetStorage(int actorCount)
+        public SimulationWorldStateSetStorage(int actorCount)
         {
             m_ActorCount = actorCount;
             m_Pages.Add(new Page(actorCount));
@@ -495,11 +517,31 @@ namespace ThirdPersonSimulation.Fixed
                 m_Pages.Add(new Page(m_ActorCount));
         }
 
-        internal void PrepareCapacity(int statePageCount)
+        public void PrepareCapacity(int statePageCount)
         {
             m_Pages.Capacity = statePageCount;
             while (m_Pages.Count < statePageCount)
                 m_Pages.Add(new Page(m_ActorCount));
+        }
+
+        public SimulationWorldStateSet CreateCandidate(
+            SimulationTick tick,
+            IReadOnlyList<SimulationActorTickResult> actors,
+            WorldSimulationState worldState)
+        {
+            Page page = BeginWrite();
+            try
+            {
+                for (int i = 0; i < m_ActorCount; i++)
+                    page.Actors[i] = new SimulationActorState(actors[i].ActorId, actors[i].State);
+                SimulationWorldStateSet candidate = SimulationWorldStateSet.FromStateStorage(tick.Value, page, worldState);
+                candidate.Retain();
+                return candidate;
+            }
+            finally
+            {
+                page.Release();
+            }
         }
 
         internal Page BeginWrite()
@@ -538,7 +580,7 @@ namespace ThirdPersonSimulation.Fixed
             m_Current = initialState;
             ValidateCurrentBindings(initialState);
             m_StateStorage = new SimulationWorldStateSetStorage(initialState.Actors.Count);
-            RetainStatePages(initialState);
+            initialState.Retain();
         }
 
         public SimulationWorldStateSet Current => m_Current;
@@ -546,7 +588,7 @@ namespace ThirdPersonSimulation.Fixed
         public void Dispose()
         {
             ClearRecordedFrames();
-            ReleaseStatePages(m_Current);
+            m_Current.Release();
             m_Current = default;
         }
         internal void PrepareRestoreStorage(int statePageCount, int maximumSolverPayloadBytes)
@@ -558,7 +600,7 @@ namespace ThirdPersonSimulation.Fixed
 
         internal int RecordedFrameCapacity => m_RecordedFrames.Length;
         internal void PrepareStepStorage(int maximumSteps) => m_StateStorage.PrepareStepStorage(maximumSteps);
-        internal SimulationWorldStateSetStorage.Page BeginCandidateState() => m_StateStorage.BeginWrite();
+        internal SimulationWorldStateSetStorage StateStorage => m_StateStorage;
 
         internal void PrepareRecordedFrames(int capacity, int participantCount)
         {
@@ -573,7 +615,7 @@ namespace ThirdPersonSimulation.Fixed
             ref RecordedFrame frame = ref m_RecordedFrames[m_RecordedNext];
             if (m_RecordedCount == m_RecordedFrames.Length)
                 ReleaseRecordedFrame(ref frame);
-            RetainStatePages(m_Current);
+            m_Current.Retain();
             frame.PresentationFrame = presentationFrame;
             frame.State = m_Current;
             pipeline.CopyTo(frame.Pipeline);
@@ -600,7 +642,7 @@ namespace ThirdPersonSimulation.Fixed
 
         static void ReleaseRecordedFrame(ref RecordedFrame frame)
         {
-            ReleaseStatePages(frame.State);
+            frame.State.Release();
             for (int i = 0; i < frame.Pipeline.Length; i++)
             {
                 frame.Pipeline[i].ReleaseStepStorage();
@@ -624,7 +666,7 @@ namespace ThirdPersonSimulation.Fixed
         public void Restore(SimulationWorldSnapshot snapshot)
         {
             SimulationWorldStateSet restored = ValidateAndDecode(snapshot);
-            ReleaseStatePages(m_Current);
+            m_Current.Release();
             m_Current = restored;
         }
 
@@ -634,8 +676,8 @@ namespace ThirdPersonSimulation.Fixed
         {
             ValidateCurrentBindings(stateSet);
             RequireSameRosterAndWorldBinding(m_Current, stateSet);
-            RetainStatePages(stateSet);
-            ReleaseStatePages(m_Current);
+            stateSet.Retain();
+            m_Current.Release();
             m_Current = stateSet;
         }
 
@@ -648,31 +690,9 @@ namespace ThirdPersonSimulation.Fixed
             for (int i = 0; i < stateSet.Actors.Count; i++)
                 if (stateSet.Actors[i].State.LastCompletedTick != stateSet.LastCompletedTick)
                     throw new InvalidOperationException($"Actor '{stateSet.Actors[i].ActorId}' state Tick does not match the published Tick.");
-            RetainStatePages(stateSet);
-            ReleaseStatePages(m_Current);
+            stateSet.Retain();
+            m_Current.Release();
             m_Current = stateSet;
-        }
-
-        internal static void RetainStatePages(SimulationWorldStateSet state)
-        {
-            state.RetainActorStorage();
-            state.WorldState.RetainStateStorage();
-            for (int index = 0; index < state.Actors.Count; index++)
-            {
-                state.Actors[index].State.MotionWarpStates.Retain();
-                state.Actors[index].State.RetainStatePages();
-            }
-        }
-
-        internal static void ReleaseStatePages(SimulationWorldStateSet state)
-        {
-            state.WorldState.ReleaseStateStorage();
-            for (int index = 0; index < state.Actors.Count; index++)
-            {
-                state.Actors[index].State.MotionWarpStates.Release();
-                state.Actors[index].State.ReleaseStatePages();
-            }
-            state.ReleaseActorStorage();
         }
 
         SimulationWorldStateSet ValidateAndDecode(SimulationWorldSnapshot snapshot)
@@ -728,7 +748,7 @@ namespace ThirdPersonSimulation.Fixed
                 if (worldState.Bodies[i].ActorId != restoredActors[i].ActorId)
                     throw new InvalidDataException("Snapshot World body order does not match Actor roster.");
             SimulationWorldStateSet restored = SimulationWorldStateSet.FromStateStorage(snapshot.Tick.Value, actorPage, worldState);
-            RetainStatePages(restored);
+            restored.Retain();
             worldState.ReleaseStateStorage();
             return restored;
             }
