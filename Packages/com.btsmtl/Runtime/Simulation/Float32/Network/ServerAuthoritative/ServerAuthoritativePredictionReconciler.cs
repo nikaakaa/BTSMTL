@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using ThirdPersonSimulation;
 
 namespace ThirdPersonSimulation.ServerAuthoritative
@@ -57,11 +56,6 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             {
                 throw new InvalidOperationException("Authority baseline does not match the locked Character Runtime, operation-set, or Solver identity.");
             }
-            Float32CharacterRuntimeState state = Float32CharacterRuntimeStateCodec.Read(
-                baseline.CharacterStateBytes,
-                actor, out CharacterStateHash hash);
-            if (!hash.Equals(baseline.StateHash))
-                throw new InvalidDataException("Authority baseline Character runtime state hash is invalid.");
             if (firstHistory == null)
                 return;
             if (firstHistory.Input.ActorId != baseline.ActorId ||

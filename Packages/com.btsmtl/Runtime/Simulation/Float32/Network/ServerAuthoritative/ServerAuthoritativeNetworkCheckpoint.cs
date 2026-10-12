@@ -49,9 +49,6 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             throw new InvalidDataException($"Character Runtime has no Actor '{actorId}'.");
         }
 
-        internal GameplayContentHash RequireActorContentHash(ActorId actorId) =>
-            new GameplayContentHash(RequireActor(actorId).GameplayContentHash);
-
         internal CompactProducer ResolveCompactProducer(
             ActorId actorId,
             OperationHandle operation,
@@ -90,26 +87,25 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         {
             if (!checkpoint.IsValid)
                 throw new ArgumentOutOfRangeException(nameof(checkpoint));
-            if (!checkpoint.Baseline.GameplayContentHash.Equals(RequireActorContentHash(checkpoint.Baseline.ActorId)) ||
+            SimulationActorBinding actor = RequireActor(checkpoint.Baseline.ActorId);
+            if (!checkpoint.Baseline.GameplayContentHash.Equals(new GameplayContentHash(actor.GameplayContentHash)) ||
                 !CanonicalTextValue.Equals(checkpoint.Baseline.StateCodecIdentity, StateCodecIdentity, StringComparison.Ordinal))
                 throw new InvalidDataException("Network checkpoint does not match the locked Character Runtime state.");
-            ValidateState(checkpoint.Baseline.ActorId, checkpoint.Baseline.AuthorityTick, checkpoint.StateMemory, checkpoint.Baseline.StateHash);
+            ValidateState(actor, checkpoint.Baseline.AuthorityTick, checkpoint.StateMemory, checkpoint.Baseline.StateHash);
         }
 
-        internal Float32CharacterRuntimeState ValidateState(
-            ActorId actorId,
+        internal void ValidateState(
+            SimulationActorBinding actor,
             SimulationTick tick,
             ReadOnlyMemory<byte> bytes,
             CharacterStateHash expectedHash)
         {
-            SimulationActorBinding actor = RequireActor(actorId);
             Float32CharacterRuntimeState state = Float32CharacterRuntimeStateCodec.Read(
                 bytes,
                 actor, out CharacterStateHash hash);
             if (state.LastCompletedTick != tick.Value ||
                 !hash.Equals(expectedHash))
                 throw new InvalidDataException("Network checkpoint Character state does not match its Tick or hash.");
-            return state;
         }
     }
 
@@ -187,7 +183,6 @@ namespace ThirdPersonSimulation.ServerAuthoritative
 
         public static byte[] WriteFull(NetworkCheckpointLayout layout, NetworkCheckpoint checkpoint)
         {
-            layout.Require(checkpoint);
             AuthoritativeActorBaseline baseline = checkpoint.Baseline;
             using var writer = new CanonicalWriter();
             writer.WriteUInt32(FullMagic);
@@ -260,8 +255,6 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             NetworkCheckpoint target,
             RemotePresentationBatch remote)
         {
-            layout.Require(baseline);
-            layout.Require(target);
             if (baseline.Baseline.ActorId != target.Baseline.ActorId ||
                 target.Baseline.AuthorityTick.CompareTo(baseline.Baseline.AuthorityTick) <= 0)
                 throw new InvalidDataException("Network Checkpoint delta does not advance the same Actor.");
@@ -301,7 +294,6 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             byte[] payload,
             out RemotePresentationBatch remote)
         {
-            layout.Require(baseline);
             var reader = new CanonicalReader(payload ?? throw new ArgumentNullException(nameof(payload)));
             if (reader.ReadUInt32() != DeltaMagic || reader.ReadInt32() != DeltaVersion ||
                 !reader.ReadHash().Equals(layout.LayoutIdentity) ||
@@ -372,7 +364,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 throw new InvalidDataException("Network Checkpoint Character content identity is invalid.");
             if (!CanonicalTextValue.Equals(stateCodecIdentity, layout.StateCodecIdentity, StringComparison.Ordinal))
                 throw new InvalidDataException("Network Checkpoint Character state codec identity is invalid.");
-            layout.ValidateState(actorId, tick, stateBytes, expectedStateHash);
+            layout.ValidateState(actor, tick, stateBytes, expectedStateHash);
             if (body.ActorId != actorId)
                 throw new InvalidDataException("Network Checkpoint body ActorId does not match Character state.");
             return new AuthoritativeActorBaseline(
