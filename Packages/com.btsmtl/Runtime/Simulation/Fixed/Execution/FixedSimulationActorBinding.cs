@@ -744,19 +744,13 @@ namespace ThirdPersonSimulation.Fixed
                     m_EffectExecutionScratch.Target.BeginAvailabilityRead(state.GameplayEffectState,
                         AbilityInstallations.GameplayEffectCatalog, ActorId, ((IFixedAbilityFrameReadPort)this).Tick);
                 for (int index = 0; index < m_Invocations.Length; index++)
-                {
-                    m_Invocations[index].PrepareEvaluationInputs();
                     m_Invocations[index].BindAvailabilityRead(this);
-                }
                 ActivationRules.QueryAvailability(phase, this, out result);
             }
             finally
             {
                 for (int index = 0; index < m_Invocations.Length; index++)
-                {
                     m_Invocations[index].BindAvailabilityRead(null);
-                    m_Invocations[index].DiscardEvaluationInputs();
-                }
                 if (AbilityInstallations.GameplayEffectCatalog != null)
                     m_EffectExecutionScratch.Target.EndAvailabilityRead();
                 m_AvailabilityState = default;
