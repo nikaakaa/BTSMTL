@@ -430,7 +430,8 @@ namespace ThirdPersonSimulation
         public SimulationAttributeValueIngress AttributeValue { get; }
     }
 
-    public readonly struct SimulationEventHeader
+    [CanonicalContract]
+    public readonly partial struct SimulationEventHeader
     {
         public SimulationEventHeader(
             SimulationNumericProfile numericProfile,
@@ -442,8 +443,6 @@ namespace ThirdPersonSimulation
             CanonicalTextValue channel,
             AbilityTreeClipInvocation? treeClipInvocation = null)
         {
-            if (!numericProfile.IsValid || !eventId.IsValid || !actorId.IsValid || !tick.IsValid || !activation.IsValid || sequence == 0)
-                throw new ArgumentException("Simulation event header is incomplete.");
             NumericProfile = numericProfile;
             EventId = eventId;
             ActorId = actorId;
@@ -452,63 +451,60 @@ namespace ThirdPersonSimulation
             Sequence = sequence;
             Channel = SimulationIdentity.Require(channel, nameof(channel));
             TreeClipInvocation = treeClipInvocation;
+            RequireRecord();
         }
 
+        [CanonicalPublished]
         public SimulationNumericProfile NumericProfile { get; }
         public EventId EventId { get; }
         public ActorId ActorId { get; }
         public SimulationTick Tick { get; }
         public ActivationId Activation { get; }
         public ulong Sequence { get; }
+        [CanonicalTextRules(Required = true, Trim = true)]
         public CanonicalTextValue Channel { get; }
         public AbilityTreeClipInvocation? TreeClipInvocation { get; }
-            public void Retain()
-        {
-            ActorId.Value.Retain();
-            Activation.Source.Retain();
-            Channel.Retain();
-            if (TreeClipInvocation.HasValue)
-            {
-                AbilityTreeClipInvocation invocation = TreeClipInvocation.Value;
-                invocation.ClipAuthoringId.Retain();
-                invocation.TreeGraphId.Retain();
-                invocation.TreeGraphRevision.Retain();
-                invocation.NodeAuthoringId.Retain();
-            }
-        }
+        public void Retain() => CanonicalRetain(in this);
 
-        public void Release()
+        public void Release() => CanonicalRelease(in this);
+
+        [CanonicalValidation]
+        void RequireRecord()
         {
-            ActorId.Value.Release();
-            Activation.Source.Release();
-            Channel.Release();
-            if (TreeClipInvocation.HasValue)
-            {
-                AbilityTreeClipInvocation invocation = TreeClipInvocation.Value;
-                invocation.ClipAuthoringId.Release();
-                invocation.TreeGraphId.Release();
-                invocation.TreeGraphRevision.Release();
-                invocation.NodeAuthoringId.Release();
-            }
+            if (!NumericProfile.IsValid || !EventId.IsValid || !ActorId.IsValid || !Tick.IsValid || !Activation.IsValid || Sequence == 0)
+                throw new ArgumentException("Simulation event header is incomplete.");
         }
     }
 
+    [CanonicalUnionTemplate]
     public enum GameplayFactKind : byte
     {
+        [CanonicalUnionCase(typeof(ActionFact))]
         Action = 1,
+        [CanonicalUnionCase(typeof(GameplayEffectFact))]
         Effect = 2,
+        [CanonicalUnionCase(typeof(GameplayAttributeFact))]
         Attribute = 3,
+        [CanonicalUnionCase(typeof(GameplayCueFact))]
         Cue = 4,
+        [CanonicalUnionCase(typeof(GameplayStateFact<Float32Scalar>))]
         Motion = 5,
+        [CanonicalUnionCase(typeof(GameplayStateFact<Float32Scalar>))]
         State = 6,
+        [CanonicalUnionCase(typeof(ActionWindowFact))]
         ActionWindow = 7,
+        [CanonicalUnionCase(typeof(GameplayTagRuntimeChange))]
         Tag = 8,
+        [CanonicalUnionCase(typeof(GameplayEffectExecutionFailure))]
         Failure = 9,
+        [CanonicalUnionCase(typeof(GameplayEffectReconciliationFact<SimulationGameplayEffectContext>))]
         Reconciliation = 10,
+        [CanonicalUnionCase(typeof(EquipmentLifecycleFact))]
         Equipment = 11
     }
 
-    public readonly struct ActionFact
+    [CanonicalContract]
+    public readonly partial struct ActionFact
     {
         public ActionFact(
             ulong actionInstanceId,
@@ -522,8 +518,6 @@ namespace ThirdPersonSimulation
 			CanonicalTextValue reason,
 			EquipmentActionContext equipmentContext = default)
         {
-            if (actionInstanceId == 0 || predictionKey == 0 || inputSequence == 0)
-                throw new ArgumentException("Action fact identity is incomplete.");
             ActionInstanceId = actionInstanceId;
             PredictionKey = predictionKey;
             InputSequence = inputSequence;
@@ -534,11 +528,13 @@ namespace ThirdPersonSimulation
             State = state;
             Reason = reason.IsNull ? CanonicalTextValue.Empty : reason;
             EquipmentContext = equipmentContext;
+            RequireRecord();
         }
 
         public ulong ActionInstanceId { get; }
         public ulong PredictionKey { get; }
         public ulong InputSequence { get; }
+        [CanonicalTextRules(Required = true, Trim = true)]
         public CanonicalTextValue ActionId { get; }
         public CharacterSkillId SkillId { get; }
         public SimulationActionLifecycleTransitionType TransitionType { get; }
@@ -547,9 +543,17 @@ namespace ThirdPersonSimulation
         public CanonicalTextValue Reason { get; }
         public EquipmentActionContext EquipmentContext { get; }
         public bool IsValid => ActionInstanceId != 0 && PredictionKey != 0 && InputSequence != 0 && !CanonicalTextValue.IsNullOrEmpty(ActionId);
+
+        [CanonicalValidation]
+        void RequireRecord()
+        {
+            if (ActionInstanceId == 0 || PredictionKey == 0 || InputSequence == 0)
+                throw new ArgumentException("Action fact identity is incomplete.");
+        }
     }
 
-    public readonly struct ActionWindowFact
+    [CanonicalContract]
+    public readonly partial struct ActionWindowFact
     {
         public ActionWindowFact(
             GameplayAbilitySourceContext sourceContext,
@@ -561,8 +565,6 @@ namespace ThirdPersonSimulation
             ulong endTick,
             ulong digest)
         {
-            if (sourceContext.InstanceId == 0 || startTick == 0 || endTick < startTick)
-                throw new ArgumentException("Action Window fact identity is incomplete.");
             SourceContext = sourceContext;
             ActionId = SimulationIdentity.Require(actionId, nameof(actionId));
             WindowId = SimulationIdentity.Require(windowId, nameof(windowId));
@@ -571,169 +573,140 @@ namespace ThirdPersonSimulation
             StartTick = startTick;
             EndTick = endTick;
             Digest = digest;
+            RequireRecord();
         }
 
         public GameplayAbilitySourceContext SourceContext { get; }
         public ulong ActionInstanceId => SourceContext.InstanceId;
+        [CanonicalTextRules(Required = true, Trim = true)]
         public CanonicalTextValue ActionId { get; }
+        [CanonicalTextRules(Required = true, Trim = true)]
         public CanonicalTextValue WindowId { get; }
+        [CanonicalTextRules(Required = true, Trim = true)]
         public CanonicalTextValue WindowType { get; }
+        [CanonicalTextRules(Required = true, Trim = true)]
+        [CanonicalDeclaredText]
         public string WindowTag { get; }
         public ulong StartTick { get; }
         public ulong EndTick { get; }
         public ulong Digest { get; }
         public bool IsValid => ActionInstanceId != 0 && StartTick != 0;
-        internal void Retain() { ActionId.Retain(); WindowId.Retain(); WindowType.Retain(); }
-        internal void Release() { WindowType.Release(); WindowId.Release(); ActionId.Release(); }
+        public void Retain() => CanonicalRetain(in this);
+        public void Release() => CanonicalRelease(in this);
+
+        [CanonicalValidation]
+        void RequireRecord()
+        {
+            if (SourceContext.InstanceId == 0 || StartTick == 0 || EndTick < StartTick)
+                throw new ArgumentException("Action Window fact identity is incomplete.");
+        }
     }
 
-    public readonly struct GameplayFact
+    [CanonicalContract]
+    [CanonicalUnion(typeof(GameplayFactKind))]
+    public readonly partial struct GameplayFact
     {
-        public const int SchemaVersion = 5;
+        public const int SchemaVersion = 6;
 
-        public GameplayFact(SimulationEventHeader header, GameplayFactKind kind, CanonicalTextValue subjectId, CanonicalTextValue stateId, Float32Scalar scalar) : this()
-        {
-            if (kind == GameplayFactKind.Action || kind == GameplayFactKind.ActionWindow ||
-                kind == GameplayFactKind.Effect || kind == GameplayFactKind.Attribute || kind == GameplayFactKind.Cue ||
-                kind == GameplayFactKind.Tag || kind == GameplayFactKind.Failure || kind == GameplayFactKind.Reconciliation ||
-                kind == GameplayFactKind.Equipment)
-                throw new ArgumentException($"'{kind}' facts require a typed payload.", nameof(kind));
-            Header = header;
-            Kind = kind;
-            SubjectId = SimulationIdentity.Require(subjectId, nameof(subjectId));
-            StateId = stateId.IsNull ? CanonicalTextValue.Empty : stateId;
-            Scalar = scalar;
+        public GameplayFact(SimulationEventHeader header, GameplayFactKind kind, CanonicalTextValue subjectId, CanonicalTextValue stateId, Float32Scalar scalar) {
+            var value = new GameplayStateFact<Float32Scalar>(subjectId, stateId, scalar);
+            this = kind switch
+            {
+                GameplayFactKind.Motion => FromMotion(default, header, 0, value),
+                GameplayFactKind.State => FromState(default, header, 0, value),
+                _ => throw new ArgumentException($"'{kind}' facts require a typed payload.", nameof(kind))
+            };
         }
 
-        public GameplayFact(SimulationEventHeader header, ActionFact action) : this()
-        {
+        public GameplayFact(SimulationEventHeader header, ActionFact action) {
             if (!action.IsValid)
                 throw new ArgumentException("Action fact payload is invalid.", nameof(action));
-            Header = header;
-            Kind = GameplayFactKind.Action;
-            SubjectId = action.ActionId;
-            StateId = ActionTransitionName(action.TransitionType);
-            Scalar = Float32Scalar.Zero;
-            Action = action;
+            this = FromAction(default, header, 0, action);
         }
 
-        public GameplayFact(SimulationEventHeader header, ActionWindowFact actionWindow) : this()
-        {
+        public GameplayFact(SimulationEventHeader header, ActionWindowFact actionWindow) {
             if (!actionWindow.IsValid)
                 throw new ArgumentException("Action Window fact payload is invalid.", nameof(actionWindow));
-            Header = header;
-            Kind = GameplayFactKind.ActionWindow;
-            SubjectId = actionWindow.WindowId;
-            StateId = actionWindow.WindowType;
-            Scalar = Float32Scalar.Zero;
-            ActionWindow = actionWindow;
+            this = FromActionWindow(default, header, 0, actionWindow);
         }
 
         public GameplayFact(SimulationEventHeader header, GameplayEffectFact effect, CanonicalTextValue cause = default,
-            ulong mutationCursor = 0) : this()
-        {
+            ulong mutationCursor = 0) {
             if (!effect.IsValid)
                 throw new ArgumentException("Gameplay Effect fact payload is invalid.", nameof(effect));
-            Header = header;
-            Kind = GameplayFactKind.Effect;
-            SubjectId = effect.EffectId;
-            StateId = LifecycleName(effect.Operation);
-            Scalar = Float32Scalar.Zero;
-            Effect = effect;
-            Cause = cause;
-            MutationCursor = mutationCursor;
+            this = FromEffect(cause, header, mutationCursor, effect);
         }
 
         public GameplayFact(SimulationEventHeader header, GameplayAttributeFact attribute, CanonicalTextValue cause = default,
-            ulong mutationCursor = 0) : this()
-        {
+            ulong mutationCursor = 0) {
             if (!attribute.IsValid)
                 throw new ArgumentException("Gameplay Attribute fact payload is invalid.", nameof(attribute));
-            Header = header;
-            Kind = GameplayFactKind.Attribute;
-            SubjectId = attribute.AttributeId;
-            StateId = "Changed";
-            Scalar = attribute.CurrentValue;
-            Attribute = attribute;
-            Cause = cause;
-            MutationCursor = mutationCursor;
+            this = FromAttribute(cause, header, mutationCursor, attribute);
         }
 
         public GameplayFact(SimulationEventHeader header, GameplayCueFact cue, CanonicalTextValue cause = default,
-            ulong mutationCursor = 0) : this()
-        {
+            ulong mutationCursor = 0) {
             if (!cue.IsValid)
                 throw new ArgumentException("Gameplay Cue fact payload is invalid.", nameof(cue));
-            Header = header;
-            Kind = GameplayFactKind.Cue;
-            SubjectId = cue.CueId;
-            StateId = cue.TriggerId;
-            Scalar = Float32Scalar.Zero;
-            Cue = cue;
-            Cause = cause;
-            MutationCursor = mutationCursor;
+            this = FromCue(cause, header, mutationCursor, cue);
         }
 
         public GameplayFact(SimulationEventHeader header, GameplayTagRuntimeChange tag, CanonicalTextValue cause,
-            ulong mutationCursor = 0) : this()
-        {
-            Header = header;
-            Kind = GameplayFactKind.Tag;
-            SubjectId = tag.TagId;
-            StateId = "Changed";
-            Tag = tag;
-            Cause = cause;
-            MutationCursor = mutationCursor;
+            ulong mutationCursor = 0) {
+            this = FromTag(cause, header, mutationCursor, tag);
         }
 
         public GameplayFact(SimulationEventHeader header, GameplayEffectExecutionFailure failure, CanonicalTextValue cause,
-            ulong mutationCursor = 0) : this()
-        {
-            Header = header;
-            Kind = GameplayFactKind.Failure;
-            SubjectId = failure.RequestedEffectId;
-            StateId = "Failed";
-            Failure = failure;
-            Cause = cause;
-            MutationCursor = mutationCursor;
+            ulong mutationCursor = 0) {
+            this = FromFailure(cause, header, mutationCursor, failure);
         }
 
         public GameplayFact(SimulationEventHeader header, GameplayEffectReconciliationResult reconciliation,
-            SimulationGameplayEffectContext context, CanonicalTextValue cause, ulong mutationCursor = 0) : this()
-        {
-            Header = header;
-            Kind = GameplayFactKind.Reconciliation;
-            SubjectId = reconciliation.Scope.EffectId;
-            StateId = "Reconciled";
-            Reconciliation = reconciliation;
-            EffectContext = context;
-            Cause = cause;
-            MutationCursor = mutationCursor;
+            SimulationGameplayEffectContext context, CanonicalTextValue cause, ulong mutationCursor = 0) {
+            this = FromReconciliation(cause, header, mutationCursor, new GameplayEffectReconciliationFact<SimulationGameplayEffectContext>(reconciliation, context));
         }
-        public GameplayFact(SimulationEventHeader header, EquipmentLifecycleFact equipment) : this()
-        {
-            Header = header;
-            Kind = GameplayFactKind.Equipment;
-            SubjectId = equipment.SlotId.Value;
-            StateId = equipment.StateName;
-            Equipment = equipment;
+        public GameplayFact(SimulationEventHeader header, EquipmentLifecycleFact equipment) {
+            this = FromEquipment(default, header, 0, equipment);
         }
 
         public SimulationEventHeader Header { get; }
-        public GameplayFactKind Kind { get; }
-        public CanonicalTextValue SubjectId { get; }
-        public CanonicalTextValue StateId { get; }
-        public Float32Scalar Scalar { get; }
-        public ActionFact Action { get; }
-        public ActionWindowFact ActionWindow { get; }
-        public GameplayEffectFact Effect { get; }
-        public GameplayAttributeFact Attribute { get; }
-        public GameplayCueFact Cue { get; }
-        public EquipmentLifecycleFact Equipment { get; }
-        public GameplayTagRuntimeChange Tag { get; }
-        public GameplayEffectExecutionFailure Failure { get; }
-        public GameplayEffectReconciliationResult Reconciliation { get; }
-        public SimulationGameplayEffectContext EffectContext { get; }
+        public CanonicalTextValue SubjectId => Kind switch
+        {
+            GameplayFactKind.Action => Action.ActionId,
+            GameplayFactKind.ActionWindow => ActionWindow.WindowId,
+            GameplayFactKind.Effect => Effect.EffectId,
+            GameplayFactKind.Attribute => Attribute.AttributeId,
+            GameplayFactKind.Cue => Cue.CueId,
+            GameplayFactKind.Tag => Tag.TagId,
+            GameplayFactKind.Failure => Failure.RequestedEffectId,
+            GameplayFactKind.Reconciliation => Reconciliation.Result.Scope.EffectId,
+            GameplayFactKind.Equipment => Equipment.SlotId.Value,
+            GameplayFactKind.Motion => Motion.SubjectId,
+            GameplayFactKind.State => State.SubjectId,
+            _ => default
+        };
+        public CanonicalTextValue StateId => Kind switch
+        {
+            GameplayFactKind.Action => ActionTransitionName(Action.TransitionType),
+            GameplayFactKind.ActionWindow => ActionWindow.WindowType,
+            GameplayFactKind.Effect => LifecycleName(Effect.Operation),
+            GameplayFactKind.Attribute or GameplayFactKind.Tag => "Changed",
+            GameplayFactKind.Cue => Cue.TriggerId,
+            GameplayFactKind.Failure => "Failed",
+            GameplayFactKind.Reconciliation => "Reconciled",
+            GameplayFactKind.Equipment => Equipment.StateName,
+            GameplayFactKind.Motion => Motion.StateId,
+            GameplayFactKind.State => State.StateId,
+            _ => default
+        };
+        public Float32Scalar Scalar => Kind switch
+        {
+            GameplayFactKind.Attribute => Attribute.CurrentValue,
+            GameplayFactKind.Motion => Motion.Scalar,
+            GameplayFactKind.State => State.Scalar,
+            _ => default
+        };
+        public SimulationGameplayEffectContext EffectContext => Reconciliation.Context;
         public CanonicalTextValue Cause { get; }
         public ulong MutationCursor { get; }
 
@@ -765,30 +738,10 @@ namespace ThirdPersonSimulation
             SimulationGameplayEffectLifecycleOperation.Overflow => nameof(SimulationGameplayEffectLifecycleOperation.Overflow),
             _ => throw new ArgumentOutOfRangeException(nameof(operation))
         };
-            internal const int MaximumTextReferences = 27;
-        public void Retain()
-        {
-            Header.Retain();
-            SubjectId.Retain(); StateId.Retain(); Cause.Retain();
-            Action.Reason.Retain(); ActionWindow.Retain();
-            Effect.Context.Retain(); Effect.EffectId.Retain();
-            Attribute.AttributeId.Retain(); Attribute.CauseEffectId.Retain(); Attribute.CauseContext.Retain();
-            Cue.CueId.Retain(); Cue.TriggerId.Retain(); Cue.SourceId.Retain(); Cue.EffectContext.Retain();
-            Equipment.SlotId.Value.Retain();
-            Tag.Retain(); Failure.Retain(); Reconciliation.Retain(); EffectContext.Retain();
-        }
+            internal static readonly int MaximumTextReferences = CanonicalMaximumTextReferences;
+        public void Retain() => CanonicalRetain(in this);
 
-        public void Release()
-        {
-            Header.Release();
-            SubjectId.Release(); StateId.Release(); Cause.Release();
-            Action.Reason.Release(); ActionWindow.Release();
-            Effect.Context.Release(); Effect.EffectId.Release();
-            Attribute.AttributeId.Release(); Attribute.CauseEffectId.Release(); Attribute.CauseContext.Release();
-            Cue.CueId.Release(); Cue.TriggerId.Release(); Cue.SourceId.Release(); Cue.EffectContext.Release();
-            Equipment.SlotId.Value.Release();
-            Tag.Release(); Failure.Release(); Reconciliation.Release(); EffectContext.Release();
-        }
+        public void Release() => CanonicalRelease(in this);
     }
 
     public enum PresentationCommandKind : byte
@@ -808,7 +761,8 @@ namespace ThirdPersonSimulation
         Audio = 13
     }
 
-    public readonly struct PresentationCommand
+    [CanonicalContract]
+    public readonly partial struct PresentationCommand
     {
         public PresentationCommand(
             SimulationEventHeader header,
@@ -842,31 +796,11 @@ namespace ThirdPersonSimulation
             AudioRequest = audioRequest;
             AudioOwner = audioOwner;
             AudioTargetActor = audioTargetActor;
-            if ((kind == PresentationCommandKind.TimelineProgress) != timelineProgress.IsValid ||
-                timelineProgress.IsValid && (sourceActionInstanceId == 0 || timelineProgress.LogicTick != header.Tick.Value))
-                throw new ArgumentException("Timeline progress requires its exact logic tick and Action identity.", nameof(timelineProgress));
-            if (RequiresProducerGeneration(kind) && producerGeneration == 0)
-                throw new ArgumentOutOfRangeException(nameof(producerGeneration));
-            if (RequiresProducerGeneration(kind) && producerGeneration != header.Activation.Generation)
-                throw new ArgumentException("Presentation producer generation does not match the event activation.", nameof(producerGeneration));
-            if (IsPlaybackCommand(kind) && sourceActionInstanceId == 0)
-                throw new ArgumentOutOfRangeException(nameof(sourceActionInstanceId));
-            if (cycle < 0)
-                throw new ArgumentOutOfRangeException(nameof(cycle));
-            if (kind == PresentationCommandKind.DomainEvent &&
-                (sourceActionInstanceId == 0 || CanonicalTextValue.IsNullOrWhiteSpace(domainPayload)))
-                throw new ArgumentException("Domain event command requires an Action instance and payload.", nameof(domainPayload));
-            if (kind != PresentationCommandKind.DomainEvent && !CanonicalTextValue.IsNullOrEmpty(domainPayload))
-                throw new ArgumentException("Domain payload is only valid on Domain event commands.", nameof(domainPayload));
-            if (kind == PresentationCommandKind.Camera && !cameraRequest.IsValid)
-                throw new ArgumentException("Camera commands require a typed camera request.", nameof(cameraRequest));
-            if (kind != PresentationCommandKind.Camera && cameraRequest.IsValid)
-                throw new ArgumentException("Typed camera requests are only valid on Camera commands.", nameof(cameraRequest));
-            if (IsPlaybackSample(kind) && visualTimeScale < Float32Scalar.Zero)
-                throw new ArgumentOutOfRangeException(nameof(visualTimeScale));
+            RequireRecord();
         }
         public SimulationEventHeader Header { get; }
         public PresentationCommandKind Kind { get; }
+        [CanonicalTextRules(Required = true, Trim = true)]
         public CanonicalTextValue ProducerId { get; }
         public Float32Scalar SampleTime { get; }
         public Float32Scalar Weight { get; }
@@ -897,15 +831,36 @@ namespace ThirdPersonSimulation
 
         static bool IsPlaybackSample(PresentationCommandKind kind) =>
             kind == PresentationCommandKind.SampleProducer;
-            internal const int MaximumTextReferences = 15;
-        internal void Retain()
-        {
-            Header.Retain(); ProducerId.Retain(); AudioOwner.ActorId.Value.Retain(); DomainPayload.Retain(); TimelineProgress.Retain(); CameraRequest.Retain(); AudioTargetActor.Value.Retain();
-        }
+            internal static readonly int MaximumTextReferences = CanonicalMaximumTextReferences;
+        public void Retain() => CanonicalRetain(in this);
 
-        internal void Release()
+        public void Release() => CanonicalRelease(in this);
+
+        [CanonicalValidation]
+        void RequireRecord()
         {
-            Header.Release(); ProducerId.Release(); AudioOwner.ActorId.Value.Release(); DomainPayload.Release(); TimelineProgress.Release(); CameraRequest.Release(); AudioTargetActor.Value.Release();
+            if ((Kind == PresentationCommandKind.TimelineProgress) != TimelineProgress.IsValid ||
+                TimelineProgress.IsValid && (SourceActionInstanceId == 0 || TimelineProgress.LogicTick != Header.Tick.Value))
+                throw new ArgumentException("Timeline progress requires its exact logic tick and Action identity.", "TimelineProgress");
+            if (RequiresProducerGeneration(Kind) && ProducerGeneration == 0)
+                throw new ArgumentOutOfRangeException("ProducerGeneration");
+            if (RequiresProducerGeneration(Kind) && ProducerGeneration != Header.Activation.Generation)
+                throw new ArgumentException("Presentation producer generation does not match the event activation.", "ProducerGeneration");
+            if (IsPlaybackCommand(Kind) && SourceActionInstanceId == 0)
+                throw new ArgumentOutOfRangeException("SourceActionInstanceId");
+            if (Cycle < 0)
+                throw new ArgumentOutOfRangeException("Cycle");
+            if (Kind == PresentationCommandKind.DomainEvent &&
+                (SourceActionInstanceId == 0 || CanonicalTextValue.IsNullOrWhiteSpace(DomainPayload)))
+                throw new ArgumentException("Domain event command requires an Action instance and payload.", "DomainPayload");
+            if (Kind != PresentationCommandKind.DomainEvent && !CanonicalTextValue.IsNullOrEmpty(DomainPayload))
+                throw new ArgumentException("Domain payload is only valid on Domain event commands.", "DomainPayload");
+            if (Kind == PresentationCommandKind.Camera && !CameraRequest.IsValid)
+                throw new ArgumentException("Camera commands require a typed camera request.", "CameraRequest");
+            if (Kind != PresentationCommandKind.Camera && CameraRequest.IsValid)
+                throw new ArgumentException("Typed camera requests are only valid on Camera commands.", "CameraRequest");
+            if (IsPlaybackSample(Kind) && VisualTimeScale < Float32Scalar.Zero)
+                throw new ArgumentOutOfRangeException("VisualTimeScale");
         }
     }
 

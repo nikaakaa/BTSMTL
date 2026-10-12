@@ -868,6 +868,7 @@ namespace ThirdPersonSimulation
         public AbilityTimelineProgressState State { get; }
         public AbilityTimelinePlaybackControl Control { get; }
         public bool IsTerminal => State != AbilityTimelineProgressState.Active;
+        [CanonicalPresence]
         public bool IsValid => Generation != 0;
 
         public bool Equals(AbilityTimelineProgress other) =>
@@ -1069,7 +1070,8 @@ namespace ThirdPersonSimulation
         Root = 3
     }
 
-    public readonly struct AbilityTreeClipInvocation
+    [CanonicalContract]
+    public readonly partial struct AbilityTreeClipInvocation
     {
         public AbilityTreeClipInvocation(
             CanonicalTextValue clipAuthoringId,
@@ -1092,20 +1094,6 @@ namespace ThirdPersonSimulation
             TreeGraphId = SimulationIdentity.Require(treeGraphId, nameof(treeGraphId));
             TreeGraphRevision = SimulationIdentity.Require(treeGraphRevision, nameof(treeGraphRevision));
             NodeAuthoringId = SimulationIdentity.Require(nodeAuthoringId, nameof(nodeAuthoringId));
-            if ((byte)hook > (byte)AbilityTreeClipHook.Root)
-                throw new ArgumentOutOfRangeException(nameof(hook));
-            if (time < FixedScalar.Zero)
-                throw new ArgumentOutOfRangeException(nameof(time));
-            if (cycle < 0)
-                throw new ArgumentOutOfRangeException(nameof(cycle));
-            if (playbackGeneration == 0)
-                throw new ArgumentOutOfRangeException(nameof(playbackGeneration));
-            if (branchRevision == 0)
-                throw new ArgumentOutOfRangeException(nameof(branchRevision));
-            if (actionInstanceId == 0)
-                throw new ArgumentOutOfRangeException(nameof(actionInstanceId));
-            if (timelineRuntimeHandle == 0)
-                throw new ArgumentOutOfRangeException(nameof(timelineRuntimeHandle));
             Time = time;
             PreviousTime = previousTime;
             WindowStartTime = windowStartTime;
@@ -1117,11 +1105,16 @@ namespace ThirdPersonSimulation
             TimelineRuntimeHandle = timelineRuntimeHandle;
             BodyStartFraction = bodyStartFraction;
             BodyEndFraction = bodyEndFraction;
+            RequireRecord();
         }
 
+        [CanonicalTextRules(Required = true, Trim = true)]
         public CanonicalTextValue ClipAuthoringId { get; }
+        [CanonicalTextRules(Required = true, Trim = true)]
         public CanonicalTextValue TreeGraphId { get; }
+        [CanonicalTextRules(Required = true, Trim = true)]
         public CanonicalTextValue TreeGraphRevision { get; }
+        [CanonicalTextRules(Required = true, Trim = true)]
         public CanonicalTextValue NodeAuthoringId { get; }
         public AbilityTreeClipHook Hook { get; }
         public FixedScalar Time { get; }
@@ -1142,6 +1135,25 @@ namespace ThirdPersonSimulation
             BranchRevision != 0 &&
             ActionInstanceId != 0 &&
             TimelineRuntimeHandle != 0;
+
+        [CanonicalValidation]
+        void RequireRecord()
+        {
+            if ((byte)Hook > (byte)AbilityTreeClipHook.Root)
+                throw new ArgumentOutOfRangeException("Hook");
+            if (Time < FixedScalar.Zero)
+                throw new ArgumentOutOfRangeException("Time");
+            if (Cycle < 0)
+                throw new ArgumentOutOfRangeException("Cycle");
+            if (PlaybackGeneration == 0)
+                throw new ArgumentOutOfRangeException("PlaybackGeneration");
+            if (BranchRevision == 0)
+                throw new ArgumentOutOfRangeException("BranchRevision");
+            if (ActionInstanceId == 0)
+                throw new ArgumentOutOfRangeException("ActionInstanceId");
+            if (TimelineRuntimeHandle == 0)
+                throw new ArgumentOutOfRangeException("TimelineRuntimeHandle");
+        }
     }
 
     public static class AbilityTimelineTimeProjection

@@ -7,8 +7,8 @@ namespace ThirdPersonSimulation.Fixed
     public static class StandardFixedPipelinePassContracts
     {
         public const string ImplementationVersion = "4";
-        public const string CombatStateSchemaId = "fixed-combat-state/3";
-        public const int CombatStateSchemaVersion = 4;
+        public const string CombatStateSchemaId = "fixed-combat-state/4";
+        public const int CombatStateSchemaVersion = 5;
         public const string AbilityEvaluatePassId = "thirdperson.simulation.fixed-ability-evaluate";
         public const string WorldResolveBatchPassId = "thirdperson.simulation.fixed-world-resolve-batch";
         public const string AbilityFinalizePassId = "thirdperson.simulation.fixed-ability-finalize";

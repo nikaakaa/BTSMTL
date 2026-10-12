@@ -5,15 +5,15 @@ using ThirdPersonSimulation.Collision;
 
 namespace ThirdPersonSimulation.Fixed
 {
-    internal sealed class FixedCombatAttackState
+    [CanonicalContract(OwnsMemberResources = true)]
+    internal sealed partial class FixedCombatAttackState
     {
-        bool m_Active;
+        [CanonicalPresence]
         public bool Active
         {
-            get => m_Active;
+            get => m_Identity.IsValid;
             set
             {
-                m_Active = value;
                 if (!value)
                 {
                     Identity = default;
@@ -21,8 +21,8 @@ namespace ThirdPersonSimulation.Fixed
                 }
             }
         }
-        public int ActorIndex;
         public int DefinitionIndex;
+        [CanonicalRequired]
         CombatAttackIdentity m_Identity;
         CanonicalTextValue m_EventId;
         public CombatAttackIdentity Identity
@@ -43,16 +43,14 @@ namespace ThirdPersonSimulation.Fixed
         public readonly int[] TargetCounts;
         public readonly ulong[] TargetTicks;
 
-        public FixedCombatAttackState(int actorIndex, int targetCount)
+        public FixedCombatAttackState(int targetCount)
         {
-            ActorIndex = actorIndex;
             TargetCounts = new int[targetCount];
             TargetTicks = new ulong[targetCount];
         }
 
         public void Begin(FixedCombatQuery query, int definitionIndex)
         {
-            Active = true;
             DefinitionIndex = definitionIndex;
             Identity = query.Identity;
             EventId = query.AttackEventId;
@@ -65,32 +63,19 @@ namespace ThirdPersonSimulation.Fixed
             Array.Clear(TargetTicks, 0, TargetTicks.Length);
         }
 
-        public void CopyFrom(FixedCombatAttackState value)
-        {
-            Active = value.Active;
-            if (!Active)
-                return;
-            DefinitionIndex = value.DefinitionIndex;
-            Identity = value.Identity;
-            EventId = value.EventId;
-            Origin = value.Origin;
-            Yaw = value.Yaw;
-            TotalCount = value.TotalCount;
-            HitCount = value.HitCount;
-            LastQueryTick = value.LastQueryTick;
-            Array.Copy(value.TargetCounts, TargetCounts, TargetCounts.Length);
-            Array.Copy(value.TargetTicks, TargetTicks, TargetTicks.Length);
-        }
+        public void CopyFrom(FixedCombatAttackState value) => CanonicalCopyInto(value, this);
     }
 
-    internal struct FixedCombatHalt
+    [CanonicalContract]
+    internal partial struct FixedCombatHalt
     {
         public int ActorIndex;
         public ulong ActionInstanceId;
         public ulong ResumeTick;
     }
 
-    internal struct FixedCombatTimeSlowState
+    [CanonicalContract]
+    internal partial struct FixedCombatTimeSlowState
     {
         internal bool Active;
         internal FixedScalar Age;
@@ -153,22 +138,17 @@ namespace ThirdPersonSimulation.Fixed
         readonly SweepSegment<FixedScalar>[] m_Segments;
         readonly FixedAttackSweepSampling m_SweepSampling;
         readonly SweepResultBuffer<FixedScalar> m_QueryResults;
-        readonly FixedCombatAttackState[] m_AttackStates;
         readonly int[] m_AttackStateOffsets;
-        readonly FixedCombatHalt[] m_Halts;
-        readonly FixedCombatTimeSlowState[] m_SelfTimeSlows;
         readonly FixedCombatEvaluation[] m_Evaluations;
+        readonly FixedCombatStateBank m_State;
         readonly FixedGameplayAbilityCurve[] m_TimeSlowCurves;
-        FixedCombatTimeSlowState m_WorldTimeSlow;
-        int m_WorldTimeSlowOwner;
-        readonly FixedCombatResultStorage m_Pending;
+        readonly Func<CanonicalReader, string> m_StateIdentityReader;
+        readonly int m_StateMaximumIdentityCharacters;
         readonly FixedCombatBatchResult m_Batch;
         readonly PortableEffectDefinition[] m_LightEffects;
         readonly PortableEffectDefinition[] m_HeavyEffects;
         readonly PortableAttackPropertyComponent[] m_ParryLightProperties;
         readonly PortableAttackPropertyComponent[] m_ParryHeavyProperties;
-        ulong m_NextResultId = 1;
-        ulong m_LastTick;
 #if UNITY_EDITOR
         readonly FixedCombatQueryDiagnostics m_QueryDiagnostics;
 #endif
@@ -222,7 +202,7 @@ namespace ThirdPersonSimulation.Fixed
                     resultCapacity += binding.ResultCapacity;
                     cameraCapacity += binding.ResultCapacity + binding.AttackCapacity;
                     for (int i = 0; i < binding.AttackCapacity; i++)
-                        states.Add(new FixedCombatAttackState(actorIndex, actorCount));
+                        states.Add(new FixedCombatAttackState(actorCount));
                     m_LightEffects[actorIndex] = PrepareResponseEffect(actor, binding.HitLightEffectId);
                     m_HeavyEffects[actorIndex] = PrepareResponseEffect(actor, binding.HitHeavyEffectId);
                     m_ParryLightProperties[actorIndex] = actor.AbilityInstallations.GameplayEffectCatalog
@@ -269,7 +249,7 @@ namespace ThirdPersonSimulation.Fixed
                 attacks.Add(prepared);
                 m_EnemyAttacks[i] = prepared;
                 for (int slot = 0; slot < FixedLocalEnemyDefinition.WindowCapacity; slot++)
-                    states.Add(new FixedCombatAttackState(actorIndex, actorCount));
+                    states.Add(new FixedCombatAttackState(actorCount));
                 resultCapacity += actorCount * FixedLocalEnemyDefinition.WindowCapacity;
             }
             m_AttackStateOffsets[actorCount] = states.Count;
@@ -288,6 +268,27 @@ namespace ThirdPersonSimulation.Fixed
                 characters.Roster[i].PrepareCombatResultCapacity(outputCapacity);
             }
             m_Attacks = attacks.ToArray();
+            var stateIdentities = new List<string>();
+            foreach (FixedPreparedAttack attack in m_Attacks)
+                stateIdentities.Add(attack.ContentId);
+            foreach (Participant participant in m_Participants)
+                stateIdentities.Add(participant.ActorId.Value.ToString());
+            foreach (SimulationActorBinding actor in characters.Roster)
+            {
+                foreach (FixedGameplayAbilityExecutionInstallation installation in actor.AbilityInstallations.Installations)
+                    stateIdentities.Add(installation.Data.AbilityId.Value);
+                if (actor.CombatBinding != null)
+                {
+                    CharacterCombatRuntimeBinding binding = actor.CombatBinding;
+                    stateIdentities.AddRange(new[] { binding.LandedEvent, binding.HitLightEvent, binding.HitHeavyEvent,
+                        binding.ParryLightEvent, binding.ParryHeavyEvent, binding.PerfectEvadeEvent });
+                }
+            }
+            string[] publishedStateIdentities = stateIdentities.Where(value => value != null).ToArray();
+            var stateIdentityReader = new GameplayEffectPublishedIdentityReader(publishedStateIdentities);
+            m_StateIdentityReader = stateIdentityReader.ReadPublished;
+            m_StateMaximumIdentityCharacters = publishedStateIdentities.Length == 0 ? 0 :
+                publishedStateIdentities.Max(value => value.Length);
             int segmentCapacity = 1, intervalCapacity = 1;
             for (int attack = 0; attack < m_Attacks.Length; attack++)
             {
@@ -302,12 +303,10 @@ namespace ThirdPersonSimulation.Fixed
             }
             m_Segments = new SweepSegment<FixedScalar>[segmentCapacity];
             m_SweepSampling = new FixedAttackSweepSampling(intervalCapacity);
-            m_AttackStates = states.ToArray();
-            m_Halts = new FixedCombatHalt[haltCapacity];
-            m_SelfTimeSlows = new FixedCombatTimeSlowState[characters.Roster.Count];
+            m_State = new FixedCombatStateBank(states.ToArray(), haltCapacity, characters.Roster.Count, resultCapacity);
             m_Evaluations = new FixedCombatEvaluation[characters.Roster.Count];
             for (int i = 0; i < m_Evaluations.Length; i++)
-                m_Evaluations[i] = new FixedCombatEvaluation(m_Halts, i,
+                m_Evaluations[i] = new FixedCombatEvaluation(m_State.Halts, i,
                     m_AttackStateOffsets[i + 1] - m_AttackStateOffsets[i]);
             SweepShape<FixedScalar>[] preparedShapes = shapes.ToArray();
             m_Backend = new FixedSweepQueryBackend(preparedShapes);
@@ -318,8 +317,7 @@ namespace ThirdPersonSimulation.Fixed
                 characters.Roster[i].CombatQueryDiagnostics = m_QueryDiagnostics;
 #endif
             m_QueryResults = new SweepResultBuffer<FixedScalar>(actorCount);
-            m_Pending = new FixedCombatResultStorage(resultCapacity);
-            m_Batch = new FixedCombatBatchResult(m_Pending, resultCapacity, cameraCapacity);
+            m_Batch = new FixedCombatBatchResult(m_State.Pending, resultCapacity, cameraCapacity);
         }
 
         static PortableEffectDefinition PrepareResponseEffect(SimulationActorBinding actor, string effectId)
@@ -353,9 +351,9 @@ namespace ThirdPersonSimulation.Fixed
             entries = 0;
             commands = 0;
             ActorId actorId = m_Characters.Roster[actorIndex].ActorId;
-            for (int i = 0; i < m_Pending.Count; i++)
+            for (int i = 0; i < m_State.Pending.Count; i++)
             {
-                CombatHitResult hit = m_Pending[i];
+                CombatHitResult hit = m_State.Pending[i];
                 if (hit.SourceActor != actorId && hit.TargetActor != actorId)
                     continue;
                 entries++;
@@ -374,9 +372,9 @@ namespace ThirdPersonSimulation.Fixed
         internal int CopyPendingIngress(int actorIndex, SimulationIngress[] destination, int count)
         {
             ActorId actorId = m_Characters.Roster[actorIndex].ActorId;
-            for (int i = 0; i < m_Pending.Count; i++)
+            for (int i = 0; i < m_State.Pending.Count; i++)
             {
-                CombatHitResult hit = m_Pending[i];
+                CombatHitResult hit = m_State.Pending[i];
                 if (hit.SourceActor != actorId && hit.TargetActor != actorId)
                     continue;
                 FixedPreparedAttack definition = m_Attacks[hit.DefinitionIndex];
@@ -401,21 +399,21 @@ namespace ThirdPersonSimulation.Fixed
             return count;
         }
 
-        public FixedScalar WorldTimeScale => m_WorldTimeSlow.CurrentRate;
+        public FixedScalar WorldTimeScale => m_State.WorldTimeSlow.CurrentRate;
 
         public FixedScalar OwnerTimeScale(ActorId actor) =>
-            m_SelfTimeSlows[m_Characters.GetActorIndex(actor)].CurrentRate;
+            m_State.SelfTimeSlows[m_Characters.GetActorIndex(actor)].CurrentRate;
 
         internal void AdvanceTimeSlows()
         {
-            if (m_WorldTimeSlow.Active)
-                AdvanceTimeSlow(ref m_WorldTimeSlow,
-                    m_Characters.Roster[m_WorldTimeSlowOwner].CombatBinding.PerfectEvadeTimeSlow,
-                    m_TimeSlowCurves[m_WorldTimeSlowOwner], m_TickDelta);
+            if (m_State.WorldTimeSlow.Active)
+                AdvanceTimeSlow(ref m_State.WorldTimeSlow,
+                    m_Characters.Roster[m_State.WorldTimeSlowOwner].CombatBinding.PerfectEvadeTimeSlow,
+                    m_TimeSlowCurves[m_State.WorldTimeSlowOwner], m_TickDelta);
             FixedScalar worldDelta = m_TickDelta * WorldTimeScale;
-            for (int i = 0; i < m_SelfTimeSlows.Length; i++)
-                if (m_SelfTimeSlows[i].Active)
-                    AdvanceTimeSlow(ref m_SelfTimeSlows[i], m_Characters.Roster[i].CombatBinding.PerfectEvadeTimeSlow,
+            for (int i = 0; i < m_State.SelfTimeSlows.Length; i++)
+                if (m_State.SelfTimeSlows[i].Active)
+                    AdvanceTimeSlow(ref m_State.SelfTimeSlows[i], m_Characters.Roster[i].CombatBinding.PerfectEvadeTimeSlow,
                         m_TimeSlowCurves[i], worldDelta);
         }
 
@@ -439,12 +437,12 @@ namespace ThirdPersonSimulation.Fixed
                 Active = true,
                 Rate = m_TimeSlowCurves[actorIndex].Evaluate(FixedScalar.Zero, FixedScalar.One)
             };
-            m_SelfTimeSlows[actorIndex] = state;
-            if (!m_WorldTimeSlow.Active ||
-                binding.Priority >= m_Characters.Roster[m_WorldTimeSlowOwner].CombatBinding.PerfectEvadeTimeSlow.Priority)
+            m_State.SelfTimeSlows[actorIndex] = state;
+            if (!m_State.WorldTimeSlow.Active ||
+                binding.Priority >= m_Characters.Roster[m_State.WorldTimeSlowOwner].CombatBinding.PerfectEvadeTimeSlow.Priority)
             {
-                m_WorldTimeSlowOwner = actorIndex;
-                m_WorldTimeSlow = state;
+                m_State.WorldTimeSlowOwner = actorIndex;
+                m_State.WorldTimeSlow = state;
             }
         }
 
@@ -452,14 +450,14 @@ namespace ThirdPersonSimulation.Fixed
         {
             FixedCombatEvaluation evaluation = m_Evaluations[actorIndex];
             evaluation.WorldTimeScale = WorldTimeScale;
-            evaluation.SelfTimeSlow = m_SelfTimeSlows[actorIndex];
+            evaluation.SelfTimeSlow = m_State.SelfTimeSlows[actorIndex];
             evaluation.SelfTimeSlowChanged = false;
             evaluation.CounterSkill = evaluation.SelfTimeSlow.Active
                 ? m_Characters.Roster[actorIndex].CombatBinding.PerfectEvadeTimeSlow.CounterSkillId : default;
             evaluation.HitCount = 0;
             for (int i = m_AttackStateOffsets[actorIndex]; i < m_AttackStateOffsets[actorIndex + 1]; i++)
             {
-                FixedCombatAttackState state = m_AttackStates[i];
+                FixedCombatAttackState state = m_State.Attacks[i];
                 if (state.Active && state.HitCount != 0)
                     evaluation.AcceptedHits[evaluation.HitCount++] = new FixedAcceptedHitFact(
                         state.Identity.ActionInstanceId, state.Identity.SegmentGeneration, state.EventId);
@@ -471,7 +469,7 @@ namespace ThirdPersonSimulation.Fixed
         {
             FixedCombatEvaluation evaluation = m_Evaluations[actorIndex];
             if (evaluation.SelfTimeSlowChanged)
-                m_SelfTimeSlows[actorIndex] = evaluation.SelfTimeSlow;
+                m_State.SelfTimeSlows[actorIndex] = evaluation.SelfTimeSlow;
         }
 
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
@@ -491,20 +489,20 @@ namespace ThirdPersonSimulation.Fixed
             if (m_QueryDiagnostics.CaptureEnabled)
                 m_QueryDiagnostics.BeginTick(tick);
 #endif
-            Array.Clear(m_Batch.HitHeaders, 0, m_Pending.Count);
-            m_Pending.Clear();
+            Array.Clear(m_Batch.HitHeaders, 0, m_State.Pending.Count);
+            m_State.Pending.Clear();
             m_Batch.Tick = tick;
             m_Batch.CameraCount = 0;
-            for (int i = 0; i < m_AttackStates.Length; i++)
+            for (int i = 0; i < m_State.Attacks.Length; i++)
             {
-                FixedCombatAttackState state = m_AttackStates[i];
+                FixedCombatAttackState state = m_State.Attacks[i];
                 if (state.Active && !IsAttackScopeActive(evaluations, state))
                     state.Active = false;
             }
-            for (int i = 0; i < m_Halts.Length; i++)
-                if (m_Halts[i].ActionInstanceId != 0 &&
-                    (m_Halts[i].ResumeTick <= tick || !IsActionActive(evaluations.Evaluations[m_Halts[i].ActorIndex].CandidateState, m_Halts[i].ActionInstanceId)))
-                    m_Halts[i] = default;
+            for (int i = 0; i < m_State.Halts.Length; i++)
+                if (m_State.Halts[i].ActionInstanceId != 0 &&
+                    (m_State.Halts[i].ResumeTick <= tick || !IsActionActive(evaluations.Evaluations[m_State.Halts[i].ActorIndex].CandidateState, m_State.Halts[i].ActionInstanceId)))
+                    m_State.Halts[i] = default;
             int queryCount = 0;
             for (int i = 0; i < evaluations.Evaluations.Count; i++)
                 queryCount += evaluations.Evaluations[i].AttackQueries.Count;
@@ -543,7 +541,7 @@ namespace ThirdPersonSimulation.Fixed
                     ResolveQuery(prepared.ActorIndex, m_EnemyQuery, prepared, evaluations, world, targetCount, tickStart, tickEnd);
                 }
             }
-            m_LastTick = tick;
+            m_State.LastTick = tick;
 #if UNITY_EDITOR
             if (m_QueryDiagnostics.CaptureEnabled)
                 m_QueryDiagnostics.CompleteTick();
@@ -653,15 +651,15 @@ namespace ThirdPersonSimulation.Fixed
                     ref readonly SweepCandidate<FixedScalar> candidate = ref candidates[i];
                     int targetIndex = m_TargetIndices[candidate.Target.TargetId];
 #if UNITY_EDITOR
-                    int acceptedBefore = m_Pending.Count;
+                    int acceptedBefore = m_State.Pending.Count;
 #endif
                     Accept(actorIndex, targetIndex, request, prepared, state, in candidate, evaluations, world);
 #if UNITY_EDITOR
                     if (captureQuery)
                     {
-                        bool accepted = m_Pending.Count != acceptedBefore;
+                        bool accepted = m_State.Pending.Count != acceptedBefore;
                         diagnostic.AddContact(in candidate, accepted,
-                            accepted ? m_Pending[m_Pending.Count - 1].Disposition : default);
+                            accepted ? m_State.Pending[m_State.Pending.Count - 1].Disposition : default);
                     }
 #endif
                 }
@@ -744,18 +742,18 @@ namespace ThirdPersonSimulation.Fixed
                 evadeAction = FindDefensiveAction(target.CandidateState, targetBinding, true);
                 if (evadeAction == 0)
                     return;
-                for (int i = 0; i < m_Pending.Count; i++)
-                    if (m_Pending[i].Disposition == CombatHitDisposition.Evaded &&
-                        m_Pending[i].TargetActor == targetParticipant.ActorId &&
-                        m_Pending[i].TargetActionInstanceId == evadeAction)
+                for (int i = 0; i < m_State.Pending.Count; i++)
+                    if (m_State.Pending[i].Disposition == CombatHitDisposition.Evaded &&
+                        m_State.Pending[i].TargetActor == targetParticipant.ActorId &&
+                        m_State.Pending[i].TargetActionInstanceId == evadeAction)
                         return;
             }
             ulong parryAction = evadeAction == 0 && targetParticipant.CharacterIndex >= 0
                 ? FindDefensiveAction(target.CandidateState, targetBinding, false) : 0;
             ulong targetAction = evadeAction != 0 ? evadeAction :
                 parryAction != 0 ? parryAction : targetParticipant.CharacterIndex >= 0 ? FindActiveAction(target.CandidateState) : 0;
-            CombatHitResult hit = m_Pending.Append();
-            hit.ResultId = m_NextResultId++;
+            CombatHitResult hit = m_State.Pending.Append();
+            hit.ResultId = m_State.NextResultId++;
             hit.SourceTick = tick;
             hit.SourceActor = sourceParticipant.ActorId;
             FixedVector3 sourcePosition = sourceParticipant.CharacterIndex >= 0
@@ -794,7 +792,7 @@ namespace ThirdPersonSimulation.Fixed
             hit.Point = new FixedVector3(candidate.Point.X, candidate.Point.Y, candidate.Point.Z);
             hit.Normal = new FixedVector3(candidate.Normal.X, candidate.Normal.Y, candidate.Normal.Z);
             hit.DefinitionIndex = definition.Index;
-            m_Batch.HitHeaders[m_Pending.Count - 1] = request.Identity.SourceKind == CombatAttackSourceKind.CharacterAction
+            m_Batch.HitHeaders[m_State.Pending.Count - 1] = request.Identity.SourceKind == CombatAttackSourceKind.CharacterAction
                 ? request.Header : CreateIngressHitHeader(hit);
             if (evadeAction != 0)
             {
@@ -821,7 +819,7 @@ namespace ThirdPersonSimulation.Fixed
             FixedCombatAttackState unused = null;
             for (int i = start; i < end; i++)
             {
-                FixedCombatAttackState previous = m_AttackStates[i];
+                FixedCombatAttackState previous = m_State.Attacks[i];
                 if (request.Identity.SourceKind == CombatAttackSourceKind.CharacterAction &&
                     previous.Active &&
                     previous.Identity.ActionInstanceId == request.Identity.ActionInstanceId &&
@@ -834,7 +832,7 @@ namespace ThirdPersonSimulation.Fixed
             }
             for (int i = start; i < end; i++)
             {
-                FixedCombatAttackState state = m_AttackStates[i];
+                FixedCombatAttackState state = m_State.Attacks[i];
                 if (!state.Active)
                 {
                     if (unused == null)
@@ -869,7 +867,7 @@ namespace ThirdPersonSimulation.Fixed
 
         bool IsAttackScopeActive(FixedCharacterEvaluationResultBatch evaluations, FixedCombatAttackState state)
         {
-            Participant participant = m_Participants[state.ActorIndex];
+            Participant participant = m_Participants[m_Attacks[state.DefinitionIndex].ActorIndex];
             return state.Identity.SourceKind == CombatAttackSourceKind.LocalEnemyAttack
                 ? m_EnemyInputs[participant.LocalEnemyIndex].ActiveReleaseSequence == state.Identity.LocalReleaseSequence
                 : IsAttackScopeActive(evaluations.Evaluations[participant.CharacterIndex].CandidateState, state.Identity);
@@ -923,19 +921,19 @@ namespace ThirdPersonSimulation.Fixed
                 return;
             ulong resume = tick + 1 + (ulong)((frames * (long)m_Characters.TickRate + 59) / 60);
             int unused = -1;
-            for (int i = 0; i < m_Halts.Length; i++)
+            for (int i = 0; i < m_State.Halts.Length; i++)
             {
-                if (m_Halts[i].ActionInstanceId == 0)
+                if (m_State.Halts[i].ActionInstanceId == 0)
                     unused = i;
-                else if (m_Halts[i].ActorIndex == actorIndex && m_Halts[i].ActionInstanceId == actionInstanceId)
+                else if (m_State.Halts[i].ActorIndex == actorIndex && m_State.Halts[i].ActionInstanceId == actionInstanceId)
                 {
-                    m_Halts[i].ResumeTick = Math.Max(resume, m_Halts[i].ResumeTick);
+                    m_State.Halts[i].ResumeTick = Math.Max(resume, m_State.Halts[i].ResumeTick);
                     return;
                 }
             }
             if (unused < 0)
                 throw new InvalidOperationException("Combat action halt capacity exceeded.");
-            m_Halts[unused] = new FixedCombatHalt { ActorIndex = actorIndex, ActionInstanceId = actionInstanceId, ResumeTick = resume };
+            m_State.Halts[unused] = new FixedCombatHalt { ActorIndex = actorIndex, ActionInstanceId = actionInstanceId, ResumeTick = resume };
         }
 
         void SetFrameHalts(CombatHitResult hit, int targetIndex, PortableAttackPropertyComponent incoming)

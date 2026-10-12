@@ -63,7 +63,8 @@ namespace ThirdPersonSimulation
         public Float32Scalar Value { get; }
     }
 
-    public readonly struct SimulationGameplayEffectContext
+    [CanonicalContract]
+    public readonly partial struct SimulationGameplayEffectContext
     {
         public SimulationGameplayEffectContext(
             ActorId sourceActorId,
@@ -78,13 +79,6 @@ namespace ThirdPersonSimulation
             GameplayEffectSuccessContext success = default,
             SimulationActionTargetSnapshot successTarget = default)
         {
-            if (!sourceActorId.IsValid || !targetActorId.IsValid || sourceTick == 0)
-                throw new ArgumentException("Gameplay Effect context identity is incomplete.");
-            if (applicationMode == SimulationGameplayEffectApplicationMode.Predicted &&
-                (sourceActionInstanceId == 0 || predictionKey == 0))
-            {
-                throw new ArgumentException("Predicted Gameplay Effect context requires Action and prediction identities.");
-            }
             SourceActorId = sourceActorId;
             TargetActorId = targetActorId;
             SourceActionInstanceId = sourceActionInstanceId;
@@ -96,6 +90,7 @@ namespace ThirdPersonSimulation
             Holder = holder;
             Success = success;
             SuccessTarget = successTarget;
+            RequireIdentity();
         }
 
         public ActorId SourceActorId { get; }
@@ -110,23 +105,24 @@ namespace ThirdPersonSimulation
         public GameplayEffectSuccessContext Success { get; }
         public SimulationActionTargetSnapshot SuccessTarget { get; }
 
-        internal void WriteSuccessTarget(CanonicalWriter writer)
-        {
-            writer.WriteBoolean(SuccessTarget.HasTarget);
-            if (!SuccessTarget.HasTarget)
-                return;
-            writer.WriteText(SuccessTarget.TargetId);
-            writer.WriteVector3(SuccessTarget.Position);
-            writer.WriteYaw(SuccessTarget.Yaw);
-        }
 
-        internal static SimulationActionTargetSnapshot ReadSuccessTarget(CanonicalReader reader) => reader.ReadBoolean()
-            ? new SimulationActionTargetSnapshot(reader.ReadText(), reader.ReadVector3(), reader.ReadYaw()) : default;
-        public void Retain() { SourceActorId.Retain(); TargetActorId.Retain(); Holder.Retain(); Success.Retain(); SuccessTarget.Retain(); }
-        public void Release() { SuccessTarget.Release(); Success.Release(); Holder.Release(); TargetActorId.Release(); SourceActorId.Release(); }
+
+
+        public void Retain() => CanonicalRetain(in this);
+        public void Release() => CanonicalRelease(in this);
         public bool IsPredicted => ApplicationMode == SimulationGameplayEffectApplicationMode.Predicted;
+        [CanonicalPresence]
         public bool IsValid => SourceActorId.IsValid && TargetActorId.IsValid && SourceTick != 0;
-    }
+
+        [CanonicalValidation]
+        void RequireIdentity()
+        {
+            if (!SourceActorId.IsValid || !TargetActorId.IsValid || SourceTick == 0)
+                throw new ArgumentException("Gameplay Effect context identity is incomplete.");
+            if (IsPredicted && (SourceActionInstanceId == 0 || PredictionKey == 0))
+                throw new ArgumentException("Predicted Gameplay Effect context requires Action and prediction identities.");
+        }
+}
 
     public readonly struct SimulationGameplayEffectApplication
     {
@@ -467,7 +463,8 @@ namespace ThirdPersonSimulation
         public bool IsValid => !CanonicalTextValue.IsNullOrEmpty(AttributeId) && ValueRevision != 0;
     }
 
-    public readonly struct GameplayEffectFact
+    [CanonicalContract]
+    public readonly partial struct GameplayEffectFact
     {
         public GameplayEffectFact(
             CanonicalTextValue effectId,
@@ -482,8 +479,6 @@ namespace ThirdPersonSimulation
             bool instant)
         {
             EffectId = SimulationIdentity.Require(effectId, nameof(effectId));
-            if (instanceId == 0 || lifecycleRevision == 0 || definitionRevision == 0 || !context.IsValid)
-                throw new ArgumentException("Gameplay Effect fact identity is incomplete.");
             InstanceId = instanceId;
             Operation = operation;
             Context = context;
@@ -493,11 +488,14 @@ namespace ThirdPersonSimulation
             LifecycleRevision = lifecycleRevision;
             DefinitionRevision = definitionRevision;
             Instant = instant;
+            RequireRecord();
         }
 
+        [CanonicalTextRules(Required = true, Trim = true)]
         public CanonicalTextValue EffectId { get; }
         public ulong InstanceId { get; }
         public SimulationGameplayEffectLifecycleOperation Operation { get; }
+        [CanonicalRequired]
         public SimulationGameplayEffectContext Context { get; }
         public ulong StartTick { get; }
         public ulong EndTick { get; }
@@ -506,9 +504,17 @@ namespace ThirdPersonSimulation
         public uint DefinitionRevision { get; }
         public bool Instant { get; }
         public bool IsValid => !CanonicalTextValue.IsNullOrEmpty(EffectId) && InstanceId != 0 && LifecycleRevision != 0;
+
+        [CanonicalValidation]
+        void RequireRecord()
+        {
+            if (InstanceId == 0 || LifecycleRevision == 0 || DefinitionRevision == 0 || !Context.IsValid)
+                throw new ArgumentException("Gameplay Effect fact identity is incomplete.");
+        }
     }
 
-    public readonly struct GameplayAttributeFact
+    [CanonicalContract]
+    public readonly partial struct GameplayAttributeFact
     {
         public GameplayAttributeFact(
             CanonicalTextValue attributeId,
@@ -522,8 +528,6 @@ namespace ThirdPersonSimulation
             SimulationGameplayEffectContext causeContext)
         {
             AttributeId = SimulationIdentity.Require(attributeId, nameof(attributeId));
-            if (valueRevision == 0)
-                throw new ArgumentOutOfRangeException(nameof(valueRevision));
             BeforeBase = beforeBase;
             BaseValue = baseValue;
             BeforeCurrent = beforeCurrent;
@@ -532,8 +536,10 @@ namespace ThirdPersonSimulation
             CauseEffectId = causeEffectId.IsNull ? CanonicalTextValue.Empty : causeEffectId;
             CauseEffectInstanceId = causeEffectInstanceId;
             CauseContext = causeContext;
+            RequireRecord();
         }
 
+        [CanonicalTextRules(Required = true, Trim = true)]
         public CanonicalTextValue AttributeId { get; }
         public Float32Scalar BeforeBase { get; }
         public Float32Scalar BaseValue { get; }
@@ -544,9 +550,17 @@ namespace ThirdPersonSimulation
         public ulong CauseEffectInstanceId { get; }
         public SimulationGameplayEffectContext CauseContext { get; }
         public bool IsValid => !CanonicalTextValue.IsNullOrEmpty(AttributeId) && ValueRevision != 0;
+
+        [CanonicalValidation]
+        void RequireRecord()
+        {
+            if (ValueRevision == 0)
+                throw new ArgumentOutOfRangeException("ValueRevision");
+        }
     }
 
-    public readonly struct GameplayCueFact
+    [CanonicalContract]
+    public readonly partial struct GameplayCueFact
     {
         public GameplayCueFact(
             CanonicalTextValue cueId,
@@ -562,8 +576,11 @@ namespace ThirdPersonSimulation
             EffectContext = effectContext;
         }
 
+        [CanonicalTextRules(Required = true, Trim = true)]
         public CanonicalTextValue CueId { get; }
+        [CanonicalTextRules(Required = true, Trim = true)]
         public CanonicalTextValue TriggerId { get; }
+        [CanonicalTextRules(Required = true, Trim = true)]
         public CanonicalTextValue SourceId { get; }
         public ulong SourceInstanceId { get; }
         public SimulationGameplayEffectContext EffectContext { get; }

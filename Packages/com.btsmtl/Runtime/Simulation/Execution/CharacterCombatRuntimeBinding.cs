@@ -116,7 +116,8 @@ namespace ThirdPersonSimulation
         LocalEnemyAttack = 2
     }
 
-    public readonly struct CombatAttackIdentity : IEquatable<CombatAttackIdentity>
+    [CanonicalContract]
+    public readonly partial struct CombatAttackIdentity : IEquatable<CombatAttackIdentity>
     {
         public CombatAttackIdentity(ulong actionInstanceId, ulong segmentGeneration,
             CharacterSkillId skillId, OperationHandle operation, CanonicalTextValue clipId,
@@ -146,6 +147,9 @@ namespace ThirdPersonSimulation
             LocalWindowId = windowId;
         }
 
+        [CanonicalPresence]
+        public bool IsValid => SourceKind != 0;
+
         public CombatAttackSourceKind SourceKind { get; }
         public ActorId LocalActor { get; }
         public ulong LocalReleaseSequence { get; }
@@ -161,19 +165,9 @@ namespace ThirdPersonSimulation
         public int Cycle { get; }
         public ulong TimelineRuntimeHandle { get; }
 
-        public void Retain()
-        {
-            LocalActor.Value.Retain();
-            LocalWindowId.Retain();
-            ClipId.Retain();
-        }
+        public void Retain() => CanonicalRetain(in this);
 
-        public void Release()
-        {
-            LocalActor.Value.Release();
-            LocalWindowId.Release();
-            ClipId.Release();
-        }
+        public void Release() => CanonicalRelease(in this);
 
         public bool Equals(CombatAttackIdentity other) => SourceKind == other.SourceKind &&
             (SourceKind == CombatAttackSourceKind.LocalEnemyAttack

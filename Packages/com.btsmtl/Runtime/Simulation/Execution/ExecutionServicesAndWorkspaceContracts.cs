@@ -5,7 +5,8 @@ using System.IO;
 
 namespace ThirdPersonSimulation
 {
-    internal readonly struct SimulationInputRequestState : IEquatable<SimulationInputRequestState>
+    [CanonicalContract]
+    internal readonly partial struct SimulationInputRequestState : IEquatable<SimulationInputRequestState>
     {
         public SimulationInputRequestState(
             CanonicalTextValue requestId,
@@ -36,48 +37,24 @@ namespace ThirdPersonSimulation
             ExpireTick == other.ExpireTick &&
             Priority == other.Priority &&
             Consumed == other.Consumed;
+        [CanonicalPresence]
         public bool IsValid => !CanonicalTextValue.IsNullOrEmpty(RequestId) && Sequence != 0;
 
-        public void Retain() => RequestId.Retain();
-        public void Release() => RequestId.Release();
+        public void Retain() => CanonicalRetain(in this);
+        public void Release() => CanonicalRelease(in this);
 
         public SimulationInputRequestState Consume() =>
             IsValid
                 ? new SimulationInputRequestState(RequestId, Sequence, SourceTick, ExpireTick, Priority, true)
                 : this;
-    }
 
-    internal static class SimulationInputRequestStateCodec
-    {
-        public static void Write(CanonicalWriter writer, SimulationInputRequestState value)
+        [CanonicalValidation]
+        void RequireIdentity()
         {
-            writer.WriteBoolean(value.IsValid);
-            if (!value.IsValid)
-                return;
-            writer.WriteText(value.RequestId);
-            writer.WriteUInt64(value.Sequence);
-            writer.WriteUInt64(value.SourceTick);
-            writer.WriteUInt64(value.ExpireTick);
-            writer.WriteInt32(value.Priority);
-            writer.WriteBoolean(value.Consumed);
-        }
-
-        public static SimulationInputRequestState Read(CanonicalReader reader)
-        {
-            if (!reader.ReadBoolean())
-                return default;
-            var value = new SimulationInputRequestState(
-                reader.ReadText(),
-                reader.ReadUInt64(),
-                reader.ReadUInt64(),
-                reader.ReadUInt64(),
-                reader.ReadInt32(),
-                reader.ReadBoolean());
-            if (!value.IsValid)
+            if (!IsValid)
                 throw new InvalidDataException("Simulation input request state identity is invalid.");
-            return value;
         }
-    }
+}
 
     internal enum ActionAdmissionEvaluationMode : byte
     {

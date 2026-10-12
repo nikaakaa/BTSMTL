@@ -556,8 +556,8 @@ namespace ThirdPersonSimulation
     public static class CharacterControlRuntimeStateCodec
     {
         const uint Magic = 0x54535243;
-        const int Version = 7;
-        public const string CodecIdentity = "character-control-runtime-state/v7";
+        const int Version = 8;
+        public const string CodecIdentity = "character-control-runtime-state/v8";
 
         public static void WriteLengthPrefixed(CanonicalWriter writer, CharacterControlRuntimeState state)
         {

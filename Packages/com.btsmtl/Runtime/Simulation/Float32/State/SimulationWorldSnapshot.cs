@@ -796,7 +796,7 @@ namespace ThirdPersonSimulation
                 throw new InvalidDataException("Simulation World Snapshot header is invalid.");
             var expectedHash = SimulationWorldHash.CanonicalFromHash(reader.ReadHash());
             int hashPayloadStart = bytes.Length - reader.Remaining;
-            SimulationNumericProfile numeric = SimulationNumericProfile.ReadPublished(reader, snapshot.NumericProfile);
+            SimulationNumericProfile numeric = SimulationNumericProfile.CanonicalReadPublished(reader, snapshot.NumericProfile);
             var content = GameplayContentHash.CanonicalFromHash(reader.ReadHash());
             StableHash schema = reader.ReadHash();
             reader.RequireText(snapshot.SolverId.Value);
@@ -847,7 +847,7 @@ namespace ThirdPersonSimulation
             if (reader.ReadUInt32() != Magic || reader.ReadInt32() != Version)
                 throw new InvalidDataException("Simulation World Snapshot header is invalid.");
             var expectedHash = SimulationWorldHash.CanonicalFromHash(reader.ReadHash());
-            SimulationNumericProfile numericProfile = SimulationNumericProfile.ReadPublished(reader, Float32SimulationNumericProfile.Value);
+            SimulationNumericProfile numericProfile = SimulationNumericProfile.CanonicalReadPublished(reader, Float32SimulationNumericProfile.Value);
             var gameplayContentHash = GameplayContentHash.CanonicalFromHash(reader.ReadHash());
             var stateSchemaHash = reader.ReadHash();
             var solverId = new SolverImplementationId(CanonicalTextEncoding.DecodeString(reader.ReadTextSegment()));

@@ -16,6 +16,15 @@ namespace ThirdPersonSimulation
             SimulationNumericRoundingMode.Ieee754NearestEven,
             SimulationNumericOverflowMode.RejectNonFinite,
             false);
+
+        public static CanonicalPublishedValues PublishedValues { get; } = PreparePublishedValues();
+
+        static CanonicalPublishedValues PreparePublishedValues()
+        {
+            var values = new CanonicalPublishedValues();
+            values.Add(Value);
+            return values;
+        }
     }
 
     public sealed class Float32SimulationTargetManifest

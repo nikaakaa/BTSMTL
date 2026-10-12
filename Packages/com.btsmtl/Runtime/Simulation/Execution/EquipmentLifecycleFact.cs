@@ -1,6 +1,7 @@
 namespace ThirdPersonSimulation
 {
-    public readonly struct EquipmentLifecycleFact
+    [CanonicalContract]
+    public readonly partial struct EquipmentLifecycleFact
     {
         public EquipmentLifecycleFact(EquipmentSlotId slotId, EquipmentId beforeEquipmentId,
             EquipmentId equipmentId, ulong beforeRevision, ulong revision, EquipmentChangeId changeId,
@@ -29,5 +30,12 @@ namespace ThirdPersonSimulation
             PendingEquipmentChangeState.Cancelled => nameof(PendingEquipmentChangeState.Cancelled),
             _ => throw new System.ArgumentOutOfRangeException(nameof(State))
         };
+
+        [CanonicalValidation]
+        void RequireRecord()
+        {
+            if (!SlotId.IsValid || Revision == 0)
+                throw new System.IO.InvalidDataException("Equipment lifecycle fact is invalid.");
+        }
     }
 }

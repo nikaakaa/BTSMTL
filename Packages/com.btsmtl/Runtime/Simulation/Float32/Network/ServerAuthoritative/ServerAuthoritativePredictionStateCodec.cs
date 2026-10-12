@@ -10,7 +10,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         const uint CorrectionMagic = 0x43524153;
         const int CorrectionVersion = 5;
         const uint HistoryMagic = 0x48524153;
-        const int HistoryVersion = 4;
+        const int HistoryVersion = 5;
         const uint JournalMagic = 0x4a524153;
         const int MaximumObservedActorCount = 64;
         const int MaximumProjectedParticipantCount = 64;
@@ -115,7 +115,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 writer.WriteText(actor.ActorId.Value);
                 writer.WriteInt32(actor.Samples.Count);
                 for (int sampleIndex = 0; sampleIndex < actor.Samples.Count; sampleIndex++)
-                    WriteBodySample(writer, actor.Samples[sampleIndex]);
+                    CharacterBodySample.CanonicalWrite(writer, actor.Samples[sampleIndex]);
             }
             return writer.ToArray();
         }
@@ -183,7 +183,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 int sampleCount = RequireCount(reader.ReadInt32(), checked(historyCapacity * 4));
                 var samples = new CharacterBodySample[sampleCount];
                 for (int sampleIndex = 0; sampleIndex < sampleCount; sampleIndex++)
-                    samples[sampleIndex] = ReadBodySample(reader);
+                    samples[sampleIndex] = CharacterBodySample.CanonicalRead(reader);
                 remoteActors[actorIndex] = new ServerAuthoritativeRemoteBodyActorCheckpoint(actorId, samples);
             }
             reader.RequireComplete();
@@ -261,8 +261,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 ObservedWorldConstraint value = frame.Constraints[i];
                 writer.WriteText(value.ActorId.Value);
                 writer.WriteUInt64(value.TargetTick.Value);
-                WriteBody(writer, value.BeforeBody);
-                WriteBody(writer, value.FinalBody);
+                WorldBodyState.CanonicalWrite(writer, value.BeforeBody);
+                WorldBodyState.CanonicalWrite(writer, value.FinalBody);
                 writer.WriteUInt64(value.SourcePreviousTick.Value);
                 writer.WriteUInt64(value.SourceCurrentTick.Value);
                 writer.WriteByte((byte)value.SamplingKind);
@@ -281,8 +281,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 constraints[i] = new ObservedWorldConstraint(
                     new ActorId(CanonicalTextEncoding.DecodeString(reader.ReadTextSegment())),
                     new SimulationTick(reader.ReadUInt64()),
-                    ReadBody(reader),
-                    ReadBody(reader),
+                    WorldBodyState.CanonicalRead(reader),
+                    WorldBodyState.CanonicalRead(reader),
                     new SimulationTick(reader.ReadUInt64()),
                     new SimulationTick(reader.ReadUInt64()),
                     (ObservedWorldConstraintSamplingKind)reader.ReadByte(),
@@ -294,47 +294,13 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             return frame;
         }
 
-        internal static void WriteBodySample(CanonicalWriter writer, CharacterBodySample sample)
-        {
-            writer.WriteText(sample.ActorId.Value);
-            writer.WriteUInt64(sample.Tick.Value);
-            WriteBody(writer, sample.BeforeBody);
-            WriteBody(writer, sample.FinalBody);
-            writer.WriteVector3(sample.AppliedDisplacement);
-            writer.WriteScalar(sample.AppliedYawDegrees);
-        }
 
-        static CharacterBodySample ReadBodySample(CanonicalReader reader)
-        {
-            var actorId = new ActorId(CanonicalTextEncoding.DecodeString(reader.ReadTextSegment()));
-            return new CharacterBodySample(
-                actorId,
-                new SimulationTick(reader.ReadUInt64()),
-                ReadBody(reader),
-                ReadBody(reader),
-                reader.ReadVector3(),
-                reader.ReadScalar());
-        }
 
-        static void WriteBody(CanonicalWriter writer, WorldBodyState body)
-        {
-            writer.WriteText(body.ActorId.Value);
-            writer.WriteVector3(body.Position);
-            writer.WriteYaw(body.Yaw);
-            writer.WriteVector3(body.Velocity);
-            writer.WriteScalar(body.VerticalVelocity);
-            writer.WriteBoolean(body.Grounded);
-            writer.WriteUInt32((uint)body.Collision);
-        }
 
-        static WorldBodyState ReadBody(CanonicalReader reader) => new WorldBodyState(
-            new ActorId(CanonicalTextEncoding.DecodeString(reader.ReadTextSegment())),
-            reader.ReadVector3(),
-            reader.ReadYaw(),
-            reader.ReadVector3(),
-            reader.ReadScalar(),
-            reader.ReadBoolean(),
-            (WorldCollisionSummary)reader.ReadUInt32());
+
+
+
+
 
         static void WritePipelineProjection(CanonicalWriter writer, SimulationPipelineStateSnapshot snapshot)
         {

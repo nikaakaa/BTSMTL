@@ -12,11 +12,15 @@ namespace ThirdPersonSimulation.Fixed
         const uint ActiveMagic = 0x32464745;
         const uint PeriodsMagic = 0x32504745;
         const uint JournalMagic = 0x324A4745;
-        const int StateVersion = 9;
+        const int StateVersion = 10;
 
         internal static void Write(CanonicalWriter writer, GameplayEffectStateAggregate aggregate)
         {
             FixedGameplayEffectRuntimeCatalog catalog = aggregate.Catalog;
+            writer.WriteHash(SimulationGameplayEffectContext.CanonicalSchemaHash);
+            writer.WriteHash(GameplayEffectActiveControlSnapshot.CanonicalSchemaHash);
+            writer.WriteHash(GameplayEffectLifecycleRevisionKey.CanonicalSchemaHash);
+            writer.WriteHash(GameplayEffectLifecycleRevisionEntry.CanonicalSchemaHash);
             WriteTags(writer, aggregate.TagSources, catalog);
             WriteAttributes(writer, aggregate.Attributes, catalog);
             WriteActiveEffects(writer, aggregate.ActiveEffects, catalog);
@@ -39,6 +43,10 @@ namespace ThirdPersonSimulation.Fixed
             SortedList<ulong, List<PortablePredictionRecord>> journal,
             SortedList<GameplayEffectLifecycleRevisionKey, GameplayEffectLifecycleRevisionEntry> lifecycleRevisions)
         {
+            SimulationGameplayEffectContext.CanonicalRequireSchema(reader);
+            GameplayEffectActiveControlSnapshot.CanonicalRequireSchema(reader);
+            GameplayEffectLifecycleRevisionKey.CanonicalRequireSchema(reader);
+            GameplayEffectLifecycleRevisionEntry.CanonicalRequireSchema(reader);
             GameplayEffectRuntimeCapacityLayout capacity = catalog.CapacityLayout;
             ReadTags(Block(blockReader, reader.ReadBytesSegment(), TagsMagic), catalog, tagPages, equipment, tagSources);
             ReadAttributes(Block(blockReader, reader.ReadBytesSegment(), AttributesMagic), catalog, attributes);
@@ -185,7 +193,7 @@ namespace ThirdPersonSimulation.Fixed
                 writer.WriteInt32(active.StackCount);
                 writer.WriteBoolean(active.Inhibited);
                 writer.WriteUInt64(active.LifecycleRevision);
-                WriteContextIdentity(writer, active.LifecycleContext);
+                GameplayEffectContextIdentity.CanonicalWrite(writer, active.LifecycleContext);
             }
             writer.EndLengthPrefixedBlock(prefixPosition);
         }
@@ -214,7 +222,7 @@ namespace ThirdPersonSimulation.Fixed
                 active.StackCount = reader.ReadInt32();
                 active.Inhibited = reader.ReadBoolean();
                 active.LifecycleRevision = reader.ReadUInt64();
-                active.LifecycleContext = ReadContextIdentity(reader);
+                active.LifecycleContext = GameplayEffectContextIdentity.CanonicalReadRequired(reader);
                 if (handle == 0 || instance == 0 || active.StartTick == 0 ||
                     !scratch.ActiveHandles.Add(handle) || !scratch.ActiveInstances.Add(instance) ||
                     active.InsertionSequence == 0 || active.StackCount <= 0 ||
@@ -302,7 +310,7 @@ namespace ThirdPersonSimulation.Fixed
             GameplayEffectLifecycleRevisionKey previousRevision = default;
             for (int i = 0; i < revisionCount; i++)
             {
-                GameplayEffectLifecycleRevisionCodec.Read(reader, catalog.LifecycleIdentities, out GameplayEffectLifecycleRevisionKey key,
+                GameplayEffectLifecycleRevisionCodec.Read(reader, out GameplayEffectLifecycleRevisionKey key,
                     out GameplayEffectLifecycleRevisionEntry entry);
                 if (i > 0 && key.CompareTo(previousRevision) <= 0)
                     throw new InvalidDataException("Gameplay Effect lifecycle revisions are not canonically ordered.");
@@ -318,7 +326,7 @@ namespace ThirdPersonSimulation.Fixed
             FixedGameplayEffectRuntimeCatalog catalog)
         {
             writer.WriteInt32(spec.Definition.Index);
-            WriteContext(writer, spec.Context);
+            SimulationGameplayEffectContext.CanonicalWrite(writer, spec.Context);
             WriteScalarMap(writer, spec.SetByCaller, catalog, false);
             WriteScalarMap(writer, spec.SourceAttributes, catalog, true);
             WriteScalarMap(writer, spec.TargetAttributes, catalog, true);
@@ -334,7 +342,7 @@ namespace ThirdPersonSimulation.Fixed
         {
             int definitionIndex = ReadIndex(reader, catalog.ContentLayout.Definitions.Count);
             PortableEffectDefinition definition = catalog.EffectAt(definitionIndex);
-            SimulationGameplayEffectContext context = ReadContext(reader);
+            SimulationGameplayEffectContext context = SimulationGameplayEffectContext.CanonicalReadRequired(reader);
             RequireResource(1, scratch.AvailableSpecCount);
             PortableEffectSpecState spec = scratch.AcquireDecodedSpec(definition, context);
             try
@@ -371,13 +379,13 @@ namespace ThirdPersonSimulation.Fixed
             WriteSpec(writer, record.Spec, catalog);
             writer.WriteUInt64(record.Handle);
             writer.WriteUInt64(record.InstanceId);
-            WriteContextIdentity(writer, record.CausalContext);
+            GameplayEffectContextIdentity.CanonicalWrite(writer, record.CausalContext);
             writer.WriteBoolean(record.CreatedActive);
             writer.WriteBoolean(record.HasActiveBefore);
             writer.WriteByte((byte)record.MutationKind);
             writer.WriteUInt64(record.ActiveBeforeInsertionSequence);
             if (record.HasActiveBefore)
-                WriteActiveSnapshot(writer, record.ActiveBefore);
+                GameplayEffectActiveControlSnapshot.CanonicalWrite(writer, record.ActiveBefore);
             writer.WriteBoolean(record.Confirmed);
             writer.WriteUInt64(record.PredictedInstanceId);
             writer.WriteUInt64(record.AfterLifecycleRevision);
@@ -412,13 +420,13 @@ namespace ThirdPersonSimulation.Fixed
             records.Add(record);
             record.Handle = reader.ReadUInt64();
             record.InstanceId = reader.ReadUInt64();
-            record.CausalContext = ReadContextIdentity(reader);
+            record.CausalContext = GameplayEffectContextIdentity.CanonicalReadRequired(reader);
             record.CreatedActive = reader.ReadBoolean();
             record.HasActiveBefore = reader.ReadBoolean();
             record.MutationKind = (GameplayEffectLifecycleKind)reader.ReadByte();
             record.ActiveBeforeInsertionSequence = reader.ReadUInt64();
             if (record.HasActiveBefore)
-                record.ActiveBefore = ReadActiveSnapshot(reader);
+                record.ActiveBefore = GameplayEffectActiveControlSnapshot.CanonicalRead(reader);
             record.Confirmed = reader.ReadBoolean();
             record.PredictedInstanceId = reader.ReadUInt64();
             record.AfterLifecycleRevision = reader.ReadUInt64();
@@ -452,64 +460,6 @@ namespace ThirdPersonSimulation.Fixed
                 record.HasActiveBefore && record.ActiveBeforeInsertionSequence == 0)
                 throw new InvalidDataException("Gameplay Effect prediction record identity is incomplete.");
         }
-
-        static void WriteActiveSnapshot(CanonicalWriter writer, GameplayEffectActiveControlSnapshot snapshot)
-        {
-            writer.WriteUInt64(snapshot.InstanceId);
-            writer.WriteUInt64(snapshot.StartTick);
-            writer.WriteUInt64(snapshot.EndTick);
-            writer.WriteUInt64(snapshot.NextPeriodTick);
-            writer.WriteInt32(snapshot.StackCount);
-            writer.WriteBoolean(snapshot.Inhibited);
-            writer.WriteUInt64(snapshot.LifecycleRevision);
-            WriteContextIdentity(writer, snapshot.LifecycleContext);
-        }
-
-        static GameplayEffectActiveControlSnapshot ReadActiveSnapshot(CanonicalReader reader) =>
-            new GameplayEffectActiveControlSnapshot(reader.ReadUInt64(), reader.ReadUInt64(), reader.ReadUInt64(),
-                reader.ReadUInt64(), reader.ReadInt32(), reader.ReadBoolean(), reader.ReadUInt64(),
-                ReadContextIdentity(reader));
-
-        static void WriteContext(CanonicalWriter writer, SimulationGameplayEffectContext context)
-        {
-            writer.WriteText(context.SourceActorId.Value);
-            writer.WriteText(context.TargetActorId.Value);
-            writer.WriteUInt64(context.SourceActionInstanceId);
-            writer.WriteUInt64(context.PredictionKey);
-            writer.WriteUInt64(context.GameplayResultId);
-            writer.WriteUInt64(context.SourceTick);
-            writer.WriteByte((byte)context.ApplicationMode);
-            GameplayEffectScope.CanonicalWrite(writer, context.Scope);
-            context.Holder.Write(writer);
-            context.Success.Write(writer);
-            context.WriteSuccessTarget(writer);
-        }
-
-        static SimulationGameplayEffectContext ReadContext(CanonicalReader reader) =>
-            new SimulationGameplayEffectContext(new ActorId(reader.ReadText()), new ActorId(reader.ReadText()),
-                reader.ReadUInt64(), reader.ReadUInt64(), reader.ReadUInt64(), reader.ReadUInt64(),
-                (SimulationGameplayEffectApplicationMode)reader.ReadByte(),
-                GameplayEffectScope.CanonicalRead(reader), GameplayEffectHolderIdentity.Read(reader),
-                GameplayEffectSuccessContext.Read(reader), SimulationGameplayEffectContext.ReadSuccessTarget(reader));
-
-        static void WriteContextIdentity(CanonicalWriter writer, GameplayEffectContextIdentity context)
-        {
-            writer.WriteText(context.SourceActor.Value);
-            writer.WriteText(context.TargetActor.Value);
-            writer.WriteUInt64(context.SourceActionInstanceId);
-            writer.WriteUInt64(context.PredictionKey);
-            writer.WriteUInt64(context.GameplayResultId);
-            writer.WriteUInt64(context.SourceTick);
-            writer.WriteBoolean(context.Predicted);
-            GameplayEffectScope.CanonicalWrite(writer, context.Scope);
-            context.Holder.Write(writer);
-            context.Success.Write(writer);
-        }
-
-        static GameplayEffectContextIdentity ReadContextIdentity(CanonicalReader reader) =>
-            new GameplayEffectContextIdentity(new ActorId(reader.ReadText()), new ActorId(reader.ReadText()),
-                reader.ReadUInt64(), reader.ReadUInt64(), reader.ReadUInt64(), reader.ReadUInt64(), reader.ReadBoolean(),
-                GameplayEffectScope.CanonicalRead(reader), GameplayEffectHolderIdentity.Read(reader), GameplayEffectSuccessContext.Read(reader));
 
         static void WriteModifier(CanonicalWriter writer, PortableAttributeModifierState modifier)
         {

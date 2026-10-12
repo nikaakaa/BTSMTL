@@ -98,7 +98,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
     public static class ServerAuthoritativeGameplayDatagramCodec
     {
         const uint Magic = 0x44504153;
-        public const int ProtocolVersion = 3;
+        public const int ProtocolVersion = 4;
 
         internal static bool IsSupportedKind(ServerAuthoritativeDatagramKind kind) =>
             kind == ServerAuthoritativeDatagramKind.DataPlaneHello ||

@@ -47,7 +47,8 @@ namespace ThirdPersonSimulation
         Invocation = 2
     }
 
-    public readonly struct GameplayEffectHolderIdentity : IEquatable<GameplayEffectHolderIdentity>
+    [CanonicalContract]
+    public readonly partial struct GameplayEffectHolderIdentity : IEquatable<GameplayEffectHolderIdentity>
     {
         GameplayEffectHolderIdentity(GameplayEffectLifetimeKind lifetime, ulong actionInstanceId,
             ulong executionGeneration, ulong runtimeHandle, CanonicalTextValue contentId,
@@ -86,41 +87,14 @@ namespace ThirdPersonSimulation
         public override bool Equals(object value) => value is GameplayEffectHolderIdentity other && Equals(other);
         public override int GetHashCode() => HashCode.Combine((byte)Lifetime, ActionInstanceId,
             ExecutionGeneration, RuntimeHandle, ContentId, Generation, BranchRevision, Cycle);
-        public void Retain() => ContentId.Retain();
-        public void Release() => ContentId.Release();
-        internal void Write(CanonicalWriter writer)
-        {
-            writer.WriteByte((byte)Lifetime);
-            if (Lifetime == GameplayEffectLifetimeKind.Independent)
-                return;
-            writer.WriteUInt64(ActionInstanceId);
-            writer.WriteUInt64(ExecutionGeneration);
-            if (Lifetime == GameplayEffectLifetimeKind.Action)
-                return;
-            writer.WriteUInt64(RuntimeHandle);
-            writer.WriteText(ContentId);
-            writer.WriteUInt64(Generation);
-            writer.WriteUInt64(BranchRevision);
-            writer.WriteInt32(Cycle);
-        }
-        internal static GameplayEffectHolderIdentity Read(CanonicalReader reader)
-        {
-            GameplayEffectLifetimeKind lifetime = (GameplayEffectLifetimeKind)reader.ReadByte();
-            if (lifetime == GameplayEffectLifetimeKind.Independent)
-                return Independent;
-            ulong actionInstanceId = reader.ReadUInt64();
-            ulong executionGeneration = reader.ReadUInt64();
-            return lifetime switch
-            {
-                GameplayEffectLifetimeKind.Action => Action(actionInstanceId, executionGeneration),
-                GameplayEffectLifetimeKind.Invocation => Invocation(actionInstanceId, executionGeneration,
-                    reader.ReadUInt64(), reader.ReadText(), reader.ReadUInt64(), reader.ReadUInt64(), reader.ReadInt32()),
-                _ => throw new System.IO.InvalidDataException("Gameplay Effect holder lifetime is invalid.")
-            };
-        }
+        public void Retain() => CanonicalRetain(in this);
+        public void Release() => CanonicalRelease(in this);
+
+
     }
 
-    public readonly struct GameplayEffectSuccessContext : IEquatable<GameplayEffectSuccessContext>
+    [CanonicalContract]
+    public readonly partial struct GameplayEffectSuccessContext : IEquatable<GameplayEffectSuccessContext>
     {
         public GameplayEffectSuccessContext(CanonicalTextValue eventTag, ulong eventId, ulong sourceTick,
             ulong acceptedTick, CanonicalTextValue sourceSkillId, ulong sourceInstanceId,
@@ -144,6 +118,7 @@ namespace ThirdPersonSimulation
         public ulong SourceInstanceId { get; }
         public ulong SourceSkillExecutionGeneration { get; }
         public ulong SourceSegmentGeneration { get; }
+        [CanonicalPresence]
         public bool IsValid => EventId != 0;
         public bool Equals(GameplayEffectSuccessContext other) => EventTag.Equals(other.EventTag) &&
             EventId == other.EventId && SourceTick == other.SourceTick && AcceptedTick == other.AcceptedTick &&
@@ -153,29 +128,17 @@ namespace ThirdPersonSimulation
         public override bool Equals(object value) => value is GameplayEffectSuccessContext other && Equals(other);
         public override int GetHashCode() => HashCode.Combine(EventTag, EventId, SourceTick, AcceptedTick,
             SourceSkillId, SourceInstanceId, SourceSkillExecutionGeneration, SourceSegmentGeneration);
-        public void Retain() { EventTag.Retain(); SourceSkillId.Retain(); }
-        public void Release() { SourceSkillId.Release(); EventTag.Release(); }
-        internal void Write(CanonicalWriter writer)
-        {
-            writer.WriteBoolean(IsValid);
-            if (!IsValid)
-                return;
-            writer.WriteText(EventTag);
-            writer.WriteUInt64(EventId);
-            writer.WriteUInt64(SourceTick);
-            writer.WriteUInt64(AcceptedTick);
-            writer.WriteText(SourceSkillId);
-            writer.WriteUInt64(SourceInstanceId);
-            writer.WriteUInt64(SourceSkillExecutionGeneration);
-            writer.WriteUInt64(SourceSegmentGeneration);
-        }
-        internal static GameplayEffectSuccessContext Read(CanonicalReader reader) => reader.ReadBoolean()
-            ? new GameplayEffectSuccessContext(reader.ReadText(), reader.ReadUInt64(), reader.ReadUInt64(),
-                reader.ReadUInt64(), SimulationIdentity.Require(reader.ReadText(), "value"),
-                reader.ReadUInt64(), reader.ReadUInt64(), reader.ReadUInt64()) : default;
-    }
+        public void Retain() => CanonicalRetain(in this);
+        public void Release() => CanonicalRelease(in this);
 
-    public readonly struct GameplayEffectOpportunityReference : IEquatable<GameplayEffectOpportunityReference>
+
+
+        [CanonicalValidation]
+        void RequireSourceSkill() => SimulationIdentity.Require(SourceSkillId, "value");
+}
+
+    [CanonicalContract]
+    public readonly partial struct GameplayEffectOpportunityReference : IEquatable<GameplayEffectOpportunityReference>
     {
         public GameplayEffectOpportunityReference(ulong handle, GameplayEffectSuccessContext success)
         {
@@ -188,11 +151,10 @@ namespace ThirdPersonSimulation
         public bool Equals(GameplayEffectOpportunityReference other) => Handle == other.Handle && Success.Equals(other.Success);
         public override bool Equals(object value) => value is GameplayEffectOpportunityReference other && Equals(other);
         public override int GetHashCode() => HashCode.Combine(Handle, Success);
-        public void Retain() => Success.Retain();
-        public void Release() => Success.Release();
-        internal void Write(CanonicalWriter writer) { writer.WriteUInt64(Handle); Success.Write(writer); }
-        internal static GameplayEffectOpportunityReference Read(CanonicalReader reader) =>
-            new GameplayEffectOpportunityReference(reader.ReadUInt64(), GameplayEffectSuccessContext.Read(reader));
+        public void Retain() => CanonicalRetain(in this);
+        public void Release() => CanonicalRelease(in this);
+
+
     }
 
     internal enum GameplayEffectDurationKind : byte
@@ -334,7 +296,8 @@ namespace ThirdPersonSimulation
         public GameplayEffectCueTrigger CueTrigger { get; }
     }
 
-    public readonly struct GameplayEffectContextIdentity
+    [CanonicalContract]
+    public readonly partial struct GameplayEffectContextIdentity
     {
         public GameplayEffectContextIdentity(
             ActorId sourceActor,
@@ -348,10 +311,6 @@ namespace ThirdPersonSimulation
             GameplayEffectHolderIdentity holder = default,
             GameplayEffectSuccessContext success = default)
         {
-            if (!sourceActor.IsValid || !targetActor.IsValid || sourceTick == 0)
-                throw new ArgumentException("Gameplay Effect context identity is incomplete.");
-            if (predicted && (sourceActionInstanceId == 0 || predictionKey == 0))
-                throw new ArgumentException("Predicted Gameplay Effect context requires Action and prediction identities.");
             SourceActor = sourceActor;
             TargetActor = targetActor;
             SourceActionInstanceId = sourceActionInstanceId;
@@ -362,6 +321,7 @@ namespace ThirdPersonSimulation
             Scope = scope;
             Holder = holder;
             Success = success;
+            RequireIdentity();
         }
 
         public ActorId SourceActor { get; }
@@ -374,27 +334,21 @@ namespace ThirdPersonSimulation
         public GameplayEffectScope Scope { get; }
         public GameplayEffectHolderIdentity Holder { get; }
         public GameplayEffectSuccessContext Success { get; }
+        [CanonicalPresence]
         public bool IsValid => SourceActor.IsValid && TargetActor.IsValid && SourceTick != 0;
-        public void Retain()
-        {
-            CanonicalTextValue source = SourceActor.Value;
-            CanonicalTextValue target = TargetActor.Value;
-            source.Retain();
-            target.Retain();
-            Holder.Retain();
-            Success.Retain();
-        }
+        public void Retain() => CanonicalRetain(in this);
 
-        public void Release()
+        public void Release() => CanonicalRelease(in this);
+
+        [CanonicalValidation]
+        void RequireIdentity()
         {
-            CanonicalTextValue source = SourceActor.Value;
-            CanonicalTextValue target = TargetActor.Value;
-            source.Release();
-            target.Release();
-            Holder.Release();
-            Success.Release();
+            if (!SourceActor.IsValid || !TargetActor.IsValid || SourceTick == 0)
+                throw new ArgumentException("Gameplay Effect context identity is incomplete.");
+            if (Predicted && (SourceActionInstanceId == 0 || PredictionKey == 0))
+                throw new ArgumentException("Predicted Gameplay Effect context requires Action and prediction identities.");
         }
-    }
+}
 
     internal readonly struct GameplayEffectControlDescriptor
     {
@@ -491,7 +445,8 @@ namespace ThirdPersonSimulation
         }
     }
 
-    public readonly struct GameplayEffectExecutionFailure
+    [CanonicalContract]
+    public readonly partial struct GameplayEffectExecutionFailure
     {
         public GameplayEffectExecutionFailure(
             CanonicalTextValue ownerEffectId,
@@ -533,26 +488,11 @@ namespace ThirdPersonSimulation
         public CanonicalTextValue CapacityDimension { get; }
         public int Required { get; }
         public int Available { get; }
+        [CanonicalPresence]
         public bool IsValid => Code != 0;
-        public void Retain()
-        {
-            OwnerEffectId.Retain();
-            RequestedEffectId.Retain();
-            Context.Retain();
-            Reason.Retain();
-            ParameterId.Retain();
-            CapacityDimension.Retain();
-        }
+        public void Retain() => CanonicalRetain(in this);
 
-        public void Release()
-        {
-            OwnerEffectId.Release();
-            RequestedEffectId.Release();
-            Context.Release();
-            Reason.Release();
-            ParameterId.Release();
-            CapacityDimension.Release();
-        }
+        public void Release() => CanonicalRelease(in this);
     }
 
     internal readonly struct GameplayEffectApplyResult
@@ -645,7 +585,8 @@ namespace ThirdPersonSimulation
         Instance = 3
     }
 
-    public readonly struct GameplayEffectReconciliationScope
+    [CanonicalContract]
+    public readonly partial struct GameplayEffectReconciliationScope
     {
         public GameplayEffectReconciliationScope(
             GameplayEffectReconciliationScopeKind kind,
@@ -663,16 +604,13 @@ namespace ThirdPersonSimulation
         public ulong PredictionKey { get; }
         public CanonicalTextValue EffectId { get; }
         public ulong PredictedInstanceId { get; }
-        public void Retain()
-        {
-            EffectId.Retain();
-        }
+        public void Retain() => CanonicalRetain(in this);
 
-        public void Release()
-        {
-            EffectId.Release();
-        }
-    }
+        public void Release() => CanonicalRelease(in this);
+
+        [CanonicalPresence]
+        public bool IsValid => Kind != 0;
+}
 
     public enum GameplayEffectReconciliationResultKind : byte
     {
@@ -690,7 +628,8 @@ namespace ThirdPersonSimulation
         NotReceived = 12
     }
 
-    public readonly struct GameplayEffectReconciliationResult
+    [CanonicalContract]
+    public readonly partial struct GameplayEffectReconciliationResult
     {
         public GameplayEffectReconciliationResult(
             GameplayEffectReconciliationResultKind kind,
@@ -734,22 +673,13 @@ namespace ThirdPersonSimulation
             Kind == GameplayEffectReconciliationResultKind.Corrected ||
             Kind == GameplayEffectReconciliationResultKind.Duplicate ||
             Kind == GameplayEffectReconciliationResultKind.Applied;
-        public void Retain()
-        {
-            Scope.Retain();
-            AttributeId.Retain();
-            Reason.Retain();
-            Failure.Retain();
-        }
+        public void Retain() => CanonicalRetain(in this);
 
-        public void Release()
-        {
-            Scope.Release();
-            AttributeId.Release();
-            Reason.Release();
-            Failure.Release();
-        }
-    }
+        public void Release() => CanonicalRelease(in this);
+
+        [CanonicalPresence]
+        public bool IsValid => Kind != 0;
+}
 
     [Flags]
     public enum GameplayEffectCorrectionCoverage : byte
@@ -769,7 +699,8 @@ namespace ThirdPersonSimulation
         bool CoversCue(CanonicalTextValue cueId);
     }
 
-    public readonly struct GameplayTagRuntimeChange
+    [CanonicalContract]
+    public readonly partial struct GameplayTagRuntimeChange
     {
         public GameplayTagRuntimeChange(
             GameplayTagSourceIdentityValue sourceIdentity,
@@ -790,23 +721,17 @@ namespace ThirdPersonSimulation
         }
 
         public GameplayTagSourceIdentityValue SourceIdentity { get; }
+        [CanonicalDeclaredText]
         public string TagId { get; }
         public int BeforeCount { get; }
         public int AfterCount { get; }
+        [CanonicalDeclaredText]
         public string CauseEffectId { get; }
         public ulong CauseInstanceId { get; }
         public GameplayEffectContextIdentity Context { get; }
-        public void Retain()
-        {
-            SourceIdentity.Retain();
-            Context.Retain();
-        }
+        public void Retain() => CanonicalRetain(in this);
 
-        public void Release()
-        {
-            SourceIdentity.Release();
-            Context.Release();
-        }
+        public void Release() => CanonicalRelease(in this);
     }
 
     internal readonly struct GameplayEffectRemoveRequest<TTagQuery>
@@ -838,7 +763,8 @@ namespace ThirdPersonSimulation
         public ulong HolderActionInstanceId { get; }
     }
 
-    public readonly struct GameplayEffectActiveControlSnapshot
+    [CanonicalContract]
+    public readonly partial struct GameplayEffectActiveControlSnapshot
     {
         public GameplayEffectActiveControlSnapshot(
             ulong instanceId,
@@ -867,9 +793,10 @@ namespace ThirdPersonSimulation
         public int StackCount { get; }
         public bool Inhibited { get; }
         public ulong LifecycleRevision { get; }
+        [CanonicalRequired]
         public GameplayEffectContextIdentity LifecycleContext { get; }
-        public void Retain() => LifecycleContext.Retain();
-        public void Release() => LifecycleContext.Release();
+        public void Retain() => CanonicalRetain(in this);
+        public void Release() => CanonicalRelease(in this);
     }
 
     internal class GameplayEffectActiveControlState<TSpec> : IGameplayEffectActiveControl<TSpec>

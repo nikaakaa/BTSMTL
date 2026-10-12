@@ -4,7 +4,8 @@ using ThirdPersonSimulation;
 
 namespace ThirdPersonSimulation.Fixed
 {
-    public readonly struct CharacterBodySample
+    [CanonicalContract]
+    public readonly partial struct CharacterBodySample
     {
         public CharacterBodySample(
             ActorId actorId,
@@ -16,8 +17,6 @@ namespace ThirdPersonSimulation.Fixed
             FixedScalar worldTimeScale,
             FixedScalar ownerTimeScale)
         {
-            if (!actorId.IsValid || !tick.IsValid || beforeBody.ActorId != actorId || finalBody.ActorId != actorId)
-                throw new ArgumentException("Body sample identity is incomplete.");
             ActorId = actorId;
             Tick = tick;
             BeforeBody = beforeBody;
@@ -26,6 +25,7 @@ namespace ThirdPersonSimulation.Fixed
             AppliedYawDegrees = appliedYawDegrees;
             WorldTimeScale = worldTimeScale;
             OwnerTimeScale = ownerTimeScale;
+            RequireRecord();
         }
 
         public ActorId ActorId { get; }
@@ -36,6 +36,13 @@ namespace ThirdPersonSimulation.Fixed
         public FixedScalar AppliedYawDegrees { get; }
         public FixedScalar WorldTimeScale { get; }
         public FixedScalar OwnerTimeScale { get; }
+
+        [CanonicalValidation]
+        void RequireRecord()
+        {
+            if (!ActorId.IsValid || !Tick.IsValid || BeforeBody.ActorId != ActorId || FinalBody.ActorId != ActorId)
+                throw new ArgumentException("Body sample identity is incomplete.");
+        }
     }
 
     internal interface IFixedPipelineProductValueRelease

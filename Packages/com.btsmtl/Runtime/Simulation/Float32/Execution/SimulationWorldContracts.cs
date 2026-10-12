@@ -110,7 +110,8 @@ namespace ThirdPersonSimulation
         ConstantVelocityExtrapolation = 3
     }
 
-    public readonly struct ObservedWorldConstraint
+    [CanonicalContract]
+    public readonly partial struct ObservedWorldConstraint
     {
         public ObservedWorldConstraint(
             ActorId actorId,
@@ -122,15 +123,7 @@ namespace ThirdPersonSimulation
             ObservedWorldConstraintSamplingKind samplingKind,
             StableHash contactShapeConfigurationHash)
         {
-            if (!actorId.IsValid || !targetTick.IsValid || !sourcePreviousTick.IsValid || !sourceCurrentTick.IsValid ||
-                beforeBody.ActorId != actorId || finalBody.ActorId != actorId ||
-                sourceCurrentTick.CompareTo(sourcePreviousTick) < 0 ||
-                samplingKind is not (ObservedWorldConstraintSamplingKind.Exact or
-                    ObservedWorldConstraintSamplingKind.Interpolation or ObservedWorldConstraintSamplingKind.ConstantVelocityExtrapolation) ||
-                !contactShapeConfigurationHash.IsValid)
-            {
-                throw new ArgumentException("Observed world constraint identity is incomplete or inconsistent.");
-            }
+
             ActorId = actorId;
             TargetTick = targetTick;
             BeforeBody = beforeBody;
@@ -139,6 +132,7 @@ namespace ThirdPersonSimulation
             SourceCurrentTick = sourceCurrentTick;
             SamplingKind = samplingKind;
             ContactShapeConfigurationHash = contactShapeConfigurationHash;
+                    RequireRecord();
         }
 
         public ActorId ActorId { get; }
@@ -149,6 +143,20 @@ namespace ThirdPersonSimulation
         public SimulationTick SourceCurrentTick { get; }
         public ObservedWorldConstraintSamplingKind SamplingKind { get; }
         public StableHash ContactShapeConfigurationHash { get; }
+
+        [CanonicalValidation]
+        void RequireRecord()
+        {
+            if (!ActorId.IsValid || !TargetTick.IsValid || !SourcePreviousTick.IsValid || !SourceCurrentTick.IsValid ||
+                BeforeBody.ActorId != ActorId || FinalBody.ActorId != ActorId ||
+                SourceCurrentTick.CompareTo(SourcePreviousTick) < 0 ||
+                SamplingKind is not (ObservedWorldConstraintSamplingKind.Exact or
+                    ObservedWorldConstraintSamplingKind.Interpolation or ObservedWorldConstraintSamplingKind.ConstantVelocityExtrapolation) ||
+                !ContactShapeConfigurationHash.IsValid)
+            {
+                throw new ArgumentException("Observed world constraint identity is incomplete or inconsistent.");
+            }
+        }
     }
 
     public sealed class ObservedWorldConstraintFrame
@@ -238,18 +246,24 @@ namespace ThirdPersonSimulation
 
     public static class ObservedWorldConstraintCodec
     {
-        public const string CanonicalIdentity = "float32-observed-world-constraint-frame/1";
+        public const string CanonicalIdentity = "float32-observed-world-constraint-frame/2";
 
         [ThreadStatic] static CanonicalWriter s_HashWriter;
 
         internal static int MaximumEncodedByteCount(IReadOnlyList<ActorId> actors)
         {
-            int bytes = checked(sizeof(int) + CanonicalIdentity.Length * sizeof(char) + sizeof(ulong) + sizeof(int));
-            int bodyBytes = sizeof(int) + 8 * sizeof(float) + sizeof(byte) + sizeof(uint);
-            int constraintBytes = sizeof(int) + sizeof(ulong) + 2 * bodyBytes + 2 * sizeof(ulong) +
-                sizeof(byte) + sizeof(int) + 64;
+            int bytes = checked(sizeof(int) + CanonicalIdentity.Length * sizeof(char) +
+                sizeof(int) + 64 + sizeof(ulong) + sizeof(int));
+            var tick = new SimulationTick(1);
+            var hash = new StableHash(new string('0', 64));
             for (int index = 0; index < actors.Count; index++)
-                bytes = checked(bytes + constraintBytes + 3 * actors[index].Value.Length * sizeof(char));
+            {
+                var body = new WorldBodyState(actors[index], default, default, default, default,
+                    false, WorldCollisionSummary.None);
+                var constraint = new ObservedWorldConstraint(actors[index], tick, body, body,
+                    tick, tick, ObservedWorldConstraintSamplingKind.Exact, hash);
+                bytes = checked(bytes + ObservedWorldConstraint.CanonicalMeasure(in constraint));
+            }
             return bytes;
         }
 
@@ -272,32 +286,14 @@ namespace ThirdPersonSimulation
             if (writer == null || frame == null)
                 throw new ArgumentNullException(writer == null ? nameof(writer) : nameof(frame));
             writer.WriteText(CanonicalIdentity);
+            writer.WriteHash(ObservedWorldConstraint.CanonicalSchemaHash);
             writer.WriteUInt64(frame.Tick.Value);
             writer.WriteInt32(frame.Constraints.Count);
             for (int i = 0; i < frame.Constraints.Count; i++)
-            {
-                ObservedWorldConstraint value = frame.Constraints[i];
-                writer.WriteText(value.ActorId.Value);
-                writer.WriteUInt64(value.TargetTick.Value);
-                WriteBody(writer, value.BeforeBody);
-                WriteBody(writer, value.FinalBody);
-                writer.WriteUInt64(value.SourcePreviousTick.Value);
-                writer.WriteUInt64(value.SourceCurrentTick.Value);
-                writer.WriteByte((byte)value.SamplingKind);
-                writer.WriteHash(value.ContactShapeConfigurationHash);
-            }
+                ObservedWorldConstraint.CanonicalWrite(writer, frame.Constraints[i]);
         }
 
-        static void WriteBody(CanonicalWriter writer, WorldBodyState body)
-        {
-            writer.WriteText(body.ActorId.Value);
-            writer.WriteVector3(body.Position);
-            writer.WriteYaw(body.Yaw);
-            writer.WriteVector3(body.Velocity);
-            writer.WriteScalar(body.VerticalVelocity);
-            writer.WriteBoolean(body.Grounded);
-            writer.WriteUInt32((uint)body.Collision);
-        }
+
     }
 
     public sealed class WorldSolveBatchRequest

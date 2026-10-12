@@ -97,6 +97,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         internal void RetainStorage()
         {
             m_Storage?.Retain();
+            World.RetainStateStorage();
             Input.ActorId.Retain();
             Input.Input.RetainText();
             for (int index = 0; index < World.Actors.Count; index++)
@@ -125,6 +126,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 World.Actors[index].ActorId.Release();
             Input.Input.ReleaseText();
             Input.ActorId.Release();
+            World.ReleaseStateStorage();
             m_Storage?.Release();
         }
 

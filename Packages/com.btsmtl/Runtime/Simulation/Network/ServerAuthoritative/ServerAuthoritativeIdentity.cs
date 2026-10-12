@@ -8,7 +8,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         public const string ModelId = "thirdperson.network-model.server-authoritative-hybrid";
         public const string ProtocolId = "thirdperson.protocol.server-authoritative-hybrid.outer";
         public const string SemanticVersion = "1";
-        public const int ProtocolVersion = 3;
+        public const int ProtocolVersion = 4;
 
         public static SimulationComponentIdentity CreateModel(StableHash configurationHash)
         {
@@ -21,7 +21,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative
 
         public static SimulationProtocolIdentity CreateProtocol(StableHash schemaHash)
         {
-            return new SimulationProtocolIdentity(ProtocolId, SemanticVersion, schemaHash);
+            return new SimulationProtocolIdentity(ProtocolId, SemanticVersion,
+                StableHash.Compute("server-authoritative-protocol/2", schemaHash.Value, SimulationNumericProfile.CanonicalSchema));
         }
     }
 

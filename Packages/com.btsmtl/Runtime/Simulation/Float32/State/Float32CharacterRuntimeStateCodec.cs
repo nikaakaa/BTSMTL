@@ -10,9 +10,9 @@ namespace ThirdPersonSimulation
     {
         [ThreadStatic] static CanonicalWriter s_StateWriter;
         const uint Magic = 0x54535243;
-        const int Version = 25;
-        const string HashIdentity = "float32-character-runtime-state-hash/19";
-        public const string CodecIdentity = "float32-character-runtime-state/19";
+        const int Version = 26;
+        const string HashIdentity = "float32-character-runtime-state-hash/20";
+        public const string CodecIdentity = "float32-character-runtime-state/20";
 
         public static byte[] Write(Float32CharacterRuntimeState state)
         {
@@ -120,7 +120,12 @@ namespace ThirdPersonSimulation
             }
             AbilityStateValue.CanonicalRequireSchema(reader);
             EquipmentActionContext.CanonicalRequireSchema(reader);
-            SimulationNumericProfile numericProfile = SimulationNumericProfile.ReadPublished(reader, Float32SimulationNumericProfile.Value);
+            GameplayEffectOpportunityReference.CanonicalRequireSchema(reader);
+            SimulationInputRequestState.CanonicalRequireSchema(reader);
+            SimulationExecutionSource.CanonicalRequireSchema(reader);
+            SimulationActionActivationRequestState.CanonicalRequireSchema(reader);
+            Float32ActionInstanceState.CanonicalRequireSchema(reader);
+            SimulationNumericProfile numericProfile = SimulationNumericProfile.CanonicalReadPublished(reader, Float32SimulationNumericProfile.Value);
             GameplayContentHash gameplayContentHash = GameplayContentHash.CanonicalFromHash(reader.ReadHash());
             if (!gameplayContentHash.Equals(expectedGameplayContentHash))
                 throw new InvalidDataException("Float32 Character runtime state GameplayContentHash does not match the active Character Runtime.");
@@ -250,6 +255,11 @@ namespace ThirdPersonSimulation
             writer.WriteText(CodecIdentity);
             writer.WriteHash(AbilityStateValue.CanonicalSchemaHash);
             writer.WriteHash(EquipmentActionContext.CanonicalSchemaHash);
+            writer.WriteHash(GameplayEffectOpportunityReference.CanonicalSchemaHash);
+            writer.WriteHash(SimulationInputRequestState.CanonicalSchemaHash);
+            writer.WriteHash(SimulationExecutionSource.CanonicalSchemaHash);
+            writer.WriteHash(SimulationActionActivationRequestState.CanonicalSchemaHash);
+            writer.WriteHash(Float32ActionInstanceState.CanonicalSchemaHash);
             SimulationNumericProfile.CanonicalWrite(writer, state.NumericProfile);
             writer.WriteHash(state.GameplayContentHash);
             writer.WriteHash(state.StateSchemaHash);
@@ -310,7 +320,7 @@ namespace ThirdPersonSimulation
                 reader.ReadHash(),
                 reader.ReadHash(),
                 new OperationSetVersion(actor.DeclaredIdentityReader(reader)),
-                SimulationNumericProfile.ReadPublished(reader, Float32SimulationNumericProfile.Value));
+                SimulationNumericProfile.CanonicalReadPublished(reader, Float32SimulationNumericProfile.Value));
 
         static void WriteAbilityExecutionState(
             CanonicalWriter writer,
@@ -363,7 +373,7 @@ namespace ThirdPersonSimulation
             for (int i = 0; i < requests.Length; i++)
             {
                 writer.WriteText(requests[i].Key);
-                SimulationInputRequestStateCodec.Write(writer, requests[i].Value);
+                SimulationInputRequestState.CanonicalWrite(writer, requests[i].Value);
             }
         }
 
@@ -380,7 +390,7 @@ namespace ThirdPersonSimulation
                 if (!previous.IsNull && CanonicalTextValue.CompareOrdinal(previous, requestId) >= 0 ||
                     !ContainsInputRequest(actor, requestId))
                     throw new InvalidDataException("Float32 Character Input request identities are invalid or not canonically ordered.");
-                SimulationInputRequestState value = SimulationInputRequestStateCodec.Read(reader);
+                SimulationInputRequestState value = SimulationInputRequestState.CanonicalRead(reader);
                 if (value.IsValid && !CanonicalTextValue.Equals(value.RequestId, requestId, StringComparison.Ordinal))
                     throw new InvalidDataException("Float32 Character Input request state key does not match its value.");
                 requests.Page.Values[i] = new(requestId, value);
@@ -405,27 +415,7 @@ namespace ThirdPersonSimulation
         {
             writer.WriteInt32(requests.Length);
             for (int i = 0; i < requests.Length; i++)
-            {
-                SimulationActionActivationRequestState request = requests[i];
-                writer.WriteBoolean(request.IsValid);
-                if (!request.IsValid)
-                    continue;
-                writer.WriteText(request.ActionId);
-                WriteOptionalSkill(writer, request.SkillId);
-                WriteOptionalOperation(writer, request.SkillEntryOperation);
-                writer.WriteText(request.ContextId);
-                SimulationInputRequestStateCodec.Write(writer, request.SourceInputRequest);
-                writer.WriteUInt64(request.InputSequence);
-                writer.WriteUInt64(request.StartTick);
-                writer.WriteText(request.TargetKey);
-                SimulationActionTargetSnapshot.CanonicalWrite(writer, request.TargetSnapshot);
-                SimulationExecutionSourceCodec.Write(writer, request.Source);
-                WriteEquipmentContext(writer, request.EquipmentContext);
-                GameplayAbilitySourceContext.CanonicalWrite(writer, request.ReplacementSource);
-                writer.WriteText(request.ActivationEntryId);
-                writer.WriteBoolean(request.ConsumeSourceInputRequest);
-                request.Opportunity.Write(writer);
-            }
+                SimulationActionActivationRequestState.CanonicalWrite(writer, in requests[i]);
         }
 
         static void ReadActionActivationRequests(
@@ -440,25 +430,11 @@ namespace ThirdPersonSimulation
             int requestCount = 0;
             for (int i = 0; i < count; i++)
             {
-                if (!reader.ReadBoolean())
-                    continue;
-                var request = new SimulationActionActivationRequestState(
-                    actor.ReadActionIdentity(reader),
-                    ReadOptionalSkill(reader, actor),
-                    ReadOptionalOperation(reader, null),
-                    reader.ReadText(),
-                    SimulationInputRequestStateCodec.Read(reader),
-                    reader.ReadUInt64(),
-                    reader.ReadUInt64(),
-                    reader.ReadText(),
-                    SimulationActionTargetSnapshot.CanonicalRead(reader),
-                    SimulationExecutionSourceCodec.Read(reader, actor.DeclaredIdentityReader),
-                    ReadEquipmentContext(reader, actor),
-                    GameplayAbilitySourceContext.CanonicalRead(reader),
-                    actor.DeclaredIdentityReader(reader),
-                    reader.ReadBoolean(), GameplayEffectOpportunityReference.Read(reader));
+                SimulationActionActivationRequestState request = SimulationActionActivationRequestState.CanonicalRead(reader);
                 if (!request.IsValid)
-                    throw new InvalidDataException("Float32 Action activation request identity is invalid.");
+                    continue;
+                actor.RequireActionIdentity(request.ActionId);
+                RequireEquipmentContext(request.EquipmentContext, equipmentLayout);
                 RequireSkillExecution(request.SkillId, request.SkillEntryOperation, installations);
                 RequireActivationEntry(request.SkillId, request.ActivationEntryId, installations);
                 requests[requestCount++] = request;
@@ -470,34 +446,7 @@ namespace ThirdPersonSimulation
         {
             writer.WriteInt32(actions.Length);
             for (int i = 0; i < actions.Length; i++)
-            {
-                Float32ActionInstanceState action = actions[i];
-                writer.WriteBoolean(action.IsValid);
-                if (!action.IsValid)
-                    continue;
-                writer.WriteText(action.ActionId);
-                WriteOptionalSkill(writer, action.SkillId);
-                WriteOptionalOperation(writer, action.SkillEntryOperation);
-                writer.WriteUInt64(action.SkillExecutionGeneration);
-                writer.WriteText(action.ContextId);
-                writer.WriteUInt64(action.InstanceId);
-                writer.WriteUInt64(action.PredictionKey);
-                writer.WriteText(action.SourceInputRequestId);
-                writer.WriteUInt64(action.InputSequence);
-                writer.WriteUInt64(action.StartTick);
-                writer.WriteText(action.TargetKey);
-                SimulationActionTargetSnapshot.CanonicalWrite(writer, action.TargetSnapshot);
-                SimulationExecutionSourceCodec.Write(writer, action.Source);
-                writer.WriteByte((byte)action.Phase);
-                writer.WriteByte((byte)action.State);
-                writer.WriteByte((byte)action.LastTransition);
-                writer.WriteUInt64(action.LastTransitionTick);
-                writer.WriteUInt64(action.LastTransitionSourceTick);
-                writer.WriteText(action.Reason);
-                WriteEquipmentContext(writer, action.EquipmentContext);
-                writer.WriteUInt64(action.SegmentGeneration);
-                writer.WriteText(action.ActivationEntryId);
-            }
+                Float32ActionInstanceState.CanonicalWrite(writer, in actions[i]);
         }
 
         static void ReadActionInstances(
@@ -512,33 +461,11 @@ namespace ThirdPersonSimulation
             int actionCount = 0;
             for (int i = 0; i < count; i++)
             {
-                if (!reader.ReadBoolean())
-                    continue;
-                var action = new Float32ActionInstanceState(
-                    actor.ReadActionIdentity(reader),
-                    ReadOptionalSkill(reader, actor),
-                    ReadOptionalOperation(reader, null),
-                    reader.ReadUInt64(),
-                    reader.ReadText(),
-                    reader.ReadUInt64(),
-                    reader.ReadUInt64(),
-                    reader.ReadText(),
-                    reader.ReadUInt64(),
-                    reader.ReadUInt64(),
-                    reader.ReadText(),
-                    SimulationActionTargetSnapshot.CanonicalRead(reader),
-                    SimulationExecutionSourceCodec.Read(reader, actor.DeclaredIdentityReader),
-                    ReadActionPhase(reader.ReadByte()),
-                    ReadActionState(reader.ReadByte()),
-                    ReadActionTransition(reader.ReadByte()),
-                    reader.ReadUInt64(),
-                    reader.ReadUInt64(),
-                    reader.ReadText(),
-                    ReadEquipmentContext(reader, actor),
-                    reader.ReadUInt64(),
-                    actor.DeclaredIdentityReader(reader));
+                Float32ActionInstanceState action = Float32ActionInstanceState.CanonicalRead(reader);
                 if (!action.IsValid)
-                    throw new InvalidDataException("Float32 Action instance identity is invalid.");
+                    continue;
+                actor.RequireActionIdentity(action.ActionId);
+                RequireEquipmentContext(action.EquipmentContext, equipmentLayout);
                 RequireSkillExecution(action.SkillId, action.SkillEntryOperation, installations);
                 RequireActivationEntry(action.SkillId, action.ActivationEntryId, installations);
                 actions[actionCount++] = action;
@@ -604,16 +531,6 @@ namespace ThirdPersonSimulation
             return value;
         }
 
-        static void WriteOptionalSkill(CanonicalWriter writer, CharacterSkillId value)
-        {
-            writer.WriteBoolean(value.IsValid);
-            if (value.IsValid)
-                writer.WriteText(value.Value);
-        }
-
-        static CharacterSkillId ReadOptionalSkill(CanonicalReader reader, SimulationActorBinding actor) =>
-            reader.ReadBoolean() ? new CharacterSkillId(actor.DeclaredIdentityReader(reader)) : default;
-
         static void WriteOptionalOperation(CanonicalWriter writer, OperationHandle value) =>
             writer.WriteInt32(value.IsValid ? value.Value : -1);
 
@@ -633,23 +550,12 @@ namespace ThirdPersonSimulation
                 : throw new InvalidDataException("Float32 Character runtime state requires an operation handle.");
         }
 
-        static void WriteEquipmentContext(CanonicalWriter writer, EquipmentActionContext context)
+        static void RequireEquipmentContext(in EquipmentActionContext context, EquipmentProgramLayout layout)
         {
-            writer.WriteBoolean(context.IsValid);
-            if (context.IsValid)
-                EquipmentActionContext.CanonicalWrite(writer, in context);
-        }
-
-        static EquipmentActionContext ReadEquipmentContext(CanonicalReader reader, SimulationActorBinding actor)
-        {
-            EquipmentProgramLayout layout = actor.EquipmentState.Layout;
-            if (!reader.ReadBoolean())
-                return default;
+            if (!context.IsValid)
+                return;
             if (layout == null)
                 throw new InvalidDataException("Float32 Character runtime state contains an Equipment Action Context without an Equipment layout.");
-            reader.DeclaredIdentityReader = actor.EquipmentState.Storage.IdentityReader;
-            EquipmentActionContext context = EquipmentActionContext.CanonicalRead(reader);
-            reader.DeclaredIdentityReader = actor.DeclaredIdentityReader;
             EquipmentProgramItem item = layout.RequireItem(context.EquipmentId);
             EquipmentProgramFeature feature = layout.RequireFeature(context.FeatureId);
             EquipmentProgramRoute route = layout.RequireRoute(context.RouteId);
@@ -657,10 +563,7 @@ namespace ThirdPersonSimulation
                 throw new InvalidDataException($"Equipment Action Context '{context}' has no Feature route implementation.");
             if (item.SlotId != context.SlotId || item.FeatureId != context.FeatureId ||
                 route.OwnerSlotId != context.SlotId || feature.FeatureId != context.FeatureId)
-            {
                 throw new InvalidDataException($"Equipment Action Context '{context}' does not match the Equipment layout.");
-            }
-            return context;
         }
 
         static void RequireActivationEntry(
@@ -699,50 +602,6 @@ namespace ThirdPersonSimulation
                 throw new InvalidDataException($"{label} count '{count}' is invalid.");
             return count;
         }
-
-        static SimulationActionPhase ReadActionPhase(byte value)
-        {
-            var result = (SimulationActionPhase)value;
-            if (result is not (SimulationActionPhase.Startup or
-                SimulationActionPhase.Active or
-                SimulationActionPhase.Recovery or
-                SimulationActionPhase.Cancel or
-                SimulationActionPhase.Ended))
-                throw new InvalidDataException($"Float32 Character runtime state enum '{nameof(SimulationActionPhase)}' value '{value}' is invalid.");
-            return result;
-        }
-
-        static SimulationActionState ReadActionState(byte value)
-        {
-            var result = (SimulationActionState)value;
-            if (result is not (SimulationActionState.Requested or
-                SimulationActionState.Predicted or
-                SimulationActionState.Confirmed or
-                SimulationActionState.Rejected or
-                SimulationActionState.Cancelled or
-                SimulationActionState.Interrupted or
-                SimulationActionState.Aborted or
-                SimulationActionState.Ended or
-                SimulationActionState.Corrected))
-                throw new InvalidDataException($"Float32 Character runtime state enum '{nameof(SimulationActionState)}' value '{value}' is invalid.");
-            return result;
-        }
-
-        static SimulationActionLifecycleTransitionType ReadActionTransition(byte value)
-        {
-            var result = (SimulationActionLifecycleTransitionType)value;
-            if (result is not (SimulationActionLifecycleTransitionType.None or
-                SimulationActionLifecycleTransitionType.Confirm or
-                SimulationActionLifecycleTransitionType.Complete or
-                SimulationActionLifecycleTransitionType.Cancel or
-                SimulationActionLifecycleTransitionType.Interrupt or
-                SimulationActionLifecycleTransitionType.Reject or
-                SimulationActionLifecycleTransitionType.Correct or
-                SimulationActionLifecycleTransitionType.Abort))
-                throw new InvalidDataException($"Float32 Character runtime state enum '{nameof(SimulationActionLifecycleTransitionType)}' value '{value}' is invalid.");
-            return result;
-        }
-
 
     }
 }

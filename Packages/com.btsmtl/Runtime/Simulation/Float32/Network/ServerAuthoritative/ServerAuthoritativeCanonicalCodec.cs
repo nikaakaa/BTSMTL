@@ -9,7 +9,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         const uint InputMagic = 0x49415343;
         const uint BaselineMagic = 0x42415343;
         public const int InputSchemaVersion = 5;
-        public const int BaselineSchemaVersion = 6;
+        public const int BaselineSchemaVersion = 7;
         const int MaximumCollectionCount = 4096;
         internal const int MaximumInputTextValues = 3 + 3 * MaximumCollectionCount;
 
@@ -72,7 +72,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             reader.SetTextResolver(textResolver);
             if (reader.ReadUInt32() != InputMagic || reader.ReadInt32() != InputSchemaVersion)
                 throw new InvalidDataException("ServerAuthoritative canonical input header is invalid.");
-            return SimulationNumericProfile.ReadPublished(reader, Float32SimulationNumericProfile.Value);
+            return SimulationNumericProfile.CanonicalReadPublished(reader, Float32SimulationNumericProfile.Value);
         }
 
         public static byte[] WriteBaseline(AuthoritativeActorBaseline baseline)
@@ -97,6 +97,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         {
             writer.WriteUInt32(BaselineMagic);
             writer.WriteInt32(BaselineSchemaVersion);
+            writer.WriteHash(WorldBodyState.CanonicalSchemaHash);
             writer.WriteText(baseline.ActorId.Value);
             writer.WriteUInt64(baseline.AuthorityTick.Value);
             SimulationNumericProfile.CanonicalWrite(writer, baseline.NumericProfile);
@@ -110,7 +111,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             writer.WriteText(baseline.SolverId.Value);
             writer.WriteText(baseline.SolverVersion);
             writer.WriteUInt64((ulong)baseline.SolverCapabilities);
-            WriteBody(writer, baseline.Body);
+            WorldBodyState.CanonicalWrite(writer, baseline.Body);
             writer.WriteHash(baseline.BodyHash);
             writer.WriteUInt64(baseline.ConfirmedInputSequence);
             writer.WriteUInt64(baseline.ConfirmedEventHorizon.Sequence);
@@ -127,9 +128,10 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             int version = reader.ReadInt32();
             if (version != BaselineSchemaVersion)
                 throw new InvalidDataException($"ServerAuthoritative baseline schema version '{version}' is unsupported.");
+            WorldBodyState.CanonicalRequireSchema(reader);
             var actorId = new ActorId(CanonicalTextEncoding.DecodeString(reader.ReadTextSegment()));
             var tick = new SimulationTick(reader.ReadUInt64());
-            SimulationNumericProfile numericProfile = SimulationNumericProfile.ReadPublished(reader, Float32SimulationNumericProfile.Value);
+            SimulationNumericProfile numericProfile = SimulationNumericProfile.CanonicalReadPublished(reader, Float32SimulationNumericProfile.Value);
             var targetAbiVersion = new TargetAbiVersion(reader.ReadInt32());
             string stateCodecIdentity = CanonicalTextEncoding.DecodeString(reader.ReadTextSegment());
             var gameplayContentHash = GameplayContentHash.CanonicalFromHash(reader.ReadHash());
@@ -140,7 +142,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             var solverId = new SolverImplementationId(CanonicalTextEncoding.DecodeString(reader.ReadTextSegment()));
             string solverVersion = CanonicalTextEncoding.DecodeString(reader.ReadTextSegment());
             var solverCapabilities = (WorldCapability)reader.ReadUInt64();
-            WorldBodyState body = ReadBody(reader);
+            WorldBodyState body = WorldBodyState.CanonicalRead(reader);
             var encodedBodyHash = reader.ReadHash();
             ulong confirmedInputSequence = reader.ReadUInt64();
             ulong eventSequence = reader.ReadUInt64();
@@ -172,35 +174,16 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         public static StableHash ComputeBodyHash(WorldBodyState body, CanonicalHashWriter writer)
         {
             writer.Reset();
-            writer.WriteText("server-authoritative-body/2");
-            WriteBody(writer, body);
+            writer.WriteText("server-authoritative-body/3");
+            writer.WriteHash(WorldBodyState.CanonicalSchemaHash);
+            WorldBodyState.CanonicalWrite(writer, body);
             return writer.ComputeHash();
         }
 
 
-        static void WriteBody<TWriter>(TWriter writer, WorldBodyState body)
-            where TWriter : class, ICanonicalValueWriter
-        {
-            writer.WriteText(body.ActorId.Value);
-            Float32Vector3.CanonicalWrite(writer, body.Position);
-            Float32Yaw.CanonicalWrite(writer, body.Yaw);
-            Float32Vector3.CanonicalWrite(writer, body.Velocity);
-            Float32Scalar.CanonicalWrite(writer, body.VerticalVelocity);
-            writer.WriteBoolean(body.Grounded);
-            writer.WriteUInt32((uint)body.Collision);
-        }
 
-        static WorldBodyState ReadBody(CanonicalReader reader)
-        {
-            return new WorldBodyState(
-                new ActorId(CanonicalTextEncoding.DecodeString(reader.ReadTextSegment())),
-                reader.ReadVector3(),
-                reader.ReadYaw(),
-                reader.ReadVector3(),
-                reader.ReadScalar(),
-                reader.ReadBoolean(),
-                (WorldCollisionSummary)reader.ReadUInt32());
-        }
+
+
 
     }
 }

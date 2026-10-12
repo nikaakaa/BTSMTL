@@ -11,7 +11,8 @@ namespace ThirdPersonSimulation
         ActiveSubject = 3
     }
 
-    internal readonly struct GameplayEffectLifecycleRevisionKey : IComparable<GameplayEffectLifecycleRevisionKey>
+    [CanonicalContract]
+    internal readonly partial struct GameplayEffectLifecycleRevisionKey : IComparable<GameplayEffectLifecycleRevisionKey>
     {
         GameplayEffectLifecycleRevisionKey(GameplayEffectLifecycleRevisionKeyKind kind, ulong instanceId,
             ActorId sourceActor, GameplayEffectReconciliationScope scope)
@@ -42,17 +43,9 @@ namespace ThirdPersonSimulation
                     scope.Kind == GameplayEffectReconciliationScopeKind.PredictionKey ? string.Empty : scope.EffectId,
                     scope.Kind == GameplayEffectReconciliationScopeKind.Instance ? scope.PredictedInstanceId : 0));
 
-        internal void Retain()
-        {
-            SourceActor.Retain();
-            Scope.Retain();
-        }
+        internal void Retain() => CanonicalRetain(in this);
 
-        internal void Release()
-        {
-            SourceActor.Release();
-            Scope.Release();
-        }
+        internal void Release() => CanonicalRelease(in this);
 
         public int CompareTo(GameplayEffectLifecycleRevisionKey other)
         {
@@ -75,7 +68,8 @@ namespace ThirdPersonSimulation
         }
     }
 
-    internal readonly struct GameplayEffectLifecycleRevisionEntry
+    [CanonicalContract]
+    internal readonly partial struct GameplayEffectLifecycleRevisionEntry
     {
         internal GameplayEffectLifecycleRevisionEntry(ulong revision, ulong acceptedTick, ulong acceptedChangeCursor,
             GameplayEffectLifecycleKind operation, bool touchesActive, in GameplayEffectReconciliationResult result)
@@ -99,8 +93,8 @@ namespace ThirdPersonSimulation
             ulong acceptedChangeCursor, GameplayEffectLifecycleKind operation) =>
             new GameplayEffectLifecycleRevisionEntry(revision, acceptedTick, acceptedChangeCursor, operation, true, default);
 
-        internal void Retain() => Result.Retain();
-        internal void Release() => Result.Release();
+        internal void Retain() => CanonicalRetain(in this);
+        internal void Release() => CanonicalRelease(in this);
 
         internal bool Matches(in GameplayEffectLifecycleRevisionEntry other)
         {
@@ -233,43 +227,17 @@ namespace ThirdPersonSimulation
         internal static void Write(CanonicalWriter writer, in GameplayEffectLifecycleRevisionKey key,
             in GameplayEffectLifecycleRevisionEntry entry)
         {
-            writer.WriteByte((byte)key.Kind);
-            if (key.Kind != GameplayEffectLifecycleRevisionKeyKind.Reconciliation)
-                writer.WriteUInt64(key.InstanceId);
-            else
-            {
-                writer.WriteText(key.SourceActor.Value);
-                WriteScope(writer, key.Scope);
-            }
-            writer.WriteUInt64(entry.Revision);
-            writer.WriteUInt64(entry.AcceptedTick);
-            writer.WriteUInt64(entry.AcceptedChangeCursor);
-            writer.WriteByte((byte)entry.Operation);
-            if (key.Kind == GameplayEffectLifecycleRevisionKeyKind.ActiveSubject)
-                return;
-            writer.WriteBoolean(entry.TouchesActive);
-            WriteResult(writer, entry.Result);
+            GameplayEffectLifecycleRevisionKey.CanonicalWrite(writer, in key);
+            GameplayEffectLifecycleRevisionEntry.CanonicalWrite(writer, in entry);
         }
 
-        internal static void Read(CanonicalReader reader, GameplayEffectPublishedIdentityReader identities,
-            out GameplayEffectLifecycleRevisionKey key,
-            out GameplayEffectLifecycleRevisionEntry entry)
+        internal static void Read(CanonicalReader reader,
+            out GameplayEffectLifecycleRevisionKey key, out GameplayEffectLifecycleRevisionEntry entry)
         {
-            GameplayEffectLifecycleRevisionKeyKind kind = (GameplayEffectLifecycleRevisionKeyKind)reader.ReadByte();
-            if (kind == GameplayEffectLifecycleRevisionKeyKind.Instance ||
-                kind == GameplayEffectLifecycleRevisionKeyKind.ActiveSubject)
+            key = GameplayEffectLifecycleRevisionKey.CanonicalRead(reader);
+            if (key.Kind == GameplayEffectLifecycleRevisionKeyKind.Reconciliation)
             {
-                ulong instanceId = reader.ReadUInt64();
-                if (instanceId == 0)
-                    throw new System.IO.InvalidDataException("Gameplay Effect lifecycle instance identity is invalid.");
-                key = kind == GameplayEffectLifecycleRevisionKeyKind.Instance
-                    ? GameplayEffectLifecycleRevisionKey.ForInstance(instanceId)
-                    : GameplayEffectLifecycleRevisionKey.ForActiveSubject(instanceId);
-            }
-            else if (kind == GameplayEffectLifecycleRevisionKeyKind.Reconciliation)
-            {
-                ActorId source = new ActorId(reader.ReadText());
-                GameplayEffectReconciliationScope scope = ReadScope(reader, identities);
+                GameplayEffectReconciliationScope scope = key.Scope;
                 bool selected = scope.PredictionKey != 0 && (
                     scope.Kind == GameplayEffectReconciliationScopeKind.PredictionKey &&
                         scope.EffectId.IsEmpty && scope.PredictedInstanceId == 0 ||
@@ -279,113 +247,23 @@ namespace ThirdPersonSimulation
                         !scope.EffectId.IsEmpty && scope.PredictedInstanceId != 0);
                 if (!selected)
                     throw new System.IO.InvalidDataException("Gameplay Effect lifecycle reconciliation identity is invalid.");
-                key = GameplayEffectLifecycleRevisionKey.ForReconciliation(source, scope);
             }
-            else
-                throw new System.IO.InvalidDataException("Gameplay Effect lifecycle revision key kind is invalid.");
-            ulong revision = reader.ReadUInt64();
-            ulong tick = reader.ReadUInt64();
-            ulong cursor = reader.ReadUInt64();
-            GameplayEffectLifecycleKind operation = (GameplayEffectLifecycleKind)reader.ReadByte();
-            if (revision == 0 || tick == 0 || operation < GameplayEffectLifecycleKind.Applied ||
-                operation > GameplayEffectLifecycleKind.Overflow)
+            else if (key.InstanceId == 0)
+                throw new System.IO.InvalidDataException("Gameplay Effect lifecycle instance identity is invalid.");
+            entry = GameplayEffectLifecycleRevisionEntry.CanonicalRead(reader);
+            if (entry.Revision == 0 || entry.AcceptedTick == 0)
                 throw new System.IO.InvalidDataException("Gameplay Effect lifecycle revision result is invalid.");
-            if (kind == GameplayEffectLifecycleRevisionKeyKind.ActiveSubject)
-            {
-                entry = GameplayEffectLifecycleRevisionEntry.ForActiveSubject(revision, tick, cursor, operation);
+            if (key.Kind == GameplayEffectLifecycleRevisionKeyKind.ActiveSubject)
                 return;
-            }
-            bool touchesActive = reader.ReadBoolean();
-            GameplayEffectReconciliationResult result = ReadResult(reader, identities);
-            bool reconciliation = operation == GameplayEffectLifecycleKind.Confirmed ||
-                operation == GameplayEffectLifecycleKind.Rejected || operation == GameplayEffectLifecycleKind.Corrected;
+            GameplayEffectReconciliationResult result = entry.Result;
+            bool reconciliation = entry.Operation == GameplayEffectLifecycleKind.Confirmed ||
+                entry.Operation == GameplayEffectLifecycleKind.Rejected || entry.Operation == GameplayEffectLifecycleKind.Corrected;
             if (result.Kind < GameplayEffectReconciliationResultKind.Confirmed ||
-                result.Kind > GameplayEffectReconciliationResultKind.Applied || result.AuthoritativeRevision != revision ||
+                result.Kind > GameplayEffectReconciliationResultKind.Applied || result.AuthoritativeRevision != entry.Revision ||
                 reconciliation != (key.Kind == GameplayEffectLifecycleRevisionKeyKind.Reconciliation) ||
                 reconciliation && GameplayEffectLifecycleRevisionKey.ForReconciliation(key.SourceActor, result.Scope).CompareTo(key) != 0)
                 throw new System.IO.InvalidDataException("Gameplay Effect lifecycle revision result is invalid.");
-            entry = new GameplayEffectLifecycleRevisionEntry(revision, tick, cursor, operation, touchesActive, result);
         }
 
-        static void WriteScope(CanonicalWriter writer, in GameplayEffectReconciliationScope scope)
-        {
-            writer.WriteByte((byte)scope.Kind);
-            writer.WriteUInt64(scope.PredictionKey);
-            writer.WriteText(scope.EffectId);
-            writer.WriteUInt64(scope.PredictedInstanceId);
-        }
-
-        static GameplayEffectReconciliationScope ReadScope(CanonicalReader reader, GameplayEffectPublishedIdentityReader identities) =>
-            new GameplayEffectReconciliationScope((GameplayEffectReconciliationScopeKind)reader.ReadByte(),
-                reader.ReadUInt64(), identities.Read(reader), reader.ReadUInt64());
-
-        static void WriteResult(CanonicalWriter writer, in GameplayEffectReconciliationResult result)
-        {
-            writer.WriteByte((byte)result.Kind);
-            WriteScope(writer, result.Scope);
-            writer.WriteUInt64(result.AuthoritativeInstanceId);
-            writer.WriteUInt64(result.AuthoritativeRevision);
-            writer.WriteInt32(result.RecordCount);
-            writer.WriteUInt64(result.PredictedInstanceId);
-            writer.WriteUInt64(result.PredictedRevision);
-            writer.WriteUInt64(result.CurrentRevision);
-            writer.WriteText(result.AttributeId);
-            writer.WriteText(result.Reason);
-            WriteFailure(writer, result.Failure);
-        }
-
-        static GameplayEffectReconciliationResult ReadResult(CanonicalReader reader, GameplayEffectPublishedIdentityReader identities) =>
-            new GameplayEffectReconciliationResult((GameplayEffectReconciliationResultKind)reader.ReadByte(),
-                ReadScope(reader, identities), reader.ReadUInt64(), reader.ReadUInt64(), reader.ReadInt32(),
-                reader.ReadUInt64(), reader.ReadUInt64(), reader.ReadUInt64(), identities.Read(reader),
-                reader.ReadText(), ReadFailure(reader, identities));
-
-        static void WriteFailure(CanonicalWriter writer, in GameplayEffectExecutionFailure failure)
-        {
-            writer.WriteBoolean(failure.IsValid);
-            if (!failure.IsValid)
-                return;
-            writer.WriteText(failure.OwnerEffectId);
-            writer.WriteUInt64(failure.OwnerInstanceId);
-            writer.WriteByte((byte)failure.Trigger);
-            writer.WriteText(failure.RequestedEffectId);
-            WriteContext(writer, failure.Context);
-            writer.WriteUInt64(failure.Tick);
-            writer.WriteByte((byte)failure.Code);
-            writer.WriteText(failure.Reason);
-            writer.WriteText(failure.ParameterId);
-            writer.WriteText(failure.CapacityDimension);
-            writer.WriteInt32(failure.Required);
-            writer.WriteInt32(failure.Available);
-        }
-
-        static GameplayEffectExecutionFailure ReadFailure(CanonicalReader reader, GameplayEffectPublishedIdentityReader identities) =>
-            reader.ReadBoolean() ? new GameplayEffectExecutionFailure(identities.Read(reader), reader.ReadUInt64(),
-                (GameplayEffectLifecycleKind)reader.ReadByte(), identities.Read(reader), ReadContext(reader),
-                reader.ReadUInt64(), (GameplayEffectApplyResultKind)reader.ReadByte(), reader.ReadText(),
-                identities.Read(reader), reader.ReadText(), reader.ReadInt32(), reader.ReadInt32()) : default;
-
-        static void WriteContext(CanonicalWriter writer, in GameplayEffectContextIdentity context)
-        {
-            writer.WriteBoolean(context.IsValid);
-            if (!context.IsValid)
-                return;
-            writer.WriteText(context.SourceActor.Value);
-            writer.WriteText(context.TargetActor.Value);
-            writer.WriteUInt64(context.SourceActionInstanceId);
-            writer.WriteUInt64(context.PredictionKey);
-            writer.WriteUInt64(context.GameplayResultId);
-            writer.WriteUInt64(context.SourceTick);
-            writer.WriteBoolean(context.Predicted);
-            GameplayEffectScope.CanonicalWrite(writer, context.Scope);
-            context.Holder.Write(writer);
-            context.Success.Write(writer);
-        }
-
-        static GameplayEffectContextIdentity ReadContext(CanonicalReader reader) =>
-            reader.ReadBoolean() ? new GameplayEffectContextIdentity(new ActorId(reader.ReadText()),
-                new ActorId(reader.ReadText()), reader.ReadUInt64(), reader.ReadUInt64(),
-                reader.ReadUInt64(), reader.ReadUInt64(), reader.ReadBoolean(),
-                GameplayEffectScope.CanonicalRead(reader), GameplayEffectHolderIdentity.Read(reader), GameplayEffectSuccessContext.Read(reader)) : default;
     }
 }

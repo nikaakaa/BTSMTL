@@ -3,7 +3,8 @@ using System.Collections.Generic;
 
 namespace ThirdPersonSimulation
 {
-    public readonly struct CharacterBodySample
+    [CanonicalContract]
+    public readonly partial struct CharacterBodySample
     {
         public CharacterBodySample(
             ActorId actorId,
@@ -13,14 +14,13 @@ namespace ThirdPersonSimulation
             Float32Vector3 appliedDisplacement,
             Float32Scalar appliedYawDegrees)
         {
-            if (!actorId.IsValid || !tick.IsValid || beforeBody.ActorId != actorId || finalBody.ActorId != actorId)
-                throw new ArgumentException("Body sample identity is incomplete.");
             ActorId = actorId;
             Tick = tick;
             BeforeBody = beforeBody;
             FinalBody = finalBody;
             AppliedDisplacement = appliedDisplacement;
             AppliedYawDegrees = appliedYawDegrees;
+            RequireRecord();
         }
 
         public ActorId ActorId { get; }
@@ -29,6 +29,13 @@ namespace ThirdPersonSimulation
         public WorldBodyState FinalBody { get; }
         public Float32Vector3 AppliedDisplacement { get; }
         public Float32Scalar AppliedYawDegrees { get; }
+
+        [CanonicalValidation]
+        void RequireRecord()
+        {
+            if (!ActorId.IsValid || !Tick.IsValid || BeforeBody.ActorId != ActorId || FinalBody.ActorId != ActorId)
+                throw new ArgumentException("Body sample identity is incomplete.");
+        }
     }
 
     internal interface IFloat32PipelineProductValueRelease

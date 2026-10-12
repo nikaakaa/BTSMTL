@@ -11,7 +11,8 @@ namespace ThirdPersonSimulation
         AbilityRule = 5
     }
 
-    public readonly struct SimulationExecutionSource : IEquatable<SimulationExecutionSource>
+    [CanonicalContract]
+    public readonly partial struct SimulationExecutionSource : IEquatable<SimulationExecutionSource>
     {
         SimulationExecutionSource(
             SimulationExecutionSourceKind kind,
@@ -25,26 +26,6 @@ namespace ThirdPersonSimulation
             CanonicalTextValue ruleId = default,
             GameplayAbilityRulePhase rulePhase = default)
         {
-            if (kind != SimulationExecutionSourceKind.SkillOperation &&
-                kind != SimulationExecutionSourceKind.CharacterControl &&
-                kind != SimulationExecutionSourceKind.BlackboardCommand &&
-                kind != SimulationExecutionSourceKind.GameplayEffect &&
-                kind != SimulationExecutionSourceKind.AbilityRule)
-                throw new ArgumentOutOfRangeException(nameof(kind));
-            if (kind == SimulationExecutionSourceKind.SkillOperation &&
-                (!operation.IsValid || CanonicalTextValue.IsNullOrWhiteSpace(executionPath) || moduleId.IsValid || stateId.IsValid || transitionId.IsValid))
-            {
-                throw new ArgumentException("Skill execution source is incomplete.");
-            }
-            if (kind == SimulationExecutionSourceKind.CharacterControl &&
-                (!moduleId.IsValid || !stateId.IsValid && !transitionId.IsValid || operation.IsValid || !CanonicalTextValue.IsNullOrEmpty(executionPath)))
-            {
-                throw new ArgumentException("Character control execution source is incomplete.");
-            }
-            if (kind == SimulationExecutionSourceKind.BlackboardCommand &&
-                (CanonicalTextValue.IsNullOrWhiteSpace(blackboardDeclaration) || operation.IsValid || !CanonicalTextValue.IsNullOrEmpty(executionPath) ||
-                 moduleId.IsValid || stateId.IsValid || transitionId.IsValid))
-                throw new ArgumentException("Blackboard command execution source is incomplete.");
             Kind = kind;
             Operation = operation;
             ExecutionPath = executionPath.IsNull ? CanonicalTextValue.Empty : executionPath;
@@ -55,6 +36,7 @@ namespace ThirdPersonSimulation
             AbilityId = abilityId;
             RuleId = ruleId.IsNull ? CanonicalTextValue.Empty : ruleId;
             RulePhase = rulePhase;
+            RequireStructure();
         }
 
         public static SimulationExecutionSource FromSkillOperation(OperationHandle operation, CanonicalTextValue executionPath) =>
@@ -107,6 +89,7 @@ namespace ThirdPersonSimulation
         public bool IsSkillOperation => Kind == SimulationExecutionSourceKind.SkillOperation;
         public bool IsCharacterControl => Kind == SimulationExecutionSourceKind.CharacterControl;
         public bool IsAbilityRule => Kind == SimulationExecutionSourceKind.AbilityRule;
+        [CanonicalPresence]
         public bool IsValid => IsGameplayEffect || (IsAbilityRule
             ? AbilityId.IsValid && !CanonicalTextValue.IsNullOrEmpty(RuleId) &&
                 (RulePhase == GameplayAbilityRulePhase.BeforeAbility || RulePhase == GameplayAbilityRulePhase.AfterAbility)
@@ -142,83 +125,31 @@ namespace ThirdPersonSimulation
         public override int GetHashCode() => HashCode.Combine(
             HashCode.Combine(Kind, Operation, ExecutionPath, ModuleId, StateId, TransitionId, BlackboardDeclaration),
             AbilityId, RuleId, RulePhase);
-        public void Retain() { ExecutionPath.Retain(); BlackboardDeclaration.Retain(); RuleId.Retain(); }
-        public void Release() { ExecutionPath.Release(); BlackboardDeclaration.Release(); RuleId.Release(); }
+        public void Retain() => CanonicalRetain(in this);
+        public void Release() => CanonicalRelease(in this);
         public override string ToString() => Identity;
         public static bool operator ==(SimulationExecutionSource left, SimulationExecutionSource right) => left.Equals(right);
         public static bool operator !=(SimulationExecutionSource left, SimulationExecutionSource right) => !left.Equals(right);
-    }
 
-    public static class SimulationExecutionSourceCodec
-    {
-        public static void Write(CanonicalWriter writer, SimulationExecutionSource source)
+        [CanonicalValidation]
+        void RequireStructure()
         {
-            if (writer == null)
-                throw new ArgumentNullException(nameof(writer));
-            if (!source.IsValid)
-                throw new ArgumentException("Execution source is invalid.", nameof(source));
-            writer.WriteByte((byte)source.Kind);
-            if (source.IsAbilityRule)
+            if (Kind == SimulationExecutionSourceKind.SkillOperation &&
+                (!Operation.IsValid || CanonicalTextValue.IsNullOrWhiteSpace(ExecutionPath) || ModuleId.IsValid || StateId.IsValid || TransitionId.IsValid))
             {
-                writer.WriteText(source.AbilityId.Value);
-                writer.WriteText(source.RuleId);
-                writer.WriteByte((byte)source.RulePhase);
-                return;
+                throw new ArgumentException("Skill execution source is incomplete.");
             }
-            if (source.IsGameplayEffect)
-                return;
-            if (source.IsSkillOperation)
+            if (Kind == SimulationExecutionSourceKind.CharacterControl &&
+                (!ModuleId.IsValid || !StateId.IsValid && !TransitionId.IsValid || Operation.IsValid || !CanonicalTextValue.IsNullOrEmpty(ExecutionPath)))
             {
-                writer.WriteInt32(source.Operation.Value);
-                writer.WriteText(source.ExecutionPath);
-                return;
+                throw new ArgumentException("Character control execution source is incomplete.");
             }
-            if (source.IsBlackboardCommand)
-            {
-                writer.WriteText(source.BlackboardDeclaration);
-                return;
-            }
-            writer.WriteText(source.ModuleId.Value);
-            writer.WriteText(source.StateId.Value);
-            writer.WriteText(source.TransitionId.Value);
+            if (Kind == SimulationExecutionSourceKind.BlackboardCommand &&
+                (CanonicalTextValue.IsNullOrWhiteSpace(BlackboardDeclaration) || Operation.IsValid || !CanonicalTextValue.IsNullOrEmpty(ExecutionPath) ||
+                 ModuleId.IsValid || StateId.IsValid || TransitionId.IsValid))
+                throw new ArgumentException("Blackboard command execution source is incomplete.");
         }
+}
 
-        public static SimulationExecutionSource Read(CanonicalReader reader, Func<CanonicalReader, string> readDeclaredIdentity)
-        {
-            if (reader == null)
-                throw new ArgumentNullException(nameof(reader));
-            SimulationExecutionSourceKind kind = (SimulationExecutionSourceKind)reader.ReadByte();
-            return kind switch
-            {
-                SimulationExecutionSourceKind.AbilityRule =>
-                    SimulationExecutionSource.FromAbilityRule(new CharacterSkillId(readDeclaredIdentity(reader)),
-                        reader.ReadText(), (GameplayAbilityRulePhase)reader.ReadByte()),
-                SimulationExecutionSourceKind.GameplayEffect => SimulationExecutionSource.FromGameplayEffect(),
-                SimulationExecutionSourceKind.SkillOperation =>
-                    SimulationExecutionSource.FromSkillOperation(
-                        new OperationHandle(reader.ReadInt32()),
-                        reader.ReadText()),
-                SimulationExecutionSourceKind.BlackboardCommand =>
-                    SimulationExecutionSource.FromBlackboardCommand(reader.ReadText()),
-                SimulationExecutionSourceKind.CharacterControl =>
-                    SimulationExecutionSource.FromCharacterControl(
-                        new CharacterControlModuleId(readDeclaredIdentity(reader)),
-                        ReadOptionalState(reader, readDeclaredIdentity),
-                        ReadOptionalTransition(reader, readDeclaredIdentity)),
-                _ => throw new InvalidOperationException($"Execution source kind '{kind}' is invalid.")
-            };
-        }
 
-        static CharacterControlStateId ReadOptionalState(CanonicalReader reader, Func<CanonicalReader, string> readDeclaredIdentity)
-        {
-            string value = readDeclaredIdentity(reader);
-            return string.IsNullOrEmpty(value) ? default : new CharacterControlStateId(value);
-        }
-
-        static CharacterControlTransitionId ReadOptionalTransition(CanonicalReader reader, Func<CanonicalReader, string> readDeclaredIdentity)
-        {
-            string value = readDeclaredIdentity(reader);
-            return string.IsNullOrEmpty(value) ? default : new CharacterControlTransitionId(value);
-        }
-    }
 }

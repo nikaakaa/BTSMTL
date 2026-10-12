@@ -23,7 +23,8 @@ namespace ThirdPersonSimulation
         ActionTarget = 2
     }
 
-    public readonly struct PresentationAudioRequest
+    [CanonicalContract]
+    public readonly partial struct PresentationAudioRequest
     {
         public PresentationAudioRequest(PresentationAudioCommand command, int resourceSlot,
             PresentationAudioTarget target, PresentationAudioLifetime lifetime,
@@ -37,6 +38,9 @@ namespace ThirdPersonSimulation
             ParameterSlot = parameterSlot;
             ParameterValue = parameterValue;
         }
+
+        [CanonicalPresence]
+        public bool IsValid => Command != 0;
 
         public PresentationAudioCommand Command { get; }
         public int ResourceSlot { get; }
@@ -73,7 +77,8 @@ namespace ThirdPersonSimulation
                 PresentationAudioLifetime.Action, soundSlot, parameterSlot, value);
     }
 
-    public readonly struct AudioPlaybackOwner : IEquatable<AudioPlaybackOwner>
+    [CanonicalContract]
+    public readonly partial struct AudioPlaybackOwner : IEquatable<AudioPlaybackOwner>
     {
         public AudioPlaybackOwner(ActorId actorId, ulong actionInstanceId,
             ulong timelineRuntimeHandle, ulong playbackGeneration)

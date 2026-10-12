@@ -17,7 +17,7 @@ namespace ThirdPersonSimulation
         RejectOverflow = 2
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+    [CanonicalContract(MaterializedRead = true, PreparedRead = false, PublishedRead = true)]
     public readonly partial struct SimulationNumericProfile : IEquatable<SimulationNumericProfile>
     {
         public SimulationNumericProfile(
@@ -54,11 +54,7 @@ namespace ThirdPersonSimulation
         public bool DeterministicReplay { get; }
         public bool IsValid => Id.IsValid && AbiVersion.IsValid && ScalarBits > 0;
 
-        internal static SimulationNumericProfile ReadPublished(CanonicalReader reader, in SimulationNumericProfile publishedProfile)
-        {
-            CanonicalWrite(reader.MatchWriter, in publishedProfile);
-            return publishedProfile;
-        }
+
 
         public bool Equals(SimulationNumericProfile other)
         {

@@ -168,8 +168,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative
     {
         const uint FullMagic = 0x50434E53;
         const uint DeltaMagic = 0x44434E53;
-        const int FullVersion = 18;
-        const int DeltaVersion = 21;
+        const int FullVersion = 19;
+        const int DeltaVersion = 22;
         const string PresentationChannel = "Presentation";
 
         public static NetworkCheckpoint Capture(NetworkCheckpointLayout layout, AuthoritativeActorBaseline baseline)
@@ -199,7 +199,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             writer.WriteText(baseline.SolverId.Value);
             writer.WriteText(baseline.SolverVersion);
             writer.WriteUInt64((ulong)baseline.SolverCapabilities);
-            WriteBody(writer, baseline.Body);
+            WorldBodyState.CanonicalWrite(writer, baseline.Body);
             writer.WriteUInt64(baseline.ConfirmedInputSequence);
             WriteHorizon(writer, baseline.ConfirmedEventHorizon);
             writer.WriteBytes(checkpoint.StateSpan);
@@ -278,7 +278,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             writer.WriteText(value.SolverId.Value);
             writer.WriteText(value.SolverVersion);
             writer.WriteUInt64((ulong)value.SolverCapabilities);
-            WriteBody(writer, value.Body);
+            WorldBodyState.CanonicalWrite(writer, value.Body);
             writer.WriteUInt64(value.ConfirmedInputSequence);
             WriteDeltaHorizon(writer, previous.ConfirmedEventHorizon, value.ConfirmedEventHorizon);
             ReadOnlySpan<byte> targetState = target.StateSpan;
@@ -571,30 +571,14 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             return new ServerAuthoritativeEventHorizon(sequence, EventId.FromBytes(bytes.AsSpan()));
         }
 
-        static void WriteBody(CanonicalWriter writer, WorldBodyState body)
-        {
-            writer.WriteText(body.ActorId.Value);
-            writer.WriteVector3(body.Position);
-            writer.WriteYaw(body.Yaw);
-            writer.WriteVector3(body.Velocity);
-            writer.WriteScalar(body.VerticalVelocity);
-            writer.WriteBoolean(body.Grounded);
-            writer.WriteUInt32((uint)body.Collision);
-        }
+
 
         static WorldBodyState ReadBody(CanonicalReader reader, ActorId actorId)
         {
-            var encodedActorId = new ActorId(CanonicalTextEncoding.DecodeString(reader.ReadTextSegment()));
-            if (encodedActorId != actorId)
+            WorldBodyState body = WorldBodyState.CanonicalRead(reader);
+            if (body.ActorId != actorId)
                 throw new InvalidDataException("Network Checkpoint body ActorId is invalid.");
-            return new WorldBodyState(
-                actorId,
-                reader.ReadVector3(),
-                reader.ReadYaw(),
-                reader.ReadVector3(),
-                reader.ReadScalar(),
-                reader.ReadBoolean(),
-                (WorldCollisionSummary)reader.ReadUInt32());
+            return body;
         }
 
         static void WriteHorizon(CanonicalWriter writer, ServerAuthoritativeEventHorizon horizon)

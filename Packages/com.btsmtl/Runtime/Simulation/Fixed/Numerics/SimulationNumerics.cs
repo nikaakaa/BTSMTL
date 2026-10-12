@@ -17,6 +17,15 @@ namespace ThirdPersonSimulation.Fixed
             SimulationNumericRoundingMode.FixedNearestEven,
             SimulationNumericOverflowMode.RejectOverflow,
             true);
+
+        public static CanonicalPublishedValues PublishedValues { get; } = PreparePublishedValues();
+
+        static CanonicalPublishedValues PreparePublishedValues()
+        {
+            var values = new CanonicalPublishedValues();
+            values.Add(Value);
+            return values;
+        }
     }
 
     public sealed class FixedSimulationTargetManifest

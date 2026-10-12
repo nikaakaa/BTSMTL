@@ -885,7 +885,7 @@ namespace ThirdPersonSimulation.Fixed
                 throw new InvalidDataException("Simulation World Snapshot header is invalid.");
             var expectedHash = SimulationWorldHash.CanonicalFromHash(reader.ReadHash());
             int hashPayloadStart = bytes.Length - reader.Remaining;
-            SimulationNumericProfile numeric = SimulationNumericProfile.ReadPublished(reader, snapshot.NumericProfile);
+            SimulationNumericProfile numeric = SimulationNumericProfile.CanonicalReadPublished(reader, snapshot.NumericProfile);
             var content = GameplayContentHash.CanonicalFromHash(reader.ReadHash());
             StableHash schema = reader.ReadHash();
             reader.RequireText(snapshot.SolverId.Value);

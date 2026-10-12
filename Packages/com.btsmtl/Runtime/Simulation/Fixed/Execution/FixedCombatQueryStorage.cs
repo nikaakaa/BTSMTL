@@ -4,7 +4,9 @@ using ThirdPersonSimulation.Collision;
 
 namespace ThirdPersonSimulation.Fixed
 {
-    public sealed class CombatHitResult
+    [CanonicalContract]
+    [CanonicalBorrowedObject(typeof(FixedCombatResultStorage))]
+    public sealed partial class CombatHitResult
     {
         public ulong ResultId { get; internal set; }
         public ulong SourceTick { get; internal set; }
@@ -36,6 +38,7 @@ namespace ThirdPersonSimulation.Fixed
             get => m_Attack;
             internal set { value.Retain(); m_Attack.Release(); m_Attack = value; }
         }
+        [CanonicalDeclaredText]
         public string ContentId { get; internal set; }
         CanonicalTextValue m_AttackEventId;
         public CanonicalTextValue AttackEventId
@@ -43,7 +46,9 @@ namespace ThirdPersonSimulation.Fixed
             get => m_AttackEventId;
             internal set { value.Retain(); m_AttackEventId.Release(); m_AttackEventId = value; }
         }
+        [CanonicalDeclaredText]
         public string SourceFeedbackEvent { get; internal set; }
+        [CanonicalDeclaredText]
         public string TargetFeedbackEvent { get; internal set; }
         public ulong TargetActionInstanceId { get; internal set; }
         public CombatHitDisposition Disposition { get; internal set; }
@@ -60,46 +65,9 @@ namespace ThirdPersonSimulation.Fixed
         public FixedVector3 Normal { get; internal set; }
         internal int DefinitionIndex { get; set; }
 
-        internal void ClearText()
-        {
-            Attack = default;
-            AttackEventId = default;
-            SourceActor = default;
-            TargetActor = default;
-            SourceTargetSnapshot = default;
-        }
+        internal void ClearText() => CanonicalClear(this);
 
-        internal void CopyFrom(CombatHitResult value)
-        {
-            ResultId = value.ResultId;
-            SourceTick = value.SourceTick;
-            SourceActor = value.SourceActor;
-            SourceTargetSnapshot = value.SourceTargetSnapshot;
-            TargetActor = value.TargetActor;
-            TargetPosition = value.TargetPosition;
-            TargetYaw = value.TargetYaw;
-            ReceiverMinimumY = value.ReceiverMinimumY;
-            ReceiverMaximumY = value.ReceiverMaximumY;
-            Attack = value.Attack;
-            ContentId = value.ContentId;
-            AttackEventId = value.AttackEventId;
-            SourceFeedbackEvent = value.SourceFeedbackEvent;
-            TargetFeedbackEvent = value.TargetFeedbackEvent;
-            TargetActionInstanceId = value.TargetActionInstanceId;
-            Disposition = value.Disposition;
-            Heavy = value.Heavy;
-            HitType = value.HitType;
-            HitStrengthType = value.HitStrengthType;
-            DamageBreakLevel = value.DamageBreakLevel;
-            FrameHalt = value.FrameHalt;
-            AttackerFrameHalt = value.AttackerFrameHalt;
-            HitEffectId = value.HitEffectId;
-            ContactFields = value.ContactFields;
-            ContactTime = value.ContactTime;
-            Point = value.Point;
-            Normal = value.Normal;
-            DefinitionIndex = value.DefinitionIndex;
-        }
+        internal void CopyFrom(CombatHitResult value) => CanonicalCopyInto(value, this);
     }
 
     internal sealed class FixedCombatQuery
@@ -183,7 +151,8 @@ namespace ThirdPersonSimulation.Fixed
         }
     }
 
-    internal sealed class FixedCombatResultStorage : IReadOnlyList<CombatHitResult>
+    [CanonicalBorrowedSequence(typeof(FixedCombatResultStorage), HoldStorage = false)]
+    public sealed class FixedCombatResultStorage : IReadOnlyList<CombatHitResult>
     {
         readonly CombatHitResult[] m_Results;
         public FixedCombatResultStorage(int capacity)
@@ -193,7 +162,21 @@ namespace ThirdPersonSimulation.Fixed
                 m_Results[i] = new CombatHitResult();
         }
         public int Count { get; private set; }
+        public int Capacity => m_Results.Length;
+        public ReadOnlySpan<CombatHitResult> Span => m_Results.AsSpan(0, Count);
         public CombatHitResult this[int index] => m_Results[index];
+        public CombatHitResult Reserve() => Append();
+
+        public Span<CombatHitResult> Reserve(int count, out FixedCombatResultStorage items)
+        {
+            if (count < 0 || count > Capacity)
+                throw new InvalidOperationException("Combat accepted result capacity exceeded.");
+            Clear();
+            Count = count;
+            items = this;
+            return m_Results.AsSpan(0, count);
+        }
+
         public CombatHitResult Append()
         {
             if (Count == m_Results.Length)

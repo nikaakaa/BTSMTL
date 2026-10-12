@@ -141,20 +141,27 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         public bool IsValid => ActorId.IsValid && SourceTick != 0 && InputSequence != 0 && Input != null;
     }
 
-    public readonly struct ServerAuthoritativeEventHorizon
+    [CanonicalContract]
+    public readonly partial struct ServerAuthoritativeEventHorizon
     {
         public ServerAuthoritativeEventHorizon(ulong sequence, EventId eventId)
         {
-            if ((sequence == 0) != !eventId.IsValid)
-                throw new ArgumentException("Confirmed EventId horizon is incomplete.");
             Sequence = sequence;
             EventId = eventId;
+            RequireRecord();
         }
 
         public ulong Sequence { get; }
         public EventId EventId { get; }
         public bool IsEmpty => Sequence == 0;
         public static ServerAuthoritativeEventHorizon Empty => default;
+
+        [CanonicalValidation]
+        void RequireRecord()
+        {
+            if ((Sequence == 0) != !EventId.IsValid)
+                throw new ArgumentException("Confirmed EventId horizon is incomplete.");
+        }
     }
 
     public readonly struct AuthoritativeActorBaseline
@@ -362,44 +369,31 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             left.ActorId.CompareTo(right.ActorId);
     }
 
-    public readonly struct ServerAuthoritativeReliableEvent
+    [CanonicalContract]
+    public readonly partial struct ServerAuthoritativeReliableEvent
     {
-        public const int MaximumTextReferences = GameplayFact.MaximumTextReferences;
+        public static readonly int MaximumTextReferences = CanonicalMaximumTextReferences;
 
         public ServerAuthoritativeReliableEvent(GameplayFact fact)
         {
-            GameplayFact = fact;
-            PresentationCommand = default;
-            IsGameplay = true;
+            this = FromGameplayFact(fact);
         }
 
         public ServerAuthoritativeReliableEvent(PresentationCommand command)
         {
-            GameplayFact = default;
-            PresentationCommand = command;
-            IsGameplay = false;
+            this = FromPresentationCommand(command);
         }
 
+        [CanonicalUnionCase]
         public GameplayFact GameplayFact { get; }
+        [CanonicalUnionCase]
         public PresentationCommand PresentationCommand { get; }
-        public bool IsGameplay { get; }
+        public bool IsGameplay => Kind == ServerAuthoritativeReliableEventKind.GameplayFact;
         public SimulationEventHeader Header => IsGameplay ? GameplayFact.Header : PresentationCommand.Header;
 
-        public void RetainText()
-        {
-            if (IsGameplay)
-                GameplayFact.Retain();
-            else
-                PresentationCommand.Retain();
-        }
+        public void RetainText() => CanonicalRetain(in this);
 
-        public void ReleaseText()
-        {
-            if (IsGameplay)
-                GameplayFact.Release();
-            else
-                PresentationCommand.Release();
-        }
+        public void ReleaseText() => CanonicalRelease(in this);
     }
 
     public readonly struct RemotePresentationBatch
@@ -553,7 +547,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         public bool IsValid => ActorId.IsValid && Tick.IsValid && m_BodySamples != null;
     }
 
-    public readonly struct AuthoritativeInputAck
+    [CanonicalContract]
+    public readonly partial struct AuthoritativeInputAck
     {
         public AuthoritativeInputAck(
             ActorId actorId,
@@ -561,12 +556,11 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             ulong confirmedInputSequence,
             ServerAuthoritativeEventHorizon confirmedEventHorizon)
         {
-            if (!actorId.IsValid || !authorityTick.IsValid)
-                throw new ArgumentException("Authority input ack identity is incomplete.");
             ActorId = actorId;
             AuthorityTick = authorityTick;
             ConfirmedInputSequence = confirmedInputSequence;
             ConfirmedEventHorizon = confirmedEventHorizon;
+            RequireRecord();
         }
 
         public ActorId ActorId { get; }
@@ -574,6 +568,13 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         public ulong ConfirmedInputSequence { get; }
         public ServerAuthoritativeEventHorizon ConfirmedEventHorizon { get; }
         public bool IsValid => ActorId.IsValid && AuthorityTick.IsValid;
+
+        [CanonicalValidation]
+        void RequireRecord()
+        {
+            if (!ActorId.IsValid || !AuthorityTick.IsValid)
+                throw new ArgumentException("Authority input ack identity is incomplete.");
+        }
     }
 
     public readonly struct AuthoritativeObservationBatch

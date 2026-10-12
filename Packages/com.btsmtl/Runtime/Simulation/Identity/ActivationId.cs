@@ -2,15 +2,16 @@ using System;
 
 namespace ThirdPersonSimulation
 {
-    public readonly struct ActivationId : IEquatable<ActivationId>
+    [CanonicalContract]
+    public readonly partial struct ActivationId : IEquatable<ActivationId>
     {
         public ActivationId(SimulationExecutionSource source, ulong generation)
         {
-            if (!source.IsValid || generation == 0)
-                throw new ArgumentException("Activation identity is incomplete.");
             Source = source;
             Generation = generation;
+            RequireRecord();
         }
+        [CanonicalRequired]
         public SimulationExecutionSource Source { get; }
         public ulong Generation { get; }
         public bool IsValid => Source.IsValid && Generation != 0;
@@ -18,6 +19,13 @@ namespace ThirdPersonSimulation
         public override bool Equals(object obj) => obj is ActivationId other && Equals(other);
         public override int GetHashCode() => HashCode.Combine(Source, Generation);
         public override string ToString() => $"{Source}/{Generation}";
+
+        [CanonicalValidation]
+        void RequireRecord()
+        {
+            if (!Source.IsValid || Generation == 0)
+                throw new ArgumentException("Activation identity is incomplete.");
+        }
     }
 
 }

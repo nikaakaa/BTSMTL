@@ -700,7 +700,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 writer.WriteText(m_LockedActors[actor].Value);
                 writer.WriteInt32(m_Counts[actor]);
                 for (int sample = 0; sample < m_Counts[actor]; sample++)
-                    ServerAuthoritativePredictionStateCodec.WriteBodySample(writer, m_SampleTracks[actor][sample]);
+                    CharacterBodySample.CanonicalWrite(writer, m_SampleTracks[actor][sample]);
             }
         }
 

@@ -2004,25 +2004,33 @@ namespace ThirdPersonSimulation
         Retire = 2
     }
 
-    public readonly struct PresentationCameraTargetTiming
+    [CanonicalContract]
+    public readonly partial struct PresentationCameraTargetTiming
     {
         public PresentationCameraTargetTiming(float delaySeconds, float durationSeconds, bool ignoreTimeScale)
         {
-            if (!float.IsFinite(delaySeconds) || delaySeconds < 0f)
-                throw new ArgumentOutOfRangeException(nameof(delaySeconds));
-            if (!float.IsFinite(durationSeconds) || durationSeconds < 0f)
-                throw new ArgumentOutOfRangeException(nameof(durationSeconds));
             DelaySeconds = delaySeconds;
             DurationSeconds = durationSeconds;
             IgnoreTimeScale = ignoreTimeScale;
+            RequireRecord();
         }
 
         public float DelaySeconds { get; }
         public float DurationSeconds { get; }
         public bool IgnoreTimeScale { get; }
+
+        [CanonicalValidation]
+        void RequireRecord()
+        {
+            if (!float.IsFinite(DelaySeconds) || DelaySeconds < 0f)
+                throw new ArgumentOutOfRangeException("DelaySeconds");
+            if (!float.IsFinite(DurationSeconds) || DurationSeconds < 0f)
+                throw new ArgumentOutOfRangeException("DurationSeconds");
+        }
     }
 
-    public readonly struct PresentationCameraRequest
+    [CanonicalContract]
+    public readonly partial struct PresentationCameraRequest
     {
         PresentationCameraRequest(
             PresentationCameraRequestKind kind,
@@ -2048,10 +2056,6 @@ namespace ThirdPersonSimulation
             PresentationCameraTargetTiming followTiming = default,
             PresentationCameraTargetTiming aimTiming = default)
         {
-            if (!IsDefined(kind))
-                throw new ArgumentOutOfRangeException(nameof(kind));
-            if (!IsDefined(lifecycle))
-                throw new ArgumentOutOfRangeException(nameof(lifecycle));
             Kind = kind;
             Lifecycle = lifecycle;
             RequestId = Normalize(requestId);
@@ -2065,25 +2069,33 @@ namespace ThirdPersonSimulation
             EffectKind = effectKind;
             InterruptPolicy = interruptPolicy;
             Priority = priority;
-            Weight = RequireFiniteNonNegative(weight, nameof(weight));
-            BlendInSeconds = RequireFiniteNonNegative(blendInSeconds, nameof(blendInSeconds));
-            BlendOutSeconds = RequireFiniteNonNegative(blendOutSeconds, nameof(blendOutSeconds));
-            ManualOrbitWeight = RequireUnit(manualOrbitWeight, nameof(manualOrbitWeight));
-            PitchWeight = RequireUnit(pitchWeight, nameof(pitchWeight));
-            YawWeight = RequireUnit(yawWeight, nameof(yawWeight));
+            Weight = weight;
+            BlendInSeconds = blendInSeconds;
+            BlendOutSeconds = blendOutSeconds;
+            ManualOrbitWeight = manualOrbitWeight;
+            PitchWeight = pitchWeight;
+            YawWeight = yawWeight;
             CaptureLockStartOnSubmit = captureLockStartOnSubmit;
             FollowTiming = followTiming;
             AimTiming = aimTiming;
+            RequireRecord();
         }
 
         public PresentationCameraRequestKind Kind { get; }
         public PresentationCameraRequestLifecycle Lifecycle { get; }
+        [CanonicalTextRules(NullToEmpty = true)]
         public CanonicalTextValue RequestId { get; }
+        [CanonicalTextRules(NullToEmpty = true)]
         public CanonicalTextValue SequenceId { get; }
+        [CanonicalTextRules(NullToEmpty = true)]
         public CanonicalTextValue ResourceId { get; }
+        [CanonicalTextRules(NullToEmpty = true, Trim = true)]
         public CanonicalTextValue TargetKey { get; }
+        [CanonicalTextRules(NullToEmpty = true)]
         public CanonicalTextValue AnchorKey { get; }
+        [CanonicalTextRules(NullToEmpty = true)]
         public CanonicalTextValue AimPointKey { get; }
+        [CanonicalTextRules(NullToEmpty = true)]
         public CanonicalTextValue PreferredBoneKey { get; }
         public int Mode { get; }
         public int EffectKind { get; }
@@ -2098,18 +2110,11 @@ namespace ThirdPersonSimulation
         public bool CaptureLockStartOnSubmit { get; }
         public PresentationCameraTargetTiming FollowTiming { get; }
         public PresentationCameraTargetTiming AimTiming { get; }
+        [CanonicalPresence]
         public bool IsValid => IsDefined(Kind) && IsDefined(Lifecycle);
 
-        public void Retain()
-        {
-            RequestId.Retain(); SequenceId.Retain(); ResourceId.Retain();
-            TargetKey.Retain(); AnchorKey.Retain(); AimPointKey.Retain(); PreferredBoneKey.Retain();
-        }
-        public void Release()
-        {
-            PreferredBoneKey.Release(); AimPointKey.Release(); AnchorKey.Release(); TargetKey.Release();
-            ResourceId.Release(); SequenceId.Release(); RequestId.Release();
-        }
+        public void Retain() => CanonicalRetain(in this);
+        public void Release() => CanonicalRelease(in this);
 
         public PresentationCameraRequest WithActionTarget(CanonicalTextValue targetActorId) =>
             new PresentationCameraRequest(
@@ -2274,6 +2279,27 @@ namespace ThirdPersonSimulation
             if (!float.IsFinite(value) || value < 0f || value > 1f)
                 throw new ArgumentOutOfRangeException(name);
             return value;
+        }
+
+        [CanonicalValidation]
+        void RequireRecord()
+        {
+            if (!IsDefined(Kind))
+                throw new ArgumentOutOfRangeException("Kind");
+            if (!IsDefined(Lifecycle))
+                throw new ArgumentOutOfRangeException("Lifecycle");
+            RequireFiniteNonNegative(Weight, nameof(Weight));
+            RequireFiniteNonNegative(BlendInSeconds, nameof(BlendInSeconds));
+            RequireFiniteNonNegative(BlendOutSeconds, nameof(BlendOutSeconds));
+            RequireUnit(ManualOrbitWeight, nameof(ManualOrbitWeight));
+            RequireUnit(PitchWeight, nameof(PitchWeight));
+            RequireUnit(YawWeight, nameof(YawWeight));
+            Normalize(RequestId);
+            Normalize(SequenceId);
+            Normalize(ResourceId);
+            Normalize(AnchorKey);
+            Normalize(AimPointKey);
+            Normalize(PreferredBoneKey);
         }
     }
 }

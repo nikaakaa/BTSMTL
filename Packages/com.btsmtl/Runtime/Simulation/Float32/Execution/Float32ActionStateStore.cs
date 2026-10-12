@@ -4,7 +4,8 @@ using SimulationActionActivationRequestState = ThirdPersonSimulation.SimulationA
 
 namespace ThirdPersonSimulation
 {
-	internal readonly struct Float32ActionInstanceState : IEquatable<Float32ActionInstanceState>
+	[CanonicalContract]
+    internal readonly partial struct Float32ActionInstanceState : IEquatable<Float32ActionInstanceState>
     {
 		public Float32ActionInstanceState(
 			string actionId,
@@ -54,13 +55,15 @@ namespace ThirdPersonSimulation
             ActivationEntryId = activationEntryId ?? string.Empty;
         }
 
-		public string ActionId { get; }
+		[CanonicalDeclaredText]
+        public string ActionId { get; }
 		public CharacterSkillId SkillId { get; }
 		public OperationHandle SkillEntryOperation { get; }
 		public ulong SkillExecutionGeneration { get; }
 		public ulong SegmentGeneration { get; }
         public GameplayAbilitySourceContext SourceContext => new GameplayAbilitySourceContext(
             SkillId, InstanceId, SkillExecutionGeneration, SegmentGeneration);
+        [CanonicalDeclaredText]
         public string ActivationEntryId { get; }
         public CanonicalTextValue ContextId { get; }
         public ulong InstanceId { get; }
@@ -70,6 +73,7 @@ namespace ThirdPersonSimulation
         public ulong StartTick { get; }
         public CanonicalTextValue TargetKey { get; }
         public SimulationActionTargetSnapshot TargetSnapshot { get; }
+        [CanonicalRequired]
         public SimulationExecutionSource Source { get; }
         public SimulationActionPhase Phase { get; }
         public SimulationActionState State { get; }
@@ -101,6 +105,7 @@ namespace ThirdPersonSimulation
 			LastTransitionSourceTick == other.LastTransitionSourceTick &&
 			CanonicalTextValue.Equals(Reason, other.Reason, StringComparison.Ordinal) &&
 			EquipmentContext.Equals(other.EquipmentContext);
+        [CanonicalPresence]
         public bool IsValid =>
             !CanonicalTextValue.IsNullOrEmpty(ActionId) &&
             !CanonicalTextValue.IsNullOrEmpty(ContextId) &&
@@ -205,8 +210,17 @@ namespace ThirdPersonSimulation
             SegmentGeneration, ActivationEntryId);
 		}
 
-        public void Retain() { ContextId.Retain(); SourceInputRequestId.Retain(); TargetKey.Retain(); TargetSnapshot.Retain(); Source.Retain(); Reason.Retain(); EquipmentContext.SlotId.Retain(); }
-        public void Release() { EquipmentContext.SlotId.Release(); Reason.Release(); Source.Release(); TargetSnapshot.Release(); TargetKey.Release(); SourceInputRequestId.Release(); ContextId.Release(); }
+        internal void Retain() => CanonicalRetain(in this);
+        internal void Release() => CanonicalRelease(in this);
+
+        [CanonicalValidation]
+        void RequireRecord()
+        {
+            if (string.IsNullOrEmpty(ActionId) || ContextId.IsEmpty || InstanceId == 0 || PredictionKey == 0 ||
+                InputSequence == 0 || StartTick == 0 ||
+                Source.IsAbilityRule && (!SkillId.IsValid || !SkillEntryOperation.IsValid))
+                throw new System.IO.InvalidDataException("Action instance identity is invalid.");
+        }
     }
 
     [CanonicalContract]

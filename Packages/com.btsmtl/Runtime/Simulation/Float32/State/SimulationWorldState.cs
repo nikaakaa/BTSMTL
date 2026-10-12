@@ -19,7 +19,8 @@ namespace ThirdPersonSimulation
         Snapshot = 2
     }
 
-    public readonly struct WorldBodyState
+    [CanonicalContract]
+    public readonly partial struct WorldBodyState
     {
         public WorldBodyState(
             ActorId actorId,
@@ -30,8 +31,6 @@ namespace ThirdPersonSimulation
             bool grounded,
             WorldCollisionSummary collision)
         {
-            if (!actorId.IsValid)
-                throw new ArgumentException("World body ActorId is invalid.", nameof(actorId));
             ActorId = actorId;
             Position = position;
             Yaw = yaw;
@@ -39,6 +38,7 @@ namespace ThirdPersonSimulation
             VerticalVelocity = verticalVelocity;
             Grounded = grounded;
             Collision = collision;
+            RequireRecord();
         }
         public ActorId ActorId { get; }
         public Float32Vector3 Position { get; }
@@ -47,6 +47,13 @@ namespace ThirdPersonSimulation
         public Float32Scalar VerticalVelocity { get; }
         public bool Grounded { get; }
         public WorldCollisionSummary Collision { get; }
+
+        [CanonicalValidation]
+        void RequireRecord()
+        {
+            if (!ActorId.IsValid)
+                throw new ArgumentException("World body ActorId is invalid.", "ActorId");
+        }
     }
 
     public sealed class WorldSimulationState
@@ -392,7 +399,7 @@ namespace ThirdPersonSimulation
             reader.SetTextResolver(resolver);
             if (reader.ReadUInt32() != Magic || reader.ReadInt32() != Version)
                 throw new InvalidDataException("World state header is invalid.");
-            SimulationNumericProfile numericProfile = SimulationNumericProfile.ReadPublished(reader, expectedNumericProfile);
+            SimulationNumericProfile numericProfile = SimulationNumericProfile.CanonicalReadPublished(reader, expectedNumericProfile);
             reader.RequireText(expectedSolverId.Value);
             reader.RequireText(expectedSolverVersion);
             reader.RequireText(expectedWorldRevision.Value);

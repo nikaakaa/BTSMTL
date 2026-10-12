@@ -34,9 +34,10 @@ namespace ThirdPersonSimulation
         Information = 2
     }
 
-    internal readonly struct SimulationActionActivationRequestState<TTargetSnapshot>
+    [CanonicalContract]
+    internal readonly partial struct SimulationActionActivationRequestState<TTargetSnapshot>
         : IEquatable<SimulationActionActivationRequestState<TTargetSnapshot>>
-        where TTargetSnapshot : struct, IEquatable<TTargetSnapshot>
+        where TTargetSnapshot : struct, IEquatable<TTargetSnapshot>, ICanonicalRecord<TTargetSnapshot>
     {
         public SimulationActionActivationRequestState(
             string actionId,
@@ -74,6 +75,7 @@ namespace ThirdPersonSimulation
             Opportunity = opportunity;
         }
 
+        [CanonicalDeclaredText]
         public string ActionId { get; }
         public CharacterSkillId SkillId { get; }
         public OperationHandle SkillEntryOperation { get; }
@@ -86,9 +88,11 @@ namespace ThirdPersonSimulation
         public ulong StartTick { get; }
         public CanonicalTextValue TargetKey { get; }
         public TTargetSnapshot TargetSnapshot { get; }
+        [CanonicalRequired]
         public SimulationExecutionSource Source { get; }
         public EquipmentActionContext EquipmentContext { get; }
         public GameplayAbilitySourceContext ReplacementSource { get; }
+        [CanonicalDeclaredText]
         public string ActivationEntryId { get; }
         public GameplayEffectOpportunityReference Opportunity { get; }
         public bool Equals(SimulationActionActivationRequestState<TTargetSnapshot> other) =>
@@ -106,6 +110,7 @@ namespace ThirdPersonSimulation
             EquipmentContext.Equals(other.EquipmentContext) &&
             ReplacementSource.Equals(other.ReplacementSource) &&
             string.Equals(ActivationEntryId, other.ActivationEntryId, StringComparison.Ordinal) && Opportunity.Equals(other.Opportunity);
+        [CanonicalPresence]
         public bool IsValid =>
             !string.IsNullOrEmpty(ActionId) &&
             !ContextId.IsEmpty &&
@@ -117,24 +122,15 @@ namespace ThirdPersonSimulation
             (ReplacementSource.InstanceId == 0 || ReplacementSource.IsValid) &&
             (!Source.IsAbilityRule || SkillId.IsValid && SkillEntryOperation.IsValid);
 
-        public void Retain()
-        {
-            ContextId.Retain();
-            SourceInputRequest.Retain();
-            TargetKey.Retain();
-            Source.Retain();
-            EquipmentContext.SlotId.Retain();
-            Opportunity.Retain();
-        }
+        public void Retain() => CanonicalRetain(in this);
 
-        public void Release()
+        public void Release() => CanonicalRelease(in this);
+
+        [CanonicalValidation]
+        void RequireRecord()
         {
-            ContextId.Release();
-            SourceInputRequest.Release();
-            TargetKey.Release();
-            Source.Release();
-            EquipmentContext.SlotId.Release();
-            Opportunity.Release();
+            if (!IsValid)
+                throw new System.IO.InvalidDataException("Action activation request identity is invalid.");
         }
     }
 

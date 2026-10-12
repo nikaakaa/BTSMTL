@@ -61,7 +61,7 @@ namespace ThirdPersonSimulation.Fixed
     internal sealed class FixedCombatCheckpoint : ISimulationPipelinePassStateCheckpoint
     {
         readonly FixedCombatRuntime m_Combat;
-        readonly FixedCombatRuntime.StateBank m_Before;
+        readonly FixedCombatStateBank m_Before;
         public FixedCombatCheckpoint(SimulationPipelineStateParticipantIdentity identity, FixedCombatRuntime combat)
         {
             Participant = identity;
@@ -77,8 +77,8 @@ namespace ThirdPersonSimulation.Fixed
     internal sealed class FixedCombatRestore : ISimulationPipelinePassRestoreTransaction
     {
         readonly FixedCombatRuntime m_Combat;
-        readonly FixedCombatRuntime.StateBank m_Before;
-        readonly FixedCombatRuntime.StateBank m_Replacement;
+        readonly FixedCombatStateBank m_Before;
+        readonly FixedCombatStateBank m_Replacement;
         readonly CanonicalWriter m_Writer;
         readonly CanonicalReader m_Reader = new CanonicalReader(Array.Empty<byte>());
         SimulationPipelinePassStateSnapshot m_Snapshot;

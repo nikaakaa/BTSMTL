@@ -1,6 +1,7 @@
 namespace ThirdPersonSimulation.Fixed
 {
-    public readonly struct FixedActionReplayIdentity
+    [CanonicalContract]
+    public readonly partial struct FixedActionReplayIdentity
     {
         public FixedActionReplayIdentity(CharacterSkillId ability, string action, string entry,
             CanonicalTextValue request, ulong sequence, SimulationExecutionSource source)
@@ -14,14 +15,17 @@ namespace ThirdPersonSimulation.Fixed
         }
 
         public CharacterSkillId Ability { get; }
+        [CanonicalDeclaredText]
         public string Action { get; }
+        [CanonicalDeclaredText]
         public string Entry { get; }
         public CanonicalTextValue Request { get; }
         public ulong Sequence { get; }
+        [CanonicalRequired]
         public SimulationExecutionSource Source { get; }
 
-        public void Retain() { Request.Retain(); Source.Retain(); }
-        public void Release() { Request.Release(); Source.Release(); }
+        public void Retain() => CanonicalRetain(in this);
+        public void Release() => CanonicalRelease(in this);
 
         internal static FixedActionReplayIdentity Capture(in FixedActionInstanceState action) =>
             new(action.SkillId, action.ActionId, action.ActivationEntryId,
@@ -30,21 +34,7 @@ namespace ThirdPersonSimulation.Fixed
         internal bool Matches(in FixedActionInstanceState action) =>
             action.IsActive && action.SkillId == Ability && action.ActionId == Action &&
             action.ActivationEntryId == Entry && action.SourceInputRequestId == Request &&
-            action.InputSequence == Sequence && action.Source == Source;
-
-        public void Write(CanonicalWriter writer)
-        {
-            writer.WriteText(Ability.Value);
-            writer.WriteText(Action);
-            writer.WriteText(Entry);
-            writer.WriteText(Request);
-            writer.WriteUInt64(Sequence);
-            SimulationExecutionSourceCodec.Write(writer, Source);
-        }
-
-        public static FixedActionReplayIdentity Read(CanonicalReader reader, System.Func<CanonicalReader, string> identity) =>
-            new(new CharacterSkillId(identity(reader)), identity(reader), identity(reader),
-                reader.ReadText(), reader.ReadUInt64(), SimulationExecutionSourceCodec.Read(reader, identity));
+                action.InputSequence == Sequence && action.Source == Source;
     }
 
     public enum FixedCharacterHistoryRecordKind : byte
@@ -105,6 +95,7 @@ namespace ThirdPersonSimulation.Fixed
             in FixedActionReplayIdentity origin)
         {
             writer.WriteHash(AbilityStateValue.CanonicalSchemaHash);
+            writer.WriteHash(FixedActionReplayIdentity.CanonicalSchemaHash);
             writer.WriteText(actor.Value);
             writer.WriteUInt64(result.Tick);
             writer.WriteText(result.Command.Ability.AbilityId.Value);
@@ -115,12 +106,13 @@ namespace ThirdPersonSimulation.Fixed
             AbilityStateValue.CanonicalWrite(writer, result.Command.Value);
             writer.WriteBoolean(result.Command.ActionInstanceId != 0);
             if (result.Command.ActionInstanceId != 0)
-                origin.Write(writer);
+                FixedActionReplayIdentity.CanonicalWrite(writer, in origin);
         }
 
         public static FixedBlackboardWriteRecord Read(CanonicalReader reader, System.Func<CanonicalReader, string> identity)
         {
             AbilityStateValue.CanonicalRequireSchema(reader);
+            FixedActionReplayIdentity.CanonicalRequireSchema(reader);
             reader.DeclaredIdentityReader = identity;
             var actor = new ActorId(reader.ReadText());
             ulong tick = reader.ReadUInt64();
@@ -130,7 +122,7 @@ namespace ThirdPersonSimulation.Fixed
             int slot = reader.ReadInt32();
             var mutation = (FixedPortInputMutation)reader.ReadByte();
             AbilityStateValue value = AbilityStateValue.CanonicalRead(reader);
-            FixedActionReplayIdentity origin = reader.ReadBoolean() ? FixedActionReplayIdentity.Read(reader, identity) : default;
+            FixedActionReplayIdentity origin = reader.ReadBoolean() ? FixedActionReplayIdentity.CanonicalRead(reader) : default;
             return new FixedBlackboardWriteRecord(actor, tick, ability, action, generation, slot, value, origin, mutation);
         }
     }

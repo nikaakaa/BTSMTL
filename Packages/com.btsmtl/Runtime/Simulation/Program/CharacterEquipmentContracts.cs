@@ -262,6 +262,7 @@ namespace ThirdPersonSimulation
         public EquipmentFeatureId FeatureId { get; }
         public ulong EquipmentRevision { get; }
         public EquipmentActionRouteId RouteId { get; }
+        [CanonicalPresence]
         public bool IsValid => SlotId.IsValid && EquipmentId.IsValid && FeatureId.IsValid && EquipmentRevision != 0 && RouteId.IsValid;
         public bool Equals(EquipmentActionContext other) =>
             SlotId == other.SlotId && EquipmentId == other.EquipmentId && FeatureId == other.FeatureId &&
