@@ -29,6 +29,7 @@ namespace ThirdPerson.CanonicalSerialization.Generator
         const string DeclaredTextAttribute = "ThirdPersonSimulation.CanonicalDeclaredTextAttribute";
         const string TextRulesAttribute = "ThirdPersonSimulation.CanonicalTextRulesAttribute";
         const string PublishedAttribute = "ThirdPersonSimulation.CanonicalPublishedAttribute";
+        const string BoundAttribute = "ThirdPersonSimulation.CanonicalBoundAttribute";
         const string PresenceAttribute = "ThirdPersonSimulation.CanonicalPresenceAttribute";
         const string RequiredAttribute = "ThirdPersonSimulation.CanonicalRequiredAttribute";
         const string RecordType = "ThirdPersonSimulation.ICanonicalRecord<T>";
@@ -542,6 +543,30 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                     .Append("(default(").Append(Runtime).Append("CanonicalConstruction)");
                 foreach (Member member in plan.Members)
                     code.Append(", ").Append(Read(member.Type, true));
+                code.AppendLine("); }");
+            }
+            Member[] boundMembers = plan.Members.Where(m => HasAttribute(m.Symbol, BoundAttribute)).ToArray();
+            if (boundMembers.Length != 0)
+            {
+                code.Append("public static ").Append(fullType).Append(" CanonicalReadBound<TReader>(TReader reader");
+                foreach (Member member in boundMembers)
+                    code.Append(", in ").Append(TypeName(member.Type)).Append(' ').Append(Parameter(member.Symbol.Name));
+                code.Append(") where TReader : class, ").Append(Runtime).AppendLine("ICanonicalValueReader {");
+                for (int i = 0; i < plan.Members.Length; i++)
+                {
+                    Member member = plan.Members[i];
+                    if (HasAttribute(member.Symbol, BoundAttribute))
+                    {
+                        code.AppendLine("{ var writer = reader.MatchWriter;");
+                        WriteMember(code, member, Parameter(member.Symbol.Name));
+                        code.AppendLine("}");
+                    }
+                    code.Append("var member").Append(i).Append(" = ").Append(HasAttribute(member.Symbol, BoundAttribute)
+                        ? Parameter(member.Symbol.Name) : ReadMember(member, plan)).AppendLine(";");
+                }
+                code.Append("return new ").Append(fullType).Append("(default(").Append(Runtime).Append("CanonicalConstruction)");
+                for (int i = 0; i < plan.Members.Length; i++)
+                    code.Append(", member").Append(i);
                 code.AppendLine("); }");
             }
             foreach (Member member in plan.Cases.Where(m => CaseSemantic(m, "NormalizeZero") || CaseSemantic(m, "NormalizeNull")))
@@ -1624,6 +1649,10 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                             member.Type.SpecialType != SpecialType.System_String)
                             Error(plan, member.Symbol, "文本规范化必须声明在 readonly 记录的实际文本成员");
                     }
+                    if (HasAttribute(member.Symbol, BoundAttribute) && (!type.IsReadOnly ||
+                        type.TypeKind != TypeKind.Struct || !plan.PreparedRead || plan.PreparedStorage != null ||
+                        plan.Presence != null || plan.Cases.Length != 0))
+                        Error(plan, member.Symbol, "已绑定成员读取只用于无设施的实时 readonly 记录");
                     if (HasAttribute(member.Symbol, PublishedAttribute))
                     {
                         descriptor.Append(":published");

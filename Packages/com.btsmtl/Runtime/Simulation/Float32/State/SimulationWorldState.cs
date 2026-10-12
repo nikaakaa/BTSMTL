@@ -40,6 +40,7 @@ namespace ThirdPersonSimulation
             Collision = collision;
             RequireRecord();
         }
+        [CanonicalBound]
         public ActorId ActorId { get; }
         public Float32Vector3 Position { get; }
         public Float32Yaw Yaw { get; }
@@ -288,7 +289,7 @@ namespace ThirdPersonSimulation
     public static class WorldSimulationStateCodec
     {
         const uint Magic = 0x54535743;
-        const int Version = 5;
+        const int Version = 6;
 
         [ThreadStatic] static CanonicalWriter s_Writer;
 
@@ -341,6 +342,7 @@ namespace ThirdPersonSimulation
         {
             writer.WriteUInt32(Magic);
             writer.WriteInt32(Version);
+            writer.WriteHash(WorldBodyState.CanonicalSchemaHash);
             SimulationNumericProfile.CanonicalWrite(writer, state.NumericProfile);
             writer.WriteText(state.SolverId.Value);
             writer.WriteText(state.SolverVersion);
@@ -349,14 +351,7 @@ namespace ThirdPersonSimulation
             writer.WriteInt32(state.Bodies.Count);
             for (int i = 0; i < state.Bodies.Count; i++)
             {
-                WorldBodyState body = state.Bodies[i];
-                writer.WriteText(body.ActorId.Value);
-                writer.WriteVector3(body.Position);
-                writer.WriteYaw(body.Yaw);
-                writer.WriteVector3(body.Velocity);
-                writer.WriteScalar(body.VerticalVelocity);
-                writer.WriteBoolean(body.Grounded);
-                writer.WriteUInt32((uint)body.Collision);
+                WorldBodyState.CanonicalWrite(writer, state.Bodies[i]);
             }
             writer.WriteBytes(state.SolverStatePayload.Span);
         }
@@ -399,6 +394,7 @@ namespace ThirdPersonSimulation
             reader.SetTextResolver(resolver);
             if (reader.ReadUInt32() != Magic || reader.ReadInt32() != Version)
                 throw new InvalidDataException("World state header is invalid.");
+            WorldBodyState.CanonicalRequireSchema(reader);
             SimulationNumericProfile numericProfile = SimulationNumericProfile.CanonicalReadPublished(reader, expectedNumericProfile);
             reader.RequireText(expectedSolverId.Value);
             reader.RequireText(expectedSolverVersion);
@@ -421,14 +417,7 @@ namespace ThirdPersonSimulation
             WorldBodyState[] bodies = storage.BodyArray;
             for (int i = 0; i < bodies.Length; i++)
             {
-                bodies[i] = new WorldBodyState(
-                    new ActorId(reader.ReadText()),
-                    reader.ReadVector3(),
-                    reader.ReadYaw(),
-                    reader.ReadVector3(),
-                    reader.ReadScalar(),
-                    reader.ReadBoolean(),
-                    (WorldCollisionSummary)reader.ReadUInt32());
+                bodies[i] = WorldBodyState.CanonicalRead(reader);
             }
             ArraySegment<byte> payload = reader.ReadBytesSegment();
             reader.RequireComplete();

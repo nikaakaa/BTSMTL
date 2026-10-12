@@ -41,6 +41,7 @@ namespace ThirdPersonSimulation.Fixed
             Collision = collision;
             RequireRecord();
         }
+        [CanonicalBound]
         public ActorId ActorId { get; }
         public FixedVector3 Position { get; }
         public FixedYaw Yaw { get; }
@@ -298,7 +299,7 @@ namespace ThirdPersonSimulation.Fixed
     public static class WorldSimulationStateCodec
     {
         const uint Magic = 0x54535743;
-        const int Version = 5;
+        const int Version = 6;
 
         [ThreadStatic] static CanonicalWriter s_Writer;
 
@@ -348,6 +349,7 @@ namespace ThirdPersonSimulation.Fixed
         {
             writer.WriteUInt32(Magic);
             writer.WriteInt32(Version);
+            writer.WriteHash(WorldBodyState.CanonicalSchemaHash);
             SimulationNumericProfile.CanonicalWrite(writer, state.NumericProfile);
             writer.WriteText(state.SolverId.Value);
             writer.WriteText(state.SolverVersion);
@@ -356,14 +358,7 @@ namespace ThirdPersonSimulation.Fixed
             writer.WriteInt32(state.Bodies.Count);
             for (int i = 0; i < state.Bodies.Count; i++)
             {
-                WorldBodyState body = state.Bodies[i];
-                writer.WriteText(body.ActorId.Value);
-                writer.WriteVector3(body.Position);
-                writer.WriteYaw(body.Yaw);
-                writer.WriteVector3(body.Velocity);
-                writer.WriteScalar(body.VerticalVelocity);
-                writer.WriteBoolean(body.Grounded);
-                writer.WriteUInt32((uint)body.Collision);
+                WorldBodyState.CanonicalWrite(writer, state.Bodies[i]);
             }
             writer.WriteBytes(state.SolverStatePayload.Span);
         }
@@ -383,6 +378,7 @@ namespace ThirdPersonSimulation.Fixed
             reader.SetTextResolver(resolver);
             if (reader.ReadUInt32() != Magic || reader.ReadInt32() != Version)
                 throw new InvalidDataException("World state header is invalid.");
+            WorldBodyState.CanonicalRequireSchema(reader);
             SimulationNumericProfile numericProfile = SimulationNumericProfile.CanonicalReadPublished(reader, expectedNumericProfile);
             reader.RequireText(expectedSolverId.Value);
             reader.RequireText(expectedSolverVersion);
@@ -397,14 +393,7 @@ namespace ThirdPersonSimulation.Fixed
             var bodies = new WorldBodyState[count];
             for (int i = 0; i < count; i++)
             {
-                bodies[i] = new WorldBodyState(
-                    new ActorId(reader.ReadText()),
-                    reader.ReadVector3(),
-                    reader.ReadYaw(),
-                    reader.ReadVector3(),
-                    reader.ReadScalar(),
-                    reader.ReadBoolean(),
-                    (WorldCollisionSummary)reader.ReadUInt32());
+                bodies[i] = WorldBodyState.CanonicalRead(reader);
             }
             ArraySegment<byte> payload = reader.ReadBytesSegment();
             reader.RequireComplete();
@@ -439,6 +428,7 @@ namespace ThirdPersonSimulation.Fixed
                 reader.SetTextResolver(resolver);
                 if (reader.ReadUInt32() != Magic || reader.ReadInt32() != Version)
                     throw new InvalidDataException("World state header is invalid.");
+                WorldBodyState.CanonicalRequireSchema(reader);
                 SimulationNumericProfile numericProfile = SimulationNumericProfile.CanonicalReadPublished(reader, expectedNumericProfile);
                 reader.RequireText(expectedSolverId.Value);
                 reader.RequireText(expectedSolverVersion);
@@ -454,15 +444,7 @@ namespace ThirdPersonSimulation.Fixed
                 for (int i = 0; i < count; i++)
                 {
                     ActorId actor = publishedBodies[i].ActorId;
-                    reader.RequireText(actor.Value);
-                    bodies[i] = new WorldBodyState(
-                        actor,
-                        reader.ReadVector3(),
-                        reader.ReadYaw(),
-                        reader.ReadVector3(),
-                        reader.ReadScalar(),
-                        reader.ReadBoolean(),
-                        (WorldCollisionSummary)reader.ReadUInt32());
+                    bodies[i] = WorldBodyState.CanonicalReadBound(reader, in actor);
                 }
                 ArraySegment<byte> payload = reader.ReadBytesSegment();
                 reader.RequireComplete();
@@ -489,6 +471,7 @@ namespace ThirdPersonSimulation.Fixed
             reader.Reset(bytes);
             if (reader.ReadUInt32() != Magic || reader.ReadInt32() != Version)
                 throw new InvalidDataException("World state header is invalid.");
+            WorldBodyState.CanonicalRequireSchema(reader);
             SimulationNumericProfile.CanonicalReadPublished(reader, expectedNumericProfile);
             reader.ReadTextSegment();
             reader.ReadTextSegment();
@@ -499,15 +482,7 @@ namespace ThirdPersonSimulation.Fixed
                 throw new InvalidDataException($"World body count '{count}' is invalid.");
             for (int i = 0; i < count; i++)
             {
-                ArraySegment<byte> actorId = reader.ReadTextSegment();
-                if (actorId.Count == 0)
-                    throw new InvalidDataException("World state Actor identity is invalid.");
-                reader.ReadVector3();
-                reader.ReadYaw();
-                reader.ReadVector3();
-                reader.ReadScalar();
-                reader.ReadBoolean();
-                reader.ReadUInt32();
+                WorldBodyState.CanonicalSkip(reader);
             }
             ArraySegment<byte> payload = reader.ReadBytesSegment();
             reader.RequireComplete();

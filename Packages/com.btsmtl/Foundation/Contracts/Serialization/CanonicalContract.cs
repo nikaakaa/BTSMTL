@@ -46,6 +46,11 @@ namespace ThirdPersonSimulation
     {
     }
 
+    [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
+    public sealed class CanonicalBoundAttribute : Attribute
+    {
+    }
+
     [AttributeUsage(AttributeTargets.Property)]
     public sealed class CanonicalPresenceAttribute : Attribute
     {
