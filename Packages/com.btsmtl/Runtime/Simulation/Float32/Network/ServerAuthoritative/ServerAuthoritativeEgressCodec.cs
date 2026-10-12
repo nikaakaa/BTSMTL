@@ -59,7 +59,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             reader.SetTextResolver(textResolver);
             if (reader.ReadUInt32() != InputMagic || reader.ReadInt32() != InputVersion)
                 throw new InvalidDataException("Owner input egress header is invalid.");
-            var actorId = new ActorId(CanonicalTextEncoding.DecodeString(reader.ReadTextSegment()));
+            var actorId = new ActorId(reader.ReadText());
             ulong sourceTick = reader.ReadUInt64();
             ulong inputSequence = reader.ReadUInt64();
             SimulationInput input = ServerAuthoritativeCanonicalCodec.ReadInput(reader.ReadBytesSegment(),
