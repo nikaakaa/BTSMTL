@@ -502,7 +502,7 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                     code.Append("public static void Canonical").Append(operation).Append("StorageItems(")
                         .Append(TypeName(plan.PreparedStorage)).AppendLine(" storage) {");
                     foreach (Member member in plan.Members.Where(m => BorrowedStorage(m.Type) is INamedTypeSymbol &&
-                        BorrowedSemantic(m.Type, "HoldStorage", true)))
+                        BorrowedSemantic(m.Type, "HoldStorage", true) && HasResources(plan, SequenceElement(m.Type))))
                         code.Append("storage.").Append(Escape(member.Symbol.Name)).Append('.')
                             .Append(operation).AppendLine("Items();");
                     foreach (Member member in plan.Members.Where(m => PreparedStorage(m.Type) != null))
@@ -851,7 +851,8 @@ namespace ThirdPerson.CanonicalSerialization.Generator
             if (type is INamedTypeSymbol named)
             {
                 if (HasAttribute(named.OriginalDefinition, BorrowedSequenceAttribute))
-                    return named.TypeArguments[0];
+                    return named.IsGenericType ? named.TypeArguments[0] :
+                        ((INamedTypeSymbol)named.GetMembers("Span").OfType<IPropertySymbol>().Single().Type).TypeArguments[0];
                 switch (Identity(named.OriginalDefinition))
                 {
                     case BufferType:
@@ -870,8 +871,10 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                 return null;
             AttributeData shape = named.OriginalDefinition.GetAttributes()
                 .SingleOrDefault(a => Identity(a.AttributeClass) == BorrowedSequenceAttribute);
-            return shape == null ? null : ((INamedTypeSymbol)shape.ConstructorArguments[0].Value)
-                .OriginalDefinition.Construct(named.TypeArguments[0]);
+            if (shape == null)
+                return null;
+            INamedTypeSymbol storage = (INamedTypeSymbol)shape.ConstructorArguments[0].Value;
+            return storage.IsGenericType ? storage.OriginalDefinition.Construct(SequenceElement(type)) : storage;
         }
 
         static bool BorrowedSemantic(ITypeSymbol type, string name, bool defaultValue)
