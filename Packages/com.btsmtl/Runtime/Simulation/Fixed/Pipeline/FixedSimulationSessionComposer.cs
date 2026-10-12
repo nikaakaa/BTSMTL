@@ -446,9 +446,10 @@ namespace ThirdPersonSimulation.Fixed
             return new SimulationComponentIdentity(
                 SimulationComponentRole.SnapshotCodec,
                 SnapshotCodecId,
-                "2",
+                "3",
                 StableHash.Compute(
                     SnapshotCodecId,
+                    FixedSimulationSessionSnapshotCodec.CanonicalSchema,
                     target.NumericProfile.Id.Value,
                     target.NumericProfile.AbiVersion.Value.ToString(CultureInfo.InvariantCulture),
                     backend.Identity.ToString()));

@@ -217,25 +217,16 @@ namespace ThirdPersonSimulation
     {
         ReadOnlyMemory<byte> m_Payload;
         int m_PayloadLength;
+        readonly SimulationPipelineStateParticipantIdentity m_Identity;
         readonly SimulationPipelinePassStateStorage.Page m_StepStorage;
 
         private SimulationPipelinePassStateSnapshot(
-            SimulationPipelinePassId passId,
-            SimulationPipelinePassImplementationVersion implementationVersion,
-            string stateOwner,
-            string stateSchemaId,
-            int stateSchemaVersion,
+            SimulationPipelineStateParticipantIdentity identity,
             StableHash stateHash,
             byte[] ownedPayload,
             SimulationPipelinePassStateStorage.Page stepStorage = null)
         {
-            if (!passId.IsValid || !implementationVersion.IsValid || stateSchemaVersion <= 0 || !stateHash.IsValid || ownedPayload == null)
-                throw new ArgumentException("Pass state snapshot identity is incomplete.");
-            PassId = passId;
-            ImplementationVersion = implementationVersion;
-            StateOwner = SimulationIdentity.Require(stateOwner, nameof(stateOwner));
-            StateSchemaId = SimulationIdentity.Require(stateSchemaId, nameof(stateSchemaId));
-            StateSchemaVersion = stateSchemaVersion;
+            m_Identity = identity;
             StateHash = stateHash;
             m_Payload = ownedPayload;
             m_PayloadLength = ownedPayload.Length;
@@ -247,14 +238,12 @@ namespace ThirdPersonSimulation
         internal static SimulationPipelinePassStateSnapshot FromStepStorage(
             SimulationPipelineStateParticipantIdentity identity, byte[] payload,
             SimulationPipelinePassStateStorage.Page page) =>
-            new SimulationPipelinePassStateSnapshot(identity.PassId, identity.ImplementationVersion,
-                identity.StateOwner, identity.StateSchemaId, identity.StateSchemaVersion,
+            new SimulationPipelinePassStateSnapshot(identity,
                 SimulationCanonicalPayloadHash.Compute(ReadOnlySpan<byte>.Empty), payload, page);
 
         internal static SimulationPipelinePassStateSnapshot FromPreparedIdentity(
             SimulationPipelineStateParticipantIdentity identity) =>
-            new SimulationPipelinePassStateSnapshot(identity.PassId, identity.ImplementationVersion,
-                identity.StateOwner, identity.StateSchemaId, identity.StateSchemaVersion,
+            new SimulationPipelinePassStateSnapshot(identity,
                 SimulationCanonicalPayloadHash.Compute(ReadOnlySpan<byte>.Empty), Array.Empty<byte>());
 
         internal void SetPreparedPayload(ReadOnlyMemory<byte> payload, StableHash hash, ICanonicalTextResolver resolver)
@@ -303,11 +292,8 @@ namespace ThirdPersonSimulation
             if (ownedPayload == null)
                 throw new ArgumentNullException(nameof(ownedPayload));
             return new SimulationPipelinePassStateSnapshot(
-                passId,
-                implementationVersion,
-                stateOwner,
-                stateSchemaId,
-                stateSchemaVersion,
+                new SimulationPipelineStateParticipantIdentity(passId, implementationVersion,
+                    stateOwner, stateSchemaId, stateSchemaVersion),
                 SimulationCanonicalPayloadHash.Compute(ownedPayload),
                 ownedPayload);
         }
@@ -327,20 +313,18 @@ namespace ThirdPersonSimulation
             if (!computed.Equals(expectedStateHash))
                 throw new ArgumentException("Pass state payload hash does not match its canonical bytes.", nameof(expectedStateHash));
             return new SimulationPipelinePassStateSnapshot(
-                passId,
-                implementationVersion,
-                stateOwner,
-                stateSchemaId,
-                stateSchemaVersion,
+                new SimulationPipelineStateParticipantIdentity(passId, implementationVersion,
+                    stateOwner, stateSchemaId, stateSchemaVersion),
                 computed,
                 ownedPayload);
         }
 
-        public SimulationPipelinePassId PassId { get; }
-        public SimulationPipelinePassImplementationVersion ImplementationVersion { get; }
-        public string StateOwner { get; }
-        public string StateSchemaId { get; }
-        public int StateSchemaVersion { get; }
+        public SimulationPipelinePassId PassId => m_Identity.PassId;
+        public SimulationPipelinePassImplementationVersion ImplementationVersion => m_Identity.ImplementationVersion;
+        public string StateOwner => m_Identity.StateOwner;
+        public string StateSchemaId => m_Identity.StateSchemaId;
+        public int StateSchemaVersion => m_Identity.StateSchemaVersion;
+        public ref readonly SimulationPipelineStateParticipantIdentity Identity => ref m_Identity;
         public StableHash StateHash { get; private set; }
         public ReadOnlyMemory<byte> Payload => m_Payload.Slice(0, m_PayloadLength);
         public ICanonicalTextResolver TextResolver { get; private set; }

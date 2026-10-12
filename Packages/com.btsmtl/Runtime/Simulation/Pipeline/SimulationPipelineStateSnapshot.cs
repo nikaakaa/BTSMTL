@@ -2,14 +2,14 @@ using System;
 using System.Buffers.Binary;
 using System.Collections;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Runtime.ExceptionServices;
 using System.Text;
 
 namespace ThirdPersonSimulation
 {
 
-    public readonly struct SimulationPipelineStateParticipantIdentity : IEquatable<SimulationPipelineStateParticipantIdentity>
+    [CanonicalContract(MaterializedRead = true, PreparedRead = false, PublishedRead = true)]
+    public readonly partial struct SimulationPipelineStateParticipantIdentity : IEquatable<SimulationPipelineStateParticipantIdentity>
     {
         public SimulationPipelineStateParticipantIdentity(
             SimulationPipelinePassId passId,
@@ -29,7 +29,9 @@ namespace ThirdPersonSimulation
 
         public SimulationPipelinePassId PassId { get; }
         public SimulationPipelinePassImplementationVersion ImplementationVersion { get; }
+        [CanonicalTextRules(Required = true)]
         public string StateOwner { get; }
+        [CanonicalTextRules(Required = true)]
         public string StateSchemaId { get; }
         public int StateSchemaVersion { get; }
 
@@ -43,6 +45,13 @@ namespace ThirdPersonSimulation
 
         public override bool Equals(object obj) => obj is SimulationPipelineStateParticipantIdentity other && Equals(other);
         public override int GetHashCode() => HashCode.Combine(PassId, ImplementationVersion, StateOwner, StateSchemaId, StateSchemaVersion);
+
+        [CanonicalValidation]
+        void RequireRecord()
+        {
+            if (StateSchemaVersion <= 0)
+                throw new ArgumentException("Pipeline state participant identity is incomplete.");
+        }
     }
 
     public sealed class SimulationPipelineStateSnapshot : IDisposable
@@ -139,40 +148,16 @@ namespace ThirdPersonSimulation
 
         StableHash ComputeHash(CanonicalWriter writer)
         {
-            Span<char> number = stackalloc char[20];
-            writer.WriteRawText("simulation-pipeline-state-snapshot/2");
-            writer.WriteByte(0x1f);
-            writer.WriteRawText(Pipeline.Id.Value);
-            writer.WriteRawText("@");
-            writer.WriteRawText(Pipeline.Revision.Value);
-            writer.WriteRawText("/schema");
-            Pipeline.SchemaVersion.Value.TryFormat(number, out int characterCount);
-            writer.WriteRawText(number.Slice(0, characterCount));
-            writer.WriteRawText("/");
-            writer.WriteRawHash(Pipeline.Hash.Value);
-            writer.WriteByte(0x1f);
-            writer.WriteRawText(Backend.ComponentId);
-            writer.WriteByte(0x1f);
-            writer.WriteRawText(Backend.SemanticVersion);
-            writer.WriteByte(0x1f);
-            LastCompletedTick.TryFormat(number, out characterCount, provider: CultureInfo.InvariantCulture);
-            writer.WriteRawText(number.Slice(0, characterCount));
+            writer.WriteText("simulation-pipeline-state-snapshot/3");
+            SimulationPipelineIdentity.CanonicalWrite(writer, Pipeline);
+            SimulationComponentIdentity.CanonicalWrite(writer, Backend);
+            writer.WriteUInt64(LastCompletedTick);
+            writer.WriteInt32(m_Participants.Count);
             for (int i = 0; i < m_Participants.Count; i++)
             {
                 SimulationPipelinePassStateSnapshot participant = m_Participants[i];
-                writer.WriteByte(0x1f);
-                writer.WriteRawText(participant.PassId.Value);
-                writer.WriteRawText(":");
-                writer.WriteRawText(participant.ImplementationVersion.Value);
-                writer.WriteRawText(":");
-                writer.WriteRawText(participant.StateOwner);
-                writer.WriteRawText(":");
-                writer.WriteRawText(participant.StateSchemaId);
-                writer.WriteRawText(":");
-                participant.StateSchemaVersion.TryFormat(number, out characterCount);
-                writer.WriteRawText(number.Slice(0, characterCount));
-                writer.WriteRawText(":");
-                writer.WriteRawHash(participant.StateHash);
+                SimulationPipelineStateParticipantIdentity.CanonicalWrite(writer, participant.Identity);
+                writer.WriteHash(participant.StateHash);
             }
             return writer.ComputeHash();
         }

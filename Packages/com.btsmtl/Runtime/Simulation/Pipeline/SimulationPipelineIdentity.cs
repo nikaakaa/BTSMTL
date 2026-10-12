@@ -3,9 +3,11 @@ using System.Globalization;
 
 namespace ThirdPersonSimulation
 {
-    public readonly struct SimulationPipelineId : IEquatable<SimulationPipelineId>, IComparable<SimulationPipelineId>
+    [CanonicalContract(MaterializedRead = true, PreparedRead = false, PublishedRead = true)]
+    public readonly partial struct SimulationPipelineId : IEquatable<SimulationPipelineId>, IComparable<SimulationPipelineId>
     {
         public SimulationPipelineId(string value) { Value = SimulationIdentity.Require(value, nameof(value)); }
+        [CanonicalTextRules(Required = true)]
         public string Value { get; }
         public bool IsValid => !string.IsNullOrEmpty(Value);
         public int CompareTo(SimulationPipelineId other) => string.CompareOrdinal(Value, other.Value);
@@ -15,9 +17,11 @@ namespace ThirdPersonSimulation
         public override string ToString() => Value ?? string.Empty;
     }
 
-    public readonly struct SimulationPipelineRevision : IEquatable<SimulationPipelineRevision>
+    [CanonicalContract(MaterializedRead = true, PreparedRead = false, PublishedRead = true)]
+    public readonly partial struct SimulationPipelineRevision : IEquatable<SimulationPipelineRevision>
     {
         public SimulationPipelineRevision(string value) { Value = SimulationIdentity.Require(value, nameof(value)); }
+        [CanonicalTextRules(Required = true)]
         public string Value { get; }
         public bool IsValid => !string.IsNullOrEmpty(Value);
         public bool Equals(SimulationPipelineRevision other) => string.Equals(Value, other.Value, StringComparison.Ordinal);
@@ -26,7 +30,8 @@ namespace ThirdPersonSimulation
         public override string ToString() => Value ?? string.Empty;
     }
 
-    public readonly struct SimulationPipelineSchemaVersion : IEquatable<SimulationPipelineSchemaVersion>
+    [CanonicalContract]
+    public readonly partial struct SimulationPipelineSchemaVersion : IEquatable<SimulationPipelineSchemaVersion>
     {
         public SimulationPipelineSchemaVersion(int value)
         {
@@ -41,9 +46,17 @@ namespace ThirdPersonSimulation
         public override bool Equals(object obj) => obj is SimulationPipelineSchemaVersion other && Equals(other);
         public override int GetHashCode() => Value;
         public override string ToString() => Value.ToString(CultureInfo.InvariantCulture);
+
+        [CanonicalValidation]
+        void RequireRecord()
+        {
+            if (Value <= 0)
+                throw new ArgumentOutOfRangeException("value");
+        }
     }
 
-    public readonly struct SimulationPipelineIdentity : IEquatable<SimulationPipelineIdentity>
+    [CanonicalContract(MaterializedRead = true, PreparedRead = false, PublishedRead = true)]
+    public readonly partial struct SimulationPipelineIdentity : IEquatable<SimulationPipelineIdentity>
     {
         public SimulationPipelineIdentity(
             SimulationPipelineId id,
@@ -74,5 +87,12 @@ namespace ThirdPersonSimulation
         public override bool Equals(object obj) => obj is SimulationPipelineIdentity other && Equals(other);
         public override int GetHashCode() => HashCode.Combine(Id, Revision, SchemaVersion, Hash);
         public override string ToString() => $"{Id}@{Revision}/schema{SchemaVersion}/{Hash}";
+
+        [CanonicalValidation]
+        void RequireRecord()
+        {
+            if (!Hash.IsValid)
+                throw new ArgumentException("Pipeline identity is incomplete.");
+        }
     }
 }

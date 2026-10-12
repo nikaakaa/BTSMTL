@@ -71,7 +71,8 @@ namespace ThirdPersonSimulation
         Diagnostics = 9
     }
 
-    public readonly struct SimulationComponentIdentity : IEquatable<SimulationComponentIdentity>
+    [CanonicalContract(MaterializedRead = true, PreparedRead = false, PublishedRead = true)]
+    public readonly partial struct SimulationComponentIdentity : IEquatable<SimulationComponentIdentity>
     {
         public SimulationComponentIdentity(
             SimulationComponentRole role,
@@ -90,7 +91,9 @@ namespace ThirdPersonSimulation
         }
 
         public SimulationComponentRole Role { get; }
+        [CanonicalTextRules(Required = true)]
         public string ComponentId { get; }
+        [CanonicalTextRules(Required = true)]
         public string SemanticVersion { get; }
         public StableHash ConfigurationHash { get; }
         public bool IsValid => !string.IsNullOrEmpty(ComponentId) && !string.IsNullOrEmpty(SemanticVersion) && ConfigurationHash.IsValid;
@@ -106,6 +109,13 @@ namespace ThirdPersonSimulation
         public override bool Equals(object obj) => obj is SimulationComponentIdentity other && Equals(other);
         public override int GetHashCode() => HashCode.Combine((int)Role, ComponentId, SemanticVersion, ConfigurationHash);
         public override string ToString() => $"{Role}:{ComponentId}@{SemanticVersion}/{ConfigurationHash}";
+
+        [CanonicalValidation]
+        void RequireRecord()
+        {
+            if (!ConfigurationHash.IsValid)
+                throw new ArgumentException("Component configuration hash is required.", "configurationHash");
+        }
     }
 
     [CanonicalContract]

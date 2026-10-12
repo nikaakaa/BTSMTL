@@ -25,7 +25,13 @@ namespace ThirdPersonSimulation
     public sealed class Float32SimulationSessionSnapshotCodec : IFloat32SimulationSessionSnapshotCodec
     {
         const uint Magic = 0x53534643;
-        const int Version = 5;
+        const int Version = 6;
+        public static readonly string CanonicalSchema = CanonicalContractProtocol.ComposeSchema(
+            "float32-session-snapshot/" + Version, SimulationPipelineIdentity.CanonicalSchema,
+            SimulationComponentIdentity.CanonicalSchema, SimulationPipelineStateParticipantIdentity.CanonicalSchema,
+            SimulationNumericProfile.CanonicalSchema, WorldBodyState.CanonicalSchema,
+            Float32CharacterRuntimeStateCodec.CodecIdentity);
+        static readonly StableHash CanonicalSchemaHash = new StableHash(CanonicalSchema);
 
         SimulationSessionCheckpointPayloadStorage m_Checkpoints;
         CheckpointDescriptors[] m_Descriptors;
@@ -162,6 +168,7 @@ namespace ThirdPersonSimulation
             {
                 writer.WriteUInt32(Magic);
                 writer.WriteInt32(Version);
+                writer.WriteHash(CanonicalSchemaHash);
                 long hashPosition = writer.Position;
                 writer.WriteHash(m_Composition.Identity);
                 writer.WriteHash(m_Composition.Identity);
@@ -188,21 +195,14 @@ namespace ThirdPersonSimulation
         {
             long hashPosition = writer.Position;
             writer.WriteHash(m_Composition.Pipeline.Hash);
-            writer.WriteText(m_Composition.Pipeline.Id.Value);
-            writer.WriteText(m_Composition.Pipeline.Revision.Value);
-            writer.WriteInt32(m_Composition.Pipeline.SchemaVersion.Value);
-            writer.WriteHash(m_Composition.Pipeline.Hash);
-            WriteComponent(writer, m_Composition.ExecutionBackend);
+            SimulationPipelineIdentity.CanonicalWrite(writer, m_Composition.Pipeline);
+            SimulationComponentIdentity.CanonicalWrite(writer, m_Composition.ExecutionBackend);
             writer.WriteUInt64(tick);
             writer.WriteInt32(m_Participants.Length);
             for (int index = 0; index < m_Participants.Length; index++)
             {
                 SimulationPipelineStateParticipantIdentity identity = m_Participants[index].StateIdentity;
-                writer.WriteText(identity.PassId.Value);
-                writer.WriteText(identity.ImplementationVersion.Value);
-                writer.WriteText(identity.StateOwner);
-                writer.WriteText(identity.StateSchemaId);
-                writer.WriteInt32(identity.StateSchemaVersion);
+                SimulationPipelineStateParticipantIdentity.CanonicalWrite(writer, identity);
                 long participantHashPosition = writer.Position;
                 writer.WriteHash(m_Composition.Pipeline.Hash);
                 long prefix = writer.BeginLengthPrefixedBlock();
@@ -239,6 +239,7 @@ namespace ThirdPersonSimulation
             reader.SetTextResolver(resolver);
             if (reader.ReadUInt32() != Magic || reader.ReadInt32() != Version)
                 throw new InvalidDataException("Float32 Session snapshot header is invalid.");
+            reader.RequireSchema(CanonicalSchemaHash, "Float32 Session checkpoint");
             StableHash expectedHash = reader.ReadHash();
             var composition = SimulationSessionCompositionIdentity.CanonicalFromHash(reader.ReadHash());
             if (!composition.Equals(m_Composition.Identity))
@@ -261,25 +262,16 @@ namespace ThirdPersonSimulation
         void ReadPreparedPipeline(CanonicalReader reader, CheckpointDescriptors descriptors, ICanonicalTextResolver resolver)
         {
             StableHash expectedHash = reader.ReadHash();
-            reader.RequireText(m_Composition.Pipeline.Id.Value);
-            reader.RequireText(m_Composition.Pipeline.Revision.Value);
-            int schemaVersion = reader.ReadInt32();
-            StableHash pipelineHash = reader.ReadHash();
-            RequireComponent(reader, m_Composition.ExecutionBackend);
+            SimulationPipelineIdentity.CanonicalReadPublished(reader, m_Composition.Pipeline);
+            SimulationComponentIdentity.CanonicalReadPublished(reader, m_Composition.ExecutionBackend);
             ulong tick = reader.ReadUInt64();
             int count = reader.ReadInt32();
-            if (schemaVersion != m_Composition.Pipeline.SchemaVersion.Value ||
-                !pipelineHash.Equals(m_Composition.Pipeline.Hash.Value) || count != descriptors.Participants.Length)
+            if (count != descriptors.Participants.Length)
                 throw new InvalidDataException("Pipeline snapshot does not match the prepared checkpoint owner.");
             for (int index = 0; index < count; index++)
             {
                 SimulationPipelineStateParticipantIdentity identity = m_Participants[index].StateIdentity;
-                reader.RequireText(identity.PassId.Value);
-                reader.RequireText(identity.ImplementationVersion.Value);
-                reader.RequireText(identity.StateOwner);
-                reader.RequireText(identity.StateSchemaId);
-                if (reader.ReadInt32() != identity.StateSchemaVersion)
-                    throw new InvalidDataException("Checkpoint participant identity does not match the compiled Pipeline.");
+                SimulationPipelineStateParticipantIdentity.CanonicalReadPublished(reader, in identity);
                 StableHash expectedStateHash = reader.ReadHash();
                 ArraySegment<byte> payload = reader.ReadBytesSegment();
                 StableHash stateHash = SimulationCanonicalPayloadHash.Compute(payload.AsSpan());
@@ -311,6 +303,7 @@ namespace ThirdPersonSimulation
         {
             writer.WriteUInt32(Magic);
             writer.WriteInt32(Version);
+            writer.WriteHash(CanonicalSchemaHash);
             writer.WriteHash(snapshot.SnapshotHash);
             writer.WriteHash(snapshot.CompositionIdentity);
             SimulationWorldSnapshotCodec.WriteLengthPrefixed(writer, snapshot.World);
@@ -345,42 +338,21 @@ namespace ThirdPersonSimulation
         static void WritePipeline(CanonicalWriter writer, SimulationPipelineStateSnapshot snapshot)
         {
             writer.WriteHash(snapshot.SnapshotHash);
-            writer.WriteText(snapshot.Pipeline.Id.Value);
-            writer.WriteText(snapshot.Pipeline.Revision.Value);
-            writer.WriteInt32(snapshot.Pipeline.SchemaVersion.Value);
-            writer.WriteHash(snapshot.Pipeline.Hash);
-            WriteComponent(writer, snapshot.Backend);
+            SimulationPipelineIdentity.CanonicalWrite(writer, snapshot.Pipeline);
+            SimulationComponentIdentity.CanonicalWrite(writer, snapshot.Backend);
             writer.WriteUInt64(snapshot.LastCompletedTick);
             writer.WriteInt32(snapshot.Participants.Count);
             for (int i = 0; i < snapshot.Participants.Count; i++)
             {
                 SimulationPipelinePassStateSnapshot participant = snapshot.Participants[i];
-                writer.WriteText(participant.PassId.Value);
-                writer.WriteText(participant.ImplementationVersion.Value);
-                writer.WriteText(participant.StateOwner);
-                writer.WriteText(participant.StateSchemaId);
-                writer.WriteInt32(participant.StateSchemaVersion);
+                SimulationPipelineStateParticipantIdentity.CanonicalWrite(writer, participant.Identity);
                 writer.WriteHash(participant.StateHash);
                 writer.WriteBytes(participant.Payload.Span);
             }
         }
 
-        static void WriteComponent(CanonicalWriter writer, SimulationComponentIdentity identity)
-        {
-            writer.WriteByte((byte)identity.Role);
-            writer.WriteText(identity.ComponentId);
-            writer.WriteText(identity.SemanticVersion);
-            writer.WriteHash(identity.ConfigurationHash);
-        }
 
-        static void RequireComponent(CanonicalReader reader, SimulationComponentIdentity identity)
-        {
-            if (reader.ReadByte() != (byte)identity.Role)
-                throw new InvalidDataException("Checkpoint execution backend role does not match its compiled composition.");
-            reader.RequireText(identity.ComponentId);
-            reader.RequireText(identity.SemanticVersion);
-            if (!reader.ReadHash().Equals(identity.ConfigurationHash))
-                throw new InvalidDataException("Checkpoint execution backend configuration does not match its compiled composition.");
-        }
+
+
     }
 }
