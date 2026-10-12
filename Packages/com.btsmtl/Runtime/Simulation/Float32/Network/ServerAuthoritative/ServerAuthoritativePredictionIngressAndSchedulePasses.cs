@@ -156,11 +156,11 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 RemotePresentationBatch remote = batch.RemotePresentation[0];
                 readPorts.PredictionState.State.ObserveRemotePresentation(remote);
                 writePorts.Observations.Write(batch);
-                writePorts.RemotePresentation.Write(new RemotePresentationBatch(
+                writePorts.RemotePresentation.Write(RemotePresentationBatch.FromPreparedOutputs(
                     remote.ActorId,
                     Array.Empty<CharacterBodySample>(),
-                    ServerAuthoritativeProductOrder.CopyToArray(remote.SampleCommands),
-                    ServerAuthoritativeProductOrder.CopyToArray(remote.ReliableEvents),
+                    remote.SampleCommands,
+                    remote.ReliableEvents,
                     false));
             }
             catch

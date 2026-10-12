@@ -720,18 +720,6 @@ namespace ThirdPersonSimulation.ServerAuthoritative
 
     static class ServerAuthoritativeProductOrder
     {
-        public static T[] CopyToArray<T>(IReadOnlyList<T> source)
-        {
-            if (source == null)
-                throw new ArgumentNullException(nameof(source));
-            if (source.Count == 0)
-                return Array.Empty<T>();
-            var values = new T[source.Count];
-            for (int i = 0; i < values.Length; i++)
-                values[i] = source[i];
-            return values;
-        }
-
         public static int CompareEvents(ServerAuthoritativeReliableEvent left, ServerAuthoritativeReliableEvent right)
         {
             int tick = left.Header.Tick.CompareTo(right.Header.Tick);
