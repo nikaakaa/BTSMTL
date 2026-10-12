@@ -3,6 +3,8 @@ namespace ThirdPersonSimulation
     public static class Float32SimulationInputCodec
     {
         public const string Schema = SimulationInputHeader.CanonicalSchema + ":" + SimulationInputValues.CanonicalSchema;
+        public const int MinimumValueBytes = 2 * sizeof(int) + sizeof(char) + sizeof(byte);
+        public const int MinimumRequestBytes = 2 * sizeof(int) + sizeof(char) + 3 * sizeof(ulong);
 
         public static int Measure(SimulationInput input) =>
             2 * (sizeof(int) + 64) + SimulationInputHeader.CanonicalMeasure(input.Header) +

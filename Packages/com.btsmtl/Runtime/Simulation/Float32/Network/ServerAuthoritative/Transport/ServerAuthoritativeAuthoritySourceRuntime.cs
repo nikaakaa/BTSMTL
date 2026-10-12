@@ -32,6 +32,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
         readonly CanonicalTextReferences m_CommandText;
         readonly CanonicalReader m_CommandReader = new CanonicalReader(Array.Empty<byte>());
         readonly CanonicalReader m_InputReader = new CanonicalReader(Array.Empty<byte>());
+        readonly Float32SimulationInputFrameStorage[] m_CommandInputStorage = new Float32SimulationInputFrameStorage[4];
         readonly CanonicalInputSample[][] m_CommandSamples =
         {
             new CanonicalInputSample[1],
@@ -97,6 +98,10 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
                 (policy.CommandQueueCapacity + 4 + encodedPages + projectionPages));
             int maximumCommandCharacters = policy.ModelPolicy.MaxGameplayDatagramBytes / sizeof(char);
             int maximumCommandTextValues = policy.ModelPolicy.MaxGameplayDatagramBytes / (sizeof(int) + sizeof(char));
+            int inputValueCapacity = policy.ModelPolicy.MaxGameplayDatagramBytes / Float32SimulationInputCodec.MinimumValueBytes;
+            int inputRequestCapacity = policy.ModelPolicy.MaxGameplayDatagramBytes / Float32SimulationInputCodec.MinimumRequestBytes;
+            for (int i = 0; i < m_CommandInputStorage.Length; i++)
+                m_CommandInputStorage[i] = new Float32SimulationInputFrameStorage(inputValueCapacity, inputRequestCapacity);
             m_CommandText = new CanonicalTextReferences(maximumCommandTextValues,
                 new CanonicalTextStorage(commandTextPages, checked(commandTextPages * maximumCommandCharacters)));
             m_ExpectedActors = actors;
@@ -278,7 +283,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
                         ServerAuthoritativeRosterEntry entry = roster.Roster[i];
                         m_Roster[i] = entry;
                         m_RouteActors[i] = entry.ActorId;
-                        m_Routes[i] = new ServerAuthoritativeAuthorityClientRoute(entry, m_Policy.CommandQueueCapacity);
+                        m_Routes[i] = new ServerAuthoritativeAuthorityClientRoute(entry, m_Policy.CommandQueueCapacity,
+                            m_Policy.ModelPolicy.MaxGameplayDatagramBytes);
                     }
                     m_RouteCount = roster.Roster.Count;
                     m_AcceptedInputs = new AcceptedAuthorityInput[m_RouteCount];
@@ -355,12 +361,14 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
             try
             {
                 CommandDatagram command = ServerAuthoritativeDatagramPayloadCodec.ReadCommand(packet.Payload,
-                    m_CommandReader, m_InputReader, m_CommandText.ReceptionResolver, m_CommandSamples);
+                    m_CommandReader, m_InputReader, m_CommandText.ReceptionResolver, m_CommandSamples, m_CommandInputStorage);
                 route.RecordCommand(packet.Payload.Length, command.SourceTick);
                 ReceiveCommand(route, command);
             }
             finally
             {
+                for (int i = 0; i < m_CommandInputStorage.Length; i++)
+                    m_CommandInputStorage[i].Release();
                 for (int i = 0; i < m_CommandSamples.Length; i++)
                     Array.Clear(m_CommandSamples[i], 0, m_CommandSamples[i].Length);
                 m_CommandText.Reset();
@@ -412,7 +420,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
                         $"Command target Tick '{sample.TargetAuthorityTick}' exceeds the authority lead window at '{m_LatestAuthorityTick}'.");
                 }
                 route.RecordCommandLead(sample.TargetAuthorityTick, m_LatestAuthorityTick);
-                route.Enqueue(sample);
+                route.Enqueue(sample, ref m_CommandInputStorage[i]);
             }
         }
 
@@ -803,6 +811,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
                 failures.Add(exception);
             }
             for (int index = 0; index < m_RouteCount; index++) m_Routes[index].Dispose();
+            for (int index = 0; index < m_CommandInputStorage.Length; index++) m_CommandInputStorage[index].Release();
             Array.Clear(m_AcceptedInputs, 0, m_AcceptedInputs.Length);
             m_CommandText.Reset();
             Array.Clear(m_RouteActors, 0, m_RouteCount);

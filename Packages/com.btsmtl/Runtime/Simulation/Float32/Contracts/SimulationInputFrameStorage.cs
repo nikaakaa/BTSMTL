@@ -133,11 +133,12 @@ namespace ThirdPersonSimulation
             Header = default;
         }
 
-        internal SimulationInput Capture(SimulationInput input)
+        public SimulationInput Capture(SimulationInput input)
         {
             Begin();
-            for (int index = 0; index < input.Values.Count; index++) AddValue(input.Values[index]);
-            for (int index = 0; index < input.Requests.Count; index++) AddRequest(input.Requests[index]);
+            SimulationInputValues data = input.CanonicalValues;
+            for (int index = 0; index < data.Values.Count; index++) AddValue(in data.Values.Element(index));
+            for (int index = 0; index < data.Requests.Count; index++) AddRequest(in data.Requests.Element(index));
             return CommitMetadata(input.NumericProfile, input.TickSource, input.InputSourceIdentity, input.Sequence);
         }
 

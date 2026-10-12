@@ -138,8 +138,10 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             IReadOnlyList<ActorId> actors) : base(descriptor)
         {
             m_Policy = policy ?? throw new ArgumentNullException(nameof(policy));
+            int values = policy.MaxGameplayDatagramBytes / Float32SimulationInputCodec.MinimumValueBytes;
+            int requests = policy.MaxGameplayDatagramBytes / Float32SimulationInputCodec.MinimumRequestBytes;
             for (int i = 0; i < m_Held.Length; i++)
-                m_Held[i] = new HeldAuthorityInput();
+                m_Held[i] = new HeldAuthorityInput(values, requests);
             Array.Fill(m_NeutralValues, s_EmptyNeutralValues);
             m_HeldWorkspace = new HeldAuthorityInput[actors.Count];
             m_ActorInputs = new SimulationPipelineActorInput<Float32StepInput>[actors.Count];
@@ -469,13 +471,12 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 ulong sequence = reader.ReadUInt64();
                 var acceptedTick = new SimulationTick(reader.ReadUInt64());
                 ulong consumedTick = reader.ReadUInt64();
-                SimulationInput input = ServerAuthoritativeCanonicalCodec.ReadInput(reader.ReadBytesSegment(), inputReader,
-                    reader.TextResolver);
+                ArraySegment<byte> inputBytes = reader.ReadBytesSegment();
                 if (i > 0 && m_HeldActors[i - 1].CompareTo(actorId) >= 0)
                     throw new InvalidDataException("Authority input hold state Actor order is invalid.");
                 m_HeldActors[i] = actorId;
-                m_Held[i].Reset(sequence, input, acceptedTick, consumedTick);
                 m_HeldCount++;
+                m_Held[i].Read(inputBytes, inputReader, reader.TextResolver, sequence, acceptedTick, consumedTick);
             }
             reader.RequireComplete();
         }
@@ -505,6 +506,11 @@ namespace ThirdPersonSimulation.ServerAuthoritative
 
         sealed class HeldAuthorityInput
         {
+            readonly Float32SimulationInputFrameStorage m_InputStorage;
+
+            public HeldAuthorityInput(int values, int requests) =>
+                m_InputStorage = new Float32SimulationInputFrameStorage(values, requests);
+
             public ulong InputSequence { get; private set; }
             public SimulationInput Input { get; private set; }
             public SimulationTick AcceptedTick { get; private set; }
@@ -516,16 +522,26 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 SimulationTick acceptedTick,
                 ulong lastConsumedTick = 0)
             {
+                SetInput(m_InputStorage.Capture(input), inputSequence, acceptedTick, lastConsumedTick);
+            }
+
+            public void Read(ArraySegment<byte> bytes, CanonicalReader reader, ICanonicalTextResolver textResolver,
+                ulong inputSequence, SimulationTick acceptedTick, ulong lastConsumedTick)
+            {
+                SetInput(ServerAuthoritativeCanonicalCodec.ReadInput(bytes, reader, textResolver, m_InputStorage),
+                    inputSequence, acceptedTick, lastConsumedTick);
+            }
+
+            void SetInput(SimulationInput input, ulong inputSequence, SimulationTick acceptedTick, ulong lastConsumedTick)
+            {
                 InputSequence = inputSequence;
-                input.RetainText();
-                Input?.ReleaseText();
                 Input = input;
                 AcceptedTick = acceptedTick;
                 LastConsumedTick = lastConsumedTick;
             }
 
             public void MarkConsumed(SimulationTick tick) => LastConsumedTick = tick.Value;
-            public void Dispose() { Input?.ReleaseText(); Input = null; }
+            public void Dispose() { m_InputStorage.Release(); Input = null; }
         }
     }
 

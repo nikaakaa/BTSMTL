@@ -414,7 +414,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
         }
 
         public static CommandDatagram ReadCommand(ReadOnlyMemory<byte> bytes, CanonicalReader reader,
-            CanonicalReader inputReader, ICanonicalTextResolver textResolver, CanonicalInputSample[][] sampleStorage)
+            CanonicalReader inputReader, ICanonicalTextResolver textResolver, CanonicalInputSample[][] sampleStorage,
+            Float32SimulationInputFrameStorage[] inputStorage)
         {
             reader.Reset(bytes);
             reader.SetTextResolver(textResolver);
@@ -431,7 +432,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
             {
                 ulong targetTick = reader.ReadUInt64();
                 ulong inputSequence = reader.ReadUInt64();
-                SimulationInput input = ServerAuthoritativeCanonicalCodec.ReadInput(reader.ReadBytesSegment(), inputReader, reader.TextResolver);
+                SimulationInput input = ServerAuthoritativeCanonicalCodec.ReadInput(reader.ReadBytesSegment(), inputReader,
+                    reader.TextResolver, inputStorage[i]);
                 samples[i] = new CanonicalInputSample(targetTick, inputSequence, input);
             }
             reader.RequireComplete();

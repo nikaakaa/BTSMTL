@@ -6,14 +6,14 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
     sealed class ServerAuthoritativeAuthorityClientRoute
     {
         readonly int m_Capacity;
-        readonly CanonicalInputSample[] m_Inputs;
+        readonly CommandInputSlot[] m_Inputs;
         int m_InputHead;
         int m_InputCount;
         readonly ulong[] m_SentSequenceOrder;
         readonly NetworkCheckpoint[] m_SentCheckpoints;
         int m_SentSequenceHead;
         int m_SentSequenceCount;
-        CanonicalInputSample m_Held;
+        CommandInputSlot m_Held;
         ulong m_HeldAcceptedTick;
         ulong m_LastEnqueuedInputSequence;
         ulong m_SendPacketSequence;
@@ -24,13 +24,19 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
         ulong m_PreviousDeltaPayloadBytes;
         ulong m_DeltaPayloadBytes;
 
-        public ServerAuthoritativeAuthorityClientRoute(ServerAuthoritativeRosterEntry roster, int capacity)
+        public ServerAuthoritativeAuthorityClientRoute(ServerAuthoritativeRosterEntry roster, int capacity,
+            int maximumDatagramBytes)
         {
             if (capacity <= 0)
                 throw new ArgumentOutOfRangeException(nameof(capacity));
             Roster = roster;
             m_Capacity = capacity;
-            m_Inputs = new CanonicalInputSample[capacity];
+            m_Inputs = new CommandInputSlot[capacity];
+            int values = maximumDatagramBytes / Float32SimulationInputCodec.MinimumValueBytes;
+            int requests = maximumDatagramBytes / Float32SimulationInputCodec.MinimumRequestBytes;
+            for (int i = 0; i < m_Inputs.Length; i++)
+                m_Inputs[i] = new CommandInputSlot(new Float32SimulationInputFrameStorage(values, requests));
+            m_Held = new CommandInputSlot(new Float32SimulationInputFrameStorage(values, requests));
             m_SentSequenceOrder = new ulong[capacity + 1];
             m_SentCheckpoints = new NetworkCheckpoint[capacity + 1];
         }
@@ -48,7 +54,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
         public ulong FullCheckpointCount { get; private set; }
         public ulong DeltaMtuExceededCount { get; private set; }
         public int LastDeltaPayloadBytes { get; private set; }
-        public bool HasInput => m_Held.IsValid || m_InputCount > 0;
+        public bool HasInput => m_Held.Sample.IsValid || m_InputCount > 0;
         public ulong CommandPacketCount { get; private set; }
         public ulong CommandPayloadBytes { get; private set; }
         public ulong PacketSequenceGaps { get; private set; }
@@ -73,7 +79,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
             Identity = identity;
         }
 
-        public void Enqueue(CanonicalInputSample sample)
+        public void Enqueue(CanonicalInputSample sample, ref Float32SimulationInputFrameStorage inputStorage)
         {
             if (!sample.IsValid)
                 throw new ArgumentException("Canonical input sample is invalid.", nameof(sample));
@@ -87,25 +93,27 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
             if (index >= 0)
             {
                 index = InputStorageIndex(index);
-                if (sample.InputSequence <= m_Inputs[index].InputSequence)
+                if (sample.InputSequence <= m_Inputs[index].Sample.InputSequence)
                     return;
-                sample.Input.RetainText();
-                m_Inputs[index].Input.ReleaseText();
-                m_Inputs[index] = sample;
+                Float32SimulationInputFrameStorage previous = m_Inputs[index].Storage;
+                m_Inputs[index] = new CommandInputSlot(inputStorage, sample);
+                inputStorage = previous;
                 return;
             }
 
-            InsertInput(~index, sample);
+            InsertInput(~index, sample, ref inputStorage);
         }
 
         public AcceptedAuthorityInput Select(ulong authorityTick, int holdTicks)
         {
-            CanonicalInputSample selected = default;
+            CommandInputSlot selected = default;
+            int selectedIndex = -1;
             int expiredCount = 0;
             int nextHead = m_InputHead;
-            while (expiredCount < m_InputCount && m_Inputs[nextHead].TargetAuthorityTick <= authorityTick)
+            while (expiredCount < m_InputCount && m_Inputs[nextHead].Sample.TargetAuthorityTick <= authorityTick)
             {
                 selected = m_Inputs[nextHead];
+                selectedIndex = nextHead;
                 expiredCount++;
                 nextHead++;
                 if (nextHead == m_Capacity)
@@ -114,12 +122,14 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
 
             if (expiredCount > 0)
             {
-                selected.Input.RetainText();
+                CommandInputSlot previous = m_Held;
+                m_Held = selected;
+                m_Inputs[selectedIndex] = previous;
                 int storageIndex = m_InputHead;
                 for (int index = 0; index < expiredCount; index++)
                 {
-                    m_Inputs[storageIndex].Input.ReleaseText();
-                    m_Inputs[storageIndex] = default;
+                    m_Inputs[storageIndex].Storage.Release();
+                    m_Inputs[storageIndex].Sample = default;
                     storageIndex++;
                     if (storageIndex == m_Capacity)
                         storageIndex = 0;
@@ -128,23 +138,21 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
                 m_InputCount -= expiredCount;
             }
 
-            if (selected.IsValid)
+            if (selected.Sample.IsValid)
             {
-                if (selected.TargetAuthorityTick == authorityTick)
+                if (selected.Sample.TargetAuthorityTick == authorityTick)
                     ExactInputCount++;
                 else
                     LateInputCount++;
-                if (m_Held.IsValid) m_Held.Input.ReleaseText();
-                m_Held = selected;
                 m_HeldAcceptedTick = authorityTick;
             }
-            if (!m_Held.IsValid)
+            if (!m_Held.Sample.IsValid)
                 throw new InvalidOperationException($"Authority has no canonical input for Actor '{Roster.ActorId}' at Tick '{authorityTick}'.");
             if (authorityTick - m_HeldAcceptedTick > (ulong)holdTicks)
                 NeutralInputCount++;
-            else if (!selected.IsValid)
+            else if (!selected.Sample.IsValid)
                 HeldInputCount++;
-            return new AcceptedAuthorityInput(Roster.ActorId, m_Held.InputSequence, m_Held.Input);
+            return new AcceptedAuthorityInput(Roster.ActorId, m_Held.Sample.InputSequence, m_Held.Sample.Input);
         }
 
         public void AcceptHelloSequence(ulong sequence)
@@ -296,7 +304,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
             while (low <= high)
             {
                 int middle = low + (high - low) / 2;
-                ulong middleTick = m_Inputs[InputStorageIndex(middle)].TargetAuthorityTick;
+                ulong middleTick = m_Inputs[InputStorageIndex(middle)].Sample.TargetAuthorityTick;
                 if (middleTick == targetTick)
                     return middle;
                 if (middleTick < targetTick)
@@ -312,32 +320,45 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
             int storageIndex = m_InputHead;
             for (int index = 0; index < m_InputCount; index++)
             {
-                m_Inputs[storageIndex].Input.ReleaseText();
-                m_Inputs[storageIndex] = default;
+                m_Inputs[storageIndex].Storage.Release();
+                m_Inputs[storageIndex].Sample = default;
                 storageIndex++;
                 if (storageIndex == m_Capacity)
                     storageIndex = 0;
             }
-            if (m_Held.IsValid) m_Held.Input.ReleaseText();
+            m_Held.Storage.Release();
             m_InputHead = 0;
             m_InputCount = 0;
-            m_Held = default;
+            m_Held.Sample = default;
         }
 
-        void InsertInput(int index, CanonicalInputSample sample)
+        void InsertInput(int index, CanonicalInputSample sample, ref Float32SimulationInputFrameStorage inputStorage)
         {
             int storageIndex = InputStorageIndex(m_InputCount);
+            Float32SimulationInputFrameStorage available = m_Inputs[storageIndex].Storage;
             for (int i = m_InputCount; i > index; i--)
             {
                 int previousIndex = storageIndex == 0 ? m_Capacity - 1 : storageIndex - 1;
                 m_Inputs[storageIndex] = m_Inputs[previousIndex];
                 storageIndex = previousIndex;
             }
-            sample.Input.RetainText();
-            m_Inputs[storageIndex] = sample;
+            m_Inputs[storageIndex] = new CommandInputSlot(inputStorage, sample);
+            inputStorage = available;
             m_InputCount++;
         }
 
         int InputStorageIndex(int index) => (m_InputHead + index) % m_Capacity;
+
+        struct CommandInputSlot
+        {
+            public CommandInputSlot(Float32SimulationInputFrameStorage storage, CanonicalInputSample sample = default)
+            {
+                Storage = storage;
+                Sample = sample;
+            }
+
+            public readonly Float32SimulationInputFrameStorage Storage;
+            public CanonicalInputSample Sample;
+        }
     }
 }
