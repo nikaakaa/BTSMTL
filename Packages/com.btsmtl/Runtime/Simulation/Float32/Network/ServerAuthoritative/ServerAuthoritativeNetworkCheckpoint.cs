@@ -40,6 +40,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         public Float32CharacterRuntime CharacterRuntime => m_CharacterRuntime;
         public string StateCodecIdentity => Float32CharacterRuntimeStateCodec.CodecIdentity;
         public StableHash LayoutIdentity { get; }
+        internal CanonicalHashWriter CheckpointHashWriter { get; } = new CanonicalHashWriter();
 
         internal SimulationActorBinding RequireActor(ActorId actorId)
         {
@@ -130,13 +131,13 @@ namespace ThirdPersonSimulation.ServerAuthoritative
     {
         readonly byte[] m_StateBytes;
 
-        internal NetworkCheckpoint(AuthoritativeActorBaseline baseline)
+        internal NetworkCheckpoint(AuthoritativeActorBaseline baseline, CanonicalHashWriter hashWriter)
         {
             if (!baseline.IsValid)
                 throw new ArgumentOutOfRangeException(nameof(baseline));
             Baseline = baseline;
             m_StateBytes = baseline.StateBuffer;
-            CheckpointHash = ComputeHash(baseline, m_StateBytes);
+            CheckpointHash = ComputeHash(baseline, m_StateBytes, hashWriter);
         }
 
         public AuthoritativeActorBaseline Baseline { get; }
@@ -145,9 +146,9 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         public StableHash CheckpointHash { get; }
         public bool IsValid => Baseline.IsValid && m_StateBytes != null;
 
-        static StableHash ComputeHash(AuthoritativeActorBaseline baseline, byte[] stateBytes)
+        static StableHash ComputeHash(AuthoritativeActorBaseline baseline, byte[] stateBytes, CanonicalHashWriter writer)
         {
-            using var writer = new CanonicalWriter();
+            writer.Reset();
             writer.WriteText("server-authoritative-network-checkpoint/14");
             writer.WriteText(baseline.ActorId.Value);
             writer.WriteUInt64(baseline.AuthorityTick.Value);
@@ -157,7 +158,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             writer.WriteHash(baseline.BodyHash);
             writer.WriteUInt64(baseline.ConfirmedInputSequence);
             writer.WriteUInt64(baseline.ConfirmedEventHorizon.Sequence);
-            writer.WriteBytes(stateBytes);
+            writer.WriteInt32(stateBytes.Length);
+            writer.WriteRawBytes(stateBytes);
             return writer.ComputeHash();
         }
     }
@@ -176,7 +178,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 throw new ArgumentNullException(nameof(layout));
             if (!baseline.IsValid)
                 throw new ArgumentOutOfRangeException(nameof(baseline));
-            var checkpoint = new NetworkCheckpoint(baseline);
+            var checkpoint = new NetworkCheckpoint(baseline, layout.CheckpointHashWriter);
             layout.Require(checkpoint);
             return checkpoint;
         }
@@ -243,7 +245,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 inputSequence,
                 horizon,
                 stateBytes);
-            var checkpoint = new NetworkCheckpoint(baseline);
+            var checkpoint = new NetworkCheckpoint(baseline, layout.CheckpointHashWriter);
             if (!checkpoint.CheckpointHash.Equals(expectedCheckpointHash))
                 throw new InvalidDataException("Full Network Checkpoint hash is invalid.");
             return checkpoint;
@@ -336,7 +338,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 confirmedInputSequence,
                 horizon,
                 stateBytes);
-            var checkpoint = new NetworkCheckpoint(rebuilt);
+            var checkpoint = new NetworkCheckpoint(rebuilt, layout.CheckpointHashWriter);
             if (!checkpoint.CheckpointHash.Equals(expectedCheckpointHash))
                 throw new InvalidDataException("Delta Network Checkpoint hash is invalid.");
             return checkpoint;
