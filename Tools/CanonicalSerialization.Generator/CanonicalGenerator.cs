@@ -383,7 +383,14 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                     .Append(" storage) where TReader : class, ").Append(Runtime).AppendLine("ICanonicalValueReader {");
                 code.AppendLine("int count = reader.ReadInt32();");
                 code.AppendLine("var values = storage.Reserve(count, out var items);");
-                code.Append("for (int i = 0; i < count; i++) values[i] = ").Append(Read(element)).AppendLine(";");
+                code.AppendLine("for (int i = 0; i < count; i++) {");
+                code.Append("values[i] = ").Append(Read(element)).AppendLine(";");
+                if (BorrowedSemantic(sequence, "RetainElementsOnRead", false))
+                {
+                    Hold(code, "Retain", element, "values[i]", plan);
+                    code.AppendLine("storage.CompleteReadElement();");
+                }
+                code.AppendLine("}");
                 code.AppendLine("return items; }");
             }
             foreach (ITypeSymbol sequence in InitializationSequences(plan.Members.Select(m => m.Type)))
@@ -491,7 +498,8 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                 {
                     code.Append("public static void Canonical").Append(operation).Append("StorageItems(")
                         .Append(TypeName(plan.PreparedStorage)).AppendLine(" storage) {");
-                    foreach (Member member in plan.Members.Where(m => BorrowedStorage(m.Type) is INamedTypeSymbol))
+                    foreach (Member member in plan.Members.Where(m => BorrowedStorage(m.Type) is INamedTypeSymbol &&
+                        BorrowedSemantic(m.Type, "HoldStorage", true)))
                         code.Append("storage.").Append(Escape(member.Symbol.Name)).Append('.')
                             .Append(operation).AppendLine("Items();");
                     foreach (Member member in plan.Members.Where(m => PreparedStorage(m.Type) != null))
@@ -753,7 +761,8 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                 TypeName(type) + ".CanonicalMeasure(" + value + ")";
         }
 
-        static bool HasResources(Plan plan, ITypeSymbol type) => Identity(type) == TextType || BorrowedStorage(type) != null ||
+        static bool HasResources(Plan plan, ITypeSymbol type) => Identity(type) == TextType ||
+            BorrowedStorage(type) != null && BorrowedSemantic(type, "HoldStorage", true) ||
             (SequenceElement(type) is ITypeSymbol element ? HasResources(plan, element) : plan.ResourceTypes.Contains(Identity(type)));
 
         static bool HasTexts(Plan plan, ITypeSymbol type) => Identity(type) == TextType || type.SpecialType == SpecialType.System_String ||
@@ -782,7 +791,7 @@ namespace ThirdPerson.CanonicalSerialization.Generator
         {
             if (!HasResources(plan, type))
                 return;
-            if (BorrowedStorage(type) != null)
+            if (BorrowedStorage(type) != null && BorrowedSemantic(type, "HoldStorage", true))
             {
                 code.Append(value).Append('.').Append(operation).AppendLine("StateStorage();");
                 return;
@@ -856,6 +865,14 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                 .SingleOrDefault(a => Identity(a.AttributeClass) == BorrowedSequenceAttribute);
             return shape == null ? null : ((INamedTypeSymbol)shape.ConstructorArguments[0].Value)
                 .OriginalDefinition.Construct(named.TypeArguments[0]);
+        }
+
+        static bool BorrowedSemantic(ITypeSymbol type, string name, bool defaultValue)
+        {
+            AttributeData shape = ((INamedTypeSymbol)type).OriginalDefinition.GetAttributes()
+                .Single(a => Identity(a.AttributeClass) == BorrowedSequenceAttribute);
+            return shape.NamedArguments.Where(a => a.Key == name).Select(a => (bool)a.Value.Value)
+                .DefaultIfEmpty(defaultValue).Single();
         }
 
         static string SequenceCount(ITypeSymbol type, string value) =>
@@ -1173,7 +1190,8 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                         Error(plan, member, "预分配集合必须由原候选页持有，不能通过值构造复制");
                     if (!prepared && !borrowed && plan.PreparedRead)
                         Error(plan, member, "只读序列只允许初始化物化读取；实时集合必须由原预分配存储持有");
-                    return (borrowed ? "borrowed-sequence<" : prepared ? "prepared-sequence<" : "initialization-sequence<")
+                    return (borrowed ? "borrowed-sequence:" + BorrowedSemantic(type, "HoldStorage", true) + ":" +
+                        BorrowedSemantic(type, "RetainElementsOnRead", false) + "<" : prepared ? "prepared-sequence<" : "initialization-sequence<")
                         + Shape(plan, element, member) + ">";
                 }
                 if (type.TypeKind == TypeKind.Enum)

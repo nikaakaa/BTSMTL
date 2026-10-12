@@ -27,6 +27,13 @@ namespace ThirdPersonSimulation
 
         public void CompleteReadElement() => Count++;
 
+        public Span<T> Reserve(int count, out CanonicalArraySlice<T> items)
+        {
+            PrepareRead(count);
+            items = new CanonicalArraySlice<T>(m_Items, count);
+            return m_Items.AsSpan(0, count);
+        }
+
         public void Add(T value)
         {
             if (Count == Capacity)
@@ -87,5 +94,25 @@ namespace ThirdPersonSimulation
         }
 
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
+    [CanonicalBorrowedSequence(typeof(CanonicalBuffer<>), HoldStorage = false, RetainElementsOnRead = true)]
+    public readonly struct CanonicalArraySlice<T>
+    {
+        readonly T[] m_Items;
+        readonly int m_Count;
+
+        public CanonicalArraySlice(T[] items) : this(items, items.Length) { }
+
+        internal CanonicalArraySlice(T[] items, int count)
+        {
+            m_Items = items;
+            m_Count = count;
+        }
+
+        public int Count => m_Count;
+        internal T[] Array => m_Items;
+        public ReadOnlySpan<T> Span => m_Items.AsSpan(0, m_Count);
+        public T this[int index] => Span[index];
     }
 }

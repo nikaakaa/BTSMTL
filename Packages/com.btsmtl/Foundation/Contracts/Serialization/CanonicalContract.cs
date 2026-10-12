@@ -15,6 +15,8 @@ namespace ThirdPersonSimulation
     {
         public CanonicalBorrowedSequenceAttribute(Type storage) => Storage = storage;
         public Type Storage { get; }
+        public bool HoldStorage { get; set; } = true;
+        public bool RetainElementsOnRead { get; set; }
     }
 
     [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
