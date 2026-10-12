@@ -80,10 +80,10 @@ namespace ThirdPersonSimulation.Fixed
         static readonly Comparison<FixedAbilityRuntimeState> s_AbilityStateComparison =
             (left, right) => left.AbilityIdentity.AbilityId.CompareTo(right.AbilityIdentity.AbilityId);
 
-        public SimulationNumericProfile NumericProfile => Data.NumericProfile;
-        public GameplayContentHash GameplayContentHash => Data.GameplayContentHash;
-        public StableHash StateSchemaHash => Data.StateSchemaHash;
-        public ulong LastCompletedTick => Data.LastCompletedTick;
+        public SimulationNumericProfile NumericProfile => Data.Metadata.NumericProfile;
+        public GameplayContentHash GameplayContentHash => Data.Metadata.GameplayContentHash;
+        public StableHash StateSchemaHash => Data.Metadata.StateSchemaHash;
+        public ulong LastCompletedTick => Data.Metadata.LastCompletedTick;
 
         public bool TryGetEquipmentState(out EquipmentStateAggregate equipment)
         {
@@ -136,9 +136,10 @@ namespace ThirdPersonSimulation.Fixed
         internal ReadOnlySpan<FixedActionInstanceState> ActionInstances => ActionStatePage.Actions;
         internal FixedInputRequestPageReference InputRequestPage => Data.InputRequestPage;
         internal ReadOnlySpan<KeyValuePair<string, SimulationInputRequestState>> InputRequests => InputRequestPage.Values;
-        internal ulong EventSequence => Data.EventSequence;
-        internal ulong ActionEventSequence => Data.ActionEventSequence;
-        internal ulong HandleAllocator => Data.HandleAllocator;
+        internal ref readonly CharacterRuntimeStateMetadata Metadata => ref Data.Metadata;
+        internal ulong EventSequence => Data.Metadata.EventSequence;
+        internal ulong ActionEventSequence => Data.Metadata.ActionEventSequence;
+        internal ulong HandleAllocator => Data.Metadata.HandleAllocator;
         public CharacterControlRuntimeState ControlState => Data.ControlState;
 
         public bool TryGetAttributeValue(string id, out FixedScalar baseValue, out FixedScalar currentValue, out ulong revision)
@@ -299,18 +300,12 @@ namespace ThirdPersonSimulation.Fixed
             FixedTimelineSnapshotPageReference committedSnapshots = Data.TimelineSnapshots.Page.Bank.Capture(snapshots);
             FixedCharacterRuntimeStatePage page = m_Page.Bank.Begin();
             page.Data.CharacterBlackboards = CharacterBlackboards;
-            return FromStateStorage(
+            return AdoptSnapshot(
                 page,
-                NumericProfile,
-                GameplayContentHash,
-                StateSchemaHash,
-                LastCompletedTick,
+                Metadata,
                 Data.Abilities,
                 ActionStatePage,
                 InputRequestPage,
-                EventSequence,
-                ActionEventSequence,
-                HandleAllocator,
                 page.ControlStorage.CopyFrom(ControlState),
                 GameplayEffectState,
                 EquipmentState,
@@ -335,123 +330,21 @@ namespace ThirdPersonSimulation.Fixed
 
         internal static FixedCharacterRuntimeState AdoptSnapshot(
             FixedCharacterRuntimeStatePage page,
-            SimulationNumericProfile numericProfile,
-            GameplayContentHash gameplayContentHash,
-            StableHash stateSchemaHash,
-            ulong lastCompletedTick,
+            in CharacterRuntimeStateMetadata metadata,
             FixedAbilityStateDirectoryReference abilities,
             FixedActionStatePageReference actions,
             FixedInputRequestPageReference inputRequests,
-            ulong eventSequence,
-            ulong actionEventSequence,
-            ulong handleAllocator,
             CharacterControlRuntimeState controlState,
             GameplayEffectStateAggregate gameplayEffectState,
             EquipmentStateAggregate equipmentState,
             FixedTimelineSnapshotPageReference timelineSnapshots,
             MotionWarpStatePageReference<FixedMotionWarpState> motionWarpStates)
         {
-            return FromStateStorage(
-                page,
-                numericProfile,
-                gameplayContentHash,
-                stateSchemaHash,
-                lastCompletedTick,
-                abilities,
-                actions,
-                inputRequests,
-                eventSequence,
-                actionEventSequence,
-                handleAllocator,
-                controlState,
-                gameplayEffectState,
-                equipmentState,
-                timelineSnapshots,
-                motionWarpStates);
-        }
-
-        internal static FixedCharacterRuntimeState AdoptPrepared(
-            FixedCharacterRuntimeStatePage page,
-            SimulationNumericProfile numericProfile,
-            GameplayContentHash gameplayContentHash,
-            StableHash stateSchemaHash,
-            ulong lastCompletedTick,
-            FixedAbilityStateDirectoryReference abilities,
-            FixedActionStatePageReference actions,
-            FixedInputRequestPageReference inputRequests,
-            ulong eventSequence,
-            ulong actionEventSequence,
-            ulong handleAllocator,
-            CharacterControlRuntimeState controlState,
-            GameplayEffectStateAggregate gameplayEffectState,
-            EquipmentStateAggregate equipmentState,
-            FixedTimelineSnapshotPageReference timelineSnapshots,
-            MotionWarpStatePageReference<FixedMotionWarpState> motionWarpStates)
-        {
-            FixedAbilityRuntimeState[] abilityValues = abilities.Page.Values;
-            Array.Sort(abilityValues, s_AbilityStateComparison);
-            for (int i = 0; i < abilityValues.Length; i++)
-            {
-                if (abilityValues[i].StateValues.Generation == 0 || i > 0 && abilityValues[i - 1].AbilityIdentity.AbilityId == abilityValues[i].AbilityIdentity.AbilityId)
-                    throw new ArgumentException("Character runtime state Ability partitions are missing or duplicated.");
-            }
-            List<AbilityTimelineRuntimeSnapshot> timelineValues = timelineSnapshots.Page.Values;
-            timelineValues.Sort(s_TimelineSnapshotComparison);
-            for (int i = 1; i < timelineValues.Count; i++)
-            {
-                if (timelineValues[i - 1].RuntimeHandle == timelineValues[i].RuntimeHandle)
-                    throw new ArgumentException("Character runtime state Timeline snapshots are duplicated.");
-            }
-            return FromStateStorage(
-                page,
-                numericProfile,
-                gameplayContentHash,
-                stateSchemaHash,
-                lastCompletedTick,
-                abilities,
-                actions,
-                inputRequests,
-                eventSequence,
-                actionEventSequence,
-                handleAllocator,
-                controlState,
-                gameplayEffectState,
-                equipmentState,
-                timelineSnapshots,
-                motionWarpStates);
-        }
-
-        static FixedCharacterRuntimeState FromStateStorage(
-            FixedCharacterRuntimeStatePage page,
-            SimulationNumericProfile numericProfile,
-            GameplayContentHash gameplayContentHash,
-            StableHash stateSchemaHash,
-            ulong lastCompletedTick,
-            FixedAbilityStateDirectoryReference abilities,
-            FixedActionStatePageReference actions,
-            FixedInputRequestPageReference inputRequests,
-            ulong eventSequence,
-            ulong actionEventSequence,
-            ulong handleAllocator,
-            CharacterControlRuntimeState controlState,
-            GameplayEffectStateAggregate gameplayEffectState,
-            EquipmentStateAggregate equipmentState,
-            FixedTimelineSnapshotPageReference timelineSnapshots,
-            MotionWarpStatePageReference<FixedMotionWarpState> motionWarpStates)
-        {
-            if (!numericProfile.IsValid || !gameplayContentHash.IsValid || !stateSchemaHash.IsValid)
-                throw new ArgumentException("Character runtime state identity is incomplete.");
             ref FixedCharacterRuntimeStateData data = ref page.Data;
-            data.NumericProfile = numericProfile;
-            data.GameplayContentHash = gameplayContentHash;
-            data.StateSchemaHash = stateSchemaHash;
-            data.LastCompletedTick = lastCompletedTick;
+            data.Metadata = metadata;
             data.Abilities = abilities;
             data.ActionStatePage = actions;
             data.InputRequestPage = inputRequests;
-            data.EventSequence = eventSequence;
-            data.ActionEventSequence = actionEventSequence;
-            data.HandleAllocator = handleAllocator;
             data.ControlState = controlState;
             data.GameplayEffectState = gameplayEffectState;
             data.EquipmentState = equipmentState;
@@ -478,18 +371,12 @@ namespace ThirdPersonSimulation.Fixed
             Array.Sort(abilities.Page.Values, s_AbilityStateComparison);
             FixedCharacterRuntimeStatePage page = statePages.Begin();
             page.Data.CharacterBlackboards = characterBlackboards;
-            return FromStateStorage(
+            return AdoptSnapshot(
                 page,
-                numericProfile,
-                gameplayContentHash,
-                stateSchemaHash,
-                0,
+                new CharacterRuntimeStateMetadata(numericProfile, gameplayContentHash, stateSchemaHash, 0, 0, 0, 0),
                 abilities,
                 actions,
                 inputRequests,
-                0,
-                0,
-                0,
                 page.ControlStorage.CopyFrom(controlState),
                 gameplayEffectState,
                 equipmentState,
@@ -502,16 +389,10 @@ namespace ThirdPersonSimulation.Fixed
     internal struct FixedCharacterRuntimeStateData
     {
         internal AbilityStateValuePageReference<AbilityStateValue> CharacterBlackboards;
-        internal SimulationNumericProfile NumericProfile;
-        internal GameplayContentHash GameplayContentHash;
-        internal StableHash StateSchemaHash;
-        internal ulong LastCompletedTick;
+        internal CharacterRuntimeStateMetadata Metadata;
         internal FixedAbilityStateDirectoryReference Abilities;
         internal FixedActionStatePageReference ActionStatePage;
         internal FixedInputRequestPageReference InputRequestPage;
-        internal ulong EventSequence;
-        internal ulong ActionEventSequence;
-        internal ulong HandleAllocator;
         internal CharacterControlRuntimeState ControlState;
         internal GameplayEffectStateAggregate GameplayEffectState;
         internal EquipmentStateAggregate EquipmentState;

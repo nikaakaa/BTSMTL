@@ -326,17 +326,13 @@ namespace ThirdPersonSimulation
                 ? m_ControlState.Capture(page.ControlStorage)
                 : m_BaseState.ControlState.IsValid ? page.ControlStorage.CopyFrom(m_BaseState.ControlState) : default;
             page.Data.CharacterBlackboards = m_CharacterBlackboards;
-            return Float32CharacterRuntimeState.AdoptPrepared(
+            return Float32CharacterRuntimeState.AdoptSnapshot(
                 page,
-                m_BaseState.NumericProfile,
-                m_BaseState.GameplayContentHash,
-                m_BaseState.StateSchemaHash,
-                m_Tick.Value,
+                new CharacterRuntimeStateMetadata(m_BaseState.NumericProfile, m_BaseState.GameplayContentHash,
+                    m_BaseState.StateSchemaHash, m_Tick.Value, m_EventSequenceState.EventSequence,
+                    m_ActionState.ActionEventSequence, m_HandleAllocatorState.HandleAllocator),
                 actions,
                 inputRequests,
-                m_EventSequenceState.EventSequence,
-                m_ActionState.ActionEventSequence,
-                m_HandleAllocatorState.HandleAllocator,
                 control,
                 m_GameplayEffectState.Commit(),
                 m_EquipmentState.Capture(),

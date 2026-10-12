@@ -6,6 +6,35 @@ using System.IO;
 namespace ThirdPersonSimulation
 {
     [CanonicalContract]
+    internal readonly partial struct CharacterRuntimeStateMetadata
+    {
+        internal CharacterRuntimeStateMetadata(SimulationNumericProfile numericProfile,
+            GameplayContentHash gameplayContentHash, StableHash stateSchemaHash,
+            ulong lastCompletedTick, ulong eventSequence, ulong actionEventSequence, ulong handleAllocator)
+        {
+            NumericProfile = numericProfile;
+            GameplayContentHash = gameplayContentHash;
+            StateSchemaHash = stateSchemaHash;
+            LastCompletedTick = lastCompletedTick;
+            EventSequence = eventSequence;
+            ActionEventSequence = actionEventSequence;
+            HandleAllocator = handleAllocator;
+        }
+
+        [CanonicalBound]
+        [CanonicalPublished]
+        internal SimulationNumericProfile NumericProfile { get; }
+        [CanonicalBound]
+        internal GameplayContentHash GameplayContentHash { get; }
+        [CanonicalBound]
+        internal StableHash StateSchemaHash { get; }
+        internal ulong LastCompletedTick { get; }
+        internal ulong EventSequence { get; }
+        internal ulong ActionEventSequence { get; }
+        internal ulong HandleAllocator { get; }
+    }
+
+    [CanonicalContract]
     internal readonly partial struct SimulationInputRequestState : IEquatable<SimulationInputRequestState>
     {
         public SimulationInputRequestState(

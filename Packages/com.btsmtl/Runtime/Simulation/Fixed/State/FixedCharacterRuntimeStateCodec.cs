@@ -18,9 +18,9 @@ namespace ThirdPersonSimulation.Fixed
             return values;
         }
         const uint Magic = 0x54535243;
-        const int Version = 27;
-        const string HashIdentity = "fixed-character-runtime-state-hash/21";
-        public const string CodecIdentity = "fixed-character-runtime-state/21";
+        const int Version = 28;
+        const string HashIdentity = "fixed-character-runtime-state-hash/22";
+        public const string CodecIdentity = "fixed-character-runtime-state/22";
 
         public static byte[] Write(FixedCharacterRuntimeState state)
         {
@@ -141,14 +141,9 @@ namespace ThirdPersonSimulation.Fixed
             FixedActionInstanceState.CanonicalRequireSchema(reader);
             GameplayAbilityExecutionIdentity.CanonicalRequireSchema(reader);
             AbilityExecutionContext.CanonicalRequireSchema(reader);
-            SimulationNumericProfile numericProfile = SimulationNumericProfile.CanonicalReadPublished(reader, FixedSimulationNumericProfile.Value);
-            GameplayContentHash gameplayContentHash = GameplayContentHash.CanonicalFromHash(reader.ReadHash());
-            if (!gameplayContentHash.Equals(expectedGameplayContentHash))
-                throw new InvalidDataException("Fixed Character runtime state GameplayContentHash does not match the active Character Runtime.");
-            StableHash stateSchemaHash = reader.ReadHash();
-            if (!stateSchemaHash.Equals(actor.StateSchemaHash))
-                throw new InvalidDataException("Fixed Character runtime state StateSchemaHash does not match the active Character Runtime.");
-            ulong lastCompletedTick = reader.ReadUInt64();
+            CharacterRuntimeStateMetadata.CanonicalRequireSchema(reader);
+            CharacterRuntimeStateMetadata metadata = CharacterRuntimeStateMetadata.CanonicalReadBound(
+                reader, expectedGameplayContentHash, FixedSimulationNumericProfile.Value, actor.StateSchemaHash);
             AbilityStateValuePageReference<AbilityStateValue> characterBlackboards = actor.CharacterBlackboardPages.Read(reader);
             int abilityCount = ReadCount(reader, installations.Installations.Count, "Fixed Character Ability partition");
             if (abilityCount != installations.Installations.Count)
@@ -157,9 +152,13 @@ namespace ThirdPersonSimulation.Fixed
             FixedAbilityStateDirectoryReference abilityDirectory = actor.AbilityDirectories.Begin();
             FixedAbilityRuntimeState[] abilities = abilityDirectory.Page.Values;
             MotionWarpStatePageReference<FixedMotionWarpState> motionWarpStates = actor.MotionWarpPages.BeginEmpty();
+            CharacterSkillId previousAbility = default;
             for (int i = 0; i < abilityCount; i++)
             {
                 GameplayAbilityExecutionIdentity identity = ReadIdentity(reader, actor);
+                if (i > 0 && previousAbility.CompareTo(identity.AbilityId) >= 0)
+                    throw new InvalidDataException("Fixed Character Ability partitions are duplicated or not canonically ordered.");
+                previousAbility = identity.AbilityId;
                 FixedGameplayAbilityExecutionInstallation installation = installations.Require(identity.AbilityId);
                 AbilityStateValuePageReference<AbilityStateValue> stateValues = actor.StateValuePages[identity.AbilityId].Read(reader);
                 GameplayAbilityExecutionAggregate<AbilityStateValue> abilityExecutionState = ReadAbilityExecutionState(reader, installation.Layout, actor.ExecutionStatePages[identity.AbilityId], actor);
@@ -173,9 +172,6 @@ namespace ThirdPersonSimulation.Fixed
             ReadActionActivationRequests(reader, actor, equipmentLayout, actions.Page);
             ReadActionInstances(reader, actor, equipmentLayout, actions.Page);
             FixedInputRequestPageReference inputRequests = ReadInputRequests(reader, actor);
-            ulong eventSequence = reader.ReadUInt64();
-            ulong actionEventSequence = reader.ReadUInt64();
-            ulong handleAllocator = reader.ReadUInt64();
             CharacterControlRuntimeState controlState = reader.ReadBoolean()
                 ? CharacterControlRuntimeStateCodec.Read(reader.ReadBytesSegment(), actor.CheckpointControlSchema,
                     statePage.ControlStorage, actor.CheckpointControlReader, reader.TextResolver)
@@ -197,21 +193,22 @@ namespace ThirdPersonSimulation.Fixed
             AbilityTimelineRuntimeSnapshot.CanonicalRequireSchema(reader);
             int timelineSnapshotCount = ReadCount(reader, FixedTimelineSnapshotPageBank.MaximumSnapshotCount, "Fixed Character Timeline snapshot");
             FixedTimelineSnapshotPageReference timelineSnapshots = actor.TimelineSnapshotPages.BeginDecode(out AbilityTimelineSnapshotStorage timelineStorage);
+            ulong previousTimelineHandle = 0;
             for (int i = 0; i < timelineSnapshotCount; i++)
-                timelineSnapshots.Page.Values.Add(AbilityTimelineRuntimeSnapshot.CanonicalRead(reader, timelineStorage));
+            {
+                AbilityTimelineRuntimeSnapshot snapshot = AbilityTimelineRuntimeSnapshot.CanonicalRead(reader, timelineStorage);
+                if (i > 0 && snapshot.RuntimeHandle <= previousTimelineHandle)
+                    throw new InvalidDataException("Fixed Character Timeline snapshots are duplicated or not canonically ordered.");
+                previousTimelineHandle = snapshot.RuntimeHandle;
+                timelineSnapshots.Page.Values.Add(snapshot);
+            }
             reader.RequireComplete();
-            var state = FixedCharacterRuntimeState.AdoptPrepared(
+            var state = FixedCharacterRuntimeState.AdoptSnapshot(
                 statePage,
-                numericProfile,
-                gameplayContentHash,
-                stateSchemaHash,
-                lastCompletedTick,
+                metadata,
                 abilityDirectory,
                 actions,
                 inputRequests,
-                eventSequence,
-                actionEventSequence,
-                handleAllocator,
                 controlState,
                 gameplayEffectState,
                 equipmentState,
@@ -247,7 +244,7 @@ namespace ThirdPersonSimulation.Fixed
                 while (offset < sharedLength && canonical[offset] == bytes.Span[offset])
                     offset++;
                 throw new InvalidDataException(
-                    $"Fixed Character runtime state is not canonical. Actor '{actor.ActorId}', Tick '{lastCompletedTick}', byte '{offset}', stored length '{bytes.Length}', decoded length '{canonical.Length}'. " +
+                    $"Fixed Character runtime state is not canonical. Actor '{actor.ActorId}', Tick '{metadata.LastCompletedTick}', byte '{offset}', stored length '{bytes.Length}', decoded length '{canonical.Length}'. " +
                     $"StoredPayloadBase64={Convert.ToBase64String(bytes.Span)} DecodedPayloadBase64={Convert.ToBase64String(canonical)}");
             }
             return state;
@@ -279,10 +276,8 @@ namespace ThirdPersonSimulation.Fixed
             writer.WriteHash(FixedActionInstanceState.CanonicalSchemaHash);
             writer.WriteHash(GameplayAbilityExecutionIdentity.CanonicalSchemaHash);
             writer.WriteHash(AbilityExecutionContext.CanonicalSchemaHash);
-            SimulationNumericProfile.CanonicalWrite(writer, state.NumericProfile);
-            writer.WriteHash(state.GameplayContentHash);
-            writer.WriteHash(state.StateSchemaHash);
-            writer.WriteUInt64(state.LastCompletedTick);
+            writer.WriteHash(CharacterRuntimeStateMetadata.CanonicalSchemaHash);
+            CharacterRuntimeStateMetadata.CanonicalWrite(writer, state.Metadata);
             state.CharacterBlackboards.Write(writer);
             writer.WriteInt32(state.Abilities.Count);
             for (int i = 0; i < state.Abilities.Count; i++)
@@ -296,9 +291,6 @@ namespace ThirdPersonSimulation.Fixed
             WriteActionActivationRequests(writer, state.ActionActivationRequests);
             WriteActionInstances(writer, state.ActionInstances);
             WriteInputRequests(writer, state.InputRequests);
-            writer.WriteUInt64(state.EventSequence);
-            writer.WriteUInt64(state.ActionEventSequence);
-            writer.WriteUInt64(state.HandleAllocator);
             writer.WriteBoolean(state.ControlState.IsValid);
             if (state.ControlState.IsValid)
                 CharacterControlRuntimeStateCodec.WriteLengthPrefixed(writer, state.ControlState);

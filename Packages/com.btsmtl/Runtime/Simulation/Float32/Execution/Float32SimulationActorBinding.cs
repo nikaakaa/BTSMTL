@@ -863,6 +863,7 @@ namespace ThirdPersonSimulation
             {
                 "float32-character-state-schema/4",
                 Float32CharacterRuntimeStateCodec.CodecIdentity,
+                CharacterRuntimeStateMetadata.CanonicalSchema,
                 control.BindingHash.ToString(),
                 input.BindingHash.ToString(),
                 abilities.GameplayEffectCatalog != null ? gameplayEffects.BindingHash.ToString() : string.Empty,

@@ -1044,6 +1044,7 @@ namespace ThirdPersonSimulation.Fixed
             {
                 "fixed-character-state-schema/4",
                 FixedCharacterRuntimeStateCodec.CodecIdentity,
+                CharacterRuntimeStateMetadata.CanonicalSchema,
                 control.BindingHash.ToString(),
                 input.BindingHash.ToString(),
                 abilities.GameplayEffectCatalog != null ? gameplayEffects.BindingHash.ToString() : string.Empty,

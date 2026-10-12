@@ -18,9 +18,9 @@ namespace ThirdPersonSimulation
             return values;
         }
         const uint Magic = 0x54535243;
-        const int Version = 27;
-        const string HashIdentity = "float32-character-runtime-state-hash/21";
-        public const string CodecIdentity = "float32-character-runtime-state/21";
+        const int Version = 28;
+        const string HashIdentity = "float32-character-runtime-state-hash/22";
+        public const string CodecIdentity = "float32-character-runtime-state/22";
 
         public static byte[] Write(Float32CharacterRuntimeState state)
         {
@@ -136,14 +136,9 @@ namespace ThirdPersonSimulation
             Float32ActionInstanceState.CanonicalRequireSchema(reader);
             GameplayAbilityExecutionIdentity.CanonicalRequireSchema(reader);
             AbilityExecutionContext.CanonicalRequireSchema(reader);
-            SimulationNumericProfile numericProfile = SimulationNumericProfile.CanonicalReadPublished(reader, Float32SimulationNumericProfile.Value);
-            GameplayContentHash gameplayContentHash = GameplayContentHash.CanonicalFromHash(reader.ReadHash());
-            if (!gameplayContentHash.Equals(expectedGameplayContentHash))
-                throw new InvalidDataException("Float32 Character runtime state GameplayContentHash does not match the active Character Runtime.");
-            StableHash stateSchemaHash = reader.ReadHash();
-            if (!stateSchemaHash.Equals(actor.StateSchemaHash))
-                throw new InvalidDataException("Float32 Character runtime state StateSchemaHash does not match the active Character Runtime.");
-            ulong lastCompletedTick = reader.ReadUInt64();
+            CharacterRuntimeStateMetadata.CanonicalRequireSchema(reader);
+            CharacterRuntimeStateMetadata metadata = CharacterRuntimeStateMetadata.CanonicalReadBound(
+                reader, expectedGameplayContentHash, Float32SimulationNumericProfile.Value, actor.StateSchemaHash);
             AbilityStateValuePageReference<AbilityStateValue> characterBlackboards = actor.CharacterBlackboardPages.Read(reader);
             int abilityCount = ReadCount(reader, installations.Installations.Count, "Float32 Character Ability partition");
             if (abilityCount != installations.Installations.Count)
@@ -164,7 +159,6 @@ namespace ThirdPersonSimulation
                         throw new InvalidDataException("Float32 Character Ability partitions are duplicated or not canonically ordered.");
                     previousAbility = identity.AbilityId;
                     Float32GameplayAbilityExecutionInstallation installation = installations.Require(identity.AbilityId);
-                    installation.Identity.Require(identity);
                     AbilityStateValuePageReference<AbilityStateValue> stateValues = actor.StateValuePages[identity.AbilityId].Read(reader);
                     GameplayAbilityExecutionStateBank<AbilityStateValue> executionBank = actor.ExecutionStatePages[identity.AbilityId];
                     GameplayAbilityExecutionAggregate<AbilityStateValue> abilityExecutionState = executionBank.Capture();
@@ -177,9 +171,6 @@ namespace ThirdPersonSimulation
                 ReadActionActivationRequests(reader, actor, equipmentLayout, actions.Page);
                 ReadActionInstances(reader, actor, equipmentLayout, actions.Page);
                 Float32InputRequestPageReference inputRequests = ReadInputRequests(reader, actor);
-                ulong eventSequence = reader.ReadUInt64();
-                ulong actionEventSequence = reader.ReadUInt64();
-                ulong handleAllocator = reader.ReadUInt64();
                 CharacterControlRuntimeState controlState = reader.ReadBoolean()
                     ? CharacterControlRuntimeStateCodec.Read(reader.ReadBytesSegment(), actor.CheckpointControlSchema,
                         page.ControlStorage, actor.CheckpointControlReader, reader.TextResolver)
@@ -212,17 +203,11 @@ namespace ThirdPersonSimulation
                     page.TimelineValues.Add(snapshot);
                 }
                 reader.RequireComplete();
-                Float32CharacterRuntimeState state = Float32CharacterRuntimeState.AdoptPrepared(
+                Float32CharacterRuntimeState state = Float32CharacterRuntimeState.AdoptSnapshot(
                     page,
-                    numericProfile,
-                    gameplayContentHash,
-                    stateSchemaHash,
-                    lastCompletedTick,
+                    metadata,
                     actions,
                     inputRequests,
-                    eventSequence,
-                    actionEventSequence,
-                    handleAllocator,
                     controlState,
                     gameplayEffectState,
                     equipmentState,
@@ -273,10 +258,8 @@ namespace ThirdPersonSimulation
             writer.WriteHash(Float32ActionInstanceState.CanonicalSchemaHash);
             writer.WriteHash(GameplayAbilityExecutionIdentity.CanonicalSchemaHash);
             writer.WriteHash(AbilityExecutionContext.CanonicalSchemaHash);
-            SimulationNumericProfile.CanonicalWrite(writer, state.NumericProfile);
-            writer.WriteHash(state.GameplayContentHash);
-            writer.WriteHash(state.StateSchemaHash);
-            writer.WriteUInt64(state.LastCompletedTick);
+            writer.WriteHash(CharacterRuntimeStateMetadata.CanonicalSchemaHash);
+            CharacterRuntimeStateMetadata.CanonicalWrite(writer, state.Metadata);
             state.CharacterBlackboards.Write(writer);
             writer.WriteInt32(state.Abilities.Count);
             for (int i = 0; i < state.Abilities.Count; i++)
@@ -290,9 +273,6 @@ namespace ThirdPersonSimulation
             WriteActionActivationRequests(writer, state.ActionActivationRequests);
             WriteActionInstances(writer, state.ActionInstances);
             WriteInputRequests(writer, state.InputRequests);
-            writer.WriteUInt64(state.EventSequence);
-            writer.WriteUInt64(state.ActionEventSequence);
-            writer.WriteUInt64(state.HandleAllocator);
             writer.WriteBoolean(state.ControlState.IsValid);
             if (state.ControlState.IsValid)
                 CharacterControlRuntimeStateCodec.WriteLengthPrefixed(writer, state.ControlState);

@@ -47,10 +47,10 @@ namespace ThirdPersonSimulation
             m_Page.CanonicalPayload = payload;
         }
         internal Float32CharacterRuntimeStatePageBank StatePages => m_Page.Bank;
-        public SimulationNumericProfile NumericProfile => m_Page.Data.NumericProfile;
-        public GameplayContentHash GameplayContentHash => m_Page.Data.GameplayContentHash;
-        public StableHash StateSchemaHash => m_Page.Data.StateSchemaHash;
-        public ulong LastCompletedTick => m_Page.Data.LastCompletedTick;
+        public SimulationNumericProfile NumericProfile => m_Page.Data.Metadata.NumericProfile;
+        public GameplayContentHash GameplayContentHash => m_Page.Data.Metadata.GameplayContentHash;
+        public StableHash StateSchemaHash => m_Page.Data.Metadata.StateSchemaHash;
+        public ulong LastCompletedTick => m_Page.Data.Metadata.LastCompletedTick;
         public IReadOnlyList<Float32AbilityRuntimeState> Abilities => m_Page.Abilities;
         internal Float32AbilityRuntimeState[] AbilitiesArray => m_Page.Abilities;
         internal MotionWarpStatePageReference<Float32MotionWarpState> MotionWarpStates => m_Page.Data.MotionWarpStates;
@@ -60,9 +60,10 @@ namespace ThirdPersonSimulation
         internal ReadOnlySpan<Float32ActionInstanceState> ActionInstances => ActionStatePage.Actions;
         internal Float32InputRequestPageReference InputRequestPage => m_Page.Data.InputRequestPage;
         internal ReadOnlySpan<KeyValuePair<CanonicalTextValue, SimulationInputRequestState>> InputRequests => InputRequestPage.Values;
-        internal ulong EventSequence => m_Page.Data.EventSequence;
-        internal ulong ActionEventSequence => m_Page.Data.ActionEventSequence;
-        internal ulong HandleAllocator => m_Page.Data.HandleAllocator;
+        internal ref readonly CharacterRuntimeStateMetadata Metadata => ref m_Page.Data.Metadata;
+        internal ulong EventSequence => m_Page.Data.Metadata.EventSequence;
+        internal ulong ActionEventSequence => m_Page.Data.Metadata.ActionEventSequence;
+        internal ulong HandleAllocator => m_Page.Data.Metadata.HandleAllocator;
         public CharacterControlRuntimeState ControlState => m_Page.Data.ControlState;
         internal GameplayEffectStateAggregate GameplayEffectState => m_Page.Data.GameplayEffectState;
         internal EquipmentStateAggregate EquipmentState => m_Page.Data.EquipmentState;
@@ -213,32 +214,20 @@ namespace ThirdPersonSimulation
             return page;
         }
 
-        internal static Float32CharacterRuntimeState AdoptPrepared(
+        internal static Float32CharacterRuntimeState AdoptSnapshot(
             Float32CharacterRuntimeStatePage page,
-            SimulationNumericProfile numericProfile,
-            GameplayContentHash gameplayContentHash,
-            StableHash stateSchemaHash,
-            ulong lastCompletedTick,
+            in CharacterRuntimeStateMetadata metadata,
             Float32ActionStatePageReference actions,
             Float32InputRequestPageReference inputRequests,
-            ulong eventSequence,
-            ulong actionEventSequence,
-            ulong handleAllocator,
             CharacterControlRuntimeState controlState,
             GameplayEffectStateAggregate gameplayEffectState,
             EquipmentStateAggregate equipmentState,
             MotionWarpStatePageReference<Float32MotionWarpState> motionWarpStates)
         {
             ref Float32CharacterRuntimeStateData data = ref page.Data;
-            data.NumericProfile = numericProfile;
-            data.GameplayContentHash = gameplayContentHash;
-            data.StateSchemaHash = stateSchemaHash;
-            data.LastCompletedTick = lastCompletedTick;
+            data.Metadata = metadata;
             data.ActionStatePage = actions;
             data.InputRequestPage = inputRequests;
-            data.EventSequence = eventSequence;
-            data.ActionEventSequence = actionEventSequence;
-            data.HandleAllocator = handleAllocator;
             data.ControlState = controlState;
             data.GameplayEffectState = gameplayEffectState;
             data.EquipmentState = equipmentState;
@@ -259,8 +248,9 @@ namespace ThirdPersonSimulation
             MotionWarpStatePageReference<Float32MotionWarpState> motionWarpStates)
         {
             Array.Sort(page.Abilities, s_CompareAbilities);
-            return AdoptPrepared(page, numericProfile, gameplayContentHash, stateSchemaHash, 0,
-                actions, inputRequests, 0, 0, 0, page.ControlStorage.CopyFrom(controlState),
+            return AdoptSnapshot(page,
+                new CharacterRuntimeStateMetadata(numericProfile, gameplayContentHash, stateSchemaHash, 0, 0, 0, 0),
+                actions, inputRequests, page.ControlStorage.CopyFrom(controlState),
                 gameplayEffectState, equipmentState, motionWarpStates);
         }
     }
@@ -268,15 +258,9 @@ namespace ThirdPersonSimulation
     internal struct Float32CharacterRuntimeStateData
     {
         internal AbilityStateValuePageReference<AbilityStateValue> CharacterBlackboards;
-        internal SimulationNumericProfile NumericProfile;
-        internal GameplayContentHash GameplayContentHash;
-        internal StableHash StateSchemaHash;
-        internal ulong LastCompletedTick;
+        internal CharacterRuntimeStateMetadata Metadata;
         internal Float32ActionStatePageReference ActionStatePage;
         internal Float32InputRequestPageReference InputRequestPage;
-        internal ulong EventSequence;
-        internal ulong ActionEventSequence;
-        internal ulong HandleAllocator;
         internal CharacterControlRuntimeState ControlState;
         internal GameplayEffectStateAggregate GameplayEffectState;
         internal EquipmentStateAggregate EquipmentState;
