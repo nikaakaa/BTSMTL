@@ -565,15 +565,17 @@ namespace ThirdPersonSimulation
             protected override void ResetGraphCallParameter(int slot) => m_Owner.SetState(slot, m_Owner.m_Defaults[slot]);
             protected override void WriteGraphCallParameter(int slot, AbilityStateValue value) => m_Owner.SetState(slot, value);
             protected override AbilityStateValue ReadGraphCallParameter(int slot) => m_Owner.m_State[slot];
-            protected override void TraceResult(SimulationOperation operation, string port, AbilityStateValue value, bool predictive)
+            protected override void TraceResult(SimulationOperation operation, string port, AbilityStateValue value,
+                bool predictive, bool captureValue)
             {
-                if (!predictive && m_Owner.m_CaptureValueTrace)
+                if (!predictive && captureValue && m_Owner.m_CaptureValueTrace)
                     m_Owner.m_Output.TraceValue(operation.Handle, CanonicalTextValue.IsNullOrEmpty(port)
                         ? m_Owner.m_OutputPortNames[operation.Handle.Value][0] : port, value, false);
             }
-            protected override void TraceInput(SimulationOperation operation, CompiledValueInputBinding input, AbilityStateValue value, bool predictive)
+            protected override void TraceInput(SimulationOperation operation, CompiledValueInputBinding input, AbilityStateValue value,
+                bool predictive, bool captureValue)
             {
-                if (!predictive && m_Owner.m_CaptureValueTrace)
+                if (!predictive && captureValue && m_Owner.m_CaptureValueTrace)
                     m_Owner.m_Output.TraceValue(operation.Handle, m_Owner.m_InputPortNames[operation.Handle.Value][input.TargetPortIndex], value, true);
             }
         }

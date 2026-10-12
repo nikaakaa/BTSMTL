@@ -119,6 +119,9 @@ namespace ThirdPersonSimulation
 
         internal void ClearObservedValues() => m_ObservationValues.Clear();
 
+        internal void RecordObservedValue(OperationHandle operation, int outputPortIndex, in AbilityStateValue value) =>
+            m_ObservationValues.Write(m_Layout.ValueEvaluationSlot(operation, outputPortIndex), in value);
+
         public void BeginEvaluation()
         {
             if (m_InputBufferDepth != 0)

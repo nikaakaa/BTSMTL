@@ -174,24 +174,27 @@ namespace ThirdPersonSimulation
         protected override void WriteGraphCallParameter(int slot, AbilityStateValue value) => m_Blackboard.WriteGraphCallParameter(slot, value);
         protected override AbilityStateValue ReadGraphCallParameter(int slot) => m_Blackboard.ReadGraphCallParameter(slot);
 
-        protected override void TraceResult(SimulationOperation operation, string outputPort, AbilityStateValue value, bool predictive)
+        protected override void TraceResult(SimulationOperation operation, string outputPort, AbilityStateValue value,
+            bool predictive, bool captureValue)
         {
             if (!predictive)
             {
                 TraceValue(operation, value);
-                m_Frame.Trace.AddValue(operation, outputPort, ProgramValuePortDirection.Output, value);
+                if (captureValue)
+                    m_Frame.Trace.AddValue(operation, outputPort, ProgramValuePortDirection.Output, value);
             }
         }
 
         protected override void TraceInput(SimulationOperation operation, CompiledValueInputBinding input,
-            AbilityStateValue value, bool predictive)
+            AbilityStateValue value, bool predictive, bool captureValue)
         {
                     if (!predictive && (m_Frame.Trace.CaptureValues ||
                         m_Frame.Trace.CaptureControlFlow && input.SourceKind == CompiledValueInputSourceKind.Operation))
                     {
                         string port = GameplayAbilityValuePortContracts.Require(operation.Code, operation.Handle, m_Ability.GraphCallFrames)
                             .Inputs[input.TargetPortIndex].Identity;
-                        m_Frame.Trace.AddValue(operation, port, ProgramValuePortDirection.Input, value);
+                        if (captureValue)
+                            m_Frame.Trace.AddValue(operation, port, ProgramValuePortDirection.Input, value);
                         m_Frame.Trace.AddValueEdge(operation, port);
                     }
         }

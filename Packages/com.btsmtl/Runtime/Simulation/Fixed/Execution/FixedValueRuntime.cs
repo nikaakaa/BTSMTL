@@ -74,7 +74,7 @@ namespace ThirdPersonSimulation.Fixed
         readonly string[][] m_InputPortIds;
         readonly OperationValueObservationLayout m_ObservationLayout;
         int m_InputBufferDepth;
-        bool m_ObservingValues;
+        OperationValueObservationPhase m_ObservationPhase;
 #if UNITY_EDITOR
         readonly FixedAbilityExecutionWorkspace m_ObservationWorkspace;
 #endif
@@ -157,17 +157,30 @@ namespace ThirdPersonSimulation.Fixed
             OperationHandle handle, string outputPort = "", int outputPortIndex = -1)
             where TTarget : struct, IOperationControlTarget<TTarget>
         {
-            AbilityStateValue value = EvaluateValue(cursor, handle, outputPort, outputPortIndex);
-            if (!m_ObservingValues && m_InputBufferDepth == 0 && m_Frame.Trace.CaptureValues &&
-                !cursor.IsPredictiveEvaluation && m_Frame.RuleEvaluationMode != GameplayAbilityRuleEvaluationMode.Availability)
+            bool observe = m_ObservationPhase == OperationValueObservationPhase.None && m_InputBufferDepth == 0 &&
+                m_Frame.Trace.CaptureValues && !cursor.IsPredictiveEvaluation &&
+                m_Frame.RuleEvaluationMode != GameplayAbilityRuleEvaluationMode.Availability &&
+                !m_ObservationLayout.Ports(handle).IsEmpty;
+            if (!observe)
+                return EvaluateValue(cursor, handle, outputPort, outputPortIndex);
+            m_ObservationPhase = OperationValueObservationPhase.Evaluating;
+            try
+            {
+                AbilityStateValue value = EvaluateValue(cursor, handle, outputPort, outputPortIndex);
+                m_ObservationPhase = OperationValueObservationPhase.Observing;
                 ObserveGraphValues(cursor, handle);
-            return value;
+                return value;
+            }
+            finally
+            {
+                m_ObservationValues.Clear();
+                m_ObservationPhase = OperationValueObservationPhase.None;
+            }
         }
 
         void ObserveGraphValues<TTarget>(OperationControlCursor<TTarget> cursor, OperationHandle handle)
             where TTarget : struct, IOperationControlTarget<TTarget>
         {
-            m_ObservingValues = true;
 #if UNITY_EDITOR
             long observationStarted = System.Diagnostics.Stopwatch.GetTimestamp();
 #endif
@@ -191,13 +204,11 @@ namespace ThirdPersonSimulation.Fixed
             }
             finally
             {
-                m_ObservationValues.Clear();
 #if UNITY_EDITOR
                 m_ObservationWorkspace.ValueTraces.ObservationElapsedStopwatchTicks +=
                     System.Diagnostics.Stopwatch.GetTimestamp() - observationStarted;
                 m_ObservationWorkspace.ValueTraces.ObservationCalls++;
 #endif
-                m_ObservingValues = false;
             }
         }
 
@@ -208,12 +219,17 @@ namespace ThirdPersonSimulation.Fixed
 			int outputPortIndex = -1)
 			where TTarget : struct, IOperationControlTarget<TTarget>
 		{
-            if (!m_ObservingValues && m_Frame.RuleEvaluationMode != GameplayAbilityRuleEvaluationMode.Availability)
+            if (m_ObservationPhase != OperationValueObservationPhase.Observing &&
+                m_Frame.RuleEvaluationMode != GameplayAbilityRuleEvaluationMode.Availability)
                 cursor.RequireExecution(handle);
 			int valueSlot = m_Layout.ValueEvaluationSlot(handle, outputPortIndex);
 			if (m_ActiveValueSlots[valueSlot])
 				throw new InvalidOperationException($"Value operation cycle reached '{handle}/{outputPort}'.");
-            bool readOnlyObservation = m_ObservingValues;
+            bool readOnlyObservation = m_ObservationPhase == OperationValueObservationPhase.Observing && !cursor.IsPredictiveEvaluation &&
+                m_Frame.RuleEvaluationMode != GameplayAbilityRuleEvaluationMode.Availability;
+            bool saveObservedValue = readOnlyObservation ||
+                m_ObservationPhase == OperationValueObservationPhase.Evaluating && !cursor.IsPredictiveEvaluation &&
+                m_Frame.RuleEvaluationMode != GameplayAbilityRuleEvaluationMode.Availability;
             if (readOnlyObservation && m_ObservationValues.IsWritten(valueSlot))
                 return m_ObservationValues.Read(valueSlot);
 			m_ActiveValueSlots[valueSlot] = true;
@@ -222,9 +238,12 @@ namespace ThirdPersonSimulation.Fixed
 				SimulationOperation operation = Access.Operation(handle);
                 if (m_Frame.ValuePorts != null && m_Frame.ValuePorts.TryReadPrepared(handle.Value, outputPort, ProgramValuePortDirection.Output, out AbilityStateValue supplied))
                 {
-                    if (!m_ObservingValues && !cursor.IsPredictiveEvaluation && m_Frame.RuleEvaluationMode != GameplayAbilityRuleEvaluationMode.Availability)
+                    if ((m_ObservationPhase == OperationValueObservationPhase.None ||
+                         m_ObservationPhase == OperationValueObservationPhase.Evaluating && !m_ObservationLayout.ObservesOutput(handle)) &&
+                        !cursor.IsPredictiveEvaluation &&
+                        m_Frame.RuleEvaluationMode != GameplayAbilityRuleEvaluationMode.Availability)
                         m_Frame.Trace.AddValue(operation, outputPort, ProgramValuePortDirection.Output, supplied);
-                    if (readOnlyObservation) m_ObservationValues.Write(valueSlot, in supplied);
+                    if (saveObservedValue) m_ObservationValues.Write(valueSlot, in supplied);
                     return supplied;
                 }
 				using FixedValueInputLease inputs = ReadInputs(cursor, operation);
@@ -378,9 +397,12 @@ namespace ThirdPersonSimulation.Fixed
 					default:
 						throw new InvalidOperationException($"Operation '{handle}' code '{operation.Code}' is not a value operation.");
 				}
-                if (!m_ObservingValues && !cursor.IsPredictiveEvaluation && m_Frame.RuleEvaluationMode != GameplayAbilityRuleEvaluationMode.Availability)
+                if ((m_ObservationPhase == OperationValueObservationPhase.None ||
+                     m_ObservationPhase == OperationValueObservationPhase.Evaluating && !m_ObservationLayout.ObservesOutput(handle)) &&
+                    !cursor.IsPredictiveEvaluation &&
+                    m_Frame.RuleEvaluationMode != GameplayAbilityRuleEvaluationMode.Availability)
                     m_Frame.Trace.AddValue(operation, outputPort, ProgramValuePortDirection.Output, result);
-                if (readOnlyObservation) m_ObservationValues.Write(valueSlot, in result);
+                if (saveObservedValue) m_ObservationValues.Write(valueSlot, in result);
 				return result;
 			}
 			finally
@@ -469,10 +491,11 @@ namespace ThirdPersonSimulation.Fixed
                     string port = m_InputPortIds[operation.Handle.Value][input.TargetPortIndex];
                     AbilityStateValue value = ReadInputValue(cursor, operation, port, in input);
                     buffer.Add(in value);
-                    if (!m_ObservingValues && !cursor.IsPredictiveEvaluation && m_Frame.RuleEvaluationMode != GameplayAbilityRuleEvaluationMode.Availability && (m_Frame.Trace.CaptureValues ||
+                    if (m_ObservationPhase != OperationValueObservationPhase.Observing && !cursor.IsPredictiveEvaluation && m_Frame.RuleEvaluationMode != GameplayAbilityRuleEvaluationMode.Availability && (m_Frame.Trace.CaptureValues ||
                         m_Frame.Trace.CaptureControlFlow && input.SourceKind == CompiledValueInputSourceKind.Operation))
                     {
-                        m_Frame.Trace.AddValue(operation, port, ProgramValuePortDirection.Input, value);
+                        if (m_ObservationPhase == OperationValueObservationPhase.None)
+                            m_Frame.Trace.AddValue(operation, port, ProgramValuePortDirection.Input, value);
                         m_Frame.Trace.AddValueEdge(operation, port);
                     }
                     if (i == 0 &&

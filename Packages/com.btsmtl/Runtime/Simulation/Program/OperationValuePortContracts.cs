@@ -19,6 +19,13 @@ namespace ThirdPersonSimulation
         public const int MaxSamplesPerEvaluation = 4096;
     }
 
+    internal enum OperationValueObservationPhase
+    {
+        None,
+        Evaluating,
+        Observing
+    }
+
     internal sealed class BorrowedValueObservationScratch<TValue>
     {
         readonly TValue[] m_Values;
@@ -40,6 +47,8 @@ namespace ThirdPersonSimulation
         internal void Write(int slot, in TValue value)
         {
             m_Values[slot] = value;
+            if (m_Written[slot])
+                return;
             m_Written[slot] = true;
             m_Slots[m_Count++] = slot;
         }
@@ -77,11 +86,13 @@ namespace ThirdPersonSimulation
     internal sealed class OperationValueObservationLayout
     {
         readonly OperationValueObservationPort[][] m_Ports;
+        readonly bool[] m_ObservedOutputs;
 
         public OperationValueObservationLayout(int operationCount, IReadOnlyList<ProgramExecutionSource> sources,
             Func<int, OperationValuePortContract> requireContract)
         {
             m_Ports = new OperationValueObservationPort[operationCount][];
+            m_ObservedOutputs = new bool[operationCount];
             var groups = new Dictionary<string, List<OperationValueObservationPort>>(StringComparer.Ordinal);
             var contracts = new OperationValuePortContract[operationCount];
             for (int i = 0; i < sources.Count; i++)
@@ -94,6 +105,8 @@ namespace ThirdPersonSimulation
                     requireContract(source.TargetIndex);
                 if (source.ValuePortDirection == ProgramValuePortDirection.Output && contract.OutputsRequireExecution)
                     continue;
+                if (source.ValuePortDirection == ProgramValuePortDirection.Output)
+                    m_ObservedOutputs[source.TargetIndex] = true;
                 int index = source.ValuePortDirection == ProgramValuePortDirection.Input
                     ? contract.RequireInput(source.CompiledPortId).Order
                     : contract.RequireSelection(source.CompiledPortId).Order;
@@ -118,6 +131,8 @@ namespace ThirdPersonSimulation
         }
 
         public ReadOnlySpan<OperationValueObservationPort> Ports(OperationHandle operation) => m_Ports[operation.Value];
+
+        public bool ObservesOutput(OperationHandle operation) => m_ObservedOutputs[operation.Value];
     }
 
     public enum SemanticValueKind : byte
