@@ -97,32 +97,37 @@ namespace ThirdPersonSimulation.Fixed
         }
     }
 
-    internal sealed class PortableAttributeState
+    [CanonicalContract]
+    internal partial struct PortableAttributeData
     {
+        [CanonicalBound]
         public PortableAttributeDefinition Definition;
         public FixedScalar BaseValue;
         public FixedScalar CurrentValue;
         public ulong Revision;
+    }
+
+    [CanonicalStorageOwner]
+    internal sealed partial class PortableAttributeState
+    {
+        [CanonicalStorage]
+        internal PortableAttributeData Data;
         public List<PortableAttributeModifierState> Modifiers { get; } = new List<PortableAttributeModifierState>();
     }
 
-    internal readonly struct PortableAttributeSnapshot
+    [CanonicalStorageOwner]
+    internal readonly partial struct PortableAttributeSnapshot
     {
         internal PortableAttributeSnapshot(
             PortableAttributeState source,
             FixedGameplayEffectModifierSnapshotReference modifiers)
         {
-            Definition = source.Definition;
-            BaseValue = source.BaseValue;
-            CurrentValue = source.CurrentValue;
-            Revision = source.Revision;
+            Data = source.Data;
             m_Modifiers = modifiers;
         }
 
-        public readonly PortableAttributeDefinition Definition;
-        public readonly FixedScalar BaseValue;
-        public readonly FixedScalar CurrentValue;
-        public readonly ulong Revision;
+        [CanonicalStorage]
+        internal readonly PortableAttributeData Data;
         readonly FixedGameplayEffectModifierSnapshotReference m_Modifiers;
         public FixedGameplayEffectModifierSnapshotReference Modifiers => m_Modifiers;
     }

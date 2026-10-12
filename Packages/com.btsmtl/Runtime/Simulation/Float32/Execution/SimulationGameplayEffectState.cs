@@ -98,32 +98,37 @@ namespace ThirdPersonSimulation
         }
     }
 
-    internal sealed class PortableAttributeState
+    [CanonicalContract]
+    internal partial struct PortableAttributeData
     {
+        [CanonicalBound]
         public PortableAttributeDefinition Definition;
         public Float32Scalar BaseValue;
         public Float32Scalar CurrentValue;
         public ulong Revision;
+    }
+
+    [CanonicalStorageOwner]
+    internal sealed partial class PortableAttributeState
+    {
+        [CanonicalStorage]
+        internal PortableAttributeData Data;
         public List<PortableAttributeModifierState> Modifiers { get; } = new List<PortableAttributeModifierState>();
     }
 
-    internal readonly struct PortableAttributeSnapshot
+    [CanonicalStorageOwner]
+    internal readonly partial struct PortableAttributeSnapshot
     {
         internal PortableAttributeSnapshot(
             PortableAttributeState source,
             Float32GameplayEffectModifierSnapshotReference modifiers)
         {
-            Definition = source.Definition;
-            BaseValue = source.BaseValue;
-            CurrentValue = source.CurrentValue;
-            Revision = source.Revision;
+            Data = source.Data;
             m_Modifiers = modifiers;
         }
 
-        public readonly PortableAttributeDefinition Definition;
-        public readonly Float32Scalar BaseValue;
-        public readonly Float32Scalar CurrentValue;
-        public readonly ulong Revision;
+        [CanonicalStorage]
+        internal readonly PortableAttributeData Data;
         readonly Float32GameplayEffectModifierSnapshotReference m_Modifiers;
         public Float32GameplayEffectModifierSnapshotReference Modifiers => m_Modifiers;
     }

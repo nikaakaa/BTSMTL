@@ -193,6 +193,7 @@ namespace ThirdPersonSimulation
         public string AttributeId { get; }
     }
 
+    [CanonicalPublishedReference]
     internal sealed class PortableAttributeDefinition
     {
         public PortableAttributeDefinition(string id, Float32Scalar initialBase, PortableAttributeBound minimum, PortableAttributeBound maximum)
@@ -207,6 +208,7 @@ namespace ThirdPersonSimulation
         public Float32Scalar InitialBase { get; }
         public PortableAttributeBound Minimum { get; }
         public PortableAttributeBound Maximum { get; }
+        [CanonicalReferenceKey]
         public int Index { get; internal set; }
         public int MinimumAttributeIndex { get; internal set; }
         public int MaximumAttributeIndex { get; internal set; }

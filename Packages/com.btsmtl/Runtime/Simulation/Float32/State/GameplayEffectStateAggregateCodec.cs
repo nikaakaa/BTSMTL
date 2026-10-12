@@ -12,10 +12,10 @@ namespace ThirdPersonSimulation
         const uint ActiveMagic = 0x32464745;
         const uint PeriodsMagic = 0x32504745;
         const uint JournalMagic = 0x324A4745;
-        const int StateVersion = 11;
+        const int StateVersion = 12;
         internal static readonly string CanonicalSchema = CanonicalContractProtocol.ComposeSchema(
             "gameplay-effect-state/" + StateVersion,
-            PortableAttributeModifierState.CanonicalSchema, SimulationGameplayEffectContext.CanonicalSchema,
+            PortableAttributeData.CanonicalSchema, PortableAttributeModifierState.CanonicalSchema, SimulationGameplayEffectContext.CanonicalSchema,
             GameplayEffectActiveControlSnapshot.CanonicalSchema, GameplayEffectLifecycleRevisionKey.CanonicalSchema,
             GameplayEffectLifecycleRevisionEntry.CanonicalSchema);
         static readonly StableHash CanonicalSchemaHash = new StableHash(CanonicalSchema);
@@ -133,10 +133,7 @@ namespace ThirdPersonSimulation
             for (int index = 0; index < attributes.Length; index++)
             {
                 PortableAttributeSnapshot attribute = attributes[index].Value;
-                writer.WriteInt32(attribute.Definition.Index);
-                writer.WriteScalar(attribute.BaseValue);
-                writer.WriteScalar(attribute.CurrentValue);
-                writer.WriteUInt64(attribute.Revision);
+                PortableAttributeData.CanonicalWrite(writer, attribute.Data);
                 writer.WriteInt32(attribute.Modifiers.Length);
                 for (int i = 0; i < attribute.Modifiers.Length; i++)
                     PortableAttributeModifierState.CanonicalWrite(writer, attribute.Modifiers[i]);
@@ -153,12 +150,8 @@ namespace ThirdPersonSimulation
             int totalModifiers = 0;
             for (int i = 0; i < count; i++)
             {
-                if (reader.ReadInt32() != i)
-                    throw new InvalidDataException("Gameplay Attributes are not canonically ordered.");
                 PortableAttributeState attribute = attributes.Values[i];
-                attribute.BaseValue = reader.ReadScalar();
-                attribute.CurrentValue = reader.ReadScalar();
-                attribute.Revision = reader.ReadUInt64();
+                PortableAttributeData.CanonicalReadInto(reader, ref attribute.Data);
                 if (attribute.Revision == 0)
                     throw new InvalidDataException("Gameplay Attribute revision is invalid.");
                 int modifierCount = ReadCount(reader, attribute.Modifiers.Capacity);

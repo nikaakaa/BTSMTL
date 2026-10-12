@@ -194,6 +194,7 @@ namespace ThirdPersonSimulation.Fixed
         public string AttributeId { get; }
     }
 
+    [CanonicalPublishedReference]
     internal sealed class PortableAttributeDefinition
     {
         public PortableAttributeDefinition(string id, FixedScalar initialBase, PortableAttributeBound minimum, PortableAttributeBound maximum)
@@ -208,6 +209,7 @@ namespace ThirdPersonSimulation.Fixed
         public FixedScalar InitialBase { get; }
         public PortableAttributeBound Minimum { get; }
         public PortableAttributeBound Maximum { get; }
+        [CanonicalReferenceKey]
         public int Index { get; internal set; }
         public int MinimumAttributeIndex { get; internal set; }
         public int MaximumAttributeIndex { get; internal set; }

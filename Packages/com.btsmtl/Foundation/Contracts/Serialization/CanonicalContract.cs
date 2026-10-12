@@ -46,6 +46,18 @@ namespace ThirdPersonSimulation
     {
     }
 
+    [AttributeUsage(AttributeTargets.Struct | AttributeTargets.Class)]
+    public sealed class CanonicalStorageOwnerAttribute : Attribute { }
+
+    [AttributeUsage(AttributeTargets.Field)]
+    public sealed class CanonicalStorageAttribute : Attribute { }
+
+    [AttributeUsage(AttributeTargets.Class)]
+    public sealed class CanonicalPublishedReferenceAttribute : Attribute { }
+
+    [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
+    public sealed class CanonicalReferenceKeyAttribute : Attribute { }
+
     [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
     public sealed class CanonicalBoundAttribute : Attribute
     {
@@ -204,6 +216,10 @@ namespace ThirdPersonSimulation
 
         public void Add<T>(T value) => m_Values.Add(typeof(T), value);
         public T Require<T>() => (T)m_Values[typeof(T)];
+        public void AddReferences<T>(System.Collections.Generic.IReadOnlyList<T> values) =>
+            m_Values.Add(typeof(System.Collections.Generic.IReadOnlyList<T>), values);
+        public T RequireReference<T>(int index) =>
+            ((System.Collections.Generic.IReadOnlyList<T>)m_Values[typeof(System.Collections.Generic.IReadOnlyList<T>)])[index];
     }
 
     public static class CanonicalContractProtocol
