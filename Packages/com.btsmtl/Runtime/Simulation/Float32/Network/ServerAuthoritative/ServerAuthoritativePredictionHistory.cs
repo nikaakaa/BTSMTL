@@ -53,16 +53,16 @@ namespace ThirdPersonSimulation.ServerAuthoritative
 
         public int Count => m_Count;
 
-        internal void PrepareInputStorage(int values, int requests)
+        internal void PrepareRecordStorage(int values, int requests, int observedConstraints)
         {
             for (int index = 0; index < m_RecordPages.Length; index++)
-                m_RecordPages[index].PrepareInputStorage(values, requests);
+                m_RecordPages[index].PrepareStorage(values, requests, observedConstraints);
         }
         public int MaximumTextValues => checked(m_Capacity *
             ServerAuthoritativePredictionStateCodec.MaximumHistoryRecordTextValues + m_RemoteBodies.MaximumTextValues);
         public ulong FirstRetainedTick => m_Count == 0 ? ulong.MaxValue : m_Ticks[0];
         public bool IsRemoteObservationPrimed => m_RemoteBodies.IsPrimed;
-        internal int RemoteBodyActorCount => m_RemoteBodies.ActorCount;
+        internal IReadOnlyList<ActorId> RemoteBodyActors => m_RemoteBodies.LockedActors;
         public int RemoteBodySampleCount => m_RemoteBodies.SampleCount;
         public int RemoteBodyCapacityPerActor => m_RemoteBodies.CapacityPerActor;
         public ulong RemoteBodyFirstSampleTick => m_RemoteBodies.FirstSampleTick;
@@ -287,6 +287,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             readonly int m_Index;
             int m_References;
             internal Float32SimulationInputFrameStorage InputStorage { get; private set; }
+            internal CanonicalBuffer<ObservedWorldConstraint> ObservedConstraints { get; private set; }
+            internal ObservedWorldConstraintFrame ObservedFrame { get; private set; }
 
             internal RecordPage(ServerAuthoritativePredictionHistory owner, int index)
             {
@@ -296,8 +298,12 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             }
 
             internal ServerAuthoritativePredictionHistoryRecord Record { get; }
-            internal void PrepareInputStorage(int values, int requests) =>
+            internal void PrepareStorage(int values, int requests, int observedConstraints)
+            {
                 InputStorage = new Float32SimulationInputFrameStorage(values, requests);
+                ObservedConstraints = new CanonicalBuffer<ObservedWorldConstraint>(observedConstraints);
+                ObservedFrame = new ObservedWorldConstraintFrame(ObservedConstraints);
+            }
             internal void Begin() => m_References = 1;
             internal void Retain() => m_References++;
             public void Dispose() => Release();
@@ -308,6 +314,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                     return;
                 Record.Clear();
                 InputStorage.ClearBorrowedCopy();
+                ObservedConstraints.Clear();
+                ObservedFrame.SetPreparedMetadata(default, default);
                 m_Owner.m_FreeRecords[m_Owner.m_FreeRecordCount++] = m_Index;
             }
         }
@@ -324,7 +332,9 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             {
                 SimulationInput capturedInput = page.InputStorage.CopyOrderedBorrowedText(input.Input, input.Input.Requests);
                 var captured = new OwnerCanonicalInputBatch(in input, capturedInput);
-                page.Record.Initialize(captured, compositionIdentity, world, pipelineProjection, observedWorldConstraints, journalCursor);
+                page.ObservedConstraints.CopyFrom(observedWorldConstraints.Constraints);
+                page.ObservedFrame.SetPreparedMetadata(observedWorldConstraints.Tick, observedWorldConstraints.FrameHash);
+                page.Record.Initialize(captured, compositionIdentity, world, pipelineProjection, page.ObservedFrame, journalCursor);
                 return page;
             }
             catch
@@ -469,37 +479,17 @@ namespace ThirdPersonSimulation.ServerAuthoritative
     internal readonly struct ServerAuthoritativeRemoteBodySelectionFrame
     {
         readonly ServerAuthoritativeRemoteBodySelection[] m_Selections;
-        static readonly Comparison<ServerAuthoritativeRemoteBodySelection> s_CompareByActor =
-            (left, right) => left.ActorId.CompareTo(right.ActorId);
 
-        public ServerAuthoritativeRemoteBodySelectionFrame(
-            SimulationTick tick,
-            ServerAuthoritativeRemoteBodySelection[] selections)
-        {
-            if (!tick.IsValid)
-                throw new ArgumentException("Remote body selection frame Tick is invalid.", nameof(tick));
-            ServerAuthoritativeRemoteBodySelection[] values = selections ??
-                throw new ArgumentNullException(nameof(selections));
-            Array.Sort(values, s_CompareByActor);
-            for (int i = 0; i < values.Length; i++)
-            {
-                if (values[i].TargetTick != tick || i > 0 && values[i - 1].ActorId == values[i].ActorId)
-                    throw new ArgumentException("Remote body selection frame contains a duplicate Actor or mismatched Tick.", nameof(selections));
-            }
-            Tick = tick;
-            m_Selections = values;
-        }
+        public ServerAuthoritativeRemoteBodySelectionFrame(ServerAuthoritativeRemoteBodySelection[] selections) =>
+            m_Selections = selections;
 
-        public SimulationTick Tick { get; }
         public IReadOnlyList<ServerAuthoritativeRemoteBodySelection> Selections => m_Selections;
-        public bool IsValid => Tick.IsValid && m_Selections != null;
 
-        public ObservedWorldConstraintFrame ToObservedWorldConstraints(StableHash contactShapeConfigurationHash)
+        public void CopyObservedWorldConstraints(CanonicalBuffer<ObservedWorldConstraint> destination,
+            StableHash contactShapeConfigurationHash)
         {
-            var constraints = new ObservedWorldConstraint[m_Selections.Length];
-            for (int i = 0; i < constraints.Length; i++)
-                constraints[i] = m_Selections[i].ToObservedConstraint(contactShapeConfigurationHash);
-            return new ObservedWorldConstraintFrame(Tick, constraints);
+            for (int i = 0; i < m_Selections.Length; i++)
+                destination.Add(m_Selections[i].ToObservedConstraint(contactShapeConfigurationHash));
         }
 
         public void CopyBodySamples(Span<CharacterBodySample> destination)
@@ -523,7 +513,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         readonly ServerAuthoritativeRemoteBodySelection[] m_SelectionScratch;
         readonly CharacterBodySample[] m_ObservationScratch;
         ulong m_EvictionCount;
-        internal int ActorCount => m_LockedActors.Length;
+        internal IReadOnlyList<ActorId> LockedActors => m_LockedActors;
         public int MaximumTextValues => checked(m_LockedActors.Length * (1 + 3 * m_CapacityPerActor));
 
         public ServerAuthoritativeRemoteBodyTimeline(
@@ -699,7 +689,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                     m_Counts[i],
                     targetTick);
             }
-            return new ServerAuthoritativeRemoteBodySelectionFrame(targetTick, m_SelectionScratch);
+            return new ServerAuthoritativeRemoteBodySelectionFrame(m_SelectionScratch);
         }
 
         public void WriteState(CanonicalWriter writer)

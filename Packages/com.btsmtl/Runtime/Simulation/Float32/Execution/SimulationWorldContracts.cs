@@ -162,6 +162,9 @@ namespace ThirdPersonSimulation
             m_EmptyHashWriter = new CanonicalWriter();
         }
 
+        internal ObservedWorldConstraintFrame(CanonicalBuffer<ObservedWorldConstraint> constraints) =>
+            m_Constraints = constraints;
+
         public ObservedWorldConstraintFrame(
             SimulationTick tick,
             IReadOnlyList<ObservedWorldConstraint> constraints)
@@ -191,6 +194,18 @@ namespace ThirdPersonSimulation
         {
             Tick = tick;
             FrameHash = ObservedWorldConstraintCodec.ComputeHash(this, m_EmptyHashWriter);
+        }
+
+        internal void ResetPrepared(SimulationTick tick, CanonicalWriter writer)
+        {
+            Tick = tick;
+            FrameHash = ObservedWorldConstraintCodec.ComputeHash(this, writer);
+        }
+
+        internal void SetPreparedMetadata(SimulationTick tick, StableHash frameHash)
+        {
+            Tick = tick;
+            FrameHash = frameHash;
         }
 
         public SimulationTick Tick { get; private set; }
@@ -226,6 +241,17 @@ namespace ThirdPersonSimulation
         public const string CanonicalIdentity = "float32-observed-world-constraint-frame/1";
 
         [ThreadStatic] static CanonicalWriter s_HashWriter;
+
+        internal static int MaximumEncodedByteCount(IReadOnlyList<ActorId> actors)
+        {
+            int bytes = checked(sizeof(int) + CanonicalIdentity.Length * sizeof(char) + sizeof(ulong) + sizeof(int));
+            int bodyBytes = sizeof(int) + 8 * sizeof(float) + sizeof(byte) + sizeof(uint);
+            int constraintBytes = sizeof(int) + sizeof(ulong) + 2 * bodyBytes + 2 * sizeof(ulong) +
+                sizeof(byte) + sizeof(int) + 64;
+            for (int index = 0; index < actors.Count; index++)
+                bytes = checked(bytes + constraintBytes + 3 * actors[index].Value.Length * sizeof(char));
+            return bytes;
+        }
 
         public static StableHash ComputeHash(ObservedWorldConstraintFrame frame)
         {

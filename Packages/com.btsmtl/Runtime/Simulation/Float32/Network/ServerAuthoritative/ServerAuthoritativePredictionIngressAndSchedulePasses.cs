@@ -245,7 +245,9 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             return new Float32SchedulePassRuntimeAdapter<CorrectionScheduleReads, CorrectionScheduleWrites>(
                 new CorrectionScheduleRuntime(context.Pass.Descriptor, m_Policy, reads.PredictionState.State,
                     context.Composition.SourceClockId.Value,
-                    reads.CharacterRuntime.Runtime.RosterDescriptor.Actors, inputValues).PrepareStateStorage(context.Composition),
+                    reads.CharacterRuntime.Runtime.RosterDescriptor.Actors, inputValues,
+                    (reads.WorldSolver.Solver.Descriptor.Features & WorldFeature.ObservedKinematicActorContact) != 0)
+                    .PrepareStateStorage(context.Composition),
                 reads,
                 writes);
         }
@@ -272,6 +274,9 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         readonly SimulationPipelineActorInput<Float32StepInput>[][] m_StepInputStorage;
         readonly Float32SimulationInputFrameStorage[] m_StepInputViews;
         readonly Float32SimulationInputFrameStorage m_CurrentInputStorage;
+        readonly CanonicalBuffer<ObservedWorldConstraint>[] m_CurrentObservedConstraints;
+        readonly ObservedWorldConstraintFrame[] m_CurrentObservedFrames;
+        readonly CanonicalWriter m_ObservedHashWriter;
         readonly List<Float32SimulationStep> m_Steps;
         ServerAuthoritativePredictionCorrectionCheckpoint m_CapturedCorrection;
         ulong m_DecisionCount;
@@ -287,12 +292,14 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             SimulationPipelinePassDescriptor descriptor,
             ServerAuthoritativeModelPolicy policy,
             ServerAuthoritativePredictionState state, string sourceClockId,
-            IReadOnlyList<ActorId> actors, int inputValueCapacity) : base(descriptor)
+            IReadOnlyList<ActorId> actors, int inputValueCapacity, bool observedContactEnabled) : base(descriptor)
         {
             m_ReplayClockId = string.Concat(sourceClockId, ".replay");
             m_Policy = policy ?? throw new ArgumentNullException(nameof(policy));
             m_State = state ?? throw new ArgumentNullException(nameof(state));
-            m_State.PrepareInputStorage(inputValueCapacity, m_Policy.HistoryCapacity);
+            IReadOnlyList<ActorId> remoteActors = m_State.RemoteBodyActors;
+            IReadOnlyList<ActorId> observedActors = observedContactEnabled ? remoteActors : Array.Empty<ActorId>();
+            m_State.PrepareRecordStorage(inputValueCapacity, m_Policy.HistoryCapacity, observedActors.Count);
             m_CurrentInputStorage = new Float32SimulationInputFrameStorage(inputValueCapacity, m_Policy.HistoryCapacity);
             m_StepStorage = new Float32SimulationStep[MaximumStepCount];
             m_StepInputStorage = new SimulationPipelineActorInput<Float32StepInput>[MaximumStepCount][];
@@ -304,7 +311,16 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 m_StepInputStorage[index] = new SimulationPipelineActorInput<Float32StepInput>[1];
                 m_StepInputViews[index] = new Float32SimulationInputFrameStorage();
             }
-            int remoteActorCount = m_State.RemoteBodyActorCount;
+            int remoteActorCount = remoteActors.Count;
+            m_CurrentObservedConstraints = new CanonicalBuffer<ObservedWorldConstraint>[2];
+            m_CurrentObservedFrames = new ObservedWorldConstraintFrame[2];
+            for (int index = 0; index < m_CurrentObservedFrames.Length; index++)
+            {
+                m_CurrentObservedConstraints[index] = new CanonicalBuffer<ObservedWorldConstraint>(observedActors.Count);
+                m_CurrentObservedFrames[index] = new ObservedWorldConstraintFrame(m_CurrentObservedConstraints[index]);
+            }
+            m_ObservedHashWriter = new CanonicalWriter(
+                new byte[ObservedWorldConstraintCodec.MaximumEncodedByteCount(observedActors)]);
             m_SelectedBodyStorage = new[]
             {
                 Array.Empty<CharacterBodySample>(),
@@ -699,9 +715,10 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 int sampleCount = selection.Selections.Count;
                 selection.CopyBodySamples(selectedBodies.AsSpan(selectedBodyCount, sampleCount));
                 selectedBodyCount += sampleCount;
-                ObservedWorldConstraintFrame observed = observedContactEnabled
-                    ? selection.ToObservedWorldConstraints(contactShapeConfigurationHash)
-                    : ObservedWorldConstraintFrame.Empty(tick);
+                ObservedWorldConstraintFrame observed = m_CurrentObservedFrames[i];
+                if (observedContactEnabled)
+                    selection.CopyObservedWorldConstraints(m_CurrentObservedConstraints[i], contactShapeConfigurationHash);
+                observed.ResetPrepared(tick, m_ObservedHashWriter);
                 steps.Add(CreateStep(
                     stepIndex++,
                     tick,
@@ -764,6 +781,11 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                     null);
             }
             m_Steps.Clear();
+            for (int index = 0; index < m_CurrentObservedFrames.Length; index++)
+            {
+                m_CurrentObservedConstraints[index].Clear();
+                m_CurrentObservedFrames[index].SetPreparedMetadata(default, default);
+            }
         }
 
         Float32SimulationStep CreateStep(

@@ -168,7 +168,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         }
 
         public ServerAuthoritativeModelPolicy Policy { get; }
-        internal void PrepareInputStorage(int values, int requests) => m_History.PrepareInputStorage(values, requests);
+        internal void PrepareRecordStorage(int values, int requests, int observedConstraints) =>
+            m_History.PrepareRecordStorage(values, requests, observedConstraints);
         internal void PrepareWorldReadStorage(int maximumPayloadBytes) =>
             m_Reconciler.PrepareWorldReadStorage(maximumPayloadBytes);
 
@@ -181,7 +182,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         public int JournalCount => m_Journal.Count;
         public int HistoryCount => m_History.Count;
         internal int MaximumHistoryTextValues => m_History.MaximumTextValues;
-        internal int RemoteBodyActorCount => m_History.RemoteBodyActorCount;
+        internal IReadOnlyList<ActorId> RemoteBodyActors => m_History.RemoteBodyActors;
         public int RemoteBodySampleCount => m_History.RemoteBodySampleCount;
         public int RemoteBodyCapacityPerActor => m_History.RemoteBodyCapacityPerActor;
         public ulong RemoteBodyFirstSampleTick => m_History.RemoteBodyFirstSampleTick;
