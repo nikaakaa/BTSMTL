@@ -43,6 +43,7 @@ namespace ThirdPerson.CanonicalSerialization.Generator
             var receiver = (Receiver)context.SyntaxReceiver;
             var types = new Dictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
             var templates = new Dictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
+            var kindTrees = new List<SyntaxTree>();
             foreach (TypeDeclarationSyntax declaration in receiver.Types)
             {
                 var type = (INamedTypeSymbol)context.Compilation.GetSemanticModel(declaration.SyntaxTree)
@@ -67,10 +68,28 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                 code.AppendLine("}");
                 context.AddSource(Identity(template).Replace('.', '_').Replace('<', '_').Replace('>', '_') + ".Kind.g.cs",
                     SourceText.From(code.ToString(), Encoding.UTF8));
+                kindTrees.Add(CSharpSyntaxTree.ParseText(code.ToString(), (CSharpParseOptions)context.ParseOptions));
             }
-            var planner = new Planner(context);
             foreach (INamedTypeSymbol type in types.Values.OrderBy(t => Identity(t), StringComparer.Ordinal))
-                planner.Plan(type);
+            {
+                Member[] cases = Cases(StorageMembers(type));
+                if (cases.Length == 0 || HasAttribute(type, UnionAttribute))
+                    continue;
+                var code = new StringBuilder();
+                code.Append("namespace ").Append(type.ContainingNamespace.ToDisplayString()).AppendLine(" {");
+                EmitKind(code, type, cases);
+                code.AppendLine("}");
+                context.AddSource(Identity(type).Replace('.', '_') + ".Kind.g.cs", SourceText.From(code.ToString(), Encoding.UTF8));
+                kindTrees.Add(CSharpSyntaxTree.ParseText(code.ToString(), (CSharpParseOptions)context.ParseOptions));
+            }
+            Compilation compilation = context.Compilation.AddSyntaxTrees(kindTrees);
+            var planner = new Planner(context, compilation);
+            foreach (INamedTypeSymbol type in types.Values.OrderBy(t => Identity(t), StringComparer.Ordinal))
+            {
+                SyntaxReference declaration = type.DeclaringSyntaxReferences[0];
+                planner.Plan((INamedTypeSymbol)compilation.GetSemanticModel(declaration.SyntaxTree)
+                    .GetDeclaredSymbol(declaration.GetSyntax()));
+            }
             foreach (Plan plan in planner.Plans.OrderBy(p => Identity(p.Type), StringComparer.Ordinal))
             {
                 if (!plan.Valid)
@@ -90,8 +109,6 @@ namespace ThirdPerson.CanonicalSerialization.Generator
             Member[] common = plan.Members.Where(m => !m.IsCase).ToArray();
             string accessibility = type.DeclaredAccessibility == Accessibility.Public ? "public" : "internal";
             code.Append("namespace ").Append(type.ContainingNamespace.ToDisplayString()).AppendLine(" {");
-            if (union && plan.UnionDefinition == null)
-                EmitKind(code, type, plan.Cases);
             if (union)
                 code.AppendLine("[global::System.Runtime.InteropServices.StructLayout(global::System.Runtime.InteropServices.LayoutKind.Auto)]");
             code.Append(accessibility).Append(type.IsReadOnly ? " readonly" : "")
@@ -139,7 +156,8 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                 {
                     Member member = plan.Members[i];
                     string value = "value" + i;
-                    code.Append("this.").Append(Escape(member.Symbol.Name)).Append(" = ").Append(value).AppendLine(";");
+                    code.Append("this.").Append(Escape(member.Symbol.Name)).Append(" = ")
+                        .Append(Normalize(member, value)).AppendLine(";");
                 }
                 foreach (IMethodSymbol validation in plan.Validations)
                     code.Append(Escape(validation.Name)).AppendLine("();");
@@ -160,6 +178,22 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                     code.Append(", ").Append(member == branch ? "value" : member.IsCase ? "default" :
                         !plan.PreparedRead && SequenceElement(member.Type) != null ? FreezeSequence(member.Type, Parameter(member.Symbol.Name)) : Parameter(member.Symbol.Name));
                 code.AppendLine("); }");
+            }
+            if (union && type.TypeKind == TypeKind.Struct)
+            {
+                code.Append("public static ").Append(fullType).Append(" CanonicalDefault(").Append(plan.KindType).Append(" kind");
+                foreach (Member member in common)
+                    code.Append(", ").Append(TypeName(member.Type)).Append(' ').Append(Parameter(member.Symbol.Name));
+                code.AppendLine(") { switch (kind) {");
+                foreach (Member member in plan.Cases)
+                {
+                    code.Append("case ").Append(plan.KindType).Append('.').Append(Escape(member.Symbol.Name))
+                        .Append(": return From").Append(member.Symbol.Name).Append('(');
+                    foreach (Member value in common)
+                        code.Append(Parameter(value.Symbol.Name)).Append(", ");
+                    code.Append("default(").Append(TypeName(member.Type)).AppendLine("));");
+                }
+                code.AppendLine("default: throw new global::System.ArgumentOutOfRangeException(nameof(kind)); } }");
             }
 
             code.Append("public static void CanonicalWrite<TWriter>(TWriter writer, in ")
@@ -287,7 +321,7 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                         string kind = plan.KindType + "." + Escape(member.Symbol.Name);
                         code.Append("case (int)").Append(kind).Append(": Kind = ").Append(kind).AppendLine(";");
                         code.Append("this.").Append(Escape(member.Symbol.Name)).Append(" = ")
-                            .Append(Read(member.Type, true).Replace("(reader)", "(payloadReader)")
+                            .Append(ReadMember(member, plan).Replace("(reader)", "(payloadReader)")
                                 .Replace("reader.", "payloadReader.")).AppendLine("; break;");
                     }
                     code.AppendLine("default: throw new global::System.IO.InvalidDataException(\"Canonical union case is invalid.\"); }");
@@ -327,6 +361,20 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                     code.Append(", ").Append(Read(member.Type, true));
                 code.AppendLine(");");
             }
+            foreach (Member member in plan.Cases.Where(m => CaseSemantic(m, "NormalizeZero") || CaseSemantic(m, "NormalizeNull")))
+            {
+                code.Append("private static ").Append(TypeName(member.Type)).Append(" __CanonicalRead_")
+                    .Append(member.Symbol.Name).Append("<TReader>(TReader reader) where TReader : class, ")
+                    .Append(Runtime).AppendLine("ICanonicalValueReader {");
+                code.Append(TypeName(member.Type)).Append(" value = ").Append(Read(member.Type, !plan.PreparedRead)).AppendLine(";");
+                if (CaseSemantic(member, "NormalizeZero"))
+                    code.Append("if (value == 0 && global::System.BitConverter.")
+                        .Append(member.Type.SpecialType == SpecialType.System_Single ? "SingleToInt32Bits" : "DoubleToInt64Bits")
+                        .AppendLine("(value) != 0) throw new global::System.IO.InvalidDataException(\"Canonical zero must be positive.\");");
+                if (CaseSemantic(member, "NormalizeNull"))
+                    code.AppendLine("if (value.IsNull) throw new global::System.IO.InvalidDataException(\"Canonical normalized text cannot be null.\");");
+                code.AppendLine("return value; }");
+            }
             foreach (ITypeSymbol sequence in BorrowedSequences(plan.Members.Select(m => m.Type)))
             {
                 ITypeSymbol element = SequenceElement(sequence);
@@ -364,7 +412,16 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                 foreach (Member member in common)
                     code.Append(", ").Append(TypeName(member.Type)).Append(' ').Append(Parameter(member.Symbol.Name));
                 code.Append(") where TReader : class, ").Append(Runtime).AppendLine("ICanonicalValueReader {");
-                code.AppendLine("switch (reader.ReadInt32()) {");
+                code.Append("return CanonicalReadCase(reader, reader.ReadInt32()");
+                foreach (Member member in common)
+                    code.Append(", ").Append(Parameter(member.Symbol.Name));
+                code.AppendLine("); }");
+                code.Append("public static ").Append(fullType).Append(" CanonicalReadCase<TReader>(TReader reader, ")
+                    .Append("int kind");
+                foreach (Member member in common)
+                    code.Append(", ").Append(TypeName(member.Type)).Append(' ').Append(Parameter(member.Symbol.Name));
+                code.Append(") where TReader : class, ").Append(Runtime).AppendLine("ICanonicalValueReader {");
+                code.AppendLine("switch (kind) {");
                 foreach (Member member in plan.Cases)
                 {
                     code.Append("case (int)").Append(plan.KindType).Append('.').Append(Escape(member.Symbol.Name))
@@ -409,7 +466,10 @@ namespace ThirdPerson.CanonicalSerialization.Generator
             {
                 code.Append("public static void CanonicalSkipPayload<TReader>(TReader reader) where TReader : class, ")
                     .Append(Runtime).AppendLine("ICanonicalValueReader {");
-                Switch(code, plan, "reader.ReadInt32()", member => Skip(code, member.Type), numeric: true);
+                code.AppendLine("CanonicalSkipCase(reader, reader.ReadInt32()); }");
+                code.Append("public static void CanonicalSkipCase<TReader>(TReader reader, int kind)")
+                    .Append(" where TReader : class, ").Append(Runtime).AppendLine("ICanonicalValueReader {");
+                Switch(code, plan, "kind", member => Skip(code, member.Type), numeric: true);
                 code.AppendLine("}");
             }
             code.Append("public static int CanonicalMeasure(in ").Append(fullType).AppendLine(" value) {");
@@ -586,6 +646,8 @@ namespace ThirdPerson.CanonicalSerialization.Generator
 
         static string ReadMember(Member member, Plan plan)
         {
+            if (CaseSemantic(member, "NormalizeZero") || CaseSemantic(member, "NormalizeNull"))
+                return "__CanonicalRead_" + member.Symbol.Name + "(reader)";
             if (BorrowedStorage(member.Type) != null)
                 return SequenceReader(member.Type) + "(reader, storage." + Escape(member.Symbol.Name) + ")";
             if (member.Type.SpecialType == SpecialType.System_String && HasAttribute(member.Symbol, DeclaredTextAttribute) && plan.PreparedRead)
@@ -594,6 +656,19 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                 return TypeName(member.Type) + ".CanonicalRead(reader, storage)";
             return Read(member.Type, !plan.PreparedRead);
         }
+
+        static string Normalize(Member member, string value)
+        {
+            if (CaseSemantic(member, "NormalizeZero"))
+                return value + " == 0 ? 0 : " + value;
+            if (CaseSemantic(member, "NormalizeNull"))
+                return value + ".IsNull ? " + Runtime + "CanonicalTextValue.Empty : " + value;
+            return value;
+        }
+
+        static bool CaseSemantic(Member member, string name) => member.Symbol.GetAttributes()
+            .Where(a => Identity(a.AttributeClass) == UnionCaseAttribute).SelectMany(a => a.NamedArguments)
+            .Any(a => a.Key == name && a.Value.Value is true);
 
         static string Read(ITypeSymbol type, bool materialized = false)
         {
@@ -929,7 +1004,12 @@ namespace ThirdPerson.CanonicalSerialization.Generator
             readonly HashSet<string> m_TextTypes = new HashSet<string>(StringComparer.Ordinal);
             readonly HashSet<string> m_PayloadTypes = new HashSet<string>(StringComparer.Ordinal);
             public IEnumerable<Plan> Plans => m_Plans.Values;
-            public Planner(GeneratorExecutionContext context) => m_Context = context;
+            readonly Compilation m_Compilation;
+            public Planner(GeneratorExecutionContext context, Compilation compilation)
+            {
+                m_Context = context;
+                m_Compilation = compilation;
+            }
 
             public Plan Plan(INamedTypeSymbol type)
             {
@@ -1003,6 +1083,18 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                 {
                     descriptor.Append('|').Append(member.IsCase ? "case:" : member.Payload ? "payload:" : "member:").Append(MemberIdentity(plan, member))
                         .Append(':').Append(Shape(plan, member.Type, member.Symbol));
+                    if (CaseSemantic(member, "NormalizeZero"))
+                    {
+                        if (member.Type.SpecialType != SpecialType.System_Single && member.Type.SpecialType != SpecialType.System_Double)
+                            Error(plan, member.Symbol, "零值规范只适用于正式浮点分支");
+                        descriptor.Append(":zero-normalized");
+                    }
+                    if (CaseSemantic(member, "NormalizeNull"))
+                    {
+                        if (Identity(member.Type) != TextType)
+                            Error(plan, member.Symbol, "空文本规范只适用于正式文本分支");
+                        descriptor.Append(":null-normalized");
+                    }
                     if (plan.PreparedRead && PreparedStorage(member.Type) is INamedTypeSymbol nestedStorage &&
                         !SymbolEqualityComparer.Default.Equals(plan.PreparedStorage, nestedStorage))
                         Error(plan, member.Symbol, "嵌套借用记录必须消费原同一 PreparedStorage");
@@ -1098,7 +1190,7 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                 {
                     if (plan.PreparedRead && !UsesPreparedRead(type))
                         Error(plan, member, "实时合同不能调用初始化记录的物化读取，需在原 owner 分离状态和发布数据");
-                    if (SymbolEqualityComparer.Default.Equals(record.ContainingAssembly, m_Context.Compilation.Assembly))
+                    if (SymbolEqualityComparer.Default.Equals(record.ContainingAssembly, m_Compilation.Assembly))
                     {
                         Plan child = Plan(record);
                         if (!child.Valid)
@@ -1128,7 +1220,7 @@ namespace ThirdPerson.CanonicalSerialization.Generator
             void Error(Plan plan, ISymbol symbol, string reason)
             {
                 plan.Valid = false;
-                Location location = SymbolEqualityComparer.Default.Equals(symbol.ContainingAssembly, m_Context.Compilation.Assembly)
+                Location location = SymbolEqualityComparer.Default.Equals(symbol.ContainingAssembly, m_Compilation.Assembly)
                     ? symbol.Locations.FirstOrDefault() : plan.Type.Locations.FirstOrDefault();
                 m_Context.ReportDiagnostic(Diagnostic.Create(InvalidContract, location, Identity(symbol), reason));
             }

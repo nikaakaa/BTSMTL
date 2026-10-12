@@ -25,6 +25,8 @@ namespace ThirdPersonSimulation
     [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
     public sealed class CanonicalUnionCaseAttribute : Attribute
     {
+        public bool NormalizeZero { get; set; }
+        public bool NormalizeNull { get; set; }
     }
 
     [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
