@@ -1462,6 +1462,7 @@ namespace ThirdPersonSimulation
 
         public int Remaining => m_End - m_Offset;
         public CanonicalMatchWriter MatchWriter { get; }
+        public CanonicalPublishedValues PublishedValues { get; set; }
         public Func<CanonicalReader, string> DeclaredIdentityReader { private get; set; }
         public ICanonicalTextResolver TextResolver => m_TextResolver;
         public void SetTextResolver(ICanonicalTextResolver resolver) => m_TextResolver = resolver;

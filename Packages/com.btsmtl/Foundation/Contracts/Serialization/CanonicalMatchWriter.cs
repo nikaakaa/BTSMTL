@@ -5,9 +5,9 @@ namespace ThirdPersonSimulation
 {
     public sealed class CanonicalMatchWriter : ICanonicalValueWriter
     {
-        readonly CanonicalReader m_Reader;
+        readonly ICanonicalValueReader m_Reader;
 
-        internal CanonicalMatchWriter(CanonicalReader reader) => m_Reader = reader;
+        internal CanonicalMatchWriter(ICanonicalValueReader reader) => m_Reader = reader;
 
         public void WriteByte(byte value) => Require(m_Reader.ReadByte() == value);
         public void WriteSByte(sbyte value) => WriteByte(unchecked((byte)value));

@@ -10,12 +10,12 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         public const string ClientInput = "server-authoritative.client-input";
         public const string AuthorityReplication = "server-authoritative.authority-replication";
         public const string RemotePresentation = "server-authoritative.remote-presentation";
-        public const string ClientInputSchema = "server-authoritative-client-input/2";
-        public const string AuthorityReplicationSchema = "server-authoritative-authority-replication/10";
-        public const string RemotePresentationSchema = "server-authoritative-remote-presentation/10";
-        public const int SchemaVersion = 2;
-        public const int AuthorityReplicationSchemaVersion = 22;
-        public const int RemotePresentationSchemaVersion = 22;
+        public const string ClientInputSchema = "server-authoritative-client-input/3";
+        public const string AuthorityReplicationSchema = "server-authoritative-authority-replication/11|profile:" + SimulationNumericProfile.CanonicalSchema + "|tag-source:" + GameplayTagSourceIdentityValue.CanonicalSchema;
+        public const string RemotePresentationSchema = "server-authoritative-remote-presentation/11|profile:" + SimulationNumericProfile.CanonicalSchema + "|timeline:" + AbilityTimelineProgress.CanonicalSchema;
+        public const int SchemaVersion = 3;
+        public const int AuthorityReplicationSchemaVersion = 23;
+        public const int RemotePresentationSchemaVersion = 23;
     }
 
     public static class ServerAuthoritativeEgressCodec
@@ -26,9 +26,9 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         const uint InputMagic = 0x49454153;
         const uint ReplicationMagic = 0x52454153;
         const uint RemoteMagic = 0x50454153;
-        const int InputVersion = 2;
-        const int ReplicationVersion = 14;
-        const int RemoteVersion = 14;
+        const int InputVersion = 3;
+        const int ReplicationVersion = 15;
+        const int RemoteVersion = 15;
         const int MaximumCount = 4096;
         internal const long MaximumRemoteTextValues = 1L + MaximumCount *
             (3 + PresentationCommand.MaximumTextReferences + ServerAuthoritativeReliableEvent.MaximumTextReferences);
@@ -392,7 +392,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
 
         static void WriteTag(CanonicalWriter writer, GameplayTagRuntimeChange value)
         {
-            value.SourceIdentity.Write(writer);
+            GameplayTagSourceIdentityValue.CanonicalWrite(writer, value.SourceIdentity);
             writer.WriteText(value.TagId);
             writer.WriteInt32(value.BeforeCount);
             writer.WriteInt32(value.AfterCount);
@@ -402,7 +402,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         }
 
         static GameplayTagRuntimeChange ReadTag(CanonicalReader reader) => new GameplayTagRuntimeChange(
-            GameplayTagSourceIdentityValue.Read(reader), CanonicalTextEncoding.DecodeString(reader.ReadTextSegment()), reader.ReadInt32(), reader.ReadInt32(),
+            GameplayTagSourceIdentityValue.CanonicalRead(reader), CanonicalTextEncoding.DecodeString(reader.ReadTextSegment()), reader.ReadInt32(), reader.ReadInt32(),
             CanonicalTextEncoding.DecodeString(reader.ReadTextSegment()), reader.ReadUInt64(), ReadContextIdentity(reader));
 
         static void WriteExecutionFailure(CanonicalWriter writer, GameplayEffectExecutionFailure value)
@@ -488,7 +488,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             writer.WriteUInt64(command.SourceActionInstanceId);
             writer.WriteScalar(command.VisualTimeScale);
             if (command.Kind == PresentationCommandKind.TimelineProgress)
-                AbilityTimelineProgressCodec.Write(writer, command.TimelineProgress);
+                AbilityTimelineProgress.CanonicalWrite(writer, command.TimelineProgress);
         }
 
         static PresentationCommand ReadPresentationCommand(CanonicalReader reader)
@@ -503,7 +503,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             ulong actionInstanceId = reader.ReadUInt64();
             var visualTimeScale = reader.ReadScalar();
             AbilityTimelineProgress progress = kind == PresentationCommandKind.TimelineProgress
-                ? AbilityTimelineProgressCodec.Read(reader) : default;
+                ? AbilityTimelineProgress.CanonicalRead(reader) : default;
             return new PresentationCommand(header, kind, producerId, sampleTime, weight,
                 generation, cycle, actionInstanceId, visualTimeScale, timelineProgress: progress);
         }
@@ -531,7 +531,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
 
         static void WriteHeader(CanonicalWriter writer, SimulationEventHeader header)
         {
-            SimulationNumericProfileCodec.Write(writer, header.NumericProfile);
+            SimulationNumericProfile.CanonicalWrite(writer, header.NumericProfile);
             writer.WriteEventId(header.EventId);
             writer.WriteText(header.ActorId.Value);
             writer.WriteUInt64(header.Tick.Value);
@@ -542,7 +542,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         }
 
         static SimulationEventHeader ReadHeader(CanonicalReader reader) => new SimulationEventHeader(
-            SimulationNumericProfileCodec.Read(reader, Float32SimulationNumericProfile.Value),
+            SimulationNumericProfile.ReadPublished(reader, Float32SimulationNumericProfile.Value),
             reader.ReadEventId(),
             new ActorId(CanonicalTextEncoding.DecodeString(reader.ReadTextSegment())),
             new SimulationTick(reader.ReadUInt64()),

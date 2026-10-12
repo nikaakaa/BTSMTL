@@ -8,8 +8,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative
     {
         const uint InputMagic = 0x49415343;
         const uint BaselineMagic = 0x42415343;
-        public const int InputSchemaVersion = 4;
-        public const int BaselineSchemaVersion = 5;
+        public const int InputSchemaVersion = 5;
+        public const int BaselineSchemaVersion = 6;
         const int MaximumCollectionCount = 4096;
         internal const int MaximumInputTextValues = 3 + 3 * MaximumCollectionCount;
 
@@ -37,7 +37,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         {
             writer.WriteUInt32(InputMagic);
             writer.WriteInt32(InputSchemaVersion);
-            SimulationNumericProfileCodec.Write(writer, input.NumericProfile);
+            SimulationNumericProfile.CanonicalWrite(writer, input.NumericProfile);
             Float32SimulationInputCodec.Write(writer, input);
         }
 
@@ -72,7 +72,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             reader.SetTextResolver(textResolver);
             if (reader.ReadUInt32() != InputMagic || reader.ReadInt32() != InputSchemaVersion)
                 throw new InvalidDataException("ServerAuthoritative canonical input header is invalid.");
-            return SimulationNumericProfileCodec.Read(reader, Float32SimulationNumericProfile.Value);
+            return SimulationNumericProfile.ReadPublished(reader, Float32SimulationNumericProfile.Value);
         }
 
         public static byte[] WriteBaseline(AuthoritativeActorBaseline baseline)
@@ -99,7 +99,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             writer.WriteInt32(BaselineSchemaVersion);
             writer.WriteText(baseline.ActorId.Value);
             writer.WriteUInt64(baseline.AuthorityTick.Value);
-            SimulationNumericProfileCodec.Write(writer, baseline.NumericProfile);
+            SimulationNumericProfile.CanonicalWrite(writer, baseline.NumericProfile);
             writer.WriteInt32(baseline.TargetAbiVersion.Value);
             writer.WriteText(baseline.StateCodecIdentity);
             writer.WriteHash(baseline.GameplayContentHash);
@@ -129,7 +129,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 throw new InvalidDataException($"ServerAuthoritative baseline schema version '{version}' is unsupported.");
             var actorId = new ActorId(CanonicalTextEncoding.DecodeString(reader.ReadTextSegment()));
             var tick = new SimulationTick(reader.ReadUInt64());
-            SimulationNumericProfile numericProfile = SimulationNumericProfileCodec.Read(reader, Float32SimulationNumericProfile.Value);
+            SimulationNumericProfile numericProfile = SimulationNumericProfile.ReadPublished(reader, Float32SimulationNumericProfile.Value);
             var targetAbiVersion = new TargetAbiVersion(reader.ReadInt32());
             string stateCodecIdentity = CanonicalTextEncoding.DecodeString(reader.ReadTextSegment());
             var gameplayContentHash = GameplayContentHash.CanonicalFromHash(reader.ReadHash());

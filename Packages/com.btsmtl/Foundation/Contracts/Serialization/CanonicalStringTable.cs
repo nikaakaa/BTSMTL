@@ -67,6 +67,7 @@ namespace ThirdPersonSimulation
         {
             m_Reader = reader;
             m_Strings = strings;
+            MatchWriter = new CanonicalMatchWriter(this);
         }
 
         public static CanonicalStringTableReader Read(CanonicalReader reader)
@@ -94,6 +95,17 @@ namespace ThirdPersonSimulation
                 throw new InvalidDataException("Canonical string table index is out of range.");
             return m_Strings[index];
         }
+
+        public CanonicalMatchWriter MatchWriter { get; }
+        public CanonicalPublishedValues PublishedValues => m_Reader.PublishedValues;
+        public void RequireText(in CanonicalTextValue expected)
+        {
+            string actual = ReadString();
+            if (!CanonicalTextValue.Equals(expected, actual, StringComparison.Ordinal))
+                throw new InvalidDataException("Canonical string table text differs from its published value.");
+        }
+        public StableHash ReadHash() => m_Reader.ReadHash();
+        public ArraySegment<byte> ReadRawBytesSegment(int length) => m_Reader.ReadRawBytesSegment(length);
 
         public CanonicalTextValue ReadText() => CanonicalTextValue.FromString(ReadString());
         public string ReadDeclaredString() => ReadString();
