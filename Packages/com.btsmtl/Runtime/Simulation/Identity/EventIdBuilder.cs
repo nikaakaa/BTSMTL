@@ -1,6 +1,7 @@
 using System;
-using System.Buffers.Binary;
 using System.Globalization;
+using System.Buffers.Binary;
+using System.Runtime.InteropServices;
 
 namespace ThirdPersonSimulation
 {
@@ -219,10 +220,32 @@ namespace ThirdPersonSimulation
 
         void WriteText(ReadOnlySpan<char> value)
         {
+            if (BitConverter.IsLittleEndian)
+            {
+                WriteBytes(MemoryMarshal.AsBytes(value));
+                return;
+            }
             for (int index = 0; index < value.Length; index++)
             {
                 WriteByte((byte)value[index]);
                 WriteByte((byte)(value[index] >> 8));
+            }
+        }
+
+        void WriteBytes(ReadOnlySpan<byte> value)
+        {
+            while (!value.IsEmpty)
+            {
+                int count = Math.Min(value.Length, 64 - m_Count);
+                value.Slice(0, count).CopyTo(m_Block.Slice(m_Count));
+                value = value.Slice(count);
+                m_Count += count;
+                m_Length += (ulong)count;
+                if (m_Count == 64)
+                {
+                    Transform();
+                    m_Count = 0;
+                }
             }
         }
 
@@ -244,8 +267,13 @@ namespace ThirdPersonSimulation
             m_Built = true;
             ulong bitLength = checked(m_Length * 8);
             WriteByte(0x80);
-            while (m_Count != 56)
-                WriteByte(0);
+            if (m_Count > 56)
+            {
+                m_Block.Slice(m_Count).Clear();
+                Transform();
+                m_Count = 0;
+            }
+            m_Block.Slice(m_Count, 56 - m_Count).Clear();
             BinaryPrimitives.WriteUInt64BigEndian(m_Block.Slice(56), bitLength);
             Transform();
             return new EventId(((ulong)m_A << 32) | m_B, ((ulong)m_C << 32) | m_D,
