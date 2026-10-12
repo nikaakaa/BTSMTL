@@ -43,8 +43,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
             new CanonicalInputSample[3],
             new CanonicalInputSample[4]
         };
-        string[] m_EvidenceRouteMetrics = Array.Empty<string>();
-        int m_EvidenceRouteMetricCount;
+        readonly string[] m_EvidenceRouteMetrics;
         ServerAuthoritativeSessionId m_SessionId;
         ulong m_RosterRevision;
         ulong m_LatestAuthorityTick;
@@ -111,6 +110,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
             m_ReplicationAcks = new CanonicalBuffer<AuthoritativeInputAck>(actors.Length);
             m_ReplicationBaselines = new CanonicalBuffer<AuthoritativeActorBaseline>(actors.Length);
             m_ReplicationRemote = new CanonicalBuffer<RemotePresentationBatch>(actors.Length);
+            m_EvidenceRouteMetrics = new string[actors.Length];
             m_Roster = new ServerAuthoritativeRosterEntry[actors.Length];
             m_RouteActors = new ActorId[actors.Length];
             m_Routes = new ServerAuthoritativeAuthorityClientRoute[actors.Length];
@@ -478,12 +478,13 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
                     continue;
                 }
                 ulong sequence = route.NextSnapshotSequence();
+                ulong inputSequence = FindAck(batch, route.Roster.ActorId).ConfirmedInputSequence;
                 byte[] delta = NetworkCheckpointCodec.WriteDelta(m_CheckpointLayout, route.AcknowledgedCheckpoint, target, remote);
                 var snapshot = new SnapshotDatagram(
                     sequence,
                     route.AcknowledgedSnapshotSequence,
                     batch.AuthorityTick.Value,
-                    FindAck(batch, route.Roster.ActorId).ConfirmedInputSequence,
+                    inputSequence,
                     target.Baseline.ConfirmedEventHorizon.Sequence,
                     delta);
                 CanonicalWriter writer = m_PayloadWriter.Value;
@@ -499,31 +500,37 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
                     m_Data.EnqueueSend(header, writer.WrittenSpan);
                     route.StoreSent(sequence, target);
                     route.RecordDeltaSnapshot(payloadLength);
-                    Publish(
-                        SimulationModelTraceKind.Transport,
-                        "authority_snapshot_queued",
-                        $"actor={route.Roster.ActorId};bytes={payloadLength};base={route.AcknowledgedSnapshotSequence};target={sequence}",
-                        route.Roster.ActorId,
-                        batch.AuthorityTick.Value,
-                        FindAck(batch, route.Roster.ActorId).ConfirmedInputSequence,
-                        route.AcknowledgedSnapshotSequence,
-                        m_Data.SendQueueDepth,
-                        true,
-                        sequence);
+                    if (m_Diagnostics.IsEnabled)
+                    {
+                        Publish(
+                            SimulationModelTraceKind.Transport,
+                            "authority_snapshot_queued",
+                            $"actor={route.Roster.ActorId};bytes={payloadLength};base={route.AcknowledgedSnapshotSequence};target={sequence}",
+                            route.Roster.ActorId,
+                            batch.AuthorityTick.Value,
+                            inputSequence,
+                            route.AcknowledgedSnapshotSequence,
+                            m_Data.SendQueueDepth,
+                            true,
+                            sequence);
+                    }
                 }
                 catch (InvalidDataException)
                 {
                     route.RecordDeltaMtuExceeded(payloadLength);
-                    Publish(
-                        SimulationModelTraceKind.Transport,
-                        "server_authoritative_delta_mtu_exceeded",
-                        $"actor={route.Roster.ActorId};deltaBytes={payloadLength};mtu={m_Policy.ModelPolicy.MaxGameplayDatagramBytes};base={route.AcknowledgedSnapshotSequence};target={sequence}",
-                        route.Roster.ActorId,
-                        batch.AuthorityTick.Value,
-                        FindAck(batch, route.Roster.ActorId).ConfirmedInputSequence,
-                        route.AcknowledgedSnapshotSequence,
-                        m_Data.SendQueueDepth,
-                        false);
+                    if (m_Diagnostics.IsEnabled)
+                    {
+                        Publish(
+                            SimulationModelTraceKind.Transport,
+                            "server_authoritative_delta_mtu_exceeded",
+                            $"actor={route.Roster.ActorId};deltaBytes={payloadLength};mtu={m_Policy.ModelPolicy.MaxGameplayDatagramBytes};base={route.AcknowledgedSnapshotSequence};target={sequence}",
+                            route.Roster.ActorId,
+                            batch.AuthorityTick.Value,
+                            inputSequence,
+                            route.AcknowledgedSnapshotSequence,
+                            m_Data.SendQueueDepth,
+                            false);
+                    }
                     QueueFullCheckpoint(route, target, 0, sequence);
                 }
             }
@@ -548,17 +555,20 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
                 payload));
             route.StoreSent(snapshotSequence, checkpoint);
             route.RecordFullCheckpoint(payload.Length);
-            Publish(
-                SimulationModelTraceKind.Transport,
-                "authority_full_checkpoint_queued",
-                $"actor={route.Roster.ActorId};bytes={payload.Length};target={snapshotSequence};request={requestSequence}",
-                route.Roster.ActorId,
-                checkpoint.Baseline.AuthorityTick.Value,
-                checkpoint.Baseline.ConfirmedInputSequence,
-                route.AcknowledgedSnapshotSequence,
-                m_FullCheckpointOutput.Count,
-                true,
-                snapshotSequence);
+            if (m_Diagnostics.IsEnabled)
+            {
+                Publish(
+                    SimulationModelTraceKind.Transport,
+                    "authority_full_checkpoint_queued",
+                    $"actor={route.Roster.ActorId};bytes={payload.Length};target={snapshotSequence};request={requestSequence}",
+                    route.Roster.ActorId,
+                    checkpoint.Baseline.AuthorityTick.Value,
+                    checkpoint.Baseline.ConfirmedInputSequence,
+                    route.AcknowledgedSnapshotSequence,
+                    m_FullCheckpointOutput.Count,
+                    true,
+                    snapshotSequence);
+            }
         }
 
         void QueueReliableEvents(AuthorityReplicationBatch batch)
@@ -696,29 +706,22 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
                 ? Math.Max(1f, batch.AuthorityTick.Value / (float)m_Policy.ModelPolicy.SimulationTickRate)
                 : (batch.AuthorityTick.Value - m_LastEvidenceAuthorityTick) / (float)m_Policy.ModelPolicy.SimulationTickRate;
             m_LastEvidenceAuthorityTick = batch.AuthorityTick.Value;
-            m_EvidenceRouteMetricCount = 0;
             for (int i = 0; i < m_RouteCount; i++)
             {
                 ServerAuthoritativeAuthorityClientRoute route = m_Routes[i];
-                if (m_EvidenceRouteMetricCount == m_EvidenceRouteMetrics.Length)
-                {
-                    int capacity = Math.Max(4, m_EvidenceRouteMetrics.Length * 2);
-                    Array.Resize(ref m_EvidenceRouteMetrics, capacity);
-                }
-                m_EvidenceRouteMetrics[m_EvidenceRouteMetricCount++] = route.DescribeMetrics(elapsedSeconds);
+                m_EvidenceRouteMetrics[i] = route.DescribeMetrics(elapsedSeconds);
             }
             Publish(
                 SimulationModelTraceKind.Transport,
                 "server_authoritative_authority_stream_metrics",
-                $"tick={batch.AuthorityTick.Value};routes={string.Join("|", m_EvidenceRouteMetrics, 0, m_EvidenceRouteMetricCount)}",
+                $"tick={batch.AuthorityTick.Value};routes={string.Join("|", m_EvidenceRouteMetrics, 0, m_RouteCount)}",
                 default,
                 batch.AuthorityTick.Value,
                 0,
                 m_LastHeartbeatAckSequence,
                 m_Data.ReceiveQueueDepth + m_Data.SendQueueDepth,
                 true);
-            Array.Clear(m_EvidenceRouteMetrics, 0, m_EvidenceRouteMetricCount);
-            m_EvidenceRouteMetricCount = 0;
+            Array.Clear(m_EvidenceRouteMetrics, 0, m_RouteCount);
         }
 
         void RequireAuthoritySource(SimulationTickSourceIdentity source)
@@ -741,7 +744,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
         void Fail(string code, string message)
         {
             m_Control.SendFailure(code, message);
-            Publish(SimulationModelTraceKind.Failure, code, message, default, m_LatestAuthorityTick, 0, 0, 0, false);
+            if (m_Diagnostics.IsEnabled)
+                Publish(SimulationModelTraceKind.Failure, code, message, default, m_LatestAuthorityTick, 0, 0, 0, false);
             throw new InvalidOperationException($"{code}: {message}");
         }
 
@@ -757,8 +761,6 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
             bool success,
             ulong snapshotSequence = 0)
         {
-            if (!m_Diagnostics.IsEnabled)
-                return;
             m_Diagnostics.PublishModel(new SimulationModelTraceRecord(
                 kind,
                 code,
