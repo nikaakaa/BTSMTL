@@ -21,6 +21,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
         readonly ServerAuthoritativeRosterEntry[] m_Roster;
         readonly ActorId[] m_RouteActors;
         readonly ServerAuthoritativeAuthorityClientRoute[] m_Routes;
+        AcceptedAuthorityInput[] m_AcceptedInputs = Array.Empty<AcceptedAuthorityInput>();
         int m_RouteCount;
         readonly NetworkCheckpoint[] m_LatestCheckpoints;
         readonly bool[] m_HasLatestCheckpoints;
@@ -180,11 +181,12 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
                 }
             }
             ulong authorityTick = checked(m_LatestAuthorityTick + 1);
-            var values = new AcceptedAuthorityInput[m_RouteCount];
-            int valueIndex = 0;
+            AcceptedAuthorityInput[] inputs = m_AcceptedInputs;
+            if (inputs.Length == 0)
+                throw new ArgumentException("Authority input batch cannot be empty.", nameof(inputs));
             for (int i = 0; i < m_RouteCount; i++)
-                values[valueIndex++] = m_Routes[i].Select(authorityTick, m_Policy.ModelPolicy.MaximumInputLagTicks);
-            return new AcceptedAuthorityInputBatch(new SimulationTick(authorityTick), values);
+                inputs[i] = m_Routes[i].Select(authorityTick, m_Policy.ModelPolicy.MaximumInputLagTicks);
+            return AcceptedAuthorityInputBatch.FromPreparedInputs(new SimulationTick(authorityTick), inputs);
         }
 
         public SimulationTick ReadAuthorityTick(SimulationTickSourceIdentity source)
@@ -269,6 +271,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
                         m_Routes[i] = new ServerAuthoritativeAuthorityClientRoute(entry, m_Policy.CommandQueueCapacity);
                     }
                     m_RouteCount = roster.Roster.Count;
+                    m_AcceptedInputs = new AcceptedAuthorityInput[m_RouteCount];
                 }
                 else
                 {
@@ -785,6 +788,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
                 failures.Add(exception);
             }
             for (int index = 0; index < m_RouteCount; index++) m_Routes[index].Dispose();
+            Array.Clear(m_AcceptedInputs, 0, m_AcceptedInputs.Length);
             m_CommandClockText.Reset();
             Array.Clear(m_RouteActors, 0, m_RouteCount);
             Array.Clear(m_Routes, 0, m_RouteCount);

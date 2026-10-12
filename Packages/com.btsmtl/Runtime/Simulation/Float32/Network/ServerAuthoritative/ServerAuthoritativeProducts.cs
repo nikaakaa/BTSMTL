@@ -321,7 +321,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
 
     public readonly struct AcceptedAuthorityInputBatch
     {
-        readonly AcceptedAuthorityInput[] m_Inputs;
+        readonly IReadOnlyList<AcceptedAuthorityInput> m_Inputs;
 
         public AcceptedAuthorityInputBatch(SimulationTick authorityTick, AcceptedAuthorityInput[] inputs)
         {
@@ -343,6 +343,16 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             }
             m_Inputs = inputs;
         }
+
+        AcceptedAuthorityInputBatch(SimulationTick authorityTick, IReadOnlyList<AcceptedAuthorityInput> inputs)
+        {
+            AuthorityTick = authorityTick;
+            m_Inputs = inputs;
+        }
+
+        public static AcceptedAuthorityInputBatch FromPreparedInputs(
+            SimulationTick authorityTick, IReadOnlyList<AcceptedAuthorityInput> inputs) =>
+            new AcceptedAuthorityInputBatch(authorityTick, inputs);
 
         public SimulationTick AuthorityTick { get; }
         public IReadOnlyList<AcceptedAuthorityInput> Inputs => m_Inputs;
