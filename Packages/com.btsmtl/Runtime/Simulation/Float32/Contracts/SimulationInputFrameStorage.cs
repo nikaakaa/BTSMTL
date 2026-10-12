@@ -13,8 +13,6 @@ namespace ThirdPersonSimulation
         CanonicalBuffer<SimulationInputValue> m_Values => m_Data.Values;
         CanonicalBuffer<SimulationInputRequest> m_Requests => m_Data.Requests;
         readonly SimulationInput m_Snapshot;
-        readonly SimulationInputValue[] m_OwnedValues;
-        readonly SimulationInputRequest[] m_OwnedRequests;
         internal SimulationNumericProfile NumericProfile { get; private set; }
         internal SimulationInputHeader Header { get; private set; }
         internal SimulationTickSourceIdentity TickSource => Header.TickSource;
@@ -22,8 +20,6 @@ namespace ThirdPersonSimulation
         internal ulong Sequence => Header.Sequence;
         internal IReadOnlyList<SimulationInputValue> Values => m_Values;
         internal IReadOnlyList<SimulationInputRequest> Requests => m_Requests;
-        internal SimulationInputValue[] OwnedValues => m_OwnedValues;
-        internal SimulationInputRequest[] OwnedRequests => m_OwnedRequests;
         internal SimulationInputValues CanonicalValues => m_Data;
 
         internal Float32SimulationInputFrameStorage()
@@ -44,8 +40,6 @@ namespace ThirdPersonSimulation
             NumericProfile = profile;
             Header = new SimulationInputHeader(source, identity, sequence);
             m_Data = new SimulationInputValues(values, requests);
-            m_OwnedValues = values;
-            m_OwnedRequests = requests;
         }
 
         internal Float32SimulationInputFrameStorage(SimulationNumericProfile profile, in SimulationInputHeader header,
@@ -54,8 +48,6 @@ namespace ThirdPersonSimulation
             NumericProfile = profile;
             Header = header;
             m_Data = data;
-            m_OwnedValues = data.Values.OwnedArray;
-            m_OwnedRequests = data.Requests.OwnedArray;
         }
 
         internal void Begin()
@@ -106,12 +98,13 @@ namespace ThirdPersonSimulation
         internal SimulationInput CompleteRead(SimulationNumericProfile profile, in SimulationInputHeader header) =>
             CommitMetadata(profile, in header);
 
-        internal SimulationInput BindBorrowed(SimulationInput input, SimulationTickSourceIdentity source,
+        internal SimulationInput BindBorrowed(SimulationInput input, CanonicalBuffer<SimulationInputValue> values,
+            SimulationTickSourceIdentity source,
             ulong sequence, bool includeRequests)
         {
             NumericProfile = input.NumericProfile;
             Header = new SimulationInputHeader(source, input.InputSourceIdentity, sequence);
-            m_Data.Values = input.CanonicalValues.Values;
+            m_Data.Values = values;
             m_Data.Requests = includeRequests ? input.CanonicalValues.Requests : s_EmptyRequests;
             return m_Snapshot;
         }

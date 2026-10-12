@@ -120,11 +120,12 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         const int MaximumHeldActors = 64;
         readonly ActorId[] m_HeldActors = new ActorId[MaximumHeldActors];
         readonly HeldAuthorityInput[] m_Held = new HeldAuthorityInput[MaximumHeldActors];
-        readonly SimulationInputValue[][] m_NeutralValues = new SimulationInputValue[MaximumHeldActors][];
+        readonly CanonicalBuffer<SimulationInputValue>[] m_NeutralValues = new CanonicalBuffer<SimulationInputValue>[MaximumHeldActors];
         readonly int[] m_HeldIndices = new int[MaximumHeldActors];
         int m_HeldCount;
         readonly HeldAuthorityInput[] m_HeldWorkspace;
         readonly SimulationPipelineActorInput<Float32StepInput>[] m_ActorInputs;
+        readonly Float32SimulationInputFrameStorage[] m_InputViews;
         readonly SimulationPipelineStepSourceMapping[] m_SourceMappings = new SimulationPipelineStepSourceMapping[1];
         readonly Float32SimulationStep[] m_Steps = new Float32SimulationStep[1];
         readonly ObservedWorldConstraintFrame m_ObservedWorldConstraints = new ObservedWorldConstraintFrame();
@@ -137,6 +138,9 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             m_Policy = policy ?? throw new ArgumentNullException(nameof(policy));
             m_HeldWorkspace = new HeldAuthorityInput[actors.Count];
             m_ActorInputs = new SimulationPipelineActorInput<Float32StepInput>[actors.Count];
+            m_InputViews = new Float32SimulationInputFrameStorage[actors.Count];
+            for (int i = 0; i < m_InputViews.Length; i++)
+                m_InputViews[i] = new Float32SimulationInputFrameStorage();
             m_Steps[0] = new Float32SimulationStep(actors);
             StateIdentity = new SimulationPipelineStateParticipantIdentity(
                 descriptor.PassId,
@@ -174,6 +178,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             AuthorityTickScheduleWrites writePorts)
         {
             RequireExecution();
+            for (int i = 0; i < m_InputViews.Length; i++)
+                m_InputViews[i].ClearBorrowedView();
             AcceptedAuthorityInputBatch accepted = readPorts.Accepted.Read();
             SimulationTick authorityTick = readPorts.Clock.ReadAuthorityTick(context.Source);
             if (authorityTick.Value != checked(context.CurrentCompletedTick + 1) ||
@@ -206,7 +212,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             {
                 HeldAuthorityInput held = m_HeldWorkspace[i];
                 ActorId actorId = held.ActorId;
-                SimulationInput input = BuildInput(m_HeldIndices[i], held, authoritySource, authorityTick);
+                SimulationInput input = BuildInput(i, m_HeldIndices[i], held, authoritySource, authorityTick);
                 actorInputs[i] = new SimulationPipelineActorInput<Float32StepInput>(
                     actorId,
                     held.InputSequence,
@@ -315,6 +321,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         }
 
         SimulationInput BuildInput(
+            int actorIndex,
             int heldIndex,
             HeldAuthorityInput held,
             SimulationTickSourceIdentity source,
@@ -324,25 +331,21 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             int age = checked((int)(authorityTick.Value - held.AcceptedTick.Value));
             bool reuse = fresh || m_Policy.MissingInputPolicy == ServerAuthoritativeMissingInputPolicy.ReuseLastCanonicalInput &&
                 age <= m_Policy.MaximumInputLagTicks;
-            SimulationInputValue[] values = reuse
-                ? held.Input.OwnedValues
+            CanonicalBuffer<SimulationInputValue> values = reuse
+                ? held.Input.CanonicalValues.Values
                 : GetNeutralValues(heldIndex, held.Input.Values);
-            SimulationInputRequest[] requests = fresh
-                ? held.Input.OwnedRequests
-                : Array.Empty<SimulationInputRequest>();
-            return SimulationInput.FromOwnedArrays(
-                held.Input.NumericProfile,
-                source,
-                held.Input.InputSourceIdentity,
-                held.InputSequence,
+            return m_InputViews[actorIndex].BindBorrowed(
+                held.Input,
                 values,
-                requests);
+                source,
+                held.InputSequence,
+                fresh);
         }
 
-        SimulationInputValue[] GetNeutralValues(int heldIndex, IReadOnlyList<SimulationInputValue> values)
+        CanonicalBuffer<SimulationInputValue> GetNeutralValues(int heldIndex, IReadOnlyList<SimulationInputValue> values)
         {
             if (!HasNeutralLayout(m_NeutralValues[heldIndex], values))
-                m_NeutralValues[heldIndex] = BuildNeutralValues(values);
+                m_NeutralValues[heldIndex] = new CanonicalBuffer<SimulationInputValue>(BuildNeutralValues(values));
             return m_NeutralValues[heldIndex];
         }
 
@@ -457,6 +460,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         protected override void OnDispose()
         {
             m_StateStorage.ReleaseStorage();
+            for (int i = 0; i < m_InputViews.Length; i++)
+                m_InputViews[i].ClearBorrowedView();
             Array.Clear(m_HeldWorkspace, 0, m_HeldWorkspace.Length);
             Array.Clear(m_ActorInputs, 0, m_ActorInputs.Length);
             m_SourceMappings[0] = default;

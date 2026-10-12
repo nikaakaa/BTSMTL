@@ -94,8 +94,6 @@ namespace ThirdPersonSimulation
         public ulong Sequence => m_Storage.Sequence;
         public IReadOnlyList<SimulationInputValue> Values => m_Storage.Values;
         public IReadOnlyList<SimulationInputRequest> Requests => m_Storage.Requests;
-        public SimulationInputValue[] OwnedValues => m_Storage.OwnedValues;
-        public SimulationInputRequest[] OwnedRequests => m_Storage.OwnedRequests;
         public void RetainText()
         {
             SimulationInputHeader.CanonicalRetain(Header);
