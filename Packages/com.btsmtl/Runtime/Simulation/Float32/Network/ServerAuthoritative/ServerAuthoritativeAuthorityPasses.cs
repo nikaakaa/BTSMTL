@@ -118,6 +118,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         public int MaximumStepCount => GameplayEffectCapacity.MaximumStepCount;
         readonly ServerAuthoritativeModelPolicy m_Policy;
         const int MaximumHeldActors = 64;
+        static readonly CanonicalBuffer<SimulationInputValue> s_EmptyNeutralValues =
+            new CanonicalBuffer<SimulationInputValue>(Array.Empty<SimulationInputValue>());
         readonly ActorId[] m_HeldActors = new ActorId[MaximumHeldActors];
         readonly HeldAuthorityInput[] m_Held = new HeldAuthorityInput[MaximumHeldActors];
         readonly CanonicalBuffer<SimulationInputValue>[] m_NeutralValues = new CanonicalBuffer<SimulationInputValue>[MaximumHeldActors];
@@ -136,6 +138,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             IReadOnlyList<ActorId> actors) : base(descriptor)
         {
             m_Policy = policy ?? throw new ArgumentNullException(nameof(policy));
+            Array.Fill(m_NeutralValues, s_EmptyNeutralValues);
             m_HeldWorkspace = new HeldAuthorityInput[actors.Count];
             m_ActorInputs = new SimulationPipelineActorInput<Float32StepInput>[actors.Count];
             m_InputViews = new Float32SimulationInputFrameStorage[actors.Count];
@@ -296,7 +299,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             Array.Copy(m_HeldActors, insertionIndex, m_HeldActors, insertionIndex + 1, m_HeldCount - insertionIndex);
             Array.Copy(m_Held, insertionIndex, m_Held, insertionIndex + 1, m_HeldCount - insertionIndex);
             Array.Copy(m_NeutralValues, insertionIndex, m_NeutralValues, insertionIndex + 1, m_HeldCount - insertionIndex);
-            m_NeutralValues[insertionIndex] = null;
+            m_NeutralValues[insertionIndex] = s_EmptyNeutralValues;
             m_HeldActors[insertionIndex] = actorId;
             m_Held[insertionIndex] = new HeldAuthorityInput(actorId, inputSequence, input, acceptedTick);
             m_HeldCount++;
@@ -345,13 +348,27 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         CanonicalBuffer<SimulationInputValue> GetNeutralValues(int heldIndex, IReadOnlyList<SimulationInputValue> values)
         {
             if (!HasNeutralLayout(m_NeutralValues[heldIndex], values))
-                m_NeutralValues[heldIndex] = new CanonicalBuffer<SimulationInputValue>(BuildNeutralValues(values));
+            {
+                var neutral = new CanonicalBuffer<SimulationInputValue>(BuildNeutralValues(values));
+                for (int i = 0; i < neutral.Count; i++)
+                    neutral.Element(i).Retain();
+                ReleaseNeutralValues(heldIndex);
+                m_NeutralValues[heldIndex] = neutral;
+            }
             return m_NeutralValues[heldIndex];
+        }
+
+        void ReleaseNeutralValues(int heldIndex)
+        {
+            CanonicalBuffer<SimulationInputValue> values = m_NeutralValues[heldIndex];
+            for (int i = 0; i < values.Count; i++)
+                values.Element(i).Release();
+            m_NeutralValues[heldIndex] = s_EmptyNeutralValues;
         }
 
         static bool HasNeutralLayout(IReadOnlyList<SimulationInputValue> cache, IReadOnlyList<SimulationInputValue> values)
         {
-            if (cache == null || cache.Count != values.Count)
+            if (cache.Count != values.Count)
                 return false;
             for (int i = 0; i < values.Count; i++)
             {
@@ -435,10 +452,13 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             int count = reader.ReadInt32();
             if (count < 0 || count > 64)
                 throw new InvalidDataException("Authority input hold state count is invalid.");
-            for (int index = 0; index < m_HeldCount; index++) m_Held[index].Dispose();
+            for (int index = 0; index < m_HeldCount; index++)
+            {
+                ReleaseNeutralValues(index);
+                m_Held[index].Dispose();
+            }
             Array.Clear(m_HeldActors, 0, m_HeldCount);
             Array.Clear(m_Held, 0, m_HeldCount);
-            Array.Clear(m_NeutralValues, 0, m_HeldCount);
             m_HeldCount = 0;
             for (int i = 0; i < count; i++)
             {
@@ -470,7 +490,11 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 Array.Empty<SimulationPipelineActorInput<Float32StepInput>>(),
                 Array.Empty<SimulationPipelineTypedIngress<SimulationIngress>>(),
                 m_ObservedWorldConstraints);
-            for (int index = 0; index < m_HeldCount; index++) m_Held[index].Dispose();
+            for (int index = 0; index < m_HeldCount; index++)
+            {
+                ReleaseNeutralValues(index);
+                m_Held[index].Dispose();
+            }
             Array.Clear(m_HeldActors, 0, m_HeldCount);
             Array.Clear(m_Held, 0, m_HeldCount);
             m_HeldCount = 0;
