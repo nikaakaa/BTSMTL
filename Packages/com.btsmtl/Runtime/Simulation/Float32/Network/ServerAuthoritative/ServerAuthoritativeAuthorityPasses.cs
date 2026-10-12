@@ -138,6 +138,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             IReadOnlyList<ActorId> actors) : base(descriptor)
         {
             m_Policy = policy ?? throw new ArgumentNullException(nameof(policy));
+            for (int i = 0; i < m_Held.Length; i++)
+                m_Held[i] = new HeldAuthorityInput();
             Array.Fill(m_NeutralValues, s_EmptyNeutralValues);
             m_HeldWorkspace = new HeldAuthorityInput[actors.Count];
             m_ActorInputs = new SimulationPipelineActorInput<Float32StepInput>[actors.Count];
@@ -214,7 +216,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             for (int i = 0; i < actorCount; i++)
             {
                 HeldAuthorityInput held = m_HeldWorkspace[i];
-                ActorId actorId = held.ActorId;
+                ActorId actorId = m_HeldActors[m_HeldIndices[i]];
                 SimulationInput input = BuildInput(i, m_HeldIndices[i], held, authoritySource, authorityTick);
                 actorInputs[i] = new SimulationPipelineActorInput<Float32StepInput>(
                     actorId,
@@ -280,7 +282,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 if (heldIndex < 0)
                     AddHeld(input.ActorId, input.InputSequence, input.Input, authorityTick);
                 else
-                    m_Held[heldIndex].Reset(input.ActorId, input.InputSequence, input.Input, authorityTick);
+                    m_Held[heldIndex].Reset(input.InputSequence, input.Input, authorityTick);
             }
         }
 
@@ -296,12 +298,14 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             insertionIndex = ~insertionIndex;
             if (m_HeldCount >= MaximumHeldActors)
                 throw new InvalidOperationException("Authority input hold capacity is exhausted.");
+            HeldAuthorityInput held = m_Held[m_HeldCount];
             Array.Copy(m_HeldActors, insertionIndex, m_HeldActors, insertionIndex + 1, m_HeldCount - insertionIndex);
             Array.Copy(m_Held, insertionIndex, m_Held, insertionIndex + 1, m_HeldCount - insertionIndex);
             Array.Copy(m_NeutralValues, insertionIndex, m_NeutralValues, insertionIndex + 1, m_HeldCount - insertionIndex);
             m_NeutralValues[insertionIndex] = s_EmptyNeutralValues;
             m_HeldActors[insertionIndex] = actorId;
-            m_Held[insertionIndex] = new HeldAuthorityInput(actorId, inputSequence, input, acceptedTick);
+            m_Held[insertionIndex] = held;
+            held.Reset(inputSequence, input, acceptedTick);
             m_HeldCount++;
         }
 
@@ -458,7 +462,6 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 m_Held[index].Dispose();
             }
             Array.Clear(m_HeldActors, 0, m_HeldCount);
-            Array.Clear(m_Held, 0, m_HeldCount);
             m_HeldCount = 0;
             for (int i = 0; i < count; i++)
             {
@@ -471,7 +474,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 if (i > 0 && m_HeldActors[i - 1].CompareTo(actorId) >= 0)
                     throw new InvalidDataException("Authority input hold state Actor order is invalid.");
                 m_HeldActors[i] = actorId;
-                m_Held[i] = new HeldAuthorityInput(actorId, sequence, input, acceptedTick, consumedTick);
+                m_Held[i].Reset(sequence, input, acceptedTick, consumedTick);
                 m_HeldCount++;
             }
             reader.RequireComplete();
@@ -502,30 +505,17 @@ namespace ThirdPersonSimulation.ServerAuthoritative
 
         sealed class HeldAuthorityInput
         {
-            public HeldAuthorityInput(
-                ActorId actorId,
-                ulong inputSequence,
-                SimulationInput input,
-                SimulationTick acceptedTick,
-                ulong lastConsumedTick = 0)
-            {
-                Reset(actorId, inputSequence, input, acceptedTick, lastConsumedTick);
-            }
-
-            public ActorId ActorId { get; private set; }
             public ulong InputSequence { get; private set; }
             public SimulationInput Input { get; private set; }
             public SimulationTick AcceptedTick { get; private set; }
             public ulong LastConsumedTick { get; private set; }
 
             public void Reset(
-                ActorId actorId,
                 ulong inputSequence,
                 SimulationInput input,
                 SimulationTick acceptedTick,
                 ulong lastConsumedTick = 0)
             {
-                ActorId = actorId;
                 InputSequence = inputSequence;
                 input.RetainText();
                 Input?.ReleaseText();
