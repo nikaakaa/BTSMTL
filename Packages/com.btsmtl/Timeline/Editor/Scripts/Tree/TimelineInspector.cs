@@ -33,7 +33,6 @@ namespace BTSMTL.Timeline.Editor
         void OnEnable()
         {
             m_Contracts = TimelineTreeContractComposition.Create();
-            TimelineInspectorSelection.Changed += Rebuild;
         }
 
         void OnDisable()
@@ -44,14 +43,24 @@ namespace BTSMTL.Timeline.Editor
         public override VisualElement CreateInspectorGUI()
         {
             m_Root = new VisualElement();
-            Rebuild();
+            m_Root.RegisterCallback<AttachToPanelEvent>(OnAttachToPanel);
+            m_Root.RegisterCallback<DetachFromPanelEvent>(OnDetachFromPanel);
             return m_Root;
+        }
+
+        void OnAttachToPanel(AttachToPanelEvent evt)
+        {
+            TimelineInspectorSelection.Changed += Rebuild;
+            Rebuild();
+        }
+
+        void OnDetachFromPanel(DetachFromPanelEvent evt)
+        {
+            TimelineInspectorSelection.Changed -= Rebuild;
         }
 
         void Rebuild()
         {
-            if (m_Root == null)
-                return;
             m_Root.Clear();
             m_ClipConfiguration = null;
             m_ClipProperties = Array.Empty<PropertyBinding>();
