@@ -451,6 +451,7 @@ namespace ThirdPersonSimulation
     public interface ISimulationDiagnosticsSink
     {
         bool IsEnabled { get; }
+        bool IsActorEnabled(ActorId actorId);
         void PublishBoundary(SimulationBoundaryTraceRecord record);
         void PublishPipeline(SimulationPipelineTraceRecord record);
         void PublishOperation(SimulationTraceRecord record);
@@ -463,6 +464,7 @@ namespace ThirdPersonSimulation
         public static readonly NullSimulationDiagnosticsSink Instance = new NullSimulationDiagnosticsSink();
         NullSimulationDiagnosticsSink() { }
         public bool IsEnabled => false;
+        public bool IsActorEnabled(ActorId actorId) => false;
         public void PublishBoundary(SimulationBoundaryTraceRecord record) { }
         public void PublishPipeline(SimulationPipelineTraceRecord record) { }
         public void PublishOperation(SimulationTraceRecord record) { }

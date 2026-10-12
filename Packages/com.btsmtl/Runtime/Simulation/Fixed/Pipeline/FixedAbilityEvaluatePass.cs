@@ -149,7 +149,7 @@ namespace ThirdPersonSimulation.Fixed
                     m_EvaluationInputs[i] = new FixedCharacterEvaluationInput(
                         readPorts.CharacterRuntime.Runtime, actor, state.Actors[i].State, step.Tick, input,
                         m_Ingress[i], m_IngressCounts[i], state.WorldState.Bodies[i],
-                        readPorts.Diagnostics.Sink.IsEnabled,
+                        readPorts.Diagnostics.Sink.IsActorEnabled(actor.ActorId),
                         readPorts.Diagnostics.Sink is ISimulationValueTraceInterest valueInterest &&
                         valueInterest.IsValueCaptureRequested(actor.ActorId),
                         readPorts.Diagnostics.Sink is ISimulationControlTraceInterest controlInterest &&
