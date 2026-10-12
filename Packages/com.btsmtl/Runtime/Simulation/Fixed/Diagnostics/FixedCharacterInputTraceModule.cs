@@ -268,6 +268,7 @@ namespace ThirdPersonSimulation.Fixed
         static int s_ReplayBodyCount;
         static int s_ReplayPauseAfterFrameCount;
         static bool s_ContinueAfterReplay;
+        static bool s_ObserveReplayBody;
         static ReplayFrameBuilder[] s_ReplayEvidence =
             Array.Empty<ReplayFrameBuilder>();
         static string s_TraceId = string.Empty;
@@ -391,6 +392,21 @@ namespace ThirdPersonSimulation.Fixed
 
         public static void PrepareReplay(FixedCharacterInputTrace trace, ActorId targetActorId, int pauseAfterFrameCount)
         {
+            InitializeReplay(trace, targetActorId, pauseAfterFrameCount, true);
+            s_Mode = FixedCharacterInputTraceMode.PreparingReplay;
+            s_Message = "Waiting for the canonical Fixed replay start body.";
+        }
+
+        public static void StartInputReplay(FixedCharacterInputTrace trace, ActorId targetActorId)
+        {
+            InitializeReplay(trace, targetActorId, 0, false);
+            s_Mode = FixedCharacterInputTraceMode.Replaying;
+            s_Message = "Network Source owns Tick progression and Body evidence for the canonical input replay.";
+        }
+
+        static void InitializeReplay(FixedCharacterInputTrace trace, ActorId targetActorId,
+            int pauseAfterFrameCount, bool observeBody)
+        {
             if (trace == null)
                 throw new ArgumentNullException(nameof(trace));
             if (!targetActorId.IsValid)
@@ -408,11 +424,10 @@ namespace ThirdPersonSimulation.Fixed
             s_ReplayPausedMessage = $"Fixed character input replay paused after {pauseAfterFrameCount} warmup frames.";
             s_ReplayCompletedMessage = $"Replayed and observed all {trace.Frames.Count} canonical Fixed input frames.";
             s_ReplayPauseAfterFrameCount = pauseAfterFrameCount;
-            s_ReplayEvidence = new ReplayFrameBuilder[trace.Frames.Count];
+            s_ObserveReplayBody = observeBody;
+            s_ReplayEvidence = new ReplayFrameBuilder[observeBody ? trace.Frames.Count : 0];
             for (int i = 0; i < s_ReplayEvidence.Length; i++)
                 s_ReplayEvidence[i] = new ReplayFrameBuilder();
-            s_Mode = FixedCharacterInputTraceMode.PreparingReplay;
-            s_Message = "Waiting for the canonical Fixed replay start body.";
         }
 
         public static void StartReplay()
@@ -487,7 +502,7 @@ namespace ThirdPersonSimulation.Fixed
             WorldBodyState body)
         {
             if (actorId != s_ActorId ||
-                s_Mode != FixedCharacterInputTraceMode.Replaying)
+                s_Mode != FixedCharacterInputTraceMode.Replaying || !s_ObserveReplayBody)
             {
                 return;
             }
@@ -673,8 +688,12 @@ namespace ThirdPersonSimulation.Fixed
         {
             if (s_ReplayStartTick == 0)
                 s_ReplayStartTick = context.SimulationTick.Value;
-            ulong expectedTick = checked(s_ReplayStartTick + (ulong)s_ReplayIndex);
-            if (context.SimulationTick.Value != expectedTick)
+            if (!s_ObserveReplayBody)
+            {
+                ulong relativeTick = checked(context.SimulationTick.Value - s_ReplayStartTick);
+                s_ReplayIndex = checked((int)relativeTick);
+            }
+            else if (context.SimulationTick.Value != checked(s_ReplayStartTick + (ulong)s_ReplayIndex))
                 throw new InvalidOperationException(
                     "Fixed character input replay Tick continuity changed.");
             FixedCharacterInputTraceFrame frame = s_Replay.Frames[s_ReplayIndex];
@@ -685,15 +704,21 @@ namespace ThirdPersonSimulation.Fixed
                 context.InputSequence,
                 frame.Tick.Value,
                 context.SimulationTick.Value);
-            ReplayFrameBuilder builder = s_ReplayEvidence[s_ReplayIndex];
-            if (builder.ReplayTick != 0)
-                throw new InvalidOperationException(
-                    "Fixed character input replay frame was resolved more than once.");
-            builder.ReplayTick = context.SimulationTick.Value;
+            if (s_ObserveReplayBody)
+            {
+                ReplayFrameBuilder builder = s_ReplayEvidence[s_ReplayIndex];
+                if (builder.ReplayTick != 0)
+                    throw new InvalidOperationException(
+                        "Fixed character input replay frame was resolved more than once.");
+                builder.ReplayTick = context.SimulationTick.Value;
+            }
             s_ReplayIndex++;
             if (s_ReplayIndex == s_Replay.Frames.Count)
             {
-                s_Message = s_ReplayAwaitingBodyMessage;
+                if (s_ObserveReplayBody)
+                    s_Message = s_ReplayAwaitingBodyMessage;
+                else
+                    Stop();
             }
             else
             {
@@ -801,6 +826,7 @@ namespace ThirdPersonSimulation.Fixed
             s_ReplayBodyCount = 0;
             s_ReplayPauseAfterFrameCount = 0;
             s_ContinueAfterReplay = false;
+            s_ObserveReplayBody = false;
             s_ReplayEvidence = Array.Empty<ReplayFrameBuilder>();
             s_TraceId = string.Empty;
             s_ReplayInputSourceIdentity = string.Empty;
