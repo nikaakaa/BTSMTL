@@ -414,7 +414,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
         }
 
         public static CommandDatagram ReadCommand(ReadOnlyMemory<byte> bytes, CanonicalReader reader,
-            CanonicalReader inputReader, ICanonicalTextResolver textResolver)
+            CanonicalReader inputReader, ICanonicalTextResolver textResolver, CanonicalInputSample[][] sampleStorage)
         {
             reader.Reset(bytes);
             reader.SetTextResolver(textResolver);
@@ -426,7 +426,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
             int count = reader.ReadInt32();
             if (count <= 0 || count > 4)
                 throw new InvalidDataException($"Command sample count '{count}' is invalid.");
-            var samples = new CanonicalInputSample[count];
+            CanonicalInputSample[] samples = sampleStorage[count - 1];
             for (int i = 0; i < count; i++)
             {
                 ulong targetTick = reader.ReadUInt64();

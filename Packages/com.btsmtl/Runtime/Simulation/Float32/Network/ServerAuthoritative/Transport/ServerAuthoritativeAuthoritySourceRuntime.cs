@@ -31,6 +31,13 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
         readonly CanonicalTextReferences m_CommandClockText;
         readonly CanonicalReader m_CommandReader = new CanonicalReader(Array.Empty<byte>());
         readonly CanonicalReader m_InputReader = new CanonicalReader(Array.Empty<byte>());
+        readonly CanonicalInputSample[][] m_CommandSamples =
+        {
+            new CanonicalInputSample[1],
+            new CanonicalInputSample[2],
+            new CanonicalInputSample[3],
+            new CanonicalInputSample[4]
+        };
         string[] m_EvidenceRouteMetrics = Array.Empty<string>();
         int m_EvidenceRouteMetricCount;
         ServerAuthoritativeSessionId m_SessionId;
@@ -345,11 +352,16 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
             try
             {
                 CommandDatagram command = ServerAuthoritativeDatagramPayloadCodec.ReadCommand(packet.Payload,
-                    m_CommandReader, m_InputReader, m_CommandClockText.ReceptionResolver);
+                    m_CommandReader, m_InputReader, m_CommandClockText.ReceptionResolver, m_CommandSamples);
                 route.RecordCommand(packet.Payload.Length, command.SourceTick);
                 ReceiveCommand(route, command);
             }
-            finally { m_CommandClockText.Reset(); }
+            finally
+            {
+                for (int i = 0; i < m_CommandSamples.Length; i++)
+                    Array.Clear(m_CommandSamples[i], 0, m_CommandSamples[i].Length);
+                m_CommandClockText.Reset();
+            }
         }
 
         void ReceiveHello(
