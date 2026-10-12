@@ -118,8 +118,6 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         public int MaximumStepCount => GameplayEffectCapacity.MaximumStepCount;
         readonly ServerAuthoritativeModelPolicy m_Policy;
         const int MaximumHeldActors = 64;
-        static readonly CanonicalBuffer<SimulationInputValue> s_EmptyNeutralValues =
-            new CanonicalBuffer<SimulationInputValue>(Array.Empty<SimulationInputValue>());
         readonly ActorId[] m_HeldActors = new ActorId[MaximumHeldActors];
         readonly HeldAuthorityInput[] m_Held = new HeldAuthorityInput[MaximumHeldActors];
         readonly CanonicalBuffer<SimulationInputValue>[] m_NeutralValues = new CanonicalBuffer<SimulationInputValue>[MaximumHeldActors];
@@ -141,8 +139,10 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             int values = policy.MaxGameplayDatagramBytes / Float32SimulationInputCodec.MinimumValueBytes;
             int requests = policy.MaxGameplayDatagramBytes / Float32SimulationInputCodec.MinimumRequestBytes;
             for (int i = 0; i < m_Held.Length; i++)
+            {
                 m_Held[i] = new HeldAuthorityInput(values, requests);
-            Array.Fill(m_NeutralValues, s_EmptyNeutralValues);
+                m_NeutralValues[i] = new CanonicalBuffer<SimulationInputValue>(values);
+            }
             m_HeldWorkspace = new HeldAuthorityInput[actors.Count];
             m_ActorInputs = new SimulationPipelineActorInput<Float32StepInput>[actors.Count];
             m_InputViews = new Float32SimulationInputFrameStorage[actors.Count];
@@ -301,10 +301,11 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             if (m_HeldCount >= MaximumHeldActors)
                 throw new InvalidOperationException("Authority input hold capacity is exhausted.");
             HeldAuthorityInput held = m_Held[m_HeldCount];
+            CanonicalBuffer<SimulationInputValue> neutral = m_NeutralValues[m_HeldCount];
             Array.Copy(m_HeldActors, insertionIndex, m_HeldActors, insertionIndex + 1, m_HeldCount - insertionIndex);
             Array.Copy(m_Held, insertionIndex, m_Held, insertionIndex + 1, m_HeldCount - insertionIndex);
             Array.Copy(m_NeutralValues, insertionIndex, m_NeutralValues, insertionIndex + 1, m_HeldCount - insertionIndex);
-            m_NeutralValues[insertionIndex] = s_EmptyNeutralValues;
+            m_NeutralValues[insertionIndex] = neutral;
             m_HeldActors[insertionIndex] = actorId;
             m_Held[insertionIndex] = held;
             held.Reset(inputSequence, input, acceptedTick);
@@ -342,7 +343,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 age <= m_Policy.MaximumInputLagTicks;
             CanonicalBuffer<SimulationInputValue> values = reuse
                 ? held.Input.CanonicalValues.Values
-                : GetNeutralValues(heldIndex, held.Input.Values);
+                : GetNeutralValues(heldIndex, held.Input.CanonicalValues.Values);
             return m_InputViews[actorIndex].BindBorrowed(
                 held.Input,
                 values,
@@ -351,17 +352,29 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 fresh);
         }
 
-        CanonicalBuffer<SimulationInputValue> GetNeutralValues(int heldIndex, IReadOnlyList<SimulationInputValue> values)
+        CanonicalBuffer<SimulationInputValue> GetNeutralValues(int heldIndex, CanonicalBuffer<SimulationInputValue> values)
         {
-            if (!HasNeutralLayout(m_NeutralValues[heldIndex], values))
+            CanonicalBuffer<SimulationInputValue> neutral = m_NeutralValues[heldIndex];
+            if (!HasNeutralLayout(neutral, values))
             {
-                var neutral = new CanonicalBuffer<SimulationInputValue>(BuildNeutralValues(values));
-                for (int i = 0; i < neutral.Count; i++)
-                    neutral.Element(i).Retain();
                 ReleaseNeutralValues(heldIndex);
-                m_NeutralValues[heldIndex] = neutral;
+                for (int i = 0; i < values.Count; i++)
+                {
+                    ref readonly SimulationInputValue value = ref values.Element(i);
+                    neutral.Add(value.Kind switch
+                    {
+                        ProgramInputValueKind.Boolean => SimulationInputValue.FromBoolean(value.InputId, false),
+                        ProgramInputValueKind.Scalar => SimulationInputValue.FromScalar(value.InputId, Float32Scalar.Zero),
+                        ProgramInputValueKind.Vector2 => SimulationInputValue.FromVector2(value.InputId, Float32Vector2.Zero),
+                        ProgramInputValueKind.Vector3 => SimulationInputValue.FromVector3(value.InputId, Float32Vector3.Zero),
+                        ProgramInputValueKind.Yaw => SimulationInputValue.FromYaw(value.InputId, Float32Yaw.Zero),
+                        ProgramInputValueKind.ActionTargetSnapshot => SimulationInputValue.FromActionTargetSnapshot(value.InputId, SimulationActionTargetSnapshot.None),
+                        _ => throw new InvalidDataException($"Unsupported input value kind '{value.Kind}'.")
+                    });
+                    neutral.Element(i).Retain();
+                }
             }
-            return m_NeutralValues[heldIndex];
+            return neutral;
         }
 
         void ReleaseNeutralValues(int heldIndex)
@@ -369,44 +382,24 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             CanonicalBuffer<SimulationInputValue> values = m_NeutralValues[heldIndex];
             for (int i = 0; i < values.Count; i++)
                 values.Element(i).Release();
-            m_NeutralValues[heldIndex] = s_EmptyNeutralValues;
+            values.Clear();
         }
 
-        static bool HasNeutralLayout(IReadOnlyList<SimulationInputValue> cache, IReadOnlyList<SimulationInputValue> values)
+        static bool HasNeutralLayout(CanonicalBuffer<SimulationInputValue> cache, CanonicalBuffer<SimulationInputValue> values)
         {
             if (cache.Count != values.Count)
                 return false;
             for (int i = 0; i < values.Count; i++)
             {
-                if (!CanonicalTextValue.Equals(cache[i].InputId, values[i].InputId, StringComparison.Ordinal) ||
-                    cache[i].Kind != values[i].Kind)
+                ref readonly SimulationInputValue cached = ref cache.Element(i);
+                ref readonly SimulationInputValue value = ref values.Element(i);
+                if (!CanonicalTextValue.Equals(cached.InputId, value.InputId, StringComparison.Ordinal) ||
+                    cached.Kind != value.Kind)
                 {
                     return false;
                 }
             }
             return true;
-        }
-
-        static SimulationInputValue[] BuildNeutralValues(IReadOnlyList<SimulationInputValue> values)
-        {
-            if (values.Count == 0)
-                return Array.Empty<SimulationInputValue>();
-            var result = new SimulationInputValue[values.Count];
-            for (int i = 0; i < values.Count; i++)
-            {
-                SimulationInputValue value = values[i];
-                result[i] = value.Kind switch
-                {
-                    ProgramInputValueKind.Boolean => SimulationInputValue.FromBoolean(value.InputId, false),
-                    ProgramInputValueKind.Scalar => SimulationInputValue.FromScalar(value.InputId, Float32Scalar.Zero),
-                    ProgramInputValueKind.Vector2 => SimulationInputValue.FromVector2(value.InputId, Float32Vector2.Zero),
-                    ProgramInputValueKind.Vector3 => SimulationInputValue.FromVector3(value.InputId, Float32Vector3.Zero),
-                    ProgramInputValueKind.Yaw => SimulationInputValue.FromYaw(value.InputId, Float32Yaw.Zero),
-                    ProgramInputValueKind.ActionTargetSnapshot => SimulationInputValue.FromActionTargetSnapshot(value.InputId, SimulationActionTargetSnapshot.None),
-                    _ => throw new InvalidDataException($"Unsupported input value kind '{value.Kind}'.")
-                };
-            }
-            return result;
         }
 
         static SimulationSessionExecutionPlan<Float32SimulationStep> Pending(
