@@ -56,6 +56,10 @@ namespace ThirdPersonSimulation.Fixed
         internal long EvaluationAbilitiesExistingElapsedStopwatchTicks;
         internal long EvaluationAbilitiesPendingElapsedStopwatchTicks;
         internal long EvaluationAbilitiesActiveElapsedStopwatchTicks;
+        internal long EvaluationAbilitiesActiveTriggersElapsedStopwatchTicks;
+        internal long EvaluationAbilitiesActiveControlElapsedStopwatchTicks;
+        internal long EvaluationAbilitiesActiveOutputElapsedStopwatchTicks;
+        internal int EvaluationAbilitiesActiveControlCalls;
         internal long EvaluationAbilitiesMotionElapsedStopwatchTicks;
         internal long EvaluationAbilitiesRulesElapsedStopwatchTicks;
         internal long EvaluationMotionElapsedStopwatchTicks;
@@ -190,6 +194,10 @@ namespace ThirdPersonSimulation.Fixed
             EvaluationAbilitiesExistingElapsedStopwatchTicks = 0;
             EvaluationAbilitiesPendingElapsedStopwatchTicks = 0;
             EvaluationAbilitiesActiveElapsedStopwatchTicks = 0;
+            EvaluationAbilitiesActiveTriggersElapsedStopwatchTicks = 0;
+            EvaluationAbilitiesActiveControlElapsedStopwatchTicks = 0;
+            EvaluationAbilitiesActiveOutputElapsedStopwatchTicks = 0;
+            EvaluationAbilitiesActiveControlCalls = 0;
             EvaluationAbilitiesMotionElapsedStopwatchTicks = 0;
             EvaluationAbilitiesRulesElapsedStopwatchTicks = 0;
             EvaluationMotionElapsedStopwatchTicks = 0;
@@ -736,13 +744,19 @@ namespace ThirdPersonSimulation.Fixed
                     m_EffectExecutionScratch.Target.BeginAvailabilityRead(state.GameplayEffectState,
                         AbilityInstallations.GameplayEffectCatalog, ActorId, ((IFixedAbilityFrameReadPort)this).Tick);
                 for (int index = 0; index < m_Invocations.Length; index++)
+                {
+                    m_Invocations[index].PrepareEvaluationInputs();
                     m_Invocations[index].BindAvailabilityRead(this);
+                }
                 ActivationRules.QueryAvailability(phase, this, out result);
             }
             finally
             {
                 for (int index = 0; index < m_Invocations.Length; index++)
+                {
                     m_Invocations[index].BindAvailabilityRead(null);
+                    m_Invocations[index].DiscardEvaluationInputs();
+                }
                 if (AbilityInstallations.GameplayEffectCatalog != null)
                     m_EffectExecutionScratch.Target.EndAvailabilityRead();
                 m_AvailabilityState = default;

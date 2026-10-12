@@ -219,15 +219,40 @@ namespace ThirdPersonSimulation.Fixed
                     throw new InvalidOperationException($"Skill '{skill.SkillId}' Action instance generation does not match its EntryOperation.");
                 using (m_ActionStore.PushSkillExecution(action))
                 {
+#if UNITY_EDITOR
+                    FixedCharacterEvaluationOutput output = m_Workspace.TraceOutput;
+                    long stageStarted = System.Diagnostics.Stopwatch.GetTimestamp();
+#endif
                     ValuePorts?.ConsumeTriggers(m_Control);
+#if UNITY_EDITOR
+                    long stageFinished = System.Diagnostics.Stopwatch.GetTimestamp();
+                    output.EvaluationAbilitiesActiveTriggersElapsedStopwatchTicks += stageFinished - stageStarted;
+                    stageStarted = stageFinished;
+#endif
                     OperationExecutionResult result = m_Control.Tick(skill.EntryOperation);
+#if UNITY_EDITOR
+                    stageFinished = System.Diagnostics.Stopwatch.GetTimestamp();
+                    output.EvaluationAbilitiesActiveControlElapsedStopwatchTicks += stageFinished - stageStarted;
+                    output.EvaluationAbilitiesActiveControlCalls++;
+                    stageStarted = stageFinished;
+#endif
                     FixedActionInstanceState current = m_ActionStore.RequireActiveTransient(
                         FixedActionInstanceReference.FromInstance(action));
                     if (!current.IsActive)
+                    {
+#if UNITY_EDITOR
+                        output.EvaluationAbilitiesActiveOutputElapsedStopwatchTicks +=
+                            System.Diagnostics.Stopwatch.GetTimestamp() - stageStarted;
+#endif
                         return;
+                    }
                     m_ActionStore.RetainEvaluatedAction(current);
                     if (result == OperationExecutionResult.Success || result == OperationExecutionResult.Failure)
                         Resolve(current, skill, result == OperationExecutionResult.Success);
+#if UNITY_EDITOR
+                    output.EvaluationAbilitiesActiveOutputElapsedStopwatchTicks +=
+                        System.Diagnostics.Stopwatch.GetTimestamp() - stageStarted;
+#endif
                 }
             }
         }
