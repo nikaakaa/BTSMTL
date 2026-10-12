@@ -81,6 +81,7 @@ namespace ThirdPersonSimulation.Fixed
         public SimulationSessionLifecycleState LifecycleState => m_Lifecycle.State;
         public SimulationSessionFailure Failure => m_Lifecycle.Failure;
         public SimulationSessionDiagnosticsSnapshot Diagnostics => BuildDiagnostics();
+        public ulong LastCompletedSimulationTick => m_StateStore.Current.LastCompletedTick;
         public GraphBatchExecution GraphBatchExecution { get; }
         float ISimulationSessionLocalCombatClock.WorldTimeScale => m_Combat.WorldTimeScale.ToSingle();
         public void PrepareRecordedFrames(int capacity) => m_Transaction.PrepareRecordedFrames(capacity);
@@ -411,6 +412,7 @@ namespace ThirdPersonSimulation.Fixed
                 LifecycleState,
                 SimulationSessionPreparationStatus.Ready,
                 m_LatestOuterTick,
+                LastCompletedSimulationTick,
                 Failure,
                 components);
         }

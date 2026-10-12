@@ -114,6 +114,7 @@ namespace ThirdPersonSimulation
         SimulationSessionLifecycleState LifecycleState { get; }
         SimulationSessionFailure Failure { get; }
         SimulationSessionDiagnosticsSnapshot Diagnostics { get; }
+        ulong LastCompletedSimulationTick { get; }
         void LogicTick(SimulationSessionLogicTickContext context);
     }
 

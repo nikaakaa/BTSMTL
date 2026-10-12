@@ -47,6 +47,7 @@ namespace ThirdPersonSimulation
             SimulationSessionLifecycleState lifecycleState,
             SimulationSessionPreparationStatus preparationStatus,
             ulong latestOuterTick,
+            ulong lastCompletedSimulationTick,
             SimulationSessionFailure failure,
             IEnumerable<SimulationSessionComponentDiagnostic> components)
             : this(
@@ -55,6 +56,7 @@ namespace ThirdPersonSimulation
                 lifecycleState,
                 preparationStatus,
                 latestOuterTick,
+                lastCompletedSimulationTick,
                 failure,
                 components)
         {
@@ -65,6 +67,7 @@ namespace ThirdPersonSimulation
             SimulationSessionLifecycleState lifecycleState,
             SimulationSessionPreparationStatus preparationStatus,
             ulong latestOuterTick,
+            ulong lastCompletedSimulationTick,
             SimulationSessionFailure failure,
             IEnumerable<SimulationSessionComponentDiagnostic> components)
             : this(
@@ -73,6 +76,7 @@ namespace ThirdPersonSimulation
                 lifecycleState,
                 preparationStatus,
                 latestOuterTick,
+                lastCompletedSimulationTick,
                 failure,
                 components)
         {
@@ -84,6 +88,7 @@ namespace ThirdPersonSimulation
             SimulationSessionLifecycleState lifecycleState,
             SimulationSessionPreparationStatus preparationStatus,
             ulong latestOuterTick,
+            ulong lastCompletedSimulationTick,
             SimulationSessionFailure failure,
             IEnumerable<SimulationSessionComponentDiagnostic> components)
         {
@@ -100,6 +105,7 @@ namespace ThirdPersonSimulation
             LifecycleState = lifecycleState;
             PreparationStatus = preparationStatus;
             LatestOuterTick = latestOuterTick;
+            LastCompletedSimulationTick = lastCompletedSimulationTick;
             Failure = failure;
             SimulationSessionComponentDiagnostic[] values = components == null
                 ? Array.Empty<SimulationSessionComponentDiagnostic>()
@@ -127,6 +133,7 @@ namespace ThirdPersonSimulation
         public SimulationSessionLifecycleState LifecycleState { get; }
         public SimulationSessionPreparationStatus PreparationStatus { get; }
         public ulong LatestOuterTick { get; }
+        public ulong LastCompletedSimulationTick { get; }
         public SimulationSessionFailure Failure { get; }
         public IReadOnlyList<SimulationSessionComponentDiagnostic> Components => m_Components;
     }

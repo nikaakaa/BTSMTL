@@ -50,6 +50,7 @@ namespace ThirdPersonSimulation
         public SimulationSessionLifecycleState LifecycleState => m_Lifecycle.State;
         public SimulationSessionFailure Failure => m_Lifecycle.Failure;
         public SimulationSessionDiagnosticsSnapshot Diagnostics => BuildDiagnostics();
+        public ulong LastCompletedSimulationTick => m_StateStore.Current.LastCompletedTick;
         public GraphBatchExecution GraphBatchExecution { get; }
         public SimulationSessionCheckpoint CaptureCheckpoint()
         {
@@ -307,6 +308,7 @@ namespace ThirdPersonSimulation
                 LifecycleState,
                 SimulationSessionPreparationStatus.Ready,
                 m_LatestOuterTick,
+                LastCompletedSimulationTick,
                 Failure,
                 components);
         }
