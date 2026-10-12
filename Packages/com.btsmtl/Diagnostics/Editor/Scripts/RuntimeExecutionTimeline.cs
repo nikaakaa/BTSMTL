@@ -581,17 +581,17 @@ namespace BTSMTL.Diagnostics.Editor
             internal void Append(RuntimeTraceEvent sourceValue, RuntimeDebugSourceMapSnapshot sourceMap,
                 IReadOnlyDictionary<RuntimeContentRevision, RuntimeDebugSourceMapSnapshot> sourceMaps)
             {
-                RuntimeTraceEvent value = RuntimeTraceDisplay.ForDisplay(in sourceValue);
-                int group = m_Facts.AppendMetadata(in value);
+                int group = m_Facts.AppendMetadata(in sourceValue);
                 if (group < 0)
                     return;
-                SourceBinding source = Resolve(value.Source, value.ContentRevision, sourceMap, sourceMaps);
+                SourceBinding source = Resolve(sourceValue.Source, sourceValue.ContentRevision, sourceMap, sourceMaps);
                 SetSource(group, source);
                 if (!source.HasSource)
                 {
                     UnmappedEventCount++;
                     return;
                 }
+                RuntimeTraceEvent value = RuntimeTraceDisplay.ForDisplay(in sourceValue);
                 m_Facts.AppendTrack(in value, group);
                 ProjectNewSpans();
             }
