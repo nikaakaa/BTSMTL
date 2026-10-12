@@ -126,6 +126,14 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             InputSequence = inputSequence;
         }
 
+        internal OwnerCanonicalInputBatch(in OwnerCanonicalInputBatch original, SimulationInput input)
+        {
+            ActorId = original.ActorId;
+            SourceTick = original.SourceTick;
+            InputSequence = original.InputSequence;
+            Input = input;
+        }
+
         public ActorId ActorId { get; }
         public ulong SourceTick { get; }
         public ulong InputSequence { get; }

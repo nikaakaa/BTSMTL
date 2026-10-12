@@ -5,6 +5,10 @@ namespace ThirdPersonSimulation
 {
     public sealed class Float32SimulationInputFrameStorage
     {
+        static readonly CanonicalBuffer<SimulationInputValue> s_EmptyValues =
+            new CanonicalBuffer<SimulationInputValue>(Array.Empty<SimulationInputValue>());
+        static readonly CanonicalBuffer<SimulationInputRequest> s_EmptyRequests =
+            new CanonicalBuffer<SimulationInputRequest>(Array.Empty<SimulationInputRequest>());
         readonly SimulationInputValues m_Data;
         CanonicalBuffer<SimulationInputValue> m_Values => m_Data.Values;
         CanonicalBuffer<SimulationInputRequest> m_Requests => m_Data.Requests;
@@ -21,6 +25,12 @@ namespace ThirdPersonSimulation
         internal SimulationInputValue[] OwnedValues => m_OwnedValues;
         internal SimulationInputRequest[] OwnedRequests => m_OwnedRequests;
         internal SimulationInputValues CanonicalValues => m_Data;
+
+        internal Float32SimulationInputFrameStorage()
+        {
+            m_Data = new SimulationInputValues(s_EmptyValues, s_EmptyRequests);
+            m_Snapshot = new SimulationInput(this);
+        }
 
         public Float32SimulationInputFrameStorage(int values, int requests)
         {
@@ -95,6 +105,40 @@ namespace ThirdPersonSimulation
 
         internal SimulationInput CompleteRead(SimulationNumericProfile profile, in SimulationInputHeader header) =>
             CommitMetadata(profile, in header);
+
+        internal SimulationInput BindBorrowed(SimulationInput input, SimulationTickSourceIdentity source,
+            ulong sequence, bool includeRequests)
+        {
+            NumericProfile = input.NumericProfile;
+            Header = new SimulationInputHeader(source, input.InputSourceIdentity, sequence);
+            m_Data.Values = input.CanonicalValues.Values;
+            m_Data.Requests = includeRequests ? input.CanonicalValues.Requests : s_EmptyRequests;
+            return m_Snapshot;
+        }
+
+        internal void ClearBorrowedView()
+        {
+            m_Data.Values = s_EmptyValues;
+            m_Data.Requests = s_EmptyRequests;
+            Header = default;
+        }
+
+        internal SimulationInput CopyOrderedBorrowedText(SimulationInput input, IReadOnlyList<SimulationInputRequest> requests)
+        {
+            ClearBorrowedCopy();
+            m_Values.CopyFrom(input.Values);
+            m_Requests.CopyFrom(requests);
+            NumericProfile = input.NumericProfile;
+            Header = input.Header;
+            return m_Snapshot;
+        }
+
+        internal void ClearBorrowedCopy()
+        {
+            m_Values.Clear();
+            m_Requests.Clear();
+            Header = default;
+        }
 
         internal SimulationInput Capture(SimulationInput input)
         {

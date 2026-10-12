@@ -52,6 +52,12 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         }
 
         public int Count => m_Count;
+
+        internal void PrepareInputStorage(int values, int requests)
+        {
+            for (int index = 0; index < m_RecordPages.Length; index++)
+                m_RecordPages[index].PrepareInputStorage(values, requests);
+        }
         public int MaximumTextValues => checked(m_Capacity *
             ServerAuthoritativePredictionStateCodec.MaximumHistoryRecordTextValues + m_RemoteBodies.MaximumTextValues);
         public ulong FirstRetainedTick => m_Count == 0 ? ulong.MaxValue : m_Ticks[0];
@@ -280,6 +286,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             readonly ServerAuthoritativePredictionHistory m_Owner;
             readonly int m_Index;
             int m_References;
+            internal Float32SimulationInputFrameStorage InputStorage { get; private set; }
 
             internal RecordPage(ServerAuthoritativePredictionHistory owner, int index)
             {
@@ -289,6 +296,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             }
 
             internal ServerAuthoritativePredictionHistoryRecord Record { get; }
+            internal void PrepareInputStorage(int values, int requests) =>
+                InputStorage = new Float32SimulationInputFrameStorage(values, requests);
             internal void Begin() => m_References = 1;
             internal void Retain() => m_References++;
             public void Dispose() => Release();
@@ -298,6 +307,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 if (--m_References != 0)
                     return;
                 Record.Clear();
+                InputStorage.ClearBorrowedCopy();
                 m_Owner.m_FreeRecords[m_Owner.m_FreeRecordCount++] = m_Index;
             }
         }
@@ -312,7 +322,9 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             page.Begin();
             try
             {
-                page.Record.Initialize(input, compositionIdentity, world, pipelineProjection, observedWorldConstraints, journalCursor);
+                SimulationInput capturedInput = page.InputStorage.CopyOrderedBorrowedText(input.Input, input.Input.Requests);
+                var captured = new OwnerCanonicalInputBatch(in input, capturedInput);
+                page.Record.Initialize(captured, compositionIdentity, world, pipelineProjection, observedWorldConstraints, journalCursor);
                 return page;
             }
             catch

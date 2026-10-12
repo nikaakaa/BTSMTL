@@ -128,6 +128,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             },
             new[]
             {
+                Float32LocalInputSourcePortContract.Requirement,
                 ServerAuthoritativeSourcePortContracts.PredictionState,
                 ServerAuthoritativeSourcePortContracts.PredictionRestore,
                 Target(Float32PipelineRuntimePortIds.WorldSolver, Float32PipelineRuntimePortIds.WorldSolverSchema),

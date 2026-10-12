@@ -9,8 +9,15 @@ namespace ThirdPersonSimulation
             Requests = new CanonicalBuffer<SimulationInputRequest>(requestCapacity);
         }
 
-        internal readonly CanonicalBuffer<SimulationInputValue> Values;
-        internal readonly CanonicalBuffer<SimulationInputRequest> Requests;
+        internal CanonicalBuffer<SimulationInputValue> Values;
+        internal CanonicalBuffer<SimulationInputRequest> Requests;
+
+        internal SimulationInputValues(CanonicalBuffer<SimulationInputValue> values,
+            CanonicalBuffer<SimulationInputRequest> requests)
+        {
+            Values = values;
+            Requests = requests;
+        }
 
         [CanonicalValidation]
         internal void RequireCanonicalOrder()

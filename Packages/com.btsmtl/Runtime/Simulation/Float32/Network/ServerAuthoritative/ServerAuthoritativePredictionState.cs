@@ -168,6 +168,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         }
 
         public ServerAuthoritativeModelPolicy Policy { get; }
+        internal void PrepareInputStorage(int values, int requests) => m_History.PrepareInputStorage(values, requests);
         internal void PrepareWorldReadStorage(int maximumPayloadBytes) =>
             m_Reconciler.PrepareWorldReadStorage(maximumPayloadBytes);
 

@@ -239,10 +239,13 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 context.Products.BindExclusiveWriter<PredictionCorrectionDecision>(ServerAuthoritativeProducts.PredictionCorrectionDecision),
                 context.Products.BindExclusiveWriter<SelectedRemoteBodyBatch>(ServerAuthoritativeProducts.SelectedRemoteBodyBatch),
                 context.Products.BindExclusiveWriter<SimulationSessionExecutionPlan<Float32SimulationStep>>(SimulationPipelineProducts.ExecutionPlan));
+            IFloat32LocalInputSourcePort inputSource =
+                context.BindSourcePort<IFloat32LocalInputSourcePort>(Float32LocalInputSourcePortContract.PortId);
+            inputSource.GetInputCapacity(reads.CharacterRuntime.Runtime.RosterDescriptor.Actors[0], out int inputValues, out _);
             return new Float32SchedulePassRuntimeAdapter<CorrectionScheduleReads, CorrectionScheduleWrites>(
                 new CorrectionScheduleRuntime(context.Pass.Descriptor, m_Policy, reads.PredictionState.State,
                     context.Composition.SourceClockId.Value,
-                    reads.CharacterRuntime.Runtime.RosterDescriptor.Actors).PrepareStateStorage(context.Composition),
+                    reads.CharacterRuntime.Runtime.RosterDescriptor.Actors, inputValues).PrepareStateStorage(context.Composition),
                 reads,
                 writes);
         }
@@ -267,6 +270,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         readonly CharacterBodySample[][] m_SelectedBodyStorage;
         readonly Float32SimulationStep[] m_StepStorage;
         readonly SimulationPipelineActorInput<Float32StepInput>[][] m_StepInputStorage;
+        readonly Float32SimulationInputFrameStorage[] m_StepInputViews;
+        readonly Float32SimulationInputFrameStorage m_CurrentInputStorage;
         readonly List<Float32SimulationStep> m_Steps;
         ServerAuthoritativePredictionCorrectionCheckpoint m_CapturedCorrection;
         ulong m_DecisionCount;
@@ -282,18 +287,22 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             SimulationPipelinePassDescriptor descriptor,
             ServerAuthoritativeModelPolicy policy,
             ServerAuthoritativePredictionState state, string sourceClockId,
-            IReadOnlyList<ActorId> actors) : base(descriptor)
+            IReadOnlyList<ActorId> actors, int inputValueCapacity) : base(descriptor)
         {
             m_ReplayClockId = string.Concat(sourceClockId, ".replay");
             m_Policy = policy ?? throw new ArgumentNullException(nameof(policy));
             m_State = state ?? throw new ArgumentNullException(nameof(state));
+            m_State.PrepareInputStorage(inputValueCapacity, m_Policy.HistoryCapacity);
+            m_CurrentInputStorage = new Float32SimulationInputFrameStorage(inputValueCapacity, m_Policy.HistoryCapacity);
             m_StepStorage = new Float32SimulationStep[MaximumStepCount];
             m_StepInputStorage = new SimulationPipelineActorInput<Float32StepInput>[MaximumStepCount][];
+            m_StepInputViews = new Float32SimulationInputFrameStorage[MaximumStepCount];
             m_Steps = new List<Float32SimulationStep>(MaximumStepCount);
             for (int index = 0; index < m_StepStorage.Length; index++)
             {
                 m_StepStorage[index] = new Float32SimulationStep(actors);
                 m_StepInputStorage[index] = new SimulationPipelineActorInput<Float32StepInput>[1];
+                m_StepInputViews[index] = new Float32SimulationInputFrameStorage();
             }
             int remoteActorCount = m_State.RemoteBodyActorCount;
             m_SelectedBodyStorage = new[]
@@ -550,6 +559,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         protected override void OnDispose()
         {
             ClearSteps();
+            m_CurrentInputStorage.ClearBorrowedCopy();
             m_Checkpoint.Dispose();
             m_StateStorage.ReleaseStorage();
             for (int index = 1; index < m_SourceMappingStorage.Length; index++)
@@ -664,6 +674,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                     replaySource,
                     planSequence++,
                     record.Input,
+                    record.Input.InputSequence,
+                    true,
                     record.ObservedWorldConstraints));
             }
             if (currentStepCount > 0)
@@ -678,11 +690,10 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             {
                 ulong tickValue = checked(++nextTick);
                 ulong inputSequence = checked(nextInputSequence + (ulong)i);
-                OwnerCanonicalInputBatch rebound = RebindCurrent(
-                    current,
-                    tickValue,
-                    inputSequence,
-                    i == 0);
+                var currentSource = new SimulationTickSourceIdentity(
+                    current.Input.TickSource.Kind,
+                    current.Input.TickSource.ClockId,
+                    tickValue);
                 var tick = new SimulationTick(tickValue);
                 ServerAuthoritativeRemoteBodySelectionFrame selection = m_State.SelectRemoteBodyFrame(tick);
                 int sampleCount = selection.Selections.Count;
@@ -695,9 +706,11 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                     stepIndex++,
                     tick,
                     SimulationPipelineStepExecutionKind.Current,
-                    rebound.Input.TickSource,
+                    currentSource,
                     planSequence++,
-                    rebound,
+                    current,
+                    inputSequence,
+                    i == 0,
                     observed));
             }
             if (replay.Count > 0)
@@ -729,33 +742,12 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 requirements);
         }
 
-        static OwnerCanonicalInputBatch RebindCurrent(
-            OwnerCanonicalInputBatch template,
-            ulong targetTick,
-            ulong inputSequence,
-            bool includeRequests)
-        {
-            var source = new SimulationTickSourceIdentity(
-                template.Input.TickSource.Kind,
-                template.Input.TickSource.ClockId,
-                targetTick);
-            SimulationInput input = template.Input.RebindOwned(
-                source,
-                inputSequence,
-                includeRequests);
-            return new OwnerCanonicalInputBatch(template.ActorId, targetTick, inputSequence, input);
-        }
-
-        static OwnerCanonicalInputBatch WithRequests(
+        OwnerCanonicalInputBatch WithRequests(
             OwnerCanonicalInputBatch template,
             IReadOnlyList<SimulationInputRequest> requests)
         {
-            SimulationInput input = template.Input.CopyWithOrderedRequests(requests);
-            return new OwnerCanonicalInputBatch(
-                template.ActorId,
-                template.SourceTick,
-                template.InputSequence,
-                input);
+            SimulationInput input = m_CurrentInputStorage.CopyOrderedBorrowedText(template.Input, requests);
+            return new OwnerCanonicalInputBatch(in template, input);
         }
 
         void ClearSteps()
@@ -763,6 +755,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             for (int index = 0; index < m_Steps.Count; index++)
             {
                 Array.Clear(m_StepInputStorage[index], 0, m_StepInputStorage[index].Length);
+                m_StepInputViews[index].ClearBorrowedView();
                 m_Steps[index].Reset(
                     default,
                     default,
@@ -780,19 +773,20 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             SimulationTickSourceIdentity source,
             ulong planSequence,
             OwnerCanonicalInputBatch input,
+            ulong inputSequence,
+            bool includeRequests,
             ObservedWorldConstraintFrame observedWorldConstraints)
         {
             if (observedWorldConstraints.Tick != tick)
                 throw new ArgumentException("Observed world constraint frame Tick does not match the Step.", nameof(observedWorldConstraints));
-            SimulationInput rebound = input.Input.TickSource.Equals(source)
-                ? input.Input
-                : input.Input.RebindOwned(
-                    source,
-                    input.Input.Sequence,
-                    true);
+            SimulationInput rebound = m_StepInputViews[stepIndex].BindBorrowed(
+                input.Input,
+                source,
+                inputSequence,
+                includeRequests);
             var actorInput = new SimulationPipelineActorInput<Float32StepInput>(
                 input.ActorId,
-                input.InputSequence,
+                inputSequence,
                 new Float32StepInput(rebound));
             var provenance = new SimulationPipelineStepProvenance(kind, source, planSequence);
             SimulationPipelineActorInput<Float32StepInput>[] inputs = m_StepInputStorage[stepIndex];

@@ -96,39 +96,6 @@ namespace ThirdPersonSimulation
         public IReadOnlyList<SimulationInputRequest> Requests => m_Storage.Requests;
         public SimulationInputValue[] OwnedValues => m_Storage.OwnedValues;
         public SimulationInputRequest[] OwnedRequests => m_Storage.OwnedRequests;
-        internal SimulationInput CopyWithOrderedRequests(IReadOnlyList<SimulationInputRequest> requests)
-        {
-            SimulationInputValue[] values = Values.Count == 0
-                ? Array.Empty<SimulationInputValue>()
-                : new SimulationInputValue[Values.Count];
-            for (int index = 0; index < values.Length; index++)
-                values[index] = Values[index];
-            SimulationInputRequest[] copiedRequests = requests.Count == 0
-                ? Array.Empty<SimulationInputRequest>()
-                : new SimulationInputRequest[requests.Count];
-            for (int index = 0; index < copiedRequests.Length; index++)
-                copiedRequests[index] = requests[index];
-            return new SimulationInput(
-                NumericProfile,
-                TickSource,
-                InputSourceIdentity,
-                Sequence,
-                values,
-                copiedRequests);
-        }
-
-        internal SimulationInput RebindOwned(
-            SimulationTickSourceIdentity tickSource,
-            ulong sequence,
-            bool includeRequests) =>
-            new SimulationInput(
-                NumericProfile,
-                tickSource,
-                InputSourceIdentity,
-                sequence,
-                OwnedValues,
-                includeRequests ? OwnedRequests : Array.Empty<SimulationInputRequest>());
-
         public void RetainText()
         {
             SimulationInputHeader.CanonicalRetain(Header);
