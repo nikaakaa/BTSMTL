@@ -24,6 +24,16 @@ namespace ThirdPersonSimulation
     {
     }
 
+    [AttributeUsage(AttributeTargets.Property)]
+    public sealed class CanonicalPresenceAttribute : Attribute
+    {
+    }
+
+    [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
+    public sealed class CanonicalRequiredAttribute : Attribute
+    {
+    }
+
     [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
     public sealed class CanonicalUnionCaseAttribute : Attribute
     {
