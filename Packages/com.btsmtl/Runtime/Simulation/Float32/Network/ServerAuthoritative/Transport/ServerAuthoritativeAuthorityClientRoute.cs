@@ -1,6 +1,4 @@
 using System;
-using System.Collections.Generic;
-using System.IO;
 using ThirdPersonSimulation;
 
 namespace ThirdPersonSimulation.ServerAuthoritative.Transport
@@ -17,7 +15,6 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
         int m_SentSequenceCount;
         CanonicalInputSample m_Held;
         ulong m_HeldAcceptedTick;
-        SimulationInputValue[] m_NeutralValues;
         ulong m_LastEnqueuedInputSequence;
         ulong m_SendPacketSequence;
         ulong m_SnapshotSequence;
@@ -136,11 +133,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
             if (!m_Held.IsValid)
                 throw new InvalidOperationException($"Authority has no canonical input for Actor '{Roster.ActorId}' at Tick '{authorityTick}'.");
             if (authorityTick - m_HeldAcceptedTick > (ulong)holdTicks)
-            {
                 NeutralInputCount++;
-                return new AcceptedAuthorityInput(Roster.ActorId, m_Held.InputSequence, Neutral(m_Held.Input, authorityTick));
-            }
-            if (!selected.IsValid)
+            else if (!selected.IsValid)
                 HeldInputCount++;
             return new AcceptedAuthorityInput(Roster.ActorId, m_Held.InputSequence, m_Held.Input);
         }
@@ -252,61 +246,6 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
             m_PreviousDeltaSnapshotCount = DeltaSnapshotCount;
             m_PreviousDeltaPayloadBytes = m_DeltaPayloadBytes;
             return $"{Roster.ActorId}:commands={CommandPacketCount}/{CommandPayloadBytes}@{commandPacketsPerSecond:0.##}pps/{commandBytesPerSecond:0.##}Bps,packetGaps={PacketSequenceGaps},duplicates={DuplicatePackets},outOfOrder={OutOfOrderPackets},exact={ExactInputCount},held={HeldInputCount},neutral={NeutralInputCount},late={LateInputCount},lead={LastCommandLead},delta={DeltaSnapshotCount}@{snapshotPacketsPerSecond:0.##}pps/{snapshotBytesPerSecond:0.##}Bps,full={FullCheckpointCount},oversize={DeltaMtuExceededCount},lastBytes={LastDeltaPayloadBytes}";
-        }
-
-        SimulationInput Neutral(SimulationInput source, ulong authorityTick)
-        {
-            return SimulationInput.FromOwnedArrays(
-                source.NumericProfile,
-                new SimulationTickSourceIdentity(SimulationTickSourceKind.Authoritative, source.TickSource.ClockId, authorityTick),
-                source.InputSourceIdentity,
-                source.Sequence,
-                BuildNeutralValues(source.Values),
-                Array.Empty<SimulationInputRequest>());
-        }
-
-        SimulationInputValue[] BuildNeutralValues(IReadOnlyList<SimulationInputValue> values)
-        {
-            if (!HasNeutralLayout(m_NeutralValues, values))
-                m_NeutralValues = CreateNeutralValues(values);
-            return m_NeutralValues;
-        }
-
-        static bool HasNeutralLayout(IReadOnlyList<SimulationInputValue> cache, IReadOnlyList<SimulationInputValue> values)
-        {
-            if (cache == null || cache.Count != values.Count)
-                return false;
-            for (int i = 0; i < values.Count; i++)
-            {
-                if (!CanonicalTextValue.Equals(cache[i].InputId, values[i].InputId, StringComparison.Ordinal) ||
-                    cache[i].Kind != values[i].Kind)
-                {
-                    return false;
-                }
-            }
-            return true;
-        }
-
-        static SimulationInputValue[] CreateNeutralValues(IReadOnlyList<SimulationInputValue> values)
-        {
-            if (values.Count == 0)
-                return Array.Empty<SimulationInputValue>();
-            var result = new SimulationInputValue[values.Count];
-            for (int i = 0; i < values.Count; i++)
-            {
-                SimulationInputValue value = values[i];
-                result[i] = value.Kind switch
-                {
-                    ProgramInputValueKind.Boolean => SimulationInputValue.FromBoolean(value.InputId, false),
-                    ProgramInputValueKind.Scalar => SimulationInputValue.FromScalar(value.InputId, Float32Scalar.Zero),
-                    ProgramInputValueKind.Vector2 => SimulationInputValue.FromVector2(value.InputId, Float32Vector2.Zero),
-                    ProgramInputValueKind.Vector3 => SimulationInputValue.FromVector3(value.InputId, Float32Vector3.Zero),
-                    ProgramInputValueKind.Yaw => SimulationInputValue.FromYaw(value.InputId, Float32Yaw.Zero),
-                    ProgramInputValueKind.ActionTargetSnapshot => SimulationInputValue.FromActionTargetSnapshot(value.InputId, SimulationActionTargetSnapshot.None),
-                    _ => throw new InvalidDataException($"Unsupported input value kind '{value.Kind}'.")
-                };
-            }
-            return result;
         }
 
         void EnqueueSentSequence(ulong sequence, NetworkCheckpoint checkpoint)
