@@ -319,18 +319,6 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
     {
         readonly ReadOnlyMemory<byte> m_DeltaPayload;
 
-        public SnapshotDatagram(
-            ulong snapshotSequence,
-            ulong baseSnapshotSequence,
-            ulong authorityTick,
-            ulong acknowledgedInputSequence,
-            ulong reliableEventHorizon,
-            byte[] deltaPayload)
-            : this(snapshotSequence, baseSnapshotSequence, authorityTick, acknowledgedInputSequence,
-                reliableEventHorizon, new ArraySegment<byte>(deltaPayload ?? throw new ArgumentNullException(nameof(deltaPayload))))
-        {
-        }
-
         internal SnapshotDatagram(
             ulong snapshotSequence,
             ulong baseSnapshotSequence,
@@ -440,17 +428,26 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
             return CommandDatagram.FromOwnedSamples(latestSnapshot, latestBase, samples);
         }
 
-        public static void Write(SnapshotDatagram value, CanonicalWriter writer)
+        public static void WriteSnapshot(
+            CanonicalWriter writer,
+            ulong snapshotSequence,
+            ulong baseSnapshotSequence,
+            ulong acknowledgedInputSequence,
+            NetworkCheckpointLayout layout,
+            in NetworkCheckpoint baseline,
+            in NetworkCheckpoint target,
+            in RemotePresentationBatch remote)
         {
-            if (!value.IsValid)
-                throw new ArgumentException("Snapshot datagram is invalid.", nameof(value));
+            AuthoritativeActorBaseline value = target.Baseline;
             Writer(writer, ServerAuthoritativeDatagramKind.Snapshot);
-            writer.WriteUInt64(value.SnapshotSequence);
-            writer.WriteUInt64(value.BaseSnapshotSequence);
-            writer.WriteUInt64(value.AuthorityTick);
-            writer.WriteUInt64(value.AcknowledgedInputSequence);
-            writer.WriteUInt64(value.ReliableEventHorizon);
-            writer.WriteBytes(value.DeltaPayload.Span);
+            writer.WriteUInt64(snapshotSequence);
+            writer.WriteUInt64(baseSnapshotSequence);
+            writer.WriteUInt64(value.AuthorityTick.Value);
+            writer.WriteUInt64(acknowledgedInputSequence);
+            writer.WriteUInt64(value.ConfirmedEventHorizon.Sequence);
+            long prefixPosition = writer.BeginLengthPrefixedBlock();
+            NetworkCheckpointCodec.WriteDelta(writer, layout, in baseline, in target, in remote);
+            writer.EndLengthPrefixedBlock(prefixPosition);
         }
 
         public static SnapshotDatagram ReadSnapshot(ReadOnlyMemory<byte> bytes, CanonicalReader reader)

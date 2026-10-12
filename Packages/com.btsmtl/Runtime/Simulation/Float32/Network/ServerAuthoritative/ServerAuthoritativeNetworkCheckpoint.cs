@@ -35,11 +35,13 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 }
             }
             LayoutIdentity = writer.ComputeHash();
+            LayoutIdentityText = LayoutIdentity.ToString();
         }
 
         public Float32CharacterRuntime CharacterRuntime => m_CharacterRuntime;
         public string StateCodecIdentity => Float32CharacterRuntimeStateCodec.CodecIdentity;
         public StableHash LayoutIdentity { get; }
+        internal CanonicalTextValue LayoutIdentityText { get; }
         internal CanonicalHashWriter CheckpointHashWriter { get; } = new CanonicalHashWriter();
 
         internal SimulationActorBinding RequireActor(ActorId actorId)
@@ -187,7 +189,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             using var writer = new CanonicalWriter();
             writer.WriteUInt32(FullMagic);
             writer.WriteInt32(FullVersion);
-            writer.WriteText(layout.LayoutIdentity.ToString());
+            writer.WriteText(layout.LayoutIdentityText);
             writer.WriteHash(baseline.GameplayContentHash);
             writer.WriteText(baseline.StateCodecIdentity);
             writer.WriteText(baseline.ActorId.Value);
@@ -249,22 +251,23 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             return checkpoint;
         }
 
-        public static byte[] WriteDelta(
+        public static void WriteDelta(
+            CanonicalWriter writer,
             NetworkCheckpointLayout layout,
-            NetworkCheckpoint baseline,
-            NetworkCheckpoint target,
-            RemotePresentationBatch remote)
+            in NetworkCheckpoint baseline,
+            in NetworkCheckpoint target,
+            in RemotePresentationBatch remote)
         {
-            if (baseline.Baseline.ActorId != target.Baseline.ActorId ||
-                target.Baseline.AuthorityTick.CompareTo(baseline.Baseline.AuthorityTick) <= 0)
-                throw new InvalidDataException("Network Checkpoint delta does not advance the same Actor.");
-            if (!remote.IsValid || remote.ActorId != target.Baseline.ActorId)
-                throw new InvalidDataException("Network Checkpoint delta requires the target Actor remote presentation.");
-            using var writer = new CanonicalWriter();
+            AuthoritativeActorBaseline previous = baseline.Baseline;
             AuthoritativeActorBaseline value = target.Baseline;
+            if (previous.ActorId != value.ActorId ||
+                value.AuthorityTick.CompareTo(previous.AuthorityTick) <= 0)
+                throw new InvalidDataException("Network Checkpoint delta does not advance the same Actor.");
+            if (!remote.IsValid || remote.ActorId != value.ActorId)
+                throw new InvalidDataException("Network Checkpoint delta requires the target Actor remote presentation.");
             writer.WriteUInt32(DeltaMagic);
             writer.WriteInt32(DeltaVersion);
-            writer.WriteText(layout.LayoutIdentity.ToString());
+            writer.WriteText(layout.LayoutIdentityText);
             writer.WriteHash(baseline.CheckpointHash);
             writer.WriteHash(value.GameplayContentHash);
             writer.WriteText(value.StateCodecIdentity);
@@ -277,7 +280,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             writer.WriteUInt64((ulong)value.SolverCapabilities);
             WriteBody(writer, value.Body);
             writer.WriteUInt64(value.ConfirmedInputSequence);
-            WriteDeltaHorizon(writer, baseline.Baseline.ConfirmedEventHorizon, value.ConfirmedEventHorizon);
+            WriteDeltaHorizon(writer, previous.ConfirmedEventHorizon, value.ConfirmedEventHorizon);
             ReadOnlySpan<byte> targetState = target.StateSpan;
             bool stateChanged = !Equal(baseline.StateSpan, targetState);
             writer.WriteBoolean(stateChanged);
@@ -285,7 +288,6 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 writer.WriteBytes(targetState);
             WriteCompactRemote(writer, layout, value.AuthorityTick, remote);
             writer.WriteHash(target.CheckpointHash);
-            return writer.ToArray();
         }
 
         public static NetworkCheckpoint ReadDelta(

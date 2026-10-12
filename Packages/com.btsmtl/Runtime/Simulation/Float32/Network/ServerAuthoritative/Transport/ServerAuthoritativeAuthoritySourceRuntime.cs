@@ -479,16 +479,16 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
                 }
                 ulong sequence = route.NextSnapshotSequence();
                 ulong inputSequence = FindAck(batch, route.Roster.ActorId).ConfirmedInputSequence;
-                byte[] delta = NetworkCheckpointCodec.WriteDelta(m_CheckpointLayout, route.AcknowledgedCheckpoint, target, remote);
-                var snapshot = new SnapshotDatagram(
+                CanonicalWriter writer = m_PayloadWriter.Value;
+                ServerAuthoritativeDatagramPayloadCodec.WriteSnapshot(
+                    writer,
                     sequence,
                     route.AcknowledgedSnapshotSequence,
-                    batch.AuthorityTick.Value,
                     inputSequence,
-                    target.Baseline.ConfirmedEventHorizon.Sequence,
-                    delta);
-                CanonicalWriter writer = m_PayloadWriter.Value;
-                ServerAuthoritativeDatagramPayloadCodec.Write(snapshot, writer);
+                    m_CheckpointLayout,
+                    route.AcknowledgedCheckpoint,
+                    target,
+                    remote);
                 int payloadLength = (int)writer.Length;
                 var header = new ServerAuthoritativeDatagramHeader(
                     route.Identity,
