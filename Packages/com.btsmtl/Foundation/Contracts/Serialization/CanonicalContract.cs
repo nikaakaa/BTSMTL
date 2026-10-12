@@ -7,17 +7,25 @@ namespace ThirdPersonSimulation
     {
         public bool MaterializedRead { get; set; }
         public bool PublishedRead { get; set; }
+        public bool OwnsMemberResources { get; set; }
         public bool PreparedRead { get; set; } = true;
         public Type PreparedStorage { get; set; }
     }
 
-    [AttributeUsage(AttributeTargets.Struct)]
+    [AttributeUsage(AttributeTargets.Struct | AttributeTargets.Class)]
     public sealed class CanonicalBorrowedSequenceAttribute : Attribute
     {
         public CanonicalBorrowedSequenceAttribute(Type storage) => Storage = storage;
         public Type Storage { get; }
         public bool HoldStorage { get; set; } = true;
         public bool RetainElementsOnRead { get; set; }
+    }
+
+    [AttributeUsage(AttributeTargets.Class)]
+    public sealed class CanonicalBorrowedObjectAttribute : Attribute
+    {
+        public CanonicalBorrowedObjectAttribute(Type storage) => Storage = storage;
+        public Type Storage { get; }
     }
 
     [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
@@ -131,6 +139,7 @@ namespace ThirdPersonSimulation
         T ReadCanonical<TReader>(TReader reader) where TReader : class, ICanonicalValueReader;
         void SkipCanonical<TReader>(TReader reader) where TReader : class, ICanonicalValueReader;
         int MeasureCanonical();
+        int MaximumCanonicalEncodedSize(int maximumTextCharacters);
         void RetainCanonical();
         void ReleaseCanonical();
         void VisitCanonicalTexts<TVisitor>(TVisitor visitor) where TVisitor : class, ICanonicalTextVisitor;
@@ -153,6 +162,7 @@ namespace ThirdPersonSimulation
     public static class CanonicalContractProtocol
     {
         public const int Version = 1;
+        public const int HashEncodedSize = sizeof(int) + 64;
         public const string GeneratorIdentity = "canonical-csharp/1";
 
         public static string ComposeSchema(string template, params string[] arguments)
