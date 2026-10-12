@@ -14,6 +14,11 @@ namespace ThirdPersonSimulation
     {
     }
 
+    [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
+    public sealed class CanonicalPayloadAttribute : Attribute
+    {
+    }
+
     [AttributeUsage(AttributeTargets.Struct)]
     public sealed class CanonicalUnionTemplateAttribute : Attribute
     {
