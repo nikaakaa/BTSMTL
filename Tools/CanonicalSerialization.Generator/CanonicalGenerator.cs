@@ -1012,6 +1012,12 @@ namespace ThirdPerson.CanonicalSerialization.Generator
             return Read(member.Type, !plan.PreparedRead);
         }
 
+        static bool SupportsBoundValue(ITypeSymbol type) => NullableElement(type) is ITypeSymbol nullable
+            ? SupportsBoundValue(nullable)
+            : Primitive(type) != null || Identity(type) == TextType || type.TypeKind == TypeKind.TypeParameter ||
+                type is INamedTypeSymbol record && record.TypeKind == TypeKind.Struct && record.IsReadOnly &&
+                HasAttribute(record, ContractAttribute) && UsesPreparedRead(record) && PreparedStorage(record) == null;
+
         static string Normalize(Member member, string value)
         {
             if (HasAttribute(member.Symbol, TextRulesAttribute))
@@ -1642,9 +1648,13 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                             Error(plan, member.Symbol, "文本规范化必须声明在 readonly 记录的实际文本成员");
                     }
                     if (HasAttribute(member.Symbol, BoundAttribute) && (!type.IsReadOnly ||
-                        type.TypeKind != TypeKind.Struct || !plan.PreparedRead || plan.PreparedStorage != null ||
+                        type.TypeKind != TypeKind.Struct || plan.PreparedStorage != null ||
                         plan.Presence != null || plan.Cases.Length != 0))
                         Error(plan, member.Symbol, "已绑定成员读取只用于无设施的实时 readonly 记录");
+                    if (plan.Members.Any(m => HasAttribute(m.Symbol, BoundAttribute)) &&
+                        !HasAttribute(member.Symbol, BoundAttribute) && !HasAttribute(member.Symbol, PublishedAttribute) &&
+                        !SupportsBoundValue(member.Type))
+                        Error(plan, member.Symbol, "已绑定读取的其余成员必须使用实时值合同，不能物化集合、对象或字符串");
                     if (HasAttribute(member.Symbol, PublishedAttribute))
                     {
                         descriptor.Append(":published");

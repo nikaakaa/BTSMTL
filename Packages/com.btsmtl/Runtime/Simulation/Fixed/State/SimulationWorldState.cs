@@ -5,21 +5,6 @@ using System.IO;
 
 namespace ThirdPersonSimulation.Fixed
 {
-    [Flags]
-    public enum WorldCollisionSummary : uint
-    {
-        None = 0,
-        Sides = 1,
-        Above = 2,
-        Below = 4
-    }
-
-    public enum WorldStatePersistenceMode : byte
-    {
-        Reconstruct = 1,
-        Snapshot = 2
-    }
-
     [CanonicalContract]
     public readonly partial struct WorldBodyState
     {
@@ -60,6 +45,7 @@ namespace ThirdPersonSimulation.Fixed
 
     public readonly struct WorldSimulationState
     {
+        readonly WorldSimulationStateIdentity m_Identity;
         readonly IReadOnlyList<WorldBodyState> m_Bodies;
         readonly ReadOnlyMemory<byte> m_SolverStatePayload;
         readonly WorldSimulationStateStorage.Page m_Storage;
@@ -95,11 +81,8 @@ namespace ThirdPersonSimulation.Fixed
         {
             if (!numericProfile.IsValid || string.IsNullOrEmpty(solverId.Value) || string.IsNullOrEmpty(worldRevision.Value))
                 throw new ArgumentException("World state identity is incomplete.");
-            NumericProfile = numericProfile;
-            SolverId = solverId;
-            SolverVersion = SimulationIdentity.Require(solverVersion, nameof(solverVersion));
-            WorldRevision = worldRevision;
-            PersistenceMode = persistenceMode;
+            m_Identity = new WorldSimulationStateIdentity(numericProfile, solverId,
+                SimulationIdentity.Require(solverVersion, nameof(solverVersion)), worldRevision, persistenceMode);
             WorldBodyState[] ownedBodies = bodies ?? Array.Empty<WorldBodyState>();
             Array.Sort(ownedBodies, (left, right) => left.ActorId.CompareTo(right.ActorId));
             for (int i = 1; i < ownedBodies.Length; i++)
@@ -121,11 +104,8 @@ namespace ThirdPersonSimulation.Fixed
             WorldStatePersistenceMode persistenceMode,
             WorldSimulationStateStorage.Page storage)
         {
-            NumericProfile = numericProfile;
-            SolverId = solverId;
-            SolverVersion = solverVersion;
-            WorldRevision = worldRevision;
-            PersistenceMode = persistenceMode;
+            m_Identity = new WorldSimulationStateIdentity(numericProfile, solverId, solverVersion,
+                worldRevision, persistenceMode);
             m_Bodies = storage.Bodies;
             m_SolverStatePayload = storage.Payload;
             m_Storage = storage;
@@ -141,6 +121,24 @@ namespace ThirdPersonSimulation.Fixed
             WorldSimulationStateStorage.Page storage) =>
             new WorldSimulationState(numericProfile, solverId, solverVersion,
                 worldRevision, persistenceMode, storage);
+
+        WorldSimulationState(in WorldSimulationStateIdentity identity, WorldBodyState[] bodies,
+            ReadOnlyMemory<byte> payload, WorldSimulationStateStorage.Page storage)
+        {
+            m_Identity = identity;
+            m_Bodies = bodies;
+            m_SolverStatePayload = payload;
+            m_Storage = storage;
+            m_StorageGeneration = storage == null ? 0 : storage.Generation;
+        }
+
+        internal static WorldSimulationState FromCanonicalState(in WorldSimulationStateIdentity identity,
+            WorldBodyState[] bodies, ReadOnlyMemory<byte> payload) =>
+            new WorldSimulationState(in identity, bodies, payload, null);
+
+        internal static WorldSimulationState FromCanonicalState(in WorldSimulationStateIdentity identity,
+            WorldSimulationStateStorage.Page storage) =>
+            new WorldSimulationState(in identity, storage.Bodies, storage.Payload, storage);
 
         public void RetainStateStorage() => m_Storage?.Retain(m_StorageGeneration);
         public void ReleaseStateStorage() => m_Storage?.Release();
@@ -162,11 +160,12 @@ namespace ThirdPersonSimulation.Fixed
                 bodies,
                 solverStatePayload);
 
-        public SimulationNumericProfile NumericProfile { get; }
-        public SolverImplementationId SolverId { get; }
-        public string SolverVersion { get; }
-        public WorldRevision WorldRevision { get; }
-        public WorldStatePersistenceMode PersistenceMode { get; }
+        public WorldSimulationStateIdentity Identity => m_Identity;
+        public SimulationNumericProfile NumericProfile => m_Identity.NumericProfile;
+        public SolverImplementationId SolverId => m_Identity.SolverId;
+        public string SolverVersion => m_Identity.SolverVersion;
+        public WorldRevision WorldRevision => m_Identity.WorldRevision;
+        public WorldStatePersistenceMode PersistenceMode => m_Identity.PersistenceMode;
         public IReadOnlyList<WorldBodyState> Bodies
         {
             get
@@ -299,7 +298,11 @@ namespace ThirdPersonSimulation.Fixed
     public static class WorldSimulationStateCodec
     {
         const uint Magic = 0x54535743;
-        const int Version = 6;
+        const int Version = 7;
+        public static readonly string CanonicalSchema = CanonicalContractProtocol.ComposeSchema(
+            "fixed-world-state/" + Version, WorldSimulationStateIdentity.CanonicalSchema,
+            WorldBodyState.CanonicalSchema);
+        static readonly StableHash CanonicalSchemaHash = new StableHash(CanonicalSchema);
 
         [ThreadStatic] static CanonicalWriter s_Writer;
 
@@ -349,12 +352,8 @@ namespace ThirdPersonSimulation.Fixed
         {
             writer.WriteUInt32(Magic);
             writer.WriteInt32(Version);
-            writer.WriteHash(WorldBodyState.CanonicalSchemaHash);
-            SimulationNumericProfile.CanonicalWrite(writer, state.NumericProfile);
-            writer.WriteText(state.SolverId.Value);
-            writer.WriteText(state.SolverVersion);
-            writer.WriteText(state.WorldRevision.Value);
-            writer.WriteByte((byte)state.PersistenceMode);
+            writer.WriteHash(CanonicalSchemaHash);
+            WorldSimulationStateIdentity.CanonicalWrite(writer, state.Identity);
             writer.WriteInt32(state.Bodies.Count);
             for (int i = 0; i < state.Bodies.Count; i++)
             {
@@ -367,26 +366,20 @@ namespace ThirdPersonSimulation.Fixed
             byte[] bytes, SimulationNumericProfile expectedNumericProfile,
             SolverImplementationId expectedSolverId, string expectedSolverVersion, WorldRevision expectedWorldRevision) =>
             Read(bytes, expectedNumericProfile, expectedSolverId, expectedSolverVersion, expectedWorldRevision,
-                new CanonicalReader(Array.Empty<byte>()), new CanonicalWriter(), null);
+                new CanonicalReader(Array.Empty<byte>()), null);
 
         internal static WorldSimulationState Read(
             ReadOnlyMemory<byte> bytes, SimulationNumericProfile expectedNumericProfile,
             SolverImplementationId expectedSolverId, string expectedSolverVersion, WorldRevision expectedWorldRevision,
-            CanonicalReader reader, CanonicalWriter writer, ICanonicalTextResolver resolver)
+            CanonicalReader reader, ICanonicalTextResolver resolver)
         {
             reader.Reset(bytes);
             reader.SetTextResolver(resolver);
             if (reader.ReadUInt32() != Magic || reader.ReadInt32() != Version)
                 throw new InvalidDataException("World state header is invalid.");
-            WorldBodyState.CanonicalRequireSchema(reader);
-            SimulationNumericProfile numericProfile = SimulationNumericProfile.CanonicalReadPublished(reader, expectedNumericProfile);
-            reader.RequireText(expectedSolverId.Value);
-            reader.RequireText(expectedSolverVersion);
-            reader.RequireText(expectedWorldRevision.Value);
-            SolverImplementationId solverId = expectedSolverId;
-            string solverVersion = expectedSolverVersion;
-            WorldRevision worldRevision = expectedWorldRevision;
-            WorldStatePersistenceMode persistenceMode = ReadPersistenceMode(reader.ReadByte());
+            reader.RequireSchema(CanonicalSchemaHash, "World state");
+            WorldSimulationStateIdentity identity = WorldSimulationStateIdentity.CanonicalReadBound(reader,
+                in expectedNumericProfile, in expectedSolverId, in expectedSolverVersion, in expectedWorldRevision);
             int count = reader.ReadInt32();
             if (count < 0 || count > 1000000)
                 throw new InvalidDataException($"World body count '{count}' is invalid.");
@@ -397,28 +390,17 @@ namespace ThirdPersonSimulation.Fixed
             }
             ArraySegment<byte> payload = reader.ReadBytesSegment();
             reader.RequireComplete();
-            if (numericProfile != expectedNumericProfile || !solverId.Equals(expectedSolverId) || !string.Equals(solverVersion, expectedSolverVersion, StringComparison.Ordinal) || !worldRevision.Equals(expectedWorldRevision))
-                throw new InvalidDataException("World state Numeric Profile, Solver, or revision binding is stale or mismatched.");
-            var result = WorldSimulationState.FromOwnedState(
-                numericProfile,
-                solverId,
-                solverVersion,
-                worldRevision,
-                persistenceMode,
-                bodies,
+            for (int i = 1; i < bodies.Length; i++)
+                if (bodies[i - 1].ActorId.CompareTo(bodies[i].ActorId) >= 0)
+                    throw new InvalidDataException("World bodies are not in the canonical unique Actor order.");
+            return WorldSimulationState.FromCanonicalState(in identity, bodies,
                 payload.Count == 0 ? Array.Empty<byte>() : payload.AsSpan().ToArray());
-            writer.Reset();
-            writer.SetTextCapture(null);
-            WriteCanonical(writer, result);
-            if (!writer.ContentEquals(bytes.Span))
-                throw new InvalidDataException("World state is not canonical.");
-            return result;
         }
 
         internal static WorldSimulationState ReadPrepared(
             ReadOnlyMemory<byte> bytes, SimulationNumericProfile expectedNumericProfile,
             SolverImplementationId expectedSolverId, string expectedSolverVersion, WorldRevision expectedWorldRevision,
-            CanonicalReader reader, CanonicalWriter writer, ICanonicalTextResolver resolver, WorldSimulationStateStorage storage,
+            CanonicalReader reader, ICanonicalTextResolver resolver, WorldSimulationStateStorage storage,
             IReadOnlyList<WorldBodyState> publishedBodies)
         {
             WorldSimulationStateStorage.Page page = storage.BeginWrite();
@@ -428,15 +410,9 @@ namespace ThirdPersonSimulation.Fixed
                 reader.SetTextResolver(resolver);
                 if (reader.ReadUInt32() != Magic || reader.ReadInt32() != Version)
                     throw new InvalidDataException("World state header is invalid.");
-                WorldBodyState.CanonicalRequireSchema(reader);
-                SimulationNumericProfile numericProfile = SimulationNumericProfile.CanonicalReadPublished(reader, expectedNumericProfile);
-                reader.RequireText(expectedSolverId.Value);
-                reader.RequireText(expectedSolverVersion);
-                reader.RequireText(expectedWorldRevision.Value);
-                SolverImplementationId solverId = expectedSolverId;
-                string solverVersion = expectedSolverVersion;
-                WorldRevision worldRevision = expectedWorldRevision;
-                WorldStatePersistenceMode persistenceMode = ReadPersistenceMode(reader.ReadByte());
+                reader.RequireSchema(CanonicalSchemaHash, "World state");
+                WorldSimulationStateIdentity identity = WorldSimulationStateIdentity.CanonicalReadBound(reader,
+                    in expectedNumericProfile, in expectedSolverId, in expectedSolverVersion, in expectedWorldRevision);
                 int count = reader.ReadInt32();
                 if (count != storage.ActorCount)
                     throw new InvalidDataException("World body count does not match the prepared Session roster.");
@@ -449,14 +425,7 @@ namespace ThirdPersonSimulation.Fixed
                 ArraySegment<byte> payload = reader.ReadBytesSegment();
                 reader.RequireComplete();
                 page.Writer.WriteRawBytes(payload.AsSpan());
-                WorldSimulationState result = WorldSimulationState.FromStateStorage(
-                    numericProfile, solverId, solverVersion, worldRevision, persistenceMode, page);
-                writer.Reset();
-                writer.SetTextCapture(null);
-                WriteCanonical(writer, result);
-                if (!writer.ContentEquals(bytes.Span))
-                    throw new InvalidDataException("World state is not canonical.");
-                return result;
+                return WorldSimulationState.FromCanonicalState(in identity, page);
             }
             catch
             {
@@ -466,17 +435,16 @@ namespace ThirdPersonSimulation.Fixed
         }
 
         public static ArraySegment<byte> ReadSolverStatePayloadSegment(
-            ReadOnlyMemory<byte> bytes, in SimulationNumericProfile expectedNumericProfile, CanonicalReader reader)
+            ReadOnlyMemory<byte> bytes, in SimulationNumericProfile expectedNumericProfile,
+            SolverImplementationId expectedSolverId, string expectedSolverVersion, WorldRevision expectedWorldRevision,
+            CanonicalReader reader)
         {
             reader.Reset(bytes);
             if (reader.ReadUInt32() != Magic || reader.ReadInt32() != Version)
                 throw new InvalidDataException("World state header is invalid.");
-            WorldBodyState.CanonicalRequireSchema(reader);
-            SimulationNumericProfile.CanonicalReadPublished(reader, expectedNumericProfile);
-            reader.ReadTextSegment();
-            reader.ReadTextSegment();
-            reader.ReadTextSegment();
-            ReadPersistenceMode(reader.ReadByte());
+            reader.RequireSchema(CanonicalSchemaHash, "World state");
+            WorldSimulationStateIdentity.CanonicalReadBound(reader, in expectedNumericProfile,
+                in expectedSolverId, in expectedSolverVersion, in expectedWorldRevision);
             int count = reader.ReadInt32();
             if (count < 0 || count > 1000000)
                 throw new InvalidDataException($"World body count '{count}' is invalid.");
@@ -489,12 +457,7 @@ namespace ThirdPersonSimulation.Fixed
             return payload;
         }
 
-        static WorldStatePersistenceMode ReadPersistenceMode(byte value)
-        {
-            if ((WorldStatePersistenceMode)value is not (WorldStatePersistenceMode.Reconstruct or WorldStatePersistenceMode.Snapshot))
-                throw new InvalidDataException($"World persistence mode '{value}' is invalid.");
-            return (WorldStatePersistenceMode)value;
-        }
+
 
     }
 }

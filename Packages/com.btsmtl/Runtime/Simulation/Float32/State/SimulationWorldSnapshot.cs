@@ -118,7 +118,6 @@ namespace ThirdPersonSimulation
         readonly IReadOnlyList<SimulationActorSnapshot> m_Actors;
         ReadOnlyMemory<byte> m_WorldStateBytes;
         readonly CanonicalReader m_WorldReader;
-        readonly CanonicalWriter m_CanonicalWriter;
         readonly SimulationWorldSnapshotStorage.Page m_Storage;
         ICanonicalTextResolver m_TextResolver;
 
@@ -178,7 +177,6 @@ namespace ThirdPersonSimulation
             m_Actors = copied;
             m_WorldStateBytes = worldStateBytes ?? throw new ArgumentNullException(nameof(worldStateBytes));
             m_WorldReader = new CanonicalReader(Array.Empty<byte>());
-            m_CanonicalWriter = new CanonicalWriter();
             DeterministicValidity = deterministicValidity;
             WorldHash = SimulationWorldSnapshotCodec.ComputeHash(this);
         }
@@ -196,7 +194,7 @@ namespace ThirdPersonSimulation
         public bool DeterministicValidity { get; private set; }
         public SimulationWorldHash WorldHash { get; private set; }
 
-        internal SimulationWorldSnapshot(SimulationActorSnapshot[] actors, CanonicalWriter writer, WorldSimulationState publishedWorld)
+        internal SimulationWorldSnapshot(SimulationActorSnapshot[] actors, WorldSimulationState publishedWorld)
         {
             NumericProfile = publishedWorld.NumericProfile;
             SolverId = publishedWorld.SolverId;
@@ -204,12 +202,11 @@ namespace ThirdPersonSimulation
             WorldRevision = publishedWorld.WorldRevision;
             m_Actors = actors;
             m_WorldReader = new CanonicalReader(Array.Empty<byte>());
-            m_CanonicalWriter = writer;
         }
 
-        internal SimulationWorldSnapshot(SimulationActorSnapshot[] actors, CanonicalWriter writer,
+        internal SimulationWorldSnapshot(SimulationActorSnapshot[] actors,
             WorldSimulationState publishedWorld, SimulationWorldSnapshotStorage.Page storage)
-            : this(actors, writer, publishedWorld)
+            : this(actors, publishedWorld)
         {
             m_Storage = storage;
         }
@@ -266,11 +263,11 @@ namespace ThirdPersonSimulation
 
         public WorldSimulationState DecodeWorldState() =>
             WorldSimulationStateCodec.Read(m_WorldStateBytes, NumericProfile, SolverId, SolverVersion, WorldRevision,
-                m_WorldReader, m_CanonicalWriter, m_TextResolver);
+                m_WorldReader, m_TextResolver);
 
         internal WorldSimulationState DecodeWorldState(WorldSimulationState storage) =>
             WorldSimulationStateCodec.Read(m_WorldStateBytes, NumericProfile, SolverId, SolverVersion, WorldRevision,
-                m_WorldReader, m_CanonicalWriter, m_TextResolver, storage);
+                m_WorldReader, m_TextResolver, storage);
 
         static void ValidatePreparedActors(SimulationActorSnapshot[] actors)
         {
@@ -355,7 +352,7 @@ namespace ThirdPersonSimulation
                 var actors = new SimulationActorSnapshot[runtime.Roster.Count];
                 for (int actor = 0; actor < actors.Length; actor++)
                     actors[actor] = new SimulationActorSnapshot(runtime.Roster[actor], hashWriter);
-                Snapshot = new SimulationWorldSnapshot(actors, hashWriter, publishedWorld, this);
+                Snapshot = new SimulationWorldSnapshot(actors, publishedWorld, this);
             }
 
             internal SimulationWorldSnapshot Snapshot { get; }

@@ -116,7 +116,6 @@ namespace ThirdPersonSimulation.Fixed
         readonly IReadOnlyList<SimulationActorSnapshot> m_Actors;
         ReadOnlyMemory<byte> m_WorldStateBytes;
         readonly CanonicalReader m_WorldReader;
-        readonly CanonicalWriter m_CanonicalWriter;
         ICanonicalTextResolver m_TextResolver;
 
         public SimulationWorldSnapshot(
@@ -175,7 +174,6 @@ namespace ThirdPersonSimulation.Fixed
             m_Actors = copied;
             m_WorldStateBytes = worldStateBytes ?? throw new ArgumentNullException(nameof(worldStateBytes));
             m_WorldReader = new CanonicalReader(Array.Empty<byte>());
-            m_CanonicalWriter = new CanonicalWriter();
             DeterministicValidity = deterministicValidity;
             WorldHash = SimulationWorldSnapshotCodec.ComputeHash(this);
         }
@@ -193,11 +191,10 @@ namespace ThirdPersonSimulation.Fixed
         public bool DeterministicValidity { get; private set; }
         public SimulationWorldHash WorldHash { get; private set; }
 
-        internal SimulationWorldSnapshot(SimulationActorSnapshot[] actors, CanonicalWriter writer, WorldSimulationState publishedWorld)
+        internal SimulationWorldSnapshot(SimulationActorSnapshot[] actors, WorldSimulationState publishedWorld)
         {
             m_Actors = actors;
             m_WorldReader = new CanonicalReader(Array.Empty<byte>());
-            m_CanonicalWriter = writer;
             NumericProfile = publishedWorld.NumericProfile;
             SolverId = publishedWorld.SolverId;
             SolverVersion = publishedWorld.SolverVersion;
@@ -250,15 +247,16 @@ namespace ThirdPersonSimulation.Fixed
 
         internal WorldSimulationState DecodeWorldState(WorldSimulationStateStorage storage, IReadOnlyList<WorldBodyState> publishedBodies) =>
             WorldSimulationStateCodec.ReadPrepared(m_WorldStateBytes, NumericProfile, SolverId, SolverVersion, WorldRevision,
-                m_WorldReader, m_CanonicalWriter, m_TextResolver, storage, publishedBodies);
+                m_WorldReader, m_TextResolver, storage, publishedBodies);
 
         public WorldSimulationState DecodeWorldState() =>
             WorldSimulationStateCodec.Read(m_WorldStateBytes, NumericProfile, SolverId, SolverVersion, WorldRevision,
-                m_WorldReader, m_CanonicalWriter, m_TextResolver);
+                m_WorldReader, m_TextResolver);
 
         public StableHash ComputeSolverStatePayloadHash() =>
             SimulationCanonicalPayloadHash.Compute(
-                WorldSimulationStateCodec.ReadSolverStatePayloadSegment(m_WorldStateBytes, NumericProfile, m_WorldReader).AsSpan());
+                WorldSimulationStateCodec.ReadSolverStatePayloadSegment(m_WorldStateBytes, NumericProfile,
+                    SolverId, SolverVersion, WorldRevision, m_WorldReader).AsSpan());
 
         static void ValidatePreparedActors(SimulationActorSnapshot[] actors)
         {

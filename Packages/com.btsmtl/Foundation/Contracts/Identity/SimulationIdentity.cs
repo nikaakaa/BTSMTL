@@ -271,9 +271,11 @@ namespace ThirdPersonSimulation
         public override string ToString() => Value.ToString();
     }
 
-    public readonly struct WorldRevision : IEquatable<WorldRevision>
+    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+    public readonly partial struct WorldRevision : IEquatable<WorldRevision>
     {
         public WorldRevision(string value) { Value = SimulationIdentity.Require(value, nameof(value)); }
+        [CanonicalTextRules(Required = true)]
         public string Value { get; }
         public bool Equals(WorldRevision other) => string.Equals(Value, other.Value, StringComparison.Ordinal);
         public override bool Equals(object obj) => obj is WorldRevision other && Equals(other);
@@ -281,9 +283,11 @@ namespace ThirdPersonSimulation
         public override string ToString() => Value ?? string.Empty;
     }
 
-    public readonly struct SolverImplementationId : IEquatable<SolverImplementationId>
+    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+    public readonly partial struct SolverImplementationId : IEquatable<SolverImplementationId>
     {
         public SolverImplementationId(string value) { Value = SimulationIdentity.Require(value, nameof(value)); }
+        [CanonicalTextRules(Required = true)]
         public string Value { get; }
         public bool Equals(SolverImplementationId other) => string.Equals(Value, other.Value, StringComparison.Ordinal);
         public override bool Equals(object obj) => obj is SolverImplementationId other && Equals(other);

@@ -32,7 +32,7 @@ namespace ThirdPersonSimulation.Fixed
         public static readonly string CanonicalSchema = CanonicalContractProtocol.ComposeSchema(
             "fixed-session-snapshot/" + Version, SimulationPipelineIdentity.CanonicalSchema,
             SimulationComponentIdentity.CanonicalSchema, SimulationPipelineStateParticipantIdentity.CanonicalSchema,
-            SimulationNumericProfile.CanonicalSchema, WorldBodyState.CanonicalSchema,
+            SimulationNumericProfile.CanonicalSchema, WorldSimulationStateCodec.CanonicalSchema,
             FixedCharacterRuntimeStateCodec.CodecIdentity);
         static readonly StableHash CanonicalSchemaHash = new StableHash(CanonicalSchema);
 
@@ -56,7 +56,7 @@ namespace ThirdPersonSimulation.Fixed
                 var actors = new SimulationActorSnapshot[runtime.Roster.Count];
                 for (int index = 0; index < actors.Length; index++)
                     actors[index] = new SimulationActorSnapshot(runtime.Roster[index], hashWriter);
-                World = new SimulationWorldSnapshot(actors, hashWriter, publishedWorld);
+                World = new SimulationWorldSnapshot(actors, publishedWorld);
                 Participants = new SimulationPipelinePassStateSnapshot[participants.Length];
                 for (int index = 0; index < participants.Length; index++)
                     Participants[index] = SimulationPipelinePassStateSnapshot.FromPreparedIdentity(participants[index].StateIdentity);
