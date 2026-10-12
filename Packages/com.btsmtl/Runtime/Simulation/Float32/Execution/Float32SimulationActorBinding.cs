@@ -861,10 +861,12 @@ namespace ThirdPersonSimulation
         {
             var parts = new List<string>
             {
-                "float32-character-state-schema/3",
+                "float32-character-state-schema/4",
+                Float32CharacterRuntimeStateCodec.CodecIdentity,
                 control.BindingHash.ToString(),
                 input.BindingHash.ToString(),
                 abilities.GameplayEffectCatalog != null ? gameplayEffects.BindingHash.ToString() : string.Empty,
+                abilities.GameplayEffectCatalog != null ? GameplayEffectStateAggregateCodec.CanonicalSchema : string.Empty,
                 abilities.RequiresEquipment ? equipment.BindingHash.ToString() : string.Empty
             };
             for (int i = 0; i < abilities.Installations.Count; i++)

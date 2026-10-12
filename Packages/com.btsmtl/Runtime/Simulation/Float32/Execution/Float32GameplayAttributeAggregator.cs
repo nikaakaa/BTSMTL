@@ -246,7 +246,7 @@ namespace ThirdPersonSimulation
             for (int i = 0; i < attribute.Modifiers.Count; i++)
             {
                 PortableAttributeModifierState modifier = attribute.Modifiers[i];
-                Float32Scalar magnitude = CanonicalTextValue.IsNullOrEmpty(modifier.LiveAttributeId)
+                Float32Scalar magnitude = modifier.LiveAttributeIndex < 0
                     ? modifier.Magnitude
                     : m_Attributes.Values[modifier.LiveAttributeIndex].CurrentValue * modifier.LiveCoefficient + modifier.LivePostAdd;
                 switch (modifier.Operation)

@@ -12,15 +12,18 @@ namespace ThirdPersonSimulation.Fixed
         const uint ActiveMagic = 0x32464745;
         const uint PeriodsMagic = 0x32504745;
         const uint JournalMagic = 0x324A4745;
-        const int StateVersion = 10;
+        const int StateVersion = 11;
+        internal static readonly string CanonicalSchema = CanonicalContractProtocol.ComposeSchema(
+            "gameplay-effect-state/" + StateVersion,
+            PortableAttributeModifierState.CanonicalSchema, SimulationGameplayEffectContext.CanonicalSchema,
+            GameplayEffectActiveControlSnapshot.CanonicalSchema, GameplayEffectLifecycleRevisionKey.CanonicalSchema,
+            GameplayEffectLifecycleRevisionEntry.CanonicalSchema);
+        static readonly StableHash CanonicalSchemaHash = new StableHash(CanonicalSchema);
 
         internal static void Write(CanonicalWriter writer, GameplayEffectStateAggregate aggregate)
         {
             FixedGameplayEffectRuntimeCatalog catalog = aggregate.Catalog;
-            writer.WriteHash(SimulationGameplayEffectContext.CanonicalSchemaHash);
-            writer.WriteHash(GameplayEffectActiveControlSnapshot.CanonicalSchemaHash);
-            writer.WriteHash(GameplayEffectLifecycleRevisionKey.CanonicalSchemaHash);
-            writer.WriteHash(GameplayEffectLifecycleRevisionEntry.CanonicalSchemaHash);
+            writer.WriteHash(CanonicalSchemaHash);
             WriteTags(writer, aggregate.TagSources, catalog);
             WriteAttributes(writer, aggregate.Attributes, catalog);
             WriteActiveEffects(writer, aggregate.ActiveEffects, catalog);
@@ -43,10 +46,7 @@ namespace ThirdPersonSimulation.Fixed
             SortedList<ulong, List<PortablePredictionRecord>> journal,
             SortedList<GameplayEffectLifecycleRevisionKey, GameplayEffectLifecycleRevisionEntry> lifecycleRevisions)
         {
-            SimulationGameplayEffectContext.CanonicalRequireSchema(reader);
-            GameplayEffectActiveControlSnapshot.CanonicalRequireSchema(reader);
-            GameplayEffectLifecycleRevisionKey.CanonicalRequireSchema(reader);
-            GameplayEffectLifecycleRevisionEntry.CanonicalRequireSchema(reader);
+            reader.RequireSchema(CanonicalSchemaHash, "Gameplay Effect state");
             GameplayEffectRuntimeCapacityLayout capacity = catalog.CapacityLayout;
             ReadTags(Block(blockReader, reader.ReadBytesSegment(), TagsMagic), catalog, tagPages, equipment, tagSources);
             ReadAttributes(Block(blockReader, reader.ReadBytesSegment(), AttributesMagic), catalog, attributes);
@@ -139,7 +139,7 @@ namespace ThirdPersonSimulation.Fixed
                 writer.WriteUInt64(attribute.Revision);
                 writer.WriteInt32(attribute.Modifiers.Length);
                 for (int i = 0; i < attribute.Modifiers.Length; i++)
-                    WriteModifier(writer, attribute.Modifiers[i]);
+                    PortableAttributeModifierState.CanonicalWrite(writer, attribute.Modifiers[i]);
             }
             writer.EndLengthPrefixedBlock(prefixPosition);
         }
@@ -461,40 +461,12 @@ namespace ThirdPersonSimulation.Fixed
                 throw new InvalidDataException("Gameplay Effect prediction record identity is incomplete.");
         }
 
-        static void WriteModifier(CanonicalWriter writer, PortableAttributeModifierState modifier)
-        {
-            writer.WriteUInt64(modifier.Handle);
-            writer.WriteUInt64(modifier.SourceEffectHandle);
-            writer.WriteByte((byte)modifier.Operation);
-            writer.WriteScalar(modifier.Magnitude);
-            writer.WriteInt32(modifier.Priority);
-            writer.WriteByte((byte)modifier.ClampBound);
-            writer.WriteInt32(modifier.LiveAttributeIndex);
-            writer.WriteScalar(modifier.LiveCoefficient);
-            writer.WriteScalar(modifier.LivePostAdd);
-            writer.WriteUInt64(modifier.InsertionSequence);
-        }
-
         static PortableAttributeModifierState ReadModifier(CanonicalReader reader, GameplayAttributeDependencyLayout layout)
         {
-            ulong handle = reader.ReadUInt64();
-            ulong source = reader.ReadUInt64();
-            PortableModifierOperation operation = (PortableModifierOperation)reader.ReadByte();
-            FixedScalar magnitude = reader.ReadScalar();
-            int priority = reader.ReadInt32();
-            PortableClampBound clamp = (PortableClampBound)reader.ReadByte();
-            int liveIndex = reader.ReadInt32();
-            FixedScalar coefficient = reader.ReadScalar();
-            FixedScalar postAdd = reader.ReadScalar();
-            ulong insertion = reader.ReadUInt64();
-            if (handle == 0 || source == 0 || insertion == 0 ||
-                operation < PortableModifierOperation.Additive || operation > PortableModifierOperation.Clamp ||
-                clamp < PortableClampBound.Minimum || clamp > PortableClampBound.Maximum ||
-                liveIndex < -1 || liveIndex >= layout.AttributeCount)
-                throw new InvalidDataException("Gameplay Attribute modifier identity is invalid.");
-            string liveId = liveIndex < 0 ? string.Empty : layout.AttributeId(liveIndex);
-            return new PortableAttributeModifierState(handle, source, operation, magnitude, priority, clamp,
-                liveId, liveIndex, coefficient, postAdd, insertion);
+            PortableAttributeModifierState modifier = PortableAttributeModifierState.CanonicalRead(reader);
+            if (modifier.LiveAttributeIndex >= layout.AttributeCount)
+                throw new InvalidDataException("Gameplay Attribute modifier identity is absent from the published catalog.");
+            return modifier;
         }
 
         static void WriteScalarMap(CanonicalWriter writer, SortedList<string, FixedScalar> values,
@@ -564,14 +536,13 @@ namespace ThirdPersonSimulation.Fixed
         {
             long position = writer.BeginLengthPrefixedBlock();
             writer.WriteUInt32(magic);
-            writer.WriteInt32(StateVersion);
             return position;
         }
 
         static CanonicalReader Block(CanonicalReader reader, ArraySegment<byte> bytes, uint magic)
         {
             reader.Reset(bytes);
-            if (reader.ReadUInt32() != magic || reader.ReadInt32() != StateVersion)
+            if (reader.ReadUInt32() != magic)
                 throw new InvalidDataException("Gameplay Effect state header is invalid.");
             return reader;
         }

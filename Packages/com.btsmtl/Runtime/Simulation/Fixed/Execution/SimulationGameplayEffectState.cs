@@ -51,7 +51,8 @@ namespace ThirdPersonSimulation.Fixed
         public ulong Revision { get; }
     }
 
-    internal readonly struct PortableAttributeModifierState
+    [CanonicalContract]
+    internal readonly partial struct PortableAttributeModifierState
     {
         public PortableAttributeModifierState(
             ulong handle,
@@ -60,7 +61,6 @@ namespace ThirdPersonSimulation.Fixed
             FixedScalar magnitude,
             int priority,
             PortableClampBound clampBound,
-            string liveAttributeId,
             int liveAttributeIndex,
             FixedScalar liveCoefficient,
             FixedScalar livePostAdd,
@@ -72,7 +72,6 @@ namespace ThirdPersonSimulation.Fixed
             Magnitude = magnitude;
             Priority = priority;
             ClampBound = clampBound;
-            LiveAttributeId = liveAttributeId;
             LiveAttributeIndex = liveAttributeIndex;
             LiveCoefficient = liveCoefficient;
             LivePostAdd = livePostAdd;
@@ -85,11 +84,17 @@ namespace ThirdPersonSimulation.Fixed
         public readonly FixedScalar Magnitude;
         public readonly int Priority;
         public readonly PortableClampBound ClampBound;
-        public readonly string LiveAttributeId;
         public readonly int LiveAttributeIndex;
         public readonly FixedScalar LiveCoefficient;
         public readonly FixedScalar LivePostAdd;
         public readonly ulong InsertionSequence;
+
+        [CanonicalValidation]
+        void RequireRecord()
+        {
+            if (Handle == 0 || SourceEffectHandle == 0 || InsertionSequence == 0 || LiveAttributeIndex < -1)
+                throw new InvalidDataException("Gameplay Attribute modifier identity is invalid.");
+        }
     }
 
     internal sealed class PortableAttributeState
@@ -621,7 +626,7 @@ namespace ThirdPersonSimulation.Fixed
                     !leftValue.Magnitude.Equals(rightValue.Magnitude) ||
                     leftValue.Priority != rightValue.Priority ||
                     leftValue.ClampBound != rightValue.ClampBound ||
-                    !string.Equals(leftValue.LiveAttributeId, rightValue.LiveAttributeId, StringComparison.Ordinal) ||
+                    leftValue.LiveAttributeIndex != rightValue.LiveAttributeIndex ||
                     !leftValue.LiveCoefficient.Equals(rightValue.LiveCoefficient) ||
                     !leftValue.LivePostAdd.Equals(rightValue.LivePostAdd) ||
                     leftValue.InsertionSequence != rightValue.InsertionSequence)

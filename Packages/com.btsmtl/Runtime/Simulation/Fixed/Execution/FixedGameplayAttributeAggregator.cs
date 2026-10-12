@@ -246,7 +246,7 @@ namespace ThirdPersonSimulation.Fixed
             for (int i = 0; i < attribute.Modifiers.Count; i++)
             {
                 PortableAttributeModifierState modifier = attribute.Modifiers[i];
-                FixedScalar magnitude = string.IsNullOrEmpty(modifier.LiveAttributeId)
+                FixedScalar magnitude = modifier.LiveAttributeIndex < 0
                     ? modifier.Magnitude
                     : m_Attributes.Values[modifier.LiveAttributeIndex].CurrentValue * modifier.LiveCoefficient + modifier.LivePostAdd;
                 switch (modifier.Operation)

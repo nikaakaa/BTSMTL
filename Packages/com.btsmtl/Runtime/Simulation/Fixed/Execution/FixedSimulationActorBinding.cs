@@ -1042,10 +1042,12 @@ namespace ThirdPersonSimulation.Fixed
         {
             var parts = new List<string>
             {
-                "fixed-character-state-schema/3",
+                "fixed-character-state-schema/4",
+                FixedCharacterRuntimeStateCodec.CodecIdentity,
                 control.BindingHash.ToString(),
                 input.BindingHash.ToString(),
                 abilities.GameplayEffectCatalog != null ? gameplayEffects.BindingHash.ToString() : string.Empty,
+                abilities.GameplayEffectCatalog != null ? GameplayEffectStateAggregateCodec.CanonicalSchema : string.Empty,
                 abilities.RequiresEquipment ? equipment.BindingHash.ToString() : string.Empty
             };
             for (int i = 0; i < abilities.Installations.Count; i++)

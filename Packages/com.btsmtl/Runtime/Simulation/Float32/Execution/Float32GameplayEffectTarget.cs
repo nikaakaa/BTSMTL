@@ -646,7 +646,6 @@ namespace ThirdPersonSimulation
                 value,
                 modifier.Priority,
                 modifier.ClampBound,
-                liveAttribute,
                 CanonicalTextValue.IsNullOrEmpty(liveAttribute) ? -1 : m_State.Catalog.AttributeDependencies.AttributeIndex(liveAttribute),
                 coefficient,
                 postAdd,
