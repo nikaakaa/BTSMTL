@@ -29,6 +29,7 @@ namespace ThirdPersonSimulation
     {
         public bool NormalizeZero { get; set; }
         public bool NormalizeNull { get; set; }
+        public string DefaultMember { get; set; }
     }
 
     [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
@@ -55,6 +56,10 @@ namespace ThirdPersonSimulation
 
     [AttributeUsage(AttributeTargets.Field)]
     public sealed class CanonicalSchemaConstantAttribute : Attribute
+    {
+    }
+
+    public readonly struct CanonicalUnavailable
     {
     }
 

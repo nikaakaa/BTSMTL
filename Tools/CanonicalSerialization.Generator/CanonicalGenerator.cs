@@ -23,6 +23,7 @@ namespace ThirdPerson.CanonicalSerialization.Generator
         const string SchemaConstantAttribute = "ThirdPersonSimulation.CanonicalSchemaConstantAttribute";
         const string TextType = "ThirdPersonSimulation.CanonicalTextValue";
         const string BufferType = "ThirdPersonSimulation.CanonicalBuffer<T>";
+        const string UnavailableType = "ThirdPersonSimulation.CanonicalUnavailable";
         const string BorrowedSequenceAttribute = "ThirdPersonSimulation.CanonicalBorrowedSequenceAttribute";
         const string DeclaredTextAttribute = "ThirdPersonSimulation.CanonicalDeclaredTextAttribute";
         const string HashValueType = "ThirdPersonSimulation.ICanonicalHashValue";
@@ -191,7 +192,9 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                         .Append(": return From").Append(member.Symbol.Name).Append('(');
                     foreach (Member value in common)
                         code.Append(Parameter(value.Symbol.Name)).Append(", ");
-                    code.Append("default(").Append(TypeName(member.Type)).AppendLine("));");
+                    string defaultMember = CaseDefaultMember(member);
+                    code.Append(defaultMember == null ? "default(" + TypeName(member.Type) + ")" :
+                        TypeName(member.Type) + "." + Escape(defaultMember)).AppendLine(");");
                 }
                 code.AppendLine("default: throw new global::System.ArgumentOutOfRangeException(nameof(kind)); } }");
             }
@@ -678,6 +681,10 @@ namespace ThirdPerson.CanonicalSerialization.Generator
             .Where(a => Identity(a.AttributeClass) == UnionCaseAttribute).SelectMany(a => a.NamedArguments)
             .Any(a => a.Key == name && a.Value.Value is true);
 
+        static string CaseDefaultMember(Member member) => member.Symbol.GetAttributes()
+            .Where(a => Identity(a.AttributeClass) == UnionCaseAttribute).SelectMany(a => a.NamedArguments)
+            .Where(a => a.Key == "DefaultMember").Select(a => (string)a.Value.Value).SingleOrDefault();
+
         static string Read(ITypeSymbol type, bool materialized = false)
         {
             if (SequenceElement(type) != null && BufferElement(type) == null)
@@ -1059,7 +1066,8 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                     plan.UnionDefinition = (INamedTypeSymbol)union.ConstructorArguments[0].Value;
                     if (!HasAttribute(plan.UnionDefinition, UnionTemplateAttribute) || plan.UnionDefinition.IsUnboundGenericType)
                         Error(plan, type, "联合必须引用已声明模板的闭合正式 C# 类型");
-                    Member[] generated = StorageMembers(plan.UnionDefinition);
+                    Member[] generated = StorageMembers(plan.UnionDefinition)
+                        .Where(m => Identity(m.Type) != UnavailableType).ToArray();
                     foreach (Member member in generated)
                         member.Generated = true;
                     foreach (Member member in plan.Members)
@@ -1085,8 +1093,10 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                 var descriptor = new StringBuilder("canonical-csharp/1|le|utf16-le/2|").Append(Identity(type));
                 if (plan.UnionDefinition != null)
                     descriptor.Append("|union:").Append(Identity(plan.UnionDefinition));
-                for (int i = 0; i < plan.Cases.Length; i++)
-                    descriptor.Append("|case:").Append(i + 1).Append('=').Append(MemberIdentity(plan, plan.Cases[i]));
+                Member[] declaredCases = Cases(StorageMembers(plan.UnionDefinition ?? type));
+                foreach (Member member in plan.Cases)
+                    descriptor.Append("|case:").Append(Array.FindIndex(declaredCases, m => m.Symbol.Name == member.Symbol.Name) + 1)
+                        .Append('=').Append(MemberIdentity(plan, member));
                 foreach (IFieldSymbol constant in type.GetMembers().OfType<IFieldSymbol>()
                     .Where(f => HasAttribute(f, SchemaConstantAttribute)).OrderBy(f => f.Name, StringComparer.Ordinal))
                 {
@@ -1100,6 +1110,12 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                 {
                     descriptor.Append('|').Append(member.IsCase ? "case:" : member.Payload ? "payload:" : "member:").Append(MemberIdentity(plan, member))
                         .Append(':').Append(Shape(plan, member.Type, member.Symbol));
+                    string defaultMember = CaseDefaultMember(member);
+                    if (defaultMember != null && (!(member.Type is INamedTypeSymbol defaultType) ||
+                        !defaultType.GetMembers(defaultMember).Any(m => m.IsStatic &&
+                            (m is IPropertySymbol property && SymbolEqualityComparer.Default.Equals(property.Type, member.Type) ||
+                             m is IFieldSymbol field && SymbolEqualityComparer.Default.Equals(field.Type, member.Type)))))
+                        Error(plan, member.Symbol, "联合默认必须引用载荷类型的同类型静态成员");
                     if (CaseSemantic(member, "NormalizeZero"))
                     {
                         if (member.Type.SpecialType != SpecialType.System_Single && member.Type.SpecialType != SpecialType.System_Double)
