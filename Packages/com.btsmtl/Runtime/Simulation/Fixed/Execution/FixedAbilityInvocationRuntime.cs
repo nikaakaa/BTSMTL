@@ -129,7 +129,7 @@ namespace ThirdPersonSimulation.Fixed
             m_Control = new FixedAbilityOperationControlRuntime(execution.Data);
             serviceFactory = serviceFactory ?? throw new ArgumentNullException(nameof(serviceFactory));
             m_Frame = new FixedAbilityExecutionFrame(execution.Data, execution.Layout,
-                execution.Services, actorId, new FixedTraceSink(execution.Data, execution.Layout, actorId), workspace);
+                execution.Services, actorId, new FixedTraceSink(execution.Data, execution.Layout), workspace);
             FixedAbilityExecutionAssembly assembly = serviceFactory.Create(execution.Data,
                 execution.Services, actionBindings, domainRuntimeFactory, equipmentLayout,
                 m_Frame, m_Control, workspace);

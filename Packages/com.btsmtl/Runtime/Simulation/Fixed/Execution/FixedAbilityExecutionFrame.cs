@@ -811,7 +811,7 @@ namespace ThirdPersonSimulation.Fixed
             m_Sequence = 0;
         }
 
-        public SimulationEventHeader Next(SimulationOperation operation)
+        public SimulationTraceHeader Next(SimulationOperation operation)
         {
 #if UNITY_EDITOR
             long headerStarted = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -820,10 +820,8 @@ namespace ThirdPersonSimulation.Fixed
                 operation.Handle,
                 ProgramStateSemantic.RunnableActivationGeneration);
             ulong generation = generationSlot < 0 ? 1UL : m_Frame.ReadState(generationSlot).UInt64;
-            ref readonly EventIdentityPrefix prefix = ref m_Frame.Trace.IdentityPrefix(operation.Handle);
-            Span<byte> block = stackalloc byte[64];
-            var builder = new EventIdBuilder(block, in prefix);
-            SimulationEventHeader header = Complete(ref builder, prefix.Source, generation);
+            ref readonly SimulationExecutionSource source = ref m_Frame.Trace.OperationSource(operation.Handle);
+            SimulationTraceHeader header = Complete(source, generation);
 #if UNITY_EDITOR
             m_Frame.TraceOutput.EvaluationTraceHeaderElapsedStopwatchTicks +=
                 System.Diagnostics.Stopwatch.GetTimestamp() - headerStarted;
@@ -832,17 +830,12 @@ namespace ThirdPersonSimulation.Fixed
             return header;
         }
 
-        public SimulationEventHeader Next(SimulationExecutionSource source, ulong generation = 1)
+        public SimulationTraceHeader Next(SimulationExecutionSource source, ulong generation = 1)
         {
 #if UNITY_EDITOR
             long headerStarted = System.Diagnostics.Stopwatch.GetTimestamp();
 #endif
-            Span<byte> block = stackalloc byte[64];
-            var builder = new EventIdBuilder(block);
-            builder.Append(m_Frame.Identity.ContentHash);
-            builder.Append(m_Frame.ActorId.Value);
-            builder.AppendActivationSource(source);
-            SimulationEventHeader header = Complete(ref builder, source, generation);
+            SimulationTraceHeader header = Complete(source, generation);
 #if UNITY_EDITOR
             m_Frame.TraceOutput.EvaluationTraceHeaderElapsedStopwatchTicks +=
                 System.Diagnostics.Stopwatch.GetTimestamp() - headerStarted;
@@ -851,7 +844,7 @@ namespace ThirdPersonSimulation.Fixed
             return header;
         }
 
-        SimulationEventHeader Complete(ref EventIdBuilder builder, SimulationExecutionSource source, ulong generation)
+        SimulationTraceHeader Complete(SimulationExecutionSource source, ulong generation)
         {
             ulong sequence = checked(++m_Sequence);
             if (generation == 0)
@@ -860,21 +853,11 @@ namespace ThirdPersonSimulation.Fixed
             AbilityTreeClipInvocation? treeClipInvocation = m_Frame.HasTreeClipInvocation
                 ? m_Frame.TreeClipInvocation
                 : null;
-            builder.Append(generation, false);
-            builder.Append(m_Frame.Tick.Value);
-            builder.Append(sequence);
-            builder.Append("Trace");
-            if (treeClipInvocation.HasValue)
-                builder.Append(treeClipInvocation.Value);
-            EventId eventId = builder.Build();
-            return new SimulationEventHeader(
-                m_Frame.NumericProfile,
-                eventId,
+            return new SimulationTraceHeader(
                 m_Frame.ActorId,
                 m_Frame.Tick,
                 activation,
                 sequence,
-                "Trace",
                 treeClipInvocation);
         }
     }
@@ -884,7 +867,7 @@ namespace ThirdPersonSimulation.Fixed
         readonly HashSet<(int Operation, string Port, ProgramValuePortDirection Direction)> m_ValuePorts = new();
         readonly HashSet<string> m_EdgeIds = new(StringComparer.Ordinal);
         readonly GameplayAbilityGraphInvocationLayout m_Invocations;
-        readonly EventIdentityPrefix[] m_IdentityPrefixes;
+        readonly SimulationExecutionSource[] m_OperationSources;
         readonly Dictionary<(int Target, string Port), ProgramControlFlowEdge> m_ValueEdges = new();
         int m_ValueSampleCount;
         FixedAbilityExecutionFrame m_Frame;
@@ -893,16 +876,14 @@ namespace ThirdPersonSimulation.Fixed
 
         public FixedTraceSink(
             FixedGameplayAbilityExecutionData data,
-            GameplayAbilityExecutionLayout layout, ActorId actorId)
+            GameplayAbilityExecutionLayout layout)
         {
-            m_IdentityPrefixes = new EventIdentityPrefix[data.Operations.Count];
-            var contentHash = new GameplayContentHash(data.ContentHash);
-            for (int index = 0; index < m_IdentityPrefixes.Length; index++)
+            m_OperationSources = new SimulationExecutionSource[data.Operations.Count];
+            for (int index = 0; index < m_OperationSources.Length; index++)
             {
                 var operation = new OperationHandle(index);
-                SimulationExecutionSource source = SimulationExecutionSource.FromSkillOperation(
+                m_OperationSources[index] = SimulationExecutionSource.FromSkillOperation(
                     operation, layout.SourcePath(operation));
-                m_IdentityPrefixes[index] = EventIdBuilder.Prepare(contentHash, actorId, source);
             }
             m_Invocations = new GameplayAbilityGraphInvocationLayout(data.ExecutionSources, layout.Operations.Count,
                 owner => layout.FindOperationStateSlot(owner, ProgramStateSemantic.RunnableActivationGeneration));
@@ -920,8 +901,8 @@ namespace ThirdPersonSimulation.Fixed
             }
         }
 
-        internal ref readonly EventIdentityPrefix IdentityPrefix(OperationHandle operation) =>
-            ref m_IdentityPrefixes[operation.Value];
+        internal ref readonly SimulationExecutionSource OperationSource(OperationHandle operation) =>
+            ref m_OperationSources[operation.Value];
 
         internal void Bind(FixedAbilityExecutionFrame frame)
         {
@@ -1028,7 +1009,7 @@ namespace ThirdPersonSimulation.Fixed
         {
             if (!m_Enabled)
                 return;
-            SimulationEventHeader header = m_Sequence.Next(operation);
+            SimulationTraceHeader header = m_Sequence.Next(operation);
             m_Frame.AddTrace(new SimulationTraceRecord(
                 header,
                 severity,
@@ -1056,7 +1037,7 @@ namespace ThirdPersonSimulation.Fixed
         {
             if (!m_Enabled)
                 return;
-            SimulationEventHeader header = m_Sequence.Next(source, generation);
+            SimulationTraceHeader header = m_Sequence.Next(source, generation);
             ulong graphInvocationGeneration = source.IsSkillOperation
                 ? generation != 0
                     ? generation
@@ -1129,7 +1110,7 @@ namespace ThirdPersonSimulation.Fixed
         {
             if (!m_Enabled)
                 return;
-            SimulationEventHeader header = m_Sequence.Next(operation);
+            SimulationTraceHeader header = m_Sequence.Next(operation);
             m_Frame.AddTrace(new SimulationTraceRecord(
                 header,
                 SimulationTraceSeverity.Information,
@@ -1163,7 +1144,7 @@ namespace ThirdPersonSimulation.Fixed
         {
             if (!m_Enabled)
                 return;
-            SimulationEventHeader header = m_Sequence.Next(source, generation);
+            SimulationTraceHeader header = m_Sequence.Next(source, generation);
             ulong graphInvocationGeneration = source.IsSkillOperation
                 ? generation != 0
                     ? generation

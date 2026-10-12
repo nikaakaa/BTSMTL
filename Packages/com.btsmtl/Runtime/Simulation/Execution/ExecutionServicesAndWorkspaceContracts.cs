@@ -6,6 +6,28 @@ using System.IO;
 namespace ThirdPersonSimulation
 {
     [CanonicalContract]
+    public readonly partial struct SimulationTraceHeader
+    {
+        public SimulationTraceHeader(ActorId actorId, SimulationTick tick, in ActivationId activation,
+            ulong sequence, AbilityTreeClipInvocation? treeClipInvocation = null)
+        {
+            ActorId = actorId;
+            Tick = tick;
+            Activation = activation;
+            Sequence = sequence;
+            TreeClipInvocation = treeClipInvocation;
+        }
+
+        public ActorId ActorId { get; }
+        public SimulationTick Tick { get; }
+        public ActivationId Activation { get; }
+        public ulong Sequence { get; }
+        public AbilityTreeClipInvocation? TreeClipInvocation { get; }
+        public void Retain() => CanonicalRetain(in this);
+        public void Release() => CanonicalRelease(in this);
+    }
+
+    [CanonicalContract]
     internal readonly partial struct CharacterRuntimeStateMetadata
     {
         internal CharacterRuntimeStateMetadata(SimulationNumericProfile numericProfile,

@@ -943,7 +943,7 @@ namespace ThirdPersonSimulation
         internal const int MaximumTextReferences = 23;
         internal const int MaximumGeneratedPathReferences = 3;
         public SimulationTraceRecord(
-            SimulationEventHeader header,
+            in SimulationTraceHeader header,
             SimulationTraceSeverity severity,
             CanonicalTextValue boundary,
             CanonicalTextValue code,
@@ -997,7 +997,7 @@ namespace ThirdPersonSimulation
             ControlDetail = controlDetail;
             Structured = structured;
         }
-        public SimulationEventHeader Header { get; }
+        public SimulationTraceHeader Header { get; }
         public SimulationTraceSeverity Severity { get; }
         public CanonicalTextValue Boundary { get; }
         public CanonicalTextValue Code { get; }

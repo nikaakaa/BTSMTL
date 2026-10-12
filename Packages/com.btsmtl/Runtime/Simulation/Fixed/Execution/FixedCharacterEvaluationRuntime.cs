@@ -92,8 +92,6 @@ namespace ThirdPersonSimulation.Fixed
                 FixedCharacterTraceSink characterTraceSink = actor.CharacterTraceSink;
                 characterTraceSink.Bind(evaluationOutput);
                 characterTraceSink.Begin(
-                    evaluation.NumericProfile,
-                    actor.GameplayContentHash,
                     actor.ActorId,
                     tick,
                     diagnosticsEnabled,

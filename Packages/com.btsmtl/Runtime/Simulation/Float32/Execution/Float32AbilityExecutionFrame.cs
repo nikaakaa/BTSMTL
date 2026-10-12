@@ -766,7 +766,7 @@ namespace ThirdPersonSimulation
             m_Sequence = 0;
         }
 
-        public SimulationEventHeader Next(SimulationOperation operation)
+        public SimulationTraceHeader Next(SimulationOperation operation)
         {
             int generationSlot = m_Frame.Layout.FindOperationStateSlot(
                 operation.Handle,
@@ -779,27 +779,17 @@ namespace ThirdPersonSimulation
                 generation);
         }
 
-        public SimulationEventHeader Next(SimulationExecutionSource source, ulong generation = 1)
+        public SimulationTraceHeader Next(SimulationExecutionSource source, ulong generation = 1)
         {
             ulong sequence = checked(++m_Sequence);
             if (generation == 0)
                 generation = 1;
             var activation = new ActivationId(source, generation);
-            var eventId = EventIdBuilder.Create(
-                new GameplayContentHash(m_Frame.Identity.ContentHash),
-                m_Frame.ActorId,
-                activation,
-                m_Frame.Tick,
-                sequence,
-                "Trace");
-            return new SimulationEventHeader(
-                m_Frame.NumericProfile,
-                eventId,
+            return new SimulationTraceHeader(
                 m_Frame.ActorId,
                 m_Frame.Tick,
                 activation,
-                sequence,
-                "Trace");
+                sequence);
         }
     }
 
@@ -926,7 +916,7 @@ namespace ThirdPersonSimulation
         {
             if (!m_Enabled)
                 return;
-            SimulationEventHeader header = m_Sequence.Next(operation);
+            SimulationTraceHeader header = m_Sequence.Next(operation);
             m_Frame.AddTrace(new SimulationTraceRecord(
                 header,
                 severity,
@@ -954,7 +944,7 @@ namespace ThirdPersonSimulation
         {
             if (!m_Enabled)
                 return;
-            SimulationEventHeader header = m_Sequence.Next(source, generation);
+            SimulationTraceHeader header = m_Sequence.Next(source, generation);
             ulong graphInvocationGeneration = source.IsSkillOperation
                 ? generation != 0
                     ? generation
@@ -1026,7 +1016,7 @@ namespace ThirdPersonSimulation
         {
             if (!m_Enabled)
                 return;
-            SimulationEventHeader header = m_Sequence.Next(operation);
+            SimulationTraceHeader header = m_Sequence.Next(operation);
             m_Frame.AddTrace(new SimulationTraceRecord(
                 header,
                 SimulationTraceSeverity.Information,
@@ -1060,7 +1050,7 @@ namespace ThirdPersonSimulation
         {
             if (!m_Enabled)
                 return;
-            SimulationEventHeader header = m_Sequence.Next(source, generation);
+            SimulationTraceHeader header = m_Sequence.Next(source, generation);
             ulong graphInvocationGeneration = source.IsSkillOperation
                 ? generation != 0
                     ? generation

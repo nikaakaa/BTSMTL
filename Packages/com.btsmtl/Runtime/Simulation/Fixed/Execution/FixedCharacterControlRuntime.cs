@@ -173,8 +173,6 @@ namespace ThirdPersonSimulation.Fixed
     {
         List<SimulationTraceRecord> m_Records;
         FixedCharacterEvaluationOutput m_Output;
-        SimulationNumericProfile m_NumericProfile;
-        GameplayContentHash m_ContentHash;
         ActorId m_ActorId;
         SimulationTick m_Tick;
         ulong m_Sequence;
@@ -196,17 +194,11 @@ namespace ThirdPersonSimulation.Fixed
         }
 
         internal void Begin(
-            SimulationNumericProfile numericProfile,
-            StableHash contentHash,
             ActorId actorId,
             SimulationTick tick,
             bool enabled,
             bool captureMotion)
         {
-            if (!numericProfile.IsValid || !contentHash.IsValid || !actorId.IsValid || !tick.IsValid)
-                throw new ArgumentException("Fixed Character Control trace identity is incomplete.");
-            m_NumericProfile = numericProfile;
-            m_ContentHash = new GameplayContentHash(contentHash);
             m_ActorId = actorId;
             m_Tick = tick;
             m_Enabled = enabled;
@@ -287,14 +279,11 @@ namespace ThirdPersonSimulation.Fixed
             if (generation == 0)
                 generation = 1;
             var activation = new ActivationId(source, generation);
-            var header = new SimulationEventHeader(
-                m_NumericProfile,
-                EventIdBuilder.Create(m_ContentHash, m_ActorId, activation, m_Tick, sequence, "Trace"),
+            var header = new SimulationTraceHeader(
                 m_ActorId,
                 m_Tick,
                 activation,
-                sequence,
-                "Trace");
+                sequence);
             var record = new SimulationTraceRecord(
                 header,
                 severity,

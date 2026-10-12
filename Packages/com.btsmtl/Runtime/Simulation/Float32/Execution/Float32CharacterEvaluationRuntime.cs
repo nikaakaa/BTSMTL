@@ -76,8 +76,6 @@ namespace ThirdPersonSimulation
                 Float32CharacterTraceSink characterTraceSink = actor.CharacterTraceSink;
                 characterTraceSink.Bind(evaluationOutput);
                 characterTraceSink.Begin(
-                    evaluation.NumericProfile,
-                    actor.GameplayContentHash,
                     actor.ActorId,
                     tick,
                     diagnosticsEnabled);
