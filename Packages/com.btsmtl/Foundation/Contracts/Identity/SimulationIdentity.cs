@@ -209,16 +209,20 @@ namespace ThirdPersonSimulation
         public static bool operator !=(NumericProfileId left, NumericProfileId right) => !left.Equals(right);
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+    [CanonicalContract(MaterializedRead = true)]
     public readonly partial struct OperationSetVersion : IEquatable<OperationSetVersion>
     {
         public OperationSetVersion(string value) { Value = SimulationIdentity.Require(value, nameof(value)); }
+        [CanonicalDeclaredText]
         public string Value { get; }
         public bool IsValid => !string.IsNullOrEmpty(Value);
         public bool Equals(OperationSetVersion other) => string.Equals(Value, other.Value, StringComparison.Ordinal);
         public override bool Equals(object obj) => obj is OperationSetVersion other && Equals(other);
         public override int GetHashCode() => Value == null ? 0 : StringComparer.Ordinal.GetHashCode(Value);
         public override string ToString() => Value ?? string.Empty;
+
+        [CanonicalValidation]
+        void RequireValid() => SimulationIdentity.Require(Value, "value");
     }
 
     [CanonicalContract]

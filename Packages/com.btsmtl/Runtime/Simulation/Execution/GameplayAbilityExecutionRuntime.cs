@@ -113,27 +113,25 @@ namespace ThirdPersonSimulation
         readonly GameplayAbilityExecutionStateBank<TValue> m_Bank;
         AbilityStateValuePageReference<TValue> m_StateValues;
         int m_Retainers;
+        AbilityExecutionContext m_Identity;
 
         internal GameplayAbilityExecutionFrame(GameplayAbilityExecutionStateBank<TValue> bank)
         {
             m_Bank = bank;
         }
 
-        public CharacterSkillId SkillId { get; private set; }
-        public OperationHandle EntryOperation { get; private set; }
-        public ulong ActionInstanceId { get; private set; }
-        public ulong PredictionKey { get; private set; }
-        public ulong Generation { get; private set; }
+        public CharacterSkillId SkillId => m_Identity.SkillId;
+        public OperationHandle EntryOperation => m_Identity.EntryOperation;
+        public ulong ActionInstanceId => m_Identity.ActionInstanceId;
+        public ulong PredictionKey => m_Identity.PredictionKey;
+        public ulong Generation => m_Identity.Generation;
         internal AbilityStateValuePageReference<TValue> StateValues => m_StateValues;
         internal int Retainers => m_Retainers;
+        internal ref readonly AbilityExecutionContext Identity => ref m_Identity;
 
         internal void Begin(AbilityExecutionContext identity)
         {
-            SkillId = identity.SkillId;
-            EntryOperation = identity.EntryOperation;
-            ActionInstanceId = identity.ActionInstanceId;
-            PredictionKey = identity.PredictionKey;
-            Generation = identity.Generation;
+            m_Identity = identity;
             m_StateValues = m_Bank.Values.BeginEmpty();
             m_StateValues.Retain();
             m_Retainers = 1;
@@ -141,11 +139,7 @@ namespace ThirdPersonSimulation
 
         internal void BeginCopy(GameplayAbilityExecutionFrame<TValue> source)
         {
-            SkillId = source.SkillId;
-            EntryOperation = source.EntryOperation;
-            ActionInstanceId = source.ActionInstanceId;
-            PredictionKey = source.PredictionKey;
-            Generation = source.Generation;
+            m_Identity = source.m_Identity;
             m_StateValues = m_Bank.Values.BeginWrite(source.m_StateValues);
             m_Retainers = 1;
         }
@@ -176,7 +170,7 @@ namespace ThirdPersonSimulation
                 throw new ArgumentOutOfRangeException(nameof(generation));
             if (Generation != 0 && Generation != generation)
                 throw new InvalidOperationException($"Skill '{SkillId}' execution frame generation changed.");
-            Generation = generation;
+            m_Identity = m_Identity.WithGeneration(generation);
         }
 
         public bool Equals(GameplayAbilityExecutionFrame<TValue> other)

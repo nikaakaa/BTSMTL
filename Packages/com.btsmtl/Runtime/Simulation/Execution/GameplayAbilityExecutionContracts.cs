@@ -134,7 +134,8 @@ namespace ThirdPersonSimulation
         }
     }
 
-    internal readonly struct AbilityExecutionContext
+    [CanonicalContract]
+    internal readonly partial struct AbilityExecutionContext
     {
         public AbilityExecutionContext(
             CharacterSkillId skillId,
@@ -156,6 +157,16 @@ namespace ThirdPersonSimulation
         public ulong PredictionKey { get; }
         public ulong Generation { get; }
         public bool IsValid => SkillId.IsValid && EntryOperation.IsValid && ActionInstanceId != 0 && PredictionKey != 0;
+
+        internal AbilityExecutionContext WithGeneration(ulong generation) =>
+            new AbilityExecutionContext(SkillId, EntryOperation, ActionInstanceId, PredictionKey, generation);
+
+        [CanonicalValidation]
+        void RequireRecord()
+        {
+            if (!IsValid)
+                throw new ArgumentException("Skill execution frame identity is incomplete.");
+        }
     }
 
     internal interface IGameplayAbilityExecutionStorage<TValue>

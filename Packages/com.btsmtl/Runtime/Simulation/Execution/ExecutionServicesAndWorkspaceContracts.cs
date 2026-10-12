@@ -505,7 +505,8 @@ namespace ThirdPersonSimulation
         }
     }
 
-    public readonly struct GameplayAbilityExecutionIdentity : IEquatable<GameplayAbilityExecutionIdentity>
+    [CanonicalContract]
+    public readonly partial struct GameplayAbilityExecutionIdentity : IEquatable<GameplayAbilityExecutionIdentity>
     {
         public GameplayAbilityExecutionIdentity(
             CharacterSkillId abilityId,
@@ -514,22 +515,19 @@ namespace ThirdPersonSimulation
             OperationSetVersion operationSetVersion,
             SimulationNumericProfile numericProfile)
         {
-            if (!abilityId.IsValid || !contentHash.IsValid || !stateSchemaHash.IsValid ||
-                !operationSetVersion.IsValid || !numericProfile.IsValid)
-            {
-                throw new ArgumentException("Ability execution services identity is incomplete.");
-            }
             AbilityId = abilityId;
             ContentHash = contentHash;
             StateSchemaHash = stateSchemaHash;
             OperationSetVersion = operationSetVersion;
             NumericProfile = numericProfile;
+            RequireRecord();
         }
 
         public CharacterSkillId AbilityId { get; }
         public StableHash ContentHash { get; }
         public StableHash StateSchemaHash { get; }
         public OperationSetVersion OperationSetVersion { get; }
+        [CanonicalPublished]
         public SimulationNumericProfile NumericProfile { get; }
         public bool IsValid =>
             AbilityId.IsValid &&
@@ -557,6 +555,13 @@ namespace ThirdPersonSimulation
                 throw new InvalidOperationException(
                     $"Ability execution services identity mismatch: expected '{AbilityId}/{ContentHash}/{StateSchemaHash}/{NumericProfile.Id}', received '{actual.AbilityId}/{actual.ContentHash}/{actual.StateSchemaHash}/{actual.NumericProfile.Id}'.");
             }
+        }
+
+        [CanonicalValidation]
+        void RequireRecord()
+        {
+            if (!IsValid)
+                throw new ArgumentException("Ability execution services identity is incomplete.");
         }
     }
 

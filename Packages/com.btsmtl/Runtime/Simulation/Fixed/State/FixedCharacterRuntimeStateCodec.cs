@@ -9,10 +9,18 @@ namespace ThirdPersonSimulation.Fixed
     internal static class FixedCharacterRuntimeStateCodec
     {
         [ThreadStatic] static CanonicalWriter s_StateWriter;
+        static readonly CanonicalPublishedValues s_PublishedValues = PreparePublishedValues();
+
+        static CanonicalPublishedValues PreparePublishedValues()
+        {
+            var values = new CanonicalPublishedValues();
+            values.Add(FixedSimulationNumericProfile.Value);
+            return values;
+        }
         const uint Magic = 0x54535243;
-        const int Version = 26;
-        const string HashIdentity = "fixed-character-runtime-state-hash/20";
-        public const string CodecIdentity = "fixed-character-runtime-state/20";
+        const int Version = 27;
+        const string HashIdentity = "fixed-character-runtime-state-hash/21";
+        public const string CodecIdentity = "fixed-character-runtime-state/21";
 
         public static byte[] Write(FixedCharacterRuntimeState state)
         {
@@ -118,6 +126,7 @@ namespace ThirdPersonSimulation.Fixed
             reader.Reset(bytes);
             reader.SetTextResolver(resolver);
             reader.DeclaredIdentityReader = actor.DeclaredIdentityReader;
+            reader.PublishedValues = s_PublishedValues;
             if (reader.ReadUInt32() != Magic || reader.ReadInt32() != Version)
             {
                 throw new InvalidDataException("Fixed Character runtime state header is invalid.");
@@ -130,6 +139,8 @@ namespace ThirdPersonSimulation.Fixed
             SimulationExecutionSource.CanonicalRequireSchema(reader);
             SimulationActionActivationRequestState.CanonicalRequireSchema(reader);
             FixedActionInstanceState.CanonicalRequireSchema(reader);
+            GameplayAbilityExecutionIdentity.CanonicalRequireSchema(reader);
+            AbilityExecutionContext.CanonicalRequireSchema(reader);
             SimulationNumericProfile numericProfile = SimulationNumericProfile.CanonicalReadPublished(reader, FixedSimulationNumericProfile.Value);
             GameplayContentHash gameplayContentHash = GameplayContentHash.CanonicalFromHash(reader.ReadHash());
             if (!gameplayContentHash.Equals(expectedGameplayContentHash))
@@ -266,6 +277,8 @@ namespace ThirdPersonSimulation.Fixed
             writer.WriteHash(SimulationExecutionSource.CanonicalSchemaHash);
             writer.WriteHash(SimulationActionActivationRequestState.CanonicalSchemaHash);
             writer.WriteHash(FixedActionInstanceState.CanonicalSchemaHash);
+            writer.WriteHash(GameplayAbilityExecutionIdentity.CanonicalSchemaHash);
+            writer.WriteHash(AbilityExecutionContext.CanonicalSchemaHash);
             SimulationNumericProfile.CanonicalWrite(writer, state.NumericProfile);
             writer.WriteHash(state.GameplayContentHash);
             writer.WriteHash(state.StateSchemaHash);
@@ -275,7 +288,7 @@ namespace ThirdPersonSimulation.Fixed
             for (int i = 0; i < state.Abilities.Count; i++)
             {
                 FixedAbilityRuntimeState ability = state.Abilities[i];
-                WriteIdentity(writer, ability.AbilityIdentity);
+                GameplayAbilityExecutionIdentity.CanonicalWrite(writer, ability.AbilityIdentity);
                 ability.StateValues.Write(writer);
                 WriteAbilityExecutionState(writer, ability.AbilityExecutionState);
                 WriteMotionWarpStates(writer, state.MotionWarpStates, ability.AbilityIdentity.AbilityId);
@@ -312,26 +325,13 @@ namespace ThirdPersonSimulation.Fixed
                 AbilityTimelineRuntimeSnapshot.CanonicalWrite(writer, timelineSnapshots[i]);
         }
 
-        static void WriteIdentity(CanonicalWriter writer, GameplayAbilityExecutionIdentity identity)
-        {
-            writer.WriteText(identity.AbilityId.Value);
-            writer.WriteHash(identity.ContentHash);
-            writer.WriteHash(identity.StateSchemaHash);
-            writer.WriteText(identity.OperationSetVersion.Value);
-            SimulationNumericProfile.CanonicalWrite(writer, identity.NumericProfile);
-        }
+
 
         static GameplayAbilityExecutionIdentity ReadIdentity(CanonicalReader reader, SimulationActorBinding actor)
         {
-            CharacterSkillId skill = new CharacterSkillId(actor.DeclaredIdentityReader(reader));
-            GameplayAbilityExecutionIdentity expected = actor.AbilityInstallations.Require(skill).Identity;
-            StableHash content = reader.ReadHash();
-            StableHash schema = reader.ReadHash();
-            reader.RequireText(expected.OperationSetVersion.Value);
-            SimulationNumericProfile.CanonicalReadPublished(reader, expected.NumericProfile);
-            if (!content.Equals(expected.ContentHash) || !schema.Equals(expected.StateSchemaHash))
-                throw new InvalidDataException("Ability partition identity does not match its installed declaration.");
-            return expected;
+            GameplayAbilityExecutionIdentity identity = GameplayAbilityExecutionIdentity.CanonicalRead(reader);
+            actor.AbilityInstallations.Require(identity.AbilityId).Identity.Require(identity);
+            return identity;
         }
 
         static void WriteAbilityExecutionState(
@@ -344,11 +344,7 @@ namespace ThirdPersonSimulation.Fixed
             for (int i = 0; i < frames.Count; i++)
             {
                 GameplayAbilityExecutionFrame<AbilityStateValue> frame = frames[i];
-                writer.WriteText(frame.SkillId.Value);
-                writer.WriteInt32(frame.EntryOperation.Value);
-                writer.WriteUInt64(frame.ActionInstanceId);
-                writer.WriteUInt64(frame.PredictionKey);
-                writer.WriteUInt64(frame.Generation);
+                AbilityExecutionContext.CanonicalWrite(writer, frame.Identity);
                 frame.StateValues.Write(writer);
             }
         }
@@ -363,20 +359,13 @@ namespace ThirdPersonSimulation.Fixed
             ulong previous = 0;
             for (int i = 0; i < count; i++)
             {
-                var skillId = new CharacterSkillId(actor.DeclaredIdentityReader(reader));
-                OperationHandle entryOperation = ReadRequiredOperation(reader, layout);
-                ulong actionInstanceId = reader.ReadUInt64();
-                ulong predictionKey = reader.ReadUInt64();
-                ulong generation = reader.ReadUInt64();
-                if (actionInstanceId == 0 || i > 0 && actionInstanceId <= previous)
-                    throw new InvalidDataException("Fixed Ability execution frame identities are invalid or not canonically ordered.");
-                var identity = new AbilityExecutionContext(skillId, entryOperation, actionInstanceId,
-                    predictionKey, generation);
-                if (!identity.IsValid)
-                    throw new ArgumentException("Skill execution frame identity is incomplete.");
+                AbilityExecutionContext identity = AbilityExecutionContext.CanonicalRead(reader);
+                if (identity.EntryOperation.Value >= layout.Operations.Count ||
+                    i > 0 && identity.ActionInstanceId <= previous)
+                    throw new InvalidDataException("Fixed Ability execution frame operation or canonical order is invalid.");
                 GameplayAbilityExecutionFrame<AbilityStateValue> frame = aggregate.AppendRestoredFrame(identity);
                 frame.StateValues.Set.Read(reader);
-                previous = actionInstanceId;
+                previous = identity.ActionInstanceId;
             }
             return aggregate;
         }
@@ -548,24 +537,11 @@ namespace ThirdPersonSimulation.Fixed
             return value;
         }
 
-        static void WriteOptionalOperation(CanonicalWriter writer, OperationHandle value) =>
-            writer.WriteInt32(value.IsValid ? value.Value : -1);
 
-        static OperationHandle ReadOptionalOperation(CanonicalReader reader, GameplayAbilityExecutionLayout layout)
-        {
-            int value = reader.ReadInt32();
-            if (value < -1 || layout != null && value >= layout.Operations.Count)
-                throw new InvalidDataException("Fixed Character runtime state operation handle is invalid.");
-            return value < 0 ? OperationHandle.Invalid : new OperationHandle(value);
-        }
 
-        static OperationHandle ReadRequiredOperation(CanonicalReader reader, GameplayAbilityExecutionLayout layout)
-        {
-            OperationHandle operation = ReadOptionalOperation(reader, layout);
-            return operation.IsValid
-                ? operation
-                : throw new InvalidDataException("Fixed Character runtime state requires an operation handle.");
-        }
+
+
+
 
         static void RequireEquipmentContext(in EquipmentActionContext context, EquipmentProgramLayout layout)
         {
