@@ -89,6 +89,11 @@ namespace ThirdPersonPerformance.Instrumentation
         {
             if (value == null)
                 return 0UL;
+            return Hash64(value.AsSpan());
+        }
+
+        public static ulong Hash64(ReadOnlySpan<char> value)
+        {
             ulong hash = 14695981039346656037UL;
             for (int i = 0; i < value.Length; i++)
             {
