@@ -28,7 +28,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
         readonly OutputRing<ServerAuthoritativeAuthorityReliableEventBatchOutput> m_ReliableOutput;
         readonly OutputRing<ServerAuthoritativeAuthorityFullCheckpointOutput> m_FullCheckpointOutput;
         readonly ThreadLocal<CanonicalWriter> m_PayloadWriter;
-        readonly CanonicalTextReferences m_CommandClockText;
+        readonly CanonicalTextReferences m_CommandText;
         readonly CanonicalReader m_CommandReader = new CanonicalReader(Array.Empty<byte>());
         readonly CanonicalReader m_InputReader = new CanonicalReader(Array.Empty<byte>());
         readonly CanonicalInputSample[][] m_CommandSamples =
@@ -92,10 +92,12 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
             int encodedPages = checked(checkpointCapacity.EncodedCheckpoints + checkpointCapacity.CapturePayloads +
                 checkpointCapacity.RestorePayloads);
             int projectionPages = checked(1 + policy.ModelPolicy.AuthorityGameplayEffectCapacity.MaximumStepCount + recordedFrameCapacity);
-            int clockValues = checked(4 + actors.Length *
+            int commandTextPages = checked(4 + actors.Length *
                 (policy.CommandQueueCapacity + 4 + encodedPages + projectionPages));
-            m_CommandClockText = new CanonicalTextReferences(4, new CanonicalTextStorage(clockValues,
-                checked(clockValues * (policy.ModelPolicy.MaxGameplayDatagramBytes / sizeof(char)))));
+            int maximumCommandCharacters = policy.ModelPolicy.MaxGameplayDatagramBytes / sizeof(char);
+            int maximumCommandTextValues = policy.ModelPolicy.MaxGameplayDatagramBytes / (sizeof(int) + sizeof(char));
+            m_CommandText = new CanonicalTextReferences(maximumCommandTextValues,
+                new CanonicalTextStorage(commandTextPages, checked(commandTextPages * maximumCommandCharacters)));
             m_ExpectedActors = actors;
             m_Roster = new ServerAuthoritativeRosterEntry[actors.Length];
             m_RouteActors = new ActorId[actors.Length];
@@ -352,7 +354,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
             try
             {
                 CommandDatagram command = ServerAuthoritativeDatagramPayloadCodec.ReadCommand(packet.Payload,
-                    m_CommandReader, m_InputReader, m_CommandClockText.ReceptionResolver, m_CommandSamples);
+                    m_CommandReader, m_InputReader, m_CommandText.ReceptionResolver, m_CommandSamples);
                 route.RecordCommand(packet.Payload.Length, command.SourceTick);
                 ReceiveCommand(route, command);
             }
@@ -360,7 +362,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
             {
                 for (int i = 0; i < m_CommandSamples.Length; i++)
                     Array.Clear(m_CommandSamples[i], 0, m_CommandSamples[i].Length);
-                m_CommandClockText.Reset();
+                m_CommandText.Reset();
             }
         }
 
@@ -801,7 +803,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
             }
             for (int index = 0; index < m_RouteCount; index++) m_Routes[index].Dispose();
             Array.Clear(m_AcceptedInputs, 0, m_AcceptedInputs.Length);
-            m_CommandClockText.Reset();
+            m_CommandText.Reset();
             Array.Clear(m_RouteActors, 0, m_RouteCount);
             Array.Clear(m_Routes, 0, m_RouteCount);
             m_RouteCount = 0;
