@@ -50,6 +50,7 @@ namespace ThirdPersonSimulation
         }
         [CanonicalTextRules(Required = true)]
         public CanonicalTextValue Value { get; }
+        [CanonicalPresence]
         public bool IsValid => !Value.IsEmpty;
         public int CompareTo(ActorId other) => Value.CompareTo(other.Value);
         public bool Equals(ActorId other) => Value.Equals(other.Value);
