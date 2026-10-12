@@ -211,10 +211,10 @@ namespace ThirdPersonSimulation
             Float32Scalar baseValue, Float32Scalar currentValue, ulong revision, ulong causeHandle) =>
             ApplyOwnedAttribute(m_Layout.AttributeIndex(attributeId), baseValue, currentValue, revision, causeHandle);
 
-        internal void RestorePredictedAttributeOwned(PortablePredictionAttributeSnapshot snapshot,
+        internal void RestorePredictedAttributeOwned(string attributeId, PortablePredictionAttributeSnapshot snapshot,
             ulong causeHandle, out IReadOnlyList<PortableAttributeChange> changes)
         {
-            changes = ApplyOwnedAttribute(m_Layout.AttributeIndex(snapshot.AttributeId), snapshot.BaseValue,
+            changes = ApplyOwnedAttribute(m_Layout.AttributeIndex(attributeId), snapshot.BaseValue,
                 snapshot.CurrentValue, snapshot.BeforeRevision, causeHandle);
         }
 

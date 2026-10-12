@@ -254,12 +254,13 @@ namespace ThirdPersonSimulation
             for (int i = 0; i < prediction.Attributes.Count; i++)
             {
                 PortablePredictionAttributeSnapshot attribute = prediction.Attributes.Values[i];
-                PortableAttributeState current = m_State.RequireAttribute(attribute.AttributeId);
+                string attributeId = prediction.Attributes.Keys[i];
+                PortableAttributeState current = m_State.RequireAttribute(attributeId);
                 if (current.Revision != attribute.AfterRevision)
                 {
                     conflict = new GameplayEffectReconciliationResult(GameplayEffectReconciliationResultKind.Conflict,
                         default, 0, 0, 0, prediction.InstanceId, attribute.AfterRevision, current.Revision,
-                        attribute.AttributeId, "PredictionAttributeRevisionConflict");
+                        attributeId, "PredictionAttributeRevisionConflict");
                     return false;
                 }
             }
@@ -271,7 +272,7 @@ namespace ThirdPersonSimulation
         {
             for (int i = 0; i < prediction.Attributes.Count; i++)
             {
-                m_State.RestorePredictedAttributeOwned(prediction.Attributes.Values[i], prediction.Handle,
+                m_State.RestorePredictedAttributeOwned(prediction.Attributes.Keys[i], prediction.Attributes.Values[i], prediction.Handle,
                     out IReadOnlyList<PortableAttributeChange> changes);
                 AddAttributeChanges(changes);
             }

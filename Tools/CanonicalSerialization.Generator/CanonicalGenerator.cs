@@ -30,6 +30,7 @@ namespace ThirdPerson.CanonicalSerialization.Generator
         const string TextRulesAttribute = "ThirdPersonSimulation.CanonicalTextRulesAttribute";
         const string PublishedAttribute = "ThirdPersonSimulation.CanonicalPublishedAttribute";
         const string BoundAttribute = "ThirdPersonSimulation.CanonicalBoundAttribute";
+        const string SetAttribute = "ThirdPersonSimulation.CanonicalSetAttribute";
         const string StorageOwnerAttribute = "ThirdPersonSimulation.CanonicalStorageOwnerAttribute";
         const string StorageAttribute = "ThirdPersonSimulation.CanonicalStorageAttribute";
         const string PublishedReferenceAttribute = "ThirdPersonSimulation.CanonicalPublishedReferenceAttribute";
@@ -169,7 +170,7 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                 code.Append(member.Symbol.DeclaredAccessibility == Accessibility.Public ? "public " : "internal ")
                     .Append(TypeName(member.Type)).Append(" ").Append(Escape(member.Symbol.Name)).Append(" { get => ")
                     .Append(target).Append(";");
-                if (!owner.IsReadOnly && !(storage.IsReadOnly && storage.Type.IsValueType) &&
+                if (!owner.IsReadOnly && !IsPreparedCollection(member.Type) && !(storage.IsReadOnly && storage.Type.IsValueType) &&
                     !(member.Symbol is IFieldSymbol field && field.IsReadOnly) &&
                     !(member.Symbol is IPropertySymbol property && property.SetMethod == null))
                 {
@@ -472,6 +473,8 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                             WriteMember(code, member, target);
                             code.AppendLine("}");
                         }
+                        else if (IsPreparedCollection(member.Type))
+                            ReadPreparedCollection(code, member, target, plan);
                         else if (OwnsSequenceStorage(member.Type))
                             code.Append("_ = ").Append(ReadMember(member, plan)).AppendLine(";");
                         else if (BorrowedStorage(member.Type) != null || BorrowedObjectStorage(member.Type) != null)
@@ -854,6 +857,11 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                 {
                     string source = "source." + Escape(member.Symbol.Name);
                     string target = "target." + Escape(member.Symbol.Name);
+                    if (IsPreparedCollection(member.Type))
+                    {
+                        CopyPreparedCollection(code, member.Type, source, target, plan);
+                        continue;
+                    }
                     if (OwnsSequenceStorage(member.Type))
                     {
                         code.Append(target).Append(".CopyFrom(").Append(source).AppendLine(");");
@@ -882,6 +890,12 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                 foreach (Member member in plan.Members)
                 {
                     string target = "value." + Escape(member.Symbol.Name);
+                    if (IsPreparedCollection(member.Type))
+                    {
+                        Hold(code, "Release", member.Type, target, plan);
+                        code.Append(target).AppendLine(".Clear();");
+                        continue;
+                    }
                     if (OwnsSequenceStorage(member.Type))
                     {
                         code.Append(target).AppendLine(".Clear();");
@@ -1033,6 +1047,17 @@ namespace ThirdPerson.CanonicalSerialization.Generator
 
         static void Write(StringBuilder code, ITypeSymbol type, string value, int depth = 0)
         {
+            if (MapTypes(type) is ITypeSymbol[] map)
+            {
+                string index = "__canonicalIndex" + depth;
+                code.Append("writer.WriteInt32(").Append(value).AppendLine(".Count);");
+                code.Append("for (int ").Append(index).Append(" = 0; ").Append(index).Append(" < ")
+                    .Append(value).Append(".Count; ").Append(index).AppendLine("++) {");
+                Write(code, map[0], value + ".Keys[" + index + "]", depth + 1);
+                Write(code, map[1], value + ".Values[" + index + "]", depth + 1);
+                code.AppendLine("}");
+                return;
+            }
             if (ReferenceKey(type) is Member reference)
             {
                 Write(code, reference.Type, value + "." + Escape(reference.Symbol.Name), depth);
@@ -1079,7 +1104,24 @@ namespace ThirdPerson.CanonicalSerialization.Generator
 
         static void WriteMember(StringBuilder code, Member member, string value)
         {
-            if (HasAttribute(member.Symbol, RequiredAttribute))
+            if (HasAttribute(member.Symbol, SetAttribute))
+            {
+                ITypeSymbol element = SequenceElement(member.Type);
+                code.AppendLine("{");
+                code.Append("writer.WriteInt32(").Append(value).AppendLine(".Count);");
+                code.AppendLine("int previousIndex = -1;");
+                code.Append("for (int i = 0; i < ").Append(value).AppendLine(".Count; i++) {");
+                code.AppendLine("int selectedIndex = -1;");
+                code.Append("for (int j = 0; j < ").Append(value).AppendLine(".Count; j++) {");
+                code.Append("if (previousIndex >= 0 && ").Append(Compare(element, value + "[j]", value + "[previousIndex]"))
+                    .AppendLine(" <= 0) continue;");
+                code.Append("if (selectedIndex < 0 || ").Append(Compare(element, value + "[j]", value + "[selectedIndex]"))
+                    .AppendLine(" < 0) selectedIndex = j;");
+                code.AppendLine("}");
+                Write(code, element, value + "[selectedIndex]");
+                code.AppendLine("previousIndex = selectedIndex; } }");
+            }
+            else if (HasAttribute(member.Symbol, RequiredAttribute))
                 code.Append(TypeName(member.Type)).Append(".CanonicalWriteRequired(writer, ").Append(value).AppendLine(");");
             else
                 Write(code, member.Type, value);
@@ -1180,6 +1222,18 @@ namespace ThirdPerson.CanonicalSerialization.Generator
 
         static void Skip(StringBuilder code, ITypeSymbol type, int depth = 0)
         {
+            if (MapTypes(type) is ITypeSymbol[] map)
+            {
+                string count = "__canonicalCount" + depth, index = "__canonicalIndex" + depth;
+                code.Append("{ int ").Append(count).AppendLine(" = reader.ReadInt32();");
+                code.Append("if (").Append(count).AppendLine(" < 0) throw new global::System.IO.InvalidDataException(\"Canonical collection count is invalid.\");");
+                code.Append("for (int ").Append(index).Append(" = 0; ").Append(index).Append(" < ").Append(count)
+                    .Append("; ").Append(index).AppendLine("++) {");
+                Skip(code, map[0], depth + 1);
+                Skip(code, map[1], depth + 1);
+                code.AppendLine("} }");
+                return;
+            }
             if (ReferenceKey(type) is Member reference)
             {
                 Skip(code, reference.Type, depth);
@@ -1224,14 +1278,30 @@ namespace ThirdPerson.CanonicalSerialization.Generator
 
         static void MeasureCapacity(StringBuilder code, Plan plan, ITypeSymbol type, string value, int depth = 0)
         {
-            if (ReferenceKey(type) is Member reference)
+            if (MapTypes(type) is ITypeSymbol[] map)
+            {
+                if (map.All(item => FiniteSize(plan, item)))
+                    code.Append("length = checked(length + 4 + ").Append(value).Append(".Capacity * (")
+                        .Append(MaximumSize(map[0])).Append(" + ").Append(MaximumSize(map[1])).AppendLine("));");
+                else
+                {
+                    string index = "__capacityIndex" + depth;
+                    code.AppendLine("length = checked(length + 4);");
+                    code.Append("for (int ").Append(index).Append(" = 0; ").Append(index).Append(" < ").Append(value)
+                        .Append(".Count; ").Append(index).AppendLine("++) {");
+                    MeasureCapacity(code, plan, map[0], value + ".Keys[" + index + "]", depth + 1);
+                    MeasureCapacity(code, plan, map[1], value + ".Values[" + index + "]", depth + 1);
+                    code.AppendLine("}");
+                }
+            }
+            else if (ReferenceKey(type) is Member reference)
                 MeasureCapacity(code, plan, reference.Type, value + "." + Escape(reference.Symbol.Name), depth);
             else if (SequenceElement(type) is ITypeSymbol element)
             {
                 string index = "__capacityIndex" + depth;
                 if (FiniteSize(plan, element))
                 {
-                    code.Append("length = checked(length + 4 + ").Append(OwnsSequenceStorage(type) ? value + ".Capacity" : SequenceCount(type, value))
+                    code.Append("length = checked(length + 4 + ").Append(OwnsSequenceStorage(type) || IsPreparedCollection(type) ? value + ".Capacity" : SequenceCount(type, value))
                         .Append(" * (").Append(MaximumSize(element)).AppendLine("));");
                     return;
                 }
@@ -1309,12 +1379,14 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                 TypeName(type) + ".CanonicalMeasure(" + value + ")";
         }
 
-        static bool HasResources(Plan plan, ITypeSymbol type) => BorrowedObjectStorage(type) == null && (type.TypeKind == TypeKind.TypeParameter || Identity(type) == TextType ||
+        static bool HasResources(Plan plan, ITypeSymbol type) => MapTypes(type) is ITypeSymbol[] map ?
+            map.Any(item => HasResources(plan, item)) : BorrowedObjectStorage(type) == null && (type.TypeKind == TypeKind.TypeParameter || Identity(type) == TextType ||
             BorrowedStorage(type) != null && BorrowedSemantic(type, "HoldStorage", true) ||
             (NullableElement(type) is ITypeSymbol nullable ? HasResources(plan, nullable) :
                 SequenceElement(type) is ITypeSymbol element ? HasResources(plan, element) : plan.ResourceTypes.Contains(Identity(type))));
 
-        static bool HasTexts(Plan plan, ITypeSymbol type) => type.TypeKind == TypeKind.TypeParameter || Identity(type) == TextType || type.SpecialType == SpecialType.System_String ||
+        static bool HasTexts(Plan plan, ITypeSymbol type) => MapTypes(type) is ITypeSymbol[] map ?
+            map.Any(item => HasTexts(plan, item)) : type.TypeKind == TypeKind.TypeParameter || Identity(type) == TextType || type.SpecialType == SpecialType.System_String ||
             (NullableElement(type) is ITypeSymbol nullable ? HasTexts(plan, nullable) :
                 SequenceElement(type) is ITypeSymbol element ? HasTexts(plan, element) : plan.TextTypes.Contains(Identity(type)));
 
@@ -1322,6 +1394,16 @@ namespace ThirdPerson.CanonicalSerialization.Generator
         {
             if (!HasTexts(plan, type))
                 return;
+            if (MapTypes(type) is ITypeSymbol[] map)
+            {
+                string index = "__canonicalIndex" + depth;
+                code.Append("for (int ").Append(index).Append(" = 0; ").Append(index).Append(" < ").Append(value)
+                    .Append(".Count; ").Append(index).AppendLine("++) {");
+                VisitTexts(code, map[0], value + ".Keys[" + index + "]", plan, depth + 1);
+                VisitTexts(code, map[1], value + ".Values[" + index + "]", plan, depth + 1);
+                code.AppendLine("}");
+                return;
+            }
             if (NullableElement(type) is ITypeSymbol nullable)
             {
                 code.Append("if (").Append(value).AppendLine(".HasValue) {");
@@ -1350,6 +1432,16 @@ namespace ThirdPerson.CanonicalSerialization.Generator
         {
             if (!HasResources(plan, type))
                 return;
+            if (MapTypes(type) is ITypeSymbol[] map)
+            {
+                string index = "__canonicalIndex" + depth;
+                code.Append("for (int ").Append(index).Append(" = 0; ").Append(index).Append(" < ").Append(value)
+                    .Append(".Count; ").Append(index).AppendLine("++) {");
+                Hold(code, operation, map[0], value + ".Keys[" + index + "]", plan, depth + 1);
+                Hold(code, operation, map[1], value + ".Values[" + index + "]", plan, depth + 1);
+                code.AppendLine("}");
+                return;
+            }
             if (NullableElement(type) is ITypeSymbol nullable)
             {
                 code.Append("if (").Append(value).AppendLine(".HasValue) {");
@@ -1402,6 +1494,74 @@ namespace ThirdPerson.CanonicalSerialization.Generator
             }
         }
 
+        static ITypeSymbol[] MapTypes(ITypeSymbol type) => type is INamedTypeSymbol named &&
+            Identity(named.OriginalDefinition) == "System.Collections.Generic.SortedList<TKey, TValue>"
+                ? named.TypeArguments.ToArray() : null;
+
+        static bool IsPreparedCollection(ITypeSymbol type) => MapTypes(type) != null ||
+            type is INamedTypeSymbol named && Identity(named.OriginalDefinition) == "System.Collections.Generic.List<T>";
+
+        static bool SupportsComparison(ITypeSymbol type) => type.SpecialType == SpecialType.System_String ||
+            Primitive(type) != null || type.AllInterfaces.Any(item =>
+                Identity(item.OriginalDefinition) == "System.IComparable<T>");
+
+        static string Compare(ITypeSymbol type, string left, string right) => type.SpecialType == SpecialType.System_String
+            ? "global::System.String.CompareOrdinal(" + left + ", " + right + ")"
+            : "global::System.Collections.Generic.Comparer<" + TypeName(type) + ">.Default.Compare(" + left + ", " + right + ")";
+
+        static string ReadCollectionValue(ITypeSymbol type, Member member, Plan plan) =>
+            type.SpecialType == SpecialType.System_String && HasAttribute(member.Symbol, DeclaredTextAttribute)
+                ? "reader.ReadDeclaredString()" : Read(type, !plan.PreparedRead);
+
+        static void ReadPreparedCollection(StringBuilder code, Member member, string target, Plan plan)
+        {
+            ITypeSymbol[] map = MapTypes(member.Type);
+            ITypeSymbol item = map == null ? SequenceElement(member.Type) : map[1];
+            if (plan.OwnsMemberResources) Hold(code, "Release", member.Type, target, plan);
+            code.Append(target).AppendLine(".Clear();");
+            code.AppendLine("{ int count = reader.ReadInt32();");
+            code.Append("if (count < 0 || count > ").Append(target)
+                .AppendLine(".Capacity) throw new global::System.IO.InvalidDataException(\"Canonical collection exceeds prepared capacity.\");");
+            code.AppendLine("for (int i = 0; i < count; i++) {");
+            if (map != null)
+            {
+                code.Append("var key = ").Append(ReadCollectionValue(map[0], member, plan)).AppendLine(";");
+                code.Append("if (i > 0 && ").Append(Compare(map[0], target + ".Keys[i - 1]", "key"))
+                    .AppendLine(" >= 0) throw new global::System.IO.InvalidDataException(\"Canonical map keys are not strictly ordered.\");");
+            }
+            code.Append("var item = ").Append(ReadCollectionValue(item, member, plan)).AppendLine(";");
+            if (map == null && HasAttribute(member.Symbol, SetAttribute))
+                code.Append("if (i > 0 && ").Append(Compare(item, target + "[i - 1]", "item"))
+                    .AppendLine(" >= 0) throw new global::System.IO.InvalidDataException(\"Canonical set elements are not strictly ordered.\");");
+            if (plan.OwnsMemberResources)
+            {
+                if (map != null) Hold(code, "Retain", map[0], "key", plan);
+                Hold(code, "Retain", item, "item", plan);
+            }
+            code.Append(target).Append(map == null ? ".Add(item);" : ".Add(key, item);").AppendLine();
+            code.AppendLine("} }");
+        }
+
+        static void CopyPreparedCollection(StringBuilder code, ITypeSymbol type, string source, string target, Plan plan)
+        {
+            Hold(code, "Release", type, target, plan);
+            code.Append(target).AppendLine(".Clear();");
+            ITypeSymbol[] map = MapTypes(type);
+            code.Append("for (int i = 0; i < ").Append(source).AppendLine(".Count; i++) {");
+            if (map != null)
+            {
+                Hold(code, "Retain", map[0], source + ".Keys[i]", plan);
+                Hold(code, "Retain", map[1], source + ".Values[i]", plan);
+                code.Append(target).Append(".Add(").Append(source).Append(".Keys[i], ").Append(source).AppendLine(".Values[i]);");
+            }
+            else
+            {
+                Hold(code, "Retain", SequenceElement(type), source + "[i]", plan);
+                code.Append(target).Append(".Add(").Append(source).AppendLine("[i]);");
+            }
+            code.AppendLine("}");
+        }
+
         static ITypeSymbol NullableElement(ITypeSymbol type) => type is INamedTypeSymbol named &&
             named.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T ? named.TypeArguments[0] : null;
 
@@ -1421,6 +1581,7 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                 {
                     case BufferType:
                     case "System.ReadOnlyMemory<T>":
+                    case "System.Collections.Generic.List<T>":
                     case "System.Collections.Generic.IReadOnlyList<T>":
                     case "System.Collections.ObjectModel.ReadOnlyCollection<T>":
                         return named.TypeArguments[0];
@@ -1526,6 +1687,17 @@ namespace ThirdPerson.CanonicalSerialization.Generator
 
         static void MeasureMember(StringBuilder code, ITypeSymbol type, string value, int depth = 0)
         {
+            if (MapTypes(type) is ITypeSymbol[] map)
+            {
+                string index = "__canonicalIndex" + depth;
+                code.AppendLine("length = checked(length + 4);");
+                code.Append("for (int ").Append(index).Append(" = 0; ").Append(index).Append(" < ").Append(value)
+                    .Append(".Count; ").Append(index).AppendLine("++) {");
+                MeasureMember(code, map[0], value + ".Keys[" + index + "]", depth + 1);
+                MeasureMember(code, map[1], value + ".Values[" + index + "]", depth + 1);
+                code.AppendLine("}");
+                return;
+            }
             if (IsByteSequence(type))
             {
                 code.Append("length = checked(length + 4 + ").Append(SequenceCount(type, value)).AppendLine(");");
@@ -1684,9 +1856,9 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                 if (type.ContainingType != null || type.IsAbstract ||
                     type.BaseType != null && type.BaseType.SpecialType != SpecialType.System_Object && type.TypeKind == TypeKind.Class)
                     Error(plan, type, "正式记录必须是独立类型，运行设施和继承服务需留在原 owner");
-                if (type.Arity != 0 && (type.TypeKind != TypeKind.Struct || !type.IsReadOnly ||
+                if (type.Arity != 0 && (type.TypeKind != TypeKind.Struct ||
                     !plan.PreparedRead || plan.PreparedStorage != null))
-                    Error(plan, type, "泛型记录必须由实时 readonly 值持有，存储设施保留在原 owner");
+                    Error(plan, type, "泛型记录必须由实时值持有，服务设施保留在原 owner");
                 foreach (SyntaxReference syntax in type.DeclaringSyntaxReferences)
                     if (syntax.GetSyntax() is TypeDeclarationSyntax declaration && !declaration.Modifiers.Any(SyntaxKind.PartialKeyword))
                         Error(plan, type, "类型必须声明为 partial，生成访问进入原正式类型");
@@ -1756,6 +1928,7 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                 }
                 foreach (Member member in plan.Members)
                 {
+                    if (HasAttribute(member.Symbol, SetAttribute)) descriptor.Append("|unordered-set");
                     descriptor.Append('|').Append(member.IsCase ? "case:" : member.Payload ? "payload:" : "member:").Append(MemberIdentity(plan, member))
                         .Append(':').Append(Shape(plan, member.Type, member.Symbol));
                     if (HasAttribute(member.Symbol, TextRulesAttribute))
@@ -1880,6 +2053,8 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                 if (type.TypeKind == TypeKind.TypeParameter)
                     return "default(" + TypeName(type) + ").CanonicalRecordMaximumTextReferences";
                 if (NullableElement(type) is ITypeSymbol nullable) return TextCapacity(nullable);
+                if (MapTypes(type) is ITypeSymbol[] map)
+                    return map.All(item => TextCapacity(item) == "0") ? "0" : null;
                 if (SequenceElement(type) is ITypeSymbol element)
                     return TextCapacity(element) == "0" ? "0" : null;
                 if (type is INamedTypeSymbol record)
@@ -1898,7 +2073,7 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                 if (NullableElement(type) is ITypeSymbol nullable) return FiniteSize(nullable);
                 if (Primitive(type) != null || Identity(type) == TextType || type.SpecialType == SpecialType.System_String ||
                     type.TypeKind == TypeKind.TypeParameter) return true;
-                if (SequenceElement(type) != null) return false;
+                if (SequenceElement(type) != null || MapTypes(type) != null) return false;
                 if (type is INamedTypeSymbol record)
                 {
                     if (m_Plans.TryGetValue(Identity(record.OriginalDefinition), out Plan child))
@@ -1914,7 +2089,7 @@ namespace ThirdPerson.CanonicalSerialization.Generator
             {
                 if (ReferenceKey(type) is Member reference) return MinimumSize(reference.Type);
                 if (NullableElement(type) != null) return 1;
-                if (SequenceElement(type) != null || Identity(type) == TextType || type.SpecialType == SpecialType.System_String)
+                if (SequenceElement(type) != null || MapTypes(type) != null || Identity(type) == TextType || type.SpecialType == SpecialType.System_String)
                     return 4;
                 if (Primitive(type) != null)
                     return int.Parse(Measure(type, ""), CultureInfo.InvariantCulture);
@@ -1960,12 +2135,24 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                         Error(plan, member, "程序字符串只允许初始化物化读取；实时文本必须由正式文本 owner 持有");
                     return Identity(type);
                 }
+                if (MapTypes(type) is ITypeSymbol[] map)
+                {
+                    if (!plan.PreparedRead || plan.Type.IsReadOnly || plan.Cases.Length != 0 ||
+                        map.Any(item => item.SpecialType != SpecialType.System_String && !SupportsBoundValue(item)))
+                        Error(plan, member, "有序字典由原可变候选存储持有，键和值使用正式实时值合同");
+                    if (!SupportsComparison(map[0])) Error(plan, member, "字典键必须提供稳定的标准值比较");
+                    return "prepared-sorted-map<" + Shape(plan, map[0], member) + "," + Shape(plan, map[1], member) + ">";
+                }
                 ITypeSymbol element = SequenceElement(type);
                 if (element != null)
                 {
-                    bool prepared = BufferElement(type) != null || plan.PreparedRead && type is IArrayTypeSymbol &&
+                    bool prepared = BufferElement(type) != null || IsPreparedCollection(type) || plan.PreparedRead && type is IArrayTypeSymbol &&
                         !plan.Type.IsReadOnly && plan.Cases.Length == 0;
                     bool borrowed = BorrowedStorage(type) != null;
+                    if (IsPreparedCollection(type) && !plan.PreparedRead)
+                        Error(plan, member, "原可变集合使用准备存储读取，不进行初始化物化");
+                    if (HasAttribute(member, SetAttribute) && !SupportsComparison(element))
+                        Error(plan, member, "有序唯一序列元素必须提供稳定的标准值比较");
                     if (prepared && (plan.Type.IsReadOnly || plan.Cases.Length != 0))
                         Error(plan, member, "预分配集合必须由原候选页持有，不能通过值构造复制");
                     if (!prepared && !borrowed && plan.PreparedRead)

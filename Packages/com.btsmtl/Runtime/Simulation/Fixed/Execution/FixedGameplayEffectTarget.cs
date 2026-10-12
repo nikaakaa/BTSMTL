@@ -926,7 +926,7 @@ namespace ThirdPersonSimulation.Fixed
                 return;
             PortableAttributeState value = m_State.RequireAttribute(attributeId);
             m_CurrentPrediction.Attributes.Add(attributeId,
-                new PortablePredictionAttributeSnapshot(attributeId, value.BaseValue, value.CurrentValue, value.Revision, 0));
+                new PortablePredictionAttributeSnapshot(value.BaseValue, value.CurrentValue, value.Revision, 0));
         }
 
         void AddLifecycle(PortableActiveEffectState active, SimulationGameplayEffectLifecycleOperation operation)
@@ -949,7 +949,7 @@ namespace ThirdPersonSimulation.Fixed
                 PortableAttributeChange change = changes[i];
                 if (m_CurrentPrediction != null && !m_CurrentPrediction.Attributes.ContainsKey(change.AttributeId))
                     m_CurrentPrediction.Attributes.Add(change.AttributeId,
-                        new PortablePredictionAttributeSnapshot(change.AttributeId, change.BeforeBase,
+                        new PortablePredictionAttributeSnapshot(change.BeforeBase,
                             change.BeforeCurrent, change.Revision - 1, 0));
                 PortableEffectCause cause = m_Causes.TryGetValue(change.CauseHandle, out PortableEffectCause value) ? value : default;
                 AddChange(new PortableEffectRuntimeChange(NextChangeCursor(), change,

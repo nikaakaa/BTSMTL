@@ -825,7 +825,8 @@ namespace ThirdPersonSimulation
     }
 
     [CanonicalContract(OwnsMemberResources = true)]
-    internal partial struct GameplayEffectPredictionStateData
+    internal partial struct GameplayEffectPredictionStateData<TAttributeSnapshot>
+        where TAttributeSnapshot : struct, ICanonicalRecord<TAttributeSnapshot>
     {
         [CanonicalRequired]
         public GameplayEffectContextIdentity CausalContext;
@@ -840,17 +841,26 @@ namespace ThirdPersonSimulation
         public ulong AfterLifecycleRevision;
         public ulong AfterChangeCursor;
         public ulong AuthoritativeLifecycleRevision;
+        [CanonicalDeclaredText, CanonicalSet]
+        public List<string> CueIds;
+        [CanonicalDeclaredText]
+        public SortedList<string, TAttributeSnapshot> Attributes;
     }
 
     [CanonicalStorageOwner]
     internal abstract partial class GameplayEffectPredictionControlState<TSpec, TAttributeSnapshot> : IGameplayEffectPredictionControl<TSpec>
+        where TAttributeSnapshot : struct, ICanonicalRecord<TAttributeSnapshot>
     {
         [CanonicalStorage]
-        internal GameplayEffectPredictionStateData Data;
+        internal GameplayEffectPredictionStateData<TAttributeSnapshot> Data;
+
+        protected GameplayEffectPredictionControlState()
+        {
+            Data.CueIds = new List<string>();
+            Data.Attributes = new SortedList<string, TAttributeSnapshot>(StringComparer.Ordinal);
+        }
         public TSpec Spec { get; set; }
         public bool HasActiveBefore => ActiveBefore.IsValid;
-        public List<string> CueIds { get; } = new List<string>();
-        public SortedList<string, TAttributeSnapshot> Attributes { get; } = new SortedList<string, TAttributeSnapshot>(StringComparer.Ordinal);
 
         ulong IGameplayEffectPredictionControl<TSpec>.PredictionKey => DescribeContext().PredictionKey;
         ulong IGameplayEffectPredictionControl<TSpec>.SourceActionInstanceId => DescribeContext().SourceActionInstanceId;

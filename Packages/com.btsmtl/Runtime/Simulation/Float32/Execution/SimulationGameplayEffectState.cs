@@ -5,6 +5,7 @@ using System.Linq;
 
 
 using ThirdPersonSimulation;
+using GameplayEffectPredictionStateData = ThirdPersonSimulation.GameplayEffectPredictionStateData<ThirdPersonSimulation.PortablePredictionAttributeSnapshot>;
 namespace ThirdPersonSimulation
 {
     internal readonly struct PortableAttributeChange
@@ -266,18 +267,17 @@ namespace ThirdPersonSimulation
         internal SimulationGameplayEffectContext Context { get; }
     }
 
-    internal readonly struct PortablePredictionAttributeSnapshot
+    [CanonicalContract]
+    internal readonly partial struct PortablePredictionAttributeSnapshot
     {
-        public PortablePredictionAttributeSnapshot(string attributeId, Float32Scalar baseValue, Float32Scalar currentValue, ulong beforeRevision, ulong afterRevision)
+        public PortablePredictionAttributeSnapshot(Float32Scalar baseValue, Float32Scalar currentValue, ulong beforeRevision, ulong afterRevision)
         {
-            AttributeId = attributeId;
             BaseValue = baseValue;
             CurrentValue = currentValue;
             BeforeRevision = beforeRevision;
             AfterRevision = afterRevision;
         }
 
-        public string AttributeId { get; }
         public Float32Scalar BaseValue { get; }
         public Float32Scalar CurrentValue { get; }
         public ulong BeforeRevision { get; }
@@ -285,7 +285,7 @@ namespace ThirdPersonSimulation
 
         public PortablePredictionAttributeSnapshot WithAfterRevision(ulong revision)
         {
-            return new PortablePredictionAttributeSnapshot(AttributeId, BaseValue, CurrentValue, BeforeRevision, revision);
+            return new PortablePredictionAttributeSnapshot(BaseValue, CurrentValue, BeforeRevision, revision);
         }
     }
 
@@ -321,8 +321,6 @@ namespace ThirdPersonSimulation
         {
             Spec = null;
             GameplayEffectPredictionStateData.CanonicalClear(ref Data);
-            CueIds.Clear();
-            Attributes.Clear();
         }
         protected override GameplayEffectContextIdentity DescribeContext() => CausalContext;
     }
@@ -799,8 +797,7 @@ namespace ThirdPersonSimulation
                     return false;
                 PortablePredictionAttributeSnapshot value = right.Values[i];
                 PortablePredictionAttributeSnapshot leftValue = left.Values[i];
-                if (!CanonicalTextValue.Equals(leftValue.AttributeId, value.AttributeId, StringComparison.Ordinal) ||
-                    !leftValue.BaseValue.Equals(value.BaseValue) ||
+                if (!leftValue.BaseValue.Equals(value.BaseValue) ||
                     !leftValue.CurrentValue.Equals(value.CurrentValue) ||
                     leftValue.BeforeRevision != value.BeforeRevision ||
                     leftValue.AfterRevision != value.AfterRevision)
@@ -1002,9 +999,6 @@ namespace ThirdPersonSimulation
         {
             result.Spec = source.Spec;
             GameplayEffectPredictionStateData.CanonicalCopyInto(in source.Data, ref result.Data);
-            result.CueIds.AddRange(source.CueIds);
-            for (int i = 0; i < source.Attributes.Count; i++)
-                result.Attributes.Add(source.Attributes.Keys[i], source.Attributes.Values[i]);
         }
 
         static GameplayTagSnapshot CollectOwnedTags(
@@ -1913,9 +1907,9 @@ namespace ThirdPersonSimulation
             ulong revision, ulong causeHandle, out IReadOnlyList<PortableAttributeChange> changes) =>
             m_AttributeAggregator.ApplyAuthoritativeAttribute(RequireAttribute(attributeId).Definition.Id, baseValue, currentValue, revision, causeHandle, out changes);
 
-        public void RestorePredictedAttributeOwned(PortablePredictionAttributeSnapshot snapshot, ulong causeHandle,
+        public void RestorePredictedAttributeOwned(string attributeId, PortablePredictionAttributeSnapshot snapshot, ulong causeHandle,
             out IReadOnlyList<PortableAttributeChange> changes) =>
-            m_AttributeAggregator.RestorePredictedAttributeOwned(snapshot, causeHandle, out changes);
+            m_AttributeAggregator.RestorePredictedAttributeOwned(attributeId, snapshot, causeHandle, out changes);
 
         internal IReadOnlyList<PortableAttributeChange> ApplyCorrectionAttribute(SimulationAttributeValueIngress value, ulong causeHandle) =>
             m_AttributeAggregator.ApplyCorrectionAttribute(RequireAttribute(value.AttributeId).Definition.Id, value.BaseValue, value.CurrentValue, value.ValueRevision, causeHandle);

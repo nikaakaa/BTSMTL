@@ -29,6 +29,9 @@ namespace ThirdPersonSimulation
     }
 
     [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
+    public sealed class CanonicalSetAttribute : Attribute { }
+
+    [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
     public sealed class CanonicalDeclaredTextAttribute : Attribute
     {
     }

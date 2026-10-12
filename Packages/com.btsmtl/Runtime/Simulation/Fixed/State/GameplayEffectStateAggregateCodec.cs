@@ -1,4 +1,5 @@
 using ThirdPersonSimulation;
+using GameplayEffectPredictionStateData = ThirdPersonSimulation.GameplayEffectPredictionStateData<ThirdPersonSimulation.Fixed.PortablePredictionAttributeSnapshot>;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -12,7 +13,7 @@ namespace ThirdPersonSimulation.Fixed
         const uint ActiveMagic = 0x32464745;
         const uint PeriodsMagic = 0x32504745;
         const uint JournalMagic = 0x324A4745;
-        const int StateVersion = 13;
+        const int StateVersion = 14;
         internal static readonly string CanonicalSchema = CanonicalContractProtocol.ComposeSchema(
             "gameplay-effect-state/" + StateVersion,
             PortableAttributeData.CanonicalSchema, PortableAttributeModifierState.CanonicalSchema, SimulationGameplayEffectContext.CanonicalSchema,
@@ -353,21 +354,6 @@ namespace ThirdPersonSimulation.Fixed
         {
             WriteSpec(writer, record.Spec, catalog);
             GameplayEffectPredictionStateData.CanonicalWrite(writer, in record.Data);
-            writer.WriteInt32(record.CueIds.Count);
-            string[] cues = record.Spec.Definition.CueIds;
-            for (int index = 0; index < cues.Length; index++)
-                if (record.CueIds.Contains(cues[index]))
-                    writer.WriteInt32(index);
-            writer.WriteInt32(record.Attributes.Count);
-            for (int i = 0; i < record.Attributes.Count; i++)
-            {
-                PortablePredictionAttributeSnapshot value = record.Attributes.Values[i];
-                writer.WriteInt32(catalog.AttributeDependencies.AttributeIndex(record.Attributes.Keys[i]));
-                writer.WriteScalar(value.BaseValue);
-                writer.WriteScalar(value.CurrentValue);
-                writer.WriteUInt64(value.BeforeRevision);
-                writer.WriteUInt64(value.AfterRevision);
-            }
         }
 
         static void ReadPredictionRecord(CanonicalReader reader, FixedGameplayEffectRuntimeCatalog catalog,
@@ -381,29 +367,11 @@ namespace ThirdPersonSimulation.Fixed
             spec.Release();
             records.Add(record);
             GameplayEffectPredictionStateData.CanonicalReadInto(reader, ref record.Data);
-            string[] cues = spec.Definition.CueIds;
-            int cueCount = ReadCount(reader, cues.Length);
-            int previousCue = -1;
-            for (int i = 0; i < cueCount; i++)
-            {
-                int cueIndex = ReadIndex(reader, cues.Length);
-                if (cueIndex <= previousCue)
-                    throw new InvalidDataException("Prediction Gameplay Cues are not canonically ordered.");
-                previousCue = cueIndex;
-                record.CueIds.Add(cues[cueIndex]);
-            }
-            int attributeCount = ReadCount(reader, catalog.CapacityLayout.AttributeWidth);
-            int previousAttribute = -1;
-            for (int i = 0; i < attributeCount; i++)
-            {
-                int index = ReadIndex(reader, catalog.CapacityLayout.AttributeWidth);
-                if (index <= previousAttribute)
-                    throw new InvalidDataException("Prediction Attributes are not canonically ordered.");
-                previousAttribute = index;
-                string id = catalog.AttributeDependencies.AttributeId(index);
-                record.Attributes.Add(id, new PortablePredictionAttributeSnapshot(id,
-                    reader.ReadScalar(), reader.ReadScalar(), reader.ReadUInt64(), reader.ReadUInt64()));
-            }
+            for (int i = 0; i < record.CueIds.Count; i++)
+                if (Array.IndexOf(spec.Definition.CueIds, record.CueIds[i]) < 0)
+                    throw new InvalidDataException("Prediction Gameplay Cue is absent from its published definition.");
+            for (int i = 0; i < record.Attributes.Count; i++)
+                _ = catalog.AttributeDependencies.AttributeIndex(record.Attributes.Keys[i]);
             if (record.InstanceId == 0 || record.PredictedInstanceId == 0 ||
                 record.CausalContext.PredictionKey != predictionKey ||
                 record.HasActiveBefore && record.ActiveBeforeInsertionSequence == 0)
