@@ -43,6 +43,18 @@ namespace BTSMTL.Diagnostics.Editor
             RuntimeTraceDetailKind.Motion => MotionDetail(in value.MotionDetail, value.Detail),
             RuntimeTraceDetailKind.AbilityRuleSource =>
                 $"{value.Detail};source={value.RuleSourceSkillId}/{value.RuleSourceInstanceId};skillGeneration={value.RuleSourceSkillExecutionGeneration};segmentGeneration={value.RuleSourceSegmentGeneration}",
+            RuntimeTraceDetailKind.AbilityAdmission =>
+                $"{value.Detail};source={value.RuleSourceSkillId}/{value.RuleSourceInstanceId};skillGeneration={value.RuleSourceSkillExecutionGeneration};segmentGeneration={value.RuleSourceSegmentGeneration};{value.Cause}={value.Value.Unsigned}",
+            RuntimeTraceDetailKind.GameplayEffectScope =>
+                $"effect={value.OwnerId}#{value.ActivationGeneration};scope={value.Value.Text};action={value.ActionInstanceId};generation={value.SkillExecutionGeneration}",
+            RuntimeTraceDetailKind.GameplayEffectHolder =>
+                $"effect={value.OwnerId}#{value.ActivationGeneration};holder={value.Status};action={value.ActionInstanceId};generation={value.SkillExecutionGeneration};runtime={value.Value.Unsigned};content={value.CallSiteId};invocation={value.GraphInvocationGeneration};branch={value.Revision};cycle={value.Cycle}",
+            RuntimeTraceDetailKind.GameplayEffectSuccess =>
+                $"effect={value.OwnerId}#{value.ActivationGeneration};event={value.Status}#{value.Value.Unsigned};source={value.RuleSourceSkillId}/{value.RuleSourceInstanceId};generation={value.RuleSourceSkillExecutionGeneration};segment={value.RuleSourceSegmentGeneration};target={value.RelatedElementId}",
+            RuntimeTraceDetailKind.GameplayEffectValue =>
+                $"effect={value.OwnerId}#{value.ActivationGeneration};{value.Name}={value.Value.Unsigned}",
+            RuntimeTraceDetailKind.AbilityMetadata =>
+                $"{value.Name}={value.Value.Text};skill={value.SkillId};action={value.ActionInstanceId};generation={value.SkillExecutionGeneration}",
             RuntimeTraceDetailKind.AnimationCommand =>
                 $"logicTick={value.StartTick};playback={AnimationPlayback(in value)};channel={value.AnimationChannelId};action={value.ActionInstanceId};generation={value.ActivationGeneration};time={value.Time:0.######};continuous={value.SecondaryTime:0.######};cycle={value.Cycle};weight={value.Weight:0.######};loop={value.Flag}",
             _ => value.Detail.ToString()

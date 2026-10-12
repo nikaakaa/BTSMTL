@@ -205,7 +205,8 @@ namespace BTSMTL.Diagnostics
         ControlState,
         ControlTransition,
         ActionInstance,
-        SkillExecution
+        SkillExecution,
+        GameplayEffect
     }
 
     public readonly struct RuntimeInstanceKey : IEquatable<RuntimeInstanceKey>
@@ -283,6 +284,10 @@ namespace BTSMTL.Diagnostics
         public static RuntimeInstanceKey SkillExecution(Guid characterId, Guid actionRuntimeId, string skillId, ulong instanceId, CanonicalTextValue callSiteId, ulong generation, ulong invocationGeneration = 0) =>
             new RuntimeInstanceKey(RuntimeInstanceKind.SkillExecution, characterId, actionRuntimeId, skillId, generation, 0, -1, instanceId, callSiteId, invocationGeneration);
 
+        public static RuntimeInstanceKey GameplayEffect(Guid characterId, ulong instanceId, ulong sourceActionInstanceId) =>
+            new RuntimeInstanceKey(RuntimeInstanceKind.GameplayEffect, characterId, Guid.Empty, string.Empty,
+                instanceId, 0, -1, sourceActionInstanceId);
+
         public bool Equals(RuntimeInstanceKey other)
         {
             return Kind == other.Kind && CharacterRuntimeId.Equals(other.CharacterRuntimeId) && GraphRuntimeId.Equals(other.GraphRuntimeId) &&
@@ -325,6 +330,8 @@ namespace BTSMTL.Diagnostics
                     return $"ControlTransition:{GraphRuntimeId:N}/{StateId}/{ActivationGeneration}";
                 case RuntimeInstanceKind.ActionInstance:
                     return $"Action:{GraphRuntimeId:N}/{StateId}/{ActionInstanceId}/{ActivationGeneration}";
+                case RuntimeInstanceKind.GameplayEffect:
+                    return $"Effect:{CharacterRuntimeId:N}/{ActivationGeneration}/{ActionInstanceId}";
                 case RuntimeInstanceKind.SkillExecution:
                     return $"Skill:{GraphRuntimeId:N}/{StateId}/{ActionInstanceId}/{CallSiteId}/{ActivationGeneration}/{InvocationGeneration}";
                 default:
@@ -648,7 +655,7 @@ namespace BTSMTL.Diagnostics
         public RuntimeFootPlacementFootTraceSnapshot Right;
     }
 
-    public enum RuntimeTraceDetailKind { Text, GameplayEffectFailure, GameplayTagCounts, EquipmentChange, ControlFlow, Motion, AnimationCommand, AbilityRuleSource, CharacterControl }
+    public enum RuntimeTraceDetailKind { Text, GameplayEffectFailure, GameplayTagCounts, EquipmentChange, ControlFlow, Motion, AnimationCommand, AbilityRuleSource, CharacterControl, AbilityAdmission, GameplayEffectScope, GameplayEffectHolder, GameplayEffectSuccess, GameplayEffectValue, AbilityMetadata }
 
     public struct RuntimeTracePayload
     {
@@ -669,7 +676,7 @@ namespace BTSMTL.Diagnostics
         public CanonicalTextValue CallSiteId;
         public ulong ActivationGeneration;
         public ulong SkillExecutionGeneration;
-        public string RuleSourceSkillId;
+        public CanonicalTextValue RuleSourceSkillId;
         public ulong RuleSourceInstanceId;
         public ulong RuleSourceSkillExecutionGeneration;
         public ulong RuleSourceSegmentGeneration;
@@ -720,6 +727,7 @@ namespace BTSMTL.Diagnostics
             OwnerId.Retain();
             RelatedElementId.Retain();
             CallSiteId.Retain();
+            RuleSourceSkillId.Retain();
             ParentInvocationPath.Retain();
             Value.Retain();
             TimelinePlayback.Retain();
@@ -735,6 +743,7 @@ namespace BTSMTL.Diagnostics
             OwnerId.Release();
             RelatedElementId.Release();
             CallSiteId.Release();
+            RuleSourceSkillId.Release();
             ParentInvocationPath.Release();
             Value.Release();
             TimelinePlayback.Release();

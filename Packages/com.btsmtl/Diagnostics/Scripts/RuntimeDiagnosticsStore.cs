@@ -64,6 +64,9 @@ namespace BTSMTL.Diagnostics
             bool blackboard = Kind is RuntimeTraceEventKind.BlackboardWritten or RuntimeTraceEventKind.BlackboardSnapshot;
             BlackboardStateSlot = blackboard ? payload.BlackboardStateSlot : -1;
             BlackboardAbilityId = blackboard ? payload.SkillId : string.Empty;
+            bool metadata = Kind == RuntimeTraceEventKind.ValueSampled &&
+                (Channel == RuntimeTraceChannel.GameplayEffect || payload.DetailKind == RuntimeTraceDetailKind.AbilityMetadata);
+            SampleIdentity = metadata ? payload.Name : default;
         }
 
         public RuntimeTraceChannel Channel { get; }
@@ -72,17 +75,19 @@ namespace BTSMTL.Diagnostics
         public RuntimeTraceEventKind Kind { get; }
         public int BlackboardStateSlot { get; }
         public string BlackboardAbilityId { get; }
+        public ThirdPersonSimulation.CanonicalTextValue SampleIdentity { get; }
 
         public bool Equals(RuntimeLiveStateKey other)
         {
             return Channel == other.Channel && Source.Equals(other.Source) && Instance.Equals(other.Instance) && Kind == other.Kind &&
-                BlackboardStateSlot == other.BlackboardStateSlot && string.Equals(BlackboardAbilityId, other.BlackboardAbilityId, StringComparison.Ordinal);
+                BlackboardStateSlot == other.BlackboardStateSlot && string.Equals(BlackboardAbilityId, other.BlackboardAbilityId, StringComparison.Ordinal) &&
+                SampleIdentity.Equals(other.SampleIdentity);
         }
 
         public override bool Equals(object obj) => obj is RuntimeLiveStateKey other && Equals(other);
-        public override int GetHashCode() => HashCode.Combine(Channel, Source, Instance, Kind, BlackboardStateSlot, BlackboardAbilityId);
-        public void Retain() => Instance.Retain();
-        public void Release() => Instance.Release();
+        public override int GetHashCode() => HashCode.Combine(Channel, Source, Instance, Kind, BlackboardStateSlot, BlackboardAbilityId, SampleIdentity);
+        public void Retain() { Instance.Retain(); SampleIdentity.Retain(); }
+        public void Release() { Instance.Release(); SampleIdentity.Release(); }
     }
 
     public readonly struct RuntimeLiveStateChange
@@ -643,7 +648,7 @@ namespace BTSMTL.Diagnostics
                    left.CallSiteId.Equals(right.CallSiteId) &&
                    left.ActivationGeneration == right.ActivationGeneration &&
                    left.SkillExecutionGeneration == right.SkillExecutionGeneration &&
-                   string.Equals(left.RuleSourceSkillId, right.RuleSourceSkillId, StringComparison.Ordinal) &&
+                   left.RuleSourceSkillId.Equals(right.RuleSourceSkillId) &&
                    left.RuleSourceInstanceId == right.RuleSourceInstanceId &&
                    left.RuleSourceSkillExecutionGeneration == right.RuleSourceSkillExecutionGeneration &&
                    left.RuleSourceSegmentGeneration == right.RuleSourceSegmentGeneration &&

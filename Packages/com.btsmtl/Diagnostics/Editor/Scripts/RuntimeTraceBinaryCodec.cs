@@ -290,7 +290,7 @@ namespace BTSMTL.Diagnostics.Editor
             CallSiteId = ReadText(reader),
             ActivationGeneration = reader.ReadUInt64(),
             SkillExecutionGeneration = reader.ReadUInt64(),
-            RuleSourceSkillId = ReadString(reader),
+            RuleSourceSkillId = ReadText(reader),
             RuleSourceInstanceId = reader.ReadUInt64(),
             RuleSourceSkillExecutionGeneration = reader.ReadUInt64(),
             RuleSourceSegmentGeneration = reader.ReadUInt64(),
