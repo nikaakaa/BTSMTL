@@ -102,7 +102,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             var writes = new AuthorityTickScheduleWrites(
                 context.Products.BindExclusiveWriter<SimulationSessionExecutionPlan<Float32SimulationStep>>(SimulationPipelineProducts.ExecutionPlan));
             return new Float32SchedulePassRuntimeAdapter<AuthorityTickScheduleReads, AuthorityTickScheduleWrites>(
-                new AuthorityTickSchedulePassRuntime(context.Pass.Descriptor, m_Policy).PrepareStateStorage(context.Composition),
+                new AuthorityTickSchedulePassRuntime(context.Pass.Descriptor, m_Policy,
+                    reads.CharacterRuntime.Runtime.RosterDescriptor.Actors).PrepareStateStorage(context.Composition),
                 reads,
                 writes);
         }
@@ -122,13 +123,21 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         readonly SimulationInputValue[][] m_NeutralValues = new SimulationInputValue[MaximumHeldActors][];
         readonly int[] m_HeldIndices = new int[MaximumHeldActors];
         int m_HeldCount;
-        HeldAuthorityInput[] m_HeldWorkspace = Array.Empty<HeldAuthorityInput>();
+        readonly HeldAuthorityInput[] m_HeldWorkspace;
+        readonly SimulationPipelineActorInput<Float32StepInput>[] m_ActorInputs;
+        readonly SimulationPipelineStepSourceMapping[] m_SourceMappings = new SimulationPipelineStepSourceMapping[1];
+        readonly Float32SimulationStep[] m_Steps = new Float32SimulationStep[1];
+        readonly ObservedWorldConstraintFrame m_ObservedWorldConstraints = new ObservedWorldConstraintFrame();
 
         public AuthorityTickSchedulePassRuntime(
             SimulationPipelinePassDescriptor descriptor,
-            ServerAuthoritativeModelPolicy policy) : base(descriptor)
+            ServerAuthoritativeModelPolicy policy,
+            IReadOnlyList<ActorId> actors) : base(descriptor)
         {
             m_Policy = policy ?? throw new ArgumentNullException(nameof(policy));
+            m_HeldWorkspace = new HeldAuthorityInput[actors.Count];
+            m_ActorInputs = new SimulationPipelineActorInput<Float32StepInput>[actors.Count];
+            m_Steps[0] = new Float32SimulationStep(actors);
             StateIdentity = new SimulationPipelineStateParticipantIdentity(
                 descriptor.PassId,
                 descriptor.ImplementationVersion,
@@ -178,8 +187,6 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 context.Source.ClockId,
                 authorityTick.Value);
             int actorCount = readPorts.CharacterRuntime.Runtime.Roster.Count;
-            if (m_HeldWorkspace.Length != actorCount)
-                m_HeldWorkspace = new HeldAuthorityInput[actorCount];
             for (int i = 0; i < actorCount; i++)
             {
                 ActorId actorId = readPorts.CharacterRuntime.Runtime.Roster[i].ActorId;
@@ -194,8 +201,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 m_HeldWorkspace[i] = held;
                 m_HeldIndices[i] = heldIndex;
             }
-            var actorInputs = new SimulationPipelineActorInput<Float32StepInput>[actorCount];
-            var actors = new ActorId[actorCount];
+            SimulationPipelineActorInput<Float32StepInput>[] actorInputs = m_ActorInputs;
             for (int i = 0; i < actorCount; i++)
             {
                 HeldAuthorityInput held = m_HeldWorkspace[i];
@@ -205,35 +211,32 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                     actorId,
                     held.InputSequence,
                     new Float32StepInput(input));
-                actors[i] = actorId;
                 held.MarkConsumed(authorityTick);
                 m_HeldWorkspace[i] = null;
             }
-            var step = Float32SimulationStep.FromOwnedInputs(
+            m_ObservedWorldConstraints.ResetEmpty(authorityTick);
+            m_Steps[0].Reset(
                 authorityTick,
                 new SimulationPipelineStepProvenance(
                     SimulationPipelineStepExecutionKind.Authoritative,
                     authoritySource,
                     authorityTick.Value),
                 actorInputs,
-                actors,
                 Array.Empty<SimulationPipelineTypedIngress<SimulationIngress>>(),
-                ObservedWorldConstraintFrame.Empty(authorityTick));
+                m_ObservedWorldConstraints);
+            m_SourceMappings[0] = new SimulationPipelineStepSourceMapping(
+                context.Source.ClockId,
+                context.Source.ClockId,
+                SimulationTickSourceKind.Authoritative);
             writePorts.ExecutionPlan.Write(SimulationSessionExecutionPlan<Float32SimulationStep>.FromOwnedCollections(
                 SimulationSessionExecutionPlanStatus.Executable,
                 context.Source,
                 readPorts.CharacterRuntime.Runtime.GameplayContentHash,
                 context.Pipeline.Hash,
                 readPorts.CharacterRuntime.Runtime.RosterDescriptor,
-                new[]
-                {
-                    new SimulationPipelineStepSourceMapping(
-                        context.Source.ClockId,
-                        context.Source.ClockId,
-                        SimulationTickSourceKind.Authoritative)
-                },
+                m_SourceMappings,
                 null,
-                new[] { step },
+                m_Steps,
                 SimulationSessionPlanRequirement.WorkingState |
                 SimulationSessionPlanRequirement.OutputDisposition |
                 SimulationSessionPlanRequirement.StateHash));
@@ -454,6 +457,14 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         protected override void OnDispose()
         {
             m_StateStorage.ReleaseStorage();
+            Array.Clear(m_HeldWorkspace, 0, m_HeldWorkspace.Length);
+            Array.Clear(m_ActorInputs, 0, m_ActorInputs.Length);
+            m_SourceMappings[0] = default;
+            m_ObservedWorldConstraints.SetPreparedMetadata(default, default);
+            m_Steps[0].Reset(default, default,
+                Array.Empty<SimulationPipelineActorInput<Float32StepInput>>(),
+                Array.Empty<SimulationPipelineTypedIngress<SimulationIngress>>(),
+                m_ObservedWorldConstraints);
             for (int index = 0; index < m_HeldCount; index++) m_Held[index].Dispose();
             Array.Clear(m_HeldActors, 0, m_HeldCount);
             Array.Clear(m_Held, 0, m_HeldCount);
