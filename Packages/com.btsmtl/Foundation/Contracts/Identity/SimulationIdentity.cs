@@ -48,6 +48,7 @@ namespace ThirdPersonSimulation
             if (Value.IsEmpty)
                 throw new ArgumentException("Identity is required.", nameof(value));
         }
+        [CanonicalTextRules(Required = true)]
         public CanonicalTextValue Value { get; }
         public bool IsValid => !Value.IsEmpty;
         public int CompareTo(ActorId other) => Value.CompareTo(other.Value);
@@ -213,7 +214,7 @@ namespace ThirdPersonSimulation
     public readonly partial struct OperationSetVersion : IEquatable<OperationSetVersion>
     {
         public OperationSetVersion(string value) { Value = SimulationIdentity.Require(value, nameof(value)); }
-        [CanonicalDeclaredText]
+        [CanonicalDeclaredText, CanonicalTextRules(Required = true)]
         public string Value { get; }
         public bool IsValid => !string.IsNullOrEmpty(Value);
         public bool Equals(OperationSetVersion other) => string.Equals(Value, other.Value, StringComparison.Ordinal);
@@ -221,8 +222,7 @@ namespace ThirdPersonSimulation
         public override int GetHashCode() => Value == null ? 0 : StringComparer.Ordinal.GetHashCode(Value);
         public override string ToString() => Value ?? string.Empty;
 
-        [CanonicalValidation]
-        void RequireValid() => SimulationIdentity.Require(Value, "value");
+
     }
 
     [CanonicalContract]
