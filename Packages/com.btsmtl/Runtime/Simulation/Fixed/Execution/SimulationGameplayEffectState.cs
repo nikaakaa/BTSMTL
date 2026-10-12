@@ -133,14 +133,72 @@ namespace ThirdPersonSimulation.Fixed
         public FixedGameplayEffectModifierSnapshotReference Modifiers => m_Modifiers;
     }
 
-    internal sealed class PortableEffectSpecState
+    [CanonicalContract(PreparedStorage = typeof(GameplayTagSnapshotBank), OwnsMemberResources = true)]
+    internal partial struct PortableEffectSpecData
+    {
+        public PortableEffectDefinition Definition;
+        [CanonicalRequired, CanonicalReferenceAccess]
+        public SimulationGameplayEffectContext Context;
+        [CanonicalDeclaredText]
+        public SortedList<string, FixedScalar> SetByCaller;
+        [CanonicalDeclaredText]
+        public SortedList<string, FixedScalar> SourceAttributes;
+        [CanonicalDeclaredText]
+        public SortedList<string, FixedScalar> TargetAttributes;
+        public bool SourceTagSnapshotProvided;
+        [CanonicalDeclaredText]
+        public GameplayTagSnapshot SourceTags;
+        [CanonicalDeclaredText]
+        public GameplayTagSnapshot TargetTags;
+        public ulong DurationTicks;
+        public ulong PeriodTicks;
+
+        [CanonicalValidation]
+        void RequirePublishedSpec(ICanonicalValueReader reader)
+        {
+            RequireCapturedValues(SetByCaller, Definition.SetByCallerParameters);
+            RequireCapturedValues(SourceAttributes, Definition.SourceSnapshotAttributes);
+            RequireCapturedValues(TargetAttributes, Definition.TargetSnapshotAttributes);
+            if ((Definition.DurationPolicy == PortableEffectDurationPolicy.Duration) != (DurationTicks > 0) ||
+                Definition.HasPeriod != (PeriodTicks > 0))
+                throw new InvalidDataException("Gameplay Effect Spec timing does not match its published declaration.");
+            if (SourceTagSnapshotProvided && SourceTags.Count == 0)
+                throw new InvalidDataException("Provided Gameplay Tag snapshot must not be empty.");
+            FixedGameplayEffectRuntimeCatalog catalog = reader.PublishedValues.Require<FixedGameplayEffectRuntimeCatalog>();
+            for (int i = 0; i < SourceTags.Count; i++)
+                if (!catalog.ContainsTag(SourceTags[i]))
+                    throw new InvalidDataException("Source Gameplay Tag is absent from its published catalog.");
+            for (int i = 0; i < TargetTags.Count; i++)
+                if (!catalog.ContainsTag(TargetTags[i]))
+                    throw new InvalidDataException("Target Gameplay Tag is absent from its published catalog.");
+        }
+
+        static void RequireCapturedValues(SortedList<string, FixedScalar> values, IReadOnlyList<string> declared)
+        {
+            if (values.Count != declared.Count)
+                throw new InvalidDataException("Gameplay Effect captured values do not match the published declaration.");
+            for (int i = 0; i < declared.Count; i++)
+                if (!string.Equals(values.Keys[i], declared[i], StringComparison.Ordinal))
+                    throw new InvalidDataException("Gameplay Effect captured identity is absent from its published declaration.");
+        }
+    }
+
+    [CanonicalStorageOwner]
+    internal sealed partial class PortableEffectSpecState
     {
         readonly FixedGameplayEffectExecutionScratch m_Owner;
         int m_Retainers;
+        [CanonicalStorage]
+        internal PortableEffectSpecData Data;
 
         internal PortableEffectSpecState(FixedGameplayEffectExecutionScratch owner, GameplayEffectRuntimeCapacityLayout capacity)
         {
             m_Owner = owner;
+            Data.SetByCaller = new SortedList<string, FixedScalar>(StringComparer.Ordinal);
+            Data.SourceAttributes = new SortedList<string, FixedScalar>(StringComparer.Ordinal);
+            Data.TargetAttributes = new SortedList<string, FixedScalar>(StringComparer.Ordinal);
+            Data.SourceTags = GameplayTagSnapshot.Empty;
+            Data.TargetTags = GameplayTagSnapshot.Empty;
             SetByCaller.Capacity = capacity.ParameterWidth;
             SourceAttributes.Capacity = capacity.SourceCaptureWidth;
             TargetAttributes.Capacity = capacity.TargetCaptureWidth;
@@ -152,17 +210,9 @@ namespace ThirdPersonSimulation.Fixed
             _ = TargetAttributes.Values;
         }
 
-        internal void SetSourceTags(GameplayTagSnapshot tags)
-        {
-            tags.Retain();
-            SourceTags = tags;
-        }
 
-        internal void SetTargetTags(GameplayTagSnapshot tags)
-        {
-            tags.Retain();
-            TargetTags = tags;
-        }
+
+
 
         internal void Retain()
         {
@@ -175,39 +225,8 @@ namespace ThirdPersonSimulation.Fixed
                 m_Owner.ReleaseSpec(this);
         }
 
-        internal void Clear()
-        {
-            SetContext(default);
-            SetByCaller.Clear();
-            SourceAttributes.Clear();
-            TargetAttributes.Clear();
-            SourceTagSnapshotProvided = false;
-            SourceTags.Release();
-            TargetTags.Release();
-            SourceTags = GameplayTagSnapshot.Empty;
-            TargetTags = GameplayTagSnapshot.Empty;
-            DurationTicks = 0;
-            PeriodTicks = 0;
-        }
+        internal void Clear() => PortableEffectSpecData.CanonicalClear(ref Data);
 
-        public PortableEffectDefinition Definition;
-        SimulationGameplayEffectContext m_Context;
-        public ref readonly SimulationGameplayEffectContext Context => ref m_Context;
-
-        internal void SetContext(in SimulationGameplayEffectContext context)
-        {
-            context.Retain();
-            m_Context.Release();
-            m_Context = context;
-        }
-        public SortedList<string, FixedScalar> SetByCaller { get; } = new SortedList<string, FixedScalar>(StringComparer.Ordinal);
-        public SortedList<string, FixedScalar> SourceAttributes { get; } = new SortedList<string, FixedScalar>(StringComparer.Ordinal);
-        public SortedList<string, FixedScalar> TargetAttributes { get; } = new SortedList<string, FixedScalar>(StringComparer.Ordinal);
-        public bool SourceTagSnapshotProvided;
-        public GameplayTagSnapshot SourceTags = GameplayTagSnapshot.Empty;
-        public GameplayTagSnapshot TargetTags = GameplayTagSnapshot.Empty;
-        public ulong DurationTicks;
-        public ulong PeriodTicks;
     }
 
     internal sealed class PortableActiveEffectState : GameplayEffectActiveControlState<PortableEffectSpecState>
@@ -431,7 +450,7 @@ namespace ThirdPersonSimulation.Fixed
             {
                 source.Key.Retain();
                 if (source.Value is GameplayTagSnapshot tags)
-                    tags.Retain();
+                    tags.RetainStateStorage();
             }
             foreach (PortableActiveEffectSnapshot active in ActiveEffects)
             {
@@ -453,7 +472,7 @@ namespace ThirdPersonSimulation.Fixed
             m_Periods.Retain();
             m_LastLifecycleRevisions.Retain();
 
-            m_OwnedTags?.Retain();
+            m_OwnedTags?.RetainStateStorage();
         }
 
         internal void ReleaseSnapshots()
@@ -462,7 +481,7 @@ namespace ThirdPersonSimulation.Fixed
             {
                 source.Key.Release();
                 if (source.Value is GameplayTagSnapshot tags)
-                    tags.Release();
+                    tags.ReleaseStateStorage();
             }
             foreach (PortableActiveEffectSnapshot active in ActiveEffects)
             {
@@ -487,7 +506,7 @@ namespace ThirdPersonSimulation.Fixed
             m_Periods.Release();
             m_LastLifecycleRevisions.Release();
 
-            m_OwnedTags?.Release();
+            m_OwnedTags?.ReleaseStateStorage();
         }
 
         internal bool SharesStorageWith(GameplayEffectStateAggregate other)
@@ -854,7 +873,7 @@ namespace ThirdPersonSimulation.Fixed
             foreach (KeyValuePair<GameplayTagSourceIdentityValue, IReadOnlyList<string>> pair in m_TagSources)
             {
                 if (pair.Value is GameplayTagSnapshot tags)
-                    tags.Retain();
+                    tags.RetainStateStorage();
                 pair.Key.Retain();
                 tagSources.Add(pair.Key, pair.Value);
             }
@@ -1742,7 +1761,7 @@ namespace ThirdPersonSimulation.Fixed
                     if (m_TagSources.Keys[i].Scope.Kind == GameplayEffectScopeKind.Actor)
                         count += m_TagSources.Values[i].Count;
                 GameplayTagSnapshot snapshot = m_TagSnapshotPages.Begin(count);
-                snapshot.Retain();
+                snapshot.RetainStateStorage();
                 int offset = 0;
                 for (int i = 0; i < m_TagSources.Count; i++)
                 {
@@ -1763,7 +1782,7 @@ namespace ThirdPersonSimulation.Fixed
 
         void InvalidateQueryTags()
         {
-            m_OwnedTagsSnapshot?.Release();
+            m_OwnedTagsSnapshot?.ReleaseStateStorage();
             m_OwnedTagsSnapshot = null;
         }
 
@@ -1827,9 +1846,9 @@ namespace ThirdPersonSimulation.Fixed
             if (ReferenceEquals(current, values))
                 return;
             if (values is GameplayTagSnapshot nextTags)
-                nextTags.Retain();
+                nextTags.RetainStateStorage();
             if (current is GameplayTagSnapshot previousTags)
-                previousTags.Release();
+                previousTags.ReleaseStateStorage();
             if (current == null)
                 source.Retain();
             m_TagSources[source] = values;
@@ -1863,7 +1882,7 @@ namespace ThirdPersonSimulation.Fixed
                 m_TagSources.Keys[index].Release();
                 m_TagSources.RemoveAt(index);
                 if (tags is GameplayTagSnapshot snapshot)
-                    snapshot.Release();
+                    snapshot.ReleaseStateStorage();
                 InvalidateQueryTags();
                 RefreshTagsDirty();
             }
@@ -2128,7 +2147,7 @@ namespace ThirdPersonSimulation.Fixed
             {
                 m_TagSources.Keys[i].Release();
                 if (m_TagSources.Values[i] is GameplayTagSnapshot tags)
-                    tags.Release();
+                    tags.ReleaseStateStorage();
             }
             m_TagSources.Clear();
             InvalidateQueryTags();

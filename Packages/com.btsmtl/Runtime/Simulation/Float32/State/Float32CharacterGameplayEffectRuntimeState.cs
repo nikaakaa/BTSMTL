@@ -24,6 +24,10 @@ namespace ThirdPersonSimulation
         {
             m_Catalog = catalog;
             m_Scratch = scratch;
+            m_DecodeReader.DeclaredIdentityReader = catalog.LifecycleIdentities.ReadPublished;
+            m_DecodeBlockReader.DeclaredIdentityReader = catalog.LifecycleIdentities.ReadPublished;
+            m_DecodeReader.PublishedValues = catalog.PublishedValues;
+            m_DecodeBlockReader.PublishedValues = catalog.PublishedValues;
             m_Working = new SimulationGameplayEffectState(catalog, scratch);
             m_Aggregate = m_Working.Freeze();
             m_Disposed = false;
@@ -105,6 +109,10 @@ namespace ThirdPersonSimulation
             m_Working = null;
             m_Scratch = null;
             m_Catalog = null;
+            m_DecodeReader.DeclaredIdentityReader = null;
+            m_DecodeBlockReader.DeclaredIdentityReader = null;
+            m_DecodeReader.PublishedValues = null;
+            m_DecodeBlockReader.PublishedValues = null;
             m_DecodeReader.Reset(Array.Empty<byte>());
             m_DecodeBlockReader.Reset(Array.Empty<byte>());
         }

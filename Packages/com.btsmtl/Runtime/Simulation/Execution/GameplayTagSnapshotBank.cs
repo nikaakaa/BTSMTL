@@ -1,9 +1,11 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 
 namespace ThirdPersonSimulation
 {
+    [CanonicalBorrowedSequence(typeof(GameplayTagSnapshotBank), RetainStorageOnRead = true, DeclaredText = true, SortedUnique = true)]
     internal sealed class GameplayTagSnapshot : IReadOnlyList<string>
     {
         readonly GameplayTagSnapshotBank m_Owner;
@@ -12,6 +14,7 @@ namespace ThirdPersonSimulation
         int m_Retainers;
         int m_Count;
 
+        [CanonicalDefaultValue]
         internal static readonly GameplayTagSnapshot Empty = new GameplayTagSnapshot(null, -1, 0);
 
         internal GameplayTagSnapshot(GameplayTagSnapshotBank owner, int index, int width)
@@ -22,8 +25,9 @@ namespace ThirdPersonSimulation
         }
 
         public int Count => m_Count;
+        internal int Capacity => m_Values.Length;
         public string this[int index] => m_Values[index];
-        internal ReadOnlySpan<string> Values => m_Values.AsSpan(0, m_Count);
+        internal Span<string> Span => m_Values.AsSpan(0, m_Count);
 
         internal void Begin(int count) => m_Count = count;
         internal void Write(int index, string value) => m_Values[index] = value;
@@ -53,13 +57,13 @@ namespace ThirdPersonSimulation
             m_Values[root] = value;
         }
 
-        internal void Retain()
+        internal void RetainStateStorage()
         {
             if (m_Owner != null)
                 m_Retainers++;
         }
 
-        internal void Release()
+        internal void ReleaseStateStorage()
         {
             if (m_Owner != null && --m_Retainers == 0)
             {
@@ -110,6 +114,19 @@ namespace ThirdPersonSimulation
 
         internal int AvailableCount => m_AvailableCount;
         internal int PageCount => m_Pages.Length;
+
+        internal Span<string> Reserve(int count, out GameplayTagSnapshot items)
+        {
+            if (count == 0)
+            {
+                items = GameplayTagSnapshot.Empty;
+                return Span<string>.Empty;
+            }
+            if (count < 0 || m_AvailableCount == 0 || count > m_Pages[0].Capacity)
+                throw new InvalidDataException("Gameplay Tag sequence exceeds its prepared storage.");
+            items = Begin(count);
+            return items.Span;
+        }
 
         internal GameplayTagSnapshot Begin(int length)
         {

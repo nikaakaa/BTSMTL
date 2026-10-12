@@ -13,10 +13,10 @@ namespace ThirdPersonSimulation.Fixed
         const uint ActiveMagic = 0x32464745;
         const uint PeriodsMagic = 0x32504745;
         const uint JournalMagic = 0x324A4745;
-        const int StateVersion = 14;
+        const int StateVersion = 15;
         internal static readonly string CanonicalSchema = CanonicalContractProtocol.ComposeSchema(
             "gameplay-effect-state/" + StateVersion,
-            PortableAttributeData.CanonicalSchema, PortableAttributeModifierState.CanonicalSchema, SimulationGameplayEffectContext.CanonicalSchema,
+            PortableEffectSpecData.CanonicalSchema, PortableAttributeData.CanonicalSchema, PortableAttributeModifierState.CanonicalSchema, SimulationGameplayEffectContext.CanonicalSchema,
             GameplayEffectPredictionStateData.CanonicalSchema, GameplayEffectActiveStateData.CanonicalSchema, GameplayEffectActiveControlSnapshot.CanonicalSchema, GameplayEffectLifecycleRevisionKey.CanonicalSchema,
             GameplayEffectLifecycleRevisionEntry.CanonicalSchema);
         static readonly StableHash CanonicalSchemaHash = new StableHash(CanonicalSchema);
@@ -299,47 +299,17 @@ namespace ThirdPersonSimulation.Fixed
         }
 
         static void WriteSpec(CanonicalWriter writer, PortableEffectSpecState spec,
-            FixedGameplayEffectRuntimeCatalog catalog)
-        {
-            writer.WriteInt32(spec.Definition.Index);
-            SimulationGameplayEffectContext.CanonicalWrite(writer, spec.Context);
-            WriteScalarMap(writer, spec.SetByCaller, catalog, false);
-            WriteScalarMap(writer, spec.SourceAttributes, catalog, true);
-            WriteScalarMap(writer, spec.TargetAttributes, catalog, true);
-            writer.WriteBoolean(spec.SourceTagSnapshotProvided);
-            WriteTags(writer, spec.SourceTags, catalog);
-            WriteTags(writer, spec.TargetTags, catalog);
-            writer.WriteUInt64(spec.DurationTicks);
-            writer.WriteUInt64(spec.PeriodTicks);
-        }
+            FixedGameplayEffectRuntimeCatalog catalog) =>
+            PortableEffectSpecData.CanonicalWrite(writer, in spec.Data);
 
         static PortableEffectSpecState ReadSpec(CanonicalReader reader, FixedGameplayEffectRuntimeCatalog catalog,
             FixedGameplayEffectExecutionScratch scratch, GameplayTagSnapshotBank tagPages)
         {
-            int definitionIndex = ReadIndex(reader, catalog.ContentLayout.Definitions.Count);
-            PortableEffectDefinition definition = catalog.EffectAt(definitionIndex);
-            SimulationGameplayEffectContext context = SimulationGameplayEffectContext.CanonicalReadRequired(reader);
             RequireResource(1, scratch.AvailableSpecCount);
-            PortableEffectSpecState spec = scratch.AcquireDecodedSpec(definition, context);
+            PortableEffectSpecState spec = scratch.AcquireDecodedSpec();
             try
             {
-                ReadScalarMap(reader, spec.SetByCaller, definition.SetByCallerParameters, catalog, false);
-                ReadScalarMap(reader, spec.SourceAttributes, definition.SourceSnapshotAttributes, catalog, true);
-                ReadScalarMap(reader, spec.TargetAttributes, definition.TargetSnapshotAttributes, catalog, true);
-                spec.SourceTagSnapshotProvided = reader.ReadBoolean();
-                GameplayTagSnapshot source = ReadTags(reader, catalog, tagPages, !spec.SourceTagSnapshotProvided,
-                    catalog.CapacityLayout.Actor.SourceTagSnapshotEntries);
-                spec.SetSourceTags(source);
-                source.Release();
-                GameplayTagSnapshot target = ReadTags(reader, catalog, tagPages, true,
-                    catalog.CapacityLayout.Actor.SourceTagSnapshotEntries);
-                spec.SetTargetTags(target);
-                target.Release();
-                spec.DurationTicks = reader.ReadUInt64();
-                spec.PeriodTicks = reader.ReadUInt64();
-                if ((definition.DurationPolicy == PortableEffectDurationPolicy.Duration) != (spec.DurationTicks > 0) ||
-                    definition.HasPeriod != (spec.PeriodTicks > 0))
-                    throw new InvalidDataException("Gameplay Effect Spec timing does not match its published declaration.");
+                PortableEffectSpecData.CanonicalReadInto(reader, ref spec.Data, tagPages);
                 return spec;
             }
             catch
@@ -386,32 +356,9 @@ namespace ThirdPersonSimulation.Fixed
             return modifier;
         }
 
-        static void WriteScalarMap(CanonicalWriter writer, SortedList<string, FixedScalar> values,
-            FixedGameplayEffectRuntimeCatalog catalog, bool attributes)
-        {
-            writer.WriteInt32(values.Count);
-            for (int i = 0; i < values.Count; i++)
-            {
-                writer.WriteInt32(attributes ? catalog.AttributeDependencies.AttributeIndex(values.Keys[i]) : i);
-                writer.WriteScalar(values.Values[i]);
-            }
-        }
 
-        static void ReadScalarMap(CanonicalReader reader, SortedList<string, FixedScalar> destination,
-            IReadOnlyList<string> declared, FixedGameplayEffectRuntimeCatalog catalog, bool attributes)
-        {
-            int count = ReadCount(reader, declared.Count);
-            if (count != declared.Count)
-                throw new InvalidDataException("Gameplay Effect captured values do not match the published declaration.");
-            for (int i = 0; i < count; i++)
-            {
-                string id = declared[i];
-                int expected = attributes ? catalog.AttributeDependencies.AttributeIndex(id) : i;
-                if (reader.ReadInt32() != expected)
-                    throw new InvalidDataException("Gameplay Effect captured values are not canonically ordered.");
-                destination.Add(id, reader.ReadScalar());
-            }
-        }
+
+
 
         static void WriteTags(CanonicalWriter writer, IReadOnlyList<string> tags, FixedGameplayEffectRuntimeCatalog catalog)
         {
@@ -428,7 +375,7 @@ namespace ThirdPersonSimulation.Fixed
                 return GameplayTagSnapshot.Empty;
             RequireResource(1, pages.AvailableCount);
             GameplayTagSnapshot tags = pages.Begin(count);
-            tags.Retain();
+            tags.RetainStateStorage();
             try
             {
                 int previous = -1;
@@ -444,7 +391,7 @@ namespace ThirdPersonSimulation.Fixed
             }
             catch
             {
-                tags.Release();
+                tags.ReleaseStateStorage();
                 throw;
             }
         }

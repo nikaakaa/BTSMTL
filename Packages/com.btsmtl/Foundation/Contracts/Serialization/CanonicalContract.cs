@@ -19,6 +19,9 @@ namespace ThirdPersonSimulation
         public Type Storage { get; }
         public bool HoldStorage { get; set; } = true;
         public bool RetainElementsOnRead { get; set; }
+        public bool RetainStorageOnRead { get; set; }
+        public bool DeclaredText { get; set; }
+        public bool SortedUnique { get; set; }
     }
 
     [AttributeUsage(AttributeTargets.Class)]
@@ -27,6 +30,12 @@ namespace ThirdPersonSimulation
         public CanonicalBorrowedObjectAttribute(Type storage) => Storage = storage;
         public Type Storage { get; }
     }
+
+    [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
+    public sealed class CanonicalReferenceAccessAttribute : Attribute { }
+
+    [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
+    public sealed class CanonicalDefaultValueAttribute : Attribute { }
 
     [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
     public sealed class CanonicalSetAttribute : Attribute { }
@@ -221,8 +230,13 @@ namespace ThirdPersonSimulation
         public T Require<T>() => (T)m_Values[typeof(T)];
         public void AddReferences<T>(System.Collections.Generic.IReadOnlyList<T> values) =>
             m_Values.Add(typeof(System.Collections.Generic.IReadOnlyList<T>), values);
-        public T RequireReference<T>(int index) =>
-            ((System.Collections.Generic.IReadOnlyList<T>)m_Values[typeof(System.Collections.Generic.IReadOnlyList<T>)])[index];
+        public T RequireReference<T>(int index)
+        {
+            var values = (System.Collections.Generic.IReadOnlyList<T>)m_Values[typeof(System.Collections.Generic.IReadOnlyList<T>)];
+            if ((uint)index >= (uint)values.Count)
+                throw new System.IO.InvalidDataException("Canonical reference is absent from the published table.");
+            return values[index];
+        }
     }
 
     public static class CanonicalContractProtocol

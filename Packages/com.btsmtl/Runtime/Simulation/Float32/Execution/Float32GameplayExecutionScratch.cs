@@ -94,18 +94,18 @@ namespace ThirdPersonSimulation
 
         internal PortableEffectSpecState AcquireSpec(PortableEffectDefinition definition, in SimulationGameplayEffectContext context)
         {
-            PortableEffectSpecState spec = AcquireDecodedSpec(definition, in context);
+            PortableEffectSpecState spec = AcquireDecodedSpec();
+            spec.Definition = definition;
+            spec.SetContext(in context);
             m_CreatedSpecLeases.Add(spec);
             return spec;
         }
 
-        internal PortableEffectSpecState AcquireDecodedSpec(PortableEffectDefinition definition, in SimulationGameplayEffectContext context)
+        internal PortableEffectSpecState AcquireDecodedSpec()
         {
             int index = m_AvailableSpecs.Count - 1;
             PortableEffectSpecState spec = m_AvailableSpecs[index];
             m_AvailableSpecs.RemoveAt(index);
-            spec.Definition = definition;
-            spec.SetContext(in context);
             spec.Retain();
             return spec;
         }

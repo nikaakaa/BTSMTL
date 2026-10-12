@@ -586,6 +586,7 @@ namespace ThirdPersonSimulation.Fixed
         public bool BanDamage { get; }
     }
 
+    [CanonicalPublishedReference]
     internal sealed class PortableEffectDefinition
     {
         public PortableEffectDefinition(
@@ -648,6 +649,7 @@ namespace ThirdPersonSimulation.Fixed
         public PortableEffectComponent[] Components { get; }
         public string[] GrantedTags { get; }
         public string[] CueIds { get; }
+        [CanonicalReferenceKey]
         public int Index { get; internal set; }
         public GameplayEffectDefinitionLayout Layout { get; internal set; }
         public IReadOnlyList<string> SourceSnapshotAttributes => Layout.SourceAttributes;
@@ -713,6 +715,8 @@ namespace ThirdPersonSimulation.Fixed
                     .Concat(m_TagIds)
                     .Concat(m_EffectsByIndex.SelectMany(effect => effect.SetByCallerParameters))
                     .Concat(m_EffectsByIndex.SelectMany(effect => effect.CueIds)));
+            PublishedValues.Add(this);
+            PublishedValues.AddReferences(m_EffectsByIndex);
         }
 
         public IReadOnlyDictionary<string, string> TagParents => m_TagParents;
@@ -724,6 +728,7 @@ namespace ThirdPersonSimulation.Fixed
         public GameplayEffectRuntimeCapacityLayout CapacityLayout { get; private set; }
         public IReadOnlyDictionary<string, PortableEffectDefinition> Effects => m_Effects;
         internal GameplayEffectPublishedIdentityReader LifecycleIdentities { get; }
+        internal CanonicalPublishedValues PublishedValues { get; } = new CanonicalPublishedValues();
         public int TagIndex(string tagId) => m_TagIndices[tagId];
         public bool ContainsTag(string tagId) => m_TagIndices.ContainsKey(tagId);
         public string TagId(int index) => m_TagIds[index];

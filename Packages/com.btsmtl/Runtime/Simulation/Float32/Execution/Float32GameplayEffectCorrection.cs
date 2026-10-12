@@ -403,8 +403,8 @@ namespace ThirdPersonSimulation
             for (int i = 0; i < snapshot.TargetAttributes.Count; i++)
                 spec.TargetAttributes.Add(definition.TargetSnapshotAttributes[i], snapshot.TargetAttributes[i].Value);
             spec.SourceTagSnapshotProvided = snapshot.SourceTagSnapshotProvided;
-            spec.SetSourceTags(m_State.CaptureTags(snapshot.SourceTags));
-            spec.SetTargetTags(m_State.CaptureTags(snapshot.TargetTags));
+            spec.SourceTags = m_State.CaptureTags(snapshot.SourceTags);
+            spec.TargetTags = m_State.CaptureTags(snapshot.TargetTags);
             spec.DurationTicks = snapshot.DurationTicks;
             spec.PeriodTicks = snapshot.PeriodTicks;
             return spec;
