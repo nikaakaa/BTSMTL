@@ -1186,6 +1186,7 @@ namespace ThirdPersonSimulation
 
         public CanonicalReader(ArraySegment<byte> bytes)
         {
+            MatchWriter = new CanonicalMatchWriter(this);
             Reset(bytes);
         }
 
@@ -1212,6 +1213,7 @@ namespace ThirdPersonSimulation
         }
 
         public int Remaining => m_End - m_Offset;
+        public CanonicalMatchWriter MatchWriter { get; }
         public Func<CanonicalReader, string> DeclaredIdentityReader { private get; set; }
         public ICanonicalTextResolver TextResolver => m_TextResolver;
         public void SetTextResolver(ICanonicalTextResolver resolver) => m_TextResolver = resolver;
