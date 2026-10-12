@@ -50,7 +50,7 @@ namespace ThirdPerson.CanonicalSerialization.Generator
             var types = new Dictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
             var templates = new Dictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
             var kindTrees = new List<SyntaxTree>();
-            foreach (TypeDeclarationSyntax declaration in receiver.Types)
+            foreach (BaseTypeDeclarationSyntax declaration in receiver.Types)
             {
                 var type = (INamedTypeSymbol)context.Compilation.GetSemanticModel(declaration.SyntaxTree)
                     .GetDeclaredSymbol(declaration);
@@ -60,14 +60,17 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                     templates[Identity(type)] = type;
             }
             foreach (INamedTypeSymbol template in templates.Values.OrderBy(t => Identity(t), StringComparer.Ordinal))
+                if (!ValidateTemplate(context, template)) return;
+            foreach (INamedTypeSymbol template in templates.Values.OrderBy(t => Identity(t), StringComparer.Ordinal))
             {
-                Member[] cases = Cases(StorageMembers(template));
-                if (template.TypeKind != TypeKind.Struct || cases.Length == 0)
+                Member[] cases = Cases(UnionMembers(template));
+                if (cases.Length == 0 || template.TypeKind != TypeKind.Struct && template.TypeKind != TypeKind.Enum)
                 {
                     context.ReportDiagnostic(Diagnostic.Create(InvalidContract, template.Locations.FirstOrDefault(),
-                        Identity(template), "联合模板必须在正式 struct 成员声明闭合分支"));
+                        Identity(template), "联合模板必须在正式 struct 成员或 enum 分支声明闭合载荷"));
                     continue;
                 }
+                if (template.TypeKind == TypeKind.Enum) continue;
                 var code = new StringBuilder();
                 code.Append("namespace ").Append(template.ContainingNamespace.ToDisplayString()).AppendLine(" {");
                 EmitKind(code, template, cases);
@@ -1226,10 +1229,10 @@ namespace ThirdPerson.CanonicalSerialization.Generator
 
         sealed class Receiver : ISyntaxReceiver
         {
-            public readonly List<TypeDeclarationSyntax> Types = new List<TypeDeclarationSyntax>();
+            public readonly List<BaseTypeDeclarationSyntax> Types = new List<BaseTypeDeclarationSyntax>();
             public void OnVisitSyntaxNode(SyntaxNode node)
             {
-                if (node is TypeDeclarationSyntax type && type.AttributeLists.Count > 0)
+                if (node is BaseTypeDeclarationSyntax type && type.AttributeLists.Count > 0)
                     Types.Add(type);
             }
         }
@@ -1322,7 +1325,7 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                     plan.UnionDefinition = (INamedTypeSymbol)union.ConstructorArguments[0].Value;
                     if (!HasAttribute(plan.UnionDefinition, UnionTemplateAttribute) || plan.UnionDefinition.IsUnboundGenericType)
                         Error(plan, type, "联合必须引用已声明模板的闭合正式 C# 类型");
-                    Member[] generated = StorageMembers(plan.UnionDefinition)
+                    Member[] generated = UnionMembers(plan.UnionDefinition)
                         .Where(m => Identity(m.Type) != UnavailableType).ToArray();
                     foreach (Member member in generated)
                         member.Generated = true;
@@ -1346,7 +1349,8 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                     plan.Cases.Length != 0 || plan.Members.Length != 1 || Identity(plan.Members[0].Type) != HashType))
                     Error(plan, type, "正式 Hash 包装必须由 readonly struct 的唯一 StableHash 存储成员持有");
                 INamedTypeSymbol kindOwner = plan.UnionDefinition ?? type;
-                plan.KindType = "global::" + kindOwner.ContainingNamespace.ToDisplayString() + "." + Escape(kindOwner.Name) + "Kind";
+                plan.KindType = kindOwner.TypeKind == TypeKind.Enum ? TypeName(kindOwner) :
+                    "global::" + kindOwner.ContainingNamespace.ToDisplayString() + "." + Escape(kindOwner.Name) + "Kind";
                 plan.Validations = type.GetMembers().OfType<IMethodSymbol>()
                     .Where(m => HasAttribute(m, ValidationAttribute)).OrderBy(m => m.Name, StringComparer.Ordinal).ToArray();
                 foreach (IMethodSymbol validation in plan.Validations)
@@ -1361,9 +1365,11 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                     descriptor.Append("|presence:").Append(Identity(plan.Presence));
                 if (plan.UnionDefinition != null)
                     descriptor.Append("|union:").Append(Identity(plan.UnionDefinition));
-                Member[] declaredCases = Cases(StorageMembers(plan.UnionDefinition ?? type));
+                Member[] declaredCases = Cases(UnionMembers(plan.UnionDefinition ?? type));
                 foreach (Member member in plan.Cases)
-                    descriptor.Append("|case:").Append(Array.FindIndex(declaredCases, m => m.Symbol.Name == member.Symbol.Name) + 1)
+                    descriptor.Append("|case:").Append(plan.UnionDefinition?.TypeKind == TypeKind.Enum ?
+                        Convert.ToInt32(((IFieldSymbol)member.Symbol).ConstantValue, CultureInfo.InvariantCulture) :
+                        Array.FindIndex(declaredCases, m => m.Symbol.Name == member.Symbol.Name) + 1)
                         .Append('=').Append(MemberIdentity(plan, member));
                 foreach (IFieldSymbol constant in type.GetMembers().OfType<IFieldSymbol>()
                     .Where(f => HasAttribute(f, SchemaConstantAttribute)).OrderBy(f => f.Name, StringComparer.Ordinal))
@@ -1625,6 +1631,39 @@ namespace ThirdPerson.CanonicalSerialization.Generator
             .OrderBy(Identity, StringComparer.Ordinal)
             .Select(s => new Member { Symbol = s, Type = s is IFieldSymbol f ? f.Type : ((IPropertySymbol)s).Type,
                 IsCase = HasAttribute(s, UnionCaseAttribute), Payload = HasAttribute(s, PayloadAttribute) }).ToArray();
+
+        static bool ValidateTemplate(GeneratorExecutionContext context, INamedTypeSymbol type)
+        {
+            if (type.TypeKind != TypeKind.Enum) return true;
+            var codes = new HashSet<int>();
+            bool valid = true;
+            foreach (IFieldSymbol field in type.GetMembers().OfType<IFieldSymbol>().Where(member => member.HasConstantValue))
+            {
+                AttributeData branch = field.GetAttributes().SingleOrDefault(attribute => Identity(attribute.AttributeClass) == UnionCaseAttribute);
+                string reason = null;
+                if (branch == null || branch.ConstructorArguments.Length != 1 ||
+                    !(branch.ConstructorArguments[0].Value is ITypeSymbol))
+                    reason = "每个正式 enum 分支必须在原成员声明唯一载荷类型";
+                decimal code = Convert.ToDecimal(field.ConstantValue, CultureInfo.InvariantCulture);
+                if (code < int.MinValue || code > int.MaxValue || !codes.Add((int)code))
+                    reason = "正式联合分支必须使用唯一 Int32 判别值";
+                if (reason == null) continue;
+                context.ReportDiagnostic(Diagnostic.Create(InvalidContract, field.Locations.FirstOrDefault(), Identity(field), reason));
+                valid = false;
+            }
+            return valid;
+        }
+
+        static Member[] UnionMembers(INamedTypeSymbol type) => type.TypeKind == TypeKind.Enum ?
+            type.GetMembers().OfType<IFieldSymbol>().Where(field => field.HasConstantValue && HasAttribute(field, UnionCaseAttribute))
+                .OrderBy(field => field.Name, StringComparer.Ordinal)
+                .Select(field => new Member
+                {
+                    Symbol = field,
+                    Type = (ITypeSymbol)field.GetAttributes().Single(attribute => Identity(attribute.AttributeClass) == UnionCaseAttribute)
+                        .ConstructorArguments.Single().Value,
+                    IsCase = true
+                }).ToArray() : StorageMembers(type);
 
         static IEnumerable<List<Member>> CaseGroups(IEnumerable<Member> cases)
         {

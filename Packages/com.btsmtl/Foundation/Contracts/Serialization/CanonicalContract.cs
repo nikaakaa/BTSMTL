@@ -51,6 +51,9 @@ namespace ThirdPersonSimulation
     [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
     public sealed class CanonicalUnionCaseAttribute : Attribute
     {
+        public CanonicalUnionCaseAttribute() { }
+        public CanonicalUnionCaseAttribute(Type payload) => Payload = payload;
+        public Type Payload { get; }
         public bool NormalizeZero { get; set; }
         public bool NormalizeNull { get; set; }
         public string DefaultMember { get; set; }
@@ -61,7 +64,7 @@ namespace ThirdPersonSimulation
     {
     }
 
-    [AttributeUsage(AttributeTargets.Struct)]
+    [AttributeUsage(AttributeTargets.Struct | AttributeTargets.Enum)]
     public sealed class CanonicalUnionTemplateAttribute : Attribute
     {
     }
