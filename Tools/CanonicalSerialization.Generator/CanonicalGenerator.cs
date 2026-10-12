@@ -68,8 +68,6 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                 if (HasAttribute(type, StorageOwnerAttribute))
                     storageOwners[Identity(type)] = type;
             }
-            foreach (INamedTypeSymbol owner in storageOwners.Values.OrderBy(t => Identity(t), StringComparer.Ordinal))
-                EmitStorageOwner(context, owner);
             foreach (INamedTypeSymbol template in templates.Values.OrderBy(t => Identity(t), StringComparer.Ordinal))
                 if (!ValidateTemplate(context, template)) return;
             foreach (INamedTypeSymbol template in templates.Values.OrderBy(t => Identity(t), StringComparer.Ordinal))
@@ -110,6 +108,12 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                 planner.Plan((INamedTypeSymbol)compilation.GetSemanticModel(declaration.SyntaxTree)
                     .GetDeclaredSymbol(declaration.GetSyntax()));
             }
+            foreach (INamedTypeSymbol owner in storageOwners.Values.OrderBy(t => Identity(t), StringComparer.Ordinal))
+            {
+                SyntaxReference declaration = owner.DeclaringSyntaxReferences[0];
+                EmitStorageOwner(context, (INamedTypeSymbol)compilation.GetSemanticModel(declaration.SyntaxTree)
+                    .GetDeclaredSymbol(declaration.GetSyntax()), planner);
+            }
             foreach (Plan plan in planner.Plans.OrderBy(p => Identity(p.Type), StringComparer.Ordinal))
             {
                 if (!plan.Valid)
@@ -119,12 +123,12 @@ namespace ThirdPerson.CanonicalSerialization.Generator
             }
         }
 
-        static void EmitStorageOwner(GeneratorExecutionContext context, INamedTypeSymbol owner)
+        static void EmitStorageOwner(GeneratorExecutionContext context, INamedTypeSymbol owner, Planner planner)
         {
             IFieldSymbol[] fields = owner.GetMembers().OfType<IFieldSymbol>()
                 .Where(field => HasAttribute(field, StorageAttribute)).ToArray();
             string reason = null;
-            if (owner.ContainingType != null || owner.Arity != 0 || fields.Length != 1 || fields[0].IsStatic ||
+            if (owner.ContainingType != null || fields.Length != 1 || fields[0].IsStatic ||
                 !(fields[0].Type is INamedTypeSymbol data) || !HasAttribute(data, ContractAttribute))
                 reason = "状态 owner 必须由唯一真实字段持有正式数据，设施不进入该数据记录";
             else if (owner.DeclaringSyntaxReferences.Any(syntax =>
@@ -139,24 +143,50 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                 return;
             }
             IFieldSymbol storage = fields[0];
+            Plan plan = planner.StoragePlan((INamedTypeSymbol)storage.Type);
+            if (!plan.Valid) return;
             var code = new StringBuilder();
             code.Append("namespace ").Append(owner.ContainingNamespace.ToDisplayString()).AppendLine(" {");
             code.Append(owner.DeclaredAccessibility == Accessibility.Public ? "public" : "internal")
                 .Append(owner.IsReadOnly ? " readonly" : "").Append(" partial ")
-                .Append(owner.TypeKind == TypeKind.Struct ? "struct " : "class ").Append(Escape(owner.Name)).AppendLine(" {");
-            foreach (Member member in StorageMembers((INamedTypeSymbol)storage.Type))
+                .Append(owner.TypeKind == TypeKind.Struct ? "struct " : "class ").Append(Escape(owner.Name));
+            if (owner.Arity != 0)
+                code.Append('<').Append(string.Join(", ", owner.TypeParameters.Select(parameter => Escape(parameter.Name)))).Append('>');
+            foreach (ITypeParameterSymbol parameter in owner.TypeParameters)
             {
+                var constraints = new List<string>();
+                if (parameter.HasValueTypeConstraint) constraints.Add("struct");
+                else if (parameter.HasReferenceTypeConstraint) constraints.Add("class");
+                constraints.AddRange(parameter.ConstraintTypes.Select(TypeName));
+                if (parameter.HasConstructorConstraint) constraints.Add("new()");
+                if (constraints.Count != 0)
+                    code.Append(" where ").Append(Escape(parameter.Name)).Append(" : ").Append(string.Join(", ", constraints));
+            }
+            code.AppendLine(" {");
+            foreach (Member member in plan.Members)
+            {
+                string target = Escape(storage.Name) + "." + Escape(member.Symbol.Name);
                 code.Append(member.Symbol.DeclaredAccessibility == Accessibility.Public ? "public " : "internal ")
                     .Append(TypeName(member.Type)).Append(" ").Append(Escape(member.Symbol.Name)).Append(" { get => ")
-                    .Append(Escape(storage.Name)).Append(".").Append(Escape(member.Symbol.Name)).Append(";");
+                    .Append(target).Append(";");
                 if (!owner.IsReadOnly && !(storage.IsReadOnly && storage.Type.IsValueType) &&
                     !(member.Symbol is IFieldSymbol field && field.IsReadOnly) &&
                     !(member.Symbol is IPropertySymbol property && property.SetMethod == null))
-                    code.Append(" set => ").Append(Escape(storage.Name)).Append(".").Append(Escape(member.Symbol.Name)).Append(" = value;");
+                {
+                    if (plan.OwnsMemberResources && HasResources(plan, member.Type))
+                    {
+                        code.AppendLine(" set {");
+                        Hold(code, "Retain", member.Type, "value", plan);
+                        Hold(code, "Release", member.Type, target, plan);
+                        code.Append(target).AppendLine(" = value; }");
+                    }
+                    else code.Append(" set => ").Append(target).Append(" = value;");
+                }
                 code.AppendLine(" }");
             }
             code.AppendLine("} }");
-            context.AddSource(Identity(owner).Replace('.', '_') + ".Storage.g.cs", SourceText.From(code.ToString(), Encoding.UTF8));
+            context.AddSource(Identity(owner).Replace('.', '_').Replace('<', '_').Replace('>', '_').Replace(',', '_') + ".Storage.g.cs",
+                SourceText.From(code.ToString(), Encoding.UTF8));
         }
 
         static string Emit(Plan plan)
@@ -815,8 +845,9 @@ namespace ThirdPerson.CanonicalSerialization.Generator
             code.AppendLine("}");
             if (plan.OwnsMemberResources)
             {
-                code.Append("public static void CanonicalCopyInto(").Append(fullType).Append(" source, ")
-                    .Append(fullType).AppendLine(" target) {");
+                code.Append("public static void CanonicalCopyInto(")
+                    .Append(type.TypeKind == TypeKind.Struct ? "in " : "").Append(fullType).Append(" source, ")
+                    .Append(type.TypeKind == TypeKind.Struct ? "ref " : "").Append(fullType).AppendLine(" target) {");
                 if (plan.Presence != null)
                     code.Append("if (!source.").Append(Escape(plan.Presence.Name)).AppendLine(") { CanonicalClear(target); return; }");
                 foreach (Member member in plan.Members)
@@ -846,7 +877,8 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                     if (element != null) code.AppendLine("}");
                 }
                 code.AppendLine("}");
-                code.Append("public static void CanonicalClear(").Append(fullType).AppendLine(" value) {");
+                code.Append("public static void CanonicalClear(")
+                    .Append(type.TypeKind == TypeKind.Struct ? "ref " : "").Append(fullType).AppendLine(" value) {");
                 foreach (Member member in plan.Members)
                 {
                     string target = "value." + Escape(member.Symbol.Name);
@@ -1605,6 +1637,18 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                 m_Compilation = compilation;
             }
 
+            public Plan StoragePlan(INamedTypeSymbol type)
+            {
+                if (SymbolEqualityComparer.Default.Equals(type.ContainingAssembly, m_Compilation.Assembly))
+                    return Plan(type);
+                var plan = new Plan { Type = type, Members = StorageMembers(type), ResourceTypes = m_ResourceTypes,
+                    OwnsMemberResources = type.GetAttributes().Single(attribute => Identity(attribute.AttributeClass) == ContractAttribute)
+                        .NamedArguments.Any(argument => argument.Key == "OwnsMemberResources" && argument.Value.Value is true) };
+                foreach (Member member in plan.Members)
+                    Shape(plan, member.Type, member.Symbol);
+                return plan;
+            }
+
             public Plan Plan(INamedTypeSymbol type)
             {
                 if (m_Plans.TryGetValue(Identity(type), out Plan existing))
@@ -1632,7 +1676,7 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                 plan.OwnsMemberResources = plan.PreparedObject || type.GetAttributes()
                     .Single(a => Identity(a.AttributeClass) == ContractAttribute).NamedArguments
                     .Any(a => a.Key == "OwnsMemberResources" && a.Value.Value is true);
-                if (plan.OwnsMemberResources && (type.TypeKind != TypeKind.Class || !plan.PreparedRead))
+                if (plan.OwnsMemberResources && (type.IsReadOnly || !plan.PreparedRead))
                     Error(plan, type, "成员资源所有权只用于直接恢复的原可变候选对象");
                 m_Plans.Add(Identity(type), plan);
                 if (!plan.PreparedRead && !plan.MaterializedRead)

@@ -213,32 +213,18 @@ namespace ThirdPersonSimulation.Fixed
     {
     }
 
-    internal readonly struct PortableActiveEffectSnapshot
+    [CanonicalStorageOwner]
+    internal readonly partial struct PortableActiveEffectSnapshot
     {
         internal PortableActiveEffectSnapshot(PortableActiveEffectState source)
         {
-            Handle = source.Handle;
-            InstanceId = source.InstanceId;
+            Data = source.Data;
             Spec = source.Spec;
-            StartTick = source.StartTick;
-            EndTick = source.EndTick;
-            InsertionSequence = source.InsertionSequence;
-            StackCount = source.StackCount;
-            Inhibited = source.Inhibited;
-            LifecycleRevision = source.LifecycleRevision;
-            LifecycleContext = source.LifecycleContext;
         }
 
-        internal readonly ulong Handle;
-        internal readonly ulong InstanceId;
+        [CanonicalStorage]
+        internal readonly GameplayEffectActiveStateData Data;
         internal readonly PortableEffectSpecState Spec;
-        internal readonly ulong StartTick;
-        internal readonly ulong EndTick;
-        internal readonly ulong InsertionSequence;
-        internal readonly int StackCount;
-        internal readonly bool Inhibited;
-        internal readonly ulong LifecycleRevision;
-        internal readonly GameplayEffectContextIdentity LifecycleContext;
     }
 
     internal static class PortableAttributeModifierComparer
@@ -332,19 +318,7 @@ namespace ThirdPersonSimulation.Fixed
         internal void Clear()
         {
             Spec = null;
-            CausalContext = default;
-            Handle = 0;
-            InstanceId = 0;
-            PredictedInstanceId = 0;
-            CreatedActive = false;
-            HasActiveBefore = false;
-            ActiveBefore = default;
-            MutationKind = default;
-            ActiveBeforeInsertionSequence = 0;
-            Confirmed = false;
-            AfterLifecycleRevision = 0;
-            AfterChangeCursor = 0;
-            AuthoritativeLifecycleRevision = 0;
+            GameplayEffectPredictionStateData.CanonicalClear(ref Data);
             CueIds.Clear();
             Attributes.Clear();
         }
@@ -986,21 +960,13 @@ namespace ThirdPersonSimulation.Fixed
         }
 
         static PortableActiveEffectState RestoreActiveEffect(
-            PortableActiveEffectSnapshot source,
+            in PortableActiveEffectSnapshot source,
             FixedGameplayEffectExecutionScratch scratch)
         {
             PortableActiveEffectState active = scratch.AcquireActiveState();
-            active.Handle = source.Handle;
-            active.InstanceId = source.InstanceId;
             active.Spec = source.Spec;
             active.Spec.Retain();
-            active.StartTick = source.StartTick;
-            active.EndTick = source.EndTick;
-            active.InsertionSequence = source.InsertionSequence;
-            active.StackCount = source.StackCount;
-            active.Inhibited = source.Inhibited;
-            active.LifecycleRevision = source.LifecycleRevision;
-            active.LifecycleContext = source.LifecycleContext;
+            GameplayEffectActiveStateData.CanonicalCopyInto(in source.Data, ref active.Data);
             return active;
         }
 
@@ -1031,19 +997,7 @@ namespace ThirdPersonSimulation.Fixed
         static void CopyPrediction(PortablePredictionRecord source, PortablePredictionRecord result)
         {
             result.Spec = source.Spec;
-            result.CausalContext = source.CausalContext;
-            result.Handle = source.Handle;
-            result.InstanceId = source.InstanceId;
-            result.PredictedInstanceId = source.PredictedInstanceId;
-            result.CreatedActive = source.CreatedActive;
-            result.HasActiveBefore = source.HasActiveBefore;
-            result.ActiveBefore = source.ActiveBefore;
-            result.MutationKind = source.MutationKind;
-            result.ActiveBeforeInsertionSequence = source.ActiveBeforeInsertionSequence;
-            result.Confirmed = source.Confirmed;
-            result.AfterLifecycleRevision = source.AfterLifecycleRevision;
-            result.AfterChangeCursor = source.AfterChangeCursor;
-            result.AuthoritativeLifecycleRevision = source.AuthoritativeLifecycleRevision;
+            GameplayEffectPredictionStateData.CanonicalCopyInto(in source.Data, ref result.Data);
             result.CueIds.AddRange(source.CueIds);
             for (int i = 0; i < source.Attributes.Count; i++)
                 result.Attributes.Add(source.Attributes.Keys[i], source.Attributes.Values[i]);

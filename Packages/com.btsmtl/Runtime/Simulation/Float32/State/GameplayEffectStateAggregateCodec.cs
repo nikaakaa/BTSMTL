@@ -12,11 +12,11 @@ namespace ThirdPersonSimulation
         const uint ActiveMagic = 0x32464745;
         const uint PeriodsMagic = 0x32504745;
         const uint JournalMagic = 0x324A4745;
-        const int StateVersion = 12;
+        const int StateVersion = 13;
         internal static readonly string CanonicalSchema = CanonicalContractProtocol.ComposeSchema(
             "gameplay-effect-state/" + StateVersion,
             PortableAttributeData.CanonicalSchema, PortableAttributeModifierState.CanonicalSchema, SimulationGameplayEffectContext.CanonicalSchema,
-            GameplayEffectActiveControlSnapshot.CanonicalSchema, GameplayEffectLifecycleRevisionKey.CanonicalSchema,
+            GameplayEffectPredictionStateData.CanonicalSchema, GameplayEffectActiveStateData.CanonicalSchema, GameplayEffectActiveControlSnapshot.CanonicalSchema, GameplayEffectLifecycleRevisionKey.CanonicalSchema,
             GameplayEffectLifecycleRevisionEntry.CanonicalSchema);
         static readonly StableHash CanonicalSchemaHash = new StableHash(CanonicalSchema);
 
@@ -176,17 +176,9 @@ namespace ThirdPersonSimulation
             writer.WriteInt32(activeEffects.Length);
             for (int i = 0; i < activeEffects.Length; i++)
             {
-                PortableActiveEffectSnapshot active = activeEffects[i];
-                writer.WriteUInt64(active.Handle);
-                writer.WriteUInt64(active.InstanceId);
+                ref readonly PortableActiveEffectSnapshot active = ref activeEffects[i];
                 WriteSpec(writer, active.Spec, catalog);
-                writer.WriteUInt64(active.StartTick);
-                writer.WriteUInt64(active.EndTick);
-                writer.WriteUInt64(active.InsertionSequence);
-                writer.WriteInt32(active.StackCount);
-                writer.WriteBoolean(active.Inhibited);
-                writer.WriteUInt64(active.LifecycleRevision);
-                GameplayEffectContextIdentity.CanonicalWrite(writer, active.LifecycleContext);
+                GameplayEffectActiveStateData.CanonicalWrite(writer, in active.Data);
             }
             writer.EndLengthPrefixedBlock(prefixPosition);
         }
@@ -201,23 +193,13 @@ namespace ThirdPersonSimulation
             scratch.ActiveInstances.Clear();
             for (int i = 0; i < count; i++)
             {
-                ulong handle = reader.ReadUInt64();
-                ulong instance = reader.ReadUInt64();
                 PortableEffectSpecState spec = ReadSpec(reader, catalog, scratch, tagPages);
                 PortableActiveEffectState active = scratch.AcquireActiveState();
-                active.Handle = handle;
-                active.InstanceId = instance;
                 active.Spec = spec;
                 activeEffects.Add(active);
-                active.StartTick = reader.ReadUInt64();
-                active.EndTick = reader.ReadUInt64();
-                active.InsertionSequence = reader.ReadUInt64();
-                active.StackCount = reader.ReadInt32();
-                active.Inhibited = reader.ReadBoolean();
-                active.LifecycleRevision = reader.ReadUInt64();
-                active.LifecycleContext = GameplayEffectContextIdentity.CanonicalReadRequired(reader);
-                if (handle == 0 || instance == 0 || active.StartTick == 0 ||
-                    !scratch.ActiveHandles.Add(handle) || !scratch.ActiveInstances.Add(instance) ||
+                GameplayEffectActiveStateData.CanonicalReadInto(reader, ref active.Data);
+                if (active.Handle == 0 || active.InstanceId == 0 || active.StartTick == 0 ||
+                    !scratch.ActiveHandles.Add(active.Handle) || !scratch.ActiveInstances.Add(active.InstanceId) ||
                     active.InsertionSequence == 0 || active.StackCount <= 0 ||
                     active.StackCount > spec.Definition.MaxStacks || active.LifecycleRevision == 0 ||
                     !spec.Definition.Layout.CreatesActiveEffect ||
@@ -370,20 +352,7 @@ namespace ThirdPersonSimulation
             Float32GameplayEffectRuntimeCatalog catalog)
         {
             WriteSpec(writer, record.Spec, catalog);
-            writer.WriteUInt64(record.Handle);
-            writer.WriteUInt64(record.InstanceId);
-            GameplayEffectContextIdentity.CanonicalWrite(writer, record.CausalContext);
-            writer.WriteBoolean(record.CreatedActive);
-            writer.WriteBoolean(record.HasActiveBefore);
-            writer.WriteByte((byte)record.MutationKind);
-            writer.WriteUInt64(record.ActiveBeforeInsertionSequence);
-            if (record.HasActiveBefore)
-                GameplayEffectActiveControlSnapshot.CanonicalWrite(writer, record.ActiveBefore);
-            writer.WriteBoolean(record.Confirmed);
-            writer.WriteUInt64(record.PredictedInstanceId);
-            writer.WriteUInt64(record.AfterLifecycleRevision);
-            writer.WriteUInt64(record.AfterChangeCursor);
-            writer.WriteUInt64(record.AuthoritativeLifecycleRevision);
+            GameplayEffectPredictionStateData.CanonicalWrite(writer, in record.Data);
             writer.WriteInt32(record.CueIds.Count);
             string[] cues = record.Spec.Definition.CueIds;
             for (int index = 0; index < cues.Length; index++)
@@ -411,20 +380,7 @@ namespace ThirdPersonSimulation
             record.Retain();
             spec.Release();
             records.Add(record);
-            record.Handle = reader.ReadUInt64();
-            record.InstanceId = reader.ReadUInt64();
-            record.CausalContext = GameplayEffectContextIdentity.CanonicalReadRequired(reader);
-            record.CreatedActive = reader.ReadBoolean();
-            record.HasActiveBefore = reader.ReadBoolean();
-            record.MutationKind = (GameplayEffectLifecycleKind)reader.ReadByte();
-            record.ActiveBeforeInsertionSequence = reader.ReadUInt64();
-            if (record.HasActiveBefore)
-                record.ActiveBefore = GameplayEffectActiveControlSnapshot.CanonicalRead(reader);
-            record.Confirmed = reader.ReadBoolean();
-            record.PredictedInstanceId = reader.ReadUInt64();
-            record.AfterLifecycleRevision = reader.ReadUInt64();
-            record.AfterChangeCursor = reader.ReadUInt64();
-            record.AuthoritativeLifecycleRevision = reader.ReadUInt64();
+            GameplayEffectPredictionStateData.CanonicalReadInto(reader, ref record.Data);
             string[] cues = spec.Definition.CueIds;
             int cueCount = ReadCount(reader, cues.Length);
             int previousCue = -1;

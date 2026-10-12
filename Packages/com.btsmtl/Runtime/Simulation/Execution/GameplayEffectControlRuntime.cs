@@ -1108,7 +1108,6 @@ namespace ThirdPersonSimulation
                 handle,
                 instanceId,
                 createdActive,
-                activeBefore != null,
                 snapshot,
                 mutationKind,
                 activeBefore == null ? 0 : activeBefore.InsertionSequence);

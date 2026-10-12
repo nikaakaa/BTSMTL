@@ -130,7 +130,7 @@ namespace ThirdPersonSimulation.Fixed
         {
             value.Spec.Release();
             value.Spec = null;
-            value.LifecycleContext = default;
+            GameplayEffectActiveStateData.CanonicalClear(ref value.Data);
             m_AvailableActiveStates.Add(value);
         }
         internal void RetireActiveStates(List<PortableActiveEffectState> values) => m_RetiredActiveStates.AddRange(values);
@@ -181,7 +181,7 @@ namespace ThirdPersonSimulation.Fixed
                 PortableActiveEffectState active = m_RetiredActiveStates[i];
                 active.Spec.Release();
                 active.Spec = null;
-                active.LifecycleContext = default;
+                GameplayEffectActiveStateData.CanonicalClear(ref active.Data);
                 m_AvailableActiveStates.Add(active);
             }
             m_RetiredActiveStates.Clear();

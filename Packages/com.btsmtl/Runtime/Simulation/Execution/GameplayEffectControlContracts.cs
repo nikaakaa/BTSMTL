@@ -795,72 +795,60 @@ namespace ThirdPersonSimulation
         public ulong LifecycleRevision { get; }
         [CanonicalRequired]
         public GameplayEffectContextIdentity LifecycleContext { get; }
+        [CanonicalPresence]
+        public bool IsValid => InstanceId != 0;
         public void Retain() => CanonicalRetain(in this);
         public void Release() => CanonicalRelease(in this);
     }
 
-    internal class GameplayEffectActiveControlState<TSpec> : IGameplayEffectActiveControl<TSpec>
+    [CanonicalContract(OwnsMemberResources = true)]
+    internal partial struct GameplayEffectActiveStateData
     {
-        GameplayEffectContextIdentity m_LifecycleContext;
-
-        public ulong Handle { get; set; }
-        public ulong InstanceId { get; set; }
-        public TSpec Spec { get; set; }
-        public ulong StartTick { get; set; }
-        public ulong EndTick { get; set; }
-        public ulong InsertionSequence { get; set; }
-        public int StackCount { get; set; }
-        public bool Inhibited { get; set; }
-        public ulong LifecycleRevision { get; set; }
-        public GameplayEffectContextIdentity LifecycleContext
-        {
-            get => m_LifecycleContext;
-            set
-            {
-                value.Retain();
-                m_LifecycleContext.Release();
-                m_LifecycleContext = value;
-            }
-        }
+        public ulong Handle;
+        public ulong InstanceId;
+        public ulong StartTick;
+        public ulong EndTick;
+        public ulong InsertionSequence;
+        public int StackCount;
+        public bool Inhibited;
+        public ulong LifecycleRevision;
+        [CanonicalRequired]
+        public GameplayEffectContextIdentity LifecycleContext;
     }
 
-    internal abstract class GameplayEffectPredictionControlState<TSpec, TAttributeSnapshot> : IGameplayEffectPredictionControl<TSpec>
+    [CanonicalStorageOwner]
+    internal partial class GameplayEffectActiveControlState<TSpec> : IGameplayEffectActiveControl<TSpec>
     {
-        GameplayEffectContextIdentity m_CausalContext;
-        GameplayEffectActiveControlSnapshot m_ActiveBefore;
-
+        [CanonicalStorage]
+        internal GameplayEffectActiveStateData Data;
         public TSpec Spec { get; set; }
-        public GameplayEffectContextIdentity CausalContext
-        {
-            get => m_CausalContext;
-            set
-            {
-                value.Retain();
-                m_CausalContext.Release();
-                m_CausalContext = value;
-            }
-        }
-        public ulong Handle { get; set; }
-        public ulong InstanceId { get; set; }
-        public bool CreatedActive { get; set; }
-        public ulong PredictedInstanceId { get; set; }
-        public bool HasActiveBefore { get; set; }
-        public GameplayEffectLifecycleKind MutationKind { get; set; }
-        public ulong ActiveBeforeInsertionSequence { get; set; }
-        public GameplayEffectActiveControlSnapshot ActiveBefore
-        {
-            get => m_ActiveBefore;
-            set
-            {
-                value.Retain();
-                m_ActiveBefore.Release();
-                m_ActiveBefore = value;
-            }
-        }
-        public bool Confirmed { get; set; }
-        public ulong AfterLifecycleRevision { get; set; }
-        public ulong AfterChangeCursor { get; set; }
-        public ulong AuthoritativeLifecycleRevision { get; set; }
+    }
+
+    [CanonicalContract(OwnsMemberResources = true)]
+    internal partial struct GameplayEffectPredictionStateData
+    {
+        [CanonicalRequired]
+        public GameplayEffectContextIdentity CausalContext;
+        public ulong Handle;
+        public ulong InstanceId;
+        public bool CreatedActive;
+        public ulong PredictedInstanceId;
+        public GameplayEffectLifecycleKind MutationKind;
+        public ulong ActiveBeforeInsertionSequence;
+        public GameplayEffectActiveControlSnapshot ActiveBefore;
+        public bool Confirmed;
+        public ulong AfterLifecycleRevision;
+        public ulong AfterChangeCursor;
+        public ulong AuthoritativeLifecycleRevision;
+    }
+
+    [CanonicalStorageOwner]
+    internal abstract partial class GameplayEffectPredictionControlState<TSpec, TAttributeSnapshot> : IGameplayEffectPredictionControl<TSpec>
+    {
+        [CanonicalStorage]
+        internal GameplayEffectPredictionStateData Data;
+        public TSpec Spec { get; set; }
+        public bool HasActiveBefore => ActiveBefore.IsValid;
         public List<string> CueIds { get; } = new List<string>();
         public SortedList<string, TAttributeSnapshot> Attributes { get; } = new SortedList<string, TAttributeSnapshot>(StringComparer.Ordinal);
 
@@ -1051,7 +1039,6 @@ namespace ThirdPersonSimulation
             ulong handle,
             ulong instanceId,
             bool createdActive,
-            bool hasActiveBefore,
             GameplayEffectActiveControlSnapshot activeBefore,
             GameplayEffectLifecycleKind mutationKind,
             ulong activeBeforeInsertionSequence);

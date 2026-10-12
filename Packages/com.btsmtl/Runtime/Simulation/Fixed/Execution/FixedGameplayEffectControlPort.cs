@@ -176,7 +176,6 @@ namespace ThirdPersonSimulation.Fixed
             ulong handle,
             ulong instanceId,
             bool createdActive,
-            bool hasActiveBefore,
             GameplayEffectActiveControlSnapshot activeBefore,
             GameplayEffectLifecycleKind mutationKind,
             ulong activeBeforeInsertionSequence)
@@ -188,7 +187,6 @@ namespace ThirdPersonSimulation.Fixed
             prediction.InstanceId = instanceId;
             prediction.PredictedInstanceId = instanceId;
             prediction.CreatedActive = createdActive;
-            prediction.HasActiveBefore = hasActiveBefore;
             prediction.ActiveBefore = activeBefore;
             prediction.MutationKind = mutationKind;
             prediction.ActiveBeforeInsertionSequence = activeBeforeInsertionSequence;
