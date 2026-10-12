@@ -218,12 +218,9 @@ namespace BTSMTL.Diagnostics
             RuntimeInstanceKey runtimeInstance,
             in RuntimeTracePayload sourcePayload)
         {
-            RuntimeTracePayload payload = sourcePayload;
             m_Sequence++;
             if (m_Sequence == 0)
                 m_Sequence++;
-            payload.SourceClockId = m_SourceClockId;
-            payload.SourceTickKind = m_SourceTickKind;
             ulong position = domain == RuntimeTraceDomain.Presentation ? m_PresentationFrame : m_LogicTick;
             RuntimeTraceEvent traceEvent = new RuntimeTraceEvent(
                 SessionId,
@@ -238,7 +235,9 @@ namespace BTSMTL.Diagnostics
                 runtimeInstance.IsValid ? runtimeInstance : CurrentRuntimeInstance,
                 source,
                 kind,
-                payload);
+                in sourcePayload,
+                m_SourceClockId,
+                m_SourceTickKind);
             return Store.Publish(in traceEvent);
         }
 

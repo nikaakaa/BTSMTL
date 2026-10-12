@@ -60,9 +60,10 @@ namespace BTSMTL.Diagnostics
             Source = traceEvent.Source;
             Instance = traceEvent.RuntimeInstance;
             Kind = traceEvent.Kind;
+            ref readonly RuntimeTracePayload payload = ref RuntimeTraceEvent.ReadPayload(in traceEvent);
             bool blackboard = Kind is RuntimeTraceEventKind.BlackboardWritten or RuntimeTraceEventKind.BlackboardSnapshot;
-            BlackboardStateSlot = blackboard ? traceEvent.Payload.BlackboardStateSlot : -1;
-            BlackboardAbilityId = blackboard ? traceEvent.Payload.SkillId : string.Empty;
+            BlackboardStateSlot = blackboard ? payload.BlackboardStateSlot : -1;
+            BlackboardAbilityId = blackboard ? payload.SkillId : string.Empty;
         }
 
         public RuntimeTraceChannel Channel { get; }
@@ -616,8 +617,8 @@ namespace BTSMTL.Diagnostics
                 RuntimeTraceEventKind.EdgeSelected or RuntimeTraceEventKind.EdgeEvaluated or
                 RuntimeTraceEventKind.StateTransitionSelected or RuntimeTraceEventKind.StateTransitionEvaluated) && left.Position != right.Position)
                 return false;
-            RuntimeTracePayload leftPayload = left.Payload;
-            RuntimeTracePayload rightPayload = right.Payload;
+            ref readonly RuntimeTracePayload leftPayload = ref RuntimeTraceEvent.ReadPayload(in left);
+            ref readonly RuntimeTracePayload rightPayload = ref RuntimeTraceEvent.ReadPayload(in right);
             return left.Domain == right.Domain &&
                    left.ExecutionBranchId == right.ExecutionBranchId &&
                    PayloadEquivalent(in leftPayload, in rightPayload);

@@ -710,7 +710,7 @@ namespace BTSMTL.Diagnostics
         public EventId SourceEventId;
         [NonSerialized] public AnimationClip SourceAnimationClip;
 
-        public void Retain()
+        public readonly void Retain()
         {
             Status.Retain();
             Name.Retain();
@@ -725,7 +725,7 @@ namespace BTSMTL.Diagnostics
             TimelinePlayback.Retain();
         }
 
-        public void Release()
+        public readonly void Release()
         {
             Status.Release();
             Name.Release();
@@ -757,6 +757,28 @@ namespace BTSMTL.Diagnostics
             RuntimeSourceElementHandle source,
             RuntimeTraceEventKind kind,
             in RuntimeTracePayload payload)
+            : this(sessionId, contentRevision, runtimeEpoch, executionBranchId, domain, channel,
+                position, timeSeconds, sequence, runtimeInstance, source, kind, in payload,
+                payload.SourceClockId, payload.SourceTickKind)
+        {
+        }
+
+        internal RuntimeTraceEvent(
+            Guid sessionId,
+            RuntimeContentRevision contentRevision,
+            ulong runtimeEpoch,
+            Guid executionBranchId,
+            RuntimeTraceDomain domain,
+            RuntimeTraceChannel channel,
+            ulong position,
+            double timeSeconds,
+            ulong sequence,
+            RuntimeInstanceKey runtimeInstance,
+            RuntimeSourceElementHandle source,
+            RuntimeTraceEventKind kind,
+            in RuntimeTracePayload payload,
+            string sourceClockId,
+            string sourceTickKind)
         {
             SessionId = sessionId;
             ContentRevision = contentRevision;
@@ -771,6 +793,8 @@ namespace BTSMTL.Diagnostics
             Source = source;
             Kind = kind;
             m_Payload = payload;
+            m_Payload.SourceClockId = sourceClockId;
+            m_Payload.SourceTickKind = sourceTickKind;
         }
 
         public Guid SessionId { get; }
@@ -787,6 +811,7 @@ namespace BTSMTL.Diagnostics
         public RuntimeTraceEventKind Kind { get; }
         readonly RuntimeTracePayload m_Payload;
         public RuntimeTracePayload Payload => m_Payload;
+        internal static ref readonly RuntimeTracePayload ReadPayload(in RuntimeTraceEvent traceEvent) => ref traceEvent.m_Payload;
         public CanonicalTextValue GetStatus() => m_Payload.Status;
         public CanonicalTextValue GetDetail() => m_Payload.Detail;
         public int GetCycle() => m_Payload.Cycle;
