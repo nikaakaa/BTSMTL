@@ -34,7 +34,7 @@ namespace BTSMTL.Diagnostics.Editor
         readonly RuntimeTraceEvent[] m_ReadPages = new RuntimeTraceEvent[CheckpointPageInterval * EventsPerPage];
         readonly long[] m_ReadPageFirst = new long[CheckpointPageInterval];
         readonly int[] m_ReadPageCounts = new int[CheckpointPageInterval];
-        readonly RuntimeTraceEvent[] m_PageStates = new RuntimeTraceEvent[CheckpointPageInterval * StateCapacity];
+        readonly RuntimeTraceEvent[][] m_PageStates = new RuntimeTraceEvent[CheckpointPageInterval][];
         readonly long[] m_PageStateFirst = new long[CheckpointPageInterval];
         readonly int[] m_PageStateCounts = new int[CheckpointPageInterval];
         readonly long[] m_PageStateEvictions = new long[CheckpointPageInterval];
@@ -88,6 +88,7 @@ namespace BTSMTL.Diagnostics.Editor
             CaptureId = Guid.NewGuid();
             m_Directory = Path.GetFullPath(Path.Combine("Library", "WorkbenchPreviewHistory", CaptureId.ToString("N")));
             Directory.CreateDirectory(m_Directory);
+            Array.Fill(m_PageStates, Array.Empty<RuntimeTraceEvent>());
             for (int i = 0; i < PageCount; i++)
             {
                 m_Pages[i] = new RuntimeTraceEvent[EventsPerPage];
@@ -230,7 +231,7 @@ namespace BTSMTL.Diagnostics.Editor
                 for (int page = 0; page < m_Pages.Length; page++)
                     ClearEvents(m_Pages[page]);
                 ClearEvents(m_ReadPages);
-                ClearEvents(m_PageStates);
+                ClearPageStates();
                 ClearEvents(m_CheckpointState);
                 for (int i = 0; i < m_StateScratch.Count; i++)
                     m_StateScratch[i].Release();
@@ -354,7 +355,7 @@ namespace BTSMTL.Diagnostics.Editor
             }
             m_Times.Clear();
             ClearEvents(m_ReadPages);
-            ClearEvents(m_PageStates);
+            ClearPageStates();
             ClearEvents(m_CheckpointState);
             for (int i = 0; i < m_StateScratch.Count; i++) m_StateScratch[i].Release();
             m_StateScratch.Clear();
@@ -363,7 +364,6 @@ namespace BTSMTL.Diagnostics.Editor
             m_Result.Clear();
             m_Metadata.Reset();
             Array.Clear(m_ReadPageCounts, 0, m_ReadPageCounts.Length);
-            Array.Clear(m_PageStateCounts, 0, m_PageStateCounts.Length);
             m_Written = m_WrittenPages = 0;
             m_WrittenSegments = m_ReadSlot = 0;
             m_Checkpoint = default;
@@ -427,8 +427,14 @@ namespace BTSMTL.Diagnostics.Editor
         {
             int slot = (int)(pageId % CheckpointPageInterval);
             m_PageStateEvictions[slot] = baseEvictions + state.CopyStateTo(m_StateScratch);
-            Span<RuntimeTraceEvent> states = m_PageStates.AsSpan(slot * StateCapacity, StateCapacity);
-            ClearEvents(states);
+            Span<RuntimeTraceEvent> states = m_PageStates[slot];
+            ClearEvents(states.Slice(0, m_PageStateCounts[slot]));
+            if (states.Length < m_StateScratch.Count)
+            {
+                m_PageStates[slot] = new RuntimeTraceEvent[Math.Min(StateCapacity,
+                    Math.Max(m_StateScratch.Count, states.Length * 2))];
+                states = m_PageStates[slot];
+            }
             for (int i = 0; i < m_StateScratch.Count; i++)
             {
                 m_StateScratch[i].Retain();
@@ -540,7 +546,7 @@ namespace BTSMTL.Diagnostics.Editor
                     m_CheckpointStateFirst = first;
                 }
                 ReadOnlySpan<RuntimeTraceEvent> state = cached
-                    ? m_PageStates.AsSpan(stateSlot * StateCapacity, count) : m_CheckpointState.AsSpan(0, count);
+                    ? m_PageStates[stateSlot].AsSpan(0, count) : m_CheckpointState.AsSpan(0, count);
                 m_ReadState.RestoreState(state);
                 m_ReadStateOrdinal = first - 1;
             }
@@ -781,6 +787,15 @@ namespace BTSMTL.Diagnostics.Editor
                 CheckpointFirst = m_PageReader.ReadInt64(), EvictedStates = m_PageReader.ReadInt64(),
                 SymbolCount = m_PageReader.ReadInt32(), CheckpointSymbolCount = m_PageReader.ReadInt32(),
                 StateCount = m_PageReader.ReadInt32() };
+        }
+
+        void ClearPageStates()
+        {
+            for (int slot = 0; slot < m_PageStates.Length; slot++)
+            {
+                ClearEvents(m_PageStates[slot].AsSpan(0, m_PageStateCounts[slot]));
+                m_PageStateCounts[slot] = 0;
+            }
         }
 
         static void ClearEvents(Span<RuntimeTraceEvent> events)
