@@ -69,7 +69,7 @@ namespace ThirdPersonSimulation.Fixed
             m_Working.Replace(m_Restored);
             m_Applied = true;
             m_Validated = false;
-            RestoreTimelineSnapshots(m_Restored);
+            FixedGameplayStep.AdoptTimelineBaseline(m_Roster, in m_Restored, false);
         }
 
         public void ValidateApplied()
@@ -90,24 +90,12 @@ namespace ThirdPersonSimulation.Fixed
             m_Completed = true;
         }
 
-        void RestoreTimelineSnapshots(SimulationWorldStateSet state)
-        {
-            for (int actorIndex = 0; actorIndex < state.Actors.Count; actorIndex++)
-            {
-                IReadOnlyList<AbilityTimelineRuntimeSnapshot> snapshots = state.Actors[actorIndex].State.TimelineSnapshots;
-                for (int index = 0; index < snapshots.Count; index++)
-                    m_Roster[actorIndex].TimelineRuntime.ApplyRestore(snapshots[index], state.LastCompletedTick);
-            }
-        }
-
         public void Rollback()
         {
             if (m_Completed || !m_Applied)
                 return;
             m_Working.Replace(m_Previous);
-            RestoreTimelineSnapshots(m_Previous);
-            for (int index = 0; index < m_Roster.Count; index++)
-                m_Roster[index].TimelineRuntime?.DiscardUnpublishedPlaybacks(m_Previous.Actors[index].State.TimelineSnapshots);
+            FixedGameplayStep.AdoptTimelineBaseline(m_Roster, in m_Previous, true);
             m_Applied = false;
             m_Validated = false;
         }

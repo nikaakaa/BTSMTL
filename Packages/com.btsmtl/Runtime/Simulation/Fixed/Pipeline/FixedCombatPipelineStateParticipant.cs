@@ -2,7 +2,7 @@ using System;
 
 namespace ThirdPersonSimulation.Fixed
 {
-    internal sealed class FixedCombatPipelineStateParticipant : ISimulationPipelineStateParticipant, ISimulationPipelineStepStateStorage
+    public sealed class FixedCombatPipelineStateParticipant : ISimulationPipelineStateParticipant, ISimulationPipelineStepStateStorage
     {
         readonly FixedCombatRuntime m_Combat;
         readonly CanonicalWriter m_Writer;

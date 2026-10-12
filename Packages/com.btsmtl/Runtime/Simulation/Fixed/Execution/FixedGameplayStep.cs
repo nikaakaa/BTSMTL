@@ -5,6 +5,22 @@ namespace ThirdPersonSimulation.Fixed
 {
     public static class FixedGameplayStep
     {
+        public static void AdoptTimelineBaseline(
+            IReadOnlyList<SimulationActorBinding> roster,
+            in SimulationWorldStateSet state,
+            bool discardUnpublishedPlaybacks)
+        {
+            for (int actorIndex = 0; actorIndex < state.Actors.Count; actorIndex++)
+            {
+                IReadOnlyList<AbilityTimelineRuntimeSnapshot> snapshots = state.Actors[actorIndex].State.TimelineSnapshots;
+                IAbilityTimelineRuntime timeline = roster[actorIndex].TimelineRuntime;
+                for (int index = 0; index < snapshots.Count; index++)
+                    timeline.ApplyRestore(snapshots[index], state.LastCompletedTick);
+                if (discardUnpublishedPlaybacks)
+                    timeline?.DiscardUnpublishedPlaybacks(snapshots);
+            }
+        }
+
         public static WorldSolveBatchResult WorldResolveBatch(
             ICharacterWorldSolver solver,
             ISimulationDiagnosticsSink diagnostics,
