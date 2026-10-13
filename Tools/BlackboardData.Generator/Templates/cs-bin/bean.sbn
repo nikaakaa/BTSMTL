@@ -1,0 +1,89 @@
+using System;
+using Luban;
+using ThirdPersonSimulation;
+{{~if has_tag __bean "btsmtl.domain" ~}}
+{{ domain = get_tag __bean "btsmtl.domain" }}
+{{ value_type = "ThirdPersonSimulation.AbilityStateValue" }}
+{{ if domain == "Fixed"; value_type = "ThirdPersonSimulation.Fixed.AbilityStateValue"; end }}
+namespace {{__namespace_with_top_module}}
+{
+    [CanonicalContract]
+    public sealed partial class {{__name}} : IGeneratedBlackboardValues<{{value_type}}>
+    {
+        {{~for field in __bean.export_fields~}}
+        public {{declaring_type_name field.ctype}} {{field.name}};
+        {{~end~}}
+
+        public int FieldCount => {{__bean.export_fields.size}};
+
+        public void ReadDefaults(ByteBuf buffer)
+        {
+            {{~for field in __bean.export_fields~}}
+            {{~if (get_tag field "btsmtl.kind") == "Boolean" || (get_tag field "btsmtl.kind") == "Int32"~}}
+            {{deserialize "buffer" field.name field.ctype}}
+            {{~else~}}
+            {{field.name}} = global::{{field.ctype.def_bean.full_name}}.Deserialize{{field.ctype.def_bean.name}}(buffer);
+            {{~end~}}
+            {{~end~}}
+        }
+
+        public {{value_type}} Read(int field)
+        {
+            switch (field)
+            {
+                {{~for field in __bean.export_fields~}}
+                case {{get_tag field "btsmtl.index"}}: return {{value_type}}.From{{get_tag field "btsmtl.kind"}}({{field.name}});
+                {{~end~}}
+                default: throw new IndexOutOfRangeException();
+            }
+        }
+
+        public void Write(int field, {{value_type}} value)
+        {
+            switch (field)
+            {
+                {{~for field in __bean.export_fields~}}
+                case {{get_tag field "btsmtl.index"}}: {{field.name}} = value.{{get_tag field "btsmtl.kind"}}; return;
+                {{~end~}}
+                default: throw new IndexOutOfRangeException();
+            }
+        }
+
+        public void CopyTo(IGeneratedBlackboardValues<{{value_type}}> destination)
+        {
+            var target = ({{__name}})destination;
+            {{~for field in __bean.export_fields~}}
+            target.{{field.name}} = {{field.name}};
+            {{~end~}}
+        }
+
+        public void Clear()
+        {
+            {{~for field in __bean.export_fields~}}
+            {{field.name}} = default;
+            {{~end~}}
+        }
+
+        public void WriteCanonical<TWriter>(TWriter writer) where TWriter : class, ICanonicalValueWriter => CanonicalWrite(writer, this);
+        public void ReadCanonical(CanonicalReader reader) => CanonicalReadInto(reader, this);
+        public void RetainValues() => CanonicalRetain(this);
+        public void ReleaseValues() => CanonicalRelease(this);
+    }
+
+}
+{{~else~}}
+namespace {{__namespace_with_top_module}}
+{
+    public static class {{__name}}
+    {
+        public static {{get_tag __bean "btsmtl.mappedType"}} Deserialize{{__name}}(ByteBuf buffer)
+        {
+            {{~for field in __bean.export_fields~}}
+            {{declaring_type_name field.ctype}} {{field.name}};
+            {{deserialize "buffer" field.name field.ctype}}
+            {{~end~}}
+            return {{get_tag __bean "btsmtl.constructor"}}({{ for field in __bean.export_fields }}{{ if !for.first }}, {{ end }}{{field.name}}{{ end }});
+        }
+    }
+}
+{{~end~}}

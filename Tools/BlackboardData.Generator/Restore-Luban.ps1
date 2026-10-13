@@ -1,6 +1,7 @@
-param()
+﻿param()
 
 $ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 $dependency = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'luban.lock.json') -Encoding UTF8 -Raw | ConvertFrom-Json
 $dependencyRoot = Join-Path $PSScriptRoot ('.tools\luban-' + $dependency.version)
 $entryPath = Join-Path $dependencyRoot 'Luban\Luban.dll'

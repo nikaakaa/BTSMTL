@@ -1,0 +1,32 @@
+using System;
+using System.Collections.Generic;
+using ThirdPersonSimulation;
+{{~first_table = array.first __tables~}}
+{{~if first_table~}}
+{{ domain = get_tag first_table.value_ttype.def_bean "btsmtl.domain" }}
+{{ value_type = "ThirdPersonSimulation.AbilityStateValue" }}
+{{ if domain == "Fixed"; value_type = "ThirdPersonSimulation.Fixed.AbilityStateValue"; end }}
+namespace {{first_table.namespace}}
+{
+    [Serializable]
+    public sealed class {{__name}} : GeneratedBlackboardModule<{{value_type}}>
+    {
+        static readonly GeneratedBlackboardContract<{{value_type}}>[] s_Contracts =
+        {
+            {{~for table in __tables~}}
+            new {{table.value_ttype.def_bean.full_name}}Contract(),
+            {{~end~}}
+        };
+
+        public override IReadOnlyList<GeneratedBlackboardContract<{{value_type}}>> Contracts => s_Contracts;
+
+        public override GeneratedBlackboardContract<{{value_type}}> Require(string identity)
+        {
+            for (int index = 0; index < s_Contracts.Length; index++)
+                if (string.Equals(s_Contracts[index].Identity, identity, StringComparison.Ordinal))
+                    return s_Contracts[index];
+            throw new InvalidOperationException($"未编译黑板合同 '{identity}'。");
+        }
+    }
+}
+{{~end~}}

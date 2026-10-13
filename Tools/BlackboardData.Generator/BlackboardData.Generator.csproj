@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>Btsmtl.BlackboardData.Generator</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\Projects\ThirdPersonSimulation.Core\ThirdPersonSimulation.Core.csproj" />
+    <ProjectReference Include="..\..\Projects\ThirdPersonSimulation.Float32\ThirdPersonSimulation.Float32.csproj" />
+    <ProjectReference Include="..\..\Projects\ThirdPersonSimulation.Fixed\ThirdPersonSimulation.Fixed.csproj" />
+    <None Update="luban.lock.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Templates\**\*.sbn" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>
