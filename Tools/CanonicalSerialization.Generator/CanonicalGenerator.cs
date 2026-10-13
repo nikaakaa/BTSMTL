@@ -1309,8 +1309,7 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                     "(reader, " + (SymbolEqualityComparer.Default.Equals(plan.PreparedStorage, BorrowedStorage(member.Type))
                     ? "storage" : (OwnsSequenceStorage(member.Type) ? "value." : "storage.") + Escape(member.Symbol.Name)) + ")";
             }
-            if (member.Type.SpecialType == SpecialType.System_String && HasAttribute(member.Symbol, DeclaredTextAttribute) &&
-                (plan.PreparedRead || ResolveDeclaredOnMaterialization(member)))
+            if (ReadsDeclaredText(member, plan))
                 return "reader.ReadDeclaredString()";
             if (plan.PreparedRead && PreparedStorage(member.Type) != null)
                 return TypeName(member.Type) + ".CanonicalRead(reader, storage)";
@@ -1319,6 +1318,10 @@ namespace ThirdPerson.CanonicalSerialization.Generator
 
         static string ReadMaterializedMember(Member member) => ResolveDeclaredOnMaterialization(member)
             ? "reader.ReadDeclaredString()" : Read(member.Type, true);
+
+        static bool ReadsDeclaredText(Member member, Plan plan) =>
+            member.Type.SpecialType == SpecialType.System_String && HasAttribute(member.Symbol, DeclaredTextAttribute) &&
+            (plan.PreparedRead || ResolveDeclaredOnMaterialization(member));
 
         static bool ResolveDeclaredOnMaterialization(Member member) => member.Symbol.GetAttributes()
             .Where(a => Identity(a.AttributeClass) == DeclaredTextAttribute).SelectMany(a => a.NamedArguments)
@@ -2213,8 +2216,8 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                         Error(plan, member.Symbol, "已绑定成员直接匹配原数据，不允许联合、可选或外部存储构造");
                     if (type.IsReadOnly && plan.Members.Any(m => HasAttribute(m.Symbol, BoundAttribute)) &&
                         !HasAttribute(member.Symbol, BoundAttribute) && !HasAttribute(member.Symbol, PublishedAttribute) &&
-                        !SupportsBoundValue(member.Type))
-                        Error(plan, member.Symbol, "已绑定读取的其余成员必须使用实时值合同，不能物化集合、对象或字符串");
+                        !ReadsDeclaredText(member, plan) && !SupportsBoundValue(member.Type))
+                        Error(plan, member.Symbol, "已绑定读取的其余成员必须直接读取实时值或已声明文本，不能物化集合、对象或字符串");
                     if (HasAttribute(member.Symbol, PublishedAttribute))
                     {
                         descriptor.Append(":published");
