@@ -22,7 +22,7 @@ namespace ThirdPersonSimulation.Fixed
         }
 
         public static WorldSolveBatchResult WorldResolveBatch(
-            ICharacterWorldSolver solver,
+            ICharacterWorldBatchSolver solver,
             ISimulationDiagnosticsSink diagnostics,
             WorldSolveBatchRequest request,
             FixedCharacterEvaluationResultBatch evaluations,

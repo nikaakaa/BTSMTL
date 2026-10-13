@@ -360,7 +360,16 @@ namespace ThirdPersonSimulation.Fixed
         public bool Supports(WorldCapability required) => (Capabilities & required) == required;
     }
 
-    public interface ICharacterWorldSolver : global::ThirdPersonSimulation.ICharacterWorldSolver<
+    public interface ICharacterWorldBatchSolver : global::ThirdPersonSimulation.ICharacterWorldBatchSolver<
+        CharacterWorldSolverDescriptor,
+        WorldSolveBatchRequest,
+        WorldSolveBatchResult,
+        ISimulationDiagnosticsSink>
+    {
+        void PrepareStepStorage(int maximumSteps);
+    }
+
+    public interface ICharacterWorldSolver : ICharacterWorldBatchSolver, global::ThirdPersonSimulation.ICharacterWorldSolver<
         CharacterWorldSolverDescriptor,
         WorldBodyState,
         WorldSimulationState,
@@ -368,7 +377,6 @@ namespace ThirdPersonSimulation.Fixed
         WorldSolveBatchResult,
         ISimulationDiagnosticsSink>
     {
-        void PrepareStepStorage(int maximumSteps);
     }
 
     public sealed class SortedTickResultBuffer<TValue>

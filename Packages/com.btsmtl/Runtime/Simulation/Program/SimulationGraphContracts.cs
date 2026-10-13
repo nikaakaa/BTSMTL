@@ -16,7 +16,8 @@ namespace ThirdPersonSimulation
         Reconstructible = 1UL << 3,
         Snapshotable = 1UL << 4,
         DeterministicReplay = 1UL << 5,
-        AirborneVerticalMotion = 1UL << 6
+        AirborneVerticalMotion = 1UL << 6,
+        FrameOwned = 1UL << 7
     }
 
     public enum ActionTargetRequirement : byte

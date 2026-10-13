@@ -15,7 +15,8 @@ namespace ThirdPersonSimulation
     public enum WorldStatePersistenceMode : byte
     {
         Reconstruct = 1,
-        Snapshot = 2
+        Snapshot = 2,
+        FrameOwned = 3
     }
 
     [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
@@ -43,15 +44,20 @@ namespace ThirdPersonSimulation
         public WorldStatePersistenceMode PersistenceMode { get; }
     }
 
-    public interface ICharacterWorldSolver<TDescriptor, TBodyState, TWorldState, TBatchRequest, TBatchResult, TDiagnostics> : IDisposable
+    public interface ICharacterWorldBatchSolver<TDescriptor, TBatchRequest, TBatchResult, TDiagnostics> : IDisposable
     {
         TDescriptor Descriptor { get; }
-        int MaximumStatePayloadBytes { get; }
         void RequireBodyBinding(ActorId actorId, string bindingId);
+        TBatchResult ResolveBatch(TBatchRequest request, TDiagnostics diagnostics);
+    }
+
+    public interface ICharacterWorldSolver<TDescriptor, TBodyState, TWorldState, TBatchRequest, TBatchResult, TDiagnostics> :
+        ICharacterWorldBatchSolver<TDescriptor, TBatchRequest, TBatchResult, TDiagnostics>
+    {
+        int MaximumStatePayloadBytes { get; }
         TWorldState Create(WorldRevision worldRevision, IReadOnlyList<TBodyState> orderedInitialBodies);
         void Reconstruct(TWorldState state);
         TWorldState Capture(WorldRevision worldRevision);
         void Restore(TWorldState state);
-        TBatchResult ResolveBatch(TBatchRequest request, TDiagnostics diagnostics);
     }
 }

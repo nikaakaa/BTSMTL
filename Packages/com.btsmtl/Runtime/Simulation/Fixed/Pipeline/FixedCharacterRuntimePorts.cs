@@ -440,14 +440,14 @@ namespace ThirdPersonSimulation.Fixed
 
     public interface IFixedWorldSolverRuntimePort : ISimulationRuntimePort
     {
-        ICharacterWorldSolver Solver { get; }
+        ICharacterWorldBatchSolver Solver { get; }
     }
 
     public sealed class FixedWorldSolverRuntimePort : IFixedWorldSolverRuntimePort
     {
         public FixedWorldSolverRuntimePort(
             SimulationComponentIdentity worldSolver,
-            ICharacterWorldSolver solver)
+            ICharacterWorldBatchSolver solver)
         {
             if (!worldSolver.IsValid || worldSolver.Role != SimulationComponentRole.WorldSolver)
                 throw new ArgumentException("World Solver component identity is invalid.", nameof(worldSolver));
@@ -461,7 +461,7 @@ namespace ThirdPersonSimulation.Fixed
         }
 
         public SimulationPortDescriptor Descriptor { get; }
-        public ICharacterWorldSolver Solver { get; }
+        public ICharacterWorldBatchSolver Solver { get; }
     }
 
     public interface IFixedDiagnosticsRuntimePort : ISimulationRuntimePort
