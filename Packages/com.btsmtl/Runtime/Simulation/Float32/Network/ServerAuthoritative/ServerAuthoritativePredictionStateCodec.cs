@@ -14,9 +14,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         const uint JournalMagic = 0x4a524153;
         const int MaximumObservedActorCount = 64;
         const int MaximumProjectedParticipantCount = 64;
-        internal static readonly int MaximumHistoryRecordTextValues =
-            OwnerCanonicalInputHeader.CanonicalMaximumTextReferences + ServerAuthoritativeCanonicalCodec.MaximumInputTextValues + 6 +
-            4 + 4 * MaximumProjectedParticipantCount + 3 * MaximumObservedActorCount;
+        internal const int MaximumHistorySnapshotTextValues = 6 + 4 + 4 * MaximumProjectedParticipantCount;
         static readonly Comparison<ServerAuthoritativeJournalEntry> s_CompareJournalEntries =
             (left, right) => left.EventId.CompareTo(right.EventId);
 

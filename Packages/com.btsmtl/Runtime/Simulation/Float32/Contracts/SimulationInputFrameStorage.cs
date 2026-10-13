@@ -21,7 +21,7 @@ namespace ThirdPersonSimulation
         internal IReadOnlyList<SimulationInputValue> Values => m_Values;
         internal IReadOnlyList<SimulationInputRequest> Requests => m_Requests;
         internal SimulationInputValues CanonicalValues => m_Data;
-        internal int MaximumTextValues => checked(SimulationInputHeader.CanonicalMaximumTextReferences +
+        public int MaximumTextValues => checked(SimulationInputHeader.CanonicalMaximumTextReferences +
             SimulationInputValues.CanonicalMeasureTextCapacity(m_Data));
 
         internal Float32SimulationInputFrameStorage()

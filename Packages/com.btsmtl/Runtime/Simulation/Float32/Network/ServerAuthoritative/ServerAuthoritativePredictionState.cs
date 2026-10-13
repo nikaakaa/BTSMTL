@@ -182,6 +182,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         public int JournalCount => m_Journal.Count;
         public int HistoryCount => m_History.Count;
         internal int MaximumHistoryTextValues => m_History.MaximumTextValues;
+        internal int MaximumOwnerInputTextValues => m_History.MaximumOwnerInputTextValues;
         internal int MaximumCorrectionTextValues => m_Confirmation.MaximumTextValues;
         internal IReadOnlyList<ActorId> RemoteBodyActors => m_History.RemoteBodyActors;
         public int RemoteBodySampleCount => m_History.RemoteBodySampleCount;

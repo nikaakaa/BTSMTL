@@ -494,9 +494,11 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 context.BindSourcePort<IServerAuthoritativeNetworkSendPort>(ServerAuthoritativeSourcePortContracts.PredictionSendPortId));
             var writes = new ServerAuthoritativeSourceEgressWrites(
                 context.Products.BindAppendWriter<Float32SourceEgressRecord>(SimulationPipelineProducts.SourceEgress));
+            ServerAuthoritativePredictionState state = context.BindSourcePort<IServerAuthoritativePredictionStatePort>(
+                ServerAuthoritativeSourcePortContracts.PredictionStatePortId).State;
             return new Float32EgressPassRuntimeAdapter<PredictionInputCommandEgressReads, ServerAuthoritativeSourceEgressWrites>(
                 new PredictionInputCommandEgressPassRuntime(context.Pass.Descriptor,
-                    context.Composition, m_MaximumStepCount),
+                    context.Composition, m_MaximumStepCount, state.MaximumOwnerInputTextValues),
                 reads,
                 writes);
         }
@@ -509,14 +511,13 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         readonly CommandOutput[] m_Outputs;
 
         public PredictionInputCommandEgressPassRuntime(SimulationPipelinePassDescriptor descriptor,
-            SimulationSessionCompositionDescriptor composition, int maximumStepCount) : base(descriptor)
+            SimulationSessionCompositionDescriptor composition, int maximumStepCount, int maximumInputTextValues) : base(descriptor)
         {
             int bytes = composition.MaximumSessionCheckpointPayloadBytes;
             if (bytes <= 0)
                 throw new InvalidOperationException("Prediction input egress requires MaximumSessionCheckpointPayloadBytes.");
             int texts = SimulationSessionCheckpointPayloadLayout.MaximumNonEmptyTextValues(bytes,
-                (long)OwnerCanonicalInputHeader.CanonicalMaximumTextReferences +
-                ServerAuthoritativeCanonicalCodec.MaximumInputTextValues, 0, 0);
+                maximumInputTextValues, 0, 0);
             m_Outputs = new CommandOutput[maximumStepCount];
             for (int index = 0; index < m_Outputs.Length; index++) m_Outputs[index] = new CommandOutput(bytes, texts);
         }

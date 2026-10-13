@@ -10,8 +10,6 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         const uint BaselineMagic = 0x42415343;
         public const int InputSchemaVersion = 5;
         public const int BaselineSchemaVersion = 7;
-        const int MaximumCollectionCount = 4096;
-        internal const int MaximumInputTextValues = 3 + 3 * MaximumCollectionCount;
 
         public static byte[] WriteInput(SimulationInput input)
         {

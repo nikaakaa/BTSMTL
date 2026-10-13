@@ -58,8 +58,10 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             for (int index = 0; index < m_RecordPages.Length; index++)
                 m_RecordPages[index].PrepareStorage(values, requests, observedConstraints);
         }
-        public int MaximumTextValues => checked(m_Capacity *
-            ServerAuthoritativePredictionStateCodec.MaximumHistoryRecordTextValues + m_RemoteBodies.MaximumTextValues);
+        public int MaximumTextValues => checked(m_Capacity * m_RecordPages[0].MaximumTextValues +
+            m_RemoteBodies.MaximumTextValues);
+        internal int MaximumOwnerInputTextValues => checked(OwnerCanonicalInputHeader.CanonicalMaximumTextReferences +
+            m_RecordPages[0].InputStorage.MaximumTextValues);
         public ulong FirstRetainedTick => m_Count == 0 ? ulong.MaxValue : m_Ticks[0];
         public bool IsRemoteObservationPrimed => m_RemoteBodies.IsPrimed;
         internal IReadOnlyList<ActorId> RemoteBodyActors => m_RemoteBodies.LockedActors;
@@ -289,6 +291,9 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             internal Float32SimulationInputFrameStorage InputStorage { get; private set; }
             internal CanonicalBuffer<ObservedWorldConstraint> ObservedConstraints { get; private set; }
             internal ObservedWorldConstraintFrame ObservedFrame { get; private set; }
+            internal int MaximumTextValues => checked(OwnerCanonicalInputHeader.CanonicalMaximumTextReferences +
+                InputStorage.MaximumTextValues + ServerAuthoritativePredictionStateCodec.MaximumHistorySnapshotTextValues +
+                ObservedConstraints.Capacity * ObservedWorldConstraint.CanonicalMaximumTextReferences);
 
             internal RecordPage(ServerAuthoritativePredictionHistory owner, int index)
             {
@@ -514,7 +519,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         readonly CharacterBodySample[] m_ObservationScratch;
         ulong m_EvictionCount;
         internal IReadOnlyList<ActorId> LockedActors => m_LockedActors;
-        public int MaximumTextValues => checked(m_LockedActors.Length * (1 + 3 * m_CapacityPerActor));
+        public int MaximumTextValues => checked(m_LockedActors.Length * (ActorId.CanonicalMaximumTextReferences +
+            CharacterBodySample.CanonicalMaximumTextReferences * m_CapacityPerActor));
 
         public ServerAuthoritativeRemoteBodyTimeline(
             int capacityPerActor,

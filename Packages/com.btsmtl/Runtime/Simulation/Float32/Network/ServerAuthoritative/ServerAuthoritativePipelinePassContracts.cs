@@ -188,6 +188,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             new[]
             {
                 ServerAuthoritativeSourcePortContracts.PredictionSend,
+                ServerAuthoritativeSourcePortContracts.PredictionState,
                 Target(Float32PipelineRuntimePortIds.CompletedSteps, Float32PipelineRuntimePortIds.CompletedStepsSchema)
             });
 
