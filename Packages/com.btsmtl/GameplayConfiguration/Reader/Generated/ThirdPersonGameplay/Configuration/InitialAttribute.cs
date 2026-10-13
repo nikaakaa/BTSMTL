@@ -17,7 +17,6 @@ public sealed partial class InitialAttribute
 {
     public InitialAttribute(ByteBuf buffer)
     {
-        Id = buffer.ReadString();
         Attribute = buffer.ReadString();
         BaseValue = buffer.ReadFloat();
     }
@@ -27,7 +26,6 @@ public sealed partial class InitialAttribute
         return new InitialAttribute(buffer);
     }
 
-    public readonly string Id;
     public readonly string Attribute;
     public ThirdPersonGameplay.Configuration.Attribute Attribute_Ref { get; private set; }
     public readonly float BaseValue;

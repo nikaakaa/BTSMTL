@@ -14,26 +14,12 @@ public partial class GameplayTables
 {
     public ThirdPersonGameplay.Configuration.Attributes Attributes {get; }
     public ThirdPersonGameplay.Configuration.Effects Effects {get; }
-    public ThirdPersonGameplay.Configuration.Components Components {get; }
-    public ThirdPersonGameplay.Configuration.Mutations Mutations {get; }
-    public ThirdPersonGameplay.Configuration.AdditionalEffects AdditionalEffects {get; }
-    public ThirdPersonGameplay.Configuration.ParameterBindings ParameterBindings {get; }
-    public ThirdPersonGameplay.Configuration.InitialAttributes InitialAttributes {get; }
-    public ThirdPersonGameplay.Configuration.InitialEffects InitialEffects {get; }
-    public ThirdPersonGameplay.Configuration.InitialParameters InitialParameters {get; }
     public ThirdPersonGameplay.Configuration.Characters Characters {get; }
 
     public GameplayTables(System.Func<string, ByteBuf> loader)
     {
         Attributes = new ThirdPersonGameplay.Configuration.Attributes(loader("thirdpersongameplay_configuration_attributes"));
         Effects = new ThirdPersonGameplay.Configuration.Effects(loader("thirdpersongameplay_configuration_effects"));
-        Components = new ThirdPersonGameplay.Configuration.Components(loader("thirdpersongameplay_configuration_components"));
-        Mutations = new ThirdPersonGameplay.Configuration.Mutations(loader("thirdpersongameplay_configuration_mutations"));
-        AdditionalEffects = new ThirdPersonGameplay.Configuration.AdditionalEffects(loader("thirdpersongameplay_configuration_additionaleffects"));
-        ParameterBindings = new ThirdPersonGameplay.Configuration.ParameterBindings(loader("thirdpersongameplay_configuration_parameterbindings"));
-        InitialAttributes = new ThirdPersonGameplay.Configuration.InitialAttributes(loader("thirdpersongameplay_configuration_initialattributes"));
-        InitialEffects = new ThirdPersonGameplay.Configuration.InitialEffects(loader("thirdpersongameplay_configuration_initialeffects"));
-        InitialParameters = new ThirdPersonGameplay.Configuration.InitialParameters(loader("thirdpersongameplay_configuration_initialparameters"));
         Characters = new ThirdPersonGameplay.Configuration.Characters(loader("thirdpersongameplay_configuration_characters"));
         ResolveRef();
     }
@@ -42,13 +28,6 @@ public partial class GameplayTables
     {
         Attributes.ResolveRef(this);
         Effects.ResolveRef(this);
-        Components.ResolveRef(this);
-        Mutations.ResolveRef(this);
-        AdditionalEffects.ResolveRef(this);
-        ParameterBindings.ResolveRef(this);
-        InitialAttributes.ResolveRef(this);
-        InitialEffects.ResolveRef(this);
-        InitialParameters.ResolveRef(this);
         Characters.ResolveRef(this);
     }
 }

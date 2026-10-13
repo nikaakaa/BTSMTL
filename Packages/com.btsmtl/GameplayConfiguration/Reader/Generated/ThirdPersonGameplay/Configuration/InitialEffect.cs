@@ -17,10 +17,9 @@ public sealed partial class InitialEffect
 {
     public InitialEffect(ByteBuf buffer)
     {
-        Id = buffer.ReadString();
         Effect = buffer.ReadString();
-        string[] value_Parameters;
-        {int __n0 = buffer.ReadSize(); value_Parameters = new string[__n0];for(var __index0 = 0 ; __index0 < __n0 ; __index0++) { string __e0;__e0 = buffer.ReadString(); value_Parameters[__index0] = __e0;}}
+        ThirdPersonGameplay.Configuration.InitialParameter[] value_Parameters;
+        {int __n0 = buffer.ReadSize(); value_Parameters = new ThirdPersonGameplay.Configuration.InitialParameter[__n0];for(var __index0 = 0 ; __index0 < __n0 ; __index0++) { ThirdPersonGameplay.Configuration.InitialParameter __e0;__e0 = global::ThirdPersonGameplay.Configuration.InitialParameter.DeserializeInitialParameter(buffer); value_Parameters[__index0] = __e0;}}
         Parameters = Array.AsReadOnly(value_Parameters);
     }
 
@@ -29,20 +28,16 @@ public sealed partial class InitialEffect
         return new InitialEffect(buffer);
     }
 
-    public readonly string Id;
     public readonly string Effect;
     public ThirdPersonGameplay.Configuration.Effect Effect_Ref { get; private set; }
     
-    public readonly IReadOnlyList<string> Parameters;
-    public IReadOnlyList<ThirdPersonGameplay.Configuration.InitialParameter> Parameters_Ref { get; private set; }
+    public readonly IReadOnlyList<ThirdPersonGameplay.Configuration.InitialParameter> Parameters;
 
     public  void ResolveRef(GameplayTables tables)
     {
         Effect_Ref = tables.Effects.Get(Effect);
-        var refs_Parameters = new ThirdPersonGameplay.Configuration.InitialParameter[Parameters.Count];
-        for (int index = 0; index < refs_Parameters.Length; index++)
-            refs_Parameters[index] = tables.InitialParameters.Get(Parameters[index]);
-        Parameters_Ref = Array.AsReadOnly(refs_Parameters);
+        foreach (var item in Parameters)
+            item.ResolveRef(tables);
     }
 }
 }

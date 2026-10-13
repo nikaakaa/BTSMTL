@@ -264,10 +264,14 @@ internal static class Program
             {
                 string kind = Kind(field);
                 JsonElement value = row.GetProperty(Name(field));
-                result.Add(Name(field), m_Beans.ContainsKey(kind) ? GameplayContent(kind, value) : value);
+                result.Add(Name(field), GameplayValue(kind, value));
             }
             return result;
         }
+
+        object GameplayValue(string kind, JsonElement value) => kind.StartsWith("array,", StringComparison.Ordinal)
+            ? value.EnumerateArray().Select(item => GameplayValue(kind[6..], item)).ToArray()
+            : m_Beans.ContainsKey(kind) ? GameplayContent(kind, value) : value;
 
         internal void WriteContracts(string directory)
         {
@@ -423,7 +427,9 @@ internal static class Program
                         else
                             code.Append("Include(value.").Append(Name(field)).AppendLine("_Ref);");
                     }
-                    else if (m_Beans.ContainsKey(kind) && NeedsReferences(kind))
+                    else if (kind.StartsWith("array,", StringComparison.Ordinal) && TypeNeedsReferences(kind[6..]))
+                        code.Append("foreach (var child in value.").Append(Name(field)).AppendLine(") Visit(child);");
+                    else if (TypeNeedsReferences(kind))
                         code.Append("Visit(value.").Append(Name(field)).AppendLine(");");
                 }
                 code.AppendLine("}");
@@ -437,8 +443,11 @@ internal static class Program
 
         bool NeedsReferences(string name) => m_Beans[name].Elements("var").Any(field =>
             field.Attribute("type")!.Value.Split('#').Any(tag => tag.StartsWith("ref=", StringComparison.Ordinal)) ||
-            m_Beans.ContainsKey(Kind(field)) && NeedsReferences(Kind(field))) ||
+            TypeNeedsReferences(Kind(field))) ||
             m_Beans.Values.Where(bean => bean.Attribute("parent")?.Value == name).Any(bean => NeedsReferences(Name(bean)));
+
+        bool TypeNeedsReferences(string kind) => kind.StartsWith("array,", StringComparison.Ordinal)
+            ? TypeNeedsReferences(kind[6..]) : m_Beans.ContainsKey(kind) && NeedsReferences(kind);
 
         IEnumerable<Field> Fields(string beanName, string prefix, string? recordType = null)
         {

@@ -30,8 +30,14 @@ public static PublishedAttributeBound Publish(AttributeBound value) {
 return new PublishedAttributeBound(value.Enabled, value.Source, value.Constant, value.AttributeId); }
 public static PublishedAttribute Publish(Attribute value) {
 return new PublishedAttribute(value.Id, value.AttributeId, Publish(value.Minimum), Publish(value.Maximum)); }
+public static PublishedEffectDuration Publish(EffectDuration value) {
+return new PublishedEffectDuration(value.Policy, Publish(value.Magnitude)); }
+public static PublishedEffectPeriod Publish(EffectPeriod value) {
+return new PublishedEffectPeriod(value.Enabled, Publish(value.Magnitude)); }
+public static PublishedEffectStacking Publish(EffectStacking value) {
+return new PublishedEffectStacking(value.Policy, value.MaxStacks, value.DurationUpdate, value.PeriodUpdate, value.OverflowPolicy); }
 public static PublishedEffect Publish(Effect value) {
-return new PublishedEffect(value.Id, value.EffectId, value.DefinitionRevision, value.ScopePolicy, value.LifetimePolicy, value.EffectTags.ToArray(), value.DurationPolicy, Publish(value.DurationMagnitude), value.HasPeriod, Publish(value.PeriodMagnitude), value.ExecuteOnApplication, value.StackingPolicy, value.MaxStacks, value.DurationUpdate, value.PeriodUpdate, value.OverflowPolicy, value.SetByCallerParameters.ToArray(), value.Components.ToArray()); }
+return new PublishedEffect(value.Id, value.EffectId, value.DefinitionRevision, value.ScopePolicy, value.LifetimePolicy, value.EffectTags.ToArray(), Publish(value.Duration), Publish(value.Period), value.ExecuteOnApplication, Publish(value.Stacking), value.SetByCallerParameters.ToArray(), value.Components.Select(item => Publish(item)).ToArray()); }
 public static PublishedComponent Publish(Component value) {
 return value switch {
 Modifier child => PublishedComponent.FromModifier(Publish(child)),
@@ -57,38 +63,29 @@ return new PublishedTagRequirements(value.Phase, Publish(value.Source), Publish(
 public static PublishedAttributeRequirements Publish(AttributeRequirements value) {
 return new PublishedAttributeRequirements(value.Phase, value.Source, value.AttributeId, value.Comparison, Publish(value.Threshold)); }
 public static PublishedExecution Publish(Execution value) {
-return new PublishedExecution(value.Mutations.ToArray()); }
+return new PublishedExecution(value.Mutations.Select(item => Publish(item)).ToArray()); }
 public static PublishedAdditionalEffectsComponent Publish(AdditionalEffectsComponent value) {
-return new PublishedAdditionalEffectsComponent(value.Effects.ToArray()); }
+return new PublishedAdditionalEffectsComponent(value.Effects.Select(item => Publish(item)).ToArray()); }
 public static PublishedCueBinding Publish(CueBinding value) {
 return new PublishedCueBinding(value.CueId, value.Trigger); }
-public static PublishedComponentRecord Publish(ComponentRecord value) {
-return new PublishedComponentRecord(value.Id, Publish(value.Value)); }
 public static PublishedMutation Publish(Mutation value) {
-return new PublishedMutation(value.Id, value.AttributeId, value.Operation, Publish(value.Magnitude), value.ClampBound); }
+return new PublishedMutation(value.AttributeId, value.Operation, Publish(value.Magnitude), value.ClampBound); }
 public static PublishedAdditionalEffect Publish(AdditionalEffect value) {
-return new PublishedAdditionalEffect(value.Id, value.Trigger, value.Effect, value.ParameterBindings.ToArray()); }
+return new PublishedAdditionalEffect(value.Trigger, value.Effect, value.ParameterBindings.Select(item => Publish(item)).ToArray()); }
 public static PublishedParameterBinding Publish(ParameterBinding value) {
-return new PublishedParameterBinding(value.Id, value.ChildParameterId, value.Source, value.ParentParameterId, value.Constant); }
+return new PublishedParameterBinding(value.ChildParameterId, value.Source, value.ParentParameterId, value.Constant); }
 public static PublishedInitialAttribute Publish(InitialAttribute value) {
-return new PublishedInitialAttribute(value.Id, value.Attribute, value.BaseValue); }
+return new PublishedInitialAttribute(value.Attribute, value.BaseValue); }
 public static PublishedInitialEffect Publish(InitialEffect value) {
-return new PublishedInitialEffect(value.Id, value.Effect, value.Parameters.ToArray()); }
+return new PublishedInitialEffect(value.Effect, value.Parameters.Select(item => Publish(item)).ToArray()); }
 public static PublishedInitialParameter Publish(InitialParameter value) {
-return new PublishedInitialParameter(value.Id, value.ParameterId, value.Value); }
+return new PublishedInitialParameter(value.ParameterId, value.Value); }
 public static PublishedCharacter Publish(Character value) {
-return new PublishedCharacter(value.Id, value.Attributes.ToArray(), value.InitialAttributes.ToArray(), value.InitialTags.ToArray(), value.Effects.ToArray(), value.InitialEffects.ToArray()); }
+return new PublishedCharacter(value.Id, value.Attributes.ToArray(), value.InitialAttributes.Select(item => Publish(item)).ToArray(), value.InitialTags.ToArray(), value.Effects.ToArray(), value.InitialEffects.Select(item => Publish(item)).ToArray()); }
 public static string DisplayName(GameplayTables tables, GameplayConfigRecordKind kind, string id) => kind switch {
 GameplayConfigRecordKind.Attributes => tables.Attributes.Get(id).DisplayName,
 GameplayConfigRecordKind.Effects => tables.Effects.Get(id).DisplayName,
-GameplayConfigRecordKind.Components => tables.Components.Get(id).Id,
-GameplayConfigRecordKind.Mutations => tables.Mutations.Get(id).Id,
-GameplayConfigRecordKind.AdditionalEffects => tables.AdditionalEffects.Get(id).Id,
-GameplayConfigRecordKind.ParameterBindings => tables.ParameterBindings.Get(id).Id,
-GameplayConfigRecordKind.InitialAttributes => tables.InitialAttributes.Get(id).Id,
-GameplayConfigRecordKind.InitialEffects => tables.InitialEffects.Get(id).Id,
-GameplayConfigRecordKind.InitialParameters => tables.InitialParameters.Get(id).Id,
 GameplayConfigRecordKind.Characters => tables.Characters.Get(id).DisplayName,
 _ => throw new ArgumentOutOfRangeException(nameof(kind)) };
-public static PublishedGameplayConfiguration Publish(GameplayTables tables) => new PublishedGameplayConfiguration(tables.Attributes.DataList.Select(Publish).ToArray(), tables.Effects.DataList.Select(Publish).ToArray(), tables.Components.DataList.Select(Publish).ToArray(), tables.Mutations.DataList.Select(Publish).ToArray(), tables.AdditionalEffects.DataList.Select(Publish).ToArray(), tables.ParameterBindings.DataList.Select(Publish).ToArray(), tables.InitialAttributes.DataList.Select(Publish).ToArray(), tables.InitialEffects.DataList.Select(Publish).ToArray(), tables.InitialParameters.DataList.Select(Publish).ToArray(), tables.Characters.DataList.Select(Publish).ToArray()); }
+public static PublishedGameplayConfiguration Publish(GameplayTables tables) => new PublishedGameplayConfiguration(tables.Attributes.DataList.Select(Publish).ToArray(), tables.Effects.DataList.Select(Publish).ToArray(), tables.Characters.DataList.Select(Publish).ToArray()); }
 }

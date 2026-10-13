@@ -17,8 +17,8 @@ public sealed partial class AdditionalEffectsComponent : Component
 {
     public AdditionalEffectsComponent(ByteBuf buffer) : base(buffer)
     {
-        string[] value_Effects;
-        {int __n0 = buffer.ReadSize(); value_Effects = new string[__n0];for(var __index0 = 0 ; __index0 < __n0 ; __index0++) { string __e0;__e0 = buffer.ReadString(); value_Effects[__index0] = __e0;}}
+        ThirdPersonGameplay.Configuration.AdditionalEffect[] value_Effects;
+        {int __n0 = buffer.ReadSize(); value_Effects = new ThirdPersonGameplay.Configuration.AdditionalEffect[__n0];for(var __index0 = 0 ; __index0 < __n0 ; __index0++) { ThirdPersonGameplay.Configuration.AdditionalEffect __e0;__e0 = global::ThirdPersonGameplay.Configuration.AdditionalEffect.DeserializeAdditionalEffect(buffer); value_Effects[__index0] = __e0;}}
         Effects = Array.AsReadOnly(value_Effects);
     }
 
@@ -28,16 +28,13 @@ public sealed partial class AdditionalEffectsComponent : Component
     }
 
     
-    public readonly IReadOnlyList<string> Effects;
-    public IReadOnlyList<ThirdPersonGameplay.Configuration.AdditionalEffect> Effects_Ref { get; private set; }
+    public readonly IReadOnlyList<ThirdPersonGameplay.Configuration.AdditionalEffect> Effects;
 
     public override void ResolveRef(GameplayTables tables)
     {
         base.ResolveRef(tables);
-        var refs_Effects = new ThirdPersonGameplay.Configuration.AdditionalEffect[Effects.Count];
-        for (int index = 0; index < refs_Effects.Length; index++)
-            refs_Effects[index] = tables.AdditionalEffects.Get(Effects[index]);
-        Effects_Ref = Array.AsReadOnly(refs_Effects);
+        foreach (var item in Effects)
+            item.ResolveRef(tables);
     }
 }
 }

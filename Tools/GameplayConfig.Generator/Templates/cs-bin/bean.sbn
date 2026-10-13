@@ -68,6 +68,9 @@ public {{class_modifier __bean}} partial class {{__name}}{{if __bean.parent_def_
         {{field.name}}_Ref = Array.AsReadOnly(refs_{{field.name}});
         {{~else if is_field_bean_need_resolve_ref field~}}
         {{field.name}}.ResolveRef(tables);
+        {{~else if is_field_array_like_need_resolve_ref field~}}
+        foreach (var item in {{field.name}})
+            item.ResolveRef(tables);
         {{~end~}}
         {{~end~}}
     }

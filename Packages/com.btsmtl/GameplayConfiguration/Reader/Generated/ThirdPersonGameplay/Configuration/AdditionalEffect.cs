@@ -17,11 +17,10 @@ public sealed partial class AdditionalEffect
 {
     public AdditionalEffect(ByteBuf buffer)
     {
-        Id = buffer.ReadString();
         Trigger = (ThirdPersonGameplay.Configuration.AdditionalTrigger)buffer.ReadInt();
         Effect = buffer.ReadString();
-        string[] value_ParameterBindings;
-        {int __n0 = buffer.ReadSize(); value_ParameterBindings = new string[__n0];for(var __index0 = 0 ; __index0 < __n0 ; __index0++) { string __e0;__e0 = buffer.ReadString(); value_ParameterBindings[__index0] = __e0;}}
+        ThirdPersonGameplay.Configuration.ParameterBinding[] value_ParameterBindings;
+        {int __n0 = buffer.ReadSize(); value_ParameterBindings = new ThirdPersonGameplay.Configuration.ParameterBinding[__n0];for(var __index0 = 0 ; __index0 < __n0 ; __index0++) { ThirdPersonGameplay.Configuration.ParameterBinding __e0;__e0 = global::ThirdPersonGameplay.Configuration.ParameterBinding.DeserializeParameterBinding(buffer); value_ParameterBindings[__index0] = __e0;}}
         ParameterBindings = Array.AsReadOnly(value_ParameterBindings);
     }
 
@@ -30,21 +29,17 @@ public sealed partial class AdditionalEffect
         return new AdditionalEffect(buffer);
     }
 
-    public readonly string Id;
     public readonly ThirdPersonGameplay.Configuration.AdditionalTrigger Trigger;
     public readonly string Effect;
     public ThirdPersonGameplay.Configuration.Effect Effect_Ref { get; private set; }
     
-    public readonly IReadOnlyList<string> ParameterBindings;
-    public IReadOnlyList<ThirdPersonGameplay.Configuration.ParameterBinding> ParameterBindings_Ref { get; private set; }
+    public readonly IReadOnlyList<ThirdPersonGameplay.Configuration.ParameterBinding> ParameterBindings;
 
     public  void ResolveRef(GameplayTables tables)
     {
         Effect_Ref = tables.Effects.Get(Effect);
-        var refs_ParameterBindings = new ThirdPersonGameplay.Configuration.ParameterBinding[ParameterBindings.Count];
-        for (int index = 0; index < refs_ParameterBindings.Length; index++)
-            refs_ParameterBindings[index] = tables.ParameterBindings.Get(ParameterBindings[index]);
-        ParameterBindings_Ref = Array.AsReadOnly(refs_ParameterBindings);
+        foreach (var item in ParameterBindings)
+            item.ResolveRef(tables);
     }
 }
 }

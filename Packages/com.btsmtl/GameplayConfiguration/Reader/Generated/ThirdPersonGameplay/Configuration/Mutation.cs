@@ -17,7 +17,6 @@ public sealed partial class Mutation
 {
     public Mutation(ByteBuf buffer)
     {
-        Id = buffer.ReadString();
         AttributeId = buffer.ReadString();
         Operation = (ThirdPersonGameplay.Configuration.ModifierOperation)buffer.ReadInt();
         Magnitude = global::ThirdPersonGameplay.Configuration.Magnitude.DeserializeMagnitude(buffer);
@@ -29,7 +28,6 @@ public sealed partial class Mutation
         return new Mutation(buffer);
     }
 
-    public readonly string Id;
     public readonly string AttributeId;
     public readonly ThirdPersonGameplay.Configuration.ModifierOperation Operation;
     public readonly ThirdPersonGameplay.Configuration.Magnitude Magnitude;

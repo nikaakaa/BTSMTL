@@ -17,8 +17,8 @@ public sealed partial class Execution : Component
 {
     public Execution(ByteBuf buffer) : base(buffer)
     {
-        string[] value_Mutations;
-        {int __n0 = buffer.ReadSize(); value_Mutations = new string[__n0];for(var __index0 = 0 ; __index0 < __n0 ; __index0++) { string __e0;__e0 = buffer.ReadString(); value_Mutations[__index0] = __e0;}}
+        ThirdPersonGameplay.Configuration.Mutation[] value_Mutations;
+        {int __n0 = buffer.ReadSize(); value_Mutations = new ThirdPersonGameplay.Configuration.Mutation[__n0];for(var __index0 = 0 ; __index0 < __n0 ; __index0++) { ThirdPersonGameplay.Configuration.Mutation __e0;__e0 = global::ThirdPersonGameplay.Configuration.Mutation.DeserializeMutation(buffer); value_Mutations[__index0] = __e0;}}
         Mutations = Array.AsReadOnly(value_Mutations);
     }
 
@@ -28,16 +28,13 @@ public sealed partial class Execution : Component
     }
 
     
-    public readonly IReadOnlyList<string> Mutations;
-    public IReadOnlyList<ThirdPersonGameplay.Configuration.Mutation> Mutations_Ref { get; private set; }
+    public readonly IReadOnlyList<ThirdPersonGameplay.Configuration.Mutation> Mutations;
 
     public override void ResolveRef(GameplayTables tables)
     {
         base.ResolveRef(tables);
-        var refs_Mutations = new ThirdPersonGameplay.Configuration.Mutation[Mutations.Count];
-        for (int index = 0; index < refs_Mutations.Length; index++)
-            refs_Mutations[index] = tables.Mutations.Get(Mutations[index]);
-        Mutations_Ref = Array.AsReadOnly(refs_Mutations);
+        foreach (var item in Mutations)
+            item.ResolveRef(tables);
     }
 }
 }

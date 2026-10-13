@@ -17,7 +17,6 @@ public sealed partial class ParameterBinding
 {
     public ParameterBinding(ByteBuf buffer)
     {
-        Id = buffer.ReadString();
         ChildParameterId = buffer.ReadString();
         Source = (ThirdPersonGameplay.Configuration.ParameterSource)buffer.ReadInt();
         ParentParameterId = buffer.ReadString();
@@ -29,7 +28,6 @@ public sealed partial class ParameterBinding
         return new ParameterBinding(buffer);
     }
 
-    public readonly string Id;
     public readonly string ChildParameterId;
     public readonly ThirdPersonGameplay.Configuration.ParameterSource Source;
     public readonly string ParentParameterId;

@@ -13,25 +13,25 @@ using System.Collections.Generic;
 
 namespace ThirdPersonGameplay.Configuration
 {
-public sealed partial class ComponentRecord
+public sealed partial class EffectPeriod
 {
-    public ComponentRecord(ByteBuf buffer)
+    public EffectPeriod(ByteBuf buffer)
     {
-        Id = buffer.ReadString();
-        Value = global::ThirdPersonGameplay.Configuration.Component.DeserializeComponent(buffer);
+        Enabled = buffer.ReadBool();
+        Magnitude = global::ThirdPersonGameplay.Configuration.Magnitude.DeserializeMagnitude(buffer);
     }
 
-    public static ComponentRecord DeserializeComponentRecord(ByteBuf buffer)
+    public static EffectPeriod DeserializeEffectPeriod(ByteBuf buffer)
     {
-        return new ComponentRecord(buffer);
+        return new EffectPeriod(buffer);
     }
 
-    public readonly string Id;
-    public readonly ThirdPersonGameplay.Configuration.Component Value;
+    public readonly bool Enabled;
+    public readonly ThirdPersonGameplay.Configuration.Magnitude Magnitude;
 
     public  void ResolveRef(GameplayTables tables)
     {
-        Value.ResolveRef(tables);
+        Magnitude.ResolveRef(tables);
     }
 }
 }

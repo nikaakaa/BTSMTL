@@ -114,24 +114,51 @@ public PublishedAttributeBound Minimum { get; }
 public PublishedAttributeBound Maximum { get; }
 }
 [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+public sealed partial class PublishedEffectDuration {
+public PublishedEffectDuration(DurationPolicy value_Policy, PublishedMagnitude value_Magnitude) {
+Policy = value_Policy;
+Magnitude = value_Magnitude;
+}
+public DurationPolicy Policy { get; }
+public PublishedMagnitude Magnitude { get; }
+}
+[CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+public sealed partial class PublishedEffectPeriod {
+public PublishedEffectPeriod(bool value_Enabled, PublishedMagnitude value_Magnitude) {
+Enabled = value_Enabled;
+Magnitude = value_Magnitude;
+}
+public bool Enabled { get; }
+public PublishedMagnitude Magnitude { get; }
+}
+[CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+public sealed partial class PublishedEffectStacking {
+public PublishedEffectStacking(StackingPolicy value_Policy, int value_MaxStacks, DurationUpdate value_DurationUpdate, PeriodUpdate value_PeriodUpdate, OverflowPolicy value_OverflowPolicy) {
+Policy = value_Policy;
+MaxStacks = value_MaxStacks;
+DurationUpdate = value_DurationUpdate;
+PeriodUpdate = value_PeriodUpdate;
+OverflowPolicy = value_OverflowPolicy;
+}
+public StackingPolicy Policy { get; }
+public int MaxStacks { get; }
+public DurationUpdate DurationUpdate { get; }
+public PeriodUpdate PeriodUpdate { get; }
+public OverflowPolicy OverflowPolicy { get; }
+}
+[CanonicalContract(MaterializedRead = true, PreparedRead = false)]
 public sealed partial class PublishedEffect {
-public PublishedEffect(string value_Id, string value_EffectId, uint value_DefinitionRevision, ScopePolicy value_ScopePolicy, LifetimePolicy value_LifetimePolicy, IReadOnlyList<string> value_EffectTags, DurationPolicy value_DurationPolicy, PublishedMagnitude value_DurationMagnitude, bool value_HasPeriod, PublishedMagnitude value_PeriodMagnitude, bool value_ExecuteOnApplication, StackingPolicy value_StackingPolicy, int value_MaxStacks, DurationUpdate value_DurationUpdate, PeriodUpdate value_PeriodUpdate, OverflowPolicy value_OverflowPolicy, IReadOnlyList<string> value_SetByCallerParameters, IReadOnlyList<string> value_Components) {
+public PublishedEffect(string value_Id, string value_EffectId, uint value_DefinitionRevision, ScopePolicy value_ScopePolicy, LifetimePolicy value_LifetimePolicy, IReadOnlyList<string> value_EffectTags, PublishedEffectDuration value_Duration, PublishedEffectPeriod value_Period, bool value_ExecuteOnApplication, PublishedEffectStacking value_Stacking, IReadOnlyList<string> value_SetByCallerParameters, IReadOnlyList<PublishedComponent> value_Components) {
 Id = value_Id;
 EffectId = value_EffectId;
 DefinitionRevision = value_DefinitionRevision;
 ScopePolicy = value_ScopePolicy;
 LifetimePolicy = value_LifetimePolicy;
 EffectTags = value_EffectTags;
-DurationPolicy = value_DurationPolicy;
-DurationMagnitude = value_DurationMagnitude;
-HasPeriod = value_HasPeriod;
-PeriodMagnitude = value_PeriodMagnitude;
+Duration = value_Duration;
+Period = value_Period;
 ExecuteOnApplication = value_ExecuteOnApplication;
-StackingPolicy = value_StackingPolicy;
-MaxStacks = value_MaxStacks;
-DurationUpdate = value_DurationUpdate;
-PeriodUpdate = value_PeriodUpdate;
-OverflowPolicy = value_OverflowPolicy;
+Stacking = value_Stacking;
 SetByCallerParameters = value_SetByCallerParameters;
 Components = value_Components;
 }
@@ -141,18 +168,12 @@ public uint DefinitionRevision { get; }
 public ScopePolicy ScopePolicy { get; }
 public LifetimePolicy LifetimePolicy { get; }
 public IReadOnlyList<string> EffectTags { get; }
-public DurationPolicy DurationPolicy { get; }
-public PublishedMagnitude DurationMagnitude { get; }
-public bool HasPeriod { get; }
-public PublishedMagnitude PeriodMagnitude { get; }
+public PublishedEffectDuration Duration { get; }
+public PublishedEffectPeriod Period { get; }
 public bool ExecuteOnApplication { get; }
-public StackingPolicy StackingPolicy { get; }
-public int MaxStacks { get; }
-public DurationUpdate DurationUpdate { get; }
-public PeriodUpdate PeriodUpdate { get; }
-public OverflowPolicy OverflowPolicy { get; }
+public PublishedEffectStacking Stacking { get; }
 public IReadOnlyList<string> SetByCallerParameters { get; }
-public IReadOnlyList<string> Components { get; }
+public IReadOnlyList<PublishedComponent> Components { get; }
 }
 [CanonicalUnionTemplate]
 public readonly struct ComponentValue {
@@ -239,17 +260,17 @@ public PublishedMagnitude Threshold { get; }
 }
 [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
 public sealed partial class PublishedExecution {
-public PublishedExecution(IReadOnlyList<string> value_Mutations) {
+public PublishedExecution(IReadOnlyList<PublishedMutation> value_Mutations) {
 Mutations = value_Mutations;
 }
-public IReadOnlyList<string> Mutations { get; }
+public IReadOnlyList<PublishedMutation> Mutations { get; }
 }
 [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
 public sealed partial class PublishedAdditionalEffectsComponent {
-public PublishedAdditionalEffectsComponent(IReadOnlyList<string> value_Effects) {
+public PublishedAdditionalEffectsComponent(IReadOnlyList<PublishedAdditionalEffect> value_Effects) {
 Effects = value_Effects;
 }
-public IReadOnlyList<string> Effects { get; }
+public IReadOnlyList<PublishedAdditionalEffect> Effects { get; }
 }
 [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
 public sealed partial class PublishedCueBinding {
@@ -261,24 +282,13 @@ public string CueId { get; }
 public CueTrigger Trigger { get; }
 }
 [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
-public sealed partial class PublishedComponentRecord {
-public PublishedComponentRecord(string value_Id, PublishedComponent value_Value) {
-Id = value_Id;
-Value = value_Value;
-}
-public string Id { get; }
-public PublishedComponent Value { get; }
-}
-[CanonicalContract(MaterializedRead = true, PreparedRead = false)]
 public sealed partial class PublishedMutation {
-public PublishedMutation(string value_Id, string value_AttributeId, ModifierOperation value_Operation, PublishedMagnitude value_Magnitude, ClampBound value_ClampBound) {
-Id = value_Id;
+public PublishedMutation(string value_AttributeId, ModifierOperation value_Operation, PublishedMagnitude value_Magnitude, ClampBound value_ClampBound) {
 AttributeId = value_AttributeId;
 Operation = value_Operation;
 Magnitude = value_Magnitude;
 ClampBound = value_ClampBound;
 }
-public string Id { get; }
 public string AttributeId { get; }
 public ModifierOperation Operation { get; }
 public PublishedMagnitude Magnitude { get; }
@@ -286,27 +296,23 @@ public ClampBound ClampBound { get; }
 }
 [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
 public sealed partial class PublishedAdditionalEffect {
-public PublishedAdditionalEffect(string value_Id, AdditionalTrigger value_Trigger, string value_Effect, IReadOnlyList<string> value_ParameterBindings) {
-Id = value_Id;
+public PublishedAdditionalEffect(AdditionalTrigger value_Trigger, string value_Effect, IReadOnlyList<PublishedParameterBinding> value_ParameterBindings) {
 Trigger = value_Trigger;
 Effect = value_Effect;
 ParameterBindings = value_ParameterBindings;
 }
-public string Id { get; }
 public AdditionalTrigger Trigger { get; }
 public string Effect { get; }
-public IReadOnlyList<string> ParameterBindings { get; }
+public IReadOnlyList<PublishedParameterBinding> ParameterBindings { get; }
 }
 [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
 public sealed partial class PublishedParameterBinding {
-public PublishedParameterBinding(string value_Id, string value_ChildParameterId, ParameterSource value_Source, string value_ParentParameterId, float value_Constant) {
-Id = value_Id;
+public PublishedParameterBinding(string value_ChildParameterId, ParameterSource value_Source, string value_ParentParameterId, float value_Constant) {
 ChildParameterId = value_ChildParameterId;
 Source = value_Source;
 ParentParameterId = value_ParentParameterId;
 Constant = value_Constant;
 }
-public string Id { get; }
 public string ChildParameterId { get; }
 public ParameterSource Source { get; }
 public string ParentParameterId { get; }
@@ -314,40 +320,34 @@ public float Constant { get; }
 }
 [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
 public sealed partial class PublishedInitialAttribute {
-public PublishedInitialAttribute(string value_Id, string value_Attribute, float value_BaseValue) {
-Id = value_Id;
+public PublishedInitialAttribute(string value_Attribute, float value_BaseValue) {
 Attribute = value_Attribute;
 BaseValue = value_BaseValue;
 }
-public string Id { get; }
 public string Attribute { get; }
 public float BaseValue { get; }
 }
 [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
 public sealed partial class PublishedInitialEffect {
-public PublishedInitialEffect(string value_Id, string value_Effect, IReadOnlyList<string> value_Parameters) {
-Id = value_Id;
+public PublishedInitialEffect(string value_Effect, IReadOnlyList<PublishedInitialParameter> value_Parameters) {
 Effect = value_Effect;
 Parameters = value_Parameters;
 }
-public string Id { get; }
 public string Effect { get; }
-public IReadOnlyList<string> Parameters { get; }
+public IReadOnlyList<PublishedInitialParameter> Parameters { get; }
 }
 [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
 public sealed partial class PublishedInitialParameter {
-public PublishedInitialParameter(string value_Id, string value_ParameterId, float value_Value) {
-Id = value_Id;
+public PublishedInitialParameter(string value_ParameterId, float value_Value) {
 ParameterId = value_ParameterId;
 Value = value_Value;
 }
-public string Id { get; }
 public string ParameterId { get; }
 public float Value { get; }
 }
 [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
 public sealed partial class PublishedCharacter {
-public PublishedCharacter(string value_Id, IReadOnlyList<string> value_Attributes, IReadOnlyList<string> value_InitialAttributes, IReadOnlyList<string> value_InitialTags, IReadOnlyList<string> value_Effects, IReadOnlyList<string> value_InitialEffects) {
+public PublishedCharacter(string value_Id, IReadOnlyList<string> value_Attributes, IReadOnlyList<PublishedInitialAttribute> value_InitialAttributes, IReadOnlyList<string> value_InitialTags, IReadOnlyList<string> value_Effects, IReadOnlyList<PublishedInitialEffect> value_InitialEffects) {
 Id = value_Id;
 Attributes = value_Attributes;
 InitialAttributes = value_InitialAttributes;
@@ -357,45 +357,24 @@ InitialEffects = value_InitialEffects;
 }
 public string Id { get; }
 public IReadOnlyList<string> Attributes { get; }
-public IReadOnlyList<string> InitialAttributes { get; }
+public IReadOnlyList<PublishedInitialAttribute> InitialAttributes { get; }
 public IReadOnlyList<string> InitialTags { get; }
 public IReadOnlyList<string> Effects { get; }
-public IReadOnlyList<string> InitialEffects { get; }
+public IReadOnlyList<PublishedInitialEffect> InitialEffects { get; }
 }
 [CanonicalContract(MaterializedRead = true, PreparedRead = false)] public sealed partial class PublishedGameplayConfiguration {
-public PublishedGameplayConfiguration(IReadOnlyList<PublishedAttribute> value_Attributes, IReadOnlyList<PublishedEffect> value_Effects, IReadOnlyList<PublishedComponentRecord> value_Components, IReadOnlyList<PublishedMutation> value_Mutations, IReadOnlyList<PublishedAdditionalEffect> value_AdditionalEffects, IReadOnlyList<PublishedParameterBinding> value_ParameterBindings, IReadOnlyList<PublishedInitialAttribute> value_InitialAttributes, IReadOnlyList<PublishedInitialEffect> value_InitialEffects, IReadOnlyList<PublishedInitialParameter> value_InitialParameters, IReadOnlyList<PublishedCharacter> value_Characters) {
+public PublishedGameplayConfiguration(IReadOnlyList<PublishedAttribute> value_Attributes, IReadOnlyList<PublishedEffect> value_Effects, IReadOnlyList<PublishedCharacter> value_Characters) {
 Attributes = value_Attributes;
 Effects = value_Effects;
-Components = value_Components;
-Mutations = value_Mutations;
-AdditionalEffects = value_AdditionalEffects;
-ParameterBindings = value_ParameterBindings;
-InitialAttributes = value_InitialAttributes;
-InitialEffects = value_InitialEffects;
-InitialParameters = value_InitialParameters;
 Characters = value_Characters;
 }
 public IReadOnlyList<PublishedAttribute> Attributes { get; }
 public IReadOnlyList<PublishedEffect> Effects { get; }
-public IReadOnlyList<PublishedComponentRecord> Components { get; }
-public IReadOnlyList<PublishedMutation> Mutations { get; }
-public IReadOnlyList<PublishedAdditionalEffect> AdditionalEffects { get; }
-public IReadOnlyList<PublishedParameterBinding> ParameterBindings { get; }
-public IReadOnlyList<PublishedInitialAttribute> InitialAttributes { get; }
-public IReadOnlyList<PublishedInitialEffect> InitialEffects { get; }
-public IReadOnlyList<PublishedInitialParameter> InitialParameters { get; }
 public IReadOnlyList<PublishedCharacter> Characters { get; }
 }
 public enum GameplayConfigRecordKind {
 Attributes,
 Effects,
-Components,
-Mutations,
-AdditionalEffects,
-ParameterBindings,
-InitialAttributes,
-InitialEffects,
-InitialParameters,
 Characters,
 } }
-namespace ThirdPersonGameplay.Configuration { public static class GameplayConfigGeneratedContract { public const string SchemaIdentity = "34328e2b2fcc0f423be691d5862deec5b9c860c39b62da561caf6541ff35287f"; } }
+namespace ThirdPersonGameplay.Configuration { public static class GameplayConfigGeneratedContract { public const string SchemaIdentity = "66d11a577d4e2fc86d403d2160a6ee0b911d6f579e0a2345df662c1a29259098"; } }

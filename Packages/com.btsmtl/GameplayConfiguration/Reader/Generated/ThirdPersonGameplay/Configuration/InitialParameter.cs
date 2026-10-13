@@ -17,7 +17,6 @@ public sealed partial class InitialParameter
 {
     public InitialParameter(ByteBuf buffer)
     {
-        Id = buffer.ReadString();
         ParameterId = buffer.ReadString();
         Value = buffer.ReadFloat();
     }
@@ -27,7 +26,6 @@ public sealed partial class InitialParameter
         return new InitialParameter(buffer);
     }
 
-    public readonly string Id;
     public readonly string ParameterId;
     public readonly float Value;
 

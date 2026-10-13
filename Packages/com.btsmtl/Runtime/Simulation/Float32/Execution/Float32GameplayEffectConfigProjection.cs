@@ -31,30 +31,25 @@ namespace ThirdPersonSimulation
                     m_InitialTags.Add(id);
             }
             var attributes = data.Attributes.ToDictionary(value => value.Id, StringComparer.Ordinal);
-            foreach (PublishedInitialAttribute initial in data.InitialAttributes)
+            foreach (PublishedInitialAttribute initial in data.Characters.Single().InitialAttributes)
             {
                 PublishedAttribute attribute = attributes[initial.Attribute];
                 string id = NormalizeAttribute(attribute.AttributeId);
                 m_Attributes.Add(id, new PortableAttributeDefinition(id, Scalar(initial.BaseValue),
                     Bound(attribute.Minimum), Bound(attribute.Maximum)));
             }
-            var components = data.Components.ToDictionary(value => value.Id, StringComparer.Ordinal);
-            var mutations = data.Mutations.ToDictionary(value => value.Id, StringComparer.Ordinal);
-            var additional = data.AdditionalEffects.ToDictionary(value => value.Id, StringComparer.Ordinal);
-            var bindings = data.ParameterBindings.ToDictionary(value => value.Id, StringComparer.Ordinal);
             var effects = data.Effects.ToDictionary(value => value.Id, StringComparer.Ordinal);
             foreach (PublishedEffect effect in data.Effects)
             {
-                if (effect.DefinitionRevision == 0 || effect.MaxStacks <= 0)
+                if (effect.DefinitionRevision == 0 || effect.Stacking.MaxStacks <= 0)
                     throw new InvalidDataException($"Effect '{effect.Id}' requires a positive revision and MaxStacks.");
-                PortableEffectComponent[] projected = effect.Components.Select(id =>
-                    Component(components[id].Value, mutations, additional, bindings, effects)).ToArray();
+                PortableEffectComponent[] projected = effect.Components.Select(value => Component(value, effects)).ToArray();
                 var definition = new PortableEffectDefinition(NormalizeEffect(effect.EffectId), effect.DefinitionRevision,
-                    Strings(effect.EffectTags, true), (PortableEffectDurationPolicy)effect.DurationPolicy,
-                    PortableMagnitude.FromConfiguration(effect.DurationMagnitude), effect.HasPeriod, PortableMagnitude.FromConfiguration(effect.PeriodMagnitude),
-                    effect.ExecuteOnApplication, (PortableEffectStackingPolicy)effect.StackingPolicy, effect.MaxStacks,
-                    (PortableEffectDurationUpdatePolicy)effect.DurationUpdate, (PortableEffectPeriodUpdatePolicy)effect.PeriodUpdate,
-                    (PortableEffectOverflowPolicy)effect.OverflowPolicy, Strings(effect.SetByCallerParameters, false),
+                    Strings(effect.EffectTags, true), (PortableEffectDurationPolicy)effect.Duration.Policy,
+                    PortableMagnitude.FromConfiguration(effect.Duration.Magnitude), effect.Period.Enabled, PortableMagnitude.FromConfiguration(effect.Period.Magnitude),
+                    effect.ExecuteOnApplication, (PortableEffectStackingPolicy)effect.Stacking.Policy, effect.Stacking.MaxStacks,
+                    (PortableEffectDurationUpdatePolicy)effect.Stacking.DurationUpdate, (PortableEffectPeriodUpdatePolicy)effect.Stacking.PeriodUpdate,
+                    (PortableEffectOverflowPolicy)effect.Stacking.OverflowPolicy, Strings(effect.SetByCallerParameters, false),
                     (GameplayEffectScopeKind)effect.ScopePolicy, (GameplayEffectLifetimeKind)effect.LifetimePolicy, projected);
                 m_Effects.Add(definition.Id, definition);
             }
@@ -77,9 +72,7 @@ namespace ThirdPersonSimulation
             return result;
         }
 
-        static PortableEffectComponent Component(PublishedComponent component,
-            Dictionary<string, PublishedMutation> mutations, Dictionary<string, PublishedAdditionalEffect> additional,
-            Dictionary<string, PublishedParameterBinding> bindings, Dictionary<string, PublishedEffect> effects)
+        static PortableEffectComponent Component(PublishedComponent component, Dictionary<string, PublishedEffect> effects)
         {
             switch (component.Kind)
             {
@@ -107,24 +100,15 @@ namespace ThirdPersonSimulation
                         (PortableAttributeSource)value.Source, value.AttributeId, (PortableAttributeComparison)value.Comparison, PortableMagnitude.FromConfiguration(value.Threshold));
                 }
                 case ComponentValueKind.Execution:
-                    return new PortableExecutionComponent(component.Execution.Mutations.Select(id =>
-                    {
-                        PublishedMutation value = mutations[id];
-                        return new PortableExecutionMutation(value.AttributeId, (PortableModifierOperation)value.Operation,
-                            PortableMagnitude.FromConfiguration(value.Magnitude), (PortableClampBound)value.ClampBound);
-                    }).ToArray());
+                    return new PortableExecutionComponent(component.Execution.Mutations.Select(value =>
+                        new PortableExecutionMutation(value.AttributeId, (PortableModifierOperation)value.Operation,
+                            PortableMagnitude.FromConfiguration(value.Magnitude), (PortableClampBound)value.ClampBound)).ToArray());
                 case ComponentValueKind.AdditionalEffectsComponent:
-                    return new PortableAdditionalEffectsComponent(component.AdditionalEffectsComponent.Effects.Select(id =>
-                    {
-                        PublishedAdditionalEffect value = additional[id];
-                        return new PortableAdditionalEffect((PortableAdditionalEffectTrigger)value.Trigger,
-                            effects[value.Effect].EffectId, value.ParameterBindings.Select(bindingId =>
-                            {
-                                PublishedParameterBinding binding = bindings[bindingId];
-                                return new PortableAdditionalParameterBinding(binding.ChildParameterId,
-                                    (PortableAdditionalParameterSource)binding.Source, binding.ParentParameterId, Scalar(binding.Constant));
-                            }).ToArray());
-                    }).ToArray());
+                    return new PortableAdditionalEffectsComponent(component.AdditionalEffectsComponent.Effects.Select(value =>
+                        new PortableAdditionalEffect((PortableAdditionalEffectTrigger)value.Trigger,
+                            effects[value.Effect].EffectId, value.ParameterBindings.Select(binding =>
+                                new PortableAdditionalParameterBinding(binding.ChildParameterId,
+                                    (PortableAdditionalParameterSource)binding.Source, binding.ParentParameterId, Scalar(binding.Constant))).ToArray())).ToArray());
                 case ComponentValueKind.CueBinding:
                     return new PortableCueComponent(component.CueBinding.CueId, (PortableCueTrigger)component.CueBinding.Trigger);
                 default:

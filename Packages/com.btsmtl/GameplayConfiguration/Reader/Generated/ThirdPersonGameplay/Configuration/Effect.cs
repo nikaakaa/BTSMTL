@@ -29,21 +29,15 @@ public sealed partial class Effect
         string[] value_EffectTags;
         {int __n0 = buffer.ReadSize(); value_EffectTags = new string[__n0];for(var __index0 = 0 ; __index0 < __n0 ; __index0++) { string __e0;__e0 = buffer.ReadString(); value_EffectTags[__index0] = __e0;}}
         EffectTags = Array.AsReadOnly(value_EffectTags);
-        DurationPolicy = (ThirdPersonGameplay.Configuration.DurationPolicy)buffer.ReadInt();
-        DurationMagnitude = global::ThirdPersonGameplay.Configuration.Magnitude.DeserializeMagnitude(buffer);
-        HasPeriod = buffer.ReadBool();
-        PeriodMagnitude = global::ThirdPersonGameplay.Configuration.Magnitude.DeserializeMagnitude(buffer);
+        Duration = global::ThirdPersonGameplay.Configuration.EffectDuration.DeserializeEffectDuration(buffer);
+        Period = global::ThirdPersonGameplay.Configuration.EffectPeriod.DeserializeEffectPeriod(buffer);
         ExecuteOnApplication = buffer.ReadBool();
-        StackingPolicy = (ThirdPersonGameplay.Configuration.StackingPolicy)buffer.ReadInt();
-        MaxStacks = buffer.ReadInt();
-        DurationUpdate = (ThirdPersonGameplay.Configuration.DurationUpdate)buffer.ReadInt();
-        PeriodUpdate = (ThirdPersonGameplay.Configuration.PeriodUpdate)buffer.ReadInt();
-        OverflowPolicy = (ThirdPersonGameplay.Configuration.OverflowPolicy)buffer.ReadInt();
+        Stacking = global::ThirdPersonGameplay.Configuration.EffectStacking.DeserializeEffectStacking(buffer);
         string[] value_SetByCallerParameters;
         {int __n0 = buffer.ReadSize(); value_SetByCallerParameters = new string[__n0];for(var __index0 = 0 ; __index0 < __n0 ; __index0++) { string __e0;__e0 = buffer.ReadString(); value_SetByCallerParameters[__index0] = __e0;}}
         SetByCallerParameters = Array.AsReadOnly(value_SetByCallerParameters);
-        string[] value_Components;
-        {int __n0 = buffer.ReadSize(); value_Components = new string[__n0];for(var __index0 = 0 ; __index0 < __n0 ; __index0++) { string __e0;__e0 = buffer.ReadString(); value_Components[__index0] = __e0;}}
+        ThirdPersonGameplay.Configuration.Component[] value_Components;
+        {int __n0 = buffer.ReadSize(); value_Components = new ThirdPersonGameplay.Configuration.Component[__n0];for(var __index0 = 0 ; __index0 < __n0 ; __index0++) { ThirdPersonGameplay.Configuration.Component __e0;__e0 = global::ThirdPersonGameplay.Configuration.Component.DeserializeComponent(buffer); value_Components[__index0] = __e0;}}
         Components = Array.AsReadOnly(value_Components);
     }
 
@@ -61,30 +55,22 @@ public sealed partial class Effect
     public readonly ThirdPersonGameplay.Configuration.LifetimePolicy LifetimePolicy;
     
     public readonly IReadOnlyList<string> EffectTags;
-    public readonly ThirdPersonGameplay.Configuration.DurationPolicy DurationPolicy;
-    public readonly ThirdPersonGameplay.Configuration.Magnitude DurationMagnitude;
-    public readonly bool HasPeriod;
-    public readonly ThirdPersonGameplay.Configuration.Magnitude PeriodMagnitude;
+    public readonly ThirdPersonGameplay.Configuration.EffectDuration Duration;
+    public readonly ThirdPersonGameplay.Configuration.EffectPeriod Period;
     public readonly bool ExecuteOnApplication;
-    public readonly ThirdPersonGameplay.Configuration.StackingPolicy StackingPolicy;
-    public readonly int MaxStacks;
-    public readonly ThirdPersonGameplay.Configuration.DurationUpdate DurationUpdate;
-    public readonly ThirdPersonGameplay.Configuration.PeriodUpdate PeriodUpdate;
-    public readonly ThirdPersonGameplay.Configuration.OverflowPolicy OverflowPolicy;
+    public readonly ThirdPersonGameplay.Configuration.EffectStacking Stacking;
     
     public readonly IReadOnlyList<string> SetByCallerParameters;
     
-    public readonly IReadOnlyList<string> Components;
-    public IReadOnlyList<ThirdPersonGameplay.Configuration.ComponentRecord> Components_Ref { get; private set; }
+    public readonly IReadOnlyList<ThirdPersonGameplay.Configuration.Component> Components;
 
     public  void ResolveRef(GameplayTables tables)
     {
-        DurationMagnitude.ResolveRef(tables);
-        PeriodMagnitude.ResolveRef(tables);
-        var refs_Components = new ThirdPersonGameplay.Configuration.ComponentRecord[Components.Count];
-        for (int index = 0; index < refs_Components.Length; index++)
-            refs_Components[index] = tables.Components.Get(Components[index]);
-        Components_Ref = Array.AsReadOnly(refs_Components);
+        Duration.ResolveRef(tables);
+        Period.ResolveRef(tables);
+        Stacking.ResolveRef(tables);
+        foreach (var item in Components)
+            item.ResolveRef(tables);
     }
 }
 }
