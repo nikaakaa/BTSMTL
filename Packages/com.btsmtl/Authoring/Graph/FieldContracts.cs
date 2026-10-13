@@ -173,18 +173,21 @@ namespace BTSMTL.Authoring.Graph
 
     public sealed class GraphAuthoringResourceReference
     {
-        public GraphAuthoringResourceReference(string domain, Type contextType, string contextMember, bool navigation)
+        public GraphAuthoringResourceReference(string domain, Type contextType, string contextMember, bool navigation,
+            string assetBindingMember)
         {
             Domain = domain;
             ContextType = contextType;
             ContextMember = contextMember;
             Navigation = navigation;
+            AssetBindingMember = assetBindingMember;
         }
 
         public string Domain { get; }
         public Type ContextType { get; }
         public string ContextMember { get; }
         public bool Navigation { get; }
+        public string AssetBindingMember { get; }
     }
 
     public sealed class GraphAuthoringFieldDescriptor
