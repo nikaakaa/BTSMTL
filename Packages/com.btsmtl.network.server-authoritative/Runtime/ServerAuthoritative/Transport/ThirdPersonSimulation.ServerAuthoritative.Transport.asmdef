@@ -13,7 +13,7 @@
     "overrideReferences": false,
     "precompiledReferences": [],
     "autoReferenced": true,
-    "defineConstraints": [],
+    "defineConstraints": ["!THIRDPERSON_DISABLE_NETWORK_SERVER_AUTHORITATIVE"],
     "versionDefines": [],
     "noEngineReferences": true
 }
