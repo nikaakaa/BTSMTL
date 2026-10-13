@@ -87,6 +87,13 @@ namespace ThirdPersonSimulation
             Count = source.Count;
         }
 
+        public void CopyFrom(ReadOnlySpan<T> source)
+        {
+            PrepareRead(source.Length);
+            source.CopyTo(m_Items);
+            Count = source.Length;
+        }
+
         public IEnumerator<T> GetEnumerator()
         {
             for (int i = 0; i < Count; i++)
