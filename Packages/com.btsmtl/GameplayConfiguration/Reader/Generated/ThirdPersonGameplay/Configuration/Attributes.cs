@@ -16,17 +16,20 @@ public sealed class Attributes
 {
     readonly Dictionary<string, ThirdPersonGameplay.Configuration.Attribute> m_Records;
     readonly IReadOnlyList<ThirdPersonGameplay.Configuration.Attribute> m_OrderedRecords;
+    readonly Dictionary<string, ThirdPersonGameplay.Configuration.Attribute> m_StableRecords;
 
     public Attributes(ByteBuf buffer)
     {
         int count = buffer.ReadSize();
         m_Records = new Dictionary<string, ThirdPersonGameplay.Configuration.Attribute>(count);
         var values = new ThirdPersonGameplay.Configuration.Attribute[count];
+        m_StableRecords = new Dictionary<string, ThirdPersonGameplay.Configuration.Attribute>(count);
         for (int index = 0; index < count; index++)
         {
             var value = ThirdPersonGameplay.Configuration.Attribute.DeserializeAttribute(buffer);
             values[index] = value;
-            m_Records.Add(value.Id, value);
+            m_Records.Add(value.AttributeId, value);
+            m_StableRecords.Add(value.Id, value);
         }
         m_OrderedRecords = System.Array.AsReadOnly(values);
     }
@@ -34,6 +37,7 @@ public sealed class Attributes
     public IReadOnlyList<ThirdPersonGameplay.Configuration.Attribute> DataList => m_OrderedRecords;
     public ThirdPersonGameplay.Configuration.Attribute Get(string id) => m_Records[id];
     public bool Contains(string id) => m_Records.ContainsKey(id);
+    public ThirdPersonGameplay.Configuration.Attribute GetById(string id) => m_StableRecords[id];
 
     public void ResolveRef(GameplayTables tables)
     {
@@ -42,4 +46,3 @@ public sealed class Attributes
     }
 }
 }
-

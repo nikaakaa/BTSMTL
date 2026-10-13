@@ -39,4 +39,3 @@ public abstract partial class Magnitude
     }
 }
 }
-

@@ -16,17 +16,20 @@ public sealed class Effects
 {
     readonly Dictionary<string, ThirdPersonGameplay.Configuration.Effect> m_Records;
     readonly IReadOnlyList<ThirdPersonGameplay.Configuration.Effect> m_OrderedRecords;
+    readonly Dictionary<string, ThirdPersonGameplay.Configuration.Effect> m_StableRecords;
 
     public Effects(ByteBuf buffer)
     {
         int count = buffer.ReadSize();
         m_Records = new Dictionary<string, ThirdPersonGameplay.Configuration.Effect>(count);
         var values = new ThirdPersonGameplay.Configuration.Effect[count];
+        m_StableRecords = new Dictionary<string, ThirdPersonGameplay.Configuration.Effect>(count);
         for (int index = 0; index < count; index++)
         {
             var value = ThirdPersonGameplay.Configuration.Effect.DeserializeEffect(buffer);
             values[index] = value;
-            m_Records.Add(value.Id, value);
+            m_Records.Add(value.EffectId, value);
+            m_StableRecords.Add(value.Id, value);
         }
         m_OrderedRecords = System.Array.AsReadOnly(values);
     }
@@ -34,6 +37,7 @@ public sealed class Effects
     public IReadOnlyList<ThirdPersonGameplay.Configuration.Effect> DataList => m_OrderedRecords;
     public ThirdPersonGameplay.Configuration.Effect Get(string id) => m_Records[id];
     public bool Contains(string id) => m_Records.ContainsKey(id);
+    public ThirdPersonGameplay.Configuration.Effect GetById(string id) => m_StableRecords[id];
 
     public void ResolveRef(GameplayTables tables)
     {
@@ -42,4 +46,3 @@ public sealed class Effects
     }
 }
 }
-

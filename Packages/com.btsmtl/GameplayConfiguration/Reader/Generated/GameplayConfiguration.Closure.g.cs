@@ -21,8 +21,8 @@ if (!m_Characters.TryAdd(value.Id, value)) return;
 Visit(value);
 }
 public void Include(GameplayConfigRecordKind kind, string id) { switch (kind) {
-case GameplayConfigRecordKind.Attributes: Include(m_Data.Tables.Attributes.Get(id)); break;
-case GameplayConfigRecordKind.Effects: Include(m_Data.Tables.Effects.Get(id)); break;
+case GameplayConfigRecordKind.Attributes: Include(m_Data.Tables.Attributes.GetById(id)); break;
+case GameplayConfigRecordKind.Effects: Include(m_Data.Tables.Effects.GetById(id)); break;
 case GameplayConfigRecordKind.Characters: Include(m_Data.Tables.Characters.Get(id)); break;
 default: throw new ArgumentOutOfRangeException(nameof(kind)); } }
 void Visit(Effect value) {

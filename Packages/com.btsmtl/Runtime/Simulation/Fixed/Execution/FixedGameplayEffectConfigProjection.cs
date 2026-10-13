@@ -30,7 +30,7 @@ namespace ThirdPersonSimulation.Fixed
                 if (tag.InitiallyOwned)
                     m_InitialTags.Add(id);
             }
-            var attributes = data.Attributes.ToDictionary(value => value.Id, StringComparer.Ordinal);
+            var attributes = data.Attributes.ToDictionary(value => value.AttributeId, StringComparer.Ordinal);
             foreach (PublishedInitialAttribute initial in data.Characters.Single().InitialAttributes)
             {
                 PublishedAttribute attribute = attributes[initial.Attribute];
@@ -38,7 +38,7 @@ namespace ThirdPersonSimulation.Fixed
                 m_Attributes.Add(id, new PortableAttributeDefinition(id, Scalar(initial.BaseValue),
                     Bound(attribute.Minimum), Bound(attribute.Maximum)));
             }
-            var effects = data.Effects.ToDictionary(value => value.Id, StringComparer.Ordinal);
+            var effects = data.Effects.ToDictionary(value => value.EffectId, StringComparer.Ordinal);
             foreach (PublishedEffect effect in data.Effects)
             {
                 if (effect.DefinitionRevision == 0 || effect.Stacking.MaxStacks <= 0)

@@ -245,6 +245,7 @@ internal static class Program
             .Where(tag => tag.StartsWith(name + "=", StringComparison.Ordinal)).Select(tag => tag[(name.Length + 1)..]).SingleOrDefault();
         static bool EditorOnly(XElement field) => Tag(field, "btsmtl.editorOnly") == "1";
         static string Name(XElement field) => field.Attribute("name")!.Value;
+        static string RecordGetter(XElement table) => table.Attribute("index")!.Value == "Id" ? "Get" : "GetById";
         string Type(XElement field) => Tag(field, "btsmtl.csharpType") ?? Type(Kind(field));
         string Type(string kind) => kind.StartsWith("array,", StringComparison.Ordinal) ? "IReadOnlyList<" + Type(kind[6..]) + ">" :
             m_Beans.ContainsKey(kind) ? "Published" + kind : kind;
@@ -345,7 +346,7 @@ internal static class Program
                 string bean = table.Attribute("value")!.Value;
                 string field = m_Beans[bean].Elements("var").Any(value => Name(value) == "DisplayName") ? "DisplayName" : "Id";
                 code.Append("GameplayConfigRecordKind.").Append(Name(table)).Append(" => tables.").Append(Name(table))
-                    .Append(".Get(id).").Append(field).AppendLine(",");
+                    .Append('.').Append(RecordGetter(table)).Append("(id).").Append(field).AppendLine(",");
             }
             code.AppendLine("_ => throw new ArgumentOutOfRangeException(nameof(kind)) };");
             code.Append("public static PublishedGameplayConfiguration Publish(GameplayTables tables) => new PublishedGameplayConfiguration(")
@@ -403,7 +404,7 @@ internal static class Program
             code.AppendLine("public void Include(GameplayConfigRecordKind kind, string id) { switch (kind) {");
             foreach (XElement table in Tables)
                 code.Append("case GameplayConfigRecordKind.").Append(Name(table)).Append(": Include(m_Data.Tables.")
-                    .Append(Name(table)).AppendLine(".Get(id)); break;");
+                    .Append(Name(table)).Append('.').Append(RecordGetter(table)).AppendLine("(id)); break;");
             code.AppendLine("default: throw new ArgumentOutOfRangeException(nameof(kind)); } }");
             foreach (var pair in m_Beans.Where(pair => NeedsReferences(pair.Key)))
             {

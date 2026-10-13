@@ -34,4 +34,3 @@ public sealed partial class BlockAbilities : Component
     }
 }
 }
-

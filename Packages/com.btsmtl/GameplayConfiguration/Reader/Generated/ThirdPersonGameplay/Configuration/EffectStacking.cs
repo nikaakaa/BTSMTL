@@ -40,4 +40,3 @@ public sealed partial class EffectStacking
     }
 }
 }
-

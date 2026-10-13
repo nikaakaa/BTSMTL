@@ -42,4 +42,3 @@ public sealed partial class AttributeRequirements : Component
     }
 }
 }
-

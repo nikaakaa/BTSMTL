@@ -37,4 +37,3 @@ public sealed partial class ScaledConstantMagnitude : Magnitude
     }
 }
 }
-

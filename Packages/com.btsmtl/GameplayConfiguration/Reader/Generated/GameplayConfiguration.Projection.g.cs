@@ -83,8 +83,8 @@ return new PublishedInitialParameter(value.ParameterId, value.Value); }
 public static PublishedCharacter Publish(Character value) {
 return new PublishedCharacter(value.Id, value.Attributes.ToArray(), value.InitialAttributes.Select(item => Publish(item)).ToArray(), value.InitialTags.ToArray(), value.Effects.ToArray(), value.InitialEffects.Select(item => Publish(item)).ToArray()); }
 public static string DisplayName(GameplayTables tables, GameplayConfigRecordKind kind, string id) => kind switch {
-GameplayConfigRecordKind.Attributes => tables.Attributes.Get(id).DisplayName,
-GameplayConfigRecordKind.Effects => tables.Effects.Get(id).DisplayName,
+GameplayConfigRecordKind.Attributes => tables.Attributes.GetById(id).DisplayName,
+GameplayConfigRecordKind.Effects => tables.Effects.GetById(id).DisplayName,
 GameplayConfigRecordKind.Characters => tables.Characters.Get(id).DisplayName,
 _ => throw new ArgumentOutOfRangeException(nameof(kind)) };
 public static PublishedGameplayConfiguration Publish(GameplayTables tables) => new PublishedGameplayConfiguration(tables.Attributes.DataList.Select(Publish).ToArray(), tables.Effects.DataList.Select(Publish).ToArray(), tables.Characters.DataList.Select(Publish).ToArray()); }

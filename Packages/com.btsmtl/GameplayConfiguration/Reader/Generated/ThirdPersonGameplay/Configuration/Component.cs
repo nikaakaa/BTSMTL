@@ -42,4 +42,3 @@ public abstract partial class Component
     }
 }
 }
-

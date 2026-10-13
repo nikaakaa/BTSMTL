@@ -36,4 +36,3 @@ public sealed partial class GrantedTags : Component
     }
 }
 }
-
