@@ -749,10 +749,10 @@ namespace ThirdPersonSimulation.Fixed
         internal FixedCharacterControlMotionBindingCatalog ControlMotionBindings { get; }
         internal FixedCharacterControlMotionRuntime ControlMotion => m_ControlMotion;
         internal FixedMotionContributionScratch MotionContributions => m_MotionContributions;
-        internal int AvailabilityIngressCapacity { get; private set; }
+        public int AvailabilityIngressCapacity { get; private set; }
         internal void PrepareAvailabilityIngressCapacity(int capacity) => AvailabilityIngressCapacity = capacity;
-        IFixedCommittedInputReadPort m_CommittedInput;
-        internal void BindCommittedInput(IFixedCommittedInputReadPort input) => m_CommittedInput = input;
+        IFixedAbilityFrameEventCapturePort m_CommittedInput;
+        public void BindCommittedInput(IFixedAbilityFrameEventCapturePort input) => m_CommittedInput = input;
         internal void CaptureAvailabilityFrameEvents(SimulationIngress[] ingress, int count)
         {
             if (m_CommittedInput != null)
@@ -762,14 +762,14 @@ namespace ThirdPersonSimulation.Fixed
             m_AvailabilityInput.HasActionEvent(ActorId, instanceId, eventId, targetId);
 
         FixedCharacterRuntimeState m_AvailabilityState;
-        IFixedCommittedInputReadPort m_AvailabilityInput;
+        IFixedAbilityInputReadPort m_AvailabilityInput;
         FixedCharacterControlRuntime m_AvailabilityControl;
         readonly ActionSnapshotView m_AvailabilityActions;
         readonly PendingSnapshotView m_AvailabilityPending;
         FixedAbilityBodyFacts m_AvailabilityBody;
 
         internal void QueryAbilityAvailability(FixedCharacterRuntimeState state,
-            WorldBodyState body, IFixedCommittedInputReadPort input, FixedCharacterControlRuntime control,
+            WorldBodyState body, IFixedAbilityInputReadPort input, FixedCharacterControlRuntime control,
             GameplayAbilityRulePhase phase, out GameplayAbilityAvailabilityResult result)
         {
             state.RetainStatePages();

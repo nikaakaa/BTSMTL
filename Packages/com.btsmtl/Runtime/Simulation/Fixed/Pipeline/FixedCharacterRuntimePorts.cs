@@ -254,6 +254,15 @@ namespace ThirdPersonSimulation.Fixed
                 ? index
                 : throw new InvalidOperationException($"Actor '{actorId}' is not part of the locked Character Runtime roster.");
 
+        public void QueryAbilityAvailability(ActorId actorId, in SimulationWorldStateSet frame,
+            IFixedAbilityInputReadPort input, GameplayAbilityRulePhase phase,
+            out GameplayAbilityAvailabilityResult result)
+        {
+            int actor = GetActorIndex(actorId);
+            m_Roster[actor].QueryAbilityAvailability(frame.Actors[actor].State, frame.WorldState.Bodies[actor],
+                input, ControlRuntime(actorId), phase, out result);
+        }
+
         public ulong QueueBlackboardWrite(ActorId actor, FixedBlackboardWriteCommand command) =>
             m_Roster[GetActorIndex(actor)].GetInvocation(command.Ability.AbilityId).QueueBlackboardWrite(command);
 

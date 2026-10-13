@@ -251,17 +251,24 @@ namespace ThirdPersonSimulation.Fixed
         public FixedTypedIngressBatch TypedIngress { get; }
     }
 
-    internal interface IFixedCommittedInputReadPort
+    public interface IFixedAbilityInputReadPort
+    {
+        ulong ReadInputSequence(ActorId actorId);
+        SimulationInputValue ReadInputValue(ActorId actorId, CanonicalTextValue inputId, ProgramInputValueKind kind);
+        bool HasActionEvent(ActorId actorId, ulong instanceId, string eventId, CanonicalTextValue targetId);
+        bool HasGameplayEvent(ActorId actorId, string eventId);
+    }
+
+    public interface IFixedAbilityFrameEventCapturePort
+    {
+        void CaptureFrameEvents(ActorId actorId, ReadOnlySpan<SimulationIngress> ingress);
+    }
+
+    internal interface IFixedCommittedInputReadPort : IFixedAbilityInputReadPort, IFixedAbilityFrameEventCapturePort
     {
         void PrepareAvailabilityRead(int maximumPayloadBytes, IReadOnlyList<SimulationActorBinding> roster);
         void RestoreControlInput(ArraySegment<byte> bytes);
         void RestoreControlSources(ArraySegment<byte> bytes);
-        ulong ReadInputSequence(ActorId actorId);
-        SimulationInputValue ReadInputValue(ActorId actorId, CanonicalTextValue inputId, ProgramInputValueKind kind);
-        void CaptureFrameEvents(ActorId actorId, ReadOnlySpan<SimulationIngress> ingress);
-        bool HasActionEvent(ActorId actorId, ulong instanceId, string eventId, CanonicalTextValue targetId);
-        bool HasGameplayEvent(ActorId actorId, string eventId);
-
     }
 
     public interface IFixedSessionIngressWritePort
@@ -619,18 +626,8 @@ namespace ThirdPersonSimulation.Fixed
             ClearFrameEvents(actor);
             for (int i = 0; i < ingress.Length; i++)
             {
-                ref readonly SimulationIngress value = ref ingress[i];
-                AbilityInputEvent frozen;
-                if (value.Header.Kind == SimulationIngressKind.ActionEvent)
-                    frozen = new AbilityInputEvent(1, actorId, default, value.ActionEvent.ActionInstanceId, 0, value.ActionEvent.EventId, default, default, default, 0);
-                else if (value.Header.Kind == SimulationIngressKind.GameplayResult && !value.GameplayResult.HasEffect)
-                {
-                    CombatHitResult hit = value.GameplayResult.Hit;
-                    frozen = new AbilityInputEvent(2, hit.SourceActor, hit.TargetActor,
-                        hit.Attack.ActionInstanceId, hit.TargetActionInstanceId, default,
-                        hit.AttackEventId, hit.SourceFeedbackEvent, hit.TargetFeedbackEvent, (byte)hit.Disposition);
-                }
-                else continue;
+                if (!FixedAbilityFrameEventSemantics.TryProject(actorId, in ingress[i], out AbilityInputEvent frozen))
+                    continue;
                 AbilityInputEvent.CanonicalRetain(in frozen);
                 m_CurrentEvents[actor][m_CurrentEventCounts[actor]++] = frozen;
             }
@@ -638,27 +635,15 @@ namespace ThirdPersonSimulation.Fixed
         public bool HasActionEvent(ActorId actorId, ulong instanceId, string eventId, CanonicalTextValue targetId)
         {
             int actor = RequireInputActor(actorId);
-            for (int i = 0; i < m_CurrentEventCounts[actor]; i++)
-            {
-                ref readonly AbilityInputEvent value = ref m_CurrentEvents[actor][i];
-                if (value.Kind == 1 && value.SourceInstance == instanceId && value.EventId.Equals(eventId)) return true;
-                if (value.Kind == 2 &&
-                    (value.SourceActor == actorId && value.SourceInstance == instanceId && value.Disposition == (byte)CombatHitDisposition.Hit && (value.SourceFeedback.Equals(eventId) || value.AttackEvent.Equals(eventId)) ||
-                     value.TargetActor == actorId && value.TargetInstance == instanceId && (value.Disposition != (byte)CombatHitDisposition.Parried || value.SourceActor.Value.Equals(targetId)) && value.TargetFeedback.Equals(eventId))) return true;
-            }
-            return false;
+            return FixedAbilityFrameEventSemantics.HasActionEvent(
+                new ReadOnlySpan<AbilityInputEvent>(m_CurrentEvents[actor], 0, m_CurrentEventCounts[actor]),
+                actorId, instanceId, eventId, targetId);
         }
         public bool HasGameplayEvent(ActorId actorId, string eventId)
         {
             int actor = RequireInputActor(actorId);
-            for (int i = 0; i < m_CurrentEventCounts[actor]; i++)
-            {
-                ref readonly AbilityInputEvent value = ref m_CurrentEvents[actor][i];
-                if (value.Kind == 1 && value.EventId.Equals(eventId) ||
-                    value.Kind == 2 && value.TargetActor == actorId && value.TargetFeedback.Equals(eventId))
-                    return true;
-            }
-            return false;
+            return FixedAbilityFrameEventSemantics.HasGameplayEvent(
+                new ReadOnlySpan<AbilityInputEvent>(m_CurrentEvents[actor], 0, m_CurrentEventCounts[actor]), actorId, eventId);
         }
 
         void WriteRetainedEvents(CanonicalWriter writer)

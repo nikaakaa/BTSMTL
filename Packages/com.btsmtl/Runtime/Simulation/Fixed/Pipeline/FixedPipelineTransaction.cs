@@ -217,13 +217,8 @@ namespace ThirdPersonSimulation.Fixed
         {
             if (m_AvailabilityInput == null)
                 throw new NotSupportedException("This Session does not publish a current input read owner for Availability.");
-            int actor = m_CharacterRuntime.GetActorIndex(actorId);
             var current = m_StateStore.Current;
-            WorldBodyState body = default;
-            for (int index = 0; index < current.WorldState.Bodies.Count; index++)
-                if (current.WorldState.Bodies[index].ActorId == actorId) { body = current.WorldState.Bodies[index]; break; }
-            m_Roster[actor].QueryAbilityAvailability(current.Actors[actor].State, body,
-                m_AvailabilityInput, m_CharacterRuntime.ControlRuntime(actorId), phase, out result);
+            m_CharacterRuntime.QueryAbilityAvailability(actorId, in current, m_AvailabilityInput, phase, out result);
         }
 
         public ulong BaselineCompletedTick => m_StateStore.Current.LastCompletedTick;
