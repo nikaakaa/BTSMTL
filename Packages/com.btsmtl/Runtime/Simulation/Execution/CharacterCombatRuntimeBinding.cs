@@ -37,7 +37,8 @@ namespace ThirdPersonSimulation
             string sourceId, StableHash contentHash, byte[] attackCatalogBytes, int factionId, bool neutral,
             double radius, double halfLength, double centerX, double centerY, double centerZ,
             string invulnerableTag, string guardingTag,
-            string landedEvent, string hitLightEvent, string hitHeavyEvent,
+            string landedEvent, string hitLightFrontEvent, string hitLightBackEvent,
+            string hitHeavyFrontEvent, string hitHeavyBackEvent,
             string parryLightEvent, string parryHeavyEvent,
             int attackCapacity, int resultCapacity,
             string parryLightAttackId, string parryHeavyAttackId,
@@ -59,8 +60,10 @@ namespace ThirdPersonSimulation
             InvulnerableTag = string.IsNullOrEmpty(invulnerableTag) ? string.Empty : GameplayEffectRuntimeIdentity.Tag(invulnerableTag);
             GuardingTag = string.IsNullOrEmpty(guardingTag) ? string.Empty : GameplayEffectRuntimeIdentity.Tag(guardingTag);
             LandedEvent = landedEvent;
-            HitLightEvent = hitLightEvent;
-            HitHeavyEvent = hitHeavyEvent;
+            HitLightFrontEvent = hitLightFrontEvent;
+            HitLightBackEvent = hitLightBackEvent;
+            HitHeavyFrontEvent = hitHeavyFrontEvent;
+            HitHeavyBackEvent = hitHeavyBackEvent;
             ParryLightEvent = parryLightEvent;
             ParryHeavyEvent = parryHeavyEvent;
             AttackCapacity = attackCapacity;
@@ -90,8 +93,10 @@ namespace ThirdPersonSimulation
         public string InvulnerableTag { get; }
         public string GuardingTag { get; }
         public string LandedEvent { get; }
-        public string HitLightEvent { get; }
-        public string HitHeavyEvent { get; }
+        public string HitLightFrontEvent { get; }
+        public string HitLightBackEvent { get; }
+        public string HitHeavyFrontEvent { get; }
+        public string HitHeavyBackEvent { get; }
         public string ParryLightEvent { get; }
         public string ParryHeavyEvent { get; }
         public int AttackCapacity { get; }

@@ -280,7 +280,9 @@ namespace ThirdPersonSimulation.Fixed
                 if (actor.CombatBinding != null)
                 {
                     CharacterCombatRuntimeBinding binding = actor.CombatBinding;
-                    stateIdentities.AddRange(new[] { binding.LandedEvent, binding.HitLightEvent, binding.HitHeavyEvent,
+                    stateIdentities.AddRange(new[] { binding.LandedEvent,
+                        binding.HitLightFrontEvent, binding.HitLightBackEvent,
+                        binding.HitHeavyFrontEvent, binding.HitHeavyBackEvent,
                         binding.ParryLightEvent, binding.ParryHeavyEvent, binding.PerfectEvadeEvent });
                 }
             }
@@ -776,7 +778,7 @@ namespace ThirdPersonSimulation.Fixed
             hit.SourceFeedbackEvent = evadeAction != 0 || sourceParticipant.CharacterIndex < 0 ? string.Empty : sourceBinding.LandedEvent;
             hit.TargetFeedbackEvent = targetParticipant.CharacterIndex < 0 ? string.Empty : evadeAction != 0 ? targetBinding.PerfectEvadeEvent : parryAction != 0
                 ? property.IsHeavyAttack ? targetBinding.ParryHeavyEvent : targetBinding.ParryLightEvent
-                : property.IsHeavyAttack ? targetBinding.HitHeavyEvent : targetBinding.HitLightEvent;
+                : SelectHitEvent(targetBinding, property.IsHeavyAttack, sourcePosition, hit.TargetPosition, hit.TargetYaw);
             hit.TargetActionInstanceId = targetAction;
             hit.Disposition = evadeAction != 0 ? CombatHitDisposition.Evaded :
                 parryAction != 0 ? CombatHitDisposition.Parried : CombatHitDisposition.Hit;
@@ -810,6 +812,17 @@ namespace ThirdPersonSimulation.Fixed
                 AddHalt(targetParticipant.CharacterIndex, targetAction, hit.FrameHalt, tick);
             if (parryAction == 0 && definition.Camera != null && !definition.Camera.ShakeOnNotHit)
                 AddCamera(sourceIndex, definition.Index, request);
+        }
+
+        static string SelectHitEvent(CharacterCombatRuntimeBinding binding, bool heavy,
+            FixedVector3 sourcePosition, FixedVector3 targetPosition, FixedYaw targetYaw)
+        {
+            FixedAngle.SinCos(targetYaw, out FixedScalar sine, out FixedScalar cosine);
+            FixedVector3 towardSource = sourcePosition - targetPosition;
+            bool front = towardSource.X * sine + towardSource.Z * cosine >= FixedScalar.Zero;
+            return heavy
+                ? front ? binding.HitHeavyFrontEvent : binding.HitHeavyBackEvent
+                : front ? binding.HitLightFrontEvent : binding.HitLightBackEvent;
         }
 
         FixedCombatAttackState FindAttackState(int actorIndex, FixedCombatQuery request, int definitionIndex)
