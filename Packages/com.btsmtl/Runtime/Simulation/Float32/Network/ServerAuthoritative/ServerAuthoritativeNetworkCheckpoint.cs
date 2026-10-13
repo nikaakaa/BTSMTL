@@ -9,6 +9,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative
     {
         const int SchemaVersion = 2;
         readonly Float32CharacterRuntime m_CharacterRuntime;
+        readonly CanonicalReader m_StateReader = new CanonicalReader(Array.Empty<byte>());
+        readonly CanonicalWriter m_StateWriter = new CanonicalWriter();
 
         public NetworkCheckpointLayout(Float32CharacterRuntime characterRuntime)
         {
@@ -111,9 +113,19 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             ReadOnlyMemory<byte> bytes,
             CharacterStateHash expectedHash)
         {
-            Float32CharacterRuntimeState state = Float32CharacterRuntimeStateCodec.Read(
-                bytes,
-                actor, out CharacterStateHash hash);
+            Float32CharacterRuntimeState state;
+            CharacterStateHash hash;
+            try
+            {
+                using (SimulationCharacterStatePayloadStorage.Page encoding = actor.RuntimeStatePages.EncodingStorage?.Acquire())
+                    state = Float32CharacterRuntimeStateCodec.Read(
+                        bytes,
+                        actor, m_StateReader, m_StateWriter, null, encoding, out hash);
+            }
+            finally
+            {
+                m_StateReader.Reset(Array.Empty<byte>());
+            }
             if (state.LastCompletedTick != tick.Value ||
                 !hash.Equals(expectedHash))
                 throw new InvalidDataException("Network checkpoint Character state does not match its Tick or hash.");
@@ -217,11 +229,11 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             return writer.ToArray();
         }
 
-        public static NetworkCheckpoint ReadFull(NetworkCheckpointLayout layout, byte[] payload)
+        public static NetworkCheckpoint ReadFull(NetworkCheckpointLayout layout, byte[] payload, CanonicalReader reader)
         {
             if (layout == null)
                 throw new ArgumentNullException(nameof(layout));
-            var reader = new CanonicalReader(payload ?? throw new ArgumentNullException(nameof(payload)));
+            reader.Reset(payload ?? throw new ArgumentNullException(nameof(payload)));
             if (reader.ReadUInt32() != FullMagic || reader.ReadInt32() != FullVersion ||
                 !reader.ReadHash().Equals(layout.LayoutIdentity))
                 throw new InvalidDataException("Full Network Checkpoint identity is invalid.");
