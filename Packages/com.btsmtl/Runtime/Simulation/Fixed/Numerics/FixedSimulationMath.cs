@@ -16,6 +16,8 @@ namespace ThirdPersonSimulation.Fixed
         public FixedScalar Divide(FixedScalar left, FixedScalar right) => left / right;
         public FixedScalar Clamp(FixedScalar value, FixedScalar minimum, FixedScalar maximum) =>
             FixedScalar.Clamp(value, minimum, maximum);
+        public FixedScalar Negate(FixedScalar value) => -value;
+        public FixedScalar Max(FixedScalar left, FixedScalar right) => FixedScalar.Max(left, right);
         public bool GreaterThan(FixedScalar left, FixedScalar right) => left > right;
         public bool IsZero(FixedScalar value) => value == FixedScalar.Zero;
 
@@ -24,6 +26,8 @@ namespace ThirdPersonSimulation.Fixed
         public FixedVector3 MultiplyVector3(FixedVector3 value, FixedScalar scale) => value * scale;
         public FixedVector3 DivideVector3(FixedVector3 value, FixedScalar divisor) =>
             new FixedVector3(value.X / divisor, value.Y / divisor, value.Z / divisor);
+        public FixedVector3 AddVertical(FixedVector3 value, FixedScalar displacement) =>
+            new FixedVector3(value.X, value.Y + displacement, value.Z);
         public bool IsVector3Zero(FixedVector3 value) => value == FixedVector3.Zero;
         public FixedVector3 RotatePlanar(FixedVector3 value, FixedYaw yaw) =>
             FixedAngle.RotatePlanar(value, yaw);

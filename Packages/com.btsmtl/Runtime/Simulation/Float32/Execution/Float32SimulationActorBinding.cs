@@ -189,6 +189,9 @@ namespace ThirdPersonSimulation
             InputRuntimeBinding = inputRuntimeBinding;
             m_ControlMotion = new Float32CharacterControlMotionRuntime(controlRuntimeBinding.MotionBindings);
             BodyMotionBinding = bodyMotionBinding ?? throw new ArgumentNullException(nameof(bodyMotionBinding));
+            BodyMotionParameters = new BodyMotionParameters<Float32Scalar>(
+                Float32Scalar.FromDouble(bodyMotionBinding.GravityAcceleration),
+                Float32Scalar.FromDouble(bodyMotionBinding.MaximumFallSpeed));
             AbilityInstallations = new Float32GameplayAbilityExecutionInstallationSet(
                 abilityData ?? throw new ArgumentNullException(nameof(abilityData)),
                 inputRuntimeBinding,
@@ -781,6 +784,7 @@ namespace ThirdPersonSimulation
         }
 
         public CharacterBodyMotionBinding BodyMotionBinding { get; }
+        internal BodyMotionParameters<Float32Scalar> BodyMotionParameters { get; }
         internal Float32CharacterRuntimeStatePageBank RuntimeStatePages { get; }
         internal Dictionary<CharacterSkillId, AbilityStateValuePageBank<AbilityStateValue>> StateValuePages { get; }
         internal AbilityStateValuePageBank<AbilityStateValue> CharacterBlackboardPages { get; }

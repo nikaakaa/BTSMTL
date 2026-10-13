@@ -1,3 +1,4 @@
+using BodyMotionPrepareResult = ThirdPersonSimulation.BodyMotionPrepareResult<ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedVector3, ThirdPersonSimulation.Fixed.CharacterMotionRequest>;
 using MotionContributionBuffer = ThirdPersonSimulation.MotionContributionBuffer<ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedVector2, ThirdPersonSimulation.Fixed.FixedVector3, ThirdPersonSimulation.Fixed.FixedSimulationMath>;
 using ResolvedGameplayMotion = ThirdPersonSimulation.ResolvedGameplayMotion<ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedVector2, ThirdPersonSimulation.Fixed.FixedVector3>;
 using SimulationMotionContribution = ThirdPersonSimulation.SimulationMotionContribution<ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedVector2, ThirdPersonSimulation.Fixed.FixedVector3, ThirdPersonSimulation.Fixed.FixedSimulationMath>;
@@ -257,7 +258,7 @@ namespace ThirdPersonSimulation.Fixed
                     tick,
                     beforeBody,
                     gameplayMotion,
-                    actor.BodyMotionBinding,
+                    actor.BodyMotionParameters,
                     tickDelta);
                 WorldCapability requiredCapabilities = evaluation.RequiredWorldCapabilities |
                     actor.BodyMotionBinding.RequiredWorldCapability;

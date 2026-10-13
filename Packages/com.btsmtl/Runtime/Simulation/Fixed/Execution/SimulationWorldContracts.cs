@@ -1,4 +1,5 @@
-﻿using ThirdPersonSimulation;
+﻿using BodyMotionIntegrationPlan = ThirdPersonSimulation.BodyMotionIntegrationPlan<ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedVector3>;
+using ThirdPersonSimulation;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;

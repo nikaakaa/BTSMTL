@@ -569,6 +569,9 @@ namespace ThirdPersonSimulation.Fixed
             ControlMotionBindings = new FixedCharacterControlMotionBindingCatalog(controlRuntimeBinding.MotionBindings);
             m_ControlMotion = new FixedCharacterControlMotionRuntime(ControlMotionBindings);
             BodyMotionBinding = bodyMotionBinding ?? throw new ArgumentNullException(nameof(bodyMotionBinding));
+            BodyMotionParameters = new BodyMotionParameters<FixedScalar>(
+                FixedScalar.FromDouble(bodyMotionBinding.GravityAcceleration),
+                FixedScalar.FromDouble(bodyMotionBinding.MaximumFallSpeed));
             AbilityInstallations = new FixedGameplayAbilityExecutionInstallationSet(
                 abilityData ?? throw new ArgumentNullException(nameof(abilityData)),
                 inputRuntimeBinding,
@@ -999,6 +1002,7 @@ namespace ThirdPersonSimulation.Fixed
         }
 
         public CharacterBodyMotionBinding BodyMotionBinding { get; }
+        internal BodyMotionParameters<FixedScalar> BodyMotionParameters { get; }
         public CharacterGameplayEffectRuntimeBinding GameplayEffectRuntimeBinding { get; }
         public int GameplayOutputCapacity => checked(m_AbilityFactCapacity + m_AbilityPresentationCapacity + m_CombatResultCapacity +
             (AbilityInstallations.GameplayEffectCatalog == null ? 0 :

@@ -16,6 +16,8 @@ namespace ThirdPersonSimulation
         public Float32Scalar Divide(Float32Scalar left, Float32Scalar right) => left / right;
         public Float32Scalar Clamp(Float32Scalar value, Float32Scalar minimum, Float32Scalar maximum) =>
             Float32Scalar.Clamp(value, minimum, maximum);
+        public Float32Scalar Negate(Float32Scalar value) => -value;
+        public Float32Scalar Max(Float32Scalar left, Float32Scalar right) => Float32Scalar.Max(left, right);
         public bool GreaterThan(Float32Scalar left, Float32Scalar right) => left > right;
         public bool IsZero(Float32Scalar value) => value == Float32Scalar.Zero;
 
@@ -24,6 +26,8 @@ namespace ThirdPersonSimulation
         public Float32Vector3 MultiplyVector3(Float32Vector3 value, Float32Scalar scale) => value * scale;
         public Float32Vector3 DivideVector3(Float32Vector3 value, Float32Scalar divisor) =>
             new Float32Vector3(value.X / divisor, value.Y / divisor, value.Z / divisor);
+        public Float32Vector3 AddVertical(Float32Vector3 value, Float32Scalar displacement) =>
+            new Float32Vector3(value.X, value.Y + displacement, value.Z);
         public bool IsVector3Zero(Float32Vector3 value) => value == Float32Vector3.Zero;
         public Float32Vector3 RotatePlanar(Float32Vector3 value, Float32Yaw yaw) =>
             Float32Angle.RotatePlanar(value, yaw);

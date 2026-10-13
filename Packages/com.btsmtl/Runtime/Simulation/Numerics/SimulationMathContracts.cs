@@ -9,6 +9,8 @@ namespace ThirdPersonSimulation
         TScalar Multiply(TScalar left, TScalar right);
         TScalar Divide(TScalar left, TScalar right);
         TScalar Clamp(TScalar value, TScalar minimum, TScalar maximum);
+        TScalar Negate(TScalar value);
+        TScalar Max(TScalar left, TScalar right);
         bool GreaterThan(TScalar left, TScalar right);
         bool IsZero(TScalar value);
     }
@@ -24,6 +26,7 @@ namespace ThirdPersonSimulation
         TVector3 SubtractVector3(TVector3 left, TVector3 right);
         TVector3 MultiplyVector3(TVector3 value, TScalar scale);
         TVector3 DivideVector3(TVector3 value, TScalar divisor);
+        TVector3 AddVertical(TVector3 value, TScalar displacement);
         bool IsVector3Zero(TVector3 value);
     }
 

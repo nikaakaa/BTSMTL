@@ -1,3 +1,5 @@
+using BodyMotionIntegrationPlan = ThirdPersonSimulation.BodyMotionIntegrationPlan<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32Vector3>;
+using BodyMotionPrepareResult = ThirdPersonSimulation.BodyMotionPrepareResult<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32Vector3, ThirdPersonSimulation.CharacterMotionRequest>;
 using ResolvedGameplayMotion = ThirdPersonSimulation.ResolvedGameplayMotion<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32Vector2, ThirdPersonSimulation.Float32Vector3>;
 using System;
 
@@ -37,48 +39,6 @@ namespace ThirdPersonSimulation
         }
     }
 
-    public readonly struct BodyMotionIntegrationPlan
-    {
-        internal BodyMotionIntegrationPlan(
-            ActorId actorId,
-            SimulationTick tick,
-            Float32Scalar tickDelta,
-            Float32Scalar previousVerticalVelocity,
-            Float32Scalar candidateVerticalVelocity,
-            Float32Vector3 requestedDisplacement)
-        {
-            if (!actorId.IsValid || !tick.IsValid || tickDelta <= Float32Scalar.Zero)
-            {
-                throw new ArgumentException("Body Motion integration plan is incomplete.");
-            }
-            ActorId = actorId;
-            Tick = tick;
-            TickDelta = tickDelta;
-            PreviousVerticalVelocity = previousVerticalVelocity;
-            CandidateVerticalVelocity = candidateVerticalVelocity;
-            RequestedDisplacement = requestedDisplacement;
-        }
-
-        public ActorId ActorId { get; }
-        public SimulationTick Tick { get; }
-        public Float32Scalar TickDelta { get; }
-        public Float32Scalar PreviousVerticalVelocity { get; }
-        public Float32Scalar CandidateVerticalVelocity { get; }
-        public Float32Vector3 RequestedDisplacement { get; }
-    }
-
-    public readonly struct BodyMotionPrepareResult
-    {
-        internal BodyMotionPrepareResult(BodyMotionIntegrationPlan plan, CharacterMotionRequest motion)
-        {
-            Plan = plan;
-            Motion = motion;
-        }
-
-        public BodyMotionIntegrationPlan Plan { get; }
-        public CharacterMotionRequest Motion { get; }
-    }
-
     public static class CharacterBodyMotionRuntime
     {
         public static BodyMotionPrepareResult Prepare(
@@ -86,37 +46,18 @@ namespace ThirdPersonSimulation
             SimulationTick tick,
             in WorldBodyState beforeBody,
             in ResolvedGameplayMotion gameplayMotion,
-            CharacterBodyMotionBinding binding,
+            in BodyMotionParameters<Float32Scalar> parameters,
             Float32Scalar tickDelta)
         {
             if (!actorId.IsValid || !tick.IsValid || beforeBody.ActorId != actorId)
                 throw new ArgumentException("Body Motion Prepare identity is inconsistent.");
-            if (binding == null)
-                throw new ArgumentNullException(nameof(binding));
             if (tickDelta <= Float32Scalar.Zero)
                 throw new ArgumentOutOfRangeException(nameof(tickDelta));
 
-            Float32Scalar previous = beforeBody.VerticalVelocity;
-            Float32Scalar candidate = Float32Scalar.Max(
-                previous + Float32Scalar.FromDouble(binding.GravityAcceleration) * tickDelta,
-                -Float32Scalar.FromDouble(binding.MaximumFallSpeed));
-            Float32Scalar gravityDisplacement = candidate * tickDelta;
-            Float32Vector3 gameplayDisplacement = gameplayMotion.Displacement;
-            var requestedDisplacement = new Float32Vector3(
-                gameplayDisplacement.X,
-                gameplayDisplacement.Y + gravityDisplacement,
-                gameplayDisplacement.Z);
-            var requestedVelocity = new Float32Vector3(
-                requestedDisplacement.X / tickDelta,
-                requestedDisplacement.Y / tickDelta,
-                requestedDisplacement.Z / tickDelta);
-            var plan = new BodyMotionIntegrationPlan(
-                actorId,
-                tick,
-                tickDelta,
-                previous,
-                candidate,
-                requestedDisplacement);
+            BodyMotionIntegrationPlan plan = BodyMotionIntegration<Float32Scalar, Float32Vector2, Float32Vector3, Float32SimulationMath>.Prepare(
+                actorId, tick, beforeBody.VerticalVelocity, gameplayMotion.Displacement, in parameters, tickDelta);
+            Float32Vector3 requestedDisplacement = plan.RequestedDisplacement;
+            Float32Vector3 requestedVelocity = default(Float32SimulationMath).DivideVector3(requestedDisplacement, tickDelta);
             var motion = new CharacterMotionRequest(
                 "body-motion:integrated",
                 requestedDisplacement,
@@ -143,19 +84,13 @@ namespace ThirdPersonSimulation
             Float32Scalar tickDelta)
         {
             RequirePlan(in beforeBody, in plan, tickDelta);
-            Float32Scalar verticalVelocity = plan.CandidateVerticalVelocity;
-            if (verticalVelocity < Float32Scalar.Zero && grounded)
-                verticalVelocity = Float32Scalar.Zero;
-            else if (verticalVelocity > Float32Scalar.Zero && (collision & WorldCollisionSummary.Above) != 0)
-                verticalVelocity = Float32Scalar.Zero;
+            Float32Scalar verticalVelocity = BodyMotionIntegration<Float32Scalar, Float32Vector2, Float32Vector3, Float32SimulationMath>.ResolveVerticalVelocity(
+                plan.CandidateVerticalVelocity, grounded, collision);
             return new WorldBodyState(
                 beforeBody.ActorId,
                 finalPosition,
                 finalYaw,
-                new Float32Vector3(
-                    appliedDisplacement.X / tickDelta,
-                    appliedDisplacement.Y / tickDelta,
-                    appliedDisplacement.Z / tickDelta),
+                default(Float32SimulationMath).DivideVector3(appliedDisplacement, tickDelta),
                 verticalVelocity,
                 grounded,
                 collision);

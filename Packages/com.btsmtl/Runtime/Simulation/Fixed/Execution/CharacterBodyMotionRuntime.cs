@@ -1,51 +1,11 @@
+using BodyMotionIntegrationPlan = ThirdPersonSimulation.BodyMotionIntegrationPlan<ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedVector3>;
+using BodyMotionPrepareResult = ThirdPersonSimulation.BodyMotionPrepareResult<ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedVector3, ThirdPersonSimulation.Fixed.CharacterMotionRequest>;
 using ResolvedGameplayMotion = ThirdPersonSimulation.ResolvedGameplayMotion<ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedVector2, ThirdPersonSimulation.Fixed.FixedVector3>;
 using ThirdPersonSimulation;
 using System;
 
 namespace ThirdPersonSimulation.Fixed
 {
-    public readonly struct BodyMotionIntegrationPlan
-    {
-        internal BodyMotionIntegrationPlan(
-            ActorId actorId,
-            SimulationTick tick,
-            FixedScalar tickDelta,
-            FixedScalar previousVerticalVelocity,
-            FixedScalar candidateVerticalVelocity,
-            FixedVector3 requestedDisplacement)
-        {
-            if (!actorId.IsValid || !tick.IsValid || tickDelta <= FixedScalar.Zero)
-            {
-                throw new ArgumentException("Body Motion integration plan is incomplete.");
-            }
-            ActorId = actorId;
-            Tick = tick;
-            TickDelta = tickDelta;
-            PreviousVerticalVelocity = previousVerticalVelocity;
-            CandidateVerticalVelocity = candidateVerticalVelocity;
-            RequestedDisplacement = requestedDisplacement;
-        }
-
-        public ActorId ActorId { get; }
-        public SimulationTick Tick { get; }
-        public FixedScalar TickDelta { get; }
-        public FixedScalar PreviousVerticalVelocity { get; }
-        public FixedScalar CandidateVerticalVelocity { get; }
-        public FixedVector3 RequestedDisplacement { get; }
-    }
-
-    public readonly struct BodyMotionPrepareResult
-    {
-        internal BodyMotionPrepareResult(BodyMotionIntegrationPlan plan, CharacterMotionRequest motion)
-        {
-            Plan = plan;
-            Motion = motion;
-        }
-
-        public BodyMotionIntegrationPlan Plan { get; }
-        public CharacterMotionRequest Motion { get; }
-    }
-
     public static class CharacterBodyMotionRuntime
     {
         public static BodyMotionPrepareResult Prepare(
@@ -53,37 +13,18 @@ namespace ThirdPersonSimulation.Fixed
             SimulationTick tick,
             in WorldBodyState beforeBody,
             in ResolvedGameplayMotion gameplayMotion,
-            CharacterBodyMotionBinding binding,
+            in BodyMotionParameters<FixedScalar> parameters,
             FixedScalar tickDelta)
         {
             if (!actorId.IsValid || !tick.IsValid || beforeBody.ActorId != actorId)
                 throw new ArgumentException("Body Motion Prepare identity is inconsistent.");
-            if (binding == null)
-                throw new ArgumentNullException(nameof(binding));
             if (tickDelta <= FixedScalar.Zero)
                 throw new ArgumentOutOfRangeException(nameof(tickDelta));
 
-            FixedScalar previous = beforeBody.VerticalVelocity;
-            FixedScalar candidate = FixedScalar.Max(
-                previous + FixedScalar.FromDouble(binding.GravityAcceleration) * tickDelta,
-                -FixedScalar.FromDouble(binding.MaximumFallSpeed));
-            FixedScalar gravityDisplacement = candidate * tickDelta;
-            FixedVector3 gameplayDisplacement = gameplayMotion.Displacement;
-            var requestedDisplacement = new FixedVector3(
-                gameplayDisplacement.X,
-                gameplayDisplacement.Y + gravityDisplacement,
-                gameplayDisplacement.Z);
-            var requestedVelocity = new FixedVector3(
-                requestedDisplacement.X / tickDelta,
-                requestedDisplacement.Y / tickDelta,
-                requestedDisplacement.Z / tickDelta);
-            var plan = new BodyMotionIntegrationPlan(
-                actorId,
-                tick,
-                tickDelta,
-                previous,
-                candidate,
-                requestedDisplacement);
+            BodyMotionIntegrationPlan plan = BodyMotionIntegration<FixedScalar, FixedVector2, FixedVector3, FixedSimulationMath>.Prepare(
+                actorId, tick, beforeBody.VerticalVelocity, gameplayMotion.Displacement, in parameters, tickDelta);
+            FixedVector3 requestedDisplacement = plan.RequestedDisplacement;
+            FixedVector3 requestedVelocity = default(FixedSimulationMath).DivideVector3(requestedDisplacement, tickDelta);
             var motion = new CharacterMotionRequest(
                 "body-motion:integrated",
                 requestedDisplacement,
@@ -110,19 +51,13 @@ namespace ThirdPersonSimulation.Fixed
             FixedScalar tickDelta)
         {
             RequirePlan(in beforeBody, in plan, tickDelta);
-            FixedScalar verticalVelocity = plan.CandidateVerticalVelocity;
-            if (verticalVelocity < FixedScalar.Zero && grounded)
-                verticalVelocity = FixedScalar.Zero;
-            else if (verticalVelocity > FixedScalar.Zero && (collision & WorldCollisionSummary.Above) != 0)
-                verticalVelocity = FixedScalar.Zero;
+            FixedScalar verticalVelocity = BodyMotionIntegration<FixedScalar, FixedVector2, FixedVector3, FixedSimulationMath>.ResolveVerticalVelocity(
+                plan.CandidateVerticalVelocity, grounded, collision);
             return new WorldBodyState(
                 beforeBody.ActorId,
                 finalPosition,
                 finalYaw,
-                new FixedVector3(
-                    appliedDisplacement.X / tickDelta,
-                    appliedDisplacement.Y / tickDelta,
-                    appliedDisplacement.Z / tickDelta),
+                default(FixedSimulationMath).DivideVector3(appliedDisplacement, tickDelta),
                 verticalVelocity,
                 grounded,
                 collision);
