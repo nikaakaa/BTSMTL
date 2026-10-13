@@ -13,31 +13,28 @@ using System.Collections.Generic;
 
 namespace ThirdPersonGameplay.Configuration
 {
-public sealed partial class Magnitude
+public abstract partial class Magnitude
 {
     public Magnitude(ByteBuf buffer)
     {
-        Source = (ThirdPersonGameplay.Configuration.MagnitudeSource)buffer.ReadInt();
-        Constant = buffer.ReadFloat();
-        SetByCallerParameterId = buffer.ReadString();
-        AttributeId = buffer.ReadString();
-        Coefficient = buffer.ReadFloat();
-        PostAdd = buffer.ReadFloat();
     }
 
     public static Magnitude DeserializeMagnitude(ByteBuf buffer)
     {
-        return new Magnitude(buffer);
+        switch (buffer.ReadInt())
+        {
+            case 1704793960: return new ThirdPersonGameplay.Configuration.ConstantMagnitude(buffer);
+            case -1311190738: return new ThirdPersonGameplay.Configuration.ScaledConstantMagnitude(buffer);
+            case 505001744: return new ThirdPersonGameplay.Configuration.SetByCallerMagnitude(buffer);
+            case 203998671: return new ThirdPersonGameplay.Configuration.SourceAttributeSnapshotMagnitude(buffer);
+            case -460634171: return new ThirdPersonGameplay.Configuration.TargetAttributeSnapshotMagnitude(buffer);
+            case -1322193379: return new ThirdPersonGameplay.Configuration.TargetAttributeLiveMagnitude(buffer);
+            default: throw new SerializationException("配置组件类型不属于当前 schema。");
+        }
     }
 
-    public readonly ThirdPersonGameplay.Configuration.MagnitudeSource Source;
-    public readonly float Constant;
-    public readonly string SetByCallerParameterId;
-    public readonly string AttributeId;
-    public readonly float Coefficient;
-    public readonly float PostAdd;
 
-    public  void ResolveRef(GameplayTables tables)
+    public virtual void ResolveRef(GameplayTables tables)
     {
     }
 }

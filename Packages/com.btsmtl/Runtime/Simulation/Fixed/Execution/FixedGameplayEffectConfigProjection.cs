@@ -51,7 +51,7 @@ namespace ThirdPersonSimulation.Fixed
                     Component(components[id].Value, mutations, additional, bindings, effects)).ToArray();
                 var definition = new PortableEffectDefinition(NormalizeEffect(effect.EffectId), effect.DefinitionRevision,
                     Strings(effect.EffectTags, true), (PortableEffectDurationPolicy)effect.DurationPolicy,
-                    Magnitude(effect.DurationMagnitude), effect.HasPeriod, Magnitude(effect.PeriodMagnitude),
+                    PortableMagnitude.FromConfiguration(effect.DurationMagnitude), effect.HasPeriod, PortableMagnitude.FromConfiguration(effect.PeriodMagnitude),
                     effect.ExecuteOnApplication, (PortableEffectStackingPolicy)effect.StackingPolicy, effect.MaxStacks,
                     (PortableEffectDurationUpdatePolicy)effect.DurationUpdate, (PortableEffectPeriodUpdatePolicy)effect.PeriodUpdate,
                     (PortableEffectOverflowPolicy)effect.OverflowPolicy, Strings(effect.SetByCallerParameters, false),
@@ -65,9 +65,6 @@ namespace ThirdPersonSimulation.Fixed
                 value.Enabled && value.Source == BoundSource.Attribute ? NormalizeAttribute(value.AttributeId) : string.Empty);
 
         static FixedScalar Scalar(float value) => FixedScalar.FromDouble(value);
-        static PortableMagnitude Magnitude(PublishedMagnitude value) => new PortableMagnitude(
-            (PortableMagnitudeSource)value.Source, Scalar(value.Constant), value.SetByCallerParameterId,
-            NormalizeOptionalAttribute(value.AttributeId), Scalar(value.Coefficient), Scalar(value.PostAdd));
         static PortableTagQuery Query(PublishedTagQuery value) => new PortableTagQuery(value.All, value.Any, value.None);
 
         static string[] Strings(IReadOnlyList<string> source, bool tags)
@@ -90,7 +87,7 @@ namespace ThirdPersonSimulation.Fixed
                 {
                     PublishedModifier value = component.Modifier;
                     return new PortableModifierComponent(value.AttributeId, (PortableModifierApplication)value.Application,
-                        (PortableModifierOperation)value.Operation, Magnitude(value.Magnitude), value.Priority,
+                        (PortableModifierOperation)value.Operation, PortableMagnitude.FromConfiguration(value.Magnitude), value.Priority,
                         (PortableClampBound)value.ClampBound, value.ScaleWithStack);
                 }
                 case ComponentValueKind.GrantedTags:
@@ -107,14 +104,14 @@ namespace ThirdPersonSimulation.Fixed
                 {
                     PublishedAttributeRequirements value = component.AttributeRequirements;
                     return new PortableAttributeRequirementsComponent((PortableRequirementPhase)value.Phase,
-                        (PortableAttributeSource)value.Source, value.AttributeId, (PortableAttributeComparison)value.Comparison, Magnitude(value.Threshold));
+                        (PortableAttributeSource)value.Source, value.AttributeId, (PortableAttributeComparison)value.Comparison, PortableMagnitude.FromConfiguration(value.Threshold));
                 }
                 case ComponentValueKind.Execution:
                     return new PortableExecutionComponent(component.Execution.Mutations.Select(id =>
                     {
                         PublishedMutation value = mutations[id];
                         return new PortableExecutionMutation(value.AttributeId, (PortableModifierOperation)value.Operation,
-                            Magnitude(value.Magnitude), (PortableClampBound)value.ClampBound);
+                            PortableMagnitude.FromConfiguration(value.Magnitude), (PortableClampBound)value.ClampBound);
                     }).ToArray());
                 case ComponentValueKind.AdditionalEffectsComponent:
                     return new PortableAdditionalEffectsComponent(component.AdditionalEffectsComponent.Effects.Select(id =>

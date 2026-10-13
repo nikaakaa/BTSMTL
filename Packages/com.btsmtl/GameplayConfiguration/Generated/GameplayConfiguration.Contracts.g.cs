@@ -13,19 +13,76 @@ public float X { get; }
 public float Y { get; }
 public float Z { get; }
 }
+[CanonicalUnionTemplate]
+public readonly struct MagnitudeValue {
+[CanonicalUnionCase] public readonly PublishedConstantMagnitude ConstantMagnitude;
+[CanonicalUnionCase] public readonly PublishedScaledConstantMagnitude ScaledConstantMagnitude;
+[CanonicalUnionCase] public readonly PublishedSetByCallerMagnitude SetByCallerMagnitude;
+[CanonicalUnionCase] public readonly PublishedSourceAttributeSnapshotMagnitude SourceAttributeSnapshotMagnitude;
+[CanonicalUnionCase] public readonly PublishedTargetAttributeSnapshotMagnitude TargetAttributeSnapshotMagnitude;
+[CanonicalUnionCase] public readonly PublishedTargetAttributeLiveMagnitude TargetAttributeLiveMagnitude;
+}
 [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
-public sealed partial class PublishedMagnitude {
-public PublishedMagnitude(MagnitudeSource value_Source, float value_Constant, string value_SetByCallerParameterId, string value_AttributeId, float value_Coefficient, float value_PostAdd) {
-Source = value_Source;
-Constant = value_Constant;
-SetByCallerParameterId = value_SetByCallerParameterId;
+[CanonicalUnion(typeof(MagnitudeValue))]
+public readonly partial struct PublishedMagnitude {}
+[CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+public sealed partial class PublishedConstantMagnitude {
+public PublishedConstantMagnitude(float value_Value) {
+Value = value_Value;
+}
+public float Value { get; }
+}
+[CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+public sealed partial class PublishedScaledConstantMagnitude {
+public PublishedScaledConstantMagnitude(float value_Value, float value_Coefficient, float value_PostAdd) {
+Value = value_Value;
+Coefficient = value_Coefficient;
+PostAdd = value_PostAdd;
+}
+public float Value { get; }
+public float Coefficient { get; }
+public float PostAdd { get; }
+}
+[CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+public sealed partial class PublishedSetByCallerMagnitude {
+public PublishedSetByCallerMagnitude(string value_ParameterId, float value_Coefficient, float value_PostAdd) {
+ParameterId = value_ParameterId;
+Coefficient = value_Coefficient;
+PostAdd = value_PostAdd;
+}
+public string ParameterId { get; }
+public float Coefficient { get; }
+public float PostAdd { get; }
+}
+[CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+public sealed partial class PublishedSourceAttributeSnapshotMagnitude {
+public PublishedSourceAttributeSnapshotMagnitude(string value_AttributeId, float value_Coefficient, float value_PostAdd) {
 AttributeId = value_AttributeId;
 Coefficient = value_Coefficient;
 PostAdd = value_PostAdd;
 }
-public MagnitudeSource Source { get; }
-public float Constant { get; }
-public string SetByCallerParameterId { get; }
+public string AttributeId { get; }
+public float Coefficient { get; }
+public float PostAdd { get; }
+}
+[CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+public sealed partial class PublishedTargetAttributeSnapshotMagnitude {
+public PublishedTargetAttributeSnapshotMagnitude(string value_AttributeId, float value_Coefficient, float value_PostAdd) {
+AttributeId = value_AttributeId;
+Coefficient = value_Coefficient;
+PostAdd = value_PostAdd;
+}
+public string AttributeId { get; }
+public float Coefficient { get; }
+public float PostAdd { get; }
+}
+[CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+public sealed partial class PublishedTargetAttributeLiveMagnitude {
+public PublishedTargetAttributeLiveMagnitude(string value_AttributeId, float value_Coefficient, float value_PostAdd) {
+AttributeId = value_AttributeId;
+Coefficient = value_Coefficient;
+PostAdd = value_PostAdd;
+}
 public string AttributeId { get; }
 public float Coefficient { get; }
 public float PostAdd { get; }
@@ -122,7 +179,7 @@ public readonly struct ComponentValue {
 }
 [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
 [CanonicalUnion(typeof(ComponentValue))]
-public readonly partial struct PublishedComponent {} 
+public readonly partial struct PublishedComponent {}
 [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
 public sealed partial class PublishedModifier {
 public PublishedModifier(string value_AttributeId, ModifierApplication value_Application, ModifierOperation value_Operation, PublishedMagnitude value_Magnitude, int value_Priority, ClampBound value_ClampBound, bool value_ScaleWithStack) {
@@ -501,4 +558,4 @@ InitialEffects,
 InitialParameters,
 Characters,
 } }
-namespace ThirdPersonGameplay.Configuration { public static class GameplayConfigGeneratedContract { public const string SchemaIdentity = "f601fd93211dd379d0238c96cd947676a78c60152768028460b8923119e5a583"; } }
+namespace ThirdPersonGameplay.Configuration { public static class GameplayConfigGeneratedContract { public const string SchemaIdentity = "825c4a6d09fabaa706c24e49396bd0597f257932b3f8db5f2e6a512dc689d8ff"; } }

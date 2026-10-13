@@ -22,19 +22,9 @@ new GameplayConfigFieldDescription("2bb4c3a3951a3214de1caca4529f5c297a9423d53fdc
 new GameplayConfigFieldDescription("f941acadb65e9268d3e7c8f99b9722fdecb64e536a6deeb5707572acd0fce427", "81cf6a5ed1fa5dce2202a6bcad03679bd91db7ec77eb016214e76f4abc97824b", "LifetimePolicy", "LifetimePolicy", GameplayConfigValueKind.Int32),
 new GameplayConfigFieldDescription("c598ef461545031f5f36bbd0fa32e3ae1ea905ec08241c423d54228be6f630a2", "380e26df0fc3d470f67b43aaad175b39e67c298510da43f86081bdcf10ca597d", "EffectTags", "array,string", GameplayConfigValueKind.Unsupported),
 new GameplayConfigFieldDescription("3aa12fd9502c272794c9515a5e04848718fc0dc6346a94ecc273db8f1230ccaf", "e7aa085727c924d86faeaca376559f3bb98da25dcba6f6d933f3776a9a07ea64", "DurationPolicy", "DurationPolicy", GameplayConfigValueKind.Int32),
-new GameplayConfigFieldDescription("4e09b3a3eacf5768ddf48106c735f99506ef78fee95a1997292a7401a048f89d", "f843941e3c997558a73433c2f1f3135c050a9cb2a3ce4fae1b45f9f7a9be212b", "DurationMagnitude.Source", "MagnitudeSource", GameplayConfigValueKind.Int32),
-new GameplayConfigFieldDescription("124bb58fbb2fe6604b526c573c52de9a5251b704cc968ab80b0ad8e67a185c93", "a6f160f5337cd541f6de638c77afc71e1889507ca3b41f15b51122f1c1041132", "DurationMagnitude.Constant", "float", GameplayConfigValueKind.Number),
-new GameplayConfigFieldDescription("74abdffbc7f8fdb7f36ec6aacc86c591eb62c4a5154464cc2ef50cdf3e03ecd1", "8077e74b7a9a80e7fc7d03d88d2099d0c05e0096b8bf50b5a0a9a284f0488f3b", "DurationMagnitude.SetByCallerParameterId", "string", GameplayConfigValueKind.Text),
-new GameplayConfigFieldDescription("994b754c36c85865a06ed84366537562bd02a9d3754a608f17f94d9ba1daa222", "6c209fcf4762f74a6e19fe6b9f355247b72b16f024cd9b642ae99f44de7fb4f3", "DurationMagnitude.AttributeId", "string", GameplayConfigValueKind.Text),
-new GameplayConfigFieldDescription("aa4d8cd3074d85dcc18ad08b0455d32ada17bbb307b41c19250a3a85712d5e97", "1f1c66b0cc0268dadfb50ed049d779fe0c7ac2d78187b86af2ffba6b5c55c4c6", "DurationMagnitude.Coefficient", "float", GameplayConfigValueKind.Number),
-new GameplayConfigFieldDescription("f5052d87285f89b883dd6822df881c66ec54a64f9734afa5f550bc3bcb85b2c3", "b2d52082e18b69483139d722eba94c2e06faf9cb03e121bd093485a4b1df7fcc", "DurationMagnitude.PostAdd", "float", GameplayConfigValueKind.Number),
+new GameplayConfigFieldDescription("42a826a742bf06abb06f2272517995d6cb5c286391e9f73ad3c69efd22a91322", "b63d2d87ab0d1c9501147fd18dc67ae12093bc7228196b99274c9ae33053c8cc", "DurationMagnitude", "Magnitude", GameplayConfigValueKind.Unsupported),
 new GameplayConfigFieldDescription("251930650d960c5b9fdb839f972aeb431196fb2c27b5a24c80517ec6ec842d44", "bcb98816dff1c23124eb7f9f1e458b5dffa050a7169648f20e7aaaaf51717671", "HasPeriod", "bool", GameplayConfigValueKind.Boolean),
-new GameplayConfigFieldDescription("5e966914a842410b10a866006ee0dbf63c8a500434ec5ae4489f36233fe93c07", "40ae55fc585dfaa485886fc6b212adf451ba78461961b48f96b27de2f3378745", "PeriodMagnitude.Source", "MagnitudeSource", GameplayConfigValueKind.Int32),
-new GameplayConfigFieldDescription("6405f2c2e10ad23f262210cb6c79e85292808b7ac71a107bda2817678d02e55c", "dc746da9fd0a4287d0092e86d4a8af1cf6219d0a3255482c2f51202700932e8d", "PeriodMagnitude.Constant", "float", GameplayConfigValueKind.Number),
-new GameplayConfigFieldDescription("cee400c36965e856cf842b7759530f05a3c2db7fc7ef4327763a98156fc34947", "ffb1284c32809e3bf2dc020a3e9856dcd85c586ba647b2b51d2be190899be07d", "PeriodMagnitude.SetByCallerParameterId", "string", GameplayConfigValueKind.Text),
-new GameplayConfigFieldDescription("dac6b897c40394cbe63ede4832673be6ab29e238db573727438658077dafd9d2", "ae71c994a5cbaa768632cec17844c1c90502920c25c2b81a24b27b2ca9fd2257", "PeriodMagnitude.AttributeId", "string", GameplayConfigValueKind.Text),
-new GameplayConfigFieldDescription("b8e064b3ee90200164b87fbd86e1bc4a79ef4d82b724bc529cc6a3cf928e7edf", "31d3037aa482b29fb38d2fadf104f8b59c94d948c76ac8f12cf161582a073d32", "PeriodMagnitude.Coefficient", "float", GameplayConfigValueKind.Number),
-new GameplayConfigFieldDescription("27436c31e2864369bc4b464d3224c21fec42a2aa710c6458fed7fcbb2e539763", "a2600ea83ef39bac029bd26f67051079f5c10b2c57338e98cc21d6cccf8bfbbd", "PeriodMagnitude.PostAdd", "float", GameplayConfigValueKind.Number),
+new GameplayConfigFieldDescription("9913fb3fa1e26c92f10f2a08bcc9af0304df8b523dc6ef224411ac5d94a545f8", "635a3e763e9428385f609cd4eec695aeb2ac137cd4ae78191e2c216c4daf750a", "PeriodMagnitude", "Magnitude", GameplayConfigValueKind.Unsupported),
 new GameplayConfigFieldDescription("25660ad8098409fe4ca96d4fd12c3cd24aef0dee58a0d02a216055e7471b2d84", "842d7a068e8e9db7d58154d49692761e0db240733bfc7e6ba972a3b292c9397a", "ExecuteOnApplication", "bool", GameplayConfigValueKind.Boolean),
 new GameplayConfigFieldDescription("cf976f5699e75aecf02e6d3c1bb9943a234f45fef4d5a4fb7e9cd8dbd8bf078d", "21397fe084450bae27a0a6a47141520a247254602b50afd81b7baa63d8603b61", "StackingPolicy", "StackingPolicy", GameplayConfigValueKind.Int32),
 new GameplayConfigFieldDescription("5f0b4761228257cb1eae7cf51dbfa8e678e95522ca75a725ef843bcb74ee7743", "ec9499ca212959125ceb59996bad95afe62c8f7d6689c33bf7ed8e87c9446711", "MaxStacks", "int", GameplayConfigValueKind.Int32),
@@ -71,51 +61,16 @@ new GameplayConfigFieldDescription("50ce75b5e89a560e4dd5ddd8c047c3ad68596d0a196d
 new GameplayConfigFieldDescription("4db8a3c8a341b9c789362cd7f857b1a4a675eda92f0ab88f5c6143baffc868da", "b5ce51846534ba7646691e2e7f6c4070e30bbeac36635af65411f01d25382e37", "Property.HitType", "int", GameplayConfigValueKind.Int32),
 new GameplayConfigFieldDescription("123cfa64460ba5e438e9a98dc57a34536a900ee0921b22d77bd7c7baac941535", "1814f9bddebd1e60ffecc5030f6471b17c4ce71b839f8756fdf1e5724bf3ce94", "Property.HitStrengthType", "int", GameplayConfigValueKind.Int32),
 new GameplayConfigFieldDescription("8ab28607f3636ab3ef5374dbcbb5d2bc7e782c76d7ae6e0212c625b0991de874", "18891924f277c29395a2385cd2f5c363381dd0d1ae91801e7e1cefabc6225f62", "Property.CombatTags", "array,string", GameplayConfigValueKind.Unsupported),
-new GameplayConfigFieldDescription("996ee493d1318600f1acde8ba769cf40c1727654a7215c050abfd7070b83746a", "9d71777a2b9340d306efd7c8de81bfc92201df8a2622297c63e286950789d0a4", "Property.DamagePercentage.Source", "MagnitudeSource", GameplayConfigValueKind.Int32),
-new GameplayConfigFieldDescription("dc1079411fd4b695af1a0d3c97c7757ebb6e870e56b376cd8b64809c98efdb81", "ff64b8ccd85a5c3dee989f3a6f6d643fd18ce7a1f7ffce2718cae1d14f4d88a0", "Property.DamagePercentage.Constant", "float", GameplayConfigValueKind.Number),
-new GameplayConfigFieldDescription("fe2a7b53da135e48010e1f4d28f76d2c0a3781532fd68b6718045de38e3c5481", "a54ae104f93840b2873348c6dede9b0bb23878aecab4660557dcedc321d34b55", "Property.DamagePercentage.SetByCallerParameterId", "string", GameplayConfigValueKind.Text),
-new GameplayConfigFieldDescription("8603c359d0ba7f9415db1485d849d4fc30e3daf9a4bef721e5b328b91a3f9c3a", "a0019565f61c79b26c025f436a9ac5b9e52f61b7b1ead48bf2fc9b0e17593edf", "Property.DamagePercentage.AttributeId", "string", GameplayConfigValueKind.Text),
-new GameplayConfigFieldDescription("464fbe1606fb429fbce6fb7811b34a52dde7be0d2bbcbbf0ec80ba0828c73474", "57ba4c747e3cbbaaf15a1e019baaf1fcc95de44060c767c9d3a6bfa27ec8f160", "Property.DamagePercentage.Coefficient", "float", GameplayConfigValueKind.Number),
-new GameplayConfigFieldDescription("aee7683fabf6d92076d10e0dd2995c6c728de0d799029aa8251ddb337ca8960e", "c2465718a47cb3edc79db7cb20aea0b25d7d09702214bfb2fcdb99248676b3fe", "Property.DamagePercentage.PostAdd", "float", GameplayConfigValueKind.Number),
-new GameplayConfigFieldDescription("9f5c8fa8dadb0c9781cd111d0666e024e9b733a6d0ab74b0475da8c87dcec981", "b8529593c58c9b1b99ea9d6bdb407877f059785309d63bf460ff320b290086e5", "Property.AddedDamage.Source", "MagnitudeSource", GameplayConfigValueKind.Int32),
-new GameplayConfigFieldDescription("e26e99cfa68fcb86c0ee77380d7501e950ee83ba8c90efde839d1d48c54b3360", "57008b4248017403b0329390eeed48d3dffc22d33d17335105413ab1c7dd7e63", "Property.AddedDamage.Constant", "float", GameplayConfigValueKind.Number),
-new GameplayConfigFieldDescription("7831fea18dbada68aa32a60dcb8a18ddf94f6e562201c5dc4964e389fb68681d", "13f3cdbe55c4e4b8ae8a5ee312c4f6c59645ac166b98530413bf46cf006aef99", "Property.AddedDamage.SetByCallerParameterId", "string", GameplayConfigValueKind.Text),
-new GameplayConfigFieldDescription("46c2780970f493051469e640bbeec51780ef18ef0d5daf1441efd02ee07c4b12", "c13766a751ac92c1c03ca5bc5e0a1b5ce63417bbc5ca05827bbec701b221cd76", "Property.AddedDamage.AttributeId", "string", GameplayConfigValueKind.Text),
-new GameplayConfigFieldDescription("b927b360a2754cb5b35d76a1560ec47f05143d6a42f0950ef425b1428d1ce1cd", "e2715ef187a0859f7c4255c3040f7262e2ff62fb278e05efe0f0698e14f7612f", "Property.AddedDamage.Coefficient", "float", GameplayConfigValueKind.Number),
-new GameplayConfigFieldDescription("07fdac5787215a58421dc676d8e744f536838e41974effff3a235412dca7123a", "fdc22f1a6297592c369cd6b4ab926a6bc8053600ff51d0079d1e4735e9ee916a", "Property.AddedDamage.PostAdd", "float", GameplayConfigValueKind.Number),
-new GameplayConfigFieldDescription("9315cd7ab19c0112fa79ad0e8e6bda0c0d70277c3c9c8276c2e75d6420b5b059", "48cbc7e70b1ff256ab598b020e4ca12350aa609f11462416ebb7c28e1075bb99", "Property.BreakStunRatio.Source", "MagnitudeSource", GameplayConfigValueKind.Int32),
-new GameplayConfigFieldDescription("88eb1adf0e2c03fbc87c75c9db5c168b1ae3ce73b8dbd3049e60e223060c9b8f", "8c8ba3f001b93fef1c3a0531a332f1250aa76d39e05ddddb32b1d03d62fee86e", "Property.BreakStunRatio.Constant", "float", GameplayConfigValueKind.Number),
-new GameplayConfigFieldDescription("b0903c7b0fc192cf75669c0a21e1da9594d40ac4f03b4844fc4450bb2d703247", "adb5ecdc7379a935c8b3251f5f92efd024e763d6870d03400fa7b50df77296c1", "Property.BreakStunRatio.SetByCallerParameterId", "string", GameplayConfigValueKind.Text),
-new GameplayConfigFieldDescription("54d23b2d280dbb1d18684fda628e2b87a7da8b9ee39f63845ef5da5211069143", "1d73636b817ffc91cc03b3e059429b01d82997e3795ce7bf3ab44884114d22d8", "Property.BreakStunRatio.AttributeId", "string", GameplayConfigValueKind.Text),
-new GameplayConfigFieldDescription("7c2fd0ca76e53ed93ba88e2649a0e1e848418f2390e7748b405ce1d5585dbb8e", "02647af0cd98ec06b6062826e3171132bd9ac117ad61c5b6dfad59db13085c42", "Property.BreakStunRatio.Coefficient", "float", GameplayConfigValueKind.Number),
-new GameplayConfigFieldDescription("4070adccb0aa23bbc1bf85ba1a35a18808b61112a3c4ff9d7eea1aeb2cdf99fa", "42663921ff0d8eb6192942e84fdbd9891b7cc27d8f11f303123359ca3155dbd4", "Property.BreakStunRatio.PostAdd", "float", GameplayConfigValueKind.Number),
-new GameplayConfigFieldDescription("09d1e39234faa00f2078c867ea541e86ea145aad7664a88eda85f2c160c47d01", "ff5f080da2c9b24f9268d2bafc47c49b0e9995bc47b33342eabba74bfed1e15c", "Property.ElementAccumulation.Source", "MagnitudeSource", GameplayConfigValueKind.Int32),
-new GameplayConfigFieldDescription("41164e9f7671f470ac75ccbc5e332edcd171778773b8fa63f803bcb17d0b85a6", "4be7a6a19c9a34b8e8553302e4830256d513beefe0fd78ba0fe7e8a9620087ea", "Property.ElementAccumulation.Constant", "float", GameplayConfigValueKind.Number),
-new GameplayConfigFieldDescription("d874b719a0eaee3e9b4f1e66b49f599371817dd1bd15cc739a82924d8200fc16", "20f7311837732a4301ebb2c6c07c150121852937c9a1d800df4ebb964cff7391", "Property.ElementAccumulation.SetByCallerParameterId", "string", GameplayConfigValueKind.Text),
-new GameplayConfigFieldDescription("9e65a4d417938b5aa5516997a836b4c7d31fad7601d6dcfbb47f1b6c13c33cdc", "b6644e2dcb53d02f4eb9e0d8f72aef0ea04b3b2b2250090e92f9afab19a70409", "Property.ElementAccumulation.AttributeId", "string", GameplayConfigValueKind.Text),
-new GameplayConfigFieldDescription("d2576edc0276d181a2ca6feb83ee8b27a7441b29e570ddfa2ed2183556787b50", "77dfe63dd947dbe7987952b516ee8347a414e4683a23ee115d47bf194b937b06", "Property.ElementAccumulation.Coefficient", "float", GameplayConfigValueKind.Number),
-new GameplayConfigFieldDescription("440b9fee54b0c9bf36c3750f167b067329bcdc805403627a35a7c68840dedab3", "9f68c034d81f92138ba79dab1c79c8ec9f5d2c7c46089a1215868065474e2338", "Property.ElementAccumulation.PostAdd", "float", GameplayConfigValueKind.Number),
-new GameplayConfigFieldDescription("daeeb40d7f6be09de78cafc865d35fb10e0e3b770b1f961f17fd5dba0a1490a9", "1886818e869d4dc979127c63ccce03cd309a1f25745e9a10d6fedbe9477e1f7c", "Property.ExhaustedAccumulation.Source", "MagnitudeSource", GameplayConfigValueKind.Int32),
-new GameplayConfigFieldDescription("85985bf4a1502a3b6cf7097e0f2624c23e37d6bf798cb5238bd892b1e5d0400a", "1b3e449bbb85b072243c872741e87c8b478e1451eab403ec570cb9aa7a5c65b7", "Property.ExhaustedAccumulation.Constant", "float", GameplayConfigValueKind.Number),
-new GameplayConfigFieldDescription("90fadcaeb680e2630b34474f119088e2c8ac76764fc5a1a3dbdbe993c07110bd", "62d2fb95d56cf0d73dfb19075e59372bb3cb0a5786ad94aa7ca53038e908d63f", "Property.ExhaustedAccumulation.SetByCallerParameterId", "string", GameplayConfigValueKind.Text),
-new GameplayConfigFieldDescription("10a2043dd625fa74b5f9a9719a0dcd1e6c620f0a0e27478f0d9182cf0cad8e51", "ad674cf5cda0ec6bf91f9c12b86334c2dbdbbd138f20798760ecbf739fa99b78", "Property.ExhaustedAccumulation.AttributeId", "string", GameplayConfigValueKind.Text),
-new GameplayConfigFieldDescription("4a5e3339fbf80cee2ecdb1635f49b4c835ce59bb83aef2edf0c1e0fbd75ddcc9", "27aba5d62f569607f5ab3ce967183d31c147590cd38291ef54cef3f5f56875f8", "Property.ExhaustedAccumulation.Coefficient", "float", GameplayConfigValueKind.Number),
-new GameplayConfigFieldDescription("ebe3e7c7e86c7d6a2e724eb7de3452f05039838c099791b0681cb6242479c4eb", "0362237881251e3a79f1aeb3922d17e06f9461292d961c6259ad5a5c5eafcd84", "Property.ExhaustedAccumulation.PostAdd", "float", GameplayConfigValueKind.Number),
-new GameplayConfigFieldDescription("feca746d2bcfb1bce98848d469dff033da6a7c6551bb38c3a64cb73e0c45a022", "39b33e67305f217ece6deebc3cf25e583f84f94628eb0bf05d2b5b0c17dce1e0", "Property.ExhaustedChase.Source", "MagnitudeSource", GameplayConfigValueKind.Int32),
-new GameplayConfigFieldDescription("ddb2630f9cee78010515542f64d0fe14db06aac8f75ed8b8bf1ba2b79cd70a34", "6de980954b4df30f0a743f713fa5a7d9582fdfbfc499b51c75b815f1f2a826c6", "Property.ExhaustedChase.Constant", "float", GameplayConfigValueKind.Number),
-new GameplayConfigFieldDescription("6fdaaa7f2f0d28c37d3700359b427d0700205875085fe123cc7e5055c2fa39bc", "ca32455fabe4d9ce746edb96cd9f77a91f1646a1d4024fbce6287b0d6c14f8f3", "Property.ExhaustedChase.SetByCallerParameterId", "string", GameplayConfigValueKind.Text),
-new GameplayConfigFieldDescription("b9f35f1a634989bc135ecbfcdbf0c8c1c9f6b0d682a9e162aef00fab246da61f", "f0f813e68ae56454060ae51c6641dc223bb98c47f09d23aaaf9c857a4610b8ed", "Property.ExhaustedChase.AttributeId", "string", GameplayConfigValueKind.Text),
-new GameplayConfigFieldDescription("614092e794dc04f5c5d517d90894d1199eacba4861d55aee8636cf1b14e6444e", "4317494a5c3cc882f5c120b82b649dc47ec67b6cf246c4ddeffc9ed364eabd90", "Property.ExhaustedChase.Coefficient", "float", GameplayConfigValueKind.Number),
-new GameplayConfigFieldDescription("658ecab63badadf3ed5f5c68b1dbe243d579f28ad191bd24e9a717e79b7c8acf", "ed0f50597565ca8dafd9f4872356b2a452123ecff172f7477e62522ca6c16cab", "Property.ExhaustedChase.PostAdd", "float", GameplayConfigValueKind.Number),
+new GameplayConfigFieldDescription("c174394afb16ca29838e878e5cafb98cad2638cd0fc18dd18f3b9f0775c79adf", "fbb1339dd9233c30fcbaaa07ace0099fa7e059efccba4dcd01263dfbf26dda27", "Property.DamagePercentage", "Magnitude", GameplayConfigValueKind.Unsupported),
+new GameplayConfigFieldDescription("682ca244dba78e7a8cb6746ad01ba8381b662a6fdf5ab07e5a36721c2de1a81d", "f8f7196ed6f2a2e5880ab2053e54af750c80f068592567e0703c7f86052e8e37", "Property.AddedDamage", "Magnitude", GameplayConfigValueKind.Unsupported),
+new GameplayConfigFieldDescription("8e08180cfa9b97a34f264f5a2e1e2292f38187589fc987b9eebe01dfee790e23", "e00cecc0158c7f0e56e6045ff872335dffd7537aaed0241e6ced12a2f4eb7ec2", "Property.BreakStunRatio", "Magnitude", GameplayConfigValueKind.Unsupported),
+new GameplayConfigFieldDescription("2e4a11d306bd3ed3eadb9a8309e1a5647db6a5a70435247eda80039cc1ffcba0", "6b961dd4f8d20125325039e7ed72cc43395013b063056db81b7a0cc6cf935f34", "Property.ElementAccumulation", "Magnitude", GameplayConfigValueKind.Unsupported),
+new GameplayConfigFieldDescription("42938ef6a7d836310197be9db972db26f3f091b5c1759a7e8e9c889cfc35e485", "5aec699d0caa8e34ffde4c9feddbb840954d4e5aca979e22edaa1e894fc3eaa3", "Property.ExhaustedAccumulation", "Magnitude", GameplayConfigValueKind.Unsupported),
+new GameplayConfigFieldDescription("ef8a4bde0d7e76557b6a64ed9b06f77d1a3b82a4112255f57eb72363a310e7a8", "9769ced00d51f938f471e29b48404f257517cda3411de387fd29917d19178983", "Property.ExhaustedChase", "Magnitude", GameplayConfigValueKind.Unsupported),
 new GameplayConfigFieldDescription("681f032bb43aa8b357ea82b89c174e2cec65358a2a9cfaee6005bd302b78b6bc", "f962268dd20624a5a9c42956857607acbddeb33ce3a896f34242142871d8c6fa", "Property.DamageElement", "int", GameplayConfigValueKind.Int32),
 new GameplayConfigFieldDescription("17264eda3759db15414322264fd1b252dadb6985c61f11632a94eb9245050b8b", "d44eb7ae9660016ba1169d0285300f75f2df9641dfbf81c97414d9bf5630a301", "Property.DamageHitType", "int", GameplayConfigValueKind.Int32),
 new GameplayConfigFieldDescription("8bc8dbfe1c2369361acadc2faf5ea11a381950baec55e17bb133032de92c9bd4", "13647ff5d822844a0d228033980ce9ee17423fee6e97ebec4f273342fbd66719", "Property.DamageBreakLevel", "int", GameplayConfigValueKind.Int32),
-new GameplayConfigFieldDescription("53fe9936869ae964b35533e875e83fc90cb01bc7626cbe2fba385bd73d51f2e1", "df09f39cff44c8f12015c33b286e3ec7c373c59f72bf80ce69536ef69a72aeb0", "Property.DamageBreakLevelProbability.Source", "MagnitudeSource", GameplayConfigValueKind.Int32),
-new GameplayConfigFieldDescription("3a4a1e0f360c26124c388fdb3cbdf4e21c6efb14cef6d729292e6d957ec21865", "5b6f2b433277b806cc56ce8bc1ccae0f739f68eac9ecedb9a62acf7c01df08a5", "Property.DamageBreakLevelProbability.Constant", "float", GameplayConfigValueKind.Number),
-new GameplayConfigFieldDescription("5dfe490fde02c5ab7170d09a8b47d9894e176f4598a40dfd76c52df9c9958472", "b0d836ad14ea6bcf10086dd002b44a4b3c0247d00bfc80500ca6ee81d480a13f", "Property.DamageBreakLevelProbability.SetByCallerParameterId", "string", GameplayConfigValueKind.Text),
-new GameplayConfigFieldDescription("938ae27cfab0a3107edcbbc3d7a832c111a01706cf32ec84ea38fe20b4f281fe", "ba816b0baba2248c69662d383eecbe5f18a83286b68c216a815bfe875a44cd5e", "Property.DamageBreakLevelProbability.AttributeId", "string", GameplayConfigValueKind.Text),
-new GameplayConfigFieldDescription("1d61c1d25eeed3bf208afc02f30b691209312a593aaa1f4e2cf9cc70e984e68e", "4295736329f338e58e9b62bd308f3447a3543b3c188efdbb2efc02d9a13b1527", "Property.DamageBreakLevelProbability.Coefficient", "float", GameplayConfigValueKind.Number),
-new GameplayConfigFieldDescription("532281753ca8626dafddda9232a4d63270d63ad268cce5ba36ce0a97b14a6b0c", "60a4011354c40b41f140ab1acfc78338bc5acf5daaf51814ad73c6cf01c573e0", "Property.DamageBreakLevelProbability.PostAdd", "float", GameplayConfigValueKind.Number),
+new GameplayConfigFieldDescription("6d2815332773aad5c04e2d24106f5576fba805f997eccbeea918e82aa00c5546", "210c006ee7b4c69eb7d6db9b643a46aa5333b776858b2883ed1fa97f5c25bd65", "Property.DamageBreakLevelProbability", "Magnitude", GameplayConfigValueKind.Unsupported),
 new GameplayConfigFieldDescription("d9fea509d9e410df0b69b0c41950418f34b247ca909b01957390ef9008f080e8", "07ac9c33e6b29b35224b9430284d3066cd06aefb32a0a7552b1523de933b523f", "Property.TriggerBuffLevel", "int", GameplayConfigValueKind.Int32),
 new GameplayConfigFieldDescription("7f456deb24502b1f83e27104d865b6a51387aff6ffae7c6e365deda616a87872", "38805d151f27aff910d6b603996c3d6c6476cec0d98af4c936ff762aae57c477", "Property.DestructionClass", "int", GameplayConfigValueKind.Int32),
 new GameplayConfigFieldDescription("a2725d04aef5756c373c207eb0ed9f9ee3aa9e77a2598a27c392635a49a113b3", "7442c5e0382556e4521a8d37da799361a7c79f4040ed979276a9e062c13cc7e1", "Property.DestructionDurability", "int", GameplayConfigValueKind.Int32),
@@ -150,12 +105,7 @@ static readonly IReadOnlyList<GameplayConfigFieldDescription> s_Mutations = Arra
 new GameplayConfigFieldDescription("06cc834a2cb2a631bb35c447fefcd1443b8bd0ca1b0a8a4b15e0713fd4e8fc40", "1e79750bbe87d6dd617f337e4c71e80ded0207ee4af835e0671143a1d5763db8", "Id", "string", GameplayConfigValueKind.Text),
 new GameplayConfigFieldDescription("12c0f83576221e1a76efcddc1a77939450884216d4d4ef5d9d96e18bc2312ef1", "1571c643cd761d137d0a94477b35a98f3e7a02697fde1f8fcc742127167f61b0", "AttributeId", "string", GameplayConfigValueKind.Text),
 new GameplayConfigFieldDescription("5d5317e6fda6cbd8b8c004992e834541a37cd8d4c7270ecf824816a43b609a18", "50c8f6e3a9e72d4c54d97bd194370231fedadba10681246acd91fbd4d29431f5", "Operation", "ModifierOperation", GameplayConfigValueKind.Int32),
-new GameplayConfigFieldDescription("1041ebdfda7f15f488be0fb40c0bab89cf76d278f24e81a3a556e132004f5147", "751f6441b852f3ae4828dbccc2ed99f7dae48c7181bfc77960ac9faa35559af1", "Magnitude.Source", "MagnitudeSource", GameplayConfigValueKind.Int32),
-new GameplayConfigFieldDescription("e1302ea1f042730b5bed610beb080f09c4893e4ab94b91901b39c103501169f2", "a232fb61b58b6c9c38a3059fa8974c6ae07c44325f16630a8bde0c4da941c500", "Magnitude.Constant", "float", GameplayConfigValueKind.Number),
-new GameplayConfigFieldDescription("d653ab06f987b25e98b34a6d1d7a1a2aeacb022bf361644818e3b8aa8f0d134d", "1fcd19cc4fc7b6c98e3ef1159bddfb43114b3a38a09bac10cafc4df30854ab87", "Magnitude.SetByCallerParameterId", "string", GameplayConfigValueKind.Text),
-new GameplayConfigFieldDescription("c7b711ff0835d81fc585f0adb25d70b08ff8510a3744effe4a4eef14e04ec787", "4467785326be3cdabdb2b6b23b353532ccc57483cf5a7346b1b982afcfa67e1e", "Magnitude.AttributeId", "string", GameplayConfigValueKind.Text),
-new GameplayConfigFieldDescription("cf0f2b15779ae8e5eddaf14fa6fa914ea7773e1b75577b9d6d78a9a69485fb7f", "fb65c389b2820307a6b6906834e4c14e46f4bf5ec5dc48ea28b27de55b8eb795", "Magnitude.Coefficient", "float", GameplayConfigValueKind.Number),
-new GameplayConfigFieldDescription("2714fb13e7651c9470704f59e1fe4a18b3a655167ea1a8f15c0ceba952c99b13", "66e45fd7fd9649242e44ff3405ca6c24a2c69db460d8327b3a001d777d92ea1f", "Magnitude.PostAdd", "float", GameplayConfigValueKind.Number),
+new GameplayConfigFieldDescription("b98e5bdc633dc4356ccaf4dd298b8bca4a9c272480bc9f44ea1539b6117b702e", "cd02e514ac884a71466ff7aa7343341d292ccd0588f2d37e251fecd86c28b9dc", "Magnitude", "Magnitude", GameplayConfigValueKind.Unsupported),
 new GameplayConfigFieldDescription("1eacf555aaf4ae1c2ea94de348f42f8f9b6364911bf68aff185aa1b6820ffbfc", "de7e4016d174ccb3d52715aab900a5b9136744bcd8ad234d5787d71a621ab85a", "ClampBound", "ClampBound", GameplayConfigValueKind.Int32),
 });
 static readonly IReadOnlyList<GameplayConfigFieldDescription> s_AdditionalEffects = Array.AsReadOnly(new GameplayConfigFieldDescription[] {
@@ -243,19 +193,7 @@ case "cc456f3a61412568ed4684634685caf6da7094980c6c264ee0e450d6fee27c9a": return 
 case "2bb4c3a3951a3214de1caca4529f5c297a9423d53fdcbaa36a7c62b361a3fded": return GameplayConfigValue.FromInt32((int)value.ScopePolicy);
 case "f941acadb65e9268d3e7c8f99b9722fdecb64e536a6deeb5707572acd0fce427": return GameplayConfigValue.FromInt32((int)value.LifetimePolicy);
 case "3aa12fd9502c272794c9515a5e04848718fc0dc6346a94ecc273db8f1230ccaf": return GameplayConfigValue.FromInt32((int)value.DurationPolicy);
-case "4e09b3a3eacf5768ddf48106c735f99506ef78fee95a1997292a7401a048f89d": return GameplayConfigValue.FromInt32((int)value.DurationMagnitude.Source);
-case "124bb58fbb2fe6604b526c573c52de9a5251b704cc968ab80b0ad8e67a185c93": return GameplayConfigValue.FromNumber(value.DurationMagnitude.Constant);
-case "74abdffbc7f8fdb7f36ec6aacc86c591eb62c4a5154464cc2ef50cdf3e03ecd1": return GameplayConfigValue.FromText(value.DurationMagnitude.SetByCallerParameterId);
-case "994b754c36c85865a06ed84366537562bd02a9d3754a608f17f94d9ba1daa222": return GameplayConfigValue.FromText(value.DurationMagnitude.AttributeId);
-case "aa4d8cd3074d85dcc18ad08b0455d32ada17bbb307b41c19250a3a85712d5e97": return GameplayConfigValue.FromNumber(value.DurationMagnitude.Coefficient);
-case "f5052d87285f89b883dd6822df881c66ec54a64f9734afa5f550bc3bcb85b2c3": return GameplayConfigValue.FromNumber(value.DurationMagnitude.PostAdd);
 case "251930650d960c5b9fdb839f972aeb431196fb2c27b5a24c80517ec6ec842d44": return GameplayConfigValue.FromBoolean(value.HasPeriod);
-case "5e966914a842410b10a866006ee0dbf63c8a500434ec5ae4489f36233fe93c07": return GameplayConfigValue.FromInt32((int)value.PeriodMagnitude.Source);
-case "6405f2c2e10ad23f262210cb6c79e85292808b7ac71a107bda2817678d02e55c": return GameplayConfigValue.FromNumber(value.PeriodMagnitude.Constant);
-case "cee400c36965e856cf842b7759530f05a3c2db7fc7ef4327763a98156fc34947": return GameplayConfigValue.FromText(value.PeriodMagnitude.SetByCallerParameterId);
-case "dac6b897c40394cbe63ede4832673be6ab29e238db573727438658077dafd9d2": return GameplayConfigValue.FromText(value.PeriodMagnitude.AttributeId);
-case "b8e064b3ee90200164b87fbd86e1bc4a79ef4d82b724bc529cc6a3cf928e7edf": return GameplayConfigValue.FromNumber(value.PeriodMagnitude.Coefficient);
-case "27436c31e2864369bc4b464d3224c21fec42a2aa710c6458fed7fcbb2e539763": return GameplayConfigValue.FromNumber(value.PeriodMagnitude.PostAdd);
 case "25660ad8098409fe4ca96d4fd12c3cd24aef0dee58a0d02a216055e7471b2d84": return GameplayConfigValue.FromBoolean(value.ExecuteOnApplication);
 case "cf976f5699e75aecf02e6d3c1bb9943a234f45fef4d5a4fb7e9cd8dbd8bf078d": return GameplayConfigValue.FromInt32((int)value.StackingPolicy);
 case "5f0b4761228257cb1eae7cf51dbfa8e678e95522ca75a725ef843bcb74ee7743": return GameplayConfigValue.FromInt32(value.MaxStacks);
@@ -290,51 +228,9 @@ case "39351876fd42acd0e6a395453bea7863ae3b36590b0dd21f632e786db5bf2065": return 
 case "50ce75b5e89a560e4dd5ddd8c047c3ad68596d0a196de5e23c4720ef775bb06e": return GameplayConfigValue.FromText(value.Property.SourceKey);
 case "4db8a3c8a341b9c789362cd7f857b1a4a675eda92f0ab88f5c6143baffc868da": return GameplayConfigValue.FromInt32(value.Property.HitType);
 case "123cfa64460ba5e438e9a98dc57a34536a900ee0921b22d77bd7c7baac941535": return GameplayConfigValue.FromInt32(value.Property.HitStrengthType);
-case "996ee493d1318600f1acde8ba769cf40c1727654a7215c050abfd7070b83746a": return GameplayConfigValue.FromInt32((int)value.Property.DamagePercentage.Source);
-case "dc1079411fd4b695af1a0d3c97c7757ebb6e870e56b376cd8b64809c98efdb81": return GameplayConfigValue.FromNumber(value.Property.DamagePercentage.Constant);
-case "fe2a7b53da135e48010e1f4d28f76d2c0a3781532fd68b6718045de38e3c5481": return GameplayConfigValue.FromText(value.Property.DamagePercentage.SetByCallerParameterId);
-case "8603c359d0ba7f9415db1485d849d4fc30e3daf9a4bef721e5b328b91a3f9c3a": return GameplayConfigValue.FromText(value.Property.DamagePercentage.AttributeId);
-case "464fbe1606fb429fbce6fb7811b34a52dde7be0d2bbcbbf0ec80ba0828c73474": return GameplayConfigValue.FromNumber(value.Property.DamagePercentage.Coefficient);
-case "aee7683fabf6d92076d10e0dd2995c6c728de0d799029aa8251ddb337ca8960e": return GameplayConfigValue.FromNumber(value.Property.DamagePercentage.PostAdd);
-case "9f5c8fa8dadb0c9781cd111d0666e024e9b733a6d0ab74b0475da8c87dcec981": return GameplayConfigValue.FromInt32((int)value.Property.AddedDamage.Source);
-case "e26e99cfa68fcb86c0ee77380d7501e950ee83ba8c90efde839d1d48c54b3360": return GameplayConfigValue.FromNumber(value.Property.AddedDamage.Constant);
-case "7831fea18dbada68aa32a60dcb8a18ddf94f6e562201c5dc4964e389fb68681d": return GameplayConfigValue.FromText(value.Property.AddedDamage.SetByCallerParameterId);
-case "46c2780970f493051469e640bbeec51780ef18ef0d5daf1441efd02ee07c4b12": return GameplayConfigValue.FromText(value.Property.AddedDamage.AttributeId);
-case "b927b360a2754cb5b35d76a1560ec47f05143d6a42f0950ef425b1428d1ce1cd": return GameplayConfigValue.FromNumber(value.Property.AddedDamage.Coefficient);
-case "07fdac5787215a58421dc676d8e744f536838e41974effff3a235412dca7123a": return GameplayConfigValue.FromNumber(value.Property.AddedDamage.PostAdd);
-case "9315cd7ab19c0112fa79ad0e8e6bda0c0d70277c3c9c8276c2e75d6420b5b059": return GameplayConfigValue.FromInt32((int)value.Property.BreakStunRatio.Source);
-case "88eb1adf0e2c03fbc87c75c9db5c168b1ae3ce73b8dbd3049e60e223060c9b8f": return GameplayConfigValue.FromNumber(value.Property.BreakStunRatio.Constant);
-case "b0903c7b0fc192cf75669c0a21e1da9594d40ac4f03b4844fc4450bb2d703247": return GameplayConfigValue.FromText(value.Property.BreakStunRatio.SetByCallerParameterId);
-case "54d23b2d280dbb1d18684fda628e2b87a7da8b9ee39f63845ef5da5211069143": return GameplayConfigValue.FromText(value.Property.BreakStunRatio.AttributeId);
-case "7c2fd0ca76e53ed93ba88e2649a0e1e848418f2390e7748b405ce1d5585dbb8e": return GameplayConfigValue.FromNumber(value.Property.BreakStunRatio.Coefficient);
-case "4070adccb0aa23bbc1bf85ba1a35a18808b61112a3c4ff9d7eea1aeb2cdf99fa": return GameplayConfigValue.FromNumber(value.Property.BreakStunRatio.PostAdd);
-case "09d1e39234faa00f2078c867ea541e86ea145aad7664a88eda85f2c160c47d01": return GameplayConfigValue.FromInt32((int)value.Property.ElementAccumulation.Source);
-case "41164e9f7671f470ac75ccbc5e332edcd171778773b8fa63f803bcb17d0b85a6": return GameplayConfigValue.FromNumber(value.Property.ElementAccumulation.Constant);
-case "d874b719a0eaee3e9b4f1e66b49f599371817dd1bd15cc739a82924d8200fc16": return GameplayConfigValue.FromText(value.Property.ElementAccumulation.SetByCallerParameterId);
-case "9e65a4d417938b5aa5516997a836b4c7d31fad7601d6dcfbb47f1b6c13c33cdc": return GameplayConfigValue.FromText(value.Property.ElementAccumulation.AttributeId);
-case "d2576edc0276d181a2ca6feb83ee8b27a7441b29e570ddfa2ed2183556787b50": return GameplayConfigValue.FromNumber(value.Property.ElementAccumulation.Coefficient);
-case "440b9fee54b0c9bf36c3750f167b067329bcdc805403627a35a7c68840dedab3": return GameplayConfigValue.FromNumber(value.Property.ElementAccumulation.PostAdd);
-case "daeeb40d7f6be09de78cafc865d35fb10e0e3b770b1f961f17fd5dba0a1490a9": return GameplayConfigValue.FromInt32((int)value.Property.ExhaustedAccumulation.Source);
-case "85985bf4a1502a3b6cf7097e0f2624c23e37d6bf798cb5238bd892b1e5d0400a": return GameplayConfigValue.FromNumber(value.Property.ExhaustedAccumulation.Constant);
-case "90fadcaeb680e2630b34474f119088e2c8ac76764fc5a1a3dbdbe993c07110bd": return GameplayConfigValue.FromText(value.Property.ExhaustedAccumulation.SetByCallerParameterId);
-case "10a2043dd625fa74b5f9a9719a0dcd1e6c620f0a0e27478f0d9182cf0cad8e51": return GameplayConfigValue.FromText(value.Property.ExhaustedAccumulation.AttributeId);
-case "4a5e3339fbf80cee2ecdb1635f49b4c835ce59bb83aef2edf0c1e0fbd75ddcc9": return GameplayConfigValue.FromNumber(value.Property.ExhaustedAccumulation.Coefficient);
-case "ebe3e7c7e86c7d6a2e724eb7de3452f05039838c099791b0681cb6242479c4eb": return GameplayConfigValue.FromNumber(value.Property.ExhaustedAccumulation.PostAdd);
-case "feca746d2bcfb1bce98848d469dff033da6a7c6551bb38c3a64cb73e0c45a022": return GameplayConfigValue.FromInt32((int)value.Property.ExhaustedChase.Source);
-case "ddb2630f9cee78010515542f64d0fe14db06aac8f75ed8b8bf1ba2b79cd70a34": return GameplayConfigValue.FromNumber(value.Property.ExhaustedChase.Constant);
-case "6fdaaa7f2f0d28c37d3700359b427d0700205875085fe123cc7e5055c2fa39bc": return GameplayConfigValue.FromText(value.Property.ExhaustedChase.SetByCallerParameterId);
-case "b9f35f1a634989bc135ecbfcdbf0c8c1c9f6b0d682a9e162aef00fab246da61f": return GameplayConfigValue.FromText(value.Property.ExhaustedChase.AttributeId);
-case "614092e794dc04f5c5d517d90894d1199eacba4861d55aee8636cf1b14e6444e": return GameplayConfigValue.FromNumber(value.Property.ExhaustedChase.Coefficient);
-case "658ecab63badadf3ed5f5c68b1dbe243d579f28ad191bd24e9a717e79b7c8acf": return GameplayConfigValue.FromNumber(value.Property.ExhaustedChase.PostAdd);
 case "681f032bb43aa8b357ea82b89c174e2cec65358a2a9cfaee6005bd302b78b6bc": return GameplayConfigValue.FromInt32(value.Property.DamageElement);
 case "17264eda3759db15414322264fd1b252dadb6985c61f11632a94eb9245050b8b": return GameplayConfigValue.FromInt32(value.Property.DamageHitType);
 case "8bc8dbfe1c2369361acadc2faf5ea11a381950baec55e17bb133032de92c9bd4": return GameplayConfigValue.FromInt32(value.Property.DamageBreakLevel);
-case "53fe9936869ae964b35533e875e83fc90cb01bc7626cbe2fba385bd73d51f2e1": return GameplayConfigValue.FromInt32((int)value.Property.DamageBreakLevelProbability.Source);
-case "3a4a1e0f360c26124c388fdb3cbdf4e21c6efb14cef6d729292e6d957ec21865": return GameplayConfigValue.FromNumber(value.Property.DamageBreakLevelProbability.Constant);
-case "5dfe490fde02c5ab7170d09a8b47d9894e176f4598a40dfd76c52df9c9958472": return GameplayConfigValue.FromText(value.Property.DamageBreakLevelProbability.SetByCallerParameterId);
-case "938ae27cfab0a3107edcbbc3d7a832c111a01706cf32ec84ea38fe20b4f281fe": return GameplayConfigValue.FromText(value.Property.DamageBreakLevelProbability.AttributeId);
-case "1d61c1d25eeed3bf208afc02f30b691209312a593aaa1f4e2cf9cc70e984e68e": return GameplayConfigValue.FromNumber(value.Property.DamageBreakLevelProbability.Coefficient);
-case "532281753ca8626dafddda9232a4d63270d63ad268cce5ba36ce0a97b14a6b0c": return GameplayConfigValue.FromNumber(value.Property.DamageBreakLevelProbability.PostAdd);
 case "d9fea509d9e410df0b69b0c41950418f34b247ca909b01957390ef9008f080e8": return GameplayConfigValue.FromInt32(value.Property.TriggerBuffLevel);
 case "7f456deb24502b1f83e27104d865b6a51387aff6ffae7c6e365deda616a87872": return GameplayConfigValue.FromInt32(value.Property.DestructionClass);
 case "a2725d04aef5756c373c207eb0ed9f9ee3aa9e77a2598a27c392635a49a113b3": return GameplayConfigValue.FromInt32(value.Property.DestructionDurability);
@@ -370,12 +266,6 @@ var value = tables.Mutations.Single(item => item.Id == recordId); switch (fieldI
 case "06cc834a2cb2a631bb35c447fefcd1443b8bd0ca1b0a8a4b15e0713fd4e8fc40": return GameplayConfigValue.FromText(value.Id);
 case "12c0f83576221e1a76efcddc1a77939450884216d4d4ef5d9d96e18bc2312ef1": return GameplayConfigValue.FromText(value.AttributeId);
 case "5d5317e6fda6cbd8b8c004992e834541a37cd8d4c7270ecf824816a43b609a18": return GameplayConfigValue.FromInt32((int)value.Operation);
-case "1041ebdfda7f15f488be0fb40c0bab89cf76d278f24e81a3a556e132004f5147": return GameplayConfigValue.FromInt32((int)value.Magnitude.Source);
-case "e1302ea1f042730b5bed610beb080f09c4893e4ab94b91901b39c103501169f2": return GameplayConfigValue.FromNumber(value.Magnitude.Constant);
-case "d653ab06f987b25e98b34a6d1d7a1a2aeacb022bf361644818e3b8aa8f0d134d": return GameplayConfigValue.FromText(value.Magnitude.SetByCallerParameterId);
-case "c7b711ff0835d81fc585f0adb25d70b08ff8510a3744effe4a4eef14e04ec787": return GameplayConfigValue.FromText(value.Magnitude.AttributeId);
-case "cf0f2b15779ae8e5eddaf14fa6fa914ea7773e1b75577b9d6d78a9a69485fb7f": return GameplayConfigValue.FromNumber(value.Magnitude.Coefficient);
-case "2714fb13e7651c9470704f59e1fe4a18b3a655167ea1a8f15c0ceba952c99b13": return GameplayConfigValue.FromNumber(value.Magnitude.PostAdd);
 case "1eacf555aaf4ae1c2ea94de348f42f8f9b6364911bf68aff185aa1b6820ffbfc": return GameplayConfigValue.FromInt32((int)value.ClampBound);
 default: throw new InvalidOperationException("记录字段不存在或不支持基础读取：" + recordId + "/" + fieldId); } }
 case GameplayConfigRecordKind.AdditionalEffects: {

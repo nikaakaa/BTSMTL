@@ -6,7 +6,26 @@ public static class GameplayConfigProjection {
 public static PublishedVector3 Publish(Vector3 value) {
 return new PublishedVector3(value.X, value.Y, value.Z); }
 public static PublishedMagnitude Publish(Magnitude value) {
-return new PublishedMagnitude(value.Source, value.Constant, value.SetByCallerParameterId, value.AttributeId, value.Coefficient, value.PostAdd); }
+return value switch {
+ConstantMagnitude child => PublishedMagnitude.FromConstantMagnitude(Publish(child)),
+ScaledConstantMagnitude child => PublishedMagnitude.FromScaledConstantMagnitude(Publish(child)),
+SetByCallerMagnitude child => PublishedMagnitude.FromSetByCallerMagnitude(Publish(child)),
+SourceAttributeSnapshotMagnitude child => PublishedMagnitude.FromSourceAttributeSnapshotMagnitude(Publish(child)),
+TargetAttributeSnapshotMagnitude child => PublishedMagnitude.FromTargetAttributeSnapshotMagnitude(Publish(child)),
+TargetAttributeLiveMagnitude child => PublishedMagnitude.FromTargetAttributeLiveMagnitude(Publish(child)),
+_ => throw new InvalidOperationException("配置组件不属于正式 schema。") }; }
+public static PublishedConstantMagnitude Publish(ConstantMagnitude value) {
+return new PublishedConstantMagnitude(value.Value); }
+public static PublishedScaledConstantMagnitude Publish(ScaledConstantMagnitude value) {
+return new PublishedScaledConstantMagnitude(value.Value, value.Coefficient, value.PostAdd); }
+public static PublishedSetByCallerMagnitude Publish(SetByCallerMagnitude value) {
+return new PublishedSetByCallerMagnitude(value.ParameterId, value.Coefficient, value.PostAdd); }
+public static PublishedSourceAttributeSnapshotMagnitude Publish(SourceAttributeSnapshotMagnitude value) {
+return new PublishedSourceAttributeSnapshotMagnitude(value.AttributeId, value.Coefficient, value.PostAdd); }
+public static PublishedTargetAttributeSnapshotMagnitude Publish(TargetAttributeSnapshotMagnitude value) {
+return new PublishedTargetAttributeSnapshotMagnitude(value.AttributeId, value.Coefficient, value.PostAdd); }
+public static PublishedTargetAttributeLiveMagnitude Publish(TargetAttributeLiveMagnitude value) {
+return new PublishedTargetAttributeLiveMagnitude(value.AttributeId, value.Coefficient, value.PostAdd); }
 public static PublishedTagQuery Publish(TagQuery value) {
 return new PublishedTagQuery(value.All.ToArray(), value.Any.ToArray(), value.None.ToArray()); }
 public static PublishedAttributeBound Publish(AttributeBound value) {

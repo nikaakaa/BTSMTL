@@ -268,9 +268,6 @@ namespace ThirdPersonSimulation.Fixed
         static FixedVector3 Vector(PublishedVector3 value) => new FixedVector3(Scalar(value.X), Scalar(value.Y), Scalar(value.Z));
         static SweepVector3<FixedScalar> SweepVector(PublishedVector3 value) =>
             new SweepVector3<FixedScalar>(Scalar(value.X), Scalar(value.Y), Scalar(value.Z));
-        static PortableMagnitude Magnitude(PublishedMagnitude value) => new PortableMagnitude(
-            (PortableMagnitudeSource)value.Source, Scalar(value.Constant), value.SetByCallerParameterId,
-            value.AttributeId, Scalar(value.Coefficient), Scalar(value.PostAdd));
 
         static PortableAttackCollisionComponent Collision(PublishedAttack attack,
             Dictionary<string, CombatAttackGeometryContent> geometries)
@@ -290,10 +287,10 @@ namespace ThirdPersonSimulation.Fixed
         {
         PublishedAttackProperty value = attack.Property;
         return new PortableAttackPropertyComponent(value.SourceKey, value.HitType, value.HitStrengthType,
-            value.CombatTags.ToArray(), Magnitude(value.DamagePercentage), Magnitude(value.AddedDamage),
-            Magnitude(value.BreakStunRatio), Magnitude(value.ElementAccumulation), Magnitude(value.ExhaustedAccumulation),
-            Magnitude(value.ExhaustedChase), value.DamageElement, value.DamageHitType, value.DamageBreakLevel,
-            Magnitude(value.DamageBreakLevelProbability), value.TriggerBuffLevel, value.DestructionClass,
+            value.CombatTags.ToArray(), PortableMagnitude.FromConfiguration(value.DamagePercentage), PortableMagnitude.FromConfiguration(value.AddedDamage),
+            PortableMagnitude.FromConfiguration(value.BreakStunRatio), PortableMagnitude.FromConfiguration(value.ElementAccumulation), PortableMagnitude.FromConfiguration(value.ExhaustedAccumulation),
+            PortableMagnitude.FromConfiguration(value.ExhaustedChase), value.DamageElement, value.DamageHitType, value.DamageBreakLevel,
+            PortableMagnitude.FromConfiguration(value.DamageBreakLevelProbability), value.TriggerBuffLevel, value.DestructionClass,
             value.DestructionDurability, value.OverrideDamageStaggerLevel, value.DamageTextId,
             value.DamageTextWaitMilliseconds, value.FrameHalt, value.AttackerFrameHalt, value.GroundHitEffectId,
             value.SkyHitEffectId, value.DownHitEffectId, value.StandardConfigKey, value.AbilityTargetKey,

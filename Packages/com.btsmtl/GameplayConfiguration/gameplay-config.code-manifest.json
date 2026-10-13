@@ -10,7 +10,6 @@
     "Generated/Enums/DurationPolicy.cs",
     "Generated/Enums/DurationUpdate.cs",
     "Generated/Enums/LifetimePolicy.cs",
-    "Generated/Enums/MagnitudeSource.cs",
     "Generated/Enums/ModifierApplication.cs",
     "Generated/Enums/ModifierOperation.cs",
     "Generated/Enums/OverflowPolicy.cs",
@@ -42,6 +41,7 @@
     "Reader/Generated/ThirdPersonGameplay/Configuration/Component.cs",
     "Reader/Generated/ThirdPersonGameplay/Configuration/ComponentRecord.cs",
     "Reader/Generated/ThirdPersonGameplay/Configuration/Components.cs",
+    "Reader/Generated/ThirdPersonGameplay/Configuration/ConstantMagnitude.cs",
     "Reader/Generated/ThirdPersonGameplay/Configuration/CueBinding.cs",
     "Reader/Generated/ThirdPersonGameplay/Configuration/Effect.cs",
     "Reader/Generated/ThirdPersonGameplay/Configuration/Effects.cs",
@@ -60,8 +60,13 @@
     "Reader/Generated/ThirdPersonGameplay/Configuration/ParameterBinding.cs",
     "Reader/Generated/ThirdPersonGameplay/Configuration/ParameterBindings.cs",
     "Reader/Generated/ThirdPersonGameplay/Configuration/ReplacementSourceRequirement.cs",
+    "Reader/Generated/ThirdPersonGameplay/Configuration/ScaledConstantMagnitude.cs",
+    "Reader/Generated/ThirdPersonGameplay/Configuration/SetByCallerMagnitude.cs",
+    "Reader/Generated/ThirdPersonGameplay/Configuration/SourceAttributeSnapshotMagnitude.cs",
     "Reader/Generated/ThirdPersonGameplay/Configuration/TagQuery.cs",
     "Reader/Generated/ThirdPersonGameplay/Configuration/TagRequirements.cs",
+    "Reader/Generated/ThirdPersonGameplay/Configuration/TargetAttributeLiveMagnitude.cs",
+    "Reader/Generated/ThirdPersonGameplay/Configuration/TargetAttributeSnapshotMagnitude.cs",
     "Reader/Generated/ThirdPersonGameplay/Configuration/Vector3.cs"
   ]
 }

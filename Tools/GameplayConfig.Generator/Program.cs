@@ -284,7 +284,7 @@ internal static class Program
                     code.AppendLine("}");
                     code.AppendLine("[CanonicalContract(MaterializedRead = true, PreparedRead = false)]");
                     code.Append("[CanonicalUnion(typeof(").Append(pair.Key).AppendLine("Value))]");
-                    code.Append("public readonly partial struct Published").Append(pair.Key).AppendLine(" {} ");
+                    code.Append("public readonly partial struct Published").Append(pair.Key).AppendLine(" {}");
                     continue;
                 }
                 code.AppendLine("[CanonicalContract(MaterializedRead = true, PreparedRead = false)]");

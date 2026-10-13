@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using ThirdPersonGameplay.Configuration;
 
 namespace ThirdPersonSimulation
 {
@@ -139,6 +140,40 @@ namespace ThirdPersonSimulation
         public string AttributeId { get; }
         public Float32Scalar Coefficient { get; }
         public Float32Scalar PostAdd { get; }
+
+        public static PortableMagnitude FromConfiguration(PublishedMagnitude value)
+        {
+            switch (value.Kind)
+            {
+                case MagnitudeValueKind.ConstantMagnitude:
+                    return new PortableMagnitude(PortableMagnitudeSource.Constant, Float32Scalar.FromDouble(value.ConstantMagnitude.Value),
+                        string.Empty, string.Empty, Float32Scalar.One, Float32Scalar.Zero);
+                case MagnitudeValueKind.ScaledConstantMagnitude:
+                    PublishedScaledConstantMagnitude constant = value.ScaledConstantMagnitude;
+                    return new PortableMagnitude(PortableMagnitudeSource.Constant, Float32Scalar.FromDouble(constant.Value),
+                        string.Empty, string.Empty, Float32Scalar.FromDouble(constant.Coefficient), Float32Scalar.FromDouble(constant.PostAdd));
+                case MagnitudeValueKind.SetByCallerMagnitude:
+                    PublishedSetByCallerMagnitude caller = value.SetByCallerMagnitude;
+                    return new PortableMagnitude(PortableMagnitudeSource.SetByCaller, Float32Scalar.Zero,
+                        caller.ParameterId, string.Empty, Float32Scalar.FromDouble(caller.Coefficient), Float32Scalar.FromDouble(caller.PostAdd));
+                case MagnitudeValueKind.SourceAttributeSnapshotMagnitude:
+                    PublishedSourceAttributeSnapshotMagnitude source = value.SourceAttributeSnapshotMagnitude;
+                    return FromAttribute(PortableMagnitudeSource.SourceAttributeSnapshot, source.AttributeId, source.Coefficient, source.PostAdd);
+                case MagnitudeValueKind.TargetAttributeSnapshotMagnitude:
+                    PublishedTargetAttributeSnapshotMagnitude target = value.TargetAttributeSnapshotMagnitude;
+                    return FromAttribute(PortableMagnitudeSource.TargetAttributeSnapshot, target.AttributeId, target.Coefficient, target.PostAdd);
+                case MagnitudeValueKind.TargetAttributeLiveMagnitude:
+                    PublishedTargetAttributeLiveMagnitude live = value.TargetAttributeLiveMagnitude;
+                    return FromAttribute(PortableMagnitudeSource.TargetAttributeLive, live.AttributeId, live.Coefficient, live.PostAdd);
+                default:
+                    throw new InvalidDataException($"Magnitude kind '{value.Kind}' has no projection.");
+            }
+        }
+
+        static PortableMagnitude FromAttribute(PortableMagnitudeSource source, string attributeId, float coefficient, float postAdd) =>
+            new PortableMagnitude(source, Float32Scalar.Zero, string.Empty, GameplayEffectRuntimeIdentity.Attribute(attributeId),
+                Float32Scalar.FromDouble(coefficient), Float32Scalar.FromDouble(postAdd));
+
     }
 
     internal sealed class PortableTagQuery
@@ -826,7 +861,6 @@ namespace ThirdPersonSimulation
         internal static string NormalizeTag(string value) => GameplayEffectRuntimeIdentity.Tag(value);
         internal static string NormalizeAttribute(string value) => GameplayEffectRuntimeIdentity.Attribute(value);
         internal static string NormalizeEffect(string value) => GameplayEffectRuntimeIdentity.Effect(value);
-        static string NormalizeOptionalAttribute(string value) => string.IsNullOrWhiteSpace(value) ? string.Empty : NormalizeAttribute(value);
 
     }
 }
