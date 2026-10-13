@@ -5,16 +5,6 @@ using System.Text;
 
 namespace ThirdPersonSimulation.ServerAuthoritative.Transport
 {
-    internal interface IServerAuthoritativeDatagramIdentityResolver
-    {
-        bool TryResolveIdentity(
-            ReadOnlySpan<byte> room,
-            ReadOnlySpan<byte> session,
-            ReadOnlySpan<byte> player,
-            ReadOnlySpan<byte> actor,
-            out ServerAuthoritativeDatagramIdentity identity);
-    }
-
     public enum ServerAuthoritativeDatagramKind : byte
     {
         DataPlaneHello = 1,
@@ -23,7 +13,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
         Snapshot = 4
     }
 
-    public readonly struct ServerAuthoritativeDatagramIdentity : IEquatable<ServerAuthoritativeDatagramIdentity>
+    [CanonicalContract]
+    public readonly partial struct ServerAuthoritativeDatagramIdentity : IEquatable<ServerAuthoritativeDatagramIdentity>
     {
         public ServerAuthoritativeDatagramIdentity(
             ServerAuthoritativeRoomId roomId,
@@ -31,18 +22,24 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
             ServerAuthoritativePlayerId playerId,
             ActorId actorId)
         {
-            if (!roomId.IsValid || !sessionId.IsValid || !playerId.IsValid || !actorId.IsValid)
-                throw new ArgumentException("Gameplay datagram identity is incomplete.");
             RoomId = roomId;
             SessionId = sessionId;
             PlayerId = playerId;
             ActorId = actorId;
+            RequireRecord();
         }
 
         public ServerAuthoritativeRoomId RoomId { get; }
         public ServerAuthoritativeSessionId SessionId { get; }
         public ServerAuthoritativePlayerId PlayerId { get; }
         public ActorId ActorId { get; }
+
+        [CanonicalValidation]
+        void RequireRecord()
+        {
+            if (!RoomId.IsValid || !SessionId.IsValid || !PlayerId.IsValid || !ActorId.IsValid)
+                throw new ArgumentException("Gameplay datagram identity is incomplete.");
+        }
 
         public bool Equals(ServerAuthoritativeDatagramIdentity other) =>
             RoomId.Equals(other.RoomId) && SessionId.Equals(other.SessionId) &&
@@ -52,7 +49,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
         public override string ToString() => $"{RoomId}/{SessionId}/{PlayerId}/{ActorId}";
     }
 
-    public readonly struct ServerAuthoritativeDatagramHeader
+    [CanonicalContract]
+    public readonly partial struct ServerAuthoritativeDatagramHeader
     {
         public ServerAuthoritativeDatagramHeader(
             ServerAuthoritativeDatagramIdentity identity,
@@ -60,12 +58,11 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
             ulong packetSequence,
             int payloadLength)
         {
-            if (!ServerAuthoritativeGameplayDatagramCodec.IsSupportedKind(kind) || packetSequence == 0 || payloadLength < 0)
-                throw new ArgumentException("Gameplay datagram header is invalid.");
             Identity = identity;
             Kind = kind;
             PacketSequence = packetSequence;
             PayloadLength = payloadLength;
+            RequireRecord();
         }
 
         public int ProtocolVersion => ServerAuthoritativeGameplayDatagramCodec.ProtocolVersion;
@@ -73,6 +70,13 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
         public ServerAuthoritativeDatagramKind Kind { get; }
         public ulong PacketSequence { get; }
         public int PayloadLength { get; }
+
+        [CanonicalValidation]
+        void RequireRecord()
+        {
+            if (!ServerAuthoritativeGameplayDatagramCodec.IsSupportedKind(Kind) || PacketSequence == 0 || PayloadLength < 0)
+                throw new ArgumentException("Gameplay datagram header is invalid.");
+        }
     }
 
     public readonly struct ServerAuthoritativeDatagramPacket
@@ -98,7 +102,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
     public static class ServerAuthoritativeGameplayDatagramCodec
     {
         const uint Magic = 0x44504153;
-        public const int ProtocolVersion = 4;
+        public const int ProtocolVersion = 5;
 
         internal static bool IsSupportedKind(ServerAuthoritativeDatagramKind kind) =>
             kind == ServerAuthoritativeDatagramKind.DataPlaneHello ||
@@ -116,95 +120,72 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
                 throw new ArgumentException("Gameplay datagram payload length does not match its header.", nameof(payload));
             if (writer == null)
                 throw new ArgumentNullException(nameof(writer));
-            writer.Reset();
-            Write(writer, header, payload, maximumBytes);
-            int length = checked((int)writer.Length);
-            if (length > maximumBytes)
-                throw new InvalidDataException($"Gameplay datagram size '{length}' exceeds budget '{maximumBytes}'.");
-            return length;
-        }
-
-        static void Write(
-            CanonicalWriter writer,
-            ServerAuthoritativeDatagramHeader header,
-            ReadOnlySpan<byte> payload,
-            int maximumBytes)
-        {
             if (maximumBytes <= 0)
                 throw new ArgumentOutOfRangeException(nameof(maximumBytes));
+            int length = checked(sizeof(uint) + sizeof(int) + CanonicalContractProtocol.HashEncodedSize +
+                ServerAuthoritativeDatagramHeader.CanonicalMeasure(in header) + payload.Length);
+            if (length > maximumBytes)
+                throw new InvalidDataException($"Gameplay datagram size '{length}' exceeds budget '{maximumBytes}'.");
+            writer.Reset();
             writer.WriteUInt32(Magic);
             writer.WriteInt32(ProtocolVersion);
-            writer.WriteByte((byte)header.Kind);
-            writer.WriteText(header.Identity.RoomId.Value);
-            writer.WriteText(header.Identity.SessionId.Value);
-            writer.WriteText(header.Identity.PlayerId.Value);
-            writer.WriteText(header.Identity.ActorId.Value);
-            writer.WriteUInt64(header.PacketSequence);
-            writer.WriteBytes(payload);
-            if (writer.Length > maximumBytes)
-                throw new InvalidDataException($"Gameplay datagram size '{writer.Length}' exceeds budget '{maximumBytes}'.");
+            writer.WriteHash(ServerAuthoritativeDatagramHeader.CanonicalSchemaHash);
+            ServerAuthoritativeDatagramHeader.CanonicalWrite(writer, in header);
+            writer.WriteRawBytes(payload);
+            return length;
         }
 
         internal static ServerAuthoritativeDatagramPacket Read(
             ArraySegment<byte> bytes,
             CanonicalReader reader,
             int maximumBytes,
-            byte[] payloadBuffer,
-            IServerAuthoritativeDatagramIdentityResolver identityResolver)
+            byte[] payloadBuffer)
         {
             if (bytes.Count == 0 || bytes.Count > maximumBytes)
                 throw new InvalidDataException("Gameplay datagram length is invalid.");
             if (payloadBuffer == null || payloadBuffer.Length < maximumBytes)
                 throw new ArgumentException("Gameplay datagram payload buffer is invalid.", nameof(payloadBuffer));
-            if (identityResolver == null)
-                throw new ArgumentNullException(nameof(identityResolver));
             reader.Reset(bytes);
             if (reader.ReadUInt32() != Magic)
                 throw new InvalidDataException("Gameplay datagram magic is invalid.");
             int version = reader.ReadInt32();
             if (version != ProtocolVersion)
                 throw new InvalidDataException($"Gameplay datagram protocol version '{version}' is unsupported.");
-            var kind = (ServerAuthoritativeDatagramKind)reader.ReadByte();
-            if (!IsSupportedKind(kind))
-                throw new InvalidDataException($"Gameplay datagram kind '{kind}' is unsupported.");
-            ArraySegment<byte> room = reader.ReadTextSegment();
-            ArraySegment<byte> session = reader.ReadTextSegment();
-            ArraySegment<byte> player = reader.ReadTextSegment();
-            ArraySegment<byte> actor = reader.ReadTextSegment();
-            if (!identityResolver.TryResolveIdentity(
-                    room.AsSpan(), session.AsSpan(), player.AsSpan(), actor.AsSpan(), out ServerAuthoritativeDatagramIdentity identity))
-            {
-                identity = new ServerAuthoritativeDatagramIdentity(
-                    new ServerAuthoritativeRoomId(CanonicalTextEncoding.DecodeString(room)),
-                    new ServerAuthoritativeSessionId(CanonicalTextEncoding.DecodeString(session)),
-                    new ServerAuthoritativePlayerId(CanonicalTextEncoding.DecodeString(player)),
-                    new ActorId(CanonicalTextEncoding.DecodeString(actor)));
-            }
-            ulong packetSequence = reader.ReadUInt64();
-            ArraySegment<byte> payload = reader.ReadBytesSegment();
+            ServerAuthoritativeDatagramHeader.CanonicalRequireSchema(reader);
+            ServerAuthoritativeDatagramHeader header = ServerAuthoritativeDatagramHeader.CanonicalRead(reader);
+            ArraySegment<byte> payload = reader.ReadRawBytesSegment(header.PayloadLength);
             reader.RequireComplete();
             payload.AsSpan().CopyTo(payloadBuffer);
             return new ServerAuthoritativeDatagramPacket(
-                new ServerAuthoritativeDatagramHeader(identity, kind, packetSequence, payload.Count),
+                header,
                 payloadBuffer,
                 payload.Count);
         }
     }
 
-    public readonly struct DataPlaneHello
+    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+    public readonly partial struct DataPlaneHello
     {
         public DataPlaneHello(string ticketId, string nonce, long clientClockMicros)
         {
-            TicketId = RequireToken(ticketId, nameof(ticketId));
-            Nonce = RequireToken(nonce, nameof(nonce));
-            if (clientClockMicros <= 0)
-                throw new ArgumentOutOfRangeException(nameof(clientClockMicros));
+            TicketId = ticketId;
+            Nonce = nonce;
             ClientClockMicros = clientClockMicros;
+            RequireRecord();
         }
 
         public string TicketId { get; }
         public string Nonce { get; }
         public long ClientClockMicros { get; }
+
+        [CanonicalValidation]
+        void RequireRecord()
+        {
+            RequireToken(TicketId, nameof(TicketId));
+            RequireToken(Nonce, nameof(Nonce));
+            if (ClientClockMicros <= 0)
+                throw new ArgumentOutOfRangeException(nameof(ClientClockMicros));
+        }
 
         internal static string RequireToken(string value, string parameter)
         {
@@ -214,20 +195,27 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
         }
     }
 
-    public readonly struct DataPlaneHelloAck
+    [CanonicalContract]
+    public readonly partial struct DataPlaneHelloAck
     {
         public DataPlaneHelloAck(ulong authorityTick, long echoedClientClockMicros, long authorityClockMicros)
         {
-            if (echoedClientClockMicros <= 0 || authorityClockMicros <= 0)
-                throw new ArgumentException("Data-plane hello acknowledgement is invalid.");
             AuthorityTick = authorityTick;
             EchoedClientClockMicros = echoedClientClockMicros;
             AuthorityClockMicros = authorityClockMicros;
+            RequireRecord();
         }
 
         public ulong AuthorityTick { get; }
         public long EchoedClientClockMicros { get; }
         public long AuthorityClockMicros { get; }
+
+        [CanonicalValidation]
+        void RequireRecord()
+        {
+            if (EchoedClientClockMicros <= 0 || AuthorityClockMicros <= 0)
+                throw new ArgumentException("Data-plane hello acknowledgement is invalid.");
+        }
     }
 
     public readonly struct CanonicalInputSample
@@ -350,20 +338,20 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
 
     public static class ServerAuthoritativeDatagramPayloadCodec
     {
-        const int SchemaVersion = 2;
+        const int SchemaVersion = 3;
 
         public static void Write(DataPlaneHello value, CanonicalWriter writer)
         {
             Writer(writer, ServerAuthoritativeDatagramKind.DataPlaneHello);
-            writer.WriteText(value.TicketId);
-            writer.WriteText(value.Nonce);
-            writer.WriteInt64(value.ClientClockMicros);
+            writer.WriteHash(DataPlaneHello.CanonicalSchemaHash);
+            DataPlaneHello.CanonicalWrite(writer, in value);
         }
 
         public static DataPlaneHello ReadHello(ReadOnlyMemory<byte> bytes)
         {
             CanonicalReader reader = Reader(bytes, ServerAuthoritativeDatagramKind.DataPlaneHello);
-            var value = new DataPlaneHello(CanonicalTextEncoding.DecodeString(reader.ReadTextSegment()), CanonicalTextEncoding.DecodeString(reader.ReadTextSegment()), reader.ReadInt64());
+            DataPlaneHello.CanonicalRequireSchema(reader);
+            DataPlaneHello value = DataPlaneHello.CanonicalReadMaterialized(reader);
             reader.RequireComplete();
             return value;
         }
@@ -371,15 +359,15 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
         public static void Write(DataPlaneHelloAck value, CanonicalWriter writer)
         {
             Writer(writer, ServerAuthoritativeDatagramKind.DataPlaneHelloAck);
-            writer.WriteUInt64(value.AuthorityTick);
-            writer.WriteInt64(value.EchoedClientClockMicros);
-            writer.WriteInt64(value.AuthorityClockMicros);
+            writer.WriteHash(DataPlaneHelloAck.CanonicalSchemaHash);
+            DataPlaneHelloAck.CanonicalWrite(writer, in value);
         }
 
         public static DataPlaneHelloAck ReadHelloAck(ReadOnlyMemory<byte> bytes)
         {
             CanonicalReader reader = Reader(bytes, ServerAuthoritativeDatagramKind.DataPlaneHelloAck);
-            var value = new DataPlaneHelloAck(reader.ReadUInt64(), reader.ReadInt64(), reader.ReadInt64());
+            DataPlaneHelloAck.CanonicalRequireSchema(reader);
+            DataPlaneHelloAck value = DataPlaneHelloAck.CanonicalRead(reader);
             reader.RequireComplete();
             return value;
         }

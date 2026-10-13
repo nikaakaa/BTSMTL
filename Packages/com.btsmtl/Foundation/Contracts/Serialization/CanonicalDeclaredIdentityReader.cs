@@ -27,6 +27,18 @@ namespace ThirdPersonSimulation
 
         public string ReadPublished(CanonicalReader reader) => ResolvePublished(reader.ReadTextSegment());
 
+        public string ReadInitialization(CanonicalReader reader) => ResolveInitialization(reader.ReadTextSegment());
+
+        public string ResolveInitialization(ArraySegment<byte> bytes)
+        {
+            if (bytes.Array == null)
+                return null;
+            if (bytes.Count == 0)
+                return string.Empty;
+            int index = Find(bytes.AsSpan());
+            return index >= 0 ? m_Entries[index].Value : CanonicalTextEncoding.DecodeString(bytes);
+        }
+
         CanonicalTextValue ICanonicalTextResolver.ResolveText(ArraySegment<byte> utf16) =>
             CanonicalTextValue.FromString(ResolvePublished(utf16));
 

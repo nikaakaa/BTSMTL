@@ -8,6 +8,8 @@ namespace ThirdPersonSimulation
     {
         readonly SortedSet<string> m_Values = new SortedSet<string>(StringComparer.Ordinal) { string.Empty };
 
+        public IEnumerable<string> Values => m_Values;
+
         public void Visit(in CanonicalTextValue value)
         {
             if (!value.IsNull)

@@ -75,7 +75,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
 
     public sealed class ServerAuthoritativeDatagramEndpoint :
         IServerAuthoritativeAuthorityDataTransport,
-        IServerAuthoritativeDatagramIdentityResolver
+        ICanonicalTextResolver
     {
         readonly Socket m_Socket;
         readonly Thread m_ReceiveThread;
@@ -89,6 +89,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
         readonly Dictionary<ServerAuthoritativeDatagramIdentity, Route> m_Routes =
             new Dictionary<ServerAuthoritativeDatagramIdentity, Route>();
         readonly object m_RouteLock = new object();
+        CanonicalDeclaredIdentityReader m_DeclaredIdentities = new CanonicalDeclaredIdentityReader(Array.Empty<string>());
         readonly EndPoint m_ReceiveFromEndPoint;
         readonly int m_QueueCapacity;
         readonly int m_MaximumDatagramBytes;
@@ -170,13 +171,17 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
                     return;
                 }
                 m_Routes.Add(identity, new Route(identity, Clone(remoteEndPoint)));
+                RebuildDeclaredIdentities();
             }
         }
 
         public void RevokeRemote(ServerAuthoritativeDatagramIdentity identity)
         {
             lock (m_RouteLock)
+            {
                 m_Routes.Remove(identity);
+                RebuildDeclaredIdentities();
+            }
         }
 
         public void EnqueueSend(ServerAuthoritativeDatagramHeader header, ReadOnlySpan<byte> payload)
@@ -280,6 +285,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
         {
             var buffer = new byte[m_MaximumDatagramBytes + 1];
             var reader = new CanonicalReader(buffer);
+            reader.DeclaredIdentityReader = ReadIdentity;
+            reader.SetTextResolver(this);
             while (Volatile.Read(ref m_Disposed) == 0 && Volatile.Read(ref m_Failure) == null)
             {
                 EndPoint remote = m_ReceiveFromEndPoint;
@@ -301,8 +308,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
                             new ArraySegment<byte>(buffer, 0, received),
                             reader,
                             m_MaximumDatagramBytes,
-                            payloadBuffer,
-                            this);
+                            payloadBuffer);
                     }
                     catch (Exception exception) when (exception is InvalidDataException || exception is ArgumentException)
                     {
@@ -397,30 +403,24 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
 
         static IPEndPoint Clone(IPEndPoint value) => new IPEndPoint(value.Address, value.Port);
 
-        bool IServerAuthoritativeDatagramIdentityResolver.TryResolveIdentity(
-            ReadOnlySpan<byte> room,
-            ReadOnlySpan<byte> session,
-            ReadOnlySpan<byte> player,
-            ReadOnlySpan<byte> actor,
-            out ServerAuthoritativeDatagramIdentity identity)
+        void RebuildDeclaredIdentities()
+        {
+            var texts = new CanonicalStringTableBuilder();
+            foreach (KeyValuePair<ServerAuthoritativeDatagramIdentity, Route> pair in m_Routes)
+                ServerAuthoritativeDatagramIdentity.CanonicalVisitTexts(texts, pair.Value.Identity);
+            m_DeclaredIdentities = new CanonicalDeclaredIdentityReader(texts.Values);
+        }
+
+        string ReadIdentity(CanonicalReader reader)
         {
             lock (m_RouteLock)
-            {
-                foreach (KeyValuePair<ServerAuthoritativeDatagramIdentity, Route> pair in m_Routes)
-                {
-                    Route route = pair.Value;
-                    if (room.SequenceEqual(route.RoomUtf16) &&
-                        session.SequenceEqual(route.SessionUtf16) &&
-                        player.SequenceEqual(route.PlayerUtf16) &&
-                        actor.SequenceEqual(route.ActorUtf16))
-                    {
-                        identity = route.Identity;
-                        return true;
-                    }
-                }
-            }
-            identity = default;
-            return false;
+                return m_DeclaredIdentities.ReadInitialization(reader);
+        }
+
+        CanonicalTextValue ICanonicalTextResolver.ResolveText(ArraySegment<byte> utf16)
+        {
+            lock (m_RouteLock)
+                return CanonicalTextValue.FromString(m_DeclaredIdentities.ResolveInitialization(utf16));
         }
 
         IPEndPoint RentReceiveEndPoint(IPEndPoint value)
@@ -504,31 +504,16 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
             public IPEndPoint RemoteEndPoint { get; }
         }
 
-        static byte[] EncodeIdentity(CanonicalTextValue identity)
-        {
-            var encoded = new byte[CanonicalTextEncoding.ByteCount(identity.Span)];
-            CanonicalTextEncoding.Encode(identity.Span, encoded);
-            return encoded;
-        }
-
         readonly struct Route
         {
             public Route(ServerAuthoritativeDatagramIdentity identity, IPEndPoint remoteEndPoint)
             {
                 Identity = identity;
                 RemoteEndPoint = remoteEndPoint;
-                RoomUtf16 = EncodeIdentity(identity.RoomId.Value);
-                SessionUtf16 = EncodeIdentity(identity.SessionId.Value);
-                PlayerUtf16 = EncodeIdentity(identity.PlayerId.Value);
-                ActorUtf16 = EncodeIdentity(identity.ActorId.Value);
             }
 
             public ServerAuthoritativeDatagramIdentity Identity { get; }
             public IPEndPoint RemoteEndPoint { get; }
-            public byte[] RoomUtf16 { get; }
-            public byte[] SessionUtf16 { get; }
-            public byte[] PlayerUtf16 { get; }
-            public byte[] ActorUtf16 { get; }
         }
     }
 }

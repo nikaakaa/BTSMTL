@@ -8,7 +8,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         public const string ModelId = "thirdperson.network-model.server-authoritative-hybrid";
         public const string ProtocolId = "thirdperson.protocol.server-authoritative-hybrid.outer";
         public const string SemanticVersion = "1";
-        public const int ProtocolVersion = 4;
+        public const int ProtocolVersion = 5;
 
         public static SimulationComponentIdentity CreateModel(StableHash configurationHash)
         {
@@ -22,7 +22,9 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         public static SimulationProtocolIdentity CreateProtocol(StableHash schemaHash)
         {
             return new SimulationProtocolIdentity(ProtocolId, SemanticVersion,
-                StableHash.Compute("server-authoritative-protocol/2", schemaHash.Value, SimulationNumericProfile.CanonicalSchema));
+                StableHash.Compute("server-authoritative-protocol/3", schemaHash.Value, SimulationNumericProfile.CanonicalSchema,
+                    ServerAuthoritativeRoomId.CanonicalSchema, ServerAuthoritativeSessionId.CanonicalSchema,
+                    ServerAuthoritativePlayerId.CanonicalSchema, ServerAuthoritativeWorkerId.CanonicalSchema));
         }
     }
 
@@ -54,10 +56,14 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         InProcessAuthorityScene = 2
     }
 
-    public readonly struct ServerAuthoritativeRoomId : IEquatable<ServerAuthoritativeRoomId>, IComparable<ServerAuthoritativeRoomId>
+    [CanonicalContract(MaterializedRead = true)]
+    public readonly partial struct ServerAuthoritativeRoomId : IEquatable<ServerAuthoritativeRoomId>, IComparable<ServerAuthoritativeRoomId>
     {
         public ServerAuthoritativeRoomId(string value) { Value = ServerAuthoritativeCanonicalIdentity.Require(value, nameof(value)); }
+        [CanonicalDeclaredText]
         public string Value { get; }
+        [CanonicalValidation]
+        void RequireRecord() => ServerAuthoritativeCanonicalIdentity.RequireCanonical(Value, nameof(Value));
         public bool IsValid => !string.IsNullOrEmpty(Value);
         public int CompareTo(ServerAuthoritativeRoomId other) => string.CompareOrdinal(Value, other.Value);
         public bool Equals(ServerAuthoritativeRoomId other) => string.Equals(Value, other.Value, StringComparison.Ordinal);
@@ -66,10 +72,14 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         public override string ToString() => Value ?? string.Empty;
     }
 
-    public readonly struct ServerAuthoritativePlayerId : IEquatable<ServerAuthoritativePlayerId>, IComparable<ServerAuthoritativePlayerId>
+    [CanonicalContract(MaterializedRead = true)]
+    public readonly partial struct ServerAuthoritativePlayerId : IEquatable<ServerAuthoritativePlayerId>, IComparable<ServerAuthoritativePlayerId>
     {
         public ServerAuthoritativePlayerId(string value) { Value = ServerAuthoritativeCanonicalIdentity.Require(value, nameof(value)); }
+        [CanonicalDeclaredText]
         public string Value { get; }
+        [CanonicalValidation]
+        void RequireRecord() => ServerAuthoritativeCanonicalIdentity.RequireCanonical(Value, nameof(Value));
         public bool IsValid => !string.IsNullOrEmpty(Value);
         public int CompareTo(ServerAuthoritativePlayerId other) => string.CompareOrdinal(Value, other.Value);
         public bool Equals(ServerAuthoritativePlayerId other) => string.Equals(Value, other.Value, StringComparison.Ordinal);
@@ -78,10 +88,14 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         public override string ToString() => Value ?? string.Empty;
     }
 
-    public readonly struct ServerAuthoritativeSessionId : IEquatable<ServerAuthoritativeSessionId>, IComparable<ServerAuthoritativeSessionId>
+    [CanonicalContract(MaterializedRead = true)]
+    public readonly partial struct ServerAuthoritativeSessionId : IEquatable<ServerAuthoritativeSessionId>, IComparable<ServerAuthoritativeSessionId>
     {
         public ServerAuthoritativeSessionId(string value) { Value = ServerAuthoritativeCanonicalIdentity.Require(value, nameof(value)); }
+        [CanonicalDeclaredText]
         public string Value { get; }
+        [CanonicalValidation]
+        void RequireRecord() => ServerAuthoritativeCanonicalIdentity.RequireCanonical(Value, nameof(Value));
         public bool IsValid => !string.IsNullOrEmpty(Value);
         public int CompareTo(ServerAuthoritativeSessionId other) => string.CompareOrdinal(Value, other.Value);
         public bool Equals(ServerAuthoritativeSessionId other) => string.Equals(Value, other.Value, StringComparison.Ordinal);
@@ -90,10 +104,14 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         public override string ToString() => Value ?? string.Empty;
     }
 
-    public readonly struct ServerAuthoritativeWorkerId : IEquatable<ServerAuthoritativeWorkerId>, IComparable<ServerAuthoritativeWorkerId>
+    [CanonicalContract(MaterializedRead = true)]
+    public readonly partial struct ServerAuthoritativeWorkerId : IEquatable<ServerAuthoritativeWorkerId>, IComparable<ServerAuthoritativeWorkerId>
     {
         public ServerAuthoritativeWorkerId(string value) { Value = ServerAuthoritativeCanonicalIdentity.Require(value, nameof(value)); }
+        [CanonicalDeclaredText]
         public string Value { get; }
+        [CanonicalValidation]
+        void RequireRecord() => ServerAuthoritativeCanonicalIdentity.RequireCanonical(Value, nameof(Value));
         public bool IsValid => !string.IsNullOrEmpty(Value);
         public int CompareTo(ServerAuthoritativeWorkerId other) => string.CompareOrdinal(Value, other.Value);
         public bool Equals(ServerAuthoritativeWorkerId other) => string.Equals(Value, other.Value, StringComparison.Ordinal);
@@ -325,17 +343,24 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             if (string.IsNullOrWhiteSpace(value))
                 throw new ArgumentException("Canonical identity is required.", parameter);
             string normalized = value.Trim();
-            if (normalized.Length > 64)
+            RequireCanonical(normalized, parameter);
+            return normalized;
+        }
+
+        internal static void RequireCanonical(string value, string parameter)
+        {
+            if (string.IsNullOrEmpty(value))
+                throw new ArgumentException("Canonical identity is required.", parameter);
+            if (value.Length > 64)
                 throw new ArgumentOutOfRangeException(parameter, "Canonical identity cannot exceed 64 characters.");
-            for (int i = 0; i < normalized.Length; i++)
+            for (int i = 0; i < value.Length; i++)
             {
-                char character = normalized[i];
+                char character = value[i];
                 bool valid = character >= 'a' && character <= 'z' || character >= 'A' && character <= 'Z' ||
                              character >= '0' && character <= '9' || character == '.' || character == '_' || character == '-';
                 if (!valid)
                     throw new ArgumentException("Canonical identity contains an unsupported character.", parameter);
             }
-            return normalized;
         }
     }
 }
