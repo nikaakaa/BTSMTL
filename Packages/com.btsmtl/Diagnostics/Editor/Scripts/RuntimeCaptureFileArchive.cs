@@ -41,7 +41,7 @@ namespace BTSMTL.Diagnostics.Editor
         readonly RuntimeTraceEvent[] m_CheckpointState = new RuntimeTraceEvent[StateCapacity];
         readonly RuntimeCaptureSpanAccumulator m_Metadata = new(0, StateCapacity);
         RuntimeCaptureSpanFileIndex m_SpanIndex;
-        RuntimeCaptureReadWindow m_Result = new(StateCapacity, 32768);
+        RuntimeCaptureReadWindow m_Result = new(StateCapacity, 0);
         int m_Current;
         int m_Count;
         bool m_Stop;
