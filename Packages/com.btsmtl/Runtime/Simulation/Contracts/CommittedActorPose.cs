@@ -62,10 +62,10 @@ namespace ThirdPersonSimulation
         public StableHash RosterHash { get; }
         public IReadOnlyList<CommittedActorPose<TPosition, TYaw>> Actors => m_Actors;
 
-        internal void UpdateActor(ActorId actorId, TPosition position, TYaw yaw) =>
+        public void UpdateActor(ActorId actorId, TPosition position, TYaw yaw) =>
             m_Values[m_Indices[actorId]] = new CommittedActorPose<TPosition, TYaw>(actorId, position, yaw);
 
-        internal void PublishTick(ulong tick) => ObservationTick = tick;
+        public void PublishTick(ulong tick) => ObservationTick = tick;
 
         public bool TryGetActor(ActorId actorId, out CommittedActorPose<TPosition, TYaw> observation)
         {

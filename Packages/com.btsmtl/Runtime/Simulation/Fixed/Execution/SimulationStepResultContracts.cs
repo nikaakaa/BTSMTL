@@ -54,6 +54,7 @@ namespace ThirdPersonSimulation.Fixed
     {
         FixedCharacterEvaluationOutput m_Output;
         SimulationActorBinding m_OutputOwner;
+        int m_References;
 
         internal SimulationActorTickResult()
         {
@@ -75,6 +76,9 @@ namespace ThirdPersonSimulation.Fixed
             Motion = motion;
             m_Output = output;
             m_OutputOwner = outputOwner;
+            m_References = 1;
+            State.MotionWarpStates.Retain();
+            State.RetainStatePages();
             return this;
         }
 
@@ -145,14 +149,25 @@ namespace ThirdPersonSimulation.Fixed
         public int ValueObservationCalls => m_Output.ValueTraces.ObservationCalls;
 #endif
 
-        void IFixedPipelineProductValueRelease.ReleaseOwnedValue()
+        public void Retain()
         {
-            if (m_Output == null)
+            m_References++;
+            State.MotionWarpStates.Retain();
+            State.RetainStatePages();
+        }
+
+        public void Release()
+        {
+            State.MotionWarpStates.Release();
+            State.ReleaseStatePages();
+            if (--m_References != 0)
                 return;
             m_OutputOwner.ReturnEvaluationOutput(m_Output);
             m_Output = null;
             m_OutputOwner = null;
         }
+
+        void IFixedPipelineProductValueRelease.ReleaseOwnedValue() => Release();
 
     }
 }

@@ -300,7 +300,7 @@ namespace ThirdPersonSimulation.Fixed
         int m_OutputPresentationCapacity;
         internal CanonicalReader CheckpointControlReader { get; } = new CanonicalReader(Array.Empty<byte>());
         internal CharacterControlStateSchema CheckpointControlSchema { get; private set; }
-        internal Func<CanonicalReader, string> DeclaredIdentityReader { get; private set; }
+        public Func<CanonicalReader, string> DeclaredIdentityReader { get; private set; }
         internal int DeclaredCheckpointIdentityCount { get; private set; }
         CanonicalDeclaredIdentityReader m_DeclaredIdentities;
 
@@ -370,7 +370,7 @@ namespace ThirdPersonSimulation.Fixed
             }
         }
 
-        internal void PrepareEvaluationOutputCapacity(int maximumStepCount)
+        public void PrepareEvaluationOutputCapacity(int maximumStepCount)
         {
             int additionalPages = maximumStepCount - m_RecycledEvaluationOutputs.Count;
             for (int index = 0; index < additionalPages; index++)

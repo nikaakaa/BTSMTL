@@ -49,6 +49,21 @@ namespace ThirdPersonSimulation.Fixed
             m_Snapshot.ClearPreparedPayload();
         }
 
+        public SimulationInitialStateIdentity[] DescribeInitialState(in SimulationWorldStateSet state,
+            StableHash frameStateHash)
+        {
+            var states = new SimulationInitialStateIdentity[state.Actors.Count + 2];
+            for (int actor = 0; actor < state.Actors.Count; actor++)
+                states[actor] = new SimulationInitialStateIdentity(SimulationInitialStateKind.Character,
+                    "fixed-character-state", 1, state.Actors[actor].State.CanonicalPayload.Hash.Value,
+                    state.Actors[actor].ActorId);
+            states[state.Actors.Count] = new SimulationInitialStateIdentity(SimulationInitialStateKind.World,
+                "fixed-world-state", 1, WorldSimulationStateCodec.ComputeHash(state.WorldState));
+            states[state.Actors.Count + 1] = new SimulationInitialStateIdentity(SimulationInitialStateKind.Pipeline,
+                "q3-frame-user-state", 1, frameStateHash);
+            return states;
+        }
+
         public SimulationWorldStateSet Read(CanonicalReader reader)
         {
             ArraySegment<byte> bytes = reader.ReadBytesSegment();
