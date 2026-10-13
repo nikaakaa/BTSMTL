@@ -218,34 +218,78 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
         }
     }
 
-    public readonly struct CanonicalInputSample
+    [CanonicalContract]
+    internal readonly partial struct CanonicalInputSampleHeader
     {
-        public CanonicalInputSample(ulong targetAuthorityTick, ulong inputSequence, SimulationInput input)
+        internal CanonicalInputSampleHeader(ulong targetAuthorityTick, ulong inputSequence)
         {
-            if (targetAuthorityTick == 0 || inputSequence == 0)
-                throw new ArgumentException("Canonical input sample identity is invalid.");
-            Input = input ?? throw new ArgumentNullException(nameof(input));
-            if (input.Sequence != inputSequence || input.TickSource.SourceTick == 0)
-                throw new ArgumentException("Canonical input sample identity does not match its input.", nameof(input));
             TargetAuthorityTick = targetAuthorityTick;
             InputSequence = inputSequence;
+            RequireRecord();
         }
 
         public ulong TargetAuthorityTick { get; }
         public ulong InputSequence { get; }
+
+        [CanonicalValidation]
+        void RequireRecord()
+        {
+            if (TargetAuthorityTick == 0 || InputSequence == 0)
+                throw new ArgumentException("Canonical input sample identity is invalid.");
+        }
+    }
+
+    [CanonicalStorageOwner]
+    public readonly partial struct CanonicalInputSample
+    {
+        [CanonicalStorage] readonly CanonicalInputSampleHeader m_Header;
+
+        public CanonicalInputSample(ulong targetAuthorityTick, ulong inputSequence, SimulationInput input)
+            : this(new CanonicalInputSampleHeader(targetAuthorityTick, inputSequence), input)
+        {
+        }
+
+        internal CanonicalInputSample(in CanonicalInputSampleHeader header, SimulationInput input)
+        {
+            m_Header = header;
+            Input = input ?? throw new ArgumentNullException(nameof(input));
+            if (input.Sequence != header.InputSequence || input.TickSource.SourceTick == 0)
+                throw new ArgumentException("Canonical input sample identity does not match its input.", nameof(input));
+        }
+
+        internal CanonicalInputSampleHeader Header => m_Header;
         public SimulationInput Input { get; }
         public bool IsValid => TargetAuthorityTick != 0 && InputSequence != 0 && Input != null;
     }
 
-    public readonly struct CommandDatagram
+    [CanonicalContract]
+    internal readonly partial struct CommandDatagramHeader
     {
+        [CanonicalSchemaConstant]
+        public const int MaximumSampleCount = 4;
+
+        internal CommandDatagramHeader(ulong latestSnapshotSequence, ulong latestBaseSnapshotSequence)
+        {
+            LatestSnapshotSequence = latestSnapshotSequence;
+            LatestBaseSnapshotSequence = latestBaseSnapshotSequence;
+        }
+
+        public ulong LatestSnapshotSequence { get; }
+        public ulong LatestBaseSnapshotSequence { get; }
+    }
+
+    [CanonicalStorageOwner]
+    public readonly partial struct CommandDatagram
+    {
+        public const int MaximumSampleCount = CommandDatagramHeader.MaximumSampleCount;
+        [CanonicalStorage] readonly CommandDatagramHeader m_Header;
         readonly CanonicalInputSample[] m_Samples;
 
         public CommandDatagram(
             ulong latestSnapshotSequence,
             ulong latestBaseSnapshotSequence,
             IReadOnlyList<CanonicalInputSample> samples)
-            : this(latestSnapshotSequence, latestBaseSnapshotSequence, PrepareSamples(samples))
+            : this(new CommandDatagramHeader(latestSnapshotSequence, latestBaseSnapshotSequence), PrepareSamples(samples))
         {
         }
 
@@ -255,21 +299,22 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
             CanonicalInputSample[] samples)
         {
             ValidateSamples(samples);
-            return new CommandDatagram(latestSnapshotSequence, latestBaseSnapshotSequence, samples);
+            return new CommandDatagram(new CommandDatagramHeader(latestSnapshotSequence, latestBaseSnapshotSequence), samples);
         }
 
-        CommandDatagram(
-            ulong latestSnapshotSequence,
-            ulong latestBaseSnapshotSequence,
-            CanonicalInputSample[] samples)
+        internal CommandDatagram(in CommandDatagramHeader header, CanonicalInputSample[] samples)
         {
-            LatestSnapshotSequence = latestSnapshotSequence;
-            LatestBaseSnapshotSequence = latestBaseSnapshotSequence;
+            for (int i = 1; i < samples.Length; i++)
+            {
+                if (samples[i - 1].TargetAuthorityTick <= samples[i].TargetAuthorityTick ||
+                    samples[i - 1].InputSequence <= samples[i].InputSequence)
+                    throw new ArgumentException("Command datagram samples must be newest-first and strictly ordered.", nameof(samples));
+            }
+            m_Header = header;
             m_Samples = samples;
         }
 
-        public ulong LatestSnapshotSequence { get; }
-        public ulong LatestBaseSnapshotSequence { get; }
+        internal CommandDatagramHeader Header => m_Header;
         public bool IsValid => m_Samples != null && m_Samples.Length > 0;
         public ulong SourceTick => m_Samples[0].Input.TickSource.SourceTick;
         public IReadOnlyList<CanonicalInputSample> Samples => m_Samples;
@@ -287,44 +332,32 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
         {
             if (samples == null)
                 throw new ArgumentNullException(nameof(samples));
-            if (samples.Count == 0 || samples.Count > 4)
+            if (samples.Count == 0 || samples.Count > MaximumSampleCount)
                 throw new ArgumentException("Command datagram requires one to four input samples.", nameof(samples));
-            if (!samples[0].IsValid)
-                throw new ArgumentException("Command datagram sample is invalid.", nameof(samples));
-            for (int i = 1; i < samples.Count; i++)
+            for (int i = 0; i < samples.Count; i++)
             {
-                if (!samples[i].IsValid ||
-                    samples[i - 1].TargetAuthorityTick <= samples[i].TargetAuthorityTick ||
-                    samples[i - 1].InputSequence <= samples[i].InputSequence)
-                {
-                    throw new ArgumentException("Command datagram samples must be newest-first and strictly ordered.", nameof(samples));
-                }
+                if (!samples[i].IsValid)
+                    throw new ArgumentException("Command datagram sample is invalid.", nameof(samples));
             }
         }
     }
 
-    public readonly struct SnapshotDatagram
+    [CanonicalContract]
+    internal readonly partial struct SnapshotDatagramHeader
     {
-        readonly ReadOnlyMemory<byte> m_DeltaPayload;
-
-        internal SnapshotDatagram(
+        internal SnapshotDatagramHeader(
             ulong snapshotSequence,
             ulong baseSnapshotSequence,
             ulong authorityTick,
             ulong acknowledgedInputSequence,
-            ulong reliableEventHorizon,
-            ArraySegment<byte> deltaPayload)
+            ulong reliableEventHorizon)
         {
-            if (snapshotSequence == 0 || authorityTick == 0)
-                throw new ArgumentException("Snapshot datagram identity is invalid.");
-            if (deltaPayload.Array == null)
-                throw new ArgumentNullException(nameof(deltaPayload));
             SnapshotSequence = snapshotSequence;
             BaseSnapshotSequence = baseSnapshotSequence;
             AuthorityTick = authorityTick;
             AcknowledgedInputSequence = acknowledgedInputSequence;
             ReliableEventHorizon = reliableEventHorizon;
-            m_DeltaPayload = deltaPayload.Array.AsMemory(deltaPayload.Offset, deltaPayload.Count);
+            RequireRecord();
         }
 
         public ulong SnapshotSequence { get; }
@@ -332,6 +365,27 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
         public ulong AuthorityTick { get; }
         public ulong AcknowledgedInputSequence { get; }
         public ulong ReliableEventHorizon { get; }
+
+        [CanonicalValidation]
+        void RequireRecord()
+        {
+            if (SnapshotSequence == 0 || AuthorityTick == 0)
+                throw new ArgumentException("Snapshot datagram identity is invalid.");
+        }
+    }
+
+    [CanonicalStorageOwner]
+    public readonly partial struct SnapshotDatagram
+    {
+        [CanonicalStorage] readonly SnapshotDatagramHeader m_Header;
+        readonly ReadOnlyMemory<byte> m_DeltaPayload;
+
+        internal SnapshotDatagram(in SnapshotDatagramHeader header, ArraySegment<byte> deltaPayload)
+        {
+            m_Header = header;
+            m_DeltaPayload = deltaPayload.Array.AsMemory(deltaPayload.Offset, deltaPayload.Count);
+        }
+
         public bool IsValid => SnapshotSequence != 0 && AuthorityTick != 0;
         public ReadOnlyMemory<byte> DeltaPayload => m_DeltaPayload;
     }
@@ -377,14 +431,14 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
             if (!value.IsValid)
                 throw new ArgumentException("Command datagram is invalid.", nameof(value));
             Writer(writer, ServerAuthoritativeDatagramKind.Command);
-            writer.WriteUInt64(value.LatestSnapshotSequence);
-            writer.WriteUInt64(value.LatestBaseSnapshotSequence);
+            writer.WriteHash(CommandDatagramHeader.CanonicalSchemaHash);
+            writer.WriteHash(CanonicalInputSampleHeader.CanonicalSchemaHash);
+            CommandDatagramHeader.CanonicalWrite(writer, value.Header);
             writer.WriteInt32(value.Samples.Count);
             for (int i = 0; i < value.Samples.Count; i++)
             {
                 CanonicalInputSample sample = value.Samples[i];
-                writer.WriteUInt64(sample.TargetAuthorityTick);
-                writer.WriteUInt64(sample.InputSequence);
+                CanonicalInputSampleHeader.CanonicalWrite(writer, sample.Header);
                 ServerAuthoritativeCanonicalCodec.WriteLengthPrefixedInput(writer, sample.Input);
             }
         }
@@ -395,25 +449,23 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
         {
             reader.Reset(bytes);
             reader.SetTextResolver(textResolver);
-            if (reader.ReadInt32() != SchemaVersion ||
-                reader.ReadByte() != (byte)ServerAuthoritativeDatagramKind.Command)
-                throw new InvalidDataException("ServerAuthoritative command payload header is invalid.");
-            ulong latestSnapshot = reader.ReadUInt64();
-            ulong latestBase = reader.ReadUInt64();
-            int count = reader.ReadInt32();
-            if (count <= 0 || count > 4)
+            ReadHeader(reader, ServerAuthoritativeDatagramKind.Command);
+            CommandDatagramHeader.CanonicalRequireSchema(reader);
+            CanonicalInputSampleHeader.CanonicalRequireSchema(reader);
+            CommandDatagramHeader header = CommandDatagramHeader.CanonicalRead(reader);
+            int count = CanonicalCollection.ReadCount(reader, CanonicalInputSampleHeader.CanonicalMinimumSize + sizeof(int));
+            if (count == 0 || count > sampleStorage.Length)
                 throw new InvalidDataException($"Command sample count '{count}' is invalid.");
             CanonicalInputSample[] samples = sampleStorage[count - 1];
             for (int i = 0; i < count; i++)
             {
-                ulong targetTick = reader.ReadUInt64();
-                ulong inputSequence = reader.ReadUInt64();
+                CanonicalInputSampleHeader sampleHeader = CanonicalInputSampleHeader.CanonicalRead(reader);
                 SimulationInput input = ServerAuthoritativeCanonicalCodec.ReadInput(reader.ReadBytesSegment(), inputReader,
                     reader.TextResolver, inputStorage[i]);
-                samples[i] = new CanonicalInputSample(targetTick, inputSequence, input);
+                samples[i] = new CanonicalInputSample(in sampleHeader, input);
             }
             reader.RequireComplete();
-            return CommandDatagram.FromOwnedSamples(latestSnapshot, latestBase, samples);
+            return new CommandDatagram(in header, samples);
         }
 
         public static void WriteSnapshot(
@@ -428,11 +480,10 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
         {
             AuthoritativeActorBaseline value = target.Baseline;
             Writer(writer, ServerAuthoritativeDatagramKind.Snapshot);
-            writer.WriteUInt64(snapshotSequence);
-            writer.WriteUInt64(baseSnapshotSequence);
-            writer.WriteUInt64(value.AuthorityTick.Value);
-            writer.WriteUInt64(acknowledgedInputSequence);
-            writer.WriteUInt64(value.ConfirmedEventHorizon.Sequence);
+            writer.WriteHash(SnapshotDatagramHeader.CanonicalSchemaHash);
+            var header = new SnapshotDatagramHeader(snapshotSequence, baseSnapshotSequence, value.AuthorityTick.Value,
+                acknowledgedInputSequence, value.ConfirmedEventHorizon.Sequence);
+            SnapshotDatagramHeader.CanonicalWrite(writer, in header);
             long prefixPosition = writer.BeginLengthPrefixedBlock();
             NetworkCheckpointCodec.WriteDelta(writer, layout, in baseline, in target, in remote);
             writer.EndLengthPrefixedBlock(prefixPosition);
@@ -442,13 +493,9 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
         {
             reader.Reset(bytes);
             ReadHeader(reader, ServerAuthoritativeDatagramKind.Snapshot);
-            var value = new SnapshotDatagram(
-                reader.ReadUInt64(),
-                reader.ReadUInt64(),
-                reader.ReadUInt64(),
-                reader.ReadUInt64(),
-                reader.ReadUInt64(),
-                reader.ReadBytesSegment());
+            SnapshotDatagramHeader.CanonicalRequireSchema(reader);
+            SnapshotDatagramHeader header = SnapshotDatagramHeader.CanonicalRead(reader);
+            var value = new SnapshotDatagram(in header, reader.ReadBytesSegment());
             reader.RequireComplete();
             return value;
         }

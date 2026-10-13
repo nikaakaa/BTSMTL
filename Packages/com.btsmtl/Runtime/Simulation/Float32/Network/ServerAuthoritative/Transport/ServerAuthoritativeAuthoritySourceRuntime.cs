@@ -36,14 +36,9 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
         readonly CanonicalTextReferences m_CommandText;
         readonly CanonicalReader m_CommandReader = new CanonicalReader(Array.Empty<byte>());
         readonly CanonicalReader m_InputReader = new CanonicalReader(Array.Empty<byte>());
-        readonly Float32SimulationInputFrameStorage[] m_CommandInputStorage = new Float32SimulationInputFrameStorage[4];
-        readonly CanonicalInputSample[][] m_CommandSamples =
-        {
-            new CanonicalInputSample[1],
-            new CanonicalInputSample[2],
-            new CanonicalInputSample[3],
-            new CanonicalInputSample[4]
-        };
+        readonly Float32SimulationInputFrameStorage[] m_CommandInputStorage =
+            new Float32SimulationInputFrameStorage[CommandDatagram.MaximumSampleCount];
+        readonly CanonicalInputSample[][] m_CommandSamples = new CanonicalInputSample[CommandDatagram.MaximumSampleCount][];
         readonly string[] m_EvidenceRouteMetrics;
         ServerAuthoritativeSessionId m_SessionId;
         ulong m_RosterRevision;
@@ -97,14 +92,17 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
             int encodedPages = checked(checkpointCapacity.EncodedCheckpoints + checkpointCapacity.CapturePayloads +
                 checkpointCapacity.RestorePayloads);
             int projectionPages = checked(1 + policy.ModelPolicy.AuthorityGameplayEffectCapacity.MaximumStepCount + recordedFrameCapacity);
-            int commandTextPages = checked(4 + actors.Length *
+            int commandTextPages = checked(m_CommandInputStorage.Length + actors.Length *
                 (policy.CommandQueueCapacity + 4 + encodedPages + projectionPages));
             int maximumCommandCharacters = policy.ModelPolicy.MaxGameplayDatagramBytes / sizeof(char);
             int maximumCommandTextValues = policy.ModelPolicy.MaxGameplayDatagramBytes / (sizeof(int) + sizeof(char));
             int inputValueCapacity = policy.ModelPolicy.MaxGameplayDatagramBytes / Float32SimulationInputCodec.MinimumValueBytes;
             int inputRequestCapacity = policy.ModelPolicy.MaxGameplayDatagramBytes / Float32SimulationInputCodec.MinimumRequestBytes;
             for (int i = 0; i < m_CommandInputStorage.Length; i++)
+            {
                 m_CommandInputStorage[i] = new Float32SimulationInputFrameStorage(inputValueCapacity, inputRequestCapacity);
+                m_CommandSamples[i] = new CanonicalInputSample[i + 1];
+            }
             m_CommandText = new CanonicalTextReferences(maximumCommandTextValues,
                 new CanonicalTextStorage(commandTextPages, checked(commandTextPages * maximumCommandCharacters)));
             m_ExpectedActors = actors;
