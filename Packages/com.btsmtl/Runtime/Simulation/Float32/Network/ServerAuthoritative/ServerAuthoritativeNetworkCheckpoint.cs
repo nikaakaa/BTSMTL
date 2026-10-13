@@ -446,7 +446,9 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 reader.ReadVector3(),
                 reader.ReadScalar());
             int commandCount = reader.ReadUInt16();
-            var commands = new PresentationCommand[commandCount];
+            PresentationCommand[] commands = commandCount == 0
+                ? Array.Empty<PresentationCommand>()
+                : new PresentationCommand[commandCount];
             for (int i = 0; i < commands.Length; i++)
                 commands[i] = ReadCompactSampleCommand(reader, layout, authorityTick, actorId);
             return new RemotePresentationBatch(actorId, new[] { body }, commands, Array.Empty<ServerAuthoritativeReliableEvent>(), false);

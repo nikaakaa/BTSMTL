@@ -249,18 +249,24 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         static RemotePresentationBatch ReadRemotePresentation(CanonicalReader reader, ReadOnlySpan<byte> source,
             CanonicalWriter canonicalScratch)
         {
-            var actorId = new ActorId(CanonicalTextEncoding.DecodeString(reader.ReadTextSegment()));
+            var actorId = new ActorId(reader.ReadText());
             bool resetBodyStream = reader.ReadBoolean();
             int bodyCount = ReadCount(reader, "body sample");
-            var bodies = new CharacterBodySample[bodyCount];
+            CharacterBodySample[] bodies = bodyCount == 0
+                ? Array.Empty<CharacterBodySample>()
+                : new CharacterBodySample[bodyCount];
             for (int i = 0; i < bodyCount; i++)
                 bodies[i] = CharacterBodySample.CanonicalRead(reader);
             int sampleCount = ReadCount(reader, "presentation sample");
-            var samples = new PresentationCommand[sampleCount];
+            PresentationCommand[] samples = sampleCount == 0
+                ? Array.Empty<PresentationCommand>()
+                : new PresentationCommand[sampleCount];
             for (int i = 0; i < sampleCount; i++)
                 samples[i] = PresentationCommand.CanonicalRead(reader);
             int eventCount = ReadCount(reader, "reliable event");
-            var events = new ServerAuthoritativeReliableEvent[eventCount];
+            ServerAuthoritativeReliableEvent[] events = eventCount == 0
+                ? Array.Empty<ServerAuthoritativeReliableEvent>()
+                : new ServerAuthoritativeReliableEvent[eventCount];
             for (int i = 0; i < eventCount; i++)
                 events[i] = ServerAuthoritativeReliableEvent.CanonicalRead(reader);
             reader.RequireComplete();
