@@ -280,6 +280,10 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                 .AppendLine(" value, int maximumTextCharacters) { int length = 0;");
             MeasureCapacity(code, plan, view, "value");
             code.AppendLine("return length; }");
+            code.Append("public static int CanonicalMeasureTextCapacity(").Append(TypeName(view))
+                .AppendLine(" value) { int length = 0;");
+            MeasureTextCapacity(code, plan, view, "value");
+            code.AppendLine("return length; }");
             code.Append("public static void CanonicalVisitTexts<TVisitor>(TVisitor visitor, ").Append(TypeName(view))
                 .Append(" value) where TVisitor : class, ").Append(Runtime).AppendLine("ICanonicalTextVisitor {");
             VisitTexts(code, view, "value", plan);
@@ -909,6 +913,18 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                     Switch(code, plan, "value.Kind", member => MeasureCapacity(code, plan, member.Type, "value." + Escape(member.Symbol.Name)));
                 code.AppendLine("return length; }");
             }
+            code.Append("public static int CanonicalMeasureTextCapacity(in ").Append(fullType).AppendLine(" value) {");
+            if (plan.TextCapacity != null)
+                code.AppendLine("return CanonicalMaximumTextReferences; }");
+            else
+            {
+                code.AppendLine("int length = 0;");
+                foreach (Member member in common)
+                    MeasureTextCapacity(code, plan, member.Type, "value." + Escape(member.Symbol.Name));
+                if (union)
+                    Switch(code, plan, "value.Kind", member => MeasureTextCapacity(code, plan, member.Type, "value." + Escape(member.Symbol.Name)));
+                code.AppendLine("return length; }");
+            }
             foreach (string operation in new[] { "Retain", "Release" })
             {
                 code.Append("public static void Canonical").Append(operation).Append("(in ").Append(fullType).AppendLine(" value) {");
@@ -1462,6 +1478,62 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                     type.TypeKind == TypeKind.TypeParameter ? MaximumSize(type) :
                     TypeName(type) + ".CanonicalMeasureCapacity(" + value + ", maximumTextCharacters)").AppendLine(");");
         }
+
+        static void MeasureTextCapacity(StringBuilder code, Plan plan, ITypeSymbol type, string value, int depth = 0)
+        {
+            if (!HasTexts(plan, type)) return;
+            if (ReferenceKey(type) is Member reference)
+                MeasureTextCapacity(code, plan, reference.Type, value + "." + Escape(reference.Symbol.Name), depth);
+            else if (FiniteSize(plan, type))
+                code.Append("length = checked(length + ").Append(MaximumTextReferences(type)).AppendLine(");");
+            else if (MapTypes(type) is ITypeSymbol[] map)
+            {
+                if (map.All(item => FiniteSize(plan, item)))
+                    code.Append("length = checked(length + ").Append(value).Append(".Capacity * (")
+                        .Append(MaximumTextReferences(map[0])).Append(" + ").Append(MaximumTextReferences(map[1])).AppendLine("));");
+                else
+                {
+                    string index = "__textCapacityIndex" + depth;
+                    code.Append("for (int ").Append(index).Append(" = 0; ").Append(index).Append(" < ").Append(value)
+                        .Append(".Count; ").Append(index).AppendLine("++) {");
+                    MeasureTextCapacity(code, plan, map[0], value + ".Keys[" + index + "]", depth + 1);
+                    MeasureTextCapacity(code, plan, map[1], value + ".Values[" + index + "]", depth + 1);
+                    code.AppendLine("}");
+                }
+            }
+            else if (SequenceElement(type) is ITypeSymbol element)
+            {
+                if (FiniteSize(plan, element))
+                    code.Append("length = checked(length + ")
+                        .Append(OwnsSequenceStorage(type) || IsPreparedCollection(type) ? value + ".Capacity" : SequenceCount(type, value))
+                        .Append(" * (").Append(MaximumTextReferences(element)).AppendLine("));");
+                else
+                {
+                    string index = "__textCapacityIndex" + depth;
+                    code.Append("for (int ").Append(index).Append(" = 0; ").Append(index).Append(" < ")
+                        .Append(SequenceCount(type, value)).Append("; ").Append(index).AppendLine("++) {");
+                    MeasureTextCapacity(code, plan, element, SequenceValue(type, value, index), depth + 1);
+                    code.AppendLine("}");
+                }
+            }
+            else if (NullableElement(type) is ITypeSymbol nullable)
+            {
+                code.Append("if (").Append(value).AppendLine(".HasValue) {");
+                MeasureTextCapacity(code, plan, nullable, value + ".Value", depth);
+                code.AppendLine("}");
+            }
+            else
+                code.Append("length = checked(length + ").Append(TypeName(type))
+                    .Append(".CanonicalMeasureTextCapacity(").Append(value).AppendLine("));");
+        }
+
+        static string MaximumTextReferences(ITypeSymbol type) => ReferenceKey(type) is Member reference
+            ? MaximumTextReferences(reference.Type)
+            : NullableElement(type) is ITypeSymbol nullable ? MaximumTextReferences(nullable)
+            : Identity(type) == TextType ? "1"
+            : Primitive(type) != null || type.SpecialType == SpecialType.System_String ? "0"
+            : type.TypeKind == TypeKind.TypeParameter ? "default(" + TypeName(type) + ").CanonicalRecordMaximumTextReferences"
+            : TypeName(type) + ".CanonicalMaximumTextReferences";
 
         static bool FiniteSize(Plan plan, ITypeSymbol type) => ReferenceKey(type) is Member reference
             ? FiniteSize(plan, reference.Type)

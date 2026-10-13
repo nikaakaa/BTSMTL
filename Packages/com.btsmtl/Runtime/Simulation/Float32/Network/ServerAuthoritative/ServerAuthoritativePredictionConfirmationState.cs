@@ -47,6 +47,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         }
 
         public int PendingRequestCount => PendingRequests.Count;
+        public int MaximumTextValues => ServerAuthoritativePredictionConfirmationData.CanonicalMeasureTextCapacity(m_Data);
 
         public void ObserveAuthorityClock(ulong authorityTickEstimate) =>
             LastAuthorityClockEstimate = authorityTickEstimate;

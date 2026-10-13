@@ -350,7 +350,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
 
         public SimulationPipelineStateParticipantIdentity StateIdentity { get; }
         public SimulationPipelineStepProjectionMode StepProjectionMode => SimulationPipelineStepProjectionMode.Include;
-        public int MaximumTextValues => m_Policy.HistoryCapacity;
+        public int MaximumTextValues => m_State.MaximumCorrectionTextValues;
 
         public ISimulationPipelinePassStateCheckpoint CaptureCheckpoint()
         {
