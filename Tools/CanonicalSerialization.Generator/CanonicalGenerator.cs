@@ -1016,6 +1016,30 @@ namespace ThirdPerson.CanonicalSerialization.Generator
             }
             if (recordProtocol)
             {
+                code.Append("public static ").Append(fullType).Append(" CanonicalCapture(").Append(Runtime)
+                    .Append("ICanonicalTextCapture capture, in ").Append(fullType).Append(" value) => ");
+                if (plan.HasResources)
+                {
+                    code.Append("new ").Append(fullType).AppendLine("(in value, capture);");
+                    code.Append("private ").Append(name).Append("(in ").Append(fullType).Append(" source, ")
+                        .Append(Runtime).AppendLine("ICanonicalTextCapture capture) {");
+                    code.AppendLine("this = source;");
+                    foreach (Member member in common.Where(member => HasResources(plan, member.Type)))
+                        code.Append("this.").Append(Escape(member.Symbol.Name)).Append(" = ")
+                            .Append(CaptureValue(plan, member.Type, "source." + Escape(member.Symbol.Name))).AppendLine(";");
+                    if (union)
+                        Switch(code, plan, "source.Kind", member =>
+                        {
+                            if (HasResources(plan, member.Type))
+                                code.Append("this.").Append(Escape(member.Symbol.Name)).Append(" = ")
+                                    .Append(CaptureValue(plan, member.Type, "source." + Escape(member.Symbol.Name))).AppendLine(";");
+                        }, false);
+                    code.AppendLine("}");
+                }
+                else
+                    code.AppendLine("value;");
+                code.Append("public ").Append(fullType).Append(" CaptureCanonical(").Append(Runtime)
+                    .AppendLine("ICanonicalTextCapture capture) => CanonicalCapture(capture, in this);");
                 code.Append("public string CanonicalSchemaIdentity => CanonicalSchema;").AppendLine();
                 code.Append("public int CanonicalRecordMinimumSize => CanonicalMinimumSize;").AppendLine();
                 code.AppendLine("public int CanonicalRecordMaximumTextReferences => CanonicalMaximumTextReferences;");
@@ -1038,6 +1062,17 @@ namespace ThirdPerson.CanonicalSerialization.Generator
 
         static bool HasPayload(Plan plan, ITypeSymbol type) => SequenceElement(type) is ITypeSymbol element
             ? HasPayload(plan, element) : plan.PayloadTypes.Contains(Identity(type));
+
+        static string CaptureValue(Plan plan, ITypeSymbol type, string value)
+        {
+            if (!HasResources(plan, type)) return value;
+            if (Identity(type) == TextType) return "capture.CaptureText(" + value + ")";
+            if (type.TypeKind == TypeKind.TypeParameter) return value + ".CaptureCanonical(capture)";
+            if (NullableElement(type) is ITypeSymbol element)
+                return value + ".HasValue ? " + CaptureValue(plan, element, value + ".Value") +
+                    " : default(" + TypeName(type) + ")";
+            return TypeName(type) + ".CanonicalCapture(capture, " + value + ")";
+        }
 
         static void EmitParts(StringBuilder code, Plan plan)
         {

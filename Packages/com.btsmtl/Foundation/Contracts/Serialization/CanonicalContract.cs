@@ -213,6 +213,7 @@ namespace ThirdPersonSimulation
         int MaximumCanonicalEncodedSize(int maximumTextCharacters);
         void RetainCanonical();
         void ReleaseCanonical();
+        T CaptureCanonical(ICanonicalTextCapture capture);
         void VisitCanonicalTexts<TVisitor>(TVisitor visitor) where TVisitor : class, ICanonicalTextVisitor;
     }
 
