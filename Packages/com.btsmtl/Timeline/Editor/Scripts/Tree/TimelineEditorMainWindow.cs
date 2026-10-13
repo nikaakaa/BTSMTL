@@ -20,7 +20,7 @@ namespace BTSMTL.Timeline.Editor
     {
         ITimelineEditorAuthoringHost Authoring { get; }
         Type PreviewConfigurationType { get; }
-        UnityEngine.Object PreviewConfiguration { get; }
+        UnityEngine.Object PreviewConfiguration { get; set; }
         void OpenPreview(UnityEngine.Object configuration, UnityEngine.Object animationProfile);
         string PoseParameterPreviewStatus(UnityEngine.Object asset);
         void ApplyPoseParameterChanges(UnityEngine.Object asset, string graphId, object requests);
@@ -42,7 +42,11 @@ namespace BTSMTL.Timeline.Editor
 
         public static Type PreviewConfigurationType => s_Controller.PreviewConfigurationType;
         public static ITimelineEditorAuthoringHost Authoring => s_Controller.Authoring;
-        public static UnityEngine.Object PreviewConfiguration => s_Controller.PreviewConfiguration;
+        public static UnityEngine.Object PreviewConfiguration
+        {
+            get => s_Controller.PreviewConfiguration;
+            set => s_Controller.PreviewConfiguration = value;
+        }
         public static void OpenPreview(UnityEngine.Object configuration, UnityEngine.Object animationProfile) =>
             s_Controller.OpenPreview(configuration, animationProfile);
         public static void NotifyPreviewTargetChanged() => PreviewTargetChanged?.Invoke();
