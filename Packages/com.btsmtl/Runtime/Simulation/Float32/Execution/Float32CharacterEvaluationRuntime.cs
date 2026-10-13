@@ -110,6 +110,9 @@ namespace ThirdPersonSimulation
                     actionRuntimes.Add(invocation.AbilityId, invocation.Actions);
                 }
 
+                if (sourceState.LastCompletedTick == 0 && gameplayEffects != null)
+                    gameplayEffects.ApplyInitialEffects();
+
                 roleState.InputRequests.ApplyRequests(input.Requests);
 
                 bool effectAdvanced = false;

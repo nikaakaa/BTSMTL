@@ -501,6 +501,8 @@ namespace ThirdPersonSimulation.Fixed
         readonly CharacterGameplayEffectRuntimeBinding m_Binding;
         readonly Dictionary<string, string> m_TagParents = new Dictionary<string, string>(StringComparer.Ordinal);
         readonly List<string> m_InitialTags = new List<string>();
+        readonly List<(PortableEffectDefinition Definition, SimulationSetByCallerValue[] Parameters)> m_InitialEffects =
+            new List<(PortableEffectDefinition, SimulationSetByCallerValue[])>();
         readonly Dictionary<string, PortableAttributeDefinition> m_Attributes = new Dictionary<string, PortableAttributeDefinition>(StringComparer.Ordinal);
         readonly Dictionary<string, PortableEffectDefinition> m_Effects = new Dictionary<string, PortableEffectDefinition>(StringComparer.Ordinal);
         readonly Dictionary<string, int> m_TagIndices = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -547,6 +549,8 @@ namespace ThirdPersonSimulation.Fixed
 
         public IReadOnlyDictionary<string, string> TagParents => m_TagParents;
         public IReadOnlyList<string> InitialTags => m_InitialTags;
+        public IReadOnlyList<(PortableEffectDefinition Definition, SimulationSetByCallerValue[] Parameters)> InitialEffects =>
+            m_InitialEffects;
         public IReadOnlyDictionary<string, PortableAttributeDefinition> Attributes => m_Attributes;
         public GameplayAttributeDependencyLayout AttributeDependencies { get; }
         public GameplayEffectActorCapacity ActorCapacity => m_Binding.ActorCapacity;

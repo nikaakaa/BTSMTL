@@ -38,15 +38,9 @@ namespace ThirdPersonSimulation.Fixed
             data = data ?? throw new ArgumentNullException(nameof(data));
             data = data.WithInputBinding(in inputBinding);
             bool requiresEquipment = data.Capabilities.HasGameplayCapability("Equipment");
-            bool requiresTagCatalog = FixedGameplayAbilityExecutionServices.RequiresTagCatalog(data);
-            if (requiresTagCatalog && gameplayEffectCatalog == null)
-                throw new ArgumentNullException(nameof(gameplayEffectCatalog));
             if (requiresEquipment && equipmentLayout == null)
                 throw new ArgumentNullException(nameof(equipmentLayout));
             GameplayAbilityExecutionLayout layout = data.ExecutionLayout;
-            FixedGameplayEffectRuntimeCatalog executionGameplayEffectCatalog = requiresTagCatalog
-                ? gameplayEffectCatalog
-                : null;
             EquipmentProgramLayout executionEquipmentLayout = requiresEquipment
                 ? equipmentLayout
                 : null;
@@ -54,7 +48,7 @@ namespace ThirdPersonSimulation.Fixed
                 data,
                 layout,
                 BuildOperationSourcePaths(layout),
-                executionGameplayEffectCatalog,
+                gameplayEffectCatalog,
                 blackboards, combatCatalog, configurations);
             m_EquipmentLayout = executionEquipmentLayout;
             m_Execution = new FixedAbilityExecutionContext(

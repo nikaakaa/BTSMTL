@@ -32,10 +32,10 @@ namespace ThirdPersonSimulation
                 requiresTagCatalog |= Float32GameplayAbilityExecutionServices.RequiresTagCatalog(ability);
                 hasEquipmentAbility |= ability.Capabilities.HasGameplayCapability("Equipment");
             }
-            Float32GameplayEffectRuntimeCatalog gameplayEffectCatalog = requiresTagCatalog
-                ? new Float32GameplayEffectRuntimeCatalog(gameplayEffectBinding ??
-                    throw new ArgumentNullException(nameof(gameplayEffectBinding)))
-                : null;
+            if (requiresTagCatalog && gameplayEffectBinding == null)
+                throw new ArgumentNullException(nameof(gameplayEffectBinding));
+            Float32GameplayEffectRuntimeCatalog gameplayEffectCatalog = gameplayEffectBinding == null
+                ? null : new Float32GameplayEffectRuntimeCatalog(gameplayEffectBinding);
             if (hasEquipmentAbility && equipmentRuntimeBinding == null)
                 throw new ArgumentNullException(nameof(equipmentRuntimeBinding));
             for (int i = 0; i < data.Data.Count; i++)

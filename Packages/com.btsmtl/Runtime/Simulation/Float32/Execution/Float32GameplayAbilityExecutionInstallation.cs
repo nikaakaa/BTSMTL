@@ -36,15 +36,9 @@ namespace ThirdPersonSimulation
             data = data ?? throw new ArgumentNullException(nameof(data));
             data = data.WithInputBinding(in inputBinding);
             bool requiresEquipment = data.Capabilities.HasGameplayCapability("Equipment");
-            bool requiresTagCatalog = Float32GameplayAbilityExecutionServices.RequiresTagCatalog(data);
-            if (requiresTagCatalog && gameplayEffectCatalog == null)
-                throw new ArgumentNullException(nameof(gameplayEffectCatalog));
             if (requiresEquipment && equipmentLayout == null)
                 throw new ArgumentNullException(nameof(equipmentLayout));
             GameplayAbilityExecutionLayout layout = data.ExecutionLayout;
-            Float32GameplayEffectRuntimeCatalog executionGameplayEffectCatalog = requiresTagCatalog
-                ? gameplayEffectCatalog
-                : null;
             EquipmentProgramLayout executionEquipmentLayout = requiresEquipment
                 ? equipmentLayout
                 : null;
@@ -52,7 +46,7 @@ namespace ThirdPersonSimulation
                 data,
                 layout,
                 BuildOperationSourcePaths(layout),
-                executionGameplayEffectCatalog,
+                gameplayEffectCatalog,
                 blackboards, configurations);
             m_EquipmentLayout = executionEquipmentLayout;
             m_Execution = new Float32AbilityExecutionContext(

@@ -31,7 +31,8 @@ namespace ThirdPersonSimulation.Fixed
                     m_InitialTags.Add(id);
             }
             var attributes = data.Attributes.ToDictionary(value => value.AttributeId, StringComparer.Ordinal);
-            foreach (PublishedInitialAttribute initial in data.Characters.Single().InitialAttributes)
+            PublishedCharacter character = data.Characters.Single();
+            foreach (PublishedInitialAttribute initial in character.InitialAttributes)
             {
                 PublishedAttribute attribute = attributes[initial.Attribute];
                 string id = NormalizeAttribute(attribute.AttributeId);
@@ -53,6 +54,10 @@ namespace ThirdPersonSimulation.Fixed
                     (GameplayEffectScopeKind)effect.ScopePolicy, (GameplayEffectLifetimeKind)effect.LifetimePolicy, projected);
                 m_Effects.Add(definition.Id, definition);
             }
+            foreach (PublishedInitialEffect initial in character.InitialEffects)
+                m_InitialEffects.Add((m_Effects[NormalizeEffect(initial.Effect)],
+                    initial.Parameters.Select(value =>
+                        new SimulationSetByCallerValue(value.ParameterId, Scalar(value.Value))).ToArray()));
         }
 
         static PortableAttributeBound Bound(PublishedAttributeBound value) =>

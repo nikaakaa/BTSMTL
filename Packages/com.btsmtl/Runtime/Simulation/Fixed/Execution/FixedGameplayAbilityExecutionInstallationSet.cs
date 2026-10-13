@@ -35,10 +35,10 @@ namespace ThirdPersonSimulation.Fixed
                 requiresTagCatalog |= FixedGameplayAbilityExecutionServices.RequiresTagCatalog(ability);
                 hasEquipmentAbility |= ability.Capabilities.HasGameplayCapability("Equipment");
             }
-            FixedGameplayEffectRuntimeCatalog gameplayEffectCatalog = requiresTagCatalog
-                ? new FixedGameplayEffectRuntimeCatalog(gameplayEffectBinding ??
-                    throw new ArgumentNullException(nameof(gameplayEffectBinding)))
-                : null;
+            if (requiresTagCatalog && gameplayEffectBinding == null)
+                throw new ArgumentNullException(nameof(gameplayEffectBinding));
+            FixedGameplayEffectRuntimeCatalog gameplayEffectCatalog = gameplayEffectBinding == null
+                ? null : new FixedGameplayEffectRuntimeCatalog(gameplayEffectBinding);
             if (hasEquipmentAbility && equipmentRuntimeBinding == null)
                 throw new ArgumentNullException(nameof(equipmentRuntimeBinding));
             for (int i = 0; i < data.Data.Count; i++)

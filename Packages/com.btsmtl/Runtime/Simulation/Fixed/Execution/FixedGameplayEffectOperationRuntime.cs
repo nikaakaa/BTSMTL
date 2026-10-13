@@ -73,6 +73,36 @@ namespace ThirdPersonSimulation.Fixed
             m_EvaluationActive = true;
         }
 
+        public void ApplyInitialEffects()
+        {
+            var initialEffects = Access.Services.GameplayEffectCatalog.InitialEffects;
+            if (initialEffects.Count == 0)
+                return;
+            SimulationExecutionSource source = SimulationExecutionSource.FromGameplayEffect();
+            GameplayCommandBatchAdmission admission = ReceiveCommandBatch(initialEffects.Count, source);
+            if (!admission.Accepted)
+                throw new InvalidOperationException(
+                    $"Character '{m_Frame.ActorId}' initial effects exceed '{admission.Dimension}': " +
+                    $"{admission.Required} required, {admission.Available} available.");
+            var context = new SimulationGameplayEffectContext(m_Frame.ActorId, m_Frame.ActorId,
+                0, 0, 0, m_Frame.Tick.Value, SimulationGameplayEffectApplicationMode.Confirmed);
+            for (int index = 0; index < initialEffects.Count; index++)
+            {
+                var initial = initialEffects[index];
+                GameplayEffectApplyResult result = m_GameplayEffects.Apply(
+                    SimulationGameplayEffectApplication.FromCompiled(initial.Definition.Id,
+                        initial.Definition.Revision, context, initial.Parameters,
+                        Array.Empty<SimulationAttributeCapture>(), null));
+                RecordChanges(new ActivationId(source, 1), "character:initial-effect");
+                if (!result.AcceptedMutation)
+                    throw new InvalidOperationException(
+                        $"Character '{m_Frame.ActorId}' initial effect '{initial.Definition.Id}' failed: " +
+                        $"{result.Kind}, {result.Reason}, parameter '{result.ParameterId}', " +
+                        $"capacity '{result.Failure.CapacityDimension}' " +
+                        $"({result.Failure.Required}/{result.Failure.Available}).");
+            }
+        }
+
         public void EndEvaluation()
         {
             if (!m_EvaluationActive)
