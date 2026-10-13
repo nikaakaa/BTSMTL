@@ -84,7 +84,7 @@ namespace ThirdPersonSimulation.Fixed
             get => m_Action;
             set { value.Retain(); m_Action.Release(); m_Action = value; }
         }
-        public PortableEffectDefinition Definition;
+        public PortableAttackDefinition Definition;
         public ulong IntervalEffectHandle;
         public GameplayEffectScope IntervalScope;
         GameplayEffectHolderIdentity m_IntervalHolder;

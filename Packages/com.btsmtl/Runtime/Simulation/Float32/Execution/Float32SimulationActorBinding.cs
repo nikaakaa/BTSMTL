@@ -1,4 +1,5 @@
 using System;
+using ThirdPersonGameplay.Configuration;
 using System.Collections.Generic;
 using System.IO;
 
@@ -205,12 +206,15 @@ namespace ThirdPersonSimulation
             GameplayAbilityExecutionDataSet<Float32GameplayAbilityExecutionData> abilityData,
             GeneratedBlackboardConfiguration<AbilityStateValue> blackboards,
             IAbilityTimelineRuntime timelineRuntime,
-            CharacterCombatRuntimeBinding combatBinding = null)
+            CharacterCombatRuntimeBinding combatBinding = null,
+            GameplayConfigurationRuntimeBinding configurations = null)
         {
             if (!actorId.IsValid)
                 throw new ArgumentException("Actor identity is invalid.", nameof(actorId));
             ActorId = actorId;
             CombatBinding = combatBinding;
+            Configurations = configurations;
+            CombatCatalog = combatBinding == null ? null : new Float32CombatAttackCatalog(combatBinding.AttackCatalogBytes);
             WorldBodyBindingId = SimulationIdentity.Require(worldBodyBindingId, nameof(worldBodyBindingId));
             ControlRuntimeBinding = controlRuntimeBinding ?? throw new ArgumentNullException(nameof(controlRuntimeBinding));
             InputRuntimeBinding = inputRuntimeBinding;
@@ -221,7 +225,7 @@ namespace ThirdPersonSimulation
                 inputRuntimeBinding,
                 gameplayEffectRuntimeBinding,
                 equipmentRuntimeBinding,
-                blackboards);
+                blackboards, configurations);
             m_EvaluationOutput = new Float32CharacterEvaluationOutput(AbilityInstallations.Installations);
             var warpLayouts = new KeyValuePair<CharacterSkillId, IReadOnlyList<int>>[AbilityInstallations.Installations.Count];
             for (int index = 0; index < warpLayouts.Length; index++)
@@ -343,12 +347,14 @@ namespace ThirdPersonSimulation
                 bodyMotionBinding,
                 gameplayEffectRuntimeBinding,
                 equipmentRuntimeBinding,
-                AbilityInstallations);
+                AbilityInstallations, combatBinding);
         }
 
         internal Float32AbilityActivationRuleRuntime ActivationRules { get; }
         public ActorId ActorId { get; }
         public CharacterCombatRuntimeBinding CombatBinding { get; }
+        public GameplayConfigurationRuntimeBinding Configurations { get; }
+        internal Float32CombatAttackCatalog CombatCatalog { get; }
         public string WorldBodyBindingId { get; }
         public CharacterControlRuntimeBinding ControlRuntimeBinding { get; }
         public CharacterInputRuntimeBinding InputRuntimeBinding { get; }
@@ -888,15 +894,17 @@ namespace ThirdPersonSimulation
             CharacterBodyMotionBinding bodyMotion,
             CharacterGameplayEffectRuntimeBinding gameplayEffects,
             CharacterEquipmentRuntimeBinding equipment,
-            Float32GameplayAbilityExecutionInstallationSet abilities)
+            Float32GameplayAbilityExecutionInstallationSet abilities, CharacterCombatRuntimeBinding combat)
         {
             var parts = new List<string>
             {
-                "float32-simulation-actor-content/3",
+                "float32-simulation-actor-content/4",
+                combat == null ? string.Empty : combat.ContentHash.ToString(),
                 control.BindingHash.ToString(),
                 input.BindingHash.ToString(),
                 bodyMotion.BindingHash.ToString(),
                 abilities.BlackboardContentHash.ToString(),
+                abilities.ConfigurationContentHash.ToString(),
                 abilities.GameplayEffectCatalog != null ? gameplayEffects.BindingHash.ToString() : string.Empty,
                 abilities.RequiresEquipment ? equipment.BindingHash.ToString() : string.Empty
             };

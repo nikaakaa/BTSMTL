@@ -1,4 +1,5 @@
 using System;
+using ThirdPersonGameplay.Configuration;
 using ThirdPersonSimulation;
 
 namespace ThirdPersonSimulation.Fixed
@@ -30,7 +31,9 @@ namespace ThirdPersonSimulation.Fixed
             GameplayAbilityGrantInputBinding inputBinding,
             FixedGameplayEffectRuntimeCatalog gameplayEffectCatalog,
             EquipmentProgramLayout equipmentLayout,
-            GeneratedBlackboardConfiguration<AbilityStateValue> blackboards)
+            GeneratedBlackboardConfiguration<AbilityStateValue> blackboards,
+            FixedCombatAttackCatalog combatCatalog = null,
+            GameplayConfigurationRuntimeBinding configurations = null)
         {
             data = data ?? throw new ArgumentNullException(nameof(data));
             data = data.WithInputBinding(in inputBinding);
@@ -52,7 +55,7 @@ namespace ThirdPersonSimulation.Fixed
                 layout,
                 BuildOperationSourcePaths(layout),
                 executionGameplayEffectCatalog,
-                blackboards);
+                blackboards, combatCatalog, configurations);
             m_EquipmentLayout = executionEquipmentLayout;
             m_Execution = new FixedAbilityExecutionContext(
                 data,

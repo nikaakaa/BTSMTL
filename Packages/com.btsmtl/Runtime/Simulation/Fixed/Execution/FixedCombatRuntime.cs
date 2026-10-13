@@ -205,10 +205,8 @@ namespace ThirdPersonSimulation.Fixed
                         states.Add(new FixedCombatAttackState(actorCount));
                     m_LightEffects[actorIndex] = PrepareResponseEffect(actor, binding.HitLightEffectId);
                     m_HeavyEffects[actorIndex] = PrepareResponseEffect(actor, binding.HitHeavyEffectId);
-                    m_ParryLightProperties[actorIndex] = actor.AbilityInstallations.GameplayEffectCatalog
-                        .RequireEffect(binding.ParryLightEffectId).Components.OfType<PortableAttackPropertyComponent>().Single();
-                    m_ParryHeavyProperties[actorIndex] = actor.AbilityInstallations.GameplayEffectCatalog
-                        .RequireEffect(binding.ParryHeavyEffectId).Components.OfType<PortableAttackPropertyComponent>().Single();
+                    m_ParryLightProperties[actorIndex] = actor.AbilityInstallations.CombatCatalog.RequireAttack(binding.ParryLightAttackId).Property;
+                    m_ParryHeavyProperties[actorIndex] = actor.AbilityInstallations.CombatCatalog.RequireAttack(binding.ParryHeavyAttackId).Property;
                 }
                 for (int skillIndex = 0; skillIndex < actor.AbilityInstallations.Installations.Count; skillIndex++)
                 {
@@ -221,7 +219,7 @@ namespace ThirdPersonSimulation.Fixed
                             continue;
                         if (binding == null)
                             throw new InvalidOperationException($"Actor '{actor.ActorId}' declares attacks without a Combat receiver binding.");
-                        PortableEffectDefinition definition = actor.AbilityInstallations.GameplayEffectCatalog.RequireEffect(operation.Text0);
+                        PortableAttackDefinition definition = actor.AbilityInstallations.CombatCatalog.RequireAttack(operation.Text0);
                         var key = (actorIndex, definition.Id);
                         if (m_AttackLookup.ContainsKey(key))
                             continue;

@@ -175,6 +175,7 @@ namespace ThirdPersonSimulation
         AttackHitQuery = 116,
         GameplayEffectSourceAllowsCandidate = 117,
         GameplayEffectActive = 118,
+        GameplayConfigurationRead = 119,
         CameraStateRequest = 120,
         CameraEffectRequest = 121,
         CameraResponse = 122,
@@ -196,7 +197,7 @@ namespace ThirdPersonSimulation
     public static class GameplayAbilityOperationSet
     {
         public const string Id = "character-gameplay-operations";
-        public static readonly OperationSetVersion Version = new OperationSetVersion(Id + "/32");
+        public static readonly OperationSetVersion Version = new OperationSetVersion(Id + "/33");
 
         static readonly ReadOnlyCollection<SimulationOperationCode> s_Operations =
             Array.AsReadOnly(new[]
@@ -254,6 +255,7 @@ namespace ThirdPersonSimulation
                 SimulationOperationCode.GameplayEffectMatchTags,
                 SimulationOperationCode.GameplayEffectSourceAllowsCandidate,
                 SimulationOperationCode.GameplayEffectActive,
+                SimulationOperationCode.GameplayConfigurationRead,
                 SimulationOperationCode.GameplayAttributeRead,
                 SimulationOperationCode.GameplayEffectApply,
                 SimulationOperationCode.GameplayEffectRemove,
@@ -1825,7 +1827,9 @@ namespace ThirdPersonSimulation
         TimelineBinding = 33,
         CharacterState = 34,
         AbilityActivationRule = 35,
-        AbilityMovementExitRule = 36
+        AbilityMovementExitRule = 36,
+        CombatAttack = 37,
+        GameplayConfigurationField = 38
     }
 
     public enum ProgramCatalogFieldKind : byte

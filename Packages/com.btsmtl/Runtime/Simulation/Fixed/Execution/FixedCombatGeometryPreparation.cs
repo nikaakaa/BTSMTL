@@ -8,7 +8,7 @@ namespace ThirdPersonSimulation.Fixed
     {
         public int Index;
         public int ActorIndex;
-        public PortableEffectDefinition Definition;
+        public PortableAttackDefinition Definition;
         public string ContentId;
         public PortableAttackCollisionComponent Collision;
         public PortableAttackPropertyComponent Property;
@@ -23,30 +23,12 @@ namespace ThirdPersonSimulation.Fixed
     internal static class FixedCombatGeometryPreparation
     {
         public static FixedPreparedAttack Prepare(int index, int actorIndex,
-            PortableEffectDefinition definition, List<SweepShape<FixedScalar>> shapes)
+            PortableAttackDefinition definition, List<SweepShape<FixedScalar>> shapes)
         {
             var result = new FixedPreparedAttack { Index = index, ActorIndex = actorIndex, Definition = definition, ContentId = definition.Id };
-            for (int i = 0; i < definition.Components.Length; i++)
-            {
-                switch (definition.Components[i])
-                {
-                    case PortableAttackCollisionComponent collision:
-                        if (result.Collision != null)
-                            throw new InvalidOperationException("Attack content contains multiple collision components.");
-                        result.Collision = collision;
-                        break;
-                    case PortableAttackPropertyComponent property:
-                        if (result.Property != null)
-                            throw new InvalidOperationException("Attack content contains multiple property components.");
-                        result.Property = property;
-                        break;
-                    case PortableAttackCameraShakeComponent camera:
-                        result.Camera = camera;
-                        break;
-                }
-            }
-            if (result.Collision == null || result.Property == null)
-                throw new InvalidOperationException($"Attack query content '{definition.Id}' requires collision and attack property components.");
+            result.Collision = definition.Collision;
+            result.Property = definition.Property;
+            result.Camera = definition.Camera;
             PortableAttackCollisionComponent pattern = result.Collision;
             if (pattern.IsSubtractive || pattern.FollowDirectionType != 0 || pattern.CoreDistance != 0 ||
                 pattern.InvalidRadius != FixedScalar.Zero || pattern.InvalidAngle != FixedScalar.Zero)

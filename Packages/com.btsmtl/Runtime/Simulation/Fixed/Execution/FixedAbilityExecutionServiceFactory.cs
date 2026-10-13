@@ -152,6 +152,8 @@ namespace ThirdPersonSimulation.Fixed
                 values,
                 motion,
                 frame);
+            FixedCombatOperationRuntime combat = executionServices.CombatCatalog == null ? null :
+                new FixedCombatOperationRuntime(access, frame, actionStore, workspace.GameplayEffects.Target);
             FixedTreeClipInvokerLink treeClipLink = control.TreeClipLink;
             var motionWarp = new FixedMotionWarpSubmitRuntime(access, frame, values, actionStore, m_TimelineRuntime, workspace.TimelineMotionWarps);
             FixedAbilityExecutionTarget target = new FixedAbilityExecutionTarget(
@@ -162,6 +164,7 @@ namespace ThirdPersonSimulation.Fixed
                 blackboard,
                 actions,
                 gameplayEffects,
+                combat,
                 equipment,
                 locomotion,
                 motionWarp,

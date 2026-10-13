@@ -509,6 +509,7 @@ namespace ThirdPersonSimulation
 				new[] { Fixed("m_MoveInput", 0, SemanticValueKind.Vector2) },
 				new[] { Fixed("m_Output", 0, SemanticValueKind.Number) }));
 			Set(values, Output(SimulationOperationCode.CharacterStateRead, Dynamic("m_Output", 0)));
+            Set(values, Output(SimulationOperationCode.GameplayConfigurationRead, Dynamic("m_Output", 0)));
 			Set(values, Result(SimulationOperationCode.ActivateActionInstance, Array.Empty<OperationValuePortDefinition>(), Fixed("m_Activated", 0, SemanticValueKind.Boolean)));
 			Set(values, Output(SimulationOperationCode.ActionContextActive, Fixed("m_Output", 0, SemanticValueKind.Boolean)));
 			Set(values, Result(SimulationOperationCode.SubmitActionLifecycle, Array.Empty<OperationValuePortDefinition>(), Fixed("m_Submitted", 0, SemanticValueKind.Boolean)));

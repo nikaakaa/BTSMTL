@@ -179,6 +179,7 @@ namespace ThirdPersonSimulation.Fixed
         readonly FixedBlackboardRuntime m_Blackboard;
         readonly FixedActionRuntime m_Actions;
         readonly FixedGameplayEffectOperationRuntime m_GameplayEffects;
+        readonly FixedCombatOperationRuntime m_Combat;
         readonly FixedEquipmentRuntime m_Equipment;
         readonly FixedLocomotionRuntime m_Locomotion;
         readonly FixedMotionWarpSubmitRuntime m_MotionWarp;
@@ -200,6 +201,7 @@ namespace ThirdPersonSimulation.Fixed
             FixedBlackboardRuntime blackboard,
             FixedActionRuntime actions,
             FixedGameplayEffectOperationRuntime gameplayEffects,
+            FixedCombatOperationRuntime combat,
             FixedEquipmentRuntime equipment,
             FixedLocomotionRuntime locomotion,
             FixedMotionWarpSubmitRuntime motionWarp,
@@ -220,6 +222,7 @@ namespace ThirdPersonSimulation.Fixed
             m_Blackboard = blackboard;
             m_Actions = actions;
             m_GameplayEffects = gameplayEffects;
+            m_Combat = combat;
             m_Equipment = equipment;
             m_Locomotion = locomotion;
             m_MotionWarp = motionWarp;
@@ -291,7 +294,7 @@ namespace ThirdPersonSimulation.Fixed
                     return applied ? OperationExecutionResult.Success : OperationExecutionResult.Failure;
                 }
                 case SimulationOperationCode.AttackQuery:
-                    return RequireGameplayEffects().SubmitAttack(operation)
+                    return m_Combat.SubmitAttack(operation)
                         ? OperationExecutionResult.Success : OperationExecutionResult.Failure;
                 case SimulationOperationCode.GameplayEffectRemove:
                     using (FixedValueInputLease inputs = m_Values.ReadInputs(cursor, operation))

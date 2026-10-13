@@ -4,9 +4,9 @@ namespace ThirdPersonSimulation
 {
     public sealed class CharacterGameplayEffectRuntimeBinding
     {
-        public const int ContractSemanticVersion = 3;
-        public const int CatalogFormatVersion = 3;
-        public const string CodecIdentity = "character-gameplay-effect-runtime-binding/v3";
+        public const int ContractSemanticVersion = 4;
+        public const int CatalogFormatVersion = 4;
+        public const string CodecIdentity = "character-gameplay-effect-runtime-binding/v4";
 
         readonly byte[] m_CatalogBytes;
         GameplayAttributeDependencyLayout m_AttributeDependencies;

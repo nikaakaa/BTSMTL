@@ -1,4 +1,5 @@
 using System;
+using ThirdPersonGameplay.Configuration;
 
 namespace ThirdPersonSimulation
 {
@@ -29,7 +30,8 @@ namespace ThirdPersonSimulation
             GameplayAbilityGrantInputBinding inputBinding,
             Float32GameplayEffectRuntimeCatalog gameplayEffectCatalog,
             EquipmentProgramLayout equipmentLayout,
-            GeneratedBlackboardConfiguration<AbilityStateValue> blackboards)
+            GeneratedBlackboardConfiguration<AbilityStateValue> blackboards,
+            GameplayConfigurationRuntimeBinding configurations = null)
         {
             data = data ?? throw new ArgumentNullException(nameof(data));
             data = data.WithInputBinding(in inputBinding);
@@ -51,7 +53,7 @@ namespace ThirdPersonSimulation
                 layout,
                 BuildOperationSourcePaths(layout),
                 executionGameplayEffectCatalog,
-                blackboards);
+                blackboards, configurations);
             m_EquipmentLayout = executionEquipmentLayout;
             m_Execution = new Float32AbilityExecutionContext(
                 data,

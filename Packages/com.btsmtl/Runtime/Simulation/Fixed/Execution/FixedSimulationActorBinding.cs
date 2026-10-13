@@ -1,4 +1,5 @@
 using System;
+using ThirdPersonGameplay.Configuration;
 using System.Collections.Generic;
 using System.IO;
 using ThirdPersonSimulation;
@@ -578,12 +579,14 @@ namespace ThirdPersonSimulation.Fixed
             GameplayAbilityExecutionDataSet<FixedGameplayAbilityExecutionData> abilityData,
             GeneratedBlackboardConfiguration<AbilityStateValue> blackboards,
             IAbilityTimelineRuntime timelineRuntime,
-            CharacterCombatRuntimeBinding combatBinding = null)
+            CharacterCombatRuntimeBinding combatBinding = null,
+            GameplayConfigurationRuntimeBinding configurations = null)
         {
             if (!actorId.IsValid)
                 throw new ArgumentException("Actor identity is invalid.", nameof(actorId));
             ActorId = actorId;
             CombatBinding = combatBinding;
+            Configurations = configurations;
             m_CombatResultCapacity = combatBinding == null ? 0 : combatBinding.ResultCapacity;
             m_CombatQueries = new FixedCombatQueryStorage(combatBinding == null ? 0 : combatBinding.AttackCapacity);
             WorldBodyBindingId = SimulationIdentity.Require(worldBodyBindingId, nameof(worldBodyBindingId));
@@ -597,7 +600,7 @@ namespace ThirdPersonSimulation.Fixed
                 inputRuntimeBinding,
                 gameplayEffectRuntimeBinding,
                 equipmentRuntimeBinding,
-                blackboards);
+                blackboards, combatBinding, configurations);
             m_EvaluationOutput = new FixedCharacterEvaluationOutput(AbilityInstallations.Installations.Count, combatBinding == null ? 0 : combatBinding.ResultCapacity);
             RuntimeStatePages = new FixedCharacterRuntimeStatePageBank();
             AbilityDirectories = new FixedAbilityStateDirectoryBank(AbilityInstallations.Installations.Count);
@@ -735,6 +738,7 @@ namespace ThirdPersonSimulation.Fixed
         internal FixedAbilityActivationRuleRuntime ActivationRules { get; }
         public ActorId ActorId { get; }
         public CharacterCombatRuntimeBinding CombatBinding { get; }
+        public GameplayConfigurationRuntimeBinding Configurations { get; }
 #if UNITY_EDITOR
         public FixedCombatQueryDiagnostics CombatQueryDiagnostics { get; internal set; }
 #endif
@@ -1080,6 +1084,7 @@ namespace ThirdPersonSimulation.Fixed
                 input.BindingHash.ToString(),
                 bodyMotion.BindingHash.ToString(),
                 abilities.BlackboardContentHash.ToString(),
+                abilities.ConfigurationContentHash.ToString(),
                 abilities.GameplayEffectCatalog != null ? gameplayEffects.BindingHash.ToString() : string.Empty,
                 abilities.RequiresEquipment ? equipment.BindingHash.ToString() : string.Empty
             };

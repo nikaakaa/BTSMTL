@@ -382,44 +382,6 @@ namespace ThirdPersonSimulation.Fixed
             return m_GameplayEffects.Remove(request);
         }
 
-        public bool SubmitAttack(SimulationOperation operation)
-        {
-            ProgramCatalogEntry catalog = RequireGameplayEffectCatalog(operation);
-            PortableEffectDefinition definition = Access.Services.GameplayEffectCatalog.RequireEffect(catalog.Identity);
-            FixedActionInstanceState action;
-            if (!m_Actions.TryGetCurrentSkillExecution(out action) || !action.IsActive)
-                throw new InvalidOperationException("Attack query has no owning Action instance.");
-            AbilityTreeClipInvocation clip = m_Frame.TreeClipInvocation;
-            GameplayEffectScope scope = GameplayEffectScope.Action(action.SourceContext);
-            GameplayEffectHolderIdentity holder = ClipHolder(clip, action.SkillExecutionGeneration);
-            if (!m_GameplayEffects.TryFindEffect(GetStringConstant(operation, OperationNamedConstant.AttackIntervalEffect, string.Empty),
-                    scope, out ulong intervalHandle, out _, holder))
-                return false;
-            FixedCombatQuery query = m_Frame.CombatQueries.Append();
-            query.IntervalEffectHandle = intervalHandle;
-            query.IntervalScope = scope;
-            query.IntervalHolder = holder;
-            query.Identity = new CombatAttackIdentity(action.InstanceId, action.SegmentGeneration,
-                action.SkillId, operation.Handle, clip.ClipAuthoringId,
-                clip.PlaybackGeneration, clip.BranchRevision, clip.Cycle, clip.TimelineRuntimeHandle);
-            query.Action = new TimelineActionContextIdentity(action.ActionId, action.ContextId,
-                action.InstanceId, action.PredictionKey, action.TargetSnapshot.TargetId, action.SkillId,
-                action.SkillEntryOperation, action.SkillExecutionGeneration);
-            query.Definition = definition;
-            query.NodeId = clip.NodeAuthoringId;
-            query.AttackEventId = GetStringConstant(operation, OperationNamedConstant.AttackEventId, string.Empty);
-            query.Origin = m_Frame.BodyFacts.Position;
-            query.Yaw = m_Frame.BodyFacts.Yaw;
-            query.PreviousTime = clip.PreviousTime;
-            query.Time = clip.Time;
-            query.WindowStartTime = clip.WindowStartTime;
-            query.BodyStartFraction = clip.BodyStartFraction;
-            query.BodyEndFraction = clip.BodyEndFraction;
-            query.Header = m_Facts.Next(operation);
-            query.RequestId = query.Header.Sequence;
-            return true;
-        }
-
         public GameplayEffectRemoveResult Remove(SimulationOperation operation, ulong handle)
         {
             if (operation.Integer0 < byte.MinValue || operation.Integer0 > byte.MaxValue)

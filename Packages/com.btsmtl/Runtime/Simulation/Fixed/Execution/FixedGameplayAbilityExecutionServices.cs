@@ -1,5 +1,7 @@
 using ThirdPersonSimulation;
 using System;
+using System.Linq;
+using ThirdPersonGameplay.Configuration;
 using System.Collections.Generic;
 using System.IO;
 
@@ -49,7 +51,9 @@ namespace ThirdPersonSimulation.Fixed
             GameplayAbilityExecutionLayout layout,
             string[] operationSourcePaths,
             FixedGameplayEffectRuntimeCatalog gameplayEffectCatalog,
-            GeneratedBlackboardConfiguration<AbilityStateValue> blackboards)
+            GeneratedBlackboardConfiguration<AbilityStateValue> blackboards,
+            FixedCombatAttackCatalog combatCatalog = null,
+            GameplayConfigurationRuntimeBinding configurations = null)
         {
             if (data == null)
                 throw new ArgumentNullException(nameof(data));
@@ -75,6 +79,7 @@ namespace ThirdPersonSimulation.Fixed
             m_TagQueries = BuildTagQueries(data, gameplayEffectCatalog);
             m_SetByCallerValues = BuildSetByCallerValues(data);
             GameplayEffectCatalog = gameplayEffectCatalog;
+            CombatCatalog = combatCatalog;
             m_GameplayCueProducers = gameplayEffectCatalog == null
                 ? new Dictionary<GameplayCueProducerKey, ProgramProducer>()
                 : BuildGameplayCueProducers(data, gameplayEffectCatalog);
@@ -106,6 +111,7 @@ namespace ThirdPersonSimulation.Fixed
                 ProgramStateSemantic.BlackboardLifetime,
                 ProgramStateSemantic.BlackboardWriteStamp);
             Access = new FixedGameplayAbilityExecutionAccess(data, layout, this);
+            m_ConfigurationValues = PrepareConfigurationValues(data, layout, configurations);
         }
 
         public FixedGameplayAbilityExecutionAccess Access { get; }
@@ -129,6 +135,44 @@ namespace ThirdPersonSimulation.Fixed
             ? Blackboards.DefaultValue(slot) : Access.Data.DefaultStateValue(slot);
         public OperationExecutionTopology Topology { get; }
         public FixedGameplayEffectRuntimeCatalog GameplayEffectCatalog { get; }
+        readonly AbilityStateValue[] m_ConfigurationValues;
+        public AbilityStateValue ConfigurationValue(OperationHandle operation) => m_ConfigurationValues[operation.Value];
+
+        static AbilityStateValue[] PrepareConfigurationValues(FixedGameplayAbilityExecutionData data,
+            GameplayAbilityExecutionLayout layout, GameplayConfigurationRuntimeBinding configurations)
+        {
+            if (!data.Capabilities.HasGameplayCapability("GameplayConfiguration"))
+                return Array.Empty<AbilityStateValue>();
+            if (configurations == null)
+                throw new InvalidOperationException("图需要正式 Gameplay 配置绑定，但调用方没有提供。 ");
+            var values = new AbilityStateValue[data.Operations.Count];
+            foreach (SimulationOperation operation in data.Operations)
+            {
+                if (operation.Code != SimulationOperationCode.GameplayConfigurationRead)
+                    continue;
+                ProgramCatalogEntry entry = layout.RequireCatalog(operation.Handle, ProgramCatalogEntryKind.GameplayConfigurationField);
+                string Field(string name) => entry.Fields.Single(field => field.Name == name).Identity;
+                var kind = (GameplayConfigRecordKind)Enum.Parse(typeof(GameplayConfigRecordKind), Field("RecordKind"));
+                string fieldId = Field("FieldId");
+                GameplayConfigFieldDescription description = GameplayConfigFields.Describe(kind).Single(field => field.Identity == fieldId);
+                if (!description.CanRead || description.Contract != Field("FieldContract") || (int)description.ValueKind != operation.Integer0)
+                    throw new InvalidOperationException("配置字段合同与编译图不匹配：" + entry.Identity);
+                GameplayConfigValue value = GameplayConfigFields.Read(configurations.RequireSource(Field("SourceId")).Configuration,
+                    kind, Field("RecordId"), fieldId);
+                values[operation.Handle.Value] = value.Kind switch
+                {
+                    GameplayConfigValueKind.Boolean => AbilityStateValue.FromBoolean(value.Boolean),
+                    GameplayConfigValueKind.Int32 => AbilityStateValue.FromInt32(value.Int32),
+                    GameplayConfigValueKind.UInt64 => AbilityStateValue.FromUInt64(value.UInt64),
+                    GameplayConfigValueKind.Number => AbilityStateValue.FromScalar(FixedScalar.FromDouble(value.Number)),
+                    GameplayConfigValueKind.Text => AbilityStateValue.FromIdentity(value.Text),
+                    _ => throw new InvalidOperationException("配置字段不支持基础读取：" + entry.Identity)
+                };
+            }
+            return values;
+        }
+
+        public FixedCombatAttackCatalog CombatCatalog { get; }
         public FixedStateAccessPolicy ControlPolicy { get; }
         public FixedStateAccessPolicy BlackboardPolicy { get; }
 

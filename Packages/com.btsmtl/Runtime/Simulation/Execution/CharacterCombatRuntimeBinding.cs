@@ -34,13 +34,13 @@ namespace ThirdPersonSimulation
     public sealed class CharacterCombatRuntimeBinding
     {
         public CharacterCombatRuntimeBinding(
-            string sourceId, StableHash contentHash, int factionId, bool neutral,
+            string sourceId, StableHash contentHash, byte[] attackCatalogBytes, int factionId, bool neutral,
             double radius, double halfLength, double centerX, double centerY, double centerZ,
             string invulnerableTag, string guardingTag,
             string landedEvent, string hitLightEvent, string hitHeavyEvent,
             string parryLightEvent, string parryHeavyEvent,
             int attackCapacity, int resultCapacity,
-            string parryLightEffectId, string parryHeavyEffectId,
+            string parryLightAttackId, string parryHeavyAttackId,
             string hitLightEffectId = "", string hitHeavyEffectId = "",
             string evadingTag = "", string counterOpportunityTag = "", string perfectEvadeEvent = "",
             CharacterTimeSlowRuntimeBinding perfectEvadeTimeSlow = null)
@@ -48,7 +48,7 @@ namespace ThirdPersonSimulation
             if (radius <= 0 || halfLength < 0 || attackCapacity <= 0 || resultCapacity <= 0 || !neutral && factionId <= 0)
                 throw new ArgumentException("Combat receiver geometry and storage capacities are incomplete.");
             SourceId = SimulationIdentity.Require(sourceId, nameof(sourceId));
-            ContentHash = contentHash;
+            ContentHash = StableHash.Compute(contentHash.ToString(), SimulationCanonicalPayloadHash.Compute(attackCatalogBytes).ToString());
             FactionId = factionId;
             Neutral = neutral;
             Radius = radius;
@@ -67,14 +67,17 @@ namespace ThirdPersonSimulation
             ResultCapacity = resultCapacity;
             HitLightEffectId = hitLightEffectId;
             HitHeavyEffectId = hitHeavyEffectId;
-            ParryLightEffectId = parryLightEffectId;
-            ParryHeavyEffectId = parryHeavyEffectId;
+            ParryLightAttackId = parryLightAttackId;
+            ParryHeavyAttackId = parryHeavyAttackId;
             EvadingTag = string.IsNullOrEmpty(evadingTag) ? string.Empty : GameplayEffectRuntimeIdentity.Tag(evadingTag);
             CounterOpportunityTag = string.IsNullOrEmpty(counterOpportunityTag) ? string.Empty : GameplayEffectRuntimeIdentity.Tag(counterOpportunityTag);
             PerfectEvadeEvent = perfectEvadeEvent;
             PerfectEvadeTimeSlow = perfectEvadeTimeSlow;
+            m_AttackCatalogBytes = (byte[])attackCatalogBytes.Clone();
         }
 
+        readonly byte[] m_AttackCatalogBytes;
+        public byte[] AttackCatalogBytes => (byte[])m_AttackCatalogBytes.Clone();
         public string SourceId { get; }
         public StableHash ContentHash { get; }
         public int FactionId { get; }
@@ -95,8 +98,8 @@ namespace ThirdPersonSimulation
         public int ResultCapacity { get; }
         public string HitLightEffectId { get; }
         public string HitHeavyEffectId { get; }
-        public string ParryLightEffectId { get; }
-        public string ParryHeavyEffectId { get; }
+        public string ParryLightAttackId { get; }
+        public string ParryHeavyAttackId { get; }
         public string EvadingTag { get; }
         public string CounterOpportunityTag { get; }
         public string PerfectEvadeEvent { get; }

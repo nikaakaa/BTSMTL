@@ -287,7 +287,7 @@ namespace BTSMTL.Authoring.Graph
                 GraphAuthoringFieldValueKind.Quaternion => Value is Quaternion,
                 GraphAuthoringFieldValueKind.Enum => Value is string || Value.GetType().IsEnum,
                 GraphAuthoringFieldValueKind.AssetReference => Value is UnityEngine.Object,
-                GraphAuthoringFieldValueKind.IdentityReference => Value is string || Value is UnityEngine.Object,
+                GraphAuthoringFieldValueKind.IdentityReference => Field.ObjectType != null || Value is string || Value is UnityEngine.Object,
                 GraphAuthoringFieldValueKind.Object => true,
                 _ => false
             };

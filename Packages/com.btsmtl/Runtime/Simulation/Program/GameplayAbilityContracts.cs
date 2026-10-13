@@ -556,7 +556,8 @@ namespace ThirdPersonSimulation
         Input = 1,
         GameplayEffect = 2,
         Equipment = 3,
-        CharacterState = 4
+        CharacterState = 4,
+        Combat = 5
     }
 
     public enum GameplayAbilityProviderValueKind : byte
@@ -576,6 +577,7 @@ namespace ThirdPersonSimulation
         public const int GameplayEffect = 1;
         public const int Equipment = 1;
         public const int CharacterState = 1;
+        public const int Combat = 1;
 
         public static int Require(GameplayAbilityProviderKind kind) => kind switch
         {
@@ -583,6 +585,7 @@ namespace ThirdPersonSimulation
             GameplayAbilityProviderKind.GameplayEffect => GameplayEffect,
             GameplayAbilityProviderKind.Equipment => Equipment,
             GameplayAbilityProviderKind.CharacterState => CharacterState,
+            GameplayAbilityProviderKind.Combat => Combat,
             _ => throw new ArgumentOutOfRangeException(nameof(kind))
         };
     }
@@ -922,6 +925,9 @@ namespace ThirdPersonSimulation
                 case ProgramCatalogEntryKind.Attribute:
                 case ProgramCatalogEntryKind.GameplayEffect:
                     providerKind = GameplayAbilityProviderKind.GameplayEffect;
+                    return true;
+                case ProgramCatalogEntryKind.CombatAttack:
+                    providerKind = GameplayAbilityProviderKind.Combat;
                     return true;
                 case ProgramCatalogEntryKind.EquipmentSlot:
                 case ProgramCatalogEntryKind.EquipmentRoute:

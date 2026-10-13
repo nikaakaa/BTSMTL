@@ -1,4 +1,5 @@
 using System;
+using ThirdPersonGameplay.Configuration;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 
@@ -14,7 +15,8 @@ namespace ThirdPersonSimulation
             CharacterInputRuntimeBinding inputRuntimeBinding,
             CharacterGameplayEffectRuntimeBinding gameplayEffectBinding,
             CharacterEquipmentRuntimeBinding equipmentRuntimeBinding,
-            GeneratedBlackboardConfiguration<AbilityStateValue> blackboards)
+            GeneratedBlackboardConfiguration<AbilityStateValue> blackboards,
+            GameplayConfigurationRuntimeBinding configurations = null)
         {
             if (data == null)
                 throw new ArgumentNullException(nameof(data));
@@ -51,7 +53,7 @@ namespace ThirdPersonSimulation
                     inputRuntimeBinding.RequireAbilityGrant(ability.AbilityId),
                     gameplayEffectCatalog,
                     equipmentLayout,
-                    blackboards);
+                    blackboards, configurations);
                 values.Add(installation);
                 m_ByAbility.Add(installation.Data.AbilityId, installation);
             }
@@ -74,9 +76,12 @@ namespace ThirdPersonSimulation
                 values[index].CharacterBlackboardSlots = CharacterBlackboards.Slots(values[index].Data.AbilityId);
                 values[index].BindCharacterInputs(projectedInputs);
             }
+            ConfigurationContentHash = configurations?.ContentHash ?? default;
             RequiresEquipment = hasEquipmentAbility;
             GameplayEffectCatalog = gameplayEffectCatalog;
         }
+
+        public StableHash ConfigurationContentHash { get; }
 
         public IReadOnlyList<Float32GameplayAbilityExecutionInstallation> Installations => m_Installations;
         internal GeneratedCharacterBlackboardLayout<AbilityStateValue> CharacterBlackboards { get; }

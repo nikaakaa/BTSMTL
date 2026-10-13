@@ -1,4 +1,5 @@
 using System;
+using ThirdPersonGameplay.Configuration;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using ThirdPersonSimulation;
@@ -15,10 +16,13 @@ namespace ThirdPersonSimulation.Fixed
             CharacterInputRuntimeBinding inputRuntimeBinding,
             CharacterGameplayEffectRuntimeBinding gameplayEffectBinding,
             CharacterEquipmentRuntimeBinding equipmentRuntimeBinding,
-            GeneratedBlackboardConfiguration<AbilityStateValue> blackboards)
+            GeneratedBlackboardConfiguration<AbilityStateValue> blackboards,
+            CharacterCombatRuntimeBinding combatBinding = null,
+            GameplayConfigurationRuntimeBinding configurations = null)
         {
             if (data == null)
                 throw new ArgumentNullException(nameof(data));
+            CombatCatalog = combatBinding == null ? null : new FixedCombatAttackCatalog(combatBinding.AttackCatalogBytes);
             var values = new List<FixedGameplayAbilityExecutionInstallation>();
             m_ByAbility = new Dictionary<CharacterSkillId, FixedGameplayAbilityExecutionInstallation>();
             bool requiresTagCatalog = false;
@@ -52,7 +56,7 @@ namespace ThirdPersonSimulation.Fixed
                     inputRuntimeBinding.RequireAbilityGrant(ability.AbilityId),
                     gameplayEffectCatalog,
                     equipmentLayout,
-                    blackboards);
+                    blackboards, CombatCatalog, configurations);
                 values.Add(installation);
                 m_ByAbility.Add(installation.Data.AbilityId, installation);
             }
@@ -75,9 +79,14 @@ namespace ThirdPersonSimulation.Fixed
                 values[index].CharacterBlackboardSlots = CharacterBlackboards.Slots(values[index].Data.AbilityId);
                 values[index].BindCharacterInputs(projectedInputs);
             }
+            ConfigurationContentHash = configurations?.ContentHash ?? default;
             RequiresEquipment = hasEquipmentAbility;
             GameplayEffectCatalog = gameplayEffectCatalog;
         }
+
+        internal FixedCombatAttackCatalog CombatCatalog { get; }
+
+        public StableHash ConfigurationContentHash { get; }
 
         public IReadOnlyList<FixedGameplayAbilityExecutionInstallation> Installations => m_Installations;
         internal GeneratedCharacterBlackboardLayout<AbilityStateValue> CharacterBlackboards { get; }

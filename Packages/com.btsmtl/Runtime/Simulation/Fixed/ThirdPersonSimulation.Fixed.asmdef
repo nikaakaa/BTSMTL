@@ -5,6 +5,7 @@
         "ThirdPerson.Shared.Contracts",
         "ThirdPerson.Performance.Instrumentation.Contracts",
         "ThirdPersonSimulation.Core",
+        "ThirdPersonGameplay.Configuration",
         "ThirdPerson.BepuQueries"
     ],
     "includePlatforms": [],

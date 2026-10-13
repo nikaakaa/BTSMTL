@@ -351,6 +351,9 @@ namespace ThirdPersonSimulation.Fixed
                             RequireGameplayTags().Matches(Access.Services.RequireTagQuery(operation.Handle),
                                 (GameplayEffectQueryTarget)operation.Integer0));
                         break;
+                    case SimulationOperationCode.GameplayConfigurationRead:
+                        result = Access.Services.ConfigurationValue(operation.Handle);
+                        break;
                     case SimulationOperationCode.GameplayAttributeRead:
                         result = RequireGameplayTags().ReadAttribute(operation, outputPort);
                         break;

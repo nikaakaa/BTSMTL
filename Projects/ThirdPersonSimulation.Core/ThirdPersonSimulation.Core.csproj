@@ -13,6 +13,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\ThirdPerson.Shared.Contracts\ThirdPerson.Shared.Contracts.csproj" />
+    <ProjectReference Include="..\ThirdPersonGameplay.Configuration\ThirdPersonGameplay.Configuration.csproj" />
     <Compile Include="$(SimulationSourceRoot)\**\*.cs" Exclude="$(SimulationSourceRoot)\Float32\**\*.cs;$(SimulationSourceRoot)\Fixed\**\*.cs" LinkBase="Source" />
     <Compile Include="$(PerformanceContractSource)" Link="Source\Performance\PerformanceMetricDefinition.cs" />
     <Compile Include="$(InstrumentationContractSource)" Link="Source\Performance\PerformanceInstrumentationContracts.cs" />
