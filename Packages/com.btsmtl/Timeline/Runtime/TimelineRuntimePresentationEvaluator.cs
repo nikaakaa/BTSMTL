@@ -15,21 +15,14 @@ namespace BTSMTL.Timeline.Runtime
             if (playback == null)
                 throw new ArgumentNullException(nameof(playback));
             TimelineContentUnit content = playback.Content;
-            var animations = buffer.Animations;
             var cameraStates = buffer.CameraStates;
             var cameraResponses = buffer.CameraResponses;
             var cameraResources = buffer.CameraResources;
             var scenePresentation = buffer.ScenePresentation;
             FixedScalar currentTime = currentPosition;
             var selected = buffer.SamplingClips;
-            TimelineRuntimeClipIndex animationIndex = playback.Index.Presentation.Animations;
-            selected.Clear();
-            animationIndex.Select(currentTime, currentTime, true, selected);
-            for (int selectedIndex = 0; selectedIndex < selected.Count; selectedIndex++)
-            {
-                TimelineRuntimeIndexedClip indexed = animationIndex[selected[selectedIndex]];
-                playback.Preparation.ClipSampling.SampleAnimation(indexed, content, currentTime, loop, currentCycle, animations);
-            }
+            SampleAnimations(content, playback.Index, playback.Preparation.ClipSampling,
+                currentTime, currentCycle, loop, buffer);
             selected.Clear();
             TimelineRuntimeClipIndex cameraIndex = playback.Index.Presentation.CameraAndScene;
             cameraIndex.Select(currentTime, currentTime, true, selected);
@@ -42,6 +35,17 @@ namespace BTSMTL.Timeline.Runtime
             return new TimelineRuntimePresentationOperations(buffer);
         }
 
+        internal static void SampleAnimations(TimelineContentUnit content,
+            TimelineRuntimeContentIndex index, TimelineRuntimeClipSampling sampling,
+            FixedScalar time, int cycle, bool loop, TimelineRuntimePresentationBuffer buffer)
+        {
+            var selected = buffer.SamplingClips;
+            TimelineRuntimeClipIndex animations = index.Presentation.Animations;
+            selected.Clear();
+            animations.Select(time, time, true, selected);
+            for (int i = 0; i < selected.Count; i++)
+                sampling.SampleAnimation(animations[selected[i]], content, time, loop, cycle, buffer.Animations);
+        }
 
     }
 }

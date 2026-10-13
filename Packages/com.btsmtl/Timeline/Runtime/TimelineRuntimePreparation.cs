@@ -146,6 +146,41 @@ namespace BTSMTL.Timeline.Runtime
         }
     }
 
+    public sealed class TimelineRuntimeTargetSampling
+    {
+        readonly TimelineRuntimePreparedContent m_Content;
+        readonly TimelineRuntimePresentationBuffer m_Presentation;
+        readonly TimelineRuntimeSampleBuffer<TimelineMotionCurveContribution> m_Motions;
+
+        public TimelineRuntimeTargetSampling(TimelineRuntimePreparedContent content)
+        {
+            m_Content = content;
+            m_Presentation = new TimelineRuntimePresentationBuffer(content.Content, TimelinePlaybackMode.Once);
+            int motions = content.Index.Logic.Motions.Count;
+            m_Motions = new TimelineRuntimeSampleBuffer<TimelineMotionCurveContribution>(motions);
+        }
+
+        public int MotionClipCapacity => m_Content.Index.Logic.Motions.Count;
+
+        public TimelineRuntimeSampleView<TimelineAnimationContribution> SampleAnimation(FixedScalar time)
+        {
+            m_Presentation.Clear();
+            TimelineRuntimePresentationEvaluator.SampleAnimations(m_Content.Content, m_Content.Index,
+                m_Content.ClipSampling, time, 0, false, m_Presentation);
+            return m_Presentation.Animations.View;
+        }
+
+        public TimelineRuntimeSampleView<TimelineMotionCurveContribution> SampleMotion(FixedScalar previous, FixedScalar current)
+        {
+            var segments = new TimelineRuntimeEvaluationSegments(previous, 0, current, 0,
+                m_Content.Content.Duration, false);
+            m_Motions.Clear();
+            m_Content.MotionSampling.Sample(m_Content.Content, m_Content.Index.Logic.Motions,
+                segments, m_Presentation.SamplingClips, m_Motions);
+            return m_Motions.View;
+        }
+    }
+
     public readonly struct TimelineRuntimePreparationResult
     {
         readonly TimelineRuntimePreparedContent m_Content;

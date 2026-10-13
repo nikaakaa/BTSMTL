@@ -63,6 +63,28 @@ namespace ThirdPersonSimulation
         where TVector3 : struct
         where TMath : struct, IScalarMath<TScalar>, IVectorMath<TScalar, TVector2, TVector3>
     {
+        internal SimulationMotionContribution(CanonicalTextValue sourceIdentity,
+            TVector3 displacement, TScalar yawDegrees, TScalar weight, int priority,
+            SimulationMotionContributionSpace space, SimulationMotionChannel channel,
+            SimulationMotionBlendMode blendMode, bool consumeLowerChannels)
+        {
+            Source = default;
+            SourceIdentity = sourceIdentity;
+            AbilityId = default;
+            SourceGeneration = 0;
+            Displacement = displacement;
+            YawDegrees = yawDegrees;
+            PlanarBasis = default;
+            Space = space;
+            Weight = weight;
+            Priority = priority;
+            Channel = channel;
+            BlendMode = blendMode;
+            ConsumeLowerChannels = consumeLowerChannels;
+            MovementPlaybackClock = default;
+            LocomotionTimeline = default;
+        }
+
         public SimulationMotionContribution(
             SimulationExecutionSource source,
             CanonicalTextValue sourceIdentity,

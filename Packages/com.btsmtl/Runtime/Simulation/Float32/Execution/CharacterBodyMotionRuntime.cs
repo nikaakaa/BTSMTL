@@ -3,6 +3,40 @@ using System;
 
 namespace ThirdPersonSimulation
 {
+    public sealed class CharacterMotionPreview
+    {
+        readonly SimulationMotionContribution<Float32Scalar, Float32Vector2, Float32Vector3, Float32SimulationMath>[] m_Contributions;
+        int m_Count;
+
+        public CharacterMotionPreview(int capacity) =>
+            m_Contributions = new SimulationMotionContribution<Float32Scalar, Float32Vector2, Float32Vector3, Float32SimulationMath>[capacity];
+
+        public void Clear()
+        {
+            Array.Clear(m_Contributions, 0, m_Count);
+            m_Count = 0;
+        }
+
+        public void Add(CanonicalTextValue sourceIdentity, Float32Vector3 displacement, Float32Scalar yawDegrees,
+            Float32Scalar weight, int priority, AbilityTimelineMotionSpace space, AbilityTimelineMotionChannel channel,
+            AbilityTimelineMotionBlendMode blendMode, bool consumeLowerChannels)
+        {
+            m_Contributions[m_Count++] = new(sourceIdentity, displacement, yawDegrees, weight, priority,
+                (SimulationMotionContributionSpace)space, (SimulationMotionChannel)channel,
+                (SimulationMotionBlendMode)blendMode, consumeLowerChannels);
+        }
+
+        public ResolvedGameplayMotion Resolve(Float32Yaw yaw)
+        {
+            var action = CharacterMotionResolver<Float32Scalar, Float32Vector2, Float32Vector3, Float32Yaw, Float32SimulationMath>
+                .ResolveChannel(m_Contributions, m_Count, yaw, SimulationMotionChannel.Action);
+            var result = CharacterMotionResolver<Float32Scalar, Float32Vector2, Float32Vector3, Float32Yaw, Float32SimulationMath>
+                .ResolveChannel(m_Contributions, m_Count, yaw, SimulationMotionChannel.GameplayResult);
+            return CharacterMotionResolver<Float32Scalar, Float32Vector2, Float32Vector3, Float32Yaw, Float32SimulationMath>
+                .Compose(default, in action, in result);
+        }
+    }
+
     public readonly struct BodyMotionIntegrationPlan
     {
         internal BodyMotionIntegrationPlan(
