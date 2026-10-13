@@ -32,6 +32,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
         readonly OutputRing<ServerAuthoritativeAuthorityReliableEventBatchOutput> m_ReliableOutput;
         readonly OutputRing<ServerAuthoritativeAuthorityFullCheckpointOutput> m_FullCheckpointOutput;
         readonly ThreadLocal<CanonicalWriter> m_PayloadWriter;
+        readonly CanonicalWriter m_ControlPayloadWriter = new CanonicalWriter();
         readonly CanonicalTextReferences m_CommandText;
         readonly CanonicalReader m_CommandReader = new CanonicalReader(Array.Empty<byte>());
         readonly CanonicalReader m_InputReader = new CanonicalReader(Array.Empty<byte>());
@@ -545,7 +546,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
             if (m_FullCheckpointOutput.Count >= m_Policy.FullCheckpointOutputQueueCapacity)
                 Fail("authority_full_checkpoint_queue_overflow", "Authority full checkpoint output queue overflowed.");
             ulong snapshotSequence = reservedSequence == 0 ? route.NextSnapshotSequence() : reservedSequence;
-            byte[] payload = NetworkCheckpointCodec.WriteFull(m_CheckpointLayout, checkpoint);
+            byte[] payload = NetworkCheckpointCodec.WriteFull(m_ControlPayloadWriter, m_CheckpointLayout, checkpoint);
             m_FullCheckpointOutput.Enqueue(new ServerAuthoritativeAuthorityFullCheckpointOutput(
                 route.Roster.PlayerId,
                 route.Roster.ActorId,
@@ -594,7 +595,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
                 for (int i = 0; i < events.Length; i++)
                 {
                     ServerAuthoritativeReliableEvent reliable = source.ReliableEvents[i];
-                    byte[] payload = ServerAuthoritativeEgressCodec.WriteRemoteReliableEvent(source.ActorId, reliable);
+                    byte[] payload = ServerAuthoritativeEgressCodec.WriteRemoteReliableEvent(m_ControlPayloadWriter, source.ActorId, reliable);
                     events[i] = new ServerAuthoritativeAuthorityReliableEventOutput(
                         recipient.Roster.ActorId,
                         source.ActorId,
@@ -824,6 +825,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
             try
             {
                 m_PayloadWriter.Dispose();
+                m_ControlPayloadWriter.Dispose();
             }
             catch (Exception exception)
             {

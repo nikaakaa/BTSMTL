@@ -205,10 +205,10 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             return checkpoint;
         }
 
-        public static byte[] WriteFull(NetworkCheckpointLayout layout, in NetworkCheckpoint checkpoint)
+        public static byte[] WriteFull(CanonicalWriter writer, NetworkCheckpointLayout layout, in NetworkCheckpoint checkpoint)
         {
             AuthoritativeActorBaseline baseline = checkpoint.Baseline;
-            using var writer = new CanonicalWriter();
+            writer.Reset();
             writer.WriteUInt32(FullMagic);
             writer.WriteInt32(FullVersion);
             writer.WriteText(layout.LayoutIdentityText);
