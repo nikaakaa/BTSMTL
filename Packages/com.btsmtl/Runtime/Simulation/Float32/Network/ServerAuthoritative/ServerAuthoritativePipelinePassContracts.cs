@@ -27,8 +27,9 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         public const string JournalStateOwner = "server-authoritative.prediction.output-journal";
         public const string CorrectionStateSchema = "server-authoritative-correction-state/5";
         public const int CorrectionStateSchemaVersion = 4;
-        public const string HistoryStateSchema = "server-authoritative-prediction-history/4";
-        public const int HistoryStateSchemaVersion = 4;
+        public const string HistoryStateSchema = "server-authoritative-prediction-history/5|owner-input:" +
+            OwnerCanonicalInputHeader.CanonicalSchema + "|input:" + Float32SimulationInputCodec.Schema;
+        public const int HistoryStateSchemaVersion = 5;
         public const string JournalStateSchema = "server-authoritative-event-disposition-journal/3";
         public const int JournalStateSchemaVersion = 3;
 

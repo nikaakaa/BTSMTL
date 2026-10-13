@@ -102,7 +102,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         {
             m_Storage?.Retain();
             World.RetainStateStorage();
-            Input.ActorId.Retain();
+            OwnerCanonicalInputHeader.CanonicalRetain(Input.Header);
             Input.Input.RetainText();
             for (int index = 0; index < World.Actors.Count; index++)
                 World.Actors[index].ActorId.Retain();
@@ -123,7 +123,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             for (int index = 0; index < World.Actors.Count; index++)
                 World.Actors[index].ActorId.Release();
             Input.Input.ReleaseText();
-            Input.ActorId.Release();
+            OwnerCanonicalInputHeader.CanonicalRelease(Input.Header);
             World.ReleaseStateStorage();
             m_Storage?.Release();
         }

@@ -10,10 +10,11 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         public const string ClientInput = "server-authoritative.client-input";
         public const string AuthorityReplication = "server-authoritative.authority-replication";
         public const string RemotePresentation = "server-authoritative.remote-presentation";
-        public const string ClientInputSchema = "server-authoritative-client-input/3";
+        public const string ClientInputSchema = "server-authoritative-client-input/4|header:" +
+            OwnerCanonicalInputHeader.CanonicalSchema + "|input:" + Float32SimulationInputCodec.Schema;
         public const string AuthorityReplicationSchema = "server-authoritative-authority-replication/14|tag-source:" + GameplayTagSourceIdentityValue.CanonicalSchema + "|effect-context:" + SimulationGameplayEffectContext.CanonicalSchema + "|lifecycle:" + GameplayEffectReconciliationResult.CanonicalSchema + "|source:" + SimulationExecutionSource.CanonicalSchema + "|ack:" + AuthoritativeInputAck.CanonicalSchema + "|remote:" + RemotePresentationSchema;
         public const string RemotePresentationSchema = "server-authoritative-remote-presentation/14|timeline:" + AbilityTimelineProgress.CanonicalSchema + "|effect-context:" + SimulationGameplayEffectContext.CanonicalSchema + "|lifecycle:" + GameplayEffectReconciliationResult.CanonicalSchema + "|source:" + SimulationExecutionSource.CanonicalSchema + "|records:" + CharacterBodySample.CanonicalSchema + ":" + ServerAuthoritativeReliableEvent.CanonicalSchema;
-        public const int SchemaVersion = 3;
+        public const int ClientInputSchemaVersion = 4;
         public const int AuthorityReplicationSchemaVersion = 27;
         public const int RemotePresentationSchemaVersion = 27;
     }
@@ -26,7 +27,9 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         const uint InputMagic = 0x49454153;
         const uint ReplicationMagic = 0x52454153;
         const uint RemoteMagic = 0x50454153;
-        const int InputVersion = 3;
+        const int InputVersion = 4;
+        static readonly StableHash InputSchemaHash =
+            new StableHash(CanonicalContractProtocol.ComposeSchema(ServerAuthoritativeEgressChannels.ClientInputSchema));
         const int ReplicationVersion = 18;
         const int RemoteVersion = 18;
         static readonly StableHash RemoteSchemaHash =
@@ -37,46 +40,29 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         internal static readonly long MaximumRemoteTextValues = 1L + MaximumCount *
             (3 + PresentationCommand.MaximumTextReferences + ServerAuthoritativeReliableEvent.MaximumTextReferences);
 
-        public static byte[] WriteOwnerInput(OwnerCanonicalInputBatch input)
-        {
-            if (!input.IsValid)
-                throw new ArgumentNullException(nameof(input));
-            using var writer = new CanonicalWriter();
-            WriteOwnerInput(writer, input);
-            return writer.ToArray();
-        }
-
         public static void WriteOwnerInput(CanonicalWriter writer, OwnerCanonicalInputBatch input)
         {
             writer.WriteUInt32(InputMagic);
             writer.WriteInt32(InputVersion);
-            writer.WriteText(input.ActorId.Value);
-            writer.WriteUInt64(input.SourceTick);
-            writer.WriteUInt64(input.InputSequence);
+            writer.WriteHash(InputSchemaHash);
+            OwnerCanonicalInputHeader.CanonicalWrite(writer, input.Header);
             ServerAuthoritativeCanonicalCodec.WriteLengthPrefixedInput(writer, input.Input);
         }
 
         public static OwnerCanonicalInputBatch ReadOwnerInput(ReadOnlyMemory<byte> bytes, CanonicalReader reader,
             CanonicalReader inputReader, Float32SimulationInputFrameStorage inputStorage,
-            CanonicalWriter canonicalScratch, ICanonicalTextResolver textResolver)
+            ActorId ownerActor, ICanonicalTextResolver textResolver)
         {
             reader.Reset(bytes);
             reader.SetTextResolver(textResolver);
-            reader.DeclaredIdentityReader = ReadDeclaredIdentity;
-            reader.PublishedValues = Float32SimulationNumericProfile.PublishedValues;
             if (reader.ReadUInt32() != InputMagic || reader.ReadInt32() != InputVersion)
                 throw new InvalidDataException("Owner input egress header is invalid.");
-            var actorId = new ActorId(reader.ReadText());
-            ulong sourceTick = reader.ReadUInt64();
-            ulong inputSequence = reader.ReadUInt64();
+            reader.RequireSchema(InputSchemaHash, "owner input");
+            OwnerCanonicalInputHeader header = OwnerCanonicalInputHeader.CanonicalReadBound(reader, in ownerActor);
             SimulationInput input = ServerAuthoritativeCanonicalCodec.ReadInput(reader.ReadBytesSegment(),
                 inputReader, reader.TextResolver, inputStorage);
             reader.RequireComplete();
-            var result = new OwnerCanonicalInputBatch(actorId, sourceTick, inputSequence, input);
-            canonicalScratch.Reset();
-            WriteOwnerInput(canonicalScratch, result);
-            RequireCanonical(bytes.Span, canonicalScratch, "owner input");
-            return result;
+            return new OwnerCanonicalInputBatch(in header, input);
         }
 
         public static byte[] WriteAuthorityReplication(AuthorityReplicationBatch batch)

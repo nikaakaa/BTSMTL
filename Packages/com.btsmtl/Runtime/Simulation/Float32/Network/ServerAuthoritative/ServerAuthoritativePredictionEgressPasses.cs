@@ -515,7 +515,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             if (bytes <= 0)
                 throw new InvalidOperationException("Prediction input egress requires MaximumSessionCheckpointPayloadBytes.");
             int texts = SimulationSessionCheckpointPayloadLayout.MaximumNonEmptyTextValues(bytes,
-                1L + ServerAuthoritativeCanonicalCodec.MaximumInputTextValues, 0, 0);
+                (long)OwnerCanonicalInputHeader.CanonicalMaximumTextReferences +
+                ServerAuthoritativeCanonicalCodec.MaximumInputTextValues, 0, 0);
             m_Outputs = new CommandOutput[maximumStepCount];
             for (int index = 0; index < m_Outputs.Length; index++) m_Outputs[index] = new CommandOutput(bytes, texts);
         }
@@ -530,7 +531,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 Writer.SetTextCapture(Text);
                 CanonicalScratch = new CanonicalWriter(new byte[bytes]);
                 Record = new Float32SourceEgressRecord(ServerAuthoritativeEgressChannels.ClientInput,
-                    ServerAuthoritativeEgressChannels.ClientInputSchema, ServerAuthoritativeEgressChannels.SchemaVersion,
+                    ServerAuthoritativeEgressChannels.ClientInputSchema, ServerAuthoritativeEgressChannels.ClientInputSchemaVersion,
                     buffer, Text, new CanonicalReader(Array.Empty<byte>()),
                     new CanonicalReader(Array.Empty<byte>()), CanonicalScratch);
             }

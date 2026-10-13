@@ -112,31 +112,55 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         }
     }
 
-    public readonly struct OwnerCanonicalInputBatch
+    [CanonicalContract]
+    internal readonly partial struct OwnerCanonicalInputHeader
     {
-        public OwnerCanonicalInputBatch(ActorId actorId, ulong sourceTick, ulong inputSequence, SimulationInput input)
+        internal OwnerCanonicalInputHeader(ActorId actorId, ulong sourceTick, ulong inputSequence)
         {
-            if (!actorId.IsValid || sourceTick == 0 || inputSequence == 0)
-                throw new ArgumentException("Owner canonical input identity is incomplete.");
-            Input = input ?? throw new ArgumentNullException(nameof(input));
-            if (input.Sequence != inputSequence || input.TickSource.SourceTick != sourceTick)
-                throw new ArgumentException("Owner canonical input metadata does not match the canonical input.", nameof(input));
             ActorId = actorId;
             SourceTick = sourceTick;
             InputSequence = inputSequence;
+            RequireRecord();
+        }
+
+        [CanonicalBound]
+        public ActorId ActorId { get; }
+        public ulong SourceTick { get; }
+        public ulong InputSequence { get; }
+
+        [CanonicalValidation]
+        void RequireRecord()
+        {
+            if (!ActorId.IsValid || SourceTick == 0 || InputSequence == 0)
+                throw new ArgumentException("Owner canonical input identity is incomplete.");
+        }
+    }
+
+    [CanonicalStorageOwner]
+    public readonly partial struct OwnerCanonicalInputBatch
+    {
+        [CanonicalStorage] readonly OwnerCanonicalInputHeader m_Header;
+
+        public OwnerCanonicalInputBatch(ActorId actorId, ulong sourceTick, ulong inputSequence, SimulationInput input)
+            : this(new OwnerCanonicalInputHeader(actorId, sourceTick, inputSequence), input)
+        {
+        }
+
+        internal OwnerCanonicalInputBatch(in OwnerCanonicalInputHeader header, SimulationInput input)
+        {
+            m_Header = header;
+            Input = input ?? throw new ArgumentNullException(nameof(input));
+            if (input.Sequence != header.InputSequence || input.TickSource.SourceTick != header.SourceTick)
+                throw new ArgumentException("Owner canonical input metadata does not match the canonical input.", nameof(input));
         }
 
         internal OwnerCanonicalInputBatch(in OwnerCanonicalInputBatch original, SimulationInput input)
         {
-            ActorId = original.ActorId;
-            SourceTick = original.SourceTick;
-            InputSequence = original.InputSequence;
+            m_Header = original.m_Header;
             Input = input;
         }
 
-        public ActorId ActorId { get; }
-        public ulong SourceTick { get; }
-        public ulong InputSequence { get; }
+        internal OwnerCanonicalInputHeader Header => m_Header;
         public SimulationInput Input { get; }
         public bool IsValid => ActorId.IsValid && SourceTick != 0 && InputSequence != 0 && Input != null;
     }

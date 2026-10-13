@@ -10,12 +10,12 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         const uint CorrectionMagic = 0x43524153;
         const int CorrectionVersion = 6;
         const uint HistoryMagic = 0x48524153;
-        const int HistoryVersion = 6;
+        const int HistoryVersion = 7;
         const uint JournalMagic = 0x4a524153;
         const int MaximumObservedActorCount = 64;
         const int MaximumProjectedParticipantCount = 64;
-        internal const int MaximumHistoryRecordTextValues =
-            1 + ServerAuthoritativeCanonicalCodec.MaximumInputTextValues + 6 +
+        internal static readonly int MaximumHistoryRecordTextValues =
+            OwnerCanonicalInputHeader.CanonicalMaximumTextReferences + ServerAuthoritativeCanonicalCodec.MaximumInputTextValues + 6 +
             4 + 4 * MaximumProjectedParticipantCount + 3 * MaximumObservedActorCount;
         static readonly Comparison<ServerAuthoritativeJournalEntry> s_CompareJournalEntries =
             (left, right) => left.EventId.CompareTo(right.EventId);
@@ -72,6 +72,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         {
             writer.WriteUInt32(HistoryMagic);
             writer.WriteInt32(HistoryVersion);
+            writer.WriteHash(OwnerCanonicalInputHeader.CanonicalSchemaHash);
             writer.WriteHash(ObservedWorldConstraint.CanonicalSchemaHash);
             writer.WriteHash(SimulationPipelineIdentity.CanonicalSchemaHash);
             writer.WriteHash(SimulationComponentIdentity.CanonicalSchemaHash);
@@ -82,9 +83,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         internal static void WriteHistoryRecord(CanonicalWriter writer, ServerAuthoritativePredictionHistoryRecord record)
         {
             writer.WriteUInt64(record.Tick.Value);
-            writer.WriteText(record.Input.ActorId.Value);
-            writer.WriteUInt64(record.Input.SourceTick);
-            writer.WriteUInt64(record.Input.InputSequence);
+            OwnerCanonicalInputHeader.CanonicalWrite(writer, record.Input.Header);
             ServerAuthoritativeCanonicalCodec.WriteLengthPrefixedInput(writer, record.Input.Input);
             writer.WriteHash(record.CompositionIdentity);
             SimulationWorldSnapshotCodec.WriteLengthPrefixed(writer, record.World);
@@ -100,6 +99,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             int historyCapacity)
         {
             RequireHeader(reader, HistoryMagic, HistoryVersion);
+            OwnerCanonicalInputHeader.CanonicalRequireSchema(reader);
             ObservedWorldConstraint.CanonicalRequireSchema(reader);
             SimulationPipelineIdentity.CanonicalRequireSchema(reader);
             SimulationComponentIdentity.CanonicalRequireSchema(reader);
@@ -109,12 +109,10 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             for (int i = 0; i < count; i++)
             {
                 var tick = new SimulationTick(reader.ReadUInt64());
-                var actorId = new ActorId(CanonicalTextEncoding.DecodeString(reader.ReadTextSegment()));
-                ulong sourceTick = reader.ReadUInt64();
-                ulong inputSequence = reader.ReadUInt64();
+                OwnerCanonicalInputHeader inputHeader = OwnerCanonicalInputHeader.CanonicalRead(reader);
                 SimulationInput input = ServerAuthoritativeCanonicalCodec.ReadInput(reader.ReadBytesSegment(), inputReader,
                     reader.TextResolver);
-                var ownerInput = new OwnerCanonicalInputBatch(actorId, sourceTick, inputSequence, input);
+                var ownerInput = new OwnerCanonicalInputBatch(in inputHeader, input);
                 var composition = SimulationSessionCompositionIdentity.CanonicalFromHash(reader.ReadHash());
                 SimulationWorldSnapshot world = SimulationWorldSnapshotCodec.Read(reader.ReadBytes());
                 SimulationPipelineStateSnapshot pipeline = ReadPipelineProjection(reader.ReadBytes());
