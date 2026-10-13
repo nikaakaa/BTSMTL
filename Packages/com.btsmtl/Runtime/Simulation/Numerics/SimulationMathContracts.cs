@@ -11,6 +11,8 @@ namespace ThirdPersonSimulation
         TScalar Clamp(TScalar value, TScalar minimum, TScalar maximum);
         TScalar Negate(TScalar value);
         TScalar Max(TScalar left, TScalar right);
+        TScalar Min(TScalar left, TScalar right);
+        TScalar Abs(TScalar value);
         bool GreaterThan(TScalar left, TScalar right);
         bool IsZero(TScalar value);
     }
@@ -22,6 +24,16 @@ namespace ThirdPersonSimulation
     {
         TVector2 ZeroVector2 { get; }
         TVector3 ZeroVector3 { get; }
+        TVector2 Vector2(TScalar x, TScalar y);
+        TVector3 Vector3(TScalar x, TScalar y, TScalar z);
+        TScalar X2(TVector2 value);
+        TScalar Y2(TVector2 value);
+        TScalar X3(TVector3 value);
+        TScalar Y3(TVector3 value);
+        TScalar Z3(TVector3 value);
+        TScalar Magnitude2(TVector2 value);
+        TScalar SqrMagnitude2(TVector2 value);
+        TVector2 Normalize2(TVector2 value);
         TVector3 AddVector3(TVector3 left, TVector3 right);
         TVector3 SubtractVector3(TVector3 left, TVector3 right);
         TVector3 MultiplyVector3(TVector3 value, TScalar scale);
@@ -35,5 +47,15 @@ namespace ThirdPersonSimulation
         where TYaw : struct
     {
         TVector3 RotatePlanar(TVector3 value, TYaw yaw);
+    }
+
+    public interface IYawMath<TScalar, TYaw>
+        where TScalar : struct
+        where TYaw : struct
+    {
+        TYaw Yaw(TScalar degrees);
+        TScalar Degrees(TYaw yaw);
+        TScalar DeltaYaw(TYaw from, TYaw to);
+        TYaw YawFromDirection(TScalar x, TScalar z);
     }
 }
