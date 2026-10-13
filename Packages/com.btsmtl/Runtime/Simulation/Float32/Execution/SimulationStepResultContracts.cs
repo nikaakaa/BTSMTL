@@ -68,6 +68,8 @@ namespace ThirdPersonSimulation
             Motion = motion;
             m_Output = output;
             m_OutputOwner = outputOwner;
+            Motion.ActionOwnerIdentity.Retain();
+            Motion.GameplayResultOwnerIdentity.Retain();
             return this;
         }
 
@@ -80,7 +82,7 @@ namespace ThirdPersonSimulation
             Float32CharacterEvaluationOutput output,
             SimulationActorBinding outputOwner)
         {
-            return output.TickResult.Reset(
+            SimulationActorTickResult result = output.TickResult.Reset(
                 actorId,
                 tick,
                 state,
@@ -88,6 +90,8 @@ namespace ThirdPersonSimulation
                 motion,
                 output,
                 outputOwner);
+            outputOwner.MotionContributions.Clear();
+            return result;
         }
 
         public ActorId ActorId { get; private set; }
@@ -105,6 +109,8 @@ namespace ThirdPersonSimulation
         {
             if (m_Output == null)
                 return;
+            Motion.ActionOwnerIdentity.Release();
+            Motion.GameplayResultOwnerIdentity.Release();
             m_OutputOwner.ReturnEvaluationOutput(m_Output);
             m_Output = null;
             m_OutputOwner = null;

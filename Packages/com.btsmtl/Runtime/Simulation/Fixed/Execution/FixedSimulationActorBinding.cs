@@ -991,7 +991,6 @@ namespace ThirdPersonSimulation.Fixed
             ClearActionRuntimes();
             ClearTimelineTransfers();
             ClearTimelineMotionScratches();
-            m_MotionContributions.Clear();
             m_CombatQueries.Clear();
 #if UNITY_EDITOR
             CombatQueryDiagnostics?.Dispose();

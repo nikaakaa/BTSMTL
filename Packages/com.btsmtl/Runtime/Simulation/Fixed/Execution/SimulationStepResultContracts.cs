@@ -79,6 +79,8 @@ namespace ThirdPersonSimulation.Fixed
             m_References = 1;
             State.MotionWarpStates.Retain();
             State.RetainStatePages();
+            Motion.ActionOwnerIdentity.Retain();
+            Motion.GameplayResultOwnerIdentity.Retain();
             return this;
         }
 
@@ -91,7 +93,7 @@ namespace ThirdPersonSimulation.Fixed
             FixedCharacterEvaluationOutput output,
             SimulationActorBinding outputOwner)
         {
-            return output.TickResult.Reset(
+            SimulationActorTickResult result = output.TickResult.Reset(
                 actorId,
                 tick,
                 state,
@@ -99,6 +101,8 @@ namespace ThirdPersonSimulation.Fixed
                 motion,
                 output,
                 outputOwner);
+            outputOwner.MotionContributions.Clear();
+            return result;
         }
 
         public ActorId ActorId { get; private set; }
@@ -162,6 +166,8 @@ namespace ThirdPersonSimulation.Fixed
             State.ReleaseStatePages();
             if (--m_References != 0)
                 return;
+            Motion.ActionOwnerIdentity.Release();
+            Motion.GameplayResultOwnerIdentity.Release();
             m_OutputOwner.ReturnEvaluationOutput(m_Output);
             m_Output = null;
             m_OutputOwner = null;

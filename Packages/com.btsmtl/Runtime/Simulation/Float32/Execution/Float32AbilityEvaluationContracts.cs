@@ -90,6 +90,7 @@ namespace ThirdPersonSimulation
         {
             if (!m_Consumed)
                 CompleteTimelineOutputs(false);
+            m_Owner.MotionContributions.Clear();
             if (m_Output != null)
             {
                 m_Owner.ReturnEvaluationOutput(m_Output);

@@ -72,7 +72,6 @@ namespace ThirdPersonSimulation
                 }
                 var bodyFacts = new Float32AbilityBodyFacts(actor.ActorId, beforeBody);
                 MotionContributionBuffer motionContributions = actor.MotionContributions;
-                motionContributions.Clear();
                 Float32CharacterControlMotionRuntime controlMotion = actor.ControlMotion;
                 controlMotion.Begin(
                     abilityInput,

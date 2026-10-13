@@ -87,7 +87,6 @@ namespace ThirdPersonSimulation.Fixed
                 }
                 var bodyFacts = new FixedAbilityBodyFacts(actor.ActorId, beforeBody);
                 MotionContributionBuffer motionContributions = actor.MotionContributions;
-                motionContributions.Clear();
                 FixedCharacterControlMotionRuntime controlMotion = actor.ControlMotion;
                 controlMotion.Begin(
                     abilityInput,
