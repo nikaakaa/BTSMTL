@@ -3,6 +3,8 @@ namespace ThirdPersonSimulation.Fixed
     public static class SimulationInputCodec
     {
         public const string Schema = SimulationInputHeader.CanonicalSchema + ":" + SimulationInputValues.CanonicalSchema;
+        public const int MinimumEncodedSize = 2 * (sizeof(int) + 64) +
+            SimulationInputHeader.CanonicalMinimumSize + SimulationInputValues.CanonicalMinimumSize;
 
         public static int Measure(SimulationInput input) =>
             2 * (sizeof(int) + 64) + SimulationInputHeader.CanonicalMeasure(input.Header) +

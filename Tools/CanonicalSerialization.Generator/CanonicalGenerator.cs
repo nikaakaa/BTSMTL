@@ -695,8 +695,8 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                     ITypeSymbol element = BufferElement(member.Type);
                     if (element != null)
                     {
-                        code.AppendLine("{ int count = reader.ReadInt32();");
-                        code.Append("if (count < 0 || count > reader.Remaining / ").Append(Minimum(element)).AppendLine(") throw new global::System.IO.InvalidDataException(\"Canonical collection length is invalid.\");");
+                        code.Append("{ int count = ").Append(Runtime).Append("CanonicalCollection.ReadCount(reader, ")
+                            .Append(Minimum(element)).AppendLine(");");
                         code.Append(target).Append(" = new ").Append(TypeName(member.Type)).AppendLine("(count);");
                         code.AppendLine("for (int i = 0; i < count; i++) {");
                         code.Append(target).Append(".Element(i) = ").Append(Read(element, true)).AppendLine(";");
@@ -817,9 +817,8 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                         "return reader.ReadBytes(); }");
                     continue;
                 }
-                code.AppendLine("int count = reader.ReadInt32();");
-                code.Append("if (count < 0 || count > reader.Remaining / ").Append(Minimum(element))
-                    .AppendLine(") throw new global::System.IO.InvalidDataException(\"Canonical collection length is invalid.\");");
+                code.Append("int count = ").Append(Runtime).Append("CanonicalCollection.ReadCount(reader, ")
+                    .Append(Minimum(element)).AppendLine(");");
                 code.Append("var values = new ").Append(TypeName(element)).AppendLine("[count];");
                 code.Append("for (int i = 0; i < count; i++) values[i] = ").Append(Read(element, true)).AppendLine(";");
                 code.AppendLine(sequence is IArrayTypeSymbol ? "return values; }" : IsReadOnlyMemory(sequence) ?

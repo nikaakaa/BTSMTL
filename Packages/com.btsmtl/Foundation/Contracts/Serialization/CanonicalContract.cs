@@ -202,6 +202,18 @@ namespace ThirdPersonSimulation
         void SkipText();
     }
 
+    public static class CanonicalCollection
+    {
+        public static int ReadCount<TReader>(TReader reader, int minimumElementBytes)
+            where TReader : class, ICanonicalValueReader
+        {
+            int count = reader.ReadInt32();
+            if (count < 0 || count > reader.Remaining / minimumElementBytes)
+                throw new System.IO.InvalidDataException("Canonical collection length is invalid.");
+            return count;
+        }
+    }
+
     public interface ICanonicalRecord<T> where T : struct
     {
         string CanonicalSchemaIdentity { get; }
