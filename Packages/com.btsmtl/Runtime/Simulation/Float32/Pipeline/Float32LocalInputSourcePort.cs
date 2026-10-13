@@ -113,7 +113,10 @@ namespace ThirdPersonSimulation
     {
         public const string PortId = "simulation.source.local-actor-input";
         public const string SchemaId = "float32-local-actor-input-source";
-        public const int SchemaVersion = 4;
+        public const int SchemaVersion = 5;
+        internal const string StateSchema = SimulationInputValue.CanonicalSchema + ":" + AbilityInputEvent.CanonicalSchema;
+        internal static readonly StableHash StateSchemaHash =
+            new StableHash(CanonicalContractProtocol.ComposeSchema(StateSchema));
 
         public static SimulationPipelinePortRequirement Requirement =>
             new SimulationPipelinePortRequirement(
@@ -140,25 +143,6 @@ namespace ThirdPersonSimulation
 
         public Float32CanonicalInputBatch CanonicalInputs { get; }
         public Float32TypedIngressBatch TypedIngress { get; }
-    }
-
-    internal readonly struct Float32AbilityInputEvent
-    {
-        internal Float32AbilityInputEvent(byte kind, ActorId sourceActor, ActorId targetActor, ulong sourceInstance,
-            ulong targetInstance, CanonicalTextValue eventId, CanonicalTextValue attackEvent,
-            CanonicalTextValue sourceFeedback, CanonicalTextValue targetFeedback, byte disposition)
-        {
-            Kind = kind; SourceActor = sourceActor; TargetActor = targetActor;
-            SourceInstance = sourceInstance; TargetInstance = targetInstance;
-            EventId = eventId; AttackEvent = attackEvent; SourceFeedback = sourceFeedback;
-            TargetFeedback = targetFeedback; Disposition = disposition;
-        }
-        internal readonly byte Kind, Disposition;
-        internal readonly ActorId SourceActor, TargetActor;
-        internal readonly ulong SourceInstance, TargetInstance;
-        internal readonly CanonicalTextValue EventId, AttackEvent, SourceFeedback, TargetFeedback;
-        internal void Retain() { SourceActor.Value.Retain(); TargetActor.Value.Retain(); EventId.Retain(); AttackEvent.Retain(); SourceFeedback.Retain(); TargetFeedback.Retain(); }
-        internal void Release() { SourceActor.Value.Release(); TargetActor.Value.Release(); EventId.Release(); AttackEvent.Release(); SourceFeedback.Release(); TargetFeedback.Release(); }
     }
 
     internal interface IFloat32CommittedInputReadPort
@@ -209,7 +193,7 @@ namespace ThirdPersonSimulation
         ulong m_LastReadSourceTick;
         ExecutionWorkspaceBuffer<SimulationInputValue>[] m_CurrentInputValues = Array.Empty<ExecutionWorkspaceBuffer<SimulationInputValue>>();
         string[][] m_DeclaredInputIds;
-        Float32AbilityInputEvent[][] m_CurrentEvents;
+        AbilityInputEvent[][] m_CurrentEvents;
         int[] m_CurrentEventCounts;
         readonly Float32SimulationInputFrameStorage[] m_InputFrames;
 
@@ -227,7 +211,7 @@ namespace ThirdPersonSimulation
             if (values.Count == 0)
                 throw new ArgumentException("Local input Source requires explicit Actor input bindings.", nameof(bindings));
             var identityValues = new string[values.Count + 2];
-            identityValues[0] = "float32-local-input-source-port/4";
+            identityValues[0] = "float32-local-input-source-port/5:" + Float32LocalInputSourcePortContract.StateSchema;
             identityValues[1] = sessionSource.ToString();
             for (int i = 0; i < values.Count; i++)
             {
@@ -254,7 +238,7 @@ namespace ThirdPersonSimulation
 
             m_InputScratch = new SimulationPipelineActorInput<Float32StepInput>[values.Count];
             int statefulCount = 0;
-            int payloadCapacity = 20;
+            int payloadCapacity = 20 + sizeof(int) + 64;
             int textCapacity = 0;
             for (int i = 0; i < values.Count; i++)
             {
@@ -297,17 +281,17 @@ namespace ThirdPersonSimulation
             StatePayloadCapacity = maximumPayloadBytes;
             m_CurrentInputValues = new ExecutionWorkspaceBuffer<SimulationInputValue>[m_Bindings.Count];
             m_DeclaredInputIds = new string[m_Bindings.Count][];
-            m_CurrentEvents = new Float32AbilityInputEvent[m_Bindings.Count][];
+            m_CurrentEvents = new AbilityInputEvent[m_Bindings.Count][];
             m_CurrentEventCounts = new int[m_Bindings.Count];
             for (int actor = 0; actor < m_Bindings.Count; actor++)
             {
                 var source = m_Bindings[actor].ControlSource;
                 int ingress = roster[actor].AvailabilityIngressCapacity;
-                m_CurrentEvents[actor] = new Float32AbilityInputEvent[ingress];
-                StateTextCapacity = checked(StateTextCapacity + 6 * ingress);
+                m_CurrentEvents[actor] = new AbilityInputEvent[ingress];
+                StateTextCapacity = checked(StateTextCapacity + AbilityInputEvent.CanonicalMaximumTextReferences * ingress);
                 m_CurrentInputValues[actor] = new ExecutionWorkspaceBuffer<SimulationInputValue>(source.InputValueCapacity);
 
-                StateTextCapacity = checked(StateTextCapacity + 2 * source.InputValueCapacity);
+                StateTextCapacity = checked(StateTextCapacity + SimulationInputValue.CanonicalMaximumTextReferences * source.InputValueCapacity);
             }
         }
 
@@ -358,7 +342,8 @@ namespace ThirdPersonSimulation
         }
         void ClearFrameEvents(int actor)
         {
-            for (int i = 0; i < m_CurrentEventCounts[actor]; i++) m_CurrentEvents[actor][i].Release();
+            for (int i = 0; i < m_CurrentEventCounts[actor]; i++)
+                AbilityInputEvent.CanonicalRelease(in m_CurrentEvents[actor][i]);
             Array.Clear(m_CurrentEvents[actor], 0, m_CurrentEventCounts[actor]);
             m_CurrentEventCounts[actor] = 0;
         }
@@ -369,11 +354,11 @@ namespace ThirdPersonSimulation
             for (int i = 0; i < ingress.Length; i++)
             {
                 ref readonly SimulationIngress value = ref ingress[i];
-                Float32AbilityInputEvent frozen;
+                AbilityInputEvent frozen;
                 if (value.Header.Kind == SimulationIngressKind.ActionEvent)
-                    frozen = new Float32AbilityInputEvent(1, actorId, default, value.ActionEvent.ActionInstanceId, 0, value.ActionEvent.EventId, default, default, default, 0);
+                    frozen = new AbilityInputEvent(1, actorId, default, value.ActionEvent.ActionInstanceId, 0, value.ActionEvent.EventId, default, default, default, 0);
                 else continue;
-                frozen.Retain();
+                AbilityInputEvent.CanonicalRetain(in frozen);
                 m_CurrentEvents[actor][m_CurrentEventCounts[actor]++] = frozen;
             }
         }
@@ -382,7 +367,7 @@ namespace ThirdPersonSimulation
             int actor = RequireInputActor(actorId);
             for (int i = 0; i < m_CurrentEventCounts[actor]; i++)
             {
-                ref readonly Float32AbilityInputEvent value = ref m_CurrentEvents[actor][i];
+                ref readonly AbilityInputEvent value = ref m_CurrentEvents[actor][i];
                 if (value.Kind == 1 && value.SourceInstance == instanceId && value.EventId.Equals(eventId)) return true;
             }
             return false;
@@ -392,7 +377,7 @@ namespace ThirdPersonSimulation
             int actor = RequireInputActor(actorId);
             for (int i = 0; i < m_CurrentEventCounts[actor]; i++)
             {
-                ref readonly Float32AbilityInputEvent value = ref m_CurrentEvents[actor][i];
+                ref readonly AbilityInputEvent value = ref m_CurrentEvents[actor][i];
                 if (value.Kind == 1 && value.EventId.Equals(eventId))
                     return true;
             }
@@ -406,12 +391,8 @@ namespace ThirdPersonSimulation
                 writer.WriteInt32(m_CurrentEventCounts[actor]);
                 for (int i = 0; i < m_CurrentEventCounts[actor]; i++)
                 {
-                    ref readonly Float32AbilityInputEvent value = ref m_CurrentEvents[actor][i];
-                    writer.WriteByte(value.Kind); writer.WriteByte(value.Disposition);
-                    writer.WriteText(value.SourceActor.Value); writer.WriteText(value.TargetActor.Value);
-                    writer.WriteUInt64(value.SourceInstance); writer.WriteUInt64(value.TargetInstance);
-                    writer.WriteText(value.EventId); writer.WriteText(value.AttackEvent);
-                    writer.WriteText(value.SourceFeedback); writer.WriteText(value.TargetFeedback);
+                    ref readonly AbilityInputEvent value = ref m_CurrentEvents[actor][i];
+                    AbilityInputEvent.CanonicalWrite(writer, in value);
                 }
             }
         }
@@ -424,12 +405,10 @@ namespace ThirdPersonSimulation
                 ClearFrameEvents(actor);
                 for (int i = 0; i < count; i++)
                 {
-                    byte kind = reader.ReadByte(), disposition = reader.ReadByte();
-                    var sourceText = reader.ReadText(); var targetText = reader.ReadText();
-                    ActorId source = sourceText.IsEmpty ? default : new ActorId(sourceText);
-                    ActorId target = targetText.IsEmpty ? default : new ActorId(targetText);
-                    var value = new Float32AbilityInputEvent(kind, source, target, reader.ReadUInt64(), reader.ReadUInt64(), reader.ReadText(), reader.ReadText(), reader.ReadText(), reader.ReadText(), disposition);
-                    value.Retain(); m_CurrentEvents[actor][m_CurrentEventCounts[actor]++] = value;
+                    ref AbilityInputEvent value = ref m_CurrentEvents[actor][m_CurrentEventCounts[actor]];
+                    AbilityInputEvent.CanonicalReadInto(reader, ref value);
+                    AbilityInputEvent.CanonicalRetain(in value);
+                    m_CurrentEventCounts[actor]++;
                 }
             }
         }
@@ -441,7 +420,7 @@ namespace ThirdPersonSimulation
             {
                 var values = m_CurrentInputValues[actor];
                 writer.WriteInt32(values.Count);
-                for (int i = 0; i < values.Count; i++) WriteRetainedValue(writer, values[i]);
+                for (int i = 0; i < values.Count; i++) SimulationInputValue.CanonicalWrite(writer, values[i]);
             }
         }
         void ReadRetainedInputs(CanonicalReader reader)
@@ -457,39 +436,12 @@ namespace ThirdPersonSimulation
                 for (int i = 0; i < count; i++)
                 {
                     CanonicalTextValue inputId = reader.ReadText();
-                    SimulationInputValue value = ReadRetainedValue(reader, inputId);
+                    SimulationInputValue value = SimulationInputValue.CanonicalReadPayload(reader, inputId);
                     value.Retain();
                     values.Add(value);
                 }
             }
         }
-        static void WriteRetainedValue(CanonicalWriter writer, SimulationInputValue value)
-        {
-            writer.WriteText(value.InputId);
-            writer.WriteByte((byte)value.Kind);
-            switch (value.Kind)
-            {
-                case ProgramInputValueKind.Boolean: writer.WriteBoolean(value.Boolean); break;
-                case ProgramInputValueKind.Scalar: writer.WriteScalar(value.Scalar); break;
-                case ProgramInputValueKind.Vector2: writer.WriteVector2(value.Vector2); break;
-                case ProgramInputValueKind.Vector3: writer.WriteVector3(value.Vector3); break;
-                case ProgramInputValueKind.Yaw: writer.WriteYaw(value.Yaw); break;
-                case ProgramInputValueKind.ActionTargetSnapshot:
-                    writer.WriteText(value.ActionTargetSnapshot.TargetId); writer.WriteVector3(value.ActionTargetSnapshot.Position); writer.WriteYaw(value.ActionTargetSnapshot.Yaw); break;
-                default: throw new System.IO.InvalidDataException("Unsupported retained input value kind.");
-            }
-        }
-        static SimulationInputValue ReadRetainedValue(CanonicalReader reader, CanonicalTextValue inputId) => (ProgramInputValueKind)reader.ReadByte() switch
-        {
-            ProgramInputValueKind.Boolean => SimulationInputValue.FromBoolean(inputId, reader.ReadBoolean()),
-            ProgramInputValueKind.Scalar => SimulationInputValue.FromScalar(inputId, reader.ReadScalar()),
-            ProgramInputValueKind.Vector2 => SimulationInputValue.FromVector2(inputId, reader.ReadVector2()),
-            ProgramInputValueKind.Vector3 => SimulationInputValue.FromVector3(inputId, reader.ReadVector3()),
-            ProgramInputValueKind.Yaw => SimulationInputValue.FromYaw(inputId, reader.ReadYaw()),
-            ProgramInputValueKind.ActionTargetSnapshot => SimulationInputValue.FromActionTargetSnapshot(inputId, new SimulationActionTargetSnapshot(reader.ReadText(), reader.ReadVector3(), reader.ReadYaw())),
-            _ => throw new System.IO.InvalidDataException("Unsupported retained input value kind.")
-        };
-
         public SimulationPortDescriptor Descriptor { get; }
         public int StatePayloadCapacity { get; private set; }
         public int StateTextCapacity { get; private set; }
@@ -582,7 +534,8 @@ namespace ThirdPersonSimulation
         public void WriteState(CanonicalWriter writer)
         {
             writer.WriteUInt32(0x53434c46);
-            writer.WriteInt32(3);
+            writer.WriteInt32(4);
+            writer.WriteHash(Float32LocalInputSourcePortContract.StateSchemaHash);
             writer.WriteUInt64(m_LastReadSourceTick);
             writer.WriteInt32(m_StatefulBindings.Length);
             for (int i = 0; i < m_StatefulBindings.Length; i++)
@@ -606,7 +559,8 @@ namespace ThirdPersonSimulation
             CanonicalReader reader = m_StateReader;
             reader.Reset(state);
             reader.SetTextResolver(resolver);
-            if (reader.ReadUInt32() != 0x53434c46 || reader.ReadInt32() != 3)
+            if (reader.ReadUInt32() != 0x53434c46 || reader.ReadInt32() != 4 ||
+                reader.ReadHash() != Float32LocalInputSourcePortContract.StateSchemaHash)
                 throw new InvalidDataException("Local Control Source state header is invalid.");
             ulong lastReadSourceTick = reader.ReadUInt64();
             int count = reader.ReadInt32();

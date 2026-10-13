@@ -221,7 +221,10 @@ namespace ThirdPersonSimulation.Fixed
     {
         public const string PortId = "simulation.source.fixed-local-actor-input";
         public const string SchemaId = "fixed-local-actor-input-source";
-        public const int SchemaVersion = 5;
+        public const int SchemaVersion = 6;
+        internal const string StateSchema = SimulationInputValue.CanonicalSchema + ":" + AbilityInputEvent.CanonicalSchema;
+        internal static readonly StableHash StateSchemaHash =
+            new StableHash(CanonicalContractProtocol.ComposeSchema(StateSchema));
 
         public static SimulationPipelinePortRequirement Requirement =>
             new SimulationPipelinePortRequirement(
@@ -246,25 +249,6 @@ namespace ThirdPersonSimulation.Fixed
 
         public FixedCanonicalInputBatch CanonicalInputs { get; }
         public FixedTypedIngressBatch TypedIngress { get; }
-    }
-
-    internal readonly struct FixedAbilityInputEvent
-    {
-        internal FixedAbilityInputEvent(byte kind, ActorId sourceActor, ActorId targetActor, ulong sourceInstance,
-            ulong targetInstance, CanonicalTextValue eventId, CanonicalTextValue attackEvent,
-            CanonicalTextValue sourceFeedback, CanonicalTextValue targetFeedback, byte disposition)
-        {
-            Kind = kind; SourceActor = sourceActor; TargetActor = targetActor;
-            SourceInstance = sourceInstance; TargetInstance = targetInstance;
-            EventId = eventId; AttackEvent = attackEvent; SourceFeedback = sourceFeedback;
-            TargetFeedback = targetFeedback; Disposition = disposition;
-        }
-        internal readonly byte Kind, Disposition;
-        internal readonly ActorId SourceActor, TargetActor;
-        internal readonly ulong SourceInstance, TargetInstance;
-        internal readonly CanonicalTextValue EventId, AttackEvent, SourceFeedback, TargetFeedback;
-        internal void Retain() { SourceActor.Value.Retain(); TargetActor.Value.Retain(); EventId.Retain(); AttackEvent.Retain(); SourceFeedback.Retain(); TargetFeedback.Retain(); }
-        internal void Release() { SourceActor.Value.Release(); TargetActor.Value.Release(); EventId.Release(); AttackEvent.Release(); SourceFeedback.Release(); TargetFeedback.Release(); }
     }
 
     internal interface IFixedCommittedInputReadPort
@@ -480,7 +464,7 @@ namespace ThirdPersonSimulation.Fixed
         ulong m_LastReadSourceTick;
         ExecutionWorkspaceBuffer<SimulationInputValue>[] m_CurrentInputValues = Array.Empty<ExecutionWorkspaceBuffer<SimulationInputValue>>();
         CanonicalTextValue[][] m_DeclaredInputIds;
-        FixedAbilityInputEvent[][] m_CurrentEvents;
+        AbilityInputEvent[][] m_CurrentEvents;
         int[] m_CurrentEventCounts;
 
 
@@ -504,7 +488,7 @@ namespace ThirdPersonSimulation.Fixed
             if (values.Count == 0)
                 throw new ArgumentException("Fixed Local input Source requires an Actor roster.", nameof(bindings));
             var identity = new string[values.Count + 4];
-            identity[0] = "fixed-local-input-source-port/2";
+            identity[0] = "fixed-local-input-source-port/3:" + FixedLocalInputSourcePortContract.StateSchema;
             identity[1] = sessionSource.ToString();
             identity[2] = offensiveRequestDelayTicks.ToString();
             identity[3] = maximumPendingRequests.ToString();
@@ -554,14 +538,14 @@ namespace ThirdPersonSimulation.Fixed
             StateTextCapacity += ValuePorts.TextCapacity;
             m_CurrentInputValues = new ExecutionWorkspaceBuffer<SimulationInputValue>[m_Bindings.Count];
             m_DeclaredInputIds = new CanonicalTextValue[m_Bindings.Count][];
-            m_CurrentEvents = new FixedAbilityInputEvent[m_Bindings.Count][];
+            m_CurrentEvents = new AbilityInputEvent[m_Bindings.Count][];
             m_CurrentEventCounts = new int[m_Bindings.Count];
             for (int actor = 0; actor < m_Bindings.Count; actor++)
             {
                 var source = m_Bindings[actor].ControlSource;
                 int ingress = roster[actor].AvailabilityIngressCapacity;
-                m_CurrentEvents[actor] = new FixedAbilityInputEvent[ingress];
-                StateTextCapacity = checked(StateTextCapacity + 6 * ingress);
+                m_CurrentEvents[actor] = new AbilityInputEvent[ingress];
+                StateTextCapacity = checked(StateTextCapacity + AbilityInputEvent.CanonicalMaximumTextReferences * ingress);
                 m_CurrentInputValues[actor] = new ExecutionWorkspaceBuffer<SimulationInputValue>(source.InputValueCapacity);
                 var ids = new List<CanonicalTextValue>(source.InputValues.Count + 7);
                 for (int i = 0; i < source.InputValues.Count; i++) ids.Add(source.InputValues[i].InputId);
@@ -573,7 +557,7 @@ namespace ThirdPersonSimulation.Fixed
                 ids.Add(CameraProgramOperationSchema.BasisYawInputId);
                 ids.Add(CameraProgramOperationSchema.BasisPitchInputId);
                 m_DeclaredInputIds[actor] = ids.ToArray();
-                StateTextCapacity = checked(StateTextCapacity + 2 * source.InputValueCapacity);
+                StateTextCapacity = checked(StateTextCapacity + SimulationInputValue.CanonicalMaximumTextReferences * source.InputValueCapacity);
             }
         }
 
@@ -624,7 +608,8 @@ namespace ThirdPersonSimulation.Fixed
         }
         void ClearFrameEvents(int actor)
         {
-            for (int i = 0; i < m_CurrentEventCounts[actor]; i++) m_CurrentEvents[actor][i].Release();
+            for (int i = 0; i < m_CurrentEventCounts[actor]; i++)
+                AbilityInputEvent.CanonicalRelease(in m_CurrentEvents[actor][i]);
             Array.Clear(m_CurrentEvents[actor], 0, m_CurrentEventCounts[actor]);
             m_CurrentEventCounts[actor] = 0;
         }
@@ -635,18 +620,18 @@ namespace ThirdPersonSimulation.Fixed
             for (int i = 0; i < ingress.Length; i++)
             {
                 ref readonly SimulationIngress value = ref ingress[i];
-                FixedAbilityInputEvent frozen;
+                AbilityInputEvent frozen;
                 if (value.Header.Kind == SimulationIngressKind.ActionEvent)
-                    frozen = new FixedAbilityInputEvent(1, actorId, default, value.ActionEvent.ActionInstanceId, 0, value.ActionEvent.EventId, default, default, default, 0);
+                    frozen = new AbilityInputEvent(1, actorId, default, value.ActionEvent.ActionInstanceId, 0, value.ActionEvent.EventId, default, default, default, 0);
                 else if (value.Header.Kind == SimulationIngressKind.GameplayResult && !value.GameplayResult.HasEffect)
                 {
                     CombatHitResult hit = value.GameplayResult.Hit;
-                    frozen = new FixedAbilityInputEvent(2, hit.SourceActor, hit.TargetActor,
+                    frozen = new AbilityInputEvent(2, hit.SourceActor, hit.TargetActor,
                         hit.Attack.ActionInstanceId, hit.TargetActionInstanceId, default,
                         hit.AttackEventId, hit.SourceFeedbackEvent, hit.TargetFeedbackEvent, (byte)hit.Disposition);
                 }
                 else continue;
-                frozen.Retain();
+                AbilityInputEvent.CanonicalRetain(in frozen);
                 m_CurrentEvents[actor][m_CurrentEventCounts[actor]++] = frozen;
             }
         }
@@ -655,7 +640,7 @@ namespace ThirdPersonSimulation.Fixed
             int actor = RequireInputActor(actorId);
             for (int i = 0; i < m_CurrentEventCounts[actor]; i++)
             {
-                ref readonly FixedAbilityInputEvent value = ref m_CurrentEvents[actor][i];
+                ref readonly AbilityInputEvent value = ref m_CurrentEvents[actor][i];
                 if (value.Kind == 1 && value.SourceInstance == instanceId && value.EventId.Equals(eventId)) return true;
                 if (value.Kind == 2 &&
                     (value.SourceActor == actorId && value.SourceInstance == instanceId && value.Disposition == (byte)CombatHitDisposition.Hit && (value.SourceFeedback.Equals(eventId) || value.AttackEvent.Equals(eventId)) ||
@@ -668,7 +653,7 @@ namespace ThirdPersonSimulation.Fixed
             int actor = RequireInputActor(actorId);
             for (int i = 0; i < m_CurrentEventCounts[actor]; i++)
             {
-                ref readonly FixedAbilityInputEvent value = ref m_CurrentEvents[actor][i];
+                ref readonly AbilityInputEvent value = ref m_CurrentEvents[actor][i];
                 if (value.Kind == 1 && value.EventId.Equals(eventId) ||
                     value.Kind == 2 && value.TargetActor == actorId && value.TargetFeedback.Equals(eventId))
                     return true;
@@ -683,12 +668,8 @@ namespace ThirdPersonSimulation.Fixed
                 writer.WriteInt32(m_CurrentEventCounts[actor]);
                 for (int i = 0; i < m_CurrentEventCounts[actor]; i++)
                 {
-                    ref readonly FixedAbilityInputEvent value = ref m_CurrentEvents[actor][i];
-                    writer.WriteByte(value.Kind); writer.WriteByte(value.Disposition);
-                    writer.WriteText(value.SourceActor.Value); writer.WriteText(value.TargetActor.Value);
-                    writer.WriteUInt64(value.SourceInstance); writer.WriteUInt64(value.TargetInstance);
-                    writer.WriteText(value.EventId); writer.WriteText(value.AttackEvent);
-                    writer.WriteText(value.SourceFeedback); writer.WriteText(value.TargetFeedback);
+                    ref readonly AbilityInputEvent value = ref m_CurrentEvents[actor][i];
+                    AbilityInputEvent.CanonicalWrite(writer, in value);
                 }
             }
         }
@@ -701,12 +682,10 @@ namespace ThirdPersonSimulation.Fixed
                 ClearFrameEvents(actor);
                 for (int i = 0; i < count; i++)
                 {
-                    byte kind = reader.ReadByte(), disposition = reader.ReadByte();
-                    var sourceText = reader.ReadText(); var targetText = reader.ReadText();
-                    ActorId source = sourceText.IsEmpty ? default : new ActorId(sourceText);
-                    ActorId target = targetText.IsEmpty ? default : new ActorId(targetText);
-                    var value = new FixedAbilityInputEvent(kind, source, target, reader.ReadUInt64(), reader.ReadUInt64(), reader.ReadText(), reader.ReadText(), reader.ReadText(), reader.ReadText(), disposition);
-                    value.Retain(); m_CurrentEvents[actor][m_CurrentEventCounts[actor]++] = value;
+                    ref AbilityInputEvent value = ref m_CurrentEvents[actor][m_CurrentEventCounts[actor]];
+                    AbilityInputEvent.CanonicalReadInto(reader, ref value);
+                    AbilityInputEvent.CanonicalRetain(in value);
+                    m_CurrentEventCounts[actor]++;
                 }
             }
         }
@@ -718,7 +697,7 @@ namespace ThirdPersonSimulation.Fixed
             {
                 var values = m_CurrentInputValues[actor];
                 writer.WriteInt32(values.Count);
-                for (int i = 0; i < values.Count; i++) WriteRetainedValue(writer, values[i]);
+                for (int i = 0; i < values.Count; i++) SimulationInputValue.CanonicalWrite(writer, values[i]);
             }
         }
         void ReadRetainedInputs(CanonicalReader reader)
@@ -734,7 +713,7 @@ namespace ThirdPersonSimulation.Fixed
                 for (int i = 0; i < count; i++)
                 {
                     CanonicalTextValue inputId = ReadDeclaredInputId(reader, actor);
-                    SimulationInputValue value = ReadRetainedValue(reader, inputId);
+                    SimulationInputValue value = SimulationInputValue.CanonicalReadPayload(reader, inputId);
                     value.Retain();
                     values.Add(value);
                 }
@@ -747,8 +726,6 @@ namespace ThirdPersonSimulation.Fixed
                 if (CanonicalTextEncoding.EqualsEncoded(encoded.AsSpan(), id.Span)) return id;
             throw new System.IO.InvalidDataException("Retained Fixed input is absent from the published source input directory.");
         }
-        static void WriteRetainedValue(CanonicalWriter writer, SimulationInputValue value) => SimulationInputCodec.WriteValue(writer, value);
-        static SimulationInputValue ReadRetainedValue(CanonicalReader reader, CanonicalTextValue inputId) => SimulationInputCodec.ReadValue(reader, inputId);
 
         public SimulationPortDescriptor Descriptor { get; }
         public int StatePayloadCapacity { get; private set; }
@@ -874,8 +851,8 @@ namespace ThirdPersonSimulation.Fixed
         public void WriteState(CanonicalWriter writer)
         {
             writer.WriteUInt32(0x53434c58);
-            writer.WriteInt32(6);
-            writer.WriteHash(SimulationInputValue.CanonicalSchemaHash);
+            writer.WriteInt32(7);
+            writer.WriteHash(FixedLocalInputSourcePortContract.StateSchemaHash);
             writer.WriteUInt64(m_LastReadSourceTick);
             writer.WriteInt32(m_Bindings.Count);
             for (int i = 0; i < m_Bindings.Count; i++)
@@ -919,8 +896,8 @@ namespace ThirdPersonSimulation.Fixed
 
         ulong RestoreControlSourceBlocks(CanonicalReader reader, ICanonicalTextResolver resolver)
         {
-            if (reader.ReadUInt32() != 0x53434c58 || reader.ReadInt32() != 6 ||
-                reader.ReadHash() != SimulationInputValue.CanonicalSchemaHash)
+            if (reader.ReadUInt32() != 0x53434c58 || reader.ReadInt32() != 7 ||
+                reader.ReadHash() != FixedLocalInputSourcePortContract.StateSchemaHash)
                 throw new InvalidDataException("Fixed Local Control Source state header is invalid.");
             ulong lastReadSourceTick = reader.ReadUInt64();
             int count = reader.ReadInt32();
