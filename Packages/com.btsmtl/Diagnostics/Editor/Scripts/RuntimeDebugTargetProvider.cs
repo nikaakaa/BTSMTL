@@ -16,6 +16,7 @@ namespace BTSMTL.Diagnostics.Editor
         readonly RuntimeDebugSourceMapSnapshot m_SourceMap;
         readonly RuntimeDebugViewModel m_LiveModel;
         readonly List<RuntimeLiveStateChange> m_LiveChanges;
+        readonly Dictionary<RuntimeLiveStateKey, int> m_LastLiveChanges;
         readonly List<RuntimeCaptureChange> m_CaptureChanges;
         long m_LiveCursor;
         Guid m_CaptureId;
@@ -28,6 +29,7 @@ namespace BTSMTL.Diagnostics.Editor
         {
             m_Target = target;
             m_LiveChanges = new List<RuntimeLiveStateChange>(target.Store.LiveStateCapacity);
+            m_LastLiveChanges = new Dictionary<RuntimeLiveStateKey, int>(target.Store.LiveStateCapacity);
             m_CaptureChanges = new List<RuntimeCaptureChange>(target.Store.CaptureEventCapacity);
             m_ExecutionSpans = new RuntimeExecutionTimelineBuilder.SpanAccumulator(target.Store.CaptureEventCapacity);
             m_SourceMap = RuntimeDebugSourceMapSnapshot.Capture(target.SourceMap);
@@ -38,6 +40,7 @@ namespace BTSMTL.Diagnostics.Editor
 
         public void Dispose()
         {
+            m_LastLiveChanges.Clear();
             for (int i = 0; i < m_LiveChanges.Count; i++)
                 m_LiveChanges[i].Release();
             m_LiveChanges.Clear();
@@ -57,6 +60,7 @@ namespace BTSMTL.Diagnostics.Editor
         public bool Refresh(IReadOnlyDictionary<RuntimeContentRevision, RuntimeDebugSourceMapSnapshot> sourceMaps)
         {
             using var profile = s_Refresh.Auto();
+            m_LastLiveChanges.Clear();
             RuntimeLiveStateRead read;
             using (s_Read.Auto())
                 read = m_Target.Store.CopyLiveStateSince(m_LiveCursor, m_LiveChanges);
@@ -77,6 +81,16 @@ namespace BTSMTL.Diagnostics.Editor
                 for (int i = 0; i < read.Changes.Count; i++)
                 {
                     RuntimeLiveStateChange change = read.Changes[i];
+                    if (m_LastLiveChanges.TryGetValue(change.Key, out int previous) && previous < 0)
+                        continue;
+                    m_LastLiveChanges[change.Key] = change.IsRemoval ? -1 : i;
+                }
+                for (int i = 0; i < read.Changes.Count; i++)
+                {
+                    RuntimeLiveStateChange change = read.Changes[i];
+                    int last = m_LastLiveChanges[change.Key];
+                    if (last >= 0 && last != i)
+                        continue;
                     if (change.IsRemoval)
                     {
                         m_LiveModel.Remove(change.Key);
