@@ -136,7 +136,8 @@ internal static class Program
     static void ReadLocations(string path, string workbook, string? selectedSheet,
         Dictionary<string, (string Workbook, string Sheet, int Row)> result)
     {
-        using ZipArchive archive = ZipFile.OpenRead(path);
+        using FileStream input = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        using ZipArchive archive = new(input, ZipArchiveMode.Read);
         using Stream workbookStream = archive.GetEntry("xl/workbook.xml")!.Open();
         using Stream relationsStream = archive.GetEntry("xl/_rels/workbook.xml.rels")!.Open();
         XDocument book = XDocument.Load(workbookStream);
