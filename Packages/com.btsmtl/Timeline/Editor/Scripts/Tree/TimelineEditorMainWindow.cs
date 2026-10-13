@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using BTSMTL.Diagnostics;
 using BTSMTL.Diagnostics.Editor;
 using BTSMTL.Timeline.Runtime;
+using Unity.Profiling;
 using UnityEditor;
 using UnityEditor.UIElements;
 using UnityEngine;
@@ -97,6 +98,9 @@ namespace BTSMTL.Timeline.Editor
 
     public sealed class TimelineEditorWindow : EditorWindow
     {
+        static readonly ProfilerMarker s_Open = new("Workbench.TimelineWindow.Open");
+        static readonly ProfilerMarker s_Bind = new("Workbench.TimelineWindow.Bind");
+        static readonly ProfilerMarker s_TimeRange = new("Workbench.TimelineWindow.SetTimeRangePreview");
         static readonly List<TimelineEditorWindow> s_Windows = new();
         internal static IReadOnlyList<TimelineEditorWindow> OpenWindows => s_Windows;
         public static event Action<TimelineAsset> AssetOpened;
@@ -168,8 +172,15 @@ namespace BTSMTL.Timeline.Editor
 
         public void SetTimeRangePreview(ITimelineTimeRangePreview preview)
         {
+            using var profile = s_TimeRange.Auto();
             if (ReferenceEquals(m_TimeRangePreview, preview))
                 return;
+            if (m_SlateProjection == null)
+            {
+                preview?.SynchronizeUndo();
+                m_TimeRangePreview = preview;
+                return;
+            }
             BtsmtlSlateTimelineViewState view = m_SlateProjection.CaptureViewState();
             TimelineAsset source = SourceAsset;
             preview?.SynchronizeUndo();
@@ -348,6 +359,7 @@ namespace BTSMTL.Timeline.Editor
             string sourceGraphAuthoringId,
             string sourceNodeGuid)
         {
+            using var profile = s_Open.Auto();
             if (!asset)
                 return null;
 
@@ -465,12 +477,11 @@ namespace BTSMTL.Timeline.Editor
             string sourceNodeGuid,
             string sourceGraphAuthoringId = null)
         {
+            using var profile = s_Bind.Auto();
             if (timeline == null || !serializedOwner || string.IsNullOrEmpty(serializedPropertyPath))
                 throw new InvalidOperationException("TimelineEditorWindow requires a bound TimelineData owner/path.");
 
             DisposeView();
-            timeline.BindSerializedOwner(serializedOwner, serializedPropertyPath);
-            timeline.OnValueChanged += OnTimelineValueChanged;
             m_SerializedOwner = m_TimeRangePreview == null ? serializedOwner : m_TimeRangePreview.Source;
             m_SerializedPropertyPath = serializedPropertyPath;
             m_OwnershipLabel = ownershipLabel;
@@ -481,13 +492,22 @@ namespace BTSMTL.Timeline.Editor
             m_SourceNodeGuid = sourceNodeGuid ?? string.Empty;
             ClearRuntimeObservationSelection();
             titleContent = new GUIContent("Timeline Editor");
+            TimelineWorkspaceModeBridge.ApplyToWindow(this);
+            if (m_TimeRangePreview != null)
+            {
+                timeline = m_TimeRangePreview.WorkingData;
+                serializedOwner = m_TimeRangePreview.Workspace;
+                m_OwnershipLabel = "预览时间草稿 · 应用后保存资产";
+            }
+            timeline.BindSerializedOwner(serializedOwner, serializedPropertyPath);
+            timeline.OnValueChanged += OnTimelineValueChanged;
             m_Timeline = timeline;
 
             TimelineEditorOpenRequest openRequest = TimelineEditorOpenRequestComposition.Create(
                 timeline,
                 serializedOwner,
                 serializedPropertyPath,
-                ownershipLabel, timeRangePreview: m_TimeRangePreview);
+                m_OwnershipLabel, timeRangePreview: m_TimeRangePreview);
             if (!BtsmtlSlateTimelineProjection.TryOpen(
                     openRequest,
                     OpenClip,
@@ -512,7 +532,6 @@ namespace BTSMTL.Timeline.Editor
             if (!string.IsNullOrEmpty(savedView))
                 m_SlateProjection.RestoreViewState(JsonUtility.FromJson<BtsmtlSlateTimelineViewState>(savedView));
             m_SlateProjection.SetRuntimeReadOnly(m_RuntimeObservationReadOnly);
-            TimelineWorkspaceModeBridge.ApplyToWindow(this);
 
             AssetOpened?.Invoke(SourceAsset);
             WindowOpened?.Invoke(this);
