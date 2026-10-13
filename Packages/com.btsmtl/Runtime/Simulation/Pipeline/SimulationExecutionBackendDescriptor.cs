@@ -16,7 +16,8 @@ namespace ThirdPersonSimulation
         PipelineStateSnapshot = 1 << 4,
         SolverReconstruction = 1 << 5,
         FailStopCommit = 1 << 6,
-        DeterministicExecution = 1 << 7
+        DeterministicExecution = 1 << 7,
+        SdkFrameScheduling = 1 << 8
     }
 
     public readonly struct SimulationExecutionBackendTargetSupport : IEquatable<SimulationExecutionBackendTargetSupport>
@@ -72,11 +73,16 @@ namespace ThirdPersonSimulation
             SemanticVersion = SimulationIdentity.Require(semanticVersion, nameof(semanticVersion));
             SimulationExecutionBackendCapability required =
                 SimulationExecutionBackendCapability.PhasePassExecution |
-                SimulationExecutionBackendCapability.MultiStepTransaction |
-                SimulationExecutionBackendCapability.AtomicStatePublish |
                 SimulationExecutionBackendCapability.FailStopCommit;
+            SimulationExecutionBackendCapability transaction =
+                SimulationExecutionBackendCapability.MultiStepTransaction |
+                SimulationExecutionBackendCapability.AtomicStatePublish;
+            if ((capabilities & SimulationExecutionBackendCapability.SdkFrameScheduling) == 0)
+                required |= transaction;
+            else if ((capabilities & transaction) != 0)
+                throw new ArgumentException("SDK 帧调度不能同时声明宿主多步事务或整体原子发布。", nameof(capabilities));
             if ((capabilities & required) != required)
-                throw new ArgumentException("Execution Backend is missing required Session transaction capabilities.", nameof(capabilities));
+                throw new ArgumentException("Execution Backend is missing required Session execution capabilities.", nameof(capabilities));
             var values = targets == null
                 ? new List<SimulationExecutionBackendTargetSupport>()
                 : new List<SimulationExecutionBackendTargetSupport>(targets);
