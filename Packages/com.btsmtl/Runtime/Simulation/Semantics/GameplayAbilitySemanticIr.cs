@@ -145,13 +145,13 @@ namespace ThirdPersonSimulation
     [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
     public partial struct SemanticDataToken
     {
-        [CanonicalUnionCase] public bool Boolean { get; }
-        [CanonicalUnionCase] public int Int32 { get; }
-        [CanonicalUnionCase] public uint UInt32 { get; }
-        [CanonicalUnionCase] public ulong UInt64 { get; }
-        [CanonicalUnionCase] public string String { get; private set; }
-        [CanonicalUnionCase] public SemanticNumericToken Number { get; }
-        [CanonicalUnionCase] public ReadOnlyMemory<byte> Bytes { get; }
+        [ValueUnionCase] public bool Boolean { get; }
+        [ValueUnionCase] public int Int32 { get; }
+        [ValueUnionCase] public uint UInt32 { get; }
+        [ValueUnionCase] public ulong UInt64 { get; }
+        [ValueUnionCase] public string String { get; private set; }
+        [ValueUnionCase] public SemanticNumericToken Number { get; }
+        [ValueUnionCase] public ReadOnlyMemory<byte> Bytes { get; }
 
         [CanonicalValidation]
         void RequireRecord() => String = String ?? string.Empty;
@@ -190,17 +190,17 @@ namespace ThirdPersonSimulation
     {
         public int Index { get; }
         public string Identity { get; private set; }
-        [CanonicalUnionCase] public bool Boolean { get; }
-        [CanonicalUnionCase] public int Int32 { get; }
-        [CanonicalUnionCase] public ulong UInt64 { get; }
-        [CanonicalUnionCase] public SemanticNumberValue Number { get; }
-        [CanonicalUnionCase] public SemanticVector2Value Vector2 { get; }
-        [CanonicalUnionCase] public SemanticVector3Value Vector3 { get; }
-        [CanonicalUnionCase] public SemanticNumberValue Yaw { get; }
-        [CanonicalUnionCase] public string String { get; }
-        [CanonicalUnionCase] public SemanticDataDocument Document { get; }
-        [CanonicalUnionCase] public SemanticQuaternionValue Quaternion { get; }
-        [CanonicalUnionCase] public ProgramEnumConstant Enum { get; }
+        [ValueUnionCase] public bool Boolean { get; }
+        [ValueUnionCase] public int Int32 { get; }
+        [ValueUnionCase] public ulong UInt64 { get; }
+        [ValueUnionCase] public SemanticNumberValue Number { get; }
+        [ValueUnionCase] public SemanticVector2Value Vector2 { get; }
+        [ValueUnionCase] public SemanticVector3Value Vector3 { get; }
+        [ValueUnionCase] public SemanticNumberValue Yaw { get; }
+        [ValueUnionCase] public string String { get; }
+        [ValueUnionCase] public SemanticDataDocument Document { get; }
+        [ValueUnionCase] public SemanticQuaternionValue Quaternion { get; }
+        [ValueUnionCase] public ProgramEnumConstant Enum { get; }
 
         [CanonicalValidation]
         void RequireRecord()

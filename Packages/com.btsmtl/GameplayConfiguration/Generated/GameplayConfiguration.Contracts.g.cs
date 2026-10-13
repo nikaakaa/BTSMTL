@@ -2,17 +2,17 @@ using System;
 using System.Collections.Generic;
 using ThirdPersonSimulation;
 namespace ThirdPersonGameplay.Configuration {
-[CanonicalUnionTemplate]
+[ValueUnionTemplate]
 public readonly struct MagnitudeValue {
-[CanonicalUnionCase] public readonly PublishedConstantMagnitude ConstantMagnitude;
-[CanonicalUnionCase] public readonly PublishedScaledConstantMagnitude ScaledConstantMagnitude;
-[CanonicalUnionCase] public readonly PublishedSetByCallerMagnitude SetByCallerMagnitude;
-[CanonicalUnionCase] public readonly PublishedSourceAttributeSnapshotMagnitude SourceAttributeSnapshotMagnitude;
-[CanonicalUnionCase] public readonly PublishedTargetAttributeSnapshotMagnitude TargetAttributeSnapshotMagnitude;
-[CanonicalUnionCase] public readonly PublishedTargetAttributeLiveMagnitude TargetAttributeLiveMagnitude;
+[ValueUnionCase] public readonly PublishedConstantMagnitude ConstantMagnitude;
+[ValueUnionCase] public readonly PublishedScaledConstantMagnitude ScaledConstantMagnitude;
+[ValueUnionCase] public readonly PublishedSetByCallerMagnitude SetByCallerMagnitude;
+[ValueUnionCase] public readonly PublishedSourceAttributeSnapshotMagnitude SourceAttributeSnapshotMagnitude;
+[ValueUnionCase] public readonly PublishedTargetAttributeSnapshotMagnitude TargetAttributeSnapshotMagnitude;
+[ValueUnionCase] public readonly PublishedTargetAttributeLiveMagnitude TargetAttributeLiveMagnitude;
 }
 [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
-[CanonicalUnion(typeof(MagnitudeValue))]
+[ValueUnion(typeof(MagnitudeValue))]
 public readonly partial struct PublishedMagnitude {}
 [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
 public sealed partial class PublishedConstantMagnitude {
@@ -175,20 +175,20 @@ public PublishedEffectStacking Stacking { get; }
 public IReadOnlyList<string> SetByCallerParameters { get; }
 public IReadOnlyList<PublishedComponent> Components { get; }
 }
-[CanonicalUnionTemplate]
+[ValueUnionTemplate]
 public readonly struct ComponentValue {
-[CanonicalUnionCase] public readonly PublishedModifier Modifier;
-[CanonicalUnionCase] public readonly PublishedGrantedTags GrantedTags;
-[CanonicalUnionCase] public readonly PublishedBlockAbilities BlockAbilities;
-[CanonicalUnionCase] public readonly PublishedReplacementSourceRequirement ReplacementSourceRequirement;
-[CanonicalUnionCase] public readonly PublishedTagRequirements TagRequirements;
-[CanonicalUnionCase] public readonly PublishedAttributeRequirements AttributeRequirements;
-[CanonicalUnionCase] public readonly PublishedExecution Execution;
-[CanonicalUnionCase] public readonly PublishedAdditionalEffectsComponent AdditionalEffectsComponent;
-[CanonicalUnionCase] public readonly PublishedCueBinding CueBinding;
+[ValueUnionCase] public readonly PublishedModifier Modifier;
+[ValueUnionCase] public readonly PublishedGrantedTags GrantedTags;
+[ValueUnionCase] public readonly PublishedBlockAbilities BlockAbilities;
+[ValueUnionCase] public readonly PublishedReplacementSourceRequirement ReplacementSourceRequirement;
+[ValueUnionCase] public readonly PublishedTagRequirements TagRequirements;
+[ValueUnionCase] public readonly PublishedAttributeRequirements AttributeRequirements;
+[ValueUnionCase] public readonly PublishedExecution Execution;
+[ValueUnionCase] public readonly PublishedAdditionalEffectsComponent AdditionalEffectsComponent;
+[ValueUnionCase] public readonly PublishedCueBinding CueBinding;
 }
 [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
-[CanonicalUnion(typeof(ComponentValue))]
+[ValueUnion(typeof(ComponentValue))]
 public readonly partial struct PublishedComponent {}
 [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
 public sealed partial class PublishedModifier {

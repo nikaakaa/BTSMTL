@@ -6,11 +6,9 @@ using System.IO;
 namespace ThirdPersonSimulation.Fixed
 {
     [CanonicalContract]
-    [CanonicalUnion(typeof(ProgramInputValue<FixedScalar, FixedVector2, FixedVector3, FixedYaw, SimulationActionTargetSnapshot>))]
+    [ValueUnion(typeof(ProgramInputValue<FixedScalar, FixedVector2, FixedVector3, FixedYaw, SimulationActionTargetSnapshot>))]
     public readonly partial struct SimulationInputValue
     {
-        public void Retain() => CanonicalRetain(in this);
-        public void Release() => CanonicalRelease(in this);
 
         [CanonicalValidation]
         void RequireIdentity() => SimulationIdentity.Require(InputId, nameof(InputId));
@@ -455,30 +453,30 @@ namespace ThirdPersonSimulation.Fixed
         }
     }
 
-    [CanonicalUnionTemplate]
+    [ValueUnionTemplate]
     public enum GameplayFactKind : byte
     {
-        [CanonicalUnionCase(typeof(ActionFact))]
+        [ValueUnionCase(typeof(ActionFact))]
         Action = 1,
-        [CanonicalUnionCase(typeof(GameplayEffectFact))]
+        [ValueUnionCase(typeof(GameplayEffectFact))]
         Effect = 2,
-        [CanonicalUnionCase(typeof(GameplayAttributeFact))]
+        [ValueUnionCase(typeof(GameplayAttributeFact))]
         Attribute = 3,
-        [CanonicalUnionCase(typeof(GameplayCueFact))]
+        [ValueUnionCase(typeof(GameplayCueFact))]
         Cue = 4,
-        [CanonicalUnionCase(typeof(GameplayStateFact<FixedScalar>))]
+        [ValueUnionCase(typeof(GameplayStateFact<FixedScalar>))]
         Motion = 5,
-        [CanonicalUnionCase(typeof(GameplayStateFact<FixedScalar>))]
+        [ValueUnionCase(typeof(GameplayStateFact<FixedScalar>))]
         State = 6,
-        [CanonicalUnionCase(typeof(ActionWindowFact))]
+        [ValueUnionCase(typeof(ActionWindowFact))]
         ActionWindow = 7,
-        [CanonicalUnionCase(typeof(GameplayTagRuntimeChange))]
+        [ValueUnionCase(typeof(GameplayTagRuntimeChange))]
         Tag = 8,
-        [CanonicalUnionCase(typeof(GameplayEffectExecutionFailure))]
+        [ValueUnionCase(typeof(GameplayEffectExecutionFailure))]
         Failure = 9,
-        [CanonicalUnionCase(typeof(GameplayEffectReconciliationFact<SimulationGameplayEffectContext>))]
+        [ValueUnionCase(typeof(GameplayEffectReconciliationFact<SimulationGameplayEffectContext>))]
         Reconciliation = 10,
-        [CanonicalUnionCase(typeof(EquipmentLifecycleFact))]
+        [ValueUnionCase(typeof(EquipmentLifecycleFact))]
         Equipment = 11
     }
 
@@ -584,7 +582,7 @@ namespace ThirdPersonSimulation.Fixed
     }
 
     [CanonicalContract]
-    [CanonicalUnion(typeof(GameplayFactKind))]
+    [ValueUnion(typeof(GameplayFactKind))]
     public readonly partial struct GameplayFact
     {
         public const int SchemaVersion = 5;

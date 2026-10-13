@@ -9,17 +9,17 @@ namespace ThirdPersonSimulation
     {
         public int Index { get; }
         public string Identity { get; private set; }
-        [CanonicalUnionCase] public bool Boolean { get; }
-        [CanonicalUnionCase] public int Int32 { get; }
-        [CanonicalUnionCase] public ulong UInt64 { get; }
-        [CanonicalUnionCase] public Float32Scalar Scalar { get; }
-        [CanonicalUnionCase] public Float32Vector2 Vector2 { get; }
-        [CanonicalUnionCase] public Float32Vector3 Vector3 { get; }
-        [CanonicalUnionCase] public Float32Yaw Yaw { get; }
-        [CanonicalUnionCase] public string String { get; private set; }
-        [CanonicalUnionCase] public ReadOnlyMemory<byte> Bytes { get; }
-        [CanonicalUnionCase] public Float32Quaternion Quaternion { get; }
-        [CanonicalUnionCase] public ProgramEnumConstant Enum { get; }
+        [ValueUnionCase] public bool Boolean { get; }
+        [ValueUnionCase] public int Int32 { get; }
+        [ValueUnionCase] public ulong UInt64 { get; }
+        [ValueUnionCase] public Float32Scalar Scalar { get; }
+        [ValueUnionCase] public Float32Vector2 Vector2 { get; }
+        [ValueUnionCase] public Float32Vector3 Vector3 { get; }
+        [ValueUnionCase] public Float32Yaw Yaw { get; }
+        [ValueUnionCase] public string String { get; private set; }
+        [ValueUnionCase] public ReadOnlyMemory<byte> Bytes { get; }
+        [ValueUnionCase] public Float32Quaternion Quaternion { get; }
+        [ValueUnionCase] public ProgramEnumConstant Enum { get; }
         public string Text => Kind == ProgramConstantKind.Enum ? Enum.TypeIdentity :
             Kind == ProgramConstantKind.String ? String : string.Empty;
 

@@ -87,31 +87,8 @@ namespace ThirdPersonSimulation
     }
 
     [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
-    public sealed class CanonicalUnionCaseAttribute : Attribute
-    {
-        public CanonicalUnionCaseAttribute() { }
-        public CanonicalUnionCaseAttribute(Type payload) => Payload = payload;
-        public Type Payload { get; }
-        public bool NormalizeZero { get; set; }
-        public bool NormalizeNull { get; set; }
-        public string DefaultMember { get; set; }
-    }
-
-    [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
     public sealed class CanonicalPayloadAttribute : Attribute
     {
-    }
-
-    [AttributeUsage(AttributeTargets.Struct | AttributeTargets.Enum)]
-    public sealed class CanonicalUnionTemplateAttribute : Attribute
-    {
-    }
-
-    [AttributeUsage(AttributeTargets.Struct)]
-    public sealed class CanonicalUnionAttribute : Attribute
-    {
-        public CanonicalUnionAttribute(Type definition) => Definition = definition;
-        public Type Definition { get; }
     }
 
     [AttributeUsage(AttributeTargets.Method)]
@@ -121,10 +98,6 @@ namespace ThirdPersonSimulation
 
     [AttributeUsage(AttributeTargets.Field)]
     public sealed class CanonicalSchemaConstantAttribute : Attribute
-    {
-    }
-
-    public readonly struct CanonicalUnavailable
     {
     }
 

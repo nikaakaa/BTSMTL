@@ -110,17 +110,18 @@ namespace ThirdPersonSimulation
     }
 
     [CanonicalContract]
-    public readonly partial struct CharacterControlStateValue
+    [ValueOperations]
+    public readonly partial struct CharacterControlStateValue : IEquatable<CharacterControlStateValue>
     {
-        [CanonicalUnionCase]
+        [ValueUnionCase]
         public bool Boolean { get; }
-        [CanonicalUnionCase]
+        [ValueUnionCase]
         public int Int32 { get; }
-        [CanonicalUnionCase]
+        [ValueUnionCase]
         public ulong UInt64 { get; }
-        [CanonicalUnionCase(NormalizeNull = true)]
+        [ValueUnionCase(NormalizeNull = true)]
         public CanonicalTextValue Identity { get; }
-        [CanonicalUnionCase(NormalizeZero = true)]
+        [ValueUnionCase(NormalizeZero = true)]
         public double Number { get; }
 
         [CanonicalValidation]
@@ -130,12 +131,7 @@ namespace ThirdPersonSimulation
                 throw new ArgumentOutOfRangeException(nameof(Number));
         }
 
-        public bool Equals(CharacterControlStateValue other) =>
-            Kind == other.Kind && Boolean == other.Boolean && Int32 == other.Int32 &&
-            UInt64 == other.UInt64 && Number.Equals(other.Number) && Identity.Equals(other.Identity);
 
-        public void Retain() => CanonicalRetain(this);
-        public void Release() => CanonicalRelease(this);
     }
 
     [CanonicalContract(PreparedStorage = typeof(CharacterControlRuntimeStateStorage))]
@@ -295,7 +291,7 @@ namespace ThirdPersonSimulation
             for (int i = 0; i < values.Length; i++)
                 values[i] = schema.Fields[i].Semantic == CharacterControlStateSemantic.ActiveState
                     ? CharacterControlStateValue.FromIdentity(contract.InitialState.Value)
-                    : CharacterControlStateValue.CanonicalDefault(schema.Fields[i].ValueKind);
+                    : CharacterControlStateValue.Default(schema.Fields[i].ValueKind);
             return new CharacterControlRuntimeState(schema, 0, values);
         }
 

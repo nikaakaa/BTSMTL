@@ -15,15 +15,16 @@ namespace ThirdPerson.CanonicalSerialization.Generator
     public sealed class CanonicalGenerator : ISourceGenerator
     {
         const string ContractAttribute = "ThirdPersonSimulation.CanonicalContractAttribute";
-        const string UnionCaseAttribute = "ThirdPersonSimulation.CanonicalUnionCaseAttribute";
+        const string UnionCaseAttribute = "ThirdPersonSimulation.ValueUnionCaseAttribute";
         const string PayloadAttribute = "ThirdPersonSimulation.CanonicalPayloadAttribute";
-        const string UnionTemplateAttribute = "ThirdPersonSimulation.CanonicalUnionTemplateAttribute";
-        const string UnionAttribute = "ThirdPersonSimulation.CanonicalUnionAttribute";
+        const string UnionTemplateAttribute = "ThirdPersonSimulation.ValueUnionTemplateAttribute";
+        const string UnionAttribute = "ThirdPersonSimulation.ValueUnionAttribute";
+        const string ValueOperationsAttribute = "ThirdPersonSimulation.ValueOperationsAttribute";
         const string ValidationAttribute = "ThirdPersonSimulation.CanonicalValidationAttribute";
         const string SchemaConstantAttribute = "ThirdPersonSimulation.CanonicalSchemaConstantAttribute";
         const string TextType = "ThirdPersonSimulation.CanonicalTextValue";
         const string BufferType = "ThirdPersonSimulation.CanonicalBuffer<T>";
-        const string UnavailableType = "ThirdPersonSimulation.CanonicalUnavailable";
+        const string OmittedUnionValueAttribute = "ThirdPersonSimulation.ValueUnionOmittedAttribute";
         const string BorrowedSequenceAttribute = "ThirdPersonSimulation.CanonicalBorrowedSequenceAttribute";
         const string BorrowedObjectAttribute = "ThirdPersonSimulation.CanonicalBorrowedObjectAttribute";
         const string DeclaredTextAttribute = "ThirdPersonSimulation.CanonicalDeclaredTextAttribute";
@@ -60,6 +61,7 @@ namespace ThirdPerson.CanonicalSerialization.Generator
             var receiver = (Receiver)context.SyntaxReceiver;
             var types = new Dictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
             var templates = new Dictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
+            var unions = new Dictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
             var storageOwners = new Dictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
             var kindTrees = new List<SyntaxTree>();
             foreach (BaseTypeDeclarationSyntax declaration in receiver.Types)
@@ -70,6 +72,9 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                     types[Identity(type)] = type;
                 if (HasAttribute(type, UnionTemplateAttribute))
                     templates[Identity(type)] = type;
+                if (!HasAttribute(type, UnionTemplateAttribute) &&
+                    (HasAttribute(type, UnionAttribute) || Cases(StorageMembers(type)).Length != 0))
+                    unions[Identity(type)] = type;
                 if (HasAttribute(type, StorageOwnerAttribute))
                     storageOwners[Identity(type)] = type;
             }
@@ -93,7 +98,7 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                     SourceText.From(code.ToString(), Encoding.UTF8));
                 kindTrees.Add(CSharpSyntaxTree.ParseText(code.ToString(), (CSharpParseOptions)context.ParseOptions));
             }
-            foreach (INamedTypeSymbol type in types.Values.OrderBy(t => Identity(t), StringComparer.Ordinal))
+            foreach (INamedTypeSymbol type in unions.Values.OrderBy(t => Identity(t), StringComparer.Ordinal))
             {
                 Member[] cases = Cases(StorageMembers(type));
                 if (cases.Length == 0 || HasAttribute(type, UnionAttribute))
@@ -105,6 +110,9 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                 context.AddSource(Identity(type).Replace('.', '_') + ".Kind.g.cs", SourceText.From(code.ToString(), Encoding.UTF8));
                 kindTrees.Add(CSharpSyntaxTree.ParseText(code.ToString(), (CSharpParseOptions)context.ParseOptions));
             }
+            foreach (INamedTypeSymbol type in unions.Values.OrderBy(t => Identity(t), StringComparer.Ordinal))
+                context.AddSource(Identity(type).Replace('.', '_').Replace('<', '_').Replace('>', '_').Replace(',', '_') + ".Values.g.cs",
+                    SourceText.From(EmitValueUnion(type), Encoding.UTF8));
             Compilation compilation = context.Compilation.AddSyntaxTrees(kindTrees);
             var planner = new Planner(context, compilation);
             if (!planner.Codecs.Valid) return;
@@ -303,28 +311,15 @@ namespace ThirdPerson.CanonicalSerialization.Generator
             return code.ToString();
         }
 
-        static string Emit(Plan plan)
+        static void EmitTypeDeclaration(StringBuilder code, INamedTypeSymbol type, string baseType = null)
         {
-            if (plan.SequenceRoot) return EmitSequenceRoot(plan);
-            var code = new StringBuilder();
-            INamedTypeSymbol type = plan.Type;
-            string fullType = TypeName(type);
-            string name = Escape(type.Name);
-            bool union = plan.Cases.Length != 0;
-            Member[] common = plan.Members.Where(m => !m.IsCase).ToArray();
-            string accessibility = type.DeclaredAccessibility == Accessibility.Public ? "public" : "internal";
-            code.Append("namespace ").Append(type.ContainingNamespace.ToDisplayString()).AppendLine(" {");
-            if (union)
-                code.AppendLine("[global::System.Runtime.InteropServices.StructLayout(global::System.Runtime.InteropServices.LayoutKind.Auto)]");
-            code.Append(accessibility).Append(type.IsReadOnly ? " readonly" : "")
-                .Append(" partial ").Append(type.TypeKind == TypeKind.Struct ? "struct " : "class ")
-                .Append(name);
+            code.Append(type.DeclaredAccessibility == Accessibility.Public ? "public" : "internal")
+                .Append(type.IsReadOnly ? " readonly" : "").Append(" partial ")
+                .Append(type.TypeKind == TypeKind.Struct ? "struct " : "class ").Append(Escape(type.Name));
             if (type.Arity != 0)
                 code.Append('<').Append(string.Join(", ", type.TypeParameters.Select(p => Escape(p.Name)))).Append('>');
-            bool recordProtocol = type.TypeKind == TypeKind.Struct && type.IsReadOnly && plan.PreparedRead &&
-                plan.PreparedStorage == null && plan.TextCapacity != null && plan.FiniteSize;
-            if (recordProtocol)
-                code.Append(" : ").Append(Runtime).Append("ICanonicalRecord<").Append(fullType).Append('>');
+            if (baseType != null)
+                code.Append(" : ").Append(baseType);
             foreach (ITypeParameterSymbol parameter in type.TypeParameters)
             {
                 var constraints = new List<string>();
@@ -337,9 +332,251 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                     code.Append(" where ").Append(Escape(parameter.Name)).Append(" : ").Append(string.Join(", ", constraints));
             }
             code.AppendLine(" {");
-            foreach (Member member in plan.Members.Where(m => m.Generated))
-                code.Append("public ").Append(TypeName(member.Type)).Append(' ')
-                    .Append(Escape(member.Symbol.Name)).AppendLine(" { get; }");
+        }
+
+        static string ValueEquals(ITypeSymbol type, string left, string right) =>
+            type.TypeKind == TypeKind.Enum ? "(" + left + " == " + right + ")" :
+            left + ".Equals(" + right + ")";
+
+        static Member[] ValueMembers(INamedTypeSymbol type)
+        {
+            AttributeData union = type.GetAttributes().SingleOrDefault(a => Identity(a.AttributeClass) == UnionAttribute);
+            Member[] members = StorageMembers(type);
+            if (union == null) return members;
+            Member[] generated = UnionMembers((INamedTypeSymbol)union.ConstructorArguments[0].Value)
+                .Where(m => !HasAttribute(m.Type, OmittedUnionValueAttribute)).ToArray();
+            return members.Where(m => m.Symbol.Name != "Kind" && !generated.Any(g => g.Symbol.Name == m.Symbol.Name))
+                .Concat(generated).ToArray();
+        }
+
+        static bool HasValueResources(ITypeSymbol type, HashSet<string> visited)
+        {
+            if (Identity(type) == TextType) return true;
+            if (type.IsUnmanagedType || type.SpecialType == SpecialType.System_String ||
+                BorrowedObjectStorage(type) != null || !visited.Add(Identity(type)))
+                return false;
+            if (MapTypes(type) is ITypeSymbol[] map)
+                return map.Any(item => HasValueResources(item, new HashSet<string>(visited)));
+            if (NullableElement(type) is ITypeSymbol nullable)
+                return HasValueResources(nullable, visited);
+            if (BorrowedStorage(type) != null && BorrowedSemantic(type, "HoldStorage", true))
+                return true;
+            if (SequenceElement(type) is ITypeSymbol element)
+                return HasValueResources(element, visited);
+            return type is INamedTypeSymbol record && ValueMembers(record)
+                .Any(member => HasValueResources(member.Type, new HashSet<string>(visited)));
+        }
+
+        static void HoldValueResources(StringBuilder code, string operation, ITypeSymbol type, string value, int depth = 0)
+        {
+            if (!HasValueResources(type, new HashSet<string>())) return;
+            if (Identity(type) == TextType)
+            {
+                code.Append(value).Append('.').Append(operation).AppendLine("();");
+                return;
+            }
+            if (MapTypes(type) is ITypeSymbol[] map)
+            {
+                string index = "__valueIndex" + depth;
+                code.Append("for (int ").Append(index).Append(" = 0; ").Append(index).Append(" < ").Append(value)
+                    .Append(".Count; ").Append(index).AppendLine("++) {");
+                HoldValueResources(code, operation, map[0], value + ".Keys[" + index + "]", depth + 1);
+                HoldValueResources(code, operation, map[1], value + ".Values[" + index + "]", depth + 1);
+                code.AppendLine("}");
+                return;
+            }
+            if (NullableElement(type) is ITypeSymbol nullable)
+            {
+                code.Append("if (").Append(value).AppendLine(".HasValue) {");
+                HoldValueResources(code, operation, nullable, value + ".Value", depth);
+                code.AppendLine("}");
+                return;
+            }
+            if (BorrowedStorage(type) != null && BorrowedSemantic(type, "HoldStorage", true))
+            {
+                code.Append(value).Append('.').Append(operation).AppendLine("StateStorage();");
+                return;
+            }
+            if (SequenceElement(type) is ITypeSymbol element)
+            {
+                string index = "__valueIndex" + depth;
+                code.Append("for (int ").Append(index).Append(" = 0; ").Append(index).Append(" < ")
+                    .Append(SequenceCount(type, value)).Append("; ").Append(index).AppendLine("++) {");
+                HoldValueResources(code, operation, element, SequenceValue(type, value, index), depth + 1);
+                code.AppendLine("}");
+                return;
+            }
+            var record = (INamedTypeSymbol)type;
+            Member[] members = ValueMembers(record);
+            foreach (Member member in members.Where(m => !m.IsCase))
+                HoldValueResources(code, operation, member.Type, value + "." + Escape(member.Symbol.Name), depth);
+            Member[] cases = Cases(members);
+            if (cases.Length == 0) return;
+            INamedTypeSymbol definition = (INamedTypeSymbol)record.GetAttributes()
+                .SingleOrDefault(a => Identity(a.AttributeClass) == UnionAttribute)?.ConstructorArguments[0].Value;
+            INamedTypeSymbol kindOwner = definition ?? record;
+            string kindType = kindOwner.TypeKind == TypeKind.Enum ? TypeName(kindOwner) :
+                "global::" + kindOwner.ContainingNamespace.ToDisplayString() + "." + Escape(kindOwner.Name) + "Kind";
+            code.Append("switch (").Append(value).AppendLine(".Kind) {");
+            foreach (Member member in cases.Where(m => HasValueResources(m.Type, new HashSet<string>())))
+            {
+                code.Append("case ").Append(kindType).Append('.').Append(Escape(member.Symbol.Name)).AppendLine(":");
+                HoldValueResources(code, operation, member.Type, value + "." + Escape(member.Symbol.Name), depth);
+                code.AppendLine("break;");
+            }
+            code.AppendLine("}");
+        }
+
+        static string EmitValueUnion(INamedTypeSymbol type)
+        {
+            AttributeData union = type.GetAttributes().SingleOrDefault(a => Identity(a.AttributeClass) == UnionAttribute);
+            INamedTypeSymbol definition = union == null ? null : (INamedTypeSymbol)union.ConstructorArguments[0].Value;
+            Member[] members = StorageMembers(type);
+            if (definition != null)
+            {
+                Member[] generated = UnionMembers(definition).Where(m => !HasAttribute(m.Type, OmittedUnionValueAttribute)).ToArray();
+                foreach (Member member in generated)
+                    member.Generated = true;
+                members = members.Concat(generated).OrderBy(m => m.Symbol.Name, StringComparer.Ordinal).ToArray();
+            }
+            Member[] cases = Cases(members);
+            Member[] common = members.Where(m => !m.IsCase).ToArray();
+            INamedTypeSymbol kindOwner = definition ?? type;
+            string kindType = kindOwner.TypeKind == TypeKind.Enum ? TypeName(kindOwner) :
+                "global::" + kindOwner.ContainingNamespace.ToDisplayString() + "." + Escape(kindOwner.Name) + "Kind";
+            IMethodSymbol[] validations = type.GetMembers().OfType<IMethodSymbol>()
+                .Where(m => HasAttribute(m, ValidationAttribute)).OrderBy(m => m.Name, StringComparer.Ordinal).ToArray();
+            string fullType = TypeName(type);
+            var code = new StringBuilder();
+            code.Append("namespace ").Append(type.ContainingNamespace.ToDisplayString()).AppendLine(" {");
+            code.AppendLine("[global::System.Runtime.InteropServices.StructLayout(global::System.Runtime.InteropServices.LayoutKind.Auto)]");
+            EmitTypeDeclaration(code, type);
+            foreach (Member member in members.Where(m => m.Generated))
+                code.Append("public ").Append(TypeName(member.Type)).Append(' ').Append(Escape(member.Symbol.Name)).AppendLine(" { get; }");
+            code.Append("public ").Append(kindType).AppendLine(" Kind { get; }");
+            foreach (List<Member> branches in CaseGroups(cases))
+            {
+                code.Append("private ").Append(Escape(type.Name)).Append('(').Append(kindType).Append(" kind");
+                foreach (Member member in common)
+                    code.Append(", in ").Append(TypeName(member.Type)).Append(' ').Append(Parameter(member.Symbol.Name));
+                code.Append(", in ").Append(TypeName(branches[0].Type)).AppendLine(" value) {");
+                if (type.TypeKind == TypeKind.Struct) code.AppendLine("this = default;");
+                code.AppendLine("Kind = kind;");
+                foreach (Member member in common)
+                    code.Append("this.").Append(Escape(member.Symbol.Name)).Append(" = ")
+                        .Append(Normalize(member, Parameter(member.Symbol.Name), "false")).AppendLine(";");
+                if (branches.Count == 1)
+                    code.Append("this.").Append(Escape(branches[0].Symbol.Name)).Append(" = ")
+                        .Append(Normalize(branches[0], "value", "false")).AppendLine(";");
+                else
+                {
+                    code.AppendLine("switch (kind) {");
+                    foreach (Member member in branches)
+                        code.Append("case ").Append(kindType).Append('.').Append(Escape(member.Symbol.Name))
+                            .Append(": this.").Append(Escape(member.Symbol.Name)).Append(" = ")
+                            .Append(Normalize(member, "value", "false")).AppendLine("; break;");
+                    code.AppendLine("}");
+                }
+                foreach (IMethodSymbol validation in validations)
+                    code.Append(Escape(validation.Name)).AppendLine("();");
+                code.AppendLine("}");
+            }
+            foreach (Member branch in cases)
+            {
+                code.Append("public static ").Append(fullType).Append(" From").Append(branch.Symbol.Name).Append('(')
+                    .Append(string.Join(", ", common.Select(m => TypeName(m.Type) + " " + Parameter(m.Symbol.Name))));
+                if (common.Length != 0) code.Append(", ");
+                code.Append(TypeName(branch.Type)).AppendLine(" value) {");
+                if (!UsesPreparedRead(type) && SequenceElement(branch.Type) != null)
+                    code.Append("value = ").Append(FreezeSequence(branch.Type, "value")).AppendLine(";");
+                code.Append("return new ").Append(fullType).Append('(').Append(kindType).Append('.').Append(Escape(branch.Symbol.Name));
+                foreach (Member member in common)
+                    code.Append(", ").Append(!UsesPreparedRead(type) && SequenceElement(member.Type) != null ?
+                        FreezeSequence(member.Type, Parameter(member.Symbol.Name)) : Parameter(member.Symbol.Name));
+                code.AppendLine(", value); }");
+            }
+            if (type.TypeKind == TypeKind.Struct)
+            {
+                code.Append("public static ").Append(fullType).Append(" Default(").Append(kindType).Append(" kind");
+                foreach (Member member in common)
+                    code.Append(", ").Append(TypeName(member.Type)).Append(' ').Append(Parameter(member.Symbol.Name));
+                code.AppendLine(") { switch (kind) {");
+                foreach (Member member in cases)
+                {
+                    code.Append("case ").Append(kindType).Append('.').Append(Escape(member.Symbol.Name)).Append(": return From")
+                        .Append(member.Symbol.Name).Append('(');
+                    foreach (Member value in common)
+                        code.Append(Parameter(value.Symbol.Name)).Append(", ");
+                    string defaultMember = CaseDefaultMember(member);
+                    code.Append(defaultMember == null ? "default(" + TypeName(member.Type) + ")" :
+                        TypeName(member.Type) + "." + Escape(defaultMember)).AppendLine(");");
+                }
+                code.AppendLine("default: throw new global::System.ArgumentOutOfRangeException(nameof(kind)); } }");
+            }
+            if (HasAttribute(type, ValueOperationsAttribute) ||
+                definition != null && HasAttribute(definition, ValueOperationsAttribute))
+                EmitValueOperations(code, type, cases, common, kindType);
+            code.AppendLine("} }");
+            return code.ToString();
+        }
+
+        static void EmitValueOperations(StringBuilder code, INamedTypeSymbol type,
+            Member[] cases, Member[] common, string kindType)
+        {
+            string fullType = TypeName(type);
+            if (type.AllInterfaces.Any(i => i.OriginalDefinition.Name == "IEquatable" &&
+                i.ContainingNamespace.ToDisplayString() == "System" &&
+                SymbolEqualityComparer.Default.Equals(i.TypeArguments[0], type)) &&
+                !type.GetMembers("Equals").OfType<IMethodSymbol>().Any(m => m.Parameters.Length == 1 &&
+                    SymbolEqualityComparer.Default.Equals(m.Parameters[0].Type, type)))
+            {
+                code.Append("public bool Equals(").Append(fullType).AppendLine(" other) {");
+                code.AppendLine("if (Kind != other.Kind) return false;");
+                foreach (Member member in common)
+                    code.Append("if (!").Append(ValueEquals(member.Type, "this." + Escape(member.Symbol.Name),
+                        "other." + Escape(member.Symbol.Name))).AppendLine(") return false;");
+                code.AppendLine("switch (Kind) {");
+                foreach (Member member in cases)
+                    code.Append("case ").Append(kindType).Append('.').Append(Escape(member.Symbol.Name))
+                        .Append(": return ").Append(ValueEquals(member.Type, "this." + Escape(member.Symbol.Name),
+                            "other." + Escape(member.Symbol.Name))).AppendLine(";");
+                code.Append("case (").Append(kindType).AppendLine(")0: return true;");
+                code.AppendLine("default: throw new global::System.ArgumentOutOfRangeException(nameof(Kind)); } }");
+            }
+            foreach (string operation in new[] { "Retain", "Release" })
+            {
+                if (type.GetMembers(operation).OfType<IMethodSymbol>().Any(m => !m.IsStatic && m.Parameters.Length == 0))
+                    continue;
+                code.Append("public void ").Append(operation).AppendLine("() {");
+                foreach (Member member in common)
+                    HoldValueResources(code, operation, member.Type, "this." + Escape(member.Symbol.Name));
+                Member[] resourceCases = cases.Where(m => HasValueResources(m.Type, new HashSet<string>())).ToArray();
+                if (resourceCases.Length != 0) code.AppendLine("switch (Kind) {");
+                foreach (Member member in resourceCases)
+                {
+                    code.Append("case ").Append(kindType).Append('.').Append(Escape(member.Symbol.Name)).AppendLine(":");
+                    HoldValueResources(code, operation, member.Type, "this." + Escape(member.Symbol.Name));
+                    code.AppendLine("break;");
+                }
+                if (resourceCases.Length != 0) code.AppendLine("}");
+                code.AppendLine("}");
+            }
+        }
+
+        static string Emit(Plan plan)
+        {
+            if (plan.SequenceRoot) return EmitSequenceRoot(plan);
+            var code = new StringBuilder();
+            INamedTypeSymbol type = plan.Type;
+            string fullType = TypeName(type);
+            string name = Escape(type.Name);
+            bool union = plan.Cases.Length != 0;
+            Member[] common = plan.Members.Where(m => !m.IsCase).ToArray();
+            string accessibility = type.DeclaredAccessibility == Accessibility.Public ? "public" : "internal";
+            code.Append("namespace ").Append(type.ContainingNamespace.ToDisplayString()).AppendLine(" {");
+            bool recordProtocol = type.TypeKind == TypeKind.Struct && type.IsReadOnly && plan.PreparedRead &&
+                plan.PreparedStorage == null && plan.TextCapacity != null && plan.FiniteSize;
+            EmitTypeDeclaration(code, type, recordProtocol ? Runtime + "ICanonicalRecord<" + fullType + ">" : null);
             if (type.Arity == 0)
                 code.Append("public const string CanonicalSchema = \"").Append(plan.Schema).AppendLine("\";");
             else
@@ -395,92 +632,19 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                     .Append("StableHash value) => new ").Append(fullType).Append("(default(")
                     .Append(Runtime).AppendLine("CanonicalConstruction), value);");
             }
-            if (union)
-                code.Append("public ").Append(plan.KindType).AppendLine(" Kind { get; }");
-
-            if (type.TypeKind == TypeKind.Struct && (type.IsReadOnly || union || !plan.PreparedRead) ||
-                type.TypeKind == TypeKind.Class && union)
+            if (!union && (type.TypeKind == TypeKind.Struct && (type.IsReadOnly || !plan.PreparedRead)))
             {
-                if (union)
-                {
-                    foreach (List<Member> branches in CaseGroups(plan.Cases))
-                    {
-                        code.Append("private ").Append(name).Append('(').Append(Runtime)
-                            .Append("CanonicalConstruction construction, ").Append(plan.KindType).Append(" kind");
-                        foreach (Member member in common)
-                            code.Append(", in ").Append(TypeName(member.Type)).Append(' ').Append(Parameter(member.Symbol.Name));
-                        code.Append(", in ").Append(TypeName(branches[0].Type)).AppendLine(" value) {");
-                        if (type.TypeKind == TypeKind.Struct) code.AppendLine("this = default;");
-                        code.AppendLine("Kind = kind;");
-                        foreach (Member member in common)
-                            code.Append("this.").Append(Escape(member.Symbol.Name)).Append(" = ")
-                                .Append(Normalize(member, Parameter(member.Symbol.Name))).AppendLine(";");
-                        if (branches.Count == 1)
-                            code.Append("this.").Append(Escape(branches[0].Symbol.Name)).Append(" = ")
-                                .Append(Normalize(branches[0], "value")).AppendLine(";");
-                        else
-                        {
-                            code.AppendLine("switch (kind) {");
-                            foreach (Member member in branches)
-                                code.Append("case ").Append(plan.KindType).Append('.').Append(Escape(member.Symbol.Name))
-                                    .Append(": this.").Append(Escape(member.Symbol.Name)).Append(" = ")
-                                    .Append(Normalize(member, "value")).AppendLine("; break;");
-                            code.AppendLine("}");
-                        }
-                        foreach (IMethodSymbol validation in plan.Validations)
-                            code.Append(Escape(validation.Name)).AppendLine("();");
-                        code.AppendLine("}");
-                    }
-                }
-                else
-                {
-                    code.Append("private ").Append(name).Append('(').Append(Runtime)
-                        .Append("CanonicalConstruction construction");
-                    for (int i = 0; i < plan.Members.Length; i++)
-                        code.Append(", in ").Append(TypeName(plan.Members[i].Type)).Append(" value").Append(i);
-                    code.AppendLine(") {");
-                    for (int i = 0; i < plan.Members.Length; i++)
-                        code.Append("this.").Append(Escape(plan.Members[i].Symbol.Name)).Append(" = ")
-                            .Append(Normalize(plan.Members[i], "value" + i)).AppendLine(";");
-                    foreach (IMethodSymbol validation in plan.Validations)
-                        code.Append(Escape(validation.Name)).AppendLine("();");
-                    code.AppendLine("}");
-                }
-            }
-            foreach (Member branch in plan.Cases)
-            {
-                code.Append("public static ").Append(fullType).Append(" From").Append(branch.Symbol.Name).Append('(');
-                code.Append(string.Join(", ", common.Select(m => TypeName(m.Type) + " " + Parameter(m.Symbol.Name))));
-                if (common.Length > 0)
-                    code.Append(", ");
-                code.Append(TypeName(branch.Type)).AppendLine(" value) {");
-                if (!plan.PreparedRead && SequenceElement(branch.Type) != null)
-                    code.Append("value = ").Append(FreezeSequence(branch.Type, "value")).AppendLine(";");
-                code.Append("return new ").Append(fullType).Append("(default(").Append(Runtime)
-                    .Append("CanonicalConstruction), ").Append(plan.KindType).Append('.').Append(Escape(branch.Symbol.Name));
-                foreach (Member member in common)
-                    code.Append(", ").Append(!plan.PreparedRead && SequenceElement(member.Type) != null ?
-                        FreezeSequence(member.Type, Parameter(member.Symbol.Name)) : Parameter(member.Symbol.Name));
-                code.Append(", value");
-                code.AppendLine("); }");
-            }
-            if (union && type.TypeKind == TypeKind.Struct)
-            {
-                code.Append("public static ").Append(fullType).Append(" CanonicalDefault(").Append(plan.KindType).Append(" kind");
-                foreach (Member member in common)
-                    code.Append(", ").Append(TypeName(member.Type)).Append(' ').Append(Parameter(member.Symbol.Name));
-                code.AppendLine(") { switch (kind) {");
-                foreach (Member member in plan.Cases)
-                {
-                    code.Append("case ").Append(plan.KindType).Append('.').Append(Escape(member.Symbol.Name))
-                        .Append(": return From").Append(member.Symbol.Name).Append('(');
-                    foreach (Member value in common)
-                        code.Append(Parameter(value.Symbol.Name)).Append(", ");
-                    string defaultMember = CaseDefaultMember(member);
-                    code.Append(defaultMember == null ? "default(" + TypeName(member.Type) + ")" :
-                        TypeName(member.Type) + "." + Escape(defaultMember)).AppendLine(");");
-                }
-                code.AppendLine("default: throw new global::System.ArgumentOutOfRangeException(nameof(kind)); } }");
+                code.Append("private ").Append(name).Append('(').Append(Runtime)
+                    .Append("CanonicalConstruction construction");
+                for (int i = 0; i < plan.Members.Length; i++)
+                    code.Append(", in ").Append(TypeName(plan.Members[i].Type)).Append(" value").Append(i);
+                code.AppendLine(") {");
+                for (int i = 0; i < plan.Members.Length; i++)
+                    code.Append("this.").Append(Escape(plan.Members[i].Symbol.Name)).Append(" = ")
+                        .Append(Normalize(plan.Members[i], "value" + i)).AppendLine(";");
+                foreach (IMethodSymbol validation in plan.Validations)
+                    code.Append(Escape(validation.Name)).AppendLine("();");
+                code.AppendLine("}");
             }
 
             code.Append("public static void CanonicalWrite<TWriter>(TWriter writer, in ")
@@ -858,8 +1022,8 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                 foreach (Member member in plan.Cases)
                 {
                     code.Append("case (int)").Append(plan.KindType).Append('.').Append(Escape(member.Symbol.Name))
-                        .Append(": return new ").Append(fullType).Append("(").Append(Runtime)
-                        .Append("CanonicalConstruction.Encoded, ").Append(plan.KindType).Append('.').Append(Escape(member.Symbol.Name));
+                        .Append(": return new ").Append(fullType).Append("(")
+                        .Append(plan.KindType).Append('.').Append(Escape(member.Symbol.Name));
                     foreach (Member value in common)
                         code.Append(", ").Append(Parameter(value.Symbol.Name));
                     code.Append(", ").Append(ReadMember(member, plan));
@@ -879,8 +1043,8 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                     foreach (Member member in plan.Cases)
                     {
                         code.Append("case (int)").Append(plan.KindType).Append('.').Append(Escape(member.Symbol.Name))
-                            .Append(": return new ").Append(fullType).Append("(").Append(Runtime)
-                            .Append("CanonicalConstruction.Encoded, ").Append(plan.KindType).Append('.').Append(Escape(member.Symbol.Name));
+                            .Append(": return new ").Append(fullType).Append("(")
+                            .Append(plan.KindType).Append('.').Append(Escape(member.Symbol.Name));
                         foreach (Member value in common)
                             code.Append(", ").Append(Parameter(value.Symbol.Name));
                         code.Append(", ").Append(ReadMaterializedMember(plan.Codecs, member).Replace("(reader)", "(payloadReader)")
@@ -1354,13 +1518,13 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                 type is INamedTypeSymbol record && record.TypeKind == TypeKind.Struct && record.IsReadOnly &&
                 HasAttribute(record, ContractAttribute) && UsesPreparedRead(record) && PreparedStorage(record) == null;
 
-        static string Normalize(Member member, string value)
+        static string Normalize(Member member, string value, string encoded = "construction.IsEncoded")
         {
             if (HasAttribute(member.Symbol, TextRulesAttribute))
                 return Runtime + "CanonicalTextNormalization.Apply(" + value + ", " +
                     (TextRule(member, "Required") ? "true" : "false") + ", " +
                     (TextRule(member, "Trim") ? "true" : "false") + ", " +
-                    (TextRule(member, "NullToEmpty") ? "true" : "false") + ", construction.IsEncoded, " +
+                    (TextRule(member, "NullToEmpty") ? "true" : "false") + ", " + encoded + ", " +
                     SymbolDisplay.FormatLiteral(member.Symbol.Name, true) + ")";
             if (CaseSemantic(member, "NormalizeZero"))
                 return value + " == 0 ? 0 : " + value;
@@ -2295,7 +2459,7 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                     if (!HasAttribute(plan.UnionDefinition, UnionTemplateAttribute) || plan.UnionDefinition.IsUnboundGenericType)
                         Error(plan, type, "联合必须引用已声明模板的闭合正式 C# 类型");
                     Member[] generated = UnionMembers(plan.UnionDefinition)
-                        .Where(m => Identity(m.Type) != UnavailableType).ToArray();
+                        .Where(m => !HasAttribute(m.Type, OmittedUnionValueAttribute)).ToArray();
                     foreach (Member member in generated)
                         member.Generated = true;
                     foreach (Member member in plan.Members)

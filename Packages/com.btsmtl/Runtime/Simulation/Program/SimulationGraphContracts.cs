@@ -27,21 +27,21 @@ namespace ThirdPersonSimulation
         OptionalSnapshot = 2
     }
 
-    [CanonicalUnionTemplate]
+    [ValueUnionTemplate, ValueOperations]
     public readonly struct ProgramInputValue<TScalar, TVector2, TVector3, TYaw, TActionTargetSnapshot>
     {
         public readonly CanonicalTextValue InputId;
-        [CanonicalUnionCase]
+        [ValueUnionCase]
         public readonly bool Boolean;
-        [CanonicalUnionCase]
+        [ValueUnionCase]
         public readonly TScalar Scalar;
-        [CanonicalUnionCase]
+        [ValueUnionCase]
         public readonly TVector2 Vector2;
-        [CanonicalUnionCase]
+        [ValueUnionCase]
         public readonly TVector3 Vector3;
-        [CanonicalUnionCase]
+        [ValueUnionCase]
         public readonly TYaw Yaw;
-        [CanonicalUnionCase]
+        [ValueUnionCase]
         public readonly TActionTargetSnapshot ActionTargetSnapshot;
     }
 
@@ -998,22 +998,22 @@ namespace ThirdPersonSimulation
         }
     }
 
-    [CanonicalUnionTemplate]
+    [ValueUnionTemplate, ValueOperations]
     public readonly struct ProgramStateValue<TScalar, TVector2, TVector3, TYaw, TQuaternion, TEnum, TActionTargetSnapshot>
     {
-        [CanonicalUnionCase] public readonly bool Boolean;
-        [CanonicalUnionCase] public readonly int Int32;
-        [CanonicalUnionCase] public readonly ulong UInt64;
-        [CanonicalUnionCase] public readonly TScalar Scalar;
-        [CanonicalUnionCase] public readonly TVector2 Vector2;
-        [CanonicalUnionCase] public readonly TVector3 Vector3;
-        [CanonicalUnionCase] public readonly TYaw Yaw;
-        [CanonicalUnionCase(NormalizeNull = true)] public readonly CanonicalTextValue Identity;
-        [CanonicalUnionCase] public readonly BlackboardOwnerToken BlackboardOwnerToken;
-        [CanonicalUnionCase] public readonly BlackboardWriteStamp BlackboardWriteStamp;
-        [CanonicalUnionCase(DefaultMember = "Identity")] public readonly TQuaternion Quaternion;
-        [CanonicalUnionCase] public readonly TEnum Enum;
-        [CanonicalUnionCase(DefaultMember = "None")] public readonly TActionTargetSnapshot ActionTargetSnapshot;
+        [ValueUnionCase] public readonly bool Boolean;
+        [ValueUnionCase] public readonly int Int32;
+        [ValueUnionCase] public readonly ulong UInt64;
+        [ValueUnionCase] public readonly TScalar Scalar;
+        [ValueUnionCase] public readonly TVector2 Vector2;
+        [ValueUnionCase] public readonly TVector3 Vector3;
+        [ValueUnionCase] public readonly TYaw Yaw;
+        [ValueUnionCase(NormalizeNull = true)] public readonly CanonicalTextValue Identity;
+        [ValueUnionCase] public readonly BlackboardOwnerToken BlackboardOwnerToken;
+        [ValueUnionCase] public readonly BlackboardWriteStamp BlackboardWriteStamp;
+        [ValueUnionCase(DefaultMember = "Identity")] public readonly TQuaternion Quaternion;
+        [ValueUnionCase] public readonly TEnum Enum;
+        [ValueUnionCase(DefaultMember = "None")] public readonly TActionTargetSnapshot ActionTargetSnapshot;
     }
 
     [CanonicalContract]

@@ -10,15 +10,15 @@ namespace ThirdPersonSimulation.Fixed
     {
         public int Index { get; }
         public string Identity { get; private set; }
-        [CanonicalUnionCase] public bool Boolean { get; }
-        [CanonicalUnionCase] public int Int32 { get; }
-        [CanonicalUnionCase] public ulong UInt64 { get; }
-        [CanonicalUnionCase] public FixedScalar Scalar { get; }
-        [CanonicalUnionCase] public FixedVector2 Vector2 { get; }
-        [CanonicalUnionCase] public FixedVector3 Vector3 { get; }
-        [CanonicalUnionCase] public FixedYaw Yaw { get; }
-        [CanonicalUnionCase] public string String { get; private set; }
-        [CanonicalUnionCase] public ReadOnlyMemory<byte> Bytes { get; }
+        [ValueUnionCase] public bool Boolean { get; }
+        [ValueUnionCase] public int Int32 { get; }
+        [ValueUnionCase] public ulong UInt64 { get; }
+        [ValueUnionCase] public FixedScalar Scalar { get; }
+        [ValueUnionCase] public FixedVector2 Vector2 { get; }
+        [ValueUnionCase] public FixedVector3 Vector3 { get; }
+        [ValueUnionCase] public FixedYaw Yaw { get; }
+        [ValueUnionCase] public string String { get; private set; }
+        [ValueUnionCase] public ReadOnlyMemory<byte> Bytes { get; }
         public string Text => String;
 
         [CanonicalValidation]

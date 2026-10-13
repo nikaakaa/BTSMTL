@@ -5,29 +5,9 @@ using System.IO;
 namespace ThirdPersonSimulation.Fixed
 {
     [CanonicalContract]
-    [CanonicalUnion(typeof(ProgramStateValue<FixedScalar, FixedVector2, FixedVector3, FixedYaw, CanonicalUnavailable, CanonicalUnavailable, SimulationActionTargetSnapshot>))]
+    [ValueUnion(typeof(ProgramStateValue<FixedScalar, FixedVector2, FixedVector3, FixedYaw, CanonicalUnavailable, CanonicalUnavailable, SimulationActionTargetSnapshot>))]
     public readonly partial struct AbilityStateValue : IEquatable<AbilityStateValue>
     {
-        public void Retain() => CanonicalRetain(in this);
-        public void Release() => CanonicalRelease(in this);
-        public static AbilityStateValue Default(ProgramStateValueKind kind) => CanonicalDefault(kind);
-
-        public bool Equals(AbilityStateValue other) => Kind == other.Kind && (Kind switch
-        {
-            ProgramStateValueKind.Boolean => Boolean.Equals(other.Boolean),
-            ProgramStateValueKind.Int32 => Int32.Equals(other.Int32),
-            ProgramStateValueKind.UInt64 => UInt64.Equals(other.UInt64),
-            ProgramStateValueKind.Scalar => Scalar.Equals(other.Scalar),
-            ProgramStateValueKind.Vector2 => Vector2.Equals(other.Vector2),
-            ProgramStateValueKind.Vector3 => Vector3.Equals(other.Vector3),
-            ProgramStateValueKind.Yaw => Yaw.Equals(other.Yaw),
-            ProgramStateValueKind.Identity => Identity.Equals(other.Identity),
-            ProgramStateValueKind.BlackboardOwnerToken => BlackboardOwnerToken.Equals(other.BlackboardOwnerToken),
-            ProgramStateValueKind.BlackboardWriteStamp => BlackboardWriteStamp.Equals(other.BlackboardWriteStamp),
-            ProgramStateValueKind.ActionTargetSnapshot => ActionTargetSnapshot.Equals(other.ActionTargetSnapshot),
-            (ProgramStateValueKind)0 => true,
-            _ => throw new ArgumentOutOfRangeException(nameof(Kind))
-        });
 
         public static AbilityStateValue FromConstant(ProgramConstant constant, ProgramStateValueKind expectedKind)
         {

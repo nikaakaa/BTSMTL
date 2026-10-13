@@ -408,9 +408,9 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             this = FromPresentationCommand(command);
         }
 
-        [CanonicalUnionCase]
+        [ValueUnionCase]
         public GameplayFact GameplayFact { get; }
-        [CanonicalUnionCase]
+        [ValueUnionCase]
         public PresentationCommand PresentationCommand { get; }
         public bool IsGameplay => Kind == ServerAuthoritativeReliableEventKind.GameplayFact;
         public SimulationEventHeader Header => IsGameplay ? GameplayFact.Header : PresentationCommand.Header;

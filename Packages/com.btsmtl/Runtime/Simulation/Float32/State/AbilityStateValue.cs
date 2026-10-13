@@ -4,34 +4,13 @@ using System.IO;
 namespace ThirdPersonSimulation
 {
     [CanonicalContract]
-    [CanonicalUnion(typeof(ProgramStateValue<Float32Scalar, Float32Vector2, Float32Vector3, Float32Yaw, Float32Quaternion, ProgramEnumState, SimulationActionTargetSnapshot>))]
+    [ValueUnion(typeof(ProgramStateValue<Float32Scalar, Float32Vector2, Float32Vector3, Float32Yaw, Float32Quaternion, ProgramEnumState, SimulationActionTargetSnapshot>))]
     public readonly partial struct AbilityStateValue : IEquatable<AbilityStateValue>
     {
-        public void Retain() => CanonicalRetain(in this);
-        public void Release() => CanonicalRelease(in this);
-        public static AbilityStateValue Default(ProgramStateValueKind kind) => CanonicalDefault(kind);
 
         public static AbilityStateValue FromEnum(CanonicalTextValue typeIdentity, int value) =>
             FromEnum(new ProgramEnumState(typeIdentity, value));
 
-        public bool Equals(AbilityStateValue other) => Kind == other.Kind && (Kind switch
-        {
-            ProgramStateValueKind.Boolean => Boolean.Equals(other.Boolean),
-            ProgramStateValueKind.Int32 => Int32.Equals(other.Int32),
-            ProgramStateValueKind.UInt64 => UInt64.Equals(other.UInt64),
-            ProgramStateValueKind.Scalar => Scalar.Equals(other.Scalar),
-            ProgramStateValueKind.Vector2 => Vector2.Equals(other.Vector2),
-            ProgramStateValueKind.Vector3 => Vector3.Equals(other.Vector3),
-            ProgramStateValueKind.Yaw => Yaw.Equals(other.Yaw),
-            ProgramStateValueKind.Identity => Identity.Equals(other.Identity),
-            ProgramStateValueKind.BlackboardOwnerToken => BlackboardOwnerToken.Equals(other.BlackboardOwnerToken),
-            ProgramStateValueKind.BlackboardWriteStamp => BlackboardWriteStamp.Equals(other.BlackboardWriteStamp),
-            ProgramStateValueKind.Quaternion => Quaternion.Equals(other.Quaternion),
-            ProgramStateValueKind.Enum => Enum.Equals(other.Enum),
-            ProgramStateValueKind.ActionTargetSnapshot => ActionTargetSnapshot.Equals(other.ActionTargetSnapshot),
-            (ProgramStateValueKind)0 => true,
-            _ => throw new ArgumentOutOfRangeException(nameof(Kind))
-        });
 
         public static AbilityStateValue FromConstant(ProgramConstant constant, ProgramStateValueKind expectedKind)
         {

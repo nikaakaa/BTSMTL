@@ -283,13 +283,13 @@ internal static class Program
                 XElement[] children = m_Beans.Values.Where(bean => bean.Attribute("parent")?.Value == pair.Key).ToArray();
                 if (children.Length != 0)
                 {
-                    code.AppendLine("[CanonicalUnionTemplate]");
+                    code.AppendLine("[ValueUnionTemplate]");
                     code.Append("public readonly struct ").Append(pair.Key).AppendLine("Value {");
                     foreach (XElement child in children)
-                        code.Append("[CanonicalUnionCase] public readonly Published").Append(Name(child)).Append(' ').Append(Name(child)).AppendLine(";");
+                        code.Append("[ValueUnionCase] public readonly Published").Append(Name(child)).Append(' ').Append(Name(child)).AppendLine(";");
                     code.AppendLine("}");
                     code.AppendLine("[CanonicalContract(MaterializedRead = true, PreparedRead = false)]");
-                    code.Append("[CanonicalUnion(typeof(").Append(pair.Key).AppendLine("Value))]");
+                    code.Append("[ValueUnion(typeof(").Append(pair.Key).AppendLine("Value))]");
                     code.Append("public readonly partial struct Published").Append(pair.Key).AppendLine(" {}");
                     continue;
                 }
