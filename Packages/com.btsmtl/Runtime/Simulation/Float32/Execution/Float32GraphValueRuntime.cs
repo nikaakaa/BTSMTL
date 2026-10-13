@@ -82,13 +82,6 @@ namespace ThirdPersonSimulation
         void TraceInput(SimulationOperation operation, CompiledValueInputBinding input, AbilityStateValue value);
     }
 
-#if UNITY_EDITOR
-    public interface IFloat32GraphValuePortInputs
-    {
-        bool TryRead(OperationHandle operation, int portIndex, bool input, out AbilityStateValue value);
-    }
-#endif
-
     public sealed class Float32GraphValueRuntime
     {
         readonly Float32GraphExecutionData m_Ability;
@@ -98,12 +91,12 @@ namespace ThirdPersonSimulation
         readonly List<Float32ValueInputBuffer> m_InputBuffers;
         int m_InputBufferDepth;
 #if UNITY_EDITOR
-        readonly IFloat32GraphValuePortInputs m_Ports;
+        readonly IProgramValuePortInputs<AbilityStateValue> m_Ports;
 #endif
 
         public Float32GraphValueRuntime(Float32GraphExecutionData data, Float32GraphValueWorkspace workspace
 #if UNITY_EDITOR
-            , IFloat32GraphValuePortInputs ports
+            , IProgramValuePortInputs<AbilityStateValue> ports
 #endif
             )
         {

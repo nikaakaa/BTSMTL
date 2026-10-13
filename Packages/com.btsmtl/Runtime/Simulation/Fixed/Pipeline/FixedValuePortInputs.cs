@@ -60,9 +60,10 @@ namespace ThirdPersonSimulation.Fixed
         }
     }
 
-    public sealed class FixedValuePortInputs
+    public sealed class FixedValuePortInputs : IProgramValuePortInputs<AbilityStateValue>, IProgramValuePortEdits<AbilityStateValue>
     {
         readonly Dictionary<(int Operation, string Port, ProgramValuePortDirection Direction), int> m_Indices = new();
+        readonly Dictionary<(int Operation, int Port, ProgramValuePortDirection Direction), int> m_CompiledIndices = new();
         readonly FixedGameplayAbilityExecutionData m_Data;
         readonly FixedValuePortInputBank m_Bank;
         readonly int m_FirstSlot;
@@ -114,6 +115,12 @@ namespace ThirdPersonSimulation.Fixed
                     continue;
                 int index = bank.Add();
                 m_Indices.Add(key, index);
+                SimulationOperation node = data.Operations[source.TargetIndex];
+                OperationValuePortContract contract = GameplayAbilityValuePortContracts.Require(
+                    node.Code, node.Handle, data.GraphCallFrames, node.Integer0);
+                IReadOnlyList<OperationValuePortDefinition> ports = source.ValuePortDirection == ProgramValuePortDirection.Input
+                    ? contract.Inputs : contract.Outputs;
+                m_CompiledIndices.Add((source.TargetIndex, Find(ports, source.CompiledPortId).Order, source.ValuePortDirection), index);
                 if (source.ValuePortDirection == ProgramValuePortDirection.Output && m_DefaultOutputs[source.TargetIndex] == -1)
                     m_DefaultOutputs[source.TargetIndex] = index;
             }
@@ -196,17 +203,41 @@ namespace ThirdPersonSimulation.Fixed
             return false;
         }
 
-        internal bool TryReadPrepared(int operation, string port, ProgramValuePortDirection direction, out AbilityStateValue value)
+        public bool TryRead(OperationHandle operation, int portIndex, bool input, out AbilityStateValue value)
         {
             int index;
-            bool declared = direction == ProgramValuePortDirection.Output && port.Length == 0
-                ? (index = m_DefaultOutputs[operation]) != -1 : m_Indices.TryGetValue((operation, port, direction), out index);
+            ProgramValuePortDirection direction = input ? ProgramValuePortDirection.Input : ProgramValuePortDirection.Output;
+            bool declared = !input && portIndex == -1
+                ? (index = m_DefaultOutputs[operation.Value]) != -1
+                : m_CompiledIndices.TryGetValue((operation.Value, portIndex, direction), out index);
             value = declared ? m_PreparedValues[index - m_FirstSlot] : default;
             return value.Kind != default;
         }
 
         public bool IsLocked(int operation, string port, ProgramValuePortDirection direction) =>
             m_Bank.IsLocked(m_Indices[(operation, port, direction)]);
+
+        public bool TryReadInput(OperationHandle operation, int portIndex, bool input, out AbilityStateValue value) =>
+            m_Bank.TryRead(CompiledIndex(operation, portIndex, input), out value);
+
+        public bool IsLocked(OperationHandle operation, int portIndex, bool input) =>
+            m_Bank.IsLocked(CompiledIndex(operation, portIndex, input));
+
+        public void Release(OperationHandle operation, int portIndex, bool input) =>
+            m_Bank.Release(CompiledIndex(operation, portIndex, input));
+
+        public void Set(OperationHandle operation, int portIndex, bool input, AbilityStateValue value, bool locked)
+        {
+            SimulationOperation node = m_Data.Operations[operation.Value];
+            OperationValuePortContract contract = GameplayAbilityValuePortContracts.Require(
+                node.Code, node.Handle, m_Data.GraphCallFrames, node.Integer0);
+            OperationValuePortDefinition definition = input ? contract.Inputs[portIndex] : contract.Outputs[portIndex];
+            SetValue(node, definition, input ? ProgramValuePortDirection.Input : ProgramValuePortDirection.Output,
+                CompiledIndex(operation, portIndex, input), value, locked);
+        }
+
+        int CompiledIndex(OperationHandle operation, int portIndex, bool input) =>
+            m_CompiledIndices[(operation.Value, portIndex, input ? ProgramValuePortDirection.Input : ProgramValuePortDirection.Output)];
 
         public void Mutate(int operation, string port, ProgramValuePortDirection direction, AbilityStateValue value,
             FixedPortInputMutation mutation)
@@ -218,15 +249,21 @@ namespace ThirdPersonSimulation.Fixed
                 return;
             }
             SimulationOperation node = m_Data.Operations[operation];
-            var contract = GameplayAbilityValuePortContracts.Require(node.Code, node.Handle, m_Data.GraphCallFrames);
+            var contract = GameplayAbilityValuePortContracts.Require(node.Code, node.Handle, m_Data.GraphCallFrames, node.Integer0);
             OperationValuePortDefinition definition = direction == ProgramValuePortDirection.Input
                 ? Find(contract.Inputs, port) : Find(contract.Outputs, port);
+            SetValue(node, definition, direction, index, value, mutation == FixedPortInputMutation.Override);
+        }
+
+        void SetValue(SimulationOperation node, OperationValuePortDefinition definition,
+            ProgramValuePortDirection direction, int index, AbilityStateValue value, bool locked)
+        {
             SemanticValueKind kind = GameplayAbilityValuePortContracts.FromState(value.Kind);
             if (direction == ProgramValuePortDirection.Input)
                 GameplayAbilityExecutionValueResolver.RequireInputKind(node, definition, kind, m_Data.References, m_Data.StateSlots);
             else if (GameplayAbilityExecutionValueResolver.ResolveOutputKind(node, definition, m_Data.Constants, m_Data.References, m_Data.StateSlots) != kind)
                 throw new InvalidOperationException("端口输入值与正式端口类型不同。");
-            m_Bank.Set(index, value, mutation == FixedPortInputMutation.Override);
+            m_Bank.Set(index, value, locked);
         }
 
         static OperationValuePortDefinition Find(IReadOnlyList<OperationValuePortDefinition> ports, string identity)

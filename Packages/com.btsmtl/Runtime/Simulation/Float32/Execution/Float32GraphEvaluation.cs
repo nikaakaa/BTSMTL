@@ -14,7 +14,7 @@ namespace ThirdPersonSimulation
 
         public Float32GraphEvaluationWorkspace(Float32GraphExecutionData data
 #if UNITY_EDITOR
-            , IFloat32GraphValuePortInputs ports, AbilityStateValue[] variableOverrides
+            , IProgramValuePortInputs<AbilityStateValue> ports, AbilityStateValue[] variableOverrides
 #endif
             )
         {

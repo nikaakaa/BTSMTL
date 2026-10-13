@@ -197,7 +197,7 @@ namespace ThirdPersonSimulation.Fixed
                         ReadOnlySpan<CompiledValueInputBinding> inputs = m_Layout.ValueInputs(port.Operation);
                         int index = 0;
                         while (inputs[index].TargetPortIndex != port.Index) index++;
-                        value = ReadInputValue(cursor, operation, port.Identity, in inputs[index]);
+                        value = ReadInputValue(cursor, operation, in inputs[index]);
                     }
                     m_Frame.Trace.AddValue(operation, port.Identity, port.Direction, in value);
                 }
@@ -236,7 +236,7 @@ namespace ThirdPersonSimulation.Fixed
 			try
 			{
 				SimulationOperation operation = Access.Operation(handle);
-                if (m_Frame.ValuePorts != null && m_Frame.ValuePorts.TryReadPrepared(handle.Value, outputPort, ProgramValuePortDirection.Output, out AbilityStateValue supplied))
+                if (m_Frame.ValuePorts != null && m_Frame.ValuePorts.TryRead(handle, outputPortIndex, false, out AbilityStateValue supplied))
                 {
                     if ((m_ObservationPhase == OperationValueObservationPhase.None ||
                          m_ObservationPhase == OperationValueObservationPhase.Evaluating && !m_ObservationLayout.ObservesOutput(handle)) &&
@@ -492,7 +492,7 @@ namespace ThirdPersonSimulation.Fixed
                 {
                     ref readonly CompiledValueInputBinding input = ref inputs[i];
                     string port = m_InputPortIds[operation.Handle.Value][input.TargetPortIndex];
-                    AbilityStateValue value = ReadInputValue(cursor, operation, port, in input);
+                    AbilityStateValue value = ReadInputValue(cursor, operation, in input);
                     buffer.Add(in value);
                     if (m_ObservationPhase != OperationValueObservationPhase.Observing && !cursor.IsPredictiveEvaluation && m_Frame.RuleEvaluationMode != GameplayAbilityRuleEvaluationMode.Availability && (m_Frame.Trace.CaptureValues ||
                         m_Frame.Trace.CaptureControlFlow && input.SourceKind == CompiledValueInputSourceKind.Operation))
@@ -523,11 +523,11 @@ namespace ThirdPersonSimulation.Fixed
         }
 
         AbilityStateValue ReadInputValue<TTarget>(OperationControlCursor<TTarget> cursor,
-            SimulationOperation operation, string port, in CompiledValueInputBinding input)
+            SimulationOperation operation, in CompiledValueInputBinding input)
             where TTarget : struct, IOperationControlTarget<TTarget>
         {
-            if (m_Frame.ValuePorts != null && m_Frame.ValuePorts.TryReadPrepared(operation.Handle.Value, port,
-                    ProgramValuePortDirection.Input, out AbilityStateValue value))
+            if (m_Frame.ValuePorts != null && m_Frame.ValuePorts.TryRead(operation.Handle, input.TargetPortIndex,
+                    true, out AbilityStateValue value))
                 return value;
             return input.SourceKind == CompiledValueInputSourceKind.Operation
                 ? Evaluate(cursor, input.SourceOperation, input.SourceOutputPortIdentity, input.SourceOutputPortIndex)

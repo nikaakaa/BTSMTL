@@ -14,7 +14,7 @@ namespace ThirdPersonSimulation
         protected Float32OperationValueRuntime(Float32GameplayAbilityExecutionData data,
             GameplayAbilityExecutionLayout layout, Float32GraphValueWorkspace workspace
 #if UNITY_EDITOR
-            , IFloat32GraphValuePortInputs ports
+            , IProgramValuePortInputs<AbilityStateValue> ports
 #endif
             )
         {

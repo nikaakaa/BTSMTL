@@ -159,7 +159,7 @@ namespace ThirdPersonSimulation
 
         public Float32PresentationGraphRuntime(Float32GameplayAbilityExecutionData data
 #if UNITY_EDITOR
-            , IFloat32GraphValuePortInputs ports
+            , IProgramValuePortInputs<AbilityStateValue> ports
 #endif
             )
         {
@@ -545,7 +545,7 @@ namespace ThirdPersonSimulation
 
             internal Values(Float32PresentationGraphRuntime owner, Float32GraphValueWorkspace workspace
 #if UNITY_EDITOR
-                , IFloat32GraphValuePortInputs ports
+                , IProgramValuePortInputs<AbilityStateValue> ports
 #endif
                 )
                 : base(owner.m_Data, owner.m_Layout, workspace
