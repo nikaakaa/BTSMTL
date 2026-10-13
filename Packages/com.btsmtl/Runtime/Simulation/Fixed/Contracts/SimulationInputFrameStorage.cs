@@ -39,6 +39,8 @@ namespace ThirdPersonSimulation.Fixed
         internal IReadOnlyList<SimulationInputValue> Values => m_Values;
         internal IReadOnlyList<SimulationInputRequest> Requests => m_Requests;
         internal SimulationInputValues CanonicalValues => m_Data;
+        public int MaximumTextReferences => checked(SimulationInputHeader.CanonicalMaximumTextReferences +
+            SimulationInputValues.CanonicalMeasureTextCapacity(m_Data));
 
         SimulationInput Finish(SimulationNumericProfile profile,
             SimulationTickSourceIdentity source, CanonicalTextValue sourceIdentity, ulong sequence)

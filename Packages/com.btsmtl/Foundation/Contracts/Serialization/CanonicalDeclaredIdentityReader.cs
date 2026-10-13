@@ -4,7 +4,7 @@ using System.Linq;
 
 namespace ThirdPersonSimulation
 {
-    public sealed class CanonicalDeclaredIdentityReader
+    public sealed class CanonicalDeclaredIdentityReader : ICanonicalTextResolver
     {
         readonly Entry[] m_Entries;
 
@@ -25,9 +25,13 @@ namespace ThirdPersonSimulation
             return index >= 0 ? CanonicalTextValue.FromString(m_Entries[index].Value) : reader.ResolveText(bytes);
         }
 
-        public string ReadPublished(CanonicalReader reader)
+        public string ReadPublished(CanonicalReader reader) => ResolvePublished(reader.ReadTextSegment());
+
+        CanonicalTextValue ICanonicalTextResolver.ResolveText(ArraySegment<byte> utf16) =>
+            CanonicalTextValue.FromString(ResolvePublished(utf16));
+
+        string ResolvePublished(ArraySegment<byte> bytes)
         {
-            ArraySegment<byte> bytes = reader.ReadTextSegment();
             if (bytes.Array == null)
                 return null;
             if (bytes.Count == 0)
