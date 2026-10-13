@@ -1160,19 +1160,23 @@ namespace ThirdPersonSimulation
         const int InitialCapacity = 256;
 
         byte[] m_Buffer;
+        int m_Offset;
+        int m_Capacity;
         int m_Position;
         int m_Length;
-        readonly bool m_Bounded;
+        bool m_Bounded;
         ICanonicalTextCapture m_TextCapture;
 
         public CanonicalWriter()
         {
             m_Buffer = new byte[InitialCapacity];
+            m_Capacity = m_Buffer.Length;
         }
 
         public CanonicalWriter(byte[] buffer)
         {
             m_Buffer = buffer ?? throw new ArgumentNullException(nameof(buffer));
+            m_Capacity = m_Buffer.Length;
             m_Bounded = true;
         }
 
@@ -1198,10 +1202,19 @@ namespace ThirdPersonSimulation
             m_Length = 0;
         }
 
+        public void Reset(ArraySegment<byte> destination)
+        {
+            m_Buffer = destination.Array;
+            m_Offset = destination.Offset;
+            m_Capacity = destination.Count;
+            m_Bounded = true;
+            Reset();
+        }
+
         public void WriteByte(byte value)
         {
             EnsureCapacity(1);
-            m_Buffer[m_Position++] = value;
+            m_Buffer[m_Offset + m_Position++] = value;
             TrackLength();
         }
 
@@ -1216,7 +1229,7 @@ namespace ThirdPersonSimulation
         public void WriteInt32(int value)
         {
             EnsureCapacity(sizeof(int));
-            BinaryPrimitives.WriteInt32LittleEndian(m_Buffer.AsSpan(m_Position, sizeof(int)), value);
+            BinaryPrimitives.WriteInt32LittleEndian(m_Buffer.AsSpan(m_Offset + m_Position, sizeof(int)), value);
             m_Position += sizeof(int);
             TrackLength();
         }
@@ -1224,7 +1237,7 @@ namespace ThirdPersonSimulation
         public void WriteUInt32(uint value)
         {
             EnsureCapacity(sizeof(uint));
-            BinaryPrimitives.WriteUInt32LittleEndian(m_Buffer.AsSpan(m_Position, sizeof(uint)), value);
+            BinaryPrimitives.WriteUInt32LittleEndian(m_Buffer.AsSpan(m_Offset + m_Position, sizeof(uint)), value);
             m_Position += sizeof(uint);
             TrackLength();
         }
@@ -1232,7 +1245,7 @@ namespace ThirdPersonSimulation
         public void WriteUInt16(ushort value)
         {
             EnsureCapacity(sizeof(ushort));
-            BinaryPrimitives.WriteUInt16LittleEndian(m_Buffer.AsSpan(m_Position, sizeof(ushort)), value);
+            BinaryPrimitives.WriteUInt16LittleEndian(m_Buffer.AsSpan(m_Offset + m_Position, sizeof(ushort)), value);
             m_Position += sizeof(ushort);
             TrackLength();
         }
@@ -1240,7 +1253,7 @@ namespace ThirdPersonSimulation
         public void WriteInt64(long value)
         {
             EnsureCapacity(sizeof(long));
-            BinaryPrimitives.WriteInt64LittleEndian(m_Buffer.AsSpan(m_Position, sizeof(long)), value);
+            BinaryPrimitives.WriteInt64LittleEndian(m_Buffer.AsSpan(m_Offset + m_Position, sizeof(long)), value);
             m_Position += sizeof(long);
             TrackLength();
         }
@@ -1248,7 +1261,7 @@ namespace ThirdPersonSimulation
         public void WriteUInt64(ulong value)
         {
             EnsureCapacity(sizeof(ulong));
-            BinaryPrimitives.WriteUInt64LittleEndian(m_Buffer.AsSpan(m_Position, sizeof(ulong)), value);
+            BinaryPrimitives.WriteUInt64LittleEndian(m_Buffer.AsSpan(m_Offset + m_Position, sizeof(ulong)), value);
             m_Position += sizeof(ulong);
             TrackLength();
         }
@@ -1273,7 +1286,7 @@ namespace ThirdPersonSimulation
                 return;
             EnsureCapacity(byteCount);
             using (CanonicalTextReadLease read = value.AcquireRead())
-                CanonicalTextEncoding.Encode(value.Span, m_Buffer.AsSpan(m_Position, byteCount));
+                CanonicalTextEncoding.Encode(value.Span, m_Buffer.AsSpan(m_Offset + m_Position, byteCount));
             m_Position += byteCount;
             TrackLength();
             m_TextCapture?.CaptureText(in value);
@@ -1283,7 +1296,7 @@ namespace ThirdPersonSimulation
         {
             int byteCount = CanonicalTextEncoding.ByteCount(value);
             EnsureCapacity(byteCount);
-            CanonicalTextEncoding.Encode(value, m_Buffer.AsSpan(m_Position, byteCount));
+            CanonicalTextEncoding.Encode(value, m_Buffer.AsSpan(m_Offset + m_Position, byteCount));
             m_Position += byteCount;
             TrackLength();
         }
@@ -1364,13 +1377,13 @@ namespace ThirdPersonSimulation
 
         public void WriteRawBytes(ReadOnlySpan<byte> value) => WriteRaw(value);
 
-        public ReadOnlySpan<byte> WrittenSpan => m_Buffer.AsSpan(0, m_Length);
-        public ArraySegment<byte> WrittenSegment => new ArraySegment<byte>(m_Buffer, 0, m_Length);
+        public ReadOnlySpan<byte> WrittenSpan => m_Buffer.AsSpan(m_Offset, m_Length);
+        public ArraySegment<byte> WrittenSegment => new ArraySegment<byte>(m_Buffer, m_Offset, m_Length);
 
         public byte[] ToArray()
         {
             var result = new byte[m_Length];
-            Buffer.BlockCopy(m_Buffer, 0, result, 0, m_Length);
+            Buffer.BlockCopy(m_Buffer, m_Offset, result, 0, m_Length);
             return result;
         }
 
@@ -1378,12 +1391,12 @@ namespace ThirdPersonSimulation
         {
             if (m_Length != value.Length)
                 return false;
-            return m_Buffer.AsSpan(0, m_Length).SequenceEqual(value);
+            return WrittenSpan.SequenceEqual(value);
         }
 
         public StableHash ComputeHash()
         {
-            return SimulationCanonicalPayloadHash.Compute(new ArraySegment<byte>(m_Buffer, 0, m_Length));
+            return SimulationCanonicalPayloadHash.Compute(WrittenSegment);
         }
 
         public void Dispose()
@@ -1395,14 +1408,14 @@ namespace ThirdPersonSimulation
             if (value.Length == 0)
                 return;
             EnsureCapacity(value.Length);
-            value.CopyTo(m_Buffer.AsSpan(m_Position));
+            value.CopyTo(m_Buffer.AsSpan(m_Offset + m_Position));
             m_Position += value.Length;
             TrackLength();
         }
 
         void EnsureCapacity(int count)
         {
-            if (checked(m_Position + count) <= m_Buffer.Length)
+            if (checked(m_Position + count) <= m_Capacity)
                 return;
             if (m_Bounded)
                 throw new InvalidOperationException("Bounded canonical writer capacity is exhausted.");
@@ -1410,6 +1423,7 @@ namespace ThirdPersonSimulation
             while (next < m_Position + count)
                 next = checked(next * 2);
             Array.Resize(ref m_Buffer, next);
+            m_Capacity = next;
         }
 
         void TrackLength()
