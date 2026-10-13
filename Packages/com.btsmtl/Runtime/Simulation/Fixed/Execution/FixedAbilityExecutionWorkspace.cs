@@ -1,3 +1,4 @@
+using MotionContributionBuffer = ThirdPersonSimulation.MotionContributionBuffer<ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedVector2, ThirdPersonSimulation.Fixed.FixedVector3, ThirdPersonSimulation.Fixed.FixedSimulationMath>;
 using SimulationMotionContribution = ThirdPersonSimulation.SimulationMotionContribution<ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedVector2, ThirdPersonSimulation.Fixed.FixedVector3, ThirdPersonSimulation.Fixed.FixedSimulationMath>;
 using System;
 using System.Collections.Generic;
@@ -7,8 +8,7 @@ namespace ThirdPersonSimulation.Fixed
 {
     internal sealed class FixedAbilityExecutionWorkspace
     {
-        SimulationMotionContribution[] m_MotionContributions = Array.Empty<SimulationMotionContribution>();
-        int m_MotionContributionCount;
+        readonly MotionContributionBuffer m_MotionContributions = new MotionContributionBuffer();
         readonly int m_FactCapacity;
         readonly int m_PresentationCapacity;
 
@@ -19,6 +19,7 @@ namespace ThirdPersonSimulation.Fixed
             List<AbilityTimelineAdvancePending> timelineAdvances,
             List<AbilityTimelineStopPending> timelineStops)
         {
+            m_MotionContributions.PrepareCapacity(layout.Topology.MotionContributionCapacity);
             GameplayEffects = gameplayEffects ?? throw new ArgumentNullException(nameof(gameplayEffects));
             TimelineAdvances = timelineAdvances ?? throw new ArgumentNullException(nameof(timelineAdvances));
             TimelineStops = timelineStops ?? throw new ArgumentNullException(nameof(timelineStops));
@@ -76,22 +77,11 @@ namespace ThirdPersonSimulation.Fixed
             GameplayEffectSuccessfulChangeCount = 0;
             TimelineMotionWarps.Clear();
             TimelineBlackboardContexts.Clear();
-            ClearMotionContributions();
+            m_MotionContributions.Clear();
         }
 
-        public void SubmitMotionContribution(in SimulationMotionContribution contribution)
-        {
-            if (m_MotionContributionCount == m_MotionContributions.Length)
-            {
-                int capacity = Math.Max(4, m_MotionContributions.Length * 2);
-                var values = new SimulationMotionContribution[capacity];
-                Array.Copy(m_MotionContributions, values, m_MotionContributionCount);
-                m_MotionContributions = values;
-            }
-
-            contribution.Retain();
-            m_MotionContributions[m_MotionContributionCount++] = contribution;
-        }
+        public void SubmitMotionContribution(in SimulationMotionContribution contribution) =>
+            m_MotionContributions.Append(in contribution);
 
         internal void PrepareCommandBatchResults(int capacity) => CommandBatchRejections.Capacity = capacity;
 
@@ -110,19 +100,9 @@ namespace ThirdPersonSimulation.Fixed
             GameplayEffectProjectionCount = count;
         }
 
-        public void CopyMotionContributionsTo(FixedMotionContributionScratch contributions)
-        {
-            for (int i = 0; i < m_MotionContributionCount; i++)
-                contributions.Append(m_MotionContributions[i]);
-        }
+        public void TransferMotionContributionsTo(MotionContributionBuffer contributions) =>
+            m_MotionContributions.TransferTo(contributions);
 
-        public void ClearMotionContributions()
-        {
-            for (int index = 0; index < m_MotionContributionCount; index++)
-                m_MotionContributions[index].Release();
-            Array.Clear(m_MotionContributions, 0, m_MotionContributionCount);
-            m_MotionContributionCount = 0;
-        }
     }
 
     internal readonly struct FixedGameplayEffectPendingProjection

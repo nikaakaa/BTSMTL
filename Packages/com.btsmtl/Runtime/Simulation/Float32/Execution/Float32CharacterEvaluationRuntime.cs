@@ -1,3 +1,4 @@
+using MotionContributionBuffer = ThirdPersonSimulation.MotionContributionBuffer<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32Vector2, ThirdPersonSimulation.Float32Vector3, ThirdPersonSimulation.Float32SimulationMath>;
 using ResolvedGameplayMotion = ThirdPersonSimulation.ResolvedGameplayMotion<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32Vector2, ThirdPersonSimulation.Float32Vector3>;
 using SimulationMotionContribution = ThirdPersonSimulation.SimulationMotionContribution<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32Vector2, ThirdPersonSimulation.Float32Vector3, ThirdPersonSimulation.Float32SimulationMath>;
 using ResolvedMotionChannel = ThirdPersonSimulation.ResolvedMotionChannel<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32Vector2, ThirdPersonSimulation.Float32Vector3, ThirdPersonSimulation.Float32SimulationMath>;
@@ -69,8 +70,8 @@ namespace ThirdPersonSimulation
                     actionOwners.Add(action.InstanceId, actor.GetInvocation(action.SkillId));
                 }
                 var bodyFacts = new Float32AbilityBodyFacts(actor.ActorId, beforeBody);
-                Float32MotionContributionScratch motionContributions = actor.MotionContributions;
-                motionContributions.Begin();
+                MotionContributionBuffer motionContributions = actor.MotionContributions;
+                motionContributions.Clear();
                 Float32CharacterControlMotionRuntime controlMotion = actor.ControlMotion;
                 controlMotion.Begin(
                     abilityInput,
@@ -143,7 +144,7 @@ namespace ThirdPersonSimulation
                 {
                     Float32AbilityInvocationRuntime invocation = invocations[i];
                     invocation.Tick();
-                    invocation.CopyMotionContributionsTo(motionContributions);
+                    invocation.TransferMotionContributionsTo(motionContributions);
                 }
 
                 control.ApplyMovementIntent(rules.AfterAbility());
@@ -350,7 +351,7 @@ namespace ThirdPersonSimulation
         }
 
         static void AppendTimelineMotion(
-            Float32MotionContributionScratch contributions,
+            MotionContributionBuffer contributions,
             IReadOnlyList<AbilityTimelineLogicMotion> timelineMotion)
         {
             for (int i = 0; i < timelineMotion.Count; i++)

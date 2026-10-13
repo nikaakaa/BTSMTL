@@ -1,4 +1,4 @@
-using SimulationMotionContribution = ThirdPersonSimulation.SimulationMotionContribution<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32Vector2, ThirdPersonSimulation.Float32Vector3, ThirdPersonSimulation.Float32SimulationMath>;
+using MotionContributionBuffer = ThirdPersonSimulation.MotionContributionBuffer<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32Vector2, ThirdPersonSimulation.Float32Vector3, ThirdPersonSimulation.Float32SimulationMath>;
 using System;
 using ThirdPersonGameplay.Configuration;
 using System.Collections.Generic;
@@ -6,39 +6,6 @@ using System.IO;
 
 namespace ThirdPersonSimulation
 {
-    internal sealed class Float32MotionContributionScratch
-    {
-        SimulationMotionContribution[] m_Values = Array.Empty<SimulationMotionContribution>();
-
-        public SimulationMotionContribution[] Values => m_Values;
-        public int Count { get; private set; }
-
-        public void Begin()
-        {
-            Array.Clear(m_Values, 0, Count);
-            Count = 0;
-        }
-
-        public void Append(in SimulationMotionContribution value)
-        {
-            if (Count == m_Values.Length)
-            {
-                int capacity = Math.Max(4, m_Values.Length * 2);
-                var values = new SimulationMotionContribution[capacity];
-                Array.Copy(m_Values, values, Count);
-                m_Values = values;
-            }
-
-            m_Values[Count++] = value;
-        }
-
-        public void Clear()
-        {
-            Array.Clear(m_Values, 0, Count);
-            Count = 0;
-        }
-    }
-
     internal sealed class Float32CharacterEvaluationOutput
     {
         internal Float32CharacterEvaluationOutput(IReadOnlyList<Float32GameplayAbilityExecutionInstallation> installations)
@@ -164,7 +131,7 @@ namespace ThirdPersonSimulation
     public sealed class SimulationActorBinding : IDisposable, IFloat32AbilityAvailabilityReadOwner, IFloat32AbilityFrameReadPort
     {
         readonly Float32CharacterControlMotionRuntime m_ControlMotion;
-        readonly Float32MotionContributionScratch m_MotionContributions = new Float32MotionContributionScratch();
+        readonly MotionContributionBuffer m_MotionContributions = new MotionContributionBuffer();
         readonly Float32AbilityInvocationRuntime[] m_Invocations;
         readonly Dictionary<CharacterSkillId, Float32AbilityInvocationRuntime> m_InvocationByAbility;
         readonly Dictionary<CharacterSkillId, IFloat32AbilityActivationPort> m_ActionRuntimes;
@@ -287,7 +254,8 @@ namespace ThirdPersonSimulation
                     new Float32GraphValueWorkspace(data),
                     AbilityInstallations.Installations[i].Layout.Topology.FactRecordCapacity,
                     AbilityInstallations.Installations[i].Layout.Topology.PresentationRecordCapacity,
-                    AbilityInstallations.Installations[i].Layout.ActionInstanceCapacity);
+                    AbilityInstallations.Installations[i].Layout.ActionInstanceCapacity,
+                    AbilityInstallations.Installations[i].Layout.Topology.MotionContributionCapacity);
             }
             GameplayEffectRuntimeBinding = gameplayEffectRuntimeBinding;
             EquipmentRuntimeBinding = equipmentRuntimeBinding;
@@ -360,7 +328,7 @@ namespace ThirdPersonSimulation
         public CharacterControlRuntimeBinding ControlRuntimeBinding { get; }
         public CharacterInputRuntimeBinding InputRuntimeBinding { get; }
         internal Float32CharacterControlMotionRuntime ControlMotion => m_ControlMotion;
-        internal Float32MotionContributionScratch MotionContributions => m_MotionContributions;
+        internal MotionContributionBuffer MotionContributions => m_MotionContributions;
         internal int AvailabilityIngressCapacity { get; private set; }
         internal void PrepareAvailabilityIngressCapacity(int capacity) => AvailabilityIngressCapacity = capacity;
         IFloat32CommittedInputReadPort m_CommittedInput;
@@ -632,6 +600,10 @@ namespace ThirdPersonSimulation
                 TimelineRuntime.PrepareSnapshotStorage(in capacity);
                 m_TimelineLogicMotion.Capacity = TimelineMotionReader.MaximumMotionContributionsPerAdvance;
             }
+            int motionCapacity = checked(1 + m_TimelineAdvances.Capacity * m_TimelineLogicMotion.Capacity);
+            for (int index = 0; index < AbilityInstallations.Installations.Count; index++)
+                motionCapacity = checked(motionCapacity + AbilityInstallations.Installations[index].Layout.Topology.MotionContributionCapacity);
+            m_MotionContributions.PrepareCapacity(motionCapacity);
             int checkpointOwners = checked(capacity.EncodedCheckpoints + capacity.CapturePayloads + capacity.RestorePayloads);
             for (int i = 0; i < AbilityInstallations.Installations.Count; i++)
             {

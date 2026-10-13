@@ -1,4 +1,4 @@
-using SimulationMotionContribution = ThirdPersonSimulation.SimulationMotionContribution<ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedVector2, ThirdPersonSimulation.Fixed.FixedVector3, ThirdPersonSimulation.Fixed.FixedSimulationMath>;
+using MotionContributionBuffer = ThirdPersonSimulation.MotionContributionBuffer<ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedVector2, ThirdPersonSimulation.Fixed.FixedVector3, ThirdPersonSimulation.Fixed.FixedSimulationMath>;
 using System;
 using ThirdPersonGameplay.Configuration;
 using System.Collections.Generic;
@@ -7,38 +7,6 @@ using ThirdPersonSimulation;
 
 namespace ThirdPersonSimulation.Fixed
 {
-    internal sealed class FixedMotionContributionScratch
-    {
-        SimulationMotionContribution[] m_Values = Array.Empty<SimulationMotionContribution>();
-
-        public SimulationMotionContribution[] Values => m_Values;
-        public int Count { get; private set; }
-
-        public void Begin() => Clear();
-
-        public void Append(in SimulationMotionContribution value)
-        {
-            if (Count == m_Values.Length)
-            {
-                int capacity = Math.Max(4, m_Values.Length * 2);
-                var values = new SimulationMotionContribution[capacity];
-                Array.Copy(m_Values, values, Count);
-                m_Values = values;
-            }
-
-            value.Retain();
-            m_Values[Count++] = value;
-        }
-
-        public void Clear()
-        {
-            for (int index = 0; index < Count; index++)
-                m_Values[index].Release();
-            Array.Clear(m_Values, 0, Count);
-            Count = 0;
-        }
-    }
-
     internal sealed class FixedCharacterEvaluationOutput
     {
         public FixedCombatResultStorage AttackResults { get; private set; }
@@ -267,7 +235,7 @@ namespace ThirdPersonSimulation.Fixed
             { new CombatHitResult(), new CombatHitResult() };
 #endif
         readonly FixedCharacterControlMotionRuntime m_ControlMotion;
-        readonly FixedMotionContributionScratch m_MotionContributions = new FixedMotionContributionScratch();
+        readonly MotionContributionBuffer m_MotionContributions = new MotionContributionBuffer();
         readonly FixedAbilityInvocationRuntime[] m_Invocations;
         readonly Dictionary<CharacterSkillId, FixedAbilityInvocationRuntime> m_InvocationByAbility;
         readonly Dictionary<CharacterSkillId, IFixedAbilityActivationPort> m_ActionRuntimes;
@@ -418,6 +386,10 @@ namespace ThirdPersonSimulation.Fixed
                 TimelineRuntime.PrepareSnapshotStorage(in session);
                 m_TimelineLogicMotion.Capacity = TimelineMotionReader.MaximumMotionContributionsPerAdvance;
             }
+            int motionCapacity = checked(1 + m_TimelineAdvances.Capacity * m_TimelineLogicMotion.Capacity);
+            for (int index = 0; index < AbilityInstallations.Installations.Count; index++)
+                motionCapacity = checked(motionCapacity + AbilityInstallations.Installations[index].Layout.Topology.MotionContributionCapacity);
+            m_MotionContributions.PrepareCapacity(motionCapacity);
             foreach (AbilityStateValuePageBank<AbilityStateValue> bank in StateValuePages.Values)
                 bank.PrepareCapacity(session.StatePageCount);
             CharacterBlackboardPages.PrepareCapacity(session.StatePageCount);
@@ -749,7 +721,7 @@ namespace ThirdPersonSimulation.Fixed
         public CharacterInputRuntimeBinding InputRuntimeBinding { get; }
         internal FixedCharacterControlMotionBindingCatalog ControlMotionBindings { get; }
         internal FixedCharacterControlMotionRuntime ControlMotion => m_ControlMotion;
-        internal FixedMotionContributionScratch MotionContributions => m_MotionContributions;
+        internal MotionContributionBuffer MotionContributions => m_MotionContributions;
         public int AvailabilityIngressCapacity { get; private set; }
         internal void PrepareAvailabilityIngressCapacity(int capacity) => AvailabilityIngressCapacity = capacity;
         IFixedAbilityFrameEventCapturePort m_CommittedInput;

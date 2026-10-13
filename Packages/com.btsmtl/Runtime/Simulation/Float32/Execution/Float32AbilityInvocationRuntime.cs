@@ -1,3 +1,4 @@
+using MotionContributionBuffer = ThirdPersonSimulation.MotionContributionBuffer<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32Vector2, ThirdPersonSimulation.Float32Vector3, ThirdPersonSimulation.Float32SimulationMath>;
 using ResolvedMotionChannel = ThirdPersonSimulation.ResolvedMotionChannel<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32Vector2, ThirdPersonSimulation.Float32Vector3, ThirdPersonSimulation.Float32SimulationMath>;
 using System;
 using System.Collections.Generic;
@@ -216,10 +217,9 @@ namespace ThirdPersonSimulation
             m_Accepted = false;
         }
 
-        public void CopyMotionContributionsTo(Float32MotionContributionScratch contributions)
+        public void TransferMotionContributionsTo(MotionContributionBuffer contributions)
         {
-            m_Workspace.CopyMotionContributionsTo(contributions);
-            m_Workspace.ClearMotionContributions();
+            m_Workspace.TransferMotionContributionsTo(contributions);
         }
 
         public void ApplyTimelineMotionWarps(ref ResolvedMotionChannel action)

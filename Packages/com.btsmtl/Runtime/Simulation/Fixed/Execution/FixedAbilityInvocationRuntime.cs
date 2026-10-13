@@ -1,3 +1,4 @@
+using MotionContributionBuffer = ThirdPersonSimulation.MotionContributionBuffer<ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedVector2, ThirdPersonSimulation.Fixed.FixedVector3, ThirdPersonSimulation.Fixed.FixedSimulationMath>;
 using ResolvedMotionChannel = ThirdPersonSimulation.ResolvedMotionChannel<ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedVector2, ThirdPersonSimulation.Fixed.FixedVector3, ThirdPersonSimulation.Fixed.FixedSimulationMath>;
 using System;
 using System.Collections.Generic;
@@ -327,10 +328,9 @@ namespace ThirdPersonSimulation.Fixed
             m_Accepted = false;
         }
 
-        public void CopyMotionContributionsTo(FixedMotionContributionScratch contributions)
+        public void TransferMotionContributionsTo(MotionContributionBuffer contributions)
         {
-            m_Workspace.CopyMotionContributionsTo(contributions);
-            m_Workspace.ClearMotionContributions();
+            m_Workspace.TransferMotionContributionsTo(contributions);
         }
 
         public void ApplyTimelineMotionWarps(ref ResolvedMotionChannel action)

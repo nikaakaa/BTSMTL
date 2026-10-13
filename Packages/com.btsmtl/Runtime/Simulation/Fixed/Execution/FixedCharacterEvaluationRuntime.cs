@@ -1,3 +1,4 @@
+using MotionContributionBuffer = ThirdPersonSimulation.MotionContributionBuffer<ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedVector2, ThirdPersonSimulation.Fixed.FixedVector3, ThirdPersonSimulation.Fixed.FixedSimulationMath>;
 using ResolvedGameplayMotion = ThirdPersonSimulation.ResolvedGameplayMotion<ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedVector2, ThirdPersonSimulation.Fixed.FixedVector3>;
 using SimulationMotionContribution = ThirdPersonSimulation.SimulationMotionContribution<ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedVector2, ThirdPersonSimulation.Fixed.FixedVector3, ThirdPersonSimulation.Fixed.FixedSimulationMath>;
 using ResolvedMotionChannel = ThirdPersonSimulation.ResolvedMotionChannel<ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedVector2, ThirdPersonSimulation.Fixed.FixedVector3, ThirdPersonSimulation.Fixed.FixedSimulationMath>;
@@ -84,8 +85,8 @@ namespace ThirdPersonSimulation.Fixed
                     actionOwners.Add(action.InstanceId, actor.GetInvocation(action.SkillId));
                 }
                 var bodyFacts = new FixedAbilityBodyFacts(actor.ActorId, beforeBody);
-                FixedMotionContributionScratch motionContributions = actor.MotionContributions;
-                motionContributions.Begin();
+                MotionContributionBuffer motionContributions = actor.MotionContributions;
+                motionContributions.Clear();
                 FixedCharacterControlMotionRuntime controlMotion = actor.ControlMotion;
                 controlMotion.Begin(
                     abilityInput,
@@ -204,7 +205,7 @@ namespace ThirdPersonSimulation.Fixed
                     evaluationOutput.EvaluationAbilitiesTickElapsedStopwatchTicks += stageFinished - stageStarted;
                     stageStarted = stageFinished;
 #endif
-                    invocation.CopyMotionContributionsTo(motionContributions);
+                    invocation.TransferMotionContributionsTo(motionContributions);
 #if UNITY_EDITOR
                     stageFinished = System.Diagnostics.Stopwatch.GetTimestamp();
                     evaluationOutput.EvaluationAbilitiesMotionElapsedStopwatchTicks += stageFinished - stageStarted;
@@ -455,7 +456,7 @@ namespace ThirdPersonSimulation.Fixed
         }
 
         static void AppendTimelineMotion(
-            FixedMotionContributionScratch contributions,
+            MotionContributionBuffer contributions,
             IReadOnlyList<AbilityTimelineLogicMotion> timelineMotion)
         {
             for (int i = 0; i < timelineMotion.Count; i++)

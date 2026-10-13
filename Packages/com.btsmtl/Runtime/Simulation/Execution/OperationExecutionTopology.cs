@@ -423,9 +423,10 @@ namespace ThirdPersonSimulation
             BuildStateEdges(operationList, edges, out m_StateOnEnter, out m_StateRoot, out m_StateOnExit);
             m_StateSingleLocomotions = BuildStateSingleLocomotions(operationList, m_StateRoot, m_Outgoing);
             m_GraphCallFrames = BuildGraphCallFrames(operationList, graphCallFrames);
-            BuildOutputRecordCapacities(operationList, out int facts, out int presentation);
+            BuildOutputRecordCapacities(operationList, out int facts, out int presentation, out int motionContributions);
             FactRecordCapacity = facts;
             PresentationRecordCapacity = presentation;
+            MotionContributionCapacity = motionContributions;
             RootOperation = rootOperation;
         }
 
@@ -433,15 +434,20 @@ namespace ThirdPersonSimulation
         public OperationHandle RootOperation { get; }
         public int FactRecordCapacity { get; }
         public int PresentationRecordCapacity { get; }
+        public int MotionContributionCapacity { get; }
 
         static void BuildOutputRecordCapacities(IReadOnlyList<OperationExecutionDescriptor> operations,
-            out int facts, out int presentation)
+            out int facts, out int presentation, out int motionContributions)
         {
             facts = 0;
             presentation = 0;
+            motionContributions = 0;
             for (int index = 0; index < operations.Count; index++)
                 switch (operations[index].Code)
                 {
+                    case SimulationOperationCode.LocomotionInputMotion:
+                        motionContributions = OperationControlRuntime.EvaluationCapacity(operations.Count);
+                        break;
                     case SimulationOperationCode.StateMachine:
                     case SimulationOperationCode.BlackboardSet:
                     case SimulationOperationCode.ActivateActionInstance:

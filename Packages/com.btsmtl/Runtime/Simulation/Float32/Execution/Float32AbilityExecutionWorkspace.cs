@@ -1,3 +1,4 @@
+using MotionContributionBuffer = ThirdPersonSimulation.MotionContributionBuffer<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32Vector2, ThirdPersonSimulation.Float32Vector3, ThirdPersonSimulation.Float32SimulationMath>;
 using SimulationMotionContribution = ThirdPersonSimulation.SimulationMotionContribution<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32Vector2, ThirdPersonSimulation.Float32Vector3, ThirdPersonSimulation.Float32SimulationMath>;
 using System;
 using System.Collections.Generic;
@@ -7,8 +8,7 @@ namespace ThirdPersonSimulation
 {
     internal sealed class Float32AbilityExecutionWorkspace
     {
-        SimulationMotionContribution[] m_MotionContributions = Array.Empty<SimulationMotionContribution>();
-        int m_MotionContributionCount;
+        readonly MotionContributionBuffer m_MotionContributions = new MotionContributionBuffer();
         readonly int m_FactCapacity;
         readonly int m_PresentationCapacity;
 
@@ -19,8 +19,10 @@ namespace ThirdPersonSimulation
             Float32GraphValueWorkspace values,
             int factCapacity,
             int presentationCapacity,
-            int actionInstanceCapacity)
+            int actionInstanceCapacity,
+            int motionContributionCapacity)
         {
+            m_MotionContributions.PrepareCapacity(motionContributionCapacity);
             Values = values ?? throw new ArgumentNullException(nameof(values));
             m_FactCapacity = factCapacity;
             m_PresentationCapacity = presentationCapacity;
@@ -72,21 +74,11 @@ namespace ThirdPersonSimulation
             GameplayEffectSuccessfulChangeCount = 0;
             TimelineMotionWarps.Clear();
             TimelineBlackboardContexts.Clear();
-            ClearMotionContributions();
+            m_MotionContributions.Clear();
         }
 
-        public void SubmitMotionContribution(in SimulationMotionContribution contribution)
-        {
-            if (m_MotionContributionCount == m_MotionContributions.Length)
-            {
-                int capacity = Math.Max(4, m_MotionContributions.Length * 2);
-                var values = new SimulationMotionContribution[capacity];
-                Array.Copy(m_MotionContributions, values, m_MotionContributionCount);
-                m_MotionContributions = values;
-            }
-
-            m_MotionContributions[m_MotionContributionCount++] = contribution;
-        }
+        public void SubmitMotionContribution(in SimulationMotionContribution contribution) =>
+            m_MotionContributions.Append(in contribution);
 
         internal void PrepareCommandBatchResults(int capacity) => CommandBatchRejections.Capacity = capacity;
 
@@ -105,17 +97,9 @@ namespace ThirdPersonSimulation
             GameplayEffectProjectionCount = count;
         }
 
-        public void CopyMotionContributionsTo(Float32MotionContributionScratch contributions)
-        {
-            for (int i = 0; i < m_MotionContributionCount; i++)
-                contributions.Append(m_MotionContributions[i]);
-        }
+        public void TransferMotionContributionsTo(MotionContributionBuffer contributions) =>
+            m_MotionContributions.TransferTo(contributions);
 
-        public void ClearMotionContributions()
-        {
-            Array.Clear(m_MotionContributions, 0, m_MotionContributionCount);
-            m_MotionContributionCount = 0;
-        }
     }
 
     internal readonly struct Float32GameplayEffectPendingProjection
