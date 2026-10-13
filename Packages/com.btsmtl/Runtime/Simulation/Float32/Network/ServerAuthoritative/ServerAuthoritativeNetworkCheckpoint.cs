@@ -21,19 +21,25 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             writer.WriteText(characterRuntime.NumericProfile.Id.Value);
             writer.WriteInt32(characterRuntime.NumericProfile.AbiVersion.Value);
             writer.WriteText(characterRuntime.OperationSetVersion.Value);
+            var identities = new List<string> { StateCodecIdentity };
             for (int i = 0; i < characterRuntime.Roster.Count; i++)
             {
                 SimulationActorBinding actor = characterRuntime.Roster[i];
                 writer.WriteText(actor.ActorId.Value);
                 writer.WriteHash(actor.GameplayContentHash);
+                identities.Add(actor.ActorId.ToString());
                 for (int abilityIndex = 0; abilityIndex < actor.AbilityInstallations.Installations.Count; abilityIndex++)
                 {
-                    Float32GameplayAbilityExecutionData ability = actor.AbilityInstallations.Installations[abilityIndex].Data;
+                    Float32GameplayAbilityExecutionInstallation installation = actor.AbilityInstallations.Installations[abilityIndex];
+                    Float32GameplayAbilityExecutionData ability = installation.Data;
                     writer.WriteText(ability.AbilityId.Value);
                     writer.WriteHash(ability.ContentHash);
                     writer.WriteHash(ability.StateSchemaHash);
+                    for (int operation = 0; operation < ability.Operations.Count; operation++)
+                        identities.Add(installation.Layout.SourcePath(new OperationHandle(operation)));
                 }
             }
+            PublishedIdentities = new CanonicalDeclaredIdentityReader(identities);
             LayoutIdentity = writer.ComputeHash();
             LayoutIdentityText = LayoutIdentity.ToString();
         }
@@ -42,6 +48,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         public string StateCodecIdentity => Float32CharacterRuntimeStateCodec.CodecIdentity;
         public StableHash LayoutIdentity { get; }
         internal CanonicalTextValue LayoutIdentityText { get; }
+        internal CanonicalDeclaredIdentityReader PublishedIdentities { get; }
         internal CanonicalHashWriter CheckpointHashWriter { get; } = new CanonicalHashWriter();
 
         internal SimulationActorBinding RequireActor(ActorId actorId)
@@ -216,8 +223,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 !reader.ReadHash().Equals(layout.LayoutIdentity))
                 throw new InvalidDataException("Full Network Checkpoint identity is invalid.");
             var contentHash = GameplayContentHash.CanonicalFromHash(reader.ReadHash());
-            string stateCodecIdentity = CanonicalTextEncoding.DecodeString(reader.ReadTextSegment());
-            var actorId = new ActorId(CanonicalTextEncoding.DecodeString(reader.ReadTextSegment()));
+            string stateCodecIdentity = layout.PublishedIdentities.ReadPublished(reader);
+            var actorId = new ActorId(layout.PublishedIdentities.ReadPublished(reader));
             var tick = new SimulationTick(reader.ReadUInt64());
             var stateHash = CharacterStateHash.CanonicalFromHash(reader.ReadHash());
             var worldRevision = new WorldRevision(CanonicalTextEncoding.DecodeString(reader.ReadTextSegment()));
@@ -303,8 +310,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 !reader.ReadHash().Equals(baseline.CheckpointHash))
                 throw new InvalidDataException("Delta Network Checkpoint identity is invalid.");
             var contentHash = GameplayContentHash.CanonicalFromHash(reader.ReadHash());
-            string stateCodecIdentity = CanonicalTextEncoding.DecodeString(reader.ReadTextSegment());
-            var actorId = new ActorId(CanonicalTextEncoding.DecodeString(reader.ReadTextSegment()));
+            string stateCodecIdentity = layout.PublishedIdentities.ReadPublished(reader);
+            var actorId = new ActorId(layout.PublishedIdentities.ReadPublished(reader));
             var authorityTick = new SimulationTick(reader.ReadUInt64());
             var stateHash = CharacterStateHash.CanonicalFromHash(reader.ReadHash());
             var worldRevision = new WorldRevision(CanonicalTextEncoding.DecodeString(reader.ReadTextSegment()));
@@ -480,7 +487,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             ActorId actorId)
         {
             var operation = new OperationHandle(reader.ReadInt32());
-            string executionPath = CanonicalTextEncoding.DecodeString(reader.ReadTextSegment());
+            string executionPath = layout.PublishedIdentities.ReadPublished(reader);
             CompactProducer producer = layout.ResolveCompactProducer(actorId, operation, executionPath);
             var activation = new ActivationId(
                 SimulationExecutionSource.FromSkillOperation(operation, executionPath),
