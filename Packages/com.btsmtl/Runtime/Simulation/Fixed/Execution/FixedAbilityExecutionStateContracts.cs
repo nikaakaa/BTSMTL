@@ -1,3 +1,4 @@
+using MotionWarpState = ThirdPersonSimulation.MotionWarpState<ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedVector3, ThirdPersonSimulation.Fixed.FixedYaw, ThirdPersonSimulation.Fixed.FixedActionInstanceReference, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Fixed.FixedScalar>, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Fixed.FixedVector3>, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Fixed.FixedYaw>>;
 using System;
 using System.Collections.Generic;
 using SimulationActionActivationRequestState = ThirdPersonSimulation.SimulationActionActivationRequestState<ThirdPersonSimulation.Fixed.SimulationActionTargetSnapshot>;
@@ -14,8 +15,8 @@ namespace ThirdPersonSimulation.Fixed
         void Reset(int slotIndex);
         GameplayAbilityExecutionAggregate<AbilityStateValue> GetAbilityExecutionState();
         void SetAbilityExecutionState(GameplayAbilityExecutionAggregate<AbilityStateValue> state);
-        FixedMotionWarpState GetMotionWarpState(OperationHandle operation);
-        void SetMotionWarpState(OperationHandle operation, FixedMotionWarpState value);
+        MotionWarpState GetMotionWarpState(OperationHandle operation);
+        void SetMotionWarpState(OperationHandle operation, MotionWarpState value);
     }
 
     internal interface IFixedInputRequestStatePort

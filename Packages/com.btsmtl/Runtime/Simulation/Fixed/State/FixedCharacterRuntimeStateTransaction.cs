@@ -1,3 +1,4 @@
+using MotionWarpState = ThirdPersonSimulation.MotionWarpState<ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedVector3, ThirdPersonSimulation.Fixed.FixedYaw, ThirdPersonSimulation.Fixed.FixedActionInstanceReference, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Fixed.FixedScalar>, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Fixed.FixedVector3>, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Fixed.FixedYaw>>;
 using System;
 using System.Collections.Generic;
 
@@ -53,7 +54,7 @@ namespace ThirdPersonSimulation.Fixed
         FixedCharacterRuntimeState m_BaseState;
         AbilityStateValuePageReference<AbilityStateValue> m_CharacterBlackboards;
         GeneratedCharacterBlackboardLayout<AbilityStateValue> m_CharacterBlackboardLayout;
-        MotionWarpStatePageReference<FixedMotionWarpState> m_MotionWarpStates;
+        MotionWarpStatePageReference<MotionWarpState> m_MotionWarpStates;
         Dictionary<CharacterSkillId, FixedAbilityRuntimeState> m_AbilityStates;
         Dictionary<CharacterSkillId, FixedSkillExecutionState> m_SkillStates;
         SimulationTick m_Tick;
@@ -106,7 +107,7 @@ namespace ThirdPersonSimulation.Fixed
             FixedCharacterHandleAllocatorState handleAllocatorState,
             FixedCharacterGameplayEffectRuntimeState gameplayEffectState,
             FixedCharacterEquipmentRuntimeState equipmentState,
-            MotionWarpStatePageReference<FixedMotionWarpState> motionWarpStates)
+            MotionWarpStatePageReference<MotionWarpState> motionWarpStates)
         {
             m_BaseState = baseState;
             m_CharacterBlackboards = baseState.CharacterBlackboards;
@@ -390,7 +391,7 @@ namespace ThirdPersonSimulation.Fixed
         readonly FixedGameplayAbilityExecutionData m_Ability;
         FixedAbilityRuntimeState m_CommittedState;
         AbilityStateValuePageReference<AbilityStateValue> m_StateValues;
-        MotionWarpStatePageReference<FixedMotionWarpState> m_MotionWarpStates;
+        MotionWarpStatePageReference<MotionWarpState> m_MotionWarpStates;
         readonly int m_MotionWarpPartition;
         GameplayAbilityExecutionAggregate<AbilityStateValue> m_AbilityExecutionState;
         bool m_StateValuesChanged;
@@ -417,7 +418,7 @@ namespace ThirdPersonSimulation.Fixed
 
         internal FixedSkillExecutionState Restart(
             FixedAbilityRuntimeState state,
-            MotionWarpStatePageReference<FixedMotionWarpState> motionWarpStates)
+            MotionWarpStatePageReference<MotionWarpState> motionWarpStates)
         {
             m_CommittedState = state;
             m_MotionWarpStates = motionWarpStates;
@@ -487,18 +488,18 @@ namespace ThirdPersonSimulation.Fixed
             m_AbilityExecutionState = state ?? throw new ArgumentNullException(nameof(state));
         }
 
-        public FixedMotionWarpState GetMotionWarpState(OperationHandle operation)
+        public MotionWarpState GetMotionWarpState(OperationHandle operation)
         {
             RequireActive();
             int slot = m_MotionWarpStates.Page.Layout.Slot(m_MotionWarpPartition, operation);
             return m_MotionWarpStates.Page.At(slot);
         }
 
-        public void SetMotionWarpState(OperationHandle operation, FixedMotionWarpState value)
+        public void SetMotionWarpState(OperationHandle operation, MotionWarpState value)
         {
             RequireActive();
             int slot = m_MotionWarpStates.Page.Layout.Slot(m_MotionWarpPartition, operation);
-            FixedMotionWarpState stored = value.Active ? value : default;
+            MotionWarpState stored = value.Active ? value : default;
             m_MotionWarpStates.Page.Set(slot, in stored);
         }
 
@@ -517,10 +518,10 @@ namespace ThirdPersonSimulation.Fixed
             int offset = m_MotionWarpStates.Page.Layout.Offset(m_MotionWarpPartition);
             for (int index = 0; index < operations.Count; index++)
             {
-                ref readonly FixedMotionWarpState warp = ref m_MotionWarpStates.Page.At(offset + index);
+                ref readonly MotionWarpState warp = ref m_MotionWarpStates.Page.At(offset + index);
                 if (warp.Active && m_AbilityExecutionState.Find(warp.ActionInstance.InstanceId) == null)
                 {
-                    FixedMotionWarpState cleared = default;
+                    MotionWarpState cleared = default;
                     m_MotionWarpStates.Page.Set(offset + index, in cleared);
                 }
             }

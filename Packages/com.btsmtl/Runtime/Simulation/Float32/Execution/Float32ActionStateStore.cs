@@ -224,7 +224,7 @@ namespace ThirdPersonSimulation
     }
 
     [CanonicalContract]
-    internal readonly partial struct Float32ActionInstanceReference
+    internal readonly partial struct Float32ActionInstanceReference : IEquatable<Float32ActionInstanceReference>
     {
         public Float32ActionInstanceReference(
             string actionId,

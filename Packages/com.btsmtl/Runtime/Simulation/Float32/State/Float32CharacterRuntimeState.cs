@@ -1,3 +1,4 @@
+using MotionWarpState = ThirdPersonSimulation.MotionWarpState<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32Vector3, ThirdPersonSimulation.Float32Yaw, ThirdPersonSimulation.Float32ActionInstanceReference, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Float32Scalar>, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Float32Vector3>, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Float32Yaw>>;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -53,7 +54,7 @@ namespace ThirdPersonSimulation
         public ulong LastCompletedTick => m_Page.Data.Metadata.LastCompletedTick;
         public IReadOnlyList<Float32AbilityRuntimeState> Abilities => m_Page.Abilities;
         internal Float32AbilityRuntimeState[] AbilitiesArray => m_Page.Abilities;
-        internal MotionWarpStatePageReference<Float32MotionWarpState> MotionWarpStates => m_Page.Data.MotionWarpStates;
+        internal MotionWarpStatePageReference<MotionWarpState> MotionWarpStates => m_Page.Data.MotionWarpStates;
         internal AbilityStateValuePageReference<AbilityStateValue> CharacterBlackboards => m_Page.Data.CharacterBlackboards;
         internal Float32ActionStatePageReference ActionStatePage => m_Page.Data.ActionStatePage;
         internal ReadOnlySpan<SimulationActionActivationRequestState> ActionActivationRequests => ActionStatePage.Requests;
@@ -222,7 +223,7 @@ namespace ThirdPersonSimulation
             CharacterControlRuntimeState controlState,
             GameplayEffectStateAggregate gameplayEffectState,
             EquipmentStateAggregate equipmentState,
-            MotionWarpStatePageReference<Float32MotionWarpState> motionWarpStates)
+            MotionWarpStatePageReference<MotionWarpState> motionWarpStates)
         {
             ref Float32CharacterRuntimeStateData data = ref page.Data;
             data.Metadata = metadata;
@@ -245,7 +246,7 @@ namespace ThirdPersonSimulation
             EquipmentStateAggregate equipmentState,
             Float32ActionStatePageReference actions,
             Float32InputRequestPageReference inputRequests,
-            MotionWarpStatePageReference<Float32MotionWarpState> motionWarpStates)
+            MotionWarpStatePageReference<MotionWarpState> motionWarpStates)
         {
             Array.Sort(page.Abilities, s_CompareAbilities);
             return AdoptSnapshot(page,
@@ -264,7 +265,7 @@ namespace ThirdPersonSimulation
         internal CharacterControlRuntimeState ControlState;
         internal GameplayEffectStateAggregate GameplayEffectState;
         internal EquipmentStateAggregate EquipmentState;
-        internal MotionWarpStatePageReference<Float32MotionWarpState> MotionWarpStates;
+        internal MotionWarpStatePageReference<MotionWarpState> MotionWarpStates;
     }
 
     internal sealed class Float32CharacterRuntimeStatePage

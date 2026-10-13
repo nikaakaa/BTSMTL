@@ -1,3 +1,4 @@
+using MotionWarpState = ThirdPersonSimulation.MotionWarpState<ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedVector3, ThirdPersonSimulation.Fixed.FixedYaw, ThirdPersonSimulation.Fixed.FixedActionInstanceReference, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Fixed.FixedScalar>, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Fixed.FixedVector3>, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Fixed.FixedYaw>>;
 using System;
 using ThirdPersonSimulation.Fixed;
 using System.Collections.Generic;
@@ -18,9 +19,9 @@ namespace ThirdPersonSimulation.Fixed
             return values;
         }
         const uint Magic = 0x54535243;
-        const int Version = 28;
-        const string HashIdentity = "fixed-character-runtime-state-hash/22";
-        public const string CodecIdentity = "fixed-character-runtime-state/22";
+        const int Version = 29;
+        const string HashIdentity = "fixed-character-runtime-state-hash/23";
+        public const string CodecIdentity = "fixed-character-runtime-state/23";
 
         internal static void PrepareStorage(FixedCharacterRuntime runtime,
             int statePageCount, int decodedStatePageCount, int maximumPayloadBytes)
@@ -163,6 +164,7 @@ namespace ThirdPersonSimulation.Fixed
             GameplayAbilityExecutionIdentity.CanonicalRequireSchema(reader);
             AbilityExecutionContext.CanonicalRequireSchema(reader);
             CharacterRuntimeStateMetadata.CanonicalRequireSchema(reader);
+            MotionWarpState.CanonicalRequireSchema(reader);
             CharacterRuntimeStateMetadata metadata = CharacterRuntimeStateMetadata.CanonicalReadBound(
                 reader, expectedGameplayContentHash, FixedSimulationNumericProfile.Value, actor.StateSchemaHash);
             AbilityStateValuePageReference<AbilityStateValue> characterBlackboards = actor.CharacterBlackboardPages.Read(reader);
@@ -172,7 +174,7 @@ namespace ThirdPersonSimulation.Fixed
             statePage.Data.CharacterBlackboards = characterBlackboards;
             FixedAbilityStateDirectoryReference abilityDirectory = actor.AbilityDirectories.Begin();
             FixedAbilityRuntimeState[] abilities = abilityDirectory.Page.Values;
-            MotionWarpStatePageReference<FixedMotionWarpState> motionWarpStates = actor.MotionWarpPages.BeginEmpty();
+            MotionWarpStatePageReference<MotionWarpState> motionWarpStates = actor.MotionWarpPages.BeginEmpty();
             CharacterSkillId previousAbility = default;
             for (int i = 0; i < abilityCount; i++)
             {
@@ -298,6 +300,7 @@ namespace ThirdPersonSimulation.Fixed
             writer.WriteHash(GameplayAbilityExecutionIdentity.CanonicalSchemaHash);
             writer.WriteHash(AbilityExecutionContext.CanonicalSchemaHash);
             writer.WriteHash(CharacterRuntimeStateMetadata.CanonicalSchemaHash);
+            writer.WriteHash(MotionWarpState.CanonicalSchemaHash);
             CharacterRuntimeStateMetadata.CanonicalWrite(writer, state.Metadata);
             state.CharacterBlackboards.Write(writer);
             writer.WriteInt32(state.Abilities.Count);
@@ -494,7 +497,7 @@ namespace ThirdPersonSimulation.Fixed
 
         static void WriteMotionWarpStates(
             CanonicalWriter writer,
-            in MotionWarpStatePageReference<FixedMotionWarpState> states,
+            in MotionWarpStatePageReference<MotionWarpState> states,
             CharacterSkillId ability)
         {
             int partition = states.Page.Layout.Partition(ability);
@@ -507,18 +510,18 @@ namespace ThirdPersonSimulation.Fixed
             writer.WriteInt32(count);
             for (int index = 0; index < operations.Count; index++)
             {
-                ref readonly FixedMotionWarpState value = ref states.Page.At(offset + index);
+                ref readonly MotionWarpState value = ref states.Page.At(offset + index);
                 if (!value.Active)
                     continue;
                 writer.WriteInt32(operations[index]);
-                FixedMotionWarpState.CanonicalWrite(writer, value);
+                MotionWarpState.CanonicalWrite(writer, value);
             }
         }
 
         static void ReadMotionWarpStates(
             CanonicalReader reader,
             GameplayAbilityExecutionLayout layout,
-            in MotionWarpStatePageReference<FixedMotionWarpState> states,
+            in MotionWarpStatePageReference<MotionWarpState> states,
             CharacterSkillId ability, SimulationActorBinding actor)
         {
             int count = ReadCount(reader, layout.MotionWarpOperationIds.Count, "Fixed MotionWarp state");
@@ -529,7 +532,7 @@ namespace ThirdPersonSimulation.Fixed
                 int operation = reader.ReadInt32();
                 if (operation < 0 || operation <= previous || !layout.HasMotionWarp(new OperationHandle(operation)))
                     throw new InvalidDataException("Fixed MotionWarp operation identities are invalid or not canonically ordered.");
-                FixedMotionWarpState value = ReadMotionWarpState(reader, layout, actor);
+                MotionWarpState value = ReadMotionWarpState(reader, layout, actor);
                 if (!value.Active)
                     throw new InvalidDataException("Fixed MotionWarp state is not active.");
                 states.Page.Set(states.Page.Layout.Slot(partition, new OperationHandle(operation)), in value);
@@ -537,10 +540,10 @@ namespace ThirdPersonSimulation.Fixed
             }
         }
 
-        static FixedMotionWarpState ReadMotionWarpState(CanonicalReader reader,
+        static MotionWarpState ReadMotionWarpState(CanonicalReader reader,
             GameplayAbilityExecutionLayout layout, SimulationActorBinding actor)
         {
-            FixedMotionWarpState value = FixedMotionWarpState.CanonicalRead(reader);
+            MotionWarpState value = MotionWarpState.CanonicalRead(reader);
             if (value.SourceOperation.IsValid && value.SourceOperation.Value >= layout.Operations.Count ||
                 value.ActionInstance.SkillEntryOperation.IsValid &&
                 value.ActionInstance.SkillEntryOperation.Value >= layout.Operations.Count)

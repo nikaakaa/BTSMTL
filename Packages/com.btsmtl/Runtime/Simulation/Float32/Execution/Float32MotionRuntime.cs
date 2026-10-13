@@ -1,3 +1,4 @@
+using MotionWarpState = ThirdPersonSimulation.MotionWarpState<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32Vector3, ThirdPersonSimulation.Float32Yaw, ThirdPersonSimulation.Float32ActionInstanceReference, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Float32Scalar>, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Float32Vector3>, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Float32Yaw>>;
 using SimulationMotionContribution = ThirdPersonSimulation.SimulationMotionContribution<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32Vector2, ThirdPersonSimulation.Float32Vector3, ThirdPersonSimulation.Float32SimulationMath>;
 using ResolvedMotionChannel = ThirdPersonSimulation.ResolvedMotionChannel<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32Vector2, ThirdPersonSimulation.Float32Vector3, ThirdPersonSimulation.Float32SimulationMath>;
 using System;
@@ -6,137 +7,6 @@ using ThirdPersonSimulation.Fixed;
 
 namespace ThirdPersonSimulation
 {
-    [CanonicalContract]
-    internal readonly partial struct Float32MotionWarpState
-    {
-        public Float32MotionWarpState(
-            bool active,
-            bool initialized,
-            ulong playbackGeneration,
-            int cycle,
-            Float32ActionInstanceReference actionInstance,
-            Float32Vector3 startBodyPosition,
-            Float32Yaw startBodyYaw,
-            Float32Vector3 sourceWindowStartPosition,
-            Float32Scalar sourceWindowStartYaw,
-            Float32Vector3 resolvedTargetPosition,
-            Float32Yaw resolvedTargetYaw,
-            ProgramMotionWarpLimitResult limitResult,
-            Float32Vector3 previousWarpedPosition,
-            Float32Yaw previousWarpedYaw,
-            Float32Scalar lastPositionProgress,
-            Float32Scalar lastYawProgress,
-            OperationHandle sourceOperation,
-            MotionWarpWindowDecision decision,
-            bool hasTarget,
-            Float32Vector3 capturedTargetPosition,
-            Float32Yaw capturedTargetYaw)
-        {
-            Active = active;
-            Initialized = initialized;
-            PlaybackGeneration = playbackGeneration;
-            Cycle = cycle;
-            ActionInstance = actionInstance;
-            StartBodyPosition = startBodyPosition;
-            StartBodyYaw = startBodyYaw;
-            SourceWindowStartPosition = sourceWindowStartPosition;
-            SourceWindowStartYaw = sourceWindowStartYaw;
-            ResolvedTargetPosition = resolvedTargetPosition;
-            ResolvedTargetYaw = resolvedTargetYaw;
-            LimitResult = limitResult;
-            PreviousWarpedPosition = previousWarpedPosition;
-            PreviousWarpedYaw = previousWarpedYaw;
-            LastPositionProgress = lastPositionProgress;
-            LastYawProgress = lastYawProgress;
-            SourceOperation = sourceOperation;
-            Decision = decision;
-            HasTarget = hasTarget;
-            CapturedTargetPosition = capturedTargetPosition;
-            CapturedTargetYaw = capturedTargetYaw;
-        }
-
-        public void Retain() => CanonicalRetain(this);
-        public void Release() => CanonicalRelease(this);
-        public bool Active { get; }
-        public bool Initialized { get; }
-        public ulong PlaybackGeneration { get; }
-        public int Cycle { get; }
-        public Float32ActionInstanceReference ActionInstance { get; }
-        public Float32Vector3 StartBodyPosition { get; }
-        public Float32Yaw StartBodyYaw { get; }
-        public Float32Vector3 SourceWindowStartPosition { get; }
-        public Float32Scalar SourceWindowStartYaw { get; }
-        public Float32Vector3 ResolvedTargetPosition { get; }
-        public Float32Yaw ResolvedTargetYaw { get; }
-        public ProgramMotionWarpLimitResult LimitResult { get; }
-        public Float32Vector3 PreviousWarpedPosition { get; }
-        public Float32Yaw PreviousWarpedYaw { get; }
-        public Float32Scalar LastPositionProgress { get; }
-        public Float32Scalar LastYawProgress { get; }
-        public OperationHandle SourceOperation { get; }
-        public MotionWarpWindowDecision Decision { get; }
-        public bool HasTarget { get; }
-        public Float32Vector3 CapturedTargetPosition { get; }
-        public Float32Yaw CapturedTargetYaw { get; }
-        public bool Equals(Float32MotionWarpState other) =>
-            Active == other.Active &&
-            Initialized == other.Initialized &&
-            PlaybackGeneration == other.PlaybackGeneration &&
-            Cycle == other.Cycle &&
-            ActionInstance.Equals(other.ActionInstance) &&
-            StartBodyPosition.Equals(other.StartBodyPosition) &&
-            StartBodyYaw.Equals(other.StartBodyYaw) &&
-            SourceWindowStartPosition.Equals(other.SourceWindowStartPosition) &&
-            SourceWindowStartYaw.Equals(other.SourceWindowStartYaw) &&
-            ResolvedTargetPosition.Equals(other.ResolvedTargetPosition) &&
-            ResolvedTargetYaw.Equals(other.ResolvedTargetYaw) &&
-            LimitResult == other.LimitResult &&
-            PreviousWarpedPosition.Equals(other.PreviousWarpedPosition) &&
-            PreviousWarpedYaw.Equals(other.PreviousWarpedYaw) &&
-            LastPositionProgress.Equals(other.LastPositionProgress) &&
-            LastYawProgress.Equals(other.LastYawProgress) &&
-            SourceOperation.Equals(other.SourceOperation) &&
-            Decision == other.Decision &&
-            HasTarget == other.HasTarget &&
-            CapturedTargetPosition.Equals(other.CapturedTargetPosition) &&
-            CapturedTargetYaw.Equals(other.CapturedTargetYaw);
-
-        public Float32MotionWarpState WithDecision(MotionWarpWindowDecision decision) =>
-            new Float32MotionWarpState(Active, Initialized, PlaybackGeneration, Cycle, ActionInstance,
-                StartBodyPosition, StartBodyYaw, SourceWindowStartPosition, SourceWindowStartYaw,
-                ResolvedTargetPosition, ResolvedTargetYaw, LimitResult, PreviousWarpedPosition,
-                PreviousWarpedYaw, LastPositionProgress, LastYawProgress, SourceOperation,
-                decision, HasTarget, CapturedTargetPosition, CapturedTargetYaw);
-
-        public Float32MotionWarpState WithProgress(
-            Float32Vector3 previousWarpedPosition,
-            Float32Yaw previousWarpedYaw,
-            Float32Scalar lastPositionProgress,
-            Float32Scalar lastYawProgress) =>
-            new Float32MotionWarpState(
-                Active,
-                Initialized,
-                PlaybackGeneration,
-                Cycle,
-                ActionInstance,
-                StartBodyPosition,
-                StartBodyYaw,
-                SourceWindowStartPosition,
-                SourceWindowStartYaw,
-                ResolvedTargetPosition,
-                ResolvedTargetYaw,
-                LimitResult,
-                previousWarpedPosition,
-                previousWarpedYaw,
-                lastPositionProgress,
-                lastYawProgress,
-                SourceOperation,
-                Decision,
-                HasTarget,
-                CapturedTargetPosition,
-                CapturedTargetYaw);
-    }
-
     internal sealed class Float32MotionAccumulator : Float32OperationModule,
         IFloat32MotionContributionSink
     {
@@ -210,7 +80,7 @@ namespace ThirdPersonSimulation
 
         public void CaptureWindowEntry(in AbilityTimelineLogicMotionWarp warp)
         {
-            Float32MotionWarpState state = m_Frame.SkillState.GetMotionWarpState(warp.StateOperation);
+            MotionWarpState state = m_Frame.SkillState.GetMotionWarpState(warp.StateOperation);
             if (state.Active && state.PlaybackGeneration == warp.PlaybackGeneration && state.Cycle == warp.Cycle)
                 return;
             m_Actions.TryGetEvaluatedInstance(warp.ActionInstanceId, out Float32ActionInstanceState action);
@@ -220,7 +90,7 @@ namespace ThirdPersonSimulation
             var targetPosition = new Float32Vector3(Float32Scalar.FromSingle(warp.Target.X.ToSingle()), Float32Scalar.FromSingle(warp.Target.Y.ToSingle()), Float32Scalar.FromSingle(warp.Target.Z.ToSingle()));
             var targetYaw = new Float32Yaw(Float32Scalar.FromSingle(warp.Target.Yaw.ToSingle()));
             m_Frame.SkillState.SetMotionWarpState(warp.StateOperation,
-                new Float32MotionWarpState(true, false, warp.PlaybackGeneration, warp.Cycle,
+                new MotionWarpState(true, false, warp.PlaybackGeneration, warp.Cycle,
                     Float32ActionInstanceReference.FromInstance(action), default, default, default, default,
                     default, default, default, default, default, default, default, warp.Source.Operation,
                     decision, warp.HasTarget, targetPosition, targetYaw));
@@ -231,7 +101,7 @@ namespace ThirdPersonSimulation
 
         public void ApplyTimelineMotionWarp(in AbilityTimelineLogicMotionWarp warp, ref ResolvedMotionChannel channel)
         {
-            Float32MotionWarpState storedState = m_Frame.SkillState.GetMotionWarpState(warp.StateOperation);
+            MotionWarpState storedState = m_Frame.SkillState.GetMotionWarpState(warp.StateOperation);
             if (storedState.Decision != MotionWarpWindowDecision.Accepted)
                 return;
             if (warp.RotationMethod == ProgramMotionWarpRotationMethod.TargetResponse)
@@ -297,7 +167,7 @@ namespace ThirdPersonSimulation
                     out previousWarpedYaw);
                 previousPositionProgress = Float32Scalar.FromSingle(warp.PreviousPositionProgress.ToSingle());
                 previousYawProgress = Float32Scalar.FromSingle(warp.PreviousYawProgress.ToSingle());
-                storedState = new Float32MotionWarpState(
+                storedState = new MotionWarpState(
                         true,
                         true,
                         warp.PlaybackGeneration,
@@ -370,7 +240,7 @@ namespace ThirdPersonSimulation
 
         void ApplyTargetResponse(
             in AbilityTimelineLogicMotionWarp warp,
-            Float32MotionWarpState state,
+            MotionWarpState state,
             ref ResolvedMotionChannel channel)
         {
             if (warp.TranslationMode != ProgramMotionWarpTranslationMode.Disabled ||

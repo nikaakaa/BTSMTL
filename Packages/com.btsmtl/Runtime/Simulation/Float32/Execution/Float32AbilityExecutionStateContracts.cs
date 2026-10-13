@@ -1,3 +1,4 @@
+using MotionWarpState = ThirdPersonSimulation.MotionWarpState<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32Vector3, ThirdPersonSimulation.Float32Yaw, ThirdPersonSimulation.Float32ActionInstanceReference, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Float32Scalar>, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Float32Vector3>, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Float32Yaw>>;
 using System;
 using System.Collections.Generic;
 using SimulationActionActivationRequestState = ThirdPersonSimulation.SimulationActionActivationRequestState<ThirdPersonSimulation.SimulationActionTargetSnapshot>;
@@ -13,8 +14,8 @@ namespace ThirdPersonSimulation
         void Reset(int slotIndex);
         GameplayAbilityExecutionAggregate<AbilityStateValue> GetAbilityExecutionState();
         void SetAbilityExecutionState(GameplayAbilityExecutionAggregate<AbilityStateValue> state);
-        Float32MotionWarpState GetMotionWarpState(OperationHandle operation);
-        void SetMotionWarpState(OperationHandle operation, Float32MotionWarpState value);
+        MotionWarpState GetMotionWarpState(OperationHandle operation);
+        void SetMotionWarpState(OperationHandle operation, MotionWarpState value);
     }
 
     internal interface IFloat32InputRequestStatePort

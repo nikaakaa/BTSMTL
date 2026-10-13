@@ -1,3 +1,4 @@
+using MotionWarpState = ThirdPersonSimulation.MotionWarpState<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32Vector3, ThirdPersonSimulation.Float32Yaw, ThirdPersonSimulation.Float32ActionInstanceReference, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Float32Scalar>, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Float32Vector3>, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Float32Yaw>>;
 using MotionContributionBuffer = ThirdPersonSimulation.MotionContributionBuffer<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32Vector2, ThirdPersonSimulation.Float32Vector3, ThirdPersonSimulation.Float32SimulationMath>;
 using System;
 using ThirdPersonGameplay.Configuration;
@@ -58,7 +59,7 @@ namespace ThirdPersonSimulation
         internal Float32GameplayEffectPendingProjection[] GameplayEffectProjections { get; private set; } =
             Array.Empty<Float32GameplayEffectPendingProjection>();
         internal int GameplayEffectProjectionCount { get; set; }
-        internal MotionWarpStatePageReference<Float32MotionWarpState> MotionWarpStates { get; private set; }
+        internal MotionWarpStatePageReference<MotionWarpState> MotionWarpStates { get; private set; }
         Float32CharacterRuntimeState m_StatePageOwner;
 
         internal void RetainStatePages(Float32CharacterRuntimeState state)
@@ -75,8 +76,8 @@ namespace ThirdPersonSimulation
         }
 
         internal void BeginMotionWarpState(
-            MotionWarpStatePageBank<Float32MotionWarpState> bank,
-            in MotionWarpStatePageReference<Float32MotionWarpState> source)
+            MotionWarpStatePageBank<MotionWarpState> bank,
+            in MotionWarpStatePageReference<MotionWarpState> source)
         {
             MotionWarpStates = bank.BeginWrite(source);
             MotionWarpStates.Retain();
@@ -203,7 +204,7 @@ namespace ThirdPersonSimulation
                     installation.Identity.AbilityId, installation.Layout.MotionWarpOperationIds);
             }
             var motionWarpLayout = new MotionWarpStatePageLayout(warpLayouts);
-            MotionWarpPages = new MotionWarpStatePageBank<Float32MotionWarpState>(motionWarpLayout,
+            MotionWarpPages = new MotionWarpStatePageBank<MotionWarpState>(motionWarpLayout,
                 state => state.Retain(), state => state.Release());
             RuntimeStatePages = new Float32CharacterRuntimeStatePageBank(AbilityInstallations.Installations.Count);
             StateValuePages = new Dictionary<CharacterSkillId, AbilityStateValuePageBank<AbilityStateValue>>(AbilityInstallations.Installations.Count);
@@ -816,7 +817,7 @@ namespace ThirdPersonSimulation
             DeclaredIdentityReader = published.ReadPublished;
         }
 
-        internal MotionWarpStatePageBank<Float32MotionWarpState> MotionWarpPages { get; }
+        internal MotionWarpStatePageBank<MotionWarpState> MotionWarpPages { get; }
         internal Float32InputRequestPageBank InputRequestPages { get; }
         internal Float32ActionStatePageBank ActionStatePages { get; }
         public CharacterGameplayEffectRuntimeBinding GameplayEffectRuntimeBinding { get; }

@@ -237,7 +237,7 @@ namespace ThirdPersonSimulation.Fixed
     }
 
     [CanonicalContract]
-    internal readonly partial struct FixedActionInstanceReference
+    internal readonly partial struct FixedActionInstanceReference : IEquatable<FixedActionInstanceReference>
     {
         public FixedActionInstanceReference(
             string actionId,

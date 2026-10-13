@@ -1,3 +1,4 @@
+using MotionWarpState = ThirdPersonSimulation.MotionWarpState<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32Vector3, ThirdPersonSimulation.Float32Yaw, ThirdPersonSimulation.Float32ActionInstanceReference, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Float32Scalar>, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Float32Vector3>, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Float32Yaw>>;
 using System;
 using ThirdPersonSimulation.Fixed;
 using System.Collections.Generic;
@@ -18,9 +19,9 @@ namespace ThirdPersonSimulation
             return values;
         }
         const uint Magic = 0x54535243;
-        const int Version = 28;
-        const string HashIdentity = "float32-character-runtime-state-hash/22";
-        public const string CodecIdentity = "float32-character-runtime-state/22";
+        const int Version = 29;
+        const string HashIdentity = "float32-character-runtime-state-hash/23";
+        public const string CodecIdentity = "float32-character-runtime-state/23";
 
         public static byte[] Write(Float32CharacterRuntimeState state)
         {
@@ -137,6 +138,7 @@ namespace ThirdPersonSimulation
             GameplayAbilityExecutionIdentity.CanonicalRequireSchema(reader);
             AbilityExecutionContext.CanonicalRequireSchema(reader);
             CharacterRuntimeStateMetadata.CanonicalRequireSchema(reader);
+            MotionWarpState.CanonicalRequireSchema(reader);
             CharacterRuntimeStateMetadata metadata = CharacterRuntimeStateMetadata.CanonicalReadBound(
                 reader, expectedGameplayContentHash, Float32SimulationNumericProfile.Value, actor.StateSchemaHash);
             AbilityStateValuePageReference<AbilityStateValue> characterBlackboards = actor.CharacterBlackboardPages.Read(reader);
@@ -151,7 +153,7 @@ namespace ThirdPersonSimulation
             AbilityTimelineSnapshotStorage timelineStorage = null;
             try
             {
-                MotionWarpStatePageReference<Float32MotionWarpState> motionWarpStates = actor.MotionWarpPages.BeginEmpty();
+                MotionWarpStatePageReference<MotionWarpState> motionWarpStates = actor.MotionWarpPages.BeginEmpty();
                 for (int i = 0; i < abilityCount; i++)
                 {
                     GameplayAbilityExecutionIdentity identity = ReadIdentity(reader, actor);
@@ -259,6 +261,7 @@ namespace ThirdPersonSimulation
             writer.WriteHash(GameplayAbilityExecutionIdentity.CanonicalSchemaHash);
             writer.WriteHash(AbilityExecutionContext.CanonicalSchemaHash);
             writer.WriteHash(CharacterRuntimeStateMetadata.CanonicalSchemaHash);
+            writer.WriteHash(MotionWarpState.CanonicalSchemaHash);
             CharacterRuntimeStateMetadata.CanonicalWrite(writer, state.Metadata);
             state.CharacterBlackboards.Write(writer);
             writer.WriteInt32(state.Abilities.Count);
@@ -450,7 +453,7 @@ namespace ThirdPersonSimulation
 
         static void WriteMotionWarpStates(
             CanonicalWriter writer,
-            in MotionWarpStatePageReference<Float32MotionWarpState> states,
+            in MotionWarpStatePageReference<MotionWarpState> states,
             CharacterSkillId ability)
         {
             int partition = states.Page.Layout.Partition(ability);
@@ -463,18 +466,18 @@ namespace ThirdPersonSimulation
             writer.WriteInt32(count);
             for (int index = 0; index < operations.Count; index++)
             {
-                ref readonly Float32MotionWarpState value = ref states.Page.At(offset + index);
+                ref readonly MotionWarpState value = ref states.Page.At(offset + index);
                 if (!value.Active)
                     continue;
                 writer.WriteInt32(operations[index]);
-                Float32MotionWarpState.CanonicalWrite(writer, value);
+                MotionWarpState.CanonicalWrite(writer, value);
             }
         }
 
         static void ReadMotionWarpStates(
             CanonicalReader reader,
             GameplayAbilityExecutionLayout layout,
-            in MotionWarpStatePageReference<Float32MotionWarpState> states,
+            in MotionWarpStatePageReference<MotionWarpState> states,
             CharacterSkillId ability, SimulationActorBinding actor)
         {
             int count = ReadCount(reader, layout.MotionWarpOperationIds.Count, "Float32 MotionWarp state");
@@ -485,7 +488,7 @@ namespace ThirdPersonSimulation
                 int operation = reader.ReadInt32();
                 if (operation < 0 || operation <= previous || !layout.HasMotionWarp(new OperationHandle(operation)))
                     throw new InvalidDataException("Float32 MotionWarp operation identities are invalid or not canonically ordered.");
-                Float32MotionWarpState value = ReadMotionWarpState(reader, layout, actor);
+                MotionWarpState value = ReadMotionWarpState(reader, layout, actor);
                 if (!value.Active)
                     throw new InvalidDataException("Float32 MotionWarp state is not active.");
                 states.Page.Set(states.Page.Layout.Slot(partition, new OperationHandle(operation)), in value);
@@ -493,10 +496,10 @@ namespace ThirdPersonSimulation
             }
         }
 
-        static Float32MotionWarpState ReadMotionWarpState(CanonicalReader reader,
+        static MotionWarpState ReadMotionWarpState(CanonicalReader reader,
             GameplayAbilityExecutionLayout layout, SimulationActorBinding actor)
         {
-            Float32MotionWarpState value = Float32MotionWarpState.CanonicalRead(reader);
+            MotionWarpState value = MotionWarpState.CanonicalRead(reader);
             if (value.SourceOperation.IsValid && value.SourceOperation.Value >= layout.Operations.Count ||
                 value.ActionInstance.SkillEntryOperation.IsValid &&
                 value.ActionInstance.SkillEntryOperation.Value >= layout.Operations.Count)

@@ -1,3 +1,4 @@
+using MotionWarpState = ThirdPersonSimulation.MotionWarpState<ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedVector3, ThirdPersonSimulation.Fixed.FixedYaw, ThirdPersonSimulation.Fixed.FixedActionInstanceReference, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Fixed.FixedScalar>, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Fixed.FixedVector3>, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Fixed.FixedYaw>>;
 using MotionContributionBuffer = ThirdPersonSimulation.MotionContributionBuffer<ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedVector2, ThirdPersonSimulation.Fixed.FixedVector3, ThirdPersonSimulation.Fixed.FixedSimulationMath>;
 using System;
 using ThirdPersonGameplay.Configuration;
@@ -96,7 +97,7 @@ namespace ThirdPersonSimulation.Fixed
         internal FixedGameplayEffectPendingProjection[] GameplayEffectProjections { get; private set; } =
             Array.Empty<FixedGameplayEffectPendingProjection>();
         internal int GameplayEffectProjectionCount { get; set; }
-        internal MotionWarpStatePageReference<FixedMotionWarpState> MotionWarpStates { get; private set; }
+        internal MotionWarpStatePageReference<MotionWarpState> MotionWarpStates { get; private set; }
         FixedCharacterRuntimeState m_StatePageOwner;
         int m_RetainedFactTexts;
         int m_RetainedPresentationTexts;
@@ -133,8 +134,8 @@ namespace ThirdPersonSimulation.Fixed
         }
 
         internal void BeginMotionWarpState(
-            MotionWarpStatePageBank<FixedMotionWarpState> bank,
-            in MotionWarpStatePageReference<FixedMotionWarpState> source)
+            MotionWarpStatePageBank<MotionWarpState> bank,
+            in MotionWarpStatePageReference<MotionWarpState> source)
         {
             MotionWarpStates = bank.BeginWrite(source);
             MotionWarpStates.Retain();
@@ -609,7 +610,7 @@ namespace ThirdPersonSimulation.Fixed
                     installation.Identity.AbilityId, installation.Layout.MotionWarpOperationIds);
             }
             var motionWarpLayout = new MotionWarpStatePageLayout(warpLayouts);
-            MotionWarpPages = new MotionWarpStatePageBank<FixedMotionWarpState>(motionWarpLayout, value => value.Retain(), value => value.Release());
+            MotionWarpPages = new MotionWarpStatePageBank<MotionWarpState>(motionWarpLayout, value => value.Retain(), value => value.Release());
             CharacterBlackboardPages = new AbilityStateValuePageBank<AbilityStateValue>(default,
                 AbilityInstallations.CharacterBlackboards.SlotCount, _ => true,
                 value => value.Retain(), value => value.Release(), AbilityInstallations.CharacterBlackboards.Binding,
@@ -926,7 +927,7 @@ namespace ThirdPersonSimulation.Fixed
             m_RecycledEvaluationOutputs.Push(output);
         }
         internal FixedCharacterInputRequestState InputRequestState => m_InputRequestState;
-        internal MotionWarpStatePageBank<FixedMotionWarpState> MotionWarpPages { get; }
+        internal MotionWarpStatePageBank<MotionWarpState> MotionWarpPages { get; }
         internal FixedCharacterRuntimeStatePageBank RuntimeStatePages { get; }
         internal FixedAbilityStateDirectoryBank AbilityDirectories { get; }
         internal FixedTimelineSnapshotPageBank TimelineSnapshotPages { get; }

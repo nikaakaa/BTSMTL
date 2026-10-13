@@ -1,3 +1,4 @@
+using MotionWarpState = ThirdPersonSimulation.MotionWarpState<ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedVector3, ThirdPersonSimulation.Fixed.FixedYaw, ThirdPersonSimulation.Fixed.FixedActionInstanceReference, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Fixed.FixedScalar>, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Fixed.FixedVector3>, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Fixed.FixedYaw>>;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -92,7 +93,7 @@ namespace ThirdPersonSimulation.Fixed
         }
         public IReadOnlyList<FixedAbilityRuntimeState> Abilities => Data.Abilities.Values;
         internal FixedAbilityStateDirectoryReference AbilityDirectory => Data.Abilities;
-        internal MotionWarpStatePageReference<FixedMotionWarpState> MotionWarpStates => Data.MotionWarpStates;
+        internal MotionWarpStatePageReference<MotionWarpState> MotionWarpStates => Data.MotionWarpStates;
         internal AbilityStateValuePageReference<AbilityStateValue> CharacterBlackboards => Data.CharacterBlackboards;
 
         internal void RetainStatePages()
@@ -338,7 +339,7 @@ namespace ThirdPersonSimulation.Fixed
             GameplayEffectStateAggregate gameplayEffectState,
             EquipmentStateAggregate equipmentState,
             FixedTimelineSnapshotPageReference timelineSnapshots,
-            MotionWarpStatePageReference<FixedMotionWarpState> motionWarpStates)
+            MotionWarpStatePageReference<MotionWarpState> motionWarpStates)
         {
             ref FixedCharacterRuntimeStateData data = ref page.Data;
             data.Metadata = metadata;
@@ -366,7 +367,7 @@ namespace ThirdPersonSimulation.Fixed
             GameplayEffectStateAggregate gameplayEffectState,
             EquipmentStateAggregate equipmentState,
             FixedTimelineSnapshotPageReference timelineSnapshots,
-            MotionWarpStatePageReference<FixedMotionWarpState> motionWarpStates)
+            MotionWarpStatePageReference<MotionWarpState> motionWarpStates)
         {
             Array.Sort(abilities.Page.Values, s_AbilityStateComparison);
             FixedCharacterRuntimeStatePage page = statePages.Begin();
@@ -397,7 +398,7 @@ namespace ThirdPersonSimulation.Fixed
         internal GameplayEffectStateAggregate GameplayEffectState;
         internal EquipmentStateAggregate EquipmentState;
         internal FixedTimelineSnapshotPageReference TimelineSnapshots;
-        internal MotionWarpStatePageReference<FixedMotionWarpState> MotionWarpStates;
+        internal MotionWarpStatePageReference<MotionWarpState> MotionWarpStates;
     }
 
     internal sealed class FixedCharacterRuntimeStatePage
