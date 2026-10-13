@@ -361,6 +361,9 @@ namespace BTSMTL.Timeline.Runtime
             return prepared;
         }
 
+        public TimelineRuntimePreparedContent GetPreparedContent(TimelineData timeline) =>
+            m_RequestFactory.GetContent(timeline);
+
         public TimelineRuntimePreparedContent InstallTimeRangeCandidate(TimelineData baseline, TimelineData timeline,
             TimelineContentUnit content, IReadOnlyList<TimelinePlaybackMode> playbackModes)
         {
