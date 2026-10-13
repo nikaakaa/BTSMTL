@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Net;
@@ -59,13 +58,9 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
 
     public readonly struct ServerAuthoritativeReceivedDatagram
     {
-        public ServerAuthoritativeReceivedDatagram(ServerAuthoritativeDatagramPacket packet, IPEndPoint remoteEndPoint)
+        internal ServerAuthoritativeReceivedDatagram(ServerAuthoritativeDatagramPacket packet, IPEndPoint remoteEndPoint)
         {
             Packet = packet;
-            if (!packet.IsValid)
-                throw new ArgumentException("Gameplay received packet is invalid.", nameof(packet));
-            if (remoteEndPoint == null)
-                throw new ArgumentNullException(nameof(remoteEndPoint));
             RemoteEndPoint = remoteEndPoint;
         }
 
@@ -79,13 +74,16 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
     {
         readonly Socket m_Socket;
         readonly Thread m_ReceiveThread;
-        readonly ConcurrentQueue<ServerAuthoritativeReceivedDatagram> m_ReceiveQueue = new ConcurrentQueue<ServerAuthoritativeReceivedDatagram>();
+        readonly Queue<ServerAuthoritativeReceivedDatagram> m_ReceiveQueue;
+        readonly object m_ReceiveGate = new object();
         readonly Stack<IPEndPoint> m_ReceiveEndPoints;
         readonly Stack<byte[]> m_ReceivePayloads;
-        readonly ConcurrentQueue<PendingSend> m_SendQueue = new ConcurrentQueue<PendingSend>();
+        readonly Queue<PendingSend> m_SendQueue;
+        readonly object m_SendGate = new object();
+        readonly object m_SendPumpGate = new object();
         readonly Stack<IPEndPoint> m_SendEndPoints;
         readonly Stack<byte[]> m_SendBuffers;
-        readonly ThreadLocal<CanonicalWriter> m_SendWriter;
+        readonly CanonicalWriter m_SendWriter;
         readonly Dictionary<ServerAuthoritativeDatagramIdentity, Route> m_Routes =
             new Dictionary<ServerAuthoritativeDatagramIdentity, Route>();
         readonly object m_RouteLock = new object();
@@ -93,8 +91,6 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
         readonly EndPoint m_ReceiveFromEndPoint;
         readonly int m_QueueCapacity;
         readonly int m_MaximumDatagramBytes;
-        int m_ReceiveCount;
-        int m_SendCount;
         int m_Disposed;
         Exception m_Failure;
         long m_SentPackets;
@@ -119,11 +115,25 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
                 throw new ArgumentOutOfRangeException(nameof(maximumDatagramBytes));
             m_QueueCapacity = queueCapacity;
             m_MaximumDatagramBytes = maximumDatagramBytes;
-            m_ReceiveEndPoints = new Stack<IPEndPoint>(queueCapacity);
-            m_ReceivePayloads = new Stack<byte[]>(queueCapacity);
-            m_SendEndPoints = new Stack<IPEndPoint>(queueCapacity);
-            m_SendBuffers = new Stack<byte[]>(queueCapacity);
-            m_SendWriter = new ThreadLocal<CanonicalWriter>(() => new CanonicalWriter(new byte[maximumDatagramBytes]));
+            m_ReceiveQueue = new Queue<ServerAuthoritativeReceivedDatagram>(queueCapacity);
+            int receiveStorageCount = checked(queueCapacity + 2);
+            m_ReceiveEndPoints = new Stack<IPEndPoint>(receiveStorageCount);
+            m_ReceivePayloads = new Stack<byte[]>(receiveStorageCount);
+            for (int i = 0; i < receiveStorageCount; i++)
+            {
+                m_ReceiveEndPoints.Push(new IPEndPoint(localEndPoint.Address, 0));
+                m_ReceivePayloads.Push(new byte[maximumDatagramBytes]);
+            }
+            m_SendQueue = new Queue<PendingSend>(queueCapacity);
+            int sendStorageCount = checked(queueCapacity + 1);
+            m_SendEndPoints = new Stack<IPEndPoint>(sendStorageCount);
+            m_SendBuffers = new Stack<byte[]>(sendStorageCount);
+            for (int i = 0; i < sendStorageCount; i++)
+            {
+                m_SendEndPoints.Push(new IPEndPoint(localEndPoint.Address, 0));
+                m_SendBuffers.Push(new byte[maximumDatagramBytes]);
+            }
+            m_SendWriter = new CanonicalWriter(new byte[maximumDatagramBytes]);
             m_Socket = new Socket(localEndPoint.AddressFamily, SocketType.Dgram, ProtocolType.Udp)
             {
                 ReceiveTimeout = 250,
@@ -143,8 +153,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
         }
 
         public IPEndPoint LocalEndPoint { get; }
-        public int ReceiveQueueDepth => Volatile.Read(ref m_ReceiveCount);
-        public int SendQueueDepth => Volatile.Read(ref m_SendCount);
+        public int ReceiveQueueDepth { get { lock (m_ReceiveGate) return m_ReceiveQueue.Count; } }
+        public int SendQueueDepth { get { lock (m_SendGate) return m_SendQueue.Count; } }
         public bool IsFailed => Volatile.Read(ref m_Failure) != null;
 
         public ServerAuthoritativeDatagramMetrics CaptureMetrics() => new ServerAuthoritativeDatagramMetrics(
@@ -186,90 +196,90 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
 
         public void EnqueueSend(ServerAuthoritativeDatagramHeader header, ReadOnlySpan<byte> payload)
         {
-            ThrowIfUnavailable();
-            IPEndPoint remote;
-            lock (m_RouteLock)
+            lock (m_SendGate)
             {
-                if (!m_Routes.TryGetValue(header.Identity, out Route route))
-                    throw new InvalidOperationException($"Gameplay data route '{header.Identity}' is not bound.");
-                remote = route.RemoteEndPoint;
-            }
-            CanonicalWriter writer = m_SendWriter.Value;
-            int length = ServerAuthoritativeGameplayDatagramCodec.Write(header, payload, writer, m_MaximumDatagramBytes);
-            byte[] bytes = RentSendBuffer();
-            writer.WrittenSpan.CopyTo(bytes);
-            if (Interlocked.Increment(ref m_SendCount) > m_QueueCapacity)
-            {
-                Interlocked.Decrement(ref m_SendCount);
-                ReturnSendBuffer(bytes);
-                Fail(new InvalidOperationException("Gameplay datagram send queue overflow."));
                 ThrowIfUnavailable();
+                IPEndPoint remote;
+                lock (m_RouteLock)
+                {
+                    if (!m_Routes.TryGetValue(header.Identity, out Route route))
+                        throw new InvalidOperationException($"Gameplay data route '{header.Identity}' is not bound.");
+                    remote = route.RemoteEndPoint;
+                }
+                int length = ServerAuthoritativeGameplayDatagramCodec.Write(header, payload, m_SendWriter, m_MaximumDatagramBytes);
+                if (m_SendQueue.Count == m_QueueCapacity)
+                {
+                    Fail(new InvalidOperationException("Gameplay datagram send queue overflow."));
+                    ThrowIfUnavailable();
+                }
+                byte[] bytes = m_SendBuffers.Pop();
+                m_SendWriter.WrittenSpan.CopyTo(bytes);
+                IPEndPoint endpoint = m_SendEndPoints.Pop();
+                endpoint.Address = remote.Address;
+                endpoint.Port = remote.Port;
+                m_SendQueue.Enqueue(new PendingSend(bytes, length, endpoint));
             }
-            m_SendQueue.Enqueue(new PendingSend(bytes, length, RentSendEndPoint(remote)));
         }
 
         public void PumpSend()
         {
-            ThrowIfUnavailable();
-            while (m_SendQueue.TryDequeue(out PendingSend pending))
+            lock (m_SendPumpGate)
             {
-                Interlocked.Decrement(ref m_SendCount);
-                IPEndPoint sendEndPoint = pending.RemoteEndPoint;
-                try
+                while (true)
                 {
+                    PendingSend pending;
+                    lock (m_SendGate)
+                    {
+                        ThrowIfUnavailable();
+                        if (!m_SendQueue.TryDequeue(out pending))
+                            return;
+                    }
                     try
                     {
-                        int sent = m_Socket.SendTo(pending.Bytes, 0, pending.Length, SocketFlags.None, sendEndPoint);
-                        if (sent != pending.Length)
-                            throw new IOException($"Gameplay datagram send wrote '{sent}' of '{pending.Length}' bytes.");
-                        Interlocked.Increment(ref m_SentPackets);
-                        Interlocked.Add(ref m_SentBytes, sent);
+                        try
+                        {
+                            int sent = m_Socket.SendTo(pending.Bytes, 0, pending.Length, SocketFlags.None, pending.RemoteEndPoint);
+                            if (sent != pending.Length)
+                                throw new IOException($"Gameplay datagram send wrote '{sent}' of '{pending.Length}' bytes.");
+                            Interlocked.Increment(ref m_SentPackets);
+                            Interlocked.Add(ref m_SentBytes, sent);
+                        }
+                        finally
+                        {
+                            ReturnSend(in pending);
+                        }
                     }
-                    finally
+                    catch (Exception exception) when (exception is SocketException || exception is ObjectDisposedException || exception is IOException)
                     {
-                        ReturnSendBuffer(pending.Bytes);
-                        ReturnSendEndPoint(sendEndPoint);
+                        Fail(exception);
+                        ThrowIfUnavailable();
                     }
-                }
-                catch (Exception exception) when (exception is SocketException || exception is ObjectDisposedException || exception is IOException)
-                {
-                    Fail(exception);
-                    ThrowIfUnavailable();
                 }
             }
         }
 
         public bool TryReceive(out ServerAuthoritativeReceivedDatagram datagram)
         {
-            ThrowIfUnavailable();
-            if (!m_ReceiveQueue.TryDequeue(out datagram))
-                return false;
-            Interlocked.Decrement(ref m_ReceiveCount);
-            return true;
-        }
-
-        void ReturnReceiveEndPoint(IPEndPoint remoteEndPoint)
-        {
-            lock (m_ReceiveEndPoints)
+            lock (m_ReceiveGate)
             {
-                if (m_ReceiveEndPoints.Count < m_QueueCapacity)
-                    m_ReceiveEndPoints.Push(remoteEndPoint);
+                ThrowIfUnavailable();
+                return m_ReceiveQueue.TryDequeue(out datagram);
             }
         }
 
         public void ReturnReceived(in ServerAuthoritativeReceivedDatagram datagram)
         {
-            ReturnReceivePayload(datagram.Packet.PayloadBuffer);
-            ReturnReceiveEndPoint(datagram.RemoteEndPoint);
+            lock (m_ReceiveGate)
+            {
+                m_ReceivePayloads.Push(datagram.Packet.PayloadBuffer);
+                m_ReceiveEndPoints.Push(datagram.RemoteEndPoint);
+            }
         }
 
         void ReturnReceivePayload(byte[] payload)
         {
-            lock (m_ReceivePayloads)
-            {
-                if (m_ReceivePayloads.Count < m_QueueCapacity)
-                    m_ReceivePayloads.Push(payload);
-            }
+            lock (m_ReceiveGate)
+                m_ReceivePayloads.Push(payload);
         }
 
         public void ThrowIfUnavailable()
@@ -307,7 +317,6 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
                         packet = ServerAuthoritativeGameplayDatagramCodec.Read(
                             new ArraySegment<byte>(buffer, 0, received),
                             reader,
-                            m_MaximumDatagramBytes,
                             payloadBuffer);
                     }
                     catch (Exception exception) when (exception is InvalidDataException || exception is ArgumentException)
@@ -317,37 +326,40 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
                         continue;
                     }
 
+                    lock (m_RouteLock)
+                    {
+                        if (m_Routes.TryGetValue(packet.Header.Identity, out Route route))
                         {
-                            if (m_Routes.TryGetValue(packet.Header.Identity, out Route route))
+                            if (!EndPointEquals(route.RemoteEndPoint, (IPEndPoint)remote))
                             {
-                                if (!EndPointEquals(route.RemoteEndPoint, (IPEndPoint)remote))
-                                {
-                                    Interlocked.Increment(ref m_EndpointMismatchDrops);
-                                    Fail(new InvalidOperationException($"Gameplay data endpoint changed for '{packet.Header.Identity}'."));
-                                    ReturnReceivePayload(payloadBuffer);
-                                    return;
-                                }
-                            }
-                            else if (packet.Header.Kind != ServerAuthoritativeDatagramKind.DataPlaneHello)
-                            {
-                                Interlocked.Increment(ref m_UnknownRouteDrops);
+                                Interlocked.Increment(ref m_EndpointMismatchDrops);
+                                Fail(new InvalidOperationException($"Gameplay data endpoint changed for '{packet.Header.Identity}'."));
                                 ReturnReceivePayload(payloadBuffer);
                                 return;
                             }
                         }
-
-                        IPEndPoint remoteEndPoint = RentReceiveEndPoint((IPEndPoint)remote);
-                        if (Interlocked.Increment(ref m_ReceiveCount) > m_QueueCapacity)
+                        else if (packet.Header.Kind != ServerAuthoritativeDatagramKind.DataPlaneHello)
                         {
-                            Interlocked.Decrement(ref m_ReceiveCount);
-                            ReturnReceiveEndPoint(remoteEndPoint);
+                            Interlocked.Increment(ref m_UnknownRouteDrops);
                             ReturnReceivePayload(payloadBuffer);
+                            return;
+                        }
+                    }
+
+                    IPEndPoint remoteEndPoint = RentReceiveEndPoint((IPEndPoint)remote);
+                    lock (m_ReceiveGate)
+                    {
+                        if (m_ReceiveQueue.Count == m_QueueCapacity)
+                        {
+                            m_ReceiveEndPoints.Push(remoteEndPoint);
+                            m_ReceivePayloads.Push(payloadBuffer);
                             Fail(new InvalidOperationException("Gameplay datagram receive queue overflow."));
                             return;
                         }
                         m_ReceiveQueue.Enqueue(new ServerAuthoritativeReceivedDatagram(packet, remoteEndPoint));
-                        Interlocked.Increment(ref m_ReceivedPackets);
-                        Interlocked.Add(ref m_ReceivedBytes, received);
+                    }
+                    Interlocked.Increment(ref m_ReceivedPackets);
+                    Interlocked.Add(ref m_ReceivedBytes, received);
                 }
                 catch (SocketException exception) when (
                     exception.SocketErrorCode == SocketError.TimedOut ||
@@ -368,8 +380,6 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
 
         void Fail(Exception exception)
         {
-            if (exception == null)
-                return;
             Interlocked.CompareExchange(ref m_Failure, exception, null);
         }
 
@@ -377,28 +387,29 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
         {
             if (Interlocked.Exchange(ref m_Disposed, 1) != 0)
                 return;
-            try
-            {
-                m_Socket.Close();
-            }
-            catch
-            {
-            }
+            m_Socket.Close();
             if (m_ReceiveThread.IsAlive)
                 m_ReceiveThread.Join(1000);
-            while (m_ReceiveQueue.TryDequeue(out ServerAuthoritativeReceivedDatagram datagram))
-                ReturnReceived(datagram);
-            while (m_SendQueue.TryDequeue(out PendingSend pending))
+            lock (m_ReceiveGate)
             {
-                ReturnSendBuffer(pending.Bytes);
-                ReturnSendEndPoint(pending.RemoteEndPoint);
+                while (m_ReceiveQueue.TryDequeue(out ServerAuthoritativeReceivedDatagram datagram))
+                {
+                    m_ReceivePayloads.Push(datagram.Packet.PayloadBuffer);
+                    m_ReceiveEndPoints.Push(datagram.RemoteEndPoint);
+                }
             }
-            m_SendWriter.Dispose();
-            Interlocked.Exchange(ref m_ReceiveCount, 0);
-            Interlocked.Exchange(ref m_SendCount, 0);
+            lock (m_SendPumpGate)
+            lock (m_SendGate)
+            {
+                while (m_SendQueue.TryDequeue(out PendingSend pending))
+                {
+                    m_SendBuffers.Push(pending.Bytes);
+                    m_SendEndPoints.Push(pending.RemoteEndPoint);
+                }
+                m_SendWriter.Dispose();
+            }
             lock (m_RouteLock)
                 m_Routes.Clear();
-            m_Socket.Dispose();
         }
 
         static IPEndPoint Clone(IPEndPoint value) => new IPEndPoint(value.Address, value.Port);
@@ -426,11 +437,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
         IPEndPoint RentReceiveEndPoint(IPEndPoint value)
         {
             IPEndPoint endpoint;
-            bool rented;
-            lock (m_ReceiveEndPoints)
-                rented = m_ReceiveEndPoints.TryPop(out endpoint);
-            if (!rented)
-                endpoint = new IPEndPoint(value.Address, value.Port);
+            lock (m_ReceiveGate)
+                endpoint = m_ReceiveEndPoints.Pop();
             endpoint.Address = value.Address;
             endpoint.Port = value.Port;
             return endpoint;
@@ -438,55 +446,19 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
 
         byte[] RentReceivePayload()
         {
-            lock (m_ReceivePayloads)
-            {
-                if (m_ReceivePayloads.TryPop(out byte[] payload))
-                    return payload;
-            }
-            return new byte[m_MaximumDatagramBytes];
+            lock (m_ReceiveGate)
+                return m_ReceivePayloads.Pop();
         }
 
         static bool EndPointEquals(IPEndPoint left, IPEndPoint right) =>
             left.Port == right.Port && left.Address.Equals(right.Address);
 
-        IPEndPoint RentSendEndPoint(IPEndPoint value)
+        void ReturnSend(in PendingSend pending)
         {
-            IPEndPoint endpoint;
-            bool rented;
-            lock (m_SendEndPoints)
-                rented = m_SendEndPoints.TryPop(out endpoint);
-            if (!rented)
-                endpoint = new IPEndPoint(value.Address, value.Port);
-            endpoint.Address = value.Address;
-            endpoint.Port = value.Port;
-            return endpoint;
-        }
-
-        void ReturnSendEndPoint(IPEndPoint value)
-        {
-            lock (m_SendEndPoints)
+            lock (m_SendGate)
             {
-                if (m_SendEndPoints.Count < m_QueueCapacity)
-                    m_SendEndPoints.Push(value);
-            }
-        }
-
-        byte[] RentSendBuffer()
-        {
-            lock (m_SendBuffers)
-            {
-                if (m_SendBuffers.TryPop(out byte[] buffer))
-                    return buffer;
-            }
-            return new byte[m_MaximumDatagramBytes];
-        }
-
-        void ReturnSendBuffer(byte[] buffer)
-        {
-            lock (m_SendBuffers)
-            {
-                if (m_SendBuffers.Count < m_QueueCapacity)
-                    m_SendBuffers.Push(buffer);
+                m_SendBuffers.Push(pending.Bytes);
+                m_SendEndPoints.Push(pending.RemoteEndPoint);
             }
         }
 

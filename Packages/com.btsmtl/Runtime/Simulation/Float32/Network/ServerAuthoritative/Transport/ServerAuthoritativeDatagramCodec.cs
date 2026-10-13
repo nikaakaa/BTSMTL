@@ -81,21 +81,15 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
 
     public readonly struct ServerAuthoritativeDatagramPacket
     {
-        public ServerAuthoritativeDatagramPacket(ServerAuthoritativeDatagramHeader header, byte[] payloadBuffer, int payloadLength)
+        internal ServerAuthoritativeDatagramPacket(in ServerAuthoritativeDatagramHeader header, byte[] payloadBuffer)
         {
-            if (payloadBuffer == null)
-                throw new ArgumentNullException(nameof(payloadBuffer));
-            if (payloadLength < 0 || payloadLength > payloadBuffer.Length || header.PayloadLength != payloadLength)
-                throw new ArgumentException("Gameplay datagram payload length does not match its header.", nameof(payloadBuffer));
             Header = header;
             PayloadBuffer = payloadBuffer;
-            PayloadLength = payloadLength;
         }
 
         public ServerAuthoritativeDatagramHeader Header { get; }
         public byte[] PayloadBuffer { get; }
-        public int PayloadLength { get; }
-        public bool IsValid => PayloadBuffer != null;
+        public int PayloadLength => Header.PayloadLength;
         public ReadOnlyMemory<byte> Payload => PayloadBuffer.AsMemory(0, PayloadLength);
     }
 
@@ -110,7 +104,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
             kind == ServerAuthoritativeDatagramKind.Command ||
             kind == ServerAuthoritativeDatagramKind.Snapshot;
 
-        public static int Write(
+        internal static int Write(
             ServerAuthoritativeDatagramHeader header,
             ReadOnlySpan<byte> payload,
             CanonicalWriter writer,
@@ -118,10 +112,6 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
         {
             if (header.PayloadLength != payload.Length)
                 throw new ArgumentException("Gameplay datagram payload length does not match its header.", nameof(payload));
-            if (writer == null)
-                throw new ArgumentNullException(nameof(writer));
-            if (maximumBytes <= 0)
-                throw new ArgumentOutOfRangeException(nameof(maximumBytes));
             int length = checked(sizeof(uint) + sizeof(int) + CanonicalContractProtocol.HashEncodedSize +
                 ServerAuthoritativeDatagramHeader.CanonicalMeasure(in header) + payload.Length);
             if (length > maximumBytes)
@@ -138,13 +128,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
         internal static ServerAuthoritativeDatagramPacket Read(
             ArraySegment<byte> bytes,
             CanonicalReader reader,
-            int maximumBytes,
             byte[] payloadBuffer)
         {
-            if (bytes.Count == 0 || bytes.Count > maximumBytes)
-                throw new InvalidDataException("Gameplay datagram length is invalid.");
-            if (payloadBuffer == null || payloadBuffer.Length < maximumBytes)
-                throw new ArgumentException("Gameplay datagram payload buffer is invalid.", nameof(payloadBuffer));
             reader.Reset(bytes);
             if (reader.ReadUInt32() != Magic)
                 throw new InvalidDataException("Gameplay datagram magic is invalid.");
@@ -157,9 +142,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
             reader.RequireComplete();
             payload.AsSpan().CopyTo(payloadBuffer);
             return new ServerAuthoritativeDatagramPacket(
-                header,
-                payloadBuffer,
-                payload.Count);
+                in header,
+                payloadBuffer);
         }
     }
 
