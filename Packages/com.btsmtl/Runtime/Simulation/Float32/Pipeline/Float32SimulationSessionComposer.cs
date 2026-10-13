@@ -271,6 +271,7 @@ namespace ThirdPersonSimulation
             SimulationSessionSourceDescriptor source,
             SimulationRuntimePortSet sourcePorts,
             IFloat32SimulationRestoreSource restoreSource,
+            IFloat32SimulationSessionSnapshotCodec snapshotCodec,
             SimulationWorldSolverDefinitionDescriptor solverDefinition,
             ICharacterWorldSolver solver,
             WorldFeature requiredSolverFeatures,
@@ -301,6 +302,7 @@ namespace ThirdPersonSimulation
             Source = source ?? throw new ArgumentNullException(nameof(source));
             SourcePorts = sourcePorts ?? throw new ArgumentNullException(nameof(sourcePorts));
             RestoreSource = restoreSource;
+            SnapshotCodec = snapshotCodec;
             SolverDefinition = solverDefinition ?? throw new ArgumentNullException(nameof(solverDefinition));
             Solver = solver ?? throw new ArgumentNullException(nameof(solver));
             RequiredSolverFeatures = requiredSolverFeatures;
@@ -330,6 +332,7 @@ namespace ThirdPersonSimulation
         public SimulationSessionSourceDescriptor Source { get; }
         public SimulationRuntimePortSet SourcePorts { get; }
         public IFloat32SimulationRestoreSource RestoreSource { get; }
+        public IFloat32SimulationSessionSnapshotCodec SnapshotCodec { get; }
         public SimulationWorldSolverDefinitionDescriptor SolverDefinition { get; }
         public ICharacterWorldSolver Solver { get; }
         public WorldFeature RequiredSolverFeatures { get; }
@@ -381,7 +384,7 @@ namespace ThirdPersonSimulation
                 target.NumericProfile.Id,
                 target.NumericProfile.AbiVersion,
                 request.PipelineRuntimePackage.Pipeline.SchemaVersion);
-            SimulationComponentIdentity snapshotIdentity = BuildSnapshotCodecIdentity(target, request.Backend);
+            SimulationComponentIdentity snapshotIdentity = request.SnapshotCodec == null ? default : request.SnapshotCodec.Identity;
             SimulationPipelineCompilationResult compilation = SimulationPipelineCompiler.Compile(
                 request.PipelineRuntimePackage.Pipeline,
                 request.PipelineRuntimePackage.PassFactories,
@@ -425,7 +428,6 @@ namespace ThirdPersonSimulation
                 request.Source.Model,
                 request.Source.Endpoint,
                 request.Source.Protocol);
-            var snapshotCodec = new Float32SimulationSessionSnapshotCodec(snapshotIdentity);
             var backendRequest = new Float32PassBackendCompositionRequest(
                 descriptor,
                 request.Backend,
@@ -437,7 +439,7 @@ namespace ThirdPersonSimulation
                 PortDescriptors(request.SourcePorts),
                 request.RestoreSource,
                 request.Solver,
-                snapshotCodec,
+                request.SnapshotCodec,
                 request.Committer,
                 request.DiagnosticsIdentity,
                 request.Diagnostics,

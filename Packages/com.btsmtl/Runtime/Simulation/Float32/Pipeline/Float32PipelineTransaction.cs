@@ -159,7 +159,7 @@ namespace ThirdPersonSimulation
             m_Solver.PrepareStepStorage(checked(maximumSteps + services.Descriptor.RecordedFrameCapacity));
             m_Diagnostics = diagnostics ?? throw new ArgumentNullException(nameof(diagnostics));
             m_RestoreSource = restoreSource;
-            m_SnapshotCodec = snapshotCodec ?? throw new ArgumentNullException(nameof(snapshotCodec));
+            m_SnapshotCodec = snapshotCodec;
             m_StepProjections = stepProjections;
             m_Committer = committer ?? throw new ArgumentNullException(nameof(committer));
             m_Products = products ?? throw new ArgumentNullException(nameof(products));
@@ -171,17 +171,17 @@ namespace ThirdPersonSimulation
                 m_Roster[actor].PrepareExecutionTextBudget(services.Descriptor.MaximumSessionCheckpointPayloadBytes);
             GameplayEffectSessionCapacity sessionCapacity = m_Roster[0].SessionCapacity;
             m_StateStore.PrepareStateStorage(sessionCapacity.StatePageCount);
-            m_SnapshotCodec.PrepareCheckpointStorage(services.Descriptor, characterRuntime,
-                services.StateParticipants, in sessionCapacity, m_StateStore.Current.WorldState, snapshotCapacity);
-            using (SimulationCharacterStatePayloadStorage.Page initialEncoding = m_Roster[0].RuntimeStatePages.EncodingStorage?.Acquire())
-            {
-                if (initialEncoding != null)
-                    for (int actor = 0; actor < m_Roster.Count; actor++)
-                        Float32CharacterRuntimeStateCodec.Encode(m_StateStore.Current.Actors[actor].State, initialEncoding);
-            }
             m_WorkingStateShell = new Float32PipelineWorkingState(m_StateStore.Current);
             if (services.Descriptor.CapturesState)
             {
+                m_SnapshotCodec.PrepareCheckpointStorage(services.Descriptor, characterRuntime,
+                    services.StateParticipants, in sessionCapacity, m_StateStore.Current.WorldState, snapshotCapacity);
+                using (SimulationCharacterStatePayloadStorage.Page initialEncoding = m_Roster[0].RuntimeStatePages.EncodingStorage?.Acquire())
+                {
+                    if (initialEncoding != null)
+                        for (int actor = 0; actor < m_Roster.Count; actor++)
+                            Float32CharacterRuntimeStateCodec.Encode(m_StateStore.Current.Actors[actor].State, initialEncoding);
+                }
                 m_StateStore.PrepareRestoreStorage(solver.MaximumStatePayloadBytes);
                 int maximumWorldPayloadBytes = WorldSimulationStateCodec.MaximumEncodedBytes(m_StateStore.Current.WorldState,
                     solver.MaximumStatePayloadBytes);
@@ -228,6 +228,8 @@ namespace ThirdPersonSimulation
 
         public SimulationSessionCheckpoint CaptureCheckpoint()
         {
+            if (!m_Services.Descriptor.CapturesState)
+                throw new NotSupportedException("This Session has no snapshot capability.");
             SimulationWorldStateSet state = m_StateStore.Current;
             if (state.LastCompletedTick == 0)
                 throw new InvalidOperationException("Session checkpoint requires a completed Logic Tick.");
@@ -236,6 +238,8 @@ namespace ThirdPersonSimulation
 
         public void RestoreCheckpoint(SimulationSessionCheckpoint checkpoint)
         {
+            if (!m_Services.Descriptor.CapturesState)
+                throw new NotSupportedException("This Session has no snapshot capability.");
             if (checkpoint == null)
                 throw new ArgumentNullException(nameof(checkpoint));
             if (!checkpoint.SessionId.Equals(m_Services.Descriptor.SessionId))
@@ -390,7 +394,8 @@ namespace ThirdPersonSimulation
         internal void Dispose()
         {
             ClearTransientState();
-            m_SnapshotCodec.DisposeCheckpointStorage();
+            if (m_Services.Descriptor.CapturesState)
+                m_SnapshotCodec.DisposeCheckpointStorage();
             m_StepProjections = null;
         }
 

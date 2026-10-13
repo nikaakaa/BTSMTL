@@ -61,7 +61,8 @@ namespace ThirdPersonSimulation
             RequireRole(executionBackend, SimulationComponentRole.ExecutionBackend, nameof(executionBackend));
             RequireRole(sessionSource, SimulationComponentRole.SessionSource, nameof(sessionSource));
             RequireRole(worldSolver, SimulationComponentRole.WorldSolver, nameof(worldSolver));
-            RequireRole(snapshotCodec, SimulationComponentRole.SnapshotCodec, nameof(snapshotCodec));
+            if (recordedFrameCapacity > 0 || snapshotCodec.IsValid)
+                RequireRole(snapshotCodec, SimulationComponentRole.SnapshotCodec, nameof(snapshotCodec));
             RequireRole(committer, SimulationComponentRole.Committer, nameof(committer));
             if (!pipeline.IsValid || !gameplayContentHash.IsValid || roster == null || solverImplementationId.Equals(default))
             {
@@ -121,7 +122,7 @@ namespace ThirdPersonSimulation
         public SimulationComponentIdentity SnapshotCodec { get; }
         public SimulationComponentIdentity Committer { get; }
         public SimulationComponentIdentity? Model { get; }
-        public bool CapturesState => Model.HasValue || RecordedFrameCapacity > 0;
+        public bool CapturesState => SnapshotCodec.IsValid;
         public SimulationComponentIdentity? Endpoint { get; }
         public SimulationProtocolIdentity? Protocol { get; }
 

@@ -161,30 +161,30 @@ namespace ThirdPersonSimulation.Fixed
             m_Solver.PrepareStepStorage(retainedCapacity);
             m_Diagnostics = diagnostics ?? throw new ArgumentNullException(nameof(diagnostics));
             m_RestoreSource = restoreSource;
-            m_SnapshotCodec = snapshotCodec ?? throw new ArgumentNullException(nameof(snapshotCodec));
-            GameplayEffectSessionCapacity checkpointCapacity = m_Roster[0].SessionCapacity;
-            var snapshotOwner = committer as IFixedSimulationSnapshotRetentionOwner;
-            int stepSnapshotCapacity = snapshotOwner == null ? 0 :
-                checked(snapshotOwner.MaximumRetainedStepSnapshots + checkpointCapacity.CandidateTicks);
-            m_SnapshotCodec.PrepareCheckpointStorage(services.Descriptor, m_CharacterRuntime, services.StateParticipants,
-                in checkpointCapacity, m_StateStore.Current.WorldState, stepSnapshotCapacity);
-            using (SimulationCharacterStatePayloadStorage.Page initialEncoding = m_Roster[0].RuntimeStatePages.EncodingStorage?.Acquire())
-            {
-#if UNITY_EDITOR
-                SimulationSnapshotCaptureProfile initialProfile = default;
-#endif
-                if (initialEncoding != null)
-                    for (int actor = 0; actor < m_Roster.Count; actor++)
-                        FixedCharacterRuntimeStateCodec.Encode(m_StateStore.Current.Actors[actor].State, initialEncoding
-#if UNITY_EDITOR
-                            , ref initialProfile
-#endif
-                            );
-            }
-            if (snapshotOwner != null)
-                snapshotOwner.PrepareSnapshotStorage(m_SnapshotCodec, in checkpointCapacity);
+            m_SnapshotCodec = snapshotCodec;
             if (services.Descriptor.CapturesState)
             {
+                GameplayEffectSessionCapacity checkpointCapacity = m_Roster[0].SessionCapacity;
+                var snapshotOwner = committer as IFixedSimulationSnapshotRetentionOwner;
+                int stepSnapshotCapacity = snapshotOwner == null ? 0 :
+                    checked(snapshotOwner.MaximumRetainedStepSnapshots + checkpointCapacity.CandidateTicks);
+                m_SnapshotCodec.PrepareCheckpointStorage(services.Descriptor, m_CharacterRuntime, services.StateParticipants,
+                    in checkpointCapacity, m_StateStore.Current.WorldState, stepSnapshotCapacity);
+                using (SimulationCharacterStatePayloadStorage.Page initialEncoding = m_Roster[0].RuntimeStatePages.EncodingStorage?.Acquire())
+                {
+#if UNITY_EDITOR
+                    SimulationSnapshotCaptureProfile initialProfile = default;
+#endif
+                    if (initialEncoding != null)
+                        for (int actor = 0; actor < m_Roster.Count; actor++)
+                            FixedCharacterRuntimeStateCodec.Encode(m_StateStore.Current.Actors[actor].State, initialEncoding
+#if UNITY_EDITOR
+                                , ref initialProfile
+#endif
+                                );
+                }
+                if (snapshotOwner != null)
+                    snapshotOwner.PrepareSnapshotStorage(m_SnapshotCodec, in checkpointCapacity);
                 m_StateStore.PrepareRestoreStorage(checkpointCapacity.StatePageCount, solver.MaximumStatePayloadBytes);
                 int maximumWorldPayloadBytes = WorldSimulationStateCodec.MaximumEncodedBytes(m_StateStore.Current.WorldState, solver.MaximumStatePayloadBytes);
                 m_CheckpointWorking = new FixedPipelineWorkingState(m_StateStore.Current);
@@ -275,6 +275,8 @@ namespace ThirdPersonSimulation.Fixed
 
         public SimulationSessionCheckpoint CaptureCheckpoint()
         {
+            if (!m_Services.Descriptor.CapturesState)
+                throw new NotSupportedException("This Session has no snapshot capability.");
             SimulationWorldStateSet state = m_StateStore.Current;
             if (state.LastCompletedTick == 0)
                 throw new InvalidOperationException("Session checkpoint requires a completed Logic Tick.");
@@ -291,6 +293,8 @@ namespace ThirdPersonSimulation.Fixed
 
         public void RestoreCheckpoint(SimulationSessionCheckpoint checkpoint)
         {
+            if (!m_Services.Descriptor.CapturesState)
+                throw new NotSupportedException("This Session has no snapshot capability.");
             if (checkpoint == null)
                 throw new ArgumentNullException(nameof(checkpoint));
             if (!checkpoint.SessionId.Equals(m_Services.Descriptor.SessionId))
@@ -335,7 +339,8 @@ namespace ThirdPersonSimulation.Fixed
         {
             if (m_Committer is IFixedSimulationSnapshotRetentionOwner snapshotOwner)
                 snapshotOwner.ClearSnapshotStorage();
-            m_SnapshotCodec.DisposeCheckpointStorage();
+            if (m_Services.Descriptor.CapturesState)
+                m_SnapshotCodec.DisposeCheckpointStorage();
         }
 
         public FixedPipelineWorkingState CreateWorkingState()

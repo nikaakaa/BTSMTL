@@ -182,7 +182,7 @@ namespace ThirdPersonSimulation
                 for (int participant = 0; participant < stateParticipants.Count; participant++)
                     if (stateParticipants[participant] is ISimulationPipelineStepStateStorage storage)
                         storage.PrepareStepStorage(snapshotCapacity);
-                SimulationPipelineStepSnapshotStorage stepProjections = request.Descriptor.MaximumSessionCheckpointPayloadBytes > 0
+                SimulationPipelineStepSnapshotStorage stepProjections = request.Descriptor.CapturesState && request.Descriptor.MaximumSessionCheckpointPayloadBytes > 0
                     ? new SimulationPipelineStepSnapshotStorage(request.CompiledPipeline, stateParticipants,
                         snapshotCapacity, request.Descriptor.MaximumSessionCheckpointPayloadBytes)
                     : null;

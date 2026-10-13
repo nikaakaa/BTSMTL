@@ -165,9 +165,14 @@ namespace ThirdPersonSimulation
             RequireExecutionSupport("Execution Target", context.ExecutionTargetExecutionSupport, context.RequiredExecutionSupport, context.ExecutionTarget.Identity.ToString(), errors);
             RequireExecutionSupport("Execution Backend", context.BackendExecutionSupport, context.RequiredExecutionSupport, context.Backend.ToString(), errors);
             RequireExecutionSupport("World Solver", context.SolverExecutionSupport, context.RequiredExecutionSupport, context.WorldSolver.ToString(), errors);
-            RequireExecutionSupport("Snapshot Codec", context.SnapshotExecutionSupport, context.RequiredExecutionSupport, context.SnapshotCodec.ToString(), errors);
+            if (context.SnapshotCodec.IsValid ||
+                (context.RequiredExecutionSupport & SimulationPipelineExecutionSupport.Restore) != 0)
+                RequireExecutionSupport("Snapshot Codec",
+                    context.SnapshotCodec.IsValid ? context.SnapshotExecutionSupport : SimulationPipelineExecutionSupport.None,
+                    context.RequiredExecutionSupport, context.SnapshotCodec.ToString(), errors);
             if (context.RequiresDeterministic &&
-                (!context.ExecutionTargetDeterministic || !context.BackendDeterministic || !context.SolverDeterministic || !context.SnapshotDeterministic))
+                (!context.ExecutionTargetDeterministic || !context.BackendDeterministic || !context.SolverDeterministic ||
+                 context.SnapshotCodec.IsValid && !context.SnapshotDeterministic))
             {
                 errors.Add(new SimulationPipelineCompileError(
                     SimulationPipelineCompileErrorCode.DeterministicSupportMismatch,

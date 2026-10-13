@@ -47,7 +47,7 @@ namespace ThirdPersonSimulation.Fixed
             SourcePorts = sourcePorts ?? throw new ArgumentNullException(nameof(sourcePorts));
             RestoreSource = restoreSource;
             Solver = solver ?? throw new ArgumentNullException(nameof(solver));
-            SnapshotCodec = snapshotCodec ?? throw new ArgumentNullException(nameof(snapshotCodec));
+            SnapshotCodec = snapshotCodec;
             Committer = committer ?? throw new ArgumentNullException(nameof(committer));
             if (!diagnosticsIdentity.IsValid || diagnosticsIdentity.Role != SimulationComponentRole.Diagnostics)
                 throw new ArgumentException("Diagnostics identity is invalid.", nameof(diagnosticsIdentity));
@@ -116,7 +116,8 @@ namespace ThirdPersonSimulation.Fixed
             {
                 throw Failure("world_solver_capability_missing", "World Solver does not cover the required Pipeline capabilities.");
             }
-            if (!SnapshotCodec.Identity.Equals(Descriptor.SnapshotCodec) || !Committer.Identity.Equals(Descriptor.Committer))
+            SimulationComponentIdentity snapshotIdentity = SnapshotCodec == null ? default : SnapshotCodec.Identity;
+            if (!snapshotIdentity.Equals(Descriptor.SnapshotCodec) || !Committer.Identity.Equals(Descriptor.Committer))
                 throw Failure("session_output_component_mismatch", "Snapshot codec or Committer identity does not match the Session descriptor.");
             bool requiresRestore = (CompiledPipeline.RequiredExecutionSupport & SimulationPipelineExecutionSupport.Restore) != 0;
             if (requiresRestore != (RestoreSource != null))

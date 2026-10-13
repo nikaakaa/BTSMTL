@@ -329,7 +329,7 @@ namespace ThirdPersonSimulation.Fixed
                 target.NumericProfile.Id,
                 target.NumericProfile.AbiVersion,
                 request.PipelineRuntimePackage.Pipeline.SchemaVersion);
-            SimulationComponentIdentity snapshotIdentity = request.SnapshotCodec.Identity;
+            SimulationComponentIdentity snapshotIdentity = request.SnapshotCodec == null ? default : request.SnapshotCodec.Identity;
             SimulationPipelineCompilationResult compilation = SimulationPipelineCompiler.Compile(
                 request.PipelineRuntimePackage.Pipeline,
                 request.PipelineRuntimePackage.PassFactories,

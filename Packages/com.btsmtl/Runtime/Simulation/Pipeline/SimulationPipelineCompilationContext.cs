@@ -37,7 +37,8 @@ namespace ThirdPersonSimulation
             RequireRole(backend, SimulationComponentRole.ExecutionBackend, nameof(backend));
             RequireRole(sessionSource, SimulationComponentRole.SessionSource, nameof(sessionSource));
             RequireRole(worldSolver, SimulationComponentRole.WorldSolver, nameof(worldSolver));
-            RequireRole(snapshotCodec, SimulationComponentRole.SnapshotCodec, nameof(snapshotCodec));
+            if (snapshotCodec.IsValid)
+                RequireRole(snapshotCodec, SimulationComponentRole.SnapshotCodec, nameof(snapshotCodec));
             if ((requiredExecutionSupport & SimulationPipelineExecutionSupport.Forward) == 0)
             {
                 throw new ArgumentException("Pipeline compilation Target requirements are incomplete.");
