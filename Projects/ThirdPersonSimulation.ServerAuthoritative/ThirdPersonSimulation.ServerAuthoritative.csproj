@@ -7,7 +7,7 @@
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <AssemblyName>ThirdPersonSimulation.ServerAuthoritative</AssemblyName>
     <RootNamespace>ThirdPersonSimulation.ServerAuthoritative</RootNamespace>
-    <SimulationSourceRoot>$(MSBuildThisFileDirectory)..\..\Packages\com.btsmtl\Runtime\Simulation\Float32\Network\ServerAuthoritative</SimulationSourceRoot>
+    <SimulationSourceRoot>$(MSBuildThisFileDirectory)..\..\Packages\com.btsmtl.network.server-authoritative\Runtime\ServerAuthoritative</SimulationSourceRoot>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="$(SimulationSourceRoot)\**\*.cs" Exclude="$(SimulationSourceRoot)\Transport\**\*.cs" LinkBase="Source" />

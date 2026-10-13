@@ -7,7 +7,7 @@
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <AssemblyName>ThirdPersonSimulation.ServerAuthoritative.Transport</AssemblyName>
     <RootNamespace>ThirdPersonSimulation.ServerAuthoritative.Transport</RootNamespace>
-    <SimulationSourceRoot>$(MSBuildThisFileDirectory)..\..\Packages\com.btsmtl\Runtime\Simulation\Float32\Network\ServerAuthoritative\Transport</SimulationSourceRoot>
+    <SimulationSourceRoot>$(MSBuildThisFileDirectory)..\..\Packages\com.btsmtl.network.server-authoritative\Runtime\ServerAuthoritative\Transport</SimulationSourceRoot>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="$(SimulationSourceRoot)\**\*.cs" LinkBase="Source" />
