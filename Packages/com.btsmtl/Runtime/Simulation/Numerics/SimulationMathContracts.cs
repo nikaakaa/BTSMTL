@@ -4,6 +4,8 @@ namespace ThirdPersonSimulation
     {
         TScalar Zero { get; }
         TScalar One { get; }
+        TScalar FromInt32(int value);
+        int FloorToInt32(TScalar value);
         TScalar Add(TScalar left, TScalar right);
         TScalar Subtract(TScalar left, TScalar right);
         TScalar Multiply(TScalar left, TScalar right);
@@ -40,6 +42,7 @@ namespace ThirdPersonSimulation
         TVector3 DivideVector3(TVector3 value, TScalar divisor);
         TVector3 AddVertical(TVector3 value, TScalar displacement);
         bool IsVector3Zero(TVector3 value);
+        bool IsVector2Zero(TVector2 value);
     }
 
     public interface IPlanarRotation<TVector3, TYaw>

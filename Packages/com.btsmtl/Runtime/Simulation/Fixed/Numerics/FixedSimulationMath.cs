@@ -8,6 +8,8 @@ namespace ThirdPersonSimulation.Fixed
     {
         public FixedScalar Zero => FixedScalar.Zero;
         public FixedScalar One => FixedScalar.One;
+        public FixedScalar FromInt32(int value) => FixedScalar.FromInt64(value);
+        public int FloorToInt32(FixedScalar value) => checked((int)(value.Raw >> FixedScalar.FractionalBits));
         public FixedVector2 ZeroVector2 => FixedVector2.Zero;
         public FixedVector3 ZeroVector3 => FixedVector3.Zero;
 
@@ -42,6 +44,7 @@ namespace ThirdPersonSimulation.Fixed
         public FixedVector3 AddVertical(FixedVector3 value, FixedScalar displacement) =>
             new FixedVector3(value.X, value.Y + displacement, value.Z);
         public bool IsVector3Zero(FixedVector3 value) => value == FixedVector3.Zero;
+        public bool IsVector2Zero(FixedVector2 value) => value == FixedVector2.Zero;
         public FixedYaw Yaw(FixedScalar degrees) => new FixedYaw(degrees);
         public FixedScalar Degrees(FixedYaw yaw) => yaw.Degrees;
         public FixedScalar DeltaYaw(FixedYaw from, FixedYaw to) => FixedAngle.Delta(from, to);

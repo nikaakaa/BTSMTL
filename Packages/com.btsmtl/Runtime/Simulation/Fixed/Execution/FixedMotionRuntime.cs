@@ -1,3 +1,5 @@
+using LocomotionProfile = ThirdPersonSimulation.LocomotionMotionProfile<ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedSimulationMath>;
+using LocomotionMotionCalculation = ThirdPersonSimulation.LocomotionMotionCalculation<ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedVector2, ThirdPersonSimulation.Fixed.FixedVector3, ThirdPersonSimulation.Fixed.FixedYaw, ThirdPersonSimulation.Fixed.FixedSimulationMath>;
 using GameplayAbilityCurve = ThirdPersonSimulation.GameplayAbilityCurve<ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedSimulationMath>;
 using MotionWarpWindowRuntime = ThirdPersonSimulation.MotionWarpWindowRuntime<ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedVector2, ThirdPersonSimulation.Fixed.FixedVector3, ThirdPersonSimulation.Fixed.FixedYaw, ThirdPersonSimulation.Fixed.FixedActionInstanceReference, ThirdPersonSimulation.Fixed.FixedSimulationMath, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Fixed.FixedScalar>, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Fixed.FixedVector3>, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Fixed.FixedYaw>>;
 using MotionWarpCalculation = ThirdPersonSimulation.MotionWarpCalculation<ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedVector2, ThirdPersonSimulation.Fixed.FixedVector3, ThirdPersonSimulation.Fixed.FixedYaw, ThirdPersonSimulation.Fixed.FixedSimulationMath>;
@@ -271,25 +273,17 @@ namespace ThirdPersonSimulation.Fixed
             AbilityStateValue input = inputs.FindByKind(ProgramStateValueKind.Vector2);
             if (input.Kind != ProgramStateValueKind.Vector2)
                 throw new InvalidOperationException($"Locomotion operation '{SourcePath(operation)}' has no Vector2 input.");
-            FixedVector2 move = input.Vector2;
-            if (move.SqrMagnitude > FixedScalar.One)
-                move = move.Normalized;
+            FixedVector2 move = LocomotionMotionCalculation.NormalizeInput(input.Vector2);
             var movementPlaybackClock = new CommittedMovementPlaybackClock(
                 SourcePath(operation),
                 generation,
                 m_Frame.Tick,
                 committedTicks,
                 m_Ability.TickRate);
-            FixedScalar delta = FixedScalar.One / FixedScalar.FromInt64(m_Ability.TickRate);
             ref readonly LocomotionProfile profile = ref m_Profiles[operation.Handle.Value];
-            FixedScalar maxYaw = profile.TurnSpeed * delta;
-            FixedVector3 displacement = ResolveDisplacement(in profile, move, delta, committedTicks - 1);
-            FixedScalar yaw = FixedScalar.Zero;
-            if (move != FixedVector2.Zero && maxYaw > FixedScalar.Zero)
-            {
-                FixedYaw desired = FixedAngle.FromPlanarDirection(move);
-                yaw = FixedScalar.Clamp(FixedAngle.Delta(m_Frame.BodyFacts.Yaw, desired), -maxYaw, maxYaw);
-            }
+            FixedScalar delta = profile.TickDelta;
+            LocomotionMotionCalculation.Evaluate(in profile, move, m_Frame.BodyFacts.Yaw, committedTicks - 1,
+                out FixedVector3 displacement, out FixedScalar yaw);
             CommittedLocomotionPlanarMotionTimeline locomotionTimeline = ResolveMotionTimeline(
                 cursor,
                 operation,
@@ -368,58 +362,6 @@ namespace ThirdPersonSimulation.Fixed
                 continuationVelocity.Y.ToSingle());
         }
 
-        FixedVector3 ResolveDisplacement(
-            in LocomotionProfile profile,
-            FixedVector2 move,
-            FixedScalar delta,
-            int elapsedTicks)
-        {
-            if (profile.DisplacementMode == LocomotionInputMotionDisplacementMode.ConstantSpeed)
-            {
-                return new FixedVector3(
-                    move.X * profile.MoveSpeed * delta,
-                    FixedScalar.Zero,
-                    move.Y * profile.MoveSpeed * delta);
-            }
-            if (move == FixedVector2.Zero)
-                return FixedVector3.Zero;
-
-            FixedScalar tickRate = FixedScalar.FromInt64(m_Ability.TickRate);
-            FixedScalar fromTime = FixedScalar.FromInt64(elapsedTicks) / tickRate;
-            FixedScalar toTime = FixedScalar.FromInt64(checked(elapsedTicks + 1)) / tickRate;
-            bool looping = profile.ExecutionMode == LocomotionInputMotionExecutionMode.Continuous;
-            GameplayAbilityCurve xCurve = profile.XCurve;
-            GameplayAbilityCurve zCurve = profile.ZCurve;
-            FixedScalar duration = profile.CurveDuration;
-            FixedScalar xCycleTotal = looping ? xCurve.Evaluate(duration, FixedScalar.Zero) : FixedScalar.Zero;
-            FixedScalar zCycleTotal = looping ? zCurve.Evaluate(duration, FixedScalar.Zero) : FixedScalar.Zero;
-            FixedScalar localX = SampleCumulative(xCurve, toTime, duration, looping, xCycleTotal) -
-                SampleCumulative(xCurve, fromTime, duration, looping, xCycleTotal);
-            FixedScalar localZ = SampleCumulative(zCurve, toTime, duration, looping, zCycleTotal) -
-                SampleCumulative(zCurve, fromTime, duration, looping, zCycleTotal);
-
-            FixedVector2 forward = move.Normalized;
-            FixedVector2 right = new FixedVector2(forward.Y, -forward.X);
-            return new FixedVector3(
-                right.X * localX + forward.X * localZ,
-                FixedScalar.Zero,
-                right.Y * localX + forward.Y * localZ);
-        }
-
-        static FixedScalar SampleCumulative(
-            GameplayAbilityCurve curve,
-            FixedScalar time,
-            FixedScalar duration,
-            bool looping,
-            FixedScalar cycleTotal)
-        {
-            if (!looping)
-                return curve.Evaluate(FixedScalar.Clamp(time, FixedScalar.Zero, duration), FixedScalar.Zero);
-            int cycle = (time / duration).TruncateToInt32();
-            FixedScalar localTime = time - duration * FixedScalar.FromInt64(cycle);
-            return cycleTotal * FixedScalar.FromInt64(cycle) + curve.Evaluate(localTime, FixedScalar.Zero);
-        }
-
         static LocomotionProfile[] BuildProfiles(
             GameplayAbilityExecutionLayout layout,
             FixedGameplayAbilityExecutionServices services)
@@ -484,43 +426,13 @@ namespace ThirdPersonSimulation.Fixed
                     curveDuration,
                     durationTicks,
                     xCurve,
-                    zCurve);
+                    zCurve,
+                    layout.TickRate);
             }
 
             return profiles;
         }
 
-        readonly struct LocomotionProfile
-        {
-            public LocomotionProfile(
-                LocomotionInputMotionExecutionMode executionMode,
-                LocomotionInputMotionDisplacementMode displacementMode,
-                FixedScalar turnSpeed,
-                FixedScalar moveSpeed,
-                FixedScalar curveDuration,
-                int durationTicks,
-                GameplayAbilityCurve xCurve,
-                GameplayAbilityCurve zCurve)
-            {
-                ExecutionMode = executionMode;
-                DisplacementMode = displacementMode;
-                TurnSpeed = turnSpeed;
-                MoveSpeed = moveSpeed;
-                CurveDuration = curveDuration;
-                DurationTicks = durationTicks;
-                XCurve = xCurve;
-                ZCurve = zCurve;
-            }
-
-            public LocomotionInputMotionExecutionMode ExecutionMode { get; }
-            public LocomotionInputMotionDisplacementMode DisplacementMode { get; }
-            public FixedScalar TurnSpeed { get; }
-            public FixedScalar MoveSpeed { get; }
-            public FixedScalar CurveDuration { get; }
-            public int DurationTicks { get; }
-            public GameplayAbilityCurve XCurve { get; }
-            public GameplayAbilityCurve ZCurve { get; }
-        }
     }
 }
 

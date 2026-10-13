@@ -1,3 +1,5 @@
+using LocomotionProfile = ThirdPersonSimulation.LocomotionMotionProfile<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32SimulationMath>;
+using LocomotionMotionCalculation = ThirdPersonSimulation.LocomotionMotionCalculation<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32Vector2, ThirdPersonSimulation.Float32Vector3, ThirdPersonSimulation.Float32Yaw, ThirdPersonSimulation.Float32SimulationMath>;
 using GameplayAbilityCurve = ThirdPersonSimulation.GameplayAbilityCurve<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32SimulationMath>;
 using MotionWarpWindowRuntime = ThirdPersonSimulation.MotionWarpWindowRuntime<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32Vector2, ThirdPersonSimulation.Float32Vector3, ThirdPersonSimulation.Float32Yaw, ThirdPersonSimulation.Float32ActionInstanceReference, ThirdPersonSimulation.Float32SimulationMath, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Float32Scalar>, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Float32Vector3>, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Float32Yaw>>;
 using MotionWarpCalculation = ThirdPersonSimulation.MotionWarpCalculation<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32Vector2, ThirdPersonSimulation.Float32Vector3, ThirdPersonSimulation.Float32Yaw, ThirdPersonSimulation.Float32SimulationMath>;
@@ -279,25 +281,17 @@ namespace ThirdPersonSimulation
             AbilityStateValue input = inputs.FindByKind(ProgramStateValueKind.Vector2);
             if (input.Kind != ProgramStateValueKind.Vector2)
                 throw new InvalidOperationException($"Locomotion operation '{SourcePath(operation)}' has no Vector2 input.");
-            Float32Vector2 move = input.Vector2;
-            if (move.SqrMagnitude > Float32Scalar.One)
-                move = move.Normalized;
+            Float32Vector2 move = LocomotionMotionCalculation.NormalizeInput(input.Vector2);
             var movementPlaybackClock = new CommittedMovementPlaybackClock(
                 SourcePath(operation),
                 generation,
                 m_Frame.Tick,
                 committedTicks,
                 m_Ability.TickRate);
-            Float32Scalar delta = Float32Scalar.One / Float32Scalar.FromInt64(m_Ability.TickRate);
             ref readonly LocomotionProfile profile = ref m_Profiles[operation.Handle.Value];
-            Float32Scalar maxYaw = profile.TurnSpeed * delta;
-            Float32Vector3 displacement = ResolveDisplacement(in profile, move, delta, committedTicks - 1);
-            Float32Scalar yaw = Float32Scalar.Zero;
-            if (move != Float32Vector2.Zero && maxYaw > Float32Scalar.Zero)
-            {
-                Float32Yaw desired = Float32Angle.FromPlanarDirection(move);
-                yaw = Float32Scalar.Clamp(Float32Angle.Delta(m_Frame.BodyFacts.Yaw, desired), -maxYaw, maxYaw);
-            }
+            Float32Scalar delta = profile.TickDelta;
+            LocomotionMotionCalculation.Evaluate(in profile, move, m_Frame.BodyFacts.Yaw, committedTicks - 1,
+                out Float32Vector3 displacement, out Float32Scalar yaw);
             CommittedLocomotionPlanarMotionTimeline locomotionTimeline = ResolveMotionTimeline(
                 cursor,
                 operation,
@@ -376,58 +370,6 @@ namespace ThirdPersonSimulation
                 continuationVelocity.Y.ToSingle());
         }
 
-        Float32Vector3 ResolveDisplacement(
-            in LocomotionProfile profile,
-            Float32Vector2 move,
-            Float32Scalar delta,
-            int elapsedTicks)
-        {
-            if (profile.DisplacementMode == LocomotionInputMotionDisplacementMode.ConstantSpeed)
-            {
-                return new Float32Vector3(
-                    move.X * profile.MoveSpeed * delta,
-                    Float32Scalar.Zero,
-                    move.Y * profile.MoveSpeed * delta);
-            }
-            if (move == Float32Vector2.Zero)
-                return Float32Vector3.Zero;
-
-            Float32Scalar tickRate = Float32Scalar.FromInt64(m_Ability.TickRate);
-            Float32Scalar fromTime = Float32Scalar.FromInt64(elapsedTicks) / tickRate;
-            Float32Scalar toTime = Float32Scalar.FromInt64(checked(elapsedTicks + 1)) / tickRate;
-            bool looping = profile.ExecutionMode == LocomotionInputMotionExecutionMode.Continuous;
-            GameplayAbilityCurve xCurve = profile.XCurve;
-            GameplayAbilityCurve zCurve = profile.ZCurve;
-            Float32Scalar duration = profile.CurveDuration;
-            Float32Scalar xCycleTotal = looping ? xCurve.Evaluate(duration, Float32Scalar.Zero) : Float32Scalar.Zero;
-            Float32Scalar zCycleTotal = looping ? zCurve.Evaluate(duration, Float32Scalar.Zero) : Float32Scalar.Zero;
-            Float32Scalar localX = SampleCumulative(xCurve, toTime, duration, looping, xCycleTotal) -
-                SampleCumulative(xCurve, fromTime, duration, looping, xCycleTotal);
-            Float32Scalar localZ = SampleCumulative(zCurve, toTime, duration, looping, zCycleTotal) -
-                SampleCumulative(zCurve, fromTime, duration, looping, zCycleTotal);
-
-            Float32Vector2 forward = move.Normalized;
-            Float32Vector2 right = new Float32Vector2(forward.Y, -forward.X);
-            return new Float32Vector3(
-                right.X * localX + forward.X * localZ,
-                Float32Scalar.Zero,
-                right.Y * localX + forward.Y * localZ);
-        }
-
-        static Float32Scalar SampleCumulative(
-            GameplayAbilityCurve curve,
-            Float32Scalar time,
-            Float32Scalar duration,
-            bool looping,
-            Float32Scalar cycleTotal)
-        {
-            if (!looping)
-                return curve.Evaluate(Float32Scalar.Clamp(time, Float32Scalar.Zero, duration), Float32Scalar.Zero);
-            int cycle = (int)Math.Floor((time / duration).ToDouble());
-            Float32Scalar localTime = time - duration * Float32Scalar.FromInt64(cycle);
-            return cycleTotal * Float32Scalar.FromInt64(cycle) + curve.Evaluate(localTime, Float32Scalar.Zero);
-        }
-
         static LocomotionProfile[] BuildProfiles(
             GameplayAbilityExecutionLayout layout,
             Float32GameplayAbilityExecutionServices services)
@@ -492,43 +434,13 @@ namespace ThirdPersonSimulation
                     curveDuration,
                     durationTicks,
                     xCurve,
-                    zCurve);
+                    zCurve,
+                    layout.TickRate);
             }
 
             return profiles;
         }
 
-        readonly struct LocomotionProfile
-        {
-            public LocomotionProfile(
-                LocomotionInputMotionExecutionMode executionMode,
-                LocomotionInputMotionDisplacementMode displacementMode,
-                Float32Scalar turnSpeed,
-                Float32Scalar moveSpeed,
-                Float32Scalar curveDuration,
-                int durationTicks,
-                GameplayAbilityCurve xCurve,
-                GameplayAbilityCurve zCurve)
-            {
-                ExecutionMode = executionMode;
-                DisplacementMode = displacementMode;
-                TurnSpeed = turnSpeed;
-                MoveSpeed = moveSpeed;
-                CurveDuration = curveDuration;
-                DurationTicks = durationTicks;
-                XCurve = xCurve;
-                ZCurve = zCurve;
-            }
-
-            public LocomotionInputMotionExecutionMode ExecutionMode { get; }
-            public LocomotionInputMotionDisplacementMode DisplacementMode { get; }
-            public Float32Scalar TurnSpeed { get; }
-            public Float32Scalar MoveSpeed { get; }
-            public Float32Scalar CurveDuration { get; }
-            public int DurationTicks { get; }
-            public GameplayAbilityCurve XCurve { get; }
-            public GameplayAbilityCurve ZCurve { get; }
-        }
     }
 }
 

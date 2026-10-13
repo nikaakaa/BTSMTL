@@ -8,6 +8,8 @@ namespace ThirdPersonSimulation
     {
         public Float32Scalar Zero => Float32Scalar.Zero;
         public Float32Scalar One => Float32Scalar.One;
+        public Float32Scalar FromInt32(int value) => Float32Scalar.FromInt64(value);
+        public int FloorToInt32(Float32Scalar value) => (int)System.Math.Floor(value.ToDouble());
         public Float32Vector2 ZeroVector2 => Float32Vector2.Zero;
         public Float32Vector3 ZeroVector3 => Float32Vector3.Zero;
 
@@ -42,6 +44,7 @@ namespace ThirdPersonSimulation
         public Float32Vector3 AddVertical(Float32Vector3 value, Float32Scalar displacement) =>
             new Float32Vector3(value.X, value.Y + displacement, value.Z);
         public bool IsVector3Zero(Float32Vector3 value) => value == Float32Vector3.Zero;
+        public bool IsVector2Zero(Float32Vector2 value) => value == Float32Vector2.Zero;
         public Float32Yaw Yaw(Float32Scalar degrees) => new Float32Yaw(degrees);
         public Float32Scalar Degrees(Float32Yaw yaw) => yaw.Degrees;
         public Float32Scalar DeltaYaw(Float32Yaw from, Float32Yaw to) => Float32Angle.Delta(from, to);
