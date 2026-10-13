@@ -160,7 +160,24 @@ namespace BTSMTL.Timeline.Editor
                 m_Request.CameraPriority = EditorGUILayout.IntField("Priority", m_Request.CameraPriority);
             }
             else if (m_Request.Kind == TimelineContractKinds.CameraEffectClip)
+            {
+                UnityEngine.Object previousResource = m_Request.Resource;
                 m_Request.Resource = EditorGUILayout.ObjectField("Effect", m_Request.Resource, typeof(CameraEffectAsset), false);
+                if (!ReferenceEquals(previousResource, m_Request.Resource) && m_Request.Resource is ITimelineCameraSourceAsset source)
+                {
+                    m_Request.SourceStartTime = 0f;
+                    m_Request.SourceEndTime = source.SourceDuration;
+                    FixedScalar sourceEnd = m_Request.StartTime + FixedScalar.FromDouble(source.SourceDuration);
+                    if (m_Request.EndTime == m_Request.DefaultEndTime)
+                        m_Request.EndTime = sourceEnd;
+                    m_Request.DefaultEndTime = sourceEnd;
+                }
+                if (m_Request.Resource is ITimelineCameraSourceAsset)
+                {
+                    m_Request.SourceStartTime = EditorGUILayout.FloatField("源起点（秒）", m_Request.SourceStartTime);
+                    m_Request.SourceEndTime = EditorGUILayout.FloatField("源终点（秒）", m_Request.SourceEndTime);
+                }
+            }
             else if (m_Request.Kind == TimelineContractKinds.ScenePresentationParameterCurveClip)
             {
                 BuildBindingPopup("Target Binding", true, ref m_Request.TargetBindingId);

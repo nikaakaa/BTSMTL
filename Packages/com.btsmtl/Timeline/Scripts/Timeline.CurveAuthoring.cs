@@ -16,6 +16,9 @@ namespace BTSMTL.Timeline
     {
         readonly Func<AnimationCurve> m_DefaultFactory;
         readonly Func<Clip, bool> m_Availability;
+        readonly Func<object, AnimationCurve> m_Read;
+        readonly Action<object, AnimationCurve> m_Replace;
+        readonly Func<object, float> m_SourceDuration;
 
         public TimelineCurveChannelDescriptor(
             TimelineCurveChannelId channelId,
@@ -38,41 +41,86 @@ namespace BTSMTL.Timeline
             m_Availability = availability;
         }
 
+        public TimelineCurveChannelDescriptor(
+            TimelineCurveChannelId channelId,
+            Type ownerType,
+            string displayName,
+            string parameterGroup,
+            int componentIndex,
+            Color color,
+            TimelineCurveValueDomain valueDomain,
+            Func<object, AnimationCurve> read,
+            Action<object, AnimationCurve> replace,
+            Func<object, float> sourceDuration)
+        {
+            ChannelId = channelId;
+            OwnerType = ownerType;
+            DisplayName = displayName;
+            ParameterGroup = parameterGroup;
+            ComponentIndex = componentIndex;
+            Color = color;
+            TimeDomain = TimelineCurveTimeDomain.SourceSeconds;
+            ValueDomain = valueDomain;
+            m_Read = read;
+            m_Replace = replace;
+            m_SourceDuration = sourceDuration;
+        }
+
         public TimelineCurveChannelId ChannelId { get; }
         public Type OwnerType { get; }
         public string DisplayName { get; }
+        public string ParameterGroup { get; }
+        public int ComponentIndex { get; }
         public Color Color { get; }
         public TimelineCurveTimeDomain TimeDomain { get; }
         public TimelineCurveValueDomain ValueDomain { get; }
-        public bool Supports(Clip owner) => owner != null && OwnerType.IsInstanceOfType(owner) && (m_Availability?.Invoke(owner) ?? true);
+        public bool Supports(object owner) => owner != null && OwnerType.IsInstanceOfType(owner) && (m_Availability?.Invoke((Clip)owner) ?? true);
         public AnimationCurve CreateDefaultCurve() => TimelineCurveAuthoring.CopyCurve(m_DefaultFactory());
-        public bool IsDefault(AnimationCurve curve) => TimelineCurveAuthoring.AreEquivalent(curve, CreateDefaultCurve());
+        public bool IsDefault(AnimationCurve curve) => m_DefaultFactory != null && TimelineCurveAuthoring.AreEquivalent(curve, CreateDefaultCurve());
 
-        public AnimationCurve Read(Clip owner)
+        public AnimationCurve Read(object owner)
         {
             RequireOwner(owner);
-            return TimelineCurveAuthoring.Read(owner, ChannelId);
+            return m_Read != null ? m_Read(owner) : TimelineCurveAuthoring.Read((Clip)owner, ChannelId);
         }
 
 #if UNITY_EDITOR
-        public void Replace(Clip owner, AnimationCurve curve)
+        public void Replace(object owner, AnimationCurve curve)
         {
             RequireOwner(owner);
-            TimelineCurveAuthoring.Replace(owner, ChannelId, curve);
+            if (m_Replace != null)
+                m_Replace(owner, curve);
+            else
+                TimelineCurveAuthoring.Replace((Clip)owner, ChannelId, curve);
         }
 #endif
 
-        public void Validate(Clip owner, AnimationCurve curve)
+        public void Validate(object owner, AnimationCurve curve)
         {
             RequireOwner(owner);
-            TimelineCurveAuthoring.Validate(owner, ChannelId, curve);
+            if (TimeDomain == TimelineCurveTimeDomain.SourceSeconds)
+                TimelineCurveAuthoring.ValidateSourceSeconds(curve, ValueDomain, m_SourceDuration(owner), ChannelId.Value);
+            else
+                TimelineCurveAuthoring.Validate((Clip)owner, ChannelId, curve);
         }
 
-        void RequireOwner(Clip owner)
+        void RequireOwner(object owner)
         {
             if (!Supports(owner))
                 throw new InvalidOperationException($"Curve channel '{ChannelId}' does not support owner '{owner?.GetType().FullName ?? "null"}'.");
         }
+    }
+
+    public readonly struct TimelineCurveChannelValue
+    {
+        public TimelineCurveChannelValue(TimelineCurveChannelId channelId, AnimationCurve curve)
+        {
+            ChannelId = channelId;
+            Curve = curve;
+        }
+
+        public TimelineCurveChannelId ChannelId { get; }
+        public AnimationCurve Curve { get; }
     }
 
     public static class TimelineCurveChannelCatalog
@@ -300,6 +348,74 @@ namespace BTSMTL.Timeline
                 if (domain.IsBounded && (key.value < domain.Minimum || key.value > domain.Maximum))
                     throw new InvalidOperationException($"Timeline curve key {i} value is outside [{domain.Minimum}, {domain.Maximum}].");
             }
+        }
+
+        public static void ValidateSourceSeconds(AnimationCurve curve, TimelineCurveValueDomain domain,
+            float duration, string source)
+        {
+            if (curve == null || curve.length == 0)
+                throw new InvalidOperationException($"{source} 缺少源曲线关键帧。");
+            Keyframe[] keys = curve.keys;
+            for (int i = 0; i < keys.Length; i++)
+            {
+                Keyframe key = keys[i];
+                if (!float.IsFinite(key.time) || key.time < 0f || key.time > duration ||
+                    i > 0 && key.time <= keys[i - 1].time || !float.IsFinite(key.value) ||
+                    float.IsNaN(key.inTangent) || float.IsNaN(key.outTangent) ||
+                    !float.IsFinite(key.inWeight) || !float.IsFinite(key.outWeight) ||
+                    key.inWeight < 0f || key.inWeight > 1f || key.outWeight < 0f || key.outWeight > 1f ||
+                    (int)key.weightedMode < 0 || (int)key.weightedMode > (int)WeightedMode.Both)
+                    throw new InvalidOperationException($"{source} 的关键帧 {i} 不符合源秒数、有限数值或切线权重合同。");
+                RequireSourceValue(key.value, domain, source);
+                if (i > 0)
+                    RequireSegmentRange(curve, keys[i - 1], key, domain, source);
+            }
+            RequireSourceValue(curve.Evaluate(0f), domain, source);
+            RequireSourceValue(curve.Evaluate(duration), domain, source);
+        }
+
+        static void RequireSegmentRange(AnimationCurve curve, Keyframe left, Keyframe right,
+            TimelineCurveValueDomain domain, string source)
+        {
+            if (float.IsInfinity(left.outTangent) || float.IsInfinity(right.inTangent))
+                return;
+            double span = right.time - left.time;
+            double outWeight = (left.weightedMode & WeightedMode.Out) != 0 ? left.outWeight : 1d / 3d;
+            double inWeight = (right.weightedMode & WeightedMode.In) != 0 ? right.inWeight : 1d / 3d;
+            double p0 = left.value;
+            double p1 = p0 + span * left.outTangent * outWeight;
+            double p3 = right.value;
+            double p2 = p3 - span * right.inTangent * inWeight;
+            double a = -p0 + 3d * p1 - 3d * p2 + p3;
+            double b = 2d * (p0 - 2d * p1 + p2);
+            double c = p1 - p0;
+            if (a == 0d)
+            {
+                if (b != 0d)
+                    RequireExtremum(-c / b);
+                return;
+            }
+            double discriminant = b * b - 4d * a * c;
+            if (discriminant < 0d)
+                return;
+            double root = Math.Sqrt(discriminant);
+            RequireExtremum((-b - root) / (2d * a));
+            RequireExtremum((-b + root) / (2d * a));
+
+            void RequireExtremum(double t)
+            {
+                if (t <= 0d || t >= 1d)
+                    return;
+                double u = 1d - t;
+                double x = 3d * u * u * t * outWeight + 3d * u * t * t * (1d - inWeight) + t * t * t;
+                RequireSourceValue(curve.Evaluate((float)(left.time + span * x)), domain, source);
+            }
+        }
+
+        static void RequireSourceValue(float value, TimelineCurveValueDomain domain, string source)
+        {
+            if (!float.IsFinite(value) || domain.IsBounded && (value < domain.Minimum || value > domain.Maximum))
+                throw new InvalidOperationException($"{source} 的曲线插值超出正式数值域 {domain.Summary}。");
         }
 
         public static bool IsFinite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);

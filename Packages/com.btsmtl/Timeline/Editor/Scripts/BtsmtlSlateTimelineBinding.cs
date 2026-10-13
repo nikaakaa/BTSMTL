@@ -7,6 +7,7 @@ using BTSMTL.Timeline;
 using Slate;
 using UnityEditor;
 using UnityEngine;
+using ThirdPersonCamera;
 
 namespace BTSMTL.Timeline.Editor
 {
@@ -45,6 +46,71 @@ namespace BTSMTL.Timeline.Editor
         string m_TickSnapLabel = "吸附 缺少 Pipeline";
         string m_TickSettingsLabel = "逻辑 tick：请先选择 Pipeline";
         string m_SecondsSnapLabel;
+        string m_CameraResourceClipId;
+        string m_EditCameraResourceRevision;
+        readonly HashSet<ITimelineCameraSourceAsset> m_CameraResources = new();
+        public event Action ResourceChanged;
+
+        public void ReleaseResources()
+        {
+            UnbindResources();
+            m_CameraResourceClipId = null;
+            m_Request.AuthoringHost.ReleaseCameraSourceEditing();
+        }
+
+        void UnbindResources()
+        {
+            foreach (ITimelineCameraSourceAsset resource in m_CameraResources)
+                resource.ContentChanged -= OnCameraResourceChanged;
+            m_CameraResources.Clear();
+        }
+
+        void OnCameraResourceChanged() => ResourceChanged?.Invoke();
+        ITimelineCameraSourceAsset CameraResource => m_CameraResourceClipId != null &&
+            m_Clips.TryGetValue(m_CameraResourceClipId, out BtsmtlTimelineClipBinding clip)
+            ? ((CameraEffectClip)clip.Source).Effect as ITimelineCameraSourceAsset : null;
+
+        internal void DrawCameraResourceInspector(Clip selected)
+        {
+            if (selected is not CameraEffectClip camera || camera.Effect is not ITimelineCameraSourceAsset resource)
+                return;
+            EditorGUILayout.LabelField("镜头资源", camera.Effect.name);
+            EditorGUILayout.LabelField("资源路径", AssetDatabase.GetAssetPath(camera.Effect));
+            EditorGUILayout.LabelField("作者修订", resource.ContentRevision);
+            EditorGUILayout.HelpBox("镜头运动由此共享资源持有，编辑会影响所有引用。片段窗口与源区间只影响本次使用。", MessageType.Info);
+            if (GUILayout.Button("定位资源"))
+                EditorGUIUtility.PingObject(camera.Effect);
+            using (new EditorGUI.DisabledScope(IsReadOnly))
+            {
+                bool editing = m_CameraResourceClipId == camera.AuthoringId;
+                if (GUILayout.Button(editing ? "返回片段编辑" : "编辑镜头资源"))
+                {
+                    CancelEdit();
+                    m_Request.AuthoringHost.ReleaseCameraSourceEditing();
+                    m_CameraResourceClipId = editing ? null : camera.AuthoringId;
+                    m_Tracks[camera.Track.AuthoringId].ShowCurves = true;
+                    ResourceChanged?.Invoke();
+                    RequestRepaint();
+                }
+                if (!TimeRangeOnly && GUILayout.Button("创建独立资源并重绑"))
+                    m_Request.AuthoringHost.ShowCameraSourceCreation(Session.GridPipeline, camera.Effect, effect =>
+                    {
+                        if (!ApplyImmediate(() => camera.Effect = effect, "重绑独立镜头资源"))
+                            return "镜头引用提交失败。";
+                        AssetDatabase.SaveAssetIfDirty(m_Request.SerializedOwner);
+                        return string.Empty;
+                    });
+                if (editing)
+                {
+                    float normalized = (CurrentTime - camera.StartTime.ToSingle()) / camera.DurationTime.ToSingle();
+                    if (normalized < 0f || normalized > 1f)
+                        EditorGUILayout.HelpBox("请把编辑游标移到此镜头片段内，再记录当前帧。", MessageType.Info);
+                    else
+                        m_Request.AuthoringHost.DrawCameraSourceInspector(Session.GridPipeline, camera.Effect,
+                            camera.SourceStartTime + normalized * (camera.SourceEndTime - camera.SourceStartTime));
+                }
+            }
+        }
 
         public BtsmtlSlateTimelineBinding(
             TimelineEditorOpenRequest request,
@@ -240,6 +306,15 @@ namespace BTSMTL.Timeline.Editor
         public void Select(IEmbeddedTimelineElementBinding element)
         {
             bool changed = !ReferenceEquals(m_Selected, element);
+            if (changed && m_CameraResourceClipId != null && element?.AuthoringId != m_CameraResourceClipId)
+            {
+                CancelEdit();
+                m_Request.AuthoringHost.ReleaseCameraSourceEditing();
+                m_CameraResourceClipId = null;
+                Rebuild();
+                if (element is BtsmtlTimelineClipBinding nextClip)
+                    element = m_Clips[nextClip.AuthoringId];
+            }
             m_Selected = element;
             Selection.activeObject = m_Request.SerializedOwner;
             object source = element is BtsmtlTimelineMarkerBinding markerSource
@@ -277,6 +352,7 @@ namespace BTSMTL.Timeline.Editor
             m_EditUndoName = string.IsNullOrWhiteSpace(undoName) ? "Timeline Edit" : undoName;
             m_EditSourceRevision = m_SourceRevision;
             m_EditKind = kind;
+            m_EditCameraResourceRevision = CameraResource?.ContentRevision;
             if (kind == EmbeddedTimelineEditKind.ClipTimeRange)
                 foreach (BtsmtlTimelineClipBinding clip in m_Clips.Values)
                     clip.CaptureGestureTimeRange();
@@ -288,6 +364,27 @@ namespace BTSMTL.Timeline.Editor
         {
             if (!m_EditActive)
                 return;
+            if (m_CameraResourceClipId != null && m_EditKind == EmbeddedTimelineEditKind.Content)
+            {
+                m_EditActive = false;
+                if (m_EditCameraResourceRevision != CameraResource.ContentRevision)
+                {
+                    Rebuild(true);
+                    ReportIssue("镜头资源已被外部修改，当前关键帧草稿已丢弃。");
+                    return;
+                }
+                try
+                {
+                    m_Clips[m_CameraResourceClipId].CommitResourceCurves();
+                    RequestRepaint();
+                }
+                catch (Exception exception)
+                {
+                    Rebuild(true);
+                    ReportIssue(exception.Message);
+                }
+                return;
+            }
             if (m_Request.TimeRangePreview != null)
             {
                 if (m_EditKind != EmbeddedTimelineEditKind.ClipTimeRange)
@@ -375,7 +472,7 @@ namespace BTSMTL.Timeline.Editor
             m_EditSourceRevision = 0;
             if (m_Request.TimeRangePreview != null && m_EditKind == EmbeddedTimelineEditKind.ClipTimeRange)
                 m_Request.TimeRangePreview.CancelEdit();
-            Rebuild();
+            Rebuild(m_CameraResourceClipId != null);
         }
 
         bool FlushTimePreviewRanges()
@@ -433,6 +530,7 @@ namespace BTSMTL.Timeline.Editor
 
         public event Action RepaintRequested;
         public bool TimeRangeOnly => m_Request.TimeRangePreview != null;
+        public bool ResourceEditing => m_CameraResourceClipId != null;
 
         public void RequestRepaint()
         {
@@ -619,7 +717,8 @@ namespace BTSMTL.Timeline.Editor
             FixedScalar splitTime = m_Session.SnapTime(FixedScalar.FromDouble(Math.Max(0d, time)), formalClip.Source);
             if (splitTime <= formalClip.Source.StartTime || splitTime >= formalClip.Source.EndTime)
                 return;
-            if (formalClip.Source is not AnimationClip && formalClip.Source is not MotionCurveClip)
+            if (formalClip.Source is not AnimationClip && formalClip.Source is not MotionCurveClip &&
+                formalClip.Source is not CameraEffectClip { Effect: ITimelineCameraSourceAsset })
             {
                 ReportIssue($"Clip kind '{formalClip.Source.ContractKind}' does not provide a formal split source operation.");
                 return;
@@ -642,6 +741,14 @@ namespace BTSMTL.Timeline.Editor
                     float originalSourceEnd = motion.SourceEndTime;
                     motion.ConfigureSource(motion.SourceCurve, motion.SourceStartTime, splitSourceTime);
                     motionCopy.ConfigureSource(motionCopy.SourceCurve, splitSourceTime, originalSourceEnd);
+                }
+                if (formalClip.Source is CameraEffectClip camera && copy is CameraEffectClip cameraCopy)
+                {
+                    float splitSourceTime = camera.SourceStartTime +
+                        ((splitTime - originalStartTime) / (originalEndTime - originalStartTime)).ToSingle() *
+                        (camera.SourceEndTime - camera.SourceStartTime);
+                    cameraCopy.ConfigureSourceRange(splitSourceTime, camera.SourceEndTime);
+                    camera.ConfigureSourceRange(camera.SourceStartTime, splitSourceTime);
                 }
                 formalClip.Source.ConfigureTimeRange(originalStartTime, splitTime);
                 formalClip.Source.ConfigureEase(formalClip.Source.SelfEaseInTime, FixedScalar.Zero);
@@ -834,10 +941,10 @@ namespace BTSMTL.Timeline.Editor
             return result;
         }
 
-        public void Rebuild()
+        public void Rebuild(bool rebuildResources = false)
         {
             m_Timeline = m_Request.Timeline;
-            if (TimeRangeOnly)
+            if (TimeRangeOnly && !rebuildResources)
             {
                 SynchronizeTimeRangeBindings();
                 return;
@@ -928,6 +1035,7 @@ namespace BTSMTL.Timeline.Editor
 
         void BuildBindings()
         {
+            UnbindResources();
             var expandedTracks = new HashSet<string>(
                 m_Tracks.Values
                     .Where(track => track.ShowCurves)
@@ -982,6 +1090,9 @@ namespace BTSMTL.Timeline.Editor
                     if (sourceClip == null)
                         continue;
                     var clip = new BtsmtlTimelineClipBinding(this, track, sourceClip);
+                    if (sourceClip is CameraEffectClip camera && camera.Effect is ITimelineCameraSourceAsset resource &&
+                        m_CameraResources.Add(resource))
+                        resource.ContentChanged += OnCameraResourceChanged;
                     clip.IsLocked = lockedClips.Contains(sourceClip.AuthoringId);
                     track.AddClip(clip);
                     m_Clips[sourceClip.AuthoringId] = clip;
@@ -1061,6 +1172,16 @@ namespace BTSMTL.Timeline.Editor
                 return;
             }
             var menu = new GenericMenu();
+            if (track.Source is CameraEffectTrack)
+                menu.AddItem(new GUIContent("创建镜头"), false, () =>
+                    m_Request.AuthoringHost.ShowCameraSourceCreation(Session.GridPipeline, null, effect =>
+                    {
+                        if (!ApplyImmediate(() => Timeline.AddClip(ContractCatalog, effect, track.Source,
+                            m_Session.SnapTime(FixedScalar.FromDouble(time), null)), "创建镜头片段"))
+                            return "镜头片段提交失败。";
+                        AssetDatabase.SaveAssetIfDirty(m_Request.SerializedOwner);
+                        return string.Empty;
+                    }));
             for (int index = 0; index < contract.AllowedClipKinds.Count; index++)
             {
                 string kind = contract.AllowedClipKinds[index];
@@ -1185,6 +1306,11 @@ namespace BTSMTL.Timeline.Editor
         static TimelineAuthoringClipConfiguration ReadConfiguration(Clip clip, TimelineClipCreationRequest request)
         {
             TimelineAuthoringClipConfiguration configuration = TimelineAuthoringClipBinding.Read(clip);
+            if (clip is CameraEffectClip { Effect: ITimelineCameraSourceAsset })
+            {
+                configuration.SourceStartTime = request.SourceStartTime;
+                configuration.SourceEndTime = request.SourceEndTime;
+            }
             if (request.Kind == TimelineContractKinds.AnimationClip)
             {
                 configuration.Extrapolation = request.Extrapolation;
@@ -1487,6 +1613,11 @@ namespace BTSMTL.Timeline.Editor
                     m_SourceStartTime = motion.SourceStartTime;
                     m_SourceEndTime = motion.SourceEndTime;
                 }
+                if (source is CameraEffectClip camera && camera.Effect is ITimelineCameraSourceAsset)
+                {
+                    m_SourceStartTime = camera.SourceStartTime;
+                    m_SourceEndTime = camera.SourceEndTime;
+                }
                 var descriptors = owner.CollectCurveChannels(source.Track);
                 for (int index = 0; index < descriptors.Count; index++)
                 {
@@ -1504,9 +1635,32 @@ namespace BTSMTL.Timeline.Editor
                     AddReferenceParameter("source.position-z", "Position Z", sourceMotion.SourcePositionZ);
                     AddReferenceParameter("source.yaw", "Yaw", sourceMotion.SourceYaw);
                 }
+                if (source is CameraEffectClip sourceCamera && sourceCamera.Effect is ITimelineCameraSourceAsset cameraResource)
+                {
+                    foreach (var group in cameraResource.CurveChannels.GroupBy(descriptor => descriptor.ParameterGroup))
+                    {
+                        BtsmtlTimelineCurveBinding[] curves = group.OrderBy(descriptor => descriptor.ComponentIndex)
+                            .Select(descriptor => new BtsmtlTimelineCurveBinding(this, descriptor, sourceCamera.Effect)).ToArray();
+                        m_ResourceCurves.AddRange(curves);
+                        m_Parameters.Add(new BtsmtlTimelineCameraParameterBinding(this, curves,
+                            owner.m_CameraResourceClipId != AuthoringId));
+                    }
+                }
             }
 
             public Clip Source { get; private set; }
+            readonly List<BtsmtlTimelineCurveBinding> m_ResourceCurves = new();
+            internal float SourceStart => m_SourceStartTime;
+            internal float SourceEnd => m_SourceEndTime;
+            internal void CommitResourceCurves()
+            {
+                var changes = new List<TimelineCurveChannelValue>();
+                foreach (BtsmtlTimelineCurveBinding curve in m_ResourceCurves)
+                    if (curve.HasChanges())
+                        changes.Add(new TimelineCurveChannelValue(new TimelineCurveChannelId(curve.ChannelId), curve.ReadSourceCurve()));
+                if (changes.Count != 0)
+                    ((ITimelineCameraSourceAsset)((CameraEffectClip)Source).Effect).ReplaceCurves(changes);
+            }
             internal BtsmtlSlateTimelineBinding Owner => m_Owner;
             public BtsmtlTimelineTrackBinding Track => m_Track;
             IEmbeddedTimelineTrackBinding IEmbeddedTimelineClipBinding.Track => m_Track;
@@ -1568,7 +1722,8 @@ namespace BTSMTL.Timeline.Editor
             public bool CanBlendOut => Source.IsMixable();
             public ulong CurveRevision { get; private set; }
             public IReadOnlyList<IEmbeddedTimelineParameterBinding> Parameters => m_Parameters;
-            public IReadOnlyList<IEmbeddedTimelineCurveBinding> Curves => m_Curves;
+            public IReadOnlyList<IEmbeddedTimelineCurveBinding> Curves =>
+                m_Owner.m_CameraResourceClipId == AuthoringId ? m_ResourceCurves : m_Curves;
 
             public void AdjustSourceRange(
                 double originalStartTime,
@@ -1599,6 +1754,15 @@ namespace BTSMTL.Timeline.Editor
 
             public void AddIdentityKey(float time)
             {
+                if (m_Owner.m_CameraResourceClipId == AuthoringId)
+                {
+                    foreach (BtsmtlTimelineCurveBinding binding in m_ResourceCurves)
+                    {
+                        float snappedTime = binding.SnapTime(time);
+                        binding.Curve.AddKey(snappedTime, binding.Curve.Evaluate(snappedTime));
+                    }
+                    return;
+                }
                 for (int index = 0; index < m_Curves.Count; index++)
                 {
                     AnimationCurve curve = m_Curves[index].Curve;
@@ -1623,6 +1787,8 @@ namespace BTSMTL.Timeline.Editor
                 for (int index = 0; index < m_Parameters.Count; index++)
                     if (m_Parameters[index] is BtsmtlTimelineReferenceParameterBinding reference)
                         reference.Refresh();
+                foreach (BtsmtlTimelineCurveBinding curve in m_ResourceCurves)
+                    curve.RefreshResourceCurve();
             }
 
             public void Split(float time) => m_Owner.SplitClip(this, time);
@@ -1635,14 +1801,14 @@ namespace BTSMTL.Timeline.Editor
 
             public void CleanKeysOffRange()
             {
-                for (int curveIndex = 0; curveIndex < m_Curves.Count; curveIndex++)
-                    ((BtsmtlTimelineCurveBinding)m_Curves[curveIndex]).Trim(0f, Length);
+                foreach (IEmbeddedTimelineCurveBinding curve in Curves)
+                    ((BtsmtlTimelineCurveBinding)curve).Trim(0f, Length);
             }
 
             public void ResetAnimation()
             {
-                for (int index = 0; index < m_Curves.Count; index++)
-                    ((BtsmtlTimelineCurveBinding)m_Curves[index]).Replace(new AnimationCurve());
+                foreach (IEmbeddedTimelineCurveBinding curve in Curves)
+                    curve.Replace(new AnimationCurve());
             }
 
             public bool CommitSource()
@@ -1705,6 +1871,11 @@ namespace BTSMTL.Timeline.Editor
                     m_SourceStartTime = motion.SourceStartTime;
                     m_SourceEndTime = motion.SourceEndTime;
                 }
+                if (Source is CameraEffectClip camera && camera.Effect is ITimelineCameraSourceAsset)
+                {
+                    m_SourceStartTime = camera.SourceStartTime;
+                    m_SourceEndTime = camera.SourceEndTime;
+                }
                 if (previousLength != Length || previousSourceStart != m_SourceStartTime ||
                     previousSourceEnd != m_SourceEndTime)
                 {
@@ -1723,24 +1894,70 @@ namespace BTSMTL.Timeline.Editor
         {
             readonly BtsmtlTimelineClipBinding m_Clip;
             readonly TimelineCurveChannelDescriptor m_Descriptor;
+            readonly object m_ResourceOwner;
             AnimationCurve m_Curve;
             float m_DisplayDuration;
 
-            public BtsmtlTimelineCurveBinding(BtsmtlTimelineClipBinding clip, TimelineCurveChannelDescriptor descriptor)
+            public BtsmtlTimelineCurveBinding(BtsmtlTimelineClipBinding clip, TimelineCurveChannelDescriptor descriptor,
+                object resourceOwner = null)
             {
                 m_Clip = clip;
                 m_Descriptor = descriptor;
+                m_ResourceOwner = resourceOwner;
                 m_DisplayDuration = clip.Source.DurationTime.ToSingle();
-                m_Curve = ConvertCurveTime(
+                m_Curve = resourceOwner != null ? ConvertSourceTime(descriptor.Read(resourceOwner), false) : ConvertCurveTime(
                     descriptor.Read(clip.Source),
                     clip.Source.DurationTime.ToSingle(),
                     false);
             }
             public string ChannelId => m_Descriptor.ChannelId.Value;
             public string DisplayName => m_Descriptor.DisplayName;
+            public string ParameterGroup => m_Descriptor.ParameterGroup;
             public TimelineCurveValueDomain ValueDomain => m_Descriptor.ValueDomain;
             public AnimationCurve Curve => m_Curve;
             public float Duration => m_Clip.Length;
+            public AnimationCurve ReadSourceCurve()
+            {
+                AnimationCurve source = m_Descriptor.Read(m_ResourceOwner);
+                AnimationCurve candidate = ConvertSourceTime(m_Curve, true);
+                var keys = new List<Keyframe>();
+                foreach (Keyframe key in source.keys)
+                    if (key.time < m_Clip.SourceStart || key.time > m_Clip.SourceEnd)
+                        keys.Add(key);
+                foreach (Keyframe key in candidate.keys)
+                    if (key.time >= m_Clip.SourceStart && key.time <= m_Clip.SourceEnd)
+                        keys.Add(key);
+                keys.Sort((left, right) => left.time.CompareTo(right.time));
+                return new AnimationCurve(keys.ToArray())
+                {
+                    preWrapMode = candidate.preWrapMode,
+                    postWrapMode = candidate.postWrapMode
+                };
+            }
+
+            internal void RefreshResourceCurve()
+            {
+                AnimationCurve source = ConvertSourceTime(m_Descriptor.Read(m_ResourceOwner), false);
+                m_Curve.keys = source.keys;
+                m_Curve.preWrapMode = source.preWrapMode;
+                m_Curve.postWrapMode = source.postWrapMode;
+            }
+
+            AnimationCurve ConvertSourceTime(AnimationCurve source, bool toSource)
+            {
+                float speed = (m_Clip.SourceEnd - m_Clip.SourceStart) / Duration;
+                Keyframe[] keys = source.keys;
+                for (int index = 0; index < keys.Length; index++)
+                {
+                    Keyframe key = keys[index];
+                    key.time = toSource ? m_Clip.SourceStart + key.time * speed :
+                        (key.time - m_Clip.SourceStart) / speed;
+                    key.inTangent = toSource ? key.inTangent / speed : key.inTangent * speed;
+                    key.outTangent = toSource ? key.outTangent / speed : key.outTangent * speed;
+                    keys[index] = key;
+                }
+                return new AnimationCurve(keys) { preWrapMode = source.preWrapMode, postWrapMode = source.postWrapMode };
+            }
             internal void SynchronizeDisplayDuration()
             {
                 float duration = Duration;
@@ -1774,6 +1991,9 @@ namespace BTSMTL.Timeline.Editor
 
             public bool HasChanges()
             {
+                if (m_ResourceOwner != null)
+                    return !TimelineCurveAuthoring.AreEquivalent(m_Curve,
+                        ConvertSourceTime(m_Descriptor.Read(m_ResourceOwner), false));
                 AnimationCurve source = m_Descriptor.Read(m_Clip.Source);
                 if (source.preWrapMode != m_Curve.preWrapMode || source.postWrapMode != m_Curve.postWrapMode ||
                     source.length != m_Curve.length)
@@ -1900,45 +2120,80 @@ namespace BTSMTL.Timeline.Editor
             }
         }
 
-        sealed class BtsmtlTimelineParameterBinding : IEmbeddedTimelineParameterBinding
+        class BtsmtlTimelineParameterBinding : IEmbeddedTimelineParameterBinding, IEmbeddedTimelineValueParameterBinding
         {
             readonly BtsmtlTimelineClipBinding m_Clip;
-            readonly BtsmtlTimelineCurveBinding m_Curve;
-            readonly IEmbeddedTimelineCurveBinding[] m_Curves;
+            readonly BtsmtlTimelineCurveBinding[] m_Curves;
             public BtsmtlTimelineParameterBinding(BtsmtlTimelineClipBinding clip, BtsmtlTimelineCurveBinding curve)
+                : this(clip, new[] { curve })
+            {
+            }
+
+            protected BtsmtlTimelineParameterBinding(BtsmtlTimelineClipBinding clip, BtsmtlTimelineCurveBinding[] curves)
             {
                 m_Clip = clip;
-                m_Curve = curve;
-                m_Curves = new IEmbeddedTimelineCurveBinding[] { curve };
+                m_Curves = curves;
             }
-            public string ParameterId => m_Curve.ChannelId;
-            public string DisplayName => m_Curve.DisplayName;
-            public string ValueDomainSummary => m_Curve.ValueDomain.Summary;
+            public string ParameterId => m_Curves[0].ChannelId;
+            public string DisplayName => m_Curves.Length == 1 ? m_Curves[0].DisplayName : m_Curves[0].ParameterGroup;
+            public string ValueDomainSummary => m_Curves[0].ValueDomain.Summary;
             public bool Enabled { get; set; } = true;
-            public float CurrentValue => m_Curve.Curve.Evaluate(Mathf.Clamp(
+            public virtual bool IsReadOnly => m_Clip.Owner.m_CameraResourceClipId != null;
+            public float CurrentValue => GetValue(0);
+            public float GetValue(int componentIndex) => m_Curves[componentIndex].Curve.Evaluate(Mathf.Clamp(
                 m_Clip.Owner.CurrentTime - m_Clip.StartTime,
                 0f,
-                m_Curve.Duration));
+                m_Curves[componentIndex].Duration));
             public IReadOnlyList<IEmbeddedTimelineCurveBinding> Curves => m_Curves;
+
+            public void SetValues(float localTime, IReadOnlyList<float> values)
+            {
+                for (int component = 0; component < m_Curves.Length; component++)
+                {
+                    BtsmtlTimelineCurveBinding binding = m_Curves[component];
+                    float time = binding.SnapTime(localTime);
+                    AnimationCurve curve = binding.Curve;
+                    int keyIndex = -1;
+                    for (int index = 0; index < curve.length; index++)
+                        if (curve[index].time == time)
+                            keyIndex = index;
+                    if (keyIndex >= 0)
+                    {
+                        Keyframe key = curve[keyIndex];
+                        key.value = values[component];
+                        curve.MoveKey(keyIndex, key);
+                    }
+                    else
+                        curve.AddKey(new Keyframe(time, values[component]));
+                }
+            }
+
             public void AddKey(float localTime)
             {
-                float snappedTime = m_Curve.SnapTime(localTime);
-                m_Curve.Curve.AddKey(snappedTime, m_Curve.Curve.Evaluate(snappedTime));
+                foreach (BtsmtlTimelineCurveBinding binding in m_Curves)
+                {
+                    float snappedTime = binding.SnapTime(localTime);
+                    binding.Curve.AddKey(snappedTime, binding.Curve.Evaluate(snappedTime));
+                }
             }
             public void RemoveKey(float localTime)
             {
-                float snappedTime = m_Curve.SnapTime(localTime);
-                for (int index = m_Curve.Curve.length - 1; index >= 0; index--)
-                    if (m_Curve.Curve[index].time == snappedTime)
-                        m_Curve.Curve.RemoveKey(index);
+                foreach (BtsmtlTimelineCurveBinding binding in m_Curves)
+                {
+                    float snappedTime = binding.SnapTime(localTime);
+                    for (int index = binding.Curve.length - 1; index >= 0; index--)
+                        if (binding.Curve[index].time == snappedTime)
+                            binding.Curve.RemoveKey(index);
+                }
             }
             public void SelectPreviousKey(float localTime)
             {
                 float? previous = null;
-                Keyframe[] keys = m_Curve.Curve.keys;
-                for (int index = 0; index < keys.Length; index++)
-                    if (keys[index].time < localTime && (!previous.HasValue || keys[index].time > previous.Value))
-                        previous = keys[index].time;
+                foreach (BtsmtlTimelineCurveBinding binding in m_Curves)
+                    for (int index = 0; index < binding.Curve.length; index++)
+                        if (binding.Curve[index].time < localTime &&
+                            (!previous.HasValue || binding.Curve[index].time > previous.Value))
+                            previous = binding.Curve[index].time;
                 if (previous.HasValue)
                     m_Clip.Owner.CurrentTime = m_Clip.StartTime + previous.Value;
             }
@@ -1946,13 +2201,29 @@ namespace BTSMTL.Timeline.Editor
             public void SelectNextKey(float localTime)
             {
                 float? next = null;
-                Keyframe[] keys = m_Curve.Curve.keys;
-                for (int index = 0; index < keys.Length; index++)
-                    if (keys[index].time > localTime && (!next.HasValue || keys[index].time < next.Value))
-                        next = keys[index].time;
+                foreach (BtsmtlTimelineCurveBinding binding in m_Curves)
+                    for (int index = 0; index < binding.Curve.length; index++)
+                        if (binding.Curve[index].time > localTime &&
+                            (!next.HasValue || binding.Curve[index].time < next.Value))
+                            next = binding.Curve[index].time;
                 if (next.HasValue)
                     m_Clip.Owner.CurrentTime = m_Clip.StartTime + next.Value;
             }
+        }
+
+        sealed class BtsmtlTimelineCameraParameterBinding : BtsmtlTimelineParameterBinding, IEmbeddedTimelineResourceParameterBinding
+        {
+            internal BtsmtlTimelineCameraParameterBinding(BtsmtlTimelineClipBinding clip, BtsmtlTimelineCurveBinding[] curves,
+                bool readOnly) : base(clip, curves)
+            {
+                m_ReadOnly = readOnly;
+                var asset = ((CameraEffectClip)clip.Source).Effect;
+                ReferenceLabel = asset.name;
+            }
+
+            public string ReferenceLabel { get; }
+            readonly bool m_ReadOnly;
+            public override bool IsReadOnly => m_ReadOnly;
         }
 
         sealed class BtsmtlTimelineReferenceParameterBinding : IEmbeddedTimelineParameterBinding, IEmbeddedTimelineReferenceParameterBinding
@@ -1977,6 +2248,7 @@ namespace BTSMTL.Timeline.Editor
             public string ParameterId => m_Curve.ChannelId;
             public string DisplayName => m_Curve.DisplayName;
             public string ValueDomainSummary => "Source Reference";
+            public bool IsReadOnly => true;
             public string ReferenceLabel { get; }
             public bool Enabled { get => true; set { } }
             public float CurrentValue => m_Curve.Curve.Evaluate(Mathf.Clamp(

@@ -108,16 +108,23 @@ namespace BTSMTL.Timeline
 
     public sealed class TimelineContentCameraEffect : TimelineContentParameters
     {
-        public TimelineContentCameraEffect(TimelineCameraResourceKind kind, string resourceId, int priority)
+        public TimelineContentCameraEffect(TimelineCameraResourceKind kind, string resourceId, int priority,
+            float sourceStartTime, float sourceEndTime, string resourceRevision)
         {
             Kind = kind;
             ResourceId = resourceId;
             Priority = priority;
+            SourceStartTime = sourceStartTime;
+            SourceEndTime = sourceEndTime;
+            ResourceRevision = resourceRevision;
         }
 
         public TimelineCameraResourceKind Kind { get; }
         public string ResourceId { get; }
         public int Priority { get; }
+        public float SourceStartTime { get; }
+        public float SourceEndTime { get; }
+        public string ResourceRevision { get; }
     }
 
     public sealed class TimelineContentSceneParameter : TimelineContentParameters

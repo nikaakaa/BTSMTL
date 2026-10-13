@@ -64,6 +64,8 @@ namespace BTSMTL.Timeline
                          .OfType<TimelineAuthoringPropertyAttribute>()
                          .OrderBy(value => value.PropertyId, StringComparer.Ordinal))
             {
+                if (!property.Supports(clip))
+                    continue;
                 object value = ReadValue(configuration, property.PropertyId);
                 if (value is AnimationCurve)
                     continue;
@@ -76,8 +78,6 @@ namespace BTSMTL.Timeline
                 if (tree.AssetTree)
                     Add(result, clip, "assetTree", TimelineAuthoringPropertyKind.Object, tree.AssetTree);
             }
-            if (clip is CameraEffectClip)
-                Add(result, clip, "effect", TimelineAuthoringPropertyKind.Object, configuration.CameraEffect);
             return result;
         }
 
@@ -113,6 +113,8 @@ namespace BTSMTL.Timeline
         {
             if (referenceObject is UnityEngine.AnimationClip animation)
                 return startTime + FixedScalar.FromDouble(animation.length);
+            if (referenceObject is ITimelineCameraSourceAsset camera)
+                return startTime + FixedScalar.FromDouble(camera.SourceDuration);
             return startTime + (clip is SignalClip ? FixedScalar.FromRatio(1, TimelineUtility.FrameRate) : FixedScalar.FromDecimal(0.05m));
         }
 
@@ -209,6 +211,7 @@ namespace BTSMTL.Timeline
                 "targetKey" => configuration.CameraTargetKey,
                 "interruptPolicy" => configuration.CameraInterruptPolicy,
                 "resourceId" => configuration.CameraResourceId,
+                "effect" => configuration.Effect,
                 "lookResponse" => configuration.CameraLookResponse,
                 "manualOrbitWeight" => configuration.ManualOrbitWeight,
                 "pitchResponseWeight" => configuration.PitchResponseWeight,
@@ -249,7 +252,7 @@ namespace BTSMTL.Timeline
                 case "yawResponseWeight": configuration.YawResponseWeight = (float)value; break;
                 case "targetBindingId": configuration.TargetBindingId = (string)value; break;
                 case "parameterBindingId": configuration.ParameterBindingId = (string)value; break;
-                case "effect": configuration.CameraEffect = (CameraEffectAsset)value; break;
+                case "effect": configuration.Effect = (CameraEffectAsset)value; break;
                 default: throw new InvalidOperationException($"未知Timeline作者属性：{propertyId}");
             }
         }

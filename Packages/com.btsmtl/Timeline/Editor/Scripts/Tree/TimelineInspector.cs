@@ -124,6 +124,7 @@ namespace BTSMTL.Timeline.Editor
 
         void DrawClipInspector(TimelineAsset asset, Clip clip)
         {
+            BtsmtlSlateTimelineProjection.DrawCameraResourceInspector(asset.Data, clip);
             if (asset.Data.IsTimeRangeWorkspace)
             {
                 EditorGUILayout.LabelField("片段", clip.Name);
@@ -224,6 +225,8 @@ namespace BTSMTL.Timeline.Editor
             for (int i = 0; i < attributes.Length; i++)
             {
                 var attribute = (TimelineAuthoringPropertyAttribute)attributes[i];
+                if (!attribute.Supports(clip))
+                    continue;
                 PropertyInfo property = FindProperty(properties, attribute.PropertyId);
                 if (property == null || !property.CanRead || !property.CanWrite)
                     continue;

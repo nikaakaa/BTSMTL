@@ -30,6 +30,7 @@ namespace BTSMTL.Timeline
         readonly TimelineClipTimeRange[] m_Ranges;
         readonly string[] m_InvalidRangeErrors;
         readonly string[] m_InvalidMotionErrors;
+        readonly string[] m_InvalidCameraErrors;
         readonly string[] m_OverlapErrors;
 
         public TimelineClipTimeEditBuffer(TimelineData timeline)
@@ -43,6 +44,7 @@ namespace BTSMTL.Timeline
             m_Ranges = new TimelineClipTimeRange[count];
             m_InvalidRangeErrors = new string[count];
             m_InvalidMotionErrors = new string[count];
+            m_InvalidCameraErrors = new string[count];
             m_OverlapErrors = new string[count * count];
             int slot = 0;
             for (int i = 0; i < timeline.Tracks.Count; i++)
@@ -53,6 +55,7 @@ namespace BTSMTL.Timeline
             {
                 m_InvalidRangeErrors[i] = $"Clip '{m_Clips[i].Name}' 的起点、时长、混合或 ClipIn 不符合时间约束。";
                 m_InvalidMotionErrors[i] = $"Motion Clip '{m_Clips[i].Name}' 的源区间必须位于素材内，并且不能长于时间条。";
+                m_InvalidCameraErrors[i] = $"镜头片段 '{m_Clips[i].Name}' 必须有正窗口时长与合法的源起止范围。";
                 for (int j = i + 1; j < count; j++)
                     if (ReferenceEquals(m_Clips[i].Track, m_Clips[j].Track))
                         m_OverlapErrors[i * count + j] = $"Track '{m_Clips[i].Track.Name}' 不允许 Clip '{m_Clips[i].Name}' 与 '{m_Clips[j].Name}' 重叠。";
@@ -129,6 +132,13 @@ namespace BTSMTL.Timeline
                      FixedScalar.FromDouble(range.SourceEnd - range.SourceStart) > duration))
                 {
                     error = m_InvalidMotionErrors[i];
+                    return false;
+                }
+                if (m_Clips[i] is CameraEffectClip { Effect: ITimelineCameraSourceAsset source } &&
+                    (duration <= FixedScalar.Zero || !float.IsFinite(range.SourceStart) || !float.IsFinite(range.SourceEnd) ||
+                     range.SourceStart < 0f || range.SourceEnd <= range.SourceStart || range.SourceEnd > source.SourceDuration))
+                {
+                    error = m_InvalidCameraErrors[i];
                     return false;
                 }
             }

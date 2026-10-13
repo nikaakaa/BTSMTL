@@ -211,8 +211,9 @@ namespace BTSMTL.Timeline
 
         public TimelineClipTimeRange CaptureTimeRange() => new TimelineClipTimeRange(
             StartTime, EndTime, SelfEaseInTime, SelfEaseOutTime, ClipInTime,
-            this is MotionCurveClip motion ? motion.SourceStartTime : 0f,
-            this is MotionCurveClip source ? source.SourceEndTime : 0f, OtherEaseInTime, OtherEaseOutTime);
+            this is MotionCurveClip motion ? motion.SourceStartTime : this is CameraEffectClip camera ? camera.SourceStartTime : 0f,
+            this is MotionCurveClip source ? source.SourceEndTime : this is CameraEffectClip effect ? effect.SourceEndTime : 0f,
+            OtherEaseInTime, OtherEaseOutTime);
 
 #if UNITY_EDITOR
         public void ApplyTimeRange(in TimelineClipTimeRange range)
@@ -224,6 +225,8 @@ namespace BTSMTL.Timeline
             m_ClipInTimeRaw = range.ClipIn.Raw;
             if (this is MotionCurveClip motion)
                 motion.ApplySourceTimeRange(range.SourceStart, range.SourceEnd);
+            if (this is CameraEffectClip camera)
+                camera.ConfigureSourceRange(range.SourceStart, range.SourceEnd);
         }
 
         public void ConfigureTimeRange(FixedScalar startTime, FixedScalar endTime)

@@ -72,7 +72,9 @@ namespace BTSMTL.Timeline.Runtime
             TimelineContentClip clip = indexed.Clip;
             float local = FixedScalar.Clamp(time - clip.StartTime, FixedScalar.Zero, clip.DurationTime).ToSingle();
             float remaining = FixedScalar.Max(FixedScalar.Zero, clip.EndTime - time).ToSingle();
-            float normalized = Math.Clamp(local / Math.Max(0.0001f, clip.DurationTime.ToSingle()), 0f, 1f);
+            float duration = clip.Parameters is TimelineContentCameraEffect { Kind: TimelineCameraResourceKind.Shot }
+                ? clip.DurationTime.ToSingle() : Math.Max(0.0001f, clip.DurationTime.ToSingle());
+            float normalized = Math.Clamp(local / duration, 0f, 1f);
             if (clip.Parameters is TimelineContentSceneParameter parameter)
             {
                 scene.Add(new TimelineRuntimeScenePresentationSample(clip.AuthoringId,
@@ -81,7 +83,7 @@ namespace BTSMTL.Timeline.Runtime
                 return;
             }
             float weight = Weight(indexed.ContentIndex, in clip, local, remaining, normalized, false);
-            if (weight <= 0f)
+            if (weight <= 0f && clip.Parameters is not TimelineContentCameraEffect { Kind: TimelineCameraResourceKind.Shot })
                 return;
             switch (clip.Parameters)
             {
@@ -97,7 +99,9 @@ namespace BTSMTL.Timeline.Runtime
                     break;
                 case TimelineContentCameraEffect effect:
                     resources.Add(new TimelineCameraResourceSample(content.Identity, content.Name,
-                        clip.TrackAuthoringId, clip.AuthoringId, effect.Kind, effect.ResourceId, effect.Priority, weight, normalized));
+                        clip.TrackAuthoringId, clip.AuthoringId, effect.Kind, effect.ResourceId, effect.Priority, weight, normalized,
+                        effect.SourceStartTime + normalized * (effect.SourceEndTime - effect.SourceStartTime), effect.ResourceRevision,
+                        cycle, effect.SourceStartTime, effect.SourceEndTime, time >= clip.EndTime));
                     break;
             }
         }

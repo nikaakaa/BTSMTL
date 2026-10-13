@@ -44,6 +44,9 @@ namespace BTSMTL.Timeline
         public bool HasMaximum { get; set; }
         public double Maximum { get; set; }
         public bool Finite { get; set; }
+        public bool SourceMappingOnly { get; set; }
+        public bool Supports(Clip clip) => !SourceMappingOnly ||
+            TimelineAuthoringClipBinding.SourceAsset(clip) is ITimelineCameraSourceAsset;
     }
 
 
@@ -67,7 +70,7 @@ namespace BTSMTL.Timeline
         public TimelineCameraInterruptPolicy CameraInterruptPolicy { get; set; }
         public string CameraSequenceId { get; set; }
         public string CameraResourceId { get; set; }
-        public CameraEffectAsset CameraEffect { get; set; }
+        public CameraEffectAsset Effect { get; set; }
         public AnimationCurve CameraWeightCurve { get; set; }
         public AnimationCurve CameraEaseInCurve { get; set; }
         public AnimationCurve CameraEaseOutCurve { get; set; }
@@ -88,6 +91,8 @@ namespace BTSMTL.Timeline
                 return motion.SourceCurve;
             if (clip is AnimationClip animation)
                 return animation.Clip;
+            if (clip is CameraEffectClip camera)
+                return camera.Effect;
             return null;
         }
 
@@ -129,7 +134,9 @@ namespace BTSMTL.Timeline
                 result.CameraEaseInCurve = cameraResource.EaseInCurve;
                 result.CameraEaseOutCurve = cameraResource.EaseOutCurve;
                 result.CameraResourceId = cameraResource.Effect ? cameraResource.Effect.EffectId : null;
-                result.CameraEffect = cameraResource.Effect;
+                result.Effect = cameraResource.Effect;
+                result.SourceStartTime = cameraResource.SourceStartTime;
+                result.SourceEndTime = cameraResource.SourceEndTime;
             }
             if (clip is CameraResponseClip cameraResponse)
             {
@@ -200,7 +207,8 @@ namespace BTSMTL.Timeline
             }
             if (clip is CameraEffectClip cameraEffect)
             {
-                cameraEffect.Effect = configuration.CameraEffect;
+                cameraEffect.Effect = configuration.Effect;
+                cameraEffect.ConfigureSourceRange(configuration.SourceStartTime, configuration.SourceEndTime);
                 cameraEffect.WeightCurve = configuration.CameraWeightCurve;
                 cameraEffect.EaseInCurve = configuration.CameraEaseInCurve;
                 cameraEffect.EaseOutCurve = configuration.CameraEaseOutCurve;

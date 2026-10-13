@@ -7,6 +7,8 @@ namespace BTSMTL.Timeline.Runtime
     {
         public static TimelineRuntimePresentationOperations Evaluate(
             TimelineRuntimePlayback playback,
+            FixedScalar previousPosition,
+            int previousCycle,
             FixedScalar currentPosition,
             int currentCycle,
             bool loop,
@@ -23,14 +25,24 @@ namespace BTSMTL.Timeline.Runtime
             var selected = buffer.SamplingClips;
             SampleAnimations(content, playback.Index, playback.Preparation.ClipSampling,
                 currentTime, currentCycle, loop, buffer);
-            selected.Clear();
             TimelineRuntimeClipIndex cameraIndex = playback.Index.Presentation.CameraAndScene;
-            cameraIndex.Select(currentTime, currentTime, true, selected);
-            for (int selectedIndex = 0; selectedIndex < selected.Count; selectedIndex++)
+            for (int cycle = previousCycle; cycle <= currentCycle; cycle++)
             {
-                playback.Preparation.ClipSampling.SampleCameraAndScene(cameraIndex[selected[selectedIndex]], content,
-                    currentTime, currentCycle, playback.ExecutionIdentity, playback.Generation,
-                    cameraStates, cameraResponses, cameraResources, scenePresentation);
+                FixedScalar from = cycle == previousCycle ? previousPosition : FixedScalar.Zero;
+                FixedScalar to = cycle == currentCycle ? currentTime : content.Duration;
+                selected.Clear();
+                cameraIndex.Select(from, to, true, selected);
+                for (int selectedIndex = 0; selectedIndex < selected.Count; selectedIndex++)
+                {
+                    TimelineRuntimeIndexedClip indexed = cameraIndex[selected[selectedIndex]];
+                    bool shot = indexed.Clip.Parameters is TimelineContentCameraEffect { Kind: TimelineCameraResourceKind.Shot };
+                    if (shot ? indexed.Clip.EndTime == from && from != to :
+                        cycle != currentCycle || indexed.Clip.EndTime < to)
+                        continue;
+                    playback.Preparation.ClipSampling.SampleCameraAndScene(indexed, content,
+                        to, cycle, playback.ExecutionIdentity, playback.Generation,
+                        cameraStates, cameraResponses, cameraResources, scenePresentation);
+                }
             }
             return new TimelineRuntimePresentationOperations(buffer);
         }

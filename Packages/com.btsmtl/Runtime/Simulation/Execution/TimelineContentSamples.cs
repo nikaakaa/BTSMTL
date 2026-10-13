@@ -282,7 +282,13 @@ namespace BTSMTL.Timeline
             string resourceId,
             int priority,
             float weight,
-            float normalizedTime)
+            float normalizedTime,
+            float sourceTime,
+            string resourceRevision,
+            int cycle,
+            float sourceStartTime,
+            float sourceEndTime,
+            bool endsWindow)
         {
             SourceId = sourceId ?? string.Empty;
             SourceName = sourceName ?? string.Empty;
@@ -293,6 +299,12 @@ namespace BTSMTL.Timeline
             Priority = priority;
             Weight = Math.Clamp(weight, 0f, 1f);
             NormalizedTime = Math.Clamp(normalizedTime, 0f, 1f);
+            SourceTime = sourceTime;
+            ResourceRevision = resourceRevision;
+            Cycle = cycle;
+            SourceStartTime = sourceStartTime;
+            SourceEndTime = sourceEndTime;
+            EndsWindow = endsWindow;
         }
 
         public string SourceId { get; }
@@ -304,6 +316,12 @@ namespace BTSMTL.Timeline
         public int Priority { get; }
         public float Weight { get; }
         public float NormalizedTime { get; }
+        public float SourceTime { get; }
+        public string ResourceRevision { get; }
+        public int Cycle { get; }
+        public float SourceStartTime { get; }
+        public float SourceEndTime { get; }
+        public bool EndsWindow { get; }
     }
 
     public enum ExtraPolationMode

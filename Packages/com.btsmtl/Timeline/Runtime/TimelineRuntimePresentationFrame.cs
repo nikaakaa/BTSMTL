@@ -40,7 +40,7 @@ namespace BTSMTL.Timeline.Runtime
             SamplingClips = new List<int>(Math.Max(content.Clips.Count, content.Markers.Count));
             CameraStates = new(states);
             CameraResponses = new(responses);
-            CameraResources = new(resources);
+            CameraResources = new(checked(resources * traversals));
             ScenePresentation = new(scene);
             Events = new(checked(markers * traversals));
             TreeClips = new(checked(trees * (traversals * 3 + 2)));

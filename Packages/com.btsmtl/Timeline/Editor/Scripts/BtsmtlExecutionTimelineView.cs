@@ -428,6 +428,7 @@ namespace BTSMTL.Timeline.Editor
             public float ViewTimeMax { get; set; }
             public bool IsReadOnly => true;
             public bool TimeRangeOnly => false;
+            public bool ResourceEditing => false;
             public IReadOnlyList<IEmbeddedTimelineGroupBinding> Groups => m_Groups;
             public IReadOnlyList<IEmbeddedTimelineSectionBinding> Sections => Array.Empty<IEmbeddedTimelineSectionBinding>();
             public IEmbeddedTimelineElementBinding Selected { get; private set; }

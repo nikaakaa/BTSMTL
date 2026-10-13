@@ -1,4 +1,6 @@
 using UnityEngine;
+using System.Collections.Generic;
+using System;
 
 namespace ThirdPersonCamera
 {
@@ -14,5 +16,14 @@ namespace BTSMTL.Timeline
     public interface ITimelineCameraEffectAsset
     {
         TimelineCameraResourceKind ResourceKind { get; }
+    }
+
+    public interface ITimelineCameraSourceAsset : ITimelineCameraEffectAsset
+    {
+        float SourceDuration { get; }
+        string ContentRevision { get; }
+        IReadOnlyList<TimelineCurveChannelDescriptor> CurveChannels { get; }
+        event Action ContentChanged;
+        void ReplaceCurves(IReadOnlyList<TimelineCurveChannelValue> curves);
     }
 }

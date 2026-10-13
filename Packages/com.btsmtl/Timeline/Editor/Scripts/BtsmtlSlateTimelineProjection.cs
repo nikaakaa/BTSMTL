@@ -153,6 +153,7 @@ namespace BTSMTL.Timeline.Editor
             m_Binding = new BtsmtlSlateTimelineBinding(request, m_Session, openSourceClip);
             m_Binding.AuthoringIssue += OnBindingIssue;
             m_Binding.RepaintRequested += OnBindingRepaint;
+            m_Binding.ResourceChanged += QueueRebuildBinding;
             UnityEditor.Selection.activeObject = request.SerializedOwner;
             m_EmbeddedEditor = ScriptableObject.CreateInstance<CutsceneEditorSurface>();
             m_EmbeddedEditor.InitializeEmbedded(m_Binding, EmbeddedRepaint);
@@ -166,6 +167,11 @@ namespace BTSMTL.Timeline.Editor
         }
 
         public TimelineEditorSelection Selection => m_Session.Selection;
+        public static void DrawCameraResourceInspector(TimelineData timeline, Clip clip)
+        {
+            if (s_Current != null && ReferenceEquals(s_Current.m_Binding.Timeline, timeline))
+                s_Current.m_Binding.DrawCameraResourceInspector(clip);
+        }
         public void ApplyClipTimeRangeNumbers(string identity, ThirdPersonSimulation.Fixed.FixedScalar start,
             ThirdPersonSimulation.Fixed.FixedScalar end) => m_Binding.ApplyClipTimeRangeNumbers(identity, start, end);
         public event Action<TimelineEditorSelection> SelectionChanged;
@@ -524,13 +530,9 @@ namespace BTSMTL.Timeline.Editor
             m_RebuildQueued = false;
             if (m_Disposed)
                 return;
-            if (m_Binding.TimeRangeOnly)
-            {
-                m_Binding.Rebuild();
-                return;
-            }
             BtsmtlSlateTimelineViewState state = CaptureViewState();
-            m_Binding.Rebuild();
+            m_EmbeddedEditor.CancelEmbeddedEdit();
+            m_Binding.Rebuild(true);
             m_EmbeddedEditor.InvalidateEmbeddedClipBindings();
             RestoreViewState(state);
             m_EmbeddedEditor.RequestEmbeddedRepaint();
@@ -558,6 +560,8 @@ namespace BTSMTL.Timeline.Editor
             m_Session.SelectionChanged -= OnSelectionChanged;
             m_Binding.AuthoringIssue -= OnBindingIssue;
             m_Binding.RepaintRequested -= OnBindingRepaint;
+            m_Binding.ResourceChanged -= QueueRebuildBinding;
+            m_Binding.ReleaseResources();
             m_ObservedTimeline.OnValueChanged -= OnSourceTimelineChanged;
             Undo.undoRedoEvent -= OnUndoRedoEvent;
             m_EmbeddedEditor.ClearEmbedded();

@@ -126,6 +126,8 @@ namespace BTSMTL.Timeline.Runtime
             if (!stopped)
                 TimelineRuntimePresentationEvaluator.Evaluate(
                 playback,
+                previousTime,
+                previousCycle,
                 currentTime,
                 currentCycle,
                 loop,

@@ -9,7 +9,7 @@ namespace ThirdPersonSimulation
 {
     public sealed class TimelineContentArtifact
     {
-        public const string CodecIdentity = "timeline-content-artifact/v5";
+        public const string CodecIdentity = "timeline-content-artifact/v6";
         readonly ReadOnlyCollection<TimelineContentUnit> m_Timelines;
 
         public TimelineContentArtifact(IEnumerable<TimelineContentUnit> timelines)
@@ -43,7 +43,7 @@ namespace ThirdPersonSimulation
     public static class TimelineContentArtifactCodec
     {
         const uint Magic = 0x4c544150;
-        const int Version = 5;
+        const int Version = 6;
 
         public static byte[] Write(TimelineContentArtifact artifact)
         {
@@ -328,6 +328,9 @@ namespace ThirdPersonSimulation
                     writer.WriteByte((byte)effect.Kind);
                     writer.WriteText(effect.ResourceId);
                     writer.WriteInt32(effect.Priority);
+                    WriteSingle(writer, effect.SourceStartTime);
+                    WriteSingle(writer, effect.SourceEndTime);
+                    writer.WriteText(effect.ResourceRevision);
                     break;
                 case TimelineContentSceneParameter scene:
                     writer.WriteByte(7);
@@ -352,7 +355,8 @@ namespace ThirdPersonSimulation
                 Single(reader), Single(reader), Text(reader), (TimelineCameraInterruptPolicy)reader.ReadByte()),
             5 => new TimelineContentCameraResponse((TimelineCameraLookResponseMode)reader.ReadByte(), Single(reader),
                 Single(reader), Single(reader), reader.ReadInt32()),
-            6 => new TimelineContentCameraEffect((TimelineCameraResourceKind)reader.ReadByte(), Text(reader), reader.ReadInt32()),
+            6 => new TimelineContentCameraEffect((TimelineCameraResourceKind)reader.ReadByte(), Text(reader), reader.ReadInt32(),
+                Single(reader), Single(reader), Text(reader)),
             7 => new TimelineContentSceneParameter(Text(reader), Text(reader), (TimelineBindingValueKind)reader.ReadByte()),
             _ => throw new InvalidDataException("Timeline content parameter type is invalid.")
         };
