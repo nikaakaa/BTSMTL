@@ -1480,6 +1480,30 @@ namespace ThirdPersonSimulation
         public Func<CanonicalReader, string> DeclaredIdentityReader { private get; set; }
         public ICanonicalTextResolver TextResolver => m_TextResolver;
         public void SetTextResolver(ICanonicalTextResolver resolver) => m_TextResolver = resolver;
+
+        public ReadBlock BeginLengthPrefixedBlock()
+        {
+            int length = ReadLength();
+            Require(length);
+            var block = new ReadBlock(this, m_End);
+            m_End = m_Offset + length;
+            return block;
+        }
+
+        public readonly struct ReadBlock : IDisposable
+        {
+            readonly CanonicalReader m_Reader;
+            readonly int m_ParentEnd;
+
+            internal ReadBlock(CanonicalReader reader, int parentEnd)
+            {
+                m_Reader = reader;
+                m_ParentEnd = parentEnd;
+            }
+
+            public void Dispose() => m_Reader.m_End = m_ParentEnd;
+        }
+
         public byte ReadByte()
         {
             Require(1);
