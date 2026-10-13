@@ -49,7 +49,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         public Float32CharacterRuntime CharacterRuntime => m_CharacterRuntime;
         public string StateCodecIdentity => Float32CharacterRuntimeStateCodec.CodecIdentity;
         public StableHash LayoutIdentity { get; }
-        internal CanonicalTextValue LayoutIdentityText { get; }
+        public CanonicalTextValue LayoutIdentityText { get; }
         internal CanonicalDeclaredIdentityReader PublishedIdentities { get; }
         internal CanonicalHashWriter CheckpointHashWriter { get; } = new CanonicalHashWriter();
 
