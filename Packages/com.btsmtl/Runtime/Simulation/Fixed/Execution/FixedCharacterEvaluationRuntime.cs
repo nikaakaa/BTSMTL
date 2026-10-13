@@ -1,3 +1,7 @@
+using ResolvedGameplayMotion = ThirdPersonSimulation.ResolvedGameplayMotion<ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedVector2, ThirdPersonSimulation.Fixed.FixedVector3>;
+using SimulationMotionContribution = ThirdPersonSimulation.SimulationMotionContribution<ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedVector2, ThirdPersonSimulation.Fixed.FixedVector3, ThirdPersonSimulation.Fixed.FixedSimulationMath>;
+using ResolvedMotionChannel = ThirdPersonSimulation.ResolvedMotionChannel<ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedVector2, ThirdPersonSimulation.Fixed.FixedVector3, ThirdPersonSimulation.Fixed.FixedSimulationMath>;
+using CharacterMotionResolver = ThirdPersonSimulation.CharacterMotionResolver<ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedVector2, ThirdPersonSimulation.Fixed.FixedVector3, ThirdPersonSimulation.Fixed.FixedYaw, ThirdPersonSimulation.Fixed.FixedSimulationMath>;
 using System;
 using System.Collections.Generic;
 using ThirdPersonSimulation;
@@ -422,17 +426,17 @@ namespace ThirdPersonSimulation.Fixed
             int invocationCount,
             FixedCharacterTraceSink trace)
         {
-            ResolvedMotionChannel locomotion = FixedCharacterMotionResolver.ResolveChannel(
+            ResolvedMotionChannel locomotion = CharacterMotionResolver.ResolveChannel(
                 contributions,
                 contributionCount,
                 bodyYaw,
                 SimulationMotionChannel.Locomotion);
-            ResolvedMotionChannel action = FixedCharacterMotionResolver.ResolveChannel(
+            ResolvedMotionChannel action = CharacterMotionResolver.ResolveChannel(
                 contributions,
                 contributionCount,
                 bodyYaw,
                 SimulationMotionChannel.Action);
-            ResolvedMotionChannel gameplayResult = FixedCharacterMotionResolver.ResolveChannel(
+            ResolvedMotionChannel gameplayResult = CharacterMotionResolver.ResolveChannel(
                 contributions,
                 contributionCount,
                 bodyYaw,
@@ -442,7 +446,7 @@ namespace ThirdPersonSimulation.Fixed
             trace.AddMotionChannel(locomotion);
             trace.AddMotionChannel(action);
             trace.AddMotionChannel(gameplayResult);
-            ResolvedGameplayMotion motion = FixedCharacterMotionResolver.Compose(locomotion, action, gameplayResult);
+            ResolvedGameplayMotion motion = CharacterMotionResolver.Compose(locomotion, action, gameplayResult);
             ref readonly ResolvedMotionChannel source = ref (gameplayResult.TraceSource.IsValid ? ref gameplayResult :
                 ref (action.TraceSource.IsValid ? ref action : ref locomotion));
             if (source.TraceSource.IsValid)

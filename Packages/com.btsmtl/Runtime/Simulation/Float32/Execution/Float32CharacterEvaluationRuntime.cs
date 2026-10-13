@@ -1,3 +1,7 @@
+using ResolvedGameplayMotion = ThirdPersonSimulation.ResolvedGameplayMotion<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32Vector2, ThirdPersonSimulation.Float32Vector3>;
+using SimulationMotionContribution = ThirdPersonSimulation.SimulationMotionContribution<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32Vector2, ThirdPersonSimulation.Float32Vector3, ThirdPersonSimulation.Float32SimulationMath>;
+using ResolvedMotionChannel = ThirdPersonSimulation.ResolvedMotionChannel<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32Vector2, ThirdPersonSimulation.Float32Vector3, ThirdPersonSimulation.Float32SimulationMath>;
+using CharacterMotionResolver = ThirdPersonSimulation.CharacterMotionResolver<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32Vector2, ThirdPersonSimulation.Float32Vector3, ThirdPersonSimulation.Float32Yaw, ThirdPersonSimulation.Float32SimulationMath>;
 using System;
 using System.Collections.Generic;
 
@@ -317,17 +321,17 @@ namespace ThirdPersonSimulation
             int invocationCount,
             Float32CharacterTraceSink trace)
         {
-            ResolvedMotionChannel locomotion = Float32CharacterMotionResolver.ResolveChannel(
+            ResolvedMotionChannel locomotion = CharacterMotionResolver.ResolveChannel(
                 contributions,
                 contributionCount,
                 bodyYaw,
                 SimulationMotionChannel.Locomotion);
-            ResolvedMotionChannel action = Float32CharacterMotionResolver.ResolveChannel(
+            ResolvedMotionChannel action = CharacterMotionResolver.ResolveChannel(
                 contributions,
                 contributionCount,
                 bodyYaw,
                 SimulationMotionChannel.Action);
-            ResolvedMotionChannel gameplayResult = Float32CharacterMotionResolver.ResolveChannel(
+            ResolvedMotionChannel gameplayResult = CharacterMotionResolver.ResolveChannel(
                 contributions,
                 contributionCount,
                 bodyYaw,
@@ -337,7 +341,7 @@ namespace ThirdPersonSimulation
             trace.AddMotionChannel(locomotion);
             trace.AddMotionChannel(action);
             trace.AddMotionChannel(gameplayResult);
-            ResolvedGameplayMotion motion = Float32CharacterMotionResolver.Compose(locomotion, action, gameplayResult);
+            ResolvedGameplayMotion motion = CharacterMotionResolver.Compose(locomotion, action, gameplayResult);
             ref readonly ResolvedMotionChannel source = ref (gameplayResult.TraceSource.IsValid ? ref gameplayResult :
                 ref (action.TraceSource.IsValid ? ref action : ref locomotion));
             if (source.TraceSource.IsValid)
