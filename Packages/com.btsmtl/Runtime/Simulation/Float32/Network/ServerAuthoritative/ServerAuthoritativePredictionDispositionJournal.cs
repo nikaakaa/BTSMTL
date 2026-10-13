@@ -85,8 +85,11 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         {
             ServerAuthoritativePredictionStateCodec.WriteJournalHeader(writer, Cursor, m_Count);
             for (int index = 0; index < m_Count; index++)
-                ServerAuthoritativePredictionStateCodec.WriteJournalEntry(writer, m_Entries[index]);
+                ServerAuthoritativeJournalEntry.CanonicalWrite(writer, in m_Entries[index]);
         }
+
+        internal ServerAuthoritativePredictionJournalCheckpoint AcquireCheckpoint() =>
+            CreateCheckpoint(ReadOnlySpan<ServerAuthoritativeJournalEntry>.Empty, 0, 0);
 
         public ServerAuthoritativePredictionJournalCheckpoint Capture() =>
             CreateCheckpoint(m_Entries.AsSpan(0, m_Count), Cursor, LastRejectedCount);
@@ -249,18 +252,6 @@ namespace ThirdPersonSimulation.ServerAuthoritative
 
         internal ServerAuthoritativePredictionJournalCheckpoint(int capacity) =>
             Buffer = new ServerAuthoritativeJournalEntry[capacity];
-
-        public ServerAuthoritativePredictionJournalCheckpoint(
-            ServerAuthoritativeJournalEntry[] entries,
-            ulong cursor,
-            int lastRejectedCount)
-        {
-            Buffer = entries;
-            Count = entries.Length;
-            Cursor = cursor;
-            LastRejectedCount = lastRejectedCount;
-            IsHeld = true;
-        }
 
         internal bool IsHeld { get; private set; }
         public ReadOnlySpan<ServerAuthoritativeJournalEntry> Entries => Buffer.AsSpan(0, Count);

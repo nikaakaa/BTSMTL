@@ -8,93 +8,41 @@ namespace ThirdPersonSimulation.ServerAuthoritative
     internal static class ServerAuthoritativePredictionStateCodec
     {
         const uint CorrectionMagic = 0x43524153;
-        const int CorrectionVersion = 5;
+        const int CorrectionVersion = 6;
         const uint HistoryMagic = 0x48524153;
-        const int HistoryVersion = 5;
+        const int HistoryVersion = 6;
         const uint JournalMagic = 0x4a524153;
         const int MaximumObservedActorCount = 64;
         const int MaximumProjectedParticipantCount = 64;
         internal const int MaximumHistoryRecordTextValues =
             1 + ServerAuthoritativeCanonicalCodec.MaximumInputTextValues + 6 +
             4 + 4 * MaximumProjectedParticipantCount + 3 * MaximumObservedActorCount;
-        static readonly Comparison<SimulationInputRequest> s_CompareRequestsBySequence =
-            (left, right) => left.Sequence.CompareTo(right.Sequence);
-        static readonly Comparison<ServerAuthoritativeJournalEntry> s_CompareJournalEntries =
-            (left, right) => left.EventId.CompareTo(right.EventId);
+        static readonly IComparer<ServerAuthoritativeJournalEntry> s_CompareJournalEntries =
+            Comparer<ServerAuthoritativeJournalEntry>.Create((left, right) => left.EventId.CompareTo(right.EventId));
 
         public static byte[] WriteCorrection(ServerAuthoritativePredictionCorrectionCheckpoint checkpoint)
         {
             using var writer = new CanonicalWriter();
-            WriteCorrection(writer, checkpoint.ConfirmedInputSequence, checkpoint.ConfirmedEventHorizon,
-                checkpoint.LastAuthorityAckTick, checkpoint.LastBaselineTick, checkpoint.LastAuthorityClockEstimate,
-                checkpoint.PendingRequests, checkpoint.PendingRequests.Count);
+            WriteCorrection(writer, checkpoint.Data);
             return writer.ToArray();
         }
 
-        internal static void WriteCorrection(CanonicalWriter writer, ulong confirmedInputSequence,
-            ServerAuthoritativeEventHorizon horizon, ulong authorityAck, ulong baselineTick, ulong clockEstimate,
-            IReadOnlyList<SimulationInputRequest> requests, int count)
+        internal static void WriteCorrection(CanonicalWriter writer,
+            ServerAuthoritativePredictionConfirmationData state)
         {
             writer.WriteUInt32(CorrectionMagic);
             writer.WriteInt32(CorrectionVersion);
-            writer.WriteUInt64(confirmedInputSequence);
-            writer.WriteUInt64(horizon.Sequence);
-            writer.WriteEventId(horizon.EventId);
-            writer.WriteUInt64(authorityAck);
-            writer.WriteUInt64(baselineTick);
-            writer.WriteUInt64(clockEstimate);
-            writer.WriteInt32(count);
-            for (int i = 0; i < count; i++)
-            {
-                SimulationInputRequest request = requests[i];
-                writer.WriteText(request.RequestId);
-                writer.WriteUInt64(request.Sequence);
-                writer.WriteUInt64(request.SourceTick);
-                writer.WriteUInt64(request.ExpireSimulationTick);
-                writer.WriteInt32(request.Priority);
-            }
+            writer.WriteHash(ServerAuthoritativePredictionConfirmationData.CanonicalSchemaHash);
+            ServerAuthoritativePredictionConfirmationData.CanonicalWrite(writer, state);
         }
 
-        public static ServerAuthoritativePredictionCorrectionCheckpoint ReadCorrection(
-            CanonicalReader reader,
-            int requestCapacity)
+        public static void ReadCorrection(CanonicalReader reader,
+            ServerAuthoritativePredictionCorrectionCheckpoint checkpoint)
         {
             RequireHeader(reader, CorrectionMagic, CorrectionVersion);
-            ulong confirmedInputSequence = reader.ReadUInt64();
-            ulong horizonSequence = reader.ReadUInt64();
-            EventId eventId = reader.ReadEventId();
-            ServerAuthoritativeEventHorizon horizon = horizonSequence == 0
-                ? ServerAuthoritativeEventHorizon.Empty
-                : new ServerAuthoritativeEventHorizon(horizonSequence, eventId);
-            ulong lastAuthorityAckTick = reader.ReadUInt64();
-            ulong lastBaselineTick = reader.ReadUInt64();
-            ulong lastAuthorityClockEstimate = reader.ReadUInt64();
-            int pendingCount = RequireCount(reader.ReadInt32(), requestCapacity);
-            var pending = new SimulationInputRequest[pendingCount];
-            for (int i = 0; i < pendingCount; i++)
-            {
-                var request = new SimulationInputRequest(
-                    CanonicalTextEncoding.DecodeString(reader.ReadTextSegment()),
-                    reader.ReadUInt64(),
-                    reader.ReadUInt64(),
-                    reader.ReadUInt64(),
-                    reader.ReadInt32());
-                pending[i] = request;
-            }
-            Array.Sort(pending, s_CompareRequestsBySequence);
-            for (int i = 1; i < pending.Length; i++)
-            {
-                if (pending[i - 1].Sequence == pending[i].Sequence)
-                    throw new InvalidDataException("Prediction pending request payload contains a duplicate sequence.");
-            }
+            ServerAuthoritativePredictionConfirmationData.CanonicalRequireSchema(reader);
+            ServerAuthoritativePredictionConfirmationData.CanonicalReadInto(reader, checkpoint.Data);
             reader.RequireComplete();
-            return new ServerAuthoritativePredictionCorrectionCheckpoint(
-                confirmedInputSequence,
-                horizon,
-                lastAuthorityAckTick,
-                lastBaselineTick,
-                lastAuthorityClockEstimate,
-                pending);
         }
 
         public static byte[] WriteHistory(ServerAuthoritativePredictionHistoryCheckpoint checkpoint)
@@ -124,6 +72,10 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         {
             writer.WriteUInt32(HistoryMagic);
             writer.WriteInt32(HistoryVersion);
+            writer.WriteHash(ObservedWorldConstraint.CanonicalSchemaHash);
+            writer.WriteHash(SimulationPipelineIdentity.CanonicalSchemaHash);
+            writer.WriteHash(SimulationComponentIdentity.CanonicalSchemaHash);
+            writer.WriteHash(SimulationPipelineStateParticipantIdentity.CanonicalSchemaHash);
             writer.WriteInt32(count);
         }
 
@@ -148,6 +100,10 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             int historyCapacity)
         {
             RequireHeader(reader, HistoryMagic, HistoryVersion);
+            ObservedWorldConstraint.CanonicalRequireSchema(reader);
+            SimulationPipelineIdentity.CanonicalRequireSchema(reader);
+            SimulationComponentIdentity.CanonicalRequireSchema(reader);
+            SimulationPipelineStateParticipantIdentity.CanonicalRequireSchema(reader);
             int count = RequireCount(reader.ReadInt32(), historyCapacity);
             var records = new KeyValuePair<ulong, ServerAuthoritativePredictionHistoryRecord>[count];
             for (int i = 0; i < count; i++)
@@ -200,7 +156,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             WriteJournalHeader(writer, checkpoint.Cursor, checkpoint.Count);
             ReadOnlySpan<ServerAuthoritativeJournalEntry> entries = checkpoint.Entries;
             for (int i = 0; i < entries.Length; i++)
-                WriteJournalEntry(writer, entries[i]);
+                ServerAuthoritativeJournalEntry.CanonicalWrite(writer, in entries[i]);
             return writer.ToArray();
         }
 
@@ -208,47 +164,30 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         {
             writer.WriteUInt32(JournalMagic);
             writer.WriteInt32(ServerAuthoritativePredictionPassIds.JournalStateSchemaVersion);
+            writer.WriteHash(ServerAuthoritativeJournalEntry.CanonicalSchemaHash);
             writer.WriteUInt64(cursor);
             writer.WriteInt32(count);
         }
 
-        internal static void WriteJournalEntry(CanonicalWriter writer, in ServerAuthoritativeJournalEntry entry)
-        {
-            writer.WriteEventId(entry.EventId);
-            writer.WriteUInt64(entry.Tick.Value);
-            writer.WriteUInt64(entry.Sequence);
-            writer.WriteByte((byte)entry.Disposition);
-        }
-
-        public static ServerAuthoritativePredictionJournalCheckpoint ReadJournal(
+        public static void ReadJournal(
             CanonicalReader reader,
-            int historyCapacity)
+            ServerAuthoritativePredictionJournalCheckpoint checkpoint)
         {
             RequireHeader(reader, JournalMagic, ServerAuthoritativePredictionPassIds.JournalStateSchemaVersion);
-            ulong cursor = reader.ReadUInt64();
-            int count = RequireCount(reader.ReadInt32(), checked(historyCapacity * 64));
-            var entries = new ServerAuthoritativeJournalEntry[count];
+            ServerAuthoritativeJournalEntry.CanonicalRequireSchema(reader);
+            checkpoint.Cursor = reader.ReadUInt64();
+            int count = RequireCount(reader.ReadInt32(), checkpoint.Buffer.Length);
+            checkpoint.Count = count;
+            ServerAuthoritativeJournalEntry[] entries = checkpoint.Buffer;
             for (int i = 0; i < count; i++)
-            {
-                var eventId = reader.ReadEventId();
-                var tick = new SimulationTick(reader.ReadUInt64());
-                ulong sequence = reader.ReadUInt64();
-                var disposition = (ServerAuthoritativeEventDisposition)reader.ReadByte();
-                if (!eventId.IsValid || !tick.IsValid || sequence == 0 ||
-                    !ServerAuthoritativeJournalEntry.IsValidDisposition(disposition))
-                {
-                    throw new InvalidDataException("Prediction disposition journal payload is invalid.");
-                }
-                entries[i] = new ServerAuthoritativeJournalEntry(eventId, tick, sequence, disposition);
-            }
-            Array.Sort(entries, s_CompareJournalEntries);
-            for (int i = 1; i < entries.Length; i++)
+                entries[i] = ServerAuthoritativeJournalEntry.CanonicalRead(reader);
+            Array.Sort(entries, 0, count, s_CompareJournalEntries);
+            for (int i = 1; i < count; i++)
             {
                 if (entries[i - 1].EventId.Equals(entries[i].EventId))
                     throw new InvalidDataException("Prediction disposition journal payload contains a duplicate EventId.");
             }
             reader.RequireComplete();
-            return new ServerAuthoritativePredictionJournalCheckpoint(entries, cursor, 0);
         }
 
         static void WriteObservedFrame(CanonicalWriter writer, ObservedWorldConstraintFrame frame)
@@ -257,17 +196,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             writer.WriteHash(frame.FrameHash);
             writer.WriteInt32(frame.Constraints.Count);
             for (int i = 0; i < frame.Constraints.Count; i++)
-            {
-                ObservedWorldConstraint value = frame.Constraints[i];
-                writer.WriteText(value.ActorId.Value);
-                writer.WriteUInt64(value.TargetTick.Value);
-                WorldBodyState.CanonicalWrite(writer, value.BeforeBody);
-                WorldBodyState.CanonicalWrite(writer, value.FinalBody);
-                writer.WriteUInt64(value.SourcePreviousTick.Value);
-                writer.WriteUInt64(value.SourceCurrentTick.Value);
-                writer.WriteByte((byte)value.SamplingKind);
-                writer.WriteHash(value.ContactShapeConfigurationHash);
-            }
+                ObservedWorldConstraint.CanonicalWrite(writer, frame.Constraints[i]);
         }
 
         static ObservedWorldConstraintFrame ReadObservedFrame(CanonicalReader reader)
@@ -278,15 +207,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             var constraints = new ObservedWorldConstraint[count];
             for (int i = 0; i < count; i++)
             {
-                constraints[i] = new ObservedWorldConstraint(
-                    new ActorId(CanonicalTextEncoding.DecodeString(reader.ReadTextSegment())),
-                    new SimulationTick(reader.ReadUInt64()),
-                    WorldBodyState.CanonicalRead(reader),
-                    WorldBodyState.CanonicalRead(reader),
-                    new SimulationTick(reader.ReadUInt64()),
-                    new SimulationTick(reader.ReadUInt64()),
-                    (ObservedWorldConstraintSamplingKind)reader.ReadByte(),
-                    reader.ReadHash());
+                constraints[i] = ObservedWorldConstraint.CanonicalRead(reader);
             }
             var frame = new ObservedWorldConstraintFrame(tick, constraints);
             if (frame.FrameHash != expectedHash)
@@ -294,34 +215,16 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             return frame;
         }
 
-
-
-
-
-
-
-
-
         static void WritePipelineProjection(CanonicalWriter writer, SimulationPipelineStateSnapshot snapshot)
         {
-            writer.WriteText(snapshot.Pipeline.Id.Value);
-            writer.WriteText(snapshot.Pipeline.Revision.Value);
-            writer.WriteInt32(snapshot.Pipeline.SchemaVersion.Value);
-            writer.WriteHash(snapshot.Pipeline.Hash);
-            writer.WriteByte((byte)snapshot.Backend.Role);
-            writer.WriteText(snapshot.Backend.ComponentId);
-            writer.WriteText(snapshot.Backend.SemanticVersion);
-            writer.WriteHash(snapshot.Backend.ConfigurationHash);
+            SimulationPipelineIdentity.CanonicalWrite(writer, snapshot.Pipeline);
+            SimulationComponentIdentity.CanonicalWrite(writer, snapshot.Backend);
             writer.WriteUInt64(snapshot.LastCompletedTick);
             writer.WriteInt32(snapshot.Participants.Count);
             for (int i = 0; i < snapshot.Participants.Count; i++)
             {
                 SimulationPipelinePassStateSnapshot participant = snapshot.Participants[i];
-                writer.WriteText(participant.PassId.Value);
-                writer.WriteText(participant.ImplementationVersion.Value);
-                writer.WriteText(participant.StateOwner);
-                writer.WriteText(participant.StateSchemaId);
-                writer.WriteInt32(participant.StateSchemaVersion);
+                SimulationPipelineStateParticipantIdentity.CanonicalWrite(writer, in participant.Identity);
                 writer.WriteHash(participant.StateHash);
                 writer.WriteBytes(participant.Payload.Span);
             }
@@ -330,29 +233,17 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         static SimulationPipelineStateSnapshot ReadPipelineProjection(byte[] bytes)
         {
             var reader = new CanonicalReader(bytes);
-            var pipeline = new SimulationPipelineIdentity(
-                new SimulationPipelineId(CanonicalTextEncoding.DecodeString(reader.ReadTextSegment())),
-                new SimulationPipelineRevision(CanonicalTextEncoding.DecodeString(reader.ReadTextSegment())),
-                new SimulationPipelineSchemaVersion(reader.ReadInt32()),
-                SimulationPipelineHash.CanonicalFromHash(reader.ReadHash()));
-            var backend = new SimulationComponentIdentity(
-                (SimulationComponentRole)reader.ReadByte(),
-                CanonicalTextEncoding.DecodeString(reader.ReadTextSegment()),
-                CanonicalTextEncoding.DecodeString(reader.ReadTextSegment()),
-                reader.ReadHash());
+            SimulationPipelineIdentity pipeline = SimulationPipelineIdentity.CanonicalReadMaterialized(reader);
+            SimulationComponentIdentity backend = SimulationComponentIdentity.CanonicalReadMaterialized(reader);
             ulong tick = reader.ReadUInt64();
             int count = RequireCount(reader.ReadInt32(), MaximumProjectedParticipantCount);
             var participants = new SimulationPipelinePassStateSnapshot[count];
             for (int i = 0; i < count; i++)
             {
+                SimulationPipelineStateParticipantIdentity identity =
+                    SimulationPipelineStateParticipantIdentity.CanonicalReadMaterialized(reader);
                 participants[i] = SimulationPipelinePassStateSnapshot.FromWirePayload(
-                    new SimulationPipelinePassId(CanonicalTextEncoding.DecodeString(reader.ReadTextSegment())),
-                    new SimulationPipelinePassImplementationVersion(CanonicalTextEncoding.DecodeString(reader.ReadTextSegment())),
-                    CanonicalTextEncoding.DecodeString(reader.ReadTextSegment()),
-                    CanonicalTextEncoding.DecodeString(reader.ReadTextSegment()),
-                    reader.ReadInt32(),
-                    reader.ReadHash(),
-                    reader.ReadBytes());
+                    in identity, reader.ReadHash(), reader.ReadBytes());
             }
             reader.RequireComplete();
             return SimulationPipelineStateSnapshot.FromOwnedParticipants(pipeline, backend, tick, participants);

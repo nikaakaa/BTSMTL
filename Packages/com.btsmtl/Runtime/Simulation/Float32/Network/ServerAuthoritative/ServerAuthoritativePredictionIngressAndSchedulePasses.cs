@@ -217,7 +217,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             m_Descriptor = ServerAuthoritativePipelinePassContracts.CreateFactoryDescriptor(
                 ServerAuthoritativePipelinePassContracts.CorrectionSchedule(policy),
                 ServerAuthoritativePredictionPassIds.CorrectionStateSchema,
-                3);
+                ServerAuthoritativePredictionPassIds.CorrectionStateSchemaVersion);
         }
 
         public SimulationPipelinePassFactoryDescriptor Descriptor => m_Descriptor;
@@ -332,7 +332,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 descriptor.ImplementationVersion,
                 ServerAuthoritativePredictionPassIds.CorrectionStateOwner,
                 ServerAuthoritativePredictionPassIds.CorrectionStateSchema,
-                3);
+                ServerAuthoritativePredictionPassIds.CorrectionStateSchemaVersion);
             m_Checkpoint = new SimulationPipelinePassStateCheckpoint(StateIdentity, RestoreCheckpoint, ReleaseCheckpoint);
         }
 
@@ -577,6 +577,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             ClearSteps();
             m_CurrentInputStorage.ClearBorrowedCopy();
             m_Checkpoint.Dispose();
+            m_State.ReleaseCorrectionStorage();
             m_StateStorage.ReleaseStorage();
             for (int index = 1; index < m_SourceMappingStorage.Length; index++)
                 Array.Clear(m_SourceMappingStorage[index], 0, m_SourceMappingStorage[index].Length);

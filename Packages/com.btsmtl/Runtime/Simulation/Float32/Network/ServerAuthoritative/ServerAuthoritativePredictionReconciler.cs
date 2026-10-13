@@ -250,7 +250,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 ServerAuthoritativePredictionPassIds.CorrectionStateOwner,
                 ServerAuthoritativePredictionPassIds.CorrectionStateSchema,
                 correctionState,
-                3);
+                ServerAuthoritativePredictionPassIds.CorrectionStateSchemaVersion);
             participants[participantIndex++] = ServerAuthoritativePredictionStateSnapshot.Create(
                 ServerAuthoritativePredictionPassIds.HistoryEgress,
                 ServerAuthoritativePredictionPassIds.HistoryStateOwner,

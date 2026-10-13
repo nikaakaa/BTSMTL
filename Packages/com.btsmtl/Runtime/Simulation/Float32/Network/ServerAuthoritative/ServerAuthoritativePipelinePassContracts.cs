@@ -25,11 +25,12 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         public const string CorrectionStateOwner = "server-authoritative.prediction.correction";
         public const string HistoryStateOwner = "server-authoritative.prediction.history";
         public const string JournalStateOwner = "server-authoritative.prediction.output-journal";
-        public const string CorrectionStateSchema = "server-authoritative-correction-state/4";
-        public const string HistoryStateSchema = "server-authoritative-prediction-history/3";
-        public const int HistoryStateSchemaVersion = 3;
-        public const string JournalStateSchema = "server-authoritative-event-disposition-journal/2";
-        public const int JournalStateSchemaVersion = 2;
+        public const string CorrectionStateSchema = "server-authoritative-correction-state/5";
+        public const int CorrectionStateSchemaVersion = 4;
+        public const string HistoryStateSchema = "server-authoritative-prediction-history/4";
+        public const int HistoryStateSchemaVersion = 4;
+        public const string JournalStateSchema = "server-authoritative-event-disposition-journal/3";
+        public const int JournalStateSchemaVersion = 3;
 
         public static readonly SimulationPipelinePassId OwnerInputIngress = new SimulationPipelinePassId(OwnerInputIngressValue);
         public static readonly SimulationPipelinePassId ObservationIngress = new SimulationPipelinePassId(ObservationIngressValue);

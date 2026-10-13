@@ -299,11 +299,7 @@ namespace ThirdPersonSimulation
         }
 
         public static SimulationPipelinePassStateSnapshot FromWirePayload(
-            SimulationPipelinePassId passId,
-            SimulationPipelinePassImplementationVersion implementationVersion,
-            string stateOwner,
-            string stateSchemaId,
-            int stateSchemaVersion,
+            in SimulationPipelineStateParticipantIdentity identity,
             StableHash expectedStateHash,
             byte[] ownedPayload)
         {
@@ -313,8 +309,7 @@ namespace ThirdPersonSimulation
             if (!computed.Equals(expectedStateHash))
                 throw new ArgumentException("Pass state payload hash does not match its canonical bytes.", nameof(expectedStateHash));
             return new SimulationPipelinePassStateSnapshot(
-                new SimulationPipelineStateParticipantIdentity(passId, implementationVersion,
-                    stateOwner, stateSchemaId, stateSchemaVersion),
+                identity,
                 computed,
                 ownedPayload);
         }

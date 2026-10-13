@@ -12,7 +12,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         PredictedRejected = 4
     }
 
-    public readonly struct ServerAuthoritativeJournalEntry
+    [CanonicalContract]
+    public readonly partial struct ServerAuthoritativeJournalEntry
     {
         public ServerAuthoritativeJournalEntry(
             EventId eventId,
@@ -20,22 +21,25 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             ulong sequence,
             ServerAuthoritativeEventDisposition disposition)
         {
-            if (!eventId.IsValid || !tick.IsValid || sequence == 0 ||
-                !IsValidDisposition(disposition))
-            {
-                throw new ArgumentException("Prediction disposition journal entry is invalid.");
-            }
             EventId = eventId;
             Tick = tick;
             Sequence = sequence;
             Disposition = disposition;
+            RequireRecord();
         }
 
         public EventId EventId { get; }
         public SimulationTick Tick { get; }
         public ulong Sequence { get; }
         public ServerAuthoritativeEventDisposition Disposition { get; }
-        internal static bool IsValidDisposition(ServerAuthoritativeEventDisposition disposition) =>
+        [CanonicalValidation]
+        void RequireRecord()
+        {
+            if (!EventId.IsValid || !Tick.IsValid || Sequence == 0 || !IsValidDisposition(Disposition))
+                throw new ArgumentException("Prediction disposition journal entry is invalid.");
+        }
+
+        static bool IsValidDisposition(ServerAuthoritativeEventDisposition disposition) =>
             disposition is ServerAuthoritativeEventDisposition.PredictedCommitted or
                 ServerAuthoritativeEventDisposition.AuthorityConfirmed or
                 ServerAuthoritativeEventDisposition.SuppressedDuplicate or
@@ -104,10 +108,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 World.Actors[index].ActorId.Retain();
             for (int index = 0; index < ObservedWorldConstraints.Constraints.Count; index++)
             {
-                ObservedWorldConstraint constraint = ObservedWorldConstraints.Constraints[index];
-                constraint.ActorId.Retain();
-                constraint.BeforeBody.ActorId.Retain();
-                constraint.FinalBody.ActorId.Retain();
+                ObservedWorldConstraint.CanonicalRetain(ObservedWorldConstraints.Constraints[index]);
             }
             PipelineProjection.RetainStepStorage();
         }
@@ -117,10 +118,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             PipelineProjection.ReleaseStepStorage();
             for (int index = 0; index < ObservedWorldConstraints.Constraints.Count; index++)
             {
-                ObservedWorldConstraint constraint = ObservedWorldConstraints.Constraints[index];
-                constraint.FinalBody.ActorId.Release();
-                constraint.BeforeBody.ActorId.Release();
-                constraint.ActorId.Release();
+                ObservedWorldConstraint.CanonicalRelease(ObservedWorldConstraints.Constraints[index]);
             }
             for (int index = 0; index < World.Actors.Count; index++)
                 World.Actors[index].ActorId.Release();
@@ -310,14 +308,15 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 m_History.FirstRetainedTick);
         }
 
+        internal void ReleaseCorrectionStorage() => m_Confirmation.ReleaseStorage();
         public void WriteCorrectionState(CanonicalWriter writer) => m_Confirmation.WriteState(writer);
         public void WriteHistoryState(CanonicalWriter writer) => m_History.WriteState(writer);
         public void WriteJournalState(CanonicalWriter writer) => m_Journal.WriteState(writer);
 
         internal void RestoreCorrectionState(CanonicalReader reader, CanonicalReader inputReader, CanonicalWriter canonicalScratch)
         {
-            ServerAuthoritativePredictionCorrectionCheckpoint checkpoint =
-                ServerAuthoritativePredictionStateCodec.ReadCorrection(reader, Policy.HistoryCapacity);
+            using ServerAuthoritativePredictionCorrectionCheckpoint checkpoint = m_Confirmation.AcquireCheckpoint();
+            ServerAuthoritativePredictionStateCodec.ReadCorrection(reader, checkpoint);
             m_Confirmation.Restore(checkpoint);
         }
 
@@ -347,8 +346,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative
 
         internal void RestoreJournalState(CanonicalReader reader, CanonicalReader inputReader, CanonicalWriter canonicalScratch)
         {
-            using ServerAuthoritativePredictionJournalCheckpoint checkpoint =
-                ServerAuthoritativePredictionStateCodec.ReadJournal(reader, Policy.HistoryCapacity);
+            using ServerAuthoritativePredictionJournalCheckpoint checkpoint = m_Journal.AcquireCheckpoint();
+            ServerAuthoritativePredictionStateCodec.ReadJournal(reader, checkpoint);
             m_Journal.Restore(checkpoint);
         }
 
