@@ -43,6 +43,7 @@ namespace ThirdPersonSimulation
     [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
     public sealed class CanonicalDeclaredTextAttribute : Attribute
     {
+        public bool ResolveOnMaterialization { get; set; }
     }
 
     [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]

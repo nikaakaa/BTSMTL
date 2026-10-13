@@ -698,7 +698,7 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                         code.Append(target).AppendLine(".CompleteReadElement(); } }");
                     }
                     else
-                        code.Append(target).Append(" = ").Append(Normalize(member, Read(member.Type, true))).AppendLine(";");
+                        code.Append(target).Append(" = ").Append(Normalize(member, ReadMaterializedMember(member))).AppendLine(";");
                 }
                 if (union)
                 {
@@ -736,7 +736,7 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                 else
                     code.Append("return new ").Append(fullType).Append("(").Append(Runtime).Append("CanonicalConstruction.Encoded");
                 foreach (Member member in union ? common : plan.Members)
-                    code.Append(", ").Append(Read(member.Type, true));
+                    code.Append(", ").Append(ReadMaterializedMember(member));
                 code.AppendLine("); }");
             }
             if (type.TypeKind == TypeKind.Struct && type.IsReadOnly && !union && plan.MaterializedRead && plan.PreparedRead)
@@ -748,7 +748,7 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                 code.Append("return new ").Append(fullType)
                     .Append("(").Append(Runtime).Append("CanonicalConstruction.Encoded");
                 foreach (Member member in plan.Members)
-                    code.Append(", ").Append(Read(member.Type, true));
+                    code.Append(", ").Append(ReadMaterializedMember(member));
                 code.AppendLine("); }");
             }
             Member[] boundMembers = plan.Members.Where(m => HasAttribute(m.Symbol, BoundAttribute)).ToArray();
@@ -855,7 +855,7 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                         .Append("where TPayloadReader : class, ").Append(Runtime).AppendLine("ICanonicalValueReader {");
                     foreach (Member member in common)
                         code.Append(TypeName(member.Type)).Append(' ').Append(Parameter(member.Symbol.Name)).Append(" = ")
-                            .Append(Read(member.Type, true).Replace("(reader)", "(layoutReader)").Replace("reader.", "layoutReader.")).AppendLine(";");
+                            .Append(ReadMaterializedMember(member).Replace("(reader)", "(layoutReader)").Replace("reader.", "layoutReader.")).AppendLine(";");
                     code.AppendLine("switch (layoutReader.ReadInt32()) {");
                     foreach (Member member in plan.Cases)
                     {
@@ -864,7 +864,7 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                             .Append("CanonicalConstruction.Encoded, ").Append(plan.KindType).Append('.').Append(Escape(member.Symbol.Name));
                         foreach (Member value in common)
                             code.Append(", ").Append(Parameter(value.Symbol.Name));
-                        code.Append(", ").Append(Read(member.Type, true).Replace("(reader)", "(payloadReader)")
+                        code.Append(", ").Append(ReadMaterializedMember(member).Replace("(reader)", "(payloadReader)")
                             .Replace("reader.", "payloadReader."));
                         code.AppendLine(");");
                     }
@@ -1293,12 +1293,20 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                     "(reader, " + (SymbolEqualityComparer.Default.Equals(plan.PreparedStorage, BorrowedStorage(member.Type))
                     ? "storage" : (OwnsSequenceStorage(member.Type) ? "value." : "storage.") + Escape(member.Symbol.Name)) + ")";
             }
-            if (member.Type.SpecialType == SpecialType.System_String && HasAttribute(member.Symbol, DeclaredTextAttribute) && plan.PreparedRead)
+            if (member.Type.SpecialType == SpecialType.System_String && HasAttribute(member.Symbol, DeclaredTextAttribute) &&
+                (plan.PreparedRead || ResolveDeclaredOnMaterialization(member)))
                 return "reader.ReadDeclaredString()";
             if (plan.PreparedRead && PreparedStorage(member.Type) != null)
                 return TypeName(member.Type) + ".CanonicalRead(reader, storage)";
             return Read(member.Type, !plan.PreparedRead);
         }
+
+        static string ReadMaterializedMember(Member member) => ResolveDeclaredOnMaterialization(member)
+            ? "reader.ReadDeclaredString()" : Read(member.Type, true);
+
+        static bool ResolveDeclaredOnMaterialization(Member member) => member.Symbol.GetAttributes()
+            .Where(a => Identity(a.AttributeClass) == DeclaredTextAttribute).SelectMany(a => a.NamedArguments)
+            .Any(a => a.Key == "ResolveOnMaterialization" && a.Value.Value is true);
 
         static bool SupportsBoundValue(ITypeSymbol type) => ReferenceKey(type) != null ? true : NullableElement(type) is ITypeSymbol nullable
             ? SupportsBoundValue(nullable)
@@ -2192,6 +2200,12 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                         descriptor.Append(":published");
                         if (!HasPublishedRead(member.Type))
                             Error(plan, member.Symbol, "已发布成员必须由正式合同提供同源匹配读取");
+                    }
+                    if (ResolveDeclaredOnMaterialization(member))
+                    {
+                        descriptor.Append(":materialized-declared-text");
+                        if (!plan.MaterializedRead || member.Type.SpecialType != SpecialType.System_String)
+                            Error(plan, member.Symbol, "物化时匹配已声明身份只用于显式物化合同的string成员");
                     }
                     if (HasAttribute(member.Symbol, RequiredAttribute))
                     {
