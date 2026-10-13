@@ -464,7 +464,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
                     m_FullBaselineRequested = true;
                     continue;
                 }
-                NetworkCheckpoint target = m_LatestCheckpoints[i];
+                ref readonly NetworkCheckpoint target = ref m_LatestCheckpoints[i];
                 RemotePresentationBatch remote = FindRemote(batch, route.Roster.ActorId);
                 if (route.PendingCheckpointRequest != 0)
                 {
@@ -538,7 +538,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
 
         void QueueFullCheckpoint(
             ServerAuthoritativeAuthorityClientRoute route,
-            NetworkCheckpoint checkpoint,
+            in NetworkCheckpoint checkpoint,
             ulong requestSequence,
             ulong reservedSequence = 0)
         {
@@ -557,13 +557,14 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
             route.RecordFullCheckpoint(payload.Length);
             if (m_Diagnostics.IsEnabled)
             {
+                AuthoritativeActorBaseline baseline = checkpoint.Baseline;
                 Publish(
                     SimulationModelTraceKind.Transport,
                     "authority_full_checkpoint_queued",
                     $"actor={route.Roster.ActorId};bytes={payload.Length};target={snapshotSequence};request={requestSequence}",
                     route.Roster.ActorId,
-                    checkpoint.Baseline.AuthorityTick.Value,
-                    checkpoint.Baseline.ConfirmedInputSequence,
+                    baseline.AuthorityTick.Value,
+                    baseline.ConfirmedInputSequence,
                     route.AcknowledgedSnapshotSequence,
                     m_FullCheckpointOutput.Count,
                     true,

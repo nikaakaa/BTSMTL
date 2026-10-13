@@ -166,12 +166,14 @@ namespace ThirdPersonSimulation.ServerAuthoritative
 
     public readonly struct ServerAuthoritativeAuthorityFullCheckpointOutput
     {
+        readonly NetworkCheckpoint m_Checkpoint;
+
         public ServerAuthoritativeAuthorityFullCheckpointOutput(
             ServerAuthoritativePlayerId playerId,
             ActorId actorId,
             ulong requestSequence,
             ulong snapshotSequence,
-            NetworkCheckpoint checkpoint,
+            in NetworkCheckpoint checkpoint,
             byte[] payload)
         {
             if (!playerId.IsValid || !actorId.IsValid || snapshotSequence == 0)
@@ -182,7 +184,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             SnapshotSequence = snapshotSequence;
             if (!checkpoint.IsValid)
                 throw new ArgumentOutOfRangeException(nameof(checkpoint));
-            Checkpoint = checkpoint;
+            m_Checkpoint = checkpoint;
             Payload = payload ?? throw new ArgumentNullException(nameof(payload));
         }
 
@@ -190,10 +192,10 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         public ActorId ActorId { get; }
         public ulong RequestSequence { get; }
         public ulong SnapshotSequence { get; }
-        public NetworkCheckpoint Checkpoint { get; }
+        public NetworkCheckpoint Checkpoint => m_Checkpoint;
         public byte[] Payload { get; }
         public bool IsValid => PlayerId.IsValid && ActorId.IsValid && SnapshotSequence != 0 &&
-            Checkpoint.IsValid && Payload != null;
+            m_Checkpoint.IsValid && Payload != null;
     }
 
     public readonly struct ServerAuthoritativeAuthorityReliableEventOutput
@@ -265,7 +267,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         bool TryTakeFullCheckpointRequest(out ServerAuthoritativeAuthorityFullCheckpointRequest value);
         void SendTicketConsumed(ServerAuthoritativeAuthorityDataPlaneTicket ticket);
         void SendReliableEvents(ServerAuthoritativeAuthorityReliableEventBatchOutput value);
-        void SendFullCheckpoint(ServerAuthoritativeAuthorityFullCheckpointOutput value);
+        void SendFullCheckpoint(in ServerAuthoritativeAuthorityFullCheckpointOutput value);
         void SendLeave(string reason);
         void SendFailure(string code, string message);
     }

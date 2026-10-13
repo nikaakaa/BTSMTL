@@ -93,15 +93,16 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             return found.Value;
         }
 
-        public void Require(NetworkCheckpoint checkpoint)
+        public void Require(in NetworkCheckpoint checkpoint)
         {
             if (!checkpoint.IsValid)
                 throw new ArgumentOutOfRangeException(nameof(checkpoint));
-            SimulationActorBinding actor = RequireActor(checkpoint.Baseline.ActorId);
-            if (!checkpoint.Baseline.GameplayContentHash.Equals(new GameplayContentHash(actor.GameplayContentHash)) ||
-                !CanonicalTextValue.Equals(checkpoint.Baseline.StateCodecIdentity, StateCodecIdentity, StringComparison.Ordinal))
+            AuthoritativeActorBaseline baseline = checkpoint.Baseline;
+            SimulationActorBinding actor = RequireActor(baseline.ActorId);
+            if (!baseline.GameplayContentHash.Equals(new GameplayContentHash(actor.GameplayContentHash)) ||
+                !CanonicalTextValue.Equals(baseline.StateCodecIdentity, StateCodecIdentity, StringComparison.Ordinal))
                 throw new InvalidDataException("Network checkpoint does not match the locked Character Runtime state.");
-            ValidateState(actor, checkpoint.Baseline.AuthorityTick, checkpoint.StateMemory, checkpoint.Baseline.StateHash);
+            ValidateState(actor, baseline.AuthorityTick, checkpoint.StateMemory, baseline.StateHash);
         }
 
         internal void ValidateState(
@@ -138,21 +139,23 @@ namespace ThirdPersonSimulation.ServerAuthoritative
 
     public readonly struct NetworkCheckpoint
     {
-        internal NetworkCheckpoint(AuthoritativeActorBaseline baseline, CanonicalHashWriter hashWriter)
+        readonly AuthoritativeActorBaseline m_Baseline;
+
+        internal NetworkCheckpoint(in AuthoritativeActorBaseline baseline, CanonicalHashWriter hashWriter)
         {
             if (!baseline.IsValid)
                 throw new ArgumentOutOfRangeException(nameof(baseline));
-            Baseline = baseline;
+            m_Baseline = baseline;
             CheckpointHash = ComputeHash(baseline, hashWriter);
         }
 
-        public AuthoritativeActorBaseline Baseline { get; }
-        internal ReadOnlySpan<byte> StateSpan => Baseline.CharacterStateBytes.Span;
-        internal ReadOnlyMemory<byte> StateMemory => Baseline.CharacterStateBytes;
+        public AuthoritativeActorBaseline Baseline => m_Baseline;
+        internal ReadOnlySpan<byte> StateSpan => m_Baseline.CharacterStateBytes.Span;
+        internal ReadOnlyMemory<byte> StateMemory => m_Baseline.CharacterStateBytes;
         public StableHash CheckpointHash { get; }
-        public bool IsValid => Baseline.IsValid;
+        public bool IsValid => m_Baseline.IsValid;
 
-        static StableHash ComputeHash(AuthoritativeActorBaseline baseline, CanonicalHashWriter writer)
+        static StableHash ComputeHash(in AuthoritativeActorBaseline baseline, CanonicalHashWriter writer)
         {
             ReadOnlySpan<byte> stateBytes = baseline.CharacterStateBytes.Span;
             writer.Reset();
@@ -179,7 +182,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         const int DeltaVersion = 22;
         const string PresentationChannel = "Presentation";
 
-        public static NetworkCheckpoint Capture(NetworkCheckpointLayout layout, AuthoritativeActorBaseline baseline)
+        public static NetworkCheckpoint Capture(NetworkCheckpointLayout layout, in AuthoritativeActorBaseline baseline)
         {
             if (layout == null)
                 throw new ArgumentNullException(nameof(layout));
@@ -190,7 +193,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             return checkpoint;
         }
 
-        public static byte[] WriteFull(NetworkCheckpointLayout layout, NetworkCheckpoint checkpoint)
+        public static byte[] WriteFull(NetworkCheckpointLayout layout, in NetworkCheckpoint checkpoint)
         {
             AuthoritativeActorBaseline baseline = checkpoint.Baseline;
             using var writer = new CanonicalWriter();
@@ -299,7 +302,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
 
         public static NetworkCheckpoint ReadDelta(
             NetworkCheckpointLayout layout,
-            NetworkCheckpoint baseline,
+            in NetworkCheckpoint baseline,
             ReadOnlyMemory<byte> payload,
             CanonicalReader reader,
             out RemotePresentationBatch remote)

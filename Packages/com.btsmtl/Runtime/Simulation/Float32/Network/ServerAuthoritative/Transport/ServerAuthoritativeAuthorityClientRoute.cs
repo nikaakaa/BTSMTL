@@ -11,6 +11,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
         int m_InputCount;
         readonly ulong[] m_SentSequenceOrder;
         readonly NetworkCheckpoint[] m_SentCheckpoints;
+        NetworkCheckpoint m_AcknowledgedCheckpoint;
         int m_SentSequenceHead;
         int m_SentSequenceCount;
         CommandInputSlot m_Held;
@@ -48,7 +49,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
         public bool TicketConsumptionReported { get; set; }
         public ulong LastReceivedPacketSequence { get; private set; }
         public ulong PendingCheckpointRequest { get; set; }
-        public NetworkCheckpoint AcknowledgedCheckpoint { get; private set; }
+        public ref readonly NetworkCheckpoint AcknowledgedCheckpoint => ref m_AcknowledgedCheckpoint;
         public ulong AcknowledgedSnapshotSequence { get; private set; }
         public ulong DeltaSnapshotCount { get; private set; }
         public ulong FullCheckpointCount { get; private set; }
@@ -199,15 +200,16 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
                 return;
             if (latestSnapshot != latestBase || latestSnapshot < AcknowledgedSnapshotSequence)
                 throw new InvalidOperationException("Client snapshot acknowledgement is inconsistent or regressed.");
-            if (!TryGetSentCheckpoint(latestSnapshot, out NetworkCheckpoint checkpoint))
+            int checkpointIndex = FindSentCheckpointIndex(latestSnapshot);
+            if (checkpointIndex < 0)
                 return;
             AcknowledgedSnapshotSequence = latestSnapshot;
-            AcknowledgedCheckpoint = checkpoint;
+            m_AcknowledgedCheckpoint = m_SentCheckpoints[checkpointIndex];
             while (m_SentSequenceOrder[m_SentSequenceHead] < latestSnapshot)
                 DequeueSentSequence();
         }
 
-        public void StoreSent(ulong sequence, NetworkCheckpoint checkpoint)
+        public void StoreSent(ulong sequence, in NetworkCheckpoint checkpoint)
         {
             if (!checkpoint.IsValid)
                 throw new ArgumentOutOfRangeException(nameof(checkpoint));
@@ -264,7 +266,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
             return $"{Roster.ActorId}:commands={CommandPacketCount}/{CommandPayloadBytes}@{commandPacketsPerSecond:0.##}pps/{commandBytesPerSecond:0.##}Bps,packetGaps={PacketSequenceGaps},duplicates={DuplicatePackets},outOfOrder={OutOfOrderPackets},exact={ExactInputCount},held={HeldInputCount},neutral={NeutralInputCount},late={LateInputCount},lead={LastCommandLead},delta={DeltaSnapshotCount}@{snapshotPacketsPerSecond:0.##}pps/{snapshotBytesPerSecond:0.##}Bps,full={FullCheckpointCount},oversize={DeltaMtuExceededCount},lastBytes={LastDeltaPayloadBytes}";
         }
 
-        void EnqueueSentSequence(ulong sequence, NetworkCheckpoint checkpoint)
+        void EnqueueSentSequence(ulong sequence, in NetworkCheckpoint checkpoint)
         {
             int index = (m_SentSequenceHead + m_SentSequenceCount) % m_SentSequenceOrder.Length;
             m_SentSequenceOrder[index] = sequence;
@@ -282,19 +284,17 @@ namespace ThirdPersonSimulation.ServerAuthoritative.Transport
             return sequence;
         }
 
-        bool TryGetSentCheckpoint(ulong sequence, out NetworkCheckpoint checkpoint)
+        int FindSentCheckpointIndex(ulong sequence)
         {
             for (int i = 0; i < m_SentSequenceCount; i++)
             {
                 int index = (m_SentSequenceHead + i) % m_SentSequenceOrder.Length;
                 if (m_SentSequenceOrder[index] != sequence)
                     continue;
-                checkpoint = m_SentCheckpoints[index];
-                return true;
+                return index;
             }
 
-            checkpoint = default;
-            return false;
+            return -1;
         }
 
         int FindInputIndex(ulong targetTick)
