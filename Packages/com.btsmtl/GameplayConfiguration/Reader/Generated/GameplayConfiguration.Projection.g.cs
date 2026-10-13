@@ -3,8 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 namespace ThirdPersonGameplay.Configuration {
 public static class GameplayConfigProjection {
-public static PublishedVector3 Publish(Vector3 value) {
-return new PublishedVector3(value.X, value.Y, value.Z); }
 public static PublishedMagnitude Publish(Magnitude value) {
 return value switch {
 ConstantMagnitude child => PublishedMagnitude.FromConstantMagnitude(Publish(child)),
@@ -62,16 +60,8 @@ public static PublishedExecution Publish(Execution value) {
 return new PublishedExecution(value.Mutations.ToArray()); }
 public static PublishedAdditionalEffectsComponent Publish(AdditionalEffectsComponent value) {
 return new PublishedAdditionalEffectsComponent(value.Effects.ToArray()); }
-public static PublishedCameraShake Publish(CameraShake value) {
-return new PublishedCameraShake(value.ResourceId, value.ShakeOnNotHit); }
-public static PublishedAttackCollision Publish(AttackCollision value) {
-return new PublishedAttackCollision(value.Kind, Publish(value.CenterOffset), value.Width, value.Height, value.Depth, value.FanAngle, value.Radius, value.InvalidRadius, value.InvalidAngle, value.FollowDirectionType, value.CoreDistance, value.IsSubtractive, value.HitInterval, value.AliveMaxHitCount, value.UnitMaxHitCount, value.FollowAttacker, value.Geometry); }
-public static PublishedAttackProperty Publish(AttackProperty value) {
-return new PublishedAttackProperty(value.SourceKey, value.HitType, value.HitStrengthType, value.CombatTags.ToArray(), Publish(value.DamagePercentage), Publish(value.AddedDamage), Publish(value.BreakStunRatio), Publish(value.ElementAccumulation), Publish(value.ExhaustedAccumulation), Publish(value.ExhaustedChase), value.DamageElement, value.DamageHitType, value.DamageBreakLevel, Publish(value.DamageBreakLevelProbability), value.TriggerBuffLevel, value.DestructionClass, value.DestructionDurability, value.OverrideDamageStaggerLevel, value.DamageTextId, value.DamageTextWaitMilliseconds, value.FrameHalt, value.AttackerFrameHalt, value.GroundHitEffectId, value.SkyHitEffectId, value.DownHitEffectId, value.StandardConfigKey, value.AbilityTargetKey, value.IsCauseStun, value.IsHeavyAttack, value.IsCauseExhausted, value.IsHeal, value.IsIndirect, value.HitsEnemy, value.HitsAllied, value.HitsNeutral, value.UseAbilityTargetKey, value.BanDamage); }
 public static PublishedCueBinding Publish(CueBinding value) {
 return new PublishedCueBinding(value.CueId, value.Trigger); }
-public static PublishedAttack Publish(Attack value) {
-return new PublishedAttack(value.Id, value.AttackId, value.DefinitionRevision, Publish(value.Collision), Publish(value.Property), Publish(value.CameraShake)); }
 public static PublishedComponentRecord Publish(ComponentRecord value) {
 return new PublishedComponentRecord(value.Id, Publish(value.Value)); }
 public static PublishedMutation Publish(Mutation value) {
@@ -87,11 +77,10 @@ return new PublishedInitialEffect(value.Id, value.Effect, value.Parameters.ToArr
 public static PublishedInitialParameter Publish(InitialParameter value) {
 return new PublishedInitialParameter(value.Id, value.ParameterId, value.Value); }
 public static PublishedCharacter Publish(Character value) {
-return new PublishedCharacter(value.Id, value.Attributes.ToArray(), value.InitialAttributes.ToArray(), value.InitialTags.ToArray(), value.Effects.ToArray(), value.Attacks.ToArray(), value.InitialEffects.ToArray()); }
+return new PublishedCharacter(value.Id, value.Attributes.ToArray(), value.InitialAttributes.ToArray(), value.InitialTags.ToArray(), value.Effects.ToArray(), value.InitialEffects.ToArray()); }
 public static string DisplayName(GameplayTables tables, GameplayConfigRecordKind kind, string id) => kind switch {
 GameplayConfigRecordKind.Attributes => tables.Attributes.Get(id).DisplayName,
 GameplayConfigRecordKind.Effects => tables.Effects.Get(id).DisplayName,
-GameplayConfigRecordKind.Attacks => tables.Attacks.Get(id).DisplayName,
 GameplayConfigRecordKind.Components => tables.Components.Get(id).Id,
 GameplayConfigRecordKind.Mutations => tables.Mutations.Get(id).Id,
 GameplayConfigRecordKind.AdditionalEffects => tables.AdditionalEffects.Get(id).Id,
@@ -101,5 +90,5 @@ GameplayConfigRecordKind.InitialEffects => tables.InitialEffects.Get(id).Id,
 GameplayConfigRecordKind.InitialParameters => tables.InitialParameters.Get(id).Id,
 GameplayConfigRecordKind.Characters => tables.Characters.Get(id).DisplayName,
 _ => throw new ArgumentOutOfRangeException(nameof(kind)) };
-public static PublishedGameplayConfiguration Publish(GameplayTables tables) => new PublishedGameplayConfiguration(tables.Attributes.DataList.Select(Publish).ToArray(), tables.Effects.DataList.Select(Publish).ToArray(), tables.Attacks.DataList.Select(Publish).ToArray(), tables.Components.DataList.Select(Publish).ToArray(), tables.Mutations.DataList.Select(Publish).ToArray(), tables.AdditionalEffects.DataList.Select(Publish).ToArray(), tables.ParameterBindings.DataList.Select(Publish).ToArray(), tables.InitialAttributes.DataList.Select(Publish).ToArray(), tables.InitialEffects.DataList.Select(Publish).ToArray(), tables.InitialParameters.DataList.Select(Publish).ToArray(), tables.Characters.DataList.Select(Publish).ToArray()); }
+public static PublishedGameplayConfiguration Publish(GameplayTables tables) => new PublishedGameplayConfiguration(tables.Attributes.DataList.Select(Publish).ToArray(), tables.Effects.DataList.Select(Publish).ToArray(), tables.Components.DataList.Select(Publish).ToArray(), tables.Mutations.DataList.Select(Publish).ToArray(), tables.AdditionalEffects.DataList.Select(Publish).ToArray(), tables.ParameterBindings.DataList.Select(Publish).ToArray(), tables.InitialAttributes.DataList.Select(Publish).ToArray(), tables.InitialEffects.DataList.Select(Publish).ToArray(), tables.InitialParameters.DataList.Select(Publish).ToArray(), tables.Characters.DataList.Select(Publish).ToArray()); }
 }

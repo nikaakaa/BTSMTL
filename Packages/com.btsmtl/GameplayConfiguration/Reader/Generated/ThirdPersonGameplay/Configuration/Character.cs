@@ -31,9 +31,6 @@ public sealed partial class Character
         string[] value_Effects;
         {int __n0 = buffer.ReadSize(); value_Effects = new string[__n0];for(var __index0 = 0 ; __index0 < __n0 ; __index0++) { string __e0;__e0 = buffer.ReadString(); value_Effects[__index0] = __e0;}}
         Effects = Array.AsReadOnly(value_Effects);
-        string[] value_Attacks;
-        {int __n0 = buffer.ReadSize(); value_Attacks = new string[__n0];for(var __index0 = 0 ; __index0 < __n0 ; __index0++) { string __e0;__e0 = buffer.ReadString(); value_Attacks[__index0] = __e0;}}
-        Attacks = Array.AsReadOnly(value_Attacks);
         string[] value_InitialEffects;
         {int __n0 = buffer.ReadSize(); value_InitialEffects = new string[__n0];for(var __index0 = 0 ; __index0 < __n0 ; __index0++) { string __e0;__e0 = buffer.ReadString(); value_InitialEffects[__index0] = __e0;}}
         InitialEffects = Array.AsReadOnly(value_InitialEffects);
@@ -58,9 +55,6 @@ public sealed partial class Character
     public readonly IReadOnlyList<string> Effects;
     public IReadOnlyList<ThirdPersonGameplay.Configuration.Effect> Effects_Ref { get; private set; }
     
-    public readonly IReadOnlyList<string> Attacks;
-    public IReadOnlyList<ThirdPersonGameplay.Configuration.Attack> Attacks_Ref { get; private set; }
-    
     public readonly IReadOnlyList<string> InitialEffects;
     public IReadOnlyList<ThirdPersonGameplay.Configuration.InitialEffect> InitialEffects_Ref { get; private set; }
 
@@ -78,10 +72,6 @@ public sealed partial class Character
         for (int index = 0; index < refs_Effects.Length; index++)
             refs_Effects[index] = tables.Effects.Get(Effects[index]);
         Effects_Ref = Array.AsReadOnly(refs_Effects);
-        var refs_Attacks = new ThirdPersonGameplay.Configuration.Attack[Attacks.Count];
-        for (int index = 0; index < refs_Attacks.Length; index++)
-            refs_Attacks[index] = tables.Attacks.Get(Attacks[index]);
-        Attacks_Ref = Array.AsReadOnly(refs_Attacks);
         var refs_InitialEffects = new ThirdPersonGameplay.Configuration.InitialEffect[InitialEffects.Count];
         for (int index = 0; index < refs_InitialEffects.Length; index++)
             refs_InitialEffects[index] = tables.InitialEffects.Get(InitialEffects[index]);

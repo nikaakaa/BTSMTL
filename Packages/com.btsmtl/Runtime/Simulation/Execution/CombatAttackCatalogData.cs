@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using ThirdPersonGameplay.Configuration;
 
 namespace ThirdPersonSimulation
 {
@@ -23,7 +22,7 @@ namespace ThirdPersonSimulation
     [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
     public readonly partial struct CombatAttackGeometrySample
     {
-        public CombatAttackGeometrySample(float time, PublishedVector3 position, CombatAttackGeometryRotation rotation)
+        public CombatAttackGeometrySample(float time, CombatVector3 position, CombatAttackGeometryRotation rotation)
         {
             Time = time;
             Position = position;
@@ -31,15 +30,15 @@ namespace ThirdPersonSimulation
         }
 
         public float Time { get; }
-        public PublishedVector3 Position { get; }
+        public CombatVector3 Position { get; }
         public CombatAttackGeometryRotation Rotation { get; }
     }
 
     [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
     public sealed partial class CombatAttackGeometryPartContent
     {
-        public CombatAttackGeometryPartContent(string id, int kind, PublishedVector3 halfExtents, float radius,
-            float halfLength, IReadOnlyList<PublishedVector3> vertices, IReadOnlyList<CombatAttackGeometrySample> samples)
+        public CombatAttackGeometryPartContent(string id, int kind, CombatVector3 halfExtents, float radius,
+            float halfLength, IReadOnlyList<CombatVector3> vertices, IReadOnlyList<CombatAttackGeometrySample> samples)
         {
             Id = id;
             Kind = kind;
@@ -52,10 +51,10 @@ namespace ThirdPersonSimulation
 
         public string Id { get; }
         public int Kind { get; }
-        public PublishedVector3 HalfExtents { get; }
+        public CombatVector3 HalfExtents { get; }
         public float Radius { get; }
         public float HalfLength { get; }
-        public IReadOnlyList<PublishedVector3> Vertices { get; }
+        public IReadOnlyList<CombatVector3> Vertices { get; }
         public IReadOnlyList<CombatAttackGeometrySample> Samples { get; }
     }
 
@@ -82,22 +81,18 @@ namespace ThirdPersonSimulation
     [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
     public sealed partial class CombatAttackCatalogData
     {
-        public const int FormatVersion = 1;
+        public const int FormatVersion = 2;
 
-        public CombatAttackCatalogData(int version, string sourceId, string configurationIdentity,
-            IReadOnlyList<PublishedAttack> attacks, IReadOnlyList<CombatAttackGeometryContent> geometries)
+        public CombatAttackCatalogData(int version,
+            IReadOnlyList<CombatAttackContent> attacks, IReadOnlyList<CombatAttackGeometryContent> geometries)
         {
             Version = version;
-            SourceId = sourceId;
-            ConfigurationIdentity = configurationIdentity;
             Attacks = attacks;
             Geometries = geometries;
         }
 
         public int Version { get; }
-        public string SourceId { get; }
-        public string ConfigurationIdentity { get; }
-        public IReadOnlyList<PublishedAttack> Attacks { get; }
+        public IReadOnlyList<CombatAttackContent> Attacks { get; }
         public IReadOnlyList<CombatAttackGeometryContent> Geometries { get; }
     }
 }

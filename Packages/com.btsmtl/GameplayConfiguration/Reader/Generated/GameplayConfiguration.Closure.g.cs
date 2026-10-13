@@ -7,7 +7,6 @@ public sealed class GameplayConfigClosure {
 readonly GameplayConfigurationData m_Data;
 readonly SortedDictionary<string, Attribute> m_Attributes = new SortedDictionary<string, Attribute>(StringComparer.Ordinal);
 readonly SortedDictionary<string, Effect> m_Effects = new SortedDictionary<string, Effect>(StringComparer.Ordinal);
-readonly SortedDictionary<string, Attack> m_Attacks = new SortedDictionary<string, Attack>(StringComparer.Ordinal);
 readonly SortedDictionary<string, ComponentRecord> m_Components = new SortedDictionary<string, ComponentRecord>(StringComparer.Ordinal);
 readonly SortedDictionary<string, Mutation> m_Mutations = new SortedDictionary<string, Mutation>(StringComparer.Ordinal);
 readonly SortedDictionary<string, AdditionalEffect> m_AdditionalEffects = new SortedDictionary<string, AdditionalEffect>(StringComparer.Ordinal);
@@ -23,9 +22,6 @@ if (!m_Attributes.TryAdd(value.Id, value)) return;
 public void Include(Effect value) {
 if (!m_Effects.TryAdd(value.Id, value)) return;
 Visit(value);
-}
-public void Include(Attack value) {
-if (!m_Attacks.TryAdd(value.Id, value)) return;
 }
 public void Include(ComponentRecord value) {
 if (!m_Components.TryAdd(value.Id, value)) return;
@@ -59,7 +55,6 @@ Visit(value);
 public void Include(GameplayConfigRecordKind kind, string id) { switch (kind) {
 case GameplayConfigRecordKind.Attributes: Include(m_Data.Tables.Attributes.Get(id)); break;
 case GameplayConfigRecordKind.Effects: Include(m_Data.Tables.Effects.Get(id)); break;
-case GameplayConfigRecordKind.Attacks: Include(m_Data.Tables.Attacks.Get(id)); break;
 case GameplayConfigRecordKind.Components: Include(m_Data.Tables.Components.Get(id)); break;
 case GameplayConfigRecordKind.Mutations: Include(m_Data.Tables.Mutations.Get(id)); break;
 case GameplayConfigRecordKind.AdditionalEffects: Include(m_Data.Tables.AdditionalEffects.Get(id)); break;
@@ -102,13 +97,11 @@ void Visit(Character value) {
 foreach (var child in value.Attributes_Ref) Include(child);
 foreach (var child in value.InitialAttributes_Ref) Include(child);
 foreach (var child in value.Effects_Ref) Include(child);
-foreach (var child in value.Attacks_Ref) Include(child);
 foreach (var child in value.InitialEffects_Ref) Include(child);
 }
 public PublishedGameplayConfiguration Publish() => new PublishedGameplayConfiguration(
 m_Attributes.Values.Select(GameplayConfigProjection.Publish).ToArray(),
 m_Effects.Values.Select(GameplayConfigProjection.Publish).ToArray(),
-m_Attacks.Values.Select(GameplayConfigProjection.Publish).ToArray(),
 m_Components.Values.Select(GameplayConfigProjection.Publish).ToArray(),
 m_Mutations.Values.Select(GameplayConfigProjection.Publish).ToArray(),
 m_AdditionalEffects.Values.Select(GameplayConfigProjection.Publish).ToArray(),

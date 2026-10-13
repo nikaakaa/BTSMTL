@@ -30,9 +30,6 @@ namespace ThirdPersonSimulation.Fixed
             result.Property = definition.Property;
             result.Camera = definition.Camera;
             PortableAttackCollisionComponent pattern = result.Collision;
-            if (pattern.IsSubtractive || pattern.FollowDirectionType != 0 || pattern.CoreDistance != 0 ||
-                pattern.InvalidRadius != FixedScalar.Zero || pattern.InvalidAngle != FixedScalar.Zero)
-                throw new NotSupportedException($"Attack pattern '{definition.Id}' has unsupported subtraction, follow-direction or exclusion semantics.");
             switch (pattern.Kind)
             {
                 case PortableAttackCollisionKind.FanWithHeight:
@@ -74,8 +71,7 @@ namespace ThirdPersonSimulation.Fixed
         {
             var collision = new PortableAttackCollisionComponent(PortableAttackCollisionKind.BoxContinuous,
                 enemy.AttackCenter, enemy.AttackSize.X, enemy.AttackSize.Y, enemy.AttackSize.Z,
-                FixedScalar.Zero, FixedScalar.Zero, FixedScalar.Zero, FixedScalar.Zero,
-                0, 0, false, FixedScalar.Zero, 0, 1, true);
+                FixedScalar.Zero, FixedScalar.Zero, FixedScalar.Zero, 0, 1, true);
             return new FixedPreparedAttack
             {
                 Index = index,

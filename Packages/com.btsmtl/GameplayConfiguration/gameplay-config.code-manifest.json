@@ -5,7 +5,6 @@
     "Generated/Enums/AttributeSource.cs",
     "Generated/Enums/BoundSource.cs",
     "Generated/Enums/ClampBound.cs",
-    "Generated/Enums/CollisionKind.cs",
     "Generated/Enums/CueTrigger.cs",
     "Generated/Enums/DurationPolicy.cs",
     "Generated/Enums/DurationUpdate.cs",
@@ -26,16 +25,11 @@
     "Reader/Generated/ThirdPersonGameplay/Configuration/AdditionalEffect.cs",
     "Reader/Generated/ThirdPersonGameplay/Configuration/AdditionalEffects.cs",
     "Reader/Generated/ThirdPersonGameplay/Configuration/AdditionalEffectsComponent.cs",
-    "Reader/Generated/ThirdPersonGameplay/Configuration/Attack.cs",
-    "Reader/Generated/ThirdPersonGameplay/Configuration/AttackCollision.cs",
-    "Reader/Generated/ThirdPersonGameplay/Configuration/AttackProperty.cs",
-    "Reader/Generated/ThirdPersonGameplay/Configuration/Attacks.cs",
     "Reader/Generated/ThirdPersonGameplay/Configuration/Attribute.cs",
     "Reader/Generated/ThirdPersonGameplay/Configuration/AttributeBound.cs",
     "Reader/Generated/ThirdPersonGameplay/Configuration/AttributeRequirements.cs",
     "Reader/Generated/ThirdPersonGameplay/Configuration/Attributes.cs",
     "Reader/Generated/ThirdPersonGameplay/Configuration/BlockAbilities.cs",
-    "Reader/Generated/ThirdPersonGameplay/Configuration/CameraShake.cs",
     "Reader/Generated/ThirdPersonGameplay/Configuration/Character.cs",
     "Reader/Generated/ThirdPersonGameplay/Configuration/Characters.cs",
     "Reader/Generated/ThirdPersonGameplay/Configuration/Component.cs",
@@ -66,7 +60,6 @@
     "Reader/Generated/ThirdPersonGameplay/Configuration/TagQuery.cs",
     "Reader/Generated/ThirdPersonGameplay/Configuration/TagRequirements.cs",
     "Reader/Generated/ThirdPersonGameplay/Configuration/TargetAttributeLiveMagnitude.cs",
-    "Reader/Generated/ThirdPersonGameplay/Configuration/TargetAttributeSnapshotMagnitude.cs",
-    "Reader/Generated/ThirdPersonGameplay/Configuration/Vector3.cs"
+    "Reader/Generated/ThirdPersonGameplay/Configuration/TargetAttributeSnapshotMagnitude.cs"
   ]
 }

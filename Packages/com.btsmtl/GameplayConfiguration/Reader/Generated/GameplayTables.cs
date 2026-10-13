@@ -14,7 +14,6 @@ public partial class GameplayTables
 {
     public ThirdPersonGameplay.Configuration.Attributes Attributes {get; }
     public ThirdPersonGameplay.Configuration.Effects Effects {get; }
-    public ThirdPersonGameplay.Configuration.Attacks Attacks {get; }
     public ThirdPersonGameplay.Configuration.Components Components {get; }
     public ThirdPersonGameplay.Configuration.Mutations Mutations {get; }
     public ThirdPersonGameplay.Configuration.AdditionalEffects AdditionalEffects {get; }
@@ -28,7 +27,6 @@ public partial class GameplayTables
     {
         Attributes = new ThirdPersonGameplay.Configuration.Attributes(loader("thirdpersongameplay_configuration_attributes"));
         Effects = new ThirdPersonGameplay.Configuration.Effects(loader("thirdpersongameplay_configuration_effects"));
-        Attacks = new ThirdPersonGameplay.Configuration.Attacks(loader("thirdpersongameplay_configuration_attacks"));
         Components = new ThirdPersonGameplay.Configuration.Components(loader("thirdpersongameplay_configuration_components"));
         Mutations = new ThirdPersonGameplay.Configuration.Mutations(loader("thirdpersongameplay_configuration_mutations"));
         AdditionalEffects = new ThirdPersonGameplay.Configuration.AdditionalEffects(loader("thirdpersongameplay_configuration_additionaleffects"));
@@ -44,7 +42,6 @@ public partial class GameplayTables
     {
         Attributes.ResolveRef(this);
         Effects.ResolveRef(this);
-        Attacks.ResolveRef(this);
         Components.ResolveRef(this);
         Mutations.ResolveRef(this);
         AdditionalEffects.ResolveRef(this);
