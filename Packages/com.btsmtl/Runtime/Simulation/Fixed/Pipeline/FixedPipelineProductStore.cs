@@ -161,6 +161,8 @@ namespace ThirdPersonSimulation.Fixed
             return m_Entries[index];
         }
 
+        public void PrepareCapacity(int capacity) => m_Entries.Capacity = capacity;
+
         internal int UnsealedCount => m_Entries.Count;
         internal SimulationPipelineAppendProductEntry<T> GetUnsealed(int index) => m_Entries[index];
 
