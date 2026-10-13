@@ -1,3 +1,4 @@
+using GameplayAbilityCurve = ThirdPersonSimulation.GameplayAbilityCurve<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32SimulationMath>;
 using MotionWarpWindowRuntime = ThirdPersonSimulation.MotionWarpWindowRuntime<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32Vector2, ThirdPersonSimulation.Float32Vector3, ThirdPersonSimulation.Float32Yaw, ThirdPersonSimulation.Float32ActionInstanceReference, ThirdPersonSimulation.Float32SimulationMath, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Float32Scalar>, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Float32Vector3>, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Float32Yaw>>;
 using MotionWarpCalculation = ThirdPersonSimulation.MotionWarpCalculation<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32Vector2, ThirdPersonSimulation.Float32Vector3, ThirdPersonSimulation.Float32Yaw, ThirdPersonSimulation.Float32SimulationMath>;
 using MotionWarpState = ThirdPersonSimulation.MotionWarpState<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32Vector3, ThirdPersonSimulation.Float32Yaw, ThirdPersonSimulation.Float32ActionInstanceReference, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Float32Scalar>, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Float32Vector3>, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Float32Yaw>>;
@@ -395,8 +396,8 @@ namespace ThirdPersonSimulation
             Float32Scalar fromTime = Float32Scalar.FromInt64(elapsedTicks) / tickRate;
             Float32Scalar toTime = Float32Scalar.FromInt64(checked(elapsedTicks + 1)) / tickRate;
             bool looping = profile.ExecutionMode == LocomotionInputMotionExecutionMode.Continuous;
-            Float32GameplayAbilityCurve xCurve = profile.XCurve;
-            Float32GameplayAbilityCurve zCurve = profile.ZCurve;
+            GameplayAbilityCurve xCurve = profile.XCurve;
+            GameplayAbilityCurve zCurve = profile.ZCurve;
             Float32Scalar duration = profile.CurveDuration;
             Float32Scalar xCycleTotal = looping ? xCurve.Evaluate(duration, Float32Scalar.Zero) : Float32Scalar.Zero;
             Float32Scalar zCycleTotal = looping ? zCurve.Evaluate(duration, Float32Scalar.Zero) : Float32Scalar.Zero;
@@ -414,7 +415,7 @@ namespace ThirdPersonSimulation
         }
 
         static Float32Scalar SampleCumulative(
-            Float32GameplayAbilityCurve curve,
+            GameplayAbilityCurve curve,
             Float32Scalar time,
             Float32Scalar duration,
             bool looping,
@@ -446,8 +447,8 @@ namespace ThirdPersonSimulation
                 var displacementMode = (LocomotionInputMotionDisplacementMode)operation.Integer1;
                 Float32Scalar moveSpeed = Float32Scalar.Zero;
                 Float32Scalar curveDuration = Float32Scalar.Zero;
-                Float32GameplayAbilityCurve xCurve = null;
-                Float32GameplayAbilityCurve zCurve = null;
+                GameplayAbilityCurve xCurve = null;
+                GameplayAbilityCurve zCurve = null;
                 int durationTicks = 0;
                 if (executionMode == LocomotionInputMotionExecutionMode.Timed)
                 {
@@ -506,8 +507,8 @@ namespace ThirdPersonSimulation
                 Float32Scalar moveSpeed,
                 Float32Scalar curveDuration,
                 int durationTicks,
-                Float32GameplayAbilityCurve xCurve,
-                Float32GameplayAbilityCurve zCurve)
+                GameplayAbilityCurve xCurve,
+                GameplayAbilityCurve zCurve)
             {
                 ExecutionMode = executionMode;
                 DisplacementMode = displacementMode;
@@ -525,8 +526,8 @@ namespace ThirdPersonSimulation
             public Float32Scalar MoveSpeed { get; }
             public Float32Scalar CurveDuration { get; }
             public int DurationTicks { get; }
-            public Float32GameplayAbilityCurve XCurve { get; }
-            public Float32GameplayAbilityCurve ZCurve { get; }
+            public GameplayAbilityCurve XCurve { get; }
+            public GameplayAbilityCurve ZCurve { get; }
         }
     }
 }

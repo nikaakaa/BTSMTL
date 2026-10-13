@@ -1,3 +1,5 @@
+using GameplayAbilityCurveCodec = ThirdPersonSimulation.GameplayAbilityCurveCodec<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32SimulationMath, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Float32Scalar>>;
+using GameplayAbilityCurve = ThirdPersonSimulation.GameplayAbilityCurve<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32SimulationMath>;
 using System;
 using System.Linq;
 using ThirdPersonGameplay.Configuration;
@@ -35,7 +37,7 @@ namespace ThirdPersonSimulation
         readonly GameplayAbilityExecutionLayout m_Layout;
         readonly string[] m_OperationSourcePaths;
         readonly string[] m_OperationSourceIdentities;
-        readonly Float32GameplayAbilityCurve[] m_ExecutionCurves;
+        readonly GameplayAbilityCurve[] m_ExecutionCurves;
         readonly PortableTagQuery[] m_TagQueries;
         readonly SimulationSetByCallerValue[][] m_SetByCallerValues;
         readonly IReadOnlyDictionary<GameplayCueProducerKey, ProgramProducer> m_GameplayCueProducers;
@@ -197,11 +199,11 @@ namespace ThirdPersonSimulation
             Identity.Require(identity);
         }
 
-        public Float32GameplayAbilityCurve RequireTimelineCurve(ProgramConstant constant, string identity)
+        public GameplayAbilityCurve RequireTimelineCurve(ProgramConstant constant, string identity)
         {
             if (constant == null)
                 throw new ArgumentNullException(nameof(constant));
-            Float32GameplayAbilityCurve curve = m_ExecutionCurves[constant.Index];
+            GameplayAbilityCurve curve = m_ExecutionCurves[constant.Index];
             if (curve == null)
                 throw new InvalidDataException($"Ability execution curve '{identity}' was not compiled into Ability execution services.");
             return curve;
@@ -267,9 +269,9 @@ namespace ThirdPersonSimulation
             return false;
         }
 
-        static Float32GameplayAbilityCurve[] BuildExecutionCurves(Float32GameplayAbilityExecutionData data)
+        static GameplayAbilityCurve[] BuildExecutionCurves(Float32GameplayAbilityExecutionData data)
         {
-            var result = new Float32GameplayAbilityCurve[data.Constants.Count];
+            var result = new GameplayAbilityCurve[data.Constants.Count];
             for (int entryIndex = 0; entryIndex < data.CatalogEntries.Count; entryIndex++)
             {
                 ProgramCatalogEntry entry = data.CatalogEntries[entryIndex];
@@ -289,7 +291,7 @@ namespace ThirdPersonSimulation
                     byte[] bytes = constant.Bytes.ToArray();
                     if (bytes.Length == 0)
                         throw new InvalidDataException($"Timeline curve '{entry.Identity}/{field.Name}' is empty.");
-                    result[constant.Index] = Float32GameplayAbilityCurveCodec.Read(bytes);
+                    result[constant.Index] = GameplayAbilityCurveCodec.Read(bytes);
                 }
             }
             for (int i = 0; i < data.Constants.Count; i++)
@@ -302,7 +304,7 @@ namespace ThirdPersonSimulation
                 byte[] bytes = constant.Bytes.ToArray();
                 if (bytes.Length == 0)
                     throw new InvalidDataException($"Ability execution curve '{constant.Identity}' is empty.");
-                result[constant.Index] = Float32GameplayAbilityCurveCodec.Read(bytes);
+                result[constant.Index] = GameplayAbilityCurveCodec.Read(bytes);
             }
             return result;
         }

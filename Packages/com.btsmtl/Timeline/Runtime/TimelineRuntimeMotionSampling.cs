@@ -1,3 +1,7 @@
+using FixedCurveKey = ThirdPersonSimulation.GameplayAbilityCurveKey<ThirdPersonSimulation.Fixed.FixedScalar>;
+using FixedCurveData = ThirdPersonSimulation.GameplayAbilityCurve<ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedSimulationMath>;
+using Float32CurveKey = ThirdPersonSimulation.GameplayAbilityCurveKey<ThirdPersonSimulation.Float32Scalar>;
+using Float32CurveData = ThirdPersonSimulation.GameplayAbilityCurve<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32SimulationMath>;
 using System;
 using System.Collections.Generic;
 using ThirdPersonSimulation.Fixed;
@@ -35,21 +39,21 @@ namespace BTSMTL.Timeline.Runtime
 
         sealed class FixedCurve : TimelineRuntimeCurve
         {
-            readonly FixedGameplayAbilityCurve m_Curve;
+            readonly FixedCurveData m_Curve;
             public FixedCurve(TimelineContentCurve source)
             {
-                var keys = new FixedGameplayAbilityCurveKey[source.Keys.Count];
+                var keys = new FixedCurveKey[source.Keys.Count];
                 for (int i = 0; i < keys.Length; i++)
                 {
                     TimelineContentCurveKey key = source.Keys[i];
-                    keys[i] = new FixedGameplayAbilityCurveKey(
+                    keys[i] = new FixedCurveKey(
                         FixedScalar.FromSingle(key.Time), FixedScalar.FromSingle(key.Value),
                         float.IsInfinity(key.InTangent) ? FixedScalar.Zero : FixedScalar.FromSingle(key.InTangent),
                         float.IsInfinity(key.OutTangent) ? FixedScalar.Zero : FixedScalar.FromSingle(key.OutTangent),
                         FixedScalar.FromSingle(key.InWeight), FixedScalar.FromSingle(key.OutWeight), key.WeightedMode,
                         i + 1 < keys.Length && (float.IsInfinity(key.OutTangent) || float.IsInfinity(source.Keys[i + 1].InTangent)));
                 }
-                m_Curve = new FixedGameplayAbilityCurve(source.PreWrapMode, source.PostWrapMode, keys);
+                m_Curve = new FixedCurveData(source.PreWrapMode, source.PostWrapMode, keys);
             }
 
             public override FixedScalar Evaluate(FixedScalar time)
@@ -75,21 +79,21 @@ namespace BTSMTL.Timeline.Runtime
 
         sealed class FloatCurve : TimelineRuntimeCurve
         {
-            readonly Float32GameplayAbilityCurve m_Curve;
+            readonly Float32CurveData m_Curve;
             public FloatCurve(TimelineContentCurve source)
             {
-                var keys = new Float32GameplayAbilityCurveKey[source.Keys.Count];
+                var keys = new Float32CurveKey[source.Keys.Count];
                 for (int i = 0; i < keys.Length; i++)
                 {
                     TimelineContentCurveKey key = source.Keys[i];
-                    keys[i] = new Float32GameplayAbilityCurveKey(
+                    keys[i] = new Float32CurveKey(
                         Float32Scalar.FromDouble(key.Time), Float32Scalar.FromDouble(key.Value),
                         Float32Scalar.FromDouble(float.IsInfinity(key.InTangent) ? 0f : key.InTangent),
                         Float32Scalar.FromDouble(float.IsInfinity(key.OutTangent) ? 0f : key.OutTangent),
                         Float32Scalar.FromDouble(key.InWeight), Float32Scalar.FromDouble(key.OutWeight), key.WeightedMode,
                         i + 1 < keys.Length && (float.IsInfinity(key.OutTangent) || float.IsInfinity(source.Keys[i + 1].InTangent)));
                 }
-                m_Curve = new Float32GameplayAbilityCurve(source.PreWrapMode, source.PostWrapMode, keys);
+                m_Curve = new Float32CurveData(source.PreWrapMode, source.PostWrapMode, keys);
             }
 
             public override FixedScalar Evaluate(FixedScalar time) => FixedScalar.FromSingle(EvaluateFloat(time.ToSingle()));

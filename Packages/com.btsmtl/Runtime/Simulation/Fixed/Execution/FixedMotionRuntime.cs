@@ -1,3 +1,4 @@
+using GameplayAbilityCurve = ThirdPersonSimulation.GameplayAbilityCurve<ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedSimulationMath>;
 using MotionWarpWindowRuntime = ThirdPersonSimulation.MotionWarpWindowRuntime<ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedVector2, ThirdPersonSimulation.Fixed.FixedVector3, ThirdPersonSimulation.Fixed.FixedYaw, ThirdPersonSimulation.Fixed.FixedActionInstanceReference, ThirdPersonSimulation.Fixed.FixedSimulationMath, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Fixed.FixedScalar>, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Fixed.FixedVector3>, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Fixed.FixedYaw>>;
 using MotionWarpCalculation = ThirdPersonSimulation.MotionWarpCalculation<ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedVector2, ThirdPersonSimulation.Fixed.FixedVector3, ThirdPersonSimulation.Fixed.FixedYaw, ThirdPersonSimulation.Fixed.FixedSimulationMath>;
 using MotionWarpState = ThirdPersonSimulation.MotionWarpState<ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedVector3, ThirdPersonSimulation.Fixed.FixedYaw, ThirdPersonSimulation.Fixed.FixedActionInstanceReference, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Fixed.FixedScalar>, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Fixed.FixedVector3>, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Fixed.FixedYaw>>;
@@ -387,8 +388,8 @@ namespace ThirdPersonSimulation.Fixed
             FixedScalar fromTime = FixedScalar.FromInt64(elapsedTicks) / tickRate;
             FixedScalar toTime = FixedScalar.FromInt64(checked(elapsedTicks + 1)) / tickRate;
             bool looping = profile.ExecutionMode == LocomotionInputMotionExecutionMode.Continuous;
-            FixedGameplayAbilityCurve xCurve = profile.XCurve;
-            FixedGameplayAbilityCurve zCurve = profile.ZCurve;
+            GameplayAbilityCurve xCurve = profile.XCurve;
+            GameplayAbilityCurve zCurve = profile.ZCurve;
             FixedScalar duration = profile.CurveDuration;
             FixedScalar xCycleTotal = looping ? xCurve.Evaluate(duration, FixedScalar.Zero) : FixedScalar.Zero;
             FixedScalar zCycleTotal = looping ? zCurve.Evaluate(duration, FixedScalar.Zero) : FixedScalar.Zero;
@@ -406,7 +407,7 @@ namespace ThirdPersonSimulation.Fixed
         }
 
         static FixedScalar SampleCumulative(
-            FixedGameplayAbilityCurve curve,
+            GameplayAbilityCurve curve,
             FixedScalar time,
             FixedScalar duration,
             bool looping,
@@ -438,8 +439,8 @@ namespace ThirdPersonSimulation.Fixed
                 var displacementMode = (LocomotionInputMotionDisplacementMode)operation.Integer1;
                 FixedScalar moveSpeed = FixedScalar.Zero;
                 FixedScalar curveDuration = FixedScalar.Zero;
-                FixedGameplayAbilityCurve xCurve = null;
-                FixedGameplayAbilityCurve zCurve = null;
+                GameplayAbilityCurve xCurve = null;
+                GameplayAbilityCurve zCurve = null;
                 int durationTicks = 0;
                 if (executionMode == LocomotionInputMotionExecutionMode.Timed)
                 {
@@ -498,8 +499,8 @@ namespace ThirdPersonSimulation.Fixed
                 FixedScalar moveSpeed,
                 FixedScalar curveDuration,
                 int durationTicks,
-                FixedGameplayAbilityCurve xCurve,
-                FixedGameplayAbilityCurve zCurve)
+                GameplayAbilityCurve xCurve,
+                GameplayAbilityCurve zCurve)
             {
                 ExecutionMode = executionMode;
                 DisplacementMode = displacementMode;
@@ -517,8 +518,8 @@ namespace ThirdPersonSimulation.Fixed
             public FixedScalar MoveSpeed { get; }
             public FixedScalar CurveDuration { get; }
             public int DurationTicks { get; }
-            public FixedGameplayAbilityCurve XCurve { get; }
-            public FixedGameplayAbilityCurve ZCurve { get; }
+            public GameplayAbilityCurve XCurve { get; }
+            public GameplayAbilityCurve ZCurve { get; }
         }
     }
 }

@@ -1,3 +1,5 @@
+using GameplayAbilityCurveKey = ThirdPersonSimulation.GameplayAbilityCurveKey<ThirdPersonSimulation.Fixed.FixedScalar>;
+using GameplayAbilityCurve = ThirdPersonSimulation.GameplayAbilityCurve<ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedSimulationMath>;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -141,7 +143,7 @@ namespace ThirdPersonSimulation.Fixed
         readonly int[] m_AttackStateOffsets;
         readonly FixedCombatEvaluation[] m_Evaluations;
         readonly FixedCombatStateBank m_State;
-        readonly FixedGameplayAbilityCurve[] m_TimeSlowCurves;
+        readonly GameplayAbilityCurve[] m_TimeSlowCurves;
         readonly Func<CanonicalReader, string> m_StateIdentityReader;
         readonly int m_StateMaximumIdentityCharacters;
         readonly FixedCombatBatchResult m_Batch;
@@ -156,7 +158,7 @@ namespace ThirdPersonSimulation.Fixed
         public FixedCombatRuntime(FixedCharacterRuntime characters, IReadOnlyList<FixedLocalEnemyBinding> localEnemies = null)
         {
             m_Characters = characters;
-            m_TimeSlowCurves = new FixedGameplayAbilityCurve[characters.Roster.Count];
+            m_TimeSlowCurves = new GameplayAbilityCurve[characters.Roster.Count];
             m_TickDelta = FixedScalar.One / FixedScalar.FromInt64(m_Characters.TickRate);
             localEnemies ??= Array.Empty<FixedLocalEnemyBinding>();
             int actorCount = characters.Roster.Count + localEnemies.Count;
@@ -328,18 +330,18 @@ namespace ThirdPersonSimulation.Fixed
             return definition;
         }
 
-        static FixedGameplayAbilityCurve PrepareTimeSlowCurve(CharacterTimeSlowRuntimeBinding binding)
+        static GameplayAbilityCurve PrepareTimeSlowCurve(CharacterTimeSlowRuntimeBinding binding)
         {
-            var keys = new FixedGameplayAbilityCurveKey[binding.Curve.Keys.Count];
+            var keys = new GameplayAbilityCurveKey[binding.Curve.Keys.Count];
             for (int i = 0; i < keys.Length; i++)
             {
                 CharacterCombatCurveKey key = binding.Curve.Keys[i];
-                keys[i] = new FixedGameplayAbilityCurveKey(FixedScalar.FromDouble(key.Time),
+                keys[i] = new GameplayAbilityCurveKey(FixedScalar.FromDouble(key.Time),
                     FixedScalar.FromDouble(key.Value), FixedScalar.FromDouble(key.InTangent),
                     FixedScalar.FromDouble(key.OutTangent), FixedScalar.FromDouble(key.InWeight),
                     FixedScalar.FromDouble(key.OutWeight), key.WeightedMode, false);
             }
-            return new FixedGameplayAbilityCurve(binding.PreWrapMode, binding.PostWrapMode, keys);
+            return new GameplayAbilityCurve(binding.PreWrapMode, binding.PostWrapMode, keys);
         }
 
         internal int ResultIngressCapacity => m_ResultCapacity;
@@ -416,7 +418,7 @@ namespace ThirdPersonSimulation.Fixed
         }
 
         static void AdvanceTimeSlow(ref FixedCombatTimeSlowState state,
-            CharacterTimeSlowRuntimeBinding binding, FixedGameplayAbilityCurve curve, FixedScalar delta)
+            CharacterTimeSlowRuntimeBinding binding, GameplayAbilityCurve curve, FixedScalar delta)
         {
             if (state.Age >= binding.Duration)
             {

@@ -1,3 +1,5 @@
+using GameplayAbilityCurveCodec = ThirdPersonSimulation.GameplayAbilityCurveCodec<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32SimulationMath, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Float32Scalar>>;
+using GameplayAbilityCurve = ThirdPersonSimulation.GameplayAbilityCurve<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32SimulationMath>;
 using System;
 using System.Collections.Generic;
 using ThirdPersonSimulation.Fixed;
@@ -79,10 +81,10 @@ namespace ThirdPersonSimulation
 
         sealed class Profile
         {
-            readonly Float32GameplayAbilityCurve m_Position;
-            readonly Float32GameplayAbilityCurve m_Yaw;
-            readonly Float32GameplayAbilityCurve m_Response;
-            readonly Float32GameplayAbilityCurve m_InputResponse;
+            readonly GameplayAbilityCurve m_Position;
+            readonly GameplayAbilityCurve m_Yaw;
+            readonly GameplayAbilityCurve m_Response;
+            readonly GameplayAbilityCurve m_InputResponse;
 
             public Profile(GameplayAbilityExecutionLayout layout, SimulationOperation operation)
             {
@@ -107,8 +109,8 @@ namespace ThirdPersonSimulation
                 }
 
                 float Scalar(OperationNamedConstant field) => layout.FindNamedConstant(operation.Handle, field).Scalar.ToSingle();
-                Float32GameplayAbilityCurve Curve(OperationNamedConstant field) =>
-                    Float32GameplayAbilityCurveCodec.Read(layout.FindNamedConstant(operation.Handle, field).Bytes.ToArray());
+                GameplayAbilityCurve Curve(OperationNamedConstant field) =>
+                    GameplayAbilityCurveCodec.Read(layout.FindNamedConstant(operation.Handle, field).Bytes.ToArray());
             }
 
             public Float32Scalar EndTime { get; }
