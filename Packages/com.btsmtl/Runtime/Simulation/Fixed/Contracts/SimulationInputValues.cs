@@ -1,6 +1,6 @@
 namespace ThirdPersonSimulation.Fixed
 {
-    [CanonicalContract(MaterializedRead = true)]
+    [CanonicalContract(MaterializedRead = true, OwnsMemberResources = true)]
     internal sealed partial class SimulationInputValues
     {
         internal SimulationInputValues(int valueCapacity, int requestCapacity)

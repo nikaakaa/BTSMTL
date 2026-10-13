@@ -620,7 +620,7 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                             }
                             code.AppendLine("} }");
                         }
-                        else if (plan.OwnsMemberResources && HasResources(plan, member.Type))
+                        else if (plan.OwnsMemberResources && element == null && HasResources(plan, member.Type))
                         {
                             code.Append("{ var memberValue = ").Append(ReadMember(member, plan)).AppendLine(";");
                             Hold(code, "Retain", member.Type, "memberValue", plan);
@@ -629,6 +629,11 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                         }
                         else if (element != null)
                         {
+                            if (plan.OwnsMemberResources)
+                            {
+                                Hold(code, "Release", member.Type, target, plan);
+                                code.Append(target).AppendLine(".Clear();");
+                            }
                             code.AppendLine("{ int count = reader.ReadInt32();");
                             code.Append(target).AppendLine(".PrepareRead(count);");
                             code.AppendLine("for (int i = 0; i < count; i++) {");
@@ -969,6 +974,18 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                 {
                     string source = "source." + Escape(member.Symbol.Name);
                     string target = "target." + Escape(member.Symbol.Name);
+                    ITypeSymbol bufferElement = BufferElement(member.Type);
+                    if (bufferElement != null)
+                    {
+                        Hold(code, "Release", member.Type, target, plan);
+                        code.Append(target).AppendLine(".Clear();");
+                        code.Append(target).Append(".PrepareRead(").Append(source).AppendLine(".Count);");
+                        code.Append("for (int i = 0; i < ").Append(source).AppendLine(".Count; i++) {");
+                        Hold(code, "Retain", bufferElement, source + ".Element(i)", plan);
+                        code.Append(target).Append(".Element(i) = ").Append(source).AppendLine(".Element(i);");
+                        code.Append(target).AppendLine(".CompleteReadElement(); }");
+                        continue;
+                    }
                     if (IsPreparedCollection(member.Type))
                     {
                         CopyPreparedCollection(code, member.Type, source, target, plan);
@@ -1002,7 +1019,7 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                 foreach (Member member in plan.Members)
                 {
                     string target = "value." + Escape(member.Symbol.Name);
-                    if (IsPreparedCollection(member.Type))
+                    if (IsPreparedCollection(member.Type) || BufferElement(member.Type) != null)
                     {
                         Hold(code, "Release", member.Type, target, plan);
                         code.Append(target).AppendLine(".Clear();");
@@ -1463,7 +1480,7 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                 string index = "__capacityIndex" + depth;
                 if (FiniteSize(plan, element))
                 {
-                    code.Append("length = checked(length + 4 + ").Append(OwnsSequenceStorage(type) || IsPreparedCollection(type) ? value + ".Capacity" : SequenceCount(type, value))
+                    code.Append("length = checked(length + 4 + ").Append(SequenceCapacity(type, value))
                         .Append(" * (").Append(MaximumSize(element)).AppendLine("));");
                     return;
                 }
@@ -1513,7 +1530,7 @@ namespace ThirdPerson.CanonicalSerialization.Generator
             {
                 if (FiniteSize(plan, element))
                     code.Append("length = checked(length + ")
-                        .Append(OwnsSequenceStorage(type) || IsPreparedCollection(type) ? value + ".Capacity" : SequenceCount(type, value))
+                        .Append(SequenceCapacity(type, value))
                         .Append(" * (").Append(MaximumTextReferences(element)).AppendLine("));");
                 else
                 {
@@ -1839,6 +1856,10 @@ namespace ThirdPerson.CanonicalSerialization.Generator
 
         static string SequenceCount(ITypeSymbol type, string value) =>
             value + (type is IArrayTypeSymbol || IsReadOnlyMemory(type) ? ".Length" : ".Count");
+
+        static string SequenceCapacity(ITypeSymbol type, string value) =>
+            BufferElement(type) != null || OwnsSequenceStorage(type) || IsPreparedCollection(type)
+                ? value + ".Capacity" : SequenceCount(type, value);
 
         static string SequenceValue(ITypeSymbol type, string value, string index) =>
             IsReadOnlyMemory(type) || BorrowedStorage(type) != null ? value + ".Span[" + index + "]" :

@@ -171,7 +171,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         public SimulationPipelineStateParticipantIdentity StateIdentity { get; }
         public SimulationPipelineStepProjectionMode StepProjectionMode => SimulationPipelineStepProjectionMode.Include;
         public int MaximumTextValues => checked(m_HeldActors.Length *
-            (1 + ServerAuthoritativeCanonicalCodec.MaximumInputTextValues));
+            (ActorId.CanonicalMaximumTextReferences + m_Held[0].MaximumTextValues));
 
         public ISimulationPipelinePassStateCheckpoint CaptureCheckpoint()
         {
@@ -505,6 +505,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 m_InputStorage = new Float32SimulationInputFrameStorage(values, requests);
 
             public ulong InputSequence { get; private set; }
+            public int MaximumTextValues => m_InputStorage.MaximumTextValues;
             public SimulationInput Input { get; private set; }
             public SimulationTick AcceptedTick { get; private set; }
             public ulong LastConsumedTick { get; private set; }

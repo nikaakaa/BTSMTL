@@ -67,9 +67,9 @@ namespace ThirdPersonSimulation.Fixed
 
         public void Begin()
         {
-            ReleaseText();
-            m_Values.Clear();
-            m_Requests.Clear();
+            SimulationInputHeader.CanonicalRelease(Header);
+            Header = default;
+            SimulationInputValues.CanonicalClear(m_Data);
             m_Generation++;
         }
 
@@ -101,14 +101,11 @@ namespace ThirdPersonSimulation.Fixed
 
         public SimulationInput Capture(SimulationInput input)
         {
-            Begin();
-            IReadOnlyList<SimulationInputValue> values = input.Values;
-            IReadOnlyList<SimulationInputRequest> requests = input.Requests;
-            for (int index = 0; index < values.Count; index++)
-                AddValue(values[index]);
-            for (int index = 0; index < requests.Count; index++)
-                AddRequest(requests[index]);
-            return Finish(input.NumericProfile, input.TickSource, input.InputSourceIdentity, input.Sequence);
+            SimulationInputHeader.CanonicalRelease(Header);
+            Header = default;
+            m_Generation++;
+            SimulationInputValues.CanonicalCopyInto(input.CanonicalValues, m_Data);
+            return Finish(input.NumericProfile, input.Header);
         }
 
         public SimulationInput BindValues(SimulationNumericProfile profile,
@@ -160,20 +157,7 @@ namespace ThirdPersonSimulation.Fixed
                 throw new InvalidOperationException("Fixed input frame storage has already been released.");
         }
 
-        void ReleaseText()
-        {
-            SimulationInputHeader.CanonicalRelease(Header);
-            SimulationInputValues.CanonicalRelease(m_Data);
-            Header = default;
-        }
-
-        public void Release()
-        {
-            ReleaseText();
-            m_Generation++;
-            m_Values.Clear();
-            m_Requests.Clear();
-        }
+        public void Release() => Begin();
 
         static int CompareValues(SimulationInputValue left, SimulationInputValue right) =>
             CanonicalTextValue.CompareOrdinal(left.InputId, right.InputId);

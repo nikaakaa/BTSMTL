@@ -21,6 +21,8 @@ namespace ThirdPersonSimulation
         internal IReadOnlyList<SimulationInputValue> Values => m_Values;
         internal IReadOnlyList<SimulationInputRequest> Requests => m_Requests;
         internal SimulationInputValues CanonicalValues => m_Data;
+        internal int MaximumTextValues => checked(SimulationInputHeader.CanonicalMaximumTextReferences +
+            SimulationInputValues.CanonicalMeasureTextCapacity(m_Data));
 
         internal Float32SimulationInputFrameStorage()
         {
@@ -52,9 +54,8 @@ namespace ThirdPersonSimulation
 
         internal void Begin()
         {
-            SimulationInputValues.CanonicalRelease(m_Data);
+            SimulationInputValues.CanonicalClear(m_Data);
             SimulationInputHeader.CanonicalRelease(Header);
-            m_Values.Clear(); m_Requests.Clear();
             Header = default;
         }
 
@@ -135,11 +136,10 @@ namespace ThirdPersonSimulation
 
         public SimulationInput Capture(SimulationInput input)
         {
-            Begin();
-            SimulationInputValues data = input.CanonicalValues;
-            for (int index = 0; index < data.Values.Count; index++) AddValue(in data.Values.Element(index));
-            for (int index = 0; index < data.Requests.Count; index++) AddRequest(in data.Requests.Element(index));
-            return CommitMetadata(input.NumericProfile, input.TickSource, input.InputSourceIdentity, input.Sequence);
+            SimulationInputHeader.CanonicalRelease(Header);
+            Header = default;
+            SimulationInputValues.CanonicalCopyInto(input.CanonicalValues, m_Data);
+            return CommitMetadata(input.NumericProfile, input.Header);
         }
 
         internal SimulationInput Remap(SimulationInput input, SimulationInputBuildContext context,
