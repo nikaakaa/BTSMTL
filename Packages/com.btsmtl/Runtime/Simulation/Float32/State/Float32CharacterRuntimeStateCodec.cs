@@ -105,9 +105,17 @@ namespace ThirdPersonSimulation
         {
             if (actor == null)
                 throw new ArgumentNullException(nameof(actor));
-            using SimulationCharacterStatePayloadStorage.Page encoding = actor.RuntimeStatePages.EncodingStorage?.Acquire();
             return Read(bytes, actor, new CanonicalReader(Array.Empty<byte>()), new CanonicalWriter(), null,
-                encoding, out stateHash);
+                out stateHash);
+        }
+
+        public static Float32CharacterRuntimeState Read(
+            ReadOnlyMemory<byte> bytes, SimulationActorBinding actor,
+            CanonicalReader reader, CanonicalWriter writer, ICanonicalTextResolver resolver,
+            out CharacterStateHash stateHash)
+        {
+            using SimulationCharacterStatePayloadStorage.Page encoding = actor.RuntimeStatePages.EncodingStorage?.Acquire();
+            return Read(bytes, actor, reader, writer, resolver, encoding, out stateHash);
         }
 
         internal static Float32CharacterRuntimeState Read(

@@ -14,6 +14,7 @@ namespace ThirdPersonSimulation
 
         public int Count { get; private set; }
         public int Capacity => m_Items.Length;
+        public ReadOnlySpan<T> Span => m_Items.AsSpan(0, Count);
         public T[] OwnedArray => m_Items;
         public T this[int index] { get => m_Items[index]; set => m_Items[index] = value; }
         public ref T Element(int index) => ref m_Items[index];

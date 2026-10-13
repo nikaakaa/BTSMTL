@@ -257,6 +257,8 @@ namespace ThirdPersonSimulation
         }
 
         internal int Version { get; private set; }
+        public int Count => m_Values.Count;
+        public SimulationOutputDisposition this[int index] => m_Values[index];
 
         public void Begin()
         {
@@ -293,7 +295,7 @@ namespace ThirdPersonSimulation
         readonly CanonicalTextReferences m_Text;
         int m_PayloadLength;
 
-        internal Float32SourceEgressRecord(string channelId, string schemaId, int schemaVersion,
+        public Float32SourceEgressRecord(string channelId, string schemaId, int schemaVersion,
             byte[] payloadBuffer, CanonicalTextReferences text, CanonicalReader payloadReader,
             CanonicalReader elementReader, CanonicalWriter canonicalScratch)
         {
@@ -307,7 +309,7 @@ namespace ThirdPersonSimulation
             CanonicalScratch = canonicalScratch;
         }
 
-        internal void Publish(ActorId actorId, SimulationTick tick, int payloadLength)
+        public void Publish(ActorId actorId, SimulationTick tick, int payloadLength)
         {
             ActorId = actorId;
             Tick = tick;

@@ -1,6 +1,6 @@
 # BTSMTL 源码包
 
-BTSMTL 的唯一源码仓库。通用合同、图／技能执行、Fixed／Float32 数值域、Timeline 共用运行核心及其依赖与 Unity 作者工具、宿主和诊断工具统一归本仓库。保留原命名空间、程序集名称及资源 GUID。
+BTSMTL 的唯一源码仓库。核心包 `com.btsmtl` 拥有通用合同、图／技能执行、Fixed／Float32 数值域、Timeline 共用运行核心及 Unity 作者和诊断工具。具体网络模型由可选包拥有，单向依赖核心；Fantasy、Quantum3 和自定义网络由各自适配层接入公共输入、执行、结果及状态恢复合同。保留原命名空间、程序集名称及资源 GUID。
 
 ## Unity 接入
 
@@ -11,6 +11,14 @@ BTSMTL 的唯一源码仓库。通用合同、图／技能执行、Fixed／Float
 ```
 
 Unity 通过包内原有 asmdef 编译源码。编辑源码直接修改本仓库，3C 的 Assets 中不保留另一份 BTSMTL。角色资产、生成的 C# authoring、Workbench 角色装配及产品发布入口仍由 3C 持有。
+
+需要现有 ServerAuthoritativeHybrid 模型的宿主另外显式安装：
+
+```json
+"com.btsmtl.network.server-authoritative": "file:../../../../../BTSMTL/Packages/com.btsmtl.network.server-authoritative"
+```
+
+该包拥有模型身份、预测、修正、历史、协议及传输实现。核心包不引用网络包，不要求其它后端使用其数据报或同步策略。接入与数据持有约定见[网络包说明](Packages/com.btsmtl.network.server-authoritative/README.md)。
 
 ## 普通 .NET 接入
 
@@ -23,7 +31,7 @@ dotnet build-server shutdown
 
 服务端按实际数值域引用 `Projects/ThirdPersonSimulation.Fixed` 或 `ThirdPersonSimulation.Float32`，需要 Timeline 时引用 `Projects/ThirdPersonSimulation.Timeline/ThirdPersonSimulation.Timeline.csproj`。项目引用自动带入本仓库的公共合同、Core、数值与物理依赖及编译期生成器。旧 3C Core／Fixed 的 Portable 包装工程已移除，3C 的调用工程直接引用本仓库项目。
 
-服务端权威模拟与传输工程也位于 `Projects/ThirdPersonSimulation.ServerAuthoritative`、`Projects/ThirdPersonSimulation.ServerAuthoritative.Transport`，编译包内对应 Network 源码。3C 网络产品引用这些正式项目；独立解决方案共包含 8 个运行库与编译期生成器。
+核心解决方案不包含具体网络模型工程。需要权威网络包时单独构建或引用 `Projects/ThirdPersonSimulation.ServerAuthoritative`、`Projects/ThirdPersonSimulation.ServerAuthoritative.Transport`；二者只编译 `Packages/com.btsmtl.network.server-authoritative` 的源码，并依赖核心工程。3C 网络产品继续引用这些正式项目。
 
 服务端提供编译后的图／Timeline 内容、逻辑时间、输入、播放控制和 TreeClip 调用者；共用运行器执行并提交或丢弃候选，输出玩法结果、播放结果和快照，由宿主消费。服务端不需要 UnityEngine。普通 .NET 编译范围不包含 Unity 作者对象、Editor 或 Unity 组件；动画、场景和声音表现仍由 Unity 客户端消费。
 
@@ -32,7 +40,8 @@ dotnet build-server shutdown
 | 目录 | 职责 |
 | --- | --- |
 | `Foundation` | 公共内容／执行合同、诊断及性能合同；不是某一客户端的业务实现 |
-| `Runtime/Simulation` | 图、状态机、技能与动作执行合同和运行实现，Fixed／Float32 数值域 |
+| 核心包 `Runtime/Simulation` | 图、状态机、技能与动作执行合同和运行实现，Fixed／Float32 数值域及公共后端接入合同 |
+| `Packages/com.btsmtl.network.server-authoritative/Runtime` | 可选权威网络模型的身份、预测、复制、历史、协议和传输 |
 | `Runtime/Physics/BepuQueries` | 运行数值与物理查询所需的既有第三方源码及许可 |
 | `Timeline/Runtime` | 不引用 Unity 的时间推进、内容求值、TreeClip 生命周期、快照及普通 .NET 适配器 |
 | `Timeline/Scripts` | Unity Timeline 作者对象、树节点和运行宿主装配 |

@@ -341,26 +341,26 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             int age = checked((int)(authorityTick.Value - held.AcceptedTick.Value));
             bool reuse = fresh || m_Policy.MissingInputPolicy == ServerAuthoritativeMissingInputPolicy.ReuseLastCanonicalInput &&
                 age <= m_Policy.MaximumInputLagTicks;
-            CanonicalBuffer<SimulationInputValue> values = reuse
-                ? held.Input.CanonicalValues.Values
-                : GetNeutralValues(heldIndex, held.Input.CanonicalValues.Values);
+            if (reuse)
+                return m_InputViews[actorIndex].BindBorrowed(
+                    held.Input, source, held.InputSequence, fresh);
             return m_InputViews[actorIndex].BindBorrowed(
                 held.Input,
-                values,
+                GetNeutralValues(heldIndex, held.Input.ValuesSpan),
                 source,
                 held.InputSequence,
                 fresh);
         }
 
-        CanonicalBuffer<SimulationInputValue> GetNeutralValues(int heldIndex, CanonicalBuffer<SimulationInputValue> values)
+        CanonicalBuffer<SimulationInputValue> GetNeutralValues(int heldIndex, ReadOnlySpan<SimulationInputValue> values)
         {
             CanonicalBuffer<SimulationInputValue> neutral = m_NeutralValues[heldIndex];
             if (!HasNeutralLayout(neutral, values))
             {
                 ReleaseNeutralValues(heldIndex);
-                for (int i = 0; i < values.Count; i++)
+                for (int i = 0; i < values.Length; i++)
                 {
-                    ref readonly SimulationInputValue value = ref values.Element(i);
+                    ref readonly SimulationInputValue value = ref values[i];
                     neutral.Add(value.Kind switch
                     {
                         ProgramInputValueKind.Boolean => SimulationInputValue.FromBoolean(value.InputId, false),
@@ -385,14 +385,14 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             values.Clear();
         }
 
-        static bool HasNeutralLayout(CanonicalBuffer<SimulationInputValue> cache, CanonicalBuffer<SimulationInputValue> values)
+        static bool HasNeutralLayout(CanonicalBuffer<SimulationInputValue> cache, ReadOnlySpan<SimulationInputValue> values)
         {
-            if (cache.Count != values.Count)
+            if (cache.Count != values.Length)
                 return false;
-            for (int i = 0; i < values.Count; i++)
+            for (int i = 0; i < values.Length; i++)
             {
                 ref readonly SimulationInputValue cached = ref cache.Element(i);
-                ref readonly SimulationInputValue value = ref values.Element(i);
+                ref readonly SimulationInputValue value = ref values[i];
                 if (!CanonicalTextValue.Equals(cached.InputId, value.InputId, StringComparison.Ordinal) ||
                     cached.Kind != value.Kind)
                 {
@@ -694,7 +694,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             }
             m_Dispositions = new SimulationOutputDispositionBuffer(outputCapacity);
             m_MaximumEgressTextValues = actorCount * 13L + (long)outputCapacity *
-                (GameplayFact.MaximumTextReferences + PresentationCommand.MaximumTextReferences);
+                (GameplayFact.CanonicalMaximumTextReferences + PresentationCommand.CanonicalMaximumTextReferences);
             StateIdentity = new SimulationPipelineStateParticipantIdentity(
                 descriptor.PassId,
                 descriptor.ImplementationVersion,
@@ -986,8 +986,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 Float32CharacterRuntimeStateCodec.CodecIdentity,
                 actor.State.GameplayContentHash,
                 ports.CharacterRuntime.Runtime.OperationSetVersion,
-                actor.State.CanonicalPayload.Bytes,
-                actor.State.CanonicalPayload.Hash,
+                actor.State.CanonicalPayloadBytes,
+                actor.State.CanonicalPayloadHash,
                 completed.State.WorldState.WorldRevision,
                 completed.State.WorldState.SolverId,
                 completed.State.WorldState.SolverVersion,

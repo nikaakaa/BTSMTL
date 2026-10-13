@@ -38,7 +38,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             new StableHash(CanonicalContractProtocol.ComposeSchema(ServerAuthoritativeEgressChannels.AuthorityReplicationSchema));
         const int MaximumCount = 4096;
         internal static readonly long MaximumRemoteTextValues = 1L + MaximumCount *
-            (3 + PresentationCommand.MaximumTextReferences + ServerAuthoritativeReliableEvent.MaximumTextReferences);
+            (3 + PresentationCommand.CanonicalMaximumTextReferences + ServerAuthoritativeReliableEvent.MaximumTextReferences);
 
         public static void WriteOwnerInput(CanonicalWriter writer, OwnerCanonicalInputBatch input)
         {

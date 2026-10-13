@@ -820,7 +820,7 @@ namespace ThirdPersonSimulation.Fixed
             CombatHit = combatHit;
         }
 
-        internal PresentationCommand WithCombatHit(CombatHitResult combatHit) => new PresentationCommand(in this, combatHit);
+        public PresentationCommand WithCombatHit(CombatHitResult combatHit) => new PresentationCommand(in this, combatHit);
 
         public void Retain() => CanonicalRetain(in this);
         public void Release() => CanonicalRelease(in this);

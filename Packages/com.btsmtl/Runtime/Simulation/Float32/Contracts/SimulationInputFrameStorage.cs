@@ -24,7 +24,7 @@ namespace ThirdPersonSimulation
         public int MaximumTextValues => checked(SimulationInputHeader.CanonicalMaximumTextReferences +
             SimulationInputValues.CanonicalMeasureTextCapacity(m_Data));
 
-        internal Float32SimulationInputFrameStorage()
+        public Float32SimulationInputFrameStorage()
         {
             m_Data = new SimulationInputValues(s_EmptyValues, s_EmptyRequests);
             m_Snapshot = new SimulationInput(this);
@@ -99,7 +99,11 @@ namespace ThirdPersonSimulation
         internal SimulationInput CompleteRead(SimulationNumericProfile profile, in SimulationInputHeader header) =>
             CommitMetadata(profile, in header);
 
-        internal SimulationInput BindBorrowed(SimulationInput input, CanonicalBuffer<SimulationInputValue> values,
+        public SimulationInput BindBorrowed(SimulationInput input, SimulationTickSourceIdentity source,
+            ulong sequence, bool includeRequests) =>
+            BindBorrowed(input, input.CanonicalValues.Values, source, sequence, includeRequests);
+
+        public SimulationInput BindBorrowed(SimulationInput input, CanonicalBuffer<SimulationInputValue> values,
             SimulationTickSourceIdentity source,
             ulong sequence, bool includeRequests)
         {
@@ -110,14 +114,14 @@ namespace ThirdPersonSimulation
             return m_Snapshot;
         }
 
-        internal void ClearBorrowedView()
+        public void ClearBorrowedView()
         {
             m_Data.Values = s_EmptyValues;
             m_Data.Requests = s_EmptyRequests;
             Header = default;
         }
 
-        internal SimulationInput CopyOrderedBorrowedText(SimulationInput input, IReadOnlyList<SimulationInputRequest> requests)
+        public SimulationInput CopyOrderedBorrowedText(SimulationInput input, IReadOnlyList<SimulationInputRequest> requests)
         {
             ClearBorrowedCopy();
             m_Values.CopyFrom(input.Values);
@@ -127,7 +131,7 @@ namespace ThirdPersonSimulation
             return m_Snapshot;
         }
 
-        internal void ClearBorrowedCopy()
+        public void ClearBorrowedCopy()
         {
             m_Values.Clear();
             m_Requests.Clear();

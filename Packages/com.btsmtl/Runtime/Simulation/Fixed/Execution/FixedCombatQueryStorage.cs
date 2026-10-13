@@ -67,7 +67,7 @@ namespace ThirdPersonSimulation.Fixed
 
         internal void ClearText() => CanonicalClear(this);
 
-        internal void CopyFrom(CombatHitResult value) => CanonicalCopyInto(value, this);
+        public void CopyFrom(CombatHitResult value) => CanonicalCopyInto(value, this);
     }
 
     internal sealed class FixedCombatQuery

@@ -265,7 +265,7 @@ namespace ThirdPersonSimulation
             WorldSimulationStateCodec.Read(m_WorldStateBytes, NumericProfile, SolverId, SolverVersion, WorldRevision,
                 m_WorldReader, m_TextResolver);
 
-        internal WorldSimulationState DecodeWorldState(WorldSimulationState storage) =>
+        public WorldSimulationState DecodeWorldState(WorldSimulationState storage) =>
             WorldSimulationStateCodec.Read(m_WorldStateBytes, NumericProfile, SolverId, SolverVersion, WorldRevision,
                 m_WorldReader, m_TextResolver, storage);
 

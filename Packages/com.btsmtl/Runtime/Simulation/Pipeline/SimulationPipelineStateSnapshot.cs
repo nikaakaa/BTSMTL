@@ -258,7 +258,7 @@ namespace ThirdPersonSimulation
             m_CapturedState = capturedState;
         }
 
-        internal SimulationPipelinePassStateCheckpoint(
+        public SimulationPipelinePassStateCheckpoint(
             SimulationPipelineStateParticipantIdentity participant, Action restore, Action release)
         {
             Participant = participant;
@@ -266,7 +266,7 @@ namespace ThirdPersonSimulation
             m_Release = release;
         }
 
-        internal void Begin()
+        public void Begin()
         {
             if (m_Restore != null)
                 throw new InvalidOperationException("Pipeline participant checkpoint is still held by a transaction.");

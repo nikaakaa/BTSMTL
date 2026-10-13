@@ -804,7 +804,6 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                 throw new ArgumentException("Observed world constraint frame Tick does not match the Step.", nameof(observedWorldConstraints));
             SimulationInput rebound = m_StepInputViews[stepIndex].BindBorrowed(
                 input.Input,
-                input.Input.CanonicalValues.Values,
                 source,
                 inputSequence,
                 includeRequests);

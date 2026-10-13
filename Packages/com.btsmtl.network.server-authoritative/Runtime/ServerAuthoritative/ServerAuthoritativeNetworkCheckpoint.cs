@@ -72,7 +72,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             {
                 Float32GameplayAbilityExecutionInstallation installation = actor.AbilityInstallations.Installations[abilityIndex];
                 if (!operation.IsValid || operation.Value >= installation.Data.Operations.Count ||
-                    !CanonicalTextValue.Equals(installation.Services.SourcePath(operation), executionPath, StringComparison.Ordinal))
+                    !CanonicalTextValue.Equals(installation.Layout.SourcePath(operation), executionPath, StringComparison.Ordinal))
                     continue;
                 IReadOnlyList<ProgramReference> references = installation.Layout.References(
                     operation,
@@ -117,10 +117,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             CharacterStateHash hash;
             try
             {
-                using (SimulationCharacterStatePayloadStorage.Page encoding = actor.RuntimeStatePages.EncodingStorage?.Acquire())
-                    state = Float32CharacterRuntimeStateCodec.Read(
-                        bytes,
-                        actor, m_StateReader, m_StateWriter, null, encoding, out hash);
+                state = Float32CharacterRuntimeStateCodec.Read(
+                    bytes, actor, m_StateReader, m_StateWriter, null, out hash);
             }
             finally
             {

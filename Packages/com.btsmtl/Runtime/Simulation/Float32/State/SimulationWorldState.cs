@@ -111,7 +111,7 @@ namespace ThirdPersonSimulation
                 bodies,
                 solverStatePayload);
 
-        internal WorldSimulationState(int actorCount, int maximumPayloadBytes)
+        public WorldSimulationState(int actorCount, int maximumPayloadBytes)
         {
             m_Bodies = new WorldBodyState[actorCount];
             m_SolverStatePayload = new byte[maximumPayloadBytes];
@@ -137,7 +137,7 @@ namespace ThirdPersonSimulation
             m_Identity = identity;
         }
 
-        internal void ClearPrepared()
+        public void ClearPrepared()
         {
             Array.Clear(BodyArray, 0, BodyArray.Length);
             m_Identity = default;

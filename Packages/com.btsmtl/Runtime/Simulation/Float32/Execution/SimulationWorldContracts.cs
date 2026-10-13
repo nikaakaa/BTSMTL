@@ -165,13 +165,13 @@ namespace ThirdPersonSimulation
         readonly IReadOnlyList<ObservedWorldConstraint> m_Constraints;
         readonly CanonicalWriter m_EmptyHashWriter;
 
-        internal ObservedWorldConstraintFrame()
+        public ObservedWorldConstraintFrame()
         {
             m_Constraints = Array.Empty<ObservedWorldConstraint>();
             m_EmptyHashWriter = new CanonicalWriter();
         }
 
-        internal ObservedWorldConstraintFrame(CanonicalBuffer<ObservedWorldConstraint> constraints) =>
+        public ObservedWorldConstraintFrame(CanonicalBuffer<ObservedWorldConstraint> constraints) =>
             m_Constraints = constraints;
 
         public ObservedWorldConstraintFrame(
@@ -199,19 +199,19 @@ namespace ThirdPersonSimulation
             FrameHash = ObservedWorldConstraintCodec.ComputeHash(this);
         }
 
-        internal void ResetEmpty(SimulationTick tick)
+        public void ResetEmpty(SimulationTick tick)
         {
             Tick = tick;
             FrameHash = ObservedWorldConstraintCodec.ComputeHash(this, m_EmptyHashWriter);
         }
 
-        internal void ResetPrepared(SimulationTick tick, CanonicalWriter writer)
+        public void ResetPrepared(SimulationTick tick, CanonicalWriter writer)
         {
             Tick = tick;
             FrameHash = ObservedWorldConstraintCodec.ComputeHash(this, writer);
         }
 
-        internal void SetPreparedMetadata(SimulationTick tick, StableHash frameHash)
+        public void SetPreparedMetadata(SimulationTick tick, StableHash frameHash)
         {
             Tick = tick;
             FrameHash = frameHash;
@@ -251,7 +251,7 @@ namespace ThirdPersonSimulation
 
         [ThreadStatic] static CanonicalWriter s_HashWriter;
 
-        internal static int MaximumEncodedByteCount(IReadOnlyList<ActorId> actors)
+        public static int MaximumEncodedByteCount(IReadOnlyList<ActorId> actors)
         {
             int bytes = checked(sizeof(int) + CanonicalIdentity.Length * sizeof(char) +
                 sizeof(int) + 64 + sizeof(ulong) + sizeof(int));
@@ -373,7 +373,7 @@ namespace ThirdPersonSimulation
         public IReadOnlyList<CharacterWorldSolveRequest> Requests => m_Requests;
         public WorldCapability RequiredCapabilities { get; private set; }
 
-        internal static bool BodyEquals(WorldBodyState left, WorldBodyState right)
+        public static bool BodyEquals(WorldBodyState left, WorldBodyState right)
         {
             return left.ActorId == right.ActorId &&
                    left.Position == right.Position &&

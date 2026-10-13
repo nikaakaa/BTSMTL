@@ -254,7 +254,7 @@ namespace ThirdPersonSimulation
             TextResolver = resolver;
         }
 
-        internal void SetPreparedTextResolver(ICanonicalTextResolver resolver) => TextResolver = resolver;
+        public void SetPreparedTextResolver(ICanonicalTextResolver resolver) => TextResolver = resolver;
 
         internal void ClearPreparedPayload()
         {
@@ -269,13 +269,13 @@ namespace ThirdPersonSimulation
             StateHash = SimulationCanonicalPayloadHash.Compute(m_Payload.Span.Slice(0, length));
         }
 
-        internal void RetainStepStorage()
+        public void RetainStepStorage()
         {
             if (m_StepStorage != null)
                 m_StepStorage.Owner.Retain(m_StepStorage);
         }
 
-        internal void ReleaseStepStorage()
+        public void ReleaseStepStorage()
         {
             if (m_StepStorage != null)
                 m_StepStorage.Owner.Release(m_StepStorage);

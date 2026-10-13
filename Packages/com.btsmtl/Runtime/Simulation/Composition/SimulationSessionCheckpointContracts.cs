@@ -83,9 +83,9 @@ namespace ThirdPersonSimulation
         }
     }
 
-    internal readonly struct SimulationSessionCheckpointPayloadLayout
+    public readonly struct SimulationSessionCheckpointPayloadLayout
     {
-        internal SimulationSessionCheckpointPayloadLayout(SimulationSessionCompositionDescriptor descriptor,
+        public SimulationSessionCheckpointPayloadLayout(SimulationSessionCompositionDescriptor descriptor,
             in GameplayEffectSessionCapacity capacity,
             int maximumDetachedTextPayloads, int stepSnapshotCapacity)
         {
@@ -98,7 +98,7 @@ namespace ThirdPersonSimulation
                 activePayloadPages + capacity.DecodedStatePageCount + maximumDetachedTextPayloads);
         }
 
-        internal static int MaximumNonEmptyTextValues(int maximumPayloadBytes,
+        public static int MaximumNonEmptyTextValues(int maximumPayloadBytes,
             long scalarTextValues, long exitTextValues, long treeTextValues)
         {
             long remainingBytes = maximumPayloadBytes;
@@ -111,9 +111,9 @@ namespace ThirdPersonSimulation
             return checked((int)(scalars + exits + trees));
         }
 
-        internal readonly int PayloadPageCount;
-        internal readonly int MaximumPayloadBytes;
-        internal readonly int RetainedPayloadPageCount;
+        public readonly int PayloadPageCount;
+        public readonly int MaximumPayloadBytes;
+        public readonly int RetainedPayloadPageCount;
     }
 
     internal sealed class SimulationSessionCheckpointPayloadStorage

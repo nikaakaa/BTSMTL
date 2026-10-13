@@ -339,8 +339,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             }
             if (currentTick.IsValid)
                 m_State.SealHistoryJournalCursor(currentTick);
-            ActorId diagnosticActorId = m_Dispositions.GetCount(m_Dispositions.Version) == 0
-                ? default : m_Dispositions.Get(0, m_Dispositions.Version).ActorId;
+            ActorId diagnosticActorId = m_Dispositions.Count == 0
+                ? default : m_Dispositions[0].ActorId;
             writePorts.Dispositions.Write(SimulationPipelineOutputDispositionSet.FromBufferedDispositions(
                 context.TransactionIdentity,
                 m_Dispositions));

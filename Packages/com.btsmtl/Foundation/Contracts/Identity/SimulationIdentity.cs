@@ -4,7 +4,7 @@ using System.Globalization;
 
 namespace ThirdPersonSimulation
 {
-    static class SimulationIdentity
+    public static class SimulationIdentity
     {
         public static CanonicalTextValue Require(CanonicalTextValue value, string parameter)
         {

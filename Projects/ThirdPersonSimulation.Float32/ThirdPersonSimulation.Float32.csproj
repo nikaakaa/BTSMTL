@@ -10,7 +10,7 @@
     <SimulationSourceRoot>$(MSBuildThisFileDirectory)..\..\Packages\com.btsmtl\Runtime\Simulation\Float32</SimulationSourceRoot>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="$(SimulationSourceRoot)\**\*.cs" Exclude="$(SimulationSourceRoot)\Network\**\*.cs" LinkBase="Source" />
+    <Compile Include="$(SimulationSourceRoot)\**\*.cs" LinkBase="Source" />
     <ProjectReference Include="..\ThirdPersonSimulation.Core\ThirdPersonSimulation.Core.csproj" />
   </ItemGroup>
 </Project>

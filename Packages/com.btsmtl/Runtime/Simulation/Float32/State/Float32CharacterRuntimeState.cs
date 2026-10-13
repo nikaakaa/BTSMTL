@@ -39,6 +39,8 @@ namespace ThirdPersonSimulation
 
         internal Float32CharacterRuntimeStatePage Page => m_Page;
         internal SimulationCharacterStatePayload CanonicalPayload => m_Page.CanonicalPayload;
+        public ReadOnlyMemory<byte> CanonicalPayloadBytes => m_Page.CanonicalPayload.Bytes;
+        public CharacterStateHash CanonicalPayloadHash => m_Page.CanonicalPayload.Hash;
         internal void DiscardDecodedStorage() => m_Page.Clear();
 
         internal void SetCanonicalPayload(SimulationCharacterStatePayload payload)

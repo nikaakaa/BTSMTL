@@ -93,6 +93,7 @@ namespace ThirdPersonSimulation
         public CanonicalTextValue InputSourceIdentity => m_Storage.InputSourceIdentity;
         public ulong Sequence => m_Storage.Sequence;
         public IReadOnlyList<SimulationInputValue> Values => m_Storage.Values;
+        public ReadOnlySpan<SimulationInputValue> ValuesSpan => m_Storage.CanonicalValues.Values.Span;
         public IReadOnlyList<SimulationInputRequest> Requests => m_Storage.Requests;
         public void RetainText()
         {

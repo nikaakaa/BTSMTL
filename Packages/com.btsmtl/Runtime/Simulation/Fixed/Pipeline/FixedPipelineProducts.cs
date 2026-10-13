@@ -18,7 +18,7 @@ namespace ThirdPersonSimulation.Fixed
     {
         readonly SimulationPipelineActorInput<FixedStepInput>[] m_Inputs;
 
-        internal FixedCanonicalInputBatch(
+        public FixedCanonicalInputBatch(
             SimulationTickSourceIdentity source,
             SimulationPipelineActorInput<FixedStepInput>[] inputs,
             FixedLocalEnemyInput[] localEnemies = null,
@@ -383,7 +383,7 @@ namespace ThirdPersonSimulation.Fixed
         internal ReadOnlyMemory<byte> StoredPayload => m_Storage.Buffer.AsMemory(0, m_PayloadLength);
         internal SimulationSessionCheckpointPayloadStorage.Page Storage => m_Storage;
 
-        internal void RetainStorage()
+        public void RetainStorage()
         {
             if (m_Storage != null)
                 m_Storage.Retain();
@@ -476,7 +476,7 @@ namespace ThirdPersonSimulation.Fixed
             PipelineProjection = session.Pipeline;
         }
 
-        internal FixedSimulationSessionSnapshot Session { get; }
+        public FixedSimulationSessionSnapshot Session { get; }
         public SimulationSessionCompositionIdentity CompositionIdentity { get; }
         public SimulationWorldSnapshot World { get; }
         public SimulationPipelineStateSnapshot PipelineProjection { get; }
