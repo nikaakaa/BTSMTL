@@ -17,8 +17,8 @@ namespace ThirdPersonSimulation.ServerAuthoritative
         internal const int MaximumHistoryRecordTextValues =
             1 + ServerAuthoritativeCanonicalCodec.MaximumInputTextValues + 6 +
             4 + 4 * MaximumProjectedParticipantCount + 3 * MaximumObservedActorCount;
-        static readonly IComparer<ServerAuthoritativeJournalEntry> s_CompareJournalEntries =
-            Comparer<ServerAuthoritativeJournalEntry>.Create((left, right) => left.EventId.CompareTo(right.EventId));
+        static readonly Comparison<ServerAuthoritativeJournalEntry> s_CompareJournalEntries =
+            (left, right) => left.EventId.CompareTo(right.EventId);
 
         public static byte[] WriteCorrection(ServerAuthoritativePredictionCorrectionCheckpoint checkpoint)
         {
@@ -181,7 +181,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             ServerAuthoritativeJournalEntry[] entries = checkpoint.Buffer;
             for (int i = 0; i < count; i++)
                 entries[i] = ServerAuthoritativeJournalEntry.CanonicalRead(reader);
-            Array.Sort(entries, 0, count, s_CompareJournalEntries);
+            SimulationArraySort.SortPrefix(entries, count, s_CompareJournalEntries);
             for (int i = 1; i < count; i++)
             {
                 if (entries[i - 1].EventId.Equals(entries[i].EventId))
