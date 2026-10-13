@@ -43,11 +43,13 @@ namespace ThirdPersonSimulation.Fixed
 
         internal void RestoreFrom(FixedCombatStateBank bank) => FixedCombatStateBank.CanonicalCopyInto(bank, m_State);
 
-        internal void WriteState(CanonicalWriter writer)
+        internal void WriteState(CanonicalWriter writer) => WriteState(writer, m_State);
+
+        internal static void WriteState(CanonicalWriter writer, FixedCombatStateBank state)
         {
             writer.WriteInt32(8);
             writer.WriteHash(CombatStateSchema);
-            FixedCombatStateBank.CanonicalWrite(writer, m_State);
+            FixedCombatStateBank.CanonicalWrite(writer, state);
         }
 
         internal void ReadState(CanonicalReader reader, FixedCombatStateBank bank)

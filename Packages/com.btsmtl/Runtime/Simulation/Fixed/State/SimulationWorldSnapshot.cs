@@ -695,23 +695,31 @@ namespace ThirdPersonSimulation.Fixed
             m_Current = stateSet;
         }
 
-        SimulationWorldStateSet ValidateAndDecode(SimulationWorldSnapshot snapshot)
+        SimulationWorldStateSet ValidateAndDecode(SimulationWorldSnapshot snapshot) =>
+            DecodeSnapshot(snapshot, m_Runtime, in m_Current, m_StateStorage, m_RestoreWorldStorage);
+
+        internal static SimulationWorldStateSet DecodeSnapshot(
+            SimulationWorldSnapshot snapshot,
+            FixedCharacterRuntime runtime,
+            in SimulationWorldStateSet published,
+            SimulationWorldStateSetStorage stateStorage,
+            WorldSimulationStateStorage worldStorage)
         {
             if (snapshot == null)
                 throw new ArgumentNullException(nameof(snapshot));
-            if (snapshot.NumericProfile != m_Runtime.NumericProfile || !snapshot.GameplayContentHash.Equals(m_Runtime.GameplayContentHash) ||
-                !snapshot.StateSchemaHash.Equals(m_Runtime.StateSchemaHash))
+            if (snapshot.NumericProfile != runtime.NumericProfile || !snapshot.GameplayContentHash.Equals(runtime.GameplayContentHash) ||
+                !snapshot.StateSchemaHash.Equals(runtime.StateSchemaHash))
                 throw new InvalidDataException("Snapshot Numeric Profile or GameplayContentHash does not match the active Character Runtime.");
-            if (!snapshot.SolverId.Equals(m_Current.WorldState.SolverId) ||
-                !string.Equals(snapshot.SolverVersion, m_Current.WorldState.SolverVersion, StringComparison.Ordinal) ||
-                !snapshot.WorldRevision.Equals(m_Current.WorldState.WorldRevision))
+            if (!snapshot.SolverId.Equals(published.WorldState.SolverId) ||
+                !string.Equals(snapshot.SolverVersion, published.WorldState.SolverVersion, StringComparison.Ordinal) ||
+                !snapshot.WorldRevision.Equals(published.WorldState.WorldRevision))
             {
                 throw new InvalidDataException("Snapshot Solver or WorldRevision binding does not match the active world.");
             }
-            if (snapshot.Actors.Count != m_Current.Actors.Count)
+            if (snapshot.Actors.Count != published.Actors.Count)
                 throw new InvalidDataException("Snapshot Actor roster count does not match the active roster.");
-            using SimulationCharacterStatePayloadStorage.Page encoding = m_Runtime.Roster[0].RuntimeStatePages.EncodingStorage?.Acquire();
-            SimulationWorldStateSetStorage.Page actorPage = m_StateStorage.BeginWrite();
+            using SimulationCharacterStatePayloadStorage.Page encoding = runtime.Roster[0].RuntimeStatePages.EncodingStorage?.Acquire();
+            SimulationWorldStateSetStorage.Page actorPage = stateStorage.BeginWrite();
             WorldSimulationState decodedWorld = default;
             int preparedActors = 0;
             try
@@ -720,8 +728,8 @@ namespace ThirdPersonSimulation.Fixed
             for (int i = 0; i < snapshot.Actors.Count; i++)
             {
                 SimulationActorSnapshot actorSnapshot = snapshot.Actors[i];
-                SimulationActorState currentActor = m_Current.Actors[i];
-                SimulationActorBinding binding = m_Runtime.Roster[i];
+                SimulationActorState currentActor = published.Actors[i];
+                SimulationActorBinding binding = runtime.Roster[i];
                 if (actorSnapshot.ActorId != currentActor.ActorId ||
                     !actorSnapshot.GameplayContentHash.Equals(currentActor.State.GameplayContentHash) ||
                     !actorSnapshot.StateSchemaHash.Equals(currentActor.State.StateSchemaHash) ||
@@ -740,7 +748,7 @@ namespace ThirdPersonSimulation.Fixed
                 if (state.LastCompletedTick != snapshot.Tick.Value)
                     throw new InvalidDataException($"Actor '{actorSnapshot.ActorId}' state Tick does not match Snapshot Tick.");
             }
-            WorldSimulationState worldState = snapshot.DecodeWorldState(m_RestoreWorldStorage, m_Current.WorldState.Bodies);
+            WorldSimulationState worldState = snapshot.DecodeWorldState(worldStorage, published.WorldState.Bodies);
             decodedWorld = worldState;
             if (worldState.Bodies.Count != restoredActors.Length)
                 throw new InvalidDataException("Snapshot World body roster does not match Actor roster.");

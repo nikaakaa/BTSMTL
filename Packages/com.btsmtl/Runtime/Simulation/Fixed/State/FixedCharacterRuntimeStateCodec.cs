@@ -22,6 +22,27 @@ namespace ThirdPersonSimulation.Fixed
         const string HashIdentity = "fixed-character-runtime-state-hash/22";
         public const string CodecIdentity = "fixed-character-runtime-state/22";
 
+        internal static void PrepareStorage(FixedCharacterRuntime runtime,
+            int statePageCount, int decodedStatePageCount, int maximumPayloadBytes)
+        {
+            for (int index = 0; index < runtime.Roster.Count; index++)
+            {
+                SimulationActorBinding actor = runtime.Roster[index];
+                actor.PrepareCheckpointControlSchema(
+                    runtime.ControlModules.RequireContract(actor.ControlRuntimeBinding.ModuleId));
+                actor.TimelineSnapshotPages.PrepareDecodeLayout(actor.TimelineRuntime, maximumPayloadBytes);
+                actor.TimelineSnapshotPages.PrepareDecodeStorage(decodedStatePageCount);
+            }
+            if (maximumPayloadBytes > 0)
+            {
+                var encoding = new SimulationCharacterStatePayloadStorage(
+                    checked(statePageCount + runtime.Roster.Count), maximumPayloadBytes,
+                    HashPrefixBytes, runtime.Roster.Count);
+                for (int index = 0; index < runtime.Roster.Count; index++)
+                    runtime.Roster[index].RuntimeStatePages.EncodingStorage = encoding;
+            }
+        }
+
         public static byte[] Write(FixedCharacterRuntimeState state)
         {
             CanonicalWriter writer = s_StateWriter ??= new CanonicalWriter();

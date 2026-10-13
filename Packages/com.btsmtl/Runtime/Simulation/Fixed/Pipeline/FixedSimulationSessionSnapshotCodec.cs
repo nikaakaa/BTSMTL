@@ -102,29 +102,13 @@ namespace ThirdPersonSimulation.Fixed
             if (!descriptor.CapturesState)
                 return;
             m_PublishedWorld = publishedWorld;
-            for (int actor = 0; actor < runtime.Roster.Count; actor++)
-            {
-                runtime.Roster[actor].PrepareCheckpointControlSchema(
-                    runtime.ControlModules.RequireContract(runtime.Roster[actor].ControlRuntimeBinding.ModuleId));
-                runtime.Roster[actor].TimelineSnapshotPages.PrepareDecodeLayout(runtime.Roster[actor].TimelineRuntime,
-                    descriptor.MaximumSessionCheckpointPayloadBytes);
-                runtime.Roster[actor].TimelineSnapshotPages.PrepareDecodeStorage(capacity.DecodedStatePageCount);
-            }
+            FixedCharacterRuntimeStateCodec.PrepareStorage(runtime,
+                capacity.StatePageCount, capacity.DecodedStatePageCount, descriptor.MaximumSessionCheckpointPayloadBytes);
             int maximumDetachedTextPayloads = 0;
             for (int actor = 0; actor < runtime.Roster.Count; actor++)
             {
                 maximumDetachedTextPayloads = checked(maximumDetachedTextPayloads +
                     runtime.Roster[actor].MaximumDetachedCheckpointTextPayloads);
-            }
-            if (descriptor.MaximumSessionCheckpointPayloadBytes > 0)
-            {
-                var encoding = new SimulationCharacterStatePayloadStorage(
-                    checked(capacity.StatePageCount + runtime.Roster.Count), descriptor.MaximumSessionCheckpointPayloadBytes,
-                    FixedCharacterRuntimeStateCodec.HashPrefixBytes, runtime.Roster.Count);
-                for (int actor = 0; actor < runtime.Roster.Count; actor++)
-                {
-                    runtime.Roster[actor].RuntimeStatePages.EncodingStorage = encoding;
-                }
             }
             m_Checkpoints = new SimulationSessionCheckpointPayloadStorage(descriptor, in capacity,
                 maximumDetachedTextPayloads, stepSnapshotCapacity);

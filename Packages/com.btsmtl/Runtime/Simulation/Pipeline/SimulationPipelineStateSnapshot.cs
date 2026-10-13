@@ -191,6 +191,19 @@ namespace ThirdPersonSimulation
         ISimulationPipelinePassRestoreTransaction PrepareRestore(SimulationPipelinePassStateSnapshot snapshot);
     }
 
+    public interface ISimulationPipelineFrameStateParticipant : ISimulationPipelineStateParticipant
+    {
+        ISimulationPipelineFrameState CreateFrameState();
+    }
+
+    public interface ISimulationPipelineFrameState : ISimulationPipelinePassStateCheckpoint
+    {
+        void Capture();
+        void CopyFrom(ISimulationPipelineFrameState source);
+        void Write(CanonicalWriter writer);
+        void Read(CanonicalReader reader);
+    }
+
     internal sealed class SimulationPipelineStateParticipantSet : IReadOnlyList<ISimulationPipelineStateParticipant>
     {
         public SimulationPipelineStateParticipantSet(

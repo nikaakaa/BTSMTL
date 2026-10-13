@@ -35,7 +35,7 @@ namespace ThirdPersonSimulation.Fixed
     public sealed class FixedWorldResolveBatchPassRuntime :
         FixedPipelinePassRuntimeBase,
         ISimulationStepPassRuntime<FixedWorldResolveBatchReadPorts, FixedWorldResolveBatchWritePorts>,
-        ISimulationPipelineStateParticipant,
+        ISimulationPipelineFrameStateParticipant,
         ISimulationPipelineStepStateStorage
     {
         readonly FixedCombatPipelineStateParticipant m_CombatState;
@@ -52,6 +52,7 @@ namespace ThirdPersonSimulation.Fixed
         public void PrepareStepStorage(int snapshotCapacity) => m_CombatState.PrepareStepStorage(snapshotCapacity);
         public SimulationPipelinePassStateSnapshot CaptureStepState() => m_CombatState.CaptureStepState();
         public ISimulationPipelinePassStateCheckpoint CaptureCheckpoint() => m_CombatState.CaptureCheckpoint();
+        public ISimulationPipelineFrameState CreateFrameState() => m_CombatState.CreateFrameState();
         public SimulationPipelinePassStateSnapshot CaptureState() => m_CombatState.CaptureState();
         public void WriteCheckpointState(CanonicalWriter writer) => m_CombatState.WriteCheckpointState(writer);
         public ISimulationPipelinePassRestoreTransaction PrepareRestore(SimulationPipelinePassStateSnapshot snapshot) => m_CombatState.PrepareRestore(snapshot);

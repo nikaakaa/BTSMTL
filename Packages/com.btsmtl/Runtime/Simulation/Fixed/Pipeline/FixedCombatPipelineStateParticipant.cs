@@ -2,7 +2,7 @@ using System;
 
 namespace ThirdPersonSimulation.Fixed
 {
-    public sealed class FixedCombatPipelineStateParticipant : ISimulationPipelineStateParticipant, ISimulationPipelineStepStateStorage
+    public sealed class FixedCombatPipelineStateParticipant : ISimulationPipelineFrameStateParticipant, ISimulationPipelineStepStateStorage
     {
         readonly FixedCombatRuntime m_Combat;
         readonly CanonicalWriter m_Writer;
@@ -41,6 +41,7 @@ namespace ThirdPersonSimulation.Fixed
             m_Checkpoint.Capture();
             return m_Checkpoint;
         }
+        public ISimulationPipelineFrameState CreateFrameState() => new FixedCombatCheckpoint(StateIdentity, m_Combat);
         public void WriteCheckpointState(CanonicalWriter writer) => m_Combat.WriteState(writer);
 
         public SimulationPipelinePassStateSnapshot CaptureState()
@@ -58,7 +59,7 @@ namespace ThirdPersonSimulation.Fixed
         }
     }
 
-    internal sealed class FixedCombatCheckpoint : ISimulationPipelinePassStateCheckpoint
+    internal sealed class FixedCombatCheckpoint : ISimulationPipelineFrameState
     {
         readonly FixedCombatRuntime m_Combat;
         readonly FixedCombatStateBank m_Before;
@@ -71,6 +72,10 @@ namespace ThirdPersonSimulation.Fixed
         public SimulationPipelineStateParticipantIdentity Participant { get; }
         public void Capture() => m_Combat.CaptureTo(m_Before);
         public void Restore() => m_Combat.RestoreFrom(m_Before);
+        public void CopyFrom(ISimulationPipelineFrameState source) =>
+            FixedCombatStateBank.CanonicalCopyInto(((FixedCombatCheckpoint)source).m_Before, m_Before);
+        public void Write(CanonicalWriter writer) => FixedCombatRuntime.WriteState(writer, m_Before);
+        public void Read(CanonicalReader reader) => m_Combat.ReadState(reader, m_Before);
         public void Dispose() => m_Combat.ReleaseStateBank(m_Before);
     }
 
