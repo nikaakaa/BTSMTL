@@ -101,11 +101,22 @@ namespace ThirdPersonSimulation.Fixed
 
         public SimulationInput Capture(SimulationInput input)
         {
+            return Capture(input, input.Header);
+        }
+
+        public SimulationInput Capture(SimulationInput input, SimulationTickSourceIdentity source,
+            CanonicalTextValue sourceIdentity)
+        {
+            return Capture(input, new SimulationInputHeader(source, sourceIdentity, input.Sequence));
+        }
+
+        SimulationInput Capture(SimulationInput input, in SimulationInputHeader header)
+        {
             SimulationInputHeader.CanonicalRelease(Header);
             Header = default;
             m_Generation++;
             SimulationInputValues.CanonicalCopyInto(input.CanonicalValues, m_Data);
-            return Finish(input.NumericProfile, input.Header);
+            return Finish(input.NumericProfile, in header);
         }
 
         public SimulationInput BindValues(SimulationNumericProfile profile,
