@@ -37,7 +37,7 @@ namespace ThirdPersonSimulation
         public static bool operator !=(ProgramId left, ProgramId right) => !left.Equals(right);
     }
 
-    [CanonicalContract]
+    [CanonicalContract(MaterializedRead = true)]
     public readonly partial struct ActorId : IEquatable<ActorId>, IComparable<ActorId>
     {
         public ActorId(string value) => Value = CanonicalTextValue.FromString(SimulationIdentity.Require(value, nameof(value)));
@@ -48,7 +48,7 @@ namespace ThirdPersonSimulation
             if (Value.IsEmpty)
                 throw new ArgumentException("Identity is required.", nameof(value));
         }
-        [CanonicalTextRules(Required = true)]
+        [CanonicalTextRules(Required = true, Trim = true)]
         public CanonicalTextValue Value { get; }
         [CanonicalPresence]
         public bool IsValid => !Value.IsEmpty;

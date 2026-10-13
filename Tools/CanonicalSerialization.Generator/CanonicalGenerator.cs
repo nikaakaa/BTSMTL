@@ -2069,9 +2069,9 @@ namespace ThirdPerson.CanonicalSerialization.Generator
                     {
                         descriptor.Append(":text-rules:").Append(TextRule(member, "Required")).Append(':')
                             .Append(TextRule(member, "Trim")).Append(':').Append(TextRule(member, "NullToEmpty"));
-                        if (!type.IsReadOnly || Identity(member.Type) != TextType &&
-                            member.Type.SpecialType != SpecialType.System_String)
-                            Error(plan, member.Symbol, "文本规范化必须声明在 readonly 记录的实际文本成员");
+                        if ((!type.IsReadOnly && !(type.TypeKind == TypeKind.Class && plan.MaterializedRead && !plan.PreparedRead)) ||
+                            Identity(member.Type) != TextType && member.Type.SpecialType != SpecialType.System_String)
+                            Error(plan, member.Symbol, "文本规范化声明在readonly记录或初始化class的真实文本成员");
                     }
                     if (HasAttribute(member.Symbol, BoundAttribute) && (!plan.PreparedRead && !type.IsReadOnly ||
                         plan.PreparedStorage != null || plan.Presence != null || plan.Cases.Length != 0))

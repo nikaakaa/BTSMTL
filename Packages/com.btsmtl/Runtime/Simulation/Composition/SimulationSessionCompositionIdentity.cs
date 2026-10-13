@@ -35,18 +35,20 @@ namespace ThirdPersonSimulation
         public override string ToString() => Value ?? string.Empty;
     }
 
-    public readonly struct SimulationProtocolIdentity : IEquatable<SimulationProtocolIdentity>
+    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+    public readonly partial struct SimulationProtocolIdentity : IEquatable<SimulationProtocolIdentity>
     {
         public SimulationProtocolIdentity(string protocolId, string semanticVersion, StableHash schemaHash)
         {
-            if (!schemaHash.IsValid)
-                throw new ArgumentException("Protocol schema hash is required.", nameof(schemaHash));
             ProtocolId = SimulationIdentity.Require(protocolId, nameof(protocolId));
             SemanticVersion = SimulationIdentity.Require(semanticVersion, nameof(semanticVersion));
             SchemaHash = schemaHash;
+            RequireRecord();
         }
 
+        [CanonicalTextRules(Required = true, Trim = true)]
         public string ProtocolId { get; }
+        [CanonicalTextRules(Required = true, Trim = true)]
         public string SemanticVersion { get; }
         public StableHash SchemaHash { get; }
         public bool IsValid => !string.IsNullOrEmpty(ProtocolId) && !string.IsNullOrEmpty(SemanticVersion) && SchemaHash.IsValid;
@@ -57,6 +59,13 @@ namespace ThirdPersonSimulation
         public override bool Equals(object obj) => obj is SimulationProtocolIdentity other && Equals(other);
         public override int GetHashCode() => HashCode.Combine(ProtocolId, SemanticVersion, SchemaHash);
         public override string ToString() => $"{ProtocolId}@{SemanticVersion}/{SchemaHash}";
+
+        [CanonicalValidation]
+        void RequireRecord()
+        {
+            if (!SchemaHash.IsValid)
+                throw new ArgumentException("Protocol schema hash is required.", "schemaHash");
+        }
     }
 
     public enum SimulationComponentRole : byte
@@ -91,9 +100,9 @@ namespace ThirdPersonSimulation
         }
 
         public SimulationComponentRole Role { get; }
-        [CanonicalTextRules(Required = true)]
+        [CanonicalTextRules(Required = true, Trim = true)]
         public string ComponentId { get; }
-        [CanonicalTextRules(Required = true)]
+        [CanonicalTextRules(Required = true, Trim = true)]
         public string SemanticVersion { get; }
         public StableHash ConfigurationHash { get; }
         public bool IsValid => !string.IsNullOrEmpty(ComponentId) && !string.IsNullOrEmpty(SemanticVersion) && ConfigurationHash.IsValid;

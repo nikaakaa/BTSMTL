@@ -27,7 +27,8 @@ namespace ThirdPersonSimulation.Fixed
         OverlappingAction
     }
 
-    public readonly struct FixedInputActionStep
+    [CanonicalContract]
+    public readonly partial struct FixedInputActionStep
     {
         public const int MaximumSteps = 64;
         public const int MaximumDurationTicks = 3600;
@@ -50,9 +51,17 @@ namespace ThirdPersonSimulation.Fixed
         public ProgramInputValueKind Kind { get; }
         public FixedScalar X { get; }
         public FixedScalar Y { get; }
+
+        [CanonicalValidation]
+        void RequireRecord()
+        {
+            if (Action.Length == 0 || Action.Length > MaximumActionCharacters)
+                throw new InvalidDataException("Rollback input action identity exceeds its declared capacity.");
+        }
     }
 
-    public readonly struct FixedInputSequenceStatus
+    [CanonicalContract]
+    public readonly partial struct FixedInputSequenceStatus
     {
         public FixedInputSequenceStatus(ulong commandId, FixedInputSequenceState state, ulong startTick,
             ulong lastInputTick, int totalTicks, FixedInputSequenceFailure failure = FixedInputSequenceFailure.None,
