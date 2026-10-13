@@ -2,7 +2,7 @@ using System;
 
 namespace ThirdPersonSimulation
 {
-    internal readonly struct LocomotionMotionProfile<TScalar, TMath>
+    public readonly struct LocomotionMotionProfile<TScalar, TMath>
         where TScalar : struct, IComparable<TScalar>, IEquatable<TScalar>
         where TMath : struct, IScalarMath<TScalar>
     {
@@ -44,7 +44,7 @@ namespace ThirdPersonSimulation
         public TScalar ZCycleTotal { get; }
     }
 
-    internal static class LocomotionMotionCalculation<TScalar, TVector2, TVector3, TYaw, TMath>
+    public static class LocomotionMotionCalculation<TScalar, TVector2, TVector3, TYaw, TMath>
         where TScalar : struct, IComparable<TScalar>, IEquatable<TScalar>
         where TVector2 : struct
         where TVector3 : struct

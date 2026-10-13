@@ -37,27 +37,27 @@ namespace ThirdPersonSimulation
         public CanonicalTextValue GameplayResultOwnerIdentity { get; }
     }
 
-    internal enum SimulationMotionChannel
+    public enum SimulationMotionChannel
     {
         Locomotion = 0,
         Action = 1,
         GameplayResult = 2
     }
 
-    internal enum SimulationMotionBlendMode
+    public enum SimulationMotionBlendMode
     {
         Additive = 0,
         WeightedBlend = 1,
         Override = 2
     }
 
-    internal enum SimulationMotionContributionSpace
+    public enum SimulationMotionContributionSpace
     {
         ActorLocal = 0,
         World = 1
     }
 
-    internal readonly struct SimulationMotionContribution<TScalar, TVector2, TVector3, TMath>
+    public readonly struct SimulationMotionContribution<TScalar, TVector2, TVector3, TMath>
         where TScalar : struct
         where TVector2 : struct
         where TVector3 : struct
@@ -159,7 +159,7 @@ namespace ThirdPersonSimulation
         internal void Release() { Source.Release(); SourceIdentity.Release(); }
     }
 
-    internal struct ResolvedMotionChannel<TScalar, TVector2, TVector3, TMath>
+    public struct ResolvedMotionChannel<TScalar, TVector2, TVector3, TMath>
         where TScalar : struct
         where TVector2 : struct
         where TVector3 : struct

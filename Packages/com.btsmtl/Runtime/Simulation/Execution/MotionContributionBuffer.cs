@@ -2,7 +2,7 @@ using System;
 
 namespace ThirdPersonSimulation
 {
-    internal sealed class MotionContributionBuffer<TScalar, TVector2, TVector3, TMath>
+    public sealed class MotionContributionBuffer<TScalar, TVector2, TVector3, TMath>
         where TScalar : struct
         where TVector2 : struct
         where TVector3 : struct

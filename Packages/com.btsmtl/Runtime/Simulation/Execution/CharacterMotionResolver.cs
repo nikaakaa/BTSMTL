@@ -2,7 +2,7 @@ using System;
 
 namespace ThirdPersonSimulation
 {
-    internal static class CharacterMotionResolver<TScalar, TVector2, TVector3, TYaw, TMath>
+    public static class CharacterMotionResolver<TScalar, TVector2, TVector3, TYaw, TMath>
         where TScalar : struct
         where TVector2 : struct
         where TVector3 : struct
