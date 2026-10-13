@@ -1,3 +1,4 @@
+using MotionWarpWindowRuntime = ThirdPersonSimulation.MotionWarpWindowRuntime<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32Vector2, ThirdPersonSimulation.Float32Vector3, ThirdPersonSimulation.Float32Yaw, ThirdPersonSimulation.Float32ActionInstanceReference, ThirdPersonSimulation.Float32SimulationMath, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Float32Scalar>, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Float32Vector3>, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Float32Yaw>>;
 using MotionWarpCalculation = ThirdPersonSimulation.MotionWarpCalculation<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32Vector2, ThirdPersonSimulation.Float32Vector3, ThirdPersonSimulation.Float32Yaw, ThirdPersonSimulation.Float32SimulationMath>;
 using MotionWarpState = ThirdPersonSimulation.MotionWarpState<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32Vector3, ThirdPersonSimulation.Float32Yaw, ThirdPersonSimulation.Float32ActionInstanceReference, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Float32Scalar>, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Float32Vector3>, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Float32Yaw>>;
 using SimulationMotionContribution = ThirdPersonSimulation.SimulationMotionContribution<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32Vector2, ThirdPersonSimulation.Float32Vector3, ThirdPersonSimulation.Float32SimulationMath>;
@@ -64,7 +65,9 @@ namespace ThirdPersonSimulation
     }
 
     internal sealed class Float32MotionWarpTarget : Float32OperationModule,
-        IAbilityTimelineMotionWarpTarget<ResolvedMotionChannel>
+        IAbilityTimelineMotionWarpTarget<ResolvedMotionChannel>,
+        IMotionWarpWindowTarget<AbilityTimelineLogicMotionWarp, Float32Scalar, Float32Vector2, Float32Vector3,
+            Float32Yaw, Float32ActionInstanceReference, MotionWarpState, Float32SimulationMath>
     {
         readonly Float32AbilityExecutionFrame m_Frame;
         readonly Float32ActionStateStore m_Actions;
@@ -79,171 +82,56 @@ namespace ThirdPersonSimulation
             m_Actions = actions ?? throw new ArgumentNullException(nameof(actions));
         }
 
-        public void CaptureWindowEntry(in AbilityTimelineLogicMotionWarp warp)
+        public void CaptureWindowEntry(in AbilityTimelineLogicMotionWarp warp) =>
+            MotionWarpWindowRuntime.Capture(in warp, this);
+
+        public void ApplyTimelineMotionWarp(in AbilityTimelineLogicMotionWarp warp, ref ResolvedMotionChannel channel) =>
+            MotionWarpWindowRuntime.Apply(in warp, this, ref channel);
+
+        public MotionWarpState ReadState(in AbilityTimelineLogicMotionWarp warp) =>
+            m_Frame.SkillState.GetMotionWarpState(warp.StateOperation);
+
+        public void WriteState(in AbilityTimelineLogicMotionWarp warp, in MotionWarpState state) =>
+            m_Frame.SkillState.SetMotionWarpState(warp.StateOperation, in state);
+
+        public Float32ActionInstanceReference ReadAction(in AbilityTimelineLogicMotionWarp warp)
         {
-            MotionWarpState state = m_Frame.SkillState.GetMotionWarpState(warp.StateOperation);
-            if (state.Active && state.PlaybackGeneration == warp.PlaybackGeneration && state.Cycle == warp.Cycle)
-                return;
             m_Actions.TryGetEvaluatedInstance(warp.ActionInstanceId, out Float32ActionInstanceState action);
-            MotionWarpWindowDecision decision = !warp.Enabled ? MotionWarpWindowDecision.Disabled
-                : !warp.HasTarget && warp.RotationMethod != ProgramMotionWarpRotationMethod.TargetResponse
-                    ? MotionWarpWindowDecision.NoTarget : MotionWarpWindowDecision.Accepted;
-            var targetPosition = new Float32Vector3(
-                    Float32Scalar.FromSingle(warp.Target.X.ToSingle()),
-                    Float32Scalar.FromSingle(warp.Target.Y.ToSingle()),
-                    Float32Scalar.FromSingle(warp.Target.Z.ToSingle()));
-            var targetYaw = new Float32Yaw(Float32Scalar.FromSingle(warp.Target.Yaw.ToSingle()));
-            m_Frame.SkillState.SetMotionWarpState(warp.StateOperation,
-                new MotionWarpState(true, false, warp.PlaybackGeneration, warp.Cycle,
-                    Float32ActionInstanceReference.FromInstance(action), default, default, default, default,
-                    default, default, default, default, default, default, default, warp.Source.Operation,
-                    decision, warp.HasTarget, targetPosition, targetYaw));
-            Trace(warp, decision == MotionWarpWindowDecision.Disabled ? MotionModifierDiagnosticCode.Disabled :
-                decision == MotionWarpWindowDecision.NoTarget ? MotionModifierDiagnosticCode.NoTargetByOptionalPolicy :
-                MotionModifierDiagnosticCode.WindowEntered);
+            return Float32ActionInstanceReference.FromInstance(action);
         }
 
-        public void ApplyTimelineMotionWarp(in AbilityTimelineLogicMotionWarp warp, ref ResolvedMotionChannel channel)
+        public void ReadTarget(in AbilityTimelineLogicMotionWarp warp, out Float32Vector3 position, out Float32Yaw yaw)
         {
-            MotionWarpState storedState = m_Frame.SkillState.GetMotionWarpState(warp.StateOperation);
-            if (storedState.Decision != MotionWarpWindowDecision.Accepted)
-                return;
-            MotionWarpParameters<Float32Scalar> parameters = Parameters(in warp);
-            if (warp.RotationMethod == ProgramMotionWarpRotationMethod.TargetResponse)
-            {
-                ApplyTargetResponse(warp, in parameters, in storedState, ref channel);
-                Trace(warp, MotionModifierDiagnosticCode.Applied);
-                return;
-            }
-            Float32Vector3 rawSourceDelta = Float32Angle.RotatePlanar(
-                new Float32Vector3(
-                    Float32Scalar.FromSingle((warp.CurrentPositionX - warp.PreviousPositionX).ToSingle()),
-                    Float32Scalar.FromSingle((warp.CurrentPositionY - warp.PreviousPositionY).ToSingle()),
-                    Float32Scalar.FromSingle((warp.CurrentPositionZ - warp.PreviousPositionZ).ToSingle())),
-                m_Frame.BodyFacts.Yaw);
-            Float32Scalar rawSourceYawDelta = Float32Scalar.FromSingle((warp.CurrentYawDegrees - warp.PreviousYawDegrees).ToSingle());
-            Float32Vector3 startBodyPosition;
-            Float32Yaw startBodyYaw;
-            Float32Vector3 sourceWindowStartPosition;
-            Float32Scalar sourceWindowStartYaw;
-            Float32Vector3 resolvedTargetPosition;
-            Float32Yaw resolvedTargetYaw;
-            ProgramMotionWarpLimitResult limitResult;
-            Float32Vector3 previousWarpedPosition;
-            Float32Yaw previousWarpedYaw;
-            Float32Scalar previousPositionProgress;
-            Float32Scalar previousYawProgress;
-            if (!storedState.Initialized)
-            {
-                ResolveDirectTarget(warp, in parameters, storedState.CapturedTargetPosition, storedState.CapturedTargetYaw,
-                    m_Frame.BodyFacts.Position + channel.MotionCorrectionDisplacement +
-                        Float32Angle.RotatePlanar(new Float32Vector3(Float32Scalar.FromSingle(warp.SourcePrefix.X.ToSingle()),
-                            Float32Scalar.FromSingle(warp.SourcePrefix.Y.ToSingle()), Float32Scalar.FromSingle(warp.SourcePrefix.Z.ToSingle())), m_Frame.BodyFacts.Yaw),
-                    new Float32Yaw(m_Frame.BodyFacts.Yaw.Degrees + channel.MotionCorrectionYawDegrees + Float32Scalar.FromSingle(warp.SourcePrefix.Yaw.ToSingle())),
-                    out startBodyPosition,
-                    out startBodyYaw,
-                    out sourceWindowStartPosition,
-                    out sourceWindowStartYaw,
-                    out resolvedTargetPosition,
-                    out resolvedTargetYaw,
-                    out limitResult);
-                if (limitResult == ProgramMotionWarpLimitResult.PreservedByLimitPolicy)
-                {
-                    m_Frame.SkillState.SetMotionWarpState(warp.StateOperation, storedState.WithDecision(MotionWarpWindowDecision.PreservedByLimitPolicy));
-                    Trace(warp, MotionModifierDiagnosticCode.PreservedByLimitPolicy);
-                    channel.ApplyMotionWarp(rawSourceDelta, rawSourceYawDelta, rawSourceDelta, rawSourceYawDelta);
-                    return;
-                }
-                EvaluateDirectPose(warp, in parameters,
-                    warp.PreviousPositionX,
-                    warp.PreviousPositionY,
-                    warp.PreviousPositionZ,
-                    warp.PreviousYawDegrees,
-                    warp.PreviousPositionProgress,
-                    warp.PreviousYawProgress,
-                    warp.PreviousTime,
-                    startBodyPosition,
-                    startBodyYaw,
-                    sourceWindowStartPosition,
-                    sourceWindowStartYaw,
-                    resolvedTargetPosition,
-                    resolvedTargetYaw,
-                    out previousWarpedPosition,
-                    out previousWarpedYaw);
-                previousPositionProgress = Float32Scalar.FromSingle(warp.PreviousPositionProgress.ToSingle());
-                previousYawProgress = Float32Scalar.FromSingle(warp.PreviousYawProgress.ToSingle());
-                storedState = new MotionWarpState(
-                        true,
-                        true,
-                        warp.PlaybackGeneration,
-                        warp.Cycle,
-                        storedState.ActionInstance,
-                        startBodyPosition,
-                        startBodyYaw,
-                        sourceWindowStartPosition,
-                        sourceWindowStartYaw,
-                        resolvedTargetPosition,
-                        resolvedTargetYaw,
-                        limitResult,
-                        previousWarpedPosition,
-                        previousWarpedYaw,
-                        previousPositionProgress,
-                        previousYawProgress,
-                        warp.Source.Operation,
-                        storedState.Decision,
-                        storedState.HasTarget,
-                        storedState.CapturedTargetPosition,
-                        storedState.CapturedTargetYaw);
-            }
-            else
-            {
-                startBodyPosition = storedState.StartBodyPosition;
-                startBodyYaw = storedState.StartBodyYaw;
-                sourceWindowStartPosition = storedState.SourceWindowStartPosition;
-                sourceWindowStartYaw = storedState.SourceWindowStartYaw;
-                resolvedTargetPosition = storedState.ResolvedTargetPosition;
-                resolvedTargetYaw = storedState.ResolvedTargetYaw;
-                limitResult = storedState.LimitResult;
-                previousWarpedPosition = storedState.PreviousWarpedPosition;
-                previousWarpedYaw = storedState.PreviousWarpedYaw;
-                previousPositionProgress = storedState.LastPositionProgress;
-                previousYawProgress = storedState.LastYawProgress;
-            }
-            Float32Scalar positionProgress = Float32Scalar.FromSingle(warp.CurrentPositionProgress.ToSingle());
-            Float32Scalar yawProgress = Float32Scalar.FromSingle(warp.CurrentYawProgress.ToSingle());
-            if (positionProgress < previousPositionProgress || yawProgress < previousYawProgress)
-                FailTimelineMotionWarp(warp.StateOperation, MotionModifierDiagnosticCode.InvalidState,
-                    "Cumulative Timeline MotionWarp progress moved backwards.");
-            EvaluateDirectPose(warp, in parameters,
-                warp.CurrentPositionX,
-                warp.CurrentPositionY,
-                warp.CurrentPositionZ,
-                warp.CurrentYawDegrees,
-                warp.CurrentPositionProgress,
-                warp.CurrentYawProgress,
-                warp.CurrentTime,
-                startBodyPosition,
-                startBodyYaw,
-                sourceWindowStartPosition,
-                sourceWindowStartYaw,
-                resolvedTargetPosition,
-                resolvedTargetYaw,
-                out Float32Vector3 currentWarpedPosition,
-                out Float32Yaw currentWarpedYaw);
-            channel.ApplyMotionWarp(rawSourceDelta, rawSourceYawDelta,
-                currentWarpedPosition - previousWarpedPosition,
-                Float32Angle.Delta(previousWarpedYaw, currentWarpedYaw));
-            m_Frame.SkillState.SetMotionWarpState(warp.StateOperation,
-                storedState.WithProgress(
-                    currentWarpedPosition,
-                    currentWarpedYaw,
-                    positionProgress,
-                    yawProgress));
-            Trace(warp, limitResult == ProgramMotionWarpLimitResult.AppliedClamped
-                ? MotionModifierDiagnosticCode.AppliedClamped : MotionModifierDiagnosticCode.Applied);
+            position = new Float32Vector3(
+                Float32Scalar.FromSingle(warp.Target.X.ToSingle()), Float32Scalar.FromSingle(warp.Target.Y.ToSingle()), Float32Scalar.FromSingle(warp.Target.Z.ToSingle()));
+            yaw = new Float32Yaw(Float32Scalar.FromSingle(warp.Target.Yaw.ToSingle()));
         }
 
-        void ApplyTargetResponse(
+        public Float32Vector3 BodyPosition => m_Frame.BodyFacts.Position;
+        public Float32Yaw BodyYaw => m_Frame.BodyFacts.Yaw;
+
+        public void ReadSourceDelta(in AbilityTimelineLogicMotionWarp warp, out Float32Vector3 displacement, out Float32Scalar yaw)
+        {
+            displacement = new Float32Vector3(
+                Float32Scalar.FromSingle((warp.CurrentPositionX - warp.PreviousPositionX).ToSingle()), Float32Scalar.FromSingle((warp.CurrentPositionY - warp.PreviousPositionY).ToSingle()), Float32Scalar.FromSingle((warp.CurrentPositionZ - warp.PreviousPositionZ).ToSingle()));
+            yaw = Float32Scalar.FromSingle((warp.CurrentYawDegrees - warp.PreviousYawDegrees).ToSingle());
+        }
+
+        public void ReadSourcePrefix(in AbilityTimelineLogicMotionWarp warp, out Float32Vector3 displacement, out Float32Scalar yaw)
+        {
+            displacement = new Float32Vector3(
+                Float32Scalar.FromSingle(warp.SourcePrefix.X.ToSingle()), Float32Scalar.FromSingle(warp.SourcePrefix.Y.ToSingle()), Float32Scalar.FromSingle(warp.SourcePrefix.Z.ToSingle()));
+            yaw = Float32Scalar.FromSingle(warp.SourcePrefix.Yaw.ToSingle());
+        }
+
+        public void ReadProgress(in AbilityTimelineLogicMotionWarp warp, bool previous,
+            out Float32Scalar position, out Float32Scalar yaw)
+        {
+            position = Float32Scalar.FromSingle((previous ? warp.PreviousPositionProgress : warp.CurrentPositionProgress).ToSingle());
+            yaw = Float32Scalar.FromSingle((previous ? warp.PreviousYawProgress : warp.CurrentYawProgress).ToSingle());
+        }
+
+        public void ApplyResponse(
             in AbilityTimelineLogicMotionWarp warp,
             in MotionWarpParameters<Float32Scalar> parameters,
             in MotionWarpState state,
@@ -277,12 +165,12 @@ namespace ThirdPersonSimulation
 
         public void TraceSourceNotResolved(in AbilityTimelineLogicMotionWarp warp) => Trace(warp, MotionModifierDiagnosticCode.SourceNotResolved);
 
-        void Trace(in AbilityTimelineLogicMotionWarp warp, string code)
+        public void Trace(in AbilityTimelineLogicMotionWarp warp, string code)
         {
             m_Frame.Trace.AddMotionWarp(warp, code);
         }
 
-        static MotionWarpParameters<Float32Scalar> Parameters(in AbilityTimelineLogicMotionWarp warp) =>
+        public MotionWarpParameters<Float32Scalar> ReadParameters(in AbilityTimelineLogicMotionWarp warp) =>
             new MotionWarpParameters<Float32Scalar>(
                 warp.TranslationMode, warp.TargetOffsetSpace, warp.RotationMode, warp.RotationMethod, warp.LimitPolicy,
                 Float32Scalar.FromSingle(warp.TargetPlanarOffsetX), Float32Scalar.FromSingle(warp.TargetPlanarOffsetY),
@@ -290,23 +178,19 @@ namespace ThirdPersonSimulation
                 Float32Scalar.FromSingle(warp.MaximumYawCorrectionDegrees), Float32Scalar.FromSingle(warp.MaximumYawRateDegreesPerSecond),
                 Float32Scalar.FromSingle(0.000001f));
 
-        void ResolveDirectTarget(
+        public void ResolveTarget(
             in AbilityTimelineLogicMotionWarp warp,
             in MotionWarpParameters<Float32Scalar> parameters,
             Float32Vector3 targetPosition,
             Float32Yaw targetYaw,
             Float32Vector3 bodyPosition,
             Float32Yaw bodyYaw,
-            out Float32Vector3 startBodyPosition,
-            out Float32Yaw startBodyYaw,
             out Float32Vector3 sourceWindowStartPosition,
             out Float32Scalar sourceWindowStartYaw,
             out Float32Vector3 resolvedTargetPosition,
             out Float32Yaw resolvedTargetYaw,
             out ProgramMotionWarpLimitResult limitResult)
         {
-            startBodyPosition = bodyPosition;
-            startBodyYaw = bodyYaw;
             sourceWindowStartPosition = new Float32Vector3(
                     Float32Scalar.FromSingle(warp.SourceStartPositionX.ToSingle()),
                     Float32Scalar.FromSingle(warp.SourceStartPositionY.ToSingle()),
@@ -319,20 +203,14 @@ namespace ThirdPersonSimulation
                     Float32Scalar.FromSingle((warp.SourceEndPositionY - warp.SourceStartPositionY).ToSingle()),
                     Float32Scalar.FromSingle((warp.SourceEndPositionZ - warp.SourceStartPositionZ).ToSingle())),
                 Float32Scalar.FromSingle((warp.SourceEndYawDegrees - warp.SourceStartYawDegrees).ToSingle()), Float32Scalar.FromSingle((warp.EndTime - warp.StartTime).ToSingle()),
-                targetPosition, targetYaw, startBodyPosition, startBodyYaw,
+                targetPosition, targetYaw, bodyPosition, bodyYaw,
                 out resolvedTargetPosition, out resolvedTargetYaw, out limitResult);
         }
 
-        void EvaluateDirectPose(
+        public void EvaluatePose(
             in AbilityTimelineLogicMotionWarp warp,
             in MotionWarpParameters<Float32Scalar> parameters,
-            FixedScalar sourcePositionX,
-            FixedScalar sourcePositionY,
-            FixedScalar sourcePositionZ,
-            FixedScalar sourceYawDegrees,
-            FixedScalar positionProgress,
-            FixedScalar yawProgress,
-            FixedScalar sampleTime,
+            bool previous,
             Float32Vector3 startBodyPosition,
             Float32Yaw startBodyYaw,
             Float32Vector3 sourceWindowStartPosition,
@@ -342,6 +220,13 @@ namespace ThirdPersonSimulation
             out Float32Vector3 warpedPosition,
             out Float32Yaw warpedYaw)
         {
+            FixedScalar sourcePositionX = previous ? warp.PreviousPositionX : warp.CurrentPositionX;
+            FixedScalar sourcePositionY = previous ? warp.PreviousPositionY : warp.CurrentPositionY;
+            FixedScalar sourcePositionZ = previous ? warp.PreviousPositionZ : warp.CurrentPositionZ;
+            FixedScalar sourceYawDegrees = previous ? warp.PreviousYawDegrees : warp.CurrentYawDegrees;
+            FixedScalar positionProgress = previous ? warp.PreviousPositionProgress : warp.CurrentPositionProgress;
+            FixedScalar yawProgress = previous ? warp.PreviousYawProgress : warp.CurrentYawProgress;
+            FixedScalar sampleTime = previous ? warp.PreviousTime : warp.CurrentTime;
             MotionWarpCalculation.EvaluatePose(
                 in parameters,
                 new Float32Vector3(

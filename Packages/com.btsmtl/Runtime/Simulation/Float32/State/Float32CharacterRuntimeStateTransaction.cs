@@ -485,7 +485,7 @@ namespace ThirdPersonSimulation
             return m_MotionWarpStates.Page.At(slot);
         }
 
-        public void SetMotionWarpState(OperationHandle operation, MotionWarpState value)
+        public void SetMotionWarpState(OperationHandle operation, in MotionWarpState value)
         {
             RequireActive();
             int slot = m_MotionWarpStates.Page.Layout.Slot(m_MotionWarpPartition, operation);

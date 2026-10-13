@@ -16,7 +16,7 @@ namespace ThirdPersonSimulation.Fixed
         GameplayAbilityExecutionAggregate<AbilityStateValue> GetAbilityExecutionState();
         void SetAbilityExecutionState(GameplayAbilityExecutionAggregate<AbilityStateValue> state);
         MotionWarpState GetMotionWarpState(OperationHandle operation);
-        void SetMotionWarpState(OperationHandle operation, MotionWarpState value);
+        void SetMotionWarpState(OperationHandle operation, in MotionWarpState value);
     }
 
     internal interface IFixedInputRequestStatePort

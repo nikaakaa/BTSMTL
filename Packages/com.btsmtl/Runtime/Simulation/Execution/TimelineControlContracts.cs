@@ -270,7 +270,7 @@ namespace ThirdPersonSimulation
         AbilityTimelineMotionSourcePose SampleMotionPrefix(ulong runtimeHandle, string motionClipId, int cycle, FixedScalar time);
     }
 
-    public readonly struct AbilityTimelineLogicMotionWarp
+    public readonly struct AbilityTimelineLogicMotionWarp : IMotionWarpWindowRequest
     {
         public AbilityTimelineLogicMotionWarp(
             SimulationExecutionSource source,
