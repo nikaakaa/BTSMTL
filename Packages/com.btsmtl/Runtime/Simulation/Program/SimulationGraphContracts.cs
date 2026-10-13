@@ -426,7 +426,7 @@ namespace ThirdPersonSimulation
                     RequireString(operation, literals, "TargetKey", false);
                     RequireString(operation, literals, "SequenceId", true);
                     RequireString(operation, literals, "ActionContext", false);
-                    RequireFieldCount(operation, 7);
+                    RequireFieldCount(operation, literals, 7);
                     break;
                 case SimulationOperationCode.CameraEffectRequest:
                     RequireEnum(operation, operation.Integer1, 1, 6, "EffectKind");
@@ -436,7 +436,7 @@ namespace ThirdPersonSimulation
                     RequireUnit(operation, literals, "Weight");
                     RequireInt32(operation, literals, "Priority");
                     RequireString(operation, literals, "ActionContext", false);
-                    RequireFieldCount(operation, 5);
+                    RequireFieldCount(operation, literals, 5);
                     break;
                 case SimulationOperationCode.CameraResponse:
                     RequireEnum(operation, operation.Integer1, 0, 2, "LookResponse");
@@ -447,7 +447,7 @@ namespace ThirdPersonSimulation
                     RequireInt32(operation, literals, "Priority");
                     RequireUnit(operation, literals, "Weight");
                     RequireString(operation, literals, "ActionContext", false);
-                    RequireFieldCount(operation, 6);
+                    RequireFieldCount(operation, literals, 6);
                     break;
                 case SimulationOperationCode.CameraTarget:
                     RequireEnum(operation, checked((int)operation.Flags), 0, 3, "TargetTimeScale");
@@ -470,13 +470,13 @@ namespace ThirdPersonSimulation
                     RequireNonNegative(operation, literals, "FollowDurationSeconds");
                     RequireNonNegative(operation, literals, "AimDelaySeconds");
                     RequireNonNegative(operation, literals, "AimDurationSeconds");
-                    RequireFieldCount(operation, 11);
+                    RequireFieldCount(operation, literals, 11);
                     break;
                 case SimulationOperationCode.CameraBasisRead:
                     RequireFlags(operation, 0);
                     if (operation.Integer1 != 0)
                         throw Invalid(operation, $"field Integer1 must be zero but is '{operation.Integer1}'");
-                    RequireFieldCount(operation, 0);
+                    RequireFieldCount(operation, literals, 0);
                     break;
                 default:
                     throw Invalid(operation, $"operation '{operation.Code}' is unsupported");
@@ -492,7 +492,10 @@ namespace ThirdPersonSimulation
 
     public static class VfxProgramOperationSchema
     {
-        public const int PayloadVersion = 2;
+        public const int PayloadVersion = 3;
+        public const string PositionInputPortId = "LocalPosition";
+        public const string EulerInputPortId = "LocalEulerAngles";
+        public const string ScaleInputPortId = "LocalScale";
         public static readonly AnimationChannelId ChannelId = new AnimationChannelId("Vfx");
 
         public static void Validate(SemanticOperation operation, IReadOnlyList<SemanticLiteral> literals)
@@ -522,18 +525,13 @@ namespace ThirdPersonSimulation
                 throw Invalid(operation, $"coordinates '{coordinates}' do not match the explicit pose override");
             RequireBoolean(operation, literals, "UseRotationY");
             RequireBoolean(operation, literals, "UseRotationXZ");
-            RequireBoolean(operation, literals, "NeedRaycastGround");
+            bool groundProjection = RequireBoolean(operation, literals, "NeedRaycastGround");
+            if ((operation.Integer1 == (int)PresentationVfxCommand.Play ||
+                 operation.Integer1 == (int)PresentationVfxCommand.MaintainStateModifier) &&
+                (target != (int)PresentationVfxTarget.Owner || groundProjection))
+                throw Invalid(operation, "currently supports Owner placement and accepted Combat world poses; target binding and ground projection are not implemented");
             RequireBoolean(operation, literals, "UseAttachPointRotation");
-            RequireNumber(operation, literals, "LocalPositionX");
-            RequireNumber(operation, literals, "LocalPositionY");
-            RequireNumber(operation, literals, "LocalPositionZ");
-            RequireNumber(operation, literals, "LocalEulerAnglesX");
-            RequireNumber(operation, literals, "LocalEulerAnglesY");
-            RequireNumber(operation, literals, "LocalEulerAnglesZ");
-            RequireNumber(operation, literals, "LocalScaleX");
-            RequireNumber(operation, literals, "LocalScaleY");
-            RequireNumber(operation, literals, "LocalScaleZ");
-            RequireFieldCount(operation, 19);
+            RequireFieldCount(operation, literals, 10);
         }
 
         static InvalidOperationException Invalid(SemanticOperation operation, string detail) =>
@@ -543,10 +541,16 @@ namespace ThirdPersonSimulation
 
     internal static class PresentationProgramPayloadSchema
     {
-        internal static void RequireFieldCount(SemanticOperation operation, int expected)
+        internal static void RequireFieldCount(SemanticOperation operation,
+            IReadOnlyList<SemanticLiteral> literals, int expected)
         {
-            if (operation.LiteralReferences.Count != expected)
-                throw Invalid(operation, $"requires exactly {expected} payload fields but contains {operation.LiteralReferences.Count}");
+            string prefix = operation.TemplateIdentity + "/constant/";
+            int count = 0;
+            for (int i = 0; i < operation.LiteralReferences.Count; i++)
+                if (literals[operation.LiteralReferences[i]].Identity.StartsWith(prefix, StringComparison.Ordinal))
+                    count++;
+            if (count != expected)
+                throw Invalid(operation, $"requires exactly {expected} payload fields but contains {count}");
         }
 
         internal static void RequireEnum(SemanticOperation operation, int value, int minimum, int maximum, string field)
@@ -2059,13 +2063,19 @@ namespace ThirdPersonSimulation
             float yawWeight,
             bool captureLockStartOnSubmit,
             PresentationCameraTargetTiming followTiming = default,
-            PresentationCameraTargetTiming aimTiming = default)
+            PresentationCameraTargetTiming aimTiming = default,
+            CanonicalTextValue resourceRevision = default,
+            float sourceStartTime = 0f,
+            float sourceEndTime = 0f)
         {
             Kind = kind;
             Lifecycle = lifecycle;
             RequestId = Normalize(requestId);
             SequenceId = Normalize(sequenceId);
             ResourceId = Normalize(resourceId);
+            ResourceRevision = Normalize(resourceRevision);
+            SourceStartTime = sourceStartTime;
+            SourceEndTime = sourceEndTime;
             TargetKey = targetKey.IsNull ? string.Empty : targetKey.Trim();
             AnchorKey = Normalize(anchorKey);
             AimPointKey = Normalize(aimPointKey);
@@ -2094,6 +2104,10 @@ namespace ThirdPersonSimulation
         public CanonicalTextValue SequenceId { get; }
         [CanonicalTextRules(NullToEmpty = true)]
         public CanonicalTextValue ResourceId { get; }
+        [CanonicalTextRules(NullToEmpty = true)]
+        public CanonicalTextValue ResourceRevision { get; }
+        public float SourceStartTime { get; }
+        public float SourceEndTime { get; }
         [CanonicalTextRules(NullToEmpty = true, Trim = true)]
         public CanonicalTextValue TargetKey { get; }
         [CanonicalTextRules(NullToEmpty = true)]
@@ -2127,7 +2141,7 @@ namespace ThirdPersonSimulation
                 targetActorId, AnchorKey, AimPointKey, PreferredBoneKey, Mode, EffectKind,
                 InterruptPolicy, Priority, Weight, BlendInSeconds, BlendOutSeconds,
                 ManualOrbitWeight, PitchWeight, YawWeight, CaptureLockStartOnSubmit,
-                FollowTiming, AimTiming);
+                FollowTiming, AimTiming, ResourceRevision, SourceStartTime, SourceEndTime);
 
         public static PresentationCameraRequest Sequence(
             PresentationCameraRequestLifecycle lifecycle,
@@ -2168,7 +2182,10 @@ namespace ThirdPersonSimulation
             CanonicalTextValue resourceId,
             int priority,
             float weight,
-            bool captureLockStartOnSubmit) =>
+            bool captureLockStartOnSubmit,
+            CanonicalTextValue resourceRevision = default,
+            float sourceStartTime = 0f,
+            float sourceEndTime = 0f) =>
             new PresentationCameraRequest(
                 PresentationCameraRequestKind.Effect,
                 lifecycle,
@@ -2189,7 +2206,8 @@ namespace ThirdPersonSimulation
                 1f,
                 1f,
                 1f,
-                captureLockStartOnSubmit);
+                captureLockStartOnSubmit,
+                resourceRevision: resourceRevision, sourceStartTime: sourceStartTime, sourceEndTime: sourceEndTime);
 
         public static PresentationCameraRequest Response(
             PresentationCameraRequestLifecycle lifecycle,

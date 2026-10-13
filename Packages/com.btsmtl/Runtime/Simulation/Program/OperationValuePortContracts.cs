@@ -478,6 +478,10 @@ namespace ThirdPersonSimulation
 			Set(values, Empty(SimulationOperationCode.SubGraph));
 			Set(values, Output(SimulationOperationCode.StateExitCause, Fixed("m_Output", 0, SemanticValueKind.Boolean)));
 			Set(values, Input(SimulationOperationCode.TimelineClipExitRequest, Fixed("m_When", 0, SemanticValueKind.Boolean)));
+            Set(values, Input(SimulationOperationCode.VfxRequest,
+                Fixed(VfxProgramOperationSchema.PositionInputPortId, 0, SemanticValueKind.Vector3),
+                Fixed(VfxProgramOperationSchema.EulerInputPortId, 1, SemanticValueKind.Vector3),
+                Fixed(VfxProgramOperationSchema.ScaleInputPortId, 2, SemanticValueKind.Vector3)));
             Set(values, Output(SimulationOperationCode.ActivationEntry, Fixed("m_Output", 0, SemanticValueKind.Boolean)));
             Set(values, Output(SimulationOperationCode.TimelineTime, Fixed("m_Output", 0, SemanticValueKind.Number)));
             Set(values, Output(SimulationOperationCode.ActionTargetRead,

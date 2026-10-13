@@ -54,6 +54,13 @@ namespace ThirdPersonSimulation
             UseAttachPointRotation = useAttachPointRotation;
         }
 
+        public PresentationVfxRequest WithPose(float positionX, float positionY, float positionZ,
+            float eulerX, float eulerY, float eulerZ, float scaleX, float scaleY, float scaleZ) =>
+            new PresentationVfxRequest(Command, RequestId, ResourceId, Target, AnchorKey,
+                HasPoseOverride, CoordinatesOption, positionX, positionY, positionZ,
+                eulerX, eulerY, eulerZ, scaleX, scaleY, scaleZ,
+                UseRotationY, UseRotationXZ, NeedRaycastGround, UseAttachPointRotation);
+
         public PresentationVfxCommand Command { get; }
         public string RequestId { get; }
         public string ResourceId { get; }

@@ -449,6 +449,21 @@ namespace ThirdPersonSimulation
             return sources.Source;
         }
 
+        public void VisitVfxBindings(Action<string, string, string> visit)
+        {
+            for (int i = 0; i < m_Data.Operations.Count; i++)
+            {
+                SimulationOperation operation = m_Data.Operations[i];
+                if (operation.Code == SimulationOperationCode.VfxRequest)
+                    visit(m_Layout.SourcePath(operation.Handle),
+                        m_Layout.FindNamedConstant(operation.Handle, OperationNamedConstant.ResourceId).Text,
+                        operation.Integer1 == (int)PresentationVfxCommand.Play ||
+                        operation.Integer1 == (int)PresentationVfxCommand.MaintainStateModifier
+                            ? m_Layout.FindNamedConstant(operation.Handle, OperationNamedConstant.AnchorKey).Text
+                            : string.Empty);
+            }
+        }
+
         PresentationVfxRequest BuildVfxRequest(SimulationOperation operation)
         {
             OperationHandle handle = operation.Handle;
@@ -460,15 +475,15 @@ namespace ThirdPersonSimulation
                 m_Layout.FindNamedConstant(handle, OperationNamedConstant.AnchorKey).Text,
                 m_Layout.FindNamedConstant(handle, OperationNamedConstant.HasPoseOverride).Boolean,
                 (PresentationVfxCoordinatesOption)m_Layout.FindNamedConstant(handle, OperationNamedConstant.CoordinatesOption).Int32,
-                m_Layout.FindNamedConstant(handle, OperationNamedConstant.LocalPositionX).Scalar.ToSingle(),
-                m_Layout.FindNamedConstant(handle, OperationNamedConstant.LocalPositionY).Scalar.ToSingle(),
-                m_Layout.FindNamedConstant(handle, OperationNamedConstant.LocalPositionZ).Scalar.ToSingle(),
-                m_Layout.FindNamedConstant(handle, OperationNamedConstant.LocalEulerAnglesX).Scalar.ToSingle(),
-                m_Layout.FindNamedConstant(handle, OperationNamedConstant.LocalEulerAnglesY).Scalar.ToSingle(),
-                m_Layout.FindNamedConstant(handle, OperationNamedConstant.LocalEulerAnglesZ).Scalar.ToSingle(),
-                m_Layout.FindNamedConstant(handle, OperationNamedConstant.LocalScaleX).Scalar.ToSingle(),
-                m_Layout.FindNamedConstant(handle, OperationNamedConstant.LocalScaleY).Scalar.ToSingle(),
-                m_Layout.FindNamedConstant(handle, OperationNamedConstant.LocalScaleZ).Scalar.ToSingle(),
+                0f,
+                0f,
+                0f,
+                0f,
+                0f,
+                0f,
+                0f,
+                0f,
+                0f,
                 m_Layout.FindNamedConstant(handle, OperationNamedConstant.UseRotationY).Boolean,
                 m_Layout.FindNamedConstant(handle, OperationNamedConstant.UseRotationXZ).Boolean,
                 m_Layout.FindNamedConstant(handle, OperationNamedConstant.NeedRaycastGround).Boolean,
@@ -552,6 +567,21 @@ namespace ThirdPersonSimulation
                 };
             }
 
+            internal void SubmitVfx<TTarget>(OperationControlCursor<TTarget> cursor, SimulationOperation operation)
+                where TTarget : struct, IOperationControlTarget<TTarget>
+            {
+                using Float32ValueInputLease inputs = ReadInputs(cursor, operation);
+                Float32Vector3 position = inputs[0].Vector3;
+                Float32Vector3 euler = inputs[1].Vector3;
+                Float32Vector3 scale = inputs[2].Vector3;
+                PresentationVfxRequest request = m_Owner.m_VfxRequests[operation.Handle.Value].WithPose(
+                    position.X.ToSingle(), position.Y.ToSingle(), position.Z.ToSingle(),
+                    euler.X.ToSingle(), euler.Y.ToSingle(), euler.Z.ToSingle(),
+                    scale.X.ToSingle(), scale.Y.ToSingle(), scale.Z.ToSingle());
+                m_Owner.m_Output.SubmitVfx(m_Owner.CreateOutputIdentity(operation),
+                    m_Owner.m_Producers[operation.Handle.Value], in request);
+            }
+
             internal void WriteParameter<TTarget>(OperationControlCursor<TTarget> cursor, SimulationOperation operation)
                 where TTarget : struct, IOperationControlTarget<TTarget>
             {
@@ -616,8 +646,7 @@ namespace ThirdPersonSimulation
                             m_Owner.m_Activations[operation.Handle.Value], m_Owner.m_Retirements[operation.Handle.Value], m_Owner.m_Retiring);
                         return OperationExecutionResult.Success;
                     case SimulationOperationCode.VfxRequest:
-                        m_Owner.m_Output.SubmitVfx(m_Owner.CreateOutputIdentity(operation),
-                            m_Owner.m_Producers[operation.Handle.Value], m_Owner.m_VfxRequests[operation.Handle.Value]);
+                        m_Owner.m_Values.SubmitVfx(cursor, operation);
                         return OperationExecutionResult.Success;
                     case SimulationOperationCode.AudioRequest:
                         m_Owner.m_Output.SubmitAudio(m_Owner.CreateOutputIdentity(operation),

@@ -171,6 +171,22 @@ namespace BTSMTL.Authoring.Graph
                 StringComparison.Ordinal);
     }
 
+    public sealed class GraphAuthoringResourceReference
+    {
+        public GraphAuthoringResourceReference(string domain, Type contextType, string contextMember, bool navigation)
+        {
+            Domain = domain;
+            ContextType = contextType;
+            ContextMember = contextMember;
+            Navigation = navigation;
+        }
+
+        public string Domain { get; }
+        public Type ContextType { get; }
+        public string ContextMember { get; }
+        public bool Navigation { get; }
+    }
+
     public sealed class GraphAuthoringFieldDescriptor
     {
         public GraphAuthoringFieldDescriptor(
@@ -186,7 +202,8 @@ namespace BTSMTL.Authoring.Graph
             Type objectType = null,
             GraphAuthoringFieldVisibilityCondition visibility = null,
             GraphAuthoringFieldTuningMetadata tuning = null,
-            GraphAuthoringFieldCompilation compilation = default)
+            GraphAuthoringFieldCompilation compilation = default,
+            GraphAuthoringResourceReference resourceReference = null)
         {
             FieldId = fieldId.IsValid ? fieldId : throw new ArgumentException("Field identity is missing.", nameof(fieldId));
             DisplayName = string.IsNullOrWhiteSpace(displayName) ? throw new ArgumentException("Field display name is missing.", nameof(displayName)) : displayName;
@@ -201,6 +218,7 @@ namespace BTSMTL.Authoring.Graph
             Visibility = visibility;
             Tuning = tuning;
             Compilation = compilation;
+            ResourceReference = resourceReference;
         }
 
         public GraphAuthoringFieldId FieldId { get; }
@@ -216,6 +234,7 @@ namespace BTSMTL.Authoring.Graph
         public GraphAuthoringFieldVisibilityCondition Visibility { get; }
         public GraphAuthoringFieldTuningMetadata Tuning { get; }
         public GraphAuthoringFieldCompilation Compilation { get; }
+        public GraphAuthoringResourceReference ResourceReference { get; }
         public GraphAuthoringFieldInteractionPolicy Interaction =>
             Tuning?.Interaction ?? GraphAuthoringFieldInteractionPolicy.Unclassified;
         public bool AuthoringVisible => (Access & GraphAuthoringFieldAccess.AuthoringRead) != 0;
