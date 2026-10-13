@@ -3,7 +3,7 @@ using System.IO;
 
 namespace ThirdPersonSimulation.Fixed
 {
-    public sealed partial class FixedCombatRuntime
+    public sealed partial class FixedCombatRuntime : IDisposable
     {
         static readonly StableHash CombatStateSchema = FixedCombatStateBank.CanonicalSchemaHash;
 
@@ -16,6 +16,8 @@ namespace ThirdPersonSimulation.Fixed
         }
 
         internal void ReleaseStateBank(FixedCombatStateBank bank) => FixedCombatStateBank.CanonicalClear(bank);
+
+        public void Dispose() => ReleaseStateBank(m_State);
 
         internal int StateTextCapacity => checked(
             FixedCombatAttackState.CanonicalMaximumTextReferences * m_State.Attacks.Length +

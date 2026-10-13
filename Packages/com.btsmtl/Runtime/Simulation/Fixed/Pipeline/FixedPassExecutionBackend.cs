@@ -141,6 +141,7 @@ namespace ThirdPersonSimulation.Fixed
                 var diagnosticsPort = new FixedDiagnosticsRuntimePort(request.DiagnosticsIdentity, request.Diagnostics);
                 var combatPort = new FixedCombatRuntimePort(request.Backend.Identity, request.CharacterRuntime, localEnemies,
                     request.Descriptor.MaximumSessionCheckpointPayloadBytes);
+                resources.Register(SimulationSessionResourceReleasePhase.RuntimeAndPasses, combatPort.Combat);
                 var targetPorts = new SimulationRuntimePortSet(new ISimulationRuntimePort[]
                 {
                     characterRuntimePort,
