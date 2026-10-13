@@ -158,7 +158,7 @@ namespace ThirdPersonSimulation
             CompiledPipeline = compiledPipeline;
             DiagnosticsIdentity = diagnosticsIdentity;
             m_SourcePorts = FreezeUnique(sourcePorts, value => value.PortId, nameof(sourcePorts));
-            m_InitialStates = FreezeInitialStates(initialStates, descriptor.Roster);
+            m_InitialStates = FreezeInitialStates(initialStates, descriptor.Roster, descriptor.CapturesState);
             m_OutputRoutes = FreezeOutputRoutes(outputRoutes, descriptor.Roster);
         }
 
@@ -192,9 +192,12 @@ namespace ThirdPersonSimulation
 
         static ReadOnlyCollection<SimulationInitialStateIdentity> FreezeInitialStates(
             IEnumerable<SimulationInitialStateIdentity> source,
-            SimulationActorRosterDescriptor roster)
+            SimulationActorRosterDescriptor roster,
+            bool requiresStateHashes)
         {
             var values = source == null ? new List<SimulationInitialStateIdentity>() : new List<SimulationInitialStateIdentity>(source);
+            if (!requiresStateHashes && values.Count == 0)
+                return values.AsReadOnly();
             int worldCount = 0;
             int pipelineCount = 0;
             var actors = new HashSet<ActorId>();

@@ -79,7 +79,7 @@ namespace ThirdPersonSimulation
             ISimulationSessionRuntimeHandle runtimeHandle)
         {
             LaunchPlan = launchPlan ?? throw new ArgumentNullException(nameof(launchPlan));
-            InitialPipelineState = initialPipelineState ?? throw new ArgumentNullException(nameof(initialPipelineState));
+            InitialPipelineState = initialPipelineState;
             RuntimeHandle = runtimeHandle ?? throw new ArgumentNullException(nameof(runtimeHandle));
         }
 
@@ -210,18 +210,20 @@ namespace ThirdPersonSimulation
                 for (int i = 0; i < request.Roster.Count; i++)
                     request.Solver.RequireBodyBinding(request.Roster[i].ActorId, request.Roster[i].WorldBodyBindingId);
                 request.Solver.Reconstruct(request.InitialState.WorldState);
-                SimulationPipelineStateSnapshot initialPipelineState =
-                    SimulationPipelineStateSnapshotCoordinator.Capture(
+                SimulationPipelineStateSnapshot initialPipelineState = null;
+                if (request.Descriptor.CapturesState ||
+                    request.PipelineInitialState.Mode == SimulationPipelineInitialStateMode.RestoreProvidedSnapshot)
+                {
+                    initialPipelineState = SimulationPipelineStateSnapshotCoordinator.Capture(
                         request.CompiledPipeline,
                         request.InitialState.LastCompletedTick,
                         stateParticipants);
-                resources.Register(SimulationSessionResourceReleasePhase.RuntimeAndPasses, initialPipelineState);
-                if (request.PipelineInitialState.Mode == SimulationPipelineInitialStateMode.RestoreProvidedSnapshot &&
-                    !initialPipelineState.SnapshotHash.Equals(request.PipelineInitialState.Snapshot.SnapshotHash))
-                {
-                    throw Failure(
-                        "initial_pipeline_state_restore_mismatch",
-                        "Activated Pipeline runtime did not restore the provided initial state exactly.");
+                    resources.Register(SimulationSessionResourceReleasePhase.RuntimeAndPasses, initialPipelineState);
+                    if (request.PipelineInitialState.Mode == SimulationPipelineInitialStateMode.RestoreProvidedSnapshot &&
+                        !initialPipelineState.SnapshotHash.Equals(request.PipelineInitialState.Snapshot.SnapshotHash))
+                        throw Failure(
+                            "initial_pipeline_state_restore_mismatch",
+                            "Activated Pipeline runtime did not restore the provided initial state exactly.");
                 }
                 var transaction = new Float32PipelineTransaction(
                     request.Descriptor,
@@ -270,27 +272,30 @@ namespace ThirdPersonSimulation
             SimulationPipelineStateSnapshot initialPipelineState)
         {
             var states = new List<SimulationInitialStateIdentity>(request.Roster.Count + 2);
-            for (int i = 0; i < request.InitialState.Actors.Count; i++)
+            if (initialPipelineState != null)
             {
+                for (int i = 0; i < request.InitialState.Actors.Count; i++)
+                {
+                    states.Add(new SimulationInitialStateIdentity(
+                        SimulationInitialStateKind.Character,
+                        "float32-character-state",
+                        1,
+                        request.Descriptor.MaximumSessionCheckpointPayloadBytes > 0
+                            ? request.InitialState.Actors[i].State.CanonicalPayload.Hash.Value
+                            : Float32CharacterRuntimeStateCodec.ComputeHash(request.InitialState.Actors[i].State).Value,
+                        request.InitialState.Actors[i].ActorId));
+                }
                 states.Add(new SimulationInitialStateIdentity(
-                    SimulationInitialStateKind.Character,
-                    "float32-character-state",
+                    SimulationInitialStateKind.World,
+                    "float32-world-state",
                     1,
-                    request.Descriptor.MaximumSessionCheckpointPayloadBytes > 0
-                        ? request.InitialState.Actors[i].State.CanonicalPayload.Hash.Value
-                        : Float32CharacterRuntimeStateCodec.ComputeHash(request.InitialState.Actors[i].State).Value,
-                    request.InitialState.Actors[i].ActorId));
+                    WorldSimulationStateCodec.ComputeHash(request.InitialState.WorldState)));
+                states.Add(new SimulationInitialStateIdentity(
+                    SimulationInitialStateKind.Pipeline,
+                    "simulation-pipeline-state",
+                    1,
+                    initialPipelineState.SnapshotHash));
             }
-            states.Add(new SimulationInitialStateIdentity(
-                SimulationInitialStateKind.World,
-                "float32-world-state",
-                1,
-                WorldSimulationStateCodec.ComputeHash(request.InitialState.WorldState)));
-            states.Add(new SimulationInitialStateIdentity(
-                SimulationInitialStateKind.Pipeline,
-                "simulation-pipeline-state",
-                1,
-                initialPipelineState.SnapshotHash));
             return new SimulationSessionLaunchPlan(
                 request.Descriptor,
                 request.CompiledPipeline.LaunchIdentity,
