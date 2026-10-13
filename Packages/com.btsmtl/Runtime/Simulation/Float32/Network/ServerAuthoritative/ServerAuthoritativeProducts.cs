@@ -400,6 +400,10 @@ namespace ThirdPersonSimulation.ServerAuthoritative
     {
         static readonly Comparison<CharacterBodySample> s_CompareByTick =
             (left, right) => left.Tick.CompareTo(right.Tick);
+        static readonly Comparison<PresentationCommand> s_CompareCommands =
+            ServerAuthoritativeProductOrder.CompareCommands;
+        static readonly Comparison<ServerAuthoritativeReliableEvent> s_CompareEvents =
+            ServerAuthoritativeProductOrder.CompareEvents;
 
         readonly IReadOnlyList<CharacterBodySample> m_BodySamples;
         readonly IReadOnlyList<PresentationCommand> m_SampleCommands;
@@ -430,7 +434,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                     throw new ArgumentException("Remote presentation sample stream contains an invalid Actor or command kind.", nameof(sampleCommands));
             }
 
-            Array.Sort(sampleCommands, ServerAuthoritativeProductOrder.CompareCommands);
+            Array.Sort(sampleCommands, s_CompareCommands);
             for (int i = 1; i < sampleCommands.Length; i++)
             {
                 if (CanonicalTextValue.Equals(sampleCommands[i - 1].ProducerId, sampleCommands[i].ProducerId, StringComparison.Ordinal) &&
@@ -441,7 +445,7 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                         nameof(sampleCommands));
             }
 
-            Array.Sort(reliableEvents, ServerAuthoritativeProductOrder.CompareEvents);
+            Array.Sort(reliableEvents, s_CompareEvents);
             for (int i = 0; i < reliableEvents.Length; i++)
             {
                 if (reliableEvents[i].Header.ActorId != actorId ||
