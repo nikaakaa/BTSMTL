@@ -8,13 +8,15 @@ namespace ThirdPersonSimulation
     public enum SimulationNumericRoundingMode : byte
     {
         Ieee754NearestEven = 1,
-        FixedNearestEven = 2
+        FixedNearestEven = 2,
+        OperationDefined = 3
     }
 
     public enum SimulationNumericOverflowMode : byte
     {
         RejectNonFinite = 1,
-        RejectOverflow = 2
+        RejectOverflow = 2,
+        UncheckedIntegerArithmetic = 3
     }
 
     [CanonicalContract(MaterializedRead = true, PreparedRead = false, PublishedRead = true)]
