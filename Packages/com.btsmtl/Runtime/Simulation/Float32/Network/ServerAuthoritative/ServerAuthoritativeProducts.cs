@@ -416,26 +416,78 @@ namespace ThirdPersonSimulation.ServerAuthoritative
             ServerAuthoritativeReliableEvent[] reliableEvents,
             bool resetBodyStream)
         {
-            if (!actorId.IsValid || bodySamples == null || sampleCommands == null || reliableEvents == null)
-                throw new ArgumentException("Remote presentation ActorId is invalid.", nameof(actorId));
+            RequireReceivedIdentity(actorId, bodySamples, sampleCommands, reliableEvents);
             ActorId = actorId;
             ResetBodyStream = resetBodyStream;
             Array.Sort(bodySamples, s_CompareByTick);
-            for (int i = 0; i < bodySamples.Length; i++)
+            RequireBodySamples(actorId, bodySamples);
+            RequireSampleCommandKinds(actorId, sampleCommands);
+            Array.Sort(sampleCommands, s_CompareCommands);
+            RequireSampleCommandSources(sampleCommands);
+            Array.Sort(reliableEvents, s_CompareEvents);
+            RequireReliableEvents(actorId, reliableEvents);
+            m_BodySamples = bodySamples;
+            m_SampleCommands = sampleCommands;
+            m_ReliableEvents = reliableEvents;
+        }
+
+        public RemotePresentationBatch(
+            ActorId actorId,
+            List<CharacterBodySample> bodySamples,
+            List<PresentationCommand> sampleCommands,
+            List<ServerAuthoritativeReliableEvent> reliableEvents,
+            bool resetBodyStream)
+        {
+            RequireReceivedIdentity(actorId, bodySamples, sampleCommands, reliableEvents);
+            ActorId = actorId;
+            ResetBodyStream = resetBodyStream;
+            bodySamples.Sort(s_CompareByTick);
+            RequireBodySamples(actorId, bodySamples);
+            RequireSampleCommandKinds(actorId, sampleCommands);
+            sampleCommands.Sort(s_CompareCommands);
+            RequireSampleCommandSources(sampleCommands);
+            reliableEvents.Sort(s_CompareEvents);
+            RequireReliableEvents(actorId, reliableEvents);
+            m_BodySamples = bodySamples;
+            m_SampleCommands = sampleCommands;
+            m_ReliableEvents = reliableEvents;
+        }
+
+        static void RequireReceivedIdentity(
+            ActorId actorId,
+            IReadOnlyList<CharacterBodySample> bodySamples,
+            IReadOnlyList<PresentationCommand> sampleCommands,
+            IReadOnlyList<ServerAuthoritativeReliableEvent> reliableEvents)
+        {
+            if (!actorId.IsValid || bodySamples == null || sampleCommands == null || reliableEvents == null)
+                throw new ArgumentException("Remote presentation ActorId is invalid.", nameof(actorId));
+        }
+
+        static void RequireBodySamples(ActorId actorId, IReadOnlyList<CharacterBodySample> bodySamples)
+        {
+            int count = bodySamples.Count;
+            for (int i = 0; i < count; i++)
             {
                 if (bodySamples[i].ActorId != actorId || i > 0 && bodySamples[i - 1].Tick == bodySamples[i].Tick)
                     throw new ArgumentException("Remote body stream contains an invalid Actor or duplicate Tick.", nameof(bodySamples));
             }
+        }
 
-            for (int i = 0; i < sampleCommands.Length; i++)
+        static void RequireSampleCommandKinds(ActorId actorId, IReadOnlyList<PresentationCommand> sampleCommands)
+        {
+            int count = sampleCommands.Count;
+            for (int i = 0; i < count; i++)
             {
                 if (sampleCommands[i].Header.ActorId != actorId ||
                     sampleCommands[i].Kind != PresentationCommandKind.SampleProducer)
                     throw new ArgumentException("Remote presentation sample stream contains an invalid Actor or command kind.", nameof(sampleCommands));
             }
+        }
 
-            Array.Sort(sampleCommands, s_CompareCommands);
-            for (int i = 1; i < sampleCommands.Length; i++)
+        static void RequireSampleCommandSources(IReadOnlyList<PresentationCommand> sampleCommands)
+        {
+            int count = sampleCommands.Count;
+            for (int i = 1; i < count; i++)
             {
                 if (CanonicalTextValue.Equals(sampleCommands[i - 1].ProducerId, sampleCommands[i].ProducerId, StringComparison.Ordinal) &&
                     sampleCommands[i - 1].ProducerGeneration == sampleCommands[i].ProducerGeneration &&
@@ -444,17 +496,17 @@ namespace ThirdPersonSimulation.ServerAuthoritative
                         "Remote presentation playback changed its source Action instance.",
                         nameof(sampleCommands));
             }
+        }
 
-            Array.Sort(reliableEvents, s_CompareEvents);
-            for (int i = 0; i < reliableEvents.Length; i++)
+        static void RequireReliableEvents(ActorId actorId, IReadOnlyList<ServerAuthoritativeReliableEvent> reliableEvents)
+        {
+            int count = reliableEvents.Count;
+            for (int i = 0; i < count; i++)
             {
                 if (reliableEvents[i].Header.ActorId != actorId ||
                     i > 0 && reliableEvents[i - 1].Header.EventId.Equals(reliableEvents[i].Header.EventId))
                     throw new ArgumentException("Remote reliable events contain an invalid Actor or duplicate EventId.", nameof(reliableEvents));
             }
-            m_BodySamples = bodySamples;
-            m_SampleCommands = sampleCommands;
-            m_ReliableEvents = reliableEvents;
         }
 
         RemotePresentationBatch(
