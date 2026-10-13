@@ -2700,7 +2700,9 @@ namespace ThirdPerson.CanonicalSerialization.Generator
 
         static Member[] StorageMembers(INamedTypeSymbol type) => type.GetMembers()
             .Where(s => !s.IsStatic && !s.IsImplicitlyDeclared)
-            .Where(s => s is IFieldSymbol || s is IPropertySymbol p && IsAutoProperty(p))
+            .Where(s => s is IFieldSymbol field &&
+                !HasAttribute(field, "System.Runtime.CompilerServices.CompilerGeneratedAttribute") ||
+                s is IPropertySymbol property && IsAutoProperty(property))
             .OrderBy(Identity, StringComparer.Ordinal)
             .Select(s => new Member { Symbol = s, Type = s is IFieldSymbol f ? f.Type : ((IPropertySymbol)s).Type,
                 IsCase = HasAttribute(s, UnionCaseAttribute), Payload = HasAttribute(s, PayloadAttribute) }).ToArray();
@@ -2772,8 +2774,10 @@ namespace ThirdPerson.CanonicalSerialization.Generator
             code.AppendLine("}");
         }
 
-        static bool IsAutoProperty(IPropertySymbol property) => property.DeclaringSyntaxReferences.Any(reference =>
-            reference.GetSyntax() is PropertyDeclarationSyntax declaration && declaration.AccessorList != null &&
-            declaration.AccessorList.Accessors.All(a => a.Body == null && a.ExpressionBody == null));
+        static bool IsAutoProperty(IPropertySymbol property) => property.DeclaringSyntaxReferences.Length == 0
+            ? property.GetMethod != null && HasAttribute(property.GetMethod, "System.Runtime.CompilerServices.CompilerGeneratedAttribute")
+            : property.DeclaringSyntaxReferences.Any(reference =>
+                reference.GetSyntax() is PropertyDeclarationSyntax declaration && declaration.AccessorList != null &&
+                declaration.AccessorList.Accessors.All(a => a.Body == null && a.ExpressionBody == null));
     }
 }
