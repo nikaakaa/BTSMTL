@@ -195,6 +195,9 @@ namespace ThirdPersonSimulation
 
         public IReadOnlyList<GameplayAbilityExecutionFrame<TValue>> Frames => m_Frames;
         internal int Retainers => m_Retainers;
+        public int FrameCapacity => m_Bank.FrameCapacity;
+        public int TextReferenceCapacity => m_Bank.TextReferenceCapacity;
+        public GameplayAbilityExecutionAggregate<TValue> BeginPreparedRead() => m_Bank.BeginPreparedRead();
 
         internal void BeginCopy(GameplayAbilityExecutionAggregate<TValue> source)
         {
@@ -210,12 +213,12 @@ namespace ThirdPersonSimulation
             }
         }
 
-        internal void RetainStateStorage()
+        public void RetainStateStorage()
         {
             m_Retainers++;
         }
 
-        internal void ReleaseStateStorage()
+        public void ReleaseStateStorage()
         {
             if (--m_Retainers != 0)
                 return;
@@ -226,7 +229,7 @@ namespace ThirdPersonSimulation
 
         internal GameplayAbilityExecutionFrame<TValue> CreateFrame(AbilityExecutionContext identity) => m_Bank.CreateFrame(identity);
 
-        internal GameplayAbilityExecutionFrame<TValue> AppendRestoredFrame(AbilityExecutionContext identity)
+        public GameplayAbilityExecutionFrame<TValue> AppendRestoredFrame(AbilityExecutionContext identity)
         {
             GameplayAbilityExecutionFrame<TValue> frame = m_Bank.CreateFrame(identity);
             m_Frames.Add(frame);
@@ -331,16 +334,18 @@ namespace ThirdPersonSimulation
 
         internal GameplayAbilityExecutionStateBank(GameplayAbilityExecutionIdentity identity, int slotCount,
             int actionCapacity, Func<int, bool> ownsSlot, Action<TValue> retainValue, Action<TValue> releaseValue,
-            GeneratedBlackboardStateBinding<TValue> blackboards)
+            GeneratedBlackboardStateBinding<TValue> blackboards, int maximumTextReferences)
         {
             m_FrameCapacity = checked(actionCapacity + 1);
             Values = new AbilityStateValuePageBank<TValue>(identity, slotCount, ownsSlot, retainValue, releaseValue,
-                blackboards);
+                blackboards, maximumTextReferences);
             PrepareCapacity(0);
         }
 
         internal AbilityStateValuePageBank<TValue> Values { get; }
         internal int FrameCapacity => m_FrameCapacity;
+        internal int TextReferenceCapacity => checked(m_FrameCapacity *
+            (AbilityExecutionContext.MaximumTextReferences + Values.TextReferenceCapacity));
 
         internal void PrepareCapacity(int states)
         {
@@ -356,14 +361,27 @@ namespace ThirdPersonSimulation
 
         internal GameplayAbilityExecutionAggregate<TValue> Capture(GameplayAbilityExecutionAggregate<TValue> source = null)
         {
+            GameplayAbilityExecutionAggregate<TValue> state = RentState(source);
+            state.BeginCopy(source);
+            ReleaseCurrent();
+            m_Current = state;
+            return state;
+        }
+
+        internal GameplayAbilityExecutionAggregate<TValue> BeginPreparedRead()
+        {
+            GameplayAbilityExecutionAggregate<TValue> state = RentState(null);
+            state.BeginCopy(null);
+            return state;
+        }
+
+        GameplayAbilityExecutionAggregate<TValue> RentState(GameplayAbilityExecutionAggregate<TValue> source)
+        {
             for (int index = 0; index < m_States.Count; index++)
             {
                 GameplayAbilityExecutionAggregate<TValue> state = m_States[index];
                 if (state.Retainers != 0 || ReferenceEquals(state, source))
                     continue;
-                state.BeginCopy(source);
-                ReleaseCurrent();
-                m_Current = state;
                 return state;
             }
             throw new InvalidOperationException("Skill execution state page capacity does not cover retained steps.");

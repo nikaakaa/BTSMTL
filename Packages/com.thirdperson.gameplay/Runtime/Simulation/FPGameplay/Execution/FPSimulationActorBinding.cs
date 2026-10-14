@@ -566,12 +566,13 @@ namespace ThirdPersonSimulation.FPGameplay
                 ExecutionStatePages.Add(installation.Identity.AbilityId,
                     new GameplayAbilityExecutionStateBank<AbilityStateValue>(installation.Identity,
                         installation.Layout.StateSlots.Count, installation.Layout.ActionInstanceCapacity,
-                        installation.Layout.IsSkillExecutionStateSlot, value => value.Retain(), value => value.Release(), installation.Blackboards));
+                        installation.Layout.IsSkillExecutionStateSlot, value => value.Retain(), value => value.Release(), installation.Blackboards,
+                        AbilityStateValue.MaximumTextReferences));
                 StateValuePages.Add(installation.Identity.AbilityId,
                     new AbilityStateValuePageBank<AbilityStateValue>(installation.Identity,
                         installation.Layout.StateSlots.Count, slot => !installation.Layout.IsSkillExecutionStateSlot(slot) &&
                             AbilityInstallations.CharacterBlackboards.Slots(installation.Data.AbilityId)[slot] < 0,
-                        value => value.Retain(), value => value.Release(), installation.Blackboards));
+                        value => value.Retain(), value => value.Release(), installation.Blackboards, AbilityStateValue.MaximumTextReferences));
             }
             var warpLayouts = new KeyValuePair<CharacterSkillId, IReadOnlyList<int>>[AbilityInstallations.Installations.Count];
             for (int index = 0; index < warpLayouts.Length; index++)
@@ -584,7 +585,8 @@ namespace ThirdPersonSimulation.FPGameplay
             MotionWarpPages = new MotionWarpStatePageBank<MotionWarpState>(motionWarpLayout, value => value.Retain(), value => value.Release());
             CharacterBlackboardPages = new AbilityStateValuePageBank<AbilityStateValue>(default,
                 AbilityInstallations.CharacterBlackboards.SlotCount, _ => true,
-                value => value.Retain(), value => value.Release(), AbilityInstallations.CharacterBlackboards.Binding);
+                value => value.Retain(), value => value.Release(), AbilityInstallations.CharacterBlackboards.Binding,
+                AbilityStateValue.MaximumTextReferences);
             m_RuntimeState.Initialize(AbilityInstallations.Installations, motionWarpLayout, AbilityInstallations.CharacterBlackboards);
             int actionCapacity = 0;
             for (int i = 0; i < AbilityInstallations.Installations.Count; i++)

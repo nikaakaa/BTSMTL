@@ -217,14 +217,16 @@ namespace ThirdPersonSimulation
                 StateValuePages.Add(installation.Identity.AbilityId, new AbilityStateValuePageBank<AbilityStateValue>(
                     installation.Identity, installation.Layout.StateSlots.Count, slot => !installation.Layout.IsSkillExecutionStateSlot(slot) &&
                         AbilityInstallations.CharacterBlackboards.Slots(installation.Data.AbilityId)[slot] < 0,
-                    value => value.Retain(), value => value.Release(), installation.Blackboards));
+                    value => value.Retain(), value => value.Release(), installation.Blackboards, AbilityStateValue.MaximumTextReferences));
                 ExecutionStatePages.Add(installation.Identity.AbilityId, new GameplayAbilityExecutionStateBank<AbilityStateValue>(
                     installation.Identity, installation.Layout.StateSlots.Count, installation.Layout.ActionInstanceCapacity,
-                    installation.Layout.IsSkillExecutionStateSlot, value => value.Retain(), value => value.Release(), installation.Blackboards));
+                    installation.Layout.IsSkillExecutionStateSlot, value => value.Retain(), value => value.Release(), installation.Blackboards,
+                    AbilityStateValue.MaximumTextReferences));
             }
             CharacterBlackboardPages = new AbilityStateValuePageBank<AbilityStateValue>(default,
                 AbilityInstallations.CharacterBlackboards.SlotCount, _ => true,
-                value => value.Retain(), value => value.Release(), AbilityInstallations.CharacterBlackboards.Binding);
+                value => value.Retain(), value => value.Release(), AbilityInstallations.CharacterBlackboards.Binding,
+                AbilityStateValue.MaximumTextReferences);
             m_RuntimeState.Initialize(AbilityInstallations.Installations, motionWarpLayout, AbilityInstallations.CharacterBlackboards);
             InputRequestPages = new Float32InputRequestPageBank(InputRuntimeBinding.InputRequestIds.Count);
             int actionCapacity = 0;

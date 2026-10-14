@@ -17,7 +17,7 @@ namespace ThirdPersonSimulation
 
         internal AbilityStateValuePageBank(GameplayAbilityExecutionIdentity identity, int slotCount,
             Func<int, bool> ownsSlot, Action<TValue> retainValue, Action<TValue> releaseValue,
-            GeneratedBlackboardStateBinding<TValue> blackboards)
+            GeneratedBlackboardStateBinding<TValue> blackboards, int maximumTextReferences)
         {
             Identity = identity;
             RetainValue = retainValue;
@@ -35,6 +35,7 @@ namespace ThirdPersonSimulation
             {
                 if (!ownsSlot(slot))
                     continue;
+                LogicalSlotCapacity++;
                 if (blackboards.Contains(slot))
                 {
                     int source = blackboards.SlotBlocks[slot];
@@ -53,6 +54,7 @@ namespace ThirdPersonSimulation
                 }
             }
             BlackboardBindings = bindings.ToArray();
+            TextReferenceCapacity = checked(LogicalSlotCapacity * maximumTextReferences);
             m_Pages = new AbilityStateValuePage<TValue>[(valueCount + PageSize - 1) / PageSize][];
             m_PageIndices = new int[m_Pages.Length];
             for (int index = 0; index < m_PageIndices.Length; index++)
@@ -66,6 +68,8 @@ namespace ThirdPersonSimulation
         internal GameplayAbilityExecutionIdentity Identity { get; }
         internal GeneratedBlackboardStateBinding<TValue> Blackboards { get; }
         internal ReadOnlySpan<int> PageIndices => m_PageIndices;
+        internal int LogicalSlotCapacity { get; }
+        internal int TextReferenceCapacity { get; }
 
         internal void PrepareCapacity(int capacity)
         {
@@ -101,6 +105,13 @@ namespace ThirdPersonSimulation
             AbilityStateValuePageSet<TValue> set = RentSet(null);
             set.BeginEmpty();
             return new AbilityStateValuePageReference<TValue>(set, set.Generation);
+        }
+
+        internal AbilityStateValuePageReference<TValue> BeginPreparedRead()
+        {
+            AbilityStateValuePageReference<TValue> value = BeginEmpty();
+            value.Retain();
+            return value;
         }
 
         internal AbilityStateValuePageReference<TValue> BeginWrite(in AbilityStateValuePageReference<TValue> source)
@@ -374,6 +385,21 @@ namespace ThirdPersonSimulation
         internal ulong Generation { get; }
         internal void RequireReadable() => Set.RequireReadable(Generation);
 
+        public int LogicalSlotCapacity => Set.Bank.LogicalSlotCapacity;
+        public int TextReferenceCapacity => Set.Bank.TextReferenceCapacity;
+
+        public AbilityStateValuePageReference<TValue> BeginPreparedRead()
+        {
+            RequireReadable();
+            return Set.Bank.BeginPreparedRead();
+        }
+
+        public void RestorePreparedValue(int slot, in TValue value)
+        {
+            RequireReadable();
+            Set.RestoreValue(slot, value);
+        }
+
         internal bool TryGetValue(int slot, out TValue value)
         {
             RequireReadable();
@@ -433,12 +459,12 @@ namespace ThirdPersonSimulation
             }
         }
 
-        internal void Retain()
+        public void Retain()
         {
             RequireReadable();
             Set.Retain();
         }
 
-        internal void Release() => Set.Release();
+        public void Release() => Set.Release();
     }
 }
