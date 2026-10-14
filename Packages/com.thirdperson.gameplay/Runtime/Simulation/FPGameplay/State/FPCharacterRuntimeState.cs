@@ -20,9 +20,9 @@ namespace ThirdPersonSimulation.FPGameplay
         }
 
         [ValueResource]
-        internal AbilityStateValuePageReference<AbilityStateValue> StateValues { get; }
+        public AbilityStateValuePageReference<AbilityStateValue> StateValues { get; }
         [ValueResource("RetainStateStorage", "ReleaseStateStorage")]
-        internal GameplayAbilityExecutionAggregate<AbilityStateValue> AbilityExecutionState { get; }
+        public GameplayAbilityExecutionAggregate<AbilityStateValue> AbilityExecutionState { get; }
         public GameplayAbilityExecutionIdentity AbilityIdentity => StateValues.Set.Bank.Identity;
 
         internal bool SharesStateWith(FPAbilityRuntimeState other) =>
@@ -84,7 +84,7 @@ namespace ThirdPersonSimulation.FPGameplay
         public IReadOnlyList<FPAbilityRuntimeState> Abilities => Data.Abilities.Values;
         internal FPAbilityStateDirectoryReference AbilityDirectory => Data.Abilities;
         internal MotionWarpStatePageReference<MotionWarpState> MotionWarpStates => Data.MotionWarpStates;
-        internal AbilityStateValuePageReference<AbilityStateValue> CharacterBlackboards => Data.CharacterBlackboards;
+        public AbilityStateValuePageReference<AbilityStateValue> CharacterBlackboards => Data.CharacterBlackboards;
 
         internal void RetainStatePages()
         {
@@ -114,7 +114,7 @@ namespace ThirdPersonSimulation.FPGameplay
         internal ReadOnlySpan<FPActionInstanceState> ActionInstances => ActionStatePage.Actions;
         internal FPInputRequestPageReference InputRequestPage => Data.InputRequestPage;
         internal ReadOnlySpan<KeyValuePair<string, SimulationInputRequestState>> InputRequests => InputRequestPage.Values;
-        internal ref readonly CharacterRuntimeStateMetadata Metadata => ref Data.Metadata;
+        public ref readonly CharacterRuntimeStateMetadata Metadata => ref Data.Metadata;
         internal ulong EventSequence => Data.Metadata.EventSequence;
         internal ulong ActionEventSequence => Data.Metadata.ActionEventSequence;
         internal ulong HandleAllocator => Data.Metadata.HandleAllocator;

@@ -535,7 +535,7 @@ namespace ThirdPersonSimulation.FPGameplay
         public string WindowId { get; }
         [ValueTextRules(Required = true, Trim = true)]
         public string WindowType { get; }
-        [ValueTextRules(Required = true, Trim = true)]
+        [ValueTextRules(Required = true, Trim = true, Declared = true)]
         public string WindowTag { get; }
         public ulong StartTick { get; }
         public ulong EndTick { get; }
