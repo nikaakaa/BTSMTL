@@ -1,7 +1,7 @@
 using BEPUphysics.CollisionShapes.ConvexShapes;
 using BEPUphysics.CollisionTests.CollisionAlgorithms.GJK;
 using BEPUutilities;
-using FixMath.NET;
+using Photon.Deterministic;
 
 namespace BEPUphysics.CollisionTests.CollisionAlgorithms
 {
@@ -9,35 +9,35 @@ namespace BEPUphysics.CollisionTests.CollisionAlgorithms
     {
         readonly RigidTransform m_Start;
         readonly RigidTransform m_End;
-        readonly Vector3 m_Axis;
+        readonly FPVector3 m_Axis;
 
         public RigidSweepMotion(RigidTransform start, RigidTransform end)
         {
             m_Start = start;
             m_End = end;
-            Quaternion.GetRelativeRotation(ref start.Orientation, ref end.Orientation, out Quaternion relative);
-            if (relative.W < Fix64.Zero)
-                relative = new Quaternion(-relative.X, -relative.Y, -relative.Z, -relative.W);
-            Vector3 axis = new Vector3(relative.X, relative.Y, relative.Z);
-            Fix64 axisLength = axis.Length();
-            Angle = 2 * Fix64.Atan2(axisLength, relative.W);
-            m_Axis = axisLength == Fix64.Zero ? Vector3.Zero : axis / axisLength;
+            FPQuaternion relative = end.Orientation * FPQuaternion.Conjugate(start.Orientation);
+            if (relative.W < FP._0)
+                relative = new FPQuaternion(-relative.X, -relative.Y, -relative.Z, -relative.W);
+            FPVector3 axis = new FPVector3(relative.X, relative.Y, relative.Z);
+            FPVector3 normalizedAxis = FPVector3.Normalize(axis, out FP axisLength);
+            Angle = 2 * FPMath.Atan2(axisLength, relative.W);
+            m_Axis = normalizedAxis;
         }
 
-        public Vector3 Translation => m_End.Position - m_Start.Position;
-        public Fix64 Angle { get; }
+        public FPVector3 Translation => m_End.Position - m_Start.Position;
+        public FP Angle { get; }
 
-        public RigidTransform At(Fix64 fraction)
+        public RigidTransform At(FP fraction)
         {
-            if (fraction == Fix64.Zero)
+            if (fraction == FP._0)
                 return m_Start;
-            if (fraction == Fix64.One)
+            if (fraction == FP._1)
                 return m_End;
-            Quaternion orientation = m_Start.Orientation;
-            if (Angle != Fix64.Zero)
+            FPQuaternion orientation = m_Start.Orientation;
+            if (Angle != FP._0)
             {
-                Quaternion increment = Quaternion.CreateFromAxisAngle(m_Axis, Angle * fraction);
-                Quaternion.Concatenate(ref orientation, ref increment, out orientation);
+                FPQuaternion increment = FPQuaternion.RadianAxis(Angle * fraction, m_Axis);
+                orientation = increment * orientation;
             }
             return new RigidTransform(m_Start.Position + Translation * fraction, orientation);
         }
@@ -54,18 +54,18 @@ namespace BEPUphysics.CollisionTests.CollisionAlgorithms
             m_Local = local;
         }
 
-        public Vector3 Translation => m_Root.Translation;
-        public Fix64 AngularBound(Fix64 shapeRadius) =>
-            m_Root.Angle * (m_Local.Position.Length() + shapeRadius);
+        public FPVector3 Translation => m_Root.Translation;
+        public FP AngularBound(FP shapeRadius) =>
+            m_Root.Angle * (Toolbox.Length(m_Local.Position) + shapeRadius);
 
-        public RigidTransform At(Fix64 fraction)
+        public RigidTransform At(FP fraction)
         {
             RigidTransform root = m_Root.At(fraction);
-            Quaternion orientation = root.Orientation;
-            Vector3 offset = m_Local.Position;
-            Quaternion.Transform(ref offset, ref orientation, out offset);
-            Quaternion local = m_Local.Orientation;
-            Quaternion.Concatenate(ref local, ref orientation, out Quaternion partOrientation);
+            FPQuaternion orientation = root.Orientation;
+            FPVector3 offset = m_Local.Position;
+            offset = orientation * offset;
+            FPQuaternion local = m_Local.Orientation;
+            FPQuaternion partOrientation = orientation * local;
             return new RigidTransform(root.Position + offset, partOrientation);
         }
     }
@@ -73,7 +73,7 @@ namespace BEPUphysics.CollisionTests.CollisionAlgorithms
     public static class AngularSweepToolbox
     {
         public const int MaximumAdvancementIterations = 64;
-        public static readonly Fix64 ContactTolerance = (Fix64)0.0001m;
+        public static readonly FP ContactTolerance = FP.EN4;
 
         public static bool Sweep(
             ConvexShape source, ConvexShape target,
@@ -83,32 +83,31 @@ namespace BEPUphysics.CollisionTests.CollisionAlgorithms
             hit = default;
             iterationLimitReached = false;
             initialOverlap = false;
-            Fix64 fraction = Fix64.Zero;
-            Fix64 angularBound = sourceMotion.AngularBound(source.MaximumRadius) +
+            FP fraction = FP._0;
+            FP angularBound = sourceMotion.AngularBound(source.MaximumRadius) +
                 targetMotion.AngularBound(target.MaximumRadius);
-            Vector3 relativeTranslation = sourceMotion.Translation - targetMotion.Translation;
+            FPVector3 relativeTranslation = sourceMotion.Translation - targetMotion.Translation;
 
             for (int iteration = 0; iteration < MaximumAdvancementIterations; iteration++)
             {
                 RigidTransform sourceTransform = sourceMotion.At(fraction);
                 RigidTransform targetTransform = targetMotion.At(fraction);
                 bool coresOverlap = GJKToolbox.GetClosestPoints(source, target,
-                    ref sourceTransform, ref targetTransform, out Vector3 pointSource, out Vector3 pointTarget,
+                    ref sourceTransform, ref targetTransform, out FPVector3 pointSource, out FPVector3 pointTarget,
                     out iterationLimitReached);
                 if (iterationLimitReached)
                     return false;
-                Vector3 offset = pointSource - pointTarget;
-                Fix64 coreDistance = offset.Length();
-                Fix64 margin = source.CollisionMargin + target.CollisionMargin;
+                FPVector3 offset = pointSource - pointTarget;
+                FPVector3 normal = FPVector3.Normalize(offset, out FP coreDistance);
+                FP margin = source.CollisionMargin + target.CollisionMargin;
                 if (coresOverlap || coreDistance <= margin)
                 {
-                    initialOverlap = fraction == Fix64.Zero;
+                    initialOverlap = fraction == FP._0;
                     hit.T = fraction;
                     hit.Location = coresOverlap ? pointTarget :
                         pointTarget + offset * (target.CollisionMargin / margin);
                     return true;
                 }
-                Vector3 normal = offset / coreDistance;
                 if (coreDistance - margin <= ContactTolerance)
                 {
                     hit.T = fraction;
@@ -117,21 +116,21 @@ namespace BEPUphysics.CollisionTests.CollisionAlgorithms
                     return true;
                 }
 
-                Vector3 sourceDirection = -normal;
-                source.GetExtremePoint(sourceDirection, ref sourceTransform, out Vector3 sourceSupport);
-                target.GetExtremePoint(normal, ref targetTransform, out Vector3 targetSupport);
-                Fix64 gap = Vector3.Dot(normal, sourceSupport - targetSupport);
-                Fix64 closingSpeed = -Vector3.Dot(normal, relativeTranslation) + angularBound;
-                if (closingSpeed <= Fix64.Zero)
+                FPVector3 sourceDirection = -normal;
+                source.GetExtremePoint(sourceDirection, ref sourceTransform, out FPVector3 sourceSupport);
+                target.GetExtremePoint(normal, ref targetTransform, out FPVector3 targetSupport);
+                FP gap = FPVector3.Dot(normal, sourceSupport - targetSupport);
+                FP closingSpeed = -FPVector3.Dot(normal, relativeTranslation) + angularBound;
+                if (closingSpeed <= FP._0)
                     return false;
-                Fix64 step = gap / closingSpeed;
-                if (step <= Fix64.Zero)
+                FP step = gap / closingSpeed;
+                if (step <= FP._0)
                 {
                     iterationLimitReached = true;
                     return false;
                 }
-                Fix64 next = fraction + step;
-                if (next > Fix64.One)
+                FP next = fraction + step;
+                if (next > FP._1)
                     return false;
                 if (next == fraction)
                 {

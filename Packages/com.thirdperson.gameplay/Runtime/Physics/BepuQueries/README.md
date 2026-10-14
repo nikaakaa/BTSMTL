@@ -1,40 +1,39 @@
-# BEPU 定点查询依赖
+# 官方 FP 凸体查询依赖
 
-来源：[sam-vdp/bepuphysics1int](https://github.com/sam-vdp/bepuphysics1int/tree/9237daa68c3014fd7c2e93c6a99326ba5248d60b)，固定提交 `9237daa68c3014fd7c2e93c6a99326ba5248d60b`。
+来源为 [sam-vdp/bepuphysics1int 固定提交](https://github.com/sam-vdp/bepuphysics1int/tree/9237daa68c3014fd7c2e93c6a99326ba5248d60b)。现有 MPR、GJK 和项目连续旋转查询已迁为官方 `Photon.Deterministic.FP`、`FPVector3`、`FPQuaternion` 与 `FPMath`，没有 Fix64 或 Q32.32 往返。
 
-本程序集只供 `FixedSweepQueryBackend` 调用球、胶囊、Box、凸体极值点、MPR 平移、GJK 最近点及连续旋转所需数学。没有 Space、Entity、Collidable、约束、世界更新或自主 Tick。上游 fork 及原 BEPU 许可保留在 `LICENSE.md`，FixedMath.NET 许可保留在 `FixedMath.Net/LICENSE.txt`。
+本程序集只做球、胶囊、盒、凸包和准备后的凸部件求交，由 `ThirdPersonSimulation.FPGameplay.FPSweepQueryBackend` 调用。没有刚体世界、运动积分、约束、KCC、Scene、Entity 或自主 Tick。官方 Quantum／KCC 源码与 DLL 保持原版；这里只引用 `Quantum.Deterministic.dll`。原 BEPU 许可见 `LICENSE.md`，已删除 FixedMath.NET 实现的原许可仍保留在 `FixedMath.Net/LICENSE.txt`。
 
-## 源码裁剪
+## 原算法与保留行为
 
-通过 Roslyn 语法树裁剪成员，保留上游形状及算法方法体，源文件名和目录保持上游布局：
+- 固定朝向的初始相交和平移仍走 MPR；双方连续旋转仍走 GJK 最近点、形状极值点分离平面和角速度界的保守推进。没有改成 SDK ShapeCast，也没有增加离散 Overlap 采样或算法失败后的重试。
+- `RigidSweepMotion` 保留相对四元数、最短恒角速度旋转弧和精确端点。官方四元数乘法的顺序为父旋转乘局部旋转；相对旋转为终点乘起点共轭。部件局部偏移随根旋转，角速度界继续包含该偏移和形状半径。
+- MPR 内／外迭代限制仍为 15／15，GJK 与保守推进仍各为 64，GJK 多迭代收敛门槛仍为 8。未收敛仍向正式查询返回 `NativeIterationLimit`，不把失败变成未命中。
+- 球和胶囊的 margin 仍等于作者半径，盒和凸包 margin 为零。盒保留完整作者半尺寸；凸包仍由上层准备重新定心，部件局部中心仍参与运动。
+- 初始相交的 GJK 贡献点、margin 相交的加权见证位置和 MPR 的位置可用标记保留。适配器仍只在实际可用时发布 Point／Normal，MPR 法线仍取反为目标朝向查询体。
+- 删除查询不使用的质量、惯性、包围盒、矩阵、RayTest、旧向量／旋转、Fix64 与自研三角 LUT。原 GJK 缓存只在单次调用中创建，返回后从未读取；现改为同一初始单纯形直接求解，保留贡献点，不再回写无人读取的缓存。
 
-- `EntityShape` 和球 / 胶囊 / Box 删除 `GetCollidableInstance`；形状的尺寸、极值点和边界计算保留。
-- 形状删除 `RayTest`、扫掠 / 局部包围盒入口；没有引入 RayCast。
-- `MPRToolbox` 保留 `AreShapesOverlapping`、所需局部 Overlap、`Sweep`、双形状 `LocalSweepCast`、`GetLocalPosition`、`AreSweptShapesIntersecting` 和双形状 `GetSweptExtremePoint`。
-- `Toolbox` 保留数学字段和 `GetBarycentricCoordinates`，删除无消费者的方法；数学类型及 Fix64 / 原生三角 LUT 保留。
-- 没有凸包生成、资源池、多线程或刚体世界依赖。
-- 同日旋转扩展只增加 GJK 的 `GetClosestPoints` 与 `PairSimplex`，不带 RaySimplex、SimpleSimplex 或整套 GJK Cast。`QueryConvexHullShape` 消费已准备、已重新定心的凸体顶点，不生成凸分解。
+## FP 量化、容差与运算范围
 
-## 查询状态增量
+FP 步长为 `1/65536`。接触距离使用官方 `FP.EN4`，Raw 为 7，即 `0.0001068115234375`；原作者意义仍是约 `0.0001` 的接触收敛距离，不是任意输入的全域 TOI 误差保证。
 
-初版适配版本为 `mpr-query-v1`；旋转扩展版本为 `mpr-gjk-angular-query-v2`；当前接触见证点版本为 `mpr-gjk-angular-query-v3`。MPR 公开查询增加 `out bool iterationLimitReached`，沿原有循环条件记录未达到收敛条件而耗尽迭代的情况。上层拒绝该次查询结果，不把原生 false 当作成功未命中，也不接受耗尽迭代后得到的近似接触。
+原 MPR 的 `1e-7`／`1e-9` 和 GJK 的 `1e-8`／`1e-7` 在 FP 中无法表示。MPR 门面点积收敛、GJK 进展及距离收敛系数采用 `FP.SmallestNonZero`（Raw 1）；GJK 仍按原 `errorTolerance` 缩放进展／收敛系数。核心接触使用官方长度结果与一个 Raw 的线性距离比较，不把平方量化为零当作核心相交。
 
-Sweep 增加 `out bool positionAvailable`。MPR Sweep 只写默认位置的分支仍标记为不可用。初始相交由正式相交算法判定，GJK 保留已求得的贡献单纯形；四面体包含原点时计算四个体积重心权重，输出双方形状的实际见证点，不再将双方位置清零。核心未相交而 margin 相交时，在最近点间按双方 margin 分配距离，得到位于共同体积内的点。初始相交没有唯一表面接触点，不发布虚构法线。
+方向归一化、角运动轴、margin 扩张和接触距离使用官方 `FPVector3.Normalize`；需要长度时使用其 `out FP length`。普通 `Magnitude` 先量化平方，再开方，会丢失小距离。平移射线使用同一官方单位方向及线性长度，不把小于一个平方量化步长的实际位移改成静止。MPR 重心权重和 GJK 三角形权重直接做分子／分母，避免先计算倒数就量化为零。
 
-固定朝向请求的 MPR 初始相交成功后只补求 GJK 见证位置，MPR 耗尽迭代时不进入该步骤；旋转请求直接保留自身 GJK 见证位置。这不是算法失败后的重试或备用路径。后端依据实际位置可用性发布 Point 字段，正常扫入的时间与法线语义保持。MPR 的法线为 Minkowski 外法线，适配器取反，统一为目标朝向查询形状的法线。
+不能以 `FP.MaxValue` 声明乘法安全范围。SDK 的 FP 乘法先做 64 位 Raw 乘积，实际几何中还存在叉积、点积与六次量纲的四面体侧面判断。令 R 为该对形状实际使用的相对位置、位移、支持点及 MPR 扩张支持点长度上界，则 GJK 的 `AdotN * ADdotN` 保守上界为 `32 * R^6`。例如 R≤16 时该项≤536870912，尚低于普通 FP 乘法的约 2^31 结果量级限制；相关四次项和 Raw 归一化平方和也在 64 位中间范围内。这是本算法的一组充分条件，不是将世界坐标限定在16，也不是所有内容的最大安全范围。
 
-MPR 迭代数固定为上游的 15 / 15，surface epsilon 为 `1e-7`，raycast surface epsilon 为 `1e-9`，Toolbox epsilon 为 `1 / 10000000`，均保留上游 Q32.32 量化结果并固定值。Box 的 CollisionMargin 在准备中明确设为零，球和胶囊的 margin 是其原生半径，不额外扩大作者几何。
+正式准备需要从实际攻击／受击几何、部件偏移、双方运动和时段确认中间运算范围。还要确认小尺寸或退化几何在 FP 下的面积／体积与分母可表达；上述上界证明不覆盖下溢。查询没有新增运行期坐标钳制、备用精度、旧 Raw Reader 或自定义范围成功标记。本轮没有发布／回读完整 FP 内容，因此不能用这组静态推导宣称整份产品的数值范围已确认。源码中保留的 `FP.MaxValue` 仅作最近距离及失败时间哨兵，不作为乘法输入范围。
 
-## 连续旋转增量
+## 正式适配与构建
 
-`AngularSweepToolbox` 使用 GJK 最近点确定分离方向，用形状极值点确认分离平面间距，再按双方平移与角速度乘外接半径的闭合速度界保守推进。算法路线参考 [Bullet continuous convex collision](https://github.com/bulletphysics/bullet3/blob/master/src/BulletCollision/NarrowPhaseCollision/btContinuousConvexCollision.cpp) 的角速度界与保守推进，不复制其 C++ 实现。Fixed 全程使用本程序集的 Fix64。
+后端身份为 `bepuphysics1int/9237daa68c3014fd7c2e93c6a99326ba5248d60b/fp-q48.16-mpr-gjk-angular-query-v4`，数值描述使用已有 `QuantumSimulationNumericProfile.Value`（`quantum-fp-q48.16`／ABI1）。旧 v3／Q32.32 内容和结果不能按同一身份继续使用。
 
-`RigidSweepMotion` 以相对四元数的 `Atan2` 轴角表达最短恒角速度旋转弧，端点直接保留。`ConvexSweepMotion` 将部件局部位姿跟随根位姿旋转；角运动半径包括局部偏移。推进与 GJK 各最多 64 次，GJK 多迭代收敛参数为固定 8，PairSimplex 原生收敛阈值固定为 readonly。接触收敛距离为 `0.0001`，仍受 GJK 原生数值容差影响；没有声明全域 TOI 误差界。耗尽迭代明确报告失败，没有 GJK/MPR 互相重试或备用路径。
+原 portable 工程 `Projects/ThirdPerson.BepuQueries/ThirdPerson.BepuQueries.csproj` 引用正式安装的官方数学 DLL，仍无 Unity Engine 依赖。使用：
 
-Box `OnShapeChanged` 的上游参数错误已修正：`ComputeDescription` 接收完整尺寸，原调用误传半尺寸，导致更新 margin 后的外接半径减半。此改动使描述与实际极值点几何一致，没有扩大作者 Box。
+```powershell
+dotnet build Projects/ThirdPerson.BepuQueries/ThirdPerson.BepuQueries.csproj --disable-build-servers /nr:false /p:UseSharedCompilation=false
+dotnet build-server shutdown
+```
 
-## 数值边界
-
-项目 `FixedScalar.Raw` 与原生 `Fix64.RawValue` 直接映射，同为 Q32.32。原生乘除、舍入、溢出和求解容差仍由固定版本 BEPU 数学决定，与项目的 nearest-even / reject-overflow 行为不相同。此边界只服务查询输入 / 输出，不改变正式角色或世界状态，不经 float 求交，也不成为另一套项目数值目标。
-
-该源码支持声明路径上的平移、刚性旋转、凸包与已准备凸部件的 Mesh。没有任意三角网格、变形 Mesh、自动凸分解或 Quantum 3 适配。跨机器与 Player 平台确定性仍须以相同后端版本和正式输入验证。
+准备阶段创建形状与顶点数组；正常查询继续只用已有形状和结果缓冲，以及值类型局部量。源码／编译检查不能代替 FP 运行时 GC、CPU、命中边界或跨平台检查。当前阶段与失败记录见 3C 项目 `docs/测试/命中判定查询核对20261001.md` 的 FP 迁移段。

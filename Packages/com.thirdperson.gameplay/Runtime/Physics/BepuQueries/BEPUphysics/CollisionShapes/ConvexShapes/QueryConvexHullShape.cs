@@ -1,29 +1,31 @@
-using BEPUutilities;
-using FixMath.NET;
+using Photon.Deterministic;
 
 namespace BEPUphysics.CollisionShapes.ConvexShapes
 {
     public sealed class QueryConvexHullShape : ConvexShape
     {
-        readonly Vector3[] m_Vertices;
+        readonly FPVector3[] m_Vertices;
 
-        public QueryConvexHullShape(Vector3[] centeredVertices)
+        public QueryConvexHullShape(FPVector3[] centeredVertices)
         {
             m_Vertices = centeredVertices;
-            collisionMargin = Fix64.Zero;
-            Fix64 radiusSquared = Fix64.Zero;
+            collisionMargin = FP._0;
+            FP radius = FP._0;
             for (int i = 0; i < centeredVertices.Length; i++)
-                radiusSquared = MathHelper.Max(radiusSquared, centeredVertices[i].LengthSquared());
-            MaximumRadius = Fix64.Sqrt(radiusSquared);
+            {
+                FPVector3.Normalize(centeredVertices[i], out FP length);
+                radius = FPMath.Max(radius, length);
+            }
+            MaximumRadius = radius;
         }
 
-        public override void GetLocalExtremePointWithoutMargin(ref Vector3 direction, out Vector3 extremePoint)
+        public override void GetLocalExtremePointWithoutMargin(ref FPVector3 direction, out FPVector3 extremePoint)
         {
             extremePoint = m_Vertices[0];
-            Fix64 maximum = Vector3.Dot(extremePoint, direction);
+            FP maximum = FPVector3.Dot(extremePoint, direction);
             for (int i = 1; i < m_Vertices.Length; i++)
             {
-                Fix64 projection = Vector3.Dot(m_Vertices[i], direction);
+                FP projection = FPVector3.Dot(m_Vertices[i], direction);
                 if (projection > maximum)
                 {
                     maximum = projection;
