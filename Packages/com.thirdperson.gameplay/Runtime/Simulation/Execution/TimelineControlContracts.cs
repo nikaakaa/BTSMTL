@@ -1,5 +1,5 @@
 using System;
-using ThirdPersonSimulation.Fixed;
+using Photon.Deterministic;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 
@@ -164,11 +164,11 @@ namespace ThirdPersonSimulation
             CanonicalTextValue sourceIdentity,
             CharacterSkillId abilityId,
             ulong sourceGeneration,
-            FixedScalar displacementX,
-            FixedScalar displacementY,
-            FixedScalar displacementZ,
-            FixedScalar yawDegrees,
-            FixedScalar weight,
+            FP displacementX,
+            FP displacementY,
+            FP displacementZ,
+            FP yawDegrees,
+            FP weight,
             int priority,
             AbilityTimelineMotionSpace space,
             AbilityTimelineMotionChannel channel,
@@ -179,7 +179,7 @@ namespace ThirdPersonSimulation
                 throw new ArgumentException("Timeline motion requires a valid source.", nameof(source));
             if (!abilityId.IsValid)
                 throw new ArgumentException("Timeline motion requires an Ability identity.", nameof(abilityId));
-            if (weight < FixedScalar.Zero || weight > FixedScalar.One)
+            if (weight < FP._0 || weight > FP._1)
                 throw new ArgumentOutOfRangeException(nameof(weight));
             Source = source;
             SourceIdentity = CanonicalTextValue.IsNullOrEmpty(sourceIdentity)
@@ -203,11 +203,11 @@ namespace ThirdPersonSimulation
         public CanonicalTextValue SourceIdentity { get; }
         public CharacterSkillId AbilityId { get; }
         public ulong SourceGeneration { get; }
-        public FixedScalar DisplacementX { get; }
-        public FixedScalar DisplacementY { get; }
-        public FixedScalar DisplacementZ { get; }
-        public FixedScalar YawDegrees { get; }
-        public FixedScalar Weight { get; }
+        public FP DisplacementX { get; }
+        public FP DisplacementY { get; }
+        public FP DisplacementZ { get; }
+        public FP YawDegrees { get; }
+        public FP Weight { get; }
         public int Priority { get; }
         public AbilityTimelineMotionSpace Space { get; }
         public AbilityTimelineMotionChannel Channel { get; }
@@ -223,7 +223,7 @@ namespace ThirdPersonSimulation
 
     public readonly struct AbilityTimelineMotionSourcePose
     {
-        public AbilityTimelineMotionSourcePose(FixedScalar x, FixedScalar y, FixedScalar z, FixedScalar yaw)
+        public AbilityTimelineMotionSourcePose(FP x, FP y, FP z, FP yaw)
         {
             X = x;
             Y = y;
@@ -231,10 +231,10 @@ namespace ThirdPersonSimulation
             Yaw = yaw;
         }
 
-        public FixedScalar X { get; }
-        public FixedScalar Y { get; }
-        public FixedScalar Z { get; }
-        public FixedScalar Yaw { get; }
+        public FP X { get; }
+        public FP Y { get; }
+        public FP Z { get; }
+        public FP Yaw { get; }
 
         public static AbilityTimelineMotionSourcePose AccumulatePrefix(
             in AbilityTimelineMotionSourcePose previous,
@@ -243,7 +243,7 @@ namespace ThirdPersonSimulation
             in AbilityTimelineMotionSourcePose cycleEnd,
             int cycleCount)
         {
-            FixedScalar cycles = FixedScalar.FromInt64(cycleCount);
+            FP cycles = cycleCount;
             return new AbilityTimelineMotionSourcePose(
                 current.X - previous.X + (cycleEnd.X - cycleStart.X) * cycles,
                 current.Y - previous.Y + (cycleEnd.Y - cycleStart.Y) * cycles,
@@ -255,8 +255,8 @@ namespace ThirdPersonSimulation
     public interface IAbilityTimelineMotionSourceReader
     {
         SimulationExecutionSource ReadMotionSource(ulong runtimeHandle);
-        AbilityTimelineMotionSourcePose SampleMotionSource(ulong runtimeHandle, string motionClipId, FixedScalar time);
-        AbilityTimelineMotionSourcePose SampleMotionPrefix(ulong runtimeHandle, string motionClipId, int cycle, FixedScalar time);
+        AbilityTimelineMotionSourcePose SampleMotionSource(ulong runtimeHandle, string motionClipId, FP time);
+        AbilityTimelineMotionSourcePose SampleMotionPrefix(ulong runtimeHandle, string motionClipId, int cycle, FP time);
     }
 
     public readonly struct AbilityTimelineLogicMotionWarp : IMotionWarpWindowRequest
@@ -271,44 +271,44 @@ namespace ThirdPersonSimulation
             OperationHandle stateOperation,
             ulong playbackGeneration,
             int cycle,
-            FixedScalar startTime,
-            FixedScalar endTime,
-            FixedScalar previousTime,
-            FixedScalar currentTime,
-            FixedScalar sourceStartPositionX,
-            FixedScalar sourceStartPositionY,
-            FixedScalar sourceStartPositionZ,
-            FixedScalar sourceStartYawDegrees,
-            FixedScalar sourceEndPositionX,
-            FixedScalar sourceEndPositionY,
-            FixedScalar sourceEndPositionZ,
-            FixedScalar sourceEndYawDegrees,
-            FixedScalar previousPositionX,
-            FixedScalar previousPositionY,
-            FixedScalar previousPositionZ,
-            FixedScalar previousYawDegrees,
-            FixedScalar currentPositionX,
-            FixedScalar currentPositionY,
-            FixedScalar currentPositionZ,
-            FixedScalar currentYawDegrees,
-            FixedScalar previousPositionProgress,
-            FixedScalar previousYawProgress,
-            FixedScalar currentPositionProgress,
-            FixedScalar currentYawProgress,
-            FixedScalar yawResponse,
-            FixedScalar inputDirectionX,
-            FixedScalar inputDirectionZ,
-            FixedScalar inputYawResponse,
+            FP startTime,
+            FP endTime,
+            FP previousTime,
+            FP currentTime,
+            FP sourceStartPositionX,
+            FP sourceStartPositionY,
+            FP sourceStartPositionZ,
+            FP sourceStartYawDegrees,
+            FP sourceEndPositionX,
+            FP sourceEndPositionY,
+            FP sourceEndPositionZ,
+            FP sourceEndYawDegrees,
+            FP previousPositionX,
+            FP previousPositionY,
+            FP previousPositionZ,
+            FP previousYawDegrees,
+            FP currentPositionX,
+            FP currentPositionY,
+            FP currentPositionZ,
+            FP currentYawDegrees,
+            FP previousPositionProgress,
+            FP previousYawProgress,
+            FP currentPositionProgress,
+            FP currentYawProgress,
+            FP yawResponse,
+            FP inputDirectionX,
+            FP inputDirectionZ,
+            FP inputYawResponse,
             ProgramMotionWarpTranslationMode translationMode,
             ProgramMotionWarpTargetOffsetSpace targetOffsetSpace,
             ProgramMotionWarpRotationMode rotationMode,
             ProgramMotionWarpRotationMethod rotationMethod,
-            float targetPlanarOffsetX,
-            float targetPlanarOffsetY,
-            float targetYawOffsetDegrees,
-            float maximumPositionCorrection,
-            float maximumYawCorrectionDegrees,
-            float maximumYawRateDegreesPerSecond,
+            FP targetPlanarOffsetX,
+            FP targetPlanarOffsetY,
+            FP targetYawOffsetDegrees,
+            FP maximumPositionCorrection,
+            FP maximumYawCorrectionDegrees,
+            FP maximumYawRateDegreesPerSecond,
             ProgramMotionWarpLimitPolicy limitPolicy,
             bool enabled,
             bool hasTarget,
@@ -388,44 +388,44 @@ namespace ThirdPersonSimulation
         public OperationHandle StateOperation { get; }
         public ulong PlaybackGeneration { get; }
         public int Cycle { get; }
-        public FixedScalar StartTime { get; }
-        public FixedScalar EndTime { get; }
-        public FixedScalar PreviousTime { get; }
-        public FixedScalar CurrentTime { get; }
-        public FixedScalar SourceStartPositionX { get; }
-        public FixedScalar SourceStartPositionY { get; }
-        public FixedScalar SourceStartPositionZ { get; }
-        public FixedScalar SourceStartYawDegrees { get; }
-        public FixedScalar SourceEndPositionX { get; }
-        public FixedScalar SourceEndPositionY { get; }
-        public FixedScalar SourceEndPositionZ { get; }
-        public FixedScalar SourceEndYawDegrees { get; }
-        public FixedScalar PreviousPositionX { get; }
-        public FixedScalar PreviousPositionY { get; }
-        public FixedScalar PreviousPositionZ { get; }
-        public FixedScalar PreviousYawDegrees { get; }
-        public FixedScalar CurrentPositionX { get; }
-        public FixedScalar CurrentPositionY { get; }
-        public FixedScalar CurrentPositionZ { get; }
-        public FixedScalar CurrentYawDegrees { get; }
-        public FixedScalar PreviousPositionProgress { get; }
-        public FixedScalar PreviousYawProgress { get; }
-        public FixedScalar CurrentPositionProgress { get; }
-        public FixedScalar CurrentYawProgress { get; }
-        public FixedScalar YawResponse { get; }
-        public FixedScalar InputDirectionX { get; }
-        public FixedScalar InputDirectionZ { get; }
-        public FixedScalar InputYawResponse { get; }
+        public FP StartTime { get; }
+        public FP EndTime { get; }
+        public FP PreviousTime { get; }
+        public FP CurrentTime { get; }
+        public FP SourceStartPositionX { get; }
+        public FP SourceStartPositionY { get; }
+        public FP SourceStartPositionZ { get; }
+        public FP SourceStartYawDegrees { get; }
+        public FP SourceEndPositionX { get; }
+        public FP SourceEndPositionY { get; }
+        public FP SourceEndPositionZ { get; }
+        public FP SourceEndYawDegrees { get; }
+        public FP PreviousPositionX { get; }
+        public FP PreviousPositionY { get; }
+        public FP PreviousPositionZ { get; }
+        public FP PreviousYawDegrees { get; }
+        public FP CurrentPositionX { get; }
+        public FP CurrentPositionY { get; }
+        public FP CurrentPositionZ { get; }
+        public FP CurrentYawDegrees { get; }
+        public FP PreviousPositionProgress { get; }
+        public FP PreviousYawProgress { get; }
+        public FP CurrentPositionProgress { get; }
+        public FP CurrentYawProgress { get; }
+        public FP YawResponse { get; }
+        public FP InputDirectionX { get; }
+        public FP InputDirectionZ { get; }
+        public FP InputYawResponse { get; }
         public ProgramMotionWarpTranslationMode TranslationMode { get; }
         public ProgramMotionWarpTargetOffsetSpace TargetOffsetSpace { get; }
         public ProgramMotionWarpRotationMode RotationMode { get; }
         public ProgramMotionWarpRotationMethod RotationMethod { get; }
-        public float TargetPlanarOffsetX { get; }
-        public float TargetPlanarOffsetY { get; }
-        public float TargetYawOffsetDegrees { get; }
-        public float MaximumPositionCorrection { get; }
-        public float MaximumYawCorrectionDegrees { get; }
-        public float MaximumYawRateDegreesPerSecond { get; }
+        public FP TargetPlanarOffsetX { get; }
+        public FP TargetPlanarOffsetY { get; }
+        public FP TargetYawOffsetDegrees { get; }
+        public FP MaximumPositionCorrection { get; }
+        public FP MaximumYawCorrectionDegrees { get; }
+        public FP MaximumYawRateDegreesPerSecond { get; }
         public ProgramMotionWarpLimitPolicy LimitPolicy { get; }
         public bool Enabled { get; }
         public bool HasTarget { get; }
@@ -718,7 +718,7 @@ namespace ThirdPersonSimulation
             AbilityTimelineInvocationSource invocationSource,
             ulong inputSequence,
             SimulationTick tick,
-            FixedScalar startTime)
+            FP startTime)
         {
             TimelineId = timelineId.Trim();
             PlaybackIdentity = playbackIdentity;
@@ -753,32 +753,32 @@ namespace ThirdPersonSimulation
         public AbilityTimelineInvocationSource InvocationSource { get; }
         public SimulationTick Tick { get; }
         public ulong InputSequence { get; }
-        public FixedScalar StartTime { get; }
+        public FP StartTime { get; }
 
     }
 
     public readonly partial struct AbilityTimelinePlaybackControl : IEquatable<AbilityTimelinePlaybackControl>
     {
-        public AbilityTimelinePlaybackControl(FixedScalar rate, bool paused)
+        public AbilityTimelinePlaybackControl(FP rate, bool paused)
         {
             Rate = rate;
             Paused = paused;
             RequireValid();
         }
 
-        public FixedScalar Rate { get; }
+        public FP Rate { get; }
         public bool Paused { get; }
         [ValueValidation]
         void RequireValid()
         {
-            if (Rate < FixedScalar.Zero)
+            if (Rate < FP._0)
                 throw new ArgumentOutOfRangeException("rate");
         }
-        public bool IsPaused => Paused || Rate == FixedScalar.Zero;
-        public static AbilityTimelinePlaybackControl Normal => new AbilityTimelinePlaybackControl(FixedScalar.One, false);
+        public bool IsPaused => Paused || Rate == FP._0;
+        public static AbilityTimelinePlaybackControl Normal => new AbilityTimelinePlaybackControl(FP._1, false);
         public bool Equals(AbilityTimelinePlaybackControl other) => Rate == other.Rate && Paused == other.Paused;
         public override bool Equals(object obj) => obj is AbilityTimelinePlaybackControl other && Equals(other);
-        public override int GetHashCode() => HashCode.Combine(Rate.Raw, Paused);
+        public override int GetHashCode() => HashCode.Combine(Rate.RawValue, Paused);
     }
 
     public enum AbilityTimelineProgressState : byte
@@ -796,9 +796,9 @@ namespace ThirdPersonSimulation
             CanonicalTextValue contentRevision,
             ulong generation,
             ulong logicTick,
-            FixedScalar duration,
-            FixedScalar previousTime,
-            FixedScalar time,
+            FP duration,
+            FP previousTime,
+            FP time,
             int previousCycle,
             int cycle,
             bool loop,
@@ -831,8 +831,8 @@ namespace ThirdPersonSimulation
                 throw new ArgumentException("Identity is required.", "contentRevision");
             if (Generation == 0 || LogicTick == 0)
                 throw new ArgumentOutOfRangeException("generation");
-            if (Duration < FixedScalar.Zero || PreviousTime < FixedScalar.Zero ||
-                PreviousTime > Duration || Time < FixedScalar.Zero || Time > Duration ||
+            if (Duration < FP._0 || PreviousTime < FP._0 ||
+                PreviousTime > Duration || Time < FP._0 || Time > Duration ||
                 PreviousCycle < 0 || Cycle < PreviousCycle ||
                 Cycle == PreviousCycle && Time < PreviousTime ||
                 !Loop && (PreviousCycle != 0 || Cycle != 0))
@@ -843,9 +843,9 @@ namespace ThirdPersonSimulation
         public CanonicalTextValue ContentRevision { get; }
         public ulong Generation { get; }
         public ulong LogicTick { get; }
-        public FixedScalar Duration { get; }
-        public FixedScalar PreviousTime { get; }
-        public FixedScalar Time { get; }
+        public FP Duration { get; }
+        public FP PreviousTime { get; }
+        public FP Time { get; }
         public int PreviousCycle { get; }
         public int Cycle { get; }
         public bool Loop { get; }
@@ -865,7 +865,7 @@ namespace ThirdPersonSimulation
 
 
         public override bool Equals(object obj) => obj is AbilityTimelineProgress other && Equals(other);
-        public override int GetHashCode() => HashCode.Combine(TimelineId, ContentRevision, Generation, LogicTick, Time.Raw, Cycle);
+        public override int GetHashCode() => HashCode.Combine(TimelineId, ContentRevision, Generation, LogicTick, Time.RawValue, Cycle);
     }
 
     public readonly struct AbilityTimelineAdvancePending
@@ -1005,7 +1005,7 @@ namespace ThirdPersonSimulation
         public BTSMTL.Timeline.TimelinePlaybackMode PlaybackMode => Request.PlaybackMode;
         public CanonicalTextValue ContentRevision => Playback.ContentRevision;
         public BTSMTL.Timeline.TimelineRuntimePlaybackState State => Playback.State;
-        public FixedScalar CursorTime => Playback.CursorTime;
+        public FP CursorTime => Playback.CursorTime;
         public int Cycle => Playback.Cycle;
         public int TimeCarry => Playback.TimeCarry;
         public AbilityTimelinePlaybackControl Control => Playback.Control;
@@ -1021,7 +1021,7 @@ namespace ThirdPersonSimulation
         public AbilityTimelineInvocationSource InvocationSource => Request.InvocationSource;
         public ulong InputSequence => Request.InputSequence;
         public SimulationTick StartTick => Request.Tick;
-        public FixedScalar StartTime => Request.StartTime;
+        public FP StartTime => Request.StartTime;
 
         [ValueValidation]
         void RequireValid()
@@ -1050,16 +1050,16 @@ namespace ThirdPersonSimulation
             CanonicalTextValue treeGraphRevision,
             CanonicalTextValue nodeAuthoringId,
             AbilityTreeClipHook hook,
-            FixedScalar time,
-            FixedScalar previousTime,
-            FixedScalar windowStartTime,
+            FP time,
+            FP previousTime,
+            FP windowStartTime,
             int cycle,
             ulong playbackGeneration,
             ulong branchRevision,
             ulong actionInstanceId,
             ulong timelineRuntimeHandle,
-            FixedScalar bodyStartFraction,
-            FixedScalar bodyEndFraction)
+            FP bodyStartFraction,
+            FP bodyEndFraction)
         {
             ClipAuthoringId = SimulationIdentity.Require(clipAuthoringId, nameof(clipAuthoringId));
             TreeGraphId = SimulationIdentity.Require(treeGraphId, nameof(treeGraphId));
@@ -1088,16 +1088,16 @@ namespace ThirdPersonSimulation
         [ValueTextRules(Required = true, Trim = true)]
         public CanonicalTextValue NodeAuthoringId { get; }
         public AbilityTreeClipHook Hook { get; }
-        public FixedScalar Time { get; }
-        public FixedScalar PreviousTime { get; }
-        public FixedScalar WindowStartTime { get; }
+        public FP Time { get; }
+        public FP PreviousTime { get; }
+        public FP WindowStartTime { get; }
         public int Cycle { get; }
         public ulong PlaybackGeneration { get; }
         public ulong BranchRevision { get; }
         public ulong ActionInstanceId { get; }
         public ulong TimelineRuntimeHandle { get; }
-        public FixedScalar BodyStartFraction { get; }
-        public FixedScalar BodyEndFraction { get; }
+        public FP BodyStartFraction { get; }
+        public FP BodyEndFraction { get; }
         public bool IsValid => !CanonicalTextValue.IsNullOrEmpty(ClipAuthoringId) &&
             !CanonicalTextValue.IsNullOrEmpty(TreeGraphId) &&
             !CanonicalTextValue.IsNullOrEmpty(TreeGraphRevision) &&
@@ -1112,7 +1112,7 @@ namespace ThirdPersonSimulation
         {
             if ((byte)Hook > (byte)AbilityTreeClipHook.Root)
                 throw new ArgumentOutOfRangeException("Hook");
-            if (Time < FixedScalar.Zero)
+            if (Time < FP._0)
                 throw new ArgumentOutOfRangeException("Time");
             if (Cycle < 0)
                 throw new ArgumentOutOfRangeException("Cycle");
@@ -1129,10 +1129,10 @@ namespace ThirdPersonSimulation
 
     public static class AbilityTimelineTimeProjection
     {
-        public static FixedScalar Fraction(FixedScalar previous, FixedScalar advance,
-            int previousCycle, FixedScalar duration, FixedScalar time, int cycle) =>
-            advance == FixedScalar.Zero ? FixedScalar.Zero :
-                (time + duration * FixedScalar.FromInt64(cycle - previousCycle) - previous) / advance;
+        public static FP Fraction(FP previous, FP advance,
+            int previousCycle, FP duration, FP time, int cycle) =>
+            advance == FP._0 ? FP._0 :
+                (time + duration * (cycle - previousCycle) - previous) / advance;
     }
 
     public interface IAbilityTreeClipInvoker

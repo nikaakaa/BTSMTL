@@ -1,6 +1,6 @@
 using System;
 using ThirdPersonSimulation;
-using ThirdPersonSimulation.Fixed;
+using Photon.Deterministic;
 
 namespace BTSMTL.Timeline
 {
@@ -12,7 +12,7 @@ namespace BTSMTL.Timeline
             TimelineExecutionIdentity executionIdentity,
             CanonicalTextValue contentRevision,
             TimelineRuntimePlaybackState state,
-            FixedScalar cursorTime,
+            FP cursorTime,
             int cycle,
             int timeCarry,
             AbilityTimelinePlaybackControl control,
@@ -46,7 +46,7 @@ namespace BTSMTL.Timeline
         public TimelineExecutionIdentity ExecutionIdentity { get; }
         public CanonicalTextValue ContentRevision { get; }
         public TimelineRuntimePlaybackState State { get; }
-        public FixedScalar CursorTime { get; }
+        public FP CursorTime { get; }
         public int Cycle { get; }
         public int TimeCarry { get; }
         public AbilityTimelinePlaybackControl Control { get; }
@@ -65,7 +65,7 @@ namespace BTSMTL.Timeline
                 throw new ArgumentException("Timeline playback identity is incomplete.");
             if (State == TimelineRuntimePlaybackState.Unprepared)
                 throw new ArgumentOutOfRangeException(nameof(State));
-            if (CursorTime < FixedScalar.Zero || Cycle < 0)
+            if (CursorTime < FP._0 || Cycle < 0)
                 throw new ArgumentOutOfRangeException(nameof(CursorTime));
         }
     }
