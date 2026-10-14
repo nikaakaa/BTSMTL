@@ -87,6 +87,13 @@ namespace ThirdPersonSimulation
                 data, BlackboardDeclarations,
                 out m_BlackboardGroups,
                 out m_ScopeBlackboardGroups);
+            for (int i = 0; i < BlackboardInputBindings.Count; i++)
+            {
+                BlackboardInputStateBinding binding = BlackboardInputBindings[i];
+                ref readonly SimulationBlackboardSlotGroup group = ref m_BlackboardGroups[binding.StateAddress.SlotIndex];
+                if (group.Scope.Kind != ProgramScopeKind.Character || group.LifetimeKind != ProgramBlackboardLifetime.Spawn)
+                    throw new InvalidOperationException($"Blackboard Input Binding '{binding.InputId}' must use Character/Spawn ownership.");
+            }
             Blackboards = GeneratedBlackboardStateBinding<AbilityStateValue>.Build(blackboards, "Float32",
                 data.StateSlots, data.Scopes, BlackboardDeclarations);
             ControlPolicy = new Float32StateAccessPolicy(

@@ -19,7 +19,6 @@ namespace ThirdPersonSimulation
         ulong ReadGeneration(OperationHandle handle);
         bool EvaluateCondition(ProgramControlFlowEdge edge);
         int RequireOperationSlot(OperationExecutionDescriptor operation, ProgramStateSemantic semantic);
-        void ClearStateScope(OperationHandle state);
         void NotifyStateLifecycle(OperationExecutionDescriptor machine, OperationHandle state, OperationStateLifecyclePhase phase);
         void NotifyStateTransition(OperationExecutionDescriptor machine, OperationHandle exitingState, OperationHandle targetState);
         void TraceEdge(ProgramControlFlowEdge edge, bool selected, bool passed);
@@ -194,7 +193,6 @@ namespace ThirdPersonSimulation
                 m_Host.ForceStop(exit.Target, OperationStopContext.Reset(exit.Target));
             }
             m_Host.WriteInt32(cursorSlot, 3);
-            m_Host.ClearStateScope(state.Handle);
             return OperationStopStatus.Completed;
         }
 
@@ -237,7 +235,6 @@ namespace ThirdPersonSimulation
                 for (int i = 0; i < exits.Count; i++)
                     m_Host.ForceStop(exits[i].Target, context);
             }
-            m_Host.ClearStateScope(state.Handle);
         }
 
         public void ForceStopStateMachine(OperationExecutionDescriptor machine, OperationStopContext context)

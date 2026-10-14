@@ -380,7 +380,6 @@ namespace ThirdPersonSimulation
         void IOperationStateMachineHost<TTarget>.WriteIdentity(int slotIndex, CanonicalTextValue value) => m_Target.WriteIdentity(slotIndex, value);
         bool IOperationStateMachineHost<TTarget>.EvaluateCondition(ProgramControlFlowEdge edge) => EvaluateCondition(edge);
         int IOperationStateMachineHost<TTarget>.RequireOperationSlot(OperationExecutionDescriptor operation, ProgramStateSemantic semantic) => RequireOperationSlot(operation, semantic);
-        void IOperationStateMachineHost<TTarget>.ClearStateScope(OperationHandle state) => m_Target.ClearStateScope(m_Topology.Operation(state));
         void IOperationStateMachineHost<TTarget>.NotifyStateLifecycle(OperationExecutionDescriptor machine, OperationHandle state, OperationStateLifecyclePhase phase) => m_Target.NotifyStateLifecycle(machine, state, phase);
         void IOperationStateMachineHost<TTarget>.NotifyStateTransition(OperationExecutionDescriptor machine, OperationHandle exitingState, OperationHandle targetState) => m_Target.NotifyStateTransition(machine, exitingState, targetState);
         CanonicalTextValue IOperationStateMachineHost<TTarget>.BuildStateExecutionPath(CanonicalTextValue parent, ulong machine, ulong state, ulong generation) =>
@@ -397,9 +396,7 @@ namespace ThirdPersonSimulation
             m_Target.EmitTrace(operation, code, severity, detail);
         ulong IOperationExecutionLifecycleHost<TTarget>.ReadUInt64(int slotIndex) => m_Target.ReadUInt64(slotIndex);
         void IOperationExecutionLifecycleHost<TTarget>.WriteUInt64(int slotIndex, ulong value) => m_Target.WriteUInt64(slotIndex, value);
-        void IOperationExecutionLifecycleHost<TTarget>.PrepareActivation(OperationExecutionDescriptor operation) => m_Target.PrepareActivation(operation);
         void IOperationExecutionLifecycleHost<TTarget>.ActivateScopes(OperationControlCursor<TTarget> cursor, OperationExecutionDescriptor operation, ulong generation) => m_Target.ActivateScopes(cursor, operation, generation);
-        void IOperationExecutionLifecycleHost<TTarget>.CompleteScopes(OperationExecutionDescriptor operation) => m_Target.CompleteScopes(operation);
         void IOperationExecutionLifecycleHost<TTarget>.ResetOperationState(OperationExecutionDescriptor operation) => m_Target.ResetOperationState(operation);
         OperationStopStatus IOperationExecutionLifecycleHost<TTarget>.ContinueLeafStop(OperationControlCursor<TTarget> cursor, OperationExecutionDescriptor operation, OperationStopContext context) => m_Target.ContinueLeafStop(cursor, operation, context);
         void IOperationExecutionLifecycleHost<TTarget>.ForceStopLeaf(OperationControlCursor<TTarget> cursor, OperationExecutionDescriptor operation, OperationStopContext context) => m_Target.ForceStopLeaf(cursor, operation, context);

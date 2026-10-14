@@ -91,6 +91,13 @@ namespace ThirdPersonSimulation.Fixed
                 data, BlackboardDeclarations,
                 out m_BlackboardGroups,
                 out m_ScopeBlackboardGroups);
+            for (int i = 0; i < BlackboardInputBindings.Count; i++)
+            {
+                BlackboardInputStateBinding binding = BlackboardInputBindings[i];
+                ref readonly SimulationBlackboardSlotGroup group = ref m_BlackboardGroups[binding.StateAddress.SlotIndex];
+                if (group.Scope.Kind != ProgramScopeKind.Character || group.LifetimeKind != ProgramBlackboardLifetime.Spawn)
+                    throw new InvalidOperationException($"Blackboard Input Binding '{binding.InputId}' must use Character/Spawn ownership.");
+            }
             m_GraphInputOwners = BuildGraphInputOwners(data);
             Blackboards = GeneratedBlackboardStateBinding<AbilityStateValue>.Build(blackboards, "Fixed",
                 data.StateSlots, data.Scopes, BlackboardDeclarations);

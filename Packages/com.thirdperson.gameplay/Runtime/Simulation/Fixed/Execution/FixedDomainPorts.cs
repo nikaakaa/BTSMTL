@@ -1,6 +1,5 @@
 using SimulationMotionContribution = ThirdPersonSimulation.SimulationMotionContribution<ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedVector2, ThirdPersonSimulation.Fixed.FixedVector3, ThirdPersonSimulation.Fixed.FixedSimulationMath>;
 using ThirdPersonSimulation;
-using System;
 using System.Collections.Generic;
 
 namespace ThirdPersonSimulation.Fixed
@@ -27,8 +26,6 @@ namespace ThirdPersonSimulation.Fixed
         int FindActive(CanonicalTextValue contextId, out FixedActionInstanceState state);
         int FindActive(CharacterSkillId skillId, out FixedActionInstanceState state);
         FixedActionInstanceState FindOnlyActive();
-        FixedActionInstanceState RequireActive(FixedActionInstanceState expected);
-        FixedActionInstanceState RequireActive(FixedActionInstanceReference reference);
         bool ContainsInstance(ulong instanceId);
         bool TryGetInstance(ulong instanceId, out FixedActionInstanceState state);
         FixedActionStateStore.SkillExecutionScope PushSkillExecution(FixedActionInstanceState action);
@@ -64,16 +61,7 @@ namespace ThirdPersonSimulation.Fixed
             AbilityStateValue value)
             where TTarget : struct, IOperationControlTarget<TTarget>;
 
-        void ClearActionInstanceScopes(ulong actionInstanceId);
-
-        void ProjectBlackboardInput(BlackboardInputStateBinding binding, SimulationInputValue value);
-
-
-        IDisposable PushTimelineContext(
-            SimulationOperation timeline,
-            SimulationOperation clip,
-            int cycle,
-            FixedActionInstanceState action);
+        void WriteInputProjection(int valueSlot, AbilityStateValue value);
     }
 
     internal interface IFixedGameplayTagQuery

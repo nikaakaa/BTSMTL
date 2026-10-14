@@ -62,8 +62,6 @@ namespace ThirdPersonSimulation.Fixed
             new List<AbilityTimelineLogicMotionWarp>();
         public List<AbilityTimelineAdvancePending> TimelineAdvances { get; }
         public List<AbilityTimelineStopPending> TimelineStops { get; }
-        public Stack<SimulationTimelineBlackboardContext> TimelineBlackboardContexts { get; } =
-            new Stack<SimulationTimelineBlackboardContext>();
 
         public void Reset()
         {
@@ -77,7 +75,6 @@ namespace ThirdPersonSimulation.Fixed
             GameplayEffectCueCount = 0;
             GameplayEffectSuccessfulChangeCount = 0;
             TimelineMotionWarps.Clear();
-            TimelineBlackboardContexts.Clear();
             m_MotionContributions.Clear();
         }
 

@@ -182,8 +182,7 @@ namespace ThirdPersonSimulation
                 m_StateSlots,
                 m_CatalogEntries,
                 CatalogIndex,
-                m_TypedAddresses,
-                m_Operations.Count);
+                m_TypedAddresses);
             m_SkillExecutionStateSlots = BuildSkillExecutionStateSlots(
                 m_Operations.Count,
                 m_Scopes,
@@ -523,8 +522,7 @@ namespace ThirdPersonSimulation
             IReadOnlyList<ProgramStateSlot> stateSlots,
             IReadOnlyList<ProgramCatalogEntry> catalogEntries,
             ProgramCatalogRuntimeIndex catalog,
-            IReadOnlyList<TypedStateAddress> addresses,
-            int operationCount)
+            IReadOnlyList<TypedStateAddress> addresses)
         {
             var stateByOwner = new Dictionary<string, TypedStateAddress>(StringComparer.Ordinal);
             for (int i = 0; i < stateSlots.Count; i++)
@@ -548,9 +546,7 @@ namespace ThirdPersonSimulation
                 if (!stateByOwner.TryGetValue(declaration.Identity, out TypedStateAddress address))
                     throw new InvalidDataException($"Blackboard Input Binding '{declaration.Identity}' has no state slot.");
                 var projection = (ProgramBlackboardInputProjection)ReadInt32(constants, catalog, declaration, ProgramCatalogFieldId.InputProjection);
-                if (projection != ProgramBlackboardInputProjection.Direct && kind != ProgramInputValueKind.ActionTargetSnapshot)
-                    throw new InvalidDataException($"Blackboard Input Binding '{declaration.Identity}' target projection requires ActionTargetSnapshot input.");
-                if (address.ValueKind != StateKind(kind, projection))
+                if (address.ValueKind != ProgramBlackboardInputProjectionTypes.StateKind(kind, projection))
                     throw new InvalidDataException($"Blackboard Input Binding '{declaration.Identity}' state kind '{address.ValueKind}' does not match input kind '{kind}'.");
                 bindings.Add(new BlackboardInputStateBinding(inputId, kind, address, projection));
             }
@@ -591,22 +587,6 @@ namespace ThirdPersonSimulation
             text = SimulationIdentity.Require(constants[value.ConstantIndex].Text, field.ToString());
             return true;
         }
-
-        static ProgramStateValueKind StateKind(ProgramInputValueKind kind, ProgramBlackboardInputProjection projection) =>
-            projection switch
-            {
-                ProgramBlackboardInputProjection.ActionTargetIdentity => ProgramStateValueKind.Identity,
-                ProgramBlackboardInputProjection.ActionTargetPosition => ProgramStateValueKind.Vector3,
-                ProgramBlackboardInputProjection.ActionTargetYaw => ProgramStateValueKind.Scalar,
-                _ => kind switch
-            {
-                ProgramInputValueKind.Boolean => ProgramStateValueKind.Boolean,
-                ProgramInputValueKind.Scalar => ProgramStateValueKind.Scalar,
-                ProgramInputValueKind.Vector2 => ProgramStateValueKind.Vector2,
-                ProgramInputValueKind.Vector3 => ProgramStateValueKind.Vector3,
-                _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null)
-                }
-            };
 
         static int[] BuildSkillExecutionStateSlots(
             int operationCount,

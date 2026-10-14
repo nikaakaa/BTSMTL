@@ -102,8 +102,7 @@ namespace ThirdPersonSimulation.Fixed
                 frame.CreateStatePort("Blackboard", executionServices.BlackboardPolicy),
                 frame,
                 actionStore,
-                frame.Trace,
-                workspace);
+                frame.Trace);
             FixedAbilityDomainRuntimeServices domainServices = domainRuntimeFactory.Create(
                 executionServices.GameplayEffectCatalog,
                 access,

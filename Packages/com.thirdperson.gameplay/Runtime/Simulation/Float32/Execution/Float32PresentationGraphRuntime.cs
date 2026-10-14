@@ -664,10 +664,7 @@ namespace ThirdPersonSimulation
                 }
             }
 
-            public void PrepareActivation(OperationExecutionDescriptor operation) { }
             public void ActivateScopes(OperationControlCursor<Target> cursor, OperationExecutionDescriptor operation, ulong generation) { }
-            public void CompleteScopes(OperationExecutionDescriptor operation) { }
-            public void ClearStateScope(OperationExecutionDescriptor state) => throw UnsupportedState();
             public OperationStopStatus ContinueLeafStop(OperationControlCursor<Target> cursor, OperationExecutionDescriptor operation, OperationStopContext context) => throw UnsupportedState();
             public void ForceStopLeaf(OperationControlCursor<Target> cursor, OperationExecutionDescriptor operation, OperationStopContext context) => throw UnsupportedState();
             public void EmitTrace(OperationExecutionDescriptor operation, string code, OperationControlTraceSeverity severity, string detail) =>

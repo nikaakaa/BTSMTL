@@ -823,7 +823,6 @@ namespace ThirdPersonSimulation
 			{
 				m_GameplayEffectActions.ClearConfirmedAction(actionInstanceId);
 			}
-			m_Blackboard.ClearActionInstanceScopes(actionInstanceId);
 		}
 
 		ulong IAbilityLifecyclePort<Float32ActionInstanceState, SimulationGameplayEffectLifecycleIngress>.SourceGeneration(SimulationExecutionSource source) =>

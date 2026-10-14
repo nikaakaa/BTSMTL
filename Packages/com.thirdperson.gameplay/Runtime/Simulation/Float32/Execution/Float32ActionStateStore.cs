@@ -281,13 +281,6 @@ namespace ThirdPersonSimulation
             IsTransientValid &&
             (!HasSkillExecution || SkillExecutionGeneration != 0);
 
-        public bool MatchesSkillExecution(Float32ActionInstanceState state) =>
-            IsValid &&
-            state.IsValid &&
-            state.SkillId == SkillId &&
-            state.SkillEntryOperation.Equals(SkillEntryOperation) &&
-            (!HasSkillExecution || state.SkillExecutionGeneration == SkillExecutionGeneration);
-
         public bool MatchesTransientSkillExecution(Float32ActionInstanceState state) =>
             IsTransientValid &&
             state.IsValid &&
@@ -647,29 +640,6 @@ namespace ThirdPersonSimulation
             }
             return result;
         }
-
-        public Float32ActionInstanceState RequireActive(Float32ActionInstanceState expected)
-        {
-            if (!expected.IsActive)
-                return default;
-            int slot = FindActive(expected.ContextId, out Float32ActionInstanceState current);
-            return slot >= 0 && current.SourceContext.Equals(expected.SourceContext) ? current : default;
-        }
-
-		public Float32ActionInstanceState RequireActive(Float32ActionInstanceReference reference)
-        {
-            if (!reference.IsValid)
-                return default;
-			if (!TryGetInstance(reference.InstanceId, out Float32ActionInstanceState current))
-				return default;
-			return current.IsActive &&
-				   CanonicalTextValue.Equals(current.ActionId, reference.ActionId, StringComparison.Ordinal) &&
-                   CanonicalTextValue.Equals(current.ContextId, reference.ContextId, StringComparison.Ordinal) &&
-                   current.PredictionKey == reference.PredictionKey &&
-                   reference.MatchesSkillExecution(current)
-				? current
-				: default;
-		}
 
 		bool IFloat32SkillExecutionStateAccess.TryGet(int slotIndex, out AbilityStateValue value)
 		{

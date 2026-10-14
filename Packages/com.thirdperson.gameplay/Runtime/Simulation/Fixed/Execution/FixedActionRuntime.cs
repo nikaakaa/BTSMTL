@@ -830,7 +830,6 @@ namespace ThirdPersonSimulation.Fixed
 			{
 				m_GameplayEffectActions.ClearConfirmedAction(actionInstanceId);
 			}
-			m_Blackboard.ClearActionInstanceScopes(actionInstanceId);
 		}
 
         ulong IAbilityLifecyclePort<FixedActionInstanceState, SimulationGameplayEffectLifecycleIngress>.SourceGeneration(SimulationExecutionSource source) =>

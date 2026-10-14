@@ -1,86 +1,26 @@
 using System;
-using System.Collections.Generic;
 
 namespace ThirdPersonSimulation
 {
-    internal readonly struct SimulationBlackboardSlotGroup
-    {
-        public SimulationBlackboardSlotGroup(
-            int value,
-            int ownerToken,
-            int lifetime,
-            int writeStamp,
-            ProgramScopeLayout scope,
-            int compiledOwnerIndex,
-            ProgramBlackboardLifetime lifetimeKind,
-            ProgramCatalogEntry declaration)
-        {
-            Value = value;
-            OwnerToken = ownerToken;
-            Lifetime = lifetime;
-            WriteStamp = writeStamp;
-            Scope = scope ?? throw new ArgumentNullException(nameof(scope));
-            CompiledOwnerIndex = compiledOwnerIndex;
-            LifetimeKind = lifetimeKind;
-            Declaration = declaration;
-        }
-
-        public int Value { get; }
-        public int OwnerToken { get; }
-        public int Lifetime { get; }
-        public int WriteStamp { get; }
-        public ProgramScopeLayout Scope { get; }
-        public int CompiledOwnerIndex { get; }
-        public ProgramBlackboardLifetime LifetimeKind { get; }
-        public ProgramCatalogEntry Declaration { get; }
-    }
-
-    internal readonly struct SimulationTimelineBlackboardContext
-    {
-        public SimulationTimelineBlackboardContext(
-            OperationHandle timeline,
-            OperationHandle clip,
-            int cycle,
-            Float32ActionInstanceState action)
-        {
-            Timeline = timeline;
-            Clip = clip;
-            Cycle = cycle;
-            Action = action;
-        }
-
-        public OperationHandle Timeline { get; }
-        public OperationHandle Clip { get; }
-        public int Cycle { get; }
-        public Float32ActionInstanceState Action { get; }
-        public bool IsValid => Timeline.IsValid && Clip.IsValid;
-    }
-
     internal sealed class Float32BlackboardRuntime : Float32OperationModule, IFloat32BlackboardPort
     {
         readonly Float32StatePort m_State;
         readonly Float32AbilityExecutionFrame m_Frame;
         readonly IFloat32ActionContextReader m_Actions;
         readonly Float32TraceSink m_Trace;
-        readonly Stack<SimulationTimelineBlackboardContext> m_TimelineBlackboardContexts;
-        readonly Stack<TimelineBlackboardScope> m_TimelineBlackboardScopePool = new();
 
         public Float32BlackboardRuntime(
             Float32GameplayAbilityExecutionAccess access,
             Float32StatePort state,
             Float32AbilityExecutionFrame frame,
             IFloat32ActionContextReader actions,
-            Float32TraceSink trace,
-            Float32AbilityExecutionWorkspace workspace)
+            Float32TraceSink trace)
             : base(access)
         {
             m_State = state;
             m_Frame = frame ?? throw new ArgumentNullException(nameof(frame));
             m_Actions = actions ?? throw new ArgumentNullException(nameof(actions));
             m_Trace = trace ?? throw new ArgumentNullException(nameof(trace));
-            if (workspace == null)
-                throw new ArgumentNullException(nameof(workspace));
-            m_TimelineBlackboardContexts = workspace.TimelineBlackboardContexts;
         }
 
         public void WriteGraphCallParameter(int valueSlot, AbilityStateValue value)
@@ -103,42 +43,13 @@ namespace ThirdPersonSimulation
             m_State.Reset(group.Value);
         }
 
-        public void ActivateOperationScopes<TTarget>(
-            OperationControlCursor<TTarget> cursor,
-            SimulationOperation operation,
-            ulong generation)
-            where TTarget : struct, IOperationControlTarget<TTarget>
+        public void WriteInputProjection(int valueSlot, AbilityStateValue value)
         {
-            if (generation == 0)
-                throw new InvalidOperationException($"Operation scope '{SourcePath(operation)}' has no activation generation.");
-        }
-
-        public void CompleteOperationScopes(SimulationOperation operation)
-        {
-        }
-
-        public void ClearStateScopes(SimulationOperation state)
-        {
-        }
-
-        public void ClearActionInstanceScopes(ulong actionInstanceId)
-        {
-            if (actionInstanceId == 0)
-                return;
-        }
-
-        public void ProjectBlackboardInput(BlackboardInputStateBinding binding, SimulationInputValue value)
-        {
-            if (!CanonicalTextValue.Equals(binding.InputId, value.InputId, StringComparison.Ordinal) ||
-                (byte)binding.InputKind != (byte)value.Kind)
-                throw new InvalidOperationException($"Blackboard Input Binding '{binding.InputId}/{binding.InputKind}' received '{value.InputId}/{value.Kind}'.");
-            ref readonly SimulationBlackboardSlotGroup group = ref Access.Services.BlackboardGroup(binding.StateAddress.SlotIndex);
-            if (group.Scope.Kind != ProgramScopeKind.Character || group.LifetimeKind != ProgramBlackboardLifetime.Spawn)
-                throw new InvalidOperationException($"Blackboard Input Binding '{binding.InputId}' must use Character/Spawn ownership.");
+            ref readonly SimulationBlackboardSlotGroup group = ref Access.Services.BlackboardGroup(valueSlot);
             var owner = new BlackboardOwnerToken(ProgramScopeKind.Character, group.CompiledOwnerIndex, 1);
             if (m_State.Get(group.OwnerToken).BlackboardOwnerToken != owner)
                 MaterializeGroup(in group, owner);
-            m_State.Set(group.Value, ToStateValue(value, binding.Projection));
+            m_State.Set(group.Value, value);
             m_State.Set(group.WriteStamp, AbilityStateValue.FromBlackboardWriteStamp(new BlackboardWriteStamp(
                 m_Layout.RootOperation,
                 m_Frame.Tick.Value,
@@ -148,27 +59,6 @@ namespace ThirdPersonSimulation
                 0)));
         }
 
-        static AbilityStateValue ToStateValue(SimulationInputValue value, ProgramBlackboardInputProjection projection)
-        {
-            switch (projection)
-            {
-                case ProgramBlackboardInputProjection.ActionTargetIdentity:
-                    return AbilityStateValue.FromIdentity(value.ActionTargetSnapshot.TargetId);
-                case ProgramBlackboardInputProjection.ActionTargetPosition:
-                    return AbilityStateValue.FromVector3(value.ActionTargetSnapshot.Position);
-                case ProgramBlackboardInputProjection.ActionTargetYaw:
-                    return AbilityStateValue.FromScalar(value.ActionTargetSnapshot.Yaw.Degrees);
-            }
-            return value.Kind switch
-            {
-                ProgramInputValueKind.Boolean => AbilityStateValue.FromBoolean(value.Boolean),
-                ProgramInputValueKind.Scalar => AbilityStateValue.FromScalar(value.Scalar),
-                ProgramInputValueKind.Vector2 => AbilityStateValue.FromVector2(value.Vector2),
-                ProgramInputValueKind.Vector3 => AbilityStateValue.FromVector3(value.Vector3),
-                _ => throw new InvalidOperationException($"Blackboard Input Binding value kind '{value.Kind}' is unsupported.")
-            };
-        }
-
         public AbilityStateValue Read<TTarget>(
             OperationControlCursor<TTarget> cursor,
             SimulationOperation operation,
@@ -176,35 +66,12 @@ namespace ThirdPersonSimulation
             where TTarget : struct, IOperationControlTarget<TTarget>
         {
             ref readonly SimulationBlackboardSlotGroup group = ref Access.Services.BlackboardGroup(valueSlot);
-            if (TryReadActiveGraphCallInput(cursor, valueSlot, out AbilityStateValue graphInput))
-                return graphInput;
+            if (BlackboardScopeOwnerCalculation.IsActiveGraphCallInput(cursor, m_Ability.GraphCallFrames, valueSlot))
+                return m_State.Get(group.Value);
             BlackboardOwnerToken expected = ResolveBlackboardOwnerToken(cursor, operation, in group, out _);
             if (m_State.Get(group.OwnerToken).BlackboardOwnerToken != expected)
                 return DefaultValue(in group);
             return m_State.Get(valueSlot);
-        }
-
-        bool TryReadActiveGraphCallInput<TTarget>(
-            OperationControlCursor<TTarget> cursor,
-            int valueSlot,
-            out AbilityStateValue value)
-            where TTarget : struct, IOperationControlTarget<TTarget>
-        {
-            for (int i = 0; i < m_Ability.GraphCallFrames.Count; i++)
-            {
-                ProgramGraphCallFrame frame = m_Ability.GraphCallFrames[i];
-                if (!cursor.IsActive(frame.OwnerOperation))
-                    continue;
-                for (int bindingIndex = 0; bindingIndex < frame.Inputs.Count; bindingIndex++)
-                {
-                    if (frame.Inputs[bindingIndex].StateSlot != valueSlot)
-                        continue;
-                    value = ReadGraphCallParameter(valueSlot);
-                    return true;
-                }
-            }
-            value = default;
-            return false;
         }
 
         public void Write<TTarget>(
@@ -248,62 +115,14 @@ namespace ThirdPersonSimulation
             out Float32ActionInstanceState action)
             where TTarget : struct, IOperationControlTarget<TTarget>
         {
-            action = default;
-            ProgramScopeLayout scope = group.Scope;
-            ulong expectedGeneration;
-            switch (scope.Kind)
-            {
-                case ProgramScopeKind.Character:
-                    expectedGeneration = 1;
-                    break;
-                case ProgramScopeKind.Graph:
-                    if (group.LifetimeKind == ProgramBlackboardLifetime.Config)
-                    {
-                        expectedGeneration = 1;
-                    }
-                    else
-                    {
-                        if (!cursor.IsActive(scope.OwnerOperation))
-                            throw new InvalidOperationException($"Blackboard access '{SourcePath(operation)}' is outside Graph scope '{scope.Identity}'.");
-                        expectedGeneration = cursor.ReadGeneration(scope.OwnerOperation);
-                    }
-                    break;
-                case ProgramScopeKind.State:
-                    if (!cursor.IsCurrentStateExecution(scope.OwnerOperation))
-                        throw new InvalidOperationException($"Blackboard access '{SourcePath(operation)}' is outside State scope '{scope.Identity}'.");
-                    expectedGeneration = cursor.ReadGeneration(scope.OwnerOperation);
-                    break;
-                case ProgramScopeKind.ActionInstance:
-                    action = ResolveBlackboardActionContext(operation);
-                    if (!action.IsActive)
-                        throw new InvalidOperationException($"Blackboard access '{SourcePath(operation)}' requires an explicit active Action Context.");
-                    expectedGeneration = action.InstanceId;
-                    break;
-                case ProgramScopeKind.Frame:
-                    expectedGeneration = m_Frame.Tick.Value;
-                    break;
-                default:
-                    throw new InvalidOperationException($"Blackboard scope '{scope.Kind}' is unsupported.");
-            }
-            return new BlackboardOwnerToken(scope.Kind, group.CompiledOwnerIndex, expectedGeneration);
+            action = group.Scope.Kind == ProgramScopeKind.ActionInstance
+                ? ResolveBlackboardActionContext(operation) : default;
+            return BlackboardScopeOwnerCalculation.Resolve(cursor, operation.Handle, in group,
+                Access.Services, m_Frame.Tick.Value, action.IsActive, action.InstanceId);
         }
 
         Float32ActionInstanceState ResolveBlackboardActionContext(SimulationOperation operation)
         {
-            if (m_TimelineBlackboardContexts.Count > 0)
-            {
-                SimulationTimelineBlackboardContext timeline = m_TimelineBlackboardContexts.Peek();
-                Float32ActionInstanceState action = m_Actions.RequireActive(timeline.Action);
-                string explicitContext = GetStringConstant(operation, OperationNamedConstant.FactContext, string.Empty);
-                if (!CanonicalTextValue.IsNullOrEmpty(explicitContext) &&
-                    !CanonicalTextValue.Equals(explicitContext, action.ContextId, StringComparison.Ordinal))
-                {
-                    throw new InvalidOperationException(
-                        $"TreeClip Blackboard write '{SourcePath(operation)}' Action Context does not match its Timeline playback context.");
-                }
-                return action;
-            }
-
             if (m_Actions.TryGetCurrentSkillExecution(out Float32ActionInstanceState skillAction))
             {
                 string skillContext = GetStringConstant(operation, OperationNamedConstant.FactContext, string.Empty);
@@ -324,45 +143,14 @@ namespace ThirdPersonSimulation
             return m_Actions.FindOnlyActive();
         }
 
-        BlackboardWriteStamp BuildBlackboardWriteStamp(SimulationOperation operation, in Float32ActionInstanceState action)
-        {
-            if (m_TimelineBlackboardContexts.Count == 0)
-            {
-                return new BlackboardWriteStamp(
-                    operation.Handle,
-                    m_Frame.Tick.Value,
-                    action.IsActive ? action.SourceContext : default,
-                    OperationHandle.Invalid,
-                    OperationHandle.Invalid,
-                    0);
-            }
-            SimulationTimelineBlackboardContext context = m_TimelineBlackboardContexts.Peek();
-            return new BlackboardWriteStamp(
+        BlackboardWriteStamp BuildBlackboardWriteStamp(SimulationOperation operation, in Float32ActionInstanceState action) =>
+            new BlackboardWriteStamp(
                 operation.Handle,
                 m_Frame.Tick.Value,
                 action.IsActive ? action.SourceContext : default,
-                context.Timeline,
-                context.Clip,
-                context.Cycle);
-        }
-
-
-        public IDisposable PushTimelineContext(
-            SimulationOperation timeline,
-            SimulationOperation clip,
-            int cycle,
-            Float32ActionInstanceState action)
-        {
-            m_TimelineBlackboardContexts.Push(new SimulationTimelineBlackboardContext(
-                timeline.Handle,
-                clip.Handle,
-                cycle,
-                action));
-            TimelineBlackboardScope scope = m_TimelineBlackboardScopePool.Count > 0
-                ? m_TimelineBlackboardScopePool.Pop()
-                : new TimelineBlackboardScope();
-            return scope.Begin(this);
-        }
+                OperationHandle.Invalid,
+                OperationHandle.Invalid,
+                0);
 
         AbilityStateValue DefaultValue(in SimulationBlackboardSlotGroup group)
         {
@@ -374,26 +162,6 @@ namespace ThirdPersonSimulation
             m_State.Set(group.Value, DefaultValue(in group));
             m_State.Set(group.OwnerToken, AbilityStateValue.FromBlackboardOwnerToken(ownerToken));
             m_State.Set(group.WriteStamp, AbilityStateValue.FromBlackboardWriteStamp(default));
-        }
-
-        sealed class TimelineBlackboardScope : IDisposable
-        {
-            Float32BlackboardRuntime m_Owner;
-
-            public TimelineBlackboardScope Begin(Float32BlackboardRuntime owner)
-            {
-                m_Owner = owner;
-                return this;
-            }
-
-            public void Dispose()
-            {
-                if (m_Owner == null)
-                    return;
-                m_Owner.m_TimelineBlackboardContexts.Pop();
-                m_Owner.m_TimelineBlackboardScopePool.Push(this);
-                m_Owner = null;
-            }
         }
     }
 }

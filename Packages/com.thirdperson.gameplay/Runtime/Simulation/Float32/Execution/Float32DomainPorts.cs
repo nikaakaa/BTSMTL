@@ -1,5 +1,4 @@
 using SimulationMotionContribution = ThirdPersonSimulation.SimulationMotionContribution<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32Vector2, ThirdPersonSimulation.Float32Vector3, ThirdPersonSimulation.Float32SimulationMath>;
-using System;
 using System.Collections.Generic;
 
 namespace ThirdPersonSimulation
@@ -26,8 +25,6 @@ namespace ThirdPersonSimulation
         int FindActive(CanonicalTextValue contextId, out Float32ActionInstanceState state);
         int FindActive(CharacterSkillId skillId, out Float32ActionInstanceState state);
         Float32ActionInstanceState FindOnlyActive();
-        Float32ActionInstanceState RequireActive(Float32ActionInstanceState expected);
-        Float32ActionInstanceState RequireActive(Float32ActionInstanceReference reference);
         bool ContainsInstance(ulong instanceId);
         bool TryGetInstance(ulong instanceId, out Float32ActionInstanceState state);
         Float32ActionStateStore.SkillExecutionScope PushSkillExecution(Float32ActionInstanceState action);
@@ -63,16 +60,7 @@ namespace ThirdPersonSimulation
             AbilityStateValue value)
             where TTarget : struct, IOperationControlTarget<TTarget>;
 
-        void ClearActionInstanceScopes(ulong actionInstanceId);
-
-        void ProjectBlackboardInput(BlackboardInputStateBinding binding, SimulationInputValue value);
-
-
-        IDisposable PushTimelineContext(
-            SimulationOperation timeline,
-            SimulationOperation clip,
-            int cycle,
-            Float32ActionInstanceState action);
+        void WriteInputProjection(int valueSlot, AbilityStateValue value);
     }
 
     internal interface IFloat32GameplayTagQuery

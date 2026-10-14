@@ -296,13 +296,6 @@ namespace ThirdPersonSimulation.Fixed
             IsTransientValid &&
             (!HasSkillExecution || SkillExecutionGeneration != 0);
 
-        public bool MatchesSkillExecution(FixedActionInstanceState state) =>
-            IsValid &&
-            state.IsValid &&
-            state.SkillId == SkillId &&
-            state.SkillEntryOperation.Equals(SkillEntryOperation) &&
-            (!HasSkillExecution || state.SkillExecutionGeneration == SkillExecutionGeneration);
-
         public bool MatchesTransientSkillExecution(FixedActionInstanceState state) =>
             IsTransientValid &&
             state.IsValid &&
@@ -658,29 +651,6 @@ namespace ThirdPersonSimulation.Fixed
                 result = current;
             }
             return result;
-        }
-
-        public FixedActionInstanceState RequireActive(FixedActionInstanceState expected)
-        {
-            if (!expected.IsActive)
-                return default;
-            int slot = FindActive(expected.ContextId, out FixedActionInstanceState current);
-            return slot >= 0 && current.SourceContext.Equals(expected.SourceContext) ? current : default;
-        }
-
-        public FixedActionInstanceState RequireActive(FixedActionInstanceReference reference)
-        {
-            if (!reference.IsValid)
-                return default;
-            if (!TryGetInstance(reference.InstanceId, out FixedActionInstanceState current))
-                return default;
-            return current.IsActive &&
-                   CanonicalTextValue.Equals(current.ActionId, reference.ActionId, StringComparison.Ordinal) &&
-                   CanonicalTextValue.Equals(current.ContextId, reference.ContextId, StringComparison.Ordinal) &&
-                   current.PredictionKey == reference.PredictionKey &&
-                   reference.MatchesSkillExecution(current)
-                ? current
-                : default;
         }
 
         public FixedActionInstanceState RequireActiveTransient(FixedActionInstanceReference reference)

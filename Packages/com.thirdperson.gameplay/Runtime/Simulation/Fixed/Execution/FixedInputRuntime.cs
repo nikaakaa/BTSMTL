@@ -1,6 +1,5 @@
 ﻿using ThirdPersonSimulation;
 using System;
-using System.Collections.Generic;
 
 namespace ThirdPersonSimulation.Fixed
 {
@@ -20,8 +19,6 @@ namespace ThirdPersonSimulation.Fixed
 #endif
             )
         {
-            if (blackboard == null)
-                throw new ArgumentNullException(nameof(blackboard));
             for (int i = 0; i < m_Frame.Services.BlackboardInputBindings.Count; i++)
             {
                 BlackboardInputStateBinding binding = m_Frame.Services.BlackboardInputBindings[i];
@@ -33,13 +30,39 @@ namespace ThirdPersonSimulation.Fixed
                 long projectStarted = System.Diagnostics.Stopwatch.GetTimestamp();
                 output.EvaluationInputBindingReadElapsedStopwatchTicks += projectStarted - readStarted;
 #endif
-                blackboard.ProjectBlackboardInput(binding, value);
+                AbilityStateValue projected = Project(in value, binding.Projection);
+#if UNITY_EDITOR
+                output.EvaluationInputProjectionValueElapsedStopwatchTicks +=
+                    System.Diagnostics.Stopwatch.GetTimestamp() - projectStarted;
+#endif
+                blackboard.WriteInputProjection(binding.StateAddress.SlotIndex, projected);
 #if UNITY_EDITOR
                 output.EvaluationInputBindingProjectElapsedStopwatchTicks +=
                     System.Diagnostics.Stopwatch.GetTimestamp() - projectStarted;
                 output.EvaluationInputBindingCalls++;
 #endif
             }
+        }
+
+        static AbilityStateValue Project(in SimulationInputValue value, ProgramBlackboardInputProjection projection)
+        {
+            switch (projection)
+            {
+                case ProgramBlackboardInputProjection.ActionTargetIdentity:
+                    return AbilityStateValue.FromIdentity(value.ActionTargetSnapshot.TargetId);
+                case ProgramBlackboardInputProjection.ActionTargetPosition:
+                    return AbilityStateValue.FromVector3(value.ActionTargetSnapshot.Position);
+                case ProgramBlackboardInputProjection.ActionTargetYaw:
+                    return AbilityStateValue.FromScalar(value.ActionTargetSnapshot.Yaw.Degrees);
+            }
+            return value.Kind switch
+            {
+                ProgramInputValueKind.Boolean => AbilityStateValue.FromBoolean(value.Boolean),
+                ProgramInputValueKind.Scalar => AbilityStateValue.FromScalar(value.Scalar),
+                ProgramInputValueKind.Vector2 => AbilityStateValue.FromVector2(value.Vector2),
+                ProgramInputValueKind.Vector3 => AbilityStateValue.FromVector3(value.Vector3),
+                _ => throw new InvalidOperationException($"Blackboard Input Binding value kind '{value.Kind}' is unsupported.")
+            };
         }
 
         public bool HasRequest(CanonicalTextValue requestId, out SimulationInputRequestState state)

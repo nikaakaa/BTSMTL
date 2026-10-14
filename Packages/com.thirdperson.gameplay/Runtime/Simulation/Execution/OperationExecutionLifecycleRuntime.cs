@@ -10,9 +10,7 @@ namespace ThirdPersonSimulation
         OperationControlCursor<TTarget> Cursor { get; }
         ulong ReadUInt64(int slotIndex);
         void WriteUInt64(int slotIndex, ulong value);
-        void PrepareActivation(OperationExecutionDescriptor operation);
         void ActivateScopes(OperationControlCursor<TTarget> cursor, OperationExecutionDescriptor operation, ulong generation);
-        void CompleteScopes(OperationExecutionDescriptor operation);
         void ResetOperationState(OperationExecutionDescriptor operation);
         OperationStopStatus ContinueLeafStop(OperationControlCursor<TTarget> cursor, OperationExecutionDescriptor operation, OperationStopContext context);
         void ForceStopLeaf(OperationControlCursor<TTarget> cursor, OperationExecutionDescriptor operation, OperationStopContext context);
@@ -72,7 +70,6 @@ namespace ThirdPersonSimulation
                     result == OperationExecutionResult.Success
                         ? (int)OperationRunnableStatus.Success
                         : (int)OperationRunnableStatus.Failure);
-                m_Host.CompleteScopes(operation);
                 if (m_Host.DiagnosticsEnabled)
                     m_Host.EmitTrace(operation, "operation_complete", OperationControlTraceSeverity.Detail, OperationTraceText.Result(result));
             }
@@ -152,7 +149,6 @@ namespace ThirdPersonSimulation
             }
             if (status == OperationStopStatus.Running)
                 return status;
-            m_Host.CompleteScopes(operation);
             if (m_Host.DiagnosticsEnabled)
             {
                 m_Host.EmitTrace(
@@ -233,7 +229,6 @@ namespace ThirdPersonSimulation
             }
             if (active && m_Host.DiagnosticsEnabled)
                 m_Host.EmitTrace(operation, "operation_force_stopped", OperationControlTraceSeverity.Detail, OperationTraceText.StopCause(context.Cause));
-            m_Host.CompleteScopes(operation);
             m_Host.ResetOperationState(operation);
         }
 
@@ -255,7 +250,6 @@ namespace ThirdPersonSimulation
             int cursor = FindOperationSlot(operation, ProgramStateSemantic.RunnableChildCursor);
             if (cursor >= 0)
                 m_Host.WriteInt32(cursor, operation.Code == SimulationOperationCode.Selector ? -1 : 0);
-            m_Host.PrepareActivation(operation);
         }
 
         ulong IncrementGeneration(OperationExecutionDescriptor operation)
@@ -264,8 +258,6 @@ namespace ThirdPersonSimulation
             if (slot < 0)
                 return 1;
             ulong generation = checked(m_Host.ReadUInt64(slot) + 1);
-            if (generation == 0)
-                generation = 1;
             m_Host.WriteUInt64(slot, generation);
             return generation;
         }

@@ -544,10 +544,6 @@ namespace ThirdPersonSimulation
             throw new InvalidOperationException(
                 "Ability operation requires the declared Equipment service.");
 
-        public void PrepareActivation(OperationExecutionDescriptor operation)
-        {
-        }
-
         public void PrepareSubGraph(
             OperationControlCursor<Float32AbilityExecutionTarget> cursor,
             OperationExecutionDescriptor operation) =>
@@ -559,14 +555,7 @@ namespace ThirdPersonSimulation
             ulong generation)
         {
             m_Actions.BindCurrentSkillExecution(operation.Handle, generation);
-            m_Blackboard.ActivateOperationScopes(cursor, m_Access.Operation(operation.Handle), generation);
         }
-
-        public void CompleteScopes(OperationExecutionDescriptor operation) =>
-            m_Blackboard.CompleteOperationScopes(m_Access.Operation(operation.Handle));
-
-        public void ClearStateScope(OperationExecutionDescriptor state) =>
-            m_Blackboard.ClearStateScopes(m_Access.Operation(state.Handle));
 
         public void ResetOperationState(OperationExecutionDescriptor operation) =>
             m_ResetState.Reset(m_Access.Operation(operation.Handle));
