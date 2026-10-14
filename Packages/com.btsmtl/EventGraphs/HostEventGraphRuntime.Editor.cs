@@ -161,6 +161,9 @@ namespace BTSMTL.EventGraphs
                         EventGraphValue.ReadRecordedFrameState(ref reader, port.ValueType), port.EnumIdentity));
             }
         }
+
+        public EventGraphVariableFrame PublishRecordedFrame() =>
+            new EventGraphVariableFrame(VariableContract, m_Runtime.PublishRecordedFrame());
     }
 }
 #endif

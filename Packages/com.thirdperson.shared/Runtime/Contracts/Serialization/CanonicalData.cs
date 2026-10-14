@@ -9,6 +9,8 @@ namespace ThirdPersonSimulation
 {
     public interface IRecordedRuntimeStateWriter
     {
+        int WrittenBytes { get; }
+        int WrittenTextCharacters { get; }
         void Write<T>(T value) where T : unmanaged;
         void WriteSpan<T>(ReadOnlySpan<T> values) where T : unmanaged;
         void WriteText(CanonicalTextValue text);
@@ -54,6 +56,12 @@ namespace ThirdPersonSimulation
 
         public void Dispose() => m_TextCapture.Dispose();
 
+        public void Skip(int byteCount, int textCharacterCount)
+        {
+            m_Bytes = m_Bytes.Slice(byteCount);
+            m_TextOffset += textCharacterCount;
+        }
+
         public T Read<T>() where T : unmanaged
         {
             T value = MemoryMarshal.Read<T>(m_Bytes);
@@ -82,6 +90,7 @@ namespace ThirdPersonSimulation
         }
 
         public bool IsValid => m_Text != null;
+        public int WrittenCharacters => m_Written;
 
         public CanonicalTextValue Append(ReadOnlySpan<char> characters)
         {
