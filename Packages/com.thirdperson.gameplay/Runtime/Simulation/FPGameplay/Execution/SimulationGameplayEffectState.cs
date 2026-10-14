@@ -389,7 +389,7 @@ namespace ThirdPersonSimulation.FPGameplay
                 changeCursor);
         }
 
-        GameplayEffectStateAggregate(
+        internal GameplayEffectStateAggregate(
             FPGameplayEffectRuntimeCatalog catalog,
             FPGameplayEffectSnapshotReference<KeyValuePair<GameplayTagSourceIdentityValue, IReadOnlyList<string>>> tagSources,
             FPGameplayEffectAttributeSnapshotReference attributes,

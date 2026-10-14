@@ -4,7 +4,7 @@ using System;
 
 namespace ThirdPersonSimulation.FPGameplay
 {
-    internal sealed class FPCharacterGameplayEffectRuntimeState : IFPGameplayEffectStatePort
+    internal sealed partial class FPCharacterGameplayEffectRuntimeState : IFPGameplayEffectStatePort
     {
         FPGameplayEffectRuntimeCatalog m_Catalog;
         int m_TickRate;

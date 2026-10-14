@@ -373,7 +373,6 @@ namespace ThirdPersonSimulation.FPGameplay
         internal FPCharacterRuntimeState CompleteRead(in FPCharacterRuntimeStateData data)
         {
             Data.CopyFrom(data);
-            Data.ControlState = ControlStorage.CopyFrom(data.ControlState);
             var value = new FPCharacterRuntimeState(this);
             value.RetainStatePages();
             return value;
