@@ -1,5 +1,6 @@
 namespace ThirdPersonSimulation
 {
+    [ValueSnapshot]
     [ValueOperations(OwnsMemberResources = true, CopyMethod = nameof(CopyFrom), ClearMethod = nameof(Clear))]
     internal sealed partial class SimulationInputValues
     {
@@ -12,7 +13,9 @@ namespace ThirdPersonSimulation
             Requests = new CanonicalBuffer<SimulationInputRequest>(requestCapacity);
         }
 
+        [ValueSnapshot]
         internal CanonicalBuffer<SimulationInputValue> Values;
+        [ValueSnapshot]
         internal CanonicalBuffer<SimulationInputRequest> Requests;
 
         internal SimulationInputValues(CanonicalBuffer<SimulationInputValue> values,

@@ -31,6 +31,9 @@ namespace ThirdPersonSimulation
         public ulong ExpireSimulationTick { get; }
         public int Priority { get; }
 
+        [ValueUpdate]
+        internal partial SimulationInputRequest WithTicks(ulong sourceTick, ulong expireSimulationTick);
+
         [ValueValidation]
         void RequireValid()
         {
@@ -547,7 +550,7 @@ namespace ThirdPersonSimulation
         public CanonicalTextValue WindowId { get; }
         [ValueTextRules(Required = true, Trim = true)]
         public CanonicalTextValue WindowType { get; }
-        [ValueTextRules(Required = true, Trim = true)]
+        [ValueTextRules(Required = true, Trim = true, Declared = true)]
         public string WindowTag { get; }
         public ulong StartTick { get; }
         public ulong EndTick { get; }

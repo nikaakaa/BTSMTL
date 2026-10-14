@@ -18,9 +18,9 @@ namespace ThirdPersonSimulation
         }
 
         [ValueResource]
-        internal AbilityStateValuePageReference<AbilityStateValue> StateValues { get; }
+        public AbilityStateValuePageReference<AbilityStateValue> StateValues { get; }
         [ValueResource("RetainStateStorage", "ReleaseStateStorage")]
-        internal GameplayAbilityExecutionAggregate<AbilityStateValue> AbilityExecutionState { get; }
+        public GameplayAbilityExecutionAggregate<AbilityStateValue> AbilityExecutionState { get; }
         public GameplayAbilityExecutionIdentity AbilityIdentity => StateValues.Set.Bank.Identity;
 
         internal bool SharesStateWith(Float32AbilityRuntimeState other) =>
@@ -49,13 +49,13 @@ namespace ThirdPersonSimulation
         public IReadOnlyList<Float32AbilityRuntimeState> Abilities => m_Page.Abilities;
         internal Float32AbilityRuntimeState[] AbilitiesArray => m_Page.Abilities;
         internal MotionWarpStatePageReference<MotionWarpState> MotionWarpStates => m_Page.Data.MotionWarpStates;
-        internal AbilityStateValuePageReference<AbilityStateValue> CharacterBlackboards => m_Page.Data.CharacterBlackboards;
+        public AbilityStateValuePageReference<AbilityStateValue> CharacterBlackboards => m_Page.Data.CharacterBlackboards;
         internal Float32ActionStatePageReference ActionStatePage => m_Page.Data.ActionStatePage;
         internal ReadOnlySpan<SimulationActionActivationRequestState> ActionActivationRequests => ActionStatePage.Requests;
         internal ReadOnlySpan<Float32ActionInstanceState> ActionInstances => ActionStatePage.Actions;
         internal Float32InputRequestPageReference InputRequestPage => m_Page.Data.InputRequestPage;
         internal ReadOnlySpan<KeyValuePair<CanonicalTextValue, SimulationInputRequestState>> InputRequests => InputRequestPage.Values;
-        internal ref readonly CharacterRuntimeStateMetadata Metadata => ref m_Page.Data.Metadata;
+        public ref readonly CharacterRuntimeStateMetadata Metadata => ref m_Page.Data.Metadata;
         internal ulong EventSequence => m_Page.Data.Metadata.EventSequence;
         internal ulong ActionEventSequence => m_Page.Data.Metadata.ActionEventSequence;
         internal ulong HandleAllocator => m_Page.Data.Metadata.HandleAllocator;

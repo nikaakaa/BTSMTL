@@ -3,18 +3,23 @@ using System.Collections.Generic;
 
 namespace ThirdPersonSimulation
 {
-    public sealed class Float32SimulationInputFrameStorage
+    [ValueSnapshot]
+    public sealed partial class Float32SimulationInputFrameStorage
     {
         static readonly CanonicalBuffer<SimulationInputValue> s_EmptyValues =
             new CanonicalBuffer<SimulationInputValue>(Array.Empty<SimulationInputValue>());
         static readonly CanonicalBuffer<SimulationInputRequest> s_EmptyRequests =
             new CanonicalBuffer<SimulationInputRequest>(Array.Empty<SimulationInputRequest>());
+        [ValueSnapshot]
         readonly SimulationInputValues m_Data;
         CanonicalBuffer<SimulationInputValue> m_Values => m_Data.Values;
         CanonicalBuffer<SimulationInputRequest> m_Requests => m_Data.Requests;
         readonly SimulationInput m_Snapshot;
+        [ValueSnapshot]
         internal SimulationNumericProfile NumericProfile { get; private set; }
+        [ValueSnapshot]
         internal SimulationInputHeader Header { get; private set; }
+        public SimulationInput Input => m_Snapshot;
         internal SimulationTickSourceIdentity TickSource => Header.TickSource;
         internal CanonicalTextValue InputSourceIdentity => Header.InputSourceIdentity;
         internal ulong Sequence => Header.Sequence;
@@ -156,9 +161,9 @@ namespace ThirdPersonSimulation
             for (int index = 0; index < input.Requests.Count; index++)
             {
                 SimulationInputRequest request = input.Requests[index];
-                AddRequest(new SimulationInputRequest(request.RequestId, request.Sequence,
+                AddRequest(request.WithTicks(
                     RemapTick(request.SourceTick, recordedTick, context.SimulationTick.Value),
-                    RemapTick(request.ExpireSimulationTick, recordedTick, context.SimulationTick.Value), request.Priority));
+                    RemapTick(request.ExpireSimulationTick, recordedTick, context.SimulationTick.Value)));
             }
             return Complete(input.NumericProfile, context.Source, identity, context.InputSequence);
         }

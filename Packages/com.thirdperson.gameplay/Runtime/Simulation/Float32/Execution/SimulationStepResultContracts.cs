@@ -3,6 +3,7 @@ using System.Collections.Generic;
 
 namespace ThirdPersonSimulation
 {
+    [ValueOperations]
     public readonly partial struct CharacterBodySample
     {
         public CharacterBodySample(
