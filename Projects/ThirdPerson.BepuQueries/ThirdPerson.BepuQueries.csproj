@@ -6,7 +6,7 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <AssemblyName>ThirdPerson.BepuQueries</AssemblyName>
-    <QuerySourceRoot>$(MSBuildThisFileDirectory)..\..\Packages\com.btsmtl\Runtime\Physics\BepuQueries</QuerySourceRoot>
+    <QuerySourceRoot>$(MSBuildThisFileDirectory)..\..\Packages\com.thirdperson.gameplay\Runtime\Physics\BepuQueries</QuerySourceRoot>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="$(QuerySourceRoot)\**\*.cs" LinkBase="Source" />

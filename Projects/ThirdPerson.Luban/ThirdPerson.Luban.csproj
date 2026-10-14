@@ -6,6 +6,6 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="..\..\Packages\com.btsmtl\BlackboardConfiguration\Luban\**\*.cs" />
+    <Compile Include="..\..\Packages\com.thirdperson.shared\Runtime\Luban\**\*.cs" />
   </ItemGroup>
 </Project>

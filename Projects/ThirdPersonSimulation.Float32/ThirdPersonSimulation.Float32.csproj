@@ -7,7 +7,7 @@
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <AssemblyName>ThirdPersonSimulation.Float32</AssemblyName>
     <RootNamespace>ThirdPersonSimulation</RootNamespace>
-    <SimulationSourceRoot>$(MSBuildThisFileDirectory)..\..\Packages\com.btsmtl\Runtime\Simulation\Float32</SimulationSourceRoot>
+    <SimulationSourceRoot>$(MSBuildThisFileDirectory)..\..\Packages\com.thirdperson.gameplay\Runtime\Simulation\Float32</SimulationSourceRoot>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="$(SimulationSourceRoot)\**\*.cs" LinkBase="Source" />

@@ -1,0 +1,10 @@
+{
+  "name": "com.thirdperson.shared",
+  "version": "0.1.0",
+  "displayName": "Third Person Shared",
+  "description": "编排与玩法共用的身份、值声明、诊断合同、Luban 基础读写和编译期值生成支持。",
+  "unity": "2022.3",
+  "dependencies": {
+    "com.kk.generated-diagnostic-sampling": "0.6.0"
+  }
+}

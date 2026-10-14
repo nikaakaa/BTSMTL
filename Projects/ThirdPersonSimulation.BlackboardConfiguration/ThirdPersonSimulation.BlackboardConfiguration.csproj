@@ -9,7 +9,7 @@
     <AssemblyName>ThirdPersonSimulation.BlackboardConfiguration</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="..\..\Packages\com.btsmtl\BlackboardConfiguration\**\*.cs" Exclude="..\..\Packages\com.btsmtl\BlackboardConfiguration\Luban\**\*.cs" />
+    <Compile Include="..\..\Packages\com.btsmtl\BlackboardConfiguration\**\*.cs" Exclude="..\..\Packages\com.thirdperson.shared\Runtime\Luban\**\*.cs" />
     <ProjectReference Include="..\ThirdPerson.Luban\ThirdPerson.Luban.csproj" />
     <ProjectReference Include="..\ThirdPersonSimulation.Fixed\ThirdPersonSimulation.Fixed.csproj" />
     <ProjectReference Include="..\ThirdPersonSimulation.Float32\ThirdPersonSimulation.Float32.csproj" />

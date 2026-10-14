@@ -1,72 +1,67 @@
-# BTSMTL 源码包
+# BTSMTL 编排与项目玩法源码
 
-BTSMTL 的唯一源码仓库。核心包 `com.btsmtl` 拥有通用合同、图／技能执行、Fixed／Float32 数值域、Timeline 共用运行核心及 Unity 作者和诊断工具。具体网络模型由可选包拥有，单向依赖核心；Fantasy、Quantum3 和自定义网络由各自适配层接入公共输入、执行、结果及状态恢复合同。保留原命名空间、程序集名称及资源 GUID。
+本仓库分别提供编排、玩法和共享基础三个源码包。BTSMTL 安排技能、图和 Timeline 的执行顺序；角色运动、攻击判定、属性与效果计算由 Gameplay 实现。网络后端按自己的机制推进同一份玩法代码。
+
+| 包 | 负责什么 |
+| --- | --- |
+| `com.btsmtl` | 图、Timeline、黑板作者入口、Unity 编辑器、诊断和现有编排适配 |
+| `com.thirdperson.gameplay` | 角色运动、攻击与命中处理、属性与效果、玩法会话及相应运行数据 |
+| `com.thirdperson.shared` | 两边使用的身份、值声明、诊断与性能合同、Luban 基础读写和编译期值生成支持 |
+| `com.btsmtl.network.server-authoritative` | 可选服务器权威模型的预测、纠正、历史与传输 |
+
+例如一次攻击由 BTSMTL 安排何时发起和结束，Gameplay 接收请求并处理攻击查询及结果，属性与效果模块按原事务改变状态；结果返回编排供后续分支使用。BTSMTL 不承担命中或伤害算法。包移动保留原算法、命名空间、程序集名称、资源 GUID 与当前文件内容。
 
 ## Unity 接入
 
-仓库与 `3C` 放在同一父目录。3C 客户端的 `Packages/manifest.json` 引用：
+仓库与 `3C` 放在同一父目录。3C 客户端的 `Packages/manifest.json` 显式安装三个本地包：
 
 ```json
-"com.btsmtl": "file:../../../../../BTSMTL/Packages/com.btsmtl"
+"com.btsmtl": "file:../../../../../BTSMTL/Packages/com.btsmtl",
+"com.thirdperson.gameplay": "file:../../../../../BTSMTL/Packages/com.thirdperson.gameplay",
+"com.thirdperson.shared": "file:../../../../../BTSMTL/Packages/com.thirdperson.shared"
 ```
 
-Unity 通过包内原有 asmdef 编译源码。编辑源码直接修改本仓库，3C 的 Assets 中不保留另一份 BTSMTL。角色资产、生成的 C# authoring、Workbench 角色装配及产品发布入口仍由 3C 持有。
+Unity 通过各包原有 asmdef 编译同一份源码。3C 的 Assets 中不保留副本；角色资产、生成的 C# authoring、Workbench 角色装配、表现和产品发布入口仍由 3C 持有。
 
-需要现有 ServerAuthoritativeHybrid 模型的宿主另外显式安装：
-
-```json
-"com.btsmtl.network.server-authoritative": "file:../../../../../BTSMTL/Packages/com.btsmtl.network.server-authoritative"
-```
-
-该包拥有模型身份、预测、修正、历史、协议及传输实现。核心包不引用网络包，不要求其它后端使用其数据报或同步策略。接入与数据持有约定见[网络包说明](Packages/com.btsmtl.network.server-authoritative/README.md)。
+需要服务器权威模型时，宿主另外安装 `com.btsmtl.network.server-authoritative`。该包直接依赖 Gameplay 和 Shared；Q3 的项目运行包与 Quantum FP 数学包也直接声明实际使用的 Gameplay、Shared 依赖。需要 BTSMTL Timeline 或诊断的现有 Unity 网络产品保留相应编排依赖。Photon Quantum SDK 仍由原安装目录提供，不随本次分包移动或修改。
 
 ## 普通 .NET 接入
 
-本仓库提供独立的 `BTSMTL.sln` 与 `Projects` 下的 .NET 8 工程，不读取 3C 的 Assets 或源码。客户端的 Unity asmdef 与服务端 .NET 工程编译同一份运行源码。
+本仓库的 `BTSMTL.sln` 与 `Projects` 工程仍使用原工程名，源码 Include 改为所属包的新路径。Unity asmdef 与普通 .NET 工程编译同一份实现，不读取 3C 的 Assets。
 
 ```powershell
-dotnet build BTSMTL.sln --disable-build-servers /nr:false /p:UseSharedCompilation=false
-dotnet build-server shutdown
+try {
+    dotnet build BTSMTL.sln --disable-build-servers /nr:false /p:UseSharedCompilation=false
+} finally {
+    dotnet build-server shutdown
+}
 ```
 
-服务端按实际数值域引用 `Projects/ThirdPersonSimulation.Fixed` 或 `ThirdPersonSimulation.Float32`，需要 Timeline 时引用 `Projects/ThirdPersonSimulation.Timeline/ThirdPersonSimulation.Timeline.csproj`。项目引用自动带入本仓库的公共合同、Core、数值与物理依赖及编译期生成器。旧 3C Core／Fixed 的 Portable 包装工程已移除，3C 的调用工程直接引用本仓库项目。
+服务端按实际数值域引用 `Projects/ThirdPersonSimulation.Fixed` 或 `Projects/ThirdPersonSimulation.Float32`；需要 Timeline 时再引用 `Projects/ThirdPersonSimulation.Timeline`。具体网络工程仍单独引用 `Projects/ThirdPersonSimulation.ServerAuthoritative` 或 `Projects/ThirdPersonSimulation.ServerAuthoritative.Transport`。
 
-核心解决方案不包含具体网络模型工程。需要权威网络包时单独构建或引用 `Projects/ThirdPersonSimulation.ServerAuthoritative`、`Projects/ThirdPersonSimulation.ServerAuthoritative.Transport`；二者只编译 `Packages/com.btsmtl.network.server-authoritative` 的源码，并依赖核心工程。3C 网络产品继续引用这些正式项目。
+服务端提供输入、逻辑时间、角色和内容绑定，原运行器产生并提交或丢弃结果。动画、场景、声音和资源解析继续由 Unity 接入处理。分包不改变回放、存档、网络快照的按需装配责任，也不表示 Quantum FP 角色执行已完成。
 
-服务端提供编译后的图／Timeline 内容、逻辑时间、输入、播放控制和 TreeClip 调用者；共用运行器执行并提交或丢弃候选，输出玩法结果、播放结果和快照，由宿主消费。服务端不需要 UnityEngine。普通 .NET 编译范围不包含 Unity 作者对象、Editor 或 Unity 组件；动画、场景和声音表现仍由 Unity 客户端消费。
+## 源码位置与依赖
 
-## 源码职责
-
-| 目录 | 职责 |
+| 源码位置 | 内容 |
 | --- | --- |
-| `Foundation` | 公共内容／执行合同、诊断及性能合同；不是某一客户端的业务实现 |
-| 核心包 `Runtime/Simulation` | 图、状态机、技能与动作执行合同和运行实现，Fixed／Float32 数值域及公共后端接入合同 |
-| `Packages/com.btsmtl.network.server-authoritative/Runtime` | 可选权威网络模型的身份、预测、复制、历史、协议和传输 |
-| `Runtime/Physics/BepuQueries` | 运行数值与物理查询所需的既有第三方源码及许可 |
-| `Timeline/Runtime` | 不引用 Unity 的时间推进、内容求值、TreeClip 生命周期、快照及普通 .NET 适配器 |
-| `Timeline/Scripts` | Unity Timeline 作者对象、树节点和运行宿主装配 |
-| `Timeline/Unity` | 场景表现组件 |
-| `Timeline/Editor` | Timeline 与 TreeClip 编辑器 |
-| `Authoring`、`Scripts`、`EventGraphs` | 共用作者合同、图节点及 Unity EventGraph 接入 |
-| `Authoring/RootMotion`、`Timeline/Scripts/CameraEffectAsset.cs` | Unity 曲线资源与相机效果资源合同；具体角色和相机实现由宿主提供 |
-| `Diagnostics`、`Editor` | 运行诊断、编辑窗口和界面资源 |
-| 仓库 `Projects`、`Tools/CanonicalSerialization.Generator` | 独立 .NET 工程及编译期序列化生成器；Unity 分析器产物位于包内 `Analyzers` |
+| `Packages/com.btsmtl/Scripts`、`Authoring`、`EventGraphs` | 图节点、作者合同和 EventGraph 接入 |
+| `Packages/com.btsmtl/Timeline` | 共用 Timeline 运行核心、Unity 作者对象、编辑器与现有适配 |
+| `Packages/com.btsmtl/BlackboardConfiguration` | 黑板默认配置与生成接入，Luban 基础库已移到 Shared |
+| `Packages/com.btsmtl/Diagnostics`、`Editor` | 编排诊断、编辑窗口和界面资源 |
+| `Packages/com.thirdperson.gameplay/Runtime/Simulation` | Core、Fixed、Float32 现有运行程序集 |
+| `Packages/com.thirdperson.gameplay/Runtime/Physics/BepuQueries` | 既有物理查询源码与许可 |
+| `Packages/com.thirdperson.gameplay/Configuration` | Gameplay 配置合同、Reader 和对应生成输出 |
+| `Packages/com.thirdperson.shared/Runtime` | 共享合同、性能合同及 Luban 基础库 |
+| `Packages/com.thirdperson.shared/Analyzers` | 原编译期生成器的 Unity 安装产物 |
 
-## 依赖边界
+当前 `BTSMTL`、`BTSMTL.Timeline.Runtime` 等程序集使用 Gameplay 提供的 Core、Fixed、Float32 数据与调用接口，所以 `com.btsmtl` 显式依赖 Gameplay 和 Shared；Gameplay 仅依赖 Shared，不依赖 BTSMTL 作者包。Core 中现有的通用控制流与领域装配仍处于同一程序集，本次保留这一事实，不把目录移动描述成通用编排核心已经完全独立。
 
-共用 Timeline 核心依赖的 `ThirdPerson.Shared.Contracts`、`ThirdPersonSimulation.Core`、`ThirdPersonSimulation.Fixed`、`ThirdPersonSimulation.Float32` 和 `ThirdPerson.BepuQueries` 现均由本仓库持有。`ThirdPerson` 是保留的公开程序集／命名空间身份，不再表示源码属于 3C。生成器同样归本仓库，独立构建不需要 3C 项目。
+Unity 作者包继续要求宿主提供 NodeCanvas、FlowCanvas、ParadoxNotion 与 Slate；诊断采样注解由 Shared 的正式包依赖提供。包内 Unity 程序集不引用 3C 的 Client、Gameplay、Camera.Runtime 或 Simulation.Unity。
 
-包内 Unity 程序集不引用 3C 的 Client、Gameplay、Camera.Runtime 或 Simulation.Unity。宿主需提供 NodeCanvas、FlowCanvas、ParadoxNotion、Slate 与诊断采样注解程序集；`com.unity.editorcoroutines` 与 `com.unity.ugui` 由包声明。3C 继续持有角色资产、领域装配、Gameplay／相机／动画表现、产品发布与网络产品入口。
+## 开发与检查边界
 
-Unity 宿主通过原 `ITimelineWorkspaceModeController` 装配预览与 `ITimelineEditorAuthoringHost`。窗口打开时把作者宿主传入 `TimelineEditorOpenRequest`；包内编辑器请求创建／打开图、清理所属子资产或读取时间网格帧率，具体图类型和角色 Pipeline 由宿主处理。3C 的实现为 `CharacterTimelineEditorAuthoringHost`，调用原技能图工厂与资产所有权规则。包不再直接引用 3C 的 Skill 作者类型。
-
-相机效果资源自己声明 `ResourceKind`、身份和优先级；Timeline 消费同一资源合同，不通过 3C 的具体相机资产类型分支选择行为。资源引用、曲线资产和原 meta GUID 保留。
-
-本次已完成独立解决方案编译和既有 15 项 Timeline .NET 测试；未启动完整服务器或 Unity 场景，编译与核心测试不代替产品运行验收。
-
-## 开发约束
-
-- Unity 与普通 .NET 消费同一核心源码，不新增另一套推进算法或旧路径副本。
-- 移动源码和资源时保留 `.meta` GUID；高频运行链路保持 0 GC。
-- 用户已有的未提交修改保持未提交，避免迁移提交混入并行开发内容。
-- 编译使用 `--disable-build-servers /nr:false /p:UseSharedCompilation=false`，结束后执行 `dotnet build-server shutdown`。
+- 每份源码只有一个正式位置，不保留旧目录副本或备用读取路径。
+- 移动源码和资源保留 `.meta` GUID，已有暂存与未暂存修改跟随原文件迁移。
+- 构建关闭 build server 和共享编译，结束或失败立即执行 shutdown。
+- 本次分包的源码、编译和 Unity 采用结果分别记录；包结构完成不能代替角色、战斗或联机验收。

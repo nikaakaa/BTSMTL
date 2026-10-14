@@ -8,6 +8,6 @@
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="..\..\Packages\com.btsmtl\Foundation\Contracts\**\*.cs" />
+    <Compile Include="..\..\Packages\com.thirdperson.shared\Runtime\Contracts\**\*.cs" />
   </ItemGroup>
 </Project>

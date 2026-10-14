@@ -5,7 +5,7 @@
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="..\..\Packages\com.btsmtl\GameplayConfiguration\Reader\**\*.cs" />
+    <Compile Include="..\..\Packages\com.thirdperson.gameplay\Configuration\Reader\**\*.cs" />
     <ProjectReference Include="..\ThirdPersonGameplay.Configuration\ThirdPersonGameplay.Configuration.csproj" />
     <ProjectReference Include="..\ThirdPerson.Luban\ThirdPerson.Luban.csproj" />
   </ItemGroup>

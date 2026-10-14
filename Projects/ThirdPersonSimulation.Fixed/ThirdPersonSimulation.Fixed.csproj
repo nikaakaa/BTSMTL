@@ -7,7 +7,7 @@
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <AssemblyName>ThirdPersonSimulation.Fixed</AssemblyName>
     <RootNamespace>ThirdPersonSimulation.Fixed</RootNamespace>
-    <SimulationSourceRoot>$(MSBuildThisFileDirectory)..\..\Packages\com.btsmtl\Runtime\Simulation\Fixed</SimulationSourceRoot>
+    <SimulationSourceRoot>$(MSBuildThisFileDirectory)..\..\Packages\com.thirdperson.gameplay\Runtime\Simulation\Fixed</SimulationSourceRoot>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="$(SimulationSourceRoot)\**\*.cs" LinkBase="Source" />

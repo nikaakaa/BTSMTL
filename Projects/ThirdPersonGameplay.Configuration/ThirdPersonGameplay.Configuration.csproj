@@ -5,7 +5,7 @@
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="..\..\Packages\com.btsmtl\GameplayConfiguration\**\*.cs" Exclude="..\..\Packages\com.btsmtl\GameplayConfiguration\Reader\**\*.cs" />
+    <Compile Include="..\..\Packages\com.thirdperson.gameplay\Configuration\**\*.cs" Exclude="..\..\Packages\com.thirdperson.gameplay\Configuration\Reader\**\*.cs" />
     <ProjectReference Include="..\ThirdPerson.Shared.Contracts\ThirdPerson.Shared.Contracts.csproj" />
   </ItemGroup>
 </Project>

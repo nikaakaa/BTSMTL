@@ -7,9 +7,9 @@
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <AssemblyName>ThirdPersonSimulation.Core</AssemblyName>
     <RootNamespace>ThirdPersonSimulation</RootNamespace>
-    <SimulationSourceRoot>$(MSBuildThisFileDirectory)..\..\Packages\com.btsmtl\Runtime\Simulation</SimulationSourceRoot>
-    <PerformanceContractSource>$(MSBuildThisFileDirectory)..\..\Packages\com.btsmtl\Foundation\Performance\PerformanceMetricDefinition.cs</PerformanceContractSource>
-    <InstrumentationContractSource>$(MSBuildThisFileDirectory)..\..\Packages\com.btsmtl\Foundation\Instrumentation\PerformanceInstrumentationContracts.cs</InstrumentationContractSource>
+    <SimulationSourceRoot>$(MSBuildThisFileDirectory)..\..\Packages\com.thirdperson.gameplay\Runtime\Simulation</SimulationSourceRoot>
+    <PerformanceContractSource>$(MSBuildThisFileDirectory)..\..\Packages\com.thirdperson.shared\Runtime\Performance\PerformanceMetricDefinition.cs</PerformanceContractSource>
+    <InstrumentationContractSource>$(MSBuildThisFileDirectory)..\..\Packages\com.thirdperson.shared\Runtime\Instrumentation\PerformanceInstrumentationContracts.cs</InstrumentationContractSource>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\ThirdPerson.Shared.Contracts\ThirdPerson.Shared.Contracts.csproj" />
