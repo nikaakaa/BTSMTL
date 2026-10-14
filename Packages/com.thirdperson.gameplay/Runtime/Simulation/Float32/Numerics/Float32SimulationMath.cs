@@ -24,6 +24,8 @@ namespace ThirdPersonSimulation
         public Float32Scalar Max(Float32Scalar left, Float32Scalar right) => Float32Scalar.Max(left, right);
         public Float32Scalar Min(Float32Scalar left, Float32Scalar right) => Float32Scalar.Min(left, right);
         public Float32Scalar Abs(Float32Scalar value) => Float32Scalar.Abs(value);
+        public bool Equal(Float32Scalar left, Float32Scalar right) => left == right;
+        public bool LessThanOrEqual(Float32Scalar left, Float32Scalar right) => left <= right;
         public bool GreaterThan(Float32Scalar left, Float32Scalar right) => left > right;
         public bool IsZero(Float32Scalar value) => value == Float32Scalar.Zero;
 

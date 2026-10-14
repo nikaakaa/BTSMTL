@@ -16,6 +16,8 @@ namespace ThirdPersonSimulation
         TScalar Max(TScalar left, TScalar right);
         TScalar Min(TScalar left, TScalar right);
         TScalar Abs(TScalar value);
+        bool Equal(TScalar left, TScalar right);
+        bool LessThanOrEqual(TScalar left, TScalar right);
         bool GreaterThan(TScalar left, TScalar right);
         bool IsZero(TScalar value);
     }

@@ -24,6 +24,8 @@ namespace ThirdPersonSimulation.Fixed
         public FixedScalar Max(FixedScalar left, FixedScalar right) => FixedScalar.Max(left, right);
         public FixedScalar Min(FixedScalar left, FixedScalar right) => FixedScalar.Min(left, right);
         public FixedScalar Abs(FixedScalar value) => FixedScalar.Abs(value);
+        public bool Equal(FixedScalar left, FixedScalar right) => left == right;
+        public bool LessThanOrEqual(FixedScalar left, FixedScalar right) => left <= right;
         public bool GreaterThan(FixedScalar left, FixedScalar right) => left > right;
         public bool IsZero(FixedScalar value) => value == FixedScalar.Zero;
 

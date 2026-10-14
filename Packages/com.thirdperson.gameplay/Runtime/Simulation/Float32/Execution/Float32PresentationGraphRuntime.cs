@@ -244,9 +244,6 @@ namespace ThirdPersonSimulation
 #if UNITY_EDITOR
         public Float32GameplayAbilityExecutionData Data => m_Data;
 
-        public string ValuePortIdentity(OperationHandle operation, int portIndex, bool input) => input
-            ? m_InputPortNames[operation.Value][portIndex]
-            : m_OutputPortNames[operation.Value][portIndex < 0 ? 0 : portIndex];
 #endif
 
         void SetState(int slot, AbilityStateValue value)

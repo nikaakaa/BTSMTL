@@ -217,8 +217,14 @@ namespace ThirdPersonSimulation.Fixed
         public bool IsLocked(int operation, string port, ProgramValuePortDirection direction) =>
             m_Bank.IsLocked(m_Indices[(operation, port, direction)]);
 
-        public bool TryReadInput(OperationHandle operation, int portIndex, bool input, out AbilityStateValue value) =>
-            m_Bank.TryRead(CompiledIndex(operation, portIndex, input), out value);
+        public bool TryReadInput(OperationHandle operation, int portIndex, bool input, out AbilityStateValue value)
+        {
+            ProgramValuePortDirection direction = input ? ProgramValuePortDirection.Input : ProgramValuePortDirection.Output;
+            if (m_CompiledIndices.TryGetValue((operation.Value, portIndex, direction), out int index))
+                return m_Bank.TryRead(index, out value);
+            value = default;
+            return false;
+        }
 
         public bool IsLocked(OperationHandle operation, int portIndex, bool input) =>
             m_Bank.IsLocked(CompiledIndex(operation, portIndex, input));

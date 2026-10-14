@@ -20,6 +20,39 @@ namespace ThirdPersonSimulation
         where TMath : struct, IScalarMath<TScalar>
         where TValues : struct, IProgramNumericValueAccess<TValue, TScalar>
     {
+        public static bool ConditionResult(ReadOnlySpan<TValue> inputs) =>
+            inputs.Length > 0 && ToBoolean(in inputs[0]);
+
+        public static bool And(ReadOnlySpan<TValue> inputs) =>
+            inputs.Length >= 2 && ToBoolean(in inputs[0]) && ToBoolean(in inputs[1]);
+
+        public static bool Or(ReadOnlySpan<TValue> inputs) =>
+            inputs.Length > 0 && (ToBoolean(in inputs[0]) || inputs.Length > 1 && ToBoolean(in inputs[1]));
+
+        public static bool Not(ReadOnlySpan<TValue> inputs) =>
+            inputs.Length == 0 || !ToBoolean(in inputs[0]);
+
+        public static bool StopsAfterFirstInput(SimulationOperationCode code, in TValue value) =>
+            code == SimulationOperationCode.And && !ToBoolean(in value) ||
+            code == SimulationOperationCode.Or && ToBoolean(in value);
+
+        public static bool CompareScalars(int comparison, ReadOnlySpan<TValue> inputs)
+        {
+            TMath math = default;
+            TScalar left = ToScalar(in inputs[0]);
+            TScalar right = ToScalar(in inputs[1]);
+            return comparison switch
+            {
+                0 => math.Equal(left, right),
+                1 => !math.Equal(left, right),
+                2 => math.GreaterThan(right, left),
+                3 => math.LessThanOrEqual(left, right),
+                4 => math.LessThanOrEqual(right, left),
+                5 => math.GreaterThan(left, right),
+                _ => false
+            };
+        }
+
         public static TScalar ToScalar(in TValue value)
         {
             TMath math = default;

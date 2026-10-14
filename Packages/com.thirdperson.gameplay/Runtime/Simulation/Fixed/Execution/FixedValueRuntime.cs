@@ -1,3 +1,4 @@
+using FixedValueInputBuffer = ThirdPersonSimulation.ProgramValueInputBuffer<ThirdPersonSimulation.Fixed.AbilityStateValue>;
 using ProgramValues = ThirdPersonSimulation.ProgramValueCalculation<ThirdPersonSimulation.Fixed.AbilityStateValue, ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedSimulationMath, ThirdPersonSimulation.Fixed.FixedProgramNumericValueAccess>;
 using ThirdPersonSimulation;
 using System;
@@ -5,25 +6,6 @@ using System.Collections.Generic;
 
 namespace ThirdPersonSimulation.Fixed
 {
-    internal sealed class FixedValueInputBuffer
-    {
-        public FixedValueInputBuffer(int capacity)
-        {
-            Values = new AbilityStateValue[capacity];
-        }
-
-        public AbilityStateValue[] Values { get; }
-        public int Count { get; private set; }
-
-        public void Add(in AbilityStateValue value) => Values[Count++] = value;
-
-        public void Clear()
-        {
-            Array.Clear(Values, 0, Count);
-            Count = 0;
-        }
-    }
-
     internal readonly struct FixedValueInputLease : IDisposable
     {
         readonly FixedValueRuntime m_Owner;
@@ -41,7 +23,8 @@ namespace ThirdPersonSimulation.Fixed
         }
 
         public int Count => m_Buffer.Count;
-        public ref readonly AbilityStateValue this[int index] => ref m_Buffer.Values[index];
+        internal ReadOnlySpan<AbilityStateValue> Values => m_Buffer.Values;
+        public ref readonly AbilityStateValue this[int index] => ref m_Buffer[index];
 
         public AbilityStateValue FindByKind(ProgramStateValueKind kind)
         {
@@ -252,7 +235,7 @@ namespace ThirdPersonSimulation.Fixed
 				switch (operation.Code)
 				{
 					case SimulationOperationCode.ConditionResult:
-						result = AbilityStateValue.FromBoolean(inputs.Count > 0 && ProgramValues.ToBoolean(inputs[0]));
+						result = AbilityStateValue.FromBoolean(ProgramValues.ConditionResult(inputs.Values));
 						break;
 					case SimulationOperationCode.InputBoolean:
 						result = AbilityStateValue.FromBoolean(m_Input.ReadValue(operation.Text0, ProgramInputValueKind.Boolean).Boolean);
@@ -382,16 +365,16 @@ namespace ThirdPersonSimulation.Fixed
 						result = ReadCharacterState(operation.Text0);
 						break;
 					case SimulationOperationCode.Compare:
-						result = AbilityStateValue.FromBoolean(Compare(operation.Integer0, inputs));
+						result = AbilityStateValue.FromBoolean(inputs.Count >= 2 && ProgramValues.CompareScalars(operation.Integer0, inputs.Values));
 						break;
 					case SimulationOperationCode.And:
-						result = AbilityStateValue.FromBoolean(inputs.Count >= 2 && ProgramValues.ToBoolean(inputs[0]) && ProgramValues.ToBoolean(inputs[1]));
+						result = AbilityStateValue.FromBoolean(ProgramValues.And(inputs.Values));
 						break;
 					case SimulationOperationCode.Or:
-						result = AbilityStateValue.FromBoolean(inputs.Count > 0 && (ProgramValues.ToBoolean(inputs[0]) || inputs.Count > 1 && ProgramValues.ToBoolean(inputs[1])));
+						result = AbilityStateValue.FromBoolean(ProgramValues.Or(inputs.Values));
 						break;
 					case SimulationOperationCode.Not:
-						result = AbilityStateValue.FromBoolean(inputs.Count == 0 || !ProgramValues.ToBoolean(inputs[0]));
+						result = AbilityStateValue.FromBoolean(ProgramValues.Not(inputs.Values));
 						break;
 					case SimulationOperationCode.Constant:
 						result = operation.ConstantReferences.Count > 0
@@ -503,8 +486,7 @@ namespace ThirdPersonSimulation.Fixed
                         m_Frame.Trace.AddValueEdge(operation, port);
                     }
                     if (i == 0 &&
-                        (operation.Code == SimulationOperationCode.And && !ProgramValues.ToBoolean(value) ||
-                         operation.Code == SimulationOperationCode.Or && ProgramValues.ToBoolean(value)))
+                        ProgramValues.StopsAfterFirstInput(operation.Code, in value))
                         break;
                 }
                 return new FixedValueInputLease(this, buffer, depth);
@@ -627,24 +609,6 @@ namespace ThirdPersonSimulation.Fixed
                 CameraProgramOperationSchema.BasisPitchPortId => AbilityStateValue.FromScalar(
                     m_Input.ReadValue(CameraProgramOperationSchema.BasisPitchInputId, ProgramInputValueKind.Scalar).Scalar),
                 _ => throw new InvalidOperationException($"Camera basis contains unknown output port '{outputPort}'.")
-            };
-        }
-
-        static bool Compare(int comparison, FixedValueInputLease inputs)
-        {
-            if (inputs.Count < 2)
-                return false;
-            FixedScalar left = ProgramValues.ToScalar(inputs[0]);
-            FixedScalar right = ProgramValues.ToScalar(inputs[1]);
-            return comparison switch
-            {
-                0 => left == right,
-                1 => left != right,
-                2 => left < right,
-                3 => left <= right,
-                4 => left >= right,
-                5 => left > right,
-                _ => false
             };
         }
 

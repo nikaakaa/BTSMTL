@@ -1,19 +1,10 @@
+using Float32ValueInputBuffer = ThirdPersonSimulation.ProgramValueInputBuffer<ThirdPersonSimulation.AbilityStateValue>;
 using ProgramValues = ThirdPersonSimulation.ProgramValueCalculation<ThirdPersonSimulation.AbilityStateValue, ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32SimulationMath, ThirdPersonSimulation.Float32ProgramNumericValueAccess>;
 using System;
 using System.Collections.Generic;
 
 namespace ThirdPersonSimulation
 {
-    internal sealed class Float32ValueInputBuffer
-    {
-        public List<AbilityStateValue> Values { get; } = new List<AbilityStateValue>();
-
-        public void Clear()
-        {
-            Values.Clear();
-        }
-    }
-
     public readonly struct Float32ValueInputLease : IDisposable
     {
         readonly Float32GraphValueRuntime m_Owner;
@@ -30,12 +21,13 @@ namespace ThirdPersonSimulation
             m_Depth = depth;
         }
 
-        public int Count => m_Buffer.Values.Count;
-        public AbilityStateValue this[int index] => m_Buffer.Values[index];
+        public int Count => m_Buffer.Count;
+        internal ReadOnlySpan<AbilityStateValue> Values => m_Buffer.Values;
+        public AbilityStateValue this[int index] => m_Buffer[index];
 
         public AbilityStateValue FindByKind(ProgramStateValueKind kind)
         {
-            for (int i = 0; i < m_Buffer.Values.Count; i++)
+            for (int i = 0; i < m_Buffer.Count; i++)
             {
                 if (m_Buffer.Values[i].Kind == kind)
                     return m_Buffer.Values[i];
@@ -67,10 +59,7 @@ namespace ThirdPersonSimulation
             for (int index = 0; index < data.Operations.Count; index++)
                 inputCapacity = Math.Max(inputCapacity, data.ValueLayout.ValueInputs(data.Operations[index].Handle).Length);
             while (InputBuffers.Count < depthCapacity)
-                InputBuffers.Add(new Float32ValueInputBuffer());
-            for (int index = 0; index < InputBuffers.Count; index++)
-                if (InputBuffers[index].Values.Capacity < inputCapacity)
-                    InputBuffers[index].Values.Capacity = inputCapacity;
+                InputBuffers.Add(new Float32ValueInputBuffer(inputCapacity));
         }
     }
 
@@ -154,7 +143,7 @@ namespace ThirdPersonSimulation
 				switch (operation.Code)
                 {
                     case SimulationOperationCode.ConditionResult:
-						result = AbilityStateValue.FromBoolean(inputs.Count > 0 && ProgramValues.ToBoolean(inputs[0]));
+						result = AbilityStateValue.FromBoolean(ProgramValues.ConditionResult(inputs.Values));
 						break;
                     case SimulationOperationCode.Calculate:
                         result = Float32GraphCalculations.Evaluate((GraphCalculationKind)operation.Integer0, inputs);
@@ -169,13 +158,13 @@ namespace ThirdPersonSimulation
 						result = AbilityStateValue.FromBoolean(Compare(operation.Integer0, inputs));
 						break;
                     case SimulationOperationCode.And:
-						result = AbilityStateValue.FromBoolean(inputs.Count >= 2 && ProgramValues.ToBoolean(inputs[0]) && ProgramValues.ToBoolean(inputs[1]));
+						result = AbilityStateValue.FromBoolean(ProgramValues.And(inputs.Values));
 						break;
                     case SimulationOperationCode.Or:
-						result = AbilityStateValue.FromBoolean(inputs.Count > 0 && (ProgramValues.ToBoolean(inputs[0]) || inputs.Count > 1 && ProgramValues.ToBoolean(inputs[1])));
+						result = AbilityStateValue.FromBoolean(ProgramValues.Or(inputs.Values));
 						break;
                     case SimulationOperationCode.Not:
-						result = AbilityStateValue.FromBoolean(inputs.Count == 0 || !ProgramValues.ToBoolean(inputs[0]));
+						result = AbilityStateValue.FromBoolean(ProgramValues.Not(inputs.Values));
 						break;
                     case SimulationOperationCode.Constant:
 						result = operation.ConstantReferences.Count > 0
@@ -213,13 +202,12 @@ namespace ThirdPersonSimulation
                         i = ProgramValues.ToBoolean(buffer.Values[0]) ? 1 : 2;
                     ref readonly CompiledValueInputBinding input = ref inputs[i];
                     AbilityStateValue value = ReadInputValue(ref context, operation, in input);
-                    buffer.Values.Add(value);
+                    buffer.Add(in value);
                     context.TraceInput(operation, input, value);
                     if (operation.Code == SimulationOperationCode.SelectValue && i > 0)
                         break;
                     if (i == 0 &&
-                        (operation.Code == SimulationOperationCode.And && !ProgramValues.ToBoolean(value) ||
-                         operation.Code == SimulationOperationCode.Or && ProgramValues.ToBoolean(value)))
+                        ProgramValues.StopsAfterFirstInput(operation.Code, in value))
                         break;
                 }
                 return new Float32ValueInputLease(this, buffer, depth);
@@ -269,18 +257,7 @@ namespace ThirdPersonSimulation
                 return comparison switch { 0 => a == b, 1 => a != b, 2 => a < b, 3 => a <= b, 4 => a >= b, 5 => a > b,
                     _ => throw new InvalidOperationException($"比较操作 '{comparison}' 不受支持。") };
             }
-            Float32Scalar left = ProgramValues.ToScalar(inputs[0]);
-            Float32Scalar right = ProgramValues.ToScalar(inputs[1]);
-            return comparison switch
-            {
-                0 => left == right,
-                1 => left != right,
-                2 => left < right,
-                3 => left <= right,
-                4 => left >= right,
-                5 => left > right,
-                _ => false
-            };
+            return ProgramValues.CompareScalars(comparison, inputs.Values);
         }
 
         public static AbilityStateValue ConvertValue(AbilityStateValue value, ProgramStateValueKind expected)
