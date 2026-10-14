@@ -77,7 +77,9 @@ namespace ThirdPerson.MemoryPackAdapters
                         method.OriginalDefinition.TypeParameters[i].Name != "TStorage")
                         Visit(method.TypeArguments[i]);
             }
-            foreach (INamedTypeSymbol logical in LogicalStorageTypes(context.Compilation)) Visit(logical);
+            INamedTypeSymbol contentContext = context.Compilation.GetTypeByMetadataName("ThirdPersonSimulation.Serialization.MemoryPackContentContext");
+            if (contentContext != null && SymbolEqualityComparer.Default.Equals(contentContext.ContainingAssembly, context.Compilation.Assembly))
+                foreach (INamedTypeSymbol logical in LogicalStorageTypes(context.Compilation)) Visit(logical);
             if (erasedSnapshots)
                 foreach (NativeSnapshotPlan candidate in snapshotCandidates.Values.Where(candidate =>
                     CanEncodeSnapshot(candidate, snapshotCandidates, externalLeaves, new HashSet<string>())))
