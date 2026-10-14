@@ -14,6 +14,9 @@
   <ItemGroup>
     <ProjectReference Include="..\ThirdPerson.Shared.Contracts\ThirdPerson.Shared.Contracts.csproj" />
     <ProjectReference Include="..\ThirdPersonGameplay.Configuration\ThirdPersonGameplay.Configuration.csproj" />
+    <Reference Include="Quantum.Deterministic">
+      <HintPath>$(MSBuildThisFileDirectory)..\..\..\3C\3cDemo\Client\3C_Client\Assets\Photon\Quantum\Assemblies\Quantum.Deterministic.dll</HintPath>
+    </Reference>
     <Compile Include="$(SimulationSourceRoot)\**\*.cs" Exclude="$(SimulationSourceRoot)\Float32\**\*.cs;$(SimulationSourceRoot)\FPGameplay\**\*.cs" LinkBase="Source" />
     <Compile Include="$(PerformanceContractSource)" Link="Source\Performance\PerformanceMetricDefinition.cs" />
     <Compile Include="$(InstrumentationContractSource)" Link="Source\Performance\PerformanceInstrumentationContracts.cs" />
