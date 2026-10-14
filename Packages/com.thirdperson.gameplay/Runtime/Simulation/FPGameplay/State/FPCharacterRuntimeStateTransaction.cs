@@ -121,6 +121,7 @@ namespace ThirdPersonSimulation.FPGameplay
             for (int i = 0; i < baseState.Abilities.Count; i++)
             {
                 FPAbilityRuntimeState state = baseState.Abilities[i];
+                state.Retain();
                 m_AbilityStates.Add(state.AbilityIdentity.AbilityId, state);
             }
             m_ActionState = actionState.Restart(
@@ -303,8 +304,7 @@ namespace ThirdPersonSimulation.FPGameplay
             }
             if (!ReferenceEquals(m_CharacterBlackboards.Set, m_BaseState.CharacterBlackboards.Set))
                 m_CharacterBlackboards.Release();
-            m_BaseState.ReleaseStateData();
-            m_BaseState.ReleaseStateStorage();
+            m_BaseState.ReleaseStatePages();
             m_Disposed = true;
         }
 

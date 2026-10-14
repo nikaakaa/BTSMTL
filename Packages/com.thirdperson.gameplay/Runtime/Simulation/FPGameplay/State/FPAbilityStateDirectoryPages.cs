@@ -40,7 +40,8 @@ namespace ThirdPersonSimulation.FPGameplay
         }
     }
 
-    internal sealed class FPAbilityStateDirectoryPage
+    [ValueOperations(ExplicitResources = true, ExplicitEquality = true)]
+    internal sealed partial class FPAbilityStateDirectoryPage
     {
         internal FPAbilityStateDirectoryPage(FPAbilityStateDirectoryBank bank, int abilityCount)
         {
@@ -49,6 +50,7 @@ namespace ThirdPersonSimulation.FPGameplay
         }
 
         internal readonly FPAbilityStateDirectoryBank Bank;
+        [ValueResource(Elements = true)]
         internal readonly FPAbilityRuntimeState[] Values;
         internal ulong Generation;
         internal int Retainers;
@@ -76,10 +78,32 @@ namespace ThirdPersonSimulation.FPGameplay
         internal void Retain()
         {
             RequireReadable();
-            Page.Retainers++;
+            if (Page.Retainers++ == 0)
+                Page.Retain();
         }
 
-        internal void Release() => Page.Retainers--;
+        internal void Release()
+        {
+            if (--Page.Retainers == 0)
+                Page.Release();
+        }
+
+        internal FPAbilityStateDirectoryReference BeginPreparedRead()
+        {
+            RequireReadable();
+            FPAbilityStateDirectoryReference value = Page.Bank.Begin();
+            Array.Copy(Page.Values, value.Page.Values, Page.Values.Length);
+            value.Retain();
+            return value;
+        }
+
+        internal void RestorePreparedAbility(int index, in FPAbilityRuntimeState value)
+        {
+            RequireReadable();
+            value.Retain();
+            Page.Values[index].Release();
+            Page.Values[index] = value;
+        }
 
         void RequireReadable()
         {

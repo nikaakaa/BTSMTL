@@ -32,6 +32,9 @@ namespace ThirdPerson.ValueGeneration.Generator
                 return;
             }
             bool resources = !operations.NamedArguments.Any(argument => argument.Key == "Resources" && argument.Value.Value is false);
+            Member[] resourceMembers = operations.NamedArguments.Any(argument =>
+                argument.Key == "ExplicitResources" && argument.Value.Value is true)
+                ? members.Where(member => HasAttribute(member.Symbol, ValueResourceAttribute)).ToArray() : members;
             var code = new StringBuilder();
             code.Append("namespace ").Append(type.ContainingNamespace.ToDisplayString()).AppendLine(" {");
             var owners = new Stack<INamedTypeSymbol>();
@@ -66,9 +69,9 @@ namespace ThirdPerson.ValueGeneration.Generator
                 if (resources)
                 {
                     if (copy)
-                        foreach (Member member in members)
+                        foreach (Member member in resourceMembers)
                             HoldValueMember(code, "Retain", member, source);
-                    foreach (Member member in members)
+                    foreach (Member member in resourceMembers)
                         HoldValueMember(code, "Release", member, "this");
                 }
                 foreach (Member member in members)

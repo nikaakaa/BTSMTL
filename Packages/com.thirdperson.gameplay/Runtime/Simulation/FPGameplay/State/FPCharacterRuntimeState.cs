@@ -64,7 +64,6 @@ namespace ThirdPersonSimulation.FPGameplay
         internal FPCharacterRuntimeStatePageBank StatePages => m_Page.Bank;
         internal bool SharesStateWith(FPCharacterRuntimeState other) =>
             ReferenceEquals(m_Page, other.m_Page) && m_Generation == other.m_Generation;
-        internal void ReleaseStateStorage() => m_Page.Release();
 
         static readonly Comparison<AbilityTimelineRuntimeSnapshot> s_TimelineSnapshotComparison =
             (left, right) => left.RuntimeHandle.CompareTo(right.RuntimeHandle);
@@ -90,24 +89,21 @@ namespace ThirdPersonSimulation.FPGameplay
         {
             m_Page.Retain(m_Generation);
             Data.Retain();
-            FPAbilityRuntimeState[] values = Data.Abilities.Page.Values;
-            for (int index = 0; index < values.Length; index++)
-            {
-                values[index].Retain();
-            }
         }
-
-        internal void ReleaseStateData() => Data.Release();
 
         internal void ReleaseStatePages()
         {
-            FPAbilityRuntimeState[] values = Data.Abilities.Page.Values;
-            for (int index = 0; index < values.Length; index++)
-            {
-                values[index].Release();
-            }
             Data.Release();
             m_Page.Release();
+        }
+
+        internal FPCharacterRuntimeStatePage BeginPreparedRead()
+        {
+            FPCharacterRuntimeStatePage page = m_Page.Bank.Begin();
+            page.Data = Data;
+            page.Data.ControlState = page.ControlStorage.CopyFrom(Data.ControlState);
+            new FPCharacterRuntimeState(page).RetainStatePages();
+            return page;
         }
         internal FPActionStatePageReference ActionStatePage => Data.ActionStatePage;
         internal ReadOnlySpan<SimulationActionActivationRequestState> ActionActivationRequests => ActionStatePage.Requests;
@@ -336,7 +332,7 @@ namespace ThirdPersonSimulation.FPGameplay
     }
 
     [ValueStorage]
-    [ValueOperations(ExplicitResources = true)]
+    [ValueOperations(ExplicitResources = true, CopyMethod = nameof(CopyFrom))]
     internal partial struct FPCharacterRuntimeStateData
     {
         [ValueResource]
@@ -357,6 +353,8 @@ namespace ThirdPersonSimulation.FPGameplay
         internal FPTimelineSnapshotPageReference TimelineSnapshots;
         [ValueResource]
         internal MotionWarpStatePageReference<MotionWarpState> MotionWarpStates;
+
+        internal partial void CopyFrom(in FPCharacterRuntimeStateData source);
     }
 
     internal sealed class FPCharacterRuntimeStatePage
@@ -371,6 +369,17 @@ namespace ThirdPersonSimulation.FPGameplay
         internal FPCharacterRuntimeStateData Data;
         internal uint Generation;
         internal int Retainers;
+
+        internal FPCharacterRuntimeState CompleteRead(in FPCharacterRuntimeStateData data)
+        {
+            Data.CopyFrom(data);
+            Data.ControlState = ControlStorage.CopyFrom(data.ControlState);
+            var value = new FPCharacterRuntimeState(this);
+            value.RetainStatePages();
+            return value;
+        }
+
+        internal void ReleaseRead() => new FPCharacterRuntimeState(this).ReleaseStatePages();
 
         internal void RequireGeneration(uint generation)
         {
