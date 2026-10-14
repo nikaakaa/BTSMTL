@@ -46,6 +46,11 @@ namespace ThirdPersonSimulation
         {
             if (value.IsNull)
                 return null;
+            return ResolvePublished(value.Span);
+        }
+
+        public string ResolvePublished(ReadOnlySpan<char> value)
+        {
             if (value.IsEmpty)
                 return string.Empty;
             int low = 0;
@@ -53,7 +58,7 @@ namespace ThirdPersonSimulation
             while (low <= high)
             {
                 int middle = low + ((high - low) >> 1);
-                int comparison = m_Entries[middle].Value.AsSpan().SequenceCompareTo(value.Span);
+                int comparison = m_Entries[middle].Value.AsSpan().SequenceCompareTo(value);
                 if (comparison < 0)
                     low = middle + 1;
                 else if (comparison > 0)
