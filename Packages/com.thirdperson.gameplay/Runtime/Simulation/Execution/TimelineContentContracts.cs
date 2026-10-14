@@ -1,5 +1,5 @@
 using System;
-using ThirdPersonSimulation.Fixed;
+using Photon.Deterministic;
 
 namespace BTSMTL.Timeline
 {

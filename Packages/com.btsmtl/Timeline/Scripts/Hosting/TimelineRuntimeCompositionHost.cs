@@ -1,6 +1,6 @@
 using System;
 using System.Buffers;
-using ThirdPersonSimulation.Fixed;
+using Photon.Deterministic;
 using ThirdPersonSimulation;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -277,8 +277,8 @@ namespace BTSMTL.Timeline.Runtime
         public TimelineRuntimePlaybackHandle Handle { get; }
         public ulong Generation { get; }
         public ulong LogicTick { get; }
-        public FixedScalar PreviousTime { get; }
-        public FixedScalar Time { get; }
+        public FP PreviousTime { get; }
+        public FP Time { get; }
         public int PreviousCycle { get; }
         public int Cycle { get; }
         public string ContentIdentity { get; }

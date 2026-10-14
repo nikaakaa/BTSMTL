@@ -1,6 +1,7 @@
+using ThirdPersonSimulation.QuantumNumerics;
 #if UNITY_EDITOR
 using System;
-using ThirdPersonSimulation.Fixed;
+using Photon.Deterministic;
 using System.Collections.Generic;
 using System.Linq;
 using ThirdPersonCamera;
@@ -106,16 +107,16 @@ namespace BTSMTL.Timeline
             return new TimelineAuthoringReferenceValue(null);
         }
 
-        public static FixedScalar DefaultEndTime(
+        public static FP DefaultEndTime(
             Clip clip,
-            FixedScalar startTime,
+            FP startTime,
             UnityEngine.Object referenceObject)
         {
             if (referenceObject is UnityEngine.AnimationClip animation)
-                return startTime + FixedScalar.FromDouble(animation.length);
+                return startTime + QuantumScalarBoundary.ConvertExternal(animation.length, nameof(TimelineAuthoringReferenceValue));
             if (referenceObject is ITimelineCameraSourceAsset camera)
-                return startTime + FixedScalar.FromDouble(camera.SourceDuration);
-            return startTime + (clip is SignalClip ? FixedScalar.FromRatio(1, TimelineUtility.FrameRate) : FixedScalar.FromDecimal(0.05m));
+                return startTime + QuantumScalarBoundary.ConvertExternal(camera.SourceDuration, nameof(TimelineAuthoringReferenceValue));
+            return startTime + (clip is SignalClip ? TimelineTimeGrid.Position(1, TimelineUtility.FrameRate) : FP._0_05);
         }
 
         public static bool NeedsSegmentOverride(
@@ -128,9 +129,9 @@ namespace BTSMTL.Timeline
                 return false;
             }
             return clip.EndTime != DefaultEndTime(clip, clip.StartTime, referenceObject) ||
-                   clip.SelfEaseInTime.Raw != 0 ||
-                   clip.SelfEaseOutTime.Raw != 0 ||
-                   clip.ClipInTime.Raw != 0;
+                   clip.SelfEaseInTime.RawValue != 0 ||
+                   clip.SelfEaseOutTime.RawValue != 0 ||
+                   clip.ClipInTime.RawValue != 0;
         }
 
         public static void Apply(

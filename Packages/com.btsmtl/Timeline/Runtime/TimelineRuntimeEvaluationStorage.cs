@@ -1,5 +1,4 @@
 using System;
-using ThirdPersonSimulation.Fixed;
 using System.Linq;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;

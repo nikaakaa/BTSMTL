@@ -1,6 +1,6 @@
 using System;
 using System.Runtime.CompilerServices;
-using ThirdPersonSimulation.Fixed;
+using Photon.Deterministic;
 using System.Linq;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -33,11 +33,11 @@ namespace BTSMTL.Timeline.Runtime
 
     public readonly struct TimelineRuntimeAdvanceRequest
     {
-        public TimelineRuntimeAdvanceRequest(ulong logicTick, FixedScalar previousTime, FixedScalar targetTime, int timeCarry, AbilityTimelinePlaybackControl control)
+        public TimelineRuntimeAdvanceRequest(ulong logicTick, FP previousTime, FP targetTime, int timeCarry, AbilityTimelinePlaybackControl control)
         {
             if (logicTick == 0)
                 throw new ArgumentOutOfRangeException(nameof(logicTick));
-            if (previousTime < FixedScalar.Zero || targetTime < previousTime)
+            if (previousTime < FP._0 || targetTime < previousTime)
                 throw new ArgumentOutOfRangeException(nameof(targetTime));
             LogicTick = logicTick;
             PreviousTime = previousTime;
@@ -47,8 +47,8 @@ namespace BTSMTL.Timeline.Runtime
         }
 
         public ulong LogicTick { get; }
-        public FixedScalar PreviousTime { get; }
-        public FixedScalar TargetTime { get; }
+        public FP PreviousTime { get; }
+        public FP TargetTime { get; }
         public int TimeCarry { get; }
         public AbilityTimelinePlaybackControl Control { get; }
     }
@@ -64,7 +64,7 @@ namespace BTSMTL.Timeline.Runtime
         public TimelineRuntimeClipBoundary(
             string authoringId,
             string trackAuthoringId,
-            FixedScalar time,
+            FP time,
             int cycle,
             TimelineRuntimeClipBoundaryKind kind)
         {
@@ -74,7 +74,7 @@ namespace BTSMTL.Timeline.Runtime
             TrackAuthoringId = string.IsNullOrWhiteSpace(trackAuthoringId)
                 ? throw new ArgumentException("Timeline Track identity is required.", nameof(trackAuthoringId))
                 : trackAuthoringId.Trim();
-            if (time < FixedScalar.Zero)
+            if (time < FP._0)
                 throw new ArgumentOutOfRangeException(nameof(time));
             if (cycle < 0)
                 throw new ArgumentOutOfRangeException(nameof(cycle));
@@ -87,7 +87,7 @@ namespace BTSMTL.Timeline.Runtime
 
         public string AuthoringId { get; }
         public string TrackAuthoringId { get; }
-        public FixedScalar Time { get; }
+        public FP Time { get; }
         public int Cycle { get; }
         public TimelineRuntimeClipBoundaryKind Kind { get; }
     }
@@ -99,8 +99,8 @@ namespace BTSMTL.Timeline.Runtime
             ulong advanceSequence,
             ulong generation,
             TimelineRuntimeAdvanceRequest request,
-            FixedScalar previousTime,
-            FixedScalar time,
+            FP previousTime,
+            FP time,
             int previousCycle,
             int cycle,
             int timeCarry,
@@ -134,12 +134,12 @@ namespace BTSMTL.Timeline.Runtime
         public ulong Generation { get; }
         public string ContentIdentity => Owner.Content.Identity;
         public CanonicalTextValue ContentRevision => Owner.Content.Revision;
-        public FixedScalar Duration => Owner.Content.Duration;
+        public FP Duration => Owner.Content.Duration;
         public TimelinePlaybackMode PlaybackMode => Owner.PlaybackMode;
         public ulong LogicTick => Request.LogicTick;
         public AbilityTimelinePlaybackControl Control => Request.Control;
-        public FixedScalar PreviousTime { get; }
-        public FixedScalar Time { get; }
+        public FP PreviousTime { get; }
+        public FP Time { get; }
         public int PreviousCycle { get; }
         public int Cycle { get; }
         public string SectionId { get; }

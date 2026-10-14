@@ -15,15 +15,18 @@
         "NodeCanvas",
         "ParadoxNotion",
         "FlowCanvas",
-        "ThirdPerson.Shared.Contracts"
+        "ThirdPerson.Shared.Contracts",
+        "ThirdPersonSimulation.QuantumNumerics"
     ],
     "includePlatforms": [
         "Editor"
     ],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
-    "overrideReferences": false,
-    "precompiledReferences": [],
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "Quantum.Deterministic.dll"
+    ],
     "autoReferenced": true,
     "defineConstraints": [],
     "versionDefines": [],

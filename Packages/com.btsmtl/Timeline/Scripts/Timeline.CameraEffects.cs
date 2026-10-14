@@ -1,5 +1,6 @@
+using ThirdPersonSimulation.QuantumNumerics;
 using System;
-using ThirdPersonSimulation.Fixed;
+using Photon.Deterministic;
 using System.Collections.Generic;
 using BTSMTL.Diagnostics;
 using ThirdPersonCamera;
@@ -15,7 +16,7 @@ namespace BTSMTL.Timeline
 #if UNITY_EDITOR
         public override Type ClipType => typeof(CameraEffectClip);
 
-        public override Clip AddClip(UnityEngine.Object referenceObject, FixedScalar time)
+        public override Clip AddClip(UnityEngine.Object referenceObject, FP time)
         {
             if (referenceObject is not CameraEffectAsset effect)
                 throw new ArgumentException("Camera effect clip requires a CameraEffectAsset.", nameof(referenceObject));
@@ -26,7 +27,7 @@ namespace BTSMTL.Timeline
             if (effect is ITimelineCameraSourceAsset source)
             {
                 clip.ConfigureSourceRange(0f, source.SourceDuration);
-                clip.ConfigureTimeRange(time, time + FixedScalar.FromDouble(source.SourceDuration));
+                clip.ConfigureTimeRange(time, time + QuantumScalarBoundary.ConvertExternal(source.SourceDuration, nameof(CameraEffectTrack)));
             }
             clip.RegenerateAuthoringIdentity();
             m_Clips.Add(clip);
@@ -61,7 +62,7 @@ namespace BTSMTL.Timeline
         {
             base.Init(track);
             if (Effect is ITimelineCameraSourceAsset source &&
-                (DurationTime <= FixedScalar.Zero || !float.IsFinite(m_SourceStartTime) || !float.IsFinite(m_SourceEndTime) ||
+                (DurationTime <= FP._0 || !float.IsFinite(m_SourceStartTime) || !float.IsFinite(m_SourceEndTime) ||
                  m_SourceStartTime < 0f || m_SourceEndTime <= m_SourceStartTime || m_SourceEndTime > source.SourceDuration))
                 throw new InvalidOperationException($"镜头片段 '{AuthoringId}' 的源使用范围无效。");
         }
@@ -101,7 +102,7 @@ namespace BTSMTL.Timeline
 
 #if UNITY_EDITOR
         public override ClipCapabilities Capabilities => ClipCapabilities.Resizable | ClipCapabilities.Mixable;
-        public CameraEffectClip(Track track, FixedScalar time) : base(track, time) { }
+        public CameraEffectClip(Track track, FP time) : base(track, time) { }
 #endif
     }
 }

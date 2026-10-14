@@ -1,14 +1,14 @@
 using System;
 using ThirdPersonSimulation;
-using ThirdPersonSimulation.Fixed;
+using Photon.Deterministic;
 
 namespace BTSMTL.Timeline
 {
     public readonly struct TimelineClipTimeRange : IEquatable<TimelineClipTimeRange>
     {
-        public TimelineClipTimeRange(FixedScalar start, FixedScalar end, FixedScalar easeIn,
-            FixedScalar easeOut, FixedScalar clipIn, float sourceStart, float sourceEnd,
-            FixedScalar otherEaseIn = default, FixedScalar otherEaseOut = default)
+        public TimelineClipTimeRange(FP start, FP end, FP easeIn,
+            FP easeOut, FP clipIn, float sourceStart, float sourceEnd,
+            FP otherEaseIn = default, FP otherEaseOut = default)
         {
             Start = start;
             End = end;
@@ -21,17 +21,17 @@ namespace BTSMTL.Timeline
             OtherEaseOut = otherEaseOut;
         }
 
-        public FixedScalar Start { get; }
-        public FixedScalar End { get; }
-        public FixedScalar EaseIn { get; }
-        public FixedScalar EaseOut { get; }
-        public FixedScalar ClipIn { get; }
+        public FP Start { get; }
+        public FP End { get; }
+        public FP EaseIn { get; }
+        public FP EaseOut { get; }
+        public FP ClipIn { get; }
         public float SourceStart { get; }
         public float SourceEnd { get; }
-        public FixedScalar OtherEaseIn { get; }
-        public FixedScalar OtherEaseOut { get; }
-        public FixedScalar EffectiveEaseIn => OtherEaseIn == FixedScalar.Zero ? EaseIn : OtherEaseIn;
-        public FixedScalar EffectiveEaseOut => OtherEaseOut == FixedScalar.Zero ? EaseOut : OtherEaseOut;
+        public FP OtherEaseIn { get; }
+        public FP OtherEaseOut { get; }
+        public FP EffectiveEaseIn => OtherEaseIn == FP._0 ? EaseIn : OtherEaseIn;
+        public FP EffectiveEaseOut => OtherEaseOut == FP._0 ? EaseOut : OtherEaseOut;
 
         public bool Equals(TimelineClipTimeRange other) => Start == other.Start && End == other.End &&
             EaseIn == other.EaseIn && EaseOut == other.EaseOut && ClipIn == other.ClipIn &&

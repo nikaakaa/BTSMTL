@@ -1,5 +1,5 @@
 using System;
-using ThirdPersonSimulation.Fixed;
+using Photon.Deterministic;
 using System.Linq;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -25,7 +25,7 @@ namespace BTSMTL.Timeline.Runtime
         ulong m_StopSequence;
         TimelinePlaybackStopContext m_PendingStopContext;
         bool m_StopPending;
-        FixedScalar m_CursorTime;
+        FP m_CursorTime;
         int m_Cycle;
         string m_SectionId = string.Empty;
         bool m_InitialBoundaryPending;
@@ -113,14 +113,14 @@ namespace BTSMTL.Timeline.Runtime
         internal TimelineRuntimeMotionSampling MotionSampling { get; private set; }
         internal TimelineRuntimeContentIndex Index => Preparation.Index;
 
-        public TimelineRuntimeMotionPosition SampleMotionSource(string clipId, FixedScalar time) => MotionSampling.SampleSource(clipId, time);
+        public TimelineRuntimeMotionPosition SampleMotionSource(string clipId, FP time) => MotionSampling.SampleSource(clipId, time);
 
-        public AbilityTimelineMotionSourcePose SampleMotionPrefix(string clipId, int cycle, FixedScalar time)
+        public AbilityTimelineMotionSourcePose SampleMotionPrefix(string clipId, int cycle, FP time)
         {
             return AbilityTimelineMotionSourcePose.AccumulatePrefix(
-                Pose(m_CursorTime), Pose(time), Pose(FixedScalar.Zero), Pose(Content.Duration), cycle - m_Cycle);
+                Pose(m_CursorTime), Pose(time), Pose(FP._0), Pose(Content.Duration), cycle - m_Cycle);
 
-            AbilityTimelineMotionSourcePose Pose(FixedScalar sourceTime)
+            AbilityTimelineMotionSourcePose Pose(FP sourceTime)
             {
                 TimelineRuntimeMotionPosition pose = MotionSampling.SampleSource(clipId, sourceTime);
                 return new AbilityTimelineMotionSourcePose(pose.X, pose.Y, pose.Z, pose.Yaw);
@@ -133,7 +133,7 @@ namespace BTSMTL.Timeline.Runtime
         public TimelineRuntimePreparedDependencies PreparedDependencies { get; private set; }
         public TimelinePreparedBindings PreparedBindings { get; private set; }
         public TimelineRuntimePlaybackState State { get; private set; }
-        public FixedScalar CursorTime => m_CursorTime;
+        public FP CursorTime => m_CursorTime;
         public int TickRate => m_TickRate;
         internal IReadOnlyList<AbilityTimelineTreeClipExit> ExitedTreeDecisionClips => m_ExitedTreeDecisionClips;
         internal int TimeCarry => m_TimeCarry;
@@ -247,19 +247,19 @@ namespace BTSMTL.Timeline.Runtime
         {
             if (tickCount <= 0)
                 throw new ArgumentOutOfRangeException(nameof(tickCount));
-            decimal numerator = (decimal)CursorTime.Raw * TickRate + TimeCarry +
-                (decimal)tickCount * (control.IsPaused ? 0L : control.Rate.Raw);
-            long parityOffset = (Cycle & 1) * (Content.Duration.Raw & 1);
+            long numerator = checked(TimeCarry + (long)tickCount * (control.IsPaused ? 0L : control.Rate.RawValue));
+            long parityOffset = (Cycle & 1) * (Content.Duration.RawValue & 1);
             int remainder = checked((int)(numerator % TickRate));
-            long targetRaw = checked((long)((numerator - remainder) / TickRate));
-            long doubledRemainder = (long)remainder * 2;
+            long targetRaw = checked(CursorTime.RawValue + (numerator - remainder) / TickRate);
+            long doubledRemainder = Math.Abs((long)remainder) * 2;
             if (doubledRemainder > TickRate ||
                 doubledRemainder == TickRate && ((targetRaw ^ parityOffset) & 1) != 0)
             {
-                targetRaw = checked(targetRaw + 1);
-                remainder -= TickRate;
+                int direction = Math.Sign(remainder);
+                targetRaw = checked(targetRaw + direction);
+                remainder -= direction * TickRate;
             }
-            return new TimelineRuntimeAdvanceRequest(logicTick, CursorTime, FixedScalar.FromRaw(targetRaw), remainder, control);
+            return new TimelineRuntimeAdvanceRequest(logicTick, CursorTime, FP.FromRaw(targetRaw), remainder, control);
         }
 
         public TimelineRuntimeAdvanceResult Advance(TimelineRuntimeAdvanceRequest request)
@@ -288,27 +288,27 @@ namespace BTSMTL.Timeline.Runtime
                     m_CandidateEvaluation.ActiveClipIds.View, m_CandidateEvaluation.Boundaries.View, heldEvaluation, false);
                 return m_PendingAdvance;
             }
-            FixedScalar duration = Content.Duration;
+            FP duration = Content.Duration;
             bool loop = PlaybackMode == TimelinePlaybackMode.Loop;
             int nextTimeCarry = request.TimeCarry;
-            FixedScalar requestedTime = request.TargetTime;
-            FixedScalar nextTime;
+            FP requestedTime = request.TargetTime;
+            FP nextTime;
             int nextCycle = m_Cycle;
-            if (loop && duration > FixedScalar.Zero)
+            if (loop && duration > FP._0)
             {
-                long cycleDelta = requestedTime.Raw / duration.Raw;
+                long cycleDelta = requestedTime.RawValue / duration.RawValue;
                 nextCycle = checked(nextCycle + (int)cycleDelta);
-                nextTime = FixedScalar.FromRaw(requestedTime.Raw % duration.Raw);
+                nextTime = FP.FromRaw(requestedTime.RawValue % duration.RawValue);
             }
             else if (PlaybackMode == TimelinePlaybackMode.HoldLastFrame)
             {
-                FixedScalar lastSample = FixedScalar.FromRaw(Math.Max(0L, duration.Raw - 1L));
-                nextTime = FixedScalar.Min(requestedTime, lastSample);
+                FP lastSample = FP.FromRaw(Math.Max(0L, duration.RawValue - 1L));
+                nextTime = FPMath.Min(requestedTime, lastSample);
                 if (nextTime == lastSample)
                     nextTimeCarry = 0;
             }
             else
-                nextTime = FixedScalar.Min(requestedTime, duration);
+                nextTime = FPMath.Min(requestedTime, duration);
 
             string sectionId = Index.SectionAt(nextTime);
             TimelineRuntimeSampleBuffer<TimelineRuntimeClipBoundary> boundaries = CollectBoundaries(
@@ -492,7 +492,7 @@ namespace BTSMTL.Timeline.Runtime
 
         internal void RestoreCommittedState(
             TimelineRuntimePlaybackState state,
-            FixedScalar cursorTime,
+            FP cursorTime,
             int cycle,
             int timeCarry,
             AbilityTimelinePlaybackControl control,
@@ -506,7 +506,7 @@ namespace BTSMTL.Timeline.Runtime
         {
             if (m_PendingAdvance.IsValid || m_StopPending)
                 throw new InvalidOperationException($"Timeline restore '{RequestId}' has an uncommitted operation: advance={m_PendingAdvance.IsValid}, stop={m_StopPending}.");
-            if (cursorTime < FixedScalar.Zero || cycle < 0 || cursorTime > Content.Duration)
+            if (cursorTime < FP._0 || cycle < 0 || cursorTime > Content.Duration)
                 throw new InvalidOperationException($"Timeline restore '{RequestId}' cursor is outside its content: time={cursorTime}, duration={Content.Duration}, cycle={cycle}.");
             if (Math.Abs((long)timeCarry) * 2 > m_TickRate)
                 throw new InvalidOperationException($"Timeline restore '{RequestId}' has an invalid time carry: carry={timeCarry}, tickRate={m_TickRate}.");
@@ -550,7 +550,7 @@ namespace BTSMTL.Timeline.Runtime
             State = state;
         }
 
-        bool ValidateRestoredSection(CanonicalTextValue sectionId, FixedScalar cursorTime, out string declaredSection)
+        bool ValidateRestoredSection(CanonicalTextValue sectionId, FP cursorTime, out string declaredSection)
         {
             declaredSection = string.Empty;
             if (CanonicalTextValue.IsNullOrEmpty(sectionId))
@@ -570,7 +570,7 @@ namespace BTSMTL.Timeline.Runtime
         void RequireRestoredActiveClips(
             ReadOnlySpan<CanonicalTextValue> activeClipIds,
             TimelineRuntimePlaybackState state,
-            FixedScalar cursorTime,
+            FP cursorTime,
             int cycle,
             ReadOnlySpan<AbilityTimelineTreeClipExit> exitedTreeDecisionClips)
         {
@@ -640,7 +640,7 @@ namespace BTSMTL.Timeline.Runtime
             m_SectionId = Index.SectionAt(m_CursorTime);
         }
 
-        void CaptureActiveClips(FixedScalar cursorTime, int cycle)
+        void CaptureActiveClips(FP cursorTime, int cycle)
         {
             TimelineRuntimeSampleBuffer<CanonicalTextValue> active = m_CandidateEvaluation.ActiveClipIds;
             List<int> selected = m_CandidateEvaluation.SamplingClips;
@@ -661,21 +661,21 @@ namespace BTSMTL.Timeline.Runtime
         }
 
         TimelineRuntimeSampleBuffer<TimelineRuntimeClipBoundary> CollectBoundaries(
-            FixedScalar previousTime,
+            FP previousTime,
             int previousCycle,
-            FixedScalar nextTime,
+            FP nextTime,
             int nextCycle,
-            FixedScalar duration,
+            FP duration,
             bool loop,
             bool initialBoundaryPending,
             IReadOnlyList<AbilityTimelineTreeClipExit> exitedTreeDecisionClips,
             IReadOnlyList<AbilityTimelineTreeClipExit> pendingTreeClipExits)
         {
             TimelineRuntimeSampleBuffer<TimelineRuntimeClipBoundary> result = m_CandidateEvaluation.Boundaries;
-            if (duration <= FixedScalar.Zero)
+            if (duration <= FP._0)
                 return result;
-            FixedScalar previousAbsolute = duration * FixedScalar.FromInt64(previousCycle) + previousTime;
-            FixedScalar nextAbsolute = duration * FixedScalar.FromInt64(nextCycle) + nextTime;
+            FP previousAbsolute = duration * previousCycle + previousTime;
+            FP nextAbsolute = duration * nextCycle + nextTime;
             if (loop && nextCycle - previousCycle > TimelineRuntimeEvaluationSegments.MaximumCycleAdvance)
                 throw new InvalidOperationException("Timeline playback crossed more than 20 cycles in one Advance.");
 
@@ -710,8 +710,8 @@ namespace BTSMTL.Timeline.Runtime
                 }
                 for (int cycle = firstCycle; cycle <= lastCycle; cycle++)
                 {
-                    FixedScalar from = cycle == previousCycle ? previousTime : FixedScalar.Zero;
-                    FixedScalar to = cycle == nextCycle ? nextTime : duration;
+                    FP from = cycle == previousCycle ? previousTime : FP._0;
+                    FP to = cycle == nextCycle ? nextTime : duration;
                     int start = lifetimes.FindStart(from, initialBoundaryPending || cycle > previousCycle);
                     for (int index = start; index < lifetimes.Count; index++)
                     {
@@ -778,15 +778,15 @@ namespace BTSMTL.Timeline.Runtime
         static void AddBoundary(
             TimelineRuntimeSampleBuffer<TimelineRuntimeClipBoundary> result,
             TimelineContentClip clip,
-            FixedScalar time,
+            FP time,
             int cycle,
             TimelineRuntimeClipBoundaryKind kind,
-            FixedScalar previousAbsolute,
-            FixedScalar nextAbsolute,
-            FixedScalar duration,
+            FP previousAbsolute,
+            FP nextAbsolute,
+            FP duration,
             bool initialBoundaryPending)
         {
-            FixedScalar absolute = duration * FixedScalar.FromInt64(cycle) + time;
+            FP absolute = duration * cycle + time;
             bool initialEnter = initialBoundaryPending &&
                                 kind == TimelineRuntimeClipBoundaryKind.Enter &&
                                 absolute == previousAbsolute;

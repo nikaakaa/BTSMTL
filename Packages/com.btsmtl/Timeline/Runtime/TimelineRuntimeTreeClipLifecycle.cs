@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using ThirdPersonSimulation;
-using ThirdPersonSimulation.Fixed;
+using Photon.Deterministic;
 
 namespace BTSMTL.Timeline.Runtime
 {
@@ -12,11 +12,11 @@ namespace BTSMTL.Timeline.Runtime
         {
             if (request.EventKind == TimelineRuntimeTreeClipEventKind.Update && !IsActive(request, context))
                 return true;
-            FixedScalar advance = context.Request.TargetTime - context.Request.PreviousTime;
-            FixedScalar startFraction = AbilityTimelineTimeProjection.Fraction(context.Advance.PreviousTime,
+            FP advance = context.Request.TargetTime - context.Request.PreviousTime;
+            FP startFraction = AbilityTimelineTimeProjection.Fraction(context.Advance.PreviousTime,
                 advance, context.Advance.PreviousCycle, context.Advance.Duration, request.PreviousTime, request.Cycle);
-            FixedScalar endFraction = advance == FixedScalar.Zero && request.EventKind == TimelineRuntimeTreeClipEventKind.Update
-                ? FixedScalar.One : AbilityTimelineTimeProjection.Fraction(context.Advance.PreviousTime,
+            FP endFraction = advance == FP._0 && request.EventKind == TimelineRuntimeTreeClipEventKind.Update
+                ? FP._1 : AbilityTimelineTimeProjection.Fraction(context.Advance.PreviousTime,
                     advance, context.Advance.PreviousCycle, context.Advance.Duration, request.Time, request.Cycle);
             var invocation = new AbilityTreeClipInvocation(
                 request.ClipAuthoringId,
@@ -63,7 +63,7 @@ namespace BTSMTL.Timeline.Runtime
         public static bool ConsumeMarker(IAbilityTreeClipInvoker invoker, ulong actionInstanceId,
             TimelineRuntimeMarkerRequest request, TimelineRuntimeStepContext context)
         {
-            FixedScalar fraction = AbilityTimelineTimeProjection.Fraction(context.Advance.PreviousTime,
+            FP fraction = AbilityTimelineTimeProjection.Fraction(context.Advance.PreviousTime,
                 context.Request.TargetTime - context.Request.PreviousTime, context.Advance.PreviousCycle,
                 context.Advance.Duration, request.Time, request.Cycle);
             var invocation = new AbilityTreeClipInvocation(
@@ -120,8 +120,8 @@ namespace BTSMTL.Timeline.Runtime
                 AbilityTimelineTreeClipState clip = clips[i];
                 var invocation = new AbilityTreeClipInvocation(clip.ClipAuthoringId, clip.TreeGraphId,
                     clip.TreeGraphRevision, clip.NodeAuthoringId, AbilityTreeClipHook.OnDestroy,
-                    FixedScalar.Zero, FixedScalar.Zero, FixedScalar.Zero, clip.Cycle, clip.PlaybackGeneration,
-                    clip.BranchRevision, actionInstanceId, playback.PlaybackIdentity, FixedScalar.Zero, FixedScalar.Zero);
+                    FP._0, FP._0, FP._0, clip.Cycle, clip.PlaybackGeneration,
+                    clip.BranchRevision, actionInstanceId, playback.PlaybackIdentity, FP._0, FP._0);
                 if (!invoker.InvokeTreeClip(invocation))
                     return false;
             }

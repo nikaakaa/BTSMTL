@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using ThirdPersonSimulation;
-using ThirdPersonSimulation.Fixed;
 
 namespace BTSMTL.Timeline.Runtime
 {

@@ -1,6 +1,7 @@
+using ThirdPersonSimulation.QuantumNumerics;
 #if UNITY_EDITOR
 using System;
-using ThirdPersonSimulation.Fixed;
+using Photon.Deterministic;
 using System.Collections.Generic;
 using ThirdPersonCamera;
 using ThirdPersonCharacter.Pipeline.Motion.RootMotion;
@@ -15,10 +16,10 @@ namespace BTSMTL.Timeline.Editor
         public string TrackAuthoringId;
         public string Kind;
         public TimelineExecutionDomain ExecutionDomain;
-        public FixedScalar StartTime;
-        public FixedScalar EndTime;
-        public FixedScalar DefaultEndTime;
-        public FixedScalar TimelineEndTime;
+        public FP StartTime;
+        public FP EndTime;
+        public FP DefaultEndTime;
+        public FP TimelineEndTime;
         public UnityEngine.Object Resource;
         public RootMotionCurveAsset SourceCurve;
         public float SourceStartTime;
@@ -76,8 +77,8 @@ namespace BTSMTL.Timeline.Editor
             bool dynamicTreeClip = IsTreeClip && m_Request.TreeExitSource == TimelineClipExitSource.TreeDecision;
             if (dynamicTreeClip && m_Request.ExecutionDomain == TimelineExecutionDomain.Presentation &&
                 m_Request.EndTime == m_Request.DefaultEndTime)
-                m_Request.EndTime = FixedScalar.Max(
-                    m_Request.StartTime + FixedScalar.FromRaw(1),
+                m_Request.EndTime = FPMath.Max(
+                    m_Request.StartTime + FP.FromRaw(1),
                     m_Request.TimelineEndTime);
             if (dynamicTreeClip && m_Request.ExecutionDomain == TimelineExecutionDomain.Logic)
                 EditorGUILayout.LabelField("End (Seconds)", $"Timeline End ({m_Request.EndTime})");
@@ -92,7 +93,7 @@ namespace BTSMTL.Timeline.Editor
                 m_Request.Resource = EditorGUILayout.ObjectField("Animation Clip", m_Request.Resource, typeof(UnityEngine.AnimationClip), false);
                 if (!ReferenceEquals(previousResource, m_Request.Resource) && m_Request.Resource is UnityEngine.AnimationClip animation)
                 {
-                    FixedScalar resourceEndTime = m_Request.StartTime + FixedScalar.FromDouble(animation.length);
+                    FP resourceEndTime = m_Request.StartTime + QuantumScalarBoundary.ConvertExternal(animation.length, nameof(TimelineClipCreationRequest));
                     if (m_Request.EndTime == m_Request.DefaultEndTime)
                         m_Request.EndTime = resourceEndTime;
                     m_Request.DefaultEndTime = resourceEndTime;
@@ -128,7 +129,7 @@ namespace BTSMTL.Timeline.Editor
                 {
                     m_Request.SourceStartTime = 0f;
                     m_Request.SourceEndTime = m_Request.SourceCurve.Duration;
-                    FixedScalar sourceEndTime = m_Request.StartTime + FixedScalar.FromDouble(m_Request.SourceCurve.Duration);
+                    FP sourceEndTime = m_Request.StartTime + QuantumScalarBoundary.ConvertExternal(m_Request.SourceCurve.Duration, nameof(TimelineClipCreationRequest));
                     if (m_Request.EndTime == m_Request.DefaultEndTime)
                         m_Request.EndTime = sourceEndTime;
                     m_Request.DefaultEndTime = sourceEndTime;
@@ -167,7 +168,7 @@ namespace BTSMTL.Timeline.Editor
                 {
                     m_Request.SourceStartTime = 0f;
                     m_Request.SourceEndTime = source.SourceDuration;
-                    FixedScalar sourceEnd = m_Request.StartTime + FixedScalar.FromDouble(source.SourceDuration);
+                    FP sourceEnd = m_Request.StartTime + QuantumScalarBoundary.ConvertExternal(source.SourceDuration, nameof(TimelineClipCreationRequest));
                     if (m_Request.EndTime == m_Request.DefaultEndTime)
                         m_Request.EndTime = sourceEnd;
                     m_Request.DefaultEndTime = sourceEnd;
@@ -204,7 +205,7 @@ namespace BTSMTL.Timeline.Editor
 
         string Validate()
         {
-            if (m_Request.StartTime < FixedScalar.Zero || m_Request.EndTime <= m_Request.StartTime)
+            if (m_Request.StartTime < FP._0 || m_Request.EndTime <= m_Request.StartTime)
                 return "帧范围必须满足 Start < End。";
             if (m_Request.Kind == TimelineContractKinds.AnimationClip && m_Request.Resource is not UnityEngine.AnimationClip)
                 return "必须选择已有 AnimationClip。";
@@ -218,7 +219,7 @@ namespace BTSMTL.Timeline.Editor
                     m_Request.SourceEndTime <= m_Request.SourceStartTime ||
                     m_Request.SourceEndTime > m_Request.SourceCurve.Duration)
                     return "Source 时间范围必须位于 RootMotionCurveAsset 内。";
-                FixedScalar sourceEndTime = m_Request.StartTime + FixedScalar.FromDouble(m_Request.SourceEndTime - m_Request.SourceStartTime);
+                FP sourceEndTime = m_Request.StartTime + QuantumScalarBoundary.ConvertExternal(m_Request.SourceEndTime - m_Request.SourceStartTime, nameof(TimelineClipCreationRequest));
                 if (sourceEndTime > m_Request.EndTime)
                     return "Clip 结束秒数必须覆盖 Source 时间范围。";
             }
@@ -232,11 +233,11 @@ namespace BTSMTL.Timeline.Editor
             return string.Empty;
         }
 
-        static FixedScalar DrawTime(string label, FixedScalar time)
+        static FP DrawTime(string label, FP time)
         {
             EditorGUI.BeginChangeCheck();
-            double seconds = EditorGUILayout.DoubleField(label, time.ToDouble());
-            return EditorGUI.EndChangeCheck() ? FixedScalar.FromDouble(seconds) : time;
+            double seconds = EditorGUILayout.DoubleField(label, time.AsDouble);
+            return EditorGUI.EndChangeCheck() ? QuantumScalarBoundary.ConvertExternal(seconds, nameof(TimelineClipCreationRequest)) : time;
         }
 
         bool IsTreeClip => m_Request.Kind == TimelineContractKinds.TreeClip;

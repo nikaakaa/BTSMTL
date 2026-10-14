@@ -1,18 +1,19 @@
-using FixedCurveKey = ThirdPersonSimulation.GameplayAbilityCurveKey<ThirdPersonSimulation.Fixed.FixedScalar>;
-using FixedCurveData = ThirdPersonSimulation.GameplayAbilityCurve<ThirdPersonSimulation.Fixed.FixedScalar>;
+using ThirdPersonSimulation.QuantumNumerics;
+using FPCurveKey = ThirdPersonSimulation.GameplayAbilityCurveKey<Photon.Deterministic.FP>;
+using FPCurveData = ThirdPersonSimulation.GameplayAbilityCurve<Photon.Deterministic.FP>;
 using Float32CurveKey = ThirdPersonSimulation.GameplayAbilityCurveKey<ThirdPersonSimulation.Float32Scalar>;
 using Float32CurveData = ThirdPersonSimulation.GameplayAbilityCurve<ThirdPersonSimulation.Float32Scalar>;
 using System;
 using System.Collections.Generic;
-using ThirdPersonSimulation.Fixed;
+using Photon.Deterministic;
 using ThirdPersonSimulation;
 
 namespace BTSMTL.Timeline.Runtime
 {
     internal abstract class TimelineRuntimeCurve
     {
-        public abstract FixedScalar Evaluate(FixedScalar time);
-        public virtual float EvaluateFloat(float time) => Evaluate(FixedScalar.FromSingle(time)).ToSingle();
+        public abstract FP Evaluate(FP time);
+        public virtual float EvaluateFloat(float time) => Evaluate(QuantumScalarBoundary.ConvertExternal(time, nameof(TimelineRuntimeCurve))).AsFloat;
 
         public static TimelineRuntimeCurve Prepare(TimelineContentCurve curve, TimelineRuntimeNumericTarget target)
         {
@@ -20,7 +21,7 @@ namespace BTSMTL.Timeline.Runtime
                 throw new InvalidOperationException("Timeline motion requires a nonempty curve.");
             return target switch
             {
-                TimelineRuntimeNumericTarget.Fixed => new FixedCurve(curve),
+                TimelineRuntimeNumericTarget.FP => new FPCurve(curve),
                 TimelineRuntimeNumericTarget.Float32 => new FloatCurve(curve),
                 _ => throw new ArgumentOutOfRangeException(nameof(target))
             };
@@ -33,47 +34,47 @@ namespace BTSMTL.Timeline.Runtime
         {
             readonly float m_Value;
             public ConstantCurve(float value) => m_Value = value;
-            public override FixedScalar Evaluate(FixedScalar time) => FixedScalar.FromSingle(m_Value);
+            public override FP Evaluate(FP time) => QuantumScalarBoundary.ConvertExternal(m_Value, nameof(TimelineRuntimeCurve));
             public override float EvaluateFloat(float time) => m_Value;
         }
 
-        sealed class FixedCurve : TimelineRuntimeCurve
+        sealed class FPCurve : TimelineRuntimeCurve
         {
-            readonly FixedCurveData m_Curve;
-            public FixedCurve(TimelineContentCurve source)
+            readonly FPCurveData m_Curve;
+            public FPCurve(TimelineContentCurve source)
             {
-                var keys = new FixedCurveKey[source.Keys.Count];
+                var keys = new FPCurveKey[source.Keys.Count];
                 for (int i = 0; i < keys.Length; i++)
                 {
                     TimelineContentCurveKey key = source.Keys[i];
-                    keys[i] = new FixedCurveKey(
-                        FixedScalar.FromSingle(key.Time), FixedScalar.FromSingle(key.Value),
-                        float.IsInfinity(key.InTangent) ? FixedScalar.Zero : FixedScalar.FromSingle(key.InTangent),
-                        float.IsInfinity(key.OutTangent) ? FixedScalar.Zero : FixedScalar.FromSingle(key.OutTangent),
-                        FixedScalar.FromSingle(key.InWeight), FixedScalar.FromSingle(key.OutWeight), key.WeightedMode,
+                    keys[i] = new FPCurveKey(
+                        QuantumScalarBoundary.ConvertExternal(key.Time, nameof(TimelineRuntimeCurve)), QuantumScalarBoundary.ConvertExternal(key.Value, nameof(TimelineRuntimeCurve)),
+                        float.IsInfinity(key.InTangent) ? FP._0 : QuantumScalarBoundary.ConvertExternal(key.InTangent, nameof(TimelineRuntimeCurve)),
+                        float.IsInfinity(key.OutTangent) ? FP._0 : QuantumScalarBoundary.ConvertExternal(key.OutTangent, nameof(TimelineRuntimeCurve)),
+                        QuantumScalarBoundary.ConvertExternal(key.InWeight, nameof(TimelineRuntimeCurve)), QuantumScalarBoundary.ConvertExternal(key.OutWeight, nameof(TimelineRuntimeCurve)), key.WeightedMode,
                         i + 1 < keys.Length && (float.IsInfinity(key.OutTangent) || float.IsInfinity(source.Keys[i + 1].InTangent)));
                 }
-                m_Curve = new FixedCurveData(source.PreWrapMode, source.PostWrapMode, keys);
+                m_Curve = new FPCurveData(source.PreWrapMode, source.PostWrapMode, keys);
             }
 
-            public override FixedScalar Evaluate(FixedScalar time)
+            public override FP Evaluate(FP time)
             {
-                FixedScalar first = m_Curve.Keys[0].Time;
-                FixedScalar last = m_Curve.Keys[m_Curve.Keys.Count - 1].Time;
+                FP first = m_Curve.Keys[0].Time;
+                FP last = m_Curve.Keys[m_Curve.Keys.Count - 1].Time;
                 if (first != last && (time < first || time > last))
                 {
                     int wrap = time < first ? m_Curve.PreWrapMode : m_Curve.PostWrapMode;
                     if (wrap == 2 || wrap == 4)
                     {
-                        long duration = (last - first).Raw;
+                        long duration = (last - first).RawValue;
                         long period = wrap == 4 ? checked(duration * 2) : duration;
-                        long local = (time.Raw - first.Raw) % period;
+                        long local = (time.RawValue - first.RawValue) % period;
                         if (local < 0) local += period;
                         if (wrap == 4 && local > duration) local = period - local;
-                        time = FixedScalar.FromRaw(first.Raw + local);
+                        time = FP.FromRaw(first.RawValue + local);
                     }
                 }
-                return m_Curve.Evaluate<FixedSimulationMath>(time, FixedScalar.Zero);
+                return m_Curve.Evaluate<QuantumSimulationMath>(time, FP._0);
             }
         }
 
@@ -96,7 +97,7 @@ namespace BTSMTL.Timeline.Runtime
                 m_Curve = new Float32CurveData(source.PreWrapMode, source.PostWrapMode, keys);
             }
 
-            public override FixedScalar Evaluate(FixedScalar time) => FixedScalar.FromSingle(EvaluateFloat(time.ToSingle()));
+            public override FP Evaluate(FP time) => QuantumScalarBoundary.ConvertExternal(EvaluateFloat(time.AsFloat), nameof(TimelineRuntimeCurve));
             public override float EvaluateFloat(float time)
             {
                 float first = m_Curve.Keys[0].Time.ToSingle();
@@ -121,7 +122,7 @@ namespace BTSMTL.Timeline.Runtime
 
     public readonly struct TimelineRuntimeMotionPosition
     {
-        public TimelineRuntimeMotionPosition(FixedScalar x, FixedScalar y, FixedScalar z, FixedScalar yaw)
+        public TimelineRuntimeMotionPosition(FP x, FP y, FP z, FP yaw)
         {
             X = x;
             Y = y;
@@ -129,18 +130,18 @@ namespace BTSMTL.Timeline.Runtime
             Yaw = yaw;
         }
 
-        public FixedScalar X { get; }
-        public FixedScalar Y { get; }
-        public FixedScalar Z { get; }
-        public FixedScalar Yaw { get; }
+        public FP X { get; }
+        public FP Y { get; }
+        public FP Z { get; }
+        public FP Yaw { get; }
     }
 
     internal sealed class TimelineRuntimeMotionCurve
     {
         readonly TimelineRuntimeIndexedClip m_Indexed;
         TimelineContentClip m_Clip => m_Indexed.Clip;
-        FixedScalar m_SourceStart;
-        FixedScalar m_SourceEnd;
+        FP m_SourceStart;
+        FP m_SourceEnd;
         readonly TimelineRuntimeCurve m_X;
         readonly TimelineRuntimeCurve m_Y;
         readonly TimelineRuntimeCurve m_Z;
@@ -153,8 +154,8 @@ namespace BTSMTL.Timeline.Runtime
         {
             m_Indexed = indexed;
             TimelineContentClip clip = indexed.Clip;
-            m_SourceStart = FixedScalar.FromSingle(clip.TimeRange.SourceStart);
-            m_SourceEnd = FixedScalar.FromSingle(clip.TimeRange.SourceEnd);
+            m_SourceStart = QuantumScalarBoundary.ConvertExternal(clip.TimeRange.SourceStart, nameof(TimelineRuntimeCurve));
+            m_SourceEnd = QuantumScalarBoundary.ConvertExternal(clip.TimeRange.SourceEnd, nameof(TimelineRuntimeCurve));
             var motion = (TimelineContentMotion)clip.Parameters;
             m_X = TimelineRuntimeCurve.Prepare(motion.X, target);
             m_Y = TimelineRuntimeCurve.Prepare(motion.Y, target);
@@ -165,10 +166,10 @@ namespace BTSMTL.Timeline.Runtime
             m_EaseOut = TimelineRuntimeCurve.Prepare(clip.RequireCurve("motion.ease-out"), target);
         }
 
-        public TimelineRuntimeMotionPosition Evaluate(FixedScalar timelineTime)
+        public TimelineRuntimeMotionPosition Evaluate(FP timelineTime)
         {
-            FixedScalar sourceTime = FixedScalar.Clamp(
-                m_SourceStart + FixedScalar.Clamp(timelineTime - m_Clip.StartTime, FixedScalar.Zero, m_Clip.DurationTime),
+            FP sourceTime = FPMath.Clamp(
+                m_SourceStart + FPMath.Clamp(timelineTime - m_Clip.StartTime, FP._0, m_Clip.DurationTime),
                 m_SourceStart, m_SourceEnd);
             return new TimelineRuntimeMotionPosition(
                 m_X.Evaluate(sourceTime), m_Y.Evaluate(sourceTime), m_Z.Evaluate(sourceTime), m_Yaw.Evaluate(sourceTime));
@@ -176,8 +177,8 @@ namespace BTSMTL.Timeline.Runtime
 
         internal void RefreshTimeRange()
         {
-            m_SourceStart = FixedScalar.FromSingle(m_Clip.TimeRange.SourceStart);
-            m_SourceEnd = FixedScalar.FromSingle(m_Clip.TimeRange.SourceEnd);
+            m_SourceStart = QuantumScalarBoundary.ConvertExternal(m_Clip.TimeRange.SourceStart, nameof(TimelineRuntimeCurve));
+            m_SourceEnd = QuantumScalarBoundary.ConvertExternal(m_Clip.TimeRange.SourceEnd, nameof(TimelineRuntimeCurve));
         }
 
         internal TimelineRuntimeMotionCurve(TimelineRuntimeIndexedClip indexed, TimelineRuntimeMotionCurve source)
@@ -195,22 +196,22 @@ namespace BTSMTL.Timeline.Runtime
         }
 
         public bool TrySample(
-            FixedScalar previousTime, FixedScalar currentTime, string sourceId, string sourceName,
+            FP previousTime, FP currentTime, string sourceId, string sourceName,
             out TimelineMotionCurveContribution contribution)
         {
             contribution = default;
             if (currentTime < m_Clip.StartTime || previousTime >= m_Clip.EndTime)
                 return false;
-            FixedScalar local = FixedScalar.Clamp(currentTime - m_Clip.StartTime, FixedScalar.Zero, m_Clip.DurationTime);
-            FixedScalar normalized = local / m_Clip.DurationTime;
-            FixedScalar weight = m_Weight.Evaluate(normalized);
-            if (m_Clip.EaseInTime > FixedScalar.Zero && local < m_Clip.EaseInTime)
+            FP local = FPMath.Clamp(currentTime - m_Clip.StartTime, FP._0, m_Clip.DurationTime);
+            FP normalized = local / m_Clip.DurationTime;
+            FP weight = m_Weight.Evaluate(normalized);
+            if (m_Clip.EaseInTime > FP._0 && local < m_Clip.EaseInTime)
                 weight *= m_EaseIn.Evaluate(local / m_Clip.EaseInTime);
-            FixedScalar remaining = FixedScalar.Max(FixedScalar.Zero, m_Clip.EndTime - currentTime);
-            if (m_Clip.EaseOutTime > FixedScalar.Zero && remaining < m_Clip.EaseOutTime)
-                weight *= FixedScalar.One - m_EaseOut.Evaluate(FixedScalar.One - remaining / m_Clip.EaseOutTime);
-            weight = FixedScalar.Clamp(weight, FixedScalar.Zero, FixedScalar.One);
-            if (weight == FixedScalar.Zero)
+            FP remaining = FPMath.Max(FP._0, m_Clip.EndTime - currentTime);
+            if (m_Clip.EaseOutTime > FP._0 && remaining < m_Clip.EaseOutTime)
+                weight *= FP._1 - m_EaseOut.Evaluate(FP._1 - remaining / m_Clip.EaseOutTime);
+            weight = FPMath.Clamp(weight, FP._0, FP._1);
+            if (weight == FP._0)
                 return false;
             TimelineRuntimeMotionPosition previous = Evaluate(previousTime);
             TimelineRuntimeMotionPosition current = Evaluate(currentTime);
@@ -261,7 +262,7 @@ namespace BTSMTL.Timeline.Runtime
         }
 
 
-        public TimelineRuntimeMotionPosition SampleSource(string clipId, FixedScalar time) => m_Curves[clipId].Evaluate(time);
+        public TimelineRuntimeMotionPosition SampleSource(string clipId, FP time) => m_Curves[clipId].Evaluate(time);
 
         public void Sample(
             TimelineContentUnit timeline, TimelineRuntimeClipIndex motions, TimelineRuntimeEvaluationSegments segments,
@@ -280,10 +281,10 @@ namespace BTSMTL.Timeline.Runtime
                 var clip = motions[index].Clip;
                 TimelineRuntimeMotionCurve curve = m_IndexedCurves[index];
                 TimelineMotionCurveContribution last = default;
-                FixedScalar x = FixedScalar.Zero;
-                FixedScalar y = FixedScalar.Zero;
-                FixedScalar z = FixedScalar.Zero;
-                FixedScalar yaw = FixedScalar.Zero;
+                FP x = FP._0;
+                FP y = FP._0;
+                FP z = FP._0;
+                FP yaw = FP._0;
                 bool sampled = false;
                 for (int segmentIndex = 0; segmentIndex < segments.Count; segmentIndex++)
                 {
@@ -309,7 +310,7 @@ namespace BTSMTL.Timeline.Runtime
                     contributions.Add(new TimelineMotionCurveContribution(
                         last.SourceId, last.SourceName, last.TrackName, last.CurveId, last.ClipAuthoringId,
                         last.Space, last.Channel, last.BlendMode, x, y, z, yaw,
-                        last.Priority, FixedScalar.One, last.ConsumeLowerChannels, last.NormalizedTime));
+                        last.Priority, FP._1, last.ConsumeLowerChannels, last.NormalizedTime));
                 }
             }
         }

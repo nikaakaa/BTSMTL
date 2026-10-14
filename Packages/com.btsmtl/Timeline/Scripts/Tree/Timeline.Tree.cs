@@ -1,5 +1,5 @@
 using System;
-using ThirdPersonSimulation.Fixed;
+using Photon.Deterministic;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -30,12 +30,12 @@ namespace BTSMTL.Timeline
 
         public override Type ClipType => typeof(TreeClip);
 
-        public override Clip AddClip(FixedScalar time)
+        public override Clip AddClip(FP time)
         {
             throw new InvalidOperationException("TreeClip必须绑定正式的Timeline节点图资产。");
         }
 
-        public override Clip AddClip(UnityEngine.Object referenceObject, FixedScalar time)
+        public override Clip AddClip(UnityEngine.Object referenceObject, FP time)
         {
             if (referenceObject is not ScriptableObject asset || asset is not ITimelineTreeGraphAsset graph || !graph.IsTimelineTree)
                 throw new ArgumentException("TreeClip必须绑定正式的Timeline节点图资产。", nameof(referenceObject));
@@ -114,14 +114,14 @@ namespace BTSMTL.Timeline
         }
 
 #if UNITY_EDITOR
-        public bool AlignTerminalTime(FixedScalar terminalTime)
+        public bool AlignTerminalTime(FP terminalTime)
         {
             if (m_ExitSource != TimelineClipExitSource.TreeDecision)
             {
                 return false;
             }
-            FixedScalar endTime;
-            FixedScalar declaredEnd = default;
+            FP endTime;
+            FP declaredEnd = default;
             bool declared = m_AssetTree is ITimelineTreeGraphAsset graph && graph.TryGetDeclaredEndTime(out declaredEnd);
             if (declared)
             {
@@ -131,7 +131,7 @@ namespace BTSMTL.Timeline
             }
             else
             {
-                endTime = FixedScalar.Max(StartTime + FixedScalar.FromRaw(1), terminalTime);
+                endTime = FPMath.Max(StartTime + FP.FromRaw(1), terminalTime);
             }
             bool changed = m_HasDeclaredEndTime != declared;
             m_HasDeclaredEndTime = declared;
@@ -162,11 +162,11 @@ namespace BTSMTL.Timeline
                 ? ClipCapabilities.TickQuantized
                 : ClipCapabilities.Resizable | ClipCapabilities.TickQuantized;
 
-        public TreeClip(Track track, FixedScalar time) : base(track, time)
+        public TreeClip(Track track, FP time) : base(track, time)
         {
         }
 
-        public TreeClip(Track track, FixedScalar time, ScriptableObject assetTree) : base(track, time)
+        public TreeClip(Track track, FP time, ScriptableObject assetTree) : base(track, time)
         {
             SetAssetTree(assetTree);
         }

@@ -1,5 +1,5 @@
 using System;
-using ThirdPersonSimulation.Fixed;
+using Photon.Deterministic;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using BTSMTL.Diagnostics;
@@ -51,7 +51,7 @@ namespace BTSMTL.Timeline
             var tracks = new List<TimelineContentTrack>();
             var sections = new List<TimelineContentSection>();
             var closure = new TimelineContentClosureBuilder();
-            FixedScalar duration = FixedScalar.Zero;
+            FP duration = FP._0;
             for (int trackIndex = 0; trackIndex < timeline.Tracks.Count; trackIndex++)
             {
                 Track track = timeline.Tracks[trackIndex];
@@ -64,14 +64,14 @@ namespace BTSMTL.Timeline
                     if (clip != null)
                         clipAuthoringIds.Add(clip.AuthoringId);
                     if (clip != null)
-                        duration = FixedScalar.Max(duration, clip.EndTime);
+                        duration = FPMath.Max(duration, clip.EndTime);
                 }
                 for (int markerIndex = 0; markerIndex < track.Markers.Count; markerIndex++)
                 {
                     TimelineMarker marker = track.Markers[markerIndex];
                     if (marker == null)
                         continue;
-                    duration = FixedScalar.Max(duration, FixedScalar.Max(FixedScalar.FromRaw(1), marker.Time));
+                    duration = FPMath.Max(duration, FPMath.Max(FP.FromRaw(1), marker.Time));
                     TimelineGraphBinding graphBinding = graphBindings.ResolveMarker(marker, closure);
                     markers.Add(new TimelineContentMarker(
                         marker.AuthoringId,
@@ -96,7 +96,7 @@ namespace BTSMTL.Timeline
             {
                 TimelineSection section = timeline.Sections[sectionIndex];
                 if (section != null)
-                    duration = FixedScalar.Max(duration, section.Time);
+                    duration = FPMath.Max(duration, section.Time);
                 if (section != null)
                     sections.Add(new TimelineContentSection(
                         section.AuthoringId,
@@ -252,7 +252,7 @@ namespace BTSMTL.Timeline
                 hashParts.Add(markers[i].MarkerId);
                 hashParts.Add(markers[i].ExecutionPolicy.Domain.ToString("G"));
                 hashParts.Add(markers[i].ExecutionPolicy.OutputKind.ToString("G"));
-                hashParts.Add(markers[i].Time.Raw.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                hashParts.Add(markers[i].Time.RawValue.ToString(System.Globalization.CultureInfo.InvariantCulture));
                 hashParts.Add(markers[i].ForceTriggerOnInitialSeek ? "1" : "0");
             }
             return new TimelineContentDiscoveryResult(

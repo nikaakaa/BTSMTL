@@ -1,6 +1,6 @@
 using System;
 using ThirdPersonSimulation;
-using ThirdPersonSimulation.Fixed;
+using Photon.Deterministic;
 
 namespace BTSMTL.Timeline
 {
@@ -104,14 +104,14 @@ namespace BTSMTL.Timeline
             TimelineMotionContributionSpace space,
             TimelineMotionChannel channel,
             TimelineMotionBlendMode blendMode,
-            FixedScalar displacementX,
-            FixedScalar displacementY,
-            FixedScalar displacementZ,
-            FixedScalar yawDegrees,
+            FP displacementX,
+            FP displacementY,
+            FP displacementZ,
+            FP yawDegrees,
             int priority,
-            FixedScalar weight,
+            FP weight,
             bool consumeLowerChannels,
-            FixedScalar normalizedTime)
+            FP normalizedTime)
         {
             SourceId = sourceId ?? string.Empty;
             SourceName = sourceName ?? string.Empty;
@@ -126,9 +126,9 @@ namespace BTSMTL.Timeline
             DisplacementZ = displacementZ;
             YawDegrees = yawDegrees;
             Priority = priority;
-            Weight = FixedScalar.Clamp(weight, FixedScalar.Zero, FixedScalar.One);
+            Weight = FPMath.Clamp(weight, FP._0, FP._1);
             ConsumeLowerChannels = consumeLowerChannels;
-            NormalizedTime = FixedScalar.Clamp(normalizedTime, FixedScalar.Zero, FixedScalar.One);
+            NormalizedTime = FPMath.Clamp(normalizedTime, FP._0, FP._1);
         }
 
         public string SourceId { get; }
@@ -139,16 +139,16 @@ namespace BTSMTL.Timeline
         public TimelineMotionContributionSpace Space { get; }
         public TimelineMotionChannel Channel { get; }
         public TimelineMotionBlendMode BlendMode { get; }
-        public FixedScalar DisplacementX { get; }
-        public FixedScalar DisplacementY { get; }
-        public FixedScalar DisplacementZ { get; }
-        public FixedScalar YawDegrees { get; }
+        public FP DisplacementX { get; }
+        public FP DisplacementY { get; }
+        public FP DisplacementZ { get; }
+        public FP YawDegrees { get; }
         public int Priority { get; }
-        public FixedScalar Weight { get; }
+        public FP Weight { get; }
         public bool ConsumeLowerChannels { get; }
-        public FixedScalar NormalizedTime { get; }
-        public bool HasDelta => Weight > FixedScalar.Zero && (DisplacementX != FixedScalar.Zero || DisplacementY != FixedScalar.Zero || DisplacementZ != FixedScalar.Zero || YawDegrees != FixedScalar.Zero);
-        public bool ClaimsLowerChannels => Weight > FixedScalar.Zero && BlendMode == TimelineMotionBlendMode.Override && ConsumeLowerChannels;
+        public FP NormalizedTime { get; }
+        public bool HasDelta => Weight > FP._0 && (DisplacementX != FP._0 || DisplacementY != FP._0 || DisplacementZ != FP._0 || YawDegrees != FP._0);
+        public bool ClaimsLowerChannels => Weight > FP._0 && BlendMode == TimelineMotionBlendMode.Override && ConsumeLowerChannels;
         public bool CanResolve => HasDelta || ClaimsLowerChannels;
     }
 

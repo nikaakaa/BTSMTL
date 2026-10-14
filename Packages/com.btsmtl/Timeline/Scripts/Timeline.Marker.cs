@@ -1,6 +1,6 @@
 using System;
 using BTSMTL.Diagnostics;
-using ThirdPersonSimulation.Fixed;
+using Photon.Deterministic;
 using UnityEngine;
 
 namespace BTSMTL.Timeline
@@ -12,7 +12,7 @@ namespace BTSMTL.Timeline
         string m_AuthoringId;
 
         [SerializeField]
-        long m_TimeRaw;
+        long m_TimeFPRawValue;
 
         [SerializeField]
         bool m_ForceTriggerOnInitialSeek;
@@ -25,7 +25,7 @@ namespace BTSMTL.Timeline
         Track m_Track;
 
         public string AuthoringId => m_AuthoringId ?? string.Empty;
-        public FixedScalar Time => FixedScalar.FromRaw(m_TimeRaw);
+        public FP Time => FP.FromRaw(m_TimeFPRawValue);
         public bool ForceTriggerOnInitialSeek => m_ForceTriggerOnInitialSeek;
 #if UNITY_EDITOR
         public ScriptableObject Graph => m_Graph;
@@ -34,21 +34,23 @@ namespace BTSMTL.Timeline
         public TimelineExecutionDomain ExecutionDomain =>
             m_Track != null ? m_Track.ExecutionDomain : throw new InvalidOperationException("Timeline Marker has no owning Track.");
 
+        internal void BindTrack(Track track) => m_Track = track;
+
         public void Init(Track track)
         {
-            m_Track = track;
-            if (m_TimeRaw < 0)
+            BindTrack(track);
+            if (m_TimeFPRawValue < 0)
                 throw new InvalidOperationException($"Timeline Marker '{AuthoringId}' time is invalid.");
         }
 
 #if UNITY_EDITOR
-        public void Configure(FixedScalar time, ScriptableObject graph, bool forceTriggerOnInitialSeek)
+        public void Configure(FP time, ScriptableObject graph, bool forceTriggerOnInitialSeek)
         {
-            if (time < FixedScalar.Zero)
+            if (time < FP._0)
                 throw new ArgumentOutOfRangeException(nameof(time));
             if (graph is not ITimelineTreeGraphAsset markerGraph || !markerGraph.IsTimelineTrigger)
                 throw new ArgumentException("Timeline Marker需要正式的Timeline触发图资产。", nameof(graph));
-            m_TimeRaw = time.Raw;
+            m_TimeFPRawValue = time.RawValue;
             m_Graph = graph;
             m_ForceTriggerOnInitialSeek = forceTriggerOnInitialSeek;
         }

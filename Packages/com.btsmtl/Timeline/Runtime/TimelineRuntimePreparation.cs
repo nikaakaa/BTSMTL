@@ -1,5 +1,5 @@
 using System;
-using ThirdPersonSimulation.Fixed;
+using Photon.Deterministic;
 using System.Linq;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -14,7 +14,7 @@ namespace BTSMTL.Timeline.Runtime
             TimelineRuntimePreparedContent content,
             TimelineExecutionIdentity executionIdentity,
             TimelinePlaybackMode playbackMode,
-            FixedScalar startTime = default)
+            FP startTime = default)
         {
             RequestId = CanonicalTextValue.IsNullOrWhiteSpace(requestId)
                 ? throw new ArgumentException("Timeline prepare request identity is required.", nameof(requestId))
@@ -27,8 +27,8 @@ namespace BTSMTL.Timeline.Runtime
                 playbackMode != TimelinePlaybackMode.HoldLastFrame)
                 throw new ArgumentOutOfRangeException(nameof(playbackMode));
             PlaybackMode = playbackMode;
-            if (content.IsReady && (startTime < FixedScalar.Zero ||
-                startTime != FixedScalar.Zero && startTime >= content.Content.Duration))
+            if (content.IsReady && (startTime < FP._0 ||
+                startTime != FP._0 && startTime >= content.Content.Duration))
                 throw new ArgumentOutOfRangeException(nameof(startTime), "Timeline start time must precede the end of its content.");
             StartTime = startTime;
         }
@@ -37,7 +37,7 @@ namespace BTSMTL.Timeline.Runtime
         public TimelineRuntimePreparedContent Content { get; }
         public TimelineExecutionIdentity ExecutionIdentity { get; }
         public TimelinePlaybackMode PlaybackMode { get; }
-        public FixedScalar StartTime { get; }
+        public FP StartTime { get; }
     }
 
     public enum TimelineRuntimePreparationStatus : byte
@@ -162,7 +162,7 @@ namespace BTSMTL.Timeline.Runtime
 
         public int MotionClipCapacity => m_Content.Index.Logic.Motions.Count;
 
-        public TimelineRuntimeSampleView<TimelineAnimationContribution> SampleAnimation(FixedScalar time)
+        public TimelineRuntimeSampleView<TimelineAnimationContribution> SampleAnimation(FP time)
         {
             m_Presentation.Clear();
             TimelineRuntimePresentationEvaluator.SampleAnimations(m_Content.Content, m_Content.Index,
@@ -170,7 +170,7 @@ namespace BTSMTL.Timeline.Runtime
             return m_Presentation.Animations.View;
         }
 
-        public TimelineRuntimeSampleView<TimelineMotionCurveContribution> SampleMotion(FixedScalar previous, FixedScalar current)
+        public TimelineRuntimeSampleView<TimelineMotionCurveContribution> SampleMotion(FP previous, FP current)
         {
             var segments = new TimelineRuntimeEvaluationSegments(previous, 0, current, 0,
                 m_Content.Content.Duration, false);
@@ -199,7 +199,7 @@ namespace BTSMTL.Timeline.Runtime
         public CanonicalTextValue RequestId { get; }
         public TimelineExecutionIdentity ExecutionIdentity { get; }
         public TimelinePlaybackMode PlaybackMode { get; }
-        public FixedScalar StartTime { get; }
+        public FP StartTime { get; }
         public TimelineRuntimeNumericTarget NumericTarget => m_Content.NumericTarget;
         internal TimelineRuntimeContentIndex Index => m_Content.Index;
         internal TimelineRuntimeMotionSampling MotionSampling => m_Content.MotionSampling;
@@ -320,19 +320,19 @@ namespace BTSMTL.Timeline.Runtime
         readonly TimelineRuntimeIndexedClip[] m_Clips;
         readonly int[] m_StartOrder;
         readonly int[] m_EndOrder;
-        readonly FixedScalar[] m_Ends;
-        readonly FixedScalar[] m_SubtreeEnds;
-        readonly Func<TimelineContentClip, FixedScalar> m_EndTime;
+        readonly FP[] m_Ends;
+        readonly FP[] m_SubtreeEnds;
+        readonly Func<TimelineContentClip, FP> m_EndTime;
         readonly Comparison<int> m_StartComparison;
         readonly Comparison<int> m_EndComparison;
 
-        public TimelineRuntimeClipIndex(List<TimelineRuntimeIndexedClip> clips, Func<TimelineContentClip, FixedScalar> endTime)
+        public TimelineRuntimeClipIndex(List<TimelineRuntimeIndexedClip> clips, Func<TimelineContentClip, FP> endTime)
         {
             m_Clips = clips.ToArray();
             m_StartOrder = new int[clips.Count];
             m_EndOrder = new int[clips.Count];
-            m_Ends = new FixedScalar[clips.Count];
-            m_SubtreeEnds = new FixedScalar[clips.Count];
+            m_Ends = new FP[clips.Count];
+            m_SubtreeEnds = new FP[clips.Count];
             m_EndTime = endTime;
             m_StartComparison = CompareStart;
             m_EndComparison = CompareEnd;
@@ -369,19 +369,19 @@ namespace BTSMTL.Timeline.Runtime
         public int StartIndexAt(int index) => m_StartOrder[index];
         public TimelineRuntimeIndexedClip StartAt(int index) => m_Clips[m_StartOrder[index]];
         public TimelineRuntimeIndexedClip EndAt(int index) => m_Clips[m_EndOrder[index]];
-        public FixedScalar EndTimeAt(int index) => m_Ends[m_EndOrder[index]];
+        public FP EndTimeAt(int index) => m_Ends[m_EndOrder[index]];
 
-        public int FindStart(FixedScalar time, bool includeEqual) => Find(time, includeEqual, true);
-        public int FindEnd(FixedScalar time, bool includeEqual) => Find(time, includeEqual, false);
+        public int FindStart(FP time, bool includeEqual) => Find(time, includeEqual, true);
+        public int FindEnd(FP time, bool includeEqual) => Find(time, includeEqual, false);
 
-        int Find(FixedScalar time, bool includeEqual, bool start)
+        int Find(FP time, bool includeEqual, bool start)
         {
             int lower = 0;
             int upper = Count;
             while (lower < upper)
             {
                 int middle = lower + (upper - lower) / 2;
-                FixedScalar position = start ? StartAt(middle).Clip.StartTime : EndTimeAt(middle);
+                FP position = start ? StartAt(middle).Clip.StartTime : EndTimeAt(middle);
                 if (position < time || !includeEqual && position == time)
                     lower = middle + 1;
                 else
@@ -390,36 +390,36 @@ namespace BTSMTL.Timeline.Runtime
             return lower;
         }
 
-        FixedScalar BuildSubtreeEnds(int lower, int upper)
+        FP BuildSubtreeEnds(int lower, int upper)
         {
             if (lower == upper)
-                return FixedScalar.MinValue;
+                return FP.MinValue;
             int middle = lower + (upper - lower) / 2;
-            FixedScalar end = m_Ends[m_StartOrder[middle]];
-            end = FixedScalar.Max(end, BuildSubtreeEnds(lower, middle));
-            end = FixedScalar.Max(end, BuildSubtreeEnds(middle + 1, upper));
+            FP end = m_Ends[m_StartOrder[middle]];
+            end = FPMath.Max(end, BuildSubtreeEnds(lower, middle));
+            end = FPMath.Max(end, BuildSubtreeEnds(middle + 1, upper));
             m_SubtreeEnds[middle] = end;
             return end;
         }
 
-        public void Select(FixedScalar previous, FixedScalar current, bool includeEnd, List<int> selected)
+        public void Select(FP previous, FP current, bool includeEnd, List<int> selected)
         {
             Select(0, Count, previous, current, includeEnd, selected);
         }
 
-        void Select(int lower, int upper, FixedScalar previous, FixedScalar current, bool includeEnd, List<int> selected)
+        void Select(int lower, int upper, FP previous, FP current, bool includeEnd, List<int> selected)
         {
             if (lower == upper)
                 return;
             int middle = lower + (upper - lower) / 2;
-            FixedScalar subtreeEnd = m_SubtreeEnds[middle];
+            FP subtreeEnd = m_SubtreeEnds[middle];
             if (subtreeEnd < previous || !includeEnd && subtreeEnd == previous)
                 return;
             Select(lower, middle, previous, current, includeEnd, selected);
             int index = m_StartOrder[middle];
             if (m_Clips[index].Clip.StartTime > current)
                 return;
-            FixedScalar end = m_Ends[index];
+            FP end = m_Ends[index];
             if (end > previous || includeEnd && end == previous)
                 AddSelected(selected, index);
             Select(middle + 1, upper, previous, current, includeEnd, selected);
@@ -468,7 +468,7 @@ namespace BTSMTL.Timeline.Runtime
         public int ContentIndexAt(int index) => m_Markers[index];
         public TimelineContentMarker this[int index] => m_Content.Markers[m_Markers[index]];
 
-        public void Select(FixedScalar from, FixedScalar to, bool includeEqual, bool initialSeek, List<int> selected)
+        public void Select(FP from, FP to, bool includeEqual, bool initialSeek, List<int> selected)
         {
             selected.Clear();
             if (initialSeek)
@@ -487,14 +487,14 @@ namespace BTSMTL.Timeline.Runtime
             }
         }
 
-        public int Find(FixedScalar time, bool includeEqual)
+        public int Find(FP time, bool includeEqual)
         {
             int lower = 0;
             int upper = Count;
             while (lower < upper)
             {
                 int middle = lower + (upper - lower) / 2;
-                FixedScalar position = this[middle].Time;
+                FP position = this[middle].Time;
                 if (position < time || !includeEqual && position == time)
                     lower = middle + 1;
                 else
@@ -553,11 +553,11 @@ namespace BTSMTL.Timeline.Runtime
             Markers = new TimelineRuntimeMarkerIndex(content, domain);
         }
 
-        static FixedScalar ClipEnd(TimelineContentClip clip) => clip.EndTime;
-        static FixedScalar AnimationEnd(TimelineContentClip clip) => ((TimelineContentAnimation)clip.Parameters).Extrapolation == ExtraPolationMode.Hold
-            ? FixedScalar.MaxValue : clip.EndTime;
-        static FixedScalar LifetimeEnd(TimelineContentClip clip) => clip.ExitSource == TimelineClipExitSource.TreeDecision
-            ? FixedScalar.MaxValue : clip.EndTime;
+        static FP ClipEnd(TimelineContentClip clip) => clip.EndTime;
+        static FP AnimationEnd(TimelineContentClip clip) => ((TimelineContentAnimation)clip.Parameters).Extrapolation == ExtraPolationMode.Hold
+            ? FP.MaxValue : clip.EndTime;
+        static FP LifetimeEnd(TimelineContentClip clip) => clip.ExitSource == TimelineClipExitSource.TreeDecision
+            ? FP.MaxValue : clip.EndTime;
 
         public readonly TimelineRuntimeClipIndex Clips;
         public readonly TimelineRuntimeClipIndex Animations;
@@ -634,7 +634,7 @@ namespace BTSMTL.Timeline.Runtime
             return -1;
         }
 
-        public string SectionAt(FixedScalar time)
+        public string SectionAt(FP time)
         {
             int lower = 0;
             int upper = m_Content.Sections.Count;

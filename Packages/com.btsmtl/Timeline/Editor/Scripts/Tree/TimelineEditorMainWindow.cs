@@ -167,8 +167,8 @@ namespace BTSMTL.Timeline.Editor
         public string SourceNodeAuthoringId => m_SourceNodeGuid ?? string.Empty;
         public TimelineAsset SourceAsset => m_SerializedOwner as TimelineAsset;
         public ITimelineTimeRangePreview TimeRangePreview => m_TimeRangePreview;
-        public void ApplyClipTimeRangeNumbers(string identity, ThirdPersonSimulation.Fixed.FixedScalar start,
-            ThirdPersonSimulation.Fixed.FixedScalar end) => m_SlateProjection.ApplyClipTimeRangeNumbers(identity, start, end);
+        public void ApplyClipTimeRangeNumbers(string identity, Photon.Deterministic.FP start,
+            Photon.Deterministic.FP end) => m_SlateProjection.ApplyClipTimeRangeNumbers(identity, start, end);
 
         public void SetTimeRangePreview(ITimelineTimeRangePreview preview)
         {

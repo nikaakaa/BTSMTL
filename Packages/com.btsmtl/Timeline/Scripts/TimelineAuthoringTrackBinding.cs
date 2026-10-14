@@ -1,6 +1,6 @@
 #if UNITY_EDITOR
 using System;
-using ThirdPersonSimulation.Fixed;
+using Photon.Deterministic;
 using System.Collections.Generic;
 using System.Linq;
 using ThirdPersonSimulation;
@@ -75,7 +75,7 @@ namespace BTSMTL.Timeline
             TimelineContractCatalog catalog,
             Track track,
             UnityEngine.AnimationClip animationAsset,
-            FixedScalar startTime)
+            FP startTime)
         {
             if (track is AnimationTrack animation)
                 return timeline.AddClip(catalog, animationAsset, animation, startTime);

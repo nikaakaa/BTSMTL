@@ -1,6 +1,7 @@
+using ThirdPersonSimulation.QuantumNumerics;
 using System;
 using ThirdPersonSimulation;
-using ThirdPersonSimulation.Fixed;
+using Photon.Deterministic;
 using ThirdPersonSimulation.Serialization;
 
 namespace BTSMTL.Timeline
@@ -119,10 +120,10 @@ namespace BTSMTL.Timeline
             for (int i = 0; i < m_Clips.Length; i++)
             {
                 ref readonly TimelineClipTimeRange range = ref ranges[i];
-                FixedScalar duration = range.End - range.Start;
-                if (range.Start < FixedScalar.Zero || duration < FixedScalar.Zero ||
-                    catalog.RequireClip(m_Clips[i].ContractKind).RequiresPositiveDuration && duration == FixedScalar.Zero ||
-                    range.EaseIn < FixedScalar.Zero || range.EaseOut < FixedScalar.Zero || range.ClipIn < FixedScalar.Zero)
+                FP duration = range.End - range.Start;
+                if (range.Start < FP._0 || duration < FP._0 ||
+                    catalog.RequireClip(m_Clips[i].ContractKind).RequiresPositiveDuration && duration == FP._0 ||
+                    range.EaseIn < FP._0 || range.EaseOut < FP._0 || range.ClipIn < FP._0)
                 {
                     error = m_InvalidRangeErrors[i];
                     return false;
@@ -130,13 +131,13 @@ namespace BTSMTL.Timeline
                 if (m_Clips[i] is MotionCurveClip motion &&
                     (!float.IsFinite(range.SourceStart) || !float.IsFinite(range.SourceEnd) || range.SourceStart < 0f ||
                      range.SourceEnd <= range.SourceStart || range.SourceEnd > motion.SourceCurve.Duration ||
-                     FixedScalar.FromDouble(range.SourceEnd - range.SourceStart) > duration))
+                     QuantumScalarBoundary.ConvertExternal(range.SourceEnd - range.SourceStart, nameof(TimelineClipTimeEditBuffer)) > duration))
                 {
                     error = m_InvalidMotionErrors[i];
                     return false;
                 }
                 if (m_Clips[i] is CameraEffectClip { Effect: ITimelineCameraSourceAsset source } &&
-                    (duration <= FixedScalar.Zero || !float.IsFinite(range.SourceStart) || !float.IsFinite(range.SourceEnd) ||
+                    (duration <= FP._0 || !float.IsFinite(range.SourceStart) || !float.IsFinite(range.SourceEnd) ||
                      range.SourceStart < 0f || range.SourceEnd <= range.SourceStart || range.SourceEnd > source.SourceDuration))
                 {
                     error = m_InvalidCameraErrors[i];

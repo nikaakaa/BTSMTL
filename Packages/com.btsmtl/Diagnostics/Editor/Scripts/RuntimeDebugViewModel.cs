@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using ThirdPersonSimulation;
-using ThirdPersonSimulation.Fixed;
+using Photon.Deterministic;
 
 namespace BTSMTL.Diagnostics.Editor
 {
@@ -63,11 +63,11 @@ namespace BTSMTL.Diagnostics.Editor
         static string MotionDetail(in SimulationMotionTraceDetail value, CanonicalTextValue owner) => value.Kind switch
         {
             SimulationMotionTraceDetailKind.Contribution =>
-                $"channel={s_MotionChannels[value.Channel]};blend={s_MotionBlends[value.BlendMode]};priority={value.Priority};weight={FixedScalar.FromRaw(value.WeightRaw)};delta=({FixedScalar.FromRaw(value.DisplacementXRaw)},{FixedScalar.FromRaw(value.DisplacementYRaw)},{FixedScalar.FromRaw(value.DisplacementZRaw)});yaw={FixedScalar.FromRaw(value.YawDegreesRaw)};claim={value.ClaimsLowerChannels};movementClock={MovementClock(in value.MovementClock)}",
+                $"channel={s_MotionChannels[value.Channel]};blend={s_MotionBlends[value.BlendMode]};priority={value.Priority};weight={FP.FromRaw(value.WeightRaw)};delta=({FP.FromRaw(value.DisplacementXRaw)},{FP.FromRaw(value.DisplacementYRaw)},{FP.FromRaw(value.DisplacementZRaw)});yaw={FP.FromRaw(value.YawDegreesRaw)};claim={value.ClaimsLowerChannels};movementClock={MovementClock(in value.MovementClock)}",
             SimulationMotionTraceDetailKind.Channel =>
-                $"channel={s_MotionChannels[value.Channel]};owner={owner};delta=({FixedScalar.FromRaw(value.DisplacementXRaw)},{FixedScalar.FromRaw(value.DisplacementYRaw)},{FixedScalar.FromRaw(value.DisplacementZRaw)});yaw={FixedScalar.FromRaw(value.YawDegreesRaw)};planarBasis=({FixedScalar.FromRaw(value.PlanarBasisXRaw)},{FixedScalar.FromRaw(value.PlanarBasisYRaw)});claim={value.ClaimsLowerChannels};sources={value.ParticipatingSourceCount};fingerprint={value.ParticipatingSourceFingerprint:x16};movementClock={MovementClock(in value.MovementClock)}",
+                $"channel={s_MotionChannels[value.Channel]};owner={owner};delta=({FP.FromRaw(value.DisplacementXRaw)},{FP.FromRaw(value.DisplacementYRaw)},{FP.FromRaw(value.DisplacementZRaw)});yaw={FP.FromRaw(value.YawDegreesRaw)};planarBasis=({FP.FromRaw(value.PlanarBasisXRaw)},{FP.FromRaw(value.PlanarBasisYRaw)});claim={value.ClaimsLowerChannels};sources={value.ParticipatingSourceCount};fingerprint={value.ParticipatingSourceFingerprint:x16};movementClock={MovementClock(in value.MovementClock)}",
             SimulationMotionTraceDetailKind.Resolved =>
-                $"delta=({FixedScalar.FromRaw(value.DisplacementXRaw)},{FixedScalar.FromRaw(value.DisplacementYRaw)},{FixedScalar.FromRaw(value.DisplacementZRaw)});yaw={FixedScalar.FromRaw(value.YawDegreesRaw)};hasMotion={value.HasMotion};movementClock={MovementClock(in value.MovementClock)}",
+                $"delta=({FP.FromRaw(value.DisplacementXRaw)},{FP.FromRaw(value.DisplacementYRaw)},{FP.FromRaw(value.DisplacementZRaw)});yaw={FP.FromRaw(value.YawDegreesRaw)};hasMotion={value.HasMotion};movementClock={MovementClock(in value.MovementClock)}",
             SimulationMotionTraceDetailKind.None => string.Empty,
             _ => throw new ArgumentOutOfRangeException(nameof(value.Kind))
         };

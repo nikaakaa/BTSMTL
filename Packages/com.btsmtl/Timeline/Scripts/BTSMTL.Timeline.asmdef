@@ -8,13 +8,16 @@
         "ThirdPersonCharacter.Pipeline.RootMotion",
         "ThirdPersonSimulation.Core",
         "ThirdPersonSimulation.MemoryPack",
-        "BTSMTL.Timeline.Runtime"
+        "BTSMTL.Timeline.Runtime",
+        "ThirdPersonSimulation.QuantumNumerics"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
-    "overrideReferences": false,
-    "precompiledReferences": [],
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "Quantum.Deterministic.dll"
+    ],
     "autoReferenced": true,
     "defineConstraints": [],
     "versionDefines": [],

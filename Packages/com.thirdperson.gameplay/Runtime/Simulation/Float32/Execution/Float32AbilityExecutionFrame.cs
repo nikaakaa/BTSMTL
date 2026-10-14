@@ -466,7 +466,7 @@ namespace ThirdPersonSimulation
                 presentationHeader = Presentation.Next(source);
                 presentationIndex = m_Presentation.Count;
                 sampleTime = Presentation.HasTreeClipInvocation
-                    ? Float32Scalar.FromSingle(Presentation.TreeClipInvocation.Time.ToSingle())
+                    ? Float32Scalar.FromSingle(Presentation.TreeClipInvocation.Time.AsFloat)
                     : Float32Scalar.Zero;
                 m_Presentation.Add(default);
             }
@@ -989,7 +989,7 @@ namespace ThirdPersonSimulation
                 parentInvocationGeneration: warp.ParentInvocationGeneration,
                 timelineOperation: warp.Source.Operation,
                 timelinePlaybackGeneration: warp.GraphInvocation.PlaybackGeneration,
-                timelineTime: warp.CurrentTime.ToSingle(),
+                timelineTime: warp.CurrentTime.AsFloat,
                 timelineCycle: warp.Cycle));
         }
 

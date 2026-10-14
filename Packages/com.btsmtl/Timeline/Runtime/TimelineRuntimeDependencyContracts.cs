@@ -1,5 +1,4 @@
 using System;
-using ThirdPersonSimulation.Fixed;
 using System.Linq;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -10,7 +9,7 @@ namespace BTSMTL.Timeline.Runtime
     public enum TimelineRuntimeNumericTarget : byte
     {
         Float32 = 0,
-        Fixed = 1
+        FP = 1
     }
 
     public readonly struct TimelineRuntimeDependencyHandle : IEquatable<TimelineRuntimeDependencyHandle>

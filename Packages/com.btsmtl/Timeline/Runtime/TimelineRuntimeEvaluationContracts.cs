@@ -1,5 +1,5 @@
 using System;
-using ThirdPersonSimulation.Fixed;
+using Photon.Deterministic;
 using System.Linq;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -17,9 +17,9 @@ namespace BTSMTL.Timeline.Runtime
             TimelineTreeExecutionPhase phase,
             TimelineClipExitSource exitSource,
             TimelineRuntimeTreeClipEventKind eventKind,
-            FixedScalar time,
-            FixedScalar previousTime,
-            FixedScalar windowStartTime,
+            FP time,
+            FP previousTime,
+            FP windowStartTime,
             int cycle,
             float normalizedTime,
             ulong generation,
@@ -60,9 +60,9 @@ namespace BTSMTL.Timeline.Runtime
         public TimelineTreeExecutionPhase Phase { get; }
         public TimelineClipExitSource ExitSource { get; }
         public TimelineRuntimeTreeClipEventKind EventKind { get; }
-        public FixedScalar Time { get; }
-        public FixedScalar PreviousTime { get; }
-        public FixedScalar WindowStartTime { get; }
+        public FP Time { get; }
+        public FP PreviousTime { get; }
+        public FP WindowStartTime { get; }
         public int Cycle { get; }
         public float NormalizedTime { get; }
         public ulong Generation { get; }
@@ -83,7 +83,7 @@ namespace BTSMTL.Timeline.Runtime
             string trackAuthoringId,
             string graphId,
             string graphRevision,
-            FixedScalar time,
+            FP time,
             int cycle,
             ulong generation)
         {
@@ -99,7 +99,7 @@ namespace BTSMTL.Timeline.Runtime
             GraphRevision = string.IsNullOrWhiteSpace(graphRevision)
                 ? throw new ArgumentException("Timeline Marker graph revision is required.", nameof(graphRevision))
                 : graphRevision.Trim();
-            if (time < FixedScalar.Zero || cycle < 0)
+            if (time < FP._0 || cycle < 0)
                 throw new ArgumentOutOfRangeException(nameof(time));
             Generation = generation == 0
                 ? throw new ArgumentOutOfRangeException(nameof(generation))
@@ -112,7 +112,7 @@ namespace BTSMTL.Timeline.Runtime
         public string TrackAuthoringId { get; }
         public string GraphId { get; }
         public string GraphRevision { get; }
-        public FixedScalar Time { get; }
+        public FP Time { get; }
         public int Cycle { get; }
         public ulong Generation { get; }
     }
@@ -135,7 +135,7 @@ namespace BTSMTL.Timeline.Runtime
             ulong traversalIndex,
             string graphId,
             string graphRevision,
-            FixedScalar time,
+            FP time,
             int cycle)
         {
             if (!playbackHandle.IsValid || !executionIdentity.IsValid || generation == 0 || traversalIndex == 0)
@@ -152,7 +152,7 @@ namespace BTSMTL.Timeline.Runtime
             GraphRevision = string.IsNullOrWhiteSpace(graphRevision)
                 ? throw new ArgumentException("Timeline presentation marker graph revision is required.", nameof(graphRevision))
                 : graphRevision.Trim();
-            if (time < FixedScalar.Zero || cycle < 0)
+            if (time < FP._0 || cycle < 0)
                 throw new ArgumentOutOfRangeException(nameof(time));
             TraversalIndex = traversalIndex;
             Time = time;
@@ -178,7 +178,7 @@ namespace BTSMTL.Timeline.Runtime
         public ulong TraversalIndex { get; }
         public string GraphId { get; }
         public string GraphRevision { get; }
-        public FixedScalar Time { get; }
+        public FP Time { get; }
         public int Cycle { get; }
     }
 
@@ -189,7 +189,7 @@ namespace BTSMTL.Timeline.Runtime
             string trackAuthoringId,
             string contractKind,
             TimelineRuntimeTreeClipEventKind eventKind,
-            FixedScalar time,
+            FP time,
             int cycle,
             float normalizedTime)
         {
@@ -212,7 +212,7 @@ namespace BTSMTL.Timeline.Runtime
         public string TrackAuthoringId { get; }
         public string ContractKind { get; }
         public TimelineRuntimeTreeClipEventKind EventKind { get; }
-        public FixedScalar Time { get; }
+        public FP Time { get; }
         public int Cycle { get; }
         public float NormalizedTime { get; }
     }
@@ -226,7 +226,7 @@ namespace BTSMTL.Timeline.Runtime
             TimelineBindingValueKind valueKind,
             float value,
             float normalizedTime,
-            FixedScalar time,
+            FP time,
             int cycle,
             TimelineExecutionIdentity executionIdentity,
             ulong generation)
@@ -249,7 +249,7 @@ namespace BTSMTL.Timeline.Runtime
         public TimelineBindingValueKind ValueKind { get; }
         public float Value { get; }
         public float NormalizedTime { get; }
-        public FixedScalar Time { get; }
+        public FP Time { get; }
         public int Cycle { get; }
         public TimelineExecutionIdentity ExecutionIdentity { get; }
         public ulong Generation { get; }
@@ -268,7 +268,7 @@ namespace BTSMTL.Timeline.Runtime
             TimelineExecutionIdentity executionIdentity,
             ulong generation,
             ulong logicTick,
-            FixedScalar time,
+            FP time,
             int cycle)
         {
             TimelineAuthoringId = string.IsNullOrWhiteSpace(timelineAuthoringId)
@@ -285,7 +285,7 @@ namespace BTSMTL.Timeline.Runtime
                 throw new ArgumentOutOfRangeException(nameof(generation));
             if (logicTick == 0)
                 throw new ArgumentOutOfRangeException(nameof(logicTick));
-            if (time < FixedScalar.Zero)
+            if (time < FP._0)
                 throw new ArgumentOutOfRangeException(nameof(time));
             if (cycle < 0)
                 throw new ArgumentOutOfRangeException(nameof(cycle));
@@ -307,7 +307,7 @@ namespace BTSMTL.Timeline.Runtime
         public TimelineExecutionIdentity ExecutionIdentity { get; }
         public ulong Generation { get; }
         public ulong LogicTick { get; }
-        public FixedScalar Time { get; }
+        public FP Time { get; }
         public int Cycle { get; }
     }
 

@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using ThirdPersonSimulation;
-using ThirdPersonSimulation.Fixed;
+using Photon.Deterministic;
 
 namespace BTSMTL.Timeline.Runtime
 {
@@ -17,9 +17,9 @@ namespace BTSMTL.Timeline.Runtime
 
     public readonly struct TimelineRuntimePresentationSample
     {
-        public TimelineRuntimePresentationSample(ulong generation, ulong logicTick, CanonicalTextValue contentRevision, FixedScalar time, int cycle, TimelinePresentationSampleReason reason, bool retainForCorrection)
+        public TimelineRuntimePresentationSample(ulong generation, ulong logicTick, CanonicalTextValue contentRevision, FP time, int cycle, TimelinePresentationSampleReason reason, bool retainForCorrection)
         {
-            if (generation == 0 || logicTick == 0 || time < FixedScalar.Zero || cycle < 0 ||
+            if (generation == 0 || logicTick == 0 || time < FP._0 || cycle < 0 ||
                 retainForCorrection && reason != TimelinePresentationSampleReason.Withdrawn)
                 throw new ArgumentException("Timeline presentation sample is invalid.");
             Generation = generation;
@@ -33,7 +33,7 @@ namespace BTSMTL.Timeline.Runtime
 
         public ulong Generation { get; }
         public ulong LogicTick { get; }
-        public FixedScalar Time { get; }
+        public FP Time { get; }
         public int Cycle { get; }
         public CanonicalTextValue ContentRevision { get; }
         public TimelinePresentationSampleReason Reason { get; }
@@ -104,9 +104,9 @@ namespace BTSMTL.Timeline.Runtime
             }
 
             bool loop = playback.PlaybackMode == TimelinePlaybackMode.Loop;
-            FixedScalar previousTime = state.CursorTime;
+            FP previousTime = state.CursorTime;
             int previousCycle = state.Cycle;
-            FixedScalar currentTime = sample.Time;
+            FP currentTime = sample.Time;
             int currentCycle = sample.Cycle;
             TimelinePresentationSampleReason reason = state.SampleReason == TimelinePresentationSampleReason.Correction && !sample.EndsPlayback
                 ? TimelinePresentationSampleReason.Correction : sample.Reason;
@@ -172,7 +172,7 @@ namespace BTSMTL.Timeline.Runtime
             return true;
         }
 
-        PresentationPlaybackState GetPlaybackState(TimelineRuntimePlayback playback, FixedScalar startTime, int cycle)
+        PresentationPlaybackState GetPlaybackState(TimelineRuntimePlayback playback, FP startTime, int cycle)
         {
             bool hasState = m_Playbacks.TryGetValue(playback.Handle.Value, out PresentationPlaybackState state);
             TimelinePresentationSampleReason reason = hasState ? state.SampleReason : TimelinePresentationSampleReason.Advance;
@@ -344,16 +344,16 @@ namespace BTSMTL.Timeline.Runtime
         static void AppendMarkerEvents(
             TimelineRuntimePlayback playback,
             PresentationPlaybackState state,
-            FixedScalar previousTime,
+            FP previousTime,
             int previousCycle,
-            FixedScalar currentTime,
+            FP currentTime,
             int currentCycle,
             bool loop,
             bool includeStartBoundary,
             TimelineRuntimeSampleBuffer<TimelineRuntimePresentationEvent> events)
         {
-            FixedScalar duration = playback.Content.Duration;
-            if (duration <= FixedScalar.Zero)
+            FP duration = playback.Content.Duration;
+            if (duration <= FP._0)
                 return;
             if (currentCycle < previousCycle || currentCycle == previousCycle && currentTime < previousTime)
                 throw new InvalidOperationException("Timeline presentation cursor moved backward without a generation reset.");
@@ -363,8 +363,8 @@ namespace BTSMTL.Timeline.Runtime
             List<int> selected = state.Candidate.SamplingClips;
             for (int cycle = firstCycle; cycle <= lastCycle; cycle++)
             {
-                FixedScalar from = cycle == previousCycle ? previousTime : FixedScalar.Zero;
-                FixedScalar to = cycle == currentCycle ? currentTime : duration;
+                FP from = cycle == previousCycle ? previousTime : FP._0;
+                FP to = cycle == currentCycle ? currentTime : duration;
                 markers.Select(from, to, includeStartBoundary || cycle > previousCycle,
                     includeStartBoundary && cycle == previousCycle, selected);
                 for (int selectedIndex = 0; selectedIndex < selected.Count; selectedIndex++)
@@ -403,10 +403,10 @@ namespace BTSMTL.Timeline.Runtime
             public TimelineContentClip Clip => m_Indexed.Clip;
             public readonly string GraphId;
             public readonly string Revision;
-            public TimelineRuntimeTreeClipRequest Request(TimelineRuntimeTreeClipEventKind kind, FixedScalar time, int cycle, ulong generation) =>
+            public TimelineRuntimeTreeClipRequest Request(TimelineRuntimeTreeClipEventKind kind, FP time, int cycle, ulong generation) =>
                 new(Clip.AuthoringId, Clip.TrackAuthoringId, GraphId, Revision, TimelineTreeExecutionPhase.Commit,
                     Clip.ExitSource, kind, time, time, Clip.StartTime, cycle,
-                    ((time - Clip.StartTime) / (Clip.EndTime - Clip.StartTime)).ToSingle(), generation,
+                    ((time - Clip.StartTime) / (Clip.EndTime - Clip.StartTime)).AsFloat, generation,
                     TimelineRuntimeTreeClipRequest.ComposeBranchRevision(cycle));
         }
 
@@ -438,8 +438,8 @@ namespace BTSMTL.Timeline.Runtime
                         trees.Select(state.CursorTime, state.CursorTime, false, selected);
                     for (int cycle = state.Cycle; cycle <= sample.Cycle; cycle++)
                     {
-                        FixedScalar from = cycle == state.Cycle ? state.CursorTime : FixedScalar.Zero;
-                        FixedScalar to = cycle == sample.Cycle ? sample.Time : playback.Content.Duration;
+                        FP from = cycle == state.Cycle ? state.CursorTime : FP._0;
+                        FP to = cycle == sample.Cycle ? sample.Time : playback.Content.Duration;
                         int first = trees.FindStart(from, !state.InitialBoundaryConsumed || cycle > state.Cycle);
                         for (int index = first; index < trees.Count; index++)
                         {
@@ -467,8 +467,8 @@ namespace BTSMTL.Timeline.Runtime
                     int firstCycle = traverse ? state.Cycle : sample.Cycle;
                     for (int cycle = firstCycle; cycle <= sample.Cycle; cycle++)
                     {
-                        FixedScalar from = cycle == state.Cycle && traverse ? state.CursorTime : FixedScalar.Zero;
-                        FixedScalar to = cycle == sample.Cycle ? sample.Time : playback.Content.Duration;
+                        FP from = cycle == state.Cycle && traverse ? state.CursorTime : FP._0;
+                        FP to = cycle == sample.Cycle ? sample.Time : playback.Content.Duration;
                         bool crossesStart = tree.Clip.StartTime > from ||
                             tree.Clip.StartTime == from && (!state.InitialBoundaryConsumed || cycle > state.Cycle);
                         bool entersAtStart = traverse && !state.InitialBoundaryConsumed && cycle == state.Cycle &&
@@ -478,13 +478,13 @@ namespace BTSMTL.Timeline.Runtime
                         if (activeCycle < 0 && cycle > exitCycle && to >= tree.Clip.StartTime && (crossesStart && traverse || entersAtStart || align))
                         {
                             activeCycle = cycle;
-                            FixedScalar enterTime = entersAtStart ? from : align ? to : tree.Clip.StartTime;
+                            FP enterTime = entersAtStart ? from : align ? to : tree.Clip.StartTime;
                             output.Add(tree.Request(TimelineRuntimeTreeClipEventKind.Enter, enterTime, cycle, playback.Generation));
                         }
                         if (activeCycle >= 0 && (activeCycle < cycle || !dynamic && to >= tree.Clip.EndTime ||
                             cycle < sample.Cycle || sample.EndsPlayback && cycle == sample.Cycle))
                         {
-                            FixedScalar exitTime = dynamic ? to : FixedScalar.Min(to, tree.Clip.EndTime);
+                            FP exitTime = dynamic ? to : FPMath.Min(to, tree.Clip.EndTime);
                             output.Add(tree.Request(TimelineRuntimeTreeClipEventKind.Exit, exitTime, activeCycle, playback.Generation));
                             exitCycle = activeCycle;
                             activeCycle = -1;
@@ -548,7 +548,7 @@ namespace BTSMTL.Timeline.Runtime
             public TimelineRuntimePresentationBuffer Accepted;
             public readonly ulong[] MarkerLastTraversal;
             public readonly ulong[] PendingMarkerLastTraversal;
-            public FixedScalar PendingTime;
+            public FP PendingTime;
             public int PendingCycle;
             public bool PendingFinished;
             public bool PendingInitialBoundaryConsumed;
@@ -557,7 +557,7 @@ namespace BTSMTL.Timeline.Runtime
             public PresentationPlaybackState PreviousPendingFrame;
             public PresentationPlaybackState NextPendingFrame;
             public ulong Generation { get; private set; }
-            public FixedScalar CursorTime;
+            public FP CursorTime;
             public int Cycle;
             public bool InitialBoundaryConsumed;
             public TimelinePresentationSampleReason SampleReason;
@@ -566,7 +566,7 @@ namespace BTSMTL.Timeline.Runtime
             public ulong LastPresentationFrame;
             public bool HasCachedFrame;
 
-            public void Restart(ulong generation, FixedScalar startTime, int cycle)
+            public void Restart(ulong generation, FP startTime, int cycle)
             {
                 Generation = generation;
                 Array.Clear(MarkerLastTraversal, 0, MarkerLastTraversal.Length);

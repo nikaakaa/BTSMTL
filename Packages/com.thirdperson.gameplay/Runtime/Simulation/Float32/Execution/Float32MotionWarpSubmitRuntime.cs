@@ -1,7 +1,7 @@
 using GameplayAbilityCurve = ThirdPersonSimulation.GameplayAbilityCurve<ThirdPersonSimulation.Float32Scalar>;
 using System;
 using System.Collections.Generic;
-using ThirdPersonSimulation.Fixed;
+using Photon.Deterministic;
 
 namespace ThirdPersonSimulation
 {
@@ -37,10 +37,10 @@ namespace ThirdPersonSimulation
             if (invocation.Hook != AbilityTreeClipHook.Root)
                 throw new InvalidOperationException("MotionWarp 必须由 TimelineBody 的 Root 提交。");
             Profile profile = m_Profiles[operation.Handle.Value];
-            FixedScalar start = invocation.WindowStartTime;
-            FixedScalar end = FixedScalar.FromSingle(profile.EndTime.ToSingle());
-            FixedScalar previous = FixedScalar.Max(start, invocation.PreviousTime);
-            FixedScalar current = FixedScalar.Min(end, invocation.Time);
+            FP start = invocation.WindowStartTime;
+            FP end = profile.EndTime;
+            FP previous = FPMath.Max(start, invocation.PreviousTime);
+            FP current = FPMath.Min(end, invocation.Time);
             if (current <= previous)
                 return;
             using Float32ValueInputLease inputs = m_Values.ReadInputs(cursor, operation);
@@ -49,10 +49,10 @@ namespace ThirdPersonSimulation
             AbilityTimelineMotionSourcePose endPose = m_Sources.SampleMotionSource(invocation.TimelineRuntimeHandle, operation.Text0, end);
             AbilityTimelineMotionSourcePose previousPose = m_Sources.SampleMotionSource(invocation.TimelineRuntimeHandle, operation.Text0, previous);
             AbilityTimelineMotionSourcePose currentPose = m_Sources.SampleMotionSource(invocation.TimelineRuntimeHandle, operation.Text0, current);
-            FixedScalar previousWindowTime = previous - start;
-            FixedScalar windowDuration = end - start;
-            Float32Scalar previousProgress = Float32Scalar.FromSingle((previousWindowTime / windowDuration).ToSingle());
-            Float32Scalar currentProgress = Float32Scalar.FromSingle(((current - start) / windowDuration).ToSingle());
+            FP previousWindowTime = previous - start;
+            FP windowDuration = end - start;
+            Float32Scalar previousProgress = Float32Scalar.FromSingle((previousWindowTime / windowDuration).AsFloat);
+            Float32Scalar currentProgress = Float32Scalar.FromSingle(((current - start) / windowDuration).AsFloat);
             Float32Vector3 target = inputs[2].Vector3;
             Float32Vector2 input = inputs[4].Vector2;
             m_Candidates.Add(new AbilityTimelineLogicMotionWarp(
@@ -64,15 +64,15 @@ namespace ThirdPersonSimulation
                 endPose.X, endPose.Y, endPose.Z, endPose.Yaw,
                 previousPose.X, previousPose.Y, previousPose.Z, previousPose.Yaw,
                 currentPose.X, currentPose.Y, currentPose.Z, currentPose.Yaw,
-                FixedScalar.FromSingle(profile.PositionProgress(previousProgress).ToSingle()), FixedScalar.FromSingle(profile.YawProgress(previousProgress).ToSingle()),
-                FixedScalar.FromSingle(profile.PositionProgress(currentProgress).ToSingle()), FixedScalar.FromSingle(profile.YawProgress(currentProgress).ToSingle()),
-                FixedScalar.FromSingle(profile.Response(currentProgress).ToSingle()), FixedScalar.FromSingle(input.X.ToSingle()), FixedScalar.FromSingle(input.Y.ToSingle()),
-                FixedScalar.FromSingle(profile.InputResponse(currentProgress).ToSingle()),
+                FP.FromRoundedFloat_UNSAFE(profile.PositionProgress(previousProgress).ToSingle()), FP.FromRoundedFloat_UNSAFE(profile.YawProgress(previousProgress).ToSingle()),
+                FP.FromRoundedFloat_UNSAFE(profile.PositionProgress(currentProgress).ToSingle()), FP.FromRoundedFloat_UNSAFE(profile.YawProgress(currentProgress).ToSingle()),
+                FP.FromRoundedFloat_UNSAFE(profile.Response(currentProgress).ToSingle()), FP.FromRoundedFloat_UNSAFE(input.X.ToSingle()), FP.FromRoundedFloat_UNSAFE(input.Y.ToSingle()),
+                FP.FromRoundedFloat_UNSAFE(profile.InputResponse(currentProgress).ToSingle()),
                 (ProgramMotionWarpTranslationMode)operation.Integer0, (ProgramMotionWarpTargetOffsetSpace)(operation.Flags & 255),
                 (ProgramMotionWarpRotationMode)operation.Integer1, (ProgramMotionWarpRotationMethod)(operation.Flags >> 8 & 255),
                 profile.OffsetX, profile.OffsetZ, profile.YawOffset, profile.MaxPosition, profile.MaxYaw, profile.MaxYawRate,
                 (ProgramMotionWarpLimitPolicy)(operation.Flags >> 16 & 255), inputs[0].Boolean, inputs[1].Boolean,
-                new AbilityTimelineMotionSourcePose(FixedScalar.FromSingle(target.X.ToSingle()), FixedScalar.FromSingle(target.Y.ToSingle()), FixedScalar.FromSingle(target.Z.ToSingle()), FixedScalar.FromSingle(inputs[3].Scalar.ToSingle())),
+                new AbilityTimelineMotionSourcePose(FP.FromRoundedFloat_UNSAFE(target.X.ToSingle()), FP.FromRoundedFloat_UNSAFE(target.Y.ToSingle()), FP.FromRoundedFloat_UNSAFE(target.Z.ToSingle()), FP.FromRoundedFloat_UNSAFE(inputs[3].Scalar.ToSingle())),
                 operation.Text0, invocation, SimulationExecutionSource.FromSkillOperation(operation.Handle, SourcePath(operation)),
                 m_Frame.Trace.ReadInvocationGeneration(operation.Handle), m_Frame.Trace.ReadParentInvocationGeneration(operation.Handle),
                 m_Sources.SampleMotionPrefix(invocation.TimelineRuntimeHandle, operation.Text0, invocation.Cycle, previous)));
@@ -87,7 +87,7 @@ namespace ThirdPersonSimulation
 
             public Profile(GameplayAbilityExecutionLayout layout, SimulationOperation operation)
             {
-                EndTime = layout.FindNamedConstant(operation.Handle, OperationNamedConstant.WindowEndTime).Scalar;
+                EndTime = FP.FromRoundedFloat_UNSAFE(layout.FindNamedConstant(operation.Handle, OperationNamedConstant.WindowEndTime).Scalar.ToSingle());
                 OffsetX = Scalar(OperationNamedConstant.TargetPlanarOffsetX);
                 OffsetZ = Scalar(OperationNamedConstant.TargetPlanarOffsetZ);
                 YawOffset = Scalar(OperationNamedConstant.TargetYawOffsetDegrees);
@@ -107,18 +107,18 @@ namespace ThirdPersonSimulation
                     m_InputResponse = Curve(OperationNamedConstant.InputYawResponseCurve);
                 }
 
-                float Scalar(OperationNamedConstant field) => layout.FindNamedConstant(operation.Handle, field).Scalar.ToSingle();
+                FP Scalar(OperationNamedConstant field) => FP.FromRoundedFloat_UNSAFE(layout.FindNamedConstant(operation.Handle, field).Scalar.ToSingle());
                 GameplayAbilityCurve Curve(OperationNamedConstant field) =>
                     layout.FindNamedConstant(operation.Handle, field).Curve;
             }
 
-            public Float32Scalar EndTime { get; }
-            public float OffsetX { get; }
-            public float OffsetZ { get; }
-            public float YawOffset { get; }
-            public float MaxPosition { get; }
-            public float MaxYaw { get; }
-            public float MaxYawRate { get; }
+            public FP EndTime { get; }
+            public FP OffsetX { get; }
+            public FP OffsetZ { get; }
+            public FP YawOffset { get; }
+            public FP MaxPosition { get; }
+            public FP MaxYaw { get; }
+            public FP MaxYawRate { get; }
             public Float32Scalar PositionProgress(Float32Scalar progress) => m_Position == null ? progress : m_Position.Evaluate<Float32SimulationMath>(progress, Float32Scalar.Zero);
             public Float32Scalar YawProgress(Float32Scalar progress) => m_Yaw == null ? progress : m_Yaw.Evaluate<Float32SimulationMath>(progress, Float32Scalar.Zero);
             public Float32Scalar Response(Float32Scalar progress) => m_Response == null ? Float32Scalar.Zero : m_Response.Evaluate<Float32SimulationMath>(progress, Float32Scalar.Zero);

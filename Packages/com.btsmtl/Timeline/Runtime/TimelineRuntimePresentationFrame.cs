@@ -1,5 +1,5 @@
 using System;
-using ThirdPersonSimulation.Fixed;
+using Photon.Deterministic;
 using System.Linq;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -104,7 +104,7 @@ namespace BTSMTL.Timeline.Runtime
             TimelineRuntimePresentationOperations operations,
             TimelineRuntimeSampleView<TimelineRuntimePresentationEvent> events,
             TimelinePresentationSampleReason reason,
-            FixedScalar time,
+            FP time,
             int cycle)
         {
             if (playback == null || !playback.Handle.IsValid || playback.Generation == 0 || presentationFrame == 0 ||
@@ -134,7 +134,7 @@ namespace BTSMTL.Timeline.Runtime
         public TimelineExecutionIdentity ExecutionIdentity { get; }
         public readonly TimelineRuntimePresentationOperations Operations;
         public TimelinePresentationSampleReason Reason { get; }
-        public FixedScalar Time { get; }
+        public FP Time { get; }
         public int Cycle { get; }
         public TimelineRuntimeSampleView<TimelineRuntimePresentationEvent> Events { get; }
     }

@@ -1,5 +1,5 @@
 using System;
-using ThirdPersonSimulation.Fixed;
+using Photon.Deterministic;
 using System.Collections.Generic;
 using ThirdPersonSimulation;
 using UnityEngine;
@@ -97,7 +97,7 @@ namespace BTSMTL.Timeline
 #if UNITY_EDITOR
         public override ClipCapabilities Capabilities => ClipCapabilities.Resizable | ClipCapabilities.TickQuantized;
 
-        public ScenePresentationParameterCurveClip(Track track, FixedScalar time) : base(track, time)
+        public ScenePresentationParameterCurveClip(Track track, FP time) : base(track, time)
         {
         }
 #endif

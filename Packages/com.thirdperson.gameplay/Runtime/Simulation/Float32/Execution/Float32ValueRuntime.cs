@@ -65,7 +65,7 @@ namespace ThirdPersonSimulation
                         result = AbilityStateValue.FromBoolean(m_Actions.IsActivationEntry(operation.Text0));
                         break;
                     case SimulationOperationCode.TimelineTime:
-                        result = AbilityStateValue.FromScalar(Float32Scalar.FromSingle(m_Frame.TreeClipInvocation.Time.ToSingle()));
+                        result = AbilityStateValue.FromScalar(Float32Scalar.FromSingle(m_Frame.TreeClipInvocation.Time.AsFloat));
                         break;
                 case SimulationOperationCode.ActionTargetRead:
                     result = ReadActionTarget(cursor, operation, outputPort);

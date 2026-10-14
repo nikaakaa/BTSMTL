@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using ThirdPersonSimulation;
-using ThirdPersonSimulation.Fixed;
+using Photon.Deterministic;
 
 namespace BTSMTL.Timeline
 {
@@ -126,7 +126,7 @@ namespace BTSMTL.Timeline
             string markerId,
             string trackAuthoringId,
             TimelineClipExecutionPolicy executionPolicy,
-            FixedScalar time,
+            FP time,
             bool forceTriggerOnInitialSeek,
             string graphId,
             string graphRevision,
@@ -139,7 +139,7 @@ namespace BTSMTL.Timeline
             ForceTriggerOnInitialSeek = forceTriggerOnInitialSeek;
             GraphId = Require(graphId, nameof(graphId));
             GraphRevision = Require(graphRevision, nameof(graphRevision));
-            Time = time < FixedScalar.Zero ? throw new ArgumentOutOfRangeException(nameof(time)) : time;
+            Time = time < FP._0 ? throw new ArgumentOutOfRangeException(nameof(time)) : time;
         }
 
         public string MarkerId { get; }
@@ -147,7 +147,7 @@ namespace BTSMTL.Timeline
         public bool TrackMuted { get; }
         public string TrackAuthoringId { get; }
         public TimelineClipExecutionPolicy ExecutionPolicy { get; }
-        public FixedScalar Time { get; }
+        public FP Time { get; }
         public string GraphId { get; }
         public string GraphRevision { get; }
 
@@ -227,12 +227,12 @@ namespace BTSMTL.Timeline
         public string TrackAuthoringId { get; }
         public TimelineClipExecutionPolicy ExecutionPolicy { get; }
         public TimelineClipTimeRange TimeRange { get; }
-        public FixedScalar StartTime => TimeRange.Start;
-        public FixedScalar EndTime => TimeRange.End;
-        public FixedScalar DurationTime => EndTime - StartTime;
-        public FixedScalar EaseInTime => TimeRange.EffectiveEaseIn;
-        public FixedScalar EaseOutTime => TimeRange.EffectiveEaseOut;
-        public FixedScalar ClipInTime => TimeRange.ClipIn;
+        public FP StartTime => TimeRange.Start;
+        public FP EndTime => TimeRange.End;
+        public FP DurationTime => EndTime - StartTime;
+        public FP EaseInTime => TimeRange.EffectiveEaseIn;
+        public FP EaseOutTime => TimeRange.EffectiveEaseOut;
+        public FP ClipInTime => TimeRange.ClipIn;
         public TimelineContentParameters Parameters { get; }
         public TimelineClipExecutionPhase ExecutionPhase { get; }
         public TimelineTreeExecutionPhase TreeExecutionPhase => ExecutionPhase == TimelineClipExecutionPhase.Decision
@@ -283,10 +283,10 @@ namespace BTSMTL.Timeline
 
     public readonly struct TimelineContentSection
     {
-        public TimelineContentSection(string authoringId, FixedScalar time, string nextSectionId, string branchId)
+        public TimelineContentSection(string authoringId, FP time, string nextSectionId, string branchId)
         {
             AuthoringId = Require(authoringId, nameof(authoringId));
-            if (time < FixedScalar.Zero)
+            if (time < FP._0)
                 throw new ArgumentOutOfRangeException(nameof(time));
             Time = time;
             NextSectionId = nextSectionId?.Trim() ?? string.Empty;
@@ -294,7 +294,7 @@ namespace BTSMTL.Timeline
         }
 
         public string AuthoringId { get; }
-        public FixedScalar Time { get; }
+        public FP Time { get; }
         public string NextSectionId { get; }
         public string BranchId { get; }
 
@@ -355,7 +355,7 @@ namespace BTSMTL.Timeline
             string contentHash,
             string rootFingerprint,
             string name,
-            FixedScalar duration,
+            FP duration,
             bool loop,
             IReadOnlyList<TimelineContentTrack> tracks,
             IReadOnlyList<TimelineContentClip> clips,
@@ -384,7 +384,7 @@ namespace BTSMTL.Timeline
         public string ContentHash => Revision.ToString();
         public string RootFingerprint => SourceRevision.ToString();
         public string Name { get; }
-        public FixedScalar Duration { get; private set; }
+        public FP Duration { get; private set; }
         public bool Loop { get; }
         public IReadOnlyList<TimelineContentTrack> Tracks { get; }
         public IReadOnlyList<TimelineContentClip> Clips { get; private set; }
@@ -405,7 +405,7 @@ namespace BTSMTL.Timeline
             return candidate;
         }
 
-        public void UpdateTimeRangeCandidate(ReadOnlySpan<TimelineClipTimeRange> ranges, FixedScalar duration,
+        public void UpdateTimeRangeCandidate(ReadOnlySpan<TimelineClipTimeRange> ranges, FP duration,
             CanonicalTextValue sourceRevision, CanonicalTextValue revision)
         {
             for (int i = 0; i < ranges.Length; i++)
@@ -421,7 +421,7 @@ namespace BTSMTL.Timeline
             !string.IsNullOrEmpty(AuthoringId) &&
             !Revision.IsEmpty &&
             !SourceRevision.IsEmpty &&
-            Duration >= FixedScalar.Zero;
+            Duration >= FP._0;
     }
 
     public sealed class TimelineContentDiscoveryResult

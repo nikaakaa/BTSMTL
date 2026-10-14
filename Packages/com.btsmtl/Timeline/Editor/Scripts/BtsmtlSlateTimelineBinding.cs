@@ -1,6 +1,7 @@
+using ThirdPersonSimulation.QuantumNumerics;
 #if UNITY_EDITOR
 using System;
-using ThirdPersonSimulation.Fixed;
+using Photon.Deterministic;
 using System.Collections.Generic;
 using System.Linq;
 using BTSMTL.Timeline;
@@ -102,7 +103,7 @@ namespace BTSMTL.Timeline.Editor
                     });
                 if (editing)
                 {
-                    float normalized = (CurrentTime - camera.StartTime.ToSingle()) / camera.DurationTime.ToSingle();
+                    float normalized = (CurrentTime - camera.StartTime.AsFloat) / camera.DurationTime.AsFloat;
                     if (normalized < 0f || normalized > 1f)
                         EditorGUILayout.HelpBox("请把编辑游标移到此镜头片段内，再记录当前帧。", MessageType.Info);
                     else
@@ -142,7 +143,7 @@ namespace BTSMTL.Timeline.Editor
             ? DisplayFrames ? 1f / FrameRate : m_Session.SecondsInterval
             : SnapInterval > 0f ? SnapInterval : throw new InvalidOperationException("当前吸附网格缺少参考 Pipeline 或动画素材。");
         public float SnapTime(float time) => m_Session.SnapTime(
-            FixedScalar.FromDouble(Math.Max(0d, time)), m_Session.Selection.Clip).ToSingle();
+            QuantumScalarBoundary.ConvertExternal(Math.Max(0d, time), nameof(BtsmtlSlateTimelineBinding)), m_Session.Selection.Clip).AsFloat;
         public string SnapLabel => m_Session.SnapMode switch
         {
             TimelineAuthoringSnapMode.LogicTick => TickSnapLabel,
@@ -510,20 +511,20 @@ namespace BTSMTL.Timeline.Editor
             return true;
         }
 
-        public void ApplyClipTimeRangeNumbers(string clipIdentity, FixedScalar start, FixedScalar end)
+        public void ApplyClipTimeRangeNumbers(string clipIdentity, FP start, FP end)
         {
             var clip = m_Clips[clipIdentity];
-            FixedScalar originalStart = clip.Source.StartTime;
-            FixedScalar originalDuration = clip.Source.DurationTime;
+            FP originalStart = clip.Source.StartTime;
+            FP originalDuration = clip.Source.DurationTime;
             BeginEdit("编辑片段时间范围", EmbeddedTimelineEditKind.ClipTimeRange);
-            clip.StartTime = start.ToSingle();
-            clip.EndTime = end.ToSingle();
+            clip.StartTime = start.AsFloat;
+            clip.EndTime = end.AsFloat;
             if (end - start != originalDuration)
             {
                 bool trimStart = start != originalStart;
                 if (trimStart && clip.CanClipIn)
-                    clip.ClipInTime = Math.Max(0d, (clip.Source.ClipInTime + start - originalStart).ToDouble());
-                clip.AdjustSourceRange(originalStart.ToDouble(), start.ToDouble(), end.ToDouble(), trimStart);
+                    clip.ClipInTime = Math.Max(0d, (clip.Source.ClipInTime + start - originalStart).AsDouble);
+                clip.AdjustSourceRange(originalStart.AsDouble, start.AsDouble, end.AsDouble, trimStart);
             }
             CommitEdit();
         }
@@ -624,7 +625,7 @@ namespace BTSMTL.Timeline.Editor
             {
                 ScriptableObject graph = m_Request.AuthoringHost.CreateGraph(
                     m_Request.SerializedOwner, $"{formalTrack.Source.Name} Marker {time:0.#########}s", true);
-                added = formalTrack.Source.AddMarker(m_Session.SnapTime(FixedScalar.FromDouble(Math.Max(0d, time))), graph);
+                added = formalTrack.Source.AddMarker(m_Session.SnapTime(QuantumScalarBoundary.ConvertExternal(Math.Max(0d, time), nameof(BtsmtlSlateTimelineBinding))), graph);
             }, "Add Timeline Marker") && m_Markers.TryGetValue(added.AuthoringId, out BtsmtlTimelineMarkerBinding binding))
                 Select(binding);
         }
@@ -646,8 +647,8 @@ namespace BTSMTL.Timeline.Editor
         {
             if (IsReadOnly || !(marker is BtsmtlTimelineMarkerBinding formalMarker))
                 return;
-            FixedScalar nextTime = m_Session.SnapTime(FixedScalar.FromDouble(Math.Max(0d, time)));
-            if (formalMarker.Time == nextTime.ToDouble())
+            FP nextTime = m_Session.SnapTime(QuantumScalarBoundary.ConvertExternal(Math.Max(0d, time), nameof(BtsmtlSlateTimelineBinding)));
+            if (formalMarker.Time == nextTime.AsDouble)
                 return;
             if (formalMarker.IsLocked)
             {
@@ -714,7 +715,7 @@ namespace BTSMTL.Timeline.Editor
                 ReportIssue("当前 Clip 或所属 Track 已锁定，不能切分。");
                 return;
             }
-            FixedScalar splitTime = m_Session.SnapTime(FixedScalar.FromDouble(Math.Max(0d, time)), formalClip.Source);
+            FP splitTime = m_Session.SnapTime(QuantumScalarBoundary.ConvertExternal(Math.Max(0d, time), nameof(BtsmtlSlateTimelineBinding)), formalClip.Source);
             if (splitTime <= formalClip.Source.StartTime || splitTime >= formalClip.Source.EndTime)
                 return;
             if (formalClip.Source is not AnimationClip && formalClip.Source is not MotionCurveClip &&
@@ -725,8 +726,8 @@ namespace BTSMTL.Timeline.Editor
             }
             ApplyImmediate(() =>
             {
-                FixedScalar originalStartTime = formalClip.Source.StartTime;
-                FixedScalar originalEndTime = formalClip.Source.EndTime;
+                FP originalStartTime = formalClip.Source.StartTime;
+                FP originalEndTime = formalClip.Source.EndTime;
                 Clip copy = ManagedReferenceCloneUtility.Clone(formalClip.Source);
                 copy.RegenerateAuthoringIdentity();
                 if (copy is ITimelineOwnedAuthoringIdentity owned)
@@ -737,7 +738,7 @@ namespace BTSMTL.Timeline.Editor
                 if (formalClip.Source is MotionCurveClip motion && copy is MotionCurveClip motionCopy)
                 {
                     float splitSourceTime = motion.SourceStartTime +
-                        (splitTime - originalStartTime).ToSingle();
+                        (splitTime - originalStartTime).AsFloat;
                     float originalSourceEnd = motion.SourceEndTime;
                     motion.ConfigureSource(motion.SourceCurve, motion.SourceStartTime, splitSourceTime);
                     motionCopy.ConfigureSource(motionCopy.SourceCurve, splitSourceTime, originalSourceEnd);
@@ -745,20 +746,20 @@ namespace BTSMTL.Timeline.Editor
                 if (formalClip.Source is CameraEffectClip camera && copy is CameraEffectClip cameraCopy)
                 {
                     float splitSourceTime = camera.SourceStartTime +
-                        ((splitTime - originalStartTime) / (originalEndTime - originalStartTime)).ToSingle() *
+                        ((splitTime - originalStartTime) / (originalEndTime - originalStartTime)).AsFloat *
                         (camera.SourceEndTime - camera.SourceStartTime);
                     cameraCopy.ConfigureSourceRange(splitSourceTime, camera.SourceEndTime);
                     camera.ConfigureSourceRange(camera.SourceStartTime, splitSourceTime);
                 }
                 formalClip.Source.ConfigureTimeRange(originalStartTime, splitTime);
-                formalClip.Source.ConfigureEase(formalClip.Source.SelfEaseInTime, FixedScalar.Zero);
-                copy.ConfigureEase(FixedScalar.Zero, copy.SelfEaseOutTime);
+                formalClip.Source.ConfigureEase(formalClip.Source.SelfEaseInTime, FP._0);
+                copy.ConfigureEase(FP._0, copy.SelfEaseOutTime);
                 copy.Track = formalClip.Source.Track;
                 formalClip.Source.Track.Clips.Add(copy);
                 SplitClipCurves(
                     formalClip.Source,
                     copy,
-                    ((splitTime - originalStartTime) / (originalEndTime - originalStartTime)).ToSingle());
+                    ((splitTime - originalStartTime) / (originalEndTime - originalStartTime)).AsFloat);
                 formalClip.Source.Track.UpdateMix();
             }, "Split Timeline Clip");
         }
@@ -790,7 +791,7 @@ namespace BTSMTL.Timeline.Editor
                 return;
             }
             formalSection.Name = name ?? string.Empty;
-            formalSection.Time = m_Session.SnapTime(FixedScalar.FromDouble(Math.Max(0d, time))).ToSingle();
+            formalSection.Time = m_Session.SnapTime(QuantumScalarBoundary.ConvertExternal(Math.Max(0d, time), nameof(BtsmtlSlateTimelineBinding))).AsFloat;
         }
 
         public void DeleteSection(IEmbeddedTimelineSectionBinding section)
@@ -809,7 +810,7 @@ namespace BTSMTL.Timeline.Editor
         {
             if (IsReadOnly)
                 return;
-            ApplyImmediate(() => Timeline.AddSection("Section", m_Session.SnapTime(FixedScalar.FromDouble(Math.Max(0d, time)))), "Add Timeline Section");
+            ApplyImmediate(() => Timeline.AddSection("Section", m_Session.SnapTime(QuantumScalarBoundary.ConvertExternal(Math.Max(0d, time), nameof(BtsmtlSlateTimelineBinding)))), "Add Timeline Section");
         }
 
         public bool CanPasteClip => m_CopiedClip != null;
@@ -844,7 +845,7 @@ namespace BTSMTL.Timeline.Editor
                 clone.RegenerateAuthoringIdentity();
                 if (clone is ITimelineOwnedAuthoringIdentity owned)
                     owned.RegenerateOwnedAuthoringIdentity();
-                FixedScalar startTime = m_Session.SnapTime(FixedScalar.FromDouble(Math.Max(0d, time)), m_CopiedClip);
+                FP startTime = m_Session.SnapTime(QuantumScalarBoundary.ConvertExternal(Math.Max(0d, time), nameof(BtsmtlSlateTimelineBinding)), m_CopiedClip);
                 clone.ConfigureTimeRange(startTime, startTime + m_CopiedClip.DurationTime);
                 ContractCatalog.RequireClipPlacement(formalTrack.Source, clone);
                 formalTrack.Source.Clips.Add(clone);
@@ -1177,7 +1178,7 @@ namespace BTSMTL.Timeline.Editor
                     m_Request.AuthoringHost.ShowCameraSourceCreation(Session.GridPipeline, null, effect =>
                     {
                         if (!ApplyImmediate(() => Timeline.AddClip(ContractCatalog, effect, track.Source,
-                            m_Session.SnapTime(FixedScalar.FromDouble(time), null)), "创建镜头片段"))
+                            m_Session.SnapTime(QuantumScalarBoundary.ConvertExternal(time, nameof(BtsmtlSlateTimelineBinding)), null)), "创建镜头片段"))
                             return "镜头片段提交失败。";
                         AssetDatabase.SaveAssetIfDirty(m_Request.SerializedOwner);
                         return string.Empty;
@@ -1203,10 +1204,10 @@ namespace BTSMTL.Timeline.Editor
             bool isTreeClip = kind == TimelineContractKinds.TreeClip;
             bool terminalLogicTreeClip = isTreeClip &&
                 executionDomain == TimelineExecutionDomain.Logic;
-            FixedScalar startTime = m_Session.SnapTime(FixedScalar.FromDouble(Math.Max(0d, time)), m_Session.Selection.Clip);
-            FixedScalar defaultEndTime = terminalLogicTreeClip
-                ? FixedScalar.Max(startTime + FixedScalar.FromRaw(1), Timeline.DurationTime)
-                : startTime + FixedScalar.FromDecimal(0.05m);
+            FP startTime = m_Session.SnapTime(QuantumScalarBoundary.ConvertExternal(Math.Max(0d, time), nameof(BtsmtlSlateTimelineBinding)), m_Session.Selection.Clip);
+            FP defaultEndTime = terminalLogicTreeClip
+                ? FPMath.Max(startTime + FP.FromRaw(1), Timeline.DurationTime)
+                : startTime + FP._0_05;
             var request = new TimelineClipCreationRequest
             {
                 TreeGraphType = m_Request.AuthoringHost.TreeGraphType,
@@ -1255,14 +1256,14 @@ namespace BTSMTL.Timeline.Editor
             }
             bool isTreeClip = request.Kind == TimelineContractKinds.TreeClip;
             bool terminalLogicTreeClip = isTreeClip && track.Source.ExecutionDomain == TimelineExecutionDomain.Logic;
-            FixedScalar presentationLayoutEnd = request.EndTime;
+            FP presentationLayoutEnd = request.EndTime;
             if (isTreeClip && track.Source.ExecutionDomain == TimelineExecutionDomain.Presentation &&
                 request.TreeExitSource == TimelineClipExitSource.TreeDecision &&
                 presentationLayoutEnd == request.DefaultEndTime)
-                presentationLayoutEnd = FixedScalar.Max(
-                    request.StartTime + FixedScalar.FromRaw(1),
+                presentationLayoutEnd = FPMath.Max(
+                    request.StartTime + FP.FromRaw(1),
                     request.TimelineEndTime);
-            FixedScalar terminalTime = FixedScalar.Max(request.StartTime + FixedScalar.FromRaw(1), Timeline.DurationTime);
+            FP terminalTime = FPMath.Max(request.StartTime + FP.FromRaw(1), Timeline.DurationTime);
             try
             {
                 Clip added = null;
@@ -1539,14 +1540,14 @@ namespace BTSMTL.Timeline.Editor
         {
             readonly BtsmtlTimelineTrackBinding m_Track;
             string m_DisplayName;
-            FixedScalar m_InitialTime;
-            FixedScalar m_Time;
+            FP m_InitialTime;
+            FP m_Time;
 
             public BtsmtlTimelineMarkerBinding(BtsmtlTimelineTrackBinding track, TimelineMarker source)
             {
                 m_Track = track;
                 Source = source;
-                m_DisplayName = $"Marker {source.Time.ToDouble():0.#########}s";
+                m_DisplayName = $"Marker {source.Time.AsDouble:0.#########}s";
                 m_Time = source.Time;
                 m_InitialTime = m_Time;
             }
@@ -1556,8 +1557,8 @@ namespace BTSMTL.Timeline.Editor
             IEmbeddedTimelineTrackBinding IEmbeddedTimelineMarkerBinding.Track => m_Track;
             public string AuthoringId => Source.AuthoringId;
             public string DisplayName => m_DisplayName;
-            public double Time => m_Time.ToDouble();
-            internal void SetTime(FixedScalar time) => m_Time = time;
+            public double Time => m_Time.AsDouble;
+            internal void SetTime(FP time) => m_Time = time;
             public bool IsLocked { get => m_Track.IsLocked; set => m_Track.IsLocked = value; }
 
             public bool HasChanges() => m_Time != m_InitialTime;
@@ -1567,7 +1568,7 @@ namespace BTSMTL.Timeline.Editor
                 if (!HasChanges())
                     return false;
                 Source.Configure(m_Time, Source.Graph, Source.ForceTriggerOnInitialSeek);
-                m_DisplayName = $"Marker {m_Time.ToDouble():0.#########}s";
+                m_DisplayName = $"Marker {m_Time.AsDouble:0.#########}s";
                 m_InitialTime = m_Time;
                 return true;
             }
@@ -1586,7 +1587,7 @@ namespace BTSMTL.Timeline.Editor
             float m_InitialBlendIn;
             float m_BlendOut;
             float m_InitialBlendOut;
-            FixedScalar m_ClipInTime;
+            FP m_ClipInTime;
             float m_SourceStartTime;
             float m_SourceEndTime;
             TimelineClipTimeRange m_GestureTimeRange;
@@ -1601,11 +1602,11 @@ namespace BTSMTL.Timeline.Editor
                 m_Info = source is MotionCurveClip infoMotion && infoMotion.SourceCurve != null
                     ? string.Concat(source.Name, "  [Ref: ", infoMotion.SourceCurve.name, "]")
                     : source.Name;
-                m_StartTime = source.StartTime.ToSingle();
-                m_EndTime = source.EndTime.ToSingle();
-                m_BlendIn = source.SelfEaseInTime.ToSingle();
+                m_StartTime = source.StartTime.AsFloat;
+                m_EndTime = source.EndTime.AsFloat;
+                m_BlendIn = source.SelfEaseInTime.AsFloat;
                 m_InitialBlendIn = m_BlendIn;
-                m_BlendOut = source.SelfEaseOutTime.ToSingle();
+                m_BlendOut = source.SelfEaseOutTime.AsFloat;
                 m_InitialBlendOut = m_BlendOut;
                 m_ClipInTime = source.ClipInTime;
                 if (source is MotionCurveClip motion)
@@ -1700,22 +1701,22 @@ namespace BTSMTL.Timeline.Editor
             public float BlendIn
             {
                 get => Mathf.Clamp(m_BlendIn, 0f, Length);
-                set => m_BlendIn = Mathf.Clamp(m_Owner.Session.SnapTime(FixedScalar.FromDouble(Math.Max(0d, value)), Source, true).ToSingle(), 0f, Length);
+                set => m_BlendIn = Mathf.Clamp(m_Owner.Session.SnapTime(QuantumScalarBoundary.ConvertExternal(Math.Max(0d, value), nameof(BtsmtlSlateTimelineBinding)), Source, true).AsFloat, 0f, Length);
             }
             public float BlendOut
             {
                 get => Mathf.Clamp(m_BlendOut, 0f, Length);
-                set => m_BlendOut = Mathf.Clamp(m_Owner.Session.SnapTime(FixedScalar.FromDouble(Math.Max(0d, value)), Source, true).ToSingle(), 0f, Length);
+                set => m_BlendOut = Mathf.Clamp(m_Owner.Session.SnapTime(QuantumScalarBoundary.ConvertExternal(Math.Max(0d, value), nameof(BtsmtlSlateTimelineBinding)), Source, true).AsFloat, 0f, Length);
             }
             public bool CanScale => Source.IsResizable();
             public bool CanClipIn => Source.IsClipInable();
             public double ClipInTime
             {
-                get => m_ClipInTime.ToDouble();
+                get => m_ClipInTime.AsDouble;
                 set
                 {
-                    if (value != m_ClipInTime.ToDouble())
-                        m_ClipInTime = m_Owner.Session.SnapTime(FixedScalar.FromDouble(Math.Max(0d, value)), Source, true);
+                    if (value != m_ClipInTime.AsDouble)
+                        m_ClipInTime = m_Owner.Session.SnapTime(QuantumScalarBoundary.ConvertExternal(Math.Max(0d, value), nameof(BtsmtlSlateTimelineBinding)), Source, true);
                 }
             }
             public bool CanBlendIn => Source.IsMixable();
@@ -1838,10 +1839,10 @@ namespace BTSMTL.Timeline.Editor
             }
 
             internal TimelineClipTimeRange CaptureTimeRange() => new TimelineClipTimeRange(
-                StartTime == Source.StartTime.ToSingle() ? Source.StartTime : m_Owner.Session.SnapTime(FixedScalar.FromDouble(StartTime), Source),
-                EndTime == Source.EndTime.ToSingle() ? Source.EndTime : m_Owner.Session.SnapTime(FixedScalar.FromDouble(EndTime), Source),
-                m_BlendIn == m_InitialBlendIn ? Source.SelfEaseInTime : m_Owner.Session.SnapTime(FixedScalar.FromDouble(BlendIn), Source, true),
-                m_BlendOut == m_InitialBlendOut ? Source.SelfEaseOutTime : m_Owner.Session.SnapTime(FixedScalar.FromDouble(BlendOut), Source, true),
+                StartTime == Source.StartTime.AsFloat ? Source.StartTime : m_Owner.Session.SnapTime(QuantumScalarBoundary.ConvertExternal(StartTime, nameof(BtsmtlSlateTimelineBinding)), Source),
+                EndTime == Source.EndTime.AsFloat ? Source.EndTime : m_Owner.Session.SnapTime(QuantumScalarBoundary.ConvertExternal(EndTime, nameof(BtsmtlSlateTimelineBinding)), Source),
+                m_BlendIn == m_InitialBlendIn ? Source.SelfEaseInTime : m_Owner.Session.SnapTime(QuantumScalarBoundary.ConvertExternal(BlendIn, nameof(BtsmtlSlateTimelineBinding)), Source, true),
+                m_BlendOut == m_InitialBlendOut ? Source.SelfEaseOutTime : m_Owner.Session.SnapTime(QuantumScalarBoundary.ConvertExternal(BlendOut, nameof(BtsmtlSlateTimelineBinding)), Source, true),
                 CanClipIn ? m_ClipInTime : Source.ClipInTime, m_SourceStartTime, m_SourceEndTime,
                 Source.OtherEaseInTime, Source.OtherEaseOutTime);
 
@@ -1858,10 +1859,10 @@ namespace BTSMTL.Timeline.Editor
                 float previousLength = Length;
                 float previousSourceStart = m_SourceStartTime;
                 float previousSourceEnd = m_SourceEndTime;
-                m_StartTime = Source.StartTime.ToSingle();
-                m_EndTime = Source.EndTime.ToSingle();
-                m_BlendIn = m_InitialBlendIn = Source.SelfEaseInTime.ToSingle();
-                m_BlendOut = m_InitialBlendOut = Source.SelfEaseOutTime.ToSingle();
+                m_StartTime = Source.StartTime.AsFloat;
+                m_EndTime = Source.EndTime.AsFloat;
+                m_BlendIn = m_InitialBlendIn = Source.SelfEaseInTime.AsFloat;
+                m_BlendOut = m_InitialBlendOut = Source.SelfEaseOutTime.AsFloat;
                 m_ClipInTime = Source.ClipInTime;
                 if (m_Owner.TimeRangeOnly)
                     for (int i = 0; i < m_Curves.Count; i++)
@@ -1886,7 +1887,7 @@ namespace BTSMTL.Timeline.Editor
 
             float SnapTime(float value)
             {
-                return m_Owner.Session.SnapTime(FixedScalar.FromDouble(Math.Max(0d, value)), Source).ToSingle();
+                return m_Owner.Session.SnapTime(QuantumScalarBoundary.ConvertExternal(Math.Max(0d, value), nameof(BtsmtlSlateTimelineBinding)), Source).AsFloat;
             }
         }
 
@@ -1904,10 +1905,10 @@ namespace BTSMTL.Timeline.Editor
                 m_Clip = clip;
                 m_Descriptor = descriptor;
                 m_ResourceOwner = resourceOwner;
-                m_DisplayDuration = clip.Source.DurationTime.ToSingle();
+                m_DisplayDuration = clip.Source.DurationTime.AsFloat;
                 m_Curve = resourceOwner != null ? ConvertSourceTime(descriptor.Read(resourceOwner), false) : ConvertCurveTime(
                     descriptor.Read(clip.Source),
-                    clip.Source.DurationTime.ToSingle(),
+                    clip.Source.DurationTime.AsFloat,
                     false);
             }
             public string ChannelId => m_Descriptor.ChannelId.Value;
@@ -2014,11 +2015,11 @@ namespace BTSMTL.Timeline.Editor
 
             public float SnapTime(float time)
             {
-                FixedScalar origin = m_Clip.StartTime == m_Clip.Source.StartTime.ToSingle()
-                    ? m_Clip.Source.StartTime : FixedScalar.FromDouble(m_Clip.StartTime);
-                FixedScalar localTime = FixedScalar.FromDouble(Math.Clamp((double)time, 0d, Duration));
-                FixedScalar snapped = m_Clip.Owner.Session.SnapTime(origin + localTime, m_Clip.Source);
-                return Mathf.Clamp((snapped - origin).ToSingle(), 0f, Duration);
+                FP origin = m_Clip.StartTime == m_Clip.Source.StartTime.AsFloat
+                    ? m_Clip.Source.StartTime : QuantumScalarBoundary.ConvertExternal(m_Clip.StartTime, nameof(BtsmtlSlateTimelineBinding));
+                FP localTime = QuantumScalarBoundary.ConvertExternal(Math.Clamp((double)time, 0d, Duration), nameof(BtsmtlSlateTimelineBinding));
+                FP snapped = m_Clip.Owner.Session.SnapTime(origin + localTime, m_Clip.Source);
+                return Mathf.Clamp((snapped - origin).AsFloat, 0f, Duration);
             }
 
             AnimationCurve SnapCurve(AnimationCurve source)
@@ -2299,7 +2300,7 @@ namespace BTSMTL.Timeline.Editor
                 m_Owner = owner;
                 Source = source;
                 Name = source.Name;
-                Time = source.Time.ToSingle();
+                Time = source.Time.AsFloat;
                 m_InitialTime = Time;
             }
             public TimelineSection Source { get; internal set; }
@@ -2314,7 +2315,7 @@ namespace BTSMTL.Timeline.Editor
                 if (!HasChanges())
                     return false;
                 m_Owner.Timeline.ConfigureSection(Source, Name, Time == m_InitialTime ? Source.Time :
-                    m_Owner.Session.SnapTime(FixedScalar.FromDouble(Math.Max(0d, Time))));
+                    m_Owner.Session.SnapTime(QuantumScalarBoundary.ConvertExternal(Math.Max(0d, Time), nameof(BtsmtlSlateTimelineBinding))));
                 m_InitialTime = Time;
                 return true;
             }

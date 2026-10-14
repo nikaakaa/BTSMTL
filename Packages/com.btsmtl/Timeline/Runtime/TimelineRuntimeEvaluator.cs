@@ -1,5 +1,5 @@
 using System;
-using ThirdPersonSimulation.Fixed;
+using Photon.Deterministic;
 using System.Linq;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -25,9 +25,9 @@ namespace BTSMTL.Timeline.Runtime
             TimelineRuntimeMotionSampling motionSampling,
             TimelineRuntimeClipSampling clipSampling,
             TimelineContentUnit content,
-            FixedScalar previousPosition,
+            FP previousPosition,
             int previousCycle,
-            FixedScalar currentPosition,
+            FP currentPosition,
             int currentCycle,
             bool loop,
             IReadOnlyList<TimelineRuntimeClipBoundary> boundaries,
@@ -80,7 +80,7 @@ namespace BTSMTL.Timeline.Runtime
                     clipSampling.SampleAnimation(indexed, content, segment.CurrentTime, loop, segment.Cycle, animations);
                 }
             }
-            FixedScalar currentTime = currentPosition;
+            FP currentTime = currentPosition;
             for (int boundaryIndex = 0; boundaryIndex < boundaries.Count; boundaryIndex++)
             {
                 TimelineRuntimeClipBoundary boundary = boundaries[boundaryIndex];
@@ -95,8 +95,8 @@ namespace BTSMTL.Timeline.Runtime
                         : TimelineRuntimeTreeClipEventKind.Exit,
                     boundary.Time,
                     boundary.Cycle,
-                    FixedScalar.Clamp((boundary.Time - boundaryClip.StartTime) / boundaryClip.DurationTime,
-                        FixedScalar.Zero, FixedScalar.One).ToSingle()));
+                    FPMath.Clamp((boundary.Time - boundaryClip.StartTime) / boundaryClip.DurationTime,
+                        FP._0, FP._1).AsFloat));
                 traces.Add(new TimelineRuntimeTraceOutput(
                     content.Identity,
                     boundary.TrackAuthoringId,
@@ -129,8 +129,8 @@ namespace BTSMTL.Timeline.Runtime
                     boundary.Time,
                     treeClip.StartTime,
                     boundary.Cycle,
-                    FixedScalar.Clamp((boundary.Time - treeClip.StartTime) / treeClip.DurationTime,
-                        FixedScalar.Zero, FixedScalar.One).ToSingle(),
+                    FPMath.Clamp((boundary.Time - treeClip.StartTime) / treeClip.DurationTime,
+                        FP._0, FP._1).AsFloat,
                     generation,
                     TimelineRuntimeTreeClipRequest.ComposeBranchRevision(boundary.Cycle)));
             }
@@ -176,10 +176,10 @@ namespace BTSMTL.Timeline.Runtime
                     if (finite && segment.PreviousTime >= treeClip.EndTime ||
                         !treeDecisionExit && segment.CurrentTime >= treeClip.EndTime)
                         continue;
-                    FixedScalar sampleTime = finite ? FixedScalar.Min(segment.CurrentTime, treeClip.EndTime) : segment.CurrentTime;
-                    FixedScalar samplePrevious = FixedScalar.Max(segment.PreviousTime, treeClip.StartTime);
-                    float local = FixedScalar.Clamp((sampleTime - treeClip.StartTime) / treeClip.DurationTime,
-                        FixedScalar.Zero, FixedScalar.One).ToSingle();
+                    FP sampleTime = finite ? FPMath.Min(segment.CurrentTime, treeClip.EndTime) : segment.CurrentTime;
+                    FP samplePrevious = FPMath.Max(segment.PreviousTime, treeClip.StartTime);
+                    float local = FPMath.Clamp((sampleTime - treeClip.StartTime) / treeClip.DurationTime,
+                        FP._0, FP._1).AsFloat;
                     treeClips.Add(new TimelineRuntimeTreeClipRequest(treeClip.AuthoringId, treeTrack.AuthoringId,
                         indexed.GraphId, indexed.GraphRevision, treeClip.TreeExecutionPhase, treeClip.ExitSource,
                         TimelineRuntimeTreeClipEventKind.Update, sampleTime, samplePrevious, treeClip.StartTime,
@@ -198,7 +198,7 @@ namespace BTSMTL.Timeline.Runtime
                 TimelineContentClip clip = clipIndex[selected[selectedIndex]].Clip;
                 if (currentTime == clip.StartTime)
                     continue;
-                float duration = Math.Max(0.0001f, clip.DurationTime.ToSingle());
+                float duration = Math.Max(0.0001f, clip.DurationTime.AsFloat);
                 clipSamples.Add(new TimelineRuntimeClipSample(
                     clip.AuthoringId,
                     clip.TrackAuthoringId,
@@ -206,7 +206,7 @@ namespace BTSMTL.Timeline.Runtime
                     TimelineRuntimeTreeClipEventKind.Update,
                     currentPosition,
                     currentCycle,
-                    (currentTime - clip.StartTime).ToSingle() / duration));
+                    (currentTime - clip.StartTime).AsFloat / duration));
             }
             treeClips.Sort(TimelineRuntimeEvaluationStorage.TreeRequestComparison);
             return new TimelineRuntimeEvaluationResult(storage);
@@ -214,28 +214,28 @@ namespace BTSMTL.Timeline.Runtime
 
         static void AppendMarkerRequests(
             TimelineRuntimeMarkerIndex index,
-            FixedScalar duration,
+            FP duration,
             ulong generation,
-            FixedScalar previousPosition,
+            FP previousPosition,
             int previousCycle,
-            FixedScalar currentPosition,
+            FP currentPosition,
             int currentCycle,
             bool loop,
             bool includeStartBoundary,
             TimelineRuntimeSampleBuffer<TimelineRuntimeMarkerRequest> markers)
         {
-            if (duration <= FixedScalar.Zero)
+            if (duration <= FP._0)
                 return;
-            FixedScalar previousTime = previousPosition;
-            FixedScalar currentTime = currentPosition;
+            FP previousTime = previousPosition;
+            FP currentTime = currentPosition;
             if (currentCycle < previousCycle || currentCycle == previousCycle && currentTime < previousTime)
                 throw new InvalidOperationException("Timeline logic cursor moved backward without a generation reset.");
             int firstCycle = loop ? previousCycle : 0;
             int lastCycle = loop ? currentCycle : 0;
             for (int cycle = firstCycle; cycle <= lastCycle; cycle++)
             {
-                FixedScalar from = cycle == previousCycle ? previousTime : FixedScalar.Zero;
-                FixedScalar to = cycle == currentCycle ? currentTime : duration;
+                FP from = cycle == previousCycle ? previousTime : FP._0;
+                FP to = cycle == currentCycle ? currentTime : duration;
                 int first = index.Find(from, includeStartBoundary || cycle > previousCycle);
                 for (int markerIndex = first; markerIndex < index.Count; markerIndex++)
                 {

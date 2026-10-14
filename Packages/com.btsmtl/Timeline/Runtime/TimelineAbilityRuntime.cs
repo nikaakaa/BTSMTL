@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using BTSMTL.Timeline;
 using BTSMTL.Timeline.Runtime;
-using ThirdPersonSimulation.Fixed;
+using Photon.Deterministic;
 
 namespace ThirdPersonSimulation
 {
@@ -387,13 +387,13 @@ namespace ThirdPersonSimulation
             return SimulationExecutionSource.FromSkillOperation(new OperationHandle(source.OperationIndex), source.OperationExecutionPath);
         }
 
-        public AbilityTimelineMotionSourcePose SampleMotionSource(ulong handle, string clipId, FixedScalar time)
+        public AbilityTimelineMotionSourcePose SampleMotionSource(ulong handle, string clipId, FP time)
         {
             TimelineRuntimeMotionPosition pose = m_Playbacks[handle].Runtime.SampleMotionSource(clipId, time);
             return new AbilityTimelineMotionSourcePose(pose.X, pose.Y, pose.Z, pose.Yaw);
         }
 
-        public AbilityTimelineMotionSourcePose SampleMotionPrefix(ulong handle, string clipId, int cycle, FixedScalar time) =>
+        public AbilityTimelineMotionSourcePose SampleMotionPrefix(ulong handle, string clipId, int cycle, FP time) =>
             m_Playbacks[handle].Runtime.SampleMotionPrefix(clipId, cycle, time);
 
         public void DiscardUnpublishedPlaybacks(IReadOnlyList<AbilityTimelineRuntimeSnapshot> snapshots) => RemoveUnreferenced(snapshots);
@@ -433,7 +433,7 @@ namespace ThirdPersonSimulation
             _ => AbilityTimelineRuntimeStatus.Running
         };
 
-        static AbilityTimelineProgress Progress(Playback playback, ulong tick, FixedScalar previous, FixedScalar time,
+        static AbilityTimelineProgress Progress(Playback playback, ulong tick, FP previous, FP time,
             int previousCycle, int cycle, AbilityTimelineProgressState state, AbilityTimelinePlaybackControl control) =>
             new AbilityTimelineProgress(playback.Runtime.Content.Identity, playback.Runtime.ContentRevision,
                 playback.Runtime.Generation, tick, playback.Runtime.Content.Duration, previous, time, previousCycle,

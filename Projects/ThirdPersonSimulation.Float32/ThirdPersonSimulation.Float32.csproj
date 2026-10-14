@@ -12,5 +12,8 @@
   <ItemGroup>
     <Compile Include="$(SimulationSourceRoot)\**\*.cs" LinkBase="Source" />
     <ProjectReference Include="..\ThirdPersonSimulation.Core\ThirdPersonSimulation.Core.csproj" />
+    <Reference Include="Quantum.Deterministic">
+      <HintPath>$(MSBuildThisFileDirectory)..\..\..\3C\3cDemo\Client\3C_Client\Assets\Photon\Quantum\Assemblies\Quantum.Deterministic.dll</HintPath>
+    </Reference>
   </ItemGroup>
 </Project>

@@ -1,5 +1,5 @@
 using System;
-using ThirdPersonSimulation.Fixed;
+using Photon.Deterministic;
 using System.Collections.Generic;
 using System.Linq;
 using BTSMTL.Diagnostics;
@@ -266,9 +266,12 @@ namespace BTSMTL.Timeline
                 Track track = m_Tracks[trackIndex];
                 if (track == null)
                     continue;
+                track.BindTimeline(this);
                 for (int clipIndex = 0; clipIndex < track.Clips.Count; clipIndex++)
                 {
-                    if (track.Clips[clipIndex] is ITimelineNestedSerializedOwner nestedOwner)
+                    Clip clip = track.Clips[clipIndex];
+                    clip.BindTrack(track);
+                    if (clip is ITimelineNestedSerializedOwner nestedOwner)
                     {
                         nestedOwner.BindNestedSerializedOwner(
                             owner,
@@ -276,6 +279,8 @@ namespace BTSMTL.Timeline
                                 $"m_Tracks.Array.data[{trackIndex}].m_Clips.Array.data[{clipIndex}]"));
                     }
                 }
+                for (int markerIndex = 0; markerIndex < track.Markers.Count; markerIndex++)
+                    track.Markers[markerIndex].BindTrack(track);
             }
         }
 
@@ -335,7 +340,7 @@ namespace BTSMTL.Timeline
         string m_Name;
 
         [SerializeField]
-        long m_TimeRaw;
+        long m_TimeFPRawValue;
 
         [SerializeField]
         string m_NextSectionId;
@@ -345,7 +350,7 @@ namespace BTSMTL.Timeline
 
         public string AuthoringId => m_AuthoringId ?? string.Empty;
         public string Name => m_Name ?? string.Empty;
-        public FixedScalar Time => FixedScalar.FromRaw(m_TimeRaw);
+        public FP Time => FP.FromRaw(m_TimeFPRawValue);
         public string NextSectionId => m_NextSectionId ?? string.Empty;
         public string BranchId => m_BranchId?.Trim() ?? string.Empty;
 
@@ -357,12 +362,12 @@ namespace BTSMTL.Timeline
             m_AuthoringId = authoringId;
         }
 
-        public static TimelineSection Create(string name, FixedScalar time)
+        public static TimelineSection Create(string name, FP time)
         {
             return Create(AuthoringIdentity.Create(), name, time);
         }
 
-        public static TimelineSection Create(string authoringId, string name, FixedScalar time)
+        public static TimelineSection Create(string authoringId, string name, FP time)
         {
             if (!AuthoringIdentity.IsValid(authoringId))
                 throw new ArgumentException("Timeline Section authoring identity is invalid.", nameof(authoringId));
@@ -374,13 +379,13 @@ namespace BTSMTL.Timeline
             return section;
         }
 
-        public void Configure(string name, FixedScalar time)
+        public void Configure(string name, FP time)
         {
             string value = name?.Trim() ?? string.Empty;
-            if (string.IsNullOrEmpty(value) || time < FixedScalar.Zero)
+            if (string.IsNullOrEmpty(value) || time < FP._0)
                 throw new ArgumentException("Timeline Section requires a name and non-negative time.");
             m_Name = value;
-            m_TimeRaw = time.Raw;
+            m_TimeFPRawValue = time.RawValue;
         }
 
         public void SetNextSection(string authoringId)
@@ -412,7 +417,7 @@ namespace BTSMTL.Timeline
             AuthoringIdentity.IsValid(AuthoringId) &&
             !string.IsNullOrWhiteSpace(Name) &&
             string.Equals(Name, Name.Trim(), StringComparison.Ordinal) &&
-            m_TimeRaw >= 0;
+            m_TimeFPRawValue >= 0;
     }
 
     public interface ITimelineOwnedAuthoringIdentity

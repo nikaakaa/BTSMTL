@@ -1,5 +1,5 @@
 using System;
-using ThirdPersonSimulation.Fixed;
+using Photon.Deterministic;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
@@ -24,7 +24,7 @@ namespace BTSMTL.Timeline
         bool IsTimelineTree { get; }
         bool IsTimelineTrigger { get; }
         void BindTimelineAuthoringContext(TimelineData timeline, Clip clip);
-        bool TryGetDeclaredEndTime(out FixedScalar endTime);
+        bool TryGetDeclaredEndTime(out FP endTime);
         void ValidateTimelineBinding(TimelineData timeline, Clip clip, List<string> errors, bool requireComplete);
         Func<ScriptableObject, string> CreateTimelineContentFingerprint();
         void CollectTimelineContentClosure(TimelineContentClosureBuilder builder, string sourcePath,
@@ -35,7 +35,7 @@ namespace BTSMTL.Timeline
 #if UNITY_EDITOR
     public interface ITimelineTerminalTimeAlignedClip
     {
-        bool AlignTerminalTime(FixedScalar terminalTime);
+        bool AlignTerminalTime(FP terminalTime);
     }
 #endif
 
@@ -713,7 +713,7 @@ namespace BTSMTL.Timeline
                     {
                         errors?.Add($"Timeline '{timeline.Name}' clip '{clip.AuthoringId}' uses unsupported execution domain '{executionDomain}'.");
                     }
-                    if (clip.StartTime < FixedScalar.Zero || clip.EndTime < clip.StartTime || clipContract.RequiresPositiveDuration && clip.DurationTime <= FixedScalar.Zero)
+                    if (clip.StartTime < FP._0 || clip.EndTime < clip.StartTime || clipContract.RequiresPositiveDuration && clip.DurationTime <= FP._0)
                         errors?.Add($"Timeline '{timeline.Name}' clip '{clip.AuthoringId}' has an invalid frame range.");
                     TimelineClipExecutionPhase executionPhase = clipContract.DefaultExecutionPhase;
                     if (clip is ITimelineClipExecutionPhaseSource phaseSource)

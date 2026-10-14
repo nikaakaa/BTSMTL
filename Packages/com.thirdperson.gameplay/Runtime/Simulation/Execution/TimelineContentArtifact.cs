@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using BTSMTL.Timeline;
-using ThirdPersonSimulation.Fixed;
+using Photon.Deterministic;
 
 namespace ThirdPersonSimulation
 {

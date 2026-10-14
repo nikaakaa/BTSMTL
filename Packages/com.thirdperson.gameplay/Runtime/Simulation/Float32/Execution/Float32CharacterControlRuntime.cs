@@ -4,6 +4,7 @@ using SimulationMotionContribution = ThirdPersonSimulation.SimulationMotionContr
 using ResolvedMotionChannel = ThirdPersonSimulation.ResolvedMotionChannel<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32Vector2, ThirdPersonSimulation.Float32Vector3, ThirdPersonSimulation.Float32SimulationMath>;
 using System;
 using System.Collections.Generic;
+using Photon.Deterministic;
 
 namespace ThirdPersonSimulation
 {
@@ -99,8 +100,8 @@ namespace ThirdPersonSimulation
                     ? throw new InvalidOperationException("Float32 Control motion bindings are not installed.")
                     : controlMotionBindings.Require(descriptor.SourceMotionIdentity);
                 CharacterControlMotionDelta curveDelta = source.EvaluateDelta(
-                    request.ContinuousTicks / (double)tickRate,
-                    (request.ContinuousTicks + 1) / (double)tickRate);
+                    request.ContinuousTicks.AsDouble / tickRate,
+                    (request.ContinuousTicks + FP._1).AsDouble / tickRate);
                 displacement = new Float32Vector3(
                     Float32Scalar.FromDouble(curveDelta.X),
                     Float32Scalar.FromDouble(curveDelta.Y),
@@ -120,7 +121,7 @@ namespace ThirdPersonSimulation
                     yaw = Float32Scalar.Clamp(Float32Angle.Delta(body.Yaw, desired), -maxYaw, maxYaw);
                 }
             }
-            double continuousTicks = request.ContinuousTicks + 1d;
+            FP continuousTicks = request.ContinuousTicks + FP._1;
             int durationTicks = descriptor.DisplacementMode == CharacterControlMotionDisplacementMode.SourceCurve
                 ? 0
                 : descriptor.ExecutionMode == CharacterControlMotionExecutionMode.Timed
@@ -130,7 +131,7 @@ namespace ThirdPersonSimulation
                 request.SourceIdentity,
                 request.PlaybackGeneration,
                 tick,
-                continuousTicks,
+                continuousTicks.AsDouble,
                 tickRate);
             var locomotionTimeline = new CommittedLocomotionPlanarMotionTimeline(
                 request.SourceIdentity,
@@ -449,9 +450,9 @@ namespace ThirdPersonSimulation
             m_State.Set(field, CharacterControlStateValue.FromUInt64(value));
         }
 
-        public double ReadNumber(CharacterControlStateFieldId field) => ReadValue(field).Number;
+        public FP ReadNumber(CharacterControlStateFieldId field) => ReadValue(field).Number;
 
-        public void WriteNumber(CharacterControlStateFieldId field, double value) =>
+        public void WriteNumber(CharacterControlStateFieldId field, FP value) =>
             m_State.Set(field, CharacterControlStateValue.FromNumber(value));
 
         void RequireKind(CharacterControlStateFieldId field, CharacterControlStateValueKind expected)
@@ -573,7 +574,7 @@ namespace ThirdPersonSimulation
 
         public void PrepareDecision()
         {
-            var context = new CharacterControlTickContext(m_ActorId, m_Tick, m_TickRate, 1d);
+            var context = new CharacterControlTickContext(m_ActorId, m_Tick, m_TickRate, FP._1);
             m_State.BaseState.RequireBinding(m_Binding);
             m_Control.PrepareDecision(in context, m_Read, m_StatePort, m_Output);
         }

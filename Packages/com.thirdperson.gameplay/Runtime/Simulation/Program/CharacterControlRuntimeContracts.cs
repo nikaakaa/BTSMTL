@@ -1,10 +1,11 @@
 using System;
+using Photon.Deterministic;
 
 namespace ThirdPersonSimulation
 {
     public readonly struct CharacterControlTickContext
     {
-        public CharacterControlTickContext(ActorId actorId, SimulationTick tick, int tickRate, double timeScale)
+        public CharacterControlTickContext(ActorId actorId, SimulationTick tick, int tickRate, FP timeScale)
         {
             if (!actorId.IsValid || !tick.IsValid || tickRate <= 0)
                 throw new ArgumentException("Character control tick context is incomplete.");
@@ -17,7 +18,7 @@ namespace ThirdPersonSimulation
         public ActorId ActorId { get; }
         public SimulationTick Tick { get; }
         public int TickRate { get; }
-        public double TimeScale { get; }
+        public FP TimeScale { get; }
     }
 
     public interface ICommittedCharacterControlState
@@ -76,7 +77,7 @@ namespace ThirdPersonSimulation
         bool ReadBoolean(CharacterControlStateFieldId field);
         int ReadInt32(CharacterControlStateFieldId field);
         ulong ReadUInt64(CharacterControlStateFieldId field);
-        double ReadNumber(CharacterControlStateFieldId field);
+        FP ReadNumber(CharacterControlStateFieldId field);
     }
 
     public interface ICharacterControlStatePort : ICharacterControlStateReadPort
@@ -86,7 +87,7 @@ namespace ThirdPersonSimulation
         void WriteBoolean(CharacterControlStateFieldId field, bool value);
         void WriteInt32(CharacterControlStateFieldId field, int value);
         void WriteUInt64(CharacterControlStateFieldId field, ulong value);
-        void WriteNumber(CharacterControlStateFieldId field, double value);
+        void WriteNumber(CharacterControlStateFieldId field, FP value);
     }
 
     public readonly struct CharacterControlMotionRequest
@@ -96,7 +97,7 @@ namespace ThirdPersonSimulation
             string sourceIdentity,
             string binding,
             SimulationInputValueId input,
-            double continuousTicks,
+            FP continuousTicks,
             ulong playbackGeneration)
         {
             if (!source.IsCharacterControl || string.IsNullOrEmpty(binding) || !input.IsValid || continuousTicks < 0)
@@ -117,7 +118,7 @@ namespace ThirdPersonSimulation
         public string SourceIdentity { get; }
         public string Binding { get; }
         public SimulationInputValueId Input { get; }
-        public double ContinuousTicks { get; }
+        public FP ContinuousTicks { get; }
         public ulong PlaybackGeneration { get; }
     }
 

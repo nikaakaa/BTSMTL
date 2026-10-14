@@ -1,7 +1,7 @@
 using System;
 using System.Globalization;
 using ThirdPersonSimulation;
-using ThirdPersonSimulation.Fixed;
+using Photon.Deterministic;
 using System.Collections.Generic;
 using BTSMTL.Diagnostics;
 
@@ -92,7 +92,7 @@ namespace BTSMTL.Timeline.Runtime
             ulong playbackIdentity,
             out TimelineRuntimePrepareRequest request,
             out string error,
-            FixedScalar startTime = default)
+            FP startTime = default)
         {
             request = default;
             error = string.Empty;
@@ -405,7 +405,7 @@ namespace BTSMTL.Timeline.Runtime
             TimelinePlaybackActionContext actionContext,
             TimelinePlaybackMode playbackMode,
             out TimelinePlaybackHandle handle,
-            FixedScalar startTime = default)
+            FP startTime = default)
         {
             handle = TimelinePlaybackHandle.Invalid;
             EnsureAvailable();
@@ -532,7 +532,7 @@ namespace BTSMTL.Timeline.Runtime
             TimelineData timeline,
             TimelineExecutionIdentity executionIdentity,
             TimelinePlaybackMode playbackMode,
-            FixedScalar startTime = default)
+            FP startTime = default)
         {
             EnsureAvailable();
             var request = new TimelineRuntimePrepareRequest(

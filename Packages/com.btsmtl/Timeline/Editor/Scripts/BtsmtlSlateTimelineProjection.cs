@@ -172,8 +172,8 @@ namespace BTSMTL.Timeline.Editor
             if (s_Current != null && ReferenceEquals(s_Current.m_Binding.Timeline, timeline))
                 s_Current.m_Binding.DrawCameraResourceInspector(clip);
         }
-        public void ApplyClipTimeRangeNumbers(string identity, ThirdPersonSimulation.Fixed.FixedScalar start,
-            ThirdPersonSimulation.Fixed.FixedScalar end) => m_Binding.ApplyClipTimeRangeNumbers(identity, start, end);
+        public void ApplyClipTimeRangeNumbers(string identity, Photon.Deterministic.FP start,
+            Photon.Deterministic.FP end) => m_Binding.ApplyClipTimeRangeNumbers(identity, start, end);
         public event Action<TimelineEditorSelection> SelectionChanged;
         public event Action<string> AuthoringIssue;
 

@@ -1,5 +1,6 @@
+using ThirdPersonSimulation.QuantumNumerics;
 using System;
-using ThirdPersonSimulation.Fixed;
+using Photon.Deterministic;
 using System.Collections.Generic;
 using BTSMTL.Diagnostics;
 using ThirdPersonCharacter.Pipeline.Motion.RootMotion;
@@ -15,7 +16,7 @@ namespace BTSMTL.Timeline
 #if UNITY_EDITOR
         public override Type ClipType => typeof(MotionCurveClip);
 
-        public override Clip AddClip(UnityEngine.Object referenceObject, FixedScalar time)
+        public override Clip AddClip(UnityEngine.Object referenceObject, FP time)
         {
             if (referenceObject is not RootMotionCurveAsset source)
                 throw new ArgumentException("MotionCurveClip requires a RootMotionCurveAsset source.", nameof(referenceObject));
@@ -25,7 +26,7 @@ namespace BTSMTL.Timeline
             return clip;
         }
 
-        public override Clip AddClip(FixedScalar time)
+        public override Clip AddClip(FP time)
         {
             throw new InvalidOperationException("MotionCurveClip requires a RootMotionCurveAsset source.");
         }
@@ -102,7 +103,7 @@ namespace BTSMTL.Timeline
                 contentHash);
         }
 
-        public FixedScalar CurveEndTime => StartTime + FixedScalar.FromDouble(SourceDuration);
+        public FP CurveEndTime => StartTime + QuantumScalarBoundary.ConvertExternal(SourceDuration, nameof(MotionCurveTrack));
         public AnimationCurve ProgramPositionX => ProgramCurve(SourcePositionX);
         public AnimationCurve ProgramPositionY => ProgramCurve(SourcePositionY);
         public AnimationCurve ProgramPositionZ => ProgramCurve(SourcePositionZ);
@@ -153,19 +154,19 @@ namespace BTSMTL.Timeline
         }
 #endif
 
-        public Vector3 EvaluatePositionAtTimelineTime(FixedScalar timelineTime)
+        public Vector3 EvaluatePositionAtTimelineTime(FP timelineTime)
         {
             float sourceTime = Mathf.Clamp(
-                m_SourceStartTime + FixedScalar.Max(FixedScalar.Zero, timelineTime - StartTime).ToSingle(),
+                m_SourceStartTime + FPMath.Max(FP._0, timelineTime - StartTime).AsFloat,
                 m_SourceStartTime,
                 m_SourceEndTime);
             return RequireSource().EvaluatePosition(sourceTime);
         }
 
-        public float EvaluateYawAtTimelineTime(FixedScalar timelineTime)
+        public float EvaluateYawAtTimelineTime(FP timelineTime)
         {
             float sourceTime = Mathf.Clamp(
-                m_SourceStartTime + FixedScalar.Max(FixedScalar.Zero, timelineTime - StartTime).ToSingle(),
+                m_SourceStartTime + FPMath.Max(FP._0, timelineTime - StartTime).AsFloat,
                 m_SourceStartTime,
                 m_SourceEndTime);
             return RequireSource().EvaluateYaw(sourceTime);
@@ -286,7 +287,7 @@ namespace BTSMTL.Timeline
 #if UNITY_EDITOR
         public override ClipCapabilities Capabilities => ClipCapabilities.Resizable | ClipCapabilities.Mixable;
 
-        public MotionCurveClip(Track track, FixedScalar time, RootMotionCurveAsset source) : base(track, time)
+        public MotionCurveClip(Track track, FP time, RootMotionCurveAsset source) : base(track, time)
         {
             if (!source)
                 throw new ArgumentNullException(nameof(source));
@@ -294,7 +295,7 @@ namespace BTSMTL.Timeline
                 throw new InvalidOperationException(error);
             if (source.Duration <= 0f)
                 throw new ArgumentException("MotionCurve source duration must be positive.", nameof(source));
-            ConfigureTimeRange(time, time + FixedScalar.FromDouble(source.Duration));
+            ConfigureTimeRange(time, time + QuantumScalarBoundary.ConvertExternal(source.Duration, nameof(MotionCurveTrack)));
             m_SourceCurve = source;
             m_SourceStartTime = 0f;
             m_SourceEndTime = source.Duration;

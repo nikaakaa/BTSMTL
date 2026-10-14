@@ -2,6 +2,7 @@ using ProgramValues = ThirdPersonSimulation.ProgramValueCalculation<ThirdPersonS
 using System;
 using System.IO;
 using System.Collections.Generic;
+using Photon.Deterministic;
 using ThirdPersonPerformance.Instrumentation;
 
 namespace ThirdPersonSimulation
@@ -423,7 +424,7 @@ namespace ThirdPersonSimulation
                     CreateTimelineInvocationSource(operation),
                     action.InputSequence,
                     m_Frame.Tick,
-                    ThirdPersonSimulation.Fixed.FixedScalar.FromDouble(inputs[2].Scalar.ToDouble()));
+                    FP.FromRoundedFloat_UNSAFE(inputs[2].Scalar.ToSingle()));
                 runtimeHandle = m_TimelineRuntime.Start(in request);
                 if (runtimeHandle == 0)
                     throw new InvalidOperationException($"Ability Timeline operation '{m_Access.SourcePath(operation)}' did not return a runtime handle.");
@@ -437,7 +438,7 @@ namespace ThirdPersonSimulation
             try
             {
                 var control = new AbilityTimelinePlaybackControl(
-                    ThirdPersonSimulation.Fixed.FixedScalar.FromDouble(inputs[0].Scalar.ToDouble()), inputs[1].Boolean);
+                    FP.FromRoundedFloat_UNSAFE(inputs[0].Scalar.ToSingle()), inputs[1].Boolean);
                 tick = m_TimelineRuntime.Tick(runtimeHandle, m_Frame.Tick.Value, 1, control);
             }
             finally
@@ -506,7 +507,7 @@ namespace ThirdPersonSimulation
                 header,
                 PresentationCommandKind.Camera,
                 RequirePresentationProducer(operation),
-                Float32Scalar.FromSingle(invocation.Time.ToSingle()),
+                Float32Scalar.FromSingle(invocation.Time.AsFloat),
                 Float32Scalar.One,
                 header.Activation.Generation,
                 invocation.Cycle,

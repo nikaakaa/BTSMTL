@@ -1,4 +1,5 @@
 using System;
+using Photon.Deterministic;
 using ThirdPersonSimulation;
 using UnityEngine;
 
@@ -478,9 +479,9 @@ namespace BTSMTL.Diagnostics
         Vector3,
         Quaternion,
         TypeOnly,
-        FixedVector2,
-        FixedVector3,
-        FixedActionTargetSnapshot
+        FPVector2,
+        FPVector3,
+        FPActionTargetSnapshot
     }
 
     public readonly struct DebugValueSnapshot
@@ -544,16 +545,16 @@ namespace BTSMTL.Diagnostics
                 case DebugValueKind.String:
                 case DebugValueKind.Guid:
                 case DebugValueKind.TypeOnly: return Text.ToString();
-                case DebugValueKind.FixedVector2:
+                case DebugValueKind.FPVector2:
                 case DebugValueKind.Vector2: return $"({Vector.x:0.###}, {Vector.y:0.###})";
-                case DebugValueKind.FixedVector3:
+                case DebugValueKind.FPVector3:
                 case DebugValueKind.Vector3: return $"({Vector.x:0.###}, {Vector.y:0.###}, {Vector.z:0.###})";
                 case DebugValueKind.Quaternion: return $"({Vector.x:0.###}, {Vector.y:0.###}, {Vector.z:0.###}, {Vector.w:0.###})";
-                case DebugValueKind.FixedActionTargetSnapshot:
+                case DebugValueKind.FPActionTargetSnapshot:
                     ulong targetZ = ((ulong)Number << 24) | (ulong)Vector.x;
                     ulong targetYaw = (ulong)Vector.y | ((ulong)Vector.z << 24) | ((ulong)Vector.w << 48);
-                    const double fixedScale = 4294967296d;
-                    return $"{Text} · ({Signed / fixedScale:0.###}, {unchecked((long)Unsigned) / fixedScale:0.###}, {unchecked((long)targetZ) / fixedScale:0.###}) · {unchecked((long)targetYaw) / fixedScale:0.###}°";
+                    const double fpScale = FP.RAW_ONE;
+                    return $"{Text} · ({Signed / fpScale:0.###}, {unchecked((long)Unsigned) / fpScale:0.###}, {unchecked((long)targetZ) / fpScale:0.###}) · {unchecked((long)targetYaw) / fpScale:0.###}°";
                 default: return string.Empty;
             }
         }

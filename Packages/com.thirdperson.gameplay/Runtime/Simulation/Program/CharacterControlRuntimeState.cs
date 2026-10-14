@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Photon.Deterministic;
 
 namespace ThirdPersonSimulation
 {
@@ -69,15 +70,8 @@ namespace ThirdPersonSimulation
         public ulong UInt64 { get; }
         [ValueUnionCase(NormalizeNull = true)]
         public CanonicalTextValue Identity { get; }
-        [ValueUnionCase(NormalizeZero = true)]
-        public double Number { get; }
-
-        [ValueValidation]
-        void RequireValid()
-        {
-            if (Kind == CharacterControlStateValueKind.Number && (double.IsNaN(Number) || double.IsInfinity(Number)))
-                throw new ArgumentOutOfRangeException(nameof(Number));
-        }
+        [ValueUnionCase]
+        public FP Number { get; }
 
 
     }

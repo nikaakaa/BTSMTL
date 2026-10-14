@@ -1,5 +1,5 @@
 using System;
-using ThirdPersonSimulation.Fixed;
+using Photon.Deterministic;
 
 namespace BTSMTL.Timeline.Runtime
 {
@@ -7,9 +7,9 @@ namespace BTSMTL.Timeline.Runtime
     {
         public static TimelineRuntimePresentationOperations Evaluate(
             TimelineRuntimePlayback playback,
-            FixedScalar previousPosition,
+            FP previousPosition,
             int previousCycle,
-            FixedScalar currentPosition,
+            FP currentPosition,
             int currentCycle,
             bool loop,
             TimelineRuntimePresentationBuffer buffer)
@@ -21,15 +21,15 @@ namespace BTSMTL.Timeline.Runtime
             var cameraResponses = buffer.CameraResponses;
             var cameraResources = buffer.CameraResources;
             var scenePresentation = buffer.ScenePresentation;
-            FixedScalar currentTime = currentPosition;
+            FP currentTime = currentPosition;
             var selected = buffer.SamplingClips;
             SampleAnimations(content, playback.Index, playback.Preparation.ClipSampling,
                 currentTime, currentCycle, loop, buffer);
             TimelineRuntimeClipIndex cameraIndex = playback.Index.Presentation.CameraAndScene;
             for (int cycle = previousCycle; cycle <= currentCycle; cycle++)
             {
-                FixedScalar from = cycle == previousCycle ? previousPosition : FixedScalar.Zero;
-                FixedScalar to = cycle == currentCycle ? currentTime : content.Duration;
+                FP from = cycle == previousCycle ? previousPosition : FP._0;
+                FP to = cycle == currentCycle ? currentTime : content.Duration;
                 selected.Clear();
                 cameraIndex.Select(from, to, true, selected);
                 for (int selectedIndex = 0; selectedIndex < selected.Count; selectedIndex++)
@@ -49,7 +49,7 @@ namespace BTSMTL.Timeline.Runtime
 
         internal static void SampleAnimations(TimelineContentUnit content,
             TimelineRuntimeContentIndex index, TimelineRuntimeClipSampling sampling,
-            FixedScalar time, int cycle, bool loop, TimelineRuntimePresentationBuffer buffer)
+            FP time, int cycle, bool loop, TimelineRuntimePresentationBuffer buffer)
         {
             var selected = buffer.SamplingClips;
             TimelineRuntimeClipIndex animations = index.Presentation.Animations;

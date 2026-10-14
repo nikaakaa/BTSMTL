@@ -1,5 +1,5 @@
 using System;
-using ThirdPersonSimulation.Fixed;
+using Photon.Deterministic;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
@@ -136,12 +136,12 @@ namespace ThirdPersonSimulation
     public readonly struct CharacterControlMotionTimeMapping
     {
         public CharacterControlMotionTimeMapping(
-            FixedScalar clipStartTime,
-            FixedScalar curveEndTime,
+            FP clipStartTime,
+            FP curveEndTime,
             double sourceStartTime,
             double sourceEndTime)
         {
-            if (clipStartTime < FixedScalar.Zero || curveEndTime <= clipStartTime ||
+            if (clipStartTime < FP._0 || curveEndTime <= clipStartTime ||
                 !IsFinite(sourceStartTime) || !IsFinite(sourceEndTime) || sourceStartTime < 0d || sourceEndTime <= sourceStartTime)
             {
                 throw new ArgumentException("Character control motion time mapping is invalid.");
@@ -152,17 +152,17 @@ namespace ThirdPersonSimulation
             SourceEndTime = sourceEndTime;
             ContentHash = StableHash.Compute(
                 "character-control-motion-time-mapping/2",
-                clipStartTime.Raw.ToString(CultureInfo.InvariantCulture),
-                curveEndTime.Raw.ToString(CultureInfo.InvariantCulture),
+                clipStartTime.RawValue.ToString(CultureInfo.InvariantCulture),
+                curveEndTime.RawValue.ToString(CultureInfo.InvariantCulture),
                 Format(sourceStartTime),
                 Format(sourceEndTime));
         }
 
-        public FixedScalar ClipStartTime { get; }
-        public FixedScalar CurveEndTime { get; }
+        public FP ClipStartTime { get; }
+        public FP CurveEndTime { get; }
         public double SourceStartTime { get; }
         public double SourceEndTime { get; }
-        public double TimelineDurationSeconds => (CurveEndTime - ClipStartTime).ToDouble();
+        public double TimelineDurationSeconds => (CurveEndTime - ClipStartTime).AsDouble;
         public StableHash ContentHash { get; }
 
         public double SourceTimeAt(double timelineElapsedSeconds)

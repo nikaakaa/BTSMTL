@@ -11,8 +11,11 @@
   <ItemGroup>
     <InternalsVisibleTo Include="ThirdPersonSimulation.Timeline.Tests" />
     <ProjectReference Include="..\ThirdPersonSimulation.Core\ThirdPersonSimulation.Core.csproj" />
-    <ProjectReference Include="..\ThirdPersonSimulation.Fixed\ThirdPersonSimulation.Fixed.csproj" />
+    <ProjectReference Include="..\..\..\3C\Tools\ThirdPersonSimulation.Portable\ThirdPersonSimulation.QuantumNumerics\ThirdPersonSimulation.QuantumNumerics.csproj" />
     <ProjectReference Include="..\ThirdPersonSimulation.Float32\ThirdPersonSimulation.Float32.csproj" />
+    <Reference Include="Quantum.Deterministic">
+      <HintPath>$(MSBuildThisFileDirectory)..\..\..\3C\3cDemo\Client\3C_Client\Assets\Photon\Quantum\Assemblies\Quantum.Deterministic.dll</HintPath>
+    </Reference>
     <Compile Include="$(TimelineSourceRoot)\**\*.cs" LinkBase="Source" />
   </ItemGroup>
 </Project>

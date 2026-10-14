@@ -1,5 +1,6 @@
+using ThirdPersonSimulation.QuantumNumerics;
 using System;
-using ThirdPersonSimulation.Fixed;
+using Photon.Deterministic;
 using System.Collections.Generic;
 using System.Reflection;
 using BTSMTL.Timeline;
@@ -129,16 +130,16 @@ namespace BTSMTL.Timeline.Editor
             {
                 EditorGUILayout.LabelField("片段", clip.Name);
                 EditorGUI.BeginChangeCheck();
-                double start = EditorGUILayout.DelayedDoubleField("起点裁剪（秒）", clip.StartTime.ToDouble());
-                double end = EditorGUILayout.DelayedDoubleField("终点裁剪（秒）", clip.EndTime.ToDouble());
+                double start = EditorGUILayout.DelayedDoubleField("起点裁剪（秒）", clip.StartTime.AsDouble);
+                double end = EditorGUILayout.DelayedDoubleField("终点裁剪（秒）", clip.EndTime.AsDouble);
                 if (EditorGUI.EndChangeCheck())
                     TimelineEditorWindow.FindOpen(asset).ApplyClipTimeRangeNumbers(clip.AuthoringId,
-                        FixedScalar.FromDouble(start), FixedScalar.FromDouble(end));
+                        QuantumScalarBoundary.ConvertExternal(start, nameof(TimelineInspector)), QuantumScalarBoundary.ConvertExternal(end, nameof(TimelineInspector)));
                 using (new EditorGUI.DisabledScope(true))
                 {
-                    EditorGUILayout.DoubleField("ClipIn", clip.ClipInTime.ToDouble());
-                    EditorGUILayout.DoubleField("混合进入", clip.SelfEaseInTime.ToDouble());
-                    EditorGUILayout.DoubleField("混合退出", clip.SelfEaseOutTime.ToDouble());
+                    EditorGUILayout.DoubleField("ClipIn", clip.ClipInTime.AsDouble);
+                    EditorGUILayout.DoubleField("混合进入", clip.SelfEaseInTime.AsDouble);
+                    EditorGUILayout.DoubleField("混合退出", clip.SelfEaseOutTime.AsDouble);
                 }
                 return;
             }
@@ -158,17 +159,17 @@ namespace BTSMTL.Timeline.Editor
                 if (nextExitSource != exitSource)
                     ApplyTreeExitSource(asset, selectedTree, nextExitSource);
             }
-            FixedScalar startTime = clip.StartTime;
-            FixedScalar endTime = clip.EndTime;
-            FixedScalar easeIn = clip.SelfEaseInTime;
-            FixedScalar easeOut = clip.SelfEaseOutTime;
+            FP startTime = clip.StartTime;
+            FP endTime = clip.EndTime;
+            FP easeIn = clip.SelfEaseInTime;
+            FP easeOut = clip.SelfEaseOutTime;
             bool isDynamicTreeClip = clip is TreeClip treeClip &&
                 treeClip.ClipExitSource == TimelineClipExitSource.TreeDecision;
             EditorGUI.BeginChangeCheck();
             EditorGUI.BeginChangeCheck();
-            double startSeconds = Math.Max(0d, EditorGUILayout.DoubleField("Start (Seconds)", startTime.ToDouble()));
+            double startSeconds = Math.Max(0d, EditorGUILayout.DoubleField("Start (Seconds)", startTime.AsDouble));
             if (EditorGUI.EndChangeCheck())
-                startTime = FixedScalar.FromDouble(startSeconds);
+                startTime = QuantumScalarBoundary.ConvertExternal(startSeconds, nameof(TimelineInspector));
             bool dynamicLogicTreeClip = isDynamicTreeClip && clip.ExecutionDomain == TimelineExecutionDomain.Logic;
             if (dynamicLogicTreeClip)
                 EditorGUILayout.LabelField("End (Seconds)", $"Timeline End ({endTime})");
@@ -176,20 +177,20 @@ namespace BTSMTL.Timeline.Editor
             {
                 EditorGUI.BeginChangeCheck();
                 string endLabel = isDynamicTreeClip ? "Layout End (Seconds)" : "End (Seconds)";
-                double endSeconds = EditorGUILayout.DoubleField(endLabel, endTime.ToDouble());
+                double endSeconds = EditorGUILayout.DoubleField(endLabel, endTime.AsDouble);
                 if (EditorGUI.EndChangeCheck())
-                    endTime = FixedScalar.FromDouble(endSeconds);
+                    endTime = QuantumScalarBoundary.ConvertExternal(endSeconds, nameof(TimelineInspector));
             }
             EditorGUI.BeginChangeCheck();
-            double easeInSeconds = Math.Max(0d, EditorGUILayout.DoubleField("Self Ease In (Seconds)", easeIn.ToDouble()));
+            double easeInSeconds = Math.Max(0d, EditorGUILayout.DoubleField("Self Ease In (Seconds)", easeIn.AsDouble));
             if (EditorGUI.EndChangeCheck())
-                easeIn = FixedScalar.FromDouble(easeInSeconds);
+                easeIn = QuantumScalarBoundary.ConvertExternal(easeInSeconds, nameof(TimelineInspector));
             EditorGUI.BeginChangeCheck();
-            double easeOutSeconds = Math.Max(0d, EditorGUILayout.DoubleField("Self Ease Out (Seconds)", easeOut.ToDouble()));
+            double easeOutSeconds = Math.Max(0d, EditorGUILayout.DoubleField("Self Ease Out (Seconds)", easeOut.AsDouble));
             if (EditorGUI.EndChangeCheck())
-                easeOut = FixedScalar.FromDouble(easeOutSeconds);
+                easeOut = QuantumScalarBoundary.ConvertExternal(easeOutSeconds, nameof(TimelineInspector));
             EditorGUI.BeginChangeCheck();
-            double clipInSeconds = Math.Max(0d, EditorGUILayout.DoubleField("Clip In (Seconds)", clip.ClipInTime.ToDouble()));
+            double clipInSeconds = Math.Max(0d, EditorGUILayout.DoubleField("Clip In (Seconds)", clip.ClipInTime.AsDouble));
             bool clipInChanged = EditorGUI.EndChangeCheck();
             EditorGUILayout.LabelField("Other Ease In", clip.OtherEaseInTime.ToString());
             EditorGUILayout.LabelField("Other Ease Out", clip.OtherEaseOutTime.ToString());
@@ -281,7 +282,7 @@ namespace BTSMTL.Timeline.Editor
                 EditorGUILayout.HelpBox(m_ConfigurationError, MessageType.Error);
             EditorGUILayout.LabelField("Domain (Inherited from Track)", marker.ExecutionDomain.ToString());
             EditorGUI.BeginChangeCheck();
-            double seconds = Math.Max(0d, EditorGUILayout.DoubleField("Time (Seconds)", marker.Time.ToDouble()));
+            double seconds = Math.Max(0d, EditorGUILayout.DoubleField("Time (Seconds)", marker.Time.AsDouble));
             bool timeChanged = EditorGUI.EndChangeCheck();
             bool forceTriggerOnInitialSeek = marker.ForceTriggerOnInitialSeek;
             if (marker.ExecutionDomain == TimelineExecutionDomain.Presentation)
@@ -293,11 +294,11 @@ namespace BTSMTL.Timeline.Editor
                 false);
             if (!timeChanged && graph == marker.Graph && forceTriggerOnInitialSeek == marker.ForceTriggerOnInitialSeek)
                 return;
-            ApplyMarkerConfiguration(asset, marker, timeChanged ? FixedScalar.FromDouble(seconds) : marker.Time,
+            ApplyMarkerConfiguration(asset, marker, timeChanged ? QuantumScalarBoundary.ConvertExternal(seconds, nameof(TimelineInspector)) : marker.Time,
                 graph, forceTriggerOnInitialSeek);
         }
 
-        void ApplyMarkerConfiguration(TimelineAsset asset, TimelineMarker marker, FixedScalar time,
+        void ApplyMarkerConfiguration(TimelineAsset asset, TimelineMarker marker, FP time,
             ScriptableObject graph, bool forceTriggerOnInitialSeek)
         {
             if (!TryBeginMutation(asset))
@@ -346,14 +347,14 @@ namespace BTSMTL.Timeline.Editor
         {
             string name = EditorGUILayout.TextField("Name", section.Name);
             EditorGUI.BeginChangeCheck();
-            double seconds = Math.Max(0d, EditorGUILayout.DoubleField("Time (Seconds)", section.Time.ToDouble()));
+            double seconds = Math.Max(0d, EditorGUILayout.DoubleField("Time (Seconds)", section.Time.AsDouble));
             bool timeChanged = EditorGUI.EndChangeCheck();
             if (name == section.Name && !timeChanged)
                 return;
-            ApplySectionConfiguration(asset, section, name, timeChanged ? FixedScalar.FromDouble(seconds) : section.Time);
+            ApplySectionConfiguration(asset, section, name, timeChanged ? QuantumScalarBoundary.ConvertExternal(seconds, nameof(TimelineInspector)) : section.Time);
         }
 
-        void ApplySectionConfiguration(TimelineAsset asset, TimelineSection section, string name, FixedScalar time)
+        void ApplySectionConfiguration(TimelineAsset asset, TimelineSection section, string name, FP time)
         {
             if (!TryBeginMutation(asset))
                 return;
@@ -373,7 +374,7 @@ namespace BTSMTL.Timeline.Editor
             }
         }
 
-        void ApplyTimeRange(TimelineAsset asset, Clip clip, FixedScalar startTime, FixedScalar endTime, FixedScalar easeIn, FixedScalar easeOut, double clipInSeconds, bool clipInChanged)
+        void ApplyTimeRange(TimelineAsset asset, Clip clip, FP startTime, FP endTime, FP easeIn, FP easeOut, double clipInSeconds, bool clipInChanged)
         {
             if (!TryBeginMutation(asset))
                 return;
@@ -384,7 +385,7 @@ namespace BTSMTL.Timeline.Editor
                     clip.ConfigureTimeRange(startTime, endTime);
                     clip.ConfigureEase(easeIn, easeOut);
                     if (clipInChanged)
-                        clip.ConfigureClipIn(FixedScalar.FromDouble(clipInSeconds));
+                        clip.ConfigureClipIn(QuantumScalarBoundary.ConvertExternal(clipInSeconds, nameof(TimelineInspector)));
                     clip.Track.UpdateMix();
                     asset.Data.Init();
                 }, "Edit Timeline Clip Time");

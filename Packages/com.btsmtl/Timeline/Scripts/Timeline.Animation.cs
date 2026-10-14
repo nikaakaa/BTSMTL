@@ -1,5 +1,6 @@
+using ThirdPersonSimulation.QuantumNumerics;
 using System;
-using ThirdPersonSimulation.Fixed;
+using Photon.Deterministic;
 using System.Collections.Generic;
 using ThirdPersonSimulation;
 using UnityEngine;
@@ -64,7 +65,7 @@ namespace BTSMTL.Timeline
 #if UNITY_EDITOR
 
         public override Type ClipType => typeof(AnimationClip);
-        public override Clip AddClip(UnityEngine.Object referenceObject, FixedScalar time)
+        public override Clip AddClip(UnityEngine.Object referenceObject, FP time)
         {
             AnimationClip clip = new AnimationClip(referenceObject as UnityEngine.AnimationClip, this, time);
             clip.RegenerateAuthoringIdentity();
@@ -110,12 +111,12 @@ namespace BTSMTL.Timeline
 
         public override string Name => Clip ? Clip.name : base.Name;
 #if UNITY_EDITOR
-        public override FixedScalar Length => Clip
-            ? FixedScalar.FromDouble(Clip.length)
+        public override FP Length => Clip
+            ? QuantumScalarBoundary.ConvertExternal(Clip.length, nameof(AnimationTrack))
             : base.Length;
         public override ClipCapabilities Capabilities => ClipCapabilities.Resizable | ClipCapabilities.Mixable | ClipCapabilities.ClipInable;
-        public AnimationClip(Track track, FixedScalar time) : base(track, time) { }
-        public AnimationClip(UnityEngine.AnimationClip clip, Track track, FixedScalar time) : base(track, time)
+        public AnimationClip(Track track, FP time) : base(track, time) { }
+        public AnimationClip(UnityEngine.AnimationClip clip, Track track, FP time) : base(track, time)
         {
             Clip = clip;
             ConfigureTimeRange(time, time + Length);

@@ -1,5 +1,5 @@
 using System;
-using ThirdPersonSimulation.Fixed;
+using Photon.Deterministic;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -55,7 +55,7 @@ namespace BTSMTL.Timeline
 #if UNITY_EDITOR
         public override ClipCapabilities Capabilities => ClipCapabilities.Resizable | ClipCapabilities.Mixable;
 
-        public CameraStateClip(Track track, FixedScalar time) : base(track, time)
+        public CameraStateClip(Track track, FP time) : base(track, time)
         {
         }
 #endif
@@ -105,7 +105,7 @@ namespace BTSMTL.Timeline
 #if UNITY_EDITOR
         public override ClipCapabilities Capabilities => ClipCapabilities.Resizable | ClipCapabilities.Mixable;
 
-        public CameraResponseClip(Track track, FixedScalar time) : base(track, time)
+        public CameraResponseClip(Track track, FP time) : base(track, time)
         {
         }
 #endif
