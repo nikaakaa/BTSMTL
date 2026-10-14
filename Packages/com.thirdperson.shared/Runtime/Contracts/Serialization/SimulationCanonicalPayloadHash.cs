@@ -69,21 +69,21 @@ namespace ThirdPersonSimulation
             return new StableHash(hash);
         }
 
-        internal sealed class Accumulator
+        public sealed class Accumulator
         {
             readonly uint[] m_Words = new uint[72];
             readonly byte[] m_Block = new byte[64];
             int m_Buffered;
             ulong m_ByteLength;
 
-            internal void Begin()
+            public void Begin()
             {
                 SimulationCanonicalPayloadHash.Begin(m_Words.AsSpan(0, 8));
                 m_Buffered = 0;
                 m_ByteLength = 0;
             }
 
-            internal void Append(ReadOnlySpan<byte> value)
+            public void Append(ReadOnlySpan<byte> value)
             {
                 m_ByteLength = unchecked(m_ByteLength + (ulong)value.Length);
                 if (m_Buffered != 0)
@@ -104,7 +104,7 @@ namespace ThirdPersonSimulation
                 m_Buffered = value.Length - fullBytes;
             }
 
-            internal void AppendAscii(byte value)
+            public void AppendAscii(byte value)
             {
                 m_ByteLength = unchecked(m_ByteLength + 1);
                 m_Block[m_Buffered++] = value;
@@ -150,9 +150,10 @@ namespace ThirdPersonSimulation
                 Append(digits.Slice(start));
             }
 
-            internal void AppendText(CanonicalTextValue value)
+            internal void AppendText(CanonicalTextValue value) => AppendText(value.Span);
+
+            public void AppendText(ReadOnlySpan<char> characters)
             {
-                ReadOnlySpan<char> characters = value.Span;
                 Span<byte> bytes = stackalloc byte[128];
                 while (characters.Length != 0)
                 {
@@ -163,7 +164,7 @@ namespace ThirdPersonSimulation
                 }
             }
 
-            internal StableHash Complete()
+            public StableHash Complete()
             {
                 Span<uint> state = stackalloc uint[8];
                 Span<byte> block = stackalloc byte[64];
