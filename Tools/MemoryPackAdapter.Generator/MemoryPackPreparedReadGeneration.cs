@@ -172,14 +172,12 @@ namespace ThirdPerson.MemoryPackAdapters
         static void EmitPreparedRead(StringBuilder code, INamedTypeSymbol type, Member[] members,
             PreparedReadPlan plan, Func<ITypeSymbol, bool> hasPayload)
         {
-            code.Append("static ").Append(TypeName(type)).Append(" ReadInto(ref global::MemoryPack.MemoryPackReader reader, ")
+            code.Append("public ").Append(TypeName(type)).Append(" ReadInto(ref global::MemoryPack.MemoryPackReader reader, ")
                 .Append(TypeName(plan.Storage)).AppendLine(" storage) {");
             code.Append("storage.").Append(Escape(plan.Begin.Name)).AppendLine("();");
             code.AppendLine("if (!reader.TryReadObjectHeader(out byte count)) return default;");
             code.Append("if (count != ").Append(members.Length)
                 .AppendLine(") throw new global::MemoryPack.MemoryPackSerializationException(\"记录成员数与当前格式不符。\");");
-            if (plan.Nested.Count != 0)
-                code.AppendLine("var preparedContext = (global::ThirdPersonSimulation.Serialization.MemoryPackContentContext)reader.Options.ServiceProvider;");
             foreach (Member member in members)
             {
                 if (plan.Collections.TryGetValue(member.Name, out IMethodSymbol add))
@@ -188,17 +186,13 @@ namespace ThirdPerson.MemoryPackAdapters
                         .AppendLine(")) throw new global::MemoryPack.MemoryPackSerializationException(\"prepared 原输入集合不可为 null。\");");
                     code.Append("for (int index = 0; index < count_").Append(member.Name).AppendLine("; index++) {");
                     code.Append(TypeName(SequenceElement(member.Type))).AppendLine(" item = default;");
-                    EmitPreparedNested(code, member, plan, true);
-                    code.AppendLine("reader.ReadValue(ref item);");
-                    EmitPreparedNested(code, member, plan, false);
+                    EmitPreparedValueRead(code, member, plan, "item", true, hasPayload);
                     code.Append("storage.").Append(Escape(add.Name)).AppendLine("(item); }");
                 }
                 else
                 {
                     code.Append(TypeName(member.Type)).Append(" member_").Append(member.Name).AppendLine(" = default;");
-                    EmitPreparedNested(code, member, plan, true);
-                    EmitMemberRead(code, member, "member_" + member.Name, false, hasPayload);
-                    EmitPreparedNested(code, member, plan, false);
+                    EmitPreparedValueRead(code, member, plan, "member_" + member.Name, false, hasPayload);
                 }
             }
             code.Append("return storage.").Append(Escape(plan.Complete.Name)).Append('(')
@@ -207,13 +201,20 @@ namespace ThirdPerson.MemoryPackAdapters
                 .AppendLine("); }");
         }
 
-        static void EmitPreparedNested(StringBuilder code, Member member, PreparedReadPlan plan, bool begin)
+        static void EmitPreparedValueRead(StringBuilder code, Member member, PreparedReadPlan plan, string target,
+            bool element, Func<ITypeSymbol, bool> hasPayload)
         {
-            if (!plan.Nested.TryGetValue(member.Name, out IMethodSymbol prepare)) return;
-            if (begin)
-                code.Append("preparedContext.SelectPreparedStorage(storage.").Append(Escape(prepare.Name)).AppendLine("());");
+            if (plan.Nested.TryGetValue(member.Name, out IMethodSymbol prepare))
+            {
+                string valueType = TypeName(element ? SequenceElement(member.Type) : member.Type);
+                code.Append(target).Append(" = ((global::ThirdPersonSimulation.Serialization.IMemoryPackPreparedFormatter<")
+                    .Append(valueType).Append(", ").Append(TypeName(prepare.ReturnType)).Append(">)reader.GetFormatter<")
+                    .Append(valueType).Append(">()).ReadInto(ref reader, storage.").Append(Escape(prepare.Name)).AppendLine("());");
+            }
+            else if (element)
+                code.Append("reader.ReadValue(ref ").Append(target).AppendLine(");");
             else
-                code.AppendLine("preparedContext.SelectPreparedStorage(storage);");
+                EmitMemberRead(code, member, target, false, hasPayload);
         }
     }
 }

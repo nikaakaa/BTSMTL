@@ -40,6 +40,7 @@ namespace ThirdPersonSimulation.FPGameplay
         }
     }
 
+    [ValueStorage(ReadOnly = true)]
     public readonly partial struct FPCharacterRuntimeState
     {
         readonly FPCharacterRuntimeStatePage m_Page;
@@ -51,6 +52,7 @@ namespace ThirdPersonSimulation.FPGameplay
             m_Generation = page.Generation;
         }
 
+        [ValueStorageMember]
         ref readonly FPCharacterRuntimeStateData Data
         {
             get

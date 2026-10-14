@@ -10,6 +10,7 @@
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <IncludeBuildOutput>false</IncludeBuildOutput>
+    <UnityAnalyzerDirectory>$(MSBuildThisFileDirectory)..\..\Packages\com.thirdperson.memorypack\Runtime\Analyzers</UnityAnalyzerDirectory>
   </PropertyGroup>
   <ItemGroup>
     <AdditionalFiles Include="AnalyzerReleases.Shipped.md" />
@@ -18,9 +19,9 @@
     <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="3.3.2" PrivateAssets="all" />
   </ItemGroup>
   <Target Name="InstallUnityAnalyzer" AfterTargets="Build" Condition="'$(InstallUnityAnalyzer)' == 'true'">
-    <MakeDir Directories="$(MSBuildProjectDirectory)/../../Packages/com.thirdperson.memorypack/Runtime/Analyzers" />
-    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(MSBuildProjectDirectory)/../../Packages/com.thirdperson.memorypack/Runtime/Analyzers" />
-    <Copy SourceFiles="$(MSBuildProjectDirectory)/UnityAnalyzer.meta" DestinationFiles="$(MSBuildProjectDirectory)/../../Packages/com.thirdperson.memorypack/Runtime/Analyzers/$(TargetFileName).meta" />
+    <MakeDir Directories="$(UnityAnalyzerDirectory)" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(UnityAnalyzerDirectory)" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)/UnityAnalyzer.meta" DestinationFiles="$(UnityAnalyzerDirectory)/$(TargetFileName).meta" />
   </Target>
 </Project>
 

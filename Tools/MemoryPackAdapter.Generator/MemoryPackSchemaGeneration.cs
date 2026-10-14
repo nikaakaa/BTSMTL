@@ -136,10 +136,15 @@ namespace ThirdPerson.MemoryPackAdapters
             }
         }
 
-        static void EmitMemoryPackFormatterHeader(StringBuilder code, string formatter, string type, string schemaHash)
+        static void EmitMemoryPackFormatterHeader(StringBuilder code, string formatter, string type, string schemaHash,
+            string preparedStorage = null)
         {
             code.Append("sealed class ").Append(formatter).Append(" : global::MemoryPack.MemoryPackFormatter<")
-                .Append(type).AppendLine(">, global::ThirdPersonSimulation.Serialization.IMemoryPackSchema {");
+                .Append(type).Append(">, global::ThirdPersonSimulation.Serialization.IMemoryPackSchema");
+            if (preparedStorage != null)
+                code.Append(", global::ThirdPersonSimulation.Serialization.IMemoryPackPreparedFormatter<")
+                    .Append(type).Append(", ").Append(preparedStorage).Append('>');
+            code.AppendLine(" {");
             code.Append("static readonly global::ThirdPersonSimulation.StableHash s_SchemaHash = new global::ThirdPersonSimulation.StableHash(\"")
                 .Append(schemaHash).AppendLine("\");");
             code.AppendLine("public global::ThirdPersonSimulation.StableHash SchemaHash => s_SchemaHash;");

@@ -508,13 +508,21 @@ namespace ThirdPerson.ValueGeneration.Generator
             EmitTypeDeclaration(code, type);
             AttributeData purpose = type.GetAttributes().Single(attribute => Identity(attribute.AttributeClass) == ValueStoragePurposeAttribute);
             bool construct = purpose.NamedArguments.Any(argument => argument.Key == "Construct" && (bool)argument.Value.Value);
-            if (purpose.NamedArguments.Any(argument => argument.Key == "UseConstructor" && (bool)argument.Value.Value))
+            bool useConstructor = purpose.NamedArguments.Any(argument => argument.Key == "UseConstructor" && (bool)argument.Value.Value);
+            bool readOnly = purpose.NamedArguments.Any(argument => argument.Key == "ReadOnly" && (bool)argument.Value.Value);
+            if (readOnly && (construct || useConstructor))
+            {
+                context.ReportDiagnostic(Diagnostic.Create(InvalidValueDeclaration, type.Locations.FirstOrDefault(), Identity(type),
+                    "只读存储视图由原 owner 恢复，不能同时声明 Construct 或 UseConstructor"));
+                return null;
+            }
+            if (useConstructor)
             {
                 if (!EmitConstructorValueStorage(context, code, type, construct)) return null;
             }
             else
                 EmitValueStorage(code, type, StorageMembers(type).Where(member =>
-                    !HasAttribute(member.Symbol, "ThirdPersonSimulation.ValueStorageIgnoreAttribute")).ToArray(), construct);
+                    !HasAttribute(member.Symbol, "ThirdPersonSimulation.ValueStorageIgnoreAttribute")).ToArray(), construct, readOnly);
             foreach (INamedTypeSymbol owner in owners)
                 code.AppendLine("}");
             code.AppendLine("} }");
@@ -601,9 +609,9 @@ namespace ThirdPerson.ValueGeneration.Generator
                 Identity(contract.OriginalDefinition) == "System.Collections.Generic.IEnumerable<T>" &&
                 SymbolEqualityComparer.Default.Equals(contract.TypeArguments[0], array.ElementType));
 
-        static void EmitValueStorage(StringBuilder code, INamedTypeSymbol type, Member[] members, bool construct)
+        static void EmitValueStorage(StringBuilder code, INamedTypeSymbol type, Member[] members, bool construct, bool readOnly = false)
         {
-            code.Append("public void ReadValueStorage(")
+            code.Append(readOnly ? "internal void ReadValueStorage(" : "public void ReadValueStorage(")
                 .Append(string.Join(", ", members.Select(member =>
                     (member.Payload ? "[global::ThirdPersonSimulation.ValuePayload] " : "") +
                     "out " + TypeName(member.Type) + " " + Escape(member.Symbol.Name))))
@@ -611,6 +619,7 @@ namespace ThirdPerson.ValueGeneration.Generator
             foreach (Member member in members)
                 code.Append(Escape(member.Symbol.Name)).Append(" = this.").Append(Escape(member.Symbol.Name)).AppendLine(";");
             code.AppendLine("}");
+            if (readOnly) return;
             Member[] constructorMembers = construct
                 ? members.OrderBy(member => member.Symbol.Locations[0].SourceSpan.Start).ToArray() : members;
             code.Append(construct ? "public " : "private ").Append(Escape(type.Name)).Append('(');
@@ -940,14 +949,19 @@ namespace ThirdPerson.ValueGeneration.Generator
             public bool Generated;
         }
 
-        static Member[] StorageMembers(INamedTypeSymbol type) => type.GetMembers()
-            .Where(s => !s.IsStatic && !s.IsImplicitlyDeclared)
-            .Where(s => s is IFieldSymbol field &&
-                !HasAttribute(field, "System.Runtime.CompilerServices.CompilerGeneratedAttribute") ||
-                s is IPropertySymbol property && IsAutoProperty(property))
-            .OrderBy(Identity, StringComparer.Ordinal)
-            .Select(s => new Member { Symbol = s, Type = s is IFieldSymbol f ? f.Type : ((IPropertySymbol)s).Type,
-                IsCase = HasAttribute(s, UnionCaseAttribute), Payload = HasAttribute(s, PayloadAttribute) }).ToArray();
+        static Member[] StorageMembers(INamedTypeSymbol type)
+        {
+            ISymbol[] members = type.GetMembers().Where(symbol => !symbol.IsStatic && !symbol.IsImplicitlyDeclared).ToArray();
+            bool explicitStorage = HasAttribute(type, ValueStoragePurposeAttribute) &&
+                members.Any(member => HasAttribute(member, StorageAttribute));
+            return members.Where(symbol => explicitStorage ? HasAttribute(symbol, StorageAttribute) :
+                symbol is IFieldSymbol field && !HasAttribute(field, "System.Runtime.CompilerServices.CompilerGeneratedAttribute") ||
+                symbol is IPropertySymbol property && IsAutoProperty(property))
+                .OrderBy(Identity, StringComparer.Ordinal)
+                .Select(symbol => new Member { Symbol = symbol,
+                    Type = symbol is IFieldSymbol field ? field.Type : ((IPropertySymbol)symbol).Type,
+                    IsCase = HasAttribute(symbol, UnionCaseAttribute), Payload = HasAttribute(symbol, PayloadAttribute) }).ToArray();
+        }
 
         static bool ValidateTemplate(GeneratorExecutionContext context, INamedTypeSymbol type)
         {

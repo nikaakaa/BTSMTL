@@ -17,6 +17,10 @@ namespace ThirdPerson.ValueGeneration
 
         internal const string StorageAttribute = "ThirdPersonSimulation.ValueStorageAttribute";
 
+        internal static bool ReadOnlyStorage(ITypeSymbol type) => type.GetAttributes().Any(attribute =>
+            Identity(attribute.AttributeClass) == StorageAttribute && attribute.NamedArguments.Any(argument =>
+                argument.Key == "ReadOnly" && argument.Value.Value is true));
+
         internal static bool IsUnmanagedValue(ITypeSymbol type) => IsUnmanagedValue(type, new HashSet<string>());
 
         static bool IsUnmanagedValue(ITypeSymbol type, HashSet<string> path)
@@ -144,15 +148,21 @@ namespace ThirdPerson.ValueGeneration
             }
         }
 
-        static Member[] DeclaredStorageMembers(INamedTypeSymbol type) =>
-            type.GetMembers().Where(s => !s.IsStatic && !s.IsImplicitlyDeclared)
-                .Where(s => !HasAttribute(s, "ThirdPersonSimulation.ValueStorageIgnoreAttribute"))
-                .Where(s => s is IFieldSymbol field &&
-                    !HasAttribute(field, "System.Runtime.CompilerServices.CompilerGeneratedAttribute") ||
-                    s is IPropertySymbol property && IsAutoProperty(property))
-                .OrderBy(s => s.Name, StringComparer.Ordinal)
-                .Select(s => new Member { Symbol = s, Type = s is IFieldSymbol f ? f.Type : ((IPropertySymbol)s).Type,
-                    IsCase = HasAttribute(s, UnionCaseAttribute) }).ToArray();
+        static Member[] DeclaredStorageMembers(INamedTypeSymbol type)
+        {
+            ISymbol[] members = type.GetMembers().Where(symbol => !symbol.IsStatic && !symbol.IsImplicitlyDeclared &&
+                !HasAttribute(symbol, "ThirdPersonSimulation.ValueStorageIgnoreAttribute")).ToArray();
+            bool explicitStorage = HasAttribute(type, StorageAttribute) && members.Any(member =>
+                HasAttribute(member, "ThirdPersonSimulation.ValueStorageMemberAttribute"));
+            return members.Where(symbol => explicitStorage ?
+                HasAttribute(symbol, "ThirdPersonSimulation.ValueStorageMemberAttribute") :
+                symbol is IFieldSymbol field && !HasAttribute(field, "System.Runtime.CompilerServices.CompilerGeneratedAttribute") ||
+                symbol is IPropertySymbol property && IsAutoProperty(property))
+                .OrderBy(symbol => symbol.Name, StringComparer.Ordinal)
+                .Select(symbol => new Member { Symbol = symbol,
+                    Type = symbol is IFieldSymbol field ? field.Type : ((IPropertySymbol)symbol).Type,
+                    IsCase = HasAttribute(symbol, UnionCaseAttribute) }).ToArray();
+        }
 
         static Member[] PublicReadableMembers(INamedTypeSymbol type) =>
             type.GetMembers().Where(symbol => !symbol.IsStatic &&

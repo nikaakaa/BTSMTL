@@ -11,6 +11,11 @@ namespace ThirdPersonSimulation.Serialization
         StableHash SchemaHash { get; }
     }
 
+    public interface IMemoryPackPreparedFormatter<TValue, TStorage>
+    {
+        TValue ReadInto(ref MemoryPackReader reader, TStorage storage);
+    }
+
     public enum MemoryPackContentPart
     {
         Full,
@@ -37,17 +42,13 @@ namespace ThirdPersonSimulation.Serialization
         public MemoryPackContentPart Part { get; set; }
         public CanonicalDeclaredIdentityReader DeclaredIdentities { get; set; }
         public bool IsPrepared => m_Texts != null;
-        public object PreparedStorage { get; private set; }
         public MemoryPackSerializerOptions Options { get; }
 
-        public void BeginRead(object storage)
+        public void BeginRead()
         {
             Part = MemoryPackContentPart.Full;
-            PreparedStorage = storage;
             m_Texts.Reset();
         }
-
-        public void SelectPreparedStorage(object storage) => PreparedStorage = storage;
 
         public CanonicalTextValue ReadText(ref MemoryPackReader reader)
         {
@@ -124,14 +125,20 @@ namespace ThirdPersonSimulation.Serialization
             DeserializeInto<SimulationInput, Float32SimulationInputFrameStorage>(bytes, storage, context);
 
         public static T DeserializeInto<T, TStorage>(ReadOnlySpan<byte> bytes, TStorage storage,
-            MemoryPackContentContext context) where TStorage : class
+            MemoryPackContentContext context)
         {
-            context.BeginRead(storage);
-            T value = default;
-            int consumed = MemoryPackSerializer.Deserialize(bytes, ref value, context.Options);
-            if (consumed != bytes.Length)
-                throw new System.IO.InvalidDataException("MemoryPack content contains trailing data.");
-            return value;
+            context.BeginRead();
+            using var state = MemoryPackReaderOptionalStatePool.Rent(context.Options);
+            var reader = new MemoryPackReader(bytes, state);
+            try
+            {
+                T value = ((IMemoryPackPreparedFormatter<T, TStorage>)reader.GetFormatter<T>())
+                    .ReadInto(ref reader, storage);
+                if (reader.Remaining != 0)
+                    throw new System.IO.InvalidDataException("MemoryPack content contains trailing data.");
+                return value;
+            }
+            finally { reader.Dispose(); }
         }
 
         public static byte[] Serialize<T>(T value, MemoryPackContentPart part = MemoryPackContentPart.Full)

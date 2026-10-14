@@ -434,7 +434,8 @@ namespace ThirdPerson.MemoryPackAdapters
             string name = TypeName(type);
             ISymbol presence = type.GetMembers().SingleOrDefault(member => HasAttribute(member, PresenceAttribute));
             bool partitioned = hasPayload(type);
-            EmitMemoryPackFormatterHeader(code, "Formatter" + ordinal, name, schemaHash);
+            EmitMemoryPackFormatterHeader(code, "Formatter" + ordinal, name, schemaHash,
+                prepared == null ? null : TypeName(prepared.Storage));
             EmitMemoryPackSerializeDeclaration(code, name, scopedReferences);
             if (type.IsReferenceType)
                 code.AppendLine("if (value == null) { writer.WriteNullObjectHeader(); return; }");
@@ -452,12 +453,12 @@ namespace ThirdPerson.MemoryPackAdapters
             }
             code.AppendLine("}");
             EmitMemoryPackDeserializeDeclaration(code, name, scopedReferences);
-            if (prepared != null)
+            if (ReadOnlyStorage(type))
             {
-                code.AppendLine("var preparedContext = reader.Options.ServiceProvider as global::ThirdPersonSimulation.Serialization.MemoryPackContentContext;");
-                code.AppendLine("if (preparedContext != null && preparedContext.IsPrepared) {");
-                code.Append("value = ReadInto(ref reader, (").Append(TypeName(prepared.Storage))
-                    .AppendLine(")preparedContext.PreparedStorage); return; }");
+                code.AppendLine("throw new global::MemoryPack.MemoryPackSerializationException(\"只读状态须通过原 owner 的准备存储读取。\"); }");
+                if (prepared != null) EmitPreparedRead(code, type, members, prepared, hasPayload);
+                code.AppendLine("}");
+                return;
             }
             EmitPartContext(code, "reader", partitioned);
             if (members.Any(member => member.IsCase))
@@ -689,6 +690,8 @@ namespace ThirdPerson.MemoryPackAdapters
             bool partitioned, Func<ITypeSymbol, bool> hasPayload)
         {
             string kind = TypeName(((IPropertySymbol)type.GetMembers("Kind").Single()).Type);
+            if (members.Any(member => !member.IsCase))
+                code.AppendLine("if ((ushort)value.Kind == 0) { writer.WriteNullUnionHeader(); return; }");
             code.AppendLine("writer.WriteUnionHeader((ushort)value.Kind);");
             foreach (Member member in members.Where(member => !member.IsCase))
                 EmitMemberWrite(code, member, "value." + Escape(member.Name), partitioned, hasPayload);

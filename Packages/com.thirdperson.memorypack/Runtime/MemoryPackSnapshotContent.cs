@@ -17,7 +17,7 @@ namespace ThirdPersonSimulation.Serialization
         public static void DeserializeSnapshotInto(ReadOnlySpan<byte> bytes, IValueSnapshotCopy snapshot,
             MemoryPackContentContext context)
         {
-            context.BeginRead(snapshot);
+            context.BeginRead();
             object value = snapshot;
             int consumed = MemoryPackSerializer.Deserialize(snapshot.GetType(), bytes, ref value, context.Options);
             if (consumed != bytes.Length)

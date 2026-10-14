@@ -94,12 +94,13 @@ namespace ThirdPersonSimulation
     {
         public bool Construct { get; set; }
         public bool UseConstructor { get; set; }
+        public bool ReadOnly { get; set; }
     }
 
     [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct)]
     public sealed class ValueStorageOwnerAttribute : Attribute { }
 
-    [AttributeUsage(AttributeTargets.Field)]
+    [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
     public sealed class ValueStorageMemberAttribute : Attribute { }
 
     [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
