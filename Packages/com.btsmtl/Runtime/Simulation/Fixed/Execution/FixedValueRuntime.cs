@@ -1,3 +1,4 @@
+using ProgramValues = ThirdPersonSimulation.ProgramValueCalculation<ThirdPersonSimulation.Fixed.AbilityStateValue, ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedSimulationMath, ThirdPersonSimulation.Fixed.FixedProgramNumericValueAccess>;
 using ThirdPersonSimulation;
 using System;
 using System.Collections.Generic;
@@ -251,7 +252,7 @@ namespace ThirdPersonSimulation.Fixed
 				switch (operation.Code)
 				{
 					case SimulationOperationCode.ConditionResult:
-						result = AbilityStateValue.FromBoolean(inputs.Count > 0 && ToBoolean(inputs[0]));
+						result = AbilityStateValue.FromBoolean(inputs.Count > 0 && ProgramValues.ToBoolean(inputs[0]));
 						break;
 					case SimulationOperationCode.InputBoolean:
 						result = AbilityStateValue.FromBoolean(m_Input.ReadValue(operation.Text0, ProgramInputValueKind.Boolean).Boolean);
@@ -384,13 +385,13 @@ namespace ThirdPersonSimulation.Fixed
 						result = AbilityStateValue.FromBoolean(Compare(operation.Integer0, inputs));
 						break;
 					case SimulationOperationCode.And:
-						result = AbilityStateValue.FromBoolean(inputs.Count >= 2 && ToBoolean(inputs[0]) && ToBoolean(inputs[1]));
+						result = AbilityStateValue.FromBoolean(inputs.Count >= 2 && ProgramValues.ToBoolean(inputs[0]) && ProgramValues.ToBoolean(inputs[1]));
 						break;
 					case SimulationOperationCode.Or:
-						result = AbilityStateValue.FromBoolean(inputs.Count > 0 && (ToBoolean(inputs[0]) || inputs.Count > 1 && ToBoolean(inputs[1])));
+						result = AbilityStateValue.FromBoolean(inputs.Count > 0 && (ProgramValues.ToBoolean(inputs[0]) || inputs.Count > 1 && ProgramValues.ToBoolean(inputs[1])));
 						break;
 					case SimulationOperationCode.Not:
-						result = AbilityStateValue.FromBoolean(inputs.Count == 0 || !ToBoolean(inputs[0]));
+						result = AbilityStateValue.FromBoolean(inputs.Count == 0 || !ProgramValues.ToBoolean(inputs[0]));
 						break;
 					case SimulationOperationCode.Constant:
 						result = operation.ConstantReferences.Count > 0
@@ -440,7 +441,7 @@ namespace ThirdPersonSimulation.Fixed
             ProgramControlFlowEdge edge)
             where TTarget : struct, IOperationControlTarget<TTarget>
         {
-            return edge != null && (!edge.HasCondition || ToBoolean(Evaluate(cursor, edge.Condition)));
+            return edge != null && (!edge.HasCondition || ProgramValues.ToBoolean(Evaluate(cursor, edge.Condition)));
         }
 
         IFixedGameplayTagQuery RequireGameplayTags() => m_GameplayTags ??
@@ -502,8 +503,8 @@ namespace ThirdPersonSimulation.Fixed
                         m_Frame.Trace.AddValueEdge(operation, port);
                     }
                     if (i == 0 &&
-                        (operation.Code == SimulationOperationCode.And && !ToBoolean(value) ||
-                         operation.Code == SimulationOperationCode.Or && ToBoolean(value)))
+                        (operation.Code == SimulationOperationCode.And && !ProgramValues.ToBoolean(value) ||
+                         operation.Code == SimulationOperationCode.Or && ProgramValues.ToBoolean(value)))
                         break;
                 }
                 return new FixedValueInputLease(this, buffer, depth);
@@ -633,8 +634,8 @@ namespace ThirdPersonSimulation.Fixed
         {
             if (inputs.Count < 2)
                 return false;
-            FixedScalar left = ToScalar(inputs[0]);
-            FixedScalar right = ToScalar(inputs[1]);
+            FixedScalar left = ProgramValues.ToScalar(inputs[0]);
+            FixedScalar right = ProgramValues.ToScalar(inputs[1]);
             return comparison switch
             {
                 0 => left == right,
@@ -647,37 +648,12 @@ namespace ThirdPersonSimulation.Fixed
             };
         }
 
-        static FixedScalar ToScalar(in AbilityStateValue value)
-        {
-            return value.Kind switch
-            {
-                ProgramStateValueKind.Int32 => FixedScalar.FromInt64(value.Int32),
-                ProgramStateValueKind.UInt64 when value.UInt64 <= long.MaxValue => FixedScalar.FromInt64((long)value.UInt64),
-                ProgramStateValueKind.Scalar => value.Scalar,
-                ProgramStateValueKind.Boolean => value.Boolean ? FixedScalar.One : FixedScalar.Zero,
-                _ => throw new InvalidOperationException($"State value '{value.Kind}' is not numeric.")
-            };
-        }
-
-        public static bool ToBoolean(in AbilityStateValue value)
-        {
-            return value.Kind switch
-            {
-                ProgramStateValueKind.Boolean => value.Boolean,
-                ProgramStateValueKind.Int32 => value.Int32 != 0,
-                ProgramStateValueKind.UInt64 => value.UInt64 != 0,
-                ProgramStateValueKind.Scalar => value.Scalar != FixedScalar.Zero,
-                ProgramStateValueKind.Identity => !CanonicalTextValue.IsNullOrEmpty(value.Identity),
-                _ => false
-            };
-        }
-
         static AbilityStateValue ConvertValue(in AbilityStateValue value, ProgramStateValueKind expected)
         {
             if (value.Kind == expected)
                 return value;
             if (expected == ProgramStateValueKind.Scalar)
-                return AbilityStateValue.FromScalar(ToScalar(value));
+                return AbilityStateValue.FromScalar(ProgramValues.ToScalar(value));
             if (expected == ProgramStateValueKind.Int32 && value.Kind == ProgramStateValueKind.Scalar)
                 return AbilityStateValue.FromInt32(value.Scalar.TruncateToInt32());
             throw new InvalidOperationException($"Cannot assign '{value.Kind}' to '{expected}'.");

@@ -1,3 +1,4 @@
+using ProgramValues = ThirdPersonSimulation.ProgramValueCalculation<ThirdPersonSimulation.AbilityStateValue, ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32SimulationMath, ThirdPersonSimulation.Float32ProgramNumericValueAccess>;
 using System;
 using static ThirdPersonSimulation.Float32GraphValueRuntime;
 using System.Collections.Generic;
@@ -661,7 +662,7 @@ namespace ThirdPersonSimulation
                         m_Owner.m_Values.WriteParameter(cursor, operation);
                         return OperationExecutionResult.Success;
                     default:
-                        return Float32GraphValueRuntime.ToBoolean(m_Owner.m_Values.Evaluate(cursor, operation.Handle))
+                        return ProgramValues.ToBoolean(m_Owner.m_Values.Evaluate(cursor, operation.Handle))
                             ? OperationExecutionResult.Success : OperationExecutionResult.Failure;
                 }
             }

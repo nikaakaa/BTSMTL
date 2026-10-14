@@ -1,3 +1,4 @@
+using ProgramValues = ThirdPersonSimulation.ProgramValueCalculation<ThirdPersonSimulation.AbilityStateValue, ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32SimulationMath, ThirdPersonSimulation.Float32ProgramNumericValueAccess>;
 using System;
 using System.Collections.Generic;
 
@@ -43,7 +44,7 @@ namespace ThirdPersonSimulation
         }
 
         public bool EvaluateRuleCondition(OperationControlCursor<Float32AbilityExecutionTarget> cursor,
-            OperationHandle condition) => Float32GraphValueRuntime.ToBoolean(m_Values.Evaluate(cursor, condition));
+            OperationHandle condition) => ProgramValues.ToBoolean(m_Values.Evaluate(cursor, condition));
 
         public void EndEvaluation()
         {

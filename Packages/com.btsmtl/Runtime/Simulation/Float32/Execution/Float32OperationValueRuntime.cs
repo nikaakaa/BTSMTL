@@ -1,3 +1,4 @@
+using ProgramValues = ThirdPersonSimulation.ProgramValueCalculation<ThirdPersonSimulation.AbilityStateValue, ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32SimulationMath, ThirdPersonSimulation.Float32ProgramNumericValueAccess>;
 using System;
 using static ThirdPersonSimulation.Float32GraphValueRuntime;
 
@@ -123,7 +124,7 @@ namespace ThirdPersonSimulation
 
         public bool EvaluateCondition<TTarget>(OperationControlCursor<TTarget> cursor, ProgramControlFlowEdge edge)
             where TTarget : struct, IOperationControlTarget<TTarget> =>
-            edge != null && (!edge.HasCondition || ToBoolean(Evaluate(cursor, edge.Condition)));
+            edge != null && (!edge.HasCondition || ProgramValues.ToBoolean(Evaluate(cursor, edge.Condition)));
 
         AbilityStateValue ReadSubGraphOutput<TTarget>(
             OperationControlCursor<TTarget> cursor,

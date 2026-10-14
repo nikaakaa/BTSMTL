@@ -5,6 +5,7 @@ namespace ThirdPersonSimulation
         TScalar Zero { get; }
         TScalar One { get; }
         TScalar FromInt32(int value);
+        TScalar FromInt64(long value);
         int FloorToInt32(TScalar value);
         TScalar Add(TScalar left, TScalar right);
         TScalar Subtract(TScalar left, TScalar right);

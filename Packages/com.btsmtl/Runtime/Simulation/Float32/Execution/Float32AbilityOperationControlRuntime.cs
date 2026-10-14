@@ -1,3 +1,4 @@
+using ProgramValues = ThirdPersonSimulation.ProgramValueCalculation<ThirdPersonSimulation.AbilityStateValue, ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32SimulationMath, ThirdPersonSimulation.Float32ProgramNumericValueAccess>;
 using System;
 using System.IO;
 using System.Collections.Generic;
@@ -307,7 +308,7 @@ namespace ThirdPersonSimulation
                 case SimulationOperationCode.Constant:
                 case SimulationOperationCode.ReadEquipmentIdentity:
                 case SimulationOperationCode.ReadEquipmentParameter:
-                    return Float32GraphValueRuntime.ToBoolean(m_Values.Evaluate(cursor, operation.Handle))
+                    return ProgramValues.ToBoolean(m_Values.Evaluate(cursor, operation.Handle))
                         ? OperationExecutionResult.Success
                         : OperationExecutionResult.Failure;
                 case SimulationOperationCode.Timeline:

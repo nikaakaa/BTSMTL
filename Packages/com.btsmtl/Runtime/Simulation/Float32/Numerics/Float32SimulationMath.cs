@@ -9,6 +9,7 @@ namespace ThirdPersonSimulation
         public Float32Scalar Zero => Float32Scalar.Zero;
         public Float32Scalar One => Float32Scalar.One;
         public Float32Scalar FromInt32(int value) => Float32Scalar.FromInt64(value);
+        public Float32Scalar FromInt64(long value) => Float32Scalar.FromInt64(value);
         public int FloorToInt32(Float32Scalar value) => (int)System.Math.Floor(value.ToDouble());
         public Float32Vector2 ZeroVector2 => Float32Vector2.Zero;
         public Float32Vector3 ZeroVector3 => Float32Vector3.Zero;

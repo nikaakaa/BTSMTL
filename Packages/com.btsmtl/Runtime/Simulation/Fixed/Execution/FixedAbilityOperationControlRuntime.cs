@@ -1,3 +1,4 @@
+using ProgramValues = ThirdPersonSimulation.ProgramValueCalculation<ThirdPersonSimulation.Fixed.AbilityStateValue, ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedSimulationMath, ThirdPersonSimulation.Fixed.FixedProgramNumericValueAccess>;
 using System;
 using System.IO;
 using System.Collections.Generic;
@@ -342,7 +343,7 @@ namespace ThirdPersonSimulation.Fixed
                 case SimulationOperationCode.Constant:
                 case SimulationOperationCode.ReadEquipmentIdentity:
                 case SimulationOperationCode.ReadEquipmentParameter:
-                    return FixedValueRuntime.ToBoolean(m_Values.Evaluate(cursor, operation.Handle))
+                    return ProgramValues.ToBoolean(m_Values.Evaluate(cursor, operation.Handle))
                         ? OperationExecutionResult.Success
                         : OperationExecutionResult.Failure;
                 case SimulationOperationCode.Timeline:

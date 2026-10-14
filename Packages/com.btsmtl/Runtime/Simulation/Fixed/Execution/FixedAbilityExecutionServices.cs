@@ -1,3 +1,4 @@
+using ProgramValues = ThirdPersonSimulation.ProgramValueCalculation<ThirdPersonSimulation.Fixed.AbilityStateValue, ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedSimulationMath, ThirdPersonSimulation.Fixed.FixedProgramNumericValueAccess>;
 using System;
 using System.Collections.Generic;
 using ThirdPersonSimulation;
@@ -45,7 +46,7 @@ namespace ThirdPersonSimulation.Fixed
         }
 
         public bool EvaluateRuleCondition(OperationControlCursor<FixedAbilityExecutionTarget> cursor,
-            OperationHandle condition) => FixedValueRuntime.ToBoolean(m_Values.Evaluate(cursor, condition));
+            OperationHandle condition) => ProgramValues.ToBoolean(m_Values.Evaluate(cursor, condition));
 
         public void EndEvaluation()
         {

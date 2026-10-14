@@ -1,3 +1,4 @@
+using ProgramValues = ThirdPersonSimulation.ProgramValueCalculation<ThirdPersonSimulation.AbilityStateValue, ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32SimulationMath, ThirdPersonSimulation.Float32ProgramNumericValueAccess>;
 using System;
 using System.Collections.Generic;
 
@@ -153,7 +154,7 @@ namespace ThirdPersonSimulation
 				switch (operation.Code)
                 {
                     case SimulationOperationCode.ConditionResult:
-						result = AbilityStateValue.FromBoolean(inputs.Count > 0 && ToBoolean(inputs[0]));
+						result = AbilityStateValue.FromBoolean(inputs.Count > 0 && ProgramValues.ToBoolean(inputs[0]));
 						break;
                     case SimulationOperationCode.Calculate:
                         result = Float32GraphCalculations.Evaluate((GraphCalculationKind)operation.Integer0, inputs);
@@ -168,13 +169,13 @@ namespace ThirdPersonSimulation
 						result = AbilityStateValue.FromBoolean(Compare(operation.Integer0, inputs));
 						break;
                     case SimulationOperationCode.And:
-						result = AbilityStateValue.FromBoolean(inputs.Count >= 2 && ToBoolean(inputs[0]) && ToBoolean(inputs[1]));
+						result = AbilityStateValue.FromBoolean(inputs.Count >= 2 && ProgramValues.ToBoolean(inputs[0]) && ProgramValues.ToBoolean(inputs[1]));
 						break;
                     case SimulationOperationCode.Or:
-						result = AbilityStateValue.FromBoolean(inputs.Count > 0 && (ToBoolean(inputs[0]) || inputs.Count > 1 && ToBoolean(inputs[1])));
+						result = AbilityStateValue.FromBoolean(inputs.Count > 0 && (ProgramValues.ToBoolean(inputs[0]) || inputs.Count > 1 && ProgramValues.ToBoolean(inputs[1])));
 						break;
                     case SimulationOperationCode.Not:
-						result = AbilityStateValue.FromBoolean(inputs.Count == 0 || !ToBoolean(inputs[0]));
+						result = AbilityStateValue.FromBoolean(inputs.Count == 0 || !ProgramValues.ToBoolean(inputs[0]));
 						break;
                     case SimulationOperationCode.Constant:
 						result = operation.ConstantReferences.Count > 0
@@ -209,7 +210,7 @@ namespace ThirdPersonSimulation
                 for (int i = 0; i < inputs.Length; i++)
                 {
                     if (operation.Code == SimulationOperationCode.SelectValue && i > 0)
-                        i = ToBoolean(buffer.Values[0]) ? 1 : 2;
+                        i = ProgramValues.ToBoolean(buffer.Values[0]) ? 1 : 2;
                     ref readonly CompiledValueInputBinding input = ref inputs[i];
                     AbilityStateValue value = ReadInputValue(ref context, operation, in input);
                     buffer.Values.Add(value);
@@ -217,8 +218,8 @@ namespace ThirdPersonSimulation
                     if (operation.Code == SimulationOperationCode.SelectValue && i > 0)
                         break;
                     if (i == 0 &&
-                        (operation.Code == SimulationOperationCode.And && !ToBoolean(value) ||
-                         operation.Code == SimulationOperationCode.Or && ToBoolean(value)))
+                        (operation.Code == SimulationOperationCode.And && !ProgramValues.ToBoolean(value) ||
+                         operation.Code == SimulationOperationCode.Or && ProgramValues.ToBoolean(value)))
                         break;
                 }
                 return new Float32ValueInputLease(this, buffer, depth);
@@ -268,8 +269,8 @@ namespace ThirdPersonSimulation
                 return comparison switch { 0 => a == b, 1 => a != b, 2 => a < b, 3 => a <= b, 4 => a >= b, 5 => a > b,
                     _ => throw new InvalidOperationException($"比较操作 '{comparison}' 不受支持。") };
             }
-            Float32Scalar left = ToScalar(inputs[0]);
-            Float32Scalar right = ToScalar(inputs[1]);
+            Float32Scalar left = ProgramValues.ToScalar(inputs[0]);
+            Float32Scalar right = ProgramValues.ToScalar(inputs[1]);
             return comparison switch
             {
                 0 => left == right,
@@ -282,37 +283,12 @@ namespace ThirdPersonSimulation
             };
         }
 
-        public static Float32Scalar ToScalar(AbilityStateValue value)
-        {
-            return value.Kind switch
-            {
-                ProgramStateValueKind.Int32 => Float32Scalar.FromInt64(value.Int32),
-                ProgramStateValueKind.UInt64 when value.UInt64 <= long.MaxValue => Float32Scalar.FromInt64((long)value.UInt64),
-                ProgramStateValueKind.Scalar => value.Scalar,
-                ProgramStateValueKind.Boolean => value.Boolean ? Float32Scalar.One : Float32Scalar.Zero,
-                _ => throw new InvalidOperationException($"State value '{value.Kind}' is not numeric.")
-            };
-        }
-
-        public static bool ToBoolean(AbilityStateValue value)
-        {
-            return value.Kind switch
-            {
-                ProgramStateValueKind.Boolean => value.Boolean,
-                ProgramStateValueKind.Int32 => value.Int32 != 0,
-                ProgramStateValueKind.UInt64 => value.UInt64 != 0,
-                ProgramStateValueKind.Scalar => value.Scalar != Float32Scalar.Zero,
-                ProgramStateValueKind.Identity => !CanonicalTextValue.IsNullOrEmpty(value.Identity),
-                _ => false
-            };
-        }
-
         public static AbilityStateValue ConvertValue(AbilityStateValue value, ProgramStateValueKind expected)
         {
             if (value.Kind == expected)
                 return value;
             if (expected == ProgramStateValueKind.Scalar)
-                return AbilityStateValue.FromScalar(ToScalar(value));
+                return AbilityStateValue.FromScalar(ProgramValues.ToScalar(value));
             if (expected == ProgramStateValueKind.Int32 && value.Kind == ProgramStateValueKind.Scalar)
                 return AbilityStateValue.FromInt32(checked((int)value.Scalar.ToSingle()));
             throw new InvalidOperationException($"Cannot assign '{value.Kind}' to '{expected}'.");

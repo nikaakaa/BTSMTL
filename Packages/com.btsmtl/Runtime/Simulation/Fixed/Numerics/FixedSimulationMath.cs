@@ -9,6 +9,7 @@ namespace ThirdPersonSimulation.Fixed
         public FixedScalar Zero => FixedScalar.Zero;
         public FixedScalar One => FixedScalar.One;
         public FixedScalar FromInt32(int value) => FixedScalar.FromInt64(value);
+        public FixedScalar FromInt64(long value) => FixedScalar.FromInt64(value);
         public int FloorToInt32(FixedScalar value) => checked((int)(value.Raw >> FixedScalar.FractionalBits));
         public FixedVector2 ZeroVector2 => FixedVector2.Zero;
         public FixedVector3 ZeroVector3 => FixedVector3.Zero;
