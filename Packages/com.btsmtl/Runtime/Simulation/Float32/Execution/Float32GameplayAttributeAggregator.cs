@@ -146,7 +146,7 @@ namespace ThirdPersonSimulation
             int index = m_Layout.AttributeIndex(attributeId);
             BeginMutation(index);
             PortableAttributeState attribute = m_Attributes.Values[index];
-            attribute.BaseValue = ApplyModifier(attribute.BaseValue, operation, magnitude, clampBound);
+            attribute.BaseValue = GameplayAttributeCalculation<Float32Scalar, Float32SimulationMath>.ApplyModifier(attribute.BaseValue, operation, magnitude, clampBound);
             return CompleteMutation(causeHandle, -1);
         }
 
@@ -232,109 +232,26 @@ namespace ThirdPersonSimulation
         void CalculateCurrent(int index)
         {
             PortableAttributeState attribute = m_Attributes.Values[index];
-            string id = attribute.Definition.Id;
-            Float32Scalar additive = Float32Scalar.Zero;
-            Float32Scalar multiplicative = Float32Scalar.One;
-            bool hasOverride = false;
-            Float32Scalar overrideValue = Float32Scalar.Zero;
-            int overridePriority = int.MinValue;
-            ulong overrideSequence = 0;
-            bool hasMinimum = false;
-            Float32Scalar minimum = Float32Scalar.Zero;
-            bool hasMaximum = false;
-            Float32Scalar maximum = Float32Scalar.Zero;
+            var aggregation = GameplayAttributeAggregation<Float32Scalar, Float32SimulationMath>.Begin();
             for (int i = 0; i < attribute.Modifiers.Count; i++)
             {
                 PortableAttributeModifierState modifier = attribute.Modifiers[i];
                 Float32Scalar magnitude = modifier.LiveAttributeIndex < 0
                     ? modifier.Magnitude
                     : m_Attributes.Values[modifier.LiveAttributeIndex].CurrentValue * modifier.LiveCoefficient + modifier.LivePostAdd;
-                switch (modifier.Operation)
-                {
-                    case PortableModifierOperation.Additive:
-                        additive += magnitude;
-                        break;
-                    case PortableModifierOperation.Multiplicative:
-                        multiplicative *= magnitude;
-                        break;
-                    case PortableModifierOperation.Override:
-                        if (!hasOverride || modifier.Priority > overridePriority ||
-                            modifier.Priority == overridePriority && modifier.InsertionSequence > overrideSequence)
-                        {
-                            hasOverride = true;
-                            overrideValue = magnitude;
-                            overridePriority = modifier.Priority;
-                            overrideSequence = modifier.InsertionSequence;
-                        }
-                        break;
-                    case PortableModifierOperation.Clamp:
-                        if (modifier.ClampBound == PortableClampBound.Minimum)
-                        {
-                            minimum = hasMinimum ? Float32Scalar.Max(minimum, magnitude) : magnitude;
-                            hasMinimum = true;
-                        }
-                        else
-                        {
-                            maximum = hasMaximum ? Float32Scalar.Min(maximum, magnitude) : magnitude;
-                            hasMaximum = true;
-                        }
-                        break;
-                    default:
-                        throw new InvalidOperationException($"Gameplay Attribute modifier operation '{modifier.Operation}' is invalid.");
-                }
+                aggregation.Add(modifier.Operation, magnitude, modifier.ClampBound, modifier.Priority, modifier.InsertionSequence);
             }
-
-            Float32Scalar value = (attribute.BaseValue + additive) * multiplicative;
-            if (hasOverride)
-                value = overrideValue;
-            ApplyDefinitionBound(attribute.Definition.Minimum, attribute.Definition.MinimumAttributeIndex, true, ref hasMinimum, ref minimum, ref hasMaximum, ref maximum);
-            ApplyDefinitionBound(attribute.Definition.Maximum, attribute.Definition.MaximumAttributeIndex, false, ref hasMinimum, ref minimum, ref hasMaximum, ref maximum);
-            if (hasMinimum && hasMaximum && minimum > maximum)
-                throw new InvalidOperationException($"Gameplay Attribute '{id}' minimum exceeds maximum.");
-            if (hasMinimum && value < minimum)
-                value = minimum;
-            if (hasMaximum && value > maximum)
-                value = maximum;
-            attribute.CurrentValue = value;
-        }
-
-        void ApplyDefinitionBound(
-            PortableAttributeBound bound,
-            int attributeIndex,
-            bool minimumBound,
-            ref bool hasMinimum,
-            ref Float32Scalar minimum,
-            ref bool hasMaximum,
-            ref Float32Scalar maximum)
-        {
-            if (!bound.Enabled)
-                return;
-            Float32Scalar value = bound.FromAttribute
-                ? m_Attributes.Values[attributeIndex].CurrentValue
-                : bound.Constant;
-            if (minimumBound)
-            {
-                minimum = hasMinimum ? Float32Scalar.Max(minimum, value) : value;
-                hasMinimum = true;
-            }
-            else
-            {
-                maximum = hasMaximum ? Float32Scalar.Min(maximum, value) : value;
-                hasMaximum = true;
-            }
-        }
-
-        static Float32Scalar ApplyModifier(Float32Scalar current, PortableModifierOperation operation, Float32Scalar magnitude, PortableClampBound clampBound)
-        {
-            return operation switch
-            {
-                PortableModifierOperation.Additive => current + magnitude,
-                PortableModifierOperation.Multiplicative => current * magnitude,
-                PortableModifierOperation.Override => magnitude,
-                PortableModifierOperation.Clamp when clampBound == PortableClampBound.Minimum => Float32Scalar.Max(current, magnitude),
-                PortableModifierOperation.Clamp => Float32Scalar.Min(current, magnitude),
-                _ => throw new ArgumentOutOfRangeException(nameof(operation))
-            };
+            PortableAttributeBound minimum = attribute.Definition.Minimum;
+            if (minimum.Enabled)
+                aggregation.IncludeMinimum(minimum.FromAttribute
+                    ? m_Attributes.Values[attribute.Definition.MinimumAttributeIndex].CurrentValue
+                    : minimum.Constant);
+            PortableAttributeBound maximum = attribute.Definition.Maximum;
+            if (maximum.Enabled)
+                aggregation.IncludeMaximum(maximum.FromAttribute
+                    ? m_Attributes.Values[attribute.Definition.MaximumAttributeIndex].CurrentValue
+                    : maximum.Constant);
+            attribute.CurrentValue = aggregation.Resolve(attribute.BaseValue, attribute.Definition.Id);
         }
     }
 }

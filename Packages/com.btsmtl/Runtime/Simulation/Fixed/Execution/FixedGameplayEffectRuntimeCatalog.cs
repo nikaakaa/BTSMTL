@@ -1,3 +1,4 @@
+using PortableMagnitude = ThirdPersonSimulation.GameplayEffectMagnitude<ThirdPersonSimulation.Fixed.FixedScalar>;
 using ThirdPersonSimulation;
 using System;
 using System.Collections.Generic;
@@ -12,15 +13,6 @@ namespace ThirdPersonSimulation.Fixed
         Instant = 0,
         Duration = 1,
         Infinite = 2
-    }
-
-    internal enum PortableMagnitudeSource : byte
-    {
-        Constant = 0,
-        SetByCaller = 1,
-        SourceAttributeSnapshot = 2,
-        TargetAttributeSnapshot = 3,
-        TargetAttributeLive = 4
     }
 
     internal enum PortableEffectStackingPolicy : byte
@@ -54,20 +46,6 @@ namespace ThirdPersonSimulation.Fixed
     {
         BaseValue = 0,
         CurrentValue = 1
-    }
-
-    internal enum PortableModifierOperation : byte
-    {
-        Additive = 0,
-        Multiplicative = 1,
-        Override = 2,
-        Clamp = 3
-    }
-
-    internal enum PortableClampBound : byte
-    {
-        Minimum = 0,
-        Maximum = 1
     }
 
     internal enum PortableRequirementPhase : byte
@@ -115,66 +93,6 @@ namespace ThirdPersonSimulation.Fixed
         WhileActive = 2,
         Removed = 3,
         Expired = 4
-    }
-
-    internal readonly struct PortableMagnitude
-    {
-        public PortableMagnitude(
-            PortableMagnitudeSource source,
-            FixedScalar constant,
-            string setByCallerParameterId,
-            string attributeId,
-            FixedScalar coefficient,
-            FixedScalar postAdd)
-        {
-            Source = source;
-            Constant = constant;
-            SetByCallerParameterId = setByCallerParameterId ?? string.Empty;
-            AttributeId = attributeId ?? string.Empty;
-            Coefficient = coefficient;
-            PostAdd = postAdd;
-        }
-
-        public PortableMagnitudeSource Source { get; }
-        public FixedScalar Constant { get; }
-        public string SetByCallerParameterId { get; }
-        public string AttributeId { get; }
-        public FixedScalar Coefficient { get; }
-        public FixedScalar PostAdd { get; }
-
-        public static PortableMagnitude FromConfiguration(PublishedMagnitude value)
-        {
-            switch (value.Kind)
-            {
-                case MagnitudeValueKind.ConstantMagnitude:
-                    return new PortableMagnitude(PortableMagnitudeSource.Constant, FixedScalar.FromDouble(value.ConstantMagnitude.Value),
-                        string.Empty, string.Empty, FixedScalar.One, FixedScalar.Zero);
-                case MagnitudeValueKind.ScaledConstantMagnitude:
-                    PublishedScaledConstantMagnitude constant = value.ScaledConstantMagnitude;
-                    return new PortableMagnitude(PortableMagnitudeSource.Constant, FixedScalar.FromDouble(constant.Value),
-                        string.Empty, string.Empty, FixedScalar.FromDouble(constant.Coefficient), FixedScalar.FromDouble(constant.PostAdd));
-                case MagnitudeValueKind.SetByCallerMagnitude:
-                    PublishedSetByCallerMagnitude caller = value.SetByCallerMagnitude;
-                    return new PortableMagnitude(PortableMagnitudeSource.SetByCaller, FixedScalar.Zero,
-                        caller.ParameterId, string.Empty, FixedScalar.FromDouble(caller.Coefficient), FixedScalar.FromDouble(caller.PostAdd));
-                case MagnitudeValueKind.SourceAttributeSnapshotMagnitude:
-                    PublishedSourceAttributeSnapshotMagnitude source = value.SourceAttributeSnapshotMagnitude;
-                    return FromAttribute(PortableMagnitudeSource.SourceAttributeSnapshot, source.AttributeId, source.Coefficient, source.PostAdd);
-                case MagnitudeValueKind.TargetAttributeSnapshotMagnitude:
-                    PublishedTargetAttributeSnapshotMagnitude target = value.TargetAttributeSnapshotMagnitude;
-                    return FromAttribute(PortableMagnitudeSource.TargetAttributeSnapshot, target.AttributeId, target.Coefficient, target.PostAdd);
-                case MagnitudeValueKind.TargetAttributeLiveMagnitude:
-                    PublishedTargetAttributeLiveMagnitude live = value.TargetAttributeLiveMagnitude;
-                    return FromAttribute(PortableMagnitudeSource.TargetAttributeLive, live.AttributeId, live.Coefficient, live.PostAdd);
-                default:
-                    throw new InvalidDataException($"Magnitude kind '{value.Kind}' has no projection.");
-            }
-        }
-
-        static PortableMagnitude FromAttribute(PortableMagnitudeSource source, string attributeId, float coefficient, float postAdd) =>
-            new PortableMagnitude(source, FixedScalar.Zero, string.Empty, GameplayEffectRuntimeIdentity.Attribute(attributeId),
-                FixedScalar.FromDouble(coefficient), FixedScalar.FromDouble(postAdd));
-
     }
 
     internal sealed class PortableTagQuery

@@ -1,3 +1,4 @@
+using PortableMagnitude = ThirdPersonSimulation.GameplayEffectMagnitude<ThirdPersonSimulation.Float32Scalar>;
 using ThirdPersonSimulation;
 using System;
 using System.Collections.Generic;
@@ -729,27 +730,31 @@ namespace ThirdPersonSimulation
             }
         }
 
-        readonly struct MagnitudeInputs
+        readonly struct MagnitudeInputs : IGameplayEffectMagnitudeInputs<Float32Scalar>
         {
-            internal MagnitudeInputs(PortableEffectSpecState spec)
+            readonly Float32GameplayEffectTarget m_Target;
+
+            internal MagnitudeInputs(Float32GameplayEffectTarget target, PortableEffectSpecState spec)
             {
+                m_Target = target;
                 Spec = spec;
                 StartupValues = null;
                 PreviewSelf = false;
             }
 
-            internal MagnitudeInputs(IReadOnlyList<SimulationSetByCallerValue> values)
+            internal MagnitudeInputs(Float32GameplayEffectTarget target, IReadOnlyList<SimulationSetByCallerValue> values)
             {
                 Spec = null;
+                m_Target = target;
                 StartupValues = values;
                 PreviewSelf = true;
             }
 
             internal readonly PortableEffectSpecState Spec;
             internal readonly IReadOnlyList<SimulationSetByCallerValue> StartupValues;
-            internal readonly bool PreviewSelf;
+            public bool PreviewSelf { get; }
 
-            internal bool TryParameter(string id, out Float32Scalar value)
+            public bool TryParameter(string id, out Float32Scalar value)
             {
                 if (!PreviewSelf)
                     return Spec.SetByCaller.TryGetValue(id, out value);
@@ -762,45 +767,21 @@ namespace ThirdPersonSimulation
                 value = default;
                 return false;
             }
+
+            public bool TrySourceAttributeSnapshot(string id, out Float32Scalar value) =>
+                Spec.SourceAttributes.TryGetValue(id, out value);
+
+            public bool TryTargetAttributeSnapshot(string id, out Float32Scalar value) =>
+                Spec.TargetAttributes.TryGetValue(id, out value);
+
+            public Float32Scalar ReadCurrentAttribute(string id) => m_Target.ReadCurrentAttribute(id);
         }
 
         bool TryResolveMagnitude(PortableEffectSpecState spec, PortableMagnitude magnitude, out Float32Scalar value, out string liveAttribute) =>
-            TryResolveMagnitude(new MagnitudeInputs(spec), magnitude, out value, out liveAttribute);
+            TryResolveMagnitude(new MagnitudeInputs(this, spec), magnitude, out value, out liveAttribute);
 
-        bool TryResolveMagnitude(MagnitudeInputs input, PortableMagnitude magnitude, out Float32Scalar value, out string liveAttribute)
-        {
-            value = Float32Scalar.Zero;
-            liveAttribute = string.Empty;
-            switch (magnitude.Source)
-            {
-                case PortableMagnitudeSource.Constant:
-                    value = magnitude.Constant;
-                    break;
-                case PortableMagnitudeSource.SetByCaller:
-                    if (!input.TryParameter(magnitude.SetByCallerParameterId, out value))
-                        return false;
-                    break;
-                case PortableMagnitudeSource.SourceAttributeSnapshot when !input.PreviewSelf:
-                    if (!input.Spec.SourceAttributes.TryGetValue(magnitude.AttributeId, out value))
-                        return false;
-                    break;
-                case PortableMagnitudeSource.TargetAttributeSnapshot when !input.PreviewSelf:
-                    if (!input.Spec.TargetAttributes.TryGetValue(magnitude.AttributeId, out value))
-                        return false;
-                    break;
-                case PortableMagnitudeSource.SourceAttributeSnapshot:
-                case PortableMagnitudeSource.TargetAttributeSnapshot:
-                case PortableMagnitudeSource.TargetAttributeLive:
-                    value = ReadCurrentAttribute(magnitude.AttributeId);
-                    if (magnitude.Source == PortableMagnitudeSource.TargetAttributeLive)
-                        liveAttribute = magnitude.AttributeId;
-                    break;
-                default:
-                    return false;
-            }
-            value = value * magnitude.Coefficient + magnitude.PostAdd;
-            return true;
-        }
+        bool TryResolveMagnitude(MagnitudeInputs input, PortableMagnitude magnitude, out Float32Scalar value, out string liveAttribute) =>
+            GameplayEffectMagnitudeCalculation<Float32Scalar, Float32SimulationMath>.TryResolve(input, magnitude, out value, out liveAttribute);
 
         Float32Scalar ReadCurrentAttribute(string attributeId)
         {
@@ -830,7 +811,7 @@ namespace ThirdPersonSimulation
         public GameplayEffectApplyResult PreviewStartupEffect(string effectId, IReadOnlyList<SimulationSetByCallerValue> values)
         {
             PortableEffectDefinition definition = m_Catalog.RequireEffect(effectId);
-            var input = new MagnitudeInputs(values);
+            var input = new MagnitudeInputs(this, values);
             for (int i = 0; i < definition.SetByCallerParameters.Length; i++)
                 if (!input.TryParameter(definition.SetByCallerParameters[i], out _))
                     return StartupPreviewFailure(definition, GameplayEffectApplyResultKind.MissingParameter, "MissingSetByCaller", definition.SetByCallerParameters[i]);

@@ -1,3 +1,4 @@
+using PortableMagnitude = ThirdPersonSimulation.GameplayEffectMagnitude<ThirdPersonSimulation.Float32Scalar>;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -47,7 +48,7 @@ namespace ThirdPersonSimulation
                 PortableEffectComponent[] projected = effect.Components.Select(value => Component(value, effects)).ToArray();
                 var definition = new PortableEffectDefinition(NormalizeEffect(effect.EffectId), effect.DefinitionRevision,
                     Strings(effect.EffectTags, true), (PortableEffectDurationPolicy)effect.Duration.Policy,
-                    PortableMagnitude.FromConfiguration(effect.Duration.Magnitude), effect.Period.Enabled, PortableMagnitude.FromConfiguration(effect.Period.Magnitude),
+                    PortableMagnitude.FromConfiguration<Float32ScalarContentLowering, Float32SimulationMath>(effect.Duration.Magnitude), effect.Period.Enabled, PortableMagnitude.FromConfiguration<Float32ScalarContentLowering, Float32SimulationMath>(effect.Period.Magnitude),
                     effect.ExecuteOnApplication, (PortableEffectStackingPolicy)effect.Stacking.Policy, effect.Stacking.MaxStacks,
                     (PortableEffectDurationUpdatePolicy)effect.Stacking.DurationUpdate, (PortableEffectPeriodUpdatePolicy)effect.Stacking.PeriodUpdate,
                     (PortableEffectOverflowPolicy)effect.Stacking.OverflowPolicy, Strings(effect.SetByCallerParameters, false),
@@ -85,7 +86,7 @@ namespace ThirdPersonSimulation
                 {
                     PublishedModifier value = component.Modifier;
                     return new PortableModifierComponent(value.AttributeId, (PortableModifierApplication)value.Application,
-                        (PortableModifierOperation)value.Operation, PortableMagnitude.FromConfiguration(value.Magnitude), value.Priority,
+                        (PortableModifierOperation)value.Operation, PortableMagnitude.FromConfiguration<Float32ScalarContentLowering, Float32SimulationMath>(value.Magnitude), value.Priority,
                         (PortableClampBound)value.ClampBound, value.ScaleWithStack);
                 }
                 case ComponentValueKind.GrantedTags:
@@ -102,12 +103,12 @@ namespace ThirdPersonSimulation
                 {
                     PublishedAttributeRequirements value = component.AttributeRequirements;
                     return new PortableAttributeRequirementsComponent((PortableRequirementPhase)value.Phase,
-                        (PortableAttributeSource)value.Source, value.AttributeId, (PortableAttributeComparison)value.Comparison, PortableMagnitude.FromConfiguration(value.Threshold));
+                        (PortableAttributeSource)value.Source, value.AttributeId, (PortableAttributeComparison)value.Comparison, PortableMagnitude.FromConfiguration<Float32ScalarContentLowering, Float32SimulationMath>(value.Threshold));
                 }
                 case ComponentValueKind.Execution:
                     return new PortableExecutionComponent(component.Execution.Mutations.Select(value =>
                         new PortableExecutionMutation(value.AttributeId, (PortableModifierOperation)value.Operation,
-                            PortableMagnitude.FromConfiguration(value.Magnitude), (PortableClampBound)value.ClampBound)).ToArray());
+                            PortableMagnitude.FromConfiguration<Float32ScalarContentLowering, Float32SimulationMath>(value.Magnitude), (PortableClampBound)value.ClampBound)).ToArray());
                 case ComponentValueKind.AdditionalEffectsComponent:
                     return new PortableAdditionalEffectsComponent(component.AdditionalEffectsComponent.Effects.Select(value =>
                         new PortableAdditionalEffect((PortableAdditionalEffectTrigger)value.Trigger,
