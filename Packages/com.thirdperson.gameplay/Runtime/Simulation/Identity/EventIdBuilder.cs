@@ -116,7 +116,7 @@ namespace ThirdPersonSimulation
             Append(treeClip.PlaybackGeneration);
             Append(treeClip.BranchRevision);
             Append(treeClip.TimelineRuntimeHandle);
-            Append((ulong)treeClip.Time.Raw);
+            Append((ulong)treeClip.Time.RawValue);
             Append((ulong)treeClip.Cycle);
             Append(treeClip.ActionInstanceId);
         }

@@ -4,7 +4,9 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ThirdPersonSimulation.Core", "Projects\ThirdPersonSimulation.Core\ThirdPersonSimulation.Core.csproj", "{FBEC3C68-FC6E-44D6-9E00-393865AA334B}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ThirdPersonSimulation.Fixed", "Projects\ThirdPersonSimulation.Fixed\ThirdPersonSimulation.Fixed.csproj", "{910FAF41-8C0A-450D-B44C-1ECA351DA4CD}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ThirdPersonSimulation.FPGameplay", "Projects\ThirdPersonSimulation.FPGameplay\ThirdPersonSimulation.FPGameplay.csproj", "{910FAF41-8C0A-450D-B44C-1ECA351DA4CD}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ThirdPersonSimulation.QuantumNumerics", "..\3C\Tools\ThirdPersonSimulation.Portable\ThirdPersonSimulation.QuantumNumerics\ThirdPersonSimulation.QuantumNumerics.csproj", "{D44B996D-17AF-40ED-AC63-5F536317C31C}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ThirdPersonSimulation.Float32", "Projects\ThirdPersonSimulation.Float32\ThirdPersonSimulation.Float32.csproj", "{14CBF0CC-4759-4830-94F3-DC1C173E2E00}"
 EndProject
@@ -24,6 +26,10 @@ Global
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{D44B996D-17AF-40ED-AC63-5F536317C31C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D44B996D-17AF-40ED-AC63-5F536317C31C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D44B996D-17AF-40ED-AC63-5F536317C31C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D44B996D-17AF-40ED-AC63-5F536317C31C}.Release|Any CPU.Build.0 = Release|Any CPU
 		{58C7F145-4B14-436E-8C0C-93345E852B43}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{58C7F145-4B14-436E-8C0C-93345E852B43}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{58C7F145-4B14-436E-8C0C-93345E852B43}.Release|Any CPU.ActiveCfg = Release|Any CPU

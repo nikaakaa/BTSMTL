@@ -1,16 +1,16 @@
 using System;
-using ThirdPersonSimulation.Fixed;
+using Photon.Deterministic;
 
 namespace ThirdPersonSimulation
 {
     public sealed class CharacterTimeSlowRuntimeBinding
     {
-        public CharacterTimeSlowRuntimeBinding(string sourceKey, int priority, FixedScalar duration,
+        public CharacterTimeSlowRuntimeBinding(string sourceKey, int priority, FP duration,
             CharacterCombatCurve curve, int preWrapMode, int postWrapMode,
             CharacterSkillId counterSkillId, StableHash contentHash)
         {
             SourceKey = SimulationIdentity.Require(sourceKey, nameof(sourceKey));
-            if (duration <= FixedScalar.Zero || curve == null || !counterSkillId.IsValid)
+            if (duration <= FP._0 || curve == null || !counterSkillId.IsValid)
                 throw new ArgumentException("Perfect evade time slow requires its source curve, duration and counter skill.");
             Priority = priority;
             Duration = duration;
@@ -23,7 +23,7 @@ namespace ThirdPersonSimulation
 
         public string SourceKey { get; }
         public int Priority { get; }
-        public FixedScalar Duration { get; }
+        public FP Duration { get; }
         public CharacterCombatCurve Curve { get; }
         public int PreWrapMode { get; }
         public int PostWrapMode { get; }
