@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using ThirdPersonSimulation;
+using ThirdPersonSimulation.Serialization;
 namespace ThirdPersonGameplay.Configuration {
 public sealed class GameplayConfigClosure {
 readonly GameplayConfigurationData m_Data;
@@ -55,5 +56,5 @@ public PublishedGameplayConfiguration Publish() => new PublishedGameplayConfigur
 m_Attributes.Values.Select(GameplayConfigProjection.Publish).ToArray(),
 m_Effects.Values.Select(GameplayConfigProjection.Publish).ToArray(),
 m_Characters.Values.Select(GameplayConfigProjection.Publish).ToArray());
-public StableHash ContentIdentity() { using var writer = new CanonicalWriter(); writer.WriteText(m_Data.Metadata.SourceId); writer.WriteHash(PublishedGameplayConfiguration.CanonicalSchemaHash); PublishedGameplayConfiguration.CanonicalWrite(writer, Publish()); return SimulationCanonicalPayloadHash.Compute(writer.ToArray()); }
+public StableHash ContentIdentity() => MemoryPackGameplayConfigurationContent.ComputeIdentity(m_Data.Metadata.SourceId, Publish());
 } }

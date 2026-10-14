@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Xml.Linq;
 using ThirdPersonGameplay.Configuration;
 using ThirdPersonSimulation;
+using ThirdPersonSimulation.Serialization;
 
 namespace Btsmtl.GameplayConfig.Generation;
 
@@ -56,12 +57,8 @@ internal static class Program
                 source.RootElement.GetProperty("sourceId").GetString()!, schema.Identity, contentIdentity,
                 records.Select(record => new GameplayConfigRecordSource(record.Table, record.RecordId, record.Workbook,
                     record.Sheet, record.Row, record.ContentIdentity)).ToArray(), dataFiles);
-            using (var writer = new CanonicalWriter())
-            {
-                writer.WriteHash(GameplayConfigMetadata.CanonicalSchemaHash);
-                GameplayConfigMetadata.CanonicalWrite(writer, identity);
-                File.WriteAllBytes(Path.Combine(pending, "Data", GameplayConfigProtocol.MetadataFile + ".bytes"), writer.ToArray());
-            }
+            File.WriteAllBytes(Path.Combine(pending, "Data", GameplayConfigProtocol.MetadataFile + ".bytes"),
+                MemoryPackGameplayConfigurationContent.PublishMetadata(identity));
             File.WriteAllText(Path.Combine(pending, "Data", "gameplay-config.manifest.json"), JsonSerializer.Serialize(new
             {
                 protocol = source.RootElement.GetProperty("protocol").GetInt32(),
@@ -288,12 +285,10 @@ internal static class Program
                     foreach (XElement child in children)
                         code.Append("[ValueUnionCase] public readonly Published").Append(Name(child)).Append(' ').Append(Name(child)).AppendLine(";");
                     code.AppendLine("}");
-                    code.AppendLine("[CanonicalContract(MaterializedRead = true, PreparedRead = false)]");
                     code.Append("[ValueUnion(typeof(").Append(pair.Key).AppendLine("Value))]");
                     code.Append("public readonly partial struct Published").Append(pair.Key).AppendLine(" {}");
                     continue;
                 }
-                code.AppendLine("[CanonicalContract(MaterializedRead = true, PreparedRead = false)]");
                 code.Append("public sealed partial class Published").Append(pair.Key).AppendLine(" {");
                 XElement[] fields = pair.Value.Elements("var").Where(field => !EditorOnly(field)).ToArray();
                 code.Append("public Published").Append(pair.Key).Append('(')
@@ -305,7 +300,7 @@ internal static class Program
                     code.Append("public ").Append(Type(field)).Append(' ').Append(Name(field)).AppendLine(" { get; }");
                 code.AppendLine("}");
             }
-            code.AppendLine("[CanonicalContract(MaterializedRead = true, PreparedRead = false)] public sealed partial class PublishedGameplayConfiguration {");
+            code.AppendLine("public sealed partial class PublishedGameplayConfiguration {");
             code.Append("public PublishedGameplayConfiguration(").Append(string.Join(", ", Tables.Select(table =>
                 "IReadOnlyList<Published" + table.Attribute("value")!.Value + "> value_" + Name(table)))).AppendLine(") {");
             foreach (XElement table in Tables)
@@ -388,7 +383,7 @@ internal static class Program
 
         internal void WriteClosure(string directory)
         {
-            var code = new StringBuilder("using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing ThirdPersonSimulation;\nnamespace " + Namespace + " {\npublic sealed class GameplayConfigClosure {\nreadonly GameplayConfigurationData m_Data;\n");
+            var code = new StringBuilder("using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing ThirdPersonSimulation;\nusing ThirdPersonSimulation.Serialization;\nnamespace " + Namespace + " {\npublic sealed class GameplayConfigClosure {\nreadonly GameplayConfigurationData m_Data;\n");
             foreach (XElement table in Tables)
                 code.Append("readonly SortedDictionary<string, ").Append(table.Attribute("value")!.Value).Append("> m_").Append(Name(table))
                     .Append(" = new SortedDictionary<string, ").Append(table.Attribute("value")!.Value).AppendLine(">(StringComparer.Ordinal);");
@@ -438,7 +433,7 @@ internal static class Program
             }
             code.AppendLine("public PublishedGameplayConfiguration Publish() => new PublishedGameplayConfiguration(");
             code.Append(string.Join(",\n", Tables.Select(table => "m_" + Name(table) + ".Values.Select(GameplayConfigProjection.Publish).ToArray()"))).AppendLine(");");
-            code.AppendLine("public StableHash ContentIdentity() { using var writer = new CanonicalWriter(); writer.WriteText(m_Data.Metadata.SourceId); writer.WriteHash(PublishedGameplayConfiguration.CanonicalSchemaHash); PublishedGameplayConfiguration.CanonicalWrite(writer, Publish()); return SimulationCanonicalPayloadHash.Compute(writer.ToArray()); }");
+            code.AppendLine("public StableHash ContentIdentity() => MemoryPackGameplayConfigurationContent.ComputeIdentity(m_Data.Metadata.SourceId, Publish());");
             code.AppendLine("} }");
             File.WriteAllText(Path.Combine(directory, "GameplayConfiguration.Closure.g.cs"), code.ToString(), Utf8);
         }

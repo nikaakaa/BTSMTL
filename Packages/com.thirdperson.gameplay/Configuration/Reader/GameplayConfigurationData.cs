@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Security.Cryptography;
 using Luban;
-using ThirdPersonSimulation;
+using ThirdPersonSimulation.Serialization;
 
 namespace ThirdPersonGameplay.Configuration
 {
@@ -13,10 +13,7 @@ namespace ThirdPersonGameplay.Configuration
 
         public GameplayConfigurationData(Func<string, byte[]> loader)
         {
-            var reader = new CanonicalReader(loader(GameplayConfigProtocol.MetadataFile));
-            GameplayConfigMetadata.CanonicalRequireSchema(reader);
-            Metadata = GameplayConfigMetadata.CanonicalReadMaterialized(reader);
-            reader.RequireComplete();
+            Metadata = MemoryPackGameplayConfigurationContent.ReadMetadata(loader(GameplayConfigProtocol.MetadataFile));
             if (Metadata.Protocol != GameplayConfigProtocol.Version || Metadata.SchemaIdentity != GameplayConfigGeneratedContract.SchemaIdentity)
                 throw new InvalidDataException("Gameplay 配置数据与已编译 reader 合同不匹配：" + Metadata.SourceId);
             var files = new Dictionary<string, byte[]>(Metadata.Files.Count, StringComparer.Ordinal);

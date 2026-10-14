@@ -1,5 +1,5 @@
 {
   "name": "ThirdPersonGameplay.Configuration.Reader",
-  "references": ["ThirdPerson.Shared.Contracts", "ThirdPersonGameplay.Configuration", "ThirdPerson.Luban"],
+  "references": ["ThirdPerson.Shared.Contracts", "ThirdPersonGameplay.Configuration", "ThirdPerson.Luban", "ThirdPersonSimulation.MemoryPack"],
   "noEngineReferences": true
 }
