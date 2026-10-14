@@ -4,7 +4,7 @@
   "references": [
     "ThirdPerson.Shared.Contracts",
     "ThirdPersonSimulation.Core",
-    "ThirdPersonSimulation.Fixed",
+    "ThirdPersonSimulation.FPGameplay",
     "ThirdPersonSimulation.Float32"
   ],
   "allowUnsafeCode": false,

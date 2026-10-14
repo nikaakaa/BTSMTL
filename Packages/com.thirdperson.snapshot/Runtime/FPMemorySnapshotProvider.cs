@@ -1,34 +1,34 @@
 using System;
 using System.Collections.Generic;
-using FixedRuntime = ThirdPersonSimulation.Fixed.FixedCharacterRuntime;
-using FixedSessionSnapshot = ThirdPersonSimulation.Fixed.FixedSimulationSessionSnapshot;
-using FixedWorldSnapshot = ThirdPersonSimulation.Fixed.SimulationWorldSnapshot;
-using FixedStateSet = ThirdPersonSimulation.Fixed.SimulationWorldStateSet;
+using FPRuntime = ThirdPersonSimulation.FPGameplay.FPCharacterRuntime;
+using FPSessionSnapshot = ThirdPersonSimulation.FPGameplay.FPSimulationSessionSnapshot;
+using FPWorldSnapshot = ThirdPersonSimulation.FPGameplay.SimulationWorldSnapshot;
+using FPStateSet = ThirdPersonSimulation.FPGameplay.SimulationWorldStateSet;
 
 namespace ThirdPersonSimulation.Snapshots
 {
-    public sealed class FixedMemorySnapshotProvider : Fixed.IFixedSimulationSessionSnapshotProvider
+    public sealed class FPMemorySnapshotProvider : FPGameplay.IFPSimulationSessionSnapshotProvider
     {
         sealed class Page : IValueResources
         {
-            internal Page(SimulationSessionCompositionDescriptor descriptor, FixedRuntime runtime,
+            internal Page(SimulationSessionCompositionDescriptor descriptor, FPRuntime runtime,
                 int participantCount, bool checkpoint)
             {
-                World = new FixedWorldSnapshot(runtime.GameplayContentHash, runtime.StateSchemaHash, this);
+                World = new FPWorldSnapshot(runtime.GameplayContentHash, runtime.StateSchemaHash, this);
                 Participants = new SimulationPipelinePassStateSnapshot[participantCount];
                 Pipeline = new SimulationPipelineStateSnapshot(descriptor.Pipeline, descriptor.ExecutionBackend, Participants);
-                Snapshot = new FixedSessionSnapshot(descriptor.Identity);
+                Snapshot = new FPSessionSnapshot(descriptor.Identity);
                 if (checkpoint) Checkpoint = new SimulationSessionCheckpoint(descriptor);
             }
 
-            internal readonly FixedWorldSnapshot World;
+            internal readonly FPWorldSnapshot World;
             internal readonly SimulationPipelinePassStateSnapshot[] Participants;
             internal readonly SimulationPipelineStateSnapshot Pipeline;
-            internal readonly FixedSessionSnapshot Snapshot;
+            internal readonly FPSessionSnapshot Snapshot;
             internal readonly SimulationSessionCheckpoint Checkpoint;
             internal int References;
 
-            internal void Begin(in FixedStateSet state)
+            internal void Begin(in FPStateSet state)
             {
                 References = 1;
                 state.Retain();
@@ -51,10 +51,10 @@ namespace ThirdPersonSimulation.Snapshots
         ISimulationPipelineStateParticipant[] m_StepParticipants;
 
         public SimulationComponentIdentity Identity { get; } = new SimulationComponentIdentity(
-            SimulationComponentRole.SnapshotProvider, "fixed-memory-snapshot", "1.0.0",
-            StableHash.Compute("fixed-memory-snapshot/1"));
+            SimulationComponentRole.SnapshotProvider, "fp-memory-snapshot", "1.0.0",
+            StableHash.Compute("fp-memory-snapshot/1"));
 
-        public void PrepareCheckpointStorage(SimulationSessionCompositionDescriptor descriptor, FixedRuntime runtime,
+        public void PrepareCheckpointStorage(SimulationSessionCompositionDescriptor descriptor, FPRuntime runtime,
             IReadOnlyList<ISimulationPipelineStateParticipant> participants, in GameplayEffectSessionCapacity capacity,
             int stepSnapshotCapacity)
         {
@@ -76,13 +76,13 @@ namespace ThirdPersonSimulation.Snapshots
                 m_Steps[index] = new Page(descriptor, runtime, included, false);
         }
 
-        public FixedSessionSnapshot CaptureStepSnapshot(in FixedStateSet state)
+        public FPSessionSnapshot CaptureStepSnapshot(in FPStateSet state)
         {
             Page page = Capture(Acquire(m_Steps), m_StepParticipants, in state, null, true);
             return page.Snapshot;
         }
 
-        public SimulationSessionCheckpoint CaptureCheckpoint(in FixedStateSet state,
+        public SimulationSessionCheckpoint CaptureCheckpoint(in FPStateSet state,
             SimulationPipelinePassStateSnapshot[] recordedParticipants = null)
         {
             Page page = Capture(Acquire(m_Checkpoints), m_Participants, in state, recordedParticipants, false);
@@ -91,7 +91,7 @@ namespace ThirdPersonSimulation.Snapshots
         }
 
         static Page Capture(Page page, IReadOnlyList<ISimulationPipelineStateParticipant> participants,
-            in FixedStateSet state, SimulationPipelinePassStateSnapshot[] recorded, bool step)
+            in FPStateSet state, SimulationPipelinePassStateSnapshot[] recorded, bool step)
         {
             page.Begin(in state);
             int captured = 0;
@@ -125,18 +125,18 @@ namespace ThirdPersonSimulation.Snapshots
             }
         }
 
-        public FixedSessionSnapshot ReadCheckpoint(SimulationSessionCheckpoint checkpoint) =>
-            (FixedSessionSnapshot)checkpoint.State;
+        public FPSessionSnapshot ReadCheckpoint(SimulationSessionCheckpoint checkpoint) =>
+            (FPSessionSnapshot)checkpoint.State;
 
-        public FixedStateSet ReadWorldSnapshot(FixedWorldSnapshot snapshot)
+        public FPStateSet ReadWorldSnapshot(FPWorldSnapshot snapshot)
         {
-            FixedStateSet state = snapshot.State;
+            FPStateSet state = snapshot.State;
             state.Retain();
             return state;
         }
 
         public void RequireRestore(SimulationSessionCompositionDescriptor descriptor,
-            SimulationRestoreDirective directive, FixedSessionSnapshot snapshot)
+            SimulationRestoreDirective directive, FPSessionSnapshot snapshot)
         {
             if (!snapshot.CompositionIdentity.Equals(descriptor.Identity) || snapshot.Tick != directive.Tick)
                 throw new InvalidOperationException("Memory snapshot does not match the active Session composition or requested Tick.");
