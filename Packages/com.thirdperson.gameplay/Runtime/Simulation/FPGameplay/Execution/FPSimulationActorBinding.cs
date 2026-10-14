@@ -294,6 +294,12 @@ namespace ThirdPersonSimulation.FPGameplay
                 identities.Add(contract.States[index].Id.Value);
             for (int index = 0; index < contract.Transitions.Count; index++)
                 identities.Add(contract.Transitions[index].Id.Value);
+            FPGameplayEffectRuntimeCatalog gameplayEffects = AbilityInstallations.GameplayEffectCatalog;
+            if (gameplayEffects != null)
+            {
+                identities.AddRange(gameplayEffects.TagParents.Keys);
+                identities.AddRange(gameplayEffects.Effects.Keys);
+            }
             for (int ability = 0; ability < AbilityInstallations.Installations.Count; ability++)
             {
                 FPGameplayAbilityExecutionInstallation installation = AbilityInstallations.Installations[ability];
