@@ -32,6 +32,8 @@ namespace ThirdPerson.ValueGeneration.Generator
 
         const string TextAttribute = "ThirdPersonSimulation.ValueTextAttribute";
 
+        const string TextCapacityAttribute = "ThirdPersonSimulation.ValueTextCapacityAttribute";
+
         const string BufferAttribute = "ThirdPersonSimulation.ValueBufferAttribute";
 
         const string OmittedUnionValueAttribute = "ThirdPersonSimulation.ValueUnionOmittedAttribute";
@@ -69,6 +71,7 @@ namespace ThirdPerson.ValueGeneration.Generator
             var valueUpdates = new Dictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
             var storageOwners = new Dictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
             var snapshotSources = new Dictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
+            var textCapacityStorage = new Dictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
             foreach (BaseTypeDeclarationSyntax declaration in receiver.Types)
             {
                 var type = (INamedTypeSymbol)context.Compilation.GetSemanticModel(declaration.SyntaxTree)
@@ -82,6 +85,8 @@ namespace ThirdPerson.ValueGeneration.Generator
                     storageOwners[Identity(type)] = type;
                 if (HasAttribute(type, SnapshotAttribute))
                     snapshotSources[Identity(type)] = type;
+                if (HasAttribute(type, TextCapacityAttribute))
+                    textCapacityStorage[Identity(type)] = type;
                 if (HasAttribute(type, ValueOperationsAttribute) && !HasAttribute(type, UnionTemplateAttribute))
                     valueRecords[Identity(type)] = type;
                 if (HasAttribute(type, ValueStoragePurposeAttribute))
@@ -142,6 +147,8 @@ namespace ThirdPerson.ValueGeneration.Generator
                 EmitStorageOwner(context, owner);
             foreach (INamedTypeSymbol owner in snapshotSources.Values.OrderBy(t => Identity(t), StringComparer.Ordinal))
                 EmitValueSnapshot(context, owner);
+            foreach (INamedTypeSymbol owner in textCapacityStorage.Values.OrderBy(t => Identity(t), StringComparer.Ordinal))
+                EmitTextReferenceCapacity(context, owner);
         }
 
         static void EmitStorageOwner(GeneratorExecutionContext context, INamedTypeSymbol owner)
