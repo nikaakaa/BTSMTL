@@ -506,7 +506,8 @@ namespace ThirdPerson.ValueGeneration.Generator
                 if (!EmitConstructorValueStorage(context, code, type, construct)) return null;
             }
             else
-                EmitValueStorage(code, type, StorageMembers(type), construct);
+                EmitValueStorage(code, type, StorageMembers(type).Where(member =>
+                    !HasAttribute(member.Symbol, "ThirdPersonSimulation.ValueStorageIgnoreAttribute")).ToArray(), construct);
             foreach (INamedTypeSymbol owner in owners)
                 code.AppendLine("}");
             code.AppendLine("} }");
@@ -516,7 +517,8 @@ namespace ThirdPerson.ValueGeneration.Generator
         static bool EmitConstructorValueStorage(GeneratorExecutionContext context, StringBuilder code,
             INamedTypeSymbol type, bool construct)
         {
-            Member[] members = StorageMembers(type);
+            Member[] members = StorageMembers(type).Where(member =>
+                !HasAttribute(member.Symbol, "ThirdPersonSimulation.ValueStorageIgnoreAttribute")).ToArray();
             var constructors = type.InstanceConstructors.Where(candidate => !candidate.IsImplicitlyDeclared)
                 .Select(candidate => new { Constructor = candidate,
                     Inputs = ValueStorageConstructorInputs(context.Compilation, type, candidate, members) })

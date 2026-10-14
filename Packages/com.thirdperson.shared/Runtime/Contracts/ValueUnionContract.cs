@@ -96,6 +96,16 @@ namespace ThirdPersonSimulation
     public sealed class ValueStorageMemberAttribute : Attribute { }
 
     [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
+    public sealed class ValueStorageIgnoreAttribute : Attribute { }
+
+    [AttributeUsage(AttributeTargets.Class, Inherited = false)]
+    public sealed class ValueVariantAttribute : Attribute
+    {
+        public ValueVariantAttribute(ushort discriminator) => Discriminator = discriminator;
+        public ushort Discriminator { get; }
+    }
+
+    [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
     public sealed class ValueReferenceAccessAttribute : Attribute { }
 
     [AttributeUsage(AttributeTargets.Method)]

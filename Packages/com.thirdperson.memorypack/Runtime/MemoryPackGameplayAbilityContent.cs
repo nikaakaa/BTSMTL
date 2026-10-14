@@ -1,7 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using ThirdPersonSimulation.Fixed;
+using ThirdPersonSimulation.FPGameplay;
+using ThirdPersonSimulation.QuantumNumerics;
 
 namespace ThirdPersonSimulation.Serialization
 {
@@ -10,7 +11,7 @@ namespace ThirdPersonSimulation.Serialization
     {
         const string Format = "btsmtl.ability.memorypack/1";
 
-        public static byte[] PublishFixed(FixedGameplayAbilityExecutionData data) =>
+        public static byte[] PublishFP(FPGameplayAbilityExecutionData data) =>
             MemoryPackContent.Serialize((Format, data.Manifest, data.Tables,
                 data.GraphSources.Diagnostics, data.GraphSourceRevisions.Sources));
 
@@ -18,18 +19,18 @@ namespace ThirdPersonSimulation.Serialization
             MemoryPackContent.Serialize((Format, data.Manifest, data.Tables,
                 data.GraphSources.Diagnostics, data.GraphSourceRevisions.Sources));
 
-        public static FixedGameplayAbilityExecutionData ReadFixed(byte[] bytes, string authoringGuid, string bytesHash)
+        public static FPGameplayAbilityExecutionData ReadFP(byte[] bytes, string authoringGuid, string bytesHash)
         {
             RequireBytes(bytes, bytesHash);
             var content = MemoryPackContent.Deserialize<(string Format, GameplayAbilityExecutionManifest Manifest,
-                FixedGraphExecutionTables Tables, IReadOnlyList<ProgramSourceMapEntry> Diagnostics,
+                FPGraphExecutionTables Tables, IReadOnlyList<ProgramSourceMapEntry> Diagnostics,
                 IReadOnlyList<ProgramGraphSourceRevision> Revisions)>(bytes);
-            RequireManifest(content.Format, content.Manifest, authoringGuid, FixedSimulationNumericProfile.Value);
-            var graph = new FixedGraphExecutionData(content.Tables,
+            RequireManifest(content.Format, content.Manifest, authoringGuid, QuantumSimulationNumericProfile.Value);
+            var graph = new FPGraphExecutionData(content.Tables,
                 MemoryPackGraphContentPublisher.Instance.ReadSources(content.Tables.Structure.ExecutionSources, content.Diagnostics, content.Revisions));
             RequireContent(content.Manifest, graph.Chunks);
             var catalog = new GameplayAbilityExecutionCatalog(graph.CatalogEntries, graph.References);
-            return new FixedGameplayAbilityExecutionData(content.Manifest, catalog.Require(content.Manifest.AbilityId),
+            return new FPGameplayAbilityExecutionData(content.Manifest, catalog.Require(content.Manifest.AbilityId),
                 GameplayAbilityProviderContract.Create(graph.CatalogEntries, index => graph.Constants[index].Int32), graph);
         }
 

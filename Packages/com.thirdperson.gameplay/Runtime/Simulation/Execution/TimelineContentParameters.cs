@@ -7,6 +7,7 @@ namespace BTSMTL.Timeline
     {
     }
 
+    [ValueVariant(1)]
     public sealed class TimelineContentAnimation : TimelineContentParameters
     {
         public TimelineContentAnimation(string resourceId, AnimationChannelId channelId, string slotId,
@@ -26,6 +27,7 @@ namespace BTSMTL.Timeline
         public ExtraPolationMode Extrapolation { get; }
     }
 
+    [ValueVariant(2)]
     public sealed class TimelineContentMotion : TimelineContentParameters
     {
         public TimelineContentMotion(string resourceId, string curveId, TimelineMotionContributionSpace space,
@@ -58,12 +60,14 @@ namespace BTSMTL.Timeline
         public TimelineContentCurve Yaw { get; }
     }
 
+    [ValueVariant(3)]
     public sealed class TimelineContentTree : TimelineContentParameters
     {
         public TimelineContentTree(bool hasDeclaredEndTime) => HasDeclaredEndTime = hasDeclaredEndTime;
         public bool HasDeclaredEndTime { get; }
     }
 
+    [ValueVariant(4)]
     public sealed class TimelineContentCameraState : TimelineContentParameters
     {
         public TimelineContentCameraState(TimelineCameraMode mode, string sequenceId, int priority,
@@ -87,6 +91,7 @@ namespace BTSMTL.Timeline
         public TimelineCameraInterruptPolicy InterruptPolicy { get; }
     }
 
+    [ValueVariant(5)]
     public sealed class TimelineContentCameraResponse : TimelineContentParameters
     {
         public TimelineContentCameraResponse(TimelineCameraLookResponseMode lookResponse, float manualOrbitWeight,
@@ -106,6 +111,7 @@ namespace BTSMTL.Timeline
         public int Priority { get; }
     }
 
+    [ValueVariant(6)]
     public sealed class TimelineContentCameraEffect : TimelineContentParameters
     {
         public TimelineContentCameraEffect(TimelineCameraResourceKind kind, string resourceId, int priority,
@@ -127,6 +133,7 @@ namespace BTSMTL.Timeline
         public string ResourceRevision { get; }
     }
 
+    [ValueVariant(7)]
     public sealed class TimelineContentSceneParameter : TimelineContentParameters
     {
         public TimelineContentSceneParameter(string targetBindingId, string parameterBindingId,

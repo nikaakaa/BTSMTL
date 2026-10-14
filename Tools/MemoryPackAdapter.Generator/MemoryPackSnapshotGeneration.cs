@@ -232,11 +232,10 @@ namespace ThirdPerson.MemoryPackAdapters
             return HasAttribute(type, UnionAttribute) && method == operation ? method : null;
         }
 
-        static void EmitMemoryPackSnapshotFormatter(StringBuilder code, NativeSnapshotPlan plan, int ordinal, bool scopedReferences)
+        static void EmitMemoryPackSnapshotFormatter(StringBuilder code, NativeSnapshotPlan plan, int ordinal, bool scopedReferences, string schemaHash)
         {
             string name = plan.Name;
-            code.Append("sealed class SnapshotFormatter").Append(ordinal).Append(" : global::MemoryPack.MemoryPackFormatter<")
-                .Append(name).AppendLine("> {");
+            EmitMemoryPackFormatterHeader(code, "SnapshotFormatter" + ordinal, name, schemaHash);
             EmitMemoryPackSerializeDeclaration(code, name, scopedReferences);
             code.Append("writer.WriteObjectHeader(").Append(plan.Fields.Length).AppendLine(");");
             int next = 0;

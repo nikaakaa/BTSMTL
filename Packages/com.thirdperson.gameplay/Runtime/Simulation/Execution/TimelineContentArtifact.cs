@@ -7,7 +7,8 @@ using Photon.Deterministic;
 
 namespace ThirdPersonSimulation
 {
-    public sealed class TimelineContentArtifact
+    [ValueStorage(UseConstructor = true)]
+    public sealed partial class TimelineContentArtifact
     {
         readonly ReadOnlyCollection<TimelineContentUnit> m_Timelines;
 
@@ -24,6 +25,14 @@ namespace ThirdPersonSimulation
 
         public IReadOnlyList<TimelineContentUnit> Timelines => m_Timelines;
         public StableHash ContentHash { get; }
+
+        TimelineContentArtifact(TimelineContentArtifact source, StableHash contentHash)
+        {
+            m_Timelines = source.m_Timelines;
+            ContentHash = contentHash;
+        }
+
+        public TimelineContentArtifact WithContentHash(StableHash contentHash) => new TimelineContentArtifact(this, contentHash);
 
         public TimelineContentUnit Require(CanonicalTextValue identity)
         {

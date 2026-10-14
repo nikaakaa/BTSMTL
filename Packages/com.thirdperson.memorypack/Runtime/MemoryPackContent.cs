@@ -6,6 +6,11 @@ using MemoryPack;
 
 namespace ThirdPersonSimulation.Serialization
 {
+    public interface IMemoryPackSchema
+    {
+        StableHash SchemaHash { get; }
+    }
+
     public enum MemoryPackContentPart
     {
         Full,
@@ -16,7 +21,6 @@ namespace ThirdPersonSimulation.Serialization
     public sealed class MemoryPackContentContext : IServiceProvider
     {
         readonly CanonicalTextReferences m_Texts;
-        readonly CanonicalDeclaredIdentityReader m_DeclaredIdentities;
         readonly char[] m_Characters;
 
         internal MemoryPackContentContext(MemoryPackContentPart part) => Part = part;
@@ -25,50 +29,62 @@ namespace ThirdPersonSimulation.Serialization
             CanonicalDeclaredIdentityReader declaredIdentities, int maximumUtf16Characters)
         {
             m_Texts = texts;
-            m_DeclaredIdentities = declaredIdentities;
+            DeclaredIdentities = declaredIdentities;
             m_Characters = new char[maximumUtf16Characters];
             Options = new MemoryPackSerializerOptions { ServiceProvider = this };
         }
 
         public MemoryPackContentPart Part { get; set; }
+        public CanonicalDeclaredIdentityReader DeclaredIdentities { get; set; }
         public bool IsPrepared => m_Texts != null;
         public object PreparedStorage { get; private set; }
-        internal MemoryPackSerializerOptions Options { get; }
+        public MemoryPackSerializerOptions Options { get; }
 
-        internal void BeginRead(object storage)
+        public void BeginRead(object storage)
         {
             Part = MemoryPackContentPart.Full;
             PreparedStorage = storage;
             m_Texts.Reset();
         }
 
+        public void SelectPreparedStorage(object storage) => PreparedStorage = storage;
+
         public CanonicalTextValue ReadText(ref MemoryPackReader reader)
         {
-            if (!reader.TryReadCollectionHeader(out int length))
-                return default;
-            if (length == 0)
-                return CanonicalTextValue.Empty;
-            if (length > 0)
-            {
-                int byteCount = checked(length * sizeof(char));
-                ReadOnlySpan<byte> bytes = MemoryMarshal.CreateReadOnlySpan(ref reader.GetSpanReference(byteCount), byteCount);
-                CanonicalTextValue value = m_Texts.CaptureCharacters(MemoryMarshal.Cast<byte, char>(bytes));
-                reader.Advance(byteCount);
-                return value;
-            }
-            int utf8Bytes = ~length;
-            reader.ReadUnmanaged(out int _);
-            ReadOnlySpan<byte> utf8 = MemoryMarshal.CreateReadOnlySpan(ref reader.GetSpanReference(utf8Bytes), utf8Bytes);
-            int characters = Encoding.UTF8.GetChars(utf8, m_Characters.AsSpan());
-            CanonicalTextValue captured = m_Texts.CaptureCharacters(m_Characters.AsSpan(0, characters));
-            reader.Advance(utf8Bytes);
-            return captured;
+            ReadOnlySpan<char> characters = ReadCharacters(ref reader, out bool isNull, out int byteCount);
+            CanonicalTextValue value = isNull ? default : characters.IsEmpty ? CanonicalTextValue.Empty :
+                m_Texts.CaptureCharacters(characters);
+            reader.Advance(byteCount);
+            return value;
         }
 
         public string ReadDeclaredText(ref MemoryPackReader reader)
         {
-            CanonicalTextValue value = ReadText(ref reader);
-            return m_DeclaredIdentities.ResolvePublished(in value);
+            ReadOnlySpan<char> characters = ReadCharacters(ref reader, out bool isNull, out int byteCount);
+            string value = isNull ? null : DeclaredIdentities.ResolvePublished(characters);
+            reader.Advance(byteCount);
+            return value;
+        }
+
+        ReadOnlySpan<char> ReadCharacters(ref MemoryPackReader reader, out bool isNull, out int byteCount)
+        {
+            isNull = !reader.TryReadCollectionHeader(out int length);
+            if (isNull)
+            {
+                byteCount = 0;
+                return default;
+            }
+            if (length >= 0)
+            {
+                byteCount = checked(length * sizeof(char));
+                ReadOnlySpan<byte> bytes = MemoryMarshal.CreateReadOnlySpan(ref reader.GetSpanReference(byteCount), byteCount);
+                return MemoryMarshal.Cast<byte, char>(bytes);
+            }
+            byteCount = ~length;
+            reader.ReadUnmanaged(out int _);
+            ReadOnlySpan<byte> utf8 = MemoryMarshal.CreateReadOnlySpan(ref reader.GetSpanReference(byteCount), byteCount);
+            int characters = Encoding.UTF8.GetChars(utf8, m_Characters.AsSpan());
+            return m_Characters.AsSpan(0, characters);
         }
 
         public object GetService(Type serviceType) => serviceType == typeof(MemoryPackContentContext) ? this : null;
@@ -78,6 +94,20 @@ namespace ThirdPersonSimulation.Serialization
     {
         static MemoryPackContent() => MemoryPackGeneratedFormatters.Register();
 
+        public static void Initialize() { }
+
+        public static StableHash GetSchemaHash<T>()
+        {
+            MemoryPackReader reader = default;
+            return ((IMemoryPackSchema)reader.GetFormatter<T>()).SchemaHash;
+        }
+
+        public static StableHash GetSnapshotSchemaHash(IValueSnapshotCopy value)
+        {
+            MemoryPackReader reader = default;
+            return ((IMemoryPackSchema)reader.GetFormatter(value.GetType())).SchemaHash;
+        }
+
         public static void SerializeInto<T, TBufferWriter>(in T value, TBufferWriter destination,
             MemoryPackContentContext context) where TBufferWriter : class, IBufferWriter<byte>
         {
@@ -85,15 +115,15 @@ namespace ThirdPersonSimulation.Serialization
             MemoryPackSerializer.Serialize<T, TBufferWriter>(in destination, in value, context.Options);
         }
 
-        public static Fixed.SimulationInput DeserializeInto(ReadOnlySpan<byte> bytes,
-            Fixed.SimulationInputFrameStorage storage, MemoryPackContentContext context) =>
-            DeserializeInto<Fixed.SimulationInput, Fixed.SimulationInputFrameStorage>(bytes, storage, context);
+        public static FPGameplay.SimulationInput DeserializeInto(ReadOnlySpan<byte> bytes,
+            FPGameplay.SimulationInputFrameStorage storage, MemoryPackContentContext context) =>
+            DeserializeInto<FPGameplay.SimulationInput, FPGameplay.SimulationInputFrameStorage>(bytes, storage, context);
 
         public static SimulationInput DeserializeInto(ReadOnlySpan<byte> bytes,
             Float32SimulationInputFrameStorage storage, MemoryPackContentContext context) =>
             DeserializeInto<SimulationInput, Float32SimulationInputFrameStorage>(bytes, storage, context);
 
-        static T DeserializeInto<T, TStorage>(ReadOnlySpan<byte> bytes, TStorage storage,
+        public static T DeserializeInto<T, TStorage>(ReadOnlySpan<byte> bytes, TStorage storage,
             MemoryPackContentContext context) where TStorage : class
         {
             context.BeginRead(storage);

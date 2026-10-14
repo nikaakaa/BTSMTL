@@ -5,12 +5,13 @@
         "ThirdPerson.Shared.Contracts",
         "ThirdPersonGameplay.Configuration",
         "ThirdPersonSimulation.Core",
-        "ThirdPersonSimulation.Fixed",
-        "ThirdPersonSimulation.Float32"
+        "ThirdPersonSimulation.FPGameplay",
+        "ThirdPersonSimulation.Float32",
+        "ThirdPersonSimulation.QuantumNumerics"
     ],
     "allowUnsafeCode": false,
     "overrideReferences": true,
-    "precompiledReferences": ["MemoryPack.Core.dll"],
+    "precompiledReferences": ["MemoryPack.Core.dll", "Quantum.Deterministic.dll"],
     "autoReferenced": true,
     "noEngineReferences": true
 }

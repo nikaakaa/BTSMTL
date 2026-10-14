@@ -61,13 +61,13 @@ namespace ThirdPerson.MemoryPackAdapters
             bool erasedSnapshots = false;
             var snapshotCandidates = MemoryPackSnapshotCandidates(context, externalLeaves, IsImplicitReference);
             var snapshots = new SortedDictionary<string, NativeSnapshotPlan>(StringComparer.Ordinal);
-            var preparedStorages = PreparedStorages(context.Compilation);
+            var preparedStorages = PreparedStorages(context.Compilation, receiver);
             foreach (var call in receiver.Calls)
             {
                 var method = context.Compilation.GetSemanticModel(call.SyntaxTree).GetSymbolInfo(call).Symbol as IMethodSymbol;
                 if (method == null || !IsMemoryPackValueCall(method)) continue;
                 if (Identity(method.ContainingType) == "ThirdPersonSimulation.Serialization.MemoryPackContent" &&
-                    (method.Name == "SerializeSnapshotInto" || method.Name == "DeserializeSnapshotInto"))
+                    (method.Name == "SerializeSnapshotInto" || method.Name == "DeserializeSnapshotInto" || method.Name == "GetSnapshotSchemaHash"))
                     erasedSnapshots = true;
                 if (method.Name == "DeserializeInto" && method.TypeArguments.Length == 0)
                     Visit(method.ReturnType);
@@ -86,15 +86,22 @@ namespace ThirdPerson.MemoryPackAdapters
             foreach (var pair in preparedStorages.Where(pair => records.ContainsKey(pair.Key)))
             {
                 var type = records[pair.Key];
-                PreparedReadPlan plan = CreatePreparedReadPlan(type, pair.Value, ValueMembers(type, IsImplicitReference), IsAccessible, out string reason);
-                if (reason == null)
-                    reason = ValidatePreparedMembers(type, plan, preparedText, IsImplicitReference, externalLeaves);
+                PreparedReadPlan plan = CreatePreparedReadPlan(type, pair.Value, ValueMembers(type, IsImplicitReference), IsAccessible,
+                    preparedStorages, out string reason);
                 if (reason != null)
                 {
                     valid = false;
                     context.ReportDiagnostic(Diagnostic.Create(InvalidMemoryPackAdapter, type.Locations.FirstOrDefault(), Identity(type), reason));
                 }
                 else preparedPlans.Add(pair.Key, plan);
+            }
+            foreach (var pair in preparedPlans)
+            {
+                string reason = ValidatePreparedMembers(records[pair.Key], pair.Value, preparedText,
+                    IsImplicitReference, externalLeaves, preparedPlans);
+                if (reason == null) continue;
+                valid = false;
+                context.ReportDiagnostic(Diagnostic.Create(InvalidMemoryPackAdapter, records[pair.Key].Locations.FirstOrDefault(), pair.Key, reason));
             }
             if (!valid) return;
             ITypeSymbol[] adaptedSequences = sequences.Values.Where(type =>
@@ -132,18 +139,19 @@ namespace ThirdPerson.MemoryPackAdapters
             code.AppendLine("}");
             ordinal = 0;
             bool scopedReferences = (int)((Microsoft.CodeAnalysis.CSharp.CSharpParseOptions)context.ParseOptions).LanguageVersion >= 1100;
+            var schemas = new MemoryPackSchemas(context.Compilation, snapshots, IsImplicitReference);
             foreach (var record in records.Values)
                 EmitMemoryPackFormatter(code, record, ValueMembers(record, IsImplicitReference),
                     StorageReadMembers(record, IsImplicitReference), ordinal++, scopedReferences, HasPayload, IsAccessible,
                     preparedPlans.TryGetValue(Identity(record), out var plan) ? plan : null,
-                    SymbolEqualityComparer.Default.Equals(preparedText, record));
+                    SymbolEqualityComparer.Default.Equals(preparedText, record), schemas.Hash(record));
             foreach (var sequence in adaptedSequences)
-                EmitMemoryPackSequenceFormatter(code, sequence, ordinal++, scopedReferences);
+                EmitMemoryPackSequenceFormatter(code, sequence, ordinal++, scopedReferences, schemas.Hash(sequence));
             foreach (var nullable in adaptedNullableValues)
-                EmitMemoryPackNullableFormatter(code, nullable, ordinal++, scopedReferences);
+                EmitMemoryPackNullableFormatter(code, nullable, ordinal++, scopedReferences, schemas.Hash(nullable));
             snapshotOrdinal = 0;
             foreach (var snapshot in snapshots.Values)
-                EmitMemoryPackSnapshotFormatter(code, snapshot, snapshotOrdinal++, scopedReferences);
+                EmitMemoryPackSnapshotFormatter(code, snapshot, snapshotOrdinal++, scopedReferences, schemas.Hash(snapshot));
             code.AppendLine("} }");
             context.AddSource("MemoryPackGeneratedFormatters.g.cs", SourceText.From(code.ToString(), Encoding.UTF8));
 
@@ -221,6 +229,13 @@ namespace ThirdPerson.MemoryPackAdapters
                     return;
                 }
                 Member[] members = ValueMembers(named, IsImplicitReference);
+                Variant[] known = KnownTypes(named);
+                if (known.Length != 0)
+                {
+                    records.Add(Identity(type), named);
+                    foreach (Variant branch in known) Visit(branch.Type);
+                    return;
+                }
                 if (HasAttribute(named, TextAttribute))
                 {
                     records.Add(Identity(type), named);
@@ -304,7 +319,7 @@ namespace ThirdPerson.MemoryPackAdapters
             code.AppendLine("{");
         }
 
-        static void EmitMemoryPackSequenceFormatter(StringBuilder code, ITypeSymbol type, int ordinal, bool scopedReferences)
+        static void EmitMemoryPackSequenceFormatter(StringBuilder code, ITypeSymbol type, int ordinal, bool scopedReferences, string schemaHash)
         {
             string name = TypeName(type);
             string element = TypeName(SequenceElement(type));
@@ -314,8 +329,7 @@ namespace ThirdPerson.MemoryPackAdapters
             bool memory = shape == "System.ReadOnlyMemory<T>";
             bool enumerable = shape == "System.Collections.Generic.IEnumerable<T>";
             string count = enumerable ? "items.Length" : type is IArrayTypeSymbol || memory ? "value.Length" : "value.Count";
-            code.Append("sealed class Formatter").Append(ordinal).Append(" : global::MemoryPack.MemoryPackFormatter<")
-                .Append(name).AppendLine("> {");
+            EmitMemoryPackFormatterHeader(code, "Formatter" + ordinal, name, schemaHash);
             EmitMemoryPackSerializeDeclaration(code, name, scopedReferences);
             if (type.IsReferenceType)
                 code.AppendLine("if (value == null) { writer.WriteNullCollectionHeader(); return; }");
@@ -351,12 +365,11 @@ namespace ThirdPerson.MemoryPackAdapters
             code.AppendLine("} }");
         }
 
-        static void EmitMemoryPackNullableFormatter(StringBuilder code, INamedTypeSymbol type, int ordinal, bool scopedReferences)
+        static void EmitMemoryPackNullableFormatter(StringBuilder code, INamedTypeSymbol type, int ordinal, bool scopedReferences, string schemaHash)
         {
             string name = TypeName(type);
             string element = TypeName(NullableElement(type));
-            code.Append("sealed class Formatter").Append(ordinal).Append(" : global::MemoryPack.MemoryPackFormatter<")
-                .Append(name).AppendLine("> {");
+            EmitMemoryPackFormatterHeader(code, "Formatter" + ordinal, name, schemaHash);
             EmitMemoryPackSerializeDeclaration(code, name, scopedReferences);
             code.AppendLine("if (!value.HasValue) { writer.WriteNullObjectHeader(); return; }");
             code.AppendLine("writer.WriteObjectHeader(1);");
@@ -378,7 +391,8 @@ namespace ThirdPerson.MemoryPackAdapters
                 owner == "ThirdPersonSimulation.Serialization.MemoryPackContent" &&
                 (method.Name == "Serialize" || method.Name == "SerializeInto" || method.Name == "Deserialize" ||
                     method.Name == "DeserializeParts" || method.Name == "DeserializeInto" ||
-                    method.Name == "SerializeSnapshotInto" || method.Name == "DeserializeSnapshotInto") ||
+                    method.Name == "SerializeSnapshotInto" || method.Name == "DeserializeSnapshotInto" ||
+                    method.Name == "GetSchemaHash" || method.Name == "GetSnapshotSchemaHash") ||
                 owner == "MemoryPack.MemoryPackWriter<TBufferWriter>" && method.Name == "WriteValue" ||
                 owner == "MemoryPack.MemoryPackReader" && method.Name == "ReadValue";
         }
@@ -405,18 +419,22 @@ namespace ThirdPerson.MemoryPackAdapters
 
         static void EmitMemoryPackFormatter(StringBuilder code, INamedTypeSymbol type, Member[] members, Member[] storage, int ordinal,
             bool scopedReferences, Func<ITypeSymbol, bool> hasPayload, Func<ISymbol, bool> isAccessible,
-            PreparedReadPlan prepared, bool preparedText)
+            PreparedReadPlan prepared, bool preparedText, string schemaHash)
         {
+            if (KnownTypes(type).Length != 0)
+            {
+                EmitMemoryPackKnownTypeFormatter(code, type, ordinal, scopedReferences, schemaHash);
+                return;
+            }
             if (HasAttribute(type, TextAttribute))
             {
-                EmitMemoryPackTextFormatter(code, type, ordinal, scopedReferences, preparedText);
+                EmitMemoryPackTextFormatter(code, type, ordinal, scopedReferences, preparedText, schemaHash);
                 return;
             }
             string name = TypeName(type);
             ISymbol presence = type.GetMembers().SingleOrDefault(member => HasAttribute(member, PresenceAttribute));
             bool partitioned = hasPayload(type);
-            code.Append("sealed class Formatter").Append(ordinal).Append(" : global::MemoryPack.MemoryPackFormatter<")
-                .Append(name).AppendLine("> {");
+            EmitMemoryPackFormatterHeader(code, "Formatter" + ordinal, name, schemaHash);
             EmitMemoryPackSerializeDeclaration(code, name, scopedReferences);
             if (type.IsReferenceType)
                 code.AppendLine("if (value == null) { writer.WriteNullObjectHeader(); return; }");
@@ -480,6 +498,67 @@ namespace ThirdPerson.MemoryPackAdapters
             code.AppendLine("}");
         }
 
+        readonly struct Variant
+        {
+            internal Variant(ushort discriminator, INamedTypeSymbol type)
+            {
+                Discriminator = discriminator;
+                Type = type;
+            }
+
+            internal ushort Discriminator { get; }
+            internal INamedTypeSymbol Type { get; }
+        }
+
+        static Variant[] KnownTypes(INamedTypeSymbol type)
+        {
+            if (type.TypeKind != TypeKind.Class || type.IsSealed)
+                return Array.Empty<Variant>();
+            return FormatterTypes(type.ContainingAssembly.GlobalNamespace)
+                .Where(candidate => DerivesFrom(candidate, type))
+                .Select(candidate => (Type: candidate, Attribute: candidate.GetAttributes().SingleOrDefault(attribute =>
+                    Identity(attribute.AttributeClass) == "ThirdPersonSimulation.ValueVariantAttribute")))
+                .Where(candidate => candidate.Attribute != null)
+                .Select(candidate => new Variant((ushort)candidate.Attribute.ConstructorArguments[0].Value, candidate.Type))
+                .OrderBy(candidate => candidate.Discriminator).ToArray();
+        }
+
+        static bool DerivesFrom(INamedTypeSymbol candidate, INamedTypeSymbol type)
+        {
+            for (INamedTypeSymbol parent = candidate.BaseType; parent != null; parent = parent.BaseType)
+                if (SymbolEqualityComparer.Default.Equals(parent, type))
+                    return true;
+            return false;
+        }
+
+        static void EmitMemoryPackKnownTypeFormatter(StringBuilder code, INamedTypeSymbol type, int ordinal, bool scopedReferences, string schemaHash)
+        {
+            string name = TypeName(type);
+            Variant[] known = KnownTypes(type);
+            EmitMemoryPackFormatterHeader(code, "Formatter" + ordinal, name, schemaHash);
+            EmitMemoryPackSerializeDeclaration(code, name, scopedReferences);
+            code.AppendLine("if (value == null) { writer.WriteNullUnionHeader(); return; }");
+            code.AppendLine("switch (value) {");
+            foreach (Variant branch in known)
+            {
+                ushort discriminator = branch.Discriminator;
+                code.Append("case ").Append(TypeName(branch.Type)).Append(" branch")
+                    .Append(discriminator).Append(": writer.WriteUnionHeader(").Append(discriminator).Append("); writer.WriteValue(branch")
+                    .Append(discriminator).AppendLine("); break;");
+            }
+            code.AppendLine("default: throw new global::MemoryPack.MemoryPackSerializationException(\"记录类型不属于当前正式多态合同。\"); } }");
+            EmitMemoryPackDeserializeDeclaration(code, name, scopedReferences);
+            code.AppendLine("if (!reader.TryReadUnionHeader(out ushort discriminator)) { value = null; return; }");
+            code.AppendLine("switch (discriminator) {");
+            foreach (Variant branch in known)
+            {
+                ushort discriminator = branch.Discriminator;
+                code.Append("case ").Append(discriminator).Append(": { ").Append(TypeName(branch.Type))
+                    .AppendLine(" branch = default; reader.ReadValue(ref branch); value = branch; break; }");
+            }
+            code.AppendLine("default: throw new global::MemoryPack.MemoryPackSerializationException(\"记录判别不属于当前正式多态合同。\"); } } }");
+        }
+
         static void EmitPartContext(StringBuilder code, string stream, bool partitioned)
         {
             if (!partitioned) return;
@@ -487,7 +566,7 @@ namespace ThirdPerson.MemoryPackAdapters
             code.AppendLine("var part = context == null ? global::ThirdPersonSimulation.Serialization.MemoryPackContentPart.Full : context.Part;");
         }
 
-        static void EmitMemoryPackTextFormatter(StringBuilder code, INamedTypeSymbol type, int ordinal, bool scopedReferences, bool prepared)
+        static void EmitMemoryPackTextFormatter(StringBuilder code, INamedTypeSymbol type, int ordinal, bool scopedReferences, bool prepared, string schemaHash)
         {
             string name = TypeName(type);
             IMethodSymbol factory = type.GetMembers().OfType<IMethodSymbol>().Single(method =>
@@ -495,8 +574,7 @@ namespace ThirdPerson.MemoryPackAdapters
                 method.DeclaredAccessibility == Accessibility.Public &&
                 SymbolEqualityComparer.Default.Equals(method.ReturnType, type) && method.Parameters.Length == 1 &&
                 method.Parameters[0].Type.SpecialType == SpecialType.System_String);
-            code.Append("sealed class Formatter").Append(ordinal).Append(" : global::MemoryPack.MemoryPackFormatter<")
-                .Append(name).AppendLine("> {");
+            EmitMemoryPackFormatterHeader(code, "Formatter" + ordinal, name, schemaHash);
             EmitMemoryPackSerializeDeclaration(code, name, scopedReferences);
             if (type.IsReferenceType)
                 code.AppendLine("if (value == null) { writer.WriteNullCollectionHeader(); return; }");

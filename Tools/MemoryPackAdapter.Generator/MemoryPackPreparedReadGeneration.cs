@@ -15,21 +15,53 @@ namespace ThirdPerson.MemoryPackAdapters
             public IMethodSymbol Begin;
             public IMethodSymbol Complete;
             public Dictionary<string, IMethodSymbol> Collections;
+            public Dictionary<string, IMethodSymbol> Nested;
         }
 
-        static Dictionary<string, INamedTypeSymbol> PreparedStorages(Compilation compilation)
+        static Dictionary<string, INamedTypeSymbol> PreparedStorages(Compilation compilation, Receiver receiver)
         {
             var result = new Dictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
-            INamedTypeSymbol content = compilation.GetTypeByMetadataName("ThirdPersonSimulation.Serialization.MemoryPackContent");
-            if (content == null) return result;
-            foreach (IMethodSymbol method in content.GetMembers("DeserializeInto").OfType<IMethodSymbol>().Where(method =>
-                method.Arity == 0 && method.Parameters.Length == 3 && method.DeclaredAccessibility == Accessibility.Public))
-                result.Add(Identity(method.ReturnType), (INamedTypeSymbol)method.Parameters[1].Type);
+            foreach (INamedTypeSymbol owner in FormatterTypes(compilation.Assembly.GlobalNamespace).Concat(
+                compilation.GetTypeByMetadataName("ThirdPersonSimulation.Serialization.MemoryPackContent") is INamedTypeSymbol content
+                    ? new[] { content } : Array.Empty<INamedTypeSymbol>()))
+                foreach (IMethodSymbol method in owner.GetMembers("DeserializeInto").OfType<IMethodSymbol>().Where(method =>
+                    method.Arity == 0 && method.IsStatic && method.Parameters.Length == 3 &&
+                    method.DeclaredAccessibility == Accessibility.Public &&
+                    Identity(method.Parameters[0].Type) == "System.ReadOnlySpan<byte>" &&
+                    Identity(method.Parameters[2].Type) == "ThirdPersonSimulation.Serialization.MemoryPackContentContext"))
+                    result[Identity(method.ReturnType)] = (INamedTypeSymbol)method.Parameters[1].Type;
+            foreach (var call in receiver.Calls)
+            {
+                var method = compilation.GetSemanticModel(call.SyntaxTree).GetSymbolInfo(call).Symbol as IMethodSymbol;
+                if (method != null && method.Name == "DeserializeInto" && method.TypeArguments.Length == 2 &&
+                    Identity(method.ContainingType) == "ThirdPersonSimulation.Serialization.MemoryPackContent" &&
+                    method.TypeArguments[0] is INamedTypeSymbol value && method.TypeArguments[1] is INamedTypeSymbol storage)
+                    result[Identity(value)] = storage;
+            }
+            var pending = new Queue<INamedTypeSymbol>(result.Values);
+            var visited = new HashSet<string>(StringComparer.Ordinal);
+            while (pending.Count != 0)
+            {
+                INamedTypeSymbol storage = pending.Dequeue();
+                if (!visited.Add(Identity(storage))) continue;
+                foreach (IMethodSymbol prepare in storage.GetMembers().OfType<IMethodSymbol>().Where(method =>
+                    !method.IsStatic && method.Parameters.Length == 0 &&
+                    method.Name.StartsWith("PrepareRead", StringComparison.Ordinal) &&
+                    method.ReturnType is INamedTypeSymbol))
+                {
+                    var nested = (INamedTypeSymbol)prepare.ReturnType;
+                    foreach (IMethodSymbol complete in nested.GetMembers("CompleteRead").OfType<IMethodSymbol>().Where(method =>
+                        !method.IsStatic && !method.ReturnsVoid && method.ReturnType is INamedTypeSymbol))
+                        result[Identity(complete.ReturnType)] = nested;
+                    pending.Enqueue(nested);
+                }
+            }
             return result;
         }
 
         static PreparedReadPlan CreatePreparedReadPlan(INamedTypeSymbol type, INamedTypeSymbol storage,
-            Member[] members, Func<ISymbol, bool> isAccessible, out string reason)
+            Member[] members, Func<ISymbol, bool> isAccessible,
+            Dictionary<string, INamedTypeSymbol> preparedStorages, out string reason)
         {
             reason = null;
             IMethodSymbol[] begin = storage.GetMembers("Begin").OfType<IMethodSymbol>().Where(method =>
@@ -45,6 +77,7 @@ namespace ThirdPerson.MemoryPackAdapters
                 return null;
             }
             var collections = new Dictionary<string, IMethodSymbol>(StringComparer.Ordinal);
+            var nested = new Dictionary<string, IMethodSymbol>(StringComparer.Ordinal);
             foreach (Member member in members.Where(member => SequenceElement(member.Type) != null))
             {
                 ITypeSymbol element = SequenceElement(member.Type);
@@ -59,7 +92,25 @@ namespace ThirdPerson.MemoryPackAdapters
                 }
                 collections.Add(member.Name, add[0]);
             }
-            return new PreparedReadPlan { Storage = storage, Begin = begin[0], Complete = complete[0], Collections = collections };
+            foreach (Member member in members)
+            {
+                ITypeSymbol value = SequenceElement(member.Type) ?? member.Type;
+                if (!preparedStorages.TryGetValue(Identity(value), out INamedTypeSymbol nestedStorage)) continue;
+                IMethodSymbol[] prepare = storage.GetMembers().OfType<IMethodSymbol>().Where(method =>
+                    !method.IsStatic && method.Parameters.Length == 0 &&
+                    method.Name.StartsWith("PrepareRead", StringComparison.Ordinal) && isAccessible(method) &&
+                    SymbolEqualityComparer.Default.Equals(method.ReturnType, nestedStorage)).ToArray();
+                IMethodSymbol[] named = prepare.Where(method => string.Equals(method.Name,
+                    "PrepareRead" + MemberKey(member.Name), StringComparison.OrdinalIgnoreCase)).ToArray();
+                if (named.Length == 1) prepare = named;
+                if (prepare.Length != 1)
+                {
+                    reason = "prepared 原成员 " + member.Name + " 需要唯一返回所属存储的 PrepareRead 入口";
+                    return null;
+                }
+                nested.Add(member.Name, prepare[0]);
+            }
+            return new PreparedReadPlan { Storage = storage, Begin = begin[0], Complete = complete[0], Collections = collections, Nested = nested };
         }
 
         static bool MatchesPreparedParameter(Member member, IParameterSymbol parameter) =>
@@ -71,21 +122,23 @@ namespace ThirdPerson.MemoryPackAdapters
             attribute.NamedArguments.Any(argument => argument.Key == "Declared" && (bool)argument.Value.Value));
 
         static string ValidatePreparedMembers(INamedTypeSymbol root, PreparedReadPlan plan, ITypeSymbol text,
-            Func<ITypeSymbol, ITypeSymbol, bool> implicitReference, HashSet<string> externalLeaves)
+            Func<ITypeSymbol, ITypeSymbol, bool> implicitReference, HashSet<string> externalLeaves,
+            Dictionary<string, PreparedReadPlan> preparedPlans)
         {
             var visited = new HashSet<string>(StringComparer.Ordinal);
-            return Visit(root);
+            return Visit(root, plan);
 
-            string Visit(ITypeSymbol type)
+            string Visit(ITypeSymbol type, PreparedReadPlan current)
             {
                 if (type is INamedTypeSymbol namedType) type = RecordType(namedType);
                 if (!visited.Add(Identity(type)) || type.TypeKind == TypeKind.Enum) return null;
-                if (NullableElement(type) is ITypeSymbol nullable) return Visit(nullable);
+                if (NullableElement(type) is ITypeSymbol nullable) return Visit(nullable, current);
                 if (HasAttribute(type, TextAttribute))
                     return SymbolEqualityComparer.Default.Equals(type, text) ? null :
                         "prepared 文本 " + Identity(type) + " 缺少现有接收 context 的原文本存储合同";
                 if (type.SpecialType != SpecialType.None) return null;
-                if (type.IsReferenceType && !SymbolEqualityComparer.Default.Equals(type, root))
+                if (preparedPlans.TryGetValue(Identity(type), out PreparedReadPlan nestedPlan)) current = nestedPlan;
+                else if (type.IsReferenceType && !SymbolEqualityComparer.Default.Equals(type, root))
                     return "prepared 原成员 " + Identity(type) + " 需要自己的预备存储，不能在接收时构造对象";
                 if (externalLeaves.Contains(Identity(type))) return null;
                 if (!(type is INamedTypeSymbol named)) return null;
@@ -99,15 +152,16 @@ namespace ThirdPerson.MemoryPackAdapters
                     }
                     else if (SequenceElement(member.Type) is ITypeSymbol element)
                     {
-                        if (!SymbolEqualityComparer.Default.Equals(type, root) || !plan.Collections.ContainsKey(member.Name))
+                        if (current == null || !SymbolEqualityComparer.Default.Equals(type, current.Complete.ReturnType) ||
+                            !current.Collections.ContainsKey(member.Name))
                             return "prepared 原集合 " + Identity(named) + "." + member.Name +
                                 " 缺少原 owner 的预备集合读取合同";
-                        string reason = Visit(element);
+                        string reason = Visit(element, null);
                         if (reason != null) return reason;
                     }
                     else
                     {
-                        string reason = Visit(member.Type);
+                        string reason = Visit(member.Type, null);
                         if (reason != null) return reason;
                     }
                 }
@@ -124,6 +178,8 @@ namespace ThirdPerson.MemoryPackAdapters
             code.AppendLine("if (!reader.TryReadObjectHeader(out byte count)) return default;");
             code.Append("if (count != ").Append(members.Length)
                 .AppendLine(") throw new global::MemoryPack.MemoryPackSerializationException(\"记录成员数与当前格式不符。\");");
+            if (plan.Nested.Count != 0)
+                code.AppendLine("var preparedContext = (global::ThirdPersonSimulation.Serialization.MemoryPackContentContext)reader.Options.ServiceProvider;");
             foreach (Member member in members)
             {
                 if (plan.Collections.TryGetValue(member.Name, out IMethodSymbol add))
@@ -132,19 +188,32 @@ namespace ThirdPerson.MemoryPackAdapters
                         .AppendLine(")) throw new global::MemoryPack.MemoryPackSerializationException(\"prepared 原输入集合不可为 null。\");");
                     code.Append("for (int index = 0; index < count_").Append(member.Name).AppendLine("; index++) {");
                     code.Append(TypeName(SequenceElement(member.Type))).AppendLine(" item = default;");
+                    EmitPreparedNested(code, member, plan, true);
                     code.AppendLine("reader.ReadValue(ref item);");
+                    EmitPreparedNested(code, member, plan, false);
                     code.Append("storage.").Append(Escape(add.Name)).AppendLine("(item); }");
                 }
                 else
                 {
                     code.Append(TypeName(member.Type)).Append(" member_").Append(member.Name).AppendLine(" = default;");
+                    EmitPreparedNested(code, member, plan, true);
                     EmitMemberRead(code, member, "member_" + member.Name, false, hasPayload);
+                    EmitPreparedNested(code, member, plan, false);
                 }
             }
             code.Append("return storage.").Append(Escape(plan.Complete.Name)).Append('(')
                 .Append(string.Join(", ", plan.Complete.Parameters.Select(parameter =>
                     "member_" + members.Single(member => MatchesPreparedParameter(member, parameter)).Name)))
                 .AppendLine("); }");
+        }
+
+        static void EmitPreparedNested(StringBuilder code, Member member, PreparedReadPlan plan, bool begin)
+        {
+            if (!plan.Nested.TryGetValue(member.Name, out IMethodSymbol prepare)) return;
+            if (begin)
+                code.Append("preparedContext.SelectPreparedStorage(storage.").Append(Escape(prepare.Name)).AppendLine("());");
+            else
+                code.AppendLine("preparedContext.SelectPreparedStorage(storage);");
         }
     }
 }

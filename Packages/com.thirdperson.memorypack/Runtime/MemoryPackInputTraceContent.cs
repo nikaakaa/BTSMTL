@@ -1,24 +1,24 @@
 using System;
 using System.IO;
-using ThirdPersonSimulation.Fixed;
+using ThirdPersonSimulation.FPGameplay;
 
 namespace ThirdPersonSimulation.Serialization
 {
     public static class MemoryPackInputTraceContent
     {
-        public static FixedCharacterInputTrace ReadValidatedTrace(FixedInputTraceDocument document)
+        public static FPCharacterInputTrace ReadValidatedTrace(FixedInputTraceDocument document)
         {
             var actor = new ActorId(document.actor_id);
-            var frames = new FixedCharacterInputTraceFrame[document.frames.Length];
+            var frames = new FPCharacterInputTraceFrame[document.frames.Length];
             for (int index = 0; index < frames.Length; index++)
             {
                 FixedInputTraceFrameDocument source = document.frames[index];
-                frames[index] = MemoryPackContent.Deserialize<FixedCharacterInputTraceFrame>(
+                frames[index] = MemoryPackContent.Deserialize<FPCharacterInputTraceFrame>(
                     Convert.FromBase64String(source.input_payload_base64));
                 if (frames[index].Tick.Value != source.simulation_tick)
-                    throw new InvalidDataException("Fixed input trace frame Tick does not match its document.");
+                    throw new InvalidDataException("FP input trace frame Tick does not match its document.");
             }
-            return new FixedCharacterInputTrace(document.trace_id, actor, document.tick_rate, frames);
+            return new FPCharacterInputTrace(document.trace_id, actor, document.tick_rate, frames);
         }
     }
 }

@@ -11,10 +11,14 @@
   <ItemGroup>
     <ProjectReference Include="../ThirdPersonGameplay.Configuration/ThirdPersonGameplay.Configuration.csproj" />
     <ProjectReference Include="../ThirdPersonSimulation.Core/ThirdPersonSimulation.Core.csproj" />
-    <ProjectReference Include="../ThirdPersonSimulation.Fixed/ThirdPersonSimulation.Fixed.csproj" />
+    <ProjectReference Include="../ThirdPersonSimulation.FPGameplay/ThirdPersonSimulation.FPGameplay.csproj" />
     <ProjectReference Include="../ThirdPersonSimulation.Float32/ThirdPersonSimulation.Float32.csproj" />
+    <ProjectReference Include="../../../3C/Tools/ThirdPersonSimulation.Portable/ThirdPersonSimulation.QuantumNumerics/ThirdPersonSimulation.QuantumNumerics.csproj" />
     <ProjectReference Include="../../Tools/MemoryPackAdapter.Generator/MemoryPackAdapter.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
     <Reference Include="MemoryPack.Core" HintPath="$(MemoryPackCorePath)" Private="false" />
+    <Reference Include="Quantum.Deterministic">
+      <HintPath>$(MSBuildThisFileDirectory)..\..\..\3C\3cDemo\Client\3C_Client\Assets\Photon\Quantum\Assemblies\Quantum.Deterministic.dll</HintPath>
+    </Reference>
     <Compile Include="../../Packages/com.thirdperson.memorypack/Runtime/**/*.cs" />
   </ItemGroup>
   <Target Name="RequireMemoryPack" BeforeTargets="ResolveReferences" Condition="!Exists('$(MemoryPackCorePath)')">

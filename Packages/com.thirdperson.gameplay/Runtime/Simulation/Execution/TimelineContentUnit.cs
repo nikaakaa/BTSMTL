@@ -343,7 +343,8 @@ namespace BTSMTL.Timeline
         }
     }
 
-    public sealed class TimelineContentUnit
+    [ValueStorage(UseConstructor = true)]
+    public sealed partial class TimelineContentUnit
     {
         TimelineContentClip[] m_TimeClips;
         int[] m_TimeClipSlots;

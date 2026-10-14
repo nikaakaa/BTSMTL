@@ -146,6 +146,7 @@ namespace ThirdPerson.ValueGeneration
 
         static Member[] DeclaredStorageMembers(INamedTypeSymbol type) =>
             type.GetMembers().Where(s => !s.IsStatic && !s.IsImplicitlyDeclared)
+                .Where(s => !HasAttribute(s, "ThirdPersonSimulation.ValueStorageIgnoreAttribute"))
                 .Where(s => s is IFieldSymbol field &&
                     !HasAttribute(field, "System.Runtime.CompilerServices.CompilerGeneratedAttribute") ||
                     s is IPropertySymbol property && IsAutoProperty(property))
