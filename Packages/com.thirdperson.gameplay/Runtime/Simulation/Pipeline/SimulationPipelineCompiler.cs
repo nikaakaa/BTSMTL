@@ -61,6 +61,7 @@ namespace ThirdPersonSimulation
                 executionTargetExecutionSupport,
                 executionTargetDeterministic,
                 backend.Identity,
+                backend.Capabilities,
                 backendTarget.ExecutionSupport,
                 backendTarget.Deterministic,
                 source.Identity,
@@ -165,9 +166,13 @@ namespace ThirdPersonSimulation
             RequireExecutionSupport("Execution Target", context.ExecutionTargetExecutionSupport, context.RequiredExecutionSupport, context.ExecutionTarget.Identity.ToString(), errors);
             RequireExecutionSupport("Execution Backend", context.BackendExecutionSupport, context.RequiredExecutionSupport, context.Backend.ToString(), errors);
             RequireExecutionSupport("World Solver", context.SolverExecutionSupport, context.RequiredExecutionSupport, context.WorldSolver.ToString(), errors);
+            const SimulationExecutionBackendCapability frameStateRestore =
+                SimulationExecutionBackendCapability.SdkFrameScheduling |
+                SimulationExecutionBackendCapability.PipelineStateSnapshot;
             if (context.SnapshotProvider.IsValid ||
-                (context.RequiredExecutionSupport & SimulationPipelineExecutionSupport.Restore) != 0)
-                RequireExecutionSupport("Snapshot Codec",
+                (context.RequiredExecutionSupport & SimulationPipelineExecutionSupport.Restore) != 0 &&
+                (context.BackendCapabilities & frameStateRestore) != frameStateRestore)
+                RequireExecutionSupport("Snapshot Provider",
                     context.SnapshotProvider.IsValid ? context.SnapshotExecutionSupport : SimulationPipelineExecutionSupport.None,
                     context.RequiredExecutionSupport, context.SnapshotProvider.ToString(), errors);
             if (context.RequiresDeterministic &&
@@ -176,7 +181,7 @@ namespace ThirdPersonSimulation
             {
                 errors.Add(new SimulationPipelineCompileError(
                     SimulationPipelineCompileErrorCode.DeterministicSupportMismatch,
-                    "Deterministic Pipeline requirement is not supported by Execution Target, Backend, Solver and Snapshot Codec together."));
+                    "Deterministic Pipeline requirement is not supported by Execution Target, Backend, Solver and Snapshot Provider together."));
             }
         }
 

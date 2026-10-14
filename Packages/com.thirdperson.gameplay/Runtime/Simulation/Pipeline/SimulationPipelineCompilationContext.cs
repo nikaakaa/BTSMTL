@@ -16,6 +16,7 @@ namespace ThirdPersonSimulation
             SimulationPipelineExecutionSupport executionTargetExecutionSupport,
             bool executionTargetDeterministic,
             SimulationComponentIdentity backend,
+            SimulationExecutionBackendCapability backendCapabilities,
             SimulationPipelineExecutionSupport backendExecutionSupport,
             bool backendDeterministic,
             SimulationComponentIdentity sessionSource,
@@ -47,6 +48,7 @@ namespace ThirdPersonSimulation
             ExecutionTargetExecutionSupport = executionTargetExecutionSupport;
             ExecutionTargetDeterministic = executionTargetDeterministic;
             Backend = backend;
+            BackendCapabilities = backendCapabilities;
             BackendExecutionSupport = backendExecutionSupport;
             BackendDeterministic = backendDeterministic;
             SessionSource = sessionSource;
@@ -72,6 +74,7 @@ namespace ThirdPersonSimulation
         public SimulationPipelineExecutionSupport ExecutionTargetExecutionSupport { get; }
         public bool ExecutionTargetDeterministic { get; }
         public SimulationComponentIdentity Backend { get; }
+        public SimulationExecutionBackendCapability BackendCapabilities { get; }
         public SimulationPipelineExecutionSupport BackendExecutionSupport { get; }
         public bool BackendDeterministic { get; }
         public SimulationComponentIdentity SessionSource { get; }
