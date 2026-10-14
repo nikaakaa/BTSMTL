@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AssemblyName>ThirdPersonSimulation.QuantumNumerics</AssemblyName>
+    <RootNamespace>ThirdPersonSimulation.QuantumNumerics</RootNamespace>
+    <NumericsSourceRoot>$(MSBuildThisFileDirectory)..\..\..\3C\3cDemo\Client\3C_Client\Packages\com.thirdperson.numerics.quantum\Runtime\Numerics</NumericsSourceRoot>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="$(NumericsSourceRoot)\**\*.cs" LinkBase="Source" />
+    <ProjectReference Include="..\ThirdPersonSimulation.Core\ThirdPersonSimulation.Core.csproj" />
+    <Reference Include="Quantum.Deterministic">
+      <HintPath>$(MSBuildThisFileDirectory)..\..\..\3C\3cDemo\Client\3C_Client\Assets\Photon\Quantum\Assemblies\Quantum.Deterministic.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+</Project>
