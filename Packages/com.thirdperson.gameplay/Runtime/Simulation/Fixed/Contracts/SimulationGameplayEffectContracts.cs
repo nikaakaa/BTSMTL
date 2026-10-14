@@ -1,4 +1,4 @@
-using ThirdPersonSimulation;
+﻿using ThirdPersonSimulation;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -64,8 +64,8 @@ namespace ThirdPersonSimulation.Fixed
         public FixedScalar Value { get; }
     }
 
-    [CanonicalContract]
-    public readonly partial struct SimulationGameplayEffectContext
+    [ValueOperations]
+    public readonly partial struct SimulationGameplayEffectContext : IValueResources
     {
         public SimulationGameplayEffectContext(
             ActorId sourceActorId,
@@ -110,12 +110,10 @@ namespace ThirdPersonSimulation.Fixed
 
 
         public bool IsPredicted => ApplicationMode == SimulationGameplayEffectApplicationMode.Predicted;
-        [CanonicalPresence]
+        [ValuePresence]
         public bool IsValid => SourceActorId.IsValid && TargetActorId.IsValid && SourceTick != 0;
-        public void Retain() => CanonicalRetain(in this);
-        public void Release() => CanonicalRelease(in this);
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireIdentity()
         {
             if (!SourceActorId.IsValid || !TargetActorId.IsValid || SourceTick == 0)
@@ -441,7 +439,8 @@ namespace ThirdPersonSimulation.Fixed
         }
     }
 
-    public readonly struct SimulationAttributeValueIngress
+    [ValueOperations]
+    public readonly partial struct SimulationAttributeValueIngress
     {
         public SimulationAttributeValueIngress(
             CanonicalTextValue attributeId,
@@ -470,10 +469,10 @@ namespace ThirdPersonSimulation.Fixed
         public CanonicalTextValue CauseEffectId { get; }
         public ulong CauseEffectInstanceId { get; }
         public SimulationGameplayEffectContext CauseContext { get; }
+        [ValuePresence]
         public bool IsValid => !CanonicalTextValue.IsNullOrEmpty(AttributeId) && ValueRevision != 0;
     }
 
-    [CanonicalContract]
     public readonly partial struct GameplayEffectFact
     {
         public GameplayEffectFact(
@@ -501,11 +500,10 @@ namespace ThirdPersonSimulation.Fixed
             RequireRecord();
         }
 
-        [CanonicalTextRules(Required = true, Trim = true)]
+        [ValueTextRules(Required = true, Trim = true)]
         public CanonicalTextValue EffectId { get; }
         public ulong InstanceId { get; }
         public SimulationGameplayEffectLifecycleOperation Operation { get; }
-        [CanonicalRequired]
         public SimulationGameplayEffectContext Context { get; }
         public ulong StartTick { get; }
         public ulong EndTick { get; }
@@ -515,7 +513,7 @@ namespace ThirdPersonSimulation.Fixed
         public bool Instant { get; }
         public bool IsValid => !CanonicalTextValue.IsNullOrEmpty(EffectId) && InstanceId != 0 && LifecycleRevision != 0;
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireRecord()
         {
             if (InstanceId == 0 || LifecycleRevision == 0 || DefinitionRevision == 0 || !Context.IsValid)
@@ -523,7 +521,6 @@ namespace ThirdPersonSimulation.Fixed
         }
     }
 
-    [CanonicalContract]
     public readonly partial struct GameplayAttributeFact
     {
         public GameplayAttributeFact(
@@ -549,7 +546,7 @@ namespace ThirdPersonSimulation.Fixed
             RequireRecord();
         }
 
-        [CanonicalTextRules(Required = true, Trim = true)]
+        [ValueTextRules(Required = true, Trim = true)]
         public CanonicalTextValue AttributeId { get; }
         public FixedScalar BeforeBase { get; }
         public FixedScalar BaseValue { get; }
@@ -561,7 +558,7 @@ namespace ThirdPersonSimulation.Fixed
         public SimulationGameplayEffectContext CauseContext { get; }
         public bool IsValid => !CanonicalTextValue.IsNullOrEmpty(AttributeId) && ValueRevision != 0;
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireRecord()
         {
             if (ValueRevision == 0)
@@ -569,7 +566,6 @@ namespace ThirdPersonSimulation.Fixed
         }
     }
 
-    [CanonicalContract]
     public readonly partial struct GameplayCueFact
     {
         public GameplayCueFact(
@@ -586,11 +582,11 @@ namespace ThirdPersonSimulation.Fixed
             EffectContext = effectContext;
         }
 
-        [CanonicalTextRules(Required = true, Trim = true)]
+        [ValueTextRules(Required = true, Trim = true)]
         public CanonicalTextValue CueId { get; }
-        [CanonicalTextRules(Required = true, Trim = true)]
+        [ValueTextRules(Required = true, Trim = true)]
         public CanonicalTextValue TriggerId { get; }
-        [CanonicalTextRules(Required = true, Trim = true)]
+        [ValueTextRules(Required = true, Trim = true)]
         public CanonicalTextValue SourceId { get; }
         public ulong SourceInstanceId { get; }
         public SimulationGameplayEffectContext EffectContext { get; }

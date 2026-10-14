@@ -22,7 +22,6 @@ namespace ThirdPersonSimulation
         }
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
     public readonly partial struct ProgramId : IEquatable<ProgramId>, IComparable<ProgramId>
     {
         public ProgramId(string value) { Value = SimulationIdentity.Require(value, nameof(value)); }
@@ -37,7 +36,6 @@ namespace ThirdPersonSimulation
         public static bool operator !=(ProgramId left, ProgramId right) => !left.Equals(right);
     }
 
-    [CanonicalContract(MaterializedRead = true)]
     public readonly partial struct ActorId : IEquatable<ActorId>, IComparable<ActorId>
     {
         public ActorId(string value) => Value = CanonicalTextValue.FromString(SimulationIdentity.Require(value, nameof(value)));
@@ -48,9 +46,9 @@ namespace ThirdPersonSimulation
             if (Value.IsEmpty)
                 throw new ArgumentException("Identity is required.", nameof(value));
         }
-        [CanonicalTextRules(Required = true, Trim = true)]
+        [ValueTextRules(Required = true, Trim = true)]
         public CanonicalTextValue Value { get; }
-        [CanonicalPresence]
+        [ValuePresence]
         public bool IsValid => !Value.IsEmpty;
         public int CompareTo(ActorId other) => Value.CompareTo(other.Value);
         public bool Equals(ActorId other) => Value.Equals(other.Value);
@@ -63,10 +61,10 @@ namespace ThirdPersonSimulation
         public static bool operator !=(ActorId left, ActorId right) => !left.Equals(right);
     }
 
-    [CanonicalContract]
+    [ValueStorage]
     public readonly partial struct StableHash : IEquatable<StableHash>, IComparable<StableHash>
     {
-        [ThreadStatic] static CanonicalWriter s_HashWriter;
+        [ThreadStatic] static SimulationCanonicalPayloadHash.Accumulator s_HashAccumulator;
         readonly ulong m_A;
         readonly ulong m_B;
         readonly ulong m_C;
@@ -146,32 +144,25 @@ namespace ThirdPersonSimulation
             ? string.Create(64, this, static (characters, value) => value.Format(characters)) : string.Empty;
         public static StableHash Compute(params string[] values)
         {
-            CanonicalWriter writer = s_HashWriter ??= new CanonicalWriter();
-            writer.Reset();
+            SimulationCanonicalPayloadHash.Accumulator hash = s_HashAccumulator ??= new SimulationCanonicalPayloadHash.Accumulator();
+            hash.Begin();
             if (values != null)
             {
                 for (int i = 0; i < values.Length; i++)
                 {
                     if (i > 0)
-                        writer.WriteByte(0x1f);
-                    writer.WriteRawText(values[i].AsSpan());
+                        hash.AppendAscii(0x1f);
+                    hash.AppendText(CanonicalTextValue.FromString(values[i]));
                 }
             }
-            return writer.ComputeHash();
+            return hash.Complete();
         }
 
-        public static CanonicalWriter BeginHash()
-        {
-            CanonicalWriter writer = s_HashWriter ??= new CanonicalWriter();
-            writer.Reset();
-            return writer;
-        }
 
         public static bool operator ==(StableHash left, StableHash right) => left.Equals(right);
         public static bool operator !=(StableHash left, StableHash right) => !left.Equals(right);
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
     public readonly partial struct ProgramRevision : IEquatable<ProgramRevision>
     {
         public ProgramRevision(string value) { Value = SimulationIdentity.Require(value, nameof(value)); }
@@ -182,8 +173,7 @@ namespace ThirdPersonSimulation
         public override string ToString() => Value ?? string.Empty;
     }
 
-    [CanonicalContract]
-    public readonly partial struct SemanticHash : IEquatable<SemanticHash>, ICanonicalHashValue
+    public readonly partial struct SemanticHash : IEquatable<SemanticHash>
     {
         public SemanticHash(StableHash value) { Value = value; }
         public StableHash Value { get; }
@@ -194,12 +184,12 @@ namespace ThirdPersonSimulation
         public override string ToString() => Value.ToString();
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
     public readonly partial struct NumericProfileId : IEquatable<NumericProfileId>, IComparable<NumericProfileId>
     {
         public NumericProfileId(string value) { Value = value; RequireValid(); }
+        [ValueTextRules(Declared = true)]
         public string Value { get; }
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireValid() => SimulationIdentity.Require(Value, "value");
         public bool IsValid => !string.IsNullOrEmpty(Value);
         public int CompareTo(NumericProfileId other) => string.CompareOrdinal(Value, other.Value);
@@ -211,11 +201,10 @@ namespace ThirdPersonSimulation
         public static bool operator !=(NumericProfileId left, NumericProfileId right) => !left.Equals(right);
     }
 
-    [CanonicalContract(MaterializedRead = true)]
     public readonly partial struct OperationSetVersion : IEquatable<OperationSetVersion>
     {
         public OperationSetVersion(string value) { Value = SimulationIdentity.Require(value, nameof(value)); }
-        [CanonicalDeclaredText, CanonicalTextRules(Required = true)]
+        [ValueTextRules(Required = true)]
         public string Value { get; }
         public bool IsValid => !string.IsNullOrEmpty(Value);
         public bool Equals(OperationSetVersion other) => string.Equals(Value, other.Value, StringComparison.Ordinal);
@@ -226,7 +215,6 @@ namespace ThirdPersonSimulation
 
     }
 
-    [CanonicalContract]
     public readonly partial struct TargetAbiVersion : IEquatable<TargetAbiVersion>
     {
         public TargetAbiVersion(int value)
@@ -235,7 +223,7 @@ namespace ThirdPersonSimulation
             RequireValid();
         }
         public int Value { get; }
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireValid()
         {
             if (Value <= 0)
@@ -248,8 +236,7 @@ namespace ThirdPersonSimulation
         public override string ToString() => Value.ToString(CultureInfo.InvariantCulture);
     }
 
-    [CanonicalContract]
-    public readonly partial struct LayoutHash : IEquatable<LayoutHash>, ICanonicalHashValue
+    public readonly partial struct LayoutHash : IEquatable<LayoutHash>
     {
         public LayoutHash(StableHash value) { Value = value; }
         public StableHash Value { get; }
@@ -260,8 +247,7 @@ namespace ThirdPersonSimulation
         public override string ToString() => Value.ToString();
     }
 
-    [CanonicalContract]
-    public readonly partial struct GameplayContentHash : IEquatable<GameplayContentHash>, ICanonicalHashValue
+    public readonly partial struct GameplayContentHash : IEquatable<GameplayContentHash>
     {
         public GameplayContentHash(StableHash value) { Value = value; }
         public StableHash Value { get; }
@@ -272,11 +258,10 @@ namespace ThirdPersonSimulation
         public override string ToString() => Value.ToString();
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
     public readonly partial struct WorldRevision : IEquatable<WorldRevision>
     {
         public WorldRevision(string value) { Value = SimulationIdentity.Require(value, nameof(value)); }
-        [CanonicalTextRules(Required = true)]
+        [ValueTextRules(Required = true)]
         public string Value { get; }
         public bool Equals(WorldRevision other) => string.Equals(Value, other.Value, StringComparison.Ordinal);
         public override bool Equals(object obj) => obj is WorldRevision other && Equals(other);
@@ -284,11 +269,10 @@ namespace ThirdPersonSimulation
         public override string ToString() => Value ?? string.Empty;
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
     public readonly partial struct SolverImplementationId : IEquatable<SolverImplementationId>
     {
         public SolverImplementationId(string value) { Value = SimulationIdentity.Require(value, nameof(value)); }
-        [CanonicalTextRules(Required = true)]
+        [ValueTextRules(Required = true)]
         public string Value { get; }
         public bool Equals(SolverImplementationId other) => string.Equals(Value, other.Value, StringComparison.Ordinal);
         public override bool Equals(object obj) => obj is SolverImplementationId other && Equals(other);
@@ -310,7 +294,6 @@ namespace ThirdPersonSimulation
         public static bool operator !=(HostProductId left, HostProductId right) => !left.Equals(right);
     }
 
-    [CanonicalContract]
     public readonly partial struct SimulationTick : IEquatable<SimulationTick>, IComparable<SimulationTick>
     {
         public SimulationTick(ulong value)
@@ -319,7 +302,7 @@ namespace ThirdPersonSimulation
             RequireValid();
         }
         public ulong Value { get; }
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireValid()
         {
             if (Value == 0)
@@ -525,7 +508,6 @@ namespace ThirdPersonSimulation
         Replay = 3
     }
 
-    [CanonicalContract]
     public readonly partial struct SimulationTickSourceIdentity : IEquatable<SimulationTickSourceIdentity>
     {
         public SimulationTickSourceIdentity(SimulationTickSourceKind kind, CanonicalTextValue clockId, ulong sourceTick)
@@ -538,7 +520,7 @@ namespace ThirdPersonSimulation
         public SimulationTickSourceKind Kind { get; }
         public CanonicalTextValue ClockId { get; }
         public ulong SourceTick { get; }
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireClock() => SimulationIdentity.Require(ClockId, nameof(ClockId));
         public void Retain() => ClockId.Retain();
         public void Release() => ClockId.Release();
@@ -547,7 +529,7 @@ namespace ThirdPersonSimulation
         public override int GetHashCode() => HashCode.Combine((int)Kind, ClockId.GetHashCode(), SourceTick);
     }
 
-    [CanonicalContract]
+    [ValueStorage]
     public readonly partial struct OperationHandle : IEquatable<OperationHandle>, IComparable<OperationHandle>
     {
         readonly int m_EncodedValue;
@@ -590,8 +572,7 @@ namespace ThirdPersonSimulation
         public override string ToString() => $"{ActorId}/{Tick}/{Sequence}";
     }
 
-    [CanonicalContract]
-    public readonly partial struct CharacterStateHash : IEquatable<CharacterStateHash>, ICanonicalHashValue
+    public readonly partial struct CharacterStateHash : IEquatable<CharacterStateHash>
     {
         public CharacterStateHash(StableHash value) { Value = value; }
         public StableHash Value { get; }
@@ -602,8 +583,7 @@ namespace ThirdPersonSimulation
         public override string ToString() => Value.ToString();
     }
 
-    [CanonicalContract]
-    public readonly partial struct SimulationWorldHash : IEquatable<SimulationWorldHash>, ICanonicalHashValue
+    public readonly partial struct SimulationWorldHash : IEquatable<SimulationWorldHash>
     {
         public SimulationWorldHash(StableHash value) { Value = value; }
         public StableHash Value { get; }

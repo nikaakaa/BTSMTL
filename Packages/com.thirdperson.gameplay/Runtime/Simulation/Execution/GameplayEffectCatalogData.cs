@@ -3,7 +3,6 @@ using ThirdPersonGameplay.Configuration;
 
 namespace ThirdPersonSimulation
 {
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
     public readonly partial struct GameplayEffectTagContent
     {
         public GameplayEffectTagContent(string id, string parent, bool initiallyOwned)
@@ -18,7 +17,6 @@ namespace ThirdPersonSimulation
         public bool InitiallyOwned { get; }
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
     public sealed partial class GameplayEffectCatalogData
     {
         public GameplayEffectCatalogData(int version, string sourceId, string configurationIdentity,

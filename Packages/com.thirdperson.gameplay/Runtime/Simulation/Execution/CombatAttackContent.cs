@@ -8,7 +8,6 @@ namespace ThirdPersonSimulation
         GeometrySweep = 3
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
     public readonly partial struct CombatVector3
     {
         public CombatVector3(float x, float y, float z)
@@ -23,7 +22,6 @@ namespace ThirdPersonSimulation
         public float Z { get; }
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
     public sealed partial class CombatAttackCollisionContent
     {
         public CombatAttackCollisionContent(CombatAttackCollisionKind kind, CombatVector3 centerOffset, float width, float height, float depth, float fanAngle, float radius, float hitInterval, int aliveMaxHitCount, int unitMaxHitCount, bool followAttacker, string geometry)
@@ -56,7 +54,6 @@ namespace ThirdPersonSimulation
         public string Geometry { get; }
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
     public sealed partial class CombatAttackPropertyContent
     {
         public CombatAttackPropertyContent(int hitType, int hitStrengthType, int damageBreakLevel, int frameHalt, int attackerFrameHalt, uint groundHitEffectId, uint skyHitEffectId, bool isHeavyAttack, bool hitsEnemy, bool hitsAllied, bool hitsNeutral)
@@ -87,7 +84,6 @@ namespace ThirdPersonSimulation
         public bool HitsNeutral { get; }
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
     public sealed partial class CombatAttackCameraContent
     {
         public CombatAttackCameraContent(string resourceId, bool shakeOnNotHit)
@@ -100,7 +96,6 @@ namespace ThirdPersonSimulation
         public bool ShakeOnNotHit { get; }
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
     public sealed partial class CombatAttackContent
     {
         public CombatAttackContent(string attackId, uint definitionRevision, CombatAttackCollisionContent collision, CombatAttackPropertyContent property, CombatAttackCameraContent cameraShake)

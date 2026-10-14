@@ -10,7 +10,7 @@ namespace ThirdPersonSimulation
             LocomotionInputMotionExecutionMode executionMode,
             LocomotionInputMotionDisplacementMode displacementMode,
             TScalar turnSpeed, TScalar moveSpeed, TScalar curveDuration, int durationTicks,
-            GameplayAbilityCurve<TScalar, TMath> xCurve, GameplayAbilityCurve<TScalar, TMath> zCurve,
+            GameplayAbilityCurve<TScalar> xCurve, GameplayAbilityCurve<TScalar> zCurve,
             int tickRate)
         {
             TMath math = default;
@@ -26,8 +26,8 @@ namespace ThirdPersonSimulation
             TickDelta = math.Divide(math.One, TickRate);
             bool looping = displacementMode == LocomotionInputMotionDisplacementMode.ActionMotionCurve &&
                 executionMode == LocomotionInputMotionExecutionMode.Continuous;
-            XCycleTotal = looping ? xCurve.Evaluate(curveDuration, math.Zero) : math.Zero;
-            ZCycleTotal = looping ? zCurve.Evaluate(curveDuration, math.Zero) : math.Zero;
+            XCycleTotal = looping ? xCurve.Evaluate<TMath>(curveDuration, math.Zero) : math.Zero;
+            ZCycleTotal = looping ? zCurve.Evaluate<TMath>(curveDuration, math.Zero) : math.Zero;
         }
 
         public LocomotionInputMotionExecutionMode ExecutionMode { get; }
@@ -36,8 +36,8 @@ namespace ThirdPersonSimulation
         public TScalar MoveSpeed { get; }
         public TScalar CurveDuration { get; }
         public int DurationTicks { get; }
-        public GameplayAbilityCurve<TScalar, TMath> XCurve { get; }
-        public GameplayAbilityCurve<TScalar, TMath> ZCurve { get; }
+        public GameplayAbilityCurve<TScalar> XCurve { get; }
+        public GameplayAbilityCurve<TScalar> ZCurve { get; }
         public TScalar TickRate { get; }
         public TScalar TickDelta { get; }
         public TScalar XCycleTotal { get; }
@@ -100,15 +100,15 @@ namespace ThirdPersonSimulation
                 math.Add(math.Multiply(math.Negate(forwardX), localX), math.Multiply(forwardZ, localZ)));
         }
 
-        static TScalar SampleCumulative(GameplayAbilityCurve<TScalar, TMath> curve,
+        static TScalar SampleCumulative(GameplayAbilityCurve<TScalar> curve,
             TScalar time, TScalar duration, bool looping, TScalar cycleTotal)
         {
             TMath math = default;
             if (!looping)
-                return curve.Evaluate(math.Clamp(time, math.Zero, duration), math.Zero);
+                return curve.Evaluate<TMath>(math.Clamp(time, math.Zero, duration), math.Zero);
             TScalar cycle = math.FromInt32(math.FloorToInt32(math.Divide(time, duration)));
             TScalar localTime = math.Subtract(time, math.Multiply(duration, cycle));
-            return math.Add(math.Multiply(cycleTotal, cycle), curve.Evaluate(localTime, math.Zero));
+            return math.Add(math.Multiply(cycleTotal, cycle), curve.Evaluate<TMath>(localTime, math.Zero));
         }
     }
 }

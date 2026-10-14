@@ -1,8 +1,11 @@
 namespace ThirdPersonSimulation.Fixed
 {
-    [CanonicalContract(MaterializedRead = true, OwnsMemberResources = true)]
+    [ValueOperations(OwnsMemberResources = true, CopyMethod = nameof(CopyFrom), ClearMethod = nameof(Clear))]
     internal sealed partial class SimulationInputValues
     {
+        internal partial void CopyFrom(SimulationInputValues value);
+        internal partial void Clear();
+
         internal SimulationInputValues(int valueCapacity, int requestCapacity)
         {
             Values = new CanonicalBuffer<SimulationInputValue>(valueCapacity);
@@ -12,8 +15,8 @@ namespace ThirdPersonSimulation.Fixed
         internal readonly CanonicalBuffer<SimulationInputValue> Values;
         internal readonly CanonicalBuffer<SimulationInputRequest> Requests;
 
-        [CanonicalValidation]
-        internal void RequireCanonicalOrder()
+        [ValueValidation]
+        internal void RequireOrder()
         {
             for (int i = 1; i < Values.Count; i++)
                 if (CanonicalTextValue.CompareOrdinal(Values[i - 1].InputId, Values[i].InputId) >= 0)

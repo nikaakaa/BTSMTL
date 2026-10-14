@@ -8,7 +8,7 @@ namespace ThirdPersonSimulation
     {
         GameplayAbilityExecutionLayout m_ExecutionLayout;
 
-        internal Float32GameplayAbilityExecutionData(GameplayAbilityExecutionManifest manifest,
+        public Float32GameplayAbilityExecutionData(GameplayAbilityExecutionManifest manifest,
             GameplayAbilityExecutionBinding binding, GameplayAbilityProviderContract providerContract,
             Float32GraphExecutionData graph)
             : base(graph)
@@ -63,7 +63,7 @@ namespace ThirdPersonSimulation
             var manifest = new GameplayAbilityExecutionManifest(abilityId, compilerVersion,
                 operationSetVersion, tickRate, sourceRevision, semanticHash, numericProfile, capabilities,
                 root, executionIdentity, stateSchemaHash,
-                graph.Chunks.ComputeContentHash(semanticHash, numericProfile, tickRate, abilityId.Value));
+                graph.GraphSources.Layout.Publisher.ComputeContentHash(graph.Chunks, semanticHash, numericProfile, tickRate, abilityId.Value));
             return new Float32GameplayAbilityExecutionData(manifest, binding, providerContract, graph);
         }
 

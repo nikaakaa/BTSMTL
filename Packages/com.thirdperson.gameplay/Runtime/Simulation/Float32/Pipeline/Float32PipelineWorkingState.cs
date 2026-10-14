@@ -47,7 +47,7 @@ namespace ThirdPersonSimulation
         SimulationWorldStateSet m_Previous;
         SimulationWorldStateSet m_Restored;
         readonly IReadOnlyList<SimulationActorBinding> m_Roster;
-        StableHash m_Identity;
+        SimulationRestoreDirective m_Directive;
         string m_IdentityText;
         bool m_Applied;
         bool m_Validated;
@@ -74,9 +74,9 @@ namespace ThirdPersonSimulation
             m_Completed = true;
         }
 
-        internal Float32CharacterRestoreTransaction Prepare(SimulationWorldStateSet restored, StableHash identity)
+        internal Float32CharacterRestoreTransaction Prepare(SimulationWorldStateSet restored, SimulationRestoreDirective directive)
         {
-            m_Identity = identity;
+            m_Directive = directive;
             m_IdentityText = null;
             BeginRestore(restored);
             return this;
@@ -93,7 +93,7 @@ namespace ThirdPersonSimulation
         }
 
         public SimulationSessionRestoreParticipantKind Kind => SimulationSessionRestoreParticipantKind.Character;
-        public string Identity => m_IdentityText ??= m_Identity.ToString();
+        public string Identity => m_IdentityText ?? m_Directive.SnapshotId;
 
         public void Apply()
         {
@@ -172,9 +172,7 @@ namespace ThirdPersonSimulation
         readonly ICharacterWorldSolver m_Solver;
         SimulationWorldStateSet m_Previous;
         SimulationWorldStateSet m_Restored;
-        StableHash m_RestoreHash;
-        readonly CanonicalWriter m_HashWriter;
-        StableHash m_Identity;
+        SimulationRestoreDirective m_Directive;
         string m_IdentityText;
         bool m_Applied;
         bool m_Validated;
@@ -185,7 +183,7 @@ namespace ThirdPersonSimulation
             ICharacterWorldSolver solver,
             SimulationWorldStateSet restored,
             string identity)
-            : this(working, solver, new CanonicalWriter())
+            : this(working, solver)
         {
             if (restored == null)
                 throw new ArgumentNullException(nameof(restored));
@@ -194,17 +192,16 @@ namespace ThirdPersonSimulation
         }
 
         internal Float32WorldRestoreTransaction(Float32PipelineWorkingState working,
-            ICharacterWorldSolver solver, CanonicalWriter hashWriter)
+            ICharacterWorldSolver solver)
         {
             m_Working = working;
             m_Solver = solver;
-            m_HashWriter = hashWriter;
             m_Completed = true;
         }
 
-        internal Float32WorldRestoreTransaction Prepare(SimulationWorldStateSet restored, StableHash identity)
+        internal Float32WorldRestoreTransaction Prepare(SimulationWorldStateSet restored, SimulationRestoreDirective directive)
         {
-            m_Identity = identity;
+            m_Directive = directive;
             m_IdentityText = null;
             BeginRestore(restored);
             return this;
@@ -214,14 +211,13 @@ namespace ThirdPersonSimulation
         {
             m_Previous = m_Working.Current;
             m_Restored = restored;
-            m_RestoreHash = WorldSimulationStateCodec.ComputeHash(restored.WorldState, m_HashWriter);
             m_Applied = false;
             m_Validated = false;
             m_Completed = false;
         }
 
         public SimulationSessionRestoreParticipantKind Kind => SimulationSessionRestoreParticipantKind.World;
-        public string Identity => m_IdentityText ??= m_Identity.ToString();
+        public string Identity => m_IdentityText ?? m_Directive.SnapshotId;
 
         public void Apply()
         {
@@ -239,9 +235,8 @@ namespace ThirdPersonSimulation
             if (!m_Applied || !ReferenceEquals(m_Working.Current, m_Restored))
                 throw new InvalidOperationException("World restore transaction is not fully applied.");
             WorldSimulationState captured = m_Solver.Capture(m_Restored.WorldState.WorldRevision);
-            StableHash capturedHash = WorldSimulationStateCodec.ComputeHash(captured, m_HashWriter);
-            if (!capturedHash.Equals(m_RestoreHash))
-                throw new InvalidOperationException("World Solver state does not match the restored canonical World state.");
+            if (!captured.Equals(m_Restored.WorldState))
+                throw new InvalidOperationException("World Solver state does not match the restored World state.");
             m_Validated = true;
         }
 

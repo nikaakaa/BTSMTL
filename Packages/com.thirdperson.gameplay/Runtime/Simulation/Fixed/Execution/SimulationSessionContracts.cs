@@ -1,14 +1,16 @@
+using ThirdPersonSimulation;
 using System;
 using System.Collections.Generic;
 
-namespace ThirdPersonSimulation
+namespace ThirdPersonSimulation.Fixed
 {
     public enum SimulationOutputDispositionKind : byte
     {
         Publish = 1,
         Replace = 2,
         Retire = 3,
-        Suppress = 4
+        Suppress = 4,
+        Defer = 5
     }
 
     public readonly struct SimulationOutputDisposition
@@ -40,9 +42,7 @@ namespace ThirdPersonSimulation
     {
         static readonly Comparison<SimulationActorTickResult> s_CompareActors = CompareActors;
         readonly SimulationActorTickResult[] m_Actors;
-        SimulationPipelineStateSnapshot m_PipelineProjection;
-        SimulationWorldStateStore.StatePage m_CandidateStorage;
-        SimulationWorldSnapshot m_WorldSnapshot;
+        SimulationWorldStateSet m_StateSet;
 
         internal SimulationTickResult(int actorCount)
         {
@@ -55,28 +55,23 @@ namespace ThirdPersonSimulation
             SimulationNumericProfile numericProfile,
             GameplayContentHash gameplayContentHash,
             SimulationTick tick,
-            SimulationWorldSnapshot candidateSnapshot)
+            SimulationWorldSnapshot candidateSnapshot,
+            SimulationWorldStateSet stateSet)
         {
+            stateSet.WorldState.RetainStateStorage();
+            stateSet.RetainActorStorage();
+            m_StateSet = stateSet;
             NumericProfile = numericProfile;
             GameplayContentHash = gameplayContentHash;
             Tick = tick;
             CandidateSnapshot = candidateSnapshot;
         }
 
-        internal void SetPipelineProjection(SimulationPipelineStateSnapshot projection) => m_PipelineProjection = projection;
-
-        internal void SetCandidateStorage(SimulationWorldStateStore.StatePage storage) => m_CandidateStorage = storage;
-
-        internal void SetWorldSnapshot(SimulationWorldSnapshot snapshot) => m_WorldSnapshot = snapshot;
-
         internal void ReleaseFrame()
         {
-            m_PipelineProjection?.ReleaseStepStorage();
-            m_PipelineProjection = null;
-            m_WorldSnapshot?.ReleaseStateStorage();
-            m_WorldSnapshot = null;
-            m_CandidateStorage?.Release();
-            m_CandidateStorage = null;
+            m_StateSet.WorldState.ReleaseStateStorage();
+            m_StateSet.ReleaseActorStorage();
+            m_StateSet = default;
             Array.Clear(m_Actors, 0, m_Actors.Length);
             CandidateSnapshot = null;
         }
@@ -220,7 +215,8 @@ namespace ThirdPersonSimulation
             string productInputs = "",
             string productOutputs = "",
             string snapshotParticipant = "",
-            StableHash snapshotHash = default)
+            StableHash snapshotHash = default
+            )
         {
             if (!session.IsValid || !pipeline.IsValid || CanonicalTextValue.IsNullOrEmpty(source.ClockId) || source.SourceTick == 0 ||
                 kind is not (SimulationPipelineTraceKind.OuterTickStarted or
@@ -247,7 +243,7 @@ namespace ThirdPersonSimulation
                     SimulationPipelinePhase.Egress) || !passId.IsValid || !passVersion.IsValid))
                 throw new ArgumentException("Pipeline Pass trace identity is incomplete.");
             bool snapshotTrace = kind == SimulationPipelineTraceKind.SnapshotCaptured || kind == SimulationPipelineTraceKind.SnapshotRestored;
-            if (snapshotTrace && (CanonicalTextValue.IsNullOrWhiteSpace(snapshotParticipant) || !snapshotHash.IsValid))
+            if (snapshotTrace && string.IsNullOrWhiteSpace(snapshotParticipant))
                 throw new ArgumentException("Pipeline snapshot trace identity is incomplete.");
             Session = session;
             Pipeline = pipeline;
@@ -312,8 +308,8 @@ namespace ThirdPersonSimulation
             ulong ackSequence = 0,
             int queueDepth = 0,
             int replayCount = 0,
-            float primaryValue = 0f,
-            float secondaryValue = 0f,
+            FixedScalar primaryValue = default,
+            FixedScalar secondaryValue = default,
             bool success = true,
             ulong snapshotSequence = 0)
         {
@@ -322,9 +318,8 @@ namespace ThirdPersonSimulation
                     SimulationModelTraceKind.Queue or
                     SimulationModelTraceKind.Correction or
                     SimulationModelTraceKind.OutputDisposition or
-                    SimulationModelTraceKind.Failure) || CanonicalTextValue.IsNullOrWhiteSpace(code) ||
-                queueDepth < 0 || replayCount < 0 || float.IsNaN(primaryValue) || float.IsInfinity(primaryValue) ||
-                float.IsNaN(secondaryValue) || float.IsInfinity(secondaryValue))
+                    SimulationModelTraceKind.Failure) || string.IsNullOrWhiteSpace(code) ||
+                queueDepth < 0 || replayCount < 0)
             {
                 throw new ArgumentException("Simulation model trace is invalid.");
             }
@@ -354,8 +349,8 @@ namespace ThirdPersonSimulation
         public ulong AckSequence { get; }
         public int QueueDepth { get; }
         public int ReplayCount { get; }
-        public float PrimaryValue { get; }
-        public float SecondaryValue { get; }
+        public FixedScalar PrimaryValue { get; }
+        public FixedScalar SecondaryValue { get; }
         public bool Success { get; }
         public ulong SnapshotSequence { get; }
     }
@@ -388,17 +383,17 @@ namespace ThirdPersonSimulation
             uint resolveStatus = 0,
             uint projectionStatus = 0,
             long elapsedStopwatchTicks = 0,
-            Float32Vector3 requestedDisplacement = default,
-            Float32Vector3 appliedDisplacement = default,
+            FixedVector3 requestedDisplacement = default,
+            FixedVector3 appliedDisplacement = default,
             string disposition = "",
             bool success = true)
         {
             if (kind is not (SimulationWorldTraceKind.Query or
                     SimulationWorldTraceKind.Projection or
                     SimulationWorldTraceKind.Collision or
-                    SimulationWorldTraceKind.Failure) || CanonicalTextValue.IsNullOrWhiteSpace(code) ||
-                !tick.IsValid || !actorId.IsValid || CanonicalTextValue.IsNullOrWhiteSpace(solverId.Value) ||
-                CanonicalTextValue.IsNullOrWhiteSpace(solverVersion) || traversalCount < 0 || elapsedStopwatchTicks < 0)
+                    SimulationWorldTraceKind.Failure) || string.IsNullOrWhiteSpace(code) ||
+                !tick.IsValid || !actorId.IsValid || string.IsNullOrWhiteSpace(solverId.Value) ||
+                string.IsNullOrWhiteSpace(solverVersion) || traversalCount < 0 || elapsedStopwatchTicks < 0)
             {
                 throw new ArgumentException("Simulation World trace is invalid.");
             }
@@ -442,16 +437,23 @@ namespace ThirdPersonSimulation
         public uint ResolveStatus { get; }
         public uint ProjectionStatus { get; }
         public long ElapsedStopwatchTicks { get; }
-        public Float32Vector3 RequestedDisplacement { get; }
-        public Float32Vector3 AppliedDisplacement { get; }
+        public FixedVector3 RequestedDisplacement { get; }
+        public FixedVector3 AppliedDisplacement { get; }
         public string Disposition { get; }
         public bool Success { get; }
+    }
+
+    public enum SimulationDiagnosticChannel : byte
+    {
+        Motion = 1,
+        World = 2
     }
 
     public interface ISimulationDiagnosticsSink
     {
         bool IsEnabled { get; }
         bool IsActorEnabled(ActorId actorId);
+        bool IsCaptureRequested(ActorId actorId, SimulationDiagnosticChannel channel);
         void PublishBoundary(SimulationBoundaryTraceRecord record);
         void PublishPipeline(SimulationPipelineTraceRecord record);
         void PublishOperation(SimulationTraceRecord record);
@@ -465,6 +467,7 @@ namespace ThirdPersonSimulation
         NullSimulationDiagnosticsSink() { }
         public bool IsEnabled => false;
         public bool IsActorEnabled(ActorId actorId) => false;
+        public bool IsCaptureRequested(ActorId actorId, SimulationDiagnosticChannel channel) => false;
         public void PublishBoundary(SimulationBoundaryTraceRecord record) { }
         public void PublishPipeline(SimulationPipelineTraceRecord record) { }
         public void PublishOperation(SimulationTraceRecord record) { }
@@ -473,3 +476,4 @@ namespace ThirdPersonSimulation
     }
 
 }
+

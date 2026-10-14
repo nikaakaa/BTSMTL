@@ -4,7 +4,6 @@ using ThirdPersonSimulation;
 
 namespace ThirdPersonSimulation.Fixed
 {
-    [CanonicalContract]
     public readonly partial struct CharacterBodySample
     {
         public CharacterBodySample(
@@ -37,7 +36,7 @@ namespace ThirdPersonSimulation.Fixed
         public FixedScalar WorldTimeScale { get; }
         public FixedScalar OwnerTimeScale { get; }
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireRecord()
         {
             if (!ActorId.IsValid || !Tick.IsValid || BeforeBody.ActorId != ActorId || FinalBody.ActorId != ActorId)

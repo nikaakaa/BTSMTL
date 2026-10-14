@@ -14,7 +14,7 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ThirdPerson.BepuQueries", "
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ThirdPerson.Shared.Contracts", "Projects\ThirdPerson.Shared.Contracts\ThirdPerson.Shared.Contracts.csproj", "{20647B55-D2DC-40BA-A0D3-7F12CCC20E97}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CanonicalSerialization.Generator", "Tools\CanonicalSerialization.Generator\CanonicalSerialization.Generator.csproj", "{EDCDF312-5B5C-4898-AF68-F1FE5C29650D}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ValueGeneration.Generator", "Tools\ValueGeneration.Generator\ValueGeneration.Generator.csproj", "{EDCDF312-5B5C-4898-AF68-F1FE5C29650D}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ThirdPersonSimulation.BlackboardConfiguration", "Projects\ThirdPersonSimulation.BlackboardConfiguration\ThirdPersonSimulation.BlackboardConfiguration.csproj", "{58C7F145-4B14-436E-8C0C-93345E852B43}"
 EndProject

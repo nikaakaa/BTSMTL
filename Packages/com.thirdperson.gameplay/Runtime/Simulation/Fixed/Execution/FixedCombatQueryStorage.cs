@@ -4,70 +4,67 @@ using ThirdPersonSimulation.Collision;
 
 namespace ThirdPersonSimulation.Fixed
 {
-    [CanonicalContract]
-    [CanonicalBorrowedObject(typeof(FixedCombatResultStorage))]
+    [ValueSnapshot(CopyMethod = nameof(CopyFrom), ClearMethod = nameof(ClearText))]
+    [ValueBorrowedObject(typeof(FixedCombatResultStorage))]
     public sealed partial class CombatHitResult
     {
-        public ulong ResultId { get; internal set; }
-        public ulong SourceTick { get; internal set; }
-        ActorId m_SourceActor;
+        [ValueSnapshot] public ulong ResultId { get; internal set; }
+        [ValueSnapshot] public ulong SourceTick { get; internal set; }
+        [ValueSnapshot] ActorId m_SourceActor;
         public ActorId SourceActor
         {
             get => m_SourceActor;
             internal set { value.Value.Retain(); m_SourceActor.Value.Release(); m_SourceActor = value; }
         }
-        SimulationActionTargetSnapshot m_SourceTargetSnapshot;
+        [ValueSnapshot] SimulationActionTargetSnapshot m_SourceTargetSnapshot;
         public SimulationActionTargetSnapshot SourceTargetSnapshot
         {
             get => m_SourceTargetSnapshot;
             internal set { value.Retain(); m_SourceTargetSnapshot.Release(); m_SourceTargetSnapshot = value; }
         }
-        ActorId m_TargetActor;
+        [ValueSnapshot] ActorId m_TargetActor;
         public ActorId TargetActor
         {
             get => m_TargetActor;
             internal set { value.Value.Retain(); m_TargetActor.Value.Release(); m_TargetActor = value; }
         }
-        public FixedVector3 TargetPosition { get; internal set; }
-        public FixedYaw TargetYaw { get; internal set; }
-        public FixedScalar ReceiverMinimumY { get; internal set; }
-        public FixedScalar ReceiverMaximumY { get; internal set; }
-        CombatAttackIdentity m_Attack;
+        [ValueSnapshot] public FixedVector3 TargetPosition { get; internal set; }
+        [ValueSnapshot] public FixedYaw TargetYaw { get; internal set; }
+        [ValueSnapshot] public FixedScalar ReceiverMinimumY { get; internal set; }
+        [ValueSnapshot] public FixedScalar ReceiverMaximumY { get; internal set; }
+        [ValueSnapshot] CombatAttackIdentity m_Attack;
         public CombatAttackIdentity Attack
         {
             get => m_Attack;
             internal set { value.Retain(); m_Attack.Release(); m_Attack = value; }
         }
-        [CanonicalDeclaredText]
-        public string ContentId { get; internal set; }
-        CanonicalTextValue m_AttackEventId;
+        [ValueSnapshot] public string ContentId { get; internal set; }
+        [ValueSnapshot] CanonicalTextValue m_AttackEventId;
         public CanonicalTextValue AttackEventId
         {
             get => m_AttackEventId;
             internal set { value.Retain(); m_AttackEventId.Release(); m_AttackEventId = value; }
         }
-        [CanonicalDeclaredText]
-        public string SourceFeedbackEvent { get; internal set; }
-        [CanonicalDeclaredText]
-        public string TargetFeedbackEvent { get; internal set; }
-        public ulong TargetActionInstanceId { get; internal set; }
-        public CombatHitDisposition Disposition { get; internal set; }
-        public bool Heavy { get; internal set; }
-        public int HitType { get; internal set; }
-        public int HitStrengthType { get; internal set; }
-        public int DamageBreakLevel { get; internal set; }
-        public int FrameHalt { get; internal set; }
-        public int AttackerFrameHalt { get; internal set; }
-        public uint HitEffectId { get; internal set; }
-        public SweepContactFields ContactFields { get; internal set; }
-        public FixedScalar ContactTime { get; internal set; }
-        public FixedVector3 Point { get; internal set; }
-        public FixedVector3 Normal { get; internal set; }
-        internal int DefinitionIndex { get; set; }
+        [ValueSnapshot] public string SourceFeedbackEvent { get; internal set; }
+        [ValueSnapshot] public string TargetFeedbackEvent { get; internal set; }
+        [ValueSnapshot] public ulong TargetActionInstanceId { get; internal set; }
+        [ValueSnapshot] public CombatHitDisposition Disposition { get; internal set; }
+        [ValueSnapshot] public bool Heavy { get; internal set; }
+        [ValueSnapshot] public int HitType { get; internal set; }
+        [ValueSnapshot] public int HitStrengthType { get; internal set; }
+        [ValueSnapshot] public int DamageBreakLevel { get; internal set; }
+        [ValueSnapshot] public int FrameHalt { get; internal set; }
+        [ValueSnapshot] public int AttackerFrameHalt { get; internal set; }
+        [ValueSnapshot] public uint HitEffectId { get; internal set; }
+        [ValueSnapshot] public SweepContactFields ContactFields { get; internal set; }
+        [ValueSnapshot] public FixedScalar ContactTime { get; internal set; }
+        [ValueSnapshot] public FixedVector3 Point { get; internal set; }
+        [ValueSnapshot] public FixedVector3 Normal { get; internal set; }
+        [ValueSnapshot] internal int DefinitionIndex { get; set; }
 
-        internal void ClearText() => CanonicalClear(this);
+        internal partial void ClearText();
 
-        public void CopyFrom(CombatHitResult value) => CanonicalCopyInto(value, this);
+        public partial void CopyFrom(CombatHitResult value);
     }
 
     internal sealed class FixedCombatQuery
@@ -151,17 +148,18 @@ namespace ThirdPersonSimulation.Fixed
         }
     }
 
-    [CanonicalBorrowedSequence(typeof(FixedCombatResultStorage), HoldStorage = false)]
-    public sealed class FixedCombatResultStorage : IReadOnlyList<CombatHitResult>
+    [ValueBorrowedSequence(typeof(FixedCombatResultStorage), HoldStorage = false)]
+    [ValueSnapshot(ClearMethod = nameof(Clear))]
+    public sealed partial class FixedCombatResultStorage : IReadOnlyList<CombatHitResult>
     {
-        readonly CombatHitResult[] m_Results;
+        [ValueSnapshot] readonly CombatHitResult[] m_Results;
         public FixedCombatResultStorage(int capacity)
         {
             m_Results = new CombatHitResult[capacity];
             for (int i = 0; i < capacity; i++)
                 m_Results[i] = new CombatHitResult();
         }
-        public int Count { get; private set; }
+        [ValueSnapshot] public int Count { get; private set; }
         public int Capacity => m_Results.Length;
         public ReadOnlySpan<CombatHitResult> Span => m_Results.AsSpan(0, Count);
         public CombatHitResult this[int index] => m_Results[index];

@@ -23,7 +23,7 @@ namespace ThirdPersonSimulation.Fixed
             SimulationWorldStateStore stateStore,
             ICharacterWorldSolver solver,
             IFixedSimulationRestoreSource restoreSource,
-            IFixedSimulationSessionSnapshotCodec snapshotCodec,
+            IFixedSimulationSessionSnapshotProvider snapshotProvider,
             IFixedSimulationCommitter committer,
             ISimulationDiagnosticsSink diagnostics,
             IReadOnlyList<IFixedCompiledPipelinePassRuntime> passes,
@@ -48,7 +48,7 @@ namespace ThirdPersonSimulation.Fixed
                 solver,
                 diagnostics,
                 restoreSource,
-                snapshotCodec,
+                snapshotProvider,
                 committer,
                 products,
                 workingStatePort,
@@ -69,8 +69,8 @@ namespace ThirdPersonSimulation.Fixed
             m_Coordinator.Execute(outer);
         }
 
-        public void RestoreRecordedControlInput(ArraySegment<byte> bytes) => m_Target.RestoreRecordedControlInput(bytes);
-        public void RestoreRecordedControlSources(ArraySegment<byte> bytes) => m_Target.RestoreRecordedControlSources(bytes);
+        public void RestoreRecordedControlInput(IValueResources bytes) => m_Target.RestoreRecordedControlInput(bytes);
+        public void RestoreRecordedControlSources(IValueResources bytes) => m_Target.RestoreRecordedControlSources(bytes);
 
         public void QueryAbilityAvailability(ActorId actorId, GameplayAbilityRulePhase phase,
             out GameplayAbilityAvailabilityResult result) => m_Target.QueryAbilityAvailability(actorId, phase, out result);
@@ -85,7 +85,7 @@ namespace ThirdPersonSimulation.Fixed
             m_Target.DisposeCheckpointStorage();
         }
         public void PrepareRecordedFrames(int capacity) => m_Target.PrepareRecordedFrames(capacity);
-        public ReadOnlyMemory<byte> RecordFrame(ulong presentationFrame) => m_Target.RecordFrame(presentationFrame);
+        public IValueResources RecordFrame(ulong presentationFrame) => m_Target.RecordFrame(presentationFrame);
         public SimulationSessionCheckpoint CaptureRecordedCheckpoint(ulong presentationFrame) =>
             m_Target.CaptureRecordedCheckpoint(presentationFrame);
     }
@@ -106,7 +106,7 @@ namespace ThirdPersonSimulation.Fixed
         readonly SimulationWorldStateStore m_StateStore;
         readonly ICharacterWorldSolver m_Solver;
         readonly ISimulationDiagnosticsSink m_Diagnostics;
-        readonly IFixedSimulationSessionSnapshotCodec m_SnapshotCodec;
+        readonly IFixedSimulationSessionSnapshotProvider m_SnapshotProvider;
         readonly IFixedSimulationCommitter m_Committer;
         readonly FixedPipelineProductStore m_Products;
         readonly IReadOnlySimulationPipelineProductPort<FixedCharacterEvaluationResultBatch> m_CharacterEvaluationResults;
@@ -136,7 +136,7 @@ namespace ThirdPersonSimulation.Fixed
             ICharacterWorldSolver solver,
             ISimulationDiagnosticsSink diagnostics,
             IFixedSimulationRestoreSource restoreSource,
-            IFixedSimulationSessionSnapshotCodec snapshotCodec,
+            IFixedSimulationSessionSnapshotProvider snapshotProvider,
             IFixedSimulationCommitter committer,
             FixedPipelineProductStore products,
             FixedWorkingStatePort workingStatePort,
@@ -153,7 +153,11 @@ namespace ThirdPersonSimulation.Fixed
             m_StepSnapshots = services.Descriptor.CapturesState
                 ? new FixedSimulationSessionSnapshot[maximumSteps]
                 : Array.Empty<FixedSimulationSessionSnapshot>();
-            int retainedCapacity = checked(maximumSteps + services.Descriptor.RecordedFrameCapacity);
+            GameplayEffectSessionCapacity sessionCapacity = m_Roster[0].SessionCapacity;
+            int retainedSnapshots = committer is ISimulationPipelineSnapshotRetentionCapacity retention
+                ? retention.MaximumRetainedStepSnapshots : 0;
+            int retainedCapacity = checked(maximumSteps + services.Descriptor.RecordedFrameCapacity + retainedSnapshots +
+                sessionCapacity.RetainedCheckpoints + sessionCapacity.CaptureStates + sessionCapacity.RestoreStates);
             m_StepResults = new List<SimulationTickResult>(maximumSteps);
             for (int step = 0; step < maximumSteps; step++)
                 m_StepResults.Add(new SimulationTickResult(m_Roster.Count));
@@ -163,37 +167,17 @@ namespace ThirdPersonSimulation.Fixed
             m_Solver.PrepareStepStorage(retainedCapacity);
             m_Diagnostics = diagnostics ?? throw new ArgumentNullException(nameof(diagnostics));
             m_RestoreSource = restoreSource;
-            m_SnapshotCodec = snapshotCodec;
+            m_SnapshotProvider = snapshotProvider;
             if (services.Descriptor.CapturesState)
             {
-                GameplayEffectSessionCapacity checkpointCapacity = m_Roster[0].SessionCapacity;
-                var snapshotOwner = committer as IFixedSimulationSnapshotRetentionOwner;
-                int stepSnapshotCapacity = snapshotOwner == null ? 0 :
-                    checked(snapshotOwner.MaximumRetainedStepSnapshots + checkpointCapacity.CandidateTicks);
-                m_SnapshotCodec.PrepareCheckpointStorage(services.Descriptor, m_CharacterRuntime, services.StateParticipants,
-                    in checkpointCapacity, m_StateStore.Current.WorldState, stepSnapshotCapacity);
-                using (SimulationCharacterStatePayloadStorage.Page initialEncoding = m_Roster[0].RuntimeStatePages.EncodingStorage?.Acquire())
-                {
-#if UNITY_EDITOR
-                    SimulationSnapshotCaptureProfile initialProfile = default;
-#endif
-                    if (initialEncoding != null)
-                        for (int actor = 0; actor < m_Roster.Count; actor++)
-                            FixedCharacterRuntimeStateCodec.Encode(m_StateStore.Current.Actors[actor].State, initialEncoding
-#if UNITY_EDITOR
-                                , ref initialProfile
-#endif
-                                );
-                }
-                if (snapshotOwner != null)
-                    snapshotOwner.PrepareSnapshotStorage(m_SnapshotCodec, in checkpointCapacity);
-                m_StateStore.PrepareRestoreStorage(checkpointCapacity.StatePageCount, solver.MaximumStatePayloadBytes);
-                int maximumWorldPayloadBytes = WorldSimulationStateCodec.MaximumEncodedBytes(m_StateStore.Current.WorldState, solver.MaximumStatePayloadBytes);
+                int stepSnapshotCapacity = checked(retainedSnapshots + sessionCapacity.CandidateTicks);
+                m_SnapshotProvider.PrepareCheckpointStorage(services.Descriptor, m_CharacterRuntime, services.StateParticipants,
+                    in sessionCapacity, stepSnapshotCapacity);
                 m_CheckpointWorking = new FixedPipelineWorkingState(m_StateStore.Current);
                 m_CheckpointCharacterRestore = new FixedCharacterRestoreTransaction(m_Roster);
                 m_SourceCharacterRestore = new FixedCharacterRestoreTransaction(m_Roster);
-                m_CheckpointWorldRestore = new FixedWorldRestoreTransaction(m_Solver, maximumWorldPayloadBytes);
-                m_SourceWorldRestore = new FixedWorldRestoreTransaction(m_Solver, maximumWorldPayloadBytes);
+                m_CheckpointWorldRestore = new FixedWorldRestoreTransaction(m_Solver);
+                m_SourceWorldRestore = new FixedWorldRestoreTransaction(m_Solver);
                 m_CheckpointPipelineRestore = new SimulationPipelineStateRestoreTransaction(services.Plan, services.StateParticipants);
                 m_SourcePipelineRestore = new SimulationPipelineStateRestoreTransaction(services.Plan, services.StateParticipants);
                 m_CheckpointRestore = new SimulationSessionRestoreTransaction();
@@ -211,8 +195,8 @@ namespace ThirdPersonSimulation.Fixed
 
         public string TransactionIdentityDomain => "fixed-pipeline-transaction/1";
         public bool DiagnosticsEnabled => m_Diagnostics.IsEnabled;
-        internal void RestoreRecordedControlInput(ArraySegment<byte> bytes) => m_AvailabilityInput.RestoreControlInput(bytes);
-        internal void RestoreRecordedControlSources(ArraySegment<byte> bytes) => m_AvailabilityInput.RestoreControlSources(bytes);
+        internal void RestoreRecordedControlInput(IValueResources bytes) => m_AvailabilityInput.RestoreControlInput(bytes);
+        internal void RestoreRecordedControlSources(IValueResources bytes) => m_AvailabilityInput.RestoreControlSources(bytes);
 
         internal void QueryAbilityAvailability(ActorId actorId, GameplayAbilityRulePhase phase,
             out GameplayAbilityAvailabilityResult result)
@@ -255,7 +239,7 @@ namespace ThirdPersonSimulation.Fixed
             m_StateStore.PrepareRecordedFrames(capacity, participantCount);
         }
 
-        public ReadOnlyMemory<byte> RecordFrame(ulong presentationFrame)
+        public IValueResources RecordFrame(ulong presentationFrame)
         {
             int captured = 0;
             try
@@ -263,7 +247,7 @@ namespace ThirdPersonSimulation.Fixed
                 for (; captured < m_RecordSources.Length; captured++)
                     m_RecordScratch[captured] = m_RecordSources[captured].CaptureStepState();
                 m_StateStore.RecordFrame(presentationFrame, m_RecordScratch);
-                ReadOnlyMemory<byte> inputState = m_RecordScratch[m_RecordedInputIndex].Payload;
+                IValueResources inputState = m_RecordScratch[m_RecordedInputIndex].State;
                 captured = 0;
                 return inputState;
             }
@@ -282,7 +266,7 @@ namespace ThirdPersonSimulation.Fixed
             SimulationWorldStateSet state = m_StateStore.Current;
             if (state.LastCompletedTick == 0)
                 throw new InvalidOperationException("Session checkpoint requires a completed Logic Tick.");
-            return m_SnapshotCodec.CaptureCheckpoint(in state);
+            return m_SnapshotProvider.CaptureCheckpoint(in state);
         }
 
         public SimulationSessionCheckpoint CaptureRecordedCheckpoint(ulong presentationFrame)
@@ -290,7 +274,7 @@ namespace ThirdPersonSimulation.Fixed
             if (!m_StateStore.TryGetRecordedFrame(presentationFrame, out SimulationWorldStateSet state,
                     out SimulationPipelinePassStateSnapshot[] participants))
                 throw new InvalidOperationException("The presentation frame has no retained execution state.");
-            return m_SnapshotCodec.CaptureCheckpoint(in state, participants);
+            return m_SnapshotProvider.CaptureCheckpoint(in state, participants);
         }
 
         public void RestoreCheckpoint(SimulationSessionCheckpoint checkpoint)
@@ -301,25 +285,23 @@ namespace ThirdPersonSimulation.Fixed
                 throw new ArgumentNullException(nameof(checkpoint));
             if (!checkpoint.SessionId.Equals(m_Services.Descriptor.SessionId))
                 throw new InvalidOperationException("Checkpoint belongs to another Simulation Session.");
-            FixedSimulationSessionSnapshot snapshot = m_SnapshotCodec.ReadCheckpoint(checkpoint);
+            FixedSimulationSessionSnapshot snapshot = m_SnapshotProvider.ReadCheckpoint(checkpoint);
             SimulationRestoreDirective directive = checkpoint.RestoreDirective;
-            m_SnapshotCodec.RequireRestore(
+            m_SnapshotProvider.RequireRestore(
                 m_Services.Descriptor,
-                m_CharacterRuntime,
-                m_Solver,
                 directive,
                 snapshot);
-            SimulationWorldStateSet restored = m_StateStore.PrepareRestore(snapshot.World);
+            SimulationWorldStateSet restored = m_SnapshotProvider.ReadWorldSnapshot(snapshot.World);
             m_CheckpointWorking.Replace(m_StateStore.Current);
             FixedPipelineWorkingState working = m_CheckpointWorking;
-            FixedCharacterRestoreTransaction character = m_CheckpointCharacterRestore.Prepare(working, restored, snapshot.World.WorldHash.Value);
+            FixedCharacterRestoreTransaction character = m_CheckpointCharacterRestore.Prepare(working, restored, directive);
             SimulationSessionRestoreTransaction restore;
             SimulationPipelineStateRestoreTransaction preparedPipeline = null;
             try
             {
                 SimulationPipelineStateRestoreTransaction pipeline = m_CheckpointPipelineRestore.Prepare(snapshot.Pipeline);
                 preparedPipeline = pipeline;
-                FixedWorldRestoreTransaction world = m_CheckpointWorldRestore.Prepare(working, restored, snapshot.World.WorldHash.Value);
+                FixedWorldRestoreTransaction world = m_CheckpointWorldRestore.Prepare(working, restored, directive);
                 restore = m_CheckpointRestore.Prepare(character, world, pipeline);
             }
             catch
@@ -339,10 +321,8 @@ namespace ThirdPersonSimulation.Fixed
 
         public void DisposeCheckpointStorage()
         {
-            if (m_Committer is IFixedSimulationSnapshotRetentionOwner snapshotOwner)
-                snapshotOwner.ClearSnapshotStorage();
             if (m_Services.Descriptor.CapturesState)
-                m_SnapshotCodec.DisposeCheckpointStorage();
+                m_SnapshotProvider.DisposeCheckpointStorage();
         }
 
         public FixedPipelineWorkingState CreateWorkingState()
@@ -412,9 +392,6 @@ namespace ThirdPersonSimulation.Fixed
             SimulationSessionLogicTickContext outer)
         {
             _ = outer;
-            if ((plan.Requirements & (SimulationSessionPlanRequirement.Snapshot | SimulationSessionPlanRequirement.StateHash)) != 0 &&
-                m_Services.Descriptor.MaximumSessionCheckpointPayloadBytes <= 0)
-                throw Failure("snapshot_payload_capacity_missing", "Snapshot and StateHash plans require MaximumSessionCheckpointPayloadBytes.");
             FixedCharacterRuntime characterRuntime = m_CharacterRuntime;
             IReadOnlyList<SimulationActorBinding> roster = m_Roster;
             for (int stepIndex = 0; stepIndex < plan.Steps.Count; stepIndex++)
@@ -446,22 +423,20 @@ namespace ThirdPersonSimulation.Fixed
                 throw Failure("restore_source_missing", "ExecutionPlan requested restore without a bound restore Source.");
             FixedSimulationSessionSnapshot snapshot = m_RestoreSource.GetRequiredSnapshot(directive) ??
                 throw Failure("restore_snapshot_missing", "Restore Source returned no Session snapshot.");
-            m_SnapshotCodec.RequireRestore(
+            m_SnapshotProvider.RequireRestore(
                 services.Descriptor,
-                m_CharacterRuntime,
-                m_Solver,
                 directive,
                 snapshot);
-            SimulationWorldStateSet restored = m_StateStore.PrepareRestore(snapshot.World);
+            SimulationWorldStateSet restored = m_SnapshotProvider.ReadWorldSnapshot(snapshot.World);
             FixedCharacterRestoreTransaction character = m_SourceCharacterRestore.Prepare(
-                workingState, restored, snapshot.World.WorldHash.Value, snapshot);
+                workingState, restored, directive, snapshot);
             SimulationSessionRestoreTransaction transaction;
             SimulationPipelineStateRestoreTransaction preparedPipeline = null;
             try
             {
                 SimulationPipelineStateRestoreTransaction pipeline = m_SourcePipelineRestore.Prepare(snapshot.Pipeline);
                 preparedPipeline = pipeline;
-                FixedWorldRestoreTransaction world = m_SourceWorldRestore.Prepare(workingState, restored, snapshot.World.WorldHash.Value);
+                FixedWorldRestoreTransaction world = m_SourceWorldRestore.Prepare(workingState, restored, directive);
                 transaction = m_SourceRestore.Prepare(character, world, pipeline);
             }
             catch
@@ -537,7 +512,7 @@ namespace ThirdPersonSimulation.Fixed
                 bool capture = (executionPlan.Requirements &
                     (SimulationSessionPlanRequirement.Snapshot | SimulationSessionPlanRequirement.StateHash)) != 0;
                 FixedSimulationSessionSnapshot snapshot = capture
-                    ? m_SnapshotCodec.CaptureStepSnapshot(in candidateState)
+                    ? m_SnapshotProvider.CaptureStepSnapshot(in candidateState)
                     : null;
                 if (capture) m_StepSnapshots[m_ActiveStepResultCount - 1] = snapshot;
                 SimulationWorldSnapshot worldSnapshot = snapshot?.World;
@@ -653,11 +628,6 @@ namespace ThirdPersonSimulation.Fixed
                 trace.ProductOutputs,
                 trace.SnapshotParticipant,
                 trace.SnapshotHash
-#if UNITY_EDITOR
-                , trace.Kind == PipelineTransactionTraceKind.StepCompleted && m_Services.Descriptor.CapturesState
-                    ? m_StepSnapshots[m_ActiveStepResultCount - 1]?.CaptureProfile ?? default
-                    : default
-#endif
                 ));
         }
 

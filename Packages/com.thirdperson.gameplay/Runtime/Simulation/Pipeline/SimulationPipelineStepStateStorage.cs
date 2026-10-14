@@ -4,7 +4,6 @@ namespace ThirdPersonSimulation
 {
     public interface ISimulationPipelineStepStateStorage
     {
-        int MaximumPayloadBytes { get; }
         void PrepareStepStorage(int snapshotCapacity);
         SimulationPipelinePassStateSnapshot CaptureStepState();
     }
@@ -52,17 +51,15 @@ namespace ThirdPersonSimulation
         readonly ISimulationPipelineStateParticipant[] m_Participants;
         readonly Page[] m_Pages;
         readonly int[] m_Free;
-        readonly CanonicalWriter m_HashWriter;
         int m_FreeCount;
 
         public SimulationPipelineStepSnapshotStorage(CompiledSimulationPipelinePlan plan,
             System.Collections.Generic.IReadOnlyList<ISimulationPipelineStateParticipant> participants,
-            int snapshotCapacity, int maximumPayloadBytes)
+            int snapshotCapacity)
         {
             m_Participants = SimulationPipelineStateSnapshotCoordinator.PrepareStepProjection(plan, participants);
             m_Pages = new Page[snapshotCapacity];
             m_Free = new int[snapshotCapacity];
-            m_HashWriter = new CanonicalWriter(new byte[maximumPayloadBytes]);
             for (int index = 0; index < m_Pages.Length; index++)
             {
                 m_Pages[index] = new Page(this, index, plan, m_Participants.Length);
@@ -90,7 +87,7 @@ namespace ThirdPersonSimulation
                     page.Participants[page.Count++] = snapshot;
                     SimulationPipelineStateSnapshotCoordinator.RequireSnapshotIdentity(participant.StateIdentity, snapshot);
                 }
-                page.Snapshot.SetPreparedTick(tick, m_HashWriter);
+                page.Snapshot.SetPreparedTick(tick);
                 return page.Snapshot;
             }
             catch
@@ -103,7 +100,7 @@ namespace ThirdPersonSimulation
 
     public sealed class SimulationPipelinePassStateStorage
     {
-        public sealed class Page : IDisposable
+        internal sealed class Page
         {
             internal readonly SimulationPipelinePassStateStorage Owner;
             internal readonly int Index;
@@ -111,66 +108,46 @@ namespace ThirdPersonSimulation
             readonly SimulationPipelinePassStateSnapshot m_Snapshot;
 
             internal Page(SimulationPipelinePassStateStorage owner, int index,
-                SimulationPipelineStateParticipantIdentity identity, int payloadCapacity, int maximumTextValues)
+                SimulationPipelineStateParticipantIdentity identity, IValueSnapshotSource source)
             {
                 Owner = owner;
                 Index = index;
-                var payload = new byte[payloadCapacity];
-                Writer = new CanonicalWriter(payload);
-                Text = new CanonicalTextReferences(maximumTextValues, owner.TextStorage);
-                Writer.SetTextCapture(Text);
-                m_Snapshot = SimulationPipelinePassStateSnapshot.FromStepStorage(identity, payload, this);
+                State = source.CreateValueSnapshot();
+                State.Release();
+                m_Snapshot = new SimulationPipelinePassStateSnapshot(identity, State, this);
             }
 
-            public CanonicalWriter Writer { get; }
-            public CanonicalTextReferences Text { get; }
-            public void Release() => Owner.Release(this);
-
-            public SimulationPipelinePassStateSnapshot Commit()
-            {
-                m_Snapshot.CommitStepPayload(checked((int)Writer.Length));
-                Owner.Retain(this);
-                return m_Snapshot;
-            }
-
-            public void Dispose() => Owner.Release(this);
+            internal IValueResources State { get; }
+            internal SimulationPipelinePassStateSnapshot Snapshot => m_Snapshot;
         }
 
+        readonly IValueSnapshotSource m_Source;
         readonly Page[] m_Pages;
-        public CanonicalTextStorage TextStorage { get; }
         readonly int[] m_Free;
         int m_FreeCount;
 
         public SimulationPipelinePassStateStorage(SimulationPipelineStateParticipantIdentity identity,
-            int snapshotCapacity, int payloadCapacity, int maximumTextValues)
-            : this(identity, snapshotCapacity, payloadCapacity, maximumTextValues,
-                new CanonicalTextStorage(checked(snapshotCapacity * maximumTextValues),
-                    checked(snapshotCapacity * (payloadCapacity / sizeof(char)))))
+            int snapshotCapacity, IValueSnapshotSource source)
         {
-        }
-
-        public SimulationPipelinePassStateStorage(SimulationPipelineStateParticipantIdentity identity,
-            int snapshotCapacity, int payloadCapacity, int maximumTextValues, CanonicalTextStorage textStorage)
-        {
-            TextStorage = textStorage;
+            m_Source = source;
             m_Pages = new Page[snapshotCapacity];
             m_Free = new int[snapshotCapacity];
             for (int i = 0; i < snapshotCapacity; i++)
             {
-                m_Pages[i] = new Page(this, i, identity, payloadCapacity, maximumTextValues);
+                m_Pages[i] = new Page(this, i, identity, source);
                 m_Free[i] = i;
             }
             m_FreeCount = snapshotCapacity;
         }
 
-        public Page BeginWrite()
+        public SimulationPipelinePassStateSnapshot Capture()
         {
             if (m_FreeCount == 0)
                 throw new InvalidOperationException("Pipeline Step snapshot storage exceeded its prepared retention capacity.");
             Page page = m_Pages[m_Free[--m_FreeCount]];
             page.References = 1;
-            page.Writer.Reset();
-            return page;
+            m_Source.CaptureValueSnapshot(page.State);
+            return page.Snapshot;
         }
 
         internal void Retain(Page page) => page.References++;
@@ -179,7 +156,7 @@ namespace ThirdPersonSimulation
         {
             if (--page.References == 0)
             {
-                page.Text.Reset();
+                page.State.Release();
                 m_Free[m_FreeCount++] = page.Index;
             }
         }

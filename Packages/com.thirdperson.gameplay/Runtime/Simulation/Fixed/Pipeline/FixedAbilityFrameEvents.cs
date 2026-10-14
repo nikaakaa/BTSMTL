@@ -1,14 +1,14 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 
 namespace ThirdPersonSimulation.Fixed
 {
-    public sealed class FixedAbilityFrameEvents : IFixedAbilityFrameEventCapturePort, IDisposable
+    [ValueSnapshot(CopyMethod = nameof(CopyFrom))]
+    public sealed partial class FixedAbilityFrameEvents : IFixedAbilityFrameEventCapturePort, IDisposable
     {
         readonly IReadOnlyList<ActorId> m_Actors;
-        readonly AbilityInputEvent[][] m_Events;
-        readonly int[] m_Counts;
+        [ValueSnapshot] readonly AbilityInputEvent[][] m_Events;
+        [ValueSnapshot] readonly int[] m_Counts;
         readonly int[] m_Capacities;
 
         public FixedAbilityFrameEvents(IReadOnlyList<ActorId> actors, IReadOnlyList<int> capacities)
@@ -21,8 +21,6 @@ namespace ThirdPersonSimulation.Fixed
             {
                 m_Capacities[actor] = capacities[actor];
                 m_Events[actor] = new AbilityInputEvent[capacities[actor]];
-                MaximumTextReferences = checked(MaximumTextReferences +
-                    capacities[actor] * AbilityInputEvent.CanonicalMaximumTextReferences);
             }
         }
 
@@ -30,8 +28,6 @@ namespace ThirdPersonSimulation.Fixed
         {
             CopyFrom(source);
         }
-
-        public int MaximumTextReferences { get; }
 
         int ActorIndex(ActorId actorId)
         {
@@ -47,7 +43,7 @@ namespace ThirdPersonSimulation.Fixed
             for (int index = 0; index < ingress.Length; index++)
                 if (FixedAbilityFrameEventSemantics.TryProject(actorId, in ingress[index], out AbilityInputEvent value))
                 {
-                    AbilityInputEvent.CanonicalRetain(in value);
+                    value.Retain();
                     m_Events[actor][m_Counts[actor]++] = value;
                 }
         }
@@ -67,52 +63,12 @@ namespace ThirdPersonSimulation.Fixed
                 new ReadOnlySpan<AbilityInputEvent>(m_Events[actor], 0, m_Counts[actor]), actorId, eventId);
         }
 
-        public void CopyFrom(FixedAbilityFrameEvents source)
-        {
-            for (int actor = 0; actor < m_Actors.Count; actor++)
-            {
-                Clear(actor);
-                for (int index = 0; index < source.m_Counts[actor]; index++)
-                {
-                    ref readonly AbilityInputEvent value = ref source.m_Events[actor][index];
-                    AbilityInputEvent.CanonicalRetain(in value);
-                    m_Events[actor][m_Counts[actor]++] = value;
-                }
-            }
-        }
-
-        public void Write(CanonicalWriter writer)
-        {
-            for (int actor = 0; actor < m_Actors.Count; actor++)
-            {
-                writer.WriteInt32(m_Counts[actor]);
-                for (int index = 0; index < m_Counts[actor]; index++)
-                    AbilityInputEvent.CanonicalWrite(writer, in m_Events[actor][index]);
-            }
-        }
-
-        public void Read(CanonicalReader reader)
-        {
-            for (int actor = 0; actor < m_Actors.Count; actor++)
-            {
-                int count = reader.ReadInt32();
-                if ((uint)count > m_Capacities[actor])
-                    throw new InvalidDataException("技能事件观察超过该帧的正式 Ingress 容量。");
-                Clear(actor);
-                for (int index = 0; index < count; index++)
-                {
-                    ref AbilityInputEvent value = ref m_Events[actor][m_Counts[actor]];
-                    AbilityInputEvent.CanonicalReadInto(reader, ref value);
-                    AbilityInputEvent.CanonicalRetain(in value);
-                    m_Counts[actor]++;
-                }
-            }
-        }
+        public partial void CopyFrom(FixedAbilityFrameEvents source);
 
         void Clear(int actor)
         {
             for (int index = 0; index < m_Counts[actor]; index++)
-                AbilityInputEvent.CanonicalRelease(in m_Events[actor][index]);
+                m_Events[actor][index].Release();
             Array.Clear(m_Events[actor], 0, m_Counts[actor]);
             m_Counts[actor] = 0;
         }

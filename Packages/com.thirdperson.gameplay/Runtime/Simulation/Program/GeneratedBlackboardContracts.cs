@@ -30,17 +30,13 @@ namespace ThirdPersonSimulation
         public ProgramBlackboardLifetime Lifetime { get; }
     }
 
-    public interface IGeneratedBlackboardValues<TValue> where TValue : struct
+    public interface IGeneratedBlackboardValues<TValue> : IValueResources where TValue : struct
     {
         int FieldCount { get; }
         TValue Read(int field);
         void Write(int field, TValue value);
         void CopyTo(IGeneratedBlackboardValues<TValue> destination);
         void Clear();
-        void WriteCanonical<TWriter>(TWriter writer) where TWriter : class, ICanonicalValueWriter;
-        void ReadCanonical(CanonicalReader reader);
-        void RetainValues();
-        void ReleaseValues();
     }
 
     public abstract class GeneratedBlackboardContract<TValue> where TValue : struct
@@ -57,7 +53,6 @@ namespace ThirdPersonSimulation
         public string OwnerId { get; }
         public string Identity { get; }
         public string DefaultsFile { get; }
-        public abstract StableHash CanonicalSchemaHash { get; }
         public IReadOnlyList<GeneratedBlackboardField> Fields { get; }
         public abstract IGeneratedBlackboardValues<TValue> Create();
         public abstract IGeneratedBlackboardValues<TValue> ReadDefaults(byte[] bytes);
@@ -81,13 +76,13 @@ namespace ThirdPersonSimulation
             DefaultFiles = defaults;
             var names = new List<string>(defaults.Keys);
             names.Sort(StringComparer.Ordinal);
-            var writer = new CanonicalWriter();
+            var content = new List<string>(names.Count * 2 + 1) { "generated-blackboard-defaults/2" };
             foreach (string name in names)
             {
-                writer.WriteText(name);
-                writer.WriteBytes(defaults[name]);
+                content.Add(name);
+                content.Add(SimulationCanonicalPayloadHash.Compute(defaults[name]).ToString());
             }
-            ContentHash = writer.ComputeHash();
+            ContentHash = StableHash.Compute(content.ToArray());
             for (int index = 0; index < module.Contracts.Count; index++)
             {
                 GeneratedBlackboardContract<TValue> contract = module.Contracts[index];
@@ -289,12 +284,11 @@ namespace ThirdPersonSimulation
                 SlotFields[slot.Slot] = slot.Field;
             }
             Blocks = blocks.ToArray();
-            var structure = new List<string> { "generated-blackboard-state/1" };
+            var structure = new List<string> { "generated-blackboard-state/2" };
             for (int index = 0; index < Blocks.Length; index++)
             {
                 structure.Add(Blocks[index].Instance);
                 structure.Add(Blocks[index].Contract.Identity);
-                structure.Add(Blocks[index].Contract.CanonicalSchemaHash.ToString());
             }
             StructureHash = StableHash.Compute(structure.ToArray());
         }

@@ -1,7 +1,7 @@
 using FixedCurveKey = ThirdPersonSimulation.GameplayAbilityCurveKey<ThirdPersonSimulation.Fixed.FixedScalar>;
-using FixedCurveData = ThirdPersonSimulation.GameplayAbilityCurve<ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedSimulationMath>;
+using FixedCurveData = ThirdPersonSimulation.GameplayAbilityCurve<ThirdPersonSimulation.Fixed.FixedScalar>;
 using Float32CurveKey = ThirdPersonSimulation.GameplayAbilityCurveKey<ThirdPersonSimulation.Float32Scalar>;
-using Float32CurveData = ThirdPersonSimulation.GameplayAbilityCurve<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32SimulationMath>;
+using Float32CurveData = ThirdPersonSimulation.GameplayAbilityCurve<ThirdPersonSimulation.Float32Scalar>;
 using System;
 using System.Collections.Generic;
 using ThirdPersonSimulation.Fixed;
@@ -73,7 +73,7 @@ namespace BTSMTL.Timeline.Runtime
                         time = FixedScalar.FromRaw(first.Raw + local);
                     }
                 }
-                return m_Curve.Evaluate(time, FixedScalar.Zero);
+                return m_Curve.Evaluate<FixedSimulationMath>(time, FixedScalar.Zero);
             }
         }
 
@@ -114,7 +114,7 @@ namespace BTSMTL.Timeline.Runtime
                         time = first + local;
                     }
                 }
-                return m_Curve.Evaluate(Float32Scalar.FromDouble(time), Float32Scalar.Zero).ToSingle();
+                return m_Curve.Evaluate<Float32SimulationMath>(Float32Scalar.FromDouble(time), Float32Scalar.Zero).ToSingle();
             }
         }
     }

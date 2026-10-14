@@ -9,7 +9,7 @@ namespace ThirdPersonSimulation
     [Serializable]
     public sealed class FixedInputTraceDocument
     {
-        public const string CurrentSchema = "character-fixed-input-trace/5";
+        public const string CurrentSchema = "character-fixed-input-trace/6";
 
         public string schema;
         public string trace_id;
@@ -29,16 +29,16 @@ namespace ThirdPersonSimulation
                 string.IsNullOrWhiteSpace(trace_id) || string.IsNullOrWhiteSpace(actor_id) ||
                 tick_rate <= 0 || first_tick == 0 || frame_count <= 0 ||
                 frames == null || frames.Length != frame_count)
-                throw new InvalidDataException("Canonical Fixed input trace document is incomplete.");
+                throw new InvalidDataException("Fixed input trace document is incomplete.");
             for (int i = 0; i < frames.Length; i++)
             {
                 FixedInputTraceFrameDocument frame = frames[i];
                 if (frame == null || frame.simulation_tick == 0 || frame.simulation_tick != first_tick + (ulong)i ||
                     string.IsNullOrWhiteSpace(frame.input_payload_base64))
-                    throw new InvalidDataException($"Canonical Fixed input trace frame {i} is incomplete.");
+                    throw new InvalidDataException($"Fixed input trace frame {i} is incomplete.");
             }
             if (!string.Equals(content_hash, ComputeContentHash(), StringComparison.Ordinal))
-                throw new InvalidDataException("Canonical Fixed input trace content hash is invalid.");
+                throw new InvalidDataException("Fixed input trace content hash is invalid.");
         }
 
         public string ComputeContentHash()

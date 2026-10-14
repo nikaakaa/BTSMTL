@@ -213,105 +213,44 @@ namespace ThirdPersonSimulation
         void Activate();
     }
 
-    public sealed class SimulationPipelinePassStateSnapshot
+    [ValueOperations(Resources = false, ExplicitEquality = true)]
+    public sealed partial class SimulationPipelinePassStateSnapshot : IEquatable<SimulationPipelinePassStateSnapshot>
     {
-        ReadOnlyMemory<byte> m_Payload;
-        int m_PayloadLength;
+        [ValueEqualityMember]
         readonly SimulationPipelineStateParticipantIdentity m_Identity;
         readonly SimulationPipelinePassStateStorage.Page m_StepStorage;
 
-        private SimulationPipelinePassStateSnapshot(
+        public SimulationPipelinePassStateSnapshot(
             SimulationPipelineStateParticipantIdentity identity,
-            StableHash stateHash,
-            byte[] ownedPayload,
-            SimulationPipelinePassStateStorage.Page stepStorage = null)
+            IValueResources state)
+            : this(identity, state, null)
+        {
+        }
+
+        internal SimulationPipelinePassStateSnapshot(
+            SimulationPipelineStateParticipantIdentity identity,
+            IValueResources state,
+            SimulationPipelinePassStateStorage.Page stepStorage)
         {
             m_Identity = identity;
-            StateHash = stateHash;
-            m_Payload = ownedPayload;
-            m_PayloadLength = ownedPayload.Length;
+            State = state;
             m_StepStorage = stepStorage;
-            TextResolver = stepStorage?.Text;
-            TextReferences = stepStorage?.Text;
-        }
-
-        internal static SimulationPipelinePassStateSnapshot FromStepStorage(
-            SimulationPipelineStateParticipantIdentity identity, byte[] payload,
-            SimulationPipelinePassStateStorage.Page page) =>
-            new SimulationPipelinePassStateSnapshot(identity,
-                SimulationCanonicalPayloadHash.Compute(ReadOnlySpan<byte>.Empty), payload, page);
-
-        internal static SimulationPipelinePassStateSnapshot FromPreparedIdentity(
-            SimulationPipelineStateParticipantIdentity identity) =>
-            new SimulationPipelinePassStateSnapshot(identity,
-                SimulationCanonicalPayloadHash.Compute(ReadOnlySpan<byte>.Empty), Array.Empty<byte>());
-
-        internal void SetPreparedPayload(ReadOnlyMemory<byte> payload, StableHash hash, ICanonicalTextResolver resolver)
-        {
-            m_Payload = payload;
-            m_PayloadLength = payload.Length;
-            StateHash = hash;
-            TextResolver = resolver;
-        }
-
-        public void SetPreparedTextResolver(ICanonicalTextResolver resolver) => TextResolver = resolver;
-
-        internal void ClearPreparedPayload()
-        {
-            m_Payload = ReadOnlyMemory<byte>.Empty;
-            m_PayloadLength = 0;
-            TextResolver = null;
-        }
-
-        internal void CommitStepPayload(int length)
-        {
-            m_PayloadLength = length;
-            StateHash = SimulationCanonicalPayloadHash.Compute(m_Payload.Span.Slice(0, length));
         }
 
         public void RetainStepStorage()
         {
             if (m_StepStorage != null)
                 m_StepStorage.Owner.Retain(m_StepStorage);
+            else
+                State.Retain();
         }
 
         public void ReleaseStepStorage()
         {
             if (m_StepStorage != null)
                 m_StepStorage.Owner.Release(m_StepStorage);
-        }
-
-        public static SimulationPipelinePassStateSnapshot FromOwnedPayload(
-            SimulationPipelinePassId passId,
-            SimulationPipelinePassImplementationVersion implementationVersion,
-            string stateOwner,
-            string stateSchemaId,
-            int stateSchemaVersion,
-            byte[] ownedPayload)
-        {
-            if (ownedPayload == null)
-                throw new ArgumentNullException(nameof(ownedPayload));
-            return new SimulationPipelinePassStateSnapshot(
-                new SimulationPipelineStateParticipantIdentity(passId, implementationVersion,
-                    stateOwner, stateSchemaId, stateSchemaVersion),
-                SimulationCanonicalPayloadHash.Compute(ownedPayload),
-                ownedPayload);
-        }
-
-        public static SimulationPipelinePassStateSnapshot FromWirePayload(
-            in SimulationPipelineStateParticipantIdentity identity,
-            StableHash expectedStateHash,
-            byte[] ownedPayload)
-        {
-            if (ownedPayload == null)
-                throw new ArgumentNullException(nameof(ownedPayload));
-            StableHash computed = SimulationCanonicalPayloadHash.Compute(ownedPayload);
-            if (!computed.Equals(expectedStateHash))
-                throw new ArgumentException("Pass state payload hash does not match its canonical bytes.", nameof(expectedStateHash));
-            return new SimulationPipelinePassStateSnapshot(
-                identity,
-                computed,
-                ownedPayload);
+            else
+                State.Release();
         }
 
         public SimulationPipelinePassId PassId => m_Identity.PassId;
@@ -320,11 +259,8 @@ namespace ThirdPersonSimulation
         public string StateSchemaId => m_Identity.StateSchemaId;
         public int StateSchemaVersion => m_Identity.StateSchemaVersion;
         public ref readonly SimulationPipelineStateParticipantIdentity Identity => ref m_Identity;
-        public StableHash StateHash { get; private set; }
-        public ReadOnlyMemory<byte> Payload => m_Payload.Slice(0, m_PayloadLength);
-        public ICanonicalTextResolver TextResolver { get; private set; }
-        public CanonicalTextReferences TextReferences { get; private set; }
-        public byte[] CopyPayload() => Payload.ToArray();
+        [ValueEqualityMember]
+        public IValueResources State { get; }
     }
 
     public readonly struct SimulationPipelineReconstructionContext

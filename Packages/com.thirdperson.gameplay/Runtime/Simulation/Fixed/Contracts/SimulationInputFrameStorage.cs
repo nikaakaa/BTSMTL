@@ -39,8 +39,6 @@ namespace ThirdPersonSimulation.Fixed
         internal IReadOnlyList<SimulationInputValue> Values => m_Values;
         internal IReadOnlyList<SimulationInputRequest> Requests => m_Requests;
         internal SimulationInputValues CanonicalValues => m_Data;
-        public int MaximumTextReferences => checked(SimulationInputHeader.CanonicalMaximumTextReferences +
-            SimulationInputValues.CanonicalMeasureTextCapacity(m_Data));
 
         SimulationInput Finish(SimulationNumericProfile profile,
             SimulationTickSourceIdentity source, CanonicalTextValue sourceIdentity, ulong sequence)
@@ -51,13 +49,17 @@ namespace ThirdPersonSimulation.Fixed
         SimulationInput Finish(SimulationNumericProfile profile, in SimulationInputHeader header)
         {
             NumericProfile = profile;
-            SimulationInputHeader.CanonicalRetain(in header);
+            header.Retain();
             Header = header;
             return new SimulationInput(this, m_Generation);
         }
 
-        internal SimulationInput CompleteRead(in SimulationInputHeader header) =>
-            Finish(FixedSimulationNumericProfile.Value, in header);
+        public SimulationInput CompleteRead(SimulationNumericProfile numericProfile,
+            SimulationTickSourceIdentity tickSource, CanonicalTextValue inputSourceIdentity, ulong sequence)
+        {
+            m_Data.RequireOrder();
+            return Finish(numericProfile, tickSource, inputSourceIdentity, sequence);
+        }
 
         internal SimulationInputFrameStorage(in SimulationInputHeader header, SimulationInputValues data)
         {
@@ -69,9 +71,9 @@ namespace ThirdPersonSimulation.Fixed
 
         public void Begin()
         {
-            SimulationInputHeader.CanonicalRelease(Header);
+            Header.Release();
             Header = default;
-            SimulationInputValues.CanonicalClear(m_Data);
+            m_Data.Clear();
             m_Generation++;
         }
 
@@ -84,7 +86,7 @@ namespace ThirdPersonSimulation.Fixed
         public void AddRequest(SimulationInputRequest request)
         {
             m_Requests.Add(request);
-            SimulationInputRequest.CanonicalRetain(in request);
+            request.Retain();
         }
 
         public SimulationInput Complete(SimulationNumericProfile profile,
@@ -114,10 +116,10 @@ namespace ThirdPersonSimulation.Fixed
 
         SimulationInput Capture(SimulationInput input, in SimulationInputHeader header)
         {
-            SimulationInputHeader.CanonicalRelease(Header);
+            Header.Release();
             Header = default;
             m_Generation++;
-            SimulationInputValues.CanonicalCopyInto(input.CanonicalValues, m_Data);
+            m_Data.CopyFrom(input.CanonicalValues);
             return Finish(input.NumericProfile, in header);
         }
 

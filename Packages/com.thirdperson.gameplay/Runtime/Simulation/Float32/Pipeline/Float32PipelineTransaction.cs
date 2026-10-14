@@ -21,7 +21,7 @@ namespace ThirdPersonSimulation
             SimulationWorldStateStore stateStore,
             ICharacterWorldSolver solver,
             IFloat32SimulationRestoreSource restoreSource,
-            IFloat32SimulationSessionSnapshotCodec snapshotCodec,
+            IFloat32SimulationSessionSnapshotProvider snapshotProvider,
             IFloat32SimulationCommitter committer,
             ISimulationDiagnosticsSink diagnostics,
             IReadOnlyList<IFloat32CompiledPipelinePassRuntime> passes,
@@ -48,7 +48,7 @@ namespace ThirdPersonSimulation
                 solver,
                 diagnostics,
                 restoreSource,
-                snapshotCodec,
+                snapshotProvider,
                 committer,
                 products,
                 workingStatePort,
@@ -73,7 +73,7 @@ namespace ThirdPersonSimulation
 
         internal void PrepareInputRecording(ActorId actorId) => m_Target.PrepareInputRecording(actorId);
 
-        public void RestoreRecordedControlInput(ArraySegment<byte> bytes) => m_Target.RestoreRecordedControlInput(bytes);
+        public void RestoreRecordedControlInput(IValueResources bytes) => m_Target.RestoreRecordedControlInput(bytes);
 
         public void QueryAbilityAvailability(ActorId actorId, GameplayAbilityRulePhase phase,
             out GameplayAbilityAvailabilityResult result) => m_Target.QueryAbilityAvailability(actorId, phase, out result);
@@ -104,7 +104,7 @@ namespace ThirdPersonSimulation
         readonly SimulationWorldStateStore m_StateStore;
         readonly ICharacterWorldSolver m_Solver;
         readonly ISimulationDiagnosticsSink m_Diagnostics;
-        readonly IFloat32SimulationSessionSnapshotCodec m_SnapshotCodec;
+        readonly IFloat32SimulationSessionSnapshotProvider m_SnapshotProvider;
         SimulationPipelineStepSnapshotStorage m_StepProjections;
         readonly IFloat32SimulationCommitter m_Committer;
         readonly Float32PipelineProductStore m_Products;
@@ -131,7 +131,7 @@ namespace ThirdPersonSimulation
             ICharacterWorldSolver solver,
             ISimulationDiagnosticsSink diagnostics,
             IFloat32SimulationRestoreSource restoreSource,
-            IFloat32SimulationSessionSnapshotCodec snapshotCodec,
+            IFloat32SimulationSessionSnapshotProvider snapshotProvider,
             IFloat32SimulationCommitter committer,
             Float32PipelineProductStore products,
             Float32WorkingStatePort workingStatePort,
@@ -156,10 +156,14 @@ namespace ThirdPersonSimulation
                 m_StepResults.Add(new SimulationTickResult(m_Roster.Count));
             m_StateStore = stateStore ?? throw new ArgumentNullException(nameof(stateStore));
             m_Solver = solver ?? throw new ArgumentNullException(nameof(solver));
-            m_Solver.PrepareStepStorage(checked(maximumSteps + services.Descriptor.RecordedFrameCapacity));
+            GameplayEffectSessionCapacity sessionCapacity = m_Roster[0].SessionCapacity;
+            int retainedSnapshots = committer is ISimulationPipelineSnapshotRetentionCapacity retention
+                ? retention.MaximumRetainedStepSnapshots : 0;
+            m_Solver.PrepareStepStorage(checked(maximumSteps + services.Descriptor.RecordedFrameCapacity + retainedSnapshots +
+                sessionCapacity.RetainedCheckpoints + sessionCapacity.CaptureStates + sessionCapacity.RestoreStates));
             m_Diagnostics = diagnostics ?? throw new ArgumentNullException(nameof(diagnostics));
             m_RestoreSource = restoreSource;
-            m_SnapshotCodec = snapshotCodec;
+            m_SnapshotProvider = snapshotProvider;
             m_StepProjections = stepProjections;
             m_Committer = committer ?? throw new ArgumentNullException(nameof(committer));
             m_Products = products ?? throw new ArgumentNullException(nameof(products));
@@ -168,32 +172,20 @@ namespace ThirdPersonSimulation
             m_WorkingStatePort = workingStatePort ?? throw new ArgumentNullException(nameof(workingStatePort));
             m_CompletedStepPort = completedStepPort ?? throw new ArgumentNullException(nameof(completedStepPort));
             for (int actor = 0; actor < m_Roster.Count; actor++)
-                m_Roster[actor].PrepareExecutionTextBudget(services.Descriptor.MaximumSessionCheckpointPayloadBytes);
-            GameplayEffectSessionCapacity sessionCapacity = m_Roster[0].SessionCapacity;
+                m_Roster[actor].PrepareExecutionTextBudget();
             m_StateStore.PrepareStateStorage(sessionCapacity.StatePageCount);
             m_WorkingStateShell = new Float32PipelineWorkingState(m_StateStore.Current);
             if (services.Descriptor.CapturesState)
             {
-                m_SnapshotCodec.PrepareCheckpointStorage(services.Descriptor, characterRuntime,
-                    services.StateParticipants, in sessionCapacity, m_StateStore.Current.WorldState, snapshotCapacity);
-                using (SimulationCharacterStatePayloadStorage.Page initialEncoding = m_Roster[0].RuntimeStatePages.EncodingStorage?.Acquire())
-                {
-                    if (initialEncoding != null)
-                        for (int actor = 0; actor < m_Roster.Count; actor++)
-                            Float32CharacterRuntimeStateCodec.Encode(m_StateStore.Current.Actors[actor].State, initialEncoding);
-                }
-                m_StateStore.PrepareRestoreStorage(solver.MaximumStatePayloadBytes);
-                int maximumWorldPayloadBytes = WorldSimulationStateCodec.MaximumEncodedBytes(m_StateStore.Current.WorldState,
-                    solver.MaximumStatePayloadBytes);
+                m_SnapshotProvider.PrepareCheckpointStorage(services.Descriptor, characterRuntime,
+                    services.StateParticipants, in sessionCapacity, snapshotCapacity);
                 m_CheckpointWorkingState = new Float32PipelineWorkingState(m_StateStore.Current);
                 m_CheckpointCharacterRestore = new Float32CharacterRestoreTransaction(m_CheckpointWorkingState, m_Roster);
-                m_CheckpointWorldRestore = new Float32WorldRestoreTransaction(m_CheckpointWorkingState, m_Solver,
-                    new CanonicalWriter(new byte[maximumWorldPayloadBytes]));
+                m_CheckpointWorldRestore = new Float32WorldRestoreTransaction(m_CheckpointWorkingState, m_Solver);
                 m_CheckpointPipelineRestore = new SimulationPipelineStateRestoreTransaction(services.Plan, services.StateParticipants);
                 m_CheckpointRestore = new SimulationSessionRestoreTransaction();
                 m_SourceCharacterRestore = new Float32CharacterRestoreTransaction(m_WorkingStateShell, m_Roster);
-                m_SourceWorldRestore = new Float32WorldRestoreTransaction(m_WorkingStateShell, m_Solver,
-                    new CanonicalWriter(new byte[maximumWorldPayloadBytes]));
+                m_SourceWorldRestore = new Float32WorldRestoreTransaction(m_WorkingStateShell, m_Solver);
                 m_SourcePipelineRestore = new SimulationPipelineStateRestoreTransaction(services.Plan, services.StateParticipants);
                 m_SourceRestore = new SimulationSessionRestoreTransaction();
             }
@@ -201,7 +193,7 @@ namespace ThirdPersonSimulation
 
         public string TransactionIdentityDomain => "float32-pipeline-transaction/1";
         public bool DiagnosticsEnabled => m_Diagnostics.IsEnabled;
-        internal void RestoreRecordedControlInput(ArraySegment<byte> bytes) => m_AvailabilityInput.RestoreControlInput(bytes);
+        internal void RestoreRecordedControlInput(IValueResources bytes) => m_AvailabilityInput.RestoreControlInput(bytes);
         internal void PrepareInputRecording(ActorId actorId)
         {
             if (m_AvailabilityInput == null) throw new NotSupportedException("This Session does not publish a Local input recording owner.");
@@ -233,7 +225,7 @@ namespace ThirdPersonSimulation
             SimulationWorldStateSet state = m_StateStore.Current;
             if (state.LastCompletedTick == 0)
                 throw new InvalidOperationException("Session checkpoint requires a completed Logic Tick.");
-            return m_SnapshotCodec.CaptureCheckpoint(in state);
+            return m_SnapshotProvider.CaptureCheckpoint(in state);
         }
 
         public void RestoreCheckpoint(SimulationSessionCheckpoint checkpoint)
@@ -244,23 +236,21 @@ namespace ThirdPersonSimulation
                 throw new ArgumentNullException(nameof(checkpoint));
             if (!checkpoint.SessionId.Equals(m_Services.Descriptor.SessionId))
                 throw new InvalidOperationException("Checkpoint belongs to another Simulation Session.");
-            Float32SimulationSessionSnapshot snapshot = m_SnapshotCodec.ReadCheckpoint(checkpoint);
-            m_SnapshotCodec.RequireRestore(
+            Float32SimulationSessionSnapshot snapshot = m_SnapshotProvider.ReadCheckpoint(checkpoint);
+            m_SnapshotProvider.RequireRestore(
                 m_Services.Descriptor,
-                m_CharacterRuntime,
-                m_Solver,
                 checkpoint.RestoreDirective,
                 snapshot);
-            SimulationWorldStateSet restored = m_StateStore.PrepareRestore(snapshot.World);
+            SimulationWorldStateSet restored = m_SnapshotProvider.ReadWorldSnapshot(snapshot.World);
             m_CheckpointWorkingState.Replace(m_StateStore.Current);
-            Float32CharacterRestoreTransaction character = m_CheckpointCharacterRestore.Prepare(restored, snapshot.World.WorldHash.Value);
+            Float32CharacterRestoreTransaction character = m_CheckpointCharacterRestore.Prepare(restored, checkpoint.RestoreDirective);
             SimulationSessionRestoreTransaction restore;
             SimulationPipelineStateRestoreTransaction pipeline = null;
             try
             {
                 pipeline = m_CheckpointPipelineRestore.Prepare(snapshot.Pipeline);
                 restore = m_CheckpointRestore.Prepare(character,
-                    m_CheckpointWorldRestore.Prepare(restored, snapshot.World.WorldHash.Value), pipeline);
+                    m_CheckpointWorldRestore.Prepare(restored, checkpoint.RestoreDirective), pipeline);
             }
             catch
             {
@@ -332,9 +322,6 @@ namespace ThirdPersonSimulation
             SimulationSessionLogicTickContext outer)
         {
             _ = outer;
-            if ((plan.Requirements & (SimulationSessionPlanRequirement.Snapshot | SimulationSessionPlanRequirement.StateHash)) != 0 &&
-                m_Services.Descriptor.MaximumSessionCheckpointPayloadBytes <= 0)
-                throw Failure("snapshot_payload_capacity_missing", "Snapshot and StateHash plans require MaximumSessionCheckpointPayloadBytes.");
             Float32CharacterRuntime characterRuntime = m_CharacterRuntime;
             IReadOnlyList<SimulationActorBinding> roster = m_Roster;
             for (int stepIndex = 0; stepIndex < plan.Steps.Count; stepIndex++)
@@ -366,21 +353,19 @@ namespace ThirdPersonSimulation
                 throw Failure("restore_source_missing", "ExecutionPlan requested restore without a bound restore Source.");
             Float32SimulationSessionSnapshot snapshot = m_RestoreSource.GetRequiredSnapshot(directive) ??
                 throw Failure("restore_snapshot_missing", "Restore Source returned no Session snapshot.");
-            m_SnapshotCodec.RequireRestore(
+            m_SnapshotProvider.RequireRestore(
                 services.Descriptor,
-                m_CharacterRuntime,
-                m_Solver,
                 directive,
                 snapshot);
-            SimulationWorldStateSet restored = m_StateStore.PrepareRestore(snapshot.World);
-            Float32CharacterRestoreTransaction character = m_SourceCharacterRestore.Prepare(restored, snapshot.World.WorldHash.Value);
+            SimulationWorldStateSet restored = m_SnapshotProvider.ReadWorldSnapshot(snapshot.World);
+            Float32CharacterRestoreTransaction character = m_SourceCharacterRestore.Prepare(restored, directive);
             SimulationSessionRestoreTransaction transaction;
             SimulationPipelineStateRestoreTransaction pipeline = null;
             try
             {
                 pipeline = m_SourcePipelineRestore.Prepare(snapshot.Pipeline);
                 transaction = m_SourceRestore.Prepare(character,
-                    m_SourceWorldRestore.Prepare(restored, snapshot.World.WorldHash.Value), pipeline);
+                    m_SourceWorldRestore.Prepare(restored, directive), pipeline);
             }
             catch
             {
@@ -395,7 +380,7 @@ namespace ThirdPersonSimulation
         {
             ClearTransientState();
             if (m_Services.Descriptor.CapturesState)
-                m_SnapshotCodec.DisposeCheckpointStorage();
+                m_SnapshotProvider.DisposeCheckpointStorage();
             m_StepProjections = null;
         }
 
@@ -470,7 +455,7 @@ namespace ThirdPersonSimulation
                 : null;
             tickResult.SetPipelineProjection(pipelineSnapshot);
             SimulationWorldSnapshot worldSnapshot = capture
-                ? m_SnapshotCodec.CaptureStepWorldSnapshot(in candidateState)
+                ? m_SnapshotProvider.CaptureStepWorldSnapshot(in candidateState)
                 : null;
             tickResult.SetWorldSnapshot(worldSnapshot);
             Float32SimulationStepSnapshot stepSnapshot = capture

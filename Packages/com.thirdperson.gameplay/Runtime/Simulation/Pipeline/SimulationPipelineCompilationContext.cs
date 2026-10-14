@@ -27,7 +27,7 @@ namespace ThirdPersonSimulation
             WorldCapability solverCapabilities,
             SimulationPipelineExecutionSupport solverExecutionSupport,
             bool solverDeterministic,
-            SimulationComponentIdentity snapshotCodec,
+            SimulationComponentIdentity snapshotProvider,
             SimulationPipelineExecutionSupport snapshotExecutionSupport,
             bool snapshotDeterministic,
             SimulationPipelineExecutionSupport requiredExecutionSupport,
@@ -37,8 +37,8 @@ namespace ThirdPersonSimulation
             RequireRole(backend, SimulationComponentRole.ExecutionBackend, nameof(backend));
             RequireRole(sessionSource, SimulationComponentRole.SessionSource, nameof(sessionSource));
             RequireRole(worldSolver, SimulationComponentRole.WorldSolver, nameof(worldSolver));
-            if (snapshotCodec.IsValid)
-                RequireRole(snapshotCodec, SimulationComponentRole.SnapshotCodec, nameof(snapshotCodec));
+            if (snapshotProvider.IsValid)
+                RequireRole(snapshotProvider, SimulationComponentRole.SnapshotProvider, nameof(snapshotProvider));
             if ((requiredExecutionSupport & SimulationPipelineExecutionSupport.Forward) == 0)
             {
                 throw new ArgumentException("Pipeline compilation Target requirements are incomplete.");
@@ -58,7 +58,7 @@ namespace ThirdPersonSimulation
             SolverCapabilities = solverCapabilities;
             SolverExecutionSupport = solverExecutionSupport;
             SolverDeterministic = solverDeterministic;
-            SnapshotCodec = snapshotCodec;
+            SnapshotProvider = snapshotProvider;
             SnapshotExecutionSupport = snapshotExecutionSupport;
             SnapshotDeterministic = snapshotDeterministic;
             RequiredExecutionSupport = requiredExecutionSupport;
@@ -83,7 +83,7 @@ namespace ThirdPersonSimulation
         public WorldCapability SolverCapabilities { get; }
         public SimulationPipelineExecutionSupport SolverExecutionSupport { get; }
         public bool SolverDeterministic { get; }
-        public SimulationComponentIdentity SnapshotCodec { get; }
+        public SimulationComponentIdentity SnapshotProvider { get; }
         public SimulationPipelineExecutionSupport SnapshotExecutionSupport { get; }
         public bool SnapshotDeterministic { get; }
         public SimulationPipelineExecutionSupport RequiredExecutionSupport { get; }

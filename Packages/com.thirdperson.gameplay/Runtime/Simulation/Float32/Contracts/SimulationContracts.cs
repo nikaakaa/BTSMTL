@@ -4,16 +4,15 @@ using System.IO;
 
 namespace ThirdPersonSimulation
 {
-    [CanonicalContract]
     [ValueUnion(typeof(ProgramInputValue<Float32Scalar, Float32Vector2, Float32Vector3, Float32Yaw, SimulationActionTargetSnapshot>))]
     public readonly partial struct SimulationInputValue
     {
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireIdentity() => SimulationIdentity.Require(InputId, nameof(InputId));
     }
 
-    [CanonicalContract]
+    [ValueOperations]
     public readonly partial struct SimulationInputRequest
     {
         public SimulationInputRequest(CanonicalTextValue requestId, ulong sequence, ulong sourceTick, ulong expireSimulationTick, int priority)
@@ -32,7 +31,7 @@ namespace ThirdPersonSimulation
         public ulong ExpireSimulationTick { get; }
         public int Priority { get; }
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireValid()
         {
             SimulationIdentity.Require(RequestId, nameof(RequestId));
@@ -95,14 +94,14 @@ namespace ThirdPersonSimulation
         public IReadOnlyList<SimulationInputRequest> Requests => m_Storage.Requests;
         public void RetainText()
         {
-            SimulationInputHeader.CanonicalRetain(Header);
-            SimulationInputValues.CanonicalRetain(CanonicalValues);
+            Header.Retain();
+            CanonicalValues.Retain();
         }
 
         public void ReleaseText()
         {
-            SimulationInputValues.CanonicalRelease(CanonicalValues);
-            SimulationInputHeader.CanonicalRelease(Header);
+            CanonicalValues.Release();
+            Header.Release();
         }
         static SimulationInputValue[] SortValues(IEnumerable<SimulationInputValue> values)
         {
@@ -242,8 +241,8 @@ namespace ThirdPersonSimulation
         Abort = 7
     }
 
-    [CanonicalContract]
-    public readonly partial struct SimulationActionTargetSnapshot : IEquatable<SimulationActionTargetSnapshot>
+    [ValueOperations]
+    public readonly partial struct SimulationActionTargetSnapshot : IEquatable<SimulationActionTargetSnapshot>, IValueResources
     {
         public SimulationActionTargetSnapshot(CanonicalTextValue targetId, Float32Vector3 position, Float32Yaw yaw)
         {
@@ -256,42 +255,11 @@ namespace ThirdPersonSimulation
         public Float32Vector3 Position { get; }
         public Float32Yaw Yaw { get; }
         public bool HasTarget => !CanonicalTextValue.IsNullOrEmpty(TargetId);
-        public void Retain() => CanonicalRetain(in this);
-        public void Release() => CanonicalRelease(in this);
         public bool Equals(SimulationActionTargetSnapshot other) =>
             CanonicalTextValue.Equals(TargetId, other.TargetId, StringComparison.Ordinal) &&
             Position.Equals(other.Position) &&
             Yaw.Equals(other.Yaw);
         public static SimulationActionTargetSnapshot None => new SimulationActionTargetSnapshot(string.Empty, Float32Vector3.Zero, Float32Yaw.Zero);
-    }
-
-    public static class SimulationActionTargetSnapshotCodec
-    {
-        const uint Magic = 0x504E5354;
-        const int Version = 2;
-
-        public static byte[] Write(SimulationActionTargetSnapshot value)
-        {
-            using var writer = new CanonicalWriter();
-            writer.WriteUInt32(Magic);
-            writer.WriteInt32(Version);
-            writer.WriteText(value.TargetId);
-            writer.WriteVector3(value.Position);
-            writer.WriteYaw(value.Yaw);
-            return writer.ToArray();
-        }
-
-        public static SimulationActionTargetSnapshot Read(byte[] bytes)
-        {
-            if (bytes == null || bytes.Length == 0)
-                return SimulationActionTargetSnapshot.None;
-            var reader = new CanonicalReader(bytes);
-            if (reader.ReadUInt32() != Magic || reader.ReadInt32() != Version)
-                throw new InvalidDataException("Action target snapshot header is invalid.");
-            var value = new SimulationActionTargetSnapshot(CanonicalTextEncoding.DecodeString(reader.ReadTextSegment()), reader.ReadVector3(), reader.ReadYaw());
-            reader.RequireComplete();
-            return value;
-        }
     }
 
     public readonly struct SimulationActionLifecycleIngress
@@ -429,7 +397,7 @@ namespace ThirdPersonSimulation
         public SimulationAttributeValueIngress AttributeValue { get; }
     }
 
-    [CanonicalContract]
+    [ValueOperations]
     public readonly partial struct SimulationEventHeader
     {
         public SimulationEventHeader(
@@ -453,21 +421,18 @@ namespace ThirdPersonSimulation
             RequireRecord();
         }
 
-        [CanonicalPublished]
         public SimulationNumericProfile NumericProfile { get; }
         public EventId EventId { get; }
         public ActorId ActorId { get; }
         public SimulationTick Tick { get; }
         public ActivationId Activation { get; }
         public ulong Sequence { get; }
-        [CanonicalTextRules(Required = true, Trim = true)]
+        [ValueTextRules(Required = true, Trim = true)]
         public CanonicalTextValue Channel { get; }
         public AbilityTreeClipInvocation? TreeClipInvocation { get; }
-        public void Retain() => CanonicalRetain(in this);
 
-        public void Release() => CanonicalRelease(in this);
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireRecord()
         {
             if (!NumericProfile.IsValid || !EventId.IsValid || !ActorId.IsValid || !Tick.IsValid || !Activation.IsValid || Sequence == 0)
@@ -502,7 +467,6 @@ namespace ThirdPersonSimulation
         Equipment = 11
     }
 
-    [CanonicalContract]
     public readonly partial struct ActionFact
     {
         public ActionFact(
@@ -533,7 +497,7 @@ namespace ThirdPersonSimulation
         public ulong ActionInstanceId { get; }
         public ulong PredictionKey { get; }
         public ulong InputSequence { get; }
-        [CanonicalTextRules(Required = true, Trim = true)]
+        [ValueTextRules(Required = true, Trim = true)]
         public CanonicalTextValue ActionId { get; }
         public CharacterSkillId SkillId { get; }
         public SimulationActionLifecycleTransitionType TransitionType { get; }
@@ -543,7 +507,7 @@ namespace ThirdPersonSimulation
         public EquipmentActionContext EquipmentContext { get; }
         public bool IsValid => ActionInstanceId != 0 && PredictionKey != 0 && InputSequence != 0 && !CanonicalTextValue.IsNullOrEmpty(ActionId);
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireRecord()
         {
             if (ActionInstanceId == 0 || PredictionKey == 0 || InputSequence == 0)
@@ -551,7 +515,7 @@ namespace ThirdPersonSimulation
         }
     }
 
-    [CanonicalContract]
+    [ValueOperations]
     public readonly partial struct ActionWindowFact
     {
         public ActionWindowFact(
@@ -577,23 +541,20 @@ namespace ThirdPersonSimulation
 
         public GameplayAbilitySourceContext SourceContext { get; }
         public ulong ActionInstanceId => SourceContext.InstanceId;
-        [CanonicalTextRules(Required = true, Trim = true)]
+        [ValueTextRules(Required = true, Trim = true)]
         public CanonicalTextValue ActionId { get; }
-        [CanonicalTextRules(Required = true, Trim = true)]
+        [ValueTextRules(Required = true, Trim = true)]
         public CanonicalTextValue WindowId { get; }
-        [CanonicalTextRules(Required = true, Trim = true)]
+        [ValueTextRules(Required = true, Trim = true)]
         public CanonicalTextValue WindowType { get; }
-        [CanonicalTextRules(Required = true, Trim = true)]
-        [CanonicalDeclaredText]
+        [ValueTextRules(Required = true, Trim = true)]
         public string WindowTag { get; }
         public ulong StartTick { get; }
         public ulong EndTick { get; }
         public ulong Digest { get; }
         public bool IsValid => ActionInstanceId != 0 && StartTick != 0;
-        public void Retain() => CanonicalRetain(in this);
-        public void Release() => CanonicalRelease(in this);
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireRecord()
         {
             if (SourceContext.InstanceId == 0 || StartTick == 0 || EndTick < StartTick)
@@ -601,8 +562,8 @@ namespace ThirdPersonSimulation
         }
     }
 
-    [CanonicalContract]
     [ValueUnion(typeof(GameplayFactKind))]
+    [ValueOperations]
     public readonly partial struct GameplayFact
     {
         public const int SchemaVersion = 6;
@@ -737,10 +698,7 @@ namespace ThirdPersonSimulation
             SimulationGameplayEffectLifecycleOperation.Overflow => nameof(SimulationGameplayEffectLifecycleOperation.Overflow),
             _ => throw new ArgumentOutOfRangeException(nameof(operation))
         };
-            internal static readonly int MaximumTextReferences = CanonicalMaximumTextReferences;
-        public void Retain() => CanonicalRetain(in this);
 
-        public void Release() => CanonicalRelease(in this);
     }
 
     public enum PresentationCommandKind : byte
@@ -760,7 +718,7 @@ namespace ThirdPersonSimulation
         Audio = 13
     }
 
-    [CanonicalContract]
+    [ValueOperations]
     public readonly partial struct PresentationCommand
     {
         public PresentationCommand(
@@ -799,7 +757,7 @@ namespace ThirdPersonSimulation
         }
         public SimulationEventHeader Header { get; }
         public PresentationCommandKind Kind { get; }
-        [CanonicalTextRules(Required = true, Trim = true)]
+        [ValueTextRules(Required = true, Trim = true)]
         public CanonicalTextValue ProducerId { get; }
         public Float32Scalar SampleTime { get; }
         public Float32Scalar Weight { get; }
@@ -830,12 +788,9 @@ namespace ThirdPersonSimulation
 
         static bool IsPlaybackSample(PresentationCommandKind kind) =>
             kind == PresentationCommandKind.SampleProducer;
-            internal static readonly int MaximumTextReferences = CanonicalMaximumTextReferences;
-        public void Retain() => CanonicalRetain(in this);
 
-        public void Release() => CanonicalRelease(in this);
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireRecord()
         {
             if ((Kind == PresentationCommandKind.TimelineProgress) != TimelineProgress.IsValid ||

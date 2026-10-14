@@ -13,11 +13,10 @@ namespace ThirdPersonSimulation
         Egress = 4
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false, PublishedRead = true)]
     public readonly partial struct SimulationPipelinePassId : IEquatable<SimulationPipelinePassId>, IComparable<SimulationPipelinePassId>
     {
         public SimulationPipelinePassId(string value) { Value = SimulationIdentity.Require(value, nameof(value)); }
-        [CanonicalTextRules(Required = true)]
+        [ValueTextRules(Required = true)]
         public string Value { get; }
         public bool IsValid => !string.IsNullOrEmpty(Value);
         public int CompareTo(SimulationPipelinePassId other) => string.CompareOrdinal(Value, other.Value);
@@ -27,11 +26,10 @@ namespace ThirdPersonSimulation
         public override string ToString() => Value ?? string.Empty;
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false, PublishedRead = true)]
     public readonly partial struct SimulationPipelinePassImplementationVersion : IEquatable<SimulationPipelinePassImplementationVersion>
     {
         public SimulationPipelinePassImplementationVersion(string value) { Value = SimulationIdentity.Require(value, nameof(value)); }
-        [CanonicalTextRules(Required = true)]
+        [ValueTextRules(Required = true)]
         public string Value { get; }
         public bool IsValid => !string.IsNullOrEmpty(Value);
         public bool Equals(SimulationPipelinePassImplementationVersion other) => string.Equals(Value, other.Value, StringComparison.Ordinal);

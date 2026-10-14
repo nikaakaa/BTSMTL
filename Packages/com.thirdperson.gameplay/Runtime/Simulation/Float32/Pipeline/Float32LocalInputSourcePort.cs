@@ -1,8 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.IO;
-using System.Text;
 
 namespace ThirdPersonSimulation
 {
@@ -64,16 +62,6 @@ namespace ThirdPersonSimulation
         bool TryQueueInputRequest(CanonicalTextValue requestId, out ulong requestSequence, out string error);
     }
 
-    public interface ICharacterControlSourceStateRuntime
-    {
-        string StateSchemaId { get; }
-        int StateSchemaVersion { get; }
-        int MinimumStatePayloadBytes { get; }
-        int StateTextCapacity { get; }
-        void WriteState(CanonicalWriter writer);
-        void RestoreState(ReadOnlyMemory<byte> state, ICanonicalTextResolver resolver);
-    }
-
     public enum CharacterControlSourceStateDisposition : byte
     {
         Prepared = 1,
@@ -113,10 +101,7 @@ namespace ThirdPersonSimulation
     {
         public const string PortId = "simulation.source.local-actor-input";
         public const string SchemaId = "float32-local-actor-input-source";
-        public const int SchemaVersion = 5;
-        internal const string StateSchema = SimulationInputValue.CanonicalSchema + ":" + AbilityInputEvent.CanonicalSchema;
-        internal static readonly StableHash StateSchemaHash =
-            new StableHash(CanonicalContractProtocol.ComposeSchema(StateSchema));
+        public const int SchemaVersion = 6;
 
         public static SimulationPipelinePortRequirement Requirement =>
             new SimulationPipelinePortRequirement(
@@ -147,8 +132,8 @@ namespace ThirdPersonSimulation
 
     internal interface IFloat32CommittedInputReadPort
     {
-        void PrepareAvailabilityRead(int maximumPayloadBytes, IReadOnlyList<SimulationActorBinding> roster);
-        void RestoreControlInput(ArraySegment<byte> bytes);
+        void PrepareAvailabilityRead(IReadOnlyList<SimulationActorBinding> roster);
+        void RestoreControlInput(IValueResources state);
         void GetInputCapacity(ActorId actorId, out int values, out int requests);
         ulong ReadInputSequence(ActorId actorId);
         SimulationInputValue ReadInputValue(ActorId actorId, CanonicalTextValue inputId, ProgramInputValueKind kind);
@@ -158,7 +143,7 @@ namespace ThirdPersonSimulation
 
     }
 
-    public interface IFloat32LocalInputSourcePort : ISimulationRuntimePort
+    public interface IFloat32LocalInputSourcePort : ISimulationRuntimePort, IValueSnapshotSource
     {
         Float32LocalInputFrame Read(
             SimulationTickSourceIdentity source,
@@ -167,9 +152,7 @@ namespace ThirdPersonSimulation
             int tickRate,
             IReadOnlyList<SimulationActorBinding> roster,
             CommittedActorPoseSnapshot<Float32Vector3, Float32Yaw> committedObservation);
-        int StatePayloadCapacity { get; }
-        int StateTextCapacity { get; }
-        void PrepareAvailabilityRead(int maximumPayloadBytes, IReadOnlyList<SimulationActorBinding> roster);
+        void PrepareAvailabilityRead(IReadOnlyList<SimulationActorBinding> roster);
         ulong ReadInputSequence(ActorId actorId);
         SimulationInputValue ReadInputValue(ActorId actorId, CanonicalTextValue inputId, ProgramInputValueKind kind);
         void CaptureFrameEvents(ActorId actorId, ReadOnlySpan<SimulationIngress> ingress);
@@ -179,24 +162,20 @@ namespace ThirdPersonSimulation
         void ReleaseInputFrames();
         void GetInputCapacity(ActorId actorId, out int values, out int requests);
         void ReleaseAvailabilityInputs();
-        void WriteState(CanonicalWriter writer);
-        void RestoreState(ReadOnlyMemory<byte> state, ICanonicalTextResolver resolver);
         void NotifyStateDisposition(CharacterControlSourceStateDisposition disposition);
     }
 
-    public sealed class Float32LocalInputSourcePort : IFloat32LocalInputSourcePort
+    [ValueSnapshot]
+    public sealed partial class Float32LocalInputSourcePort : IFloat32LocalInputSourcePort
     {
         readonly ReadOnlyCollection<LocalSimulationInputBinding> m_Bindings;
         readonly SimulationPipelineActorInput<Float32StepInput>[] m_InputScratch;
-        readonly StateBinding[] m_StatefulBindings;
-        readonly CanonicalReader m_StateReader;
-        ulong m_LastReadSourceTick;
-        ExecutionWorkspaceBuffer<SimulationInputValue>[] m_CurrentInputValues = Array.Empty<ExecutionWorkspaceBuffer<SimulationInputValue>>();
-        string[][] m_DeclaredInputIds;
-        AbilityInputEvent[][] m_CurrentEvents;
-        int[] m_CurrentEventCounts;
+        [ValueSnapshot] readonly IValueSnapshotSource[] m_StatefulBindings;
+        [ValueSnapshot] ulong m_LastReadSourceTick;
+        [ValueSnapshot] ExecutionWorkspaceBuffer<SimulationInputValue>[] m_CurrentInputValues = Array.Empty<ExecutionWorkspaceBuffer<SimulationInputValue>>();
+        [ValueSnapshot] AbilityInputEvent[][] m_CurrentEvents;
+        [ValueSnapshot] int[] m_CurrentEventCounts;
         readonly Float32SimulationInputFrameStorage[] m_InputFrames;
-
 
         public Float32LocalInputSourcePort(
             SimulationComponentIdentity sessionSource,
@@ -211,7 +190,7 @@ namespace ThirdPersonSimulation
             if (values.Count == 0)
                 throw new ArgumentException("Local input Source requires explicit Actor input bindings.", nameof(bindings));
             var identityValues = new string[values.Count + 2];
-            identityValues[0] = "float32-local-input-source-port/5:" + Float32LocalInputSourcePortContract.StateSchema;
+            identityValues[0] = "float32-local-input-source-port/" + Float32LocalInputSourcePortContract.SchemaVersion;
             identityValues[1] = sessionSource.ToString();
             for (int i = 0; i < values.Count; i++)
             {
@@ -221,14 +200,11 @@ namespace ThirdPersonSimulation
                     throw new ArgumentException("Local input Source contains duplicate ActorId.", nameof(bindings));
                 ICharacterControlSourceRuntime source = binding.ControlSource;
                 if (((source.Capabilities & CharacterControlSourceCapability.TransactionalState) != 0) !=
-                    (source is ICharacterControlSourceStateRuntime))
+                    (source is IValueSnapshotSource))
                 {
                     throw new ArgumentException($"Control Source '{source.SourceIdentity}' state capability and runtime contract disagree.", nameof(bindings));
                 }
-                string stateIdentity = source is ICharacterControlSourceStateRuntime stateful
-                    ? $"{stateful.StateSchemaId}:{stateful.StateSchemaVersion}:{stateful.MinimumStatePayloadBytes}"
-                    : "stateless";
-                identityValues[i + 2] = $"{binding.ActorId}:{source.SourceIdentity}:{source.NumericProfile}:{source.Capabilities}:{stateIdentity}:{source.InputValueCapacity}:{source.InputRequestCapacity}";
+                identityValues[i + 2] = $"{binding.ActorId}:{source.SourceIdentity}:{source.NumericProfile}:{source.Capabilities}:{source.InputValueCapacity}:{source.InputRequestCapacity}";
             }
             m_Bindings = values.AsReadOnly();
             m_InputFrames = new Float32SimulationInputFrameStorage[m_Bindings.Count];
@@ -237,34 +213,11 @@ namespace ThirdPersonSimulation
                     m_Bindings[actor].ControlSource.InputRequestCapacity);
 
             m_InputScratch = new SimulationPipelineActorInput<Float32StepInput>[values.Count];
-            int statefulCount = 0;
-            int payloadCapacity = 20 + sizeof(int) + 64;
-            int textCapacity = 0;
+            var statefulBindings = new List<IValueSnapshotSource>();
             for (int i = 0; i < values.Count; i++)
-            {
-                LocalSimulationInputBinding binding = values[i];
-                if (binding.ControlSource is not ICharacterControlSourceStateRuntime stateful)
-                    continue;
-                if (stateful.MinimumStatePayloadBytes < 0)
-                    throw new ArgumentException("Control Source state payload capacity is missing.", nameof(bindings));
-                statefulCount++;
-                textCapacity = checked(textCapacity + 3 + stateful.StateTextCapacity);
-                payloadCapacity = checked(payloadCapacity + 20 +
-                    CanonicalTextEncoding.ByteCount(binding.ActorId.Value.AsSpan()) +
-                    CanonicalTextEncoding.ByteCount(binding.ControlSource.SourceIdentity.AsSpan()) +
-                    CanonicalTextEncoding.ByteCount(stateful.StateSchemaId.AsSpan()) +
-                    stateful.MinimumStatePayloadBytes);
-            }
-            m_StatefulBindings = new StateBinding[statefulCount];
-            int statefulIndex = 0;
-            for (int i = 0; i < values.Count; i++)
-            {
-                if (values[i].ControlSource is ICharacterControlSourceStateRuntime stateful)
-                    m_StatefulBindings[statefulIndex++] = new StateBinding(values[i], stateful);
-            }
-            m_StateReader = new CanonicalReader(Array.Empty<byte>());
-            StatePayloadCapacity = payloadCapacity;
-            StateTextCapacity = textCapacity;
+                if (values[i].ControlSource is IValueSnapshotSource stateful)
+                    statefulBindings.Add(stateful);
+            m_StatefulBindings = statefulBindings.ToArray();
             Descriptor = new SimulationPortDescriptor(
                 Float32LocalInputSourcePortContract.PortId,
                 Float32LocalInputSourcePortContract.SchemaId,
@@ -274,13 +227,9 @@ namespace ThirdPersonSimulation
                 StableHash.Compute(identityValues));
         }
 
-        public void PrepareAvailabilityRead(int maximumPayloadBytes, IReadOnlyList<SimulationActorBinding> roster)
+        public void PrepareAvailabilityRead(IReadOnlyList<SimulationActorBinding> roster)
         {
-            if (maximumPayloadBytes < StatePayloadCapacity)
-                throw new InvalidOperationException("Local input state exceeds the Session checkpoint payload declaration.");
-            StatePayloadCapacity = maximumPayloadBytes;
             m_CurrentInputValues = new ExecutionWorkspaceBuffer<SimulationInputValue>[m_Bindings.Count];
-            m_DeclaredInputIds = new string[m_Bindings.Count][];
             m_CurrentEvents = new AbilityInputEvent[m_Bindings.Count][];
             m_CurrentEventCounts = new int[m_Bindings.Count];
             for (int actor = 0; actor < m_Bindings.Count; actor++)
@@ -288,10 +237,7 @@ namespace ThirdPersonSimulation
                 var source = m_Bindings[actor].ControlSource;
                 int ingress = roster[actor].AvailabilityIngressCapacity;
                 m_CurrentEvents[actor] = new AbilityInputEvent[ingress];
-                StateTextCapacity = checked(StateTextCapacity + AbilityInputEvent.CanonicalMaximumTextReferences * ingress);
                 m_CurrentInputValues[actor] = new ExecutionWorkspaceBuffer<SimulationInputValue>(source.InputValueCapacity);
-
-                StateTextCapacity = checked(StateTextCapacity + SimulationInputValue.CanonicalMaximumTextReferences * source.InputValueCapacity);
             }
         }
 
@@ -343,7 +289,7 @@ namespace ThirdPersonSimulation
         void ClearFrameEvents(int actor)
         {
             for (int i = 0; i < m_CurrentEventCounts[actor]; i++)
-                AbilityInputEvent.CanonicalRelease(in m_CurrentEvents[actor][i]);
+                m_CurrentEvents[actor][i].Release();
             Array.Clear(m_CurrentEvents[actor], 0, m_CurrentEventCounts[actor]);
             m_CurrentEventCounts[actor] = 0;
         }
@@ -358,7 +304,7 @@ namespace ThirdPersonSimulation
                 if (value.Header.Kind == SimulationIngressKind.ActionEvent)
                     frozen = new AbilityInputEvent(1, actorId, default, value.ActionEvent.ActionInstanceId, 0, value.ActionEvent.EventId, default, default, default, 0);
                 else continue;
-                AbilityInputEvent.CanonicalRetain(in frozen);
+                frozen.Retain();
                 m_CurrentEvents[actor][m_CurrentEventCounts[actor]++] = frozen;
             }
         }
@@ -384,67 +330,7 @@ namespace ThirdPersonSimulation
             return false;
         }
 
-        void WriteRetainedEvents(CanonicalWriter writer)
-        {
-            for (int actor = 0; actor < m_Bindings.Count; actor++)
-            {
-                writer.WriteInt32(m_CurrentEventCounts[actor]);
-                for (int i = 0; i < m_CurrentEventCounts[actor]; i++)
-                {
-                    ref readonly AbilityInputEvent value = ref m_CurrentEvents[actor][i];
-                    AbilityInputEvent.CanonicalWrite(writer, in value);
-                }
-            }
-        }
-        void ReadRetainedEvents(CanonicalReader reader)
-        {
-            for (int actor = 0; actor < m_Bindings.Count; actor++)
-            {
-                int count = reader.ReadInt32();
-                if (count < 0 || count > m_CurrentEvents[actor].Length) throw new System.IO.InvalidDataException("Retained frame events exceed the published ingress geometry.");
-                ClearFrameEvents(actor);
-                for (int i = 0; i < count; i++)
-                {
-                    ref AbilityInputEvent value = ref m_CurrentEvents[actor][m_CurrentEventCounts[actor]];
-                    AbilityInputEvent.CanonicalReadInto(reader, ref value);
-                    AbilityInputEvent.CanonicalRetain(in value);
-                    m_CurrentEventCounts[actor]++;
-                }
-            }
-        }
-
-        void WriteRetainedInputs(CanonicalWriter writer)
-        {
-            writer.WriteInt32(m_Bindings.Count);
-            for (int actor = 0; actor < m_Bindings.Count; actor++)
-            {
-                var values = m_CurrentInputValues[actor];
-                writer.WriteInt32(values.Count);
-                for (int i = 0; i < values.Count; i++) SimulationInputValue.CanonicalWrite(writer, values[i]);
-            }
-        }
-        void ReadRetainedInputs(CanonicalReader reader)
-        {
-            int actors = reader.ReadInt32();
-            if (actors != m_Bindings.Count) throw new System.IO.InvalidDataException("Retained input roster differs from the Local source roster.");
-            for (int actor = 0; actor < actors; actor++)
-            {
-                int count = reader.ReadInt32();
-                var values = m_CurrentInputValues[actor];
-                if (count < 0 || count > values.Capacity) throw new System.IO.InvalidDataException("Retained input value count exceeds the declared source shape.");
-                ClearInputValues(actor);
-                for (int i = 0; i < count; i++)
-                {
-                    CanonicalTextValue inputId = reader.ReadText();
-                    SimulationInputValue value = SimulationInputValue.CanonicalReadPayload(reader, inputId);
-                    value.Retain();
-                    values.Add(value);
-                }
-            }
-        }
         public SimulationPortDescriptor Descriptor { get; }
-        public int StatePayloadCapacity { get; private set; }
-        public int StateTextCapacity { get; private set; }
 
         public void ReleaseInputFrames()
         {
@@ -529,87 +415,6 @@ namespace ThirdPersonSimulation
                         inputs[i] = default;
                 }
             }
-        }
-
-        public void WriteState(CanonicalWriter writer)
-        {
-            writer.WriteUInt32(0x53434c46);
-            writer.WriteInt32(4);
-            writer.WriteHash(Float32LocalInputSourcePortContract.StateSchemaHash);
-            writer.WriteUInt64(m_LastReadSourceTick);
-            writer.WriteInt32(m_StatefulBindings.Length);
-            for (int i = 0; i < m_StatefulBindings.Length; i++)
-            {
-                StateBinding binding = m_StatefulBindings[i];
-                writer.WriteBytes(binding.ActorIdentity);
-                writer.WriteBytes(binding.SourceIdentity);
-                writer.WriteBytes(binding.SchemaIdentity);
-                writer.WriteInt32(binding.Runtime.StateSchemaVersion);
-                long payloadPrefix = writer.BeginLengthPrefixedBlock();
-                binding.Runtime.WriteState(writer);
-
-                writer.EndLengthPrefixedBlock(payloadPrefix);
-            }
-            WriteRetainedInputs(writer);
-            WriteRetainedEvents(writer);
-        }
-
-        public void RestoreState(ReadOnlyMemory<byte> state, ICanonicalTextResolver resolver)
-        {
-            CanonicalReader reader = m_StateReader;
-            reader.Reset(state);
-            reader.SetTextResolver(resolver);
-            if (reader.ReadUInt32() != 0x53434c46 || reader.ReadInt32() != 4 ||
-                reader.ReadHash() != Float32LocalInputSourcePortContract.StateSchemaHash)
-                throw new InvalidDataException("Local Control Source state header is invalid.");
-            ulong lastReadSourceTick = reader.ReadUInt64();
-            int count = reader.ReadInt32();
-            if (count != m_StatefulBindings.Length)
-                throw new InvalidDataException("Local Control Source state roster does not match its locked bindings.");
-            for (int i = 0; i < count; i++)
-            {
-                StateBinding binding = m_StatefulBindings[i];
-                ArraySegment<byte> actorId = reader.ReadTextSegment();
-                ArraySegment<byte> sourceIdentity = reader.ReadTextSegment();
-                ArraySegment<byte> schemaId = reader.ReadTextSegment();
-                int schemaVersion = reader.ReadInt32();
-                ArraySegment<byte> payload = reader.ReadBytesSegment();
-                if (!actorId.AsSpan().SequenceEqual(binding.ActorIdentity) ||
-                    !sourceIdentity.AsSpan().SequenceEqual(binding.SourceIdentity) ||
-                    !schemaId.AsSpan().SequenceEqual(binding.SchemaIdentity) ||
-                    schemaVersion != binding.Runtime.StateSchemaVersion)
-                {
-                    throw new InvalidDataException("Local Control Source state identity does not match its locked binding.");
-                }
-                binding.Runtime.RestoreState(payload.AsMemory(), resolver);
-            }
-            ReadRetainedInputs(reader);
-            ReadRetainedEvents(reader);
-            reader.RequireComplete();
-            m_LastReadSourceTick = lastReadSourceTick;
-        }
-
-        static byte[] EncodeIdentity(CanonicalTextValue identity)
-        {
-            var encoded = new byte[CanonicalTextEncoding.ByteCount(identity.Span)];
-            CanonicalTextEncoding.Encode(identity.Span, encoded);
-            return encoded;
-        }
-
-        readonly struct StateBinding
-        {
-            internal StateBinding(LocalSimulationInputBinding binding, ICharacterControlSourceStateRuntime runtime)
-            {
-                Runtime = runtime;
-                ActorIdentity = EncodeIdentity(binding.ActorId.Value);
-                SourceIdentity = EncodeIdentity(binding.ControlSource.SourceIdentity);
-                SchemaIdentity = EncodeIdentity(runtime.StateSchemaId);
-            }
-
-            internal ICharacterControlSourceStateRuntime Runtime { get; }
-            internal byte[] ActorIdentity { get; }
-            internal byte[] SourceIdentity { get; }
-            internal byte[] SchemaIdentity { get; }
         }
 
         public void NotifyStateDisposition(CharacterControlSourceStateDisposition disposition)

@@ -58,7 +58,6 @@ namespace ThirdPersonSimulation
         readonly SimulationPipelineHash m_PipelineHash;
         readonly string m_BackendId;
         readonly string m_BackendSemanticVersion;
-        readonly StableHash m_SnapshotHash;
 
         internal SimulationRestoreDirective(SimulationSessionCheckpoint checkpoint)
         {
@@ -71,10 +70,9 @@ namespace ThirdPersonSimulation
             GameplayContentHash gameplayContentHash,
             SimulationPipelineHash pipelineHash,
             string backendId,
-            string backendSemanticVersion,
-            StableHash snapshotHash)
+            string backendSemanticVersion)
         {
-            if (!tick.IsValid || !gameplayContentHash.IsValid || !pipelineHash.IsValid || !snapshotHash.IsValid)
+            if (!tick.IsValid || !gameplayContentHash.IsValid || !pipelineHash.IsValid)
                 throw new ArgumentException("Restore directive identity is incomplete.");
             m_SnapshotId = SimulationIdentity.Require(snapshotId, nameof(snapshotId));
             m_Tick = tick;
@@ -82,7 +80,6 @@ namespace ThirdPersonSimulation
             m_PipelineHash = pipelineHash;
             m_BackendId = SimulationIdentity.Require(backendId, nameof(backendId));
             m_BackendSemanticVersion = SimulationIdentity.Require(backendSemanticVersion, nameof(backendSemanticVersion));
-            m_SnapshotHash = snapshotHash;
         }
 
         public string SnapshotId => m_Checkpoint != null ? m_Checkpoint.SnapshotId : m_SnapshotId;
@@ -91,7 +88,6 @@ namespace ThirdPersonSimulation
         public SimulationPipelineHash PipelineHash => m_Checkpoint != null ? m_Checkpoint.PipelineHash : m_PipelineHash;
         public string BackendId => m_Checkpoint != null ? m_Checkpoint.BackendId : m_BackendId;
         public string BackendSemanticVersion => m_Checkpoint != null ? m_Checkpoint.BackendSemanticVersion : m_BackendSemanticVersion;
-        public StableHash SnapshotHash => m_Checkpoint != null ? m_Checkpoint.SnapshotHash : m_SnapshotHash;
     }
 
     public readonly struct SimulationPipelineStepProvenance

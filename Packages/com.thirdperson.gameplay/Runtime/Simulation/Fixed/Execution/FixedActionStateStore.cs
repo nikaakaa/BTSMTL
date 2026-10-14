@@ -5,7 +5,7 @@ using SimulationActionActivationRequestState = ThirdPersonSimulation.SimulationA
 
 namespace ThirdPersonSimulation.Fixed
 {
-    [CanonicalContract]
+    [ValueOperations]
     internal readonly partial struct FixedActionInstanceState : IEquatable<FixedActionInstanceState>
     {
         public FixedActionInstanceState(
@@ -56,7 +56,6 @@ namespace ThirdPersonSimulation.Fixed
             ActivationEntryId = activationEntryId ?? string.Empty;
         }
 
-        [CanonicalDeclaredText]
         public string ActionId { get; }
         public CharacterSkillId SkillId { get; }
         public OperationHandle SkillEntryOperation { get; }
@@ -64,7 +63,6 @@ namespace ThirdPersonSimulation.Fixed
         public ulong SegmentGeneration { get; }
         public GameplayAbilitySourceContext SourceContext => new GameplayAbilitySourceContext(
             SkillId, InstanceId, SkillExecutionGeneration, SegmentGeneration);
-        [CanonicalDeclaredText]
         public string ActivationEntryId { get; }
         public CanonicalTextValue ContextId { get; }
         public ulong InstanceId { get; }
@@ -74,7 +72,6 @@ namespace ThirdPersonSimulation.Fixed
         public ulong StartTick { get; }
         public CanonicalTextValue TargetKey { get; }
         public SimulationActionTargetSnapshot TargetSnapshot { get; }
-        [CanonicalRequired]
         public SimulationExecutionSource Source { get; }
         public SimulationActionPhase Phase { get; }
         public SimulationActionState State { get; }
@@ -106,7 +103,7 @@ namespace ThirdPersonSimulation.Fixed
             LastTransitionSourceTick == other.LastTransitionSourceTick &&
             CanonicalTextValue.Equals(Reason, other.Reason, StringComparison.Ordinal) &&
             EquipmentContext.Equals(other.EquipmentContext);
-        [CanonicalPresence]
+        [ValuePresence]
         public bool IsValid =>
             !CanonicalTextValue.IsNullOrEmpty(ActionId) &&
             !CanonicalTextValue.IsNullOrEmpty(ContextId) &&
@@ -116,9 +113,7 @@ namespace ThirdPersonSimulation.Fixed
             StartTick != 0 &&
             Source.IsValid &&
             (!Source.IsAbilityRule || SkillId.IsValid && SkillEntryOperation.IsValid);
-        internal void Retain() => CanonicalRetain(in this);
 
-        internal void Release() => CanonicalRelease(in this);
 
         public bool IsTerminal =>
             State == SimulationActionState.Rejected ||
@@ -226,7 +221,7 @@ namespace ThirdPersonSimulation.Fixed
                 ActivationEntryId);
         }
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireRecord()
         {
             if (string.IsNullOrEmpty(ActionId) || ContextId.IsEmpty || InstanceId == 0 || PredictionKey == 0 ||
@@ -236,8 +231,8 @@ namespace ThirdPersonSimulation.Fixed
         }
     }
 
-    [CanonicalContract]
-    internal readonly partial struct FixedActionInstanceReference : IEquatable<FixedActionInstanceReference>
+    [ValueOperations]
+    internal readonly partial struct FixedActionInstanceReference : IEquatable<FixedActionInstanceReference>, IValueResources
     {
         public FixedActionInstanceReference(
             string actionId,
@@ -259,7 +254,6 @@ namespace ThirdPersonSimulation.Fixed
             SkillExecutionGeneration = skillExecutionGeneration;
         }
 
-        [CanonicalDeclaredText]
         public string ActionId { get; }
         public CanonicalTextValue ContextId { get; }
         public ulong InstanceId { get; }
@@ -267,8 +261,6 @@ namespace ThirdPersonSimulation.Fixed
         public CharacterSkillId SkillId { get; }
         public OperationHandle SkillEntryOperation { get; }
         public ulong SkillExecutionGeneration { get; }
-        internal void Retain() => ContextId.Retain();
-        internal void Release() => ContextId.Release();
         public bool Equals(FixedActionInstanceReference other) =>
             CanonicalTextValue.Equals(ActionId, other.ActionId, StringComparison.Ordinal) &&
             CanonicalTextValue.Equals(ContextId, other.ContextId, StringComparison.Ordinal) &&

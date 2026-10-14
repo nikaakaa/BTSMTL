@@ -165,7 +165,7 @@ namespace ThirdPersonSimulation
                         if (availabilityInput != null)
                             throw new InvalidOperationException("Session contains duplicate current input read owners.");
                         availabilityInput = input;
-                        input.PrepareAvailabilityRead(request.Descriptor.MaximumSessionCheckpointPayloadBytes, request.Roster);
+                        input.PrepareAvailabilityRead(request.Roster);
                         for (int actor = 0; actor < request.Roster.Count; actor++)
                             request.Roster[actor].BindCommittedInput(input);
                     }
@@ -179,15 +179,18 @@ namespace ThirdPersonSimulation
                     if (stateParticipants[participant] is ISimulationPipelineSnapshotRetentionCapacity holder)
                         retainedSnapshots = checked(retainedSnapshots + holder.MaximumRetainedStepSnapshots);
                 int snapshotCapacity = checked(1 + maximumSteps + request.Descriptor.RecordedFrameCapacity + retainedSnapshots);
+                GameplayEffectSessionCapacity sessionCapacity = request.Roster[0].SessionCapacity;
+                int participantSnapshotCapacity = checked(snapshotCapacity + sessionCapacity.RetainedCheckpoints +
+                    sessionCapacity.CaptureStates + sessionCapacity.RestoreStates);
                 bool preparesStateSnapshots = request.Descriptor.CapturesState ||
                     request.PipelineInitialState.Mode == SimulationPipelineInitialStateMode.RestoreProvidedSnapshot;
                 if (preparesStateSnapshots)
                     for (int participant = 0; participant < stateParticipants.Count; participant++)
                         if (stateParticipants[participant] is ISimulationPipelineStepStateStorage storage)
-                            storage.PrepareStepStorage(snapshotCapacity);
-                SimulationPipelineStepSnapshotStorage stepProjections = request.Descriptor.CapturesState && request.Descriptor.MaximumSessionCheckpointPayloadBytes > 0
+                            storage.PrepareStepStorage(participantSnapshotCapacity);
+                SimulationPipelineStepSnapshotStorage stepProjections = request.Descriptor.CapturesState
                     ? new SimulationPipelineStepSnapshotStorage(request.CompiledPipeline, stateParticipants,
-                        snapshotCapacity, request.Descriptor.MaximumSessionCheckpointPayloadBytes)
+                        snapshotCapacity)
                     : null;
 
                 if (request.PipelineInitialState.Mode == SimulationPipelineInitialStateMode.RestoreProvidedSnapshot)
@@ -222,7 +225,7 @@ namespace ThirdPersonSimulation
                         stateParticipants);
                     resources.Register(SimulationSessionResourceReleasePhase.RuntimeAndPasses, initialPipelineState);
                     if (request.PipelineInitialState.Mode == SimulationPipelineInitialStateMode.RestoreProvidedSnapshot &&
-                        !initialPipelineState.SnapshotHash.Equals(request.PipelineInitialState.Snapshot.SnapshotHash))
+                        !initialPipelineState.Equals(request.PipelineInitialState.Snapshot))
                         throw Failure(
                             "initial_pipeline_state_restore_mismatch",
                             "Activated Pipeline runtime did not restore the provided initial state exactly.");
@@ -234,7 +237,7 @@ namespace ThirdPersonSimulation
                     stateStore,
                     request.Solver,
                     request.RestoreSource,
-                    request.SnapshotCodec,
+                    request.SnapshotProvider,
                     request.Committer,
                     request.Diagnostics,
                     runtimes.AsReadOnly(),
@@ -248,7 +251,7 @@ namespace ThirdPersonSimulation
                     snapshotCapacity,
                     availabilityInput);
                 resources.Register(SimulationSessionResourceReleasePhase.RuntimeAndPasses, transaction);
-                SimulationSessionLaunchPlan launchPlan = BuildLaunchPlan(request, initialPipelineState);
+                SimulationSessionLaunchPlan launchPlan = BuildLaunchPlan(request);
                 var handle = new Float32PassPipelineRuntimeHandle(
                     request.Descriptor,
                     request.CompiledPipeline,
@@ -269,40 +272,13 @@ namespace ThirdPersonSimulation
             }
         }
 
-        static SimulationSessionLaunchPlan BuildLaunchPlan(
-            Float32PassBackendCompositionRequest request,
-            SimulationPipelineStateSnapshot initialPipelineState)
+        static SimulationSessionLaunchPlan BuildLaunchPlan(Float32PassBackendCompositionRequest request)
         {
-            var states = new List<SimulationInitialStateIdentity>(request.Roster.Count + 2);
-            if (initialPipelineState != null)
-            {
-                for (int i = 0; i < request.InitialState.Actors.Count; i++)
-                {
-                    states.Add(new SimulationInitialStateIdentity(
-                        SimulationInitialStateKind.Character,
-                        "float32-character-state",
-                        1,
-                        request.Descriptor.MaximumSessionCheckpointPayloadBytes > 0
-                            ? request.InitialState.Actors[i].State.CanonicalPayload.Hash.Value
-                            : Float32CharacterRuntimeStateCodec.ComputeHash(request.InitialState.Actors[i].State).Value,
-                        request.InitialState.Actors[i].ActorId));
-                }
-                states.Add(new SimulationInitialStateIdentity(
-                    SimulationInitialStateKind.World,
-                    "float32-world-state",
-                    1,
-                    WorldSimulationStateCodec.ComputeHash(request.InitialState.WorldState)));
-                states.Add(new SimulationInitialStateIdentity(
-                    SimulationInitialStateKind.Pipeline,
-                    "simulation-pipeline-state",
-                    1,
-                    initialPipelineState.SnapshotHash));
-            }
             return new SimulationSessionLaunchPlan(
                 request.Descriptor,
                 request.CompiledPipeline.LaunchIdentity,
                 request.ExpectedSourcePorts,
-                states,
+                Array.Empty<SimulationInitialStateIdentity>(),
                 request.OutputRoutes,
                 request.DiagnosticsIdentity);
         }

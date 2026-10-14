@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
-using System.Text;
 
 namespace ThirdPersonSimulation
 {
@@ -218,7 +217,7 @@ namespace ThirdPersonSimulation
         public EquipmentRuntimeStateValue DefaultValue { get; }
     }
 
-    [CanonicalContract]
+    [ValueOperations]
     public readonly partial struct EquipmentLocalStateValue
     {
         public EquipmentLocalStateValue(
@@ -232,7 +231,7 @@ namespace ThirdPersonSimulation
             RequireIdentity();
         }
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireIdentity()
         {
             if (!FeatureId.IsValid || !StateId.IsValid)
@@ -269,7 +268,7 @@ namespace ThirdPersonSimulation
         public EquipmentParameterId ParameterId { get; }
     }
 
-    public sealed class EquipmentProgramLayout
+    public sealed partial class EquipmentProgramLayout
     {
         readonly ReadOnlyCollection<EquipmentProgramSlot> m_Slots;
         readonly ReadOnlyCollection<EquipmentProgramFeature> m_Features;
@@ -329,7 +328,6 @@ namespace ThirdPersonSimulation
             m_LocalStateByKey = m_LocalStates.ToDictionary(value => (value.FeatureId, value.StateId));
             m_OperationBindingByHandle = m_OperationBindings.ToDictionary(value => value.Operation.Value);
             ValidateClosure();
-            CatalogHash = ComputeHash();
         }
 
         public bool CapabilityEnabled { get; }
@@ -341,7 +339,9 @@ namespace ThirdPersonSimulation
         public IReadOnlyList<EquipmentProgramParameter> Parameters => m_Parameters;
         public IReadOnlyList<EquipmentProgramLocalState> LocalStates => m_LocalStates;
         public IReadOnlyList<EquipmentProgramOperationBinding> OperationBindings => m_OperationBindings;
-        public StableHash CatalogHash { get; }
+
+        [ValueUpdate]
+        public partial EquipmentProgramLayout WithOperationBindings(IEnumerable<EquipmentProgramOperationBinding> operationBindings);
 
         public EquipmentProgramSlot RequireSlot(EquipmentSlotId slotId) =>
             m_SlotById.TryGetValue(slotId, out EquipmentProgramSlot value) ? value : throw new InvalidOperationException($"Equipment Slot '{slotId}' is absent from Program.");
@@ -453,97 +453,6 @@ namespace ThirdPersonSimulation
                         throw new InvalidDataException($"Equipment Route implementation '{m_RouteImplementations[i].FeatureId}/{m_RouteImplementations[i].RouteId}' requires unknown Producer '{m_RouteImplementations[i].RequiredProducerIds[producerIndex]}'.");
         }
 
-        StableHash ComputeHash()
-        {
-            using var writer = new CanonicalWriter();
-            writer.WriteText("equipment-program-layout/v5");
-            writer.WriteHash(EquipmentRuntimeStateValue.CanonicalSchemaHash);
-            writer.WriteBoolean(CapabilityEnabled);
-            writer.WriteInt32(m_Slots.Count);
-            for (int i = 0; i < m_Slots.Count; i++)
-            {
-                writer.WriteText(m_Slots[i].SlotId.Value);
-                writer.WriteByte((byte)m_Slots[i].Requirement);
-                writer.WriteText(m_Slots[i].InitialEquipmentId.Value);
-            }
-            writer.WriteInt32(m_Features.Count);
-            for (int i = 0; i < m_Features.Count; i++)
-            {
-                EquipmentProgramFeature feature = m_Features[i];
-                writer.WriteText(feature.FeatureId.Value);
-                writer.WriteUInt64(feature.Revision.Value);
-                writer.WriteText(feature.CodeBindingId);
-                writer.WriteUInt64((ulong)feature.RequiredWorldCapabilities);
-                writer.WriteInt32(feature.GrantedTags.Count);
-                for (int tag = 0; tag < feature.GrantedTags.Count; tag++) writer.WriteText(feature.GrantedTags[tag]);
-                writer.WriteInt32(feature.PassiveEffects.Count);
-                for (int effect = 0; effect < feature.PassiveEffects.Count; effect++) writer.WriteText(feature.PassiveEffects[effect]);
-            }
-            writer.WriteInt32(m_Items.Count);
-            for (int i = 0; i < m_Items.Count; i++)
-            {
-                writer.WriteText(m_Items[i].EquipmentId.Value);
-                writer.WriteText(m_Items[i].SlotId.Value);
-                writer.WriteText(m_Items[i].FeatureId.Value);
-                writer.WriteText(m_Items[i].VisualBindingId.Value);
-            }
-            writer.WriteInt32(m_Routes.Count);
-            for (int i = 0; i < m_Routes.Count; i++)
-            {
-                writer.WriteText(m_Routes[i].RouteId.Value);
-                writer.WriteText(m_Routes[i].OwnerSlotId.Value);
-                writer.WriteText(m_Routes[i].InputRequestId);
-                writer.WriteByte((byte)m_Routes[i].RequestConsumption);
-                writer.WriteByte((byte)m_Routes[i].MissingImplementation);
-            }
-            writer.WriteInt32(m_RouteImplementations.Count);
-            for (int i = 0; i < m_RouteImplementations.Count; i++)
-            {
-                writer.WriteText(m_RouteImplementations[i].FeatureId.Value);
-                writer.WriteText(m_RouteImplementations[i].RouteId.Value);
-                writer.WriteText(m_RouteImplementations[i].AbilityId.Value);
-                writer.WriteInt32(m_RouteImplementations[i].RequiredParameterIds.Count);
-                for (int parameter = 0; parameter < m_RouteImplementations[i].RequiredParameterIds.Count; parameter++)
-                    writer.WriteText(m_RouteImplementations[i].RequiredParameterIds[parameter].Value);
-                writer.WriteInt32(m_RouteImplementations[i].RequiredProducerIds.Count);
-                for (int producer = 0; producer < m_RouteImplementations[i].RequiredProducerIds.Count; producer++)
-                    writer.WriteText(m_RouteImplementations[i].RequiredProducerIds[producer]);
-            }
-            writer.WriteInt32(m_Parameters.Count);
-            for (int i = 0; i < m_Parameters.Count; i++)
-            {
-                writer.WriteText(m_Parameters[i].EquipmentId.Value);
-                writer.WriteText(m_Parameters[i].FeatureId.Value);
-                writer.WriteText(m_Parameters[i].ParameterId.Value);
-                writer.WriteByte((byte)m_Parameters[i].ValueKind);
-                EquipmentRuntimeParameterValue value = m_Parameters[i].Value;
-                writer.WriteBoolean(value.Boolean);
-                writer.WriteInt32(value.Int32);
-                writer.WriteUInt64(value.UInt64);
-                writer.WriteDouble(value.X);
-                writer.WriteDouble(value.Y);
-                writer.WriteDouble(value.Z);
-                writer.WriteText(value.Identity);
-            }
-            writer.WriteInt32(m_LocalStates.Count);
-            for (int i = 0; i < m_LocalStates.Count; i++)
-            {
-                writer.WriteText(m_LocalStates[i].FeatureId.Value);
-                writer.WriteText(m_LocalStates[i].StateId.Value);
-                EquipmentRuntimeStateValue.CanonicalWrite(writer, m_LocalStates[i].DefaultValue);
-            }
-            writer.WriteInt32(m_OperationBindings.Count);
-            for (int i = 0; i < m_OperationBindings.Count; i++)
-            {
-                EquipmentProgramOperationBinding binding = m_OperationBindings[i];
-                writer.WriteInt32(binding.Operation.Value);
-                writer.WriteText(binding.SlotId.Value);
-                writer.WriteText(binding.RouteId.Value);
-                writer.WriteText(binding.EquipmentId.Value);
-                writer.WriteText(binding.ParameterId.Value);
-            }
-            return writer.ComputeHash();
-        }
 
 
         static ReadOnlyCollection<T> Canonical<T>(IEnumerable<T> source, Func<T, string> identity, string label)
@@ -567,7 +476,7 @@ namespace ThirdPersonSimulation
         Cancelled = 3
     }
 
-    [CanonicalContract]
+    [ValueOperations]
     public readonly partial struct PendingEquipmentChange
     {
         public PendingEquipmentChange(
@@ -593,7 +502,7 @@ namespace ThirdPersonSimulation
             RequireRecord();
         }
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireRecord()
         {
             if (!ChangeId.IsValid || !SlotId.IsValid || BeginTick == 0)
@@ -632,7 +541,7 @@ namespace ThirdPersonSimulation
         }
     }
 
-    [CanonicalContract(PreparedStorage = typeof(EquipmentStatePageBank))]
+    [ValueOperations]
     public readonly partial struct EquipmentSlotState
     {
 
@@ -661,7 +570,7 @@ namespace ThirdPersonSimulation
             RequireRecord();
         }
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireRecord()
         {
             if (!SlotId.IsValid || Revision == 0 || Generation == 0)
@@ -730,7 +639,7 @@ namespace ThirdPersonSimulation
         }
     }
 
-    [CanonicalBorrowedSequence(typeof(EquipmentStatePageBank))]
+    [ValueBorrowedSequence(typeof(EquipmentStatePageBank))]
     public readonly struct EquipmentPassiveHandles
     {
         readonly EquipmentPassiveHandlePage m_Page;
@@ -798,110 +707,22 @@ namespace ThirdPersonSimulation
     {
         readonly EquipmentStateAggregate[] m_Pages;
         readonly EquipmentPassiveHandlePage[] m_HandlePages;
-        readonly string[] m_Identities;
-        readonly bool[] m_DecodedSlots;
-        readonly bool[] m_DecodedLocalStates;
-        EquipmentStateAggregate m_DecodeState;
-        EquipmentPassiveHandles m_DecodeHandles;
-        readonly int m_PassiveHandleCapacity;
 
-        public EquipmentStatePageBank(ActorId actorId, EquipmentProgramLayout layout, int statePageCount, int savepointDepth)
+        public EquipmentStatePageBank(EquipmentProgramLayout layout, int statePageCount, int savepointDepth)
         {
             Layout = layout;
-            var identities = new SortedSet<string>(StringComparer.Ordinal) { actorId.ToString() };
-            for (int index = 0; index < layout.Slots.Count; index++)
-                identities.Add(layout.Slots[index].SlotId.ToString());
-            for (int index = 0; index < layout.Features.Count; index++)
-                identities.Add(layout.Features[index].FeatureId.Value);
-            for (int index = 0; index < layout.Items.Count; index++)
-            {
-                identities.Add(layout.Items[index].EquipmentId.Value);
-                identities.Add(layout.Items[index].VisualBindingId.Value);
-            }
-            for (int index = 0; index < layout.LocalStates.Count; index++)
-                identities.Add(layout.LocalStates[index].StateId.Value);
-            for (int index = 0; index < layout.Routes.Count; index++)
-                identities.Add(layout.Routes[index].RouteId.Value);
-            m_Identities = identities.ToArray();
-            IdentityReader = ReadIdentity;
-            DecodeReader = new CanonicalReader(Array.Empty<byte>()) { DeclaredIdentityReader = IdentityReader };
-            m_DecodedSlots = new bool[layout.Slots.Count];
-            m_DecodedLocalStates = new bool[layout.LocalStates.Count];
             m_Pages = new EquipmentStateAggregate[statePageCount];
             for (int index = 0; index < m_Pages.Length; index++)
                 m_Pages[index] = new EquipmentStateAggregate(this);
             int maximumPassiveEffects = 0;
             for (int feature = 0; feature < layout.Features.Count; feature++)
                 maximumPassiveEffects = Math.Max(maximumPassiveEffects, layout.Features[feature].PassiveEffects.Count);
-            m_PassiveHandleCapacity = maximumPassiveEffects;
             m_HandlePages = new EquipmentPassiveHandlePage[checked(statePageCount * layout.Slots.Count + savepointDepth)];
             for (int index = 0; index < m_HandlePages.Length; index++)
                 m_HandlePages[index] = new EquipmentPassiveHandlePage(maximumPassiveEffects);
         }
 
         public EquipmentProgramLayout Layout { get; }
-        internal CanonicalReader DecodeReader { get; }
-        internal Func<CanonicalReader, string> IdentityReader { get; }
-        internal EquipmentStatePageBank Handles => this;
-
-        internal Span<ulong> Reserve(int count, out EquipmentPassiveHandles items)
-        {
-            if (count < 0 || count > m_PassiveHandleCapacity)
-                throw new InvalidDataException("Equipment passive handle count exceeds its prepared capacity.");
-            items = m_DecodeHandles = AcquirePassiveHandles(count);
-            return items.MutableSpan;
-        }
-
-        internal void ReleaseDecodedHandles()
-        {
-            m_DecodeHandles.ReleaseStateStorage();
-            m_DecodeHandles = default;
-        }
-
-        internal string ReadIdentity(CanonicalReader reader)
-        {
-            ArraySegment<byte> encoded = reader.ReadTextSegment();
-            if (encoded.Array == null)
-                return null;
-            ReadOnlySpan<byte> identity = encoded.AsSpan();
-            if (identity.Length == 0)
-                return string.Empty;
-            for (int index = 0; index < m_Identities.Length; index++)
-            {
-                if (CanonicalTextEncoding.EqualsEncoded(identity, m_Identities[index].AsSpan()))
-                    return m_Identities[index];
-            }
-            throw new InvalidDataException("Equipment state identity is absent from the prepared Actor and Program catalog.");
-        }
-
-        internal int ReadSlotIndex(EquipmentSlotId slotId)
-        {
-            for (int index = 0; index < Layout.Slots.Count; index++)
-            {
-                if (Layout.Slots[index].SlotId != slotId)
-                    continue;
-                if (m_DecodedSlots[index])
-                    throw new InvalidDataException($"Equipment state Slot '{slotId}' is duplicated.");
-                m_DecodedSlots[index] = true;
-                return index;
-            }
-            throw new InvalidDataException($"Equipment state Slot '{slotId}' is absent from the Program catalog.");
-        }
-
-        internal int ReadLocalStateIndex(EquipmentFeatureId featureId, EquipmentLocalStateId stateId)
-        {
-            for (int index = 0; index < Layout.LocalStates.Count; index++)
-            {
-                EquipmentProgramLocalState definition = Layout.LocalStates[index];
-                if (definition.FeatureId != featureId || definition.StateId != stateId)
-                    continue;
-                if (m_DecodedLocalStates[index])
-                    throw new InvalidDataException($"Equipment local state '{featureId}/{stateId}' is duplicated.");
-                m_DecodedLocalStates[index] = true;
-                return index;
-            }
-            throw new InvalidDataException($"Equipment local state '{featureId}/{stateId}' is absent from the Program catalog.");
-        }
 
         internal EquipmentStateAggregate Begin(EquipmentStateAggregate source = null)
         {
@@ -960,35 +781,15 @@ namespace ThirdPersonSimulation
 
         public void ReleasePassiveHandles(in EquipmentPassiveHandles handles) => handles.ReleaseStateStorage();
 
-        internal EquipmentStateAggregate BeginDecode()
-        {
-            ReleaseDecodedState();
-            Array.Clear(m_DecodedSlots, 0, m_DecodedSlots.Length);
-            Array.Clear(m_DecodedLocalStates, 0, m_DecodedLocalStates.Length);
-            m_DecodeState = Begin();
-            m_DecodeState.Retain();
-            return m_DecodeState;
-        }
-
-        internal void ReleaseDecodedState()
-        {
-            if (m_DecodeState == null)
-                return;
-            m_DecodeState.Release();
-            m_DecodeState = null;
-        }
-
-        internal void CompleteDecodeAdoption(EquipmentStateAggregate state)
-        {
-            if (ReferenceEquals(m_DecodeState, state))
-                ReleaseDecodedState();
-        }
     }
 
-    public sealed class EquipmentStateAggregate
+    [ValueOperations(ExplicitResources = true, RetainMethod = "RetainMembers", ReleaseMethod = "ReleaseMembers")]
+    public sealed partial class EquipmentStateAggregate
     {
         readonly EquipmentStatePageBank m_Bank;
+        [ValueResource(Elements = true)]
         readonly EquipmentSlotState[] m_Slots;
+        [ValueResource(Elements = true)]
         readonly EquipmentLocalStateValue[] m_LocalStates;
         internal int References { get; private set; }
         internal EquipmentStatePageBank Storage => m_Bank;
@@ -1005,10 +806,11 @@ namespace ThirdPersonSimulation
             }
         }
 
-        public StableHash CatalogHash => m_Bank.Layout.CatalogHash;
         public IReadOnlyList<EquipmentSlotState> Slots => m_Slots;
         public IReadOnlyList<EquipmentLocalStateValue> LocalStates => m_LocalStates;
+        [ValueResource]
         public PendingEquipmentChange PendingChange { get; private set; }
+        [ValueResource]
         public PendingEquipmentChange LastResolvedChange { get; private set; }
 
         internal void CopyFrom(EquipmentStateAggregate source)
@@ -1035,36 +837,22 @@ namespace ThirdPersonSimulation
         {
             if (References++ != 0)
                 return;
-            for (int slot = 0; slot < m_Slots.Length; slot++)
-            {
-                EquipmentSlotState.CanonicalRetain(in m_Slots[slot]);
-            }
-            for (int index = 0; index < m_LocalStates.Length; index++)
-                EquipmentLocalStateValue.CanonicalRetain(in m_LocalStates[index]);
-            PendingEquipmentChange.CanonicalRetain(PendingChange);
-            PendingEquipmentChange.CanonicalRetain(LastResolvedChange);
+            RetainMembers();
         }
 
         internal void Release()
         {
             if (--References != 0)
                 return;
-            for (int slot = 0; slot < m_Slots.Length; slot++)
-            {
-                EquipmentSlotState.CanonicalRelease(in m_Slots[slot]);
-            }
-            for (int index = 0; index < m_LocalStates.Length; index++)
-                EquipmentLocalStateValue.CanonicalRelease(in m_LocalStates[index]);
-            PendingEquipmentChange.CanonicalRelease(PendingChange);
-            PendingEquipmentChange.CanonicalRelease(LastResolvedChange);
+            ReleaseMembers();
         }
 
         internal void SetSlot(int index, EquipmentSlotState slot)
         {
             if (References != 0)
             {
-                EquipmentSlotState.CanonicalRetain(in slot);
-                EquipmentSlotState.CanonicalRelease(in m_Slots[index]);
+                slot.Retain();
+                m_Slots[index].Release();
             }
             m_Slots[index] = slot;
         }
@@ -1073,8 +861,8 @@ namespace ThirdPersonSimulation
         {
             if (References != 0)
             {
-                EquipmentLocalStateValue.CanonicalRetain(in value);
-                EquipmentLocalStateValue.CanonicalRelease(in m_LocalStates[index]);
+                value.Retain();
+                m_LocalStates[index].Release();
             }
             m_LocalStates[index] = value;
         }
@@ -1083,10 +871,10 @@ namespace ThirdPersonSimulation
         {
             if (References != 0)
             {
-                PendingEquipmentChange.CanonicalRetain(in pending);
-                PendingEquipmentChange.CanonicalRetain(in resolved);
-                PendingEquipmentChange.CanonicalRelease(PendingChange);
-                PendingEquipmentChange.CanonicalRelease(LastResolvedChange);
+                pending.Retain();
+                resolved.Retain();
+                PendingChange.Release();
+                LastResolvedChange.Release();
             }
             PendingChange = pending;
             LastResolvedChange = resolved;
@@ -1223,130 +1011,6 @@ namespace ThirdPersonSimulation
             next.LastResolvedChange = PendingChange.Resolve(state, resolvedTick);
             return next;
         }
-    }
-
-    public static class EquipmentStateAggregateCodec
-    {
-        public static void Write(CanonicalWriter writer, EquipmentStateAggregate state)
-        {
-            if (writer == null || state == null)
-                throw new ArgumentNullException();
-            writer.WriteHash(state.CatalogHash);
-            writer.WriteInt32(4);
-            writer.WriteHash(EquipmentSlotState.CanonicalSchemaHash);
-            writer.WriteHash(EquipmentLocalStateValue.CanonicalSchemaHash);
-            writer.WriteHash(PendingEquipmentChange.CanonicalSchemaHash);
-            writer.WriteInt32(state.Slots.Count);
-            for (int i = 0; i < state.Slots.Count; i++)
-            {
-                EquipmentSlotState slot = state.Slots[i];
-                EquipmentSlotState.CanonicalWrite(writer, in slot);
-            }
-            writer.WriteInt32(state.LocalStates.Count);
-            for (int i = 0; i < state.LocalStates.Count; i++)
-            {
-                EquipmentLocalStateValue localState = state.LocalStates[i];
-                EquipmentLocalStateValue.CanonicalWrite(writer, in localState);
-            }
-            WriteChange(writer, state.PendingChange);
-            WriteChange(writer, state.LastResolvedChange);
-        }
-
-        static void WriteChange(CanonicalWriter writer, PendingEquipmentChange pending)
-        {
-            writer.WriteBoolean(pending.IsValid);
-            if (!pending.IsValid)
-                return;
-            PendingEquipmentChange.CanonicalWrite(writer, in pending);
-        }
-
-        public static EquipmentStateAggregate Read(ArraySegment<byte> bytes, EquipmentStatePageBank storage,
-            ICanonicalTextResolver resolver = null)
-        {
-            CanonicalReader reader = storage.DecodeReader;
-            reader.Reset(bytes);
-            reader.SetTextResolver(resolver);
-            EquipmentProgramLayout layout = storage.Layout;
-            try
-            {
-                EquipmentStateAggregate state = storage.BeginDecode();
-                StableHash hash = reader.ReadHash();
-                if (reader.ReadInt32() != 4)
-                    throw new InvalidDataException("Equipment state schema version is unsupported.");
-                EquipmentSlotState.CanonicalRequireSchema(reader);
-                EquipmentLocalStateValue.CanonicalRequireSchema(reader);
-                PendingEquipmentChange.CanonicalRequireSchema(reader);
-                if (!hash.Equals(layout.CatalogHash))
-                    throw new InvalidDataException("Equipment state catalog identity does not match Program layout.");
-                int count = reader.ReadInt32();
-                if (count != layout.Slots.Count)
-                    throw new InvalidDataException("Equipment state Slot count does not match Program layout.");
-                for (int i = 0; i < count; i++)
-                {
-                    try
-                    {
-                        EquipmentSlotState slot = EquipmentSlotState.CanonicalRead(reader, storage);
-                        int slotIndex = storage.ReadSlotIndex(slot.SlotId);
-                        int expectedHandleCount = 0;
-                        if (slot.EquipmentId.IsValid)
-                        {
-                            EquipmentProgramItem item = layout.RequireItem(slot.EquipmentId);
-                            EquipmentProgramFeature feature = layout.RequireFeature(slot.FeatureId);
-                            if (item.SlotId != slot.SlotId || item.FeatureId != slot.FeatureId ||
-                                item.VisualBindingId != slot.VisualBindingId || feature.Revision != slot.FeatureRevision)
-                                throw new InvalidDataException($"Equipment state Slot '{slot.SlotId}' contribution does not match Program catalog.");
-                            if (slot.ContributionsInstalled)
-                                expectedHandleCount = feature.PassiveEffects.Count;
-                        }
-                        if (slot.Handles.Count != expectedHandleCount)
-                            throw new InvalidDataException("Equipment passive Effect handle count does not match the installed Feature.");
-                        state.SetSlot(slotIndex, slot);
-                    }
-                    finally
-                    {
-                        storage.ReleaseDecodedHandles();
-                    }
-                }
-                int localStateCount = reader.ReadInt32();
-                if (localStateCount != layout.LocalStates.Count)
-                    throw new InvalidDataException("Equipment state local state count does not match the runtime layout.");
-                for (int i = 0; i < localStateCount; i++)
-                {
-                    EquipmentLocalStateValue localState = EquipmentLocalStateValue.CanonicalRead(reader);
-                    int localStateIndex = storage.ReadLocalStateIndex(localState.FeatureId, localState.StateId);
-                    if (layout.LocalStates[localStateIndex].ValueKind != localState.Value.Kind)
-                        throw new InvalidDataException($"Equipment local state '{localState.FeatureId}/{localState.StateId}' value kind does not match the runtime layout.");
-                    state.RestoreLocalState(localStateIndex, in localState);
-                }
-                PendingEquipmentChange pending = ReadChange(reader, storage);
-                PendingEquipmentChange resolved = ReadChange(reader, storage);
-                if (pending.IsValid && !pending.IsPending || resolved.IsValid && resolved.IsPending)
-                    throw new InvalidDataException("Equipment pending and resolved records have inconsistent lifecycle states.");
-                state.RestoreChanges(pending, resolved);
-                reader.RequireComplete();
-                return state;
-            }
-            catch
-            {
-                storage.ReleaseDecodedState();
-                throw;
-            }
-        }
-
-
-        static PendingEquipmentChange ReadChange(CanonicalReader reader, EquipmentStatePageBank storage)
-        {
-            if (!reader.ReadBoolean())
-                return default;
-            PendingEquipmentChange change = PendingEquipmentChange.CanonicalRead(reader);
-            EquipmentProgramLayout layout = storage.Layout;
-            layout.RequireSlot(change.SlotId);
-            if (change.FromEquipmentId.IsValid) layout.RequireItem(change.FromEquipmentId);
-            if (change.ToEquipmentId.IsValid) layout.RequireItem(change.ToEquipmentId);
-            return change;
-        }
-
-
     }
 
 }

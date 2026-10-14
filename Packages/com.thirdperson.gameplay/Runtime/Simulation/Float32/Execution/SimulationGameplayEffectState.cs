@@ -53,7 +53,7 @@ namespace ThirdPersonSimulation
         public ulong Revision { get; }
     }
 
-    [CanonicalContract]
+    [ValueOperations(Resources = false)]
     internal readonly partial struct PortableAttributeModifierState
     {
         public PortableAttributeModifierState(
@@ -91,7 +91,7 @@ namespace ThirdPersonSimulation
         public readonly Float32Scalar LivePostAdd;
         public readonly ulong InsertionSequence;
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireRecord()
         {
             if (Handle == 0 || SourceEffectHandle == 0 || InsertionSequence == 0 || LiveAttributeIndex < -1)
@@ -99,25 +99,24 @@ namespace ThirdPersonSimulation
         }
     }
 
-    [CanonicalContract]
+    [ValueOperations(Resources = false)]
     internal partial struct PortableAttributeData
     {
-        [CanonicalBound]
         public PortableAttributeDefinition Definition;
         public Float32Scalar BaseValue;
         public Float32Scalar CurrentValue;
         public ulong Revision;
     }
 
-    [CanonicalStorageOwner]
+    [ValueStorageOwner]
     internal sealed partial class PortableAttributeState
     {
-        [CanonicalStorage]
+        [ValueStorageMember]
         internal PortableAttributeData Data;
         public List<PortableAttributeModifierState> Modifiers { get; } = new List<PortableAttributeModifierState>();
     }
 
-    [CanonicalStorageOwner]
+    [ValueStorageOwner]
     internal readonly partial struct PortableAttributeSnapshot
     {
         internal PortableAttributeSnapshot(
@@ -128,70 +127,40 @@ namespace ThirdPersonSimulation
             m_Modifiers = modifiers;
         }
 
-        [CanonicalStorage]
+        [ValueStorageMember]
         internal readonly PortableAttributeData Data;
         readonly Float32GameplayEffectModifierSnapshotReference m_Modifiers;
         public Float32GameplayEffectModifierSnapshotReference Modifiers => m_Modifiers;
     }
 
-    [CanonicalContract(PreparedStorage = typeof(GameplayTagSnapshotBank), OwnsMemberResources = true)]
+    [ValueOperations(OwnsMemberResources = true, CopyMethod = nameof(CopyFrom), ClearMethod = nameof(Clear))]
     internal partial struct PortableEffectSpecData
     {
         public PortableEffectDefinition Definition;
-        [CanonicalRequired, CanonicalReferenceAccess]
+        [ValueReferenceAccess]
         public SimulationGameplayEffectContext Context;
-        [CanonicalDeclaredText]
         public SortedList<string, Float32Scalar> SetByCaller;
-        [CanonicalDeclaredText]
         public SortedList<string, Float32Scalar> SourceAttributes;
-        [CanonicalDeclaredText]
         public SortedList<string, Float32Scalar> TargetAttributes;
         public bool SourceTagSnapshotProvided;
-        [CanonicalDeclaredText]
         public GameplayTagSnapshot SourceTags;
-        [CanonicalDeclaredText]
         public GameplayTagSnapshot TargetTags;
         public ulong DurationTicks;
         public ulong PeriodTicks;
 
-        [CanonicalValidation]
-        void RequirePublishedSpec(ICanonicalValueReader reader)
-        {
-            RequireCapturedValues(SetByCaller, Definition.SetByCallerParameters);
-            RequireCapturedValues(SourceAttributes, Definition.SourceSnapshotAttributes);
-            RequireCapturedValues(TargetAttributes, Definition.TargetSnapshotAttributes);
-            if ((Definition.DurationPolicy == PortableEffectDurationPolicy.Duration) != (DurationTicks > 0) ||
-                Definition.HasPeriod != (PeriodTicks > 0))
-                throw new InvalidDataException("Gameplay Effect Spec timing does not match its published declaration.");
-            if (SourceTagSnapshotProvided && SourceTags.Count == 0)
-                throw new InvalidDataException("Provided Gameplay Tag snapshot must not be empty.");
-            Float32GameplayEffectRuntimeCatalog catalog = reader.PublishedValues.Require<Float32GameplayEffectRuntimeCatalog>();
-            for (int i = 0; i < SourceTags.Count; i++)
-                if (!catalog.ContainsTag(SourceTags[i]))
-                    throw new InvalidDataException("Source Gameplay Tag is absent from its published catalog.");
-            for (int i = 0; i < TargetTags.Count; i++)
-                if (!catalog.ContainsTag(TargetTags[i]))
-                    throw new InvalidDataException("Target Gameplay Tag is absent from its published catalog.");
-        }
+        internal partial void CopyFrom(in PortableEffectSpecData value);
+        internal partial void Clear();
 
-        static void RequireCapturedValues(SortedList<string, Float32Scalar> values, IReadOnlyList<string> declared)
-        {
-            if (values.Count != declared.Count)
-                throw new InvalidDataException("Gameplay Effect captured values do not match the published declaration.");
-            for (int i = 0; i < declared.Count; i++)
-                if (!string.Equals(values.Keys[i], declared[i], StringComparison.Ordinal))
-                    throw new InvalidDataException("Gameplay Effect captured identity is absent from its published declaration.");
-        }
+
     }
 
-    [CanonicalStorageOwner]
+    [ValueStorageOwner]
     internal sealed partial class PortableEffectSpecState
     {
         readonly Float32GameplayEffectExecutionScratch m_Owner;
         int m_Retainers;
-        [CanonicalStorage]
+        [ValueStorageMember]
         internal PortableEffectSpecData Data;
-        SimulationGameplayEffectContext m_Context;
 
         internal PortableEffectSpecState(Float32GameplayEffectExecutionScratch owner, GameplayEffectRuntimeCapacityLayout capacity)
         {
@@ -227,12 +196,12 @@ namespace ThirdPersonSimulation
                 m_Owner.ReleaseSpec(this);
         }
 
-        internal void Clear() => PortableEffectSpecData.CanonicalClear(ref Data);
+        internal void Clear() => Data.Clear();
 
     }
 
 
-    [CanonicalStorageOwner]
+    [ValueStorageOwner]
     internal readonly partial struct PortableActiveEffectSnapshot
     {
         internal PortableActiveEffectSnapshot(PortableActiveEffectState source)
@@ -241,7 +210,7 @@ namespace ThirdPersonSimulation
             Spec = source.Spec;
         }
 
-        [CanonicalStorage]
+        [ValueStorageMember]
         internal readonly GameplayEffectActiveStateData Data;
         internal readonly PortableEffectSpecState Spec;
     }
@@ -287,7 +256,7 @@ namespace ThirdPersonSimulation
         internal SimulationGameplayEffectContext Context { get; }
     }
 
-    [CanonicalContract]
+    [ValueOperations(Resources = false)]
     internal readonly partial struct PortablePredictionAttributeSnapshot
     {
         public PortablePredictionAttributeSnapshot(Float32Scalar baseValue, Float32Scalar currentValue, ulong beforeRevision, ulong afterRevision)
@@ -340,7 +309,7 @@ namespace ThirdPersonSimulation
         internal void Clear()
         {
             Spec = null;
-            GameplayEffectPredictionStateData.CanonicalClear(ref Data);
+            Data.Clear();
         }
         protected override GameplayEffectContextIdentity DescribeContext() => CausalContext;
     }
@@ -987,7 +956,7 @@ namespace ThirdPersonSimulation
             PortableActiveEffectState active = scratch.AcquireActiveState();
             active.Spec = source.Spec;
             active.Spec.Retain();
-            GameplayEffectActiveStateData.CanonicalCopyInto(in source.Data, ref active.Data);
+            active.Data.CopyFrom(in source.Data);
             return active;
         }
 
@@ -1018,7 +987,7 @@ namespace ThirdPersonSimulation
         static void CopyPrediction(PortablePredictionRecord source, PortablePredictionRecord result)
         {
             result.Spec = source.Spec;
-            GameplayEffectPredictionStateData.CanonicalCopyInto(in source.Data, ref result.Data);
+            result.Data.CopyFrom(in source.Data);
         }
 
         static GameplayTagSnapshot CollectOwnedTags(
@@ -2100,50 +2069,7 @@ namespace ThirdPersonSimulation
             ClearDirty();
         }
 
-        internal GameplayEffectStateAggregate Decode(CanonicalReader reader, CanonicalReader blockReader,
-            EquipmentStatePageBank equipment)
-        {
-            GameplayEffectStateAggregate original = Freeze();
-            RequireDecodePages();
-            original.RetainSnapshots();
-            m_Baseline.ReleaseSnapshots();
-            m_Baseline = default;
-            try
-            {
-                ClearWorkingStorage();
-                m_ChangeCursor = GameplayEffectStateAggregateCodec.Read(reader, blockReader, m_Catalog, m_Scratch,
-                    m_TagSnapshotPages, equipment, m_TagSources, m_AttributeAggregator.Attributes,
-                    m_ActiveEffects, m_Periods, m_Journal, m_LastLifecycleRevisions);
-                RebuildActiveIndexes();
-                m_AttributeAggregator.RebuildDependencies();
-                ValidateRuntimeClosure();
-                if (m_Scratch.JournalGroups.AvailableCount < m_Journal.Count ||
-                    m_OwnedTagSnapshotPages.AvailableCount == 0 && m_TagSources.Count > 0)
-                    throw new InvalidDataException("Gameplay Effect decode exceeds the prepared aggregate lease capacity.");
-                int predictionCount = 0;
-                for (int i = 0; i < m_Journal.Count; i++)
-                    predictionCount += m_Journal.Values[i].Count;
-                if (m_Scratch.AvailablePredictionCount < predictionCount)
-                    throw new InvalidDataException("Gameplay Effect decode exceeds the prepared prediction snapshot capacity.");
-                GameplayEffectStateAggregate candidate = Freeze();
-                candidate.RetainSnapshots();
-                return candidate;
-            }
-            finally
-            {
-                ClearWorkingStorage();
-                Restore(original);
-                original.ReleaseSnapshots();
-            }
-        }
 
-        void RequireDecodePages()
-        {
-            if (m_AttributeSnapshotPages.AvailableCount == 0 || m_PeriodSnapshotPages.AvailableCount == 0 ||
-                m_LifecycleSnapshotPages.AvailableCount == 0 || m_ActiveEffectSnapshotPages.AvailableCount == 0 ||
-                m_TagSourceSnapshotPages.AvailableCount == 0 || m_JournalSnapshotPages.AvailableCount == 0)
-                throw new InvalidDataException("Gameplay Effect decode exceeds the prepared state page capacity.");
-        }
 
         void ReleaseWorkingTagSources()
         {

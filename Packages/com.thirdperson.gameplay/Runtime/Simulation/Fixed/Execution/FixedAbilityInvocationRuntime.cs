@@ -156,9 +156,8 @@ namespace ThirdPersonSimulation.Fixed
             m_ExpiredBlackboardOverrides.Capacity = values.BlackboardOverrides.Capacity;
         }
 
-        internal void PrepareStateExecutionText(int maximumSessionCheckpointPayloadBytes,
-            int maximumRetainedTextReferences) =>
-            m_Control.PrepareStateExecutionText(maximumSessionCheckpointPayloadBytes, maximumRetainedTextReferences);
+        internal void PrepareStateExecutionText(int maximumRetainedTextReferences) =>
+            m_Control.PrepareStateExecutionText(maximumRetainedTextReferences);
 
         internal void DisposeStateExecutionText()
         {

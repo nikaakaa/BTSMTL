@@ -1,6 +1,7 @@
 using System;
 using ThirdPersonSimulation;
 using ThirdPersonSimulation.Fixed;
+using ThirdPersonSimulation.Serialization;
 
 namespace BTSMTL.Timeline
 {
@@ -161,15 +162,8 @@ namespace BTSMTL.Timeline
             return true;
         }
 
-        public StableHash ComputeRevision(string baselineContentHash)
-        {
-            CanonicalWriter writer = StableHash.BeginHash();
-            writer.WriteText(baselineContentHash);
-            writer.WriteInt32(m_Ranges.Length);
-            for (int i = 0; i < m_Ranges.Length; i++)
-                m_Ranges[i].Write(writer);
-            return writer.ComputeHash();
-        }
+        public StableHash ComputeRevision(string baselineContentHash) =>
+            MemoryPackTimelineContent.ComputeRevision(baselineContentHash, m_Ranges);
 
         public int[] CreateContentSlots(TimelineContentUnit content)
         {

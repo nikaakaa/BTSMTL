@@ -635,8 +635,8 @@ namespace ThirdPersonSimulation.Fixed
                 ProgramConstantKind.Vector3 => AbilityStateValue.FromVector3(constant.Vector3),
                 ProgramConstantKind.Yaw => AbilityStateValue.FromYaw(constant.Yaw),
                 ProgramConstantKind.String => AbilityStateValue.FromIdentity(constant.Text),
-                ProgramConstantKind.Bytes => throw new InvalidOperationException(
-                    $"Bytes constant '{constant.Identity}' cannot enter typed Character state evaluation."),
+                ProgramConstantKind.Curve => throw new InvalidOperationException(
+                    $"Curve constant '{constant.Identity}' cannot enter typed Character state evaluation."),
                 _ => throw new ArgumentOutOfRangeException(nameof(constant.Kind))
             };
         }

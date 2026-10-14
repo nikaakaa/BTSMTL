@@ -2,7 +2,7 @@ using System;
 
 namespace ThirdPersonSimulation
 {
-    [CanonicalContract(MaterializedRead = true)]
+    [ValueOperations]
     public partial struct SimulationInputHeader
     {
         public SimulationInputHeader(SimulationTickSourceIdentity tickSource, CanonicalTextValue inputSourceIdentity, ulong sequence)
@@ -24,7 +24,7 @@ namespace ThirdPersonSimulation
             return result;
         }
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireValid()
         {
             SimulationIdentity.Require(InputSourceIdentity, nameof(InputSourceIdentity));

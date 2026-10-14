@@ -3,10 +3,8 @@ using System.Globalization;
 
 namespace ThirdPersonSimulation.Fixed
 {
-    [CanonicalContract]
     public readonly partial struct FixedScalar : IEquatable<FixedScalar>, IComparable<FixedScalar>
     {
-        [CanonicalSchemaConstant]
         public const int FractionalBits = 32;
         public const long OneRaw = 1L << FractionalBits;
 

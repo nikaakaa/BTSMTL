@@ -289,24 +289,18 @@ namespace ThirdPersonSimulation
 
     }
 
-    public sealed class Float32SourceEgressRecord : IFloat32PipelineProductValueRelease
+    public sealed class Float32SourceEgressRecord
     {
         readonly byte[] m_Payload;
-        readonly CanonicalTextReferences m_Text;
         int m_PayloadLength;
 
         public Float32SourceEgressRecord(string channelId, string schemaId, int schemaVersion,
-            byte[] payloadBuffer, CanonicalTextReferences text, CanonicalReader payloadReader,
-            CanonicalReader elementReader, CanonicalWriter canonicalScratch)
+            byte[] payloadBuffer)
         {
             ChannelId = channelId;
             SchemaId = schemaId;
             SchemaVersion = schemaVersion;
             m_Payload = payloadBuffer;
-            m_Text = text;
-            PayloadReader = payloadReader;
-            ElementReader = elementReader;
-            CanonicalScratch = canonicalScratch;
         }
 
         public void Publish(ActorId actorId, SimulationTick tick, int payloadLength)
@@ -317,12 +311,6 @@ namespace ThirdPersonSimulation
             PayloadHash = SimulationCanonicalPayloadHash.Compute(Payload.Span);
         }
 
-        void IFloat32PipelineProductValueRelease.ReleaseOwnedValue() => m_Text.Reset();
-
-        public ICanonicalTextResolver TextResolver => m_Text;
-        public CanonicalReader PayloadReader { get; }
-        public CanonicalReader ElementReader { get; }
-        public CanonicalWriter CanonicalScratch { get; }
         public ActorId ActorId { get; private set; }
         public SimulationTick Tick { get; private set; }
         public string ChannelId { get; }
@@ -332,65 +320,41 @@ namespace ThirdPersonSimulation
         public ReadOnlyMemory<byte> Payload => new ReadOnlyMemory<byte>(m_Payload, 0, m_PayloadLength);
     }
 
-    public sealed class Float32SimulationSessionSnapshot
+    [ValueOperations(RetainMethod = nameof(RetainStorage), ReleaseMethod = nameof(ReleaseStorage))]
+    public sealed partial class Float32SimulationSessionSnapshot : IValueResources
     {
         public Float32SimulationSessionSnapshot(
             SimulationSessionCompositionIdentity compositionIdentity,
             SimulationWorldSnapshot world,
             SimulationPipelineStateSnapshot pipeline)
         {
-            if (!compositionIdentity.IsValid)
-                throw new ArgumentException("Session snapshot composition identity is invalid.", nameof(compositionIdentity));
-            World = world ?? throw new ArgumentNullException(nameof(world));
-            Pipeline = pipeline ?? throw new ArgumentNullException(nameof(pipeline));
-            if (pipeline.LastCompletedTick != world.Tick.Value)
-                throw new ArgumentException("World and Pipeline snapshot Ticks do not match.");
             CompositionIdentity = compositionIdentity;
-            SnapshotHash = ComputeSnapshotHash(
-                "float32-session-snapshot/2",
-                compositionIdentity.Value,
-                world.WorldHash.Value,
-                pipeline.SnapshotHash);
+            World = world;
+            Pipeline = pipeline;
+        }
+
+        public Float32SimulationSessionSnapshot(SimulationSessionCompositionIdentity compositionIdentity)
+        {
+            CompositionIdentity = compositionIdentity;
         }
 
         public SimulationSessionCompositionIdentity CompositionIdentity { get; }
+        [ValueResource(nameof(SimulationWorldSnapshot.RetainStateStorage), nameof(SimulationWorldSnapshot.ReleaseStateStorage))]
         public SimulationWorldSnapshot World { get; private set; }
+        [ValueResource(nameof(SimulationPipelineStateSnapshot.RetainStepStorage), nameof(SimulationPipelineStateSnapshot.ReleaseStepStorage))]
         public SimulationPipelineStateSnapshot Pipeline { get; private set; }
         public SimulationTick Tick => World.Tick;
-        public StableHash SnapshotHash { get; private set; }
 
-        internal Float32SimulationSessionSnapshot(SimulationSessionCompositionIdentity compositionIdentity)
-        {
-            CompositionIdentity = compositionIdentity;
-        }
-
-        internal void SetPrepared(SimulationWorldSnapshot world, SimulationPipelineStateSnapshot pipeline, CanonicalWriter writer)
+        public void SetPrepared(SimulationWorldSnapshot world, SimulationPipelineStateSnapshot pipeline)
         {
             World = world;
             Pipeline = pipeline;
-            SnapshotHash = ComputeSnapshotHash("float32-session-snapshot/2", CompositionIdentity.Value,
-                world.WorldHash.Value, pipeline.SnapshotHash, writer);
         }
 
-        static StableHash ComputeSnapshotHash(string domain, StableHash composition, StableHash world, StableHash pipeline) =>
-            ComputeSnapshotHash(domain, composition, world, pipeline, StableHash.BeginHash());
-
-        internal static StableHash ComputeSnapshotHash(
-            string domain, StableHash composition, StableHash world, StableHash pipeline, CanonicalWriter writer)
-        {
-            writer.Reset();
-            writer.WriteRawText(domain.AsSpan());
-            WriteHashField(writer, composition);
-            WriteHashField(writer, world);
-            WriteHashField(writer, pipeline);
-            return writer.ComputeHash();
-        }
-
-        static void WriteHashField(CanonicalWriter writer, StableHash value)
-        {
-            writer.WriteByte(0x1f);
-            writer.WriteRawHash(value);
-        }
+        public partial void RetainStorage();
+        public partial void ReleaseStorage();
+        void IValueResources.Retain() => RetainStorage();
+        void IValueResources.Release() => ReleaseStorage();
     }
 
     public readonly struct Float32SimulationStepSnapshot

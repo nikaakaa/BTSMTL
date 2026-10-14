@@ -29,7 +29,6 @@ namespace ThirdPersonSimulation
         Turning = 3
     }
 
-    [CanonicalContract]
     public readonly partial struct GameplayAbilitySourceContext : IEquatable<GameplayAbilitySourceContext>
     {
         public GameplayAbilitySourceContext(CharacterSkillId skillId, ulong instanceId,

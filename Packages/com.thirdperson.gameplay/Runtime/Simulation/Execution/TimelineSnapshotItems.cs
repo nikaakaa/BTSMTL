@@ -9,7 +9,7 @@ namespace ThirdPersonSimulation
         void Release();
     }
 
-    [CanonicalBorrowedSequence(typeof(TimelineSnapshotItemBuffer<>))]
+    [ValueBorrowedSequence(typeof(TimelineSnapshotItemBuffer<>))]
     public readonly struct TimelineSnapshotItems<T>
     {
         readonly object m_Items;
@@ -137,7 +137,8 @@ namespace ThirdPersonSimulation
         }
     }
 
-    public sealed class AbilityTimelineSnapshotStorage
+    [ValueOperations(ExplicitResources = true, RetainMethod = "RetainText", ReleaseMethod = "ReleaseText")]
+    public sealed partial class AbilityTimelineSnapshotStorage
     {
         IAbilityTimelineSnapshotContentLifetime m_ContentLifetime;
 
@@ -149,9 +150,13 @@ namespace ThirdPersonSimulation
             ActiveTreeClips = new TimelineSnapshotItemBuffer<AbilityTimelineTreeClipState>(this, trees, value => value.Retain(), value => value.Release());
         }
 
+        [ValueResource("RetainItems", "ReleaseItems")]
         public TimelineSnapshotItemBuffer<CanonicalTextValue> ActiveClipIds { get; }
+        [ValueResource("RetainItems", "ReleaseItems")]
         public TimelineSnapshotItemBuffer<AbilityTimelineTreeClipExit> TreeDecisionExits { get; }
+        [ValueResource("RetainItems", "ReleaseItems")]
         public TimelineSnapshotItemBuffer<AbilityTimelineTreeClipExit> PendingTreeDecisionExits { get; }
+        [ValueResource("RetainItems", "ReleaseItems")]
         public TimelineSnapshotItemBuffer<AbilityTimelineTreeClipState> ActiveTreeClips { get; }
         internal uint Generation { get; private set; }
         internal int Retainers { get; private set; }
@@ -187,16 +192,6 @@ namespace ThirdPersonSimulation
                 RetainText();
         }
 
-        void RetainText()
-        {
-            AbilityTimelineRuntimeSnapshot.CanonicalRetainStorageItems(this);
-        }
-
-        void ReleaseText()
-        {
-            AbilityTimelineRuntimeSnapshot.CanonicalReleaseStorageItems(this);
-        }
-
         internal void Release()
         {
             if (--Retainers != 0)
@@ -210,35 +205,6 @@ namespace ThirdPersonSimulation
             m_ContentLifetime = null;
             contentLifetime?.Release();
         }
-    }
-
-    internal readonly struct AbilityTimelineSnapshotDecodeLayout
-    {
-        internal AbilityTimelineSnapshotDecodeLayout(int maximumSnapshots, int maximumPayloadBytes,
-            int clips, int exits, int pendingExits, int trees)
-        {
-            MaximumSnapshots = maximumSnapshots;
-            MaximumPayloadBytes = maximumPayloadBytes;
-            ActiveClips = (int)Math.Min((long)maximumSnapshots * clips, maximumPayloadBytes / sizeof(int));
-            TreeDecisionExits = (int)Math.Min((long)maximumSnapshots * exits, maximumPayloadBytes / (sizeof(int) * 2));
-            PendingTreeDecisionExits = (int)Math.Min((long)maximumSnapshots * pendingExits, maximumPayloadBytes / (sizeof(int) * 2));
-            ActiveTreeClips = (int)Math.Min((long)maximumSnapshots * trees,
-                maximumPayloadBytes / (sizeof(int) * 5 + sizeof(ulong) * 2));
-        }
-
-        internal readonly int MaximumSnapshots;
-        internal readonly int MaximumPayloadBytes;
-        internal readonly int ActiveClips;
-        internal readonly int TreeDecisionExits;
-        internal readonly int PendingTreeDecisionExits;
-        internal readonly int ActiveTreeClips;
-
-        internal long ScalarTextValues(int declaredIdentityCount) =>
-            (long)MaximumSnapshots * 12 + Math.Min((long)MaximumSnapshots * 2, declaredIdentityCount) + ActiveClips;
-        internal long ExitTextValues => (long)TreeDecisionExits + PendingTreeDecisionExits;
-        internal long TreeTextValues => (long)ActiveTreeClips * 4;
-        internal int MaximumTextValues => SimulationSessionCheckpointPayloadLayout.MaximumNonEmptyTextValues(
-            MaximumPayloadBytes, (long)MaximumSnapshots * 14 + ActiveClips, ExitTextValues, TreeTextValues);
     }
 
     public sealed class AbilityTimelineSnapshotStorageBank

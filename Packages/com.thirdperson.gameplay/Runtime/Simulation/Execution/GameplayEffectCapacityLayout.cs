@@ -30,9 +30,9 @@ namespace ThirdPersonSimulation
         RetainedBranchStateVersions,
         PredictionWindowTicks,
         RetainedLifecycleRevisionTicks,
-        EncodedCheckpoints,
-        CapturePayloads,
-        RestorePayloads,
+        RetainedCheckpoints,
+        CaptureStates,
+        RestoreStates,
         SourceEntries,
         QueryTagEntries,
         FrozenTagEntries,
@@ -53,7 +53,7 @@ namespace ThirdPersonSimulation
         PredictionRecords,
         PredictionRecordObjects,
         LifecycleRevisions,
-        EncodedPayloads,
+        CheckpointSlots,
         FailureOutputReservation,
         SourceTagRemovalReservation,
         SourceIngressEntries,
@@ -184,16 +184,16 @@ namespace ThirdPersonSimulation
 
     public readonly struct GameplayEffectCheckpointCapacity
     {
-        public GameplayEffectCheckpointCapacity(int encodedCheckpoints, int capturePayloads, int restorePayloads)
+        public GameplayEffectCheckpointCapacity(int retainedCheckpoints, int captureStates, int restoreStates)
         {
-            EncodedCheckpoints = encodedCheckpoints;
-            CapturePayloads = capturePayloads;
-            RestorePayloads = restorePayloads;
+            RetainedCheckpoints = retainedCheckpoints;
+            CaptureStates = captureStates;
+            RestoreStates = restoreStates;
         }
 
-        public int EncodedCheckpoints { get; }
-        public int CapturePayloads { get; }
-        public int RestorePayloads { get; }
+        public int RetainedCheckpoints { get; }
+        public int CaptureStates { get; }
+        public int RestoreStates { get; }
     }
 
     public readonly struct GameplayEffectSessionCapacity
@@ -201,7 +201,7 @@ namespace ThirdPersonSimulation
         public GameplayEffectSessionCapacity(SimulationSessionId sessionId, StableHash rosterHash, int actorCount,
             int candidateTicks, int retainedOutputs, int savepointDepth, int retainedStateVersions,
             int retainedBranchStateVersions, int predictionWindowTicks, int retainedLifecycleRevisionTicks,
-            int encodedCheckpoints, int capturePayloads, int restorePayloads, int recordedFrameCapacity)
+            int retainedCheckpoints, int captureStates, int restoreStates, int recordedFrameCapacity)
         {
             SessionId = sessionId;
             RosterHash = rosterHash;
@@ -213,11 +213,12 @@ namespace ThirdPersonSimulation
             RetainedBranchStateVersions = retainedBranchStateVersions;
             PredictionWindowTicks = predictionWindowTicks;
             RetainedLifecycleRevisionTicks = retainedLifecycleRevisionTicks;
-            EncodedCheckpoints = encodedCheckpoints;
-            CapturePayloads = capturePayloads;
-            RestorePayloads = restorePayloads;
+            RetainedCheckpoints = retainedCheckpoints;
+            CaptureStates = captureStates;
+            RestoreStates = restoreStates;
             RecordedFrameCapacity = recordedFrameCapacity;
-            long statePageCount = 2L + candidateTicks + savepointDepth + retainedStateVersions + retainedBranchStateVersions;
+            long statePageCount = 2L + candidateTicks + savepointDepth + retainedStateVersions + retainedBranchStateVersions +
+                retainedCheckpoints + captureStates + restoreStates;
             if (statePageCount > int.MaxValue)
                 throw new GameplayEffectPreparationException(new GameplayEffectPreparationFailure(
                     GameplayEffectPreparationFailureKind.StorageLimitExceeded, GameplayEffectCapacityDimension.StatePages,
@@ -235,12 +236,11 @@ namespace ThirdPersonSimulation
         public int RetainedBranchStateVersions { get; }
         public int PredictionWindowTicks { get; }
         public int RetainedLifecycleRevisionTicks { get; }
-        public int EncodedCheckpoints { get; }
-        public int CapturePayloads { get; }
-        public int RestorePayloads { get; }
+        public int RetainedCheckpoints { get; }
+        public int CaptureStates { get; }
+        public int RestoreStates { get; }
         public int RecordedFrameCapacity { get; }
         public int StatePageCount { get; }
-        public int DecodedStatePageCount => StatePageCount - CandidateTicks;
 
         public static GameplayEffectSessionCapacity Prepare(SimulationSessionId sessionId, StableHash rosterHash,
             int actorCount, in GameplayEffectScheduleCapacity schedule, in GameplayEffectCheckpointCapacity checkpoints,
@@ -255,8 +255,8 @@ namespace ThirdPersonSimulation
             return new GameplayEffectSessionCapacity(sessionId, rosterHash, actorCount, schedule.MaximumStepCount,
                 schedule.RetainedOutputs, GameplayEffectRuntimeCapacityLayout.MaximumSavepointDepth,
                 (int)retainedStateVersions, schedule.RetainedBranchStateVersions, schedule.PredictionWindowTicks,
-                schedule.RetainedLifecycleRevisionTicks, checkpoints.EncodedCheckpoints, checkpoints.CapturePayloads,
-                checkpoints.RestorePayloads, recordedFrameCapacity);
+                schedule.RetainedLifecycleRevisionTicks, checkpoints.RetainedCheckpoints, checkpoints.CaptureStates,
+                checkpoints.RestoreStates, recordedFrameCapacity);
         }
     }
 
@@ -286,7 +286,7 @@ namespace ThirdPersonSimulation
             in GameplayEffectSessionCapacity session, int sourceWidth, int queryTagWidth, int modifierWidth,
             int additionalQueueWidth, int applicationsPerTick, int statePageCount, int outputPageCount,
             int predictionRecordWidth, int specCount, int activeObjectCount, int savepointRestoreBatches, int capturePageCount,
-            int predictionRecordCount, int lifecycleRevisionWidth, int encodedPayloadCount, int tentativeChangeWidth,
+            int predictionRecordCount, int lifecycleRevisionWidth, int checkpointSlotCount, int tentativeChangeWidth,
             int failureOutputReservation, int sourceTagRemovalReservation, int maximumRetainedTextReferences)
         {
             ContentRevision = binding.ContentRevision;
@@ -312,7 +312,7 @@ namespace ThirdPersonSimulation
             CapturePageCount = capturePageCount;
             PredictionRecordCount = predictionRecordCount;
             LifecycleRevisionWidth = lifecycleRevisionWidth;
-            EncodedPayloadCount = encodedPayloadCount;
+            CheckpointSlotCount = checkpointSlotCount;
             TentativeChangeWidth = tentativeChangeWidth;
             FailureOutputReservation = failureOutputReservation;
             SourceTagRemovalReservation = sourceTagRemovalReservation;
@@ -345,7 +345,7 @@ namespace ThirdPersonSimulation
                 Row(GameplayEffectCapacityDimension.RetainedBranchStateVersions, Session.RetainedBranchStateVersions, "Source model checkpoint owner", "Schedule.GameplayEffectCapacity.RetainedBranchStateVersions"),
                 Row(GameplayEffectCapacityDimension.PredictionWindowTicks, Session.PredictionWindowTicks, "Source model policy", "Schedule.GameplayEffectCapacity.PredictionWindowTicks"),
                 Row(GameplayEffectCapacityDimension.RetainedLifecycleRevisionTicks, Session.RetainedLifecycleRevisionTicks, "Source model lifecycle acceptance window", "Schedule.GameplayEffectCapacity.RetainedLifecycleRevisionTicks"),
-                Row(GameplayEffectCapacityDimension.StatePages, StatePageCount, "Session / transaction / state history", "1 committed + 1 workspace + CandidateTicks + SavepointDepth + RetainedStateVersions + RetainedBranchStateVersions"),
+                Row(GameplayEffectCapacityDimension.StatePages, StatePageCount, "Session / transaction / state history", "1 committed + 1 workspace + CandidateTicks + SavepointDepth + RetainedStateVersions + RetainedBranchStateVersions + RetainedCheckpoints + CaptureStates + RestoreStates"),
                 Row(GameplayEffectCapacityDimension.AggregateObjects, AggregateObjectCount, "state page owner", "StatePageCount"),
                 Row(GameplayEffectCapacityDimension.OutputPages, OutputPageCount, "Session / packet owner", "CandidateTicks + RetainedOutputs"),
                 Row(GameplayEffectCapacityDimension.PendingPredictionKeys, Actor.PendingPredictionKeys, "Profile / prediction admission", "Actor.PendingPredictionKeys"),
@@ -363,10 +363,10 @@ namespace ThirdPersonSimulation
                 Row(GameplayEffectCapacityDimension.FailureOutputReservation, FailureOutputReservation, "Command admission / once-Tick Advance", "2 * CommandsPerTick + 1; each command failure plus reconciliation, one atomic Advance failure"),
                 Row(GameplayEffectCapacityDimension.SourceTagRemovalReservation, SourceTagRemovalReservation, "Action terminal / Equipment and Literal source removal", "(ExternalTagSources + CommandsPerTick) * TagsPerExternalSource; initial external sources plus admitted installations"),
                 Row(GameplayEffectCapacityDimension.PresentationRequestsPerTick, Actor.PresentationRequestsPerTick, "Profile / Cue owner", "Actor.PresentationRequestsPerTick; reserve actual output before mutation"),
-                Row(GameplayEffectCapacityDimension.EncodedCheckpoints, Session.EncodedCheckpoints, "SimulationSessionHistory", "MaximumRetainedCheckpoints"),
-                Row(GameplayEffectCapacityDimension.CapturePayloads, Session.CapturePayloads, "History and RuntimeHandle replay rollback owners", "MaximumSimultaneousCapturePayloads"),
-                Row(GameplayEffectCapacityDimension.RestorePayloads, Session.RestorePayloads, "History restore owner", "MaximumRestorePayloads; synchronously borrowed encoded pages do not add a lease"),
-                Row(GameplayEffectCapacityDimension.EncodedPayloads, EncodedPayloadCount, "Session checkpoint / codec owner", "EncodedCheckpoints + CapturePayloads + RestorePayloads; no retained GAS page after encode"),
+                Row(GameplayEffectCapacityDimension.RetainedCheckpoints, Session.RetainedCheckpoints, "SimulationSessionHistory", "MaximumRetainedCheckpoints"),
+                Row(GameplayEffectCapacityDimension.CaptureStates, Session.CaptureStates, "History and RuntimeHandle replay rollback owners", "MaximumSimultaneousCaptureStates"),
+                Row(GameplayEffectCapacityDimension.RestoreStates, Session.RestoreStates, "History restore owner", "MaximumRestoreStates"),
+                Row(GameplayEffectCapacityDimension.CheckpointSlots, CheckpointSlotCount, "Session checkpoint / snapshot owner", "RetainedCheckpoints + CaptureStates + RestoreStates"),
                 Row(GameplayEffectCapacityDimension.RetainedTextReferences, MaximumRetainedTextReferences, "Spec / Active / prediction / source / revision / tentative record owners", "2 * SpecCount + 2 * ActiveObjectCount + 4 * PredictionRecordCount + 2 * SourceWidth * (StatePageCount + 1) + 12 * LifecycleRevisionWidth * (StatePageCount + 1) + 12 * TentativeChangeWidth")
             });
         }
@@ -395,7 +395,7 @@ namespace ThirdPersonSimulation
         public int CapturePageCount { get; }
         public int PredictionRecordCount { get; }
         public int LifecycleRevisionWidth { get; }
-        public int EncodedPayloadCount { get; }
+        public int CheckpointSlotCount { get; }
         public int TentativeChangeWidth { get; }
         public int FailureOutputReservation { get; }
         public int SourceTagRemovalReservation { get; }
@@ -426,9 +426,9 @@ namespace ThirdPersonSimulation
                 !Require(GameplayEffectCapacityDimension.RetainedBranchStateVersions, 0, session.RetainedBranchStateVersions) ||
                 !Require(GameplayEffectCapacityDimension.PredictionWindowTicks, 0, session.PredictionWindowTicks) ||
                 !Require(GameplayEffectCapacityDimension.RetainedLifecycleRevisionTicks, 0, session.RetainedLifecycleRevisionTicks) ||
-                !Require(GameplayEffectCapacityDimension.EncodedCheckpoints, 0, session.EncodedCheckpoints) ||
-                !Require(GameplayEffectCapacityDimension.CapturePayloads, 0, session.CapturePayloads) ||
-                !Require(GameplayEffectCapacityDimension.RestorePayloads, 0, session.RestorePayloads))
+                !Require(GameplayEffectCapacityDimension.RetainedCheckpoints, 0, session.RetainedCheckpoints) ||
+                !Require(GameplayEffectCapacityDimension.CaptureStates, 0, session.CaptureStates) ||
+                !Require(GameplayEffectCapacityDimension.RestoreStates, 0, session.RestoreStates))
             {
                 failure = current;
                 return false;
@@ -486,9 +486,9 @@ namespace ThirdPersonSimulation
                     2L * actor.ActiveEffects + predictionRecordWidth +
                     (long)applicationsPerTick * (session.RetainedLifecycleRevisionTicks + 1L),
                     out int lifecycleRevisionWidth) ||
-                !Width(GameplayEffectCapacityDimension.EncodedPayloads,
-                    (long)session.EncodedCheckpoints + session.CapturePayloads + session.RestorePayloads,
-                    out int encodedPayloadCount) ||
+                !Width(GameplayEffectCapacityDimension.CheckpointSlots,
+                    (long)session.RetainedCheckpoints + session.CaptureStates + session.RestoreStates,
+                    out int checkpointSlotCount) ||
                 !Width(GameplayEffectCapacityDimension.TentativeChangeEntries,
                     actor.ChangesPerTick +
                     ((long)applicationsPerTick + actor.LifecycleExecutionsPerTick + actor.ActiveEffects + predictionRecordWidth) *
@@ -512,7 +512,7 @@ namespace ThirdPersonSimulation
             layout = new GameplayEffectRuntimeCapacityLayout(binding, in session, sourceWidth, queryTagWidth,
                 modifierWidth, additionalQueueWidth, applicationsPerTick, statePageCount, outputPageCount,
                 predictionRecordWidth, specCount, activeObjectCount, savepointRestoreBatches, capturePageCount, predictionRecordCount,
-                lifecycleRevisionWidth, encodedPayloadCount, tentativeChangeWidth, failureOutputReservation, sourceTagRemovalReservation,
+                lifecycleRevisionWidth, checkpointSlotCount, tentativeChangeWidth, failureOutputReservation, sourceTagRemovalReservation,
                 maximumRetainedTextReferences);
             failure = default;
             return true;
@@ -554,38 +554,5 @@ namespace ThirdPersonSimulation
             string owner, string formula) => new GameplayEffectCapacityRow(dimension, value, owner, formula);
     }
 
-    public static class GameplayEffectActorCapacityCodec
-    {
-        public static void Write(CanonicalWriter writer, in GameplayEffectActorCapacity capacity)
-        {
-            writer.WriteInt32(capacity.DeclarationVersion);
-            writer.WriteInt32(capacity.ActiveEffects);
-            writer.WriteInt32(capacity.CommandsPerTick);
-            writer.WriteInt32(capacity.LifecycleExecutionsPerTick);
-            writer.WriteInt32(capacity.ExternalTagSources);
-            writer.WriteInt32(capacity.TagsPerExternalSource);
-            writer.WriteInt32(capacity.SourceTagSnapshotEntries);
-            writer.WriteInt32(capacity.PendingPredictionKeys);
-            writer.WriteInt32(capacity.PredictionRecordsPerKey);
-            writer.WriteInt32(capacity.ChangesPerTick);
-            writer.WriteInt32(capacity.FactsPerTick);
-            writer.WriteInt32(capacity.PresentationRequestsPerTick);
-        }
 
-        public static GameplayEffectActorCapacity Read(CanonicalReader reader) => new GameplayEffectActorCapacity
-        {
-            DeclarationVersion = reader.ReadInt32(),
-            ActiveEffects = reader.ReadInt32(),
-            CommandsPerTick = reader.ReadInt32(),
-            LifecycleExecutionsPerTick = reader.ReadInt32(),
-            ExternalTagSources = reader.ReadInt32(),
-            TagsPerExternalSource = reader.ReadInt32(),
-            SourceTagSnapshotEntries = reader.ReadInt32(),
-            PendingPredictionKeys = reader.ReadInt32(),
-            PredictionRecordsPerKey = reader.ReadInt32(),
-            ChangesPerTick = reader.ReadInt32(),
-            FactsPerTick = reader.ReadInt32(),
-            PresentationRequestsPerTick = reader.ReadInt32()
-        };
-    }
 }

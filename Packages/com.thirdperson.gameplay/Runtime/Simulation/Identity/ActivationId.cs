@@ -2,7 +2,6 @@ using System;
 
 namespace ThirdPersonSimulation
 {
-    [CanonicalContract]
     public readonly partial struct ActivationId : IEquatable<ActivationId>
     {
         public ActivationId(SimulationExecutionSource source, ulong generation)
@@ -11,7 +10,6 @@ namespace ThirdPersonSimulation
             Generation = generation;
             RequireRecord();
         }
-        [CanonicalRequired]
         public SimulationExecutionSource Source { get; }
         public ulong Generation { get; }
         public bool IsValid => Source.IsValid && Generation != 0;
@@ -20,7 +18,7 @@ namespace ThirdPersonSimulation
         public override int GetHashCode() => HashCode.Combine(Source, Generation);
         public override string ToString() => $"{Source}/{Generation}";
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireRecord()
         {
             if (!Source.IsValid || Generation == 0)

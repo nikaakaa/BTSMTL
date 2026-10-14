@@ -6,3 +6,4 @@ namespace ThirdPersonSimulation
             kind == ProgramStateValueKind.Enum ? "Enum:" + enumIdentity : kind.ToString();
     }
 }
+

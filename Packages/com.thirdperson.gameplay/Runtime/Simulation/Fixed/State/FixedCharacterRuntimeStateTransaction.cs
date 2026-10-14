@@ -1,4 +1,4 @@
-using MotionWarpState = ThirdPersonSimulation.MotionWarpState<ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedVector3, ThirdPersonSimulation.Fixed.FixedYaw, ThirdPersonSimulation.Fixed.FixedActionInstanceReference, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Fixed.FixedScalar>, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Fixed.FixedVector3>, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Fixed.FixedYaw>>;
+using MotionWarpState = ThirdPersonSimulation.MotionWarpState<ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedVector3, ThirdPersonSimulation.Fixed.FixedYaw, ThirdPersonSimulation.Fixed.FixedActionInstanceReference>;
 using System;
 using System.Collections.Generic;
 
@@ -198,8 +198,7 @@ namespace ThirdPersonSimulation.Fixed
             FixedAbilityRuntimeState state = ability.TakeSnapshot();
             if (!m_AbilityStates[state.AbilityIdentity.AbilityId].SharesStateWith(state))
             {
-                m_AbilityStates[state.AbilityIdentity.AbilityId].StateValues.Release();
-                m_AbilityStates[state.AbilityIdentity.AbilityId].AbilityExecutionState.ReleaseStateStorage();
+                m_AbilityStates[state.AbilityIdentity.AbilityId].Release();
                 m_AbilitiesChanged = true;
             }
             m_AbilityStates[state.AbilityIdentity.AbilityId] = state;
@@ -301,18 +300,11 @@ namespace ThirdPersonSimulation.Fixed
             m_EquipmentState.Dispose();
             foreach (KeyValuePair<CharacterSkillId, FixedAbilityRuntimeState> ability in m_AbilityStates)
             {
-                ability.Value.StateValues.Release();
-                ability.Value.AbilityExecutionState.ReleaseStateStorage();
+                ability.Value.Release();
             }
-            m_BaseState.AbilityDirectory.Release();
             if (!ReferenceEquals(m_CharacterBlackboards.Set, m_BaseState.CharacterBlackboards.Set))
                 m_CharacterBlackboards.Release();
-            m_BaseState.CharacterBlackboards.Release();
-            m_BaseState.InputRequestPage.Release();
-            m_BaseState.ActionStatePage.Release();
-            m_BaseState.TimelineSnapshotPage.Release();
-            m_BaseState.GameplayEffectState.ReleaseSnapshots();
-            m_BaseState.EquipmentState?.Release();
+            m_BaseState.ReleaseStateData();
             m_BaseState.ReleaseStateStorage();
             m_Disposed = true;
         }
@@ -334,20 +326,20 @@ namespace ThirdPersonSimulation.Fixed
             FixedActionStatePageReference actions = m_ActionState.Capture();
             FixedInputRequestPageReference inputRequests = m_InputRequestState.Capture();
             FixedCharacterRuntimeStatePage page = m_BaseState.StatePages.Begin();
-            page.Data.CharacterBlackboards = m_CharacterBlackboards;
-            return FixedCharacterRuntimeState.AdoptSnapshot(
-                page,
-                new CharacterRuntimeStateMetadata(m_BaseState.NumericProfile, m_BaseState.GameplayContentHash,
+            page.Data = FixedCharacterRuntimeStateData.FromValueStorage(
+                CharacterBlackboards: m_CharacterBlackboards,
+                Metadata: new CharacterRuntimeStateMetadata(m_BaseState.NumericProfile, m_BaseState.GameplayContentHash,
                     m_BaseState.StateSchemaHash, m_Tick.Value, m_EventSequenceState.EventSequence,
                     m_ActionState.ActionEventSequence, m_HandleAllocatorState.HandleAllocator),
-                abilities,
-                actions,
-                inputRequests,
-                m_ControlState.Capture(page.ControlStorage),
-                m_GameplayEffectState.Commit(),
-                m_EquipmentState.Capture(),
-                m_BaseState.TimelineSnapshotPage,
-                m_MotionWarpStates);
+                Abilities: abilities,
+                ActionStatePage: actions,
+                InputRequestPage: inputRequests,
+                ControlState: m_ControlState.Capture(page.ControlStorage),
+                GameplayEffectState: m_GameplayEffectState.Commit(),
+                EquipmentState: m_EquipmentState.Capture(),
+                TimelineSnapshots: m_BaseState.TimelineSnapshotPage,
+                MotionWarpStates: m_MotionWarpStates);
+            return new FixedCharacterRuntimeState(page);
         }
 
         void RequireTopSavepoint(FixedAbilityExecutionSavepoint savepoint)

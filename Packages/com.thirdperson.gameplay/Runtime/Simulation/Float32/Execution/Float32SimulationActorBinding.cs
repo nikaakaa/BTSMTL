@@ -1,4 +1,4 @@
-using MotionWarpState = ThirdPersonSimulation.MotionWarpState<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32Vector3, ThirdPersonSimulation.Float32Yaw, ThirdPersonSimulation.Float32ActionInstanceReference, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Float32Scalar>, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Float32Vector3>, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Float32Yaw>>;
+using MotionWarpState = ThirdPersonSimulation.MotionWarpState<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32Vector3, ThirdPersonSimulation.Float32Yaw, ThirdPersonSimulation.Float32ActionInstanceReference>;
 using MotionContributionBuffer = ThirdPersonSimulation.MotionContributionBuffer<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32Vector2, ThirdPersonSimulation.Float32Vector3, ThirdPersonSimulation.Float32SimulationMath>;
 using System;
 using ThirdPersonGameplay.Configuration;
@@ -152,7 +152,6 @@ namespace ThirdPersonSimulation
         int m_TraceRecordsPerTick;
         int m_FactCapacity;
         int m_OutputPresentationCapacity;
-        ActionAdmissionProfile[] m_CodecActionProfiles = Array.Empty<ActionAdmissionProfile>();
         readonly Float32CharacterTraceSink m_CharacterTraceSink;
         readonly Float32AbilityExecutionInput m_AbilityExecutionInput = new Float32AbilityExecutionInput();
         readonly Float32CharacterInputRequestState m_InputRequestState = new Float32CharacterInputRequestState();
@@ -183,7 +182,7 @@ namespace ThirdPersonSimulation
             ActorId = actorId;
             CombatBinding = combatBinding;
             Configurations = configurations;
-            CombatCatalog = combatBinding == null ? null : new Float32CombatAttackCatalog(combatBinding.AttackCatalogBytes);
+            CombatCatalog = combatBinding == null ? null : new Float32CombatAttackCatalog(combatBinding.AttackCatalog);
             WorldBodyBindingId = SimulationIdentity.Require(worldBodyBindingId, nameof(worldBodyBindingId));
             ControlRuntimeBinding = controlRuntimeBinding ?? throw new ArgumentNullException(nameof(controlRuntimeBinding));
             InputRuntimeBinding = inputRuntimeBinding;
@@ -218,20 +217,14 @@ namespace ThirdPersonSimulation
                 StateValuePages.Add(installation.Identity.AbilityId, new AbilityStateValuePageBank<AbilityStateValue>(
                     installation.Identity, installation.Layout.StateSlots.Count, slot => !installation.Layout.IsSkillExecutionStateSlot(slot) &&
                         AbilityInstallations.CharacterBlackboards.Slots(installation.Data.AbilityId)[slot] < 0,
-                    value => value.Retain(), value => value.Release(), installation.Blackboards,
-                    slot => installation.Layout.StateSlots[slot].ValueKind,
-                    AbilityStateValue.CanonicalWrite<CanonicalWriter>, AbilityStateValue.CanonicalReadCase<CanonicalReader>));
+                    value => value.Retain(), value => value.Release(), installation.Blackboards));
                 ExecutionStatePages.Add(installation.Identity.AbilityId, new GameplayAbilityExecutionStateBank<AbilityStateValue>(
                     installation.Identity, installation.Layout.StateSlots.Count, installation.Layout.ActionInstanceCapacity,
-                    installation.Layout.IsSkillExecutionStateSlot, value => value.Retain(), value => value.Release(), installation.Blackboards,
-                    slot => installation.Layout.StateSlots[slot].ValueKind,
-                    AbilityStateValue.CanonicalWrite<CanonicalWriter>, AbilityStateValue.CanonicalReadCase<CanonicalReader>));
+                    installation.Layout.IsSkillExecutionStateSlot, value => value.Retain(), value => value.Release(), installation.Blackboards));
             }
             CharacterBlackboardPages = new AbilityStateValuePageBank<AbilityStateValue>(default,
                 AbilityInstallations.CharacterBlackboards.SlotCount, _ => true,
-                value => value.Retain(), value => value.Release(), AbilityInstallations.CharacterBlackboards.Binding,
-                slot => AbilityInstallations.CharacterBlackboards.Kinds[slot],
-                AbilityStateValue.CanonicalWrite<CanonicalWriter>, AbilityStateValue.CanonicalReadCase<CanonicalReader>);
+                value => value.Retain(), value => value.Release(), AbilityInstallations.CharacterBlackboards.Binding);
             m_RuntimeState.Initialize(AbilityInstallations.Installations, motionWarpLayout, AbilityInstallations.CharacterBlackboards);
             InputRequestPages = new Float32InputRequestPageBank(InputRuntimeBinding.InputRequestIds.Count);
             int actionCapacity = 0;
@@ -548,14 +541,9 @@ namespace ThirdPersonSimulation
                 m_Workspaces[index].Trace.Capacity = traceRecordsPerTick;
         }
 
-        // 一轮输出与 Scratch 共享恢复状态的文本来源，不按其中的 Spec 数重复预算整份载荷。
-        internal int MaximumDetachedCheckpointTextPayloads =>
-            checked(m_RecycledEvaluationOutputs.Count - SessionCapacity.CandidateTicks + 2);
-
         public void PrepareGameplayEffects(in GameplayEffectSessionCapacity session)
         {
             SessionCapacity = session;
-            PrepareActionIdentities();
             PrepareCommandBatchResults();
             InputRequestPages.PrepareCapacity(session.StatePageCount);
             RuntimeStatePages.PrepareCapacity(session.StatePageCount);
@@ -567,7 +555,7 @@ namespace ThirdPersonSimulation
                 bank.PrepareCapacity(session.StatePageCount);
             if (AbilityInstallations.RequiresEquipment)
                 m_EquipmentState.Prepare(ActorId,
-                    EquipmentProgramLayoutCompiler.CompileRoleStateLayout(EquipmentRuntimeBinding), in session);
+                    EquipmentRuntimeBinding.Layout, in session);
             ActionStatePages.PrepareCapacity(session.StatePageCount);
             Float32GameplayEffectRuntimeCatalog catalog = AbilityInstallations.GameplayEffectCatalog;
             if (catalog != null)
@@ -596,7 +584,7 @@ namespace ThirdPersonSimulation
                 PrepareEvaluationOutputCapacity(session.CandidateTicks);
         }
 
-        internal void PrepareExecutionTextBudget(int maximumSessionCheckpointPayloadBytes)
+        internal void PrepareExecutionTextBudget()
         {
             GameplayEffectSessionCapacity capacity = SessionCapacity;
             if (TimelineRuntime != null)
@@ -608,7 +596,6 @@ namespace ThirdPersonSimulation
             for (int index = 0; index < AbilityInstallations.Installations.Count; index++)
                 motionCapacity = checked(motionCapacity + AbilityInstallations.Installations[index].Layout.Topology.MotionContributionCapacity);
             m_MotionContributions.PrepareCapacity(motionCapacity);
-            int checkpointOwners = checked(capacity.EncodedCheckpoints + capacity.CapturePayloads + capacity.RestorePayloads);
             for (int i = 0; i < AbilityInstallations.Installations.Count; i++)
             {
                 Float32GameplayAbilityExecutionInstallation installation = AbilityInstallations.Installations[i];
@@ -620,8 +607,8 @@ namespace ThirdPersonSimulation
                     (ExecutionStatePages[installation.Identity.AbilityId].FrameCapacity + 1));
                 int retainedTracePaths = checked(m_TraceRecordsPerTick *
                     SimulationTraceRecord.MaximumGeneratedPathReferences * (m_RecycledEvaluationOutputs.Count + 1));
-                int retainedTextReferences = checked(stateValues * (capacity.StatePageCount + checkpointOwners) + retainedTracePaths);
-                m_Invocations[i].Control.PrepareExecutionText(maximumSessionCheckpointPayloadBytes, retainedTextReferences);
+                int retainedTextReferences = checked(stateValues * capacity.StatePageCount + retainedTracePaths);
+                m_Invocations[i].Control.PrepareExecutionText(retainedTextReferences);
             }
         }
 
@@ -661,47 +648,6 @@ namespace ThirdPersonSimulation
             m_EvaluationOutput.PrepareCommandBatchResults(CommandBatchResultCapacity);
             foreach (Float32CharacterEvaluationOutput output in m_RecycledEvaluationOutputs)
                 output.PrepareCommandBatchResults(CommandBatchResultCapacity);
-        }
-
-        void PrepareActionIdentities()
-        {
-            int count = 0;
-            for (int ability = 0; ability < AbilityInstallations.Installations.Count; ability++)
-            {
-                IReadOnlyList<ProgramCatalogEntry> entries = AbilityInstallations.Installations[ability].Data.CatalogEntries;
-                for (int entry = 0; entry < entries.Count; entry++)
-                    if (entries[entry].Kind == ProgramCatalogEntryKind.Action)
-                        count++;
-            }
-            m_CodecActionProfiles = new ActionAdmissionProfile[count];
-            int index = 0;
-            for (int ability = 0; ability < AbilityInstallations.Installations.Count; ability++)
-            {
-                Float32GameplayAbilityExecutionInstallation installation = AbilityInstallations.Installations[ability];
-                IReadOnlyList<ProgramCatalogEntry> entries = installation.Data.CatalogEntries;
-                for (int entry = 0; entry < entries.Count; entry++)
-                {
-                    if (entries[entry].Kind != ProgramCatalogEntryKind.Action)
-                        continue;
-                    ActionAdmissionProfile profile = installation.Services.RequireAdmissionProfile(
-                        entries[entry].Identity.Substring("action:".Length));
-                    m_CodecActionProfiles[index] = profile;
-                    index++;
-                }
-            }
-        }
-
-        internal string ReadActionIdentity(CanonicalReader reader) =>
-            RequireActionIdentity(DeclaredIdentityReader(reader));
-
-        internal string RequireActionIdentity(string actionId)
-        {
-            if (string.IsNullOrEmpty(actionId))
-                return actionId;
-            for (int index = 0; index < m_CodecActionProfiles.Length; index++)
-                if (string.Equals(actionId, m_CodecActionProfiles[index].ActionId, StringComparison.Ordinal))
-                    return m_CodecActionProfiles[index].ActionId;
-            throw new InvalidDataException("Character state Action identity is absent from its installed Action Admission Profiles.");
         }
 
         internal void PrepareGameplayEffectOutputs(int changes, int facts, int presentation, int outputPageCount)
@@ -777,8 +723,6 @@ namespace ThirdPersonSimulation
             m_ActionOwnerByInstanceId.Clear();
             foreach (GameplayAbilityExecutionStateBank<AbilityStateValue> bank in ExecutionStatePages.Values)
                 bank.ReleaseCurrent();
-            CheckpointControlReader.SetTextResolver(null);
-            CheckpointControlReader.Reset(Array.Empty<byte>());
             if (AbilityInstallations.GameplayEffectCatalog != null)
                 m_GameplayEffectState.ReleaseStorage();
         }
@@ -789,37 +733,7 @@ namespace ThirdPersonSimulation
         internal Dictionary<CharacterSkillId, AbilityStateValuePageBank<AbilityStateValue>> StateValuePages { get; }
         internal AbilityStateValuePageBank<AbilityStateValue> CharacterBlackboardPages { get; }
         internal Dictionary<CharacterSkillId, GameplayAbilityExecutionStateBank<AbilityStateValue>> ExecutionStatePages { get; }
-        internal CanonicalReader CheckpointControlReader { get; } = new CanonicalReader(Array.Empty<byte>());
-        internal CharacterControlStateSchema CheckpointControlSchema { get; private set; }
 
-        internal Func<CanonicalReader, string> DeclaredIdentityReader { get; private set; }
-        internal int DeclaredCheckpointIdentityCount { get; private set; }
-
-        internal void PrepareCheckpointControlContract(CharacterControlModuleContract contract)
-        {
-            CheckpointControlSchema = contract.StateSchema;
-            var identities = new List<string> { contract.ModuleId.Value };
-            for (int i = 0; i < contract.States.Count; i++)
-                identities.Add(contract.States[i].Id.Value);
-            for (int i = 0; i < contract.Transitions.Count; i++)
-                identities.Add(contract.Transitions[i].Id.Value);
-            for (int i = 0; i < AbilityInstallations.Installations.Count; i++)
-            {
-                GameplayAbilityExecutionIdentity identity = AbilityInstallations.Installations[i].Identity;
-                identities.Add(identity.AbilityId.Value);
-                identities.Add(identity.OperationSetVersion.Value);
-                for (int rule = 0; rule < AbilityInstallations.Installations[i].Data.Binding.ActivationRules.Count; rule++)
-                    identities.Add(AbilityInstallations.Installations[i].Data.Binding.ActivationRules[rule].ActivationEntryId);
-            }
-            for (int index = 0; index < m_CodecActionProfiles.Length; index++)
-                identities.Add(m_CodecActionProfiles[index].ActionId);
-            var uniqueIdentities = new HashSet<string>(identities, StringComparer.Ordinal);
-            uniqueIdentities.Remove(null);
-            uniqueIdentities.Remove(string.Empty);
-            DeclaredCheckpointIdentityCount = uniqueIdentities.Count;
-            var published = new CanonicalDeclaredIdentityReader(identities);
-            DeclaredIdentityReader = published.ReadPublished;
-        }
 
         internal MotionWarpStatePageBank<MotionWarpState> MotionWarpPages { get; }
         internal Float32InputRequestPageBank InputRequestPages { get; }
@@ -845,13 +759,10 @@ namespace ThirdPersonSimulation
         {
             var parts = new List<string>
             {
-                "float32-character-state-schema/4",
-                Float32CharacterRuntimeStateCodec.CodecIdentity,
-                CharacterRuntimeStateMetadata.CanonicalSchema,
+                "float32-character-state-schema/5",
                 control.BindingHash.ToString(),
                 input.BindingHash.ToString(),
                 abilities.GameplayEffectCatalog != null ? gameplayEffects.BindingHash.ToString() : string.Empty,
-                abilities.GameplayEffectCatalog != null ? GameplayEffectStateAggregateCodec.CanonicalSchema : string.Empty,
                 abilities.RequiresEquipment ? equipment.BindingHash.ToString() : string.Empty
             };
             for (int i = 0; i < abilities.Installations.Count; i++)

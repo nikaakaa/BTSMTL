@@ -2,7 +2,7 @@ using System;
 
 namespace ThirdPersonSimulation
 {
-    [CanonicalContract]
+    [ValueOperations]
     public readonly partial struct GameplayTagSourceIdentityValue : IComparable<GameplayTagSourceIdentityValue>, IEquatable<GameplayTagSourceIdentityValue>
     {
         readonly CanonicalTextValue m_Literal;
@@ -61,10 +61,8 @@ namespace ThirdPersonSimulation
         public CanonicalTextValue LiteralIdentity => m_Literal;
         public ulong NumericIdentity => m_Number;
 
-        public void Retain() => CanonicalRetain(in this);
-        public void Release() => CanonicalRelease(in this);
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireRecord()
         {
             if (m_Kind > 3 || (m_Kind == 1 || m_Kind == 2) && m_Number == 0 ||

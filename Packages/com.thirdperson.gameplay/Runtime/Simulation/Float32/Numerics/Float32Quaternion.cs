@@ -1,6 +1,5 @@
 namespace ThirdPersonSimulation
 {
-    [CanonicalContract]
     public readonly partial struct Float32Quaternion : System.IEquatable<Float32Quaternion>
     {
         public Float32Quaternion(Float32Scalar x, Float32Scalar y, Float32Scalar z, Float32Scalar w)

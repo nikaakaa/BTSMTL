@@ -131,7 +131,7 @@ namespace ThirdPersonSimulation
         {
             value.Spec.Release();
             value.Spec = null;
-            GameplayEffectActiveStateData.CanonicalClear(ref value.Data);
+            value.Data.Clear();
             m_AvailableActiveStates.Add(value);
         }
         internal void RetireActiveStates(List<PortableActiveEffectState> values) => m_RetiredActiveStates.AddRange(values);
@@ -181,7 +181,7 @@ namespace ThirdPersonSimulation
                 PortableActiveEffectState active = m_RetiredActiveStates[i];
                 active.Spec.Release();
                 active.Spec = null;
-                GameplayEffectActiveStateData.CanonicalClear(ref active.Data);
+                active.Data.Clear();
                 m_AvailableActiveStates.Add(active);
             }
             m_RetiredActiveStates.Clear();

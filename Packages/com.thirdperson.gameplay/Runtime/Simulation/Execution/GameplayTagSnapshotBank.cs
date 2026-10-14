@@ -5,8 +5,7 @@ using System.IO;
 
 namespace ThirdPersonSimulation
 {
-    [CanonicalContract]
-    [CanonicalBorrowedSequence(typeof(GameplayTagSnapshotBank), RetainStorageOnRead = true, DeclaredText = true, SortedUnique = true)]
+    [ValueBorrowedSequence(typeof(GameplayTagSnapshotBank), RetainStorageOnRead = true, DeclaredText = true, SortedUnique = true)]
     internal sealed partial class GameplayTagSnapshot : IReadOnlyList<string>
     {
         readonly GameplayTagSnapshotBank m_Owner;
@@ -15,7 +14,7 @@ namespace ThirdPersonSimulation
         int m_Retainers;
         int m_Count;
 
-        [CanonicalDefaultValue]
+        [ValueDefault]
         internal static readonly GameplayTagSnapshot Empty = new GameplayTagSnapshot(null, -1, 0);
 
         internal GameplayTagSnapshot(GameplayTagSnapshotBank owner, int index, int width)

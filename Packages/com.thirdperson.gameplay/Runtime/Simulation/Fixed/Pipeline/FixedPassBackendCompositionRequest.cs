@@ -24,7 +24,7 @@ namespace ThirdPersonSimulation.Fixed
             IEnumerable<SimulationPortDescriptor> expectedSourcePorts,
             IFixedSimulationRestoreSource restoreSource,
             ICharacterWorldSolver solver,
-            IFixedSimulationSessionSnapshotCodec snapshotCodec,
+            IFixedSimulationSessionSnapshotProvider snapshotProvider,
             IFixedSimulationCommitter committer,
             SimulationComponentIdentity diagnosticsIdentity,
             ISimulationDiagnosticsSink diagnostics,
@@ -47,7 +47,7 @@ namespace ThirdPersonSimulation.Fixed
             SourcePorts = sourcePorts ?? throw new ArgumentNullException(nameof(sourcePorts));
             RestoreSource = restoreSource;
             Solver = solver ?? throw new ArgumentNullException(nameof(solver));
-            SnapshotCodec = snapshotCodec;
+            SnapshotProvider = snapshotProvider;
             Committer = committer ?? throw new ArgumentNullException(nameof(committer));
             if (!diagnosticsIdentity.IsValid || diagnosticsIdentity.Role != SimulationComponentRole.Diagnostics)
                 throw new ArgumentException("Diagnostics identity is invalid.", nameof(diagnosticsIdentity));
@@ -76,7 +76,7 @@ namespace ThirdPersonSimulation.Fixed
         public IReadOnlyList<SimulationPortDescriptor> ExpectedSourcePorts => m_ExpectedSourcePorts;
         public IFixedSimulationRestoreSource RestoreSource { get; }
         public ICharacterWorldSolver Solver { get; }
-        public IFixedSimulationSessionSnapshotCodec SnapshotCodec { get; }
+        public IFixedSimulationSessionSnapshotProvider SnapshotProvider { get; }
         public IFixedSimulationCommitter Committer { get; }
         public SimulationComponentIdentity DiagnosticsIdentity { get; }
         public ISimulationDiagnosticsSink Diagnostics { get; }
@@ -116,8 +116,8 @@ namespace ThirdPersonSimulation.Fixed
             {
                 throw Failure("world_solver_capability_missing", "World Solver does not cover the required Pipeline capabilities.");
             }
-            SimulationComponentIdentity snapshotIdentity = SnapshotCodec == null ? default : SnapshotCodec.Identity;
-            if (!snapshotIdentity.Equals(Descriptor.SnapshotCodec) || !Committer.Identity.Equals(Descriptor.Committer))
+            SimulationComponentIdentity snapshotIdentity = SnapshotProvider == null ? default : SnapshotProvider.Identity;
+            if (!snapshotIdentity.Equals(Descriptor.SnapshotProvider) || !Committer.Identity.Equals(Descriptor.Committer))
                 throw Failure("session_output_component_mismatch", "Snapshot codec or Committer identity does not match the Session descriptor.");
             bool requiresRestore = (CompiledPipeline.RequiredExecutionSupport & SimulationPipelineExecutionSupport.Restore) != 0;
             if (requiresRestore != (RestoreSource != null))

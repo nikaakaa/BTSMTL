@@ -2,8 +2,7 @@ using System.Collections.Generic;
 
 namespace ThirdPersonSimulation
 {
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
-    public readonly partial struct CombatAttackGeometryRotation
+    public readonly struct CombatAttackGeometryRotation
     {
         public CombatAttackGeometryRotation(float x, float y, float z, float w)
         {
@@ -19,8 +18,7 @@ namespace ThirdPersonSimulation
         public float W { get; }
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
-    public readonly partial struct CombatAttackGeometrySample
+    public readonly struct CombatAttackGeometrySample
     {
         public CombatAttackGeometrySample(float time, CombatVector3 position, CombatAttackGeometryRotation rotation)
         {
@@ -34,8 +32,7 @@ namespace ThirdPersonSimulation
         public CombatAttackGeometryRotation Rotation { get; }
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
-    public sealed partial class CombatAttackGeometryPartContent
+    public sealed class CombatAttackGeometryPartContent
     {
         public CombatAttackGeometryPartContent(string id, int kind, CombatVector3 halfExtents, float radius,
             float halfLength, IReadOnlyList<CombatVector3> vertices, IReadOnlyList<CombatAttackGeometrySample> samples)
@@ -58,8 +55,7 @@ namespace ThirdPersonSimulation
         public IReadOnlyList<CombatAttackGeometrySample> Samples { get; }
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
-    public sealed partial class CombatAttackGeometryContent
+    public sealed class CombatAttackGeometryContent
     {
         public CombatAttackGeometryContent(string reference, string preparedIdentity, int maximumSegmentsPerQuery,
             float interpolationError, IReadOnlyList<CombatAttackGeometryPartContent> parts)
@@ -78,20 +74,15 @@ namespace ThirdPersonSimulation
         public IReadOnlyList<CombatAttackGeometryPartContent> Parts { get; }
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
-    public sealed partial class CombatAttackCatalogData
+    public sealed class CombatAttackCatalogData
     {
-        public const int FormatVersion = 2;
-
-        public CombatAttackCatalogData(int version,
-            IReadOnlyList<CombatAttackContent> attacks, IReadOnlyList<CombatAttackGeometryContent> geometries)
+        public CombatAttackCatalogData(IReadOnlyList<CombatAttackContent> attacks,
+            IReadOnlyList<CombatAttackGeometryContent> geometries)
         {
-            Version = version;
             Attacks = attacks;
             Geometries = geometries;
         }
 
-        public int Version { get; }
         public IReadOnlyList<CombatAttackContent> Attacks { get; }
         public IReadOnlyList<CombatAttackGeometryContent> Geometries { get; }
     }

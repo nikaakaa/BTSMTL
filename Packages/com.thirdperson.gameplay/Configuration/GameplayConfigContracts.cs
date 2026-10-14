@@ -58,7 +58,6 @@ namespace ThirdPersonGameplay.Configuration
         public bool CanRead => ValueKind != GameplayConfigValueKind.Unsupported;
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
     public readonly partial struct GameplayConfigRecordSource
     {
         public GameplayConfigRecordSource(string table, string recordId, string workbook, string sheet, int row, string contentIdentity)
@@ -79,7 +78,6 @@ namespace ThirdPersonGameplay.Configuration
         public string ContentIdentity { get; }
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
     public readonly partial struct GameplayConfigDataFile
     {
         public GameplayConfigDataFile(string name, string hash)
@@ -92,7 +90,6 @@ namespace ThirdPersonGameplay.Configuration
         public string Hash { get; }
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
     public sealed partial class GameplayConfigMetadata
     {
         public GameplayConfigMetadata(int protocol, string sourceId, string schemaIdentity, string contentIdentity,

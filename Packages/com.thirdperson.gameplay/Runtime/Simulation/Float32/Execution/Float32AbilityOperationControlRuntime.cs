@@ -34,12 +34,9 @@ namespace ThirdPersonSimulation
             m_Runtime = new OperationControlRuntime<Float32AbilityExecutionTarget>(m_Topology, default, m_MaxExecutionCount);
         }
 
-        internal void PrepareExecutionText(int payloadBytes, int maximumRetainedTextReferences)
+        internal void PrepareExecutionText(int maximumRetainedTextReferences)
         {
             int maximumGeneratedCharacters = MaximumGeneratedStatePathCharacters();
-            int maximumReceivedCharacters = payloadBytes / sizeof(char);
-            if (payloadBytes > 0 && maximumGeneratedCharacters > maximumReceivedCharacters)
-                throw new InvalidOperationException("Compiled state execution paths exceed MaximumSessionCheckpointPayloadBytes.");
             int values = maximumGeneratedCharacters == 0 ? 0 : checked(maximumRetainedTextReferences + m_MaxExecutionCount);
             int characters = checked(values * maximumGeneratedCharacters);
             m_Runtime.PrepareStateExecutionText(new CanonicalTextStorage(values, characters), maximumGeneratedCharacters);

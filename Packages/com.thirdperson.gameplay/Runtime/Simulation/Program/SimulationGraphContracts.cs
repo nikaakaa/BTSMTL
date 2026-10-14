@@ -647,7 +647,6 @@ namespace ThirdPersonSimulation
         }
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
     public readonly partial struct ProgramEnumConstant
     {
         public ProgramEnumConstant(string typeIdentity, int value)
@@ -660,7 +659,6 @@ namespace ThirdPersonSimulation
         public int Value { get; }
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
     public sealed partial class ProgramOperationLayout
     {
         readonly ReadOnlyCollection<int> m_Operands;
@@ -683,7 +681,7 @@ namespace ThirdPersonSimulation
         public IReadOnlyList<int> Operands => m_Operands;
         public IReadOnlyList<int> StateSlots => m_StateSlots;
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireRecord()
         {
             if (!Handle.IsValid)
@@ -709,7 +707,6 @@ namespace ThirdPersonSimulation
         Both = 3
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
     public sealed partial class ProgramControlFlowEdge
     {
         public ProgramControlFlowEdge(
@@ -751,7 +748,7 @@ namespace ThirdPersonSimulation
         public bool HasCondition { get; }
         public OperationHandle Condition { get; }
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireRecord()
         {
             SimulationIdentity.Require(Identity, nameof(Identity));
@@ -760,7 +757,6 @@ namespace ThirdPersonSimulation
         }
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
     public sealed partial class ProgramConstantInputBinding
     {
         public ProgramConstantInputBinding(
@@ -781,7 +777,7 @@ namespace ThirdPersonSimulation
         public int ConstantIndex { get; }
         public SemanticValueKind ResolvedValueKind { get; }
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireRecord()
         {
             if (!TargetOperation.IsValid)
@@ -803,7 +799,6 @@ namespace ThirdPersonSimulation
         CatalogEntry = 8
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
     public sealed partial class ProgramReference
     {
         public ProgramReference(string identity, OperationHandle sourceOperation, ProgramReferenceKind kind, int targetIndex, string externalIdentity)
@@ -822,7 +817,7 @@ namespace ThirdPersonSimulation
         public int TargetIndex { get; }
         public string ExternalIdentity { get; }
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireRecord()
         {
             if (TargetIndex < 0)
@@ -837,7 +832,6 @@ namespace ThirdPersonSimulation
         Output = 2
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
     public sealed partial class ProgramGraphParameterBinding
     {
         public ProgramGraphParameterBinding(
@@ -867,7 +861,7 @@ namespace ThirdPersonSimulation
         public string PortId { get; }
         public SemanticValueKind ValueKind { get; }
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireRecord()
         {
             if (StateSlot < 0)
@@ -878,7 +872,7 @@ namespace ThirdPersonSimulation
         }
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+    [ValueStorage]
     public sealed partial class ProgramGraphCallFrame
     {
         readonly ReadOnlyCollection<ProgramGraphParameterBinding> m_Inputs;
@@ -923,7 +917,7 @@ namespace ThirdPersonSimulation
             return values.AsReadOnly();
         }
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireRecord()
         {
             if (Index < 0 || !OwnerOperation.IsValid || !EntryOperation.IsValid)
@@ -1016,7 +1010,6 @@ namespace ThirdPersonSimulation
         [ValueUnionCase(DefaultMember = "None")] public readonly TActionTargetSnapshot ActionTargetSnapshot;
     }
 
-    [CanonicalContract]
     public readonly partial struct ProgramEnumState : IEquatable<ProgramEnumState>
     {
         public ProgramEnumState(CanonicalTextValue typeIdentity, int value)
@@ -1062,7 +1055,6 @@ namespace ThirdPersonSimulation
         AIWaitElapsedTicks = 130
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
     public sealed partial class ProgramStateSlot
     {
         public ProgramStateSlot(int index, string identity, ProgramStateValueKind valueKind, ProgramStateOwnerKind ownerKind, ProgramStateSemantic semantic, string ownerIdentity, int defaultConstantIndex)
@@ -1101,7 +1093,7 @@ namespace ThirdPersonSimulation
         public int DefaultConstantIndex { get; }
         public string StateCodecIdentity { get; }
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireRecord()
         {
             if (Index < 0 || DefaultConstantIndex < -1)
@@ -1193,7 +1185,6 @@ namespace ThirdPersonSimulation
         Frame = 5
     }
 
-    [CanonicalContract]
     public readonly partial struct BlackboardOwnerToken : IEquatable<BlackboardOwnerToken>
     {
         public BlackboardOwnerToken(ProgramScopeKind scopeKind, int compiledOwnerIndex, ulong generation)
@@ -1217,7 +1208,7 @@ namespace ThirdPersonSimulation
         public static bool operator ==(BlackboardOwnerToken left, BlackboardOwnerToken right) => left.Equals(right);
         public static bool operator !=(BlackboardOwnerToken left, BlackboardOwnerToken right) => !left.Equals(right);
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireCanonical()
         {
             if (!Equals(default))
@@ -1234,7 +1225,6 @@ namespace ThirdPersonSimulation
             kind >= ProgramScopeKind.Character && kind <= ProgramScopeKind.Frame;
     }
 
-    [CanonicalContract]
     public readonly partial struct BlackboardWriteStamp : IEquatable<BlackboardWriteStamp>
     {
         public BlackboardWriteStamp(
@@ -1256,7 +1246,7 @@ namespace ThirdPersonSimulation
             RequirePopulated();
         }
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireCanonical()
         {
             if (!Equals(default))
@@ -1305,7 +1295,7 @@ namespace ThirdPersonSimulation
         GraphInstance = 6
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+    [ValueStorage]
     public sealed partial class ProgramScopeLayout
     {
         readonly ReadOnlyCollection<int> m_StateSlots;
@@ -1329,7 +1319,7 @@ namespace ThirdPersonSimulation
             RequireRecord();
         }
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireRecord()
         {
             if (CompiledOwnerIndex < 0)
@@ -1358,7 +1348,6 @@ namespace ThirdPersonSimulation
         Trace = 3
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
     public sealed partial class ProgramOutputChannelLayout
     {
         public ProgramOutputChannelLayout(int index, string identity, ProgramOutputChannelKind kind)
@@ -1373,7 +1362,7 @@ namespace ThirdPersonSimulation
         public string Identity { get; }
         public ProgramOutputChannelKind Kind { get; }
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireRecord()
         {
             if (Index < 0)
@@ -1416,7 +1405,6 @@ namespace ThirdPersonSimulation
         AbilityRule
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
 	public sealed partial class ProgramExecutionSource
 	{
 		public ProgramExecutionSource(
@@ -1460,7 +1448,7 @@ namespace ThirdPersonSimulation
 			RequireRecord();
 		}
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireRecord()
         {
             if (TargetIndex < 0)
@@ -1493,34 +1481,19 @@ namespace ThirdPersonSimulation
     {
         GraphExecutionChunk m_Chunk;
 
-        public ProgramExecutionSourceLayout(IReadOnlyList<ProgramExecutionSource> entries)
+        public ProgramExecutionSourceLayout(IReadOnlyList<ProgramExecutionSource> entries, IGraphContentPublisher publisher)
         {
             Entries = entries;
+            Publisher = publisher;
         }
 
         public IReadOnlyList<ProgramExecutionSource> Entries { get; }
-        public GraphExecutionChunk Chunk => m_Chunk ??= GraphExecutionChunk.Encode(
-            writer => GameplayAbilitySemanticsCodec.WriteExecutionSourceTable(writer, Entries));
+        public IGraphContentPublisher Publisher { get; }
+        public GraphExecutionChunk Chunk => m_Chunk ??= Publisher.Publish(this);
         public StableHash Hash => Chunk.Hash;
 
-        public void Write(CanonicalWriter writer) => writer.WriteBytes(Chunk.Bytes.Span);
-
-        public static ProgramExecutionSourceLayout Read(CanonicalReader reader)
-        {
-            return FromChunk(new GraphExecutionChunk(reader.ReadBytes()));
-        }
-
-        internal static ProgramExecutionSourceLayout FromChunk(GraphExecutionChunk chunk)
-        {
-            CanonicalReader entries = chunk.CreateReader();
-            var layout = new ProgramExecutionSourceLayout(GameplayAbilitySemanticsCodec.ReadExecutionSourceTable(entries));
-            entries.RequireComplete();
-            layout.m_Chunk = chunk;
-            return layout;
-        }
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
     public sealed partial class ProgramSourceMapText
     {
         public ProgramSourceMapText(string sourceType, IReadOnlyList<string> displayPathSegments)
@@ -1533,7 +1506,8 @@ namespace ThirdPersonSimulation
         public IReadOnlyList<string> DisplayPathSegments { get; }
     }
 
-    public sealed class ProgramSourceMapEntry
+    [ValueStorage]
+    public sealed partial class ProgramSourceMapEntry
     {
         public ProgramSourceMapEntry(ProgramExecutionSource source, string sourceType, string displayPath)
             : this(source, new ProgramSourceMapText(sourceType, displayPath.Split('/')))
@@ -1568,11 +1542,7 @@ namespace ThirdPersonSimulation
         public ProgramExecutionSourceLayout Layout { get; }
         public IReadOnlyList<ProgramSourceMapEntry> Diagnostics { get; }
         public ProgramGraphSourceRevisionTable Revisions { get; }
-        public GraphExecutionChunk DiagnosticChunk => m_DiagnosticChunk ??= GraphExecutionChunk.Encode(writer =>
-        {
-            writer.WriteHash(Layout.Hash);
-            GameplayAbilitySemanticsCodec.WriteSourceMapTable(writer, Diagnostics);
-        });
+        public GraphExecutionChunk DiagnosticChunk => m_DiagnosticChunk ??= Layout.Publisher.Publish(this);
 
         public ProgramGraphSources WithRevisions(IEnumerable<ProgramGraphSourceRevision> revisions)
         {
@@ -1581,28 +1551,15 @@ namespace ThirdPersonSimulation
             return sources;
         }
 
-        public static ProgramGraphSources Read(ProgramExecutionSourceLayout layout,
-            GraphExecutionChunk diagnostics, IEnumerable<ProgramGraphSourceRevision> revisions)
-        {
-            CanonicalReader reader = diagnostics.CreateReader();
-            if (reader.ReadHash() != layout.Hash)
-                throw new InvalidDataException("Graph diagnostic sources use a different execution source layout.");
-            ProgramSourceMapEntry[] entries = GameplayAbilitySemanticsCodec.ReadSourceMapTable(reader, layout.Entries);
-            reader.RequireComplete();
-            var sources = new ProgramGraphSources(layout, Array.AsReadOnly(entries), new ProgramGraphSourceRevisionTable(revisions));
-            sources.m_DiagnosticChunk = diagnostics;
-            return sources;
-        }
-
         public static ProgramGraphSources Create(IEnumerable<ProgramSourceMapEntry> diagnostics,
-            IEnumerable<ProgramGraphSourceRevision> revisions)
+            IEnumerable<ProgramGraphSourceRevision> revisions, IGraphContentPublisher publisher)
         {
             var entries = new List<ProgramSourceMapEntry>(diagnostics);
             entries.Sort(Compare);
             var sources = new ProgramExecutionSource[entries.Count];
             for (int i = 0; i < sources.Length; i++)
                 sources[i] = entries[i].Source;
-            return new ProgramGraphSources(new ProgramExecutionSourceLayout(Array.AsReadOnly(sources)),
+            return new ProgramGraphSources(new ProgramExecutionSourceLayout(Array.AsReadOnly(sources), publisher),
                 entries.AsReadOnly(), new ProgramGraphSourceRevisionTable(revisions));
         }
 
@@ -1628,7 +1585,6 @@ namespace ThirdPersonSimulation
         }
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
     public readonly partial struct ProgramGraphSourceRevision
     {
         public ProgramGraphSourceRevision(string graphId, string revision)
@@ -1641,7 +1597,6 @@ namespace ThirdPersonSimulation
         public string Revision { get; }
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
     public sealed partial class ProgramGraphSourceRevisions
     {
         public ProgramGraphSourceRevisions(IReadOnlyList<ProgramGraphSourceRevision> sources) => Sources = sources;
@@ -1767,7 +1722,6 @@ namespace ThirdPersonSimulation
         }
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
     public sealed partial class ProgramProducer
     {
         public ProgramProducer(
@@ -1790,7 +1744,7 @@ namespace ThirdPersonSimulation
         public string SourceIdentity { get; }
         public ProgramOutputChannelKind ChannelKind { get; }
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireRecord()
         {
             if (Index < 0)
@@ -1843,7 +1797,6 @@ namespace ThirdPersonSimulation
         Identity = 2
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
     public sealed partial class ProgramCatalogField
     {
         public ProgramCatalogField(string name, ProgramCatalogFieldKind kind, int constantIndex, string identity)
@@ -1861,7 +1814,7 @@ namespace ThirdPersonSimulation
         public int ConstantIndex { get; }
         public string Identity { get; }
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireRecord()
         {
             SimulationIdentity.Require(Name, nameof(Name));
@@ -1872,7 +1825,7 @@ namespace ThirdPersonSimulation
         }
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+    [ValueStorage]
     public sealed partial class ProgramCatalogEntry
     {
         readonly ReadOnlyCollection<ProgramCatalogField> m_Fields;
@@ -1894,7 +1847,7 @@ namespace ThirdPersonSimulation
         public int Revision { get; }
         public IReadOnlyList<ProgramCatalogField> Fields => m_Fields;
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireRecord()
         {
             if (Index < 0 || Revision < 0)
@@ -1906,7 +1859,7 @@ namespace ThirdPersonSimulation
         }
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+    [ValueStorage]
     public sealed partial class GameplayAbilityCapabilityManifest
     {
         readonly ReadOnlyCollection<string> m_GameplayCapabilities;
@@ -1921,7 +1874,7 @@ namespace ThirdPersonSimulation
             RequireRecord();
         }
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireRecord()
         {
             for (int i = 0; i < m_GameplayCapabilities.Count; i++)
@@ -1946,10 +1899,9 @@ namespace ThirdPersonSimulation
         }
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
     public sealed partial class GameplayAbilityExecutionManifest
     {
-        internal GameplayAbilityExecutionManifest(CharacterSkillId abilityId, string compilerVersion,
+        public GameplayAbilityExecutionManifest(CharacterSkillId abilityId, string compilerVersion,
             OperationSetVersion operationSetVersion, int tickRate, ProgramRevision sourceRevision,
             SemanticHash semanticHash, SimulationNumericProfile numericProfile,
             GameplayAbilityCapabilityManifest capabilities, GameplayAbilityRootDescriptor root,
@@ -1983,7 +1935,7 @@ namespace ThirdPersonSimulation
         public StableHash StateSchemaHash { get; }
         public StableHash ContentHash { get; }
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireRecord()
         {
             if (!AbilityId.IsValid)
@@ -2013,7 +1965,6 @@ namespace ThirdPersonSimulation
         Retire = 2
     }
 
-    [CanonicalContract]
     public readonly partial struct PresentationCameraTargetTiming
     {
         public PresentationCameraTargetTiming(float delaySeconds, float durationSeconds, bool ignoreTimeScale)
@@ -2028,7 +1979,7 @@ namespace ThirdPersonSimulation
         public float DurationSeconds { get; }
         public bool IgnoreTimeScale { get; }
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireRecord()
         {
             if (!float.IsFinite(DelaySeconds) || DelaySeconds < 0f)
@@ -2038,7 +1989,7 @@ namespace ThirdPersonSimulation
         }
     }
 
-    [CanonicalContract]
+    [ValueOperations]
     public readonly partial struct PresentationCameraRequest
     {
         PresentationCameraRequest(
@@ -2098,23 +2049,23 @@ namespace ThirdPersonSimulation
 
         public PresentationCameraRequestKind Kind { get; }
         public PresentationCameraRequestLifecycle Lifecycle { get; }
-        [CanonicalTextRules(NullToEmpty = true)]
+        [ValueTextRules(NullToEmpty = true)]
         public CanonicalTextValue RequestId { get; }
-        [CanonicalTextRules(NullToEmpty = true)]
+        [ValueTextRules(NullToEmpty = true)]
         public CanonicalTextValue SequenceId { get; }
-        [CanonicalTextRules(NullToEmpty = true)]
+        [ValueTextRules(NullToEmpty = true)]
         public CanonicalTextValue ResourceId { get; }
-        [CanonicalTextRules(NullToEmpty = true)]
+        [ValueTextRules(NullToEmpty = true)]
         public CanonicalTextValue ResourceRevision { get; }
         public float SourceStartTime { get; }
         public float SourceEndTime { get; }
-        [CanonicalTextRules(NullToEmpty = true, Trim = true)]
+        [ValueTextRules(NullToEmpty = true, Trim = true)]
         public CanonicalTextValue TargetKey { get; }
-        [CanonicalTextRules(NullToEmpty = true)]
+        [ValueTextRules(NullToEmpty = true)]
         public CanonicalTextValue AnchorKey { get; }
-        [CanonicalTextRules(NullToEmpty = true)]
+        [ValueTextRules(NullToEmpty = true)]
         public CanonicalTextValue AimPointKey { get; }
-        [CanonicalTextRules(NullToEmpty = true)]
+        [ValueTextRules(NullToEmpty = true)]
         public CanonicalTextValue PreferredBoneKey { get; }
         public int Mode { get; }
         public int EffectKind { get; }
@@ -2129,11 +2080,9 @@ namespace ThirdPersonSimulation
         public bool CaptureLockStartOnSubmit { get; }
         public PresentationCameraTargetTiming FollowTiming { get; }
         public PresentationCameraTargetTiming AimTiming { get; }
-        [CanonicalPresence]
+        [ValuePresence]
         public bool IsValid => IsDefined(Kind) && IsDefined(Lifecycle);
 
-        public void Retain() => CanonicalRetain(in this);
-        public void Release() => CanonicalRelease(in this);
 
         public PresentationCameraRequest WithActionTarget(CanonicalTextValue targetActorId) =>
             new PresentationCameraRequest(
@@ -2304,7 +2253,7 @@ namespace ThirdPersonSimulation
             return value;
         }
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireRecord()
         {
             if (!IsDefined(Kind))

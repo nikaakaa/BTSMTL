@@ -11,17 +11,14 @@ public readonly struct MagnitudeValue {
 [ValueUnionCase] public readonly PublishedTargetAttributeSnapshotMagnitude TargetAttributeSnapshotMagnitude;
 [ValueUnionCase] public readonly PublishedTargetAttributeLiveMagnitude TargetAttributeLiveMagnitude;
 }
-[CanonicalContract(MaterializedRead = true, PreparedRead = false)]
 [ValueUnion(typeof(MagnitudeValue))]
 public readonly partial struct PublishedMagnitude {}
-[CanonicalContract(MaterializedRead = true, PreparedRead = false)]
 public sealed partial class PublishedConstantMagnitude {
 public PublishedConstantMagnitude(float value_Value) {
 Value = value_Value;
 }
 public float Value { get; }
 }
-[CanonicalContract(MaterializedRead = true, PreparedRead = false)]
 public sealed partial class PublishedScaledConstantMagnitude {
 public PublishedScaledConstantMagnitude(float value_Value, float value_Coefficient, float value_PostAdd) {
 Value = value_Value;
@@ -32,7 +29,6 @@ public float Value { get; }
 public float Coefficient { get; }
 public float PostAdd { get; }
 }
-[CanonicalContract(MaterializedRead = true, PreparedRead = false)]
 public sealed partial class PublishedSetByCallerMagnitude {
 public PublishedSetByCallerMagnitude(string value_ParameterId, float value_Coefficient, float value_PostAdd) {
 ParameterId = value_ParameterId;
@@ -43,7 +39,6 @@ public string ParameterId { get; }
 public float Coefficient { get; }
 public float PostAdd { get; }
 }
-[CanonicalContract(MaterializedRead = true, PreparedRead = false)]
 public sealed partial class PublishedSourceAttributeSnapshotMagnitude {
 public PublishedSourceAttributeSnapshotMagnitude(string value_AttributeId, float value_Coefficient, float value_PostAdd) {
 AttributeId = value_AttributeId;
@@ -54,7 +49,6 @@ public string AttributeId { get; }
 public float Coefficient { get; }
 public float PostAdd { get; }
 }
-[CanonicalContract(MaterializedRead = true, PreparedRead = false)]
 public sealed partial class PublishedTargetAttributeSnapshotMagnitude {
 public PublishedTargetAttributeSnapshotMagnitude(string value_AttributeId, float value_Coefficient, float value_PostAdd) {
 AttributeId = value_AttributeId;
@@ -65,7 +59,6 @@ public string AttributeId { get; }
 public float Coefficient { get; }
 public float PostAdd { get; }
 }
-[CanonicalContract(MaterializedRead = true, PreparedRead = false)]
 public sealed partial class PublishedTargetAttributeLiveMagnitude {
 public PublishedTargetAttributeLiveMagnitude(string value_AttributeId, float value_Coefficient, float value_PostAdd) {
 AttributeId = value_AttributeId;
@@ -76,7 +69,6 @@ public string AttributeId { get; }
 public float Coefficient { get; }
 public float PostAdd { get; }
 }
-[CanonicalContract(MaterializedRead = true, PreparedRead = false)]
 public sealed partial class PublishedTagQuery {
 public PublishedTagQuery(IReadOnlyList<string> value_All, IReadOnlyList<string> value_Any, IReadOnlyList<string> value_None) {
 All = value_All;
@@ -87,7 +79,6 @@ public IReadOnlyList<string> All { get; }
 public IReadOnlyList<string> Any { get; }
 public IReadOnlyList<string> None { get; }
 }
-[CanonicalContract(MaterializedRead = true, PreparedRead = false)]
 public sealed partial class PublishedAttributeBound {
 public PublishedAttributeBound(bool value_Enabled, BoundSource value_Source, float value_Constant, string value_AttributeId) {
 Enabled = value_Enabled;
@@ -100,7 +91,6 @@ public BoundSource Source { get; }
 public float Constant { get; }
 public string AttributeId { get; }
 }
-[CanonicalContract(MaterializedRead = true, PreparedRead = false)]
 public sealed partial class PublishedAttribute {
 public PublishedAttribute(string value_Id, string value_AttributeId, PublishedAttributeBound value_Minimum, PublishedAttributeBound value_Maximum) {
 Id = value_Id;
@@ -113,7 +103,6 @@ public string AttributeId { get; }
 public PublishedAttributeBound Minimum { get; }
 public PublishedAttributeBound Maximum { get; }
 }
-[CanonicalContract(MaterializedRead = true, PreparedRead = false)]
 public sealed partial class PublishedEffectDuration {
 public PublishedEffectDuration(DurationPolicy value_Policy, PublishedMagnitude value_Magnitude) {
 Policy = value_Policy;
@@ -122,7 +111,6 @@ Magnitude = value_Magnitude;
 public DurationPolicy Policy { get; }
 public PublishedMagnitude Magnitude { get; }
 }
-[CanonicalContract(MaterializedRead = true, PreparedRead = false)]
 public sealed partial class PublishedEffectPeriod {
 public PublishedEffectPeriod(bool value_Enabled, PublishedMagnitude value_Magnitude) {
 Enabled = value_Enabled;
@@ -131,7 +119,6 @@ Magnitude = value_Magnitude;
 public bool Enabled { get; }
 public PublishedMagnitude Magnitude { get; }
 }
-[CanonicalContract(MaterializedRead = true, PreparedRead = false)]
 public sealed partial class PublishedEffectStacking {
 public PublishedEffectStacking(StackingPolicy value_Policy, int value_MaxStacks, DurationUpdate value_DurationUpdate, PeriodUpdate value_PeriodUpdate, OverflowPolicy value_OverflowPolicy) {
 Policy = value_Policy;
@@ -146,7 +133,6 @@ public DurationUpdate DurationUpdate { get; }
 public PeriodUpdate PeriodUpdate { get; }
 public OverflowPolicy OverflowPolicy { get; }
 }
-[CanonicalContract(MaterializedRead = true, PreparedRead = false)]
 public sealed partial class PublishedEffect {
 public PublishedEffect(string value_Id, string value_EffectId, uint value_DefinitionRevision, ScopePolicy value_ScopePolicy, LifetimePolicy value_LifetimePolicy, IReadOnlyList<string> value_EffectTags, PublishedEffectDuration value_Duration, PublishedEffectPeriod value_Period, bool value_ExecuteOnApplication, PublishedEffectStacking value_Stacking, IReadOnlyList<string> value_SetByCallerParameters, IReadOnlyList<PublishedComponent> value_Components) {
 Id = value_Id;
@@ -187,10 +173,8 @@ public readonly struct ComponentValue {
 [ValueUnionCase] public readonly PublishedAdditionalEffectsComponent AdditionalEffectsComponent;
 [ValueUnionCase] public readonly PublishedCueBinding CueBinding;
 }
-[CanonicalContract(MaterializedRead = true, PreparedRead = false)]
 [ValueUnion(typeof(ComponentValue))]
 public readonly partial struct PublishedComponent {}
-[CanonicalContract(MaterializedRead = true, PreparedRead = false)]
 public sealed partial class PublishedModifier {
 public PublishedModifier(string value_AttributeId, ModifierApplication value_Application, ModifierOperation value_Operation, PublishedMagnitude value_Magnitude, int value_Priority, ClampBound value_ClampBound, bool value_ScaleWithStack) {
 AttributeId = value_AttributeId;
@@ -209,21 +193,18 @@ public int Priority { get; }
 public ClampBound ClampBound { get; }
 public bool ScaleWithStack { get; }
 }
-[CanonicalContract(MaterializedRead = true, PreparedRead = false)]
 public sealed partial class PublishedGrantedTags {
 public PublishedGrantedTags(IReadOnlyList<string> value_Tags) {
 Tags = value_Tags;
 }
 public IReadOnlyList<string> Tags { get; }
 }
-[CanonicalContract(MaterializedRead = true, PreparedRead = false)]
 public sealed partial class PublishedBlockAbilities {
 public PublishedBlockAbilities(PublishedTagQuery value_Query) {
 Query = value_Query;
 }
 public PublishedTagQuery Query { get; }
 }
-[CanonicalContract(MaterializedRead = true, PreparedRead = false)]
 public sealed partial class PublishedReplacementSourceRequirement {
 public PublishedReplacementSourceRequirement(PublishedTagQuery value_CandidateQuery, PublishedTagQuery value_SelectedSourceQuery) {
 CandidateQuery = value_CandidateQuery;
@@ -232,7 +213,6 @@ SelectedSourceQuery = value_SelectedSourceQuery;
 public PublishedTagQuery CandidateQuery { get; }
 public PublishedTagQuery SelectedSourceQuery { get; }
 }
-[CanonicalContract(MaterializedRead = true, PreparedRead = false)]
 public sealed partial class PublishedTagRequirements {
 public PublishedTagRequirements(RequirementPhase value_Phase, PublishedTagQuery value_Source, PublishedTagQuery value_Target) {
 Phase = value_Phase;
@@ -243,7 +223,6 @@ public RequirementPhase Phase { get; }
 public PublishedTagQuery Source { get; }
 public PublishedTagQuery Target { get; }
 }
-[CanonicalContract(MaterializedRead = true, PreparedRead = false)]
 public sealed partial class PublishedAttributeRequirements {
 public PublishedAttributeRequirements(RequirementPhase value_Phase, AttributeSource value_Source, string value_AttributeId, AttributeComparison value_Comparison, PublishedMagnitude value_Threshold) {
 Phase = value_Phase;
@@ -258,21 +237,18 @@ public string AttributeId { get; }
 public AttributeComparison Comparison { get; }
 public PublishedMagnitude Threshold { get; }
 }
-[CanonicalContract(MaterializedRead = true, PreparedRead = false)]
 public sealed partial class PublishedExecution {
 public PublishedExecution(IReadOnlyList<PublishedMutation> value_Mutations) {
 Mutations = value_Mutations;
 }
 public IReadOnlyList<PublishedMutation> Mutations { get; }
 }
-[CanonicalContract(MaterializedRead = true, PreparedRead = false)]
 public sealed partial class PublishedAdditionalEffectsComponent {
 public PublishedAdditionalEffectsComponent(IReadOnlyList<PublishedAdditionalEffect> value_Effects) {
 Effects = value_Effects;
 }
 public IReadOnlyList<PublishedAdditionalEffect> Effects { get; }
 }
-[CanonicalContract(MaterializedRead = true, PreparedRead = false)]
 public sealed partial class PublishedCueBinding {
 public PublishedCueBinding(string value_CueId, CueTrigger value_Trigger) {
 CueId = value_CueId;
@@ -281,7 +257,6 @@ Trigger = value_Trigger;
 public string CueId { get; }
 public CueTrigger Trigger { get; }
 }
-[CanonicalContract(MaterializedRead = true, PreparedRead = false)]
 public sealed partial class PublishedMutation {
 public PublishedMutation(string value_AttributeId, ModifierOperation value_Operation, PublishedMagnitude value_Magnitude, ClampBound value_ClampBound) {
 AttributeId = value_AttributeId;
@@ -294,7 +269,6 @@ public ModifierOperation Operation { get; }
 public PublishedMagnitude Magnitude { get; }
 public ClampBound ClampBound { get; }
 }
-[CanonicalContract(MaterializedRead = true, PreparedRead = false)]
 public sealed partial class PublishedAdditionalEffect {
 public PublishedAdditionalEffect(AdditionalTrigger value_Trigger, string value_Effect, IReadOnlyList<PublishedParameterBinding> value_ParameterBindings) {
 Trigger = value_Trigger;
@@ -305,7 +279,6 @@ public AdditionalTrigger Trigger { get; }
 public string Effect { get; }
 public IReadOnlyList<PublishedParameterBinding> ParameterBindings { get; }
 }
-[CanonicalContract(MaterializedRead = true, PreparedRead = false)]
 public sealed partial class PublishedParameterBinding {
 public PublishedParameterBinding(string value_ChildParameterId, ParameterSource value_Source, string value_ParentParameterId, float value_Constant) {
 ChildParameterId = value_ChildParameterId;
@@ -318,7 +291,6 @@ public ParameterSource Source { get; }
 public string ParentParameterId { get; }
 public float Constant { get; }
 }
-[CanonicalContract(MaterializedRead = true, PreparedRead = false)]
 public sealed partial class PublishedInitialAttribute {
 public PublishedInitialAttribute(string value_Attribute, float value_BaseValue) {
 Attribute = value_Attribute;
@@ -327,7 +299,6 @@ BaseValue = value_BaseValue;
 public string Attribute { get; }
 public float BaseValue { get; }
 }
-[CanonicalContract(MaterializedRead = true, PreparedRead = false)]
 public sealed partial class PublishedInitialEffect {
 public PublishedInitialEffect(string value_Effect, IReadOnlyList<PublishedInitialParameter> value_Parameters) {
 Effect = value_Effect;
@@ -336,7 +307,6 @@ Parameters = value_Parameters;
 public string Effect { get; }
 public IReadOnlyList<PublishedInitialParameter> Parameters { get; }
 }
-[CanonicalContract(MaterializedRead = true, PreparedRead = false)]
 public sealed partial class PublishedInitialParameter {
 public PublishedInitialParameter(string value_ParameterId, float value_Value) {
 ParameterId = value_ParameterId;
@@ -345,7 +315,6 @@ Value = value_Value;
 public string ParameterId { get; }
 public float Value { get; }
 }
-[CanonicalContract(MaterializedRead = true, PreparedRead = false)]
 public sealed partial class PublishedCharacter {
 public PublishedCharacter(string value_Id, IReadOnlyList<string> value_Attributes, IReadOnlyList<PublishedInitialAttribute> value_InitialAttributes, IReadOnlyList<string> value_InitialTags, IReadOnlyList<string> value_Effects, IReadOnlyList<PublishedInitialEffect> value_InitialEffects) {
 Id = value_Id;
@@ -362,7 +331,7 @@ public IReadOnlyList<string> InitialTags { get; }
 public IReadOnlyList<string> Effects { get; }
 public IReadOnlyList<PublishedInitialEffect> InitialEffects { get; }
 }
-[CanonicalContract(MaterializedRead = true, PreparedRead = false)] public sealed partial class PublishedGameplayConfiguration {
+public sealed partial class PublishedGameplayConfiguration {
 public PublishedGameplayConfiguration(IReadOnlyList<PublishedAttribute> value_Attributes, IReadOnlyList<PublishedEffect> value_Effects, IReadOnlyList<PublishedCharacter> value_Characters) {
 Attributes = value_Attributes;
 Effects = value_Effects;

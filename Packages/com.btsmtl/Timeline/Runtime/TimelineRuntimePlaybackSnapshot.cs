@@ -4,7 +4,6 @@ namespace BTSMTL.Timeline.Runtime
 {
     public readonly struct TimelineRuntimePlaybackSnapshot
     {
-        public const string CurrentSchema = "btsmtl.timeline.direct-runtime.v9|" + TimelinePlaybackState.CanonicalSchema;
         public bool IsValid => Handle.IsValid && Generation != 0;
 
         internal TimelineRuntimePlaybackSnapshot(TimelineRuntimePlayback playback)
@@ -53,6 +52,5 @@ namespace BTSMTL.Timeline.Runtime
         public TimelineRuntimeNumericTarget NumericTarget { get; }
         public int TickRate { get; }
         public TimelinePlaybackState Playback { get; }
-        public string Schema => CurrentSchema;
     }
 }

@@ -1,16 +1,14 @@
 using GameplayAbilityCurveKey = ThirdPersonSimulation.GameplayAbilityCurveKey<ThirdPersonSimulation.Fixed.FixedScalar>;
-using GameplayAbilityCurve = ThirdPersonSimulation.GameplayAbilityCurve<ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedSimulationMath>;
+using GameplayAbilityCurve = ThirdPersonSimulation.GameplayAbilityCurve<ThirdPersonSimulation.Fixed.FixedScalar>;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using ThirdPersonSimulation.Collision;
 
 namespace ThirdPersonSimulation.Fixed
 {
-    [CanonicalContract(OwnsMemberResources = true)]
+    [ValueSnapshot(ClearMethod = nameof(Clear))]
     internal sealed partial class FixedCombatAttackState
     {
-        [CanonicalPresence]
         public bool Active
         {
             get => m_Identity.IsValid;
@@ -23,10 +21,9 @@ namespace ThirdPersonSimulation.Fixed
                 }
             }
         }
-        public int DefinitionIndex;
-        [CanonicalRequired]
-        CombatAttackIdentity m_Identity;
-        CanonicalTextValue m_EventId;
+        [ValueSnapshot] public int DefinitionIndex;
+        [ValueSnapshot] CombatAttackIdentity m_Identity;
+        [ValueSnapshot] CanonicalTextValue m_EventId;
         public CombatAttackIdentity Identity
         {
             get => m_Identity;
@@ -37,13 +34,13 @@ namespace ThirdPersonSimulation.Fixed
             get => m_EventId;
             set { value.Retain(); m_EventId.Release(); m_EventId = value; }
         }
-        public FixedVector3 Origin;
-        public FixedYaw Yaw;
-        public int TotalCount;
-        public int HitCount;
-        public ulong LastQueryTick;
-        public readonly int[] TargetCounts;
-        public readonly ulong[] TargetTicks;
+        [ValueSnapshot] public FixedVector3 Origin;
+        [ValueSnapshot] public FixedYaw Yaw;
+        [ValueSnapshot] public int TotalCount;
+        [ValueSnapshot] public int HitCount;
+        [ValueSnapshot] public ulong LastQueryTick;
+        [ValueSnapshot] public readonly int[] TargetCounts;
+        [ValueSnapshot] public readonly ulong[] TargetTicks;
 
         public FixedCombatAttackState(int targetCount)
         {
@@ -65,10 +62,10 @@ namespace ThirdPersonSimulation.Fixed
             Array.Clear(TargetTicks, 0, TargetTicks.Length);
         }
 
-        public void CopyFrom(FixedCombatAttackState value) => CanonicalCopyInto(value, this);
+        public partial void Clear();
+
     }
 
-    [CanonicalContract]
     internal partial struct FixedCombatHalt
     {
         public int ActorIndex;
@@ -76,7 +73,6 @@ namespace ThirdPersonSimulation.Fixed
         public ulong ResumeTick;
     }
 
-    [CanonicalContract]
     internal partial struct FixedCombatTimeSlowState
     {
         internal bool Active;
@@ -108,7 +104,8 @@ namespace ThirdPersonSimulation.Fixed
         public ulong ActionInstanceId;
     }
 
-    public sealed partial class FixedCombatRuntime
+    [ValueSnapshot(ClearMethod = nameof(Dispose))]
+    public sealed partial class FixedCombatRuntime : IDisposable
     {
         sealed class Participant
         {
@@ -142,10 +139,8 @@ namespace ThirdPersonSimulation.Fixed
         readonly SweepResultBuffer<FixedScalar> m_QueryResults;
         readonly int[] m_AttackStateOffsets;
         readonly FixedCombatEvaluation[] m_Evaluations;
-        readonly FixedCombatStateBank m_State;
+        [ValueSnapshot] readonly FixedCombatStateBank m_State;
         readonly GameplayAbilityCurve[] m_TimeSlowCurves;
-        readonly Func<CanonicalReader, string> m_StateIdentityReader;
-        readonly int m_StateMaximumIdentityCharacters;
         readonly FixedCombatBatchResult m_Batch;
         readonly PortableEffectDefinition[] m_LightEffects;
         readonly PortableEffectDefinition[] m_HeavyEffects;
@@ -268,29 +263,6 @@ namespace ThirdPersonSimulation.Fixed
                 characters.Roster[i].PrepareCombatResultCapacity(outputCapacity);
             }
             m_Attacks = attacks.ToArray();
-            var stateIdentities = new List<string>();
-            foreach (FixedPreparedAttack attack in m_Attacks)
-                stateIdentities.Add(attack.ContentId);
-            foreach (Participant participant in m_Participants)
-                stateIdentities.Add(participant.ActorId.Value.ToString());
-            foreach (SimulationActorBinding actor in characters.Roster)
-            {
-                foreach (FixedGameplayAbilityExecutionInstallation installation in actor.AbilityInstallations.Installations)
-                    stateIdentities.Add(installation.Data.AbilityId.Value);
-                if (actor.CombatBinding != null)
-                {
-                    CharacterCombatRuntimeBinding binding = actor.CombatBinding;
-                    stateIdentities.AddRange(new[] { binding.LandedEvent,
-                        binding.HitLightFrontEvent, binding.HitLightBackEvent,
-                        binding.HitHeavyFrontEvent, binding.HitHeavyBackEvent,
-                        binding.ParryLightEvent, binding.ParryHeavyEvent, binding.PerfectEvadeEvent });
-                }
-            }
-            string[] publishedStateIdentities = stateIdentities.Where(value => value != null).ToArray();
-            var stateIdentityReader = new CanonicalDeclaredIdentityReader(publishedStateIdentities);
-            m_StateIdentityReader = stateIdentityReader.ReadPublished;
-            m_StateMaximumIdentityCharacters = publishedStateIdentities.Length == 0 ? 0 :
-                publishedStateIdentities.Max(value => value.Length);
             int segmentCapacity = 1, intervalCapacity = 1;
             for (int attack = 0; attack < m_Attacks.Length; attack++)
             {
@@ -321,6 +293,8 @@ namespace ThirdPersonSimulation.Fixed
             m_QueryResults = new SweepResultBuffer<FixedScalar>(actorCount);
             m_Batch = new FixedCombatBatchResult(m_State.Pending, resultCapacity, cameraCapacity);
         }
+
+        public partial void Dispose();
 
         static PortableEffectDefinition PrepareResponseEffect(SimulationActorBinding actor, string effectId)
         {
@@ -427,7 +401,7 @@ namespace ThirdPersonSimulation.Fixed
                 state = default;
                 return;
             }
-            state.Rate = curve.Evaluate(state.Age / binding.Duration, FixedScalar.One);
+            state.Rate = curve.Evaluate<FixedSimulationMath>(state.Age / binding.Duration, FixedScalar.One);
             state.Age += delta;
         }
 
@@ -437,7 +411,7 @@ namespace ThirdPersonSimulation.Fixed
             var state = new FixedCombatTimeSlowState
             {
                 Active = true,
-                Rate = m_TimeSlowCurves[actorIndex].Evaluate(FixedScalar.Zero, FixedScalar.One)
+                Rate = m_TimeSlowCurves[actorIndex].Evaluate<FixedSimulationMath>(FixedScalar.Zero, FixedScalar.One)
             };
             m_State.SelfTimeSlows[actorIndex] = state;
             if (!m_State.WorldTimeSlow.Active ||
@@ -1049,5 +1023,29 @@ namespace ThirdPersonSimulation.Fixed
             output.Presentation.Add(new PresentationCommand(header, PresentationCommandKind.CombatHit,
                 "combat-hit", FixedScalar.Zero, FixedScalar.One, combatHit: hit));
         }
+    }
+
+    [ValueSnapshot(ClearMethod = nameof(Clear))]
+    internal sealed partial class FixedCombatStateBank
+    {
+        [ValueSnapshot] public readonly FixedCombatAttackState[] Attacks;
+        [ValueSnapshot] public readonly FixedCombatHalt[] Halts;
+        [ValueSnapshot] public readonly FixedCombatTimeSlowState[] SelfTimeSlows;
+        [ValueSnapshot] public FixedCombatTimeSlowState WorldTimeSlow;
+        [ValueSnapshot] public int WorldTimeSlowOwner;
+        [ValueSnapshot] public readonly FixedCombatResultStorage Pending;
+        [ValueSnapshot] public ulong NextResultId;
+        [ValueSnapshot] public ulong LastTick;
+
+        internal FixedCombatStateBank(FixedCombatAttackState[] attacks, int haltCount, int selfTimeSlowCount, int resultCapacity)
+        {
+            Attacks = attacks;
+            Halts = new FixedCombatHalt[haltCount];
+            SelfTimeSlows = new FixedCombatTimeSlowState[selfTimeSlowCount];
+            Pending = new FixedCombatResultStorage(resultCapacity);
+            NextResultId = 1;
+        }
+
+        public partial void Clear();
     }
 }

@@ -1,4 +1,4 @@
-using MotionWarpState = ThirdPersonSimulation.MotionWarpState<ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedVector3, ThirdPersonSimulation.Fixed.FixedYaw, ThirdPersonSimulation.Fixed.FixedActionInstanceReference, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Fixed.FixedScalar>, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Fixed.FixedVector3>, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Fixed.FixedYaw>>;
+using MotionWarpState = ThirdPersonSimulation.MotionWarpState<ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedVector3, ThirdPersonSimulation.Fixed.FixedYaw, ThirdPersonSimulation.Fixed.FixedActionInstanceReference>;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -6,7 +6,8 @@ using SimulationActionActivationRequestState = ThirdPersonSimulation.SimulationA
 
 namespace ThirdPersonSimulation.Fixed
 {
-    public readonly struct FixedAbilityRuntimeState
+    [ValueOperations]
+    public readonly partial struct FixedAbilityRuntimeState
     {
         FixedAbilityRuntimeState(
             AbilityStateValuePageReference<AbilityStateValue> stateValues,
@@ -16,7 +17,9 @@ namespace ThirdPersonSimulation.Fixed
             AbilityExecutionState = abilityExecutionState;
         }
 
+        [ValueResource]
         internal AbilityStateValuePageReference<AbilityStateValue> StateValues { get; }
+        [ValueResource("RetainStateStorage", "ReleaseStateStorage")]
         internal GameplayAbilityExecutionAggregate<AbilityStateValue> AbilityExecutionState { get; }
         public GameplayAbilityExecutionIdentity AbilityIdentity => StateValues.Set.Bank.Identity;
 
@@ -40,7 +43,7 @@ namespace ThirdPersonSimulation.Fixed
         readonly FixedCharacterRuntimeStatePage m_Page;
         readonly uint m_Generation;
 
-        FixedCharacterRuntimeState(FixedCharacterRuntimeStatePage page)
+        internal FixedCharacterRuntimeState(FixedCharacterRuntimeStatePage page)
         {
             m_Page = page;
             m_Generation = page.Generation;
@@ -60,21 +63,6 @@ namespace ThirdPersonSimulation.Fixed
         internal bool SharesStateWith(FixedCharacterRuntimeState other) =>
             ReferenceEquals(m_Page, other.m_Page) && m_Generation == other.m_Generation;
         internal void ReleaseStateStorage() => m_Page.Release();
-        internal SimulationCharacterStatePayload CanonicalPayload => m_Page.CanonicalPayload;
-
-        internal void DiscardDecodedStorage()
-        {
-            m_Page.ClearCanonicalPayload();
-            m_Page.ControlStorage.Clear();
-            m_Page.Data = default;
-        }
-
-        internal void SetCanonicalPayload(SimulationCharacterStatePayload payload)
-        {
-            m_Page.ClearCanonicalPayload();
-            payload.Retain();
-            m_Page.CanonicalPayload = payload;
-        }
 
         static readonly Comparison<AbilityTimelineRuntimeSnapshot> s_TimelineSnapshotComparison =
             (left, right) => left.RuntimeHandle.CompareTo(right.RuntimeHandle);
@@ -99,37 +87,24 @@ namespace ThirdPersonSimulation.Fixed
         internal void RetainStatePages()
         {
             m_Page.Retain(m_Generation);
-            Data.TimelineSnapshots.Retain();
-            Data.GameplayEffectState.RetainSnapshots();
-            Data.EquipmentState?.Retain();
-            Data.EquipmentState?.Storage.CompleteDecodeAdoption(Data.EquipmentState);
-            ActionStatePage.Retain();
-            InputRequestPage.Retain();
-            Data.Abilities.Retain();
-            CharacterBlackboards.Retain();
+            Data.Retain();
             FixedAbilityRuntimeState[] values = Data.Abilities.Page.Values;
             for (int index = 0; index < values.Length; index++)
             {
-                values[index].StateValues.Retain();
-                values[index].AbilityExecutionState.RetainStateStorage();
+                values[index].Retain();
             }
         }
+
+        internal void ReleaseStateData() => Data.Release();
 
         internal void ReleaseStatePages()
         {
             FixedAbilityRuntimeState[] values = Data.Abilities.Page.Values;
             for (int index = 0; index < values.Length; index++)
             {
-                values[index].StateValues.Release();
-                values[index].AbilityExecutionState.ReleaseStateStorage();
+                values[index].Release();
             }
-            Data.Abilities.Release();
-            CharacterBlackboards.Release();
-            InputRequestPage.Release();
-            ActionStatePage.Release();
-            Data.TimelineSnapshots.Release();
-            Data.GameplayEffectState.ReleaseSnapshots();
-            Data.EquipmentState?.Release();
+            Data.Release();
             m_Page.Release();
         }
         internal FixedActionStatePageReference ActionStatePage => Data.ActionStatePage;
@@ -300,18 +275,10 @@ namespace ThirdPersonSimulation.Fixed
                 return this;
             FixedTimelineSnapshotPageReference committedSnapshots = Data.TimelineSnapshots.Page.Bank.Capture(snapshots);
             FixedCharacterRuntimeStatePage page = m_Page.Bank.Begin();
-            page.Data.CharacterBlackboards = CharacterBlackboards;
-            return AdoptSnapshot(
-                page,
-                Metadata,
-                Data.Abilities,
-                ActionStatePage,
-                InputRequestPage,
-                page.ControlStorage.CopyFrom(ControlState),
-                GameplayEffectState,
-                EquipmentState,
-                committedSnapshots,
-                MotionWarpStates);
+            page.Data = Data;
+            page.Data.ControlState = page.ControlStorage.CopyFrom(ControlState);
+            page.Data.TimelineSnapshots = committedSnapshots;
+            return new FixedCharacterRuntimeState(page);
         }
 
         bool RetainTimelineSnapshot(in AbilityTimelineRuntimeSnapshot snapshot)
@@ -327,31 +294,6 @@ namespace ThirdPersonSimulation.Fixed
                     return true;
             }
             return false;
-        }
-
-        internal static FixedCharacterRuntimeState AdoptSnapshot(
-            FixedCharacterRuntimeStatePage page,
-            in CharacterRuntimeStateMetadata metadata,
-            FixedAbilityStateDirectoryReference abilities,
-            FixedActionStatePageReference actions,
-            FixedInputRequestPageReference inputRequests,
-            CharacterControlRuntimeState controlState,
-            GameplayEffectStateAggregate gameplayEffectState,
-            EquipmentStateAggregate equipmentState,
-            FixedTimelineSnapshotPageReference timelineSnapshots,
-            MotionWarpStatePageReference<MotionWarpState> motionWarpStates)
-        {
-            ref FixedCharacterRuntimeStateData data = ref page.Data;
-            data.Metadata = metadata;
-            data.Abilities = abilities;
-            data.ActionStatePage = actions;
-            data.InputRequestPage = inputRequests;
-            data.ControlState = controlState;
-            data.GameplayEffectState = gameplayEffectState;
-            data.EquipmentState = equipmentState;
-            data.TimelineSnapshots = timelineSnapshots;
-            data.MotionWarpStates = motionWarpStates;
-            return new FixedCharacterRuntimeState(page);
         }
 
         internal static FixedCharacterRuntimeState CreateInitial(
@@ -371,33 +313,43 @@ namespace ThirdPersonSimulation.Fixed
         {
             Array.Sort(abilities.Page.Values, s_AbilityStateComparison);
             FixedCharacterRuntimeStatePage page = statePages.Begin();
-            page.Data.CharacterBlackboards = characterBlackboards;
-            return AdoptSnapshot(
-                page,
-                new CharacterRuntimeStateMetadata(numericProfile, gameplayContentHash, stateSchemaHash, 0, 0, 0, 0),
-                abilities,
-                actions,
-                inputRequests,
-                page.ControlStorage.CopyFrom(controlState),
-                gameplayEffectState,
-                equipmentState,
-                timelineSnapshots,
-                motionWarpStates);
+            page.Data = FixedCharacterRuntimeStateData.FromValueStorage(
+                CharacterBlackboards: characterBlackboards,
+                Metadata: new CharacterRuntimeStateMetadata(numericProfile, gameplayContentHash, stateSchemaHash, 0, 0, 0, 0),
+                Abilities: abilities,
+                ActionStatePage: actions,
+                InputRequestPage: inputRequests,
+                ControlState: page.ControlStorage.CopyFrom(controlState),
+                GameplayEffectState: gameplayEffectState,
+                EquipmentState: equipmentState,
+                TimelineSnapshots: timelineSnapshots,
+                MotionWarpStates: motionWarpStates);
+            return new FixedCharacterRuntimeState(page);
         }
 
     }
 
-    internal struct FixedCharacterRuntimeStateData
+    [ValueStorage]
+    [ValueOperations(ExplicitResources = true)]
+    internal partial struct FixedCharacterRuntimeStateData
     {
+        [ValueResource]
         internal AbilityStateValuePageReference<AbilityStateValue> CharacterBlackboards;
         internal CharacterRuntimeStateMetadata Metadata;
+        [ValueResource]
         internal FixedAbilityStateDirectoryReference Abilities;
+        [ValueResource]
         internal FixedActionStatePageReference ActionStatePage;
+        [ValueResource]
         internal FixedInputRequestPageReference InputRequestPage;
         internal CharacterControlRuntimeState ControlState;
+        [ValueResource("RetainSnapshots", "ReleaseSnapshots")]
         internal GameplayEffectStateAggregate GameplayEffectState;
+        [ValueResource(Optional = true)]
         internal EquipmentStateAggregate EquipmentState;
+        [ValueResource]
         internal FixedTimelineSnapshotPageReference TimelineSnapshots;
+        [ValueResource]
         internal MotionWarpStatePageReference<MotionWarpState> MotionWarpStates;
     }
 
@@ -411,7 +363,6 @@ namespace ThirdPersonSimulation.Fixed
         internal FixedCharacterRuntimeStatePageBank Bank { get; }
         internal CharacterControlRuntimeStateStorage ControlStorage { get; set; }
         internal FixedCharacterRuntimeStateData Data;
-        internal SimulationCharacterStatePayload CanonicalPayload;
         internal uint Generation;
         internal int Retainers;
 
@@ -431,32 +382,17 @@ namespace ThirdPersonSimulation.Fixed
         {
             if (--Retainers == 0)
             {
-                ClearCanonicalPayload();
                 Data = default;
                 ControlStorage.Clear();
             }
         }
 
-        internal void ClearCanonicalPayload()
-        {
-            CanonicalPayload.Release();
-            CanonicalPayload = default;
-        }
     }
 
     internal sealed class FixedCharacterRuntimeStatePageBank
     {
         readonly List<FixedCharacterRuntimeStatePage> m_Pages = new List<FixedCharacterRuntimeStatePage>();
         int m_ControlValueCount;
-        internal SimulationCharacterStatePayloadStorage EncodingStorage { get; set; }
-
-        internal void ReleaseEncodingStorage()
-        {
-            for (int index = 0; index < m_Pages.Count; index++)
-                m_Pages[index].ClearCanonicalPayload();
-            EncodingStorage = null;
-        }
-
         internal void PrepareControlValueCapacity(int fieldCount)
         {
             m_ControlValueCount = fieldCount;
@@ -478,7 +414,6 @@ namespace ThirdPersonSimulation.Fixed
                 FixedCharacterRuntimeStatePage page = m_Pages[i];
                 if (page.Retainers != 0)
                     continue;
-                page.ClearCanonicalPayload();
                 page.Generation++;
                 page.ControlStorage.BeginWrite();
                 return page;
@@ -527,8 +462,6 @@ namespace ThirdPersonSimulation.Fixed
     {
         internal const int MaximumSnapshotCount = AbilityTimelineRuntimeLimits.MaximumPlaybackCount;
         readonly List<FixedTimelineSnapshotPage> m_Pages = new List<FixedTimelineSnapshotPage>();
-        AbilityTimelineSnapshotStorageBank m_DecodeStorage;
-        internal AbilityTimelineSnapshotDecodeLayout DecodeLayout { get; private set; }
 
         internal FixedTimelineSnapshotPageBank()
         {
@@ -542,30 +475,6 @@ namespace ThirdPersonSimulation.Fixed
             m_Pages.Capacity = capacity;
             while (m_Pages.Count < capacity)
                 m_Pages.Add(new FixedTimelineSnapshotPage(this));
-        }
-
-        internal void PrepareDecodeLayout(IAbilityTimelineRuntime runtime, int maximumPayloadBytes)
-        {
-            int clips = 0, exits = 0, pendingExits = 0, trees = 0;
-            if (runtime != null)
-                runtime.GetSnapshotCapacity(out clips, out exits, out pendingExits, out trees);
-            DecodeLayout = new AbilityTimelineSnapshotDecodeLayout(MaximumSnapshotCount, maximumPayloadBytes,
-                clips, exits, pendingExits, trees);
-        }
-
-        internal void PrepareDecodeStorage(int capacity)
-        {
-            m_DecodeStorage = new AbilityTimelineSnapshotStorageBank(
-                DecodeLayout.ActiveClips, DecodeLayout.TreeDecisionExits,
-                DecodeLayout.PendingTreeDecisionExits, DecodeLayout.ActiveTreeClips);
-            m_DecodeStorage.PrepareCapacity(capacity);
-        }
-
-        internal FixedTimelineSnapshotPageReference BeginDecode(out AbilityTimelineSnapshotStorage storage)
-        {
-            FixedTimelineSnapshotPageReference result = Begin();
-            storage = m_DecodeStorage.BeginDecode();
-            return result;
         }
 
         internal FixedTimelineSnapshotPageReference Begin()

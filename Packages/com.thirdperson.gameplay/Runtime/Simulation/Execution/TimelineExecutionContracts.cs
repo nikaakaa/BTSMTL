@@ -18,7 +18,7 @@ namespace BTSMTL.Timeline
         Disposed = 7
     }
 
-    [CanonicalContract]
+    [ValueOperations]
     public readonly partial struct TimelineExecutionIdentity : IEquatable<TimelineExecutionIdentity>
     {
         public TimelineExecutionIdentity(CanonicalTextValue ownerIdentity, CanonicalTextValue callIdentity, ulong instanceId)
@@ -32,7 +32,7 @@ namespace BTSMTL.Timeline
         public CanonicalTextValue OwnerIdentity { get; }
         public CanonicalTextValue CallIdentity { get; }
         public ulong InstanceId { get; }
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireValid()
         {
             if (CanonicalTextValue.IsNullOrWhiteSpace(OwnerIdentity))
@@ -49,8 +49,6 @@ namespace BTSMTL.Timeline
             OwnerIdentity.Equals(other.OwnerIdentity) &&
             CallIdentity.Equals(other.CallIdentity) &&
             InstanceId == other.InstanceId;
-        public void Retain() => CanonicalRetain(this);
-        public void Release() => CanonicalRelease(this);
         public override bool Equals(object obj) => obj is TimelineExecutionIdentity other && Equals(other);
         public override int GetHashCode() => HashCode.Combine(OwnerIdentity, CallIdentity, InstanceId);
         public static bool operator ==(TimelineExecutionIdentity left, TimelineExecutionIdentity right) => left.Equals(right);
@@ -532,7 +530,6 @@ namespace BTSMTL.Timeline
         Shutdown
     }
 
-    [CanonicalContract]
     public readonly partial struct TimelinePlaybackStopContext
     {
         public TimelinePlaybackStopContext(TimelinePlaybackStopCause cause, ulong localLogicTick)

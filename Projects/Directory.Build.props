@@ -1,6 +1,6 @@
 <Project>
   <ItemGroup>
-    <ProjectReference Include="$(MSBuildThisFileDirectory)..\Tools\CanonicalSerialization.Generator\CanonicalSerialization.Generator.csproj"
+    <ProjectReference Include="$(MSBuildThisFileDirectory)..\Tools\ValueGeneration.Generator\ValueGeneration.Generator.csproj"
                       OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>
 </Project>

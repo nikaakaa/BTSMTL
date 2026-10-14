@@ -35,7 +35,6 @@ namespace ThirdPersonSimulation
         public override string ToString() => Value ?? string.Empty;
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
     public readonly partial struct SimulationProtocolIdentity : IEquatable<SimulationProtocolIdentity>
     {
         public SimulationProtocolIdentity(string protocolId, string semanticVersion, StableHash schemaHash)
@@ -46,9 +45,9 @@ namespace ThirdPersonSimulation
             RequireRecord();
         }
 
-        [CanonicalTextRules(Required = true, Trim = true)]
+        [ValueTextRules(Required = true, Trim = true)]
         public string ProtocolId { get; }
-        [CanonicalTextRules(Required = true, Trim = true)]
+        [ValueTextRules(Required = true, Trim = true)]
         public string SemanticVersion { get; }
         public StableHash SchemaHash { get; }
         public bool IsValid => !string.IsNullOrEmpty(ProtocolId) && !string.IsNullOrEmpty(SemanticVersion) && SchemaHash.IsValid;
@@ -60,7 +59,7 @@ namespace ThirdPersonSimulation
         public override int GetHashCode() => HashCode.Combine(ProtocolId, SemanticVersion, SchemaHash);
         public override string ToString() => $"{ProtocolId}@{SemanticVersion}/{SchemaHash}";
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireRecord()
         {
             if (!SchemaHash.IsValid)
@@ -73,14 +72,13 @@ namespace ThirdPersonSimulation
         ExecutionBackend = 2,
         SessionSource = 3,
         WorldSolver = 4,
-        SnapshotCodec = 5,
+        SnapshotProvider = 5,
         Committer = 6,
         Model = 7,
         Endpoint = 8,
         Diagnostics = 9
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false, PublishedRead = true)]
     public readonly partial struct SimulationComponentIdentity : IEquatable<SimulationComponentIdentity>
     {
         public SimulationComponentIdentity(
@@ -100,9 +98,9 @@ namespace ThirdPersonSimulation
         }
 
         public SimulationComponentRole Role { get; }
-        [CanonicalTextRules(Required = true, Trim = true)]
+        [ValueTextRules(Required = true, Trim = true)]
         public string ComponentId { get; }
-        [CanonicalTextRules(Required = true, Trim = true)]
+        [ValueTextRules(Required = true, Trim = true)]
         public string SemanticVersion { get; }
         public StableHash ConfigurationHash { get; }
         public bool IsValid => !string.IsNullOrEmpty(ComponentId) && !string.IsNullOrEmpty(SemanticVersion) && ConfigurationHash.IsValid;
@@ -119,7 +117,7 @@ namespace ThirdPersonSimulation
         public override int GetHashCode() => HashCode.Combine((int)Role, ComponentId, SemanticVersion, ConfigurationHash);
         public override string ToString() => $"{Role}:{ComponentId}@{SemanticVersion}/{ConfigurationHash}";
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireRecord()
         {
             if (!ConfigurationHash.IsValid)
@@ -127,8 +125,7 @@ namespace ThirdPersonSimulation
         }
     }
 
-    [CanonicalContract]
-    public readonly partial struct SimulationSessionCompositionIdentity : IEquatable<SimulationSessionCompositionIdentity>, ICanonicalHashValue
+    public readonly partial struct SimulationSessionCompositionIdentity : IEquatable<SimulationSessionCompositionIdentity>
     {
         public SimulationSessionCompositionIdentity(StableHash value) { Value = value; }
         public StableHash Value { get; }

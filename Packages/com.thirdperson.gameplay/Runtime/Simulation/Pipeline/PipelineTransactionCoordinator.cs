@@ -800,8 +800,7 @@ namespace ThirdPersonSimulation
                     kind,
                     true,
                     detail,
-                    snapshotParticipant: identity,
-                    snapshotHash: participant.StateHash);
+                    snapshotParticipant: identity);
             }
         }
 

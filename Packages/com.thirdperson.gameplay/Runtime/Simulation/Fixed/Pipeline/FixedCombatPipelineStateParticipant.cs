@@ -9,42 +9,35 @@ namespace ThirdPersonSimulation.Fixed
         FixedCombatRestore m_Restore;
         SimulationPipelinePassStateStorage m_StepStorage;
 
-        public FixedCombatPipelineStateParticipant(SimulationPipelinePassDescriptor descriptor, FixedCombatRuntime combat, int maximumSessionCheckpointPayloadBytes)
+        public FixedCombatPipelineStateParticipant(SimulationPipelinePassDescriptor descriptor, FixedCombatRuntime combat)
         {
             m_Combat = combat;
-            MaximumPayloadBytes = combat.GetMaximumStatePayloadBytes(maximumSessionCheckpointPayloadBytes);
-            MaximumTextValues = m_Combat.StateTextCapacity;
             StateIdentity = new SimulationPipelineStateParticipantIdentity(descriptor.PassId,
                 descriptor.ImplementationVersion, descriptor.StateOwner,
                 StandardFixedPipelinePassContracts.CombatStateSchemaId, StandardFixedPipelinePassContracts.CombatStateSchemaVersion);
             m_Checkpoint = new FixedCombatCheckpoint(StateIdentity, combat);
         }
+
         public SimulationPipelineStateParticipantIdentity StateIdentity { get; }
-        public int MaximumPayloadBytes { get; }
-        public int MaximumTextValues { get; }
         public SimulationPipelineStepProjectionMode StepProjectionMode => SimulationPipelineStepProjectionMode.Include;
+
         public void PrepareStepStorage(int snapshotCapacity)
         {
-            m_StepStorage = new SimulationPipelinePassStateStorage(StateIdentity, snapshotCapacity, MaximumPayloadBytes, MaximumTextValues, null);
-            m_Restore = new FixedCombatRestore(StateIdentity, m_Combat, MaximumPayloadBytes);
+            m_StepStorage = new SimulationPipelinePassStateStorage(StateIdentity, snapshotCapacity, m_Combat);
+            m_Restore = new FixedCombatRestore(StateIdentity, m_Combat);
         }
 
-        public SimulationPipelinePassStateSnapshot CaptureStepState()
-        {
-            using SimulationPipelinePassStateStorage.Page page = m_StepStorage.BeginWrite();
-            m_Combat.WriteState(page.Writer);
-            return page.Commit();
-        }
+        public SimulationPipelinePassStateSnapshot CaptureStepState() => m_StepStorage.Capture();
 
         public ISimulationPipelinePassStateCheckpoint CaptureCheckpoint()
         {
             m_Checkpoint.Capture();
             return m_Checkpoint;
         }
-        public ISimulationPipelineFrameState CreateFrameState() => new FixedCombatCheckpoint(StateIdentity, m_Combat);
-        public void WriteCheckpointState(CanonicalWriter writer) => m_Combat.WriteState(writer);
 
+        public ISimulationPipelineFrameState CreateFrameState() => new FixedCombatCheckpoint(StateIdentity, m_Combat);
         public SimulationPipelinePassStateSnapshot CaptureState() => CaptureStepState();
+
         public ISimulationPipelinePassRestoreTransaction PrepareRestore(SimulationPipelinePassStateSnapshot snapshot)
         {
             m_Restore.Prepare(snapshot);
@@ -55,74 +48,75 @@ namespace ThirdPersonSimulation.Fixed
     internal sealed class FixedCombatCheckpoint : ISimulationPipelineFrameState
     {
         readonly FixedCombatRuntime m_Combat;
-        readonly FixedCombatStateBank m_Before;
+        readonly IValueSnapshotCopy m_Before;
+
         public FixedCombatCheckpoint(SimulationPipelineStateParticipantIdentity identity, FixedCombatRuntime combat)
         {
             Participant = identity;
             m_Combat = combat;
-            m_Before = combat.CreateStateBank();
+            m_Before = combat.CreateValueSnapshot();
+            m_Before.Release();
         }
+
         public SimulationPipelineStateParticipantIdentity Participant { get; }
-        public void Capture() => m_Combat.CaptureTo(m_Before);
-        public void Restore() => m_Combat.RestoreFrom(m_Before);
+        public void Capture() => m_Combat.CaptureValueSnapshot(m_Before);
+        public void Restore() => m_Combat.RestoreValueSnapshot(m_Before);
+
         public void CopyFrom(ISimulationPipelineFrameState source) =>
-            FixedCombatStateBank.CanonicalCopyInto(((FixedCombatCheckpoint)source).m_Before, m_Before);
-        public void Write(CanonicalWriter writer) => FixedCombatRuntime.WriteState(writer, m_Before);
-        public void Read(CanonicalReader reader) => m_Combat.ReadState(reader, m_Before);
-        public void Dispose() => m_Combat.ReleaseStateBank(m_Before);
+            m_Before.CopyFrom(((FixedCombatCheckpoint)source).m_Before);
+
+        public void Dispose() => m_Before.Release();
     }
 
     internal sealed class FixedCombatRestore : ISimulationPipelinePassRestoreTransaction
     {
         readonly FixedCombatRuntime m_Combat;
-        readonly FixedCombatStateBank m_Before;
-        readonly FixedCombatStateBank m_Replacement;
-        readonly CanonicalWriter m_Writer;
-        readonly CanonicalReader m_Reader = new CanonicalReader(Array.Empty<byte>());
-        SimulationPipelinePassStateSnapshot m_Snapshot;
-        public FixedCombatRestore(SimulationPipelineStateParticipantIdentity identity, FixedCombatRuntime combat,
-            int payloadCapacity)
+        readonly IValueResources m_Before;
+        readonly IValueResources m_Current;
+        IValueResources m_Replacement;
+
+        public FixedCombatRestore(SimulationPipelineStateParticipantIdentity identity, FixedCombatRuntime combat)
         {
             Participant = identity;
             m_Combat = combat;
-            m_Writer = new CanonicalWriter(new byte[payloadCapacity]);
-            m_Before = combat.CreateStateBank();
-            m_Replacement = combat.CreateStateBank();
+            m_Before = combat.CreateValueSnapshot();
+            m_Before.Release();
+            m_Current = combat.CreateValueSnapshot();
+            m_Current.Release();
         }
+
         public SimulationPipelineStateParticipantIdentity Participant { get; }
+
         public void Prepare(SimulationPipelinePassStateSnapshot snapshot)
         {
-            m_Snapshot = snapshot;
-            m_Combat.CaptureTo(m_Before);
-            m_Reader.Reset(snapshot.Payload);
-            m_Reader.SetTextResolver(snapshot.TextResolver);
-            try
-            {
-                m_Combat.ReadState(m_Reader, m_Replacement);
-            }
-            catch
-            {
-                Dispose();
-                throw;
-            }
+            m_Combat.CaptureValueSnapshot(m_Before);
+            m_Replacement = snapshot.State;
+            m_Replacement.Retain();
         }
-        public void Apply() => m_Combat.RestoreFrom(m_Replacement);
+
+        public void Apply() => m_Combat.RestoreValueSnapshot(m_Replacement);
+
         public void ValidateApplied()
         {
-            m_Writer.Reset();
-            m_Combat.WriteState(m_Writer);
-            if (!SimulationCanonicalPayloadHash.Compute(m_Writer.WrittenSpan).Equals(m_Snapshot.StateHash))
-                throw new InvalidOperationException("Combat state restoration did not reproduce its canonical snapshot.");
+            m_Combat.CaptureValueSnapshot(m_Current);
+            try
+            {
+                if (!m_Current.Equals(m_Replacement))
+                    throw new InvalidOperationException("Combat state restoration did not reproduce the captured state.");
+            }
+            finally
+            {
+                m_Current.Release();
+            }
         }
-        public void CompleteAfterSessionPublish() { }
-        public void Rollback() => m_Combat.RestoreFrom(m_Before);
+
+        public void Rollback() => m_Combat.RestoreValueSnapshot(m_Before);
+
         public void Dispose()
         {
-            m_Combat.ReleaseStateBank(m_Before);
-            m_Combat.ReleaseStateBank(m_Replacement);
-            m_Snapshot = null;
-            m_Reader.SetTextResolver(null);
-            m_Reader.Reset(Array.Empty<byte>());
+            m_Before.Release();
+            m_Replacement.Release();
+            m_Replacement = null;
         }
     }
 }

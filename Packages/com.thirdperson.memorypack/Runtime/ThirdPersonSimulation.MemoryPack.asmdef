@@ -1,0 +1,16 @@
+{
+    "name": "ThirdPersonSimulation.MemoryPack",
+    "rootNamespace": "ThirdPersonSimulation.Serialization",
+    "references": [
+        "ThirdPerson.Shared.Contracts",
+        "ThirdPersonGameplay.Configuration",
+        "ThirdPersonSimulation.Core",
+        "ThirdPersonSimulation.Fixed",
+        "ThirdPersonSimulation.Float32"
+    ],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": ["MemoryPack.Core.dll"],
+    "autoReferenced": true,
+    "noEngineReferences": true
+}

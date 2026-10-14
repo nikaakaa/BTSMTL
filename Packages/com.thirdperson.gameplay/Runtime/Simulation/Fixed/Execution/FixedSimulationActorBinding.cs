@@ -1,4 +1,4 @@
-using MotionWarpState = ThirdPersonSimulation.MotionWarpState<ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedVector3, ThirdPersonSimulation.Fixed.FixedYaw, ThirdPersonSimulation.Fixed.FixedActionInstanceReference, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Fixed.FixedScalar>, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Fixed.FixedVector3>, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Fixed.FixedYaw>>;
+using MotionWarpState = ThirdPersonSimulation.MotionWarpState<ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedVector3, ThirdPersonSimulation.Fixed.FixedYaw, ThirdPersonSimulation.Fixed.FixedActionInstanceReference>;
 using MotionContributionBuffer = ThirdPersonSimulation.MotionContributionBuffer<ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedVector2, ThirdPersonSimulation.Fixed.FixedVector3, ThirdPersonSimulation.Fixed.FixedSimulationMath>;
 using System;
 using ThirdPersonGameplay.Configuration;
@@ -268,10 +268,6 @@ namespace ThirdPersonSimulation.Fixed
         int m_TraceRecordsPerTick;
         int m_FactCapacity;
         int m_OutputPresentationCapacity;
-        internal CanonicalReader CheckpointControlReader { get; } = new CanonicalReader(Array.Empty<byte>());
-        internal CharacterControlStateSchema CheckpointControlSchema { get; private set; }
-        public Func<CanonicalReader, string> DeclaredIdentityReader { get; private set; }
-        internal int DeclaredCheckpointIdentityCount { get; private set; }
         CanonicalDeclaredIdentityReader m_DeclaredIdentities;
 
         public string ResolveDeclaredIdentity(in CanonicalTextValue value) =>
@@ -279,7 +275,6 @@ namespace ThirdPersonSimulation.Fixed
 
         internal void PrepareCheckpointControlSchema(CharacterControlModuleContract contract)
         {
-            CheckpointControlSchema = contract.StateSchema;
             var identities = new List<string> { contract.ModuleId.Value };
             for (int index = 0; index < contract.States.Count; index++)
                 identities.Add(contract.States[index].Id.Value);
@@ -307,7 +302,7 @@ namespace ThirdPersonSimulation.Fixed
                     identities.Add(InputRuntimeBinding.InputRequestIds[input]);
             if (AbilityInstallations.RequiresEquipment)
             {
-                EquipmentProgramLayout equipment = EquipmentProgramLayoutCompiler.CompileRoleStateLayout(EquipmentRuntimeBinding);
+                EquipmentProgramLayout equipment = EquipmentRuntimeBinding.Layout;
                 for (int index = 0; index < equipment.Items.Count; index++)
                     identities.Add(equipment.Items[index].EquipmentId.Value);
                 for (int index = 0; index < equipment.Features.Count; index++)
@@ -317,12 +312,7 @@ namespace ThirdPersonSimulation.Fixed
             }
             for (int index = 0; index < m_CodecActionProfiles.Length; index++)
                 identities.Add(m_CodecActionProfiles[index].ActionId);
-            var uniqueIdentities = new HashSet<string>(identities, StringComparer.Ordinal);
-            uniqueIdentities.Remove(null);
-            uniqueIdentities.Remove(string.Empty);
-            DeclaredCheckpointIdentityCount = uniqueIdentities.Count;
             m_DeclaredIdentities = new CanonicalDeclaredIdentityReader(identities);
-            DeclaredIdentityReader = m_DeclaredIdentities.ReadPublished;
         }
 
         ActionAdmissionProfile[] m_CodecActionProfiles = Array.Empty<ActionAdmissionProfile>();
@@ -367,11 +357,7 @@ namespace ThirdPersonSimulation.Fixed
                 m_Workspaces[index].Trace.Capacity = traceRecordsPerTick;
         }
 
-        // 一轮输出与 Scratch 共享恢复状态的文本来源，不按其中的 Spec 数重复预算整份载荷。
-        internal int MaximumDetachedCheckpointTextPayloads =>
-            checked(m_RecycledEvaluationOutputs.Count - SessionCapacity.CandidateTicks + 2);
-
-        public void PrepareGameplayEffects(in GameplayEffectSessionCapacity session, int maximumSessionCheckpointPayloadBytes)
+        public void PrepareGameplayEffects(in GameplayEffectSessionCapacity session)
         {
             SessionCapacity = session;
             PrepareActionIdentities();
@@ -398,7 +384,7 @@ namespace ThirdPersonSimulation.Fixed
                 bank.PrepareCapacity(session.StatePageCount);
             if (AbilityInstallations.RequiresEquipment)
                 m_EquipmentState.Prepare(ActorId,
-                    EquipmentProgramLayoutCompiler.CompileRoleStateLayout(EquipmentRuntimeBinding), in session);
+                    EquipmentRuntimeBinding.Layout, in session);
             FixedGameplayEffectRuntimeCatalog catalog = AbilityInstallations.GameplayEffectCatalog;
             if (catalog != null)
             {
@@ -424,7 +410,6 @@ namespace ThirdPersonSimulation.Fixed
             }
             else
                 PrepareEvaluationOutputCapacity(session.CandidateTicks);
-            int checkpointOwners = checked(session.EncodedCheckpoints + session.CapturePayloads + session.RestorePayloads);
             for (int index = 0; index < m_Invocations.Length; index++)
             {
                 FixedGameplayAbilityExecutionInstallation installation = AbilityInstallations.Installations[index];
@@ -436,8 +421,8 @@ namespace ThirdPersonSimulation.Fixed
                     (ExecutionStatePages[installation.Identity.AbilityId].FrameCapacity + 1));
                 int retainedTracePaths = checked(m_TraceRecordsPerTick *
                     SimulationTraceRecord.MaximumGeneratedPathReferences * (m_RecycledEvaluationOutputs.Count + 1));
-                int retainedTextReferences = checked(stateValues * (session.StatePageCount + checkpointOwners) + retainedTracePaths);
-                m_Invocations[index].PrepareStateExecutionText(maximumSessionCheckpointPayloadBytes, retainedTextReferences);
+                int retainedTextReferences = checked(stateValues * session.StatePageCount + retainedTracePaths);
+                m_Invocations[index].PrepareStateExecutionText(retainedTextReferences);
             }
         }
 
@@ -505,19 +490,6 @@ namespace ThirdPersonSimulation.Fixed
                     index++;
                 }
             }
-        }
-
-        internal string ReadActionIdentity(CanonicalReader reader) =>
-            RequireActionIdentity(DeclaredIdentityReader(reader));
-
-        internal string RequireActionIdentity(string actionId)
-        {
-            if (string.IsNullOrEmpty(actionId))
-                return actionId;
-            for (int index = 0; index < m_CodecActionProfiles.Length; index++)
-                if (string.Equals(actionId, m_CodecActionProfiles[index].ActionId, StringComparison.Ordinal))
-                    return m_CodecActionProfiles[index].ActionId;
-            throw new InvalidDataException("Character state Action identity is absent from its installed Action Admission Profiles.");
         }
 
         internal void PrepareGameplayEffectOutputs(int changes, int facts, int presentation, int outputPageCount)
@@ -594,16 +566,12 @@ namespace ThirdPersonSimulation.Fixed
                 ExecutionStatePages.Add(installation.Identity.AbilityId,
                     new GameplayAbilityExecutionStateBank<AbilityStateValue>(installation.Identity,
                         installation.Layout.StateSlots.Count, installation.Layout.ActionInstanceCapacity,
-                        installation.Layout.IsSkillExecutionStateSlot, value => value.Retain(), value => value.Release(), installation.Blackboards,
-                        slot => installation.Layout.StateSlots[slot].ValueKind,
-                        AbilityStateValue.CanonicalWrite<CanonicalWriter>, AbilityStateValue.CanonicalReadCase<CanonicalReader>));
+                        installation.Layout.IsSkillExecutionStateSlot, value => value.Retain(), value => value.Release(), installation.Blackboards));
                 StateValuePages.Add(installation.Identity.AbilityId,
                     new AbilityStateValuePageBank<AbilityStateValue>(installation.Identity,
                         installation.Layout.StateSlots.Count, slot => !installation.Layout.IsSkillExecutionStateSlot(slot) &&
                             AbilityInstallations.CharacterBlackboards.Slots(installation.Data.AbilityId)[slot] < 0,
-                        value => value.Retain(), value => value.Release(), installation.Blackboards,
-                        slot => installation.Layout.StateSlots[slot].ValueKind,
-                        AbilityStateValue.CanonicalWrite<CanonicalWriter>, AbilityStateValue.CanonicalReadCase<CanonicalReader>));
+                        value => value.Retain(), value => value.Release(), installation.Blackboards));
             }
             var warpLayouts = new KeyValuePair<CharacterSkillId, IReadOnlyList<int>>[AbilityInstallations.Installations.Count];
             for (int index = 0; index < warpLayouts.Length; index++)
@@ -616,9 +584,7 @@ namespace ThirdPersonSimulation.Fixed
             MotionWarpPages = new MotionWarpStatePageBank<MotionWarpState>(motionWarpLayout, value => value.Retain(), value => value.Release());
             CharacterBlackboardPages = new AbilityStateValuePageBank<AbilityStateValue>(default,
                 AbilityInstallations.CharacterBlackboards.SlotCount, _ => true,
-                value => value.Retain(), value => value.Release(), AbilityInstallations.CharacterBlackboards.Binding,
-                slot => AbilityInstallations.CharacterBlackboards.Kinds[slot],
-                AbilityStateValue.CanonicalWrite<CanonicalWriter>, AbilityStateValue.CanonicalReadCase<CanonicalReader>);
+                value => value.Retain(), value => value.Release(), AbilityInstallations.CharacterBlackboards.Binding);
             m_RuntimeState.Initialize(AbilityInstallations.Installations, motionWarpLayout, AbilityInstallations.CharacterBlackboards);
             int actionCapacity = 0;
             for (int i = 0; i < AbilityInstallations.Installations.Count; i++)
@@ -1023,13 +989,10 @@ namespace ThirdPersonSimulation.Fixed
         {
             var parts = new List<string>
             {
-                "fixed-character-state-schema/4",
-                FixedCharacterRuntimeStateCodec.CodecIdentity,
-                CharacterRuntimeStateMetadata.CanonicalSchema,
+                "fixed-character-state-schema/5",
                 control.BindingHash.ToString(),
                 input.BindingHash.ToString(),
                 abilities.GameplayEffectCatalog != null ? gameplayEffects.BindingHash.ToString() : string.Empty,
-                abilities.GameplayEffectCatalog != null ? GameplayEffectStateAggregateCodec.CanonicalSchema : string.Empty,
                 abilities.RequiresEquipment ? equipment.BindingHash.ToString() : string.Empty
             };
             for (int i = 0; i < abilities.Installations.Count; i++)

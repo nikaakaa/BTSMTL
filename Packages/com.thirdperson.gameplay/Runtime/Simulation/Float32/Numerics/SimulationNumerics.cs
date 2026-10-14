@@ -17,14 +17,6 @@ namespace ThirdPersonSimulation
             SimulationNumericOverflowMode.RejectNonFinite,
             false);
 
-        public static CanonicalPublishedValues PublishedValues { get; } = PreparePublishedValues();
-
-        static CanonicalPublishedValues PreparePublishedValues()
-        {
-            var values = new CanonicalPublishedValues();
-            values.Add(Value);
-            return values;
-        }
     }
 
     public sealed class Float32SimulationTargetManifest
@@ -35,7 +27,6 @@ namespace ThirdPersonSimulation
             string vector2Type,
             string vector3Type,
             string yawType,
-            string canonicalCodec,
             SimulationExecutionTargetManifest executionTarget)
         {
             Profile = profile;
@@ -43,7 +34,6 @@ namespace ThirdPersonSimulation
             Vector2Type = SimulationIdentity.Require(vector2Type, nameof(vector2Type));
             Vector3Type = SimulationIdentity.Require(vector3Type, nameof(vector3Type));
             YawType = SimulationIdentity.Require(yawType, nameof(yawType));
-            CanonicalCodec = SimulationIdentity.Require(canonicalCodec, nameof(canonicalCodec));
             ExecutionTarget = executionTarget ?? throw new ArgumentNullException(nameof(executionTarget));
             if (executionTarget.NumericProfile != profile)
                 throw new ArgumentException("Numeric Target and Execution Target profiles must match.", nameof(executionTarget));
@@ -54,7 +44,6 @@ namespace ThirdPersonSimulation
         public string Vector2Type { get; }
         public string Vector3Type { get; }
         public string YawType { get; }
-        public string CanonicalCodec { get; }
         public SimulationExecutionTargetManifest ExecutionTarget { get; }
     }
 
@@ -67,7 +56,6 @@ namespace ThirdPersonSimulation
                 nameof(Float32Vector2),
                 nameof(Float32Vector3),
                 nameof(Float32Yaw),
-                "float32-le/v1",
                 new SimulationExecutionTargetManifest(
                     "character-execution/float32/v2",
                     Float32SimulationNumericProfile.Value,
@@ -136,7 +124,6 @@ namespace ThirdPersonSimulation
         }
     }
 
-    [CanonicalContract]
     public readonly partial struct Float32Scalar : IEquatable<Float32Scalar>, IComparable<Float32Scalar>
     {
         Float32Scalar(uint bits)
@@ -145,7 +132,7 @@ namespace ThirdPersonSimulation
         }
 
         public uint Bits { get; }
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireCanonicalBits()
         {
             float value = Value;
@@ -234,7 +221,6 @@ namespace ThirdPersonSimulation
         public static bool operator >=(Float32Scalar left, Float32Scalar right) => left.Value >= right.Value;
     }
 
-    [CanonicalContract]
     public readonly partial struct Float32Vector2 : IEquatable<Float32Vector2>
     {
         public Float32Vector2(Float32Scalar x, Float32Scalar y)
@@ -266,7 +252,6 @@ namespace ThirdPersonSimulation
         public static bool operator !=(Float32Vector2 left, Float32Vector2 right) => !left.Equals(right);
     }
 
-    [CanonicalContract]
     public readonly partial struct Float32Vector3 : IEquatable<Float32Vector3>
     {
         public Float32Vector3(Float32Scalar x, Float32Scalar y, Float32Scalar z)
@@ -300,7 +285,6 @@ namespace ThirdPersonSimulation
         public static bool operator !=(Float32Vector3 left, Float32Vector3 right) => !left.Equals(right);
     }
 
-    [CanonicalContract]
     public readonly partial struct Float32Yaw : IEquatable<Float32Yaw>
     {
         static readonly Float32Scalar FullTurn = Float32Scalar.FromInt64(360);
@@ -319,7 +303,7 @@ namespace ThirdPersonSimulation
         public static bool operator ==(Float32Yaw left, Float32Yaw right) => left.Equals(right);
         public static bool operator !=(Float32Yaw left, Float32Yaw right) => !left.Equals(right);
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireCanonicalDegrees()
         {
             if (Degrees != Normalize(Degrees))

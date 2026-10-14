@@ -2,15 +2,13 @@ using System;
 
 namespace ThirdPersonSimulation
 {
-    [CanonicalContract(MaterializedRead = true)]
     public readonly partial struct CharacterControlModuleId : IEquatable<CharacterControlModuleId>, IComparable<CharacterControlModuleId>
     {
         public CharacterControlModuleId(string value) { Value = SimulationIdentity.Require(value, nameof(value)); }
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireValid() => SimulationIdentity.Require(Value, "value");
-        [CanonicalDeclaredText]
         public string Value { get; }
-        [CanonicalPresence]
+        [ValuePresence]
         public bool IsValid => !string.IsNullOrEmpty(Value);
         public int CompareTo(CharacterControlModuleId other) => string.CompareOrdinal(Value, other.Value);
         public bool Equals(CharacterControlModuleId other) => string.Equals(Value, other.Value, StringComparison.Ordinal);
@@ -21,13 +19,11 @@ namespace ThirdPersonSimulation
         public static bool operator !=(CharacterControlModuleId left, CharacterControlModuleId right) => !left.Equals(right);
     }
 
-    [CanonicalContract(MaterializedRead = true)]
     public readonly partial struct CharacterControlStateId : IEquatable<CharacterControlStateId>, IComparable<CharacterControlStateId>
     {
         public CharacterControlStateId(string value) => Value = SimulationIdentity.Require(value, nameof(value));
-        [CanonicalDeclaredText]
         public string Value { get; }
-        [CanonicalPresence]
+        [ValuePresence]
         public bool IsValid => !string.IsNullOrEmpty(Value);
         public int CompareTo(CharacterControlStateId other) => string.CompareOrdinal(Value, other.Value);
         public bool Equals(CharacterControlStateId other) => string.Equals(Value, other.Value, StringComparison.Ordinal);
@@ -37,17 +33,15 @@ namespace ThirdPersonSimulation
         public static bool operator ==(CharacterControlStateId left, CharacterControlStateId right) => left.Equals(right);
         public static bool operator !=(CharacterControlStateId left, CharacterControlStateId right) => !left.Equals(right);
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireValid() => SimulationIdentity.Require(Value, "value");
 }
 
-    [CanonicalContract(MaterializedRead = true)]
     public readonly partial struct CharacterControlTransitionId : IEquatable<CharacterControlTransitionId>, IComparable<CharacterControlTransitionId>
     {
         public CharacterControlTransitionId(string value) => Value = SimulationIdentity.Require(value, nameof(value));
-        [CanonicalDeclaredText]
         public string Value { get; }
-        [CanonicalPresence]
+        [ValuePresence]
         public bool IsValid => !string.IsNullOrEmpty(Value);
         public int CompareTo(CharacterControlTransitionId other) => string.CompareOrdinal(Value, other.Value);
         public bool Equals(CharacterControlTransitionId other) => string.Equals(Value, other.Value, StringComparison.Ordinal);
@@ -57,17 +51,15 @@ namespace ThirdPersonSimulation
         public static bool operator ==(CharacterControlTransitionId left, CharacterControlTransitionId right) => left.Equals(right);
         public static bool operator !=(CharacterControlTransitionId left, CharacterControlTransitionId right) => !left.Equals(right);
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireValid() => SimulationIdentity.Require(Value, "value");
 }
 
-    [CanonicalContract(MaterializedRead = true)]
     public readonly partial struct CharacterSkillId : IEquatable<CharacterSkillId>, IComparable<CharacterSkillId>
     {
         public CharacterSkillId(string value) => Value = SimulationIdentity.Require(value, nameof(value));
-        [CanonicalDeclaredText]
         public string Value { get; }
-        [CanonicalPresence]
+        [ValuePresence]
         public bool IsValid => !string.IsNullOrEmpty(Value);
         public int CompareTo(CharacterSkillId other) => string.CompareOrdinal(Value, other.Value);
         public bool Equals(CharacterSkillId other) => string.Equals(Value, other.Value, StringComparison.Ordinal);
@@ -106,7 +98,6 @@ namespace ThirdPersonSimulation
         public static bool operator !=(SimulationInputValueId left, SimulationInputValueId right) => !left.Equals(right);
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
     public readonly partial struct CharacterControlStateFieldId : IEquatable<CharacterControlStateFieldId>, IComparable<CharacterControlStateFieldId>
     {
         public CharacterControlStateFieldId(string value) => Value = SimulationIdentity.Require(value, nameof(value));

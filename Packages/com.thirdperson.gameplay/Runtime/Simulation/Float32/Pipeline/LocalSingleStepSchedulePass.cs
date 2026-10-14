@@ -87,7 +87,7 @@ namespace ThirdPersonSimulation
             }
             var tick = new SimulationTick(checked(context.CurrentCompletedTick + 1));
             bool replay = IsReplayInput(canonical);
-            m_ObservedWorldConstraints.ResetEmpty(tick);
+            m_ObservedWorldConstraints.SetPreparedTick(tick);
             m_Steps[0].Reset(
                 tick,
                 new SimulationPipelineStepProvenance(

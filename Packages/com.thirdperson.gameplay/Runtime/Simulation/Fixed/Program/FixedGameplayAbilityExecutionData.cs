@@ -8,7 +8,7 @@ namespace ThirdPersonSimulation.Fixed
     {
         GameplayAbilityExecutionLayout m_ExecutionLayout;
 
-        internal FixedGameplayAbilityExecutionData(GameplayAbilityExecutionManifest manifest,
+        public FixedGameplayAbilityExecutionData(GameplayAbilityExecutionManifest manifest,
             GameplayAbilityExecutionBinding binding, GameplayAbilityProviderContract providerContract,
             FixedGraphExecutionData graph)
             : base(graph)
@@ -63,7 +63,7 @@ namespace ThirdPersonSimulation.Fixed
             var manifest = new GameplayAbilityExecutionManifest(abilityId, compilerVersion,
                 operationSetVersion, tickRate, sourceRevision, semanticHash, numericProfile, capabilities,
                 root, executionIdentity, stateSchemaHash,
-                graph.Chunks.ComputeContentHash(semanticHash, numericProfile, tickRate, abilityId.Value));
+                graph.GraphSources.Layout.Publisher.ComputeContentHash(graph.Chunks, semanticHash, numericProfile, tickRate, abilityId.Value));
             return new FixedGameplayAbilityExecutionData(manifest, binding, providerContract, graph);
         }
 

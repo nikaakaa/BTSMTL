@@ -4,7 +4,7 @@ using SimulationActionActivationRequestState = ThirdPersonSimulation.SimulationA
 
 namespace ThirdPersonSimulation
 {
-	[CanonicalContract]
+	[ValueOperations]
     internal readonly partial struct Float32ActionInstanceState : IEquatable<Float32ActionInstanceState>
     {
 		public Float32ActionInstanceState(
@@ -55,7 +55,6 @@ namespace ThirdPersonSimulation
             ActivationEntryId = activationEntryId ?? string.Empty;
         }
 
-		[CanonicalDeclaredText]
         public string ActionId { get; }
 		public CharacterSkillId SkillId { get; }
 		public OperationHandle SkillEntryOperation { get; }
@@ -63,7 +62,6 @@ namespace ThirdPersonSimulation
 		public ulong SegmentGeneration { get; }
         public GameplayAbilitySourceContext SourceContext => new GameplayAbilitySourceContext(
             SkillId, InstanceId, SkillExecutionGeneration, SegmentGeneration);
-        [CanonicalDeclaredText]
         public string ActivationEntryId { get; }
         public CanonicalTextValue ContextId { get; }
         public ulong InstanceId { get; }
@@ -73,7 +71,6 @@ namespace ThirdPersonSimulation
         public ulong StartTick { get; }
         public CanonicalTextValue TargetKey { get; }
         public SimulationActionTargetSnapshot TargetSnapshot { get; }
-        [CanonicalRequired]
         public SimulationExecutionSource Source { get; }
         public SimulationActionPhase Phase { get; }
         public SimulationActionState State { get; }
@@ -105,7 +102,7 @@ namespace ThirdPersonSimulation
 			LastTransitionSourceTick == other.LastTransitionSourceTick &&
 			CanonicalTextValue.Equals(Reason, other.Reason, StringComparison.Ordinal) &&
 			EquipmentContext.Equals(other.EquipmentContext);
-        [CanonicalPresence]
+        [ValuePresence]
         public bool IsValid =>
             !CanonicalTextValue.IsNullOrEmpty(ActionId) &&
             !CanonicalTextValue.IsNullOrEmpty(ContextId) &&
@@ -210,10 +207,8 @@ namespace ThirdPersonSimulation
             SegmentGeneration, ActivationEntryId);
 		}
 
-        internal void Retain() => CanonicalRetain(in this);
-        internal void Release() => CanonicalRelease(in this);
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireRecord()
         {
             if (string.IsNullOrEmpty(ActionId) || ContextId.IsEmpty || InstanceId == 0 || PredictionKey == 0 ||
@@ -223,8 +218,8 @@ namespace ThirdPersonSimulation
         }
     }
 
-    [CanonicalContract]
-    internal readonly partial struct Float32ActionInstanceReference : IEquatable<Float32ActionInstanceReference>
+    [ValueOperations]
+    internal readonly partial struct Float32ActionInstanceReference : IEquatable<Float32ActionInstanceReference>, IValueResources
     {
         public Float32ActionInstanceReference(
             string actionId,
@@ -246,7 +241,6 @@ namespace ThirdPersonSimulation
             SkillExecutionGeneration = skillExecutionGeneration;
         }
 
-        [CanonicalDeclaredText]
         public string ActionId { get; }
         public CanonicalTextValue ContextId { get; }
         public ulong InstanceId { get; }
@@ -302,8 +296,6 @@ namespace ThirdPersonSimulation
                 : default;
         }
 
-        public void Retain() { ContextId.Retain(); }
-        public void Release() { ContextId.Release(); }
     }
 
 	internal sealed class Float32ActionStateStore : Float32OperationModule, IFloat32ActionContextReader, IFloat32SkillExecutionStateAccess, IGameplayAbilityExecutionStorage<AbilityStateValue>

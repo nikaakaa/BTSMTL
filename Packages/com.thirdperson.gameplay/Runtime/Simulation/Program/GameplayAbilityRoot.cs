@@ -9,7 +9,6 @@ namespace ThirdPersonSimulation
         Ability = 3
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
     public readonly partial struct GameplayAbilityRootDescriptor : IEquatable<GameplayAbilityRootDescriptor>
     {
         public GameplayAbilityRootDescriptor(
@@ -30,7 +29,7 @@ namespace ThirdPersonSimulation
         public string RootIdentity { get; }
         public string EntryIdentity { get; }
         public string ContentIdentity { get; }
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireCanonicalIdentity()
         {
             if (!IsValid)

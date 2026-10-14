@@ -11,7 +11,8 @@ namespace ThirdPersonSimulation
         AbilityRule = 5
     }
 
-    [CanonicalContract]
+    [ValueOperations]
+    [ValueStorage]
     public readonly partial struct SimulationExecutionSource : IEquatable<SimulationExecutionSource>
     {
         SimulationExecutionSource(
@@ -89,7 +90,7 @@ namespace ThirdPersonSimulation
         public bool IsSkillOperation => Kind == SimulationExecutionSourceKind.SkillOperation;
         public bool IsCharacterControl => Kind == SimulationExecutionSourceKind.CharacterControl;
         public bool IsAbilityRule => Kind == SimulationExecutionSourceKind.AbilityRule;
-        [CanonicalPresence]
+        [ValuePresence]
         public bool IsValid => IsGameplayEffect || (IsAbilityRule
             ? AbilityId.IsValid && !CanonicalTextValue.IsNullOrEmpty(RuleId) &&
                 (RulePhase == GameplayAbilityRulePhase.BeforeAbility || RulePhase == GameplayAbilityRulePhase.AfterAbility)
@@ -125,13 +126,11 @@ namespace ThirdPersonSimulation
         public override int GetHashCode() => HashCode.Combine(
             HashCode.Combine(Kind, Operation, ExecutionPath, ModuleId, StateId, TransitionId, BlackboardDeclaration),
             AbilityId, RuleId, RulePhase);
-        public void Retain() => CanonicalRetain(in this);
-        public void Release() => CanonicalRelease(in this);
         public override string ToString() => Identity;
         public static bool operator ==(SimulationExecutionSource left, SimulationExecutionSource right) => left.Equals(right);
         public static bool operator !=(SimulationExecutionSource left, SimulationExecutionSource right) => !left.Equals(right);
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireStructure()
         {
             if (Kind == SimulationExecutionSourceKind.SkillOperation &&

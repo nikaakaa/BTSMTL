@@ -13,6 +13,7 @@ namespace ThirdPersonSimulation
 
         public ulong ActionInstanceId { get; }
         public string EventId { get; }
+        [ValuePresence]
         public bool IsValid => !string.IsNullOrEmpty(EventId);
     }
 
@@ -34,10 +35,10 @@ namespace ThirdPersonSimulation
         Information = 2
     }
 
-    [CanonicalContract]
+    [ValueOperations]
     internal readonly partial struct SimulationActionActivationRequestState<TTargetSnapshot>
         : IEquatable<SimulationActionActivationRequestState<TTargetSnapshot>>
-        where TTargetSnapshot : struct, IEquatable<TTargetSnapshot>, ICanonicalRecord<TTargetSnapshot>
+        where TTargetSnapshot : struct, IEquatable<TTargetSnapshot>, IValueResources
     {
         public SimulationActionActivationRequestState(
             string actionId,
@@ -75,7 +76,6 @@ namespace ThirdPersonSimulation
             Opportunity = opportunity;
         }
 
-        [CanonicalDeclaredText]
         public string ActionId { get; }
         public CharacterSkillId SkillId { get; }
         public OperationHandle SkillEntryOperation { get; }
@@ -88,11 +88,9 @@ namespace ThirdPersonSimulation
         public ulong StartTick { get; }
         public CanonicalTextValue TargetKey { get; }
         public TTargetSnapshot TargetSnapshot { get; }
-        [CanonicalRequired]
         public SimulationExecutionSource Source { get; }
         public EquipmentActionContext EquipmentContext { get; }
         public GameplayAbilitySourceContext ReplacementSource { get; }
-        [CanonicalDeclaredText]
         public string ActivationEntryId { get; }
         public GameplayEffectOpportunityReference Opportunity { get; }
         public bool Equals(SimulationActionActivationRequestState<TTargetSnapshot> other) =>
@@ -110,7 +108,7 @@ namespace ThirdPersonSimulation
             EquipmentContext.Equals(other.EquipmentContext) &&
             ReplacementSource.Equals(other.ReplacementSource) &&
             string.Equals(ActivationEntryId, other.ActivationEntryId, StringComparison.Ordinal) && Opportunity.Equals(other.Opportunity);
-        [CanonicalPresence]
+        [ValuePresence]
         public bool IsValid =>
             !string.IsNullOrEmpty(ActionId) &&
             !ContextId.IsEmpty &&
@@ -122,11 +120,9 @@ namespace ThirdPersonSimulation
             (ReplacementSource.InstanceId == 0 || ReplacementSource.IsValid) &&
             (!Source.IsAbilityRule || SkillId.IsValid && SkillEntryOperation.IsValid);
 
-        public void Retain() => CanonicalRetain(in this);
 
-        public void Release() => CanonicalRelease(in this);
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireRecord()
         {
             if (!IsValid)
@@ -134,7 +130,6 @@ namespace ThirdPersonSimulation
         }
     }
 
-    [CanonicalContract]
     internal readonly partial struct AbilityExecutionContext
     {
         public AbilityExecutionContext(
@@ -161,7 +156,7 @@ namespace ThirdPersonSimulation
         internal AbilityExecutionContext WithGeneration(ulong generation) =>
             new AbilityExecutionContext(SkillId, EntryOperation, ActionInstanceId, PredictionKey, generation);
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireRecord()
         {
             if (!IsValid)

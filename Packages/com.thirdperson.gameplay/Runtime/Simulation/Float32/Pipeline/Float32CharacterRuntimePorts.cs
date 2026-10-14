@@ -113,7 +113,6 @@ namespace ThirdPersonSimulation
                 actor.InputRequestPages.PrepareRequestCapacity(m_InputRequestIds.Count);
                 CharacterControlModuleContract contract = ControlModules.RequireContract(actor.ControlRuntimeBinding.ModuleId);
                 CharacterControlStateSchema schema = contract.StateSchema;
-                actor.PrepareCheckpointControlContract(contract);
                 actor.RuntimeStatePages.PrepareControlValueCapacity(schema.FieldCount);
                 actor.ControlState.PrepareValueCapacity(schema.FieldCount);
                 m_ControlRuntimes.Add(actor.ActorId, new Float32CharacterControlRuntime(

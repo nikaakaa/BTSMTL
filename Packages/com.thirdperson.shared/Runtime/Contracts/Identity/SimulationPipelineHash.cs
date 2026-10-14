@@ -2,8 +2,7 @@ using System;
 
 namespace ThirdPersonSimulation
 {
-    [CanonicalContract]
-    public readonly partial struct SimulationPipelineHash : IEquatable<SimulationPipelineHash>, ICanonicalHashValue
+    public readonly partial struct SimulationPipelineHash : IEquatable<SimulationPipelineHash>
     {
         public SimulationPipelineHash(StableHash value) { Value = value; }
         public StableHash Value { get; }

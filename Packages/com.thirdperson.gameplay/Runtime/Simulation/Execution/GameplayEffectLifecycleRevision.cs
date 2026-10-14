@@ -9,7 +9,7 @@ namespace ThirdPersonSimulation
         ActiveSubject = 3
     }
 
-    [CanonicalContract]
+    [ValueOperations]
     internal readonly partial struct GameplayEffectLifecycleRevisionKey : IComparable<GameplayEffectLifecycleRevisionKey>
     {
         GameplayEffectLifecycleRevisionKey(GameplayEffectLifecycleRevisionKeyKind kind, ulong instanceId,
@@ -41,9 +41,7 @@ namespace ThirdPersonSimulation
                     scope.Kind == GameplayEffectReconciliationScopeKind.PredictionKey ? string.Empty : scope.EffectId,
                     scope.Kind == GameplayEffectReconciliationScopeKind.Instance ? scope.PredictedInstanceId : 0));
 
-        internal void Retain() => CanonicalRetain(in this);
 
-        internal void Release() => CanonicalRelease(in this);
 
         public int CompareTo(GameplayEffectLifecycleRevisionKey other)
         {
@@ -66,7 +64,7 @@ namespace ThirdPersonSimulation
         }
     }
 
-    [CanonicalContract]
+    [ValueOperations]
     internal readonly partial struct GameplayEffectLifecycleRevisionEntry
     {
         internal GameplayEffectLifecycleRevisionEntry(ulong revision, ulong acceptedTick, ulong acceptedChangeCursor,
@@ -91,8 +89,6 @@ namespace ThirdPersonSimulation
             ulong acceptedChangeCursor, GameplayEffectLifecycleKind operation) =>
             new GameplayEffectLifecycleRevisionEntry(revision, acceptedTick, acceptedChangeCursor, operation, true, default);
 
-        internal void Retain() => CanonicalRetain(in this);
-        internal void Release() => CanonicalRelease(in this);
 
         internal bool Matches(in GameplayEffectLifecycleRevisionEntry other)
         {
@@ -129,48 +125,4 @@ namespace ThirdPersonSimulation
             left.GameplayResultId == right.GameplayResultId && left.SourceTick == right.SourceTick && left.Predicted == right.Predicted;
     }
 
-    internal static class GameplayEffectLifecycleRevisionCodec
-    {
-        internal static void Write(CanonicalWriter writer, in GameplayEffectLifecycleRevisionKey key,
-            in GameplayEffectLifecycleRevisionEntry entry)
-        {
-            GameplayEffectLifecycleRevisionKey.CanonicalWrite(writer, in key);
-            GameplayEffectLifecycleRevisionEntry.CanonicalWrite(writer, in entry);
-        }
-
-        internal static void Read(CanonicalReader reader,
-            out GameplayEffectLifecycleRevisionKey key, out GameplayEffectLifecycleRevisionEntry entry)
-        {
-            key = GameplayEffectLifecycleRevisionKey.CanonicalRead(reader);
-            if (key.Kind == GameplayEffectLifecycleRevisionKeyKind.Reconciliation)
-            {
-                GameplayEffectReconciliationScope scope = key.Scope;
-                bool selected = scope.PredictionKey != 0 && (
-                    scope.Kind == GameplayEffectReconciliationScopeKind.PredictionKey &&
-                        scope.EffectId.IsEmpty && scope.PredictedInstanceId == 0 ||
-                    scope.Kind == GameplayEffectReconciliationScopeKind.Effect &&
-                        !scope.EffectId.IsEmpty && scope.PredictedInstanceId == 0 ||
-                    scope.Kind == GameplayEffectReconciliationScopeKind.Instance &&
-                        !scope.EffectId.IsEmpty && scope.PredictedInstanceId != 0);
-                if (!selected)
-                    throw new System.IO.InvalidDataException("Gameplay Effect lifecycle reconciliation identity is invalid.");
-            }
-            else if (key.InstanceId == 0)
-                throw new System.IO.InvalidDataException("Gameplay Effect lifecycle instance identity is invalid.");
-            entry = GameplayEffectLifecycleRevisionEntry.CanonicalRead(reader);
-            if (entry.Revision == 0 || entry.AcceptedTick == 0)
-                throw new System.IO.InvalidDataException("Gameplay Effect lifecycle revision result is invalid.");
-            if (key.Kind == GameplayEffectLifecycleRevisionKeyKind.ActiveSubject)
-                return;
-            GameplayEffectReconciliationResult result = entry.Result;
-            bool reconciliation = entry.Operation == GameplayEffectLifecycleKind.Confirmed ||
-                entry.Operation == GameplayEffectLifecycleKind.Rejected || entry.Operation == GameplayEffectLifecycleKind.Corrected;
-            if (result.Kind < GameplayEffectReconciliationResultKind.Confirmed ||
-                result.Kind > GameplayEffectReconciliationResultKind.Applied || result.AuthoritativeRevision != entry.Revision ||
-                reconciliation != (key.Kind == GameplayEffectLifecycleRevisionKeyKind.Reconciliation) ||
-                reconciliation && GameplayEffectLifecycleRevisionKey.ForReconciliation(key.SourceActor, result.Scope).CompareTo(key) != 0)
-                throw new System.IO.InvalidDataException("Gameplay Effect lifecycle revision result is invalid.");
-        }
-
-    }
 }

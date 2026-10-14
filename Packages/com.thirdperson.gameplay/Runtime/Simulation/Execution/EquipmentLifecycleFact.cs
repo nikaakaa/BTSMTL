@@ -1,6 +1,5 @@
 namespace ThirdPersonSimulation
 {
-    [CanonicalContract]
     public readonly partial struct EquipmentLifecycleFact
     {
         public EquipmentLifecycleFact(EquipmentSlotId slotId, EquipmentId beforeEquipmentId,
@@ -31,7 +30,7 @@ namespace ThirdPersonSimulation
             _ => throw new System.ArgumentOutOfRangeException(nameof(State))
         };
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireRecord()
         {
             if (!SlotId.IsValid || Revision == 0)

@@ -35,13 +35,9 @@ namespace ThirdPersonSimulation.Fixed
 
         internal FixedTreeClipInvokerLink TreeClipLink => m_TreeClipLink;
 
-        internal void PrepareStateExecutionText(int maximumSessionCheckpointPayloadBytes,
-            int maximumRetainedTextReferences)
+        internal void PrepareStateExecutionText(int maximumRetainedTextReferences)
         {
             int maximumGeneratedCharacters = MaximumGeneratedStatePathCharacters();
-            int maximumReceivedCharacters = maximumSessionCheckpointPayloadBytes / sizeof(char);
-            if (maximumSessionCheckpointPayloadBytes > 0 && maximumGeneratedCharacters > maximumReceivedCharacters)
-                throw new InvalidOperationException("Compiled state execution paths exceed MaximumSessionCheckpointPayloadBytes.");
             int values = maximumGeneratedCharacters == 0 ? 0 : checked(maximumRetainedTextReferences + m_MaxExecutionCount);
             int characters = checked(values * maximumGeneratedCharacters);
             m_Runtime.PrepareStateExecutionText(new CanonicalTextStorage(values, characters), maximumGeneratedCharacters);

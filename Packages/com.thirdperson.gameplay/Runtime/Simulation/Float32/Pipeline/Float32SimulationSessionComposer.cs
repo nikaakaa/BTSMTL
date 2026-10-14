@@ -264,14 +264,13 @@ namespace ThirdPersonSimulation
             SimulationSourceClockId sourceClockId,
             int tickRate,
             int recordedFrameCapacity,
-            int maximumSessionCheckpointPayloadBytes,
             Float32CharacterRuntime characterRuntime,
             SimulationExecutionBackendDescriptor backend,
             Float32SimulationPipelineRuntimePackage pipelineRuntimePackage,
             SimulationSessionSourceDescriptor source,
             SimulationRuntimePortSet sourcePorts,
             IFloat32SimulationRestoreSource restoreSource,
-            IFloat32SimulationSessionSnapshotCodec snapshotCodec,
+            IFloat32SimulationSessionSnapshotProvider snapshotProvider,
             SimulationWorldSolverDefinitionDescriptor solverDefinition,
             ICharacterWorldSolver solver,
             WorldFeature requiredSolverFeatures,
@@ -293,7 +292,6 @@ namespace ThirdPersonSimulation
             SourceClockId = sourceClockId;
             TickRate = tickRate;
             RecordedFrameCapacity = recordedFrameCapacity;
-            MaximumSessionCheckpointPayloadBytes = maximumSessionCheckpointPayloadBytes;
             CharacterRuntime = characterRuntime ?? throw new ArgumentNullException(nameof(characterRuntime));
             GraphBatchOptions = graphBatchOptions;
             GraphBatchResource = graphBatchResource;
@@ -302,7 +300,7 @@ namespace ThirdPersonSimulation
             Source = source ?? throw new ArgumentNullException(nameof(source));
             SourcePorts = sourcePorts ?? throw new ArgumentNullException(nameof(sourcePorts));
             RestoreSource = restoreSource;
-            SnapshotCodec = snapshotCodec;
+            SnapshotProvider = snapshotProvider;
             SolverDefinition = solverDefinition ?? throw new ArgumentNullException(nameof(solverDefinition));
             Solver = solver ?? throw new ArgumentNullException(nameof(solver));
             RequiredSolverFeatures = requiredSolverFeatures;
@@ -323,7 +321,6 @@ namespace ThirdPersonSimulation
         public SimulationSourceClockId SourceClockId { get; }
         public int TickRate { get; }
         public int RecordedFrameCapacity { get; }
-        public int MaximumSessionCheckpointPayloadBytes { get; }
         public Float32CharacterRuntime CharacterRuntime { get; }
         public GraphBatchExecutionOptions GraphBatchOptions { get; }
         public IGraphBatchExecutionResource GraphBatchResource { get; }
@@ -332,7 +329,7 @@ namespace ThirdPersonSimulation
         public SimulationSessionSourceDescriptor Source { get; }
         public SimulationRuntimePortSet SourcePorts { get; }
         public IFloat32SimulationRestoreSource RestoreSource { get; }
-        public IFloat32SimulationSessionSnapshotCodec SnapshotCodec { get; }
+        public IFloat32SimulationSessionSnapshotProvider SnapshotProvider { get; }
         public SimulationWorldSolverDefinitionDescriptor SolverDefinition { get; }
         public ICharacterWorldSolver Solver { get; }
         public WorldFeature RequiredSolverFeatures { get; }
@@ -383,7 +380,7 @@ namespace ThirdPersonSimulation
                 target.NumericProfile.Id,
                 target.NumericProfile.AbiVersion,
                 request.PipelineRuntimePackage.Pipeline.SchemaVersion);
-            SimulationComponentIdentity snapshotIdentity = request.SnapshotCodec == null ? default : request.SnapshotCodec.Identity;
+            SimulationComponentIdentity snapshotIdentity = request.SnapshotProvider == null ? default : request.SnapshotProvider.Identity;
             SimulationPipelineCompilationResult compilation = SimulationPipelineCompiler.Compile(
                 request.PipelineRuntimePackage.Pipeline,
                 request.PipelineRuntimePackage.PassFactories,
@@ -411,7 +408,6 @@ namespace ThirdPersonSimulation
                 request.SourceClockId,
                 request.TickRate,
                 request.RecordedFrameCapacity,
-                request.MaximumSessionCheckpointPayloadBytes,
                 target,
                 request.Backend.Identity,
                 pipeline.Identity,
@@ -438,7 +434,7 @@ namespace ThirdPersonSimulation
                 PortDescriptors(request.SourcePorts),
                 request.RestoreSource,
                 request.Solver,
-                request.SnapshotCodec,
+                request.SnapshotProvider,
                 request.Committer,
                 request.DiagnosticsIdentity,
                 request.Diagnostics,

@@ -21,8 +21,6 @@ namespace ThirdPersonSimulation
         internal IReadOnlyList<SimulationInputValue> Values => m_Values;
         internal IReadOnlyList<SimulationInputRequest> Requests => m_Requests;
         internal SimulationInputValues CanonicalValues => m_Data;
-        public int MaximumTextValues => checked(SimulationInputHeader.CanonicalMaximumTextReferences +
-            SimulationInputValues.CanonicalMeasureTextCapacity(m_Data));
 
         public Float32SimulationInputFrameStorage()
         {
@@ -52,10 +50,10 @@ namespace ThirdPersonSimulation
             m_Data = data;
         }
 
-        internal void Begin()
+        public void Begin()
         {
-            SimulationInputValues.CanonicalClear(m_Data);
-            SimulationInputHeader.CanonicalRelease(Header);
+            m_Data.Clear();
+            Header.Release();
             Header = default;
         }
 
@@ -68,7 +66,7 @@ namespace ThirdPersonSimulation
 
         public void AddRequest(in SimulationInputRequest request)
         {
-            m_Requests.Add(request); SimulationInputRequest.CanonicalRetain(in request);
+            m_Requests.Add(request); request.Retain();
         }
 
         public SimulationInput Complete(SimulationNumericProfile profile, SimulationTickSourceIdentity source,
@@ -90,14 +88,18 @@ namespace ThirdPersonSimulation
 
         SimulationInput CommitMetadata(SimulationNumericProfile profile, in SimulationInputHeader header)
         {
-            SimulationInputHeader.CanonicalRetain(in header);
+            header.Retain();
             NumericProfile = profile;
             Header = header;
             return m_Snapshot;
         }
 
-        internal SimulationInput CompleteRead(SimulationNumericProfile profile, in SimulationInputHeader header) =>
-            CommitMetadata(profile, in header);
+        public SimulationInput CompleteRead(SimulationNumericProfile numericProfile,
+            SimulationTickSourceIdentity tickSource, CanonicalTextValue inputSourceIdentity, ulong sequence)
+        {
+            m_Data.RequireOrder();
+            return CommitMetadata(numericProfile, tickSource, inputSourceIdentity, sequence);
+        }
 
         public SimulationInput BindBorrowed(SimulationInput input, SimulationTickSourceIdentity source,
             ulong sequence, bool includeRequests) =>
@@ -140,9 +142,9 @@ namespace ThirdPersonSimulation
 
         public SimulationInput Capture(SimulationInput input)
         {
-            SimulationInputHeader.CanonicalRelease(Header);
+            Header.Release();
             Header = default;
-            SimulationInputValues.CanonicalCopyInto(input.CanonicalValues, m_Data);
+            m_Data.CopyFrom(input.CanonicalValues);
             return CommitMetadata(input.NumericProfile, input.Header);
         }
 

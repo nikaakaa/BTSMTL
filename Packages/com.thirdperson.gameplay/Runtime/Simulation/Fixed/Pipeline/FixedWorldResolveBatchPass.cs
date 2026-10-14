@@ -26,7 +26,7 @@ namespace ThirdPersonSimulation.Fixed
                 context.Products.BindExclusiveWriter<WorldSolveBatchResult>(SimulationPipelineProducts.WorldSolveBatchResult),
                 context.Products.BindExclusiveWriter<FixedCombatBatchResult>(SimulationPipelineProducts.CombatBatchResult));
             return new FixedStepPassRuntimeAdapter<FixedWorldResolveBatchReadPorts, FixedWorldResolveBatchWritePorts>(
-                new FixedWorldResolveBatchPassRuntime(context.Pass.Descriptor, reads.Combat.Combat, reads.Combat.MaximumCheckpointPayloadBytes),
+                new FixedWorldResolveBatchPassRuntime(context.Pass.Descriptor, reads.Combat.Combat),
                 reads,
                 writes);
         }
@@ -39,22 +39,19 @@ namespace ThirdPersonSimulation.Fixed
         ISimulationPipelineStepStateStorage
     {
         readonly FixedCombatPipelineStateParticipant m_CombatState;
-        public FixedWorldResolveBatchPassRuntime(SimulationPipelinePassDescriptor descriptor, FixedCombatRuntime combat, int maximumSessionCheckpointPayloadBytes)
+        public FixedWorldResolveBatchPassRuntime(SimulationPipelinePassDescriptor descriptor, FixedCombatRuntime combat)
             : base(descriptor)
         {
-            m_CombatState = new FixedCombatPipelineStateParticipant(descriptor, combat, maximumSessionCheckpointPayloadBytes);
+            m_CombatState = new FixedCombatPipelineStateParticipant(descriptor, combat);
         }
 
         public SimulationPipelineStateParticipantIdentity StateIdentity => m_CombatState.StateIdentity;
-        public int MaximumPayloadBytes => m_CombatState.MaximumPayloadBytes;
-        public int MaximumTextValues => m_CombatState.MaximumTextValues;
         public SimulationPipelineStepProjectionMode StepProjectionMode => SimulationPipelineStepProjectionMode.Include;
         public void PrepareStepStorage(int snapshotCapacity) => m_CombatState.PrepareStepStorage(snapshotCapacity);
         public SimulationPipelinePassStateSnapshot CaptureStepState() => m_CombatState.CaptureStepState();
         public ISimulationPipelinePassStateCheckpoint CaptureCheckpoint() => m_CombatState.CaptureCheckpoint();
         public ISimulationPipelineFrameState CreateFrameState() => m_CombatState.CreateFrameState();
         public SimulationPipelinePassStateSnapshot CaptureState() => m_CombatState.CaptureState();
-        public void WriteCheckpointState(CanonicalWriter writer) => m_CombatState.WriteCheckpointState(writer);
         public ISimulationPipelinePassRestoreTransaction PrepareRestore(SimulationPipelinePassStateSnapshot snapshot) => m_CombatState.PrepareRestore(snapshot);
 
         public void Execute(

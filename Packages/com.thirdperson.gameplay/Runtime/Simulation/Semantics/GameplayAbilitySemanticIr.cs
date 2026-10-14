@@ -27,7 +27,6 @@ namespace ThirdPersonSimulation
         }
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
     public partial struct SemanticNumberValue
     {
         public SemanticNumberValue(double value, SemanticNumericPrecision precision = SemanticNumericPrecision.TargetRounded)
@@ -40,7 +39,7 @@ namespace ThirdPersonSimulation
         public double Value { get; private set; }
         public SemanticNumericPrecision Precision { get; }
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireRecord()
         {
             SemanticNumeric.RequirePrecision(Precision);
@@ -48,7 +47,6 @@ namespace ThirdPersonSimulation
         }
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
     public partial struct SemanticVector2Value
     {
         public SemanticVector2Value(double x, double y, SemanticNumericPrecision precision = SemanticNumericPrecision.TargetRounded)
@@ -63,7 +61,7 @@ namespace ThirdPersonSimulation
         public double Y { get; private set; }
         public SemanticNumericPrecision Precision { get; }
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireRecord()
         {
             SemanticNumeric.RequirePrecision(Precision);
@@ -72,7 +70,6 @@ namespace ThirdPersonSimulation
         }
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
     public partial struct SemanticVector3Value
     {
         public SemanticVector3Value(double x, double y, double z, SemanticNumericPrecision precision = SemanticNumericPrecision.TargetRounded)
@@ -89,7 +86,7 @@ namespace ThirdPersonSimulation
         public double Z { get; private set; }
         public SemanticNumericPrecision Precision { get; }
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireRecord()
         {
             SemanticNumeric.RequirePrecision(Precision);
@@ -99,7 +96,6 @@ namespace ThirdPersonSimulation
         }
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
     public partial struct SemanticQuaternionValue
     {
         public SemanticQuaternionValue(double x, double y, double z, double w)
@@ -116,7 +112,7 @@ namespace ThirdPersonSimulation
         public double Z { get; private set; }
         public double W { get; private set; }
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireRecord()
         {
             X = SemanticNumeric.RequireFinite(X, nameof(X));
@@ -126,66 +122,6 @@ namespace ThirdPersonSimulation
         }
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
-    public readonly partial struct SemanticNumericToken
-    {
-        public SemanticNumericToken(SemanticNumberValue value, string sourceIdentity)
-        {
-            Value = value;
-            SourceIdentity = SimulationIdentity.Require(sourceIdentity, nameof(sourceIdentity));
-        }
-
-        public SemanticNumberValue Value { get; }
-        public string SourceIdentity { get; }
-
-        [CanonicalValidation]
-        void RequireRecord() => SimulationIdentity.Require(SourceIdentity, nameof(SourceIdentity));
-    }
-
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
-    public partial struct SemanticDataToken
-    {
-        [ValueUnionCase] public bool Boolean { get; }
-        [ValueUnionCase] public int Int32 { get; }
-        [ValueUnionCase] public uint UInt32 { get; }
-        [ValueUnionCase] public ulong UInt64 { get; }
-        [ValueUnionCase] public string String { get; private set; }
-        [ValueUnionCase] public SemanticNumericToken Number { get; }
-        [ValueUnionCase] public ReadOnlyMemory<byte> Bytes { get; }
-
-        [CanonicalValidation]
-        void RequireRecord() => String = String ?? string.Empty;
-    }
-
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
-    public sealed partial class SemanticDataDocument
-    {
-        readonly ReadOnlyCollection<SemanticDataToken> m_Tokens;
-
-        public SemanticDataDocument(IEnumerable<SemanticDataToken> tokens)
-        {
-            m_Tokens = new List<SemanticDataToken>(tokens ?? Array.Empty<SemanticDataToken>()).AsReadOnly();
-        }
-
-        public IReadOnlyList<SemanticDataToken> Tokens => m_Tokens;
-        public static SemanticDataDocument Empty { get; } = new SemanticDataDocument(Array.Empty<SemanticDataToken>());
-    }
-
-    public sealed class SemanticDataWriter
-    {
-        readonly List<SemanticDataToken> m_Tokens = new List<SemanticDataToken>();
-
-        public void WriteBoolean(bool value) => m_Tokens.Add(SemanticDataToken.FromBoolean(value));
-        public void WriteInt32(int value) => m_Tokens.Add(SemanticDataToken.FromInt32(value));
-        public void WriteUInt32(uint value) => m_Tokens.Add(SemanticDataToken.FromUInt32(value));
-        public void WriteUInt64(ulong value) => m_Tokens.Add(SemanticDataToken.FromUInt64(value));
-        public void WriteString(string value) => m_Tokens.Add(SemanticDataToken.FromString(value));
-        public void WriteNumber(double value, string sourceIdentity, SemanticNumericPrecision precision = SemanticNumericPrecision.TargetRounded) => m_Tokens.Add(SemanticDataToken.FromNumber(new SemanticNumericToken(new SemanticNumberValue(value, precision), sourceIdentity)));
-        public void WriteBytes(byte[] value) => m_Tokens.Add(SemanticDataToken.FromBytes(value));
-        public SemanticDataDocument Build() => new SemanticDataDocument(m_Tokens);
-    }
-
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
     public sealed partial class SemanticLiteral
     {
         public int Index { get; }
@@ -198,11 +134,11 @@ namespace ThirdPersonSimulation
         [ValueUnionCase] public SemanticVector3Value Vector3 { get; }
         [ValueUnionCase] public SemanticNumberValue Yaw { get; }
         [ValueUnionCase] public string String { get; }
-        [ValueUnionCase] public SemanticDataDocument Document { get; }
+        [ValueUnionCase] public GameplayAbilityCurve<double> Curve { get; }
         [ValueUnionCase] public SemanticQuaternionValue Quaternion { get; }
         [ValueUnionCase] public ProgramEnumConstant Enum { get; }
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireRecord()
         {
             if (Index < 0)
@@ -211,7 +147,6 @@ namespace ThirdPersonSimulation
         }
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
     public readonly partial struct SemanticOperationParameterValues
     {
         public SemanticOperationParameterValues(int integer0, int integer1, ulong unsigned0,
@@ -233,7 +168,7 @@ namespace ThirdPersonSimulation
         public string Text0 { get; }
         public uint Flags { get; }
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireRecord()
         {
             if (double.IsNaN(Number0) || double.IsInfinity(Number0))
@@ -241,7 +176,6 @@ namespace ThirdPersonSimulation
         }
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
     public sealed partial class SemanticGraphParameters
     {
         public SemanticGraphParameters(IReadOnlyList<SemanticLiteral> literals,
@@ -252,10 +186,10 @@ namespace ThirdPersonSimulation
         }
 
         public IReadOnlyList<SemanticLiteral> Literals { get; }
-        [CanonicalPayload] public IReadOnlyList<SemanticOperationParameterValues> Operations { get; }
+        [ValuePayload] public IReadOnlyList<SemanticOperationParameterValues> Operations { get; }
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+    [ValueStorage]
     public sealed partial class SemanticOperationStateLayout
     {
         readonly ReadOnlyCollection<int> m_StateSlots;
@@ -273,7 +207,7 @@ namespace ThirdPersonSimulation
         public SimulationOperationCode Code { get; }
         public IReadOnlyList<int> StateSlots => m_StateSlots;
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireRecord()
         {
             if (!Handle.IsValid)
@@ -281,7 +215,7 @@ namespace ThirdPersonSimulation
         }
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+    [ValueStorage]
     public sealed partial class SemanticOperationLayout
     {
         readonly ReadOnlyCollection<int> m_Operands;
@@ -310,11 +244,10 @@ namespace ThirdPersonSimulation
         public SimulationOperationCode Code => State.Code;
         public IReadOnlyList<int> StateSlots => State.StateSlots;
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireRecord() => SimulationIdentity.Require(TemplateIdentity, nameof(TemplateIdentity));
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
     public sealed partial class SemanticStateTables
     {
         public SemanticStateTables(ReadOnlyCollection<ProgramStateSlot> slots,
@@ -330,7 +263,7 @@ namespace ThirdPersonSimulation
         public ReadOnlyCollection<ProgramGraphCallFrame> GraphCallFrames { get; }
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
+    [ValueStorage]
     public sealed partial class SemanticStateLayout
     {
         public SemanticStateLayout(SemanticStateTables tables, IReadOnlyList<SemanticOperation> operations)
@@ -390,7 +323,6 @@ namespace ThirdPersonSimulation
         public uint Flags => m_Parameters[ParameterIndex].Flags;
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
     public sealed partial class SemanticConstantInputBinding
     {
         public SemanticConstantInputBinding(
@@ -413,7 +345,7 @@ namespace ThirdPersonSimulation
         public int ConstantIndex { get; }
         public SemanticValueKind ResolvedValueKind { get; }
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireRecord()
         {
             if (!TargetOperation.IsValid)
@@ -424,7 +356,6 @@ namespace ThirdPersonSimulation
         }
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
     public sealed partial class GameplayAbilitySemanticIrContract
     {
         public GameplayAbilitySemanticIrContract(ProgramId programId, string compilerVersion,
@@ -447,7 +378,7 @@ namespace ThirdPersonSimulation
         public GameplayAbilityCapabilityManifest Capabilities { get; }
         public GameplayAbilityRootDescriptor Root { get; }
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireRecord()
         {
             if (!ProgramId.IsValid || !OperationSetVersion.IsValid || TickRate <= 0)
@@ -460,7 +391,6 @@ namespace ThirdPersonSimulation
         }
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
     public sealed partial class GameplayAbilitySemanticIrManifest
     {
         public GameplayAbilitySemanticIrManifest(ProgramId programId, string compilerVersion,
@@ -482,7 +412,7 @@ namespace ThirdPersonSimulation
         public GameplayAbilityCapabilityManifest Capabilities => Contract.Capabilities;
         public GameplayAbilityRootDescriptor Root => Contract.Root;
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireRecord()
         {
             if (string.IsNullOrEmpty(SourceRevision.Value))
@@ -542,27 +472,7 @@ namespace ThirdPersonSimulation
                 m_Operations);
             ValidateReferences();
             ValidateGraphCallFrames();
-            StateLayoutHash = GameplayAbilitySemanticIrCodec.ComputeStateLayoutHash(this);
-        }
-
-        internal GameplayAbilitySemanticIr(GameplayAbilitySemanticIrManifest manifest,
-            SemanticGraphTables tables, ProgramGraphSources sources)
-        {
-            Manifest = manifest;
-            Tables = tables;
-            var operations = new SemanticOperation[Structure.OperationLayouts.Count];
-            for (int i = 0; i < operations.Length; i++)
-                operations[i] = new SemanticOperation(Structure.OperationLayouts[i], Parameters.Operations);
-            m_Operations = Array.AsReadOnly(operations);
-            m_StateLayout = new SemanticStateLayout(Structure.StateTables, m_Operations);
-            GraphSources = sources;
-            m_StateSlotByOperation = new int[m_Operations.Count];
-            Array.Fill(m_StateSlotByOperation, -1);
-            ProgramExecutionSourceCoverage.Require(ExecutionSources, m_Operations.Count, m_StateLayout.Slots.Count);
-            GameplayAbilityRootValidation.RequireEntryReference(Manifest.Root, Structure.References, m_Operations);
-            ValidateReferences();
-            ValidateGraphCallFrames();
-            StateLayoutHash = GameplayAbilitySemanticIrCodec.ComputeStateLayoutHash(this);
+            StateLayoutHash = GraphSources.Layout.Publisher.ComputeStateLayoutHash(m_StateLayout);
         }
 
         GameplayAbilitySemanticIr(GameplayAbilitySemanticIr structure, GameplayAbilitySemanticIrManifest manifest,
@@ -583,11 +493,8 @@ namespace ThirdPersonSimulation
             m_StateSlotByOperation = structure.m_StateSlotByOperation;
             GraphSources = sources;
             StateLayoutHash = structure.StateLayoutHash;
-            GraphExecutionChunk values = ReferenceEquals(parameters, structure.Parameters)
-                ? structure.Chunks.Parameters
-                : GraphExecutionChunk.Encode(writer =>
-                    GameplayAbilitySemanticIrCodec.WriteParameters(writer, this, structure.Chunks.Structure.Hash));
-            m_Chunks = new GraphExecutionChunks(structure.Chunks.Structure, values, sources.DiagnosticChunk);
+            m_Chunks = GraphSources.Layout.Publisher.Publish(this, structure.Chunks,
+                ReferenceEquals(parameters, structure.Parameters) ? GraphCompilationWork.Sources : GraphCompilationWork.Parameters);
         }
 
         public GameplayAbilitySemanticIr WithParameters(GameplayAbilitySemanticIrManifest manifest,
@@ -616,10 +523,10 @@ namespace ThirdPersonSimulation
         public ProgramGraphSourceRevisionTable GraphSourceRevisions => GraphSources.Revisions;
         public IReadOnlyList<ProgramProducer> Producers => Structure.Producers;
         public SemanticHash SemanticHash => new SemanticHash(Chunks.ExecutionHash);
-        public GraphExecutionChunks Chunks => m_Chunks ??= GameplayAbilitySemanticIrCodec.CreateChunks(this);
+        public GraphExecutionChunks Chunks => m_Chunks ??= GraphSources.Layout.Publisher.Publish(this, null, GraphCompilationWork.Structure);
         public StableHash StateLayoutHash { get; }
-        internal SemanticStateLayout StateLayout => m_StateLayout;
-        internal SemanticGraphTables Tables { get; }
+        public SemanticStateLayout StateLayout => m_StateLayout;
+        public SemanticGraphTables Tables { get; }
 
         void ValidateGraphCallFrames()
         {
@@ -880,8 +787,8 @@ namespace ThirdPersonSimulation
         }
 
     }
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
-    internal sealed partial class SemanticGraphStructure
+    [ValueStorage]
+    public sealed partial class SemanticGraphStructure
     {
         internal SemanticGraphStructure(IReadOnlyList<SemanticOperation> operations,
             ReadOnlyCollection<SemanticConstantInputBinding> constantInputBindings,
@@ -915,8 +822,8 @@ namespace ThirdPersonSimulation
         public ReadOnlyCollection<ProgramProducer> Producers { get; }
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
-    internal sealed partial class SemanticGraphTables
+    [ValueStorage]
+    public sealed partial class SemanticGraphTables
     {
         internal SemanticGraphTables(SemanticGraphStructure structure, SemanticGraphParameters parameters)
         {

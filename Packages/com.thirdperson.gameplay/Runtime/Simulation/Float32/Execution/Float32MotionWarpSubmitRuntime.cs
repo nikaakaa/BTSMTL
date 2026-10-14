@@ -1,5 +1,4 @@
-using GameplayAbilityCurveCodec = ThirdPersonSimulation.GameplayAbilityCurveCodec<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32SimulationMath, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Float32Scalar>>;
-using GameplayAbilityCurve = ThirdPersonSimulation.GameplayAbilityCurve<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32SimulationMath>;
+using GameplayAbilityCurve = ThirdPersonSimulation.GameplayAbilityCurve<ThirdPersonSimulation.Float32Scalar>;
 using System;
 using System.Collections.Generic;
 using ThirdPersonSimulation.Fixed;
@@ -110,7 +109,7 @@ namespace ThirdPersonSimulation
 
                 float Scalar(OperationNamedConstant field) => layout.FindNamedConstant(operation.Handle, field).Scalar.ToSingle();
                 GameplayAbilityCurve Curve(OperationNamedConstant field) =>
-                    GameplayAbilityCurveCodec.Read(layout.FindNamedConstant(operation.Handle, field).Bytes.ToArray());
+                    layout.FindNamedConstant(operation.Handle, field).Curve;
             }
 
             public Float32Scalar EndTime { get; }
@@ -120,10 +119,10 @@ namespace ThirdPersonSimulation
             public float MaxPosition { get; }
             public float MaxYaw { get; }
             public float MaxYawRate { get; }
-            public Float32Scalar PositionProgress(Float32Scalar progress) => m_Position == null ? progress : m_Position.Evaluate(progress, Float32Scalar.Zero);
-            public Float32Scalar YawProgress(Float32Scalar progress) => m_Yaw == null ? progress : m_Yaw.Evaluate(progress, Float32Scalar.Zero);
-            public Float32Scalar Response(Float32Scalar progress) => m_Response == null ? Float32Scalar.Zero : m_Response.Evaluate(progress, Float32Scalar.Zero);
-            public Float32Scalar InputResponse(Float32Scalar progress) => m_InputResponse == null ? Float32Scalar.Zero : m_InputResponse.Evaluate(progress, Float32Scalar.Zero);
+            public Float32Scalar PositionProgress(Float32Scalar progress) => m_Position == null ? progress : m_Position.Evaluate<Float32SimulationMath>(progress, Float32Scalar.Zero);
+            public Float32Scalar YawProgress(Float32Scalar progress) => m_Yaw == null ? progress : m_Yaw.Evaluate<Float32SimulationMath>(progress, Float32Scalar.Zero);
+            public Float32Scalar Response(Float32Scalar progress) => m_Response == null ? Float32Scalar.Zero : m_Response.Evaluate<Float32SimulationMath>(progress, Float32Scalar.Zero);
+            public Float32Scalar InputResponse(Float32Scalar progress) => m_InputResponse == null ? Float32Scalar.Zero : m_InputResponse.Evaluate<Float32SimulationMath>(progress, Float32Scalar.Zero);
         }
     }
 }

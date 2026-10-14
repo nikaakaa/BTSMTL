@@ -3,7 +3,6 @@ using System.Collections.Generic;
 
 namespace ThirdPersonSimulation
 {
-    [CanonicalContract]
     public readonly partial struct CharacterBodySample
     {
         public CharacterBodySample(
@@ -30,7 +29,7 @@ namespace ThirdPersonSimulation
         public Float32Vector3 AppliedDisplacement { get; }
         public Float32Scalar AppliedYawDegrees { get; }
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireRecord()
         {
             if (!ActorId.IsValid || !Tick.IsValid || BeforeBody.ActorId != ActorId || FinalBody.ActorId != ActorId)

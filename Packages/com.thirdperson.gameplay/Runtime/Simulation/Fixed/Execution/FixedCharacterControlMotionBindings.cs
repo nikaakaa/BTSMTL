@@ -1,5 +1,5 @@
 using GameplayAbilityCurveKey = ThirdPersonSimulation.GameplayAbilityCurveKey<ThirdPersonSimulation.Fixed.FixedScalar>;
-using GameplayAbilityCurve = ThirdPersonSimulation.GameplayAbilityCurve<ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedSimulationMath>;
+using GameplayAbilityCurve = ThirdPersonSimulation.GameplayAbilityCurve<ThirdPersonSimulation.Fixed.FixedScalar>;
 using System;
 using System.Collections.Generic;
 
@@ -48,7 +48,7 @@ namespace ThirdPersonSimulation.Fixed
             FixedScalar.Min(m_SourceEnd, m_SourceStart + FixedScalar.Clamp(elapsed, FixedScalar.Zero, m_Duration));
 
         static FixedScalar Difference(GameplayAbilityCurve curve, FixedScalar previous, FixedScalar current) =>
-            curve.Evaluate(current, FixedScalar.Zero) - curve.Evaluate(previous, FixedScalar.Zero);
+            curve.Evaluate<FixedSimulationMath>(current, FixedScalar.Zero) - curve.Evaluate<FixedSimulationMath>(previous, FixedScalar.Zero);
 
         static GameplayAbilityCurve Prepare(CharacterControlMotionCurve source)
         {

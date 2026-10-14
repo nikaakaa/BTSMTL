@@ -16,7 +16,7 @@ namespace ThirdPersonSimulation
         SelectedSource = 2
     }
 
-    [CanonicalContract]
+    [ValueOperations]
     public readonly partial struct GameplayEffectScope : IEquatable<GameplayEffectScope>
     {
         GameplayEffectScope(ulong actionInstanceId, ulong executionGeneration)
@@ -47,7 +47,8 @@ namespace ThirdPersonSimulation
         Invocation = 2
     }
 
-    [CanonicalContract]
+    [ValueOperations]
+    [ValueStorage]
     public readonly partial struct GameplayEffectHolderIdentity : IEquatable<GameplayEffectHolderIdentity>
     {
         GameplayEffectHolderIdentity(GameplayEffectLifetimeKind lifetime, ulong actionInstanceId,
@@ -87,13 +88,11 @@ namespace ThirdPersonSimulation
         public override bool Equals(object value) => value is GameplayEffectHolderIdentity other && Equals(other);
         public override int GetHashCode() => HashCode.Combine((byte)Lifetime, ActionInstanceId,
             ExecutionGeneration, RuntimeHandle, ContentId, Generation, BranchRevision, Cycle);
-        public void Retain() => CanonicalRetain(in this);
-        public void Release() => CanonicalRelease(in this);
 
 
     }
 
-    [CanonicalContract]
+    [ValueOperations]
     public readonly partial struct GameplayEffectSuccessContext : IEquatable<GameplayEffectSuccessContext>
     {
         public GameplayEffectSuccessContext(CanonicalTextValue eventTag, ulong eventId, ulong sourceTick,
@@ -118,7 +117,7 @@ namespace ThirdPersonSimulation
         public ulong SourceInstanceId { get; }
         public ulong SourceSkillExecutionGeneration { get; }
         public ulong SourceSegmentGeneration { get; }
-        [CanonicalPresence]
+        [ValuePresence]
         public bool IsValid => EventId != 0;
         public bool Equals(GameplayEffectSuccessContext other) => EventTag.Equals(other.EventTag) &&
             EventId == other.EventId && SourceTick == other.SourceTick && AcceptedTick == other.AcceptedTick &&
@@ -128,16 +127,14 @@ namespace ThirdPersonSimulation
         public override bool Equals(object value) => value is GameplayEffectSuccessContext other && Equals(other);
         public override int GetHashCode() => HashCode.Combine(EventTag, EventId, SourceTick, AcceptedTick,
             SourceSkillId, SourceInstanceId, SourceSkillExecutionGeneration, SourceSegmentGeneration);
-        public void Retain() => CanonicalRetain(in this);
-        public void Release() => CanonicalRelease(in this);
 
 
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireSourceSkill() => SimulationIdentity.Require(SourceSkillId, "value");
 }
 
-    [CanonicalContract]
+    [ValueOperations]
     public readonly partial struct GameplayEffectOpportunityReference : IEquatable<GameplayEffectOpportunityReference>
     {
         public GameplayEffectOpportunityReference(ulong handle, GameplayEffectSuccessContext success)
@@ -151,8 +148,6 @@ namespace ThirdPersonSimulation
         public bool Equals(GameplayEffectOpportunityReference other) => Handle == other.Handle && Success.Equals(other.Success);
         public override bool Equals(object value) => value is GameplayEffectOpportunityReference other && Equals(other);
         public override int GetHashCode() => HashCode.Combine(Handle, Success);
-        public void Retain() => CanonicalRetain(in this);
-        public void Release() => CanonicalRelease(in this);
 
 
     }
@@ -296,7 +291,7 @@ namespace ThirdPersonSimulation
         public GameplayEffectCueTrigger CueTrigger { get; }
     }
 
-    [CanonicalContract]
+    [ValueOperations]
     public readonly partial struct GameplayEffectContextIdentity
     {
         public GameplayEffectContextIdentity(
@@ -334,13 +329,11 @@ namespace ThirdPersonSimulation
         public GameplayEffectScope Scope { get; }
         public GameplayEffectHolderIdentity Holder { get; }
         public GameplayEffectSuccessContext Success { get; }
-        [CanonicalPresence]
+        [ValuePresence]
         public bool IsValid => SourceActor.IsValid && TargetActor.IsValid && SourceTick != 0;
-        public void Retain() => CanonicalRetain(in this);
 
-        public void Release() => CanonicalRelease(in this);
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireIdentity()
         {
             if (!SourceActor.IsValid || !TargetActor.IsValid || SourceTick == 0)
@@ -445,7 +438,7 @@ namespace ThirdPersonSimulation
         }
     }
 
-    [CanonicalContract]
+    [ValueOperations]
     public readonly partial struct GameplayEffectExecutionFailure
     {
         public GameplayEffectExecutionFailure(
@@ -488,11 +481,9 @@ namespace ThirdPersonSimulation
         public CanonicalTextValue CapacityDimension { get; }
         public int Required { get; }
         public int Available { get; }
-        [CanonicalPresence]
+        [ValuePresence]
         public bool IsValid => Code != 0;
-        public void Retain() => CanonicalRetain(in this);
 
-        public void Release() => CanonicalRelease(in this);
     }
 
     internal readonly struct GameplayEffectApplyResult
@@ -585,7 +576,7 @@ namespace ThirdPersonSimulation
         Instance = 3
     }
 
-    [CanonicalContract]
+    [ValueOperations]
     public readonly partial struct GameplayEffectReconciliationScope
     {
         public GameplayEffectReconciliationScope(
@@ -604,11 +595,9 @@ namespace ThirdPersonSimulation
         public ulong PredictionKey { get; }
         public CanonicalTextValue EffectId { get; }
         public ulong PredictedInstanceId { get; }
-        public void Retain() => CanonicalRetain(in this);
 
-        public void Release() => CanonicalRelease(in this);
 
-        [CanonicalPresence]
+        [ValuePresence]
         public bool IsValid => Kind != 0;
 }
 
@@ -628,7 +617,7 @@ namespace ThirdPersonSimulation
         NotReceived = 12
     }
 
-    [CanonicalContract]
+    [ValueOperations]
     public readonly partial struct GameplayEffectReconciliationResult
     {
         public GameplayEffectReconciliationResult(
@@ -673,11 +662,9 @@ namespace ThirdPersonSimulation
             Kind == GameplayEffectReconciliationResultKind.Corrected ||
             Kind == GameplayEffectReconciliationResultKind.Duplicate ||
             Kind == GameplayEffectReconciliationResultKind.Applied;
-        public void Retain() => CanonicalRetain(in this);
 
-        public void Release() => CanonicalRelease(in this);
 
-        [CanonicalPresence]
+        [ValuePresence]
         public bool IsValid => Kind != 0;
 }
 
@@ -699,7 +686,7 @@ namespace ThirdPersonSimulation
         bool CoversCue(CanonicalTextValue cueId);
     }
 
-    [CanonicalContract]
+    [ValueOperations]
     public readonly partial struct GameplayTagRuntimeChange
     {
         public GameplayTagRuntimeChange(
@@ -721,17 +708,13 @@ namespace ThirdPersonSimulation
         }
 
         public GameplayTagSourceIdentityValue SourceIdentity { get; }
-        [CanonicalDeclaredText]
         public string TagId { get; }
         public int BeforeCount { get; }
         public int AfterCount { get; }
-        [CanonicalDeclaredText]
         public string CauseEffectId { get; }
         public ulong CauseInstanceId { get; }
         public GameplayEffectContextIdentity Context { get; }
-        public void Retain() => CanonicalRetain(in this);
 
-        public void Release() => CanonicalRelease(in this);
     }
 
     internal readonly struct GameplayEffectRemoveRequest<TTagQuery>
@@ -763,7 +746,7 @@ namespace ThirdPersonSimulation
         public ulong HolderActionInstanceId { get; }
     }
 
-    [CanonicalContract]
+    [ValueOperations]
     public readonly partial struct GameplayEffectActiveControlSnapshot
     {
         public GameplayEffectActiveControlSnapshot(
@@ -793,15 +776,12 @@ namespace ThirdPersonSimulation
         public int StackCount { get; }
         public bool Inhibited { get; }
         public ulong LifecycleRevision { get; }
-        [CanonicalRequired]
         public GameplayEffectContextIdentity LifecycleContext { get; }
-        [CanonicalPresence]
+        [ValuePresence]
         public bool IsValid => InstanceId != 0;
-        public void Retain() => CanonicalRetain(in this);
-        public void Release() => CanonicalRelease(in this);
     }
 
-    [CanonicalContract(OwnsMemberResources = true)]
+    [ValueOperations(OwnsMemberResources = true, CopyMethod = nameof(CopyFrom), ClearMethod = nameof(Clear))]
     internal partial struct GameplayEffectActiveStateData
     {
         public ulong Handle;
@@ -812,23 +792,24 @@ namespace ThirdPersonSimulation
         public int StackCount;
         public bool Inhibited;
         public ulong LifecycleRevision;
-        [CanonicalRequired]
         public GameplayEffectContextIdentity LifecycleContext;
+
+        internal partial void CopyFrom(in GameplayEffectActiveStateData value);
+        internal partial void Clear();
     }
 
-    [CanonicalStorageOwner]
+    [ValueStorageOwner]
     internal partial class GameplayEffectActiveControlState<TSpec> : IGameplayEffectActiveControl<TSpec>
     {
-        [CanonicalStorage]
+        [ValueStorageMember]
         internal GameplayEffectActiveStateData Data;
         public TSpec Spec { get; set; }
     }
 
-    [CanonicalContract(OwnsMemberResources = true)]
+    [ValueOperations(OwnsMemberResources = true, CopyMethod = nameof(CopyFrom), ClearMethod = nameof(Clear))]
     internal partial struct GameplayEffectPredictionStateData<TAttributeSnapshot>
-        where TAttributeSnapshot : struct, ICanonicalRecord<TAttributeSnapshot>
+        where TAttributeSnapshot : unmanaged
     {
-        [CanonicalRequired]
         public GameplayEffectContextIdentity CausalContext;
         public ulong Handle;
         public ulong InstanceId;
@@ -841,17 +822,18 @@ namespace ThirdPersonSimulation
         public ulong AfterLifecycleRevision;
         public ulong AfterChangeCursor;
         public ulong AuthoritativeLifecycleRevision;
-        [CanonicalDeclaredText, CanonicalSet]
         public List<string> CueIds;
-        [CanonicalDeclaredText]
         public SortedList<string, TAttributeSnapshot> Attributes;
+
+        internal partial void CopyFrom(in GameplayEffectPredictionStateData<TAttributeSnapshot> value);
+        internal partial void Clear();
     }
 
-    [CanonicalStorageOwner]
+    [ValueStorageOwner]
     internal abstract partial class GameplayEffectPredictionControlState<TSpec, TAttributeSnapshot> : IGameplayEffectPredictionControl<TSpec>
-        where TAttributeSnapshot : struct, ICanonicalRecord<TAttributeSnapshot>
+        where TAttributeSnapshot : unmanaged
     {
-        [CanonicalStorage]
+        [ValueStorageMember]
         internal GameplayEffectPredictionStateData<TAttributeSnapshot> Data;
 
         protected GameplayEffectPredictionControlState()

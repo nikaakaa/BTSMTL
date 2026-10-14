@@ -10,7 +10,6 @@ namespace ThirdPersonSimulation
         public const string Identity = "btsmtl-operations/2";
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
     public readonly partial struct GraphExecutionDependency
     {
         public GraphExecutionDependency(string identity, string revision)
@@ -22,7 +21,7 @@ namespace ThirdPersonSimulation
         public string Identity { get; }
         public string Revision { get; }
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireIdentity()
         {
             SimulationIdentity.Require(Identity, nameof(Identity));
@@ -30,7 +29,6 @@ namespace ThirdPersonSimulation
         }
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
     public sealed partial class GraphExecutionIdentity
     {
         public GraphExecutionIdentity(string graphId, string sourceRevision, string encodingContract,
@@ -51,7 +49,7 @@ namespace ThirdPersonSimulation
         public string NumericTarget { get; }
         public IReadOnlyList<GraphExecutionDependency> Dependencies { get; }
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireIdentity()
         {
             SimulationIdentity.Require(GraphId, nameof(GraphId));

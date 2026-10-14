@@ -8,7 +8,6 @@ using System.Text;
 namespace ThirdPersonSimulation
 {
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false, PublishedRead = true)]
     public readonly partial struct SimulationPipelineStateParticipantIdentity : IEquatable<SimulationPipelineStateParticipantIdentity>
     {
         public SimulationPipelineStateParticipantIdentity(
@@ -29,9 +28,9 @@ namespace ThirdPersonSimulation
 
         public SimulationPipelinePassId PassId { get; }
         public SimulationPipelinePassImplementationVersion ImplementationVersion { get; }
-        [CanonicalTextRules(Required = true)]
+        [ValueTextRules(Required = true)]
         public string StateOwner { get; }
-        [CanonicalTextRules(Required = true)]
+        [ValueTextRules(Required = true)]
         public string StateSchemaId { get; }
         public int StateSchemaVersion { get; }
 
@@ -46,7 +45,7 @@ namespace ThirdPersonSimulation
         public override bool Equals(object obj) => obj is SimulationPipelineStateParticipantIdentity other && Equals(other);
         public override int GetHashCode() => HashCode.Combine(PassId, ImplementationVersion, StateOwner, StateSchemaId, StateSchemaVersion);
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireRecord()
         {
             if (StateSchemaVersion <= 0)
@@ -54,12 +53,13 @@ namespace ThirdPersonSimulation
         }
     }
 
-    public sealed class SimulationPipelineStateSnapshot : IDisposable
+    [ValueOperations(Resources = false)]
+    public sealed partial class SimulationPipelineStateSnapshot : IDisposable, IEquatable<SimulationPipelineStateSnapshot>
     {
         readonly IReadOnlyList<SimulationPipelinePassStateSnapshot> m_Participants;
+        [ValueEqualityIgnore]
         readonly SimulationPipelineStepSnapshotStorage.Page m_StepStorage;
 
-        [ThreadStatic] static CanonicalWriter s_HashWriter;
 
         private SimulationPipelineStateSnapshot(
             SimulationPipelineIdentity pipeline,
@@ -86,14 +86,12 @@ namespace ThirdPersonSimulation
             Backend = backend;
             LastCompletedTick = lastCompletedTick;
             m_Participants = values;
-            SnapshotHash = ComputeHash();
         }
 
         public SimulationPipelineIdentity Pipeline { get; }
         public SimulationComponentIdentity Backend { get; }
         public ulong LastCompletedTick { get; private set; }
         public IReadOnlyList<SimulationPipelinePassStateSnapshot> Participants => m_Participants;
-        public StableHash SnapshotHash { get; private set; }
 
         public static SimulationPipelineStateSnapshot FromOwnedParticipants(
             SimulationPipelineIdentity pipeline,
@@ -126,10 +124,17 @@ namespace ThirdPersonSimulation
 
         public void Dispose() => ReleaseStepStorage();
 
+        public SimulationPipelineStateSnapshot(
+            SimulationPipelineIdentity pipeline, SimulationComponentIdentity backend,
+            SimulationPipelinePassStateSnapshot[] preparedParticipants)
+            : this(pipeline, backend, preparedParticipants, null)
+        {
+        }
+
         internal SimulationPipelineStateSnapshot(
             SimulationPipelineIdentity pipeline, SimulationComponentIdentity backend,
             SimulationPipelinePassStateSnapshot[] preparedParticipants,
-            SimulationPipelineStepSnapshotStorage.Page stepStorage = null)
+            SimulationPipelineStepSnapshotStorage.Page stepStorage)
         {
             Pipeline = pipeline;
             Backend = backend;
@@ -137,38 +142,8 @@ namespace ThirdPersonSimulation
             m_StepStorage = stepStorage;
         }
 
-        internal void SetPreparedTick(ulong tick, CanonicalWriter writer)
-        {
-            LastCompletedTick = tick;
-            writer.Reset();
-            SnapshotHash = ComputeHash(writer);
-        }
+        public void SetPreparedTick(ulong tick) => LastCompletedTick = tick;
 
-        StableHash ComputeHash() => ComputeHash(HashWriter());
-
-        StableHash ComputeHash(CanonicalWriter writer)
-        {
-            writer.WriteText("simulation-pipeline-state-snapshot/3");
-            SimulationPipelineIdentity.CanonicalWrite(writer, Pipeline);
-            SimulationComponentIdentity.CanonicalWrite(writer, Backend);
-            writer.WriteUInt64(LastCompletedTick);
-            writer.WriteInt32(m_Participants.Count);
-            for (int i = 0; i < m_Participants.Count; i++)
-            {
-                SimulationPipelinePassStateSnapshot participant = m_Participants[i];
-                SimulationPipelineStateParticipantIdentity.CanonicalWrite(writer, participant.Identity);
-                writer.WriteHash(participant.StateHash);
-            }
-            return writer.ComputeHash();
-        }
-
-        static CanonicalWriter HashWriter()
-        {
-            if (s_HashWriter == null)
-                s_HashWriter = new CanonicalWriter();
-            s_HashWriter.Reset();
-            return s_HashWriter;
-        }
     }
 
     public interface ISimulationPipelinePassRestoreTransaction : IDisposable
@@ -176,18 +151,20 @@ namespace ThirdPersonSimulation
         SimulationPipelineStateParticipantIdentity Participant { get; }
         void Apply();
         void ValidateApplied();
-        void CompleteAfterSessionPublish();
         void Rollback();
+    }
+
+    public interface ISimulationPipelinePassRestoreCommit
+    {
+        void CompleteAfterSessionPublish();
     }
 
     public interface ISimulationPipelineStateParticipant
     {
         SimulationPipelineStateParticipantIdentity StateIdentity { get; }
-        int MaximumTextValues { get; }
         SimulationPipelineStepProjectionMode StepProjectionMode { get; }
         ISimulationPipelinePassStateCheckpoint CaptureCheckpoint();
         SimulationPipelinePassStateSnapshot CaptureState();
-        void WriteCheckpointState(CanonicalWriter writer);
         ISimulationPipelinePassRestoreTransaction PrepareRestore(SimulationPipelinePassStateSnapshot snapshot);
     }
 
@@ -200,8 +177,6 @@ namespace ThirdPersonSimulation
     {
         void Capture();
         void CopyFrom(ISimulationPipelineFrameState source);
-        void Write(CanonicalWriter writer);
-        void Read(CanonicalReader reader);
     }
 
     internal sealed class SimulationPipelineStateParticipantSet : IReadOnlyList<ISimulationPipelineStateParticipant>
@@ -445,7 +420,7 @@ namespace ThirdPersonSimulation
 
         public SimulationPipelineStateSnapshot Snapshot { get; private set; }
         public SimulationSessionRestoreParticipantKind Kind => SimulationSessionRestoreParticipantKind.Pipeline;
-        public string Identity => Snapshot.SnapshotHash.ToString();
+        public string Identity => $"{Snapshot.Pipeline.Id}/tick/{Snapshot.LastCompletedTick}";
 
         public void Apply()
         {
@@ -491,7 +466,8 @@ namespace ThirdPersonSimulation
             if (m_AppliedCount != m_Participants.Length || !m_Validated)
                 throw new InvalidOperationException("Pipeline restore transaction was not applied and validated before Session publish.");
             for (int i = 0; i < m_Participants.Length; i++)
-                m_Participants[i].CompleteAfterSessionPublish();
+                if (m_Participants[i] is ISimulationPipelinePassRestoreCommit commit)
+                    commit.CompleteAfterSessionPublish();
             m_Completed = true;
         }
 

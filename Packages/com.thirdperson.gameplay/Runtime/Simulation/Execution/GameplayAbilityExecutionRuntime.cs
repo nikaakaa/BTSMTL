@@ -334,12 +334,11 @@ namespace ThirdPersonSimulation
 
         internal GameplayAbilityExecutionStateBank(GameplayAbilityExecutionIdentity identity, int slotCount,
             int actionCapacity, Func<int, bool> ownsSlot, Action<TValue> retainValue, Action<TValue> releaseValue,
-            GeneratedBlackboardStateBinding<TValue> blackboards, Func<int, ProgramStateValueKind> valueKind,
-            AbilityStateValueWriter<TValue> writeValue, Func<CanonicalReader, int, TValue> readValueCase)
+            GeneratedBlackboardStateBinding<TValue> blackboards)
         {
             m_FrameCapacity = checked(actionCapacity + 1);
             Values = new AbilityStateValuePageBank<TValue>(identity, slotCount, ownsSlot, retainValue, releaseValue,
-                blackboards, valueKind, writeValue, readValueCase);
+                blackboards);
             PrepareCapacity(0);
         }
 

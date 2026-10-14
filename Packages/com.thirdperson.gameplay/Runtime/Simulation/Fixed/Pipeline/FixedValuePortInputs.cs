@@ -7,7 +7,8 @@ namespace ThirdPersonSimulation.Fixed
 {
     public enum FixedPortInputMutation : byte { Assign, Override, Release, Trigger }
 
-    public readonly struct FixedValuePortInputRecord
+    [ValueOperations]
+    public readonly partial struct FixedValuePortInputRecord
     {
         public FixedValuePortInputRecord(ActorId actor, CharacterSkillId ability, int operation, string port,
             ProgramValuePortDirection direction, AbilityStateValue value, FixedPortInputMutation mutation, ulong tick = 0)
@@ -24,34 +25,6 @@ namespace ThirdPersonSimulation.Fixed
         public AbilityStateValue Value { get; }
         public FixedPortInputMutation Mutation { get; }
         public ulong Tick { get; }
-        public void Retain() { Actor.Value.Retain(); Value.Retain(); }
-        public void Release() { Actor.Value.Release(); Value.Release(); }
-
-        public void Write(CanonicalWriter writer, ulong tick)
-        {
-            writer.WriteHash(AbilityStateValue.CanonicalSchemaHash);
-            writer.WriteText(Actor.Value); writer.WriteText(Ability.Value); writer.WriteInt32(Operation);
-            writer.WriteText(Port); writer.WriteByte((byte)Direction); writer.WriteByte((byte)Mutation);
-            writer.WriteUInt64(tick);
-            if (Mutation is FixedPortInputMutation.Assign or FixedPortInputMutation.Override)
-                AbilityStateValue.CanonicalWrite(writer, Value);
-        }
-
-        public static FixedValuePortInputRecord Read(CanonicalReader reader, Func<CanonicalReader, string> identity)
-        {
-            AbilityStateValue.CanonicalRequireSchema(reader);
-            reader.DeclaredIdentityReader = identity;
-            var actor = new ActorId(reader.ReadText());
-            var ability = new CharacterSkillId(identity(reader));
-            int operation = reader.ReadInt32();
-            string port = identity(reader);
-            var direction = (ProgramValuePortDirection)reader.ReadByte();
-            var mutation = (FixedPortInputMutation)reader.ReadByte();
-            ulong tick = reader.ReadUInt64();
-            AbilityStateValue value = mutation is FixedPortInputMutation.Assign or FixedPortInputMutation.Override
-                ? AbilityStateValue.CanonicalRead(reader) : default;
-            return new FixedValuePortInputRecord(actor, ability, operation, port, direction, value, mutation, tick);
-        }
 
         public void Apply(FixedValuePortInputs inputs)
         {
@@ -60,7 +33,8 @@ namespace ThirdPersonSimulation.Fixed
         }
     }
 
-    public sealed class FixedValuePortInputs : IProgramValuePortInputs<AbilityStateValue>, IProgramValuePortEdits<AbilityStateValue>
+    [ValueSnapshot]
+    public sealed partial class FixedValuePortInputs : IProgramValuePortInputs<AbilityStateValue>, IProgramValuePortEdits<AbilityStateValue>
     {
         readonly Dictionary<(int Operation, string Port, ProgramValuePortDirection Direction), int> m_Indices = new();
         readonly Dictionary<(int Operation, int Port, ProgramValuePortDirection Direction), int> m_CompiledIndices = new();
@@ -74,7 +48,7 @@ namespace ThirdPersonSimulation.Fixed
         internal IReadOnlyList<(ulong Sequence, FixedBlackboardWriteCommand Command)> BlackboardCommands { get; set; }
         readonly int[] m_DefaultOutputs;
         readonly List<(int Index, OperationHandle Operation, ProgramValuePortDirection Direction, ProgramControlFlowEdge[] Edges)> m_Triggers = new();
-        internal FixedBlackboardInputOverrides BlackboardOverrides { get; }
+        [ValueSnapshot] internal FixedBlackboardInputOverrides BlackboardOverrides { get; }
 
         public bool IsBlackboardLocked(ulong action, ulong generation, int slot) =>
             m_Bank.IsBlackboardLocked(this, action, generation, slot);
@@ -281,24 +255,23 @@ namespace ThirdPersonSimulation.Fixed
         }
     }
 
-    internal sealed class FixedBlackboardInputOverrides
+    [ValueSnapshot]
+    internal sealed partial class FixedBlackboardInputOverrides
     {
-        internal readonly struct Entry
+        [ValueOperations]
+        internal readonly partial struct Entry
         {
             internal Entry(FixedBlackboardWriteCommand command, ulong sequence) { Command = command; Sequence = sequence; }
             internal readonly FixedBlackboardWriteCommand Command;
             internal readonly ulong Sequence;
         }
 
-        readonly GameplayAbilityExecutionIdentity m_Identity;
-        readonly Entry[] m_Entries;
-        int m_Count;
+        [ValueSnapshot] readonly Entry[] m_Entries;
+        [ValueSnapshot] int m_Count;
 
         internal FixedBlackboardInputOverrides(FixedGameplayAbilityExecutionData data, bool prepare)
         {
             IsPrepared = prepare;
-            m_Identity = new GameplayAbilityExecutionIdentity(data.AbilityId, data.ContentHash, data.StateSchemaHash,
-                data.OperationSetVersion, data.NumericProfile);
             int declarations = 0;
             foreach (ProgramStateSlot slot in data.StateSlots)
                 if (slot.Semantic == ProgramStateSemantic.BlackboardValue) declarations++;
@@ -371,66 +344,27 @@ namespace ThirdPersonSimulation.Fixed
             for (int index = m_Count - 1; index >= 0; index--) Remove(index);
         }
 
-        internal void Write(CanonicalWriter writer)
-        {
-            writer.WriteInt32(m_Count);
-            for (int index = 0; index < m_Count; index++)
-            {
-                ref readonly Entry entry = ref m_Entries[index];
-                FixedBlackboardWriteCommand command = entry.Command;
-                writer.WriteUInt64(command.ActionInstanceId);
-                writer.WriteUInt64(command.SkillGeneration);
-                writer.WriteInt32(command.StateSlot);
-                BlackboardOwnerToken.CanonicalWrite(writer, command.Owner);
-                writer.WriteUInt64(entry.Sequence);
-                AbilityStateValue.CanonicalWrite(writer, command.Value);
-            }
-        }
-
-        internal void Read(CanonicalReader reader)
-        {
-            Clear();
-            int count = reader.ReadInt32();
-            if (count < 0 || count > m_Entries.Length)
-                throw new System.IO.InvalidDataException("黑板覆盖输入记录超过已声明的实例容量。");
-            for (int index = 0; index < count; index++)
-            {
-                ulong action = reader.ReadUInt64();
-                ulong generation = reader.ReadUInt64();
-                int slot = reader.ReadInt32();
-                BlackboardOwnerToken owner = BlackboardOwnerToken.CanonicalRead(reader);
-                if (!owner.IsValid)
-                    throw new System.IO.InvalidDataException("黑板覆盖输入记录必须包含有效的作用域身份。");
-                ulong sequence = reader.ReadUInt64();
-                var command = new FixedBlackboardWriteCommand(m_Identity, action, generation, slot, owner,
-                    AbilityStateValue.CanonicalRead(reader), FixedPortInputMutation.Override);
-                command.Retain();
-                m_Entries[m_Count++] = new Entry(command, sequence);
-            }
-        }
     }
 
-    public sealed class FixedValuePortInputBank
+    [ValueSnapshot]
+    public sealed partial class FixedValuePortInputBank
     {
         enum InputState : byte { None, PendingOnce, Once, Locked }
         readonly Dictionary<(ActorId Actor, CharacterSkillId Ability), FixedValuePortInputs> m_Abilities = new();
-        readonly List<FixedValuePortInputs> m_AbilityOrder = new();
+        [ValueSnapshot] readonly List<FixedValuePortInputs> m_AbilityOrder = new();
         readonly Dictionary<(ActorId Actor, int Slot), (FixedValuePortInputs Inputs, int Slot)> m_CharacterOwners = new();
-        AbilityStateValue[] m_Values;
-        InputState[] m_States;
+        [ValueSnapshot] AbilityStateValue[] m_Values;
+        [ValueSnapshot] InputState[] m_States;
         int m_Count;
 
         internal int Add() => m_Count++;
         internal int Count => m_Count;
-        int m_BlackboardTextCapacity;
-        public int TextCapacity => m_Count + m_BlackboardTextCapacity;
         public FixedValuePortInputs Declare(ActorId actor, FixedGameplayAbilityExecutionInstallation installation, bool prepareBlackboardOverrides)
         {
             FixedGameplayAbilityExecutionData data = installation.Data;
             var inputs = new FixedValuePortInputs(actor, installation, this, prepareBlackboardOverrides);
             m_Abilities.Add((actor, data.AbilityId), inputs);
             m_AbilityOrder.Add(inputs);
-            m_BlackboardTextCapacity = checked(m_BlackboardTextCapacity + inputs.BlackboardOverrides.Capacity);
             for (int slot = 0; slot < data.StateSlots.Count; slot++)
                 if (data.StateSlots[slot].Semantic == ProgramStateSemantic.BlackboardValue && inputs.CharacterSlots[slot] >= 0)
                     m_CharacterOwners.TryAdd((actor, inputs.CharacterSlots[slot]), (inputs, slot));
@@ -509,34 +443,6 @@ namespace ThirdPersonSimulation.Fixed
         {
             for (int i = 0; i < m_Count; i++) Release(i);
             for (int index = 0; index < m_AbilityOrder.Count; index++) m_AbilityOrder[index].BlackboardOverrides.Clear();
-        }
-        public void Write(CanonicalWriter writer)
-        {
-            writer.WriteHash(AbilityStateValue.CanonicalSchemaHash);
-            int count = 0;
-            for (int i = 0; i < m_Count; i++) if (m_States[i] != InputState.None) count++;
-            writer.WriteInt32(count);
-            for (int i = 0; i < m_Count; i++)
-                if (m_States[i] != InputState.None)
-                {
-                    writer.WriteInt32(i);
-                    writer.WriteByte((byte)m_States[i]);
-                    AbilityStateValue.CanonicalWrite(writer, m_Values[i]);
-                }
-            for (int index = 0; index < m_AbilityOrder.Count; index++) m_AbilityOrder[index].BlackboardOverrides.Write(writer);
-        }
-        public void Read(CanonicalReader reader)
-        {
-            AbilityStateValue.CanonicalRequireSchema(reader);
-            Clear();
-            int count = reader.ReadInt32();
-            for (int i = 0; i < count; i++)
-            {
-                int index = reader.ReadInt32();
-                InputState state = (InputState)reader.ReadByte();
-                Store(index, AbilityStateValue.CanonicalRead(reader), state);
-            }
-            for (int index = 0; index < m_AbilityOrder.Count; index++) m_AbilityOrder[index].BlackboardOverrides.Read(reader);
         }
     }
 }

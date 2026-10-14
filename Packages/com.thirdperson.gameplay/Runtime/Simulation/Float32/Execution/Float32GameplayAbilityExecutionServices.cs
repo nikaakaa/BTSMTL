@@ -1,5 +1,4 @@
-using GameplayAbilityCurveCodec = ThirdPersonSimulation.GameplayAbilityCurveCodec<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32SimulationMath, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Float32Scalar>>;
-using GameplayAbilityCurve = ThirdPersonSimulation.GameplayAbilityCurve<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32SimulationMath>;
+using GameplayAbilityCurve = ThirdPersonSimulation.GameplayAbilityCurve<ThirdPersonSimulation.Float32Scalar>;
 using System;
 using System.Linq;
 using ThirdPersonGameplay.Configuration;
@@ -37,7 +36,6 @@ namespace ThirdPersonSimulation
         readonly GameplayAbilityExecutionLayout m_Layout;
         readonly string[] m_OperationSourcePaths;
         readonly string[] m_OperationSourceIdentities;
-        readonly GameplayAbilityCurve[] m_ExecutionCurves;
         readonly PortableTagQuery[] m_TagQueries;
         readonly SimulationSetByCallerValue[][] m_SetByCallerValues;
         readonly IReadOnlyDictionary<GameplayCueProducerKey, ProgramProducer> m_GameplayCueProducers;
@@ -74,7 +72,6 @@ namespace ThirdPersonSimulation
                 data.OperationSetVersion,
                 data.NumericProfile);
             Topology = data.Topology;
-            m_ExecutionCurves = BuildExecutionCurves(data);
             m_TagQueries = BuildTagQueries(data, gameplayEffectCatalog);
             m_SetByCallerValues = BuildSetByCallerValues(data);
             GameplayEffectCatalog = gameplayEffectCatalog;
@@ -210,7 +207,7 @@ namespace ThirdPersonSimulation
         {
             if (constant == null)
                 throw new ArgumentNullException(nameof(constant));
-            GameplayAbilityCurve curve = m_ExecutionCurves[constant.Index];
+            GameplayAbilityCurve curve = constant.Curve;
             if (curve == null)
                 throw new InvalidDataException($"Ability execution curve '{identity}' was not compiled into Ability execution services.");
             return curve;
@@ -274,46 +271,6 @@ namespace ThirdPersonSimulation
             }
             token = default;
             return false;
-        }
-
-        static GameplayAbilityCurve[] BuildExecutionCurves(Float32GameplayAbilityExecutionData data)
-        {
-            var result = new GameplayAbilityCurve[data.Constants.Count];
-            for (int entryIndex = 0; entryIndex < data.CatalogEntries.Count; entryIndex++)
-            {
-                ProgramCatalogEntry entry = data.CatalogEntries[entryIndex];
-                if (entry.Kind != ProgramCatalogEntryKind.TimelineClip &&
-                    entry.Kind != ProgramCatalogEntryKind.MotionCurve)
-                {
-                    continue;
-                }
-                for (int fieldIndex = 0; fieldIndex < entry.Fields.Count; fieldIndex++)
-                {
-                    ProgramCatalogField field = entry.Fields[fieldIndex];
-                    if (field.Kind != ProgramCatalogFieldKind.Constant)
-                        continue;
-                    ProgramConstant constant = data.Constants[field.ConstantIndex];
-                    if (constant.Kind != ProgramConstantKind.Bytes || result[constant.Index] != null)
-                        continue;
-                    byte[] bytes = constant.Bytes.ToArray();
-                    if (bytes.Length == 0)
-                        throw new InvalidDataException($"Timeline curve '{entry.Identity}/{field.Name}' is empty.");
-                    result[constant.Index] = GameplayAbilityCurveCodec.Read(bytes);
-                }
-            }
-            for (int i = 0; i < data.Constants.Count; i++)
-            {
-                ProgramConstant constant = data.Constants[i];
-                if (constant.Kind != ProgramConstantKind.Bytes || result[constant.Index] != null ||
-                    !OperationNamedConstantSchema.TryParseIdentity(constant.Identity, out OperationNamedConstant field) ||
-                    field != OperationNamedConstant.ActionMotionPositionX && field != OperationNamedConstant.ActionMotionPositionZ)
-                    continue;
-                byte[] bytes = constant.Bytes.ToArray();
-                if (bytes.Length == 0)
-                    throw new InvalidDataException($"Ability execution curve '{constant.Identity}' is empty.");
-                result[constant.Index] = GameplayAbilityCurveCodec.Read(bytes);
-            }
-            return result;
         }
 
         static void BuildAdmissionProfiles(

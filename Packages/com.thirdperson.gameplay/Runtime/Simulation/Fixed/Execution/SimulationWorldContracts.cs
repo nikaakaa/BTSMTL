@@ -398,6 +398,8 @@ namespace ThirdPersonSimulation.Fixed
         public int Capacity => m_Keys.Length;
         public int Count { get; private set; }
 
+        public SortedTickResultBuffer<TValue> CreateEmpty() => new SortedTickResultBuffer<TValue>(Capacity, m_Owner);
+
         public TValue GetValue(int index) => m_Values[index];
         public ulong GetKey(int index) => m_Keys[index];
 

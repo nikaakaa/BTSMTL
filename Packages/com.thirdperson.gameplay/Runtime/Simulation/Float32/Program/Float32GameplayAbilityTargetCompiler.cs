@@ -58,20 +58,8 @@ namespace ThirdPersonSimulation
             "TimelineScenePresentationParameter"
         };
 
-        public static Float32GameplayAbilityExecutionCompilationResult Compile(ValidatedSemanticIrArtifact artifact)
+        public static Float32GameplayAbilityExecutionCompilationResult Compile(GameplayAbilitySemanticIr semanticIr)
         {
-            if (artifact == null)
-                throw new ArgumentNullException(nameof(artifact));
-            GameplayAbilitySemanticIr semanticIr = artifact.SemanticIr;
-            GameplayAbilitySemanticIrArtifactHeader header = artifact.Header;
-            if (!semanticIr.Manifest.Root.IsAbility || !header.Root.IsAbility)
-                throw new InvalidOperationException("Float32 Ability Target requires an Ability Semantic IR artifact.");
-            if (!semanticIr.Manifest.ProgramId.Equals(header.ProgramId) ||
-                !semanticIr.Manifest.SourceRevision.Equals(header.SourceRevision) ||
-                !semanticIr.SemanticHash.Equals(header.SemanticHash))
-            {
-                throw new InvalidOperationException("Validated Semantic IR artifact identity is inconsistent.");
-            }
             Float32GameplayAbilityExecutionCompilationResult result;
             GraphExecutionChunk structure = semanticIr.Chunks.Structure;
             if (s_Targets.TryGetValue(structure, out CachedTarget cached))
@@ -89,27 +77,13 @@ namespace ThirdPersonSimulation
             }
             else
             {
-                GameplayAbilityOperationSet.RequireVersion(header.OperationSetVersion);
-                GameplayAbilityOperationSet.RequireCompleteBackend(
-                    header.OperationSetVersion,
-                    Float32SimulationTarget.Manifest.ExecutionTarget.SupportedOperations,
-                    Float32SimulationTarget.Manifest.ExecutionTarget.BackendIdentity);
-                for (int i = 0; i < header.GameplayCapabilities.Count; i++)
+                IReadOnlyList<string> capabilities = semanticIr.Manifest.Capabilities.GameplayCapabilities;
+                for (int i = 0; i < capabilities.Count; i++)
                 {
-                    if (!s_SupportedGameplayCapabilities.Contains(header.GameplayCapabilities[i]))
-                        throw new InvalidOperationException($"Float32 Target does not support gameplay capability '{header.GameplayCapabilities[i]}'.");
+                    if (!s_SupportedGameplayCapabilities.Contains(capabilities[i]))
+                        throw new InvalidOperationException($"Float32 Target does not support gameplay capability '{capabilities[i]}'.");
                 }
                 result = Float32GameplayAbilityExecutionDataLowerer.Lower(semanticIr);
-            }
-            if (!result.Data.Root.Equals(header.Root) ||
-                !string.Equals(result.Data.CompilerVersion, header.CompilerVersion, StringComparison.Ordinal) ||
-                !result.Data.OperationSetVersion.Equals(header.OperationSetVersion) ||
-                result.Data.TickRate != header.TickRate ||
-                !result.Data.SourceRevision.Equals(header.SourceRevision) ||
-                !result.Data.SemanticHash.Equals(header.SemanticHash) ||
-                result.Data.NumericProfile != Float32SimulationNumericProfile.Value)
-            {
-                throw new InvalidOperationException("Float32 Ability execution data does not preserve its Semantic IR artifact identity.");
             }
             s_Targets.Remove(structure);
             s_Targets.Add(structure, new CachedTarget(semanticIr, result));

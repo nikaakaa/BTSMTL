@@ -3,8 +3,6 @@ using System.Collections.Generic;
 
 namespace ThirdPersonSimulation
 {
-    internal delegate void AbilityStateValueWriter<TValue>(CanonicalWriter writer, in TValue value) where TValue : struct;
-
     internal sealed class AbilityStateValuePageBank<TValue> where TValue : struct
     {
         internal const int PageSize = 32;
@@ -20,17 +18,12 @@ namespace ThirdPersonSimulation
 
         internal AbilityStateValuePageBank(GameplayAbilityExecutionIdentity identity, int slotCount,
             Func<int, bool> ownsSlot, Action<TValue> retainValue, Action<TValue> releaseValue,
-            GeneratedBlackboardStateBinding<TValue> blackboards, Func<int, ProgramStateValueKind> valueKind,
-            AbilityStateValueWriter<TValue> writeValue, Func<CanonicalReader, int, TValue> readValueCase)
+            GeneratedBlackboardStateBinding<TValue> blackboards)
         {
             Identity = identity;
             RetainValue = retainValue;
             ReleaseValue = releaseValue;
-            SlotCount = slotCount;
             Blackboards = blackboards;
-            ValueKind = valueKind;
-            WriteValue = writeValue;
-            ReadValueCase = readValueCase;
             ValueIndices = new int[slotCount];
             BlackboardBlocks = new int[slotCount];
             BlackboardFields = new int[slotCount];
@@ -73,11 +66,7 @@ namespace ThirdPersonSimulation
 
         internal Action<TValue> RetainValue { get; }
         internal Action<TValue> ReleaseValue { get; }
-        internal Func<int, ProgramStateValueKind> ValueKind { get; }
-        internal AbilityStateValueWriter<TValue> WriteValue { get; }
-        internal Func<CanonicalReader, int, TValue> ReadValueCase { get; }
         internal GameplayAbilityExecutionIdentity Identity { get; }
-        internal int SlotCount { get; }
         internal GeneratedBlackboardStateBinding<TValue> Blackboards { get; }
         internal ReadOnlySpan<int> PageIndices => m_PageIndices;
 
@@ -115,13 +104,6 @@ namespace ThirdPersonSimulation
             AbilityStateValuePageSet<TValue> set = RentSet(null);
             set.BeginEmpty();
             return new AbilityStateValuePageReference<TValue>(set, set.Generation);
-        }
-
-        internal AbilityStateValuePageReference<TValue> Read(CanonicalReader reader)
-        {
-            AbilityStateValuePageReference<TValue> values = BeginEmpty();
-            values.Set.Read(reader);
-            return values;
         }
 
         internal AbilityStateValuePageReference<TValue> BeginWrite(in AbilityStateValuePageReference<TValue> source)
@@ -319,7 +301,7 @@ namespace ThirdPersonSimulation
                     writable.Stored = blackboard.Stored;
                     blackboard.Retainers--;
                     writable.Retainers++;
-                    writable.Values.RetainValues();
+                    writable.Values.Retain();
                     m_BlackboardPages[block] = blackboard = writable;
                 }
                 StoreBlackboard(blackboard, Bank.BlackboardFields[slot], value);
@@ -367,66 +349,6 @@ namespace ThirdPersonSimulation
             page.Stored |= mask;
         }
 
-        internal void Write(CanonicalWriter writer)
-        {
-            var enumerator = new Enumerator(this);
-            writer.WriteInt32(Count);
-            while (enumerator.MoveNext(out int slot, out TValue value))
-            {
-                writer.WriteInt32(slot);
-                Bank.WriteValue(writer, in value);
-            }
-            WriteBlackboards(writer);
-        }
-
-        internal void Read(CanonicalReader reader)
-        {
-            int count = reader.ReadInt32();
-            if (count < 0 || count > Bank.LogicalSlots.Length)
-                throw new System.IO.InvalidDataException("State value count exceeds the installed page layout.");
-            int previous = -1;
-            for (int index = 0; index < count; index++)
-            {
-                int slot = reader.ReadInt32();
-                if (slot <= previous || slot >= Bank.SlotCount || Bank.ValueIndices[slot] < 0)
-                    throw new System.IO.InvalidDataException("State value slots must be ordered and owned by the installed page layout.");
-                int kind = reader.ReadInt32();
-                if (kind != (int)Bank.ValueKind(slot))
-                    throw new System.IO.InvalidDataException("State value kind does not match its installed declaration.");
-                RestoreValue(slot, Bank.ReadValueCase(reader, kind));
-                previous = slot;
-            }
-            ReadBlackboards(reader);
-        }
-
-        void WriteBlackboards<TWriter>(TWriter writer) where TWriter : class, ICanonicalValueWriter
-        {
-            writer.WriteInt32(m_BlackboardPages.Length);
-            for (int block = 0; block < m_BlackboardPages.Length; block++)
-            {
-                writer.WriteUInt32(m_BlackboardPages[block].Stored);
-                m_BlackboardPages[block].Values.WriteCanonical(writer);
-            }
-        }
-
-        void ReadBlackboards(CanonicalReader reader)
-        {
-            if (reader.ReadInt32() != m_BlackboardPages.Length)
-                throw new System.IO.InvalidDataException("Generated blackboard block count does not match the installed contract.");
-            for (int block = 0; block < m_BlackboardPages.Length; block++)
-            {
-                GeneratedBlackboardBlock<TValue> binding = Bank.BlackboardBindings[block];
-                GeneratedBlackboardPage<TValue> page = m_BlackboardPages[block];
-                uint stored = reader.ReadUInt32();
-                int count = binding.Contract.Fields.Count;
-                uint fields = count == 32 ? uint.MaxValue : (1u << count) - 1;
-                if ((stored & ~fields) != 0)
-                    throw new System.IO.InvalidDataException("Generated blackboard stored mask exceeds the installed fields.");
-                page.Values.ReadCanonical(reader);
-                page.Stored = stored;
-            }
-        }
-
         void Store(AbilityStateValuePage<TValue> page, int offset, TValue value)
         {
             uint mask = 1u << offset;
@@ -455,7 +377,7 @@ namespace ThirdPersonSimulation
             }
             for (int block = 0; block < m_BlackboardPages.Length; block++)
                 if (m_BlackboardPages[block].Retainers++ == 0)
-                    m_BlackboardPages[block].Values.RetainValues();
+                    m_BlackboardPages[block].Values.Retain();
         }
 
         internal void Release()
@@ -471,7 +393,7 @@ namespace ThirdPersonSimulation
             }
             for (int block = 0; block < m_BlackboardPages.Length; block++)
                 if (--m_BlackboardPages[block].Retainers == 0)
-                    m_BlackboardPages[block].Values.ReleaseValues();
+                    m_BlackboardPages[block].Values.Release();
         }
 
         void RetainValues(AbilityStateValuePage<TValue> page)
@@ -519,12 +441,6 @@ namespace ThirdPersonSimulation
         {
             RequireReadable();
             return new AbilityStateValuePageSet<TValue>.Enumerator(Set);
-        }
-
-        internal void Write(CanonicalWriter writer)
-        {
-            RequireReadable();
-            Set.Write(writer);
         }
 
         internal void Retain()

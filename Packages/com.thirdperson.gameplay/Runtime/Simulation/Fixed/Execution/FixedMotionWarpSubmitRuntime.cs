@@ -1,5 +1,4 @@
-using GameplayAbilityCurveCodec = ThirdPersonSimulation.GameplayAbilityCurveCodec<ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedSimulationMath, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Fixed.FixedScalar>>;
-using GameplayAbilityCurve = ThirdPersonSimulation.GameplayAbilityCurve<ThirdPersonSimulation.Fixed.FixedScalar, ThirdPersonSimulation.Fixed.FixedSimulationMath>;
+using GameplayAbilityCurve = ThirdPersonSimulation.GameplayAbilityCurve<ThirdPersonSimulation.Fixed.FixedScalar>;
 using System;
 using System.Collections.Generic;
 
@@ -109,7 +108,7 @@ namespace ThirdPersonSimulation.Fixed
 
                 float Scalar(OperationNamedConstant field) => layout.FindNamedConstant(operation.Handle, field).Scalar.ToSingle();
                 GameplayAbilityCurve Curve(OperationNamedConstant field) =>
-                    GameplayAbilityCurveCodec.Read(layout.FindNamedConstant(operation.Handle, field).Bytes.ToArray());
+                    layout.FindNamedConstant(operation.Handle, field).Curve;
             }
 
             public FixedScalar EndTime { get; }
@@ -119,10 +118,10 @@ namespace ThirdPersonSimulation.Fixed
             public float MaxPosition { get; }
             public float MaxYaw { get; }
             public float MaxYawRate { get; }
-            public FixedScalar PositionProgress(FixedScalar progress) => m_Position == null ? progress : m_Position.Evaluate(progress, FixedScalar.Zero);
-            public FixedScalar YawProgress(FixedScalar progress) => m_Yaw == null ? progress : m_Yaw.Evaluate(progress, FixedScalar.Zero);
-            public FixedScalar Response(FixedScalar progress) => m_Response == null ? FixedScalar.Zero : m_Response.Evaluate(progress, FixedScalar.Zero);
-            public FixedScalar InputResponse(FixedScalar progress) => m_InputResponse == null ? FixedScalar.Zero : m_InputResponse.Evaluate(progress, FixedScalar.Zero);
+            public FixedScalar PositionProgress(FixedScalar progress) => m_Position == null ? progress : m_Position.Evaluate<FixedSimulationMath>(progress, FixedScalar.Zero);
+            public FixedScalar YawProgress(FixedScalar progress) => m_Yaw == null ? progress : m_Yaw.Evaluate<FixedSimulationMath>(progress, FixedScalar.Zero);
+            public FixedScalar Response(FixedScalar progress) => m_Response == null ? FixedScalar.Zero : m_Response.Evaluate<FixedSimulationMath>(progress, FixedScalar.Zero);
+            public FixedScalar InputResponse(FixedScalar progress) => m_InputResponse == null ? FixedScalar.Zero : m_InputResponse.Evaluate<FixedSimulationMath>(progress, FixedScalar.Zero);
         }
     }
 }

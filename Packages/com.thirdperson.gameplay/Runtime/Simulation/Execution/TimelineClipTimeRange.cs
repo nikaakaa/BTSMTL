@@ -42,24 +42,8 @@ namespace BTSMTL.Timeline
         public override int GetHashCode() => HashCode.Combine(Start, End, EaseIn, EaseOut, ClipIn, SourceStart, SourceEnd,
             HashCode.Combine(OtherEaseIn, OtherEaseOut));
 
-        public void Write(CanonicalWriter writer)
-        {
-            writer.WriteInt64(Start.Raw);
-            writer.WriteInt64(End.Raw);
-            writer.WriteInt64(EaseIn.Raw);
-            writer.WriteInt64(EaseOut.Raw);
-            writer.WriteInt64(ClipIn.Raw);
-            writer.WriteInt32(BitConverter.SingleToInt32Bits(SourceStart));
-            writer.WriteInt32(BitConverter.SingleToInt32Bits(SourceEnd));
-            writer.WriteInt64(OtherEaseIn.Raw);
-            writer.WriteInt64(OtherEaseOut.Raw);
-        }
 
-        public static TimelineClipTimeRange Read(CanonicalReader reader) => new(
-            FixedScalar.FromRaw(reader.ReadInt64()), FixedScalar.FromRaw(reader.ReadInt64()),
-            FixedScalar.FromRaw(reader.ReadInt64()), FixedScalar.FromRaw(reader.ReadInt64()),
-            FixedScalar.FromRaw(reader.ReadInt64()), BitConverter.Int32BitsToSingle(reader.ReadInt32()),
-            BitConverter.Int32BitsToSingle(reader.ReadInt32()), FixedScalar.FromRaw(reader.ReadInt64()),
-            FixedScalar.FromRaw(reader.ReadInt64()));
+
+
     }
 }

@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using ThirdPersonSimulation.Collision;
 
@@ -122,14 +121,9 @@ namespace ThirdPersonSimulation
         readonly Dictionary<string, PortableAttackDefinition> m_Attacks = new(StringComparer.Ordinal);
         readonly Dictionary<CanonicalTextValue, PortableAttackDefinition> m_TextAttacks = new();
 
-        public Float32CombatAttackCatalog(byte[] bytes)
+        public Float32CombatAttackCatalog(CombatAttackCatalogData content)
         {
-            var reader = new CanonicalReader(bytes);
-            CombatAttackCatalogData.CanonicalRequireSchema(reader);
-            Content = CombatAttackCatalogData.CanonicalReadMaterialized(reader);
-            reader.RequireComplete();
-            if (Content.Version != CombatAttackCatalogData.FormatVersion)
-                throw new InvalidDataException("Combat attack content version is unsupported.");
+            Content = content;
             var geometries = Content.Geometries.ToDictionary(value => value.Reference, StringComparer.Ordinal);
             foreach (CombatAttackContent attack in Content.Attacks)
             {

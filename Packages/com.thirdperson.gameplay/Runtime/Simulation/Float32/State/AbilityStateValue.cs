@@ -3,7 +3,6 @@ using System.IO;
 
 namespace ThirdPersonSimulation
 {
-    [CanonicalContract]
     [ValueUnion(typeof(ProgramStateValue<Float32Scalar, Float32Vector2, Float32Vector3, Float32Yaw, Float32Quaternion, ProgramEnumState, SimulationActionTargetSnapshot>))]
     public readonly partial struct AbilityStateValue : IEquatable<AbilityStateValue>
     {
@@ -28,8 +27,6 @@ namespace ThirdPersonSimulation
                 ProgramStateValueKind.Identity when constant.Kind == ProgramConstantKind.String => FromIdentity(constant.Text),
                 ProgramStateValueKind.Quaternion when constant.Kind == ProgramConstantKind.Quaternion => FromQuaternion(constant.Quaternion),
                 ProgramStateValueKind.Enum when constant.Kind == ProgramConstantKind.Enum => FromEnum(constant.Enum.TypeIdentity, constant.Enum.Value),
-                ProgramStateValueKind.ActionTargetSnapshot when constant.Kind == ProgramConstantKind.Bytes =>
-                    FromActionTargetSnapshot(SimulationActionTargetSnapshotCodec.Read(constant.Bytes.ToArray())),
                 _ => throw new InvalidDataException(
                     $"Constant '{constant.Identity}' kind '{constant.Kind}' does not match state kind '{expectedKind}'.")
             };

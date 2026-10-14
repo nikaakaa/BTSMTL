@@ -438,11 +438,7 @@ namespace ThirdPersonSimulation
             ProgramStateSlot slot)
         {
             if (slot.DefaultConstantIndex < 0)
-            {
-                if (slot.ValueKind == ProgramStateValueKind.ActionTargetSnapshot)
-                    throw new InvalidDataException($"Action target snapshot slot '{slot.Identity}' requires a typed default constant.");
                 return;
-            }
             if (slot.DefaultConstantIndex >= constants.Count)
                 throw new InvalidDataException($"State slot '{slot.Identity}' default constant is outside the Ability data.");
             ProgramConstant constant = constants[slot.DefaultConstantIndex];
@@ -456,7 +452,6 @@ namespace ThirdPersonSimulation
                 ProgramStateValueKind.Vector3 => constant.Kind == ProgramConstantKind.Vector3,
                 ProgramStateValueKind.Yaw => constant.Kind == ProgramConstantKind.Yaw,
                 ProgramStateValueKind.Identity => constant.Kind == ProgramConstantKind.String,
-                ProgramStateValueKind.ActionTargetSnapshot => constant.Kind == ProgramConstantKind.Bytes,
                 _ => false
             };
             if (!valid)

@@ -3,7 +3,6 @@ using System.Buffers.Binary;
 
 namespace ThirdPersonSimulation
 {
-    [CanonicalContract]
     public readonly partial struct EventId : IEquatable<EventId>, IComparable<EventId>
     {
         readonly ulong m_A;

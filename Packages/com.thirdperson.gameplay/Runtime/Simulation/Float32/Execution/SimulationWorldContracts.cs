@@ -111,7 +111,6 @@ namespace ThirdPersonSimulation
         ConstantVelocityExtrapolation = 3
     }
 
-    [CanonicalContract]
     public readonly partial struct ObservedWorldConstraint
     {
         public ObservedWorldConstraint(
@@ -145,7 +144,7 @@ namespace ThirdPersonSimulation
         public ObservedWorldConstraintSamplingKind SamplingKind { get; }
         public StableHash ContactShapeConfigurationHash { get; }
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireRecord()
         {
             if (!ActorId.IsValid || !TargetTick.IsValid || !SourcePreviousTick.IsValid || !SourceCurrentTick.IsValid ||
@@ -160,15 +159,15 @@ namespace ThirdPersonSimulation
         }
     }
 
-    public sealed class ObservedWorldConstraintFrame
+    [ValueStorage]
+    [ValueOperations(Resources = false)]
+    public sealed partial class ObservedWorldConstraintFrame : IEquatable<ObservedWorldConstraintFrame>
     {
         readonly IReadOnlyList<ObservedWorldConstraint> m_Constraints;
-        readonly CanonicalWriter m_EmptyHashWriter;
 
         public ObservedWorldConstraintFrame()
         {
             m_Constraints = Array.Empty<ObservedWorldConstraint>();
-            m_EmptyHashWriter = new CanonicalWriter();
         }
 
         public ObservedWorldConstraintFrame(CanonicalBuffer<ObservedWorldConstraint> constraints) =>
@@ -196,30 +195,12 @@ namespace ThirdPersonSimulation
             }
             Tick = tick;
             m_Constraints = values;
-            FrameHash = ObservedWorldConstraintCodec.ComputeHash(this);
         }
 
-        public void ResetEmpty(SimulationTick tick)
-        {
-            Tick = tick;
-            FrameHash = ObservedWorldConstraintCodec.ComputeHash(this, m_EmptyHashWriter);
-        }
-
-        public void ResetPrepared(SimulationTick tick, CanonicalWriter writer)
-        {
-            Tick = tick;
-            FrameHash = ObservedWorldConstraintCodec.ComputeHash(this, writer);
-        }
-
-        public void SetPreparedMetadata(SimulationTick tick, StableHash frameHash)
-        {
-            Tick = tick;
-            FrameHash = frameHash;
-        }
+        public void SetPreparedTick(SimulationTick tick) => Tick = tick;
 
         public SimulationTick Tick { get; private set; }
         public IReadOnlyList<ObservedWorldConstraint> Constraints => m_Constraints;
-        public StableHash FrameHash { get; private set; }
         public static ObservedWorldConstraintFrame Empty(SimulationTick tick) =>
             new ObservedWorldConstraintFrame(tick, Array.Empty<ObservedWorldConstraint>());
 
@@ -243,58 +224,6 @@ namespace ThirdPersonSimulation
     public interface IObservedWorldConstraintProfileProvider
     {
         StableHash ObservedContactShapeConfigurationHash { get; }
-    }
-
-    public static class ObservedWorldConstraintCodec
-    {
-        public const string CanonicalIdentity = "float32-observed-world-constraint-frame/2";
-
-        [ThreadStatic] static CanonicalWriter s_HashWriter;
-
-        public static int MaximumEncodedByteCount(IReadOnlyList<ActorId> actors)
-        {
-            int bytes = checked(sizeof(int) + CanonicalIdentity.Length * sizeof(char) +
-                sizeof(int) + 64 + sizeof(ulong) + sizeof(int));
-            var tick = new SimulationTick(1);
-            var hash = new StableHash(new string('0', 64));
-            for (int index = 0; index < actors.Count; index++)
-            {
-                var body = new WorldBodyState(actors[index], default, default, default, default,
-                    false, WorldCollisionSummary.None);
-                var constraint = new ObservedWorldConstraint(actors[index], tick, body, body,
-                    tick, tick, ObservedWorldConstraintSamplingKind.Exact, hash);
-                bytes = checked(bytes + ObservedWorldConstraint.CanonicalMeasure(in constraint));
-            }
-            return bytes;
-        }
-
-        public static StableHash ComputeHash(ObservedWorldConstraintFrame frame)
-        {
-            if (frame == null)
-                throw new ArgumentNullException(nameof(frame));
-            return ComputeHash(frame, s_HashWriter ??= new CanonicalWriter());
-        }
-
-        internal static StableHash ComputeHash(ObservedWorldConstraintFrame frame, CanonicalWriter writer)
-        {
-            writer.Reset();
-            Write(writer, frame);
-            return writer.ComputeHash();
-        }
-
-        public static void Write(CanonicalWriter writer, ObservedWorldConstraintFrame frame)
-        {
-            if (writer == null || frame == null)
-                throw new ArgumentNullException(writer == null ? nameof(writer) : nameof(frame));
-            writer.WriteText(CanonicalIdentity);
-            writer.WriteHash(ObservedWorldConstraint.CanonicalSchemaHash);
-            writer.WriteUInt64(frame.Tick.Value);
-            writer.WriteInt32(frame.Constraints.Count);
-            for (int i = 0; i < frame.Constraints.Count; i++)
-                ObservedWorldConstraint.CanonicalWrite(writer, frame.Constraints[i]);
-        }
-
-
     }
 
     public sealed class WorldSolveBatchRequest

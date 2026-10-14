@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AssemblyName>ThirdPersonSimulation.Snapshot</AssemblyName>
+    <RootNamespace>ThirdPersonSimulation.Snapshots</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../ThirdPersonSimulation.Core/ThirdPersonSimulation.Core.csproj" />
+    <ProjectReference Include="../ThirdPersonSimulation.Fixed/ThirdPersonSimulation.Fixed.csproj" />
+    <ProjectReference Include="../ThirdPersonSimulation.Float32/ThirdPersonSimulation.Float32.csproj" />
+    <Compile Include="../../Packages/com.thirdperson.snapshot/Runtime/**/*.cs" />
+  </ItemGroup>
+</Project>

@@ -113,6 +113,14 @@ namespace ThirdPersonSimulation
             for (int i = 0; i < triggerCount; i++)
                 QueueTrigger(new OperationHandle(reader.Read<int>()), reader.ReadText(), reader.Read<bool>());
         }
+
+        public Float32GraphVariableFrame PublishRecordedFrame()
+        {
+            m_Output.BeginWrite();
+            for (int i = 0; i < m_Bindings.PublishedSlots.Length; i++)
+                m_Output.Write(i, ReadState(m_Bindings.PublishedSlots[i]));
+            return m_Output.Publish(m_LastInvocation, m_ResetGeneration);
+        }
     }
 }
 #endif

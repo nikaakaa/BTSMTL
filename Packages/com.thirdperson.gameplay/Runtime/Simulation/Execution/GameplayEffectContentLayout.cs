@@ -24,7 +24,8 @@ namespace ThirdPersonSimulation
         }
     }
 
-    public sealed class GameplayEffectAdditionalLayout
+    [ValueStorage(UseConstructor = true)]
+    public sealed partial class GameplayEffectAdditionalLayout
     {
         readonly int[] m_SourceCaptureIndices;
 
@@ -45,7 +46,8 @@ namespace ThirdPersonSimulation
         public ReadOnlySpan<int> SourceCaptureIndices => m_SourceCaptureIndices;
     }
 
-    public sealed class GameplayEffectDefinitionLayout
+    [ValueStorage(UseConstructor = true)]
+    public sealed partial class GameplayEffectDefinitionLayout
     {
         readonly ReadOnlyCollection<string> m_ParameterIds;
         readonly ReadOnlyCollection<string> m_OwnSourceAttributes;
@@ -117,7 +119,8 @@ namespace ThirdPersonSimulation
             m_Additional[m_AdditionalIndices[(componentIndex, declarationIndex)]];
     }
 
-    public sealed class GameplayEffectContentLayout
+    [ValueStorage(UseConstructor = true)]
+    public sealed partial class GameplayEffectContentLayout
     {
         public const int FormatVersion = 3;
         readonly ReadOnlyCollection<GameplayEffectDefinitionLayout> m_Definitions;
@@ -173,125 +176,5 @@ namespace ThirdPersonSimulation
         public GameplayEffectDefinitionLayout Definition(string effectId) => m_Definitions[m_DefinitionIndices[effectId]];
     }
 
-    public static class GameplayEffectContentLayoutCodec
-    {
-        public static void Write(CanonicalWriter writer, GameplayEffectContentLayout layout)
-        {
-            writer.WriteInt32(GameplayEffectContentLayout.FormatVersion);
-            writer.WriteInt32(layout.TagCount);
-            writer.WriteInt32(layout.AttributeCount);
-            writer.WriteInt32(layout.InitialTagCount);
-            writer.WriteInt32(layout.Definitions.Count);
-            for (int index = 0; index < layout.Definitions.Count; index++)
-            {
-                GameplayEffectDefinitionLayout definition = layout.Definitions[index];
-                writer.WriteText(definition.EffectId);
-                writer.WriteUInt32(definition.DefinitionRevision);
-                WriteStrings(writer, definition.ParameterIds);
-                WriteStrings(writer, definition.OwnSourceAttributes);
-                WriteStrings(writer, definition.SourceAttributes);
-                WriteStrings(writer, definition.TargetAttributes);
-                WriteIndices(writer, definition.SourceAttributeIndices);
-                WriteIndices(writer, definition.TargetAttributeIndices);
-                writer.WriteInt32(definition.PersistentModifiers);
-                writer.WriteInt32(definition.AttributeMutations);
-                writer.WriteInt32(definition.GrantedTags);
-                writer.WriteInt32(definition.Cues);
-                writer.WriteBoolean(definition.CreatesActiveEffect);
-                writer.WriteBoolean(definition.HasPeriod);
-                writer.WriteInt32(definition.Additional.Count);
-                for (int childIndex = 0; childIndex < definition.Additional.Count; childIndex++)
-                {
-                    GameplayEffectAdditionalLayout child = definition.Additional[childIndex];
-                    writer.WriteInt32(child.Trigger);
-                    writer.WriteInt32(child.ComponentIndex);
-                    writer.WriteInt32(child.DeclarationIndex);
-                    writer.WriteInt32(child.EffectIndex);
-                    WriteIndices(writer, child.SourceCaptureIndices);
-                }
-                for (int trigger = 0; trigger < 4; trigger++)
-                {
-                    WriteIndices(writer, definition.AdditionalDeclarationOrder(trigger));
-                    writer.WriteInt32(definition.AdditionalApplicationCount(trigger));
-                }
-                writer.WriteInt32(definition.MaximumApplicationAdditionalCount);
-            }
-        }
 
-        public static GameplayEffectContentLayout Read(CanonicalReader reader)
-        {
-            int version = reader.ReadInt32();
-            if (version != GameplayEffectContentLayout.FormatVersion)
-                throw new GameplayEffectPreparationException(new GameplayEffectPreparationFailure(
-                    GameplayEffectPreparationFailureKind.UnsupportedVersion, GameplayEffectCapacityDimension.ContentVersion,
-                    "GameplayEffectContentLayout", GameplayEffectContentLayout.FormatVersion, version));
-            int tagCount = reader.ReadInt32();
-            int attributeCount = reader.ReadInt32();
-            int initialTagCount = reader.ReadInt32();
-            var definitions = new GameplayEffectDefinitionLayout[reader.ReadInt32()];
-            for (int index = 0; index < definitions.Length; index++)
-            {
-                string id = CanonicalTextEncoding.DecodeString(reader.ReadTextSegment());
-                uint revision = reader.ReadUInt32();
-                string[] parameters = ReadStrings(reader);
-                string[] ownSource = ReadStrings(reader);
-                string[] source = ReadStrings(reader);
-                string[] target = ReadStrings(reader);
-                int[] sourceAttributeIndices = ReadIndices(reader);
-                int[] targetAttributeIndices = ReadIndices(reader);
-                int modifiers = reader.ReadInt32();
-                int mutations = reader.ReadInt32();
-                int tags = reader.ReadInt32();
-                int cues = reader.ReadInt32();
-                bool createsActiveEffect = reader.ReadBoolean();
-                bool hasPeriod = reader.ReadBoolean();
-                var additional = new GameplayEffectAdditionalLayout[reader.ReadInt32()];
-                for (int child = 0; child < additional.Length; child++)
-                    additional[child] = new GameplayEffectAdditionalLayout(reader.ReadInt32(), reader.ReadInt32(),
-                        reader.ReadInt32(), reader.ReadInt32(), ReadIndices(reader));
-                var order = new int[4][];
-                var applicationCounts = new int[4];
-                for (int trigger = 0; trigger < order.Length; trigger++)
-                {
-                    order[trigger] = ReadIndices(reader);
-                    applicationCounts[trigger] = reader.ReadInt32();
-                }
-                definitions[index] = new GameplayEffectDefinitionLayout(id, revision, parameters, ownSource,
-                    source, target, sourceAttributeIndices, targetAttributeIndices,
-                    modifiers, mutations, tags, cues, createsActiveEffect, hasPeriod,
-                    additional, order, applicationCounts, reader.ReadInt32());
-            }
-            return new GameplayEffectContentLayout(tagCount, attributeCount, initialTagCount, definitions);
-        }
-
-        static void WriteStrings(CanonicalWriter writer, IReadOnlyList<string> values)
-        {
-            writer.WriteInt32(values.Count);
-            for (int index = 0; index < values.Count; index++)
-                writer.WriteText(values[index]);
-        }
-
-        static string[] ReadStrings(CanonicalReader reader)
-        {
-            var result = new string[reader.ReadInt32()];
-            for (int index = 0; index < result.Length; index++)
-                result[index] = CanonicalTextEncoding.DecodeString(reader.ReadTextSegment());
-            return result;
-        }
-
-        static void WriteIndices(CanonicalWriter writer, ReadOnlySpan<int> values)
-        {
-            writer.WriteInt32(values.Length);
-            for (int index = 0; index < values.Length; index++)
-                writer.WriteInt32(values[index]);
-        }
-
-        static int[] ReadIndices(CanonicalReader reader)
-        {
-            var result = new int[reader.ReadInt32()];
-            for (int index = 0; index < result.Length; index++)
-                result[index] = reader.ReadInt32();
-            return result;
-        }
-    }
 }

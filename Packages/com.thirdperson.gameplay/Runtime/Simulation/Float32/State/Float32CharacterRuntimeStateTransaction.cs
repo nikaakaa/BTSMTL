@@ -1,4 +1,4 @@
-using MotionWarpState = ThirdPersonSimulation.MotionWarpState<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32Vector3, ThirdPersonSimulation.Float32Yaw, ThirdPersonSimulation.Float32ActionInstanceReference, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Float32Scalar>, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Float32Vector3>, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Float32Yaw>>;
+using MotionWarpState = ThirdPersonSimulation.MotionWarpState<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32Vector3, ThirdPersonSimulation.Float32Yaw, ThirdPersonSimulation.Float32ActionInstanceReference>;
 using System;
 using System.Collections.Generic;
 
@@ -121,8 +121,7 @@ namespace ThirdPersonSimulation
             for (int i = 0; i < baseState.Abilities.Count; i++)
             {
                 Float32AbilityRuntimeState state = baseState.Abilities[i];
-                state.StateValues.Retain();
-                state.AbilityExecutionState.RetainStateStorage();
+                state.Retain();
                 m_AbilityStates.Add(state.AbilityIdentity.AbilityId, state);
             }
             m_ActionState = actionState.Restart(
@@ -201,8 +200,7 @@ namespace ThirdPersonSimulation
             Float32AbilityRuntimeState state = ability.TakeSnapshot();
             if (!m_AbilityStates[state.AbilityIdentity.AbilityId].SharesStateWith(state))
             {
-                m_AbilityStates[state.AbilityIdentity.AbilityId].StateValues.Release();
-                m_AbilityStates[state.AbilityIdentity.AbilityId].AbilityExecutionState.ReleaseStateStorage();
+                m_AbilityStates[state.AbilityIdentity.AbilityId].Release();
             }
             m_AbilityStates[state.AbilityIdentity.AbilityId] = state;
         }
@@ -305,8 +303,7 @@ namespace ThirdPersonSimulation
                 skill.Value.Dispose();
             foreach (KeyValuePair<CharacterSkillId, Float32AbilityRuntimeState> ability in m_AbilityStates)
             {
-                ability.Value.StateValues.Release();
-                ability.Value.AbilityExecutionState.ReleaseStateStorage();
+                ability.Value.Release();
             }
             if (!ReferenceEquals(m_CharacterBlackboards.Set, m_BaseState.CharacterBlackboards.Set))
                 m_CharacterBlackboards.Release();
@@ -326,18 +323,18 @@ namespace ThirdPersonSimulation
             CharacterControlRuntimeState control = m_ControlStateBound
                 ? m_ControlState.Capture(page.ControlStorage)
                 : m_BaseState.ControlState.IsValid ? page.ControlStorage.CopyFrom(m_BaseState.ControlState) : default;
-            page.Data.CharacterBlackboards = m_CharacterBlackboards;
-            return Float32CharacterRuntimeState.AdoptSnapshot(
-                page,
-                new CharacterRuntimeStateMetadata(m_BaseState.NumericProfile, m_BaseState.GameplayContentHash,
+            page.Data = Float32CharacterRuntimeStateData.FromValueStorage(
+                CharacterBlackboards: m_CharacterBlackboards,
+                Metadata: new CharacterRuntimeStateMetadata(m_BaseState.NumericProfile, m_BaseState.GameplayContentHash,
                     m_BaseState.StateSchemaHash, m_Tick.Value, m_EventSequenceState.EventSequence,
                     m_ActionState.ActionEventSequence, m_HandleAllocatorState.HandleAllocator),
-                actions,
-                inputRequests,
-                control,
-                m_GameplayEffectState.Commit(),
-                m_EquipmentState.Capture(),
-                m_MotionWarpStates);
+                ActionStatePage: actions,
+                InputRequestPage: inputRequests,
+                ControlState: control,
+                GameplayEffectState: m_GameplayEffectState.Commit(),
+                EquipmentState: m_EquipmentState.Capture(),
+                MotionWarpStates: m_MotionWarpStates);
+            return page.State;
         }
 
         void RequireTopSavepoint(Float32AbilityExecutionSavepoint savepoint)

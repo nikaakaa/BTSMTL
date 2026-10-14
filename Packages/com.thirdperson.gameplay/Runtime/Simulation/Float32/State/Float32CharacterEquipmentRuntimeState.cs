@@ -17,7 +17,7 @@ namespace ThirdPersonSimulation
 
         internal void Prepare(ActorId actorId, EquipmentProgramLayout layout, in GameplayEffectSessionCapacity session)
         {
-            m_Storage = new EquipmentStatePageBank(actorId, layout, session.StatePageCount, session.SavepointDepth);
+            m_Storage = new EquipmentStatePageBank(layout, session.StatePageCount, session.SavepointDepth);
         }
 
         internal EquipmentStateAggregate CreateInitial() => m_Storage.CreateInitial();
@@ -25,7 +25,6 @@ namespace ThirdPersonSimulation
         public Float32CharacterEquipmentRuntimeState Restart(EquipmentStateAggregate state)
         {
             state?.Retain();
-            m_Storage?.ReleaseDecodedState();
             m_State = state;
             m_Disposed = false;
             return this;
@@ -65,7 +64,6 @@ namespace ThirdPersonSimulation
         {
             m_State?.Release();
             m_State = null;
-            m_Storage?.ReleaseDecodedState();
             m_Disposed = true;
         }
 

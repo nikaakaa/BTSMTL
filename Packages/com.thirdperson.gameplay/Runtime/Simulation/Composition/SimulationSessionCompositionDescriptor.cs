@@ -38,7 +38,6 @@ namespace ThirdPersonSimulation
             SimulationSourceClockId sourceClockId,
             int tickRate,
             int recordedFrameCapacity,
-            int maximumSessionCheckpointPayloadBytes,
             SimulationExecutionTargetManifest executionTarget,
             SimulationComponentIdentity executionBackend,
             SimulationPipelineIdentity pipeline,
@@ -49,7 +48,7 @@ namespace ThirdPersonSimulation
             SolverImplementationId solverImplementationId,
             WorldCapability solverCapabilities,
             WorldFeature solverFeatures,
-            SimulationComponentIdentity snapshotCodec,
+            SimulationComponentIdentity snapshotProvider,
             SimulationComponentIdentity committer,
             SimulationComponentIdentity? model = null,
             SimulationComponentIdentity? endpoint = null,
@@ -61,8 +60,8 @@ namespace ThirdPersonSimulation
             RequireRole(executionBackend, SimulationComponentRole.ExecutionBackend, nameof(executionBackend));
             RequireRole(sessionSource, SimulationComponentRole.SessionSource, nameof(sessionSource));
             RequireRole(worldSolver, SimulationComponentRole.WorldSolver, nameof(worldSolver));
-            if (recordedFrameCapacity > 0 || snapshotCodec.IsValid)
-                RequireRole(snapshotCodec, SimulationComponentRole.SnapshotCodec, nameof(snapshotCodec));
+            if (recordedFrameCapacity > 0 || snapshotProvider.IsValid)
+                RequireRole(snapshotProvider, SimulationComponentRole.SnapshotProvider, nameof(snapshotProvider));
             RequireRole(committer, SimulationComponentRole.Committer, nameof(committer));
             if (!pipeline.IsValid || !gameplayContentHash.IsValid || roster == null || solverImplementationId.Equals(default))
             {
@@ -81,7 +80,6 @@ namespace ThirdPersonSimulation
             SourceClockId = sourceClockId;
             TickRate = tickRate;
             RecordedFrameCapacity = recordedFrameCapacity;
-            MaximumSessionCheckpointPayloadBytes = maximumSessionCheckpointPayloadBytes;
             ExecutionBackend = executionBackend;
             Pipeline = pipeline;
             GameplayContentHash = gameplayContentHash;
@@ -91,7 +89,7 @@ namespace ThirdPersonSimulation
             SolverImplementationId = solverImplementationId;
             SolverCapabilities = solverCapabilities;
             SolverFeatures = solverFeatures;
-            SnapshotCodec = snapshotCodec;
+            SnapshotProvider = snapshotProvider;
             Committer = committer;
             Model = model;
             Endpoint = endpoint;
@@ -105,7 +103,6 @@ namespace ThirdPersonSimulation
         public SimulationSourceClockId SourceClockId { get; }
         public int TickRate { get; }
         public int RecordedFrameCapacity { get; }
-        public int MaximumSessionCheckpointPayloadBytes { get; }
         public SimulationExecutionTargetManifest ExecutionTarget { get; }
         public NumericProfileId NumericProfileId => ExecutionTarget.NumericProfile.Id;
         public TargetAbiVersion TargetAbiVersion => ExecutionTarget.NumericProfile.AbiVersion;
@@ -119,10 +116,10 @@ namespace ThirdPersonSimulation
         public SolverImplementationId SolverImplementationId { get; }
         public WorldCapability SolverCapabilities { get; }
         public WorldFeature SolverFeatures { get; }
-        public SimulationComponentIdentity SnapshotCodec { get; }
+        public SimulationComponentIdentity SnapshotProvider { get; }
         public SimulationComponentIdentity Committer { get; }
         public SimulationComponentIdentity? Model { get; }
-        public bool CapturesState => SnapshotCodec.IsValid;
+        public bool CapturesState => SnapshotProvider.IsValid;
         public SimulationComponentIdentity? Endpoint { get; }
         public SimulationProtocolIdentity? Protocol { get; }
 
@@ -143,7 +140,7 @@ namespace ThirdPersonSimulation
                 SolverImplementationId.ToString(),
                 checked((ulong)SolverCapabilities).ToString(CultureInfo.InvariantCulture),
                 checked((ulong)SolverFeatures).ToString(CultureInfo.InvariantCulture),
-                SnapshotCodec.ToString(),
+                SnapshotProvider.ToString(),
                 Committer.ToString(),
                 Model?.ToString() ?? string.Empty,
                 Endpoint?.ToString() ?? string.Empty,

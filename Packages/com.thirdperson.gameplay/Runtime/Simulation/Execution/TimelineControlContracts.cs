@@ -11,7 +11,7 @@ namespace ThirdPersonSimulation
         public const int MaximumCycleAdvance = 20;
     }
 
-    [CanonicalContract]
+    [ValueOperations]
     public readonly partial struct AbilityTimelineTreeClipExit : IEquatable<AbilityTimelineTreeClipExit>
     {
         public AbilityTimelineTreeClipExit(CanonicalTextValue clipAuthoringId, int cycle)
@@ -24,8 +24,6 @@ namespace ThirdPersonSimulation
         public int Cycle { get; }
         public bool Equals(AbilityTimelineTreeClipExit other) =>
             Cycle == other.Cycle && CanonicalTextValue.Equals(ClipAuthoringId, other.ClipAuthoringId, StringComparison.Ordinal);
-        public void Retain() => CanonicalRetain(this);
-        public void Release() => CanonicalRelease(this);
         public override bool Equals(object value) => value is AbilityTimelineTreeClipExit other && Equals(other);
         public override int GetHashCode() => HashCode.Combine(ClipAuthoringId, Cycle);
     }
@@ -80,7 +78,7 @@ namespace ThirdPersonSimulation
         Error = 4
     }
 
-    [CanonicalContract]
+    [ValueOperations]
     public readonly partial struct TimelineActionContextIdentity : IEquatable<TimelineActionContextIdentity>
     {
         public TimelineActionContextIdentity(
@@ -104,14 +102,13 @@ namespace ThirdPersonSimulation
             RequireValid();
         }
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireValid()
         {
             if (SkillId.IsValid != SkillEntryOperation.IsValid || !SkillId.IsValid && SkillExecutionGeneration != 0)
                 throw new ArgumentException("Timeline Action Context skill execution identity is incomplete.");
         }
 
-        [CanonicalDeclaredText]
         public string ActionId { get; }
         public CanonicalTextValue ContextId { get; }
         public ulong InstanceId { get; }
@@ -136,15 +133,7 @@ namespace ThirdPersonSimulation
             SkillEntryOperation.Equals(other.SkillEntryOperation) &&
             SkillExecutionGeneration == other.SkillExecutionGeneration;
 
-        public void Retain()
-        {
-            CanonicalRetain(this);
-        }
 
-        public void Release()
-        {
-            CanonicalRelease(this);
-        }
 
         public override int GetHashCode() => HashCode.Combine(ActionId, ContextId, InstanceId, PredictionKey, SkillId, SkillEntryOperation, SkillExecutionGeneration);
     }
@@ -454,7 +443,7 @@ namespace ThirdPersonSimulation
                                    RotationMethod == ProgramMotionWarpRotationMethod.ConstantRate;
     }
 
-    [CanonicalContract]
+    [ValueOperations]
     public readonly partial struct AbilityTimelineInvocationSource
     {
         public AbilityTimelineInvocationSource(
@@ -474,7 +463,7 @@ namespace ThirdPersonSimulation
             RequireValid();
         }
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireValid()
         {
             if (OperationIndex < 0)
@@ -497,8 +486,6 @@ namespace ThirdPersonSimulation
         public CanonicalTextValue GraphInvocationPath { get; }
         public CanonicalTextValue OperationExecutionPath { get; }
         public ulong InvocationGeneration { get; }
-        public void Retain() => CanonicalRetain(this);
-        public void Release() => CanonicalRelease(this);
         public bool IsValid => OperationIndex >= 0 &&
                                !CanonicalTextValue.IsNullOrEmpty(GraphAuthoringId) &&
                                !CanonicalTextValue.IsNullOrEmpty(NodeAuthoringId) &&
@@ -720,7 +707,7 @@ namespace ThirdPersonSimulation
         Cancelled = 4
     }
 
-    [CanonicalContract]
+    [ValueOperations]
     public readonly partial struct AbilityTimelineStartRequest
     {
         public AbilityTimelineStartRequest(
@@ -744,7 +731,7 @@ namespace ThirdPersonSimulation
             RequireValid();
         }
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireValid()
         {
             if (TimelineId.IsEmpty)
@@ -768,11 +755,8 @@ namespace ThirdPersonSimulation
         public ulong InputSequence { get; }
         public FixedScalar StartTime { get; }
 
-        public void Retain() => CanonicalRetain(this);
-        public void Release() => CanonicalRelease(this);
     }
 
-    [CanonicalContract]
     public readonly partial struct AbilityTimelinePlaybackControl : IEquatable<AbilityTimelinePlaybackControl>
     {
         public AbilityTimelinePlaybackControl(FixedScalar rate, bool paused)
@@ -784,7 +768,7 @@ namespace ThirdPersonSimulation
 
         public FixedScalar Rate { get; }
         public bool Paused { get; }
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireValid()
         {
             if (Rate < FixedScalar.Zero)
@@ -804,7 +788,7 @@ namespace ThirdPersonSimulation
         Stopped = 2
     }
 
-    [CanonicalContract]
+    [ValueOperations]
     public readonly partial struct AbilityTimelineProgress : IEquatable<AbilityTimelineProgress>
     {
         public AbilityTimelineProgress(
@@ -838,7 +822,7 @@ namespace ThirdPersonSimulation
             RequireValid();
         }
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireValid()
         {
             if (TimelineId.IsEmpty)
@@ -868,7 +852,7 @@ namespace ThirdPersonSimulation
         public AbilityTimelineProgressState State { get; }
         public AbilityTimelinePlaybackControl Control { get; }
         public bool IsTerminal => State != AbilityTimelineProgressState.Active;
-        [CanonicalPresence]
+        [ValuePresence]
         public bool IsValid => Generation != 0;
 
         public bool Equals(AbilityTimelineProgress other) =>
@@ -879,12 +863,6 @@ namespace ThirdPersonSimulation
             PreviousCycle == other.PreviousCycle && Cycle == other.Cycle &&
             Loop == other.Loop && State == other.State && Control.Equals(other.Control);
 
-        public void Retain() {
-            CanonicalRetain(this);
-        }
-        public void Release() {
-            CanonicalRelease(this);
-        }
 
         public override bool Equals(object obj) => obj is AbilityTimelineProgress other && Equals(other);
         public override int GetHashCode() => HashCode.Combine(TimelineId, ContentRevision, Generation, LogicTick, Time.Raw, Cycle);
@@ -955,7 +933,7 @@ namespace ThirdPersonSimulation
         public ulong SourceActionInstanceId { get; }
         public AbilityTimelineProgress Progress => Pending.Progress;
     }
-    [CanonicalContract]
+    [ValueOperations]
     public readonly partial struct AbilityTimelineTreeClipState
     {
         public AbilityTimelineTreeClipState(
@@ -977,7 +955,7 @@ namespace ThirdPersonSimulation
             RequireValid();
         }
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireValid()
         {
             if (ClipAuthoringId.IsEmpty)
@@ -999,15 +977,9 @@ namespace ThirdPersonSimulation
         public ulong PlaybackGeneration { get; }
         public ulong BranchRevision { get; }
         public int Cycle { get; }
-        public void Retain() {
-            CanonicalRetain(this);
-        }
-        public void Release() {
-            CanonicalRelease(this);
-        }
     }
 
-    [CanonicalContract(PreparedStorage = typeof(AbilityTimelineSnapshotStorage))]
+    [ValueOperations(RetainMethod = "RetainStateStorage", ReleaseMethod = "ReleaseStateStorage")]
     public readonly partial struct AbilityTimelineRuntimeSnapshot
     {
         public AbilityTimelineRuntimeSnapshot(AbilityTimelineStartRequest request,
@@ -1051,7 +1023,7 @@ namespace ThirdPersonSimulation
         public SimulationTick StartTick => Request.Tick;
         public FixedScalar StartTime => Request.StartTime;
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireValid()
         {
             for (int index = 0; index < ActiveTreeClips.Count; index++)
@@ -1059,8 +1031,8 @@ namespace ThirdPersonSimulation
                     throw new ArgumentException("Timeline active TreeClip cycle exceeds the playback cycle.", nameof(ActiveTreeClips));
         }
 
-        public void RetainStateStorage() => CanonicalRetain(this);
-        public void ReleaseStateStorage() => CanonicalRelease(this);
+        public partial void RetainStateStorage();
+        public partial void ReleaseStateStorage();
     }
     public enum AbilityTreeClipHook : byte
     {
@@ -1070,7 +1042,6 @@ namespace ThirdPersonSimulation
         Root = 3
     }
 
-    [CanonicalContract]
     public readonly partial struct AbilityTreeClipInvocation
     {
         public AbilityTreeClipInvocation(
@@ -1108,13 +1079,13 @@ namespace ThirdPersonSimulation
             RequireRecord();
         }
 
-        [CanonicalTextRules(Required = true, Trim = true)]
+        [ValueTextRules(Required = true, Trim = true)]
         public CanonicalTextValue ClipAuthoringId { get; }
-        [CanonicalTextRules(Required = true, Trim = true)]
+        [ValueTextRules(Required = true, Trim = true)]
         public CanonicalTextValue TreeGraphId { get; }
-        [CanonicalTextRules(Required = true, Trim = true)]
+        [ValueTextRules(Required = true, Trim = true)]
         public CanonicalTextValue TreeGraphRevision { get; }
-        [CanonicalTextRules(Required = true, Trim = true)]
+        [ValueTextRules(Required = true, Trim = true)]
         public CanonicalTextValue NodeAuthoringId { get; }
         public AbilityTreeClipHook Hook { get; }
         public FixedScalar Time { get; }
@@ -1136,7 +1107,7 @@ namespace ThirdPersonSimulation
             ActionInstanceId != 0 &&
             TimelineRuntimeHandle != 0;
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireRecord()
         {
             if ((byte)Hook > (byte)AbilityTreeClipHook.Root)

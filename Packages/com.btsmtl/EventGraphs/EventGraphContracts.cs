@@ -69,7 +69,8 @@ namespace BTSMTL.EventGraphs
         public static bool IsSupported(Type type) => TryGet(type, out _);
     }
 
-    public readonly struct EventGraphValue
+    [ValueStorage]
+    public readonly partial struct EventGraphValue
     {
         readonly CanonicalTextValue m_TextValue;
         readonly bool m_BoolValue;

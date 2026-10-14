@@ -39,7 +39,7 @@ namespace ThirdPersonSimulation
             SimulationSessionSourceDescriptor source,
             IEnumerable<SimulationPortDescriptor> sourcePorts,
             SimulationWorldSolverDefinitionDescriptor solver,
-            SimulationComponentIdentity snapshotCodec,
+            SimulationComponentIdentity snapshotProvider,
             SimulationPipelineExecutionSupport snapshotExecutionSupport,
             bool snapshotDeterministic)
         {
@@ -72,7 +72,7 @@ namespace ThirdPersonSimulation
                 solver.Capabilities,
                 solver.ExecutionSupport,
                 solver.Deterministic,
-                snapshotCodec,
+                snapshotProvider,
                 snapshotExecutionSupport,
                 snapshotDeterministic,
                 source.ExecutionSupport,
@@ -165,14 +165,14 @@ namespace ThirdPersonSimulation
             RequireExecutionSupport("Execution Target", context.ExecutionTargetExecutionSupport, context.RequiredExecutionSupport, context.ExecutionTarget.Identity.ToString(), errors);
             RequireExecutionSupport("Execution Backend", context.BackendExecutionSupport, context.RequiredExecutionSupport, context.Backend.ToString(), errors);
             RequireExecutionSupport("World Solver", context.SolverExecutionSupport, context.RequiredExecutionSupport, context.WorldSolver.ToString(), errors);
-            if (context.SnapshotCodec.IsValid ||
+            if (context.SnapshotProvider.IsValid ||
                 (context.RequiredExecutionSupport & SimulationPipelineExecutionSupport.Restore) != 0)
                 RequireExecutionSupport("Snapshot Codec",
-                    context.SnapshotCodec.IsValid ? context.SnapshotExecutionSupport : SimulationPipelineExecutionSupport.None,
-                    context.RequiredExecutionSupport, context.SnapshotCodec.ToString(), errors);
+                    context.SnapshotProvider.IsValid ? context.SnapshotExecutionSupport : SimulationPipelineExecutionSupport.None,
+                    context.RequiredExecutionSupport, context.SnapshotProvider.ToString(), errors);
             if (context.RequiresDeterministic &&
                 (!context.ExecutionTargetDeterministic || !context.BackendDeterministic || !context.SolverDeterministic ||
-                 context.SnapshotCodec.IsValid && !context.SnapshotDeterministic))
+                 context.SnapshotProvider.IsValid && !context.SnapshotDeterministic))
             {
                 errors.Add(new SimulationPipelineCompileError(
                     SimulationPipelineCompileErrorCode.DeterministicSupportMismatch,

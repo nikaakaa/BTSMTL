@@ -247,7 +247,7 @@ namespace ThirdPersonSimulation
                     SimulationPipelinePhase.Egress) || !passId.IsValid || !passVersion.IsValid))
                 throw new ArgumentException("Pipeline Pass trace identity is incomplete.");
             bool snapshotTrace = kind == SimulationPipelineTraceKind.SnapshotCaptured || kind == SimulationPipelineTraceKind.SnapshotRestored;
-            if (snapshotTrace && (CanonicalTextValue.IsNullOrWhiteSpace(snapshotParticipant) || !snapshotHash.IsValid))
+            if (snapshotTrace && CanonicalTextValue.IsNullOrWhiteSpace(snapshotParticipant))
                 throw new ArgumentException("Pipeline snapshot trace identity is incomplete.");
             Session = session;
             Pipeline = pipeline;

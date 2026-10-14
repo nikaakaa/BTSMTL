@@ -4,7 +4,7 @@ using ThirdPersonSimulation.Fixed;
 
 namespace BTSMTL.Timeline
 {
-    [CanonicalContract(PreparedStorage = typeof(AbilityTimelineSnapshotStorage))]
+    [ValueOperations]
     public readonly partial struct TimelinePlaybackState
     {
         public TimelinePlaybackState(
@@ -58,7 +58,7 @@ namespace BTSMTL.Timeline
         public TimelinePlaybackStopContext StopContext { get; }
         public bool InitialBoundaryPending { get; }
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireValid()
         {
             if (RequestId.IsEmpty || ContentRevision.IsEmpty)

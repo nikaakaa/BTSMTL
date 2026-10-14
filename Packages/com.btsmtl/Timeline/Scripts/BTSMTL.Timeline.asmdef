@@ -7,6 +7,7 @@
         "GUID:349d62e8ffbe48b8ad6e03ccd8cbaf71",
         "ThirdPersonCharacter.Pipeline.RootMotion",
         "ThirdPersonSimulation.Core",
+        "ThirdPersonSimulation.MemoryPack",
         "BTSMTL.Timeline.Runtime"
     ],
     "includePlatforms": [],

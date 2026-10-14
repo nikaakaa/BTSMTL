@@ -1,8 +1,8 @@
 namespace ThirdPersonSimulation
 {
-    [CanonicalContract]
+    [ValueOperations]
     public readonly partial struct GameplayStateFact<TScalar>
-        where TScalar : struct, ICanonicalRecord<TScalar>
+        where TScalar : unmanaged
     {
         public GameplayStateFact(CanonicalTextValue subjectId, CanonicalTextValue stateId, TScalar scalar)
         {
@@ -11,15 +11,15 @@ namespace ThirdPersonSimulation
             Scalar = scalar;
         }
 
-        [CanonicalTextRules(Required = true, Trim = true)]
+        [ValueTextRules(Required = true, Trim = true)]
         public CanonicalTextValue SubjectId { get; }
-        [CanonicalTextRules(NullToEmpty = true)]
+        [ValueTextRules(NullToEmpty = true)]
         public CanonicalTextValue StateId { get; }
         public TScalar Scalar { get; }
     }
-    [CanonicalContract]
+    [ValueOperations]
     public readonly partial struct GameplayEffectReconciliationFact<TContext>
-        where TContext : struct, ICanonicalRecord<TContext>
+        where TContext : struct, IValueResources
     {
         public GameplayEffectReconciliationFact(GameplayEffectReconciliationResult result, TContext context)
         {

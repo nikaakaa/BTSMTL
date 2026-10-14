@@ -285,8 +285,8 @@ namespace ThirdPersonSimulation
                 ProgramConstantKind.String => AbilityStateValue.FromIdentity(constant.Text),
                 ProgramConstantKind.Quaternion => AbilityStateValue.FromQuaternion(constant.Quaternion),
                 ProgramConstantKind.Enum => AbilityStateValue.FromEnum(constant.Enum.TypeIdentity, constant.Enum.Value),
-                ProgramConstantKind.Bytes => throw new InvalidOperationException(
-                    $"Bytes constant '{constant.Identity}' cannot enter typed Character state evaluation."),
+                ProgramConstantKind.Curve => throw new InvalidOperationException(
+                    $"Curve constant '{constant.Identity}' cannot enter typed Character state evaluation."),
                 _ => throw new ArgumentOutOfRangeException(nameof(constant.Kind))
             };
         }

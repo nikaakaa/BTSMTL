@@ -53,41 +53,32 @@ namespace ThirdPersonSimulation
                 StandardFloat32PipelinePassContracts.LocalControlInputStateSchemaVersion);
         }
 
-        public void PrepareAvailabilityRead(int maximumPayloadBytes, System.Collections.Generic.IReadOnlyList<SimulationActorBinding> roster)
+        public void PrepareAvailabilityRead(System.Collections.Generic.IReadOnlyList<SimulationActorBinding> roster)
         {
-            m_Source.PrepareAvailabilityRead(maximumPayloadBytes, roster);
-            m_Checkpoint = new LocalControlInputCheckpoint(StateIdentity, m_Source.StatePayloadCapacity, m_Source.StateTextCapacity);
+            m_Source.PrepareAvailabilityRead(roster);
+            m_Checkpoint = new LocalControlInputCheckpoint(StateIdentity, m_Source);
         }
         public void CaptureFrameEvents(ActorId actorId, ReadOnlySpan<SimulationIngress> ingress) => m_Source.CaptureFrameEvents(actorId, ingress);
         public bool HasActionEvent(ActorId actorId, ulong instanceId, string eventId, CanonicalTextValue targetId) => m_Source.HasActionEvent(actorId, instanceId, eventId, targetId);
         public bool HasGameplayEvent(ActorId actorId, string eventId) => m_Source.HasGameplayEvent(actorId, eventId);
-        public void RestoreControlInput(ArraySegment<byte> bytes)
-        {
-            using SimulationPipelinePassStateStorage.Page page = m_StepStorage.BeginWrite();
-            page.Writer.WriteRawBytes(bytes.AsSpan());
-            m_Source.RestoreState(page.Writer.WrittenSegment.AsMemory(), page.Text.ReceptionResolver);
-        }
+        public void RestoreControlInput(IValueResources state) => m_Source.RestoreValueSnapshot(state);
         public void GetInputCapacity(ActorId actorId, out int values, out int requests) => m_Source.GetInputCapacity(actorId, out values, out requests);
         public ulong ReadInputSequence(ActorId actorId) => m_Source.ReadInputSequence(actorId);
         public SimulationInputValue ReadInputValue(ActorId actorId, CanonicalTextValue id, ProgramInputValueKind kind) => m_Source.ReadInputValue(actorId, id, kind);
         protected override void OnDispose() { m_Source.ReleaseInputFrames(); m_Source.ReleaseAvailabilityInputs(); }
 
         public SimulationPipelineStateParticipantIdentity StateIdentity { get; }
-        public int MaximumPayloadBytes => m_Source.StatePayloadCapacity;
-        public int MaximumTextValues => m_Source.StateTextCapacity;
         public SimulationPipelineStepProjectionMode StepProjectionMode => SimulationPipelineStepProjectionMode.Include;
 
         public void PrepareStepStorage(int snapshotCapacity)
         {
-            m_StepStorage = new SimulationPipelinePassStateStorage(StateIdentity, snapshotCapacity, MaximumPayloadBytes, MaximumTextValues);
+            m_StepStorage = new SimulationPipelinePassStateStorage(StateIdentity, snapshotCapacity, m_Source);
             m_Restore = new LocalControlInputRestoreTransaction(StateIdentity, m_Source);
         }
         public SimulationPipelinePassStateSnapshot CaptureStepState()
         {
             RequireCaptureOrRestore();
-            using SimulationPipelinePassStateStorage.Page page = m_StepStorage.BeginWrite();
-            m_Source.WriteState(page.Writer);
-            return page.Commit();
+            return m_StepStorage.Capture();
         }
 
         public void Execute(
@@ -117,12 +108,6 @@ namespace ThirdPersonSimulation
             return m_Checkpoint.Begin(m_Source);
         }
 
-        public void WriteCheckpointState(CanonicalWriter writer)
-        {
-            RequireCaptureOrRestore();
-            m_Source.WriteState(writer);
-        }
-
         public SimulationPipelinePassStateSnapshot CaptureState() => CaptureStepState();
 
         public ISimulationPipelinePassRestoreTransaction PrepareRestore(SimulationPipelinePassStateSnapshot snapshot)
@@ -136,36 +121,22 @@ namespace ThirdPersonSimulation
     sealed class LocalControlInputCheckpoint : ISimulationPipelinePassStateCheckpoint
     {
         IFloat32LocalInputSourcePort m_Source;
-        readonly CanonicalWriter m_State;
-        readonly CanonicalTextReferences m_Text;
+        readonly IValueResources m_State;
         bool m_Restored;
         Float32InputTraceProgress m_TraceProgress;
 
         public LocalControlInputCheckpoint(
             SimulationPipelineStateParticipantIdentity participant,
-            int payloadCapacity, int maximumTextValues)
+            IFloat32LocalInputSourcePort source)
         {
             Participant = participant;
-            m_State = new CanonicalWriter(new byte[payloadCapacity]);
-            m_Text = new CanonicalTextReferences(maximumTextValues, new CanonicalTextStorage(maximumTextValues, payloadCapacity / sizeof(char)));
-            m_State.SetTextCapture(m_Text);
+            m_State = source.CreateValueSnapshot();
+            m_State.Release();
         }
 
         internal LocalControlInputCheckpoint Begin(IFloat32LocalInputSourcePort source)
         {
-            if (m_Source != null)
-                throw new InvalidOperationException("Local input checkpoint is still held by the outer transaction.");
-            m_Text.Reset();
-            m_State.Reset();
-            try
-            {
-                source.WriteState(m_State);
-            }
-            catch
-            {
-                m_Text.Reset();
-                throw;
-            }
+            source.CaptureValueSnapshot(m_State);
             m_TraceProgress = Float32CharacterInputTraceModule.CaptureProgress();
             m_Source = source;
             m_Restored = false;
@@ -176,11 +147,7 @@ namespace ThirdPersonSimulation
 
         public void Restore()
         {
-            if (m_Source == null)
-                throw new ObjectDisposedException(nameof(LocalControlInputCheckpoint));
-            if (m_Restored)
-                return;
-            m_Source.RestoreState(m_State.WrittenSegment.AsMemory(), m_Text);
+            m_Source.RestoreValueSnapshot(m_State);
             m_Source.NotifyStateDisposition(CharacterControlSourceStateDisposition.Discarded);
             Float32CharacterInputTraceModule.RestoreProgress(in m_TraceProgress);
             m_Restored = true;
@@ -188,8 +155,6 @@ namespace ThirdPersonSimulation
 
         public void Dispose()
         {
-            if (m_Source == null)
-                return;
             try
             {
                 if (!m_Restored)
@@ -197,7 +162,7 @@ namespace ThirdPersonSimulation
             }
             finally
             {
-                m_Text.Reset();
+                m_State.Release();
                 m_Source = null;
             }
         }
@@ -237,12 +202,9 @@ namespace ThirdPersonSimulation
     sealed class LocalControlInputRestoreTransaction : ISimulationPipelinePassRestoreTransaction
     {
         readonly IFloat32LocalInputSourcePort m_Source;
-        readonly CanonicalWriter m_Before;
-        readonly CanonicalWriter m_Current;
-        ReadOnlyMemory<byte> m_Replacement;
-        StableHash m_ReplacementHash;
-        ICanonicalTextResolver m_ReplacementText;
-        readonly CanonicalTextReferences m_BeforeText;
+        readonly IValueResources m_Before;
+        readonly IValueResources m_Current;
+        IValueResources m_Replacement;
         bool m_Applied;
 
         public LocalControlInputRestoreTransaction(
@@ -250,29 +212,18 @@ namespace ThirdPersonSimulation
             IFloat32LocalInputSourcePort source)
         {
             Participant = participant;
-            m_Source = source ?? throw new ArgumentNullException(nameof(source));
-            m_Before = new CanonicalWriter(new byte[source.StatePayloadCapacity]);
-            m_BeforeText = new CanonicalTextReferences(source.StateTextCapacity, new CanonicalTextStorage(source.StateTextCapacity, source.StatePayloadCapacity / sizeof(char)));
-            m_Before.SetTextCapture(m_BeforeText);
-            m_Current = new CanonicalWriter(new byte[source.StatePayloadCapacity]);
+            m_Source = source;
+            m_Before = source.CreateValueSnapshot();
+            m_Before.Release();
+            m_Current = source.CreateValueSnapshot();
+            m_Current.Release();
         }
 
         internal LocalControlInputRestoreTransaction Prepare(SimulationPipelinePassStateSnapshot snapshot)
         {
-            m_BeforeText.Reset();
-            m_Before.Reset();
-            try
-            {
-                m_Source.WriteState(m_Before);
-            }
-            catch
-            {
-                m_BeforeText.Reset();
-                throw;
-            }
-            m_Replacement = snapshot.Payload;
-            m_ReplacementHash = snapshot.StateHash;
-            m_ReplacementText = snapshot.TextResolver;
+            m_Source.CaptureValueSnapshot(m_Before);
+            m_Replacement = snapshot.State;
+            m_Replacement.Retain();
             m_Applied = false;
             return this;
         }
@@ -282,35 +233,35 @@ namespace ThirdPersonSimulation
         public void Apply()
         {
             m_Applied = true;
-            m_Source.RestoreState(m_Replacement, m_ReplacementText);
+            m_Source.RestoreValueSnapshot(m_Replacement);
         }
 
         public void ValidateApplied()
         {
-            m_Current.Reset();
-            m_Source.WriteState(m_Current);
-            if (!m_Applied || !SimulationCanonicalPayloadHash.Compute(m_Current.WrittenSpan).Equals(m_ReplacementHash))
+            m_Source.CaptureValueSnapshot(m_Current);
+            try
             {
-                throw new InvalidOperationException("Local Control Input state restore did not reproduce canonical bytes.");
+                if (!m_Applied || !m_Current.Equals(m_Replacement))
+                    throw new InvalidOperationException("Local Control Input state restore did not reproduce the captured state.");
             }
-        }
-
-        public void CompleteAfterSessionPublish()
-        {
+            finally
+            {
+                m_Current.Release();
+            }
         }
 
         public void Rollback()
         {
             if (m_Applied)
-                m_Source.RestoreState(m_Before.WrittenSegment.AsMemory(), m_BeforeText);
+                m_Source.RestoreValueSnapshot(m_Before);
             m_Applied = false;
         }
 
         public void Dispose()
         {
-            m_Replacement = default;
-            m_ReplacementText = null;
-            m_BeforeText.Reset();
+            m_Before.Release();
+            m_Replacement.Release();
+            m_Replacement = null;
         }
     }
 }

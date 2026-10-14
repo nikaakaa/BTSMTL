@@ -158,7 +158,7 @@ namespace ThirdPersonSimulation
             CompiledPipeline = compiledPipeline;
             DiagnosticsIdentity = diagnosticsIdentity;
             m_SourcePorts = FreezeUnique(sourcePorts, value => value.PortId, nameof(sourcePorts));
-            m_InitialStates = FreezeInitialStates(initialStates, descriptor.Roster, descriptor.CapturesState);
+            m_InitialStates = FreezeInitialStates(initialStates, descriptor.Roster);
             m_OutputRoutes = FreezeOutputRoutes(outputRoutes, descriptor.Roster);
         }
 
@@ -168,7 +168,7 @@ namespace ThirdPersonSimulation
         public SimulationComponentIdentity ExecutionBackend => Descriptor.ExecutionBackend;
         public SimulationComponentIdentity SessionSource => Descriptor.SessionSource;
         public SimulationComponentIdentity WorldSolver => Descriptor.WorldSolver;
-        public SimulationComponentIdentity SnapshotCodec => Descriptor.SnapshotCodec;
+        public SimulationComponentIdentity SnapshotProvider => Descriptor.SnapshotProvider;
         public SimulationComponentIdentity Committer => Descriptor.Committer;
         public GameplayContentHash GameplayContentHash => Descriptor.GameplayContentHash;
         public SimulationActorRosterDescriptor Roster => Descriptor.Roster;
@@ -192,11 +192,10 @@ namespace ThirdPersonSimulation
 
         static ReadOnlyCollection<SimulationInitialStateIdentity> FreezeInitialStates(
             IEnumerable<SimulationInitialStateIdentity> source,
-            SimulationActorRosterDescriptor roster,
-            bool requiresStateHashes)
+            SimulationActorRosterDescriptor roster)
         {
             var values = source == null ? new List<SimulationInitialStateIdentity>() : new List<SimulationInitialStateIdentity>(source);
-            if (!requiresStateHashes && values.Count == 0)
+            if (values.Count == 0)
                 return values.AsReadOnly();
             int worldCount = 0;
             int pipelineCount = 0;

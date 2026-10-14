@@ -12,12 +12,9 @@ namespace ThirdPersonSimulation.Fixed
     {
         public GameplayEffectCatalogData Content { get; private set; }
 
-        void ReadBinding(byte[] bytes)
+        void PrepareContent(GameplayEffectCatalogData content)
         {
-            var reader = new CanonicalReader(bytes);
-            GameplayEffectCatalogData.CanonicalRequireSchema(reader);
-            Content = GameplayEffectCatalogData.CanonicalReadMaterialized(reader);
-            reader.RequireComplete();
+            Content = content;
             if (Content.Version != CharacterGameplayEffectRuntimeBinding.CatalogFormatVersion)
                 throw new GameplayEffectPreparationException(new GameplayEffectPreparationFailure(
                     GameplayEffectPreparationFailureKind.UnsupportedVersion,

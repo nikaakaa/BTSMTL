@@ -5,6 +5,7 @@ using System.IO;
 
 namespace ThirdPersonSimulation
 {
+    [ValueBuffer]
     public sealed class CanonicalBuffer<T> : IReadOnlyList<T>
     {
         readonly T[] m_Items;
@@ -104,7 +105,7 @@ namespace ThirdPersonSimulation
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
     }
 
-    [CanonicalBorrowedSequence(typeof(CanonicalBuffer<>), HoldStorage = false, RetainElementsOnRead = true)]
+    [ValueBorrowedSequence(typeof(CanonicalBuffer<>), HoldStorage = false, RetainElementsOnRead = true)]
     public readonly struct CanonicalArraySlice<T>
     {
         readonly T[] m_Items;

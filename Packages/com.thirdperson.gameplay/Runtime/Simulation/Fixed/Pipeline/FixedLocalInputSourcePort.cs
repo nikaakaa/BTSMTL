@@ -1,8 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.IO;
-using System.Text;
 using ThirdPersonSimulation;
 
 namespace ThirdPersonSimulation.Fixed
@@ -27,7 +25,7 @@ namespace ThirdPersonSimulation.Fixed
         OverlappingAction
     }
 
-    [CanonicalContract]
+    [ValueOperations]
     public readonly partial struct FixedInputActionStep
     {
         public const int MaximumSteps = 64;
@@ -51,16 +49,9 @@ namespace ThirdPersonSimulation.Fixed
         public ProgramInputValueKind Kind { get; }
         public FixedScalar X { get; }
         public FixedScalar Y { get; }
-
-        [CanonicalValidation]
-        void RequireRecord()
-        {
-            if (Action.Length == 0 || Action.Length > MaximumActionCharacters)
-                throw new InvalidDataException("Rollback input action identity exceeds its declared capacity.");
-        }
     }
 
-    [CanonicalContract]
+    [ValueOperations]
     public readonly partial struct FixedInputSequenceStatus
     {
         public FixedInputSequenceStatus(ulong commandId, FixedInputSequenceState state, ulong startTick,
@@ -190,12 +181,17 @@ namespace ThirdPersonSimulation.Fixed
         SimulationInput BuildInput(FixedCharacterInputBuildContext context);
         int InputValueCapacity { get; }
         IReadOnlyList<SimulationInputValue> InputValues { get; }
-        int StateTextCapacity { get; }
-        int PrepareStateStorage(int maximumPendingRequests);
-        void WriteState(CanonicalWriter writer);
-        void RestoreState(ArraySegment<byte> state, ICanonicalTextResolver resolver);
-        void NotifyStateDisposition(FixedCharacterControlSourceStateDisposition disposition);
         FixedCharacterControlSourceDiagnosticsSnapshot CaptureDiagnostics();
+    }
+
+    public interface IFixedCharacterControlSourceInputPreparation
+    {
+        void PrepareInputState(int maximumPendingRequests);
+    }
+
+    public interface IFixedCharacterControlSourceTransactionObserver
+    {
+        void NotifyStateDisposition(FixedCharacterControlSourceStateDisposition disposition);
     }
 
     public interface IFixedCharacterInputFrameConsumer
@@ -221,10 +217,7 @@ namespace ThirdPersonSimulation.Fixed
     {
         public const string PortId = "simulation.source.fixed-local-actor-input";
         public const string SchemaId = "fixed-local-actor-input-source";
-        public const int SchemaVersion = 6;
-        internal const string StateSchema = SimulationInputValue.CanonicalSchema + ":" + AbilityInputEvent.CanonicalSchema;
-        internal static readonly StableHash StateSchemaHash =
-            new StableHash(CanonicalContractProtocol.ComposeSchema(StateSchema));
+        public const int SchemaVersion = 7;
 
         public static SimulationPipelinePortRequirement Requirement =>
             new SimulationPipelinePortRequirement(
@@ -266,9 +259,9 @@ namespace ThirdPersonSimulation.Fixed
 
     internal interface IFixedCommittedInputReadPort : IFixedAbilityInputReadPort, IFixedAbilityFrameEventCapturePort
     {
-        void PrepareAvailabilityRead(int maximumPayloadBytes, IReadOnlyList<SimulationActorBinding> roster, int inputFrameCapacity);
-        void RestoreControlInput(ArraySegment<byte> bytes);
-        void RestoreControlSources(ArraySegment<byte> bytes);
+        void PrepareAvailabilityRead(IReadOnlyList<SimulationActorBinding> roster, int inputFrameCapacity);
+        void RestoreControlInput(IValueResources state);
+        void RestoreControlSources(IValueResources state);
     }
 
     public interface IFixedSessionIngressWritePort
@@ -429,7 +422,7 @@ namespace ThirdPersonSimulation.Fixed
         }
     }
 
-    public interface IFixedLocalInputSourcePort : ISimulationRuntimePort, IFixedSessionIngressWritePort
+    public interface IFixedLocalInputSourcePort : ISimulationRuntimePort, IFixedSessionIngressWritePort, IValueSnapshotSource
     {
         IReadOnlyList<FixedLocalEnemyBinding> LocalEnemies { get; }
         void PrepareInputStorage(int frameCapacity);
@@ -440,9 +433,7 @@ namespace ThirdPersonSimulation.Fixed
             int tickRate,
             IReadOnlyList<SimulationActorBinding> roster,
             CommittedActorPoseSnapshot<FixedVector3, FixedYaw> committedObservation);
-        int StatePayloadCapacity { get; }
-        int StateTextCapacity { get; }
-        void PrepareAvailabilityRead(int maximumPayloadBytes, IReadOnlyList<SimulationActorBinding> roster);
+        void PrepareAvailabilityRead(IReadOnlyList<SimulationActorBinding> roster);
         ulong ReadInputSequence(ActorId actorId);
         SimulationInputValue ReadInputValue(ActorId actorId, CanonicalTextValue inputId, ProgramInputValueKind kind);
         void CaptureFrameEvents(ActorId actorId, ReadOnlySpan<SimulationIngress> ingress);
@@ -451,15 +442,14 @@ namespace ThirdPersonSimulation.Fixed
 
         void ReleaseRuntimeIngress();
         void ReleaseAvailabilityInputs();
-        void WriteState(CanonicalWriter writer);
-        void RestoreState(ArraySegment<byte> state, ICanonicalTextResolver resolver);
-        void RestoreControlSources(ArraySegment<byte> state, ICanonicalTextResolver resolver);
+        void RestoreControlSources(IValueResources state);
         void NotifyStateDisposition(FixedCharacterControlSourceStateDisposition disposition);
     }
 
-    public sealed class FixedLocalInputSourcePort : IFixedLocalInputSourcePort
+    [ValueSnapshot]
+    public sealed partial class FixedLocalInputSourcePort : IFixedLocalInputSourcePort
     {
-        public FixedValuePortInputBank ValuePorts { get; } = new();
+        [ValueSnapshot] public FixedValuePortInputBank ValuePorts { get; } = new();
         readonly FixedQueuedIngressBuffer m_RuntimeIngress = new();
         readonly ReadOnlyCollection<FixedLocalSimulationInputBinding> m_Bindings;
         readonly SimulationPipelineActorInput<FixedStepInput>[] m_InputScratch;
@@ -468,12 +458,11 @@ namespace ThirdPersonSimulation.Fixed
         readonly WorldKinematicBodySample[] m_KinematicBodyScratch;
         readonly int m_OffensiveRequestDelayTicks;
         readonly int m_MaximumPendingRequests;
-        ulong m_LastReadSourceTick;
-        ExecutionWorkspaceBuffer<SimulationInputValue>[] m_CurrentInputValues = Array.Empty<ExecutionWorkspaceBuffer<SimulationInputValue>>();
-        CanonicalTextValue[][] m_DeclaredInputIds;
-        AbilityInputEvent[][] m_CurrentEvents;
-        int[] m_CurrentEventCounts;
-
+        [ValueSnapshot(RestoreMethod = nameof(RestoreControlSourceState))] readonly IValueSnapshotSource[] m_StatefulBindings;
+        [ValueSnapshot] ulong m_LastReadSourceTick;
+        [ValueSnapshot] ExecutionWorkspaceBuffer<SimulationInputValue>[] m_CurrentInputValues = Array.Empty<ExecutionWorkspaceBuffer<SimulationInputValue>>();
+        [ValueSnapshot] AbilityInputEvent[][] m_CurrentEvents;
+        [ValueSnapshot] int[] m_CurrentEventCounts;
 
         public FixedLocalInputSourcePort(
             SimulationComponentIdentity sessionSource,
@@ -495,7 +484,7 @@ namespace ThirdPersonSimulation.Fixed
             if (values.Count == 0)
                 throw new ArgumentException("Fixed Local input Source requires an Actor roster.", nameof(bindings));
             var identity = new string[values.Count + 4];
-            identity[0] = "fixed-local-input-source-port/3:" + FixedLocalInputSourcePortContract.StateSchema;
+            identity[0] = "fixed-local-input-source-port/" + FixedLocalInputSourcePortContract.SchemaVersion;
             identity[1] = sessionSource.ToString();
             identity[2] = offensiveRequestDelayTicks.ToString();
             identity[3] = maximumPendingRequests.ToString();
@@ -514,20 +503,15 @@ namespace ThirdPersonSimulation.Fixed
             m_KinematicBodyScratch = new WorldKinematicBodySample[LocalEnemies.Count];
             m_OffensiveRequestDelayTicks = offensiveRequestDelayTicks;
             m_MaximumPendingRequests = maximumPendingRequests;
-            int payloadCapacity = 20 + sizeof(int) + 64;
+            var statefulBindings = new List<IValueSnapshotSource>();
             for (int i = 0; i < values.Count; i++)
             {
-                FixedLocalSimulationInputBinding binding = values[i];
-                payloadCapacity = checked(payloadCapacity + 12 +
-                    CanonicalTextEncoding.ByteCount(binding.ActorId.Value.Span) +
-                    CanonicalTextEncoding.ByteCount(binding.ControlSource.SourceIdentity.AsSpan()) +
-                    binding.ControlSource.PrepareStateStorage(maximumPendingRequests));
+                if (values[i].ControlSource is IFixedCharacterControlSourceInputPreparation preparation)
+                    preparation.PrepareInputState(maximumPendingRequests);
+                if (values[i].ControlSource is IValueSnapshotSource stateful)
+                    statefulBindings.Add(stateful);
             }
-            StatePayloadCapacity = payloadCapacity;
-            int textCapacity = checked(values.Count * 2);
-            for (int i = 0; i < values.Count; i++)
-                textCapacity = checked(textCapacity + values[i].ControlSource.StateTextCapacity);
-            StateTextCapacity = textCapacity;
+            m_StatefulBindings = statefulBindings.ToArray();
             Descriptor = new SimulationPortDescriptor(
                 FixedLocalInputSourcePortContract.PortId,
                 FixedLocalInputSourcePortContract.SchemaId,
@@ -537,14 +521,9 @@ namespace ThirdPersonSimulation.Fixed
                 StableHash.Compute(identity));
         }
 
-        public void PrepareAvailabilityRead(int maximumPayloadBytes, IReadOnlyList<SimulationActorBinding> roster)
+        public void PrepareAvailabilityRead(IReadOnlyList<SimulationActorBinding> roster)
         {
-            if (maximumPayloadBytes < StatePayloadCapacity)
-                throw new InvalidOperationException("Local input state exceeds the Session checkpoint payload declaration.");
-            StatePayloadCapacity = maximumPayloadBytes;
-            StateTextCapacity += ValuePorts.TextCapacity;
             m_CurrentInputValues = new ExecutionWorkspaceBuffer<SimulationInputValue>[m_Bindings.Count];
-            m_DeclaredInputIds = new CanonicalTextValue[m_Bindings.Count][];
             m_CurrentEvents = new AbilityInputEvent[m_Bindings.Count][];
             m_CurrentEventCounts = new int[m_Bindings.Count];
             for (int actor = 0; actor < m_Bindings.Count; actor++)
@@ -552,19 +531,7 @@ namespace ThirdPersonSimulation.Fixed
                 var source = m_Bindings[actor].ControlSource;
                 int ingress = roster[actor].AvailabilityIngressCapacity;
                 m_CurrentEvents[actor] = new AbilityInputEvent[ingress];
-                StateTextCapacity = checked(StateTextCapacity + AbilityInputEvent.CanonicalMaximumTextReferences * ingress);
                 m_CurrentInputValues[actor] = new ExecutionWorkspaceBuffer<SimulationInputValue>(source.InputValueCapacity);
-                var ids = new List<CanonicalTextValue>(source.InputValues.Count + 7);
-                for (int i = 0; i < source.InputValues.Count; i++) ids.Add(source.InputValues[i].InputId);
-                ids.Add(CameraProgramOperationSchema.BasisValidInputId);
-                ids.Add(CameraProgramOperationSchema.BasisPlanarForwardInputId);
-                ids.Add(CameraProgramOperationSchema.BasisPlanarRightInputId);
-                ids.Add(CameraProgramOperationSchema.BasisLookDirectionInputId);
-                ids.Add(CameraProgramOperationSchema.BasisAimPointInputId);
-                ids.Add(CameraProgramOperationSchema.BasisYawInputId);
-                ids.Add(CameraProgramOperationSchema.BasisPitchInputId);
-                m_DeclaredInputIds[actor] = ids.ToArray();
-                StateTextCapacity = checked(StateTextCapacity + SimulationInputValue.CanonicalMaximumTextReferences * source.InputValueCapacity);
             }
         }
 
@@ -616,7 +583,7 @@ namespace ThirdPersonSimulation.Fixed
         void ClearFrameEvents(int actor)
         {
             for (int i = 0; i < m_CurrentEventCounts[actor]; i++)
-                AbilityInputEvent.CanonicalRelease(in m_CurrentEvents[actor][i]);
+                m_CurrentEvents[actor][i].Release();
             Array.Clear(m_CurrentEvents[actor], 0, m_CurrentEventCounts[actor]);
             m_CurrentEventCounts[actor] = 0;
         }
@@ -628,7 +595,7 @@ namespace ThirdPersonSimulation.Fixed
             {
                 if (!FixedAbilityFrameEventSemantics.TryProject(actorId, in ingress[i], out AbilityInputEvent frozen))
                     continue;
-                AbilityInputEvent.CanonicalRetain(in frozen);
+                frozen.Retain();
                 m_CurrentEvents[actor][m_CurrentEventCounts[actor]++] = frozen;
             }
         }
@@ -646,75 +613,7 @@ namespace ThirdPersonSimulation.Fixed
                 new ReadOnlySpan<AbilityInputEvent>(m_CurrentEvents[actor], 0, m_CurrentEventCounts[actor]), actorId, eventId);
         }
 
-        void WriteRetainedEvents(CanonicalWriter writer)
-        {
-            for (int actor = 0; actor < m_Bindings.Count; actor++)
-            {
-                writer.WriteInt32(m_CurrentEventCounts[actor]);
-                for (int i = 0; i < m_CurrentEventCounts[actor]; i++)
-                {
-                    ref readonly AbilityInputEvent value = ref m_CurrentEvents[actor][i];
-                    AbilityInputEvent.CanonicalWrite(writer, in value);
-                }
-            }
-        }
-        void ReadRetainedEvents(CanonicalReader reader)
-        {
-            for (int actor = 0; actor < m_Bindings.Count; actor++)
-            {
-                int count = reader.ReadInt32();
-                if (count < 0 || count > m_CurrentEvents[actor].Length) throw new System.IO.InvalidDataException("Retained frame events exceed the published ingress geometry.");
-                ClearFrameEvents(actor);
-                for (int i = 0; i < count; i++)
-                {
-                    ref AbilityInputEvent value = ref m_CurrentEvents[actor][m_CurrentEventCounts[actor]];
-                    AbilityInputEvent.CanonicalReadInto(reader, ref value);
-                    AbilityInputEvent.CanonicalRetain(in value);
-                    m_CurrentEventCounts[actor]++;
-                }
-            }
-        }
-
-        void WriteRetainedInputs(CanonicalWriter writer)
-        {
-            writer.WriteInt32(m_Bindings.Count);
-            for (int actor = 0; actor < m_Bindings.Count; actor++)
-            {
-                var values = m_CurrentInputValues[actor];
-                writer.WriteInt32(values.Count);
-                for (int i = 0; i < values.Count; i++) SimulationInputValue.CanonicalWrite(writer, values[i]);
-            }
-        }
-        void ReadRetainedInputs(CanonicalReader reader)
-        {
-            int actors = reader.ReadInt32();
-            if (actors != m_Bindings.Count) throw new System.IO.InvalidDataException("Retained input roster differs from the Local source roster.");
-            for (int actor = 0; actor < actors; actor++)
-            {
-                int count = reader.ReadInt32();
-                var values = m_CurrentInputValues[actor];
-                if (count < 0 || count > values.Capacity) throw new System.IO.InvalidDataException("Retained input value count exceeds the declared source shape.");
-                ClearInputValues(actor);
-                for (int i = 0; i < count; i++)
-                {
-                    CanonicalTextValue inputId = ReadDeclaredInputId(reader, actor);
-                    SimulationInputValue value = SimulationInputValue.CanonicalReadPayload(reader, inputId);
-                    value.Retain();
-                    values.Add(value);
-                }
-            }
-        }
-        CanonicalTextValue ReadDeclaredInputId(CanonicalReader reader, int actor)
-        {
-            var encoded = reader.ReadTextSegment();
-            foreach (CanonicalTextValue id in m_DeclaredInputIds[actor])
-                if (CanonicalTextEncoding.EqualsEncoded(encoded.AsSpan(), id.Span)) return id;
-            throw new System.IO.InvalidDataException("Retained Fixed input is absent from the published source input directory.");
-        }
-
         public SimulationPortDescriptor Descriptor { get; }
-        public int StatePayloadCapacity { get; private set; }
-        public int StateTextCapacity { get; private set; }
         public IReadOnlyList<FixedLocalEnemyBinding> LocalEnemies { get; }
 
         public ulong QueueRuntimeIngress(ActorId actor, SimulationActionEventIngress actionEvent, SimulationAttributeValueIngress attribute) =>
@@ -833,70 +732,14 @@ namespace ThirdPersonSimulation.Fixed
             }
         }
 
-        public void WriteState(CanonicalWriter writer)
+        private partial void RestoreControlSourceState(IValueResources state);
+
+        public void RestoreControlSources(IValueResources state)
         {
-            writer.WriteUInt32(0x53434c58);
-            writer.WriteInt32(7);
-            writer.WriteHash(FixedLocalInputSourcePortContract.StateSchemaHash);
-            writer.WriteUInt64(m_LastReadSourceTick);
-            writer.WriteInt32(m_Bindings.Count);
+            RestoreControlSourceState(state);
             for (int i = 0; i < m_Bindings.Count; i++)
-            {
-                FixedLocalSimulationInputBinding binding = m_Bindings[i];
-                writer.WriteText(binding.ActorId.Value);
-                writer.WriteText(binding.ControlSource.SourceIdentity);
-                long prefix = writer.BeginLengthPrefixedBlock();
-                binding.ControlSource.WriteState(writer);
-                writer.EndLengthPrefixedBlock(prefix);
-            }
-            WriteRetainedInputs(writer);
-            WriteRetainedEvents(writer);
-            ValuePorts.Write(writer);
-        }
-
-        readonly CanonicalReader m_StateReader = new CanonicalReader(Array.Empty<byte>());
-
-        public void RestoreState(ArraySegment<byte> state, ICanonicalTextResolver resolver)
-        {
-            CanonicalReader reader = m_StateReader;
-            reader.Reset(state);
-            reader.SetTextResolver(resolver);
-            ulong lastReadSourceTick = RestoreControlSourceBlocks(reader, resolver);
-            ReadRetainedInputs(reader);
-            ReadRetainedEvents(reader);
-            ValuePorts.Read(reader);
-            reader.RequireComplete();
-            m_LastReadSourceTick = lastReadSourceTick;
-        }
-
-        public void RestoreControlSources(ArraySegment<byte> state, ICanonicalTextResolver resolver)
-        {
-            CanonicalReader reader = m_StateReader;
-            reader.Reset(state);
-            reader.SetTextResolver(resolver);
-            RestoreControlSourceBlocks(reader, resolver);
-            for (int i = 0; i < m_Bindings.Count; i++)
-                m_Bindings[i].ControlSource.NotifyStateDisposition(FixedCharacterControlSourceStateDisposition.Restored);
-        }
-
-        ulong RestoreControlSourceBlocks(CanonicalReader reader, ICanonicalTextResolver resolver)
-        {
-            if (reader.ReadUInt32() != 0x53434c58 || reader.ReadInt32() != 7 ||
-                reader.ReadHash() != FixedLocalInputSourcePortContract.StateSchemaHash)
-                throw new InvalidDataException("Fixed Local Control Source state header is invalid.");
-            ulong lastReadSourceTick = reader.ReadUInt64();
-            int count = reader.ReadInt32();
-            if (count != m_Bindings.Count)
-                throw new InvalidDataException("Fixed Local Control Source state roster does not match its locked bindings.");
-            for (int i = 0; i < count; i++)
-            {
-                FixedLocalSimulationInputBinding binding = m_Bindings[i];
-                reader.RequireText(binding.ActorId.Value);
-                reader.RequireText(binding.ControlSource.SourceIdentity);
-                ArraySegment<byte> payload = reader.ReadBytesSegment();
-                binding.ControlSource.RestoreState(payload, resolver);
-            }
-            return lastReadSourceTick;
+                if (m_Bindings[i].ControlSource is IFixedCharacterControlSourceTransactionObserver observer)
+                    observer.NotifyStateDisposition(FixedCharacterControlSourceStateDisposition.Restored);
         }
 
         public void NotifyStateDisposition(FixedCharacterControlSourceStateDisposition disposition)
@@ -905,7 +748,8 @@ namespace ThirdPersonSimulation.Fixed
                 FixedCharacterControlSourceStateDisposition.Discarded or FixedCharacterControlSourceStateDisposition.Restored))
                 throw new ArgumentOutOfRangeException(nameof(disposition));
             for (int i = 0; i < m_Bindings.Count; i++)
-                m_Bindings[i].ControlSource.NotifyStateDisposition(disposition);
+                if (m_Bindings[i].ControlSource is IFixedCharacterControlSourceTransactionObserver observer)
+                    observer.NotifyStateDisposition(disposition);
             FixedCharacterInputTraceModule.NotifyIngressDisposition(disposition);
             if (disposition == FixedCharacterControlSourceStateDisposition.Committed)
                 m_RuntimeIngress.Commit();

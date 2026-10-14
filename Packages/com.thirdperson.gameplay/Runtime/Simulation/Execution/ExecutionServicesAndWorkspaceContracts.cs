@@ -5,7 +5,7 @@ using System.IO;
 
 namespace ThirdPersonSimulation
 {
-    [CanonicalContract]
+    [ValueOperations]
     public readonly partial struct SimulationTraceHeader
     {
         public SimulationTraceHeader(ActorId actorId, SimulationTick tick, in ActivationId activation,
@@ -23,11 +23,8 @@ namespace ThirdPersonSimulation
         public ActivationId Activation { get; }
         public ulong Sequence { get; }
         public AbilityTreeClipInvocation? TreeClipInvocation { get; }
-        public void Retain() => CanonicalRetain(in this);
-        public void Release() => CanonicalRelease(in this);
     }
 
-    [CanonicalContract]
     internal readonly partial struct CharacterRuntimeStateMetadata
     {
         internal CharacterRuntimeStateMetadata(SimulationNumericProfile numericProfile,
@@ -43,12 +40,8 @@ namespace ThirdPersonSimulation
             HandleAllocator = handleAllocator;
         }
 
-        [CanonicalBound]
-        [CanonicalPublished]
         internal SimulationNumericProfile NumericProfile { get; }
-        [CanonicalBound]
         internal GameplayContentHash GameplayContentHash { get; }
-        [CanonicalBound]
         internal StableHash StateSchemaHash { get; }
         internal ulong LastCompletedTick { get; }
         internal ulong EventSequence { get; }
@@ -56,7 +49,7 @@ namespace ThirdPersonSimulation
         internal ulong HandleAllocator { get; }
     }
 
-    [CanonicalContract]
+    [ValueOperations]
     internal readonly partial struct SimulationInputRequestState : IEquatable<SimulationInputRequestState>
     {
         public SimulationInputRequestState(
@@ -88,18 +81,16 @@ namespace ThirdPersonSimulation
             ExpireTick == other.ExpireTick &&
             Priority == other.Priority &&
             Consumed == other.Consumed;
-        [CanonicalPresence]
+        [ValuePresence]
         public bool IsValid => !CanonicalTextValue.IsNullOrEmpty(RequestId) && Sequence != 0;
 
-        public void Retain() => CanonicalRetain(in this);
-        public void Release() => CanonicalRelease(in this);
 
         public SimulationInputRequestState Consume() =>
             IsValid
                 ? new SimulationInputRequestState(RequestId, Sequence, SourceTick, ExpireTick, Priority, true)
                 : this;
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireIdentity()
         {
             if (!IsValid)
@@ -556,7 +547,6 @@ namespace ThirdPersonSimulation
         }
     }
 
-    [CanonicalContract]
     public readonly partial struct GameplayAbilityExecutionIdentity : IEquatable<GameplayAbilityExecutionIdentity>
     {
         public GameplayAbilityExecutionIdentity(
@@ -578,7 +568,6 @@ namespace ThirdPersonSimulation
         public StableHash ContentHash { get; }
         public StableHash StateSchemaHash { get; }
         public OperationSetVersion OperationSetVersion { get; }
-        [CanonicalPublished]
         public SimulationNumericProfile NumericProfile { get; }
         public bool IsValid =>
             AbilityId.IsValid &&
@@ -608,7 +597,7 @@ namespace ThirdPersonSimulation
             }
         }
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireRecord()
         {
             if (!IsValid)

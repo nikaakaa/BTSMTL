@@ -139,8 +139,7 @@ namespace ThirdPersonSimulation.Fixed
                     localEnemies);
                 var solverPort = new FixedWorldSolverRuntimePort(request.Descriptor.WorldSolver, request.Solver);
                 var diagnosticsPort = new FixedDiagnosticsRuntimePort(request.DiagnosticsIdentity, request.Diagnostics);
-                var combatPort = new FixedCombatRuntimePort(request.Backend.Identity, request.CharacterRuntime, localEnemies,
-                    request.Descriptor.MaximumSessionCheckpointPayloadBytes);
+                var combatPort = new FixedCombatRuntimePort(request.Backend.Identity, request.CharacterRuntime, localEnemies);
                 resources.Register(SimulationSessionResourceReleasePhase.RuntimeAndPasses, combatPort.Combat);
                 var targetPorts = new SimulationRuntimePortSet(new ISimulationRuntimePort[]
                 {
@@ -189,6 +188,9 @@ namespace ThirdPersonSimulation.Fixed
                 int retainedSnapshots = request.Committer is ISimulationPipelineSnapshotRetentionCapacity retention
                     ? retention.MaximumRetainedStepSnapshots : 0;
                 int frameCapacity = checked(1 + maximumSteps + request.Descriptor.RecordedFrameCapacity + retainedSnapshots);
+                GameplayEffectSessionCapacity sessionCapacity = request.Roster[0].SessionCapacity;
+                int participantSnapshotCapacity = checked(frameCapacity + sessionCapacity.RetainedCheckpoints +
+                    sessionCapacity.CaptureStates + sessionCapacity.RestoreStates);
                 IFixedCommittedInputReadPort availabilityInput = null;
                 for (int participant = 0; participant < stateParticipants.Count; participant++)
                     if (stateParticipants[participant] is IFixedCommittedInputReadPort input)
@@ -196,7 +198,7 @@ namespace ThirdPersonSimulation.Fixed
                         if (availabilityInput != null)
                             throw new InvalidOperationException("Session contains duplicate current input read owners.");
                         availabilityInput = input;
-                        input.PrepareAvailabilityRead(request.Descriptor.MaximumSessionCheckpointPayloadBytes, request.Roster, frameCapacity);
+                        input.PrepareAvailabilityRead(request.Roster, frameCapacity);
                         for (int actor = 0; actor < request.Roster.Count; actor++)
                             request.Roster[actor].BindCommittedInput(input);
                     }
@@ -205,7 +207,7 @@ namespace ThirdPersonSimulation.Fixed
                 if (preparesStateSnapshots)
                     for (int participant = 0; participant < stateParticipants.Count; participant++)
                         if (stateParticipants[participant] is ISimulationPipelineStepStateStorage storage)
-                            storage.PrepareStepStorage(frameCapacity);
+                            storage.PrepareStepStorage(participantSnapshotCapacity);
 
                 if (request.PipelineInitialState.Mode == SimulationPipelineInitialStateMode.RestoreProvidedSnapshot)
                 {
@@ -239,7 +241,7 @@ namespace ThirdPersonSimulation.Fixed
                         stateParticipants);
                     resources.Register(SimulationSessionResourceReleasePhase.RuntimeAndPasses, initialPipelineState);
                     if (request.PipelineInitialState.Mode == SimulationPipelineInitialStateMode.RestoreProvidedSnapshot &&
-                        !initialPipelineState.SnapshotHash.Equals(request.PipelineInitialState.Snapshot.SnapshotHash))
+                        !initialPipelineState.Equals(request.PipelineInitialState.Snapshot))
                         throw Failure(
                             "initial_pipeline_state_restore_mismatch",
                             "Activated Pipeline runtime did not restore the provided initial state exactly.");
@@ -251,7 +253,7 @@ namespace ThirdPersonSimulation.Fixed
                     stateStore,
                     request.Solver,
                     request.RestoreSource,
-                    request.SnapshotCodec,
+                    request.SnapshotProvider,
                     request.Committer,
                     request.Diagnostics,
                     runtimes.AsReadOnly(),
@@ -263,7 +265,7 @@ namespace ThirdPersonSimulation.Fixed
                     maximumSteps,
                     availabilityInput);
                 resources.Register(SimulationSessionResourceReleasePhase.RuntimeAndPasses, transaction);
-                SimulationSessionLaunchPlan launchPlan = BuildLaunchPlan(request, initialPipelineState);
+                SimulationSessionLaunchPlan launchPlan = BuildLaunchPlan(request);
                 var handle = new FixedPassPipelineRuntimeHandle(
                     request.Descriptor,
                     request.CompiledPipeline,
@@ -287,40 +289,13 @@ namespace ThirdPersonSimulation.Fixed
             }
         }
 
-        static SimulationSessionLaunchPlan BuildLaunchPlan(
-            FixedPassBackendCompositionRequest request,
-            SimulationPipelineStateSnapshot initialPipelineState)
+        static SimulationSessionLaunchPlan BuildLaunchPlan(FixedPassBackendCompositionRequest request)
         {
-            var states = new List<SimulationInitialStateIdentity>(request.Roster.Count + 2);
-            if (initialPipelineState != null)
-            {
-                for (int i = 0; i < request.InitialState.Actors.Count; i++)
-                {
-                    states.Add(new SimulationInitialStateIdentity(
-                        SimulationInitialStateKind.Character,
-                        "fixed-character-state",
-                        1,
-                        request.Descriptor.MaximumSessionCheckpointPayloadBytes > 0
-                            ? request.InitialState.Actors[i].State.CanonicalPayload.Hash.Value
-                            : FixedCharacterRuntimeStateCodec.ComputeHash(request.InitialState.Actors[i].State).Value,
-                        request.InitialState.Actors[i].ActorId));
-                }
-                states.Add(new SimulationInitialStateIdentity(
-                    SimulationInitialStateKind.World,
-                    "fixed-world-state",
-                    1,
-                    WorldSimulationStateCodec.ComputeHash(request.InitialState.WorldState)));
-                states.Add(new SimulationInitialStateIdentity(
-                    SimulationInitialStateKind.Pipeline,
-                    "simulation-pipeline-state",
-                    1,
-                    initialPipelineState.SnapshotHash));
-            }
             return new SimulationSessionLaunchPlan(
                 request.Descriptor,
                 request.CompiledPipeline.LaunchIdentity,
                 request.ExpectedSourcePorts,
-                states,
+                Array.Empty<SimulationInitialStateIdentity>(),
                 request.OutputRoutes,
                 request.DiagnosticsIdentity);
         }

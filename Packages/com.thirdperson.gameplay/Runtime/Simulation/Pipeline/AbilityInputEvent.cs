@@ -1,6 +1,6 @@
 namespace ThirdPersonSimulation
 {
-    [CanonicalContract]
+    [ValueOperations]
     internal readonly partial struct AbilityInputEvent
     {
         internal AbilityInputEvent(byte kind, ActorId sourceActor, ActorId targetActor, ulong sourceInstance,

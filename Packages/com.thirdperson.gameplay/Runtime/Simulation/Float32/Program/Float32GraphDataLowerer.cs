@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using SimulationOperationParameterValues = ThirdPersonSimulation.SimulationOperationParameterValues<ThirdPersonSimulation.Float32Scalar>;
 
 namespace ThirdPersonSimulation
 {
@@ -133,32 +134,30 @@ namespace ThirdPersonSimulation
                         LowerNumber(literal.Quaternion.W, literal.Identity + ".w", SemanticNumericPrecision.TargetRounded, conversions)));
                 case SemanticLiteralKind.Enum:
                     return ProgramConstant.FromEnum(literal.Identity, literal.Index, new ProgramEnumConstant(literal.Enum.TypeIdentity, literal.Enum.Value));
-                case SemanticLiteralKind.Document:
-                    return ProgramConstant.FromBytes(literal.Identity, literal.Index, LowerDocument(literal.Document, conversions));
+                case SemanticLiteralKind.Curve:
+                    return ProgramConstant.FromCurve(literal.Identity, literal.Index, LowerCurve(literal.Curve, literal.Identity, conversions));
                 default:
                     throw new InvalidOperationException($"Semantic literal '{literal.Identity}' kind '{literal.Kind}' is not supported by Float32 Target.");
             }
         }
 
-        static byte[] LowerDocument(SemanticDataDocument document, List<Float32ScalarConversion> conversions)
+        static GameplayAbilityCurve<Float32Scalar> LowerCurve(GameplayAbilityCurve<double> curve,
+            string identity, List<Float32ScalarConversion> conversions)
         {
-            using var writer = new CanonicalWriter();
-            for (int i = 0; i < document.Tokens.Count; i++)
+            var keys = new GameplayAbilityCurveKey<Float32Scalar>[curve.Keys.Count];
+            for (int i = 0; i < keys.Length; i++)
             {
-                SemanticDataToken token = document.Tokens[i];
-                switch (token.Kind)
-                {
-                    case SemanticDataTokenKind.Boolean: writer.WriteBoolean(token.Boolean); break;
-                    case SemanticDataTokenKind.Int32: writer.WriteInt32(token.Int32); break;
-                    case SemanticDataTokenKind.UInt32: writer.WriteUInt32(token.UInt32); break;
-                    case SemanticDataTokenKind.UInt64: writer.WriteUInt64(token.UInt64); break;
-                    case SemanticDataTokenKind.String: writer.WriteText(token.String); break;
-                    case SemanticDataTokenKind.Number: writer.WriteScalar(LowerNumber(token.Number.Value.Value, token.Number.SourceIdentity, token.Number.Value.Precision, conversions)); break;
-                    case SemanticDataTokenKind.Bytes: writer.WriteBytes(token.Bytes.ToArray()); break;
-                    default: throw new InvalidOperationException($"Semantic document token '{token.Kind}' is not supported by Float32 Target.");
-                }
+                GameplayAbilityCurveKey<double> key = curve.Keys[i];
+                keys[i] = new GameplayAbilityCurveKey<Float32Scalar>(
+                    LowerNumber(key.Time, $"{identity}[{i}].time", SemanticNumericPrecision.TargetRounded, conversions),
+                    LowerNumber(key.Value, $"{identity}[{i}].value", SemanticNumericPrecision.TargetRounded, conversions),
+                    LowerNumber(key.InTangent, $"{identity}[{i}].inTangent", SemanticNumericPrecision.TargetRounded, conversions),
+                    LowerNumber(key.OutTangent, $"{identity}[{i}].outTangent", SemanticNumericPrecision.TargetRounded, conversions),
+                    LowerNumber(key.InWeight, $"{identity}[{i}].inWeight", SemanticNumericPrecision.TargetRounded, conversions),
+                    LowerNumber(key.OutWeight, $"{identity}[{i}].outWeight", SemanticNumericPrecision.TargetRounded, conversions),
+                    key.WeightedMode, key.Stepped);
             }
-            return writer.ToArray();
+            return new GameplayAbilityCurve<Float32Scalar>(curve.PreWrapMode, curve.PostWrapMode, keys);
         }
 
         static Float32Scalar LowerNumber(

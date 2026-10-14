@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using SimulationOperationParameterValues = ThirdPersonSimulation.SimulationOperationParameterValues<ThirdPersonSimulation.Float32Scalar>;
 
 namespace ThirdPersonSimulation
 {
@@ -29,16 +30,14 @@ namespace ThirdPersonSimulation
             Tables = new Float32GraphExecutionTables(structure.Tables.Structure, Array.AsReadOnly(constants), operations[0].ParameterValues);
             GraphSources = sources;
             m_DefaultStateValues = BuildDefaultStateValues(Constants, StateSlots);
-            GraphExecutionChunk values = GraphExecutionChunk.Encode(writer =>
-                Float32GraphExecutionDataCodec.WriteParameters(writer, this, structure.Chunks.Structure.Hash));
-            m_Chunks = new GraphExecutionChunks(structure.Chunks.Structure, values, sources.DiagnosticChunk);
+            m_Chunks = sources.Layout.Publisher.Publish(Tables, sources, structure.Chunks, GraphCompilationWork.Parameters);
         }
 
         Float32GraphExecutionData(Float32GraphExecutionData structure, ProgramGraphSources sources)
             : this(structure)
         {
             GraphSources = sources;
-            m_Chunks = new GraphExecutionChunks(structure.Chunks.Structure, structure.Chunks.Parameters, sources.DiagnosticChunk);
+            m_Chunks = sources.Layout.Publisher.Publish(Tables, sources, structure.Chunks, GraphCompilationWork.Sources);
         }
 
         internal Float32GraphExecutionData WithSources(ProgramGraphSources sources) =>
@@ -83,8 +82,8 @@ namespace ThirdPersonSimulation
             m_DefaultStateValues = BuildDefaultStateValues(Constants, StateSlots);
         }
 
-        internal Float32GraphExecutionTables Tables { get; }
-        internal Float32GraphExecutionData(Float32GraphExecutionTables tables, ProgramGraphSources sources)
+        public Float32GraphExecutionTables Tables { get; }
+        public Float32GraphExecutionData(Float32GraphExecutionTables tables, ProgramGraphSources sources)
         {
             Tables = tables;
             GraphSources = sources;
@@ -106,7 +105,7 @@ namespace ThirdPersonSimulation
             m_DefaultStateValues = BuildDefaultStateValues(Constants, StateSlots);
         }
 
-        public GraphExecutionChunks Chunks => m_Chunks ??= Float32GraphExecutionDataCodec.CreateChunks(this);
+        public GraphExecutionChunks Chunks => m_Chunks ??= GraphSources.Layout.Publisher.Publish(Tables, GraphSources, null, GraphCompilationWork.Structure);
         public Float32GraphValueLayout ValueLayout { get; }
         public IReadOnlyList<SimulationOperationDefinition> OperationDefinitions => Tables.Structure.OperationDefinitions;
         public IReadOnlyList<SimulationOperation> Operations { get; }
@@ -168,8 +167,8 @@ namespace ThirdPersonSimulation
         static ReadOnlyCollection<T> Copy<T>(IEnumerable<T> values) =>
             new ReadOnlyCollection<T>(new List<T>(values ?? Array.Empty<T>()));
     }
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
-    internal sealed partial class Float32GraphExecutionStructure
+    [ValueStorage]
+    public sealed partial class Float32GraphExecutionStructure
     {
         internal Float32GraphExecutionStructure(OperationHandle rootOperation,
             IEnumerable<SimulationOperationDefinition> operationDefinitions, IReadOnlyList<SimulationOperation> operations,
@@ -215,8 +214,8 @@ namespace ThirdPersonSimulation
             new List<T>(values ?? Array.Empty<T>()).AsReadOnly();
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
-    internal sealed partial class Float32GraphExecutionTables
+    [ValueStorage]
+    public sealed partial class Float32GraphExecutionTables
     {
         internal Float32GraphExecutionTables(Float32GraphExecutionStructure structure,
             IReadOnlyList<ProgramConstant> constants, SimulationOperationParameterValues[] operationParameters)
@@ -228,7 +227,7 @@ namespace ThirdPersonSimulation
 
         public Float32GraphExecutionStructure Structure { get; }
         public IReadOnlyList<ProgramConstant> Constants { get; }
-        [CanonicalPayload] public SimulationOperationParameterValues[] OperationParameters { get; }
+        [ValuePayload] public SimulationOperationParameterValues[] OperationParameters { get; }
     }
 
 }

@@ -245,7 +245,6 @@ namespace BTSMTL.Timeline.Runtime
             Validate();
         }
 
-        public string Schema => m_Snapshot.Schema;
         public TimelineRuntimePlaybackHandle Handle => m_Snapshot.Handle;
         public ulong Generation => m_Snapshot.Generation;
         public TimelineExecutionIdentity ExecutionIdentity => m_Snapshot.Playback.ExecutionIdentity;
@@ -296,8 +295,7 @@ namespace BTSMTL.Timeline.Runtime
 
         void Validate()
         {
-            if (!string.Equals(m_Snapshot.Schema, TimelineRuntimePlaybackSnapshot.CurrentSchema, StringComparison.Ordinal) ||
-                !m_Snapshot.Handle.IsValid ||
+            if (!m_Snapshot.Handle.IsValid ||
                 m_Snapshot.Generation == 0 ||
                 m_Snapshot.Playback.State == TimelineRuntimePlaybackState.Disposed ||
                 m_Snapshot.Playback.State == TimelineRuntimePlaybackState.Failed ||

@@ -34,7 +34,7 @@ namespace ThirdPersonSimulation
     public sealed class CharacterCombatRuntimeBinding
     {
         public CharacterCombatRuntimeBinding(
-            string sourceId, StableHash contentHash, byte[] attackCatalogBytes, int factionId, bool neutral,
+            string sourceId, StableHash contentHash, CombatAttackCatalogData attackCatalog, int factionId, bool neutral,
             double radius, double halfLength, double centerX, double centerY, double centerZ,
             string invulnerableTag, string guardingTag,
             string landedEvent, string hitLightFrontEvent, string hitLightBackEvent,
@@ -49,7 +49,8 @@ namespace ThirdPersonSimulation
             if (radius <= 0 || halfLength < 0 || attackCapacity <= 0 || resultCapacity <= 0 || !neutral && factionId <= 0)
                 throw new ArgumentException("Combat receiver geometry and storage capacities are incomplete.");
             SourceId = SimulationIdentity.Require(sourceId, nameof(sourceId));
-            ContentHash = StableHash.Compute(contentHash.ToString(), SimulationCanonicalPayloadHash.Compute(attackCatalogBytes).ToString());
+            ContentHash = contentHash;
+            AttackCatalog = attackCatalog;
             FactionId = factionId;
             Neutral = neutral;
             Radius = radius;
@@ -76,11 +77,9 @@ namespace ThirdPersonSimulation
             CounterOpportunityTag = string.IsNullOrEmpty(counterOpportunityTag) ? string.Empty : GameplayEffectRuntimeIdentity.Tag(counterOpportunityTag);
             PerfectEvadeEvent = perfectEvadeEvent;
             PerfectEvadeTimeSlow = perfectEvadeTimeSlow;
-            m_AttackCatalogBytes = (byte[])attackCatalogBytes.Clone();
         }
 
-        readonly byte[] m_AttackCatalogBytes;
-        public byte[] AttackCatalogBytes => (byte[])m_AttackCatalogBytes.Clone();
+        public CombatAttackCatalogData AttackCatalog { get; }
         public string SourceId { get; }
         public StableHash ContentHash { get; }
         public int FactionId { get; }
@@ -124,7 +123,7 @@ namespace ThirdPersonSimulation
         LocalEnemyAttack = 2
     }
 
-    [CanonicalContract]
+    [ValueOperations]
     public readonly partial struct CombatAttackIdentity : IEquatable<CombatAttackIdentity>
     {
         public CombatAttackIdentity(ulong actionInstanceId, ulong segmentGeneration,
@@ -155,7 +154,7 @@ namespace ThirdPersonSimulation
             LocalWindowId = windowId;
         }
 
-        [CanonicalPresence]
+        [ValuePresence]
         public bool IsValid => SourceKind != 0;
 
         public CombatAttackSourceKind SourceKind { get; }
@@ -173,9 +172,7 @@ namespace ThirdPersonSimulation
         public int Cycle { get; }
         public ulong TimelineRuntimeHandle { get; }
 
-        public void Retain() => CanonicalRetain(in this);
 
-        public void Release() => CanonicalRelease(in this);
 
         public bool Equals(CombatAttackIdentity other) => SourceKind == other.SourceKind &&
             (SourceKind == CombatAttackSourceKind.LocalEnemyAttack

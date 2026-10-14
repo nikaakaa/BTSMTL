@@ -140,7 +140,6 @@ namespace ThirdPersonSimulation.Fixed
         public string AttributeId { get; }
     }
 
-    [CanonicalPublishedReference]
     internal sealed class PortableAttributeDefinition
     {
         public PortableAttributeDefinition(string id, FixedScalar initialBase, PortableAttributeBound minimum, PortableAttributeBound maximum)
@@ -155,7 +154,6 @@ namespace ThirdPersonSimulation.Fixed
         public FixedScalar InitialBase { get; }
         public PortableAttributeBound Minimum { get; }
         public PortableAttributeBound Maximum { get; }
-        [CanonicalReferenceKey]
         public int Index { get; internal set; }
         public int MinimumAttributeIndex { get; internal set; }
         public int MaximumAttributeIndex { get; internal set; }
@@ -330,7 +328,6 @@ namespace ThirdPersonSimulation.Fixed
         public PortableCueTrigger Trigger { get; }
     }
 
-    [CanonicalPublishedReference]
     internal sealed class PortableEffectDefinition
     {
         public PortableEffectDefinition(
@@ -393,7 +390,6 @@ namespace ThirdPersonSimulation.Fixed
         public PortableEffectComponent[] Components { get; }
         public string[] GrantedTags { get; }
         public string[] CueIds { get; }
-        [CanonicalReferenceKey]
         public int Index { get; internal set; }
         public GameplayEffectDefinitionLayout Layout { get; internal set; }
         public IReadOnlyList<string> SourceSnapshotAttributes => Layout.SourceAttributes;
@@ -434,7 +430,7 @@ namespace ThirdPersonSimulation.Fixed
                 throw new ArgumentNullException(nameof(binding));
             m_Binding = binding;
             ContentLayout = binding.ContentLayout;
-            ReadBinding(binding.CatalogBytes);
+            PrepareContent(binding.Content);
             ValidateClosure();
             AttributeDependencies = binding.PrepareAttributeDependencies(BuildAttributeDependencies);
             InitializeAttributeIndices();
@@ -455,14 +451,6 @@ namespace ThirdPersonSimulation.Fixed
             }
             m_EffectIdentityOrder = Enumerable.Range(0, m_EffectsByIndex.Length)
                 .OrderBy(index => m_EffectsByIndex[index].Id, StringComparer.Ordinal).ToArray();
-            LifecycleIdentities = new CanonicalDeclaredIdentityReader(
-                m_EffectsByIndex.Select(effect => effect.Id)
-                    .Concat(m_Attributes.Keys)
-                    .Concat(m_TagIds)
-                    .Concat(m_EffectsByIndex.SelectMany(effect => effect.SetByCallerParameters))
-                    .Concat(m_EffectsByIndex.SelectMany(effect => effect.CueIds)));
-            PublishedValues.Add(this);
-            PublishedValues.AddReferences(m_EffectsByIndex);
         }
 
         public IReadOnlyDictionary<string, string> TagParents => m_TagParents;
@@ -475,8 +463,6 @@ namespace ThirdPersonSimulation.Fixed
         public GameplayEffectContentLayout ContentLayout { get; }
         public GameplayEffectRuntimeCapacityLayout CapacityLayout { get; private set; }
         public IReadOnlyDictionary<string, PortableEffectDefinition> Effects => m_Effects;
-        internal CanonicalDeclaredIdentityReader LifecycleIdentities { get; }
-        internal CanonicalPublishedValues PublishedValues { get; } = new CanonicalPublishedValues();
         public int TagIndex(string tagId) => m_TagIndices[tagId];
         public bool ContainsTag(string tagId) => m_TagIndices.ContainsKey(tagId);
         public string TagId(int index) => m_TagIds[index];

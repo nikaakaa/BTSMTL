@@ -31,23 +31,20 @@ namespace ThirdPersonSimulation.Fixed
     public interface IFixedCombatRuntimePort : ISimulationRuntimePort
     {
         FixedCombatRuntime Combat { get; }
-        int MaximumCheckpointPayloadBytes { get; }
     }
 
     public sealed class FixedCombatRuntimePort : IFixedCombatRuntimePort
     {
         public FixedCombatRuntimePort(SimulationComponentIdentity backend, FixedCharacterRuntime characters,
-            IReadOnlyList<FixedLocalEnemyBinding> localEnemies, int maximumSessionCheckpointPayloadBytes)
+            IReadOnlyList<FixedLocalEnemyBinding> localEnemies)
         {
             Combat = new FixedCombatRuntime(characters, localEnemies);
-            MaximumCheckpointPayloadBytes = maximumSessionCheckpointPayloadBytes;
             Descriptor = FixedPipelineRuntimePortDescriptor.Create(FixedPipelineRuntimePortIds.Combat,
                 FixedPipelineRuntimePortIds.CombatSchema, backend.ToString(),
                 characters.GameplayContentHash.Value, SimulationPortDirection.Input);
         }
         public SimulationPortDescriptor Descriptor { get; }
         public FixedCombatRuntime Combat { get; }
-        public int MaximumCheckpointPayloadBytes { get; }
     }
 
     public sealed class FixedCharacterRuntime

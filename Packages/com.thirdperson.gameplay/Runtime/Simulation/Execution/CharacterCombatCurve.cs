@@ -110,45 +110,6 @@ namespace ThirdPersonSimulation
                 3d * oneMinusT * t * t * c + t * t * t * d;
         }
 
-        internal void Write(CanonicalWriter writer)
-        {
-            writer.WriteInt32(m_Keys.Count);
-            for (int index = 0; index < m_Keys.Count; index++)
-            {
-                CharacterCombatCurveKey key = m_Keys[index];
-                writer.WriteDouble(key.Time);
-                writer.WriteDouble(key.Value);
-                writer.WriteDouble(key.InTangent);
-                writer.WriteDouble(key.OutTangent);
-                writer.WriteDouble(key.InWeight);
-                writer.WriteDouble(key.OutWeight);
-                writer.WriteInt32(key.WeightedMode);
-            }
-        }
-
-        internal static CharacterCombatCurve Read(CanonicalReader reader)
-        {
-            int count = ReadCount(reader, "Timeline curve key", 4096);
-            var keys = new CharacterCombatCurveKey[count];
-            for (int index = 0; index < count; index++)
-                keys[index] = new CharacterCombatCurveKey(
-                    reader.ReadDouble(),
-                    reader.ReadDouble(),
-                    reader.ReadDouble(),
-                    reader.ReadDouble(),
-                    reader.ReadDouble(),
-                    reader.ReadDouble(),
-                    reader.ReadInt32());
-            return new CharacterCombatCurve(keys);
-        }
-
-        static int ReadCount(CanonicalReader reader, string label, int maximum)
-        {
-            int count = reader.ReadInt32();
-            if (count < 0 || count > maximum)
-                throw new InvalidDataException($"Portable Timeline {label} count '{count}' is invalid.");
-            return count;
-        }
     }
 
 }

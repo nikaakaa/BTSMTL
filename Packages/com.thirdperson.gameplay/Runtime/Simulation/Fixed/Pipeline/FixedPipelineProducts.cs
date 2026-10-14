@@ -1,4 +1,4 @@
-﻿using ThirdPersonSimulation;
+using ThirdPersonSimulation;
 using System;
 using System.Collections.Generic;
 
@@ -348,107 +348,41 @@ namespace ThirdPersonSimulation.Fixed
         public ReadOnlyMemory<byte> Payload => m_Payload.AsMemory(0, m_PayloadLength);
     }
 
-    public sealed class FixedSimulationSessionSnapshot
+    [ValueOperations(RetainMethod = nameof(RetainStorage), ReleaseMethod = nameof(ReleaseStorage))]
+    public sealed partial class FixedSimulationSessionSnapshot : IValueResources
     {
         public FixedSimulationSessionSnapshot(
             SimulationSessionCompositionIdentity compositionIdentity,
             SimulationWorldSnapshot world,
             SimulationPipelineStateSnapshot pipeline)
         {
-            if (!compositionIdentity.IsValid)
-                throw new ArgumentException("Session snapshot composition identity is invalid.", nameof(compositionIdentity));
-            World = world ?? throw new ArgumentNullException(nameof(world));
-            Pipeline = pipeline ?? throw new ArgumentNullException(nameof(pipeline));
-            if (pipeline.LastCompletedTick != world.Tick.Value)
-                throw new ArgumentException("World and Pipeline snapshot Ticks do not match.");
             CompositionIdentity = compositionIdentity;
-            SnapshotHash = ComputeSnapshotHash(
-                "fixed-session-snapshot/2",
-                compositionIdentity.Value,
-                world.WorldHash.Value,
-                pipeline.SnapshotHash);
+            World = world;
+            Pipeline = pipeline;
+        }
+
+        public FixedSimulationSessionSnapshot(SimulationSessionCompositionIdentity compositionIdentity)
+        {
+            CompositionIdentity = compositionIdentity;
         }
 
         public SimulationSessionCompositionIdentity CompositionIdentity { get; }
+        [ValueResource(nameof(SimulationWorldSnapshot.RetainStateStorage), nameof(SimulationWorldSnapshot.ReleaseStateStorage))]
         public SimulationWorldSnapshot World { get; private set; }
+        [ValueResource(nameof(SimulationPipelineStateSnapshot.RetainStepStorage), nameof(SimulationPipelineStateSnapshot.ReleaseStepStorage))]
         public SimulationPipelineStateSnapshot Pipeline { get; private set; }
         public SimulationTick Tick => World.Tick;
-        public StableHash SnapshotHash { get; private set; }
-#if UNITY_EDITOR
-        internal SimulationSnapshotCaptureProfile CaptureProfile { get; set; }
-#endif
-        SimulationSessionCheckpointPayloadStorage.Page m_Storage;
-        int m_PayloadLength;
 
-        internal ReadOnlyMemory<byte> StoredPayload => m_Storage.Buffer.AsMemory(0, m_PayloadLength);
-        internal SimulationSessionCheckpointPayloadStorage.Page Storage => m_Storage;
-
-        public void RetainStorage()
-        {
-            if (m_Storage != null)
-                m_Storage.Retain();
-            else
-                Pipeline.RetainStepStorage();
-        }
-
-        public void ReleaseStorage()
-        {
-            if (m_Storage != null)
-                m_Storage.Release();
-            else
-                Pipeline.ReleaseStepStorage();
-        }
-
-        internal void SetStorage(SimulationSessionCheckpointPayloadStorage.Page storage)
-        {
-            m_Storage = storage;
-            m_PayloadLength = checked((int)storage.Writer.Length);
-        }
-
-        internal void ClearStorage()
-        {
-#if UNITY_EDITOR
-            CaptureProfile = default;
-#endif
-            m_Storage = null;
-            m_PayloadLength = 0;
-            World = null;
-            Pipeline = null;
-            SnapshotHash = default;
-        }
-
-        internal FixedSimulationSessionSnapshot(SimulationSessionCompositionIdentity compositionIdentity)
-        {
-            CompositionIdentity = compositionIdentity;
-        }
-
-        internal void SetPrepared(SimulationWorldSnapshot world, SimulationPipelineStateSnapshot pipeline, CanonicalWriter writer)
+        public void SetPrepared(SimulationWorldSnapshot world, SimulationPipelineStateSnapshot pipeline)
         {
             World = world;
             Pipeline = pipeline;
-            SnapshotHash = ComputeSnapshotHash("fixed-session-snapshot/2", CompositionIdentity.Value,
-                world.WorldHash.Value, pipeline.SnapshotHash, writer);
         }
 
-        static StableHash ComputeSnapshotHash(string domain, StableHash composition, StableHash world, StableHash pipeline) =>
-            ComputeSnapshotHash(domain, composition, world, pipeline, StableHash.BeginHash());
-
-        internal static StableHash ComputeSnapshotHash(
-            string domain, StableHash composition, StableHash world, StableHash pipeline, CanonicalWriter writer)
-        {
-            writer.Reset();
-            writer.WriteRawText(domain.AsSpan());
-            WriteHashField(writer, composition);
-            WriteHashField(writer, world);
-            WriteHashField(writer, pipeline);
-            return writer.ComputeHash();
-        }
-
-        static void WriteHashField(CanonicalWriter writer, StableHash value)
-        {
-            writer.WriteByte(0x1f);
-            writer.WriteRawHash(value);
-        }
+        public partial void RetainStorage();
+        public partial void ReleaseStorage();
+        void IValueResources.Retain() => RetainStorage();
+        void IValueResources.Release() => ReleaseStorage();
     }
 
     public readonly struct FixedSimulationStepSnapshot
@@ -515,12 +449,6 @@ namespace ThirdPersonSimulation.Fixed
     {
         SimulationComponentIdentity Identity { get; }
         void Commit(FixedSimulationCommitBatch batch);
-    }
-
-    public interface IFixedSimulationSnapshotRetentionOwner : ISimulationPipelineSnapshotRetentionCapacity
-    {
-        void PrepareSnapshotStorage(IFixedSimulationSessionSnapshotCodec codec, in GameplayEffectSessionCapacity capacity);
-        void ClearSnapshotStorage();
     }
 
     public interface IFixedSimulationRestoreSource : ISimulationRuntimePort

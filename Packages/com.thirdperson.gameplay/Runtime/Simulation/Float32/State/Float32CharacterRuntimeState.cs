@@ -1,4 +1,4 @@
-using MotionWarpState = ThirdPersonSimulation.MotionWarpState<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32Vector3, ThirdPersonSimulation.Float32Yaw, ThirdPersonSimulation.Float32ActionInstanceReference, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Float32Scalar>, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Float32Vector3>, ThirdPersonSimulation.CanonicalRecordLeafCodec<ThirdPersonSimulation.Float32Yaw>>;
+using MotionWarpState = ThirdPersonSimulation.MotionWarpState<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32Vector3, ThirdPersonSimulation.Float32Yaw, ThirdPersonSimulation.Float32ActionInstanceReference>;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -6,7 +6,8 @@ using SimulationActionActivationRequestState = ThirdPersonSimulation.SimulationA
 
 namespace ThirdPersonSimulation
 {
-    public readonly struct Float32AbilityRuntimeState
+    [ValueOperations]
+    public readonly partial struct Float32AbilityRuntimeState
     {
         Float32AbilityRuntimeState(
             AbilityStateValuePageReference<AbilityStateValue> stateValues,
@@ -16,7 +17,9 @@ namespace ThirdPersonSimulation
             AbilityExecutionState = abilityExecutionState;
         }
 
+        [ValueResource]
         internal AbilityStateValuePageReference<AbilityStateValue> StateValues { get; }
+        [ValueResource("RetainStateStorage", "ReleaseStateStorage")]
         internal GameplayAbilityExecutionAggregate<AbilityStateValue> AbilityExecutionState { get; }
         public GameplayAbilityExecutionIdentity AbilityIdentity => StateValues.Set.Bank.Identity;
 
@@ -38,17 +41,6 @@ namespace ThirdPersonSimulation
         internal Float32CharacterRuntimeState(Float32CharacterRuntimeStatePage page) => m_Page = page;
 
         internal Float32CharacterRuntimeStatePage Page => m_Page;
-        internal SimulationCharacterStatePayload CanonicalPayload => m_Page.CanonicalPayload;
-        public ReadOnlyMemory<byte> CanonicalPayloadBytes => m_Page.CanonicalPayload.Bytes;
-        public CharacterStateHash CanonicalPayloadHash => m_Page.CanonicalPayload.Hash;
-        internal void DiscardDecodedStorage() => m_Page.Clear();
-
-        internal void SetCanonicalPayload(SimulationCharacterStatePayload payload)
-        {
-            m_Page.ClearCanonicalPayload();
-            payload.Retain();
-            m_Page.CanonicalPayload = payload;
-        }
         internal Float32CharacterRuntimeStatePageBank StatePages => m_Page.Bank;
         public SimulationNumericProfile NumericProfile => m_Page.Data.Metadata.NumericProfile;
         public GameplayContentHash GameplayContentHash => m_Page.Data.Metadata.GameplayContentHash;
@@ -93,37 +85,12 @@ namespace ThirdPersonSimulation
         internal void RetainStatePages()
         {
             m_Page.Retainers++;
-            MotionWarpStates.Retain();
-            CharacterBlackboards.Retain();
-            ActionStatePage.Retain();
-            InputRequestPage.Retain();
-            GameplayEffectState.RetainSnapshots();
-            EquipmentState?.Retain();
-            EquipmentState?.Storage.CompleteDecodeAdoption(EquipmentState);
-            for (int index = 0; index < m_Page.Abilities.Length; index++)
-            {
-                m_Page.Abilities[index].StateValues.Retain();
-                m_Page.Abilities[index].AbilityExecutionState.RetainStateStorage();
-            }
-            for (int index = 0; index < m_Page.TimelineValues.Count; index++)
-                m_Page.TimelineValues[index].RetainStateStorage();
+            m_Page.Retain();
         }
 
         internal void ReleaseStatePages()
         {
-            CharacterBlackboards.Release();
-            for (int index = 0; index < m_Page.TimelineValues.Count; index++)
-                m_Page.TimelineValues[index].ReleaseStateStorage();
-            for (int index = 0; index < m_Page.Abilities.Length; index++)
-            {
-                m_Page.Abilities[index].AbilityExecutionState.ReleaseStateStorage();
-                m_Page.Abilities[index].StateValues.Release();
-            }
-            GameplayEffectState.ReleaseSnapshots();
-            EquipmentState?.Release();
-            InputRequestPage.Release();
-            ActionStatePage.Release();
-            MotionWarpStates.Release();
+            m_Page.Release();
             if (--m_Page.Retainers == 0)
                 m_Page.Clear();
         }
@@ -217,27 +184,6 @@ namespace ThirdPersonSimulation
             return page;
         }
 
-        internal static Float32CharacterRuntimeState AdoptSnapshot(
-            Float32CharacterRuntimeStatePage page,
-            in CharacterRuntimeStateMetadata metadata,
-            Float32ActionStatePageReference actions,
-            Float32InputRequestPageReference inputRequests,
-            CharacterControlRuntimeState controlState,
-            GameplayEffectStateAggregate gameplayEffectState,
-            EquipmentStateAggregate equipmentState,
-            MotionWarpStatePageReference<MotionWarpState> motionWarpStates)
-        {
-            ref Float32CharacterRuntimeStateData data = ref page.Data;
-            data.Metadata = metadata;
-            data.ActionStatePage = actions;
-            data.InputRequestPage = inputRequests;
-            data.ControlState = controlState;
-            data.GameplayEffectState = gameplayEffectState;
-            data.EquipmentState = equipmentState;
-            data.MotionWarpStates = motionWarpStates;
-            return page.State;
-        }
-
         internal static Float32CharacterRuntimeState CreateInitial(
             Float32CharacterRuntimeStatePage page,
             SimulationNumericProfile numericProfile,
@@ -251,26 +197,41 @@ namespace ThirdPersonSimulation
             MotionWarpStatePageReference<MotionWarpState> motionWarpStates)
         {
             Array.Sort(page.Abilities, s_CompareAbilities);
-            return AdoptSnapshot(page,
-                new CharacterRuntimeStateMetadata(numericProfile, gameplayContentHash, stateSchemaHash, 0, 0, 0, 0),
-                actions, inputRequests, page.ControlStorage.CopyFrom(controlState),
-                gameplayEffectState, equipmentState, motionWarpStates);
+            page.Data = Float32CharacterRuntimeStateData.FromValueStorage(
+                CharacterBlackboards: page.Data.CharacterBlackboards,
+                Metadata: new CharacterRuntimeStateMetadata(numericProfile, gameplayContentHash, stateSchemaHash, 0, 0, 0, 0),
+                ActionStatePage: actions,
+                InputRequestPage: inputRequests,
+                ControlState: page.ControlStorage.CopyFrom(controlState),
+                GameplayEffectState: gameplayEffectState,
+                EquipmentState: equipmentState,
+                MotionWarpStates: motionWarpStates);
+            return page.State;
         }
     }
 
-    internal struct Float32CharacterRuntimeStateData
+    [ValueStorage]
+    [ValueOperations(ExplicitResources = true)]
+    internal partial struct Float32CharacterRuntimeStateData
     {
+        [ValueResource]
         internal AbilityStateValuePageReference<AbilityStateValue> CharacterBlackboards;
         internal CharacterRuntimeStateMetadata Metadata;
+        [ValueResource]
         internal Float32ActionStatePageReference ActionStatePage;
+        [ValueResource]
         internal Float32InputRequestPageReference InputRequestPage;
         internal CharacterControlRuntimeState ControlState;
+        [ValueResource("RetainSnapshots", "ReleaseSnapshots")]
         internal GameplayEffectStateAggregate GameplayEffectState;
+        [ValueResource(Optional = true)]
         internal EquipmentStateAggregate EquipmentState;
+        [ValueResource]
         internal MotionWarpStatePageReference<MotionWarpState> MotionWarpStates;
     }
 
-    internal sealed class Float32CharacterRuntimeStatePage
+    [ValueOperations(ExplicitResources = true)]
+    internal sealed partial class Float32CharacterRuntimeStatePage
     {
         internal Float32CharacterRuntimeStatePage(Float32CharacterRuntimeStatePageBank bank, int abilityCount, int controlValueCount)
         {
@@ -284,28 +245,24 @@ namespace ThirdPersonSimulation
 
         internal readonly Float32CharacterRuntimeStatePageBank Bank;
         internal readonly Float32CharacterRuntimeState State;
+        [ValueResource(Elements = true)]
         internal readonly Float32AbilityRuntimeState[] Abilities;
+        [ValueResource("RetainStateStorage", "ReleaseStateStorage", Elements = true)]
         internal readonly List<AbilityTimelineRuntimeSnapshot> TimelineValues;
         internal readonly ReadOnlyCollection<AbilityTimelineRuntimeSnapshot> TimelineView;
         internal CharacterControlRuntimeStateStorage ControlStorage;
+        [ValueResource]
         internal Float32CharacterRuntimeStateData Data;
-        internal SimulationCharacterStatePayload CanonicalPayload;
         internal int Retainers;
 
         internal void Clear()
         {
-            ClearCanonicalPayload();
             Data = default;
             Array.Clear(Abilities, 0, Abilities.Length);
             TimelineValues.Clear();
             ControlStorage.Clear();
         }
 
-        internal void ClearCanonicalPayload()
-        {
-            CanonicalPayload.Release();
-            CanonicalPayload = default;
-        }
     }
 
     internal sealed class Float32CharacterRuntimeStatePageBank
@@ -314,17 +271,6 @@ namespace ThirdPersonSimulation
         readonly List<Float32CharacterRuntimeStatePage> m_Pages = new List<Float32CharacterRuntimeStatePage>();
         readonly int m_AbilityCount;
         int m_ControlValueCount;
-        AbilityTimelineSnapshotStorageBank m_DecodeStorage;
-        internal SimulationCharacterStatePayloadStorage EncodingStorage { get; set; }
-
-        internal void ReleaseEncodingStorage()
-        {
-            for (int index = 0; index < m_Pages.Count; index++)
-                m_Pages[index].ClearCanonicalPayload();
-            EncodingStorage = null;
-        }
-        internal AbilityTimelineSnapshotDecodeLayout DecodeLayout { get; private set; }
-
         internal Float32CharacterRuntimeStatePageBank(int abilityCount) => m_AbilityCount = abilityCount;
 
         internal void PrepareCapacity(int statePageCount)
@@ -340,24 +286,6 @@ namespace ThirdPersonSimulation
             for (int index = 0; index < m_Pages.Count; index++)
                 m_Pages[index].ControlStorage = new CharacterControlRuntimeStateStorage(fieldCount);
         }
-
-        internal void PrepareDecodeLayout(IAbilityTimelineRuntime runtime, int maximumPayloadBytes)
-        {
-            int clips = 0, exits = 0, pendingExits = 0, trees = 0;
-            if (runtime != null)
-                runtime.GetSnapshotCapacity(out clips, out exits, out pendingExits, out trees);
-            DecodeLayout = new AbilityTimelineSnapshotDecodeLayout(MaximumTimelineSnapshotCount,
-                maximumPayloadBytes, clips, exits, pendingExits, trees);
-        }
-
-        internal void PrepareDecodeStorage(int capacity)
-        {
-            m_DecodeStorage = new AbilityTimelineSnapshotStorageBank(DecodeLayout.ActiveClips,
-                DecodeLayout.TreeDecisionExits, DecodeLayout.PendingTreeDecisionExits, DecodeLayout.ActiveTreeClips);
-            m_DecodeStorage.PrepareCapacity(capacity);
-        }
-
-        internal AbilityTimelineSnapshotStorage BeginTimelineDecode() => m_DecodeStorage.BeginDecode();
 
         internal Float32CharacterRuntimeStatePage Begin(Float32CharacterRuntimeStatePage source = null)
         {

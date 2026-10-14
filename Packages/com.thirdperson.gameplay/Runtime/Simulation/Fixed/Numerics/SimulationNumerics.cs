@@ -18,14 +18,6 @@ namespace ThirdPersonSimulation.Fixed
             SimulationNumericOverflowMode.RejectOverflow,
             true);
 
-        public static CanonicalPublishedValues PublishedValues { get; } = PreparePublishedValues();
-
-        static CanonicalPublishedValues PreparePublishedValues()
-        {
-            var values = new CanonicalPublishedValues();
-            values.Add(Value);
-            return values;
-        }
     }
 
     public sealed class FixedSimulationTargetManifest
@@ -36,7 +28,6 @@ namespace ThirdPersonSimulation.Fixed
             string vector2Type,
             string vector3Type,
             string yawType,
-            string canonicalCodec,
             SimulationExecutionTargetManifest executionTarget)
         {
             Profile = profile;
@@ -44,7 +35,6 @@ namespace ThirdPersonSimulation.Fixed
             Vector2Type = SimulationIdentity.Require(vector2Type, nameof(vector2Type));
             Vector3Type = SimulationIdentity.Require(vector3Type, nameof(vector3Type));
             YawType = SimulationIdentity.Require(yawType, nameof(yawType));
-            CanonicalCodec = SimulationIdentity.Require(canonicalCodec, nameof(canonicalCodec));
             ExecutionTarget = executionTarget ?? throw new ArgumentNullException(nameof(executionTarget));
             if (executionTarget.NumericProfile != profile)
                 throw new ArgumentException("Numeric Target and Execution Target profiles must match.", nameof(executionTarget));
@@ -55,7 +45,6 @@ namespace ThirdPersonSimulation.Fixed
         public string Vector2Type { get; }
         public string Vector3Type { get; }
         public string YawType { get; }
-        public string CanonicalCodec { get; }
         public SimulationExecutionTargetManifest ExecutionTarget { get; }
     }
 
@@ -67,7 +56,6 @@ namespace ThirdPersonSimulation.Fixed
             nameof(FixedVector2),
             nameof(FixedVector3),
             nameof(FixedYaw),
-            "fixed-q32.32-le/v1",
             new SimulationExecutionTargetManifest(
                 "character-execution/fixed/v2",
                 FixedSimulationNumericProfile.Value,
@@ -136,7 +124,6 @@ namespace ThirdPersonSimulation.Fixed
         }
     }
 
-    [CanonicalContract]
     public readonly partial struct FixedVector2 : IEquatable<FixedVector2>
     {
         public FixedVector2(FixedScalar x, FixedScalar y)
@@ -171,7 +158,6 @@ namespace ThirdPersonSimulation.Fixed
         public static bool operator !=(FixedVector2 left, FixedVector2 right) => !left.Equals(right);
     }
 
-    [CanonicalContract]
     public readonly partial struct FixedVector3 : IEquatable<FixedVector3>
     {
         public FixedVector3(FixedScalar x, FixedScalar y, FixedScalar z)
@@ -212,7 +198,6 @@ namespace ThirdPersonSimulation.Fixed
         public static bool operator !=(FixedVector3 left, FixedVector3 right) => !left.Equals(right);
     }
 
-    [CanonicalContract]
     public readonly partial struct FixedYaw : IEquatable<FixedYaw>
     {
         static readonly FixedScalar FullTurn = FixedScalar.FromInt64(360);
@@ -232,7 +217,7 @@ namespace ThirdPersonSimulation.Fixed
         public static bool operator ==(FixedYaw left, FixedYaw right) => left.Equals(right);
         public static bool operator !=(FixedYaw left, FixedYaw right) => !left.Equals(right);
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireCanonicalDegrees()
         {
             if (Degrees != Normalize(Degrees))

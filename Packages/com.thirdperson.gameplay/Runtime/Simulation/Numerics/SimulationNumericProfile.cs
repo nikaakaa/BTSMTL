@@ -19,7 +19,6 @@ namespace ThirdPersonSimulation
         UncheckedIntegerArithmetic = 3
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false, PublishedRead = true)]
     public readonly partial struct SimulationNumericProfile : IEquatable<SimulationNumericProfile>
     {
         public SimulationNumericProfile(
@@ -41,7 +40,7 @@ namespace ThirdPersonSimulation
             RequireValid();
         }
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireValid()
         {
             if (ScalarBits <= 0)

@@ -4,7 +4,6 @@ using System.IO;
 
 namespace ThirdPersonSimulation.Fixed
 {
-    [CanonicalContract]
     [ValueUnion(typeof(ProgramStateValue<FixedScalar, FixedVector2, FixedVector3, FixedYaw, CanonicalUnavailable, CanonicalUnavailable, SimulationActionTargetSnapshot>))]
     public readonly partial struct AbilityStateValue : IEquatable<AbilityStateValue>
     {
@@ -23,8 +22,6 @@ namespace ThirdPersonSimulation.Fixed
                 ProgramStateValueKind.Vector3 when constant.Kind == ProgramConstantKind.Vector3 => FromVector3(constant.Vector3),
                 ProgramStateValueKind.Yaw when constant.Kind == ProgramConstantKind.Yaw => FromYaw(constant.Yaw),
                 ProgramStateValueKind.Identity when constant.Kind == ProgramConstantKind.String => FromIdentity(constant.Text),
-                ProgramStateValueKind.ActionTargetSnapshot when constant.Kind == ProgramConstantKind.Bytes =>
-                    FromActionTargetSnapshot(SimulationActionTargetSnapshotCodec.Read(constant.Bytes.ToArray())),
                 _ => throw new InvalidDataException(
                     $"Constant '{constant.Identity}' kind '{constant.Kind}' does not match state kind '{expectedKind}'.")
             };

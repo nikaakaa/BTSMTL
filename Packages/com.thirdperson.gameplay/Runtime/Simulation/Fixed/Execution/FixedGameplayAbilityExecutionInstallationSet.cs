@@ -22,7 +22,7 @@ namespace ThirdPersonSimulation.Fixed
         {
             if (data == null)
                 throw new ArgumentNullException(nameof(data));
-            CombatCatalog = combatBinding == null ? null : new FixedCombatAttackCatalog(combatBinding.AttackCatalogBytes);
+            CombatCatalog = combatBinding == null ? null : new FixedCombatAttackCatalog(combatBinding.AttackCatalog);
             var values = new List<FixedGameplayAbilityExecutionInstallation>();
             m_ByAbility = new Dictionary<CharacterSkillId, FixedGameplayAbilityExecutionInstallation>();
             bool requiresTagCatalog = false;

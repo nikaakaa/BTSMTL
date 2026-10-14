@@ -14,20 +14,8 @@ namespace ThirdPersonSimulation
             Array.Sort(m_Entries, CompareEncodedEntries);
         }
 
-        public CanonicalTextValue Read(CanonicalReader reader)
-        {
-            ArraySegment<byte> bytes = reader.ReadTextSegment();
-            if (bytes.Array == null)
-                return default;
-            if (bytes.Count == 0)
-                return CanonicalTextValue.Empty;
-            int index = Find(bytes.AsSpan());
-            return index >= 0 ? CanonicalTextValue.FromString(m_Entries[index].Value) : reader.ResolveText(bytes);
-        }
 
-        public string ReadPublished(CanonicalReader reader) => ResolvePublished(reader.ReadTextSegment());
 
-        public string ReadInitialization(CanonicalReader reader) => ResolveInitialization(reader.ReadTextSegment());
 
         public string ResolveInitialization(ArraySegment<byte> bytes)
         {

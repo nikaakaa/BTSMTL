@@ -287,7 +287,7 @@ namespace ThirdPersonSimulation
             components[0] = Component("ExecutionBackend", Descriptor.ExecutionBackend);
             components[1] = Component("SessionSource", Descriptor.SessionSource);
             components[2] = Component("WorldSolver", Descriptor.WorldSolver);
-            components[3] = Component("SnapshotCodec", Descriptor.SnapshotCodec);
+            components[3] = Component("SnapshotProvider", Descriptor.SnapshotProvider);
             components[4] = Component("Committer", Descriptor.Committer);
             components[5] = new SimulationSessionComponentDiagnostic(
                     "Pipeline",

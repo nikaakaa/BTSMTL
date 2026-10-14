@@ -79,9 +79,9 @@ namespace ThirdPersonSimulation.Fixed
         public GraphBatchExecution GraphBatchExecution { get; }
         float ISimulationSessionLocalCombatClock.WorldTimeScale => m_Combat.WorldTimeScale.ToSingle();
         public void PrepareRecordedFrames(int capacity) => m_Transaction.PrepareRecordedFrames(capacity);
-        public ReadOnlyMemory<byte> RecordFrame(ulong presentationFrame) => m_Transaction.RecordFrame(presentationFrame);
-        public void RestoreRecordedControlInput(ArraySegment<byte> state) => m_Transaction.RestoreRecordedControlInput(state);
-        public void RestoreRecordedControlSources(ArraySegment<byte> state) => m_Transaction.RestoreRecordedControlSources(state);
+        public IValueResources RecordFrame(ulong presentationFrame) => m_Transaction.RecordFrame(presentationFrame);
+        public void RestoreRecordedControlInput(IValueResources state) => m_Transaction.RestoreRecordedControlInput(state);
+        public void RestoreRecordedControlSources(IValueResources state) => m_Transaction.RestoreRecordedControlSources(state);
 
         public bool TryGetRecordedFrameTick(ulong presentationFrame, out ulong tick)
         {
@@ -385,7 +385,7 @@ namespace ThirdPersonSimulation.Fixed
             components[0] = Component("ExecutionBackend", Descriptor.ExecutionBackend);
             components[1] = Component("SessionSource", Descriptor.SessionSource);
             components[2] = Component("WorldSolver", Descriptor.WorldSolver);
-            components[3] = Component("SnapshotCodec", Descriptor.SnapshotCodec);
+            components[3] = Component("SnapshotProvider", Descriptor.SnapshotProvider);
             components[4] = Component("Committer", Descriptor.Committer);
             components[5] = new SimulationSessionComponentDiagnostic(
                     "Pipeline",

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using SimulationOperationParameterValues = ThirdPersonSimulation.SimulationOperationParameterValues<ThirdPersonSimulation.Fixed.FixedScalar>;
 
 namespace ThirdPersonSimulation.Fixed
 {
@@ -28,16 +29,14 @@ namespace ThirdPersonSimulation.Fixed
             Tables = new FixedGraphExecutionTables(structure.Tables.Structure, Array.AsReadOnly(constants), operations[0].ParameterValues);
             GraphSources = sources;
             m_DefaultStateValues = BuildDefaultStateValues(Constants, StateSlots);
-            GraphExecutionChunk values = GraphExecutionChunk.Encode(writer =>
-                FixedGraphExecutionDataCodec.WriteParameters(writer, this, structure.Chunks.Structure.Hash));
-            m_Chunks = new GraphExecutionChunks(structure.Chunks.Structure, values, sources.DiagnosticChunk);
+            m_Chunks = sources.Layout.Publisher.Publish(Tables, sources, structure.Chunks, GraphCompilationWork.Parameters);
         }
 
         FixedGraphExecutionData(FixedGraphExecutionData structure, ProgramGraphSources sources)
             : this(structure)
         {
             GraphSources = sources;
-            m_Chunks = new GraphExecutionChunks(structure.Chunks.Structure, structure.Chunks.Parameters, sources.DiagnosticChunk);
+            m_Chunks = sources.Layout.Publisher.Publish(Tables, sources, structure.Chunks, GraphCompilationWork.Sources);
         }
 
         internal FixedGraphExecutionData WithSources(ProgramGraphSources sources) =>
@@ -81,8 +80,8 @@ namespace ThirdPersonSimulation.Fixed
             m_DefaultStateValues = BuildDefaultStateValues(Constants, StateSlots);
         }
 
-        internal FixedGraphExecutionTables Tables { get; }
-        internal FixedGraphExecutionData(FixedGraphExecutionTables tables, ProgramGraphSources sources)
+        public FixedGraphExecutionTables Tables { get; }
+        public FixedGraphExecutionData(FixedGraphExecutionTables tables, ProgramGraphSources sources)
         {
             Tables = tables;
             GraphSources = sources;
@@ -103,7 +102,7 @@ namespace ThirdPersonSimulation.Fixed
             m_DefaultStateValues = BuildDefaultStateValues(Constants, StateSlots);
         }
 
-        public GraphExecutionChunks Chunks => m_Chunks ??= FixedGraphExecutionDataCodec.CreateChunks(this);
+        public GraphExecutionChunks Chunks => m_Chunks ??= GraphSources.Layout.Publisher.Publish(Tables, GraphSources, null, GraphCompilationWork.Structure);
         public IReadOnlyList<SimulationOperationDefinition> OperationDefinitions => Tables.Structure.OperationDefinitions;
         public IReadOnlyList<SimulationOperation> Operations { get; }
         public IReadOnlyList<ProgramConstant> Constants => Tables.Constants;
@@ -164,8 +163,8 @@ namespace ThirdPersonSimulation.Fixed
         static ReadOnlyCollection<T> Copy<T>(IEnumerable<T> values) =>
             new ReadOnlyCollection<T>(new List<T>(values ?? Array.Empty<T>()));
     }
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
-    internal sealed partial class FixedGraphExecutionStructure
+    [ValueStorage]
+    public sealed partial class FixedGraphExecutionStructure
     {
         internal FixedGraphExecutionStructure(OperationHandle rootOperation,
             IEnumerable<SimulationOperationDefinition> operationDefinitions, IReadOnlyList<SimulationOperation> operations,
@@ -211,8 +210,8 @@ namespace ThirdPersonSimulation.Fixed
             new List<T>(values ?? Array.Empty<T>()).AsReadOnly();
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
-    internal sealed partial class FixedGraphExecutionTables
+    [ValueStorage]
+    public sealed partial class FixedGraphExecutionTables
     {
         internal FixedGraphExecutionTables(FixedGraphExecutionStructure structure,
             IReadOnlyList<ProgramConstant> constants, SimulationOperationParameterValues[] operationParameters)
@@ -224,7 +223,7 @@ namespace ThirdPersonSimulation.Fixed
 
         public FixedGraphExecutionStructure Structure { get; }
         public IReadOnlyList<ProgramConstant> Constants { get; }
-        [CanonicalPayload] public SimulationOperationParameterValues[] OperationParameters { get; }
+        [ValuePayload] public SimulationOperationParameterValues[] OperationParameters { get; }
     }
 
 }

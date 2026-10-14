@@ -9,9 +9,6 @@ namespace ThirdPersonSimulation
         GameplayEffectStateAggregate m_Aggregate;
         SimulationGameplayEffectState m_Working;
         Float32GameplayEffectExecutionScratch m_Scratch;
-        readonly CanonicalReader m_DecodeReader = new CanonicalReader(Array.Empty<byte>());
-        readonly CanonicalReader m_DecodeBlockReader = new CanonicalReader(Array.Empty<byte>());
-        GameplayEffectStateAggregate m_DecodeCandidate;
         bool m_Disposed;
 
         public Float32CharacterGameplayEffectRuntimeState()
@@ -24,10 +21,6 @@ namespace ThirdPersonSimulation
         {
             m_Catalog = catalog;
             m_Scratch = scratch;
-            m_DecodeReader.DeclaredIdentityReader = catalog.LifecycleIdentities.ReadPublished;
-            m_DecodeBlockReader.DeclaredIdentityReader = catalog.LifecycleIdentities.ReadPublished;
-            m_DecodeReader.PublishedValues = catalog.PublishedValues;
-            m_DecodeBlockReader.PublishedValues = catalog.PublishedValues;
             m_Working = new SimulationGameplayEffectState(catalog, scratch);
             m_Aggregate = m_Working.Freeze();
             m_Disposed = false;
@@ -95,8 +88,6 @@ namespace ThirdPersonSimulation
 
         internal void Dispose()
         {
-            m_DecodeCandidate.ReleaseSnapshots();
-            m_DecodeCandidate = default;
             m_Disposed = true;
         }
 
@@ -109,32 +100,6 @@ namespace ThirdPersonSimulation
             m_Working = null;
             m_Scratch = null;
             m_Catalog = null;
-            m_DecodeReader.DeclaredIdentityReader = null;
-            m_DecodeBlockReader.DeclaredIdentityReader = null;
-            m_DecodeReader.PublishedValues = null;
-            m_DecodeBlockReader.PublishedValues = null;
-            m_DecodeReader.Reset(Array.Empty<byte>());
-            m_DecodeBlockReader.Reset(Array.Empty<byte>());
-        }
-
-        internal GameplayEffectStateAggregate Decode(ArraySegment<byte> bytes, EquipmentStatePageBank equipment,
-            ICanonicalTextResolver textResolver)
-        {
-            m_DecodeCandidate.ReleaseSnapshots();
-            m_DecodeCandidate = default;
-            m_DecodeReader.Reset(bytes);
-            m_DecodeReader.SetTextResolver(textResolver);
-            m_DecodeBlockReader.SetTextResolver(textResolver);
-            try
-            {
-                m_DecodeCandidate = m_Working.Decode(m_DecodeReader, m_DecodeBlockReader, equipment);
-                return m_DecodeCandidate;
-            }
-            finally
-            {
-                m_DecodeReader.SetTextResolver(null);
-                m_DecodeBlockReader.SetTextResolver(null);
-            }
         }
 
         void RequireActive()

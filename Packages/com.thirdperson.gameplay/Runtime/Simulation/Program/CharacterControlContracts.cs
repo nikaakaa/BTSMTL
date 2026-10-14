@@ -162,8 +162,8 @@ namespace ThirdPersonSimulation
         StateValue = 4
     }
 
-    [CanonicalContract(MaterializedRead = true, PreparedRead = false)]
-    public sealed partial class CharacterControlStateFieldDescriptor
+    [ValueOperations(Resources = false)]
+    public sealed partial class CharacterControlStateFieldDescriptor : IEquatable<CharacterControlStateFieldDescriptor>
     {
         public CharacterControlStateFieldDescriptor(
             CharacterControlStateFieldId id,
@@ -180,7 +180,7 @@ namespace ThirdPersonSimulation
         public CharacterControlStateValueKind ValueKind { get; }
         public CharacterControlStateSemantic Semantic { get; }
 
-        [CanonicalValidation]
+        [ValueValidation]
         void RequireValid()
         {
             if (!Id.IsValid || !IsValid(ValueKind, Semantic))
