@@ -44,6 +44,7 @@ namespace ThirdPersonSimulation.FPGameplay
     }
 
     [ValueOperations(Resources = false)]
+    [ValueStorage(ReadOnly = true)]
     public readonly partial struct WorldSimulationState : IEquatable<WorldSimulationState>
     {
         readonly WorldSimulationStateIdentity m_Identity;
@@ -155,12 +156,14 @@ namespace ThirdPersonSimulation.FPGameplay
                 bodies,
                 solverState);
 
+        [ValueStorageMember]
         public WorldSimulationStateIdentity Identity => m_Identity;
         public SimulationNumericProfile NumericProfile => m_Identity.NumericProfile;
         public SolverImplementationId SolverId => m_Identity.SolverId;
         public string SolverVersion => m_Identity.SolverVersion;
         public WorldRevision WorldRevision => m_Identity.WorldRevision;
         public WorldStatePersistenceMode PersistenceMode => m_Identity.PersistenceMode;
+        [ValueStorageMember]
         public IReadOnlyList<WorldBodyState> Bodies
         {
             get

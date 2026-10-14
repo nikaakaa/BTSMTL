@@ -51,6 +51,7 @@ namespace ThirdPersonSimulation.FPGameplay
     }
 
     [ValueOperations(ExplicitResources = true, RetainMethod = nameof(RetainValues), ReleaseMethod = nameof(ReleaseValues))]
+    [ValueStorage(ReadOnly = true)]
     public readonly partial struct SimulationWorldStateSet
     {
         [ValueResource(Elements = true)]
@@ -95,8 +96,10 @@ namespace ThirdPersonSimulation.FPGameplay
             m_StorageGeneration = storage.Generation;
         }
 
+        [ValueStorageMember]
         public ulong LastCompletedTick { get; }
         public bool IsValid => m_Actors != null;
+        [ValueStorageMember]
         public IReadOnlyList<SimulationActorState> Actors => ActorArray;
         internal SimulationActorState[] ActorArray
         {
@@ -107,6 +110,7 @@ namespace ThirdPersonSimulation.FPGameplay
             }
         }
         [ValueResource("RetainStateStorage", "ReleaseStateStorage")]
+        [ValueStorageMember]
         public WorldSimulationState WorldState { get; }
 
         internal void RetainActorStorage() => m_Storage?.Retain(m_StorageGeneration);
