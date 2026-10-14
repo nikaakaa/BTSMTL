@@ -6,13 +6,13 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
+using static ThirdPerson.ValueGeneration.ValueSnapshotModel;
 
 namespace ThirdPerson.ValueGeneration.Generator
 {
     public sealed partial class ValueGenerator
     {
         const string SnapshotAttribute = "ThirdPersonSimulation.ValueSnapshotAttribute";
-        const string SnapshotSource = "ThirdPersonSimulation.IValueSnapshotSource";
 
         enum SnapshotKind { Value, Array, Sequence, Dictionary, SortedList, KeyedBuffer, Source }
 
@@ -25,7 +25,8 @@ namespace ThirdPerson.ValueGeneration.Generator
             public bool FixedKeys;
             public AttributeData Resource;
 
-            public string StorageType => Kind == SnapshotKind.Source ? Runtime + "IValueSnapshotCopy" :
+            public string StorageType => Kind == SnapshotKind.Source ? HasAttribute(Type, SnapshotAttribute) ?
+                    SnapshotTypeName((INamedTypeSymbol)Type) : Runtime + "IValueSnapshotCopy" :
                 Kind == SnapshotKind.Array ? Element.StorageType + "[]" :
                 Kind == SnapshotKind.Sequence ? Element.Kind == SnapshotKind.Source ? Element.StorageType + "[]" :
                     "global::System.Collections.Generic.List<" + Element.StorageType + ">" :
@@ -75,22 +76,21 @@ namespace ThirdPerson.ValueGeneration.Generator
 
             var code = new StringBuilder();
             var equality = new SnapshotEquality();
+            string snapshotType = SnapshotTypeName(owner);
             code.Append("namespace ").Append(owner.ContainingNamespace.ToDisplayString()).AppendLine(" {");
-            EmitTypeDeclaration(code, owner, "global::ThirdPersonSimulation.IValueSnapshotSource");
-            code.AppendLine("sealed class __ValueSnapshot : global::ThirdPersonSimulation.IValueSnapshotCopy {");
+            EmitSnapshotTypeDeclaration(code, owner);
             code.AppendLine("internal int References;");
             for (int index = 0; index < members.Length; index++)
-                code.Append("internal ").Append(shapes[index].StorageType).Append(' ')
+            {
+                EmitSnapshotMemberAttributes(code, members[index]);
+                code.Append("public ").Append(shapes[index].StorageType).Append(' ')
                     .Append(Escape(members[index].Symbol.Name)).AppendLine(";");
-            code.Append("internal __ValueSnapshot(").Append(TypeName(owner)).AppendLine(" owner) {");
-            for (int index = 0; index < members.Length; index++)
-                EmitSnapshotInitialize(code, shapes[index], "owner." + Escape(members[index].Symbol.Name),
-                    "this." + Escape(members[index].Symbol.Name), 0);
-            code.AppendLine("}");
+            }
+            code.Append("internal ").Append(Escape(owner.Name + "ValueSnapshot")).AppendLine("() { }");
             code.AppendLine("public void Retain() { References++; }");
             code.AppendLine("public void Release() { if (--References == 0) ReleaseValues(); }");
             code.AppendLine("public void CopyFrom(global::ThirdPersonSimulation.IValueResources source) {");
-            code.AppendLine("var state = (__ValueSnapshot)source;");
+            code.Append("var state = (").Append(snapshotType).AppendLine(")source;");
             code.AppendLine("if (References != 0) ReleaseValues();");
             code.AppendLine("References = 1;");
             for (int index = 0; index < members.Length; index++)
@@ -103,7 +103,7 @@ namespace ThirdPerson.ValueGeneration.Generator
                     true, 0);
             code.AppendLine("}");
             code.AppendLine("public override bool Equals(object other) {");
-            code.AppendLine("if (!(other is __ValueSnapshot state)) return false;");
+            code.Append("if (!(other is ").Append(snapshotType).AppendLine(" state)) return false;");
             for (int index = 0; index < members.Length; index++)
                 EmitSnapshotEquals(code, shapes[index], "this." + Escape(members[index].Symbol.Name),
                     "state." + Escape(members[index].Symbol.Name), equality, 0);
@@ -114,12 +114,17 @@ namespace ThirdPerson.ValueGeneration.Generator
             code.AppendLine("return hash; } }");
             equality.Emit(code);
             code.AppendLine("}");
-            code.AppendLine("public global::ThirdPersonSimulation.IValueSnapshotCopy CreateValueSnapshot() {");
-            code.AppendLine("var snapshot = new __ValueSnapshot(this);");
+            EmitTypeDeclaration(code, owner, "global::ThirdPersonSimulation.IValueSnapshotSource");
+            code.AppendLine("global::ThirdPersonSimulation.IValueSnapshotCopy global::ThirdPersonSimulation.IValueSnapshotSource.CreateValueSnapshot() => CreateValueSnapshot();");
+            code.Append("public ").Append(snapshotType).AppendLine(" CreateValueSnapshot() {");
+            code.Append("var snapshot = new ").Append(snapshotType).AppendLine("();");
+            for (int index = 0; index < members.Length; index++)
+                EmitSnapshotInitialize(code, shapes[index], "this." + Escape(members[index].Symbol.Name),
+                    "snapshot." + Escape(members[index].Symbol.Name), 0);
             code.AppendLine("CaptureValueSnapshot(snapshot);");
             code.AppendLine("return snapshot; }");
             code.AppendLine("public void CaptureValueSnapshot(global::ThirdPersonSimulation.IValueResources snapshot) {");
-            code.AppendLine("var state = (__ValueSnapshot)snapshot;");
+            code.Append("var state = (").Append(snapshotType).AppendLine(")snapshot;");
             code.AppendLine("if (state.References != 0) state.ReleaseValues();");
             code.AppendLine("state.References = 1;");
             for (int index = 0; index < members.Length; index++)
@@ -127,7 +132,7 @@ namespace ThirdPerson.ValueGeneration.Generator
                     "state." + Escape(members[index].Symbol.Name), true, 0);
             code.AppendLine("}");
             code.AppendLine("public void RestoreValueSnapshot(global::ThirdPersonSimulation.IValueResources snapshot) {");
-            code.AppendLine("var state = (__ValueSnapshot)snapshot;");
+            code.Append("var state = (").Append(snapshotType).AppendLine(")snapshot;");
             for (int index = 0; index < members.Length; index++)
                 EmitSnapshotResources(code, shapes[index], "this." + Escape(members[index].Symbol.Name),
                     false, 0);
@@ -152,7 +157,7 @@ namespace ThirdPerson.ValueGeneration.Generator
                 code.Append(declaration.DeclaredAccessibility.ToString().ToLowerInvariant()).Append(" partial void ")
                     .Append(Escape(method)).Append("(global::ThirdPersonSimulation.IValueResources ")
                     .Append(parameter).AppendLine(") {");
-                code.Append("var __state = (__ValueSnapshot)").Append(parameter).AppendLine(";");
+                code.Append("var __state = (").Append(snapshotType).Append(')').Append(parameter).AppendLine(";");
                 for (int index = 0; index < members.Length; index++)
                     if (SnapshotRestoreMethod(members[index]) == method)
                         EmitSnapshotResources(code, shapes[index], "this." + Escape(members[index].Symbol.Name),
@@ -208,6 +213,42 @@ namespace ThirdPerson.ValueGeneration.Generator
                 ".Snapshot.g.cs", SourceText.From(code.ToString(), Encoding.UTF8));
         }
 
+        static void EmitSnapshotTypeDeclaration(StringBuilder code, INamedTypeSymbol owner)
+        {
+            code.Append("public sealed class ").Append(Escape(owner.Name + "ValueSnapshot"));
+            if (owner.Arity != 0)
+                code.Append('<').Append(string.Join(", ", owner.TypeParameters.Select(parameter => Escape(parameter.Name)))).Append('>');
+            code.Append(" : global::ThirdPersonSimulation.IValueSnapshotCopy");
+            foreach (ITypeParameterSymbol parameter in owner.TypeParameters)
+            {
+                var constraints = new List<string>();
+                if (parameter.HasUnmanagedTypeConstraint) constraints.Add("unmanaged");
+                else if (parameter.HasValueTypeConstraint) constraints.Add("struct");
+                else if (parameter.HasReferenceTypeConstraint) constraints.Add("class");
+                constraints.AddRange(parameter.ConstraintTypes.Select(TypeName));
+                if (parameter.HasConstructorConstraint) constraints.Add("new()");
+                if (constraints.Count != 0)
+                    code.Append(" where ").Append(Escape(parameter.Name)).Append(" : ").Append(string.Join(", ", constraints));
+            }
+            code.AppendLine(" {");
+        }
+
+        static void EmitSnapshotMemberAttributes(StringBuilder code, Member member)
+        {
+            code.Append("[global::ThirdPersonSimulation.ValueSnapshot(FixedKeys = ")
+                .Append(SnapshotMemberOption(member, "FixedKeys") ? "true" : "false").AppendLine(")]");
+            foreach (AttributeData attribute in member.Symbol.GetAttributes().Where(attribute =>
+                Identity(attribute.AttributeClass) == ValueResourceAttribute ||
+                Identity(attribute.AttributeClass) == TextRulesAttribute ||
+                Identity(attribute.AttributeClass) == PayloadAttribute))
+            {
+                code.Append('[').Append(TypeName(attribute.AttributeClass)).Append('(')
+                    .Append(string.Join(", ", attribute.ConstructorArguments.Select(argument => argument.ToCSharpString())
+                        .Concat(attribute.NamedArguments.Select(argument => Escape(argument.Key) + " = " + argument.Value.ToCSharpString()))))
+                    .AppendLine(")]");
+            }
+        }
+
         static string SnapshotRestoreMethod(Member member) => member.Symbol.GetAttributes()
             .Where(attribute => Identity(attribute.AttributeClass) == SnapshotAttribute).SelectMany(attribute => attribute.NamedArguments)
             .Where(argument => argument.Key == "RestoreMethod").Select(argument => (string)argument.Value.Value).SingleOrDefault();
@@ -224,8 +265,7 @@ namespace ThirdPerson.ValueGeneration.Generator
         {
             reason = null;
             shape = new SnapshotShape { Type = type };
-            if (HasAttribute(type, SnapshotAttribute) || type is INamedTypeSymbol source &&
-                (Identity(source) == SnapshotSource || source.AllInterfaces.Any(contract => Identity(contract) == SnapshotSource)))
+            if (IsSnapshotSource(type))
             {
                 shape.Kind = SnapshotKind.Source;
                 if (type.IsValueType) reason = "嵌套状态源必须为引用类型，不能在快照接口调用中装箱";
@@ -337,20 +377,6 @@ namespace ThirdPerson.ValueGeneration.Generator
             .Any(property => !property.IsStatic && property.Type.SpecialType == SpecialType.System_Int32 &&
                 property.GetMethod?.DeclaredAccessibility == Accessibility.Public);
 
-        static ITypeSymbol PreparedSnapshotElement(ITypeSymbol type)
-        {
-            if (!(type is INamedTypeSymbol named)) return null;
-            INamedTypeSymbol sequence = named.AllInterfaces.FirstOrDefault(contract =>
-                Identity(contract.OriginalDefinition) == "System.Collections.Generic.IReadOnlyList<T>");
-            if (sequence == null || !named.GetMembers("Capacity").OfType<IPropertySymbol>()
-                    .Any(property => property.Type.SpecialType == SpecialType.System_Int32 && property.GetMethod != null) ||
-                !named.GetMembers("Add").OfType<IMethodSymbol>().Any(method => method.Parameters.Length == 1 &&
-                    SymbolEqualityComparer.Default.Equals(method.Parameters[0].Type, sequence.TypeArguments[0])) ||
-                !named.GetMembers("Clear").OfType<IMethodSymbol>().Any(method => method.Parameters.Length == 0))
-                return null;
-            return sequence.TypeArguments[0];
-        }
-
         static bool SnapshotValueIsCopyable(ITypeSymbol type, HashSet<string> visited, AttributeData resource = null)
         {
             if (type is ITypeParameterSymbol) return false;
@@ -397,7 +423,10 @@ namespace ThirdPerson.ValueGeneration.Generator
             switch (shape.Kind)
             {
                 case SnapshotKind.Source:
-                    code.Append(target).Append(" = ").Append(source).AppendLine(".CreateValueSnapshot();");
+                    code.Append(target).Append(" = ");
+                    if (HasAttribute(shape.Type, SnapshotAttribute))
+                        code.Append('(').Append(shape.StorageType).Append(')');
+                    code.Append(source).AppendLine(".CreateValueSnapshot();");
                     break;
                 case SnapshotKind.Array:
                     code.Append(target).Append(" = ").Append(NewSnapshotArray(shape.Element.StorageType, source + ".Length")).AppendLine(";");
