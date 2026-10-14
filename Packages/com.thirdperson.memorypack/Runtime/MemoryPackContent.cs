@@ -109,6 +109,9 @@ namespace ThirdPersonSimulation.Serialization
             return ((IMemoryPackSchema)reader.GetFormatter(value.GetType())).SchemaHash;
         }
 
+        public static int GetSnapshotTextReferenceCapacity(IValueSnapshotCopy value) =>
+            ((IValueTextCapacity)value).TextReferenceCapacity;
+
         public static void SerializeInto<T, TBufferWriter>(in T value, TBufferWriter destination,
             MemoryPackContentContext context) where TBufferWriter : class, IBufferWriter<byte>
         {

@@ -614,10 +614,18 @@ namespace ThirdPerson.ValueGeneration.Generator
             code.Append(readOnly ? "internal void ReadValueStorage(" : "public void ReadValueStorage(")
                 .Append(string.Join(", ", members.Select(member =>
                     (member.Payload ? "[global::ThirdPersonSimulation.ValuePayload] " : "") +
-                    "out " + TypeName(member.Type) + " " + Escape(member.Symbol.Name))))
+                    "out " + (readOnly && StorageCountMember(member.Symbol) != null && member.Type is IArrayTypeSymbol array
+                        ? "global::System.ReadOnlySpan<" + TypeName(array.ElementType) + ">" : TypeName(member.Type)) + " " + Escape(member.Symbol.Name))))
                 .AppendLine(") {");
             foreach (Member member in members)
-                code.Append(Escape(member.Symbol.Name)).Append(" = this.").Append(Escape(member.Symbol.Name)).AppendLine(";");
+            {
+                code.Append(Escape(member.Symbol.Name)).Append(" = ");
+                if (readOnly && StorageCountMember(member.Symbol) is string count && member.Type is IArrayTypeSymbol array)
+                    code.Append("new global::System.ReadOnlySpan<").Append(TypeName(array.ElementType)).Append(">(this.")
+                        .Append(Escape(member.Symbol.Name)).Append(", 0, this.").Append(Escape(count)).Append(')');
+                else code.Append("this.").Append(Escape(member.Symbol.Name));
+                code.AppendLine(";");
+            }
             code.AppendLine("}");
             if (readOnly) return;
             Member[] constructorMembers = construct
@@ -711,6 +719,9 @@ namespace ThirdPerson.ValueGeneration.Generator
         static void EmitValueOperations(StringBuilder code, INamedTypeSymbol type,
             Member[] cases, Member[] common, string kindType)
         {
+            if (type.GetAttributes().Any(attribute => Identity(attribute.AttributeClass) == ValueStoragePurposeAttribute &&
+                attribute.NamedArguments.Any(argument => argument.Key == "ReadOnly" && argument.Value.Value is true)))
+                common = StorageMembers(type, false);
             string fullType = TypeName(type);
             AttributeData operations = type.GetAttributes().SingleOrDefault(attribute => Identity(attribute.AttributeClass) == ValueOperationsAttribute);
             if (type.AllInterfaces.Any(i => i.OriginalDefinition.Name == "IEquatable" &&
@@ -949,10 +960,14 @@ namespace ThirdPerson.ValueGeneration.Generator
             public bool Generated;
         }
 
-        static Member[] StorageMembers(INamedTypeSymbol type)
+        static string StorageCountMember(ISymbol member) => member.GetAttributes()
+            .SingleOrDefault(attribute => Identity(attribute.AttributeClass) == StorageAttribute)?.NamedArguments
+            .FirstOrDefault(argument => argument.Key == "CountMember").Value.Value as string;
+
+        static Member[] StorageMembers(INamedTypeSymbol type, bool logicalStorage = true)
         {
             ISymbol[] members = type.GetMembers().Where(symbol => !symbol.IsStatic && !symbol.IsImplicitlyDeclared).ToArray();
-            bool explicitStorage = HasAttribute(type, ValueStoragePurposeAttribute) &&
+            bool explicitStorage = logicalStorage && HasAttribute(type, ValueStoragePurposeAttribute) &&
                 members.Any(member => HasAttribute(member, StorageAttribute));
             return members.Where(symbol => explicitStorage ? HasAttribute(symbol, StorageAttribute) :
                 symbol is IFieldSymbol field && !HasAttribute(field, "System.Runtime.CompilerServices.CompilerGeneratedAttribute") ||
