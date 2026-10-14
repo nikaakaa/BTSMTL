@@ -1,5 +1,6 @@
 #if UNITY_EDITOR
 using System;
+using System.Globalization;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -40,18 +41,18 @@ namespace BTSMTL
                 throw new InvalidOperationException("图资产引用形成循环，无法计算版本。");
             try
             {
-                using var writer = new CanonicalWriter();
-                writer.WriteText("btsmtl-graph-source/4");
-                List<UnityEngine.Object> references = WriteGraphSource(writer, graph);
+                var parts = new List<string>();
+                parts.Add("btsmtl-graph-source/5");
+                List<UnityEngine.Object> references = AppendGraphSource(parts, graph);
                 foreach (UnityEngine.Object reference in references)
                 {
                     if (reference == null)
                         continue;
-                    writer.WriteText(reference is Graph child
+                    parts.Add(reference is Graph child
                         ? Compute(child)
                         : ComputeDependencies(AssetDatabase.GetAssetPath(reference)));
                 }
-                string hash = writer.ComputeHash().ToString();
+                string hash = StableHash.Compute(parts.ToArray()).ToString();
                 m_Hashes.Add(graph, hash);
                 return hash;
             }
@@ -65,10 +66,10 @@ namespace BTSMTL
         {
             if (m_AssetHashes.TryGetValue(path, out string existing))
                 return existing;
-            using var writer = new CanonicalWriter();
+            var parts = new List<string>();
             if (string.Equals(Path.GetExtension(path), ".asset", StringComparison.OrdinalIgnoreCase))
             {
-                writer.WriteText("btsmtl-source-asset/2");
+                parts.Add("btsmtl-source-asset/3");
                 var assets = AssetDatabase.LoadAllAssetsAtPath(path)
                     .Select(asset =>
                     {
@@ -77,19 +78,19 @@ namespace BTSMTL
                     })
                     .OrderBy(value => value.FileId)
                     .ToArray();
-                writer.WriteInt32(assets.Length);
+                parts.Add((assets.Length).ToString(CultureInfo.InvariantCulture));
                 foreach (var source in assets)
                 {
-                    writer.WriteInt64(source.FileId);
-                    writer.WriteText(source.Asset.GetType().FullName);
-                    writer.WriteText(ComputeSourceObject(source.Asset));
+                    parts.Add((source.FileId).ToString(CultureInfo.InvariantCulture));
+                    parts.Add(source.Asset.GetType().FullName);
+                    parts.Add(ComputeSourceObject(source.Asset));
                 }
             }
             else
             {
-                writer.WriteBytes(File.ReadAllBytes(Path.GetFullPath(path)));
+                parts.Add(SimulationCanonicalPayloadHash.Compute(File.ReadAllBytes(Path.GetFullPath(path))).Value);
             }
-            string hash = writer.ComputeHash().ToString();
+            string hash = StableHash.Compute(parts.ToArray()).ToString();
             m_AssetHashes.Add(path, hash);
             return hash;
         }
@@ -112,35 +113,35 @@ namespace BTSMTL
         {
             if (m_DependencyHashes.TryGetValue(path, out string existing))
                 return existing;
-            using var writer = new CanonicalWriter();
+            var parts = new List<string>();
             IReadOnlyList<string> dependencies = CollectAssetDependencies(path);
-            writer.WriteInt32(dependencies.Count);
+            parts.Add((dependencies.Count).ToString(CultureInfo.InvariantCulture));
             foreach (string dependency in dependencies)
             {
-                writer.WriteText(dependency);
-                writer.WriteText(AssetDatabase.AssetPathToGUID(dependency));
-                writer.WriteText(string.Equals(Path.GetExtension(dependency), ".asset", StringComparison.OrdinalIgnoreCase)
+                parts.Add(dependency);
+                parts.Add(AssetDatabase.AssetPathToGUID(dependency));
+                parts.Add(string.Equals(Path.GetExtension(dependency), ".asset", StringComparison.OrdinalIgnoreCase)
                     ? ComputeSourceAsset(dependency)
                     : AssetDatabase.GetAssetDependencyHash(dependency).ToString());
             }
-            string hash = writer.ComputeHash().ToString();
+            string hash = StableHash.Compute(parts.ToArray()).ToString();
             m_DependencyHashes.Add(path, hash);
             return hash;
         }
 
-        List<UnityEngine.Object> WriteGraphSource(CanonicalWriter writer, Graph graph)
+        List<UnityEngine.Object> AppendGraphSource(List<string> parts, Graph graph)
         {
             if (!m_GraphSources.TryGetValue(graph, out var source))
             {
                 source = SerializeGraphSource(graph);
                 m_GraphSources.Add(graph, source);
             }
-            writer.WriteText(source.Json);
-            WriteLifecycle(writer, graph, true);
-            WriteLifecycle(writer, graph, false);
-            writer.WriteInt32(source.References.Count);
+            parts.Add(source.Json);
+            AppendLifecycle(parts, graph, true);
+            AppendLifecycle(parts, graph, false);
+            parts.Add((source.References.Count).ToString(CultureInfo.InvariantCulture));
             foreach (UnityEngine.Object reference in source.References)
-                WriteReference(writer, reference);
+                AppendReference(parts, reference);
             return source.References;
         }
 
@@ -172,29 +173,29 @@ namespace BTSMTL
         {
             if (m_ObjectHashes.TryGetValue(asset, out string existing))
                 return existing;
-            using var writer = new CanonicalWriter();
-            writer.WriteText(asset.GetType().FullName);
+            var parts = new List<string>();
+            parts.Add(asset.GetType().FullName);
             if (asset is Graph graph)
-                WriteGraphSource(writer, graph);
+                AppendGraphSource(parts, graph);
             else
-                WriteSerializedSource(writer, asset);
-            string hash = writer.ComputeHash().Value;
+                AppendSerializedSource(parts, asset);
+            string hash = StableHash.Compute(parts.ToArray()).Value;
             m_ObjectHashes.Add(asset, hash);
             return hash;
         }
 
-        static void WriteLifecycle(CanonicalWriter writer, Graph graph, bool start)
+        static void AppendLifecycle(List<string> parts, Graph graph, bool start)
         {
             FlowCanvas.Macros.MacroNodeWrapper[] children = graph.allNodes.OfType<FlowCanvas.Macros.MacroNodeWrapper>()
                 .Where(macro => HasLifecycle(macro.macro, start)).ToArray();
-            writer.WriteInt32(children.Length);
+            parts.Add((children.Length).ToString(CultureInfo.InvariantCulture));
             foreach (FlowCanvas.Macros.MacroNodeWrapper child in children)
-                writer.WriteText(child.UID);
+                parts.Add(child.UID);
             Node[] entries = graph.allNodes.Where(node => start
                 ? node is FlowCanvas.Nodes.StartEvent : node is FlowCanvas.Nodes.UpdateEvent).ToArray();
-            writer.WriteInt32(entries.Length);
+            parts.Add((entries.Length).ToString(CultureInfo.InvariantCulture));
             foreach (Node entry in entries)
-                writer.WriteText(entry.UID);
+                parts.Add(entry.UID);
         }
 
         static bool HasLifecycle(Graph graph, bool start) => graph.allNodes.Any(node =>
@@ -237,45 +238,45 @@ namespace BTSMTL
             return properties.ToArray();
         }
 
-        static void WriteSerializedSource(CanonicalWriter writer, UnityEngine.Object asset)
+        static void AppendSerializedSource(List<string> parts, UnityEngine.Object asset)
         {
             using var serialized = new SerializedObject(asset);
             SerializedProperty property = serialized.GetIterator();
             bool enterChildren = true;
             while (property.Next(enterChildren))
             {
-                writer.WriteText(property.propertyPath);
-                writer.WriteInt32((int)property.propertyType);
+                parts.Add(property.propertyPath);
+                parts.Add(((int)property.propertyType).ToString(CultureInfo.InvariantCulture));
                 enterChildren = false;
                 switch (property.propertyType)
                 {
                     case SerializedPropertyType.Generic:
-                        writer.WriteText(property.type);
+                        parts.Add(property.type);
                         enterChildren = true;
                         break;
                     case SerializedPropertyType.ManagedReference:
-                        writer.WriteText(property.managedReferenceFullTypename);
+                        parts.Add(property.managedReferenceFullTypename);
                         enterChildren = true;
                         break;
                     case SerializedPropertyType.ObjectReference:
-                        WriteReference(writer, property.objectReferenceValue);
+                        AppendReference(parts, property.objectReferenceValue);
                         break;
                     default:
-                        writer.WriteText(property.contentHash.ToString());
+                        parts.Add(property.contentHash.ToString());
                         break;
                 }
             }
         }
 
-        protected static void WriteReference(CanonicalWriter writer, UnityEngine.Object reference)
+        protected static void AppendReference(List<string> parts, UnityEngine.Object reference)
         {
-            writer.WriteBoolean(reference != null);
+            parts.Add(reference != null ? "1" : "0");
             if (reference == null)
                 return;
             if (!AssetDatabase.TryGetGUIDAndLocalFileIdentifier(reference, out string guid, out long fileId))
                 throw new InvalidOperationException($"图引用'{reference.name}'不是正式资产。");
-            writer.WriteText(guid);
-            writer.WriteInt64(fileId);
+            parts.Add(guid);
+            parts.Add((fileId).ToString(CultureInfo.InvariantCulture));
         }
         static GraphSource Pack(GraphSource source, Graph graph)
         {

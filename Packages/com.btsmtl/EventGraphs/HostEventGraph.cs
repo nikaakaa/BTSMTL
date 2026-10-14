@@ -8,6 +8,7 @@ using FlowCanvas.Nodes;
 using NodeCanvas.Framework;
 using ParadoxNotion;
 using ThirdPersonSimulation;
+using ThirdPersonSimulation.Serialization;
 using UnityEngine;
 
 namespace BTSMTL.EventGraphs
@@ -37,15 +38,15 @@ namespace BTSMTL.EventGraphs
                 throw new InvalidOperationException($"事件图 '{AuthoringId}' 尚未发布执行数据，请显式编译该图。");
 #if UNITY_EDITOR
             GraphExecutionIdentity expected = new BtsmtlGraphFingerprint().CreateIdentity(this, AuthoringId,
-                Float32GraphExecutionDataCodec.ContractIdentity, "Float32");
+                MemoryPackGraphContentPublisher.Float32ContractIdentity, "Float32");
 #else
-            GraphExecutionIdentity expected = GraphExecutionIdentity.CanonicalReadMaterialized(new CanonicalReader(m_ExecutionIdentity));
+            GraphExecutionIdentity expected = MemoryPackGraphContentPublisher.Instance.ReadIdentity(m_ExecutionIdentity);
             if (expected.GraphId != AuthoringId)
                 throw new InvalidOperationException($"事件图 '{AuthoringId}' 的发布身份不匹配。");
 #endif
             if (!ReferenceEquals(m_PreparedExecutionBytes, m_ExecutionData))
             {
-                Float32GraphExecutionData data = Float32GraphExecutionDataCodec.Read(m_ExecutionData, expected);
+                Float32GraphExecutionData data = MemoryPackGraphContentPublisher.Instance.ReadGraph(m_ExecutionData, expected);
                 m_PreparedExecutionData = data;
                 m_PreparedIdentity = expected;
                 m_PreparedExecutionBytes = m_ExecutionData;
@@ -65,11 +66,8 @@ namespace BTSMTL.EventGraphs
 #if UNITY_EDITOR
         public void SetExecutionData(byte[] bytes, GraphExecutionIdentity identity)
         {
-            using var writer = new CanonicalWriter();
-            GraphExecutionIdentity.CanonicalWrite(writer, in identity);
-            byte[] binding = writer.ToArray();
             m_ExecutionData = bytes;
-            m_ExecutionIdentity = binding;
+            m_ExecutionIdentity = MemoryPackGraphContentPublisher.Instance.WriteIdentity(identity);
         }
 #endif
 
