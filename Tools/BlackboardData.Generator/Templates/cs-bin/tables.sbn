@@ -5,7 +5,7 @@ using ThirdPersonSimulation;
 {{~if first_table~}}
 {{ domain = get_tag first_table.value_ttype.def_bean "btsmtl.domain" }}
 {{ value_type = "ThirdPersonSimulation.AbilityStateValue" }}
-{{ if domain == "Fixed"; value_type = "ThirdPersonSimulation.Fixed.AbilityStateValue"; end }}
+{{ if domain == "FPGameplay"; value_type = "ThirdPersonSimulation.FPGameplay.AbilityStateValue"; end }}
 namespace {{first_table.namespace}}
 {
     [Serializable]

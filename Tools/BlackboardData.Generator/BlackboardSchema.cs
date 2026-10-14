@@ -4,7 +4,7 @@ using System.Text;
 using System.Text.Json;
 using System.Xml.Linq;
 using ThirdPersonSimulation;
-using ThirdPersonSimulation.Fixed;
+using ThirdPersonSimulation.QuantumNumerics;
 
 namespace Btsmtl.BlackboardData.Generation;
 
@@ -49,7 +49,7 @@ internal sealed class BlackboardSchema : IDisposable
 
     internal void Write(string output)
     {
-        foreach (string target in new[] { "Fixed", "Float32" })
+        foreach (string target in new[] { "FPGameplay", "Float32" })
         {
             string directory = Path.Combine(output, target);
             Directory.CreateDirectory(Path.Combine(directory, "Schema"));
@@ -77,7 +77,8 @@ internal sealed class BlackboardSchema : IDisposable
                     Tag(variable, "lifetime", field.GetProperty("lifetime").GetString()!);
                     Tag(variable, "index", index.ToString(CultureInfo.InvariantCulture));
                     bean.Add(variable);
-                    defaults.Add(name, Default(field.GetProperty("default"), kind, target));
+                    defaults.Add(name, Default(field.GetProperty("default"), kind, target,
+                        block.Owner + "/" + field.GetProperty("id").GetString()));
                 }
                 definitions.Add(bean);
                 definitions.Add(new XElement("table", new XAttribute("name", block.Name + "Defaults"),
@@ -100,7 +101,7 @@ internal sealed class BlackboardSchema : IDisposable
         {
             name = m_Namespace,
             references = new[] { "ThirdPerson.Shared.Contracts", "ThirdPerson.Luban", "ThirdPersonSimulation.Core",
-                "ThirdPersonSimulation.Fixed", "ThirdPersonSimulation.Float32", "ThirdPersonSimulation.BlackboardConfiguration" },
+                "ThirdPersonSimulation.FPGameplay", "ThirdPersonSimulation.Float32", "ThirdPersonSimulation.BlackboardConfiguration" },
             noEngineReferences = true
         }, JsonOptions), Utf8);
     }
@@ -117,7 +118,7 @@ internal sealed class BlackboardSchema : IDisposable
             @namespace = m_Namespace,
             inputIdentity = Hash(JsonSerializer.Serialize(m_Input.RootElement)),
             structureIdentity = Hash(m_Namespace + "|" + string.Join("|", m_Blocks.Select(block =>
-                TargetIdentity("Fixed", block.Identity) + "|" + TargetIdentity("Float32", block.Identity)))),
+                TargetIdentity("FPGameplay", block.Identity) + "|" + TargetIdentity("Float32", block.Identity)))),
             defaultsIdentity = Hash(string.Join("|", defaults.Select(path =>
                 Path.GetRelativePath(output, path).Replace('\\', '/') + "|" + Hash(File.ReadAllBytes(path))))),
             tool = dependency.RootElement,
@@ -127,13 +128,13 @@ internal sealed class BlackboardSchema : IDisposable
             csharp = "generated",
             cpp = "schema-reserved",
             owners = m_Blocks.Select(block => new { identity = block.Owner, contract = block.Identity, type = block.Name,
-                fixedContract = TargetIdentity("Fixed", block.Identity), float32Contract = TargetIdentity("Float32", block.Identity) }),
+                fpContract = TargetIdentity("FPGameplay", block.Identity), float32Contract = TargetIdentity("Float32", block.Identity) }),
             declarations = m_Blocks.SelectMany(block => block.Fields.Select((field, index) => new
             {
                 owner = block.Owner, id = field.GetProperty("id").GetString(), index, source = field,
                 type = field.GetProperty("type").GetString(), scope = field.GetProperty("scope").GetString(),
                 lifetime = field.GetProperty("lifetime").GetString(),
-                fixedContract = TargetIdentity("Fixed", block.Identity), float32Contract = TargetIdentity("Float32", block.Identity),
+                fpContract = TargetIdentity("FPGameplay", block.Identity), float32Contract = TargetIdentity("Float32", block.Identity),
                 defaultsFile = block.Name.ToLowerInvariant() + ".bytes"
             })),
             files = sources.Select(path => new { path = Path.GetRelativePath(output, path).Replace('\\', '/'),
@@ -147,17 +148,20 @@ internal sealed class BlackboardSchema : IDisposable
 
     static string TargetIdentity(string target, string identity)
     {
-        SimulationNumericProfile profile = target == "Fixed" ? FixedSimulationNumericProfile.Value : Float32SimulationNumericProfile.Value;
+        SimulationNumericProfile profile = target == "FPGameplay" ? QuantumSimulationNumericProfile.Value : Float32SimulationNumericProfile.Value;
         return Hash($"{target}|{profile.Id.Value}|{profile.AbiVersion.Value}|{identity}");
     }
 
     static void AddValueTypes(XElement module, string target)
     {
-        string numberType = target == "Fixed" ? "long" : "int";
-        string numericNamespace = target == "Fixed" ? "ThirdPersonSimulation.Fixed" : "ThirdPersonSimulation";
-        AddMapped(module, "Number", numericNamespace + "." + target + "Scalar", target + "Number", ("Raw", numberType));
-        AddMapped(module, "Vector2", numericNamespace + "." + target + "Vector2", target + "Vector2", ("X", numberType), ("Y", numberType));
-        AddMapped(module, "Vector3", numericNamespace + "." + target + "Vector3", target + "Vector3", ("X", numberType), ("Y", numberType), ("Z", numberType));
+        bool fp = target == "FPGameplay";
+        string numberType = fp ? "long" : "int";
+        string numericNamespace = fp ? "Photon.Deterministic" : "ThirdPersonSimulation";
+        string scalarType = fp ? "FP" : "Float32Scalar";
+        string vectorPrefix = fp ? "FP" : "Float32";
+        AddMapped(module, "Number", numericNamespace + "." + scalarType, target + "Number", ("Raw", numberType));
+        AddMapped(module, "Vector2", numericNamespace + "." + vectorPrefix + "Vector2", target + "Vector2", ("X", numberType), ("Y", numberType));
+        AddMapped(module, "Vector3", numericNamespace + "." + vectorPrefix + "Vector3", target + "Vector3", ("X", numberType), ("Y", numberType), ("Z", numberType));
         AddMapped(module, "UInt64", "System.UInt64", "UInt64", ("Bits", "long"));
         AddMapped(module, "Text", "ThirdPersonSimulation.CanonicalTextValue", "Text", ("IsNull", "bool"), ("CodeUnits", "array,int"));
     }
@@ -175,14 +179,14 @@ internal sealed class BlackboardSchema : IDisposable
         module.Add(bean);
     }
 
-    static object? Default(JsonElement value, string kind, string target) => kind switch
+    static object? Default(JsonElement value, string kind, string target, string identity) => kind switch
     {
         "Bool" => value.GetBoolean(),
         "Int32" => value.GetInt32(),
         "UInt64" => new { Bits = unchecked((long)value.GetUInt64()) },
-        "Number" => new { Raw = Number(value.GetDouble(), target) },
-        "Vector2" => Vector(value, target, 2),
-        "Vector3" => Vector(value, target, 3),
+        "Number" => new { Raw = Number(value.GetDouble(), target, identity) },
+        "Vector2" => Vector(value, target, 2, identity),
+        "Vector3" => Vector(value, target, 3, identity),
         "Text" => Text(value),
         _ => throw new InvalidDataException($"黑板不支持类型 '{kind}'。")
     };
@@ -193,20 +197,24 @@ internal sealed class BlackboardSchema : IDisposable
             CodeUnits = value.GetProperty("codeUnits").EnumerateArray().Select(character => character.GetInt32()).ToArray() };
     }
 
-    static Dictionary<string, long> Vector(JsonElement value, string target, int dimension)
+    static Dictionary<string, long> Vector(JsonElement value, string target, int dimension, string identity)
     {
         string[] names = { "X", "Y", "Z" };
         var result = new Dictionary<string, long>();
         int index = 0;
         foreach (JsonElement component in value.EnumerateArray())
-            result.Add(names[index++], Number(component.GetDouble(), target));
+        {
+            string member = names[index++];
+            result.Add(member, Number(component.GetDouble(), target, identity + "." + member));
+        }
         if (index != dimension)
             throw new InvalidDataException($"Vector{dimension} 默认值分量数不匹配。");
         return result;
     }
 
-    static long Number(double value, string target) => target == "Fixed"
-        ? FixedScalar.FromDouble(value).Raw : unchecked((int)Float32Scalar.FromDouble(value).Bits);
+    static long Number(double value, string target, string identity) => target == "FPGameplay"
+        ? QuantumScalarBoundary.LowerAuthoring(value, identity).Value.RawValue
+        : unchecked((int)Float32Scalar.FromDouble(value).Bits);
 
     static string SchemaType(string kind) => kind switch
     {

@@ -4,7 +4,7 @@ using ThirdPersonSimulation;
 {{~if has_tag __bean "btsmtl.domain" ~}}
 {{ domain = get_tag __bean "btsmtl.domain" }}
 {{ value_type = "ThirdPersonSimulation.AbilityStateValue" }}
-{{ if domain == "Fixed"; value_type = "ThirdPersonSimulation.Fixed.AbilityStateValue"; end }}
+{{ if domain == "FPGameplay"; value_type = "ThirdPersonSimulation.FPGameplay.AbilityStateValue"; end }}
 namespace {{__namespace_with_top_module}}
 {
     [ValueOperations]

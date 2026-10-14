@@ -5,7 +5,6 @@
         "ThirdPerson.Shared.Contracts",
         "ThirdPerson.Luban",
         "ThirdPersonSimulation.Core",
-        "ThirdPersonSimulation.Fixed",
         "ThirdPersonSimulation.Float32"
     ],
     "allowUnsafeCode": true,

@@ -1,14 +1,14 @@
-using ThirdPersonSimulation.Fixed;
+using Photon.Deterministic;
 
 namespace ThirdPersonSimulation.Configuration
 {
     public static class BlackboardDefaultValues
     {
-        public static FixedScalar FixedNumber(long raw) => FixedScalar.FromRaw(raw);
-        public static FixedVector2 FixedVector2(long x, long y) =>
-            new FixedVector2(FixedNumber(x), FixedNumber(y));
-        public static FixedVector3 FixedVector3(long x, long y, long z) =>
-            new FixedVector3(FixedNumber(x), FixedNumber(y), FixedNumber(z));
+        public static FP FPGameplayNumber(long raw) => FP.FromRaw(raw);
+        public static FPVector2 FPGameplayVector2(long x, long y) =>
+            new FPVector2(FPGameplayNumber(x), FPGameplayNumber(y));
+        public static FPVector3 FPGameplayVector3(long x, long y, long z) =>
+            new FPVector3(FPGameplayNumber(x), FPGameplayNumber(y), FPGameplayNumber(z));
         public static Float32Scalar Float32Number(int bits) => Float32Scalar.FromBits(unchecked((uint)bits));
         public static Float32Vector2 Float32Vector2(int x, int y) =>
             new Float32Vector2(Float32Number(x), Float32Number(y));

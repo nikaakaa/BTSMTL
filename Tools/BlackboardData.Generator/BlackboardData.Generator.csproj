@@ -10,7 +10,10 @@
   <ItemGroup>
     <ProjectReference Include="..\..\Projects\ThirdPersonSimulation.Core\ThirdPersonSimulation.Core.csproj" />
     <ProjectReference Include="..\..\Projects\ThirdPersonSimulation.Float32\ThirdPersonSimulation.Float32.csproj" />
-    <ProjectReference Include="..\..\Projects\ThirdPersonSimulation.Fixed\ThirdPersonSimulation.Fixed.csproj" />
+    <ProjectReference Include="..\..\..\3C\Tools\ThirdPersonSimulation.Portable\ThirdPersonSimulation.QuantumNumerics\ThirdPersonSimulation.QuantumNumerics.csproj" />
+    <Reference Include="Quantum.Deterministic">
+      <HintPath>$(MSBuildThisFileDirectory)..\..\..\3C\3cDemo\Client\3C_Client\Assets\Photon\Quantum\Assemblies\Quantum.Deterministic.dll</HintPath>
+    </Reference>
     <None Update="luban.lock.json" CopyToOutputDirectory="PreserveNewest" />
     <None Update="Templates\**\*.sbn" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

@@ -22,7 +22,7 @@ internal static class Program
         try
         {
             schema.Write(pending);
-            foreach (string target in new[] { "Fixed", "Float32" })
+            foreach (string target in new[] { "FPGameplay", "Float32" })
                 GenerateCSharp(args[2], Path.Combine(pending, target));
             schema.WriteManifest(pending);
             Publish(pending, output);

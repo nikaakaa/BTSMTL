@@ -3,7 +3,7 @@ using ThirdPersonSimulation;
 {{ bean = __table.value_ttype.def_bean }}
 {{ domain = get_tag bean "btsmtl.domain" }}
 {{ value_type = "ThirdPersonSimulation.AbilityStateValue" }}
-{{ if domain == "Fixed"; value_type = "ThirdPersonSimulation.Fixed.AbilityStateValue"; end }}
+{{ if domain == "FPGameplay"; value_type = "ThirdPersonSimulation.FPGameplay.AbilityStateValue"; end }}
 namespace {{__namespace_with_top_module}}
 {
     public sealed class {{bean.name}}Contract : GeneratedBlackboardContract<{{value_type}}>
