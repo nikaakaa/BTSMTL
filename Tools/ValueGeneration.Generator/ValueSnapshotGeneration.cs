@@ -281,13 +281,11 @@ namespace ThirdPerson.ValueGeneration.Generator
                     shape.Element = element;
                     if (element.Kind != SnapshotKind.Value)
                         reason = "预分配键值缓冲不能动态增加可变嵌套值；须先准备固定存储形状";
-                    else if (SnapshotHasResources(element, false))
-                    {
-                        if (!ResourceElements(resource))
-                            reason = "键值缓冲元素含资源，但原 owner 未用 ValueResource(Elements = true) 声明元素拥有关系；借用缓冲不能自动归还 live 资源";
-                        else if (!SnapshotResourceCanCall(element.Type, resource))
-                            reason = "键值缓冲元素必须提供原 ValueResource 声明的正式资源操作";
-                    }
+                    else if (!ResourceElements(resource) &&
+                        (HasValueResources(shape.Key, new HashSet<string>()) || SnapshotHasResources(element, false)))
+                        reason = "键值缓冲的键或值含资源，但原 owner 未用 ValueResource(Elements = true) 声明拥有关系；借用缓冲不能自动归还 live 资源";
+                    else if (SnapshotHasResources(element, false) && !SnapshotResourceCanCall(element.Type, resource))
+                        reason = "键值缓冲元素必须提供原 ValueResource 声明的正式资源操作";
                 }
             }
             else if (PreparedSnapshotElement(type) is ITypeSymbol sequenceElement)
