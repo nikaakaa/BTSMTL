@@ -81,6 +81,8 @@ namespace ThirdPersonSimulation
         }
 
         internal int Count => m_Count;
+        public int Capacity => m_Items.Length;
+        public TimelineSnapshotItems<T> Items => new TimelineSnapshotItems<T>(this, 0, m_Count);
         internal uint Generation => m_Storage.Generation;
         internal void Retain(uint generation) => m_Storage.Retain(generation);
         internal void Release() => m_Storage.Release();
@@ -90,14 +92,12 @@ namespace ThirdPersonSimulation
             return m_Items.AsSpan(start, count);
         }
 
-        internal Span<T> Reserve(int count, out TimelineSnapshotItems<T> items)
+        public void AddPrepared(T value)
         {
-            int start = m_Count;
-            if (count < 0 || count > m_Items.Length - start)
+            if (m_Count == m_Items.Length)
                 throw new InvalidOperationException("Timeline snapshot items exceed the prepared payload capacity.");
-            m_Count += count;
-            items = new TimelineSnapshotItems<T>(this, start, count);
-            return m_Items.AsSpan(start, count);
+            m_RetainItem(value);
+            m_Items[m_Count++] = value;
         }
 
         public TimelineSnapshotItems<T> Capture(IReadOnlyList<T> source)
@@ -137,6 +137,7 @@ namespace ThirdPersonSimulation
         }
     }
 
+    [ValueTextCapacity(typeof(AbilityTimelineRuntimeSnapshot))]
     [ValueOperations(ExplicitResources = true, RetainMethod = "RetainText", ReleaseMethod = "ReleaseText")]
     public sealed partial class AbilityTimelineSnapshotStorage
     {
@@ -169,15 +170,18 @@ namespace ThirdPersonSimulation
             m_ContentLifetime?.Retain();
         }
 
-        internal void BeginDecode()
+        public AbilityTimelineRuntimeSnapshot CompleteRead(in AbilityTimelineStartRequest request,
+            in BTSMTL.Timeline.TimelinePlaybackState playback, IAbilityTimelineSnapshotContentLifetime contentLifetime)
         {
-            ActiveClipIds.Clear();
-            TreeDecisionExits.Clear();
-            PendingTreeDecisionExits.Clear();
-            ActiveTreeClips.Clear();
-            Generation++;
-            Retainers = 0;
+            var snapshot = new AbilityTimelineRuntimeSnapshot(request, playback, ActiveTreeClips.Items);
+            m_ContentLifetime = contentLifetime;
+            m_ContentLifetime?.Retain();
+            snapshot.RetainStateStorage();
+            Release();
+            return snapshot;
         }
+
+        public void DiscardPreparedRead() => Release();
 
         internal void RequireGeneration(uint generation)
         {
@@ -215,16 +219,13 @@ namespace ThirdPersonSimulation
         readonly int m_PendingExits;
         readonly int m_Trees;
         AbilityTimelineSnapshotStorage m_Current;
+        int m_NextPage;
 
         public IAbilityTimelineSnapshotContentLifetime ContentLifetime { private get; set; }
         public int ActiveClipCapacity => m_Clips;
         public int TreeDecisionExitCapacity => m_Exits;
         public int PendingTreeDecisionExitCapacity => m_PendingExits;
         public int ActiveTreeClipCapacity => m_Trees;
-        public int MaximumTextValues => TextValueCapacity(m_Clips, m_Exits, m_PendingExits, m_Trees);
-        public static int TextValueCapacity(int clips, int exits, int pendingExits, int trees) =>
-            checked(14 + clips + exits + pendingExits + 4 * trees);
-
         public AbilityTimelineSnapshotStorageBank(int clips, int exits, int pendingExits, int trees)
         {
             m_Clips = clips;
@@ -250,18 +251,20 @@ namespace ThirdPersonSimulation
             return page;
         }
 
-        internal AbilityTimelineSnapshotStorage BeginDecode()
+        public AbilityTimelineSnapshotStorage BeginPreparedRead()
         {
             AbilityTimelineSnapshotStorage page = RentPage();
-            page.BeginDecode();
+            page.BeginWrite(null);
             return page;
         }
 
         AbilityTimelineSnapshotStorage RentPage()
         {
-            for (int index = 0; index < m_Pages.Count; index++)
+            for (int visited = 0; visited < m_Pages.Count; visited++)
             {
-                AbilityTimelineSnapshotStorage page = m_Pages[index];
+                AbilityTimelineSnapshotStorage page = m_Pages[m_NextPage];
+                if (++m_NextPage == m_Pages.Count)
+                    m_NextPage = 0;
                 if (page.Retainers != 0)
                     continue;
                 return page;

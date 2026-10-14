@@ -36,6 +36,7 @@ namespace ThirdPersonSimulation
         readonly TimelineRuntimeEvaluationStoragePool m_Evaluations = new();
         readonly char[] m_RequestCharacters = new char[29];
         Playback[] m_Pool;
+        AbilityTimelineSnapshotStorageBank m_PreparedReads;
         int m_AcquiredPoolLength;
         IAbilityTreeClipInvoker m_Invoker;
 
@@ -135,8 +136,10 @@ namespace ThirdPersonSimulation
                 m_Pool = Array.Empty<Playback>();
                 return;
             }
+            GetSnapshotCapacity(out int clips, out int exits, out int pending, out int trees);
+            m_PreparedReads = new AbilityTimelineSnapshotStorageBank(clips, exits, pending, trees);
+            m_PreparedReads.PrepareCapacity(checked(capacity.StatePageCount * count));
             m_Evaluations.PrepareShared(m_Artifact.Timelines, m_CapacityModes, count);
-            GetSnapshotCapacity(out int clips, out _, out int pending, out _);
             m_Pool = new Playback[count];
             TimelineContentUnit first = m_Artifact.Timelines[0];
             for (int i = 0; i < count; i++)
@@ -147,6 +150,12 @@ namespace ThirdPersonSimulation
                 m_Pool[i] = new Playback(storage) { Runtime = runtime };
             }
         }
+
+        public AbilityTimelineSnapshotStorage BeginPreparedRead() => m_PreparedReads.BeginPreparedRead();
+
+        public AbilityTimelineRuntimeSnapshot CompletePreparedRead(AbilityTimelineSnapshotStorage storage,
+            in AbilityTimelineStartRequest request, in TimelinePlaybackState playback) =>
+            storage.CompleteRead(in request, in playback, null);
 
         public void GetSnapshotCapacity(out int clips, out int exits, out int pendingExits, out int trees)
         {

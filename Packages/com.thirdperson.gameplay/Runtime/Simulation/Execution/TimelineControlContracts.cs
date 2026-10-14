@@ -1154,6 +1154,9 @@ namespace ThirdPersonSimulation
         AbilityTimelineRuntimeSnapshot Capture(ulong runtimeHandle);
         AbilityTimelineRuntimeSnapshot CaptureRuntimeSnapshot(ulong runtimeHandle);
         void PrepareSnapshotStorage(in GameplayEffectSessionCapacity capacity);
+        AbilityTimelineSnapshotStorage BeginPreparedRead();
+        AbilityTimelineRuntimeSnapshot CompletePreparedRead(AbilityTimelineSnapshotStorage storage,
+            in AbilityTimelineStartRequest request, in BTSMTL.Timeline.TimelinePlaybackState playback);
         void GetSnapshotCapacity(out int clips, out int exits, out int pendingExits, out int trees);
         ulong ApplyRestore(AbilityTimelineRuntimeSnapshot snapshot, ulong logicTick);
         void DiscardUnpublishedPlaybacks(IReadOnlyList<AbilityTimelineRuntimeSnapshot> snapshots);
