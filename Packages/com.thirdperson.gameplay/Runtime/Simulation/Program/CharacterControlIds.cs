@@ -7,6 +7,7 @@ namespace ThirdPersonSimulation
         public CharacterControlModuleId(string value) { Value = SimulationIdentity.Require(value, nameof(value)); }
         [ValueValidation]
         void RequireValid() => SimulationIdentity.Require(Value, "value");
+        [ValueTextRules(Declared = true)]
         public string Value { get; }
         [ValuePresence]
         public bool IsValid => !string.IsNullOrEmpty(Value);
@@ -22,6 +23,7 @@ namespace ThirdPersonSimulation
     public readonly partial struct CharacterControlStateId : IEquatable<CharacterControlStateId>, IComparable<CharacterControlStateId>
     {
         public CharacterControlStateId(string value) => Value = SimulationIdentity.Require(value, nameof(value));
+        [ValueTextRules(Declared = true)]
         public string Value { get; }
         [ValuePresence]
         public bool IsValid => !string.IsNullOrEmpty(Value);
@@ -40,6 +42,7 @@ namespace ThirdPersonSimulation
     public readonly partial struct CharacterControlTransitionId : IEquatable<CharacterControlTransitionId>, IComparable<CharacterControlTransitionId>
     {
         public CharacterControlTransitionId(string value) => Value = SimulationIdentity.Require(value, nameof(value));
+        [ValueTextRules(Declared = true)]
         public string Value { get; }
         [ValuePresence]
         public bool IsValid => !string.IsNullOrEmpty(Value);
@@ -58,6 +61,7 @@ namespace ThirdPersonSimulation
     public readonly partial struct CharacterSkillId : IEquatable<CharacterSkillId>, IComparable<CharacterSkillId>
     {
         public CharacterSkillId(string value) => Value = SimulationIdentity.Require(value, nameof(value));
+        [ValueTextRules(Declared = true)]
         public string Value { get; }
         [ValuePresence]
         public bool IsValid => !string.IsNullOrEmpty(Value);

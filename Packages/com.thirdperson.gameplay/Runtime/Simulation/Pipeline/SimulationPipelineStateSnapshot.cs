@@ -175,6 +175,7 @@ namespace ThirdPersonSimulation
 
     public interface ISimulationPipelineFrameState : ISimulationPipelinePassStateCheckpoint
     {
+        IValueSnapshotCopy State { get; }
         void Capture();
         void CopyFrom(ISimulationPipelineFrameState source);
     }

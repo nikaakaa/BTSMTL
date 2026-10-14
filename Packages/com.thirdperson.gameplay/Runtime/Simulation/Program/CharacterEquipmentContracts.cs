@@ -43,6 +43,7 @@ namespace ThirdPersonSimulation
     public readonly partial struct EquipmentActionRouteId : IEquatable<EquipmentActionRouteId>, IComparable<EquipmentActionRouteId>
     {
         public EquipmentActionRouteId(string value) { Value = CharacterEquipmentIdentity.Require(value, nameof(value)); }
+        [ValueTextRules(Declared = true)]
         public string Value { get; }
         [ValuePresence]
         public bool IsValid => !string.IsNullOrEmpty(Value);
@@ -58,6 +59,7 @@ namespace ThirdPersonSimulation
     public readonly partial struct EquipmentId : IEquatable<EquipmentId>, IComparable<EquipmentId>
     {
         public EquipmentId(string value) { Value = CharacterEquipmentIdentity.Require(value, nameof(value)); }
+        [ValueTextRules(Declared = true)]
         public string Value { get; }
         [ValuePresence]
         public bool IsValid => !string.IsNullOrEmpty(Value);
@@ -73,6 +75,7 @@ namespace ThirdPersonSimulation
     public readonly partial struct EquipmentFeatureId : IEquatable<EquipmentFeatureId>, IComparable<EquipmentFeatureId>
     {
         public EquipmentFeatureId(string value) { Value = CharacterEquipmentIdentity.Require(value, nameof(value)); }
+        [ValueTextRules(Declared = true)]
         public string Value { get; }
         [ValuePresence]
         public bool IsValid => !string.IsNullOrEmpty(Value);

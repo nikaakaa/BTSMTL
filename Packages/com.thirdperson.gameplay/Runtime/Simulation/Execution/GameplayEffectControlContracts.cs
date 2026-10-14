@@ -708,9 +708,11 @@ namespace ThirdPersonSimulation
         }
 
         public GameplayTagSourceIdentityValue SourceIdentity { get; }
+        [ValueTextRules(Declared = true)]
         public string TagId { get; }
         public int BeforeCount { get; }
         public int AfterCount { get; }
+        [ValueTextRules(Declared = true)]
         public string CauseEffectId { get; }
         public ulong CauseInstanceId { get; }
         public GameplayEffectContextIdentity Context { get; }

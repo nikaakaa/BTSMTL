@@ -26,11 +26,12 @@ namespace BTSMTL.Timeline
         public static bool operator !=(TimelineCurveChannelId left, TimelineCurveChannelId right) => !left.Equals(right);
     }
 
-    public readonly struct TimelineCurveValueDomain
+    [ThirdPersonSimulation.ValueStorage(UseConstructor = true)]
+    public readonly partial struct TimelineCurveValueDomain
     {
-        TimelineCurveValueDomain(bool bounded, float minimum, float maximum, float zero, string unit)
+        TimelineCurveValueDomain(bool isBounded, float minimum, float maximum, float zero, string unit)
         {
-            IsBounded = bounded;
+            IsBounded = isBounded;
             Minimum = minimum;
             Maximum = maximum;
             Zero = zero;

@@ -2,7 +2,7 @@ using System;
 
 namespace ThirdPersonSimulation
 {
-    [ValueOperations]
+    [ValueStorage, ValueOperations]
     public readonly partial struct GameplayTagSourceIdentityValue : IComparable<GameplayTagSourceIdentityValue>, IEquatable<GameplayTagSourceIdentityValue>
     {
         readonly CanonicalTextValue m_Literal;

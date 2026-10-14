@@ -123,7 +123,7 @@ namespace ThirdPersonSimulation
         LocalEnemyAttack = 2
     }
 
-    [ValueOperations]
+    [ValueStorage, ValueOperations]
     public readonly partial struct CombatAttackIdentity : IEquatable<CombatAttackIdentity>
     {
         public CombatAttackIdentity(ulong actionInstanceId, ulong segmentGeneration,
