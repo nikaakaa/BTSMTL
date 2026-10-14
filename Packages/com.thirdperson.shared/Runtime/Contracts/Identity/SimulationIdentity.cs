@@ -204,7 +204,7 @@ namespace ThirdPersonSimulation
     public readonly partial struct OperationSetVersion : IEquatable<OperationSetVersion>
     {
         public OperationSetVersion(string value) { Value = SimulationIdentity.Require(value, nameof(value)); }
-        [ValueTextRules(Required = true)]
+        [ValueTextRules(Required = true, Declared = true)]
         public string Value { get; }
         public bool IsValid => !string.IsNullOrEmpty(Value);
         public bool Equals(OperationSetVersion other) => string.Equals(Value, other.Value, StringComparison.Ordinal);
