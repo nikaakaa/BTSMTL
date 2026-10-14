@@ -168,11 +168,34 @@ namespace ThirdPersonSimulation.FPGameplay
         internal sealed class Page
         {
             int m_References;
+            int m_PreparedActorCount;
 
             internal Page(int actorCount) => Actors = new SimulationActorState[actorCount];
             internal SimulationActorState[] Actors { get; }
             internal uint Generation { get; private set; }
             internal bool IsReleased => m_References == 0;
+
+            internal void AddPreparedActor(in SimulationActorState actor)
+            {
+                actor.Retain();
+                Actors[m_PreparedActorCount++] = actor;
+            }
+
+            internal SimulationWorldStateSet CompleteRead(
+                ulong lastCompletedTick, in WorldSimulationState worldState)
+            {
+                SimulationWorldStateSet state = SimulationWorldStateSet.FromStateStorage(
+                    lastCompletedTick, this, worldState);
+                state.Retain();
+                return state;
+            }
+
+            internal void ReleaseRead()
+            {
+                while (m_PreparedActorCount > 0)
+                    Actors[--m_PreparedActorCount].Release();
+                Release();
+            }
 
             internal void BeginWrite()
             {
@@ -243,6 +266,8 @@ namespace ThirdPersonSimulation.FPGameplay
                 page.Release();
             }
         }
+
+        internal Page BeginPreparedRead() => BeginWrite();
 
         internal Page BeginWrite()
         {

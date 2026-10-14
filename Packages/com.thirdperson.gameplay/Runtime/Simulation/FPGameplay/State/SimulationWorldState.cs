@@ -219,6 +219,24 @@ namespace ThirdPersonSimulation.FPGameplay
             public WorldBodyState[] Bodies { get; }
             public CharacterWorldSolveResult[] Results { get; }
             public IValueResources SolverState { get; private set; }
+            internal IValueSnapshotCopy PreparedSolverState => m_PreparedSolverState;
+
+            internal void RestorePreparedBody(int index, in WorldBodyState body) => Bodies[index] = body;
+
+            internal void SetPreparedSolverState(IValueResources solverState)
+            {
+                solverState?.Retain();
+                SolverState = solverState;
+            }
+
+            internal WorldSimulationState CompleteRead(in WorldSimulationStateIdentity identity)
+            {
+                WorldSimulationState state = WorldSimulationState.FromStateStorage(
+                    identity.NumericProfile, identity.SolverId, identity.SolverVersion,
+                    identity.WorldRevision, identity.PersistenceMode, this);
+                state.RetainStateStorage();
+                return state;
+            }
 
             public void CaptureSolverState()
             {
@@ -282,6 +300,8 @@ namespace ThirdPersonSimulation.FPGameplay
             while (m_Pages.Count < statePageCount)
                 m_Pages.Add(new Page(m_ActorCount, m_SolverStateSource));
         }
+
+        internal Page BeginPreparedRead() => BeginWrite();
 
         public Page BeginWrite()
         {
