@@ -40,7 +40,7 @@ namespace ThirdPersonSimulation.FPGameplay
         }
     }
 
-    public readonly struct FPCharacterRuntimeState
+    public readonly partial struct FPCharacterRuntimeState
     {
         readonly FPCharacterRuntimeStatePage m_Page;
         readonly uint m_Generation;
@@ -357,7 +357,7 @@ namespace ThirdPersonSimulation.FPGameplay
         internal partial void CopyFrom(in FPCharacterRuntimeStateData source);
     }
 
-    internal sealed class FPCharacterRuntimeStatePage
+    internal sealed partial class FPCharacterRuntimeStatePage
     {
         internal FPCharacterRuntimeStatePage(FPCharacterRuntimeStatePageBank bank, int controlValueCount)
         {
@@ -404,7 +404,7 @@ namespace ThirdPersonSimulation.FPGameplay
 
     }
 
-    internal sealed class FPCharacterRuntimeStatePageBank
+    internal sealed partial class FPCharacterRuntimeStatePageBank
     {
         readonly List<FPCharacterRuntimeStatePage> m_Pages = new List<FPCharacterRuntimeStatePage>();
         int m_ControlValueCount;
@@ -473,7 +473,7 @@ namespace ThirdPersonSimulation.FPGameplay
         public void Dispose() => Reset();
     }
 
-    internal sealed class FPTimelineSnapshotPageBank
+    internal sealed partial class FPTimelineSnapshotPageBank
     {
         internal const int MaximumSnapshotCount = AbilityTimelineRuntimeLimits.MaximumPlaybackCount;
         readonly List<FPTimelineSnapshotPage> m_Pages = new List<FPTimelineSnapshotPage>();
@@ -532,7 +532,7 @@ namespace ThirdPersonSimulation.FPGameplay
         internal int Retainers;
     }
 
-    internal readonly struct FPTimelineSnapshotPageReference
+    internal readonly partial struct FPTimelineSnapshotPageReference
     {
         internal FPTimelineSnapshotPageReference(FPTimelineSnapshotPage page, ulong generation)
         {

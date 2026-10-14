@@ -209,7 +209,7 @@ namespace ThirdPersonSimulation.FPGameplay
 
     }
 
-    internal sealed class FPInputRequestPageBank
+    internal sealed partial class FPInputRequestPageBank
     {
         readonly List<FPInputRequestPage> m_Pages = new List<FPInputRequestPage>();
         internal int RequestCapacity { get; private set; }
@@ -283,7 +283,7 @@ namespace ThirdPersonSimulation.FPGameplay
         internal int Retainers;
     }
 
-    internal readonly struct FPInputRequestPageReference
+    internal readonly partial struct FPInputRequestPageReference
     {
         internal FPInputRequestPageReference(FPInputRequestPage page, ulong generation)
         {

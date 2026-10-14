@@ -315,7 +315,7 @@ namespace ThirdPersonSimulation.FPGameplay
         protected override GameplayEffectContextIdentity DescribeContext() => CausalContext;
     }
 
-    internal readonly struct GameplayEffectStateAggregate
+    internal readonly partial struct GameplayEffectStateAggregate
     {
         readonly FPGameplayEffectSnapshotReference<KeyValuePair<GameplayTagSourceIdentityValue, IReadOnlyList<string>>> m_TagSources;
         readonly FPGameplayEffectAttributeSnapshotReference m_Attributes;
@@ -1022,7 +1022,7 @@ namespace ThirdPersonSimulation.FPGameplay
 
     }
 
-    internal readonly struct FPGameplayEffectModifierSnapshotReference
+    internal readonly partial struct FPGameplayEffectModifierSnapshotReference
     {
         readonly List<PortableAttributeModifierState> m_Buffer;
         readonly FPGameplayEffectAttributeSnapshotPage m_Page;
@@ -1075,7 +1075,7 @@ namespace ThirdPersonSimulation.FPGameplay
         }
     }
 
-    internal readonly struct FPGameplayEffectAttributeSnapshotReference
+    internal readonly partial struct FPGameplayEffectAttributeSnapshotReference
     {
         readonly uint m_Generation;
 
@@ -1164,7 +1164,7 @@ namespace ThirdPersonSimulation.FPGameplay
         }
     }
 
-    internal sealed class FPGameplayEffectAttributeSnapshotBank
+    internal sealed partial class FPGameplayEffectAttributeSnapshotBank
     {
         readonly FPGameplayEffectAttributeSnapshotPage[] m_Pages;
         readonly int[] m_Available;
@@ -1205,7 +1205,7 @@ namespace ThirdPersonSimulation.FPGameplay
         internal void Return(int index) => m_Available[m_AvailableCount++] = index;
     }
 
-    internal readonly struct FPGameplayEffectSnapshotReference<T> where T : struct
+    internal readonly partial struct FPGameplayEffectSnapshotReference<T> where T : struct
     {
         readonly FPGameplayEffectSnapshotPage<T> m_Page;
         readonly uint m_Generation;
@@ -1297,7 +1297,7 @@ namespace ThirdPersonSimulation.FPGameplay
         }
     }
 
-    internal sealed class FPGameplayEffectSnapshotBank<T> where T : struct
+    internal sealed partial class FPGameplayEffectSnapshotBank<T> where T : struct
     {
         readonly FPGameplayEffectSnapshotPage<T>[] m_Pages;
         readonly int[] m_Available;
@@ -1327,7 +1327,7 @@ namespace ThirdPersonSimulation.FPGameplay
         internal void Return(int index) => m_Available[m_AvailableCount++] = index;
     }
 
-    internal sealed class SimulationGameplayEffectState
+    internal sealed partial class SimulationGameplayEffectState
     {
         readonly FPGameplayEffectRuntimeCatalog m_Catalog;
         readonly FPGameplayEffectExecutionScratch m_Scratch;

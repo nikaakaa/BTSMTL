@@ -285,7 +285,7 @@ namespace ThirdPersonSimulation.FPGameplay
         }
     }
 
-    internal sealed class FPActionStatePageBank
+    internal sealed partial class FPActionStatePageBank
     {
         readonly List<FPActionStatePage> m_Pages = new List<FPActionStatePage>();
         internal int ActionCapacity { get; }
@@ -340,7 +340,7 @@ namespace ThirdPersonSimulation.FPGameplay
         internal int Retainers;
     }
 
-    internal readonly struct FPActionStatePageReference
+    internal readonly partial struct FPActionStatePageReference
     {
         internal FPActionStatePageReference(FPActionStatePage page, ulong generation)
         {

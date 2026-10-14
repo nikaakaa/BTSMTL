@@ -5,7 +5,7 @@ using System.Collections.Generic;
 
 namespace ThirdPersonSimulation.FPGameplay
 {
-    internal sealed class FPAbilityStateDirectoryBank
+    internal sealed partial class FPAbilityStateDirectoryBank
     {
         readonly List<FPAbilityStateDirectoryPage> m_Pages = new List<FPAbilityStateDirectoryPage>();
         readonly int m_AbilityCount;
@@ -56,7 +56,7 @@ namespace ThirdPersonSimulation.FPGameplay
         internal int Retainers;
     }
 
-    internal readonly struct FPAbilityStateDirectoryReference
+    internal readonly partial struct FPAbilityStateDirectoryReference
     {
         internal FPAbilityStateDirectoryReference(FPAbilityStateDirectoryPage page, ulong generation)
         {
