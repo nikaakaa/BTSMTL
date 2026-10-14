@@ -74,7 +74,7 @@ namespace ThirdPersonSimulation.Serialization
         public object GetService(Type serviceType) => serviceType == typeof(MemoryPackContentContext) ? this : null;
     }
 
-    public static class MemoryPackContent
+    public static partial class MemoryPackContent
     {
         static MemoryPackContent() => MemoryPackGeneratedFormatters.Register();
 
