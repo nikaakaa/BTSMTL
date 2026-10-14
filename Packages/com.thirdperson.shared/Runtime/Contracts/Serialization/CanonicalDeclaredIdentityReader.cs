@@ -9,13 +9,19 @@ namespace ThirdPersonSimulation
         readonly Entry[] m_Entries;
 
         public CanonicalDeclaredIdentityReader(IEnumerable<string> identities)
+            : this(identities.Distinct(StringComparer.Ordinal).Select(value => new Entry(value)).ToArray())
         {
-            m_Entries = identities.Distinct(StringComparer.Ordinal).Select(value => new Entry(value)).ToArray();
+        }
+
+        CanonicalDeclaredIdentityReader(Entry[] entries)
+        {
+            m_Entries = entries;
             Array.Sort(m_Entries, CompareEncodedEntries);
         }
 
-
-
+        public static CanonicalDeclaredIdentityReader Combine(IEnumerable<CanonicalDeclaredIdentityReader> readers) =>
+            new CanonicalDeclaredIdentityReader(readers.SelectMany(reader => reader.m_Entries)
+                .GroupBy(entry => entry.Value, StringComparer.Ordinal).Select(group => group.First()).ToArray());
 
         public string ResolveInitialization(ArraySegment<byte> bytes)
         {
