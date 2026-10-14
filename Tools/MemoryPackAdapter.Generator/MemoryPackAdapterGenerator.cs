@@ -58,6 +58,9 @@ namespace ThirdPerson.MemoryPackAdapters
                     externalLeaves.Add(Identity(method.TypeArguments[0]));
             }
             bool valid = true;
+            var snapshots = MemoryPackSnapshots(context, externalLeaves, IsImplicitReference, ref valid);
+            foreach (NativeSnapshotPlan snapshot in snapshots.Values)
+                foreach (ITypeSymbol leaf in snapshot.Shapes.SelectMany(SnapshotLeafTypes)) Visit(leaf);
             var preparedStorages = PreparedStorages(context.Compilation);
             foreach (var call in receiver.Calls)
             {
@@ -91,7 +94,7 @@ namespace ThirdPerson.MemoryPackAdapters
                 HasAdapter(SequenceElement(type))).ToArray();
             INamedTypeSymbol[] adaptedNullableValues = nullableValues.Values.Where(type =>
                 HasAdapter(NullableElement(type))).ToArray();
-            if (records.Count + adaptedSequences.Length + adaptedNullableValues.Length == 0) return;
+            if (records.Count + adaptedSequences.Length + adaptedNullableValues.Length + snapshots.Count == 0) return;
             var payloadTypes = new HashSet<string>(StringComparer.Ordinal);
             bool changed;
             do
@@ -115,6 +118,10 @@ namespace ThirdPerson.MemoryPackAdapters
             foreach (var nullable in adaptedNullableValues)
                 code.Append("global::MemoryPack.MemoryPackFormatterProvider.Register(new Formatter")
                     .Append(ordinal++).AppendLine("());");
+            int snapshotOrdinal = 0;
+            foreach (var snapshot in snapshots.Values)
+                code.Append("global::MemoryPack.MemoryPackFormatterProvider.Register(new SnapshotFormatter")
+                    .Append(snapshotOrdinal++).AppendLine("());");
             code.AppendLine("}");
             ordinal = 0;
             bool scopedReferences = (int)((Microsoft.CodeAnalysis.CSharp.CSharpParseOptions)context.ParseOptions).LanguageVersion >= 1100;
@@ -127,15 +134,19 @@ namespace ThirdPerson.MemoryPackAdapters
                 EmitMemoryPackSequenceFormatter(code, sequence, ordinal++, scopedReferences);
             foreach (var nullable in adaptedNullableValues)
                 EmitMemoryPackNullableFormatter(code, nullable, ordinal++, scopedReferences);
+            snapshotOrdinal = 0;
+            foreach (var snapshot in snapshots.Values)
+                EmitMemoryPackSnapshotFormatter(code, snapshot, snapshotOrdinal++, scopedReferences);
             code.AppendLine("} }");
             context.AddSource("MemoryPackGeneratedFormatters.g.cs", SourceText.From(code.ToString(), Encoding.UTF8));
 
             void Visit(ITypeSymbol type)
             {
                 if (type is INamedTypeSymbol namedType) type = RecordType(namedType);
-                if (type is ITypeParameterSymbol || type.TypeKind == TypeKind.Enum)
+                if (type is ITypeParameterSymbol || type.IsUnmanagedType)
                     return;
                 if (!visited.Add(Identity(type))) return;
+                if (snapshots.ContainsKey(Identity(type)) || Identity(type) == SnapshotCopyContract) return;
                 if (externalLeaves.Contains(Identity(type))) return;
                 if (MemoryPackSequence(type))
                 {
