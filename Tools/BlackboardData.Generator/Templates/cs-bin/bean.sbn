@@ -7,7 +7,7 @@ using ThirdPersonSimulation;
 {{ if domain == "Fixed"; value_type = "ThirdPersonSimulation.Fixed.AbilityStateValue"; end }}
 namespace {{__namespace_with_top_module}}
 {
-    [CanonicalContract]
+    [ValueOperations]
     public sealed partial class {{__name}} : IGeneratedBlackboardValues<{{value_type}}>
     {
         {{~for field in __bean.export_fields~}}
@@ -63,11 +63,6 @@ namespace {{__namespace_with_top_module}}
             {{field.name}} = default;
             {{~end~}}
         }
-
-        public void WriteCanonical<TWriter>(TWriter writer) where TWriter : class, ICanonicalValueWriter => CanonicalWrite(writer, this);
-        public void ReadCanonical(CanonicalReader reader) => CanonicalReadInto(reader, this);
-        public void RetainValues() => CanonicalRetain(this);
-        public void ReleaseValues() => CanonicalRelease(this);
     }
 
 }

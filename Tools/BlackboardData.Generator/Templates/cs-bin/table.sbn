@@ -19,7 +19,6 @@ namespace {{__namespace_with_top_module}}
             }) { }
 
         public override IGeneratedBlackboardValues<{{value_type}}> Create() => new {{bean.full_name}}();
-        public override StableHash CanonicalSchemaHash => {{bean.full_name}}.CanonicalSchemaHash;
 
         public override IGeneratedBlackboardValues<{{value_type}}> ReadDefaults(byte[] bytes)
         {
