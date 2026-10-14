@@ -58,14 +58,17 @@ namespace ThirdPerson.MemoryPackAdapters
                     externalLeaves.Add(Identity(method.TypeArguments[0]));
             }
             bool valid = true;
-            var snapshots = MemoryPackSnapshots(context, externalLeaves, IsImplicitReference, ref valid);
-            foreach (NativeSnapshotPlan snapshot in snapshots.Values)
-                foreach (ITypeSymbol leaf in snapshot.Shapes.SelectMany(SnapshotLeafTypes)) Visit(leaf);
+            bool erasedSnapshots = false;
+            var snapshotCandidates = MemoryPackSnapshotCandidates(context, externalLeaves, IsImplicitReference);
+            var snapshots = new SortedDictionary<string, NativeSnapshotPlan>(StringComparer.Ordinal);
             var preparedStorages = PreparedStorages(context.Compilation);
             foreach (var call in receiver.Calls)
             {
                 var method = context.Compilation.GetSemanticModel(call.SyntaxTree).GetSymbolInfo(call).Symbol as IMethodSymbol;
                 if (method == null || !IsMemoryPackValueCall(method)) continue;
+                if (Identity(method.ContainingType) == "ThirdPersonSimulation.Serialization.MemoryPackContent" &&
+                    (method.Name == "SerializeSnapshotInto" || method.Name == "DeserializeSnapshotInto"))
+                    erasedSnapshots = true;
                 if (method.Name == "DeserializeInto" && method.TypeArguments.Length == 0)
                     Visit(method.ReturnType);
                 for (int i = 0; i < method.TypeArguments.Length; i++)
@@ -73,6 +76,10 @@ namespace ThirdPerson.MemoryPackAdapters
                         method.OriginalDefinition.TypeParameters[i].Name != "TStorage")
                         Visit(method.TypeArguments[i]);
             }
+            if (erasedSnapshots)
+                foreach (NativeSnapshotPlan candidate in snapshotCandidates.Values.Where(candidate =>
+                    CanEncodeSnapshot(candidate, snapshotCandidates, externalLeaves, new HashSet<string>())))
+                    VisitSnapshot(candidate);
             var preparedPlans = new Dictionary<string, PreparedReadPlan>(StringComparer.Ordinal);
             ITypeSymbol preparedText = context.Compilation.GetTypeByMetadataName("ThirdPersonSimulation.Serialization.MemoryPackContentContext")?
                 .GetMembers("ReadText").OfType<IMethodSymbol>().SingleOrDefault()?.ReturnType;
@@ -140,14 +147,59 @@ namespace ThirdPerson.MemoryPackAdapters
             code.AppendLine("} }");
             context.AddSource("MemoryPackGeneratedFormatters.g.cs", SourceText.From(code.ToString(), Encoding.UTF8));
 
+            void VisitSnapshot(NativeSnapshotPlan snapshot)
+            {
+                if (snapshots.ContainsKey(snapshot.Name)) return;
+                string reason = snapshot.Error;
+                if (reason != null)
+                {
+                    valid = false;
+                    context.ReportDiagnostic(Diagnostic.Create(InvalidMemoryPackAdapter, snapshot.Type.Locations.FirstOrDefault(),
+                        Identity(snapshot.Type), reason));
+                    return;
+                }
+                snapshots.Add(snapshot.Name, snapshot);
+                foreach (NativeSnapshotShape shape in snapshot.Shapes) VisitSnapshotShape(shape);
+            }
+
+            void VisitSnapshotShape(NativeSnapshotShape shape)
+            {
+                if (shape.Kind == NativeSnapshotKind.Value) Visit(shape.Type);
+                else if (shape.Kind == NativeSnapshotKind.Source)
+                {
+                    if (shape.DynamicSource)
+                    {
+                        erasedSnapshots = true;
+                        return;
+                    }
+                    string name = !IsSnapshotCopy(shape.Type) && HasAttribute(shape.Type, SnapshotAttributeName) ?
+                        ThirdPerson.ValueGeneration.ValueSnapshotModel.SnapshotTypeName((INamedTypeSymbol)shape.Type) : TypeName(shape.Type);
+                    if (snapshotCandidates.TryGetValue(name, out NativeSnapshotPlan nested)) VisitSnapshot(nested);
+                    else Visit(shape.Type);
+                }
+                if (shape.Key != null) VisitSnapshotShape(shape.Key);
+                if (shape.Element != null) VisitSnapshotShape(shape.Element);
+            }
+
             void Visit(ITypeSymbol type)
             {
                 if (type is INamedTypeSymbol namedType) type = RecordType(namedType);
-                if (type is ITypeParameterSymbol || type.IsUnmanagedType)
+                if (type is ITypeParameterSymbol || IsUnmanagedValue(type))
                     return;
                 if (!visited.Add(Identity(type))) return;
-                if (snapshots.ContainsKey(Identity(type)) || Identity(type) == SnapshotCopyContract) return;
                 if (externalLeaves.Contains(Identity(type))) return;
+                if (snapshotCandidates.TryGetValue(TypeName(type), out NativeSnapshotPlan snapshot))
+                {
+                    VisitSnapshot(snapshot);
+                    return;
+                }
+                if (Identity(type) == SnapshotCopyContract)
+                {
+                    valid = false;
+                    context.ReportDiagnostic(Diagnostic.Create(InvalidMemoryPackAdapter, type.Locations.FirstOrDefault(),
+                        Identity(type), "字节入口必须提供具体捕获载体，不能只声明内存资源接口"));
+                    return;
+                }
                 if (MemoryPackSequence(type))
                 {
                     sequences.Add(Identity(type), type);
@@ -325,7 +377,8 @@ namespace ThirdPerson.MemoryPackAdapters
                 (method.Name == "Serialize" || method.Name == "Deserialize") ||
                 owner == "ThirdPersonSimulation.Serialization.MemoryPackContent" &&
                 (method.Name == "Serialize" || method.Name == "SerializeInto" || method.Name == "Deserialize" ||
-                    method.Name == "DeserializeParts" || method.Name == "DeserializeInto") ||
+                    method.Name == "DeserializeParts" || method.Name == "DeserializeInto" ||
+                    method.Name == "SerializeSnapshotInto" || method.Name == "DeserializeSnapshotInto") ||
                 owner == "MemoryPack.MemoryPackWriter<TBufferWriter>" && method.Name == "WriteValue" ||
                 owner == "MemoryPack.MemoryPackReader" && method.Name == "ReadValue";
         }

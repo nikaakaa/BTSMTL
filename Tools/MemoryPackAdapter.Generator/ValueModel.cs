@@ -17,6 +17,21 @@ namespace ThirdPerson.ValueGeneration
 
         internal const string StorageAttribute = "ThirdPersonSimulation.ValueStorageAttribute";
 
+        internal static bool IsUnmanagedValue(ITypeSymbol type) => IsUnmanagedValue(type, new HashSet<string>());
+
+        static bool IsUnmanagedValue(ITypeSymbol type, HashSet<string> path)
+        {
+            if (!type.IsUnmanagedType) return false;
+            if (NullableElement(type) is ITypeSymbol nullable) return IsUnmanagedValue(nullable, path);
+            if (type.SpecialType != SpecialType.None || type.TypeKind == TypeKind.Enum || !(type is INamedTypeSymbol record))
+                return true;
+            if (!path.Add(Identity(type))) return false;
+            return record.GetMembers().OfType<IFieldSymbol>().Where(field => !field.IsStatic).All(field =>
+                IsUnmanagedValue(field.Type, new HashSet<string>(path))) &&
+                (!HasAttribute(type, UnionAttribute) || ValueMembers(record).Where(member => member.IsCase).All(member =>
+                    IsUnmanagedValue(member.Type, new HashSet<string>(path))));
+        }
+
         internal static Member[] ValueMembers(INamedTypeSymbol type, Func<ITypeSymbol, ITypeSymbol, bool> implicitReference = null)
         {
             AttributeData union = type.GetAttributes().SingleOrDefault(a => Identity(a.AttributeClass) == UnionAttribute);
