@@ -493,6 +493,11 @@ namespace ThirdPerson.ValueGeneration.Generator
         {
             var code = new StringBuilder();
             code.Append("namespace ").Append(type.ContainingNamespace.ToDisplayString()).AppendLine(" {");
+            var owners = new Stack<INamedTypeSymbol>();
+            for (INamedTypeSymbol owner = type.ContainingType; owner != null; owner = owner.ContainingType)
+                owners.Push(owner);
+            foreach (INamedTypeSymbol owner in owners)
+                EmitTypeDeclaration(code, owner);
             EmitTypeDeclaration(code, type);
             AttributeData purpose = type.GetAttributes().Single(attribute => Identity(attribute.AttributeClass) == ValueStoragePurposeAttribute);
             bool construct = purpose.NamedArguments.Any(argument => argument.Key == "Construct" && (bool)argument.Value.Value);
@@ -502,6 +507,8 @@ namespace ThirdPerson.ValueGeneration.Generator
             }
             else
                 EmitValueStorage(code, type, StorageMembers(type), construct);
+            foreach (INamedTypeSymbol owner in owners)
+                code.AppendLine("}");
             code.AppendLine("} }");
             return code.ToString();
         }
@@ -662,7 +669,11 @@ namespace ThirdPerson.ValueGeneration.Generator
                         "更新参数没有对应的原始存储成员"));
                     return;
                 }
-                code.Append("public partial ").Append(TypeName(type)).Append(' ').Append(Escape(method.Name)).Append('(')
+                var declaration = (MethodDeclarationSyntax)method.DeclaringSyntaxReferences[0].GetSyntax();
+                string accessibility = string.Join(" ", declaration.Modifiers.Where(modifier =>
+                    modifier.IsKind(SyntaxKind.PublicKeyword) || modifier.IsKind(SyntaxKind.InternalKeyword) ||
+                    modifier.IsKind(SyntaxKind.PrivateKeyword) || modifier.IsKind(SyntaxKind.ProtectedKeyword)));
+                code.Append(accessibility).Append(" partial ").Append(TypeName(type)).Append(' ').Append(Escape(method.Name)).Append('(')
                     .Append(string.Join(", ", method.Parameters.Select(parameter => TypeName(parameter.Type) + " " + Escape(parameter.Name))))
                     .Append(constructor == null ? ") => FromValueStorage(" : ") => new " + TypeName(type) + "(");
                 for (int index = 0; index < updateMembers.Length; index++)
@@ -730,6 +741,8 @@ namespace ThirdPerson.ValueGeneration.Generator
                     code.AppendLine("default: throw new global::System.ArgumentOutOfRangeException(nameof(Kind)); } }");
                 }
             }
+            if (TryMaximumTextReferences(type, new HashSet<string>(), out int maximumTextReferences))
+                code.Append("public const int MaximumTextReferences = ").Append(maximumTextReferences).AppendLine(";");
             if (operations != null && operations.NamedArguments.Any(argument => argument.Key == "Resources" && argument.Value.Value is false))
                 return;
             if (operations != null && operations.NamedArguments.Any(argument => argument.Key == "ExplicitResources" && argument.Value.Value is true))
