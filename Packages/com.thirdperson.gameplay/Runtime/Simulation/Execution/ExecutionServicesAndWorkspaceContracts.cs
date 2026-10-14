@@ -25,7 +25,8 @@ namespace ThirdPersonSimulation
         public AbilityTreeClipInvocation? TreeClipInvocation { get; }
     }
 
-    internal readonly partial struct CharacterRuntimeStateMetadata
+    [ValueStorage(UseConstructor = true), ValueOperations(Resources = false)]
+    public readonly partial struct CharacterRuntimeStateMetadata : IEquatable<CharacterRuntimeStateMetadata>
     {
         internal CharacterRuntimeStateMetadata(SimulationNumericProfile numericProfile,
             GameplayContentHash gameplayContentHash, StableHash stateSchemaHash,
@@ -40,13 +41,13 @@ namespace ThirdPersonSimulation
             HandleAllocator = handleAllocator;
         }
 
-        internal SimulationNumericProfile NumericProfile { get; }
-        internal GameplayContentHash GameplayContentHash { get; }
-        internal StableHash StateSchemaHash { get; }
-        internal ulong LastCompletedTick { get; }
-        internal ulong EventSequence { get; }
-        internal ulong ActionEventSequence { get; }
-        internal ulong HandleAllocator { get; }
+        public SimulationNumericProfile NumericProfile { get; }
+        public GameplayContentHash GameplayContentHash { get; }
+        public StableHash StateSchemaHash { get; }
+        public ulong LastCompletedTick { get; }
+        public ulong EventSequence { get; }
+        public ulong ActionEventSequence { get; }
+        public ulong HandleAllocator { get; }
     }
 
     [ValueOperations]

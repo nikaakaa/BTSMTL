@@ -130,7 +130,8 @@ namespace ThirdPersonSimulation
         }
     }
 
-    internal readonly partial struct AbilityExecutionContext
+    [ValueOperations(Resources = false)]
+    public readonly partial struct AbilityExecutionContext : IEquatable<AbilityExecutionContext>
     {
         public AbilityExecutionContext(
             CharacterSkillId skillId,
@@ -153,8 +154,8 @@ namespace ThirdPersonSimulation
         public ulong Generation { get; }
         public bool IsValid => SkillId.IsValid && EntryOperation.IsValid && ActionInstanceId != 0 && PredictionKey != 0;
 
-        internal AbilityExecutionContext WithGeneration(ulong generation) =>
-            new AbilityExecutionContext(SkillId, EntryOperation, ActionInstanceId, PredictionKey, generation);
+        [ValueUpdate]
+        internal partial AbilityExecutionContext WithGeneration(ulong generation);
 
         [ValueValidation]
         void RequireRecord()

@@ -107,7 +107,7 @@ namespace ThirdPersonSimulation
         }
     }
 
-    internal sealed class GameplayAbilityExecutionFrame<TValue>
+    public sealed class GameplayAbilityExecutionFrame<TValue>
         where TValue : struct, IEquatable<TValue>
     {
         readonly GameplayAbilityExecutionStateBank<TValue> m_Bank;
@@ -125,9 +125,9 @@ namespace ThirdPersonSimulation
         public ulong ActionInstanceId => m_Identity.ActionInstanceId;
         public ulong PredictionKey => m_Identity.PredictionKey;
         public ulong Generation => m_Identity.Generation;
-        internal AbilityStateValuePageReference<TValue> StateValues => m_StateValues;
+        public AbilityStateValuePageReference<TValue> StateValues => m_StateValues;
         internal int Retainers => m_Retainers;
-        internal ref readonly AbilityExecutionContext Identity => ref m_Identity;
+        public ref readonly AbilityExecutionContext Identity => ref m_Identity;
 
         internal void Begin(AbilityExecutionContext identity)
         {
@@ -159,12 +159,12 @@ namespace ThirdPersonSimulation
 
         public bool TryGetValue(int slotIndex, out TValue value) => m_StateValues.TryGetValue(slotIndex, out value);
 
-        public void SetValue(int slotIndex, TValue value)
+        internal void SetValue(int slotIndex, TValue value)
         {
             m_StateValues.Set.Set(slotIndex, value);
         }
 
-        public void BindGeneration(ulong generation)
+        internal void BindGeneration(ulong generation)
         {
             if (generation == 0)
                 throw new ArgumentOutOfRangeException(nameof(generation));
@@ -175,15 +175,12 @@ namespace ThirdPersonSimulation
 
         public bool Equals(GameplayAbilityExecutionFrame<TValue> other)
         {
-            if (other == null || SkillId != other.SkillId ||
-                !EntryOperation.Equals(other.EntryOperation) || ActionInstanceId != other.ActionInstanceId ||
-                PredictionKey != other.PredictionKey || Generation != other.Generation)
-                return false;
-            return m_StateValues.Set.SharesValuesWith(other.m_StateValues.Set);
+            return other != null && m_Identity.Equals(other.m_Identity) &&
+                m_StateValues.ContentEquals(other.m_StateValues);
         }
     }
 
-    internal sealed class GameplayAbilityExecutionAggregate<TValue>
+    public sealed class GameplayAbilityExecutionAggregate<TValue>
         where TValue : struct, IEquatable<TValue>
     {
         readonly List<GameplayAbilityExecutionFrame<TValue>> m_Frames;
@@ -244,7 +241,7 @@ namespace ThirdPersonSimulation
             return null;
         }
 
-        public void Add(GameplayAbilityExecutionFrame<TValue> frame)
+        internal void Add(GameplayAbilityExecutionFrame<TValue> frame)
         {
             if (frame == null || Find(frame.ActionInstanceId) != null)
                 throw new ArgumentException("Skill execution state frame is invalid or duplicated.", nameof(frame));
@@ -268,7 +265,7 @@ namespace ThirdPersonSimulation
             m_Frames.Insert(first, frame);
         }
 
-        public bool Remove(ulong actionInstanceId)
+        internal bool Remove(ulong actionInstanceId)
         {
             for (int index = 0; index < m_Frames.Count; index++)
             {

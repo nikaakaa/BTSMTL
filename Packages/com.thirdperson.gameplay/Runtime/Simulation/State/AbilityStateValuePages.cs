@@ -3,14 +3,13 @@ using System.Collections.Generic;
 
 namespace ThirdPersonSimulation
 {
-    internal sealed class AbilityStateValuePageBank<TValue> where TValue : struct
+    internal sealed class AbilityStateValuePageBank<TValue> where TValue : struct, IEquatable<TValue>
     {
         internal const int PageSize = 32;
         readonly List<AbilityStateValuePageSet<TValue>> m_Sets = new List<AbilityStateValuePageSet<TValue>>();
         readonly AbilityStateValuePage<TValue>[][] m_Pages;
         readonly int[] m_PageIndices;
         internal readonly int[] ValueIndices;
-        internal readonly int[] LogicalSlots;
         internal readonly int[] BlackboardBlocks;
         internal readonly int[] BlackboardFields;
         internal readonly GeneratedBlackboardBlock<TValue>[] BlackboardBindings;
@@ -29,7 +28,7 @@ namespace ThirdPersonSimulation
             BlackboardFields = new int[slotCount];
             Array.Fill(ValueIndices, -1);
             Array.Fill(BlackboardBlocks, -1);
-            var logicalSlots = new List<int>();
+            int valueCount = 0;
             var bindings = new List<GeneratedBlackboardBlock<TValue>>();
             var blocks = new Dictionary<int, int>();
             for (int slot = 0; slot < slotCount; slot++)
@@ -50,13 +49,11 @@ namespace ThirdPersonSimulation
                 }
                 else
                 {
-                    ValueIndices[slot] = logicalSlots.Count;
-                    logicalSlots.Add(slot);
+                    ValueIndices[slot] = valueCount++;
                 }
             }
-            LogicalSlots = logicalSlots.ToArray();
             BlackboardBindings = bindings.ToArray();
-            m_Pages = new AbilityStateValuePage<TValue>[(LogicalSlots.Length + PageSize - 1) / PageSize][];
+            m_Pages = new AbilityStateValuePage<TValue>[(valueCount + PageSize - 1) / PageSize][];
             m_PageIndices = new int[m_Pages.Length];
             for (int index = 0; index < m_PageIndices.Length; index++)
                 m_PageIndices[index] = index;
@@ -143,7 +140,7 @@ namespace ThirdPersonSimulation
         }
     }
 
-    internal sealed class GeneratedBlackboardPage<TValue> where TValue : struct
+    internal sealed class GeneratedBlackboardPage<TValue> where TValue : struct, IEquatable<TValue>
     {
         internal GeneratedBlackboardPage(IGeneratedBlackboardValues<TValue> values) => Values = values;
         internal readonly IGeneratedBlackboardValues<TValue> Values;
@@ -151,14 +148,14 @@ namespace ThirdPersonSimulation
         internal int Retainers;
     }
 
-    internal sealed class AbilityStateValuePage<TValue> where TValue : struct
+    internal sealed class AbilityStateValuePage<TValue> where TValue : struct, IEquatable<TValue>
     {
         internal readonly TValue[] Values = new TValue[AbilityStateValuePageBank<TValue>.PageSize];
         internal uint Stored;
         internal int Retainers;
     }
 
-    internal sealed class AbilityStateValuePageSet<TValue> where TValue : struct
+    internal sealed class AbilityStateValuePageSet<TValue> where TValue : struct, IEquatable<TValue>
     {
         readonly AbilityStateValuePage<TValue>[] m_Pages;
         readonly GeneratedBlackboardPage<TValue>[] m_BlackboardPages;
@@ -174,7 +171,6 @@ namespace ThirdPersonSimulation
         internal AbilityStateValuePageBank<TValue> Bank { get; }
         internal ulong Generation { get; private set; }
         internal bool IsRetained => m_Retainers != 0;
-        internal int Count { get; private set; }
 
         internal void BeginEmpty()
         {
@@ -194,7 +190,6 @@ namespace ThirdPersonSimulation
                 page.Stored = 0;
                 m_BlackboardPages[block] = page;
             }
-            Count = 0;
             Generation++;
         }
 
@@ -202,7 +197,6 @@ namespace ThirdPersonSimulation
         {
             Array.Copy(source.m_Pages, m_Pages, m_Pages.Length);
             Array.Copy(source.m_BlackboardPages, m_BlackboardPages, m_BlackboardPages.Length);
-            Count = source.Count;
             Generation++;
         }
 
@@ -237,55 +231,6 @@ namespace ThirdPersonSimulation
             int offset = storedSlot % AbilityStateValuePageBank<TValue>.PageSize;
             value = page.Values[offset];
             return (page.Stored & (1u << offset)) != 0;
-        }
-
-        internal struct Enumerator
-        {
-            readonly AbilityStateValuePageSet<TValue> m_Set;
-            TValue[] m_PageValues;
-            int m_PageCursor;
-            int m_PageStart;
-            int m_Offset;
-            uint m_RemainingStored;
-
-            internal Enumerator(AbilityStateValuePageSet<TValue> set)
-            {
-                m_Set = set;
-                m_PageValues = null;
-                m_PageCursor = 0;
-                m_PageStart = 0;
-                m_Offset = 0;
-                m_RemainingStored = 0;
-            }
-
-            internal bool MoveNext(out int slot, out TValue value)
-            {
-                ReadOnlySpan<int> pageIndices = m_Set.Bank.PageIndices;
-                while (m_RemainingStored == 0)
-                {
-                    if (m_PageCursor == pageIndices.Length)
-                    {
-                        slot = -1;
-                        value = default;
-                        return false;
-                    }
-                    int pageIndex = pageIndices[m_PageCursor++];
-                    AbilityStateValuePage<TValue> page = m_Set.m_Pages[pageIndex];
-                    m_PageValues = page.Values;
-                    m_PageStart = pageIndex * AbilityStateValuePageBank<TValue>.PageSize;
-                    m_Offset = 0;
-                    m_RemainingStored = page.Stored;
-                }
-                while ((m_RemainingStored & 1) == 0)
-                {
-                    m_RemainingStored >>= 1;
-                    m_Offset++;
-                }
-                slot = m_Set.Bank.LogicalSlots[m_PageStart + m_Offset];
-                value = m_PageValues[m_Offset++];
-                m_RemainingStored >>= 1;
-                return true;
-            }
         }
 
         internal void Set(int slot, TValue value)
@@ -352,8 +297,6 @@ namespace ThirdPersonSimulation
         void Store(AbilityStateValuePage<TValue> page, int offset, TValue value)
         {
             uint mask = 1u << offset;
-            if ((page.Stored & mask) == 0)
-                Count++;
             if (page.Retainers != 0)
             {
                 Bank.RetainValue(value);
@@ -419,7 +362,7 @@ namespace ThirdPersonSimulation
         }
     }
 
-    internal readonly struct AbilityStateValuePageReference<TValue> where TValue : struct
+    public readonly struct AbilityStateValuePageReference<TValue> where TValue : struct, IEquatable<TValue>
     {
         internal AbilityStateValuePageReference(AbilityStateValuePageSet<TValue> set, ulong generation)
         {
@@ -437,10 +380,57 @@ namespace ThirdPersonSimulation
             return Set.TryGetValue(slot, out value);
         }
 
-        internal AbilityStateValuePageSet<TValue>.Enumerator GetEnumerator()
+        public LogicalEnumerator GetLogicalEnumerator()
         {
             RequireReadable();
-            return new AbilityStateValuePageSet<TValue>.Enumerator(Set);
+            return new LogicalEnumerator(Set);
+        }
+
+        public bool ContentEquals(in AbilityStateValuePageReference<TValue> other)
+        {
+            if (Set == null || other.Set == null)
+                return ReferenceEquals(Set, other.Set);
+            LogicalEnumerator left = GetLogicalEnumerator();
+            LogicalEnumerator right = other.GetLogicalEnumerator();
+            if (!Set.Bank.Identity.Equals(other.Set.Bank.Identity))
+                return false;
+            if (ReferenceEquals(Set.Bank, other.Set.Bank) && Set.SharesValuesWith(other.Set))
+                return true;
+            while (left.MoveNext(out int slot, out bool stored, out TValue value))
+            {
+                if (!right.MoveNext(out int otherSlot, out bool otherStored, out TValue otherValue) ||
+                    slot != otherSlot || stored != otherStored || stored && !value.Equals(otherValue))
+                    return false;
+            }
+            return !right.MoveNext(out _, out _, out _);
+        }
+
+        public struct LogicalEnumerator
+        {
+            readonly AbilityStateValuePageSet<TValue> m_Set;
+            int m_Slot;
+
+            internal LogicalEnumerator(AbilityStateValuePageSet<TValue> set)
+            {
+                m_Set = set;
+                m_Slot = -1;
+            }
+
+            public bool MoveNext(out int slot, out bool stored, out TValue value)
+            {
+                while (++m_Slot < m_Set.Bank.ValueIndices.Length)
+                {
+                    if (m_Set.Bank.ValueIndices[m_Slot] < 0 && m_Set.Bank.BlackboardBlocks[m_Slot] < 0)
+                        continue;
+                    slot = m_Slot;
+                    stored = m_Set.TryGetValue(slot, out value);
+                    return true;
+                }
+                slot = -1;
+                stored = false;
+                value = default;
+                return false;
+            }
         }
 
         internal void Retain()

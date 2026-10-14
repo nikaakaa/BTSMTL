@@ -1,7 +1,7 @@
 namespace ThirdPersonSimulation
 {
-    [ValueOperations]
-    internal readonly partial struct AbilityInputEvent
+    [ValueOperations, ValueStorage]
+    public readonly partial struct AbilityInputEvent
     {
         internal AbilityInputEvent(byte kind, ActorId sourceActor, ActorId targetActor, ulong sourceInstance,
             ulong targetInstance, CanonicalTextValue eventId, CanonicalTextValue attackEvent,
