@@ -357,7 +357,6 @@ namespace ThirdPersonSimulation
 
     public static class Float32SimulationSessionComposer
     {
-        const string SnapshotCodecId = "thirdperson.simulation.snapshot-codec.float32-session";
 
         public static Float32PassBackendCompositionResult Compose(Float32SimulationSessionCompositionRequest request) =>
             Compose(request, default, false);
@@ -486,22 +485,6 @@ namespace ThirdPersonSimulation
                 runtime.Descriptor.Capabilities != solver.Capabilities ||
                 runtime.Descriptor.Features != solver.Features)
                 throw Failure("solver_runtime_identity_mismatch", "World Solver runtime does not match its descriptor.");
-        }
-
-        public static SimulationComponentIdentity BuildSnapshotCodecIdentity(
-            SimulationExecutionTargetManifest target,
-            SimulationExecutionBackendDescriptor backend)
-        {
-            return new SimulationComponentIdentity(
-                SimulationComponentRole.SnapshotCodec,
-                SnapshotCodecId,
-                "3",
-                StableHash.Compute(
-                    SnapshotCodecId,
-                    Float32SimulationSessionSnapshotCodec.CanonicalSchema,
-                    target.NumericProfile.Id.Value,
-                    target.NumericProfile.AbiVersion.Value.ToString(CultureInfo.InvariantCulture),
-                    backend.Identity.ToString()));
         }
 
         static IReadOnlyList<SimulationPortDescriptor> PortDescriptors(SimulationRuntimePortSet ports)

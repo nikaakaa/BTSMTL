@@ -24,6 +24,7 @@ namespace ThirdPersonSimulation
 
     public sealed class Float32SimulationSessionSnapshotCodec : IFloat32SimulationSessionSnapshotCodec
     {
+        const string SnapshotCodecId = "thirdperson.simulation.snapshot-codec.float32-session";
         const uint Magic = 0x53534643;
         const int Version = 6;
         public static readonly string CanonicalSchema = CanonicalContractProtocol.ComposeSchema(
@@ -84,6 +85,13 @@ namespace ThirdPersonSimulation
         }
 
         public SimulationComponentIdentity Identity { get; }
+
+        public static SimulationComponentIdentity CreateIdentity(
+            SimulationExecutionTargetManifest target, SimulationExecutionBackendDescriptor backend) =>
+            new SimulationComponentIdentity(SimulationComponentRole.SnapshotCodec, SnapshotCodecId, "3",
+                StableHash.Compute(SnapshotCodecId, CanonicalSchema, target.NumericProfile.Id.Value,
+                    target.NumericProfile.AbiVersion.Value.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    backend.Identity.ToString()));
 
         public void PrepareCheckpointStorage(
             SimulationSessionCompositionDescriptor descriptor, Float32CharacterRuntime runtime,

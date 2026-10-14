@@ -182,6 +182,13 @@ namespace ThirdPersonSimulation.Fixed
                         reconstructible.Add(runtime.Reconstructible);
                 }
 
+                int maximumSteps = 0;
+                for (int passIndex = 0; passIndex < runtimes.Count; passIndex++)
+                    if (runtimes[passIndex].Phase == SimulationPipelinePhase.Schedule)
+                        maximumSteps = ((ISimulationScheduleCapacity)runtimes[passIndex]).MaximumStepCount;
+                int retainedSnapshots = request.Committer is ISimulationPipelineSnapshotRetentionCapacity retention
+                    ? retention.MaximumRetainedStepSnapshots : 0;
+                int frameCapacity = checked(1 + maximumSteps + request.Descriptor.RecordedFrameCapacity + retainedSnapshots);
                 IFixedCommittedInputReadPort availabilityInput = null;
                 for (int participant = 0; participant < stateParticipants.Count; participant++)
                     if (stateParticipants[participant] is IFixedCommittedInputReadPort input)
@@ -189,20 +196,16 @@ namespace ThirdPersonSimulation.Fixed
                         if (availabilityInput != null)
                             throw new InvalidOperationException("Session contains duplicate current input read owners.");
                         availabilityInput = input;
-                        input.PrepareAvailabilityRead(request.Descriptor.MaximumSessionCheckpointPayloadBytes, request.Roster);
+                        input.PrepareAvailabilityRead(request.Descriptor.MaximumSessionCheckpointPayloadBytes, request.Roster, frameCapacity);
                         for (int actor = 0; actor < request.Roster.Count; actor++)
                             request.Roster[actor].BindCommittedInput(input);
                     }
-                int maximumSteps = 0;
-                for (int passIndex = 0; passIndex < runtimes.Count; passIndex++)
-                    if (runtimes[passIndex].Phase == SimulationPipelinePhase.Schedule)
-                        maximumSteps = ((ISimulationScheduleCapacity)runtimes[passIndex]).MaximumStepCount;
-                int retainedSnapshots = request.Committer is ISimulationPipelineSnapshotRetentionCapacity retention
-                    ? retention.MaximumRetainedStepSnapshots : 0;
-                int snapshotCapacity = checked(1 + maximumSteps + request.Descriptor.RecordedFrameCapacity + retainedSnapshots);
-                for (int participant = 0; participant < stateParticipants.Count; participant++)
-                    if (stateParticipants[participant] is ISimulationPipelineStepStateStorage storage)
-                        storage.PrepareStepStorage(snapshotCapacity);
+                bool preparesStateSnapshots = request.Descriptor.CapturesState ||
+                    request.PipelineInitialState.Mode == SimulationPipelineInitialStateMode.RestoreProvidedSnapshot;
+                if (preparesStateSnapshots)
+                    for (int participant = 0; participant < stateParticipants.Count; participant++)
+                        if (stateParticipants[participant] is ISimulationPipelineStepStateStorage storage)
+                            storage.PrepareStepStorage(frameCapacity);
 
                 if (request.PipelineInitialState.Mode == SimulationPipelineInitialStateMode.RestoreProvidedSnapshot)
                 {
@@ -228,8 +231,7 @@ namespace ThirdPersonSimulation.Fixed
                     request.Solver.RequireBodyBinding(request.Roster[i].ActorId, request.Roster[i].WorldBodyBindingId);
                 request.Solver.Reconstruct(request.InitialState.WorldState);
                 SimulationPipelineStateSnapshot initialPipelineState = null;
-                if (request.Descriptor.CapturesState ||
-                    request.PipelineInitialState.Mode == SimulationPipelineInitialStateMode.RestoreProvidedSnapshot)
+                if (preparesStateSnapshots)
                 {
                     initialPipelineState = SimulationPipelineStateSnapshotCoordinator.Capture(
                         request.CompiledPipeline,

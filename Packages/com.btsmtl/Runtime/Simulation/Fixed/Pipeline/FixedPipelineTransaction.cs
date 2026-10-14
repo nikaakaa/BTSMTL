@@ -150,7 +150,9 @@ namespace ThirdPersonSimulation.Fixed
             m_AvailabilityInput = availabilityInput;
             for (int actor = 0; actor < m_Roster.Count; actor++)
                 m_Roster[actor].PrepareEvaluationOutputCapacity(maximumSteps);
-            m_StepSnapshots = new FixedSimulationSessionSnapshot[maximumSteps];
+            m_StepSnapshots = services.Descriptor.CapturesState
+                ? new FixedSimulationSessionSnapshot[maximumSteps]
+                : Array.Empty<FixedSimulationSessionSnapshot>();
             int retainedCapacity = checked(maximumSteps + services.Descriptor.RecordedFrameCapacity);
             m_StepResults = new List<SimulationTickResult>(maximumSteps);
             for (int step = 0; step < maximumSteps; step++)
@@ -381,11 +383,13 @@ namespace ThirdPersonSimulation.Fixed
             m_WorkingStatePort.Clear();
             m_CompletedStepPort.Clear();
             for (int i = 0; i < m_ActiveStepResultCount; i++)
-            {
                 m_StepResults[i].ReleaseFrame();
-                m_StepSnapshots[i]?.ReleaseStorage();
-                m_StepSnapshots[i] = null;
-            }
+            if (m_Services.Descriptor.CapturesState)
+                for (int i = 0; i < m_ActiveStepResultCount; i++)
+                {
+                    m_StepSnapshots[i]?.ReleaseStorage();
+                    m_StepSnapshots[i] = null;
+                }
             m_ActiveStepResultCount = 0;
         }
 
@@ -535,7 +539,7 @@ namespace ThirdPersonSimulation.Fixed
                 FixedSimulationSessionSnapshot snapshot = capture
                     ? m_SnapshotCodec.CaptureStepSnapshot(in candidateState)
                     : null;
-                m_StepSnapshots[m_ActiveStepResultCount - 1] = snapshot;
+                if (capture) m_StepSnapshots[m_ActiveStepResultCount - 1] = snapshot;
                 SimulationWorldSnapshot worldSnapshot = snapshot?.World;
                 FixedSimulationStepSnapshot stepSnapshot = capture
                     ? new FixedSimulationStepSnapshot(snapshot)
@@ -650,7 +654,7 @@ namespace ThirdPersonSimulation.Fixed
                 trace.SnapshotParticipant,
                 trace.SnapshotHash
 #if UNITY_EDITOR
-                , trace.Kind == PipelineTransactionTraceKind.StepCompleted
+                , trace.Kind == PipelineTransactionTraceKind.StepCompleted && m_Services.Descriptor.CapturesState
                     ? m_StepSnapshots[m_ActiveStepResultCount - 1]?.CaptureProfile ?? default
                     : default
 #endif

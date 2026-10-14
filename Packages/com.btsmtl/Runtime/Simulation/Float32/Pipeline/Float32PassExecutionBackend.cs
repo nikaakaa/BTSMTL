@@ -179,9 +179,12 @@ namespace ThirdPersonSimulation
                     if (stateParticipants[participant] is ISimulationPipelineSnapshotRetentionCapacity holder)
                         retainedSnapshots = checked(retainedSnapshots + holder.MaximumRetainedStepSnapshots);
                 int snapshotCapacity = checked(1 + maximumSteps + request.Descriptor.RecordedFrameCapacity + retainedSnapshots);
-                for (int participant = 0; participant < stateParticipants.Count; participant++)
-                    if (stateParticipants[participant] is ISimulationPipelineStepStateStorage storage)
-                        storage.PrepareStepStorage(snapshotCapacity);
+                bool preparesStateSnapshots = request.Descriptor.CapturesState ||
+                    request.PipelineInitialState.Mode == SimulationPipelineInitialStateMode.RestoreProvidedSnapshot;
+                if (preparesStateSnapshots)
+                    for (int participant = 0; participant < stateParticipants.Count; participant++)
+                        if (stateParticipants[participant] is ISimulationPipelineStepStateStorage storage)
+                            storage.PrepareStepStorage(snapshotCapacity);
                 SimulationPipelineStepSnapshotStorage stepProjections = request.Descriptor.CapturesState && request.Descriptor.MaximumSessionCheckpointPayloadBytes > 0
                     ? new SimulationPipelineStepSnapshotStorage(request.CompiledPipeline, stateParticipants,
                         snapshotCapacity, request.Descriptor.MaximumSessionCheckpointPayloadBytes)
@@ -211,8 +214,7 @@ namespace ThirdPersonSimulation
                     request.Solver.RequireBodyBinding(request.Roster[i].ActorId, request.Roster[i].WorldBodyBindingId);
                 request.Solver.Reconstruct(request.InitialState.WorldState);
                 SimulationPipelineStateSnapshot initialPipelineState = null;
-                if (request.Descriptor.CapturesState ||
-                    request.PipelineInitialState.Mode == SimulationPipelineInitialStateMode.RestoreProvidedSnapshot)
+                if (preparesStateSnapshots)
                 {
                     initialPipelineState = SimulationPipelineStateSnapshotCoordinator.Capture(
                         request.CompiledPipeline,

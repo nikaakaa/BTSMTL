@@ -13,7 +13,7 @@ namespace ThirdPersonSimulation.Fixed
             SimulationPipelinePassStateSnapshot[] recordedParticipants = null);
         FixedSimulationSessionSnapshot ReadCheckpoint(SimulationSessionCheckpoint checkpoint);
         void DisposeCheckpointStorage();
-        FixedSimulationSessionSnapshotStorage PrepareStepSnapshotStorage(int retainedSnapshots, int candidateSnapshots);
+        IDisposable PrepareStepSnapshotStorage(int retainedSnapshots, int candidateSnapshots);
         FixedSimulationSessionSnapshot CaptureStepSnapshot(in SimulationWorldStateSet state);
         ReadOnlyMemory<byte> Write(FixedSimulationSessionSnapshot snapshot);
         FixedSimulationSessionSnapshot Read(ReadOnlySpan<byte> bytes);
@@ -27,6 +27,7 @@ namespace ThirdPersonSimulation.Fixed
 
     public sealed class FixedSimulationSessionSnapshotCodec : IFixedSimulationSessionSnapshotCodec
     {
+        const string SnapshotCodecId = "thirdperson.simulation.snapshot-codec.fixed-session";
         const uint Magic = 0x53534643;
         const int Version = 8;
         public static readonly string CanonicalSchema = CanonicalContractProtocol.ComposeSchema(
@@ -92,6 +93,13 @@ namespace ThirdPersonSimulation.Fixed
 
         public SimulationComponentIdentity Identity { get; }
 
+        public static SimulationComponentIdentity CreateIdentity(
+            SimulationExecutionTargetManifest target, SimulationExecutionBackendDescriptor backend) =>
+            new SimulationComponentIdentity(SimulationComponentRole.SnapshotCodec, SnapshotCodecId, "3",
+                StableHash.Compute(SnapshotCodecId, CanonicalSchema, target.NumericProfile.Id.Value,
+                    target.NumericProfile.AbiVersion.Value.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    backend.Identity.ToString()));
+
         public void PrepareCheckpointStorage(
             SimulationSessionCompositionDescriptor descriptor, FixedCharacterRuntime runtime,
             System.Collections.Generic.IReadOnlyList<ISimulationPipelineStateParticipant> participants,
@@ -143,7 +151,7 @@ namespace ThirdPersonSimulation.Fixed
             m_CanonicalWriter = new CanonicalWriter(new byte[m_Composition.MaximumSessionCheckpointPayloadBytes]);
         }
 
-        public FixedSimulationSessionSnapshotStorage PrepareStepSnapshotStorage(int retainedSnapshots, int candidateSnapshots)
+        public IDisposable PrepareStepSnapshotStorage(int retainedSnapshots, int candidateSnapshots)
         {
             int count = 0;
             for (int index = 0; index < m_Participants.Length; index++)
@@ -159,7 +167,7 @@ namespace ThirdPersonSimulation.Fixed
             if (m_Checkpoints.Count == 0)
                 PrepareEncodingStorage();
             m_StepSnapshots = new FixedSimulationSessionSnapshotStorage(storage, m_Composition, m_Runtime, participants,
-                m_HashWriter, retainedSnapshots, candidateSnapshots, m_PublishedWorld);
+                m_HashWriter, m_PublishedWorld);
             return m_StepSnapshots;
         }
 
@@ -460,16 +468,14 @@ namespace ThirdPersonSimulation.Fixed
 
     }
 
-    public sealed class FixedSimulationSessionSnapshotStorage : IDisposable
+    internal sealed class FixedSimulationSessionSnapshotStorage : IDisposable
     {
         internal FixedSimulationSessionSnapshotStorage(SimulationSessionCheckpointPayloadStorage payloads,
             SimulationSessionCompositionDescriptor composition, FixedCharacterRuntime runtime,
             ISimulationPipelineStateParticipant[] participants, CanonicalWriter hashWriter,
-            int retainedSnapshots, int candidateSnapshots, WorldSimulationState publishedWorld)
+            WorldSimulationState publishedWorld)
         {
             Payloads = payloads;
-            MaximumRetainedSnapshots = retainedSnapshots;
-            MaximumCandidateSnapshots = candidateSnapshots;
             Descriptors = new FixedSimulationSessionSnapshotCodec.CheckpointDescriptors[payloads.Count];
             for (int index = 0; index < Descriptors.Length; index++)
             {
@@ -482,8 +488,6 @@ namespace ThirdPersonSimulation.Fixed
 
         internal readonly SimulationSessionCheckpointPayloadStorage Payloads;
         internal readonly FixedSimulationSessionSnapshotCodec.CheckpointDescriptors[] Descriptors;
-        public int MaximumRetainedSnapshots { get; }
-        public int MaximumCandidateSnapshots { get; }
         public void Dispose() => Payloads.Dispose();
     }
 

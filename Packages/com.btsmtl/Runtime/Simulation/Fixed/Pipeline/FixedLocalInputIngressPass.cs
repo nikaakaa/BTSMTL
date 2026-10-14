@@ -54,11 +54,11 @@ namespace ThirdPersonSimulation.Fixed
                 StandardFixedLocalPipelinePassContracts.LocalControlInputStateSchemaVersion);
         }
 
-        public void PrepareAvailabilityRead(int maximumPayloadBytes, System.Collections.Generic.IReadOnlyList<SimulationActorBinding> roster)
+        public void PrepareAvailabilityRead(int maximumPayloadBytes, System.Collections.Generic.IReadOnlyList<SimulationActorBinding> roster, int inputFrameCapacity)
         {
             m_Source.PrepareAvailabilityRead(maximumPayloadBytes, roster);
+            m_Source.PrepareInputStorage(inputFrameCapacity);
             m_Checkpoint = new FixedLocalControlInputCheckpoint(StateIdentity, m_Source.StatePayloadCapacity, m_Source.StateTextCapacity);
-            m_Restore = new FixedLocalControlInputRestoreTransaction(StateIdentity, m_Source);
         }
         public void CaptureFrameEvents(ActorId actorId, ReadOnlySpan<SimulationIngress> ingress) => m_Source.CaptureFrameEvents(actorId, ingress);
         public bool HasActionEvent(ActorId actorId, ulong instanceId, string eventId, CanonicalTextValue targetId) => m_Source.HasActionEvent(actorId, instanceId, eventId, targetId);
@@ -87,8 +87,8 @@ namespace ThirdPersonSimulation.Fixed
 
         public void PrepareStepStorage(int snapshotCapacity)
         {
-            m_Source.PrepareInputStorage(snapshotCapacity);
             m_StepStorage = new SimulationPipelinePassStateStorage(StateIdentity, snapshotCapacity, MaximumPayloadBytes, MaximumTextValues);
+            m_Restore = new FixedLocalControlInputRestoreTransaction(StateIdentity, m_Source);
         }
 
         public SimulationPipelinePassStateSnapshot CaptureStepState()

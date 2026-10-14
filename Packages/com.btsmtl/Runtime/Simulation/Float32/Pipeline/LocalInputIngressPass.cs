@@ -57,7 +57,6 @@ namespace ThirdPersonSimulation
         {
             m_Source.PrepareAvailabilityRead(maximumPayloadBytes, roster);
             m_Checkpoint = new LocalControlInputCheckpoint(StateIdentity, m_Source.StatePayloadCapacity, m_Source.StateTextCapacity);
-            m_Restore = new LocalControlInputRestoreTransaction(StateIdentity, m_Source);
         }
         public void CaptureFrameEvents(ActorId actorId, ReadOnlySpan<SimulationIngress> ingress) => m_Source.CaptureFrameEvents(actorId, ingress);
         public bool HasActionEvent(ActorId actorId, ulong instanceId, string eventId, CanonicalTextValue targetId) => m_Source.HasActionEvent(actorId, instanceId, eventId, targetId);
@@ -78,8 +77,11 @@ namespace ThirdPersonSimulation
         public int MaximumTextValues => m_Source.StateTextCapacity;
         public SimulationPipelineStepProjectionMode StepProjectionMode => SimulationPipelineStepProjectionMode.Include;
 
-        public void PrepareStepStorage(int snapshotCapacity) =>
+        public void PrepareStepStorage(int snapshotCapacity)
+        {
             m_StepStorage = new SimulationPipelinePassStateStorage(StateIdentity, snapshotCapacity, MaximumPayloadBytes, MaximumTextValues);
+            m_Restore = new LocalControlInputRestoreTransaction(StateIdentity, m_Source);
+        }
         public SimulationPipelinePassStateSnapshot CaptureStepState()
         {
             RequireCaptureOrRestore();

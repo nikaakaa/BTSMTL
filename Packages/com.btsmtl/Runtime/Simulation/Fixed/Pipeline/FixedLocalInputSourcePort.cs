@@ -266,7 +266,7 @@ namespace ThirdPersonSimulation.Fixed
 
     internal interface IFixedCommittedInputReadPort : IFixedAbilityInputReadPort, IFixedAbilityFrameEventCapturePort
     {
-        void PrepareAvailabilityRead(int maximumPayloadBytes, IReadOnlyList<SimulationActorBinding> roster);
+        void PrepareAvailabilityRead(int maximumPayloadBytes, IReadOnlyList<SimulationActorBinding> roster, int inputFrameCapacity);
         void RestoreControlInput(ArraySegment<byte> bytes);
         void RestoreControlSources(ArraySegment<byte> bytes);
     }

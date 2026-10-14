@@ -317,7 +317,6 @@ namespace ThirdPersonSimulation.Fixed
 
     public static class FixedSimulationSessionComposer
     {
-        const string SnapshotCodecId = "thirdperson.simulation.snapshot-codec.fixed-session";
 
         public static FixedPassBackendCompositionResult Compose(FixedSimulationSessionCompositionRequest request)
         {
@@ -437,22 +436,6 @@ namespace ThirdPersonSimulation.Fixed
             {
                 throw Failure("solver_runtime_identity_mismatch", "World Solver runtime does not match its descriptor.");
             }
-        }
-
-        public static SimulationComponentIdentity BuildSnapshotCodecIdentity(
-            SimulationExecutionTargetManifest target,
-            SimulationExecutionBackendDescriptor backend)
-        {
-            return new SimulationComponentIdentity(
-                SimulationComponentRole.SnapshotCodec,
-                SnapshotCodecId,
-                "3",
-                StableHash.Compute(
-                    SnapshotCodecId,
-                    FixedSimulationSessionSnapshotCodec.CanonicalSchema,
-                    target.NumericProfile.Id.Value,
-                    target.NumericProfile.AbiVersion.Value.ToString(CultureInfo.InvariantCulture),
-                    backend.Identity.ToString()));
         }
 
         static IReadOnlyList<SimulationPortDescriptor> PortDescriptors(SimulationRuntimePortSet ports)
