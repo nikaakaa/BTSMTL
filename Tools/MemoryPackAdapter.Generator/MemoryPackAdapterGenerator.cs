@@ -39,6 +39,7 @@ namespace ThirdPerson.MemoryPackAdapters
         {
             if (context.Compilation.GetTypeByMetadataName("MemoryPack.MemoryPackSerializer") == null) return;
             var records = new SortedDictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
+            var logicalStorages = new Dictionary<string, LogicalStoragePlan>(StringComparer.Ordinal);
             var sequences = new SortedDictionary<string, ITypeSymbol>(StringComparer.Ordinal);
             var nullableValues = new SortedDictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
             var visited = new HashSet<string>(StringComparer.Ordinal);
@@ -76,6 +77,7 @@ namespace ThirdPerson.MemoryPackAdapters
                         method.OriginalDefinition.TypeParameters[i].Name != "TStorage")
                         Visit(method.TypeArguments[i]);
             }
+            foreach (INamedTypeSymbol logical in LogicalStorageTypes(context.Compilation)) Visit(logical);
             if (erasedSnapshots)
                 foreach (NativeSnapshotPlan candidate in snapshotCandidates.Values.Where(candidate =>
                     CanEncodeSnapshot(candidate, snapshotCandidates, externalLeaves, new HashSet<string>())))
@@ -83,11 +85,25 @@ namespace ThirdPerson.MemoryPackAdapters
             var preparedPlans = new Dictionary<string, PreparedReadPlan>(StringComparer.Ordinal);
             ITypeSymbol preparedText = context.Compilation.GetTypeByMetadataName("ThirdPersonSimulation.Serialization.MemoryPackContentContext")?
                 .GetMembers("ReadText").OfType<IMethodSymbol>().SingleOrDefault()?.ReturnType;
+            foreach (var logical in logicalStorages)
+            {
+                if (preparedStorages.TryGetValue(logical.Key, out INamedTypeSymbol storage) &&
+                    !SymbolEqualityComparer.Default.Equals(storage, logical.Value.Type))
+                {
+                    valid = false;
+                    context.ReportDiagnostic(Diagnostic.Create(InvalidMemoryPackAdapter,
+                        logical.Value.Type.Locations.FirstOrDefault(), logical.Key, "逻辑存储必须接收原 owner 准备的同型页"));
+                }
+                preparedStorages[logical.Key] = logical.Value.Type;
+            }
             foreach (var pair in preparedStorages.Where(pair => records.ContainsKey(pair.Key)))
             {
                 var type = records[pair.Key];
-                PreparedReadPlan plan = CreatePreparedReadPlan(type, pair.Value, ValueMembers(type, IsImplicitReference), IsAccessible,
-                    preparedStorages, out string reason);
+                string reason = null;
+                PreparedReadPlan plan = logicalStorages.TryGetValue(pair.Key, out LogicalStoragePlan logical)
+                    ? new PreparedReadPlan { Value = type, Storage = pair.Value, Logical = logical }
+                    : CreatePreparedReadPlan(type, pair.Value, ValueMembers(type, IsImplicitReference), IsAccessible,
+                        preparedStorages, out reason);
                 if (reason != null)
                 {
                     valid = false;
@@ -115,7 +131,8 @@ namespace ThirdPerson.MemoryPackAdapters
             {
                 changed = false;
                 foreach (var record in records.Values)
-                    if (ValueMembers(record, IsImplicitReference).Any(member => member.IsCase || HasAttribute(member.Symbol, PayloadAttribute) || HasPayload(member.Type)))
+                    if ((logicalStorages.TryGetValue(Identity(record), out LogicalStoragePlan logical) ? logical.Entries :
+                        ValueMembers(record, IsImplicitReference)).Any(member => member.IsCase || HasAttribute(member.Symbol, PayloadAttribute) || HasPayload(member.Type)))
                         changed |= payloadTypes.Add(Identity(record));
             } while (changed);
             var code = new StringBuilder();
@@ -139,7 +156,7 @@ namespace ThirdPerson.MemoryPackAdapters
             code.AppendLine("}");
             ordinal = 0;
             bool scopedReferences = (int)((Microsoft.CodeAnalysis.CSharp.CSharpParseOptions)context.ParseOptions).LanguageVersion >= 1100;
-            var schemas = new MemoryPackSchemas(context.Compilation, snapshots, IsImplicitReference);
+            var schemas = new MemoryPackSchemas(context.Compilation, snapshots, logicalStorages, IsImplicitReference);
             foreach (var record in records.Values)
                 EmitMemoryPackFormatter(code, record, ValueMembers(record, IsImplicitReference),
                     StorageReadMembers(record, IsImplicitReference), ordinal++, scopedReferences, HasPayload, IsAccessible,
@@ -226,6 +243,21 @@ namespace ThirdPerson.MemoryPackAdapters
                     named.ContainingNamespace.ToDisplayString().StartsWith("System.", StringComparison.Ordinal)))
                 {
                     foreach (var argument in named.TypeArguments) Visit(argument);
+                    return;
+                }
+                if (HasLogicalStorage(named))
+                {
+                    LogicalStoragePlan logical = CreateLogicalStoragePlan(named, IsAccessible, out string logicalReason);
+                    if (logicalReason != null)
+                    {
+                        valid = false;
+                        context.ReportDiagnostic(Diagnostic.Create(InvalidMemoryPackAdapter, named.Locations.FirstOrDefault(),
+                            Identity(named), logicalReason));
+                        return;
+                    }
+                    records.Add(Identity(named), named);
+                    logicalStorages.Add(Identity(named), logical);
+                    foreach (Member entry in logical.Entries) Visit(entry.Type);
                     return;
                 }
                 Member[] members = ValueMembers(named, IsImplicitReference);
@@ -421,6 +453,11 @@ namespace ThirdPerson.MemoryPackAdapters
             bool scopedReferences, Func<ITypeSymbol, bool> hasPayload, Func<ISymbol, bool> isAccessible,
             PreparedReadPlan prepared, bool preparedText, string schemaHash)
         {
+            if (prepared?.Logical != null)
+            {
+                EmitLogicalStorageFormatter(code, prepared.Logical, ordinal, scopedReferences, hasPayload, schemaHash);
+                return;
+            }
             if (KnownTypes(type).Length != 0)
             {
                 EmitMemoryPackKnownTypeFormatter(code, type, ordinal, scopedReferences, schemaHash);

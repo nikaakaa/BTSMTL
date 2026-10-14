@@ -16,13 +16,16 @@ namespace ThirdPerson.MemoryPackAdapters
         {
             readonly string m_Library;
             readonly IDictionary<string, NativeSnapshotPlan> m_Snapshots;
+            readonly IDictionary<string, LogicalStoragePlan> m_LogicalStorages;
             readonly Func<ITypeSymbol, ITypeSymbol, bool> m_ImplicitReference;
 
             internal MemoryPackSchemas(Compilation compilation, IDictionary<string, NativeSnapshotPlan> snapshots,
+                IDictionary<string, LogicalStoragePlan> logicalStorages,
                 Func<ITypeSymbol, ITypeSymbol, bool> implicitReference)
             {
                 m_Library = compilation.GetTypeByMetadataName("MemoryPack.MemoryPackSerializer").ContainingAssembly.Identity.ToString();
                 m_Snapshots = snapshots;
+                m_LogicalStorages = logicalStorages;
                 m_ImplicitReference = implicitReference;
             }
 
@@ -50,6 +53,17 @@ namespace ThirdPerson.MemoryPackAdapters
                     return;
                 }
                 if (HasAttribute(type, TextAttribute)) { code.AppendLine("utf16-text"); return; }
+                if (m_LogicalStorages.TryGetValue(Identity(type), out LogicalStoragePlan logical))
+                {
+                    code.AppendLine("logical-storage");
+                    foreach (Member entry in logical.Entries)
+                    {
+                        code.Append(entry.Name).Append(':').Append(HasAttribute(entry.Symbol, PresenceAttribute)).Append(':')
+                            .Append(HasAttribute(entry.Symbol, PayloadAttribute)).Append('\n');
+                        AppendType(code, entry.Type, visited);
+                    }
+                    return;
+                }
                 if (type.SpecialType != SpecialType.None) return;
                 if (NullableElement(type) is ITypeSymbol nullable)
                 {

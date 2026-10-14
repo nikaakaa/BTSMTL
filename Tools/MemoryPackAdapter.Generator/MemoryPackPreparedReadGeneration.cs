@@ -11,7 +11,9 @@ namespace ThirdPerson.MemoryPackAdapters
     {
         sealed class PreparedReadPlan
         {
+            public INamedTypeSymbol Value;
             public INamedTypeSymbol Storage;
+            public LogicalStoragePlan Logical;
             public IMethodSymbol Begin;
             public IMethodSymbol Complete;
             public Dictionary<string, IMethodSymbol> Collections;
@@ -50,6 +52,7 @@ namespace ThirdPerson.MemoryPackAdapters
                     method.ReturnType is INamedTypeSymbol))
                 {
                     var nested = (INamedTypeSymbol)prepare.ReturnType;
+                    if (HasLogicalStorage(nested)) result[Identity(nested)] = nested;
                     foreach (IMethodSymbol complete in nested.GetMembers("CompleteRead").OfType<IMethodSymbol>().Where(method =>
                         !method.IsStatic && !method.ReturnsVoid && method.ReturnType is INamedTypeSymbol))
                         result[Identity(complete.ReturnType)] = nested;
@@ -68,12 +71,15 @@ namespace ThirdPerson.MemoryPackAdapters
                 !method.IsStatic && method.Parameters.Length == 0 && method.ReturnsVoid && isAccessible(method)).ToArray();
             Member[] scalars = members.Where(member => SequenceElement(member.Type) == null).ToArray();
             IMethodSymbol[] complete = storage.GetMembers("CompleteRead").OfType<IMethodSymbol>().Where(method =>
-                !method.IsStatic && isAccessible(method) && SymbolEqualityComparer.Default.Equals(method.ReturnType, type) &&
+                !method.IsStatic && isAccessible(method) &&
+                (SymbolEqualityComparer.Default.Equals(method.ReturnType, type) ||
+                    SymbolEqualityComparer.Default.Equals(type, storage) && method.ReturnsVoid) &&
                 method.Parameters.Length == scalars.Length && method.Parameters.All(parameter =>
                     scalars.Count(member => MatchesPreparedParameter(member, parameter)) == 1)).ToArray();
-            if (begin.Length != 1 || complete.Length != 1)
+            bool returnsStorage = SymbolEqualityComparer.Default.Equals(type, storage) && scalars.Length == 0;
+            if (begin.Length > 1 || complete.Length > 1 || complete.Length == 0 && !returnsStorage)
             {
-                reason = "prepared 原 owner 需要唯一 Begin() 与按原标量成员完成的 CompleteRead，不能退回原构造分配";
+                reason = "prepared 原 owner 需要按原标量成员完成的唯一 CompleteRead；同型准备页可直接返回，Begin 最多提供一个";
                 return null;
             }
             var collections = new Dictionary<string, IMethodSymbol>(StringComparer.Ordinal);
@@ -82,12 +88,15 @@ namespace ThirdPerson.MemoryPackAdapters
             {
                 ITypeSymbol element = SequenceElement(member.Type);
                 IMethodSymbol[] add = storage.GetMembers().OfType<IMethodSymbol>().Where(method =>
-                    !method.IsStatic && method.ReturnsVoid && method.Name.StartsWith("Add", StringComparison.Ordinal) &&
-                    isAccessible(method) && method.Parameters.Length == 1 &&
-                    SymbolEqualityComparer.Default.Equals(method.Parameters[0].Type, element)).ToArray();
+                    !method.IsStatic && method.ReturnsVoid &&
+                    (method.Name.StartsWith("Add", StringComparison.Ordinal) || method.Name.StartsWith("RestorePrepared", StringComparison.Ordinal)) &&
+                    isAccessible(method) && (method.Parameters.Length == 1 || method.Parameters.Length == 2 &&
+                        method.Parameters[0].Type.SpecialType == SpecialType.System_Int32 && method.Parameters[0].RefKind == RefKind.None) &&
+                    method.Parameters.Last().RefKind != RefKind.Out && method.Parameters.Last().RefKind != RefKind.Ref &&
+                    SymbolEqualityComparer.Default.Equals(method.Parameters.Last().Type, element)).ToArray();
                 if (add.Length != 1)
                 {
-                    reason = "prepared 原集合 " + member.Name + " 没有按原元素类型唯一匹配的 Add 入口";
+                    reason = "prepared 原集合 " + member.Name + " 没有按原元素类型唯一匹配的 Add／RestorePrepared 入口";
                     return null;
                 }
                 collections.Add(member.Name, add[0]);
@@ -110,7 +119,8 @@ namespace ThirdPerson.MemoryPackAdapters
                 }
                 nested.Add(member.Name, prepare[0]);
             }
-            return new PreparedReadPlan { Storage = storage, Begin = begin[0], Complete = complete[0], Collections = collections, Nested = nested };
+            return new PreparedReadPlan { Value = type, Storage = storage, Begin = begin.SingleOrDefault(),
+                Complete = complete.SingleOrDefault(), Collections = collections, Nested = nested };
         }
 
         static bool MatchesPreparedParameter(Member member, IParameterSymbol parameter) =>
@@ -140,6 +150,15 @@ namespace ThirdPerson.MemoryPackAdapters
                 if (preparedPlans.TryGetValue(Identity(type), out PreparedReadPlan nestedPlan)) current = nestedPlan;
                 else if (type.IsReferenceType && !SymbolEqualityComparer.Default.Equals(type, root))
                     return "prepared 原成员 " + Identity(type) + " 需要自己的预备存储，不能在接收时构造对象";
+                if (current?.Logical != null)
+                {
+                    foreach (Member entry in current.Logical.Entries)
+                    {
+                        string reason = Visit(entry.Type, null);
+                        if (reason != null) return reason;
+                    }
+                    return null;
+                }
                 if (externalLeaves.Contains(Identity(type))) return null;
                 if (!(type is INamedTypeSymbol named)) return null;
                 foreach (Member member in ValueMembers(named, implicitReference))
@@ -152,7 +171,7 @@ namespace ThirdPerson.MemoryPackAdapters
                     }
                     else if (SequenceElement(member.Type) is ITypeSymbol element)
                     {
-                        if (current == null || !SymbolEqualityComparer.Default.Equals(type, current.Complete.ReturnType) ||
+                        if (current == null || !SymbolEqualityComparer.Default.Equals(type, current.Value) ||
                             !current.Collections.ContainsKey(member.Name))
                             return "prepared 原集合 " + Identity(named) + "." + member.Name +
                                 " 缺少原 owner 的预备集合读取合同";
@@ -174,7 +193,7 @@ namespace ThirdPerson.MemoryPackAdapters
         {
             code.Append("public ").Append(TypeName(type)).Append(" ReadInto(ref global::MemoryPack.MemoryPackReader reader, ")
                 .Append(TypeName(plan.Storage)).AppendLine(" storage) {");
-            code.Append("storage.").Append(Escape(plan.Begin.Name)).AppendLine("();");
+            if (plan.Begin != null) code.Append("storage.").Append(Escape(plan.Begin.Name)).AppendLine("();");
             code.AppendLine("if (!reader.TryReadObjectHeader(out byte count)) return default;");
             code.Append("if (count != ").Append(members.Length)
                 .AppendLine(") throw new global::MemoryPack.MemoryPackSerializationException(\"记录成员数与当前格式不符。\");");
@@ -187,7 +206,8 @@ namespace ThirdPerson.MemoryPackAdapters
                     code.Append("for (int index = 0; index < count_").Append(member.Name).AppendLine("; index++) {");
                     code.Append(TypeName(SequenceElement(member.Type))).AppendLine(" item = default;");
                     EmitPreparedValueRead(code, member, plan, "item", true, hasPayload);
-                    code.Append("storage.").Append(Escape(add.Name)).AppendLine("(item); }");
+                    code.Append("storage.").Append(Escape(add.Name)).Append('(')
+                        .Append(add.Parameters.Length == 2 ? "index, " : "").AppendLine("item); }");
                 }
                 else
                 {
@@ -195,10 +215,17 @@ namespace ThirdPerson.MemoryPackAdapters
                     EmitPreparedValueRead(code, member, plan, "member_" + member.Name, false, hasPayload);
                 }
             }
-            code.Append("return storage.").Append(Escape(plan.Complete.Name)).Append('(')
+            if (plan.Complete == null)
+            {
+                code.AppendLine("return storage; }");
+                return;
+            }
+            code.Append(plan.Complete.ReturnsVoid ? "storage." : "return storage.").Append(Escape(plan.Complete.Name)).Append('(')
                 .Append(string.Join(", ", plan.Complete.Parameters.Select(parameter =>
                     "member_" + members.Single(member => MatchesPreparedParameter(member, parameter)).Name)))
-                .AppendLine("); }");
+                .AppendLine(");");
+            if (plan.Complete.ReturnsVoid) code.AppendLine("return storage;");
+            code.AppendLine("}");
         }
 
         static void EmitPreparedValueRead(StringBuilder code, Member member, PreparedReadPlan plan, string target,

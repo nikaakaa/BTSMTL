@@ -406,6 +406,7 @@ namespace ThirdPersonSimulation
             return Set.TryGetValue(slot, out value);
         }
 
+        [ValueLogicalStorage(nameof(LogicalSlotCapacity), nameof(RestorePreparedValue))]
         public LogicalEnumerator GetLogicalEnumerator()
         {
             RequireReadable();
@@ -442,7 +443,7 @@ namespace ThirdPersonSimulation
                 m_Slot = -1;
             }
 
-            public bool MoveNext(out int slot, out bool stored, out TValue value)
+            public bool MoveNext(out int slot, [ValuePresence] out bool stored, [ValuePayload] out TValue value)
             {
                 while (++m_Slot < m_Set.Bank.ValueIndices.Length)
                 {

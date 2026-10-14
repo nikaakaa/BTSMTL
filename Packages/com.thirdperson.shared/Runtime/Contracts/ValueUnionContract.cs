@@ -24,8 +24,21 @@ namespace ThirdPersonSimulation
     [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property | AttributeTargets.Parameter)]
     public sealed class ValuePayloadAttribute : Attribute { }
 
-    [AttributeUsage(AttributeTargets.Property)]
+    [AttributeUsage(AttributeTargets.Property | AttributeTargets.Parameter)]
     public sealed class ValuePresenceAttribute : Attribute { }
+
+    [AttributeUsage(AttributeTargets.Method)]
+    public sealed class ValueLogicalStorageAttribute : Attribute
+    {
+        public ValueLogicalStorageAttribute(string countMember, string restoreMethod)
+        {
+            CountMember = countMember;
+            RestoreMethod = restoreMethod;
+        }
+
+        public string CountMember { get; }
+        public string RestoreMethod { get; }
+    }
 
     [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
     public sealed class ValueDefaultAttribute : Attribute { }
