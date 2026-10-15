@@ -239,7 +239,7 @@ namespace ThirdPerson.MemoryPackAdapters
                     .Append(valueType).Append(">()).ReadInto(ref reader, storage.").Append(Escape(prepare.Name)).AppendLine("());");
             }
             else if (element)
-                code.Append("reader.ReadValue(ref ").Append(target).AppendLine(");");
+                EmitValueRead(code, SequenceElement(member.Type), target);
             else
                 EmitMemberRead(code, member, target, false, hasPayload);
         }

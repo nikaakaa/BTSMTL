@@ -258,7 +258,7 @@ namespace ThirdPerson.MemoryPackAdapters
             switch (shape.Kind)
             {
                 case NativeSnapshotKind.Value:
-                    code.Append("writer.WriteValue(").Append(value).AppendLine(");");
+                    EmitValueWrite(code, shape.Type, value);
                     break;
                 case NativeSnapshotKind.Source:
                     code.Append("writer.WriteValue(");
@@ -355,7 +355,7 @@ namespace ThirdPerson.MemoryPackAdapters
                 code.Append(incoming).AppendLine(" = ((global::ThirdPersonSimulation.Serialization.MemoryPackContentContext)reader.Options.ServiceProvider).ReadDeclaredText(ref reader);");
             else if (HasAttribute(shape.Type, TextAttribute))
                 code.Append(incoming).AppendLine(" = ((global::ThirdPersonSimulation.Serialization.MemoryPackContentContext)reader.Options.ServiceProvider).ReadText(ref reader);");
-            else code.Append("reader.ReadValue(ref ").Append(incoming).AppendLine(");");
+            else EmitValueRead(code, shape.Type, incoming);
         }
 
         static void EmitSnapshotResource(StringBuilder code, NativeSnapshotShape shape, string value, bool retain)

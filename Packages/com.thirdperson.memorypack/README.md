@@ -10,6 +10,8 @@ Float32 图产物的 `WriteGraph`、`ReadGraph` 和身份校验保留在同一 p
 
 `ValueStorage` 的原 owner 自动提供 `ReadValueStorage` 和 `FromValueStorage`，让外部适配消费 private 原成员。`UseConstructor=true` 只读取原构造输入，读取时调用该构造重建派生索引；私有只读集合转换为构造所需数组会产生冷路径分配。`ValuePresence` 保留原数据的无值语义，避免把空值送入要求有效身份的构造。
 
+原值声明了 `ValueStorage` 或联合用途时，即使自身及外层结构没有托管引用，也按原成员生成适配。联合只写唯一 Kind 和活动分支；集合与 nullable 递归使用同一 formatter，不把未活动载荷或结构填充字节当成文件格式。没有声明这些用途的普通数值叶子继续使用库的原生格式。
+
 `ValueText` 表达借用文本：写入读取原文本 Span，不保存文本 owner 或页位置。冷加载调用原 string 工厂；准备读取时复制到调用方提供的原 `CanonicalTextReferences`。`System.Type` 交给宿主 MemoryPack 原生 formatter，保留枚举类型身份。
 
 `MemoryPackContent` 是内容发布和加载的冷路径入口，写入创建缓冲并返回 `byte[]`，文本读取创建 string。纯内存快照不经过它；此入口不提供每 Tick 的 0 GC 保证。
@@ -20,7 +22,7 @@ Float32 图产物的 `WriteGraph`、`ReadGraph` 和身份校验保留在同一 p
 
 动态文本从 native 字符跨度写入原文本存储；原 `string` 必须在声明上标记 `ValueTextRules(Declared=true)`，读取返回身份目录内已经发布的同一个 string。当前原 `NumericProfileId.Value` 使用此分类。准备读取闭包出现未分类 string、没有原准备合同的嵌套集合或引用对象时，生成器报错，不退回分配路径。字符缓冲、文本池或输入容量不足沿原边界失败，不扩容。
 
-`SerializeInto(in value, destination, context)` 使用同一缓存 options，把 native 数据写入调用方的 `IBufferWriter<byte>`。destination 的预备容量和复用由其 owner 负责。上述路径已生成以复用原存储的代码；实际运行分配、吞吐和 Unity Mono／IL2CPP 行为仍需在对应后端场景测量，静态生成与编译不等于实测 0 GC。
+`SerializeInto(in value, destination, context)` 使用同一缓存 options，经库的 writer 和已注册 formatter 写入调用方的 `IBufferWriter<byte>`。根值、成员及集合元素遵循同一生成合同。destination 的预备容量和复用由其 owner 负责。上述路径已生成以复用原存储的代码；实际运行分配、吞吐和 Unity Mono／IL2CPP 行为仍需在对应后端场景测量，静态生成与编译不等于实测 0 GC。
 
 独立构建使用 `Projects/ThirdPersonSimulation.MemoryPack/ThirdPersonSimulation.MemoryPack.csproj`，显式传入宿主已有 DLL 的 `MemoryPackCorePath`。包内 `Analyzers` 提供对应工具产物及 RoslynAnalyzer 标记；更新工具时通过 `InstallUnityAnalyzer=true` 目标同步安装，普通编译不执行安装。
 

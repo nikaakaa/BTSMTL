@@ -10,6 +10,7 @@ namespace ThirdPerson.ValueGeneration
     {
         internal const string UnionCaseAttribute = "ThirdPersonSimulation.ValueUnionCaseAttribute";
 
+        internal const string UnionTemplateAttribute = "ThirdPersonSimulation.ValueUnionTemplateAttribute";
 
         internal const string UnionAttribute = "ThirdPersonSimulation.ValueUnionAttribute";
 
@@ -21,19 +22,29 @@ namespace ThirdPerson.ValueGeneration
             Identity(attribute.AttributeClass) == StorageAttribute && attribute.NamedArguments.Any(argument =>
                 argument.Key == "ReadOnly" && argument.Value.Value is true));
 
+        internal static bool HasValueStorageContract(ITypeSymbol type) => type is INamedTypeSymbol record &&
+            (record.TypeKind == TypeKind.Struct || record.TypeKind == TypeKind.Class) &&
+            (HasAttribute(record, StorageAttribute) || HasAttribute(record, UnionAttribute) ||
+                record.GetMembers("ReadValueStorage").OfType<IMethodSymbol>().Any() ||
+                record.GetMembers().Any(member => HasAttribute(member, UnionCaseAttribute)));
+
+        internal static bool RequiresValueFormatter(ITypeSymbol type) =>
+            SequenceElement(type) is ITypeSymbol element ? RequiresValueFormatter(element) :
+                NullableElement(type) is ITypeSymbol nullable ? RequiresValueFormatter(nullable) :
+                type.IsUnmanagedType && !IsUnmanagedValue(type);
+
         internal static bool IsUnmanagedValue(ITypeSymbol type) => IsUnmanagedValue(type, new HashSet<string>());
 
         static bool IsUnmanagedValue(ITypeSymbol type, HashSet<string> path)
         {
             if (!type.IsUnmanagedType) return false;
             if (NullableElement(type) is ITypeSymbol nullable) return IsUnmanagedValue(nullable, path);
+            if (HasValueStorageContract(type)) return false;
             if (type.SpecialType != SpecialType.None || type.TypeKind == TypeKind.Enum || !(type is INamedTypeSymbol record))
                 return true;
             if (!path.Add(Identity(type))) return false;
             return record.GetMembers().OfType<IFieldSymbol>().Where(field => !field.IsStatic).All(field =>
-                IsUnmanagedValue(field.Type, new HashSet<string>(path))) &&
-                (!HasAttribute(type, UnionAttribute) || ValueMembers(record).Where(member => member.IsCase).All(member =>
-                    IsUnmanagedValue(member.Type, new HashSet<string>(path))));
+                IsUnmanagedValue(field.Type, new HashSet<string>(path)));
         }
 
         internal static Member[] ValueMembers(INamedTypeSymbol type, Func<ITypeSymbol, ITypeSymbol, bool> implicitReference = null)
@@ -118,11 +129,17 @@ namespace ThirdPerson.ValueGeneration
         {
             IMethodSymbol storage = type.GetMembers("ReadValueStorage").OfType<IMethodSymbol>().SingleOrDefault();
             if (storage != null)
+            {
+                AttributeData union = type.GetAttributes().SingleOrDefault(attribute => Identity(attribute.AttributeClass) == UnionAttribute);
+                Member[] cases = union == null ? DeclaredStorageMembers(type).Where(member => member.IsCase).ToArray() :
+                    UnionMembers((INamedTypeSymbol)union.ConstructorArguments[0].Value);
                 return storage.Parameters.Select(parameter => new Member
                 {
                     Symbol = type.GetMembers(parameter.Name).SingleOrDefault() ?? (ISymbol)parameter,
-                    Type = parameter.Type
+                    Type = parameter.Type,
+                    IsCase = cases.Any(member => member.IsCase && member.Name == parameter.Name)
                 }).ToArray();
+            }
             AttributeData purpose = type.GetAttributes().SingleOrDefault(attribute => Identity(attribute.AttributeClass) == StorageAttribute);
             if (purpose == null) return null;
             Member[] stored = DeclaredStorageMembers(type);
@@ -184,6 +201,16 @@ namespace ThirdPerson.ValueGeneration
 
         internal static string MemberKey(string name) => name.StartsWith("m_", StringComparison.Ordinal) ? name.Substring(2) :
             name.StartsWith("value_", StringComparison.Ordinal) ? name.Substring(6) : name;
+
+        internal static Member UnionKindMember(INamedTypeSymbol type)
+        {
+            ISymbol member = type.GetMembers("Kind").Single();
+            return new Member { Symbol = member, Type = member is IFieldSymbol field ? field.Type : ((IPropertySymbol)member).Type };
+        }
+
+        internal static bool HasZeroUnionCase(ITypeSymbol kind, Member[] members) => kind.GetMembers().OfType<IFieldSymbol>()
+            .Any(field => field.HasConstantValue && Convert.ToDecimal(field.ConstantValue) == 0 &&
+                members.Any(member => member.IsCase && member.Name == field.Name));
 
         internal static bool CanPass(ITypeSymbol value, ITypeSymbol parameter) =>
             SymbolEqualityComparer.Default.Equals(value, parameter) ||

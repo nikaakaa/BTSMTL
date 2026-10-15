@@ -275,7 +275,7 @@ namespace ThirdPerson.MemoryPackAdapters
                     records.Add(Identity(type), named);
                     return;
                 }
-                if (HasAttribute(named, "MemoryPack.MemoryPackableAttribute"))
+                if (HasAttribute(named, "MemoryPack.MemoryPackableAttribute") && !HasValueStorageContract(named))
                 {
                     foreach (Member member in members.Where(member => !HasAttribute(member.Symbol, "MemoryPack.MemoryPackIgnoreAttribute")))
                         Visit(member.Type);
@@ -369,9 +369,10 @@ namespace ThirdPerson.MemoryPackAdapters
                 code.AppendLine("if (value == null) { writer.WriteNullCollectionHeader(); return; }");
             if (enumerable) code.AppendLine("var items = global::System.Linq.Enumerable.ToArray(value);");
             code.Append("writer.WriteCollectionHeader(").Append(count).AppendLine(");");
-            code.Append("for (int index = 0; index < ").Append(count).Append("; index++) writer.WriteValue(")
-                .Append(enumerable ? "items" : "value")
-                .Append(memory ? ".Span" : "").AppendLine("[index]);");
+            code.Append("for (int index = 0; index < ").Append(count).AppendLine("; index++) {");
+            EmitValueWrite(code, SequenceElement(type), (enumerable ? "items" : "value") +
+                (memory ? ".Span" : "") + "[index]");
+            code.AppendLine("}");
             code.AppendLine("}");
             EmitMemoryPackDeserializeDeclaration(code, name, scopedReferences);
             code.AppendLine("if (!reader.TryReadCollectionHeader(out int count)) { value = default; return; }");
@@ -382,7 +383,8 @@ namespace ThirdPerson.MemoryPackAdapters
                 code.AppendLine("var previous = value;");
                 code.Append("value = new global::System.Collections.Generic.List<").Append(element).AppendLine(">(count);");
                 code.Append("for (int index = 0; index < count; index++) { ").Append(element).AppendLine(" item = merge ? previous[index] : default;");
-                code.AppendLine("reader.ReadValue(ref item); value.Add(item); }");
+                EmitValueRead(code, SequenceElement(type), "item");
+                code.AppendLine("value.Add(item); }");
             }
             else
             {
@@ -391,7 +393,8 @@ namespace ThirdPerson.MemoryPackAdapters
                 code.AppendLine("for (int index = 0; index < count; index++) {");
                 code.Append("if (merge) items[index] = ").Append(enumerable ? "previous" : "value")
                     .Append(memory ? ".Span" : "").AppendLine("[index];");
-                code.AppendLine("reader.ReadValue(ref items[index]); }");
+                EmitValueRead(code, SequenceElement(type), "items[index]");
+                code.AppendLine("}");
                 if (readOnlyCollection)
                     code.Append("value = new global::System.Collections.ObjectModel.ReadOnlyCollection<").Append(element).AppendLine(">(items);");
                 else code.AppendLine("value = items;");
@@ -407,13 +410,14 @@ namespace ThirdPerson.MemoryPackAdapters
             EmitMemoryPackSerializeDeclaration(code, name, scopedReferences);
             code.AppendLine("if (!value.HasValue) { writer.WriteNullObjectHeader(); return; }");
             code.AppendLine("writer.WriteObjectHeader(1);");
-            code.AppendLine("writer.WriteValue(value.Value);");
+            EmitValueWrite(code, NullableElement(type), "value.Value");
             code.AppendLine("}");
             EmitMemoryPackDeserializeDeclaration(code, name, scopedReferences);
             code.AppendLine("if (!reader.TryReadObjectHeader(out byte count)) { value = default; return; }");
             code.AppendLine("if (count != 1) throw new global::MemoryPack.MemoryPackSerializationException(\"可空值成员数与当前格式不符。\");");
             code.AppendLine("var item = value.GetValueOrDefault();");
-            code.AppendLine("reader.ReadValue(ref item); value = item;");
+            EmitValueRead(code, NullableElement(type), "item");
+            code.AppendLine("value = item;");
             code.AppendLine("} }");
         }
 
@@ -483,7 +487,7 @@ namespace ThirdPerson.MemoryPackAdapters
             EmitPartContext(code, "writer", partitioned);
             EmitStorageRead(code, storage, "value", false, partitioned);
             if (members.Any(member => member.IsCase))
-                EmitMemoryPackUnionWrite(code, type, members, partitioned, hasPayload);
+                EmitMemoryPackUnionWrite(code, type, members, storage, partitioned, hasPayload);
             else
             {
                 EmitObjectHeader(code, "writer.WriteObjectHeader", members, partitioned, hasPayload);
@@ -501,7 +505,7 @@ namespace ThirdPerson.MemoryPackAdapters
             }
             EmitPartContext(code, "reader", partitioned);
             if (members.Any(member => member.IsCase))
-                EmitMemoryPackUnionRead(code, type, members, partitioned, hasPayload);
+                EmitMemoryPackUnionRead(code, type, members, storage, partitioned, hasPayload);
             else
             {
                 code.AppendLine("if (!reader.TryReadObjectHeader(out byte count)) { value = default; return; }");
@@ -518,7 +522,7 @@ namespace ThirdPerson.MemoryPackAdapters
                 IMethodSymbol construction = MemoryPackConstruction(type, members, isAccessible);
                 if (storage != null)
                     code.Append("value = ").Append(name).Append(".FromValueStorage(")
-                        .Append(string.Join(", ", storage.Select(member => "member_" + member.Name))).AppendLine(");");
+                        .Append(string.Join(", ", storage.Select(member => Escape(member.Name) + ": member_" + member.Name))).AppendLine(");");
                 else if (construction == null)
                 {
                     if (type.IsReferenceType)
@@ -643,7 +647,8 @@ namespace ThirdPerson.MemoryPackAdapters
                 code.AppendLine("if (part == global::ThirdPersonSimulation.Serialization.MemoryPackContentPart.Payload)");
             }
             code.Append(value).Append(".ReadValueStorage(")
-                .Append(string.Join(", ", storage.Select(member => (reading ? "out member_" : "out var member_") + member.Name)))
+                .Append(string.Join(", ", storage.Select(member => Escape(member.Name) + ": " +
+                    (reading ? "out member_" : "out var member_") + member.Name)))
                 .AppendLine(");");
         }
 
@@ -690,7 +695,7 @@ namespace ThirdPerson.MemoryPackAdapters
             string condition = MemberCondition(member, partitioned, hasPayload);
             if (condition != null) code.Append("if (").Append(condition).AppendLine(") {");
             EmitFullPart(code, member, "writer", partitioned, true);
-            code.Append("writer.WriteValue(").Append(value).AppendLine(");");
+            EmitValueWrite(code, member.Type, value);
             EmitFullPart(code, member, "writer", partitioned, false);
             if (condition != null) code.AppendLine("}");
         }
@@ -709,7 +714,7 @@ namespace ThirdPerson.MemoryPackAdapters
                 code.Append("else reader.ReadValue(ref ").Append(value).AppendLine(");");
                 code.AppendLine("}");
             }
-            else code.Append("reader.ReadValue(ref ").Append(value).AppendLine(");");
+            else EmitValueRead(code, member.Type, value);
             EmitFullPart(code, member, "reader", partitioned, false);
             if (condition != null) code.AppendLine("}");
         }
@@ -725,54 +730,99 @@ namespace ThirdPerson.MemoryPackAdapters
             code.Append("public override void Deserialize(ref global::MemoryPack.MemoryPackReader reader, ")
                 .Append(scopedReferences ? "scoped ref " : "ref ").Append(name).AppendLine(" value) {");
 
-        static void EmitMemoryPackUnionWrite(StringBuilder code, INamedTypeSymbol type, Member[] members,
+        static void EmitValueWrite(StringBuilder code, ITypeSymbol type, string value)
+        {
+            if (RequiresValueFormatter(type))
+            {
+                code.Append("{ var encodedValue = ").Append(value).AppendLine(";");
+                code.Append("writer.GetFormatter<").Append(TypeName(type))
+                    .AppendLine(">().Serialize(ref writer, ref encodedValue); }");
+            }
+            else code.Append("writer.WriteValue(").Append(value).AppendLine(");");
+        }
+
+        static void EmitValueRead(StringBuilder code, ITypeSymbol type, string value)
+        {
+            if (RequiresValueFormatter(type))
+                code.Append("reader.GetFormatter<").Append(TypeName(type))
+                    .Append(">().Deserialize(ref reader, ref ").Append(value).AppendLine(");");
+            else code.Append("reader.ReadValue(ref ").Append(value).AppendLine(");");
+        }
+
+        static void EmitMemoryPackUnionWrite(StringBuilder code, INamedTypeSymbol type, Member[] members, Member[] storage,
             bool partitioned, Func<ITypeSymbol, bool> hasPayload)
         {
-            string kind = TypeName(((IPropertySymbol)type.GetMembers("Kind").Single()).Type);
-            if (members.Any(member => !member.IsCase))
-                code.AppendLine("if ((ushort)value.Kind == 0) { writer.WriteNullUnionHeader(); return; }");
-            code.AppendLine("writer.WriteUnionHeader((ushort)value.Kind);");
+            Member discriminator = UnionKindMember(type);
+            string kind = TypeName(discriminator.Type);
+            string kindValue = storage == null ? "value." + Escape(discriminator.Name) : "member_" + discriminator.Name;
+            bool zeroCase = HasZeroUnionCase(discriminator.Type, members);
+            if (storage != null && !zeroCase)
+                code.Append("if ((ushort)").Append(kindValue).AppendLine(" == 0) { writer.WriteUnionHeader(0); return; }");
+            else if (storage == null && !zeroCase && members.Any(member => !member.IsCase))
+                code.Append("if ((ushort)").Append(kindValue).AppendLine(" == 0) { writer.WriteNullUnionHeader(); return; }");
+            code.Append("writer.WriteUnionHeader((ushort)").Append(kindValue).AppendLine(");");
             foreach (Member member in members.Where(member => !member.IsCase))
-                EmitMemberWrite(code, member, "value." + Escape(member.Name), partitioned, hasPayload);
+                EmitMemberWrite(code, member, MemberValue(type, member), partitioned, hasPayload);
             code.AppendLine("if (part == global::ThirdPersonSimulation.Serialization.MemoryPackContentPart.Layout) return;");
             code.AppendLine("if (context != null) context.Part = global::ThirdPersonSimulation.Serialization.MemoryPackContentPart.Full;");
-            code.AppendLine("switch (value.Kind) {");
+            code.Append("switch (").Append(kindValue).AppendLine(") {");
             foreach (Member member in members.Where(member => member.IsCase))
+            {
                 code.Append("case ").Append(kind).Append('.').Append(Escape(member.Name))
-                    .Append(": writer.WriteValue(value.").Append(Escape(member.Name)).AppendLine("); break;");
-            if (members.All(member => member.IsCase))
+                    .AppendLine(":");
+                EmitValueWrite(code, member.Type, MemberValue(type, member));
+                code.AppendLine("break;");
+            }
+            if (storage == null && !zeroCase && members.All(member => member.IsCase))
                 code.Append("case (").Append(kind).AppendLine(")0: break;");
             code.AppendLine("default: throw new global::MemoryPack.MemoryPackSerializationException(\"值联合分支不属于当前合同。\"); }");
             code.AppendLine("if (context != null) context.Part = part;");
         }
 
-        static void EmitMemoryPackUnionRead(StringBuilder code, INamedTypeSymbol type, Member[] members,
+        static void EmitMemoryPackUnionRead(StringBuilder code, INamedTypeSymbol type, Member[] members, Member[] storage,
             bool partitioned, Func<ITypeSymbol, bool> hasPayload)
         {
             string name = TypeName(type);
-            string kind = TypeName(((IPropertySymbol)type.GetMembers("Kind").Single()).Type);
+            Member discriminator = UnionKindMember(type);
+            string kind = TypeName(discriminator.Type);
+            bool zeroCase = HasZeroUnionCase(discriminator.Type, members);
             code.AppendLine("if (!reader.TryReadUnionHeader(out ushort kind)) { value = default; return; }");
+            if (storage != null && !zeroCase)
+                code.AppendLine("if (kind == 0) { value = default; return; }");
+            if (storage != null)
+            {
+                EmitStorageRead(code, storage, "value", true, partitioned);
+                code.Append("member_").Append(discriminator.Name).Append(" = (").Append(kind).AppendLine(")kind;");
+            }
             Member[] common = members.Where(member => !member.IsCase).ToArray();
             foreach (Member member in common)
             {
-                EmitReadMemberInitial(code, member, partitioned);
+                if (storage == null) EmitReadMemberInitial(code, member, partitioned);
                 EmitMemberRead(code, member, "member_" + member.Name, partitioned, hasPayload);
             }
             code.Append("switch ((").Append(kind).AppendLine(")kind) {");
             foreach (Member member in members.Where(member => member.IsCase))
             {
                 code.Append("case ").Append(kind).Append('.').Append(Escape(member.Name)).AppendLine(": {");
-                code.Append(TypeName(member.Type)).AppendLine(" branch = default;");
+                string branch = storage == null ? "branch" : "member_" + member.Name;
+                if (storage == null) code.Append(TypeName(member.Type)).AppendLine(" branch = default;");
                 code.AppendLine("if (part != global::ThirdPersonSimulation.Serialization.MemoryPackContentPart.Layout) {");
                 code.AppendLine("if (context != null) context.Part = global::ThirdPersonSimulation.Serialization.MemoryPackContentPart.Full;");
-                code.AppendLine("reader.ReadValue(ref branch);");
+                EmitValueRead(code, member.Type, branch);
                 code.AppendLine("if (context != null) context.Part = part;");
                 code.AppendLine("}");
-                code.Append("value = ").Append(name).Append(".From").Append(member.Name).Append('(');
-                foreach (Member item in common) code.Append("member_").Append(item.Name).Append(", ");
-                code.AppendLine("branch); return; }");
+                if (storage != null)
+                    code.Append("value = ").Append(name).Append(".FromValueStorage(")
+                        .Append(string.Join(", ", storage.Select(item => Escape(item.Name) + ": member_" + item.Name))).AppendLine("); return; }");
+                else
+                {
+                    code.Append("value = ").Append(name).Append(".From").Append(member.Name).Append('(');
+                    foreach (Member item in common) code.Append("member_").Append(item.Name).Append(", ");
+                    code.AppendLine("branch); return; }");
+                }
             }
-            if (common.Length == 0) code.Append("case (").Append(kind).AppendLine(")0: value = default; return;");
+            if (storage == null && !zeroCase && common.Length == 0)
+                code.Append("case (").Append(kind).AppendLine(")0: value = default; return;");
             code.AppendLine("default: throw new global::MemoryPack.MemoryPackSerializationException(\"值联合分支不属于当前合同。\"); }");
         }
     }

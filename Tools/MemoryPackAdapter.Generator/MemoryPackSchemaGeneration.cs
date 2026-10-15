@@ -106,7 +106,10 @@ namespace ThirdPerson.MemoryPackAdapters
                 if (variants.Length != 0) return;
                 AttributeData union = record.GetAttributes().SingleOrDefault(attribute => Identity(attribute.AttributeClass) == UnionAttribute);
                 if (union != null) AppendType(code, (ITypeSymbol)union.ConstructorArguments[0].Value, visited);
-                foreach (Member member in ValueMembers(record, m_ImplicitReference))
+                Member[] members = ValueMembers(record, m_ImplicitReference);
+                if (!HasAttribute(record, UnionTemplateAttribute) && members.Any(member => member.IsCase))
+                    AppendType(code, UnionKindMember(record).Type, visited);
+                foreach (Member member in members)
                 {
                     code.Append("member ").Append(member.Name).Append(':').Append(member.IsCase).Append(':')
                         .Append(HasAttribute(member.Symbol, PayloadAttribute)).Append(':').Append(DeclaredText(member.Symbol)).Append('\n');

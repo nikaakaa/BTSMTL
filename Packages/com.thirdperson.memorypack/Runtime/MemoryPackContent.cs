@@ -116,7 +116,9 @@ namespace ThirdPersonSimulation.Serialization
             MemoryPackContentContext context) where TBufferWriter : class, IBufferWriter<byte>
         {
             context.Part = MemoryPackContentPart.Full;
-            MemoryPackSerializer.Serialize<T, TBufferWriter>(in destination, in value, context.Options);
+            using var state = MemoryPackWriterOptionalStatePool.Rent(context.Options);
+            var writer = new MemoryPackWriter<TBufferWriter>(ref destination, state);
+            MemoryPackSerializer.Serialize(ref writer, in value);
         }
 
         public static FPGameplay.SimulationInput DeserializeInto(ReadOnlySpan<byte> bytes,
