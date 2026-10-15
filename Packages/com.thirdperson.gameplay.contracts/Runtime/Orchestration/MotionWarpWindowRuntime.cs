@@ -2,9 +2,9 @@ using System;
 
 namespace ThirdPersonSimulation
 {
-    internal interface IMotionWarpWindowRequest
+    public interface IMotionWarpWindowRequest
     {
-        SimulationExecutionSource Source { get; }
+        OperationHandle SourceOperation { get; }
         ulong PlaybackGeneration { get; }
         int Cycle { get; }
         bool Enabled { get; }
@@ -12,15 +12,13 @@ namespace ThirdPersonSimulation
         ProgramMotionWarpRotationMethod RotationMethod { get; }
     }
 
-    internal interface IMotionWarpWindowTarget<TRequest, TScalar, TVector2, TVector3, TYaw, TAction, TState, TMath>
+    public interface IMotionWarpWindowTarget<TRequest, TScalar, TVector3, TYaw, TAction, TState>
         where TRequest : struct
         where TScalar : struct
-        where TVector2 : struct
         where TVector3 : struct
         where TYaw : struct
         where TAction : struct
         where TState : struct
-        where TMath : struct, IScalarMath<TScalar>, IVectorMath<TScalar, TVector2, TVector3>
     {
         TState ReadState(in TRequest request);
         void WriteState(in TRequest request, in TState state);
@@ -28,6 +26,10 @@ namespace ThirdPersonSimulation
         void ReadTarget(in TRequest request, out TVector3 position, out TYaw yaw);
         TVector3 BodyPosition { get; }
         TYaw BodyYaw { get; }
+        TVector3 CorrectionDisplacement { get; }
+        TScalar CorrectionYaw { get; }
+        void ApplyMotionWarp(TVector3 sourceDisplacement, TScalar sourceYaw,
+            TVector3 warpedDisplacement, TScalar warpedYaw);
         MotionWarpParameters<TScalar> ReadParameters(in TRequest request);
         void ReadSourceDelta(in TRequest request, out TVector3 displacement, out TScalar yaw);
         void ReadSourcePrefix(in TRequest request, out TVector3 displacement, out TScalar yaw);
@@ -39,23 +41,22 @@ namespace ThirdPersonSimulation
         void EvaluatePose(in TRequest request, in MotionWarpParameters<TScalar> parameters, bool previous,
             TVector3 startBodyPosition, TYaw startBodyYaw, TVector3 sourceStartPosition, TScalar sourceStartYaw,
             TVector3 resolvedTargetPosition, TYaw resolvedTargetYaw, out TVector3 position, out TYaw yaw);
-        void ApplyResponse(in TRequest request, in MotionWarpParameters<TScalar> parameters, in TState state,
-            ref ResolvedMotionChannel<TScalar, TVector2, TVector3, TMath> channel);
+        void ApplyResponse(in TRequest request, in MotionWarpParameters<TScalar> parameters, in TState state);
         void Trace(in TRequest request, string code);
     }
 
-    internal static class MotionWarpWindowRuntime<TScalar, TVector2, TVector3, TYaw, TAction, TMath>
+    public static class MotionWarpWindowRuntime<TScalar, TVector2, TVector3, TYaw, TAction, TMath>
         where TScalar : unmanaged, IEquatable<TScalar>
         where TVector2 : struct
         where TVector3 : unmanaged, IEquatable<TVector3>
         where TYaw : unmanaged, IEquatable<TYaw>
-        where TAction : struct, IEquatable<TAction>, IValueResources
+        where TAction : unmanaged, IEquatable<TAction>
         where TMath : struct, IScalarMath<TScalar>, IVectorMath<TScalar, TVector2, TVector3>,
             IPlanarRotation<TVector3, TYaw>, IYawMath<TScalar, TYaw>
     {
         public static void Capture<TRequest, TTarget>(in TRequest request, TTarget target)
             where TRequest : struct, IMotionWarpWindowRequest
-            where TTarget : IMotionWarpWindowTarget<TRequest, TScalar, TVector2, TVector3, TYaw, TAction, MotionWarpState<TScalar, TVector3, TYaw, TAction>, TMath>
+            where TTarget : IMotionWarpWindowTarget<TRequest, TScalar, TVector3, TYaw, TAction, MotionWarpState<TScalar, TVector3, TYaw, TAction>>
         {
             MotionWarpState<TScalar, TVector3, TYaw, TAction> previous = target.ReadState(in request);
             if (previous.Active && previous.PlaybackGeneration == request.PlaybackGeneration && previous.Cycle == request.Cycle)
@@ -68,17 +69,16 @@ namespace ThirdPersonSimulation
             var state = new MotionWarpState<TScalar, TVector3, TYaw, TAction>(
                 true, false, request.PlaybackGeneration, request.Cycle, action,
                 default, default, default, default, default, default, default, default, default, default, default,
-                request.Source.Operation, decision, request.HasTarget, position, yaw);
+                request.SourceOperation, decision, request.HasTarget, position, yaw);
             target.WriteState(in request, in state);
             target.Trace(in request, decision == MotionWarpWindowDecision.Disabled ? MotionModifierDiagnosticCode.Disabled :
                 decision == MotionWarpWindowDecision.NoTarget ? MotionModifierDiagnosticCode.NoTargetByOptionalPolicy :
                 MotionModifierDiagnosticCode.WindowEntered);
         }
 
-        public static void Apply<TRequest, TTarget>(in TRequest request, TTarget target,
-            ref ResolvedMotionChannel<TScalar, TVector2, TVector3, TMath> channel)
+        public static void Apply<TRequest, TTarget>(in TRequest request, TTarget target)
             where TRequest : struct, IMotionWarpWindowRequest
-            where TTarget : IMotionWarpWindowTarget<TRequest, TScalar, TVector2, TVector3, TYaw, TAction, MotionWarpState<TScalar, TVector3, TYaw, TAction>, TMath>
+            where TTarget : IMotionWarpWindowTarget<TRequest, TScalar, TVector3, TYaw, TAction, MotionWarpState<TScalar, TVector3, TYaw, TAction>>
         {
             MotionWarpState<TScalar, TVector3, TYaw, TAction> state = target.ReadState(in request);
             if (state.Decision != MotionWarpWindowDecision.Accepted)
@@ -86,7 +86,7 @@ namespace ThirdPersonSimulation
             MotionWarpParameters<TScalar> parameters = target.ReadParameters(in request);
             if (request.RotationMethod == ProgramMotionWarpRotationMethod.TargetResponse)
             {
-                target.ApplyResponse(in request, in parameters, in state, ref channel);
+                target.ApplyResponse(in request, in parameters, in state);
                 target.Trace(in request, MotionModifierDiagnosticCode.Applied);
                 return;
             }
@@ -107,9 +107,9 @@ namespace ThirdPersonSimulation
             if (!state.Initialized)
             {
                 target.ReadSourcePrefix(in request, out TVector3 prefix, out TScalar prefixYaw);
-                startBodyPosition = math.AddVector3(math.AddVector3(target.BodyPosition, channel.MotionCorrectionDisplacement),
+                startBodyPosition = math.AddVector3(math.AddVector3(target.BodyPosition, target.CorrectionDisplacement),
                     math.RotatePlanar(prefix, target.BodyYaw));
-                startBodyYaw = math.Yaw(math.Add(math.Add(math.Degrees(target.BodyYaw), channel.MotionCorrectionYawDegrees), prefixYaw));
+                startBodyYaw = math.Yaw(math.Add(math.Add(math.Degrees(target.BodyYaw), target.CorrectionYaw), prefixYaw));
                 target.ResolveTarget(in request, in parameters, state.CapturedTargetPosition, state.CapturedTargetYaw,
                     startBodyPosition, startBodyYaw, out sourceStartPosition, out sourceStartYaw,
                     out resolvedTargetPosition, out resolvedTargetYaw, out limit);
@@ -118,7 +118,7 @@ namespace ThirdPersonSimulation
                     state = state.WithDecision(MotionWarpWindowDecision.PreservedByLimitPolicy);
                     target.WriteState(in request, in state);
                     target.Trace(in request, MotionModifierDiagnosticCode.PreservedByLimitPolicy);
-                    channel.ApplyMotionWarp(rawDelta, sourceYawDelta, rawDelta, sourceYawDelta);
+                    target.ApplyMotionWarp(rawDelta, sourceYawDelta, rawDelta, sourceYawDelta);
                     return;
                 }
                 target.EvaluatePose(in request, in parameters, true, startBodyPosition, startBodyYaw,
@@ -129,7 +129,7 @@ namespace ThirdPersonSimulation
                     true, true, request.PlaybackGeneration, request.Cycle, state.ActionInstance,
                     startBodyPosition, startBodyYaw, sourceStartPosition, sourceStartYaw,
                     resolvedTargetPosition, resolvedTargetYaw, limit, previousPosition, previousYaw,
-                    previousPositionProgress, previousYawProgress, request.Source.Operation, state.Decision,
+                    previousPositionProgress, previousYawProgress, request.SourceOperation, state.Decision,
                     state.HasTarget, state.CapturedTargetPosition, state.CapturedTargetYaw);
             }
             else
@@ -153,7 +153,7 @@ namespace ThirdPersonSimulation
             target.EvaluatePose(in request, in parameters, false, startBodyPosition, startBodyYaw,
                 sourceStartPosition, sourceStartYaw, resolvedTargetPosition, resolvedTargetYaw,
                 out TVector3 currentPosition, out TYaw currentYaw);
-            channel.ApplyMotionWarp(rawDelta, sourceYawDelta, math.SubtractVector3(currentPosition, previousPosition),
+            target.ApplyMotionWarp(rawDelta, sourceYawDelta, math.SubtractVector3(currentPosition, previousPosition),
                 math.DeltaYaw(previousYaw, currentYaw));
             state = state.WithProgress(currentPosition, currentYaw, positionProgress, yawProgress);
             target.WriteState(in request, in state);

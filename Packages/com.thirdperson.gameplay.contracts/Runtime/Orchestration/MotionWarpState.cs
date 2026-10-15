@@ -2,13 +2,13 @@ using System;
 
 namespace ThirdPersonSimulation
 {
-    [ValueStorage(Construct = true), ValueOperations]
-    internal readonly partial struct MotionWarpState<TScalar, TVector3, TYaw, TAction> :
+    [ValueStorage(Construct = true), ValueOperations(Resources = false)]
+    public readonly partial struct MotionWarpState<TScalar, TVector3, TYaw, TAction> :
         IEquatable<MotionWarpState<TScalar, TVector3, TYaw, TAction>>
         where TScalar : unmanaged, IEquatable<TScalar>
         where TVector3 : unmanaged, IEquatable<TVector3>
         where TYaw : unmanaged, IEquatable<TYaw>
-        where TAction : struct, IEquatable<TAction>, IValueResources
+        where TAction : unmanaged, IEquatable<TAction>
     {
 
         public bool Active { get; }

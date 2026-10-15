@@ -502,14 +502,6 @@ namespace ThirdPersonSimulation
         void FailTimelineMotionWarp(OperationHandle operation, string code, string detail);
     }
 
-    public enum MotionWarpWindowDecision : byte
-    {
-        Accepted = 1,
-        Disabled = 2,
-        NoTarget = 3,
-        PreservedByLimitPolicy = 4
-    }
-
     internal static class AbilityTimelineMotionWarpRuntime
     {
         public static void ApplyDirect<TChannel, TTarget>(
@@ -565,25 +557,6 @@ namespace ThirdPersonSimulation
             current.Cycle == previous.Cycle + 1 &&
             previous.CurrentTime == previous.EndTime &&
             current.PreviousTime == current.StartTime;
-    }
-
-    internal static class MotionModifierDiagnosticCode
-    {
-        public const string SourceNotResolved = "motion_warp_source_not_resolved";
-        public const string Disabled = "motion_warp_disabled";
-        public const string WindowEntered = "motion_warp_window_entered";
-        public const string TargetSnapshotRequired = "motion_warp_target_snapshot_required";
-        public const string NoTargetByOptionalPolicy = "motion_warp_no_target_by_optional_policy";
-        public const string AmbiguousModifier = "motion_warp_ambiguous_modifier";
-        public const string InvalidState = "motion_warp_invalid_state";
-        public const string FaceTargetZeroDirection = "motion_warp_face_target_zero_direction";
-        public const string ApproachDirectionZero = "motion_warp_approach_direction_zero";
-        public const string ScaleSourcePositionZero = "motion_warp_scale_source_position_zero";
-        public const string ScaleSourceYawZero = "motion_warp_scale_source_yaw_zero";
-        public const string TargetResolved = "motion_warp_target_resolved";
-        public const string Applied = "motion_warp_applied";
-        public const string AppliedClamped = "motion_warp_applied_clamped";
-        public const string PreservedByLimitPolicy = "motion_warp_preserved_by_limit_policy";
     }
 
     public readonly struct TimelinePresentationOutput<TTime>

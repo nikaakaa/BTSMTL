@@ -65,50 +65,6 @@ namespace ThirdPersonSimulation
         Override = 2
     }
 
-    public enum ProgramMotionWarpTranslationMode : byte
-    {
-        Disabled = 0,
-        ScaleToTarget = 1,
-        SkewToTarget = 2,
-        LinearToTarget = 3
-    }
-
-    public enum ProgramMotionWarpTargetOffsetSpace : byte
-    {
-        TargetLocal = 0,
-        ApproachDirection = 1,
-        ActorStartLocal = 2,
-        World = 3
-    }
-
-    public enum ProgramMotionWarpRotationMode : byte
-    {
-        Disabled = 0,
-        FaceTarget = 1,
-        MatchTargetYaw = 2
-    }
-
-    public enum ProgramMotionWarpRotationMethod : byte
-    {
-        ProgressCurve = 0,
-        ConstantRate = 1,
-        ScaleSourceYaw = 2,
-        TargetResponse = 3
-    }
-
-    public enum ProgramMotionWarpLimitPolicy : byte
-    {
-        ApplyClamped = 0,
-        PreserveSource = 1
-    }
-
-    public enum ProgramMotionWarpLimitResult : byte
-    {
-        Applied = 0,
-        AppliedClamped = 1,
-        PreservedByLimitPolicy = 2
-    }
-
     public enum SimulationOperationCode : ushort
     {
         Root = 1,
