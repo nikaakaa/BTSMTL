@@ -20,7 +20,7 @@ namespace ThirdPerson.ValueGeneration.Generator
 
         static void EmitStateLayout(GeneratorExecutionContext context, INamedTypeSymbol layout)
         {
-            if (!TryStateRegions(layout, true, out Member[] regions, out string reason))
+            if (!TryStateMembers(layout, true, out Member[] members, out string reason))
             {
                 ReportStateLayoutError(context, layout, reason);
                 return;
@@ -29,25 +29,37 @@ namespace ThirdPerson.ValueGeneration.Generator
             var owners = BeginStateLayoutType(code, layout);
             code.Append("[").Append(Runtime).AppendLine("ValueStorageIgnore]");
             code.Append("public ").Append(Orchestration).AppendLine("OrchestrationStateLayout Layout { get; }");
+            foreach (Member member in members.Where(value => !IsStateRegion(value)))
+            {
+                code.Append("[").Append(Runtime).AppendLine("ValueStorageIgnore]");
+                code.Append("readonly ").Append(Orchestration).Append("OrchestrationStateRegion<byte> ")
+                    .Append(Escape(StateChildRegionName(member))).AppendLine(";");
+            }
             code.Append("public ").Append(Escape(layout.Name)).Append("(string generatedDeclarationIdentity, ")
                 .Append(Runtime).Append("StableHash contentIdentity, ").Append(Runtime)
                 .Append("NumericProfileId numericProfile, ").Append(Runtime).Append("TargetAbiVersion targetAbi");
-            foreach (Member region in regions)
-                code.Append(", int ").Append(StateCapacityParameter(region));
+            foreach (Member member in members)
+                code.Append(", ").Append(IsStateRegion(member) ? "int" : TypeName(member.Type)).Append(' ')
+                    .Append(Escape(StateParameterName(member)));
             code.AppendLine(") {");
             code.AppendLine("this = default;");
             code.AppendLine("int offset = 0;");
             code.AppendLine("int alignment = 1;");
-            foreach (Member region in regions)
+            foreach (Member member in members)
             {
-                string regionType = TypeName(region.Type);
-                string member = "this." + Escape(region.Symbol.Name);
-                code.Append("offset = checked((offset + ").Append(regionType).Append(".ElementAlignment - 1) / ")
-                    .Append(regionType).Append(".ElementAlignment * ").Append(regionType).AppendLine(".ElementAlignment);");
-                code.Append(member).Append(" = new ").Append(regionType).Append("(offset, ")
-                    .Append(StateCapacityParameter(region)).AppendLine(");");
-                code.Append("offset = checked(offset + ").Append(member).AppendLine(".SizeBytes);");
-                code.Append("alignment = global::System.Math.Max(alignment, ").Append(regionType).AppendLine(".ElementAlignment);");
+                bool leaf = IsStateRegion(member);
+                string value = "this." + Escape(member.Symbol.Name);
+                string regionType = leaf ? TypeName(member.Type) : Orchestration + "OrchestrationStateRegion<byte>";
+                string region = leaf ? value : "this." + Escape(StateChildRegionName(member));
+                string elementAlignment = leaf ? regionType + ".ElementAlignment" : value + ".Layout.Alignment";
+                if (!leaf)
+                    code.Append(value).Append(" = ").Append(Escape(StateParameterName(member))).AppendLine(";");
+                code.Append("offset = checked((offset + ").Append(elementAlignment).Append(" - 1) / ")
+                    .Append(elementAlignment).Append(" * ").Append(elementAlignment).AppendLine(");");
+                code.Append(region).Append(" = new ").Append(regionType).Append("(offset, ")
+                    .Append(leaf ? Escape(StateParameterName(member)) : value + ".Layout.SizeBytes").AppendLine(");");
+                code.Append("offset = checked(offset + ").Append(region).AppendLine(".SizeBytes);");
+                code.Append("alignment = global::System.Math.Max(alignment, ").Append(elementAlignment).AppendLine(");");
             }
             code.AppendLine("int sizeBytes = checked((offset + alignment - 1) / alignment * alignment);");
             code.Append("Layout = new ").Append(Orchestration).Append("OrchestrationStateLayout(sizeBytes, alignment, ")
@@ -56,27 +68,37 @@ namespace ThirdPerson.ValueGeneration.Generator
             code.AppendLine("targetAbi.Value.ToString(global::System.Globalization.CultureInfo.InvariantCulture),");
             code.AppendLine("sizeBytes.ToString(global::System.Globalization.CultureInfo.InvariantCulture),");
             code.Append("alignment.ToString(global::System.Globalization.CultureInfo.InvariantCulture)");
-            foreach (Member region in regions)
+            foreach (Member member in members)
             {
-                string member = "this." + Escape(region.Symbol.Name);
-                foreach (string value in new[] { member + ".Length", member + ".OffsetBytes", member + ".SizeBytes",
-                    TypeName(region.Type) + ".ElementSizeBytes", TypeName(region.Type) + ".ElementAlignment" })
-                    code.AppendLine(",").Append(value)
+                bool leaf = IsStateRegion(member);
+                string value = "this." + Escape(member.Symbol.Name);
+                string[] identityParts = leaf ? new[] { value + ".Length", value + ".OffsetBytes", value + ".SizeBytes",
+                    TypeName(member.Type) + ".ElementSizeBytes", TypeName(member.Type) + ".ElementAlignment" } :
+                    new[] { "this." + Escape(StateChildRegionName(member)) + ".OffsetBytes",
+                        value + ".Layout.SizeBytes", value + ".Layout.Alignment" };
+                foreach (string part in identityParts)
+                    code.AppendLine(",").Append(part)
                         .Append(".ToString(global::System.Globalization.CultureInfo.InvariantCulture)");
+                if (!leaf)
+                    code.AppendLine(",").Append(value).Append(".Layout.Identity.ToString()");
             }
             code.AppendLine("));");
             code.AppendLine("}");
-            foreach (Member region in regions)
+            foreach (Member member in members)
             {
-                string element = TypeName(((INamedTypeSymbol)region.Type).TypeArguments[0]);
-                string method = Escape("Get" + region.Symbol.Name);
-                string argument = "this." + Escape(region.Symbol.Name);
-                code.Append("public global::System.Span<").Append(element).Append("> ").Append(method)
-                    .Append("(in ").Append(Orchestration).Append("OrchestrationStateView state) => state.Get(")
-                    .Append(argument).AppendLine(");");
-                code.Append("public global::System.ReadOnlySpan<").Append(element).Append("> ").Append(method)
-                    .Append("(in ").Append(Orchestration).Append("ReadOnlyOrchestrationStateView state) => state.Get(")
-                    .Append(argument).AppendLine(");");
+                bool leaf = IsStateRegion(member);
+                string method = Escape("Get" + member.Symbol.Name);
+                string value = "this." + Escape(member.Symbol.Name);
+                string region = leaf ? value : "this." + Escape(StateChildRegionName(member));
+                string element = leaf ? TypeName(((INamedTypeSymbol)member.Type).TypeArguments[0]) : null;
+                code.Append("public ").Append(leaf ? "global::System.Span<" + element + ">" : Orchestration + "OrchestrationStateView")
+                    .Append(' ').Append(method).Append("(in ").Append(Orchestration).Append("OrchestrationStateView state) => ")
+                    .Append(leaf ? "" : value + ".Layout.BindCandidate(").Append("state.Get(").Append(region)
+                    .AppendLine(leaf ? ");" : "));");
+                code.Append("public ").Append(leaf ? "global::System.ReadOnlySpan<" + element + ">" : Orchestration + "ReadOnlyOrchestrationStateView")
+                    .Append(' ').Append(method).Append("(in ").Append(Orchestration).Append("ReadOnlyOrchestrationStateView state) => ")
+                    .Append(leaf ? "" : value + ".Layout.BindCommitted(").Append("state.Get(").Append(region)
+                    .AppendLine(leaf ? ");" : "));");
             }
             EndStateLayoutType(code, owners);
             context.AddSource(StateLayoutHint(layout, "StateLayout"), SourceText.From(code.ToString(), Encoding.UTF8));
@@ -91,20 +113,14 @@ namespace ThirdPerson.ValueGeneration.Generator
             {
                 var declaration = (MethodDeclarationSyntax)original.DeclaringSyntaxReferences[0].GetSyntax();
                 var factory = (IMethodSymbol)compilation.GetSemanticModel(declaration.SyntaxTree).GetDeclaredSymbol(declaration);
-                if (!TryStateFactory(factory, out INamedTypeSymbol layout, out Member[] regions, out string reason))
+                if (!TryStateFactory(factory, out INamedTypeSymbol layout, out Member[] members, out string reason))
                 {
                     ReportStateLayoutError(context, original, reason);
                     continue;
                 }
                 var identity = new StringBuilder();
                 StateSchemaPart(identity, Identity(layout));
-                foreach (Member region in regions)
-                {
-                    StateSchemaPart(identity, region.Symbol.Name);
-                    if (!schema.Append(identity, ((INamedTypeSymbol)region.Type).TypeArguments[0], out reason))
-                        break;
-                }
-                if (reason != null)
+                if (!AppendStateMembersSchema(schema, identity, members, out reason))
                 {
                     ReportStateLayoutError(context, original, reason);
                     continue;
@@ -129,32 +145,63 @@ namespace ThirdPerson.ValueGeneration.Generator
             }
         }
 
-        static bool TryStateRegions(INamedTypeSymbol layout, bool declaration, out Member[] regions, out string reason)
+        static bool AppendStateMembersSchema(StateLayoutSchema schema, StringBuilder identity, Member[] members, out string reason)
         {
-            regions = StorageMembers(layout).Where(member =>
+            reason = null;
+            foreach (Member member in members)
+            {
+                StateSchemaPart(identity, member.Symbol.Name);
+                var type = (INamedTypeSymbol)member.Type;
+                if (IsStateRegion(member))
+                {
+                    if (!schema.Append(identity, type.TypeArguments[0], out reason))
+                        return false;
+                }
+                else
+                {
+                    StateSchemaPart(identity, "layout");
+                    StateSchemaPart(identity, Identity(type));
+                    if (!TryStateMembers(type, false, out Member[] children, out reason) ||
+                        !AppendStateMembersSchema(schema, identity, children, out reason))
+                        return false;
+                    StateSchemaPart(identity, "end-layout");
+                }
+            }
+            return true;
+        }
+
+        static bool TryStateMembers(INamedTypeSymbol layout, bool declaration, out Member[] members, out string reason)
+        {
+            members = StorageMembers(layout).Where(member =>
                 !HasAttribute(member.Symbol, "ThirdPersonSimulation.ValueStorageIgnoreAttribute")).ToArray();
             reason = null;
             if (!HasAttribute(layout, StateLayoutAttribute) || layout.TypeKind != TypeKind.Struct ||
                 !layout.IsReadOnly || (declaration || layout.DeclaringSyntaxReferences.Length != 0) && !IsStatePartial(layout))
                 reason = "区段布局必须在原 readonly partial struct 上声明 ValueStateLayout";
-            else if (regions.Length == 0)
-                reason = "区段布局必须由原 OrchestrationStateRegion<T> 成员声明子区";
-            else if (regions.Select(StateCapacityParameter).Distinct(StringComparer.Ordinal).Count() != regions.Length)
-                reason = "原子区成员产生了重复的容量参数名称";
+            else if (members.Length == 0)
+                reason = "区段布局必须由原 OrchestrationStateRegion<T> 或 ValueStateLayout 成员声明子区";
+            else if (members.Select(StateParameterName).Distinct(StringComparer.Ordinal).Count() != members.Length)
+                reason = "原子区成员产生了重复的准备参数名称";
             else if (declaration && layout.GetMembers("Layout").Length != 0)
                 reason = "Layout 由原子区生成，不能重复声明";
             else
-                foreach (Member region in regions)
+                foreach (Member member in members)
                 {
-                    if (!(region.Type is INamedTypeSymbol type) || Identity(type.OriginalDefinition) != StateRegionType ||
-                        !IsStateLayoutUnmanaged(type.TypeArguments[0]))
+                    bool leaf = IsStateRegion(member);
+                    if (!(member.Type is INamedTypeSymbol type) ||
+                        (leaf ? !IsStateLayoutUnmanaged(type.TypeArguments[0]) : !HasAttribute(type, StateLayoutAttribute)))
                     {
-                        reason = region.Symbol.Name + ": 子区必须使用 unmanaged 元素的 OrchestrationStateRegion<T>";
+                        reason = member.Symbol.Name + ": 子区必须使用 unmanaged 元素的 OrchestrationStateRegion<T> 或 ValueStateLayout";
                         break;
                     }
-                    if (declaration && layout.GetMembers("Get" + region.Symbol.Name).Length != 0)
+                    if (declaration && layout.GetMembers("Get" + member.Symbol.Name).Length != 0)
                     {
-                        reason = region.Symbol.Name + ": typed 子区访问由原成员生成，不能重复声明";
+                        reason = member.Symbol.Name + ": typed 子区访问由原成员生成，不能重复声明";
+                        break;
+                    }
+                    if (declaration && !leaf && layout.GetMembers(StateChildRegionName(member)).Length != 0)
+                    {
+                        reason = member.Symbol.Name + ": 子布局字节区由原成员生成，不能重复声明";
                         break;
                     }
                 }
@@ -162,33 +209,33 @@ namespace ThirdPerson.ValueGeneration.Generator
         }
 
         static bool TryStateFactory(IMethodSymbol factory, out INamedTypeSymbol layout,
-            out Member[] regions, out string reason)
+            out Member[] members, out string reason)
         {
             layout = factory.ReturnType as INamedTypeSymbol;
-            regions = null;
+            members = null;
             reason = null;
             if (!factory.IsStatic || factory.Arity != 0 || !factory.DeclaringSyntaxReferences.Any(reference =>
                     reference.GetSyntax() is MethodDeclarationSyntax declaration && declaration.Modifiers.Any(SyntaxKind.PartialKeyword) &&
                     declaration.Body == null && declaration.ExpressionBody == null) ||
                 ContainsStateTypeParameter(factory.ContainingType) || !IsStatePartial(factory.ContainingType))
                 reason = "区段准备入口必须是在原闭合类型上声明的非泛型 static partial 方法";
-            else if (layout == null || !TryStateRegions(layout, false, out regions, out reason))
+            else if (layout == null || !TryStateMembers(layout, false, out members, out reason))
                 reason = reason ?? "区段准备入口必须返回 ValueStateLayout 原布局类型";
             else if (ContainsStateTypeParameter(layout))
                 reason = "区段准备入口必须返回已闭合的实际布局类型，不能以泛型名称代替成员布局";
             else
             {
-                Member[] factoryRegions = regions;
+                Member[] factoryMembers = members;
                 string[] types = { "ThirdPersonSimulation.StableHash", "ThirdPersonSimulation.NumericProfileId",
                     "ThirdPersonSimulation.TargetAbiVersion" };
-                if (factory.Parameters.Length != types.Length + regions.Length ||
+                if (factory.Parameters.Length != types.Length + members.Length ||
                     factory.Parameters.Any(parameter => parameter.RefKind != RefKind.None) ||
                     factory.Parameters.Take(types.Length).Where((parameter, index) => Identity(parameter.Type) != types[index]).Any() ||
                     factory.Parameters.Skip(types.Length).Where((parameter, index) =>
-                        parameter.Type.SpecialType != SpecialType.System_Int32 ||
-                        parameter.Name != char.ToLowerInvariant(factoryRegions[index].Symbol.Name[0]) +
-                            factoryRegions[index].Symbol.Name.Substring(1) + "Capacity").Any())
-                    reason = "准备参数依次为 contentIdentity、numericProfile、targetAbi，再按原子区成员名称顺序传入 Int32 容量";
+                        (IsStateRegion(factoryMembers[index]) ? parameter.Type.SpecialType != SpecialType.System_Int32 :
+                            !SymbolEqualityComparer.Default.Equals(parameter.Type, factoryMembers[index].Type)) ||
+                        parameter.Name != StateParameterName(factoryMembers[index])).Any())
+                    reason = "准备参数依次为 contentIdentity、numericProfile、targetAbi，再按原成员名称顺序传入 xxxCapacity Int32 容量或 camelCase 子布局";
             }
             return reason == null;
         }
@@ -201,7 +248,13 @@ namespace ThirdPerson.ValueGeneration.Generator
             type.DeclaringSyntaxReferences.All(reference => reference.GetSyntax() is TypeDeclarationSyntax declaration &&
                 declaration.Modifiers.Any(SyntaxKind.PartialKeyword));
 
-        static string StateCapacityParameter(Member region) => Parameter(region.Symbol.Name + "Capacity");
+        static bool IsStateRegion(Member member) => member.Type is INamedTypeSymbol type &&
+            Identity(type.OriginalDefinition) == StateRegionType;
+
+        static string StateParameterName(Member member) => char.ToLowerInvariant(member.Symbol.Name[0]) +
+            member.Symbol.Name.Substring(1) + (IsStateRegion(member) ? "Capacity" : "");
+
+        static string StateChildRegionName(Member member) => "m_" + member.Symbol.Name + "Region";
 
         static int BeginStateLayoutType(StringBuilder code, INamedTypeSymbol type)
         {
