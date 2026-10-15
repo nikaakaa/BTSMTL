@@ -321,7 +321,7 @@ namespace ThirdPersonSimulation
     }
 
     [ValueOperations(RetainMethod = nameof(RetainStorage), ReleaseMethod = nameof(ReleaseStorage))]
-    public sealed partial class Float32SimulationSessionSnapshot : IValueResources
+    public sealed partial class Float32SimulationSessionSnapshot : ISimulationSessionSnapshot<SimulationWorldSnapshot>
     {
         public Float32SimulationSessionSnapshot(
             SimulationSessionCompositionIdentity compositionIdentity,

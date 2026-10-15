@@ -1,6 +1,8 @@
 # 可选内存快照
 
-`Float32MemorySnapshotProvider` 和 `FixedMemorySnapshotProvider` 位于 `ThirdPersonSimulation.Snapshots`。宿主按需把提供者交给原 Session composer。核心只声明提供者接口、正式状态与恢复协议，不引用此包，也不要求单机安装全量快照提供者；普通 Tick 事务和 Abort 继续使用原事务页及输入、战斗的内存载体。
+`MemorySnapshotProvider<TState, TWorld, TSnapshot>` 位于 `ThirdPersonSimulation.Snapshots`，共用准备页、捕获、持有、恢复及归还实现。`FPMemorySnapshotProvider` 和 `Float32MemorySnapshotProvider` 只负责既有两域接口与原快照类型的绑定，宿主装配入口保持原样。FP 步骤保存正式标记为 Include 的 participant；Float32 步骤只持有世界状态，checkpoint 均保存完整 participant 列表。核心通过中立的状态与快照模型接口提供已有操作，不引用此可选包，单机可不安装；普通 Tick 事务和 Abort 继续使用原事务页及输入、战斗的内存载体。
+
+Provider 不再声明手写的 `/1` 格式版本。`ValueImplementationIdentity` 让原字段工具从实现源码生成指纹常量，组件身份组合该指纹、实际闭合类型和步骤捕获方式，版本文字读取程序集自身版本。初始化以外不扫描源码、反射成员或计算该身份；不使用 IL2CPP 不支持的模块 GUID。纯内存页没有字节格式，业务状态的原 StateSchemaHash 仍由 runtime 提供；这两种身份各自保留原职责。
 
 提供者在 `PrepareCheckpointStorage` 中准备槽位。捕获保留已提交的 `SimulationWorldStateSet` 及原 Pipeline participant 状态，不复制角色字段表，不创建另一份字节数据，不编码、不解码、不遍历状态计算哈希。角色和世界的资源遍历由原成员上的 `ValueOperations`、`ValueResource` 生成。输入和战斗的独立载体由原成员上的 `ValueSnapshot` 生成。
 
@@ -16,7 +18,7 @@
 
 容量来自现有 Session 的候选步骤、保留步骤、`RetainedCheckpoints`、`CaptureStates`、`RestoreStates`。纯内存历史会保留原角色、GE、世界及 participant 页，这些持有者必须进入原页池预算；槽位耗尽明确失败，不在捕获时扩容。初始化分配槽及数组，捕获与恢复复用原准备存储；运行分配、CPU 与恢复效果须在宿主实际场景检查，编译成功不能代替这些结果。
 
-外部实现可以直接实现 `IFloat32SimulationSessionSnapshotProvider` 或 `IFixedSimulationSessionSnapshotProvider`，不需要提供 `Write`、`Read` 或状态哈希。自定义 `IValueSnapshotSource` 的独立载体应实现 `IValueSnapshotCopy`，复用既有容量复制内容、正确持有资源，并提供内容 `Equals` 供原恢复事务比较。当前自动生成支持原值、正式值联合、一维与锯齿固定数组、预分配集合、保留 comparer 的字典和固定 roster 中的嵌套状态源；创建后容器容量和 roster 形状保持固定。
+外部实现可以直接实现 `IFloat32SimulationSessionSnapshotProvider` 或 `IFPSimulationSessionSnapshotProvider`，不需要提供 `Write`、`Read` 或状态哈希。自定义 `IValueSnapshotSource` 的独立载体应实现 `IValueSnapshotCopy`，复用既有容量复制内容、正确持有资源，并提供内容 `Equals` 供原恢复事务比较。当前自动生成支持原值、正式值联合、一维与锯齿固定数组、预分配集合、保留 comparer 的字典和固定 roster 中的嵌套状态源；创建后容器容量和 roster 形状保持固定。
 
 字节内容发布、归档与网络编码由独立 MemoryPack 适配或具体后端消费原数据，属于其它可选能力。此包不依赖 MemoryPack 或网络包。
 

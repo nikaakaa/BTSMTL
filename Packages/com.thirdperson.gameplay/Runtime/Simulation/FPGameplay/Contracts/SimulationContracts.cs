@@ -918,7 +918,6 @@ namespace ThirdPersonSimulation.FPGameplay
 
     public readonly struct SimulationTraceRecord
     {
-        internal const int MaximumTextReferences = 13;
         internal const int MaximumGeneratedPathReferences = 3;
         public SimulationTraceRecord(
             in SimulationTraceHeader header,

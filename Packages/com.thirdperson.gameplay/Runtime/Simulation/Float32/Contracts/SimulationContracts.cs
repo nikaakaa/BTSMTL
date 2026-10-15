@@ -897,7 +897,6 @@ namespace ThirdPersonSimulation
 
     public readonly struct SimulationTraceRecord
     {
-        internal const int MaximumTextReferences = 23;
         internal const int MaximumGeneratedPathReferences = 3;
         public SimulationTraceRecord(
             in SimulationTraceHeader header,

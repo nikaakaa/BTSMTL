@@ -21,7 +21,7 @@ namespace ThirdPersonSimulation
     }
 
     [ValueOperations(ExplicitResources = true, RetainMethod = nameof(RetainStateStorage), ReleaseMethod = nameof(ReleaseStateStorage))]
-    public sealed partial class SimulationWorldSnapshot
+    public sealed partial class SimulationWorldSnapshot : ISimulationWorldSnapshot<SimulationWorldStateSet>
     {
         public SimulationWorldSnapshot(GameplayContentHash gameplayContentHash, StableHash stateSchemaHash, IValueResources storage)
         {
@@ -49,7 +49,7 @@ namespace ThirdPersonSimulation
     }
 
     [ValueOperations(ExplicitResources = true)]
-    public sealed partial class SimulationWorldStateSet : IValueResources
+    public sealed partial class SimulationWorldStateSet : ISimulationSnapshotState
     {
         [ValueResource(Elements = true)]
         readonly SimulationActorState[] m_Actors;

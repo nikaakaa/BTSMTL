@@ -351,7 +351,7 @@ namespace ThirdPersonSimulation.FPGameplay
     }
 
     [ValueOperations(RetainMethod = nameof(RetainStorage), ReleaseMethod = nameof(ReleaseStorage))]
-    public sealed partial class FPSimulationSessionSnapshot : IValueResources
+    public sealed partial class FPSimulationSessionSnapshot : ISimulationSessionSnapshot<SimulationWorldSnapshot>
     {
         public FPSimulationSessionSnapshot(
             SimulationSessionCompositionIdentity compositionIdentity,

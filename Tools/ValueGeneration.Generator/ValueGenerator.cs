@@ -72,6 +72,7 @@ namespace ThirdPerson.ValueGeneration.Generator
             var storageOwners = new Dictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
             var snapshotSources = new Dictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
             var textCapacityStorage = new Dictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
+            var implementationIdentities = new Dictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
             foreach (BaseTypeDeclarationSyntax declaration in receiver.Types)
             {
                 var type = (INamedTypeSymbol)context.Compilation.GetSemanticModel(declaration.SyntaxTree)
@@ -87,6 +88,8 @@ namespace ThirdPerson.ValueGeneration.Generator
                     snapshotSources[Identity(type)] = type;
                 if (HasAttribute(type, TextCapacityAttribute))
                     textCapacityStorage[Identity(type)] = type;
+                if (HasAttribute(type, "ThirdPersonSimulation.ValueImplementationIdentityAttribute"))
+                    implementationIdentities[Identity(type)] = type;
                 if (HasAttribute(type, ValueOperationsAttribute) && !HasAttribute(type, UnionTemplateAttribute))
                     valueRecords[Identity(type)] = type;
                 if (HasAttribute(type, ValueStoragePurposeAttribute))
@@ -95,6 +98,8 @@ namespace ThirdPerson.ValueGeneration.Generator
                     HasAttribute(method, "ThirdPersonSimulation.ValueUpdateAttribute")))
                     valueUpdates[Identity(type)] = type;
             }
+            foreach (INamedTypeSymbol identity in implementationIdentities.Values.OrderBy(type => Identity(type), StringComparer.Ordinal))
+                EmitImplementationIdentity(context, identity);
             foreach (INamedTypeSymbol template in templates.Values.OrderBy(t => Identity(t), StringComparer.Ordinal))
                 if (!ValidateTemplate(context, template)) return;
             foreach (INamedTypeSymbol template in templates.Values.OrderBy(t => Identity(t), StringComparer.Ordinal))

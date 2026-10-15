@@ -23,7 +23,7 @@ namespace ThirdPersonSimulation.FPGameplay
     }
 
     [ValueOperations(ExplicitResources = true, RetainMethod = nameof(RetainStateStorage), ReleaseMethod = nameof(ReleaseStateStorage))]
-    public sealed partial class SimulationWorldSnapshot
+    public sealed partial class SimulationWorldSnapshot : ISimulationWorldSnapshot<SimulationWorldStateSet>
     {
         public SimulationWorldSnapshot(GameplayContentHash gameplayContentHash, StableHash stateSchemaHash, IValueResources storage)
         {
@@ -52,7 +52,7 @@ namespace ThirdPersonSimulation.FPGameplay
 
     [ValueOperations(ExplicitResources = true, RetainMethod = nameof(RetainValues), ReleaseMethod = nameof(ReleaseValues))]
     [ValueStorage(ReadOnly = true)]
-    public readonly partial struct SimulationWorldStateSet
+    public readonly partial struct SimulationWorldStateSet : ISimulationSnapshotState
     {
         [ValueResource(Elements = true)]
         readonly SimulationActorState[] m_Actors;

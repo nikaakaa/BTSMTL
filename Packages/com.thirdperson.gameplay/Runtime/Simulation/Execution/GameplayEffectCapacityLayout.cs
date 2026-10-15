@@ -57,8 +57,7 @@ namespace ThirdPersonSimulation
         FailureOutputReservation,
         SourceTagRemovalReservation,
         SourceIngressEntries,
-        SourceCommandResults,
-        RetainedTextReferences
+        SourceCommandResults
     }
 
     public enum GameplayEffectPreparationFailureKind : byte
@@ -287,7 +286,7 @@ namespace ThirdPersonSimulation
             int additionalQueueWidth, int applicationsPerTick, int statePageCount, int outputPageCount,
             int predictionRecordWidth, int specCount, int activeObjectCount, int savepointRestoreBatches, int capturePageCount,
             int predictionRecordCount, int lifecycleRevisionWidth, int checkpointSlotCount, int tentativeChangeWidth,
-            int failureOutputReservation, int sourceTagRemovalReservation, int maximumRetainedTextReferences)
+            int failureOutputReservation, int sourceTagRemovalReservation)
         {
             ContentRevision = binding.ContentRevision;
             Actor = binding.ActorCapacity;
@@ -316,7 +315,6 @@ namespace ThirdPersonSimulation
             TentativeChangeWidth = tentativeChangeWidth;
             FailureOutputReservation = failureOutputReservation;
             SourceTagRemovalReservation = sourceTagRemovalReservation;
-            MaximumRetainedTextReferences = maximumRetainedTextReferences;
             m_Rows = Array.AsReadOnly(new[]
             {
                 Row(GameplayEffectCapacityDimension.DeclarationVersion, Actor.DeclarationVersion, "CharacterGameplayEffectProfile", "GameplayEffectActorCapacity.FormatVersion"),
@@ -367,7 +365,6 @@ namespace ThirdPersonSimulation
                 Row(GameplayEffectCapacityDimension.CaptureStates, Session.CaptureStates, "History and RuntimeHandle replay rollback owners", "MaximumSimultaneousCaptureStates"),
                 Row(GameplayEffectCapacityDimension.RestoreStates, Session.RestoreStates, "History restore owner", "MaximumRestoreStates"),
                 Row(GameplayEffectCapacityDimension.CheckpointSlots, CheckpointSlotCount, "Session checkpoint / snapshot owner", "RetainedCheckpoints + CaptureStates + RestoreStates"),
-                Row(GameplayEffectCapacityDimension.RetainedTextReferences, MaximumRetainedTextReferences, "Spec / Active / prediction / source / revision / tentative record owners", "2 * SpecCount + 2 * ActiveObjectCount + 4 * PredictionRecordCount + 2 * SourceWidth * (StatePageCount + 1) + 12 * LifecycleRevisionWidth * (StatePageCount + 1) + 12 * TentativeChangeWidth")
             });
         }
 
@@ -399,7 +396,6 @@ namespace ThirdPersonSimulation
         public int TentativeChangeWidth { get; }
         public int FailureOutputReservation { get; }
         public int SourceTagRemovalReservation { get; }
-        public int MaximumRetainedTextReferences { get; }
         public int SuccessfulChangesPerTick => Actor.ChangesPerTick - FailureOutputReservation - SourceTagRemovalReservation;
         public int SuccessfulFactsPerTick => Actor.FactsPerTick - FailureOutputReservation - SourceTagRemovalReservation;
         public IReadOnlyList<GameplayEffectCapacityRow> Rows => m_Rows;
@@ -496,15 +492,7 @@ namespace ThirdPersonSimulation
                         2L * content.MaximumGrantedTags + 2L * content.MaximumCues + 3) +
                     (long)predictionRecordWidth * content.AttributeCount * content.AttributeCount +
                     2L * (actor.CommandsPerTick + actor.ExternalTagSources) * actor.TagsPerExternalSource +
-                    actor.CommandsPerTick + 1L, out int tentativeChangeWidth) ||
-                !Width(GameplayEffectCapacityDimension.RetainedTextReferences,
-                    (long)sourceWidth * (statePageCount + 1L), out int retainedSourceVersions) ||
-                !Width(GameplayEffectCapacityDimension.RetainedTextReferences,
-                    (long)lifecycleRevisionWidth * (statePageCount + 1L), out int retainedRevisionVersions) ||
-                !Width(GameplayEffectCapacityDimension.RetainedTextReferences,
-                    2L * specCount + 2L * activeObjectCount + 4L * predictionRecordCount +
-                    2L * retainedSourceVersions + 12L * retainedRevisionVersions + 12L * tentativeChangeWidth,
-                    out int maximumRetainedTextReferences))
+                    actor.CommandsPerTick + 1L, out int tentativeChangeWidth))
             {
                 failure = current;
                 return false;
@@ -512,8 +500,7 @@ namespace ThirdPersonSimulation
             layout = new GameplayEffectRuntimeCapacityLayout(binding, in session, sourceWidth, queryTagWidth,
                 modifierWidth, additionalQueueWidth, applicationsPerTick, statePageCount, outputPageCount,
                 predictionRecordWidth, specCount, activeObjectCount, savepointRestoreBatches, capturePageCount, predictionRecordCount,
-                lifecycleRevisionWidth, checkpointSlotCount, tentativeChangeWidth, failureOutputReservation, sourceTagRemovalReservation,
-                maximumRetainedTextReferences);
+                lifecycleRevisionWidth, checkpointSlotCount, tentativeChangeWidth, failureOutputReservation, sourceTagRemovalReservation);
             failure = default;
             return true;
 
