@@ -3,16 +3,17 @@ using Photon.Deterministic;
 namespace ThirdPersonSimulation.QuantumNumerics
 {
     public readonly struct QuantumSimulationMath :
-        IScalarMath<FP>,
-        IVectorMath<FP, FPVector2, FPVector3>,
+        IOrchestrationGraphMath<FP, FPVector2, FPVector3, FPQuaternion>,
         IPlanarRotation<FPVector3, FP>,
         IYawMath<FP, FP>
     {
         public FP Zero => FP._0;
         public FP One => FP._1;
+        public FP NormalizationMinimumMagnitude => FP._0;
         public FP FromInt32(int value) => (FP)value;
         public FP FromInt64(long value) => FP.FromRaw(unchecked(value << FP.Precision));
         public int FloorToInt32(FP value) => FPMath.FloorToInt(value);
+        public int TruncateToInt32(FP value) => checked((int)(value.RawValue / FP.Raw._1));
         public FPVector2 ZeroVector2 => FPVector2.Zero;
         public FPVector3 ZeroVector3 => FPVector3.Zero;
 
@@ -29,6 +30,9 @@ namespace ThirdPersonSimulation.QuantumNumerics
         public bool LessThanOrEqual(FP left, FP right) => left <= right;
         public bool GreaterThan(FP left, FP right) => left > right;
         public bool IsZero(FP value) => value == FP._0;
+        public FP ClampGraph(FP value, FP minimum, FP maximum) => FPMath.Clamp(value, minimum, maximum);
+        public FP MoveTowardsGraph(FP current, FP target, FP maximumDelta) =>
+            FPMath.MoveTowards(current, target, maximumDelta);
 
         public FPVector2 Vector2(FP x, FP y) => new FPVector2(x, y);
         public FPVector3 Vector3(FP x, FP y, FP z) => new FPVector3(x, y, z);
@@ -40,6 +44,10 @@ namespace ThirdPersonSimulation.QuantumNumerics
         public FP Magnitude2(FPVector2 value) => value.Magnitude;
         public FP SqrMagnitude2(FPVector2 value) => value.SqrMagnitude;
         public FPVector2 Normalize2(FPVector2 value) => value.Normalized;
+        public FPVector2 MultiplyVector2(FPVector2 value, FP scale) => value * scale;
+        public FPVector2 SubtractVector2(FPVector2 left, FPVector2 right) => left - right;
+        public FP SignedAngle2(FPVector2 from, FPVector2 to) =>
+            FPVector2.Angle(from, to) * FPMath.Sign(FPVector2.Cross(from, to));
         public FPVector3 AddVector3(FPVector3 left, FPVector3 right) => left + right;
         public FPVector3 SubtractVector3(FPVector3 left, FPVector3 right) => left - right;
         public FPVector3 MultiplyVector3(FPVector3 value, FP scale) => value * scale;
@@ -49,6 +57,9 @@ namespace ThirdPersonSimulation.QuantumNumerics
             new FPVector3(value.X, value.Y + displacement, value.Z);
         public bool IsVector3Zero(FPVector3 value) => value == FPVector3.Zero;
         public bool IsVector2Zero(FPVector2 value) => value == FPVector2.Zero;
+        public FPVector3 QuaternionForward(FPQuaternion value) => value * FPVector3.Forward;
+        public FPQuaternion QuaternionAngleAxis(FP angleDegrees, FPVector3 axis) =>
+            FPQuaternion.AngleAxis(angleDegrees, axis);
 
         public FP Yaw(FP degrees)
         {
