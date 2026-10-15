@@ -1,0 +1,17 @@
+{
+    "name": "BTSMTL.Orchestration.Runtime",
+    "rootNamespace": "BTSMTL.Orchestration",
+    "references": [
+        "ThirdPerson.Shared.Contracts",
+        "BTSMTL.Orchestration.Contracts"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": true,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": true
+}
