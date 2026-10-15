@@ -22,6 +22,11 @@ namespace ThirdPerson.ValueGeneration
             Identity(attribute.AttributeClass) == StorageAttribute && attribute.NamedArguments.Any(argument =>
                 argument.Key == "ReadOnly" && argument.Value.Value is true));
 
+        internal static bool ContainsParameter(ITypeSymbol type) => type is ITypeParameterSymbol ||
+            type is IArrayTypeSymbol array && ContainsParameter(array.ElementType) ||
+            type is INamedTypeSymbol named && (named.TypeArguments.Any(ContainsParameter) ||
+                named.ContainingType != null && ContainsParameter(named.ContainingType));
+
         internal static bool HasValueStorageContract(ITypeSymbol type) => type is INamedTypeSymbol record &&
             (record.TypeKind == TypeKind.Struct || record.TypeKind == TypeKind.Class) &&
             (HasAttribute(record, StorageAttribute) || HasAttribute(record, UnionAttribute) ||

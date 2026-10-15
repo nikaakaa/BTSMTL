@@ -211,7 +211,7 @@ namespace ThirdPerson.MemoryPackAdapters
             void Visit(ITypeSymbol type)
             {
                 if (type is INamedTypeSymbol namedType) type = RecordType(namedType);
-                if (type is ITypeParameterSymbol || IsUnmanagedValue(type))
+                if (ContainsParameter(type) || IsUnmanagedValue(type))
                     return;
                 if (!visited.Add(Identity(type))) return;
                 if (externalLeaves.Contains(Identity(type))) return;

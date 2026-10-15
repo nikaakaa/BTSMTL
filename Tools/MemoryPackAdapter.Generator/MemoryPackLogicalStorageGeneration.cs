@@ -55,10 +55,6 @@ namespace ThirdPerson.MemoryPackAdapters
                 foreach (ITypeSymbol argument in named.TypeArguments) Visit(argument);
             }
 
-            bool ContainsParameter(ITypeSymbol type) => type is ITypeParameterSymbol ||
-                type is IArrayTypeSymbol array && ContainsParameter(array.ElementType) ||
-                type is INamedTypeSymbol named && (named.TypeArguments.Any(ContainsParameter) ||
-                    named.ContainingType != null && ContainsParameter(named.ContainingType));
         }
 
         static LogicalStoragePlan CreateLogicalStoragePlan(INamedTypeSymbol type,
