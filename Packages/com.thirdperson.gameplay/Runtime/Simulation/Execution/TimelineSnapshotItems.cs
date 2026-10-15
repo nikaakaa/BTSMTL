@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using BTSMTL.Timeline;
+using Photon.Deterministic;
 
 namespace ThirdPersonSimulation
 {
@@ -135,6 +137,59 @@ namespace ThirdPersonSimulation
             for (int index = 0; index < m_Count; index++)
                 m_ReleaseItem(m_Items[index]);
         }
+    }
+
+    public readonly struct AbilityTimelineSnapshotReadStorage
+    {
+        readonly IAbilityTimelineRuntime m_Runtime;
+        readonly AbilityTimelineSnapshotStorage m_Storage;
+
+        public AbilityTimelineSnapshotReadStorage(IAbilityTimelineRuntime runtime)
+        {
+            m_Runtime = runtime;
+            m_Storage = runtime.BeginPreparedRead();
+        }
+
+        public int TextReferenceCapacity => m_Storage.TextReferenceCapacity;
+
+        public AbilityTimelinePlaybackReadStorage PrepareReadPlayback() =>
+            new AbilityTimelinePlaybackReadStorage(m_Storage);
+
+        public TimelineSnapshotItemBuffer<AbilityTimelineTreeClipState> PrepareReadActiveTreeClips() =>
+            m_Storage.ActiveTreeClips;
+
+        public AbilityTimelineRuntimeSnapshot CompleteRead(in AbilityTimelineStartRequest request,
+            in TimelinePlaybackState playback) =>
+            m_Runtime.CompletePreparedRead(m_Storage, in request, in playback);
+
+        public void DiscardPreparedRead() => m_Storage.DiscardPreparedRead();
+    }
+
+    public readonly struct AbilityTimelinePlaybackReadStorage
+    {
+        readonly AbilityTimelineSnapshotStorage m_Storage;
+
+        internal AbilityTimelinePlaybackReadStorage(AbilityTimelineSnapshotStorage storage) =>
+            m_Storage = storage;
+
+        public TimelineSnapshotItemBuffer<CanonicalTextValue> PrepareReadActiveClipIds() =>
+            m_Storage.ActiveClipIds;
+
+        public TimelineSnapshotItemBuffer<AbilityTimelineTreeClipExit> PrepareReadTreeDecisionExits() =>
+            m_Storage.TreeDecisionExits;
+
+        public TimelineSnapshotItemBuffer<AbilityTimelineTreeClipExit> PrepareReadPendingTreeDecisionExits() =>
+            m_Storage.PendingTreeDecisionExits;
+
+        public TimelinePlaybackState CompleteRead(CanonicalTextValue requestId,
+            in TimelineExecutionIdentity executionIdentity, CanonicalTextValue contentRevision,
+            TimelineRuntimePlaybackState state, FP cursorTime, int cycle, int timeCarry,
+            AbilityTimelinePlaybackControl control, CanonicalTextValue sectionId,
+            bool hasStopContext, in TimelinePlaybackStopContext stopContext, bool initialBoundaryPending) =>
+            new TimelinePlaybackState(requestId, executionIdentity, contentRevision, state,
+                cursorTime, cycle, timeCarry, control, sectionId, m_Storage.ActiveClipIds.Items,
+                m_Storage.TreeDecisionExits.Items, m_Storage.PendingTreeDecisionExits.Items,
+                hasStopContext, stopContext, initialBoundaryPending);
     }
 
     [ValueTextCapacity(typeof(AbilityTimelineRuntimeSnapshot))]
