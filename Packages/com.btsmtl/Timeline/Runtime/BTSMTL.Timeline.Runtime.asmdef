@@ -3,6 +3,7 @@
     "rootNamespace": "BTSMTL.Timeline.Runtime",
     "references": [
         "ThirdPerson.Shared.Contracts",
+        "BTSMTL.Orchestration.Contracts",
         "ThirdPersonSimulation.Core",
         "ThirdPersonSimulation.Float32",
         "ThirdPersonSimulation.QuantumNumerics"

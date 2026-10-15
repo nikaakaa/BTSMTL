@@ -530,7 +530,8 @@ namespace BTSMTL.Timeline
         Shutdown
     }
 
-    public readonly partial struct TimelinePlaybackStopContext
+    [ValueOperations(Resources = false)]
+    public readonly partial struct TimelinePlaybackStopContext : IEquatable<TimelinePlaybackStopContext>
     {
         public TimelinePlaybackStopContext(TimelinePlaybackStopCause cause, ulong localLogicTick)
         {

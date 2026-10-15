@@ -3,6 +3,7 @@
     "rootNamespace": "ThirdPersonSimulation",
     "references": [
         "ThirdPerson.Shared.Contracts",
+        "BTSMTL.Orchestration.Contracts",
         "ThirdPersonGameplay.Configuration",
         "ThirdPerson.Performance.Instrumentation.Contracts",
         "ThirdPersonSimulation.Core"

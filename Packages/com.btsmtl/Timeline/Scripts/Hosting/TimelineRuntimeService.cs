@@ -279,18 +279,11 @@ namespace BTSMTL.Timeline.Runtime
                 !m_Snapshot.Playback.ContentRevision.Equals(playback.ContentRevision))
                 throw new InvalidOperationException("Timeline restore targets a different playback identity or content.");
             playback.RestoreCommittedState(
-                m_Snapshot.Playback.State,
-                m_Snapshot.Playback.CursorTime,
-                m_Snapshot.Playback.Cycle,
-                m_Snapshot.Playback.TimeCarry,
-                m_Snapshot.Playback.Control,
+                m_Snapshot.Playback.Progress,
                 m_Snapshot.Playback.SectionId,
                 m_Snapshot.Playback.ActiveClipIds.Span,
                 m_Snapshot.Playback.TreeDecisionExits.Span,
-                m_Snapshot.Playback.PendingTreeDecisionExits.Span,
-                m_Snapshot.Playback.HasStopContext,
-                m_Snapshot.Playback.StopContext,
-                m_Snapshot.Playback.InitialBoundaryPending);
+                m_Snapshot.Playback.PendingTreeDecisionExits.Span);
         }
 
         void Validate()

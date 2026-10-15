@@ -3,6 +3,7 @@
     "rootNamespace": "ThirdPersonSimulation.FPGameplay",
     "references": [
         "ThirdPerson.Shared.Contracts",
+        "BTSMTL.Orchestration.Contracts",
         "ThirdPerson.Performance.Instrumentation.Contracts",
         "ThirdPersonSimulation.Core",
         "ThirdPersonSimulation.QuantumNumerics",

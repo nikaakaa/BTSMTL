@@ -28,9 +28,8 @@ namespace BTSMTL.Timeline.Runtime
             TimelineSnapshotItems<AbilityTimelineTreeClipExit> pendingTreeDecisionExits)
             : this(playback.Handle, playback.Generation, playback.PlaybackMode, playback.NumericTarget,
                 playback.TickRate, new TimelinePlaybackState(playback.RequestId, playback.ExecutionIdentity,
-                    playback.ContentRevision, playback.State, playback.CursorTime, playback.Cycle, playback.TimeCarry,
-                    playback.Control, playback.SectionId, activeClipIds, treeDecisionExits, pendingTreeDecisionExits,
-                    playback.HasStopContext, playback.StopContext, playback.InitialBoundaryPending))
+                    playback.ContentRevision, in playback.Progress, playback.SectionId,
+                    activeClipIds, treeDecisionExits, pendingTreeDecisionExits))
         {
         }
 

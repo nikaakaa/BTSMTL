@@ -1,3 +1,8 @@
+using TimelinePlaybackProgress = BTSMTL.Orchestration.OrchestrationTimelineProgress<
+    Photon.Deterministic.FP,
+    BTSMTL.Timeline.TimelineRuntimePlaybackState,
+    ThirdPersonSimulation.AbilityTimelinePlaybackControl,
+    BTSMTL.Timeline.TimelinePlaybackStopContext>;
 using System;
 using ThirdPersonSimulation;
 using Photon.Deterministic;
@@ -11,52 +16,39 @@ namespace BTSMTL.Timeline
             CanonicalTextValue requestId,
             TimelineExecutionIdentity executionIdentity,
             CanonicalTextValue contentRevision,
-            TimelineRuntimePlaybackState state,
-            FP cursorTime,
-            int cycle,
-            int timeCarry,
-            AbilityTimelinePlaybackControl control,
+            in TimelinePlaybackProgress progress,
             CanonicalTextValue sectionId,
             TimelineSnapshotItems<CanonicalTextValue> activeClipIds,
             TimelineSnapshotItems<AbilityTimelineTreeClipExit> treeDecisionExits,
-            TimelineSnapshotItems<AbilityTimelineTreeClipExit> pendingTreeDecisionExits,
-            bool hasStopContext,
-            TimelinePlaybackStopContext stopContext,
-            bool initialBoundaryPending)
+            TimelineSnapshotItems<AbilityTimelineTreeClipExit> pendingTreeDecisionExits)
         {
             RequestId = requestId.Trim();
             ExecutionIdentity = executionIdentity;
             ContentRevision = contentRevision.Trim();
-            State = state;
-            CursorTime = cursorTime;
-            Cycle = cycle;
-            TimeCarry = timeCarry;
-            Control = control;
+            Progress = progress;
             SectionId = sectionId.IsNull ? CanonicalTextValue.Empty : sectionId;
             ActiveClipIds = activeClipIds;
             TreeDecisionExits = treeDecisionExits;
             PendingTreeDecisionExits = pendingTreeDecisionExits;
-            HasStopContext = hasStopContext;
-            StopContext = stopContext;
-            InitialBoundaryPending = initialBoundaryPending;
             RequireValid();
         }
 
         public CanonicalTextValue RequestId { get; }
         public TimelineExecutionIdentity ExecutionIdentity { get; }
         public CanonicalTextValue ContentRevision { get; }
-        public TimelineRuntimePlaybackState State { get; }
-        public FP CursorTime { get; }
-        public int Cycle { get; }
-        public int TimeCarry { get; }
-        public AbilityTimelinePlaybackControl Control { get; }
+        public TimelinePlaybackProgress Progress { get; }
+        public TimelineRuntimePlaybackState State => Progress.State;
+        public FP CursorTime => Progress.CursorTime;
+        public int Cycle => Progress.Cycle;
+        public int TimeCarry => Progress.TimeCarry;
+        public AbilityTimelinePlaybackControl Control => Progress.Control;
         public CanonicalTextValue SectionId { get; }
         public TimelineSnapshotItems<CanonicalTextValue> ActiveClipIds { get; }
         public TimelineSnapshotItems<AbilityTimelineTreeClipExit> TreeDecisionExits { get; }
         public TimelineSnapshotItems<AbilityTimelineTreeClipExit> PendingTreeDecisionExits { get; }
-        public bool HasStopContext { get; }
-        public TimelinePlaybackStopContext StopContext { get; }
-        public bool InitialBoundaryPending { get; }
+        public bool HasStopContext => Progress.HasStopContext;
+        public TimelinePlaybackStopContext StopContext => Progress.StopContext;
+        public bool InitialBoundaryPending => Progress.InitialBoundaryPending;
 
         [ValueValidation]
         void RequireValid()

@@ -349,9 +349,9 @@ namespace ThirdPersonSimulation
             playback.Runtime.ResetForReuse(new TimelineRuntimePlaybackHandle(snapshot.RuntimeHandle), snapshot.Generation, preparation);
             TimelineRuntimePlaybackSnapshot native = new TimelineRuntimePlaybackSnapshot(playback.Runtime.Handle,
                 snapshot.Generation, snapshot.PlaybackMode, TimelineRuntimeNumericTarget.Float32, m_TickRate, snapshot.Playback);
-            playback.Runtime.RestoreCommittedState(native.Playback.State, native.Playback.CursorTime, native.Playback.Cycle, native.Playback.TimeCarry,
-                native.Playback.Control, native.Playback.SectionId, native.Playback.ActiveClipIds.Span, native.Playback.TreeDecisionExits.Span,
-                native.Playback.PendingTreeDecisionExits.Span, native.Playback.HasStopContext, native.Playback.StopContext, native.Playback.InitialBoundaryPending);
+            playback.Runtime.RestoreCommittedState(native.Playback.Progress, native.Playback.SectionId,
+                native.Playback.ActiveClipIds.Span, native.Playback.TreeDecisionExits.Span,
+                native.Playback.PendingTreeDecisionExits.Span);
             TimelineRuntimeTreeClipLifecycle.Restore(playback.Runtime, snapshot.ActiveTreeClips);
             playback.Pending = default;
             playback.Stop = default;

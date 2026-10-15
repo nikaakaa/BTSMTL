@@ -1,7 +1,11 @@
+using TimelinePlaybackProgress = BTSMTL.Orchestration.OrchestrationTimelineProgress<
+    Photon.Deterministic.FP,
+    BTSMTL.Timeline.TimelineRuntimePlaybackState,
+    ThirdPersonSimulation.AbilityTimelinePlaybackControl,
+    BTSMTL.Timeline.TimelinePlaybackStopContext>;
 using System;
 using System.Collections.Generic;
 using BTSMTL.Timeline;
-using Photon.Deterministic;
 
 namespace ThirdPersonSimulation
 {
@@ -183,13 +187,10 @@ namespace ThirdPersonSimulation
 
         public TimelinePlaybackState CompleteRead(CanonicalTextValue requestId,
             in TimelineExecutionIdentity executionIdentity, CanonicalTextValue contentRevision,
-            TimelineRuntimePlaybackState state, FP cursorTime, int cycle, int timeCarry,
-            AbilityTimelinePlaybackControl control, CanonicalTextValue sectionId,
-            bool hasStopContext, in TimelinePlaybackStopContext stopContext, bool initialBoundaryPending) =>
-            new TimelinePlaybackState(requestId, executionIdentity, contentRevision, state,
-                cursorTime, cycle, timeCarry, control, sectionId, m_Storage.ActiveClipIds.Items,
-                m_Storage.TreeDecisionExits.Items, m_Storage.PendingTreeDecisionExits.Items,
-                hasStopContext, stopContext, initialBoundaryPending);
+            in TimelinePlaybackProgress progress, CanonicalTextValue sectionId) =>
+            new TimelinePlaybackState(requestId, executionIdentity, contentRevision, in progress,
+                sectionId, m_Storage.ActiveClipIds.Items, m_Storage.TreeDecisionExits.Items,
+                m_Storage.PendingTreeDecisionExits.Items);
     }
 
     [ValueTextCapacity(typeof(AbilityTimelineRuntimeSnapshot))]
