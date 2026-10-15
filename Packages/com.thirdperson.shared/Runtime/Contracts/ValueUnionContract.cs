@@ -78,6 +78,9 @@ namespace ThirdPersonSimulation
     [AttributeUsage(AttributeTargets.Method)]
     public sealed class ValueValidationAttribute : Attribute { }
 
+    [AttributeUsage(AttributeTargets.Method)]
+    public sealed class ValueHashAttribute : Attribute { }
+
     [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
     public sealed class ValueTextRulesAttribute : Attribute
     {

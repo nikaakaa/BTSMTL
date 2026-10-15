@@ -75,6 +75,7 @@ namespace ThirdPerson.ValueGeneration.Generator
             var implementationIdentities = new Dictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
             var stateLayouts = new Dictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
             var stateLayoutFactories = new Dictionary<string, IMethodSymbol>(StringComparer.Ordinal);
+            var valueHashes = new Dictionary<string, IMethodSymbol>(StringComparer.Ordinal);
             foreach (BaseTypeDeclarationSyntax declaration in receiver.Types)
             {
                 var type = (INamedTypeSymbol)context.Compilation.GetSemanticModel(declaration.SyntaxTree)
@@ -94,9 +95,13 @@ namespace ThirdPerson.ValueGeneration.Generator
                     implementationIdentities[Identity(type)] = type;
                 if (HasAttribute(type, StateLayoutAttribute))
                     stateLayouts[Identity(type)] = type;
-                foreach (IMethodSymbol method in type.GetMembers().OfType<IMethodSymbol>().Where(method =>
-                    HasAttribute(method, StateLayoutFactoryAttribute)))
-                    stateLayoutFactories[Identity(method)] = method;
+                foreach (IMethodSymbol method in type.GetMembers().OfType<IMethodSymbol>())
+                {
+                    if (HasAttribute(method, StateLayoutFactoryAttribute))
+                        stateLayoutFactories[Identity(method)] = method;
+                    if (HasAttribute(method, HashAttribute))
+                        valueHashes[Identity(method)] = method;
+                }
                 if (HasAttribute(type, ValueOperationsAttribute) && !HasAttribute(type, UnionTemplateAttribute))
                     valueRecords[Identity(type)] = type;
                 if (HasAttribute(type, ValueStoragePurposeAttribute))
@@ -173,6 +178,8 @@ namespace ThirdPerson.ValueGeneration.Generator
                 EmitStateLayout(context, layout);
             if (stateLayoutFactories.Count != 0)
                 EmitStateLayoutFactories(context, stateLayoutFactories.Values);
+            if (valueHashes.Count != 0)
+                EmitValueHashes(context, valueHashes.Values);
         }
 
         static void EmitStorageOwner(GeneratorExecutionContext context, INamedTypeSymbol owner)
