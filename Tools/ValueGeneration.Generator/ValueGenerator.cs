@@ -135,11 +135,19 @@ namespace ThirdPerson.ValueGeneration.Generator
                 code.Append("namespace ").Append(type.ContainingNamespace.ToDisplayString()).AppendLine(" {");
                 EmitKind(code, type, cases);
                 code.AppendLine("}");
-                context.AddSource(Identity(type).Replace('.', '_') + ".Kind.g.cs", SourceText.From(code.ToString(), Encoding.UTF8));
+                context.AddSource(Identity(type).Replace('.', '_').Replace('<', '_').Replace('>', '_').Replace(',', '_') + ".Kind.g.cs",
+                    SourceText.From(code.ToString(), Encoding.UTF8));
             }
             foreach (INamedTypeSymbol type in unions.Values.OrderBy(t => Identity(t), StringComparer.Ordinal))
+            {
+                if (!ValidateUnionLayout(type, GetValueUnionShape(type), out string reason))
+                {
+                    context.ReportDiagnostic(Diagnostic.Create(InvalidValueDeclaration, type.Locations.FirstOrDefault(), Identity(type), reason));
+                    continue;
+                }
                 context.AddSource(Identity(type).Replace('.', '_').Replace('<', '_').Replace('>', '_').Replace(',', '_') + ".Values.g.cs",
                     SourceText.From(EmitValueUnion(type), Encoding.UTF8));
+            }
             foreach (INamedTypeSymbol type in valueRecords.Values.Where(type => !unions.ContainsKey(Identity(type)))
                 .OrderBy(type => Identity(type), StringComparer.Ordinal))
                 context.AddSource(Identity(type).Replace('.', '_').Replace('<', '_').Replace('>', '_').Replace(',', '_') + ".Values.g.cs",
@@ -410,31 +418,24 @@ namespace ThirdPerson.ValueGeneration.Generator
 
         static string EmitValueUnion(INamedTypeSymbol type)
         {
-            AttributeData union = type.GetAttributes().SingleOrDefault(a => Identity(a.AttributeClass) == UnionAttribute);
-            INamedTypeSymbol definition = union == null ? null : (INamedTypeSymbol)union.ConstructorArguments[0].Value;
-            Member[] members = StorageMembers(type);
-            if (definition != null)
-            {
-                Member[] generated = UnionMembers(definition).Where(m => !HasAttribute(m.Type, OmittedUnionValueAttribute)).ToArray();
-                foreach (Member member in generated)
-                    member.Generated = true;
-                members = members.Concat(generated).OrderBy(m => m.Symbol.Name, StringComparer.Ordinal).ToArray();
-            }
-            Member[] cases = Cases(members);
-            Member[] common = members.Where(m => !m.IsCase).ToArray();
-            INamedTypeSymbol kindOwner = definition ?? type;
-            string kindType = kindOwner.TypeKind == TypeKind.Enum ? TypeName(kindOwner) :
-                "global::" + kindOwner.ContainingNamespace.ToDisplayString() + "." + Escape(kindOwner.Name) + "Kind";
+            ValueUnionShape shape = GetValueUnionShape(type);
+            INamedTypeSymbol definition = shape.Definition;
+            Member[] members = shape.Members;
+            Member[] cases = shape.Cases;
+            Member[] common = shape.Common;
+            string kindType = shape.KindType;
             IMethodSymbol[] validations = type.GetMembers().OfType<IMethodSymbol>()
                 .Where(m => HasAttribute(m, ValidationAttribute)).OrderBy(m => m.Name, StringComparer.Ordinal).ToArray();
             string fullType = TypeName(type);
             var code = new StringBuilder();
             code.Append("namespace ").Append(type.ContainingNamespace.ToDisplayString()).AppendLine(" {");
-            code.AppendLine("[global::System.Runtime.InteropServices.StructLayout(global::System.Runtime.InteropServices.LayoutKind.Auto)]");
+            if (!HasAttribute(type, StructLayoutAttribute))
+                code.AppendLine("[global::System.Runtime.InteropServices.StructLayout(global::System.Runtime.InteropServices.LayoutKind.Auto)]");
             EmitTypeDeclaration(code, type);
             foreach (Member member in members.Where(m => m.Generated))
                 code.Append("public ").Append(TypeName(member.Type)).Append(' ').Append(Escape(member.Symbol.Name)).AppendLine(" { get; }");
-            code.Append("public ").Append(kindType).AppendLine(" Kind { get; }");
+            if (shape.KindMember == null)
+                code.Append("public ").Append(kindType).AppendLine(" Kind { get; }");
             foreach (List<Member> branches in CaseGroups(cases))
             {
                 code.Append("private ").Append(Escape(type.Name)).Append('(').Append(kindType).Append(" kind");
@@ -535,7 +536,18 @@ namespace ThirdPerson.ValueGeneration.Generator
                     "只读存储视图由原 owner 恢复，不能同时声明 Construct 或 UseConstructor"));
                 return null;
             }
-            if (useConstructor)
+            ValueUnionShape union = GetValueUnionShape(type);
+            if (union != null)
+            {
+                if (construct || useConstructor)
+                {
+                    context.ReportDiagnostic(Diagnostic.Create(InvalidValueDeclaration, type.Locations.FirstOrDefault(), Identity(type),
+                        "联合存储由原 Kind 与 From 分支重建，不能同时声明 Construct 或 UseConstructor"));
+                    return null;
+                }
+                EmitUnionValueStorage(code, type, union, readOnly);
+            }
+            else if (useConstructor)
             {
                 if (!EmitConstructorValueStorage(context, code, type, construct)) return null;
             }

@@ -33,7 +33,7 @@ namespace ThirdPerson.ValueGeneration.Generator
                 }
                 if (IsStatePrimitive(type.SpecialType))
                     return true;
-                if (!(type is INamedTypeSymbol named) || !named.IsUnmanagedType || ContainsStateTypeParameter(named))
+                if (!(type is INamedTypeSymbol named) || !IsStateLayoutUnmanaged(named) || ContainsStateTypeParameter(named))
                 {
                     reason = Identity(type) + ": 无法从闭合原成员确定 unmanaged 布局";
                     return false;
@@ -49,15 +49,13 @@ namespace ThirdPerson.ValueGeneration.Generator
                 }
                 if (named.DeclaringSyntaxReferences.Length != 0)
                 {
-                    if (!HasAttribute(named, UnionTemplateAttribute) &&
-                        (HasAttribute(named, UnionAttribute) || Cases(StorageMembers(named)).Length != 0))
-                    {
-                        reason = Identity(type) + ": 当前 ValueUnion 生成使用 Auto 布局，不能作为编排区段元素";
+                    ValueUnionShape union = GetValueUnionShape(named);
+                    if (union != null && !ValidateUnionLayout(named, union, out reason))
                         return false;
-                    }
                     AttributeData layout = named.GetAttributes().SingleOrDefault(attribute =>
-                        Identity(attribute.AttributeClass) == "System.Runtime.InteropServices.StructLayoutAttribute");
-                    int kind = layout == null ? 0 : Convert.ToInt32(layout.ConstructorArguments[0].Value, CultureInfo.InvariantCulture);
+                        Identity(attribute.AttributeClass) == StructLayoutAttribute);
+                    int kind = layout == null ? union == null ? 0 : 3 :
+                        Convert.ToInt32(layout.ConstructorArguments[0].Value, CultureInfo.InvariantCulture);
                     if (!AppendLayout(schema, named, kind, LayoutArgument(layout, "Pack", 0),
                         LayoutArgument(layout, "Size", 0), LayoutArgument(layout, "CharSet", 2), out reason))
                         return false;
@@ -67,7 +65,25 @@ namespace ThirdPerson.ValueGeneration.Generator
                         AttributeData offset = field.GetAttributes().SingleOrDefault(attribute =>
                             Identity(attribute.AttributeClass) == "System.Runtime.InteropServices.FieldOffsetAttribute");
                         int position = offset == null ? -1 : (int)offset.ConstructorArguments[0].Value;
-                        if (!AppendField(schema, field, position, out reason))
+                        if (union != null && IsUnionKindField(field, union))
+                        {
+                            if (!AppendUnionKindField(schema, field.MetadataName, position, union, out reason))
+                                return false;
+                        }
+                        else if (!AppendField(schema, field, position, out reason))
+                            return false;
+                    }
+                    if (union != null)
+                    {
+                        foreach (Member member in union.Members.Where(member => member.Generated))
+                        {
+                            StateSchemaPart(schema, "<" + member.Symbol.Name + ">k__BackingField");
+                            StateSchemaPart(schema, "-1");
+                            StateSchemaPart(schema, "1");
+                            if (!Append(schema, member.Type, out reason))
+                                return false;
+                        }
+                        if (union.KindMember == null && !AppendUnionKindField(schema, "<Kind>k__BackingField", -1, union, out reason))
                             return false;
                     }
                     StateSchemaPart(schema, "end");
@@ -93,6 +109,24 @@ namespace ThirdPerson.ValueGeneration.Generator
                 }
                 StateSchemaPart(schema, "end");
                 return true;
+            }
+
+            bool AppendUnionKindField(StringBuilder schema, string name, int offset, ValueUnionShape union, out string reason)
+            {
+                StateSchemaPart(schema, name);
+                StateSchemaPart(schema, offset.ToString(CultureInfo.InvariantCulture));
+                StateSchemaPart(schema, "1");
+                if (union.KindOwner.TypeKind == TypeKind.Enum)
+                    return Append(schema, union.KindOwner, out reason);
+                StateSchemaPart(schema, union.KindIdentity);
+                Member[] cases = Cases(UnionMembers(union.KindOwner.OriginalDefinition));
+                for (int index = 0; index < cases.Length; index++)
+                {
+                    StateSchemaPart(schema, cases[index].Symbol.Name);
+                    StateSchemaPart(schema, (index + 1).ToString(CultureInfo.InvariantCulture));
+                }
+                return Append(schema, m_Compilation.GetSpecialType(cases.Length <= byte.MaxValue ?
+                    SpecialType.System_Byte : SpecialType.System_Int32), out reason);
             }
 
             bool AppendField(StringBuilder schema, IFieldSymbol field, int offset, out string reason)

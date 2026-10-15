@@ -9,7 +9,7 @@ namespace BTSMTL.Orchestration
 
         internal OrchestrationStateView(Span<byte> memory) => m_Memory = memory;
 
-        public Span<T> Get<T>(in OrchestrationStateRegion<T> region) where T : unmanaged =>
+        public Span<T> Get<T>(OrchestrationStateRegion<T> region) where T : unmanaged =>
             MemoryMarshal.Cast<byte, T>(m_Memory.Slice(region.OffsetBytes, region.SizeBytes));
     }
 }

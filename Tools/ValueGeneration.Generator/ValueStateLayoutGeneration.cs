@@ -147,7 +147,7 @@ namespace ThirdPerson.ValueGeneration.Generator
                 foreach (Member region in regions)
                 {
                     if (!(region.Type is INamedTypeSymbol type) || Identity(type.OriginalDefinition) != StateRegionType ||
-                        !type.TypeArguments[0].IsUnmanagedType)
+                        !IsStateLayoutUnmanaged(type.TypeArguments[0]))
                     {
                         reason = region.Symbol.Name + ": 子区必须使用 unmanaged 元素的 OrchestrationStateRegion<T>";
                         break;
