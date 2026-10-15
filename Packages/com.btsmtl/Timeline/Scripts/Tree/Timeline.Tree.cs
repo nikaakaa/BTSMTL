@@ -5,7 +5,7 @@ using UnityEngine;
 
 namespace BTSMTL.Timeline
 {
-    [TrackGroup("Base"), ScriptGuid("31085f11443fe1347b871c5d69db3774"), IconGuid("e28acf5dc5b2e3d4a97920bf4e831c87"), Ordered(3), Color(201, 060, 032)]
+    [TrackGroup("Base"), ScriptGuid("31085f11443fe1347b871c5d69db3774"), IconGuid("c7e6321ad8b220a4aa9932b760affad7"), Ordered(3), Color(201, 060, 032)]
 #if UNITY_EDITOR
     [TimelineAuthoringTrackField("executionDomain", "timeline_tree_execution_domain_missing", "Tree Track必须选择Logic或Presentation执行域。")]
 #endif
