@@ -1,0 +1,20 @@
+{
+    "name": "ThirdPersonGameplay.Movement",
+    "rootNamespace": "ThirdPersonSimulation",
+    "references": [
+        "ThirdPerson.Shared.Contracts",
+        "ThirdPersonGameplay.Orchestration.Contracts",
+        "ThirdPersonSimulation.QuantumNumerics"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "Quantum.Deterministic.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": true
+}

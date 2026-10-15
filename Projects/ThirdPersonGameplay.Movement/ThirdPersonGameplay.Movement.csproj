@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <AssemblyName>ThirdPersonGameplay.Movement</AssemblyName>
+    <RootNamespace>ThirdPersonSimulation</RootNamespace>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\Packages\com.thirdperson.gameplay\Runtime\Movement\**\*.cs" />
+    <ProjectReference Include="..\ThirdPerson.Shared.Contracts\ThirdPerson.Shared.Contracts.csproj" />
+    <ProjectReference Include="..\ThirdPersonGameplay.Orchestration.Contracts\ThirdPersonGameplay.Orchestration.Contracts.csproj" />
+    <ProjectReference Include="..\ThirdPersonSimulation.QuantumNumerics\ThirdPersonSimulation.QuantumNumerics.csproj"
+                      AdditionalProperties="QuantumDeterministicPath=$(QuantumDeterministicPath)" />
+    <Reference Include="Quantum.Deterministic">
+      <HintPath>$(QuantumDeterministicPath)</HintPath>
+    </Reference>
+  </ItemGroup>
+  <Target Name="RequireQuantumDeterministic" BeforeTargets="ResolveReferences" Condition="!Exists('$(QuantumDeterministicPath)')">
+    <Error Text="请通过 QuantumDeterministicPath 指定宿主现有的 Quantum.Deterministic.dll。" />
+  </Target>
+</Project>
