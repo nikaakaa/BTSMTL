@@ -139,7 +139,7 @@ namespace ThirdPersonSimulation.FPGameplay
         readonly FP[] m_TargetHalfHeights;
         readonly SweepSegment<FP>[] m_Segments;
         readonly FPAttackSweepSampling m_SweepSampling;
-        readonly SweepResultBuffer<FP> m_QueryResults;
+        readonly SweepResultBuffer<FP, SweepQuerySource> m_QueryResults;
         readonly int[] m_AttackStateOffsets;
         readonly FPCombatEvaluation[] m_Evaluations;
         [ValueSnapshot] readonly FPCombatStateBank m_State;
@@ -296,7 +296,7 @@ namespace ThirdPersonSimulation.FPGameplay
             for (int i = 0; i < characters.Roster.Count; i++)
                 characters.Roster[i].CombatQueryDiagnostics = m_QueryDiagnostics;
 #endif
-            m_QueryResults = new SweepResultBuffer<FP>(actorCount);
+            m_QueryResults = new SweepResultBuffer<FP, SweepQuerySource>(actorCount);
             m_Batch = new FPCombatBatchResult(m_State.Pending, resultCapacity, cameraCapacity);
         }
 
@@ -552,8 +552,8 @@ namespace ThirdPersonSimulation.FPGameplay
                 FP duration = endTime - startTime;
                 endTime = startTime + duration * window.EndFraction;
                 startTime += duration * window.StartFraction;
-                startPose = FPCombatGeometryPreparation.Pose(window.BeforePosition, window.BeforeYaw, collision.CenterOffset);
-                endPose = FPCombatGeometryPreparation.Pose(window.Position, window.Yaw, collision.CenterOffset);
+                startPose = FPAttackGeometryPreparation.Pose(window.BeforePosition, window.BeforeYaw, collision.CenterOffset);
+                endPose = FPAttackGeometryPreparation.Pose(window.Position, window.Yaw, collision.CenterOffset);
             }
             else
             {
@@ -568,13 +568,13 @@ namespace ThirdPersonSimulation.FPGameplay
                         state.Yaw = default(QuantumSimulationMath).Yaw(before.Yaw +
                             default(QuantumSimulationMath).Yaw(after.Yaw - before.Yaw) * request.BodyStartFraction);
                     }
-                    startPose = FPCombatGeometryPreparation.Pose(state.Origin, state.Yaw, collision.CenterOffset);
+                    startPose = FPAttackGeometryPreparation.Pose(state.Origin, state.Yaw, collision.CenterOffset);
                     endPose = startPose;
                 }
                 else
                 {
-                    SweepPose<FP> bodyBefore = FPCombatGeometryPreparation.Pose(before.Position, before.Yaw, collision.CenterOffset);
-                    SweepPose<FP> bodyAfter = FPCombatGeometryPreparation.Pose(after.Position, after.Yaw, collision.CenterOffset);
+                    SweepPose<FP> bodyBefore = FPAttackGeometryPreparation.Pose(before.Position, before.Yaw, collision.CenterOffset);
+                    SweepPose<FP> bodyAfter = FPAttackGeometryPreparation.Pose(after.Position, after.Yaw, collision.CenterOffset);
                     endPose = FPAttackSweepMath.Lerp(bodyBefore, bodyAfter, request.BodyEndFraction);
                     startPose = continuous ? FPAttackSweepMath.Lerp(bodyBefore, bodyAfter, request.BodyStartFraction) : endPose;
                 }
@@ -597,21 +597,24 @@ namespace ThirdPersonSimulation.FPGameplay
                 SweepPose<FP> bodyEnd;
                 if (collision.FollowAttacker)
                 {
-                    bodyStart = FPCombatGeometryPreparation.Pose(before.Position, before.Yaw, default);
-                    bodyEnd = FPCombatGeometryPreparation.Pose(after.Position, after.Yaw, default);
+                    bodyStart = FPAttackGeometryPreparation.Pose(before.Position, before.Yaw, default);
+                    bodyEnd = FPAttackGeometryPreparation.Pose(after.Position, after.Yaw, default);
                 }
                 else
                 {
-                    bodyStart = FPCombatGeometryPreparation.Pose(state.Origin, state.Yaw, default);
+                    bodyStart = FPAttackGeometryPreparation.Pose(state.Origin, state.Yaw, default);
                     bodyEnd = bodyStart;
                 }
-                segmentCount = m_SweepSampling.Write(prepared, request, bodyStart, bodyEnd,
+                segmentCount = m_SweepSampling.Write(prepared.Parts, prepared.Index, prepared.ContentId,
+                    prepared.SegmentCapacity, prepared.InterpolationError,
+                    request.PreviousTime - request.WindowStartTime, request.Time - request.WindowStartTime,
+                    request.BodyStartFraction, request.BodyEndFraction, bodyStart, bodyEnd,
                     tickStart, m_TickDelta, m_Segments);
             }
             var source = new SweepQuerySource(request.RequestId, m_Participants[actorIndex].ActorId,
                 world.Tick, request.Action, prepared.ContentId, request.NodeId,
                 request.Identity.PlaybackGeneration, (ulong)request.Identity.Cycle + 1);
-            var query = new SweepQuery<FP>(in source, m_Segments.AsSpan(0, segmentCount), m_Targets.AsSpan(0, targetCount),
+            var query = new SweepQuery<FP, SweepQuerySource>(in source, m_Segments.AsSpan(0, segmentCount), m_Targets.AsSpan(0, targetCount),
                 SweepTargetModel.RigidRotation, endTime,
                 new SweepFilter(-1, true, (ulong)actorIndex + 1));
 #if UNITY_EDITOR
@@ -683,8 +686,8 @@ namespace ThirdPersonSimulation.FPGameplay
                     beforePosition = input.BeforePosition;
                     beforeYaw = input.BeforeYaw;
                 }
-                SweepPose<FP> end = FPCombatGeometryPreparation.Pose(afterPosition, afterYaw, m_TargetOffsets[i]);
-                SweepPose<FP> start = FPCombatGeometryPreparation.Pose(beforePosition, beforeYaw, m_TargetOffsets[i]);
+                SweepPose<FP> end = FPAttackGeometryPreparation.Pose(afterPosition, afterYaw, m_TargetOffsets[i]);
+                SweepPose<FP> start = FPAttackGeometryPreparation.Pose(beforePosition, beforeYaw, m_TargetOffsets[i]);
                 m_Targets[count++] = new SweepTarget<FP>(new SweepTargetIdentity((ulong)i + 1, (ulong)m_TargetShapes[i] + 1),
                     m_TargetShapes[i], 0, true,
                     new SweepSample<FP>(tickStart, start),

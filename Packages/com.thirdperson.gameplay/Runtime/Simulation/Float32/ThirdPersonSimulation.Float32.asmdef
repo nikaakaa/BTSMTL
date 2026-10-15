@@ -6,7 +6,8 @@
         "BTSMTL.Orchestration.Contracts",
         "ThirdPersonGameplay.Configuration",
         "ThirdPerson.Performance.Instrumentation.Contracts",
-        "ThirdPersonSimulation.Core"
+        "ThirdPersonSimulation.Core",
+        "ThirdPersonSimulation.AttackGeometry"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

@@ -2,7 +2,7 @@
 
 来源为 [sam-vdp/bepuphysics1int 固定提交](https://github.com/sam-vdp/bepuphysics1int/tree/9237daa68c3014fd7c2e93c6a99326ba5248d60b)。现有 MPR、GJK 和项目连续旋转查询已迁为官方 `Photon.Deterministic.FP`、`FPVector3`、`FPQuaternion` 与 `FPMath`，没有 Fix64 或 Q32.32 往返。
 
-本程序集只做球、胶囊、盒、凸包和准备后的凸部件求交，由 `ThirdPersonSimulation.FPGameplay.FPSweepQueryBackend` 调用。没有刚体世界、运动积分、约束、KCC、Scene、Entity 或自主 Tick。官方 Quantum／KCC 源码与 DLL 保持原版；这里只引用 `Quantum.Deterministic.dll`。原 BEPU 许可见 `LICENSE.md`，已删除 FixedMath.NET 实现的原许可仍保留在 `FixedMath.Net/LICENSE.txt`。
+本目录只做球、胶囊、盒、凸包和准备后的凸部件求交，与 `ThirdPersonSimulation.FPGameplay.FPSweepQueryBackend` 一同编入 `ThirdPersonSimulation.AttackGeometry`。没有刚体世界、运动积分、约束、KCC、Scene、Entity 或自主 Tick。官方 Quantum／KCC 源码与 DLL 保持原版；算法源码只使用 `Quantum.Deterministic.dll`，所在几何程序集另引用 Shared 数值合同和 QuantumNumerics，不依赖 Unity 或完整 Gameplay。原 BEPU 许可见 `LICENSE.md`，已删除 FixedMath.NET 实现的原许可仍保留在 `FixedMath.Net/LICENSE.txt`，迁移保留许可文件原字节。
 
 ## 原算法与保留行为
 
@@ -29,11 +29,15 @@ FP 步长为 `1/65536`。接触距离使用官方 `FP.EN4`，Raw 为 7，即 `0.
 
 后端身份为 `bepuphysics1int/9237daa68c3014fd7c2e93c6a99326ba5248d60b/fp-q48.16-mpr-gjk-angular-query-v4`，数值描述使用已有 `QuantumSimulationNumericProfile.Value`（`quantum-fp-q48.16`／ABI1）。旧 v3／Q32.32 内容和结果不能按同一身份继续使用。
 
-原 portable 工程 `Projects/ThirdPerson.BepuQueries/ThirdPerson.BepuQueries.csproj` 引用正式安装的官方数学 DLL，仍无 Unity Engine 依赖。使用：
+唯一 portable 工程为 `Projects/ThirdPersonSimulation.AttackGeometry/ThirdPersonSimulation.AttackGeometry.csproj`，与同名 asmdef 编译同一源码。原 `ThirdPerson.BepuQueries` 工程和 asmdef 已删除。宿主通过 `QuantumDeterministicPath` 提供已安装的官方数学 DLL：
 
 ```powershell
-dotnet build Projects/ThirdPerson.BepuQueries/ThirdPerson.BepuQueries.csproj --disable-build-servers /nr:false /p:UseSharedCompilation=false
-dotnet build-server shutdown
+$taskQuantumDeterministicPath = '宿主现有 Quantum.Deterministic.dll 的绝对路径'
+try {
+  dotnet build Projects/ThirdPersonSimulation.AttackGeometry/ThirdPersonSimulation.AttackGeometry.csproj --disable-build-servers /nr:false /p:UseSharedCompilation=false /m:1 "/p:QuantumDeterministicPath=$taskQuantumDeterministicPath"
+} finally {
+  dotnet build-server shutdown
+}
 ```
 
 准备阶段创建形状与顶点数组；正常查询继续只用已有形状和结果缓冲，以及值类型局部量。源码／编译检查不能代替 FP 运行时 GC、CPU、命中边界或跨平台检查。当前阶段与失败记录见 3C 项目 `docs/测试/命中判定查询核对20261001.md` 的 FP 迁移段。

@@ -109,7 +109,7 @@ namespace ThirdPersonSimulation.FPGameplay
             return new[] { new NativePart(native, local) };
         }
 
-        public SweepQueryStatus SweepAll(in SweepQuery<FP> query, SweepResultBuffer<FP> results)
+        public SweepQueryStatus SweepAll<TSource>(in SweepQuery<FP, TSource> query, SweepResultBuffer<FP, TSource> results) where TSource : struct
         {
             results.Begin(in query, Descriptor);
             if (query.TargetModel != SweepTargetModel.StationaryPose &&

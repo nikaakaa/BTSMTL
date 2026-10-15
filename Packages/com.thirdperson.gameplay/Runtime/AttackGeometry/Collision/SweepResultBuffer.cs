@@ -2,16 +2,16 @@ using System;
 
 namespace ThirdPersonSimulation.Collision
 {
-    public sealed class SweepResultBuffer<T> where T : struct, IComparable<T>
+    public sealed class SweepResultBuffer<T, TSource> where T : struct, IComparable<T> where TSource : struct
     {
         readonly SweepCandidate<T>[] m_Candidates;
         int m_Count;
-        SweepQuerySource m_Source;
+        TSource m_Source;
 
         public SweepResultBuffer(int capacity) { m_Candidates = new SweepCandidate<T>[capacity]; }
         public int Capacity => m_Candidates.Length;
         public SweepQueryStatus Status { get; private set; }
-        public ref readonly SweepQuerySource Source => ref m_Source;
+        public ref readonly TSource Source => ref m_Source;
         public SweepBackendDescriptor Backend { get; private set; }
         public SweepTargetModel TargetModel { get; private set; }
         public T TargetPoseTime { get; private set; }
@@ -30,7 +30,7 @@ namespace ThirdPersonSimulation.Collision
             }
         }
 
-        public void Begin(in SweepQuery<T> query, SweepBackendDescriptor backend)
+        public void Begin(in SweepQuery<T, TSource> query, SweepBackendDescriptor backend)
         {
             if (Status != SweepQueryStatus.Available)
                 throw new InvalidOperationException("Sweep results must be released before reuse.");

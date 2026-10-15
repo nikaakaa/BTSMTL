@@ -12,7 +12,7 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ThirdPersonSimulation.Float
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ThirdPersonSimulation.Timeline", "Projects\ThirdPersonSimulation.Timeline\ThirdPersonSimulation.Timeline.csproj", "{35C4056D-285D-4326-B497-F4905EC428BA}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ThirdPerson.BepuQueries", "Projects\ThirdPerson.BepuQueries\ThirdPerson.BepuQueries.csproj", "{A04BE8B1-02D2-4D4F-B484-98E8E6D0D2C2}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ThirdPersonSimulation.AttackGeometry", "Projects\ThirdPersonSimulation.AttackGeometry\ThirdPersonSimulation.AttackGeometry.csproj", "{A04BE8B1-02D2-4D4F-B484-98E8E6D0D2C2}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ThirdPerson.Shared.Contracts", "Projects\ThirdPerson.Shared.Contracts\ThirdPerson.Shared.Contracts.csproj", "{20647B55-D2DC-40BA-A0D3-7F12CCC20E97}"
 EndProject

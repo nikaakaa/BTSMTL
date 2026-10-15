@@ -1,7 +1,10 @@
 {
-    "name": "ThirdPerson.BepuQueries",
-    "rootNamespace": "BEPUphysics",
-    "references": [],
+    "name": "ThirdPersonSimulation.AttackGeometry",
+    "rootNamespace": "ThirdPersonSimulation",
+    "references": [
+        "ThirdPerson.Shared.Contracts",
+        "ThirdPersonSimulation.QuantumNumerics"
+    ],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
@@ -10,9 +13,7 @@
         "Quantum.Deterministic.dll"
     ],
     "autoReferenced": false,
-    "defineConstraints": [
-        "!THIRDPERSON_DISABLE_QUANTUM_FP"
-    ],
+    "defineConstraints": [],
     "versionDefines": [],
     "noEngineReferences": true
 }

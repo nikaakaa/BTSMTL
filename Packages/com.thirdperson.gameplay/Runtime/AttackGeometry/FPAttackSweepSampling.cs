@@ -5,7 +5,7 @@ using ThirdPersonSimulation.Collision;
 
 namespace ThirdPersonSimulation.FPGameplay
 {
-    internal sealed class FPPreparedAttackPart
+    public sealed class FPPreparedAttackPart
     {
         public FPPreparedAttackPart(int shapeIndex, AttackSweepPartData<FP> data)
         {
@@ -65,7 +65,7 @@ namespace ThirdPersonSimulation.FPGameplay
         }
     }
 
-    internal static class FPAttackSweepMath
+    public static class FPAttackSweepMath
     {
         static FPVector3 Vector(SweepVector3<FP> value) => new FPVector3(value.X, value.Y, value.Z);
         static FPQuaternion Rotation(SweepQuaternion<FP> value) => new FPQuaternion(value.X, value.Y, value.Z, value.W);
@@ -103,7 +103,7 @@ namespace ThirdPersonSimulation.FPGameplay
             Math.Max(1, FPMath.CeilToInt(FPMath.Sqrt(bound / error)));
     }
 
-    internal sealed class FPAttackSweepSampling
+    public sealed class FPAttackSweepSampling
     {
         struct Interval
         {
@@ -121,21 +121,20 @@ namespace ThirdPersonSimulation.FPGameplay
 
         public FPAttackSweepSampling(int intervalCapacity) => m_Intervals = new Interval[intervalCapacity];
 
-        public int Write(FPPreparedAttack attack, FPCombatQuery request,
-            SweepPose<FP> bodyStart, SweepPose<FP> bodyEnd,
+        public int Write(ReadOnlySpan<FPPreparedAttackPart> parts, int attackIndex, string contentId,
+            int segmentCapacity, FP interpolationError, FP previous, FP current,
+            FP bodyStartFraction, FP bodyEndFraction, SweepPose<FP> bodyStart, SweepPose<FP> bodyEnd,
             FP tickStart, FP tickDuration, SweepSegment<FP>[] destination)
         {
             int intervalCount = 0, segmentCount = 0;
-            FP previous = request.PreviousTime - request.WindowStartTime;
-            FP current = request.Time - request.WindowStartTime;
             FP cursorSpan = current - previous;
-            for (int partIndex = 0; partIndex < attack.Parts.Length; partIndex++)
+            for (int partIndex = 0; partIndex < parts.Length; partIndex++)
             {
-                FPPreparedAttackPart part = attack.Parts[partIndex];
+                FPPreparedAttackPart part = parts[partIndex];
                 FP start = previous;
                 int key = part.KeyAt(start);
                 FP a = cursorSpan == FP._0 ? FP._0 : (start - previous) / cursorSpan;
-                FP startFraction = request.BodyStartFraction + (request.BodyEndFraction - request.BodyStartFraction) * a;
+                FP startFraction = bodyStartFraction + (bodyEndFraction - bodyStartFraction) * a;
                 SweepPose<FP> rootStart = FPAttackSweepMath.Lerp(bodyStart, bodyEnd, startFraction);
                 SweepPose<FP> localStart = part.Sample(start, key);
                 do
@@ -145,7 +144,7 @@ namespace ThirdPersonSimulation.FPGameplay
                         : key + 1 < part.Data.Samples.Length
                             ? FPMath.Min(current, part.Data.Samples[key + 1].Time) : current;
                     FP b = cursorSpan == FP._0 ? FP._1 : (end - previous) / cursorSpan;
-                    FP endFraction = request.BodyStartFraction + (request.BodyEndFraction - request.BodyStartFraction) * b;
+                    FP endFraction = bodyStartFraction + (bodyEndFraction - bodyStartFraction) * b;
                     SweepPose<FP> rootEnd = FPAttackSweepMath.Lerp(bodyStart, bodyEnd, endFraction);
                     int endKey = part.KeyAt(end);
                     SweepPose<FP> localEnd = part.Sample(end, endKey);
@@ -158,7 +157,7 @@ namespace ThirdPersonSimulation.FPGameplay
                     FP errorBound = (bodyAngle * bodyAngle * positionRadius +
                         default(QuantumSimulationMath).FromInt64(2) * bodyAngle * displacement +
                         default(QuantumSimulationMath).FromInt64(2) * sumAngle * sumAngle * part.Radius) / default(QuantumSimulationMath).FromInt64(8);
-                    int count = FPAttackSweepMath.Subdivisions(errorBound, attack.InterpolationError);
+                    int count = FPAttackSweepMath.Subdivisions(errorBound, interpolationError);
                     m_Intervals[intervalCount++] = new Interval
                     {
                         Part = part, RootStart = rootStart, RootEnd = rootEnd,
@@ -174,13 +173,13 @@ namespace ThirdPersonSimulation.FPGameplay
                     localStart = localEnd;
                 } while (start < current);
             }
-            if (segmentCount > attack.SegmentCapacity)
-                throw new InvalidOperationException("攻击轨迹超出声明的连续段容量：" + attack.ContentId);
+            if (segmentCount > segmentCapacity)
+                throw new InvalidOperationException("攻击轨迹超出声明的连续段容量：" + contentId);
             int written = 0;
             for (int intervalIndex = 0; intervalIndex < intervalCount; intervalIndex++)
             {
                 ref readonly Interval interval = ref m_Intervals[intervalIndex];
-                var track = new SweepTrack(((ulong)attack.Index + 1) << 32 | (ulong)interval.Part.ShapeIndex + 1,
+                var track = new SweepTrack(((ulong)attackIndex + 1) << 32 | (ulong)interval.Part.ShapeIndex + 1,
                     interval.Part.ShapeIndex, SweepMotionModel.RigidRotation, interval.Part.Data.Id);
                 SweepPose<FP> previousPose = FPAttackSweepMath.Compose(interval.RootStart, interval.LocalStart);
                 FP previousTime = interval.StartTime;

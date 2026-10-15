@@ -205,29 +205,6 @@ namespace ThirdPersonSimulation.Collision
             targetId != ExcludedTargetId && (LayerMask & (1 << layer)) != 0 && (IncludeTriggers || !isTrigger);
     }
 
-    public readonly struct SweepQuerySource
-    {
-        public SweepQuerySource(ulong requestId, ActorId actor, SimulationTick tick, TimelineActionContextIdentity actionContext, string contentId, CanonicalTextValue nodeId, ulong playbackId, ulong callId)
-        {
-            RequestId = requestId;
-            Actor = actor;
-            Tick = tick;
-            ActionContext = actionContext;
-            ContentId = contentId;
-            NodeId = nodeId;
-            PlaybackId = playbackId;
-            CallId = callId;
-        }
-        public ulong RequestId { get; }
-        public ActorId Actor { get; }
-        public SimulationTick Tick { get; }
-        public TimelineActionContextIdentity ActionContext { get; }
-        public string ContentId { get; }
-        public CanonicalTextValue NodeId { get; }
-        public ulong PlaybackId { get; }
-        public ulong CallId { get; }
-    }
-
     public readonly struct SweepBackendDescriptor
     {
         public SweepBackendDescriptor(string implementationId, SimulationNumericProfile numericProfile, SweepShapeKind shapes, SweepMotionModel motions, SweepTargetModel targets, bool deterministic)
@@ -247,9 +224,9 @@ namespace ThirdPersonSimulation.Collision
         public bool Deterministic { get; }
     }
 
-    public readonly ref struct SweepQuery<T> where T : struct
+    public readonly ref struct SweepQuery<T, TSource> where T : struct where TSource : struct
     {
-        public SweepQuery(in SweepQuerySource source, ReadOnlySpan<SweepSegment<T>> segments, ReadOnlySpan<SweepTarget<T>> targets, SweepTargetModel targetModel, T targetPoseTime, SweepFilter filter)
+        public SweepQuery(in TSource source, ReadOnlySpan<SweepSegment<T>> segments, ReadOnlySpan<SweepTarget<T>> targets, SweepTargetModel targetModel, T targetPoseTime, SweepFilter filter)
         {
             Source = source;
             Segments = segments;
@@ -258,7 +235,7 @@ namespace ThirdPersonSimulation.Collision
             TargetPoseTime = targetPoseTime;
             Filter = filter;
         }
-        public SweepQuerySource Source { get; }
+        public TSource Source { get; }
         public ReadOnlySpan<SweepSegment<T>> Segments { get; }
         public ReadOnlySpan<SweepTarget<T>> Targets { get; }
         public SweepTargetModel TargetModel { get; }
@@ -269,7 +246,7 @@ namespace ThirdPersonSimulation.Collision
     public interface ISweepQueryBackend<T> where T : struct, IComparable<T>
     {
         SweepBackendDescriptor Descriptor { get; }
-        SweepQueryStatus SweepAll(in SweepQuery<T> query, SweepResultBuffer<T> results);
+        SweepQueryStatus SweepAll<TSource>(in SweepQuery<T, TSource> query, SweepResultBuffer<T, TSource> results) where TSource : struct;
     }
 
     public readonly struct SweepCandidate<T> where T : struct

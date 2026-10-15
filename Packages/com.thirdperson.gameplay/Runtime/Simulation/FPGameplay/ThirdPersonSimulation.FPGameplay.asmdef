@@ -8,7 +8,7 @@
         "ThirdPersonSimulation.Core",
         "ThirdPersonSimulation.QuantumNumerics",
         "ThirdPersonGameplay.Configuration",
-        "ThirdPerson.BepuQueries"
+        "ThirdPersonSimulation.AttackGeometry"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
