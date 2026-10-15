@@ -110,6 +110,16 @@ namespace ThirdPersonSimulation.FPGameplay
         public string[] Any { get; }
         public string[] None { get; }
         public bool IsEmpty => All.Length == 0 && Any.Length == 0 && None.Length == 0;
+        internal int[] NumberedAll { get; private set; }
+        internal int[] NumberedAny { get; private set; }
+        internal int[] NumberedNone { get; private set; }
+
+        internal void PrepareNumbers(FPGameplayEffectRuntimeCatalog catalog)
+        {
+            NumberedAll = All.Select(value => catalog.TagIndex(value) + 1).ToArray();
+            NumberedAny = Any.Select(value => catalog.TagIndex(value) + 1).ToArray();
+            NumberedNone = None.Select(value => catalog.TagIndex(value) + 1).ToArray();
+        }
 
         static string[] Canonical(IEnumerable<string> values)
         {
@@ -423,6 +433,7 @@ namespace ThirdPersonSimulation.FPGameplay
         readonly Dictionary<string, PortableEffectDefinition> m_Effects = new Dictionary<string, PortableEffectDefinition>(StringComparer.Ordinal);
         readonly Dictionary<string, int> m_TagIndices = new Dictionary<string, int>(StringComparer.Ordinal);
         readonly string[] m_TagIds;
+        readonly int[] m_TagParentIds;
         readonly PortableEffectDefinition[] m_EffectsByIndex;
         readonly int[] m_EffectIdentityOrder;
 
@@ -439,12 +450,33 @@ namespace ThirdPersonSimulation.FPGameplay
             m_TagIds = m_TagParents.Keys.OrderBy(id => id, StringComparer.Ordinal).ToArray();
             for (int index = 0; index < m_TagIds.Length; index++)
                 m_TagIndices.Add(m_TagIds[index], index);
+            m_TagParentIds = new int[m_TagIds.Length + 1];
+            for (int index = 0; index < m_TagIds.Length; index++)
+            {
+                string parent = m_TagParents[m_TagIds[index]];
+                m_TagParentIds[index + 1] = parent.Length == 0 ? 0 : m_TagIndices[parent] + 1;
+            }
             m_EffectsByIndex = new PortableEffectDefinition[ContentLayout.Definitions.Count];
             foreach (PortableEffectDefinition effect in m_Effects.Values)
             {
                 effect.Index = ContentLayout.DefinitionIndex(effect.Id);
                 effect.Layout = ContentLayout.Definitions[effect.Index];
                 m_EffectsByIndex[effect.Index] = effect;
+                foreach (PortableEffectComponent component in effect.Components)
+                {
+                    if (component is PortableTagRequirementsComponent requirement)
+                    {
+                        requirement.Source.PrepareNumbers(this);
+                        requirement.Target.PrepareNumbers(this);
+                    }
+                    else if (component is PortableBlockAbilitiesComponent block)
+                        block.Query.PrepareNumbers(this);
+                    else if (component is PortableReplacementSourceRequirementComponent replacement)
+                    {
+                        replacement.CandidateQuery.PrepareNumbers(this);
+                        replacement.SelectedSourceQuery.PrepareNumbers(this);
+                    }
+                }
                 if (effect.Layout.DefinitionRevision != effect.Revision)
                     throw new GameplayEffectPreparationException(new GameplayEffectPreparationFailure(
                         GameplayEffectPreparationFailureKind.UnsupportedVersion,
@@ -578,51 +610,40 @@ namespace ThirdPersonSimulation.FPGameplay
 
         public bool IsTagOrParent(string ownedTag, string queryTag)
         {
-            string current = ownedTag;
-            while (!string.IsNullOrEmpty(current))
-            {
-                if (string.Equals(current, queryTag, StringComparison.Ordinal))
-                    return true;
-                current = m_TagParents.TryGetValue(current, out string parent) ? parent : string.Empty;
-            }
-            return false;
+            if (string.IsNullOrEmpty(ownedTag))
+                return false;
+            if (string.Equals(ownedTag, queryTag, StringComparison.Ordinal))
+                return true;
+            return m_TagIndices.TryGetValue(ownedTag, out int owned) &&
+                m_TagIndices.TryGetValue(queryTag, out int query) &&
+                GameplayTagCalculation.IsTagOrParent(owned + 1, query + 1, m_TagParentIds);
         }
 
         public bool Matches(PortableTagQuery query, IReadOnlyList<string> tags)
         {
-            IReadOnlyList<string> owned = tags ?? Array.Empty<string>();
-            for (int i = 0; i < query.All.Length; i++)
-            {
-                if (!ContainsTag(owned, query.All[i]))
-                    return false;
-            }
-            if (query.Any.Length > 0)
-            {
-                bool matched = false;
-                for (int i = 0; i < query.Any.Length; i++)
-                {
-                    if (!ContainsTag(owned, query.Any[i]))
-                        continue;
-                    matched = true;
-                    break;
-                }
-                if (!matched)
-                    return false;
-            }
-            for (int i = 0; i < query.None.Length; i++)
-            {
-                if (ContainsTag(owned, query.None[i]))
-                    return false;
-            }
-            return true;
+            var read = new TagQueryRead(this, tags ?? Array.Empty<string>());
+            return GameplayTagCalculation.Matches(query.NumberedAll, query.NumberedAny,
+                query.NumberedNone, in read);
         }
 
-        bool ContainsTag(IReadOnlyList<string> owned, string required)
+        readonly struct TagQueryRead : IGameplayTagQueryRead
         {
-            for (int i = 0; i < owned.Count; i++)
-                if (IsTagOrParent(owned[i], required))
-                    return true;
-            return false;
+            readonly FPGameplayEffectRuntimeCatalog m_Catalog;
+            readonly IReadOnlyList<string> m_Owned;
+            internal TagQueryRead(FPGameplayEffectRuntimeCatalog catalog, IReadOnlyList<string> owned)
+            {
+                m_Catalog = catalog;
+                m_Owned = owned;
+            }
+
+            public bool ContainsTag(int required)
+            {
+                for (int index = 0; index < m_Owned.Count; index++)
+                    if (GameplayTagCalculation.IsTagOrParent(m_Catalog.TagIndex(m_Owned[index]) + 1,
+                        required, m_Catalog.m_TagParentIds))
+                        return true;
+                return false;
+            }
         }
 
         GameplayAttributeDependencyLayout BuildAttributeDependencies()
