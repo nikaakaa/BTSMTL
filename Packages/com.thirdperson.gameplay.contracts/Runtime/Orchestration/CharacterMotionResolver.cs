@@ -10,8 +10,7 @@ namespace ThirdPersonSimulation
         where TMath : struct, IScalarMath<TScalar>, IVectorMath<TScalar, TVector2, TVector3>, IPlanarRotation<TVector3, TYaw>
     {
         public static ResolvedMotionChannel<TScalar, TVector2, TVector3, TMath> ResolveChannel(
-            SimulationMotionContribution<TScalar, TVector2, TVector3, TMath>[] contributions,
-            int contributionCount,
+            ReadOnlySpan<SimulationMotionContribution<TScalar, TVector2, TVector3, TMath>> contributions,
             TYaw bodyYaw,
             SimulationMotionChannel channel)
         {
@@ -21,29 +20,22 @@ namespace ThirdPersonSimulation
             TScalar weightedYaw = default(TMath).Zero;
             TScalar totalWeight = default(TMath).Zero;
             SimulationMotionContribution<TScalar, TVector2, TVector3, TMath> overrideWinner = default;
+            int overrideWinnerIndex = -1;
             TVector3 overrideDisplacement = default(TMath).ZeroVector3;
             TScalar overrideYaw = default(TMath).Zero;
-            SimulationExecutionSource traceSource = default;
-            CharacterSkillId traceAbilityId = default;
-            ulong traceSourceGeneration = 0;
+            int traceContributionIndex = -1;
             int sourceCount = 0;
-            ulong sourceFingerprint = 1469598103934665603UL;
             bool hasAdditive = false;
             bool hasWeighted = false;
             bool hasOverride = false;
-            for (int i = 0; i < contributionCount; i++)
+            for (int i = 0; i < contributions.Length; i++)
             {
                 ref readonly SimulationMotionContribution<TScalar, TVector2, TVector3, TMath> contribution = ref contributions[i];
                 if (contribution.Channel != channel || !contribution.CanResolve)
                     continue;
-                if (!traceSource.IsValid)
-                {
-                    traceSource = contribution.Source;
-                    traceAbilityId = contribution.AbilityId;
-                    traceSourceGeneration = contribution.SourceGeneration;
-                }
+                if (traceContributionIndex < 0)
+                    traceContributionIndex = i;
                 sourceCount++;
-                sourceFingerprint = MixSource(sourceFingerprint, contribution.SourceIdentity.Span);
                 TVector3 resolved = contribution.Space == SimulationMotionContributionSpace.ActorLocal
                     ? default(TMath).RotatePlanar(contribution.Displacement, bodyYaw)
                     : contribution.Displacement;
@@ -68,6 +60,7 @@ namespace ThirdPersonSimulation
                         if (!hasOverride || contribution.Priority > overrideWinner.Priority)
                         {
                             overrideWinner = contribution;
+                            overrideWinnerIndex = i;
                             overrideDisplacement = default(TMath).MultiplyVector3(resolved, contribution.Weight);
                             overrideYaw = default(TMath).Multiply(contribution.YawDegrees, contribution.Weight);
                             hasOverride = true;
@@ -75,11 +68,13 @@ namespace ThirdPersonSimulation
                         break;
                     default:
                         throw new InvalidOperationException(
-                            $"Motion contribution '{contribution.SourceIdentity}' has invalid blend mode '{contribution.BlendMode}'.");
+                            $"Motion contribution source {contribution.SourceId} has invalid blend mode '{contribution.BlendMode}'.");
                 }
             }
             if (!hasAdditive && !hasWeighted && !hasOverride)
-                return new ResolvedMotionChannel<TScalar, TVector2, TVector3, TMath>(channel, default(TMath).ZeroVector3, default(TMath).Zero, default(TMath).ZeroVector2, false, false, default, default, string.Empty, default, default, default(TMath).ZeroVector3, default(TMath).Zero, default, default, 0, 0, 0);
+                return new ResolvedMotionChannel<TScalar, TVector2, TVector3, TMath>(channel,
+                    default(TMath).ZeroVector3, default(TMath).Zero, default(TMath).ZeroVector2,
+                    false, false, -1, -1, default(TMath).ZeroVector3, default(TMath).Zero, 0);
 
             TVector3 channelDisplacement = additiveDisplacement;
             TScalar channelYaw = additiveYaw;
@@ -94,11 +89,7 @@ namespace ThirdPersonSimulation
                     default(TMath).DivideVector3(weightedDisplacement, totalWeight));
                 channelYaw = default(TMath).Add(channelYaw, default(TMath).Divide(weightedYaw, totalWeight));
             }
-            CommittedMovementPlaybackClock movementPlaybackClock =
-                channel == SimulationMotionChannel.Locomotion && hasOverride
-                    ? overrideWinner.MovementPlaybackClock
-                    : default;
-            if (channel == SimulationMotionChannel.Locomotion && !movementPlaybackClock.IsValid)
+            if (channel == SimulationMotionChannel.Locomotion && !hasOverride)
                 throw new InvalidOperationException("Resolved Locomotion motion has no single committed Movement playback clock owner.");
             var result = new ResolvedMotionChannel<TScalar, TVector2, TVector3, TMath>(
                 channel,
@@ -107,21 +98,29 @@ namespace ThirdPersonSimulation
                 hasOverride ? overrideWinner.PlanarBasis : default(TMath).ZeroVector2,
                 true,
                 hasOverride && overrideWinner.ConsumeLowerChannels,
-                hasOverride ? overrideWinner.Source : default,
-                hasOverride ? overrideWinner.AbilityId : default,
-                hasOverride ? overrideWinner.SourceIdentity : string.Empty,
-                movementPlaybackClock,
-                channel == SimulationMotionChannel.Locomotion && hasOverride
-                    ? overrideWinner.LocomotionTimeline
-                    : default,
+                overrideWinnerIndex,
+                hasOverride ? overrideWinnerIndex : traceContributionIndex,
                 hasOverride ? overrideDisplacement : default(TMath).ZeroVector3,
                 hasOverride ? overrideYaw : default(TMath).Zero,
-                hasOverride ? overrideWinner.Source : traceSource,
-                hasOverride ? overrideWinner.AbilityId : traceAbilityId,
-                hasOverride ? overrideWinner.SourceGeneration : traceSourceGeneration,
-                sourceCount,
-                sourceFingerprint);
+                sourceCount);
             return result;
+        }
+
+        public static ulong ComputeParticipatingSourceFingerprint(
+            in ResolvedMotionChannel<TScalar, TVector2, TVector3, TMath> resolved,
+            ReadOnlySpan<SimulationMotionContribution<TScalar, TVector2, TVector3, TMath>> contributions,
+            ReadOnlySpan<CanonicalTextValue> sourceIdentitiesBySourceId)
+        {
+            if (!resolved.HasContribution)
+                return 0;
+            ulong fingerprint = 1469598103934665603UL;
+            for (int index = 0; index < contributions.Length; index++)
+            {
+                ref readonly SimulationMotionContribution<TScalar, TVector2, TVector3, TMath> contribution = ref contributions[index];
+                if (contribution.Channel == resolved.Channel && contribution.CanResolve)
+                    fingerprint = MixSource(fingerprint, sourceIdentitiesBySourceId[contribution.SourceId].Span);
+            }
+            return fingerprint;
         }
 
         public static ResolvedGameplayMotion<TScalar, TVector2, TVector3> Compose(
@@ -139,10 +138,9 @@ namespace ThirdPersonSimulation
                 yaw,
                 locomotion.PlanarBasis,
                 !default(TMath).IsVector3Zero(displacement) || !default(TMath).IsZero(yaw),
-                locomotion.MovementPlaybackClock,
-                locomotion.LocomotionTimeline,
-                action.ResolvedOwnerIdentity,
-                gameplayResult.ResolvedOwnerIdentity);
+                locomotion.ResolvedOwnerContributionIndex,
+                action.ResolvedOwnerContributionIndex,
+                gameplayResult.ResolvedOwnerContributionIndex);
         }
 
         static void ComposeChannel(

@@ -35,21 +35,6 @@ namespace ThirdPersonSimulation
         public TVector3 RequestedDisplacement { get; }
     }
 
-    public readonly struct BodyMotionPrepareResult<TScalar, TVector3, TRequest>
-        where TScalar : struct
-        where TVector3 : struct
-        where TRequest : struct
-    {
-        internal BodyMotionPrepareResult(BodyMotionIntegrationPlan<TScalar, TVector3> plan, TRequest motion)
-        {
-            Plan = plan;
-            Motion = motion;
-        }
-
-        public BodyMotionIntegrationPlan<TScalar, TVector3> Plan { get; }
-        public TRequest Motion { get; }
-    }
-
     public static class BodyMotionIntegration<TScalar, TVector2, TVector3, TMath>
         where TScalar : struct
         where TVector2 : struct

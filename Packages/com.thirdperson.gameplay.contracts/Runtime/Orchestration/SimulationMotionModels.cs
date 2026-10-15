@@ -1,5 +1,3 @@
-using System;
-
 namespace ThirdPersonSimulation
 {
     public readonly struct ResolvedGameplayMotion<TScalar, TVector2, TVector3>
@@ -12,29 +10,26 @@ namespace ThirdPersonSimulation
             TScalar yawDegrees,
             TVector2 locomotionPlanarBasis,
             bool hasMotion,
-            CommittedMovementPlaybackClock movementPlaybackClock,
-            CommittedLocomotionPlanarMotionTimeline locomotionTimeline,
-            CanonicalTextValue actionOwnerIdentity,
-            CanonicalTextValue gameplayResultOwnerIdentity)
+            int locomotionContributionIndex,
+            int actionContributionIndex,
+            int gameplayResultContributionIndex)
         {
             Displacement = displacement;
             YawDegrees = yawDegrees;
             LocomotionPlanarBasis = locomotionPlanarBasis;
             HasMotion = hasMotion;
-            MovementPlaybackClock = movementPlaybackClock;
-            LocomotionTimeline = locomotionTimeline;
-            ActionOwnerIdentity = actionOwnerIdentity;
-            GameplayResultOwnerIdentity = gameplayResultOwnerIdentity;
+            LocomotionContributionIndex = locomotionContributionIndex;
+            ActionContributionIndex = actionContributionIndex;
+            GameplayResultContributionIndex = gameplayResultContributionIndex;
         }
 
         public TVector3 Displacement { get; }
         public TScalar YawDegrees { get; }
         public TVector2 LocomotionPlanarBasis { get; }
         public bool HasMotion { get; }
-        public CommittedMovementPlaybackClock MovementPlaybackClock { get; }
-        public CommittedLocomotionPlanarMotionTimeline LocomotionTimeline { get; }
-        public CanonicalTextValue ActionOwnerIdentity { get; }
-        public CanonicalTextValue GameplayResultOwnerIdentity { get; }
+        public int LocomotionContributionIndex { get; }
+        public int ActionContributionIndex { get; }
+        public int GameplayResultContributionIndex { get; }
     }
 
     public enum SimulationMotionChannel
@@ -63,32 +58,8 @@ namespace ThirdPersonSimulation
         where TVector3 : struct
         where TMath : struct, IScalarMath<TScalar>, IVectorMath<TScalar, TVector2, TVector3>
     {
-        internal SimulationMotionContribution(CanonicalTextValue sourceIdentity,
-            TVector3 displacement, TScalar yawDegrees, TScalar weight, int priority,
-            SimulationMotionContributionSpace space, SimulationMotionChannel channel,
-            SimulationMotionBlendMode blendMode, bool consumeLowerChannels)
-        {
-            Source = default;
-            SourceIdentity = sourceIdentity;
-            AbilityId = default;
-            SourceGeneration = 0;
-            Displacement = displacement;
-            YawDegrees = yawDegrees;
-            PlanarBasis = default;
-            Space = space;
-            Weight = weight;
-            Priority = priority;
-            Channel = channel;
-            BlendMode = blendMode;
-            ConsumeLowerChannels = consumeLowerChannels;
-            MovementPlaybackClock = default;
-            LocomotionTimeline = default;
-        }
-
         public SimulationMotionContribution(
-            SimulationExecutionSource source,
-            CanonicalTextValue sourceIdentity,
-            CharacterSkillId abilityId,
+            int sourceId,
             ulong sourceGeneration,
             TVector3 displacement,
             TScalar yawDegrees,
@@ -98,17 +69,9 @@ namespace ThirdPersonSimulation
             int priority,
             SimulationMotionChannel channel,
             SimulationMotionBlendMode blendMode,
-            bool consumeLowerChannels,
-            CommittedMovementPlaybackClock movementPlaybackClock,
-            CommittedLocomotionPlanarMotionTimeline locomotionTimeline)
+            bool consumeLowerChannels)
         {
-            if (!source.IsValid)
-                throw new ArgumentException("Motion contribution source is invalid.", nameof(source));
-            Source = source;
-            SourceIdentity = CanonicalTextValue.IsNullOrEmpty(sourceIdentity)
-                ? throw new ArgumentException("Motion contribution source identity is incomplete.", nameof(sourceIdentity))
-                : sourceIdentity;
-            AbilityId = abilityId;
+            SourceId = sourceId;
             SourceGeneration = sourceGeneration;
             Displacement = displacement;
             YawDegrees = yawDegrees;
@@ -119,24 +82,9 @@ namespace ThirdPersonSimulation
             Channel = channel;
             BlendMode = blendMode;
             ConsumeLowerChannels = consumeLowerChannels;
-            if (channel == SimulationMotionChannel.Locomotion && !movementPlaybackClock.IsValid)
-                throw new ArgumentException("Locomotion motion contribution has no committed Movement playback clock.", nameof(movementPlaybackClock));
-            if (channel != SimulationMotionChannel.Locomotion && movementPlaybackClock.IsValid)
-                throw new ArgumentException("Only the Locomotion motion channel may carry a committed Movement playback clock.", nameof(movementPlaybackClock));
-            MovementPlaybackClock = movementPlaybackClock;
-            if (channel == SimulationMotionChannel.Locomotion &&
-                (!locomotionTimeline.IsValid || !locomotionTimeline.Matches(movementPlaybackClock)))
-            {
-                throw new ArgumentException("Locomotion motion contribution has no matching committed motion timeline.", nameof(locomotionTimeline));
-            }
-            if (channel != SimulationMotionChannel.Locomotion && locomotionTimeline.IsValid)
-                throw new ArgumentException("Only the Locomotion motion channel may carry a committed motion timeline.", nameof(locomotionTimeline));
-            LocomotionTimeline = locomotionTimeline;
         }
 
-        public SimulationExecutionSource Source { get; }
-        public CanonicalTextValue SourceIdentity { get; }
-        public CharacterSkillId AbilityId { get; }
+        public int SourceId { get; }
         public ulong SourceGeneration { get; }
         public TVector3 Displacement { get; }
         public TScalar YawDegrees { get; }
@@ -147,16 +95,12 @@ namespace ThirdPersonSimulation
         public SimulationMotionChannel Channel { get; }
         public SimulationMotionBlendMode BlendMode { get; }
         public bool ConsumeLowerChannels { get; }
-        public CommittedMovementPlaybackClock MovementPlaybackClock { get; }
-        public CommittedLocomotionPlanarMotionTimeline LocomotionTimeline { get; }
         public bool HasDelta => default(TMath).GreaterThan(Weight, default(TMath).Zero) &&
             (!default(TMath).IsVector3Zero(Displacement) || !default(TMath).IsZero(YawDegrees));
         public bool ClaimsLowerChannels => default(TMath).GreaterThan(Weight, default(TMath).Zero) &&
             BlendMode == SimulationMotionBlendMode.Override &&
             ConsumeLowerChannels;
-        public bool CanResolve => HasDelta || ClaimsLowerChannels || MovementPlaybackClock.IsValid;
-        internal void Retain() { Source.Retain(); SourceIdentity.Retain(); }
-        internal void Release() { Source.Release(); SourceIdentity.Release(); }
+        public bool CanResolve => HasDelta || ClaimsLowerChannels || Channel == SimulationMotionChannel.Locomotion;
     }
 
     public struct ResolvedMotionChannel<TScalar, TVector2, TVector3, TMath>
@@ -172,18 +116,11 @@ namespace ThirdPersonSimulation
             TVector2 planarBasis,
             bool hasContribution,
             bool claimsLowerChannels,
-            SimulationExecutionSource resolvedOwnerSource,
-            CharacterSkillId resolvedOwnerAbilityId,
-            CanonicalTextValue resolvedOwnerIdentity,
-            CommittedMovementPlaybackClock movementPlaybackClock,
-            CommittedLocomotionPlanarMotionTimeline locomotionTimeline,
+            int resolvedOwnerContributionIndex,
+            int traceContributionIndex,
             TVector3 resolvedOwnerDisplacement,
             TScalar resolvedOwnerYawDegrees,
-            SimulationExecutionSource traceSource,
-            CharacterSkillId traceAbilityId,
-            ulong traceSourceGeneration,
-            int participatingSourceCount,
-            ulong participatingSourceFingerprint)
+            int participatingSourceCount)
         {
             Channel = channel;
             Displacement = displacement;
@@ -191,18 +128,11 @@ namespace ThirdPersonSimulation
             PlanarBasis = planarBasis;
             HasContribution = hasContribution;
             ClaimsLowerChannels = claimsLowerChannels;
-            ResolvedOwnerSource = resolvedOwnerSource;
-            ResolvedOwnerAbilityId = resolvedOwnerAbilityId;
-            ResolvedOwnerIdentity = resolvedOwnerIdentity;
-            MovementPlaybackClock = movementPlaybackClock;
-            LocomotionTimeline = locomotionTimeline;
+            ResolvedOwnerContributionIndex = resolvedOwnerContributionIndex;
+            TraceContributionIndex = traceContributionIndex;
             ResolvedOwnerDisplacement = resolvedOwnerDisplacement;
             ResolvedOwnerYawDegrees = resolvedOwnerYawDegrees;
-            TraceSource = traceSource;
-            TraceAbilityId = traceAbilityId;
-            TraceSourceGeneration = traceSourceGeneration;
             ParticipatingSourceCount = participatingSourceCount;
-            ParticipatingSourceFingerprint = participatingSourceFingerprint;
             MotionCorrectionDisplacement = default(TMath).ZeroVector3;
             MotionCorrectionYawDegrees = default(TMath).Zero;
         }
@@ -213,18 +143,11 @@ namespace ThirdPersonSimulation
         public TVector2 PlanarBasis { get; }
         public bool HasContribution { get; }
         public bool ClaimsLowerChannels { get; }
-        public SimulationExecutionSource ResolvedOwnerSource { get; }
-        public CharacterSkillId ResolvedOwnerAbilityId { get; }
-        public CanonicalTextValue ResolvedOwnerIdentity { get; }
-        public CommittedMovementPlaybackClock MovementPlaybackClock { get; }
-        public CommittedLocomotionPlanarMotionTimeline LocomotionTimeline { get; }
+        public int ResolvedOwnerContributionIndex { get; }
+        public int TraceContributionIndex { get; }
         public TVector3 ResolvedOwnerDisplacement { get; }
         public TScalar ResolvedOwnerYawDegrees { get; }
-        public SimulationExecutionSource TraceSource { get; }
-        public CharacterSkillId TraceAbilityId { get; }
-        public ulong TraceSourceGeneration { get; }
         public int ParticipatingSourceCount { get; }
-        public ulong ParticipatingSourceFingerprint { get; }
         public bool HasDelta => !default(TMath).IsVector3Zero(Displacement) || !default(TMath).IsZero(YawDegrees);
 
         public TVector3 MotionCorrectionDisplacement { get; private set; }
