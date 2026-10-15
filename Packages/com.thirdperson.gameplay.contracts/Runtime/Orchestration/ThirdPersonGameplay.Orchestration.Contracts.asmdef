@@ -1,0 +1,17 @@
+{
+    "name": "ThirdPersonGameplay.Orchestration.Contracts",
+    "rootNamespace": "ThirdPersonGameplay.Orchestration",
+    "references": [
+        "ThirdPerson.Shared.Contracts",
+        "BTSMTL.Orchestration.Contracts"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": true
+}
