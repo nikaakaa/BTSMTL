@@ -27,6 +27,18 @@ namespace BTSMTL.Timeline.Runtime
         public bool DeclaredEnd { get; }
     }
 
+    public readonly struct TimelineSchedulingSection<TTime> where TTime : unmanaged
+    {
+        public TimelineSchedulingSection(int sectionIndex, TTime time)
+        {
+            SectionIndex = sectionIndex;
+            Time = time;
+        }
+
+        public int SectionIndex { get; }
+        public TTime Time { get; }
+    }
+
     public readonly struct TimelineSchedulingMarker<TTime> where TTime : unmanaged
     {
         public TimelineSchedulingMarker(int ordinal, TTime time)
@@ -88,8 +100,10 @@ namespace BTSMTL.Timeline.Runtime
         where TTime : unmanaged
         where TClock : struct, IOrchestrationTimelineClock<TTime>
     {
-        readonly Comparison<TimelineSchedulingBoundary<TTime>> m_BoundaryComparison = CompareBoundaries;
+        static readonly Comparison<TimelineSchedulingBoundary<TTime>> m_BoundaryComparison;
         readonly Comparison<TimelineScheduledInvocation<TTime>> m_InvocationComparison = CompareInvocations;
+
+        static TimelineRuntimeScheduling() => m_BoundaryComparison = CompareBoundaries;
 
         public static TTime Target(TTime cursor, int cycle, int carry, TTime duration,
             int tickRate, int tickCount, TTime rate, bool paused, out int nextCarry)
@@ -174,7 +188,7 @@ namespace BTSMTL.Timeline.Runtime
             return count;
         }
 
-        public void SortBoundaries(Span<TimelineSchedulingBoundary<TTime>> values) =>
+        public static void SortBoundaries(Span<TimelineSchedulingBoundary<TTime>> values) =>
             SimulationArraySort.Sort(values, m_BoundaryComparison);
 
         public int Markers(ReadOnlySpan<TimelineSchedulingMarker<TTime>> markers,

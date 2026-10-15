@@ -1,5 +1,6 @@
 using System;
 using BTSMTL.Orchestration;
+using ThirdPersonSimulation;
 
 namespace BTSMTL.Timeline.Runtime
 {
@@ -18,6 +19,31 @@ namespace BTSMTL.Timeline.Runtime
         public int ActiveTreesPerPlayback { get; }
         public int TreeExitRequestsPerPlayback { get; }
         public int TreeExitsPerPlayback { get; }
+
+        public static OrchestrationTimelinePreparedCapacity Prepare<TTime>(
+            ReadOnlySpan<OrchestrationTimelinePreparedContent<TTime>> contents, int playbackCount)
+            where TTime : unmanaged, IEquatable<TTime>
+        {
+            int activeTrees = 0;
+            int exitRequests = 0;
+            int exits = 0;
+            foreach (OrchestrationTimelinePreparedContent<TTime> content in contents)
+            {
+                activeTrees = Math.Max(activeTrees, content.RequiredActiveTrees);
+                exitRequests = Math.Max(exitRequests, content.RequiredTreeExitRequests);
+                exits = Math.Max(exits, content.RequiredTreeExits);
+            }
+            return new OrchestrationTimelinePreparedCapacity(playbackCount, activeTrees, exitRequests, exits);
+        }
+
+        public OrchestrationTimelineStateLayout<TPlayback> CreateLayout<TPlayback>(
+            StableHash contentIdentity, NumericProfileId numericProfile, TargetAbiVersion targetAbi,
+            Func<StableHash, NumericProfileId, TargetAbiVersion, int, int, int,
+                OrchestrationTimelineStateLayout<TPlayback>> generatedFactory)
+            where TPlayback : unmanaged =>
+            generatedFactory(contentIdentity, numericProfile, targetAbi, PlaybackCount,
+                checked(PlaybackCount * TreeExitRequestsPerPlayback),
+                checked(PlaybackCount * TreeExitsPerPlayback));
     }
 
     public sealed class OrchestrationTimelinePreparedContent<TTime>
@@ -28,6 +54,7 @@ namespace BTSMTL.Timeline.Runtime
             ReadOnlyMemory<TimelineSchedulingClip<TTime>> clips,
             ReadOnlyMemory<int> treeOrdinals,
             ReadOnlyMemory<TimelineSchedulingMarker<TTime>> markers,
+            ReadOnlyMemory<TimelineSchedulingSection<TTime>> sections,
             ReadOnlyMemory<OrchestrationTimelineEntryBinding> clipEntries,
             ReadOnlyMemory<OrchestrationExecutionEntry> markerEntries,
             int requiredActiveTrees, int requiredTreeExitRequests, int requiredTreeExits)
@@ -40,6 +67,7 @@ namespace BTSMTL.Timeline.Runtime
             Clips = clips;
             TreeOrdinals = treeOrdinals;
             Markers = markers;
+            Sections = sections;
             ClipEntries = clipEntries;
             MarkerEntries = markerEntries;
             RequiredActiveTrees = requiredActiveTrees;
@@ -55,6 +83,7 @@ namespace BTSMTL.Timeline.Runtime
         public ReadOnlyMemory<TimelineSchedulingClip<TTime>> Clips { get; }
         public ReadOnlyMemory<int> TreeOrdinals { get; }
         public ReadOnlyMemory<TimelineSchedulingMarker<TTime>> Markers { get; }
+        public ReadOnlyMemory<TimelineSchedulingSection<TTime>> Sections { get; }
         public ReadOnlyMemory<OrchestrationTimelineEntryBinding> ClipEntries { get; }
         public ReadOnlyMemory<OrchestrationExecutionEntry> MarkerEntries { get; }
         public int RequiredActiveTrees { get; }
