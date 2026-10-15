@@ -6,7 +6,8 @@ namespace BTSMTL.Orchestration
     public enum OrchestrationIdentitySpace : byte
     {
         Content = 0,
-        Roster = 1
+        Roster = 1,
+        RuntimeText = 2
     }
 
     [ValueStorage(UseConstructor = true)]
@@ -26,6 +27,8 @@ namespace BTSMTL.Orchestration
             new OrchestrationIdentityValue(OrchestrationIdentitySpace.Content, sharedIdentity);
         public static OrchestrationIdentityValue Roster(int rosterIndex) =>
             new OrchestrationIdentityValue(OrchestrationIdentitySpace.Roster, rosterIndex);
+        public static OrchestrationIdentityValue RuntimeText(int textIndex) =>
+            textIndex == 0 ? Empty : new OrchestrationIdentityValue(OrchestrationIdentitySpace.RuntimeText, textIndex);
 
         public bool Equals(OrchestrationIdentityValue other) => Space == other.Space && Index == other.Index;
         public override bool Equals(object obj) => obj is OrchestrationIdentityValue other && Equals(other);

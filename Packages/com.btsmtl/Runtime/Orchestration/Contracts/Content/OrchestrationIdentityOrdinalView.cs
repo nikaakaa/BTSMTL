@@ -4,15 +4,26 @@ namespace BTSMTL.Orchestration
 {
     public readonly struct OrchestrationIdentityOrdinalView
     {
-        private readonly ReadOnlyMemory<int> m_RosterOrdinals;
-
-        public OrchestrationIdentityOrdinalView(ReadOnlyMemory<int> rosterOrdinals)
+        public OrchestrationIdentityOrdinalView(ReadOnlyMemory<int> contentRanks,
+            ReadOnlyMemory<int> rosterRanks, ReadOnlyMemory<int> runtimeTextRanks)
         {
-            m_RosterOrdinals = rosterOrdinals;
+            ContentRanks = contentRanks;
+            RosterRanks = rosterRanks;
+            RuntimeTextRanks = runtimeTextRanks;
         }
 
+        public ReadOnlyMemory<int> ContentRanks { get; }
+        public ReadOnlyMemory<int> RosterRanks { get; }
+        public ReadOnlyMemory<int> RuntimeTextRanks { get; }
+
         public int Ordinal(in OrchestrationIdentityValue value) =>
-            value.Space == OrchestrationIdentitySpace.Content ? value.Index : m_RosterOrdinals.Span[value.Index];
+            value.Space switch
+            {
+                OrchestrationIdentitySpace.Content => ContentRanks.Span[value.Index],
+                OrchestrationIdentitySpace.Roster => RosterRanks.Span[value.Index],
+                OrchestrationIdentitySpace.RuntimeText => RuntimeTextRanks.Span[value.Index],
+                _ => throw new ArgumentOutOfRangeException(nameof(value))
+            };
 
         public bool IsEmpty(in OrchestrationIdentityValue value) =>
             value.Space == OrchestrationIdentitySpace.Content && value.Index == 0;

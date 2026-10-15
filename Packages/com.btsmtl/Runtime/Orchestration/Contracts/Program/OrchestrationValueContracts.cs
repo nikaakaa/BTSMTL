@@ -1,5 +1,24 @@
 namespace BTSMTL.Orchestration
 {
+    public enum OrchestrationComparisonKind : byte
+    {
+        Equal = 0,
+        NotEqual = 1,
+        LessThan = 2,
+        LessThanOrEqual = 3,
+        GreaterThanOrEqual = 4,
+        GreaterThan = 5
+    }
+
+    public enum OrchestrationAssignmentKind : byte
+    {
+        Set = 0,
+        Add = 1,
+        Subtract = 2,
+        Multiply = 3,
+        Divide = 4
+    }
+
     public enum OrchestrationCalculationKind : byte
     {
         ScalarMultiply = 1,

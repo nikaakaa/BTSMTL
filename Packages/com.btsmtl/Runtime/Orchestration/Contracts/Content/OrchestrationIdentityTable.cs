@@ -23,8 +23,18 @@ namespace BTSMTL.Orchestration
 
         public int Bind(ReadOnlySpan<char> text)
         {
+            if (TryBind(text, out int identity))
+                return identity;
+            throw new KeyNotFoundException($"身份文本 '{text.ToString()}' 未包含在已发布内容表 '{Identity}' 中。");
+        }
+
+        public bool TryBind(ReadOnlySpan<char> text, out int identity)
+        {
             if (text.IsEmpty)
-                return 0;
+            {
+                identity = 0;
+                return true;
+            }
             ReadOnlySpan<string> entries = Entries.Span;
             int low = 0;
             int high = entries.Length - 1;
@@ -37,9 +47,13 @@ namespace BTSMTL.Orchestration
                 else if (order > 0)
                     high = middle - 1;
                 else
-                    return middle + 1;
+                {
+                    identity = middle + 1;
+                    return true;
+                }
             }
-            throw new KeyNotFoundException($"身份文本 '{text.ToString()}' 未包含在已发布内容表 '{Identity}' 中。");
+            identity = 0;
+            return false;
         }
     }
 }

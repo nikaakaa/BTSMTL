@@ -41,6 +41,7 @@ namespace BTSMTL.Orchestration
         SelectValue = 107,
         HostInput = 108,
         IdentityValue = 109,
+        EmitOutput = 110,
         Extension = 255
     }
 }

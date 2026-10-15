@@ -14,6 +14,19 @@ namespace BTSMTL.Orchestration
         readonly int m_ValuesPerFrame;
         readonly int m_BlackboardMetadataPerFrame;
 
+        public static OrchestrationExecutionStateCapacity PrepareCapacity(
+            ReadOnlySpan<OrchestrationProgram<TValue>> programs, int frameCount)
+        {
+            int operations = 0;
+            int values = 0;
+            for (int i = 0; i < programs.Length; i++)
+            {
+                operations = Math.Max(operations, programs[i].OperationCount);
+                values = Math.Max(values, programs[i].ValueSlotCount);
+            }
+            return new OrchestrationExecutionStateCapacity(frameCount, operations, values);
+        }
+
         public OrchestrationExecutionFrames(
             Span<OrchestrationExecutionFrameState> frames,
             ref OrchestrationExecutionRosterState roster,
