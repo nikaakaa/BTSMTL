@@ -3,6 +3,13 @@ using ThirdPersonSimulation;
 
 namespace BTSMTL.Orchestration
 {
+    public enum OrchestrationTimelineInitialBoundaryState : byte
+    {
+        Pending = 0,
+        Applied = 1,
+        Skipped = 2
+    }
+
     [ValueStorage]
     [ValueOperations(Resources = false)]
     public partial struct OrchestrationTimelineProgress<TTime, TPlaybackState, TControl, TStopContext> :
@@ -19,6 +26,6 @@ namespace BTSMTL.Orchestration
         public TControl Control;
         public bool HasStopContext;
         public TStopContext StopContext;
-        public bool InitialBoundaryPending;
+        public OrchestrationTimelineInitialBoundaryState InitialBoundaryState;
     }
 }

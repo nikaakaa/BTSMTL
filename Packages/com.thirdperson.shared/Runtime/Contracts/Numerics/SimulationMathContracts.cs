@@ -27,6 +27,20 @@ namespace ThirdPersonSimulation
         bool IsZero(TScalar value);
     }
 
+    public interface IOrchestrationTimelineClock<TTime> : IScalarMath<TTime>
+        where TTime : unmanaged
+    {
+        long Raw(TTime value);
+        TTime FromRaw(long value);
+    }
+
+    public interface IOrchestrationTimelineTimeProjection<TTime, TScalar>
+        where TTime : unmanaged
+        where TScalar : unmanaged
+    {
+        TScalar Project(TTime time);
+    }
+
     public interface IVectorMath<TScalar, TVector2, TVector3>
         where TScalar : struct
         where TVector2 : struct
