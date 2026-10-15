@@ -273,6 +273,9 @@ namespace ThirdPerson.ValueGeneration.Generator
 
         static string ValueEquals(ITypeSymbol type, string left, string right) =>
             type.TypeKind == TypeKind.Enum ? "(" + left + " == " + right + ")" :
+            type is ITypeParameterSymbol parameter && parameter.ConstraintTypes.Any(constraint =>
+                constraint.SpecialType == SpecialType.System_Enum) ?
+                "global::System.Collections.Generic.EqualityComparer<" + TypeName(type) + ">.Default.Equals(" + left + ", " + right + ")" :
             type.IsReferenceType ? "global::System.Object.Equals(" + left + ", " + right + ")" :
             left + ".Equals(" + right + ")";
 
