@@ -4,6 +4,7 @@
     "references": [
         "ThirdPerson.Shared.Contracts",
         "BTSMTL.Orchestration.Contracts",
+        "BTSMTL.Orchestration.Runtime",
         "ThirdPersonSimulation.Core",
         "ThirdPersonSimulation.Float32",
         "ThirdPersonSimulation.QuantumNumerics"
