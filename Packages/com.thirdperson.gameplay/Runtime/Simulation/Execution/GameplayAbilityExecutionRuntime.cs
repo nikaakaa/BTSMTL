@@ -197,7 +197,6 @@ namespace ThirdPersonSimulation
         internal int Retainers => m_Retainers;
         public int FrameCapacity => m_Bank.FrameCapacity;
         public int TextReferenceCapacity => m_Bank.TextReferenceCapacity;
-        public GameplayAbilityExecutionAggregate<TValue> BeginPreparedRead() => m_Bank.BeginPreparedRead();
 
         internal void BeginCopy(GameplayAbilityExecutionAggregate<TValue> source)
         {
@@ -228,13 +227,6 @@ namespace ThirdPersonSimulation
         }
 
         internal GameplayAbilityExecutionFrame<TValue> CreateFrame(AbilityExecutionContext identity) => m_Bank.CreateFrame(identity);
-
-        public GameplayAbilityExecutionFrame<TValue> AppendRestoredFrame(AbilityExecutionContext identity)
-        {
-            GameplayAbilityExecutionFrame<TValue> frame = m_Bank.CreateFrame(identity);
-            m_Frames.Add(frame);
-            return frame;
-        }
 
         public GameplayAbilityExecutionFrame<TValue> Find(ulong actionInstanceId)
         {
@@ -365,13 +357,6 @@ namespace ThirdPersonSimulation
             state.BeginCopy(source);
             ReleaseCurrent();
             m_Current = state;
-            return state;
-        }
-
-        internal GameplayAbilityExecutionAggregate<TValue> BeginPreparedRead()
-        {
-            GameplayAbilityExecutionAggregate<TValue> state = RentState(null);
-            state.BeginCopy(null);
             return state;
         }
 
