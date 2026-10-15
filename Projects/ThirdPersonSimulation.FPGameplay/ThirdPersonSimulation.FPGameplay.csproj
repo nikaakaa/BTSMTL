@@ -8,14 +8,15 @@
     <AssemblyName>ThirdPersonSimulation.FPGameplay</AssemblyName>
     <RootNamespace>ThirdPersonSimulation.FPGameplay</RootNamespace>
     <SimulationSourceRoot>$(MSBuildThisFileDirectory)..\..\Packages\com.thirdperson.gameplay\Runtime\Simulation\FPGameplay</SimulationSourceRoot>
+    <QuantumDeterministicPath>$(MSBuildThisFileDirectory)..\..\..\3C\3cDemo\Client\3C_Client\Assets\Photon\Quantum\Assemblies\Quantum.Deterministic.dll</QuantumDeterministicPath>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="$(SimulationSourceRoot)\**\*.cs" LinkBase="Source" />
     <ProjectReference Include="..\ThirdPersonSimulation.Core\ThirdPersonSimulation.Core.csproj" />
-    <ProjectReference Include="..\..\..\3C\Tools\ThirdPersonSimulation.Portable\ThirdPersonSimulation.QuantumNumerics\ThirdPersonSimulation.QuantumNumerics.csproj" />
+    <ProjectReference Include="..\ThirdPersonSimulation.QuantumNumerics\ThirdPersonSimulation.QuantumNumerics.csproj" AdditionalProperties="QuantumDeterministicPath=$(QuantumDeterministicPath)" />
     <ProjectReference Include="..\ThirdPerson.BepuQueries\ThirdPerson.BepuQueries.csproj" />
     <Reference Include="Quantum.Deterministic">
-      <HintPath>$(MSBuildThisFileDirectory)..\..\..\3C\3cDemo\Client\3C_Client\Assets\Photon\Quantum\Assemblies\Quantum.Deterministic.dll</HintPath>
+      <HintPath>$(QuantumDeterministicPath)</HintPath>
     </Reference>
   </ItemGroup>
 </Project>

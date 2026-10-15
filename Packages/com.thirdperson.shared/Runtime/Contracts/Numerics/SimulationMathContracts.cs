@@ -1,5 +1,10 @@
 namespace ThirdPersonSimulation
 {
+    public interface IScalarContentLowering<TScalar> where TScalar : struct
+    {
+        TScalar FromSingle(float value);
+    }
+
     public interface IScalarMath<TScalar> where TScalar : struct
     {
         TScalar Zero { get; }

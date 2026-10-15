@@ -12,11 +12,6 @@ namespace ThirdPersonSimulation
         TargetAttributeLive = 4
     }
 
-    public interface IScalarContentLowering<TScalar> where TScalar : struct
-    {
-        TScalar FromSingle(float value);
-    }
-
     public readonly struct GameplayEffectMagnitude<TScalar> where TScalar : struct
     {
         public GameplayEffectMagnitude(PortableMagnitudeSource source, TScalar constant,

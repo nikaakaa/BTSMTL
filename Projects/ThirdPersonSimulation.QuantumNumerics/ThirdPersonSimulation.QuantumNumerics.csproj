@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AssemblyName>ThirdPersonSimulation.QuantumNumerics</AssemblyName>
+    <RootNamespace>ThirdPersonSimulation.QuantumNumerics</RootNamespace>
+    <NumericsSourceRoot>$(MSBuildThisFileDirectory)..\..\Packages\com.thirdperson.numerics.quantum\Runtime\Numerics</NumericsSourceRoot>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="$(NumericsSourceRoot)\**\*.cs" LinkBase="Source" />
+    <ProjectReference Include="..\ThirdPerson.Shared.Contracts\ThirdPerson.Shared.Contracts.csproj" />
+    <Reference Include="Quantum.Deterministic">
+      <HintPath>$(QuantumDeterministicPath)</HintPath>
+    </Reference>
+  </ItemGroup>
+  <Target Name="RequireQuantumDeterministic" BeforeTargets="ResolveReferences" Condition="!Exists('$(QuantumDeterministicPath)')">
+    <Error Text="请通过 QuantumDeterministicPath 指定宿主现有的 Quantum.Deterministic.dll。" />
+  </Target>
+</Project>

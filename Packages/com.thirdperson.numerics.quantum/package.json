@@ -1,0 +1,10 @@
+{
+  "name": "com.thirdperson.numerics.quantum",
+  "version": "0.1.0",
+  "displayName": "Third Person Quantum FP Numerics",
+  "description": "单套定点玩法使用的官方 Quantum FP 数学、数值身份和作者数值降低。",
+  "unity": "2022.3",
+  "dependencies": {
+    "com.thirdperson.shared": "0.1.0"
+  }
+}

@@ -1,0 +1,18 @@
+{
+    "name": "ThirdPersonSimulation.QuantumNumerics",
+    "rootNamespace": "ThirdPersonSimulation.QuantumNumerics",
+    "references": [
+        "ThirdPerson.Shared.Contracts"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "Quantum.Deterministic.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": true
+}
