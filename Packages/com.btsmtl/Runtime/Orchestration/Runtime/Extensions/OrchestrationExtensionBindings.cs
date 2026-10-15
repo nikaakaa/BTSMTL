@@ -3,11 +3,8 @@ using System.Collections.Generic;
 
 namespace BTSMTL.Orchestration
 {
-    public sealed class OrchestrationExtensionBindings<TValue, TReadContext, TCandidateContext> :
-        IOrchestrationExtensionBindings<TValue, TReadContext, TCandidateContext>
+    public sealed class OrchestrationExtensionBindings<TValue> : IOrchestrationExtensionBindings<TValue>
         where TValue : struct
-        where TReadContext : struct
-        where TCandidateContext : struct
     {
         private readonly Binding[] m_Bindings;
 
@@ -21,23 +18,24 @@ namespace BTSMTL.Orchestration
         public ref readonly OrchestrationExtensionContract Contract(int bindingIndex) =>
             ref m_Bindings[bindingIndex].Contract;
 
-        public OrchestrationExtensionResult InvokeReadOnly(int bindingIndex, in TReadContext context,
+        public OrchestrationExtensionResult InvokeReadOnly(int bindingIndex, in OrchestrationReadContextView context,
             in OrchestrationExtensionInvocation<TValue> invocation)
         {
             ref readonly Binding binding = ref m_Bindings[bindingIndex];
             return binding.ReadOnly.Invoke(binding.ContentIndex, in context, in invocation);
         }
 
-        public OrchestrationExtensionResult InvokeCandidate(int bindingIndex, ref TCandidateContext context,
+        public OrchestrationExtensionResult InvokeCandidate(int bindingIndex, in OrchestrationCandidateContextView context,
             in OrchestrationExtensionInvocation<TValue> invocation)
         {
             ref readonly Binding binding = ref m_Bindings[bindingIndex];
-            return binding.Candidate.Invoke(binding.ContentIndex, ref context, in invocation);
+            return binding.Candidate.Invoke(binding.ContentIndex, in context, in invocation);
         }
 
-        public static OrchestrationExtensionBindings<TValue, TReadContext, TCandidateContext> Prepare(
+        public static OrchestrationExtensionBindings<TValue> Prepare(
             ReadOnlySpan<OrchestrationExtensionReference> references,
-            IReadOnlyList<IOrchestrationExtension> implementations)
+            IReadOnlyList<IOrchestrationExtension> implementations,
+            ReadOnlySpan<object> readSlots, ReadOnlySpan<object> candidateSlots)
         {
             var bindings = new Binding[references.Length];
             for (int i = 0; i < references.Length; i++)
@@ -48,18 +46,29 @@ namespace BTSMTL.Orchestration
                 Validate(in reference, in contract);
                 if (contract.Access == OrchestrationExtensionAccess.ReadOnly)
                 {
-                    if (!(implementation is IReadOnlyOrchestrationExtension<TValue, TReadContext> readOnly))
-                        throw Failure(in reference, "实现未提供已声明的只读调用接口");
+                    if (!(implementation is IReadOnlyOrchestrationExtensionRoute<TValue> readOnly))
+                        throw Failure(in reference, "实现未提供已声明的只读上下文路由接口");
+                    ValidateContext(in reference, readOnly.ContextSlotIndex, readOnly.ContextType, readSlots);
                     bindings[i] = new Binding(in contract, reference.ContentIndex, readOnly);
                 }
                 else
                 {
-                    if (!(implementation is ICandidateOrchestrationExtension<TValue, TCandidateContext> candidate))
-                        throw Failure(in reference, "实现未提供已声明的候选写入调用接口");
+                    if (!(implementation is ICandidateOrchestrationExtensionRoute<TValue> candidate))
+                        throw Failure(in reference, "实现未提供已声明的候选写入上下文路由接口");
+                    ValidateContext(in reference, candidate.ContextSlotIndex, candidate.ContextType, candidateSlots);
                     bindings[i] = new Binding(in contract, reference.ContentIndex, candidate);
                 }
             }
-            return new OrchestrationExtensionBindings<TValue, TReadContext, TCandidateContext>(bindings);
+            return new OrchestrationExtensionBindings<TValue>(bindings);
+        }
+
+        private static void ValidateContext(in OrchestrationExtensionReference reference,
+            int slotIndex, Type contextType, ReadOnlySpan<object> slots)
+        {
+            if ((uint)slotIndex >= (uint)slots.Length)
+                throw Failure(in reference, $"上下文槽 {slotIndex} 未由宿主提供");
+            if (!(slots[slotIndex] is Array array) || array.GetType() != contextType.MakeArrayType())
+                throw Failure(in reference, $"上下文槽 {slotIndex} 必须提供元素类型为 {contextType} 的一维数组");
         }
 
         private static IOrchestrationExtension Resolve(in OrchestrationExtensionReference reference,
@@ -139,14 +148,14 @@ namespace BTSMTL.Orchestration
 
         private static InvalidOperationException Failure(in OrchestrationExtensionReference reference,
             string reason) => new InvalidOperationException(
-            $"领域扩展 {reference.Identity.DomainId}/{reference.Identity.OperationId} " +
+            $"领域扩展 {reference.Identity.DomainId}/{reference.Identity.OperationId}/{reference.Identity.BindingRole} " +
             $"语义版本 {reference.SemanticVersion}，内容索引 {reference.ContentIndex}：{reason}。" +
             $"引用位置：{reference.SourcePath}");
 
         private readonly struct Binding
         {
             public Binding(in OrchestrationExtensionContract contract, int contentIndex,
-                IReadOnlyOrchestrationExtension<TValue, TReadContext> readOnly)
+                IReadOnlyOrchestrationExtensionRoute<TValue> readOnly)
             {
                 Contract = contract;
                 ContentIndex = contentIndex;
@@ -155,7 +164,7 @@ namespace BTSMTL.Orchestration
             }
 
             public Binding(in OrchestrationExtensionContract contract, int contentIndex,
-                ICandidateOrchestrationExtension<TValue, TCandidateContext> candidate)
+                ICandidateOrchestrationExtensionRoute<TValue> candidate)
             {
                 Contract = contract;
                 ContentIndex = contentIndex;
@@ -165,8 +174,8 @@ namespace BTSMTL.Orchestration
 
             public readonly OrchestrationExtensionContract Contract;
             public readonly int ContentIndex;
-            public readonly IReadOnlyOrchestrationExtension<TValue, TReadContext> ReadOnly;
-            public readonly ICandidateOrchestrationExtension<TValue, TCandidateContext> Candidate;
+            public readonly IReadOnlyOrchestrationExtensionRoute<TValue> ReadOnly;
+            public readonly ICandidateOrchestrationExtensionRoute<TValue> Candidate;
         }
     }
 }

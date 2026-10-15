@@ -1,17 +1,15 @@
 namespace BTSMTL.Orchestration
 {
-    public interface IOrchestrationExtensionBindings<TValue, TReadContext, TCandidateContext>
+    public interface IOrchestrationExtensionBindings<TValue>
         where TValue : struct
-        where TReadContext : struct
-        where TCandidateContext : struct
     {
         int Count { get; }
         ref readonly OrchestrationExtensionContract Contract(int bindingIndex);
 
-        OrchestrationExtensionResult InvokeReadOnly(int bindingIndex, in TReadContext context,
+        OrchestrationExtensionResult InvokeReadOnly(int bindingIndex, in OrchestrationReadContextView context,
             in OrchestrationExtensionInvocation<TValue> invocation);
 
-        OrchestrationExtensionResult InvokeCandidate(int bindingIndex, ref TCandidateContext context,
+        OrchestrationExtensionResult InvokeCandidate(int bindingIndex, in OrchestrationCandidateContextView context,
             in OrchestrationExtensionInvocation<TValue> invocation);
     }
 }
