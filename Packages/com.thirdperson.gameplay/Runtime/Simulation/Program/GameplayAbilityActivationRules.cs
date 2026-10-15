@@ -21,14 +21,6 @@ namespace ThirdPersonSimulation
         SelectedSource = 1
     }
 
-    public enum CharacterLocomotionMode : byte
-    {
-        Idle = 0,
-        Walking = 1,
-        Running = 2,
-        Turning = 3
-    }
-
     public readonly partial struct GameplayAbilitySourceContext : IEquatable<GameplayAbilitySourceContext>
     {
         public GameplayAbilitySourceContext(CharacterSkillId skillId, ulong instanceId,
