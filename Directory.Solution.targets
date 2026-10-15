@@ -1,0 +1,18 @@
+<Project>
+  <Target Name="DependencyGuard" BeforeTargets="Build">
+    <MSBuild Projects="$(MSBuildThisFileDirectory)Tools/DependencyGuard/DependencyGuard.csproj"
+             Targets="Restore;Build" BuildInParallel="false"
+             Properties="Configuration=$(Configuration);UseSharedCompilation=false;InstallUnityAnalyzer=false" />
+    <MSBuild Projects="$(MSBuildThisFileDirectory)Tools/DependencyGuard/DependencyGuard.csproj"
+             Targets="GetTargetPath" BuildInParallel="false"
+             Properties="Configuration=$(Configuration);UseSharedCompilation=false;InstallUnityAnalyzer=false">
+      <Output TaskParameter="TargetOutputs" ItemName="DependencyGuardTargetPath" />
+    </MSBuild>
+    <PropertyGroup>
+      <DependencyGuardArguments>--sdk-root &quot;$(MSBuildThisFileDirectory).&quot;</DependencyGuardArguments>
+      <DependencyGuardArguments Condition="'$(DependencyGuardClientRoot)' != ''">$(DependencyGuardArguments) --client-root &quot;$(DependencyGuardClientRoot)&quot;</DependencyGuardArguments>
+      <DependencyGuardArguments Condition="'$(DependencyGuardReport)' != ''">$(DependencyGuardArguments) --report &quot;$(DependencyGuardReport)&quot;</DependencyGuardArguments>
+    </PropertyGroup>
+    <Exec Command="dotnet &quot;@(DependencyGuardTargetPath)&quot; $(DependencyGuardArguments)" />
+  </Target>
+</Project>
