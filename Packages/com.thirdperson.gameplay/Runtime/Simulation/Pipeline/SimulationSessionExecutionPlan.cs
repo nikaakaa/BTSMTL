@@ -52,12 +52,12 @@ namespace ThirdPersonSimulation
     public sealed class SimulationRestoreDirective
     {
         readonly SimulationSessionCheckpoint m_Checkpoint;
-        readonly string m_SnapshotId;
-        readonly SimulationTick m_Tick;
-        readonly GameplayContentHash m_GameplayContentHash;
-        readonly SimulationPipelineHash m_PipelineHash;
-        readonly string m_BackendId;
-        readonly string m_BackendSemanticVersion;
+        string m_SnapshotId;
+        SimulationTick m_Tick;
+        GameplayContentHash m_GameplayContentHash;
+        SimulationPipelineHash m_PipelineHash;
+        string m_BackendId;
+        string m_BackendSemanticVersion;
 
         internal SimulationRestoreDirective(SimulationSessionCheckpoint checkpoint)
         {
@@ -80,6 +80,22 @@ namespace ThirdPersonSimulation
             m_PipelineHash = pipelineHash;
             m_BackendId = SimulationIdentity.Require(backendId, nameof(backendId));
             m_BackendSemanticVersion = SimulationIdentity.Require(backendSemanticVersion, nameof(backendSemanticVersion));
+        }
+
+        public void ResetPrepared(
+            string snapshotId,
+            SimulationTick tick,
+            GameplayContentHash gameplayContentHash,
+            SimulationPipelineHash pipelineHash,
+            string backendId,
+            string backendSemanticVersion)
+        {
+            m_SnapshotId = snapshotId;
+            m_Tick = tick;
+            m_GameplayContentHash = gameplayContentHash;
+            m_PipelineHash = pipelineHash;
+            m_BackendId = backendId;
+            m_BackendSemanticVersion = backendSemanticVersion;
         }
 
         public string SnapshotId => m_Checkpoint != null ? m_Checkpoint.SnapshotId : m_SnapshotId;

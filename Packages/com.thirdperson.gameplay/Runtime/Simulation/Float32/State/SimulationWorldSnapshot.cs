@@ -55,6 +55,8 @@ namespace ThirdPersonSimulation
         readonly SimulationActorState[] m_Actors;
         [ValueResource(Optional = true)]
         readonly SimulationWorldStateStore.StatePage m_Storage;
+        [ValueResource(Optional = true)]
+        readonly IValueResources m_PreparedStorage;
 
         public SimulationWorldStateSet(ulong lastCompletedTick, IReadOnlyList<SimulationActorState> actors, WorldSimulationState worldState)
         {
@@ -78,6 +80,25 @@ namespace ThirdPersonSimulation
         {
             m_Storage = page;
             m_Actors = new SimulationActorState[actorCount];
+        }
+
+        public SimulationWorldStateSet(int actorCount, IValueResources preparedStorage)
+        {
+            m_PreparedStorage = preparedStorage;
+            m_Actors = new SimulationActorState[actorCount];
+        }
+
+        public void SetPrepared(ulong tick, IReadOnlyList<SimulationActorState> actors, WorldSimulationState world)
+        {
+            for (int index = 0; index < m_Actors.Length; index++)
+                m_Actors[index] = actors[index];
+            SetPrepared(tick, world);
+        }
+
+        public void ClearPrepared()
+        {
+            Array.Clear(m_Actors, 0, m_Actors.Length);
+            SetPrepared(0, null);
         }
 
         internal void CompleteCandidate(ulong tick, WorldSimulationState world)
