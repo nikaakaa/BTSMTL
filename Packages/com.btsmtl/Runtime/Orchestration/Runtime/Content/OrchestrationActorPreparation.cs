@@ -13,12 +13,14 @@ namespace BTSMTL.Orchestration
         where TQuaternion : unmanaged
     {
         readonly ReadOnlyMemory<int>[] m_CharacterValueSlots;
+        readonly ReadOnlyMemory<int> m_DependencyIdentityTableIndices;
 
         OrchestrationActorPreparation(FrozenOrchestrationIdentities identities,
             OrchestrationActorProgramSource<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>[] sources,
             PreparedOrchestrationGraph<TScalar, TVector2, TVector3, TYaw, TQuaternion>[] graphs,
             OrchestrationProgram<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>[] programs,
             ReadOnlyMemory<int>[] characterValueSlots,
+            int[] dependencyIdentityTableIndices,
             OrchestrationGraphBlackboardBinding[] characterBlackboards,
             OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>[] characterValueDefaults,
             OrchestrationBlackboardSlot[] characterValueDescriptors, StableHash identity)
@@ -28,6 +30,7 @@ namespace BTSMTL.Orchestration
             Graphs = graphs;
             Programs = programs;
             m_CharacterValueSlots = characterValueSlots;
+            m_DependencyIdentityTableIndices = dependencyIdentityTableIndices;
             CharacterBlackboards = characterBlackboards;
             CharacterValueDefaults = characterValueDefaults;
             CharacterValueDescriptors = characterValueDescriptors;
@@ -37,6 +40,7 @@ namespace BTSMTL.Orchestration
         public FrozenOrchestrationIdentities Identities { get; }
         public StableHash Identity { get; }
         public int ProgramCount => Programs.Length;
+        public int DependencyIdentityTableCount => m_DependencyIdentityTableIndices.Length;
         public ReadOnlyMemory<OrchestrationActorProgramSource<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>> Sources { get; }
         public ReadOnlyMemory<PreparedOrchestrationGraph<TScalar, TVector2, TVector3, TYaw, TQuaternion>> Graphs { get; }
         public ReadOnlyMemory<OrchestrationProgram<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>> Programs { get; }
@@ -47,17 +51,44 @@ namespace BTSMTL.Orchestration
         public ReadOnlyMemory<int> CharacterValueSlots(int programIndex) =>
             m_CharacterValueSlots[programIndex];
 
-        public static OrchestrationActorPreparation<TScalar, TVector2, TVector3, TYaw, TQuaternion> Prepare(
-            ReadOnlySpan<OrchestrationActorProgramSource<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>> sources,
-            OrchestrationBlackboardDefaults<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> defaults,
-            ReadOnlySpan<string> rosterTexts)
+        public ReadOnlyMemory<int> DependencyIdentityMapping(int dependencyIndex) =>
+            Identities.LocalToShared(m_DependencyIdentityTableIndices.Span[dependencyIndex]);
+
+        public OrchestrationStateLayout<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>, TPlayback>
+            PrepareStateLayout<TPlayback>(int executionFrameCount,
+                in OrchestrationTimelineStateLayout<TPlayback> timelineLayout,
+                NumericProfileId numericProfile, TargetAbiVersion targetAbi,
+                Func<StableHash, NumericProfileId, TargetAbiVersion, int, int,
+                    OrchestrationCharacterBlackboardStateLayout<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>> blackboardFactory,
+                Func<StableHash, NumericProfileId, TargetAbiVersion, int, int, int, int, int,
+                    OrchestrationExecutionStateLayout<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>> executionFactory,
+                Func<StableHash, NumericProfileId, TargetAbiVersion,
+                    OrchestrationCharacterBlackboardStateLayout<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>,
+                    OrchestrationExecutionStateLayout<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>,
+                    OrchestrationTimelineStateLayout<TPlayback>,
+                    OrchestrationStateLayout<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>, TPlayback>> compositeFactory)
+            where TPlayback : unmanaged
         {
-            var tables = new OrchestrationIdentityTable[sources.Length + 1];
-            for (int programIndex = 0; programIndex < sources.Length; programIndex++)
-                tables[programIndex] = sources[programIndex].Content.Identities;
-            tables[sources.Length] = defaults.Identities;
-            FrozenOrchestrationIdentities identities = FrozenOrchestrationIdentities.Prepare(tables, rosterTexts);
-            ReadOnlyMemory<int> defaultMapping = identities.LocalToShared(sources.Length);
+            OrchestrationExecutionStateCapacity capacity =
+                OrchestrationExecutionFrames<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>
+                    .PrepareCapacity(Programs.Span, executionFrameCount);
+            int characterCount = CharacterValueDefaults.Length;
+            var blackboard = blackboardFactory(Identity, numericProfile, targetAbi,
+                characterCount, characterCount);
+            var execution = executionFactory(Identity, numericProfile, targetAbi,
+                capacity.ValueCount, capacity.FrameCount, capacity.OperationCount, 1, capacity.ValueCount);
+            return compositeFactory(Identity, numericProfile, targetAbi,
+                blackboard, execution, timelineLayout);
+        }
+
+        public static OrchestrationActorPreparation<TScalar, TVector2, TVector3, TYaw, TQuaternion> Prepare(
+            FrozenOrchestrationIdentities identities,
+            ReadOnlySpan<OrchestrationActorProgramSource<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>> sources,
+            ReadOnlySpan<int> dependencyIdentityTableIndices,
+            OrchestrationBlackboardDefaults<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> defaults,
+            int defaultIdentityTableIndex)
+        {
+            ReadOnlyMemory<int> defaultMapping = identities.LocalToShared(defaultIdentityTableIndex);
             var projected = new Dictionary<(int Contract, int Field), OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>();
             foreach (ref readonly OrchestrationBlackboardDefault<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> value in defaults.Values.Span)
             {
@@ -70,7 +101,7 @@ namespace BTSMTL.Orchestration
             for (int programIndex = 0; programIndex < sources.Length; programIndex++)
             {
                 OrchestrationGraphContent<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> content = sources[programIndex].Content;
-                ReadOnlySpan<int> mapping = identities.LocalToShared(programIndex).Span;
+                ReadOnlySpan<int> mapping = identities.LocalToShared(sources[programIndex].IdentityTableIndex).Span;
                 foreach (ref readonly OrchestrationGraphBlackboardBinding binding in content.GeneratedBlackboards.Span)
                 {
                     OrchestrationBlackboardSlot descriptor = content.Program.BlackboardSlots.Span[binding.ValueSlot];
@@ -108,7 +139,7 @@ namespace BTSMTL.Orchestration
             for (int programIndex = 0; programIndex < sources.Length; programIndex++)
             {
                 OrchestrationGraphContent<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> content = sources[programIndex].Content;
-                ReadOnlySpan<int> mapping = identities.LocalToShared(programIndex).Span;
+                ReadOnlySpan<int> mapping = identities.LocalToShared(sources[programIndex].IdentityTableIndex).Span;
                 var overrides = new OrchestrationDefaultValue<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>[content.GeneratedBlackboards.Length];
                 var characterMapping = new int[content.Program.DefaultValues.Length];
                 Array.Fill(characterMapping, -1);
@@ -130,7 +161,7 @@ namespace BTSMTL.Orchestration
                         characterMapping[valueSlot] < 0)
                         throw new InvalidOperationException($"图 '{content.Identity.GraphId}' 的 Character 黑板槽 '{valueSlot}' 缺少共享字段绑定。");
                 graphs[programIndex] = PreparedOrchestrationGraph<TScalar, TVector2, TVector3, TYaw, TQuaternion>.Prepare(
-                    content, identities, programIndex, overrides);
+                    content, identities, sources[programIndex].IdentityTableIndex, overrides);
                 programs[programIndex] = new OrchestrationProgram<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>(graphs[programIndex].Program);
                 characterMappings[programIndex] = characterMapping;
             }
@@ -141,9 +172,11 @@ namespace BTSMTL.Orchestration
             }
 
             StableHash identity = PreparedIdentity(identities.Identity, defaults.ContentIdentity,
-                sources, characterBlackboards, characterDescriptors, characterMappings);
+                defaultIdentityTableIndex, sources, dependencyIdentityTableIndices,
+                characterBlackboards, characterDescriptors, characterMappings);
             return new OrchestrationActorPreparation<TScalar, TVector2, TVector3, TYaw, TQuaternion>(
-                identities, sources.ToArray(), graphs, programs, characterMappings, characterBlackboards,
+                identities, sources.ToArray(), graphs, programs, characterMappings,
+                dependencyIdentityTableIndices.ToArray(), characterBlackboards,
                 characterDefaults, characterDescriptors, identity);
         }
 
@@ -157,7 +190,9 @@ namespace BTSMTL.Orchestration
         }
 
         static StableHash PreparedIdentity(StableHash identities, StableHash defaults,
+            int defaultIdentityTableIndex,
             ReadOnlySpan<OrchestrationActorProgramSource<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>> sources,
+            ReadOnlySpan<int> dependencyIdentityTableIndices,
             ReadOnlySpan<OrchestrationGraphBlackboardBinding> characterBlackboards,
             ReadOnlySpan<OrchestrationBlackboardSlot> descriptors,
             ReadOnlySpan<ReadOnlyMemory<int>> characterMappings)
@@ -167,10 +202,15 @@ namespace BTSMTL.Orchestration
             Text(hash, "btsmtl-orchestration-actor-preparation/1");
             Text(hash, identities.ToString());
             Text(hash, defaults.ToString());
+            Integer(hash, defaultIdentityTableIndex);
+            Integer(hash, dependencyIdentityTableIndices.Length);
+            for (int dependencyIndex = 0; dependencyIndex < dependencyIdentityTableIndices.Length; dependencyIndex++)
+                Integer(hash, dependencyIdentityTableIndices[dependencyIndex]);
             Integer(hash, sources.Length);
             for (int programIndex = 0; programIndex < sources.Length; programIndex++)
             {
                 Text(hash, sources[programIndex].ContentIdentity.ToString());
+                Integer(hash, sources[programIndex].IdentityTableIndex);
                 ReadOnlySpan<int> mapping = characterMappings[programIndex].Span;
                 Integer(hash, mapping.Length);
                 for (int valueSlot = 0; valueSlot < mapping.Length; valueSlot++)
