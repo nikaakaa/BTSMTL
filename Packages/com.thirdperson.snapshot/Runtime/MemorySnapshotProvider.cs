@@ -119,7 +119,7 @@ namespace ThirdPersonSimulation.Snapshots
             return page.World;
         }
 
-        public TSnapshot CaptureStepSnapshot(in TState state) =>
+        protected TSnapshot CaptureParticipantStepSnapshot(in TState state) =>
             Capture((CapturePage)Acquire(m_Steps), m_StepParticipants, in state, null, true).Snapshot;
 
         public SimulationSessionCheckpoint CaptureCheckpoint(in TState state,
@@ -200,6 +200,9 @@ namespace ThirdPersonSimulation.Snapshots
     {
         public FPMemorySnapshotProvider() : base((content, schema, storage) => new FPGameplay.SimulationWorldSnapshot(content, schema, storage),
             identity => new FPGameplay.FPSimulationSessionSnapshot(identity), true) { }
+
+        public FPGameplay.FPSimulationSessionSnapshot CaptureStepSnapshot(in FPGameplay.SimulationWorldStateSet state) =>
+            CaptureParticipantStepSnapshot(in state);
 
         public void PrepareCheckpointStorage(SimulationSessionCompositionDescriptor descriptor, FPGameplay.FPCharacterRuntime runtime,
             IReadOnlyList<ISimulationPipelineStateParticipant> participants, in GameplayEffectSessionCapacity capacity, int stepSnapshotCapacity) =>

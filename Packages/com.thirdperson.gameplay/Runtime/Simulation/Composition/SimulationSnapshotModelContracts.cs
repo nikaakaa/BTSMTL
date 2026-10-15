@@ -9,8 +9,6 @@ namespace ThirdPersonSimulation
     {
         TState State { get; }
         void SetPrepared(TState state);
-        void RetainStateStorage();
-        void ReleaseStateStorage();
     }
 
     public interface ISimulationSessionSnapshot<TWorld> : IValueResources

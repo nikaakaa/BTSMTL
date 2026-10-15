@@ -49,16 +49,6 @@ namespace ThirdPersonSimulation.FPGameplay
         internal EquipmentPassiveHandles PrepareReadPassiveEffectHandles(int count) =>
             m_PreparedReadOwner.EquipmentState.Storage.AcquirePassiveHandles(count);
 
-        internal void RestorePreparedEquipmentSlot(EquipmentStateAggregate state, int index,
-            in EquipmentSlotState value) => state.SetSlot(index, value);
-
-        internal void RestorePreparedEquipmentLocalState(EquipmentStateAggregate state, int index,
-            in EquipmentLocalStateValue value) => state.RestoreLocalState(index, in value);
-
-        internal void RestorePreparedEquipmentChanges(EquipmentStateAggregate state,
-            in PendingEquipmentChange pending, in PendingEquipmentChange resolved) =>
-            state.RestoreChanges(pending, resolved);
-
         internal SimulationGameplayEffectState PrepareReadGameplayEffectOwner() =>
             m_PreparedReadOwner.GameplayEffectState.PrepareReadState();
     }
