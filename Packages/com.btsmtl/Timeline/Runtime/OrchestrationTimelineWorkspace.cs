@@ -155,7 +155,9 @@ namespace BTSMTL.Timeline.Runtime
         internal int EvaluationExitCapacity { get; }
         internal ulong NextSequence() => checked(++m_Sequence);
 
-        internal ref readonly OrchestrationTimelineInvocation<TTime> CurrentInvocation
+        public bool HasCurrentInvocation => m_InvocationDepth > 0;
+
+        public ref readonly OrchestrationTimelineInvocation<TTime> CurrentInvocation
         {
             get
             {
@@ -164,7 +166,7 @@ namespace BTSMTL.Timeline.Runtime
             }
         }
 
-        internal ref readonly OrchestrationTimelineStart<TTime> CurrentStart =>
+        public ref readonly OrchestrationTimelineStart<TTime> CurrentStart =>
             ref Operations[CurrentInvocation.Token.PlaybackSlot].Proposed.Start;
 
         internal void EnterInvocation(int playbackSlot, int invocationIndex)
