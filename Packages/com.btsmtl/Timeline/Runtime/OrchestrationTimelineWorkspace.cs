@@ -157,17 +157,23 @@ namespace BTSMTL.Timeline.Runtime
 
         public bool HasCurrentInvocation => m_InvocationDepth > 0;
 
-        public ref readonly OrchestrationTimelineInvocation<TTime> CurrentInvocation
+        public int InvocationDepth => m_InvocationDepth;
+
+        public ref readonly OrchestrationTimelineInvocation<TTime> CurrentInvocation =>
+            ref InvocationAt(m_InvocationDepth - 1);
+
+        public ref readonly OrchestrationTimelineInvocation<TTime> InvocationAt(int stackIndex)
         {
-            get
-            {
-                InvocationFrame frame = m_InvocationFrames[m_InvocationDepth - 1];
-                return ref Invocations[checked(frame.PlaybackSlot * InvocationCapacity + frame.InvocationIndex)];
-            }
+            InvocationFrame frame = m_InvocationFrames[stackIndex];
+            return ref Invocations[checked(frame.PlaybackSlot * InvocationCapacity + frame.InvocationIndex)];
         }
 
         public ref readonly OrchestrationTimelineStart<TTime> CurrentStart =>
             ref Operations[CurrentInvocation.Token.PlaybackSlot].Proposed.Start;
+
+        public TTime PreviousTime => Operations[CurrentInvocation.Token.PlaybackSlot].PreviousTime;
+
+        public int PreviousCycle => Operations[CurrentInvocation.Token.PlaybackSlot].PreviousCycle;
 
         internal void EnterInvocation(int playbackSlot, int invocationIndex)
         {

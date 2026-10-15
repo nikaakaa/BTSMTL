@@ -233,6 +233,8 @@ namespace BTSMTL.Timeline.Runtime
             work.BatchSequence = workspace.NextBatchSequence();
             work.Tick = context.Tick;
             work.SourceIdentityId = context.SourceIdentityId;
+            work.PreviousTime = playback.Progress.CursorTime;
+            work.PreviousCycle = playback.Progress.Cycle;
             work.Stop = true;
             work.Proposed.Progress.StopContext = context;
             work.Proposed.Progress.HasStopContext = true;
