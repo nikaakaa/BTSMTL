@@ -66,6 +66,14 @@ namespace BTSMTL.Orchestration
                 ? slot : -1;
         }
 
+        public int FindPersistent(int skillContentId)
+        {
+            for (int slot = 0; slot < Count && m_Frames[slot].ActionInstanceId == 0; slot++)
+                if (m_Frames[slot].SkillContentId == skillContentId)
+                    return slot;
+            return -1;
+        }
+
         public int Insert(OrchestrationExecutionFrameState frame, ReadOnlySpan<TValue> defaultValues)
         {
             int count = Count;
