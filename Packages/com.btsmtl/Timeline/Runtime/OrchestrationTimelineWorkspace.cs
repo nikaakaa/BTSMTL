@@ -106,7 +106,7 @@ namespace BTSMTL.Timeline.Runtime
         internal readonly bool[] SelectedTrees;
         readonly InvocationFrame[] m_InvocationFrames;
         int m_InvocationDepth;
-        ulong m_Sequence;
+        ulong m_BatchSequence;
 
         public OrchestrationTimelineWorkspace(
             ReadOnlySpan<OrchestrationTimelinePreparedContent<TTime>> contents,
@@ -153,7 +153,7 @@ namespace BTSMTL.Timeline.Runtime
         internal int BoundaryCapacity { get; }
         internal int InvocationCapacity { get; }
         internal int EvaluationExitCapacity { get; }
-        internal ulong NextSequence() => checked(++m_Sequence);
+        internal ulong NextBatchSequence() => checked(++m_BatchSequence);
 
         public bool HasCurrentInvocation => m_InvocationDepth > 0;
 
@@ -183,7 +183,7 @@ namespace BTSMTL.Timeline.Runtime
         internal struct Operation
         {
             internal OrchestrationTimelinePlaybackState<TTime> Proposed;
-            internal ulong Sequence;
+            internal ulong BatchSequence;
             internal ulong Tick;
             internal int SourceIdentityId;
             internal bool Stop;

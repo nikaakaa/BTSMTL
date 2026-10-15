@@ -94,7 +94,8 @@ namespace BTSMTL.Timeline.Runtime
             ref OrchestrationTimelineWorkspace<TTime>.Operation work = ref workspace.Operations[slot];
             work = default;
             work.Proposed = playback;
-            work.Sequence = workspace.NextSequence();
+            work.Proposed.InvocationSequence = checked(playback.InvocationSequence + 1);
+            work.BatchSequence = workspace.NextBatchSequence();
             work.Tick = step.Tick;
             work.SourceIdentityId = step.SourceIdentityId;
             work.Paused = step.Paused || clock.IsZero(step.Rate);
@@ -193,7 +194,7 @@ namespace BTSMTL.Timeline.Runtime
             ReadOnlySpan<TimelineScheduledInvocation<TTime>> treeRequests = workspace.Scheduled.AsSpan(
                 work.ScheduledTreeOffset, work.ScheduledTreeCount);
             for (int i = 0; i < work.MarkerCount; i++)
-                AppendInvocation(content, slot, in work.Proposed.Start, work.Sequence,
+                AppendInvocation(content, slot, in work.Proposed.Start,
                     in workspace.Scheduled[invocationOffset + i], workspace, ref work.InvocationCount);
             for (int i = 0; i < treeRequests.Length; i++)
             {
@@ -201,7 +202,7 @@ namespace BTSMTL.Timeline.Runtime
                 if (request.Hook != OrchestrationTimelineHook.Root ||
                     TimelineRuntimeScheduling<TTime, TClock>.IsActive(request.Ordinal, request.Cycle,
                         request.Time, request.Hook, treeRequests, activeTrees, previousCycle))
-                    AppendInvocation(content, slot, in work.Proposed.Start, work.Sequence,
+                    AppendInvocation(content, slot, in work.Proposed.Start,
                         in request, workspace, ref work.InvocationCount);
             }
             bool hasUnexitedDecision = false;
@@ -228,7 +229,8 @@ namespace BTSMTL.Timeline.Runtime
             ref OrchestrationTimelineWorkspace<TTime>.Operation work = ref workspace.Operations[slot];
             work = default;
             work.Proposed = playback;
-            work.Sequence = workspace.NextSequence();
+            work.Proposed.InvocationSequence = checked(playback.InvocationSequence + 1);
+            work.BatchSequence = workspace.NextBatchSequence();
             work.Tick = context.Tick;
             work.SourceIdentityId = context.SourceIdentityId;
             work.Stop = true;
@@ -248,7 +250,7 @@ namespace BTSMTL.Timeline.Runtime
                         content.Clips.Span[branch.ClipOrdinal].SortOrdinal, false,
                         OrchestrationTimelineHook.Destroy, clock.Zero, clock.Zero, clock.Zero,
                         branch.Cycle);
-                    AppendInvocation(content, slot, in playback.Start, work.Sequence,
+                    AppendInvocation(content, slot, in playback.Start,
                         in request, workspace, ref work.InvocationCount);
                 }
             }
@@ -288,22 +290,22 @@ namespace BTSMTL.Timeline.Runtime
         {
             ref OrchestrationTimelinePlaybackState<TTime> playback = ref Playback(candidate, slot);
             ref OrchestrationTimelineWorkspace<TTime>.Operation work = ref workspace.Operations[slot];
-            if (work.Sequence != batch.Sequence || slot != batch.PlaybackSlot)
+            if (work.BatchSequence != batch.Sequence || slot != batch.PlaybackSlot)
                 throw new InvalidOperationException("Timeline completion must use its current batch.");
             Span<OrchestrationTimelineClipOccurrence> pending = TreeExitRequests(candidate, slot);
             if (!work.Stop)
             {
                 workspace.EvaluationExits.AsSpan(checked(slot * workspace.EvaluationExitCapacity),
                     work.EvaluationExitCount).CopyTo(TreeExits(candidate, slot));
-                playback.TreeExitCount = work.EvaluationExitCount;
-                pending.Slice(work.InjectedExitCount, playback.TreeExitRequestCount - work.InjectedExitCount).CopyTo(pending);
-                playback.TreeExitRequestCount -= work.InjectedExitCount;
+                work.Proposed.TreeExitCount = work.EvaluationExitCount;
+                pending.Slice(work.InjectedExitCount, work.Proposed.TreeExitRequestCount - work.InjectedExitCount).CopyTo(pending);
+                work.Proposed.TreeExitRequestCount -= work.InjectedExitCount;
             }
             ReadOnlySpan<OrchestrationTimelineClipOccurrence> produced = workspace.ProducedExits.AsSpan(
                 checked(slot * m_Capacity.TreeExitRequestsPerPlayback), work.ProducedExitCount);
-            produced.CopyTo(pending.Slice(playback.TreeExitRequestCount));
-            playback.TreeExitRequestCount += produced.Length;
-            playback.Progress = work.Proposed.Progress;
+            produced.CopyTo(pending.Slice(work.Proposed.TreeExitRequestCount));
+            work.Proposed.TreeExitRequestCount += produced.Length;
+            playback = work.Proposed;
         }
 
         public static TTime ReadTime(in OrchestrationTimelineInvocation<TTime> invocation) => invocation.Time;
@@ -320,20 +322,20 @@ namespace BTSMTL.Timeline.Runtime
         static OrchestrationTimelineBatch<TTime> Batch(int slot, OrchestrationTimelineWorkspace<TTime> workspace)
         {
             ref OrchestrationTimelineWorkspace<TTime>.Operation work = ref workspace.Operations[slot];
-            return new OrchestrationTimelineBatch<TTime>(slot, work.Sequence, work.Proposed.Progress.State,
+            return new OrchestrationTimelineBatch<TTime>(slot, work.BatchSequence, work.Proposed.Progress.State,
                 workspace.Invocations.AsSpan(checked(slot * workspace.InvocationCapacity), work.InvocationCount));
         }
 
         static void AppendInvocation(OrchestrationTimelinePreparedContent<TTime> content,
-            int slot, in OrchestrationTimelineStart<TTime> start, ulong sequence,
+            int slot, in OrchestrationTimelineStart<TTime> start,
             in TimelineScheduledInvocation<TTime> request, OrchestrationTimelineWorkspace<TTime> workspace, ref int count)
         {
             OrchestrationExecutionEntry entry = request.Marker
                 ? content.MarkerEntries.Span[request.Ordinal]
                 : content.ClipEntries.Span[request.Ordinal].Entry(request.Hook);
-            var token = new OrchestrationTimelineInvocationToken(slot, sequence,
-                start.PlaybackIdentity, request.Ordinal, request.Cycle, request.Marker);
             ref OrchestrationTimelineWorkspace<TTime>.Operation work = ref workspace.Operations[slot];
+            var token = new OrchestrationTimelineInvocationToken(slot, work.Proposed.InvocationSequence,
+                start.PlaybackIdentity, request.Ordinal, request.Cycle, request.Marker);
             TClock clock = default;
             TTime startFraction = work.Stop ? clock.Zero : TimelineRuntimeScheduling<TTime, TClock>.Fraction(
                 work.PreviousTime, work.RequestedAdvance, work.PreviousCycle,

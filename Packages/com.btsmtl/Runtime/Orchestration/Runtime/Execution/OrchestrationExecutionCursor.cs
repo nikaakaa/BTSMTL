@@ -319,7 +319,8 @@ namespace BTSMTL.Orchestration
             switch (operation.Code)
             {
                 case OrchestrationOperationCode.Timeline:
-                    ForceStopLeaf(operationIndex, context);
+                    if (m_Operations[operationIndex].TimelineRuntimeHandle != 0)
+                        ForceStopLeaf(operationIndex, context);
                     break;
                 case OrchestrationOperationCode.Extension:
                     if ((m_Bindings.Contract(operation.ExtensionBindingIndex).Invocations &

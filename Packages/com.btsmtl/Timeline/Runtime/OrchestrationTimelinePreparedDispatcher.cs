@@ -49,29 +49,26 @@ namespace BTSMTL.Timeline.Runtime
             else
                 slot = m_Runtime.FindPlayback(candidate, playbackIdentity);
             ref OrchestrationTimelinePlaybackState<TTime> playback = ref m_Runtime.Playback(candidate, slot);
-            if (playback.Progress.State != OrchestrationTimelinePlaybackStatus.Running)
-                return Result(playback.Progress.State);
             OrchestrationTimelineStep<TTime> step = m_Bindings.Step(operationIndex,
                 in playback.Start, tick, inputs, ref context);
             OrchestrationTimelineBatch<TTime> batch = m_Runtime.BeginAdvance(candidate, slot, step, m_Workspace);
-            OrchestrationOperationResult execution = cursor.ExecuteTimelineBatch(batch);
-            if (execution == OrchestrationOperationResult.Failure)
-                return execution;
+            cursor.ExecuteTimelineBatch(batch);
             m_Runtime.Complete(candidate, slot, in batch, m_Workspace);
+            if (batch.Status == OrchestrationTimelinePlaybackStatus.Completed)
+            {
+                m_Runtime.ReleasePlayback(candidate, playbackIdentity);
+                playbackIdentity = 0;
+            }
             return Result(batch.Status);
         }
 
         public OrchestrationStopStatus Stop(
             ref OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3, TQuaternion, TMath, TValues, TContext> cursor,
-            OrchestrationStateView candidate, int operationIndex, ulong playbackIdentity,
+            OrchestrationStateView candidate, int operationIndex, ref ulong playbackIdentity,
             in OrchestrationStopContext stopContext, bool force, ulong tick, ref TContext context)
         {
             int slot = m_Runtime.FindPlayback(candidate, playbackIdentity);
             ref OrchestrationTimelinePlaybackState<TTime> playback = ref m_Runtime.Playback(candidate, slot);
-            if (playback.Progress.State == OrchestrationTimelinePlaybackStatus.Completed ||
-                playback.Progress.State == OrchestrationTimelinePlaybackStatus.Stopped ||
-                playback.Progress.State == OrchestrationTimelinePlaybackStatus.Failed)
-                return OrchestrationStopStatus.Completed;
             var stop = new OrchestrationTimelineStopContext
             {
                 Cause = stopContext.Cause,
@@ -79,10 +76,10 @@ namespace BTSMTL.Timeline.Runtime
                 SourceIdentityId = playback.Start.SourceIdentityId
             };
             OrchestrationTimelineBatch<TTime> batch = m_Runtime.BeginStop(candidate, slot, stop, force, m_Workspace);
-            OrchestrationOperationResult execution = cursor.ExecuteTimelineBatch(batch);
-            if (execution == OrchestrationOperationResult.Failure)
-                return OrchestrationStopStatus.Failed;
+            cursor.ExecuteTimelineBatch(batch);
             m_Runtime.Complete(candidate, slot, in batch, m_Workspace);
+            m_Runtime.ReleasePlayback(candidate, playbackIdentity);
+            playbackIdentity = 0;
             return OrchestrationStopStatus.Completed;
         }
 

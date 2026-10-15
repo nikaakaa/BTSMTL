@@ -22,7 +22,7 @@ namespace BTSMTL.Orchestration
 
         OrchestrationStopStatus Stop(
             ref OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3, TQuaternion, TMath, TValues, TContext> cursor,
-            OrchestrationStateView candidate, int operationIndex, ulong playbackIdentity,
+            OrchestrationStateView candidate, int operationIndex, ref ulong playbackIdentity,
             in OrchestrationStopContext stopContext,
             bool force, ulong tick, ref TContext context);
 

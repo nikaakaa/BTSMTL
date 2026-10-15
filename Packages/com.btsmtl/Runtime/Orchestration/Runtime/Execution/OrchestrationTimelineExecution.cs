@@ -24,7 +24,7 @@ namespace BTSMTL.Orchestration
         OrchestrationStopStatus StopTimeline(int operationIndex,
             OrchestrationStopContext context, bool force) =>
             m_TimelineDispatcher.Stop(ref this, m_TimelineState, operationIndex,
-                m_Operations[operationIndex].TimelineRuntimeHandle, in context,
+                ref m_Operations[operationIndex].TimelineRuntimeHandle, in context,
                 force, m_Input.Tick, ref m_Context);
 
         TValue ReadTimelineTime() => m_TimelineDispatcher.ReadTime();
@@ -33,7 +33,7 @@ namespace BTSMTL.Orchestration
             m_ClipExitDispatcher.RequestClipExit(m_TimelineState, operationIndex,
                 m_Input.Tick, ref m_Context);
 
-        public OrchestrationOperationResult ExecuteTimelineBatch<TTime>(
+        public void ExecuteTimelineBatch<TTime>(
             OrchestrationTimelineBatch<TTime> batch) where TTime : unmanaged
         {
             ReadOnlySpan<OrchestrationTimelineInvocation<TTime>> invocations = batch.Invocations;
@@ -70,9 +70,8 @@ namespace BTSMTL.Orchestration
                     }
                 }
                 if (result == OrchestrationOperationResult.Failure)
-                    return result;
+                    throw new InvalidOperationException($"Timeline playback '{invocation.Token.PlaybackIdentity}' clip '{invocation.Token.ClipOrdinal}' hook '{invocation.Hook}' failed.");
             }
-            return OrchestrationOperationResult.Success;
         }
     }
 }
