@@ -119,6 +119,12 @@ namespace ThirdPersonSimulation
     [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
     public sealed class ValueStorageIgnoreAttribute : Attribute { }
 
+    [AttributeUsage(AttributeTargets.Struct)]
+    public sealed class ValueStateLayoutAttribute : Attribute { }
+
+    [AttributeUsage(AttributeTargets.Method)]
+    public sealed class ValueStateLayoutFactoryAttribute : Attribute { }
+
     [AttributeUsage(AttributeTargets.Class, Inherited = false)]
     public sealed class ValueVariantAttribute : Attribute
     {

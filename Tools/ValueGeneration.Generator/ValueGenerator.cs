@@ -73,6 +73,8 @@ namespace ThirdPerson.ValueGeneration.Generator
             var snapshotSources = new Dictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
             var textCapacityStorage = new Dictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
             var implementationIdentities = new Dictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
+            var stateLayouts = new Dictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
+            var stateLayoutFactories = new Dictionary<string, IMethodSymbol>(StringComparer.Ordinal);
             foreach (BaseTypeDeclarationSyntax declaration in receiver.Types)
             {
                 var type = (INamedTypeSymbol)context.Compilation.GetSemanticModel(declaration.SyntaxTree)
@@ -90,6 +92,11 @@ namespace ThirdPerson.ValueGeneration.Generator
                     textCapacityStorage[Identity(type)] = type;
                 if (HasAttribute(type, "ThirdPersonSimulation.ValueImplementationIdentityAttribute"))
                     implementationIdentities[Identity(type)] = type;
+                if (HasAttribute(type, StateLayoutAttribute))
+                    stateLayouts[Identity(type)] = type;
+                foreach (IMethodSymbol method in type.GetMembers().OfType<IMethodSymbol>().Where(method =>
+                    HasAttribute(method, StateLayoutFactoryAttribute)))
+                    stateLayoutFactories[Identity(method)] = method;
                 if (HasAttribute(type, ValueOperationsAttribute) && !HasAttribute(type, UnionTemplateAttribute))
                     valueRecords[Identity(type)] = type;
                 if (HasAttribute(type, ValueStoragePurposeAttribute))
@@ -154,6 +161,10 @@ namespace ThirdPerson.ValueGeneration.Generator
                 EmitValueSnapshot(context, owner);
             foreach (INamedTypeSymbol owner in textCapacityStorage.Values.OrderBy(t => Identity(t), StringComparer.Ordinal))
                 EmitTextReferenceCapacity(context, owner);
+            foreach (INamedTypeSymbol layout in stateLayouts.Values.OrderBy(type => Identity(type), StringComparer.Ordinal))
+                EmitStateLayout(context, layout);
+            if (stateLayoutFactories.Count != 0)
+                EmitStateLayoutFactories(context, stateLayoutFactories.Values);
         }
 
         static void EmitStorageOwner(GeneratorExecutionContext context, INamedTypeSymbol owner)
