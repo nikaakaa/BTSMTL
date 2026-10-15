@@ -784,15 +784,20 @@ namespace ThirdPersonSimulation
         int m_Count;
         long m_CharacterCount;
 
-        public CanonicalTextReferences(int entryCapacity, CanonicalTextStorage storage)
+        public CanonicalTextReferences(int entryCapacity)
         {
             m_Entries = new CanonicalTextValue[entryCapacity];
             m_Buckets = new int[checked(entryCapacity * 2 + 1)];
+        }
+
+        public CanonicalTextReferences(int entryCapacity, CanonicalTextStorage storage) : this(entryCapacity)
+        {
             m_Storage = storage;
             ReceptionResolver = new TextReception(this);
         }
 
         public int Count => m_Count;
+        public int Capacity => m_Entries.Length;
         public long CharacterCount => m_CharacterCount;
         public CanonicalTextStorage Storage => m_Storage;
         public ICanonicalTextResolver ReceptionResolver { get; }
@@ -835,12 +840,27 @@ namespace ThirdPersonSimulation
             return captured;
         }
 
+        public int CaptureTextIndex(in CanonicalTextValue value)
+        {
+            if (!TryCaptureText(in value, out _, out int textIndex, out CanonicalTextCapacityFailure failure))
+                throw new CanonicalTextCapacityException(in failure);
+            return textIndex;
+        }
+
+        public CanonicalTextValue ReadText(int textIndex) =>
+            textIndex == 0 ? CanonicalTextValue.Empty : m_Entries[textIndex - 1];
+
         public bool TryCaptureText(in CanonicalTextValue value, out CanonicalTextValue captured,
+            out CanonicalTextCapacityFailure failure) =>
+            TryCaptureText(in value, out captured, out _, out failure);
+
+        bool TryCaptureText(in CanonicalTextValue value, out CanonicalTextValue captured, out int textIndex,
             out CanonicalTextCapacityFailure failure)
         {
             if (value.IsEmpty)
             {
                 captured = value;
+                textIndex = 0;
                 failure = default;
                 return true;
             }
@@ -852,16 +872,19 @@ namespace ThirdPersonSimulation
             if (index >= 0)
             {
                 captured = m_Entries[index];
+                textIndex = index + 1;
                 failure = default;
                 return true;
             }
             if (!TryAdmit(out failure))
             {
                 captured = default;
+                textIndex = 0;
                 return false;
             }
             StoreText(in value, bucket);
             captured = value;
+            textIndex = m_Count;
             return true;
         }
 
