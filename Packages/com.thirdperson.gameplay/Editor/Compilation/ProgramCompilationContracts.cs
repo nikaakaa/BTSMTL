@@ -61,14 +61,6 @@ namespace ThirdPersonSimulation
         Value = 6
     }
 
-    public enum ProgramAbortPolicy : byte
-    {
-        None = 0,
-        Self = 1,
-        LowerPriority = 2,
-        Both = 3
-    }
-
     public sealed partial class ProgramControlFlowEdge
     {
         public ProgramControlFlowEdge(
@@ -80,7 +72,7 @@ namespace ThirdPersonSimulation
             ProgramControlFlowKind kind,
             int order,
             int priority,
-            ProgramAbortPolicy abortPolicy,
+            OrchestrationAbortPolicy abortPolicy,
             bool hasCondition,
             OperationHandle condition)
         {
@@ -106,7 +98,7 @@ namespace ThirdPersonSimulation
         public ProgramControlFlowKind Kind { get; }
         public int Order { get; }
         public int Priority { get; }
-        public ProgramAbortPolicy AbortPolicy { get; }
+        public OrchestrationAbortPolicy AbortPolicy { get; }
         public bool HasCondition { get; }
         public OperationHandle Condition { get; }
 
