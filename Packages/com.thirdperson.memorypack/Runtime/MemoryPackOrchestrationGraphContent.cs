@@ -41,12 +41,12 @@ namespace ThirdPersonSimulation.Serialization
         }
 
         static byte[] WriteOrchestrationPayload(byte[] payload) =>
-            MemoryPackContent.Serialize((payload, SimulationCanonicalPayloadHash.Compute(payload)));
+            MemoryPackContent.Serialize((payload, StableHash.Compute(payload)));
 
         static byte[] ReadOrchestrationPayload(byte[] bytes)
         {
             var content = MemoryPackContent.Deserialize<(byte[] Payload, StableHash Hash)>(bytes);
-            if (SimulationCanonicalPayloadHash.Compute(content.Payload) != content.Hash)
+            if (StableHash.Compute(content.Payload) != content.Hash)
                 throw new InvalidDataException("图产物内容摘要不匹配，请重新编译。");
             return content.Payload;
         }

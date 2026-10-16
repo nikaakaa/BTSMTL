@@ -6,14 +6,6 @@ namespace ThirdPersonSimulation
 {
     public static class SimulationIdentity
     {
-        public static CanonicalTextValue Require(CanonicalTextValue value, string parameter)
-        {
-            CanonicalTextValue identity = value.Trim();
-            if (identity.IsEmpty)
-                throw new ArgumentException("Identity is required.", parameter);
-            return identity;
-        }
-
         public static string Require(string value, string parameter)
         {
             if (string.IsNullOrWhiteSpace(value))

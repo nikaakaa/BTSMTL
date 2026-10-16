@@ -47,13 +47,6 @@ namespace ThirdPersonSimulation
     public sealed class ValueTextAttribute : Attribute { }
 
     [AttributeUsage(AttributeTargets.Struct | AttributeTargets.Class)]
-    public sealed class ValueTextCapacityAttribute : Attribute
-    {
-        public ValueTextCapacityAttribute(Type valueType) => ValueType = valueType;
-        public Type ValueType { get; }
-    }
-
-    [AttributeUsage(AttributeTargets.Struct | AttributeTargets.Class)]
     public sealed class ValueBufferAttribute : Attribute { }
 
     [AttributeUsage(AttributeTargets.Struct | AttributeTargets.Class)]

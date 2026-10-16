@@ -66,7 +66,7 @@ namespace ThirdPersonSimulation.Serialization
 
         public static StableHash ComputeContentHash(IReadOnlyList<TimelineContentUnit> timelines,
             TimelineContentParameterCodecs codecs) =>
-            SimulationCanonicalPayloadHash.Compute(MemoryPackContent.Serialize(timelines, codecs));
+            StableHash.Compute(MemoryPackContent.Serialize(timelines, codecs));
 
     }
 }

@@ -58,30 +58,6 @@ namespace ThirdPersonSimulation
             throw new InvalidOperationException($"Character State field '{field}' is not supported.");
         }
 
-        public static GameplayAbilityProviderBindingEntry BuildProvider(string controlDefinitionIdentity)
-        {
-            string owner = Owner(controlDefinitionIdentity);
-            var fields = new[] { Position, Velocity, VerticalVelocity, BodyYaw, Grounded, MoveFacingAngle };
-            var members = new GameplayAbilityProviderMemberBinding[fields.Length];
-            for (int i = 0; i < fields.Length; i++)
-                members[i] = new GameplayAbilityProviderMemberBinding(GameplayAbilityProviderKind.CharacterState,
-                    owner, $"{MemberPrefix}:{fields[i]}", ProviderValueKind(fields[i]), MemberRevision,
-                    $"control-state:{controlDefinitionIdentity}:{fields[i]}");
-            return new GameplayAbilityProviderBindingEntry(GameplayAbilityProviderKind.CharacterState,
-                owner, GameplayAbilityProviderContractVersions.CharacterState, members);
-        }
-
-        public static GameplayAbilityProviderValueKind ProviderValueKind(string field) =>
-            string.Equals(field, MoveFacingAngle, StringComparison.Ordinal)
-                ? GameplayAbilityProviderValueKind.Number
-                : ValueKind(field) switch
-                {
-                    SemanticValueKind.Boolean => GameplayAbilityProviderValueKind.Boolean,
-                    SemanticValueKind.Number => GameplayAbilityProviderValueKind.Number,
-                    SemanticValueKind.Vector3 => GameplayAbilityProviderValueKind.Vector3,
-                    SemanticValueKind.Yaw => GameplayAbilityProviderValueKind.Yaw,
-                    _ => throw new InvalidOperationException($"Character State field '{field}' is not supported.")
-                };
     }
 
     public static class CharacterSkillProviderOwners

@@ -22,13 +22,13 @@ namespace ThirdPersonSimulation.Serialization
         }
 
         public static StableHash ComputeIdentity(string sourceId, PublishedGameplayConfiguration configuration) =>
-            SimulationCanonicalPayloadHash.Compute(MemoryPackContent.Serialize(
+            StableHash.Compute(MemoryPackContent.Serialize(
                 (Format, sourceId, GameplayConfigGeneratedContract.SchemaIdentity, configuration)));
 
         public static GameplayConfigurationRuntimeBinding CreateBinding(IEnumerable<GameplayConfigurationSourceContent> sources)
         {
             GameplayConfigurationSourceContent[] ordered = sources.OrderBy(source => source.SourceId, StringComparer.Ordinal).ToArray();
-            StableHash contentHash = SimulationCanonicalPayloadHash.Compute(MemoryPackContent.Serialize(
+            StableHash contentHash = StableHash.Compute(MemoryPackContent.Serialize(
                 ("gameplay-configuration-binding.memorypack/1", ordered)));
             return new GameplayConfigurationRuntimeBinding(ordered, contentHash);
         }
