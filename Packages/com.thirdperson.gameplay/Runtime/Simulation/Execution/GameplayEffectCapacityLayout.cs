@@ -1,6 +1,4 @@
 using System;
-using System.Collections.Generic;
-using System.Collections.ObjectModel;
 
 namespace ThirdPersonSimulation
 {
@@ -127,27 +125,8 @@ namespace ThirdPersonSimulation
         }
     }
 
-    public readonly struct GameplayEffectCapacityRow
-    {
-        public GameplayEffectCapacityRow(GameplayEffectCapacityDimension dimension, int value,
-            string inputOwner, string formula)
-        {
-            Dimension = dimension;
-            Value = value;
-            InputOwner = inputOwner;
-            Formula = formula;
-        }
-
-        public GameplayEffectCapacityDimension Dimension { get; }
-        public int Value { get; }
-        public string InputOwner { get; }
-        public string Formula { get; }
-    }
-
     public sealed class GameplayEffectRuntimeCapacityLayout
     {
-        readonly ReadOnlyCollection<GameplayEffectCapacityRow> m_Rows;
-
         GameplayEffectRuntimeCapacityLayout(StableHash contentRevision,
             GameplayEffectActorCapacity actor, GameplayEffectContentLayout content,
             int sourceWidth, int queryTagWidth, int modifierWidth,
@@ -169,32 +148,6 @@ namespace ThirdPersonSimulation
             TentativeChangeWidth = tentativeChangeWidth;
             FailureOutputReservation = failureOutputReservation;
             SourceTagRemovalReservation = sourceTagRemovalReservation;
-            m_Rows = Array.AsReadOnly(new[]
-            {
-                Row(GameplayEffectCapacityDimension.DeclarationVersion, Actor.DeclarationVersion, "CharacterGameplayEffectProfile", "GameplayEffectActorCapacity.FormatVersion"),
-                Row(GameplayEffectCapacityDimension.ActiveEffects, Actor.ActiveEffects, "CharacterGameplayEffectProfile", "Actor.ActiveEffects"),
-                Row(GameplayEffectCapacityDimension.CommandsPerTick, Actor.CommandsPerTick, "CharacterGameplayEffectProfile", "Actor.CommandsPerTick; root Apply/Remove admission"),
-                Row(GameplayEffectCapacityDimension.LifecycleExecutionsPerTick, Actor.LifecycleExecutionsPerTick, "CharacterGameplayEffectProfile", "Actor.LifecycleExecutionsPerTick; accepted Period executions"),
-                Row(GameplayEffectCapacityDimension.ExternalTagSources, Actor.ExternalTagSources, "CharacterGameplayEffectProfile", "Actor.ExternalTagSources; Action, Equipment and Literal sources except exact Literal(initial)"),
-                Row(GameplayEffectCapacityDimension.TagsPerExternalSource, Actor.TagsPerExternalSource, "CharacterGameplayEffectProfile", "Actor.TagsPerExternalSource"),
-                Row(GameplayEffectCapacityDimension.SourceTagSnapshotEntries, Actor.SourceTagSnapshotEntries, "CharacterGameplayEffectProfile", "Actor.SourceTagSnapshotEntries >= QueryTagWidth; explicit Source snapshot admission"),
-                Row(GameplayEffectCapacityDimension.SourceEntries, SourceWidth, "Profile / Character / Action / Equipment / Literal / Effect", "1 Character source + ActiveEffects + ExternalTagSources"),
-                Row(GameplayEffectCapacityDimension.QueryTagEntries, QueryTagWidth, "Profile / content GrantedTags", "InitialTagCount + ActiveEffects * MaximumGrantedTags + ExternalTagSources * TagsPerExternalSource"),
-                Row(GameplayEffectCapacityDimension.FrozenTagEntries, FrozenTagWidth, "GameplayTagCatalog", "TagCount"),
-                Row(GameplayEffectCapacityDimension.ModifierEntries, ModifierWidth, "Profile / Effect component layout", "ActiveEffects * MaximumPersistentModifiers"),
-                Row(GameplayEffectCapacityDimension.AttributeEntries, AttributeWidth, "Gameplay Attribute registry", "AttributeCount"),
-                Row(GameplayEffectCapacityDimension.ParameterEntries, ParameterWidth, "Effect declarations", "max(ParameterIds.Count)"),
-                Row(GameplayEffectCapacityDimension.SourceCaptureEntries, SourceCaptureWidth, "Additional closure", "max(Source Attribute capture union width)"),
-                Row(GameplayEffectCapacityDimension.TargetCaptureEntries, TargetCaptureWidth, "Effect declarations", "max(Target Attribute capture width)"),
-                Row(GameplayEffectCapacityDimension.AdditionalApplications, AdditionalQueueWidth, "Profile / Additional closure", "CommandsPerTick * max(ApplicationAdditional, ActiveEffects * RemovalAdditional) + LifecycleExecutionsPerTick * PeriodAdditional + ActiveEffects * RemovalAdditional"),
-                Row(GameplayEffectCapacityDimension.ApplicationsPerTick, ApplicationsPerTick, "Profile / Additional closure", "CommandsPerTick + AdditionalApplications"),
-                Row(GameplayEffectCapacityDimension.ChangesPerTick, Actor.ChangesPerTick, "Profile / mutation admission", "Total GE changes; successful changes <= Actor.ChangesPerTick - FailureOutputReservation - SourceTagRemovalReservation"),
-                Row(GameplayEffectCapacityDimension.TentativeChangeEntries, TentativeChangeWidth, "GE output / content", "Actor.ChangesPerTick + bounded application, lifecycle, active-effect and external-source output records"),
-                Row(GameplayEffectCapacityDimension.FactsPerTick, Actor.FactsPerTick, "Profile / Finalize owner", "Total GE facts; successful facts <= Actor.FactsPerTick - FailureOutputReservation - SourceTagRemovalReservation"),
-                Row(GameplayEffectCapacityDimension.FailureOutputReservation, FailureOutputReservation, "Command admission / once-Tick Advance", "2 * CommandsPerTick + 1; existing output admission reservation"),
-                Row(GameplayEffectCapacityDimension.SourceTagRemovalReservation, SourceTagRemovalReservation, "Action terminal / Equipment and Literal source removal", "(ExternalTagSources + CommandsPerTick) * TagsPerExternalSource; initial external sources plus admitted installations"),
-                Row(GameplayEffectCapacityDimension.PresentationRequestsPerTick, Actor.PresentationRequestsPerTick, "Profile / Cue owner", "Actor.PresentationRequestsPerTick; reserve actual output before mutation"),
-            });
         }
 
         public StableHash ContentRevision { get; }
@@ -215,7 +168,6 @@ namespace ThirdPersonSimulation
         public int SourceTagRemovalReservation { get; }
         public int SuccessfulChangesPerTick => Actor.ChangesPerTick - FailureOutputReservation - SourceTagRemovalReservation;
         public int SuccessfulFactsPerTick => Actor.FactsPerTick - FailureOutputReservation - SourceTagRemovalReservation;
-        public IReadOnlyList<GameplayEffectCapacityRow> Rows => m_Rows;
 
         public static bool TryPrepare(GameplayEffectCatalogData content,
             GameplayEffectContentLayout contentLayout, in GameplayEffectActorCapacity actorCapacity,
@@ -302,8 +254,6 @@ namespace ThirdPersonSimulation
             }
         }
 
-        static GameplayEffectCapacityRow Row(GameplayEffectCapacityDimension dimension, int value,
-            string owner, string formula) => new GameplayEffectCapacityRow(dimension, value, owner, formula);
     }
 
 
