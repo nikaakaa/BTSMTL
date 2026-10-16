@@ -5,7 +5,7 @@ using System.Text.RegularExpressions;
 
 namespace Btsmtl.DependencyGuard;
 
-sealed class SourceGuard(DependencyCatalog catalog, GuardRules rules, string? clientRoot)
+sealed partial class SourceGuard(DependencyCatalog catalog, GuardRules rules, string? clientRoot)
 {
     readonly Dictionary<string, List<Module>> declarations = new(StringComparer.Ordinal);
     readonly HashSet<string> retiredTypes = new(rules.RetiredTypes, StringComparer.Ordinal);
@@ -13,6 +13,8 @@ sealed class SourceGuard(DependencyCatalog catalog, GuardRules rules, string? cl
     readonly HashSet<string> skills = new(StringComparer.OrdinalIgnoreCase);
     readonly List<(string Path, Module Owner, CompilationUnitSyntax Root)> documents = [];
     public int SourceCount => documents.Count;
+    public object[] ScannedSources => documents.Select(document => new
+        { document.Path, Module = document.Owner.Name, Declaration = document.Owner.Path }).Cast<object>().ToArray();
     public string[] RoleNames => roles.Order(StringComparer.Ordinal).ToArray();
     public string[] SkillNames => skills.Order(StringComparer.Ordinal).ToArray();
 
@@ -34,9 +36,10 @@ sealed class SourceGuard(DependencyCatalog catalog, GuardRules rules, string? cl
                 owners.Add(owner);
             }
         }
+        PrepareValueBindings();
         foreach ((string path, Module owner, CompilationUnitSyntax root) in documents)
         {
-            DependencyRule[] applicable = rules.DependencyRules.Where(rule => rule.Applies(owner)).ToArray();
+            DependencyRule[] applicable = catalog.SourceRules(path, owner);
             bool checkNames = GuardRules.Matches(rules.SourceIdentityAssemblies, owner.Name);
             var aliases = root.DescendantNodes().OfType<UsingDirectiveSyntax>().Where(item => item.Alias is not null)
                 .GroupBy(item => item.Alias!.Name.Identifier.ValueText).ToDictionary(group => group.Key, group => Name(group.First().Name!), StringComparer.Ordinal);
@@ -62,10 +65,11 @@ sealed class SourceGuard(DependencyCatalog catalog, GuardRules rules, string? cl
                         Name(item.Name!).EndsWith("OrchestrationOperationCode", StringComparison.Ordinal)))
                     Report("RETIRED_DOMAIN_OPCODE", path, owner, node, $"using static 引用已删除领域指令 {identifier.Identifier.ValueText}。");
                 if (node is UsingDirectiveSyntax usingDirective)
-                    CheckNamespace(Name(usingDirective.Name!), path, owner, node, applicable);
+                    CheckNamespace(Name(usingDirective.Name!), path, owner, usingDirective.Name!, applicable);
                 if (node is NameSyntax or MemberAccessExpressionSyntax)
                 {
                     if (node is SimpleNameSyntax simple && !IsTypeUse(simple)) continue;
+                    if (node is MemberAccessExpressionSyntax access && IsValueReceiver(access.Expression)) continue;
                     string raw = Name(node);
                     if (raw.Length == 0) continue;
                     CheckNamespace(raw, path, owner, node, applicable);
@@ -99,6 +103,7 @@ sealed class SourceGuard(DependencyCatalog catalog, GuardRules rules, string? cl
                     if (roles.Any(role => token.ValueText.Contains(role, StringComparison.OrdinalIgnoreCase)))
                         Report("CONTENT_IDENTITY_IN_CODE", path, owner, token.Parent!, $"共享/模拟标识符含角色名：{token.ValueText}。");
         }
+        CheckTimelineBoundaries();
     }
 
     void ReadAuthorIdentities()
@@ -114,29 +119,49 @@ sealed class SourceGuard(DependencyCatalog catalog, GuardRules rules, string? cl
 
     IEnumerable<string> Resolve(string raw, int arity, SyntaxNode node, Dictionary<string, string> aliases, string[] imports)
     {
+        ISymbol? symbol = valueBindings[node.SyntaxTree].GetSymbolInfo(node).Symbol;
+        if (symbol is IAliasSymbol boundAlias) symbol = boundAlias.Target;
+        if (symbol is INamedTypeSymbol { TypeKind: not TypeKind.Error } boundType)
+        {
+            yield return SymbolTypeKey(boundType);
+            yield break;
+        }
         string first = raw.Split('.')[0];
         if (aliases.TryGetValue(first, out string? alias)) raw = alias + raw[first.Length..];
-        string key = TypeKey("", raw, arity);
-        if (Known(key)) { yield return key; yield break; }
+        bool attribute = node.AncestorsAndSelf().OfType<AttributeSyntax>().Any(item => item.Name.Span.Contains(node.Span));
+        string? key = KnownTypeKey("", raw, arity, attribute);
+        if (key is not null) { yield return key; yield break; }
         string ns = ContainingName(node);
         while (ns.Length != 0)
         {
-            key = TypeKey(ns, raw, arity);
-            if (Known(key)) { yield return key; yield break; }
+            key = KnownTypeKey(ns, raw, arity, attribute);
+            if (key is not null) { yield return key; yield break; }
             int separator = ns.LastIndexOf('.');
             ns = separator < 0 ? "" : ns[..separator];
         }
         foreach (string import in imports)
         {
-            key = TypeKey(import, raw, arity);
-            if (Known(key)) yield return key;
+            key = KnownTypeKey(import, raw, arity, attribute);
+            if (key is not null) yield return key;
         }
     }
 
     bool Known(string key) => retiredTypes.Contains(key) || declarations.ContainsKey(key);
+    string? KnownTypeKey(string ns, string name, int arity, bool attribute)
+    {
+        string key = TypeKey(ns, name, arity);
+        if (Known(key)) return key;
+        if (!attribute) return null;
+        key = TypeKey(ns, name + "Attribute", arity);
+        return Known(key) ? key : null;
+    }
+    static string SymbolTypeKey(INamedTypeSymbol type) => type.ContainingType is not null
+        ? SymbolTypeKey(type.ContainingType) + "." + type.OriginalDefinition.MetadataName
+        : TypeKey(type.ContainingNamespace.IsGlobalNamespace ? "" : type.ContainingNamespace.ToDisplayString(), type.OriginalDefinition.MetadataName, 0);
     void CheckNamespace(string name, string path, Module owner, SyntaxNode node, DependencyRule[] applicable)
     {
-        foreach (DependencyRule rule in applicable.Where(rule => GuardRules.Matches(rule.ForbiddenNamespaces, name)))
+        foreach (DependencyRule rule in applicable.Where(rule => GuardRules.Matches(rule.ForbiddenNamespaces, name) &&
+                     !catalog.IsOfficialMetadataUse(path, node.SpanStart, node.Span.Length, rule.Id)))
             Report(rule.Id, path, owner, node, $"{rule.Reason} 源码直接引用 {name}。");
     }
     void Report(string rule, string path, Module owner, SyntaxNode node, string detail) =>
@@ -159,21 +184,29 @@ sealed class SourceGuard(DependencyCatalog catalog, GuardRules rules, string? cl
         MemberAccessExpressionSyntax name => Name(name.Expression) + "." + Name(name.Name),
         _ => ""
     };
-    static bool IsTypeUse(SimpleNameSyntax name)
+    bool IsTypeUse(SimpleNameSyntax name)
     {
-        if (name.Parent is MemberAccessExpressionSyntax member) return member.Expression == name;
+        if (name.Parent is MemberAccessExpressionSyntax member) return member.Expression == name && !IsValueReceiver(name);
         if (name.Parent is QualifiedNameSyntax qualified) return qualified.Left == name;
         SyntaxNode node = name;
-        while (node.Parent is NullableTypeSyntax or ArrayTypeSyntax or PointerTypeSyntax) node = node.Parent;
+        while (node.Parent is NullableTypeSyntax or ArrayTypeSyntax or PointerTypeSyntax or RefTypeSyntax) node = node.Parent;
         return node.Parent switch
         {
             VariableDeclarationSyntax declaration => declaration.Type == node,
             ParameterSyntax parameter => parameter.Type == node,
             PropertyDeclarationSyntax property => property.Type == node,
+            EventDeclarationSyntax declaration => declaration.Type == node,
             MethodDeclarationSyntax method => method.ReturnType == node,
+            DelegateDeclarationSyntax declaration => declaration.ReturnType == node,
+            OperatorDeclarationSyntax declaration => declaration.ReturnType == node,
+            ConversionOperatorDeclarationSyntax declaration => declaration.Type == node,
             ObjectCreationExpressionSyntax creation => creation.Type == node,
             CastExpressionSyntax cast => cast.Type == node,
-            TypeOfExpressionSyntax or DefaultExpressionSyntax or BaseTypeSyntax or TypeArgumentListSyntax or TypeConstraintSyntax or UsingDirectiveSyntax or CatchDeclarationSyntax or TupleElementSyntax => true,
+            DeclarationPatternSyntax pattern => pattern.Type == node,
+            TypePatternSyntax pattern => pattern.Type == node,
+            RecursivePatternSyntax pattern => pattern.Type == node,
+            BinaryExpressionSyntax expression => expression.Right == node && expression.Kind() is SyntaxKind.IsExpression or SyntaxKind.AsExpression,
+            TypeOfExpressionSyntax or SizeOfExpressionSyntax or DefaultExpressionSyntax or BaseTypeSyntax or TypeArgumentListSyntax or TypeConstraintSyntax or UsingDirectiveSyntax or CatchDeclarationSyntax or TupleElementSyntax or AttributeSyntax or FunctionPointerParameterSyntax => true,
             ArgumentSyntax argument when argument.Parent?.Parent is InvocationExpressionSyntax invocation && Name(invocation.Expression) == "nameof" => true,
             _ => false
         };

@@ -8,13 +8,13 @@ using System.Xml.Linq;
 
 namespace Btsmtl.DependencyGuard;
 
-sealed class DependencyCatalog(string sdkRoot, string? clientRoot, GuardRules rules)
+sealed partial class DependencyCatalog(string sdkRoot, string? clientRoot, GuardRules rules)
 {
     readonly Dictionary<string, Module> byPath = new(StringComparer.OrdinalIgnoreCase);
     readonly Dictionary<string, List<Module>> byGuid = new(StringComparer.OrdinalIgnoreCase);
     readonly Dictionary<string, Module> sourceDirectories = new(StringComparer.OrdinalIgnoreCase);
     readonly Dictionary<string, string> assemblyReferences = new(StringComparer.OrdinalIgnoreCase);
-    readonly List<string> sourceFiles = [];
+    readonly HashSet<string> sourceFiles = new(StringComparer.OrdinalIgnoreCase);
     readonly Dictionary<string, string> texts = new(StringComparer.OrdinalIgnoreCase);
     readonly Dictionary<string, string> binaryAssemblyNames = new(StringComparer.OrdinalIgnoreCase);
     public List<Module> Modules { get; } = [];
@@ -23,7 +23,7 @@ sealed class DependencyCatalog(string sdkRoot, string? clientRoot, GuardRules ru
     public bool IsControlled(Module module) => GuardRules.Matches(rules.ControlledAssemblies, module.Name) ||
         GuardRules.Matches(rules.ControlledPackages, module.Package) || module.Kind == "package" && GuardRules.Matches(rules.ControlledPackages, module.Name);
 
-    public void Load()
+    public void LoadDeclarations()
     {
         var files = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (string directory in new[] { "Packages", "Projects", "Tools" })
@@ -34,43 +34,28 @@ sealed class DependencyCatalog(string sdkRoot, string? clientRoot, GuardRules ru
                 if (Directory.Exists(Path.Combine(clientRoot, directory)))
                     files.UnionWith(Enumerate(Path.Combine(clientRoot, directory)));
             files.UnionWith(Directory.EnumerateFiles(clientRoot, "*.csproj"));
+            ReadLinkedPackages(files);
         }
+        LoadDeclarationFiles(files);
+    }
+
+    void LoadDeclarationFiles(HashSet<string> files)
+    {
+        int previousModuleCount = Modules.Count;
         foreach (string path in files.Where(path => Path.GetFileName(path) == "package.json").Order(StringComparer.Ordinal))
-        {
-            using JsonDocument document = ReadJson(path);
-            JsonElement root = document.RootElement;
-            if (!root.TryGetProperty("name", out JsonElement name))
-                continue;
-            Module module = Add(new(name.GetString()!, path, "package"));
-            if (root.TryGetProperty("dependencies", out JsonElement dependencies))
-                foreach (JsonProperty dependency in dependencies.EnumerateObject())
-                    module.Dependencies.Add(new(dependency.Name, "package", FindLine(path, dependency.Name)));
-        }
+            LoadPackage(path);
         foreach (string path in files.Where(path => path.EndsWith(".asmdef", StringComparison.OrdinalIgnoreCase)).Order(StringComparer.Ordinal))
-        {
-            using JsonDocument document = ReadJson(path);
-            JsonElement root = document.RootElement;
-            Module module = Add(new(root.GetProperty("name").GetString()!, path, "asmdef", PackageFor(path)));
-            sourceDirectories.Add(Path.GetDirectoryName(path)!, module);
-            string metaPath = path + ".meta";
-            string guid = Regex.Match(ReadText(metaPath), @"(?m)^guid: ([a-fA-F0-9]{32})").Groups[1].Value;
-            if (!byGuid.TryGetValue(guid, out List<Module>? guidOwners)) byGuid.Add(guid, guidOwners = []);
-            guidOwners.Add(module);
-            foreach (string property in new[] { "references", "precompiledReferences" })
-                if (root.TryGetProperty(property, out JsonElement references))
-                    foreach (JsonElement reference in references.EnumerateArray())
-                        module.Dependencies.Add(new(reference.GetString()!, "assembly", FindLine(path, reference.GetString()!)));
-            if (!root.TryGetProperty("noEngineReferences", out JsonElement noEngine) || !noEngine.GetBoolean())
-                module.Dependencies.Add(new("UnityEngine", "assembly", FindLine(path, "noEngineReferences")));
-        }
+            LoadAssemblyDefinition(path);
         foreach (string path in files.Where(path => path.EndsWith(".asmref", StringComparison.OrdinalIgnoreCase)))
         {
             using JsonDocument document = ReadJson(path);
-            assemblyReferences.Add(Path.GetDirectoryName(path)!, document.RootElement.GetProperty("reference").GetString()!);
+            assemblyReferences[Path.GetDirectoryName(path)!] = document.RootElement.GetProperty("reference").GetString()!;
         }
         foreach (string path in files.Where(path => path.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase)).Order(StringComparer.Ordinal))
             LoadProject(path);
-        sourceFiles.AddRange(files.Where(path => path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)));
+        sourceFiles.UnionWith(files.Where(path => path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)));
+        if (Modules.Count == previousModuleCount) return;
+        BindProjectDefinitions();
         foreach (Module module in Modules.Where(module => module.Kind == "asmdef"))
         {
             for (int index = 0; index < module.Dependencies.Count; index++)
@@ -80,83 +65,148 @@ sealed class DependencyCatalog(string sdkRoot, string? clientRoot, GuardRules ru
                 {
                     if (byGuid.TryGetValue(dependency.Name[5..], out List<Module>? targets) && targets.Count == 1)
                         module.Dependencies[index] = dependency with { Name = targets[0].Name, TargetPath = targets[0].Path };
-                    else if (IsControlled(module))
-                        AddViolation("UNRESOLVED_GUID", module, dependency.Line, $"无法唯一解析真实 asmdef 引用 {dependency.Name}。" +
-                            (targets is null ? "" : " 候选：" + string.Join("；", targets.Select(target => target.Path))));
                 }
                 else
                     module.Dependencies[index] = dependency with { Name = AssemblyName(dependency.Name) };
             }
         }
-        if (clientRoot is not null && !Modules.Any(module => module.Kind == "asmdef" && module.Name == "Quantum.Simulation"))
-            Violations.Add(new("MISSING_QUANTUM_ASSEMBLY", clientRoot, 1, "Quantum.Simulation", "完整工作区输入没有实际 Quantum.Simulation asmdef，不能声称已检查模拟宿主。"));
+    }
+
+    public void PrepareSources()
+    {
+        PrepareSourceBoundaries();
+        CheckProjectSourceInputs();
+        foreach (Module module in Modules.Where(module => module.Kind == "asmdef" && (IsControlled(module) || dependencySourceRules.ContainsKey(module))))
+            foreach (Dependency dependency in module.Dependencies.Where(item => item.Name.StartsWith("GUID:", StringComparison.OrdinalIgnoreCase)))
+            {
+                List<Module>? targets = byGuid.GetValueOrDefault(dependency.Name[5..]);
+                AddViolation("UNRESOLVED_GUID", module, dependency.Line, $"无法唯一解析真实 asmdef 引用 {dependency.Name}。" +
+                    (targets is null ? "" : " 候选：" + string.Join("；", targets.Select(target => target.Path))));
+            }
+    }
+
+    void CheckUnityPlugins(Module module, JsonElement root)
+    {
+        foreach (UnityPluginRule rule in rules.UnityPluginRules.Where(rule => rule.Applies(module)))
+        {
+            if (!root.TryGetProperty("overrideReferences", out JsonElement overrideReferences) || !overrideReferences.GetBoolean())
+                AddViolation(rule.Id, module, FindLine(module.Path, "overrideReferences"),
+                    "中立程序集必须显式声明 overrideReferences=true；省略或 false 会接受 Unity 自动引用的全部启用插件，不能仅凭源码或独立工程宣称已隔离 Photon/Quantum。");
+            string[] allowed = rule.PrecompiledReferencesByAssembly.GetValueOrDefault(module.Name, []);
+            if (root.TryGetProperty("precompiledReferences", out JsonElement references))
+                foreach (JsonElement reference in references.EnumerateArray())
+                {
+                    string name = reference.GetString()!;
+                    if (!allowed.Contains(name, StringComparer.Ordinal))
+                        AddViolation(rule.Id, module, FindLine(module.Path, name),
+                            $"中立程序集声明了未核定的预编译插件 {name}；本程序集允许的直接插件：{(allowed.Length == 0 ? "无" : string.Join("、", allowed))}。");
+                }
+        }
     }
 
     public IEnumerable<(string Path, Module Owner)> Sources()
     {
-        foreach (string path in sourceFiles.Order(StringComparer.Ordinal))
+        foreach ((string path, Module owner) in sourceOwners)
+            yield return (path, owner);
+    }
+
+    IEnumerable<Module> SourceOwners(string path)
+    {
+        if (actualSourceOwners.TryGetValue(path, out HashSet<Module>? actualOwners))
         {
-            string? directory = Path.GetDirectoryName(path);
-            while (directory is not null)
-            {
-                if (sourceDirectories.TryGetValue(directory, out Module? module))
-                {
-                    if (IsControlled(module))
-                        yield return (path, module);
-                    break;
-                }
-                if (assemblyReferences.TryGetValue(directory, out string? reference))
-                {
-                    Module? target = reference.StartsWith("GUID:", StringComparison.OrdinalIgnoreCase)
-                        ? byGuid.TryGetValue(reference[5..], out List<Module>? candidates) && candidates.Count == 1 ? candidates[0] : null
-                        : Modules.FirstOrDefault(module => module.Kind == "asmdef" && module.Name == reference);
-                    if (target is null && (IsControlledSource(path) || GuardRules.Matches(rules.ControlledAssemblies, reference)))
-                        Violations.Add(new("UNRESOLVED_ASMREF", Path.Combine(directory, Path.GetFileName(path)), 1, reference, "无法解析源码所属程序集。"));
-                    else if (target is not null && IsControlled(target))
-                        yield return (path, target);
-                    break;
-                }
-                directory = Path.GetDirectoryName(directory);
-            }
+            foreach (Module owner in actualOwners.OrderBy(owner => owner.Path, StringComparer.Ordinal)) yield return owner;
+            yield break;
         }
+        Module? projectOwner = null;
+        string? directory = Path.GetDirectoryName(path);
+        while (directory is not null)
+        {
+            if (sourceDirectories.TryGetValue(directory, out Module? module))
+            {
+                if (module.Kind == "asmdef") { yield return module; yield break; }
+                projectOwner ??= module;
+            }
+            if (assemblyReferences.TryGetValue(directory, out string? reference))
+            {
+                Module[] targets = reference.StartsWith("GUID:", StringComparison.OrdinalIgnoreCase)
+                    ? byGuid.GetValueOrDefault(reference[5..], []).ToArray()
+                    : Modules.Where(module => module.Kind == "asmdef" && module.Name == reference).ToArray();
+                if (targets.Length == 1)
+                {
+                    yield return targets[0];
+                    yield break;
+                }
+                if (IsControlledSource(path) || GuardRules.Matches(rules.ControlledAssemblies, reference))
+                    Violations.Add(new("UNRESOLVED_ASMREF", path, 1, reference, "无法唯一解析源码所属程序集。"));
+                yield break;
+            }
+            directory = Path.GetDirectoryName(directory);
+        }
+        if (projectSourceOwners.TryGetValue(path, out HashSet<Module>? owners))
+            foreach (Module owner in owners.OrderBy(owner => owner.Path, StringComparer.Ordinal))
+                yield return owner;
+        else if (projectOwner is not null)
+            yield return projectOwner;
     }
 
     bool IsControlledSource(string path)
     {
         if (GuardRules.Matches(rules.ControlledPackages, PackageFor(path))) return true;
+        if (projectSourceOwners.TryGetValue(path, out HashSet<Module>? owners) &&
+            owners.Any(owner => IsControlled(owner) || dependencySourceRules.ContainsKey(owner))) return true;
         for (string? directory = Path.GetDirectoryName(path); directory is not null; directory = Path.GetDirectoryName(directory))
-            if (sourceDirectories.TryGetValue(directory, out Module? owner)) return IsControlled(owner);
+            if (sourceDirectories.TryGetValue(directory, out Module? owner)) return IsControlled(owner) || dependencySourceRules.ContainsKey(owner);
         return false;
     }
 
-    public void CheckDependencies()
+    bool IsUnityGeneratedProject(Module module) => module.Kind == "project" && clientRoot is not null &&
+        Path.GetDirectoryName(module.Path)!.Equals(clientRoot, StringComparison.OrdinalIgnoreCase);
+
+    public void CheckDeclaredDependencies()
     {
-        foreach (Module source in Modules.Where(IsControlled))
+        foreach (Module source in Modules.Where(module => IsControlled(module) && !IsUnityGeneratedProject(module)))
         {
-            foreach (DependencyRule rule in rules.DependencyRules.Where(rule => rule.Applies(source)))
-            {
-                var pending = new Queue<(Module Module, string Chain)>();
-                var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { source.Path };
-                pending.Enqueue((source, source.Name));
-                while (pending.Count != 0)
-                {
-                    (Module current, string chain) = pending.Dequeue();
-                    foreach (Dependency dependency in current.Dependencies)
-                    {
-                        string nextChain = chain + " -> " + dependency.Name;
-                        if (rule.Forbids(source, dependency.Name, dependency.Kind, current == source))
-                            AddViolation(rule.Id, source, current == source ? dependency.Line : 1, $"{rule.Reason} 依赖链：{nextChain}；声明：{current.Path}:{dependency.Line}。");
-                        IEnumerable<Module> targets = dependency.TargetPath is not null
-                            ? Modules.Where(module => module.Path.Equals(dependency.TargetPath, StringComparison.OrdinalIgnoreCase))
-                            : Modules.Where(module => module.Name == dependency.Name && module.Kind == current.Kind);
-                        foreach (Module target in targets)
-                            if (visited.Add(target.Path))
-                                pending.Enqueue((target, nextChain));
-                    }
-                }
-            }
+            CheckDependencyChains(source, false);
             if (source.Kind == "package")
                 CheckPackageCycle(source, source, [], new HashSet<string>(StringComparer.Ordinal));
+        }
+        foreach (Module module in Modules.Where(module => module.Kind == "project" && !IsUnityGeneratedProject(module)))
+            CheckProjectPlugins(module);
+    }
+
+    public void CheckActualDependencies()
+    {
+        foreach (Module source in Modules.Where(module => IsControlled(module) && IsUnityGeneratedProject(module)))
+            CheckDependencyChains(source, true);
+        foreach (Module module in Modules.Where(IsUnityGeneratedProject))
+            CheckProjectPlugins(module);
+        CheckActualOutputDependencies();
+    }
+
+    void CheckDependencyChains(Module source, bool actualUnityInputs)
+    {
+        foreach (DependencyRule rule in rules.DependencyRules.Where(rule => rule.Applies(source)))
+        {
+            var pending = new Queue<(Module Module, string Chain)>();
+            var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { source.Path };
+            pending.Enqueue((source, source.Name));
+            while (pending.Count != 0)
+            {
+                (Module current, string chain) = pending.Dequeue();
+                if (!actualUnityInputs && IsUnityGeneratedProject(current)) continue;
+                foreach (Dependency dependency in current.Dependencies)
+                {
+                    if (IsInputOnlyCandidate(current, dependency)) continue;
+                    string nextChain = chain + " -> " + dependency.Name;
+                    bool framework = dependency.BinaryPath is not null && BinaryReferenceKind(dependency.BinaryPath, dependency.Name) == "Framework";
+                    if (rule.Forbids(source, dependency.Name, dependency.Kind, current == source, framework) &&
+                        !(current == source && AllowsVendorEngineDependency(source, rule, dependency)))
+                        AddViolation(rule.Id, source, current == source ? dependency.Line : 1, $"{rule.Reason} 依赖链：{nextChain}；声明：{current.Path}:{dependency.Line}。");
+                    foreach (Module target in DependencyTargets(current, dependency))
+                        if (visited.Add(target.Path))
+                            pending.Enqueue((target, nextChain));
+                }
+            }
         }
     }
 
@@ -229,6 +279,11 @@ sealed class DependencyCatalog(string sdkRoot, string? clientRoot, GuardRules ru
             foreach (XElement item in element.Elements())
             {
                 string kind = item.Name.LocalName;
+                if (kind is "Compile" or "None")
+                {
+                    ReadProjectSourceItem(path, module, directory, properties, item);
+                    continue;
+                }
                 if (kind is not ("ProjectReference" or "Reference"))
                     continue;
                 if (item.Attribute("Remove") is XAttribute removal)
@@ -249,7 +304,7 @@ sealed class DependencyCatalog(string sdkRoot, string? clientRoot, GuardRules ru
                     string targetPath = FullPath(directory, include);
                     if (include.Contains("$(", StringComparison.Ordinal) || !File.Exists(targetPath))
                     {
-                        if (IsControlled(module)) AddViolation("UNRESOLVED_PROJECT", module, line, $"ProjectReference 无真实目标：{include} -> {targetPath}。");
+                        unresolvedProjectReferences.Add((module, path, line, include + " -> " + targetPath));
                         module.Dependencies.Add(new(Path.GetFileNameWithoutExtension(include), "assembly", line));
                     }
                     else
@@ -261,11 +316,13 @@ sealed class DependencyCatalog(string sdkRoot, string? clientRoot, GuardRules ru
                 else
                 {
                     string referenceName = AssemblyName(include);
+                    string? binaryPath = null;
                     string? hint = item.Attribute("HintPath")?.Value ?? item.Elements().FirstOrDefault(child => child.Name.LocalName == "HintPath")?.Value;
                     if (hint is not null)
                     {
                         string expanded = Expand(hint, properties);
                         string hintPath = FullPath(directory, expanded);
+                        if (!expanded.Contains("$(", StringComparison.Ordinal)) binaryPath = hintPath;
                         if (!expanded.Contains("$(", StringComparison.Ordinal) && File.Exists(hintPath))
                         {
                             if (!binaryAssemblyNames.TryGetValue(hintPath, out string? binaryName))
@@ -278,7 +335,7 @@ sealed class DependencyCatalog(string sdkRoot, string? clientRoot, GuardRules ru
                             referenceName = binaryName;
                         }
                     }
-                    module.Dependencies.Add(new(referenceName, "assembly", line));
+                    module.Dependencies.Add(new(referenceName, "assembly", line, BinaryPath: binaryPath));
                 }
             }
         }

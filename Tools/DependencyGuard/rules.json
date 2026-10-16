@@ -1,5 +1,49 @@
 {
-  "version": 1,
+  "version": 7,
+  "unityActualBoundary": {
+    "evidenceRelativePath": "Library/DependencyGuard/unity-boundary.json",
+    "policyCaptureSourceSHA256": "7AD6240272CC2183420BF73E63A5EBD17F254D58DF17503A766294B7754F5E01",
+    "officialProducers": [
+      {
+        "id": "unity-2022.3.62f2c1-compiler",
+        "kind": "UnityCompiler",
+        "origin": "Unity 2022.3.62f2c1 安装编译输入生产者",
+        "version": "2022.3.62f2c1 (92e6e6be66dc)",
+        "versionFileSHA256": "A0B539D00856D5EFB273114CD789A37783233784464DBEA6D23F2C4B0FD59D36",
+        "producerSHA256": "C32E7B612C509E0069F9456F8D7508F67CCD134C8F8A49A0B466164608A912FA",
+        "runtimeSHA256": "C32E7B612C509E0069F9456F8D7508F67CCD134C8F8A49A0B466164608A912FA"
+      },
+      {
+        "id": "quantum-3.0.14.2241-qtn33",
+        "kind": "QuantumGenerator",
+        "origin": "Photon Quantum 3.0.14-Stable-2241 官方 QTN 生成器及资产基类",
+        "version": "3.0.14.2241 / QTN 33",
+        "versionFileSHA256": "C6F3AC57944A531490CD39902D0F777715FD005EFAC9A30622D5F5205E7F6894",
+        "producerSHA256": "B36F417C3C41D32C76B38F2800233E8A3E3E7EEE2CA7777E613E453748FFA292",
+        "runtimeSHA256": "2D0A0C53738B39C8FEC0F0D6F9BFFAC72245FD16F3E8E4CDB84CB204BC969129",
+        "ruleId": "QUANTUM_NO_UNITY_PRESENTATION",
+        "metadataTypes": [
+          "UnityEngine.TooltipAttribute",
+          "UnityEngine.HeaderAttribute",
+          "UnityEngine.SpaceAttribute",
+          "UnityEngine.RangeAttribute",
+          "UnityEngine.HideInInspector",
+          "UnityEngine.Scripting.PreserveAttribute",
+          "UnityEngine.Serialization.FormerlySerializedAsAttribute",
+          "UnityEngine.Scripting.APIUpdating.MovedFromAttribute",
+          "UnityEngine.CreateAssetMenuAttribute",
+          "UnityEngine.RuntimeInitializeOnLoadMethodAttribute"
+        ],
+        "assetBaseTypes": [
+          "Quantum.AssetObject"
+        ]
+      }
+    ],
+    "prohibitedProjectAttributeTypes": [
+      "UnityEngine.Serialization.FormerlySerializedAsAttribute",
+      "UnityEngine.Scripting.APIUpdating.MovedFromAttribute"
+    ]
+  },
   "controlledAssemblies": [
     "^BTSMTL(?:\\.|$)",
     "^ThirdPerson",
@@ -21,6 +65,259 @@
   "authorIdentityDirectory": "Assets/Configs/Character",
   "skillIdentityFields": [
     "m_AbilityId"
+  ],
+  "unityPluginRules": [
+    {
+      "id": "NEUTRAL_UNITY_PLUGIN_BOUNDARY",
+      "sourceAssemblies": [
+        "^BTSMTL(?:\\.|$)",
+        "^ThirdPerson(?:\\.Shared\\.Contracts|Performance\\.Contracts|\\.Performance\\.Instrumentation\\.Contracts|\\.Luban)$",
+        "^ThirdPersonGameplay\\.Orchestration\\.Contracts$"
+      ],
+      "sourcePackages": [
+        "^com\\.btsmtl$",
+        "^com\\.thirdperson\\.(?:shared|gameplay\\.contracts)$"
+      ],
+      "precompiledReferencesByAssembly": {
+        "ThirdPerson.Shared.Contracts": [
+          "System.Runtime.CompilerServices.Unsafe.dll"
+        ],
+        "BTSMTL.EventGraphs": [
+          "System.Runtime.CompilerServices.Unsafe.dll"
+        ]
+      }
+    }
+  ],
+  "timelineBoundaryRules": [
+    {
+      "sourceAssemblies": [
+        "^BTSMTL(?:\\.|$)"
+      ],
+      "sourcePackages": [
+        "^com\\.btsmtl$"
+      ],
+      "typeFamilies": [
+        {
+          "name": "Track",
+          "baseTypes": [
+            "BTSMTL.Timeline.Track"
+          ],
+          "allowedTypes": [
+            "BTSMTL.Timeline.SampledTrack",
+            "BTSMTL.Timeline.TreeTrack",
+            "BTSMTL.Timeline.ScenePresentationParameterTrack"
+          ]
+        },
+        {
+          "name": "Clip",
+          "baseTypes": [
+            "BTSMTL.Timeline.Clip"
+          ],
+          "allowedTypes": [
+            "BTSMTL.Timeline.SignalClip",
+            "BTSMTL.Timeline.SampledClip",
+            "BTSMTL.Timeline.TreeClip",
+            "BTSMTL.Timeline.ScenePresentationParameterCurveClip"
+          ]
+        },
+        {
+          "name": "内容参数",
+          "baseTypes": [
+            "BTSMTL.Timeline.TimelineContentParameters"
+          ],
+          "allowedTypes": [
+            "BTSMTL.Timeline.TimelineContentTree",
+            "BTSMTL.Timeline.TimelineContentSceneParameter"
+          ]
+        }
+      ],
+      "sampleContainers": [
+        "BTSMTL.Timeline.Runtime.TimelineRuntimeSampleView`1",
+        "BTSMTL.Timeline.Runtime.TimelineRuntimeSampleBuffer`1"
+      ],
+      "allowedSampleTypes": [
+        "BTSMTL.Timeline.Runtime.TimelineRuntimeSample`1",
+        "BTSMTL.Timeline.Runtime.TimelineRuntimeTreeClipRequest",
+        "BTSMTL.Timeline.Runtime.TimelineRuntimePresentationEvent"
+      ],
+      "kindHolderTypes": [
+        "BTSMTL.Timeline.TimelineContractKinds"
+      ],
+      "contractTypes": [
+        "BTSMTL.Timeline.TimelineTrackContract",
+        "BTSMTL.Timeline.TimelineClipContract"
+      ],
+      "allowedKinds": [
+        "tree.track",
+        "tree.clip",
+        "scene-presentation-parameter.track",
+        "scene-presentation-parameter.curve"
+      ]
+    }
+  ],
+  "vendorSourceProvenance": [
+    {
+      "origin": "Photon Quantum",
+      "version": "3.0.14-Stable-2241",
+      "archiveSHA256": "5E12AFA93ACACE8F99A8BD7A396DF3A3EA4F02E7177B52D2D7D3C5F2C5D5146C",
+      "ruleId": "QUANTUM_NO_UNITY_PRESENTATION",
+      "rootAssembly": "Quantum.Simulation",
+      "rootAssemblyDefinition": "Assets/Photon/Quantum/Simulation/Quantum.Simulation.asmdef",
+      "allowedDirectEngineAssemblies": [
+        "^Unity(?:Engine|Editor)(?:\\.|$)"
+      ],
+      "sources": [
+        {
+          "path": "Assets/Photon/Quantum/Simulation/QuantumSimulationCore.cs",
+          "sha256": "DE878AA3719E9CE5EC46B23BB1C3C52449F828D884B2427B6277D018E41A9C0B"
+        },
+        {
+          "path": "Assets/Photon/Quantum/Simulation/SimulationConfig.cs",
+          "sha256": "52CDE61FEE6B6E82FAA3787684F4ECD22B0CCC66ED66428939A170F2E307B518"
+        },
+        {
+          "path": "Assets/Photon/Quantum/Simulation/SystemsConfig.cs",
+          "sha256": "8C8BCA3BEABA6D87FBF2437ADFC7E83E687F8CAB382B08BCB583F66885AA76E7"
+        }
+      ]
+    },
+    {
+      "origin": "Photon Quantum KCC",
+      "version": "3.0.6",
+      "archiveSHA256": "71B15E22A9633FD54EEB6E044AFD9399B2E8934CC957281AC4EC346C16924C3D",
+      "ruleId": "QUANTUM_NO_UNITY_PRESENTATION",
+      "rootAssembly": "Quantum.Simulation",
+      "rootAssemblyDefinition": "Assets/Photon/Quantum/Simulation/Quantum.Simulation.asmdef",
+      "allowedDirectEngineAssemblies": [
+        "^Unity(?:Engine|Editor)(?:\\.|$)"
+      ],
+      "sources": [
+        {
+          "path": "Assets/Photon/QuantumAddons/KCC/Simulation/Core/KCC.Depenetration.cs",
+          "sha256": "0B51A764630DFEB82BFA786FEB1A231FBAD58033714696124EAA62EEC2E2A803"
+        },
+        {
+          "path": "Assets/Photon/QuantumAddons/KCC/Simulation/Core/KCC.Interactions.cs",
+          "sha256": "232EF844F4D0C04046E7A5B83F1EE95A56AD7E83E21301910151D556606053C6"
+        },
+        {
+          "path": "Assets/Photon/QuantumAddons/KCC/Simulation/Core/KCC.Physics.cs",
+          "sha256": "529FCE7F745791F9DED70C6E34728531D1153DB9940AACA5B4A72CC7D233CE79"
+        },
+        {
+          "path": "Assets/Photon/QuantumAddons/KCC/Simulation/Core/KCC.Stages.cs",
+          "sha256": "6E5EF9FAF738ABFBCC8DB63762FE7F2E7A3D7B878C236878B8E0C711A4FB1C88"
+        },
+        {
+          "path": "Assets/Photon/QuantumAddons/KCC/Simulation/Core/KCC.cs",
+          "sha256": "8ABC6B6D397C4B773C49F0D7FF1DA6D00A934FB9841D8EEA71087E417589D78F"
+        },
+        {
+          "path": "Assets/Photon/QuantumAddons/KCC/Simulation/Data/KCCCollision.cs",
+          "sha256": "F1F6E163656CF153BB37A56074D00923DD32D4C56460C1DC65C17F70F8E30DA1"
+        },
+        {
+          "path": "Assets/Photon/QuantumAddons/KCC/Simulation/Data/KCCContext.cs",
+          "sha256": "14B987C0D9F8C49D5DC5999F36758515CD2D218DFDD848791B34A4D406508A96"
+        },
+        {
+          "path": "Assets/Photon/QuantumAddons/KCC/Simulation/Data/KCCData.cs",
+          "sha256": "F2B6E1E5D9A771591EA06BED1AC6B634D97657F9C253EA89665B3C6455B86C94"
+        },
+        {
+          "path": "Assets/Photon/QuantumAddons/KCC/Simulation/Data/KCCIgnore.cs",
+          "sha256": "DFCF4FA40E7A9B802F4C41303643F902DB33C2FDB69DB5B77876D58DB61F09FA"
+        },
+        {
+          "path": "Assets/Photon/QuantumAddons/KCC/Simulation/Data/KCCModifier.cs",
+          "sha256": "72FCE8F2B4BD78D88F1E44F8D5543D860FE072C0251495968296ABF7B29F6F8E"
+        },
+        {
+          "path": "Assets/Photon/QuantumAddons/KCC/Simulation/Data/KCCOverlapHit.cs",
+          "sha256": "BCAFDF702F77660B540F87FFEC58E0C5A2BEC3F23E8B5D352AC74E00A07125B3"
+        },
+        {
+          "path": "Assets/Photon/QuantumAddons/KCC/Simulation/Data/KCCOverlapInfo.cs",
+          "sha256": "85708C76A07D4E8B4889787BD018B6B0EAA2D23894999F69404970FCDE56448F"
+        },
+        {
+          "path": "Assets/Photon/QuantumAddons/KCC/Simulation/Data/KCCSettings.cs",
+          "sha256": "0114E7728E6890B86994D77AE13239A627118C16FCB4C6E82FABB04BC17504C9"
+        },
+        {
+          "path": "Assets/Photon/QuantumAddons/KCC/Simulation/Data/KCCShapeCastHit.cs",
+          "sha256": "C632A0F6F8DFC283B61F138756672BC45D80C025A301BC6BBAF0448BFADE0FFF"
+        },
+        {
+          "path": "Assets/Photon/QuantumAddons/KCC/Simulation/Data/KCCShapeCastInfo.cs",
+          "sha256": "C5CE59E0E3836670ED0F979401B133B6E4DCF9847013774AAC4636E150FD5379"
+        },
+        {
+          "path": "Assets/Photon/QuantumAddons/KCC/Simulation/Data/KCCStageInfo.cs",
+          "sha256": "590EFED4A24951E6641303851F65D3D5CE831B0E457F4C68F82C9636F0FB9935"
+        },
+        {
+          "path": "Assets/Photon/QuantumAddons/KCC/Simulation/KCCSystem.cs",
+          "sha256": "465916A874792DCFA25A838B9CEB9190BEE984F98FB74E9110840232977FC1AC"
+        },
+        {
+          "path": "Assets/Photon/QuantumAddons/KCC/Simulation/Processors/Callbacks/IAfterMove.cs",
+          "sha256": "3731BEC77F72745C94E552FAD3C0984A95B330782D5C78017F87F1AEDC3C8BB8"
+        },
+        {
+          "path": "Assets/Photon/QuantumAddons/KCC/Simulation/Processors/Callbacks/IAfterMoveStep.cs",
+          "sha256": "B1BC9A14CC24080F1E1746047C49A8F6F9CC65FB1967BAA35E26ABF1C29C5F9F"
+        },
+        {
+          "path": "Assets/Photon/QuantumAddons/KCC/Simulation/Processors/Callbacks/IBeforeMove.cs",
+          "sha256": "9F2B93292B7696A663C99E5E129B77067DD6BEE126798D8B747FC066A36D26C4"
+        },
+        {
+          "path": "Assets/Photon/QuantumAddons/KCC/Simulation/Processors/EnvironmentProcessor.cs",
+          "sha256": "2AB070A1488F85D4CB1D9FACE5A7A2DA0E05096F073E0D53D9E0AA9E4909319D"
+        },
+        {
+          "path": "Assets/Photon/QuantumAddons/KCC/Simulation/Processors/GroundSnapProcessor.cs",
+          "sha256": "C1DC91F96E28B6C593EAE7C2104C87205294000B9AF856147194667235177234"
+        },
+        {
+          "path": "Assets/Photon/QuantumAddons/KCC/Simulation/Processors/KCCProcessor.cs",
+          "sha256": "D8CC8FF5AAFAA74477CAC6D560097E23F79D21B9BC76960D34A805730A7F5F76"
+        },
+        {
+          "path": "Assets/Photon/QuantumAddons/KCC/Simulation/Processors/KCCProcessorInfo.cs",
+          "sha256": "B1B9EEFC768B75E51A92BE12AAD4D9A36D26BAFB7EBABC1FE8B07A03E10563B1"
+        },
+        {
+          "path": "Assets/Photon/QuantumAddons/KCC/Simulation/Processors/StepUpProcessor.cs",
+          "sha256": "CB480382070B8685A5C23C3DE651E9D75BEF6C015E96E8D78ACCA9FA769D25A3"
+        },
+        {
+          "path": "Assets/Photon/QuantumAddons/KCC/Simulation/Utilities/KCCAttributes.cs",
+          "sha256": "67846A8D1C4E7948BC239A254925ACA905AFD230A580882C83F539A3CF8D91EA"
+        },
+        {
+          "path": "Assets/Photon/QuantumAddons/KCC/Simulation/Utilities/KCCMathUtility.cs",
+          "sha256": "187B7B9259E1E91D37EF046DD39DCFF56EE9949C495DFF30DA5BCD22D48E82F6"
+        },
+        {
+          "path": "Assets/Photon/QuantumAddons/KCC/Simulation/Utilities/KCCPenetrationSolver.cs",
+          "sha256": "1E0A5A992C8DD688320E5CE410B02C98D371DB6B5B1F1B7424B9746004FB5C62"
+        },
+        {
+          "path": "Assets/Photon/QuantumAddons/KCC/Simulation/Utilities/KCCPhysicsUtility.cs",
+          "sha256": "A0C71AE12219CDED5FDF0EBB3F67D80896C4A9A82898DEE73037D67B10780B43"
+        },
+        {
+          "path": "Assets/Photon/QuantumAddons/KCC/Simulation/Utilities/KCCThreadStaticCache.cs",
+          "sha256": "BE67C5A9E40C23106188D66F6DC95B1CAB24E120260DFD2595E0B1EAA12DA94C"
+        },
+        {
+          "path": "Assets/Photon/QuantumAddons/KCC/Simulation/Utilities/KCCUtility.cs",
+          "sha256": "2339849C4F03C665B500EE80D441C2DAE1F73732D32E208C7EF6D9154231EA3B"
+        }
+      ]
+    }
   ],
   "dependencyRules": [
     {
@@ -122,7 +419,8 @@
     },
     {
       "id": "QUANTUM_NO_UNITY_PRESENTATION",
-      "reason": "Quantum.Simulation不得引用Unity或表现实现。",
+      "reason": "项目模拟源码及其项目依赖不得使用Unity或表现实现；保留已核实原版厂商接入与同批证实的必要官方元数据和资产基类，不放行项目业务API。",
+      "checkProjectDependencySources": true,
       "sourceAssemblies": [
         "^Quantum\\.Simulation$"
       ],
@@ -1076,6 +1374,33 @@
     "ThirdPersonSimulation.WorldSimulationState",
     "ThirdPersonSimulation.WorldSimulationStateStorage",
     "ThirdPersonSimulation.WorldSolveBatchRequest",
-    "ThirdPersonSimulation.WorldSolveBatchResult"
+    "ThirdPersonSimulation.WorldSolveBatchResult",
+    "ThirdPersonSimulation.CanonicalArraySlice`1",
+    "ThirdPersonSimulation.CanonicalBuffer`1",
+    "ThirdPersonSimulation.CanonicalDeclaredIdentityReader",
+    "ThirdPersonSimulation.CanonicalDeclaredIdentityReader.Entry",
+    "ThirdPersonSimulation.CanonicalInitializationTextResolver",
+    "ThirdPersonSimulation.CanonicalTextCapacityException",
+    "ThirdPersonSimulation.CanonicalTextCapacityFailure",
+    "ThirdPersonSimulation.CanonicalTextCapacityKind",
+    "ThirdPersonSimulation.CanonicalTextEncoding",
+    "ThirdPersonSimulation.CanonicalTextOwnerOrdering",
+    "ThirdPersonSimulation.CanonicalTextReadLease",
+    "ThirdPersonSimulation.CanonicalTextReferences",
+    "ThirdPersonSimulation.CanonicalTextReferences.TextReception",
+    "ThirdPersonSimulation.CanonicalTextStorage",
+    "ThirdPersonSimulation.CanonicalTextStorage.CharacterRange",
+    "ThirdPersonSimulation.CanonicalTextStorage.Text",
+    "ThirdPersonSimulation.CanonicalTextValue",
+    "ThirdPersonSimulation.CanonicalTextValue.TextComparisonReadLease",
+    "ThirdPersonSimulation.CanonicalTextWriteBuffer",
+    "ThirdPersonSimulation.CanonicalUnavailable",
+    "ThirdPersonSimulation.ICanonicalTextCapture",
+    "ThirdPersonSimulation.ICanonicalTextOwner",
+    "ThirdPersonSimulation.ICanonicalTextResolver",
+    "ThirdPersonSimulation.IValueTextCapacity",
+    "ThirdPersonSimulation.SimulationCanonicalPayloadHash",
+    "ThirdPersonSimulation.SimulationCanonicalPayloadHash.Accumulator",
+    "ThirdPersonSimulation.ValueTextCapacityAttribute"
   ]
 }
