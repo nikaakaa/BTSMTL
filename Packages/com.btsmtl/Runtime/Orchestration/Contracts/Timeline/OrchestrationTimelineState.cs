@@ -72,6 +72,7 @@ namespace BTSMTL.Orchestration
             OrchestrationTimelineControl<TTime>, OrchestrationTimelineStopContext> Progress;
         public OrchestrationTimelineStart<TTime> Start;
         public ulong LastConsumedTick;
+        public TTime LastConsumedClockTime;
         public ulong InvocationSequence;
         public int TreeExitRequestCount;
         public int TreeExitCount;

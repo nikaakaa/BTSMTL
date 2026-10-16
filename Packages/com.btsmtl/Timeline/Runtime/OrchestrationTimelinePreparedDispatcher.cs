@@ -20,20 +20,31 @@ namespace BTSMTL.Timeline.Runtime
         where TProjection : struct, IOrchestrationTimelineTimeProjection<TTime, TScalar>
     {
         readonly OrchestrationTimelineRuntime<TTime, TClock> m_Runtime;
+        readonly OrchestrationTimelinePreparedContent<TTime> m_Content;
         readonly OrchestrationTimelineWorkspace<TTime> m_Workspace;
         readonly IOrchestrationTimelineBindings<TTime, TValue, TContext> m_Bindings;
         readonly ITimelineRuntimeLogicSamples<TValue, TContext> m_Samples;
         readonly TValue[] m_SampleInputs;
 
-        public OrchestrationTimelinePreparedDispatcher(OrchestrationTimelineRuntime<TTime, TClock> runtime,
+        public OrchestrationTimelinePreparedDispatcher(OrchestrationTimelinePreparedContent<TTime> content,
+            in OrchestrationTimelineStateLayout<OrchestrationTimelinePlaybackState<TTime>> layout,
+            in OrchestrationTimelinePreparedCapacity capacity,
             OrchestrationTimelineWorkspace<TTime> workspace, IOrchestrationTimelineBindings<TTime, TValue, TContext> bindings,
             ITimelineRuntimeLogicSamples<TValue, TContext> samples)
         {
-            m_Runtime = runtime;
+            m_Content = content;
+            m_Runtime = new OrchestrationTimelineRuntime<TTime, TClock>(new[] { content }, in layout, in capacity);
             m_Workspace = workspace;
             m_Bindings = bindings;
             m_Samples = samples;
-            m_SampleInputs = new TValue[samples.InputValueCapacity];
+            if (content.Domain == TimelineExecutionDomain.Logic)
+            {
+                if (samples == null)
+                    throw new ArgumentException("Logic Timeline 必须装配正式逻辑样本服务。", nameof(samples));
+                m_SampleInputs = new TValue[samples.InputValueCapacity];
+            }
+            else
+                m_SampleInputs = Array.Empty<TValue>();
         }
 
         public OrchestrationOperationResult Tick(
@@ -62,10 +73,11 @@ namespace BTSMTL.Timeline.Runtime
                 OrchestrationTime.FromRaw(default(TClock).Raw(playback.Start.StartTime)));
             cursor.ExecuteTimelineBatch(batch, in startIdentity, in stopContext);
             ref readonly OrchestrationTimelineWorkspace<TTime>.Operation work = ref m_Workspace.Operations[slot];
-            m_Samples.Invoke(operationIndex, operationGeneration, tick, slot, playbackIdentity,
-                OrchestrationTime.FromRaw(default(TClock).Raw(work.PreviousTime)), work.PreviousCycle,
-                OrchestrationTime.FromRaw(default(TClock).Raw(work.Proposed.Progress.CursorTime)),
-                work.Proposed.Progress.Cycle, m_SampleInputs, cursor.StateAncestors(operationIndex), ref context);
+            if (m_Content.Domain == TimelineExecutionDomain.Logic)
+                m_Samples.Invoke(operationIndex, operationGeneration, tick, slot, playbackIdentity,
+                    OrchestrationTime.FromRaw(default(TClock).Raw(work.PreviousTime)), work.PreviousCycle,
+                    OrchestrationTime.FromRaw(default(TClock).Raw(work.Proposed.Progress.CursorTime)),
+                    work.Proposed.Progress.Cycle, m_SampleInputs, cursor.StateAncestors(operationIndex), ref context);
             m_Runtime.Complete(candidate, slot, in batch, m_Workspace);
             if (batch.Status == OrchestrationTimelinePlaybackStatus.Completed)
             {

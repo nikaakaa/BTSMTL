@@ -98,8 +98,8 @@ namespace BTSMTL.Timeline.Runtime
             ref OrchestrationTimelineWorkspace<TTime>.Operation work = ref workspace.Operations[slot];
             work = default;
             work.Proposed = playback;
-            int tickCount = checked((int)checked(step.Tick - playback.LastConsumedTick));
             work.Proposed.LastConsumedTick = step.Tick;
+            work.Proposed.LastConsumedClockTime = step.ClockTime;
             work.Proposed.InvocationSequence = checked(playback.InvocationSequence + 1);
             work.BatchSequence = workspace.NextBatchSequence();
             work.Tick = step.Tick;
@@ -109,9 +109,26 @@ namespace BTSMTL.Timeline.Runtime
             int previousCycle = playback.Progress.Cycle;
             work.PreviousTime = previous;
             work.PreviousCycle = previousCycle;
-            TTime target = TimelineRuntimeScheduling<TTime, TClock>.Target(previous, previousCycle,
-                playback.Progress.TimeCarry, content.Duration, content.TickRate, tickCount,
-                step.Rate, work.Paused, out int carry);
+            int carry;
+            TTime target;
+            switch (step.ClockSource)
+            {
+                case OrchestrationTimelineClockSource.FixedTicks:
+                    int tickCount = checked((int)checked(step.Tick - playback.LastConsumedTick));
+                    target = TimelineRuntimeScheduling<TTime, TClock>.Target(previous, previousCycle,
+                        playback.Progress.TimeCarry, content.Duration, content.TickRate, tickCount,
+                        step.Rate, work.Paused, out carry);
+                    break;
+                case OrchestrationTimelineClockSource.ElapsedTime:
+                    TTime previousClockTime = playback.InvocationSequence == 0
+                        ? step.PreviousClockTime : playback.LastConsumedClockTime;
+                    target = TimelineRuntimeScheduling<TTime, TClock>.TargetElapsed(previous, previousCycle,
+                        playback.Progress.TimeCarry, content.Duration, clock.Subtract(step.ClockTime, previousClockTime),
+                        step.Rate, work.Paused, out carry);
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(step.ClockSource));
+            }
             TTime time;
             int cycle = previousCycle;
             bool loop = content.Mode == OrchestrationTimelinePlaybackMode.Loop;

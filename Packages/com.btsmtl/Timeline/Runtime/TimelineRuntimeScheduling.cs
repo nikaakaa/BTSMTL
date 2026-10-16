@@ -132,16 +132,31 @@ namespace BTSMTL.Timeline.Runtime
         {
             TClock clock = default;
             long numerator = checked(carry + (long)tickCount * (paused ? 0L : clock.Raw(rate)));
+            return Target(cursor, cycle, duration, numerator, tickRate, out nextCarry);
+        }
+
+        public static TTime TargetElapsed(TTime cursor, int cycle, int carry, TTime duration,
+            TTime elapsed, TTime rate, bool paused, out int nextCarry)
+        {
+            TClock clock = default;
+            long numerator = checked(carry + clock.Raw(elapsed) * (paused ? 0L : clock.Raw(rate)));
+            return Target(cursor, cycle, duration, numerator, checked((int)clock.Raw(clock.One)), out nextCarry);
+        }
+
+        static TTime Target(TTime cursor, int cycle, TTime duration, long numerator,
+            int denominator, out int nextCarry)
+        {
+            TClock clock = default;
             long parityOffset = (cycle & 1) * (clock.Raw(duration) & 1);
-            nextCarry = checked((int)(numerator % tickRate));
-            long targetRaw = checked(clock.Raw(cursor) + (numerator - nextCarry) / tickRate);
+            nextCarry = checked((int)(numerator % denominator));
+            long targetRaw = checked(clock.Raw(cursor) + (numerator - nextCarry) / denominator);
             long doubledRemainder = Math.Abs((long)nextCarry) * 2;
-            if (doubledRemainder > tickRate ||
-                doubledRemainder == tickRate && ((targetRaw ^ parityOffset) & 1) != 0)
+            if (doubledRemainder > denominator ||
+                doubledRemainder == denominator && ((targetRaw ^ parityOffset) & 1) != 0)
             {
                 int direction = Math.Sign(nextCarry);
                 targetRaw = checked(targetRaw + direction);
-                nextCarry -= direction * tickRate;
+                nextCarry -= direction * denominator;
             }
             return clock.FromRaw(targetRaw);
         }

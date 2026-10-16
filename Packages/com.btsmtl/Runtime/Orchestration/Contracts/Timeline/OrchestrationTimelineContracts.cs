@@ -34,21 +34,42 @@ namespace BTSMTL.Orchestration
         public const int MaximumCycleAdvance = 20;
     }
 
+    public enum OrchestrationTimelineClockSource : byte
+    {
+        FixedTicks = 0,
+        ElapsedTime = 1
+    }
+
     public readonly struct OrchestrationTimelineStep<TTime> where TTime : unmanaged
     {
-        public OrchestrationTimelineStep(ulong tick, TTime rate,
-            bool paused, int sourceIdentityId)
+        OrchestrationTimelineStep(ulong tick, OrchestrationTimelineClockSource clockSource,
+            TTime previousClockTime, TTime clockTime, TTime rate, bool paused, int sourceIdentityId)
         {
             Tick = tick;
+            ClockSource = clockSource;
+            PreviousClockTime = previousClockTime;
+            ClockTime = clockTime;
             Rate = rate;
             Paused = paused;
             SourceIdentityId = sourceIdentityId;
         }
 
         public ulong Tick { get; }
+        public OrchestrationTimelineClockSource ClockSource { get; }
+        public TTime PreviousClockTime { get; }
+        public TTime ClockTime { get; }
         public TTime Rate { get; }
         public bool Paused { get; }
         public int SourceIdentityId { get; }
+
+        public static OrchestrationTimelineStep<TTime> FromTicks(ulong tick, TTime rate,
+            bool paused, int sourceIdentityId) => new(tick, OrchestrationTimelineClockSource.FixedTicks,
+                default, default, rate, paused, sourceIdentityId);
+
+        public static OrchestrationTimelineStep<TTime> FromClockInterval(ulong tick,
+            TTime previousClockTime, TTime clockTime, TTime rate, bool paused, int sourceIdentityId) =>
+            new(tick, OrchestrationTimelineClockSource.ElapsedTime,
+                previousClockTime, clockTime, rate, paused, sourceIdentityId);
     }
 
     public readonly struct OrchestrationTimelineInvocationToken
