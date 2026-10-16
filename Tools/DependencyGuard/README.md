@@ -76,14 +76,15 @@ Catalog 已接收且有实际源码 owner 的每个程序集都执行退役类�
 
 ## 本批实际编译证据
 
-`unityActualBoundary` 是同一规则表中的正式证据入口，不新增另一套守护。完整 Client 默认读取 `Library/DependencyGuard/unity-boundary.json`；直接运行同一工具时可用 `--unity-evidence <绝对路径>` 指定同一协议的文件。SDK-only 不读取该文件。共享编译、QTN 与证据采集仍由 q3 唯一队列执行，守护只读其真实产物。
+`unityActualBoundary` 是同一规则表中的正式证据入口，不新增另一套守护。完整 Client 默认读取 `Library/DependencyGuard/unity-boundary.json`；直接运行同一工具时可用 `--unity-evidence <绝对路径>` 指定同一协议的文件。SDK-only 不读取该文件。共享编译与 QTN 由清理唯一队列串行执行，证据来自同批正式过程，守护只读其真实产物。
 
-外层对象的字段为 `Version=2`、`RulesSHA256`、`BatchId`、`ClientRoot`、`Files`、`Compilations`、`Installations`、`Generations`，均为必需字段。`RulesSHA256` 必须是本次执行工具读取的版本 7 规则字节身份。外层形状未改变，但其引用的原始政策快照必须使用下述 Version2；旧 Version1 证据、旧政策快照和旧工具不能冒充本版本，旧 `AutomaticReferences` 数组入口已删除。所有路径使用真实绝对路径，所有文件先按同批快照 SHA 接收，并在扫描结束再次比较当前字节。文件清单必须覆盖守护实际读取的声明、源码、作者身份、链接包、rsp／嵌套 rsp、编译器及生成器输入、回执、原始政策快照、参考程序集、当前输出与完整实际传递依赖；工具自身、规则文件与外层证据文件由守护独立记录身份。
+外层对象的字段为 `Version=3`、`RulesSHA256`、`BatchId`、`ClientRoot`、`Files`、`Compilations`、`Installations`、`Generations`，均为必需字段。`RulesSHA256` 必须是本次执行工具读取的版本 7 规则字节身份。编译输入使用完整 `CompilerArguments`，原始政策快照仍使用下述 Version2；旧证据、旧 `ResponseFile`／`AutomaticReferences` 字段与旧工具不能冒充本版本。所有路径使用真实绝对路径，所有文件先按同批快照 SHA 接收，并在扫描结束再次比较当前字节。文件清单必须覆盖守护实际读取的声明、源码、作者身份、链接包、全部 rsp／嵌套 rsp、编译器及生成器输入、回执、原始政策快照、参考程序集、当前输出与完整实际传递依赖；工具自身、规则文件与外层证据文件由守护独立记录身份。
 
 - `Files` 每项为 `{ Path, SHA256, Kind }`。`Kind="assembly"` 只登记当前实际产物和完整运行依赖闭包的 PE 原件，同一完整程序集身份只能对应同一字节；编译参考程序集同样完整捕获，但使用 `Kind="compiler-reference"`，不能拿不同字节的 ref DLL 替换实现 DLL 的闭包。其它种类按真实输入职责记录。
-- `Compilations` 每项为 `{ AssemblyDefinition, Project, ResponseFile, WorkingDirectory, Output, Receipt, CompilerTrace, GeneratorOutputs }`。`Project` 是 Client 根目录中对应唯一 asmdef 的真实 Unity 生成工程。守护按完整 rsp 解析所有源和元数据引用、别名、编译选项、analyzer 及附加输入；不得删掉 UI、测试、平台或其它候选引用。`GeneratorOutputs` 保存同一成功编译调用实际生成的源码，不能重跑另一生成器拼接。全部受控及项目模拟依赖的 Unity 工程均须覆盖，缺少一个就检查未完成。
+- `Compilations` 每项为 `{ AssemblyDefinition, Project, CompilerArguments, WorkingDirectory, Output, Receipt, CompilerTrace, GeneratorOutputs }`。`Project` 是 Client 根目录中对应唯一 asmdef 的真实 Unity 生成工程。`CompilerArguments` 是原 Csc 调用按顺序排列的实参数组，不含 dotnet／exec／csc.dll 启动前缀，包含全部 `@rsp`、`@rsp2` 与直接选项。守护经唯一解析器展开每份实际文件，保留源、元数据引用、别名、编译选项、analyzer 及附加输入；不得删掉 UI、测试、平台或其它候选引用。`GeneratorOutputs` 保存同一成功编译调用实际生成的源码，不能重跑另一生成器拼接。全部受控及项目模拟依赖的 Unity 工程均须覆盖，缺少一个就检查未完成。
 - `Receipt` 指向 `{ BatchId, ExitCode, Inputs, Outputs }`。`Inputs`／`Outputs` 为“实际绝对路径 → 执行当时 SHA256”的字典，`ExitCode` 必须为 0，批次须一致。输入同时涵盖该次准备／编译所依据的正式 asmdef、生成工程、rsp、源、参考、生产者和版本文件；输出涵盖当前 DLL、实际生成源和 `CompilerTrace`。仅列路径、仅记 saved 或事后给旧编译补当前 SHA 不符合协议。
-- `CompilerTrace` 指向 `{ BatchId, OriginId, AssemblyDefinition, ResponseFile, Sources, References, ReferencePolicyFacts, PolicyCaptureSource, AutomaticReferencePolicies }`。完整源与引用集合须与原始 Bee 和实际 rsp 一致，不删 UI、NUnit 或其它候选。`ReferencePolicyFacts` 指向本批原始官方对象的政策快照，`PolicyCaptureSource` 是实际调用的下述采集源码，`AutomaticReferencePolicies` 每项为 `{ Reference, Kind }`，只提出有真实快照支持的来源主张。它不是官方原方法的插入 delta；Unity 当前安装没有提供那份数组。旧字段被协议明确拒绝。
+- `CompilerTrace` 指向 `{ BatchId, OriginId, AssemblyDefinition, CompilerArguments, Sources, References, ReferencePolicyFacts, PolicyCaptureSource, AutomaticReferencePolicies }`。完整实参数组须与本次编译声明逐项一致，源与引用集合须与原始 Bee 和实际 Csc 输入一致，不删 UI、NUnit 或其它候选。`ReferencePolicyFacts` 指向本批原始官方对象的政策快照，`PolicyCaptureSource` 是实际调用的下述采集源码，`AutomaticReferencePolicies` 每项为 `{ Reference, Kind }`，只提出有真实快照支持的来源主张。它不是官方原方法的插入 delta；Unity 当前安装没有提供那份数组。旧字段被协议明确拒绝。
+- 来源生成、最终接收与作者选项共用 `ParseCompilerArguments`。处理顺序沿官方 `BuildClient.RunCompilation`：临时实参逐项 Trim，调用当前 Roslyn 原 `CommandLineParser.TryParseClientArgs` 处理客户端选项，再展开原响应文件并交给 `CSharpCommandLineParser`。`/shared`、keepalive 等客户端规则由原方法持有，不维护过滤清单；原始 `CompilerArguments` 数组仍完整保存与比对。工具报告同时记录实际加载的 Roslyn 核心及 CSharp 程序集身份。
 - `Installations` 每项为 `{ OriginId, Producer, VersionFile, RuntimeAssembly }`，实际文件须匹配 `officialProducers` 的版本与 SHA。当前核定来源为 Unity 2022.3.62f2c1 安装编译输入生产者，以及 Quantum 3.0.14.2241／QTN 33 生成器和 `Quantum.Engine.dll`。SDK 升级时先重新核实同一职责与真实生产过程，再更新同一规则表。
 - `Generations` 每项为 `{ OriginId, Receipt }`；实际 QTN 回执使用上述含执行时 SHA 的协议，输入须包含核定生成器、版本文件及真实生成输入，输出记录实际生成源。项目源不得冒充官方生成输出，官方生成文件中的业务代码也不因同文件有允许的元数据而获豁免。
 
@@ -115,7 +116,7 @@ Unity 原件中的 `Packages/<包ID>/...` 是正式虚拟包路径。接收边�
 dotnet Tools/DependencyGuard/bin/Release/net9.0/Btsmtl.DependencyGuard.dll --sdk-root D:/Unity_Project_1/BTSMTL --client-root D:/Unity_Project_1/3C/3cDemo/Client/3C_Client --rules Tools/DependencyGuard/rules.json --produce-reference-policies D:/evidence/policy-request.json --report D:/evidence/policy-claims.json
 ```
 
-DLL 使用串行队列本次实际构建的产物；目标框架目录随构建所用 SDK 主版本变化。请求合同见 `AutomaticReferencePolicyProductionRequest`：`Version=1`，`BatchId`、`ClientRoot`、`RulesSHA256`、完整实际 `Files`、已核定 `Installations`，以及实际 `Compilations`。每个目标提供 `AssemblyDefinition`、`ResponseFile`、`WorkingDirectory`、`ReferencePolicyFacts`、`PolicyCaptureSource`、`OriginId` 与本批成功 `Receipt`。复用既有文件、安装与执行回执格式；回执须保存原事实输出，以及真实 rsp、源码、生成器输入、安装原件和已选包声明的输入身份。此时不需要尚未生成的 CompilerTrace，避免主张与自身接收回执形成循环。
+DLL 使用串行队列本次实际构建的产物；目标框架目录随构建所用 SDK 主版本变化。请求合同见 `AutomaticReferencePolicyProductionRequest`：`Version=2`，`BatchId`、`ClientRoot`、`RulesSHA256`、完整实际 `Files`、已核定 `Installations`，以及实际 `Compilations`。每个目标提供 `AssemblyDefinition`、`CompilerArguments`、`WorkingDirectory`、`ReferencePolicyFacts`、`PolicyCaptureSource`、`OriginId` 与本批成功 `Receipt`。复用既有文件、安装与执行回执格式；回执须保存原事实输出，以及每份真实响应文件、源码、生成器输入、安装原件和已选包声明的输入身份。空的第二响应文件同样登记，嵌套文件沿同一解析器接收；不能合并生成伪 rsp 代替原 Csc 输入。此时不需要尚未生成的 CompilerTrace，避免主张与自身接收回执形成循环。
 
 输出按目标保存完整 rsp `References` 和推导的 `AutomaticReferencePolicies`，并保存实际工具／规则／输入身份与结束时稳定性。多种原合法来源重叠时选原判定顺序中的第一项，接收端仍承认全部原合法来源；没有获证的参考继续留在完整输入中。生成入口不修改 rsp 或重选引用，不代替项目声明、源码使用和实际产物闭包的最终判定。
 

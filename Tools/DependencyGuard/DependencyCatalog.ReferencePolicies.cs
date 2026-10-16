@@ -16,7 +16,7 @@ sealed partial class DependencyCatalog
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true, RespectRequiredConstructorParameters = true,
                 RespectNullableAnnotations = true, UnmappedMemberHandling = System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow }) ??
             throw new InvalidDataException("自动引用来源生成请求必须是完整对象。");
-        if (request.Version != 1 || request.BatchId.Length == 0 || request.RulesSHA256 != RulesSHA256 ||
+        if (request.Version != 2 || request.BatchId.Length == 0 || request.RulesSHA256 != RulesSHA256 ||
             !Path.GetFullPath(request.ClientRoot).Equals(clientRoot, StringComparison.OrdinalIgnoreCase) ||
             request.Compilations.Length == 0)
             throw new InvalidDataException("来源生成请求版本、批次、规则、目标 Client 或实际编译目标不匹配。");
@@ -38,16 +38,12 @@ sealed partial class DependencyCatalog
             RequireReceiptInput(receipt, origin.Installation.VersionFile);
             UnityReferencePolicyFacts facts = ReadReferencePolicyFacts(input.ReferencePolicyFacts,
                 input.PolicyCaptureSource, receipt, origin.Installation, batchId);
-            var arguments = CSharpCommandLineParser.Default.Parse(
-                ResponseArguments(input.ResponseFile, input.WorkingDirectory, receipt),
-                input.WorkingDirectory, null, null);
-            if (arguments.Errors.Any(error => error.Severity == DiagnosticSeverity.Error))
-                throw new InvalidDataException($"来源生成的实际 rsp 未完整解析：{input.ResponseFile}；{string.Join("；", arguments.Errors)}。");
+            var arguments = ParseCompilerArguments(input.CompilerArguments, input.WorkingDirectory, receipt);
             string[] references = arguments.MetadataReferences.Select(reference =>
-                ResolveActualReference(reference.Reference, input.WorkingDirectory, input.ResponseFile, arguments)).ToArray();
+                ResolveActualReference(reference.Reference, input.WorkingDirectory, input.CompilerArguments, arguments)).ToArray();
             foreach (string path in arguments.SourceFiles.Select(source => UnityPolicyPath(source.Path, input.WorkingDirectory))
                 .Concat(references).Concat(arguments.AnalyzerReferences.Select(reference =>
-                    ResolveActualReference(reference.FilePath, input.WorkingDirectory, input.ResponseFile, arguments)))
+                    ResolveActualReference(reference.FilePath, input.WorkingDirectory, input.CompilerArguments, arguments)))
                 .Concat(arguments.AdditionalFiles.Select(source => UnityPolicyPath(source.Path, input.WorkingDirectory)))
                 .Concat(arguments.AnalyzerConfigPaths.Select(path => UnityPolicyPath(path, input.WorkingDirectory))))
             {
@@ -55,7 +51,7 @@ sealed partial class DependencyCatalog
                 RequireReceiptInput(receipt, path);
             }
             var context = ReadAutomaticReferenceContext(facts, owner, input.WorkingDirectory,
-                input.ResponseFile, arguments, receipt, out _);
+                input.CompilerArguments, arguments, receipt, out _);
             var claims = new List<AutomaticReferencePolicy>();
             foreach (string reference in references.Distinct(StringComparer.OrdinalIgnoreCase))
             {
@@ -64,7 +60,7 @@ sealed partial class DependencyCatalog
                 if (kind is not null)
                     claims.Add(new AutomaticReferencePolicy(reference, kind));
             }
-            result.Add(new AutomaticReferencePolicyProduction(definition, Path.GetFullPath(input.ResponseFile),
+            result.Add(new AutomaticReferencePolicyProduction(definition, input.CompilerArguments,
                 references, claims.ToArray()));
         }
         return result.ToArray();
@@ -104,7 +100,7 @@ sealed partial class DependencyCatalog
     }
 
     (UnityReferencePolicyScript Script, UnityReferencePolicyTarget Target) ReadAutomaticReferenceContext(
-        UnityReferencePolicyFacts facts, Module owner, string workingDirectory, string responseFile,
+        UnityReferencePolicyFacts facts, Module owner, string workingDirectory, string[] compilerArguments,
         CSharpCommandLineArguments arguments, CompilationExecutionReceipt receipt,
         out HashSet<string> declaredReferences)
     {
@@ -119,14 +115,12 @@ sealed partial class DependencyCatalog
             throw new InvalidDataException($"政策原件没有本次目标的唯一 ScriptAssembly/TargetAssembly：{owner.Path}。");
         UnityReferencePolicyScript script = scripts[0];
         UnityReferencePolicyTarget target = targets[0];
-        IEnumerable<string> authorArguments = (script.ResponseFiles ?? []).SelectMany(response =>
-                ResponseArguments(UnityPolicyPath(response, workingDirectory), workingDirectory, receipt))
-            .Concat(ExpandResponseArguments(script.AdditionalCompilerArguments ?? [], workingDirectory, receipt));
-        var authorOptions = CSharpCommandLineParser.Default.Parse(authorArguments, workingDirectory, null, null);
-        if (authorOptions.Errors.Any(error => error.Severity == DiagnosticSeverity.Error))
-            throw new InvalidDataException($"原始作者响应文件/编译参数未完整解析：{responseFile}。");
+        IEnumerable<string> authorArguments = (script.ResponseFiles ?? []).Select(response =>
+                "@" + UnityPolicyPath(response, workingDirectory))
+            .Concat(script.AdditionalCompilerArguments ?? []);
+        var authorOptions = ParseCompilerArguments(authorArguments, workingDirectory, receipt);
         declaredReferences = PathSet(authorOptions.MetadataReferences.Select(reference =>
-            ResolveActualReference(reference.Reference, workingDirectory, responseFile, arguments)));
+            ResolveActualReference(reference.Reference, workingDirectory, compilerArguments, arguments)));
         return (script, target);
     }
 
@@ -135,7 +129,7 @@ sealed partial class DependencyCatalog
         CSharpCommandLineArguments arguments, string[] references, out HashSet<string> declaredReferences)
     {
         var context = ReadAutomaticReferenceContext(facts, owner, proof.WorkingDirectory,
-            proof.ResponseFile, arguments, receipt, out declaredReferences);
+            proof.CompilerArguments, arguments, receipt, out declaredReferences);
         var automatic = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (AutomaticReferencePolicy claim in trace.AutomaticReferencePolicies)
         {

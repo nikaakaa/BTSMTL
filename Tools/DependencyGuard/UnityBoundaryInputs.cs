@@ -18,7 +18,7 @@ sealed class UnityCompilationProof
 {
     public required string AssemblyDefinition { get; init; }
     public required string Project { get; init; }
-    public required string ResponseFile { get; init; }
+    public required string[] CompilerArguments { get; init; }
     public required string WorkingDirectory { get; init; }
     public required string Output { get; init; }
     public required string Receipt { get; init; }
@@ -39,7 +39,7 @@ sealed class UnityCompilerTrace
     public required string BatchId { get; init; }
     public required string OriginId { get; init; }
     public required string AssemblyDefinition { get; init; }
-    public required string ResponseFile { get; init; }
+    public required string[] CompilerArguments { get; init; }
     public required string[] Sources { get; init; }
     public required string[] References { get; init; }
     public required string ReferencePolicyFacts { get; init; }
@@ -63,7 +63,7 @@ sealed class AutomaticReferencePolicyProductionRequest
 sealed class AutomaticReferencePolicyProductionCompilation
 {
     public required string AssemblyDefinition { get; init; }
-    public required string ResponseFile { get; init; }
+    public required string[] CompilerArguments { get; init; }
     public required string WorkingDirectory { get; init; }
     public required string ReferencePolicyFacts { get; init; }
     public required string PolicyCaptureSource { get; init; }
@@ -71,7 +71,7 @@ sealed class AutomaticReferencePolicyProductionCompilation
     public required string Receipt { get; init; }
 }
 
-sealed record AutomaticReferencePolicyProduction(string AssemblyDefinition, string ResponseFile,
+sealed record AutomaticReferencePolicyProduction(string AssemblyDefinition, string[] CompilerArguments,
     string[] References, AutomaticReferencePolicy[] AutomaticReferencePolicies);
 
 sealed class UnityReferencePolicyFacts
@@ -113,10 +113,10 @@ sealed record ActualSourceBinding(string Path, int Start, int Length, int Line, 
     string Assembly, string AssemblyIdentity, string Namespace, bool AttributeUse, string? OfficialRule);
 sealed record OfficialMetadataUse(string Path, int Start, int Length, string Type, string Rule,
     string Origin, string Version, string ProducerSHA256, string Receipt);
-sealed record AutomaticCompilationCandidate(string AssemblyDefinition, string Project, string ResponseFile,
+sealed record AutomaticCompilationCandidate(string AssemblyDefinition, string Project, string[] CompilerArguments,
     string Reference, string Assembly, string Origin, string Version, string Output,
     bool Declared, bool SourceUsed, bool OutputClosureUsed, bool InputOnly);
-sealed record ActualCompilationMatch(string AssemblyDefinition, string Project, string ResponseFile,
+sealed record ActualCompilationMatch(string AssemblyDefinition, string Project, string[] CompilerArguments,
     string Output, string Receipt, string BatchId, int SourceCount, int ReferenceCount, int ClosureCount);
 
 sealed class ActualUnityCompilation(Module owner, UnityCompilationProof proof,

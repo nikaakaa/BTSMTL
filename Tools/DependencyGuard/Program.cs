@@ -29,11 +29,14 @@ static class Program
         var catalog = new DependencyCatalog(sdkRoot, clientRoot, rules);
         catalog.RecordInput(rulePath, ruleBytes);
         string toolBinaryPath = typeof(Program).Assembly.Location;
-        catalog.RecordInput(toolBinaryPath, File.ReadAllBytes(toolBinaryPath));
+        string[] toolAssemblyPaths = [toolBinaryPath, typeof(Microsoft.CodeAnalysis.CommandLineParser).Assembly.Location,
+            typeof(Microsoft.CodeAnalysis.CSharp.CSharpCompilation).Assembly.Location];
+        foreach (string toolAssemblyPath in toolAssemblyPaths)
+            catalog.RecordInput(toolAssemblyPath, File.ReadAllBytes(toolAssemblyPath));
         catalog.UnityEvidencePath = clientRoot is null ? null : options.TryGetValue("--unity-evidence", out string? evidence)
             ? Path.GetFullPath(evidence) : Path.Combine(clientRoot, rules.UnityActualBoundary.EvidenceRelativePath);
         catalog.RulesSHA256 = catalog.Inputs[rulePath];
-        catalog.GuardExecutionInputs.UnionWith(new[] { rulePath, toolBinaryPath });
+        catalog.GuardExecutionInputs.UnionWith(toolAssemblyPaths.Append(rulePath));
         if (catalog.UnityEvidencePath is not null) catalog.GuardExecutionInputs.Add(catalog.UnityEvidencePath);
         if (options.TryGetValue("--produce-reference-policies", out string? policyRequest))
         {
@@ -44,7 +47,7 @@ static class Program
             GuardInput[] policyInputs = ReadFinalInputs(catalog);
             bool changed = policyInputs.Any(input => input.Changed);
             int policyExit = changed ? 2 : 0;
-            var result = new { Version = 1, Operation = "ProduceAutomaticReferencePolicies", BatchId = batchId,
+            var result = new { Version = 2, Operation = "ProduceAutomaticReferencePolicies", BatchId = batchId,
                 RulesVersion = rules.Version, RulesSHA256 = catalog.RulesSHA256,
                 ToolBinaryPath = toolBinaryPath, ToolBinarySHA256 = catalog.Inputs[toolBinaryPath],
                 Compilations = policies, Inputs = policyInputs, InputsChanged = changed,

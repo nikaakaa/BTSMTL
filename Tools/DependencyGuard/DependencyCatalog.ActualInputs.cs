@@ -38,7 +38,7 @@ sealed partial class DependencyCatalog
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true, RespectRequiredConstructorParameters = true,
                 RespectNullableAnnotations = true, UnmappedMemberHandling = System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow }) ??
             throw new InvalidDataException("正式编译证据必须是完整对象。");
-        if (unityBatch.Version != 2 || unityBatch.BatchId.Length == 0 || unityBatch.RulesSHA256 != RulesSHA256 ||
+        if (unityBatch.Version != 3 || unityBatch.BatchId.Length == 0 || unityBatch.RulesSHA256 != RulesSHA256 ||
             !Path.GetFullPath(unityBatch.ClientRoot).Equals(clientRoot, StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException("编译证据版本、批次、当前规则身份或目标 Client 不匹配。");
         LoadBoundaryFiles(unityBatch.Files);
@@ -170,7 +170,25 @@ sealed partial class DependencyCatalog
             else yield return argument;
     }
 
-    string ResolveActualReference(string reference, string workingDirectory, string responseFile,
+    delegate bool TryParseCscClientArguments(IEnumerable<string> arguments, out List<string> parsedArguments,
+        out bool containsShared, out string? keepAlive, out string? pipeName, out string? errorMessage);
+
+    CSharpCommandLineArguments ParseCompilerArguments(IEnumerable<string> compilerArguments, string workingDirectory,
+        CompilationExecutionReceipt receipt)
+    {
+        var parseClient = typeof(CommandLineParser).GetMethod("TryParseClientArgs",
+            BindingFlags.Static | BindingFlags.NonPublic)!.CreateDelegate<TryParseCscClientArguments>();
+        if (!parseClient(compilerArguments.Select(argument => argument.Trim()).ToArray(),
+                out List<string> parsedArguments, out _, out _, out _, out string? clientError))
+            throw new InvalidDataException($"实际 Csc 客户端参数无效：{clientError}。");
+        var arguments = CSharpCommandLineParser.Default.Parse(
+            ExpandResponseArguments(parsedArguments, workingDirectory, receipt), workingDirectory, null, null);
+        if (arguments.Errors.Any(error => error.Severity == DiagnosticSeverity.Error))
+            throw new InvalidDataException($"实际 Csc 参数未完整解析：{string.Join(" ", compilerArguments)}；{string.Join("；", arguments.Errors)}。");
+        return arguments;
+    }
+
+    string ResolveActualReference(string reference, string workingDirectory, IEnumerable<string> compilerArguments,
         CSharpCommandLineArguments arguments)
     {
         string[] paths = new[] { UnityPolicyPath(reference, workingDirectory) }
@@ -178,7 +196,7 @@ sealed partial class DependencyCatalog
             .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         string? resolved = paths.FirstOrDefault(File.Exists);
         if (resolved is null)
-            throw new InvalidDataException($"实际 rsp 引用无法按编译器路径解析：{responseFile}；{reference}。");
+            throw new InvalidDataException($"实际 Csc 引用无法按编译器路径解析：{string.Join(" ", compilerArguments)}；{reference}。");
         ActualBytes(resolved);
         return resolved;
     }
@@ -192,8 +210,8 @@ sealed partial class DependencyCatalog
         if (!receipt.Outputs.Keys.Any(output => Path.GetFullPath(output).Equals(Path.GetFullPath(proof.CompilerTrace), StringComparison.OrdinalIgnoreCase)))
             throw new InvalidDataException($"实际编译输入生产记录缺少本批输出身份：{proof.CompilerTrace}。");
         if (trace.BatchId != unityBatch!.BatchId || !Path.GetFullPath(trace.AssemblyDefinition).Equals(definition, StringComparison.OrdinalIgnoreCase) ||
-            !Path.GetFullPath(trace.ResponseFile).Equals(Path.GetFullPath(proof.ResponseFile), StringComparison.OrdinalIgnoreCase))
-            throw new InvalidDataException($"官方编译输入生产记录与本次声明或 rsp 不一致：{proof.CompilerTrace}。");
+            !trace.CompilerArguments.SequenceEqual(proof.CompilerArguments, StringComparer.Ordinal))
+            throw new InvalidDataException($"官方编译输入生产记录与本次声明或完整 Csc 实参不一致：{proof.CompilerTrace}。");
         if (!officialInstallations.TryGetValue(trace.OriginId, out var origin))
             throw new InvalidDataException($"编译输入生产记录缺少已核定的安装来源：{trace.OriginId}。");
         if (origin.Rule.Kind != "UnityCompiler")
@@ -208,19 +226,16 @@ sealed partial class DependencyCatalog
             project.AssemblyDefinitionPath is null || !project.AssemblyDefinitionPath.Equals(definition, StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException($"实际编译没有唯一当前声明和项目归属：{definition}；{projectPath}。");
         foreach (string path in new[] { definition, projectPath }) RequireReceiptInput(receipt, path);
-        var arguments = CSharpCommandLineParser.Default.Parse(ResponseArguments(proof.ResponseFile, proof.WorkingDirectory, receipt),
-            proof.WorkingDirectory, null, null);
-        if (arguments.Errors.Any(error => error.Severity == DiagnosticSeverity.Error))
-            throw new InvalidDataException($"实际 rsp 未完整解析：{proof.ResponseFile}；{string.Join("；", arguments.Errors)}。");
+        var arguments = ParseCompilerArguments(proof.CompilerArguments, proof.WorkingDirectory, receipt);
         string outputPath = FullPath(arguments.OutputDirectory, arguments.OutputFileName!);
         if (!outputPath.Equals(Path.GetFullPath(proof.Output), StringComparison.OrdinalIgnoreCase) ||
             !receipt.Outputs.Keys.Any(output => Path.GetFullPath(output).Equals(outputPath, StringComparison.OrdinalIgnoreCase)))
-            throw new InvalidDataException($"当前产物不是实际 rsp 的本批输出：{proof.ResponseFile}；{proof.Output}。");
+            throw new InvalidDataException($"当前产物不是实际 Csc 参数的本批输出：{string.Join(" ", proof.CompilerArguments)}；{proof.Output}。");
         string[] sourcePaths = arguments.SourceFiles.Select(source => UnityPolicyPath(source.Path, proof.WorkingDirectory)).ToArray();
         string[] referencePaths = arguments.MetadataReferences.Select(reference =>
-            ResolveActualReference(reference.Reference, proof.WorkingDirectory, proof.ResponseFile, arguments)).ToArray();
+            ResolveActualReference(reference.Reference, proof.WorkingDirectory, proof.CompilerArguments, arguments)).ToArray();
         foreach (string path in sourcePaths.Concat(referencePaths).Concat(arguments.AnalyzerReferences.Select(reference =>
-                     ResolveActualReference(reference.FilePath, proof.WorkingDirectory, proof.ResponseFile, arguments))).Concat(arguments.AdditionalFiles.Select(source =>
+                     ResolveActualReference(reference.FilePath, proof.WorkingDirectory, proof.CompilerArguments, arguments))).Concat(arguments.AdditionalFiles.Select(source =>
                      UnityPolicyPath(source.Path, proof.WorkingDirectory))).Concat(arguments.AnalyzerConfigPaths.Select(path => UnityPolicyPath(path, proof.WorkingDirectory))))
         {
             ActualBytes(path);
@@ -277,10 +292,10 @@ sealed partial class DependencyCatalog
             bool outputUsed = closure.Any(binary => binary.Identity == candidate.Identity);
             bool inputOnly = !declared && !used && !outputUsed;
             if (inputOnly) actual.InputOnlyAssemblies.Add(candidate.Identity);
-            AutomaticCompilationCandidates.Add(new(definition, projectPath, proof.ResponseFile, candidate.Path, candidate.Name,
+            AutomaticCompilationCandidates.Add(new(definition, projectPath, proof.CompilerArguments, candidate.Path, candidate.Name,
                 origin.Rule.Origin, origin.Rule.Version, outputPath, declared, used, outputUsed, inputOnly));
         }
-        ActualCompilations.Add(new(definition, projectPath, proof.ResponseFile, outputPath, proof.Receipt,
+        ActualCompilations.Add(new(definition, projectPath, proof.CompilerArguments, outputPath, proof.Receipt,
             unityBatch.BatchId, trees.Count, references.Length, closure.Length));
     }
 
@@ -471,7 +486,7 @@ sealed partial class DependencyCatalog
         ActualBinary? binary = actual.References.FirstOrDefault(reference => reference.Identity == identity);
         if (binary is not null) return binary;
         return binaryIdentities.TryGetValue(identity, out ActualBinary? forwarded) ? forwarded :
-            throw new InvalidDataException($"实际源码绑定缺少程序集原件：{actual.Proof.ResponseFile} -> {identity}。");
+            throw new InvalidDataException($"实际源码绑定缺少程序集原件：{string.Join(" ", actual.Proof.CompilerArguments)} -> {identity}。");
     }
 
     bool IsInputOnlyCandidate(Module module, Dependency dependency)
