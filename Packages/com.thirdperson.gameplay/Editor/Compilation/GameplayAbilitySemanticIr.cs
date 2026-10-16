@@ -567,7 +567,6 @@ namespace ThirdPersonSimulation
 
     public sealed class GameplayAbilitySemanticIr
     {
-        internal GraphExecutionChunks m_Chunks;
         readonly ReadOnlyCollection<SemanticOperation> m_Operations;
         SemanticGraphStructure Structure => Tables.Structure;
         readonly SemanticStateLayout m_StateLayout;
@@ -601,7 +600,7 @@ namespace ThirdPersonSimulation
                     ByIdentity(scopes, value => value.Identity, "scope"), callFrames),
                 Indexed(outputChannels, value => value.Index, "output channel"),
                 Indexed(catalogEntries, value => value.Index, "catalog entry"),
-                graphSources.Layout.Chunk, Indexed(producers, value => value.Index, "producer"));
+                Indexed(producers, value => value.Index, "producer"));
             Tables = new SemanticGraphTables(structure, parameters);
             m_StateLayout = new SemanticStateLayout(Structure.StateTables, m_Operations);
             GraphSources = graphSources;
@@ -617,7 +616,6 @@ namespace ThirdPersonSimulation
                 m_Operations);
             ValidateReferences();
             ValidateGraphCallFrames();
-            StateLayoutHash = GraphSources.Layout.Publisher.ComputeStateLayoutHash(m_StateLayout);
         }
 
         GameplayAbilitySemanticIr(GameplayAbilitySemanticIr structure, GameplayAbilitySemanticIrManifest manifest,
@@ -637,9 +635,6 @@ namespace ThirdPersonSimulation
             m_StateLayout = structure.m_StateLayout;
             m_StateSlotByOperation = structure.m_StateSlotByOperation;
             GraphSources = sources;
-            StateLayoutHash = structure.StateLayoutHash;
-            m_Chunks = GraphSources.Layout.Publisher.Publish(this, structure.Chunks,
-                ReferenceEquals(parameters, structure.Parameters) ? GraphCompilationWork.Sources : GraphCompilationWork.Parameters);
         }
 
         public GameplayAbilitySemanticIr WithParameters(GameplayAbilitySemanticIrManifest manifest,
@@ -667,9 +662,6 @@ namespace ThirdPersonSimulation
         public IReadOnlyList<ProgramExecutionSource> ExecutionSources => GraphSources.Layout.Entries;
         public ProgramGraphSourceRevisionTable GraphSourceRevisions => GraphSources.Revisions;
         public IReadOnlyList<ProgramProducer> Producers => Structure.Producers;
-        public SemanticHash SemanticHash => new SemanticHash(Chunks.ExecutionHash);
-        public GraphExecutionChunks Chunks => m_Chunks ??= GraphSources.Layout.Publisher.Publish(this, null, GraphCompilationWork.Structure);
-        public StableHash StateLayoutHash { get; }
         public SemanticStateLayout StateLayout => m_StateLayout;
         public SemanticGraphTables Tables { get; }
 
@@ -921,7 +913,7 @@ namespace ThirdPersonSimulation
             ReadOnlyCollection<SemanticConstantInputBinding> constantInputBindings,
             ReadOnlyCollection<ProgramControlFlowEdge> controlFlow, ReadOnlyCollection<ProgramReference> references,
             SemanticStateTables stateTables, ReadOnlyCollection<ProgramOutputChannelLayout> outputChannels,
-            ReadOnlyCollection<ProgramCatalogEntry> catalogEntries, GraphExecutionChunk executionSources,
+            ReadOnlyCollection<ProgramCatalogEntry> catalogEntries,
             ReadOnlyCollection<ProgramProducer> producers)
         {
             var layouts = new SemanticOperationLayout[operations.Count];
@@ -934,7 +926,6 @@ namespace ThirdPersonSimulation
             StateTables = stateTables;
             OutputChannels = outputChannels;
             CatalogEntries = catalogEntries;
-            ExecutionSources = executionSources;
             Producers = producers;
         }
 
@@ -945,7 +936,6 @@ namespace ThirdPersonSimulation
         public SemanticStateTables StateTables { get; }
         public ReadOnlyCollection<ProgramOutputChannelLayout> OutputChannels { get; }
         public ReadOnlyCollection<ProgramCatalogEntry> CatalogEntries { get; }
-        public GraphExecutionChunk ExecutionSources { get; }
         public ReadOnlyCollection<ProgramProducer> Producers { get; }
     }
 

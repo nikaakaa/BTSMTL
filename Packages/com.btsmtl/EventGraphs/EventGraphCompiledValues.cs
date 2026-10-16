@@ -7,7 +7,7 @@ namespace BTSMTL.EventGraphs
 {
     public static class EventGraphCompiledValues
     {
-        internal static string TypeIdentity(Type type)
+        public static string TypeIdentity(Type type)
         {
             EventGraphValueKinds.TryGet(type, out EventGraphValueKind kind);
             return kind switch

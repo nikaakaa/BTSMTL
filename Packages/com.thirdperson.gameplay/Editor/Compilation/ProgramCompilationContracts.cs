@@ -662,19 +662,12 @@ namespace ThirdPersonSimulation
 
     public sealed class ProgramExecutionSourceLayout
     {
-        GraphExecutionChunk m_Chunk;
-
-        public ProgramExecutionSourceLayout(IReadOnlyList<ProgramExecutionSource> entries, IGraphContentPublisher publisher)
+        public ProgramExecutionSourceLayout(IReadOnlyList<ProgramExecutionSource> entries)
         {
             Entries = entries;
-            Publisher = publisher;
         }
 
         public IReadOnlyList<ProgramExecutionSource> Entries { get; }
-        public IGraphContentPublisher Publisher { get; }
-        public GraphExecutionChunk Chunk => m_Chunk ??= Publisher.Publish(this);
-        public StableHash Hash => Chunk.Hash;
-
     }
 
     public sealed partial class ProgramSourceMapText
@@ -712,8 +705,6 @@ namespace ThirdPersonSimulation
 
     public sealed class ProgramGraphSources
     {
-        GraphExecutionChunk m_DiagnosticChunk;
-
         public ProgramGraphSources(ProgramExecutionSourceLayout layout, IReadOnlyList<ProgramSourceMapEntry> diagnostics,
             ProgramGraphSourceRevisionTable revisions)
         {
@@ -725,24 +716,20 @@ namespace ThirdPersonSimulation
         public ProgramExecutionSourceLayout Layout { get; }
         public IReadOnlyList<ProgramSourceMapEntry> Diagnostics { get; }
         public ProgramGraphSourceRevisionTable Revisions { get; }
-        public GraphExecutionChunk DiagnosticChunk => m_DiagnosticChunk ??= Layout.Publisher.Publish(this);
-
         public ProgramGraphSources WithRevisions(IEnumerable<ProgramGraphSourceRevision> revisions)
         {
-            var sources = new ProgramGraphSources(Layout, Diagnostics, new ProgramGraphSourceRevisionTable(revisions));
-            sources.m_DiagnosticChunk = DiagnosticChunk;
-            return sources;
+            return new ProgramGraphSources(Layout, Diagnostics, new ProgramGraphSourceRevisionTable(revisions));
         }
 
         public static ProgramGraphSources Create(IEnumerable<ProgramSourceMapEntry> diagnostics,
-            IEnumerable<ProgramGraphSourceRevision> revisions, IGraphContentPublisher publisher)
+            IEnumerable<ProgramGraphSourceRevision> revisions)
         {
             var entries = new List<ProgramSourceMapEntry>(diagnostics);
             entries.Sort(Compare);
             var sources = new ProgramExecutionSource[entries.Count];
             for (int i = 0; i < sources.Length; i++)
                 sources[i] = entries[i].Source;
-            return new ProgramGraphSources(new ProgramExecutionSourceLayout(Array.AsReadOnly(sources), publisher),
+            return new ProgramGraphSources(new ProgramExecutionSourceLayout(Array.AsReadOnly(sources)),
                 entries.AsReadOnly(), new ProgramGraphSourceRevisionTable(revisions));
         }
 
