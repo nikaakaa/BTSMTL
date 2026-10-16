@@ -44,18 +44,70 @@ namespace BTSMTL.Timeline.Runtime
         public bool IsValid => SourceGeneration != 0;
     }
 
+    public readonly struct TimelineRuntimePresentationPlayback
+    {
+        internal TimelineRuntimePresentationPlayback(in OrchestrationTimelineStart<OrchestrationTime> start,
+            OrchestrationTime time, int cycle, bool finished)
+        {
+            Start = start;
+            Time = time;
+            Cycle = cycle;
+            Finished = finished;
+        }
+
+        public OrchestrationTimelineStart<OrchestrationTime> Start { get; }
+        public OrchestrationTime Time { get; }
+        public int Cycle { get; }
+        public bool Finished { get; }
+    }
+
     public sealed class TimelineRuntimePresentationDriver
     {
+        const int RecordedStateHeaderV2 = -2;
         readonly int m_PlaybackCapacity;
-        readonly Dictionary<ulong, PresentationPlaybackState> m_Playbacks;
+        readonly Dictionary<OrchestrationTimelineStart<OrchestrationTime>, PresentationPlaybackState> m_Playbacks;
         readonly Dictionary<(TimelineContentUnit Timeline, OrchestrationTimelinePlaybackMode Mode), Stack<PresentationPlaybackState>> m_RecycledPlaybacks = new();
         PresentationPlaybackState m_FirstPendingFrame;
         PresentationPlaybackState m_LastPendingFrame;
 
+        public PlaybackCollection Playbacks => new PlaybackCollection(this);
+
+        public readonly struct PlaybackCollection
+        {
+            readonly TimelineRuntimePresentationDriver m_Owner;
+
+            internal PlaybackCollection(TimelineRuntimePresentationDriver owner) => m_Owner = owner;
+
+            public int Count => m_Owner.m_Playbacks.Count;
+            public PlaybackEnumerator GetEnumerator() => new PlaybackEnumerator(m_Owner);
+        }
+
+        public struct PlaybackEnumerator : IDisposable
+        {
+            Dictionary<OrchestrationTimelineStart<OrchestrationTime>, PresentationPlaybackState>.Enumerator m_Enumerator;
+
+            internal PlaybackEnumerator(TimelineRuntimePresentationDriver owner) =>
+                m_Enumerator = owner.m_Playbacks.GetEnumerator();
+
+            public TimelineRuntimePresentationPlayback Current
+            {
+                get
+                {
+                    KeyValuePair<OrchestrationTimelineStart<OrchestrationTime>, PresentationPlaybackState> item = m_Enumerator.Current;
+                    var start = item.Key;
+                    return new TimelineRuntimePresentationPlayback(in start,
+                        item.Value.CursorTime, item.Value.Cycle, item.Value.Finished);
+                }
+            }
+
+            public bool MoveNext() => m_Enumerator.MoveNext();
+            public void Dispose() => m_Enumerator.Dispose();
+        }
+
         public TimelineRuntimePresentationDriver(int playbackCapacity)
         {
             m_PlaybackCapacity = playbackCapacity;
-            m_Playbacks = new Dictionary<ulong, PresentationPlaybackState>(playbackCapacity);
+            m_Playbacks = new Dictionary<OrchestrationTimelineStart<OrchestrationTime>, PresentationPlaybackState>(playbackCapacity);
         }
 
         public void RetireContent(TimelineContentUnit timeline, OrchestrationTimelinePlaybackMode mode) =>
@@ -198,32 +250,21 @@ namespace BTSMTL.Timeline.Runtime
         PresentationPlaybackState GetPlaybackState(TimelineRuntimePreparedContent content,
             in OrchestrationTimelineStart<OrchestrationTime> start, OrchestrationTime startTime, int cycle)
         {
-            bool hasState = m_Playbacks.TryGetValue(start.PlaybackIdentity, out PresentationPlaybackState state);
-            TimelinePresentationSampleReason reason = hasState ? state.SampleReason : TimelinePresentationSampleReason.Advance;
-            if (hasState && state.SourceGeneration != start.SourceGeneration)
-            {
-                if (state.HasPendingFrame)
-                    ReleasePendingFrame(state);
-                state.Recycle();
-                m_Playbacks.Remove(start.PlaybackIdentity);
-                hasState = false;
-            }
-            if (!hasState)
+            if (!m_Playbacks.TryGetValue(start, out PresentationPlaybackState state))
             {
                 var key = (content.Content, start.Mode);
                 Stack<PresentationPlaybackState> recycled = m_RecycledPlaybacks[key];
                 state = recycled.Pop();
-                state.Restart(start.SourceGeneration, startTime, cycle);
-                state.SampleReason = reason;
-                m_Playbacks.Add(start.PlaybackIdentity, state);
+                state.Restart(startTime, cycle);
+                m_Playbacks.Add(start, state);
             }
             return state;
         }
 
         public bool RequestTreeClipExit(in TimelineRuntimePresentationFrame frame, in TimelineRuntimeTreeClipRequest request)
         {
-            if (!m_Playbacks.TryGetValue(frame.Start.PlaybackIdentity, out PresentationPlaybackState state) ||
-                state.SourceGeneration != frame.Start.SourceGeneration || !state.HasPendingFrame || state.PendingFrame.PresentationFrame != frame.PresentationFrame ||
+            if (!m_Playbacks.TryGetValue(frame.Start, out PresentationPlaybackState state) ||
+                !state.HasPendingFrame || state.PendingFrame.PresentationFrame != frame.PresentationFrame ||
                 request.Token.PlaybackIdentity != frame.Start.PlaybackIdentity || request.Token.Sequence != frame.PresentationFrame)
                 throw new InvalidOperationException("Presentation TreeClip exit requires its current candidate frame.");
             int index = state.TreePositions[request.Token.ClipOrdinal];
@@ -303,9 +344,9 @@ namespace BTSMTL.Timeline.Runtime
             state.PendingFrame = default;
         }
 
-        public void SuspendPresentationPlayback(ulong playbackIdentity, ulong sourceGeneration)
+        public void SuspendPresentationPlayback(in OrchestrationTimelineStart<OrchestrationTime> start)
         {
-            if (!m_Playbacks.TryGetValue(playbackIdentity, out PresentationPlaybackState state) || state.SourceGeneration != sourceGeneration)
+            if (!m_Playbacks.TryGetValue(start, out PresentationPlaybackState state))
                 return;
             if (state.HasPendingFrame)
                 ReleasePendingFrame(state);
@@ -315,14 +356,14 @@ namespace BTSMTL.Timeline.Runtime
             state.Finished = false;
         }
 
-        public void ReleasePresentationPlayback(ulong playbackIdentity, ulong sourceGeneration)
+        public void ReleasePresentationPlayback(in OrchestrationTimelineStart<OrchestrationTime> start)
         {
-            if (m_Playbacks.TryGetValue(playbackIdentity, out PresentationPlaybackState state) && state.SourceGeneration == sourceGeneration)
+            if (m_Playbacks.TryGetValue(start, out PresentationPlaybackState state))
             {
                 if (state.HasPendingFrame)
                     ReleasePendingFrame(state);
                 state.Recycle();
-                m_Playbacks.Remove(playbackIdentity);
+                m_Playbacks.Remove(start);
             }
         }
 
@@ -338,14 +379,14 @@ namespace BTSMTL.Timeline.Runtime
 
         public void WriteRecordedState<TWriter>(ref TWriter writer) where TWriter : struct, IRecordedRuntimeStateWriter
         {
+            writer.Write(RecordedStateHeaderV2);
             writer.Write(m_Playbacks.Count);
-            foreach (KeyValuePair<ulong, PresentationPlaybackState> playback in m_Playbacks)
+            foreach (KeyValuePair<OrchestrationTimelineStart<OrchestrationTime>, PresentationPlaybackState> playback in m_Playbacks)
             {
                 PresentationPlaybackState state = playback.Value;
                 writer.Write(playback.Key);
                 writer.WriteText(state.Prepared.Content.Identity);
                 writer.WriteText(state.Prepared.Content.Revision);
-                writer.Write(state.Mode);
                 state.WriteRecordedState(ref writer);
             }
             int pendingCount = 0;
@@ -353,18 +394,20 @@ namespace BTSMTL.Timeline.Runtime
                 pendingCount++;
             writer.Write(pendingCount);
             for (PresentationPlaybackState state = m_FirstPendingFrame; state != null; state = state.NextPendingFrame)
-                writer.Write(state.PendingFrame.Start.PlaybackIdentity);
+                writer.Write(state.PendingFrame.Start);
         }
 
         public void RestoreRecordedState(ref RecordedRuntimeStateReader reader,
             IReadOnlyList<TimelineRuntimePreparedContent> contents)
         {
+            if (reader.Read<int>() != RecordedStateHeaderV2)
+                throw new InvalidOperationException("Recorded Timeline presentation state version is not supported.");
             int count = reader.Read<int>();
             if (count < 0 || count > checked(m_RecycledPlaybacks.Count * m_PlaybackCapacity))
                 throw new InvalidOperationException("Recorded Timeline playback count exceeds the prepared capacity.");
             m_FirstPendingFrame = null;
             m_LastPendingFrame = null;
-            foreach (KeyValuePair<ulong, PresentationPlaybackState> playback in m_Playbacks)
+            foreach (KeyValuePair<OrchestrationTimelineStart<OrchestrationTime>, PresentationPlaybackState> playback in m_Playbacks)
             {
                 PresentationPlaybackState state = playback.Value;
                 state.PreviousPendingFrame = null;
@@ -375,24 +418,23 @@ namespace BTSMTL.Timeline.Runtime
             m_Playbacks.Clear();
             for (int index = 0; index < count; index++)
             {
-                ulong identity = reader.Read<ulong>();
+                var start = reader.Read<OrchestrationTimelineStart<OrchestrationTime>>();
                 string contentIdentity = reader.ReadText();
                 string contentRevision = reader.ReadText();
-                OrchestrationTimelinePlaybackMode mode = reader.Read<OrchestrationTimelinePlaybackMode>();
                 TimelineRuntimePreparedContent prepared = RequireRecordedContent(contents, contentIdentity, contentRevision);
-                if (!m_RecycledPlaybacks.TryGetValue((prepared.Content, mode), out Stack<PresentationPlaybackState> recycled) ||
+                if (!m_RecycledPlaybacks.TryGetValue((prepared.Content, start.Mode), out Stack<PresentationPlaybackState> recycled) ||
                     recycled.Count == 0)
-                    throw new InvalidOperationException($"Recorded Timeline '{contentIdentity}' revision '{contentRevision}' has no prepared playback capacity for '{mode}'.");
+                    throw new InvalidOperationException($"Recorded Timeline '{contentIdentity}' revision '{contentRevision}' has no prepared playback capacity for '{start.Mode}'.");
                 PresentationPlaybackState state = recycled.Pop();
-                state.RestoreRecordedState(ref reader);
-                m_Playbacks.Add(identity, state);
+                state.RestoreRecordedState(ref reader, in start);
+                m_Playbacks.Add(start, state);
             }
             int pendingCount = reader.Read<int>();
             if (pendingCount < 0 || pendingCount > count)
                 throw new InvalidOperationException("Recorded Timeline pending frame count exceeds its playback count.");
             for (int index = 0; index < pendingCount; index++)
             {
-                PresentationPlaybackState state = m_Playbacks[reader.Read<ulong>()];
+                PresentationPlaybackState state = m_Playbacks[reader.Read<OrchestrationTimelineStart<OrchestrationTime>>()];
                 state.PreviousPendingFrame = m_LastPendingFrame;
                 if (m_LastPendingFrame == null)
                     m_FirstPendingFrame = state;
@@ -417,7 +459,6 @@ namespace BTSMTL.Timeline.Runtime
         static void WriteFrame<TWriter>(ref TWriter writer, in TimelineRuntimePresentationFrame frame)
             where TWriter : struct, IRecordedRuntimeStateWriter
         {
-            writer.Write(frame.Start);
             writer.Write(frame.LogicTick);
             writer.Write(frame.PresentationFrame);
             writer.Write(frame.PresentationDeltaSeconds);
@@ -428,9 +469,8 @@ namespace BTSMTL.Timeline.Runtime
         }
 
         static TimelineRuntimePresentationFrame ReadFrame(ref RecordedRuntimeStateReader reader,
-            TimelineRuntimePresentationBuffer buffer)
+            TimelineRuntimePresentationBuffer buffer, in OrchestrationTimelineStart<OrchestrationTime> start)
         {
-            var start = reader.Read<OrchestrationTimelineStart<OrchestrationTime>>();
             ulong logicTick = reader.Read<ulong>();
             ulong presentationFrame = reader.Read<ulong>();
             float deltaSeconds = reader.Read<float>();
@@ -656,7 +696,6 @@ namespace BTSMTL.Timeline.Runtime
             {
                 m_Recycled = recycled;
                 Prepared = prepared;
-                Mode = mode;
                 TimelineContentUnit content = prepared.Content;
                 int markerCount = content.Markers.Count;
                 Candidate = new TimelineRuntimePresentationBuffer(prepared, mode);
@@ -683,7 +722,6 @@ namespace BTSMTL.Timeline.Runtime
             }
 
             public readonly TimelineRuntimePreparedContent Prepared;
-            public readonly OrchestrationTimelinePlaybackMode Mode;
             public readonly PresentationTree[] Trees;
             public readonly int[] TreePositions;
             public readonly int[] TreeCycles;
@@ -702,7 +740,6 @@ namespace BTSMTL.Timeline.Runtime
             public bool HasPendingFrame => PendingFrame.PresentationFrame != 0;
             public PresentationPlaybackState PreviousPendingFrame;
             public PresentationPlaybackState NextPendingFrame;
-            public ulong SourceGeneration { get; private set; }
             public OrchestrationTime CursorTime;
             public int Cycle;
             public bool InitialBoundaryConsumed;
@@ -714,7 +751,6 @@ namespace BTSMTL.Timeline.Runtime
 
             public void WriteRecordedState<TWriter>(ref TWriter writer) where TWriter : struct, IRecordedRuntimeStateWriter
             {
-                writer.Write(SourceGeneration);
                 writer.Write(CursorTime);
                 writer.Write(Cycle);
                 writer.Write(InitialBoundaryConsumed);
@@ -741,9 +777,9 @@ namespace BTSMTL.Timeline.Runtime
                     WriteFrame(ref writer, in CachedFrame);
             }
 
-            public void RestoreRecordedState(ref RecordedRuntimeStateReader reader)
+            public void RestoreRecordedState(ref RecordedRuntimeStateReader reader,
+                in OrchestrationTimelineStart<OrchestrationTime> start)
             {
-                SourceGeneration = reader.Read<ulong>();
                 CursorTime = reader.Read<OrchestrationTime>();
                 Cycle = reader.Read<int>();
                 InitialBoundaryConsumed = reader.Read<bool>();
@@ -762,14 +798,13 @@ namespace BTSMTL.Timeline.Runtime
                 reader.ReadSpan<int>(PendingTreeExitCycles.Length).CopyTo(PendingTreeExitCycles);
                 ReadBuffer(ref reader, Candidate);
                 ReadBuffer(ref reader, Accepted);
-                PendingFrame = reader.Read<bool>() ? ReadFrame(ref reader, Candidate) : default;
+                PendingFrame = reader.Read<bool>() ? ReadFrame(ref reader, Candidate, in start) : default;
                 HasCachedFrame = reader.Read<bool>();
-                CachedFrame = HasCachedFrame ? ReadFrame(ref reader, Accepted) : default;
+                CachedFrame = HasCachedFrame ? ReadFrame(ref reader, Accepted, in start) : default;
             }
 
-            public void Restart(ulong sourceGeneration, OrchestrationTime startTime, int cycle)
+            public void Restart(OrchestrationTime startTime, int cycle)
             {
-                SourceGeneration = sourceGeneration;
                 Array.Clear(MarkerLastTraversal, 0, MarkerLastTraversal.Length);
                 Array.Clear(PendingMarkerLastTraversal, 0, PendingMarkerLastTraversal.Length);
                 PendingTime = startTime;

@@ -14,6 +14,8 @@ namespace BTSMTL.Timeline.Runtime
         readonly Dictionary<TimelineData, TimelineRuntimePreparedContent> m_Contents = new();
         readonly TimelineRuntimePresentationDriver m_PresentationDriver;
 
+        public TimelineRuntimePresentationDriver.PlaybackCollection Playbacks => m_PresentationDriver.Playbacks;
+
         public TimelineRuntimeCompositionHost(
             TimelineRuntimeNumericTarget numericTarget,
             IReadOnlyList<TimelineCallBinding> callBindings,
@@ -86,10 +88,10 @@ namespace BTSMTL.Timeline.Runtime
 
         public void CommitPresentationFrame(ulong frame) => m_PresentationDriver.CommitPresentationFrame(frame);
         public void DiscardPresentationFrame(ulong frame) => m_PresentationDriver.DiscardPresentationFrame(frame);
-        public void SuspendPresentationPlayback(ulong playbackIdentity, ulong sourceGeneration) =>
-            m_PresentationDriver.SuspendPresentationPlayback(playbackIdentity, sourceGeneration);
-        public void ReleasePresentationPlayback(ulong playbackIdentity, ulong sourceGeneration) =>
-            m_PresentationDriver.ReleasePresentationPlayback(playbackIdentity, sourceGeneration);
+        public void SuspendPresentationPlayback(in OrchestrationTimelineStart<OrchestrationTime> start) =>
+            m_PresentationDriver.SuspendPresentationPlayback(in start);
+        public void ReleasePresentationPlayback(in OrchestrationTimelineStart<OrchestrationTime> start) =>
+            m_PresentationDriver.ReleasePresentationPlayback(in start);
 
         public void Dispose()
         {
