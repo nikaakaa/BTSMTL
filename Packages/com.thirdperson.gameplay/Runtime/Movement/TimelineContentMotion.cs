@@ -12,7 +12,7 @@ namespace ThirdPersonSimulation
         {
             public static readonly OrchestrationExtensionDefinition<MotionCurveSample> Definition = new(
                 new OrchestrationExtensionIdentity(GameplayMotionExtensionContracts.DomainId,
-                    GameplayMotionExtensionContracts.MotionCurveSampleOperationId), 2,
+                    GameplayMotionExtensionContracts.MotionCurveSampleOperationId), 3,
                 TimelineLogicSampleExtension.Contract);
         }
 

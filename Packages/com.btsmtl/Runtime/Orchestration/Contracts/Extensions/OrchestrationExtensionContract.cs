@@ -32,6 +32,12 @@ namespace BTSMTL.Orchestration
         Failure = 3
     }
 
+    public enum OrchestrationExtensionCompletion : byte
+    {
+        Immediate = 1,
+        Resumable = 2
+    }
+
     public enum OrchestrationExtensionPortDirection : byte
     {
         Input = 1,
@@ -99,12 +105,14 @@ namespace BTSMTL.Orchestration
         public OrchestrationExtensionContract(OrchestrationExtensionKind kind,
             OrchestrationExtensionAccess access,
             OrchestrationExtensionInvocationKind invocations,
+            OrchestrationExtensionCompletion completion,
             ReadOnlyMemory<OrchestrationExtensionPort> ports,
             ReadOnlyMemory<OrchestrationExtensionContentField> fields)
         {
             Kind = kind;
             Access = access;
             Invocations = invocations;
+            Completion = completion;
             Ports = ports;
             Fields = fields;
         }
@@ -112,6 +120,7 @@ namespace BTSMTL.Orchestration
         public OrchestrationExtensionKind Kind { get; }
         public OrchestrationExtensionAccess Access { get; }
         public OrchestrationExtensionInvocationKind Invocations { get; }
+        public OrchestrationExtensionCompletion Completion { get; }
         public ReadOnlyMemory<OrchestrationExtensionPort> Ports { get; }
         public ReadOnlyMemory<OrchestrationExtensionContentField> Fields { get; }
     }

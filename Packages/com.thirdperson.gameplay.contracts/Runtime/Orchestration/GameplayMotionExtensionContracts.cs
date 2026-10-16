@@ -77,8 +77,9 @@ namespace ThirdPersonGameplay.Orchestration
 
             public static readonly OrchestrationExtensionDefinition<MoveFacingAngle> Definition = new(
                 new OrchestrationExtensionIdentity(DomainId, "character-move-facing-angle"),
-                2, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
+                3, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
                     OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
+                    OrchestrationExtensionCompletion.Immediate,
                     new[]
                     {
                         MoveInput.Declaration,
@@ -92,8 +93,9 @@ namespace ThirdPersonGameplay.Orchestration
 
             public static readonly OrchestrationExtensionDefinition<CharacterStateVector3> Definition = new(
                 new OrchestrationExtensionIdentity(DomainId, "character-state-vector3"),
-                2, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
+                3, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
                     OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
+                    OrchestrationExtensionCompletion.Immediate,
                     new[]
                     {
                         Output.Declaration
@@ -106,8 +108,9 @@ namespace ThirdPersonGameplay.Orchestration
 
             public static readonly OrchestrationExtensionDefinition<CharacterStateScalar> Definition = new(
                 new OrchestrationExtensionIdentity(DomainId, "character-state-scalar"),
-                2, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
+                3, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
                     OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
+                    OrchestrationExtensionCompletion.Immediate,
                     new[]
                     {
                         Output.Declaration
@@ -120,8 +123,9 @@ namespace ThirdPersonGameplay.Orchestration
 
             public static readonly OrchestrationExtensionDefinition<CharacterStateYaw> Definition = new(
                 new OrchestrationExtensionIdentity(DomainId, "character-state-yaw"),
-                2, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
+                3, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
                     OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
+                    OrchestrationExtensionCompletion.Immediate,
                     new[]
                     {
                         Output.Declaration
@@ -134,8 +138,9 @@ namespace ThirdPersonGameplay.Orchestration
 
             public static readonly OrchestrationExtensionDefinition<CharacterStateBoolean> Definition = new(
                 new OrchestrationExtensionIdentity(DomainId, "character-state-bool"),
-                2, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
+                3, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
                     OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
+                    OrchestrationExtensionCompletion.Immediate,
                     new[]
                     {
                         Output.Declaration
@@ -148,8 +153,9 @@ namespace ThirdPersonGameplay.Orchestration
 
             public static readonly OrchestrationExtensionDefinition<LocomotionDecision> Definition = new(
                 new OrchestrationExtensionIdentity(DomainId, "locomotion-decision"),
-                2, new OrchestrationExtensionContract(OrchestrationExtensionKind.Condition,
+                3, new OrchestrationExtensionContract(OrchestrationExtensionKind.Condition,
                     OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
+                    OrchestrationExtensionCompletion.Immediate,
                     new[]
                     {
                         Output.Declaration
@@ -165,8 +171,9 @@ namespace ThirdPersonGameplay.Orchestration
 
             public static readonly OrchestrationExtensionDefinition<LocomotionInputMotion> Definition = new(
                 new OrchestrationExtensionIdentity(DomainId, "locomotion-input-motion"),
-                2, new OrchestrationExtensionContract(OrchestrationExtensionKind.Action,
+                3, new OrchestrationExtensionContract(OrchestrationExtensionKind.Action,
                     OrchestrationExtensionAccess.CandidateWrite, OrchestrationExtensionInvocationKind.Execute,
+                    OrchestrationExtensionCompletion.Resumable,
                     new[]
                     {
                         MoveInput.Declaration,
@@ -186,8 +193,9 @@ namespace ThirdPersonGameplay.Orchestration
 
             public static readonly OrchestrationExtensionDefinition<MotionWarpAction> Definition = new(
                 new OrchestrationExtensionIdentity(DomainId, "motion-warp"),
-                2, new OrchestrationExtensionContract(OrchestrationExtensionKind.Action,
+                3, new OrchestrationExtensionContract(OrchestrationExtensionKind.Action,
                     OrchestrationExtensionAccess.CandidateWrite, OrchestrationExtensionInvocationKind.Execute,
+                    OrchestrationExtensionCompletion.Immediate,
                     new[]
                     {
                         Enabled.Declaration,

@@ -29,8 +29,9 @@ namespace ThirdPersonGameplay.Orchestration
 
             public static readonly OrchestrationExtensionDefinition<Boolean> Definition = new OrchestrationExtensionDefinition<Boolean>(
                 new OrchestrationExtensionIdentity(DomainId, "configuration-bool"),
-                3, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
+                4, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
                     OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
+                    OrchestrationExtensionCompletion.Immediate,
                     new[]
                     {
                         Value.Declaration
@@ -44,8 +45,9 @@ namespace ThirdPersonGameplay.Orchestration
 
             public static readonly OrchestrationExtensionDefinition<Int32> Definition = new OrchestrationExtensionDefinition<Int32>(
                 new OrchestrationExtensionIdentity(DomainId, "configuration-int32"),
-                3, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
+                4, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
                     OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
+                    OrchestrationExtensionCompletion.Immediate,
                     new[]
                     {
                         Value.Declaration
@@ -59,8 +61,9 @@ namespace ThirdPersonGameplay.Orchestration
 
             public static readonly OrchestrationExtensionDefinition<UInt64> Definition = new OrchestrationExtensionDefinition<UInt64>(
                 new OrchestrationExtensionIdentity(DomainId, "configuration-uint64"),
-                3, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
+                4, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
                     OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
+                    OrchestrationExtensionCompletion.Immediate,
                     new[]
                     {
                         Value.Declaration
@@ -74,8 +77,9 @@ namespace ThirdPersonGameplay.Orchestration
 
             public static readonly OrchestrationExtensionDefinition<Number> Definition = new OrchestrationExtensionDefinition<Number>(
                 new OrchestrationExtensionIdentity(DomainId, "configuration-number"),
-                3, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
+                4, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
                     OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
+                    OrchestrationExtensionCompletion.Immediate,
                     new[]
                     {
                         Value.Declaration
@@ -89,8 +93,9 @@ namespace ThirdPersonGameplay.Orchestration
 
             public static readonly OrchestrationExtensionDefinition<Text> Definition = new OrchestrationExtensionDefinition<Text>(
                 new OrchestrationExtensionIdentity(DomainId, "configuration-text"),
-                3, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
+                4, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
                     OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
+                    OrchestrationExtensionCompletion.Immediate,
                     new[]
                     {
                         Value.Declaration

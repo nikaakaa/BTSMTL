@@ -34,8 +34,9 @@ namespace ThirdPersonGameplay.Orchestration
 
             public static readonly OrchestrationExtensionDefinition<HasTag> Definition = new OrchestrationExtensionDefinition<HasTag>(
                 new OrchestrationExtensionIdentity(DomainId, "gameplay-tag-has"),
-                3, new OrchestrationExtensionContract(OrchestrationExtensionKind.Condition,
+                4, new OrchestrationExtensionContract(OrchestrationExtensionKind.Condition,
                     OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
+                    OrchestrationExtensionCompletion.Immediate,
                     new[]
                     {
                         Result.Declaration
@@ -49,8 +50,9 @@ namespace ThirdPersonGameplay.Orchestration
 
             public static readonly OrchestrationExtensionDefinition<MatchTags> Definition = new OrchestrationExtensionDefinition<MatchTags>(
                 new OrchestrationExtensionIdentity(DomainId, "gameplay-tag-query"),
-                3, new OrchestrationExtensionContract(OrchestrationExtensionKind.Condition,
+                4, new OrchestrationExtensionContract(OrchestrationExtensionKind.Condition,
                     OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
+                    OrchestrationExtensionCompletion.Immediate,
                     new[]
                     {
                         Result.Declaration
@@ -69,8 +71,9 @@ namespace ThirdPersonGameplay.Orchestration
 
             public static readonly OrchestrationExtensionDefinition<SourceAllowsCandidate> Definition = new OrchestrationExtensionDefinition<SourceAllowsCandidate>(
                 new OrchestrationExtensionIdentity(DomainId, "source-effects-allow-candidate"),
-                3, new OrchestrationExtensionContract(OrchestrationExtensionKind.Condition,
+                4, new OrchestrationExtensionContract(OrchestrationExtensionKind.Condition,
                     OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
+                    OrchestrationExtensionCompletion.Immediate,
                     new[]
                     {
                         Result.Declaration
@@ -102,8 +105,9 @@ namespace ThirdPersonGameplay.Orchestration
 
             public static readonly OrchestrationExtensionDefinition<Active> Definition = new OrchestrationExtensionDefinition<Active>(
                 new OrchestrationExtensionIdentity(DomainId, "gameplay-effect-active"),
-                3, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
+                4, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
                     OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
+                    OrchestrationExtensionCompletion.Immediate,
                     new[]
                     {
                         Result.Declaration,
@@ -130,8 +134,9 @@ namespace ThirdPersonGameplay.Orchestration
 
             public static readonly OrchestrationExtensionDefinition<AttributeRead> Definition = new OrchestrationExtensionDefinition<AttributeRead>(
                 new OrchestrationExtensionIdentity(DomainId, "gameplay-attribute-read"),
-                3, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
+                4, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
                     OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
+                    OrchestrationExtensionCompletion.Immediate,
                     new[]
                     {
                         Valid.Declaration,
@@ -149,8 +154,9 @@ namespace ThirdPersonGameplay.Orchestration
 
             public static readonly OrchestrationExtensionDefinition<Apply> Definition = new OrchestrationExtensionDefinition<Apply>(
                 new OrchestrationExtensionIdentity(DomainId, "gameplay-effect-apply"),
-                3, new OrchestrationExtensionContract(OrchestrationExtensionKind.Action,
+                4, new OrchestrationExtensionContract(OrchestrationExtensionKind.Action,
                     OrchestrationExtensionAccess.CandidateWrite, OrchestrationExtensionInvocationKind.Execute,
+                    OrchestrationExtensionCompletion.Immediate,
                     new[]
                     {
                         Applied.Declaration,
@@ -171,8 +177,9 @@ namespace ThirdPersonGameplay.Orchestration
 
             public static readonly OrchestrationExtensionDefinition<Remove> Definition = new OrchestrationExtensionDefinition<Remove>(
                 new OrchestrationExtensionIdentity(DomainId, "gameplay-effect-remove"),
-                3, new OrchestrationExtensionContract(OrchestrationExtensionKind.Action,
+                4, new OrchestrationExtensionContract(OrchestrationExtensionKind.Action,
                     OrchestrationExtensionAccess.CandidateWrite, OrchestrationExtensionInvocationKind.Execute,
+                    OrchestrationExtensionCompletion.Immediate,
                     new[]
                     {
                         HandleInput.Declaration,

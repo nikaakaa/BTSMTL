@@ -36,7 +36,11 @@ namespace BTSMTL.Orchestration
             in OrchestrationExtensionArguments<TValue> invocation)
         {
             ref readonly Binding binding = ref m_Bindings[bindingIndex];
-            return binding.Candidate.Dispatch(binding.ContentIndex, ref context, in invocation);
+            OrchestrationExtensionResult result = binding.Candidate.Dispatch(binding.ContentIndex, ref context, in invocation);
+            if (binding.Contract.Completion == OrchestrationExtensionCompletion.Immediate &&
+                result == OrchestrationExtensionResult.Running)
+                throw new InvalidOperationException($"立即完成的扩展绑定 '{bindingIndex}' 在操作 '{invocation.OperationIndex}' 返回了 Running。");
+            return result;
         }
 
         public static OrchestrationExtensionBindings<TValue, TContext> Prepare(
@@ -53,7 +57,8 @@ namespace BTSMTL.Orchestration
                 if (prepareContent != null)
                     reference = new OrchestrationExtensionReference(reference.Identity, reference.SemanticVersion,
                         prepareContent(bindingIndex, implementation), reference.Kind, reference.Access,
-                        reference.Ports, reference.Fields, reference.RequiredInvocations, reference.SourcePath);
+                        reference.Ports, reference.Fields, reference.RequiredInvocations,
+                        reference.Completion, reference.SourcePath);
                 OrchestrationExtensionContract contract = implementation.Describe(reference.ContentIndex);
                 Validate(in reference, in contract);
                 if (contract.Access == OrchestrationExtensionAccess.ReadOnly)
@@ -112,6 +117,15 @@ namespace BTSMTL.Orchestration
                 throw Failure(in reference, $"扩展种类不匹配：引用为 {reference.Kind}，实现为 {contract.Kind}");
             if (contract.Access != reference.Access)
                 throw Failure(in reference, $"访问类别不匹配：引用为 {reference.Access}，实现为 {contract.Access}");
+
+            if (reference.Completion != OrchestrationExtensionCompletion.Immediate &&
+                reference.Completion != OrchestrationExtensionCompletion.Resumable)
+                throw Failure(in reference, $"引用的完成保证无效：{reference.Completion}");
+            if (contract.Completion != reference.Completion)
+                throw Failure(in reference, $"完成保证不匹配：引用为 {reference.Completion}，实现为 {contract.Completion}");
+            if (reference.Access == OrchestrationExtensionAccess.ReadOnly &&
+                reference.Completion != OrchestrationExtensionCompletion.Immediate)
+                throw Failure(in reference, "只读求值必须在本次调用内完成");
 
             ValidateInvocations(in reference, reference.RequiredInvocations, "引用");
             ValidateInvocations(in reference, contract.Invocations, "实现");

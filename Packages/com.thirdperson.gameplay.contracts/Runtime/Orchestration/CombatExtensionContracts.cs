@@ -25,8 +25,9 @@ namespace ThirdPersonGameplay.Orchestration
 
             public static readonly OrchestrationExtensionDefinition<AttackQuery> Definition = new OrchestrationExtensionDefinition<AttackQuery>(
                 new OrchestrationExtensionIdentity(DomainId, "attack-query"),
-                3, new OrchestrationExtensionContract(OrchestrationExtensionKind.Action,
+                4, new OrchestrationExtensionContract(OrchestrationExtensionKind.Action,
                     OrchestrationExtensionAccess.CandidateWrite, OrchestrationExtensionInvocationKind.Execute,
+                    OrchestrationExtensionCompletion.Immediate,
                     new[]
                     {
                         Submitted.Declaration
@@ -47,8 +48,9 @@ namespace ThirdPersonGameplay.Orchestration
 
             public static readonly OrchestrationExtensionDefinition<AttackHitQuery> Definition = new OrchestrationExtensionDefinition<AttackHitQuery>(
                 new OrchestrationExtensionIdentity(DomainId, "attack-hit-query"),
-                3, new OrchestrationExtensionContract(OrchestrationExtensionKind.Condition,
+                4, new OrchestrationExtensionContract(OrchestrationExtensionKind.Condition,
                     OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
+                    OrchestrationExtensionCompletion.Immediate,
                     new[]
                     {
                         Hit.Declaration

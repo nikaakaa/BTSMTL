@@ -35,6 +35,7 @@ namespace BTSMTL.Timeline
             OrchestrationExtensionKind.Action,
             OrchestrationExtensionAccess.CandidateWrite,
             OrchestrationExtensionInvocationKind.Execute,
+            OrchestrationExtensionCompletion.Immediate,
             new[]
             {
                 InputSchema.Weight,

@@ -42,8 +42,9 @@ namespace ThirdPersonGameplay.Orchestration
 
             public static readonly OrchestrationExtensionDefinition<ActivationEntry> Definition = new OrchestrationExtensionDefinition<ActivationEntry>(
                 new OrchestrationExtensionIdentity(DomainId, "activation-entry"),
-                3, new OrchestrationExtensionContract(OrchestrationExtensionKind.Condition,
+                4, new OrchestrationExtensionContract(OrchestrationExtensionKind.Condition,
                     OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
+                    OrchestrationExtensionCompletion.Immediate,
                     new[]
                     {
                         Result.Declaration
@@ -57,8 +58,9 @@ namespace ThirdPersonGameplay.Orchestration
 
             public static readonly OrchestrationExtensionDefinition<ActionContextActive> Definition = new OrchestrationExtensionDefinition<ActionContextActive>(
                 new OrchestrationExtensionIdentity(DomainId, "action-context-active"),
-                3, new OrchestrationExtensionContract(OrchestrationExtensionKind.Condition,
+                4, new OrchestrationExtensionContract(OrchestrationExtensionKind.Condition,
                     OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
+                    OrchestrationExtensionCompletion.Immediate,
                     new[]
                     {
                         Result.Declaration
@@ -72,8 +74,9 @@ namespace ThirdPersonGameplay.Orchestration
 
             public static readonly OrchestrationExtensionDefinition<ActionEventReceived> Definition = new OrchestrationExtensionDefinition<ActionEventReceived>(
                 new OrchestrationExtensionIdentity(DomainId, "action-event-received"),
-                3, new OrchestrationExtensionContract(OrchestrationExtensionKind.Condition,
+                4, new OrchestrationExtensionContract(OrchestrationExtensionKind.Condition,
                     OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
+                    OrchestrationExtensionCompletion.Immediate,
                     new[]
                     {
                         Result.Declaration
@@ -87,8 +90,9 @@ namespace ThirdPersonGameplay.Orchestration
 
             public static readonly OrchestrationExtensionDefinition<AbilityActive> Definition = new OrchestrationExtensionDefinition<AbilityActive>(
                 new OrchestrationExtensionIdentity(DomainId, "ability-active"),
-                3, new OrchestrationExtensionContract(OrchestrationExtensionKind.Condition,
+                4, new OrchestrationExtensionContract(OrchestrationExtensionKind.Condition,
                     OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
+                    OrchestrationExtensionCompletion.Immediate,
                     new[]
                     {
                         Result.Declaration
@@ -106,8 +110,9 @@ namespace ThirdPersonGameplay.Orchestration
 
             public static readonly OrchestrationExtensionDefinition<SelectedSourcePhase> Definition = new OrchestrationExtensionDefinition<SelectedSourcePhase>(
                 new OrchestrationExtensionIdentity(DomainId, "selected-source-phase"),
-                3, new OrchestrationExtensionContract(OrchestrationExtensionKind.Condition,
+                4, new OrchestrationExtensionContract(OrchestrationExtensionKind.Condition,
                     OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
+                    OrchestrationExtensionCompletion.Immediate,
                     new[]
                     {
                         Result.Declaration
@@ -127,8 +132,9 @@ namespace ThirdPersonGameplay.Orchestration
 
             public static readonly OrchestrationExtensionDefinition<CanActivateAction> Definition = new OrchestrationExtensionDefinition<CanActivateAction>(
                 new OrchestrationExtensionIdentity(DomainId, "can-activate-action"),
-                3, new OrchestrationExtensionContract(OrchestrationExtensionKind.Condition,
+                4, new OrchestrationExtensionContract(OrchestrationExtensionKind.Condition,
                     OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
+                    OrchestrationExtensionCompletion.Immediate,
                     new[]
                     {
                         TargetId.Declaration,
@@ -147,8 +153,9 @@ namespace ThirdPersonGameplay.Orchestration
         {
             public static readonly OrchestrationExtensionDefinition<StateTransition> Definition = new OrchestrationExtensionDefinition<StateTransition>(
                 new OrchestrationExtensionIdentity(DomainId, "state-transition"),
-                3, new OrchestrationExtensionContract(OrchestrationExtensionKind.Action,
+                4, new OrchestrationExtensionContract(OrchestrationExtensionKind.Action,
                     OrchestrationExtensionAccess.CandidateWrite, OrchestrationExtensionInvocationKind.Execute,
+                    OrchestrationExtensionCompletion.Immediate,
                     Array.Empty<OrchestrationExtensionPort>(), Array.Empty<OrchestrationExtensionContentField>()));
         }
 
@@ -156,8 +163,9 @@ namespace ThirdPersonGameplay.Orchestration
         {
             public static readonly OrchestrationExtensionDefinition<SetActionPhase> Definition = new OrchestrationExtensionDefinition<SetActionPhase>(
                 new OrchestrationExtensionIdentity(DomainId, "set-action-phase"),
-                3, new OrchestrationExtensionContract(OrchestrationExtensionKind.Action,
+                4, new OrchestrationExtensionContract(OrchestrationExtensionKind.Action,
                     OrchestrationExtensionAccess.CandidateWrite, OrchestrationExtensionInvocationKind.Execute,
+                    OrchestrationExtensionCompletion.Immediate,
                     Array.Empty<OrchestrationExtensionPort>(), new[] { Fields.Phase }));
         }
     }

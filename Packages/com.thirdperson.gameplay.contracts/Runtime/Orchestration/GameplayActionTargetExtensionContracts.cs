@@ -33,8 +33,9 @@ namespace ThirdPersonGameplay.Orchestration
 
             public static readonly OrchestrationExtensionDefinition<Read> Definition = new OrchestrationExtensionDefinition<Read>(
                 new OrchestrationExtensionIdentity(DomainId, "action-target"),
-                3, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
+                4, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
                     OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
+                    OrchestrationExtensionCompletion.Immediate,
                     new[]
                     {
                         TargetIdInput.Declaration,
@@ -58,8 +59,9 @@ namespace ThirdPersonGameplay.Orchestration
 
             public static readonly OrchestrationExtensionDefinition<Capture> Definition = new OrchestrationExtensionDefinition<Capture>(
                 new OrchestrationExtensionIdentity(DomainId, "capture-action-target"),
-                3, new OrchestrationExtensionContract(OrchestrationExtensionKind.Action,
+                4, new OrchestrationExtensionContract(OrchestrationExtensionKind.Action,
                     OrchestrationExtensionAccess.CandidateWrite, OrchestrationExtensionInvocationKind.Execute,
+                    OrchestrationExtensionCompletion.Immediate,
                     new[]
                     {
                         TargetId.Declaration,
