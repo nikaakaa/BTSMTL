@@ -886,10 +886,10 @@ namespace ThirdPersonSimulation
                     right.TargetOperation.Value < 0 || right.TargetOperation.Value >= operations.Count)
                     return string.CompareOrdinal(left.TargetPort, right.TargetPort);
                 OperationValuePortDefinition leftPort = GameplayAbilityValuePortContracts
-                    .Require(operations[left.TargetOperation.Value].Code, operations[left.TargetOperation.Value].Handle, graphCallFrames)
+                    .Require(operations[left.TargetOperation.Value], graphCallFrames)
                     .RequireInput(left.TargetPort);
                 OperationValuePortDefinition rightPort = GameplayAbilityValuePortContracts
-                    .Require(operations[right.TargetOperation.Value].Code, operations[right.TargetOperation.Value].Handle, graphCallFrames)
+                    .Require(operations[right.TargetOperation.Value], graphCallFrames)
                     .RequireInput(right.TargetPort);
                 int byOrder = leftPort.Order.CompareTo(rightPort.Order);
                 return byOrder != 0 ? byOrder : string.CompareOrdinal(left.TargetPort, right.TargetPort);
