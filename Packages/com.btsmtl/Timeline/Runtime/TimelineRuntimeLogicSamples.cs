@@ -104,17 +104,17 @@ namespace BTSMTL.Timeline.Runtime
                         continue;
                     Span<TValue> inputs = inputValues.Slice(count * TimelineLogicSampleExtension.InputCount,
                         TimelineLogicSampleExtension.InputCount);
-                    inputs[TimelineLogicSampleExtension.Ports.Weight.Index] = values.FromScalar(sample.Weight);
-                    inputs[TimelineLogicSampleExtension.Ports.PreviousSourceTime.Index] = values.FromScalar(sample.PreviousSourceTime);
-                    inputs[TimelineLogicSampleExtension.Ports.SourceTime.Index] = values.FromScalar(sample.SourceTime);
-                    inputs[TimelineLogicSampleExtension.Ports.NormalizedTime.Index] = values.FromScalar(sample.NormalizedTime);
-                    inputs[TimelineLogicSampleExtension.Ports.Cycle.Index] = values.FromInt32(sample.Cycle);
-                    inputs[TimelineLogicSampleExtension.Ports.PlaybackIdentity.Index] = values.FromUInt64(playbackIdentity);
-                    inputs[TimelineLogicSampleExtension.Ports.PlaybackSlot.Index] = values.FromInt32(playbackSlot);
-                    inputs[TimelineLogicSampleExtension.Ports.AdvancePreviousTime.Index] = previousTimeValue;
-                    inputs[TimelineLogicSampleExtension.Ports.AdvancePreviousCycle.Index] = values.FromInt32(previousCycle);
-                    inputs[TimelineLogicSampleExtension.Ports.AdvanceTime.Index] = timeValue;
-                    inputs[TimelineLogicSampleExtension.Ports.AdvanceCycle.Index] = values.FromInt32(cycle);
+                    inputs[TimelineLogicSampleExtension.InputSchema.Weight.Index] = values.FromScalar(sample.Weight);
+                    inputs[TimelineLogicSampleExtension.InputSchema.PreviousSourceTime.Index] = values.FromScalar(sample.PreviousSourceTime);
+                    inputs[TimelineLogicSampleExtension.InputSchema.SourceTime.Index] = values.FromScalar(sample.SourceTime);
+                    inputs[TimelineLogicSampleExtension.InputSchema.NormalizedTime.Index] = values.FromScalar(sample.NormalizedTime);
+                    inputs[TimelineLogicSampleExtension.InputSchema.Cycle.Index] = values.FromInt32(sample.Cycle);
+                    inputs[TimelineLogicSampleExtension.InputSchema.PlaybackIdentity.Index] = values.FromUInt64(playbackIdentity);
+                    inputs[TimelineLogicSampleExtension.InputSchema.PlaybackSlot.Index] = values.FromInt32(playbackSlot);
+                    inputs[TimelineLogicSampleExtension.InputSchema.AdvancePreviousTime.Index] = previousTimeValue;
+                    inputs[TimelineLogicSampleExtension.InputSchema.AdvancePreviousCycle.Index] = values.FromInt32(previousCycle);
+                    inputs[TimelineLogicSampleExtension.InputSchema.AdvanceTime.Index] = timeValue;
+                    inputs[TimelineLogicSampleExtension.InputSchema.AdvanceCycle.Index] = values.FromInt32(cycle);
                     count++;
                 }
                 if (count == 0)
@@ -122,7 +122,7 @@ namespace BTSMTL.Timeline.Runtime
                 var rows = new OrchestrationExtensionInputRows<TValue>(
                     inputValues.Slice(0, count * TimelineLogicSampleExtension.InputCount),
                     TimelineLogicSampleExtension.InputCount, count, intervalCount);
-                var invocation = new OrchestrationExtensionInvocation<TValue>(
+                var invocation = new OrchestrationExtensionArguments<TValue>(
                     OrchestrationExtensionInvocationKind.Execute, operationIndex, operationGeneration, tick, 0,
                     stateAncestors, rows, Span<TValue>.Empty, default);
                 OrchestrationExtensionResult result = m_Bindings.InvokeCandidate(bindingIndex, ref context, in invocation);

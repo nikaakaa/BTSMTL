@@ -26,17 +26,17 @@ namespace BTSMTL.Orchestration
         }
 
         public OrchestrationExtensionResult InvokeReadOnly(int bindingIndex, in TContext context,
-            in OrchestrationExtensionInvocation<TValue> invocation)
+            in OrchestrationExtensionArguments<TValue> invocation)
         {
             ref readonly Binding binding = ref m_Bindings[bindingIndex];
-            return binding.ReadOnly.Invoke(binding.ContentIndex, in context, in invocation);
+            return binding.ReadOnly.Dispatch(binding.ContentIndex, in context, in invocation);
         }
 
         public OrchestrationExtensionResult InvokeCandidate(int bindingIndex, ref TContext context,
-            in OrchestrationExtensionInvocation<TValue> invocation)
+            in OrchestrationExtensionArguments<TValue> invocation)
         {
             ref readonly Binding binding = ref m_Bindings[bindingIndex];
-            return binding.Candidate.Invoke(binding.ContentIndex, ref context, in invocation);
+            return binding.Candidate.Dispatch(binding.ContentIndex, ref context, in invocation);
         }
 
         public static OrchestrationExtensionBindings<TValue, TContext> Prepare(
@@ -58,13 +58,13 @@ namespace BTSMTL.Orchestration
                 Validate(in reference, in contract);
                 if (contract.Access == OrchestrationExtensionAccess.ReadOnly)
                 {
-                    if (!(implementation is IReadOnlyOrchestrationExtension<TValue, TContext> readOnly))
+                    if (!(implementation is ReadOnlyOrchestrationExtensionBinding<TValue, TContext> readOnly))
                         throw Failure(in reference, $"实现未提供宿主句柄 {typeof(TContext)} 的只读调用接口");
                     bindings[bindingIndex] = new Binding(in contract, reference.ContentIndex, readOnly);
                 }
                 else
                 {
-                    if (!(implementation is ICandidateOrchestrationExtension<TValue, TContext> candidate))
+                    if (!(implementation is CandidateOrchestrationExtensionBinding<TValue, TContext> candidate))
                         throw Failure(in reference, $"实现未提供宿主句柄 {typeof(TContext)} 的候选写入调用接口");
                     var executionGate = candidate as ICandidateOrchestrationExtensionExecutionGate<TContext>;
                     if (executionGate != null && (contract.Kind != OrchestrationExtensionKind.Action ||
@@ -214,7 +214,7 @@ namespace BTSMTL.Orchestration
         private readonly struct Binding
         {
             public Binding(in OrchestrationExtensionContract contract, int contentIndex,
-                IReadOnlyOrchestrationExtension<TValue, TContext> readOnly)
+                ReadOnlyOrchestrationExtensionBinding<TValue, TContext> readOnly)
             {
                 Contract = contract;
                 ContentIndex = contentIndex;
@@ -224,7 +224,7 @@ namespace BTSMTL.Orchestration
             }
 
             public Binding(in OrchestrationExtensionContract contract, int contentIndex,
-                ICandidateOrchestrationExtension<TValue, TContext> candidate,
+                CandidateOrchestrationExtensionBinding<TValue, TContext> candidate,
                 ICandidateOrchestrationExtensionExecutionGate<TContext> executionGate)
             {
                 Contract = contract;
@@ -236,8 +236,8 @@ namespace BTSMTL.Orchestration
 
             public readonly OrchestrationExtensionContract Contract;
             public readonly int ContentIndex;
-            public readonly IReadOnlyOrchestrationExtension<TValue, TContext> ReadOnly;
-            public readonly ICandidateOrchestrationExtension<TValue, TContext> Candidate;
+            public readonly ReadOnlyOrchestrationExtensionBinding<TValue, TContext> ReadOnly;
+            public readonly CandidateOrchestrationExtensionBinding<TValue, TContext> Candidate;
             public readonly ICandidateOrchestrationExtensionExecutionGate<TContext> ExecutionGate;
         }
     }

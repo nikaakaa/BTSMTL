@@ -9,7 +9,7 @@ namespace BTSMTL.Timeline.Runtime
         internal OrchestrationTimelineInvocationMetadata(int ordinal, bool marker,
             OrchestrationTimelineHook hook, OrchestrationExecutionEntry entry,
             int executionFrameOwnerOperationIndex, int graphOwnerOperationIndex,
-            int callerOperationIndex, int graphIdentityId, int sourcePathIdentityId)
+            int callerOperationIndex, int graphIdentityId, int sourceIdentityId)
         {
             Ordinal = ordinal;
             Marker = marker;
@@ -19,7 +19,7 @@ namespace BTSMTL.Timeline.Runtime
             GraphOwnerOperationIndex = graphOwnerOperationIndex;
             CallerOperationIndex = callerOperationIndex;
             GraphIdentityId = graphIdentityId;
-            SourcePathIdentityId = sourcePathIdentityId;
+            SourceIdentityId = sourceIdentityId;
         }
 
         public int Ordinal { get; }
@@ -30,7 +30,7 @@ namespace BTSMTL.Timeline.Runtime
         public int GraphOwnerOperationIndex { get; }
         public int CallerOperationIndex { get; }
         public int GraphIdentityId { get; }
-        public int SourcePathIdentityId { get; }
+        public int SourceIdentityId { get; }
     }
 
     public sealed class OrchestrationTimelinePreparedEntries
@@ -193,12 +193,11 @@ namespace BTSMTL.Timeline.Runtime
             var entry = new OrchestrationExecutionEntry(original.OperationIndex, original.Contract,
                 localToShared[original.InputPortId]);
             int graphIdentityId = localToShared[graph.Identities.Bind(invocation.GraphId)];
-            int sourcePathIdentityId = localToShared[graph.Identities.Bind(
-                string.Join("/", source.DisplayPathSegments.ToArray()))];
+            int sourceIdentityId = localToShared[invocation.SourceIdentityId];
             metadata.Add(new OrchestrationTimelineInvocationMetadata(ordinal, marker, hook, entry,
                 program.Operation(entry.OperationIndex).ExecutionFrameOwnerOperationIndex,
                 invocation.TargetIndex, invocation.InvocationCallerOperationIndex,
-                graphIdentityId, sourcePathIdentityId));
+                graphIdentityId, sourceIdentityId));
             return entry;
         }
     }

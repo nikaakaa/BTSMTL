@@ -32,7 +32,7 @@ namespace BTSMTL.Orchestration
                     int pathState = phase == OrchestrationLifecycleHook.StateEntered ? stateOperationIndex
                         : phase == OrchestrationLifecycleHook.StateExited || phase == OrchestrationLifecycleHook.StateTransition
                             ? exitingStateOperationIndex : -1;
-                    var invocation = new OrchestrationExtensionInvocation<TValue>(
+                    var invocation = new OrchestrationExtensionArguments<TValue>(
                         OrchestrationExtensionInvocationKind.Execute, operationIndex, ReadGeneration(operationIndex),
                         m_Input.Tick, 0, StateAncestors(operationIndex, pathState, phase == OrchestrationLifecycleHook.StateEntered),
                         m_Workspace.Inputs[depth].AsSpan(0, inputs.Length), Span<TValue>.Empty, in m_TimelineInvocation);
@@ -128,7 +128,7 @@ namespace BTSMTL.Orchestration
             Span<TValue> outputs = operation.OutputSlotOffset >= 0
                 ? m_Values.Slice(operation.OutputSlotOffset, operation.OutputCount)
                 : m_Workspace.Outputs[m_InputDepth].AsSpan(0, operation.OutputCount);
-            var invocation = new OrchestrationExtensionInvocation<TValue>(kind,
+            var invocation = new OrchestrationExtensionArguments<TValue>(kind,
                 operationIndex, ReadGeneration(operationIndex), m_Input.Tick, context.Cause,
                 StateAncestors(operationIndex), ReadOnlySpan<TValue>.Empty, outputs, in m_TimelineInvocation);
             OrchestrationExtensionResult result = m_Bindings.InvokeCandidate(operation.ExtensionBindingIndex,

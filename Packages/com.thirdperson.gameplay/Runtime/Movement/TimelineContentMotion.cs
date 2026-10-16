@@ -8,9 +8,13 @@ namespace ThirdPersonSimulation
     public sealed partial class TimelineContentMotion : TimelineContentParameters
     {
         public const string Kind = "motion-curve.clip";
-        public static readonly TimelineLogicSampleExtension SampleExtension = new(
-            new OrchestrationExtensionIdentity(GameplayMotionExtensionContracts.DomainId,
-                GameplayMotionExtensionContracts.MotionCurveSampleOperationId), 2);
+        public readonly struct MotionCurveSample
+        {
+            public static readonly OrchestrationExtensionDefinition<MotionCurveSample> Definition = new(
+                new OrchestrationExtensionIdentity(GameplayMotionExtensionContracts.DomainId,
+                    GameplayMotionExtensionContracts.MotionCurveSampleOperationId), 2,
+                TimelineLogicSampleExtension.Contract);
+        }
 
         public TimelineContentMotion(string resourceId, string curveId, SimulationMotionContributionSpace space,
             SimulationMotionChannel channel, SimulationMotionBlendMode blendMode, int priority, bool consumeLowerChannels,

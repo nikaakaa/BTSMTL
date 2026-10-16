@@ -343,7 +343,7 @@ namespace BTSMTL.EventGraphs
                 writer.Write(trigger.Port);
                 writer.Write(trigger.Input);
             }
-            var state = OrchestrationStateBinding.BindCommitted(in m_Layout, in m_MemoryLayout, m_State);
+            var state = OrchestrationStateBinding.BindCommitted(m_Layout, m_State);
             var frames = state.Frames;
             foreach (ref readonly OrchestrationOperationState operation in frames.Operations(0))
                 writer.Write(operation);
@@ -385,7 +385,9 @@ namespace BTSMTL.EventGraphs
                     throw new InvalidOperationException("事件图记录的身份表与当前准备的内容不匹配。");
                 var actualLayout = new OrchestrationStateLayout(reader.Read<int>(), reader.Read<int>(),
                     reader.Read<ulong>(), reader.Read<ulong>(), reader.Read<ulong>(), reader.Read<ulong>());
-                var state = OrchestrationStateBinding.BindCandidate(in m_Layout, in actualLayout, m_Candidate);
+                OrchestrationStateLayout preparedLayout = m_Layout.Layout;
+                OrchestrationStateBinding.AdoptMemory(in preparedLayout, in actualLayout, m_Candidate);
+                var state = OrchestrationStateBinding.BindCandidate(m_Layout, m_Candidate);
                 ulong resetGeneration = reader.Read<ulong>();
                 bool started = reader.Read<bool>();
                 bool faulted = reader.Read<bool>();

@@ -10,9 +10,9 @@ namespace BTSMTL.Orchestration
         bool ShouldExecute(int bindingIndex, in TContext context);
 
         OrchestrationExtensionResult InvokeReadOnly(int bindingIndex, in TContext context,
-            in OrchestrationExtensionInvocation<TValue> invocation);
+            in OrchestrationExtensionArguments<TValue> invocation);
 
         OrchestrationExtensionResult InvokeCandidate(int bindingIndex, ref TContext context,
-            in OrchestrationExtensionInvocation<TValue> invocation);
+            in OrchestrationExtensionArguments<TValue> invocation);
     }
 }

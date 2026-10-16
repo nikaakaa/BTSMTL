@@ -92,11 +92,11 @@ namespace ThirdPerson.ValueGeneration.Generator
                 string region = leaf ? value : "this." + Escape(StateChildRegionName(member));
                 string element = leaf ? TypeName(((INamedTypeSymbol)member.Type).TypeArguments[0]) : null;
                 code.Append("public ").Append(leaf ? "global::System.Span<" + element + ">" : Orchestration + "OrchestrationStateView")
-                    .Append(' ').Append(method).Append("(in ").Append(Orchestration).Append("OrchestrationStateView state) => ")
+                    .Append(' ').Append(method).Append("(").Append(Orchestration).Append("OrchestrationStateView state) => ")
                     .Append(leaf ? "" : value + ".Layout.BindCandidate(").Append("state.Get(").Append(region)
                     .AppendLine(leaf ? ");" : "));");
                 code.Append("public ").Append(leaf ? "global::System.ReadOnlySpan<" + element + ">" : Orchestration + "ReadOnlyOrchestrationStateView")
-                    .Append(' ').Append(method).Append("(in ").Append(Orchestration).Append("ReadOnlyOrchestrationStateView state) => ")
+                    .Append(' ').Append(method).Append("(").Append(Orchestration).Append("ReadOnlyOrchestrationStateView state) => ")
                     .Append(leaf ? "" : value + ".Layout.BindCommitted(").Append("state.Get(").Append(region)
                     .AppendLine(leaf ? ");" : "));");
             }

@@ -41,7 +41,6 @@ namespace ThirdPersonSimulation.Serialization
     {
         static MemoryPackContent()
         {
-            MemoryPackGeneratedFormatters.Register();
             MemoryPackFormatterProvider.Register(new TimelineContentParametersFormatter());
         }
 

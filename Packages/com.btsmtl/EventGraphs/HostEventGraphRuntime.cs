@@ -68,6 +68,9 @@ namespace BTSMTL.EventGraphs
             m_MemoryLayout = m_Layout.Layout;
             m_State = new byte[m_MemoryLayout.SizeBytes];
             m_Candidate = new byte[m_State.Length];
+            OrchestrationStateLayout preparedLayout = m_Layout.Layout;
+            OrchestrationStateBinding.AdoptMemory(in preparedLayout, in m_MemoryLayout, m_State);
+            OrchestrationStateBinding.AdoptMemory(in preparedLayout, in m_MemoryLayout, m_Candidate);
             m_Inputs = new OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>[m_Bindings.InputCapacity];
             m_Output = new EventGraphVariableBuffer(m_Bindings.PublishedSlots.Length, m_Bindings.Prepared.Identities.Table);
             m_Workspace = new OrchestrationExecutionWorkspace<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>(program, content, capacity, 0);
@@ -90,9 +93,9 @@ namespace BTSMTL.EventGraphs
         }
 
         ReadOnlySpan<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> StateValues =>
-            OrchestrationStateBinding.BindCommitted(in m_Layout, in m_MemoryLayout, m_State).Frames.Values(0);
+            OrchestrationStateBinding.BindCommitted(m_Layout, m_State).Frames.Values(0);
         Span<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> CandidateValues =>
-            OrchestrationStateBinding.BindCandidate(in m_Layout, in m_MemoryLayout, m_Candidate).Frames.Values(0);
+            OrchestrationStateBinding.BindCandidate(m_Layout, m_Candidate).Frames.Values(0);
 
         public HostEventGraph Source => m_Source;
         public EventGraphHostContract Contract => m_Contract;
@@ -154,7 +157,7 @@ namespace BTSMTL.EventGraphs
                 return;
             if (m_Status != EvaluationStatus.Prepared)
                 throw new InvalidOperationException("图实例只能计算本次已准备的输入和候选。");
-            var state = OrchestrationStateBinding.BindCandidate(in m_Layout, in m_MemoryLayout, m_Candidate);
+            var state = OrchestrationStateBinding.BindCandidate(m_Layout, m_Candidate);
             var input = new OrchestrationFrameInput<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>(tick: m_Invocation.Identity.Sequence,
                 instanceGeneration: m_ResetGeneration, hostInputs: m_Inputs, requestIdentityIds: default
 #if UNITY_EDITOR
@@ -338,7 +341,7 @@ namespace BTSMTL.EventGraphs
             m_Output.Invalidate();
             Array.Clear(m_State, 0, m_State.Length);
             m_StateTexts.Reset();
-            var state = OrchestrationStateBinding.BindCandidate(in m_Layout, in m_MemoryLayout, m_State);
+            var state = OrchestrationStateBinding.BindCandidate(m_Layout, m_State);
             var frames = state.Frames;
             InitializeRootFrame(ref frames, m_ResetGeneration);
             Span<OrchestrationBlackboardMetadata> blackboards = frames.BlackboardMetadata(0);

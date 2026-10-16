@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 
 namespace BTSMTL.Orchestration
 {
@@ -14,7 +15,8 @@ namespace BTSMTL.Orchestration
             FrozenOrchestrationIdentities identities, ReadOnlyMemory<int> localToShared,
             OrchestrationProgramContent<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> program,
             ReadOnlyMemory<OrchestrationGraphEntry> entries, ReadOnlyMemory<OrchestrationGraphVariable> variables,
-            ReadOnlyMemory<OrchestrationGraphHostInput> hostInputs, ReadOnlyMemory<OrchestrationGraphPort> ports)
+            ReadOnlyMemory<OrchestrationGraphHostInput> hostInputs, ReadOnlyMemory<OrchestrationGraphPort> ports,
+            ReadOnlyMemory<OrchestrationGraphSource> sources)
         {
             Source = source;
             Identities = identities;
@@ -24,6 +26,7 @@ namespace BTSMTL.Orchestration
             Variables = variables;
             HostInputs = hostInputs;
             Ports = ports;
+            Sources = sources;
         }
 
         public OrchestrationGraphContent<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> Source { get; }
@@ -34,7 +37,7 @@ namespace BTSMTL.Orchestration
         public ReadOnlyMemory<OrchestrationGraphVariable> Variables { get; }
         public ReadOnlyMemory<OrchestrationGraphHostInput> HostInputs { get; }
         public ReadOnlyMemory<OrchestrationGraphPort> Ports { get; }
-        public ReadOnlyMemory<OrchestrationGraphSource> Sources => Source.Sources;
+        public ReadOnlyMemory<OrchestrationGraphSource> Sources { get; }
         public ReadOnlyMemory<OrchestrationExtensionReference> Extensions => Source.Extensions;
 
         public static PreparedOrchestrationGraph<TScalar, TVector2, TVector3, TYaw, TQuaternion> Prepare(
@@ -112,8 +115,27 @@ namespace BTSMTL.Orchestration
                     Map(port.NodeIdentityId, mapping), Map(port.PortIdentityId, mapping), port.OperationIndex,
                     port.IsInput, port.IsTrigger, Map(port.CompiledPortIdentityId, mapping), port.ValueIndex);
             }
+            var sources = new OrchestrationGraphSource[source.Sources.Length];
+            for (int i = 0; i < sources.Length; i++)
+            {
+                OrchestrationGraphSource item = source.Sources.Span[i];
+                OrchestrationGraphExecutionSource execution = item.Source;
+                if ((execution.TargetKind == OrchestrationGraphSourceTargetKind.Operation ||
+                     execution.TargetKind == OrchestrationGraphSourceTargetKind.GraphInvocation) &&
+                    execution.SourceIdentityId <= OrchestrationGraphExecutionSource.NoExecutionIdentity)
+                    throw new InvalidDataException($"执行来源 '{execution.TargetKind}:{execution.TargetIndex}' 缺少已发布的发生点身份编号。");
+                sources[i] = new OrchestrationGraphSource(new OrchestrationGraphExecutionSource(
+                    execution.TargetKind, execution.TargetIndex, execution.GraphId, execution.NodeId,
+                    execution.PortId, execution.EdgeId, execution.DeclarationId, execution.TimelineId,
+                    execution.TrackId, execution.ClipId, execution.IsInputPort, execution.GraphInvocationPath,
+                    execution.CompiledPortId, execution.ValuePortDirection, execution.SourceInvocationPath,
+                    execution.ParentInvocationPath, execution.InvocationCallerKind, execution.InvocationCallerId,
+                    execution.InvocationCallerClipId, execution.InvocationCallerOperationIndex,
+                    execution.InvocationEntry, Map(execution.SourceIdentityId, mapping)),
+                    item.SourceType, item.DisplayPathSegments);
+            }
             return new PreparedOrchestrationGraph<TScalar, TVector2, TVector3, TYaw, TQuaternion>(
-                source, identities, mapping, program, entries, variables, hostInputs, graphPorts);
+                source, identities, mapping, program, entries, variables, hostInputs, graphPorts, sources);
         }
 
         static int Map(int identity, ReadOnlyMemory<int> mapping) =>

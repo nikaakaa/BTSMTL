@@ -70,132 +70,132 @@ namespace ThirdPersonGameplay.Orchestration
             };
         }
 
-        public static class MoveFacingAnglePorts
+        public readonly struct MoveFacingAngle
         {
-            public static readonly OrchestrationExtensionInputPort MoveInput = new("move-input", OrchestrationValueKind.Vector2, 0);
-            public static readonly OrchestrationExtensionOutputPort Output = new("angle", OrchestrationValueKind.Scalar, 0);
+            public static readonly OrchestrationExtensionInputPort<MoveFacingAngle> MoveInput = new("move-input", OrchestrationValueKind.Vector2, 0);
+            public static readonly OrchestrationExtensionOutputPort<MoveFacingAngle> Output = new("angle", OrchestrationValueKind.Scalar, 0);
+
+            public static readonly OrchestrationExtensionDefinition<MoveFacingAngle> Definition = new(
+                new OrchestrationExtensionIdentity(DomainId, "character-move-facing-angle"),
+                2, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
+                    OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
+                    new[]
+                    {
+                        MoveInput.Declaration,
+                        Output.Declaration
+                    }, new[] { CharacterStateFields.ProviderOwner }));
         }
 
-        public static class CharacterStateVector3Ports
+        public readonly struct CharacterStateVector3
         {
-            public static readonly OrchestrationExtensionOutputPort Output = new("value", OrchestrationValueKind.Vector3, 0);
+            public static readonly OrchestrationExtensionOutputPort<CharacterStateVector3> Output = new("value", OrchestrationValueKind.Vector3, 0);
+
+            public static readonly OrchestrationExtensionDefinition<CharacterStateVector3> Definition = new(
+                new OrchestrationExtensionIdentity(DomainId, "character-state-vector3"),
+                2, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
+                    OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
+                    new[]
+                    {
+                        Output.Declaration
+                    }, CharacterStateFields.All));
         }
 
-        public static class CharacterStateScalarPorts
+        public readonly struct CharacterStateScalar
         {
-            public static readonly OrchestrationExtensionOutputPort Output = new("value", OrchestrationValueKind.Scalar, 0);
+            public static readonly OrchestrationExtensionOutputPort<CharacterStateScalar> Output = new("value", OrchestrationValueKind.Scalar, 0);
+
+            public static readonly OrchestrationExtensionDefinition<CharacterStateScalar> Definition = new(
+                new OrchestrationExtensionIdentity(DomainId, "character-state-scalar"),
+                2, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
+                    OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
+                    new[]
+                    {
+                        Output.Declaration
+                    }, CharacterStateFields.All));
         }
 
-        public static class CharacterStateYawPorts
+        public readonly struct CharacterStateYaw
         {
-            public static readonly OrchestrationExtensionOutputPort Output = new("value", OrchestrationValueKind.Yaw, 0);
+            public static readonly OrchestrationExtensionOutputPort<CharacterStateYaw> Output = new("value", OrchestrationValueKind.Yaw, 0);
+
+            public static readonly OrchestrationExtensionDefinition<CharacterStateYaw> Definition = new(
+                new OrchestrationExtensionIdentity(DomainId, "character-state-yaw"),
+                2, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
+                    OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
+                    new[]
+                    {
+                        Output.Declaration
+                    }, CharacterStateFields.All));
         }
 
-        public static class CharacterStateBooleanPorts
+        public readonly struct CharacterStateBoolean
         {
-            public static readonly OrchestrationExtensionOutputPort Output = new("value", OrchestrationValueKind.Boolean, 0);
+            public static readonly OrchestrationExtensionOutputPort<CharacterStateBoolean> Output = new("value", OrchestrationValueKind.Boolean, 0);
+
+            public static readonly OrchestrationExtensionDefinition<CharacterStateBoolean> Definition = new(
+                new OrchestrationExtensionIdentity(DomainId, "character-state-bool"),
+                2, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
+                    OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
+                    new[]
+                    {
+                        Output.Declaration
+                    }, CharacterStateFields.All));
         }
 
-        public static class LocomotionDecisionPorts
+        public readonly struct LocomotionDecision
         {
-            public static readonly OrchestrationExtensionOutputPort Output = new("result", OrchestrationValueKind.Boolean, 0);
+            public static readonly OrchestrationExtensionOutputPort<LocomotionDecision> Output = new("result", OrchestrationValueKind.Boolean, 0);
+
+            public static readonly OrchestrationExtensionDefinition<LocomotionDecision> Definition = new(
+                new OrchestrationExtensionIdentity(DomainId, "locomotion-decision"),
+                2, new OrchestrationExtensionContract(OrchestrationExtensionKind.Condition,
+                    OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
+                    new[]
+                    {
+                        Output.Declaration
+                    }, LocomotionDecisionFields.All));
         }
 
-        public static class LocomotionInputMotionPorts
+        public readonly struct LocomotionInputMotion
         {
-            public static readonly OrchestrationExtensionInputPort MoveInput = new("move-input", OrchestrationValueKind.Vector2, 0);
-            public static readonly OrchestrationExtensionInputPort ElapsedTicks = new("elapsed-ticks", OrchestrationValueKind.Int32, 1);
-            public static readonly OrchestrationExtensionInputPort ContinuationStateOperation = new("continuation-state-operation", OrchestrationValueKind.Int32, 2);
-            public static readonly OrchestrationExtensionOutputPort ElapsedTicksOutput = new("elapsed-ticks", OrchestrationValueKind.Int32, 0);
+            public static readonly OrchestrationExtensionInputPort<LocomotionInputMotion> MoveInput = new("move-input", OrchestrationValueKind.Vector2, 0);
+            public static readonly OrchestrationExtensionInputPort<LocomotionInputMotion> ElapsedTicks = new("elapsed-ticks", OrchestrationValueKind.Int32, 1);
+            public static readonly OrchestrationExtensionInputPort<LocomotionInputMotion> ContinuationStateOperation = new("continuation-state-operation", OrchestrationValueKind.Int32, 2);
+            public static readonly OrchestrationExtensionOutputPort<LocomotionInputMotion> ElapsedTicksOutput = new("elapsed-ticks", OrchestrationValueKind.Int32, 0);
+
+            public static readonly OrchestrationExtensionDefinition<LocomotionInputMotion> Definition = new(
+                new OrchestrationExtensionIdentity(DomainId, "locomotion-input-motion"),
+                2, new OrchestrationExtensionContract(OrchestrationExtensionKind.Action,
+                    OrchestrationExtensionAccess.CandidateWrite, OrchestrationExtensionInvocationKind.Execute,
+                    new[]
+                    {
+                        MoveInput.Declaration,
+                        ElapsedTicks.Declaration,
+                        ContinuationStateOperation.Declaration,
+                        ElapsedTicksOutput.Declaration
+                    }, LocomotionInputMotionFields.All));
         }
 
-        public static class MotionWarpActionPorts
+        public readonly struct MotionWarpAction
         {
-            public static readonly OrchestrationExtensionInputPort Enabled = new("enabled", OrchestrationValueKind.Boolean, 0);
-            public static readonly OrchestrationExtensionInputPort HasTarget = new("has-target", OrchestrationValueKind.Boolean, 1);
-            public static readonly OrchestrationExtensionInputPort TargetPosition = new("target-position", OrchestrationValueKind.Vector3, 2);
-            public static readonly OrchestrationExtensionInputPort TargetYaw = new("target-yaw", OrchestrationValueKind.Scalar, 3);
-            public static readonly OrchestrationExtensionInputPort InputDirection = new("input-direction", OrchestrationValueKind.Vector2, 4);
+            public static readonly OrchestrationExtensionInputPort<MotionWarpAction> Enabled = new("enabled", OrchestrationValueKind.Boolean, 0);
+            public static readonly OrchestrationExtensionInputPort<MotionWarpAction> HasTarget = new("has-target", OrchestrationValueKind.Boolean, 1);
+            public static readonly OrchestrationExtensionInputPort<MotionWarpAction> TargetPosition = new("target-position", OrchestrationValueKind.Vector3, 2);
+            public static readonly OrchestrationExtensionInputPort<MotionWarpAction> TargetYaw = new("target-yaw", OrchestrationValueKind.Scalar, 3);
+            public static readonly OrchestrationExtensionInputPort<MotionWarpAction> InputDirection = new("input-direction", OrchestrationValueKind.Vector2, 4);
+
+            public static readonly OrchestrationExtensionDefinition<MotionWarpAction> Definition = new(
+                new OrchestrationExtensionIdentity(DomainId, "motion-warp"),
+                2, new OrchestrationExtensionContract(OrchestrationExtensionKind.Action,
+                    OrchestrationExtensionAccess.CandidateWrite, OrchestrationExtensionInvocationKind.Execute,
+                    new[]
+                    {
+                        Enabled.Declaration,
+                        HasTarget.Declaration,
+                        TargetPosition.Declaration,
+                        TargetYaw.Declaration,
+                        InputDirection.Declaration
+                    }, MotionWarpFields.All));
         }
-
-        public static readonly OrchestrationExtensionDefinition MoveFacingAngle = new OrchestrationExtensionDefinition(
-            new OrchestrationExtensionIdentity(DomainId, "character-move-facing-angle"),
-            2, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
-                OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
-                new[]
-                {
-                    MoveFacingAnglePorts.MoveInput.Declaration,
-                    MoveFacingAnglePorts.Output.Declaration
-                }, new[] { CharacterStateFields.ProviderOwner }));
-
-        public static readonly OrchestrationExtensionDefinition CharacterStateVector3 = new OrchestrationExtensionDefinition(
-            new OrchestrationExtensionIdentity(DomainId, "character-state-vector3"),
-            2, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
-                OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
-                new[]
-                {
-                    CharacterStateVector3Ports.Output.Declaration
-                }, CharacterStateFields.All));
-
-        public static readonly OrchestrationExtensionDefinition CharacterStateScalar = new OrchestrationExtensionDefinition(
-            new OrchestrationExtensionIdentity(DomainId, "character-state-scalar"),
-            2, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
-                OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
-                new[]
-                {
-                    CharacterStateScalarPorts.Output.Declaration
-                }, CharacterStateFields.All));
-
-        public static readonly OrchestrationExtensionDefinition CharacterStateYaw = new OrchestrationExtensionDefinition(
-            new OrchestrationExtensionIdentity(DomainId, "character-state-yaw"),
-            2, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
-                OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
-                new[]
-                {
-                    CharacterStateYawPorts.Output.Declaration
-                }, CharacterStateFields.All));
-
-        public static readonly OrchestrationExtensionDefinition CharacterStateBoolean = new OrchestrationExtensionDefinition(
-            new OrchestrationExtensionIdentity(DomainId, "character-state-bool"),
-            2, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
-                OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
-                new[]
-                {
-                    CharacterStateBooleanPorts.Output.Declaration
-                }, CharacterStateFields.All));
-
-        public static readonly OrchestrationExtensionDefinition LocomotionDecision = new OrchestrationExtensionDefinition(
-            new OrchestrationExtensionIdentity(DomainId, "locomotion-decision"),
-            2, new OrchestrationExtensionContract(OrchestrationExtensionKind.Condition,
-                OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
-                new[]
-                {
-                    LocomotionDecisionPorts.Output.Declaration
-                }, LocomotionDecisionFields.All));
-
-        public static readonly OrchestrationExtensionDefinition LocomotionInputMotion = new OrchestrationExtensionDefinition(
-            new OrchestrationExtensionIdentity(DomainId, "locomotion-input-motion"),
-            2, new OrchestrationExtensionContract(OrchestrationExtensionKind.Action,
-                OrchestrationExtensionAccess.CandidateWrite, OrchestrationExtensionInvocationKind.Execute,
-                new[]
-                {
-                    LocomotionInputMotionPorts.MoveInput.Declaration,
-                    LocomotionInputMotionPorts.ElapsedTicks.Declaration,
-                    LocomotionInputMotionPorts.ContinuationStateOperation.Declaration,
-                    LocomotionInputMotionPorts.ElapsedTicksOutput.Declaration
-                }, LocomotionInputMotionFields.All));
-
-        public static readonly OrchestrationExtensionDefinition MotionWarpAction = new OrchestrationExtensionDefinition(
-            new OrchestrationExtensionIdentity(DomainId, "motion-warp"),
-            2, new OrchestrationExtensionContract(OrchestrationExtensionKind.Action,
-                OrchestrationExtensionAccess.CandidateWrite, OrchestrationExtensionInvocationKind.Execute,
-                new[]
-                {
-                    MotionWarpActionPorts.Enabled.Declaration,
-                    MotionWarpActionPorts.HasTarget.Declaration,
-                    MotionWarpActionPorts.TargetPosition.Declaration,
-                    MotionWarpActionPorts.TargetYaw.Declaration,
-                    MotionWarpActionPorts.InputDirection.Declaration
-                }, MotionWarpFields.All));
     }
 }

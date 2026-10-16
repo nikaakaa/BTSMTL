@@ -389,7 +389,8 @@ namespace ThirdPersonGameplay.Movement.Timeline
                     TimelineContentKind.Sampled,
                     TimelineExecutionDomain.Logic,
                     TimelineOutputKind.LogicFact,
-                    TimelineContentMotion.SampleExtension,
+                    new TimelineLogicSampleExtension(TimelineContentMotion.MotionCurveSample.Definition.Identity,
+                        TimelineContentMotion.MotionCurveSample.Definition.SemanticVersion),
                     ClipKind)
             },
             new[]

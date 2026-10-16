@@ -1,5 +1,30 @@
 namespace BTSMTL.Orchestration
 {
+    public interface IOrchestrationExtensionDefinition
+    {
+        OrchestrationExtensionDefinition Declaration { get; }
+    }
+
+    public readonly struct OrchestrationExtensionDefinition<TOperation> : IOrchestrationExtensionDefinition
+        where TOperation : struct
+    {
+        readonly OrchestrationExtensionDefinition m_Declaration;
+
+        public OrchestrationExtensionDefinition(OrchestrationExtensionIdentity identity,
+            uint semanticVersion, OrchestrationExtensionContract contract)
+        {
+            m_Declaration = new OrchestrationExtensionDefinition(identity, semanticVersion, contract);
+        }
+
+        public OrchestrationExtensionDefinition Declaration => m_Declaration;
+        public OrchestrationExtensionIdentity Identity => m_Declaration.Identity;
+        public uint SemanticVersion => m_Declaration.SemanticVersion;
+        public OrchestrationExtensionContract Contract => m_Declaration.Contract;
+
+        public OrchestrationExtensionReference CreateReference(int contentIndex, string sourcePath) =>
+            m_Declaration.CreateReference(contentIndex, sourcePath);
+    }
+
     public readonly struct OrchestrationExtensionDefinition
     {
         public OrchestrationExtensionDefinition(OrchestrationExtensionIdentity identity,

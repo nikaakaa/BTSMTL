@@ -138,7 +138,7 @@ namespace BTSMTL.Orchestration
             Span<TValue> outputs = m_Workspace.Outputs[depth].AsSpan(0, 4);
             try
             {
-                var invocation = new OrchestrationExtensionInvocation<TValue>(
+                var invocation = new OrchestrationExtensionArguments<TValue>(
                     OrchestrationExtensionInvocationKind.Evaluate, operationIndex, ReadGeneration(operationIndex), m_Input.Tick, 0,
                     StateAncestors(operationIndex),
                     m_Workspace.Inputs[depth].AsSpan(0, 1), outputs, in m_TimelineInvocation);

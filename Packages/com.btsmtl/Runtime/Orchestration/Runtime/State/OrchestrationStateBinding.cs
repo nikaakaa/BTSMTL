@@ -6,52 +6,57 @@ namespace BTSMTL.Orchestration
     public static unsafe class OrchestrationStateBinding
     {
         public static OrchestrationCandidateState<TValue> BindCandidate<TValue>(
-            in OrchestrationExecutionStateLayout<TValue> prepared,
-            in OrchestrationStateLayout actual, Span<byte> memory) where TValue : unmanaged
+            OrchestrationExecutionStateLayout<TValue> prepared,
+            Span<byte> memory) where TValue : unmanaged
         {
             OrchestrationStateLayout layout = prepared.Layout;
-            RequireMemory(in layout, in actual, memory);
             OrchestrationStateView state = layout.BindCandidate(memory);
-            return new OrchestrationCandidateState<TValue>(BindFrames(in prepared, state),
+            return new OrchestrationCandidateState<TValue>(BindFrames(prepared, state),
                 default, default, default);
         }
 
         public static OrchestrationCandidateState<TValue> BindCandidate<TValue, TPlayback>(
-            in OrchestrationStateLayout<TValue, TPlayback> prepared,
-            in OrchestrationStateLayout actual, Span<byte> memory, out Span<TPlayback> playbacks)
+            OrchestrationStateLayout<TValue, TPlayback> prepared,
+            Span<byte> memory)
             where TValue : unmanaged where TPlayback : unmanaged
         {
             OrchestrationStateLayout layout = prepared.Layout;
-            RequireMemory(in layout, in actual, memory);
             OrchestrationStateView state = layout.BindCandidate(memory);
             OrchestrationStateView execution = prepared.GetExecution(state);
             OrchestrationStateView blackboard = prepared.GetBlackboard(state);
             OrchestrationStateView timeline = prepared.GetTimeline(state);
-            playbacks = prepared.Timeline.GetPlaybacks(timeline);
             return new OrchestrationCandidateState<TValue>(BindFrames(prepared.Execution, execution),
                 prepared.Blackboard.GetValues(blackboard), prepared.Blackboard.GetMetadata(blackboard),
                 timeline);
         }
 
+        public static OrchestrationCandidateState<TValue> BindCandidate<TValue, TPlayback>(
+            OrchestrationStateLayout<TValue, TPlayback> prepared,
+            Span<byte> memory, out Span<TPlayback> playbacks)
+            where TValue : unmanaged where TPlayback : unmanaged
+        {
+            var state = BindCandidate(prepared, memory);
+            playbacks = prepared.Timeline.GetPlaybacks(state.Timeline);
+            return state;
+        }
+
         public static OrchestrationCommittedState<TValue> BindCommitted<TValue>(
-            in OrchestrationExecutionStateLayout<TValue> prepared,
-            in OrchestrationStateLayout actual, ReadOnlySpan<byte> memory) where TValue : unmanaged
+            OrchestrationExecutionStateLayout<TValue> prepared,
+            ReadOnlySpan<byte> memory) where TValue : unmanaged
         {
             OrchestrationStateLayout layout = prepared.Layout;
-            RequireMemory(in layout, in actual, memory);
             ReadOnlyOrchestrationStateView state = layout.BindCommitted(memory);
-            return new OrchestrationCommittedState<TValue>(BindFrames(in prepared, state),
+            return new OrchestrationCommittedState<TValue>(BindFrames(prepared, state),
                 default, default, default);
         }
 
         public static OrchestrationCommittedState<TValue> BindCommitted<TValue, TPlayback>(
-            in OrchestrationStateLayout<TValue, TPlayback> prepared,
-            in OrchestrationStateLayout actual, ReadOnlySpan<byte> memory,
+            OrchestrationStateLayout<TValue, TPlayback> prepared,
+            ReadOnlySpan<byte> memory,
             out ReadOnlySpan<TPlayback> playbacks)
             where TValue : unmanaged where TPlayback : unmanaged
         {
             OrchestrationStateLayout layout = prepared.Layout;
-            RequireMemory(in layout, in actual, memory);
             ReadOnlyOrchestrationStateView state = layout.BindCommitted(memory);
             ReadOnlyOrchestrationStateView execution = prepared.GetExecution(state);
             ReadOnlyOrchestrationStateView blackboard = prepared.GetBlackboard(state);
@@ -62,7 +67,7 @@ namespace BTSMTL.Orchestration
                 timeline);
         }
 
-        static void RequireMemory(in OrchestrationStateLayout layout,
+        public static void AdoptMemory(in OrchestrationStateLayout layout,
             in OrchestrationStateLayout actual, ReadOnlySpan<byte> memory)
         {
             layout.RequireCompatible(in actual);
@@ -74,14 +79,14 @@ namespace BTSMTL.Orchestration
         }
 
         static OrchestrationExecutionFrames<TValue> BindFrames<TValue>(
-            in OrchestrationExecutionStateLayout<TValue> layout, OrchestrationStateView state)
+            OrchestrationExecutionStateLayout<TValue> layout, OrchestrationStateView state)
             where TValue : unmanaged =>
             new OrchestrationExecutionFrames<TValue>(layout.GetFrames(state),
                 ref layout.GetRoster(state)[0], layout.GetOperations(state), layout.GetValues(state),
                 layout.GetBlackboardMetadata(state));
 
         static ReadOnlyOrchestrationExecutionFrames<TValue> BindFrames<TValue>(
-            in OrchestrationExecutionStateLayout<TValue> layout, ReadOnlyOrchestrationStateView state)
+            OrchestrationExecutionStateLayout<TValue> layout, ReadOnlyOrchestrationStateView state)
             where TValue : unmanaged =>
             new ReadOnlyOrchestrationExecutionFrames<TValue>(layout.GetFrames(state),
                 layout.GetRoster(state), layout.GetOperations(state), layout.GetValues(state),

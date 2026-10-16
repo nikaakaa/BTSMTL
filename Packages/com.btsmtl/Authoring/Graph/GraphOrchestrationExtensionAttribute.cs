@@ -6,16 +6,10 @@ namespace BTSMTL.Authoring.Graph
 {
     public readonly struct GraphOrchestrationExtensionPortBinding
     {
-        public GraphOrchestrationExtensionPortBinding(string authoringPortId, OrchestrationExtensionInputPort input)
+        public GraphOrchestrationExtensionPortBinding(string authoringPortId, IOrchestrationExtensionPort port)
         {
             AuthoringPortId = authoringPortId;
-            RuntimePort = input.Declaration;
-        }
-
-        public GraphOrchestrationExtensionPortBinding(string authoringPortId, OrchestrationExtensionOutputPort output)
-        {
-            AuthoringPortId = authoringPortId;
-            RuntimePort = output.Declaration;
+            RuntimePort = port.Declaration;
         }
 
         public string AuthoringPortId { get; }
@@ -38,10 +32,11 @@ namespace BTSMTL.Authoring.Graph
         {
             get
             {
-                FieldInfo field = ContractOwner.GetField(MemberName, BindingFlags.Public | BindingFlags.Static);
-                if (field == null || field.FieldType != typeof(OrchestrationExtensionDefinition))
+                Type operation = ContractOwner.GetNestedType(MemberName, BindingFlags.Public);
+                FieldInfo field = operation?.GetField("Definition", BindingFlags.Public | BindingFlags.Static);
+                if (field?.GetValue(null) is not IOrchestrationExtensionDefinition definition)
                     throw new InvalidOperationException($"扩展声明 '{ContractOwner.FullName}.{MemberName}' 不是正式编排合同项。");
-                return (OrchestrationExtensionDefinition)field.GetValue(null);
+                return definition.Declaration;
             }
         }
     }

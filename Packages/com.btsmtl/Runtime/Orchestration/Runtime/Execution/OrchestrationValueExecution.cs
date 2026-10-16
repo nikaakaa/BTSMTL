@@ -121,7 +121,7 @@ namespace BTSMTL.Orchestration
                 case OrchestrationOperationCode.Extension:
                 {
                     Span<TValue> outputs = m_Workspace.Outputs[depth].AsSpan(0, operation.OutputCount);
-                    var invocation = new OrchestrationExtensionInvocation<TValue>(
+                    var invocation = new OrchestrationExtensionArguments<TValue>(
                         OrchestrationExtensionInvocationKind.Evaluate, operationIndex, ReadGeneration(operationIndex),
                         m_Input.Tick, 0, StateAncestors(operationIndex), inputs, outputs, in m_TimelineInvocation);
                     RequireSynchronousValueResult(operationIndex, operation.ExtensionBindingIndex,
@@ -316,7 +316,7 @@ namespace BTSMTL.Orchestration
                         Span<TValue> outputs = operation.OutputSlotOffset >= 0
                             ? m_Values.Slice(operation.OutputSlotOffset, operation.OutputCount)
                             : m_Workspace.Outputs[depth].AsSpan(0, operation.OutputCount);
-                        var invocation = new OrchestrationExtensionInvocation<TValue>(
+                        var invocation = new OrchestrationExtensionArguments<TValue>(
                             OrchestrationExtensionInvocationKind.Execute, operationIndex, ReadGeneration(operationIndex),
                             m_Input.Tick, 0, StateAncestors(operationIndex),
                             m_Workspace.Inputs[depth].AsSpan(0, count), outputs, in m_TimelineInvocation);

@@ -40,20 +40,13 @@ namespace BTSMTL.Orchestration
 
     public readonly struct OrchestrationExtensionPort
     {
-        public OrchestrationExtensionPort(OrchestrationExtensionInputPort input)
+        public OrchestrationExtensionPort(string id, OrchestrationValueKind valueKind,
+            OrchestrationExtensionPortDirection direction, int index)
         {
-            Id = input.Id;
-            ValueKind = input.ValueKind;
-            Direction = OrchestrationExtensionPortDirection.Input;
-            Index = input.Index;
-        }
-
-        public OrchestrationExtensionPort(OrchestrationExtensionOutputPort output)
-        {
-            Id = output.Id;
-            ValueKind = output.ValueKind;
-            Direction = OrchestrationExtensionPortDirection.Output;
-            Index = output.Index;
+            Id = id;
+            ValueKind = valueKind;
+            Direction = direction;
+            Index = index;
         }
 
         public string Id { get; }
@@ -62,7 +55,13 @@ namespace BTSMTL.Orchestration
         public int Index { get; }
     }
 
-    public readonly struct OrchestrationExtensionInputPort
+    public interface IOrchestrationExtensionPort
+    {
+        OrchestrationExtensionPort Declaration { get; }
+    }
+
+    public readonly struct OrchestrationExtensionInputPort<TOperation> : IOrchestrationExtensionPort
+        where TOperation : struct
     {
         public OrchestrationExtensionInputPort(string id, OrchestrationValueKind valueKind, int index)
         {
@@ -74,10 +73,12 @@ namespace BTSMTL.Orchestration
         public string Id { get; }
         public OrchestrationValueKind ValueKind { get; }
         public int Index { get; }
-        public OrchestrationExtensionPort Declaration => new OrchestrationExtensionPort(this);
+        public OrchestrationExtensionPort Declaration => new OrchestrationExtensionPort(
+            Id, ValueKind, OrchestrationExtensionPortDirection.Input, Index);
     }
 
-    public readonly struct OrchestrationExtensionOutputPort
+    public readonly struct OrchestrationExtensionOutputPort<TOperation> : IOrchestrationExtensionPort
+        where TOperation : struct
     {
         public OrchestrationExtensionOutputPort(string id, OrchestrationValueKind valueKind, int index)
         {
@@ -89,7 +90,8 @@ namespace BTSMTL.Orchestration
         public string Id { get; }
         public OrchestrationValueKind ValueKind { get; }
         public int Index { get; }
-        public OrchestrationExtensionPort Declaration => new OrchestrationExtensionPort(this);
+        public OrchestrationExtensionPort Declaration => new OrchestrationExtensionPort(
+            Id, ValueKind, OrchestrationExtensionPortDirection.Output, Index);
     }
 
     public readonly struct OrchestrationExtensionContract

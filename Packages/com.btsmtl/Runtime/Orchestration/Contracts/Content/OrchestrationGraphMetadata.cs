@@ -117,13 +117,15 @@ namespace BTSMTL.Orchestration
     [ValueStorage(UseConstructor = true)]
     public sealed partial class OrchestrationGraphExecutionSource
     {
+        public const int NoExecutionIdentity = 0;
+
         public OrchestrationGraphExecutionSource(OrchestrationGraphSourceTargetKind targetKind, int targetIndex,
             string graphId, string nodeId, string portId, string edgeId, string declarationId,
             string timelineId, string trackId, string clipId, bool isInputPort, string graphInvocationPath,
             string compiledPortId, string valuePortDirection, string sourceInvocationPath,
             string parentInvocationPath, string invocationCallerKind, string invocationCallerId,
             string invocationCallerClipId, int invocationCallerOperationIndex,
-            OrchestrationExecutionEntry invocationEntry)
+            OrchestrationExecutionEntry invocationEntry, int sourceIdentityId)
         {
             TargetKind = targetKind;
             TargetIndex = targetIndex;
@@ -146,6 +148,7 @@ namespace BTSMTL.Orchestration
             InvocationCallerClipId = invocationCallerClipId;
             InvocationCallerOperationIndex = invocationCallerOperationIndex;
             InvocationEntry = invocationEntry;
+            SourceIdentityId = sourceIdentityId;
         }
 
         public OrchestrationGraphSourceTargetKind TargetKind { get; }
@@ -169,6 +172,7 @@ namespace BTSMTL.Orchestration
         public string InvocationCallerClipId { get; }
         public int InvocationCallerOperationIndex { get; }
         public OrchestrationExecutionEntry InvocationEntry { get; }
+        public int SourceIdentityId { get; }
     }
 
     [ValueStorage(UseConstructor = true)]
