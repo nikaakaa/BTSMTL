@@ -31,14 +31,6 @@ namespace ThirdPersonSimulation
         }
     }
 
-    public static class VfxProgramOperationSchema
-    {
-        public const string PositionInputPortId = "LocalPosition";
-        public const string EulerInputPortId = "LocalEulerAngles";
-        public const string ScaleInputPortId = "LocalScale";
-        public static readonly AnimationChannelId ChannelId = new AnimationChannelId("Vfx");
-    }
-
     public readonly partial struct ProgramEnumConstant
     {
         public ProgramEnumConstant(string typeIdentity, int value)
