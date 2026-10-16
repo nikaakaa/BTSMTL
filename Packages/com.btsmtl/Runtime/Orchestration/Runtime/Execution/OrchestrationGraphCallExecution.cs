@@ -45,6 +45,8 @@ namespace BTSMTL.Orchestration
 
         bool IsGraphScopeActive(int ownerOperationIndex)
         {
+            if (m_Blackboards.IsBorrowedOperation(ownerOperationIndex))
+                return m_Blackboards.IsBorrowedGraphScope(ownerOperationIndex);
             int frameSlot = OperationFrame(ownerOperationIndex);
             if (IsActive(ownerOperationIndex))
                 return true;

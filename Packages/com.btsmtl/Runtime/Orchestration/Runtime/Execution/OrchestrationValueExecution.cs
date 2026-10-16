@@ -199,7 +199,7 @@ namespace BTSMTL.Orchestration
         }
 
         TValue ReadValueSlot(int ownerOperationIndex, int valueSlot) =>
-            ReadValueSlot(valueSlot, in m_Frames.Values(OperationFrame(ownerOperationIndex))[valueSlot]);
+            ReadValueSlot(valueSlot, in m_Blackboards.ReadOutputValue(ownerOperationIndex, valueSlot));
 
         TValue ReadValueSlot(int valueSlot, in TValue value) => m_Input.UseOverrides &&
             default(TValues).Kind(in m_Input.ValueOverrides[valueSlot]) != 0

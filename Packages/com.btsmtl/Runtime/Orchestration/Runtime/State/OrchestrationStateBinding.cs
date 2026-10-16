@@ -129,7 +129,28 @@ namespace BTSMTL.Orchestration
             new OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3,
                 TQuaternion, TMath, TValues, TContext>(program, workspace, bindings, Frames, frameSlot,
                 CharacterValues, CharacterBlackboards, characterSlots, timelineDispatcher,
-                clipExitDispatcher, Timeline, in input, in identities, in context);
+                clipExitDispatcher, Timeline, in input, in identities, in context, null, default);
+
+        public OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3,
+            TQuaternion, TMath, TValues, TContext> CreateCursor<TScalar, TVector2, TVector3,
+            TQuaternion, TMath, TValues, TContext>(OrchestrationExecutionSourceBinding<TValue> preparedSource,
+            OrchestrationExecutionWorkspace<TValue> workspace,
+            IOrchestrationExtensionBindings<TValue, TContext> bindings, int frameSlot,
+            OrchestrationExecutionSource<TValue> source, ReadOnlySpan<int> characterSlots,
+            IOrchestrationTimelineDispatcher<TValue, TScalar, TVector2, TVector3,
+                TQuaternion, TMath, TValues, TContext> timelineDispatcher,
+            IOrchestrationTimelineClipExitDispatcher<TContext> clipExitDispatcher,
+            in OrchestrationFrameInput<TValue> input, in OrchestrationIdentityOrdinalView identities,
+            in TContext context)
+            where TScalar : unmanaged where TVector2 : unmanaged where TVector3 : unmanaged
+            where TQuaternion : unmanaged
+            where TMath : struct, IOrchestrationGraphMath<TScalar, TVector2, TVector3, TQuaternion>
+            where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TQuaternion>
+            where TContext : struct =>
+            new OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3,
+                TQuaternion, TMath, TValues, TContext>(preparedSource.Program, workspace, bindings, Frames, frameSlot,
+                CharacterValues, CharacterBlackboards, characterSlots, timelineDispatcher,
+                clipExitDispatcher, Timeline, in input, in identities, in context, preparedSource, source);
     }
 
     public readonly ref struct OrchestrationCommittedState<TValue> where TValue : unmanaged
@@ -149,5 +170,10 @@ namespace BTSMTL.Orchestration
         public ReadOnlySpan<TValue> CharacterValues { get; }
         public ReadOnlySpan<OrchestrationBlackboardMetadata> CharacterBlackboards { get; }
         public ReadOnlyOrchestrationStateView Timeline { get; }
+
+        public OrchestrationExecutionSource<TValue> BorrowExecutionSource(int frameSlot, ulong tick,
+            in OrchestrationStopContext stopContext) =>
+            new OrchestrationExecutionSource<TValue>(Frames, CharacterValues, CharacterBlackboards,
+                frameSlot, tick, in stopContext);
     }
 }

@@ -40,5 +40,12 @@ namespace BTSMTL.Orchestration
         public ReadOnlySpan<OrchestrationBlackboardMetadata> BlackboardMetadata(int frameSlot) =>
             m_BlackboardMetadata.Slice(frameSlot * m_BlackboardMetadataPerFrame,
                 m_BlackboardMetadataPerFrame);
+
+        public int OwnerFrame(int frameSlot, int ownerOperationIndex)
+        {
+            while (m_Frames[frameSlot].OwnerOperationIndex != ownerOperationIndex)
+                frameSlot = m_Frames[frameSlot].ParentFrameIndex;
+            return frameSlot;
+        }
     }
 }

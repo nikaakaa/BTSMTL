@@ -42,7 +42,7 @@ namespace BTSMTL.Orchestration
         OrchestrationTimelineInvocationFacts m_TimelineInvocation;
         TValue m_TimelineTime;
 
-        public OrchestrationExecutionCursor(OrchestrationProgram<TValue> program,
+        internal OrchestrationExecutionCursor(OrchestrationProgram<TValue> program,
             OrchestrationExecutionWorkspace<TValue> workspace,
             IOrchestrationExtensionBindings<TValue, TContext> bindings,
             OrchestrationExecutionFrames<TValue> frames, int frameSlot,
@@ -54,7 +54,8 @@ namespace BTSMTL.Orchestration
             OrchestrationStateView timelineState,
             in OrchestrationFrameInput<TValue> input,
             in OrchestrationIdentityOrdinalView identities,
-            in TContext context)
+            in TContext context, OrchestrationExecutionSourceBinding<TValue> sourceBinding,
+            OrchestrationExecutionSource<TValue> source)
         {
             m_Program = program;
             m_Workspace = workspace;
@@ -64,7 +65,7 @@ namespace BTSMTL.Orchestration
             m_Operations = frames.Operations(frameSlot);
             m_Values = frames.Values(frameSlot);
             m_Blackboards = new OrchestrationBlackboardStorageView<TValue>(program, frames, frameSlot,
-                characterValues, characterBlackboards, characterSlots);
+                characterValues, characterBlackboards, characterSlots, sourceBinding, source);
             m_Input = input;
             m_Identities = identities;
             m_Context = context;
@@ -172,11 +173,10 @@ namespace BTSMTL.Orchestration
         public ulong ReadGeneration(int operationIndex) =>
             m_Program.Operation(operationIndex).IsRunnable ? ReadOperationState(operationIndex).Generation : 1;
 
-        int OperationFrame(int operationIndex) => m_Frames.OwnerFrame(m_FrameSlot,
-            m_Program.Operation(operationIndex).ExecutionFrameOwnerOperationIndex);
+        int OperationFrame(int operationIndex) => m_Blackboards.OperationFrame(operationIndex);
 
-        ref OrchestrationOperationState ReadOperationState(int operationIndex) =>
-            ref m_Frames.Operations(OperationFrame(operationIndex))[operationIndex];
+        ref readonly OrchestrationOperationState ReadOperationState(int operationIndex) =>
+            ref m_Blackboards.ReadOperation(operationIndex);
 
         void SelectExecutionFrame(int frameSlot)
         {
@@ -613,8 +613,8 @@ namespace BTSMTL.Orchestration
             item.ValueSlot = valueSlot;
             if (kind == OrchestrationTraceKind.Blackboard)
             {
-                item.Value = m_Blackboards.Value(valueSlot);
-                item.Blackboard = m_Blackboards.Metadata(valueSlot);
+                item.Value = m_Blackboards.ReadValue(valueSlot);
+                item.Blackboard = m_Blackboards.ReadMetadata(valueSlot);
             }
         }
 

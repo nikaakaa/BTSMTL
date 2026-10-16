@@ -16,22 +16,36 @@ namespace BTSMTL.Orchestration
     {
         public bool CurrentStateRootCompleted()
         {
+            int state;
             if (m_StateDepth == 0)
+                state = m_Blackboards.BorrowedStateOperationIndex;
+            else
+            {
+                ref readonly OrchestrationExecutionWorkspace<TValue>.StateContext context =
+                    ref m_Workspace.States[m_StateDepth - 1];
+                if (context.HasRootCompletedOverride)
+                    return context.RootCompletedOverride;
+                state = context.OperationIndex;
+            }
+            if (state < 0)
                 return false;
-            ref readonly OrchestrationExecutionWorkspace<TValue>.StateContext context =
-                ref m_Workspace.States[m_StateDepth - 1];
-            if (context.HasRootCompletedOverride)
-                return context.RootCompletedOverride;
-            int edgeIndex = m_Program.StateRootEdge(context.OperationIndex);
+            int edgeIndex = m_Program.StateRootEdge(state);
             return edgeIndex >= 0 && ReadStatus(m_Program.Edge(edgeIndex).TargetOperationIndex) ==
                 OrchestrationOperationStatus.Success;
         }
 
-        public int CurrentStateExitCause() =>
-            m_StateDepth == 0 ? -1 : m_Workspace.States[m_StateDepth - 1].ExitCause;
+        public int CurrentStateExitCause()
+        {
+            if (m_StateDepth != 0)
+                return m_Workspace.States[m_StateDepth - 1].ExitCause;
+            OrchestrationStopContext source = m_Blackboards.BorrowedStopContext;
+            return m_Blackboards.BorrowedStateOperationIndex >= 0 && source.IsValid ? MapExitCause(source.Cause) : -1;
+        }
 
         public bool IsCurrentStateExecution(int stateOperationIndex)
         {
+            if (m_Blackboards.IsBorrowedOperation(stateOperationIndex))
+                return m_Blackboards.IsBorrowedStateScope(stateOperationIndex);
             int frameSlot = OperationFrame(stateOperationIndex);
             for (int i = m_StateDepth - 1; i >= 0; i--)
                 if (m_Workspace.States[i].ExecutionFrameIndex == frameSlot &&
@@ -42,16 +56,16 @@ namespace BTSMTL.Orchestration
 
         public int PredictCurrentStateRootCompletionTransition()
         {
-            if (m_StateDepth == 0)
+            int state = m_StateDepth == 0 ? m_Blackboards.BorrowedStateOperationIndex :
+                m_Workspace.States[m_StateDepth - 1].OperationIndex;
+            if (state < 0)
                 return -1;
-            ref readonly OrchestrationExecutionWorkspace<TValue>.StateContext context =
-                ref m_Workspace.States[m_StateDepth - 1];
-            int state = context.OperationIndex;
             int previousFrame = m_FrameSlot;
             int previousOperation = m_CurrentOperationIndex;
-            bool selectFrame = context.ExecutionFrameIndex != previousFrame;
+            bool selectFrame = m_StateDepth != 0 && !m_Blackboards.IsBorrowedOperation(state) &&
+                m_Workspace.States[m_StateDepth - 1].ExecutionFrameIndex != previousFrame;
             if (selectFrame)
-                SelectExecutionFrame(context.ExecutionFrameIndex);
+                SelectExecutionFrame(m_Workspace.States[m_StateDepth - 1].ExecutionFrameIndex);
             PushState(state, -1, true, true);
             try
             {

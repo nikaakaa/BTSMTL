@@ -19,10 +19,10 @@ namespace BTSMTL.Orchestration
             m_CurrentOperationIndex = operationIndex;
             ref readonly OrchestrationBlackboardSlot slot = ref m_Program.Blackboard(valueSlot);
             if (slot.IsGraphCallParameter && IsGraphScopeActive(slot.OwnerOperationIndex))
-                return ReadValueSlot(valueSlot, in m_Blackboards.Value(valueSlot));
+                return ReadValueSlot(valueSlot, in m_Blackboards.ReadValue(valueSlot));
             OrchestrationBlackboardOwnerToken expected = ResolveOwner(operationIndex, valueSlot, out _);
-            return SameOwner(in m_Blackboards.Metadata(valueSlot).Owner, in expected)
-                ? ReadValueSlot(valueSlot, in m_Blackboards.Value(valueSlot)) : m_Program.DefaultValue(valueSlot);
+            return SameOwner(in m_Blackboards.ReadMetadata(valueSlot).Owner, in expected)
+                ? ReadValueSlot(valueSlot, in m_Blackboards.ReadValue(valueSlot)) : m_Program.DefaultValue(valueSlot);
         }
 
         public void WriteBlackboard(int operationIndex, int valueSlot, in TValue value,
@@ -33,13 +33,13 @@ namespace BTSMTL.Orchestration
             if (slot.Lifetime == OrchestrationBlackboardLifetime.Config)
                 throw new InvalidOperationException($"Blackboard slot '{valueSlot}' is read-only configuration.");
             OrchestrationBlackboardOwnerToken expected = ResolveOwner(operationIndex, valueSlot, out OrchestrationBlackboardSourceContext source);
-            TValue current = SameOwner(in m_Blackboards.Metadata(valueSlot).Owner, in expected)
-                ? ReadValueSlot(valueSlot, in m_Blackboards.Value(valueSlot)) : m_Program.DefaultValue(valueSlot);
+            TValue current = SameOwner(in m_Blackboards.ReadMetadata(valueSlot).Owner, in expected)
+                ? ReadValueSlot(valueSlot, in m_Blackboards.ReadValue(valueSlot)) : m_Program.DefaultValue(valueSlot);
             TValue converted = OrchestrationValueMath<TValue, TScalar, TVector2, TVector3,
                 TQuaternion, TMath, TValues>.Convert(in value, slot.ValueKind);
-            m_Blackboards.Value(valueSlot) = OrchestrationValueMath<TValue, TScalar, TVector2, TVector3,
+            m_Blackboards.WriteValue(valueSlot) = OrchestrationValueMath<TValue, TScalar, TVector2, TVector3,
                 TQuaternion, TMath, TValues>.Assign(in current, in converted, assignment);
-            ref OrchestrationBlackboardMetadata metadata = ref m_Blackboards.Metadata(valueSlot);
+            ref OrchestrationBlackboardMetadata metadata = ref m_Blackboards.WriteMetadata(valueSlot);
             metadata.Owner = expected;
             metadata.Lifetime = slot.Lifetime;
             metadata.WriteStamp = new OrchestrationBlackboardWriteStamp
@@ -60,8 +60,8 @@ namespace BTSMTL.Orchestration
         public void WriteInputProjection(int valueSlot, in TValue value)
         {
             ref readonly OrchestrationBlackboardSlot slot = ref m_Program.Blackboard(valueSlot);
-            m_Blackboards.Value(valueSlot) = value;
-            m_Blackboards.Metadata(valueSlot) = new OrchestrationBlackboardMetadata
+            m_Blackboards.WriteValue(valueSlot) = value;
+            m_Blackboards.WriteMetadata(valueSlot) = new OrchestrationBlackboardMetadata
             {
                 Owner = new OrchestrationBlackboardOwnerToken
                 {
@@ -93,7 +93,7 @@ namespace BTSMTL.Orchestration
                     break;
                 case OrchestrationScopeKind.Graph:
                     if (slot.Lifetime == OrchestrationBlackboardLifetime.GraphInstance && slot.OwnerOperationIndex < 0)
-                        generation = m_Frames.Header(m_Blackboards.OwnerFrame(valueSlot)).Generation;
+                        generation = m_Blackboards.OwnerGeneration(valueSlot);
                     else if (slot.Lifetime == OrchestrationBlackboardLifetime.Config)
                         generation = 1;
                     else
@@ -102,7 +102,7 @@ namespace BTSMTL.Orchestration
                             throw new InvalidOperationException($"Operation '{operationIndex}' accesses Blackboard slot '{valueSlot}' outside its Graph scope.");
                         generation = slot.Lifetime == OrchestrationBlackboardLifetime.GraphInstance &&
                             !m_Program.Operation(slot.OwnerOperationIndex).IsRunnable
-                            ? m_Frames.Header(m_Blackboards.OwnerFrame(valueSlot)).Generation
+                            ? m_Blackboards.OwnerGeneration(valueSlot)
                             : ReadGeneration(slot.OwnerOperationIndex);
                     }
                     break;
@@ -112,11 +112,11 @@ namespace BTSMTL.Orchestration
                     generation = ReadGeneration(slot.OwnerOperationIndex);
                     break;
                 case OrchestrationScopeKind.ActionInstance:
-                    source = ReadBlackboardFacts(operationIndex, m_Blackboards.Metadata(valueSlot).Owner.Generation);
+                    source = ReadBlackboardFacts(operationIndex, m_Blackboards.ReadMetadata(valueSlot).Owner.Generation);
                     generation = source.InstanceId;
                     break;
                 case OrchestrationScopeKind.Frame:
-                    generation = m_Input.Tick;
+                    generation = m_Blackboards.FrameTick(valueSlot, m_Input.Tick);
                     break;
                 default:
                     throw new InvalidOperationException($"Blackboard slot '{valueSlot}' declares unsupported scope '{slot.ScopeKind}'.");
