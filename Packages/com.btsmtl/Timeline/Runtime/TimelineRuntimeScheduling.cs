@@ -144,7 +144,8 @@ namespace BTSMTL.Timeline.Runtime
                 ref readonly TimelineSchedulingClip<TTime> clip = ref clips[exit.ClipOrdinal];
                 if (clip.Logic && clip.TreeDecision)
                     result[count++] = new TimelineSchedulingBoundary<TTime>(exit.ClipOrdinal,
-                        clip.SortOrdinal, nextTime, exit.Cycle, false);
+                        clip.SortOrdinal, clock.Add(nextTime, clock.Multiply(duration,
+                            clock.FromInt32(nextCycle - exit.Cycle))), exit.Cycle, false);
             }
             TTime previousAbsolute = clock.Add(clock.Multiply(duration, clock.FromInt32(previousCycle)), previousTime);
             TTime nextAbsolute = clock.Add(clock.Multiply(duration, clock.FromInt32(nextCycle)), nextTime);
@@ -260,6 +261,8 @@ namespace BTSMTL.Timeline.Runtime
                     int cycle = segments == 1 ? nextCycle : previousCycle + segment;
                     TTime from = segment == 0 ? previousTime : clock.Zero;
                     TTime to = segment == segments - 1 ? nextTime : duration;
+                    if (clip.TreeDecision)
+                        to = clock.Add(nextTime, clock.Multiply(duration, clock.FromInt32(nextCycle - cycle)));
                     if (Contains(exited, clipIndex, cycle) || clock.LessThanOrEqual(to, clip.Start))
                         continue;
                     bool finite = clip.TreeDecision && clip.DeclaredEnd;
@@ -275,12 +278,39 @@ namespace BTSMTL.Timeline.Runtime
             return count;
         }
 
+        internal int ContinueTrees(ReadOnlySpan<TimelineSchedulingClip<TTime>> clips,
+            ReadOnlySpan<TimelineSchedulingBoundary<TTime>> previousActive,
+            TTime previousTime, int previousCycle, TTime nextTime, int nextCycle, TTime duration,
+            ReadOnlySpan<OrchestrationTimelineTreeExitRange> exited,
+            Span<TimelineScheduledInvocation<TTime>> output)
+        {
+            TClock clock = default;
+            int count = 0;
+            foreach (ref readonly TimelineSchedulingBoundary<TTime> occurrence in previousActive)
+            {
+                ref readonly TimelineSchedulingClip<TTime> clip = ref clips[occurrence.ClipOrdinal];
+                if (!clip.TreeDecision || occurrence.Cycle >= previousCycle ||
+                    Contains(exited, occurrence.ClipOrdinal, occurrence.Cycle))
+                    continue;
+                TTime from = clock.Add(previousTime, clock.Multiply(duration,
+                    clock.FromInt32(previousCycle - occurrence.Cycle)));
+                TTime to = clock.Add(nextTime, clock.Multiply(duration,
+                    clock.FromInt32(nextCycle - occurrence.Cycle)));
+                if (clip.DeclaredEnd && clock.LessThanOrEqual(clip.End, from))
+                    continue;
+                TTime sample = clip.DeclaredEnd ? clock.Min(to, clip.End) : to;
+                output[count++] = Invocation(occurrence.ClipOrdinal, in clip, OrchestrationTimelineHook.Root,
+                    sample, clock.Max(from, clip.Start), occurrence.Cycle);
+            }
+            return count;
+        }
+
         public void SortTrees(TimelineScheduledInvocation<TTime>[] output, int offset, int count) =>
             SimulationArraySort.Sort(output.AsSpan(offset, count), m_InvocationComparison);
 
         public static bool IsActive(int ordinal, int cycle, TTime time, OrchestrationTimelineHook hook,
             ReadOnlySpan<TimelineScheduledInvocation<TTime>> requests,
-            ReadOnlySpan<bool> previousActiveTrees, int previousCycle)
+            ReadOnlySpan<TimelineSchedulingBoundary<TTime>> previousActiveTrees)
         {
             TClock clock = default;
             for (int i = requests.Length - 1; i >= 0; i--)
@@ -293,7 +323,10 @@ namespace BTSMTL.Timeline.Runtime
                     candidate.Ordinal == ordinal && candidate.Cycle == cycle)
                     return candidate.Hook == OrchestrationTimelineHook.Enable;
             }
-            return cycle == previousCycle && previousActiveTrees[ordinal];
+            foreach (ref readonly TimelineSchedulingBoundary<TTime> active in previousActiveTrees)
+                if (active.ClipOrdinal == ordinal && active.Cycle == cycle)
+                    return true;
+            return false;
         }
 
         public static bool Contains(ReadOnlySpan<OrchestrationTimelineClipOccurrence> values,

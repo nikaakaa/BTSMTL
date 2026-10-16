@@ -110,7 +110,6 @@ namespace BTSMTL.Timeline.Runtime
         internal readonly OrchestrationTimelineTreeExitRange[] EvaluationExits;
         internal readonly OrchestrationTimelineClipOccurrence[] ProducedExits;
         internal readonly bool[] PreviousActiveClips;
-        internal readonly bool[] PreviousActiveTrees;
         internal readonly bool[] SelectedTrees;
         readonly InvocationFrame[] m_InvocationFrames;
         int m_InvocationDepth;
@@ -146,7 +145,6 @@ namespace BTSMTL.Timeline.Runtime
             EvaluationExits = new OrchestrationTimelineTreeExitRange[checked(capacity.PlaybackCount * EvaluationExitCapacity)];
             ProducedExits = new OrchestrationTimelineClipOccurrence[checked(capacity.PlaybackCount * capacity.TreeExitRequestsPerPlayback)];
             PreviousActiveClips = new bool[checked(capacity.PlaybackCount * clips)];
-            PreviousActiveTrees = new bool[checked(capacity.PlaybackCount * clips)];
             SelectedTrees = new bool[checked(capacity.PlaybackCount * clips)];
             m_InvocationFrames = new InvocationFrame[checked(capacity.PlaybackCount + 1)];
         }

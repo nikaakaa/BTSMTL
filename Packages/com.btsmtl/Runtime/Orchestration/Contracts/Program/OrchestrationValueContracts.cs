@@ -41,6 +41,11 @@ namespace BTSMTL.Orchestration
         where TValue : unmanaged
         where TScalar : unmanaged
     {
+        OrchestrationValueKind Kind(in TValue value);
+        bool Boolean(in TValue value);
+        int Int32(in TValue value);
+        ulong UInt64(in TValue value);
+        TScalar Scalar(in TValue value);
         TValue FromInt32(int value);
         TValue FromUInt64(ulong value);
         TValue FromScalar(TScalar value);
@@ -54,11 +59,6 @@ namespace BTSMTL.Orchestration
         where TVector3 : unmanaged
         where TQuaternion : unmanaged
     {
-        OrchestrationValueKind Kind(in TValue value);
-        bool Boolean(in TValue value);
-        int Int32(in TValue value);
-        ulong UInt64(in TValue value);
-        TScalar Scalar(in TValue value);
         TVector2 Vector2(in TValue value);
         TVector3 Vector3(in TValue value);
         TQuaternion Quaternion(in TValue value);

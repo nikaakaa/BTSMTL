@@ -162,17 +162,12 @@ namespace BTSMTL.Timeline.Runtime
             }
             ReadOnlySpan<OrchestrationTimelineTreeExitRange> consumed = evaluationExits.Slice(0, work.EvaluationExitCount);
             Span<bool> activeClips = workspace.PreviousActiveClips.AsSpan(checked(slot * workspace.ClipCapacity), clips.Length);
-            Span<bool> activeTrees = workspace.PreviousActiveTrees.AsSpan(checked(slot * workspace.ClipCapacity), clips.Length);
-            activeTrees.Clear();
             for (int i = 0; i < clips.Length; i++)
                 activeClips[i] = TimelineRuntimeScheduling<TTime, TClock>.Active(in clips[i], i,
                     previous, previousCycle, exits);
             Span<TimelineSchedulingBoundary<TTime>> active = workspace.ActiveTrees.AsSpan(
                 checked(slot * m_Capacity.ActiveTreesPerPlayback), m_Capacity.ActiveTreesPerPlayback);
             int activeCount = OrchestrationTimelineStateQueries<TTime>.CopyActiveTrees<TClock>(content, in playback, exits, active);
-            for (int i = 0; i < activeCount; i++)
-                if (active[i].Cycle == previousCycle)
-                    activeTrees[active[i].ClipOrdinal] = true;
 
             int boundaryOffset = checked(slot * workspace.BoundaryCapacity);
             int boundaryCount = work.Paused ? 0 : m_Scheduler.Boundaries(clips,
@@ -193,6 +188,10 @@ namespace BTSMTL.Timeline.Runtime
                 loop && !work.Paused, consumed,
                 workspace.SelectedTrees.AsSpan(checked(slot * workspace.ClipCapacity), clips.Length),
                 workspace.Scheduled, work.ScheduledTreeOffset);
+            work.ScheduledTreeCount += m_Scheduler.ContinueTrees(clips, active.Slice(0, activeCount),
+                previous, previousCycle, time, cycle, content.Duration, consumed,
+                workspace.Scheduled.AsSpan(work.ScheduledTreeOffset + work.ScheduledTreeCount,
+                    workspace.InvocationCapacity - work.MarkerCount - work.ScheduledTreeCount));
             m_Scheduler.SortTrees(workspace.Scheduled, work.ScheduledTreeOffset, work.ScheduledTreeCount);
             ReadOnlySpan<TimelineScheduledInvocation<TTime>> treeRequests = workspace.Scheduled.AsSpan(
                 work.ScheduledTreeOffset, work.ScheduledTreeCount);
@@ -204,7 +203,7 @@ namespace BTSMTL.Timeline.Runtime
                 ref readonly TimelineScheduledInvocation<TTime> request = ref treeRequests[i];
                 if (request.Hook != OrchestrationTimelineHook.Root ||
                     TimelineRuntimeScheduling<TTime, TClock>.IsActive(request.Ordinal, request.Cycle,
-                        request.Time, request.Hook, treeRequests, activeTrees, previousCycle))
+                        request.Time, request.Hook, treeRequests, active.Slice(0, activeCount)))
                     AppendInvocation(content, slot, in work.Proposed.Start,
                         in request, workspace, ref work.InvocationCount);
             }
