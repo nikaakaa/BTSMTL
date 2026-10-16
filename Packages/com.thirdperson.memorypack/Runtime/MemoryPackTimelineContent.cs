@@ -20,6 +20,12 @@ namespace ThirdPersonSimulation.Serialization
                 value => MemoryPackContent.Serialize(value),
                 bytes => MemoryPackContent.Deserialize<TimelineContentSceneParameter>(bytes));
 
+        static MemoryPackTimelineContent()
+        {
+            MemoryPackContent.Initialize();
+            MemoryPackGeneratedFormatters.Register();
+        }
+
         public static TimelineContentArtifact CreateArtifact(IEnumerable<TimelineContentUnit> timelines,
             TimelineContentParameterCodecs codecs)
         {
@@ -29,7 +35,6 @@ namespace ThirdPersonSimulation.Serialization
 
         public static byte[] Write(TimelineContentArtifact artifact, TimelineContentParameterCodecs codecs)
         {
-            MemoryPackContent.Initialize();
             var options = new MemoryPackSerializerOptions { ServiceProvider = codecs };
             using var state = MemoryPackWriterOptionalStatePool.Rent(options);
             var bytes = new ArrayBufferWriter<byte>();
@@ -43,7 +48,6 @@ namespace ThirdPersonSimulation.Serialization
 
         public static TimelineContentArtifact Read(ReadOnlySpan<byte> bytes, TimelineContentParameterCodecs codecs)
         {
-            MemoryPackContent.Initialize();
             var options = new MemoryPackSerializerOptions { ServiceProvider = codecs };
             using var state = MemoryPackReaderOptionalStatePool.Rent(options);
             var reader = new MemoryPackReader(bytes, state);
