@@ -67,6 +67,7 @@ namespace BTSMTL.Timeline.Runtime
             m_Runtime.Complete(candidate, slot, in batch, m_Workspace);
             if (batch.Status == OrchestrationTimelinePlaybackStatus.Completed)
             {
+                m_Bindings.AcceptTerminal(operationIndex, slot, step.Tick, in playback, default, ref context);
                 m_Runtime.ReleasePlayback(candidate, playbackIdentity);
                 playbackIdentity = 0;
             }
@@ -89,6 +90,7 @@ namespace BTSMTL.Timeline.Runtime
             OrchestrationTimelineBatch<TTime> batch = m_Runtime.BeginStop(candidate, slot, stop, force, m_Workspace);
             cursor.ExecuteTimelineBatch(batch, playbackIdentity, in stopContext);
             m_Runtime.Complete(candidate, slot, in batch, m_Workspace);
+            m_Bindings.AcceptTerminal(operationIndex, slot, tick, in playback, in stopContext, ref context);
             m_Runtime.ReleasePlayback(candidate, playbackIdentity);
             playbackIdentity = 0;
             return OrchestrationStopStatus.Completed;

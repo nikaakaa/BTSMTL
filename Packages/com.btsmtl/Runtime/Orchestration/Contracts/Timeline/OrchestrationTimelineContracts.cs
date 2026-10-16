@@ -185,6 +185,10 @@ namespace BTSMTL.Orchestration
             in OrchestrationTimelineStart<TTime> start, ulong tick, ReadOnlySpan<TValue> inputs,
             ref TContext context);
 
+        void AcceptTerminal(int operationIndex, int playbackSlot, ulong tick,
+            in OrchestrationTimelinePlaybackState<TTime> accepted,
+            in OrchestrationStopContext stopContext, ref TContext context);
+
         int EnterInvocation(in OrchestrationTimelineStart<TTime> start,
             in OrchestrationTimelineInvocation<TTime> invocation,
             ref TContext context);
