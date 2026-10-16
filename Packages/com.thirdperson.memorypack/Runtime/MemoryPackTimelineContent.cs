@@ -10,16 +10,15 @@ namespace ThirdPersonSimulation.Serialization
     public static class MemoryPackTimelineContent
     {
         const string Format = "btsmtl.timeline.memorypack/3";
-        public static IReadOnlyList<ITimelineContentParameterCodec> BuiltinParameterCodecs { get; } =
-            Array.AsReadOnly(new ITimelineContentParameterCodec[]
-            {
-                new TimelineContentParameterCodec<TimelineContentTree>(TimelineContractKinds.TreeClip,
-                    value => MemoryPackContent.Serialize(value),
-                    bytes => MemoryPackContent.Deserialize<TimelineContentTree>(bytes)),
-                new TimelineContentParameterCodec<TimelineContentSceneParameter>(TimelineContractKinds.ScenePresentationParameterCurveClip,
-                    value => MemoryPackContent.Serialize(value),
-                    bytes => MemoryPackContent.Deserialize<TimelineContentSceneParameter>(bytes))
-            });
+        public static TimelineContentParameterCodec<TimelineContentTree> TreeParameters { get; } =
+            new TimelineContentParameterCodec<TimelineContentTree>(TimelineContractKinds.TreeClip,
+                value => MemoryPackContent.Serialize(value),
+                bytes => MemoryPackContent.Deserialize<TimelineContentTree>(bytes));
+
+        public static TimelineContentParameterCodec<TimelineContentSceneParameter> SceneParameters { get; } =
+            new TimelineContentParameterCodec<TimelineContentSceneParameter>(TimelineContractKinds.ScenePresentationParameterCurveClip,
+                value => MemoryPackContent.Serialize(value),
+                bytes => MemoryPackContent.Deserialize<TimelineContentSceneParameter>(bytes));
 
         public static TimelineContentArtifact CreateArtifact(IEnumerable<TimelineContentUnit> timelines,
             TimelineContentParameterCodecs codecs)

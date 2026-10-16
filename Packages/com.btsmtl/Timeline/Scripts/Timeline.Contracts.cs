@@ -508,6 +508,7 @@ namespace BTSMTL.Timeline
     {
         IReadOnlyList<TimelineTrackContract> Tracks { get; }
         IReadOnlyList<TimelineClipContract> Clips { get; }
+        IReadOnlyList<ITimelineContentParameterCodec> ParameterCodecs { get; }
         TimelineContentContractValidator ContentValidator { get; }
     }
 
@@ -515,28 +516,26 @@ namespace BTSMTL.Timeline
     {
         readonly ReadOnlyCollection<TimelineTrackContract> m_Tracks;
         readonly ReadOnlyCollection<TimelineClipContract> m_Clips;
-
-        public TimelineContractProvider(
-            IEnumerable<TimelineTrackContract> tracks,
-            IEnumerable<TimelineClipContract> clips)
-            : this(tracks, clips, null)
-        {
-        }
+        readonly ReadOnlyCollection<ITimelineContentParameterCodec> m_ParameterCodecs;
 
         public TimelineContractProvider(
             IEnumerable<TimelineTrackContract> tracks,
             IEnumerable<TimelineClipContract> clips,
-            TimelineContentContractValidator contentValidator)
+            IEnumerable<ITimelineContentParameterCodec> parameterCodecs,
+            TimelineContentContractValidator contentValidator = null)
         {
             m_Tracks = new ReadOnlyCollection<TimelineTrackContract>(
                 new List<TimelineTrackContract>(tracks ?? throw new ArgumentNullException(nameof(tracks))));
             m_Clips = new ReadOnlyCollection<TimelineClipContract>(
                 new List<TimelineClipContract>(clips ?? throw new ArgumentNullException(nameof(clips))));
+            m_ParameterCodecs = new ReadOnlyCollection<ITimelineContentParameterCodec>(
+                new List<ITimelineContentParameterCodec>(parameterCodecs));
             ContentValidator = contentValidator;
         }
 
         public IReadOnlyList<TimelineTrackContract> Tracks => m_Tracks;
         public IReadOnlyList<TimelineClipContract> Clips => m_Clips;
+        public IReadOnlyList<ITimelineContentParameterCodec> ParameterCodecs => m_ParameterCodecs;
         public TimelineContentContractValidator ContentValidator { get; }
     }
 
@@ -554,6 +553,7 @@ namespace BTSMTL.Timeline
                 throw new ArgumentNullException(nameof(providers));
             var tracks = new List<TimelineTrackContract>();
             var clips = new List<TimelineClipContract>();
+            var parameterCodecs = new List<ITimelineContentParameterCodec>();
             m_ContentValidators = new List<TimelineContentContractValidator>();
             foreach (ITimelineContractProvider provider in providers)
             {
@@ -561,15 +561,18 @@ namespace BTSMTL.Timeline
                     throw new InvalidOperationException("Timeline contract composition contains a missing provider.");
                 tracks.AddRange(provider.Tracks ?? throw new InvalidOperationException("Timeline contract provider has no Track contracts."));
                 clips.AddRange(provider.Clips ?? throw new InvalidOperationException("Timeline contract provider has no Clip contracts."));
+                parameterCodecs.AddRange(provider.ParameterCodecs);
                 if (provider.ContentValidator != null)
                     m_ContentValidators.Add(provider.ContentValidator);
             }
             m_TracksByKind = BuildTrackIndex(tracks);
             m_ClipsByKind = BuildClipIndex(clips);
+            ParameterCodecs = new TimelineContentParameterCodecs(parameterCodecs);
             for (int i = 0; i < clips.Count; i++)
             {
                 if (!m_TracksByKind.ContainsKey(clips[i].TrackKind))
                     throw new InvalidOperationException($"Timeline Clip contract '{clips[i].Kind}' references missing Track contract '{clips[i].TrackKind}'.");
+                ParameterCodecs.Require(clips[i].Kind);
             }
             m_Tracks = new ReadOnlyCollection<TimelineTrackContract>(tracks);
             m_Clips = new ReadOnlyCollection<TimelineClipContract>(clips);
@@ -577,6 +580,7 @@ namespace BTSMTL.Timeline
 
         public IReadOnlyList<TimelineTrackContract> Tracks => m_Tracks;
         public IReadOnlyList<TimelineClipContract> Clips => m_Clips;
+        public TimelineContentParameterCodecs ParameterCodecs { get; }
 
         public bool TryGetTrack(string kind, out TimelineTrackContract contract) =>
             m_TracksByKind.TryGetValue(kind ?? string.Empty, out contract);
@@ -626,6 +630,7 @@ namespace BTSMTL.Timeline
 
         public IReadOnlyList<TimelineTrackContract> Tracks => m_Data.Tracks;
         public IReadOnlyList<TimelineClipContract> Clips => m_Data.Clips;
+        public TimelineContentParameterCodecs ParameterCodecs => m_Data.ParameterCodecs;
 
         public bool TryGetTrack(string kind, out TimelineTrackContract contract) =>
             m_Data.TryGetTrack(kind, out contract);

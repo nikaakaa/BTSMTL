@@ -194,7 +194,8 @@ namespace BTSMTL.Timeline
 
     public static class TreeTimelineContracts
     {
-        public static readonly ITimelineContractProvider Provider = new TimelineContractProvider(
+        public static ITimelineContractProvider CreateProvider(
+            TimelineContentParameterCodec<TimelineContentTree> parameterCodec) => new TimelineContractProvider(
             new[]
             {
                 new TimelineTrackContract(
@@ -221,7 +222,8 @@ namespace BTSMTL.Timeline
                     TimelineOutputKind.LogicFact,
                     TimelineExecutionDomainMask.Logic | TimelineExecutionDomainMask.Presentation,
                     ValidateClip)
-            });
+            },
+            new ITimelineContentParameterCodec[] { parameterCodec });
 
         static void ValidateClip(Clip clip, List<string> errors)
         {

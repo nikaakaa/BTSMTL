@@ -125,7 +125,8 @@ namespace BTSMTL.Timeline
 
     public static class ScenePresentationTimelineContracts
     {
-        public static readonly ITimelineContractProvider Provider = new TimelineContractProvider(
+        public static ITimelineContractProvider CreateProvider(
+            TimelineContentParameterCodec<TimelineContentSceneParameter> parameterCodec) => new TimelineContractProvider(
             new[]
             {
                 new TimelineTrackContract(
@@ -150,6 +151,7 @@ namespace BTSMTL.Timeline
                     TimelineOutputKind.PresentationEvent,
                     ValidateClip)
             },
+            new ITimelineContentParameterCodec[] { parameterCodec },
             ValidateTimeline);
 
         static void ValidateClip(Clip clip, List<string> errors)
