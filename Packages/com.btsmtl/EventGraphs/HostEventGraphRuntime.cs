@@ -58,7 +58,8 @@ namespace BTSMTL.EventGraphs
             OrchestrationProgram<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> program = m_Bindings.Program;
             OrchestrationGraphContent<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> content = m_Bindings.Content;
             OrchestrationExecutionCapacity capacity = OrchestrationExecutionFrames<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>.PrepareCapacity(
-                new[] { program }, new[] { new OrchestrationRootAdmission(new[] { 0 }, 1) },
+                new[] { program }, new[] { new OrchestrationRootAdmission(
+                    new[] { new OrchestrationExecutionRoot(0, program.RootOperationIndex) }, 1) },
                 ReadOnlySpan<OrchestrationTimelineCallCapacity>.Empty);
             _ = OrchestrationExecutionTickCapacity.Prepare<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>(
                 new[] { program }, new[] { content.Extensions },
