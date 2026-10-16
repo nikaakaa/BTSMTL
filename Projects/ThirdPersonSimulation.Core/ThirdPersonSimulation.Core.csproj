@@ -8,21 +8,10 @@
     <AssemblyName>ThirdPersonSimulation.Core</AssemblyName>
     <RootNamespace>ThirdPersonSimulation</RootNamespace>
     <SimulationSourceRoot>$(MSBuildThisFileDirectory)..\..\Packages\com.thirdperson.gameplay\Runtime\Simulation</SimulationSourceRoot>
-    <PerformanceContractSource>$(MSBuildThisFileDirectory)..\..\Packages\com.thirdperson.shared\Runtime\Performance\PerformanceMetricDefinition.cs</PerformanceContractSource>
-    <InstrumentationContractSource>$(MSBuildThisFileDirectory)..\..\Packages\com.thirdperson.shared\Runtime\Instrumentation\PerformanceInstrumentationContracts.cs</InstrumentationContractSource>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\ThirdPerson.Shared.Contracts\ThirdPerson.Shared.Contracts.csproj" />
-    <ProjectReference Include="..\ThirdPersonGameplay.Orchestration.Contracts\ThirdPersonGameplay.Orchestration.Contracts.csproj" />
-    <ProjectReference Include="..\BTSMTL.Orchestration.Contracts\BTSMTL.Orchestration.Contracts.csproj" />
-    <ProjectReference Include="..\BTSMTL.Orchestration.Runtime\BTSMTL.Orchestration.Runtime.csproj" />
-    <ProjectReference Include="..\ThirdPersonSimulation.Timeline\ThirdPersonSimulation.Timeline.csproj" />
     <ProjectReference Include="..\ThirdPersonGameplay.Configuration\ThirdPersonGameplay.Configuration.csproj" />
-    <Reference Include="Quantum.Deterministic">
-      <HintPath>$(MSBuildThisFileDirectory)..\..\..\3C\3cDemo\Client\3C_Client\Assets\Photon\Quantum\Assemblies\Quantum.Deterministic.dll</HintPath>
-    </Reference>
-    <Compile Include="$(SimulationSourceRoot)\**\*.cs" Exclude="$(SimulationSourceRoot)\Float32\**\*.cs;$(SimulationSourceRoot)\FPGameplay\**\*.cs" LinkBase="Source" />
-    <Compile Include="$(PerformanceContractSource)" Link="Source\Performance\PerformanceMetricDefinition.cs" />
-    <Compile Include="$(InstrumentationContractSource)" Link="Source\Performance\PerformanceInstrumentationContracts.cs" />
+    <Compile Include="$(SimulationSourceRoot)\**\*.cs" LinkBase="Source" />
   </ItemGroup>
 </Project>
