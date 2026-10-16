@@ -38,6 +38,21 @@ namespace BTSMTL.Orchestration
         public ulong InputSequence;
         public ulong StartTick;
         public TTime StartTime;
+
+        public OrchestrationTimelineStart<TTarget> WithStartTime<TTarget>(TTarget startTime)
+            where TTarget : unmanaged, IEquatable<TTarget> => new()
+        {
+            ContentIdentityId = ContentIdentityId,
+            ContentRevisionId = ContentRevisionId,
+            Mode = Mode,
+            PlaybackIdentity = PlaybackIdentity,
+            SourceIdentityId = SourceIdentityId,
+            SourceGeneration = SourceGeneration,
+            OwnerInstanceId = OwnerInstanceId,
+            InputSequence = InputSequence,
+            StartTick = StartTick,
+            StartTime = startTime
+        };
     }
 
     [ValueStorage]

@@ -107,11 +107,12 @@ namespace BTSMTL.Orchestration
     public readonly struct OrchestrationTimelineInvocationFacts
     {
         public OrchestrationTimelineInvocationFacts(in OrchestrationTimelineInvocation<OrchestrationTime> invocation,
-            int startSourceIdentityId, OrchestrationTime advancePreviousTime, int advancePreviousCycle,
+            in OrchestrationTimelineStart<OrchestrationTime> start,
+            OrchestrationTime advancePreviousTime, int advancePreviousCycle,
             OrchestrationTime advanceTime, int advanceCycle)
         {
             Invocation = invocation;
-            StartSourceIdentityId = startSourceIdentityId;
+            Start = start;
             AdvancePreviousTime = advancePreviousTime;
             AdvancePreviousCycle = advancePreviousCycle;
             AdvanceTime = advanceTime;
@@ -119,12 +120,15 @@ namespace BTSMTL.Orchestration
         }
 
         public readonly OrchestrationTimelineInvocation<OrchestrationTime> Invocation;
-        public int StartSourceIdentityId { get; }
+        public readonly OrchestrationTimelineStart<OrchestrationTime> Start;
         public OrchestrationTime AdvancePreviousTime { get; }
         public int AdvancePreviousCycle { get; }
         public OrchestrationTime AdvanceTime { get; }
         public int AdvanceCycle { get; }
         public bool HasInvocation => Invocation.Token.PlaybackIdentity != 0;
+        public bool EndsExecutionFrame => Invocation.Token.Marker ||
+            Invocation.Hook == OrchestrationTimelineHook.Disable ||
+            Invocation.Hook == OrchestrationTimelineHook.Destroy;
     }
 
     public readonly ref struct OrchestrationTimelineBatch<TTime> where TTime : unmanaged

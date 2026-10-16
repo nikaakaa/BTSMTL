@@ -64,7 +64,7 @@ namespace BTSMTL.Timeline.Runtime
                 ClipEntries.Span[request.Token.ClipOrdinal].Entry(hook), hook, frame.LogicTick,
                 frame.Start.SourceIdentityId, request.Time, request.PreviousTime, request.WindowStartTime,
                 OrchestrationTime.Zero, OrchestrationTime.One);
-            return new OrchestrationTimelineInvocationFacts(in invocation, frame.Start.SourceIdentityId,
+            return new OrchestrationTimelineInvocationFacts(in invocation, in frame.Start,
                 request.PreviousTime, request.Token.Cycle, frame.Time, frame.Cycle);
         }
 
@@ -75,7 +75,7 @@ namespace BTSMTL.Timeline.Runtime
                 MarkerEntries.Span[marker.Token.ClipOrdinal], OrchestrationTimelineHook.Enable, frame.LogicTick,
                 marker.Start.SourceIdentityId, marker.Time, marker.Time, marker.Time,
                 OrchestrationTime.Zero, OrchestrationTime.One);
-            return new OrchestrationTimelineInvocationFacts(in invocation, marker.Start.SourceIdentityId,
+            return new OrchestrationTimelineInvocationFacts(in invocation, in marker.Start,
                 marker.Time, marker.Token.Cycle, frame.Time, frame.Cycle);
         }
     }

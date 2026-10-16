@@ -9,7 +9,7 @@ namespace BTSMTL.Orchestration
         public int ParentTimelineOperationIndex;
         public ulong ActionInstanceId;
         public ulong Generation;
-        public ulong PlaybackIdentity;
+        public OrchestrationTimelineStart<OrchestrationTime> TimelineStart;
         public int ClipOrdinal;
         public int Cycle;
         public bool Marker;

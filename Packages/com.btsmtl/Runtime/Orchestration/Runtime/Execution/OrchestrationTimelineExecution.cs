@@ -30,20 +30,29 @@ namespace BTSMTL.Orchestration
         TValue ReadTimelineTime() => m_TimelineTime;
 
         public OrchestrationOperationResult AdvanceTimeline(
-            in OrchestrationTimelineInvocationFacts invocation, in TValue time)
+            in OrchestrationTimelineInvocationFacts invocation, in TValue time,
+            in OrchestrationStopContext stopContext)
         {
             OrchestrationTimelineInvocationFacts previous = m_TimelineInvocation;
             TValue previousTime = m_TimelineTime;
             m_TimelineInvocation = invocation;
             m_TimelineTime = time;
+            BeginInvocation();
             try
             {
-                return Advance(invocation.Invocation.Entry);
+                OrchestrationOperationResult result = Advance(invocation.Invocation.Entry);
+                if (invocation.EndsExecutionFrame)
+                {
+                    CloseExecutionFrame(in stopContext);
+                    ClearExecutionFrame(m_FrameSlot);
+                }
+                return result;
             }
             finally
             {
                 m_TimelineInvocation = previous;
                 m_TimelineTime = previousTime;
+                m_EntryDepth--;
             }
         }
 
@@ -52,7 +61,8 @@ namespace BTSMTL.Orchestration
                 m_Input.Tick, ref m_Context);
 
         public void ExecuteTimelineBatch<TTime>(
-            OrchestrationTimelineBatch<TTime> batch, ulong playbackIdentity,
+            OrchestrationTimelineBatch<TTime> batch,
+            in OrchestrationTimelineStart<OrchestrationTime> start,
             in OrchestrationStopContext stopContext) where TTime : unmanaged
         {
             BeginInvocation();
@@ -78,16 +88,11 @@ namespace BTSMTL.Orchestration
                         m_TimelineTime = time;
                         SelectExecutionFrame(frameSlot);
                         result = Advance(invocation.Entry);
-                        if (invocation.Hook == OrchestrationTimelineHook.Disable ||
-                            invocation.Hook == OrchestrationTimelineHook.Destroy)
+                        if (facts.EndsExecutionFrame)
                         {
-                            if (m_TimelineDispatcher.ReleaseInvocation(ref m_Context) != OrchestrationOperationResult.Success)
+                            if (!invocation.Token.Marker &&
+                                m_TimelineDispatcher.ReleaseInvocation(ref m_Context) != OrchestrationOperationResult.Success)
                                 result = OrchestrationOperationResult.Failure;
-                            CloseExecutionFrame(in stopContext);
-                            releaseFrame = true;
-                        }
-                        else if (invocation.Token.Marker)
-                        {
                             CloseExecutionFrame(in stopContext);
                             releaseFrame = true;
                         }
@@ -113,7 +118,7 @@ namespace BTSMTL.Orchestration
                 }
                 if (batch.Status == OrchestrationTimelinePlaybackStatus.Completed ||
                     batch.Status == OrchestrationTimelinePlaybackStatus.Stopped)
-                    ReleaseTimelineFrames(playbackIdentity, in stopContext);
+                    ReleaseTimelineFrames(in start, in stopContext);
             }
             finally
             {
@@ -121,11 +126,12 @@ namespace BTSMTL.Orchestration
             }
         }
 
-        void ReleaseTimelineFrames(ulong playbackIdentity, in OrchestrationStopContext stopContext)
+        void ReleaseTimelineFrames(in OrchestrationTimelineStart<OrchestrationTime> start,
+            in OrchestrationStopContext stopContext)
         {
             for (int frameSlot = 0; frameSlot < m_Frames.Capacity; frameSlot++)
                 if (m_Frames.Header(frameSlot).SkillContentId != 0 &&
-                    m_Frames.Header(frameSlot).PlaybackIdentity == playbackIdentity)
+                    m_Frames.Header(frameSlot).TimelineStart.Equals(start))
                     ReleaseExecutionFrame(frameSlot, in stopContext);
         }
 
@@ -148,8 +154,12 @@ namespace BTSMTL.Orchestration
 
         void CloseExecutionFrame(in OrchestrationStopContext stopContext)
         {
+            int ownerOperationIndex = m_Frames.Header(m_FrameSlot).OwnerOperationIndex;
             for (int operationIndex = 0; operationIndex < m_Program.OperationCount; operationIndex++)
-                if (m_Operations[operationIndex].TimelineRuntimeHandle != 0)
+                if (m_Program.Operation(operationIndex).ExecutionFrameOwnerOperationIndex == ownerOperationIndex &&
+                    (m_Operations[operationIndex].Status == OrchestrationOperationStatus.Running ||
+                     m_Operations[operationIndex].Status == OrchestrationOperationStatus.Stopping ||
+                     m_Operations[operationIndex].TimelineRuntimeHandle != 0))
                     ForceStop(operationIndex, stopContext);
             for (int child = 0; child < m_Frames.Capacity; child++)
                 if (m_Frames.Header(child).SkillContentId != 0 &&

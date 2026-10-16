@@ -357,7 +357,7 @@ namespace BTSMTL.Orchestration
                         ForceStopLeaf(operationIndex, context);
                     break;
                 case OrchestrationOperationCode.Extension:
-                    if ((m_Bindings.Contract(operation.ExtensionBindingIndex).Invocations &
+                    if (active && (m_Bindings.Contract(operation.ExtensionBindingIndex).Invocations &
                          OrchestrationExtensionInvocationKind.ForceStop) != 0)
                         ForceStopLeaf(operationIndex, context);
                     ForceStopChildren(operationIndex, context);

@@ -56,7 +56,7 @@ namespace BTSMTL.Orchestration
         public int Find(ulong actionInstanceId)
         {
             for (int slot = 0; slot < m_Frames.Length; slot++)
-                if (m_Frames[slot].SkillContentId != 0 && m_Frames[slot].PlaybackIdentity == 0 &&
+                if (m_Frames[slot].SkillContentId != 0 && m_Frames[slot].TimelineStart.PlaybackIdentity == 0 &&
                     m_Frames[slot].ActionInstanceId == actionInstanceId)
                     return slot;
             return -1;
@@ -65,17 +65,18 @@ namespace BTSMTL.Orchestration
         public int FindPersistent(int skillContentId)
         {
             for (int slot = 0; slot < m_Frames.Length; slot++)
-                if (m_Frames[slot].PlaybackIdentity == 0 && m_Frames[slot].ActionInstanceId == 0 &&
+                if (m_Frames[slot].TimelineStart.PlaybackIdentity == 0 && m_Frames[slot].ActionInstanceId == 0 &&
                     m_Frames[slot].SkillContentId == skillContentId)
                     return slot;
             return -1;
         }
 
-        public int FindTimeline(in OrchestrationTimelineInvocationToken token)
+        public int FindTimeline(in OrchestrationTimelineStart<OrchestrationTime> start,
+            in OrchestrationTimelineInvocationToken token)
         {
             for (int slot = 0; slot < m_Frames.Length; slot++)
                 if (m_Frames[slot].SkillContentId != 0 &&
-                    m_Frames[slot].PlaybackIdentity == token.PlaybackIdentity &&
+                    m_Frames[slot].TimelineStart.Equals(start) &&
                     m_Frames[slot].ClipOrdinal == token.ClipOrdinal &&
                     m_Frames[slot].Cycle == token.Cycle && m_Frames[slot].Marker == token.Marker)
                     return slot;

@@ -58,7 +58,9 @@ namespace BTSMTL.Timeline.Runtime
                 in playback.Start, tick, inputs, ref context);
             OrchestrationTimelineBatch<TTime> batch = m_Runtime.BeginAdvance(candidate, slot, step, m_Workspace);
             OrchestrationStopContext stopContext = OrchestrationStopContext.ParentStop(operationIndex);
-            cursor.ExecuteTimelineBatch(batch, playbackIdentity, in stopContext);
+            OrchestrationTimelineStart<OrchestrationTime> startIdentity = playback.Start.WithStartTime(
+                OrchestrationTime.FromRaw(default(TClock).Raw(playback.Start.StartTime)));
+            cursor.ExecuteTimelineBatch(batch, in startIdentity, in stopContext);
             ref readonly OrchestrationTimelineWorkspace<TTime>.Operation work = ref m_Workspace.Operations[slot];
             m_Samples.Invoke(operationIndex, operationGeneration, tick, slot, playbackIdentity,
                 OrchestrationTime.FromRaw(default(TClock).Raw(work.PreviousTime)), work.PreviousCycle,
@@ -88,7 +90,9 @@ namespace BTSMTL.Timeline.Runtime
                 SourceIdentityId = playback.Start.SourceIdentityId
             };
             OrchestrationTimelineBatch<TTime> batch = m_Runtime.BeginStop(candidate, slot, stop, force, m_Workspace);
-            cursor.ExecuteTimelineBatch(batch, playbackIdentity, in stopContext);
+            OrchestrationTimelineStart<OrchestrationTime> startIdentity = playback.Start.WithStartTime(
+                OrchestrationTime.FromRaw(default(TClock).Raw(playback.Start.StartTime)));
+            cursor.ExecuteTimelineBatch(batch, in startIdentity, in stopContext);
             m_Runtime.Complete(candidate, slot, in batch, m_Workspace);
             m_Bindings.AcceptTerminal(operationIndex, slot, tick, in playback, in stopContext, ref context);
             m_Runtime.ReleasePlayback(candidate, playbackIdentity);
@@ -130,7 +134,9 @@ namespace BTSMTL.Timeline.Runtime
                 OrchestrationTime.FromRaw(clock.Raw(current.WindowStartTime)),
                 OrchestrationTime.FromRaw(clock.Raw(current.BodyStartFraction)),
                 OrchestrationTime.FromRaw(clock.Raw(current.BodyEndFraction)));
-            return new OrchestrationTimelineInvocationFacts(in invocation, work.Proposed.Start.SourceIdentityId,
+            OrchestrationTimelineStart<OrchestrationTime> start = work.Proposed.Start.WithStartTime(
+                OrchestrationTime.FromRaw(clock.Raw(work.Proposed.Start.StartTime)));
+            return new OrchestrationTimelineInvocationFacts(in invocation, in start,
                 OrchestrationTime.FromRaw(clock.Raw(work.PreviousTime)), work.PreviousCycle,
                 OrchestrationTime.FromRaw(clock.Raw(work.Proposed.Progress.CursorTime)), work.Proposed.Progress.Cycle);
         }
