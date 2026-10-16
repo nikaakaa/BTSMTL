@@ -61,11 +61,20 @@ namespace BTSMTL.Timeline.Runtime
         public void RetireContent(TimelineContentUnit timeline, OrchestrationTimelinePlaybackMode mode) =>
             m_RecycledPlaybacks.Remove((timeline, mode));
 
-        public void Prepare(TimelineRuntimePreparedContent content, OrchestrationTimelinePlaybackMode mode)
+        public void Prepare(TimelineRuntimePreparedContent content, OrchestrationTimelinePlaybackMode mode,
+            Predicate<string> supportsSampleKind)
         {
             var key = (content.Content, mode);
             if (m_RecycledPlaybacks.ContainsKey(key))
                 return;
+            for (int index = 0; index < content.Content.Clips.Count; index++)
+            {
+                TimelineContentClip clip = content.Content.Clips[index];
+                if (clip.ContentKind == TimelineContentKind.Sampled &&
+                    clip.ExecutionPolicy.Domain == TimelineExecutionDomain.Presentation &&
+                    !supportsSampleKind(clip.ContractKind))
+                    throw new InvalidOperationException($"Timeline '{content.Content.Identity}' 片段 '{clip.AuthoringId}' 的表现采样种类 '{clip.ContractKind}' 未装配消费者。");
+            }
             var recycled = new Stack<PresentationPlaybackState>(m_PlaybackCapacity);
             for (int i = 0; i < m_PlaybackCapacity; i++)
                 recycled.Push(new PresentationPlaybackState(content, mode, recycled));

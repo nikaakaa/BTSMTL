@@ -10,6 +10,7 @@ namespace BTSMTL.Timeline.Runtime
         readonly IReadOnlyList<TimelineCallBinding> m_CallBindings;
         readonly ITimelineDomainBindingResolver m_DomainResolver;
         readonly ITimelineRuntimeDependencyResolver m_DependencyResolver;
+        readonly Predicate<string> m_SupportsSampleKind;
         readonly Dictionary<TimelineData, TimelineRuntimePreparedContent> m_Contents = new();
         readonly TimelineRuntimePresentationDriver m_PresentationDriver;
 
@@ -18,12 +19,14 @@ namespace BTSMTL.Timeline.Runtime
             IReadOnlyList<TimelineCallBinding> callBindings,
             ITimelineDomainBindingResolver domainResolver,
             ITimelineRuntimeDependencyResolver dependencyResolver,
+            Predicate<string> supportsSampleKind,
             int playbackCapacity)
         {
             m_NumericTarget = numericTarget;
             m_CallBindings = callBindings;
             m_DomainResolver = domainResolver;
             m_DependencyResolver = dependencyResolver;
+            m_SupportsSampleKind = supportsSampleKind;
             m_PresentationDriver = new TimelineRuntimePresentationDriver(playbackCapacity);
         }
 
@@ -37,9 +40,9 @@ namespace BTSMTL.Timeline.Runtime
                 content, m_NumericTarget, m_CallBindings, m_DomainResolver, m_DependencyResolver, identities);
             if (!prepared.IsReady)
                 throw new InvalidOperationException(string.Join(" | ", prepared.Errors));
-            m_Contents.Add(timeline, prepared);
             for (int index = 0; index < playbackModes.Count; index++)
-                m_PresentationDriver.Prepare(prepared, playbackModes[index]);
+                m_PresentationDriver.Prepare(prepared, playbackModes[index], m_SupportsSampleKind);
+            m_Contents.Add(timeline, prepared);
             return prepared;
         }
 
@@ -60,9 +63,9 @@ namespace BTSMTL.Timeline.Runtime
             IReadOnlyList<OrchestrationTimelinePlaybackMode> playbackModes)
         {
             var prepared = new TimelineRuntimePreparedContent(m_Contents[baseline], content, identities);
-            m_Contents.Add(timeline, prepared);
             for (int index = 0; index < playbackModes.Count; index++)
-                m_PresentationDriver.Prepare(prepared, playbackModes[index]);
+                m_PresentationDriver.Prepare(prepared, playbackModes[index], m_SupportsSampleKind);
+            m_Contents.Add(timeline, prepared);
             return prepared;
         }
 

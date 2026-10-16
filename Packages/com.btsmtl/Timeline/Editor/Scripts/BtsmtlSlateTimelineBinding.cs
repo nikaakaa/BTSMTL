@@ -1054,6 +1054,12 @@ namespace BTSMTL.Timeline.Editor
                 Track source = Timeline.Tracks[trackIndex];
                 if (source == null)
                     continue;
+                if (!ContractCatalog.TryGetTrack(source.ContractKind, out _))
+                {
+                    string clipReferences = string.Join(", ", source.Clips.Where(clip => clip != null)
+                        .Select(clip => $"'{clip.AuthoringId}' [{clip.ContractKind}]"));
+                    throw new InvalidOperationException($"Timeline '{Timeline.Name}' track '{source.AuthoringId}' has unknown contract kind '{source.ContractKind}'; clips: {clipReferences}.");
+                }
                 var track = new BtsmtlTimelineTrackBinding(this, group, source);
                 track.ShowCurves = expandedTracks.Contains(source.AuthoringId);
                 track.IsLocked = lockedTracks.Contains(source.AuthoringId);
@@ -1075,6 +1081,8 @@ namespace BTSMTL.Timeline.Editor
                     Clip sourceClip = source.Clips[clipIndex];
                     if (sourceClip == null)
                         continue;
+                    if (!ContractCatalog.TryGetClip(sourceClip.ContractKind, out _))
+                        throw new InvalidOperationException($"Timeline '{Timeline.Name}' clip '{sourceClip.AuthoringId}' has unknown contract kind '{sourceClip.ContractKind}'.");
                     var clip = new BtsmtlTimelineClipBinding(this, track, sourceClip);
                     if (sourceClip is ITimelineAuthoringClipSource sourceBinding &&
                         sourceBinding.SourceAsset is ITimelineAuthoringEditableSourceAsset resource &&

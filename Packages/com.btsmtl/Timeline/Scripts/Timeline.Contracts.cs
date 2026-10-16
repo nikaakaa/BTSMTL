@@ -702,7 +702,9 @@ namespace BTSMTL.Timeline
                 }
                 if (!TryGetTrack(track.ContractKind, out TimelineTrackContract trackContract))
                 {
-                    errors?.Add($"Timeline '{timeline.Name}' track #{trackIndex} has unknown contract kind '{track.ContractKind}'.");
+                    string clipReferences = string.Join(", ", track.Clips.Where(clip => clip != null)
+                        .Select(clip => $"'{clip.AuthoringId}' [{clip.ContractKind}]"));
+                    errors?.Add($"Timeline '{timeline.Name}' track '{track.AuthoringId}' has unknown contract kind '{track.ContractKind}'; clips: {clipReferences}.");
                     continue;
                 }
                 if (!track.HasExplicitExecutionDomain || !trackContract.SupportsExecutionDomain(track.ExecutionDomain))
