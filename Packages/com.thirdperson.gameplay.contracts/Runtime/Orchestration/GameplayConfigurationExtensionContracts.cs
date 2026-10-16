@@ -6,20 +6,6 @@ namespace ThirdPersonGameplay.Orchestration
     {
         public const string DomainId = "gameplay.configuration";
 
-        public static class Ports
-        {
-            public static readonly OrchestrationExtensionOutputPort Boolean =
-                new OrchestrationExtensionOutputPort("value", OrchestrationValueKind.Boolean, 0);
-            public static readonly OrchestrationExtensionOutputPort Int32 =
-                new OrchestrationExtensionOutputPort("value", OrchestrationValueKind.Int32, 0);
-            public static readonly OrchestrationExtensionOutputPort UInt64 =
-                new OrchestrationExtensionOutputPort("value", OrchestrationValueKind.UInt64, 0);
-            public static readonly OrchestrationExtensionOutputPort Scalar =
-                new OrchestrationExtensionOutputPort("value", OrchestrationValueKind.Scalar, 0);
-            public static readonly OrchestrationExtensionOutputPort Text =
-                new OrchestrationExtensionOutputPort("value", OrchestrationValueKind.Identity, 0);
-        }
-
         public static class Fields
         {
             public static readonly OrchestrationExtensionContentField Field =
@@ -36,49 +22,79 @@ namespace ThirdPersonGameplay.Orchestration
                 OrchestrationExtensionContentField.Text("Value");
         }
 
-        public static readonly OrchestrationExtensionDefinition Boolean = new OrchestrationExtensionDefinition(
-            new OrchestrationExtensionIdentity(DomainId, "configuration-bool"),
-            3, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
-                OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
-                new[]
-                {
-                    Ports.Boolean.Declaration
-                }, new[] { Fields.Field, Fields.BooleanValue }));
+        public readonly struct Boolean
+        {
+            public static readonly OrchestrationExtensionOutputPort<Boolean> Value =
+                new OrchestrationExtensionOutputPort<Boolean>("value", OrchestrationValueKind.Boolean, 0);
 
-        public static readonly OrchestrationExtensionDefinition Int32 = new OrchestrationExtensionDefinition(
-            new OrchestrationExtensionIdentity(DomainId, "configuration-int32"),
-            3, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
-                OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
-                new[]
-                {
-                    Ports.Int32.Declaration
-                }, new[] { Fields.Field, Fields.Int32Value }));
+            public static readonly OrchestrationExtensionDefinition<Boolean> Definition = new OrchestrationExtensionDefinition<Boolean>(
+                new OrchestrationExtensionIdentity(DomainId, "configuration-bool"),
+                3, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
+                    OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
+                    new[]
+                    {
+                        Value.Declaration
+                    }, new[] { Fields.Field, Fields.BooleanValue }));
+        }
 
-        public static readonly OrchestrationExtensionDefinition UInt64 = new OrchestrationExtensionDefinition(
-            new OrchestrationExtensionIdentity(DomainId, "configuration-uint64"),
-            3, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
-                OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
-                new[]
-                {
-                    Ports.UInt64.Declaration
-                }, new[] { Fields.Field, Fields.UInt64Value }));
+        public readonly struct Int32
+        {
+            public static readonly OrchestrationExtensionOutputPort<Int32> Value =
+                new OrchestrationExtensionOutputPort<Int32>("value", OrchestrationValueKind.Int32, 0);
 
-        public static readonly OrchestrationExtensionDefinition Number = new OrchestrationExtensionDefinition(
-            new OrchestrationExtensionIdentity(DomainId, "configuration-number"),
-            3, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
-                OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
-                new[]
-                {
-                    Ports.Scalar.Declaration
-                }, new[] { Fields.Field, Fields.ScalarValue }));
+            public static readonly OrchestrationExtensionDefinition<Int32> Definition = new OrchestrationExtensionDefinition<Int32>(
+                new OrchestrationExtensionIdentity(DomainId, "configuration-int32"),
+                3, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
+                    OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
+                    new[]
+                    {
+                        Value.Declaration
+                    }, new[] { Fields.Field, Fields.Int32Value }));
+        }
 
-        public static readonly OrchestrationExtensionDefinition Text = new OrchestrationExtensionDefinition(
-            new OrchestrationExtensionIdentity(DomainId, "configuration-text"),
-            3, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
-                OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
-                new[]
-                {
-                    Ports.Text.Declaration
-                }, new[] { Fields.Field, Fields.TextValue }));
+        public readonly struct UInt64
+        {
+            public static readonly OrchestrationExtensionOutputPort<UInt64> Value =
+                new OrchestrationExtensionOutputPort<UInt64>("value", OrchestrationValueKind.UInt64, 0);
+
+            public static readonly OrchestrationExtensionDefinition<UInt64> Definition = new OrchestrationExtensionDefinition<UInt64>(
+                new OrchestrationExtensionIdentity(DomainId, "configuration-uint64"),
+                3, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
+                    OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
+                    new[]
+                    {
+                        Value.Declaration
+                    }, new[] { Fields.Field, Fields.UInt64Value }));
+        }
+
+        public readonly struct Number
+        {
+            public static readonly OrchestrationExtensionOutputPort<Number> Value =
+                new OrchestrationExtensionOutputPort<Number>("value", OrchestrationValueKind.Scalar, 0);
+
+            public static readonly OrchestrationExtensionDefinition<Number> Definition = new OrchestrationExtensionDefinition<Number>(
+                new OrchestrationExtensionIdentity(DomainId, "configuration-number"),
+                3, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
+                    OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
+                    new[]
+                    {
+                        Value.Declaration
+                    }, new[] { Fields.Field, Fields.ScalarValue }));
+        }
+
+        public readonly struct Text
+        {
+            public static readonly OrchestrationExtensionOutputPort<Text> Value =
+                new OrchestrationExtensionOutputPort<Text>("value", OrchestrationValueKind.Identity, 0);
+
+            public static readonly OrchestrationExtensionDefinition<Text> Definition = new OrchestrationExtensionDefinition<Text>(
+                new OrchestrationExtensionIdentity(DomainId, "configuration-text"),
+                3, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
+                    OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
+                    new[]
+                    {
+                        Value.Declaration
+                    }, new[] { Fields.Field, Fields.TextValue }));
+        }
     }
 }
