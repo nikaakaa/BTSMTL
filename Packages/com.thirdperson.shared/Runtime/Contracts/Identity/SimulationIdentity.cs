@@ -138,17 +138,6 @@ namespace ThirdPersonSimulation
         public override string ToString() => Value ?? string.Empty;
     }
 
-    public readonly partial struct SemanticHash : IEquatable<SemanticHash>
-    {
-        public SemanticHash(StableHash value) { Value = value; }
-        public StableHash Value { get; }
-        public bool IsValid => Value.IsValid;
-        public bool Equals(SemanticHash other) => Value == other.Value;
-        public override bool Equals(object obj) => obj is SemanticHash other && Equals(other);
-        public override int GetHashCode() => Value.GetHashCode();
-        public override string ToString() => Value.ToString();
-    }
-
     public readonly partial struct NumericProfileId : IEquatable<NumericProfileId>, IComparable<NumericProfileId>
     {
         public NumericProfileId(string value) { Value = value; RequireValid(); }
@@ -199,28 +188,6 @@ namespace ThirdPersonSimulation
         public override bool Equals(object obj) => obj is TargetAbiVersion other && Equals(other);
         public override int GetHashCode() => Value;
         public override string ToString() => Value.ToString(CultureInfo.InvariantCulture);
-    }
-
-    public readonly partial struct LayoutHash : IEquatable<LayoutHash>
-    {
-        public LayoutHash(StableHash value) { Value = value; }
-        public StableHash Value { get; }
-        public bool IsValid => Value.IsValid;
-        public bool Equals(LayoutHash other) => Value == other.Value;
-        public override bool Equals(object obj) => obj is LayoutHash other && Equals(other);
-        public override int GetHashCode() => Value.GetHashCode();
-        public override string ToString() => Value.ToString();
-    }
-
-    public readonly partial struct GameplayContentHash : IEquatable<GameplayContentHash>
-    {
-        public GameplayContentHash(StableHash value) { Value = value; }
-        public StableHash Value { get; }
-        public bool IsValid => Value.IsValid;
-        public bool Equals(GameplayContentHash other) => Value == other.Value;
-        public override bool Equals(object obj) => obj is GameplayContentHash other && Equals(other);
-        public override int GetHashCode() => Value.GetHashCode();
-        public override string ToString() => Value.ToString();
     }
 
     public readonly partial struct WorldRevision : IEquatable<WorldRevision>
@@ -509,25 +476,4 @@ namespace ThirdPersonSimulation
         public override string ToString() => $"{ActorId}/{Tick}/{Sequence}";
     }
 
-    public readonly partial struct CharacterStateHash : IEquatable<CharacterStateHash>
-    {
-        public CharacterStateHash(StableHash value) { Value = value; }
-        public StableHash Value { get; }
-        public bool IsValid => Value.IsValid;
-        public bool Equals(CharacterStateHash other) => Value == other.Value;
-        public override bool Equals(object obj) => obj is CharacterStateHash other && Equals(other);
-        public override int GetHashCode() => Value.GetHashCode();
-        public override string ToString() => Value.ToString();
-    }
-
-    public readonly partial struct SimulationWorldHash : IEquatable<SimulationWorldHash>
-    {
-        public SimulationWorldHash(StableHash value) { Value = value; }
-        public StableHash Value { get; }
-        public bool IsValid => Value.IsValid;
-        public bool Equals(SimulationWorldHash other) => Value == other.Value;
-        public override bool Equals(object obj) => obj is SimulationWorldHash other && Equals(other);
-        public override int GetHashCode() => Value.GetHashCode();
-        public override string ToString() => Value.ToString();
-    }
 }
