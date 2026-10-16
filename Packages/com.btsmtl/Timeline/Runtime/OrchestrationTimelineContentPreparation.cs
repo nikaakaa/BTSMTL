@@ -48,6 +48,36 @@ namespace BTSMTL.Timeline.Runtime
         public ReadOnlyMemory<OrchestrationTimelineEntryBinding> ClipEntries { get; }
         public ReadOnlyMemory<OrchestrationExecutionEntry> MarkerEntries { get; }
         public ReadOnlyMemory<OrchestrationTimelineInvocationMetadata> Invocations { get; }
+
+        public OrchestrationTimelineInvocationFacts CreatePresentationInvocation(
+            in TimelineRuntimePresentationFrame frame, in TimelineRuntimeTreeClipRequest request)
+        {
+            OrchestrationTimelineHook hook = request.EventKind switch
+            {
+                TimelineRuntimeTreeClipEventKind.Enter => OrchestrationTimelineHook.Enable,
+                TimelineRuntimeTreeClipEventKind.Update => OrchestrationTimelineHook.Root,
+                TimelineRuntimeTreeClipEventKind.Exit => OrchestrationTimelineHook.Disable,
+                TimelineRuntimeTreeClipEventKind.Destroy => OrchestrationTimelineHook.Destroy,
+                _ => throw new ArgumentOutOfRangeException(nameof(request))
+            };
+            var invocation = new OrchestrationTimelineInvocation<OrchestrationTime>(request.Token,
+                ClipEntries.Span[request.Token.ClipOrdinal].Entry(hook), hook, frame.LogicTick,
+                frame.Start.SourceIdentityId, request.Time, request.PreviousTime, request.WindowStartTime,
+                OrchestrationTime.Zero, OrchestrationTime.One);
+            return new OrchestrationTimelineInvocationFacts(in invocation, frame.Start.SourceIdentityId,
+                request.PreviousTime, request.Token.Cycle, frame.Time, frame.Cycle);
+        }
+
+        public OrchestrationTimelineInvocationFacts CreatePresentationInvocation(
+            in TimelineRuntimePresentationFrame frame, in TimelineRuntimePresentationEvent marker)
+        {
+            var invocation = new OrchestrationTimelineInvocation<OrchestrationTime>(marker.Token,
+                MarkerEntries.Span[marker.Token.ClipOrdinal], OrchestrationTimelineHook.Enable, frame.LogicTick,
+                marker.Start.SourceIdentityId, marker.Time, marker.Time, marker.Time,
+                OrchestrationTime.Zero, OrchestrationTime.One);
+            return new OrchestrationTimelineInvocationFacts(in invocation, marker.Start.SourceIdentityId,
+                marker.Time, marker.Token.Cycle, frame.Time, frame.Cycle);
+        }
     }
 
     public enum OrchestrationTimelineCapacityIssueKind : byte
@@ -92,26 +122,31 @@ namespace BTSMTL.Timeline.Runtime
             var clips = new OrchestrationTimelineEntryBinding[content.Clips.Count];
             var markers = new OrchestrationExecutionEntry[content.Markers.Count];
             var metadata = new List<OrchestrationTimelineInvocationMetadata>();
-            foreach (int ordinal in prepared.SchedulingTreeOrdinals.Span)
+            for (int domainIndex = 0; domainIndex < 2; domainIndex++)
             {
-                TimelineContentClip clip = content.Clips[ordinal];
-                string graphId = clip.GraphBinding.GraphId;
-                OrchestrationExecutionEntry enable = BindEntry(ordinal, false, OrchestrationTimelineHook.Enable,
-                    sources[(clip.AuthoringId, graphId, "OnEnable")], graph, program, localToShared, metadata);
-                OrchestrationExecutionEntry root = BindEntry(ordinal, false, OrchestrationTimelineHook.Root,
-                    sources[(clip.AuthoringId, graphId, "Root")], graph, program, localToShared, metadata);
-                OrchestrationExecutionEntry disable = BindEntry(ordinal, false, OrchestrationTimelineHook.Disable,
-                    sources[(clip.AuthoringId, graphId, "OnDisable")], graph, program, localToShared, metadata);
-                OrchestrationExecutionEntry destroy = BindEntry(ordinal, false, OrchestrationTimelineHook.Destroy,
-                    sources[(clip.AuthoringId, graphId, "OnDestroy")], graph, program, localToShared, metadata);
-                clips[ordinal] = new OrchestrationTimelineEntryBinding(enable, root, disable, destroy);
-            }
-            foreach (ref readonly TimelineSchedulingMarker<OrchestrationTime> marker in prepared.SchedulingMarkers.Span)
-            {
-                TimelineContentMarker value = content.Markers[marker.Ordinal];
-                OrchestrationExecutionEntry entry = BindEntry(marker.Ordinal, true, OrchestrationTimelineHook.Enable,
-                    sources[(value.MarkerId, value.GraphId, "OnEnable")], graph, program, localToShared, metadata);
-                markers[marker.Ordinal] = entry;
+                TimelineRuntimeDomainIndex domain = domainIndex == 0 ? prepared.Index.Logic : prepared.Index.Presentation;
+                foreach (TimelineRuntimeIndexedClip indexed in domain.Trees)
+                {
+                    int ordinal = indexed.ContentIndex;
+                    TimelineContentClip clip = content.Clips[ordinal];
+                    string graphId = clip.GraphBinding.GraphId;
+                    OrchestrationExecutionEntry enable = BindEntry(ordinal, false, OrchestrationTimelineHook.Enable,
+                        sources[(clip.AuthoringId, graphId, "OnEnable")], graph, program, localToShared, metadata);
+                    OrchestrationExecutionEntry root = BindEntry(ordinal, false, OrchestrationTimelineHook.Root,
+                        sources[(clip.AuthoringId, graphId, "Root")], graph, program, localToShared, metadata);
+                    OrchestrationExecutionEntry disable = BindEntry(ordinal, false, OrchestrationTimelineHook.Disable,
+                        sources[(clip.AuthoringId, graphId, "OnDisable")], graph, program, localToShared, metadata);
+                    OrchestrationExecutionEntry destroy = BindEntry(ordinal, false, OrchestrationTimelineHook.Destroy,
+                        sources[(clip.AuthoringId, graphId, "OnDestroy")], graph, program, localToShared, metadata);
+                    clips[ordinal] = new OrchestrationTimelineEntryBinding(enable, root, disable, destroy);
+                }
+                for (int markerIndex = 0; markerIndex < domain.Markers.Count; markerIndex++)
+                {
+                    int ordinal = domain.Markers.ContentIndexAt(markerIndex);
+                    TimelineContentMarker marker = content.Markers[ordinal];
+                    markers[ordinal] = BindEntry(ordinal, true, OrchestrationTimelineHook.Enable,
+                        sources[(marker.MarkerId, marker.GraphId, "OnEnable")], graph, program, localToShared, metadata);
+                }
             }
             return new OrchestrationTimelinePreparedEntries(clips, markers, metadata.ToArray());
         }
@@ -138,6 +173,7 @@ namespace BTSMTL.Timeline.Runtime
             }
             var issues = new List<OrchestrationTimelineCapacityIssue>();
             var occurrences = new List<OrchestrationOccurrenceCapacity>();
+            var clipInstances = new int[prepared.SchedulingClips.Length];
             var exits = new OrchestrationTimelineExitAnalysis<TValue, TScalar>(program, extensions, values, math, projection);
             int activeTrees = 0;
             int decisions = 0;
@@ -170,6 +206,7 @@ namespace BTSMTL.Timeline.Runtime
                             OrchestrationTimelineCapacityIssueKind.FrameBoundaryOutsideCycle, operationIndex));
                 }
                 activeTrees = checked(activeTrees + instances);
+                clipInstances[ordinal] = instances;
                 if (clip.TreeDecision)
                 {
                     decisions++;
@@ -199,10 +236,30 @@ namespace BTSMTL.Timeline.Runtime
             foreach (TimelineContentClip clip in prepared.Content.Clips)
                 if (!clip.TrackMuted && clip.ExecutionPolicy.IsLogic && clip.ContentKind == TimelineContentKind.Sampled)
                     sampledClips++;
+            var graphEntries = new List<OrchestrationTimelineEntryTickCapacity>();
+            foreach (int ordinal in prepared.SchedulingTreeOrdinals.Span)
+            {
+                if (!prepared.SchedulingClips.Span[ordinal].Logic || prepared.Content.Duration == OrchestrationTime.Zero)
+                    continue;
+                OrchestrationTimelineEntryBinding entry = entries.ClipEntries.Span[ordinal];
+                ref readonly TimelineSchedulingClip<OrchestrationTime> clip = ref prepared.SchedulingClips.Span[ordinal];
+                int instances = clipInstances[ordinal];
+                int retained = clip.TreeDecision ? instances : 0;
+                graphEntries.Add(new OrchestrationTimelineEntryTickCapacity(entry.Enable.OperationIndex, traversals, 0));
+                graphEntries.Add(new OrchestrationTimelineEntryTickCapacity(entry.Root.OperationIndex,
+                    checked(traversals + retained), 0));
+                graphEntries.Add(new OrchestrationTimelineEntryTickCapacity(entry.Disable.OperationIndex,
+                    checked(traversals + retained), 0));
+                graphEntries.Add(new OrchestrationTimelineEntryTickCapacity(entry.Destroy.OperationIndex,
+                    mode == OrchestrationTimelinePlaybackMode.Loop ? 0 : instances, instances));
+            }
+            foreach (ref readonly TimelineSchedulingMarker<OrchestrationTime> marker in prepared.SchedulingMarkers.Span)
+                graphEntries.Add(new OrchestrationTimelineEntryTickCapacity(
+                    entries.MarkerEntries.Span[marker.Ordinal].OperationIndex, traversals, 0));
             var tickCapacity = new OrchestrationTimelineTickContentCapacity(programIndex, operationIndex,
                 checked((prepared.SchedulingMarkers.Length + 3 * trees) * traversals +
                     (mode == OrchestrationTimelinePlaybackMode.Loop ? 2 * decisionInstances : decisionInstances)), activeTrees,
-                sampledClips, checked(sampledClips * traversals));
+                sampledClips, checked(sampledClips * traversals), graphEntries.ToArray());
             content = new OrchestrationTimelinePreparedContent<OrchestrationTime>(
                 program.Operation(operationIndex).TimelineContentIdentityId, prepared.ContentRevisionId, prepared.Content.Duration,
                 tickRate,

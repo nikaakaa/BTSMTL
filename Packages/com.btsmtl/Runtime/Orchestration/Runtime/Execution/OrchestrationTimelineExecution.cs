@@ -27,7 +27,25 @@ namespace BTSMTL.Orchestration
                 ref m_Operations[operationIndex].TimelineRuntimeHandle, in context,
                 force, m_Input.Tick, ref m_Context);
 
-        TValue ReadTimelineTime() => m_TimelineDispatcher.ReadTime();
+        TValue ReadTimelineTime() => m_TimelineTime;
+
+        public OrchestrationOperationResult AdvanceTimeline(
+            in OrchestrationTimelineInvocationFacts invocation, in TValue time)
+        {
+            OrchestrationTimelineInvocationFacts previous = m_TimelineInvocation;
+            TValue previousTime = m_TimelineTime;
+            m_TimelineInvocation = invocation;
+            m_TimelineTime = time;
+            try
+            {
+                return Advance(invocation.Invocation.Entry);
+            }
+            finally
+            {
+                m_TimelineInvocation = previous;
+                m_TimelineTime = previousTime;
+            }
+        }
 
         OrchestrationOperationResult RequestTimelineClipExit(int operationIndex) =>
             m_ClipExitDispatcher.RequestClipExit(m_TimelineState, operationIndex,
@@ -46,6 +64,7 @@ namespace BTSMTL.Orchestration
                     ref readonly OrchestrationTimelineInvocation<TTime> invocation = ref invocations[i];
                     OrchestrationOperationResult result;
                     OrchestrationTimelineInvocationFacts previousInvocation = m_TimelineInvocation;
+                    TValue previousTime = m_TimelineTime;
                     int previousFrame = m_FrameSlot;
                     int previousOperation = m_CurrentOperationIndex;
                     int frameSlot;
@@ -53,7 +72,10 @@ namespace BTSMTL.Orchestration
                     try
                     {
                         frameSlot = m_TimelineDispatcher.EnterInvocation(batch.PlaybackSlot, i, ref m_Context);
-                        m_TimelineInvocation = m_TimelineDispatcher.ReadInvocationFacts();
+                        OrchestrationTimelineInvocationFacts facts = m_TimelineDispatcher.ReadInvocationFacts();
+                        TValue time = m_TimelineDispatcher.ReadTime();
+                        m_TimelineInvocation = facts;
+                        m_TimelineTime = time;
                         SelectExecutionFrame(frameSlot);
                         result = Advance(invocation.Entry);
                         if (invocation.Hook == OrchestrationTimelineHook.Disable ||
@@ -81,6 +103,7 @@ namespace BTSMTL.Orchestration
                             SelectExecutionFrame(previousFrame);
                             m_CurrentOperationIndex = previousOperation;
                             m_TimelineInvocation = previousInvocation;
+                            m_TimelineTime = previousTime;
                         }
                     }
                     if (releaseFrame)

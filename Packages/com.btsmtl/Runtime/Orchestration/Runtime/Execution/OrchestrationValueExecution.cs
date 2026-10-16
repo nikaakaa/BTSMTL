@@ -16,7 +16,7 @@ namespace BTSMTL.Orchestration
     {
         TValue EvaluateValue(int operationIndex, int outputPortIndex)
         {
-            RequireExecution(operationIndex);
+            m_CurrentOperationIndex = operationIndex;
             int slot = m_Program.ValueEvaluationSlot(operationIndex, outputPortIndex);
             if (m_Input.UseOverrides && default(TValues).Kind(in m_Input.OutputOverrides[slot]) != 0)
             {

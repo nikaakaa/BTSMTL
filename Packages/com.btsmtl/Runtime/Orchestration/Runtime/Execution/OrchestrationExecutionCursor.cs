@@ -30,7 +30,6 @@ namespace BTSMTL.Orchestration
         readonly IOrchestrationTimelineClipExitDispatcher<TContext> m_ClipExitDispatcher;
         readonly OrchestrationStateView m_TimelineState;
         OrchestrationExecutionContract m_Contract;
-        int m_ExecutionCount;
         int m_EntryDepth;
         int m_InputDepth;
         int m_StateDepth;
@@ -41,6 +40,7 @@ namespace BTSMTL.Orchestration
         int m_GraphCallDepth;
         OrchestrationObservationPhase m_ObservationPhase;
         OrchestrationTimelineInvocationFacts m_TimelineInvocation;
+        TValue m_TimelineTime;
 
         public OrchestrationExecutionCursor(OrchestrationProgram<TValue> program,
             OrchestrationExecutionWorkspace<TValue> workspace,
@@ -72,7 +72,6 @@ namespace BTSMTL.Orchestration
             m_ClipExitDispatcher = clipExitDispatcher;
             m_TimelineState = timelineState;
             m_Contract = OrchestrationExecutionContract.Resumable;
-            m_ExecutionCount = 0;
             m_EntryDepth = 0;
             m_InputDepth = 0;
             m_StateDepth = 0;
@@ -83,6 +82,7 @@ namespace BTSMTL.Orchestration
             m_GraphCallDepth = 0;
             m_ObservationPhase = OrchestrationObservationPhase.None;
             m_TimelineInvocation = default;
+            m_TimelineTime = default;
             Array.Clear(workspace.InputObservationWritten, 0, workspace.InputObservationWritten.Length);
             Array.Clear(workspace.OutputObservationWritten, 0, workspace.OutputObservationWritten.Length);
             Array.Clear(workspace.CachedObservationWritten, 0, workspace.CachedObservationWritten.Length);
@@ -107,7 +107,6 @@ namespace BTSMTL.Orchestration
         {
             if (m_EntryDepth == 0)
             {
-                m_ExecutionCount = 0;
                 m_Workspace.ResetOutputs();
             }
             m_EntryDepth++;
@@ -191,7 +190,7 @@ namespace BTSMTL.Orchestration
 
         OrchestrationOperationResult Tick(int operationIndex, int inputPortId = 0)
         {
-            RequireExecution(operationIndex);
+            m_CurrentOperationIndex = operationIndex;
             ref readonly OrchestrationOperation operation = ref m_Program.Operation(operationIndex);
             if (!operation.IsRunnable)
                 return Execute(operationIndex, inputPortId);
@@ -451,16 +450,6 @@ namespace BTSMTL.Orchestration
             state.StopCause = 0;
             state.StopSourceOperationIndex = -1;
             state.StopReplacementOperationIndex = -1;
-        }
-
-        void RequireExecution(int operationIndex)
-        {
-            m_CurrentOperationIndex = operationIndex;
-            if (IsPredictiveEvaluation || m_ObservationPhase == OrchestrationObservationPhase.Observing)
-                return;
-            m_ExecutionCount++;
-            if (m_ExecutionCount > m_Program.MaximumOperationEvaluations)
-                throw new InvalidOperationException($"Program exceeded '{m_Program.MaximumOperationEvaluations}' operation evaluations.");
         }
 
         OrchestrationOperationResult Execute(int operationIndex, int inputPortId)

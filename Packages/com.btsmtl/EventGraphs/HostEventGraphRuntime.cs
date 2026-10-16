@@ -60,6 +60,10 @@ namespace BTSMTL.EventGraphs
             OrchestrationExecutionCapacity capacity = OrchestrationExecutionFrames<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>.PrepareCapacity(
                 new[] { program }, new[] { new OrchestrationRootAdmission(new[] { 0 }, 1) },
                 ReadOnlySpan<OrchestrationTimelineCallCapacity>.Empty);
+            _ = OrchestrationExecutionTickCapacity.Prepare<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>(
+                new[] { program }, new[] { content.Extensions },
+                new[] { new OrchestrationProgramTickBudget(1, 1) }, capacity,
+                ReadOnlySpan<OrchestrationTimelineTickContentCapacity>.Empty);
             OrchestrationExecutionStateCapacity stateCapacity = capacity.State;
             m_Layout = createStateLayout(StableHash.Compute(content.Identity.GraphId, content.Identity.SourceRevision),
                 content.NumericProfile.Id, content.NumericProfile.AbiVersion,
