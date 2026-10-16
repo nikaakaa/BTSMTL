@@ -12,11 +12,6 @@ namespace ThirdPersonSimulation
         public static string Attribute(string value) => Normalize(value, AttributePrefix, "GameplayAttribute");
         public static string Effect(string value) => Normalize(value, "effect:", "GameplayEffect");
 
-        internal static CanonicalTextValue AttributeCaptureKey(CanonicalTextValue trimmedIdentity) =>
-            trimmedIdentity.StartsWith(AttributePrefix, StringComparison.Ordinal)
-                ? trimmedIdentity.Substring(AttributePrefix.Length)
-                : trimmedIdentity;
-
         static string Normalize(string value, string prefix, string parameterName)
         {
             string identity = SimulationIdentity.Require(value, parameterName);

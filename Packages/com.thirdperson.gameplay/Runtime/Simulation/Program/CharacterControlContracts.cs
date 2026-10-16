@@ -45,18 +45,6 @@ namespace ThirdPersonSimulation
             !string.IsNullOrWhiteSpace(controlDefinitionIdentity) &&
             string.Equals(owner, Owner(controlDefinitionIdentity), StringComparison.Ordinal);
 
-        public static SemanticValueKind ValueKind(string field)
-        {
-            if (IsVector3(field))
-                return SemanticValueKind.Vector3;
-            if (IsScalar(field))
-                return SemanticValueKind.Number;
-            if (IsYaw(field))
-                return SemanticValueKind.Yaw;
-            if (IsBoolean(field))
-                return SemanticValueKind.Boolean;
-            throw new InvalidOperationException($"Character State field '{field}' is not supported.");
-        }
 
     }
 
