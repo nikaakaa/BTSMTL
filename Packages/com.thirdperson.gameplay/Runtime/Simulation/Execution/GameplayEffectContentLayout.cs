@@ -52,7 +52,6 @@ namespace ThirdPersonSimulation
         readonly ReadOnlyCollection<string> m_ParameterIds;
         readonly ReadOnlyCollection<string> m_OwnSourceAttributes;
         readonly ReadOnlyCollection<string> m_SourceAttributes;
-        readonly CanonicalTextValue[] m_SourceAttributeKeys;
         readonly ReadOnlyCollection<string> m_TargetAttributes;
         readonly int[] m_SourceAttributeIndices;
         readonly int[] m_TargetAttributeIndices;
@@ -73,9 +72,6 @@ namespace ThirdPersonSimulation
             m_ParameterIds = Array.AsReadOnly((string[])parameterIds.Clone());
             m_OwnSourceAttributes = Array.AsReadOnly((string[])ownSourceAttributes.Clone());
             m_SourceAttributes = Array.AsReadOnly((string[])sourceAttributes.Clone());
-            m_SourceAttributeKeys = new CanonicalTextValue[m_SourceAttributes.Count];
-            for (int index = 0; index < m_SourceAttributeKeys.Length; index++)
-                m_SourceAttributeKeys[index] = GameplayEffectRuntimeIdentity.AttributeCaptureKey(m_SourceAttributes[index]);
             m_TargetAttributes = Array.AsReadOnly((string[])targetAttributes.Clone());
             m_SourceAttributeIndices = (int[])sourceAttributeIndices.Clone();
             m_TargetAttributeIndices = (int[])targetAttributeIndices.Clone();
@@ -101,7 +97,6 @@ namespace ThirdPersonSimulation
         public IReadOnlyList<string> ParameterIds => m_ParameterIds;
         public IReadOnlyList<string> OwnSourceAttributes => m_OwnSourceAttributes;
         public IReadOnlyList<string> SourceAttributes => m_SourceAttributes;
-        public CanonicalTextValue SourceAttributeKey(int index) => m_SourceAttributeKeys[index];
         public IReadOnlyList<string> TargetAttributes => m_TargetAttributes;
         public ReadOnlySpan<int> SourceAttributeIndices => m_SourceAttributeIndices;
         public ReadOnlySpan<int> TargetAttributeIndices => m_TargetAttributeIndices;

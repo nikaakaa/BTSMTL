@@ -32,8 +32,10 @@ namespace BTSMTL.Orchestration
 
         public bool IsCurrentStateExecution(int stateOperationIndex)
         {
+            int frameSlot = OperationFrame(stateOperationIndex);
             for (int i = m_StateDepth - 1; i >= 0; i--)
-                if (m_Workspace.States[i].OperationIndex == stateOperationIndex)
+                if (m_Workspace.States[i].ExecutionFrameIndex == frameSlot &&
+                    m_Workspace.States[i].OperationIndex == stateOperationIndex)
                     return true;
             return false;
         }
@@ -42,7 +44,14 @@ namespace BTSMTL.Orchestration
         {
             if (m_StateDepth == 0)
                 return -1;
-            int state = m_Workspace.States[m_StateDepth - 1].OperationIndex;
+            ref readonly OrchestrationExecutionWorkspace<TValue>.StateContext context =
+                ref m_Workspace.States[m_StateDepth - 1];
+            int state = context.OperationIndex;
+            int previousFrame = m_FrameSlot;
+            int previousOperation = m_CurrentOperationIndex;
+            bool selectFrame = context.ExecutionFrameIndex != previousFrame;
+            if (selectFrame)
+                SelectExecutionFrame(context.ExecutionFrameIndex);
             PushState(state, -1, true, true);
             try
             {
@@ -51,6 +60,11 @@ namespace BTSMTL.Orchestration
             finally
             {
                 PopState();
+                if (selectFrame)
+                {
+                    SelectExecutionFrame(previousFrame);
+                    m_CurrentOperationIndex = previousOperation;
+                }
             }
         }
 
@@ -292,6 +306,7 @@ namespace BTSMTL.Orchestration
             bool capture = m_Input.CaptureTrace && !hasRootCompletedOverride && !IsPredictiveEvaluation;
             m_Workspace.States[m_StateDepth++] = new OrchestrationExecutionWorkspace<TValue>.StateContext
             {
+                ExecutionFrameIndex = OperationFrame(stateOperationIndex),
                 OperationIndex = stateOperationIndex,
                 ExitCause = exitCause,
                 HasRootCompletedOverride = hasRootCompletedOverride,

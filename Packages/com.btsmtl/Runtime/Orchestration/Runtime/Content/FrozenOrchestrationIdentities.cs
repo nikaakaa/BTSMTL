@@ -27,7 +27,8 @@ namespace BTSMTL.Orchestration
         public OrchestrationIdentityValue Content(int tableIndex, int localIdentity) =>
             OrchestrationIdentityValue.Content(m_LocalToShared[tableIndex].Span[localIdentity]);
 
-        public string Resolve(in OrchestrationIdentityValue value) => Table.Resolve(Ordinals.Ordinal(in value));
+        public string Resolve(in OrchestrationIdentityValue value) => value.Space == OrchestrationIdentitySpace.Null
+            ? null : Table.Resolve(Ordinals.Ordinal(in value));
 
         public static FrozenOrchestrationIdentities Prepare(
             ReadOnlySpan<OrchestrationIdentityTable> contentTables, ReadOnlySpan<string> rosterTexts)

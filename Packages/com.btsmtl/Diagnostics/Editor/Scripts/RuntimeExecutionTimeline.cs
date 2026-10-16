@@ -56,7 +56,7 @@ namespace BTSMTL.Diagnostics.Editor
         public RuntimeContentRevision ContentRevision => Start.ContentRevision;
         public string SkillId => Start.Payload.SkillId;
         public ulong ActionInstanceId => Start.Payload.ActionInstanceId;
-        public string CallSiteId => Start.Payload.CallSiteId.ToString();
+        public string CallSiteId => Start.Payload.CallSiteId;
         public ulong ActivationGeneration => Start.Payload.ActivationGeneration;
         public ulong SkillExecutionGeneration => Start.Payload.SkillExecutionGeneration;
         public ulong GraphInvocationGeneration => Start.Payload.GraphInvocationGeneration;
@@ -208,8 +208,8 @@ namespace BTSMTL.Diagnostics.Editor
                     skillIds.AddDistinct(traceEvent.Payload.SkillId);
                 if (traceEvent.Payload.ActionInstanceId != 0)
                     actionInstanceIds.AddDistinct(traceEvent.Payload.ActionInstanceId);
-                if (!traceEvent.Payload.CallSiteId.IsEmpty)
-                    callSiteIds.AddDistinct(traceEvent.Payload.CallSiteId.ToString());
+                if (!string.IsNullOrEmpty(traceEvent.Payload.CallSiteId))
+                    callSiteIds.AddDistinct(traceEvent.Payload.CallSiteId);
                 if (traceEvent.Payload.InputSequence != 0)
                     inputSequences.AddDistinct(traceEvent.Payload.InputSequence);
                 if (!string.IsNullOrEmpty(traceEvent.Payload.CharacterStateHash))
@@ -338,7 +338,7 @@ namespace BTSMTL.Diagnostics.Editor
         {
             Tick = tick;
             TraceEvent = traceEvent;
-            SnapshotIdentity = traceEvent.Payload.RelatedElementId.ToString() ?? string.Empty;
+            SnapshotIdentity = traceEvent.Payload.RelatedElementId ?? string.Empty;
             HistoryComplete = historyComplete;
         }
 
@@ -796,7 +796,7 @@ namespace BTSMTL.Diagnostics.Editor
                         group.Key.ExecutionBranchId,
                         traceEvent.RuntimeEpoch,
                         traceEvent.ContentRevision,
-                        traceEvent.Payload.RelatedElementId.ToString());
+                        traceEvent.Payload.RelatedElementId);
                     if (!checkpointKeys.Add(checkpointKey))
                         continue;
                     RuntimeExecutionCheckpoint checkpoint = new RuntimeExecutionCheckpoint(
@@ -1084,9 +1084,9 @@ namespace BTSMTL.Diagnostics.Editor
             }
             if (instance.Kind != RuntimeInstanceKind.SkillExecution)
                 return true;
-            if (!instance.CallSiteId.IsEmpty &&
-                !value.Payload.CallSiteId.IsEmpty &&
-                !instance.CallSiteId.Equals(value.Payload.CallSiteId))
+            if (!string.IsNullOrEmpty(instance.CallSiteId) &&
+                !string.IsNullOrEmpty(value.Payload.CallSiteId) &&
+                !string.Equals(instance.CallSiteId, value.Payload.CallSiteId, StringComparison.Ordinal))
             {
                 return false;
             }

@@ -38,25 +38,16 @@ namespace ThirdPersonSimulation
 
     public readonly partial struct ActorId : IEquatable<ActorId>, IComparable<ActorId>
     {
-        public ActorId(string value) => Value = CanonicalTextValue.FromString(SimulationIdentity.Require(value, nameof(value)));
-
-        public ActorId(CanonicalTextValue value)
-        {
-            Value = value.Trim();
-            if (Value.IsEmpty)
-                throw new ArgumentException("Identity is required.", nameof(value));
-        }
+        public ActorId(string value) => Value = SimulationIdentity.Require(value, nameof(value));
         [ValueTextRules(Required = true, Trim = true)]
-        public CanonicalTextValue Value { get; }
+        public string Value { get; }
         [ValuePresence]
-        public bool IsValid => !Value.IsEmpty;
-        public int CompareTo(ActorId other) => Value.CompareTo(other.Value);
-        public bool Equals(ActorId other) => Value.Equals(other.Value);
+        public bool IsValid => !string.IsNullOrEmpty(Value);
+        public int CompareTo(ActorId other) => string.CompareOrdinal(Value, other.Value);
+        public bool Equals(ActorId other) => string.Equals(Value, other.Value, StringComparison.Ordinal);
         public override bool Equals(object obj) => obj is ActorId other && Equals(other);
-        public override int GetHashCode() => Value.GetHashCode();
-        public override string ToString() => Value.ToString();
-        public void Retain() => Value.Retain();
-        public void Release() => Value.Release();
+        public override int GetHashCode() => Value == null ? 0 : StringComparer.Ordinal.GetHashCode(Value);
+        public override string ToString() => Value;
         public static bool operator ==(ActorId left, ActorId right) => left.Equals(right);
         public static bool operator !=(ActorId left, ActorId right) => !left.Equals(right);
     }
@@ -64,7 +55,6 @@ namespace ThirdPersonSimulation
     [ValueStorage]
     public readonly partial struct StableHash : IEquatable<StableHash>, IComparable<StableHash>
     {
-        [ThreadStatic] static SimulationCanonicalPayloadHash.Accumulator s_HashAccumulator;
         readonly ulong m_A;
         readonly ulong m_B;
         readonly ulong m_C;
@@ -142,23 +132,6 @@ namespace ThirdPersonSimulation
         public override int GetHashCode() => HashCode.Combine(IsValid, m_A, m_B, m_C, m_D);
         public override string ToString() => IsValid
             ? string.Create(64, this, static (characters, value) => value.Format(characters)) : string.Empty;
-        public static StableHash Compute(params string[] values)
-        {
-            SimulationCanonicalPayloadHash.Accumulator hash = s_HashAccumulator ??= new SimulationCanonicalPayloadHash.Accumulator();
-            hash.Begin();
-            if (values != null)
-            {
-                for (int i = 0; i < values.Length; i++)
-                {
-                    if (i > 0)
-                        hash.AppendAscii(0x1f);
-                    hash.AppendText(CanonicalTextValue.FromString(values[i]));
-                }
-            }
-            return hash.Complete();
-        }
-
-
         public static bool operator ==(StableHash left, StableHash right) => left.Equals(right);
         public static bool operator !=(StableHash left, StableHash right) => !left.Equals(right);
     }
@@ -499,34 +472,6 @@ namespace ThirdPersonSimulation
         public static bool operator !=(
             CommittedLocomotionPlanarMotionTimeline left,
             CommittedLocomotionPlanarMotionTimeline right) => !left.Equals(right);
-    }
-
-    public enum SimulationTickSourceKind : byte
-    {
-        LocalLogic = 1,
-        Authoritative = 2,
-        Replay = 3
-    }
-
-    public readonly partial struct SimulationTickSourceIdentity : IEquatable<SimulationTickSourceIdentity>
-    {
-        public SimulationTickSourceIdentity(SimulationTickSourceKind kind, CanonicalTextValue clockId, ulong sourceTick)
-        {
-            Kind = kind;
-            ClockId = clockId;
-            SourceTick = sourceTick;
-            RequireClock();
-        }
-        public SimulationTickSourceKind Kind { get; }
-        public CanonicalTextValue ClockId { get; }
-        public ulong SourceTick { get; }
-        [ValueValidation]
-        void RequireClock() => SimulationIdentity.Require(ClockId, nameof(ClockId));
-        public void Retain() => ClockId.Retain();
-        public void Release() => ClockId.Release();
-        public bool Equals(SimulationTickSourceIdentity other) => Kind == other.Kind && SourceTick == other.SourceTick && CanonicalTextValue.Equals(ClockId, other.ClockId, StringComparison.Ordinal);
-        public override bool Equals(object obj) => obj is SimulationTickSourceIdentity other && Equals(other);
-        public override int GetHashCode() => HashCode.Combine((int)Kind, ClockId.GetHashCode(), SourceTick);
     }
 
     [ValueStorage]

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using BTSMTL.Orchestration;
 using UnityEngine;
 
 namespace BTSMTL.Authoring.Graph
@@ -89,7 +90,9 @@ namespace BTSMTL.Authoring.Graph
             string anchorId = "",
             string executionDomainId = "",
             IReadOnlyList<GraphAuthoringPortVariantDescriptor> portVariants = null,
-            GraphAuthoringDynamicPortSource dynamicPortSource = GraphAuthoringDynamicPortSource.None)
+            GraphAuthoringDynamicPortSource dynamicPortSource = GraphAuthoringDynamicPortSource.None,
+            OrchestrationExtensionDefinition? runtimeExtension = null,
+            IReadOnlyList<GraphOrchestrationExtensionPortBinding> runtimeExtensionPorts = null)
         {
             CapabilityId = capabilityId.IsValid ? capabilityId : throw new ArgumentException("Capability identity is missing.", nameof(capabilityId));
             DomainId = domainId.IsValid ? domainId : throw new ArgumentException("Capability domain identity is missing.", nameof(domainId));
@@ -112,6 +115,10 @@ namespace BTSMTL.Authoring.Graph
             MutationBindingId = mutationBindingId ?? string.Empty;
             ValidationBindingId = validationBindingId ?? string.Empty;
             CompilerBindingId = compilerBindingId ?? string.Empty;
+            RuntimeExtension = runtimeExtension;
+            RuntimeExtensionPorts = runtimeExtensionPorts ?? Array.Empty<GraphOrchestrationExtensionPortBinding>();
+            if (runtimeExtension.HasValue && runtimeExtension.Value.Contract.Ports.Length != RuntimeExtensionPorts.Count)
+                throw new ArgumentException($"扩展能力 '{capabilityId}' 必须声明作者端口到全部运行端口的对应。", nameof(runtimeExtensionPorts));
             AuthoringType = authoringType;
             ExternalKind = externalKind ?? string.Empty;
             SystemOwned = systemOwned;
@@ -151,6 +158,8 @@ namespace BTSMTL.Authoring.Graph
         public string MutationBindingId { get; }
         public string ValidationBindingId { get; }
         public string CompilerBindingId { get; }
+        public OrchestrationExtensionDefinition? RuntimeExtension { get; }
+        public IReadOnlyList<GraphOrchestrationExtensionPortBinding> RuntimeExtensionPorts { get; }
         public Type AuthoringType { get; }
         public string ExternalKind { get; }
         public bool SystemOwned { get; }

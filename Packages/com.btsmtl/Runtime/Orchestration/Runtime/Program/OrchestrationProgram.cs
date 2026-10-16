@@ -102,6 +102,8 @@ namespace BTSMTL.Orchestration
             RequireOperationIndex(RootOperationIndex);
             if (m_Operations[RootOperationIndex].Code != OrchestrationOperationCode.Root)
                 throw new ArgumentException("The orchestration root is not a Root operation.");
+            if (m_Operations[RootOperationIndex].ExecutionFrameOwnerOperationIndex != RootOperationIndex)
+                throw new ArgumentException("The orchestration root must own its execution frame.");
             if (MaximumOperationEvaluations <= 0)
                 throw new ArgumentOutOfRangeException(nameof(MaximumOperationEvaluations));
             if (m_Blackboards.Length != m_DefaultValues.Length)
@@ -111,6 +113,7 @@ namespace BTSMTL.Orchestration
                 ref readonly OrchestrationOperation operation = ref m_Operations[i];
                 if (!Enum.IsDefined(typeof(OrchestrationOperationCode), operation.Code))
                     throw new ArgumentException($"Operation '{i}' has an unsupported core code.");
+                RequireExecutionFrameOwner(operation.ExecutionFrameOwnerOperationIndex);
                 RequireRange(operation.Inputs, m_Inputs.Length);
                 RequireRange(operation.LifecycleHooks, m_Hooks.Length);
                 RequireRange(operation.OutputAssignments, m_BlackboardOutputs.Length);
@@ -165,6 +168,9 @@ namespace BTSMTL.Orchestration
                         RequireOperationIndex(operation.StateMachineOwnerOperationIndex);
                         if (m_Operations[operation.StateMachineOwnerOperationIndex].Code != OrchestrationOperationCode.StateMachine)
                             throw new ArgumentException($"State operation '{i}' has no StateMachine owner.");
+                        if (m_Operations[operation.StateMachineOwnerOperationIndex].ExecutionFrameOwnerOperationIndex !=
+                            operation.ExecutionFrameOwnerOperationIndex)
+                            throw new ArgumentException($"State operation '{i}' crosses execution-frame ownership of its StateMachine.");
                     }
                 }
                 if (operation.Code == OrchestrationOperationCode.SubGraph)
@@ -175,8 +181,10 @@ namespace BTSMTL.Orchestration
                     RequireOperationIndex(call.EntryOperationIndex);
                     if (call.OwnerOperationIndex != i || m_Operations[call.EntryOperationIndex].Code != OrchestrationOperationCode.Root)
                         throw new ArgumentException($"SubGraph operation '{i}' has an invalid graph call entry.");
-                    ValidateParameters(call.Inputs.Span);
-                    ValidateParameters(call.Outputs.Span);
+                    if (m_Operations[call.EntryOperationIndex].ExecutionFrameOwnerOperationIndex != operation.ExecutionFrameOwnerOperationIndex)
+                        throw new ArgumentException($"SubGraph operation '{i}' crosses execution-frame ownership of its entry.");
+                    ValidateParameters(call.Inputs.Span, operation.ExecutionFrameOwnerOperationIndex);
+                    ValidateParameters(call.Outputs.Span, operation.ExecutionFrameOwnerOperationIndex);
                 }
             }
             for (int i = 0; i < m_Edges.Length; i++)
@@ -184,6 +192,9 @@ namespace BTSMTL.Orchestration
                 ref readonly OrchestrationFlowEdge edge = ref m_Edges[i];
                 RequireOperationIndex(edge.SourceOperationIndex);
                 RequireOperationIndex(edge.TargetOperationIndex);
+                if (m_Operations[edge.SourceOperationIndex].ExecutionFrameOwnerOperationIndex !=
+                    m_Operations[edge.TargetOperationIndex].ExecutionFrameOwnerOperationIndex)
+                    throw new ArgumentException($"Control edge '{edge.IdentityId}' crosses execution-frame ownership.");
                 if (!Enum.IsDefined(typeof(OrchestrationFlowKind), edge.Kind))
                     throw new ArgumentException($"Edge '{edge.IdentityId}' has an unsupported control kind.");
                 if (edge.HasCondition)
@@ -217,6 +228,8 @@ namespace BTSMTL.Orchestration
             for (int i = 0; i < m_Blackboards.Length; i++)
             {
                 ref readonly OrchestrationBlackboardSlot slot = ref m_Blackboards[i];
+                if (slot.ScopeKind != 0)
+                    RequireExecutionFrameOwner(slot.ExecutionFrameOwnerOperationIndex);
                 if ((slot.ScopeKind == OrchestrationScopeKind.Graph &&
                      !(slot.Lifetime == OrchestrationBlackboardLifetime.GraphInstance && slot.OwnerOperationIndex < 0)) ||
                     slot.ScopeKind == OrchestrationScopeKind.State)
@@ -235,11 +248,23 @@ namespace BTSMTL.Orchestration
             }
         }
 
-        void ValidateParameters(ReadOnlySpan<OrchestrationGraphParameter> parameters)
+        void ValidateParameters(ReadOnlySpan<OrchestrationGraphParameter> parameters, int executionFrameOwnerOperationIndex)
         {
             for (int i = 0; i < parameters.Length; i++)
+            {
                 if (parameters[i].ValueSlot < 0 || parameters[i].ValueSlot >= m_DefaultValues.Length)
                     throw new ArgumentException("A graph call parameter references an unknown value slot.");
+                if (m_Blackboards[parameters[i].ValueSlot].ExecutionFrameOwnerOperationIndex != executionFrameOwnerOperationIndex)
+                    throw new ArgumentException("A graph call parameter crosses execution-frame ownership.");
+            }
+        }
+
+        void RequireExecutionFrameOwner(int ownerOperationIndex)
+        {
+            RequireOperationIndex(ownerOperationIndex);
+            ref readonly OrchestrationOperation owner = ref m_Operations[ownerOperationIndex];
+            if (owner.Code != OrchestrationOperationCode.Root || owner.ExecutionFrameOwnerOperationIndex != ownerOperationIndex)
+                throw new ArgumentException($"Execution frame owner '{ownerOperationIndex}' is not a canonical Root operation.");
         }
 
         void RequireOperationIndex(int operationIndex)

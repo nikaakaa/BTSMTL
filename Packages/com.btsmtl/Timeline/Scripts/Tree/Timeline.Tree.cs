@@ -1,5 +1,5 @@
 using System;
-using Photon.Deterministic;
+using BTSMTL.Orchestration;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -17,6 +17,8 @@ namespace BTSMTL.Timeline
         public override string ContractKind => TimelineContractKinds.TreeTrack;
 
 #if UNITY_EDITOR
+        public string ReadAuthoringField(string fieldId) => ExecutionDomain.ToString();
+
         public void ApplyAuthoringField(string fieldId, string value)
         {
             if (fieldId != "executionDomain" ||
@@ -30,12 +32,12 @@ namespace BTSMTL.Timeline
 
         public override Type ClipType => typeof(TreeClip);
 
-        public override Clip AddClip(FP time)
+        public override Clip AddClip(OrchestrationTime time)
         {
             throw new InvalidOperationException("TreeClip必须绑定正式的Timeline节点图资产。");
         }
 
-        public override Clip AddClip(UnityEngine.Object referenceObject, FP time)
+        public override Clip AddClip(UnityEngine.Object referenceObject, OrchestrationTime time)
         {
             if (referenceObject is not ScriptableObject asset || asset is not ITimelineTreeGraphAsset graph || !graph.IsTimelineTree)
                 throw new ArgumentException("TreeClip必须绑定正式的Timeline节点图资产。", nameof(referenceObject));
@@ -114,24 +116,24 @@ namespace BTSMTL.Timeline
         }
 
 #if UNITY_EDITOR
-        public bool AlignTerminalTime(FP terminalTime)
+        public bool AlignTerminalTime(OrchestrationTime terminalTime)
         {
             if (m_ExitSource != TimelineClipExitSource.TreeDecision)
             {
                 return false;
             }
-            FP endTime;
-            FP declaredEnd = default;
+            OrchestrationTime endTime;
+            OrchestrationTime declaredEnd = default;
             bool declared = m_AssetTree is ITimelineTreeGraphAsset graph && graph.TryGetDeclaredEndTime(out declaredEnd);
             if (declared)
             {
                 if (declaredEnd <= StartTime)
-                    throw new InvalidOperationException($"TreeClip '{AuthoringId}' 的结束声明必须晚于起点 {StartTime}。");
+                    throw new InvalidOperationException($"TreeClip '{AuthoringId}' 的结束声明必须晚于起点 {StartTime.AsSingle}。");
                 endTime = declaredEnd;
             }
             else
             {
-                endTime = FPMath.Max(StartTime + FP.FromRaw(1), terminalTime);
+                endTime = OrchestrationTime.Max(StartTime + OrchestrationTime.FromRaw(1), terminalTime);
             }
             bool changed = m_HasDeclaredEndTime != declared;
             m_HasDeclaredEndTime = declared;
@@ -162,11 +164,11 @@ namespace BTSMTL.Timeline
                 ? ClipCapabilities.TickQuantized
                 : ClipCapabilities.Resizable | ClipCapabilities.TickQuantized;
 
-        public TreeClip(Track track, FP time) : base(track, time)
+        public TreeClip(Track track, OrchestrationTime time) : base(track, time)
         {
         }
 
-        public TreeClip(Track track, FP time, ScriptableObject assetTree) : base(track, time)
+        public TreeClip(Track track, OrchestrationTime time, ScriptableObject assetTree) : base(track, time)
         {
             SetAssetTree(assetTree);
         }
@@ -190,7 +192,7 @@ namespace BTSMTL.Timeline
 #endif
     }
 
-    internal static class TreeTimelineContracts
+    public static class TreeTimelineContracts
     {
         public static readonly ITimelineContractProvider Provider = new TimelineContractProvider(
             new[]
@@ -198,11 +200,12 @@ namespace BTSMTL.Timeline
                 new TimelineTrackContract(
                     TimelineContractKinds.TreeTrack,
                     TimelineTrackOverlapPolicy.Reject,
-                    TimelineCapability.Tree,
+                    TimelineContentKind.Discrete,
                     TimelineExecutionDomain.Logic,
-                    TimelineOutputKind.GameplayFact,
+                    TimelineOutputKind.LogicFact,
                     TimelineExecutionDomainMask.Logic |
                     TimelineExecutionDomainMask.Presentation,
+                    null,
                     TimelineContractKinds.TreeClip)
             },
             new[]
@@ -211,11 +214,11 @@ namespace BTSMTL.Timeline
                     TimelineContractKinds.TreeClip,
                     TimelineContractKinds.TreeTrack,
                     TimelineClipExecutionPhase.DecisionAndCommit,
-                    TimelineCapability.Tree,
+                    TimelineContentKind.Discrete,
                     true,
                     true,
                     TimelineExecutionDomain.Logic,
-                    TimelineOutputKind.GameplayFact,
+                    TimelineOutputKind.LogicFact,
                     TimelineExecutionDomainMask.Logic | TimelineExecutionDomainMask.Presentation,
                     ValidateClip)
             });

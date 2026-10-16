@@ -1,5 +1,4 @@
 using System;
-using Photon.Deterministic;
 using ThirdPersonSimulation;
 using UnityEngine;
 
@@ -7,26 +6,23 @@ namespace BTSMTL.Diagnostics
 {
     public readonly struct RuntimeContentRevision : IEquatable<RuntimeContentRevision>
     {
-        public RuntimeContentRevision(string runtimeId, CanonicalTextValue sourceRevision, CanonicalTextValue contentHash)
+        public RuntimeContentRevision(string runtimeId, string sourceRevision, string contentHash)
         {
             RuntimeId = runtimeId ?? string.Empty;
-            SourceRevisionText = sourceRevision;
-            ContentHashText = contentHash;
+            SourceRevision = sourceRevision;
+            ContentHash = contentHash;
         }
 
         public string RuntimeId { get; }
-        public CanonicalTextValue SourceRevisionText { get; }
-        public CanonicalTextValue ContentHashText { get; }
-        public string SourceRevision => SourceRevisionText.ToString();
-        public string ContentHash => ContentHashText.ToString();
-        public bool IsValid => !string.IsNullOrEmpty(RuntimeId) && !SourceRevisionText.IsEmpty && !ContentHashText.IsEmpty;
-        public void Retain() { SourceRevisionText.Retain(); ContentHashText.Retain(); }
-        public void Release() { ContentHashText.Release(); SourceRevisionText.Release(); }
+        public string SourceRevision { get; }
+        public string ContentHash { get; }
+        public bool IsValid => !string.IsNullOrEmpty(RuntimeId) && !string.IsNullOrEmpty(SourceRevision) && !string.IsNullOrEmpty(ContentHash);
 
         public bool Equals(RuntimeContentRevision other)
         {
             return string.Equals(RuntimeId, other.RuntimeId, StringComparison.Ordinal) &&
-                   SourceRevisionText == other.SourceRevisionText && ContentHashText == other.ContentHashText;
+                   string.Equals(SourceRevision, other.SourceRevision, StringComparison.Ordinal) &&
+                   string.Equals(ContentHash, other.ContentHash, StringComparison.Ordinal);
         }
 
         public override bool Equals(object obj) => obj is RuntimeContentRevision other && Equals(other);
@@ -36,8 +32,8 @@ namespace BTSMTL.Diagnostics
             unchecked
             {
                 int hash = RuntimeId?.GetHashCode() ?? 0;
-                hash = hash * 31 + SourceRevisionText.GetHashCode();
-                hash = hash * 31 + ContentHashText.GetHashCode();
+                hash = hash * 31 + (SourceRevision?.GetHashCode() ?? 0);
+                hash = hash * 31 + (ContentHash?.GetHashCode() ?? 0);
                 return hash;
             }
         }
@@ -223,7 +219,7 @@ namespace BTSMTL.Diagnostics
             ulong timelinePlaybackId,
             int treeClipCycle,
             ulong actionInstanceId = 0,
-            CanonicalTextValue callSiteId = default,
+            string callSiteId = "",
             ulong invocationGeneration = 0,
             int sourceOperationIndex = -1,
             int treeClipOperationIndex = -1)
@@ -236,7 +232,7 @@ namespace BTSMTL.Diagnostics
             TimelinePlaybackId = timelinePlaybackId;
             TreeClipCycle = treeClipCycle;
             ActionInstanceId = actionInstanceId;
-            CallSiteId = callSiteId.IsNull ? CanonicalTextValue.Empty : callSiteId;
+            CallSiteId = callSiteId ?? string.Empty;
             InvocationGeneration = invocationGeneration;
             SourceOperationIndex = sourceOperationIndex;
             TreeClipOperationIndex = treeClipOperationIndex;
@@ -265,7 +261,7 @@ namespace BTSMTL.Diagnostics
         public ulong TimelinePlaybackId { get; }
         public int TreeClipCycle { get; }
         public ulong ActionInstanceId { get; }
-        public CanonicalTextValue CallSiteId { get; }
+        public string CallSiteId { get; }
         public ulong InvocationGeneration { get; }
         public int SourceOperationIndex { get; }
         public int TreeClipOperationIndex { get; }
@@ -282,7 +278,7 @@ namespace BTSMTL.Diagnostics
         public static RuntimeInstanceKey ControlTransition(Guid characterId, Guid moduleRuntimeId, string transitionId, ulong generation) => new RuntimeInstanceKey(RuntimeInstanceKind.ControlTransition, characterId, moduleRuntimeId, transitionId, generation, 0, -1);
         public static RuntimeInstanceKey ActionInstance(Guid characterId, Guid actionRuntimeId, string skillId, ulong instanceId, ulong generation) =>
             new RuntimeInstanceKey(RuntimeInstanceKind.ActionInstance, characterId, actionRuntimeId, skillId, generation, 0, -1, instanceId);
-        public static RuntimeInstanceKey SkillExecution(Guid characterId, Guid actionRuntimeId, string skillId, ulong instanceId, CanonicalTextValue callSiteId, ulong generation, ulong invocationGeneration = 0) =>
+        public static RuntimeInstanceKey SkillExecution(Guid characterId, Guid actionRuntimeId, string skillId, ulong instanceId, string callSiteId, ulong generation, ulong invocationGeneration = 0) =>
             new RuntimeInstanceKey(RuntimeInstanceKind.SkillExecution, characterId, actionRuntimeId, skillId, generation, 0, -1, instanceId, callSiteId, invocationGeneration);
 
         public static RuntimeInstanceKey GameplayEffect(Guid characterId, ulong instanceId, ulong sourceActionInstanceId) =>
@@ -298,15 +294,12 @@ namespace BTSMTL.Diagnostics
                    SourceOperationIndex == other.SourceOperationIndex &&
                    TreeClipOperationIndex == other.TreeClipOperationIndex &&
                    string.Equals(StateId, other.StateId, StringComparison.Ordinal) &&
-                   CallSiteId.Equals(other.CallSiteId);
+                   string.Equals(CallSiteId, other.CallSiteId, StringComparison.Ordinal);
         }
 
         public override bool Equals(object obj) => obj is RuntimeInstanceKey other && Equals(other);
 
         public override int GetHashCode() => m_HashCode;
-        public void Retain() => CallSiteId.Retain();
-        public void Release() => CallSiteId.Release();
-
         public override string ToString()
         {
             switch (Kind)
@@ -486,14 +479,14 @@ namespace BTSMTL.Diagnostics
 
     public readonly struct DebugValueSnapshot
     {
-        public DebugValueSnapshot(DebugValueKind kind, bool boolean, long signed, ulong unsigned, double number, CanonicalTextValue text, Vector4 vector)
+        public DebugValueSnapshot(DebugValueKind kind, bool boolean, long signed, ulong unsigned, double number, string text, Vector4 vector)
         {
             Kind = kind;
             Boolean = boolean;
             Signed = signed;
             Unsigned = unsigned;
             Number = number;
-            Text = text.IsNull ? CanonicalTextValue.Empty : text;
+            Text = text ?? string.Empty;
             Vector = vector;
         }
 
@@ -502,7 +495,7 @@ namespace BTSMTL.Diagnostics
         public long Signed { get; }
         public ulong Unsigned { get; }
         public double Number { get; }
-        public CanonicalTextValue Text { get; }
+        public string Text { get; }
         public Vector4 Vector { get; }
 
         public static DebugValueSnapshot Capture(object value)
@@ -531,9 +524,6 @@ namespace BTSMTL.Diagnostics
             return new DebugValueSnapshot(DebugValueKind.TypeOnly, false, 0, 0, 0, type.FullName ?? type.Name, default);
         }
 
-        public void Retain() => Text.Retain();
-        public void Release() => Text.Release();
-
         public string DisplayValue()
         {
             switch (Kind)
@@ -544,7 +534,7 @@ namespace BTSMTL.Diagnostics
                 case DebugValueKind.Double: return Number.ToString("0.###");
                 case DebugValueKind.String:
                 case DebugValueKind.Guid:
-                case DebugValueKind.TypeOnly: return Text.ToString();
+                case DebugValueKind.TypeOnly: return Text;
                 case DebugValueKind.FPVector2:
                 case DebugValueKind.Vector2: return $"({Vector.x:0.###}, {Vector.y:0.###})";
                 case DebugValueKind.FPVector3:
@@ -553,7 +543,7 @@ namespace BTSMTL.Diagnostics
                 case DebugValueKind.FPActionTargetSnapshot:
                     ulong targetZ = ((ulong)Number << 24) | (ulong)Vector.x;
                     ulong targetYaw = (ulong)Vector.y | ((ulong)Vector.z << 24) | ((ulong)Vector.w << 48);
-                    const double fpScale = FP.RAW_ONE;
+                    const double fpScale = 1L << 16;
                     return $"{Text} · ({Signed / fpScale:0.###}, {unchecked((long)Unsigned) / fpScale:0.###}, {unchecked((long)targetZ) / fpScale:0.###}) · {unchecked((long)targetYaw) / fpScale:0.###}°";
                 default: return string.Empty;
             }
@@ -563,8 +553,8 @@ namespace BTSMTL.Diagnostics
     public readonly struct RuntimeTimelinePlaybackProvenance
     {
         public RuntimeTimelinePlaybackProvenance(
-            CanonicalTextValue sourceGraphAuthoringId,
-            CanonicalTextValue sourceNodeAuthoringId,
+            string sourceGraphAuthoringId,
+            string sourceNodeAuthoringId,
             Guid sourceGraphRuntimeId,
             ulong sourceActivationGeneration,
             string stateMachineGraphAuthoringId,
@@ -572,12 +562,12 @@ namespace BTSMTL.Diagnostics
             Guid stateMachineGraphRuntimeId,
             ulong stateActivationGeneration,
             string sourceName,
-            CanonicalTextValue sourceInvocationPath = default,
+            string sourceInvocationPath = "",
             int sourceOperationIndex = -1,
             ulong skillExecutionGeneration = 0)
         {
-            SourceGraphAuthoringId = sourceGraphAuthoringId.IsNull ? CanonicalTextValue.Empty : sourceGraphAuthoringId;
-            SourceNodeAuthoringId = sourceNodeAuthoringId.IsNull ? CanonicalTextValue.Empty : sourceNodeAuthoringId;
+            SourceGraphAuthoringId = sourceGraphAuthoringId ?? string.Empty;
+            SourceNodeAuthoringId = sourceNodeAuthoringId ?? string.Empty;
             SourceGraphRuntimeId = sourceGraphRuntimeId;
             SourceActivationGeneration = sourceActivationGeneration;
             StateMachineGraphAuthoringId = stateMachineGraphAuthoringId ?? string.Empty;
@@ -585,13 +575,13 @@ namespace BTSMTL.Diagnostics
             StateMachineGraphRuntimeId = stateMachineGraphRuntimeId;
             StateActivationGeneration = stateActivationGeneration;
             SourceName = sourceName ?? string.Empty;
-            SourceInvocationPath = sourceInvocationPath.IsNull ? CanonicalTextValue.Empty : sourceInvocationPath;
+            SourceInvocationPath = sourceInvocationPath ?? string.Empty;
             SourceOperationIndex = sourceOperationIndex;
             SkillExecutionGeneration = skillExecutionGeneration;
         }
 
-        public CanonicalTextValue SourceGraphAuthoringId { get; }
-        public CanonicalTextValue SourceNodeAuthoringId { get; }
+        public string SourceGraphAuthoringId { get; }
+        public string SourceNodeAuthoringId { get; }
         public Guid SourceGraphRuntimeId { get; }
         public ulong SourceActivationGeneration { get; }
         public string StateMachineGraphAuthoringId { get; }
@@ -599,18 +589,16 @@ namespace BTSMTL.Diagnostics
         public Guid StateMachineGraphRuntimeId { get; }
         public ulong StateActivationGeneration { get; }
         public string SourceName { get; }
-        public CanonicalTextValue SourceInvocationPath { get; }
+        public string SourceInvocationPath { get; }
         public int SourceOperationIndex { get; }
         public ulong SkillExecutionGeneration { get; }
-        public bool IsValid => !CanonicalTextValue.IsNullOrEmpty(SourceGraphAuthoringId) &&
-                               !CanonicalTextValue.IsNullOrEmpty(SourceNodeAuthoringId) &&
+        public bool IsValid => !string.IsNullOrEmpty(SourceGraphAuthoringId) &&
+                               !string.IsNullOrEmpty(SourceNodeAuthoringId) &&
                                SourceActivationGeneration != 0 &&
                                (SourceGraphRuntimeId != Guid.Empty || HasProgramInvocation);
-        public bool HasProgramInvocation => !SourceInvocationPath.IsEmpty &&
+        public bool HasProgramInvocation => !string.IsNullOrEmpty(SourceInvocationPath) &&
                                             SourceOperationIndex >= 0 &&
                                             SkillExecutionGeneration != 0;
-        public void Retain() { SourceGraphAuthoringId.Retain(); SourceNodeAuthoringId.Retain(); SourceInvocationPath.Retain(); }
-        public void Release() { SourceInvocationPath.Release(); SourceNodeAuthoringId.Release(); SourceGraphAuthoringId.Release(); }
         public bool HasStateActivation => !string.IsNullOrEmpty(StateMachineGraphAuthoringId) &&
                                           !string.IsNullOrEmpty(StateId) &&
                                           StateMachineGraphRuntimeId != Guid.Empty &&
@@ -660,30 +648,30 @@ namespace BTSMTL.Diagnostics
 
     public struct RuntimeTracePayload
     {
-        public CanonicalTextValue Status;
-        public CanonicalTextValue Name;
-        public CanonicalTextValue Detail;
-        public CanonicalTextValue Cause;
+        public string Status;
+        public string Name;
+        public string Detail;
+        public string Cause;
         public string SourceClockId;
         public string SourceTickKind;
-        public CanonicalTextValue AnimationChannelId;
-        public CanonicalTextValue OwnerId;
-        public CanonicalTextValue RelatedElementId;
+        public string AnimationChannelId;
+        public string OwnerId;
+        public string RelatedElementId;
         public string SkillId;
         public ulong InputSequence;
         public string CharacterStateHash;
         public string WorldHash;
         public ulong ActionInstanceId;
-        public CanonicalTextValue CallSiteId;
+        public string CallSiteId;
         public ulong ActivationGeneration;
         public ulong SkillExecutionGeneration;
-        public CanonicalTextValue RuleSourceSkillId;
+        public string RuleSourceSkillId;
         public ulong RuleSourceInstanceId;
         public ulong RuleSourceSkillExecutionGeneration;
         public ulong RuleSourceSegmentGeneration;
         public ulong GraphInvocationGeneration;
         public ulong ParentInvocationGeneration;
-        public CanonicalTextValue ParentInvocationPath;
+        public string ParentInvocationPath;
         public ulong StartTick;
         public ulong EndTick;
         public ulong Revision;
@@ -715,40 +703,9 @@ namespace BTSMTL.Diagnostics
         public RuntimeTimelinePlaybackProvenance TimelinePlayback;
         public RuntimeFootPlacementTraceSnapshot FootPlacement;
         public SimulationMotionTraceDetail MotionDetail;
+        public string MotionIdentityTableId;
         public EventId SourceEventId;
         [NonSerialized] public AnimationClip SourceAnimationClip;
-
-        public readonly void Retain()
-        {
-            Status.Retain();
-            Name.Retain();
-            Detail.Retain();
-            Cause.Retain();
-            AnimationChannelId.Retain();
-            OwnerId.Retain();
-            RelatedElementId.Retain();
-            CallSiteId.Retain();
-            RuleSourceSkillId.Retain();
-            ParentInvocationPath.Retain();
-            Value.Retain();
-            TimelinePlayback.Retain();
-        }
-
-        public readonly void Release()
-        {
-            Status.Release();
-            Name.Release();
-            Detail.Release();
-            Cause.Release();
-            AnimationChannelId.Release();
-            OwnerId.Release();
-            RelatedElementId.Release();
-            CallSiteId.Release();
-            RuleSourceSkillId.Release();
-            ParentInvocationPath.Release();
-            Value.Release();
-            TimelinePlayback.Release();
-        }
     }
 
     public readonly struct RuntimeTraceEvent
@@ -822,58 +779,16 @@ namespace BTSMTL.Diagnostics
         readonly RuntimeTracePayload m_Payload;
         public RuntimeTracePayload Payload => m_Payload;
         internal static ref readonly RuntimeTracePayload ReadPayload(in RuntimeTraceEvent traceEvent) => ref traceEvent.m_Payload;
-        public CanonicalTextValue GetStatus() => m_Payload.Status;
-        public CanonicalTextValue GetDetail() => m_Payload.Detail;
+        public string GetStatus() => m_Payload.Status;
+        public string GetDetail() => m_Payload.Detail;
         public int GetCycle() => m_Payload.Cycle;
         public ulong GetActionInstanceId() => m_Payload.ActionInstanceId;
         public int GetLifecycleOperation() => m_Payload.LifecycleOperation;
-        public CanonicalTextValue GetCause() => m_Payload.Cause;
-        public CanonicalTextValue GetParentInvocationPath() => m_Payload.ParentInvocationPath;
+        public string GetCause() => m_Payload.Cause;
+        public string GetParentInvocationPath() => m_Payload.ParentInvocationPath;
         public ulong GetParentInvocationGeneration() => m_Payload.ParentInvocationGeneration;
-        public void Retain()
-        {
-            ContentRevision.Retain();
-            RuntimeInstance.Retain();
-            m_Payload.Retain();
-        }
-        public void Release()
-        {
-            ContentRevision.Release();
-            RuntimeInstance.Release();
-            m_Payload.Release();
-        }
-        public RuntimeTraceEvent CaptureDisplayText()
-        {
-            RuntimeTracePayload payload = m_Payload;
-            payload.Status = payload.Status.ToString();
-            payload.Name = payload.Name.ToString();
-            payload.Detail = payload.Detail.ToString();
-            payload.Cause = payload.Cause.ToString();
-            payload.AnimationChannelId = payload.AnimationChannelId.ToString();
-            payload.OwnerId = payload.OwnerId.ToString();
-            payload.RelatedElementId = payload.RelatedElementId.ToString();
-            payload.CallSiteId = payload.CallSiteId.ToString();
-            payload.ParentInvocationPath = payload.ParentInvocationPath.ToString();
-            DebugValueSnapshot value = payload.Value;
-            payload.Value = new DebugValueSnapshot(value.Kind, value.Boolean, value.Signed,
-                value.Unsigned, value.Number, value.Text.ToString(), value.Vector);
-            RuntimeTimelinePlaybackProvenance provenance = payload.TimelinePlayback;
-            payload.TimelinePlayback = new RuntimeTimelinePlaybackProvenance(provenance.SourceGraphAuthoringId.ToString(),
-                provenance.SourceNodeAuthoringId.ToString(), provenance.SourceGraphRuntimeId, provenance.SourceActivationGeneration,
-                provenance.StateMachineGraphAuthoringId, provenance.StateId, provenance.StateMachineGraphRuntimeId,
-                provenance.StateActivationGeneration, provenance.SourceName, provenance.SourceInvocationPath.ToString(),
-                provenance.SourceOperationIndex, provenance.SkillExecutionGeneration);
-            RuntimeInstanceKey instance = RuntimeInstance;
-            var displayInstance = new RuntimeInstanceKey(instance.Kind, instance.CharacterRuntimeId,
-                instance.GraphRuntimeId, instance.StateId, instance.ActivationGeneration, instance.TimelinePlaybackId,
-                instance.TreeClipCycle, instance.ActionInstanceId, instance.CallSiteId.ToString(),
-                instance.InvocationGeneration, instance.SourceOperationIndex, instance.TreeClipOperationIndex);
-            return new RuntimeTraceEvent(SessionId, ContentRevision, RuntimeEpoch, ExecutionBranchId,
-                Domain, Channel, Position, TimeSeconds, Sequence, displayInstance, Source, Kind, in payload);
-        }
-
         public Guid GetParentGraphRuntimeId() => m_Payload.TimelinePlayback.IsValid &&
-            m_Payload.ParentInvocationPath.Equals(m_Payload.TimelinePlayback.SourceInvocationPath)
+            string.Equals(m_Payload.ParentInvocationPath, m_Payload.TimelinePlayback.SourceInvocationPath, StringComparison.Ordinal)
             ? m_Payload.TimelinePlayback.SourceGraphRuntimeId : RuntimeInstance.GraphRuntimeId;
     }
 

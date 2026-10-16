@@ -1,5 +1,5 @@
 using System;
-using Photon.Deterministic;
+using BTSMTL.Orchestration;
 using System.Linq;
 using System.Collections.Generic;
 using System.Reflection;
@@ -15,8 +15,8 @@ namespace BTSMTL.Timeline
         public ulong AuthoringRevision { get; private set; }
 
         public int MaxFrame => TimelineTimeGrid.CeilingIndex(DurationTime, TimelineUtility.FrameRate);
-        public FP DurationTime { get; private set; }
-        public float Duration => DurationTime.AsFloat;
+        public OrchestrationTime DurationTime { get; private set; }
+        public float Duration => DurationTime.AsSingle;
 
         public void Init()
         {
@@ -24,17 +24,17 @@ namespace BTSMTL.Timeline
             if (m_AuthoringBatchDepth != 0)
                 return;
 #endif
-            DurationTime = FP._0;
+            DurationTime = OrchestrationTime.Zero;
             foreach (var track in m_Tracks)
             {
                 track.Init(this);
-                DurationTime = FPMath.Max(DurationTime, track.DurationTime);
+                DurationTime = OrchestrationTime.Max(DurationTime, track.DurationTime);
             }
             for (int i = 0; i < m_Sections.Count; i++)
             {
                 TimelineSection section = m_Sections[i];
                 if (section != null)
-                    DurationTime = FPMath.Max(DurationTime, section.Time);
+                    DurationTime = OrchestrationTime.Max(DurationTime, section.Time);
             }
             AuthoringRevision++;
             OnValueChanged?.Invoke();
@@ -84,7 +84,7 @@ namespace BTSMTL.Timeline
         public Action OnMutedStateChanged;
 
         public TimelineData Timeline { get; protected set; }
-        public FP DurationTime { get; protected set; }
+        public OrchestrationTime DurationTime { get; protected set; }
 
         internal void BindTimeline(TimelineData timeline) => Timeline = timeline;
 
@@ -92,16 +92,16 @@ namespace BTSMTL.Timeline
         {
             BindTimeline(timeline);
 
-            DurationTime = FP._0;
+            DurationTime = OrchestrationTime.Zero;
             foreach (var clip in m_Clips)
             {
                 clip.Init(this);
-                DurationTime = FPMath.Max(DurationTime, clip.EndTime);
+                DurationTime = OrchestrationTime.Max(DurationTime, clip.EndTime);
             }
             foreach (var marker in m_Markers)
             {
                 marker.Init(this);
-                DurationTime = FPMath.Max(DurationTime, FPMath.Max(FP.FromRaw(1), marker.Time));
+                DurationTime = OrchestrationTime.Max(DurationTime, OrchestrationTime.Max(OrchestrationTime.FromRaw(1), marker.Time));
             }
 
         }
@@ -127,9 +127,9 @@ namespace BTSMTL.Timeline
             m_AuthoringId = AuthoringIdentity.Create();
         }
 
-        public TimelineMarker AddMarker(FP time, ScriptableObject graph, bool forceTriggerOnInitialSeek = false)
+        public TimelineMarker AddMarker(OrchestrationTime time, ScriptableObject graph, bool forceTriggerOnInitialSeek = false)
         {
-            if (time < FP._0)
+            if (time < OrchestrationTime.Zero)
                 throw new ArgumentOutOfRangeException(nameof(time));
             var marker = new TimelineMarker();
             marker.EnsureAuthoringIdentity();
@@ -184,17 +184,21 @@ namespace BTSMTL.Timeline
         #endregion
 
         #region Time
-        public FP StartTime => FP.FromRaw(m_StartTimeFPRawValue);
-        public FP EndTime => FP.FromRaw(m_EndTimeFPRawValue);
-        public FP SelfEaseInTime => FP.FromRaw(m_SelfEaseInTimeFPRawValue);
-        public FP SelfEaseOutTime => FP.FromRaw(m_SelfEaseOutTimeFPRawValue);
-        public FP OtherEaseInTime => FP.FromRaw(m_OtherEaseInTimeFPRawValue);
-        public FP OtherEaseOutTime => FP.FromRaw(m_OtherEaseOutTimeFPRawValue);
-        public FP EaseInTime => OtherEaseInTime.RawValue == 0 ? SelfEaseInTime : OtherEaseInTime;
-        public FP EaseOutTime => OtherEaseOutTime.RawValue == 0 ? SelfEaseOutTime : OtherEaseOutTime;
-        public FP ClipInTime => FP.FromRaw(m_ClipInTimeFPRawValue);
-        public FP DurationTime => EndTime - StartTime;
+        public OrchestrationTime StartTime => OrchestrationTime.FromRaw(m_StartTimeFPRawValue);
+        public OrchestrationTime EndTime => OrchestrationTime.FromRaw(m_EndTimeFPRawValue);
+        public OrchestrationTime SelfEaseInTime => OrchestrationTime.FromRaw(m_SelfEaseInTimeFPRawValue);
+        public OrchestrationTime SelfEaseOutTime => OrchestrationTime.FromRaw(m_SelfEaseOutTimeFPRawValue);
+        public OrchestrationTime OtherEaseInTime => OrchestrationTime.FromRaw(m_OtherEaseInTimeFPRawValue);
+        public OrchestrationTime OtherEaseOutTime => OrchestrationTime.FromRaw(m_OtherEaseOutTimeFPRawValue);
+        public OrchestrationTime EaseInTime => OtherEaseInTime.RawValue == 0 ? SelfEaseInTime : OtherEaseInTime;
+        public OrchestrationTime EaseOutTime => OtherEaseOutTime.RawValue == 0 ? SelfEaseOutTime : OtherEaseOutTime;
+        public OrchestrationTime ClipInTime => OrchestrationTime.FromRaw(m_ClipInTimeFPRawValue);
+        public OrchestrationTime DurationTime => EndTime - StartTime;
         public abstract TimelineContentParameters CaptureContentParameters();
+        public virtual IReadOnlyList<TimelineCurveChannelDescriptor> CurveChannels =>
+            Array.Empty<TimelineCurveChannelDescriptor>();
+        public virtual TimelineContentSampling CaptureSampling(int weightCurveIndex, int easeInCurveIndex,
+            int easeOutCurveIndex) => default;
 
         #endregion
 
@@ -210,45 +214,39 @@ namespace BTSMTL.Timeline
 
         public virtual void Init(Track track) => BindTrack(track);
 
-        public TimelineClipTimeRange CaptureTimeRange() => new TimelineClipTimeRange(
+        public virtual TimelineClipTimeRange CaptureTimeRange() => new TimelineClipTimeRange(
             StartTime, EndTime, SelfEaseInTime, SelfEaseOutTime, ClipInTime,
-            this is MotionCurveClip motion ? motion.SourceStartTime : this is CameraEffectClip camera ? camera.SourceStartTime : 0f,
-            this is MotionCurveClip source ? source.SourceEndTime : this is CameraEffectClip effect ? effect.SourceEndTime : 0f,
-            OtherEaseInTime, OtherEaseOutTime);
+            0f, 0f, OtherEaseInTime, OtherEaseOutTime);
 
 #if UNITY_EDITOR
-        public void ApplyTimeRange(in TimelineClipTimeRange range)
+        public virtual void ApplyTimeRange(in TimelineClipTimeRange range)
         {
             m_StartTimeFPRawValue = range.Start.RawValue;
             m_EndTimeFPRawValue = range.End.RawValue;
             m_SelfEaseInTimeFPRawValue = range.EaseIn.RawValue;
             m_SelfEaseOutTimeFPRawValue = range.EaseOut.RawValue;
             m_ClipInTimeFPRawValue = range.ClipIn.RawValue;
-            if (this is MotionCurveClip motion)
-                motion.ApplySourceTimeRange(range.SourceStart, range.SourceEnd);
-            if (this is CameraEffectClip camera)
-                camera.ConfigureSourceRange(range.SourceStart, range.SourceEnd);
         }
 
-        public void ConfigureTimeRange(FP startTime, FP endTime)
+        public void ConfigureTimeRange(OrchestrationTime startTime, OrchestrationTime endTime)
         {
-            if (startTime < FP._0 || endTime < startTime)
+            if (startTime < OrchestrationTime.Zero || endTime < startTime)
                 throw new ArgumentOutOfRangeException(nameof(startTime));
             m_StartTimeFPRawValue = startTime.RawValue;
             m_EndTimeFPRawValue = endTime.RawValue;
         }
 
-        public void ConfigureEase(FP easeIn, FP easeOut)
+        public void ConfigureEase(OrchestrationTime easeIn, OrchestrationTime easeOut)
         {
-            if (easeIn < FP._0 || easeOut < FP._0)
+            if (easeIn < OrchestrationTime.Zero || easeOut < OrchestrationTime.Zero)
                 throw new ArgumentOutOfRangeException(nameof(easeIn));
             m_SelfEaseInTimeFPRawValue = easeIn.RawValue;
             m_SelfEaseOutTimeFPRawValue = easeOut.RawValue;
         }
 
-        public void ConfigureClipIn(FP time)
+        public void ConfigureClipIn(OrchestrationTime time)
         {
-            if (time < FP._0)
+            if (time < OrchestrationTime.Zero)
                 throw new ArgumentOutOfRangeException(nameof(time));
             m_ClipInTimeFPRawValue = time.RawValue;
         }
@@ -303,7 +301,7 @@ namespace BTSMTL.Timeline
             m_Tracks.Remove(track);
             Init();
         }
-        public Clip AddClip(TimelineContractCatalog catalog, Track track, FP time)
+        public Clip AddClip(TimelineContractCatalog catalog, Track track, OrchestrationTime time)
         {
             if (catalog == null)
                 throw new ArgumentNullException(nameof(catalog));
@@ -320,7 +318,7 @@ namespace BTSMTL.Timeline
             Init();
             return clip;
         }
-        public Clip AddClip(TimelineContractCatalog catalog, UnityEngine.Object referenceObject, Track track, FP time)
+        public Clip AddClip(TimelineContractCatalog catalog, UnityEngine.Object referenceObject, Track track, OrchestrationTime time)
         {
             if (catalog == null)
                 throw new ArgumentNullException(nameof(catalog));
@@ -345,7 +343,7 @@ namespace BTSMTL.Timeline
             {
                 int insertionIndex = m_Tracks.IndexOf(track) + 1;
                 TimelineTrackContract contract = catalog.RequireTrack(track.ContractKind);
-                if ((contract.Capabilities & TimelineCapability.Tree) == 0 || contract.OverlapPolicy != TimelineTrackOverlapPolicy.Reject)
+                if (contract.ContentKind != TimelineContentKind.Discrete || contract.OverlapPolicy != TimelineTrackOverlapPolicy.Reject)
                     continue;
                 for (int clipIndex = 1; clipIndex < track.Clips.Count; clipIndex++)
                 {
@@ -393,7 +391,7 @@ namespace BTSMTL.Timeline
 
             Init();
         }
-        public TimelineSection AddSection(string name, FP time)
+        public TimelineSection AddSection(string name, OrchestrationTime time)
         {
             TimelineSection section = TimelineSection.Create(name, time);
             if (m_Sections.Exists(value => value != null && string.Equals(value.Name, section.Name, StringComparison.Ordinal)))
@@ -435,7 +433,7 @@ namespace BTSMTL.Timeline
             OnValueChanged?.Invoke();
         }
 #if UNITY_EDITOR
-        public TimelineSection EnsureSection(string authoringId, string name, FP time)
+        public TimelineSection EnsureSection(string authoringId, string name, OrchestrationTime time)
         {
             TimelineSection section = m_Sections.SingleOrDefault(value =>
                 value != null && string.Equals(value.AuthoringId, authoringId, StringComparison.Ordinal));
@@ -448,7 +446,7 @@ namespace BTSMTL.Timeline
             return section;
         }
 #endif
-        public void ConfigureSection(TimelineSection section, string name, FP time)
+        public void ConfigureSection(TimelineSection section, string name, OrchestrationTime time)
         {
             if (section == null || !m_Sections.Contains(section))
                 throw new ArgumentException("Timeline Section is not owned by this Timeline.", nameof(section));
@@ -482,7 +480,7 @@ namespace BTSMTL.Timeline
         {
             m_Sections.Sort((left, right) =>
             {
-                int frame = (left?.Time ?? FP.MaxValue).CompareTo(right?.Time ?? FP.MaxValue);
+                int frame = (left?.Time ?? OrchestrationTime.MaxValue).CompareTo(right?.Time ?? OrchestrationTime.MaxValue);
                 return frame != 0 ? frame : string.CompareOrdinal(left?.AuthoringId, right?.AuthoringId);
             });
         }
@@ -582,14 +580,14 @@ namespace BTSMTL.Timeline
 
         public bool AlignTerminalTimeClips()
         {
-            FP terminalTime = FP._0;
+            OrchestrationTime terminalTime = OrchestrationTime.Zero;
             for (int trackIndex = 0; trackIndex < m_Tracks.Count; trackIndex++)
             {
                 Track track = m_Tracks[trackIndex];
                 if (track == null)
                     continue;
                 foreach (TimelineMarker marker in track.Markers)
-                    terminalTime = FPMath.Max(terminalTime, FPMath.Max(FP.FromRaw(1), marker.Time));
+                    terminalTime = OrchestrationTime.Max(terminalTime, OrchestrationTime.Max(OrchestrationTime.FromRaw(1), marker.Time));
                 for (int clipIndex = 0; clipIndex < track.Clips.Count; clipIndex++)
                 {
                     Clip clip = track.Clips[clipIndex];
@@ -597,17 +595,17 @@ namespace BTSMTL.Timeline
                         continue;
                     if (clip is ITimelineTerminalTimeAlignedClip terminalClip)
                     {
-                        terminalTime = FPMath.Max(terminalTime, clip.StartTime + FP.FromRaw(1));
+                        terminalTime = OrchestrationTime.Max(terminalTime, clip.StartTime + OrchestrationTime.FromRaw(1));
                     }
                     else
-                        terminalTime = FPMath.Max(terminalTime, clip.EndTime);
+                        terminalTime = OrchestrationTime.Max(terminalTime, clip.EndTime);
                 }
             }
             for (int sectionIndex = 0; sectionIndex < m_Sections.Count; sectionIndex++)
             {
                 TimelineSection section = m_Sections[sectionIndex];
                 if (section != null)
-                    terminalTime = FPMath.Max(terminalTime, section.Time);
+                    terminalTime = OrchestrationTime.Max(terminalTime, section.Time);
             }
             bool changed = false;
             for (int trackIndex = 0; trackIndex < m_Tracks.Count; trackIndex++)
@@ -620,16 +618,16 @@ namespace BTSMTL.Timeline
         public void RefreshTimeRanges()
         {
             AlignTerminalTimeClips();
-            DurationTime = FP._0;
+            DurationTime = OrchestrationTime.Zero;
             for (int i = 0; i < m_Tracks.Count; i++)
             {
                 Track track = m_Tracks[i];
                 track.UpdateMix();
                 track.RefreshDuration();
-                DurationTime = FPMath.Max(DurationTime, track.DurationTime);
+                DurationTime = OrchestrationTime.Max(DurationTime, track.DurationTime);
             }
             for (int i = 0; i < m_Sections.Count; i++)
-                DurationTime = FPMath.Max(DurationTime, m_Sections[i].Time);
+                DurationTime = OrchestrationTime.Max(DurationTime, m_Sections[i].Time);
             AuthoringRevision++;
             OnValueChanged?.Invoke();
         }
@@ -649,23 +647,23 @@ namespace BTSMTL.Timeline
     {
         internal void RefreshDuration()
         {
-            DurationTime = FP._0;
+            DurationTime = OrchestrationTime.Zero;
             for (int i = 0; i < Clips.Count; i++)
-                DurationTime = FPMath.Max(DurationTime, Clips[i].EndTime);
+                DurationTime = OrchestrationTime.Max(DurationTime, Clips[i].EndTime);
             for (int i = 0; i < Markers.Count; i++)
-                DurationTime = FPMath.Max(DurationTime, FPMath.Max(FP.FromRaw(1), Markers[i].Time));
+                DurationTime = OrchestrationTime.Max(DurationTime, OrchestrationTime.Max(OrchestrationTime.FromRaw(1), Markers[i].Time));
         }
 
         public virtual Type ClipType => typeof(Clip);
 
-        public virtual Clip AddClip(FP time)
+        public virtual Clip AddClip(OrchestrationTime time)
         {
             Clip clip = Activator.CreateInstance(ClipType, this, time) as Clip;
             clip.RegenerateAuthoringIdentity();
             m_Clips.Add(clip);
             return clip;
         }
-        public virtual Clip AddClip(UnityEngine.Object referenceObject, FP time)
+        public virtual Clip AddClip(UnityEngine.Object referenceObject, OrchestrationTime time)
         {
             return null;
         }
@@ -706,14 +704,18 @@ namespace BTSMTL.Timeline
         [NonSerialized]
         public bool Invalid;
 
-        public virtual FP Length => DurationTime;
+        public virtual OrchestrationTime Length => DurationTime;
         public virtual ClipCapabilities Capabilities => ClipCapabilities.None;
+        public virtual void ApplyAuthoringConfiguration(TimelineAuthoringClipConfiguration configuration) =>
+            TimelineAuthoringClipBinding.ApplyMembers(this, configuration);
+        public virtual TimelineAuthoringClipConfiguration CaptureAuthoringDefaults() =>
+            TimelineAuthoringClipBinding.Read(this);
 
         public Clip() { }
-        public Clip(Track track, FP time)
+        public Clip(Track track, OrchestrationTime time)
         {
             Track = track;
-            ConfigureTimeRange(time, time + FP._0_05);
+            ConfigureTimeRange(time, time + OrchestrationTime.FromSeconds(0.05d));
         }
 
         public void UpdateMix()
@@ -756,12 +758,12 @@ namespace BTSMTL.Timeline
                             m_OtherEaseOutTimeFPRawValue = (EndTime - StartTime).RawValue;
                         }
                     }
-                    m_SelfEaseInTimeFPRawValue = FPMath.Min(SelfEaseInTime, DurationTime - OtherEaseOutTime).RawValue;
-                    m_SelfEaseOutTimeFPRawValue = FPMath.Min(SelfEaseOutTime, DurationTime - OtherEaseInTime).RawValue;
+                    m_SelfEaseInTimeFPRawValue = OrchestrationTime.Min(SelfEaseInTime, DurationTime - OtherEaseOutTime).RawValue;
+                    m_SelfEaseOutTimeFPRawValue = OrchestrationTime.Min(SelfEaseOutTime, DurationTime - OtherEaseInTime).RawValue;
                 }
             }
         }
-        public bool Contains(FP time)
+        public bool Contains(OrchestrationTime time)
         {
             return StartTime < time && time < EndTime;
         }
@@ -774,15 +776,15 @@ namespace BTSMTL.Timeline
 
         public string StartTimeText()
         {
-            return $"StartTime:  {StartTime.AsDouble.ToString("0.00")}S";
+            return $"StartTime:  {StartTime.AsSingle.ToString("0.00")}S";
         }
         public string EndTimeText()
         {
-            return $"EndTime:  {EndTime.AsDouble.ToString("0.00")}S";
+            return $"EndTime:  {EndTime.AsSingle.ToString("0.00")}S";
         }
         public string DurationText()
         {
-            return $"Duration:  {DurationTime.AsDouble.ToString("0.00")}S";
+            return $"Duration:  {DurationTime.AsSingle.ToString("0.00")}S";
         }
 
         public virtual void RebindTimeline()
@@ -814,7 +816,7 @@ namespace BTSMTL.Timeline
 
     public abstract partial class SignalClip
     {
-        protected SignalClip(Track track, FP time) : base(track, time)
+        protected SignalClip(Track track, OrchestrationTime time) : base(track, time)
         {
             ConfigureTimeRange(time, time + TimelineTimeGrid.Position(1, TimelineUtility.FrameRate));
         }

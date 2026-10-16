@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using ThirdPersonSimulation;
-using Photon.Deterministic;
 
 namespace BTSMTL.Diagnostics.Editor
 {
@@ -12,7 +12,7 @@ namespace BTSMTL.Diagnostics.Editor
         static readonly string[] s_AnimationCommands = { "", "Select", "Sample", "Complete", "Release", "ProjectedSample", "Withdraw" };
 
         public static string Status(in RuntimeTracePayload value) => value.DetailKind == RuntimeTraceDetailKind.AnimationCommand
-            ? s_AnimationCommands[value.LifecycleOperation] : value.Status.ToString();
+            ? s_AnimationCommands[value.LifecycleOperation] : value.Status;
 
         static string AnimationPlayback(in RuntimeTracePayload value) =>
             $"{value.OwnerId}/{value.RelatedElementId}@{value.ActivationGeneration}";
@@ -40,7 +40,7 @@ namespace BTSMTL.Diagnostics.Editor
                 $"{value.Status}:{value.ActivationGeneration}:{value.RelatedElementId}->{value.OwnerId}@{value.Revision}",
             RuntimeTraceDetailKind.ControlFlow =>
                 $"{value.RelatedElementId}:{value.Priority}->{value.ClipIndex}:condition={(value.TrackIndex >= 0 ? value.TrackIndex.ToString() : string.Empty)}:result={value.Flag}",
-            RuntimeTraceDetailKind.Motion => MotionDetail(in value.MotionDetail, value.Detail),
+            RuntimeTraceDetailKind.Motion => MotionDetail(in value.MotionDetail, value.Detail, value.MotionIdentityTableId),
             RuntimeTraceDetailKind.AbilityRuleSource =>
                 $"{value.Detail};source={value.RuleSourceSkillId}/{value.RuleSourceInstanceId};skillGeneration={value.RuleSourceSkillExecutionGeneration};segmentGeneration={value.RuleSourceSegmentGeneration}",
             RuntimeTraceDetailKind.AbilityAdmission =>
@@ -57,23 +57,25 @@ namespace BTSMTL.Diagnostics.Editor
                 $"{value.Name}={value.Value.Text};skill={value.SkillId};action={value.ActionInstanceId};generation={value.SkillExecutionGeneration}",
             RuntimeTraceDetailKind.AnimationCommand =>
                 $"logicTick={value.StartTick};playback={AnimationPlayback(in value)};channel={value.AnimationChannelId};action={value.ActionInstanceId};generation={value.ActivationGeneration};time={value.Time:0.######};continuous={value.SecondaryTime:0.######};cycle={value.Cycle};weight={value.Weight:0.######};loop={value.Flag}",
-            _ => value.Detail.ToString()
+            _ => value.Detail
         };
 
-        static string MotionDetail(in SimulationMotionTraceDetail value, CanonicalTextValue owner) => value.Kind switch
+        static string MotionDetail(in SimulationMotionTraceDetail value, string owner, string identityTableId) => value.Kind switch
         {
             SimulationMotionTraceDetailKind.Contribution =>
-                $"channel={s_MotionChannels[value.Channel]};blend={s_MotionBlends[value.BlendMode]};priority={value.Priority};weight={FP.FromRaw(value.WeightRaw)};delta=({FP.FromRaw(value.DisplacementXRaw)},{FP.FromRaw(value.DisplacementYRaw)},{FP.FromRaw(value.DisplacementZRaw)});yaw={FP.FromRaw(value.YawDegreesRaw)};claim={value.ClaimsLowerChannels};movementClock={MovementClock(in value.MovementClock)}",
+                $"channel={s_MotionChannels[value.Channel]};blend={s_MotionBlends[value.BlendMode]};priority={value.Priority};weight={FixedPointValue(value.WeightRaw)};delta=({FixedPointValue(value.DisplacementXRaw)},{FixedPointValue(value.DisplacementYRaw)},{FixedPointValue(value.DisplacementZRaw)});yaw={FixedPointValue(value.YawDegreesRaw)};claim={value.ClaimsLowerChannels};movementClock={MovementClock(in value.MovementClock)}",
             SimulationMotionTraceDetailKind.Channel =>
-                $"channel={s_MotionChannels[value.Channel]};owner={owner};delta=({FP.FromRaw(value.DisplacementXRaw)},{FP.FromRaw(value.DisplacementYRaw)},{FP.FromRaw(value.DisplacementZRaw)});yaw={FP.FromRaw(value.YawDegreesRaw)};planarBasis=({FP.FromRaw(value.PlanarBasisXRaw)},{FP.FromRaw(value.PlanarBasisYRaw)});claim={value.ClaimsLowerChannels};sources={value.ParticipatingSourceCount};fingerprint={value.ParticipatingSourceFingerprint:x16};movementClock={MovementClock(in value.MovementClock)}",
+                $"channel={s_MotionChannels[value.Channel]};owner={owner};delta=({FixedPointValue(value.DisplacementXRaw)},{FixedPointValue(value.DisplacementYRaw)},{FixedPointValue(value.DisplacementZRaw)});yaw={FixedPointValue(value.YawDegreesRaw)};planarBasis=({FixedPointValue(value.PlanarBasisXRaw)},{FixedPointValue(value.PlanarBasisYRaw)});claim={value.ClaimsLowerChannels};sources={value.ParticipatingSourceCount};fingerprintFormat=frozen-id-le32-fnv1a-v2;identityTable={identityTableId};fingerprint={value.ParticipatingSourceFingerprint:x16};movementClock={MovementClock(in value.MovementClock)}",
             SimulationMotionTraceDetailKind.Resolved =>
-                $"delta=({FP.FromRaw(value.DisplacementXRaw)},{FP.FromRaw(value.DisplacementYRaw)},{FP.FromRaw(value.DisplacementZRaw)});yaw={FP.FromRaw(value.YawDegreesRaw)};hasMotion={value.HasMotion};movementClock={MovementClock(in value.MovementClock)}",
+                $"delta=({FixedPointValue(value.DisplacementXRaw)},{FixedPointValue(value.DisplacementYRaw)},{FixedPointValue(value.DisplacementZRaw)});yaw={FixedPointValue(value.YawDegreesRaw)};hasMotion={value.HasMotion};movementClock={MovementClock(in value.MovementClock)}",
             SimulationMotionTraceDetailKind.None => string.Empty,
             _ => throw new ArgumentOutOfRangeException(nameof(value.Kind))
         };
 
-        static string ControlDetail(CharacterControlTraceKind kind, CanonicalTextValue source,
-            CanonicalTextValue target, bool passed, ulong tick) => kind switch
+        static string FixedPointValue(long raw) => (raw / 65536m).ToString("0.#####", CultureInfo.InvariantCulture);
+
+        static string ControlDetail(CharacterControlTraceKind kind, string source,
+            string target, bool passed, ulong tick) => kind switch
         {
             CharacterControlTraceKind.StateEntered or CharacterControlTraceKind.StateExited => $"state={source}:tick={tick}",
             CharacterControlTraceKind.TransitionEvaluated => $"source={source}:target={target}:result={passed}",
@@ -89,9 +91,8 @@ namespace BTSMTL.Diagnostics.Editor
 
         internal static RuntimeTraceEvent ForDisplay(in RuntimeTraceEvent value, out RuntimeLiveStateKey stateKey)
         {
-            RuntimeTraceEvent display = value.CaptureDisplayText();
-            stateKey = new RuntimeLiveStateKey(in display);
-            RuntimeTracePayload payload = display.Payload;
+            stateKey = new RuntimeLiveStateKey(in value);
+            RuntimeTracePayload payload = value.Payload;
             payload.Detail = Detail(in payload);
             if (payload.DetailKind == RuntimeTraceDetailKind.AnimationCommand)
             {
@@ -101,9 +102,9 @@ namespace BTSMTL.Diagnostics.Editor
                 payload.OwnerId = playback;
             }
             payload.DetailKind = RuntimeTraceDetailKind.Text;
-            return new RuntimeTraceEvent(display.SessionId, display.ContentRevision, display.RuntimeEpoch,
-                display.ExecutionBranchId, display.Domain, display.Channel, display.Position, display.TimeSeconds,
-                display.Sequence, display.RuntimeInstance, display.Source, display.Kind, in payload);
+            return new RuntimeTraceEvent(value.SessionId, value.ContentRevision, value.RuntimeEpoch,
+                value.ExecutionBranchId, value.Domain, value.Channel, value.Position, value.TimeSeconds,
+                value.Sequence, value.RuntimeInstance, value.Source, value.Kind, in payload);
         }
     }
 
@@ -165,7 +166,7 @@ namespace BTSMTL.Diagnostics.Editor
         public ulong Position { get; }
         public ulong Sequence { get; }
         public RuntimeTracePayload Payload { get; }
-        public string Status => Payload.DetailKind == RuntimeTraceDetailKind.AnimationCommand || !Payload.Status.IsEmpty
+        public string Status => Payload.DetailKind == RuntimeTraceDetailKind.AnimationCommand || !string.IsNullOrEmpty(Payload.Status)
             ? RuntimeTraceDisplay.Status(Payload) : s_EventKindText[(int)Kind];
         public string Detail => RuntimeTraceDisplay.Detail(Payload);
     }
@@ -182,9 +183,9 @@ namespace BTSMTL.Diagnostics.Editor
             int logicCycle,
             int visualCycle,
             RuntimeTraceEventKind lifecycle,
-            CanonicalTextValue lifecycleStatus,
+            string lifecycleStatus,
             RuntimeTraceEventKind terminal,
-            CanonicalTextValue terminalCause)
+            string terminalCause)
         {
             Playback = playback;
             Provenance = provenance;
@@ -195,9 +196,9 @@ namespace BTSMTL.Diagnostics.Editor
             LogicCycle = logicCycle;
             VisualCycle = visualCycle;
             Lifecycle = lifecycle;
-            m_LifecycleStatus = lifecycleStatus.IsNull ? CanonicalTextValue.Empty : lifecycleStatus;
+            LifecycleStatus = lifecycleStatus ?? string.Empty;
             Terminal = terminal;
-            m_TerminalCause = terminalCause.IsNull ? CanonicalTextValue.Empty : terminalCause;
+            TerminalCause = terminalCause ?? string.Empty;
         }
 
         public RuntimeInstanceKey Playback { get; }
@@ -209,11 +210,9 @@ namespace BTSMTL.Diagnostics.Editor
         public int LogicCycle { get; }
         public int VisualCycle { get; }
         public RuntimeTraceEventKind Lifecycle { get; }
-        readonly CanonicalTextValue m_LifecycleStatus;
-        public string LifecycleStatus => m_LifecycleStatus.ToString();
+        public string LifecycleStatus { get; }
         public RuntimeTraceEventKind Terminal { get; }
-        readonly CanonicalTextValue m_TerminalCause;
-        public string TerminalCause => m_TerminalCause.ToString();
+        public string TerminalCause { get; }
         public bool IsTerminal => Terminal is RuntimeTraceEventKind.TimelineCompleted or RuntimeTraceEventKind.TimelineCancelled or RuntimeTraceEventKind.TimelineStopped;
     }
 
@@ -397,7 +396,7 @@ namespace BTSMTL.Diagnostics.Editor
                 ? m_EventSourceMaps[slot].GraphInvocations
                 : Array.Empty<RuntimeGraphInvocation>();
 
-        public bool TryGetInvocation(RuntimeInstanceKey instance, CanonicalTextValue path, out RuntimeGraphInvocation invocation)
+        public bool TryGetInvocation(RuntimeInstanceKey instance, string path, out RuntimeGraphInvocation invocation)
         {
             invocation = default;
             return TryGetLatestInstanceEvent(instance, out int slot) &&
@@ -410,7 +409,7 @@ namespace BTSMTL.Diagnostics.Editor
                 TryGetLatestInstanceEvent(instance, out int slot))
             {
                 ref readonly RuntimeTraceEvent traceEvent = ref m_Events[slot].Event;
-                path = traceEvent.GetParentInvocationPath().ToString();
+                path = traceEvent.GetParentInvocationPath();
                 generation = traceEvent.GetParentInvocationGeneration();
                 runtimeId = traceEvent.GetParentGraphRuntimeId();
                 return !string.IsNullOrEmpty(path);
@@ -512,7 +511,7 @@ namespace BTSMTL.Diagnostics.Editor
             string timelineAuthoringId,
             RuntimeInstanceKey playback,
             out RuntimeTimelinePlaybackDebugSummary summary,
-            CanonicalTextValue graphAuthoringId = default)
+            string graphAuthoringId = default)
         {
             if (m_TimelinePlayback.TryGetValue(playback, out TimelinePlaybackSummaryBuilder builder) &&
                 MatchesTimeline(builder, timelineAuthoringId, graphAuthoringId))
@@ -529,7 +528,7 @@ namespace BTSMTL.Diagnostics.Editor
             string timelineAuthoringId,
             RuntimeInstanceKey playback,
             List<RuntimeDebugEventView> destination,
-            CanonicalTextValue graphAuthoringId = default)
+            string graphAuthoringId = default)
         {
             destination.Clear();
             if (!TryGetInstanceEventHead(playback, out int slot))
@@ -545,15 +544,15 @@ namespace BTSMTL.Diagnostics.Editor
         static bool MatchesTimeline(
             TimelinePlaybackSummaryBuilder builder,
             string timelineAuthoringId,
-            CanonicalTextValue graphAuthoringId)
+            string graphAuthoringId)
         {
             return string.Equals(
                        builder.TimelineAuthoringId,
                        timelineAuthoringId,
                        StringComparison.Ordinal) &&
-                   (builder.Provenance.SourceGraphAuthoringId.Equals(graphAuthoringId) ||
-                    CanonicalTextValue.IsNullOrEmpty(builder.Provenance.SourceGraphAuthoringId) &&
-                    CanonicalTextValue.IsNullOrEmpty(graphAuthoringId));
+                   (string.Equals(builder.Provenance.SourceGraphAuthoringId, graphAuthoringId, StringComparison.Ordinal) ||
+                    string.IsNullOrEmpty(builder.Provenance.SourceGraphAuthoringId) &&
+                    string.IsNullOrEmpty(graphAuthoringId));
         }
 
         public void CopyCurrentEvents(RuntimeTraceChannel channels, List<RuntimeDebugEventView> destination)
@@ -969,7 +968,7 @@ namespace BTSMTL.Diagnostics.Editor
         void RefreshTimelinePlayback(RuntimeInstanceKey playback)
         {
             TimelinePlaybackSummaryBuilder previous = m_TimelinePlayback[playback];
-            string previousGraph = previous.Provenance.SourceGraphAuthoringId.ToString() ?? string.Empty;
+            string previousGraph = previous.Provenance.SourceGraphAuthoringId ?? string.Empty;
             if (!string.IsNullOrEmpty(previous.TimelineAuthoringId))
             {
                 var previousKey = new TimelineSourceKey(previous.TimelineAuthoringId, previousGraph);
@@ -985,7 +984,7 @@ namespace BTSMTL.Diagnostics.Editor
             for (; slot != -1; slot = m_NextInstanceEvent[slot])
                 builder.Apply(in m_Events[slot]);
             m_TimelinePlayback[playback] = builder;
-            RegisterTimelinePlayback(builder.TimelineAuthoringId, builder.Provenance.SourceGraphAuthoringId.ToString() ?? string.Empty, playback);
+            RegisterTimelinePlayback(builder.TimelineAuthoringId, builder.Provenance.SourceGraphAuthoringId ?? string.Empty, playback);
         }
 
         static RuntimeInstanceKey EventInstance(RuntimeInstanceKey instance) =>
@@ -1004,10 +1003,10 @@ namespace BTSMTL.Diagnostics.Editor
             if (!m_TimelinePlayback.TryGetValue(playback, out TimelinePlaybackSummaryBuilder builder))
                 builder = new TimelinePlaybackSummaryBuilder(playback);
             string previousTimelineAuthoringId = builder.TimelineAuthoringId;
-            string previousGraphAuthoringId = builder.Provenance.SourceGraphAuthoringId.ToString() ?? string.Empty;
+            string previousGraphAuthoringId = builder.Provenance.SourceGraphAuthoringId ?? string.Empty;
             builder.Apply(in eventView);
             m_TimelinePlayback[playback] = builder;
-            string graphAuthoringId = builder.Provenance.SourceGraphAuthoringId.ToString() ?? string.Empty;
+            string graphAuthoringId = builder.Provenance.SourceGraphAuthoringId ?? string.Empty;
             if (!string.Equals(previousTimelineAuthoringId, builder.TimelineAuthoringId, StringComparison.Ordinal) ||
                 !string.Equals(previousGraphAuthoringId, graphAuthoringId, StringComparison.Ordinal))
                 RegisterTimelinePlayback(builder.TimelineAuthoringId, graphAuthoringId, playback);
@@ -1153,9 +1152,9 @@ namespace BTSMTL.Diagnostics.Editor
             public int LogicCycle { get; private set; }
             public int VisualCycle { get; private set; }
             public RuntimeTraceEventKind Lifecycle { get; private set; }
-            public CanonicalTextValue LifecycleStatus { get; private set; }
+            public string LifecycleStatus { get; private set; }
             public RuntimeTraceEventKind Terminal { get; private set; }
-            public CanonicalTextValue TerminalCause { get; private set; }
+            public string TerminalCause { get; private set; }
 
             public void Apply(in RuntimeDebugEventView eventView)
             {
@@ -1242,7 +1241,7 @@ namespace BTSMTL.Diagnostics.Editor
         internal int TrackCount => IsValid ? m_SourceMap.TrackCount : 0;
         public IReadOnlyList<RuntimeGraphInvocation> GraphInvocations => IsValid
             ? m_SourceMap.GraphInvocations : Array.Empty<RuntimeGraphInvocation>();
-        public bool TryGetInvocation(CanonicalTextValue path, out RuntimeGraphInvocation invocation) =>
+        public bool TryGetInvocation(string path, out RuntimeGraphInvocation invocation) =>
             m_SourceMap.TryGetInvocation(path, out invocation);
 
         public static RuntimeDebugSourceMapSnapshot Empty => default;

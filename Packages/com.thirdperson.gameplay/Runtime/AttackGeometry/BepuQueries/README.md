@@ -2,7 +2,7 @@
 
 来源为 [sam-vdp/bepuphysics1int 固定提交](https://github.com/sam-vdp/bepuphysics1int/tree/9237daa68c3014fd7c2e93c6a99326ba5248d60b)。现有 MPR、GJK 和项目连续旋转查询已迁为官方 `Photon.Deterministic.FP`、`FPVector3`、`FPQuaternion` 与 `FPMath`，没有 Fix64 或 Q32.32 往返。
 
-本目录只做球、胶囊、盒、凸包和准备后的凸部件求交，与 `ThirdPersonSimulation.FPGameplay.FPSweepQueryBackend` 一同编入 `ThirdPersonSimulation.AttackGeometry`。没有刚体世界、运动积分、约束、KCC、Scene、Entity 或自主 Tick。官方 Quantum／KCC 源码与 DLL 保持原版；算法源码只使用 `Quantum.Deterministic.dll`，所在几何程序集另引用 Shared 数值合同和 QuantumNumerics，不依赖 Unity 或完整 Gameplay。原 BEPU 许可见 `LICENSE.md`，已删除 FixedMath.NET 实现的原许可仍保留在 `FixedMath.Net/LICENSE.txt`，迁移保留许可文件原字节。
+本目录只做球、胶囊、盒、凸包和准备后的凸部件求交，与 `ThirdPersonSimulation.AttackGeometry.FPSweepQueryBackend` 一同编入 `ThirdPersonSimulation.AttackGeometry`。没有刚体世界、运动积分、约束、KCC、Scene、Entity 或自主 Tick。官方 Quantum／KCC 源码与 DLL 保持原版；算法源码只使用 `Quantum.Deterministic.dll`，所在几何程序集另引用 Shared 数值合同和 QuantumNumerics，不依赖 Unity 或完整 Gameplay。原 BEPU 许可见 `LICENSE.md`，已删除 FixedMath.NET 实现的原许可仍保留在 `FixedMath.Net/LICENSE.txt`，迁移保留许可文件原字节。
 
 ## 原算法与保留行为
 

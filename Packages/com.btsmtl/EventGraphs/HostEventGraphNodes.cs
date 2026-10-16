@@ -7,6 +7,7 @@ using UnityEngine;
 
 namespace BTSMTL.EventGraphs
 {
+    [EventGraphCapability(EventGraphCapabilityKind.HostInput)]
     public abstract class EventGraphHostInputNode<T> : FlowScriptNode, EventGraphHostInputNodeMarker
     {
         [SerializeField] string m_InputId = string.Empty;
@@ -78,6 +79,7 @@ namespace BTSMTL.EventGraphs
     [Name("Read Delta Seconds")]
     [Category("Host/Input")]
     [Description("Reads the delta seconds supplied by the host.")]
+    [EventGraphCapability(EventGraphCapabilityKind.HostInput)]
     public sealed class EventGraphDeltaNode : FlowScriptNode, EventGraphHostInputNodeMarker
     {
 
@@ -106,6 +108,6 @@ namespace BTSMTL.EventGraphs
 
     [Name("Read Host Text")]
     [Category("Host/Input")]
-    public sealed class EventGraphTextInputNode : EventGraphHostInputNode<CanonicalTextValue> { }
+    public sealed class EventGraphTextInputNode : EventGraphHostInputNode<string> { }
 
 }

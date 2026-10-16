@@ -75,19 +75,17 @@ namespace BTSMTL.Diagnostics
         public RuntimeTraceEventKind Kind { get; }
         public int BlackboardStateSlot { get; }
         public string BlackboardAbilityId { get; }
-        public ThirdPersonSimulation.CanonicalTextValue SampleIdentity { get; }
+        public string SampleIdentity { get; }
 
         public bool Equals(RuntimeLiveStateKey other)
         {
             return Channel == other.Channel && Source.Equals(other.Source) && Instance.Equals(other.Instance) && Kind == other.Kind &&
                 BlackboardStateSlot == other.BlackboardStateSlot && string.Equals(BlackboardAbilityId, other.BlackboardAbilityId, StringComparison.Ordinal) &&
-                SampleIdentity.Equals(other.SampleIdentity);
+                string.Equals(SampleIdentity, other.SampleIdentity, StringComparison.Ordinal);
         }
 
         public override bool Equals(object obj) => obj is RuntimeLiveStateKey other && Equals(other);
         public override int GetHashCode() => HashCode.Combine(Channel, Source, Instance, Kind, BlackboardStateSlot, BlackboardAbilityId, SampleIdentity);
-        public void Retain() { Instance.Retain(); SampleIdentity.Retain(); }
-        public void Release() { Instance.Release(); SampleIdentity.Release(); }
     }
 
     public readonly struct RuntimeLiveStateChange
@@ -104,16 +102,6 @@ namespace BTSMTL.Diagnostics
         public RuntimeLiveStateKey Key { get; }
         public RuntimeTraceEvent TraceEvent { get; }
         public bool IsRemoval { get; }
-        public void Retain()
-        {
-            Key.Retain();
-            TraceEvent.Retain();
-        }
-        public void Release()
-        {
-            Key.Release();
-            TraceEvent.Release();
-        }
     }
 
     public readonly struct RuntimeLiveStateRead
@@ -142,8 +130,6 @@ namespace BTSMTL.Diagnostics
 
         public long Revision { get; }
         public RuntimeTraceEvent TraceEvent { get; }
-        public void Retain() => TraceEvent.Retain();
-        public void Release() => TraceEvent.Release();
     }
 
     public readonly struct RuntimeCaptureRead
@@ -284,7 +270,6 @@ namespace BTSMTL.Diagnostics
                 for (int eventOffset = 0; eventOffset < segmentEvents.Length; eventOffset++)
                 {
                     ref readonly RuntimeTraceEvent trace = ref segmentEvents[eventOffset];
-                    trace.Retain();
                     if (trace.Domain == RuntimeTraceDomain.Presentation)
                         LatestPresentationTimeSeconds = trace.TimeSeconds;
                     else
@@ -321,8 +306,6 @@ namespace BTSMTL.Diagnostics
         public void Dispose()
         {
             m_ReadWindow?.Clear();
-            for (int i = 0; i < m_Events.Length; i++)
-                m_Events[i].Release();
             Array.Clear(m_Events, 0, m_Events.Length);
         }
 
@@ -412,7 +395,6 @@ namespace BTSMTL.Diagnostics
     {
         readonly Dictionary<RuntimeLiveStateKey, LinkedListNode<int>> m_Current;
         readonly RuntimeTraceEvent[] m_States;
-        readonly ThirdPersonSimulation.CanonicalTextValue[] m_StateKeyText;
         readonly RuntimeLiveStateChange[] m_Changes;
         readonly LinkedList<int> m_Recency = new();
         readonly LinkedListNode<int>[] m_RecencyNodePool;
@@ -431,7 +413,6 @@ namespace BTSMTL.Diagnostics
             m_MaxChanges = maxChanges;
             m_Current = new Dictionary<RuntimeLiveStateKey, LinkedListNode<int>>(maxChanges);
             m_States = new RuntimeTraceEvent[maxChanges];
-            m_StateKeyText = new ThirdPersonSimulation.CanonicalTextValue[maxChanges];
             m_Changes = new RuntimeLiveStateChange[maxChanges];
             m_RecencyNodePool = new LinkedListNode<int>[m_MaxChanges];
             for (int i = 0; i < m_RecencyNodePool.Length; i++)
@@ -469,20 +450,14 @@ namespace BTSMTL.Diagnostics
                     AppendChange(oldest, default, true);
                     m_Recency.RemoveFirst();
                     m_Current.Remove(oldest);
-                    m_StateKeyText[recent.Value].Release();
-                    m_StateKeyText[recent.Value] = default;
                     m_EvictedStates++;
                 }
                 else
                     recent = m_RecencyNodePool[--m_RecencyNodePoolCount];
                 m_Recency.AddLast(recent);
-                key.Retain();
-                m_StateKeyText[recent.Value] = key.Instance.CallSiteId;
                 m_Current.Add(key, recent);
             }
 
-            traceEvent.Retain();
-            m_States[recent.Value].Release();
             m_States[recent.Value] = traceEvent;
             if (recordChange)
                 AppendChange(key, in traceEvent, false);
@@ -494,8 +469,6 @@ namespace BTSMTL.Diagnostics
             m_Version++;
             int nextChange = (m_ChangeHead + m_ChangeCount) % m_MaxChanges;
             var change = new RuntimeLiveStateChange(m_Version, key, in traceEvent, isRemoval);
-            change.Retain();
-            m_Changes[nextChange].Release();
             m_Changes[nextChange] = change;
             if (m_ChangeCount == m_MaxChanges)
                 m_ChangeHead = (m_ChangeHead + 1) % m_MaxChanges;
@@ -505,8 +478,6 @@ namespace BTSMTL.Diagnostics
 
         public RuntimeLiveStateRead CopySince(long cursor, List<RuntimeLiveStateChange> destination)
         {
-            for (int i = 0; i < destination.Count; i++)
-                destination[i].Release();
             destination.Clear();
             if (cursor >= m_Version)
                 return new RuntimeLiveStateRead(m_Version, false, destination, m_EvictedStates);
@@ -516,7 +487,6 @@ namespace BTSMTL.Diagnostics
                 foreach (KeyValuePair<RuntimeLiveStateKey, LinkedListNode<int>> pair in m_Current)
                 {
                     var change = new RuntimeLiveStateChange(m_Version, pair.Key, in m_States[pair.Value.Value], false);
-                    change.Retain();
                     destination.Add(change);
                 }
                 return new RuntimeLiveStateRead(m_Version, true, destination, m_EvictedStates);
@@ -525,7 +495,6 @@ namespace BTSMTL.Diagnostics
             for (int i = first; i < m_ChangeCount; i++)
             {
                 RuntimeLiveStateChange change = m_Changes[(m_ChangeHead + i) % m_MaxChanges];
-                change.Retain();
                 destination.Add(change);
             }
             return new RuntimeLiveStateRead(m_Version, false, destination, m_EvictedStates);
@@ -542,9 +511,6 @@ namespace BTSMTL.Diagnostics
                 {
                     var key = new RuntimeLiveStateKey(in m_States[node.Value]);
                     m_Current.Remove(key);
-                    m_StateKeyText[node.Value].Release();
-                    m_StateKeyText[node.Value] = default;
-                    m_States[node.Value].Release();
                     m_States[node.Value] = default;
                     m_Recency.Remove(node);
                     ReturnRecencyNode(node);
@@ -562,12 +528,7 @@ namespace BTSMTL.Diagnostics
 
         public void Clear()
         {
-            for (int i = 0; i < m_StateKeyText.Length; i++)
-                m_StateKeyText[i].Release();
-            Array.Clear(m_StateKeyText, 0, m_StateKeyText.Length);
             m_Current.Clear();
-            for (int i = 0; i < m_States.Length; i++)
-                m_States[i].Release();
             Array.Clear(m_States, 0, m_States.Length);
             ClearChanges();
             while (m_Recency.Count > 0)
@@ -590,12 +551,9 @@ namespace BTSMTL.Diagnostics
 
         internal long CopyCurrent(List<RuntimeTraceEvent> destination)
         {
-            for (int i = 0; i < destination.Count; i++)
-                destination[i].Release();
             destination.Clear();
             for (LinkedListNode<int> node = m_Recency.First; node != null; node = node.Next)
             {
-                m_States[node.Value].Retain();
                 destination.Add(m_States[node.Value]);
             }
             return m_EvictedStates;
@@ -603,8 +561,6 @@ namespace BTSMTL.Diagnostics
 
         void ClearChanges()
         {
-            for (int i = 0; i < m_Changes.Length; i++)
-                m_Changes[i].Release();
             Array.Clear(m_Changes, 0, m_Changes.Length);
             m_ChangeHead = 0;
             m_ChangeCount = 0;
@@ -631,30 +587,30 @@ namespace BTSMTL.Diagnostics
 
         static bool PayloadEquivalent(in RuntimeTracePayload left, in RuntimeTracePayload right)
         {
-            return left.Status.Equals(right.Status) &&
-                   left.Name.Equals(right.Name) &&
-                   left.Detail.Equals(right.Detail) &&
-                   left.Cause.Equals(right.Cause) &&
+            return string.Equals(left.Status, right.Status, StringComparison.Ordinal) &&
+                   string.Equals(left.Name, right.Name, StringComparison.Ordinal) &&
+                   string.Equals(left.Detail, right.Detail, StringComparison.Ordinal) &&
+                   string.Equals(left.Cause, right.Cause, StringComparison.Ordinal) &&
                    string.Equals(left.SourceClockId, right.SourceClockId, StringComparison.Ordinal) &&
                    string.Equals(left.SourceTickKind, right.SourceTickKind, StringComparison.Ordinal) &&
-                   left.AnimationChannelId.Equals(right.AnimationChannelId) &&
-                   left.OwnerId.Equals(right.OwnerId) &&
-                   left.RelatedElementId.Equals(right.RelatedElementId) &&
+                   string.Equals(left.AnimationChannelId, right.AnimationChannelId, StringComparison.Ordinal) &&
+                   string.Equals(left.OwnerId, right.OwnerId, StringComparison.Ordinal) &&
+                   string.Equals(left.RelatedElementId, right.RelatedElementId, StringComparison.Ordinal) &&
                    string.Equals(left.SkillId, right.SkillId, StringComparison.Ordinal) &&
                    left.InputSequence == right.InputSequence &&
                    string.Equals(left.CharacterStateHash, right.CharacterStateHash, StringComparison.Ordinal) &&
                    string.Equals(left.WorldHash, right.WorldHash, StringComparison.Ordinal) &&
                    left.ActionInstanceId == right.ActionInstanceId &&
-                   left.CallSiteId.Equals(right.CallSiteId) &&
+                   string.Equals(left.CallSiteId, right.CallSiteId, StringComparison.Ordinal) &&
                    left.ActivationGeneration == right.ActivationGeneration &&
                    left.SkillExecutionGeneration == right.SkillExecutionGeneration &&
-                   left.RuleSourceSkillId.Equals(right.RuleSourceSkillId) &&
+                   string.Equals(left.RuleSourceSkillId, right.RuleSourceSkillId, StringComparison.Ordinal) &&
                    left.RuleSourceInstanceId == right.RuleSourceInstanceId &&
                    left.RuleSourceSkillExecutionGeneration == right.RuleSourceSkillExecutionGeneration &&
                    left.RuleSourceSegmentGeneration == right.RuleSourceSegmentGeneration &&
                    left.GraphInvocationGeneration == right.GraphInvocationGeneration &&
                    left.ParentInvocationGeneration == right.ParentInvocationGeneration &&
-                   left.ParentInvocationPath.Equals(right.ParentInvocationPath) &&
+                   string.Equals(left.ParentInvocationPath, right.ParentInvocationPath, StringComparison.Ordinal) &&
                    left.StartTick == right.StartTick &&
                    left.EndTick == right.EndTick &&
                    left.Revision == right.Revision &&
@@ -684,6 +640,7 @@ namespace BTSMTL.Diagnostics
                    left.Flag == right.Flag &&
                    DebugValueEquivalent(in left.Value, in right.Value) &&
                    left.MotionDetail.Equals(in right.MotionDetail) &&
+                   string.Equals(left.MotionIdentityTableId, right.MotionIdentityTableId, StringComparison.Ordinal) &&
                    left.SourceEventId.Equals(right.SourceEventId) &&
                    TimelineProvenanceEquivalent(in left.TimelinePlayback, in right.TimelinePlayback) &&
                    FootPlacementEquivalent(in left.FootPlacement, in right.FootPlacement);
@@ -739,14 +696,14 @@ namespace BTSMTL.Diagnostics
                    left.Signed == right.Signed &&
                    left.Unsigned == right.Unsigned &&
                    left.Number.Equals(right.Number) &&
-                   left.Text.Equals(right.Text) &&
+                   string.Equals(left.Text, right.Text, StringComparison.Ordinal) &&
                    left.Vector.Equals(right.Vector);
         }
 
         static bool TimelineProvenanceEquivalent(in RuntimeTimelinePlaybackProvenance left, in RuntimeTimelinePlaybackProvenance right)
         {
-            return left.SourceGraphAuthoringId.Equals(right.SourceGraphAuthoringId) &&
-                   left.SourceNodeAuthoringId.Equals(right.SourceNodeAuthoringId) &&
+            return string.Equals(left.SourceGraphAuthoringId, right.SourceGraphAuthoringId, StringComparison.Ordinal) &&
+                   string.Equals(left.SourceNodeAuthoringId, right.SourceNodeAuthoringId, StringComparison.Ordinal) &&
                    left.SourceGraphRuntimeId.Equals(right.SourceGraphRuntimeId) &&
                    left.SourceActivationGeneration == right.SourceActivationGeneration &&
                    string.Equals(left.StateMachineGraphAuthoringId, right.StateMachineGraphAuthoringId, StringComparison.Ordinal) &&
@@ -754,7 +711,7 @@ namespace BTSMTL.Diagnostics
                    left.StateMachineGraphRuntimeId.Equals(right.StateMachineGraphRuntimeId) &&
                    left.StateActivationGeneration == right.StateActivationGeneration &&
                    string.Equals(left.SourceName, right.SourceName, StringComparison.Ordinal) &&
-                   left.SourceInvocationPath.Equals(right.SourceInvocationPath) &&
+                   string.Equals(left.SourceInvocationPath, right.SourceInvocationPath, StringComparison.Ordinal) &&
                    left.SourceOperationIndex == right.SourceOperationIndex &&
                    left.SkillExecutionGeneration == right.SkillExecutionGeneration;
         }
@@ -828,7 +785,6 @@ namespace BTSMTL.Diagnostics
             }
             segment.EventCount++;
             segment.LastVersion = m_Version;
-            traceEvent.Retain();
             m_Changes[(m_ChangeHead + m_ChangeCount++) % m_Changes.Length] = new RuntimeCaptureChange(m_Version, in traceEvent);
             while (m_SegmentCount > m_MaxSegments || m_ChangeCount > m_MaxEvents)
             {
@@ -837,7 +793,6 @@ namespace BTSMTL.Diagnostics
                 m_LastEvictionVersion = Math.Max(m_LastEvictionVersion, removed.LastVersion);
                 for (int i = 0; i < removed.EventCount; i++)
                 {
-                    m_Changes[m_ChangeHead].Release();
                     m_Changes[m_ChangeHead] = default;
                     m_ChangeHead = (m_ChangeHead + 1) % m_Changes.Length;
                 }
@@ -850,8 +805,6 @@ namespace BTSMTL.Diagnostics
 
         public RuntimeCaptureRead CopySince(Guid captureId, long cursor, RuntimeTraceChannel channels, List<RuntimeCaptureChange> destination)
         {
-            for (int i = 0; i < destination.Count; i++)
-                destination[i].Release();
             destination.Clear();
             bool changed = captureId != m_CaptureId;
             if (!changed && cursor >= m_Version)
@@ -870,7 +823,6 @@ namespace BTSMTL.Diagnostics
             }
             for (int i = first; i < m_ChangeCount; i++)
             {
-                Change(i).Retain();
                 destination.Add(Change(i));
             }
             return new RuntimeCaptureRead(m_CaptureId, channels, m_Detail, m_Version, m_EvictedEvents, fullSync, destination);
@@ -885,7 +837,7 @@ namespace BTSMTL.Diagnostics
                 ref Segment segment = ref m_Segments[(m_SegmentHead + i) % m_Segments.Length];
                 var events = new RuntimeTraceEvent[segment.EventCount];
                 for (int j = 0; j < events.Length; j++)
-                    events[j] = Change(first++).TraceEvent.CaptureDisplayText();
+                    events[j] = Change(first++).TraceEvent;
                 segments[i] = new RuntimeCaptureSegmentSnapshot(segment.Domain, segment.Position, events);
             }
             return new RuntimeCaptureSnapshot(m_CaptureId, channels, m_Detail, segments, m_Version, m_EvictedEvents);
@@ -1135,8 +1087,6 @@ namespace BTSMTL.Diagnostics
             {
                 if (m_CaptureChannels != RuntimeTraceChannel.None)
                     return m_Capture.CopySince(captureId, cursor, m_CaptureChannels, destination);
-                for (int i = 0; i < destination.Count; i++)
-                    destination[i].Release();
                 destination.Clear();
                 return new RuntimeCaptureRead(Guid.Empty, RuntimeTraceChannel.None, RuntimeDiagnosticsCaptureDetail.None, 0, 0, captureId != Guid.Empty, destination);
             }

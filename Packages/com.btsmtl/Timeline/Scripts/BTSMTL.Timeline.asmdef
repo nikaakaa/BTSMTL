@@ -4,21 +4,16 @@
     "references": [
         "ThirdPerson.Shared.Contracts",
         "BTSMTL.Orchestration.Contracts",
+        "BTSMTL.Orchestration.Runtime",
         "GUID:3af8e02729705434aa5c2d77c4a5103a",
         "GUID:349d62e8ffbe48b8ad6e03ccd8cbaf71",
-        "ThirdPersonCharacter.Pipeline.RootMotion",
-        "ThirdPersonSimulation.Core",
-        "ThirdPersonSimulation.MemoryPack",
-        "BTSMTL.Timeline.Runtime",
-        "ThirdPersonSimulation.QuantumNumerics"
+        "BTSMTL.Timeline.Runtime"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
     "overrideReferences": true,
-    "precompiledReferences": [
-        "Quantum.Deterministic.dll"
-    ],
+    "precompiledReferences": [],
     "autoReferenced": true,
     "defineConstraints": [],
     "versionDefines": [],

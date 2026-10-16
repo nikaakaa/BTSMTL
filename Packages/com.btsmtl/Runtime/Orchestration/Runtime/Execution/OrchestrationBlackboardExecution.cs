@@ -19,7 +19,7 @@ namespace BTSMTL.Orchestration
             m_CurrentOperationIndex = operationIndex;
             ref readonly OrchestrationBlackboardSlot slot = ref m_Program.Blackboard(valueSlot);
             if (slot.IsGraphCallParameter && IsGraphScopeActive(slot.OwnerOperationIndex))
-                return ReadValueSlot(valueSlot);
+                return ReadValueSlot(valueSlot, in m_Blackboards.Value(valueSlot));
             OrchestrationBlackboardOwnerToken expected = ResolveOwner(operationIndex, valueSlot, out _);
             return SameOwner(in m_Blackboards.Metadata(valueSlot).Owner, in expected)
                 ? ReadValueSlot(valueSlot, in m_Blackboards.Value(valueSlot)) : m_Program.DefaultValue(valueSlot);
@@ -47,10 +47,12 @@ namespace BTSMTL.Orchestration
                 SourceOperationIndex = operationIndex,
                 LogicTick = m_Input.Tick,
                 SourceContext = source,
-                TimelineOperationIndex = -1,
-                ClipOperationIndex = -1,
-                Cycle = 0,
-                CommandSequence = 0
+                TimelineOperationIndex = m_TimelineInvocation.HasInvocation
+                    ? m_Frames.Header(m_FrameSlot).ParentTimelineOperationIndex : -1,
+                ClipOperationIndex = m_TimelineInvocation.HasInvocation
+                    ? m_Frames.Header(m_FrameSlot).OwnerOperationIndex : -1,
+                Cycle = m_TimelineInvocation.HasInvocation ? m_TimelineInvocation.Invocation.Token.Cycle : 0,
+                CommandSequence = m_TimelineInvocation.HasInvocation ? m_TimelineInvocation.Invocation.Token.Sequence : 0
             };
             TraceOperation(OrchestrationTraceKind.Blackboard, operationIndex, valueSlot: valueSlot);
         }
@@ -91,7 +93,7 @@ namespace BTSMTL.Orchestration
                     break;
                 case OrchestrationScopeKind.Graph:
                     if (slot.Lifetime == OrchestrationBlackboardLifetime.GraphInstance && slot.OwnerOperationIndex < 0)
-                        generation = m_Input.InstanceGeneration;
+                        generation = m_Frames.Header(m_Blackboards.OwnerFrame(valueSlot)).Generation;
                     else if (slot.Lifetime == OrchestrationBlackboardLifetime.Config)
                         generation = 1;
                     else
@@ -100,7 +102,8 @@ namespace BTSMTL.Orchestration
                             throw new InvalidOperationException($"Operation '{operationIndex}' accesses Blackboard slot '{valueSlot}' outside its Graph scope.");
                         generation = slot.Lifetime == OrchestrationBlackboardLifetime.GraphInstance &&
                             !m_Program.Operation(slot.OwnerOperationIndex).IsRunnable
-                            ? m_Input.InstanceGeneration : ReadGeneration(slot.OwnerOperationIndex);
+                            ? m_Frames.Header(m_Blackboards.OwnerFrame(valueSlot)).Generation
+                            : ReadGeneration(slot.OwnerOperationIndex);
                     }
                     break;
                 case OrchestrationScopeKind.State:
@@ -138,7 +141,7 @@ namespace BTSMTL.Orchestration
                 var invocation = new OrchestrationExtensionInvocation<TValue>(
                     OrchestrationExtensionInvocationKind.Evaluate, operationIndex, ReadGeneration(operationIndex), m_Input.Tick, 0,
                     StateAncestors(operationIndex),
-                    m_Workspace.Inputs[depth].AsSpan(0, 1), outputs);
+                    m_Workspace.Inputs[depth].AsSpan(0, 1), outputs, in m_TimelineInvocation);
                 RequireSynchronousValueResult(operationIndex, bindingIndex,
                     m_Bindings.InvokeReadOnly(bindingIndex, in m_Context, in invocation));
                 return new OrchestrationBlackboardSourceContext

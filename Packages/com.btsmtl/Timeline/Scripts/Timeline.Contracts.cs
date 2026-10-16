@@ -1,5 +1,5 @@
 using System;
-using Photon.Deterministic;
+using BTSMTL.Orchestration;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
@@ -24,7 +24,7 @@ namespace BTSMTL.Timeline
         bool IsTimelineTree { get; }
         bool IsTimelineTrigger { get; }
         void BindTimelineAuthoringContext(TimelineData timeline, Clip clip);
-        bool TryGetDeclaredEndTime(out FP endTime);
+        bool TryGetDeclaredEndTime(out OrchestrationTime endTime);
         void ValidateTimelineBinding(TimelineData timeline, Clip clip, List<string> errors, bool requireComplete);
         Func<ScriptableObject, string> CreateTimelineContentFingerprint();
         void CollectTimelineContentClosure(TimelineContentClosureBuilder builder, string sourcePath,
@@ -35,7 +35,7 @@ namespace BTSMTL.Timeline
 #if UNITY_EDITOR
     public interface ITimelineTerminalTimeAlignedClip
     {
-        bool AlignTerminalTime(FP terminalTime);
+        bool AlignTerminalTime(OrchestrationTime terminalTime);
     }
 #endif
 
@@ -281,17 +281,19 @@ namespace BTSMTL.Timeline
         public TimelineTrackContract(
             string kind,
             TimelineTrackOverlapPolicy overlapPolicy,
-            TimelineCapability capabilities,
+            TimelineContentKind contentKind,
             TimelineExecutionDomain executionDomain,
             TimelineOutputKind outputKind,
+            TimelineLogicSampleExtension? logicSampleExtension,
             params string[] allowedClipKinds)
             : this(
                 kind,
                 overlapPolicy,
-                capabilities,
+                contentKind,
                 executionDomain,
                 outputKind,
                 TimelineExecutionDomains.ToMask(executionDomain),
+                logicSampleExtension,
                 allowedClipKinds)
         {
         }
@@ -299,10 +301,11 @@ namespace BTSMTL.Timeline
         public TimelineTrackContract(
             string kind,
             TimelineTrackOverlapPolicy overlapPolicy,
-            TimelineCapability capabilities,
+            TimelineContentKind contentKind,
             TimelineExecutionDomain executionDomain,
             TimelineOutputKind outputKind,
             TimelineExecutionDomainMask allowedExecutionDomains,
+            TimelineLogicSampleExtension? logicSampleExtension,
             params string[] allowedClipKinds)
         {
             Kind = Require(kind, nameof(kind));
@@ -310,21 +313,30 @@ namespace BTSMTL.Timeline
                 throw new ArgumentException("Timeline Track contract requires clip kinds.", nameof(allowedClipKinds));
             m_AllowedClipKinds = Array.AsReadOnly((string[])allowedClipKinds.Clone());
             OverlapPolicy = overlapPolicy;
-            Capabilities = capabilities;
+            ContentKind = contentKind;
             ExecutionPolicy = new TimelineClipExecutionPolicy(executionDomain, outputKind);
             AllowedExecutionDomains = allowedExecutionDomains;
+            LogicSampleExtension = logicSampleExtension;
             if (AllowedExecutionDomains == TimelineExecutionDomainMask.None ||
                 (AllowedExecutionDomains & TimelineExecutionDomains.ToMask(executionDomain)) == 0)
             {
                 throw new ArgumentOutOfRangeException(nameof(allowedExecutionDomains));
             }
+            bool requiresLogicSampleExtension = contentKind == TimelineContentKind.Sampled &&
+                (allowedExecutionDomains & TimelineExecutionDomainMask.Logic) != 0;
+            if (requiresLogicSampleExtension != logicSampleExtension.HasValue)
+                throw new ArgumentException(requiresLogicSampleExtension
+                    ? $"Sampled Timeline Track '{Kind}' requires a Logic sample extension."
+                    : $"Timeline Track '{Kind}' does not declare sampled Logic execution.",
+                    nameof(logicSampleExtension));
         }
 
         public string Kind { get; }
         public TimelineTrackOverlapPolicy OverlapPolicy { get; }
-        public TimelineCapability Capabilities { get; }
+        public TimelineContentKind ContentKind { get; }
         public TimelineClipExecutionPolicy ExecutionPolicy { get; }
         public TimelineExecutionDomainMask AllowedExecutionDomains { get; }
+        public TimelineLogicSampleExtension? LogicSampleExtension { get; }
         public IReadOnlyList<string> AllowedClipKinds => m_AllowedClipKinds;
 
         public bool AllowsClip(string clipKind)
@@ -357,7 +369,7 @@ namespace BTSMTL.Timeline
             string kind,
             string trackKind,
             TimelineClipExecutionPhase executionPhase,
-            TimelineCapability capabilities,
+            TimelineContentKind contentKind,
             bool supportsStop,
             bool requiresPositiveDuration,
             TimelineExecutionDomain executionDomain,
@@ -367,7 +379,7 @@ namespace BTSMTL.Timeline
                 kind,
                 trackKind,
                 executionPhase,
-                capabilities,
+                contentKind,
                 supportsStop,
                 requiresPositiveDuration,
                 executionDomain,
@@ -382,7 +394,7 @@ namespace BTSMTL.Timeline
             string kind,
             string trackKind,
             TimelineClipExecutionPhase executionPhase,
-            TimelineCapability capabilities,
+            TimelineContentKind contentKind,
             bool supportsStop,
             bool requiresPositiveDuration,
             TimelineExecutionDomain executionDomain,
@@ -393,7 +405,7 @@ namespace BTSMTL.Timeline
                 kind,
                 trackKind,
                 executionPhase,
-                capabilities,
+                contentKind,
                 supportsStop,
                 requiresPositiveDuration,
                 executionDomain,
@@ -408,7 +420,7 @@ namespace BTSMTL.Timeline
             string kind,
             string trackKind,
             TimelineClipExecutionPhase executionPhase,
-            TimelineCapability capabilities,
+            TimelineContentKind contentKind,
             bool supportsStop,
             bool requiresPositiveDuration,
             TimelineExecutionDomain executionDomain,
@@ -419,7 +431,7 @@ namespace BTSMTL.Timeline
                 kind,
                 trackKind,
                 executionPhase,
-                capabilities,
+                contentKind,
                 supportsStop,
                 requiresPositiveDuration,
                 executionDomain,
@@ -434,7 +446,7 @@ namespace BTSMTL.Timeline
             string kind,
             string trackKind,
             TimelineClipExecutionPhase executionPhase,
-            TimelineCapability capabilities,
+            TimelineContentKind contentKind,
             bool supportsStop,
             bool requiresPositiveDuration,
             TimelineExecutionDomain executionDomain,
@@ -449,7 +461,7 @@ namespace BTSMTL.Timeline
             DefaultExecutionPhase = executionPhase == TimelineClipExecutionPhase.DecisionAndCommit
                 ? TimelineClipExecutionPhase.Commit
                 : executionPhase;
-            Capabilities = capabilities;
+            ContentKind = contentKind;
             SupportsStop = supportsStop;
             RequiresPositiveDuration = requiresPositiveDuration;
             ExecutionPolicy = new TimelineClipExecutionPolicy(executionDomain, outputKind);
@@ -469,7 +481,7 @@ namespace BTSMTL.Timeline
         public string TrackKind { get; }
         public TimelineClipExecutionPhase SupportedExecutionPhases { get; }
         public TimelineClipExecutionPhase DefaultExecutionPhase { get; }
-        public TimelineCapability Capabilities { get; }
+        public TimelineContentKind ContentKind { get; }
         public bool SupportsStop { get; }
         public bool RequiresPositiveDuration { get; }
         public TimelineClipExecutionPolicy ExecutionPolicy { get; }
@@ -713,7 +725,7 @@ namespace BTSMTL.Timeline
                     {
                         errors?.Add($"Timeline '{timeline.Name}' clip '{clip.AuthoringId}' uses unsupported execution domain '{executionDomain}'.");
                     }
-                    if (clip.StartTime < FP._0 || clip.EndTime < clip.StartTime || clipContract.RequiresPositiveDuration && clip.DurationTime <= FP._0)
+                    if (clip.StartTime < OrchestrationTime.Zero || clip.EndTime < clip.StartTime || clipContract.RequiresPositiveDuration && clip.DurationTime <= OrchestrationTime.Zero)
                         errors?.Add($"Timeline '{timeline.Name}' clip '{clip.AuthoringId}' has an invalid frame range.");
                     TimelineClipExecutionPhase executionPhase = clipContract.DefaultExecutionPhase;
                     if (clip is ITimelineClipExecutionPhaseSource phaseSource)

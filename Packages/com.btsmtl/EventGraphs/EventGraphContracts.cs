@@ -6,6 +6,12 @@ using System.Runtime.CompilerServices;
 
 namespace BTSMTL.EventGraphs
 {
+    public interface IEventGraphHostContext
+    {
+        EventGraphInvocationContext Invocation { get; }
+        EventGraphValue ReadInput(int slot);
+    }
+
     public enum EventGraphValueKind : byte
     {
         Bool = 1,
@@ -29,7 +35,7 @@ namespace BTSMTL.EventGraphs
     {
         public static bool TryGet(Type type, out EventGraphValueKind kind)
         {
-            if (type == typeof(CanonicalTextValue))
+            if (type == typeof(string))
                 kind = EventGraphValueKind.Text;
             else if (type == typeof(bool))
                 kind = EventGraphValueKind.Bool;
@@ -55,7 +61,7 @@ namespace BTSMTL.EventGraphs
 
         public static Type RequireType(EventGraphValueKind kind) => kind switch
         {
-            EventGraphValueKind.Text => typeof(CanonicalTextValue),
+            EventGraphValueKind.Text => typeof(string),
             EventGraphValueKind.Bool => typeof(bool),
             EventGraphValueKind.Int32 => typeof(int),
             EventGraphValueKind.Float32 => typeof(float),
@@ -72,7 +78,7 @@ namespace BTSMTL.EventGraphs
     [ValueStorage]
     public readonly partial struct EventGraphValue
     {
-        readonly CanonicalTextValue m_TextValue;
+        readonly string m_TextValue;
         readonly bool m_BoolValue;
         readonly int m_IntValue;
         readonly float m_FloatValue;
@@ -112,7 +118,7 @@ namespace BTSMTL.EventGraphs
             UnityEngine.Quaternion quaternionValue,
             Type enumType,
             int enumValue,
-            CanonicalTextValue textValue = default)
+            string textValue = default)
         {
             m_TextValue = textValue;
             Kind = kind;
@@ -128,17 +134,14 @@ namespace BTSMTL.EventGraphs
 
         public EventGraphValueKind Kind { get; }
 
-        public CanonicalTextValue TextValue
+        public string TextValue
         {
             get { RequireKind(EventGraphValueKind.Text); return m_TextValue; }
         }
 
-        public static EventGraphValue FromText(in CanonicalTextValue value) =>
+        public static EventGraphValue FromText(string value) =>
             new EventGraphValue(EventGraphValueKind.Text, false, 0, 0f, default, default, default, null, 0,
                 value);
-
-        public void Retain() => m_TextValue.Retain();
-        public void Release() => m_TextValue.Release();
 
 #if UNITY_EDITOR
         public void WriteRecordedFrameState<TWriter>(ref TWriter writer)
@@ -169,11 +172,7 @@ namespace BTSMTL.EventGraphs
                     writer.Write(m_EnumValue);
                     break;
                 case EventGraphValueKind.Text:
-                    using (CanonicalTextReadLease read = m_TextValue.AcquireRead())
-                    {
-                        writer.Write(m_TextValue.IsNull ? -1 : m_TextValue.Length);
-                        writer.WriteSpan(m_TextValue.Span);
-                    }
+                    writer.WriteText(m_TextValue);
                     break;
                 default:
                     throw new InvalidOperationException("Event graph recorded value kind is not supported.");
@@ -203,11 +202,7 @@ namespace BTSMTL.EventGraphs
                     return new EventGraphValue(kind, false, 0, 0f, default, default,
                         default, valueType, reader.Read<int>());
                 case EventGraphValueKind.Text:
-                    int length = reader.Read<int>();
-                    CanonicalTextValue text = length == -1 ? default
-                        : length == 0 ? CanonicalTextValue.Empty
-                        : CanonicalTextValue.FromString(new string(reader.ReadSpan<char>(length)));
-                    return FromText(in text);
+                    return FromText(reader.ReadText());
                 default:
                     throw new InvalidOperationException("Event graph recorded value kind is not supported.");
             }
@@ -353,8 +348,8 @@ namespace BTSMTL.EventGraphs
 
         public static EventGraphValue FromObject(object value)
         {
-            if (value is CanonicalTextValue textValue)
-                return FromText(in textValue);
+            if (value is string || value == null)
+                return FromText((string)value);
             if (value is bool boolValue)
                 return FromBool(boolValue);
             if (value is int intValue)
@@ -389,8 +384,8 @@ namespace BTSMTL.EventGraphs
 
         public T As<T>()
         {
-            if (typeof(T) == typeof(CanonicalTextValue) && Kind == EventGraphValueKind.Text)
-                return Reinterpret<CanonicalTextValue, T>(m_TextValue);
+            if (typeof(T) == typeof(string) && Kind == EventGraphValueKind.Text)
+                return Reinterpret<string, T>(m_TextValue);
             if (typeof(T) == typeof(bool) && Kind == EventGraphValueKind.Bool)
                 return Reinterpret<bool, T>(m_BoolValue);
             if (typeof(T) == typeof(int) && Kind == EventGraphValueKind.Int32)
@@ -420,7 +415,7 @@ namespace BTSMTL.EventGraphs
             if (typeof(T) == typeof(UnityEngine.Vector2)) return FromVector2(Unsafe.As<T, UnityEngine.Vector2>(ref value));
             if (typeof(T) == typeof(UnityEngine.Vector3)) return FromVector3(Unsafe.As<T, UnityEngine.Vector3>(ref value));
             if (typeof(T) == typeof(UnityEngine.Quaternion)) return FromQuaternion(Unsafe.As<T, UnityEngine.Quaternion>(ref value));
-            if (typeof(T) == typeof(CanonicalTextValue)) return FromText(Unsafe.As<T, CanonicalTextValue>(ref value));
+            if (typeof(T) == typeof(string)) return FromText(Unsafe.As<T, string>(ref value));
             if (typeof(T).IsEnum)
                 return new EventGraphValue(EventGraphValueKind.Enum, false, 0, 0f, default, default,
                     default, typeof(T), EventGraphEnumValue<T>.ToInt32(value));
@@ -750,9 +745,9 @@ namespace BTSMTL.EventGraphs
 
     public readonly struct EventGraphVariableFrame
     {
-        readonly Float32GraphVariableFrame m_Values;
+        readonly EventGraphValueFrame m_Values;
 
-        internal EventGraphVariableFrame(EventGraphVariableContract contract, Float32GraphVariableFrame values)
+        internal EventGraphVariableFrame(EventGraphVariableContract contract, EventGraphValueFrame values)
         {
             Contract = contract;
             m_Values = values;
@@ -772,7 +767,7 @@ namespace BTSMTL.EventGraphs
         {
             if (IsValid && Contract.Layout.TryGet(variableId, out EventGraphVariableLayoutEntry entry))
             {
-                value = EventGraphCompiledValues.FromState(m_Values.Read(entry.Index), entry.Descriptor.ValueType);
+                value = m_Values.Read(entry.Index);
                 return true;
             }
             value = default;
@@ -792,7 +787,7 @@ namespace BTSMTL.EventGraphs
         {
             if (IsValid && ReferenceEquals(Contract.Layout, binding.Layout))
             {
-                value = EventGraphCompiledValues.FromState(m_Values.Read(binding.Index), Contract.PublishedDescriptors[binding.Index].ValueType);
+                value = m_Values.Read(binding.Index);
                 return true;
             }
             value = default;
@@ -804,7 +799,7 @@ namespace BTSMTL.EventGraphs
             if (TryRead(binding, out EventGraphValue value))
                 return value;
             throw new InvalidOperationException(
-                $"Event graph variable binding '{binding.VariableId}' is unavailable in frame '{Invocation}'.");
+                $"Event graph variable binding '{binding.VariableId}' is unavailable in frame '{m_Values}'.");
         }
 
         public EventGraphValue Require(string variableId)
@@ -812,7 +807,7 @@ namespace BTSMTL.EventGraphs
             if (TryRead(variableId, out EventGraphValue value))
                 return value;
             throw new InvalidOperationException(
-                $"Event graph variable '{variableId}' is unavailable in frame '{Invocation}'.");
+                $"Event graph variable '{variableId}' is unavailable in frame '{m_Values}'.");
         }
     }
 

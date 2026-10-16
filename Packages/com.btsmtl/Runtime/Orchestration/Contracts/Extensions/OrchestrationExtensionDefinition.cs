@@ -16,6 +16,6 @@ namespace BTSMTL.Orchestration
 
         public OrchestrationExtensionReference CreateReference(int contentIndex, string sourcePath) =>
             new OrchestrationExtensionReference(Identity, SemanticVersion, contentIndex,
-                Contract.Kind, Contract.Access, Contract.Ports, Contract.Invocations, sourcePath);
+                Contract.Kind, Contract.Access, Contract.Ports, Contract.Fields, Contract.Invocations, sourcePath);
     }
 }

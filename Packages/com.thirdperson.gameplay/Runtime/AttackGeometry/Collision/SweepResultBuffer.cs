@@ -1,26 +1,27 @@
+using Photon.Deterministic;
 using System;
 
 namespace ThirdPersonSimulation.Collision
 {
-    public sealed class SweepResultBuffer<T, TSource> where T : struct, IComparable<T> where TSource : struct
+    public sealed class SweepResultBuffer<TSource> where TSource : struct
     {
-        readonly SweepCandidate<T>[] m_Candidates;
+        readonly SweepCandidate[] m_Candidates;
         int m_Count;
         TSource m_Source;
 
-        public SweepResultBuffer(int capacity) { m_Candidates = new SweepCandidate<T>[capacity]; }
+        public SweepResultBuffer(int capacity) { m_Candidates = new SweepCandidate[capacity]; }
         public int Capacity => m_Candidates.Length;
         public SweepQueryStatus Status { get; private set; }
         public ref readonly TSource Source => ref m_Source;
         public SweepBackendDescriptor Backend { get; private set; }
         public SweepTargetModel TargetModel { get; private set; }
-        public T TargetPoseTime { get; private set; }
+        public FP TargetPoseTime { get; private set; }
         public bool TimesComparable { get; private set; }
         public int FailureSegmentIndex { get; private set; }
         public SweepTargetIdentity FailureTarget { get; private set; }
         public int FailureNativeObjectId { get; private set; }
 
-        public ReadOnlySpan<SweepCandidate<T>> Candidates
+        public ReadOnlySpan<SweepCandidate> Candidates
         {
             get
             {
@@ -30,7 +31,7 @@ namespace ThirdPersonSimulation.Collision
             }
         }
 
-        public void Begin(in SweepQuery<T, TSource> query, SweepBackendDescriptor backend)
+        public void Begin(in SweepQuery<TSource> query, SweepBackendDescriptor backend)
         {
             if (Status != SweepQueryStatus.Available)
                 throw new InvalidOperationException("Sweep results must be released before reuse.");
@@ -45,12 +46,12 @@ namespace ThirdPersonSimulation.Collision
             Status = SweepQueryStatus.Writing;
         }
 
-        public bool Add(in SweepCandidate<T> candidate)
+        public bool Add(in SweepCandidate candidate)
         {
             TimesComparable &= (candidate.Fields & SweepContactFields.Time) != 0;
             for (int i = 0; i < m_Count; i++)
             {
-                ref readonly SweepCandidate<T> existing = ref m_Candidates[i];
+                ref readonly SweepCandidate existing = ref m_Candidates[i];
                 if (existing.Target.TargetId != candidate.Target.TargetId)
                     continue;
                 if (Compare(candidate, in existing, true) < 0)
@@ -67,7 +68,7 @@ namespace ThirdPersonSimulation.Collision
         {
             for (int i = 1; i < m_Count; i++)
             {
-                SweepCandidate<T> candidate = m_Candidates[i];
+                SweepCandidate candidate = m_Candidates[i];
                 int j = i - 1;
                 while (j >= 0 && Compare(candidate, m_Candidates[j], TimesComparable) < 0)
                 {
@@ -97,7 +98,7 @@ namespace ThirdPersonSimulation.Collision
             Status = SweepQueryStatus.Available;
         }
 
-        static int Compare(in SweepCandidate<T> left, in SweepCandidate<T> right, bool compareTimes)
+        static int Compare(in SweepCandidate left, in SweepCandidate right, bool compareTimes)
         {
             bool leftHasTime = (left.Fields & SweepContactFields.Time) != 0;
             bool rightHasTime = (right.Fields & SweepContactFields.Time) != 0;

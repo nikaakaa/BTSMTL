@@ -11,10 +11,11 @@ namespace BTSMTL.EventGraphs
         Func<EventGraphValue> m_ReadInput;
         Action<EventGraphValue, EventGraphVariableMutation> m_Mutate;
         Func<bool> m_IsLocked;
-        readonly HostEventGraphRuntime m_Runtime;
-        internal OperationHandle Operation { get; }
+        readonly Action m_Trigger;
+        internal int Operation { get; }
         internal int ValueSlot { get; }
-        internal CanonicalTextValue EnumIdentity { get; }
+        internal int EnumTypeContentId { get; }
+        internal int CompiledPortId { get; }
         public Port Port { get; }
         public bool IsInput { get; }
         public string GraphId { get; }
@@ -23,24 +24,24 @@ namespace BTSMTL.EventGraphs
         public string PortId => Port.ID;
         public bool IsTrigger => Port.type == typeof(Flow);
 
-        internal EventGraphRuntimePort(HostEventGraphRuntime runtime, Port port, bool input, OperationHandle operation, int slot)
+        internal EventGraphRuntimePort(string graph, Port port, bool input, int operation, int slot,
+            int compiledPortId, int enumTypeContentId, Func<EventGraphRuntimePort, bool, EventGraphValue> read,
+            Action<EventGraphRuntimePort, EventGraphValue, EventGraphVariableMutation> mutate,
+            Func<EventGraphRuntimePort, bool> isLocked, Action trigger)
         {
-            m_Runtime = runtime;
-            GraphId = runtime.Source.AuthoringId;
+            GraphId = graph;
             ValueType = port.type;
             Port = port;
             IsInput = input;
             Operation = operation;
             ValueSlot = slot;
-            if (ValueType.IsEnum)
-                EnumIdentity = CanonicalTextValue.FromString(ValueType.AssemblyQualifiedName);
-            if (!IsTrigger)
-            {
-                m_Read = () => runtime.ReadPort(this, false);
-                m_ReadInput = () => runtime.ReadPort(this, true);
-                m_Mutate = (value, mutation) => runtime.MutatePort(this, value, mutation);
-                m_IsLocked = () => runtime.IsPortLocked(this);
-            }
+            CompiledPortId = compiledPortId;
+            EnumTypeContentId = enumTypeContentId;
+            m_Read = () => read(this, false);
+            m_ReadInput = () => read(this, true);
+            m_Mutate = (value, mutation) => mutate(this, value, mutation);
+            m_IsLocked = () => isLocked(this);
+            m_Trigger = trigger;
         }
 
         public EventGraphRuntimePort(string graph, Port port, bool input, Type valueType, Func<EventGraphValue> read,
@@ -70,18 +71,25 @@ namespace BTSMTL.EventGraphs
 
         public void RestoreRecordedFrameState(ref RecordedRuntimeStateReader reader)
         {
+            EventGraphVariableMutation operation = ReadRecordedMutation(ref reader, ValueType, out EventGraphValue value);
+            m_Mutate(value, operation);
+        }
+
+        internal static EventGraphVariableMutation ReadRecordedMutation(ref RecordedRuntimeStateReader reader,
+            Type valueType, out EventGraphValue value)
+        {
             if (reader.Read<bool>())
             {
                 bool locked = reader.Read<bool>();
-                EventGraphValue value = EventGraphValue.ReadRecordedFrameState(ref reader, ValueType);
-                m_Mutate(value, locked ? EventGraphVariableMutation.Override : EventGraphVariableMutation.Assign);
+                value = EventGraphValue.ReadRecordedFrameState(ref reader, valueType);
+                return locked ? EventGraphVariableMutation.Override : EventGraphVariableMutation.Assign;
             }
-            else
-                m_Mutate(default, EventGraphVariableMutation.Release);
+            value = default;
+            return EventGraphVariableMutation.Release;
         }
 
         public void Mutate(EventGraphValue value, EventGraphVariableMutation operation) => m_Mutate(value, operation);
-        public void Trigger() => m_Runtime.QueuePortTrigger(NodeId, PortId, IsInput);
+        public void Trigger() => m_Trigger();
     }
 }
 #endif

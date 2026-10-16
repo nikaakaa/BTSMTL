@@ -1,8 +1,5 @@
-using ThirdPersonSimulation.QuantumNumerics;
 using System;
-using ThirdPersonSimulation;
-using Photon.Deterministic;
-using ThirdPersonSimulation.Serialization;
+using BTSMTL.Orchestration;
 
 namespace BTSMTL.Timeline
 {
@@ -31,8 +28,6 @@ namespace BTSMTL.Timeline
         readonly string[] m_ClipIdentities;
         readonly TimelineClipTimeRange[] m_Ranges;
         readonly string[] m_InvalidRangeErrors;
-        readonly string[] m_InvalidMotionErrors;
-        readonly string[] m_InvalidCameraErrors;
         readonly string[] m_OverlapErrors;
 
         public TimelineClipTimeEditBuffer(TimelineData timeline)
@@ -45,8 +40,6 @@ namespace BTSMTL.Timeline
             m_ClipIdentities = new string[count];
             m_Ranges = new TimelineClipTimeRange[count];
             m_InvalidRangeErrors = new string[count];
-            m_InvalidMotionErrors = new string[count];
-            m_InvalidCameraErrors = new string[count];
             m_OverlapErrors = new string[count * count];
             int slot = 0;
             for (int i = 0; i < timeline.Tracks.Count; i++)
@@ -56,8 +49,6 @@ namespace BTSMTL.Timeline
             for (int i = 0; i < count; i++)
             {
                 m_InvalidRangeErrors[i] = $"Clip '{m_Clips[i].Name}' 的起点、时长、混合或 ClipIn 不符合时间约束。";
-                m_InvalidMotionErrors[i] = $"Motion Clip '{m_Clips[i].Name}' 的源区间必须位于素材内，并且不能长于时间条。";
-                m_InvalidCameraErrors[i] = $"镜头片段 '{m_Clips[i].Name}' 必须有正窗口时长与合法的源起止范围。";
                 for (int j = i + 1; j < count; j++)
                     if (ReferenceEquals(m_Clips[i].Track, m_Clips[j].Track))
                         m_OverlapErrors[i * count + j] = $"Track '{m_Clips[i].Track.Name}' 不允许 Clip '{m_Clips[i].Name}' 与 '{m_Clips[j].Name}' 重叠。";
@@ -120,29 +111,17 @@ namespace BTSMTL.Timeline
             for (int i = 0; i < m_Clips.Length; i++)
             {
                 ref readonly TimelineClipTimeRange range = ref ranges[i];
-                FP duration = range.End - range.Start;
-                if (range.Start < FP._0 || duration < FP._0 ||
-                    catalog.RequireClip(m_Clips[i].ContractKind).RequiresPositiveDuration && duration == FP._0 ||
-                    range.EaseIn < FP._0 || range.EaseOut < FP._0 || range.ClipIn < FP._0)
+                OrchestrationTime duration = range.End - range.Start;
+                if (range.Start < OrchestrationTime.Zero || duration < OrchestrationTime.Zero ||
+                    catalog.RequireClip(m_Clips[i].ContractKind).RequiresPositiveDuration && duration == OrchestrationTime.Zero ||
+                    range.EaseIn < OrchestrationTime.Zero || range.EaseOut < OrchestrationTime.Zero || range.ClipIn < OrchestrationTime.Zero)
                 {
                     error = m_InvalidRangeErrors[i];
                     return false;
                 }
-                if (m_Clips[i] is MotionCurveClip motion &&
-                    (!float.IsFinite(range.SourceStart) || !float.IsFinite(range.SourceEnd) || range.SourceStart < 0f ||
-                     range.SourceEnd <= range.SourceStart || range.SourceEnd > motion.SourceCurve.Duration ||
-                     QuantumScalarBoundary.ConvertExternal(range.SourceEnd - range.SourceStart, nameof(TimelineClipTimeEditBuffer)) > duration))
-                {
-                    error = m_InvalidMotionErrors[i];
+                if (m_Clips[i] is ITimelineClipTimeRangeValidator validator &&
+                    !validator.TryValidateTimeRange(in range, out error))
                     return false;
-                }
-                if (m_Clips[i] is CameraEffectClip { Effect: ITimelineCameraSourceAsset source } &&
-                    (duration <= FP._0 || !float.IsFinite(range.SourceStart) || !float.IsFinite(range.SourceEnd) ||
-                     range.SourceStart < 0f || range.SourceEnd <= range.SourceStart || range.SourceEnd > source.SourceDuration))
-                {
-                    error = m_InvalidCameraErrors[i];
-                    return false;
-                }
             }
             int trackStart = 0;
             for (int trackIndex = 0; trackIndex < m_Timeline.Tracks.Count; trackIndex++)
@@ -162,9 +141,6 @@ namespace BTSMTL.Timeline
             error = string.Empty;
             return true;
         }
-
-        public StableHash ComputeRevision(string baselineContentHash) =>
-            MemoryPackTimelineContent.ComputeRevision(baselineContentHash, m_Ranges);
 
         public int[] CreateContentSlots(TimelineContentUnit content)
         {

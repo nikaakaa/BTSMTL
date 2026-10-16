@@ -170,16 +170,6 @@ namespace ThirdPersonSimulation
         void CopyFrom(IValueResources source);
     }
 
-    [AttributeUsage(AttributeTargets.Struct)]
-    public sealed class ValueUnionOmittedAttribute : Attribute
-    {
-    }
-
-    [ValueUnionOmitted]
-    public readonly struct CanonicalUnavailable
-    {
-    }
-
     [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
     public sealed class ValueUnionCaseAttribute : Attribute
     {

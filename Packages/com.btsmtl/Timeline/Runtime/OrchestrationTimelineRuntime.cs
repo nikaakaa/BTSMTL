@@ -79,6 +79,7 @@ namespace BTSMTL.Timeline.Runtime
             ref OrchestrationTimelinePlaybackState<TTime> playback = ref Playback(candidate, slot);
             playback = default;
             playback.Start = start;
+            playback.LastConsumedTick = start.StartTick == 0 ? 0 : start.StartTick - 1;
             playback.Progress.CursorTime = start.StartTime;
             playback.Progress.Control.Rate = default(TClock).One;
             playback.Progress.InitialBoundaryState = OrchestrationTimelineInitialBoundaryState.Pending;
@@ -94,6 +95,8 @@ namespace BTSMTL.Timeline.Runtime
             ref OrchestrationTimelineWorkspace<TTime>.Operation work = ref workspace.Operations[slot];
             work = default;
             work.Proposed = playback;
+            int tickCount = checked((int)checked(step.Tick - playback.LastConsumedTick));
+            work.Proposed.LastConsumedTick = step.Tick;
             work.Proposed.InvocationSequence = checked(playback.InvocationSequence + 1);
             work.BatchSequence = workspace.NextBatchSequence();
             work.Tick = step.Tick;
@@ -104,7 +107,7 @@ namespace BTSMTL.Timeline.Runtime
             work.PreviousTime = previous;
             work.PreviousCycle = previousCycle;
             TTime target = TimelineRuntimeScheduling<TTime, TClock>.Target(previous, previousCycle,
-                playback.Progress.TimeCarry, content.Duration, content.TickRate, step.TickCount,
+                playback.Progress.TimeCarry, content.Duration, content.TickRate, tickCount,
                 step.Rate, work.Paused, out int carry);
             TTime time;
             int cycle = previousCycle;

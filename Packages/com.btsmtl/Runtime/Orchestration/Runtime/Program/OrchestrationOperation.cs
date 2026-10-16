@@ -9,7 +9,7 @@ namespace BTSMTL.Orchestration
             int extensionBindingIndex, int graphCallIndex, OrchestrationRange inputs,
             int outputCount, int outputSlotOffset, OrchestrationRange lifecycleHooks,
             int blackboardFactsBindingIndex, int parentStateOperationIndex,
-            OrchestrationRange outputAssignments)
+            OrchestrationRange outputAssignments, int executionFrameOwnerOperationIndex)
         {
             Code = code;
             IsRunnable = isRunnable;
@@ -32,6 +32,7 @@ namespace BTSMTL.Orchestration
             BlackboardFactsBindingIndex = blackboardFactsBindingIndex;
             ParentStateOperationIndex = parentStateOperationIndex;
             OutputAssignments = outputAssignments;
+            ExecutionFrameOwnerOperationIndex = executionFrameOwnerOperationIndex;
         }
 
         public OrchestrationOperationCode Code { get; }
@@ -58,6 +59,7 @@ namespace BTSMTL.Orchestration
         public int BlackboardFactsBindingIndex { get; }
         public int ParentStateOperationIndex { get; }
         public OrchestrationRange OutputAssignments { get; }
+        public int ExecutionFrameOwnerOperationIndex { get; }
     }
 
     public readonly struct OrchestrationCorePorts

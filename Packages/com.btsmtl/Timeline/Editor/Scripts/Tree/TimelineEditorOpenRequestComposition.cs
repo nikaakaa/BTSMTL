@@ -9,6 +9,7 @@ namespace BTSMTL.Timeline.Editor
             UnityEngine.Object serializedOwner,
             string serializedPropertyPath,
             string ownershipLabel,
+            TimelineContractCatalog contracts,
             ITimelineEditorRuntimeDebugBinding runtimeDebugBinding = null,
             ITimelineTimeRangePreview timeRangePreview = null)
         {
@@ -18,7 +19,7 @@ namespace BTSMTL.Timeline.Editor
                 serializedPropertyPath,
                 ownershipLabel,
                 runtimeDebugBinding,
-                TimelineTreeContractComposition.Create(), TimelineWorkspaceModeBridge.Authoring,
+                contracts, TimelineWorkspaceModeBridge.Authoring,
                 timeRangePreview: timeRangePreview);
         }
     }

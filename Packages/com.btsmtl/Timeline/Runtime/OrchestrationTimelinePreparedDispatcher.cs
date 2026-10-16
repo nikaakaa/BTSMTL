@@ -22,13 +22,18 @@ namespace BTSMTL.Timeline.Runtime
         readonly OrchestrationTimelineRuntime<TTime, TClock> m_Runtime;
         readonly OrchestrationTimelineWorkspace<TTime> m_Workspace;
         readonly IOrchestrationTimelineBindings<TTime, TValue, TContext> m_Bindings;
+        readonly ITimelineRuntimeLogicSamples<TValue, TContext> m_Samples;
+        readonly TValue[] m_SampleInputs;
 
         public OrchestrationTimelinePreparedDispatcher(OrchestrationTimelineRuntime<TTime, TClock> runtime,
-            OrchestrationTimelineWorkspace<TTime> workspace, IOrchestrationTimelineBindings<TTime, TValue, TContext> bindings)
+            OrchestrationTimelineWorkspace<TTime> workspace, IOrchestrationTimelineBindings<TTime, TValue, TContext> bindings,
+            ITimelineRuntimeLogicSamples<TValue, TContext> samples)
         {
             m_Runtime = runtime;
             m_Workspace = workspace;
             m_Bindings = bindings;
+            m_Samples = samples;
+            m_SampleInputs = new TValue[samples.InputValueCapacity];
         }
 
         public OrchestrationOperationResult Tick(
@@ -52,7 +57,13 @@ namespace BTSMTL.Timeline.Runtime
             OrchestrationTimelineStep<TTime> step = m_Bindings.Step(operationIndex,
                 in playback.Start, tick, inputs, ref context);
             OrchestrationTimelineBatch<TTime> batch = m_Runtime.BeginAdvance(candidate, slot, step, m_Workspace);
-            cursor.ExecuteTimelineBatch(batch);
+            OrchestrationStopContext stopContext = OrchestrationStopContext.ParentStop(operationIndex);
+            cursor.ExecuteTimelineBatch(batch, playbackIdentity, in stopContext);
+            ref readonly OrchestrationTimelineWorkspace<TTime>.Operation work = ref m_Workspace.Operations[slot];
+            m_Samples.Invoke(operationIndex, operationGeneration, tick, slot, playbackIdentity,
+                OrchestrationTime.FromRaw(default(TClock).Raw(work.PreviousTime)), work.PreviousCycle,
+                OrchestrationTime.FromRaw(default(TClock).Raw(work.Proposed.Progress.CursorTime)),
+                work.Proposed.Progress.Cycle, m_SampleInputs, cursor.StateAncestors(operationIndex), ref context);
             m_Runtime.Complete(candidate, slot, in batch, m_Workspace);
             if (batch.Status == OrchestrationTimelinePlaybackStatus.Completed)
             {
@@ -76,7 +87,7 @@ namespace BTSMTL.Timeline.Runtime
                 SourceIdentityId = playback.Start.SourceIdentityId
             };
             OrchestrationTimelineBatch<TTime> batch = m_Runtime.BeginStop(candidate, slot, stop, force, m_Workspace);
-            cursor.ExecuteTimelineBatch(batch);
+            cursor.ExecuteTimelineBatch(batch, playbackIdentity, in stopContext);
             m_Runtime.Complete(candidate, slot, in batch, m_Workspace);
             m_Runtime.ReleasePlayback(candidate, playbackIdentity);
             playbackIdentity = 0;
@@ -94,11 +105,32 @@ namespace BTSMTL.Timeline.Runtime
             return ReleaseInvocation(ref context);
         }
 
-        public void EnterInvocation(int playbackSlot, int invocationIndex,
+        public int EnterInvocation(int playbackSlot, int invocationIndex,
             ref TContext context)
         {
             m_Workspace.EnterInvocation(playbackSlot, invocationIndex);
-            m_Bindings.EnterInvocation(in m_Workspace.CurrentStart, in m_Workspace.CurrentInvocation, ref context);
+            return m_Bindings.EnterInvocation(in m_Workspace.CurrentStart, in m_Workspace.CurrentInvocation, ref context);
+        }
+
+        public void SelectExecutionFrame(int frameSlot, ref TContext context) =>
+            m_Bindings.SelectExecutionFrame(frameSlot, ref context);
+
+        public OrchestrationTimelineInvocationFacts ReadInvocationFacts()
+        {
+            ref readonly OrchestrationTimelineInvocation<TTime> current = ref m_Workspace.CurrentInvocation;
+            ref readonly OrchestrationTimelineWorkspace<TTime>.Operation work =
+                ref m_Workspace.Operations[current.Token.PlaybackSlot];
+            TClock clock = default;
+            var invocation = new OrchestrationTimelineInvocation<OrchestrationTime>(current.Token,
+                current.Entry, current.Hook, current.Tick, current.SourceIdentityId,
+                OrchestrationTime.FromRaw(clock.Raw(current.Time)),
+                OrchestrationTime.FromRaw(clock.Raw(current.PreviousTime)),
+                OrchestrationTime.FromRaw(clock.Raw(current.WindowStartTime)),
+                OrchestrationTime.FromRaw(clock.Raw(current.BodyStartFraction)),
+                OrchestrationTime.FromRaw(clock.Raw(current.BodyEndFraction)));
+            return new OrchestrationTimelineInvocationFacts(in invocation, work.Proposed.Start.SourceIdentityId,
+                OrchestrationTime.FromRaw(clock.Raw(work.PreviousTime)), work.PreviousCycle,
+                OrchestrationTime.FromRaw(clock.Raw(work.Proposed.Progress.CursorTime)), work.Proposed.Progress.Cycle);
         }
 
         public OrchestrationOperationResult ReleaseInvocation(ref TContext context) =>

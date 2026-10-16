@@ -36,18 +36,16 @@ namespace BTSMTL.Orchestration
 
     public readonly struct OrchestrationTimelineStep<TTime> where TTime : unmanaged
     {
-        public OrchestrationTimelineStep(ulong tick, int tickCount, TTime rate,
+        public OrchestrationTimelineStep(ulong tick, TTime rate,
             bool paused, int sourceIdentityId)
         {
             Tick = tick;
-            TickCount = tickCount;
             Rate = rate;
             Paused = paused;
             SourceIdentityId = sourceIdentityId;
         }
 
         public ulong Tick { get; }
-        public int TickCount { get; }
         public TTime Rate { get; }
         public bool Paused { get; }
         public int SourceIdentityId { get; }
@@ -104,6 +102,29 @@ namespace BTSMTL.Orchestration
         public TTime WindowStartTime { get; }
         public TTime BodyStartFraction { get; }
         public TTime BodyEndFraction { get; }
+    }
+
+    public readonly struct OrchestrationTimelineInvocationFacts
+    {
+        public OrchestrationTimelineInvocationFacts(in OrchestrationTimelineInvocation<OrchestrationTime> invocation,
+            int startSourceIdentityId, OrchestrationTime advancePreviousTime, int advancePreviousCycle,
+            OrchestrationTime advanceTime, int advanceCycle)
+        {
+            Invocation = invocation;
+            StartSourceIdentityId = startSourceIdentityId;
+            AdvancePreviousTime = advancePreviousTime;
+            AdvancePreviousCycle = advancePreviousCycle;
+            AdvanceTime = advanceTime;
+            AdvanceCycle = advanceCycle;
+        }
+
+        public readonly OrchestrationTimelineInvocation<OrchestrationTime> Invocation;
+        public int StartSourceIdentityId { get; }
+        public OrchestrationTime AdvancePreviousTime { get; }
+        public int AdvancePreviousCycle { get; }
+        public OrchestrationTime AdvanceTime { get; }
+        public int AdvanceCycle { get; }
+        public bool HasInvocation => Invocation.Token.PlaybackIdentity != 0;
     }
 
     public readonly ref struct OrchestrationTimelineBatch<TTime> where TTime : unmanaged
@@ -164,9 +185,11 @@ namespace BTSMTL.Orchestration
             in OrchestrationTimelineStart<TTime> start, ulong tick, ReadOnlySpan<TValue> inputs,
             ref TContext context);
 
-        void EnterInvocation(in OrchestrationTimelineStart<TTime> start,
+        int EnterInvocation(in OrchestrationTimelineStart<TTime> start,
             in OrchestrationTimelineInvocation<TTime> invocation,
             ref TContext context);
+
+        void SelectExecutionFrame(int frameSlot, ref TContext context);
 
         OrchestrationOperationResult ReleaseInvocation(in OrchestrationTimelineStart<TTime> start,
             in OrchestrationTimelineInvocation<TTime> invocation,

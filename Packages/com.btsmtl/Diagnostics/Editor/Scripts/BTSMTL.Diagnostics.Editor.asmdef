@@ -3,15 +3,14 @@
     "rootNamespace": "BTSMTL.Diagnostics.Editor",
     "references": [
         "GUID:349d62e8ffbe48b8ad6e03ccd8cbaf71",
-        "ThirdPerson.Shared.Contracts",
-        "ThirdPersonSimulation.Core"
+        "ThirdPerson.Shared.Contracts"
     ],
     "includePlatforms": [
         "Editor"
     ],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
-    "overrideReferences": false,
+    "overrideReferences": true,
     "precompiledReferences": [],
     "autoReferenced": true,
     "defineConstraints": [],

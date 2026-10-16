@@ -64,9 +64,9 @@ namespace BTSMTL.EventGraphs
     }
     [Name("Text Equal")]
     [Category("Values/Text")]
-    public sealed class EventGraphTextEqualNode : PureFunctionNode<bool, CanonicalTextValue, CanonicalTextValue>
+    public sealed class EventGraphTextEqualNode : PureFunctionNode<bool, string, string>
     {
-        public override bool Invoke(CanonicalTextValue a, CanonicalTextValue b) =>
+        public override bool Invoke(string a, string b) =>
             throw new InvalidOperationException("BTSMTL 基础值节点由共用图求值器执行。");
     }
 

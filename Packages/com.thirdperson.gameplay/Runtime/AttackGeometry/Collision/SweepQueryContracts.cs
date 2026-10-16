@@ -1,3 +1,4 @@
+using Photon.Deterministic;
 using System;
 
 namespace ThirdPersonSimulation.Collision
@@ -23,7 +24,6 @@ namespace ThirdPersonSimulation.Collision
     [Flags]
     public enum SweepTargetModel : byte
     {
-        ScenePose = 1,
         StationaryPose = 2,
         LinearTranslation = 4,
         RigidRotation = 8
@@ -53,45 +53,27 @@ namespace ThirdPersonSimulation.Collision
         UnsupportedShape = 4,
         UnsupportedMotion = 5,
         TargetTimeMismatch = 6,
-        UnmappedCollider = 7,
         NativeIterationLimit = 8
     }
 
-    public readonly struct SweepVector3<T> where T : struct
+    public readonly struct SweepPose
     {
-        public SweepVector3(T x, T y, T z) { X = x; Y = y; Z = z; }
-        public T X { get; }
-        public T Y { get; }
-        public T Z { get; }
-    }
-
-    public readonly struct SweepQuaternion<T> where T : struct
-    {
-        public SweepQuaternion(T x, T y, T z, T w) { X = x; Y = y; Z = z; W = w; }
-        public T X { get; }
-        public T Y { get; }
-        public T Z { get; }
-        public T W { get; }
-    }
-
-    public readonly struct SweepPose<T> where T : struct
-    {
-        public SweepPose(SweepVector3<T> position, SweepQuaternion<T> orientation)
+        public SweepPose(FPVector3 position, FPQuaternion orientation)
         {
             Position = position;
             Orientation = orientation;
         }
-        public SweepVector3<T> Position { get; }
-        public SweepQuaternion<T> Orientation { get; }
+        public FPVector3 Position { get; }
+        public FPQuaternion Orientation { get; }
     }
 
-    public readonly struct SweepShape<T> where T : struct
+    public readonly struct SweepShape
     {
-        readonly SweepVector3<T>[] m_Vertices;
-        readonly SweepConvexPart<T>[] m_Parts;
+        readonly FPVector3[] m_Vertices;
+        readonly SweepConvexPart[] m_Parts;
 
-        SweepShape(ulong id, SweepShapeKind kind, T radius, T halfLength, SweepVector3<T> halfExtents,
-            SweepVector3<T>[] vertices = null, SweepConvexPart<T>[] parts = null)
+        SweepShape(ulong id, SweepShapeKind kind, FP radius, FP halfLength, FPVector3 halfExtents,
+            FPVector3[] vertices = null, SweepConvexPart[] parts = null)
         {
             Id = id;
             Kind = kind;
@@ -103,30 +85,30 @@ namespace ThirdPersonSimulation.Collision
         }
         public ulong Id { get; }
         public SweepShapeKind Kind { get; }
-        public T Radius { get; }
-        public T HalfLength { get; }
-        public SweepVector3<T> HalfExtents { get; }
-        public ReadOnlySpan<SweepVector3<T>> Vertices => m_Vertices;
-        public ReadOnlySpan<SweepConvexPart<T>> Parts => m_Parts;
-        public static SweepShape<T> Sphere(ulong id, T radius) => new SweepShape<T>(id, SweepShapeKind.Sphere, radius, default, default);
-        public static SweepShape<T> Capsule(ulong id, T radius, T halfLength) => new SweepShape<T>(id, SweepShapeKind.Capsule, radius, halfLength, default);
-        public static SweepShape<T> Box(ulong id, SweepVector3<T> halfExtents) => new SweepShape<T>(id, SweepShapeKind.Box, default, default, halfExtents);
-        public static SweepShape<T> ConvexHull(ulong id, ReadOnlySpan<SweepVector3<T>> vertices) =>
-            new SweepShape<T>(id, SweepShapeKind.ConvexHull, default, default, default, vertices.ToArray());
-        public static SweepShape<T> ConvexMesh(ulong id, ReadOnlySpan<SweepConvexPart<T>> parts) =>
-            new SweepShape<T>(id, SweepShapeKind.ConvexMesh, default, default, default, parts: parts.ToArray());
+        public FP Radius { get; }
+        public FP HalfLength { get; }
+        public FPVector3 HalfExtents { get; }
+        public ReadOnlySpan<FPVector3> Vertices => m_Vertices;
+        public ReadOnlySpan<SweepConvexPart> Parts => m_Parts;
+        public static SweepShape Sphere(ulong id, FP radius) => new SweepShape(id, SweepShapeKind.Sphere, radius, default, default);
+        public static SweepShape Capsule(ulong id, FP radius, FP halfLength) => new SweepShape(id, SweepShapeKind.Capsule, radius, halfLength, default);
+        public static SweepShape Box(ulong id, FPVector3 halfExtents) => new SweepShape(id, SweepShapeKind.Box, default, default, halfExtents);
+        public static SweepShape ConvexHull(ulong id, ReadOnlySpan<FPVector3> vertices) =>
+            new SweepShape(id, SweepShapeKind.ConvexHull, default, default, default, vertices.ToArray());
+        public static SweepShape ConvexMesh(ulong id, ReadOnlySpan<SweepConvexPart> parts) =>
+            new SweepShape(id, SweepShapeKind.ConvexMesh, default, default, default, parts: parts.ToArray());
     }
 
-    public readonly struct SweepConvexPart<T> where T : struct
+    public readonly struct SweepConvexPart
     {
-        public SweepConvexPart(int shapeIndex, SweepPose<T> localPose)
+        public SweepConvexPart(int shapeIndex, SweepPose localPose)
         {
             ShapeIndex = shapeIndex;
             LocalPose = localPose;
         }
 
         public int ShapeIndex { get; }
-        public SweepPose<T> LocalPose { get; }
+        public SweepPose LocalPose { get; }
     }
 
     public readonly struct SweepTrack
@@ -144,24 +126,24 @@ namespace ThirdPersonSimulation.Collision
         public string SamplingSource { get; }
     }
 
-    public readonly struct SweepSample<T> where T : struct
+    public readonly struct SweepSample
     {
-        public SweepSample(T time, SweepPose<T> pose) { Time = time; Pose = pose; }
-        public T Time { get; }
-        public SweepPose<T> Pose { get; }
+        public SweepSample(FP time, SweepPose pose) { Time = time; Pose = pose; }
+        public FP Time { get; }
+        public SweepPose Pose { get; }
     }
 
-    public readonly struct SweepSegment<T> where T : struct
+    public readonly struct SweepSegment
     {
-        public SweepSegment(SweepTrack track, SweepSample<T> start, SweepSample<T> end)
+        public SweepSegment(SweepTrack track, SweepSample start, SweepSample end)
         {
             Track = track;
             Start = start;
             End = end;
         }
         public SweepTrack Track { get; }
-        public SweepSample<T> Start { get; }
-        public SweepSample<T> End { get; }
+        public SweepSample Start { get; }
+        public SweepSample End { get; }
     }
 
     public readonly struct SweepTargetIdentity
@@ -171,9 +153,9 @@ namespace ThirdPersonSimulation.Collision
         public ulong ShapeId { get; }
     }
 
-    public readonly struct SweepTarget<T> where T : struct
+    public readonly struct SweepTarget
     {
-        public SweepTarget(SweepTargetIdentity identity, int shapeIndex, int layer, bool isTrigger, SweepSample<T> start, SweepSample<T> end)
+        public SweepTarget(SweepTargetIdentity identity, int shapeIndex, int layer, bool isTrigger, SweepSample start, SweepSample end)
         {
             Identity = identity;
             ShapeIndex = shapeIndex;
@@ -186,8 +168,8 @@ namespace ThirdPersonSimulation.Collision
         public int ShapeIndex { get; }
         public int Layer { get; }
         public bool IsTrigger { get; }
-        public SweepSample<T> Start { get; }
-        public SweepSample<T> End { get; }
+        public SweepSample Start { get; }
+        public SweepSample End { get; }
     }
 
     public readonly struct SweepFilter
@@ -224,9 +206,9 @@ namespace ThirdPersonSimulation.Collision
         public bool Deterministic { get; }
     }
 
-    public readonly ref struct SweepQuery<T, TSource> where T : struct where TSource : struct
+    public readonly ref struct SweepQuery<TSource> where TSource : struct
     {
-        public SweepQuery(in TSource source, ReadOnlySpan<SweepSegment<T>> segments, ReadOnlySpan<SweepTarget<T>> targets, SweepTargetModel targetModel, T targetPoseTime, SweepFilter filter)
+        public SweepQuery(in TSource source, ReadOnlySpan<SweepSegment> segments, ReadOnlySpan<SweepTarget> targets, SweepTargetModel targetModel, FP targetPoseTime, SweepFilter filter)
         {
             Source = source;
             Segments = segments;
@@ -236,22 +218,16 @@ namespace ThirdPersonSimulation.Collision
             Filter = filter;
         }
         public TSource Source { get; }
-        public ReadOnlySpan<SweepSegment<T>> Segments { get; }
-        public ReadOnlySpan<SweepTarget<T>> Targets { get; }
+        public ReadOnlySpan<SweepSegment> Segments { get; }
+        public ReadOnlySpan<SweepTarget> Targets { get; }
         public SweepTargetModel TargetModel { get; }
-        public T TargetPoseTime { get; }
+        public FP TargetPoseTime { get; }
         public SweepFilter Filter { get; }
     }
 
-    public interface ISweepQueryBackend<T> where T : struct, IComparable<T>
+    public readonly struct SweepCandidate
     {
-        SweepBackendDescriptor Descriptor { get; }
-        SweepQueryStatus SweepAll<TSource>(in SweepQuery<T, TSource> query, SweepResultBuffer<T, TSource> results) where TSource : struct;
-    }
-
-    public readonly struct SweepCandidate<T> where T : struct
-    {
-        public SweepCandidate(SweepTargetIdentity target, ulong trackId, ulong shapeId, int segmentIndex, SweepMotionModel motion, SweepContactKind kind, SweepContactFields fields, T time, T fraction, T targetPoseTime, SweepVector3<T> point, SweepVector3<T> normal, int sourcePartIndex = 0, int targetPartIndex = 0)
+        public SweepCandidate(SweepTargetIdentity target, ulong trackId, ulong shapeId, int segmentIndex, SweepMotionModel motion, SweepContactKind kind, SweepContactFields fields, FP time, FP fraction, FP targetPoseTime, FPVector3 point, FPVector3 normal, int sourcePartIndex = 0, int targetPartIndex = 0)
         {
             Target = target;
             TrackId = trackId;
@@ -277,10 +253,10 @@ namespace ThirdPersonSimulation.Collision
         public SweepMotionModel Motion { get; }
         public SweepContactKind Kind { get; }
         public SweepContactFields Fields { get; }
-        public T Time { get; }
-        public T Fraction { get; }
-        public T TargetPoseTime { get; }
-        public SweepVector3<T> Point { get; }
-        public SweepVector3<T> Normal { get; }
+        public FP Time { get; }
+        public FP Fraction { get; }
+        public FP TargetPoseTime { get; }
+        public FPVector3 Point { get; }
+        public FPVector3 Normal { get; }
     }
 }

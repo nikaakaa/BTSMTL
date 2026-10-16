@@ -15,6 +15,8 @@
     <ProjectReference Include="..\ThirdPerson.Shared.Contracts\ThirdPerson.Shared.Contracts.csproj" />
     <ProjectReference Include="..\ThirdPersonGameplay.Orchestration.Contracts\ThirdPersonGameplay.Orchestration.Contracts.csproj" />
     <ProjectReference Include="..\BTSMTL.Orchestration.Contracts\BTSMTL.Orchestration.Contracts.csproj" />
+    <ProjectReference Include="..\BTSMTL.Orchestration.Runtime\BTSMTL.Orchestration.Runtime.csproj" />
+    <ProjectReference Include="..\ThirdPersonSimulation.Timeline\ThirdPersonSimulation.Timeline.csproj" />
     <ProjectReference Include="..\ThirdPersonGameplay.Configuration\ThirdPersonGameplay.Configuration.csproj" />
     <Reference Include="Quantum.Deterministic">
       <HintPath>$(MSBuildThisFileDirectory)..\..\..\3C\3cDemo\Client\3C_Client\Assets\Photon\Quantum\Assemblies\Quantum.Deterministic.dll</HintPath>

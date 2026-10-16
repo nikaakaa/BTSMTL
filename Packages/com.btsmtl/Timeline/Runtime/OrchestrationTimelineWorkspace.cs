@@ -21,7 +21,8 @@ namespace BTSMTL.Timeline.Runtime
         public int TreeExitsPerPlayback { get; }
 
         public static OrchestrationTimelinePreparedCapacity Prepare<TTime>(
-            ReadOnlySpan<OrchestrationTimelinePreparedContent<TTime>> contents, int playbackCount)
+            ReadOnlySpan<OrchestrationTimelinePreparedContent<TTime>> contents,
+            OrchestrationExecutionCapacity executionCapacity)
             where TTime : unmanaged, IEquatable<TTime>
         {
             int activeTrees = 0;
@@ -33,7 +34,8 @@ namespace BTSMTL.Timeline.Runtime
                 exitRequests = Math.Max(exitRequests, content.RequiredTreeExitRequests);
                 exits = Math.Max(exits, content.RequiredTreeExits);
             }
-            return new OrchestrationTimelinePreparedCapacity(playbackCount, activeTrees, exitRequests, exits);
+            return new OrchestrationTimelinePreparedCapacity(executionCapacity.PlaybackCount,
+                activeTrees, exitRequests, exits);
         }
 
         public OrchestrationTimelineStateLayout<TPlayback> CreateLayout<TPlayback>(
@@ -49,7 +51,7 @@ namespace BTSMTL.Timeline.Runtime
     public sealed class OrchestrationTimelinePreparedContent<TTime>
         where TTime : unmanaged, IEquatable<TTime>
     {
-        public OrchestrationTimelinePreparedContent(int contentIdentityId, int contentRevisionId,
+        internal OrchestrationTimelinePreparedContent(int contentIdentityId, int contentRevisionId,
             TTime duration, int tickRate, OrchestrationTimelinePlaybackMode mode,
             ReadOnlyMemory<TimelineSchedulingClip<TTime>> clips,
             ReadOnlyMemory<int> treeOrdinals,
@@ -57,7 +59,9 @@ namespace BTSMTL.Timeline.Runtime
             ReadOnlyMemory<TimelineSchedulingSection<TTime>> sections,
             ReadOnlyMemory<OrchestrationTimelineEntryBinding> clipEntries,
             ReadOnlyMemory<OrchestrationExecutionEntry> markerEntries,
-            int requiredActiveTrees, int requiredTreeExitRequests, int requiredTreeExits)
+            int requiredActiveTrees, int requiredTreeExitRequests, int requiredTreeExits,
+            OrchestrationTimelineCallCapacity callCapacity,
+            in OrchestrationTimelineTickContentCapacity tickCapacity)
         {
             ContentIdentityId = contentIdentityId;
             ContentRevisionId = contentRevisionId;
@@ -73,6 +77,8 @@ namespace BTSMTL.Timeline.Runtime
             RequiredActiveTrees = requiredActiveTrees;
             RequiredTreeExitRequests = requiredTreeExitRequests;
             RequiredTreeExits = requiredTreeExits;
+            CallCapacity = callCapacity;
+            TickCapacity = tickCapacity;
         }
 
         public int ContentIdentityId { get; }
@@ -89,6 +95,8 @@ namespace BTSMTL.Timeline.Runtime
         public int RequiredActiveTrees { get; }
         public int RequiredTreeExitRequests { get; }
         public int RequiredTreeExits { get; }
+        public OrchestrationTimelineCallCapacity CallCapacity { get; }
+        public OrchestrationTimelineTickContentCapacity TickCapacity { get; }
     }
 
     public sealed class OrchestrationTimelineWorkspace<TTime>
@@ -119,17 +127,12 @@ namespace BTSMTL.Timeline.Runtime
             for (int i = 0; i < contents.Length; i++)
             {
                 OrchestrationTimelinePreparedContent<TTime> content = contents[i];
-                int trees = 0;
-                foreach (ref readonly TimelineSchedulingClip<TTime> clip in content.Clips.Span)
-                    if (clip.Logic && clip.Tree)
-                        trees++;
                 int traversals = content.Mode == OrchestrationTimelinePlaybackMode.Loop
                     ? OrchestrationTimelineLimits.MaximumCycleAdvance + 1 : 1;
                 clips = Math.Max(clips, content.Clips.Length);
                 boundaries = Math.Max(boundaries, checked(2 * content.Clips.Length * traversals +
                     capacity.TreeExitRequestsPerPlayback));
-                invocations = Math.Max(invocations, checked((content.Markers.Length + 3 * trees) *
-                    traversals + capacity.TreeExitRequestsPerPlayback));
+                invocations = Math.Max(invocations, content.TickCapacity.GraphInvocationsPerAdvance);
             }
             ClipCapacity = clips;
             BoundaryCapacity = boundaries;

@@ -1,4 +1,5 @@
 using System;
+using BTSMTL.Orchestration;
 using System.Collections.Generic;
 using BTSMTL.Diagnostics;
 using BTSMTL.Diagnostics.Editor;
@@ -167,8 +168,8 @@ namespace BTSMTL.Timeline.Editor
         public string SourceNodeAuthoringId => m_SourceNodeGuid ?? string.Empty;
         public TimelineAsset SourceAsset => m_SerializedOwner as TimelineAsset;
         public ITimelineTimeRangePreview TimeRangePreview => m_TimeRangePreview;
-        public void ApplyClipTimeRangeNumbers(string identity, Photon.Deterministic.FP start,
-            Photon.Deterministic.FP end) => m_SlateProjection.ApplyClipTimeRangeNumbers(identity, start, end);
+        public void ApplyClipTimeRangeNumbers(string identity, OrchestrationTime start,
+            OrchestrationTime end) => m_SlateProjection.ApplyClipTimeRangeNumbers(identity, start, end);
 
         public void SetTimeRangePreview(ITimelineTimeRangePreview preview)
         {
@@ -507,7 +508,8 @@ namespace BTSMTL.Timeline.Editor
                 timeline,
                 serializedOwner,
                 serializedPropertyPath,
-                m_OwnershipLabel, timeRangePreview: m_TimeRangePreview);
+                m_OwnershipLabel, TimelineWorkspaceModeBridge.Authoring.Contracts,
+                timeRangePreview: m_TimeRangePreview);
             if (!BtsmtlSlateTimelineProjection.TryOpen(
                     openRequest,
                     OpenClip,
@@ -719,19 +721,6 @@ namespace BTSMTL.Timeline.Editor
         }
 
         bool HasTimelineNavigation => m_NavigationOwner && !string.IsNullOrWhiteSpace(m_NavigationPropertyPath);
-
-        void CaptureTimelineNavigation(AnimationClip clip)
-        {
-            if (m_SlateProjection == null || !m_SerializedOwner || string.IsNullOrWhiteSpace(m_SerializedPropertyPath))
-                throw new InvalidOperationException("Sequence navigation requires a bound Action Timeline.");
-            m_NavigationOwner = m_SerializedOwner;
-            m_NavigationPropertyPath = m_SerializedPropertyPath;
-            m_NavigationOwnershipLabel = m_OwnershipLabel;
-            m_NavigationTrackAuthoringId = clip.Track?.AuthoringId ?? string.Empty;
-            m_NavigationClipAuthoringId = clip.AuthoringId;
-            m_NavigationSourceNodeGuid = m_SourceNodeGuid;
-            m_NavigationViewport = Vector2.zero;
-        }
 
         void ReturnToTimeline()
         {

@@ -16,6 +16,7 @@ namespace BTSMTL.Orchestration
         public OrchestrationTime Subtract(OrchestrationTime left, OrchestrationTime right) => left - right;
         public OrchestrationTime Multiply(OrchestrationTime left, OrchestrationTime right) => left * right;
         public OrchestrationTime Divide(OrchestrationTime left, OrchestrationTime right) => left / right;
+        public OrchestrationTime Remainder(OrchestrationTime left, OrchestrationTime right) => left % right;
         public OrchestrationTime Clamp(OrchestrationTime value,
             OrchestrationTime minimum, OrchestrationTime maximum) =>
             OrchestrationTime.Clamp(value, minimum, maximum);

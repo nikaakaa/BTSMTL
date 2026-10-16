@@ -1,7 +1,9 @@
 #if UNITY_EDITOR
 using System;
-using ThirdPersonCamera;
-using ThirdPersonCharacter.Pipeline.Motion.RootMotion;
+using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
+using ThirdPersonSimulation;
 using UnityEngine;
 
 namespace BTSMTL.Timeline
@@ -20,11 +22,9 @@ namespace BTSMTL.Timeline
     [AttributeUsage(AttributeTargets.Class, Inherited = true, AllowMultiple = true)]
     public sealed class TimelineAuthoringPropertyAttribute : Attribute
     {
-        public TimelineAuthoringPropertyAttribute(
-            string propertyId,
-            TimelineAuthoringPropertyKind kind)
+        public TimelineAuthoringPropertyAttribute(string propertyId, TimelineAuthoringPropertyKind kind)
         {
-            PropertyId = propertyId ?? string.Empty;
+            PropertyId = propertyId;
             Kind = kind;
         }
 
@@ -37,6 +37,7 @@ namespace BTSMTL.Timeline
         public string PropertyId { get; }
         public TimelineAuthoringPropertyKind Kind { get; }
         public Type EnumType { get; }
+        public string MemberName { get; set; }
         public bool Optional { get; set; }
         public bool Trimmed { get; set; }
         public bool HasMinimum { get; set; }
@@ -45,179 +46,97 @@ namespace BTSMTL.Timeline
         public double Maximum { get; set; }
         public bool Finite { get; set; }
         public bool SourceMappingOnly { get; set; }
-        public bool Supports(Clip clip) => !SourceMappingOnly ||
-            TimelineAuthoringClipBinding.SourceAsset(clip) is ITimelineCameraSourceAsset;
+        public bool IsSourceAsset { get; set; }
+        public TimelineBindingValueKind[] BindingValueKinds { get; set; } = Array.Empty<TimelineBindingValueKind>();
+        public TimelineBindingAccess BindingAccess { get; set; }
+        public TimelineBindingLifetime BindingLifetime { get; set; }
+        public bool Supports(Clip clip) => Supports(clip, TimelineAuthoringClipBinding.SourceAsset(clip));
+        public bool Supports(Clip clip, UnityEngine.Object source) =>
+            !SourceMappingOnly || source is ITimelineAuthoringSourceAsset;
     }
 
+    public interface ITimelineAuthoringClipSource
+    {
+        UnityEngine.Object SourceAsset { get; }
+        Type SourceAssetType { get; }
+        float GetSourceDuration(UnityEngine.Object source);
+        string SourceMissingErrorCode { get; }
+        string SourceMissingError { get; }
+    }
 
     public sealed class TimelineAuthoringClipConfiguration
     {
-        public ExtraPolationMode Extrapolation { get; set; }
-        public string BlendProfileId { get; set; }
-        public string CurveId { get; set; }
-        public RootMotionCurveAsset SourceCurve { get; set; }
-        public float SourceStartTime { get; set; }
-        public float SourceEndTime { get; set; }
-        public TimelineMotionContributionSpace Space { get; set; }
-        public TimelineMotionChannel Channel { get; set; }
-        public TimelineMotionBlendMode BlendMode { get; set; }
-        public int Priority { get; set; }
-        public bool ConsumeLowerChannels { get; set; }
-        public TimelineCameraMode CameraMode { get; set; }
-        public float CameraBlendInSeconds { get; set; }
-        public float CameraBlendOutSeconds { get; set; }
-        public string CameraTargetKey { get; set; }
-        public TimelineCameraInterruptPolicy CameraInterruptPolicy { get; set; }
-        public string CameraSequenceId { get; set; }
-        public string CameraResourceId { get; set; }
-        public CameraEffectAsset Effect { get; set; }
-        public AnimationCurve CameraWeightCurve { get; set; }
-        public AnimationCurve CameraEaseInCurve { get; set; }
-        public AnimationCurve CameraEaseOutCurve { get; set; }
-        public TimelineCameraLookResponseMode CameraLookResponse { get; set; }
-        public float ManualOrbitWeight { get; set; }
-        public float PitchResponseWeight { get; set; }
-        public float YawResponseWeight { get; set; }
-        public string TargetBindingId { get; set; }
-        public string ParameterBindingId { get; set; }
-        public AnimationCurve ValueCurve { get; set; }
+        readonly Dictionary<string, object> m_Values = new Dictionary<string, object>(StringComparer.Ordinal);
+        public object this[string propertyId]
+        {
+            get => m_Values[propertyId];
+            set => m_Values[propertyId] = value;
+        }
+        public T Get<T>(string propertyId) => (T)m_Values[propertyId];
+        public void Set(string propertyId, object value) => m_Values[propertyId] = value;
     }
 
     public static class TimelineAuthoringClipBinding
     {
-        public static UnityEngine.Object SourceAsset(Clip clip)
-        {
-            if (clip is MotionCurveClip motion)
-                return motion.SourceCurve;
-            if (clip is AnimationClip animation)
-                return animation.Clip;
-            if (clip is CameraEffectClip camera)
-                return camera.Effect;
-            return null;
-        }
+        const BindingFlags Members = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+
+        public static UnityEngine.Object SourceAsset(Clip clip) =>
+            clip is ITimelineAuthoringClipSource source ? source.SourceAsset : null;
+
+        public static IReadOnlyList<TimelineAuthoringPropertyAttribute> Properties(Clip clip) =>
+            clip.GetType().GetCustomAttributes(typeof(TimelineAuthoringPropertyAttribute), true)
+                .Cast<TimelineAuthoringPropertyAttribute>()
+                .OrderBy(property => property.PropertyId, StringComparer.Ordinal).ToArray();
 
         public static TimelineAuthoringClipConfiguration Read(Clip clip)
         {
-            if (clip == null)
-                throw new ArgumentNullException(nameof(clip));
             var result = new TimelineAuthoringClipConfiguration();
-            if (clip is AnimationClip animation)
+            foreach (TimelineAuthoringPropertyAttribute property in Properties(clip))
             {
-                result.Extrapolation = animation.ExtraPolationMode;
-                result.BlendProfileId = animation.BlendProfileId;
-            }
-            if (clip is MotionCurveClip motion)
-            {
-                result.CurveId = motion.CurveId;
-                result.SourceCurve = motion.SourceCurve;
-                result.SourceStartTime = motion.SourceStartTime;
-                result.SourceEndTime = motion.SourceEndTime;
-                result.Space = motion.Space;
-                result.Channel = motion.Channel;
-                result.BlendMode = motion.BlendMode;
-                result.Priority = motion.Priority;
-                result.ConsumeLowerChannels = motion.ConsumeLowerChannels;
-            }
-            if (clip is CameraStateClip cameraState)
-            {
-                result.CameraMode = cameraState.Mode;
-                result.CameraSequenceId = cameraState.SequenceId;
-                result.Priority = cameraState.Priority;
-                result.CameraBlendInSeconds = cameraState.BlendInSeconds;
-                result.CameraBlendOutSeconds = cameraState.BlendOutSeconds;
-                result.CameraTargetKey = cameraState.TargetKey;
-                result.CameraInterruptPolicy = cameraState.InterruptPolicy;
-            }
-            if (clip is CameraEffectClip cameraResource)
-            {
-                result.CameraWeightCurve = cameraResource.WeightCurve;
-                result.CameraEaseInCurve = cameraResource.EaseInCurve;
-                result.CameraEaseOutCurve = cameraResource.EaseOutCurve;
-                result.CameraResourceId = cameraResource.Effect ? cameraResource.Effect.EffectId : null;
-                result.Effect = cameraResource.Effect;
-                result.SourceStartTime = cameraResource.SourceStartTime;
-                result.SourceEndTime = cameraResource.SourceEndTime;
-            }
-            if (clip is CameraResponseClip cameraResponse)
-            {
-                result.CameraLookResponse = cameraResponse.LookResponse;
-                result.ManualOrbitWeight = cameraResponse.ManualOrbitWeight;
-                result.PitchResponseWeight = cameraResponse.PitchResponseWeight;
-                result.YawResponseWeight = cameraResponse.YawResponseWeight;
-                result.Priority = cameraResponse.Priority;
-            }
-            if (clip is ScenePresentationParameterCurveClip sceneParameter)
-            {
-                result.TargetBindingId = sceneParameter.TargetBindingId;
-                result.ParameterBindingId = sceneParameter.ParameterBindingId;
-                result.ValueCurve = sceneParameter.ValueCurve;
+                MemberInfo member = RequireMember(clip.GetType(), property.MemberName);
+                result.Set(property.PropertyId, member is PropertyInfo info
+                    ? info.GetValue(clip)
+                    : ((FieldInfo)member).GetValue(clip));
             }
             return result;
         }
 
-        public static void Configure(
-            TimelineData timeline,
-            Clip clip,
-            TimelineAuthoringClipConfiguration configuration)
+        public static TimelineAuthoringClipConfiguration Defaults(Clip clip) =>
+            ((Clip)Activator.CreateInstance(clip.GetType(), clip.Track, clip.StartTime)).CaptureAuthoringDefaults();
+
+        public static Type ValueType(Clip clip, TimelineAuthoringPropertyAttribute property)
         {
-            if (timeline == null)
-                throw new ArgumentNullException(nameof(timeline));
-            if (clip == null)
-                throw new ArgumentNullException(nameof(clip));
-            if (configuration == null)
-                throw new ArgumentNullException(nameof(configuration));
-            if (clip is AnimationClip animation)
+            MemberInfo member = RequireMember(clip.GetType(), property.MemberName);
+            return member is PropertyInfo info ? info.PropertyType : ((FieldInfo)member).FieldType;
+        }
+
+        public static void Configure(TimelineData timeline, Clip clip,
+            TimelineAuthoringClipConfiguration configuration) =>
+            clip.ApplyAuthoringConfiguration(configuration);
+
+        public static void ApplyMembers(Clip clip, TimelineAuthoringClipConfiguration configuration)
+        {
+            foreach (TimelineAuthoringPropertyAttribute property in Properties(clip))
             {
-                animation.ExtraPolationMode = configuration.Extrapolation;
-                animation.BlendProfileId = configuration.BlendProfileId;
+                MemberInfo member = RequireMember(clip.GetType(), property.MemberName);
+                object value = configuration[property.PropertyId];
+                if (member is PropertyInfo info)
+                    info.SetValue(clip, value);
+                else
+                    ((FieldInfo)member).SetValue(clip, value);
             }
-            if (clip is MotionCurveClip motion)
+        }
+
+        static MemberInfo RequireMember(Type owner, string name)
+        {
+            for (Type type = owner; type != null; type = type.BaseType)
             {
-                motion.CurveId = configuration.CurveId;
-                motion.ConfigureSource(
-                    configuration.SourceCurve,
-                    configuration.SourceStartTime,
-                    configuration.SourceEndTime);
-                motion.Space = configuration.Space;
-                motion.Channel = configuration.Channel;
-                motion.BlendMode = configuration.BlendMode;
-                motion.Priority = configuration.Priority;
-                motion.ConsumeLowerChannels = configuration.ConsumeLowerChannels;
+                MemberInfo member = type.GetProperty(name, Members | BindingFlags.DeclaredOnly) ??
+                    (MemberInfo)type.GetField(name, Members | BindingFlags.DeclaredOnly);
+                if (member != null)
+                    return member;
             }
-            if (clip is CameraStateClip cameraState)
-            {
-                cameraState.Mode = configuration.CameraMode;
-                cameraState.Priority = configuration.Priority;
-                cameraState.BlendInSeconds = configuration.CameraBlendInSeconds;
-                cameraState.BlendOutSeconds = configuration.CameraBlendOutSeconds;
-                cameraState.TargetKey = configuration.CameraTargetKey;
-                cameraState.InterruptPolicy = configuration.CameraInterruptPolicy;
-                cameraState.SequenceId = configuration.CameraSequenceId;
-            }
-            if (clip is CameraResponseClip cameraResponse)
-            {
-                cameraResponse.LookResponse = configuration.CameraLookResponse;
-                cameraResponse.ManualOrbitWeight = configuration.ManualOrbitWeight;
-                cameraResponse.PitchResponseWeight = configuration.PitchResponseWeight;
-                cameraResponse.YawResponseWeight = configuration.YawResponseWeight;
-                cameraResponse.Priority = configuration.Priority;
-                cameraResponse.WeightCurve = configuration.CameraWeightCurve;
-                cameraResponse.EaseInCurve = configuration.CameraEaseInCurve;
-                cameraResponse.EaseOutCurve = configuration.CameraEaseOutCurve;
-            }
-            if (clip is CameraEffectClip cameraEffect)
-            {
-                cameraEffect.Effect = configuration.Effect;
-                cameraEffect.ConfigureSourceRange(configuration.SourceStartTime, configuration.SourceEndTime);
-                cameraEffect.WeightCurve = configuration.CameraWeightCurve;
-                cameraEffect.EaseInCurve = configuration.CameraEaseInCurve;
-                cameraEffect.EaseOutCurve = configuration.CameraEaseOutCurve;
-            }
-            if (clip is ScenePresentationParameterCurveClip sceneParameter)
-                sceneParameter.ConfigureBindings(
-                    configuration.TargetBindingId,
-                    configuration.ParameterBindingId,
-                    configuration.ValueCurve);
+            throw new InvalidOperationException($"Timeline authoring member '{owner.FullName}.{name}' is not declared.");
         }
     }
 }

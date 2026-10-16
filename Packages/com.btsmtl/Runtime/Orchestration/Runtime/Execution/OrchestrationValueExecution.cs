@@ -36,7 +36,8 @@ namespace BTSMTL.Orchestration
                 if (operation.Code == OrchestrationOperationCode.Extension &&
                     m_Bindings.Contract(operation.ExtensionBindingIndex).Kind == OrchestrationExtensionKind.Action)
                 {
-                    result = ReadValueSlot(operation.OutputSlotOffset + (outputPortIndex < 0 ? 0 : outputPortIndex));
+                    result = ReadValueSlot(operationIndex,
+                        operation.OutputSlotOffset + (outputPortIndex < 0 ? 0 : outputPortIndex));
                 }
                 else
                 {
@@ -114,7 +115,7 @@ namespace BTSMTL.Orchestration
                 case OrchestrationOperationCode.StateExitCause:
                     return values.FromBoolean(operation.Integer0 == CurrentStateExitCause());
                 case OrchestrationOperationCode.Cycle:
-                    return values.FromInt32((operation.Integer0 + m_Operations[operationIndex].ChildCursor) % operation.Integer1);
+                    return values.FromInt32((operation.Integer0 + ReadOperationState(operationIndex).ChildCursor) % operation.Integer1);
                 case OrchestrationOperationCode.TimelineTime:
                     return ReadTimelineTime();
                 case OrchestrationOperationCode.Extension:
@@ -122,7 +123,7 @@ namespace BTSMTL.Orchestration
                     Span<TValue> outputs = m_Workspace.Outputs[depth].AsSpan(0, operation.OutputCount);
                     var invocation = new OrchestrationExtensionInvocation<TValue>(
                         OrchestrationExtensionInvocationKind.Evaluate, operationIndex, ReadGeneration(operationIndex),
-                        m_Input.Tick, 0, StateAncestors(operationIndex), inputs, outputs);
+                        m_Input.Tick, 0, StateAncestors(operationIndex), inputs, outputs, in m_TimelineInvocation);
                     RequireSynchronousValueResult(operationIndex, operation.ExtensionBindingIndex,
                         m_Bindings.InvokeReadOnly(operation.ExtensionBindingIndex, in m_Context, in invocation));
                     return outputs[outputPortIndex < 0 ? 0 : outputPortIndex];
@@ -197,7 +198,8 @@ namespace BTSMTL.Orchestration
             return false;
         }
 
-        TValue ReadValueSlot(int valueSlot) => ReadValueSlot(valueSlot, in m_Values[valueSlot]);
+        TValue ReadValueSlot(int ownerOperationIndex, int valueSlot) =>
+            ReadValueSlot(valueSlot, in m_Frames.Values(OperationFrame(ownerOperationIndex))[valueSlot]);
 
         TValue ReadValueSlot(int valueSlot, in TValue value) => m_Input.UseOverrides &&
             default(TValues).Kind(in m_Input.ValueOverrides[valueSlot]) != 0
@@ -250,9 +252,9 @@ namespace BTSMTL.Orchestration
                 if (outputs[i].PortIndex != outputPortIndex)
                     continue;
                 OrchestrationOperationStatus status = m_Program.Operation(operationIndex).IsRunnable
-                    ? ReadStatus(call.EntryOperationIndex) : m_Operations[operationIndex].Status;
+                    ? ReadStatus(call.EntryOperationIndex) : ReadOperationState(operationIndex).Status;
                 return status == OrchestrationOperationStatus.Success
-                    ? ReadValueSlot(outputs[i].ValueSlot) : m_Program.DefaultValue(outputs[i].ValueSlot);
+                    ? ReadValueSlot(operationIndex, outputs[i].ValueSlot) : m_Program.DefaultValue(outputs[i].ValueSlot);
             }
             throw new InvalidOperationException($"Graph call '{operationIndex}' does not declare output '{outputPortIndex}'.");
         }
@@ -317,7 +319,7 @@ namespace BTSMTL.Orchestration
                         var invocation = new OrchestrationExtensionInvocation<TValue>(
                             OrchestrationExtensionInvocationKind.Execute, operationIndex, ReadGeneration(operationIndex),
                             m_Input.Tick, 0, StateAncestors(operationIndex),
-                            m_Workspace.Inputs[depth].AsSpan(0, count), outputs);
+                            m_Workspace.Inputs[depth].AsSpan(0, count), outputs, in m_TimelineInvocation);
                         OrchestrationOperationResult result = (OrchestrationOperationResult)m_Bindings.InvokeCandidate(
                             operation.ExtensionBindingIndex, ref m_Context, in invocation);
                         foreach (ref readonly OrchestrationBlackboardOutputBinding assignment in m_Program.OutputAssignments(operationIndex))

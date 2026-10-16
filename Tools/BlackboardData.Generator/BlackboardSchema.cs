@@ -4,7 +4,6 @@ using System.Text;
 using System.Text.Json;
 using System.Xml.Linq;
 using ThirdPersonSimulation;
-using ThirdPersonSimulation.QuantumNumerics;
 
 namespace Btsmtl.BlackboardData.Generation;
 
@@ -14,6 +13,8 @@ internal sealed class BlackboardSchema : IDisposable
     static readonly UTF8Encoding Utf8 = new(false);
     readonly JsonDocument m_Input;
     readonly string m_Namespace;
+    readonly JsonElement[] m_Targets;
+    readonly ModuleFactory[] m_ModuleFactories;
     readonly List<Block> m_Blocks = new();
 
     internal BlackboardSchema(string inputPath)
@@ -23,6 +24,16 @@ internal sealed class BlackboardSchema : IDisposable
         if (root.GetProperty("protocol").GetInt32() != GeneratedBlackboardProtocol.Version)
             throw new InvalidDataException("黑板声明输入协议不匹配。");
         m_Namespace = root.GetProperty("namespace").GetString()!;
+        m_Targets = root.GetProperty("numericTargets").EnumerateArray().ToArray();
+        m_ModuleFactories = m_Targets.Select(target =>
+        {
+            string name = target.GetProperty("name").GetString()!;
+            if (!target.TryGetProperty("moduleFactory", out JsonElement factory))
+                throw new InvalidDataException($"数值目标 '{name}' 缺少 moduleFactory 声明；请通过当前项目入口重新导出。");
+            return new ModuleFactory(name, factory.GetProperty("namespace").GetString()!,
+                factory.GetProperty("typeName").GetString()!, factory.GetProperty("methodName").GetString()!,
+                target.GetProperty("valueType").GetString()!);
+        }).ToArray();
         foreach (JsonElement owner in root.GetProperty("owners").EnumerateArray()
             .OrderBy(value => value.GetProperty("identity").GetString(), StringComparer.Ordinal))
         {
@@ -47,23 +58,27 @@ internal sealed class BlackboardSchema : IDisposable
         }
     }
 
-    internal void Write(string output)
+    internal IEnumerable<string> TargetNames => m_Targets.Select(target => target.GetProperty("name").GetString()!);
+
+    internal void Write(string output, string[] precompiledReferences)
     {
-        foreach (string target in new[] { "FPGameplay", "Float32" })
+        foreach (JsonElement numeric in m_Targets)
         {
+            string target = numeric.GetProperty("name").GetString()!;
             string directory = Path.Combine(output, target);
             Directory.CreateDirectory(Path.Combine(directory, "Schema"));
             Directory.CreateDirectory(Path.Combine(directory, "Defaults"));
             var definitions = new XElement("module", new XAttribute("name", m_Namespace + "." + target));
-            AddValueTypes(definitions, target);
+            AddValueTypes(definitions, numeric);
             foreach (Block block in m_Blocks)
             {
                 var bean = new XElement("bean", new XAttribute("name", block.Name));
                 Tag(bean, "owner", Literal(block.Owner));
-                Tag(bean, "identity", Literal(TargetIdentity(target, block.Identity)));
+                Tag(bean, "identity", Literal(TargetIdentity(numeric, block.Identity)));
                 Tag(bean, "domain", target);
+                Tag(bean, "valueType", numeric.GetProperty("valueType").GetString()!);
                 Tag(bean, "dataFile", Literal(block.Name.ToLowerInvariant() + ".bytes"));
-                var defaults = new Dictionary<string, object?>();
+                var defaults = new Dictionary<string, JsonElement>();
                 for (int index = 0; index < block.Fields.Length; index++)
                 {
                     JsonElement field = block.Fields[index];
@@ -77,8 +92,7 @@ internal sealed class BlackboardSchema : IDisposable
                     Tag(variable, "lifetime", field.GetProperty("lifetime").GetString()!);
                     Tag(variable, "index", index.ToString(CultureInfo.InvariantCulture));
                     bean.Add(variable);
-                    defaults.Add(name, Default(field.GetProperty("default"), kind, target,
-                        block.Owner + "/" + field.GetProperty("id").GetString()));
+                    defaults.Add(name, field.GetProperty("loweredDefaults").GetProperty(target));
                 }
                 definitions.Add(bean);
                 definitions.Add(new XElement("table", new XAttribute("name", block.Name + "Defaults"),
@@ -100,10 +114,33 @@ internal sealed class BlackboardSchema : IDisposable
         File.WriteAllText(Path.Combine(output, m_Namespace + ".asmdef"), JsonSerializer.Serialize(new
         {
             name = m_Namespace,
-            references = new[] { "ThirdPerson.Shared.Contracts", "ThirdPerson.Luban", "ThirdPersonSimulation.Core",
-                "ThirdPersonSimulation.FPGameplay", "ThirdPersonSimulation.Float32", "ThirdPersonSimulation.BlackboardConfiguration" },
+            references = new[] { "ThirdPerson.Shared.Contracts", "ThirdPerson.Luban", "BTSMTL.Orchestration.Contracts",
+                "ThirdPersonSimulation.BlackboardConfiguration" },
+            overrideReferences = true,
+            precompiledReferences,
             noEngineReferences = true
         }, JsonOptions), Utf8);
+    }
+
+    internal void WriteModuleFactories(string output)
+    {
+        foreach (ModuleFactory factory in m_ModuleFactories)
+        {
+            string source = string.Join("\n", new[]
+            {
+                $"namespace {factory.Namespace}",
+                "{",
+                $"    public static partial class {factory.TypeName}",
+                "    {",
+                $"        static partial void {factory.MethodName}(ref global::ThirdPersonSimulation.GeneratedBlackboardModule<global::{factory.ValueType}> module)",
+                "        {",
+                $"            module = new global::{m_Namespace}.{factory.Target}.BlackboardModule();",
+                "        }",
+                "    }",
+                "}"
+            }) + "\n";
+            File.WriteAllText(Path.Combine(output, factory.Target, "CSharp", "BlackboardModule.Factory.g.cs"), source, Utf8);
+        }
     }
 
     internal void WriteManifest(string output)
@@ -116,9 +153,10 @@ internal sealed class BlackboardSchema : IDisposable
         {
             protocol = GeneratedBlackboardProtocol.Version,
             @namespace = m_Namespace,
+            numericTargets = m_Targets,
             inputIdentity = Hash(JsonSerializer.Serialize(m_Input.RootElement)),
             structureIdentity = Hash(m_Namespace + "|" + string.Join("|", m_Blocks.Select(block =>
-                TargetIdentity("FPGameplay", block.Identity) + "|" + TargetIdentity("Float32", block.Identity)))),
+                string.Join("|", m_Targets.Select(target => TargetIdentity(target, block.Identity)))))),
             defaultsIdentity = Hash(string.Join("|", defaults.Select(path =>
                 Path.GetRelativePath(output, path).Replace('\\', '/') + "|" + Hash(File.ReadAllBytes(path))))),
             tool = dependency.RootElement,
@@ -128,13 +166,13 @@ internal sealed class BlackboardSchema : IDisposable
             csharp = "generated",
             cpp = "schema-reserved",
             owners = m_Blocks.Select(block => new { identity = block.Owner, contract = block.Identity, type = block.Name,
-                fpContract = TargetIdentity("FPGameplay", block.Identity), float32Contract = TargetIdentity("Float32", block.Identity) }),
+                contracts = TargetContracts(block.Identity) }),
             declarations = m_Blocks.SelectMany(block => block.Fields.Select((field, index) => new
             {
                 owner = block.Owner, id = field.GetProperty("id").GetString(), index, source = field,
                 type = field.GetProperty("type").GetString(), scope = field.GetProperty("scope").GetString(),
                 lifetime = field.GetProperty("lifetime").GetString(),
-                fpContract = TargetIdentity("FPGameplay", block.Identity), float32Contract = TargetIdentity("Float32", block.Identity),
+                contracts = TargetContracts(block.Identity),
                 defaultsFile = block.Name.ToLowerInvariant() + ".bytes"
             })),
             files = sources.Select(path => new { path = Path.GetRelativePath(output, path).Replace('\\', '/'),
@@ -146,24 +184,23 @@ internal sealed class BlackboardSchema : IDisposable
 
     public void Dispose() => m_Input.Dispose();
 
-    static string TargetIdentity(string target, string identity)
-    {
-        SimulationNumericProfile profile = target == "FPGameplay" ? QuantumSimulationNumericProfile.Value : Float32SimulationNumericProfile.Value;
-        return Hash($"{target}|{profile.Id.Value}|{profile.AbiVersion.Value}|{identity}");
-    }
+    Dictionary<string, string> TargetContracts(string identity) => m_Targets.ToDictionary(
+        target => target.GetProperty("name").GetString()!, target => TargetIdentity(target, identity), StringComparer.Ordinal);
 
-    static void AddValueTypes(XElement module, string target)
+    static string TargetIdentity(JsonElement target, string identity) => Hash(
+        $"{target.GetProperty("name").GetString()}|{target.GetProperty("profileId").GetString()}|{target.GetProperty("targetAbi").GetRawText()}|{identity}");
+
+    static void AddValueTypes(XElement module, JsonElement target)
     {
-        bool fp = target == "FPGameplay";
-        string numberType = fp ? "long" : "int";
-        string numericNamespace = fp ? "Photon.Deterministic" : "ThirdPersonSimulation";
-        string scalarType = fp ? "FP" : "Float32Scalar";
-        string vectorPrefix = fp ? "FP" : "Float32";
-        AddMapped(module, "Number", numericNamespace + "." + scalarType, target + "Number", ("Raw", numberType));
-        AddMapped(module, "Vector2", numericNamespace + "." + vectorPrefix + "Vector2", target + "Vector2", ("X", numberType), ("Y", numberType));
-        AddMapped(module, "Vector3", numericNamespace + "." + vectorPrefix + "Vector3", target + "Vector3", ("X", numberType), ("Y", numberType), ("Z", numberType));
-        AddMapped(module, "UInt64", "System.UInt64", "UInt64", ("Bits", "long"));
-        AddMapped(module, "Text", "ThirdPersonSimulation.CanonicalTextValue", "Text", ("IsNull", "bool"), ("CodeUnits", "array,int"));
+        string numberType = target.GetProperty("rawType").GetString()!;
+        AddMapped(module, "Number", target.GetProperty("scalarType").GetString()!,
+            target.GetProperty("numberFactory").GetString()!, ("Raw", numberType));
+        AddMapped(module, "Vector2", target.GetProperty("vector2Type").GetString()!,
+            target.GetProperty("vector2Factory").GetString()!, ("X", numberType), ("Y", numberType));
+        AddMapped(module, "Vector3", target.GetProperty("vector3Type").GetString()!,
+            target.GetProperty("vector3Factory").GetString()!, ("X", numberType), ("Y", numberType), ("Z", numberType));
+        AddMapped(module, "UInt64", "System.UInt64", "ThirdPersonSimulation.Configuration.BlackboardDefaultValues.UInt64", ("Bits", "long"));
+        AddMapped(module, "Text", "System.String", "ThirdPersonSimulation.Configuration.BlackboardDefaultValues.Text", ("IsNull", "bool"), ("CodeUnits", "array,int"));
     }
 
     static void AddMapped(XElement module, string name, string csharpType, string constructor,
@@ -173,48 +210,11 @@ internal sealed class BlackboardSchema : IDisposable
         foreach (var member in members)
             bean.Add(new XElement("var", new XAttribute("name", member.Name), new XAttribute("type", member.Type)));
         Tag(bean, "mappedType", csharpType);
-        Tag(bean, "constructor", "ThirdPersonSimulation.Configuration.BlackboardDefaultValues." + constructor);
+        Tag(bean, "constructor", constructor);
         bean.Add(new XElement("mapper", new XAttribute("target", "runtime"), new XAttribute("codeTarget", "cs-bin"),
             new XElement("option", new XAttribute("name", "type"), new XAttribute("value", csharpType))));
         module.Add(bean);
     }
-
-    static object? Default(JsonElement value, string kind, string target, string identity) => kind switch
-    {
-        "Bool" => value.GetBoolean(),
-        "Int32" => value.GetInt32(),
-        "UInt64" => new { Bits = unchecked((long)value.GetUInt64()) },
-        "Number" => new { Raw = Number(value.GetDouble(), target, identity) },
-        "Vector2" => Vector(value, target, 2, identity),
-        "Vector3" => Vector(value, target, 3, identity),
-        "Text" => Text(value),
-        _ => throw new InvalidDataException($"黑板不支持类型 '{kind}'。")
-    };
-
-    static object Text(JsonElement value)
-    {
-        return new { IsNull = value.GetProperty("isNull").GetBoolean(),
-            CodeUnits = value.GetProperty("codeUnits").EnumerateArray().Select(character => character.GetInt32()).ToArray() };
-    }
-
-    static Dictionary<string, long> Vector(JsonElement value, string target, int dimension, string identity)
-    {
-        string[] names = { "X", "Y", "Z" };
-        var result = new Dictionary<string, long>();
-        int index = 0;
-        foreach (JsonElement component in value.EnumerateArray())
-        {
-            string member = names[index++];
-            result.Add(member, Number(component.GetDouble(), target, identity + "." + member));
-        }
-        if (index != dimension)
-            throw new InvalidDataException($"Vector{dimension} 默认值分量数不匹配。");
-        return result;
-    }
-
-    static long Number(double value, string target, string identity) => target == "FPGameplay"
-        ? QuantumScalarBoundary.LowerAuthoring(value, identity).Value.RawValue
-        : unchecked((int)Float32Scalar.FromDouble(value).Bits);
 
     static string SchemaType(string kind) => kind switch
     {
@@ -245,5 +245,6 @@ internal sealed class BlackboardSchema : IDisposable
     static string Literal(string value) => JsonSerializer.Serialize(value);
     static string Hash(string value) => Hash(Utf8.GetBytes(value));
     static string Hash(byte[] value) => Convert.ToHexString(SHA256.HashData(value)).ToLowerInvariant();
+    sealed record ModuleFactory(string Target, string Namespace, string TypeName, string MethodName, string ValueType);
     sealed record Block(string Owner, string Identity, string Name, JsonElement[] Fields);
 }

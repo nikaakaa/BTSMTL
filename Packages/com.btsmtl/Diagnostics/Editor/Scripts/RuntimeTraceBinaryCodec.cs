@@ -9,11 +9,11 @@ namespace BTSMTL.Diagnostics.Editor
 {
     sealed class RuntimeTraceBinaryCodec : IDisposable
     {
-        internal const int EventSize = 1051;
-        const int Version = 6;
-        const int MaximumStringsPerEvent = 40;
-        readonly Dictionary<CanonicalTextValue, int> m_StringIds;
-        readonly List<CanonicalTextValue> m_Strings;
+        internal const int EventSize = 1055;
+        const int Version = 7;
+        const int MaximumStringsPerEvent = 41;
+        readonly Dictionary<string, int> m_StringIds;
+        readonly List<string> m_Strings;
         readonly BinaryWriter m_Symbols;
         readonly byte[] m_Guid = new byte[16];
         readonly byte[] m_EventId = new byte[32];
@@ -22,8 +22,8 @@ namespace BTSMTL.Diagnostics.Editor
         {
             m_Symbols = new BinaryWriter(symbols, Encoding.UTF8, true);
             int capacity = maximumEventsPerPage * MaximumStringsPerEvent;
-            m_StringIds = new Dictionary<CanonicalTextValue, int>(capacity);
-            m_Strings = new List<CanonicalTextValue>(capacity);
+            m_StringIds = new Dictionary<string, int>(capacity, StringComparer.Ordinal);
+            m_Strings = new List<string>(capacity);
         }
 
         internal int SymbolCount => m_Strings.Count;
@@ -92,12 +92,17 @@ namespace BTSMTL.Diagnostics.Editor
                     for (int character = 0; character < characters.Length; character++)
                         characters[character] = (char)source.ReadUInt16();
                 });
-                m_Strings.Add(CanonicalTextValue.FromString(text));
+                m_Strings.Add(text);
             }
         }
 
         internal void Write(BinaryWriter writer, in RuntimeTraceEvent value)
         {
+            RuntimeTracePayload payload = value.Payload;
+            if (payload.DetailKind == RuntimeTraceDetailKind.Motion &&
+                payload.MotionDetail.Kind == SimulationMotionTraceDetailKind.Channel &&
+                string.IsNullOrEmpty(payload.MotionIdentityTableId))
+                throw new InvalidDataException("V2 运动来源指纹必须同时保存实际冻结身份表的身份。");
             writer.Write(value.Sequence);
             writer.Write(value.TimeSeconds);
             writer.Write((int)value.Domain);
@@ -110,7 +115,7 @@ namespace BTSMTL.Diagnostics.Editor
             WriteRuntimeInstanceKey(writer, value.RuntimeInstance);
             WriteRuntimeSourceElementHandle(writer, value.Source);
             writer.Write((int)value.Kind);
-            WriteRuntimeTracePayload(writer, value.Payload);
+            WriteRuntimeTracePayload(writer, payload);
         }
 
         internal RuntimeTraceEvent Read(BinaryReader reader)
@@ -131,9 +136,9 @@ namespace BTSMTL.Diagnostics.Editor
                 position, time, sequence, instance, source, kind, ReadRuntimeTracePayload(reader));
         }
 
-        void WriteString(BinaryWriter writer, CanonicalTextValue value)
+        void WriteString(BinaryWriter writer, string value)
         {
-            if (value.IsNull)
+            if (value == null)
             {
                 writer.Write(-1);
                 return;
@@ -141,12 +146,10 @@ namespace BTSMTL.Diagnostics.Editor
             if (!m_StringIds.TryGetValue(value, out int id))
             {
                 id = m_Strings.Count;
-                value.Retain();
                 m_Strings.Add(value);
                 m_StringIds.Add(value, id);
-                using CanonicalTextReadLease read = value.AcquireRead();
                 m_Symbols.Write(checked(value.Length * sizeof(char)));
-                ReadOnlySpan<char> characters = value.Span;
+                ReadOnlySpan<char> characters = value.AsSpan();
                 for (int character = 0; character < characters.Length; character++)
                     m_Symbols.Write((ushort)characters[character]);
             }
@@ -156,20 +159,12 @@ namespace BTSMTL.Diagnostics.Editor
         string ReadString(BinaryReader reader)
         {
             int id = reader.ReadInt32();
-            return id == -1 ? null : m_Strings[id].ToString();
-        }
-
-        CanonicalTextValue ReadText(BinaryReader reader)
-        {
-            int id = reader.ReadInt32();
-            return id == -1 ? default : m_Strings[id];
+            return id == -1 ? null : m_Strings[id];
         }
 
         void ClearSymbols()
         {
             m_StringIds.Clear();
-            for (int i = 0; i < m_Strings.Count; i++)
-                m_Strings[i].Release();
             m_Strings.Clear();
         }
 
@@ -268,35 +263,36 @@ namespace BTSMTL.Diagnostics.Editor
             WriteRuntimeTimelinePlaybackProvenance(writer, value.TimelinePlayback);
             WriteRuntimeFootPlacementTraceSnapshot(writer, value.FootPlacement);
             WriteMotionDetail(writer, in value.MotionDetail);
+            WriteString(writer, value.MotionIdentityTableId);
             WriteEventId(writer, value.SourceEventId);
         }
 
         RuntimeTracePayload ReadRuntimeTracePayload(BinaryReader reader) => new RuntimeTracePayload
         {
-            Status = ReadText(reader),
-            Name = ReadText(reader),
-            Detail = ReadText(reader),
-            Cause = ReadText(reader),
+            Status = ReadString(reader),
+            Name = ReadString(reader),
+            Detail = ReadString(reader),
+            Cause = ReadString(reader),
             SourceClockId = ReadString(reader),
             SourceTickKind = ReadString(reader),
-            AnimationChannelId = ReadText(reader),
-            OwnerId = ReadText(reader),
-            RelatedElementId = ReadText(reader),
+            AnimationChannelId = ReadString(reader),
+            OwnerId = ReadString(reader),
+            RelatedElementId = ReadString(reader),
             SkillId = ReadString(reader),
             InputSequence = reader.ReadUInt64(),
             CharacterStateHash = ReadString(reader),
             WorldHash = ReadString(reader),
             ActionInstanceId = reader.ReadUInt64(),
-            CallSiteId = ReadText(reader),
+            CallSiteId = ReadString(reader),
             ActivationGeneration = reader.ReadUInt64(),
             SkillExecutionGeneration = reader.ReadUInt64(),
-            RuleSourceSkillId = ReadText(reader),
+            RuleSourceSkillId = ReadString(reader),
             RuleSourceInstanceId = reader.ReadUInt64(),
             RuleSourceSkillExecutionGeneration = reader.ReadUInt64(),
             RuleSourceSegmentGeneration = reader.ReadUInt64(),
             GraphInvocationGeneration = reader.ReadUInt64(),
             ParentInvocationGeneration = reader.ReadUInt64(),
-            ParentInvocationPath = ReadText(reader),
+            ParentInvocationPath = ReadString(reader),
             StartTick = reader.ReadUInt64(),
             EndTick = reader.ReadUInt64(),
             Revision = reader.ReadUInt64(),
@@ -328,6 +324,7 @@ namespace BTSMTL.Diagnostics.Editor
             TimelinePlayback = ReadRuntimeTimelinePlaybackProvenance(reader),
             FootPlacement = ReadRuntimeFootPlacementTraceSnapshot(reader),
             MotionDetail = ReadMotionDetail(reader),
+            MotionIdentityTableId = ReadString(reader),
             SourceEventId = ReadEventId(reader),
         };
 
@@ -492,15 +489,15 @@ namespace BTSMTL.Diagnostics.Editor
         void WriteRuntimeContentRevision(BinaryWriter writer, in RuntimeContentRevision value)
         {
             WriteString(writer, value.RuntimeId);
-            WriteString(writer, value.SourceRevisionText);
-            WriteString(writer, value.ContentHashText);
+            WriteString(writer, value.SourceRevision);
+            WriteString(writer, value.ContentHash);
         }
 
         RuntimeContentRevision ReadRuntimeContentRevision(BinaryReader reader)
         {
             string runtimeId = ReadString(reader);
-            CanonicalTextValue sourceRevision = ReadText(reader);
-            CanonicalTextValue contentHash = ReadText(reader);
+            string sourceRevision = ReadString(reader);
+            string contentHash = ReadString(reader);
             return runtimeId == null ? default : new RuntimeContentRevision(
                 runtimeId,
                 sourceRevision,
@@ -543,7 +540,7 @@ namespace BTSMTL.Diagnostics.Editor
             ulong timelinePlaybackId = reader.ReadUInt64();
             int treeClipCycle = reader.ReadInt32();
             ulong actionInstanceId = reader.ReadUInt64();
-            CanonicalTextValue callSiteId = ReadText(reader);
+            string callSiteId = ReadString(reader);
             ulong invocationGeneration = reader.ReadUInt64();
             int sourceOperationIndex = reader.ReadInt32();
             int treeClipOperationIndex = reader.ReadInt32();
@@ -580,9 +577,9 @@ namespace BTSMTL.Diagnostics.Editor
             long signed = reader.ReadInt64();
             ulong unsigned = reader.ReadUInt64();
             double number = reader.ReadDouble();
-            CanonicalTextValue text = ReadText(reader);
+            string text = ReadString(reader);
             Vector4 vector = ReadVector4(reader);
-            return text.IsNull ? default : new DebugValueSnapshot(
+            return text == null ? default : new DebugValueSnapshot(
                 kind,
                 boolean,
                 signed,
@@ -610,8 +607,8 @@ namespace BTSMTL.Diagnostics.Editor
 
         RuntimeTimelinePlaybackProvenance ReadRuntimeTimelinePlaybackProvenance(BinaryReader reader)
         {
-            CanonicalTextValue sourceGraphAuthoringId = ReadText(reader);
-            CanonicalTextValue sourceNodeAuthoringId = ReadText(reader);
+            string sourceGraphAuthoringId = ReadString(reader);
+            string sourceNodeAuthoringId = ReadString(reader);
             Guid sourceGraphRuntimeId = ReadGuid(reader);
             ulong sourceActivationGeneration = reader.ReadUInt64();
             string stateMachineGraphAuthoringId = ReadString(reader);
@@ -619,10 +616,10 @@ namespace BTSMTL.Diagnostics.Editor
             Guid stateMachineGraphRuntimeId = ReadGuid(reader);
             ulong stateActivationGeneration = reader.ReadUInt64();
             string sourceName = ReadString(reader);
-            CanonicalTextValue sourceInvocationPath = ReadText(reader);
+            string sourceInvocationPath = ReadString(reader);
             int sourceOperationIndex = reader.ReadInt32();
             ulong skillExecutionGeneration = reader.ReadUInt64();
-            return sourceGraphAuthoringId.IsNull ? default : new RuntimeTimelinePlaybackProvenance(
+            return sourceGraphAuthoringId == null ? default : new RuntimeTimelinePlaybackProvenance(
                 sourceGraphAuthoringId,
                 sourceNodeAuthoringId,
                 sourceGraphRuntimeId,

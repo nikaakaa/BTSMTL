@@ -15,15 +15,19 @@ namespace BTSMTL.Orchestration
         where TContext : struct
     {
 
-        void EmitOutput(int operationIndex, ReadOnlySpan<TValue> values)
+        void EmitOutput(int operationIndex, ReadOnlySpan<TValue> values) => AppendOutput(operationIndex,
+            m_Program.Operation(operationIndex).Integer0, values, m_TimelineInvocation.HasInvocation,
+            m_TimelineInvocation.Invocation.Token, m_TimelineInvocation.Invocation.Hook);
+
+        void AppendOutput(int operationIndex, int templateIndex, ReadOnlySpan<TValue> values,
+            bool hasTimelineInvocation, in OrchestrationTimelineInvocationToken invocation, OrchestrationTimelineHook hook)
         {
             var range = new OrchestrationRange(m_Workspace.OutputValueCount, values.Length);
             values.CopyTo(m_Workspace.OutputValues.AsSpan(range.Offset, range.Count));
             m_Workspace.OutputValueCount += values.Length;
             m_Workspace.OutputRequests[m_Workspace.OutputRequestCount++] = new OrchestrationOutputRequest(
                 operationIndex, ReadGeneration(operationIndex), m_Input.InstanceGeneration,
-                m_Program.Operation(operationIndex).Integer0, range, m_HasOutputTimelineInvocation,
-                m_OutputTimelineToken, m_OutputTimelineHook);
+                templateIndex, range, hasTimelineInvocation, invocation, hook);
         }
     }
 }

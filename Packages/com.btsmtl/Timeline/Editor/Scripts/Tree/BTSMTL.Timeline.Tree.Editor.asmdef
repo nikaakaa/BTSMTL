@@ -3,8 +3,8 @@
     "rootNamespace": "",
     "references": [
         "ThirdPerson.Shared.Contracts",
+        "BTSMTL.Orchestration.Contracts",
         "BTSMTL.Authoring",
-        "ThirdPersonSimulation.Core",
         "GUID:3af8e02729705434aa5c2d77c4a5103a",
         "GUID:349d62e8ffbe48b8ad6e03ccd8cbaf71",
         "GUID:d29a36fc3af64c7a9c0ed51cc35110bd",
@@ -13,9 +13,7 @@
         "GUID:c188785927363d34cac787bbe8b507a9",
         "BTSMTL.Timeline.Runtime",
         "GUID:8b1b654162f79f947a2aceb988ac315a",
-        "GUID:478a2357cc57436488a56e564b08d223",
-        "GUID:61a68efbb0c03dc42ad7614dc4858ec4",
-        "ThirdPersonSimulation.QuantumNumerics"
+        "SLATE"
     ],
     "includePlatforms": [
         "Editor"
@@ -23,9 +21,7 @@
     "excludePlatforms": [],
     "allowUnsafeCode": false,
     "overrideReferences": true,
-    "precompiledReferences": [
-        "Quantum.Deterministic.dll"
-    ],
+    "precompiledReferences": [],
     "autoReferenced": true,
     "defineConstraints": [],
     "versionDefines": [],

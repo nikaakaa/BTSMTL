@@ -78,8 +78,7 @@ namespace ThirdPerson.ValueGeneration.Generator
             var equality = new SnapshotEquality();
             string snapshotType = SnapshotTypeName(owner);
             code.Append("namespace ").Append(owner.ContainingNamespace.ToDisplayString()).AppendLine(" {");
-            bool textCapacity = shapes.All(SnapshotTextCapacitySupported);
-            EmitSnapshotTypeDeclaration(code, owner, textCapacity);
+            EmitSnapshotTypeDeclaration(code, owner);
             code.AppendLine("internal int References;");
             for (int index = 0; index < members.Length; index++)
             {
@@ -88,7 +87,6 @@ namespace ThirdPerson.ValueGeneration.Generator
                     .Append(Escape(members[index].Symbol.Name)).AppendLine(";");
             }
             code.Append("internal ").Append(Escape(owner.Name + "ValueSnapshot")).AppendLine("() { }");
-            if (textCapacity) EmitSnapshotTextCapacity(code, members, shapes);
             code.AppendLine("public void Retain() { References++; }");
             code.AppendLine("public void Release() { if (--References == 0) ReleaseValues(); }");
             code.AppendLine("public void CopyFrom(global::ThirdPersonSimulation.IValueResources source) {");
@@ -215,13 +213,12 @@ namespace ThirdPerson.ValueGeneration.Generator
                 ".Snapshot.g.cs", SourceText.From(code.ToString(), Encoding.UTF8));
         }
 
-        static void EmitSnapshotTypeDeclaration(StringBuilder code, INamedTypeSymbol owner, bool textCapacity)
+        static void EmitSnapshotTypeDeclaration(StringBuilder code, INamedTypeSymbol owner)
         {
             code.Append("public sealed class ").Append(Escape(owner.Name + "ValueSnapshot"));
             if (owner.Arity != 0)
                 code.Append('<').Append(string.Join(", ", owner.TypeParameters.Select(parameter => Escape(parameter.Name)))).Append('>');
             code.Append(" : global::ThirdPersonSimulation.IValueSnapshotCopy");
-            if (textCapacity) code.Append(", global::ThirdPersonSimulation.IValueTextCapacity");
             foreach (ITypeParameterSymbol parameter in owner.TypeParameters)
             {
                 var constraints = new List<string>();

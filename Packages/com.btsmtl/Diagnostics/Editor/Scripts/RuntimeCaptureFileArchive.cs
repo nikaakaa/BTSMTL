@@ -140,7 +140,6 @@ namespace BTSMTL.Diagnostics.Editor
                 m_PresentationTime = traceEvent.TimeSeconds;
             else
                 m_LogicTime = traceEvent.TimeSeconds;
-            traceEvent.Retain();
             m_Pages[m_Current][m_Count++] = traceEvent;
             Version++;
             if (m_Count == EventsPerPage)
@@ -229,12 +228,10 @@ namespace BTSMTL.Diagnostics.Editor
             finally
             {
                 for (int page = 0; page < m_Pages.Length; page++)
-                    ClearEvents(m_Pages[page]);
-                ClearEvents(m_ReadPages);
+                    m_Pages[page].AsSpan().Clear();
+                m_ReadPages.AsSpan().Clear();
                 ClearPageStates();
-                ClearEvents(m_CheckpointState);
-                for (int i = 0; i < m_StateScratch.Count; i++)
-                    m_StateScratch[i].Release();
+                m_CheckpointState.AsSpan().Clear();
                 m_StateScratch.Clear();
                 m_State.Clear();
                 m_ReadState.Clear();
@@ -292,7 +289,7 @@ namespace BTSMTL.Diagnostics.Editor
                     if (page >= 0)
                     {
                         WritePage(page);
-                        ClearEvents(m_Pages[page].AsSpan(0, m_Counts[page]));
+                        m_Pages[page].AsSpan(0, m_Counts[page]).Clear();
                         lock (m_Gate) m_Free.Enqueue(page);
                     }
                     else if (reset)
@@ -354,10 +351,9 @@ namespace BTSMTL.Diagnostics.Editor
                 m_UnusedTimes.Enqueue(index);
             }
             m_Times.Clear();
-            ClearEvents(m_ReadPages);
+            m_ReadPages.AsSpan().Clear();
             ClearPageStates();
-            ClearEvents(m_CheckpointState);
-            for (int i = 0; i < m_StateScratch.Count; i++) m_StateScratch[i].Release();
+            m_CheckpointState.AsSpan().Clear();
             m_StateScratch.Clear();
             m_State.Clear();
             m_ReadState.Clear();
@@ -411,8 +407,8 @@ namespace BTSMTL.Diagnostics.Editor
             page.SymbolCount = m_WriterCodec.SymbolCount;
             int readSlot = (int)(m_WrittenPages % CheckpointPageInterval);
             Span<RuntimeTraceEvent> readEvents = m_ReadPages.AsSpan(readSlot * EventsPerPage, EventsPerPage);
-            ClearEvents(readEvents);
-            CopyEvents(m_Pages[pageId].AsSpan(0, page.Count), readEvents);
+            readEvents.Clear();
+            m_Pages[pageId].AsSpan(0, page.Count).CopyTo(readEvents);
             m_ReadPageFirst[readSlot] = page.First;
             m_ReadPageCounts[readSlot] = page.Count;
             m_PageIndex.BaseStream.Position = m_WrittenPages++ * PageIndexSize;
@@ -428,7 +424,7 @@ namespace BTSMTL.Diagnostics.Editor
             int slot = (int)(pageId % CheckpointPageInterval);
             m_PageStateEvictions[slot] = baseEvictions + state.CopyStateTo(m_StateScratch);
             Span<RuntimeTraceEvent> states = m_PageStates[slot];
-            ClearEvents(states.Slice(0, m_PageStateCounts[slot]));
+            states.Slice(0, m_PageStateCounts[slot]).Clear();
             if (states.Length < m_StateScratch.Count)
             {
                 m_PageStates[slot] = new RuntimeTraceEvent[Math.Min(StateCapacity,
@@ -437,7 +433,6 @@ namespace BTSMTL.Diagnostics.Editor
             }
             for (int i = 0; i < m_StateScratch.Count; i++)
             {
-                m_StateScratch[i].Retain();
                 states[i] = m_StateScratch[i];
             }
             m_PageStateCounts[slot] = m_StateScratch.Count;
@@ -452,10 +447,9 @@ namespace BTSMTL.Diagnostics.Editor
             m_Checkpoint.CheckpointSymbols = m_WriterCodec.BeginPage();
             m_Checkpoint.EvictedStates = m_PageStateEvictions[(int)(m_WrittenPages % CheckpointPageInterval)];
             m_Checkpoint.StateCount = m_StateScratch.Count;
-            ClearEvents(m_CheckpointState);
+            m_CheckpointState.AsSpan().Clear();
             for (int i = 0; i < m_StateScratch.Count; i++)
             {
-                m_StateScratch[i].Retain();
                 m_CheckpointState[i] = m_StateScratch[i];
             }
             m_CheckpointStateFirst = m_Checkpoint.CheckpointFirst;
@@ -533,7 +527,7 @@ namespace BTSMTL.Diagnostics.Editor
                 if (!cached && m_CheckpointStateFirst != first)
                 {
                     m_CheckpointStateFirst = -1;
-                    ClearEvents(m_CheckpointState);
+                    m_CheckpointState.AsSpan().Clear();
                     if (!ReadSymbols(statePage.CheckpointSymbols, statePage.CheckpointSymbolCount, request))
                         return ReadResult.Cancelled;
                     m_CheckpointReader.BaseStream.Position = statePage.CheckpointOffset;
@@ -663,7 +657,7 @@ namespace BTSMTL.Diagnostics.Editor
                     page = m_Pending.Dequeue();
                 }
                 WritePage(page);
-                ClearEvents(m_Pages[page].AsSpan(0, m_Counts[page]));
+                m_Pages[page].AsSpan(0, m_Counts[page]).Clear();
                 lock (m_Gate) m_Free.Enqueue(page);
             }
         }
@@ -753,7 +747,7 @@ namespace BTSMTL.Diagnostics.Editor
                 Page page = ReadPage(pageId);
                 int slot = (int)(pageId % CheckpointPageInterval);
                 m_ReadPageCounts[slot] = 0;
-                ClearEvents(m_ReadPages.AsSpan(slot * EventsPerPage, EventsPerPage));
+                m_ReadPages.AsSpan(slot * EventsPerPage, EventsPerPage).Clear();
                 if (!ReadSymbols(page.SymbolOffset, page.SymbolCount, request))
                     return false;
                 long end = pageId + 1 == m_WrittenPages ? m_Written : ReadPage(pageId + 1).First;
@@ -793,24 +787,8 @@ namespace BTSMTL.Diagnostics.Editor
         {
             for (int slot = 0; slot < m_PageStates.Length; slot++)
             {
-                ClearEvents(m_PageStates[slot].AsSpan(0, m_PageStateCounts[slot]));
+                m_PageStates[slot].AsSpan(0, m_PageStateCounts[slot]).Clear();
                 m_PageStateCounts[slot] = 0;
-            }
-        }
-
-        static void ClearEvents(Span<RuntimeTraceEvent> events)
-        {
-            for (int i = 0; i < events.Length; i++)
-                events[i].Release();
-            events.Clear();
-        }
-
-        static void CopyEvents(ReadOnlySpan<RuntimeTraceEvent> source, Span<RuntimeTraceEvent> destination)
-        {
-            for (int i = 0; i < source.Length; i++)
-            {
-                source[i].Retain();
-                destination[i] = source[i];
             }
         }
 

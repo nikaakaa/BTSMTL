@@ -19,6 +19,7 @@ namespace BTSMTL.Orchestration
         public int Ordinal(in OrchestrationIdentityValue value) =>
             value.Space switch
             {
+                OrchestrationIdentitySpace.Null => -1,
                 OrchestrationIdentitySpace.Content => ContentRanks.Span[value.Index],
                 OrchestrationIdentitySpace.Roster => RosterRanks.Span[value.Index],
                 OrchestrationIdentitySpace.RuntimeText => RuntimeTextRanks.Span[value.Index],
@@ -26,6 +27,7 @@ namespace BTSMTL.Orchestration
             };
 
         public bool IsEmpty(in OrchestrationIdentityValue value) =>
+            value.Space == OrchestrationIdentitySpace.Null ||
             value.Space == OrchestrationIdentitySpace.Content && value.Index == 0;
 
         public bool Equal(in OrchestrationIdentityValue left, in OrchestrationIdentityValue right) =>

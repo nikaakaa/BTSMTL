@@ -1,5 +1,5 @@
 using System;
-using Photon.Deterministic;
+using BTSMTL.Orchestration;
 using System.Collections.Generic;
 using ThirdPersonSimulation;
 using UnityEngine;
@@ -28,7 +28,7 @@ namespace BTSMTL.Timeline
     }
 
     [TrackGroup("Base"), ScriptGuid("9a9b5b4c1d2e4f6a8b7c0d1e2f3a4b5c"), Ordered(7), Color(132, 224, 184)]
-    public sealed class ScenePresentationParameterTrack : Track
+    public sealed class ScenePresentationParameterTrack : SampledTrack
     {
         public override string ContractKind => TimelineContractKinds.ScenePresentationParameterTrack;
 
@@ -39,11 +39,15 @@ namespace BTSMTL.Timeline
 
     [ScriptGuid("9a9b5b4c1d2e4f6a8b7c0d1e2f3a4b5c"), Color(132, 224, 184)]
 #if UNITY_EDITOR
-    [TimelineAuthoringProperty("targetBindingId", TimelineAuthoringPropertyKind.Text, Trimmed = true)]
-    [TimelineAuthoringProperty("parameterBindingId", TimelineAuthoringPropertyKind.Text, Trimmed = true)]
-    [TimelineAuthoringProperty("valueCurve", TimelineAuthoringPropertyKind.Object)]
+    [TimelineAuthoringProperty("targetBindingId", TimelineAuthoringPropertyKind.Text, MemberName = "m_TargetBindingId", Trimmed = true,
+        BindingValueKinds = new[] { TimelineBindingValueKind.Target }, BindingAccess = TimelineBindingAccess.Input,
+        BindingLifetime = TimelineBindingLifetime.Call)]
+    [TimelineAuthoringProperty("parameterBindingId", TimelineAuthoringPropertyKind.Text, MemberName = "m_ParameterBindingId", Trimmed = true,
+        BindingValueKinds = new[] { TimelineBindingValueKind.Scalar, TimelineBindingValueKind.Boolean },
+        BindingAccess = TimelineBindingAccess.Write, BindingLifetime = TimelineBindingLifetime.Tick)]
+    [TimelineAuthoringProperty("valueCurve", TimelineAuthoringPropertyKind.Object, MemberName = "m_ValueCurve")]
 #endif
-    public sealed class ScenePresentationParameterCurveClip : Clip, ITimelineExternalBindingUseSource
+    public sealed class ScenePresentationParameterCurveClip : SampledClip, ITimelineExternalBindingUseSource
     {
         [SerializeField, ShowInInspector, OnValueChanged("RebindTimeline")]
         string m_TargetBindingId = "target";
@@ -55,6 +59,16 @@ namespace BTSMTL.Timeline
         AnimationCurve m_ValueCurve = AnimationCurve.Linear(0f, 0f, 1f, 1f);
 
         public override string ContractKind => TimelineContractKinds.ScenePresentationParameterCurveClip;
+        public override string CurveChannelPrefix => "scene-presentation";
+        public override IReadOnlyList<TimelineCurveChannelDescriptor> CurveChannels => new[]
+        {
+            new TimelineCurveChannelDescriptor(new TimelineCurveChannelId("scene-presentation.value"),
+                typeof(ScenePresentationParameterCurveClip), "Value", new Color32(132, 224, 184, 255),
+                TimelineCurveValueDomain.Unbounded(0f, string.Empty),
+                () => AnimationCurve.Linear(0f, 0f, 1f, 0f),
+                owner => ((ScenePresentationParameterCurveClip)owner).ValueCurve,
+                (owner, curve) => ((ScenePresentationParameterCurveClip)owner).SetValueCurve(curve))
+        };
         public override TimelineContentParameters CaptureContentParameters() => new TimelineContentSceneParameter(
             TargetBindingId, ParameterBindingId, ParameterValueKind);
         public string TargetBindingId => m_TargetBindingId ?? string.Empty;
@@ -96,8 +110,14 @@ namespace BTSMTL.Timeline
 
 #if UNITY_EDITOR
         public override ClipCapabilities Capabilities => ClipCapabilities.Resizable | ClipCapabilities.TickQuantized;
+        public override TimelineAuthoringClipConfiguration CaptureAuthoringDefaults()
+        {
+            TimelineAuthoringClipConfiguration defaults = base.CaptureAuthoringDefaults();
+            defaults.Set("valueCurve", AnimationCurve.Linear(0f, 0f, 1f, 0f));
+            return defaults;
+        }
 
-        public ScenePresentationParameterCurveClip(Track track, FP time) : base(track, time)
+        public ScenePresentationParameterCurveClip(Track track, OrchestrationTime time) : base(track, time)
         {
         }
 #endif
@@ -111,9 +131,10 @@ namespace BTSMTL.Timeline
                 new TimelineTrackContract(
                     TimelineContractKinds.ScenePresentationParameterTrack,
                     TimelineTrackOverlapPolicy.Parallel,
-                    TimelineCapability.ScenePresentationParameter,
+                    TimelineContentKind.Sampled,
                     TimelineExecutionDomain.Presentation,
                     TimelineOutputKind.PresentationEvent,
+                    null,
                     TimelineContractKinds.ScenePresentationParameterCurveClip)
             },
             new[]
@@ -122,7 +143,7 @@ namespace BTSMTL.Timeline
                     TimelineContractKinds.ScenePresentationParameterCurveClip,
                     TimelineContractKinds.ScenePresentationParameterTrack,
                     TimelineClipExecutionPhase.Commit,
-                    TimelineCapability.ScenePresentationParameter,
+                    TimelineContentKind.Sampled,
                     true,
                     true,
                     TimelineExecutionDomain.Presentation,

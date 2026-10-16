@@ -85,8 +85,6 @@ namespace ThirdPerson.MemoryPackAdapters
         static string PrepareMemoryPackSnapshot(GeneratorExecutionContext context, NativeSnapshotPlan candidate,
             HashSet<string> externalLeaves, Func<ITypeSymbol, ITypeSymbol, bool> implicitReference)
         {
-            ITypeSymbol text = context.Compilation.GetTypeByMetadataName("ThirdPersonSimulation.Serialization.MemoryPackContentContext")?
-                .GetMembers("ReadText").OfType<IMethodSymbol>().SingleOrDefault()?.ReturnType;
             INamedTypeSymbol type = candidate.Type;
             ISymbol[] fields = type.GetMembers().Where(field => (field is IFieldSymbol || candidate.Original && field is IPropertySymbol) &&
                 !field.IsStatic && HasAttribute(field, SnapshotAttributeName)).OrderBy(field => field.Name, StringComparer.Ordinal).ToArray();
@@ -103,7 +101,7 @@ namespace ThirdPerson.MemoryPackAdapters
                 AttributeData resource = field.GetAttributes().SingleOrDefault(attribute => Identity(attribute.AttributeClass) == SnapshotResourceAttribute);
                 ITypeSymbol fieldType = field is IFieldSymbol stored ? stored.Type : ((IPropertySymbol)field).Type;
                 if (!TryNativeSnapshotShape(fieldType, SnapshotOption(snapshot, "FixedKeys"), resource,
-                    DeclaredText(field), text, implicitReference, externalLeaves, out NativeSnapshotShape shape, out reason, candidate.Original))
+                    implicitReference, externalLeaves, out NativeSnapshotShape shape, out reason, candidate.Original))
                     reason = field.Name + ": " + reason;
                 else shapes.Add(shape);
             }
@@ -115,8 +113,8 @@ namespace ThirdPerson.MemoryPackAdapters
         static bool SnapshotOption(AttributeData attribute, string name) => attribute != null &&
             attribute.NamedArguments.Any(argument => argument.Key == name && argument.Value.Value is true);
 
-        static bool TryNativeSnapshotShape(ITypeSymbol type, bool fixedKeys, AttributeData resource, bool declared,
-            ITypeSymbol text, Func<ITypeSymbol, ITypeSymbol, bool> implicitReference, HashSet<string> externalLeaves,
+        static bool TryNativeSnapshotShape(ITypeSymbol type, bool fixedKeys, AttributeData resource,
+            Func<ITypeSymbol, ITypeSymbol, bool> implicitReference, HashSet<string> externalLeaves,
             out NativeSnapshotShape shape, out string reason, bool original = false)
         {
             shape = new NativeSnapshotShape { Type = type, FixedKeys = fixedKeys };
@@ -132,13 +130,13 @@ namespace ThirdPerson.MemoryPackAdapters
                 shape.Kind = NativeSnapshotKind.Array;
                 if (array.Rank != 1) reason = "捕获数组必须是一维或锯齿固定形状";
                 else TryNativeSnapshotShape(array.ElementType, fixedKeys, SnapshotOption(resource, "Elements") ? resource : null,
-                    declared, text, implicitReference, externalLeaves, out shape.Element, out reason, original);
+                    implicitReference, externalLeaves, out shape.Element, out reason, original);
             }
             else if (original && PreparedSnapshotElement(type) is ITypeSymbol element)
             {
                 shape.Kind = NativeSnapshotKind.List;
                 TryNativeSnapshotShape(element, fixedKeys, SnapshotOption(resource, "Elements") ? resource : null,
-                    declared, text, implicitReference, externalLeaves, out shape.Element, out reason, true);
+                    implicitReference, externalLeaves, out shape.Element, out reason, true);
                 if (reason == null && shape.Element.Kind == NativeSnapshotKind.Source)
                     shape.Kind = NativeSnapshotKind.Array;
                 else if (reason == null && shape.Element.Kind != NativeSnapshotKind.Value)
@@ -153,10 +151,10 @@ namespace ThirdPerson.MemoryPackAdapters
                 shape.Kind = list ? NativeSnapshotKind.List : Identity(collection.OriginalDefinition) ==
                     "System.Collections.Generic.Dictionary<TKey, TValue>" ? NativeSnapshotKind.Dictionary : NativeSnapshotKind.SortedList;
                 AttributeData elementResource = SnapshotOption(resource, "Elements") ? resource : null;
-                if (!list && !TryNativeSnapshotShape(collection.TypeArguments[0], false, null, declared,
-                    text, implicitReference, externalLeaves, out shape.Key, out reason, original)) return false;
+                if (!list && !TryNativeSnapshotShape(collection.TypeArguments[0], false, null,
+                    implicitReference, externalLeaves, out shape.Key, out reason, original)) return false;
                 if (reason == null) TryNativeSnapshotShape(collection.TypeArguments[list ? 0 : 1], fixedKeys, elementResource,
-                    declared, text, implicitReference, externalLeaves, out shape.Element, out reason, original);
+                    implicitReference, externalLeaves, out shape.Element, out reason, original);
                 if (reason == null && shape.Key != null && shape.Key.Kind != NativeSnapshotKind.Value)
                     reason = "捕获集合的键必须是原值";
                 if (reason == null && shape.Element.Kind != NativeSnapshotKind.Value &&
@@ -165,7 +163,7 @@ namespace ThirdPerson.MemoryPackAdapters
             }
             else
             {
-                reason = NativeSnapshotValueReason(type, declared, text, implicitReference, externalLeaves, new HashSet<string>());
+                reason = NativeSnapshotValueReason(type, implicitReference, externalLeaves, new HashSet<string>());
                 if (reason == null && (resource != null || SnapshotValueHasResources(type, implicitReference, new HashSet<string>())))
                 {
                     shape.Retain = SnapshotResourceMethod(type, resource, "Retain");
@@ -178,25 +176,23 @@ namespace ThirdPerson.MemoryPackAdapters
             return reason == null;
         }
 
-        static string NativeSnapshotValueReason(ITypeSymbol type, bool declared, ITypeSymbol text,
+        static string NativeSnapshotValueReason(ITypeSymbol type,
             Func<ITypeSymbol, ITypeSymbol, bool> implicitReference, HashSet<string> externalLeaves, HashSet<string> visited)
         {
             if (IsUnmanagedValue(type)) return null;
-            if (type.SpecialType == SpecialType.System_String)
-                return declared ? null : "prepared string 必须由原成员声明 ValueTextRules.Declared，不能新建 string";
+            if (type.SpecialType == SpecialType.System_String || HasAttribute(type, TextAttribute))
+                return "捕获文本必须在接收边界转换为身份编号，不能冷读取创建文本";
             if (type.SpecialType != SpecialType.None && !type.IsReferenceType) return null;
-            if (HasAttribute(type, TextAttribute)) return SymbolEqualityComparer.Default.Equals(type, text) ? null :
-                "原文本缺少现有 prepared context 的存储合同";
             if (type.IsReferenceType) return "原引用不是已准备的捕获载体，不能在读取时创建对象";
             if (externalLeaves.Contains(Identity(type)) || !visited.Add(Identity(type))) return null;
             if (NullableElement(type) is ITypeSymbol nullable)
-                return NativeSnapshotValueReason(nullable, declared, text, implicitReference, externalLeaves, visited);
+                return NativeSnapshotValueReason(nullable, implicitReference, externalLeaves, visited);
             if (!(type is INamedTypeSymbol named)) return "捕获原值缺少可生成的正式成员合同";
             foreach (Member member in ValueMembers(named, implicitReference))
             {
                 if (SequenceElement(member.Type) != null)
                     return "原值内部集合需要已准备存储，不能使用冷读取构造：" + member.Name;
-                string reason = NativeSnapshotValueReason(member.Type, DeclaredText(member.Symbol), text,
+                string reason = NativeSnapshotValueReason(member.Type,
                     implicitReference, externalLeaves, new HashSet<string>(visited));
                 if (reason != null) return member.Name + ": " + reason;
             }
@@ -206,7 +202,6 @@ namespace ThirdPerson.MemoryPackAdapters
         static bool SnapshotValueHasResources(ITypeSymbol type, Func<ITypeSymbol, ITypeSymbol, bool> implicitReference,
             HashSet<string> visited)
         {
-            if (HasAttribute(type, TextAttribute)) return true;
             if (type.GetAttributes().Any(attribute => Identity(attribute.AttributeClass) == "ThirdPersonSimulation.ValueOperationsAttribute" &&
                 attribute.NamedArguments.Any(argument => argument.Key == "Resources" && argument.Value.Value is false))) return false;
             if (type.SpecialType != SpecialType.None || type.TypeKind == TypeKind.Enum || !visited.Add(Identity(type))) return false;
@@ -351,11 +346,7 @@ namespace ThirdPerson.MemoryPackAdapters
         static void EmitSnapshotIncoming(StringBuilder code, NativeSnapshotShape shape, string incoming)
         {
             code.Append(TypeName(shape.Type)).Append(' ').Append(incoming).AppendLine(" = default;");
-            if (shape.Type.SpecialType == SpecialType.System_String)
-                code.Append(incoming).AppendLine(" = ((global::ThirdPersonSimulation.Serialization.MemoryPackContentContext)reader.Options.ServiceProvider).ReadDeclaredText(ref reader);");
-            else if (HasAttribute(shape.Type, TextAttribute))
-                code.Append(incoming).AppendLine(" = ((global::ThirdPersonSimulation.Serialization.MemoryPackContentContext)reader.Options.ServiceProvider).ReadText(ref reader);");
-            else EmitValueRead(code, shape.Type, incoming);
+            EmitValueRead(code, shape.Type, incoming);
         }
 
         static void EmitSnapshotResource(StringBuilder code, NativeSnapshotShape shape, string value, bool retain)

@@ -1,20 +1,17 @@
 using System;
 using Luban;
 using ThirdPersonSimulation;
+using BTSMTL.Orchestration;
 {{~if has_tag __bean "btsmtl.domain" ~}}
 {{ domain = get_tag __bean "btsmtl.domain" }}
-{{ value_type = "ThirdPersonSimulation.AbilityStateValue" }}
-{{ if domain == "FPGameplay"; value_type = "ThirdPersonSimulation.FPGameplay.AbilityStateValue"; end }}
+{{ value_type = get_tag __bean "btsmtl.valueType" }}
 namespace {{__namespace_with_top_module}}
 {
-    [ValueOperations]
     public sealed partial class {{__name}} : IGeneratedBlackboardValues<{{value_type}}>
     {
         {{~for field in __bean.export_fields~}}
         public {{declaring_type_name field.ctype}} {{field.name}};
         {{~end~}}
-
-        public int FieldCount => {{__bean.export_fields.size}};
 
         public void ReadDefaults(ByteBuf buffer)
         {
@@ -27,42 +24,30 @@ namespace {{__namespace_with_top_module}}
             {{~end~}}
         }
 
-        public {{value_type}} Read(int field)
+        public void CollectIdentityTexts(System.Collections.Generic.ICollection<string> identities)
+        {
+            {{~for field in __bean.export_fields~}}
+            {{~if (get_tag field "btsmtl.kind") == "Identity"~}}
+            identities.Add({{field.name}});
+            {{~end~}}
+            {{~end~}}
+        }
+
+        public {{value_type}} Read(int field, OrchestrationIdentityTable identities)
         {
             switch (field)
             {
                 {{~for field in __bean.export_fields~}}
+                {{~if (get_tag field "btsmtl.kind") == "Identity"~}}
+                case {{get_tag field "btsmtl.index"}}: return {{value_type}}.FromIdentity({{field.name}} is null ? OrchestrationIdentityValue.Null : OrchestrationIdentityValue.Content(identities.Bind({{field.name}})));
+                {{~else~}}
                 case {{get_tag field "btsmtl.index"}}: return {{value_type}}.From{{get_tag field "btsmtl.kind"}}({{field.name}});
                 {{~end~}}
-                default: throw new IndexOutOfRangeException();
-            }
-        }
-
-        public void Write(int field, {{value_type}} value)
-        {
-            switch (field)
-            {
-                {{~for field in __bean.export_fields~}}
-                case {{get_tag field "btsmtl.index"}}: {{field.name}} = value.{{get_tag field "btsmtl.kind"}}; return;
                 {{~end~}}
                 default: throw new IndexOutOfRangeException();
             }
         }
 
-        public void CopyTo(IGeneratedBlackboardValues<{{value_type}}> destination)
-        {
-            var target = ({{__name}})destination;
-            {{~for field in __bean.export_fields~}}
-            target.{{field.name}} = {{field.name}};
-            {{~end~}}
-        }
-
-        public void Clear()
-        {
-            {{~for field in __bean.export_fields~}}
-            {{field.name}} = default;
-            {{~end~}}
-        }
     }
 
 }

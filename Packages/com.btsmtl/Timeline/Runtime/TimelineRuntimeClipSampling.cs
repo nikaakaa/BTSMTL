@@ -1,123 +1,201 @@
 using System;
-using Photon.Deterministic;
+using System.Collections.Generic;
+using BTSMTL.Orchestration;
+using ThirdPersonSimulation;
 
 namespace BTSMTL.Timeline.Runtime
 {
-    sealed class TimelineRuntimeClipSampling
+    public interface ITimelineRuntimeSourceTimeMapping<TScalar> where TScalar : unmanaged
     {
-        sealed class WeightCurves
+        TScalar MapSourceTime(in TimelineContentClip clip, int clipIndex, OrchestrationTime time);
+    }
+
+    public sealed class TimelineRuntimeClipSampling<TScalar, TMath, TLowering, TProjection> :
+        ITimelineRuntimeSourceTimeMapping<TScalar>
+        where TScalar : unmanaged, IComparable<TScalar>, IEquatable<TScalar>
+        where TMath : struct, IScalarMath<TScalar>
+        where TLowering : struct, IScalarContentLowering<TScalar>
+        where TProjection : struct, IOrchestrationTimelineTimeProjection<OrchestrationTime, TScalar>
+    {
+        readonly struct WeightCurves
         {
-            internal TimelineRuntimeCurve Weight;
-            internal TimelineRuntimeCurve EaseIn;
-            internal TimelineRuntimeCurve EaseOut;
+            public WeightCurves(TimelineRuntimeCurve<TScalar, TMath, TLowering> weight,
+                TimelineRuntimeCurve<TScalar, TMath, TLowering> easeIn,
+                TimelineRuntimeCurve<TScalar, TMath, TLowering> easeOut, TScalar normalizationDurationMinimum,
+                TScalar sourceStart, TScalar sourceEnd)
+            {
+                Weight = weight;
+                EaseIn = easeIn;
+                EaseOut = easeOut;
+                NormalizationDurationMinimum = normalizationDurationMinimum;
+                SourceStart = sourceStart;
+                SourceEnd = sourceEnd;
+            }
+
+            public readonly TimelineRuntimeCurve<TScalar, TMath, TLowering> Weight;
+            public readonly TimelineRuntimeCurve<TScalar, TMath, TLowering> EaseIn;
+            public readonly TimelineRuntimeCurve<TScalar, TMath, TLowering> EaseOut;
+            public readonly TScalar NormalizationDurationMinimum;
+            public readonly TScalar SourceStart;
+            public readonly TScalar SourceEnd;
         }
 
         readonly WeightCurves[] m_Weights;
-        readonly TimelineRuntimeCurve[] m_Values;
+        readonly int[] m_KindIndices;
+        readonly string[] m_Kinds;
+        readonly Dictionary<string, int> m_KindsByName;
+        readonly TimelineExecutionDomain m_Domain;
 
-        public TimelineRuntimeClipSampling(TimelineContentUnit content)
+        public TimelineRuntimeClipSampling(TimelineContentUnit content, TimelineExecutionDomain domain)
         {
+            TMath math = default;
+            TLowering lowering = default;
+            m_Domain = domain;
             m_Weights = new WeightCurves[content.Clips.Count];
-            m_Values = new TimelineRuntimeCurve[content.Clips.Count];
-            for (int i = 0; i < content.Clips.Count; i++)
+            m_KindIndices = new int[content.Clips.Count];
+            m_KindsByName = new Dictionary<string, int>(StringComparer.Ordinal);
+            var kinds = new List<string>();
+            for (int index = 0; index < content.Clips.Count; index++)
             {
-                TimelineContentClip clip = content.Clips[i];
-                string prefix = clip.Parameters switch
+                TimelineContentClip clip = content.Clips[index];
+                if (clip.ContentKind != TimelineContentKind.Sampled)
+                    continue;
+                if (!m_KindsByName.TryGetValue(clip.ContractKind, out int kindIndex))
                 {
-                    TimelineContentAnimation => "animation",
-                    TimelineContentCameraState => "camera-state",
-                    TimelineContentCameraResponse => "camera-response",
-                    TimelineContentCameraEffect => "camera-effect",
-                    _ => null
-                };
-                if (prefix != null)
-                    m_Weights[i] = new WeightCurves
-                    {
-                        Weight = TimelineRuntimeCurve.PrepareOptional(clip.RequireCurve(prefix + ".weight"), 1f),
-                        EaseIn = TimelineRuntimeCurve.PrepareOptional(clip.RequireCurve(prefix + ".ease-in"), 1f),
-                        EaseOut = TimelineRuntimeCurve.PrepareOptional(clip.RequireCurve(prefix + ".ease-out"), 0f)
-                    };
-                if (clip.Parameters is TimelineContentSceneParameter)
-                    m_Values[i] = TimelineRuntimeCurve.PrepareOptional(clip.RequireCurve("scene-presentation.value"), 0f);
+                    kindIndex = kinds.Count;
+                    kinds.Add(clip.ContractKind);
+                    m_KindsByName.Add(clip.ContractKind, kindIndex);
+                }
+                m_KindIndices[index] = kindIndex;
+                if (clip.TrackMuted || clip.ExecutionPolicy.Domain != domain)
+                    continue;
+                TimelineContentSampling sampling = clip.Sampling;
+                m_Weights[index] = new WeightCurves(
+                    PrepareCurve(in clip, sampling.WeightCurveIndex, math.One),
+                    PrepareCurve(in clip, sampling.EaseInCurveIndex, math.One),
+                    PrepareCurve(in clip, sampling.EaseOutCurveIndex, math.Zero),
+                    lowering.FromSingle(sampling.NormalizationDurationMinimum),
+                    lowering.FromSingle(clip.TimeRange.SourceStart), lowering.FromSingle(clip.TimeRange.SourceEnd));
             }
+            m_Kinds = kinds.ToArray();
         }
 
-        public void SampleAnimation(TimelineRuntimeIndexedClip indexed, TimelineContentUnit content,
-            FP time, bool loop, int cycle, TimelineRuntimeSampleBuffer<TimelineAnimationContribution> output)
+        internal TimelineRuntimeClipSampling(TimelineRuntimeClipSampling<TScalar, TMath, TLowering, TProjection> source,
+            TimelineContentUnit content)
         {
-            TimelineContentClip clip = indexed.Clip;
-            var animation = (TimelineContentAnimation)clip.Parameters;
-            bool hold = time > clip.EndTime && animation.Extrapolation == ExtraPolationMode.Hold;
-            float local = hold ? clip.DurationTime.AsFloat : FPMath.Clamp(time - clip.StartTime,
-                FP._0, clip.DurationTime).AsFloat;
-            float remaining = FPMath.Max(FP._0, clip.EndTime - time).AsFloat;
-            float normalized = Math.Clamp(local / Math.Max(0.0001f, clip.DurationTime.AsFloat), 0f, 1f);
-            float weight = Weight(indexed.ContentIndex, in clip, local, remaining, normalized, hold);
-            if (weight <= 0f)
-                return;
-            output.Add(new TimelineAnimationContribution(indexed.TrackIndex, indexed.ClipIndex,
-                content.AuthoringId, clip.TrackAuthoringId, clip.AuthoringId, content.Identity, content.Name,
-                indexed.Track.Name, animation.ResourceId, animation.ChannelId, animation.SlotId,
-                animation.BlendProfileId, local + clip.ClipInTime.AsFloat, normalized, weight,
-                loop, clip.ClipInTime.AsFloat, clip.DurationTime.AsFloat, cycle));
+            m_Domain = source.m_Domain;
+            m_Weights = (WeightCurves[])source.m_Weights.Clone();
+            m_KindIndices = source.m_KindIndices;
+            m_Kinds = source.m_Kinds;
+            m_KindsByName = source.m_KindsByName;
+            RefreshTimeRanges(content);
         }
 
-        public void SampleCameraAndScene(TimelineRuntimeIndexedClip indexed, TimelineContentUnit content,
-            FP time, int cycle, TimelineExecutionIdentity execution, ulong generation,
-            TimelineRuntimeSampleBuffer<TimelineCameraStateSample> states,
-            TimelineRuntimeSampleBuffer<TimelineCameraResponseSample> responses,
-            TimelineRuntimeSampleBuffer<TimelineCameraResourceSample> resources,
-            TimelineRuntimeSampleBuffer<TimelineRuntimeScenePresentationSample> scene)
+        internal void RefreshTimeRanges(TimelineContentUnit content)
         {
-            TimelineContentClip clip = indexed.Clip;
-            float local = FPMath.Clamp(time - clip.StartTime, FP._0, clip.DurationTime).AsFloat;
-            float remaining = FPMath.Max(FP._0, clip.EndTime - time).AsFloat;
-            float duration = clip.Parameters is TimelineContentCameraEffect { Kind: TimelineCameraResourceKind.Shot }
-                ? clip.DurationTime.AsFloat : Math.Max(0.0001f, clip.DurationTime.AsFloat);
-            float normalized = Math.Clamp(local / duration, 0f, 1f);
-            if (clip.Parameters is TimelineContentSceneParameter parameter)
+            TLowering lowering = default;
+            for (int index = 0; index < content.Clips.Count; index++)
             {
-                scene.Add(new TimelineRuntimeScenePresentationSample(clip.AuthoringId,
-                    parameter.TargetBindingId, parameter.ParameterBindingId, parameter.ValueKind,
-                    m_Values[indexed.ContentIndex].EvaluateFloat(normalized), normalized, time, cycle, execution, generation));
-                return;
-            }
-            float weight = Weight(indexed.ContentIndex, in clip, local, remaining, normalized, false);
-            if (weight <= 0f && clip.Parameters is not TimelineContentCameraEffect { Kind: TimelineCameraResourceKind.Shot })
-                return;
-            switch (clip.Parameters)
-            {
-                case TimelineContentCameraState state:
-                    states.Add(new TimelineCameraStateSample(content.Identity, content.Name, indexed.Track.Name,
-                        clip.TrackAuthoringId, clip.AuthoringId, state.SequenceId, state.Mode, state.Priority,
-                        weight, state.BlendInSeconds, state.BlendOutSeconds, state.TargetKey, state.InterruptPolicy));
-                    break;
-                case TimelineContentCameraResponse response:
-                    responses.Add(new TimelineCameraResponseSample(content.Identity, content.Name, indexed.Track.Name,
-                        clip.TrackAuthoringId, clip.AuthoringId, response.LookResponse, response.ManualOrbitWeight,
-                        response.PitchResponseWeight, response.YawResponseWeight, response.Priority, weight));
-                    break;
-                case TimelineContentCameraEffect effect:
-                    resources.Add(new TimelineCameraResourceSample(content.Identity, content.Name,
-                        clip.TrackAuthoringId, clip.AuthoringId, effect.Kind, effect.ResourceId, effect.Priority, weight, normalized,
-                        effect.SourceStartTime + normalized * (effect.SourceEndTime - effect.SourceStartTime), effect.ResourceRevision,
-                        cycle, effect.SourceStartTime, effect.SourceEndTime, time >= clip.EndTime));
-                    break;
+                TimelineContentClip clip = content.Clips[index];
+                if (clip.ContentKind != TimelineContentKind.Sampled || clip.TrackMuted ||
+                    clip.ExecutionPolicy.Domain != m_Domain)
+                    continue;
+                WeightCurves curves = m_Weights[index];
+                m_Weights[index] = new WeightCurves(curves.Weight, curves.EaseIn, curves.EaseOut,
+                    curves.NormalizationDurationMinimum, lowering.FromSingle(clip.TimeRange.SourceStart),
+                    lowering.FromSingle(clip.TimeRange.SourceEnd));
             }
         }
 
-        float Weight(int index, in TimelineContentClip clip, float local, float remaining, float normalized, bool hold)
+        static TimelineRuntimeCurve<TScalar, TMath, TLowering> PrepareCurve(
+            in TimelineContentClip clip, int curveIndex, TScalar emptyValue) =>
+            curveIndex == -1
+                ? TimelineRuntimeCurve<TScalar, TMath, TLowering>.Constant(emptyValue)
+                : TimelineRuntimeCurve<TScalar, TMath, TLowering>.PrepareOptional(clip.Curves[curveIndex], emptyValue);
+
+        public int SampleKindCount => m_Kinds.Length;
+        public string SampleKindAt(int kindIndex) => m_Kinds[kindIndex];
+        public int RequireSampleKind(string contractKind) => m_KindsByName[contractKind];
+        internal int KindIndexAt(int clipIndex) => m_KindIndices[clipIndex];
+
+        public TScalar MapSourceTime(in TimelineContentClip clip, int clipIndex, OrchestrationTime time)
         {
-            WeightCurves curves = m_Weights[index];
-            float fadeIn = 1f;
-            float fadeOut = 1f;
-            float easeIn = clip.EaseInTime.AsFloat;
-            float easeOut = clip.EaseOutTime.AsFloat;
-            if (!hold && easeIn > 0f && local < easeIn)
-                fadeIn = curves.EaseIn.EvaluateFloat(Math.Clamp(local / easeIn, 0f, 1f));
-            if (!hold && easeOut > 0f && remaining < easeOut)
-                fadeOut = 1f - curves.EaseOut.EvaluateFloat(Math.Clamp(1f - remaining / easeOut, 0f, 1f));
-            return Math.Clamp(curves.Weight.EvaluateFloat(normalized) * fadeIn * fadeOut, 0f, 1f);
+            TMath math = default;
+            TProjection projection = default;
+            WeightCurves curves = m_Weights[clipIndex];
+            TScalar local = projection.Project(OrchestrationTime.Clamp(time - clip.StartTime,
+                OrchestrationTime.Zero, clip.DurationTime));
+            TScalar duration = math.Max(curves.NormalizationDurationMinimum, projection.Project(clip.DurationTime));
+            TScalar normalized = math.Clamp(math.Divide(local, duration), math.Zero, math.One);
+            return SourceTime(in curves, in clip, local, normalized);
         }
+
+        public bool TrySample(in TimelineContentClip clip, int clipIndex, OrchestrationTime previousTime, OrchestrationTime time,
+            int cycle, TimelinePresentationSampleReason reason, out TimelineRuntimeSample<TScalar> sample)
+        {
+            TMath math = default;
+            TProjection projection = default;
+            WeightCurves curves = m_Weights[clipIndex];
+            bool hold = time > clip.EndTime && clip.Sampling.Extrapolation == ExtraPolationMode.Hold;
+            OrchestrationTime localTime = hold ? clip.DurationTime
+                : OrchestrationTime.Clamp(time - clip.StartTime, OrchestrationTime.Zero, clip.DurationTime);
+            TScalar local = projection.Project(localTime);
+            TScalar remaining = projection.Project(OrchestrationTime.Max(OrchestrationTime.Zero, clip.EndTime - time));
+            TScalar duration = math.Max(curves.NormalizationDurationMinimum, projection.Project(clip.DurationTime));
+            TScalar normalized = math.Clamp(math.Divide(local, duration), math.Zero, math.One);
+            TScalar weight = Weight(in curves, in clip, local, remaining, normalized, hold);
+            if (!clip.Sampling.EmitZeroWeight && math.LessThanOrEqual(weight, math.Zero))
+            {
+                sample = default;
+                return false;
+            }
+            TScalar sourceTime = SourceTime(in curves, in clip, local, normalized);
+            OrchestrationTime previousLocalTime = OrchestrationTime.Clamp(previousTime - clip.StartTime,
+                OrchestrationTime.Zero, clip.DurationTime);
+            TScalar previousLocal = projection.Project(previousLocalTime);
+            TScalar previousNormalized = math.Clamp(math.Divide(previousLocal, duration), math.Zero, math.One);
+            TScalar previousSourceTime = SourceTime(in curves, in clip, previousLocal, previousNormalized);
+            sample = new TimelineRuntimeSample<TScalar>(clipIndex, m_KindIndices[clipIndex],
+                weight, previousSourceTime, sourceTime, normalized, cycle, reason);
+            return true;
+        }
+
+        static TScalar SourceTime(in WeightCurves curves, in TimelineContentClip clip, TScalar local, TScalar normalized)
+        {
+            TMath math = default;
+            TProjection projection = default;
+            if (clip.Sampling.SourceMapping == TimelineSampleSourceMapping.ClipSeconds)
+                return math.Add(local, projection.Project(clip.ClipInTime));
+            TScalar sourceStart = curves.SourceStart;
+            TScalar sourceEnd = curves.SourceEnd;
+            return clip.Sampling.SourceMapping == TimelineSampleSourceMapping.SourceRange
+                ? math.Add(math.Add(sourceStart, math.Multiply(normalized, math.Subtract(sourceEnd, sourceStart))),
+                    projection.Project(clip.ClipInTime))
+                : math.Clamp(math.Add(sourceStart, local), sourceStart, sourceEnd);
+        }
+
+        static TScalar Weight(in WeightCurves curves, in TimelineContentClip clip,
+            TScalar local, TScalar remaining, TScalar normalized, bool hold)
+        {
+            TMath math = default;
+            TProjection projection = default;
+            TScalar fadeIn = math.One;
+            TScalar fadeOut = math.One;
+            TScalar easeIn = projection.Project(clip.EaseInTime);
+            TScalar easeOut = projection.Project(clip.EaseOutTime);
+            if (!hold && math.GreaterThan(easeIn, math.Zero) && math.GreaterThan(easeIn, local))
+                fadeIn = curves.EaseIn.Evaluate(math.Clamp(math.Divide(local, easeIn), math.Zero, math.One));
+            if (!hold && math.GreaterThan(easeOut, math.Zero) && math.GreaterThan(easeOut, remaining))
+                fadeOut = math.Subtract(math.One, curves.EaseOut.Evaluate(math.Clamp(
+                    math.Subtract(math.One, math.Divide(remaining, easeOut)), math.Zero, math.One)));
+            return math.Clamp(math.Multiply(math.Multiply(curves.Weight.Evaluate(normalized), fadeIn), fadeOut),
+                math.Zero, math.One);
+        }
+    }
+
+    readonly struct TimelineRuntimeFloat32TimeProjection
+        : IOrchestrationTimelineTimeProjection<OrchestrationTime, Float32Scalar>
+    {
+        public Float32Scalar Project(OrchestrationTime time) => Float32Scalar.FromSingle(time.AsSingle);
     }
 }

@@ -18,24 +18,16 @@ namespace ThirdPersonSimulation
 
     public readonly partial struct EquipmentSlotId : IEquatable<EquipmentSlotId>, IComparable<EquipmentSlotId>
     {
-        public EquipmentSlotId(string value) => Value = CanonicalTextValue.FromString(CharacterEquipmentIdentity.Require(value, nameof(value)));
-
-        public EquipmentSlotId(CanonicalTextValue value)
-        {
-            Value = value.Trim();
-            if (Value.IsEmpty)
-                throw new ArgumentException("Equipment identity is required.", nameof(value));
-        }
-        public CanonicalTextValue Value { get; }
+        public EquipmentSlotId(string value) { Value = CharacterEquipmentIdentity.Require(value, nameof(value)); }
+        [ValueTextRules(Declared = true)]
+        public string Value { get; }
         [ValuePresence]
-        public bool IsValid => !Value.IsEmpty;
-        public int CompareTo(EquipmentSlotId other) => Value.CompareTo(other.Value);
-        public bool Equals(EquipmentSlotId other) => Value.Equals(other.Value);
+        public bool IsValid => !string.IsNullOrEmpty(Value);
+        public int CompareTo(EquipmentSlotId other) => CharacterEquipmentIdentity.Compare(Value, other.Value);
+        public bool Equals(EquipmentSlotId other) => CharacterEquipmentIdentity.Equals(Value, other.Value);
         public override bool Equals(object obj) => obj is EquipmentSlotId other && Equals(other);
-        public override int GetHashCode() => Value.GetHashCode();
-        public override string ToString() => Value.ToString();
-        public void Retain() => Value.Retain();
-        public void Release() => Value.Release();
+        public override int GetHashCode() => CharacterEquipmentIdentity.Hash(Value);
+        public override string ToString() => Value ?? string.Empty;
         public static bool operator ==(EquipmentSlotId left, EquipmentSlotId right) => left.Equals(right);
         public static bool operator !=(EquipmentSlotId left, EquipmentSlotId right) => !left.Equals(right);
     }
@@ -154,27 +146,6 @@ namespace ThirdPersonSimulation
         public static bool operator !=(EquipmentVisualBindingId left, EquipmentVisualBindingId right) => !left.Equals(right);
     }
 
-    public readonly partial struct EquipmentChangeId : IEquatable<EquipmentChangeId>, IComparable<EquipmentChangeId>
-    {
-        public EquipmentChangeId(ulong value)
-        {
-            if (value == 0)
-                throw new ArgumentOutOfRangeException(nameof(value));
-            Value = value;
-        }
-
-        public ulong Value { get; }
-        [ValuePresence]
-        public bool IsValid => Value != 0;
-        public int CompareTo(EquipmentChangeId other) => Value.CompareTo(other.Value);
-        public bool Equals(EquipmentChangeId other) => Value == other.Value;
-        public override bool Equals(object obj) => obj is EquipmentChangeId other && Equals(other);
-        public override int GetHashCode() => Value.GetHashCode();
-        public override string ToString() => Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
-        public static bool operator ==(EquipmentChangeId left, EquipmentChangeId right) => left.Equals(right);
-        public static bool operator !=(EquipmentChangeId left, EquipmentChangeId right) => !left.Equals(right);
-    }
-
     public enum EquipmentSlotRequirement : byte
     {
         Required = 1,
@@ -206,18 +177,6 @@ namespace ThirdPersonSimulation
         AnimationProducer = 9
     }
 
-    public enum EquipmentExpectedAnimationBlendMode : byte
-    {
-        Override = 1,
-        Additive = 2
-    }
-
-    public enum EquipmentExpectedAnimationOutputPolicy : byte
-    {
-        RequireSelection = 1,
-        AllowEmpty = 2
-    }
-
     public enum EquipmentVisualBindingKind : byte
     {
         ExistingRigObject = 1,
@@ -227,49 +186,6 @@ namespace ThirdPersonSimulation
     public enum EquipmentVisualLifecyclePolicy : byte
     {
         KeepWhileEquipped = 1
-    }
-
-    public readonly partial struct EquipmentActionContext : IEquatable<EquipmentActionContext>
-    {
-        public EquipmentActionContext(
-            EquipmentSlotId slotId,
-            EquipmentId equipmentId,
-            EquipmentFeatureId featureId,
-            ulong equipmentRevision,
-            EquipmentActionRouteId routeId)
-        {
-            SlotId = slotId;
-            EquipmentId = equipmentId;
-            FeatureId = featureId;
-            EquipmentRevision = equipmentRevision;
-            RouteId = routeId;
-            RequireRecord();
-        }
-
-        [ValueValidation]
-        void RequireRecord()
-        {
-            if (!SlotId.IsValid || !EquipmentId.IsValid || !FeatureId.IsValid || EquipmentRevision == 0 || !RouteId.IsValid)
-                throw new ArgumentException("Equipment Action Context is incomplete.");
-        }
-
-        public EquipmentSlotId SlotId { get; }
-        public EquipmentId EquipmentId { get; }
-        public EquipmentFeatureId FeatureId { get; }
-        public ulong EquipmentRevision { get; }
-        public EquipmentActionRouteId RouteId { get; }
-        [ValuePresence]
-        public bool IsValid => SlotId.IsValid && EquipmentId.IsValid && FeatureId.IsValid && EquipmentRevision != 0 && RouteId.IsValid;
-        public bool Equals(EquipmentActionContext other) =>
-            SlotId == other.SlotId && EquipmentId == other.EquipmentId && FeatureId == other.FeatureId &&
-            EquipmentRevision == other.EquipmentRevision && RouteId == other.RouteId;
-        public override bool Equals(object obj) => obj is EquipmentActionContext other && Equals(other);
-        public override int GetHashCode() => HashCode.Combine(SlotId, EquipmentId, FeatureId, EquipmentRevision, RouteId);
-        public override string ToString() => IsValid
-            ? $"{SlotId}/{EquipmentId}/{FeatureId}@{EquipmentRevision}/{RouteId}"
-            : "None";
-        public static bool operator ==(EquipmentActionContext left, EquipmentActionContext right) => left.Equals(right);
-        public static bool operator !=(EquipmentActionContext left, EquipmentActionContext right) => !left.Equals(right);
     }
 
     public readonly struct EquipmentVisualSelection : IEquatable<EquipmentVisualSelection>
@@ -306,13 +222,4 @@ namespace ThirdPersonSimulation
         public override int GetHashCode() => HashCode.Combine(ActorId, SlotId, EquipmentId, VisualBindingId, EquipmentRevision, SourceTick);
     }
 
-    public static class EquipmentTagSourceIdentity
-    {
-        public static GameplayTagSourceIdentityValue Create(ActorId actorId, EquipmentSlotId slotId, ulong revision)
-        {
-            if (!actorId.IsValid || !slotId.IsValid || revision == 0)
-                throw new ArgumentException("Equipment Tag source identity is incomplete.");
-            return GameplayTagSourceIdentityValue.Equipment(actorId, slotId, revision);
-        }
-    }
 }

@@ -12,9 +12,14 @@ namespace BTSMTL.Timeline.Runtime
         readonly ulong m_Version;
 
         internal TimelineRuntimeSampleView(TimelineRuntimeSampleBuffer<T> buffer)
+            : this(buffer, buffer.Version)
+        {
+        }
+
+        internal TimelineRuntimeSampleView(TimelineRuntimeSampleBuffer<T> buffer, ulong version)
         {
             m_Buffer = buffer;
-            m_Version = buffer.Version;
+            m_Version = version;
         }
 
         internal bool IsCurrent => m_Buffer != null && m_Buffer.Version == m_Version;

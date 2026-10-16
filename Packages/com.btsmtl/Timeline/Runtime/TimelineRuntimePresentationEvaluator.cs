@@ -1,63 +1,43 @@
-using System;
-using Photon.Deterministic;
+using BTSMTL.Orchestration;
 
 namespace BTSMTL.Timeline.Runtime
 {
     internal static class TimelineRuntimePresentationEvaluator
     {
-        public static TimelineRuntimePresentationOperations Evaluate(
-            TimelineRuntimePlayback playback,
-            FP previousPosition,
+        public static void Evaluate(
+            TimelineRuntimePreparedContent preparedContent,
+            OrchestrationTime previousPosition,
             int previousCycle,
-            FP currentPosition,
+            OrchestrationTime currentPosition,
             int currentCycle,
-            bool loop,
+            TimelinePresentationSampleReason reason,
             TimelineRuntimePresentationBuffer buffer)
         {
-            if (playback == null)
-                throw new ArgumentNullException(nameof(playback));
-            TimelineContentUnit content = playback.Content;
-            var cameraStates = buffer.CameraStates;
-            var cameraResponses = buffer.CameraResponses;
-            var cameraResources = buffer.CameraResources;
-            var scenePresentation = buffer.ScenePresentation;
-            FP currentTime = currentPosition;
+            TimelineContentUnit content = preparedContent.Content;
             var selected = buffer.SamplingClips;
-            SampleAnimations(content, playback.Index, playback.Preparation.ClipSampling,
-                currentTime, currentCycle, loop, buffer);
-            TimelineRuntimeClipIndex cameraIndex = playback.Index.Presentation.CameraAndScene;
+            TimelineRuntimeClipIndex sampled = preparedContent.Index.Presentation.Sampled;
             for (int cycle = previousCycle; cycle <= currentCycle; cycle++)
             {
-                FP from = cycle == previousCycle ? previousPosition : FP._0;
-                FP to = cycle == currentCycle ? currentTime : content.Duration;
+                OrchestrationTime from = cycle == previousCycle ? previousPosition : OrchestrationTime.Zero;
+                OrchestrationTime to = cycle == currentCycle ? currentPosition : content.Duration;
                 selected.Clear();
-                cameraIndex.Select(from, to, true, selected);
+                sampled.Select(from, to, true, selected);
                 for (int selectedIndex = 0; selectedIndex < selected.Count; selectedIndex++)
                 {
-                    TimelineRuntimeIndexedClip indexed = cameraIndex[selected[selectedIndex]];
-                    bool shot = indexed.Clip.Parameters is TimelineContentCameraEffect { Kind: TimelineCameraResourceKind.Shot };
-                    if (shot ? indexed.Clip.EndTime == from && from != to :
-                        cycle != currentCycle || indexed.Clip.EndTime < to)
+                    TimelineRuntimeIndexedClip indexed = sampled[selected[selectedIndex]];
+                    TimelineContentClip clip = indexed.Clip;
+                    if (clip.Sampling.Window == TimelineSampleWindow.TraversalWindow)
+                    {
+                        if (clip.EndTime == from && from != to)
+                            continue;
+                    }
+                    else if (cycle != currentCycle ||
+                        clip.EndTime < to && clip.Sampling.Extrapolation != ExtraPolationMode.Hold)
                         continue;
-                    playback.Preparation.ClipSampling.SampleCameraAndScene(indexed, content,
-                        to, cycle, playback.ExecutionIdentity, playback.Generation,
-                        cameraStates, cameraResponses, cameraResources, scenePresentation);
+                    if (preparedContent.ClipSampling.TrySample(in clip, indexed.ContentIndex, from, to, cycle, reason, out var sample))
+                        buffer.Samples[sample.KindIndex].Add(sample);
                 }
             }
-            return new TimelineRuntimePresentationOperations(buffer);
         }
-
-        internal static void SampleAnimations(TimelineContentUnit content,
-            TimelineRuntimeContentIndex index, TimelineRuntimeClipSampling sampling,
-            FP time, int cycle, bool loop, TimelineRuntimePresentationBuffer buffer)
-        {
-            var selected = buffer.SamplingClips;
-            TimelineRuntimeClipIndex animations = index.Presentation.Animations;
-            selected.Clear();
-            animations.Select(time, time, true, selected);
-            for (int i = 0; i < selected.Count; i++)
-                sampling.SampleAnimation(animations[selected[i]], content, time, loop, cycle, buffer.Animations);
-        }
-
     }
 }

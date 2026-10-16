@@ -8,9 +8,14 @@ internal static class Program
 {
     static int Main(string[] args)
     {
-        if (args.Length != 3)
+        if (args.Length == 3 && args[0] == "--retire-other-targets")
         {
-            Console.Error.WriteLine("用法：Btsmtl.BlackboardData.Generator <声明输入.json> <输出目录> <Luban.dll>");
+            RetireOtherTargets(Path.GetFullPath(args[1]), JsonSerializer.Deserialize<string[]>(args[2])!);
+            return 0;
+        }
+        if (args.Length != 4)
+        {
+            Console.Error.WriteLine("用法：Btsmtl.BlackboardData.Generator <声明输入.json> <输出目录> <Luban.dll> <预编译程序集引用JSON数组>；导出前退役旧目标：--retire-other-targets <输出目录> <当前数值目标JSON数组>");
             return 2;
         }
 
@@ -18,12 +23,13 @@ internal static class Program
         string pendingRoot = Path.Combine(output, ".generation");
         string pending = Path.Combine(pendingRoot, Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(pending);
-        using var schema = new BlackboardSchema(args[0]);
         try
         {
-            schema.Write(pending);
-            foreach (string target in new[] { "FPGameplay", "Float32" })
+            using var schema = new BlackboardSchema(args[0]);
+            schema.Write(pending, JsonSerializer.Deserialize<string[]>(args[3])!);
+            foreach (string target in schema.TargetNames)
                 GenerateCSharp(args[2], Path.Combine(pending, target));
+            schema.WriteModuleFactories(pending);
             schema.WriteManifest(pending);
             Publish(pending, output);
         }
@@ -73,15 +79,43 @@ internal static class Program
                 string relative = file.GetProperty("path").GetString()!;
                 if (files.Contains(relative))
                     continue;
-                string retired = Path.GetFullPath(Path.Combine(output, relative));
-                if (!retired.StartsWith(output + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
-                    throw new InvalidDataException("黑板生成清单包含输出目录之外的文件。");
-                File.Delete(retired);
-                File.Delete(retired + ".meta");
+                RetireOwnedFile(output, relative);
             }
         }
         File.Copy(Path.Combine(pending, manifestName), manifestPath, true);
         Console.WriteLine($"黑板构建：类型结构 {(structureChanged ? "变化" : "复用")}；C# 源码 {(codeChanged ? "变化，需编译" : "复用")}；默认配置 {(defaultsChanged ? "变化，需发布" : "复用")}；图逻辑／依赖 {(logicChanged ? "变化，按原图构建" : "复用")}；C++ 仅预留 schema。");
+    }
+
+    static void RetireOtherTargets(string output, string[] currentTargetNames)
+    {
+        using JsonDocument previous = JsonDocument.Parse(File.ReadAllText(
+            Path.Combine(output, "blackboard.manifest.json"), Encoding.UTF8));
+        var current = currentTargetNames.ToHashSet(StringComparer.Ordinal);
+        var retired = new HashSet<string>(StringComparer.Ordinal);
+        foreach (JsonElement owner in previous.RootElement.GetProperty("owners").EnumerateArray())
+            foreach (JsonProperty target in owner.GetProperty("contracts").EnumerateObject())
+                if (!current.Contains(target.Name))
+                    retired.Add(target.Name);
+        int paths = 0;
+        foreach (JsonElement file in previous.RootElement.GetProperty("files").EnumerateArray())
+        {
+            string relative = file.GetProperty("path").GetString()!;
+            int separator = relative.IndexOf('/');
+            if (separator < 0 || !retired.Contains(relative[..separator]))
+                continue;
+            RetireOwnedFile(output, relative);
+            paths++;
+        }
+        Console.WriteLine($"黑板导出准备：已按正式清单退役 {paths} 个旧数值目标拥有路径；根程序集与原拥有清单保留，当前数据仍须正式导出和生成。");
+    }
+
+    static void RetireOwnedFile(string output, string relative)
+    {
+        string retired = Path.GetFullPath(Path.Combine(output, relative));
+        if (!retired.StartsWith(output + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("黑板生成清单包含输出目录之外的文件。");
+        File.Delete(retired);
+        File.Delete(retired + ".meta");
     }
 
     static void GenerateCSharp(string entry, string directory)

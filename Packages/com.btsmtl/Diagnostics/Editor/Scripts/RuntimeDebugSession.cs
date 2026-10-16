@@ -317,18 +317,6 @@ namespace BTSMTL.Diagnostics.Editor
             return true;
         }
 
-        public bool TryQueryAbilityAvailability(GameplayAbilityRulePhase phase,
-            out GameplayAbilityAvailabilityResult result)
-        {
-            if (!CanControlLiveTarget || m_Target.AbilityAvailability == null)
-            {
-                result = default;
-                return false;
-            }
-            m_Target.AbilityAvailability.QueryAbilityAvailability(phase, out result);
-            return true;
-        }
-
         public void ClearTarget()
         {
             m_TimeReplay = false;
@@ -1006,14 +994,11 @@ namespace BTSMTL.Diagnostics.Editor
 
         void AddSourceMap(RuntimeDebugSourceMapSnapshot sourceMap)
         {
-            if (m_SourceMaps.TryAdd(sourceMap.Revision, sourceMap))
-                sourceMap.Revision.Retain();
+            m_SourceMaps.TryAdd(sourceMap.Revision, sourceMap);
         }
 
         void ClearSourceMaps()
         {
-            foreach (RuntimeContentRevision revision in m_SourceMaps.Keys)
-                revision.Release();
             m_SourceMaps.Clear();
         }
 

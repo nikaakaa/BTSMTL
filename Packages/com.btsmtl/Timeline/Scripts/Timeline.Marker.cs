@@ -1,6 +1,6 @@
 using System;
 using BTSMTL.Diagnostics;
-using Photon.Deterministic;
+using BTSMTL.Orchestration;
 using UnityEngine;
 
 namespace BTSMTL.Timeline
@@ -25,7 +25,7 @@ namespace BTSMTL.Timeline
         Track m_Track;
 
         public string AuthoringId => m_AuthoringId ?? string.Empty;
-        public FP Time => FP.FromRaw(m_TimeFPRawValue);
+        public OrchestrationTime Time => OrchestrationTime.FromRaw(m_TimeFPRawValue);
         public bool ForceTriggerOnInitialSeek => m_ForceTriggerOnInitialSeek;
 #if UNITY_EDITOR
         public ScriptableObject Graph => m_Graph;
@@ -44,9 +44,9 @@ namespace BTSMTL.Timeline
         }
 
 #if UNITY_EDITOR
-        public void Configure(FP time, ScriptableObject graph, bool forceTriggerOnInitialSeek)
+        public void Configure(OrchestrationTime time, ScriptableObject graph, bool forceTriggerOnInitialSeek)
         {
-            if (time < FP._0)
+            if (time < OrchestrationTime.Zero)
                 throw new ArgumentOutOfRangeException(nameof(time));
             if (graph is not ITimelineTreeGraphAsset markerGraph || !markerGraph.IsTimelineTrigger)
                 throw new ArgumentException("Timeline Marker需要正式的Timeline触发图资产。", nameof(graph));

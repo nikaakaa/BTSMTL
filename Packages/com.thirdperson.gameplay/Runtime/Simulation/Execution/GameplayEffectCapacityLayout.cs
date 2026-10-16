@@ -8,31 +8,16 @@ namespace ThirdPersonSimulation
     {
         DeclarationVersion,
         ContentVersion,
-        SessionOwner,
-        ActorCount,
         ActiveEffects,
         CommandsPerTick,
         LifecycleExecutionsPerTick,
         ExternalTagSources,
         TagsPerExternalSource,
         SourceTagSnapshotEntries,
-        PendingPredictionKeys,
-        PredictionRecordsPerKey,
         ChangesPerTick,
         TentativeChangeEntries,
         FactsPerTick,
         PresentationRequestsPerTick,
-        CandidateTicks,
-        RetainedOutputs,
-        SavepointDepth,
-        RetainedStateVersions,
-        RecordedFrames,
-        RetainedBranchStateVersions,
-        PredictionWindowTicks,
-        RetainedLifecycleRevisionTicks,
-        RetainedCheckpoints,
-        CaptureStates,
-        RestoreStates,
         SourceEntries,
         QueryTagEntries,
         FrozenTagEntries,
@@ -43,17 +28,6 @@ namespace ThirdPersonSimulation
         TargetCaptureEntries,
         AdditionalApplications,
         ApplicationsPerTick,
-        StatePages,
-        AggregateObjects,
-        CapturePages,
-        OutputPages,
-        Specs,
-        ActiveObjects,
-        SavepointRestoreBatches,
-        PredictionRecords,
-        PredictionRecordObjects,
-        LifecycleRevisions,
-        CheckpointSlots,
         FailureOutputReservation,
         SourceTagRemovalReservation,
         SourceIngressEntries,
@@ -110,8 +84,6 @@ namespace ThirdPersonSimulation
         public int ExternalTagSources;
         public int TagsPerExternalSource;
         public int SourceTagSnapshotEntries;
-        public int PendingPredictionKeys;
-        public int PredictionRecordsPerKey;
         public int ChangesPerTick;
         public int FactsPerTick;
         public int PresentationRequestsPerTick;
@@ -133,10 +105,6 @@ namespace ThirdPersonSimulation
                 !Require(GameplayEffectCapacityDimension.LifecycleExecutionsPerTick, content.HasPeriodicEffects ? 1 : 0, LifecycleExecutionsPerTick) ||
                 !Require(GameplayEffectCapacityDimension.ExternalTagSources, 0, ExternalTagSources) ||
                 !Require(GameplayEffectCapacityDimension.TagsPerExternalSource, 0, TagsPerExternalSource) ||
-                !Require(GameplayEffectCapacityDimension.SourceTagSnapshotEntries, content.InitialTagCount, SourceTagSnapshotEntries) ||
-                !Require(GameplayEffectCapacityDimension.PendingPredictionKeys, 0, PendingPredictionKeys) ||
-                !Require(GameplayEffectCapacityDimension.PredictionRecordsPerKey,
-                    PendingPredictionKeys > 0 ? 1L + content.MaximumApplicationAdditionalCount : 0, PredictionRecordsPerKey) ||
                 !Require(GameplayEffectCapacityDimension.ChangesPerTick, Math.Max(1, content.MaximumAttributeMutations), ChangesPerTick) ||
                 !Require(GameplayEffectCapacityDimension.FactsPerTick, 1, FactsPerTick) ||
                 !Require(GameplayEffectCapacityDimension.PresentationRequestsPerTick, content.MaximumCues, PresentationRequestsPerTick))
@@ -159,106 +127,6 @@ namespace ThirdPersonSimulation
         }
     }
 
-    public readonly struct GameplayEffectScheduleCapacity
-    {
-        public GameplayEffectScheduleCapacity(int maximumStepCount, int retainedOutputs,
-            int retainedStateVersions, int retainedBranchStateVersions, int predictionWindowTicks,
-            int retainedLifecycleRevisionTicks)
-        {
-            MaximumStepCount = maximumStepCount;
-            RetainedOutputs = retainedOutputs;
-            RetainedStateVersions = retainedStateVersions;
-            RetainedBranchStateVersions = retainedBranchStateVersions;
-            PredictionWindowTicks = predictionWindowTicks;
-            RetainedLifecycleRevisionTicks = retainedLifecycleRevisionTicks;
-        }
-
-        public int MaximumStepCount { get; }
-        public int RetainedOutputs { get; }
-        public int RetainedStateVersions { get; }
-        public int RetainedBranchStateVersions { get; }
-        public int PredictionWindowTicks { get; }
-        public int RetainedLifecycleRevisionTicks { get; }
-    }
-
-    public readonly struct GameplayEffectCheckpointCapacity
-    {
-        public GameplayEffectCheckpointCapacity(int retainedCheckpoints, int captureStates, int restoreStates)
-        {
-            RetainedCheckpoints = retainedCheckpoints;
-            CaptureStates = captureStates;
-            RestoreStates = restoreStates;
-        }
-
-        public int RetainedCheckpoints { get; }
-        public int CaptureStates { get; }
-        public int RestoreStates { get; }
-    }
-
-    public readonly struct GameplayEffectSessionCapacity
-    {
-        public GameplayEffectSessionCapacity(SimulationSessionId sessionId, StableHash rosterHash, int actorCount,
-            int candidateTicks, int retainedOutputs, int savepointDepth, int retainedStateVersions,
-            int retainedBranchStateVersions, int predictionWindowTicks, int retainedLifecycleRevisionTicks,
-            int retainedCheckpoints, int captureStates, int restoreStates, int recordedFrameCapacity)
-        {
-            SessionId = sessionId;
-            RosterHash = rosterHash;
-            ActorCount = actorCount;
-            CandidateTicks = candidateTicks;
-            RetainedOutputs = retainedOutputs;
-            SavepointDepth = savepointDepth;
-            RetainedStateVersions = retainedStateVersions;
-            RetainedBranchStateVersions = retainedBranchStateVersions;
-            PredictionWindowTicks = predictionWindowTicks;
-            RetainedLifecycleRevisionTicks = retainedLifecycleRevisionTicks;
-            RetainedCheckpoints = retainedCheckpoints;
-            CaptureStates = captureStates;
-            RestoreStates = restoreStates;
-            RecordedFrameCapacity = recordedFrameCapacity;
-            long statePageCount = 2L + candidateTicks + savepointDepth + retainedStateVersions + retainedBranchStateVersions +
-                retainedCheckpoints + captureStates + restoreStates;
-            if (statePageCount > int.MaxValue)
-                throw new GameplayEffectPreparationException(new GameplayEffectPreparationFailure(
-                    GameplayEffectPreparationFailureKind.StorageLimitExceeded, GameplayEffectCapacityDimension.StatePages,
-                    sessionId.Value, statePageCount, int.MaxValue));
-            StatePageCount = (int)statePageCount;
-        }
-
-        public SimulationSessionId SessionId { get; }
-        public StableHash RosterHash { get; }
-        public int ActorCount { get; }
-        public int CandidateTicks { get; }
-        public int RetainedOutputs { get; }
-        public int SavepointDepth { get; }
-        public int RetainedStateVersions { get; }
-        public int RetainedBranchStateVersions { get; }
-        public int PredictionWindowTicks { get; }
-        public int RetainedLifecycleRevisionTicks { get; }
-        public int RetainedCheckpoints { get; }
-        public int CaptureStates { get; }
-        public int RestoreStates { get; }
-        public int RecordedFrameCapacity { get; }
-        public int StatePageCount { get; }
-
-        public static GameplayEffectSessionCapacity Prepare(SimulationSessionId sessionId, StableHash rosterHash,
-            int actorCount, in GameplayEffectScheduleCapacity schedule, in GameplayEffectCheckpointCapacity checkpoints,
-            int recordedFrameCapacity)
-        {
-            long retainedStateVersions = (long)schedule.RetainedStateVersions + recordedFrameCapacity;
-            if (retainedStateVersions > int.MaxValue)
-                throw new GameplayEffectPreparationException(new GameplayEffectPreparationFailure(
-                    GameplayEffectPreparationFailureKind.StorageLimitExceeded,
-                    GameplayEffectCapacityDimension.RetainedStateVersions, sessionId.Value,
-                    retainedStateVersions, int.MaxValue));
-            return new GameplayEffectSessionCapacity(sessionId, rosterHash, actorCount, schedule.MaximumStepCount,
-                schedule.RetainedOutputs, GameplayEffectRuntimeCapacityLayout.MaximumSavepointDepth,
-                (int)retainedStateVersions, schedule.RetainedBranchStateVersions, schedule.PredictionWindowTicks,
-                schedule.RetainedLifecycleRevisionTicks, checkpoints.RetainedCheckpoints, checkpoints.CaptureStates,
-                checkpoints.RestoreStates, recordedFrameCapacity);
-        }
-    }
-
     public readonly struct GameplayEffectCapacityRow
     {
         public GameplayEffectCapacityRow(GameplayEffectCapacityDimension dimension, int value,
@@ -278,20 +146,16 @@ namespace ThirdPersonSimulation
 
     public sealed class GameplayEffectRuntimeCapacityLayout
     {
-        public const int MaximumSavepointDepth = 2;
         readonly ReadOnlyCollection<GameplayEffectCapacityRow> m_Rows;
 
-        GameplayEffectRuntimeCapacityLayout(CharacterGameplayEffectRuntimeBinding binding,
-            in GameplayEffectSessionCapacity session, int sourceWidth, int queryTagWidth, int modifierWidth,
-            int additionalQueueWidth, int applicationsPerTick, int statePageCount, int outputPageCount,
-            int predictionRecordWidth, int specCount, int activeObjectCount, int savepointRestoreBatches, int capturePageCount,
-            int predictionRecordCount, int lifecycleRevisionWidth, int checkpointSlotCount, int tentativeChangeWidth,
+        GameplayEffectRuntimeCapacityLayout(StableHash contentRevision,
+            GameplayEffectActorCapacity actor, GameplayEffectContentLayout content,
+            int sourceWidth, int queryTagWidth, int modifierWidth,
+            int additionalQueueWidth, int applicationsPerTick, int tentativeChangeWidth,
             int failureOutputReservation, int sourceTagRemovalReservation)
         {
-            ContentRevision = binding.ContentRevision;
-            Actor = binding.ActorCapacity;
-            Session = session;
-            GameplayEffectContentLayout content = binding.ContentLayout;
+            ContentRevision = contentRevision;
+            Actor = actor;
             SourceWidth = sourceWidth;
             QueryTagWidth = queryTagWidth;
             FrozenTagWidth = content.TagCount;
@@ -302,25 +166,14 @@ namespace ThirdPersonSimulation
             TargetCaptureWidth = content.MaximumTargetCaptureWidth;
             AdditionalQueueWidth = additionalQueueWidth;
             ApplicationsPerTick = applicationsPerTick;
-            StatePageCount = statePageCount;
-            OutputPageCount = outputPageCount;
-            PredictionRecordWidth = predictionRecordWidth;
-            SpecCount = specCount;
-            ActiveObjectCount = activeObjectCount;
-            SavepointRestoreBatches = savepointRestoreBatches;
-            CapturePageCount = capturePageCount;
-            PredictionRecordCount = predictionRecordCount;
-            LifecycleRevisionWidth = lifecycleRevisionWidth;
-            CheckpointSlotCount = checkpointSlotCount;
             TentativeChangeWidth = tentativeChangeWidth;
             FailureOutputReservation = failureOutputReservation;
             SourceTagRemovalReservation = sourceTagRemovalReservation;
             m_Rows = Array.AsReadOnly(new[]
             {
                 Row(GameplayEffectCapacityDimension.DeclarationVersion, Actor.DeclarationVersion, "CharacterGameplayEffectProfile", "GameplayEffectActorCapacity.FormatVersion"),
-                Row(GameplayEffectCapacityDimension.ActorCount, Session.ActorCount, "Session locked roster", "Roster.Count; SessionId and RosterHash bind the layout"),
                 Row(GameplayEffectCapacityDimension.ActiveEffects, Actor.ActiveEffects, "CharacterGameplayEffectProfile", "Actor.ActiveEffects"),
-                Row(GameplayEffectCapacityDimension.CommandsPerTick, Actor.CommandsPerTick, "CharacterGameplayEffectProfile", "Actor.CommandsPerTick; root Apply/Remove/reconciliation admission"),
+                Row(GameplayEffectCapacityDimension.CommandsPerTick, Actor.CommandsPerTick, "CharacterGameplayEffectProfile", "Actor.CommandsPerTick; root Apply/Remove admission"),
                 Row(GameplayEffectCapacityDimension.LifecycleExecutionsPerTick, Actor.LifecycleExecutionsPerTick, "CharacterGameplayEffectProfile", "Actor.LifecycleExecutionsPerTick; accepted Period executions"),
                 Row(GameplayEffectCapacityDimension.ExternalTagSources, Actor.ExternalTagSources, "CharacterGameplayEffectProfile", "Actor.ExternalTagSources; Action, Equipment and Literal sources except exact Literal(initial)"),
                 Row(GameplayEffectCapacityDimension.TagsPerExternalSource, Actor.TagsPerExternalSource, "CharacterGameplayEffectProfile", "Actor.TagsPerExternalSource"),
@@ -335,42 +188,17 @@ namespace ThirdPersonSimulation
                 Row(GameplayEffectCapacityDimension.TargetCaptureEntries, TargetCaptureWidth, "Effect declarations", "max(Target Attribute capture width)"),
                 Row(GameplayEffectCapacityDimension.AdditionalApplications, AdditionalQueueWidth, "Profile / Additional closure", "CommandsPerTick * max(ApplicationAdditional, ActiveEffects * RemovalAdditional) + LifecycleExecutionsPerTick * PeriodAdditional + ActiveEffects * RemovalAdditional"),
                 Row(GameplayEffectCapacityDimension.ApplicationsPerTick, ApplicationsPerTick, "Profile / Additional closure", "CommandsPerTick + AdditionalApplications"),
-                Row(GameplayEffectCapacityDimension.CandidateTicks, Session.CandidateTicks, "Schedule runtime factory / model policy", "MaximumStepCount"),
-                Row(GameplayEffectCapacityDimension.RetainedOutputs, Session.RetainedOutputs, "Schedule / packet owner", "Schedule.GameplayEffectCapacity.RetainedOutputs"),
-                Row(GameplayEffectCapacityDimension.SavepointDepth, Session.SavepointDepth, "GE root / Action activation / Equipment transaction", "1 GE root + 1 outer Action or Equipment savepoint"),
-                Row(GameplayEffectCapacityDimension.RecordedFrames, Session.RecordedFrameCapacity, "Session execution owner / ScenePlay PoseHistory", "Declared RecordedFrameCapacity before state creation"),
-                Row(GameplayEffectCapacityDimension.RetainedStateVersions, Session.RetainedStateVersions, "Source model history / recorded frame owner", "Schedule.GameplayEffectCapacity.RetainedStateVersions + Session.RecordedFrameCapacity"),
-                Row(GameplayEffectCapacityDimension.RetainedBranchStateVersions, Session.RetainedBranchStateVersions, "Source model checkpoint owner", "Schedule.GameplayEffectCapacity.RetainedBranchStateVersions"),
-                Row(GameplayEffectCapacityDimension.PredictionWindowTicks, Session.PredictionWindowTicks, "Source model policy", "Schedule.GameplayEffectCapacity.PredictionWindowTicks"),
-                Row(GameplayEffectCapacityDimension.RetainedLifecycleRevisionTicks, Session.RetainedLifecycleRevisionTicks, "Source model lifecycle acceptance window", "Schedule.GameplayEffectCapacity.RetainedLifecycleRevisionTicks"),
-                Row(GameplayEffectCapacityDimension.StatePages, StatePageCount, "Session / transaction / state history", "1 committed + 1 workspace + CandidateTicks + SavepointDepth + RetainedStateVersions + RetainedBranchStateVersions + RetainedCheckpoints + CaptureStates + RestoreStates"),
-                Row(GameplayEffectCapacityDimension.AggregateObjects, AggregateObjectCount, "state page owner", "StatePageCount"),
-                Row(GameplayEffectCapacityDimension.OutputPages, OutputPageCount, "Session / packet owner", "CandidateTicks + RetainedOutputs"),
-                Row(GameplayEffectCapacityDimension.PendingPredictionKeys, Actor.PendingPredictionKeys, "Profile / prediction admission", "Actor.PendingPredictionKeys"),
-                Row(GameplayEffectCapacityDimension.PredictionRecordsPerKey, Actor.PredictionRecordsPerKey, "Profile / prediction admission", "Actor.PredictionRecordsPerKey"),
-                Row(GameplayEffectCapacityDimension.PredictionRecords, PredictionRecordWidth, "Profile", "PendingPredictionKeys * PredictionRecordsPerKey per version"),
-                Row(GameplayEffectCapacityDimension.PredictionRecordObjects, PredictionRecordCount, "state / journal / deferred restore owners", "PredictionRecordWidth * (StatePageCount + SavepointRestoreBatches) + ApplicationsPerTick when prediction is enabled"),
-                Row(GameplayEffectCapacityDimension.Specs, SpecCount, "state / journal / output owners", "(ActiveEffects + PredictionRecordWidth) * StatePageCount + ApplicationsPerTick * (OutputPageCount + 1 current output owner)"),
-                Row(GameplayEffectCapacityDimension.SavepointRestoreBatches, SavepointRestoreBatches, "GE root command / Equipment or Action transaction / once-Tick Advance", "(CommandsPerTick + 1 Advance) * SavepointDepth"),
-                Row(GameplayEffectCapacityDimension.ActiveObjects, ActiveObjectCount, "state / journal / retired Scratch owners", "(ActiveEffects + PredictionRecordWidth) * StatePageCount + ApplicationsPerTick + ActiveEffects * SavepointRestoreBatches + CommandsPerTick * PredictionRecordsPerKey when pending keys are declared"),
-                Row(GameplayEffectCapacityDimension.CapturePages, CapturePageCount, "Spec / query / decoded source owners", "2 * SpecCount + StatePageCount + SourceWidth * StatePageCount"),
-                Row(GameplayEffectCapacityDimension.LifecycleRevisions, LifecycleRevisionWidth, "Request acceptance window / live instance / referenced authoritative subject", "ActiveEffects live instance requests + ApplicationsPerTick * (RetainedLifecycleRevisionTicks + 1) window requests + ActiveEffects + PredictionRecordWidth subject points"),
                 Row(GameplayEffectCapacityDimension.ChangesPerTick, Actor.ChangesPerTick, "Profile / mutation admission", "Total GE changes; successful changes <= Actor.ChangesPerTick - FailureOutputReservation - SourceTagRemovalReservation"),
-                Row(GameplayEffectCapacityDimension.TentativeChangeEntries, TentativeChangeWidth, "GE root savepoint / content", "AcceptedChanges + bounded applications/lifecycle/Active/prediction complete tentative mutation records"),
+                Row(GameplayEffectCapacityDimension.TentativeChangeEntries, TentativeChangeWidth, "GE output / content", "Actor.ChangesPerTick + bounded application, lifecycle, active-effect and external-source output records"),
                 Row(GameplayEffectCapacityDimension.FactsPerTick, Actor.FactsPerTick, "Profile / Finalize owner", "Total GE facts; successful facts <= Actor.FactsPerTick - FailureOutputReservation - SourceTagRemovalReservation"),
-                Row(GameplayEffectCapacityDimension.FailureOutputReservation, FailureOutputReservation, "Command admission / once-Tick Advance", "2 * CommandsPerTick + 1; each command failure plus reconciliation, one atomic Advance failure"),
+                Row(GameplayEffectCapacityDimension.FailureOutputReservation, FailureOutputReservation, "Command admission / once-Tick Advance", "2 * CommandsPerTick + 1; existing output admission reservation"),
                 Row(GameplayEffectCapacityDimension.SourceTagRemovalReservation, SourceTagRemovalReservation, "Action terminal / Equipment and Literal source removal", "(ExternalTagSources + CommandsPerTick) * TagsPerExternalSource; initial external sources plus admitted installations"),
                 Row(GameplayEffectCapacityDimension.PresentationRequestsPerTick, Actor.PresentationRequestsPerTick, "Profile / Cue owner", "Actor.PresentationRequestsPerTick; reserve actual output before mutation"),
-                Row(GameplayEffectCapacityDimension.RetainedCheckpoints, Session.RetainedCheckpoints, "SimulationSessionHistory", "MaximumRetainedCheckpoints"),
-                Row(GameplayEffectCapacityDimension.CaptureStates, Session.CaptureStates, "History and RuntimeHandle replay rollback owners", "MaximumSimultaneousCaptureStates"),
-                Row(GameplayEffectCapacityDimension.RestoreStates, Session.RestoreStates, "History restore owner", "MaximumRestoreStates"),
-                Row(GameplayEffectCapacityDimension.CheckpointSlots, CheckpointSlotCount, "Session checkpoint / snapshot owner", "RetainedCheckpoints + CaptureStates + RestoreStates"),
             });
         }
 
         public StableHash ContentRevision { get; }
         public GameplayEffectActorCapacity Actor { get; }
-        public GameplayEffectSessionCapacity Session { get; }
         public int ActiveEffectWidth => Actor.ActiveEffects;
         public int SourceWidth { get; }
         public int QueryTagWidth { get; }
@@ -382,17 +210,6 @@ namespace ThirdPersonSimulation
         public int TargetCaptureWidth { get; }
         public int AdditionalQueueWidth { get; }
         public int ApplicationsPerTick { get; }
-        public int StatePageCount { get; }
-        public int AggregateObjectCount => StatePageCount;
-        public int OutputPageCount { get; }
-        public int PredictionRecordWidth { get; }
-        public int SpecCount { get; }
-        public int ActiveObjectCount { get; }
-        public int SavepointRestoreBatches { get; }
-        public int CapturePageCount { get; }
-        public int PredictionRecordCount { get; }
-        public int LifecycleRevisionWidth { get; }
-        public int CheckpointSlotCount { get; }
         public int TentativeChangeWidth { get; }
         public int FailureOutputReservation { get; }
         public int SourceTagRemovalReservation { get; }
@@ -400,38 +217,25 @@ namespace ThirdPersonSimulation
         public int SuccessfulFactsPerTick => Actor.FactsPerTick - FailureOutputReservation - SourceTagRemovalReservation;
         public IReadOnlyList<GameplayEffectCapacityRow> Rows => m_Rows;
 
-        public static bool TryPrepare(CharacterGameplayEffectRuntimeBinding binding,
-            in GameplayEffectSessionCapacity session, out GameplayEffectRuntimeCapacityLayout layout,
+        public static bool TryPrepare(GameplayEffectCatalogData content,
+            GameplayEffectContentLayout contentLayout, in GameplayEffectActorCapacity actorCapacity,
+            string sourceIdentity, StableHash contentRevision,
+            out GameplayEffectRuntimeCapacityLayout layout,
             out GameplayEffectPreparationFailure failure)
         {
             layout = null;
-            string identity = binding.SourceIdentity;
+            string identity = SimulationIdentity.Require(sourceIdentity, nameof(sourceIdentity));
+            if (content.Version != GameplayEffectCatalogData.FormatVersion)
+            {
+                failure = new GameplayEffectPreparationFailure(GameplayEffectPreparationFailureKind.UnsupportedVersion,
+                    GameplayEffectCapacityDimension.ContentVersion, identity,
+                    GameplayEffectCatalogData.FormatVersion, content.Version);
+                return false;
+            }
+            if (!actorCapacity.TryValidate(contentLayout, identity, out failure))
+                return false;
             GameplayEffectPreparationFailure current = default;
-            if (!session.SessionId.IsValid || !session.RosterHash.IsValid)
-            {
-                failure = new GameplayEffectPreparationFailure(GameplayEffectPreparationFailureKind.MissingBudget,
-                    GameplayEffectCapacityDimension.SessionOwner, identity, 1, 0);
-                return false;
-            }
-            if (!Require(GameplayEffectCapacityDimension.ActorCount, 1, session.ActorCount) ||
-                !Require(GameplayEffectCapacityDimension.CandidateTicks, 1, session.CandidateTicks) ||
-                !Require(GameplayEffectCapacityDimension.RetainedOutputs, 0, session.RetainedOutputs) ||
-                !Require(GameplayEffectCapacityDimension.SavepointDepth, 1, session.SavepointDepth) ||
-                !Require(GameplayEffectCapacityDimension.RetainedStateVersions, 0, session.RetainedStateVersions) ||
-                !Require(GameplayEffectCapacityDimension.RecordedFrames, 0, session.RecordedFrameCapacity) ||
-                !Require(GameplayEffectCapacityDimension.RetainedBranchStateVersions, 0, session.RetainedBranchStateVersions) ||
-                !Require(GameplayEffectCapacityDimension.PredictionWindowTicks, 0, session.PredictionWindowTicks) ||
-                !Require(GameplayEffectCapacityDimension.RetainedLifecycleRevisionTicks, 0, session.RetainedLifecycleRevisionTicks) ||
-                !Require(GameplayEffectCapacityDimension.RetainedCheckpoints, 0, session.RetainedCheckpoints) ||
-                !Require(GameplayEffectCapacityDimension.CaptureStates, 0, session.CaptureStates) ||
-                !Require(GameplayEffectCapacityDimension.RestoreStates, 0, session.RestoreStates))
-            {
-                failure = current;
-                return false;
-            }
-            GameplayEffectActorCapacity actor = binding.ActorCapacity;
-            GameplayEffectContentLayout content = binding.ContentLayout;
-            int statePageCount = session.StatePageCount;
+            GameplayEffectActorCapacity actor = actorCapacity;
             if (!Width(GameplayEffectCapacityDimension.FailureOutputReservation,
                     2L * actor.CommandsPerTick + 1, out int failureOutputReservation) ||
                 !Width(GameplayEffectCapacityDimension.SourceTagRemovalReservation,
@@ -442,76 +246,37 @@ namespace ThirdPersonSimulation
                 !Budget(GameplayEffectCapacityDimension.FactsPerTick,
                     (long)failureOutputReservation + sourceTagRemovalReservation, actor.FactsPerTick) ||
                 !Width(GameplayEffectCapacityDimension.AdditionalApplications,
-                    (long)actor.ActiveEffects * content.MaximumRemovalAdditionalCount, out int removalAdditional) ||
+                    (long)actor.ActiveEffects * contentLayout.MaximumRemovalAdditionalCount, out int removalAdditional) ||
                 !Width(GameplayEffectCapacityDimension.SourceEntries,
                     1L + actor.ActiveEffects + actor.ExternalTagSources, out int sourceWidth) ||
                 !Width(GameplayEffectCapacityDimension.QueryTagEntries,
-                    content.InitialTagCount + (long)actor.ActiveEffects * content.MaximumGrantedTags +
+                    contentLayout.InitialTagCount + (long)actor.ActiveEffects * contentLayout.MaximumGrantedTags +
                     (long)actor.ExternalTagSources * actor.TagsPerExternalSource, out int queryTagWidth) ||
                 !Budget(GameplayEffectCapacityDimension.SourceTagSnapshotEntries, queryTagWidth, actor.SourceTagSnapshotEntries) ||
                 !Width(GameplayEffectCapacityDimension.ModifierEntries,
-                    (long)actor.ActiveEffects * content.MaximumPersistentModifiers, out int modifierWidth) ||
+                    (long)actor.ActiveEffects * contentLayout.MaximumPersistentModifiers, out int modifierWidth) ||
                 !Width(GameplayEffectCapacityDimension.AdditionalApplications,
-                    (long)actor.CommandsPerTick * Math.Max(content.MaximumApplicationAdditionalCount, removalAdditional) +
-                    (long)actor.LifecycleExecutionsPerTick * content.MaximumPeriodAdditionalCount + removalAdditional,
+                    (long)actor.CommandsPerTick * Math.Max(contentLayout.MaximumApplicationAdditionalCount, removalAdditional) +
+                    (long)actor.LifecycleExecutionsPerTick * contentLayout.MaximumPeriodAdditionalCount + removalAdditional,
                     out int additionalQueueWidth) ||
                 !Width(GameplayEffectCapacityDimension.ApplicationsPerTick,
                     (long)actor.CommandsPerTick + additionalQueueWidth, out int applicationsPerTick) ||
-                !Width(GameplayEffectCapacityDimension.OutputPages,
-                    (long)session.CandidateTicks + session.RetainedOutputs, out int outputPageCount) ||
-                !Width(GameplayEffectCapacityDimension.PredictionRecords,
-                    (long)actor.PendingPredictionKeys * actor.PredictionRecordsPerKey, out int predictionRecordWidth) ||
-                !Width(GameplayEffectCapacityDimension.SavepointRestoreBatches,
-                    (actor.CommandsPerTick + 1L) * session.SavepointDepth, out int savepointRestoreBatches) ||
-                !Width(GameplayEffectCapacityDimension.ActiveObjects,
-                    ((long)actor.ActiveEffects + predictionRecordWidth) * statePageCount, out int retainedActiveObjects) ||
-                !Width(GameplayEffectCapacityDimension.ActiveObjects,
-                    (long)actor.ActiveEffects * savepointRestoreBatches, out int restoredActiveObjects) ||
-                !Width(GameplayEffectCapacityDimension.ActiveObjects,
-                    (long)retainedActiveObjects + applicationsPerTick + restoredActiveObjects +
-                    (actor.PendingPredictionKeys > 0 ? (long)actor.CommandsPerTick * actor.PredictionRecordsPerKey : 0),
-                    out int activeObjectCount) ||
-                !Width(GameplayEffectCapacityDimension.Specs,
-                    retainedActiveObjects + applicationsPerTick * (outputPageCount + 1L), out int specCount) ||
-                !Width(GameplayEffectCapacityDimension.CapturePages,
-                    2L * specCount + ((long)sourceWidth + 1) * statePageCount, out int capturePageCount) ||
-                !Width(GameplayEffectCapacityDimension.PredictionRecordObjects,
-                    predictionRecordWidth * ((long)statePageCount + savepointRestoreBatches) +
-                    (actor.PendingPredictionKeys > 0 ? applicationsPerTick : 0), out int predictionRecordCount) ||
-                !Width(GameplayEffectCapacityDimension.LifecycleRevisions,
-                    2L * actor.ActiveEffects + predictionRecordWidth +
-                    (long)applicationsPerTick * (session.RetainedLifecycleRevisionTicks + 1L),
-                    out int lifecycleRevisionWidth) ||
-                !Width(GameplayEffectCapacityDimension.CheckpointSlots,
-                    (long)session.RetainedCheckpoints + session.CaptureStates + session.RestoreStates,
-                    out int checkpointSlotCount) ||
                 !Width(GameplayEffectCapacityDimension.TentativeChangeEntries,
                     actor.ChangesPerTick +
-                    ((long)applicationsPerTick + actor.LifecycleExecutionsPerTick + actor.ActiveEffects + predictionRecordWidth) *
-                    ((long)content.AttributeCount * (content.MaximumAttributeMutations + 2L * content.MaximumPersistentModifiers) +
-                        2L * content.MaximumGrantedTags + 2L * content.MaximumCues + 3) +
-                    (long)predictionRecordWidth * content.AttributeCount * content.AttributeCount +
+                    ((long)applicationsPerTick + actor.LifecycleExecutionsPerTick + actor.ActiveEffects) *
+                    ((long)contentLayout.AttributeCount * (contentLayout.MaximumAttributeMutations + 2L * contentLayout.MaximumPersistentModifiers) +
+                        2L * contentLayout.MaximumGrantedTags + 2L * contentLayout.MaximumCues + 3) +
                     2L * (actor.CommandsPerTick + actor.ExternalTagSources) * actor.TagsPerExternalSource +
                     actor.CommandsPerTick + 1L, out int tentativeChangeWidth))
             {
                 failure = current;
                 return false;
             }
-            layout = new GameplayEffectRuntimeCapacityLayout(binding, in session, sourceWidth, queryTagWidth,
-                modifierWidth, additionalQueueWidth, applicationsPerTick, statePageCount, outputPageCount,
-                predictionRecordWidth, specCount, activeObjectCount, savepointRestoreBatches, capturePageCount, predictionRecordCount,
-                lifecycleRevisionWidth, checkpointSlotCount, tentativeChangeWidth, failureOutputReservation, sourceTagRemovalReservation);
+            layout = new GameplayEffectRuntimeCapacityLayout(contentRevision, actor, contentLayout, sourceWidth, queryTagWidth,
+                modifierWidth, additionalQueueWidth, applicationsPerTick, tentativeChangeWidth,
+                failureOutputReservation, sourceTagRemovalReservation);
             failure = default;
             return true;
-
-            bool Require(GameplayEffectCapacityDimension dimension, long required, int available)
-            {
-                if (available >= required)
-                    return true;
-                current = new GameplayEffectPreparationFailure(GameplayEffectPreparationFailureKind.MissingBudget,
-                    dimension, identity, required, available);
-                return false;
-            }
 
             bool Width(GameplayEffectCapacityDimension dimension, long required, out int value)
             {

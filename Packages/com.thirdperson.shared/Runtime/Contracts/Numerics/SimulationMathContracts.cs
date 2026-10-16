@@ -16,6 +16,7 @@ namespace ThirdPersonSimulation
         TScalar Subtract(TScalar left, TScalar right);
         TScalar Multiply(TScalar left, TScalar right);
         TScalar Divide(TScalar left, TScalar right);
+        TScalar Remainder(TScalar left, TScalar right);
         TScalar Clamp(TScalar value, TScalar minimum, TScalar maximum);
         TScalar Negate(TScalar value);
         TScalar Max(TScalar left, TScalar right);

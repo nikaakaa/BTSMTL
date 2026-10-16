@@ -70,17 +70,7 @@ namespace BTSMTL.Diagnostics
         public RuntimeLiveStateRead State { get; private set; }
         public RuntimeCaptureSpanAccumulator TimelineSpans;
         public long TimelineVersion;
-        RuntimeTraceEvent m_Selected;
-        public RuntimeTraceEvent Selected
-        {
-            get => m_Selected;
-            set
-            {
-                value.Retain();
-                m_Selected.Release();
-                m_Selected = value;
-            }
-        }
+        public RuntimeTraceEvent Selected { get; set; }
         public int HistoryOffset;
         public long EvictedStates;
         public double LatestLogicTime;
@@ -102,8 +92,6 @@ namespace BTSMTL.Diagnostics
 
         public void ClearResult()
         {
-            for (int i = 0; i < m_StateChanges.Count; i++)
-                m_StateChanges[i].Release();
             m_StateChanges.Clear();
             State = default;
             TimelineSpans.Reset();
@@ -343,8 +331,6 @@ namespace BTSMTL.Diagnostics
         public void ImportSpan(in RuntimeTraceEvent start, in RuntimeTraceEvent end, RuntimeCaptureSpanState state)
         {
             int index = AddSpan(in start, m_SourceIndices[(start.Source, start.ContentRevision)], state);
-            end.Retain();
-            Writable(index).End.Release();
             Writable(index).End = end;
             IndexSpan(index);
         }
@@ -428,8 +414,6 @@ namespace BTSMTL.Diagnostics
         void IRuntimeCaptureSpanStorage.SetEnd(long location, in RuntimeTraceEvent value, RuntimeCaptureSpanState state)
         {
             ref RuntimeCaptureSpanData span = ref Writable((int)location);
-            value.Retain();
-            span.End.Release();
             span.End = value;
             span.State = state;
         }
@@ -470,11 +454,6 @@ namespace BTSMTL.Diagnostics
                 int first = start % SpansPerPage;
                 int length = Math.Min(count, SpansPerPage - first);
                 RuntimeCaptureSpanData[] page = m_Pages[start / SpansPerPage];
-                for (int i = first; i < first + length; i++)
-                {
-                    page[i].Start.Release();
-                    page[i].End.Release();
-                }
                 Array.Clear(page, first, length);
                 start += length;
                 count -= length;
@@ -487,8 +466,6 @@ namespace BTSMTL.Diagnostics
             if (index / SpansPerPage == m_Pages.Count)
                 m_Pages.Add(new RuntimeCaptureSpanData[SpansPerPage]);
             ref RuntimeCaptureSpanData span = ref Writable(index);
-            value.Retain();
-            value.Retain();
             span.Start = value;
             span.End = value;
             span.SourceGroup = source;
@@ -542,11 +519,7 @@ namespace BTSMTL.Diagnostics
         void CopySpan(int destination, int source)
         {
             ref readonly RuntimeCaptureSpanData value = ref GetSpan(source);
-            value.Start.Retain();
-            value.End.Retain();
             ref RuntimeCaptureSpanData target = ref Writable(destination);
-            target.Start.Release();
-            target.End.Release();
             target = value;
         }
 

@@ -1,0 +1,14 @@
+{
+    "name": "ThirdPersonGameplay.Compilation.MemoryPack",
+    "rootNamespace": "ThirdPersonSimulation.Serialization",
+    "references": ["ThirdPerson.Shared.Contracts", "ThirdPersonGameplay.Compilation.Contracts", "ThirdPersonSimulation.MemoryPack"],
+    "includePlatforms": ["Editor"],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": ["MemoryPack.Core.dll"],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": true
+}

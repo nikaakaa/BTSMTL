@@ -2,13 +2,13 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.IO;
+using BTSMTL.Orchestration;
 using FlowCanvas;
 using FlowCanvas.Macros;
 using FlowCanvas.Nodes;
 using NodeCanvas.Framework;
 using ParadoxNotion;
 using ThirdPersonSimulation;
-using ThirdPersonSimulation.Serialization;
 using UnityEngine;
 
 namespace BTSMTL.EventGraphs
@@ -24,50 +24,44 @@ namespace BTSMTL.EventGraphs
         [SerializeField, HideInInspector] byte[] m_ExecutionData = Array.Empty<byte>();
         [SerializeField, HideInInspector] byte[] m_ExecutionIdentity = Array.Empty<byte>();
         [NonSerialized] GraphExecutionIdentity m_PreparedIdentity;
-        [NonSerialized] Float32GraphExecutionData m_PreparedExecutionData;
-        [NonSerialized] byte[] m_PreparedExecutionBytes;
 
         public string AuthoringId => m_AuthoringId ?? string.Empty;
         public string ContentRevision => m_ContentRevision ?? string.Empty;
 
         public GraphExecutionIdentity ExecutionIdentity => m_PreparedIdentity;
 
-        public Float32GraphExecutionData RequireExecutionData()
+        public OrchestrationGraphContent<TValue> RequireExecutionData<TValue>(
+            IOrchestrationGraphContentEncoding<TValue> encoding, string numericTarget) where TValue : unmanaged
         {
             if (m_ExecutionData.Length == 0 || m_ExecutionIdentity.Length == 0)
                 throw new InvalidOperationException($"事件图 '{AuthoringId}' 尚未发布执行数据，请显式编译该图。");
 #if UNITY_EDITOR
             GraphExecutionIdentity expected = new BtsmtlGraphFingerprint().CreateIdentity(this, AuthoringId,
-                MemoryPackGraphContentPublisher.Float32ContractIdentity, "Float32");
+                encoding.EncodingContract, numericTarget);
 #else
-            GraphExecutionIdentity expected = MemoryPackGraphContentPublisher.Instance.ReadIdentity(m_ExecutionIdentity);
+            GraphExecutionIdentity expected = encoding.ReadIdentity(m_ExecutionIdentity);
             if (expected.GraphId != AuthoringId)
                 throw new InvalidOperationException($"事件图 '{AuthoringId}' 的发布身份不匹配。");
 #endif
-            if (!ReferenceEquals(m_PreparedExecutionBytes, m_ExecutionData))
-            {
-                Float32GraphExecutionData data = MemoryPackGraphContentPublisher.Instance.ReadGraph(m_ExecutionData, expected);
-                m_PreparedExecutionData = data;
-                m_PreparedIdentity = expected;
-                m_PreparedExecutionBytes = m_ExecutionData;
-            }
-            else
-                m_PreparedIdentity.RequireMatches(expected);
-            return m_PreparedExecutionData;
+            OrchestrationGraphContent<TValue> data = encoding.Read(m_ExecutionData, expected);
+            m_PreparedIdentity = expected;
+            return data;
         }
 
-        public void WriteExecutionData(Stream destination, Stream expectedIdentity)
+        public void WriteExecutionData<TValue>(Stream destination, Stream expectedIdentity,
+            IOrchestrationGraphContentEncoding<TValue> encoding, string numericTarget) where TValue : unmanaged
         {
-            RequireExecutionData();
+            RequireExecutionData(encoding, numericTarget);
             destination.Write(m_ExecutionData, 0, m_ExecutionData.Length);
             expectedIdentity.Write(m_ExecutionIdentity, 0, m_ExecutionIdentity.Length);
         }
 
 #if UNITY_EDITOR
-        public void SetExecutionData(byte[] bytes, GraphExecutionIdentity identity)
+        public void SetExecutionData<TValue>(byte[] bytes, GraphExecutionIdentity identity,
+            IOrchestrationGraphContentEncoding<TValue> encoding) where TValue : unmanaged
         {
             m_ExecutionData = bytes;
-            m_ExecutionIdentity = MemoryPackGraphContentPublisher.Instance.WriteIdentity(identity);
+            m_ExecutionIdentity = encoding.WriteIdentity(identity);
         }
 #endif
 

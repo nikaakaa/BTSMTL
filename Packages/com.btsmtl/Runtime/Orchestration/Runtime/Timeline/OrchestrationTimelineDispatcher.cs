@@ -28,7 +28,11 @@ namespace BTSMTL.Orchestration
 
         TValue ReadTime();
 
-        void EnterInvocation(int playbackSlot, int invocationIndex, ref TContext context);
+        int EnterInvocation(int playbackSlot, int invocationIndex, ref TContext context);
+
+        OrchestrationTimelineInvocationFacts ReadInvocationFacts();
+
+        void SelectExecutionFrame(int frameSlot, ref TContext context);
 
         OrchestrationOperationResult ReleaseInvocation(ref TContext context);
 

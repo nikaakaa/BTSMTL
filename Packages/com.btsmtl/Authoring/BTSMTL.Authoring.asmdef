@@ -1,11 +1,13 @@
 {
     "name": "BTSMTL.Authoring",
     "rootNamespace": "BTSMTL.Authoring",
-    "references": [],
+    "references": [
+        "BTSMTL.Orchestration.Contracts"
+    ],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
-    "overrideReferences": false,
+    "overrideReferences": true,
     "precompiledReferences": [],
     "autoReferenced": true,
     "defineConstraints": [],

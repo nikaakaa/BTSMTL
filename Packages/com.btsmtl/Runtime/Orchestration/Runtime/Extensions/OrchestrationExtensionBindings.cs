@@ -42,13 +42,18 @@ namespace BTSMTL.Orchestration
         public static OrchestrationExtensionBindings<TValue, TContext> Prepare(
             ReadOnlySpan<OrchestrationExtensionReference> references,
             ReadOnlySpan<int> requiredBindingIndices,
-            IReadOnlyList<IOrchestrationExtension> implementations)
+            IReadOnlyList<IOrchestrationExtension> implementations,
+            Func<int, IOrchestrationExtension, int> prepareContent = null)
         {
             var bindings = new Binding[references.Length];
             foreach (int bindingIndex in requiredBindingIndices)
             {
-                ref readonly OrchestrationExtensionReference reference = ref references[bindingIndex];
+                OrchestrationExtensionReference reference = references[bindingIndex];
                 IOrchestrationExtension implementation = Resolve(in reference, implementations);
+                if (prepareContent != null)
+                    reference = new OrchestrationExtensionReference(reference.Identity, reference.SemanticVersion,
+                        prepareContent(bindingIndex, implementation), reference.Kind, reference.Access,
+                        reference.Ports, reference.Fields, reference.RequiredInvocations, reference.SourcePath);
                 OrchestrationExtensionContract contract = implementation.Describe(reference.ContentIndex);
                 Validate(in reference, in contract);
                 if (contract.Access == OrchestrationExtensionAccess.ReadOnly)
@@ -117,6 +122,8 @@ namespace BTSMTL.Orchestration
             ReadOnlySpan<OrchestrationExtensionPort> actual = contract.Ports.Span;
             if (actual.Length != expected.Length)
                 throw Failure(in reference, $"端口数不匹配：引用为 {expected.Length}，实现为 {actual.Length}");
+            int inputIndex = 0;
+            int outputIndex = 0;
             for (int i = 0; i < expected.Length; i++)
             {
                 ref readonly OrchestrationExtensionPort expectedPort = ref expected[i];
@@ -124,12 +131,64 @@ namespace BTSMTL.Orchestration
                 if (expectedPort.Direction != OrchestrationExtensionPortDirection.Input &&
                     expectedPort.Direction != OrchestrationExtensionPortDirection.Output)
                     throw Failure(in reference, $"端口 {i} 的方向无效：{expectedPort.Direction}");
+                int index = expectedPort.Direction == OrchestrationExtensionPortDirection.Input
+                    ? inputIndex++ : outputIndex++;
+                if (expectedPort.Index != index)
+                    throw Failure(in reference, $"端口 {expectedPort.Id} 的句柄索引为 {expectedPort.Index}，合同位置为 {index}");
                 if (!string.Equals(expectedPort.Id, actualPort.Id, StringComparison.Ordinal) ||
-                    !string.Equals(expectedPort.ValueTypeId, actualPort.ValueTypeId, StringComparison.Ordinal) ||
-                    expectedPort.Direction != actualPort.Direction)
+                    expectedPort.ValueKind != actualPort.ValueKind ||
+                    expectedPort.Direction != actualPort.Direction || expectedPort.Index != actualPort.Index)
                     throw Failure(in reference,
-                        $"端口 {i} 不匹配：引用为 {expectedPort.Id}/{expectedPort.ValueTypeId}/{expectedPort.Direction}，" +
-                        $"实现为 {actualPort.Id}/{actualPort.ValueTypeId}/{actualPort.Direction}");
+                        $"端口 {i} 不匹配：引用为 {expectedPort.Id}/{expectedPort.ValueKind}/{expectedPort.Direction}/{expectedPort.Index}，" +
+                        $"实现为 {actualPort.Id}/{actualPort.ValueKind}/{actualPort.Direction}/{actualPort.Index}");
+            }
+            ReadOnlySpan<OrchestrationExtensionContentField> expectedFields = reference.Fields.Span;
+            ReadOnlySpan<OrchestrationExtensionContentField> actualFields = contract.Fields.Span;
+            if (actualFields.Length != expectedFields.Length)
+                throw Failure(in reference,
+                    $"内容字段数不匹配：引用为 {expectedFields.Length}，实现为 {actualFields.Length}");
+            for (int i = 0; i < expectedFields.Length; i++)
+            {
+                ref readonly OrchestrationExtensionContentField expectedField = ref expectedFields[i];
+                ref readonly OrchestrationExtensionContentField actualField = ref actualFields[i];
+                if (string.IsNullOrWhiteSpace(expectedField.Id))
+                    throw Failure(in reference, $"内容字段 {i} 的身份缺失");
+                for (int previous = 0; previous < i; previous++)
+                    if (string.Equals(expectedFields[previous].Id, expectedField.Id, StringComparison.Ordinal))
+                        throw Failure(in reference, $"内容字段身份重复：{expectedField.Id}");
+                switch (expectedField.Kind)
+                {
+                    case OrchestrationExtensionFieldKind.Value:
+                        if (!Enum.IsDefined(typeof(OrchestrationValueKind), expectedField.ValueKind) ||
+                            expectedField.ValueKind == 0 ||
+                            expectedField.ValueKind == OrchestrationValueKind.Enum ||
+                            expectedField.ValueKind == OrchestrationValueKind.Identity)
+                            throw Failure(in reference, $"内容字段 {expectedField.Id} 缺少普通值类型，枚举与身份必须使用各自字段种类");
+                        break;
+                    case OrchestrationExtensionFieldKind.Text:
+                        break;
+                    case OrchestrationExtensionFieldKind.Enum:
+                    case OrchestrationExtensionFieldKind.Data:
+                        if (string.IsNullOrWhiteSpace(expectedField.TypeIdentity))
+                            throw Failure(in reference, $"内容字段 {expectedField.Id} 缺少类型身份");
+                        break;
+                    case OrchestrationExtensionFieldKind.Identity:
+                        if (string.IsNullOrWhiteSpace(expectedField.IdentityDomainId))
+                            throw Failure(in reference, $"内容字段 {expectedField.Id} 缺少身份域");
+                        break;
+                    default:
+                        throw Failure(in reference, $"内容字段 {expectedField.Id} 的种类无效：{expectedField.Kind}");
+                }
+                if (expectedField.Cardinality != OrchestrationExtensionFieldCardinality.Single &&
+                    expectedField.Cardinality != OrchestrationExtensionFieldCardinality.Multiple)
+                    throw Failure(in reference, $"内容字段 {expectedField.Id} 的数量类型无效：{expectedField.Cardinality}");
+                if (!expectedField.Equals(actualField))
+                    throw Failure(in reference,
+                        $"内容字段 {i} 不匹配：引用为 {expectedField.Id}/{expectedField.Kind}/" +
+                        $"{expectedField.ValueKind}/{expectedField.TypeIdentity}/{expectedField.IdentityDomainId}/" +
+                        $"{expectedField.Cardinality}/{expectedField.Required}，实现为 {actualField.Id}/" +
+                        $"{actualField.Kind}/{actualField.ValueKind}/{actualField.TypeIdentity}/" +
+                        $"{actualField.IdentityDomainId}/{actualField.Cardinality}/{actualField.Required}");
             }
         }
 
@@ -148,7 +207,7 @@ namespace BTSMTL.Orchestration
 
         private static InvalidOperationException Failure(in OrchestrationExtensionReference reference,
             string reason) => new InvalidOperationException(
-            $"领域扩展 {reference.Identity.DomainId}/{reference.Identity.OperationId}/{reference.Identity.BindingRole} " +
+            $"领域扩展 {reference.Identity.DomainId}/{reference.Identity.OperationId} " +
             $"语义版本 {reference.SemanticVersion}，内容索引 {reference.ContentIndex}：{reason}。" +
             $"引用位置：{reference.SourcePath}");
 

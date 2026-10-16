@@ -61,12 +61,33 @@ namespace ThirdPersonSimulation
             TMath math = default;
             TScalar maximumYaw = math.Multiply(profile.TurnSpeed, profile.TickDelta);
             displacement = ResolveDisplacement(in profile, move, elapsedTicks);
-            yaw = math.Zero;
+            yaw = ResolveYaw(move, bodyYaw, maximumYaw);
+        }
+
+        public static void EvaluateConstantSpeed(TVector2 move, TYaw bodyYaw,
+            TScalar moveSpeed, TScalar turnSpeed, TScalar nominalTickDelta, TScalar timeScale,
+            out TVector3 displacement, out TScalar yaw)
+        {
+            TMath math = default;
+            TScalar delta = math.Multiply(nominalTickDelta, timeScale);
+            TScalar maximumYaw = math.Multiply(turnSpeed, delta);
+            displacement = math.Vector3(
+                math.Multiply(math.Multiply(math.X2(move), moveSpeed), delta),
+                math.Zero,
+                math.Multiply(math.Multiply(math.Y2(move), moveSpeed), delta));
+            yaw = ResolveYaw(move, bodyYaw, maximumYaw);
+        }
+
+        static TScalar ResolveYaw(TVector2 move, TYaw bodyYaw, TScalar maximumYaw)
+        {
+            TMath math = default;
+            TScalar yaw = math.Zero;
             if (!math.IsVector2Zero(move) && math.GreaterThan(maximumYaw, math.Zero))
             {
                 TYaw desired = math.YawFromDirection(math.X2(move), math.Y2(move));
                 yaw = math.Clamp(math.DeltaYaw(bodyYaw, desired), math.Negate(maximumYaw), maximumYaw);
             }
+            return yaw;
         }
 
         static TVector3 ResolveDisplacement(in LocomotionMotionProfile<TScalar, TMath> profile,

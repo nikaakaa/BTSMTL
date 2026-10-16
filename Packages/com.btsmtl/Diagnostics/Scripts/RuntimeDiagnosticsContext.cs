@@ -60,14 +60,12 @@ namespace BTSMTL.Diagnostics
 
         public void RegisterSourceMap(IDebugSourceMap sourceMap)
         {
-            if (m_SourceMaps.TryAdd(sourceMap.Revision, sourceMap))
-                sourceMap.Revision.Retain();
+            m_SourceMaps.TryAdd(sourceMap.Revision, sourceMap);
         }
 
         public void RetireSourceMap(RuntimeContentRevision revision)
         {
             m_SourceMaps.Remove(revision);
-            revision.Release();
         }
         public RuntimeDiagnosticsStore Store { get; }
         public ulong LogicTick => m_LogicTick;

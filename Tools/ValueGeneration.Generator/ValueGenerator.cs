@@ -32,8 +32,6 @@ namespace ThirdPerson.ValueGeneration.Generator
 
         const string TextAttribute = "ThirdPersonSimulation.ValueTextAttribute";
 
-        const string TextCapacityAttribute = "ThirdPersonSimulation.ValueTextCapacityAttribute";
-
         const string BufferAttribute = "ThirdPersonSimulation.ValueBufferAttribute";
 
         const string OmittedUnionValueAttribute = "ThirdPersonSimulation.ValueUnionOmittedAttribute";
@@ -71,7 +69,6 @@ namespace ThirdPerson.ValueGeneration.Generator
             var valueUpdates = new Dictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
             var storageOwners = new Dictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
             var snapshotSources = new Dictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
-            var textCapacityStorage = new Dictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
             var implementationIdentities = new Dictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
             var stateLayouts = new Dictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
             var stateLayoutFactories = new Dictionary<string, IMethodSymbol>(StringComparer.Ordinal);
@@ -89,8 +86,6 @@ namespace ThirdPerson.ValueGeneration.Generator
                     storageOwners[Identity(type)] = type;
                 if (HasAttribute(type, SnapshotAttribute))
                     snapshotSources[Identity(type)] = type;
-                if (HasAttribute(type, TextCapacityAttribute))
-                    textCapacityStorage[Identity(type)] = type;
                 if (HasAttribute(type, "ThirdPersonSimulation.ValueImplementationIdentityAttribute"))
                     implementationIdentities[Identity(type)] = type;
                 if (HasAttribute(type, StateLayoutAttribute))
@@ -172,8 +167,6 @@ namespace ThirdPerson.ValueGeneration.Generator
                 EmitStorageOwner(context, owner);
             foreach (INamedTypeSymbol owner in snapshotSources.Values.OrderBy(t => Identity(t), StringComparer.Ordinal))
                 EmitValueSnapshot(context, owner);
-            foreach (INamedTypeSymbol owner in textCapacityStorage.Values.OrderBy(t => Identity(t), StringComparer.Ordinal))
-                EmitTextReferenceCapacity(context, owner);
             foreach (INamedTypeSymbol layout in stateLayouts.Values.OrderBy(type => Identity(type), StringComparer.Ordinal))
                 EmitStateLayout(context, layout);
             if (stateLayoutFactories.Count != 0)
@@ -808,8 +801,6 @@ namespace ThirdPerson.ValueGeneration.Generator
                     code.AppendLine("default: throw new global::System.ArgumentOutOfRangeException(nameof(Kind)); } }");
                 }
             }
-            if (TryMaximumTextReferences(type, new HashSet<string>(), out int maximumTextReferences))
-                code.Append("public const int MaximumTextReferences = ").Append(maximumTextReferences).AppendLine(";");
             if (operations != null && operations.NamedArguments.Any(argument => argument.Key == "Resources" && argument.Value.Value is false))
                 return;
             if (operations != null && operations.NamedArguments.Any(argument => argument.Key == "ExplicitResources" && argument.Value.Value is true))

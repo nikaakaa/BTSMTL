@@ -7,12 +7,12 @@ using Photon.Deterministic;
 using ThirdPersonSimulation.QuantumNumerics;
 using ThirdPersonSimulation.Collision;
 
-namespace ThirdPersonSimulation.FPGameplay
+namespace ThirdPersonSimulation.AttackGeometry
 {
-    public sealed class FPSweepQueryBackend : ISweepQueryBackend<FP>
+    public sealed class FPSweepQueryBackend
     {
         public const string ImplementationId = "bepuphysics1int/9237daa68c3014fd7c2e93c6a99326ba5248d60b/fp-q48.16-mpr-gjk-angular-query-v4";
-        readonly SweepShape<FP>[] m_Shapes;
+        readonly SweepShape[] m_Shapes;
         readonly NativePart[][] m_Parts;
 
         readonly struct NativePart
@@ -26,7 +26,7 @@ namespace ThirdPersonSimulation.FPGameplay
             public RigidTransform LocalPose { get; }
         }
 
-        public FPSweepQueryBackend(ReadOnlySpan<SweepShape<FP>> shapes)
+        public FPSweepQueryBackend(ReadOnlySpan<SweepShape> shapes)
         {
             m_Shapes = shapes.ToArray();
             m_Parts = new NativePart[shapes.Length][];
@@ -45,7 +45,7 @@ namespace ThirdPersonSimulation.FPGameplay
 
         NativePart[] PrepareShape(int index)
         {
-            ref readonly SweepShape<FP> shape = ref m_Shapes[index];
+            ref readonly SweepShape shape = ref m_Shapes[index];
             RigidTransform local = new RigidTransform(FPVector3.Zero, FPQuaternion.Identity);
             ConvexShape native;
             switch (shape.Kind)
@@ -62,14 +62,14 @@ namespace ThirdPersonSimulation.FPGameplay
                     break;
                 case SweepShapeKind.ConvexHull:
                 {
-                    ReadOnlySpan<SweepVector3<FP>> points = shape.Vertices;
+                    ReadOnlySpan<FPVector3> points = shape.Vertices;
                     if (points.Length < 4)
                         throw new ArgumentException("Sweep convex hull requires at least four volume vertices.");
                     var vertices = new FPVector3[points.Length];
                     FPVector3 center = FPVector3.Zero;
                     for (int i = 0; i < points.Length; i++)
                     {
-                        vertices[i] = ToGeometry(points[i]);
+                        vertices[i] = points[i];
                         center += vertices[i];
                     }
                     center /= (FP)points.Length;
@@ -81,7 +81,7 @@ namespace ThirdPersonSimulation.FPGameplay
                 }
                 case SweepShapeKind.ConvexMesh:
                 {
-                    ReadOnlySpan<SweepConvexPart<FP>> parts = shape.Parts;
+                    ReadOnlySpan<SweepConvexPart> parts = shape.Parts;
                     if (parts.Length == 0)
                         throw new ArgumentException("Sweep convex Mesh requires prepared convex parts.");
                     int count = 0;
@@ -109,7 +109,7 @@ namespace ThirdPersonSimulation.FPGameplay
             return new[] { new NativePart(native, local) };
         }
 
-        public SweepQueryStatus SweepAll<TSource>(in SweepQuery<FP, TSource> query, SweepResultBuffer<FP, TSource> results) where TSource : struct
+        public SweepQueryStatus SweepAll<TSource>(in SweepQuery<TSource> query, SweepResultBuffer<TSource> results) where TSource : struct
         {
             results.Begin(in query, Descriptor);
             if (query.TargetModel != SweepTargetModel.StationaryPose &&
@@ -119,7 +119,7 @@ namespace ThirdPersonSimulation.FPGameplay
 
             for (int i = 0; i < query.Targets.Length; i++)
             {
-                ref readonly SweepTarget<FP> target = ref query.Targets[i];
+                ref readonly SweepTarget target = ref query.Targets[i];
                 if (query.TargetModel == SweepTargetModel.StationaryPose)
                 {
                     if (target.Start.Time != query.TargetPoseTime)
@@ -139,8 +139,8 @@ namespace ThirdPersonSimulation.FPGameplay
             bool movingTarget = query.TargetModel != SweepTargetModel.StationaryPose;
             for (int segmentIndex = 0; segmentIndex < query.Segments.Length; segmentIndex++)
             {
-                ref readonly SweepSegment<FP> segment = ref query.Segments[segmentIndex];
-                ref readonly SweepShape<FP> shape = ref m_Shapes[segment.Track.ShapeIndex];
+                ref readonly SweepSegment segment = ref query.Segments[segmentIndex];
+                ref readonly SweepShape shape = ref m_Shapes[segment.Track.ShapeIndex];
                 if (segment.Track.Motion == SweepMotionModel.PointPath)
                 {
                     if (shape.Kind != SweepShapeKind.Sphere)
@@ -161,7 +161,7 @@ namespace ThirdPersonSimulation.FPGameplay
                     query.TargetModel == SweepTargetModel.RigidRotation;
                 for (int targetIndex = 0; targetIndex < query.Targets.Length; targetIndex++)
                 {
-                    ref readonly SweepTarget<FP> target = ref query.Targets[targetIndex];
+                    ref readonly SweepTarget target = ref query.Targets[targetIndex];
                     if (!query.Filter.Includes(target.Identity.TargetId, target.Layer, target.IsTrigger))
                         continue;
                     RigidTransform targetStart;
@@ -248,11 +248,11 @@ namespace ThirdPersonSimulation.FPGameplay
                             fields |= SweepContactFields.Point;
                         if (!initialOverlap && hit.Normal != FPVector3.Zero)
                             fields |= SweepContactFields.Normal;
-                        var candidate = new SweepCandidate<FP>(target.Identity, segment.Track.Id,
+                        var candidate = new SweepCandidate(target.Identity, segment.Track.Id,
                             shape.Id, segmentIndex, segment.Track.Motion,
                             initialOverlap ? SweepContactKind.InitialOverlap : SweepContactKind.Sweep,
                             fields, time, fraction, movingTarget ? time : query.TargetPoseTime,
-                            positionAvailable ? ToSweep(hit.Location) : default, ToSweep(hit.Normal),
+                            positionAvailable ? hit.Location : default, hit.Normal,
                             sourcePartIndex, targetPartIndex);
                         if (!results.Add(in candidate))
                             return results.Fail(SweepQueryStatus.CapacityExceeded, segmentIndex, target.Identity);
@@ -262,7 +262,7 @@ namespace ThirdPersonSimulation.FPGameplay
             return results.Complete();
         }
 
-        static RigidTransform PoseAt(in SweepTarget<FP> target, in RigidSweepMotion motion, FP time)
+        static RigidTransform PoseAt(in SweepTarget target, in RigidSweepMotion motion, FP time)
         {
             FP fraction = (time - target.Start.Time) / (target.End.Time - target.Start.Time);
             return motion.At(fraction);
@@ -275,13 +275,10 @@ namespace ThirdPersonSimulation.FPGameplay
             return new RigidTransform(parent.Position + offset, orientation);
         }
 
-        static bool SameOrientation(SweepQuaternion<FP> left, SweepQuaternion<FP> right) =>
+        static bool SameOrientation(FPQuaternion left, FPQuaternion right) =>
             left.X == right.X && left.Y == right.Y && left.Z == right.Z && left.W == right.W ||
             left.X == -right.X && left.Y == -right.Y && left.Z == -right.Z && left.W == -right.W;
 
-        static FPVector3 ToGeometry(SweepVector3<FP> value) => new FPVector3(value.X, value.Y, value.Z);
-        static SweepVector3<FP> ToSweep(FPVector3 value) => new SweepVector3<FP>(value.X, value.Y, value.Z);
-        static RigidTransform ToGeometry(SweepPose<FP> pose) => new RigidTransform(ToGeometry(pose.Position),
-            new FPQuaternion(pose.Orientation.X, pose.Orientation.Y, pose.Orientation.Z, pose.Orientation.W));
+        static RigidTransform ToGeometry(SweepPose pose) => new RigidTransform(pose.Position, pose.Orientation);
     }
 }

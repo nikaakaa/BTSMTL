@@ -33,7 +33,6 @@ namespace BTSMTL.Diagnostics.Editor
             m_CaptureChanges = new List<RuntimeCaptureChange>(target.Store.CaptureEventCapacity);
             m_ExecutionSpans = new RuntimeExecutionTimelineBuilder.SpanAccumulator(target.Store.CaptureEventCapacity);
             m_SourceMap = RuntimeDebugSourceMapSnapshot.Capture(target.SourceMap);
-            m_SourceMap.Revision.Retain();
             m_LastChannels = target.Store.EffectiveChannels;
             m_LiveModel = new RuntimeDebugViewModel(new RuntimeDebugTargetInfo(target), m_SourceMap, m_LastChannels, target.Store.LiveStateCapacity);
         }
@@ -41,13 +40,8 @@ namespace BTSMTL.Diagnostics.Editor
         public void Dispose()
         {
             m_LastLiveChanges.Clear();
-            for (int i = 0; i < m_LiveChanges.Count; i++)
-                m_LiveChanges[i].Release();
             m_LiveChanges.Clear();
-            for (int i = 0; i < m_CaptureChanges.Count; i++)
-                m_CaptureChanges[i].Release();
             m_CaptureChanges.Clear();
-            m_SourceMap.Revision.Release();
         }
 
         public RuntimeDebugViewModel LiveModel => m_LiveModel;

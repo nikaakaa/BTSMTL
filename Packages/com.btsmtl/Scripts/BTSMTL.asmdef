@@ -1,9 +1,12 @@
-﻿{
+{
 	"name": "BTSMTL",
+	"overrideReferences": true,
+	"precompiledReferences": [],
 	"references": [
 		"FlowCanvas",
 		"ParadoxNotion",
 		"ThirdPerson.Shared.Contracts",
-		"ThirdPersonSimulation.Core"
+		"BTSMTL.Authoring",
+        "BTSMTL.Orchestration.Contracts"
 	]
 }

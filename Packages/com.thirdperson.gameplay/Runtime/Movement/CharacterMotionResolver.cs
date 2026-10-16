@@ -9,6 +9,8 @@ namespace ThirdPersonSimulation
         where TYaw : struct
         where TMath : struct, IScalarMath<TScalar>, IVectorMath<TScalar, TVector2, TVector3>, IPlanarRotation<TVector3, TYaw>
     {
+        public const int ParticipatingSourceFingerprintVersion = 2;
+
         public static ResolvedMotionChannel<TScalar, TVector2, TVector3, TMath> ResolveChannel(
             ReadOnlySpan<SimulationMotionContribution<TScalar, TVector2, TVector3, TMath>> contributions,
             TYaw bodyYaw,
@@ -108,8 +110,7 @@ namespace ThirdPersonSimulation
 
         public static ulong ComputeParticipatingSourceFingerprint(
             in ResolvedMotionChannel<TScalar, TVector2, TVector3, TMath> resolved,
-            ReadOnlySpan<SimulationMotionContribution<TScalar, TVector2, TVector3, TMath>> contributions,
-            ReadOnlySpan<CanonicalTextValue> sourceIdentitiesBySourceId)
+            ReadOnlySpan<SimulationMotionContribution<TScalar, TVector2, TVector3, TMath>> contributions)
         {
             if (!resolved.HasContribution)
                 return 0;
@@ -118,7 +119,7 @@ namespace ThirdPersonSimulation
             {
                 ref readonly SimulationMotionContribution<TScalar, TVector2, TVector3, TMath> contribution = ref contributions[index];
                 if (contribution.Channel == resolved.Channel && contribution.CanResolve)
-                    fingerprint = MixSource(fingerprint, sourceIdentitiesBySourceId[contribution.SourceId].Span);
+                    fingerprint = MixSource(fingerprint, contribution.SourceId);
             }
             return fingerprint;
         }
@@ -160,13 +161,14 @@ namespace ThirdPersonSimulation
             yaw = default(TMath).Add(yaw, channel.YawDegrees);
         }
 
-        static ulong MixSource(ulong hash, ReadOnlySpan<char> identity)
+        static ulong MixSource(ulong hash, int sourceIdentityId)
         {
             unchecked
             {
-                for (int i = 0; i < identity.Length; i++)
+                uint identity = (uint)sourceIdentityId;
+                for (int shift = 0; shift < 32; shift += 8)
                 {
-                    hash ^= identity[i];
+                    hash ^= (byte)(identity >> shift);
                     hash *= 1099511628211UL;
                 }
                 return hash;

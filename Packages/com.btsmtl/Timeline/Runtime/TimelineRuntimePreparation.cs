@@ -1,45 +1,15 @@
 using System;
-using Photon.Deterministic;
 using System.Linq;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using BTSMTL.Orchestration;
 using ThirdPersonSimulation;
+using PresentationClipSampling = BTSMTL.Timeline.Runtime.TimelineRuntimeClipSampling<ThirdPersonSimulation.Float32Scalar,
+    ThirdPersonSimulation.Float32SimulationMath, ThirdPersonSimulation.Float32ScalarContentLowering,
+    BTSMTL.Timeline.Runtime.TimelineRuntimeFloat32TimeProjection>;
 
 namespace BTSMTL.Timeline.Runtime
 {
-    public readonly struct TimelineRuntimePrepareRequest
-    {
-        public TimelineRuntimePrepareRequest(
-            CanonicalTextValue requestId,
-            TimelineRuntimePreparedContent content,
-            TimelineExecutionIdentity executionIdentity,
-            TimelinePlaybackMode playbackMode,
-            FP startTime = default)
-        {
-            RequestId = CanonicalTextValue.IsNullOrWhiteSpace(requestId)
-                ? throw new ArgumentException("Timeline prepare request identity is required.", nameof(requestId))
-                : requestId.Trim();
-            Content = content;
-            if (!executionIdentity.IsValid)
-                throw new ArgumentException("Timeline execution identity is invalid.", nameof(executionIdentity));
-            ExecutionIdentity = executionIdentity;
-            if (playbackMode != TimelinePlaybackMode.Once && playbackMode != TimelinePlaybackMode.Loop &&
-                playbackMode != TimelinePlaybackMode.HoldLastFrame)
-                throw new ArgumentOutOfRangeException(nameof(playbackMode));
-            PlaybackMode = playbackMode;
-            if (content.IsReady && (startTime < FP._0 ||
-                startTime != FP._0 && startTime >= content.Content.Duration))
-                throw new ArgumentOutOfRangeException(nameof(startTime), "Timeline start time must precede the end of its content.");
-            StartTime = startTime;
-        }
-
-        public CanonicalTextValue RequestId { get; }
-        public TimelineRuntimePreparedContent Content { get; }
-        public TimelineExecutionIdentity ExecutionIdentity { get; }
-        public TimelinePlaybackMode PlaybackMode { get; }
-        public FP StartTime { get; }
-    }
-
     public enum TimelineRuntimePreparationStatus : byte
     {
         Failed = 0,
@@ -49,25 +19,28 @@ namespace BTSMTL.Timeline.Runtime
     public sealed class TimelineRuntimePreparedContent
     {
         internal TimelineRuntimePreparedContent(TimelineRuntimePreparedContent source,
-            TimelineContentUnit content)
+            TimelineContentUnit content, OrchestrationIdentityTable identities)
         {
             Status = source.Status;
             NumericTarget = source.NumericTarget;
             Content = content;
+            BindIdentities(identities);
             Index = new TimelineRuntimeContentIndex(content);
-            MotionSampling = new TimelineRuntimeMotionSampling(Index.Logic.Motions, source.MotionSampling);
-            ClipSampling = source.ClipSampling;
+            ClipSampling = new PresentationClipSampling(source.ClipSampling, content);
             BindingPlan = source.BindingPlan;
             CallInput = source.CallInput;
             PreparedBindings = source.PreparedBindings;
             PreparedDependencies = source.PreparedDependencies;
             Errors = source.Errors;
+            RefreshSchedulingData();
         }
 
-        public void RefreshTimeRanges()
+        public void RefreshTimeRanges(OrchestrationIdentityTable identities)
         {
+            BindIdentities(identities);
             Index.RefreshTimeRanges();
-            MotionSampling.RefreshTimeRanges();
+            ClipSampling.RefreshTimeRanges(Content);
+            RefreshSchedulingData();
         }
 
         internal TimelineRuntimePreparedContent(
@@ -78,41 +51,107 @@ namespace BTSMTL.Timeline.Runtime
             TimelineCallInput callInput,
             TimelinePreparedBindings preparedBindings,
             TimelineRuntimePreparedDependencies preparedDependencies,
-            IReadOnlyList<string> errors)
+            IReadOnlyList<string> errors,
+            OrchestrationIdentityTable identities)
         {
             Status = status;
             NumericTarget = numericTarget;
             Index = status == TimelineRuntimePreparationStatus.Ready
                 ? new TimelineRuntimeContentIndex(content)
                 : null;
-            MotionSampling = status == TimelineRuntimePreparationStatus.Ready
-                ? new TimelineRuntimeMotionSampling(Index.Logic.Motions, numericTarget)
-                : null;
-            ClipSampling = status == TimelineRuntimePreparationStatus.Ready ? new TimelineRuntimeClipSampling(content) : null;
+            ClipSampling = status == TimelineRuntimePreparationStatus.Ready
+                ? new PresentationClipSampling(content, TimelineExecutionDomain.Presentation) : null;
             Content = content;
             BindingPlan = bindingPlan;
             CallInput = callInput;
             PreparedBindings = preparedBindings;
             PreparedDependencies = preparedDependencies;
             Errors = errors ?? Array.Empty<string>();
+            if (status == TimelineRuntimePreparationStatus.Ready)
+            {
+                BindIdentities(identities);
+                RefreshSchedulingData();
+            }
         }
 
         public TimelineRuntimePreparationStatus Status { get; }
         public TimelineRuntimeNumericTarget NumericTarget { get; }
         internal TimelineRuntimeContentIndex Index { get; }
-        internal TimelineRuntimeMotionSampling MotionSampling { get; }
-        internal TimelineRuntimeClipSampling ClipSampling { get; }
+        internal PresentationClipSampling ClipSampling { get; }
+        public int SampleKindCount => ClipSampling.SampleKindCount;
+        public string SampleKindAt(int kindIndex) => ClipSampling.SampleKindAt(kindIndex);
+        public int RequireSampleKind(string contractKind) => ClipSampling.RequireSampleKind(contractKind);
         public TimelineContentUnit Content { get; }
-        public CanonicalTextValue ContentRevision => Content == null ? CanonicalTextValue.Empty : Content.Revision;
+        public OrchestrationIdentityTable Identities { get; private set; }
+        public int ContentIdentityId { get; private set; }
+        public int ContentRevisionId { get; private set; }
+        public ReadOnlyMemory<int> ClipIdentityIds { get; private set; }
         public TimelineBindingPlan BindingPlan { get; }
         public TimelineCallInput CallInput { get; }
         public TimelinePreparedBindings PreparedBindings { get; }
         public TimelineRuntimePreparedDependencies PreparedDependencies { get; }
         public IReadOnlyList<string> Errors { get; }
         public bool IsReady => Status == TimelineRuntimePreparationStatus.Ready;
+        public ReadOnlyMemory<TimelineSchedulingClip<OrchestrationTime>> SchedulingClips { get; private set; }
+        public ReadOnlyMemory<int> SchedulingTreeOrdinals { get; private set; }
+        public ReadOnlyMemory<TimelineSchedulingMarker<OrchestrationTime>> SchedulingMarkers { get; private set; }
+        public ReadOnlyMemory<TimelineSchedulingSection<OrchestrationTime>> SchedulingSections { get; private set; }
+
+        void BindIdentities(OrchestrationIdentityTable identities)
+        {
+            int contentIdentityId = identities.Bind(Content.Identity);
+            int contentRevisionId = identities.Bind(Content.Revision);
+            var clipIdentityIds = new int[Content.Clips.Count];
+            for (int ordinal = 0; ordinal < clipIdentityIds.Length; ordinal++)
+                clipIdentityIds[ordinal] = identities.Bind(Content.Clips[ordinal].AuthoringId);
+            Identities = identities;
+            ContentIdentityId = contentIdentityId;
+            ContentRevisionId = contentRevisionId;
+            ClipIdentityIds = clipIdentityIds;
+        }
+
+        void RefreshSchedulingData()
+        {
+            int count = Content.Clips.Count;
+            var order = new int[count];
+            var sortOrdinals = new int[count];
+            var logic = new bool[count];
+            for (int i = 0; i < count; i++)
+                order[i] = i;
+            Array.Sort(order, (left, right) => string.CompareOrdinal(
+                Content.Clips[left].AuthoringId, Content.Clips[right].AuthoringId));
+            for (int i = 0; i < count; i++)
+                sortOrdinals[order[i]] = i;
+            for (int i = 0; i < Index.Logic.Lifetimes.Count; i++)
+                logic[Index.Logic.Lifetimes[i].ContentIndex] = true;
+            var clips = new TimelineSchedulingClip<OrchestrationTime>[count];
+            for (int i = 0; i < count; i++)
+            {
+                TimelineContentClip clip = Content.Clips[i];
+                clips[i] = new TimelineSchedulingClip<OrchestrationTime>(sortOrdinals[i], clip.StartTime,
+                    clip.EndTime, logic[i], clip.ContentKind == TimelineContentKind.Discrete,
+                    clip.ExitSource == TimelineClipExitSource.TreeDecision,
+                    clip.ContentKind == TimelineContentKind.Discrete && ((TimelineContentTree)clip.Parameters).HasDeclaredEndTime);
+            }
+            var markers = new TimelineSchedulingMarker<OrchestrationTime>[Index.Logic.Markers.Count];
+            var sections = new TimelineSchedulingSection<OrchestrationTime>[Content.Sections.Count];
+            var trees = new int[Index.Logic.Trees.Length];
+            for (int i = 0; i < trees.Length; i++)
+                trees[i] = Index.Logic.Trees[i].ContentIndex;
+            for (int i = 0; i < markers.Length; i++)
+                markers[i] = new TimelineSchedulingMarker<OrchestrationTime>(Index.Logic.Markers.ContentIndexAt(i),
+                    Index.Logic.Markers[i].Time);
+            for (int i = 0; i < sections.Length; i++)
+                sections[i] = new TimelineSchedulingSection<OrchestrationTime>(i, Content.Sections[i].Time);
+            SchedulingClips = clips;
+            SchedulingTreeOrdinals = trees;
+            SchedulingMarkers = markers;
+            SchedulingSections = sections;
+        }
 
         internal static TimelineRuntimePreparedContent Failed(
             TimelineRuntimeNumericTarget numericTarget,
+            OrchestrationIdentityTable identities,
             IEnumerable<string> errors)
         {
             return new TimelineRuntimePreparedContent(
@@ -123,11 +162,13 @@ namespace BTSMTL.Timeline.Runtime
                 null,
                 null,
                 null,
-                new List<string>(errors ?? Array.Empty<string>()).AsReadOnly());
+                new List<string>(errors ?? Array.Empty<string>()).AsReadOnly(),
+                identities);
         }
 
         internal static TimelineRuntimePreparedContent Ready(
             TimelineRuntimeNumericTarget numericTarget,
+            OrchestrationIdentityTable identities,
             TimelineContentUnit content,
             TimelineBindingPlan bindingPlan,
             TimelineCallInput callInput,
@@ -142,76 +183,9 @@ namespace BTSMTL.Timeline.Runtime
                 callInput,
                 preparedBindings,
                 preparedDependencies,
-                Array.Empty<string>());
+                Array.Empty<string>(),
+                identities);
         }
-    }
-
-    public sealed class TimelineRuntimeTargetSampling
-    {
-        readonly TimelineRuntimePreparedContent m_Content;
-        readonly TimelineRuntimePresentationBuffer m_Presentation;
-        readonly TimelineRuntimeSampleBuffer<TimelineMotionCurveContribution> m_Motions;
-
-        public TimelineRuntimeTargetSampling(TimelineRuntimePreparedContent content)
-        {
-            m_Content = content;
-            m_Presentation = new TimelineRuntimePresentationBuffer(content.Content, TimelinePlaybackMode.Once);
-            int motions = content.Index.Logic.Motions.Count;
-            m_Motions = new TimelineRuntimeSampleBuffer<TimelineMotionCurveContribution>(motions);
-        }
-
-        public int MotionClipCapacity => m_Content.Index.Logic.Motions.Count;
-
-        public TimelineRuntimeSampleView<TimelineAnimationContribution> SampleAnimation(FP time)
-        {
-            m_Presentation.Clear();
-            TimelineRuntimePresentationEvaluator.SampleAnimations(m_Content.Content, m_Content.Index,
-                m_Content.ClipSampling, time, 0, false, m_Presentation);
-            return m_Presentation.Animations.View;
-        }
-
-        public TimelineRuntimeSampleView<TimelineMotionCurveContribution> SampleMotion(FP previous, FP current)
-        {
-            var segments = new TimelineRuntimeEvaluationSegments(previous, 0, current, 0,
-                m_Content.Content.Duration, false);
-            m_Motions.Clear();
-            m_Content.MotionSampling.Sample(m_Content.Content, m_Content.Index.Logic.Motions,
-                segments, m_Presentation.SamplingClips, m_Motions);
-            return m_Motions.View;
-        }
-    }
-
-    public readonly struct TimelineRuntimePreparationResult
-    {
-        readonly TimelineRuntimePreparedContent m_Content;
-
-        internal TimelineRuntimePreparationResult(TimelineRuntimePrepareRequest request)
-        {
-            m_Content = request.Content;
-            Status = request.Content.Status;
-            RequestId = request.RequestId;
-            ExecutionIdentity = request.ExecutionIdentity;
-            PlaybackMode = request.PlaybackMode;
-            StartTime = request.StartTime;
-        }
-
-        public TimelineRuntimePreparationStatus Status { get; }
-        public CanonicalTextValue RequestId { get; }
-        public TimelineExecutionIdentity ExecutionIdentity { get; }
-        public TimelinePlaybackMode PlaybackMode { get; }
-        public FP StartTime { get; }
-        public TimelineRuntimeNumericTarget NumericTarget => m_Content.NumericTarget;
-        internal TimelineRuntimeContentIndex Index => m_Content.Index;
-        internal TimelineRuntimeMotionSampling MotionSampling => m_Content.MotionSampling;
-        internal TimelineRuntimeClipSampling ClipSampling => m_Content.ClipSampling;
-        public TimelineContentUnit Content => m_Content.Content;
-        public CanonicalTextValue ContentRevision => m_Content.ContentRevision;
-        public TimelineBindingPlan BindingPlan => m_Content.BindingPlan;
-        public TimelineCallInput CallInput => m_Content.CallInput;
-        public TimelinePreparedBindings PreparedBindings => m_Content.PreparedBindings;
-        public TimelineRuntimePreparedDependencies PreparedDependencies => m_Content.PreparedDependencies;
-        public IReadOnlyList<string> Errors => m_Content.Errors;
-        public bool IsReady => Status == TimelineRuntimePreparationStatus.Ready;
     }
 
     public static class TimelineRuntimePreparation
@@ -221,7 +195,8 @@ namespace BTSMTL.Timeline.Runtime
             TimelineRuntimeNumericTarget numericTarget,
             IReadOnlyList<TimelineCallBinding> callBindings,
             ITimelineDomainBindingResolver domainResolver,
-            ITimelineRuntimeDependencyResolver dependencyResolver)
+            ITimelineRuntimeDependencyResolver dependencyResolver,
+            OrchestrationIdentityTable identities)
         {
             try
             {
@@ -244,6 +219,7 @@ namespace BTSMTL.Timeline.Runtime
                 if (errors.Count != 0)
                     return TimelineRuntimePreparedContent.Failed(
                         numericTarget,
+                        identities,
                         errors);
 
                 TimelineBindingPlan bindingPlan = new TimelineBindingPlan(content);
@@ -256,10 +232,12 @@ namespace BTSMTL.Timeline.Runtime
                 if (preparedBindings == null || errors.Count != 0)
                     return TimelineRuntimePreparedContent.Failed(
                         numericTarget,
+                        identities,
                         errors);
                 return TimelineRuntimePreparedContent.Ready(
                     numericTarget,
-                        content,
+                    identities,
+                    content,
                     bindingPlan,
                     callInput,
                     preparedBindings,
@@ -269,30 +247,11 @@ namespace BTSMTL.Timeline.Runtime
             {
                 return TimelineRuntimePreparedContent.Failed(
                     numericTarget,
+                    identities,
                     new[] { exception.Message });
             }
         }
 
-        internal static TimelineRuntimePlayback CreatePlayback(
-            TimelineRuntimePreparationResult preparation,
-            TimelineRuntimePlaybackHandle handle,
-            ulong generation,
-            int tickRate,
-            TimelineRuntimeEvaluationStoragePool evaluationStoragePool)
-        {
-            if (!preparation.IsReady)
-                throw new InvalidOperationException("Timeline playback cannot be created from a failed preparation.");
-            if (!handle.IsValid)
-                throw new ArgumentOutOfRangeException(nameof(handle));
-            if (generation == 0)
-                throw new ArgumentOutOfRangeException(nameof(generation));
-            return new TimelineRuntimePlayback(
-                handle,
-                generation,
-                preparation,
-                tickRate,
-                evaluationStoragePool);
-        }
     }
 
     readonly struct TimelineRuntimeIndexedClip
@@ -320,19 +279,19 @@ namespace BTSMTL.Timeline.Runtime
         readonly TimelineRuntimeIndexedClip[] m_Clips;
         readonly int[] m_StartOrder;
         readonly int[] m_EndOrder;
-        readonly FP[] m_Ends;
-        readonly FP[] m_SubtreeEnds;
-        readonly Func<TimelineContentClip, FP> m_EndTime;
+        readonly OrchestrationTime[] m_Ends;
+        readonly OrchestrationTime[] m_SubtreeEnds;
+        readonly Func<TimelineContentClip, OrchestrationTime> m_EndTime;
         readonly Comparison<int> m_StartComparison;
         readonly Comparison<int> m_EndComparison;
 
-        public TimelineRuntimeClipIndex(List<TimelineRuntimeIndexedClip> clips, Func<TimelineContentClip, FP> endTime)
+        public TimelineRuntimeClipIndex(List<TimelineRuntimeIndexedClip> clips, Func<TimelineContentClip, OrchestrationTime> endTime)
         {
             m_Clips = clips.ToArray();
             m_StartOrder = new int[clips.Count];
             m_EndOrder = new int[clips.Count];
-            m_Ends = new FP[clips.Count];
-            m_SubtreeEnds = new FP[clips.Count];
+            m_Ends = new OrchestrationTime[clips.Count];
+            m_SubtreeEnds = new OrchestrationTime[clips.Count];
             m_EndTime = endTime;
             m_StartComparison = CompareStart;
             m_EndComparison = CompareEnd;
@@ -369,19 +328,19 @@ namespace BTSMTL.Timeline.Runtime
         public int StartIndexAt(int index) => m_StartOrder[index];
         public TimelineRuntimeIndexedClip StartAt(int index) => m_Clips[m_StartOrder[index]];
         public TimelineRuntimeIndexedClip EndAt(int index) => m_Clips[m_EndOrder[index]];
-        public FP EndTimeAt(int index) => m_Ends[m_EndOrder[index]];
+        public OrchestrationTime EndTimeAt(int index) => m_Ends[m_EndOrder[index]];
 
-        public int FindStart(FP time, bool includeEqual) => Find(time, includeEqual, true);
-        public int FindEnd(FP time, bool includeEqual) => Find(time, includeEqual, false);
+        public int FindStart(OrchestrationTime time, bool includeEqual) => Find(time, includeEqual, true);
+        public int FindEnd(OrchestrationTime time, bool includeEqual) => Find(time, includeEqual, false);
 
-        int Find(FP time, bool includeEqual, bool start)
+        int Find(OrchestrationTime time, bool includeEqual, bool start)
         {
             int lower = 0;
             int upper = Count;
             while (lower < upper)
             {
                 int middle = lower + (upper - lower) / 2;
-                FP position = start ? StartAt(middle).Clip.StartTime : EndTimeAt(middle);
+                OrchestrationTime position = start ? StartAt(middle).Clip.StartTime : EndTimeAt(middle);
                 if (position < time || !includeEqual && position == time)
                     lower = middle + 1;
                 else
@@ -390,36 +349,36 @@ namespace BTSMTL.Timeline.Runtime
             return lower;
         }
 
-        FP BuildSubtreeEnds(int lower, int upper)
+        OrchestrationTime BuildSubtreeEnds(int lower, int upper)
         {
             if (lower == upper)
-                return FP.MinValue;
+                return OrchestrationTime.MinValue;
             int middle = lower + (upper - lower) / 2;
-            FP end = m_Ends[m_StartOrder[middle]];
-            end = FPMath.Max(end, BuildSubtreeEnds(lower, middle));
-            end = FPMath.Max(end, BuildSubtreeEnds(middle + 1, upper));
+            OrchestrationTime end = m_Ends[m_StartOrder[middle]];
+            end = OrchestrationTime.Max(end, BuildSubtreeEnds(lower, middle));
+            end = OrchestrationTime.Max(end, BuildSubtreeEnds(middle + 1, upper));
             m_SubtreeEnds[middle] = end;
             return end;
         }
 
-        public void Select(FP previous, FP current, bool includeEnd, List<int> selected)
+        public void Select(OrchestrationTime previous, OrchestrationTime current, bool includeEnd, List<int> selected)
         {
             Select(0, Count, previous, current, includeEnd, selected);
         }
 
-        void Select(int lower, int upper, FP previous, FP current, bool includeEnd, List<int> selected)
+        void Select(int lower, int upper, OrchestrationTime previous, OrchestrationTime current, bool includeEnd, List<int> selected)
         {
             if (lower == upper)
                 return;
             int middle = lower + (upper - lower) / 2;
-            FP subtreeEnd = m_SubtreeEnds[middle];
+            OrchestrationTime subtreeEnd = m_SubtreeEnds[middle];
             if (subtreeEnd < previous || !includeEnd && subtreeEnd == previous)
                 return;
             Select(lower, middle, previous, current, includeEnd, selected);
             int index = m_StartOrder[middle];
             if (m_Clips[index].Clip.StartTime > current)
                 return;
-            FP end = m_Ends[index];
+            OrchestrationTime end = m_Ends[index];
             if (end > previous || includeEnd && end == previous)
                 AddSelected(selected, index);
             Select(middle + 1, upper, previous, current, includeEnd, selected);
@@ -468,7 +427,7 @@ namespace BTSMTL.Timeline.Runtime
         public int ContentIndexAt(int index) => m_Markers[index];
         public TimelineContentMarker this[int index] => m_Content.Markers[m_Markers[index]];
 
-        public void Select(FP from, FP to, bool includeEqual, bool initialSeek, List<int> selected)
+        public void Select(OrchestrationTime from, OrchestrationTime to, bool includeEqual, bool initialSeek, List<int> selected)
         {
             selected.Clear();
             if (initialSeek)
@@ -487,14 +446,14 @@ namespace BTSMTL.Timeline.Runtime
             }
         }
 
-        public int Find(FP time, bool includeEqual)
+        public int Find(OrchestrationTime time, bool includeEqual)
         {
             int lower = 0;
             int upper = Count;
             while (lower < upper)
             {
                 int middle = lower + (upper - lower) / 2;
-                FP position = this[middle].Time;
+                OrchestrationTime position = this[middle].Time;
                 if (position < time || !includeEqual && position == time)
                     lower = middle + 1;
                 else
@@ -509,9 +468,7 @@ namespace BTSMTL.Timeline.Runtime
         internal void RefreshTimeRanges()
         {
             Clips.RefreshTimeRanges();
-            Animations.RefreshTimeRanges();
-            Motions.RefreshTimeRanges();
-            CameraAndScene.RefreshTimeRanges();
+            Sampled.RefreshTimeRanges();
             Lifetimes.RefreshTimeRanges();
             TreeLifetimes.RefreshTimeRanges();
         }
@@ -519,28 +476,18 @@ namespace BTSMTL.Timeline.Runtime
         public TimelineRuntimeDomainIndex(List<TimelineRuntimeIndexedClip> clips,
             TimelineContentUnit content, TimelineExecutionDomain domain)
         {
-            var animations = new List<TimelineRuntimeIndexedClip>();
-            var motions = new List<TimelineRuntimeIndexedClip>();
-            var cameraAndScene = new List<TimelineRuntimeIndexedClip>();
+            var sampled = new List<TimelineRuntimeIndexedClip>();
             var trees = new List<TimelineRuntimeIndexedClip>();
             for (int index = 0; index < clips.Count; index++)
             {
                 TimelineRuntimeIndexedClip clip = clips[index];
-                switch (clip.Clip.Parameters)
-                {
-                    case TimelineContentAnimation: animations.Add(clip); break;
-                    case TimelineContentMotion: motions.Add(clip); break;
-                    case TimelineContentCameraState:
-                    case TimelineContentCameraResponse:
-                    case TimelineContentCameraEffect:
-                    case TimelineContentSceneParameter: cameraAndScene.Add(clip); break;
-                    case TimelineContentTree: trees.Add(clip); break;
-                }
+                if (clip.Clip.ContentKind == TimelineContentKind.Sampled)
+                    sampled.Add(clip);
+                else
+                    trees.Add(clip);
             }
             Clips = new TimelineRuntimeClipIndex(clips, ClipEnd);
-            Animations = new TimelineRuntimeClipIndex(animations, AnimationEnd);
-            Motions = new TimelineRuntimeClipIndex(motions, ClipEnd);
-            CameraAndScene = new TimelineRuntimeClipIndex(cameraAndScene, ClipEnd);
+            Sampled = new TimelineRuntimeClipIndex(sampled, SampleEnd);
             Trees = trees.ToArray();
             TreePositions = new int[content.Clips.Count];
             Array.Fill(TreePositions, -1);
@@ -553,16 +500,14 @@ namespace BTSMTL.Timeline.Runtime
             Markers = new TimelineRuntimeMarkerIndex(content, domain);
         }
 
-        static FP ClipEnd(TimelineContentClip clip) => clip.EndTime;
-        static FP AnimationEnd(TimelineContentClip clip) => ((TimelineContentAnimation)clip.Parameters).Extrapolation == ExtraPolationMode.Hold
-            ? FP.MaxValue : clip.EndTime;
-        static FP LifetimeEnd(TimelineContentClip clip) => clip.ExitSource == TimelineClipExitSource.TreeDecision
-            ? FP.MaxValue : clip.EndTime;
+        static OrchestrationTime ClipEnd(TimelineContentClip clip) => clip.EndTime;
+        static OrchestrationTime SampleEnd(TimelineContentClip clip) => clip.Sampling.Extrapolation == ExtraPolationMode.Hold
+            ? OrchestrationTime.MaxValue : clip.EndTime;
+        static OrchestrationTime LifetimeEnd(TimelineContentClip clip) => clip.ExitSource == TimelineClipExitSource.TreeDecision
+            ? OrchestrationTime.MaxValue : clip.EndTime;
 
         public readonly TimelineRuntimeClipIndex Clips;
-        public readonly TimelineRuntimeClipIndex Animations;
-        public readonly TimelineRuntimeClipIndex Motions;
-        public readonly TimelineRuntimeClipIndex CameraAndScene;
+        public readonly TimelineRuntimeClipIndex Sampled;
         public readonly TimelineRuntimeIndexedClip[] Trees;
         public readonly int[] TreePositions;
         public readonly TimelineRuntimeClipIndex Lifetimes;
@@ -616,25 +561,7 @@ namespace BTSMTL.Timeline.Runtime
             return found;
         }
 
-        public int FindContent(CanonicalTextValue identity)
-        {
-            int lower = 0;
-            int upper = m_Content.Clips.Count - 1;
-            while (lower <= upper)
-            {
-                int middle = lower + (upper - lower) / 2;
-                int order = CanonicalTextValue.CompareOrdinal(m_Content.Clips[middle].AuthoringId, identity);
-                if (order == 0)
-                    return middle;
-                if (order < 0)
-                    lower = middle + 1;
-                else
-                    upper = middle - 1;
-            }
-            return -1;
-        }
-
-        public string SectionAt(FP time)
+        public string SectionAt(OrchestrationTime time)
         {
             int lower = 0;
             int upper = m_Content.Sections.Count;

@@ -4,24 +4,24 @@ using Photon.Deterministic;
 using ThirdPersonSimulation.Collision;
 using ThirdPersonSimulation.QuantumNumerics;
 
-namespace ThirdPersonSimulation.FPGameplay
+namespace ThirdPersonSimulation.AttackGeometry
 {
     public static class FPAttackGeometryPreparation
     {
-        public static FPPreparedAttackPart[] PrepareParts(AttackSweepGeometryData<FP> geometry, List<SweepShape<FP>> shapes)
+        public static FPPreparedAttackPart[] PrepareParts(AttackSweepGeometryData geometry, List<SweepShape> shapes)
         {
             var parts = new FPPreparedAttackPart[geometry.Parts.Length];
             for (int part = 0; part < geometry.Parts.Length; part++)
             {
-                AttackSweepPartData<FP> data = geometry.Parts[part];
+                AttackSweepPartData data = geometry.Parts[part];
                 int indexInShapes = shapes.Count;
                 ulong id = (ulong)indexInShapes + 1;
-                SweepShape<FP> shape = data.Kind switch
+                SweepShape shape = data.Kind switch
                 {
-                    SweepShapeKind.Box => SweepShape<FP>.Box(id, data.HalfExtents),
-                    SweepShapeKind.Sphere => SweepShape<FP>.Sphere(id, data.Radius),
-                    SweepShapeKind.Capsule => SweepShape<FP>.Capsule(id, data.Radius, data.HalfLength),
-                    SweepShapeKind.ConvexHull => SweepShape<FP>.ConvexHull(id, data.Vertices),
+                    SweepShapeKind.Box => SweepShape.Box(id, data.HalfExtents),
+                    SweepShapeKind.Sphere => SweepShape.Sphere(id, data.Radius),
+                    SweepShapeKind.Capsule => SweepShape.Capsule(id, data.Radius, data.HalfLength),
+                    SweepShapeKind.ConvexHull => SweepShape.ConvexHull(id, data.Vertices),
                     _ => throw new InvalidOperationException("Prepared attack geometry kind is unsupported.")
                 };
                 shapes.Add(shape);
@@ -30,18 +30,18 @@ namespace ThirdPersonSimulation.FPGameplay
             return parts;
         }
 
-        public static int AddBox(List<SweepShape<FP>> shapes, FP width, FP height, FP depth)
+        public static int AddBox(List<SweepShape> shapes, FP width, FP height, FP depth)
         {
             if (width <= FP._0 || height <= FP._0 || depth <= FP._0)
                 throw new InvalidOperationException("Attack Box dimensions must be positive.");
             int index = shapes.Count;
             FP two = default(QuantumSimulationMath).FromInt64(2);
-            shapes.Add(SweepShape<FP>.Box((ulong)index + 1, new SweepVector3<FP>(
+            shapes.Add(SweepShape.Box((ulong)index + 1, new FPVector3(
                 width / two, height / two, depth / two)));
             return index;
         }
 
-        public static int AddFan(List<SweepShape<FP>> shapes, FP fanAngle, FP radius, FP height)
+        public static int AddFan(List<SweepShape> shapes, FP fanAngle, FP radius, FP height)
         {
             if (fanAngle <= FP._0 || fanAngle > default(QuantumSimulationMath).FromInt64(360) ||
                 radius <= FP._0 || height <= FP._0)
@@ -49,38 +49,37 @@ namespace ThirdPersonSimulation.FPGameplay
             int partCount = checked((int)((fanAngle.RawValue + 90L * FP.Raw._1 - 1) / (90L * FP.Raw._1)));
             FP partAngle = fanAngle / default(QuantumSimulationMath).FromInt64(partCount);
             FP halfHeight = height / default(QuantumSimulationMath).FromInt64(2);
-            var parts = new SweepConvexPart<FP>[partCount];
+            var parts = new SweepConvexPart[partCount];
             FP start = -fanAngle / default(QuantumSimulationMath).FromInt64(2);
             for (int part = 0; part < partCount; part++)
             {
                 int arcCount = checked((int)((partAngle.RawValue + 5L * FP.Raw._1 - 1) / (5L * FP.Raw._1)));
                 int ringCount = arcCount + 2;
-                var vertices = new SweepVector3<FP>[ringCount * 2];
-                vertices[0] = new SweepVector3<FP>(FP._0, -halfHeight, FP._0);
-                vertices[ringCount] = new SweepVector3<FP>(FP._0, halfHeight, FP._0);
+                var vertices = new FPVector3[ringCount * 2];
+                vertices[0] = new FPVector3(FP._0, -halfHeight, FP._0);
+                vertices[ringCount] = new FPVector3(FP._0, halfHeight, FP._0);
                 for (int point = 0; point <= arcCount; point++)
                 {
                     FP angle = start + partAngle * default(QuantumSimulationMath).FromInt64(point) / default(QuantumSimulationMath).FromInt64(arcCount);
                     FPMath.SinCos(default(QuantumSimulationMath).Yaw(angle) * FP.Deg2Rad, out FP sine, out FP cosine);
                     FP x = sine * radius;
                     FP z = cosine * radius;
-                    vertices[point + 1] = new SweepVector3<FP>(x, -halfHeight, z);
-                    vertices[ringCount + point + 1] = new SweepVector3<FP>(x, halfHeight, z);
+                    vertices[point + 1] = new FPVector3(x, -halfHeight, z);
+                    vertices[ringCount + point + 1] = new FPVector3(x, halfHeight, z);
                 }
                 int shapeIndex = shapes.Count;
-                shapes.Add(SweepShape<FP>.ConvexHull((ulong)shapeIndex + 1, vertices));
-                parts[part] = new SweepConvexPart<FP>(shapeIndex, IdentityPose());
+                shapes.Add(SweepShape.ConvexHull((ulong)shapeIndex + 1, vertices));
+                parts[part] = new SweepConvexPart(shapeIndex, IdentityPose());
                 start += partAngle;
             }
             int meshIndex = shapes.Count;
-            shapes.Add(SweepShape<FP>.ConvexMesh((ulong)meshIndex + 1, parts));
+            shapes.Add(SweepShape.ConvexMesh((ulong)meshIndex + 1, parts));
             return meshIndex;
         }
 
-        public static SweepPose<FP> IdentityPose() => new SweepPose<FP>(
-            default, new SweepQuaternion<FP>(FP._0, FP._0, FP._0, FP._1));
+        public static SweepPose IdentityPose() => new SweepPose(default, FPQuaternion.Identity);
 
-        public static SweepPose<FP> Pose(FPVector3 position, FP yaw, FPVector3 localOffset)
+        public static SweepPose Pose(FPVector3 position, FP yaw, FPVector3 localOffset)
         {
             FPMath.SinCos(yaw * FP.Deg2Rad, out FP sine, out FP cosine);
             FPVector3 worldOffset = new FPVector3(
@@ -89,8 +88,8 @@ namespace ThirdPersonSimulation.FPGameplay
                 -localOffset.X * sine + localOffset.Z * cosine);
             FPMath.SinCos(yaw * FP.Deg2Rad / FP._2, out FP halfSine, out FP halfCosine);
             FPVector3 center = position + worldOffset;
-            return new SweepPose<FP>(new SweepVector3<FP>(center.X, center.Y, center.Z),
-                new SweepQuaternion<FP>(FP._0, halfSine, FP._0, halfCosine));
+            return new SweepPose(center,
+                new FPQuaternion(FP._0, halfSine, FP._0, halfCosine));
         }
     }
 }

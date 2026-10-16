@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>11.0</LangVersion>
+    <AssemblyName>ThirdPersonGameplay.Compilation.MemoryPack</AssemblyName>
+    <RootNamespace>ThirdPersonSimulation.Serialization</RootNamespace>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../ThirdPerson.Shared.Contracts/ThirdPerson.Shared.Contracts.csproj" />
+    <ProjectReference Include="../ThirdPersonGameplay.Compilation.Contracts/ThirdPersonGameplay.Compilation.Contracts.csproj" />
+    <ProjectReference Include="../ThirdPersonSimulation.MemoryPack/ThirdPersonSimulation.MemoryPack.csproj" />
+    <ProjectReference Include="../../Tools/MemoryPackAdapter.Generator/MemoryPackAdapter.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <Reference Include="MemoryPack.Core" HintPath="$(MemoryPackCorePath)" Private="false" />
+    <Compile Include="../../Packages/com.thirdperson.memorypack/Editor/Compilation/**/*.cs" />
+  </ItemGroup>
+  <Target Name="RequireMemoryPack" BeforeTargets="ResolveReferences" Condition="!Exists('$(MemoryPackCorePath)')">
+    <Error Text="请通过 MemoryPackCorePath 指定宿主现有的 MemoryPack.Core.dll。" />
+  </Target>
+</Project>

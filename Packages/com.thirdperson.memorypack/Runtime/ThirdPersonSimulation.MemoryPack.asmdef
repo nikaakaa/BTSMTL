@@ -3,10 +3,12 @@
     "rootNamespace": "ThirdPersonSimulation.Serialization",
     "references": [
         "ThirdPerson.Shared.Contracts",
+        "ThirdPersonGameplay.Orchestration.Contracts",
+        "BTSMTL.Orchestration.Contracts",
+        "BTSMTL.Orchestration.Runtime",
+        "BTSMTL.Timeline.Runtime",
         "ThirdPersonGameplay.Configuration",
         "ThirdPersonSimulation.Core",
-        "ThirdPersonSimulation.FPGameplay",
-        "ThirdPersonSimulation.Float32",
         "ThirdPersonSimulation.QuantumNumerics"
     ],
     "allowUnsafeCode": false,

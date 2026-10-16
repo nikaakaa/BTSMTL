@@ -5,19 +5,14 @@
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
-    <AssemblyName>ThirdPersonSimulation.Timeline</AssemblyName>
+    <AssemblyName>BTSMTL.Timeline.Runtime</AssemblyName>
     <TimelineSourceRoot>$(MSBuildThisFileDirectory)..\..\Packages\com.btsmtl\Timeline\Runtime</TimelineSourceRoot>
-    <QuantumDeterministicPath>$(MSBuildThisFileDirectory)..\..\..\3C\3cDemo\Client\3C_Client\Assets\Photon\Quantum\Assemblies\Quantum.Deterministic.dll</QuantumDeterministicPath>
   </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="ThirdPersonSimulation.Timeline.Tests" />
+    <ProjectReference Include="..\ThirdPerson.Shared.Contracts\ThirdPerson.Shared.Contracts.csproj" />
     <ProjectReference Include="..\BTSMTL.Orchestration.Contracts\BTSMTL.Orchestration.Contracts.csproj" />
-    <ProjectReference Include="..\ThirdPersonSimulation.Core\ThirdPersonSimulation.Core.csproj" />
-    <ProjectReference Include="..\ThirdPersonSimulation.QuantumNumerics\ThirdPersonSimulation.QuantumNumerics.csproj" AdditionalProperties="QuantumDeterministicPath=$(QuantumDeterministicPath)" />
-    <ProjectReference Include="..\ThirdPersonSimulation.Float32\ThirdPersonSimulation.Float32.csproj" />
-    <Reference Include="Quantum.Deterministic">
-      <HintPath>$(QuantumDeterministicPath)</HintPath>
-    </Reference>
+    <ProjectReference Include="..\BTSMTL.Orchestration.Runtime\BTSMTL.Orchestration.Runtime.csproj" />
     <Compile Include="$(TimelineSourceRoot)\**\*.cs" LinkBase="Source" />
   </ItemGroup>
 </Project>

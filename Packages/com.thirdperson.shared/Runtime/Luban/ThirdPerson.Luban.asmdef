@@ -1,5 +1,7 @@
 {
   "name": "ThirdPerson.Luban",
   "allowUnsafeCode": true,
+  "overrideReferences": true,
+  "precompiledReferences": [],
   "noEngineReferences": true
 }

@@ -1,11 +1,12 @@
+using Photon.Deterministic;
 using ThirdPersonSimulation.Collision;
 
 namespace ThirdPersonSimulation
 {
-    public sealed class AttackSweepPartData<T> where T : struct
+    public sealed class AttackSweepPartData
     {
-        public AttackSweepPartData(string id, SweepShapeKind kind, SweepVector3<T> halfExtents,
-            T radius, T halfLength, SweepVector3<T>[] vertices, SweepSample<T>[] samples)
+        public AttackSweepPartData(string id, SweepShapeKind kind, FPVector3 halfExtents,
+            FP radius, FP halfLength, FPVector3[] vertices, SweepSample[] samples)
         {
             Id = id;
             Kind = kind;
@@ -17,17 +18,17 @@ namespace ThirdPersonSimulation
         }
         public string Id { get; }
         public SweepShapeKind Kind { get; }
-        public SweepVector3<T> HalfExtents { get; }
-        public T Radius { get; }
-        public T HalfLength { get; }
-        public SweepVector3<T>[] Vertices { get; }
-        public SweepSample<T>[] Samples { get; }
+        public FPVector3 HalfExtents { get; }
+        public FP Radius { get; }
+        public FP HalfLength { get; }
+        public FPVector3[] Vertices { get; }
+        public SweepSample[] Samples { get; }
     }
 
-    public sealed class AttackSweepGeometryData<T> where T : struct
+    public sealed class AttackSweepGeometryData
     {
         public AttackSweepGeometryData(string sourceIdentity, int segmentCapacity,
-            T interpolationError, AttackSweepPartData<T>[] parts)
+            FP interpolationError, AttackSweepPartData[] parts)
         {
             SourceIdentity = sourceIdentity;
             SegmentCapacity = segmentCapacity;
@@ -36,7 +37,7 @@ namespace ThirdPersonSimulation
         }
         public string SourceIdentity { get; }
         public int SegmentCapacity { get; }
-        public T InterpolationError { get; }
-        public AttackSweepPartData<T>[] Parts { get; }
+        public FP InterpolationError { get; }
+        public AttackSweepPartData[] Parts { get; }
     }
 }

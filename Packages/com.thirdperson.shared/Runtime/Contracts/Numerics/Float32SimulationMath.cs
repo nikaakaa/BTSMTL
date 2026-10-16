@@ -19,6 +19,8 @@ namespace ThirdPersonSimulation
         public Float32Scalar Subtract(Float32Scalar left, Float32Scalar right) => left - right;
         public Float32Scalar Multiply(Float32Scalar left, Float32Scalar right) => left * right;
         public Float32Scalar Divide(Float32Scalar left, Float32Scalar right) => left / right;
+        public Float32Scalar Remainder(Float32Scalar left, Float32Scalar right) =>
+            Float32Scalar.FromSingle(left.ToSingle() % right.ToSingle());
         public Float32Scalar Clamp(Float32Scalar value, Float32Scalar minimum, Float32Scalar maximum) =>
             Float32Scalar.Clamp(value, minimum, maximum);
         public Float32Scalar Negate(Float32Scalar value) => -value;

@@ -65,7 +65,7 @@ namespace ThirdPersonSimulation
         internal float SampleTime2 { get; }
         internal float SampleTime3 { get; }
 
-        internal float SampleTimeAt(int index) => index switch
+        public float SampleTimeAt(int index) => index switch
         {
             0 => SampleTime0,
             1 => SampleTime1,

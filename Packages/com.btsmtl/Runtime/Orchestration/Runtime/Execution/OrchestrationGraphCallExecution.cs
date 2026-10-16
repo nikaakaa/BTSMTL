@@ -18,7 +18,12 @@ namespace BTSMTL.Orchestration
         {
             if (m_Contract != OrchestrationExecutionContract.Complete)
                 return TickSingleChild(operationIndex, OrchestrationFlowKind.Child);
-            m_Workspace.GraphCallEntries[m_GraphCallDepth++] = operationIndex;
+            m_Workspace.GraphCallEntries[m_GraphCallDepth++] =
+                new OrchestrationExecutionWorkspace<TValue>.GraphCallContext
+                {
+                    ExecutionFrameIndex = m_FrameSlot,
+                    OperationIndex = operationIndex
+                };
             try
             {
                 return TickChildren(operationIndex);
@@ -40,10 +45,12 @@ namespace BTSMTL.Orchestration
 
         bool IsGraphScopeActive(int ownerOperationIndex)
         {
+            int frameSlot = OperationFrame(ownerOperationIndex);
             if (IsActive(ownerOperationIndex))
                 return true;
             for (int i = m_GraphCallDepth - 1; i >= 0; i--)
-                if (m_Workspace.GraphCallEntries[i] == ownerOperationIndex)
+                if (m_Workspace.GraphCallEntries[i].ExecutionFrameIndex == frameSlot &&
+                    m_Workspace.GraphCallEntries[i].OperationIndex == ownerOperationIndex)
                     return true;
             return false;
         }

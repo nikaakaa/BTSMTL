@@ -1,9 +1,9 @@
 using Luban;
 using ThirdPersonSimulation;
+using BTSMTL.Orchestration;
 {{ bean = __table.value_ttype.def_bean }}
 {{ domain = get_tag bean "btsmtl.domain" }}
-{{ value_type = "ThirdPersonSimulation.AbilityStateValue" }}
-{{ if domain == "FPGameplay"; value_type = "ThirdPersonSimulation.FPGameplay.AbilityStateValue"; end }}
+{{ value_type = get_tag bean "btsmtl.valueType" }}
 namespace {{__namespace_with_top_module}}
 {
     public sealed class {{bean.name}}Contract : GeneratedBlackboardContract<{{value_type}}>
@@ -13,12 +13,10 @@ namespace {{__namespace_with_top_module}}
             {
                 {{~for field in bean.export_fields~}}
                 new GeneratedBlackboardField({{get_tag field "btsmtl.id"}}, {{get_tag field "btsmtl.key"}},
-                    {{get_tag field "btsmtl.index"}}, ProgramStateValueKind.{{get_tag field "btsmtl.kind"}},
-                    ProgramScopeKind.{{get_tag field "btsmtl.scope"}}, ProgramBlackboardLifetime.{{get_tag field "btsmtl.lifetime"}}),
+                    {{get_tag field "btsmtl.index"}}, OrchestrationValueKind.{{get_tag field "btsmtl.kind"}},
+                    OrchestrationScopeKind.{{get_tag field "btsmtl.scope"}}, OrchestrationBlackboardLifetime.{{get_tag field "btsmtl.lifetime"}}),
                 {{~end~}}
             }) { }
-
-        public override IGeneratedBlackboardValues<{{value_type}}> Create() => new {{bean.full_name}}();
 
         public override IGeneratedBlackboardValues<{{value_type}}> ReadDefaults(byte[] bytes)
         {

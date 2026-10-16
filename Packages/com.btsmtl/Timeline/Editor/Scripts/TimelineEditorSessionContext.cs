@@ -1,8 +1,8 @@
 using System;
+using BTSMTL.Orchestration;
 using System.Collections.Generic;
 using System.Linq;
 using ThirdPersonSimulation;
-using Photon.Deterministic;
 using UnityEngine;
 
 namespace BTSMTL.Timeline.Editor
@@ -255,20 +255,20 @@ namespace BTSMTL.Timeline.Editor
             TimelineAuthoringSnapMode.None => 0f,
             TimelineAuthoringSnapMode.Seconds => SecondsInterval,
             TimelineAuthoringSnapMode.LogicTick => GridPipeline ? 1f / TickRate : 0f,
-            TimelineAuthoringSnapMode.SourceFrame => Selection.Clip is AnimationClip animation && animation.Clip
-                ? 1f / animation.Clip.frameRate : 0f,
+            TimelineAuthoringSnapMode.SourceFrame => Selection.Clip is ITimelineAuthoringSourceFrameGrid source && source.SourceFrameRate > 0f
+                ? 1f / source.SourceFrameRate : 0f,
             _ => throw new ArgumentOutOfRangeException()
         };
 
-        public FP SnapTime(FP time, Clip clip = null, bool duration = false)
+        public OrchestrationTime SnapTime(OrchestrationTime time, Clip clip = null, bool duration = false)
         {
             if (SnapMode == TimelineAuthoringSnapMode.None)
                 return time;
             if (SnapMode == TimelineAuthoringSnapMode.Seconds)
             {
-                decimal intervalRaw = (decimal)SecondsInterval * FP._1.RawValue;
+                decimal intervalRaw = (decimal)SecondsInterval * OrchestrationTime.One.RawValue;
                 decimal index = decimal.Round(time.RawValue / intervalRaw, 0, MidpointRounding.ToEven);
-                return FP.FromRaw(checked((long)decimal.Round(index * intervalRaw, 0, MidpointRounding.ToEven)));
+                return OrchestrationTime.FromRaw(checked((long)decimal.Round(index * intervalRaw, 0, MidpointRounding.ToEven)));
             }
             if (SnapMode == TimelineAuthoringSnapMode.LogicTick)
             {
@@ -276,15 +276,15 @@ namespace BTSMTL.Timeline.Editor
                     throw new InvalidOperationException("参考 Pipeline 已失效，无法进行逻辑 tick 吸附。");
                 return TimelineTimeGrid.Position(TimelineTimeGrid.NearestIndex(time, TickRate), TickRate);
             }
-            if (clip is not AnimationClip animation || !animation.Clip || animation.Clip.frameRate <= 0f)
-                throw new InvalidOperationException("素材帧吸附需要带有效动画素材的 Clip。");
-            decimal rate = (decimal)animation.Clip.frameRate;
+            if (clip is not ITimelineAuthoringSourceFrameGrid source || source.SourceFrameRate <= 0f)
+                throw new InvalidOperationException("素材帧吸附需要带有效源帧网格的 Clip。");
+            decimal rate = (decimal)source.SourceFrameRate;
             decimal offset = duration ? 0m : (decimal)clip.StartTime.RawValue - clip.ClipInTime.RawValue;
             decimal sourceRaw = time.RawValue - offset;
-            decimal frame = decimal.Round(sourceRaw * rate / FP._1.RawValue, 0, MidpointRounding.ToEven);
-            long raw = checked((long)decimal.Round(frame * FP._1.RawValue / rate + offset,
+            decimal frame = decimal.Round(sourceRaw * rate / OrchestrationTime.One.RawValue, 0, MidpointRounding.ToEven);
+            long raw = checked((long)decimal.Round(frame * OrchestrationTime.One.RawValue / rate + offset,
                 0, MidpointRounding.ToEven));
-            return FPMath.Max(FP._0, FP.FromRaw(raw));
+            return OrchestrationTime.Max(OrchestrationTime.Zero, OrchestrationTime.FromRaw(raw));
         }
         internal void RealignSelection()
         {
@@ -309,8 +309,8 @@ namespace BTSMTL.Timeline.Editor
 
         void AlignClip(Clip clip)
         {
-            FP start = SnapTime(clip.StartTime, clip);
-            FP end = SnapTime(clip.EndTime, clip);
+            OrchestrationTime start = SnapTime(clip.StartTime, clip);
+            OrchestrationTime end = SnapTime(clip.EndTime, clip);
             if (end <= start)
                 throw new InvalidOperationException($"Clip '{clip.AuthoringId}' 对齐后没有正时长，请选择更细网格。");
             clip.ConfigureTimeRange(start, end);

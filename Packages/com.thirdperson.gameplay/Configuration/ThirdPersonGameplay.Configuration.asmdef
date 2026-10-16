@@ -1,5 +1,7 @@
 {
   "name": "ThirdPersonGameplay.Configuration",
   "references": ["ThirdPerson.Shared.Contracts"],
+  "overrideReferences": true,
+  "precompiledReferences": [],
   "noEngineReferences": true
 }

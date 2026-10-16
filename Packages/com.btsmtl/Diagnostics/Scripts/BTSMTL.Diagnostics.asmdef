@@ -1,11 +1,11 @@
 {
     "name": "BTSMTL.Diagnostics",
     "rootNamespace": "BTSMTL.Diagnostics",
-    "references": ["ThirdPerson.Shared.Contracts", "ThirdPersonSimulation.Core"],
+    "references": ["ThirdPerson.Shared.Contracts"],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
-    "overrideReferences": false,
+    "overrideReferences": true,
     "precompiledReferences": [],
     "autoReferenced": true,
     "defineConstraints": [],

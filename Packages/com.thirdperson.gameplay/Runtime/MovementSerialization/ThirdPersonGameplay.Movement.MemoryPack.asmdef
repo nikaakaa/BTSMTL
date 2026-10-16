@@ -1,0 +1,19 @@
+{
+    "name": "ThirdPersonGameplay.Movement.MemoryPack",
+    "rootNamespace": "ThirdPersonSimulation.Serialization",
+    "references": [
+        "ThirdPerson.Shared.Contracts",
+        "ThirdPersonGameplay.Movement",
+        "BTSMTL.Timeline.Runtime",
+        "ThirdPersonSimulation.MemoryPack"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": ["MemoryPack.Core.dll"],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": true
+}

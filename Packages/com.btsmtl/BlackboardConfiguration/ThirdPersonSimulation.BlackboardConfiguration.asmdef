@@ -1,11 +1,13 @@
 {
     "name": "ThirdPersonSimulation.BlackboardConfiguration",
+    "overrideReferences": true,
+    "precompiledReferences": [],
     "rootNamespace": "ThirdPersonSimulation.Configuration",
     "references": [
         "ThirdPerson.Shared.Contracts",
         "ThirdPerson.Luban",
-        "ThirdPersonSimulation.Core",
-        "ThirdPersonSimulation.Float32"
+        "BTSMTL.Orchestration.Contracts",
+        "BTSMTL.Orchestration.Runtime"
     ],
     "allowUnsafeCode": true,
     "autoReferenced": true,

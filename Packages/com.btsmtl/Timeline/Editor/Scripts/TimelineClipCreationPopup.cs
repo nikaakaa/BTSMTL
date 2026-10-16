@@ -1,10 +1,7 @@
-using ThirdPersonSimulation.QuantumNumerics;
 #if UNITY_EDITOR
 using System;
-using Photon.Deterministic;
+using BTSMTL.Orchestration;
 using System.Collections.Generic;
-using ThirdPersonCamera;
-using ThirdPersonCharacter.Pipeline.Motion.RootMotion;
 using ThirdPersonSimulation;
 using UnityEditor;
 using UnityEngine;
@@ -16,34 +13,13 @@ namespace BTSMTL.Timeline.Editor
         public string TrackAuthoringId;
         public string Kind;
         public TimelineExecutionDomain ExecutionDomain;
-        public FP StartTime;
-        public FP EndTime;
-        public FP DefaultEndTime;
-        public FP TimelineEndTime;
+        public OrchestrationTime StartTime;
+        public OrchestrationTime EndTime;
+        public OrchestrationTime DefaultEndTime;
+        public OrchestrationTime TimelineEndTime;
         public UnityEngine.Object Resource;
-        public RootMotionCurveAsset SourceCurve;
-        public float SourceStartTime;
-        public float SourceEndTime;
-        public ExtraPolationMode Extrapolation = ExtraPolationMode.None;
-        public string BlendProfileId = string.Empty;
-        public string CurveId = "MotionCurve";
-        public TimelineMotionContributionSpace Space = TimelineMotionContributionSpace.Local;
-        public TimelineMotionChannel Channel = TimelineMotionChannel.Action;
-        public TimelineMotionBlendMode BlendMode = TimelineMotionBlendMode.Override;
-        public int Priority = 100;
-        public bool ConsumeLowerChannels = true;
-        public TimelineCameraMode CameraMode = TimelineCameraMode.SkillCloseup;
-        public int CameraPriority = 100;
-        public float CameraBlendInSeconds = 0.15f;
-        public float CameraBlendOutSeconds = 0.2f;
-        public string CameraTargetKey = string.Empty;
-        public TimelineCameraInterruptPolicy CameraInterruptPolicy = TimelineCameraInterruptPolicy.BlendOut;
-        public TimelineCameraLookResponseMode CameraLookResponse = TimelineCameraLookResponseMode.Suppressed;
-        public float ManualOrbitWeight;
-        public float PitchResponseWeight = 1f;
-        public float YawResponseWeight = 1f;
-        public string TargetBindingId = string.Empty;
-        public string ParameterBindingId = string.Empty;
+        public Clip Prototype;
+        public TimelineAuthoringClipConfiguration Configuration;
         public ScriptableObject TreeGraph;
         public Type TreeGraphType;
         public string NewTreeGraphName = string.Empty;
@@ -55,17 +31,17 @@ namespace BTSMTL.Timeline.Editor
         readonly TimelineClipCreationRequest m_Request;
         readonly IReadOnlyList<TimelineExternalBindingDeclaration> m_Bindings;
         readonly Func<TimelineClipCreationRequest, string> m_Create;
+        readonly IReadOnlyList<TimelineAuthoringPropertyAttribute> m_Properties;
         string m_Error;
         string m_SubmitError;
 
-        public TimelineClipCreationPopup(
-            TimelineClipCreationRequest request,
-            IReadOnlyList<TimelineExternalBindingDeclaration> bindings,
-            Func<TimelineClipCreationRequest, string> create)
+        public TimelineClipCreationPopup(TimelineClipCreationRequest request,
+            IReadOnlyList<TimelineExternalBindingDeclaration> bindings, Func<TimelineClipCreationRequest, string> create)
         {
             m_Request = request;
-            m_Bindings = bindings ?? Array.Empty<TimelineExternalBindingDeclaration>();
+            m_Bindings = bindings;
             m_Create = create;
+            m_Properties = TimelineAuthoringClipBinding.Properties(request.Prototype);
         }
 
         public override Vector2 GetWindowSize() => new Vector2(380, 520);
@@ -77,112 +53,50 @@ namespace BTSMTL.Timeline.Editor
             bool dynamicTreeClip = IsTreeClip && m_Request.TreeExitSource == TimelineClipExitSource.TreeDecision;
             if (dynamicTreeClip && m_Request.ExecutionDomain == TimelineExecutionDomain.Presentation &&
                 m_Request.EndTime == m_Request.DefaultEndTime)
-                m_Request.EndTime = FPMath.Max(
-                    m_Request.StartTime + FP.FromRaw(1),
-                    m_Request.TimelineEndTime);
+                m_Request.EndTime = OrchestrationTime.Max(m_Request.StartTime + OrchestrationTime.FromRaw(1), m_Request.TimelineEndTime);
             if (dynamicTreeClip && m_Request.ExecutionDomain == TimelineExecutionDomain.Logic)
                 EditorGUILayout.LabelField("End (Seconds)", $"Timeline End ({m_Request.EndTime})");
-            else if (dynamicTreeClip && m_Request.ExecutionDomain == TimelineExecutionDomain.Presentation)
-                m_Request.EndTime = DrawTime("Layout End (Seconds)", m_Request.EndTime);
             else
-                m_Request.EndTime = DrawTime("End (Seconds)", m_Request.EndTime);
+                m_Request.EndTime = DrawTime(dynamicTreeClip ? "Layout End (Seconds)" : "End (Seconds)", m_Request.EndTime);
 
-            if (m_Request.Kind == TimelineContractKinds.AnimationClip)
+            if (IsTreeClip)
             {
-                UnityEngine.Object previousResource = m_Request.Resource;
-                m_Request.Resource = EditorGUILayout.ObjectField("Animation Clip", m_Request.Resource, typeof(UnityEngine.AnimationClip), false);
-                if (!ReferenceEquals(previousResource, m_Request.Resource) && m_Request.Resource is UnityEngine.AnimationClip animation)
+                if (m_Request.ExecutionDomain == TimelineExecutionDomain.Presentation)
+                    m_Request.TreeExitSource = (TimelineClipExitSource)EditorGUILayout.EnumPopup("Exit Source", m_Request.TreeExitSource);
+                m_Request.TreeGraph = (ScriptableObject)EditorGUILayout.ObjectField("Skill Graph", m_Request.TreeGraph,
+                    m_Request.TreeGraphType, false);
+                m_Request.NewTreeGraphName = EditorGUILayout.TextField("New Graph Name", m_Request.NewTreeGraphName);
+                EditorGUILayout.HelpBox("Skill Graph 为空时按名称在 Timeline 资产内创建子资产图。", MessageType.Info);
+            }
+            if (m_Request.Prototype is ITimelineAuthoringClipSource source)
+            {
+                UnityEngine.Object previous = m_Request.Resource;
+                m_Request.Resource = EditorGUILayout.ObjectField("Source", previous, source.SourceAssetType, false);
+                if (!ReferenceEquals(previous, m_Request.Resource) && m_Request.Resource)
                 {
-                    FP resourceEndTime = m_Request.StartTime + QuantumScalarBoundary.ConvertExternal(animation.length, nameof(TimelineClipCreationRequest));
+                    float duration = source.GetSourceDuration(m_Request.Resource);
+                    OrchestrationTime end = m_Request.StartTime + OrchestrationTime.FromSeconds(duration);
                     if (m_Request.EndTime == m_Request.DefaultEndTime)
-                        m_Request.EndTime = resourceEndTime;
-                    m_Request.DefaultEndTime = resourceEndTime;
-                }
-                m_Request.Extrapolation = (ExtraPolationMode)EditorGUILayout.EnumPopup("Extrapolation", m_Request.Extrapolation);
-                m_Request.BlendProfileId = EditorGUILayout.TextField("Blend Profile", m_Request.BlendProfileId);
-            }
-            else if (m_Request.Kind == TimelineContractKinds.TreeClip)
-            {
-                if (IsTreeClip)
-                {
-                    if (m_Request.ExecutionDomain == TimelineExecutionDomain.Presentation)
-                        m_Request.TreeExitSource = (TimelineClipExitSource)EditorGUILayout.EnumPopup("Exit Source", m_Request.TreeExitSource);
-                    m_Request.TreeGraph = (ScriptableObject)EditorGUILayout.ObjectField(
-                        "Skill Graph",
-                        m_Request.TreeGraph,
-                        m_Request.TreeGraphType,
-                        false);
-                    m_Request.NewTreeGraphName = EditorGUILayout.TextField("New Graph Name", m_Request.NewTreeGraphName);
-                    EditorGUILayout.HelpBox("Skill Graph 为空时按名称在 Timeline 资产内创建子资产图。", MessageType.Info);
+                        m_Request.EndTime = end;
+                    m_Request.DefaultEndTime = end;
+                    foreach (TimelineAuthoringPropertyAttribute property in m_Properties)
+                    {
+                        if (property.IsSourceAsset)
+                            m_Request.Configuration.Set(property.PropertyId, m_Request.Resource);
+                        if (property.MemberName == nameof(SampledClip.SourceStartTime))
+                            m_Request.Configuration.Set(property.PropertyId, 0f);
+                        if (property.MemberName == nameof(SampledClip.SourceEndTime))
+                            m_Request.Configuration.Set(property.PropertyId, duration);
+                    }
                 }
             }
-
-            if (m_Request.Kind == TimelineContractKinds.MotionCurveClip)
+            foreach (TimelineAuthoringPropertyAttribute property in m_Properties)
             {
-                RootMotionCurveAsset previousSource = m_Request.SourceCurve;
-                m_Request.SourceCurve = (RootMotionCurveAsset)EditorGUILayout.ObjectField(
-                    "Root Motion Curve",
-                    m_Request.SourceCurve,
-                    typeof(RootMotionCurveAsset),
-                    false);
-                if (!ReferenceEquals(previousSource, m_Request.SourceCurve) && m_Request.SourceCurve)
-                {
-                    m_Request.SourceStartTime = 0f;
-                    m_Request.SourceEndTime = m_Request.SourceCurve.Duration;
-                    FP sourceEndTime = m_Request.StartTime + QuantumScalarBoundary.ConvertExternal(m_Request.SourceCurve.Duration, nameof(TimelineClipCreationRequest));
-                    if (m_Request.EndTime == m_Request.DefaultEndTime)
-                        m_Request.EndTime = sourceEndTime;
-                    m_Request.DefaultEndTime = sourceEndTime;
-                }
-                m_Request.CurveId = EditorGUILayout.TextField("Curve Id", m_Request.CurveId);
-                m_Request.SourceStartTime = EditorGUILayout.FloatField("Source Start (s)", m_Request.SourceStartTime);
-                m_Request.SourceEndTime = EditorGUILayout.FloatField("Source End (s)", m_Request.SourceEndTime);
-                m_Request.Space = (TimelineMotionContributionSpace)EditorGUILayout.EnumPopup("Space", m_Request.Space);
-                m_Request.Channel = (TimelineMotionChannel)EditorGUILayout.EnumPopup("Channel", m_Request.Channel);
-                m_Request.BlendMode = (TimelineMotionBlendMode)EditorGUILayout.EnumPopup("Blend Mode", m_Request.BlendMode);
-                m_Request.Priority = EditorGUILayout.IntField("Priority", m_Request.Priority);
-                m_Request.ConsumeLowerChannels = EditorGUILayout.Toggle("Consume Lower", m_Request.ConsumeLowerChannels);
-            }
-            else if (m_Request.Kind == TimelineContractKinds.CameraStateClip)
-            {
-                m_Request.CameraMode = (TimelineCameraMode)EditorGUILayout.EnumPopup("Mode", m_Request.CameraMode);
-                m_Request.CameraPriority = EditorGUILayout.IntField("Priority", m_Request.CameraPriority);
-                m_Request.CameraBlendInSeconds = EditorGUILayout.FloatField("Blend In", m_Request.CameraBlendInSeconds);
-                m_Request.CameraBlendOutSeconds = EditorGUILayout.FloatField("Blend Out", m_Request.CameraBlendOutSeconds);
-                m_Request.CameraTargetKey = EditorGUILayout.TextField("Target Key", m_Request.CameraTargetKey);
-                m_Request.CameraInterruptPolicy = (TimelineCameraInterruptPolicy)EditorGUILayout.EnumPopup("Interrupt", m_Request.CameraInterruptPolicy);
-            }
-            else if (m_Request.Kind == TimelineContractKinds.CameraResponseClip)
-            {
-                m_Request.CameraLookResponse = (TimelineCameraLookResponseMode)EditorGUILayout.EnumPopup("Look Response", m_Request.CameraLookResponse);
-                m_Request.ManualOrbitWeight = EditorGUILayout.Slider("Manual Orbit", m_Request.ManualOrbitWeight, 0f, 1f);
-                m_Request.PitchResponseWeight = EditorGUILayout.Slider("Pitch Response", m_Request.PitchResponseWeight, 0f, 1f);
-                m_Request.YawResponseWeight = EditorGUILayout.Slider("Yaw Response", m_Request.YawResponseWeight, 0f, 1f);
-                m_Request.CameraPriority = EditorGUILayout.IntField("Priority", m_Request.CameraPriority);
-            }
-            else if (m_Request.Kind == TimelineContractKinds.CameraEffectClip)
-            {
-                UnityEngine.Object previousResource = m_Request.Resource;
-                m_Request.Resource = EditorGUILayout.ObjectField("Effect", m_Request.Resource, typeof(CameraEffectAsset), false);
-                if (!ReferenceEquals(previousResource, m_Request.Resource) && m_Request.Resource is ITimelineCameraSourceAsset source)
-                {
-                    m_Request.SourceStartTime = 0f;
-                    m_Request.SourceEndTime = source.SourceDuration;
-                    FP sourceEnd = m_Request.StartTime + QuantumScalarBoundary.ConvertExternal(source.SourceDuration, nameof(TimelineClipCreationRequest));
-                    if (m_Request.EndTime == m_Request.DefaultEndTime)
-                        m_Request.EndTime = sourceEnd;
-                    m_Request.DefaultEndTime = sourceEnd;
-                }
-                if (m_Request.Resource is ITimelineCameraSourceAsset)
-                {
-                    m_Request.SourceStartTime = EditorGUILayout.FloatField("源起点（秒）", m_Request.SourceStartTime);
-                    m_Request.SourceEndTime = EditorGUILayout.FloatField("源终点（秒）", m_Request.SourceEndTime);
-                }
-            }
-            else if (m_Request.Kind == TimelineContractKinds.ScenePresentationParameterCurveClip)
-            {
-                BuildBindingPopup("Target Binding", true, ref m_Request.TargetBindingId);
-                BuildBindingPopup("Parameter Binding", false, ref m_Request.ParameterBindingId);
+                if (property.IsSourceAsset || !property.Supports(m_Request.Prototype, m_Request.Resource))
+                    continue;
+                m_Request.Configuration.Set(property.PropertyId, TimelineAuthoringPropertyGUI.Draw(property,
+                    ObjectNames.NicifyVariableName(property.PropertyId), m_Request.Configuration[property.PropertyId],
+                    TimelineAuthoringClipBinding.ValueType(m_Request.Prototype, property), m_Bindings));
             }
 
             m_Error = Validate();
@@ -205,59 +119,24 @@ namespace BTSMTL.Timeline.Editor
 
         string Validate()
         {
-            if (m_Request.StartTime < FP._0 || m_Request.EndTime <= m_Request.StartTime)
+            if (m_Request.StartTime < OrchestrationTime.Zero || m_Request.EndTime <= m_Request.StartTime)
                 return "帧范围必须满足 Start < End。";
-            if (m_Request.Kind == TimelineContractKinds.AnimationClip && m_Request.Resource is not UnityEngine.AnimationClip)
-                return "必须选择已有 AnimationClip。";
-            if (m_Request.Kind == TimelineContractKinds.MotionCurveClip)
-            {
-                if (!m_Request.SourceCurve)
-                    return "必须选择正式 RootMotionCurveAsset。";
-                if (!m_Request.SourceCurve.TryValidate(out string sourceError))
-                    return sourceError;
-                if (m_Request.SourceStartTime < 0f ||
-                    m_Request.SourceEndTime <= m_Request.SourceStartTime ||
-                    m_Request.SourceEndTime > m_Request.SourceCurve.Duration)
-                    return "Source 时间范围必须位于 RootMotionCurveAsset 内。";
-                FP sourceEndTime = m_Request.StartTime + QuantumScalarBoundary.ConvertExternal(m_Request.SourceEndTime - m_Request.SourceStartTime, nameof(TimelineClipCreationRequest));
-                if (sourceEndTime > m_Request.EndTime)
-                    return "Clip 结束秒数必须覆盖 Source 时间范围。";
-            }
-            if (m_Request.Kind == TimelineContractKinds.CameraEffectClip && m_Request.Resource is not CameraEffectAsset)
-                return "Camera Effect 必须选择正式相机效果资源。";
-            if (m_Request.Kind == TimelineContractKinds.ScenePresentationParameterCurveClip &&
-                (string.IsNullOrEmpty(m_Request.TargetBindingId) || string.IsNullOrEmpty(m_Request.ParameterBindingId)))
-                return "Scene 参数 Clip 必须选择 Target 和 Parameter binding。";
+            if (m_Request.Prototype is ITimelineAuthoringClipSource source && !m_Request.Resource)
+                return source.SourceMissingError;
             if (IsTreeClip && m_Request.TreeGraph == null && string.IsNullOrWhiteSpace(m_Request.NewTreeGraphName))
                 return "TreeClip必须绑定或创建 FlowCanvas SkillGraph。";
             return string.Empty;
         }
 
-        static FP DrawTime(string label, FP time)
+        static OrchestrationTime DrawTime(string label, OrchestrationTime time)
         {
             EditorGUI.BeginChangeCheck();
-            double seconds = EditorGUILayout.DoubleField(label, time.AsDouble);
-            return EditorGUI.EndChangeCheck() ? QuantumScalarBoundary.ConvertExternal(seconds, nameof(TimelineClipCreationRequest)) : time;
+            double seconds = EditorGUILayout.DoubleField(label, time.AsSingle);
+            return EditorGUI.EndChangeCheck() ? OrchestrationTime.FromSeconds(seconds) : time;
         }
 
         bool IsTreeClip => m_Request.Kind == TimelineContractKinds.TreeClip;
 
-        void BuildBindingPopup(string label, bool target, ref string value)
-        {
-            var options = new List<string> { "Select binding" };
-            for (int index = 0; index < m_Bindings.Count; index++)
-            {
-                TimelineExternalBindingDeclaration binding = m_Bindings[index];
-                bool valid = target
-                    ? binding.ValueKind == TimelineBindingValueKind.Target && binding.Access == TimelineBindingAccess.Input && binding.Lifetime == TimelineBindingLifetime.Call
-                    : (binding.ValueKind == TimelineBindingValueKind.Scalar || binding.ValueKind == TimelineBindingValueKind.Boolean) && binding.Access == TimelineBindingAccess.Write && binding.Lifetime == TimelineBindingLifetime.Tick;
-                if (valid)
-                    options.Add(binding.BindingId);
-            }
-            int selected = Mathf.Max(0, options.IndexOf(value) >= 0 ? options.IndexOf(value) : 0);
-            int next = EditorGUILayout.Popup(label, selected, options.ToArray());
-            value = next > 0 ? options[next] : string.Empty;
-        }
     }
 }
 #endif

@@ -1,8 +1,8 @@
 using System;
-using Photon.Deterministic;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using BTSMTL.Diagnostics;
+using BTSMTL.Orchestration;
 using ThirdPersonSimulation;
 using UnityEngine;
 
@@ -10,6 +10,14 @@ namespace BTSMTL.Timeline
 {
     public static class TimelineContentDiscovery
     {
+        public static OrchestrationIdentityTable PublishIdentities(TimelineContentUnit content)
+        {
+            var identities = new List<string> { content.Identity, content.ContentHash };
+            for (int ordinal = 0; ordinal < content.Clips.Count; ordinal++)
+                identities.Add(content.Clips[ordinal].AuthoringId);
+            return OrchestrationIdentityPublication.Create(identities);
+        }
+
         public static TimelineContentCurve CaptureSourceCurve(string channelId, AnimationCurve curve)
         {
             var keys = new TimelineContentCurveKey[curve.length];
@@ -40,23 +48,24 @@ namespace BTSMTL.Timeline
             if (timeline == null)
             {
                 errors.Add("Timeline content root is missing.");
-                return new TimelineContentDiscoveryResult(null, errors);
+                return new TimelineContentDiscoveryResult(null, errors, null);
             }
 
             if (!timeline.ValidateContent(catalog, errors))
-                return new TimelineContentDiscoveryResult(null, errors);
+                return new TimelineContentDiscoveryResult(null, errors, null);
 
             var clips = new List<TimelineContentClip>();
             var markers = new List<TimelineContentMarker>();
             var tracks = new List<TimelineContentTrack>();
             var sections = new List<TimelineContentSection>();
             var closure = new TimelineContentClosureBuilder();
-            FP duration = FP._0;
+            OrchestrationTime duration = OrchestrationTime.Zero;
             for (int trackIndex = 0; trackIndex < timeline.Tracks.Count; trackIndex++)
             {
                 Track track = timeline.Tracks[trackIndex];
                 if (track == null)
                     continue;
+                TimelineTrackContract trackContract = catalog.RequireTrack(track.ContractKind);
                 var clipAuthoringIds = new List<string>();
                 for (int clipIndex = 0; clipIndex < track.Clips.Count; clipIndex++)
                 {
@@ -64,14 +73,14 @@ namespace BTSMTL.Timeline
                     if (clip != null)
                         clipAuthoringIds.Add(clip.AuthoringId);
                     if (clip != null)
-                        duration = FPMath.Max(duration, clip.EndTime);
+                        duration = OrchestrationTime.Max(duration, clip.EndTime);
                 }
                 for (int markerIndex = 0; markerIndex < track.Markers.Count; markerIndex++)
                 {
                     TimelineMarker marker = track.Markers[markerIndex];
                     if (marker == null)
                         continue;
-                    duration = FPMath.Max(duration, FPMath.Max(FP.FromRaw(1), marker.Time));
+                    duration = OrchestrationTime.Max(duration, OrchestrationTime.Max(OrchestrationTime.FromRaw(1), marker.Time));
                     TimelineGraphBinding graphBinding = graphBindings.ResolveMarker(marker, closure);
                     markers.Add(new TimelineContentMarker(
                         marker.AuthoringId,
@@ -90,13 +99,14 @@ namespace BTSMTL.Timeline
                     trackIndex,
                     track.PersistentMuted,
                     clipAuthoringIds,
+                    trackContract.LogicSampleExtension,
                     track.Name));
             }
             for (int sectionIndex = 0; sectionIndex < timeline.Sections.Count; sectionIndex++)
             {
                 TimelineSection section = timeline.Sections[sectionIndex];
                 if (section != null)
-                    duration = FPMath.Max(duration, section.Time);
+                    duration = OrchestrationTime.Max(duration, section.Time);
                 if (section != null)
                     sections.Add(new TimelineContentSection(
                         section.AuthoringId,
@@ -131,12 +141,19 @@ namespace BTSMTL.Timeline
                     }
                     var bindingUses = new List<TimelineContentBindingUse>();
                     var curves = new List<TimelineContentCurve>();
-                    IReadOnlyList<TimelineCurveChannelDescriptor> curveDescriptors = TimelineCurveChannelCatalog.All;
+                    int weightCurveIndex = -1;
+                    int easeInCurveIndex = -1;
+                    int easeOutCurveIndex = -1;
+                    IReadOnlyList<TimelineCurveChannelDescriptor> curveDescriptors = clip.CurveChannels;
                     for (int curveIndex = 0; curveIndex < curveDescriptors.Count; curveIndex++)
                     {
                         TimelineCurveChannelDescriptor descriptor = curveDescriptors[curveIndex];
-                        if (!descriptor.Supports(clip))
-                            continue;
+                        switch (descriptor.Role)
+                        {
+                            case TimelineCurveChannelRole.Weight: weightCurveIndex = curves.Count; break;
+                            case TimelineCurveChannelRole.EaseIn: easeInCurveIndex = curves.Count; break;
+                            case TimelineCurveChannelRole.EaseOut: easeOutCurveIndex = curves.Count; break;
+                        }
                         AnimationCurve sourceCurve = descriptor.Read(clip);
                         Keyframe[] keys = sourceCurve?.keys ?? Array.Empty<Keyframe>();
                         var curveKeys = new TimelineContentCurveKey[keys.Length];
@@ -179,13 +196,14 @@ namespace BTSMTL.Timeline
                         clip.CaptureTimeRange(),
                         executionPhase,
                         exitSource,
-                        clipContract.Capabilities,
+                        clipContract.ContentKind,
                         clipContract.SupportsStop,
                         track.PersistentMuted,
                         clip.CaptureContentParameters(),
                         bindingUses,
                         curves,
-                        clip.ContractKind == TimelineContractKinds.TreeClip ? graphBindings.ResolveTreeClip(clip, closure) : default));
+                        clip.ContractKind == TimelineContractKinds.TreeClip ? graphBindings.ResolveTreeClip(clip, closure) : default,
+                        clip.CaptureSampling(weightCurveIndex, easeInCurveIndex, easeOutCurveIndex)));
                     if (clip is ITimelineContentClosureSource closureSource)
                         closureSource.CollectContentClosure(closure);
                 }
@@ -221,7 +239,7 @@ namespace BTSMTL.Timeline
             List<TimelineContentDependency> dependencies = new List<TimelineContentDependency>(closure.Dependencies);
             dependencies.Sort((left, right) => string.CompareOrdinal(left.Identity, right.Identity));
             if (errors.Count > 0)
-                return new TimelineContentDiscoveryResult(null, errors);
+                return new TimelineContentDiscoveryResult(null, errors, null);
             string rootFingerprint = TimelineAuthoringFingerprint.Compute(timeline);
             var hashParts = new List<string>
             {
@@ -240,6 +258,13 @@ namespace BTSMTL.Timeline
                 hashParts.Add(tracks[i].ContractKind);
                 hashParts.Add(tracks[i].ExecutionPolicy.Domain.ToString("G"));
                 hashParts.Add(tracks[i].ExecutionPolicy.OutputKind.ToString("G"));
+                if (tracks[i].LogicSampleExtension.HasValue)
+                {
+                    TimelineLogicSampleExtension extension = tracks[i].LogicSampleExtension.Value;
+                    hashParts.Add(extension.Identity.DomainId);
+                    hashParts.Add(extension.Identity.OperationId);
+                    hashParts.Add(extension.SemanticVersion.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                }
             }
             for (int i = 0; i < clips.Count; i++)
             {
@@ -255,22 +280,21 @@ namespace BTSMTL.Timeline
                 hashParts.Add(markers[i].Time.RawValue.ToString(System.Globalization.CultureInfo.InvariantCulture));
                 hashParts.Add(markers[i].ForceTriggerOnInitialSeek ? "1" : "0");
             }
-            return new TimelineContentDiscoveryResult(
-                new TimelineContentUnit(
-                    $"timeline:{timeline.AuthoringId}",
-                    timeline.AuthoringId,
-                    SourceContentHasher.Hash(hashParts.ToArray()),
-                    rootFingerprint,
-                    timeline.Name,
-                    duration,
-                    timeline.Loop,
-                    tracks,
-                    clips,
-                    markers,
-                    sections,
-                    bindings,
-                    dependencies),
-                errors);
+            var content = new TimelineContentUnit(
+                $"timeline:{timeline.AuthoringId}",
+                timeline.AuthoringId,
+                SourceContentHasher.Hash(hashParts.ToArray()),
+                rootFingerprint,
+                timeline.Name,
+                duration,
+                timeline.Loop,
+                tracks,
+                clips,
+                markers,
+                sections,
+                bindings,
+                dependencies);
+            return new TimelineContentDiscoveryResult(content, errors, PublishIdentities(content));
         }
     }
 }

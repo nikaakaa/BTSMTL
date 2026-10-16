@@ -40,17 +40,56 @@ namespace BTSMTL.Orchestration
 
     public readonly struct OrchestrationExtensionPort
     {
-        public OrchestrationExtensionPort(string id, string valueTypeId,
-            OrchestrationExtensionPortDirection direction)
+        public OrchestrationExtensionPort(OrchestrationExtensionInputPort input)
         {
-            Id = id;
-            ValueTypeId = valueTypeId;
-            Direction = direction;
+            Id = input.Id;
+            ValueKind = input.ValueKind;
+            Direction = OrchestrationExtensionPortDirection.Input;
+            Index = input.Index;
+        }
+
+        public OrchestrationExtensionPort(OrchestrationExtensionOutputPort output)
+        {
+            Id = output.Id;
+            ValueKind = output.ValueKind;
+            Direction = OrchestrationExtensionPortDirection.Output;
+            Index = output.Index;
         }
 
         public string Id { get; }
-        public string ValueTypeId { get; }
+        public OrchestrationValueKind ValueKind { get; }
         public OrchestrationExtensionPortDirection Direction { get; }
+        public int Index { get; }
+    }
+
+    public readonly struct OrchestrationExtensionInputPort
+    {
+        public OrchestrationExtensionInputPort(string id, OrchestrationValueKind valueKind, int index)
+        {
+            Id = id;
+            ValueKind = valueKind;
+            Index = index;
+        }
+
+        public string Id { get; }
+        public OrchestrationValueKind ValueKind { get; }
+        public int Index { get; }
+        public OrchestrationExtensionPort Declaration => new OrchestrationExtensionPort(this);
+    }
+
+    public readonly struct OrchestrationExtensionOutputPort
+    {
+        public OrchestrationExtensionOutputPort(string id, OrchestrationValueKind valueKind, int index)
+        {
+            Id = id;
+            ValueKind = valueKind;
+            Index = index;
+        }
+
+        public string Id { get; }
+        public OrchestrationValueKind ValueKind { get; }
+        public int Index { get; }
+        public OrchestrationExtensionPort Declaration => new OrchestrationExtensionPort(this);
     }
 
     public readonly struct OrchestrationExtensionContract
@@ -58,17 +97,20 @@ namespace BTSMTL.Orchestration
         public OrchestrationExtensionContract(OrchestrationExtensionKind kind,
             OrchestrationExtensionAccess access,
             OrchestrationExtensionInvocationKind invocations,
-            ReadOnlyMemory<OrchestrationExtensionPort> ports)
+            ReadOnlyMemory<OrchestrationExtensionPort> ports,
+            ReadOnlyMemory<OrchestrationExtensionContentField> fields)
         {
             Kind = kind;
             Access = access;
             Invocations = invocations;
             Ports = ports;
+            Fields = fields;
         }
 
         public OrchestrationExtensionKind Kind { get; }
         public OrchestrationExtensionAccess Access { get; }
         public OrchestrationExtensionInvocationKind Invocations { get; }
         public ReadOnlyMemory<OrchestrationExtensionPort> Ports { get; }
+        public ReadOnlyMemory<OrchestrationExtensionContentField> Fields { get; }
     }
 }

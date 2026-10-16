@@ -1,33 +1,38 @@
 # BTSMTL 编排与项目玩法源码
 
-本仓库分别提供编排、玩法和共享基础三个源码包。BTSMTL 安排技能、图和 Timeline 的执行顺序；角色运动、攻击判定、属性与效果计算由 Gameplay 实现。网络后端按自己的机制推进同一份玩法代码。
+本仓库提供通用编排、领域合同、独立玩法算法、共享基础与冷数据编码。BTSMTL 安排 Skill／FSM、Timeline 和 EventGraph 的执行顺序；宿主提供状态内存、数值类型、数学策略和领域扩展，接收编排输出。Quantum 原生玩法及 Unity 表现装配由宿主项目持有。
 
 | 包 | 负责什么 |
 | --- | --- |
-| `com.btsmtl` | 图、Timeline、黑板作者入口、Unity 编辑器、诊断和现有编排适配 |
-| `com.thirdperson.gameplay` | 角色运动、攻击与命中处理、属性与效果、玩法会话及相应运行数据 |
+| `com.btsmtl` | 唯一泛型编排执行器、整数 Timeline、图与黑板作者工具、EventGraph 和诊断 |
+| `com.thirdperson.gameplay.contracts` | 领域扩展身份、版本、端口、只读参数与枚举 |
+| `com.thirdperson.gameplay` | 独立运动算法、攻击几何、玩法配置及仍在清理的旧冷合同 |
 | `com.thirdperson.shared` | 两边使用的身份、值声明、诊断与性能合同、Luban 基础读写和编译期值生成支持 |
-| `com.btsmtl.network.server-authoritative` | 可选服务器权威模型的预测、纠正、历史与传输 |
+| `com.thirdperson.numerics.quantum` | Quantum 宿主的 FP 数学策略、作者数值转换和时间采样边界 |
+| `com.thirdperson.memorypack` | 从原成员生成按需使用的外部冷数据编码 |
 
-例如一次攻击由 BTSMTL 安排何时发起和结束，Gameplay 接收请求并处理攻击查询及结果，属性与效果模块按原事务改变状态；结果返回编排供后续分支使用。BTSMTL 不承担命中或伤害算法。包移动保留原算法、命名空间、程序集名称、资源 GUID 与当前文件内容。
+例如一次攻击由 BTSMTL 安排何时发起和结束，Quantum 领域扩展读取当前 Frame，处理攻击查询、命中与属性效果；表现请求交给 Unity 宿主消费。编排时间使用整数 Tick 与 Q48.16 整数进度、倍率和余数；黑板值、比较与曲线采样值由宿主通过泛型和数学策略决定。旧 FPGameplay／Float32 完整玩法执行器、Snapshot 包和服务器权威产品已直接删除。
 
 ## Unity 接入
 
-仓库与 `3C` 放在同一父目录。3C 客户端的 `Packages/manifest.json` 显式安装三个本地包：
+仓库与 `3C` 放在同一父目录。3C 客户端的 `Packages/manifest.json` 显式安装以下本地包：
 
 ```json
 "com.btsmtl": "file:../../../../../BTSMTL/Packages/com.btsmtl",
 "com.thirdperson.gameplay": "file:../../../../../BTSMTL/Packages/com.thirdperson.gameplay",
+"com.thirdperson.gameplay.contracts": "file:../../../../../BTSMTL/Packages/com.thirdperson.gameplay.contracts",
+"com.thirdperson.memorypack": "file:../../../../../BTSMTL/Packages/com.thirdperson.memorypack",
+"com.thirdperson.numerics.quantum": "file:../../../../../BTSMTL/Packages/com.thirdperson.numerics.quantum",
 "com.thirdperson.shared": "file:../../../../../BTSMTL/Packages/com.thirdperson.shared"
 ```
 
 Unity 通过各包原有 asmdef 编译同一份源码。3C 的 Assets 中不保留副本；角色资产、生成的 C# authoring、Workbench 角色装配、表现和产品发布入口仍由 3C 持有。
 
-需要服务器权威模型时，宿主另外安装 `com.btsmtl.network.server-authoritative`。该包直接依赖 Gameplay 和 Shared；Q3 的项目运行包与 Quantum FP 数学包也直接声明实际使用的 Gameplay、Shared 依赖。需要 BTSMTL Timeline 或诊断的现有 Unity 网络产品保留相应编排依赖。Photon Quantum SDK 仍由原安装目录提供，不随本次分包移动或修改。
+`com.btsmtl` 的项目包依赖只有 Shared。Gameplay、领域合同、Quantum 数学与 MemoryPack 单向引用 BTSMTL；BTSMTL 不引用这些宿主实现。Photon Quantum SDK 由使用 Quantum 的宿主提供。Timeline 编辑外围的旧玩法引用仍在清理，包级依赖解除不等于所有 Unity 程序集已经完成解耦。
 
 ## 普通 .NET 接入
 
-本仓库的 `BTSMTL.sln` 与 `Projects` 工程仍使用原工程名，源码 Include 改为所属包的新路径。Unity asmdef 与普通 .NET 工程编译同一份实现，不读取 3C 的 Assets。
+`BTSMTL.sln` 只装配 Shared、编排合同／运行时、整数 Timeline、Luban、黑板默认配置与两个生成工具；Unity asmdef 与普通 .NET 工程编译同一份实现。这些编排工程不需要 Photon DLL。正式 solution 构建先执行依赖守护，源码或引用方向违规时直接失败。
 
 ```powershell
 try {
@@ -37,27 +42,38 @@ try {
 }
 ```
 
-服务端按实际数值域引用 `Projects/ThirdPersonSimulation.Fixed` 或 `Projects/ThirdPersonSimulation.Float32`；需要 Timeline 时再引用 `Projects/ThirdPersonSimulation.Timeline`。具体网络工程仍单独引用 `Projects/ThirdPersonSimulation.ServerAuthoritative` 或 `Projects/ThirdPersonSimulation.ServerAuthoritative.Transport`。
+需要编排的宿主引用 `Projects/BTSMTL.Orchestration.Runtime`，需要整数 Timeline 再引用 `Projects/ThirdPersonSimulation.Timeline`（程序集名 `BTSMTL.Timeline.Runtime`）。Quantum 宿主另引用数值策略和所需独立领域算法，并通过 `QuantumDeterministicPath` 提供官方 DLL。
 
-服务端提供输入、逻辑时间、角色和内容绑定，原运行器产生并提交或丢弃结果。动画、场景、声音和资源解析继续由 Unity 接入处理。分包不改变回放、存档、网络快照的按需装配责任，也不表示 Quantum FP 角色执行已完成。
+宿主提供输入、逻辑时间、内容和 roster 绑定，唯一执行器读写宿主提供的候选区段，由宿主采用或丢弃。历史、保存与恢复继续归实际后端；Quantum 使用 SDK Frame。动画、场景、声音和资源解析归 Unity 接入。编排与领域源码编译成功不代表产品入口、内容发布和实际运行已验收。
 
 ## 源码位置与依赖
 
 | 源码位置 | 内容 |
 | --- | --- |
+| `Packages/com.btsmtl/Runtime/Orchestration` | 泛型编排合同、执行器、区段布局与输出 |
 | `Packages/com.btsmtl/Scripts`、`Authoring`、`EventGraphs` | 图节点、作者合同和 EventGraph 接入 |
-| `Packages/com.btsmtl/Timeline` | 共用 Timeline 运行核心、Unity 作者对象、编辑器与现有适配 |
+| `Packages/com.btsmtl/Timeline` | 整数 Timeline 运行核心、Unity 作者对象与编辑器 |
 | `Packages/com.btsmtl/BlackboardConfiguration` | 黑板默认配置与生成接入，Luban 基础库已移到 Shared |
 | `Packages/com.btsmtl/Diagnostics`、`Editor` | 编排诊断、编辑窗口和界面资源 |
-| `Packages/com.thirdperson.gameplay/Runtime/Simulation` | Core、Fixed、Float32 现有运行程序集 |
+| `Packages/com.thirdperson.gameplay.contracts/Runtime` | 领域扩展合同与参数 |
+| `Packages/com.thirdperson.gameplay/Runtime/Movement` | 唯一的确定性运动算法 |
+| `Packages/com.thirdperson.gameplay/Runtime/Simulation` | 留存的配置、发布合同及待收齐的旧宿主合同 |
 | `Packages/com.thirdperson.gameplay/Runtime/Physics/BepuQueries` | 既有物理查询源码与许可 |
 | `Packages/com.thirdperson.gameplay/Configuration` | Gameplay 配置合同、Reader 和对应生成输出 |
 | `Packages/com.thirdperson.shared/Runtime` | 共享合同、性能合同及 Luban 基础库 |
 | `Packages/com.thirdperson.shared/Analyzers` | 原编译期生成器的 Unity 安装产物 |
+| `Packages/com.thirdperson.numerics.quantum` | Quantum 宿主数值策略 |
+| `Packages/com.thirdperson.memorypack` | 按需外部冷数据编码 |
 
-当前 `BTSMTL`、`BTSMTL.Timeline.Runtime` 等程序集使用 Gameplay 提供的 Core、Fixed、Float32 数据与调用接口，所以 `com.btsmtl` 显式依赖 Gameplay 和 Shared；Gameplay 仅依赖 Shared，不依赖 BTSMTL 作者包。Core 中现有的通用控制流与领域装配仍处于同一程序集，本次保留这一事实，不把目录移动描述成通用编排核心已经完全独立。
+黑板生成工具读取宿主声明的数值类型、Profile、ABI、工厂和已转换默认值，不引用 FP 或具体玩法。3C 的 Gameplay 配置生成器位于宿主项目 `Tools/GameplayConfig/Generator`，由宿主正式脚本调用；它依赖玩法配置及 MemoryPack，属于宿主工具。
 
-Unity 作者包继续要求宿主提供 NodeCanvas、FlowCanvas、ParadoxNotion 与 Slate；诊断采样注解由 Shared 的正式包依赖提供。包内 Unity 程序集不引用 3C 的 Client、Gameplay、Camera.Runtime 或 Simulation.Unity。
+Unity 作者工具要求宿主提供 NodeCanvas、FlowCanvas、ParadoxNotion 与 Slate；其中图插件使用已适配 Shared 文本合同的版本。诊断采样注解由 Shared 的正式包依赖提供。Quantum 数学、运动算法和对应冷编码所需 Photon DLL 属于宿主侧依赖。
+
+### 当前检查与未完成边界
+
+编排核心、整数 Timeline、黑板工具及生成模块已经实际独立编译。依赖守护仍会报告 Timeline 作者外围等剩余玩法引用；完整 solution、Unity 导入、技能／动画数据重新发布与 Quantum 产品运行分别收口，不能由局部编译结果推定完成。
+
+依赖守护位于 `Tools/DependencyGuard`，由 `Directory.Solution.targets` 接入正式构建，也可通过 `dotnet msbuild BTSMTL.sln /t:DependencyGuard /nr:false /p:UseSharedCompilation=false` 单独执行。详细路径、实际证据与历史成因维护在 3C 的 `docs/路径/编排与玩法分包.md`、`docs/路径/BTSMTL编排状态区段.md` 和 `docs/经验/BTSMTL跨仓库依赖方向.md`。
 
 ## 开发与检查边界
 

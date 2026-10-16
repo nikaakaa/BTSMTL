@@ -1,5 +1,5 @@
 using System;
-using Photon.Deterministic;
+using BTSMTL.Orchestration;
 using System.Collections.Generic;
 using System.Linq;
 using BTSMTL.Diagnostics;
@@ -350,7 +350,7 @@ namespace BTSMTL.Timeline
 
         public string AuthoringId => m_AuthoringId ?? string.Empty;
         public string Name => m_Name ?? string.Empty;
-        public FP Time => FP.FromRaw(m_TimeFPRawValue);
+        public OrchestrationTime Time => OrchestrationTime.FromRaw(m_TimeFPRawValue);
         public string NextSectionId => m_NextSectionId ?? string.Empty;
         public string BranchId => m_BranchId?.Trim() ?? string.Empty;
 
@@ -362,12 +362,12 @@ namespace BTSMTL.Timeline
             m_AuthoringId = authoringId;
         }
 
-        public static TimelineSection Create(string name, FP time)
+        public static TimelineSection Create(string name, OrchestrationTime time)
         {
             return Create(AuthoringIdentity.Create(), name, time);
         }
 
-        public static TimelineSection Create(string authoringId, string name, FP time)
+        public static TimelineSection Create(string authoringId, string name, OrchestrationTime time)
         {
             if (!AuthoringIdentity.IsValid(authoringId))
                 throw new ArgumentException("Timeline Section authoring identity is invalid.", nameof(authoringId));
@@ -379,10 +379,10 @@ namespace BTSMTL.Timeline
             return section;
         }
 
-        public void Configure(string name, FP time)
+        public void Configure(string name, OrchestrationTime time)
         {
             string value = name?.Trim() ?? string.Empty;
-            if (string.IsNullOrEmpty(value) || time < FP._0)
+            if (string.IsNullOrEmpty(value) || time < OrchestrationTime.Zero)
                 throw new ArgumentException("Timeline Section requires a name and non-negative time.");
             m_Name = value;
             m_TimeFPRawValue = time.RawValue;

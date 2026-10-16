@@ -74,46 +74,4 @@ namespace ThirdPersonSimulation
         public static bool operator !=(CharacterSkillId left, CharacterSkillId right) => !left.Equals(right);
     }
 
-    public readonly struct CharacterControlParameterId : IEquatable<CharacterControlParameterId>, IComparable<CharacterControlParameterId>
-    {
-        public CharacterControlParameterId(string value) => Value = SimulationIdentity.Require(value, nameof(value));
-        public string Value { get; }
-        public bool IsValid => !string.IsNullOrEmpty(Value);
-        public int CompareTo(CharacterControlParameterId other) => string.CompareOrdinal(Value, other.Value);
-        public bool Equals(CharacterControlParameterId other) => string.Equals(Value, other.Value, StringComparison.Ordinal);
-        public override bool Equals(object obj) => obj is CharacterControlParameterId other && Equals(other);
-        public override int GetHashCode() => Value == null ? 0 : StringComparer.Ordinal.GetHashCode(Value);
-        public override string ToString() => Value ?? string.Empty;
-        public static bool operator ==(CharacterControlParameterId left, CharacterControlParameterId right) => left.Equals(right);
-        public static bool operator !=(CharacterControlParameterId left, CharacterControlParameterId right) => !left.Equals(right);
-    }
-
-    public readonly struct SimulationInputValueId : IEquatable<SimulationInputValueId>, IComparable<SimulationInputValueId>
-    {
-        public SimulationInputValueId(string value) => Value = SimulationIdentity.Require(value, nameof(value));
-        public string Value { get; }
-        public bool IsValid => !string.IsNullOrEmpty(Value);
-        public int CompareTo(SimulationInputValueId other) => string.CompareOrdinal(Value, other.Value);
-        public bool Equals(SimulationInputValueId other) => string.Equals(Value, other.Value, StringComparison.Ordinal);
-        public override bool Equals(object obj) => obj is SimulationInputValueId other && Equals(other);
-        public override int GetHashCode() => Value == null ? 0 : StringComparer.Ordinal.GetHashCode(Value);
-        public override string ToString() => Value ?? string.Empty;
-        public static bool operator ==(SimulationInputValueId left, SimulationInputValueId right) => left.Equals(right);
-        public static bool operator !=(SimulationInputValueId left, SimulationInputValueId right) => !left.Equals(right);
-    }
-
-    public readonly partial struct CharacterControlStateFieldId : IEquatable<CharacterControlStateFieldId>, IComparable<CharacterControlStateFieldId>
-    {
-        public CharacterControlStateFieldId(string value) => Value = SimulationIdentity.Require(value, nameof(value));
-        public string Value { get; }
-        public bool IsValid => !string.IsNullOrEmpty(Value);
-        public int CompareTo(CharacterControlStateFieldId other) => string.CompareOrdinal(Value, other.Value);
-        public bool Equals(CharacterControlStateFieldId other) => string.Equals(Value, other.Value, StringComparison.Ordinal);
-        public override bool Equals(object obj) => obj is CharacterControlStateFieldId other && Equals(other);
-        public override int GetHashCode() => Value == null ? 0 : StringComparer.Ordinal.GetHashCode(Value);
-        public override string ToString() => Value ?? string.Empty;
-        public static bool operator ==(CharacterControlStateFieldId left, CharacterControlStateFieldId right) => left.Equals(right);
-        public static bool operator !=(CharacterControlStateFieldId left, CharacterControlStateFieldId right) => !left.Equals(right);
-    }
-
 }

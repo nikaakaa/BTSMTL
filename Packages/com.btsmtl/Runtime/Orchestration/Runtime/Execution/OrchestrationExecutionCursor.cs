@@ -17,9 +17,11 @@ namespace BTSMTL.Orchestration
         readonly OrchestrationProgram<TValue> m_Program;
         readonly OrchestrationExecutionWorkspace<TValue> m_Workspace;
         readonly IOrchestrationExtensionBindings<TValue, TContext> m_Bindings;
-        readonly Span<OrchestrationOperationState> m_Operations;
-        readonly Span<TValue> m_Values;
-        readonly OrchestrationBlackboardStorageView<TValue> m_Blackboards;
+        readonly OrchestrationExecutionFrames<TValue> m_Frames;
+        Span<OrchestrationOperationState> m_Operations;
+        Span<TValue> m_Values;
+        OrchestrationBlackboardStorageView<TValue> m_Blackboards;
+        int m_FrameSlot;
         readonly OrchestrationFrameInput<TValue> m_Input;
         readonly OrchestrationIdentityOrdinalView m_Identities;
         TContext m_Context;
@@ -38,15 +40,12 @@ namespace BTSMTL.Orchestration
         int m_CurrentOperationIndex;
         int m_GraphCallDepth;
         OrchestrationObservationPhase m_ObservationPhase;
-        OrchestrationTimelineInvocationToken m_OutputTimelineToken;
-        OrchestrationTimelineHook m_OutputTimelineHook;
-        bool m_HasOutputTimelineInvocation;
+        OrchestrationTimelineInvocationFacts m_TimelineInvocation;
 
         public OrchestrationExecutionCursor(OrchestrationProgram<TValue> program,
             OrchestrationExecutionWorkspace<TValue> workspace,
             IOrchestrationExtensionBindings<TValue, TContext> bindings,
-            Span<OrchestrationOperationState> operations, Span<TValue> values,
-            Span<OrchestrationBlackboardMetadata> blackboards,
+            OrchestrationExecutionFrames<TValue> frames, int frameSlot,
             Span<TValue> characterValues, Span<OrchestrationBlackboardMetadata> characterBlackboards,
             ReadOnlySpan<int> characterSlots,
             IOrchestrationTimelineDispatcher<TValue, TScalar, TVector2,
@@ -60,9 +59,11 @@ namespace BTSMTL.Orchestration
             m_Program = program;
             m_Workspace = workspace;
             m_Bindings = bindings;
-            m_Operations = operations;
-            m_Values = values;
-            m_Blackboards = new OrchestrationBlackboardStorageView<TValue>(values, blackboards,
+            m_Frames = frames;
+            m_FrameSlot = frameSlot;
+            m_Operations = frames.Operations(frameSlot);
+            m_Values = frames.Values(frameSlot);
+            m_Blackboards = new OrchestrationBlackboardStorageView<TValue>(program, frames, frameSlot,
                 characterValues, characterBlackboards, characterSlots);
             m_Input = input;
             m_Identities = identities;
@@ -81,15 +82,14 @@ namespace BTSMTL.Orchestration
             m_CurrentOperationIndex = -1;
             m_GraphCallDepth = 0;
             m_ObservationPhase = OrchestrationObservationPhase.None;
-            m_OutputTimelineToken = default;
-            m_OutputTimelineHook = default;
-            m_HasOutputTimelineInvocation = false;
+            m_TimelineInvocation = default;
             Array.Clear(workspace.InputObservationWritten, 0, workspace.InputObservationWritten.Length);
             Array.Clear(workspace.OutputObservationWritten, 0, workspace.OutputObservationWritten.Length);
             Array.Clear(workspace.CachedObservationWritten, 0, workspace.CachedObservationWritten.Length);
         }
 
         public int CurrentOperationIndex => m_CurrentOperationIndex;
+        public int ExecutionFrameIndex => m_FrameSlot;
         public ReadOnlySpan<OrchestrationTraceEvent<TValue>> Trace => m_Workspace.TraceEvents.AsSpan(0, m_TraceCount);
         public ReadOnlySpan<OrchestrationStateTraceFrame> StateTraceFrames => m_Workspace.StateFrames.AsSpan(0, m_StateFrameCount);
         public bool IsPredictiveEvaluation
@@ -103,16 +103,21 @@ namespace BTSMTL.Orchestration
             }
         }
 
-        public OrchestrationOperationResult Advance(OrchestrationExecutionEntry entry)
+        void BeginInvocation()
         {
-            OrchestrationExecutionContract previous = m_Contract;
-            m_Contract = entry.Contract;
             if (m_EntryDepth == 0)
             {
                 m_ExecutionCount = 0;
                 m_Workspace.ResetOutputs();
             }
             m_EntryDepth++;
+        }
+
+        public OrchestrationOperationResult Advance(OrchestrationExecutionEntry entry)
+        {
+            OrchestrationExecutionContract previous = m_Contract;
+            m_Contract = entry.Contract;
+            BeginInvocation();
             try
             {
                 OrchestrationOperationResult result = Tick(entry.OperationIndex, entry.InputPortId);
@@ -132,12 +137,7 @@ namespace BTSMTL.Orchestration
         {
             OrchestrationExecutionContract previous = m_Contract;
             m_Contract = contract;
-            if (m_EntryDepth == 0)
-            {
-                m_ExecutionCount = 0;
-                m_Workspace.ResetOutputs();
-            }
-            m_EntryDepth++;
+            BeginInvocation();
             try
             {
                 OrchestrationOperationResult result = TickOutput(operationIndex, outputPortId);
@@ -156,26 +156,40 @@ namespace BTSMTL.Orchestration
         {
             if (operationIndex < 0 || !m_Program.Operation(operationIndex).IsRunnable)
                 return false;
-            OrchestrationOperationStatus status = m_Operations[operationIndex].Status;
+            OrchestrationOperationStatus status = ReadStatus(operationIndex);
             return status == OrchestrationOperationStatus.Running || status == OrchestrationOperationStatus.Stopping;
         }
 
-        public bool IsRunning(int operationIndex) => operationIndex >= 0 &&
-            m_Program.Operation(operationIndex).IsRunnable &&
-            m_Operations[operationIndex].Status == OrchestrationOperationStatus.Running;
+        public bool IsRunning(int operationIndex) =>
+            ReadStatus(operationIndex) == OrchestrationOperationStatus.Running;
 
-        public bool IsStopping(int operationIndex) => operationIndex >= 0 &&
-            m_Program.Operation(operationIndex).IsRunnable &&
-            m_Operations[operationIndex].Status == OrchestrationOperationStatus.Stopping;
+        public bool IsStopping(int operationIndex) =>
+            ReadStatus(operationIndex) == OrchestrationOperationStatus.Stopping;
 
         public OrchestrationOperationStatus ReadStatus(int operationIndex) =>
             operationIndex < 0 || !m_Program.Operation(operationIndex).IsRunnable
-                ? OrchestrationOperationStatus.Dormant : m_Operations[operationIndex].Status;
+                ? OrchestrationOperationStatus.Dormant : ReadOperationState(operationIndex).Status;
 
         public ulong ReadGeneration(int operationIndex) =>
-            m_Program.Operation(operationIndex).IsRunnable ? m_Operations[operationIndex].Generation : 1;
+            m_Program.Operation(operationIndex).IsRunnable ? ReadOperationState(operationIndex).Generation : 1;
 
-        public OrchestrationOperationResult Tick(int operationIndex, int inputPortId = 0)
+        int OperationFrame(int operationIndex) => m_Frames.OwnerFrame(m_FrameSlot,
+            m_Program.Operation(operationIndex).ExecutionFrameOwnerOperationIndex);
+
+        ref OrchestrationOperationState ReadOperationState(int operationIndex) =>
+            ref m_Frames.Operations(OperationFrame(operationIndex))[operationIndex];
+
+        void SelectExecutionFrame(int frameSlot)
+        {
+            m_FrameSlot = frameSlot;
+            m_Operations = m_Frames.Operations(frameSlot);
+            m_Values = m_Frames.Values(frameSlot);
+            m_Blackboards.SelectFrame(frameSlot);
+            m_TimelineDispatcher.SelectExecutionFrame(frameSlot, ref m_Context);
+            Array.Clear(m_Workspace.CachedObservationWritten, 0, m_Workspace.CachedObservationWritten.Length);
+        }
+
+        OrchestrationOperationResult Tick(int operationIndex, int inputPortId = 0)
         {
             RequireExecution(operationIndex);
             ref readonly OrchestrationOperation operation = ref m_Program.Operation(operationIndex);
@@ -206,7 +220,7 @@ namespace BTSMTL.Orchestration
             return result;
         }
 
-        public OrchestrationOperationResult TickPersistent(int operationIndex)
+        OrchestrationOperationResult TickPersistent(int operationIndex)
         {
             OrchestrationOperationStatus status = ReadStatus(operationIndex);
             if (status == OrchestrationOperationStatus.Success)
@@ -218,82 +232,99 @@ namespace BTSMTL.Orchestration
 
         public OrchestrationStopStatus RequestStop(int operationIndex, OrchestrationStopContext context)
         {
-            m_CurrentOperationIndex = operationIndex;
-            if (operationIndex < 0 || !m_Program.Operation(operationIndex).IsRunnable)
-                return OrchestrationStopStatus.Completed;
-            ref OrchestrationOperationState state = ref m_Operations[operationIndex];
-            if (state.Status == OrchestrationOperationStatus.Dormant ||
-                state.Status == OrchestrationOperationStatus.Success ||
-                state.Status == OrchestrationOperationStatus.Failure)
+            BeginInvocation();
+            try
             {
-                ResetOperation(operationIndex);
-                return OrchestrationStopStatus.Completed;
-            }
-            if (state.Status == OrchestrationOperationStatus.Running)
-            {
-                state.Status = OrchestrationOperationStatus.Stopping;
-                WriteStopContext(operationIndex, context);
-                TraceOperation(OrchestrationTraceKind.StopRequested, operationIndex,
-                    stopCause: context.Cause);
-                if (TryRequestLeafStop(operationIndex, context, out OrchestrationStopStatus requested))
+                m_CurrentOperationIndex = operationIndex;
+                if (operationIndex < 0 || !m_Program.Operation(operationIndex).IsRunnable)
+                    return OrchestrationStopStatus.Completed;
+                ref OrchestrationOperationState state = ref m_Operations[operationIndex];
+                if (state.Status == OrchestrationOperationStatus.Dormant ||
+                    state.Status == OrchestrationOperationStatus.Success ||
+                    state.Status == OrchestrationOperationStatus.Failure)
                 {
-                    if (requested != OrchestrationStopStatus.Running)
-                    {
-                        TraceOperation(OrchestrationTraceKind.Stopped, operationIndex,
-                            requested == OrchestrationStopStatus.Failed ? OrchestrationOperationResult.Failure : OrchestrationOperationResult.Success,
-                            context.Cause);
-                        ResetOperation(operationIndex);
-                    }
-                    return requested;
+                    ResetOperation(operationIndex);
+                    return OrchestrationStopStatus.Completed;
                 }
+                if (state.Status == OrchestrationOperationStatus.Running)
+                {
+                    state.Status = OrchestrationOperationStatus.Stopping;
+                    WriteStopContext(operationIndex, context);
+                    TraceOperation(OrchestrationTraceKind.StopRequested, operationIndex,
+                        stopCause: context.Cause);
+                    if (TryRequestLeafStop(operationIndex, context, out OrchestrationStopStatus requested))
+                    {
+                        if (requested != OrchestrationStopStatus.Running)
+                        {
+                            TraceOperation(OrchestrationTraceKind.Stopped, operationIndex,
+                                requested == OrchestrationStopStatus.Failed ? OrchestrationOperationResult.Failure : OrchestrationOperationResult.Success,
+                                context.Cause);
+                            ResetOperation(operationIndex);
+                        }
+                        return requested;
+                    }
+                }
+                else if (context.IsValid)
+                    WriteStopContext(operationIndex, context);
+                return ContinueStop(operationIndex);
             }
-            else if (context.IsValid)
-                WriteStopContext(operationIndex, context);
-            return ContinueStop(operationIndex);
+            finally
+            {
+                m_EntryDepth--;
+            }
         }
 
         public OrchestrationStopStatus ContinueStop(int operationIndex)
         {
-            if (!IsStopping(operationIndex))
-                return OrchestrationStopStatus.Completed;
-            ref readonly OrchestrationOperation operation = ref m_Program.Operation(operationIndex);
-            OrchestrationStopContext context = ReadStopContext(operationIndex);
-            OrchestrationStopStatus status;
-            switch (operation.Code)
+            BeginInvocation();
+            try
             {
-                case OrchestrationOperationCode.State:
-                    status = ContinueStateStop(operationIndex, context);
-                    break;
-                case OrchestrationOperationCode.StateMachine:
-                    status = ContinueStateMachineStop(operationIndex, context);
-                    break;
-                case OrchestrationOperationCode.Timeline:
-                    status = ContinueLeafStop(operationIndex, context);
-                    break;
-                case OrchestrationOperationCode.Extension:
-                    status = (m_Bindings.Contract(operation.ExtensionBindingIndex).Invocations &
-                        OrchestrationExtensionInvocationKind.ContinueStop) != 0
-                        ? ContinueLeafStop(operationIndex, context)
-                        : ContinueDirectChildStop(operationIndex, context, OrchestrationFlowKind.Child);
-                    break;
-                case OrchestrationOperationCode.SubGraph:
-                    status = ContinueDirectChildStop(operationIndex, context, OrchestrationFlowKind.Enter);
-                    break;
-                default:
-                    status = ContinueDirectChildStop(operationIndex, context, OrchestrationFlowKind.Child);
-                    break;
-            }
-            if (status == OrchestrationStopStatus.Running)
+                if (!IsStopping(operationIndex))
+                    return OrchestrationStopStatus.Completed;
+                ref readonly OrchestrationOperation operation = ref m_Program.Operation(operationIndex);
+                OrchestrationStopContext context = ReadStopContext(operationIndex);
+                OrchestrationStopStatus status;
+                switch (operation.Code)
+                {
+                    case OrchestrationOperationCode.State:
+                        status = ContinueStateStop(operationIndex, context);
+                        break;
+                    case OrchestrationOperationCode.StateMachine:
+                        status = ContinueStateMachineStop(operationIndex, context);
+                        break;
+                    case OrchestrationOperationCode.Timeline:
+                        status = ContinueLeafStop(operationIndex, context);
+                        break;
+                    case OrchestrationOperationCode.Extension:
+                        status = (m_Bindings.Contract(operation.ExtensionBindingIndex).Invocations &
+                            OrchestrationExtensionInvocationKind.ContinueStop) != 0
+                            ? ContinueLeafStop(operationIndex, context)
+                            : ContinueDirectChildStop(operationIndex, context, OrchestrationFlowKind.Child);
+                        break;
+                    case OrchestrationOperationCode.SubGraph:
+                        status = ContinueDirectChildStop(operationIndex, context, OrchestrationFlowKind.Enter);
+                        break;
+                    default:
+                        status = ContinueDirectChildStop(operationIndex, context, OrchestrationFlowKind.Child);
+                        break;
+                }
+                if (status == OrchestrationStopStatus.Running)
+                    return status;
+                TraceOperation(OrchestrationTraceKind.Stopped, operationIndex,
+                    status == OrchestrationStopStatus.Failed ? OrchestrationOperationResult.Failure : OrchestrationOperationResult.Success,
+                    context.Cause);
+                ResetOperation(operationIndex);
                 return status;
-            TraceOperation(OrchestrationTraceKind.Stopped, operationIndex,
-                status == OrchestrationStopStatus.Failed ? OrchestrationOperationResult.Failure : OrchestrationOperationResult.Success,
-                context.Cause);
-            ResetOperation(operationIndex);
-            return status;
+            }
+            finally
+            {
+                m_EntryDepth--;
+            }
         }
 
         public void ForceStop(int operationIndex, OrchestrationStopContext context)
         {
+            BeginInvocation();
             bool ownsVisited = m_ForceStopDepth == 0;
             m_ForceStopDepth++;
             try
@@ -302,6 +333,7 @@ namespace BTSMTL.Orchestration
             }
             finally
             {
+                m_EntryDepth--;
                 m_ForceStopDepth--;
                 if (ownsVisited)
                     Array.Clear(m_Workspace.ForceStopVisited, 0, m_Workspace.ForceStopVisited.Length);
@@ -310,9 +342,12 @@ namespace BTSMTL.Orchestration
 
         void ForceStopCore(int operationIndex, OrchestrationStopContext context)
         {
-            if (operationIndex < 0 || m_Workspace.ForceStopVisited[operationIndex])
+            if (operationIndex < 0)
                 return;
-            m_Workspace.ForceStopVisited[operationIndex] = true;
+            int visitedIndex = checked(m_FrameSlot * m_Program.OperationCount + operationIndex);
+            if (m_Workspace.ForceStopVisited[visitedIndex])
+                return;
+            m_Workspace.ForceStopVisited[visitedIndex] = true;
             m_CurrentOperationIndex = operationIndex;
             bool active = IsActive(operationIndex);
             ref readonly OrchestrationOperation operation = ref m_Program.Operation(operationIndex);

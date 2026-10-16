@@ -37,7 +37,17 @@ namespace BTSMTL.Orchestration
         QuaternionAngleAxis = 14
     }
 
-    public interface IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TQuaternion>
+    public interface IOrchestrationScalarValueAccess<TValue, TScalar>
+        where TValue : unmanaged
+        where TScalar : unmanaged
+    {
+        TValue FromInt32(int value);
+        TValue FromUInt64(ulong value);
+        TValue FromScalar(TScalar value);
+    }
+
+    public interface IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TQuaternion> :
+        IOrchestrationScalarValueAccess<TValue, TScalar>
         where TValue : unmanaged
         where TScalar : unmanaged
         where TVector2 : unmanaged
@@ -54,9 +64,6 @@ namespace BTSMTL.Orchestration
         TQuaternion Quaternion(in TValue value);
         OrchestrationIdentityValue Identity(in TValue value);
         TValue FromBoolean(bool value);
-        TValue FromInt32(int value);
-        TValue FromUInt64(ulong value);
-        TValue FromScalar(TScalar value);
         TValue FromVector2(TVector2 value);
         TValue FromVector3(TVector3 value);
         TValue FromQuaternion(TQuaternion value);

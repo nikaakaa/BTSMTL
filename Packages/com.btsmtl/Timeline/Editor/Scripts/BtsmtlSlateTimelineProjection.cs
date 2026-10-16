@@ -1,5 +1,6 @@
 #if UNITY_EDITOR
 using System;
+using BTSMTL.Orchestration;
 using System.Collections.Generic;
 using System.Linq;
 using BTSMTL.Timeline;
@@ -167,13 +168,13 @@ namespace BTSMTL.Timeline.Editor
         }
 
         public TimelineEditorSelection Selection => m_Session.Selection;
-        public static void DrawCameraResourceInspector(TimelineData timeline, Clip clip)
+        public static void DrawSourceResourceInspector(TimelineData timeline, Clip clip)
         {
             if (s_Current != null && ReferenceEquals(s_Current.m_Binding.Timeline, timeline))
-                s_Current.m_Binding.DrawCameraResourceInspector(clip);
+                s_Current.m_Binding.DrawSourceResourceInspector(clip);
         }
-        public void ApplyClipTimeRangeNumbers(string identity, Photon.Deterministic.FP start,
-            Photon.Deterministic.FP end) => m_Binding.ApplyClipTimeRangeNumbers(identity, start, end);
+        public void ApplyClipTimeRangeNumbers(string identity, OrchestrationTime start,
+            OrchestrationTime end) => m_Binding.ApplyClipTimeRangeNumbers(identity, start, end);
         public event Action<TimelineEditorSelection> SelectionChanged;
         public event Action<string> AuthoringIssue;
 

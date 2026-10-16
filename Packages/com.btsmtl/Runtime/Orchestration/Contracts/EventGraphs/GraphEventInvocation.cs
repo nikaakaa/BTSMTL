@@ -1,31 +1,28 @@
 using System;
-using ThirdPersonSimulation;
 
 namespace BTSMTL.EventGraphs
 {
     public readonly struct EventGraphInvocationIdentity : IEquatable<EventGraphInvocationIdentity>
     {
-        public EventGraphInvocationIdentity(CanonicalTextValue sourceId, ulong sequence)
+        public EventGraphInvocationIdentity(int sourceIdentityId, ulong sequence)
         {
-            SourceId = CanonicalTextValue.IsNullOrWhiteSpace(sourceId)
-                ? throw new ArgumentException("Event graph invocation source identity is missing.", nameof(sourceId))
-                : sourceId.Trim();
+            SourceIdentityId = sourceIdentityId > 0
+                ? sourceIdentityId
+                : throw new ArgumentOutOfRangeException(nameof(sourceIdentityId));
             if (sequence == 0)
                 throw new ArgumentOutOfRangeException(nameof(sequence));
             Sequence = sequence;
         }
 
-        public CanonicalTextValue SourceId { get; }
-        public void Retain() => SourceId.Retain();
-        public void Release() => SourceId.Release();
+        public int SourceIdentityId { get; }
         public ulong Sequence { get; }
-        public bool IsValid => !CanonicalTextValue.IsNullOrWhiteSpace(SourceId) && Sequence != 0;
+        public bool IsValid => SourceIdentityId > 0 && Sequence != 0;
 
         public bool Equals(EventGraphInvocationIdentity other) =>
-            SourceId.Equals(other.SourceId) && Sequence == other.Sequence;
+            SourceIdentityId == other.SourceIdentityId && Sequence == other.Sequence;
         public override bool Equals(object obj) => obj is EventGraphInvocationIdentity other && Equals(other);
-        public override int GetHashCode() => HashCode.Combine(SourceId, Sequence);
-        public override string ToString() => $"{SourceId}:{Sequence}";
+        public override int GetHashCode() => HashCode.Combine(SourceIdentityId, Sequence);
+        public override string ToString() => $"{SourceIdentityId}:{Sequence}";
     }
 
     public readonly struct EventGraphInvocationContext

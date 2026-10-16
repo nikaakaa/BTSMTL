@@ -4,6 +4,8 @@
     "references": [
         "ThirdPerson.Shared.Contracts",
         "ThirdPersonGameplay.Orchestration.Contracts",
+        "BTSMTL.Orchestration.Contracts",
+        "BTSMTL.Timeline.Runtime",
         "ThirdPersonSimulation.QuantumNumerics"
     ],
     "includePlatforms": [],

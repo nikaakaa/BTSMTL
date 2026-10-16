@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using ThirdPersonSimulation;
 
 namespace BTSMTL.Diagnostics
 {
@@ -58,7 +57,7 @@ namespace BTSMTL.Diagnostics
         IReadOnlyList<RuntimeGraphInvocation> GraphInvocations { get; }
         int TimelineCount { get; }
         int TrackCount { get; }
-        bool TryGetInvocation(CanonicalTextValue path, out RuntimeGraphInvocation invocation);
+        bool TryGetInvocation(string path, out RuntimeGraphInvocation invocation);
         bool TryGet(RuntimeSourceElementHandle handle, out DebugSourceMapEntry entry);
         bool TryGetHandle(RuntimeSourceElementKey source, out RuntimeSourceElementHandle handle);
         bool TryGetIndexedTarget(RuntimeSourceTarget target, out RuntimeSourceElementHandle handle);
@@ -72,7 +71,7 @@ namespace BTSMTL.Diagnostics
         readonly Dictionary<RuntimeSourceTarget, RuntimeSourceElementHandle> m_ByIndexedTarget;
         bool m_Sealed;
         readonly List<RuntimeGraphInvocation> m_GraphInvocations;
-        readonly Dictionary<CanonicalTextValue, RuntimeGraphInvocation> m_Invocations;
+        readonly Dictionary<string, RuntimeGraphInvocation> m_Invocations;
 
         public DebugSourceMap(RuntimeContentRevision revision)
         {
@@ -80,7 +79,7 @@ namespace BTSMTL.Diagnostics
             m_BySource = new Dictionary<RuntimeSourceElementKey, List<RuntimeSourceElementHandle>>();
             m_ByIndexedTarget = new Dictionary<RuntimeSourceTarget, RuntimeSourceElementHandle>();
             m_GraphInvocations = new List<RuntimeGraphInvocation>();
-            m_Invocations = new Dictionary<CanonicalTextValue, RuntimeGraphInvocation>();
+            m_Invocations = new Dictionary<string, RuntimeGraphInvocation>(StringComparer.Ordinal);
             Revision = revision;
         }
 
@@ -106,7 +105,7 @@ namespace BTSMTL.Diagnostics
         public IReadOnlyList<RuntimeGraphInvocation> GraphInvocations => m_GraphInvocations;
         public int TimelineCount { get; private set; }
         public int TrackCount { get; private set; }
-        public bool TryGetInvocation(CanonicalTextValue path, out RuntimeGraphInvocation invocation) =>
+        public bool TryGetInvocation(string path, out RuntimeGraphInvocation invocation) =>
             m_Invocations.TryGetValue(path, out invocation);
 
         public RuntimeSourceElementHandle Add(

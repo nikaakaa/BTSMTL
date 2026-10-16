@@ -4,12 +4,14 @@ namespace BTSMTL.Orchestration
     {
         public OrchestrationBlackboardSlot(OrchestrationScopeKind scopeKind,
             OrchestrationBlackboardLifetime lifetime, int compiledOwnerIndex,
-            int ownerOperationIndex, OrchestrationValueKind valueKind, bool isGraphCallParameter)
+            int ownerOperationIndex, int executionFrameOwnerOperationIndex,
+            OrchestrationValueKind valueKind, bool isGraphCallParameter)
         {
             ScopeKind = scopeKind;
             Lifetime = lifetime;
             CompiledOwnerIndex = compiledOwnerIndex;
             OwnerOperationIndex = ownerOperationIndex;
+            ExecutionFrameOwnerOperationIndex = executionFrameOwnerOperationIndex;
             ValueKind = valueKind;
             IsGraphCallParameter = isGraphCallParameter;
         }
@@ -18,6 +20,7 @@ namespace BTSMTL.Orchestration
         public OrchestrationBlackboardLifetime Lifetime { get; }
         public int CompiledOwnerIndex { get; }
         public int OwnerOperationIndex { get; }
+        public int ExecutionFrameOwnerOperationIndex { get; }
         public OrchestrationValueKind ValueKind { get; }
         public bool IsGraphCallParameter { get; }
     }

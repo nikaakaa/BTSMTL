@@ -1,7 +1,7 @@
 using System;
+using BTSMTL.Orchestration;
 using System.Collections.Generic;
 using ThirdPersonSimulation;
-using Photon.Deterministic;
 
 namespace BTSMTL.Timeline.Runtime
 {
@@ -17,67 +17,76 @@ namespace BTSMTL.Timeline.Runtime
 
     public readonly struct TimelineRuntimePresentationSample
     {
-        public TimelineRuntimePresentationSample(ulong generation, ulong logicTick, CanonicalTextValue contentRevision, FP time, int cycle, TimelinePresentationSampleReason reason, bool retainForCorrection)
+        public TimelineRuntimePresentationSample(ulong sourceGeneration, ulong logicTick, int contentRevisionId,
+            OrchestrationTime time, int cycle, TimelinePresentationSampleReason reason, bool retainForCorrection)
         {
-            if (generation == 0 || logicTick == 0 || time < FP._0 || cycle < 0 ||
+            if (sourceGeneration == 0 || logicTick == 0 || time < OrchestrationTime.Zero || cycle < 0 ||
                 retainForCorrection && reason != TimelinePresentationSampleReason.Withdrawn)
                 throw new ArgumentException("Timeline presentation sample is invalid.");
-            Generation = generation;
+            SourceGeneration = sourceGeneration;
             LogicTick = logicTick;
-            ContentRevision = contentRevision;
+            ContentRevisionId = contentRevisionId;
             Time = time;
             Cycle = cycle;
             Reason = reason;
             RetainForCorrection = retainForCorrection;
         }
 
-        public ulong Generation { get; }
+        public ulong SourceGeneration { get; }
         public ulong LogicTick { get; }
-        public FP Time { get; }
+        public OrchestrationTime Time { get; }
         public int Cycle { get; }
-        public CanonicalTextValue ContentRevision { get; }
+        public int ContentRevisionId { get; }
         public TimelinePresentationSampleReason Reason { get; }
         public bool RetainForCorrection { get; }
         public bool AllowTraversal => Reason == TimelinePresentationSampleReason.Advance || Reason == TimelinePresentationSampleReason.Completed;
         public bool EndsPlayback => Reason == TimelinePresentationSampleReason.Completed || Reason == TimelinePresentationSampleReason.Stopped || Reason == TimelinePresentationSampleReason.Withdrawn;
-        public bool IsValid => Generation != 0;
-        public void Retain() => ContentRevision.Retain();
-        public void Release() => ContentRevision.Release();
+        public bool IsValid => SourceGeneration != 0;
     }
 
-    public sealed class TimelineRuntimePresentationDriver : ITimelineRuntimeEvaluationSink
+    public sealed class TimelineRuntimePresentationDriver
     {
-        readonly Dictionary<ulong, PresentationPlaybackState> m_Playbacks =
-            new Dictionary<ulong, PresentationPlaybackState>();
-        readonly Dictionary<(TimelineContentUnit Timeline, TimelinePlaybackMode Mode), Stack<PresentationPlaybackState>> m_RecycledPlaybacks = new();
+        readonly int m_PlaybackCapacity;
+        readonly Dictionary<ulong, PresentationPlaybackState> m_Playbacks;
+        readonly Dictionary<(TimelineContentUnit Timeline, OrchestrationTimelinePlaybackMode Mode), Stack<PresentationPlaybackState>> m_RecycledPlaybacks = new();
         PresentationPlaybackState m_FirstPendingFrame;
         PresentationPlaybackState m_LastPendingFrame;
 
-        public void RetireContent(TimelineContentUnit timeline, TimelinePlaybackMode mode) =>
+        public TimelineRuntimePresentationDriver(int playbackCapacity)
+        {
+            m_PlaybackCapacity = playbackCapacity;
+            m_Playbacks = new Dictionary<ulong, PresentationPlaybackState>(playbackCapacity);
+        }
+
+        public void RetireContent(TimelineContentUnit timeline, OrchestrationTimelinePlaybackMode mode) =>
             m_RecycledPlaybacks.Remove((timeline, mode));
 
-        public void Prepare(TimelineRuntimePreparedContent content, TimelinePlaybackMode mode)
+        public void Prepare(TimelineRuntimePreparedContent content, OrchestrationTimelinePlaybackMode mode)
         {
             var key = (content.Content, mode);
             if (m_RecycledPlaybacks.ContainsKey(key))
                 return;
-            var recycled = new Stack<PresentationPlaybackState>(1);
-            recycled.Push(new PresentationPlaybackState(content.Content, content.Index, mode, recycled));
+            var recycled = new Stack<PresentationPlaybackState>(m_PlaybackCapacity);
+            for (int i = 0; i < m_PlaybackCapacity; i++)
+                recycled.Push(new PresentationPlaybackState(content, mode, recycled));
             m_RecycledPlaybacks.Add(key, recycled);
         }
 
         public bool TryPresent(
-            TimelineRuntimePlayback playback,
+            TimelineRuntimePreparedContent content,
+            int playbackSlot,
+            in OrchestrationTimelineStart<OrchestrationTime> start,
             in TimelineRuntimePresentationSample sample,
             ulong presentationFrame,
             float presentationDeltaSeconds,
             float interpolationAlpha,
             out TimelineRuntimePresentationFrame frame)
         {
-            if (!sample.IsValid || sample.Generation != playback.Generation || sample.Time > playback.Content.Duration ||
-                !sample.ContentRevision.Equals(playback.ContentRevision))
+            if (!sample.IsValid || sample.SourceGeneration != start.SourceGeneration || sample.Time > content.Content.Duration ||
+                sample.ContentRevisionId != content.ContentRevisionId ||
+                start.ContentIdentityId != content.ContentIdentityId || start.ContentRevisionId != content.ContentRevisionId)
                 throw new InvalidOperationException("Timeline presentation sample does not match the prepared playback.");
-            PresentationPlaybackState state = GetPlaybackState(playback, playback.Preparation.StartTime, 0);
+            PresentationPlaybackState state = GetPlaybackState(content, in start, start.StartTime, 0);
 
             if (state.HasPendingFrame)
             {
@@ -103,16 +112,16 @@ namespace BTSMTL.Timeline.Runtime
                 return false;
             }
 
-            bool loop = playback.PlaybackMode == TimelinePlaybackMode.Loop;
-            FP previousTime = state.CursorTime;
+            bool loop = start.Mode == OrchestrationTimelinePlaybackMode.Loop;
+            OrchestrationTime previousTime = state.CursorTime;
             int previousCycle = state.Cycle;
-            FP currentTime = sample.Time;
+            OrchestrationTime currentTime = sample.Time;
             int currentCycle = sample.Cycle;
             TimelinePresentationSampleReason reason = state.SampleReason == TimelinePresentationSampleReason.Correction && !sample.EndsPlayback
                 ? TimelinePresentationSampleReason.Correction : sample.Reason;
             bool allowTraversal = state.SampleReason != TimelinePresentationSampleReason.Correction && sample.AllowTraversal &&
                 (currentCycle > previousCycle || currentCycle == previousCycle && currentTime >= previousTime);
-            if (allowTraversal && currentCycle - previousCycle > TimelineRuntimeEvaluationSegments.MaximumCycleAdvance)
+            if (allowTraversal && currentCycle - previousCycle > OrchestrationTimelineLimits.MaximumCycleAdvance)
                 throw new InvalidOperationException("Timeline presentation exceeded its prepared cycle capacity.");
             if (!allowTraversal)
             {
@@ -123,18 +132,23 @@ namespace BTSMTL.Timeline.Runtime
             state.Candidate.Clear();
             var events = state.Candidate.Events;
             bool stopped = reason == TimelinePresentationSampleReason.Stopped || reason == TimelinePresentationSampleReason.Withdrawn;
+            TimelinePresentationSampleReason sampleReason = !allowTraversal && reason == TimelinePresentationSampleReason.Advance
+                ? TimelinePresentationSampleReason.Correction : reason;
             if (!stopped)
                 TimelineRuntimePresentationEvaluator.Evaluate(
-                playback,
+                content,
                 previousTime,
                 previousCycle,
                 currentTime,
                 currentCycle,
-                loop,
+                sampleReason,
                 state.Candidate);
             if (allowTraversal)
                 AppendMarkerEvents(
-                playback,
+                content,
+                playbackSlot,
+                in start,
+                presentationFrame,
                 state,
                 previousTime,
                 previousCycle,
@@ -143,7 +157,7 @@ namespace BTSMTL.Timeline.Runtime
                 loop,
                 !state.InitialBoundaryConsumed,
                 events);
-            AppendTreeClips(playback, state, sample, allowTraversal, reason);
+            AppendTreeClips(content, playbackSlot, in start, presentationFrame, state, sample, allowTraversal, reason);
             var operations = new TimelineRuntimePresentationOperations(state.Candidate);
             state.PendingTime = currentTime;
             state.PendingCycle = currentCycle;
@@ -151,15 +165,14 @@ namespace BTSMTL.Timeline.Runtime
             state.PendingInitialBoundaryConsumed = state.InitialBoundaryConsumed || allowTraversal ||
                 reason == TimelinePresentationSampleReason.Correction;
             frame = new TimelineRuntimePresentationFrame(
-                playback,
+                in start,
                 sample.LogicTick,
                 presentationFrame,
                 presentationDeltaSeconds,
                 interpolationAlpha,
                 operations,
                 events.View,
-                !allowTraversal && reason == TimelinePresentationSampleReason.Advance
-                    ? TimelinePresentationSampleReason.Correction : reason,
+                sampleReason,
                 currentTime,
                 currentCycle);
             state.PendingFrame = frame;
@@ -172,66 +185,58 @@ namespace BTSMTL.Timeline.Runtime
             return true;
         }
 
-        PresentationPlaybackState GetPlaybackState(TimelineRuntimePlayback playback, FP startTime, int cycle)
+        PresentationPlaybackState GetPlaybackState(TimelineRuntimePreparedContent content,
+            in OrchestrationTimelineStart<OrchestrationTime> start, OrchestrationTime startTime, int cycle)
         {
-            bool hasState = m_Playbacks.TryGetValue(playback.Handle.Value, out PresentationPlaybackState state);
+            bool hasState = m_Playbacks.TryGetValue(start.PlaybackIdentity, out PresentationPlaybackState state);
             TimelinePresentationSampleReason reason = hasState ? state.SampleReason : TimelinePresentationSampleReason.Advance;
-            if (hasState && state.Generation != playback.Generation)
+            if (hasState && state.SourceGeneration != start.SourceGeneration)
             {
                 if (state.HasPendingFrame)
                     ReleasePendingFrame(state);
                 state.Recycle();
-                m_Playbacks.Remove(playback.Handle.Value);
+                m_Playbacks.Remove(start.PlaybackIdentity);
                 hasState = false;
             }
             if (!hasState)
             {
-                var key = (playback.Content, playback.PlaybackMode);
+                var key = (content.Content, start.Mode);
                 Stack<PresentationPlaybackState> recycled = m_RecycledPlaybacks[key];
-                if (recycled.Count == 0)
-                    state = new PresentationPlaybackState(playback.Content, playback.Index, playback.PlaybackMode, recycled);
-                else
-                    state = recycled.Pop();
-                state.Restart(playback.Generation, startTime, cycle);
+                state = recycled.Pop();
+                state.Restart(start.SourceGeneration, startTime, cycle);
                 state.SampleReason = reason;
-                m_Playbacks.Add(playback.Handle.Value, state);
+                m_Playbacks.Add(start.PlaybackIdentity, state);
             }
             return state;
         }
 
-        internal void RestorePlayback(TimelineRuntimePlayback playback)
-        {
-            if (!m_Playbacks.TryGetValue(playback.Handle.Value, out PresentationPlaybackState state))
-                state = GetPlaybackState(playback, playback.CursorTime, playback.Cycle);
-            state.SampleReason = TimelinePresentationSampleReason.Correction;
-        }
-
         public bool RequestTreeClipExit(in TimelineRuntimePresentationFrame frame, in TimelineRuntimeTreeClipRequest request)
         {
-            if (!m_Playbacks.TryGetValue(frame.Handle.Value, out PresentationPlaybackState state) ||
-                state.Generation != frame.Generation || !state.HasPendingFrame || state.PendingFrame.PresentationFrame != frame.PresentationFrame)
+            if (!m_Playbacks.TryGetValue(frame.Start.PlaybackIdentity, out PresentationPlaybackState state) ||
+                state.SourceGeneration != frame.Start.SourceGeneration || !state.HasPendingFrame || state.PendingFrame.PresentationFrame != frame.PresentationFrame ||
+                request.Token.PlaybackIdentity != frame.Start.PlaybackIdentity || request.Token.Sequence != frame.PresentationFrame)
                 throw new InvalidOperationException("Presentation TreeClip exit requires its current candidate frame.");
-            if (!state.TreePositions.TryGetValue(request.ClipAuthoringId, out int index))
-                throw new InvalidOperationException("Presentation TreeClip exit has no prepared clip.");
+            int index = state.TreePositions[request.Token.ClipOrdinal];
             PresentationTree tree = state.Trees[index];
             if (tree.Clip.ExitSource != TimelineClipExitSource.TreeDecision)
                 throw new InvalidOperationException("A fixed-interval Presentation TreeClip cannot request a graph-controlled exit.");
-            if (state.PendingTreeCycles[index] != request.Cycle)
+            if (state.PendingTreeCycles[index] != request.Token.Cycle)
                 return false;
             state.PendingTreeCycles[index] = -1;
-            state.PendingTreeExitCycles[index] = request.Cycle;
+            state.PendingTreeExitCycles[index] = request.Token.Cycle;
             for (int activeIndex = state.Candidate.ActiveTreeClips.Count - 1; activeIndex >= 0; activeIndex--)
-                if (state.Candidate.ActiveTreeClips[activeIndex].ClipAuthoringId == request.ClipAuthoringId)
+                if (state.Candidate.ActiveTreeClips[activeIndex].Token.ClipOrdinal == request.Token.ClipOrdinal)
                     state.Candidate.ActiveTreeClips.RemoveAt(activeIndex);
             if (request.EventKind == TimelineRuntimeTreeClipEventKind.Enter)
                 for (int pendingIndex = state.Candidate.TreeClips.Count - 1; pendingIndex >= 0; pendingIndex--)
                 {
                     TimelineRuntimeTreeClipRequest pending = state.Candidate.TreeClips[pendingIndex];
-                    if (pending.ClipAuthoringId == request.ClipAuthoringId && pending.Cycle == request.Cycle &&
+                    if (pending.Token.ClipOrdinal == request.Token.ClipOrdinal && pending.Token.Cycle == request.Token.Cycle &&
                         pending.EventKind == TimelineRuntimeTreeClipEventKind.Update)
                         state.Candidate.TreeClips.RemoveAt(pendingIndex);
                 }
-            state.Candidate.TreeClips.Add(tree.Request(TimelineRuntimeTreeClipEventKind.Exit, frame.Time, request.Cycle, frame.Generation));
+            state.Candidate.TreeClips.Add(tree.Request(TimelineRuntimeTreeClipEventKind.Exit, frame.Time, request.Token.Cycle,
+                request.Token.PlaybackSlot, frame.PresentationFrame, in frame.Start));
             return true;
         }
 
@@ -288,9 +293,9 @@ namespace BTSMTL.Timeline.Runtime
             state.PendingFrame = default;
         }
 
-        public void SuspendPresentationPlayback(TimelineRuntimePlaybackHandle handle, ulong generation)
+        public void SuspendPresentationPlayback(ulong playbackIdentity, ulong sourceGeneration)
         {
-            if (!m_Playbacks.TryGetValue(handle.Value, out PresentationPlaybackState state) || state.Generation != generation)
+            if (!m_Playbacks.TryGetValue(playbackIdentity, out PresentationPlaybackState state) || state.SourceGeneration != sourceGeneration)
                 return;
             if (state.HasPendingFrame)
                 ReleasePendingFrame(state);
@@ -300,35 +305,15 @@ namespace BTSMTL.Timeline.Runtime
             state.Finished = false;
         }
 
-        public void ReleasePresentationPlayback(TimelineRuntimePlaybackHandle handle, ulong generation)
+        public void ReleasePresentationPlayback(ulong playbackIdentity, ulong sourceGeneration)
         {
-            if (m_Playbacks.TryGetValue(handle.Value, out PresentationPlaybackState state) && state.Generation == generation)
+            if (m_Playbacks.TryGetValue(playbackIdentity, out PresentationPlaybackState state) && state.SourceGeneration == sourceGeneration)
             {
                 if (state.HasPendingFrame)
                     ReleasePendingFrame(state);
                 state.Recycle();
-                m_Playbacks.Remove(handle.Value);
+                m_Playbacks.Remove(playbackIdentity);
             }
-        }
-
-        public bool Consume(TimelineRuntimeStepContext context) => true;
-
-        public void Commit(TimelineRuntimeStepContext context)
-        {
-        }
-
-        public void Discard(TimelineRuntimeStepContext context)
-        {
-        }
-
-        public bool ConsumeStop(TimelineRuntimeStopRequest request) => true;
-
-        public void CommitStop(TimelineRuntimeStopRequest request)
-        {
-        }
-
-        public void DiscardStop(TimelineRuntimeStopRequest request)
-        {
         }
 
         public void Clear()
@@ -342,29 +327,32 @@ namespace BTSMTL.Timeline.Runtime
         }
 
         static void AppendMarkerEvents(
-            TimelineRuntimePlayback playback,
+            TimelineRuntimePreparedContent content,
+            int playbackSlot,
+            in OrchestrationTimelineStart<OrchestrationTime> start,
+            ulong presentationFrame,
             PresentationPlaybackState state,
-            FP previousTime,
+            OrchestrationTime previousTime,
             int previousCycle,
-            FP currentTime,
+            OrchestrationTime currentTime,
             int currentCycle,
             bool loop,
             bool includeStartBoundary,
             TimelineRuntimeSampleBuffer<TimelineRuntimePresentationEvent> events)
         {
-            FP duration = playback.Content.Duration;
-            if (duration <= FP._0)
+            OrchestrationTime duration = content.Content.Duration;
+            if (duration <= OrchestrationTime.Zero)
                 return;
             if (currentCycle < previousCycle || currentCycle == previousCycle && currentTime < previousTime)
                 throw new InvalidOperationException("Timeline presentation cursor moved backward without a generation reset.");
             int firstCycle = loop ? previousCycle : 0;
             int lastCycle = loop ? currentCycle : 0;
-            TimelineRuntimeMarkerIndex markers = playback.Index.Presentation.Markers;
+            TimelineRuntimeMarkerIndex markers = content.Index.Presentation.Markers;
             List<int> selected = state.Candidate.SamplingClips;
             for (int cycle = firstCycle; cycle <= lastCycle; cycle++)
             {
-                FP from = cycle == previousCycle ? previousTime : FP._0;
-                FP to = cycle == currentCycle ? currentTime : duration;
+                OrchestrationTime from = cycle == previousCycle ? previousTime : OrchestrationTime.Zero;
+                OrchestrationTime to = cycle == currentCycle ? currentTime : duration;
                 markers.Select(from, to, includeStartBoundary || cycle > previousCycle,
                     includeStartBoundary && cycle == previousCycle, selected);
                 for (int selectedIndex = 0; selectedIndex < selected.Count; selectedIndex++)
@@ -372,45 +360,38 @@ namespace BTSMTL.Timeline.Runtime
                     int position = selected[selectedIndex];
                     TimelineContentMarker marker = markers[position];
                     int markerIndex = markers.ContentIndexAt(position);
-                    string markerId = marker.MarkerId;
                     ulong traversalIndex = checked((ulong)cycle + 1);
                     if (state.PendingMarkerLastTraversal[markerIndex] >= traversalIndex)
                         continue;
                     state.PendingMarkerLastTraversal[markerIndex] = traversalIndex;
                     events.Add(new TimelineRuntimePresentationEvent(
-                        playback.Handle,
-                        playback.ExecutionIdentity,
-                        playback.Generation,
-                        markerId,
-                        traversalIndex,
-                        marker.GraphId,
-                        marker.GraphRevision,
-                        marker.Time,
-                        cycle));
+                        in start,
+                        new OrchestrationTimelineInvocationToken(playbackSlot, presentationFrame,
+                            start.PlaybackIdentity, markerIndex, cycle, true),
+                        marker.Time));
                 }
             }
         }
 
         readonly struct PresentationTree
         {
-            public PresentationTree(TimelineRuntimeIndexedClip clip, string graphId, string revision)
+            public PresentationTree(TimelineRuntimeIndexedClip clip)
             {
                 m_Indexed = clip;
-                GraphId = graphId;
-                Revision = revision;
             }
             readonly TimelineRuntimeIndexedClip m_Indexed;
             public TimelineContentClip Clip => m_Indexed.Clip;
-            public readonly string GraphId;
-            public readonly string Revision;
-            public TimelineRuntimeTreeClipRequest Request(TimelineRuntimeTreeClipEventKind kind, FP time, int cycle, ulong generation) =>
-                new(Clip.AuthoringId, Clip.TrackAuthoringId, GraphId, Revision, TimelineTreeExecutionPhase.Commit,
-                    Clip.ExitSource, kind, time, time, Clip.StartTime, cycle,
-                    ((time - Clip.StartTime) / (Clip.EndTime - Clip.StartTime)).AsFloat, generation,
-                    TimelineRuntimeTreeClipRequest.ComposeBranchRevision(cycle));
+            public TimelineRuntimeTreeClipRequest Request(TimelineRuntimeTreeClipEventKind kind, OrchestrationTime time, int cycle,
+                int playbackSlot, ulong presentationFrame, in OrchestrationTimelineStart<OrchestrationTime> start) =>
+                new(new OrchestrationTimelineInvocationToken(playbackSlot, presentationFrame,
+                        start.PlaybackIdentity, m_Indexed.ContentIndex, cycle, false),
+                    TimelineTreeExecutionPhase.Commit,
+                    Clip.ExitSource, kind, time, time, Clip.StartTime,
+                    ((time - Clip.StartTime) / (Clip.EndTime - Clip.StartTime)).AsSingle);
         }
 
-        static void AppendTreeClips(TimelineRuntimePlayback playback, PresentationPlaybackState state,
+        static void AppendTreeClips(TimelineRuntimePreparedContent content, int playbackSlot,
+            in OrchestrationTimelineStart<OrchestrationTime> start, ulong presentationFrame, PresentationPlaybackState state,
             in TimelineRuntimePresentationSample sample, bool traverse, TimelinePresentationSampleReason reason)
         {
             bool stopped = reason == TimelinePresentationSampleReason.Stopped || reason == TimelinePresentationSampleReason.Withdrawn;
@@ -426,10 +407,10 @@ namespace BTSMTL.Timeline.Runtime
             selected.Clear();
             for (int index = 0; index < state.Accepted.ActiveTreeClips.Count; index++)
                 TimelineRuntimeClipIndex.AddSelected(selected,
-                    state.TreePositions[state.Accepted.ActiveTreeClips[index].ClipAuthoringId]);
+                    state.TreePositions[state.Accepted.ActiveTreeClips[index].Token.ClipOrdinal]);
             if (!stopped)
             {
-                TimelineRuntimeClipIndex trees = playback.Index.Presentation.TreeLifetimes;
+                TimelineRuntimeClipIndex trees = content.Index.Presentation.TreeLifetimes;
                 if (!traverse)
                     trees.Select(sample.Time, sample.Time, true, selected);
                 else
@@ -438,8 +419,8 @@ namespace BTSMTL.Timeline.Runtime
                         trees.Select(state.CursorTime, state.CursorTime, false, selected);
                     for (int cycle = state.Cycle; cycle <= sample.Cycle; cycle++)
                     {
-                        FP from = cycle == state.Cycle ? state.CursorTime : FP._0;
-                        FP to = cycle == sample.Cycle ? sample.Time : playback.Content.Duration;
+                        OrchestrationTime from = cycle == state.Cycle ? state.CursorTime : OrchestrationTime.Zero;
+                        OrchestrationTime to = cycle == sample.Cycle ? sample.Time : content.Content.Duration;
                         int first = trees.FindStart(from, !state.InitialBoundaryConsumed || cycle > state.Cycle);
                         for (int index = first; index < trees.Count; index++)
                         {
@@ -459,7 +440,7 @@ namespace BTSMTL.Timeline.Runtime
                 bool dynamic = tree.Clip.ExitSource == TimelineClipExitSource.TreeDecision;
                 if ((stopped || correction) && activeCycle >= 0)
                 {
-                    output.Add(tree.Request(TimelineRuntimeTreeClipEventKind.Destroy, state.CursorTime, activeCycle, playback.Generation));
+                    output.Add(tree.Request(TimelineRuntimeTreeClipEventKind.Destroy, state.CursorTime, activeCycle, playbackSlot, presentationFrame, in start));
                     activeCycle = -1;
                 }
                 if (!stopped)
@@ -467,8 +448,8 @@ namespace BTSMTL.Timeline.Runtime
                     int firstCycle = traverse ? state.Cycle : sample.Cycle;
                     for (int cycle = firstCycle; cycle <= sample.Cycle; cycle++)
                     {
-                        FP from = cycle == state.Cycle && traverse ? state.CursorTime : FP._0;
-                        FP to = cycle == sample.Cycle ? sample.Time : playback.Content.Duration;
+                        OrchestrationTime from = cycle == state.Cycle && traverse ? state.CursorTime : OrchestrationTime.Zero;
+                        OrchestrationTime to = cycle == sample.Cycle ? sample.Time : content.Content.Duration;
                         bool crossesStart = tree.Clip.StartTime > from ||
                             tree.Clip.StartTime == from && (!state.InitialBoundaryConsumed || cycle > state.Cycle);
                         bool entersAtStart = traverse && !state.InitialBoundaryConsumed && cycle == state.Cycle &&
@@ -478,21 +459,21 @@ namespace BTSMTL.Timeline.Runtime
                         if (activeCycle < 0 && cycle > exitCycle && to >= tree.Clip.StartTime && (crossesStart && traverse || entersAtStart || align))
                         {
                             activeCycle = cycle;
-                            FP enterTime = entersAtStart ? from : align ? to : tree.Clip.StartTime;
-                            output.Add(tree.Request(TimelineRuntimeTreeClipEventKind.Enter, enterTime, cycle, playback.Generation));
+                            OrchestrationTime enterTime = entersAtStart ? from : align ? to : tree.Clip.StartTime;
+                            output.Add(tree.Request(TimelineRuntimeTreeClipEventKind.Enter, enterTime, cycle, playbackSlot, presentationFrame, in start));
                         }
                         if (activeCycle >= 0 && (activeCycle < cycle || !dynamic && to >= tree.Clip.EndTime ||
                             cycle < sample.Cycle || sample.EndsPlayback && cycle == sample.Cycle))
                         {
-                            FP exitTime = dynamic ? to : FPMath.Min(to, tree.Clip.EndTime);
-                            output.Add(tree.Request(TimelineRuntimeTreeClipEventKind.Exit, exitTime, activeCycle, playback.Generation));
+                            OrchestrationTime exitTime = dynamic ? to : OrchestrationTime.Min(to, tree.Clip.EndTime);
+                            output.Add(tree.Request(TimelineRuntimeTreeClipEventKind.Exit, exitTime, activeCycle, playbackSlot, presentationFrame, in start));
                             exitCycle = activeCycle;
                             activeCycle = -1;
                         }
                     }
                     if (activeCycle >= 0)
                     {
-                        var update = tree.Request(TimelineRuntimeTreeClipEventKind.Update, sample.Time, activeCycle, playback.Generation);
+                        var update = tree.Request(TimelineRuntimeTreeClipEventKind.Update, sample.Time, activeCycle, playbackSlot, presentationFrame, in start);
                         if (reason != TimelinePresentationSampleReason.Paused)
                             output.Add(update);
                         state.Candidate.ActiveTreeClips.Add(update);
@@ -508,25 +489,25 @@ namespace BTSMTL.Timeline.Runtime
             readonly Stack<PresentationPlaybackState> m_Recycled;
 
             public PresentationPlaybackState(
-                TimelineContentUnit content,
-                TimelineRuntimeContentIndex preparedIndex,
-                TimelinePlaybackMode mode,
+                TimelineRuntimePreparedContent prepared,
+                OrchestrationTimelinePlaybackMode mode,
                 Stack<PresentationPlaybackState> recycled)
             {
                 m_Recycled = recycled;
+                TimelineContentUnit content = prepared.Content;
                 int markerCount = content.Markers.Count;
-                Candidate = new TimelineRuntimePresentationBuffer(content, mode);
-                Accepted = new TimelineRuntimePresentationBuffer(content, mode);
+                Candidate = new TimelineRuntimePresentationBuffer(prepared, mode);
+                Accepted = new TimelineRuntimePresentationBuffer(prepared, mode);
                 MarkerLastTraversal = new ulong[markerCount];
                 PendingMarkerLastTraversal = new ulong[markerCount];
-                TimelineRuntimeClipIndex trees = preparedIndex.Presentation.TreeLifetimes;
+                TimelineRuntimeClipIndex trees = prepared.Index.Presentation.TreeLifetimes;
                 Trees = new PresentationTree[trees.Count];
-                TreePositions = new Dictionary<string, int>(trees.Count, StringComparer.Ordinal);
+                TreePositions = new int[content.Clips.Count];
                 for (int index = 0; index < trees.Count; index++)
                 {
                     TimelineRuntimeIndexedClip clip = trees[index];
-                    Trees[index] = new PresentationTree(clip, clip.GraphId, clip.GraphRevision);
-                    TreePositions.Add(clip.Clip.AuthoringId, index);
+                    Trees[index] = new PresentationTree(clip);
+                    TreePositions[clip.ContentIndex] = index;
                 }
                 TreeCycles = new int[Trees.Length];
                 PendingTreeCycles = new int[Trees.Length];
@@ -539,7 +520,7 @@ namespace BTSMTL.Timeline.Runtime
             }
 
             public readonly PresentationTree[] Trees;
-            public readonly Dictionary<string, int> TreePositions;
+            public readonly int[] TreePositions;
             public readonly int[] TreeCycles;
             public readonly int[] PendingTreeCycles;
             public readonly int[] TreeExitCycles;
@@ -548,7 +529,7 @@ namespace BTSMTL.Timeline.Runtime
             public TimelineRuntimePresentationBuffer Accepted;
             public readonly ulong[] MarkerLastTraversal;
             public readonly ulong[] PendingMarkerLastTraversal;
-            public FP PendingTime;
+            public OrchestrationTime PendingTime;
             public int PendingCycle;
             public bool PendingFinished;
             public bool PendingInitialBoundaryConsumed;
@@ -556,8 +537,8 @@ namespace BTSMTL.Timeline.Runtime
             public bool HasPendingFrame => PendingFrame.PresentationFrame != 0;
             public PresentationPlaybackState PreviousPendingFrame;
             public PresentationPlaybackState NextPendingFrame;
-            public ulong Generation { get; private set; }
-            public FP CursorTime;
+            public ulong SourceGeneration { get; private set; }
+            public OrchestrationTime CursorTime;
             public int Cycle;
             public bool InitialBoundaryConsumed;
             public TimelinePresentationSampleReason SampleReason;
@@ -566,9 +547,9 @@ namespace BTSMTL.Timeline.Runtime
             public ulong LastPresentationFrame;
             public bool HasCachedFrame;
 
-            public void Restart(ulong generation, FP startTime, int cycle)
+            public void Restart(ulong sourceGeneration, OrchestrationTime startTime, int cycle)
             {
-                Generation = generation;
+                SourceGeneration = sourceGeneration;
                 Array.Clear(MarkerLastTraversal, 0, MarkerLastTraversal.Length);
                 Array.Clear(PendingMarkerLastTraversal, 0, PendingMarkerLastTraversal.Length);
                 PendingTime = startTime;

@@ -19,6 +19,8 @@ namespace ThirdPersonSimulation
 
     public sealed partial class GameplayEffectCatalogData
     {
+        public const int FormatVersion = 4;
+
         public GameplayEffectCatalogData(int version, string sourceId, string configurationIdentity,
             PublishedGameplayConfiguration configuration, IReadOnlyList<GameplayEffectTagContent> tags)
         {

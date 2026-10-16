@@ -5,6 +5,8 @@
         "ThirdPerson.Shared.Contracts",
         "ThirdPersonGameplay.Orchestration.Contracts",
         "BTSMTL.Orchestration.Contracts",
+        "BTSMTL.Orchestration.Runtime",
+        "BTSMTL.Timeline.Runtime",
         "ThirdPersonGameplay.Configuration",
         "ThirdPerson.Performance.Instrumentation.Contracts",
         "ThirdPersonPerformance.Contracts"

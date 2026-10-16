@@ -6,15 +6,13 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>Btsmtl.BlackboardData.Generator</AssemblyName>
+    <EnableDefaultItems>false</EnableDefaultItems>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\Projects\ThirdPersonSimulation.Core\ThirdPersonSimulation.Core.csproj" />
-    <ProjectReference Include="..\..\Projects\ThirdPersonSimulation.Float32\ThirdPersonSimulation.Float32.csproj" />
-    <ProjectReference Include="..\..\..\3C\Tools\ThirdPersonSimulation.Portable\ThirdPersonSimulation.QuantumNumerics\ThirdPersonSimulation.QuantumNumerics.csproj" />
-    <Reference Include="Quantum.Deterministic">
-      <HintPath>$(MSBuildThisFileDirectory)..\..\..\3C\3cDemo\Client\3C_Client\Assets\Photon\Quantum\Assemblies\Quantum.Deterministic.dll</HintPath>
-    </Reference>
-    <None Update="luban.lock.json" CopyToOutputDirectory="PreserveNewest" />
-    <None Update="Templates\**\*.sbn" CopyToOutputDirectory="PreserveNewest" />
+    <Compile Include="*.cs" />
+    <ProjectReference Include="..\..\Projects\ThirdPersonSimulation.BlackboardConfiguration\ThirdPersonSimulation.BlackboardConfiguration.csproj" />
+    <None Include="luban.lock.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Templates\**\*.sbn" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

@@ -85,8 +85,6 @@ namespace ThirdPerson.MemoryPackAdapters
                     CanEncodeSnapshot(candidate, snapshotCandidates, externalLeaves, new HashSet<string>())))
                     VisitSnapshot(candidate);
             var preparedPlans = new Dictionary<string, PreparedReadPlan>(StringComparer.Ordinal);
-            ITypeSymbol preparedText = context.Compilation.GetTypeByMetadataName("ThirdPersonSimulation.Serialization.MemoryPackContentContext")?
-                .GetMembers("ReadText").OfType<IMethodSymbol>().SingleOrDefault()?.ReturnType;
             foreach (var logical in logicalStorages)
             {
                 if (preparedStorages.TryGetValue(logical.Key, out INamedTypeSymbol storage) &&
@@ -115,7 +113,7 @@ namespace ThirdPerson.MemoryPackAdapters
             }
             foreach (var pair in preparedPlans)
             {
-                string reason = ValidatePreparedMembers(records[pair.Key], pair.Value, preparedText,
+                string reason = ValidatePreparedMembers(records[pair.Key], pair.Value,
                     IsImplicitReference, externalLeaves, preparedPlans);
                 if (reason == null) continue;
                 valid = false;
@@ -163,7 +161,7 @@ namespace ThirdPerson.MemoryPackAdapters
                 EmitMemoryPackFormatter(code, record, ValueMembers(record, IsImplicitReference),
                     StorageReadMembers(record, IsImplicitReference), ordinal++, scopedReferences, HasPayload, IsAccessible,
                     preparedPlans.TryGetValue(Identity(record), out var plan) ? plan : null,
-                    SymbolEqualityComparer.Default.Equals(preparedText, record), schemas.Hash(record));
+                    schemas.Hash(record));
             foreach (var sequence in adaptedSequences)
                 EmitMemoryPackSequenceFormatter(code, sequence, ordinal++, scopedReferences, schemas.Hash(sequence));
             foreach (var nullable in adaptedNullableValues)
@@ -457,7 +455,7 @@ namespace ThirdPerson.MemoryPackAdapters
 
         static void EmitMemoryPackFormatter(StringBuilder code, INamedTypeSymbol type, Member[] members, Member[] storage, int ordinal,
             bool scopedReferences, Func<ITypeSymbol, bool> hasPayload, Func<ISymbol, bool> isAccessible,
-            PreparedReadPlan prepared, bool preparedText, string schemaHash)
+            PreparedReadPlan prepared, string schemaHash)
         {
             if (prepared?.Logical != null)
             {
@@ -471,7 +469,7 @@ namespace ThirdPerson.MemoryPackAdapters
             }
             if (HasAttribute(type, TextAttribute))
             {
-                EmitMemoryPackTextFormatter(code, type, ordinal, scopedReferences, preparedText, schemaHash);
+                EmitMemoryPackTextFormatter(code, type, ordinal, scopedReferences, schemaHash);
                 return;
             }
             string name = TypeName(type);
@@ -610,7 +608,7 @@ namespace ThirdPerson.MemoryPackAdapters
             code.AppendLine("var part = context == null ? global::ThirdPersonSimulation.Serialization.MemoryPackContentPart.Full : context.Part;");
         }
 
-        static void EmitMemoryPackTextFormatter(StringBuilder code, INamedTypeSymbol type, int ordinal, bool scopedReferences, bool prepared, string schemaHash)
+        static void EmitMemoryPackTextFormatter(StringBuilder code, INamedTypeSymbol type, int ordinal, bool scopedReferences, string schemaHash)
         {
             string name = TypeName(type);
             IMethodSymbol factory = type.GetMembers().OfType<IMethodSymbol>().Single(method =>
@@ -627,11 +625,6 @@ namespace ThirdPerson.MemoryPackAdapters
             code.AppendLine("writer.WriteUtf16(value.Span);");
             code.AppendLine("}");
             EmitMemoryPackDeserializeDeclaration(code, name, scopedReferences);
-            if (prepared)
-            {
-                code.AppendLine("var context = reader.Options.ServiceProvider as global::ThirdPersonSimulation.Serialization.MemoryPackContentContext;");
-                code.AppendLine("if (context != null && context.IsPrepared) { value = context.ReadText(ref reader); return; }");
-            }
             code.Append("value = ").Append(name).Append('.').Append(Escape(factory.Name)).AppendLine("(reader.ReadString());");
             code.AppendLine("} }");
         }
@@ -705,16 +698,7 @@ namespace ThirdPerson.MemoryPackAdapters
             string condition = MemberCondition(member, partitioned, hasPayload);
             if (condition != null) code.Append("if (").Append(condition).AppendLine(") {");
             EmitFullPart(code, member, "reader", partitioned, true);
-            if (member.Type.SpecialType == SpecialType.System_String && DeclaredText(member.Symbol))
-            {
-                code.AppendLine("{");
-                code.AppendLine("var textContext = reader.Options.ServiceProvider as global::ThirdPersonSimulation.Serialization.MemoryPackContentContext;");
-                code.Append("if (textContext != null && textContext.IsPrepared) ").Append(value)
-                    .AppendLine(" = textContext.ReadDeclaredText(ref reader);");
-                code.Append("else reader.ReadValue(ref ").Append(value).AppendLine(");");
-                code.AppendLine("}");
-            }
-            else EmitValueRead(code, member.Type, value);
+            EmitValueRead(code, member.Type, value);
             EmitFullPart(code, member, "reader", partitioned, false);
             if (condition != null) code.AppendLine("}");
         }

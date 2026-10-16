@@ -8,6 +8,7 @@ namespace BTSMTL.Orchestration
             uint semanticVersion, int contentIndex,
             OrchestrationExtensionKind kind, OrchestrationExtensionAccess access,
             ReadOnlyMemory<OrchestrationExtensionPort> ports,
+            ReadOnlyMemory<OrchestrationExtensionContentField> fields,
             OrchestrationExtensionInvocationKind requiredInvocations, string sourcePath)
         {
             Identity = identity;
@@ -16,6 +17,7 @@ namespace BTSMTL.Orchestration
             Kind = kind;
             Access = access;
             Ports = ports;
+            Fields = fields;
             RequiredInvocations = requiredInvocations;
             SourcePath = sourcePath;
         }
@@ -26,6 +28,7 @@ namespace BTSMTL.Orchestration
         public OrchestrationExtensionKind Kind { get; }
         public OrchestrationExtensionAccess Access { get; }
         public ReadOnlyMemory<OrchestrationExtensionPort> Ports { get; }
+        public ReadOnlyMemory<OrchestrationExtensionContentField> Fields { get; }
         public OrchestrationExtensionInvocationKind RequiredInvocations { get; }
         public string SourcePath { get; }
     }

@@ -1,5 +1,4 @@
 using System;
-using System.Buffers.Binary;
 using System.Collections.Generic;
 using ThirdPersonSimulation;
 
@@ -54,8 +53,14 @@ namespace BTSMTL.Orchestration
         public ReadOnlyMemory<int> DependencyIdentityMapping(int dependencyIndex) =>
             Identities.LocalToShared(m_DependencyIdentityTableIndices.Span[dependencyIndex]);
 
+        public OrchestrationExecutionCapacity PrepareExecutionCapacity(
+            ReadOnlySpan<OrchestrationRootAdmission> admissions,
+            ReadOnlySpan<OrchestrationTimelineCallCapacity> calls) =>
+            OrchestrationExecutionFrames<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>
+                .PrepareCapacity(Programs.Span, admissions, calls);
+
         public OrchestrationStateLayout<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>, TPlayback>
-            PrepareStateLayout<TPlayback>(int executionFrameCount,
+            PrepareStateLayout<TPlayback>(OrchestrationExecutionCapacity executionCapacity,
                 in OrchestrationTimelineStateLayout<TPlayback> timelineLayout,
                 NumericProfileId numericProfile, TargetAbiVersion targetAbi,
                 Func<StableHash, NumericProfileId, TargetAbiVersion, int, int,
@@ -69,9 +74,7 @@ namespace BTSMTL.Orchestration
                     OrchestrationStateLayout<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>, TPlayback>> compositeFactory)
             where TPlayback : unmanaged
         {
-            OrchestrationExecutionStateCapacity capacity =
-                OrchestrationExecutionFrames<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>
-                    .PrepareCapacity(Programs.Span, executionFrameCount);
+            OrchestrationExecutionStateCapacity capacity = executionCapacity.State;
             int characterCount = CharacterValueDefaults.Length;
             var blackboard = blackboardFactory(Identity, numericProfile, targetAbi,
                 characterCount, characterCount);
@@ -171,7 +174,7 @@ namespace BTSMTL.Orchestration
                 characterDefaults[characterSlot] = projected[(binding.ContractIdentityId, binding.Field)];
             }
 
-            StableHash identity = PreparedIdentity(identities.Identity, defaults.ContentIdentity,
+            StableHash identity = OrchestrationIdentityContentHash.Actor(identities.Identity, defaults.ContentIdentity,
                 defaultIdentityTableIndex, sources, dependencyIdentityTableIndices,
                 characterBlackboards, characterDescriptors, characterMappings);
             return new OrchestrationActorPreparation<TScalar, TVector2, TVector3, TYaw, TQuaternion>(
@@ -189,60 +192,5 @@ namespace BTSMTL.Orchestration
             return value;
         }
 
-        static StableHash PreparedIdentity(StableHash identities, StableHash defaults,
-            int defaultIdentityTableIndex,
-            ReadOnlySpan<OrchestrationActorProgramSource<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>> sources,
-            ReadOnlySpan<int> dependencyIdentityTableIndices,
-            ReadOnlySpan<OrchestrationGraphBlackboardBinding> characterBlackboards,
-            ReadOnlySpan<OrchestrationBlackboardSlot> descriptors,
-            ReadOnlySpan<ReadOnlyMemory<int>> characterMappings)
-        {
-            var hash = new SimulationCanonicalPayloadHash.Accumulator();
-            hash.Begin();
-            Text(hash, "btsmtl-orchestration-actor-preparation/1");
-            Text(hash, identities.ToString());
-            Text(hash, defaults.ToString());
-            Integer(hash, defaultIdentityTableIndex);
-            Integer(hash, dependencyIdentityTableIndices.Length);
-            for (int dependencyIndex = 0; dependencyIndex < dependencyIdentityTableIndices.Length; dependencyIndex++)
-                Integer(hash, dependencyIdentityTableIndices[dependencyIndex]);
-            Integer(hash, sources.Length);
-            for (int programIndex = 0; programIndex < sources.Length; programIndex++)
-            {
-                Text(hash, sources[programIndex].ContentIdentity.ToString());
-                Integer(hash, sources[programIndex].IdentityTableIndex);
-                ReadOnlySpan<int> mapping = characterMappings[programIndex].Span;
-                Integer(hash, mapping.Length);
-                for (int valueSlot = 0; valueSlot < mapping.Length; valueSlot++)
-                    Integer(hash, mapping[valueSlot]);
-            }
-            Integer(hash, characterBlackboards.Length);
-            for (int sharedSlot = 0; sharedSlot < characterBlackboards.Length; sharedSlot++)
-            {
-                ref readonly OrchestrationGraphBlackboardBinding binding = ref characterBlackboards[sharedSlot];
-                ref readonly OrchestrationBlackboardSlot descriptor = ref descriptors[sharedSlot];
-                Integer(hash, binding.InstanceIdentityId);
-                Integer(hash, binding.ContractIdentityId);
-                Integer(hash, binding.Field);
-                Integer(hash, (int)descriptor.ScopeKind);
-                Integer(hash, (int)descriptor.Lifetime);
-                Integer(hash, descriptor.CompiledOwnerIndex);
-                Integer(hash, (int)descriptor.ValueKind);
-            }
-            return hash.Complete();
-        }
-
-        static void Text(SimulationCanonicalPayloadHash.Accumulator hash, string value)
-        {
-            Integer(hash, value.Length);
-            hash.AppendText(value.AsSpan());
-        }
-
-        static void Integer(SimulationCanonicalPayloadHash.Accumulator hash, int value)
-        {
-            Span<byte> bytes = stackalloc byte[sizeof(int)];
-            BinaryPrimitives.WriteInt32LittleEndian(bytes, value);
-            hash.Append(bytes);
-        }
     }
 }

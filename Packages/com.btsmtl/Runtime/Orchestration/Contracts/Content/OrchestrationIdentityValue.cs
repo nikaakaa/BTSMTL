@@ -7,7 +7,8 @@ namespace BTSMTL.Orchestration
     {
         Content = 0,
         Roster = 1,
-        RuntimeText = 2
+        RuntimeText = 2,
+        Null = 3
     }
 
     [ValueStorage(UseConstructor = true)]
@@ -23,6 +24,8 @@ namespace BTSMTL.Orchestration
         public int Index { get; }
 
         [ValueDefault] public static OrchestrationIdentityValue Empty => default;
+        public static OrchestrationIdentityValue Null =>
+            new OrchestrationIdentityValue(OrchestrationIdentitySpace.Null, 0);
         public static OrchestrationIdentityValue Content(int sharedIdentity) =>
             new OrchestrationIdentityValue(OrchestrationIdentitySpace.Content, sharedIdentity);
         public static OrchestrationIdentityValue Roster(int rosterIndex) =>

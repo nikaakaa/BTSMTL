@@ -56,7 +56,7 @@ namespace BTSMTL.Orchestration
                     operation.ExtensionBindingIndex, operation.GraphCallIndex, operation.Inputs,
                     operation.OutputCount, operation.OutputSlotOffset, operation.LifecycleHooks,
                     operation.BlackboardFactsBindingIndex, operation.ParentStateOperationIndex,
-                    operation.OutputAssignments);
+                    operation.OutputAssignments, operation.ExecutionFrameOwnerOperationIndex);
             }
             var edges = new OrchestrationFlowEdge[data.Edges.Length];
             for (int i = 0; i < edges.Length; i++)

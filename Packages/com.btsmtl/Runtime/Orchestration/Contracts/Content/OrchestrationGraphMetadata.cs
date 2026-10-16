@@ -3,6 +3,23 @@ using ThirdPersonSimulation;
 
 namespace BTSMTL.Orchestration
 {
+    public readonly struct GraphOrchestrationHostInputPort
+    {
+        public GraphOrchestrationHostInputPort(string outputPortId, string inputId, OrchestrationValueKind valueKind,
+            string valueTypeIdentity)
+        {
+            OutputPortId = outputPortId;
+            InputId = inputId;
+            ValueKind = valueKind;
+            ValueTypeIdentity = valueTypeIdentity;
+        }
+
+        public string OutputPortId { get; }
+        public string InputId { get; }
+        public OrchestrationValueKind ValueKind { get; }
+        public string ValueTypeIdentity { get; }
+    }
+
     public enum OrchestrationGraphSourceTargetKind : byte
     {
         Operation = 1,
@@ -105,7 +122,8 @@ namespace BTSMTL.Orchestration
             string timelineId, string trackId, string clipId, bool isInputPort, string graphInvocationPath,
             string compiledPortId, string valuePortDirection, string sourceInvocationPath,
             string parentInvocationPath, string invocationCallerKind, string invocationCallerId,
-            string invocationCallerClipId)
+            string invocationCallerClipId, int invocationCallerOperationIndex,
+            OrchestrationExecutionEntry invocationEntry)
         {
             TargetKind = targetKind;
             TargetIndex = targetIndex;
@@ -126,6 +144,8 @@ namespace BTSMTL.Orchestration
             InvocationCallerKind = invocationCallerKind;
             InvocationCallerId = invocationCallerId;
             InvocationCallerClipId = invocationCallerClipId;
+            InvocationCallerOperationIndex = invocationCallerOperationIndex;
+            InvocationEntry = invocationEntry;
         }
 
         public OrchestrationGraphSourceTargetKind TargetKind { get; }
@@ -147,6 +167,8 @@ namespace BTSMTL.Orchestration
         public string InvocationCallerKind { get; }
         public string InvocationCallerId { get; }
         public string InvocationCallerClipId { get; }
+        public int InvocationCallerOperationIndex { get; }
+        public OrchestrationExecutionEntry InvocationEntry { get; }
     }
 
     [ValueStorage(UseConstructor = true)]

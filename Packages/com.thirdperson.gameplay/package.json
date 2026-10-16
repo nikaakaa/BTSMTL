@@ -5,6 +5,9 @@
   "description": "角色运动、战斗、属性与效果、玩法会话及对应运行数据。",
   "unity": "2022.3",
   "dependencies": {
-    "com.thirdperson.shared": "0.1.0"
+    "com.thirdperson.shared": "0.1.0",
+    "com.btsmtl": "0.1.0",
+    "com.thirdperson.gameplay.contracts": "0.1.0",
+    "com.thirdperson.numerics.quantum": "0.1.0"
   }
 }

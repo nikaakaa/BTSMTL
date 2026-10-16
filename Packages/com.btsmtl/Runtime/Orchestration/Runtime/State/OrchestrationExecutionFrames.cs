@@ -14,20 +14,13 @@ namespace BTSMTL.Orchestration
         readonly int m_ValuesPerFrame;
         readonly int m_BlackboardMetadataPerFrame;
 
-        public static OrchestrationExecutionStateCapacity PrepareCapacity(
-            ReadOnlySpan<OrchestrationProgram<TValue>> programs, int frameCount)
-        {
-            int operations = 0;
-            int values = 0;
-            for (int i = 0; i < programs.Length; i++)
-            {
-                operations = Math.Max(operations, programs[i].OperationCount);
-                values = Math.Max(values, programs[i].ValueSlotCount);
-            }
-            return new OrchestrationExecutionStateCapacity(frameCount, operations, values);
-        }
+        public static OrchestrationExecutionCapacity PrepareCapacity(
+            ReadOnlySpan<OrchestrationProgram<TValue>> programs,
+            ReadOnlySpan<OrchestrationRootAdmission> admissions,
+            ReadOnlySpan<OrchestrationTimelineCallCapacity> calls) =>
+            OrchestrationExecutionCapacity.Prepare(programs, admissions, calls);
 
-        public OrchestrationExecutionFrames(
+        internal OrchestrationExecutionFrames(
             Span<OrchestrationExecutionFrameState> frames,
             ref OrchestrationExecutionRosterState roster,
             Span<OrchestrationOperationState> operations,
@@ -45,6 +38,7 @@ namespace BTSMTL.Orchestration
         }
 
         public int Count => m_Roster[0].Count;
+        public int Capacity => m_Frames.Length;
 
         public ref OrchestrationExecutionFrameState Header(int frameSlot) =>
             ref m_Frames[frameSlot];
@@ -61,75 +55,62 @@ namespace BTSMTL.Orchestration
 
         public int Find(ulong actionInstanceId)
         {
-            int slot = InsertionSlot(actionInstanceId);
-            return slot < Count && m_Frames[slot].ActionInstanceId == actionInstanceId
-                ? slot : -1;
-        }
-
-        public int FindPersistent(int skillContentId)
-        {
-            for (int slot = 0; slot < Count && m_Frames[slot].ActionInstanceId == 0; slot++)
-                if (m_Frames[slot].SkillContentId == skillContentId)
+            for (int slot = 0; slot < m_Frames.Length; slot++)
+                if (m_Frames[slot].SkillContentId != 0 && m_Frames[slot].PlaybackIdentity == 0 &&
+                    m_Frames[slot].ActionInstanceId == actionInstanceId)
                     return slot;
             return -1;
         }
 
+        public int FindPersistent(int skillContentId)
+        {
+            for (int slot = 0; slot < m_Frames.Length; slot++)
+                if (m_Frames[slot].PlaybackIdentity == 0 && m_Frames[slot].ActionInstanceId == 0 &&
+                    m_Frames[slot].SkillContentId == skillContentId)
+                    return slot;
+            return -1;
+        }
+
+        public int FindTimeline(in OrchestrationTimelineInvocationToken token)
+        {
+            for (int slot = 0; slot < m_Frames.Length; slot++)
+                if (m_Frames[slot].SkillContentId != 0 &&
+                    m_Frames[slot].PlaybackIdentity == token.PlaybackIdentity &&
+                    m_Frames[slot].ClipOrdinal == token.ClipOrdinal &&
+                    m_Frames[slot].Cycle == token.Cycle && m_Frames[slot].Marker == token.Marker)
+                    return slot;
+            return -1;
+        }
+
+        public int OwnerFrame(int frameSlot, int ownerOperationIndex)
+        {
+            while (m_Frames[frameSlot].OwnerOperationIndex != ownerOperationIndex)
+                frameSlot = m_Frames[frameSlot].ParentFrameIndex;
+            return frameSlot;
+        }
+
         public int Insert(OrchestrationExecutionFrameState frame, ReadOnlySpan<TValue> defaultValues)
         {
-            int count = Count;
-            int slot = InsertionSlot(frame.ActionInstanceId);
-            Move(slot, slot + 1, count - slot);
+            int slot = 0;
+            while (m_Frames[slot].SkillContentId != 0)
+                slot++;
             m_Frames[slot] = frame;
             Operations(slot).Clear();
             BlackboardMetadata(slot).Clear();
             Span<TValue> values = Values(slot);
             defaultValues.CopyTo(values);
             values.Slice(defaultValues.Length).Clear();
-            m_Roster[0].Count = count + 1;
+            m_Roster[0].Count++;
             return slot;
         }
 
         public void RemoveAt(int frameSlot)
         {
-            int count = Count - 1;
-            Move(frameSlot + 1, frameSlot, count - frameSlot);
-            m_Frames[count] = default;
-            Operations(count).Clear();
-            Values(count).Clear();
-            BlackboardMetadata(count).Clear();
-            m_Roster[0].Count = count;
-        }
-
-        int InsertionSlot(ulong actionInstanceId)
-        {
-            int first = 0;
-            int last = Count;
-            while (first < last)
-            {
-                int middle = first + ((last - first) >> 1);
-                if (m_Frames[middle].ActionInstanceId < actionInstanceId)
-                    first = middle + 1;
-                else
-                    last = middle;
-            }
-            return first;
-        }
-
-        void Move(int sourceFrame, int destinationFrame, int frameCount)
-        {
-            m_Frames.Slice(sourceFrame, frameCount)
-                .CopyTo(m_Frames.Slice(destinationFrame, frameCount));
-            m_Operations.Slice(sourceFrame * m_OperationsPerFrame,
-                    frameCount * m_OperationsPerFrame)
-                .CopyTo(m_Operations.Slice(destinationFrame * m_OperationsPerFrame,
-                    frameCount * m_OperationsPerFrame));
-            m_Values.Slice(sourceFrame * m_ValuesPerFrame, frameCount * m_ValuesPerFrame)
-                .CopyTo(m_Values.Slice(destinationFrame * m_ValuesPerFrame,
-                    frameCount * m_ValuesPerFrame));
-            m_BlackboardMetadata.Slice(sourceFrame * m_BlackboardMetadataPerFrame,
-                    frameCount * m_BlackboardMetadataPerFrame)
-                .CopyTo(m_BlackboardMetadata.Slice(destinationFrame * m_BlackboardMetadataPerFrame,
-                    frameCount * m_BlackboardMetadataPerFrame));
+            m_Frames[frameSlot] = default;
+            Operations(frameSlot).Clear();
+            Values(frameSlot).Clear();
+            BlackboardMetadata(frameSlot).Clear();
+            m_Roster[0].Count--;
         }
     }
 }

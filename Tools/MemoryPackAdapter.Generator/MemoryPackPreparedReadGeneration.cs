@@ -131,7 +131,7 @@ namespace ThirdPerson.MemoryPackAdapters
             Identity(attribute.AttributeClass) == "ThirdPersonSimulation.ValueTextRulesAttribute" &&
             attribute.NamedArguments.Any(argument => argument.Key == "Declared" && (bool)argument.Value.Value));
 
-        static string ValidatePreparedMembers(INamedTypeSymbol root, PreparedReadPlan plan, ITypeSymbol text,
+        static string ValidatePreparedMembers(INamedTypeSymbol root, PreparedReadPlan plan,
             Func<ITypeSymbol, ITypeSymbol, bool> implicitReference, HashSet<string> externalLeaves,
             Dictionary<string, PreparedReadPlan> preparedPlans)
         {
@@ -143,9 +143,8 @@ namespace ThirdPerson.MemoryPackAdapters
                 if (type is INamedTypeSymbol namedType) type = RecordType(namedType);
                 if (!visited.Add(Identity(type)) || type.TypeKind == TypeKind.Enum) return null;
                 if (NullableElement(type) is ITypeSymbol nullable) return Visit(nullable, current);
-                if (HasAttribute(type, TextAttribute))
-                    return SymbolEqualityComparer.Default.Equals(type, text) ? null :
-                        "prepared 文本 " + Identity(type) + " 缺少现有接收 context 的原文本存储合同";
+                if (type.SpecialType == SpecialType.System_String || HasAttribute(type, TextAttribute))
+                    return "prepared 文本 " + Identity(type) + " 必须在接收边界转换为身份编号，不能冷读取创建文本";
                 if (type.SpecialType != SpecialType.None) return null;
                 if (preparedPlans.TryGetValue(Identity(type), out PreparedReadPlan nestedPlan)) current = nestedPlan;
                 else if (type.IsReferenceType && !SymbolEqualityComparer.Default.Equals(type, root))
@@ -163,13 +162,7 @@ namespace ThirdPerson.MemoryPackAdapters
                 if (!(type is INamedTypeSymbol named)) return null;
                 foreach (Member member in ValueMembers(named, implicitReference))
                 {
-                    if (member.Type.SpecialType == SpecialType.System_String)
-                    {
-                        if (!DeclaredText(member.Symbol))
-                            return "prepared 原 string " + Identity(named) + "." + member.Name +
-                                " 未声明 ValueTextRules.Declared；接收不能新建 string";
-                    }
-                    else if (SequenceElement(member.Type) is ITypeSymbol element)
+                    if (SequenceElement(member.Type) is ITypeSymbol element)
                     {
                         if (current == null || !SymbolEqualityComparer.Default.Equals(type, current.Value) ||
                             !current.Collections.ContainsKey(member.Name))

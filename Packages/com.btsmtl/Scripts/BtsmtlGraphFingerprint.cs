@@ -88,7 +88,7 @@ namespace BTSMTL
             }
             else
             {
-                parts.Add(SimulationCanonicalPayloadHash.Compute(File.ReadAllBytes(Path.GetFullPath(path))).Value);
+                parts.Add(StableHash.Compute(File.ReadAllBytes(Path.GetFullPath(path))).ToString());
             }
             string hash = StableHash.Compute(parts.ToArray()).ToString();
             m_AssetHashes.Add(path, hash);

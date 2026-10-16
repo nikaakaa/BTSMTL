@@ -1,0 +1,21 @@
+{
+    "name": "ThirdPersonGameplay.Movement.Timeline",
+    "rootNamespace": "ThirdPersonGameplay.Movement.Timeline",
+    "references": [
+        "BTSMTL",
+        "BTSMTL.Diagnostics",
+        "BTSMTL.Orchestration.Contracts",
+        "BTSMTL.Timeline",
+        "BTSMTL.Timeline.Runtime",
+        "ThirdPersonGameplay.Movement"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

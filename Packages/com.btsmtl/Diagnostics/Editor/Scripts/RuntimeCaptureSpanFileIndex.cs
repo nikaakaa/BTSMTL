@@ -1,7 +1,6 @@
 using System;
 using System.IO;
 using System.Text;
-using ThirdPersonSimulation;
 
 namespace BTSMTL.Diagnostics.Editor
 {
@@ -506,8 +505,8 @@ namespace BTSMTL.Diagnostics.Editor
             writer.Write(key.Instance.SourceOperationIndex);
             writer.Write(key.Instance.TreeClipOperationIndex);
             WriteString(key.ContentRevision.RuntimeId);
-            WriteString(key.ContentRevision.SourceRevisionText);
-            WriteString(key.ContentRevision.ContentHashText);
+            WriteString(key.ContentRevision.SourceRevision);
+            WriteString(key.ContentRevision.ContentHash);
         }
 
         bool Matches(in RuntimeCaptureSpanKey key)
@@ -531,25 +530,24 @@ namespace BTSMTL.Diagnostics.Editor
             match &= reader.ReadInt32() == key.Instance.SourceOperationIndex;
             match &= reader.ReadInt32() == key.Instance.TreeClipOperationIndex;
             match &= MatchString(key.ContentRevision.RuntimeId);
-            match &= MatchString(key.ContentRevision.SourceRevisionText);
-            match &= MatchString(key.ContentRevision.ContentHashText);
+            match &= MatchString(key.ContentRevision.SourceRevision);
+            match &= MatchString(key.ContentRevision.ContentHash);
             return match;
         }
 
-        void WriteString(CanonicalTextValue value)
+        void WriteString(string value)
         {
-            using CanonicalTextReadLease read = value.AcquireRead();
-            int length = value.IsNull ? -1 : value.Length;
+            int length = value == null ? -1 : value.Length;
             m_CandidateWriter.Write(length);
-            ReadOnlySpan<char> characters = value.Span;
+            ReadOnlySpan<char> characters = value.AsSpan();
             for (int i = 0; i < length; i++)
                 m_CandidateWriter.Write((ushort)characters[i]);
         }
 
-        bool MatchString(CanonicalTextValue value)
+        bool MatchString(string value)
         {
             int length = m_CandidateReader.ReadInt32();
-            int expected = value.IsNull ? -1 : value.Length;
+            int expected = value == null ? -1 : value.Length;
             if (length != expected)
             {
                 if (length > 0)
@@ -557,8 +555,7 @@ namespace BTSMTL.Diagnostics.Editor
                 return false;
             }
             bool match = true;
-            using CanonicalTextReadLease read = value.AcquireRead();
-            ReadOnlySpan<char> characters = value.Span;
+            ReadOnlySpan<char> characters = value.AsSpan();
             for (int i = 0; i < length; i++)
                 match &= m_CandidateReader.ReadUInt16() == characters[i];
             return match;
@@ -598,8 +595,8 @@ namespace BTSMTL.Diagnostics.Editor
             AddHash(ref hash, (ulong)key.Instance.SourceOperationIndex);
             AddHash(ref hash, (ulong)key.Instance.TreeClipOperationIndex);
             AddHash(ref hash, key.ContentRevision.RuntimeId);
-            AddHash(ref hash, key.ContentRevision.SourceRevisionText);
-            AddHash(ref hash, key.ContentRevision.ContentHashText);
+            AddHash(ref hash, key.ContentRevision.SourceRevision);
+            AddHash(ref hash, key.ContentRevision.ContentHash);
             return hash;
         }
 
@@ -619,13 +616,12 @@ namespace BTSMTL.Diagnostics.Editor
                 hash = unchecked((hash ^ m_Guid[i]) * HashPrime);
         }
 
-        static void AddHash(ref ulong hash, CanonicalTextValue value)
+        static void AddHash(ref ulong hash, string value)
         {
-            AddHash(ref hash, value.IsNull ? ulong.MaxValue : (ulong)value.Length);
-            if (!value.IsNull)
+            AddHash(ref hash, value == null ? ulong.MaxValue : (ulong)value.Length);
+            if (value != null)
             {
-                using CanonicalTextReadLease read = value.AcquireRead();
-                ReadOnlySpan<char> characters = value.Span;
+                ReadOnlySpan<char> characters = value.AsSpan();
                 for (int i = 0; i < value.Length; i++)
                     AddHash(ref hash, characters[i]);
             }

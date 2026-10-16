@@ -1,6 +1,6 @@
 #if UNITY_EDITOR
 using System;
-using Photon.Deterministic;
+using BTSMTL.Orchestration;
 using System.Collections.Generic;
 using System.Linq;
 using ThirdPersonSimulation;
@@ -29,20 +29,20 @@ namespace BTSMTL.Timeline
     public interface ITimelineAuthoringTrackFieldSink
     {
         void ApplyAuthoringField(string fieldId, string value);
+        string ReadAuthoringField(string fieldId);
     }
 
     public readonly struct TimelineAuthoringTrackExport
     {
-        public TimelineAuthoringTrackExport(TimelineExecutionDomain executionDomain, string animationChannelId, string animationSlotId)
+        public TimelineAuthoringTrackExport(TimelineExecutionDomain executionDomain,
+            IReadOnlyDictionary<string, string> fields)
         {
             ExecutionDomain = executionDomain;
-            AnimationChannelId = animationChannelId ?? string.Empty;
-            AnimationSlotId = animationSlotId ?? string.Empty;
+            Fields = fields;
         }
 
         public TimelineExecutionDomain ExecutionDomain { get; }
-        public string AnimationChannelId { get; }
-        public string AnimationSlotId { get; }
+        public IReadOnlyDictionary<string, string> Fields { get; }
     }
 
     public readonly struct TimelineAuthoringTrackIssue
@@ -74,12 +74,12 @@ namespace BTSMTL.Timeline
             TimelineData timeline,
             TimelineContractCatalog catalog,
             Track track,
-            UnityEngine.AnimationClip animationAsset,
-            FP startTime)
+            UnityEngine.Object referenceObject,
+            OrchestrationTime startTime)
         {
-            if (track is AnimationTrack animation)
-                return timeline.AddClip(catalog, animationAsset, animation, startTime);
-            return timeline.AddClip(catalog, track, startTime);
+            return referenceObject
+                ? timeline.AddClip(catalog, referenceObject, track, startTime)
+                : timeline.AddClip(catalog, track, startTime);
         }
 
         public static IReadOnlyList<TimelineAuthoringTrackIssue> Validate(
@@ -116,12 +116,11 @@ namespace BTSMTL.Timeline
             TimelineTrackContract contract = catalog.RequireTrack(track.ContractKind);
             if (!track.HasExplicitExecutionDomain || !contract.SupportsExecutionDomain(track.ExecutionDomain))
                 throw new InvalidOperationException($"Timeline track '{track.AuthoringId}' has a missing or unsupported execution domain '{track.ExecutionDomain}'.");
-            return track is AnimationTrack animation
-                ? new TimelineAuthoringTrackExport(
-                    track.ExecutionDomain,
-                    animation.AnimationChannelId.Value.ToString(),
-                    animation.AnimationSlotId)
-                : new TimelineAuthoringTrackExport(track.ExecutionDomain, string.Empty, string.Empty);
+            var fields = new Dictionary<string, string>(StringComparer.Ordinal);
+            if (track is ITimelineAuthoringTrackFieldSink source)
+                foreach (TimelineAuthoringTrackFieldAttribute field in GetFields(track.ContractKind))
+                    fields.Add(field.FieldId, source.ReadAuthoringField(field.FieldId));
+            return new TimelineAuthoringTrackExport(track.ExecutionDomain, fields);
         }
 
         static bool IsIdentity(string value)

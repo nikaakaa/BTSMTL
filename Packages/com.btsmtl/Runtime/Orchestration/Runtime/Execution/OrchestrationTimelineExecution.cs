@@ -34,44 +34,111 @@ namespace BTSMTL.Orchestration
                 m_Input.Tick, ref m_Context);
 
         public void ExecuteTimelineBatch<TTime>(
-            OrchestrationTimelineBatch<TTime> batch) where TTime : unmanaged
+            OrchestrationTimelineBatch<TTime> batch, ulong playbackIdentity,
+            in OrchestrationStopContext stopContext) where TTime : unmanaged
         {
-            ReadOnlySpan<OrchestrationTimelineInvocation<TTime>> invocations = batch.Invocations;
-            for (int i = 0; i < invocations.Length; i++)
+            BeginInvocation();
+            try
             {
-                ref readonly OrchestrationTimelineInvocation<TTime> invocation = ref invocations[i];
-                OrchestrationOperationResult result;
-                OrchestrationTimelineInvocationToken previousToken = m_OutputTimelineToken;
-                OrchestrationTimelineHook previousHook = m_OutputTimelineHook;
-                bool hadTimelineInvocation = m_HasOutputTimelineInvocation;
-                try
+                ReadOnlySpan<OrchestrationTimelineInvocation<TTime>> invocations = batch.Invocations;
+                for (int i = 0; i < invocations.Length; i++)
                 {
-                    m_OutputTimelineToken = invocation.Token;
-                    m_OutputTimelineHook = invocation.Hook;
-                    m_HasOutputTimelineInvocation = true;
-                    m_TimelineDispatcher.EnterInvocation(batch.PlaybackSlot, i, ref m_Context);
-                    result = Advance(invocation.Entry);
-                    if ((invocation.Hook == OrchestrationTimelineHook.Disable ||
-                         invocation.Hook == OrchestrationTimelineHook.Destroy) &&
-                        m_TimelineDispatcher.ReleaseInvocation(ref m_Context) != OrchestrationOperationResult.Success)
-                        result = OrchestrationOperationResult.Failure;
-                }
-                finally
-                {
+                    ref readonly OrchestrationTimelineInvocation<TTime> invocation = ref invocations[i];
+                    OrchestrationOperationResult result;
+                    OrchestrationTimelineInvocationFacts previousInvocation = m_TimelineInvocation;
+                    int previousFrame = m_FrameSlot;
+                    int previousOperation = m_CurrentOperationIndex;
+                    int frameSlot;
+                    bool releaseFrame = false;
                     try
                     {
-                        m_TimelineDispatcher.LeaveInvocation(ref m_Context);
+                        frameSlot = m_TimelineDispatcher.EnterInvocation(batch.PlaybackSlot, i, ref m_Context);
+                        m_TimelineInvocation = m_TimelineDispatcher.ReadInvocationFacts();
+                        SelectExecutionFrame(frameSlot);
+                        result = Advance(invocation.Entry);
+                        if (invocation.Hook == OrchestrationTimelineHook.Disable ||
+                            invocation.Hook == OrchestrationTimelineHook.Destroy)
+                        {
+                            if (m_TimelineDispatcher.ReleaseInvocation(ref m_Context) != OrchestrationOperationResult.Success)
+                                result = OrchestrationOperationResult.Failure;
+                            CloseExecutionFrame(in stopContext);
+                            releaseFrame = true;
+                        }
+                        else if (invocation.Token.Marker)
+                        {
+                            CloseExecutionFrame(in stopContext);
+                            releaseFrame = true;
+                        }
                     }
                     finally
                     {
-                        m_OutputTimelineToken = previousToken;
-                        m_OutputTimelineHook = previousHook;
-                        m_HasOutputTimelineInvocation = hadTimelineInvocation;
+                        try
+                        {
+                            m_TimelineDispatcher.LeaveInvocation(ref m_Context);
+                        }
+                        finally
+                        {
+                            SelectExecutionFrame(previousFrame);
+                            m_CurrentOperationIndex = previousOperation;
+                            m_TimelineInvocation = previousInvocation;
+                        }
                     }
+                    if (releaseFrame)
+                        ClearExecutionFrame(frameSlot);
+                    if (result == OrchestrationOperationResult.Failure)
+                        throw new InvalidOperationException($"Timeline playback '{invocation.Token.PlaybackIdentity}' clip '{invocation.Token.ClipOrdinal}' hook '{invocation.Hook}' failed.");
                 }
-                if (result == OrchestrationOperationResult.Failure)
-                    throw new InvalidOperationException($"Timeline playback '{invocation.Token.PlaybackIdentity}' clip '{invocation.Token.ClipOrdinal}' hook '{invocation.Hook}' failed.");
+                if (batch.Status == OrchestrationTimelinePlaybackStatus.Completed ||
+                    batch.Status == OrchestrationTimelinePlaybackStatus.Stopped)
+                    ReleaseTimelineFrames(playbackIdentity, in stopContext);
             }
+            finally
+            {
+                m_EntryDepth--;
+            }
+        }
+
+        void ReleaseTimelineFrames(ulong playbackIdentity, in OrchestrationStopContext stopContext)
+        {
+            for (int frameSlot = 0; frameSlot < m_Frames.Capacity; frameSlot++)
+                if (m_Frames.Header(frameSlot).SkillContentId != 0 &&
+                    m_Frames.Header(frameSlot).PlaybackIdentity == playbackIdentity)
+                    ReleaseExecutionFrame(frameSlot, in stopContext);
+        }
+
+        void ReleaseExecutionFrame(int frameSlot, in OrchestrationStopContext stopContext)
+        {
+            int previousFrame = m_FrameSlot;
+            int previousOperation = m_CurrentOperationIndex;
+            SelectExecutionFrame(frameSlot);
+            try
+            {
+                CloseExecutionFrame(in stopContext);
+            }
+            finally
+            {
+                SelectExecutionFrame(previousFrame);
+                m_CurrentOperationIndex = previousOperation;
+            }
+            ClearExecutionFrame(frameSlot);
+        }
+
+        void CloseExecutionFrame(in OrchestrationStopContext stopContext)
+        {
+            for (int operationIndex = 0; operationIndex < m_Program.OperationCount; operationIndex++)
+                if (m_Operations[operationIndex].TimelineRuntimeHandle != 0)
+                    ForceStop(operationIndex, stopContext);
+            for (int child = 0; child < m_Frames.Capacity; child++)
+                if (m_Frames.Header(child).SkillContentId != 0 &&
+                    m_Frames.Header(child).ParentFrameIndex == m_FrameSlot)
+                    ReleaseExecutionFrame(child, in stopContext);
+        }
+
+        void ClearExecutionFrame(int frameSlot)
+        {
+            m_Frames.RemoveAt(frameSlot);
+            Array.Clear(m_Workspace.ForceStopVisited,
+                checked(frameSlot * m_Program.OperationCount), m_Program.OperationCount);
         }
     }
 }

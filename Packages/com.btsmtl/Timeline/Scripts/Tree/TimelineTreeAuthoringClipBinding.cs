@@ -1,6 +1,6 @@
 #if UNITY_EDITOR
 using System;
-using Photon.Deterministic;
+using BTSMTL.Orchestration;
 using UnityEngine;
 
 namespace BTSMTL.Timeline
@@ -24,7 +24,7 @@ namespace BTSMTL.Timeline
             TimelineContractCatalog catalog,
             Track track,
             ScriptableObject assetTree,
-            FP startTime)
+            OrchestrationTime startTime)
         {
             if (track is not TreeTrack tree)
                 throw new ArgumentException("Timeline Tree authoring binding requires a TreeTrack.", nameof(track));

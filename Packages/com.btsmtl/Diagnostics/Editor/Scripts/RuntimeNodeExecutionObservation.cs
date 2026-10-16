@@ -40,9 +40,9 @@ namespace BTSMTL.Diagnostics.Editor
                     phase = RuntimeNodeExecutionPhase.Waiting;
                     break;
                 case RuntimeTraceEventKind.NodeCompleted:
-                    if (source.Event.GetDetail().Equals("Success"))
+                    if (string.Equals(source.Event.GetDetail(), "Success", StringComparison.Ordinal))
                         phase = RuntimeNodeExecutionPhase.Succeeded;
-                    else if (source.Event.GetDetail().Equals("Failure"))
+                    else if (string.Equals(source.Event.GetDetail(), "Failure", StringComparison.Ordinal))
                         phase = RuntimeNodeExecutionPhase.Failed;
                     else
                         return false;

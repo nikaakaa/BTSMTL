@@ -110,9 +110,9 @@ namespace ThirdPersonSimulation
 
         public void Append(in AbilityTreeClipInvocation treeClip)
         {
-            Append(treeClip.TreeGraphId);
-            Append(treeClip.TreeGraphRevision);
-            Append(treeClip.NodeAuthoringId);
+            Append(treeClip.TreeGraphId.AsSpan());
+            Append(treeClip.TreeGraphRevision.AsSpan());
+            Append(treeClip.NodeAuthoringId.AsSpan());
             Append(treeClip.PlaybackGeneration);
             Append(treeClip.BranchRevision);
             Append(treeClip.TimelineRuntimeHandle);
@@ -121,10 +121,10 @@ namespace ThirdPersonSimulation
             Append(treeClip.ActionInstanceId);
         }
 
-        public void Append(CanonicalTextValue value, bool startField = true)
+        public void Append(ReadOnlySpan<char> value, bool startField = true)
         {
             BeginField(startField);
-            WriteText(value.AsSpan());
+            WriteText(value);
         }
 
         public void Append(ulong value, bool startField = true)

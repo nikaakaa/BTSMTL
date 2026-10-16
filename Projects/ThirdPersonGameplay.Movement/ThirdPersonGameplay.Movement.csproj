@@ -12,6 +12,8 @@
     <Compile Include="..\..\Packages\com.thirdperson.gameplay\Runtime\Movement\**\*.cs" />
     <ProjectReference Include="..\ThirdPerson.Shared.Contracts\ThirdPerson.Shared.Contracts.csproj" />
     <ProjectReference Include="..\ThirdPersonGameplay.Orchestration.Contracts\ThirdPersonGameplay.Orchestration.Contracts.csproj" />
+    <ProjectReference Include="..\BTSMTL.Orchestration.Contracts\BTSMTL.Orchestration.Contracts.csproj" />
+    <ProjectReference Include="..\ThirdPersonSimulation.Timeline\ThirdPersonSimulation.Timeline.csproj" />
     <ProjectReference Include="..\ThirdPersonSimulation.QuantumNumerics\ThirdPersonSimulation.QuantumNumerics.csproj"
                       AdditionalProperties="QuantumDeterministicPath=$(QuantumDeterministicPath)" />
     <Reference Include="Quantum.Deterministic">

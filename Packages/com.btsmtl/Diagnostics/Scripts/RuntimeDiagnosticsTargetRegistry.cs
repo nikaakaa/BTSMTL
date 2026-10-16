@@ -13,7 +13,6 @@ namespace BTSMTL.Diagnostics
             Context = context ?? throw new ArgumentNullException(nameof(context));
         }
 
-        public IGameplayAbilityAvailabilityQuery AbilityAvailability { get; set; }
         public string DisplayName { get; }
         public int HostInstanceId { get; }
         public RuntimeDiagnosticsContext Context { get; }
@@ -32,7 +31,6 @@ namespace BTSMTL.Diagnostics
 
         public void Dispose()
         {
-            AbilityAvailability = null;
             Context.Store.Dispose();
         }
     }
