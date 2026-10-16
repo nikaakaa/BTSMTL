@@ -1,8 +1,5 @@
 using System;
-using System.Linq;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
-using ThirdPersonSimulation;
 
 namespace BTSMTL.Timeline.Runtime
 {
@@ -78,6 +75,16 @@ namespace BTSMTL.Timeline.Runtime
         {
             m_Values.Clear();
             Version = checked(Version + 1);
+        }
+
+        internal void RestoreRecordedState(ReadOnlySpan<T> values, ulong version)
+        {
+            if (values.Length > Capacity)
+                throw new InvalidOperationException("Recorded Timeline samples exceed the prepared content capacity.");
+            m_Values.Clear();
+            for (int index = 0; index < values.Length; index++)
+                m_Values.Add(values[index]);
+            Version = version;
         }
 
         public void Insert(int index, T value)

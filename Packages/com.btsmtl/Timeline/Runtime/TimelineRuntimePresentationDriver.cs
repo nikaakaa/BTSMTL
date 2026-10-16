@@ -79,6 +79,7 @@ namespace BTSMTL.Timeline.Runtime
             for (int i = 0; i < m_PlaybackCapacity; i++)
                 recycled.Push(new PresentationPlaybackState(content, mode, recycled));
             m_RecycledPlaybacks.Add(key, recycled);
+            m_Playbacks.EnsureCapacity(checked(m_RecycledPlaybacks.Count * m_PlaybackCapacity));
         }
 
         public bool TryPresent(
@@ -335,6 +336,157 @@ namespace BTSMTL.Timeline.Runtime
             m_RecycledPlaybacks.Clear();
         }
 
+        public void WriteRecordedState<TWriter>(ref TWriter writer) where TWriter : struct, IRecordedRuntimeStateWriter
+        {
+            writer.Write(m_Playbacks.Count);
+            foreach (KeyValuePair<ulong, PresentationPlaybackState> playback in m_Playbacks)
+            {
+                PresentationPlaybackState state = playback.Value;
+                writer.Write(playback.Key);
+                writer.WriteText(state.Prepared.Content.Identity);
+                writer.WriteText(state.Prepared.Content.Revision);
+                writer.Write(state.Mode);
+                state.WriteRecordedState(ref writer);
+            }
+            int pendingCount = 0;
+            for (PresentationPlaybackState state = m_FirstPendingFrame; state != null; state = state.NextPendingFrame)
+                pendingCount++;
+            writer.Write(pendingCount);
+            for (PresentationPlaybackState state = m_FirstPendingFrame; state != null; state = state.NextPendingFrame)
+                writer.Write(state.PendingFrame.Start.PlaybackIdentity);
+        }
+
+        public void RestoreRecordedState(ref RecordedRuntimeStateReader reader,
+            IReadOnlyList<TimelineRuntimePreparedContent> contents)
+        {
+            int count = reader.Read<int>();
+            if (count < 0 || count > checked(m_RecycledPlaybacks.Count * m_PlaybackCapacity))
+                throw new InvalidOperationException("Recorded Timeline playback count exceeds the prepared capacity.");
+            m_FirstPendingFrame = null;
+            m_LastPendingFrame = null;
+            foreach (KeyValuePair<ulong, PresentationPlaybackState> playback in m_Playbacks)
+            {
+                PresentationPlaybackState state = playback.Value;
+                state.PreviousPendingFrame = null;
+                state.NextPendingFrame = null;
+                state.PendingFrame = default;
+                state.Recycle();
+            }
+            m_Playbacks.Clear();
+            for (int index = 0; index < count; index++)
+            {
+                ulong identity = reader.Read<ulong>();
+                string contentIdentity = reader.ReadText();
+                string contentRevision = reader.ReadText();
+                OrchestrationTimelinePlaybackMode mode = reader.Read<OrchestrationTimelinePlaybackMode>();
+                TimelineRuntimePreparedContent prepared = RequireRecordedContent(contents, contentIdentity, contentRevision);
+                if (!m_RecycledPlaybacks.TryGetValue((prepared.Content, mode), out Stack<PresentationPlaybackState> recycled) ||
+                    recycled.Count == 0)
+                    throw new InvalidOperationException($"Recorded Timeline '{contentIdentity}' revision '{contentRevision}' has no prepared playback capacity for '{mode}'.");
+                PresentationPlaybackState state = recycled.Pop();
+                state.RestoreRecordedState(ref reader);
+                m_Playbacks.Add(identity, state);
+            }
+            int pendingCount = reader.Read<int>();
+            if (pendingCount < 0 || pendingCount > count)
+                throw new InvalidOperationException("Recorded Timeline pending frame count exceeds its playback count.");
+            for (int index = 0; index < pendingCount; index++)
+            {
+                PresentationPlaybackState state = m_Playbacks[reader.Read<ulong>()];
+                state.PreviousPendingFrame = m_LastPendingFrame;
+                if (m_LastPendingFrame == null)
+                    m_FirstPendingFrame = state;
+                else
+                    m_LastPendingFrame.NextPendingFrame = state;
+                m_LastPendingFrame = state;
+            }
+        }
+
+        static TimelineRuntimePreparedContent RequireRecordedContent(IReadOnlyList<TimelineRuntimePreparedContent> contents,
+            string identity, string revision)
+        {
+            for (int index = 0; index < contents.Count; index++)
+            {
+                TimelineRuntimePreparedContent prepared = contents[index];
+                if (prepared.Content.Identity == identity && prepared.Content.Revision == revision)
+                    return prepared;
+            }
+            throw new InvalidOperationException($"Recorded Timeline '{identity}' revision '{revision}' is not in the prepared content table.");
+        }
+
+        static void WriteFrame<TWriter>(ref TWriter writer, in TimelineRuntimePresentationFrame frame)
+            where TWriter : struct, IRecordedRuntimeStateWriter
+        {
+            writer.Write(frame.Start);
+            writer.Write(frame.LogicTick);
+            writer.Write(frame.PresentationFrame);
+            writer.Write(frame.PresentationDeltaSeconds);
+            writer.Write(frame.InterpolationAlpha);
+            writer.Write(frame.Reason);
+            writer.Write(frame.Time);
+            writer.Write(frame.Cycle);
+        }
+
+        static TimelineRuntimePresentationFrame ReadFrame(ref RecordedRuntimeStateReader reader,
+            TimelineRuntimePresentationBuffer buffer)
+        {
+            var start = reader.Read<OrchestrationTimelineStart<OrchestrationTime>>();
+            ulong logicTick = reader.Read<ulong>();
+            ulong presentationFrame = reader.Read<ulong>();
+            float deltaSeconds = reader.Read<float>();
+            float alpha = reader.Read<float>();
+            TimelinePresentationSampleReason reason = reader.Read<TimelinePresentationSampleReason>();
+            OrchestrationTime time = reader.Read<OrchestrationTime>();
+            int cycle = reader.Read<int>();
+            return new TimelineRuntimePresentationFrame(in start, logicTick, presentationFrame, deltaSeconds, alpha,
+                new TimelineRuntimePresentationOperations(buffer), buffer.Events.View, reason, time, cycle);
+        }
+
+        static void WriteBuffer<TWriter>(ref TWriter writer, TimelineRuntimePresentationBuffer buffer)
+            where TWriter : struct, IRecordedRuntimeStateWriter
+        {
+            for (int index = 0; index < buffer.Samples.Length; index++)
+                WriteSamples(ref writer, buffer.Samples[index]);
+            WriteSamples(ref writer, buffer.Events);
+            WriteSamples(ref writer, buffer.TreeClips);
+            WriteSamples(ref writer, buffer.ActiveTreeClips);
+            writer.Write(buffer.SamplingClips.Count);
+            for (int index = 0; index < buffer.SamplingClips.Count; index++)
+                writer.Write(buffer.SamplingClips[index]);
+        }
+
+        static void ReadBuffer(ref RecordedRuntimeStateReader reader, TimelineRuntimePresentationBuffer buffer)
+        {
+            for (int index = 0; index < buffer.Samples.Length; index++)
+                ReadSamples(ref reader, buffer.Samples[index]);
+            ReadSamples(ref reader, buffer.Events);
+            ReadSamples(ref reader, buffer.TreeClips);
+            ReadSamples(ref reader, buffer.ActiveTreeClips);
+            int count = reader.Read<int>();
+            if (count < 0 || count > buffer.SamplingClips.Capacity)
+                throw new InvalidOperationException("Recorded Timeline sampling workspace exceeds the prepared content capacity.");
+            buffer.SamplingClips.Clear();
+            for (int index = 0; index < count; index++)
+                buffer.SamplingClips.Add(reader.Read<int>());
+        }
+
+        static void WriteSamples<TWriter, T>(ref TWriter writer, TimelineRuntimeSampleBuffer<T> buffer)
+            where TWriter : struct, IRecordedRuntimeStateWriter where T : unmanaged
+        {
+            writer.Write(buffer.Version);
+            writer.Write(buffer.Count);
+            for (int index = 0; index < buffer.Count; index++)
+                writer.Write(buffer[index]);
+        }
+
+        static void ReadSamples<T>(ref RecordedRuntimeStateReader reader, TimelineRuntimeSampleBuffer<T> buffer)
+            where T : unmanaged
+        {
+            ulong version = reader.Read<ulong>();
+            int count = reader.Read<int>();
+            buffer.RestoreRecordedState(reader.ReadSpan<T>(count), version);
+        }
+
         static void AppendMarkerEvents(
             TimelineRuntimePreparedContent content,
             int playbackSlot,
@@ -503,6 +655,8 @@ namespace BTSMTL.Timeline.Runtime
                 Stack<PresentationPlaybackState> recycled)
             {
                 m_Recycled = recycled;
+                Prepared = prepared;
+                Mode = mode;
                 TimelineContentUnit content = prepared.Content;
                 int markerCount = content.Markers.Count;
                 Candidate = new TimelineRuntimePresentationBuffer(prepared, mode);
@@ -528,6 +682,8 @@ namespace BTSMTL.Timeline.Runtime
                 Array.Fill(PendingTreeExitCycles, -1);
             }
 
+            public readonly TimelineRuntimePreparedContent Prepared;
+            public readonly OrchestrationTimelinePlaybackMode Mode;
             public readonly PresentationTree[] Trees;
             public readonly int[] TreePositions;
             public readonly int[] TreeCycles;
@@ -555,6 +711,61 @@ namespace BTSMTL.Timeline.Runtime
             public TimelineRuntimePresentationFrame CachedFrame;
             public ulong LastPresentationFrame;
             public bool HasCachedFrame;
+
+            public void WriteRecordedState<TWriter>(ref TWriter writer) where TWriter : struct, IRecordedRuntimeStateWriter
+            {
+                writer.Write(SourceGeneration);
+                writer.Write(CursorTime);
+                writer.Write(Cycle);
+                writer.Write(InitialBoundaryConsumed);
+                writer.Write(SampleReason);
+                writer.Write(Finished);
+                writer.Write(PendingTime);
+                writer.Write(PendingCycle);
+                writer.Write(PendingFinished);
+                writer.Write(PendingInitialBoundaryConsumed);
+                writer.Write(LastPresentationFrame);
+                writer.WriteSpan<ulong>(MarkerLastTraversal);
+                writer.WriteSpan<ulong>(PendingMarkerLastTraversal);
+                writer.WriteSpan<int>(TreeCycles);
+                writer.WriteSpan<int>(PendingTreeCycles);
+                writer.WriteSpan<int>(TreeExitCycles);
+                writer.WriteSpan<int>(PendingTreeExitCycles);
+                WriteBuffer(ref writer, Candidate);
+                WriteBuffer(ref writer, Accepted);
+                writer.Write(HasPendingFrame);
+                if (HasPendingFrame)
+                    WriteFrame(ref writer, in PendingFrame);
+                writer.Write(HasCachedFrame);
+                if (HasCachedFrame)
+                    WriteFrame(ref writer, in CachedFrame);
+            }
+
+            public void RestoreRecordedState(ref RecordedRuntimeStateReader reader)
+            {
+                SourceGeneration = reader.Read<ulong>();
+                CursorTime = reader.Read<OrchestrationTime>();
+                Cycle = reader.Read<int>();
+                InitialBoundaryConsumed = reader.Read<bool>();
+                SampleReason = reader.Read<TimelinePresentationSampleReason>();
+                Finished = reader.Read<bool>();
+                PendingTime = reader.Read<OrchestrationTime>();
+                PendingCycle = reader.Read<int>();
+                PendingFinished = reader.Read<bool>();
+                PendingInitialBoundaryConsumed = reader.Read<bool>();
+                LastPresentationFrame = reader.Read<ulong>();
+                reader.ReadSpan<ulong>(MarkerLastTraversal.Length).CopyTo(MarkerLastTraversal);
+                reader.ReadSpan<ulong>(PendingMarkerLastTraversal.Length).CopyTo(PendingMarkerLastTraversal);
+                reader.ReadSpan<int>(TreeCycles.Length).CopyTo(TreeCycles);
+                reader.ReadSpan<int>(PendingTreeCycles.Length).CopyTo(PendingTreeCycles);
+                reader.ReadSpan<int>(TreeExitCycles.Length).CopyTo(TreeExitCycles);
+                reader.ReadSpan<int>(PendingTreeExitCycles.Length).CopyTo(PendingTreeExitCycles);
+                ReadBuffer(ref reader, Candidate);
+                ReadBuffer(ref reader, Accepted);
+                PendingFrame = reader.Read<bool>() ? ReadFrame(ref reader, Candidate) : default;
+                HasCachedFrame = reader.Read<bool>();
+                CachedFrame = HasCachedFrame ? ReadFrame(ref reader, Accepted) : default;
+            }
 
             public void Restart(ulong sourceGeneration, OrchestrationTime startTime, int cycle)
             {
