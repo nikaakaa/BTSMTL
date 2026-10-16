@@ -8,6 +8,7 @@ namespace BTSMTL.Orchestration
         where TPlayback : unmanaged
     {
         public OrchestrationStateRegion<TPlayback> Playbacks { get; }
+        public OrchestrationStateRegion<OrchestrationTimelineSequenceState> Sequences { get; }
         public OrchestrationStateRegion<OrchestrationTimelineClipOccurrence> TreeExitRequests { get; }
         public OrchestrationStateRegion<OrchestrationTimelineTreeExitRange> TreeExits { get; }
     }

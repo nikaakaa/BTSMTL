@@ -52,6 +52,9 @@ namespace BTSMTL.Timeline.Runtime
             throw new InvalidOperationException("Timeline playbacks exceed the prepared candidate capacity.");
         }
 
+        public ulong AllocatePlaybackIdentity(OrchestrationStateView candidate) =>
+            checked(++candidate.Get(m_Layout.Sequences)[0].NextPlaybackIdentity);
+
         public ref OrchestrationTimelinePlaybackState<TTime> Playback(OrchestrationStateView candidate, int slot) =>
             ref candidate.Get(m_Layout.Playbacks)[slot];
 

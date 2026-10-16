@@ -40,10 +40,10 @@ namespace BTSMTL.Timeline.Runtime
 
         public OrchestrationTimelineStateLayout<TPlayback> CreateLayout<TPlayback>(
             StableHash contentIdentity, NumericProfileId numericProfile, TargetAbiVersion targetAbi,
-            Func<StableHash, NumericProfileId, TargetAbiVersion, int, int, int,
+            Func<StableHash, NumericProfileId, TargetAbiVersion, int, int, int, int,
                 OrchestrationTimelineStateLayout<TPlayback>> generatedFactory)
             where TPlayback : unmanaged =>
-            generatedFactory(contentIdentity, numericProfile, targetAbi, PlaybackCount,
+            generatedFactory(contentIdentity, numericProfile, targetAbi, PlaybackCount, 1,
                 checked(PlaybackCount * TreeExitRequestsPerPlayback),
                 checked(PlaybackCount * TreeExitsPerPlayback));
     }

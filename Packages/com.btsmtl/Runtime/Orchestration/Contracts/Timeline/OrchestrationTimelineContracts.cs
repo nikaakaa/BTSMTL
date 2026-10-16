@@ -182,7 +182,7 @@ namespace BTSMTL.Orchestration
         where TContext : struct
     {
         OrchestrationTimelineStart<TTime> Start(int operationIndex, int contentIdentityId,
-            ulong operationGeneration, ulong tick, ReadOnlySpan<TValue> inputs,
+            ulong playbackIdentity, ulong operationGeneration, ulong tick, ReadOnlySpan<TValue> inputs,
             ref TContext context);
 
         OrchestrationTimelineStep<TTime> Step(int operationIndex,

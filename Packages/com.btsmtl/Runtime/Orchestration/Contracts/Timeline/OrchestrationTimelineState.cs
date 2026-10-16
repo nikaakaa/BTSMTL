@@ -5,6 +5,13 @@ namespace BTSMTL.Orchestration
 {
     [ValueStorage]
     [ValueOperations(Resources = false)]
+    public partial struct OrchestrationTimelineSequenceState : IEquatable<OrchestrationTimelineSequenceState>
+    {
+        public ulong NextPlaybackIdentity;
+    }
+
+    [ValueStorage]
+    [ValueOperations(Resources = false)]
     public partial struct OrchestrationTimelineControl<TTime> :
         IEquatable<OrchestrationTimelineControl<TTime>>
         where TTime : unmanaged, IEquatable<TTime>

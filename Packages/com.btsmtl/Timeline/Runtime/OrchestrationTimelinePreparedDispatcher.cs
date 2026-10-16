@@ -46,7 +46,7 @@ namespace BTSMTL.Timeline.Runtime
             if (playbackIdentity == 0)
             {
                 OrchestrationTimelineStart<TTime> start = m_Bindings.Start(operationIndex, contentIdentityId,
-                    operationGeneration, tick, inputs, ref context);
+                    m_Runtime.AllocatePlaybackIdentity(candidate), operationGeneration, tick, inputs, ref context);
                 slot = m_Runtime.FindFreePlayback(candidate);
                 m_Runtime.Start(candidate, slot, in start);
                 playbackIdentity = start.PlaybackIdentity;
