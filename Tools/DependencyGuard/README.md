@@ -99,13 +99,27 @@ Catalog 已接收且有实际源码 owner 的每个程序集都执行退役类�
 UnityReferencePolicyCapture.Capture(batchId, typeof(UnityEditor.EditorApplication).Assembly, compilationContext)
 ```
 
-方法不注册回调、不安装监控、不触发编译、不调用引用选择方法。它直接读取该回调对应的原 `ActiveBuild`、`Settings`、`ScriptAssemblies`、`customTargetAssemblies`、当前官方提供方缓存及原静态政策字段，并在同次回调调用官方 `UnityEditor.PackageManager.PackageInfo.GetAllRegisteredPackages()` 读取当前已注册选包结果。返回值必须在该次回调中立即由既有记录器序列化并保留 SHA，作为本次过程实际 Outputs；实际采用的采集源码须在 Inputs，字节 SHA 须匹配 `unityActualBoundary.policyCaptureSourceSHA256`。q3 在明确释放后以私有采集候选采用这份原源，不擅自写入冻结 Unity 工程。新增选包读取只核实了安装 DLL 中的真实公开方法和属性，尚未执行本版采集。
+方法不注册回调、不安装监控、不触发编译、不调用引用选择方法。它直接读取该回调对应的原 `ActiveBuild`、`Settings`、`ScriptAssemblies`、`customTargetAssemblies`、当前官方提供方缓存及原静态政策字段，并在同次回调调用官方 `UnityEditor.PackageManager.PackageInfo.GetAllRegisteredPackages()` 读取当前已注册选包结果。返回值在真实回调阶段由原记录器序列化并保留 SHA，作为本批过程的实际 Outputs；实际采集源码须在 Inputs，字节 SHA 匹配 `unityActualBoundary.policyCaptureSourceSHA256`。正式操作开始前冻结既存输入，本批生成项沿真实生产步骤与回执追溯，结束前核对稳定性。公开回调不代表逐条 Csc 输入形成后且执行前的瞬时钩子，不增加该执行条件，也不能只靠前后 SHA 相同补造缺失回执。
 
 快照为 `UnityReferencePolicyFacts` 的 Version2，保留真实加载生产者的路径／MVID、项目与编译设置、原目标／脚本对象、预编译缓存的 Path／Flags／Redirected、原自动包集合、TestRunner 原常量与实际开关、原 CodeGen 政策常量，并新增必需的 `SelectedPackages` 数组。每项 `{ Name, Version, PackageId, Source, AssetPath, ResolvedPath }` 均直接来自上述官方已注册包对象；`Source` 是原枚举的文本表示。原缓存为 null 仍保留 null，不补空数组。目标的 `References` 已是合并值，工具不声称恢复插入前列表。原 `CompilerOptions.ResponseFiles/AdditionalCompilerArguments` 参与同一 rsp 解析器和声明判断，原文件及嵌套文件必须属于真实执行 Inputs。
 
 Unity 原件中的 `Packages/<包ID>/...` 是正式虚拟包路径。接收边界先接收同批原始政策与 `SelectedPackages`，核对 `ResolvedPath/package.json` 的实际 name／version、正式虚拟根及执行时 SHA，然后用该唯一已选根解析本批政策、rsp、参考与嵌套响应文件；注册表、Git、本地、内置及嵌入包沿同一路径，不猜 `PackageCache` 目录或固定包名。每份已选包的真实 `package.json` 必须进入同批 `Files` 和编译流程 `Receipt.Inputs`；此前未读到的已选外部根由原声明／源码加载器纳入同一 Catalog 和输入 SHA。虚拟根没有对应的本批原始选包事实时明确未完成，不回退拼接 `Client/Packages`。独立声明阶段仍读取正式 manifest 的 `file:` 包，以便缺 Unity 证据时继续该阶段的真实结构检查。
 
 `DependencyCatalog.ReferencePolicies.cs` 对提出的单项来源主张核对原事实，不运行 Unity 选择过程，也不由“最终参考减声明”制造自动集合。可核对的 Kind 为 `DefaultPrecompiled`、`DefaultEngine`、`AutoReferencedPackage`、`TestRunner`、`NUnit`；包／测试名称全部来自该次官方原字段，没有 UI／NUnit 名称允许表。预编译缓存只在实际 Editor 且无额外 defines 的原保存分支有效；重定向或没有原缓存的候选不能获证。平台模块的临时 `EditorAssemblyReferences` 没有保存在该快照中，此类别仍未完成，不能靠安装路径、事后 getter 或新插桩补成已证来源。没有主张的参考继续保留并应用完整依赖规则，不自动获得豁免。
+
+## 自动来源主张生成
+
+原采集器只提供 Version2 事实。正式工具的生成入口与完整检查共用 `DependencyCatalog.ReferencePolicies.cs` 中唯一的来源资格判定，运行器不复制 flags、包名或测试程序集判断：
+
+```powershell
+dotnet Tools/DependencyGuard/bin/Release/net9.0/Btsmtl.DependencyGuard.dll --sdk-root D:/Unity_Project_1/BTSMTL --client-root D:/Unity_Project_1/3C/3cDemo/Client/3C_Client --rules Tools/DependencyGuard/rules.json --produce-reference-policies D:/evidence/policy-request.json --report D:/evidence/policy-claims.json
+```
+
+DLL 使用串行队列本次实际构建的产物；目标框架目录随构建所用 SDK 主版本变化。请求合同见 `AutomaticReferencePolicyProductionRequest`：`Version=1`，`BatchId`、`ClientRoot`、`RulesSHA256`、完整实际 `Files`、已核定 `Installations`，以及实际 `Compilations`。每个目标提供 `AssemblyDefinition`、`ResponseFile`、`WorkingDirectory`、`ReferencePolicyFacts`、`PolicyCaptureSource`、`OriginId` 与本批成功 `Receipt`。复用既有文件、安装与执行回执格式；回执须保存原事实输出，以及真实 rsp、源码、生成器输入、安装原件和已选包声明的输入身份。此时不需要尚未生成的 CompilerTrace，避免主张与自身接收回执形成循环。
+
+输出按目标保存完整 rsp `References` 和推导的 `AutomaticReferencePolicies`，并保存实际工具／规则／输入身份与结束时稳定性。多种原合法来源重叠时选原判定顺序中的第一项，接收端仍承认全部原合法来源；没有获证的参考继续留在完整输入中。生成入口不修改 rsp 或重选引用，不代替项目声明、源码使用和实际产物闭包的最终判定。
+
+运行器将结果接入同批正式 CompilerTrace，并记录真实生成／采用步骤，然后调用原完整守护。生成入口退出 0 只表示本次主张生产完成且读取输入稳定，输出明确 `ScanCompleted=false`、`QuantumChecked=false`。这份新入口源码仍待串行队列实际构建与同批执行；不能沿用旧 DLL 冒充已经包含该功能。
 
 ## 扫描阶段完整性
 

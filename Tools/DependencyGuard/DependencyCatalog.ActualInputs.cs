@@ -41,7 +41,15 @@ sealed partial class DependencyCatalog
         if (unityBatch.Version != 2 || unityBatch.BatchId.Length == 0 || unityBatch.RulesSHA256 != RulesSHA256 ||
             !Path.GetFullPath(unityBatch.ClientRoot).Equals(clientRoot, StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException("编译证据版本、批次、当前规则身份或目标 Client 不匹配。");
-        foreach (BoundaryFile file in unityBatch.Files)
+        LoadBoundaryFiles(unityBatch.Files);
+        LoadOfficialInstallations();
+        foreach (UnityCompilationProof proof in unityBatch.Compilations)
+            LoadActualCompilation(proof);
+    }
+
+    void LoadBoundaryFiles(BoundaryFile[] files)
+    {
+        foreach (BoundaryFile file in files)
         {
             string path = Path.GetFullPath(file.Path);
             if (!boundaryFiles.TryAdd(path, file))
@@ -51,7 +59,7 @@ sealed partial class DependencyCatalog
                 throw new InvalidDataException($"本批输入身份已变化：{path}。");
             boundaryBytes.Add(path, bytes);
         }
-        foreach (BoundaryFile file in unityBatch.Files.Where(file => file.Kind == "assembly"))
+        foreach (BoundaryFile file in files.Where(file => file.Kind == "assembly"))
         {
             ActualBinary binary = ReadActualBinary(Path.GetFullPath(file.Path));
             if (binaryIdentities.TryGetValue(binary.Identity, out ActualBinary? prior))
@@ -61,9 +69,6 @@ sealed partial class DependencyCatalog
             }
             else binaryIdentities.Add(binary.Identity, binary);
         }
-        LoadOfficialInstallations();
-        foreach (UnityCompilationProof proof in unityBatch.Compilations)
-            LoadActualCompilation(proof);
     }
 
     public void DiscardActualUnityInputs()
@@ -93,10 +98,10 @@ sealed partial class DependencyCatalog
                 ? System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow : System.Text.Json.Serialization.JsonUnmappedMemberHandling.Skip }) ??
         throw new InvalidDataException($"正式证据必须是完整对象：{path}。");
 
-    CompilationExecutionReceipt ExecutionReceipt(string path)
+    CompilationExecutionReceipt ExecutionReceipt(string path, string batchId)
     {
         var receipt = ActualJson<CompilationExecutionReceipt>(path);
-        if (receipt.BatchId != unityBatch!.BatchId || receipt.ExitCode != 0)
+        if (receipt.BatchId != batchId || receipt.ExitCode != 0)
             throw new InvalidDataException($"没有本批成功执行的正式回执：{path}。");
         foreach ((string inputPath, string hash) in receipt.Inputs.Concat(receipt.Outputs))
         {
@@ -110,34 +115,37 @@ sealed partial class DependencyCatalog
     void LoadOfficialInstallations()
     {
         foreach (OfficialInstallation installation in unityBatch!.Installations)
-        {
-            OfficialProducerRule[] matches = rules.UnityActualBoundary.OfficialProducers.Where(rule => rule.Id == installation.OriginId).ToArray();
-            if (matches.Length != 1)
-                throw new InvalidDataException($"没有唯一已核定的官方生产来源：{installation.OriginId}。");
-            OfficialProducerRule rule = matches[0];
-            foreach (string path in new[] { installation.Producer, installation.VersionFile, installation.RuntimeAssembly }) ActualBytes(path);
-            if (!boundaryFiles[Path.GetFullPath(installation.Producer)].SHA256.Equals(rule.ProducerSHA256, StringComparison.OrdinalIgnoreCase) ||
-                !boundaryFiles[Path.GetFullPath(installation.VersionFile)].SHA256.Equals(rule.VersionFileSHA256, StringComparison.OrdinalIgnoreCase) ||
-                !boundaryFiles[Path.GetFullPath(installation.RuntimeAssembly)].SHA256.Equals(rule.RuntimeSHA256, StringComparison.OrdinalIgnoreCase))
-                throw new InvalidDataException($"官方来源、安装版本或原始运行程序集身份不匹配：{rule.Origin} {rule.Version}。");
-            officialInstallations.Add(rule.Id, (rule, installation));
-            if (rule.AssetBaseTypes.Length != 0)
-                officialRuntimeEngineDependencies.Add(rule.Id, ActualClosure(ReadActualBinary(installation.RuntimeAssembly))
-                    .Where(binary => BinaryReferenceKind(binary.Path, binary.Name) == "UnityEngineLibrary")
-                    .Select(binary => binary.Identity).ToArray());
-        }
+            LoadOfficialInstallation(installation);
         foreach (OfficialGenerationProof generation in unityBatch.Generations)
         {
             if (!officialInstallations.TryGetValue(generation.OriginId, out var origin))
                 throw new InvalidDataException($"生成回执缺少已核定的安装来源：{generation.OriginId}。");
             if (origin.Rule.Kind != "QuantumGenerator")
                 throw new InvalidDataException($"生成来源种类不匹配：{generation.OriginId}。");
-            CompilationExecutionReceipt receipt = ExecutionReceipt(generation.Receipt);
+            CompilationExecutionReceipt receipt = ExecutionReceipt(generation.Receipt, unityBatch.BatchId);
             RequireReceiptInput(receipt, origin.Installation.Producer);
             RequireReceiptInput(receipt, origin.Installation.VersionFile);
             foreach (string output in receipt.Outputs.Keys.Where(output => output.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)))
                 officialGeneratedSources.Add(Path.GetFullPath(output), (origin.Rule, generation.Receipt));
         }
+    }
+
+    void LoadOfficialInstallation(OfficialInstallation installation)
+    {
+        OfficialProducerRule[] matches = rules.UnityActualBoundary.OfficialProducers.Where(rule => rule.Id == installation.OriginId).ToArray();
+        if (matches.Length != 1)
+            throw new InvalidDataException($"没有唯一已核定的官方生产来源：{installation.OriginId}。");
+        OfficialProducerRule rule = matches[0];
+        foreach (string path in new[] { installation.Producer, installation.VersionFile, installation.RuntimeAssembly }) ActualBytes(path);
+        if (!boundaryFiles[Path.GetFullPath(installation.Producer)].SHA256.Equals(rule.ProducerSHA256, StringComparison.OrdinalIgnoreCase) ||
+            !boundaryFiles[Path.GetFullPath(installation.VersionFile)].SHA256.Equals(rule.VersionFileSHA256, StringComparison.OrdinalIgnoreCase) ||
+            !boundaryFiles[Path.GetFullPath(installation.RuntimeAssembly)].SHA256.Equals(rule.RuntimeSHA256, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException($"官方来源、安装版本或原始运行程序集身份不匹配：{rule.Origin} {rule.Version}。");
+        officialInstallations.Add(rule.Id, (rule, installation));
+        if (rule.AssetBaseTypes.Length != 0)
+            officialRuntimeEngineDependencies.Add(rule.Id, ActualClosure(ReadActualBinary(installation.RuntimeAssembly))
+                .Where(binary => BinaryReferenceKind(binary.Path, binary.Name) == "UnityEngineLibrary")
+                .Select(binary => binary.Identity).ToArray());
     }
 
     static void RequireReceiptInput(CompilationExecutionReceipt receipt, string path)
@@ -162,14 +170,15 @@ sealed partial class DependencyCatalog
             else yield return argument;
     }
 
-    string ResolveActualReference(string reference, UnityCompilationProof proof, CSharpCommandLineArguments arguments)
+    string ResolveActualReference(string reference, string workingDirectory, string responseFile,
+        CSharpCommandLineArguments arguments)
     {
-        string[] paths = new[] { UnityPolicyPath(reference, proof.WorkingDirectory) }
-            .Concat(arguments.ReferencePaths.Select(directory => UnityPolicyPath(FullPath(directory, reference), proof.WorkingDirectory)))
+        string[] paths = new[] { UnityPolicyPath(reference, workingDirectory) }
+            .Concat(arguments.ReferencePaths.Select(directory => UnityPolicyPath(FullPath(directory, reference), workingDirectory)))
             .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         string? resolved = paths.FirstOrDefault(File.Exists);
         if (resolved is null)
-            throw new InvalidDataException($"实际 rsp 引用无法按编译器路径解析：{proof.ResponseFile}；{reference}。");
+            throw new InvalidDataException($"实际 rsp 引用无法按编译器路径解析：{responseFile}；{reference}。");
         ActualBytes(resolved);
         return resolved;
     }
@@ -178,7 +187,7 @@ sealed partial class DependencyCatalog
     {
         string definition = Path.GetFullPath(proof.AssemblyDefinition);
         string projectPath = Path.GetFullPath(proof.Project);
-        CompilationExecutionReceipt receipt = ExecutionReceipt(proof.Receipt);
+        CompilationExecutionReceipt receipt = ExecutionReceipt(proof.Receipt, unityBatch!.BatchId);
         var trace = ActualJson<UnityCompilerTrace>(proof.CompilerTrace);
         if (!receipt.Outputs.Keys.Any(output => Path.GetFullPath(output).Equals(Path.GetFullPath(proof.CompilerTrace), StringComparison.OrdinalIgnoreCase)))
             throw new InvalidDataException($"实际编译输入生产记录缺少本批输出身份：{proof.CompilerTrace}。");
@@ -191,7 +200,8 @@ sealed partial class DependencyCatalog
             throw new InvalidDataException($"自动候选未来自已核定的安装编译器：{trace.OriginId}。");
         RequireReceiptInput(receipt, origin.Installation.Producer);
         RequireReceiptInput(receipt, origin.Installation.VersionFile);
-        UnityReferencePolicyFacts policies = ReadReferencePolicyFacts(trace, receipt, origin.Installation);
+        UnityReferencePolicyFacts policies = ReadReferencePolicyFacts(trace.ReferencePolicyFacts,
+            trace.PolicyCaptureSource, receipt, origin.Installation, unityBatch.BatchId);
         if (!byPath.TryGetValue(definition, out Module? owner) || owner.Kind != "asmdef" ||
             !byPath.TryGetValue(projectPath, out Module? project) || project.Kind != "project" ||
             !Path.GetDirectoryName(projectPath)!.Equals(clientRoot, StringComparison.OrdinalIgnoreCase) ||
@@ -207,9 +217,10 @@ sealed partial class DependencyCatalog
             !receipt.Outputs.Keys.Any(output => Path.GetFullPath(output).Equals(outputPath, StringComparison.OrdinalIgnoreCase)))
             throw new InvalidDataException($"当前产物不是实际 rsp 的本批输出：{proof.ResponseFile}；{proof.Output}。");
         string[] sourcePaths = arguments.SourceFiles.Select(source => UnityPolicyPath(source.Path, proof.WorkingDirectory)).ToArray();
-        string[] referencePaths = arguments.MetadataReferences.Select(reference => ResolveActualReference(reference.Reference, proof, arguments)).ToArray();
+        string[] referencePaths = arguments.MetadataReferences.Select(reference =>
+            ResolveActualReference(reference.Reference, proof.WorkingDirectory, proof.ResponseFile, arguments)).ToArray();
         foreach (string path in sourcePaths.Concat(referencePaths).Concat(arguments.AnalyzerReferences.Select(reference =>
-                     ResolveActualReference(reference.FilePath, proof, arguments))).Concat(arguments.AdditionalFiles.Select(source =>
+                     ResolveActualReference(reference.FilePath, proof.WorkingDirectory, proof.ResponseFile, arguments))).Concat(arguments.AdditionalFiles.Select(source =>
                      UnityPolicyPath(source.Path, proof.WorkingDirectory))).Concat(arguments.AnalyzerConfigPaths.Select(path => UnityPolicyPath(path, proof.WorkingDirectory))))
         {
             ActualBytes(path);

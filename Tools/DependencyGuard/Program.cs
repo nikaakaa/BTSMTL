@@ -11,6 +11,7 @@ static class Program
         if (args.Length == 0 || args.Contains("--help"))
         {
             Console.WriteLine("DependencyGuard --sdk-root <BTSMTL> [--client-root <UnityClient>] [--unity-evidence <batch.json>] [--rules <rules.json>] [--report <report.json>]");
+            Console.WriteLine("DependencyGuard --sdk-root <BTSMTL> --client-root <UnityClient> --produce-reference-policies <request.json> --report <claims.json> [--rules <rules.json>]");
             return args.Length == 0 ? 2 : 0;
         }
         var options = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -34,6 +35,25 @@ static class Program
         catalog.RulesSHA256 = catalog.Inputs[rulePath];
         catalog.GuardExecutionInputs.UnionWith(new[] { rulePath, toolBinaryPath });
         if (catalog.UnityEvidencePath is not null) catalog.GuardExecutionInputs.Add(catalog.UnityEvidencePath);
+        if (options.TryGetValue("--produce-reference-policies", out string? policyRequest))
+        {
+            if (clientRoot is null || !options.TryGetValue("--report", out string? policyOutput))
+                throw new ArgumentException("来源主张生成必须提供 --client-root 与 --report。");
+            catalog.LoadDeclarations();
+            AutomaticReferencePolicyProduction[] policies = catalog.ProduceReferencePolicies(Path.GetFullPath(policyRequest), out string batchId);
+            GuardInput[] policyInputs = ReadFinalInputs(catalog);
+            bool changed = policyInputs.Any(input => input.Changed);
+            int policyExit = changed ? 2 : 0;
+            var result = new { Version = 1, Operation = "ProduceAutomaticReferencePolicies", BatchId = batchId,
+                RulesVersion = rules.Version, RulesSHA256 = catalog.RulesSHA256,
+                ToolBinaryPath = toolBinaryPath, ToolBinarySHA256 = catalog.Inputs[toolBinaryPath],
+                Compilations = policies, Inputs = policyInputs, InputsChanged = changed,
+                ScanCompleted = false, QuantumChecked = false, ExitCode = policyExit };
+            File.WriteAllText(Path.GetFullPath(policyOutput), JsonSerializer.Serialize(result,
+                new JsonSerializerOptions { WriteIndented = true }), new UTF8Encoding(false));
+            Console.WriteLine($"DependencyGuard：已生成 {policies.Length} 个目标的自动来源主张；未执行完整守护；输入改变={changed}；退出码 {policyExit}。");
+            return policyExit;
+        }
         var sourceGuard = new SourceGuard(catalog, rules, clientRoot);
         var stages = new List<GuardStage>();
         bool RunStage(string name, bool required, bool available, Action action, string prerequisite)
@@ -107,11 +127,7 @@ static class Program
         Console.WriteLine($"DependencyGuard：{scope}；{catalog.Modules.Count} 份依赖声明，{sourceGuard.SourceCount} 份源码。");
         foreach (Violation violation in violations)
             Console.WriteLine($"{violation.File}({violation.Line}): error {violation.Rule}: [{violation.Module}] {violation.Detail}");
-        var inputs = catalog.Inputs.OrderBy(item => item.Key, StringComparer.Ordinal).Select(item =>
-        {
-            string? finalHash = File.Exists(item.Key) ? Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(item.Key))) : null;
-            return new GuardInput(item.Key, item.Value, finalHash, item.Value != finalHash);
-        }).ToArray();
+        var inputs = ReadFinalInputs(catalog);
         bool inputsChanged = inputs.Any(item => item.Changed);
         bool scanCompleted = stages.All(stage => !stage.Required || stage.Completed) && !inputsChanged;
         bool sourceScanCompleted = sourceScan && !inputsChanged;
@@ -135,6 +151,13 @@ static class Program
         }
         return exitCode;
     }
+
+    static GuardInput[] ReadFinalInputs(DependencyCatalog catalog) =>
+        catalog.Inputs.OrderBy(item => item.Key, StringComparer.Ordinal).Select(item =>
+        {
+            string? finalHash = File.Exists(item.Key) ? Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(item.Key))) : null;
+            return new GuardInput(item.Key, item.Value, finalHash, item.Value != finalHash);
+        }).ToArray();
 
     sealed record GuardStage(string Name, bool Required, bool Completed, string Status, string Detail);
 }

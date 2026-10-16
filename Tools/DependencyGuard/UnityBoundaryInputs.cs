@@ -49,6 +49,31 @@ sealed class UnityCompilerTrace
 
 sealed record AutomaticReferencePolicy(string Reference, string Kind);
 
+sealed class AutomaticReferencePolicyProductionRequest
+{
+    public required int Version { get; init; }
+    public required string BatchId { get; init; }
+    public required string ClientRoot { get; init; }
+    public required string RulesSHA256 { get; init; }
+    public required BoundaryFile[] Files { get; init; }
+    public required OfficialInstallation[] Installations { get; init; }
+    public required AutomaticReferencePolicyProductionCompilation[] Compilations { get; init; }
+}
+
+sealed class AutomaticReferencePolicyProductionCompilation
+{
+    public required string AssemblyDefinition { get; init; }
+    public required string ResponseFile { get; init; }
+    public required string WorkingDirectory { get; init; }
+    public required string ReferencePolicyFacts { get; init; }
+    public required string PolicyCaptureSource { get; init; }
+    public required string OriginId { get; init; }
+    public required string Receipt { get; init; }
+}
+
+sealed record AutomaticReferencePolicyProduction(string AssemblyDefinition, string ResponseFile,
+    string[] References, AutomaticReferencePolicy[] AutomaticReferencePolicies);
+
 sealed class UnityReferencePolicyFacts
 {
     public required int Version { get; init; }
