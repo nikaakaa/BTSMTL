@@ -380,7 +380,8 @@ namespace ThirdPersonGameplay.Movement.Timeline
         public const string TrackKind = "motion-curve.track";
         public const string ClipKind = TimelineContentMotion.Kind;
 
-        public static readonly ITimelineContractProvider Provider = new TimelineContractProvider(
+        public static ITimelineContractProvider CreateProvider(
+            TimelineContentParameterCodec<TimelineContentMotion> codec) => new TimelineContractProvider(
             new[]
             {
                 new TimelineTrackContract(
@@ -404,6 +405,7 @@ namespace ThirdPersonGameplay.Movement.Timeline
                     true,
                     TimelineExecutionDomain.Logic,
                     TimelineOutputKind.LogicFact)
-            });
+            },
+            new ITimelineContentParameterCodec[] { codec });
     }
 }

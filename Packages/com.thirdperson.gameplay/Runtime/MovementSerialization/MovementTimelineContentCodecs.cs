@@ -17,7 +17,7 @@ namespace ThirdPersonSimulation.Serialization
                 bytes => MemoryPackContent.Deserialize<TimelineContentMotion>(bytes));
         }
 
-        public static ITimelineContentParameterCodec Motion { get; }
+        public static TimelineContentParameterCodec<TimelineContentMotion> Motion { get; }
 
         public static byte[] WriteCurves<TScalar>(GameplayAbilityCurve<TScalar>[] curves)
             where TScalar : struct, IComparable<TScalar>, IEquatable<TScalar>
