@@ -53,6 +53,7 @@ namespace BTSMTL.Timeline.Runtime
     {
         internal OrchestrationTimelinePreparedContent(int contentIdentityId, int contentRevisionId,
             TTime duration, int tickRate, OrchestrationTimelinePlaybackMode mode,
+            TimelineExecutionDomain domain,
             ReadOnlyMemory<TimelineSchedulingClip<TTime>> clips,
             ReadOnlyMemory<int> treeOrdinals,
             ReadOnlyMemory<TimelineSchedulingMarker<TTime>> markers,
@@ -68,6 +69,7 @@ namespace BTSMTL.Timeline.Runtime
             Duration = duration;
             TickRate = tickRate;
             Mode = mode;
+            Domain = domain;
             Clips = clips;
             TreeOrdinals = treeOrdinals;
             Markers = markers;
@@ -86,6 +88,7 @@ namespace BTSMTL.Timeline.Runtime
         public TTime Duration { get; }
         public int TickRate { get; }
         public OrchestrationTimelinePlaybackMode Mode { get; }
+        public TimelineExecutionDomain Domain { get; }
         public ReadOnlyMemory<TimelineSchedulingClip<TTime>> Clips { get; }
         public ReadOnlyMemory<int> TreeOrdinals { get; }
         public ReadOnlyMemory<TimelineSchedulingMarker<TTime>> Markers { get; }

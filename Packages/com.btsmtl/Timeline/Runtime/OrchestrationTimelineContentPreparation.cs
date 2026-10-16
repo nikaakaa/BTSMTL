@@ -153,6 +153,7 @@ namespace BTSMTL.Timeline.Runtime
 
         public static bool TryCalculateCapacity<TValue, TScalar>(int programIndex, int operationIndex,
             OrchestrationProgram<TValue> program, TimelineRuntimePreparedContent prepared,
+            TimelineExecutionDomain domain,
             OrchestrationTimelinePreparedEntries entries,
             ReadOnlyMemory<OrchestrationExtensionReference> extensions,
             IOrchestrationScalarValueAccess<TValue, TScalar> values, IScalarMath<TScalar> math,
@@ -162,6 +163,7 @@ namespace BTSMTL.Timeline.Runtime
             where TValue : unmanaged
             where TScalar : unmanaged
         {
+            TimelineRuntimeSchedulingContent scheduling = prepared.Scheduling(domain);
             OrchestrationTimelinePlaybackMode mode =
                 (OrchestrationTimelinePlaybackMode)program.Operation(operationIndex).Integer0;
             if (mode == OrchestrationTimelinePlaybackMode.Loop && prepared.Content.Duration <= OrchestrationTime.Zero)
@@ -173,17 +175,17 @@ namespace BTSMTL.Timeline.Runtime
             }
             var issues = new List<OrchestrationTimelineCapacityIssue>();
             var occurrences = new List<OrchestrationOccurrenceCapacity>();
-            var clipInstances = new int[prepared.SchedulingClips.Length];
+            var clipInstances = new int[scheduling.Clips.Length];
             var exits = new OrchestrationTimelineExitAnalysis<TValue, TScalar>(program, extensions, values, math, projection);
             int activeTrees = 0;
             int decisions = 0;
             int decisionInstances = 0;
             int traversals = mode == OrchestrationTimelinePlaybackMode.Loop
                 ? OrchestrationTimelineLimits.MaximumCycleAdvance + 1 : 1;
-            for (int ordinal = 0; ordinal < prepared.SchedulingClips.Length; ordinal++)
+            for (int ordinal = 0; ordinal < scheduling.Clips.Length; ordinal++)
             {
-                ref readonly TimelineSchedulingClip<OrchestrationTime> clip = ref prepared.SchedulingClips.Span[ordinal];
-                if (!clip.Logic || !clip.Tree || prepared.Content.Duration == OrchestrationTime.Zero)
+                ref readonly TimelineSchedulingClip<OrchestrationTime> clip = ref scheduling.Clips.Span[ordinal];
+                if (!clip.Enabled || !clip.Tree || prepared.Content.Duration == OrchestrationTime.Zero)
                     continue;
                 int instances = 1;
                 if (mode == OrchestrationTimelinePlaybackMode.Loop)
@@ -222,27 +224,27 @@ namespace BTSMTL.Timeline.Runtime
                 content = null;
                 return false;
             }
-            foreach (ref readonly TimelineSchedulingMarker<OrchestrationTime> marker in prepared.SchedulingMarkers.Span)
+            foreach (ref readonly TimelineSchedulingMarker<OrchestrationTime> marker in scheduling.Markers.Span)
                 occurrences.Add(new OrchestrationOccurrenceCapacity(
                     program.Operation(entries.MarkerEntries.Span[marker.Ordinal].OperationIndex).ExecutionFrameOwnerOperationIndex, 1));
             var call = new OrchestrationTimelineCallCapacity(programIndex, operationIndex,
                 prepared.Content.Duration == OrchestrationTime.Zero
                     ? ReadOnlyMemory<OrchestrationOccurrenceCapacity>.Empty : occurrences.ToArray());
             int trees = 0;
-            foreach (ref readonly TimelineSchedulingClip<OrchestrationTime> clip in prepared.SchedulingClips.Span)
-                if (clip.Logic && clip.Tree)
+            foreach (ref readonly TimelineSchedulingClip<OrchestrationTime> clip in scheduling.Clips.Span)
+                if (clip.Enabled && clip.Tree)
                     trees++;
             int sampledClips = 0;
             foreach (TimelineContentClip clip in prepared.Content.Clips)
-                if (!clip.TrackMuted && clip.ExecutionPolicy.IsLogic && clip.ContentKind == TimelineContentKind.Sampled)
+                if (!clip.TrackMuted && clip.ExecutionPolicy.Domain == domain && clip.ContentKind == TimelineContentKind.Sampled)
                     sampledClips++;
             var graphEntries = new List<OrchestrationTimelineEntryTickCapacity>();
-            foreach (int ordinal in prepared.SchedulingTreeOrdinals.Span)
+            foreach (int ordinal in scheduling.TreeOrdinals.Span)
             {
-                if (!prepared.SchedulingClips.Span[ordinal].Logic || prepared.Content.Duration == OrchestrationTime.Zero)
+                if (prepared.Content.Duration == OrchestrationTime.Zero)
                     continue;
                 OrchestrationTimelineEntryBinding entry = entries.ClipEntries.Span[ordinal];
-                ref readonly TimelineSchedulingClip<OrchestrationTime> clip = ref prepared.SchedulingClips.Span[ordinal];
+                ref readonly TimelineSchedulingClip<OrchestrationTime> clip = ref scheduling.Clips.Span[ordinal];
                 int instances = clipInstances[ordinal];
                 int retained = clip.TreeDecision ? instances : 0;
                 graphEntries.Add(new OrchestrationTimelineEntryTickCapacity(entry.Enable.OperationIndex, traversals, 0));
@@ -253,18 +255,18 @@ namespace BTSMTL.Timeline.Runtime
                 graphEntries.Add(new OrchestrationTimelineEntryTickCapacity(entry.Destroy.OperationIndex,
                     mode == OrchestrationTimelinePlaybackMode.Loop ? 0 : instances, instances));
             }
-            foreach (ref readonly TimelineSchedulingMarker<OrchestrationTime> marker in prepared.SchedulingMarkers.Span)
+            foreach (ref readonly TimelineSchedulingMarker<OrchestrationTime> marker in scheduling.Markers.Span)
                 graphEntries.Add(new OrchestrationTimelineEntryTickCapacity(
                     entries.MarkerEntries.Span[marker.Ordinal].OperationIndex, traversals, 0));
             var tickCapacity = new OrchestrationTimelineTickContentCapacity(programIndex, operationIndex,
-                checked((prepared.SchedulingMarkers.Length + 3 * trees) * traversals +
+                checked((scheduling.Markers.Length + 3 * trees) * traversals +
                     (mode == OrchestrationTimelinePlaybackMode.Loop ? 2 * decisionInstances : decisionInstances)), activeTrees,
                 sampledClips, checked(sampledClips * traversals), graphEntries.ToArray());
             content = new OrchestrationTimelinePreparedContent<OrchestrationTime>(
                 program.Operation(operationIndex).TimelineContentIdentityId, prepared.ContentRevisionId, prepared.Content.Duration,
                 tickRate,
-                mode, prepared.SchedulingClips, prepared.SchedulingTreeOrdinals,
-                prepared.SchedulingMarkers, prepared.SchedulingSections,
+                mode, domain, scheduling.Clips, scheduling.TreeOrdinals,
+                scheduling.Markers, scheduling.Sections,
                 entries.ClipEntries, entries.MarkerEntries, activeTrees, decisionInstances,
                 mode == OrchestrationTimelinePlaybackMode.Loop ? checked(decisionInstances + decisions) : decisions,
                 call, in tickCapacity);

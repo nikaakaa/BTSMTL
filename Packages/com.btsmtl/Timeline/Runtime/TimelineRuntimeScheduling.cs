@@ -7,12 +7,12 @@ namespace BTSMTL.Timeline.Runtime
     public readonly struct TimelineSchedulingClip<TTime> where TTime : unmanaged
     {
         public TimelineSchedulingClip(int sortOrdinal, TTime start, TTime end,
-            bool logic, bool tree, bool treeDecision, bool declaredEnd)
+            bool enabled, bool tree, bool treeDecision, bool declaredEnd)
         {
             SortOrdinal = sortOrdinal;
             Start = start;
             End = end;
-            Logic = logic;
+            Enabled = enabled;
             Tree = tree;
             TreeDecision = treeDecision;
             DeclaredEnd = declaredEnd;
@@ -21,7 +21,7 @@ namespace BTSMTL.Timeline.Runtime
         public int SortOrdinal { get; }
         public TTime Start { get; }
         public TTime End { get; }
-        public bool Logic { get; }
+        public bool Enabled { get; }
         public bool Tree { get; }
         public bool TreeDecision { get; }
         public bool DeclaredEnd { get; }
@@ -49,6 +49,28 @@ namespace BTSMTL.Timeline.Runtime
 
         public int Ordinal { get; }
         public TTime Time { get; }
+    }
+
+    public sealed class TimelineRuntimeSchedulingContent
+    {
+        internal TimelineRuntimeSchedulingContent(TimelineExecutionDomain domain,
+            ReadOnlyMemory<TimelineSchedulingClip<OrchestrationTime>> clips,
+            ReadOnlyMemory<int> treeOrdinals,
+            ReadOnlyMemory<TimelineSchedulingMarker<OrchestrationTime>> markers,
+            ReadOnlyMemory<TimelineSchedulingSection<OrchestrationTime>> sections)
+        {
+            Domain = domain;
+            Clips = clips;
+            TreeOrdinals = treeOrdinals;
+            Markers = markers;
+            Sections = sections;
+        }
+
+        public TimelineExecutionDomain Domain { get; }
+        public ReadOnlyMemory<TimelineSchedulingClip<OrchestrationTime>> Clips { get; }
+        public ReadOnlyMemory<int> TreeOrdinals { get; }
+        public ReadOnlyMemory<TimelineSchedulingMarker<OrchestrationTime>> Markers { get; }
+        public ReadOnlyMemory<TimelineSchedulingSection<OrchestrationTime>> Sections { get; }
     }
 
     public readonly struct TimelineSchedulingBoundary<TTime> where TTime : unmanaged
@@ -142,7 +164,7 @@ namespace BTSMTL.Timeline.Runtime
             {
                 OrchestrationTimelineClipOccurrence exit = pending[i];
                 ref readonly TimelineSchedulingClip<TTime> clip = ref clips[exit.ClipOrdinal];
-                if (clip.Logic && clip.TreeDecision)
+                if (clip.Enabled && clip.TreeDecision)
                     result[count++] = new TimelineSchedulingBoundary<TTime>(exit.ClipOrdinal,
                         clip.SortOrdinal, clock.Add(nextTime, clock.Multiply(duration,
                             clock.FromInt32(nextCycle - exit.Cycle))), exit.Cycle, false);
@@ -155,7 +177,7 @@ namespace BTSMTL.Timeline.Runtime
                     for (int i = 0; i < clips.Length; i++)
                     {
                         ref readonly TimelineSchedulingClip<TTime> clip = ref clips[i];
-                        if (clip.Logic && clock.GreaterThan(previousTime, clip.Start) &&
+                        if (clip.Enabled && clock.GreaterThan(previousTime, clip.Start) &&
                             (clip.TreeDecision || clock.GreaterThan(clip.End, previousTime)))
                             result[count++] = new TimelineSchedulingBoundary<TTime>(i,
                                 clip.SortOrdinal, previousTime, previousCycle, true);
@@ -170,7 +192,7 @@ namespace BTSMTL.Timeline.Runtime
                     for (int i = 0; i < clips.Length; i++)
                     {
                         ref readonly TimelineSchedulingClip<TTime> clip = ref clips[i];
-                        if (!clip.Logic)
+                        if (!clip.Enabled)
                             continue;
                         if ((clock.GreaterThan(clip.Start, from) || includeStart && clock.Equal(clip.Start, from)) &&
                             clock.LessThanOrEqual(clip.Start, to) &&
@@ -361,7 +383,7 @@ namespace BTSMTL.Timeline.Runtime
             TTime time, int cycle, ReadOnlySpan<OrchestrationTimelineTreeExitRange> exited)
         {
             TClock clock = default;
-            return clip.Logic && clock.LessThanOrEqual(clip.Start, time) &&
+            return clip.Enabled && clock.LessThanOrEqual(clip.Start, time) &&
                 (clip.TreeDecision ? !Contains(exited, ordinal, cycle) : clock.GreaterThan(clip.End, time));
         }
 

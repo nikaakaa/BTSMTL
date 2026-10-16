@@ -92,10 +92,15 @@ namespace BTSMTL.Timeline.Runtime
         public TimelineRuntimePreparedDependencies PreparedDependencies { get; }
         public IReadOnlyList<string> Errors { get; }
         public bool IsReady => Status == TimelineRuntimePreparationStatus.Ready;
-        public ReadOnlyMemory<TimelineSchedulingClip<OrchestrationTime>> SchedulingClips { get; private set; }
-        public ReadOnlyMemory<int> SchedulingTreeOrdinals { get; private set; }
-        public ReadOnlyMemory<TimelineSchedulingMarker<OrchestrationTime>> SchedulingMarkers { get; private set; }
-        public ReadOnlyMemory<TimelineSchedulingSection<OrchestrationTime>> SchedulingSections { get; private set; }
+        TimelineRuntimeSchedulingContent m_LogicScheduling;
+        TimelineRuntimeSchedulingContent m_PresentationScheduling;
+
+        public TimelineRuntimeSchedulingContent Scheduling(TimelineExecutionDomain domain) => domain switch
+        {
+            TimelineExecutionDomain.Logic => m_LogicScheduling,
+            TimelineExecutionDomain.Presentation => m_PresentationScheduling,
+            _ => throw new ArgumentOutOfRangeException(nameof(domain))
+        };
 
         void BindIdentities(OrchestrationIdentityTable identities)
         {
@@ -115,38 +120,44 @@ namespace BTSMTL.Timeline.Runtime
             int count = Content.Clips.Count;
             var order = new int[count];
             var sortOrdinals = new int[count];
-            var logic = new bool[count];
             for (int i = 0; i < count; i++)
                 order[i] = i;
             Array.Sort(order, (left, right) => string.CompareOrdinal(
                 Content.Clips[left].AuthoringId, Content.Clips[right].AuthoringId));
             for (int i = 0; i < count; i++)
                 sortOrdinals[order[i]] = i;
-            for (int i = 0; i < Index.Logic.Lifetimes.Count; i++)
-                logic[Index.Logic.Lifetimes[i].ContentIndex] = true;
+            var sections = new TimelineSchedulingSection<OrchestrationTime>[Content.Sections.Count];
+            for (int i = 0; i < sections.Length; i++)
+                sections[i] = new TimelineSchedulingSection<OrchestrationTime>(i, Content.Sections[i].Time);
+            m_LogicScheduling = PrepareScheduling(TimelineExecutionDomain.Logic, Index.Logic, sortOrdinals, sections);
+            m_PresentationScheduling = PrepareScheduling(TimelineExecutionDomain.Presentation, Index.Presentation, sortOrdinals, sections);
+        }
+
+        TimelineRuntimeSchedulingContent PrepareScheduling(TimelineExecutionDomain domain,
+            TimelineRuntimeDomainIndex index, int[] sortOrdinals,
+            TimelineSchedulingSection<OrchestrationTime>[] sections)
+        {
+            int count = Content.Clips.Count;
+            var enabled = new bool[count];
+            for (int i = 0; i < index.Lifetimes.Count; i++)
+                enabled[index.Lifetimes[i].ContentIndex] = true;
             var clips = new TimelineSchedulingClip<OrchestrationTime>[count];
             for (int i = 0; i < count; i++)
             {
                 TimelineContentClip clip = Content.Clips[i];
                 clips[i] = new TimelineSchedulingClip<OrchestrationTime>(sortOrdinals[i], clip.StartTime,
-                    clip.EndTime, logic[i], clip.ContentKind == TimelineContentKind.Discrete,
+                    clip.EndTime, enabled[i], clip.ContentKind == TimelineContentKind.Discrete,
                     clip.ExitSource == TimelineClipExitSource.TreeDecision,
                     clip.ContentKind == TimelineContentKind.Discrete && ((TimelineContentTree)clip.Parameters).HasDeclaredEndTime);
             }
-            var markers = new TimelineSchedulingMarker<OrchestrationTime>[Index.Logic.Markers.Count];
-            var sections = new TimelineSchedulingSection<OrchestrationTime>[Content.Sections.Count];
-            var trees = new int[Index.Logic.Trees.Length];
+            var markers = new TimelineSchedulingMarker<OrchestrationTime>[index.Markers.Count];
+            var trees = new int[index.Trees.Length];
             for (int i = 0; i < trees.Length; i++)
-                trees[i] = Index.Logic.Trees[i].ContentIndex;
+                trees[i] = index.Trees[i].ContentIndex;
             for (int i = 0; i < markers.Length; i++)
-                markers[i] = new TimelineSchedulingMarker<OrchestrationTime>(Index.Logic.Markers.ContentIndexAt(i),
-                    Index.Logic.Markers[i].Time);
-            for (int i = 0; i < sections.Length; i++)
-                sections[i] = new TimelineSchedulingSection<OrchestrationTime>(i, Content.Sections[i].Time);
-            SchedulingClips = clips;
-            SchedulingTreeOrdinals = trees;
-            SchedulingMarkers = markers;
-            SchedulingSections = sections;
+                markers[i] = new TimelineSchedulingMarker<OrchestrationTime>(index.Markers.ContentIndexAt(i),
+                    index.Markers[i].Time);
+            return new TimelineRuntimeSchedulingContent(domain, clips, trees, markers, sections);
         }
 
         internal static TimelineRuntimePreparedContent Failed(

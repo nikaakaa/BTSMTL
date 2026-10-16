@@ -478,7 +478,7 @@ namespace BTSMTL.Timeline.Runtime
         {
             firstCycle = playback.Progress.Cycle;
             lastCycle = firstCycle;
-            if (!clip.Logic || !clip.Tree)
+            if (!clip.Enabled || !clip.Tree)
                 return false;
             TClock clock = default;
             bool skippedInitial = playback.Progress.InitialBoundaryState == OrchestrationTimelineInitialBoundaryState.Skipped &&
