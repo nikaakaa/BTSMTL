@@ -55,14 +55,4 @@ namespace ThirdPersonSimulation
         Overflow = 11
     }
 
-    internal enum GameplayEffectRemoveSelector : byte
-    {
-        Handle = 0,
-        EffectId = 1,
-        SourceActor = 2,
-        EffectTagQuery = 3,
-        Holder = 4,
-        HeldByAction = 5
-    }
-
 }
