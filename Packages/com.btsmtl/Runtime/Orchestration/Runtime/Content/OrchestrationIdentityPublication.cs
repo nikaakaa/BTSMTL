@@ -15,5 +15,18 @@ namespace BTSMTL.Orchestration
             entries.CopyTo(values);
             return new OrchestrationIdentityTable(values, OrchestrationIdentityContentHash.Table(values));
         }
+
+        public static OrchestrationIdentityTable Extend(OrchestrationIdentityTable baseline,
+            IEnumerable<string> identities)
+        {
+            var additions = new SortedSet<string>(StringComparer.Ordinal);
+            foreach (string identity in identities)
+                if (!string.IsNullOrEmpty(identity) && !baseline.TryBind(identity.AsSpan(), out _))
+                    additions.Add(identity);
+            var values = new string[baseline.Count + additions.Count];
+            baseline.Entries.Span.CopyTo(values);
+            additions.CopyTo(values, baseline.Count);
+            return new OrchestrationIdentityTable(values, OrchestrationIdentityContentHash.Table(values));
+        }
     }
 }

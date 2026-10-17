@@ -43,6 +43,12 @@ namespace BTSMTL.Orchestration
             for (int i = 0; i < rosterTexts.Length; i++)
                 texts.Add(rosterTexts[i]);
             OrchestrationIdentityTable table = OrchestrationIdentityPublication.Create(texts);
+            return Prepare(table, contentTables, rosterTexts);
+        }
+
+        public static FrozenOrchestrationIdentities Prepare(OrchestrationIdentityTable table,
+            ReadOnlySpan<OrchestrationIdentityTable> contentTables, ReadOnlySpan<string> rosterTexts)
+        {
             var mappings = new ReadOnlyMemory<int>[contentTables.Length];
             for (int tableIndex = 0; tableIndex < contentTables.Length; tableIndex++)
             {

@@ -7,15 +7,23 @@ namespace BTSMTL.Orchestration
     [ValueStorage(UseConstructor = true)]
     public sealed partial class OrchestrationIdentityTable
     {
+        [ValueStorageIgnore] readonly int[] m_SortedIdentityIds;
+
         public OrchestrationIdentityTable(ReadOnlyMemory<string> entries, StableHash identity)
         {
             Entries = entries;
             Identity = identity;
+            m_SortedIdentityIds = new int[entries.Length];
+            for (int i = 0; i < m_SortedIdentityIds.Length; i++)
+                m_SortedIdentityIds[i] = i + 1;
+            Array.Sort(m_SortedIdentityIds, (left, right) =>
+                string.CompareOrdinal(Entries.Span[left - 1], Entries.Span[right - 1]));
         }
 
         public ReadOnlyMemory<string> Entries { get; }
         public StableHash Identity { get; }
         public int Count => Entries.Length;
+        public ReadOnlyMemory<int> SortedIdentityIds => m_SortedIdentityIds;
 
         public string Resolve(int identity) => identity == 0 ? string.Empty : Entries.Span[identity - 1];
 
@@ -37,18 +45,19 @@ namespace BTSMTL.Orchestration
             }
             ReadOnlySpan<string> entries = Entries.Span;
             int low = 0;
-            int high = entries.Length - 1;
+            int high = m_SortedIdentityIds.Length - 1;
             while (low <= high)
             {
                 int middle = low + ((high - low) >> 1);
-                int order = entries[middle].AsSpan().CompareTo(text, StringComparison.Ordinal);
+                int candidate = m_SortedIdentityIds[middle];
+                int order = entries[candidate - 1].AsSpan().CompareTo(text, StringComparison.Ordinal);
                 if (order < 0)
                     low = middle + 1;
                 else if (order > 0)
                     high = middle - 1;
                 else
                 {
-                    identity = middle + 1;
+                    identity = candidate;
                     return true;
                 }
             }

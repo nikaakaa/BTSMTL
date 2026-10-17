@@ -76,14 +76,15 @@ namespace BTSMTL.EventGraphs
                 m_SortedRuntimeIndices[insertion] = current;
             }
 
-            int content = 1;
+            ReadOnlySpan<int> contentIds = m_Frozen.Table.SortedIdentityIds.Span;
+            int content = 0;
             int runtime = 0;
             int rank = 1;
-            while (content <= m_Frozen.Table.Count || runtime < m_Count)
+            while (content < contentIds.Length || runtime < m_Count)
             {
-                if (runtime == m_Count || content <= m_Frozen.Table.Count && string.CompareOrdinal(
-                        m_Frozen.Table.Resolve(content), m_Texts[m_SortedRuntimeIndices[runtime] - 1]) < 0)
-                    m_ContentRanks[content++] = rank++;
+                if (runtime == m_Count || content < contentIds.Length && string.CompareOrdinal(
+                        m_Frozen.Table.Resolve(contentIds[content]), m_Texts[m_SortedRuntimeIndices[runtime] - 1]) < 0)
+                    m_ContentRanks[contentIds[content++]] = rank++;
                 else
                     m_RuntimeRanks[m_SortedRuntimeIndices[runtime++]] = rank++;
             }
