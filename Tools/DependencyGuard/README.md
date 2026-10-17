@@ -38,6 +38,27 @@ try {
 
 报告另外保存实际执行的 `ToolBinaryPath`／`ToolBinarySHA256`，该二进制也参与结束时的输入复核。源码交接 SHA、正式构建回执和实际二进制身份必须对应，不能用同一规则版本的旧工具结果冒充修正后的实现。
 
+## 编译前覆盖准备
+
+已构建的同一 CLI 用 `--prepare-coverage` 在 Arm 前导出正式声明和源码范围，不读取 Unity 编译成功节点、旧 boundary 或编译回执：
+
+```powershell
+dotnet "D:/evidence/dependency-guard-tool/Btsmtl.DependencyGuard.dll" --sdk-root "D:/Unity_Project_1/BTSMTL" --client-root "D:/Unity_Project_1/3C/3cDemo/Client/3C_Client" --rules "D:/Unity_Project_1/BTSMTL/Tools/DependencyGuard/rules.json" --prepare-coverage "D:/evidence/coverage-preparation.json"
+```
+
+工具 DLL 必须来自当前正式 `Tools/DependencyGuard/DependencyGuard.csproj` 的成功构建；输出父目录由调用方建立。准备与完整扫描共用 `LoadDeclarations`、源码归属和作者身份输入。必编范围共用 `CheckActualCompilationCoverage` 的真实选择：Client 根目录中已绑定唯一 asmdef，且受规则控制或属于项目模拟源码依赖的工程；工程映射沿 `BindProjectDefinitions` 的现有绑定，导出全部已绑定的 Client 根工程，不混入同名 SDK 独立工程。
+
+准备输出为 `Version=1`、`Operation="PrepareCompilationCoverage"`，包含 `SdkRoot`、`ClientRoot`、规则及实际工具身份，以及：
+
+- `GuardInputs`：当前正式目录实际读取的绝对路径 → 初始 SHA256，覆盖声明、项目及导入、链接包、已归属源码、角色／技能作者资产、已读取的项目引用 DLL、规则和工具。
+- `RequiredCompilations`：必须取得本批实际编译证据的 asmdef 绝对路径数组。
+- `ProjectMappings`：`{ AssemblyDefinition, Project }` 数组，两项都是实际绝对路径。
+- `Inputs`：逐项初始／结束 SHA256 和 `Changed`；`InputsChanged`、`Violations` 与 `ExitCode` 保留本次准备结果。
+
+退出 0 且 `PreparationCompleted=true` 表示本次准备结束、输入稳定且声明／归属准备无违规；违规退出 1，输入改变退出 2。此模式不执行完整依赖或源码规则检查，`ScanCompleted` 与 `QuantumChecked` 始终为 false。
+
+Q3 原采集工具在本批 Arm 前采用该输出，并结合当前 Build receipt 和 Preflight 创建带本批 `BatchId` 的 `CoverageRecord`。政策采集原件放入 `CaptureInputs`，实际编译候选放入 `CompilerInputs`；新编译产生的文件沿同批真实生产回执接续，不能把准备时已存在的 DLL 身份当作新产物身份。不从成功节点倒推必编范围，不给旧批补写初始身份。准备输出不是 `CoverageRecord`、编译回执或完整守护结果。
+
 ## 规则与解析
 
 `rules.json` 是唯一规则表，当前规则协议使用版本 7；工具只接受该版本，旧工具与旧规则不能忽略新证据协议或退役范围后继续报告通过。它覆盖全部 BTSMTL 程序集与工具、核心合同/运行时、领域合同、Shared 和 Quantum.Simulation；按真实 asmdef 名称解析 GUID 引用，按项目路径解析 ProjectReference 与本地 imports，按 package.json 验证依赖方向与包环。合同的允许引用表约束直接依赖；禁止的实现依赖沿完整依赖链和本批产物 AssemblyReference 闭包检查。构建期 analyzer 不作为运行程序集引用，仍完整保存其实际编译输入身份。
@@ -131,6 +152,8 @@ DLL 使用串行队列本次实际构建的产物；目标框架目录随构建�
 报告保留总体 `ScanCompleted/QuantumChecked`，新增 `Stages`、`DeclarationScanCompleted`、`SourceScanCompleted`、`ActualSourceBindingsCompleted` 和 `ScannedSources`。`SourceScanCompleted` 只说明已归属源的结构规则全部遍历且输入稳定；不能代替实际符号检查。必要阶段缺失或输入变化时总体 `ScanCompleted=false`、`QuantumChecked=false`、退出 2；所有必要阶段完成但有违规时退出 1；当前范围全部完成、稳定且零违规才退出 0。SDK-only 的实际 Unity 阶段标为 NotRequired，`QuantumChecked` 始终 false。明确的输入缺失、JSON／XML 协议及无效 PE 记录到对应未完成阶段；没有全包 catch 或备用扫描器。
 
 ## 当前验证边界
+
+编译前覆盖准备导出的四份源码已通过 Roslyn 语法检查与 diff 检查，规则字节未改。当前共享第 24 批仍持有 Unity／构建资源，本单元未执行工具构建或实际 CLI 准备；不据静态检查报告准备成功或完整 Client 守护通过。后续验证沿同一工具及本节正式命令执行。
 
 版本 2 的 `dependency-guard-current-01` 因并行删除已枚举源码而未完成，不是零违规结果。版本 3 的 current-02 与后续 current-04 均已完成完整稳定扫描并失败；最新 current-04 为 4069 条命中（4064 条 Quantum、5 条插件），不是独立问题数。其后用户明确批准上述实际依赖边界，版本 4 正式替换原候选判定及必要官方元数据边界。该批准不改变旧失败报告，也不能扣除已知误报数量后报告通过。
 

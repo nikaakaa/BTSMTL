@@ -18,12 +18,20 @@ sealed partial class SourceGuard(DependencyCatalog catalog, GuardRules rules, st
     public string[] RoleNames => roles.Order(StringComparer.Ordinal).ToArray();
     public string[] SkillNames => skills.Order(StringComparer.Ordinal).ToArray();
 
-    public void Check()
+    public int PrepareInputs() => ReadInputs().Count();
+
+    IEnumerable<(string Path, Module Owner, string Text)> ReadInputs()
     {
         ReadAuthorIdentities();
         foreach ((string path, Module owner) in catalog.Sources())
+            yield return (path, owner, catalog.ReadText(path));
+    }
+
+    public void Check()
+    {
+        foreach ((string path, Module owner, string source) in ReadInputs())
         {
-            string text = Regex.Replace(catalog.ReadText(path), @"(?m)^[ \t]*#(?:if|elif|else|endif)\b[^\r\n]*", match => new string(' ', match.Length));
+            string text = Regex.Replace(source, @"(?m)^[ \t]*#(?:if|elif|else|endif)\b[^\r\n]*", match => new string(' ', match.Length));
             var root = (CompilationUnitSyntax)CSharpSyntaxTree.ParseText(text, path: path).GetRoot();
             documents.Add((path, owner, root));
             foreach (BaseTypeDeclarationSyntax declaration in root.DescendantNodes().OfType<BaseTypeDeclarationSyntax>())

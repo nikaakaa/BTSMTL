@@ -14,6 +14,9 @@ sealed class UnityBoundaryBatch
 
 sealed record BoundaryFile(string Path, string SHA256, string Kind);
 
+sealed record UnityProjectMapping(string AssemblyDefinition, string Project);
+sealed record UnityCompilationCoverage(string[] RequiredCompilations, UnityProjectMapping[] ProjectMappings);
+
 sealed class UnityCompilationProof
 {
     public required string AssemblyDefinition { get; init; }

@@ -503,14 +503,25 @@ sealed partial class DependencyCatalog
         return references.Any(reference => actual.InputOnlyAssemblies.Contains(reference.Identity) && !IsProjectDeclaredReference(actual.Owner, reference));
     }
 
+    IEnumerable<Module> UnityProjects() => Modules.Where(module => module.Kind == "project" && module.AssemblyDefinitionPath is not null &&
+        Path.GetDirectoryName(module.Path)!.Equals(clientRoot, StringComparison.OrdinalIgnoreCase));
+
+    IEnumerable<Module> RequiredUnityProjects()
+    {
+        if (!Modules.Any(module => module.Kind == "asmdef" && module.Name == "Quantum.Simulation"))
+            throw new InvalidDataException("完整工作区输入没有实际 Quantum.Simulation asmdef，不能声称已检查模拟宿主。");
+        return UnityProjects().Where(module => IsControlled(module) || dependencySourceRules.ContainsKey(module));
+    }
+
+    public UnityCompilationCoverage ReadCompilationCoverage() => new(
+        RequiredUnityProjects().Select(module => module.AssemblyDefinitionPath!).Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.Ordinal).ToArray(),
+        UnityProjects().Select(module => new UnityProjectMapping(module.AssemblyDefinitionPath!, module.Path))
+            .OrderBy(mapping => mapping.AssemblyDefinition, StringComparer.Ordinal).ThenBy(mapping => mapping.Project, StringComparer.Ordinal).ToArray());
+
     public void CheckActualCompilationCoverage()
     {
         if (clientRoot is null) return;
-        if (!Modules.Any(module => module.Kind == "asmdef" && module.Name == "Quantum.Simulation"))
-            throw new InvalidDataException("完整工作区输入没有实际 Quantum.Simulation asmdef，不能声称已检查模拟宿主。");
-        foreach (Module module in Modules.Where(module => module.Kind == "project" && module.AssemblyDefinitionPath is not null &&
-                     Path.GetDirectoryName(module.Path)!.Equals(clientRoot, StringComparison.OrdinalIgnoreCase) &&
-                     (IsControlled(module) || dependencySourceRules.ContainsKey(module))))
+        foreach (Module module in RequiredUnityProjects())
             if (!actualUnityCompilations.ContainsKey(module.AssemblyDefinitionPath!))
                 throw new InvalidDataException($"缺少当前受控 Unity 项目的完整实际编译证据：{module.Path}。");
     }

@@ -12,6 +12,7 @@ static class Program
         {
             Console.WriteLine("DependencyGuard --sdk-root <BTSMTL> [--client-root <UnityClient>] [--unity-evidence <batch.json>] [--rules <rules.json>] [--report <report.json>]");
             Console.WriteLine("DependencyGuard --sdk-root <BTSMTL> --client-root <UnityClient> --produce-reference-policies <request.json> --report <claims.json> [--rules <rules.json>]");
+            Console.WriteLine("DependencyGuard --sdk-root <BTSMTL> --client-root <UnityClient> --prepare-coverage <preparation.json> [--rules <rules.json>]");
             return args.Length == 0 ? 2 : 0;
         }
         var options = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -58,6 +59,30 @@ static class Program
             return policyExit;
         }
         var sourceGuard = new SourceGuard(catalog, rules, clientRoot);
+        if (options.TryGetValue("--prepare-coverage", out string? preparationOutput))
+        {
+            if (clientRoot is null)
+                throw new ArgumentException("编译覆盖准备必须提供 --client-root。");
+            catalog.LoadDeclarations();
+            catalog.PrepareSources();
+            int preparedSourceCount = sourceGuard.PrepareInputs();
+            UnityCompilationCoverage preparedCoverage = catalog.ReadCompilationCoverage();
+            GuardInput[] preparationInputs = ReadFinalInputs(catalog);
+            Violation[] preparationViolations = ReadViolations(catalog);
+            bool changed = preparationInputs.Any(input => input.Changed);
+            int preparationExit = changed ? 2 : preparationViolations.Length == 0 ? 0 : 1;
+            var result = new { Version = 1, Operation = "PrepareCompilationCoverage", SdkRoot = sdkRoot, ClientRoot = clientRoot,
+                RulesVersion = rules.Version, RulesSHA256 = catalog.RulesSHA256,
+                ToolBinaryPath = toolBinaryPath, ToolBinarySHA256 = catalog.Inputs[toolBinaryPath],
+                preparedCoverage.RequiredCompilations, preparedCoverage.ProjectMappings, SourceCount = preparedSourceCount,
+                GuardInputs = preparationInputs.ToDictionary(input => input.Path, input => input.SHA256, StringComparer.OrdinalIgnoreCase),
+                Inputs = preparationInputs, InputsChanged = changed, Violations = preparationViolations,
+                PreparationCompleted = preparationExit == 0, ScanCompleted = false, QuantumChecked = false, ExitCode = preparationExit };
+            File.WriteAllText(Path.GetFullPath(preparationOutput), JsonSerializer.Serialize(result,
+                new JsonSerializerOptions { WriteIndented = true }), new UTF8Encoding(false));
+            Console.WriteLine($"DependencyGuard：已准备 {preparedCoverage.RequiredCompilations.Length} 个必编程序集、{preparedCoverage.ProjectMappings.Length} 份工程映射、{preparedSourceCount} 份源码、{preparationInputs.Length} 项输入；未执行完整守护；输入改变={changed}；退出码 {preparationExit}。");
+            return preparationExit;
+        }
         var stages = new List<GuardStage>();
         bool RunStage(string name, bool required, bool available, Action action, string prerequisite)
         {
@@ -124,8 +149,7 @@ static class Program
             catalog.CheckActualDependencies, "本批完整实际编译覆盖未完成，Unity 自动边和产物依赖尚未判定。");
         bool actualBindings = RunStage("ActualSourceBindings", clientRoot is not null, coverage && sourceScan,
             catalog.CheckActualSourceBindings, "本批完整引用、生成源或结构源码扫描未完成，不能以词法猜测声称语义绑定完成。");
-        Violation[] violations = catalog.Violations.Distinct().OrderBy(item => item.File, StringComparer.Ordinal)
-            .ThenBy(item => item.Line).ThenBy(item => item.Rule, StringComparer.Ordinal).ThenBy(item => item.Detail, StringComparer.Ordinal).ToArray();
+        Violation[] violations = ReadViolations(catalog);
         string scope = clientRoot is null ? "SDK-only（未检查 Quantum 宿主与实际作者身份）" : "完整工作区（SDK + 显式 Client）";
         Console.WriteLine($"DependencyGuard：{scope}；{catalog.Modules.Count} 份依赖声明，{sourceGuard.SourceCount} 份源码。");
         foreach (Violation violation in violations)
@@ -161,6 +185,10 @@ static class Program
             string? finalHash = File.Exists(item.Key) ? Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(item.Key))) : null;
             return new GuardInput(item.Key, item.Value, finalHash, item.Value != finalHash);
         }).ToArray();
+
+    static Violation[] ReadViolations(DependencyCatalog catalog) => catalog.Violations.Distinct()
+        .OrderBy(item => item.File, StringComparer.Ordinal).ThenBy(item => item.Line)
+        .ThenBy(item => item.Rule, StringComparer.Ordinal).ThenBy(item => item.Detail, StringComparer.Ordinal).ToArray();
 
     sealed record GuardStage(string Name, bool Required, bool Completed, string Status, string Detail);
 }
