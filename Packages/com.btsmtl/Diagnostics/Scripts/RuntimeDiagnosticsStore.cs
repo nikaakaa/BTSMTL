@@ -881,6 +881,8 @@ namespace BTSMTL.Diagnostics
         bool m_Terminated;
         bool m_Disposed;
 
+        public event Action CaptureStarted;
+
         public long LiveStateGeneration
         {
             get
@@ -993,6 +995,7 @@ namespace BTSMTL.Diagnostics
                     m_CaptureChannels = channels;
                     m_CaptureDetail = detail;
                     m_CaptureChannelBits = (int)channels;
+                    CaptureStarted?.Invoke();
                     return true;
                 }
 
