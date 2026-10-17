@@ -116,7 +116,8 @@ namespace BTSMTL.Timeline.Editor
             m_Session.GetExecutionAuthoringCapacity(out int timelineCapacity, out int trackCapacity);
             EnsureSurface();
             m_Binding.ReserveAuthoringCapacity(timelineCapacity, trackCapacity);
-            if (m_Binding.CaptureId != timeline.CaptureId)
+            bool captureChanged = m_Binding.CaptureId != timeline.CaptureId;
+            if (captureChanged)
             {
                 ClearSelection();
                 m_Binding.Reset(m_Session.GetExecutionTimeOrigin(RuntimeTraceDomain.Logic),
@@ -124,6 +125,8 @@ namespace BTSMTL.Timeline.Editor
                 m_Slate.EmbeddedScrollPosition = Vector2.zero;
             }
             bool structureReset = m_Binding.Apply(timeline, m_Session.IsFollowingExecution, m_SeekSelection?.StartSequence);
+            if (captureChanged || structureReset)
+                m_Slate.InvalidateEmbeddedClipBindings();
             RuntimeExecutionSpan? selected = m_Binding.SelectedSpan;
             if (selected.HasValue || structureReset)
                 ShowSelection(selected ?? m_SeekSelection);
