@@ -4,7 +4,6 @@ namespace ThirdPersonSimulation.QuantumNumerics
 {
     public readonly struct QuantumSimulationMath :
         IOrchestrationGraphMath<FP, FPVector2, FPVector3, FPQuaternion>,
-        IOrchestrationTimelineClock<FP>,
         IPlanarRotation<FPVector3, FP>,
         IYawMath<FP, FP>
     {
@@ -13,8 +12,6 @@ namespace ThirdPersonSimulation.QuantumNumerics
         public FP NormalizationMinimumMagnitude => FP._0;
         public FP FromInt32(int value) => (FP)value;
         public FP FromInt64(long value) => FP.FromRaw(unchecked(value << FP.Precision));
-        public long Raw(FP value) => value.RawValue;
-        public FP FromRaw(long value) => FP.FromRaw(value);
         public int FloorToInt32(FP value) => FPMath.FloorToInt(value);
         public int TruncateToInt32(FP value) => checked((int)(value.RawValue / FP.Raw._1));
         public FPVector2 ZeroVector2 => FPVector2.Zero;
