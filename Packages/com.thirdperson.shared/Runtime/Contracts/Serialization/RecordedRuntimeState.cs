@@ -12,6 +12,24 @@ namespace ThirdPersonSimulation
         void WriteText(string text);
     }
 
+    public struct RecordedRuntimeStateCountingWriter : IRecordedRuntimeStateWriter
+    {
+        public int WrittenBytes { get; private set; }
+        public int TextReferenceCount { get; private set; }
+
+        public void Write<T>(T value) where T : unmanaged =>
+            WrittenBytes = checked(WrittenBytes + Unsafe.SizeOf<T>());
+
+        public void WriteSpan<T>(ReadOnlySpan<T> values) where T : unmanaged =>
+            WrittenBytes = checked(WrittenBytes + values.Length * Unsafe.SizeOf<T>());
+
+        public void WriteText(string text)
+        {
+            WrittenBytes = checked(WrittenBytes + sizeof(int));
+            TextReferenceCount = checked(TextReferenceCount + 1);
+        }
+    }
+
     public ref struct RecordedRuntimeStateReader
     {
         ReadOnlySpan<byte> m_Bytes;
