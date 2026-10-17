@@ -25,8 +25,6 @@ namespace BTSMTL.Timeline.Editor
         UnityEngine.Object PreviewConfiguration { get; set; }
         void OpenPreview(UnityEngine.Object configuration, UnityEngine.Object animationProfile);
         string PoseParameterPreviewStatus(UnityEngine.Object asset);
-        void ApplyPoseParameterChanges(UnityEngine.Object asset, string graphId, object requests);
-        void SynchronizePoseParameters(UnityEngine.Object asset, string graphId);
         bool TryResolvePreviewActor(out UnityEngine.Object actor, out string error);
         VisualElement CreateControls(TimelineEditorWindow window);
         void ApplyToWindow(TimelineEditorWindow window);
@@ -57,13 +55,6 @@ namespace BTSMTL.Timeline.Editor
 
         public static string PoseParameterPreviewStatus(UnityEngine.Object asset) =>
             s_Controller == null ? "Workbench Preview 尚未装配。" : s_Controller.PoseParameterPreviewStatus(asset);
-
-        public static void ApplyPoseParameterChanges(UnityEngine.Object asset, string graphId,
-            object requests) =>
-            s_Controller?.ApplyPoseParameterChanges(asset, graphId, requests);
-
-        public static void SynchronizePoseParameters(UnityEngine.Object asset, string graphId) =>
-            s_Controller?.SynchronizePoseParameters(asset, graphId);
 
         public static void Register(ITimelineWorkspaceModeController controller)
         {
