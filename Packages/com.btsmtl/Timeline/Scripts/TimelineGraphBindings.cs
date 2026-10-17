@@ -29,7 +29,7 @@ namespace BTSMTL.Timeline
                 throw new InvalidOperationException($"Timeline '{sourcePath}' requires a {(marker ? "TimelineTrigger" : "TimelineBody")} graph.");
             m_Fingerprint ??= graph.CreateTimelineContentFingerprint();
             graph.CollectTimelineContentClosure(closure, sourcePath, domain, m_Fingerprint);
-            string identity = "tree:" + graph.AuthoringId;
+            string identity = TimelineGraphBinding.TreeDependencyIdentity(graph.AuthoringId);
             for (int i = 0; i < closure.Dependencies.Count; i++)
                 if (closure.Dependencies[i].Identity == identity)
                     return new TimelineGraphBinding(identity, closure.Dependencies[i].ContentHash);

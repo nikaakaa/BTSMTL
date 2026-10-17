@@ -129,7 +129,7 @@ namespace BTSMTL.Timeline.Runtime
                 {
                     int ordinal = indexed.ContentIndex;
                     TimelineContentClip clip = content.Clips[ordinal];
-                    string graphId = clip.GraphBinding.GraphId;
+                    string graphId = TimelineGraphBinding.GraphAuthoringId(clip.GraphBinding.GraphId);
                     OrchestrationExecutionEntry enable = BindEntry(ordinal, false, OrchestrationTimelineHook.Enable,
                         sources[(clip.AuthoringId, graphId, "OnEnable")], graph, program, localToShared, metadata);
                     OrchestrationExecutionEntry root = BindEntry(ordinal, false, OrchestrationTimelineHook.Root,
@@ -145,7 +145,7 @@ namespace BTSMTL.Timeline.Runtime
                     int ordinal = domain.Markers.ContentIndexAt(markerIndex);
                     TimelineContentMarker marker = content.Markers[ordinal];
                     markers[ordinal] = BindEntry(ordinal, true, OrchestrationTimelineHook.Enable,
-                        sources[(marker.MarkerId, marker.GraphId, "OnEnable")], graph, program, localToShared, metadata);
+                        sources[(marker.MarkerId, TimelineGraphBinding.GraphAuthoringId(marker.GraphId), "OnEnable")], graph, program, localToShared, metadata);
                 }
             }
             return new OrchestrationTimelinePreparedEntries(clips, markers, metadata.ToArray());

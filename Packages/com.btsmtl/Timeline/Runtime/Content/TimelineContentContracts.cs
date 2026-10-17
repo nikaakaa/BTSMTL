@@ -138,11 +138,21 @@ namespace BTSMTL.Timeline
 
     public readonly struct TimelineGraphBinding
     {
+        public const string TreeDependencyKind = "timeline.tree";
+        const string TreeDependencyPrefix = "tree:";
+
         public TimelineGraphBinding(string graphId, string revision)
         {
             GraphId = graphId;
             Revision = revision;
         }
+
+        public static string TreeDependencyIdentity(string graphAuthoringId) => TreeDependencyPrefix + graphAuthoringId;
+
+        public static string GraphAuthoringId(string treeDependencyIdentity) =>
+            treeDependencyIdentity != null && treeDependencyIdentity.StartsWith(TreeDependencyPrefix, System.StringComparison.Ordinal)
+                ? treeDependencyIdentity.Substring(TreeDependencyPrefix.Length)
+                : throw new System.ArgumentException($"Timeline graph binding '{treeDependencyIdentity}' is not a tree dependency identity.");
 
         public string GraphId { get; }
         public string Revision { get; }
