@@ -451,7 +451,11 @@ namespace BTSMTL.Timeline.Editor
                 sourceGraphAuthoringId ?? string.Empty);
         }
 
-        void OnEnable() => s_Windows.Add(this);
+        void OnEnable()
+        {
+            wantsMouseMove = true;
+            s_Windows.Add(this);
+        }
 
         public void CreateGUI()
         {
