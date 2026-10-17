@@ -17,12 +17,8 @@ namespace ThirdPersonGameplay.Orchestration
                 OrchestrationExtensionContentField.Identity("EventId", "gameplay.action-event");
             public static readonly OrchestrationExtensionContentField Phase =
                 OrchestrationExtensionContentField.Enum<ThirdPersonSimulation.AbilityLifecyclePhase>("Phase");
-            public static readonly OrchestrationExtensionContentField ActionId =
-                OrchestrationExtensionContentField.Identity("ActionId", "gameplay.action");
             public static readonly OrchestrationExtensionContentField CandidateAbility =
                 OrchestrationExtensionContentField.Identity("CandidateAbility", "gameplay.ability");
-            public static readonly OrchestrationExtensionContentField AdmissionProfile =
-                OrchestrationExtensionContentField.Identity("AdmissionProfile", "gameplay.ability-admission-profile");
             public static readonly OrchestrationExtensionContentField TargetSnapshotDeclaration =
                 OrchestrationExtensionContentField.Identity("TargetSnapshotDeclaration", "btsmtl.blackboard-declaration");
             public static readonly OrchestrationExtensionContentField TargetSnapshotOwner =
@@ -132,7 +128,7 @@ namespace ThirdPersonGameplay.Orchestration
 
             public static readonly OrchestrationExtensionDefinition<CanActivateAction> Definition = new OrchestrationExtensionDefinition<CanActivateAction>(
                 new OrchestrationExtensionIdentity(DomainId, "can-activate-action"),
-                4, new OrchestrationExtensionContract(OrchestrationExtensionKind.Condition,
+                5, new OrchestrationExtensionContract(OrchestrationExtensionKind.Condition,
                     OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
                     OrchestrationExtensionCompletion.Immediate,
                     new[]
@@ -143,7 +139,7 @@ namespace ThirdPersonGameplay.Orchestration
                         Result.Declaration
                     }, new[]
                     {
-                        Fields.ActionId, Fields.CandidateAbility, Fields.AdmissionProfile,
+                        Fields.CandidateAbility,
                         Fields.TargetSnapshotDeclaration, Fields.TargetSnapshotOwner,
                         Fields.DefaultTargetId, Fields.DefaultTargetPosition, Fields.DefaultTargetYaw
                     }));
