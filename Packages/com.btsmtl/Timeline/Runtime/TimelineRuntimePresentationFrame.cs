@@ -7,12 +7,13 @@ namespace BTSMTL.Timeline.Runtime
 {
     sealed class TimelineRuntimePresentationBuffer
     {
-        public TimelineRuntimePresentationBuffer(TimelineRuntimePreparedContent prepared, OrchestrationTimelinePlaybackMode mode)
+        public TimelineRuntimePresentationBuffer(TimelineRuntimePreparedContent prepared,
+            OrchestrationTimelinePreparedContent<OrchestrationTime> executionContent)
         {
             TimelineContentUnit content = prepared.Content;
-            int traversals = mode == OrchestrationTimelinePlaybackMode.Loop
+            int traversals = executionContent.Mode == OrchestrationTimelinePlaybackMode.Loop
                 ? OrchestrationTimelineLimits.MaximumCycleAdvance + 1 : 1;
-            int markers = 0, trees = 0;
+            int markers = 0;
             var capacities = new int[prepared.SampleKindCount];
             for (int index = 0; index < content.Clips.Count; index++)
             {
@@ -25,8 +26,6 @@ namespace BTSMTL.Timeline.Runtime
                     int count = clip.Sampling.Window == TimelineSampleWindow.TraversalWindow ? traversals : 1;
                     capacities[kindIndex] = checked(capacities[kindIndex] + count);
                 }
-                else
-                    trees++;
             }
             for (int index = 0; index < content.Markers.Count; index++)
             {
@@ -39,8 +38,9 @@ namespace BTSMTL.Timeline.Runtime
                 Samples[kindIndex] = new TimelineRuntimeSampleBuffer<TimelineRuntimeSample<Float32Scalar>>(capacities[kindIndex]);
             SamplingClips = new List<int>(Math.Max(content.Clips.Count, content.Markers.Count));
             Events = new(checked(markers * traversals));
-            TreeClips = new(checked(trees * (traversals * 3 + 2)));
-            ActiveTreeClips = new(trees);
+            TreeClips = new(checked(executionContent.TickCapacity.GraphInvocationsPerAdvance +
+                2 * executionContent.RequiredActiveTrees));
+            ActiveTreeClips = new(executionContent.RequiredActiveTrees);
         }
 
         public readonly TimelineRuntimeSampleBuffer<TimelineRuntimeSample<Float32Scalar>>[] Samples;

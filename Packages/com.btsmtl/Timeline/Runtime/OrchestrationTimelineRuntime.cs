@@ -178,7 +178,12 @@ namespace BTSMTL.Timeline.Runtime
             {
                 work.InjectedExitCount = pending.Length;
                 for (int i = 0; i < pending.Length; i++)
-                    AppendExit(evaluationExits, ref work.EvaluationExitCount, pending[i]);
+                    AppendExit(evaluationExits, ref work.EvaluationExitCount, new OrchestrationTimelineTreeExitRange
+                    {
+                        ClipOrdinal = pending[i].ClipOrdinal,
+                        FirstCycle = pending[i].Cycle,
+                        LastCycle = pending[i].Cycle
+                    });
             }
             ReadOnlySpan<OrchestrationTimelineTreeExitRange> consumed = evaluationExits.Slice(0, work.EvaluationExitCount);
             Span<bool> activeClips = workspace.PreviousActiveClips.AsSpan(checked(slot * workspace.ClipCapacity), clips.Length);
@@ -375,18 +380,18 @@ namespace BTSMTL.Timeline.Runtime
                     startFraction, endFraction);
         }
 
-        static void AppendExit(Span<OrchestrationTimelineTreeExitRange> values,
-            ref int count, OrchestrationTimelineClipOccurrence exit)
+        internal static void AppendExit(Span<OrchestrationTimelineTreeExitRange> values,
+            ref int count, OrchestrationTimelineTreeExitRange exit)
         {
             int index = 0;
             while (index < count && (values[index].ClipOrdinal < exit.ClipOrdinal ||
-                values[index].ClipOrdinal == exit.ClipOrdinal && (long)values[index].LastCycle + 1 < exit.Cycle))
+                values[index].ClipOrdinal == exit.ClipOrdinal && (long)values[index].LastCycle + 1 < exit.FirstCycle))
                 index++;
             if (index < count && values[index].ClipOrdinal == exit.ClipOrdinal &&
-                values[index].FirstCycle <= (long)exit.Cycle + 1)
+                values[index].FirstCycle <= (long)exit.LastCycle + 1)
             {
-                int first = Math.Min(values[index].FirstCycle, exit.Cycle);
-                int last = Math.Max(values[index].LastCycle, exit.Cycle);
+                int first = Math.Min(values[index].FirstCycle, exit.FirstCycle);
+                int last = Math.Max(values[index].LastCycle, exit.LastCycle);
                 int end = index + 1;
                 while (end < count && values[end].ClipOrdinal == exit.ClipOrdinal &&
                     values[end].FirstCycle <= (long)last + 1)
@@ -406,12 +411,7 @@ namespace BTSMTL.Timeline.Runtime
             else
             {
                 values.Slice(index, count - index).CopyTo(values.Slice(index + 1));
-                values[index] = new OrchestrationTimelineTreeExitRange
-                {
-                    ClipOrdinal = exit.ClipOrdinal,
-                    FirstCycle = exit.Cycle,
-                    LastCycle = exit.Cycle
-                };
+                values[index] = exit;
                 count++;
             }
         }
