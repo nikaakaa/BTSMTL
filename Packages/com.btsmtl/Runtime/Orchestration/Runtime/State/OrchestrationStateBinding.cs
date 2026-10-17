@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.InteropServices;
 using ThirdPersonSimulation;
 
 namespace BTSMTL.Orchestration
@@ -79,28 +80,8 @@ namespace BTSMTL.Orchestration
             var frames = BindFrames(prepared.Execution, prepared.GetExecution(destinationView));
             frames.CopyPayloadsFrom(BindFrames(prepared.Execution, sourceExecution),
                 skillContentIds, programs);
-            int executionOffset;
-            fixed (byte* sourceAddress = source)
-            fixed (byte* executionAddress = sourceExecution.Get(
-                new OrchestrationStateRegion<byte>(0, prepared.Execution.Layout.SizeBytes)))
-                executionOffset = checked((int)(executionAddress - sourceAddress));
             Span<OrchestrationStateRegion<byte>> payloads = stackalloc OrchestrationStateRegion<byte>[3];
-            payloads[0] = new OrchestrationStateRegion<byte>(
-                executionOffset + prepared.Execution.BlackboardMetadata.OffsetBytes,
-                prepared.Execution.BlackboardMetadata.SizeBytes);
-            payloads[1] = new OrchestrationStateRegion<byte>(
-                executionOffset + prepared.Execution.Operations.OffsetBytes,
-                prepared.Execution.Operations.SizeBytes);
-            payloads[2] = new OrchestrationStateRegion<byte>(
-                executionOffset + prepared.Execution.Values.OffsetBytes,
-                prepared.Execution.Values.SizeBytes);
-            for (int i = 1; i < payloads.Length; i++)
-                for (int j = i; j > 0 && payloads[j].OffsetBytes < payloads[j - 1].OffsetBytes; j--)
-                {
-                    OrchestrationStateRegion<byte> previous = payloads[j - 1];
-                    payloads[j - 1] = payloads[j];
-                    payloads[j] = previous;
-                }
+            PreparePayloadRegions(prepared.Execution, source, sourceExecution, payloads);
             int copied = 0;
             foreach (OrchestrationStateRegion<byte> payload in payloads)
             {
@@ -108,6 +89,76 @@ namespace BTSMTL.Orchestration
                 copied = payload.OffsetBytes + payload.SizeBytes;
             }
             source.Slice(copied).CopyTo(destination.Slice(copied));
+        }
+
+        public static int WriteBlitState<TValue, TPlayback>(
+            in OrchestrationStateLayout<TValue, TPlayback> prepared,
+            ReadOnlySpan<int> skillContentIds, ReadOnlySpan<OrchestrationProgram<TValue>> programs,
+            ReadOnlySpan<byte> source, Span<byte> output)
+            where TValue : unmanaged where TPlayback : unmanaged
+        {
+            ReadOnlyOrchestrationStateView state = prepared.Layout.BindCommitted(source);
+            ReadOnlyOrchestrationStateView execution = prepared.GetExecution(state);
+            Span<OrchestrationStateRegion<byte>> payloads = stackalloc OrchestrationStateRegion<byte>[3];
+            PreparePayloadRegions(prepared.Execution, source, execution, payloads);
+            int written = 0;
+            int copied = 0;
+            foreach (OrchestrationStateRegion<byte> payload in payloads)
+            {
+                WriteBytes(source.Slice(copied, payload.OffsetBytes - copied), output, ref written);
+                copied = payload.OffsetBytes + payload.SizeBytes;
+            }
+            WriteBytes(source.Slice(copied), output, ref written);
+            var frames = BindFrames(prepared.Execution, execution);
+            for (int slot = 0; slot < frames.Capacity; slot++)
+            {
+                int skill = frames.Header(slot).SkillContentId;
+                if (skill == 0)
+                    continue;
+                ref readonly OrchestrationProgram<TValue> program = ref programs[skillContentIds.IndexOf(skill)];
+                WriteBytes(MemoryMarshal.AsBytes(frames.Operations(slot).Slice(0, program.OperationCount)),
+                    output, ref written);
+                WriteBytes(MemoryMarshal.AsBytes(frames.Values(slot).Slice(0, program.ValueSlotCount)),
+                    output, ref written);
+                WriteBytes(MemoryMarshal.AsBytes(frames.BlackboardMetadata(slot).Slice(0, program.ValueSlotCount)),
+                    output, ref written);
+            }
+            return written;
+        }
+
+        public static int ReadBlitState<TValue, TPlayback>(
+            in OrchestrationStateLayout<TValue, TPlayback> prepared,
+            ReadOnlySpan<int> skillContentIds, ReadOnlySpan<OrchestrationProgram<TValue>> programs,
+            ReadOnlySpan<byte> input, Span<byte> clearedMemory)
+            where TValue : unmanaged where TPlayback : unmanaged
+        {
+            ReadOnlyOrchestrationStateView state = prepared.Layout.BindCommitted(clearedMemory);
+            Span<OrchestrationStateRegion<byte>> payloads = stackalloc OrchestrationStateRegion<byte>[3];
+            PreparePayloadRegions(prepared.Execution, clearedMemory, prepared.GetExecution(state), payloads);
+            int read = 0;
+            int restored = 0;
+            foreach (OrchestrationStateRegion<byte> payload in payloads)
+            {
+                ReadBytes(input, clearedMemory.Slice(restored, payload.OffsetBytes - restored), ref read);
+                restored = payload.OffsetBytes + payload.SizeBytes;
+            }
+            ReadBytes(input, clearedMemory.Slice(restored), ref read);
+            var frames = BindFrames(prepared.Execution,
+                prepared.GetExecution(prepared.Layout.BindCandidate(clearedMemory)));
+            for (int slot = 0; slot < frames.Capacity; slot++)
+            {
+                int skill = frames.Header(slot).SkillContentId;
+                if (skill == 0)
+                    continue;
+                ref readonly OrchestrationProgram<TValue> program = ref programs[skillContentIds.IndexOf(skill)];
+                ReadBytes(input, MemoryMarshal.AsBytes(frames.Operations(slot).Slice(0, program.OperationCount)),
+                    ref read);
+                ReadBytes(input, MemoryMarshal.AsBytes(frames.Values(slot).Slice(0, program.ValueSlotCount)),
+                    ref read);
+                ReadBytes(input, MemoryMarshal.AsBytes(frames.BlackboardMetadata(slot).Slice(0, program.ValueSlotCount)),
+                    ref read);
+            }
+            return read;
         }
 
         public static void AdoptMemory(in OrchestrationStateLayout layout,
@@ -119,6 +170,43 @@ namespace BTSMTL.Orchestration
             fixed (byte* address = memory)
                 if ((ulong)address % (uint)layout.Alignment != 0)
                     throw new ArgumentException("BTSMTL 编排区段内存地址不满足已准备布局对齐。", nameof(memory));
+        }
+
+        static void PreparePayloadRegions<TValue>(
+            in OrchestrationExecutionStateLayout<TValue> prepared, ReadOnlySpan<byte> memory,
+            ReadOnlyOrchestrationStateView execution, Span<OrchestrationStateRegion<byte>> payloads)
+            where TValue : unmanaged
+        {
+            int executionOffset;
+            fixed (byte* memoryAddress = memory)
+            fixed (byte* executionAddress = execution.Get(
+                new OrchestrationStateRegion<byte>(0, prepared.Layout.SizeBytes)))
+                executionOffset = checked((int)(executionAddress - memoryAddress));
+            payloads[0] = new OrchestrationStateRegion<byte>(
+                executionOffset + prepared.BlackboardMetadata.OffsetBytes, prepared.BlackboardMetadata.SizeBytes);
+            payloads[1] = new OrchestrationStateRegion<byte>(
+                executionOffset + prepared.Operations.OffsetBytes, prepared.Operations.SizeBytes);
+            payloads[2] = new OrchestrationStateRegion<byte>(
+                executionOffset + prepared.Values.OffsetBytes, prepared.Values.SizeBytes);
+            for (int i = 1; i < payloads.Length; i++)
+                for (int j = i; j > 0 && payloads[j].OffsetBytes < payloads[j - 1].OffsetBytes; j--)
+                {
+                    OrchestrationStateRegion<byte> previous = payloads[j - 1];
+                    payloads[j - 1] = payloads[j];
+                    payloads[j] = previous;
+                }
+        }
+
+        static void WriteBytes(ReadOnlySpan<byte> source, Span<byte> output, ref int written)
+        {
+            source.CopyTo(output.Slice(written));
+            written += source.Length;
+        }
+
+        static void ReadBytes(ReadOnlySpan<byte> input, Span<byte> destination, ref int read)
+        {
+            input.Slice(read, destination.Length).CopyTo(destination);
+            read += destination.Length;
         }
 
         static OrchestrationExecutionFrames<TValue> BindFrames<TValue>(
