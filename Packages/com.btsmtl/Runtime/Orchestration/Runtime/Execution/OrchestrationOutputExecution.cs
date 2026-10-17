@@ -22,6 +22,9 @@ namespace BTSMTL.Orchestration
         void AppendOutput(int operationIndex, int templateIndex, ReadOnlySpan<TValue> values,
             bool hasTimelineInvocation, in OrchestrationTimelineInvocationToken invocation, OrchestrationTimelineHook hook)
         {
+            if (m_Workspace.OutputRequestCount == m_Workspace.OutputRequests.Length ||
+                m_Workspace.OutputValues.Length - m_Workspace.OutputValueCount < values.Length)
+                throw new InvalidOperationException($"Operation '{operationIndex}' exceeds the published output budget of its program invocation.");
             var range = new OrchestrationRange(m_Workspace.OutputValueCount, values.Length);
             values.CopyTo(m_Workspace.OutputValues.AsSpan(range.Offset, range.Count));
             m_Workspace.OutputValueCount += values.Length;

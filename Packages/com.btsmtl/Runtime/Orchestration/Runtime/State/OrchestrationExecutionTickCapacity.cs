@@ -269,9 +269,6 @@ namespace BTSMTL.Orchestration
                         InvocationEvaluations = Math.Max(InvocationEvaluations,
                             BoundedVisits(operation, false) + BoundedVisits(operation, true));
                 }
-                if (InvocationEvaluations > m_Program.MaximumOperationEvaluations ||
-                    ValueEvaluations > m_Program.MaximumOperationEvaluations)
-                    throw new InvalidOperationException($"Program '{m_ProgramIndex}' requires '{Math.Max(InvocationEvaluations, ValueEvaluations)}' finite operation evaluations; published budget is '{m_Program.MaximumOperationEvaluations}'.");
                 // 每个操作都作为根，普通停止的上界同时覆盖 ForceStop 单次 visited 上界 1。
                 for (int root = 0; includeStops && root < m_Program.OperationCount; root++)
                 {
