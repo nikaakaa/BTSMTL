@@ -201,6 +201,18 @@ namespace BTSMTL.Timeline.Runtime
 
     public static class TimelineRuntimePreparation
     {
+        public static TimelineRuntimePreparedContent PrepareTimeRangeCandidate(
+            TimelineRuntimePreparedContent source,
+            TimelineContentUnit candidate,
+            OrchestrationIdentityTable identities)
+        {
+            var frozen = new TimelineContentUnit(candidate.Identity, candidate.AuthoringId,
+                candidate.ContentHash, candidate.RootFingerprint, candidate.Name, candidate.Duration,
+                candidate.Loop, candidate.Tracks, candidate.Clips, candidate.Markers,
+                candidate.Sections, candidate.Bindings, candidate.Dependencies);
+            return new TimelineRuntimePreparedContent(source, frozen, identities);
+        }
+
         public static TimelineRuntimePreparedContent PrepareContent(
             TimelineContentUnit content,
             TimelineRuntimeNumericTarget numericTarget,

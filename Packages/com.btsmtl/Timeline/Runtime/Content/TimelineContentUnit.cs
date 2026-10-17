@@ -403,6 +403,8 @@ namespace BTSMTL.Timeline
         public void UpdateTimeRangeCandidate(ReadOnlySpan<TimelineClipTimeRange> ranges, OrchestrationTime duration,
             string sourceRevision, string revision)
         {
+            if (m_TimeClips == null)
+                throw new InvalidOperationException("Frozen Timeline content cannot accept time range changes; create a time range candidate first.");
             for (int i = 0; i < ranges.Length; i++)
             {
                 int slot = m_TimeClipSlots[i];
