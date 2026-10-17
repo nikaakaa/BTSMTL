@@ -145,10 +145,21 @@ namespace BTSMTL.EventGraphs
 
 #if UNITY_EDITOR
         public void WriteRecordedFrameState<TWriter>(ref TWriter writer)
+            where TWriter : struct, IRecordedRuntimeStateWriter =>
+            WriteRecordedFrameState(ref writer, Kind);
+
+        internal static void WriteRecordedStateCapacity<TWriter>(ref TWriter writer, Type valueType)
             where TWriter : struct, IRecordedRuntimeStateWriter
         {
-            writer.Write(Kind);
-            switch (Kind)
+            EventGraphValueKinds.TryGet(valueType, out EventGraphValueKind kind);
+            default(EventGraphValue).WriteRecordedFrameState(ref writer, kind);
+        }
+
+        void WriteRecordedFrameState<TWriter>(ref TWriter writer, EventGraphValueKind kind)
+            where TWriter : struct, IRecordedRuntimeStateWriter
+        {
+            writer.Write(kind);
+            switch (kind)
             {
                 case EventGraphValueKind.Bool:
                     writer.Write(m_BoolValue);

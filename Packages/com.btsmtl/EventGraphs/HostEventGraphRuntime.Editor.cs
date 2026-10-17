@@ -38,6 +38,8 @@ namespace BTSMTL.EventGraphs
         byte[] m_CandidateOutputFlags;
         List<(int Operation, int Port, bool Input)> m_CandidateTriggers;
 
+        public event Action<int, int> RecordedStateCapacityRequired;
+
         public IReadOnlyList<EventGraphRuntimePort> RuntimePorts => m_RuntimePorts;
         public EventGraphRuntimePort RequireRuntimePort(string node, string port, bool input) => m_EditorPorts[(node, port, input)];
 
@@ -221,8 +223,15 @@ namespace BTSMTL.EventGraphs
 
         void PrepareTriggerCapacity(int count)
         {
-            m_Triggers.Capacity = Math.Max(m_Triggers.Capacity, count);
-            m_CandidateTriggers.Capacity = Math.Max(m_CandidateTriggers.Capacity, count);
+            int triggerCapacity = m_Triggers.Capacity;
+            int candidateTriggerCapacity = m_CandidateTriggers.Capacity;
+            m_Triggers.Capacity = Math.Max(triggerCapacity, count);
+            m_CandidateTriggers.Capacity = Math.Max(candidateTriggerCapacity, count);
+            if (m_Triggers.Capacity > triggerCapacity || m_CandidateTriggers.Capacity > candidateTriggerCapacity)
+            {
+                GetRecordedStateCapacity(out int byteCapacity, out int textReferenceCapacity);
+                RecordedStateCapacityRequired?.Invoke(byteCapacity, textReferenceCapacity);
+            }
         }
 
         void PrepareEditorCandidateState()
@@ -307,10 +316,24 @@ namespace BTSMTL.EventGraphs
             m_Triggers.Clear();
         }
 
+        public void GetRecordedStateCapacity(out int byteCapacity, out int textReferenceCapacity)
+        {
+            var writer = new RecordedRuntimeStateCountingWriter();
+            WriteRecordedFrameState(ref writer, true);
+            byteCapacity = writer.WrittenBytes;
+            textReferenceCapacity = writer.TextReferenceCount;
+        }
+
         public void WriteRecordedFrameState<TWriter>(ref TWriter writer)
             where TWriter : struct, IRecordedRuntimeStateWriter
         {
             RequireIdle();
+            WriteRecordedFrameState(ref writer, false);
+        }
+
+        void WriteRecordedFrameState<TWriter>(ref TWriter writer, bool maximumCapacity)
+            where TWriter : struct, IRecordedRuntimeStateWriter
+        {
             writer.Write(RecordedStateFormat);
             writer.Write(RecordedStateVersion);
             writer.Write(m_Bindings.Prepared.Identities.Identity);
@@ -327,18 +350,19 @@ namespace BTSMTL.EventGraphs
             writer.Write(m_Faulted);
             writer.Write(m_LastInvocation.SourceIdentityId);
             writer.Write(m_LastInvocation.Sequence);
-            if (m_Faulted)
+            if (maximumCapacity || m_Faulted)
             {
-                writer.WriteText(m_LastFailure.GraphId);
-                writer.WriteText(m_LastFailure.EventId);
-                writer.WriteText(m_LastFailure.NodeId);
-                writer.WriteText(m_LastFailure.Message);
-                writer.WriteText(m_LastFailure.ExceptionType);
+                writer.WriteText(maximumCapacity ? null : m_LastFailure.GraphId);
+                writer.WriteText(maximumCapacity ? null : m_LastFailure.EventId);
+                writer.WriteText(maximumCapacity ? null : m_LastFailure.NodeId);
+                writer.WriteText(maximumCapacity ? null : m_LastFailure.Message);
+                writer.WriteText(maximumCapacity ? null : m_LastFailure.ExceptionType);
             }
-            writer.Write(m_Triggers.Count);
-            for (int i = 0; i < m_Triggers.Count; i++)
+            int triggerCount = maximumCapacity ? Math.Max(m_Triggers.Capacity, m_CandidateTriggers.Capacity) : m_Triggers.Count;
+            writer.Write(triggerCount);
+            for (int i = 0; i < triggerCount; i++)
             {
-                var trigger = m_Triggers[i];
+                var trigger = maximumCapacity ? default : m_Triggers[i];
                 writer.Write(trigger.Operation);
                 writer.Write(trigger.Port);
                 writer.Write(trigger.Input);
@@ -352,23 +376,40 @@ namespace BTSMTL.EventGraphs
             ReadOnlySpan<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> values = frames.Values(0);
             for (int i = 0; i < m_Bindings.Program.ValueSlotCount; i++)
             {
-                OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion> value = values[i];
-                m_Bindings.FromState(in value, m_Bindings.StateTypes[i], m_StateTexts).WriteRecordedFrameState(ref writer);
-                writer.Write(IsVariableLocked(i));
-                if (IsVariableLocked(i))
-                    m_Bindings.FromState(in m_VariableOverrides[i], m_Bindings.StateTypes[i], m_StateTexts)
-                        .WriteRecordedFrameState(ref writer);
+                if (maximumCapacity)
+                    EventGraphValue.WriteRecordedStateCapacity(ref writer, m_Bindings.StateTypes[i]);
+                else
+                {
+                    OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion> value = values[i];
+                    m_Bindings.FromState(in value, m_Bindings.StateTypes[i], m_StateTexts).WriteRecordedFrameState(ref writer);
+                }
+                bool locked = maximumCapacity || IsVariableLocked(i);
+                writer.Write(locked);
+                if (locked)
+                {
+                    if (maximumCapacity)
+                        EventGraphValue.WriteRecordedStateCapacity(ref writer, m_Bindings.StateTypes[i]);
+                    else
+                        m_Bindings.FromState(in m_VariableOverrides[i], m_Bindings.StateTypes[i], m_StateTexts)
+                            .WriteRecordedFrameState(ref writer);
+                }
             }
             for (int i = 0; i < m_RuntimePorts.Length; i++)
             {
                 EventGraphRuntimePort port = m_RuntimePorts[i];
                 if (port.IsTrigger)
                     continue;
-                port.WriteRecordedFrameState(ref writer);
-                OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion> observed = PortObservations(port)[port.ValueSlot];
-                writer.Write(observed.Kind != default);
-                if (observed.Kind != default)
-                    m_Bindings.FromState(in observed, port.ValueType, m_StateTexts).WriteRecordedFrameState(ref writer);
+                port.WriteRecordedFrameState(ref writer, maximumCapacity);
+                OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion> observed = maximumCapacity ? default : PortObservations(port)[port.ValueSlot];
+                bool hasObserved = maximumCapacity || observed.Kind != default;
+                writer.Write(hasObserved);
+                if (hasObserved)
+                {
+                    if (maximumCapacity)
+                        EventGraphValue.WriteRecordedStateCapacity(ref writer, port.ValueType);
+                    else
+                        m_Bindings.FromState(in observed, port.ValueType, m_StateTexts).WriteRecordedFrameState(ref writer);
+                }
             }
         }
 
