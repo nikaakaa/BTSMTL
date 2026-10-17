@@ -47,23 +47,25 @@ namespace BTSMTL.Timeline.Runtime
     public readonly struct TimelineRuntimePresentationPlayback
     {
         internal TimelineRuntimePresentationPlayback(in OrchestrationTimelineStart<OrchestrationTime> start,
-            OrchestrationTime time, int cycle, bool finished)
+            OrchestrationTime time, int cycle, bool finished, bool retainForCorrection)
         {
             Start = start;
             Time = time;
             Cycle = cycle;
             Finished = finished;
+            RetainForCorrection = retainForCorrection;
         }
 
         public OrchestrationTimelineStart<OrchestrationTime> Start { get; }
         public OrchestrationTime Time { get; }
         public int Cycle { get; }
         public bool Finished { get; }
+        public bool RetainForCorrection { get; }
     }
 
     public sealed class TimelineRuntimePresentationDriver
     {
-        const int RecordedStateHeaderV3 = -3;
+        const int RecordedStateHeaderV4 = -4;
         readonly int m_PlaybackCapacity;
         readonly Dictionary<OrchestrationTimelineStart<OrchestrationTime>, PresentationPlaybackState> m_Playbacks;
         readonly Dictionary<(TimelineContentUnit Timeline, int SourceIdentityId, OrchestrationTimelinePlaybackMode Mode), Stack<PresentationPlaybackState>> m_RecycledPlaybacks = new();
@@ -98,7 +100,8 @@ namespace BTSMTL.Timeline.Runtime
                     KeyValuePair<OrchestrationTimelineStart<OrchestrationTime>, PresentationPlaybackState> item = m_Enumerator.Current;
                     var start = item.Key;
                     return new TimelineRuntimePresentationPlayback(in start,
-                        item.Value.CursorTime, item.Value.Cycle, item.Value.Finished);
+                        item.Value.CursorTime, item.Value.Cycle, item.Value.Finished,
+                        item.Value.CachedFrame.RetainForCorrection);
                 }
             }
 
@@ -185,7 +188,13 @@ namespace BTSMTL.Timeline.Runtime
                     throw new InvalidOperationException("Timeline presentation frame moved backward without a generation reset.");
             }
 
-            if (state.Finished && sample.EndsPlayback && sample.Time == state.CursorTime && sample.Cycle == state.Cycle)
+            if (state.Finished && (state.CachedFrame.Reason == TimelinePresentationSampleReason.Completed ||
+                    state.CachedFrame.Reason == TimelinePresentationSampleReason.Stopped) && !sample.EndsPlayback)
+                throw new InvalidOperationException("已确认结束的 Timeline 播放不能接受新的样本。");
+
+            if (state.Finished && sample.EndsPlayback && sample.Time == state.CursorTime && sample.Cycle == state.Cycle &&
+                state.CachedFrame.Reason == sample.Reason &&
+                state.CachedFrame.RetainForCorrection == sample.RetainForCorrection)
             {
                 frame = default;
                 return false;
@@ -251,7 +260,8 @@ namespace BTSMTL.Timeline.Runtime
                 events.View,
                 sampleReason,
                 currentTime,
-                currentCycle);
+                currentCycle,
+                sample.RetainForCorrection);
             state.PendingFrame = frame;
             state.PreviousPendingFrame = m_LastPendingFrame;
             if (m_LastPendingFrame == null)
@@ -328,7 +338,8 @@ namespace BTSMTL.Timeline.Runtime
                     state.Cycle = state.PendingCycle;
                     state.Finished = state.PendingFinished;
                     state.InitialBoundaryConsumed = state.PendingInitialBoundaryConsumed;
-                    state.SampleReason = TimelinePresentationSampleReason.Advance;
+                    state.SampleReason = state.PendingFrame.RetainForCorrection
+                        ? TimelinePresentationSampleReason.Correction : TimelinePresentationSampleReason.Advance;
                     state.Cache(state.PendingFrame);
                     ReleasePendingFrame(state);
                 }
@@ -366,19 +377,6 @@ namespace BTSMTL.Timeline.Runtime
             state.PendingFrame = default;
         }
 
-        public void SuspendPresentationPlayback(in OrchestrationTimelineStart<OrchestrationTime> start)
-        {
-            if (!m_Playbacks.TryGetValue(start, out PresentationPlaybackState state))
-                return;
-            if (state.HasPendingFrame)
-                ReleasePendingFrame(state);
-            state.Clear();
-            state.SampleReason = TimelinePresentationSampleReason.Correction;
-            state.CachedFrame = default;
-            state.HasCachedFrame = false;
-            state.Finished = false;
-        }
-
         public void ReleasePresentationPlayback(in OrchestrationTimelineStart<OrchestrationTime> start)
         {
             if (m_Playbacks.TryGetValue(start, out PresentationPlaybackState state))
@@ -406,7 +404,7 @@ namespace BTSMTL.Timeline.Runtime
 
         public void WriteRecordedState<TWriter>(ref TWriter writer) where TWriter : struct, IRecordedRuntimeStateWriter
         {
-            writer.Write(RecordedStateHeaderV3);
+            writer.Write(RecordedStateHeaderV4);
             writer.Write(m_Playbacks.Count);
             foreach (KeyValuePair<OrchestrationTimelineStart<OrchestrationTime>, PresentationPlaybackState> playback in m_Playbacks)
             {
@@ -423,7 +421,7 @@ namespace BTSMTL.Timeline.Runtime
         public void RestoreRecordedState(ref RecordedRuntimeStateReader reader,
             IReadOnlyList<TimelineRuntimePreparedContent> contents)
         {
-            if (reader.Read<int>() != RecordedStateHeaderV3)
+            if (reader.Read<int>() != RecordedStateHeaderV4)
                 throw new InvalidOperationException("Recorded Timeline presentation state version is not supported.");
             int count = reader.Read<int>();
             if (count < 0 || count > checked(m_RecycledPlaybacks.Count * m_PlaybackCapacity))
@@ -498,6 +496,7 @@ namespace BTSMTL.Timeline.Runtime
             writer.Write(frame.Reason);
             writer.Write(frame.Time);
             writer.Write(frame.Cycle);
+            writer.Write(frame.RetainForCorrection);
         }
 
         static TimelineRuntimePresentationFrame ReadFrame(ref RecordedRuntimeStateReader reader,
@@ -510,8 +509,9 @@ namespace BTSMTL.Timeline.Runtime
             TimelinePresentationSampleReason reason = reader.Read<TimelinePresentationSampleReason>();
             OrchestrationTime time = reader.Read<OrchestrationTime>();
             int cycle = reader.Read<int>();
+            bool retainForCorrection = reader.Read<bool>();
             return new TimelineRuntimePresentationFrame(in start, logicTick, presentationFrame, deltaSeconds, alpha,
-                new TimelineRuntimePresentationOperations(buffer), buffer.Events.View, reason, time, cycle);
+                new TimelineRuntimePresentationOperations(buffer), buffer.Events.View, reason, time, cycle, retainForCorrection);
         }
 
         static void WriteBuffer<TWriter>(ref TWriter writer, TimelineRuntimePresentationBuffer buffer, bool maximum)

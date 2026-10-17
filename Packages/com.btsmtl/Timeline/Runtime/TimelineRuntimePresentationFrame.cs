@@ -92,7 +92,8 @@ namespace BTSMTL.Timeline.Runtime
             TimelineRuntimeSampleView<TimelineRuntimePresentationEvent> events,
             TimelinePresentationSampleReason reason,
             OrchestrationTime time,
-            int cycle)
+            int cycle,
+            bool retainForCorrection)
         {
             if (presentationFrame == 0 ||
                 !float.IsFinite(presentationDeltaSeconds) || presentationDeltaSeconds < 0f ||
@@ -107,6 +108,7 @@ namespace BTSMTL.Timeline.Runtime
             Reason = reason;
             Time = time;
             Cycle = cycle;
+            RetainForCorrection = retainForCorrection;
             Events = events;
         }
 
@@ -119,6 +121,7 @@ namespace BTSMTL.Timeline.Runtime
         public TimelinePresentationSampleReason Reason { get; }
         public OrchestrationTime Time { get; }
         public int Cycle { get; }
+        public bool RetainForCorrection { get; }
         public TimelineRuntimeSampleView<TimelineRuntimePresentationEvent> Events { get; }
     }
 }
