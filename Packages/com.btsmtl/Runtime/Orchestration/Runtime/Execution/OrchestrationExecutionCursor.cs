@@ -38,7 +38,6 @@ namespace BTSMTL.Orchestration
         int m_StateFrameCount;
         int m_CurrentOperationIndex;
         int m_GraphCallDepth;
-        OrchestrationObservationPhase m_ObservationPhase;
         OrchestrationTimelineInvocationFacts m_TimelineInvocation;
         TValue m_TimelineTime;
 
@@ -81,12 +80,10 @@ namespace BTSMTL.Orchestration
             m_StateFrameCount = 0;
             m_CurrentOperationIndex = -1;
             m_GraphCallDepth = 0;
-            m_ObservationPhase = OrchestrationObservationPhase.None;
             m_TimelineInvocation = default;
             m_TimelineTime = default;
             Array.Clear(workspace.InputObservationWritten, 0, workspace.InputObservationWritten.Length);
             Array.Clear(workspace.OutputObservationWritten, 0, workspace.OutputObservationWritten.Length);
-            Array.Clear(workspace.CachedObservationWritten, 0, workspace.CachedObservationWritten.Length);
         }
 
         public int CurrentOperationIndex => m_CurrentOperationIndex;
@@ -190,7 +187,6 @@ namespace BTSMTL.Orchestration
             m_Values = m_Frames.Values(frameSlot);
             m_Blackboards.SelectFrame(frameSlot);
             m_TimelineDispatcher.SelectExecutionFrame(frameSlot, ref m_Context);
-            Array.Clear(m_Workspace.CachedObservationWritten, 0, m_Workspace.CachedObservationWritten.Length);
         }
 
         OrchestrationOperationResult Tick(int operationIndex, int inputPortId = 0)

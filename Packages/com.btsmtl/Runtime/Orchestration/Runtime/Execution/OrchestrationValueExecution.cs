@@ -14,7 +14,7 @@ namespace BTSMTL.Orchestration
         where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TQuaternion>
         where TContext : struct
     {
-        TValue EvaluateValue(int operationIndex, int outputPortIndex)
+        public TValue Evaluate(int operationIndex, int outputPortIndex = -1)
         {
             m_CurrentOperationIndex = operationIndex;
             int slot = m_Program.ValueEvaluationSlot(operationIndex, outputPortIndex);
@@ -26,8 +26,6 @@ namespace BTSMTL.Orchestration
             }
             if (m_Workspace.ActiveValues[slot])
                 throw new InvalidOperationException($"Value operation cycle reached '{operationIndex}/{outputPortIndex}'.");
-            if (m_ObservationPhase == OrchestrationObservationPhase.Observing && m_Workspace.CachedObservationWritten[slot])
-                return m_Workspace.OutputObservations[slot];
             m_Workspace.ActiveValues[slot] = true;
             try
             {
@@ -52,11 +50,6 @@ namespace BTSMTL.Orchestration
                     }
                 }
                 ObserveOutput(operationIndex, slot, in result);
-                if (m_ObservationPhase != OrchestrationObservationPhase.None)
-                {
-                    m_Workspace.OutputObservations[slot] = result;
-                    m_Workspace.CachedObservationWritten[slot] = true;
-                }
                 return result;
             }
             finally
@@ -64,9 +57,6 @@ namespace BTSMTL.Orchestration
                 m_Workspace.ActiveValues[slot] = false;
             }
         }
-
-        void ClearObservedValues() =>
-            Array.Clear(m_Workspace.CachedObservationWritten, 0, m_Workspace.CachedObservationWritten.Length);
 
         TValue EvaluateCoreValue(int operationIndex, int outputPortIndex, int depth, int count)
         {
