@@ -123,7 +123,8 @@ namespace BTSMTL.Orchestration
                     Span<TValue> outputs = m_Workspace.Outputs[depth].AsSpan(0, operation.OutputCount);
                     var invocation = new OrchestrationExtensionArguments<TValue>(
                         OrchestrationExtensionInvocationKind.Evaluate, operationIndex, ReadGeneration(operationIndex),
-                        m_Input.Tick, 0, StateAncestors(operationIndex), inputs, outputs, in m_TimelineInvocation);
+                        m_Input.Tick, 0, StateAncestors(operationIndex), ReadExecutionFrame(operationIndex),
+                        inputs, outputs, in m_TimelineInvocation);
                     RequireSynchronousValueResult(operationIndex, operation.ExtensionBindingIndex,
                         m_Bindings.InvokeReadOnly(operation.ExtensionBindingIndex, in m_Context, in invocation));
                     return outputs[outputPortIndex < 0 ? 0 : outputPortIndex];
@@ -319,6 +320,7 @@ namespace BTSMTL.Orchestration
                         var invocation = new OrchestrationExtensionArguments<TValue>(
                             OrchestrationExtensionInvocationKind.Execute, operationIndex, ReadGeneration(operationIndex),
                             m_Input.Tick, 0, StateAncestors(operationIndex),
+                            ReadExecutionFrame(operationIndex),
                             m_Workspace.Inputs[depth].AsSpan(0, count), outputs, in m_TimelineInvocation);
                         OrchestrationOperationResult result = (OrchestrationOperationResult)m_Bindings.InvokeCandidate(
                             operation.ExtensionBindingIndex, ref m_Context, in invocation);

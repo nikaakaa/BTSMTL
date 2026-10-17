@@ -13,7 +13,8 @@ namespace BTSMTL.Timeline.Runtime
 
         void Invoke(int operationIndex, ulong operationGeneration, ulong tick, int playbackSlot, ulong playbackIdentity,
             OrchestrationTime previousTime, int previousCycle, OrchestrationTime time, int cycle,
-            Span<TValue> inputValues, ReadOnlySpan<OrchestrationStateAncestor> stateAncestors, ref TContext context);
+            Span<TValue> inputValues, ReadOnlySpan<OrchestrationStateAncestor> stateAncestors,
+            ReadOnlySpan<OrchestrationExecutionFrameState> executionFrame, ref TContext context);
     }
 
     public sealed class TimelineRuntimeLogicSamples<TValue, TScalar, TMath, TLowering, TValues, TProjection, TContext> :
@@ -75,7 +76,8 @@ namespace BTSMTL.Timeline.Runtime
 
         public void Invoke(int operationIndex, ulong operationGeneration, ulong tick, int playbackSlot, ulong playbackIdentity,
             OrchestrationTime previousTime, int previousCycle, OrchestrationTime time, int cycle,
-            Span<TValue> inputValues, ReadOnlySpan<OrchestrationStateAncestor> stateAncestors, ref TContext context)
+            Span<TValue> inputValues, ReadOnlySpan<OrchestrationStateAncestor> stateAncestors,
+            ReadOnlySpan<OrchestrationExecutionFrameState> executionFrame, ref TContext context)
         {
             TValues values = default;
             TProjection projection = default;
@@ -124,7 +126,7 @@ namespace BTSMTL.Timeline.Runtime
                     TimelineLogicSampleExtension.InputCount, count, intervalCount);
                 var invocation = new OrchestrationExtensionArguments<TValue>(
                     OrchestrationExtensionInvocationKind.Execute, operationIndex, operationGeneration, tick, 0,
-                    stateAncestors, rows, Span<TValue>.Empty, default);
+                    stateAncestors, executionFrame, rows, Span<TValue>.Empty, default);
                 OrchestrationExtensionResult result = m_Bindings.InvokeCandidate(bindingIndex, ref context, in invocation);
                 if (result != OrchestrationExtensionResult.Success)
                     throw new InvalidOperationException($"Timeline 片段 '{clip.AuthoringId}' ({clip.ContractKind}) 的同次采样返回 '{result}'。");

@@ -173,6 +173,9 @@ namespace BTSMTL.Orchestration
         public ulong ReadGeneration(int operationIndex) =>
             m_Program.Operation(operationIndex).IsRunnable ? ReadOperationState(operationIndex).Generation : 1;
 
+        public ReadOnlySpan<OrchestrationExecutionFrameState> ReadExecutionFrame(int operationIndex) =>
+            m_Blackboards.ReadExecutionFrame(operationIndex);
+
         int OperationFrame(int operationIndex) => m_Blackboards.OperationFrame(operationIndex);
 
         ref readonly OrchestrationOperationState ReadOperationState(int operationIndex) =>

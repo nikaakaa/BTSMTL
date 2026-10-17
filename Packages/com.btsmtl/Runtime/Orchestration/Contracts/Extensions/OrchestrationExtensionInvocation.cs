@@ -27,9 +27,10 @@ namespace BTSMTL.Orchestration
         public OrchestrationExtensionArguments(OrchestrationExtensionInvocationKind kind,
             int operationIndex, ulong operationGeneration, ulong tick, uint stopCause,
             ReadOnlySpan<OrchestrationStateAncestor> stateAncestors,
+            ReadOnlySpan<OrchestrationExecutionFrameState> executionFrame,
             ReadOnlySpan<TValue> inputs, Span<TValue> outputs,
             in OrchestrationTimelineInvocationFacts timeline)
-            : this(kind, operationIndex, operationGeneration, tick, stopCause, stateAncestors,
+            : this(kind, operationIndex, operationGeneration, tick, stopCause, stateAncestors, executionFrame,
                 new OrchestrationExtensionInputRows<TValue>(inputs, inputs.Length, 1, 1), outputs, in timeline)
         {
         }
@@ -37,6 +38,7 @@ namespace BTSMTL.Orchestration
         public OrchestrationExtensionArguments(OrchestrationExtensionInvocationKind kind,
             int operationIndex, ulong operationGeneration, ulong tick, uint stopCause,
             ReadOnlySpan<OrchestrationStateAncestor> stateAncestors,
+            ReadOnlySpan<OrchestrationExecutionFrameState> executionFrame,
             OrchestrationExtensionInputRows<TValue> inputRows, Span<TValue> outputs,
             in OrchestrationTimelineInvocationFacts timeline)
         {
@@ -46,6 +48,7 @@ namespace BTSMTL.Orchestration
             Tick = tick;
             StopCause = stopCause;
             StateAncestors = stateAncestors;
+            ExecutionFrame = executionFrame;
             InputRows = inputRows;
             Outputs = outputs;
             Timeline = timeline;
@@ -57,6 +60,7 @@ namespace BTSMTL.Orchestration
         public ulong Tick { get; }
         public uint StopCause { get; }
         public ReadOnlySpan<OrchestrationStateAncestor> StateAncestors { get; }
+        public ReadOnlySpan<OrchestrationExecutionFrameState> ExecutionFrame { get; }
         public OrchestrationExtensionInputRows<TValue> InputRows { get; }
         public ReadOnlySpan<TValue> Inputs => InputRows.Values;
         public Span<TValue> Outputs { get; }
@@ -88,6 +92,7 @@ namespace BTSMTL.Orchestration
         where TOperation : struct
     {
         readonly Span<TValue> m_Outputs;
+        readonly ReadOnlySpan<OrchestrationExecutionFrameState> m_ExecutionFrame;
 
         internal OrchestrationExtensionInvocation(in OrchestrationExtensionArguments<TValue> arguments)
         {
@@ -99,6 +104,7 @@ namespace BTSMTL.Orchestration
             StateAncestors = arguments.StateAncestors;
             InputRows = new OrchestrationExtensionInputRows<TValue, TOperation>(arguments.InputRows);
             m_Outputs = arguments.Outputs;
+            m_ExecutionFrame = arguments.ExecutionFrame;
             Timeline = arguments.Timeline;
         }
 
@@ -109,6 +115,7 @@ namespace BTSMTL.Orchestration
         public uint StopCause { get; }
         public ReadOnlySpan<OrchestrationStateAncestor> StateAncestors { get; }
         public OrchestrationExtensionInputRows<TValue, TOperation> InputRows { get; }
+        public ref readonly OrchestrationExecutionFrameState ExecutionFrame => ref m_ExecutionFrame[0];
         public readonly OrchestrationTimelineInvocationFacts Timeline;
 
         public ref readonly TValue ReadInput(in OrchestrationExtensionInputPort<TOperation> port, int rowIndex = 0) =>

@@ -141,6 +141,7 @@ namespace BTSMTL.Orchestration
                 var invocation = new OrchestrationExtensionArguments<TValue>(
                     OrchestrationExtensionInvocationKind.Evaluate, operationIndex, ReadGeneration(operationIndex), m_Input.Tick, 0,
                     StateAncestors(operationIndex),
+                    ReadExecutionFrame(operationIndex),
                     m_Workspace.Inputs[depth].AsSpan(0, 1), outputs, in m_TimelineInvocation);
                 RequireSynchronousValueResult(operationIndex, bindingIndex,
                     m_Bindings.InvokeReadOnly(bindingIndex, in m_Context, in invocation));

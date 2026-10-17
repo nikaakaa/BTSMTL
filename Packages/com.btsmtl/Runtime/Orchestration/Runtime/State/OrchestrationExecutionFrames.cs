@@ -43,6 +43,9 @@ namespace BTSMTL.Orchestration
         public ref OrchestrationExecutionFrameState Header(int frameSlot) =>
             ref m_Frames[frameSlot];
 
+        internal ReadOnlySpan<OrchestrationExecutionFrameState> HeaderSpan(int frameSlot) =>
+            m_Frames.Slice(frameSlot, 1);
+
         public Span<OrchestrationOperationState> Operations(int frameSlot) =>
             m_Operations.Slice(frameSlot * m_OperationsPerFrame, m_OperationsPerFrame);
 

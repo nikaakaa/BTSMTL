@@ -77,7 +77,8 @@ namespace BTSMTL.Timeline.Runtime
                 m_Samples.Invoke(operationIndex, operationGeneration, tick, slot, playbackIdentity,
                     OrchestrationTime.FromRaw(default(TClock).Raw(work.PreviousTime)), work.PreviousCycle,
                     OrchestrationTime.FromRaw(default(TClock).Raw(work.Proposed.Progress.CursorTime)),
-                    work.Proposed.Progress.Cycle, m_SampleInputs, cursor.StateAncestors(operationIndex), ref context);
+                    work.Proposed.Progress.Cycle, m_SampleInputs, cursor.StateAncestors(operationIndex),
+                    cursor.ReadExecutionFrame(operationIndex), ref context);
             m_Runtime.Complete(candidate, slot, in batch, m_Workspace);
             if (batch.Status == OrchestrationTimelinePlaybackStatus.Completed)
             {

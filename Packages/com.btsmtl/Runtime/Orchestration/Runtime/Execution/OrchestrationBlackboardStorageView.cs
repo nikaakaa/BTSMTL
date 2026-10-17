@@ -82,6 +82,12 @@ namespace BTSMTL.Orchestration
             return ref operations[operationIndex];
         }
 
+        internal ReadOnlySpan<OrchestrationExecutionFrameState> ReadExecutionFrame(int operationIndex)
+        {
+            FrameAddress address = Owner(m_Program.Operation(operationIndex).ExecutionFrameOwnerOperationIndex);
+            return address.Source ? m_Source.Frames.HeaderSpan(address.Index) : m_Frames.HeaderSpan(address.Index);
+        }
+
         internal ref readonly TValue ReadOutputValue(int operationIndex, int valueSlot)
         {
             FrameAddress address = Owner(m_Program.Operation(operationIndex).ExecutionFrameOwnerOperationIndex);

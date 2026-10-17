@@ -35,6 +35,7 @@ namespace BTSMTL.Orchestration
                     var invocation = new OrchestrationExtensionArguments<TValue>(
                         OrchestrationExtensionInvocationKind.Execute, operationIndex, ReadGeneration(operationIndex),
                         m_Input.Tick, 0, StateAncestors(operationIndex, pathState, phase == OrchestrationLifecycleHook.StateEntered),
+                        ReadExecutionFrame(operationIndex),
                         m_Workspace.Inputs[depth].AsSpan(0, inputs.Length), Span<TValue>.Empty, in m_TimelineInvocation);
                     m_CurrentOperationIndex = operationIndex;
                     OrchestrationExtensionResult result = m_Bindings.InvokeCandidate(
@@ -130,7 +131,8 @@ namespace BTSMTL.Orchestration
                 : m_Workspace.Outputs[m_InputDepth].AsSpan(0, operation.OutputCount);
             var invocation = new OrchestrationExtensionArguments<TValue>(kind,
                 operationIndex, ReadGeneration(operationIndex), m_Input.Tick, context.Cause,
-                StateAncestors(operationIndex), ReadOnlySpan<TValue>.Empty, outputs, in m_TimelineInvocation);
+                StateAncestors(operationIndex), ReadExecutionFrame(operationIndex),
+                ReadOnlySpan<TValue>.Empty, outputs, in m_TimelineInvocation);
             OrchestrationExtensionResult result = m_Bindings.InvokeCandidate(operation.ExtensionBindingIndex,
                 ref m_Context, in invocation);
             return result switch
