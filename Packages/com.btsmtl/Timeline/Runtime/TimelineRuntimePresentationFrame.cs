@@ -8,7 +8,8 @@ namespace BTSMTL.Timeline.Runtime
     sealed class TimelineRuntimePresentationBuffer
     {
         public TimelineRuntimePresentationBuffer(TimelineRuntimePreparedContent prepared,
-            OrchestrationTimelinePreparedContent<OrchestrationTime> executionContent)
+            OrchestrationTimelinePreparedContent<OrchestrationTime> executionContent,
+            TimelineRuntimePresentationGraphSource graphSource)
         {
             TimelineContentUnit content = prepared.Content;
             int traversals = executionContent.Mode == OrchestrationTimelinePlaybackMode.Loop
@@ -27,20 +28,22 @@ namespace BTSMTL.Timeline.Runtime
                     capacities[kindIndex] = checked(capacities[kindIndex] + count);
                 }
             }
-            for (int index = 0; index < content.Markers.Count; index++)
-            {
-                TimelineContentMarker marker = content.Markers[index];
-                if (marker.ExecutionPolicy.IsPresentation && !marker.TrackMuted)
-                    markers++;
-            }
+            if (graphSource == TimelineRuntimePresentationGraphSource.Unexecuted)
+                for (int index = 0; index < content.Markers.Count; index++)
+                {
+                    TimelineContentMarker marker = content.Markers[index];
+                    if (marker.ExecutionPolicy.IsPresentation && !marker.TrackMuted)
+                        markers++;
+                }
             Samples = new TimelineRuntimeSampleBuffer<TimelineRuntimeSample<Float32Scalar>>[capacities.Length];
             for (int kindIndex = 0; kindIndex < capacities.Length; kindIndex++)
                 Samples[kindIndex] = new TimelineRuntimeSampleBuffer<TimelineRuntimeSample<Float32Scalar>>(capacities[kindIndex]);
             SamplingClips = new List<int>(Math.Max(content.Clips.Count, content.Markers.Count));
             Events = new(checked(markers * traversals));
-            TreeClips = new(checked(executionContent.TickCapacity.GraphInvocationsPerAdvance +
-                2 * executionContent.RequiredActiveTrees));
-            ActiveTreeClips = new(executionContent.RequiredActiveTrees);
+            TreeClips = new(graphSource == TimelineRuntimePresentationGraphSource.Unexecuted
+                ? checked(executionContent.TickCapacity.GraphInvocationsPerAdvance + 2 * executionContent.RequiredActiveTrees) : 0);
+            ActiveTreeClips = new(graphSource == TimelineRuntimePresentationGraphSource.Unexecuted
+                ? executionContent.RequiredActiveTrees : 0);
         }
 
         public readonly TimelineRuntimeSampleBuffer<TimelineRuntimeSample<Float32Scalar>>[] Samples;

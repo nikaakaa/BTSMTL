@@ -44,16 +44,63 @@ namespace BTSMTL.Timeline.Runtime
         public bool IsValid => SourceGeneration != 0;
     }
 
+    public enum TimelineRuntimePresentationGraphSource : byte
+    {
+        Unexecuted,
+        Executed
+    }
+
+    public readonly struct TimelineRuntimePresentationSource
+    {
+        TimelineRuntimePresentationSource(int playbackSlot,
+            in OrchestrationTimelineStart<OrchestrationTime> start,
+            in TimelineRuntimePresentationSample sample, TimelineRuntimePresentationGraphSource graphSource)
+        {
+            PlaybackSlot = playbackSlot;
+            Start = start;
+            Sample = sample;
+            GraphSource = graphSource;
+        }
+
+        public int PlaybackSlot { get; }
+        public readonly OrchestrationTimelineStart<OrchestrationTime> Start;
+        public readonly TimelineRuntimePresentationSample Sample;
+        public TimelineRuntimePresentationGraphSource GraphSource { get; }
+
+        public static TimelineRuntimePresentationSource FromUnexecutedPlayback(int playbackSlot,
+            in OrchestrationTimelineStart<OrchestrationTime> start,
+            in TimelineRuntimePresentationSample sample) =>
+            new(playbackSlot, in start, in sample, TimelineRuntimePresentationGraphSource.Unexecuted);
+
+        public static TimelineRuntimePresentationSource FromExecutedPlayback(
+            in OrchestrationTimelineCommittedView<OrchestrationTime> inventory, int playbackSlot,
+            ulong logicTick, TimelinePresentationSampleReason reason, bool retainForCorrection) =>
+            FromExecutedResult(playbackSlot, in inventory.Playback(playbackSlot), logicTick, reason, retainForCorrection);
+
+        public static TimelineRuntimePresentationSource FromExecutedResult(int playbackSlot,
+            in OrchestrationTimelinePlaybackState<OrchestrationTime> accepted, ulong logicTick,
+            TimelinePresentationSampleReason reason, bool retainForCorrection)
+        {
+            var sample = new TimelineRuntimePresentationSample(accepted.Start.SourceGeneration, logicTick,
+                accepted.Start.ContentRevisionId, accepted.Progress.CursorTime, accepted.Progress.Cycle,
+                reason, retainForCorrection);
+            return new TimelineRuntimePresentationSource(playbackSlot, in accepted.Start, in sample,
+                TimelineRuntimePresentationGraphSource.Executed);
+        }
+    }
+
     public readonly struct TimelineRuntimePresentationPlayback
     {
         internal TimelineRuntimePresentationPlayback(in OrchestrationTimelineStart<OrchestrationTime> start,
-            OrchestrationTime time, int cycle, bool finished, bool retainForCorrection)
+            OrchestrationTime time, int cycle, bool finished, bool retainForCorrection,
+            TimelineRuntimePresentationGraphSource graphSource)
         {
             Start = start;
             Time = time;
             Cycle = cycle;
             Finished = finished;
             RetainForCorrection = retainForCorrection;
+            GraphSource = graphSource;
         }
 
         public OrchestrationTimelineStart<OrchestrationTime> Start { get; }
@@ -61,14 +108,15 @@ namespace BTSMTL.Timeline.Runtime
         public int Cycle { get; }
         public bool Finished { get; }
         public bool RetainForCorrection { get; }
+        public TimelineRuntimePresentationGraphSource GraphSource { get; }
     }
 
     public sealed class TimelineRuntimePresentationDriver
     {
-        const int RecordedStateHeaderV4 = -4;
+        const int RecordedStateHeaderV5 = -5;
         readonly int m_PlaybackCapacity;
         readonly Dictionary<OrchestrationTimelineStart<OrchestrationTime>, PresentationPlaybackState> m_Playbacks;
-        readonly Dictionary<(TimelineContentUnit Timeline, int SourceIdentityId, OrchestrationTimelinePlaybackMode Mode), Stack<PresentationPlaybackState>> m_RecycledPlaybacks = new();
+        readonly Dictionary<(TimelineContentUnit Timeline, int SourceIdentityId, OrchestrationTimelinePlaybackMode Mode, TimelineRuntimePresentationGraphSource GraphSource), Stack<PresentationPlaybackState>> m_RecycledPlaybacks = new();
         PresentationPlaybackState m_FirstPendingFrame;
         PresentationPlaybackState m_LastPendingFrame;
 
@@ -101,7 +149,7 @@ namespace BTSMTL.Timeline.Runtime
                     var start = item.Key;
                     return new TimelineRuntimePresentationPlayback(in start,
                         item.Value.CursorTime, item.Value.Cycle, item.Value.Finished,
-                        item.Value.CachedFrame.RetainForCorrection);
+                        item.Value.CachedFrame.RetainForCorrection, item.Value.GraphSource);
                 }
             }
 
@@ -120,13 +168,14 @@ namespace BTSMTL.Timeline.Runtime
 
         public void Prepare(TimelineRuntimePreparedContent content,
             OrchestrationTimelinePreparedContent<OrchestrationTime> executionContent,
-            int sourceIdentityId, Predicate<string> supportsSampleKind)
+            int sourceIdentityId, TimelineRuntimePresentationGraphSource graphSource,
+            Predicate<string> supportsSampleKind)
         {
             if (executionContent.Domain != TimelineExecutionDomain.Presentation ||
                 executionContent.ContentIdentityId != content.ContentIdentityId ||
                 executionContent.ContentRevisionId != content.ContentRevisionId)
                 throw new ArgumentException("表现播放必须装配本次调用的同版本 Presentation 执行内容。", nameof(executionContent));
-            var key = (content.Content, sourceIdentityId, executionContent.Mode);
+            var key = (content.Content, sourceIdentityId, executionContent.Mode, graphSource);
             if (m_RecycledPlaybacks.ContainsKey(key))
                 return;
             for (int index = 0; index < content.Content.Clips.Count; index++)
@@ -139,7 +188,7 @@ namespace BTSMTL.Timeline.Runtime
             }
             var recycled = new Stack<PresentationPlaybackState>(m_PlaybackCapacity);
             for (int i = 0; i < m_PlaybackCapacity; i++)
-                recycled.Push(new PresentationPlaybackState(content, executionContent, recycled));
+                recycled.Push(new PresentationPlaybackState(content, executionContent, graphSource, recycled));
             var writer = new RecordedRuntimeStateCountingWriter();
             if (m_PlaybackCapacity != 0)
             {
@@ -156,19 +205,20 @@ namespace BTSMTL.Timeline.Runtime
 
         public bool TryPresent(
             TimelineRuntimePreparedContent content,
-            int playbackSlot,
-            in OrchestrationTimelineStart<OrchestrationTime> start,
-            in TimelineRuntimePresentationSample sample,
+            in TimelineRuntimePresentationSource source,
             ulong presentationFrame,
             float presentationDeltaSeconds,
             float interpolationAlpha,
             out TimelineRuntimePresentationFrame frame)
         {
+            ref readonly OrchestrationTimelineStart<OrchestrationTime> start = ref source.Start;
+            ref readonly TimelineRuntimePresentationSample sample = ref source.Sample;
+            int playbackSlot = source.PlaybackSlot;
             if (!sample.IsValid || sample.SourceGeneration != start.SourceGeneration || sample.Time > content.Content.Duration ||
                 sample.ContentRevisionId != content.ContentRevisionId ||
                 start.ContentIdentityId != content.ContentIdentityId || start.ContentRevisionId != content.ContentRevisionId)
                 throw new InvalidOperationException("Timeline presentation sample does not match the prepared playback.");
-            PresentationPlaybackState state = GetPlaybackState(content, in start, start.StartTime, 0);
+            PresentationPlaybackState state = GetPlaybackState(content, in start, source.GraphSource, start.StartTime, 0);
 
             if (state.HasPendingFrame)
             {
@@ -215,7 +265,6 @@ namespace BTSMTL.Timeline.Runtime
                 previousTime = currentTime;
                 previousCycle = currentCycle;
             }
-            Array.Copy(state.MarkerLastTraversal, state.PendingMarkerLastTraversal, state.MarkerLastTraversal.Length);
             state.Candidate.Clear();
             var events = state.Candidate.Events;
             bool stopped = reason == TimelinePresentationSampleReason.Stopped || reason == TimelinePresentationSampleReason.Withdrawn;
@@ -230,26 +279,30 @@ namespace BTSMTL.Timeline.Runtime
                 currentCycle,
                 sampleReason,
                 state.Candidate);
-            if (allowTraversal)
-                AppendMarkerEvents(
-                content,
-                playbackSlot,
-                in start,
-                presentationFrame,
-                state,
-                previousTime,
-                previousCycle,
-                currentTime,
-                currentCycle,
-                !state.InitialBoundaryConsumed,
-                events);
-            AppendTreeClips(content, playbackSlot, in start, presentationFrame, state, sample, allowTraversal, reason);
+            if (state.GraphSource == TimelineRuntimePresentationGraphSource.Unexecuted)
+            {
+                Array.Copy(state.Graphs.MarkerLastTraversal, state.Graphs.PendingMarkerLastTraversal, state.Graphs.MarkerLastTraversal.Length);
+                if (allowTraversal)
+                    AppendMarkerEvents(
+                    content,
+                    playbackSlot,
+                    in start,
+                    presentationFrame,
+                    state,
+                    previousTime,
+                    previousCycle,
+                    currentTime,
+                    currentCycle,
+                    !state.Graphs.InitialBoundaryConsumed,
+                    events);
+                AppendTreeClips(content, playbackSlot, in start, presentationFrame, state, sample, allowTraversal, reason);
+                state.Graphs.PendingInitialBoundaryConsumed = state.Graphs.InitialBoundaryConsumed || allowTraversal ||
+                    reason == TimelinePresentationSampleReason.Correction;
+            }
             var operations = new TimelineRuntimePresentationOperations(state.Candidate);
             state.PendingTime = currentTime;
             state.PendingCycle = currentCycle;
             state.PendingFinished = sample.EndsPlayback;
-            state.PendingInitialBoundaryConsumed = state.InitialBoundaryConsumed || allowTraversal ||
-                reason == TimelinePresentationSampleReason.Correction;
             frame = new TimelineRuntimePresentationFrame(
                 in start,
                 sample.LogicTick,
@@ -272,12 +325,20 @@ namespace BTSMTL.Timeline.Runtime
             return true;
         }
 
+        public TimelineRuntimePresentationFrame ReadPresentationFrame(
+            in OrchestrationTimelineStart<OrchestrationTime> start)
+        {
+            PresentationPlaybackState state = m_Playbacks[start];
+            return state.HasPendingFrame ? state.PendingFrame : state.CachedFrame;
+        }
+
         PresentationPlaybackState GetPlaybackState(TimelineRuntimePreparedContent content,
-            in OrchestrationTimelineStart<OrchestrationTime> start, OrchestrationTime startTime, int cycle)
+            in OrchestrationTimelineStart<OrchestrationTime> start,
+            TimelineRuntimePresentationGraphSource graphSource, OrchestrationTime startTime, int cycle)
         {
             if (!m_Playbacks.TryGetValue(start, out PresentationPlaybackState state))
             {
-                var key = (content.Content, start.SourceIdentityId, start.Mode);
+                var key = (content.Content, start.SourceIdentityId, start.Mode, graphSource);
                 Stack<PresentationPlaybackState> recycled = m_RecycledPlaybacks[key];
                 state = recycled.Pop();
                 state.Restart(startTime, cycle);
@@ -295,10 +356,10 @@ namespace BTSMTL.Timeline.Runtime
             if (state.Prepared.Content.Clips[request.Token.ClipOrdinal].ExitSource != TimelineClipExitSource.TreeDecision)
                 throw new InvalidOperationException("A fixed-interval Presentation TreeClip cannot request a graph-controlled exit.");
             if (TimelineRuntimeScheduling<OrchestrationTime, OrchestrationTimeClock>.Contains(
-                state.PendingTreeExits.AsSpan(0, state.PendingTreeExitCount), request.Token.ClipOrdinal, request.Token.Cycle))
+                state.Graphs.PendingTreeExits.AsSpan(0, state.Graphs.PendingTreeExitCount), request.Token.ClipOrdinal, request.Token.Cycle))
                 return false;
             OrchestrationTimelineRuntime<OrchestrationTime, OrchestrationTimeClock>.AppendExit(
-                state.PendingTreeExits, ref state.PendingTreeExitCount, new OrchestrationTimelineTreeExitRange
+                state.Graphs.PendingTreeExits, ref state.Graphs.PendingTreeExitCount, new OrchestrationTimelineTreeExitRange
                 {
                     ClipOrdinal = request.Token.ClipOrdinal,
                     FirstCycle = request.Token.Cycle,
@@ -330,14 +391,17 @@ namespace BTSMTL.Timeline.Runtime
                 PresentationPlaybackState next = state.NextPendingFrame;
                 if (state.PendingFrame.PresentationFrame == presentationFrame)
                 {
-                    Array.Copy(state.PendingMarkerLastTraversal, state.MarkerLastTraversal, state.MarkerLastTraversal.Length);
-                    state.PendingTreeExits.AsSpan(0, state.PendingTreeExitCount).CopyTo(state.TreeExits);
-                    state.TreeExitCount = state.PendingTreeExitCount;
-                    state.TreeInitialBoundaryState = state.PendingTreeInitialBoundaryState;
+                    if (state.GraphSource == TimelineRuntimePresentationGraphSource.Unexecuted)
+                    {
+                        Array.Copy(state.Graphs.PendingMarkerLastTraversal, state.Graphs.MarkerLastTraversal, state.Graphs.MarkerLastTraversal.Length);
+                        state.Graphs.PendingTreeExits.AsSpan(0, state.Graphs.PendingTreeExitCount).CopyTo(state.Graphs.TreeExits);
+                        state.Graphs.TreeExitCount = state.Graphs.PendingTreeExitCount;
+                        state.Graphs.TreeInitialBoundaryState = state.Graphs.PendingTreeInitialBoundaryState;
+                        state.Graphs.InitialBoundaryConsumed = state.Graphs.PendingInitialBoundaryConsumed;
+                    }
                     state.CursorTime = state.PendingTime;
                     state.Cycle = state.PendingCycle;
                     state.Finished = state.PendingFinished;
-                    state.InitialBoundaryConsumed = state.PendingInitialBoundaryConsumed;
                     state.SampleReason = state.PendingFrame.RetainForCorrection
                         ? TimelinePresentationSampleReason.Correction : TimelinePresentationSampleReason.Advance;
                     state.Cache(state.PendingFrame);
@@ -404,7 +468,7 @@ namespace BTSMTL.Timeline.Runtime
 
         public void WriteRecordedState<TWriter>(ref TWriter writer) where TWriter : struct, IRecordedRuntimeStateWriter
         {
-            writer.Write(RecordedStateHeaderV4);
+            writer.Write(RecordedStateHeaderV5);
             writer.Write(m_Playbacks.Count);
             foreach (KeyValuePair<OrchestrationTimelineStart<OrchestrationTime>, PresentationPlaybackState> playback in m_Playbacks)
             {
@@ -421,7 +485,7 @@ namespace BTSMTL.Timeline.Runtime
         public void RestoreRecordedState(ref RecordedRuntimeStateReader reader,
             IReadOnlyList<TimelineRuntimePreparedContent> contents)
         {
-            if (reader.Read<int>() != RecordedStateHeaderV4)
+            if (reader.Read<int>() != RecordedStateHeaderV5)
                 throw new InvalidOperationException("Recorded Timeline presentation state version is not supported.");
             int count = reader.Read<int>();
             if (count < 0 || count > checked(m_RecycledPlaybacks.Count * m_PlaybackCapacity))
@@ -440,10 +504,11 @@ namespace BTSMTL.Timeline.Runtime
             for (int index = 0; index < count; index++)
             {
                 var start = reader.Read<OrchestrationTimelineStart<OrchestrationTime>>();
+                var graphSource = reader.Read<TimelineRuntimePresentationGraphSource>();
                 string contentIdentity = reader.ReadText();
                 string contentRevision = reader.ReadText();
                 TimelineRuntimePreparedContent prepared = RequireRecordedContent(contents, contentIdentity, contentRevision);
-                if (!m_RecycledPlaybacks.TryGetValue((prepared.Content, start.SourceIdentityId, start.Mode), out Stack<PresentationPlaybackState> recycled) ||
+                if (!m_RecycledPlaybacks.TryGetValue((prepared.Content, start.SourceIdentityId, start.Mode, graphSource), out Stack<PresentationPlaybackState> recycled) ||
                     recycled.Count == 0)
                     throw new InvalidOperationException($"Recorded Timeline '{contentIdentity}' revision '{contentRevision}' has no prepared playback capacity for '{start.Mode}'.");
                 PresentationPlaybackState state = recycled.Pop();
@@ -481,6 +546,7 @@ namespace BTSMTL.Timeline.Runtime
             PresentationPlaybackState state, bool maximum) where TWriter : struct, IRecordedRuntimeStateWriter
         {
             writer.Write(start);
+            writer.Write(state.GraphSource);
             writer.WriteText(state.Prepared.Content.Identity);
             writer.WriteText(state.Prepared.Content.Revision);
             state.WriteRecordedState(ref writer, maximum);
@@ -574,16 +640,16 @@ namespace BTSMTL.Timeline.Runtime
             bool includeStartBoundary,
             TimelineRuntimeSampleBuffer<TimelineRuntimePresentationEvent> events)
         {
-            int count = state.Scheduler.Markers(state.ExecutionContent.Markers.Span,
+            int count = state.Graphs.Scheduler.Markers(state.ExecutionContent.Markers.Span,
                 previousTime, previousCycle, currentTime, currentCycle, content.Content.Duration,
-                includeStartBoundary, state.Scheduled);
+                includeStartBoundary, state.Graphs.Scheduled);
             for (int index = 0; index < count; index++)
             {
-                ref readonly TimelineScheduledInvocation<OrchestrationTime> marker = ref state.Scheduled[index];
+                ref readonly TimelineScheduledInvocation<OrchestrationTime> marker = ref state.Graphs.Scheduled[index];
                 ulong traversalIndex = checked((ulong)marker.Cycle + 1);
-                if (state.PendingMarkerLastTraversal[marker.Ordinal] >= traversalIndex)
+                if (state.Graphs.PendingMarkerLastTraversal[marker.Ordinal] >= traversalIndex)
                     continue;
-                state.PendingMarkerLastTraversal[marker.Ordinal] = traversalIndex;
+                state.Graphs.PendingMarkerLastTraversal[marker.Ordinal] = traversalIndex;
                 events.Add(new TimelineRuntimePresentationEvent(in start,
                     new OrchestrationTimelineInvocationToken(playbackSlot, presentationFrame,
                         start.PlaybackIdentity, marker.Ordinal, marker.Cycle, true), marker.Time));
@@ -613,7 +679,7 @@ namespace BTSMTL.Timeline.Runtime
                 reason == TimelinePresentationSampleReason.Advance && !traverse;
             var native = state.ExecutionContent;
             bool align = native.Duration > OrchestrationTime.Zero &&
-                (correction || state.TreeInitialBoundaryState == OrchestrationTimelineInitialBoundaryState.Pending &&
+                (correction || state.Graphs.TreeInitialBoundaryState == OrchestrationTimelineInitialBoundaryState.Pending &&
                     (!traverse || sample.Cycle == state.Cycle && sample.Time == state.CursorTime));
             var playback = new OrchestrationTimelinePlaybackState<OrchestrationTime>
             {
@@ -622,18 +688,18 @@ namespace BTSMTL.Timeline.Runtime
                 {
                     CursorTime = state.CursorTime,
                     Cycle = state.Cycle,
-                    InitialBoundaryState = state.TreeInitialBoundaryState,
+                    InitialBoundaryState = state.Graphs.TreeInitialBoundaryState,
                     State = state.Finished ? OrchestrationTimelinePlaybackStatus.Completed : OrchestrationTimelinePlaybackStatus.Running
                 }
             };
             ReadOnlySpan<TimelineSchedulingClip<OrchestrationTime>> clips = native.Clips.Span;
-            ReadOnlySpan<OrchestrationTimelineTreeExitRange> exits = state.TreeExits.AsSpan(0, state.TreeExitCount);
+            ReadOnlySpan<OrchestrationTimelineTreeExitRange> exits = state.Graphs.TreeExits.AsSpan(0, state.Graphs.TreeExitCount);
             int activeCount = OrchestrationTimelineStateQueries<OrchestrationTime>.CopyActiveTrees<OrchestrationTimeClock>(
-                native, in playback, exits, state.ActiveTrees);
-            ReadOnlySpan<TimelineSchedulingBoundary<OrchestrationTime>> active = state.ActiveTrees.AsSpan(0, activeCount);
-            exits.CopyTo(state.PendingTreeExits);
-            state.PendingTreeExitCount = state.TreeExitCount;
-            state.PendingTreeInitialBoundaryState = state.TreeInitialBoundaryState;
+                native, in playback, exits, state.Graphs.ActiveTrees);
+            ReadOnlySpan<TimelineSchedulingBoundary<OrchestrationTime>> active = state.Graphs.ActiveTrees.AsSpan(0, activeCount);
+            exits.CopyTo(state.Graphs.PendingTreeExits);
+            state.Graphs.PendingTreeExitCount = state.Graphs.TreeExitCount;
+            state.Graphs.PendingTreeInitialBoundaryState = state.Graphs.TreeInitialBoundaryState;
             var output = state.Candidate.TreeClips;
             if (stopped || correction)
             {
@@ -649,12 +715,12 @@ namespace BTSMTL.Timeline.Runtime
             }
             if (align)
             {
-                state.PendingTreeExitCount = 0;
+                state.Graphs.PendingTreeExitCount = 0;
                 if (sample.Cycle > 0)
                     for (int ordinal = 0; ordinal < clips.Length; ordinal++)
                         if (clips[ordinal].Enabled && clips[ordinal].Tree && clips[ordinal].TreeDecision)
                             OrchestrationTimelineRuntime<OrchestrationTime, OrchestrationTimeClock>.AppendExit(
-                                state.PendingTreeExits, ref state.PendingTreeExitCount, new OrchestrationTimelineTreeExitRange
+                                state.Graphs.PendingTreeExits, ref state.Graphs.PendingTreeExitCount, new OrchestrationTimelineTreeExitRange
                                 {
                                     ClipOrdinal = ordinal,
                                     FirstCycle = 0,
@@ -662,44 +728,44 @@ namespace BTSMTL.Timeline.Runtime
                                 });
             }
             ReadOnlySpan<OrchestrationTimelineTreeExitRange> pendingExits =
-                state.PendingTreeExits.AsSpan(0, state.PendingTreeExitCount);
+                state.Graphs.PendingTreeExits.AsSpan(0, state.Graphs.PendingTreeExitCount);
             int scheduledCount = 0;
             if (align)
             {
                 int boundaryCount = 0;
-                Array.Clear(state.PreviousActiveClips, 0, state.PreviousActiveClips.Length);
+                Array.Clear(state.Graphs.PreviousActiveClips, 0, state.Graphs.PreviousActiveClips.Length);
                 for (int ordinal = 0; ordinal < clips.Length; ordinal++)
                     if (clips[ordinal].Tree &&
                         TimelineRuntimeScheduling<OrchestrationTime, OrchestrationTimeClock>.Active(
                             in clips[ordinal], ordinal, sample.Time, sample.Cycle, pendingExits))
-                        state.Boundaries[boundaryCount++] = new TimelineSchedulingBoundary<OrchestrationTime>(
+                        state.Graphs.Boundaries[boundaryCount++] = new TimelineSchedulingBoundary<OrchestrationTime>(
                             ordinal, clips[ordinal].SortOrdinal, sample.Time, sample.Cycle, true);
-                scheduledCount = state.Scheduler.Trees(clips, native.TreeOrdinals.Span,
-                    state.Boundaries.AsSpan(0, boundaryCount), state.PreviousActiveClips,
+                scheduledCount = state.Graphs.Scheduler.Trees(clips, native.TreeOrdinals.Span,
+                    state.Graphs.Boundaries.AsSpan(0, boundaryCount), state.Graphs.PreviousActiveClips,
                     sample.Time, sample.Cycle, sample.Time, sample.Cycle, native.Duration,
-                    false, pendingExits, state.SelectedTrees, state.Scheduled, 0);
+                    false, pendingExits, state.Graphs.SelectedTrees, state.Graphs.Scheduled, 0);
             }
             else if (traverse)
             {
                 for (int ordinal = 0; ordinal < clips.Length; ordinal++)
-                    state.PreviousActiveClips[ordinal] =
+                    state.Graphs.PreviousActiveClips[ordinal] =
                         TimelineRuntimeScheduling<OrchestrationTime, OrchestrationTimeClock>.Active(
                             in clips[ordinal], ordinal, state.CursorTime, state.Cycle, exits);
-                int boundaryCount = state.Scheduler.Boundaries(clips, state.CursorTime, state.Cycle,
+                int boundaryCount = state.Graphs.Scheduler.Boundaries(clips, state.CursorTime, state.Cycle,
                     sample.Time, sample.Cycle, native.Duration, start.Mode == OrchestrationTimelinePlaybackMode.Loop,
-                    state.TreeInitialBoundaryState == OrchestrationTimelineInitialBoundaryState.Pending, exits,
-                    ReadOnlySpan<OrchestrationTimelineClipOccurrence>.Empty, state.Boundaries, 0);
-                scheduledCount = state.Scheduler.Trees(clips, native.TreeOrdinals.Span,
-                    state.Boundaries.AsSpan(0, boundaryCount), state.PreviousActiveClips,
+                    state.Graphs.TreeInitialBoundaryState == OrchestrationTimelineInitialBoundaryState.Pending, exits,
+                    ReadOnlySpan<OrchestrationTimelineClipOccurrence>.Empty, state.Graphs.Boundaries, 0);
+                scheduledCount = state.Graphs.Scheduler.Trees(clips, native.TreeOrdinals.Span,
+                    state.Graphs.Boundaries.AsSpan(0, boundaryCount), state.Graphs.PreviousActiveClips,
                     state.CursorTime, state.Cycle, sample.Time, sample.Cycle, native.Duration,
                     start.Mode == OrchestrationTimelinePlaybackMode.Loop, exits,
-                    state.SelectedTrees, state.Scheduled, 0);
-                scheduledCount += state.Scheduler.ContinueTrees(clips, active,
+                    state.Graphs.SelectedTrees, state.Graphs.Scheduled, 0);
+                scheduledCount += state.Graphs.Scheduler.ContinueTrees(clips, active,
                     state.CursorTime, state.Cycle, sample.Time, sample.Cycle, native.Duration,
-                    exits, state.Scheduled.AsSpan(scheduledCount));
+                    exits, state.Graphs.Scheduled.AsSpan(scheduledCount));
             }
-            state.Scheduler.SortTrees(state.Scheduled, 0, scheduledCount);
-            ReadOnlySpan<TimelineScheduledInvocation<OrchestrationTime>> scheduled = state.Scheduled.AsSpan(0, scheduledCount);
+            state.Graphs.Scheduler.SortTrees(state.Graphs.Scheduled, 0, scheduledCount);
+            ReadOnlySpan<TimelineScheduledInvocation<OrchestrationTime>> scheduled = state.Graphs.Scheduled.AsSpan(0, scheduledCount);
             foreach (ref readonly TimelineScheduledInvocation<OrchestrationTime> request in scheduled)
             {
                 if (request.Hook == OrchestrationTimelineHook.Root &&
@@ -717,16 +783,16 @@ namespace BTSMTL.Timeline.Runtime
                 output.Add(TreeRequest(content, request.Ordinal, kind, request.Time, request.PreviousTime,
                     request.Cycle, playbackSlot, presentationFrame, in start));
             }
-            state.PendingTreeInitialBoundaryState = OrchestrationTimelineInitialBoundaryState.Applied;
+            state.Graphs.PendingTreeInitialBoundaryState = OrchestrationTimelineInitialBoundaryState.Applied;
             playback.Progress.CursorTime = sample.Time;
             playback.Progress.Cycle = sample.Cycle;
-            playback.Progress.InitialBoundaryState = state.PendingTreeInitialBoundaryState;
+            playback.Progress.InitialBoundaryState = state.Graphs.PendingTreeInitialBoundaryState;
             playback.Progress.State = OrchestrationTimelinePlaybackStatus.Running;
             activeCount = OrchestrationTimelineStateQueries<OrchestrationTime>.CopyActiveTrees<OrchestrationTimeClock>(
-                native, in playback, pendingExits, state.ActiveTrees);
+                native, in playback, pendingExits, state.Graphs.ActiveTrees);
             for (int index = 0; index < activeCount; index++)
             {
-                TimelineSchedulingBoundary<OrchestrationTime> occurrence = state.ActiveTrees[index];
+                TimelineSchedulingBoundary<OrchestrationTime> occurrence = state.Graphs.ActiveTrees[index];
                 ref readonly TimelineSchedulingClip<OrchestrationTime> clip = ref clips[occurrence.ClipOrdinal];
                 OrchestrationTime time = sample.Time + native.Duration *
                     OrchestrationTime.FromInt32(sample.Cycle - occurrence.Cycle);
@@ -738,7 +804,7 @@ namespace BTSMTL.Timeline.Runtime
                         time, time, occurrence.Cycle, playbackSlot, presentationFrame, in start));
                     if (clip.TreeDecision)
                         OrchestrationTimelineRuntime<OrchestrationTime, OrchestrationTimeClock>.AppendExit(
-                            state.PendingTreeExits, ref state.PendingTreeExitCount, new OrchestrationTimelineTreeExitRange
+                            state.Graphs.PendingTreeExits, ref state.Graphs.PendingTreeExitCount, new OrchestrationTimelineTreeExitRange
                             {
                                 ClipOrdinal = occurrence.ClipOrdinal,
                                 FirstCycle = occurrence.Cycle,
@@ -752,21 +818,12 @@ namespace BTSMTL.Timeline.Runtime
             }
         }
 
-        sealed class PresentationPlaybackState
+        sealed class PresentationGraphState
         {
-            readonly Stack<PresentationPlaybackState> m_Recycled;
-
-            public PresentationPlaybackState(
-                TimelineRuntimePreparedContent prepared,
-                OrchestrationTimelinePreparedContent<OrchestrationTime> executionContent,
-                Stack<PresentationPlaybackState> recycled)
+            public PresentationGraphState(TimelineRuntimePreparedContent prepared,
+                OrchestrationTimelinePreparedContent<OrchestrationTime> executionContent)
             {
-                m_Recycled = recycled;
-                Prepared = prepared;
-                ExecutionContent = executionContent;
                 int markerCount = prepared.Content.Markers.Count;
-                Candidate = new TimelineRuntimePresentationBuffer(prepared, executionContent);
-                Accepted = new TimelineRuntimePresentationBuffer(prepared, executionContent);
                 MarkerLastTraversal = new ulong[markerCount];
                 PendingMarkerLastTraversal = new ulong[markerCount];
                 TreeExits = new OrchestrationTimelineTreeExitRange[executionContent.RequiredTreeExits];
@@ -780,8 +837,6 @@ namespace BTSMTL.Timeline.Runtime
                 SelectedTrees = new bool[executionContent.Clips.Length];
             }
 
-            public readonly TimelineRuntimePreparedContent Prepared;
-            public readonly OrchestrationTimelinePreparedContent<OrchestrationTime> ExecutionContent;
             public readonly TimelineRuntimeScheduling<OrchestrationTime, OrchestrationTimeClock> Scheduler = new();
             public readonly TimelineSchedulingBoundary<OrchestrationTime>[] Boundaries;
             public readonly TimelineScheduledInvocation<OrchestrationTime>[] Scheduled;
@@ -794,21 +849,91 @@ namespace BTSMTL.Timeline.Runtime
             public int PendingTreeExitCount;
             public OrchestrationTimelineInitialBoundaryState TreeInitialBoundaryState;
             public OrchestrationTimelineInitialBoundaryState PendingTreeInitialBoundaryState;
-            public TimelineRuntimePresentationBuffer Candidate;
-            public TimelineRuntimePresentationBuffer Accepted;
             public readonly ulong[] MarkerLastTraversal;
             public readonly ulong[] PendingMarkerLastTraversal;
+            public bool InitialBoundaryConsumed;
+            public bool PendingInitialBoundaryConsumed;
+
+            public void WriteRecordedState<TWriter>(ref TWriter writer)
+                where TWriter : struct, IRecordedRuntimeStateWriter
+            {
+                writer.Write(InitialBoundaryConsumed);
+                writer.Write(PendingInitialBoundaryConsumed);
+                writer.WriteSpan<ulong>(MarkerLastTraversal);
+                writer.WriteSpan<ulong>(PendingMarkerLastTraversal);
+                writer.Write(TreeExitCount);
+                writer.Write(PendingTreeExitCount);
+                writer.WriteSpan<OrchestrationTimelineTreeExitRange>(TreeExits);
+                writer.WriteSpan<OrchestrationTimelineTreeExitRange>(PendingTreeExits);
+                writer.Write(TreeInitialBoundaryState);
+                writer.Write(PendingTreeInitialBoundaryState);
+            }
+
+            public void RestoreRecordedState(ref RecordedRuntimeStateReader reader)
+            {
+                InitialBoundaryConsumed = reader.Read<bool>();
+                PendingInitialBoundaryConsumed = reader.Read<bool>();
+                reader.ReadSpan<ulong>(MarkerLastTraversal.Length).CopyTo(MarkerLastTraversal);
+                reader.ReadSpan<ulong>(PendingMarkerLastTraversal.Length).CopyTo(PendingMarkerLastTraversal);
+                TreeExitCount = reader.Read<int>();
+                PendingTreeExitCount = reader.Read<int>();
+                reader.ReadSpan<OrchestrationTimelineTreeExitRange>(TreeExits.Length).CopyTo(TreeExits);
+                reader.ReadSpan<OrchestrationTimelineTreeExitRange>(PendingTreeExits.Length).CopyTo(PendingTreeExits);
+                TreeInitialBoundaryState = reader.Read<OrchestrationTimelineInitialBoundaryState>();
+                PendingTreeInitialBoundaryState = reader.Read<OrchestrationTimelineInitialBoundaryState>();
+            }
+
+            public void Restart()
+            {
+                InitialBoundaryConsumed = false;
+                PendingInitialBoundaryConsumed = false;
+                Array.Clear(MarkerLastTraversal, 0, MarkerLastTraversal.Length);
+                Array.Clear(PendingMarkerLastTraversal, 0, PendingMarkerLastTraversal.Length);
+            }
+
+            public void Clear()
+            {
+                TreeExitCount = 0;
+                PendingTreeExitCount = 0;
+                TreeInitialBoundaryState = OrchestrationTimelineInitialBoundaryState.Pending;
+                PendingTreeInitialBoundaryState = OrchestrationTimelineInitialBoundaryState.Pending;
+            }
+        }
+
+        sealed class PresentationPlaybackState
+        {
+            readonly Stack<PresentationPlaybackState> m_Recycled;
+
+            public PresentationPlaybackState(
+                TimelineRuntimePreparedContent prepared,
+                OrchestrationTimelinePreparedContent<OrchestrationTime> executionContent,
+                TimelineRuntimePresentationGraphSource graphSource, Stack<PresentationPlaybackState> recycled)
+            {
+                m_Recycled = recycled;
+                Prepared = prepared;
+                ExecutionContent = executionContent;
+                GraphSource = graphSource;
+                Candidate = new TimelineRuntimePresentationBuffer(prepared, executionContent, graphSource);
+                Accepted = new TimelineRuntimePresentationBuffer(prepared, executionContent, graphSource);
+                if (graphSource == TimelineRuntimePresentationGraphSource.Unexecuted)
+                    Graphs = new PresentationGraphState(prepared, executionContent);
+            }
+
+            public readonly TimelineRuntimePreparedContent Prepared;
+            public readonly OrchestrationTimelinePreparedContent<OrchestrationTime> ExecutionContent;
+            public readonly TimelineRuntimePresentationGraphSource GraphSource;
+            public readonly PresentationGraphState Graphs;
+            public TimelineRuntimePresentationBuffer Candidate;
+            public TimelineRuntimePresentationBuffer Accepted;
             public OrchestrationTime PendingTime;
             public int PendingCycle;
             public bool PendingFinished;
-            public bool PendingInitialBoundaryConsumed;
             public TimelineRuntimePresentationFrame PendingFrame;
             public bool HasPendingFrame => PendingFrame.PresentationFrame != 0;
             public PresentationPlaybackState PreviousPendingFrame;
             public PresentationPlaybackState NextPendingFrame;
             public OrchestrationTime CursorTime;
             public int Cycle;
-            public bool InitialBoundaryConsumed;
             public TimelinePresentationSampleReason SampleReason;
             public bool Finished;
             public TimelineRuntimePresentationFrame CachedFrame;
@@ -819,22 +944,14 @@ namespace BTSMTL.Timeline.Runtime
             {
                 writer.Write(CursorTime);
                 writer.Write(Cycle);
-                writer.Write(InitialBoundaryConsumed);
                 writer.Write(SampleReason);
                 writer.Write(Finished);
                 writer.Write(PendingTime);
                 writer.Write(PendingCycle);
                 writer.Write(PendingFinished);
-                writer.Write(PendingInitialBoundaryConsumed);
                 writer.Write(LastPresentationFrame);
-                writer.WriteSpan<ulong>(MarkerLastTraversal);
-                writer.WriteSpan<ulong>(PendingMarkerLastTraversal);
-                writer.Write(TreeExitCount);
-                writer.Write(PendingTreeExitCount);
-                writer.WriteSpan<OrchestrationTimelineTreeExitRange>(TreeExits);
-                writer.WriteSpan<OrchestrationTimelineTreeExitRange>(PendingTreeExits);
-                writer.Write(TreeInitialBoundaryState);
-                writer.Write(PendingTreeInitialBoundaryState);
+                if (GraphSource == TimelineRuntimePresentationGraphSource.Unexecuted)
+                    Graphs.WriteRecordedState(ref writer);
                 WriteBuffer(ref writer, Candidate, maximum);
                 WriteBuffer(ref writer, Accepted, maximum);
                 writer.Write(HasPendingFrame);
@@ -850,22 +967,14 @@ namespace BTSMTL.Timeline.Runtime
             {
                 CursorTime = reader.Read<OrchestrationTime>();
                 Cycle = reader.Read<int>();
-                InitialBoundaryConsumed = reader.Read<bool>();
                 SampleReason = reader.Read<TimelinePresentationSampleReason>();
                 Finished = reader.Read<bool>();
                 PendingTime = reader.Read<OrchestrationTime>();
                 PendingCycle = reader.Read<int>();
                 PendingFinished = reader.Read<bool>();
-                PendingInitialBoundaryConsumed = reader.Read<bool>();
                 LastPresentationFrame = reader.Read<ulong>();
-                reader.ReadSpan<ulong>(MarkerLastTraversal.Length).CopyTo(MarkerLastTraversal);
-                reader.ReadSpan<ulong>(PendingMarkerLastTraversal.Length).CopyTo(PendingMarkerLastTraversal);
-                TreeExitCount = reader.Read<int>();
-                PendingTreeExitCount = reader.Read<int>();
-                reader.ReadSpan<OrchestrationTimelineTreeExitRange>(TreeExits.Length).CopyTo(TreeExits);
-                reader.ReadSpan<OrchestrationTimelineTreeExitRange>(PendingTreeExits.Length).CopyTo(PendingTreeExits);
-                TreeInitialBoundaryState = reader.Read<OrchestrationTimelineInitialBoundaryState>();
-                PendingTreeInitialBoundaryState = reader.Read<OrchestrationTimelineInitialBoundaryState>();
+                if (GraphSource == TimelineRuntimePresentationGraphSource.Unexecuted)
+                    Graphs.RestoreRecordedState(ref reader);
                 ReadBuffer(ref reader, Candidate);
                 ReadBuffer(ref reader, Accepted);
                 PendingFrame = reader.Read<bool>() ? ReadFrame(ref reader, Candidate, in start) : default;
@@ -875,16 +984,14 @@ namespace BTSMTL.Timeline.Runtime
 
             public void Restart(OrchestrationTime startTime, int cycle)
             {
-                Array.Clear(MarkerLastTraversal, 0, MarkerLastTraversal.Length);
-                Array.Clear(PendingMarkerLastTraversal, 0, PendingMarkerLastTraversal.Length);
+                if (GraphSource == TimelineRuntimePresentationGraphSource.Unexecuted)
+                    Graphs.Restart();
                 PendingTime = startTime;
                 PendingCycle = cycle;
                 PendingFinished = false;
-                PendingInitialBoundaryConsumed = false;
                 PendingFrame = default;
                 CursorTime = startTime;
                 Cycle = cycle;
-                InitialBoundaryConsumed = false;
                 SampleReason = TimelinePresentationSampleReason.Advance;
                 Finished = false;
                 CachedFrame = default;
@@ -913,10 +1020,8 @@ namespace BTSMTL.Timeline.Runtime
             {
                 Candidate.Clear();
                 Accepted.Clear();
-                TreeExitCount = 0;
-                PendingTreeExitCount = 0;
-                TreeInitialBoundaryState = OrchestrationTimelineInitialBoundaryState.Pending;
-                PendingTreeInitialBoundaryState = OrchestrationTimelineInitialBoundaryState.Pending;
+                if (GraphSource == TimelineRuntimePresentationGraphSource.Unexecuted)
+                    Graphs.Clear();
             }
 
         }
