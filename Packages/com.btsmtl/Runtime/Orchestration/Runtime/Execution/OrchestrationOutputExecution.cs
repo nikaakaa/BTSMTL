@@ -30,7 +30,9 @@ namespace BTSMTL.Orchestration
             m_Workspace.OutputValueCount += values.Length;
             m_Workspace.OutputRequests[m_Workspace.OutputRequestCount++] = new OrchestrationOutputRequest(
                 operationIndex, ReadGeneration(operationIndex), m_Input.InstanceGeneration,
-                templateIndex, range, hasTimelineInvocation, invocation, hook);
+                templateIndex, range, hasTimelineInvocation, invocation, hook,
+                m_TimelineInvocation.Start.SourceIdentityId, m_TimelineInvocation.Start.SourceGeneration,
+                m_TimelineInvocation.Invocation.Time);
         }
     }
 }

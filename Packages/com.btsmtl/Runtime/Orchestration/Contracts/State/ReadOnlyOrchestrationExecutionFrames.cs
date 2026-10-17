@@ -33,7 +33,7 @@ namespace BTSMTL.Orchestration
         public int Count => m_Roster[0].Count;
         public int Capacity => m_Frames.Length;
         public ref readonly OrchestrationExecutionFrameState Header(int frameSlot) => ref m_Frames[frameSlot];
-        internal ReadOnlySpan<OrchestrationExecutionFrameState> HeaderSpan(int frameSlot) => m_Frames.Slice(frameSlot, 1);
+        public ReadOnlySpan<OrchestrationExecutionFrameState> HeaderSpan(int frameSlot) => m_Frames.Slice(frameSlot, 1);
         public ReadOnlySpan<OrchestrationOperationState> Operations(int frameSlot) =>
             m_Operations.Slice(frameSlot * m_OperationsPerFrame, m_OperationsPerFrame);
         public ReadOnlySpan<TValue> Values(int frameSlot) =>

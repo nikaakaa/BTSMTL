@@ -72,15 +72,17 @@ namespace BTSMTL.Orchestration
     {
         readonly ReadOnlyMemory<int>[] m_OwnerInstances;
         readonly OrchestrationProgramOutputCapacity[] m_Outputs;
+        readonly int[] m_SourceDepths;
 
         OrchestrationExecutionCapacity(in OrchestrationExecutionStateCapacity state,
             int playbackCount, ReadOnlyMemory<int>[] ownerInstances,
-            OrchestrationProgramOutputCapacity[] outputs)
+            OrchestrationProgramOutputCapacity[] outputs, int[] sourceDepths)
         {
             State = state;
             PlaybackCount = playbackCount;
             m_OwnerInstances = ownerInstances;
             m_Outputs = outputs;
+            m_SourceDepths = sourceDepths;
         }
 
         public OrchestrationExecutionStateCapacity State { get; }
@@ -88,6 +90,7 @@ namespace BTSMTL.Orchestration
         public int ProgramCount => m_Outputs.Length;
         public ReadOnlyMemory<int> OwnerInstances(int programIndex) => m_OwnerInstances[programIndex];
         public OrchestrationProgramOutputCapacity Outputs(int programIndex) => m_Outputs[programIndex];
+        public int SourceDepth(int programIndex) => m_SourceDepths[programIndex];
 
         internal static OrchestrationExecutionCapacity Prepare<TValue>(
             ReadOnlySpan<OrchestrationProgram<TValue>> programs,
@@ -98,10 +101,11 @@ namespace BTSMTL.Orchestration
             foreach (ref readonly OrchestrationTimelineCallCapacity call in calls)
                 callMap.Add((call.ProgramIndex, call.OperationIndex), call);
             var ownerCalls = new List<int>[programs.Length][];
-            var roots = new Dictionary<(int Program, int Owner), (int Frames, int Playbacks, int[] Owners)>();
+            var roots = new Dictionary<(int Program, int Owner), (int Frames, int Playbacks, int[] Owners, int Depth)>();
             var ownerInstanceBuffers = new int[programs.Length][];
             var ownerInstances = new ReadOnlyMemory<int>[programs.Length];
             var outputs = new OrchestrationProgramOutputCapacity[programs.Length];
+            var sourceDepths = new int[programs.Length];
             int operations = 0;
             int values = 0;
             for (int programIndex = 0; programIndex < programs.Length; programIndex++)
@@ -142,13 +146,14 @@ namespace BTSMTL.Orchestration
                             throw new InvalidOperationException($"Program '{programIndex}' admission '{root.OwnerOperationIndex}' is not an execution frame owner.");
                         var counts = new int[program.OperationCount];
                         int rootPlaybacks = 0;
-                        AccumulateOwners(programIndex, root.OwnerOperationIndex, 1,
+                        int depth = AccumulateOwners(programIndex, root.OwnerOperationIndex, 1,
                             ownerCalls[programIndex], callMap, counts, ref rootPlaybacks);
                         int rootFrames = 0;
                         foreach (int count in counts)
                             rootFrames = checked(rootFrames + count);
-                        roots.Add(key, capacity = (rootFrames, rootPlaybacks, counts));
+                        roots.Add(key, capacity = (rootFrames, rootPlaybacks, counts, depth));
                     }
+                    sourceDepths[programIndex] = Math.Max(sourceDepths[programIndex], capacity.Depth);
                     frames = Math.Max(frames, capacity.Frames);
                     playbacks = Math.Max(playbacks, capacity.Playbacks);
                     if (!admissionOwners.TryGetValue(programIndex, out int[] perAdmission))
@@ -189,10 +194,10 @@ namespace BTSMTL.Orchestration
                     checked(program.MaximumOperationEvaluations * maximumOutputPorts));
             }
             var state = new OrchestrationExecutionStateCapacity(frameCount, operations, values);
-            return new OrchestrationExecutionCapacity(in state, playbackCount, ownerInstances, outputs);
+            return new OrchestrationExecutionCapacity(in state, playbackCount, ownerInstances, outputs, sourceDepths);
         }
 
-        static void AccumulateOwners(int programIndex, int owner, int count,
+        static int AccumulateOwners(int programIndex, int owner, int count,
             List<int>[] ownerCalls,
             Dictionary<(int Program, int Operation), OrchestrationTimelineCallCapacity> calls,
             Span<int> instances, ref int playbacks)
@@ -200,7 +205,8 @@ namespace BTSMTL.Orchestration
             instances[owner] = checked(instances[owner] + count);
             List<int> owned = ownerCalls[owner];
             if (owned == null)
-                return;
+                return 1;
+            int depth = 1;
             foreach (int operationIndex in owned)
             {
                 if (!calls.TryGetValue((programIndex, operationIndex), out OrchestrationTimelineCallCapacity call))
@@ -208,9 +214,11 @@ namespace BTSMTL.Orchestration
                 playbacks = checked(playbacks + count);
                 foreach (ref readonly OrchestrationOccurrenceCapacity occurrence in call.Occurrences.Span)
                     if (occurrence.MaximumInstances != 0)
-                        AccumulateOwners(programIndex, occurrence.OwnerOperationIndex,
-                            checked(count * occurrence.MaximumInstances), ownerCalls, calls, instances, ref playbacks);
+                        depth = Math.Max(depth, checked(1 + AccumulateOwners(programIndex,
+                            occurrence.OwnerOperationIndex, checked(count * occurrence.MaximumInstances),
+                            ownerCalls, calls, instances, ref playbacks)));
             }
+            return depth;
         }
     }
 }

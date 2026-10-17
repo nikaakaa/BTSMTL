@@ -34,7 +34,8 @@ namespace BTSMTL.Orchestration
         public OrchestrationOutputRequest(int operationIndex, ulong operationGeneration,
             ulong instanceGeneration, int templateIndex, OrchestrationRange values,
             bool hasTimelineInvocation, OrchestrationTimelineInvocationToken timelineInvocation,
-            OrchestrationTimelineHook timelineHook)
+            OrchestrationTimelineHook timelineHook, int timelineSourceIdentityId, ulong timelineSourceGeneration,
+            OrchestrationTime timelineTime)
         {
             OperationIndex = operationIndex;
             OperationGeneration = operationGeneration;
@@ -44,6 +45,9 @@ namespace BTSMTL.Orchestration
             HasTimelineInvocation = hasTimelineInvocation;
             TimelineInvocation = timelineInvocation;
             TimelineHook = timelineHook;
+            TimelineSourceIdentityId = timelineSourceIdentityId;
+            TimelineSourceGeneration = timelineSourceGeneration;
+            TimelineTime = timelineTime;
         }
 
         public int OperationIndex { get; }
@@ -54,5 +58,8 @@ namespace BTSMTL.Orchestration
         public bool HasTimelineInvocation { get; }
         public OrchestrationTimelineInvocationToken TimelineInvocation { get; }
         public OrchestrationTimelineHook TimelineHook { get; }
+        public int TimelineSourceIdentityId { get; }
+        public ulong TimelineSourceGeneration { get; }
+        public OrchestrationTime TimelineTime { get; }
     }
 }

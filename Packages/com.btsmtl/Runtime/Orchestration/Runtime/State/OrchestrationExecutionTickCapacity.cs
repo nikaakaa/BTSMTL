@@ -58,7 +58,7 @@ namespace BTSMTL.Orchestration
     {
         internal OrchestrationOperationTickCapacity(long executeInvocations, long evaluateInvocations,
             long stopInvocations, long lifecycleInvocations, long blackboardFactsInvocations,
-            long retainedGenerations)
+            long retainedGenerations, long outputInvocations)
         {
             ExecuteInvocations = executeInvocations;
             EvaluateInvocations = evaluateInvocations;
@@ -66,6 +66,7 @@ namespace BTSMTL.Orchestration
             LifecycleInvocations = lifecycleInvocations;
             BlackboardFactsInvocations = blackboardFactsInvocations;
             RetainedGenerations = retainedGenerations;
+            OutputInvocations = outputInvocations;
             ExtensionInvocations = checked(executeInvocations + evaluateInvocations + stopInvocations +
                 lifecycleInvocations + blackboardFactsInvocations);
         }
@@ -76,6 +77,7 @@ namespace BTSMTL.Orchestration
         public long LifecycleInvocations { get; }
         public long BlackboardFactsInvocations { get; }
         public long RetainedGenerations { get; }
+        public long OutputInvocations { get; }
         public long ExtensionInvocations { get; }
     }
 
@@ -198,7 +200,9 @@ namespace BTSMTL.Orchestration
                     operations[operationIndex] = new OrchestrationOperationTickCapacity(
                         action ? checked((long)budget.OuterInvocationCount * analysis.ExecuteVisits[operationIndex]) : 0,
                         evaluate, action ? stops : 0, hooks, facts,
-                        checked(owners[operation.ExecutionFrameOwnerOperationIndex] + execution));
+                        checked(owners[operation.ExecutionFrameOwnerOperationIndex] + execution),
+                        operation.Code == OrchestrationOperationCode.EmitOutput
+                            ? checked((long)budget.OuterInvocationCount * analysis.ExecuteVisits[operationIndex]) : 0);
                     if (operation.Code != OrchestrationOperationCode.Timeline)
                         continue;
                     if (!timelines.TryGetValue((programIndex, operationIndex), out OrchestrationTimelineTickContentCapacity content))
@@ -285,6 +289,7 @@ namespace BTSMTL.Orchestration
                         AnalyzeValues(state);
                 for (int target = 0; includeStops && target < m_Program.OperationCount; target++)
                     if (m_Program.Operation(target).Code == OrchestrationOperationCode.Timeline ||
+                        m_Program.Operation(target).Code == OrchestrationOperationCode.EmitOutput ||
                         m_Program.Operation(target).Code == OrchestrationOperationCode.Extension &&
                         m_Extensions.Span[m_Program.Operation(target).ExtensionBindingIndex].Kind == OrchestrationExtensionKind.Action)
                     {

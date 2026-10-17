@@ -94,7 +94,7 @@ namespace BTSMTL.Orchestration
         public static int WriteBlitState<TValue, TPlayback>(
             in OrchestrationStateLayout<TValue, TPlayback> prepared,
             ReadOnlySpan<int> skillContentIds, ReadOnlySpan<OrchestrationProgram<TValue>> programs,
-            ReadOnlySpan<byte> source, Span<byte> output)
+            ReadOnlySpan<byte> source, Span<byte> output, bool countOnly = false)
             where TValue : unmanaged where TPlayback : unmanaged
         {
             ReadOnlyOrchestrationStateView state = prepared.Layout.BindCommitted(source);
@@ -105,10 +105,10 @@ namespace BTSMTL.Orchestration
             int copied = 0;
             foreach (OrchestrationStateRegion<byte> payload in payloads)
             {
-                WriteBytes(source.Slice(copied, payload.OffsetBytes - copied), output, ref written);
+                WriteBytes(source.Slice(copied, payload.OffsetBytes - copied), output, ref written, countOnly);
                 copied = payload.OffsetBytes + payload.SizeBytes;
             }
-            WriteBytes(source.Slice(copied), output, ref written);
+            WriteBytes(source.Slice(copied), output, ref written, countOnly);
             var frames = BindFrames(prepared.Execution, execution);
             for (int slot = 0; slot < frames.Capacity; slot++)
             {
@@ -117,11 +117,11 @@ namespace BTSMTL.Orchestration
                     continue;
                 ref readonly OrchestrationProgram<TValue> program = ref programs[skillContentIds.IndexOf(skill)];
                 WriteBytes(MemoryMarshal.AsBytes(frames.Operations(slot).Slice(0, program.OperationCount)),
-                    output, ref written);
+                    output, ref written, countOnly);
                 WriteBytes(MemoryMarshal.AsBytes(frames.Values(slot).Slice(0, program.ValueSlotCount)),
-                    output, ref written);
+                    output, ref written, countOnly);
                 WriteBytes(MemoryMarshal.AsBytes(frames.BlackboardMetadata(slot).Slice(0, program.ValueSlotCount)),
-                    output, ref written);
+                    output, ref written, countOnly);
             }
             return written;
         }
@@ -197,9 +197,10 @@ namespace BTSMTL.Orchestration
                 }
         }
 
-        static void WriteBytes(ReadOnlySpan<byte> source, Span<byte> output, ref int written)
+        static void WriteBytes(ReadOnlySpan<byte> source, Span<byte> output, ref int written, bool countOnly)
         {
-            source.CopyTo(output.Slice(written));
+            if (!countOnly)
+                source.CopyTo(output.Slice(written));
             written += source.Length;
         }
 
