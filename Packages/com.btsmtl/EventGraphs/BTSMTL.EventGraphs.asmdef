@@ -9,7 +9,7 @@
         "BTSMTL.Authoring",
         "BTSMTL.Orchestration.Contracts",
         "BTSMTL.Orchestration.Runtime",
-        "ThirdPerson.Shared.Contracts"
+        "BTSMTL.Foundation"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

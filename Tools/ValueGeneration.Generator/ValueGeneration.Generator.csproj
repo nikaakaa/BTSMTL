@@ -11,7 +11,7 @@
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <IncludeBuildOutput>false</IncludeBuildOutput>
-    <UnityAnalyzerDirectory>$(MSBuildThisFileDirectory)..\..\Packages\com.thirdperson.shared\Analyzers</UnityAnalyzerDirectory>
+    <UnityAnalyzerDirectory>$(MSBuildThisFileDirectory)..\..\Packages\com.btsmtl.foundation\Analyzers</UnityAnalyzerDirectory>
   </PropertyGroup>
   <ItemGroup>
     <AdditionalFiles Include="AnalyzerReleases.Shipped.md" />

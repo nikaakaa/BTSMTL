@@ -5,6 +5,7 @@
   "description": "作者能力与玩法宿主共用的领域扩展身份、版本和端口合同。",
   "unity": "2022.3",
   "dependencies": {
+    "com.btsmtl.foundation": "0.1.0",
     "com.thirdperson.shared": "0.1.0",
     "com.btsmtl": "0.1.0"
   }

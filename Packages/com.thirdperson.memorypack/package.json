@@ -5,6 +5,7 @@
   "description": "从玩法原成员生成外部 MemoryPack 适配，按需发布内容及编码状态。",
   "unity": "2022.3",
   "dependencies": {
+    "com.btsmtl.foundation": "0.1.0",
     "com.btsmtl": "0.1.0",
     "com.thirdperson.shared": "0.1.0",
     "com.thirdperson.gameplay": "0.1.0",

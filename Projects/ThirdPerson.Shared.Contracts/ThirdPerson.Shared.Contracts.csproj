@@ -8,6 +8,7 @@
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="..\BTSMTL.Foundation\BTSMTL.Foundation.csproj" />
     <Compile Include="..\..\Packages\com.thirdperson.shared\Runtime\Contracts\**\*.cs" />
   </ItemGroup>
 </Project>

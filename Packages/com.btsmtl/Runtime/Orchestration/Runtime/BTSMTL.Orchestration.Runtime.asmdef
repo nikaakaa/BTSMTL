@@ -2,7 +2,7 @@
     "name": "BTSMTL.Orchestration.Runtime",
     "rootNamespace": "BTSMTL.Orchestration",
     "references": [
-        "ThirdPerson.Shared.Contracts",
+        "BTSMTL.Foundation",
         "BTSMTL.Orchestration.Contracts"
     ],
     "includePlatforms": [],

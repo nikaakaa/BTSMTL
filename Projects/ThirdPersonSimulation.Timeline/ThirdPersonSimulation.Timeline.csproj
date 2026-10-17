@@ -10,7 +10,7 @@
   </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="ThirdPersonSimulation.Timeline.Tests" />
-    <ProjectReference Include="..\ThirdPerson.Shared.Contracts\ThirdPerson.Shared.Contracts.csproj" />
+    <ProjectReference Include="..\BTSMTL.Foundation\BTSMTL.Foundation.csproj" />
     <ProjectReference Include="..\BTSMTL.Orchestration.Contracts\BTSMTL.Orchestration.Contracts.csproj" />
     <ProjectReference Include="..\BTSMTL.Orchestration.Runtime\BTSMTL.Orchestration.Runtime.csproj" />
     <Compile Include="$(TimelineSourceRoot)\**\*.cs" LinkBase="Source" />

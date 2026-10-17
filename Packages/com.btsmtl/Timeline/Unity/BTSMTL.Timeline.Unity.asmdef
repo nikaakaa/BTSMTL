@@ -2,7 +2,7 @@
     "name": "BTSMTL.Timeline.Unity",
     "rootNamespace": "BTSMTL.Timeline.Unity",
     "references": [
-        "ThirdPerson.Shared.Contracts",
+        "BTSMTL.Foundation",
         "BTSMTL.Timeline.Runtime",
         "BTSMTL.Timeline",
         "UnityEngine.UI"

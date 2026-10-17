@@ -10,6 +10,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="..\..\Packages\com.btsmtl\BlackboardConfiguration\**\*.cs" Exclude="..\..\Packages\com.thirdperson.shared\Runtime\Luban\**\*.cs" />
+    <ProjectReference Include="..\BTSMTL.Foundation\BTSMTL.Foundation.csproj" />
     <ProjectReference Include="..\ThirdPerson.Luban\ThirdPerson.Luban.csproj" />
     <ProjectReference Include="..\BTSMTL.Orchestration.Runtime\BTSMTL.Orchestration.Runtime.csproj" />
   </ItemGroup>

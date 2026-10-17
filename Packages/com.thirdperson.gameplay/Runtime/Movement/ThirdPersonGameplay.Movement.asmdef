@@ -2,7 +2,7 @@
     "name": "ThirdPersonGameplay.Movement",
     "rootNamespace": "ThirdPersonSimulation",
     "references": [
-        "ThirdPerson.Shared.Contracts",
+        "ThirdPerson.Shared.Contracts", "BTSMTL.Foundation",
         "ThirdPersonGameplay.Orchestration.Contracts",
         "BTSMTL.Orchestration.Contracts",
         "BTSMTL.Timeline.Runtime",

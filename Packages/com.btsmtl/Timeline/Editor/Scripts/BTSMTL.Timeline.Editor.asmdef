@@ -12,7 +12,7 @@
         "NodeCanvas",
         "ParadoxNotion",
         "FlowCanvas",
-        "ThirdPerson.Shared.Contracts",
+        "BTSMTL.Foundation",
         "BTSMTL.Orchestration.Contracts",
         "BTSMTL.Timeline.Runtime"
     ],

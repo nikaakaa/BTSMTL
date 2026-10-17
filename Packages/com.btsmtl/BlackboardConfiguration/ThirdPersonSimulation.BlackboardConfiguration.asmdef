@@ -4,7 +4,7 @@
     "precompiledReferences": [],
     "rootNamespace": "ThirdPersonSimulation.Configuration",
     "references": [
-        "ThirdPerson.Shared.Contracts",
+        "BTSMTL.Foundation",
         "ThirdPerson.Luban",
         "BTSMTL.Orchestration.Contracts",
         "BTSMTL.Orchestration.Runtime"

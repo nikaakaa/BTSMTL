@@ -1,6 +1,6 @@
 {
   "name": "ThirdPersonGameplay.Configuration",
-  "references": ["ThirdPerson.Shared.Contracts"],
+  "references": ["ThirdPerson.Shared.Contracts", "BTSMTL.Foundation"],
   "overrideReferences": true,
   "precompiledReferences": [],
   "noEngineReferences": true

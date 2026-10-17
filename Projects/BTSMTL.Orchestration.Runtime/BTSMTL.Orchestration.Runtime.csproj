@@ -10,7 +10,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\ThirdPerson.Shared.Contracts\ThirdPerson.Shared.Contracts.csproj" />
+    <ProjectReference Include="..\BTSMTL.Foundation\BTSMTL.Foundation.csproj" />
     <ProjectReference Include="..\BTSMTL.Orchestration.Contracts\BTSMTL.Orchestration.Contracts.csproj" />
     <Compile Include="..\..\Packages\com.btsmtl\Runtime\Orchestration\Runtime\**\*.cs" />
   </ItemGroup>

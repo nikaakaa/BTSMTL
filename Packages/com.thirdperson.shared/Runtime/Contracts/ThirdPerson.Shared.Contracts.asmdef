@@ -2,13 +2,14 @@
     "name": "ThirdPerson.Shared.Contracts",
     "rootNamespace": "",
     "references": [
+        "BTSMTL.Foundation",
         "KK.GeneratedDiagnosticSampling.Annotations"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
     "overrideReferences": true,
-    "precompiledReferences": ["System.Runtime.CompilerServices.Unsafe.dll"],
+    "precompiledReferences": [],
     "autoReferenced": true,
     "defineConstraints": [],
     "versionDefines": [],

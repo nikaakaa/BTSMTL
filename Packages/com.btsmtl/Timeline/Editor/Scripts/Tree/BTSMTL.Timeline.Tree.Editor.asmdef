@@ -2,7 +2,7 @@
     "name": "BTSMTL.Timeline.Tree.Editor",
     "rootNamespace": "",
     "references": [
-        "ThirdPerson.Shared.Contracts",
+        "BTSMTL.Foundation",
         "BTSMTL.Orchestration.Contracts",
         "BTSMTL.Authoring",
         "GUID:3af8e02729705434aa5c2d77c4a5103a",

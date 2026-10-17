@@ -2,7 +2,7 @@
     "name": "BTSMTL.Timeline.Runtime",
     "rootNamespace": "BTSMTL.Timeline.Runtime",
     "references": [
-        "ThirdPerson.Shared.Contracts",
+        "BTSMTL.Foundation",
         "BTSMTL.Orchestration.Contracts",
         "BTSMTL.Orchestration.Runtime"
     ],

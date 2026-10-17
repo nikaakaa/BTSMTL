@@ -54,6 +54,7 @@
     "^com\\.thirdperson\\."
   ],
   "sourceIdentityAssemblies": [
+    "^BTSMTL\\.Foundation$",
     "^ThirdPerson\\.Shared\\.Contracts$",
     "^Quantum\\.Simulation$",
     "^ThirdPersonGameplay\\.Movement$",
@@ -75,11 +76,11 @@
         "^ThirdPersonGameplay\\.Orchestration\\.Contracts$"
       ],
       "sourcePackages": [
-        "^com\\.btsmtl$",
+        "^com\\.btsmtl(?:\\.foundation)?$",
         "^com\\.thirdperson\\.(?:shared|gameplay\\.contracts)$"
       ],
       "precompiledReferencesByAssembly": {
-        "ThirdPerson.Shared.Contracts": [
+        "BTSMTL.Foundation": [
           "System.Runtime.CompilerServices.Unsafe.dll"
         ],
         "BTSMTL.EventGraphs": [
@@ -327,7 +328,7 @@
         "^BTSMTL(?:\\.|$)"
       ],
       "sourcePackages": [
-        "^com\\.btsmtl$"
+        "^com\\.btsmtl(?:\\.foundation)?$"
       ],
       "forbiddenAssemblies": [
         "^ThirdPersonSimulation\\.(?:Core|FPGameplay(?:\\.|$)|Float32(?:\\.|$)|MemoryPack|AttackGeometry|Snapshot|Hosting|ServerAuthoritative|QuantumNumerics)",
@@ -345,24 +346,42 @@
       ]
     },
     {
+      "id": "FOUNDATION_LAYER",
+      "reason": "BTSMTL基础层只依赖.NET基础库，不引用Unity、BTSMTL其它程序集或任何宿主实现。",
+      "sourceAssemblies": [
+        "^BTSMTL\\.Foundation$"
+      ],
+      "sourcePackages": [
+        "^com\\.btsmtl\\.foundation$"
+      ],
+      "allowedAssemblies": [
+        "^(?:System(?:\\.|$)|mscorlib$|netstandard$)"
+      ],
+      "forbiddenNamespaces": [
+        "^Unity(?:Engine|Editor)?(?:\\.|$)",
+        "^Photon(?:\\.|$)",
+        "^Quantum(?:\\.|$)"
+      ]
+    },
+    {
       "id": "ORCHESTRATION_CONTRACTS_LAYER",
-      "reason": "编排合同只依赖Shared合同及.NET基础库。",
+      "reason": "编排合同只依赖BTSMTL基础层及.NET基础库。",
       "sourceAssemblies": [
         "^BTSMTL\\.Orchestration\\.Contracts$"
       ],
       "allowedAssemblies": [
-        "^ThirdPerson\\.Shared\\.Contracts$",
+        "^BTSMTL\\.Foundation$",
         "^(?:System(?:\\.|$)|mscorlib$|netstandard$)"
       ]
     },
     {
       "id": "ORCHESTRATION_RUNTIME_LAYER",
-      "reason": "编排运行时只依赖Shared和编排合同及.NET基础库。",
+      "reason": "编排运行时只依赖BTSMTL基础层、编排合同及.NET基础库。",
       "sourceAssemblies": [
         "^BTSMTL\\.Orchestration\\.Runtime$"
       ],
       "allowedAssemblies": [
-        "^ThirdPerson\\.Shared\\.Contracts$",
+        "^BTSMTL\\.Foundation$",
         "^BTSMTL\\.Orchestration\\.Contracts$",
         "^(?:System(?:\\.|$)|mscorlib$|netstandard$)"
       ]
@@ -377,6 +396,7 @@
         "^com\\.thirdperson\\.gameplay\\.contracts$"
       ],
       "allowedAssemblies": [
+        "^BTSMTL\\.Foundation$",
         "^ThirdPerson\\.Shared\\.Contracts$",
         "^BTSMTL\\.Orchestration\\.Contracts$",
         "^(?:System(?:\\.|$)|mscorlib$|netstandard$)"
@@ -392,7 +412,7 @@
     },
     {
       "id": "SHARED_LAYER",
-      "reason": "共享合同不得依赖玩法、模拟、宿主或Unity。",
+      "reason": "共享合同只可依赖BTSMTL基础层，不得依赖编排、玩法、模拟、宿主或Unity。",
       "sourceAssemblies": [
         "^ThirdPerson\\.Shared\\.Contracts$"
       ],
@@ -402,13 +422,13 @@
       "forbiddenAssemblies": [
         "^ThirdPersonSimulation\\.",
         "^ThirdPersonGameplay",
-        "^BTSMTL",
+        "^BTSMTL(?!\\.Foundation$)",
         "^Quantum(?:\\.|$)",
         "^Photon(?:\\.|$)",
         "^Unity"
       ],
       "forbiddenPackages": [
-        "^com\\.btsmtl(?:$|\\.)",
+        "^com\\.btsmtl(?:$|\\.(?!foundation$))",
         "^com\\.thirdperson\\.(?:gameplay(?:\\.|$)|numerics\\.quantum$|memorypack$|snapshot$|network\\.)"
       ],
       "forbiddenNamespaces": [

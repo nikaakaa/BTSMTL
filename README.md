@@ -4,10 +4,11 @@
 
 | 包 | 负责什么 |
 | --- | --- |
+| `com.btsmtl.foundation` | 编排与宿主共用的中立基础：身份与稳定哈希、数值合同与 Float32 实现、曲线、录制状态和编译期值生成，不依赖 Unity 引擎与任何宿主 |
 | `com.btsmtl` | 唯一泛型编排执行器、整数 Timeline、图与黑板作者工具、EventGraph 和诊断 |
 | `com.thirdperson.gameplay.contracts` | 领域扩展身份、版本、端口、只读参数与枚举 |
 | `com.thirdperson.gameplay` | 独立运动算法、攻击几何、玩法配置及仍在清理的旧冷合同 |
-| `com.thirdperson.shared` | 两边使用的身份、值声明、诊断与性能合同、Luban 基础读写和编译期值生成支持 |
+| `com.thirdperson.shared` | 项目玩法与表现共用的角色身份、动画与控制 trace、性能合同、表现请求和 Luban 基础读写，依赖 Foundation |
 | `com.thirdperson.numerics.quantum` | Quantum 宿主的 FP 数学策略、作者数值转换和时间采样边界 |
 | `com.thirdperson.memorypack` | 从原成员生成按需使用的外部冷数据编码 |
 
@@ -19,6 +20,7 @@
 
 ```json
 "com.btsmtl": "file:../../../../../BTSMTL/Packages/com.btsmtl",
+"com.btsmtl.foundation": "file:../../../../../BTSMTL/Packages/com.btsmtl.foundation",
 "com.thirdperson.gameplay": "file:../../../../../BTSMTL/Packages/com.thirdperson.gameplay",
 "com.thirdperson.gameplay.contracts": "file:../../../../../BTSMTL/Packages/com.thirdperson.gameplay.contracts",
 "com.thirdperson.memorypack": "file:../../../../../BTSMTL/Packages/com.thirdperson.memorypack",
@@ -28,11 +30,11 @@
 
 Unity 通过各包原有 asmdef 编译同一份源码。3C 的 Assets 中不保留副本；角色资产、生成的 C# authoring、Workbench 角色装配、表现和产品发布入口仍由 3C 持有。
 
-`com.btsmtl` 的项目包依赖只有 Shared。Gameplay、领域合同、Quantum 数学与 MemoryPack 单向引用 BTSMTL；BTSMTL 不引用这些宿主实现。Photon Quantum SDK 由使用 Quantum 的宿主提供。Timeline 编辑外围的旧玩法引用仍在清理，包级依赖解除不等于所有 Unity 程序集已经完成解耦。
+编排合同、编排运行时、整数 Timeline、EventGraph、图作者层与 Timeline 作者层只引用 Foundation。`com.btsmtl` 目前仍声明 Shared 包依赖，原因是 Diagnostics 与 Diagnostics.Editor 还使用 Shared 中的动画通道、控制 trace、GE 结果与运动时钟类型；诊断改为宿主注册通道后解除。Gameplay、领域合同、Quantum 数学与 MemoryPack 单向引用 BTSMTL；BTSMTL 不引用这些宿主实现。Photon Quantum SDK 由使用 Quantum 的宿主提供。Timeline 编辑外围的旧玩法引用仍在清理，包级依赖解除不等于所有 Unity 程序集已经完成解耦。
 
 ## 普通 .NET 接入
 
-`BTSMTL.sln` 只装配 Shared、编排合同／运行时、整数 Timeline、Luban、黑板默认配置与两个生成工具；Unity asmdef 与普通 .NET 工程编译同一份实现。这些编排工程不需要 Photon DLL。正式 solution 构建先执行依赖守护，源码或引用方向违规时直接失败。
+`BTSMTL.sln` 只装配 Foundation、Shared、编排合同／运行时、整数 Timeline、Luban、黑板默认配置与两个生成工具；Unity asmdef 与普通 .NET 工程编译同一份实现。这些编排工程不需要 Photon DLL。正式 solution 构建先执行依赖守护，源码或引用方向违规时直接失败。
 
 ```powershell
 try {
@@ -60,8 +62,9 @@ try {
 | `Packages/com.thirdperson.gameplay/Runtime/Simulation` | 留存的配置、发布合同及待收齐的旧宿主合同 |
 | `Packages/com.thirdperson.gameplay/Runtime/Physics/BepuQueries` | 既有物理查询源码与许可 |
 | `Packages/com.thirdperson.gameplay/Configuration` | Gameplay 配置合同、Reader 和对应生成输出 |
-| `Packages/com.thirdperson.shared/Runtime` | 共享合同、性能合同及 Luban 基础库 |
-| `Packages/com.thirdperson.shared/Analyzers` | 原编译期生成器的 Unity 安装产物 |
+| `Packages/com.btsmtl.foundation/Runtime` | 中立基础类型：身份、哈希、数值、曲线、排序、录制状态与值生成特性 |
+| `Packages/com.btsmtl.foundation/Analyzers` | 值生成器的 Unity 安装产物，源码在 `Tools/ValueGeneration.Generator` |
+| `Packages/com.thirdperson.shared/Runtime` | 项目共享合同、性能合同及 Luban 基础库 |
 | `Packages/com.thirdperson.numerics.quantum` | Quantum 宿主数值策略 |
 | `Packages/com.thirdperson.memorypack` | 按需外部冷数据编码 |
 

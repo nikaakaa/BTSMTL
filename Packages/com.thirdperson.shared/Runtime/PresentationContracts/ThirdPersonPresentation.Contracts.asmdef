@@ -2,7 +2,7 @@
     "name": "ThirdPersonPresentation.Contracts",
     "rootNamespace": "ThirdPersonSimulation",
     "references": [
-        "ThirdPerson.Shared.Contracts"
+        "ThirdPerson.Shared.Contracts", "BTSMTL.Foundation"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

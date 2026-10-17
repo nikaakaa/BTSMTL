@@ -1,7 +1,7 @@
 {
     "name": "BTSMTL.Diagnostics",
     "rootNamespace": "BTSMTL.Diagnostics",
-    "references": ["ThirdPerson.Shared.Contracts"],
+    "references": ["BTSMTL.Foundation", "ThirdPerson.Shared.Contracts"],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,

@@ -2,7 +2,7 @@
     "name": "ThirdPersonGameplay.Orchestration.Contracts",
     "rootNamespace": "ThirdPersonGameplay.Orchestration",
     "references": [
-        "ThirdPerson.Shared.Contracts",
+        "ThirdPerson.Shared.Contracts", "BTSMTL.Foundation",
         "BTSMTL.Orchestration.Contracts"
     ],
     "includePlatforms": [],

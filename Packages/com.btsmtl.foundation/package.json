@@ -1,0 +1,7 @@
+{
+  "name": "com.btsmtl.foundation",
+  "version": "0.1.0",
+  "displayName": "BTSMTL Foundation",
+  "description": "BTSMTL 编排与宿主共用的身份、稳定哈希、数值合同、录制状态与编译期值生成支持，不依赖 Unity 引擎或任何宿主实现。",
+  "unity": "2022.3"
+}
