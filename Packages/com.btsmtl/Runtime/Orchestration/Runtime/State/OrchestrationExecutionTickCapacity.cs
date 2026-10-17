@@ -203,14 +203,16 @@ namespace BTSMTL.Orchestration
                         continue;
                     if (!timelines.TryGetValue((programIndex, operationIndex), out OrchestrationTimelineTickContentCapacity content))
                         throw new InvalidOperationException($"Program '{programIndex}' Timeline '{operationIndex}' lacks its prepared Tick sampling capacity.");
-                    long identities = checked(owners[operation.ExecutionFrameOwnerOperationIndex] + execution);
+                    long timelineExecutions = checked((long)budget.OuterInvocationCount *
+                        analysis.ExecuteVisits[operationIndex]);
+                    long identities = checked(owners[operation.ExecutionFrameOwnerOperationIndex] + timelineExecutions);
                     long timelineStops = budget.OuterInvocationCount == 0 ? 0 : identities;
-                    long graphInvocations = checked(execution * content.GraphInvocationsPerAdvance +
+                    long graphInvocations = checked(timelineExecutions * content.GraphInvocationsPerAdvance +
                         timelineStops * content.GraphInvocationsPerStop);
-                    timelineResults[operationIndex] = new OrchestrationTimelineTickCapacity(execution,
-                        timelineStops, execution, identities, graphInvocations,
-                        checked(execution * content.LogicSampleInvocationsPerAdvance),
-                        checked(execution * content.LogicSampleRowsPerAdvance));
+                    timelineResults[operationIndex] = new OrchestrationTimelineTickCapacity(timelineExecutions,
+                        timelineStops, timelineExecutions, identities, graphInvocations,
+                        checked(timelineExecutions * content.LogicSampleInvocationsPerAdvance),
+                        checked(timelineExecutions * content.LogicSampleRowsPerAdvance));
                 }
                 result[programIndex] = new OrchestrationProgramTickCapacity(in budget, evaluations,
                     operations, timelineResults);
@@ -282,7 +284,8 @@ namespace BTSMTL.Orchestration
                     if (m_Program.Operation(state).Code == OrchestrationOperationCode.State)
                         AnalyzeValues(state);
                 for (int target = 0; includeStops && target < m_Program.OperationCount; target++)
-                    if (m_Program.Operation(target).Code == OrchestrationOperationCode.Extension &&
+                    if (m_Program.Operation(target).Code == OrchestrationOperationCode.Timeline ||
+                        m_Program.Operation(target).Code == OrchestrationOperationCode.Extension &&
                         m_Extensions.Span[m_Program.Operation(target).ExtensionBindingIndex].Kind == OrchestrationExtensionKind.Action)
                     {
                         m_CountTarget = target;
@@ -319,27 +322,12 @@ namespace BTSMTL.Orchestration
                     }
                 }
                 else if (operation.Code == OrchestrationOperationCode.StateMachine)
-                {
-                    for (int state = 0; state < m_Program.OperationCount; state++)
-                        if (m_Program.Operation(state).Code == OrchestrationOperationCode.State &&
-                            m_Program.Operation(state).StateMachineOwnerOperationIndex == index)
-                            count = checked(count + (stop ? BoundedVisits(state, true) :
-                                checked(2 * BoundedVisits(state, false) + BoundedVisits(state, true))));
-                    if (!stop)
-                    {
-                        int initial = m_Program.InitialStateEntry(index);
-                        if (initial < 0)
-                            throw new InvalidOperationException($"Program '{m_ProgramIndex}' StateMachine '{index}' has no initial transition entry.");
-                        count = checked(count + TransitionVisits(initial));
-                        int any = m_Program.AnyStateEntry(index);
-                        if (any >= 0)
-                            count = checked(count + TransitionVisits(any));
-                    }
-                }
+                    count = checked(count + StateMachineVisits(index, stop));
                 else if (operation.Code == OrchestrationOperationCode.State)
                 {
-                    count = checked(count + StateEntryVisits(m_Program.StateOnEnterEdge(index), stop));
-                    count = checked(count + StateEntryVisits(m_Program.StateRootEdge(index), stop));
+                    long enter = StateEntryVisits(m_Program.StateOnEnterEdge(index), stop);
+                    long root = StateEntryVisits(m_Program.StateRootEdge(index), stop);
+                    count = checked(count + (stop ? Math.Max(enter, root) : checked(enter + root)));
                     if (stop)
                         count = checked(count + StateEntryVisits(m_Program.StateOnExitEdge(index), false));
                 }
@@ -350,20 +338,81 @@ namespace BTSMTL.Orchestration
                 {
                     OrchestrationFlowKind kind = operation.Code == OrchestrationOperationCode.SubGraph
                         ? OrchestrationFlowKind.Enter : OrchestrationFlowKind.Child;
+                    bool singleStop = operation.Code == OrchestrationOperationCode.Sequence ||
+                        operation.Code == OrchestrationOperationCode.Selector;
+                    long stoppedChild = 0;
                     foreach (int edgeIndex in m_Program.Outgoing(index, kind))
                     {
                         ref readonly OrchestrationFlowEdge edge = ref m_Program.Edge(edgeIndex);
-                        count = checked(count + BoundedVisits(edge.TargetOperationIndex, stop));
-                        if (!stop)
-                            count = checked(count + 2 * BoundedVisits(edge.TargetOperationIndex, true) +
-                                (edge.HasCondition ? 2 * ValueVisits(edge.ConditionOperationIndex, -1) : 0));
+                        long child = BoundedVisits(edge.TargetOperationIndex, stop);
+                        if (stop)
+                            count = checked(count + child);
+                        else
+                        {
+                            long stopped = BoundedVisits(edge.TargetOperationIndex, true);
+                            if (singleStop)
+                                stoppedChild = Math.Max(stoppedChild, stopped);
+                            else if (operation.Code == OrchestrationOperationCode.Parallel)
+                                child = Math.Max(child, stopped);
+                            else
+                                child = checked(child + 2 * stopped);
+                            count = checked(count + child +
+                                (m_CountTarget < 0 && edge.HasCondition
+                                    ? 2 * ValueVisits(edge.ConditionOperationIndex, -1) : 0));
+                        }
                     }
+                    count = checked(count + stoppedChild);
                 }
                 if (!stop)
                     count = checked(count + TransitionVisits(index));
                 m_ActiveVisits[mode][index] = false;
                 m_BoundedVisits[mode][index] = checked(count + 1);
                 return count;
+            }
+
+            long StateMachineVisits(int index, bool stop)
+            {
+                long maximum = 0;
+                int any = m_Program.AnyStateEntry(index);
+                for (int state = 0; state < m_Program.OperationCount; state++)
+                {
+                    if (m_Program.Operation(state).Code != OrchestrationOperationCode.State ||
+                        m_Program.Operation(state).StateMachineOwnerOperationIndex != index)
+                        continue;
+                    long stopped = BoundedVisits(state, true);
+                    if (stop)
+                        maximum = Math.Max(maximum, stopped);
+                    else
+                    {
+                        long executed = BoundedVisits(state, false);
+                        long target = TransitionTargetVisits(state);
+                        if (any >= 0)
+                            target = Math.Max(target, TransitionTargetVisits(any));
+                        maximum = Math.Max(maximum, checked(executed + stopped + target));
+                    }
+                }
+                if (!stop)
+                {
+                    int initial = m_Program.InitialStateEntry(index);
+                    if (initial < 0)
+                        throw new InvalidOperationException($"Program '{m_ProgramIndex}' StateMachine '{index}' has no initial transition entry.");
+                    maximum = checked(maximum + TransitionVisits(initial));
+                    if (any >= 0)
+                        maximum = checked(maximum + TransitionVisits(any));
+                }
+                return maximum;
+            }
+
+            long TransitionTargetVisits(int index)
+            {
+                long maximum = 0;
+                foreach (int edge in m_Program.Outgoing(index, OrchestrationFlowKind.Transition))
+                {
+                    int target = m_Program.Edge(edge).TargetOperationIndex;
+                    if (m_Program.Operation(target).Code == OrchestrationOperationCode.State)
+                        maximum = Math.Max(maximum, BoundedVisits(target, false));
+                }
+                return maximum;
             }
 
             long StateEntryVisits(int edgeIndex, bool stop) => edgeIndex < 0 ? 0 :
