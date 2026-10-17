@@ -115,6 +115,12 @@ namespace BTSMTL.Timeline.Runtime
     {
         const int RecordedStateHeaderV5 = -5;
         readonly int m_PlaybackCapacity;
+        readonly int m_RecordedPlaybackCapacity;
+        readonly int m_RecordedStateHeaderBytes;
+        int m_AllPlaybacksRecordedBytes;
+        int m_AllPlaybacksRecordedTextReferences;
+        int m_MaximumRecordedPlaybackBytes;
+        int m_MaximumRecordedPlaybackTextReferences;
         readonly Dictionary<OrchestrationTimelineStart<OrchestrationTime>, PresentationPlaybackState> m_Playbacks;
         readonly Dictionary<(TimelineContentUnit Timeline, int SourceIdentityId, OrchestrationTimelinePlaybackMode Mode, TimelineRuntimePresentationGraphSource GraphSource), Stack<PresentationPlaybackState>> m_RecycledPlaybacks = new();
         PresentationPlaybackState m_FirstPendingFrame;
@@ -157,12 +163,14 @@ namespace BTSMTL.Timeline.Runtime
             public void Dispose() => m_Enumerator.Dispose();
         }
 
-        public TimelineRuntimePresentationDriver(int playbackCapacity)
+        public TimelineRuntimePresentationDriver(int playbackCapacity, int recordedPlaybackCapacity)
         {
             m_PlaybackCapacity = playbackCapacity;
+            m_RecordedPlaybackCapacity = recordedPlaybackCapacity;
             m_Playbacks = new Dictionary<OrchestrationTimelineStart<OrchestrationTime>, PresentationPlaybackState>(playbackCapacity);
             var writer = new RecordedRuntimeStateCountingWriter();
             WriteRecordedState(ref writer);
+            m_RecordedStateHeaderBytes = writer.WrittenBytes;
             MaximumRecordedStateBytes = writer.WrittenBytes;
         }
 
@@ -195,11 +203,17 @@ namespace BTSMTL.Timeline.Runtime
                 WritePlayback(ref writer, default, recycled.Peek(), true);
                 writer.Write(default(OrchestrationTimelineStart<OrchestrationTime>));
             }
-            int recordedBytes = checked(writer.WrittenBytes * m_PlaybackCapacity);
-            int recordedTexts = checked(writer.TextReferenceCount * m_PlaybackCapacity);
+            m_AllPlaybacksRecordedBytes = checked(m_AllPlaybacksRecordedBytes +
+                checked(writer.WrittenBytes * m_PlaybackCapacity));
+            m_AllPlaybacksRecordedTextReferences = checked(m_AllPlaybacksRecordedTextReferences +
+                checked(writer.TextReferenceCount * m_PlaybackCapacity));
+            m_MaximumRecordedPlaybackBytes = Math.Max(m_MaximumRecordedPlaybackBytes, writer.WrittenBytes);
+            m_MaximumRecordedPlaybackTextReferences = Math.Max(m_MaximumRecordedPlaybackTextReferences, writer.TextReferenceCount);
+            MaximumRecordedStateBytes = checked(m_RecordedStateHeaderBytes + (int)Math.Min(
+                m_AllPlaybacksRecordedBytes, (long)m_MaximumRecordedPlaybackBytes * m_RecordedPlaybackCapacity));
+            MaximumRecordedTextReferences = (int)Math.Min(m_AllPlaybacksRecordedTextReferences,
+                (long)m_MaximumRecordedPlaybackTextReferences * m_RecordedPlaybackCapacity);
             m_RecycledPlaybacks.Add(key, recycled);
-            MaximumRecordedStateBytes = checked(MaximumRecordedStateBytes + recordedBytes);
-            MaximumRecordedTextReferences = checked(MaximumRecordedTextReferences + recordedTexts);
             m_Playbacks.EnsureCapacity(checked(m_RecycledPlaybacks.Count * m_PlaybackCapacity));
         }
 
@@ -460,6 +474,10 @@ namespace BTSMTL.Timeline.Runtime
                 state.Clear();
             m_Playbacks.Clear();
             m_RecycledPlaybacks.Clear();
+            m_AllPlaybacksRecordedBytes = 0;
+            m_AllPlaybacksRecordedTextReferences = 0;
+            m_MaximumRecordedPlaybackBytes = 0;
+            m_MaximumRecordedPlaybackTextReferences = 0;
             var writer = new RecordedRuntimeStateCountingWriter();
             WriteRecordedState(ref writer);
             MaximumRecordedStateBytes = writer.WrittenBytes;
@@ -488,7 +506,7 @@ namespace BTSMTL.Timeline.Runtime
             if (reader.Read<int>() != RecordedStateHeaderV5)
                 throw new InvalidOperationException("Recorded Timeline presentation state version is not supported.");
             int count = reader.Read<int>();
-            if (count < 0 || count > checked(m_RecycledPlaybacks.Count * m_PlaybackCapacity))
+            if (count < 0 || count > m_RecordedPlaybackCapacity)
                 throw new InvalidOperationException("Recorded Timeline playback count exceeds the prepared capacity.");
             m_FirstPendingFrame = null;
             m_LastPendingFrame = null;
