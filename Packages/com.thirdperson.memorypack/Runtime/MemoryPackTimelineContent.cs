@@ -23,7 +23,6 @@ namespace ThirdPersonSimulation.Serialization
         static MemoryPackTimelineContent()
         {
             MemoryPackContent.Initialize();
-            MemoryPackGeneratedFormatters.Register();
         }
 
         public static TimelineContentArtifact CreateArtifact(IEnumerable<TimelineContentUnit> timelines,
