@@ -12,8 +12,7 @@ namespace BTSMTL.Orchestration
         readonly Span<OrchestrationBlackboardMetadata> m_CharacterMetadata;
         readonly ReadOnlySpan<int> m_CharacterSlots;
         readonly OrchestrationExecutionSourceBinding<TValue> m_SourceBinding;
-        readonly OrchestrationExecutionSource<TValue> m_Source;
-        readonly int m_CandidateRootFrameSlot;
+        OrchestrationExecutionSourceReader<TValue> m_Reader;
 
         internal OrchestrationBlackboardStorageView(OrchestrationProgram<TValue> program,
             OrchestrationExecutionFrames<TValue> frames, int frameSlot, Span<TValue> characterValues,
@@ -27,34 +26,29 @@ namespace BTSMTL.Orchestration
             m_CharacterMetadata = characterMetadata;
             m_CharacterSlots = characterSlots;
             m_SourceBinding = sourceBinding;
-            m_Source = source;
-            m_CandidateRootFrameSlot = frameSlot;
+            m_Reader = new OrchestrationExecutionSourceReader<TValue>(frames.AsReadOnly(), frameSlot,
+                characterValues, characterMetadata, sourceBinding != null, source);
         }
 
-        internal void SelectFrame(int frameSlot) => m_FrameSlot = frameSlot;
+        internal void SelectFrame(int frameSlot)
+        {
+            m_FrameSlot = frameSlot;
+            m_Reader.SelectFrame(frameSlot);
+        }
 
+        internal OrchestrationExecutionSourceReader<TValue> Reader => m_Reader;
         internal int BorrowedStateOperationIndex => m_SourceBinding == null ? -1 : m_SourceBinding.SourceStateOperationIndex;
-        internal OrchestrationStopContext BorrowedStopContext => m_Source.StopContext;
+        internal OrchestrationStopContext BorrowedStopContext => m_Reader.SourceStopContext;
         internal bool IsBorrowedStateScope(int stateOperationIndex) =>
             m_SourceBinding != null && m_SourceBinding.ContainsSourceState(stateOperationIndex);
 
-        internal ref readonly TValue ReadValue(int valueSlot)
-        {
-            int characterSlot = m_CharacterSlots.IsEmpty ? -1 : m_CharacterSlots[valueSlot];
-            if (characterSlot >= 0)
-                return ref CharacterValues[characterSlot];
-            FrameAddress address = Owner(m_Program.Blackboard(valueSlot).ExecutionFrameOwnerOperationIndex);
-            return ref Values(address)[valueSlot];
-        }
+        internal ref readonly TValue ReadValue(int valueSlot) =>
+            ref m_Reader.ReadValue(valueSlot, m_Program.Blackboard(valueSlot).ExecutionFrameOwnerOperationIndex,
+                m_CharacterSlots.IsEmpty ? -1 : m_CharacterSlots[valueSlot]);
 
-        internal ref readonly OrchestrationBlackboardMetadata ReadMetadata(int valueSlot)
-        {
-            int characterSlot = m_CharacterSlots.IsEmpty ? -1 : m_CharacterSlots[valueSlot];
-            if (characterSlot >= 0)
-                return ref CharacterMetadata[characterSlot];
-            FrameAddress address = Owner(m_Program.Blackboard(valueSlot).ExecutionFrameOwnerOperationIndex);
-            return ref Metadata(address)[valueSlot];
-        }
+        internal ref readonly OrchestrationBlackboardMetadata ReadMetadata(int valueSlot) =>
+            ref m_Reader.ReadMetadata(valueSlot, m_Program.Blackboard(valueSlot).ExecutionFrameOwnerOperationIndex,
+                m_CharacterSlots.IsEmpty ? -1 : m_CharacterSlots[valueSlot]);
 
         internal ref TValue WriteValue(int valueSlot)
         {
@@ -74,81 +68,39 @@ namespace BTSMTL.Orchestration
                 m_Program.Blackboard(valueSlot).ExecutionFrameOwnerOperationIndex))[valueSlot];
         }
 
-        internal ref readonly OrchestrationOperationState ReadOperation(int operationIndex)
-        {
-            FrameAddress address = Owner(m_Program.Operation(operationIndex).ExecutionFrameOwnerOperationIndex);
-            ReadOnlySpan<OrchestrationOperationState> operations = address.Source
-                ? m_Source.Frames.Operations(address.Index) : m_Frames.Operations(address.Index);
-            return ref operations[operationIndex];
-        }
+        internal ref readonly OrchestrationOperationState ReadOperation(int operationIndex) =>
+            ref m_Reader.ReadOperation(operationIndex, m_Program.Operation(operationIndex).ExecutionFrameOwnerOperationIndex);
 
-        internal ReadOnlySpan<OrchestrationExecutionFrameState> ReadExecutionFrame(int operationIndex)
-        {
-            FrameAddress address = Owner(m_Program.Operation(operationIndex).ExecutionFrameOwnerOperationIndex);
-            return address.Source ? m_Source.Frames.HeaderSpan(address.Index) : m_Frames.HeaderSpan(address.Index);
-        }
+        internal ReadOnlySpan<OrchestrationExecutionFrameState> ReadExecutionFrame(int operationIndex) =>
+            m_Reader.ReadExecutionFrame(m_Program.Operation(operationIndex).ExecutionFrameOwnerOperationIndex);
 
-        internal ref readonly TValue ReadOutputValue(int operationIndex, int valueSlot)
-        {
-            FrameAddress address = Owner(m_Program.Operation(operationIndex).ExecutionFrameOwnerOperationIndex);
-            return ref Values(address)[valueSlot];
-        }
+        internal ref readonly TValue ReadOutputValue(int operationIndex, int valueSlot) =>
+            ref m_Reader.ReadOutputValue(valueSlot, m_Program.Operation(operationIndex).ExecutionFrameOwnerOperationIndex);
 
         internal int OperationFrame(int operationIndex) =>
-            Owner(m_Program.Operation(operationIndex).ExecutionFrameOwnerOperationIndex).Index;
+            m_Reader.OwnerFrameIndex(m_Program.Operation(operationIndex).ExecutionFrameOwnerOperationIndex);
 
         internal bool IsBorrowedOperation(int operationIndex) =>
-            Owner(m_Program.Operation(operationIndex).ExecutionFrameOwnerOperationIndex).Source;
+            m_Reader.IsBorrowedOwner(m_Program.Operation(operationIndex).ExecutionFrameOwnerOperationIndex);
 
         internal bool IsBorrowedGraphScope(int graphOwnerOperationIndex)
         {
-            FrameAddress owner = Owner(m_Program.Operation(graphOwnerOperationIndex).ExecutionFrameOwnerOperationIndex);
-            int frame = m_Source.FrameSlot;
+            int ownerFrame = m_Reader.OwnerFrameIndex(m_Program.Operation(graphOwnerOperationIndex).ExecutionFrameOwnerOperationIndex);
+            int frame = m_Reader.SourceFrameIndex;
             int operation = m_SourceBinding.SourceOperationIndex;
-            while (frame != owner.Index)
+            while (frame != ownerFrame)
             {
-                operation = m_Source.Frames.Header(frame).ParentTimelineOperationIndex;
-                frame = m_Source.Frames.Header(frame).ParentFrameIndex;
+                ref readonly OrchestrationExecutionFrameState header = ref m_Reader.SourceHeader(frame);
+                operation = header.ParentTimelineOperationIndex;
+                frame = header.ParentFrameIndex;
             }
             return m_SourceBinding.ContainsSourceGraph(graphOwnerOperationIndex, operation);
         }
 
-        internal ulong OwnerGeneration(int valueSlot)
-        {
-            FrameAddress address = Owner(m_Program.Blackboard(valueSlot).ExecutionFrameOwnerOperationIndex);
-            return address.Source ? m_Source.Frames.Header(address.Index).Generation : m_Frames.Header(address.Index).Generation;
-        }
+        internal ulong OwnerGeneration(int valueSlot) =>
+            m_Reader.OwnerGeneration(m_Program.Blackboard(valueSlot).ExecutionFrameOwnerOperationIndex);
 
         internal ulong FrameTick(int valueSlot, ulong candidateTick) =>
-            Owner(m_Program.Blackboard(valueSlot).ExecutionFrameOwnerOperationIndex).Source ? m_Source.Tick : candidateTick;
-
-        ReadOnlySpan<TValue> CharacterValues => m_SourceBinding == null ? m_CharacterValues : m_Source.CharacterValues;
-        ReadOnlySpan<OrchestrationBlackboardMetadata> CharacterMetadata =>
-            m_SourceBinding == null ? m_CharacterMetadata : m_Source.CharacterBlackboards;
-
-        ReadOnlySpan<TValue> Values(FrameAddress address) => address.Source
-            ? m_Source.Frames.Values(address.Index) : m_Frames.Values(address.Index);
-
-        ReadOnlySpan<OrchestrationBlackboardMetadata> Metadata(FrameAddress address) => address.Source
-            ? m_Source.Frames.BlackboardMetadata(address.Index) : m_Frames.BlackboardMetadata(address.Index);
-
-        FrameAddress Owner(int ownerOperationIndex)
-        {
-            if (m_SourceBinding == null)
-                return new FrameAddress(false, m_Frames.OwnerFrame(m_FrameSlot, ownerOperationIndex));
-            int frame = m_FrameSlot;
-            while (m_Frames.Header(frame).OwnerOperationIndex != ownerOperationIndex && frame != m_CandidateRootFrameSlot)
-                frame = m_Frames.Header(frame).ParentFrameIndex;
-            return m_Frames.Header(frame).OwnerOperationIndex == ownerOperationIndex
-                ? new FrameAddress(false, frame)
-                : new FrameAddress(true, m_Source.Frames.OwnerFrame(m_Source.FrameSlot, ownerOperationIndex));
-        }
-
-        readonly struct FrameAddress
-        {
-            internal FrameAddress(bool source, int index) { Source = source; Index = index; }
-            internal bool Source { get; }
-            internal int Index { get; }
-        }
+            m_Reader.FrameTick(m_Program.Blackboard(valueSlot).ExecutionFrameOwnerOperationIndex, candidateTick);
     }
 }

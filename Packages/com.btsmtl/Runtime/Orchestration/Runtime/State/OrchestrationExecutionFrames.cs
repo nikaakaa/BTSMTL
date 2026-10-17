@@ -40,6 +40,10 @@ namespace BTSMTL.Orchestration
         public int Count => m_Roster[0].Count;
         public int Capacity => m_Frames.Length;
 
+        public ReadOnlyOrchestrationExecutionFrames<TValue> AsReadOnly() =>
+            new ReadOnlyOrchestrationExecutionFrames<TValue>(m_Frames, m_Roster, m_Operations,
+                m_Values, m_BlackboardMetadata);
+
         public ref OrchestrationExecutionFrameState Header(int frameSlot) =>
             ref m_Frames[frameSlot];
 

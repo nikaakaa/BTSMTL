@@ -176,6 +176,8 @@ namespace BTSMTL.Orchestration
         public ReadOnlySpan<OrchestrationExecutionFrameState> ReadExecutionFrame(int operationIndex) =>
             m_Blackboards.ReadExecutionFrame(operationIndex);
 
+        public OrchestrationExecutionSourceReader<TValue> ReadExecutionSource() => m_Blackboards.Reader;
+
         int OperationFrame(int operationIndex) => m_Blackboards.OperationFrame(operationIndex);
 
         ref readonly OrchestrationOperationState ReadOperationState(int operationIndex) =>
