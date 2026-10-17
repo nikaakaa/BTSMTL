@@ -72,6 +72,15 @@ namespace BTSMTL.EventGraphs
             m_Triggers.Add((target.Operation, target.CompiledPortId, target.IsInput));
         }
 
+        bool HasPendingTrigger(EventGraphRuntimePort port)
+        {
+            foreach (var trigger in m_Triggers)
+                if (trigger.Operation == port.Operation && trigger.Port == port.CompiledPortId &&
+                    trigger.Input == port.IsInput)
+                    return true;
+            return false;
+        }
+
         void ExecuteTriggers(ref OrchestrationExecutionCursor<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>, TScalar, TVector2,
             TVector3, TQuaternion, TMath, OrchestrationValueAccess<TScalar, TVector2, TVector3, TYaw, TQuaternion>, ValueTuple> cursor)
         {
@@ -208,7 +217,7 @@ namespace BTSMTL.EventGraphs
                 m_EditorPorts.Add((port.parent.UID, port.ID, input),
                     new EventGraphRuntimePort(Source.AuthoringId, port, input, map.OperationIndex, map.ValueIndex,
                         map.CompiledPortIdentityId, enumIdentity, ReadPort, MutatePort, IsPortLocked,
-                        () => QueuePortTrigger(port.parent.UID, port.ID, input)));
+                        () => QueuePortTrigger(port.parent.UID, port.ID, input), HasPendingTrigger));
             }
         }
 

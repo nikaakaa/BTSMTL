@@ -12,6 +12,7 @@ namespace BTSMTL.EventGraphs
         Action<EventGraphValue, EventGraphVariableMutation> m_Mutate;
         Func<bool> m_IsLocked;
         readonly Action m_Trigger;
+        readonly Func<EventGraphRuntimePort, bool> m_HasPendingTrigger;
         internal int Operation { get; }
         internal int ValueSlot { get; }
         internal int EnumTypeContentId { get; }
@@ -27,7 +28,8 @@ namespace BTSMTL.EventGraphs
         internal EventGraphRuntimePort(string graph, Port port, bool input, int operation, int slot,
             int compiledPortId, int enumTypeContentId, Func<EventGraphRuntimePort, bool, EventGraphValue> read,
             Action<EventGraphRuntimePort, EventGraphValue, EventGraphVariableMutation> mutate,
-            Func<EventGraphRuntimePort, bool> isLocked, Action trigger)
+            Func<EventGraphRuntimePort, bool> isLocked, Action trigger,
+            Func<EventGraphRuntimePort, bool> hasPendingTrigger)
         {
             GraphId = graph;
             ValueType = port.type;
@@ -42,6 +44,7 @@ namespace BTSMTL.EventGraphs
             m_Mutate = (value, mutation) => mutate(this, value, mutation);
             m_IsLocked = () => isLocked(this);
             m_Trigger = trigger;
+            m_HasPendingTrigger = hasPendingTrigger;
         }
 
         public EventGraphRuntimePort(string graph, Port port, bool input, Type valueType, Func<EventGraphValue> read,
@@ -97,6 +100,7 @@ namespace BTSMTL.EventGraphs
 
         public void Mutate(EventGraphValue value, EventGraphVariableMutation operation) => m_Mutate(value, operation);
         public void Trigger() => m_Trigger();
+        public bool HasPendingTrigger => m_HasPendingTrigger(this);
     }
 }
 #endif
