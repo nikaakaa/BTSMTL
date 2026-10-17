@@ -31,6 +31,34 @@ namespace ThirdPersonGameplay.Orchestration
                 OrchestrationExtensionContentField.Value("DefaultTargetYaw", OrchestrationValueKind.Scalar, false);
         }
 
+        public readonly struct BlackboardFacts
+        {
+            public static readonly OrchestrationExtensionInputPort<BlackboardFacts> CurrentOwnerGeneration =
+                new OrchestrationExtensionInputPort<BlackboardFacts>("current-owner-generation", OrchestrationValueKind.UInt64, 0);
+            public static readonly OrchestrationExtensionOutputPort<BlackboardFacts> InstanceId =
+                new OrchestrationExtensionOutputPort<BlackboardFacts>("instance-id", OrchestrationValueKind.UInt64, 0);
+            public static readonly OrchestrationExtensionOutputPort<BlackboardFacts> SkillContent =
+                new OrchestrationExtensionOutputPort<BlackboardFacts>("skill-content", OrchestrationValueKind.Identity, 1);
+            public static readonly OrchestrationExtensionOutputPort<BlackboardFacts> ExecutionGeneration =
+                new OrchestrationExtensionOutputPort<BlackboardFacts>("execution-generation", OrchestrationValueKind.UInt64, 2);
+            public static readonly OrchestrationExtensionOutputPort<BlackboardFacts> SegmentGeneration =
+                new OrchestrationExtensionOutputPort<BlackboardFacts>("segment-generation", OrchestrationValueKind.UInt64, 3);
+
+            public static readonly OrchestrationExtensionDefinition<BlackboardFacts> Definition = new OrchestrationExtensionDefinition<BlackboardFacts>(
+                new OrchestrationExtensionIdentity(DomainId, "blackboard-facts"),
+                1, new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
+                    OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
+                    OrchestrationExtensionCompletion.Immediate,
+                    new[]
+                    {
+                        CurrentOwnerGeneration.Declaration,
+                        InstanceId.Declaration,
+                        SkillContent.Declaration,
+                        ExecutionGeneration.Declaration,
+                        SegmentGeneration.Declaration
+                    }, Array.Empty<OrchestrationExtensionContentField>()));
+        }
+
         public readonly struct ActivationEntry
         {
             public static readonly OrchestrationExtensionOutputPort<ActivationEntry> Result =
