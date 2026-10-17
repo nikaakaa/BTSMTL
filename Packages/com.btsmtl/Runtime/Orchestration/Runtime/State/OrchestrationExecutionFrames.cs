@@ -120,5 +120,31 @@ namespace BTSMTL.Orchestration
             BlackboardMetadata(frameSlot).Clear();
             m_Roster[0].Count--;
         }
+
+        internal void CopyPayloadsFrom(ReadOnlyOrchestrationExecutionFrames<TValue> source,
+            ReadOnlySpan<int> skillContentIds, ReadOnlySpan<OrchestrationProgram<TValue>> programs)
+        {
+            for (int slot = 0; slot < m_Frames.Length; slot++)
+            {
+                ref readonly OrchestrationExecutionFrameState header = ref source.Header(slot);
+                ref OrchestrationExecutionFrameState destination = ref m_Frames[slot];
+                int sourceSkill = header.SkillContentId;
+                if (sourceSkill == 0 && destination.SkillContentId == 0)
+                    continue;
+                if (sourceSkill != destination.SkillContentId)
+                {
+                    Operations(slot).Clear();
+                    Values(slot).Clear();
+                    BlackboardMetadata(slot).Clear();
+                }
+                if (sourceSkill == 0)
+                    continue;
+                OrchestrationProgram<TValue> program = programs[skillContentIds.IndexOf(sourceSkill)];
+                source.Operations(slot).Slice(0, program.OperationCount).CopyTo(Operations(slot));
+                source.Values(slot).Slice(0, program.ValueSlotCount).CopyTo(Values(slot));
+                source.BlackboardMetadata(slot).Slice(0, program.ValueSlotCount)
+                    .CopyTo(BlackboardMetadata(slot));
+            }
+        }
     }
 }

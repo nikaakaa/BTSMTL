@@ -67,6 +67,49 @@ namespace BTSMTL.Orchestration
                 timeline);
         }
 
+        public static void CopyMemory<TValue, TPlayback>(
+            OrchestrationStateLayout<TValue, TPlayback> prepared,
+            ReadOnlySpan<int> skillContentIds, ReadOnlySpan<OrchestrationProgram<TValue>> programs,
+            ReadOnlySpan<byte> source, Span<byte> destination)
+            where TValue : unmanaged where TPlayback : unmanaged
+        {
+            ReadOnlyOrchestrationStateView sourceView = prepared.Layout.BindCommitted(source);
+            OrchestrationStateView destinationView = prepared.Layout.BindCandidate(destination);
+            ReadOnlyOrchestrationStateView sourceExecution = prepared.GetExecution(sourceView);
+            var frames = BindFrames(prepared.Execution, prepared.GetExecution(destinationView));
+            frames.CopyPayloadsFrom(BindFrames(prepared.Execution, sourceExecution),
+                skillContentIds, programs);
+            int executionOffset;
+            fixed (byte* sourceAddress = source)
+            fixed (byte* executionAddress = sourceExecution.Get(
+                new OrchestrationStateRegion<byte>(0, prepared.Execution.Layout.SizeBytes)))
+                executionOffset = checked((int)(executionAddress - sourceAddress));
+            Span<OrchestrationStateRegion<byte>> payloads = stackalloc OrchestrationStateRegion<byte>[3];
+            payloads[0] = new OrchestrationStateRegion<byte>(
+                executionOffset + prepared.Execution.BlackboardMetadata.OffsetBytes,
+                prepared.Execution.BlackboardMetadata.SizeBytes);
+            payloads[1] = new OrchestrationStateRegion<byte>(
+                executionOffset + prepared.Execution.Operations.OffsetBytes,
+                prepared.Execution.Operations.SizeBytes);
+            payloads[2] = new OrchestrationStateRegion<byte>(
+                executionOffset + prepared.Execution.Values.OffsetBytes,
+                prepared.Execution.Values.SizeBytes);
+            for (int i = 1; i < payloads.Length; i++)
+                for (int j = i; j > 0 && payloads[j].OffsetBytes < payloads[j - 1].OffsetBytes; j--)
+                {
+                    OrchestrationStateRegion<byte> previous = payloads[j - 1];
+                    payloads[j - 1] = payloads[j];
+                    payloads[j] = previous;
+                }
+            int copied = 0;
+            foreach (OrchestrationStateRegion<byte> payload in payloads)
+            {
+                source.Slice(copied, payload.OffsetBytes - copied).CopyTo(destination.Slice(copied));
+                copied = payload.OffsetBytes + payload.SizeBytes;
+            }
+            source.Slice(copied).CopyTo(destination.Slice(copied));
+        }
+
         public static void AdoptMemory(in OrchestrationStateLayout layout,
             in OrchestrationStateLayout actual, ReadOnlySpan<byte> memory)
         {
