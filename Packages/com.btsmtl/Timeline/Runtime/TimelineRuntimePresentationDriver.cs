@@ -225,6 +225,28 @@ namespace BTSMTL.Timeline.Runtime
             m_Playbacks.EnsureCapacity(checked(m_RecycledPlaybacks.Count * m_PlaybackCapacity));
         }
 
+        public void ReleasePreparedContent(TimelineRuntimePreparedContent content, int sourceIdentityId,
+            OrchestrationTimelinePlaybackMode mode, TimelineRuntimePresentationGraphSource graphSource)
+        {
+            var key = (content.Content, sourceIdentityId, mode, graphSource);
+            Stack<PresentationPlaybackState> recycled = m_RecycledPlaybacks[key];
+            if (recycled.Count != m_PlaybackCapacity)
+                throw new InvalidOperationException("Timeline 时间版本仍有播放持有，不能释放其正式准备存储。");
+            var writer = new RecordedRuntimeStateCountingWriter();
+            if (m_PlaybackCapacity != 0)
+            {
+                WritePlayback(ref writer, default, recycled.Peek(), true);
+                writer.Write(default(OrchestrationTimelineStart<OrchestrationTime>));
+            }
+            m_AllPlaybacksRecordedBytes -= checked(writer.WrittenBytes * m_PlaybackCapacity);
+            m_AllPlaybacksRecordedTextReferences -= checked(writer.TextReferenceCount * m_PlaybackCapacity);
+            m_RecycledPlaybacks.Remove(key);
+            MaximumRecordedStateBytes = checked(m_RecordedStateHeaderBytes + (int)Math.Min(
+                m_AllPlaybacksRecordedBytes, (long)m_MaximumRecordedPlaybackBytes * m_RecordedPlaybackCapacity));
+            MaximumRecordedTextReferences = (int)Math.Min(m_AllPlaybacksRecordedTextReferences,
+                (long)m_MaximumRecordedPlaybackTextReferences * m_RecordedPlaybackCapacity);
+        }
+
         void PrepareGraphWorkspace(OrchestrationTimelinePreparedContent<OrchestrationTime> content)
         {
             int traversals = content.Mode == OrchestrationTimelinePlaybackMode.Loop
