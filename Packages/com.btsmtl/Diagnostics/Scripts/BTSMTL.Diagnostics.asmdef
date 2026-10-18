@@ -1,7 +1,7 @@
 {
     "name": "BTSMTL.Diagnostics",
     "rootNamespace": "BTSMTL.Diagnostics",
-    "references": ["BTSMTL.Foundation"],
+    "references": ["BTSMTL.Foundation", "BTSMTL.Orchestration.Contracts", "BTSMTL.Orchestration.Runtime"],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
