@@ -138,6 +138,47 @@ namespace BTSMTL.Orchestration
                 source, identities, mapping, program, entries, variables, hostInputs, graphPorts, sources);
         }
 
+        // 值候选只替换常量与默认值；其余内容按正式编码逐字节核对，结构、扩展参数或身份表变化均拒绝。
+        public OrchestrationProgramContent<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> PrepareValueCandidate(
+            OrchestrationGraphContent<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> candidate,
+            Func<OrchestrationGraphContent<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>, byte[]> encode,
+            out string rejection)
+        {
+            OrchestrationProgramContent<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> original = Source.Program;
+            OrchestrationProgramContent<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> edited = candidate.Program;
+            rejection = candidate.Identity.GraphId != Source.Identity.GraphId ? "图身份已变化"
+                : edited.Constants.Length != original.Constants.Length ||
+                  edited.DefaultValues.Length != original.DefaultValues.Length ? "常量或值槽数量已变化"
+                : null;
+            if (rejection != null)
+                return null;
+            var probe = new OrchestrationGraphContent<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>(
+                Source.Identity, candidate.NumericProfile, candidate.Identities,
+                new OrchestrationProgramContent<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>(
+                    edited.Operations, edited.Edges, edited.ValueInputs, original.Constants, original.DefaultValues,
+                    edited.GraphCalls, edited.Hooks, edited.HookInputs, edited.BlackboardSlots,
+                    edited.BlackboardOutputs, edited.OutputTemplates, edited.CorePorts,
+                    edited.RootOperationIndex, edited.MaximumOperationEvaluations),
+                candidate.Extensions, candidate.OperationContents, candidate.Entries, candidate.Variables,
+                candidate.GeneratedBlackboards, candidate.HostInputs, candidate.Ports, candidate.Sources);
+            if (!encode(probe).AsSpan().SequenceEqual(encode(Source)))
+            {
+                rejection = "节点结构、连线、扩展参数或身份表已变化";
+                return null;
+            }
+            var comparer = System.Collections.Generic.EqualityComparer<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>.Default;
+            var defaults = Program.DefaultValues.ToArray();
+            for (int i = 0; i < defaults.Length; i++)
+                if (comparer.Equals(defaults[i], MapValue(in original.DefaultValues.Span[i], LocalToShared)))
+                    defaults[i] = MapValue(in edited.DefaultValues.Span[i], LocalToShared);
+            OrchestrationProgramContent<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> prepared = Program;
+            return new OrchestrationProgramContent<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>(
+                prepared.Operations, prepared.Edges, prepared.ValueInputs, MapValues(edited.Constants, LocalToShared),
+                defaults, prepared.GraphCalls, prepared.Hooks, prepared.HookInputs, prepared.BlackboardSlots,
+                prepared.BlackboardOutputs, prepared.OutputTemplates, prepared.CorePorts,
+                prepared.RootOperationIndex, prepared.MaximumOperationEvaluations);
+        }
+
         static int Map(int identity, ReadOnlyMemory<int> mapping) =>
             identity == 0 ? 0 : mapping.Span[identity];
 
