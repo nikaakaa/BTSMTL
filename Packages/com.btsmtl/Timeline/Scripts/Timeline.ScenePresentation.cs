@@ -27,7 +27,7 @@ namespace BTSMTL.Timeline
     {
     }
 
-    [TrackGroup("Base"), ScriptGuid("9a9b5b4c1d2e4f6a8b7c0d1e2f3a4b5c"), Ordered(7), Color(132, 224, 184)]
+    [ScriptGuid("9a9b5b4c1d2e4f6a8b7c0d1e2f3a4b5c"), Ordered(7), Color(132, 224, 184)]
     public sealed class ScenePresentationParameterTrack : SampledTrack
     {
         public override string ContractKind => TimelineContractKinds.ScenePresentationParameterTrack;

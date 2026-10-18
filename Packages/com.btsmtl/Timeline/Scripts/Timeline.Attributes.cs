@@ -79,26 +79,4 @@ namespace BTSMTL.Timeline
         }
     }
 
-    [AttributeUsage(AttributeTargets.Class, AllowMultiple = false, Inherited = false)]
-    public class AcceptableTrackGroups : Attribute 
-    {
-        public string[] Groups;
-
-        public AcceptableTrackGroups(params string[] groups)
-        {
-            Groups = groups;
-        }
-    }
-
-    [AttributeUsage(AttributeTargets.Class, AllowMultiple = false, Inherited = false)]
-    public class TrackGroup : Attribute
-    {
-        public string Group;
-
-        public TrackGroup(string group)
-        {
-            Group = group;
-        }
-    }
-
 }

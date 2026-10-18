@@ -10,7 +10,7 @@ using UnityEngine;
 
 namespace ThirdPersonGameplay.Movement.Timeline
 {
-    [TrackGroup("Base"), ScriptGuid("6f2a51d8c9b34d5f8a0e7b4c2d9f136a"), Ordered(1.5f), Color(126, 220, 146)]
+    [ScriptGuid("6f2a51d8c9b34d5f8a0e7b4c2d9f136a"), Ordered(1.5f), Color(126, 220, 146)]
     public sealed class MotionCurveTrack : SampledTrack
     {
         public override string ContractKind => MotionCurveTimelineContracts.TrackKind;
