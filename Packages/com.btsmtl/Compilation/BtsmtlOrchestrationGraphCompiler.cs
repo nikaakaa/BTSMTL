@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using BTSMTL.Orchestration;
 using ThirdPersonSimulation;
 
@@ -88,6 +89,8 @@ namespace BTSMTL.Compilation
     {
         static readonly ConditionalWeakTable<ProgramExecutionSource,
             ConcurrentDictionary<(string GraphId, string TemplateIdentity), string>> s_ExecutionIdentities = new();
+        static readonly ConditionalWeakTable<IReadOnlyList<ProgramSourceMapEntry>,
+            StrongBox<OrchestrationIdentityTable>> s_IdentityTables = new();
 
         static string ExecutionIdentity(ProgramExecutionSource source, string graphId, string templateIdentity) =>
             s_ExecutionIdentities.GetValue(source, static _ => new()).GetOrAdd((graphId, templateIdentity),
@@ -248,7 +251,9 @@ namespace BTSMTL.Compilation
             internal OrchestrationGraphContent<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> Build()
             {
                 BuildExecutionIdentities();
-                m_Identities = OrchestrationIdentityPublication.Create(IdentityTexts());
+                var publication = s_IdentityTables.GetValue(m_SourceMap, static _ => new());
+                m_Identities = OrchestrationIdentityPublication.Create(IdentityTexts(), Volatile.Read(ref publication.Value));
+                Volatile.Write(ref publication.Value, m_Identities);
                 m_IdentityIds = new Dictionary<string, int>(m_Identities.Count, StringComparer.Ordinal);
                 for (int i = 0; i < m_Identities.Count; i++)
                     m_IdentityIds.Add(m_Identities.Entries.Span[i], i + 1);

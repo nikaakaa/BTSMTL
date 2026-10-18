@@ -5,7 +5,8 @@ namespace BTSMTL.Orchestration
 {
     public static class OrchestrationIdentityPublication
     {
-        public static OrchestrationIdentityTable Create(IEnumerable<string> identities)
+        public static OrchestrationIdentityTable Create(IEnumerable<string> identities,
+            OrchestrationIdentityTable previous = null)
         {
             var entries = new SortedSet<string>(StringComparer.Ordinal);
             foreach (string identity in identities)
@@ -13,6 +14,8 @@ namespace BTSMTL.Orchestration
                     entries.Add(identity);
             var values = new string[entries.Count];
             entries.CopyTo(values);
+            if (previous != null && values.AsSpan().SequenceEqual(previous.Entries.Span))
+                return previous;
             return new OrchestrationIdentityTable(values, OrchestrationIdentityContentHash.Table(values));
         }
 
