@@ -1,6 +1,6 @@
 using System;
 
-namespace ThirdPersonSimulation
+namespace BTSMTL.Authoring
 {
     public enum BtsmtlRuntimeValueKind : byte
     {
