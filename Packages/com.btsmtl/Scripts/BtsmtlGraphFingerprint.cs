@@ -33,21 +33,6 @@ namespace BTSMTL
             m_Serializer.onAfterObjectSerialized += ExcludeEditorData;
         }
 
-        protected void ReuseUnchangedSources(BtsmtlGraphFingerprint previous,
-            IReadOnlyList<UnityEngine.Object> sources)
-        {
-            foreach (UnityEngine.Object asset in sources)
-            {
-                if (asset is Graph graph)
-                {
-                    if (previous.m_GraphSources.TryGetValue(graph, out var source))
-                        m_GraphSources.TryAdd(graph, source);
-                }
-                else if (previous.m_ObjectHashes.TryGetValue(asset, out string hash))
-                    m_ObjectHashes.TryAdd(asset, hash);
-            }
-        }
-
         public string Compute(Graph graph)
         {
             if (m_Hashes.TryGetValue(graph, out string existing))
