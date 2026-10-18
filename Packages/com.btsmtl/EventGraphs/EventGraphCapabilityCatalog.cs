@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using BTSMTL.Authoring;
 using BTSMTL.Orchestration;
 using FlowCanvas;
 using FlowCanvas.Macros;
@@ -114,5 +115,15 @@ namespace BTSMTL.EventGraphs
         }
 
         public static string VariableId(FlowNode node) => ((ParameterVariableNode)node).parameter.targetVariableID;
+
+        static readonly BtsmtlRuntimeEditableAttribute s_VariableEditable =
+            new BtsmtlRuntimeEditableAttribute(BtsmtlRuntimeValueKind.Variable, "parameter.targetVariableID");
+
+        // 原版节点不带 BTSMTL 特性，其运行改值声明同样在此登记。
+        public static BtsmtlRuntimeEditableAttribute RuntimeEditable(Type nodeType) =>
+            TryGet(nodeType, out EventGraphCapabilityKind kind) &&
+            kind is EventGraphCapabilityKind.VariableGet or EventGraphCapabilityKind.VariableSet
+                ? s_VariableEditable
+                : null;
     }
 }
