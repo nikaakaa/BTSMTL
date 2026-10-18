@@ -19,6 +19,20 @@ namespace BTSMTL
     {
         static readonly ConditionalWeakTable<fsMetaType, string[]> s_EditorProperties = new();
         static readonly ConditionalWeakTable<fsMetaType, string[]>.CreateValueCallback s_CollectEditorProperties = CollectEditorProperties;
+        static readonly ConditionalWeakTable<UnityEngine.Object, StrongBox<HashedSource>> s_ObjectSourceHashes = new();
+
+        sealed class HashedSource
+        {
+            internal HashedSource(string[] parts, string hash)
+            {
+                Parts = parts;
+                Hash = hash;
+            }
+
+            internal readonly string[] Parts;
+            internal readonly string Hash;
+        }
+
         readonly Dictionary<Graph, string> m_Hashes = new();
         readonly Dictionary<Graph, (string Json, List<UnityEngine.Object> References)> m_GraphSources = new();
         readonly HashSet<Graph> m_Active = new();
@@ -181,7 +195,12 @@ namespace BTSMTL
                 AppendGraphSource(parts, graph);
             else
                 AppendSerializedSource(parts, asset);
-            string hash = StableHash.Compute(parts.ToArray()).Value;
+            string[] current = parts.ToArray();
+            StrongBox<HashedSource> cache = s_ObjectSourceHashes.GetOrCreateValue(asset);
+            HashedSource previous = cache.Value;
+            string hash = previous != null && current.AsSpan().SequenceEqual(previous.Parts)
+                ? previous.Hash : StableHash.Compute(current).Value;
+            cache.Value = new HashedSource(current, hash);
             m_ObjectHashes.Add(asset, hash);
             return hash;
         }
