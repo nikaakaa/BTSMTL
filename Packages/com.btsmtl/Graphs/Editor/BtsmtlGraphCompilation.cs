@@ -14,6 +14,8 @@ namespace BTSMTL.Graphs.Editor
 {
     public sealed class BtsmtlGraphCompilation
     {
+        static readonly global::Unity.Profiling.ProfilerMarker s_EmitOperation = new("Btsmtl.Graph.Compile.EmitOperation");
+
         readonly BtsmtlGraphSemanticBuilder m_Builder;
         readonly SimulationOperationEmitter m_Emitter;
         readonly IBtsmtlCanvasCompilationBindings m_Bindings;
@@ -77,7 +79,8 @@ namespace BTSMTL.Graphs.Editor
                     if (!definition.Accepts(AuthoringKind(port.type, definition, emission)))
                         throw new InvalidOperationException($"图节点 '{node.UID}' 输出 '{port.ID}' 的类型不匹配。");
                 }
-            return m_Emitter.Emit(Source(graphId, route, hash, node), emission, constants, describe);
+            using (s_EmitOperation.Auto())
+                return m_Emitter.Emit(Source(graphId, route, hash, node), emission, constants, describe);
         }
 
         static OperationValuePortContract PortContract(SimulationNodeEmission emission)

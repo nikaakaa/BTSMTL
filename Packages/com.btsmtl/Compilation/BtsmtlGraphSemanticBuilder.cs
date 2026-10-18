@@ -50,6 +50,7 @@ namespace BTSMTL.Compilation
         protected readonly List<ProgramScopeLayout> m_Scopes = new List<ProgramScopeLayout>();
         protected readonly List<ProgramCatalogEntry> m_CatalogEntries = new List<ProgramCatalogEntry>();
         protected readonly List<ProgramSourceMapEntry> m_SourceMap = new List<ProgramSourceMapEntry>();
+        readonly Dictionary<(string SourceType, string DisplayPath), ProgramSourceMapText> m_SourceTexts = new();
         protected readonly Dictionary<string, ProgramGraphSourceRevision> m_GraphSourceRevisions = new(StringComparer.Ordinal);
         readonly Dictionary<string, int> m_ConstantByIdentity = new Dictionary<string, int>(StringComparer.Ordinal);
         readonly Dictionary<ProgramIdentityDependency, int> m_CatalogByIdentity = new();
@@ -601,7 +602,7 @@ namespace BTSMTL.Compilation
                 string graphInvocationPath = sourceInvocationPath;
                 if (targetKind == ProgramSourceTargetKind.GraphInvocation && !string.IsNullOrEmpty(callerId))
                     graphInvocationPath = $"{graphInvocationPath}/{callerId}";
-                m_SourceMap.Add(new ProgramSourceMapEntry(new ProgramExecutionSource(
+                var execution = new ProgramExecutionSource(
                     targetKind,
                     targetIndex,
                     source.GraphId,
@@ -620,8 +621,14 @@ namespace BTSMTL.Compilation
                     direction,
                     sourceInvocationPath,
                     sourceParentInvocationPath, callerKind, callerId, callerClipId, callerOperationIndex,
-                    invocationEntryOperationIndex),
-                    source.SourceType, source.DisplayPath));
+                    invocationEntryOperationIndex);
+                var textKey = (source.SourceType, source.DisplayPath);
+                if (!m_SourceTexts.TryGetValue(textKey, out ProgramSourceMapText text))
+                {
+                    text = new ProgramSourceMapText(source.SourceType, source.DisplayPath.Split('/'));
+                    m_SourceTexts.Add(textKey, text);
+                }
+                m_SourceMap.Add(new ProgramSourceMapEntry(execution, text, source.DisplayPath));
             }
             catch (Exception exception)
             {

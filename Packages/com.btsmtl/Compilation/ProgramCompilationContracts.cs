@@ -649,10 +649,10 @@ namespace BTSMTL.Compilation
     [ValueStorage]
     public sealed partial class ProgramSourceMapEntry
     {
-        public ProgramSourceMapEntry(ProgramExecutionSource source, string sourceType, string displayPath)
+        public ProgramSourceMapEntry(ProgramExecutionSource source, ProgramSourceMapText text, string displayPath)
         {
             Source = source;
-            Text = new ProgramSourceMapText(sourceType, displayPath.Split('/'));
+            Text = text;
             DisplayPath = displayPath;
         }
 
