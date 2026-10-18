@@ -182,6 +182,7 @@ namespace BTSMTL.Compilation
             readonly HashSet<int> m_ParameterSlots = new();
             readonly Dictionary<string, GraphInvocationFrame> m_GraphInvocationFrames = new(StringComparer.Ordinal);
             OrchestrationIdentityTable m_Identities;
+            Dictionary<string, int> m_IdentityIds;
             string[] m_OperationIdentities;
             Ports[] m_Ports;
             int[] m_ExecutionFrameOwners;
@@ -231,6 +232,9 @@ namespace BTSMTL.Compilation
             {
                 BuildOperationIdentities();
                 m_Identities = OrchestrationIdentityPublication.Create(IdentityTexts());
+                m_IdentityIds = new Dictionary<string, int>(m_Identities.Count, StringComparer.Ordinal);
+                for (int i = 0; i < m_Identities.Count; i++)
+                    m_IdentityIds.Add(m_Identities.Entries.Span[i], i + 1);
                 BuildPorts();
                 BuildExecutionFrameOwners();
                 BuildValueSlots();
@@ -358,7 +362,14 @@ namespace BTSMTL.Compilation
                 }
             }
 
-            int Bind(string text) => m_Identities.Bind(text);
+            int Bind(string text)
+            {
+                if (string.IsNullOrEmpty(text))
+                    return 0;
+                if (m_IdentityIds.TryGetValue(text, out int identity))
+                    return identity;
+                throw new KeyNotFoundException($"身份文本 '{text}' 未包含在已发布内容表 '{m_Identities.Identity}' 中。");
+            }
             void BuildOperationIdentities()
             {
                 m_OperationIdentities = new string[m_Operations.Count];
