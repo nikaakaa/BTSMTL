@@ -148,7 +148,7 @@ namespace BTSMTL.Timeline
         {
             base.Init(track);
 #if UNITY_EDITOR
-            if (!Timeline.IsTimeRangeWorkspace && Timeline.SerializedOwner && m_AssetTree is ITimelineTreeGraphAsset graph)
+            if (Timeline.SerializedOwner && m_AssetTree is ITimelineTreeGraphAsset graph)
                 graph.BindTimelineAuthoringContext(Timeline, this);
 #endif
         }

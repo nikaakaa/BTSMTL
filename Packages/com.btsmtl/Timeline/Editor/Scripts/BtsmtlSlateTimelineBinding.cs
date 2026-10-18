@@ -93,7 +93,7 @@ namespace BTSMTL.Timeline.Editor
                     ResourceChanged?.Invoke();
                     RequestRepaint();
                 }
-                if (!TimeRangeOnly && GUILayout.Button("创建独立资源并重绑"))
+                if (GUILayout.Button("创建独立资源并重绑"))
                     m_Request.AuthoringHost.ShowSourceCreation(Session.GridPipeline, source.SourceAssetType, asset, replacement =>
                     {
                         if (!ApplyImmediate(() =>
@@ -397,15 +397,8 @@ namespace BTSMTL.Timeline.Editor
                 }
                 return;
             }
-            if (m_Request.TimeRangePreview != null)
+            if (m_Request.TimeRangePreview != null && m_EditKind == EmbeddedTimelineEditKind.ClipTimeRange)
             {
-                if (m_EditKind != EmbeddedTimelineEditKind.ClipTimeRange)
-                {
-                    m_EditActive = false;
-                    Rebuild();
-                    ReportIssue("预览工作副本只支持 Clip 平移与裁剪；其它内容请在作者模式编辑。");
-                    return;
-                }
                 bool accepted = FlushTimePreviewRanges();
                 m_EditActive = false;
                 if (accepted)
@@ -522,26 +515,8 @@ namespace BTSMTL.Timeline.Editor
             return true;
         }
 
-        public void ApplyClipTimeRangeNumbers(string clipIdentity, OrchestrationTime start, OrchestrationTime end)
-        {
-            var clip = m_Clips[clipIdentity];
-            OrchestrationTime originalStart = clip.Source.StartTime;
-            OrchestrationTime originalDuration = clip.Source.DurationTime;
-            BeginEdit("编辑片段时间范围", EmbeddedTimelineEditKind.ClipTimeRange);
-            clip.StartTime = start.AsSingle;
-            clip.EndTime = end.AsSingle;
-            if (end - start != originalDuration)
-            {
-                bool trimStart = start != originalStart;
-                if (trimStart && clip.CanClipIn)
-                    clip.ClipInTime = Math.Max(0d, (clip.Source.ClipInTime + start - originalStart).AsSingle);
-                clip.AdjustSourceRange(originalStart.AsSingle, start.AsSingle, end.AsSingle, trimStart);
-            }
-            CommitEdit();
-        }
-
         public event Action RepaintRequested;
-        public bool TimeRangeOnly => m_Request.TimeRangePreview != null;
+        public bool ClipAdjustRangeOnly => m_Request.TimeRangePreview != null;
         public bool ResourceEditing => m_SourceResourceClipId != null;
 
         public void RequestRepaint()
@@ -930,11 +905,6 @@ namespace BTSMTL.Timeline.Editor
         public void Rebuild(bool rebuildResources = false)
         {
             m_Timeline = m_Request.Timeline;
-            if (TimeRangeOnly && !rebuildResources)
-            {
-                SynchronizeTimeRangeBindings();
-                return;
-            }
             string selectedId = m_Selected?.AuthoringId ?? string.Empty;
             BuildBindings();
             if (m_Clips.TryGetValue(selectedId, out BtsmtlTimelineClipBinding clip))
@@ -947,34 +917,6 @@ namespace BTSMTL.Timeline.Editor
                 Select(section);
             else
                 Select(null);
-        }
-
-        void SynchronizeTimeRangeBindings()
-        {
-            for (int trackIndex = 0; trackIndex < Timeline.Tracks.Count; trackIndex++)
-            {
-                Track source = Timeline.Tracks[trackIndex];
-                m_Tracks[source.AuthoringId].Source = source;
-                for (int markerIndex = 0; markerIndex < source.Markers.Count; markerIndex++)
-                {
-                    TimelineMarker marker = source.Markers[markerIndex];
-                    m_Markers[marker.AuthoringId].Source = marker;
-                }
-                for (int clipIndex = 0; clipIndex < source.Clips.Count; clipIndex++)
-                {
-                    Clip clip = source.Clips[clipIndex];
-                    m_Clips[clip.AuthoringId].BindTimeRangeSource(clip);
-                }
-            }
-            for (int sectionIndex = 0; sectionIndex < Timeline.Sections.Count; sectionIndex++)
-            {
-                TimelineSection section = Timeline.Sections[sectionIndex];
-                m_SectionsById[section.AuthoringId].Source = section;
-            }
-            m_SourceRevision = Timeline.AuthoringRevision;
-            m_CurrentTime = Mathf.Clamp(m_CurrentTime, 0f, Length);
-            Select(m_Selected);
-            RequestRepaint();
         }
 
         bool ApplyImmediate(Action mutation, string undoName)
@@ -1773,12 +1715,6 @@ namespace BTSMTL.Timeline.Editor
 
             internal void CaptureGestureTimeRange() => m_GestureTimeRange = Source.CaptureTimeRange();
 
-            internal void BindTimeRangeSource(Clip source)
-            {
-                Source = source;
-                SynchronizeTimeRange();
-            }
-
             internal void SynchronizeTimeRange()
             {
                 float previousLength = Length;
@@ -1789,7 +1725,7 @@ namespace BTSMTL.Timeline.Editor
                 m_BlendIn = m_InitialBlendIn = Source.SelfEaseInTime.AsSingle;
                 m_BlendOut = m_InitialBlendOut = Source.SelfEaseOutTime.AsSingle;
                 m_ClipInTime = Source.ClipInTime;
-                if (m_Owner.TimeRangeOnly)
+                if (m_Owner.ClipAdjustRangeOnly)
                     for (int i = 0; i < m_Curves.Count; i++)
                         ((BtsmtlTimelineCurveBinding)m_Curves[i]).SynchronizeDisplayDuration();
                 TimelineClipTimeRange sourceRange = Source.CaptureTimeRange();

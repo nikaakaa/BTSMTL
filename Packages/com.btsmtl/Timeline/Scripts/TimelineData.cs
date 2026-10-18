@@ -42,9 +42,6 @@ namespace BTSMTL.Timeline
         public bool Loop { get => m_Loop; set => m_Loop = value; }
         public UnityEngine.Object SerializedOwner => m_SerializedOwner;
         public string SerializedPropertyPath => m_SerializedPropertyPath ?? string.Empty;
-        public bool IsTimeRangeWorkspace { get; private set; }
-
-        public void ConfigureTimeRangeWorkspace() => IsTimeRangeWorkspace = true;
 
         public static TimelineData CreateDefault(string name)
         {

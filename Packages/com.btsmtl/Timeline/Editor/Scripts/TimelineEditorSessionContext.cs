@@ -194,7 +194,7 @@ namespace BTSMTL.Timeline.Editor
             TimeRangePreview = timeRangePreview;
         }
 
-        public TimelineData Timeline => TimeRangePreview == null ? m_Timeline : TimeRangePreview.WorkingData;
+        public TimelineData Timeline => m_Timeline;
         public UnityEngine.Object SerializedOwner { get; }
         public string SerializedPropertyPath { get; }
         public string OwnershipLabel { get; }
@@ -371,8 +371,6 @@ namespace BTSMTL.Timeline.Editor
 
         public void Apply(Action mutation, string undoName)
         {
-            if (m_Request.TimeRangePreview != null)
-                throw new InvalidOperationException("预览工作副本只接受 Clip 时间范围；结构、资源和曲线请在作者模式编辑。");
             if (IsReadOnly)
                 throw new InvalidOperationException(
                     "Timeline authoring mutation is unavailable during Scene Play or Live Debug.");

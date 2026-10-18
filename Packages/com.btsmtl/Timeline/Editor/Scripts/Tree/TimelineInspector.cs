@@ -65,13 +65,7 @@ namespace BTSMTL.Timeline.Editor
             m_ClipProperties = Array.Empty<PropertyBinding>();
             TimelineAsset asset = (TimelineAsset)target;
             m_SourceRevision = TimelineAuthoringFingerprint.Compute(asset.Data);
-            m_Root.Add(new Button(() =>
-            {
-                if (asset.Data.IsTimeRangeWorkspace)
-                    TimelineEditorWindow.FindOpen(asset).Focus();
-                else
-                    TimelineEditorWindow.Open(asset);
-            })
+            m_Root.Add(new Button(() => TimelineEditorWindow.Open(asset))
             {
                 text = "Open Timeline Editor"
             });
@@ -84,7 +78,7 @@ namespace BTSMTL.Timeline.Editor
 
             if (TimelineInspectorSelection.TryGetElement(asset, out object selected))
             {
-                if (selected is Clip clip && !asset.Data.IsTimeRangeWorkspace)
+                if (selected is Clip clip)
                     PrepareClipProperties(clip);
                 m_Root.Add(new Label("Selected Timeline Element"));
                 m_Root.Add(new IMGUIContainer(() => DrawSelectedInspector(asset, selected)));
@@ -102,8 +96,7 @@ namespace BTSMTL.Timeline.Editor
             if (selected is TimelineMarker marker && GUILayout.Button("Open Trigger Graph"))
                 TimelineWorkspaceModeBridge.Authoring.OpenGraph(marker.Graph);
             using var disabled = new EditorGUI.DisabledScope(EditorApplication.isPlayingOrWillChangePlaymode ||
-                TimelineEditorWindow.FindOpen(asset)?.RuntimeObservationReadOnly == true ||
-                asset.Data.IsTimeRangeWorkspace && selected is not Clip);
+                TimelineEditorWindow.FindOpen(asset)?.RuntimeObservationReadOnly == true);
             switch (selected)
             {
                 case Clip clip:
@@ -124,23 +117,6 @@ namespace BTSMTL.Timeline.Editor
         void DrawClipInspector(TimelineAsset asset, Clip clip)
         {
             BtsmtlSlateTimelineProjection.DrawSourceResourceInspector(asset.Data, clip);
-            if (asset.Data.IsTimeRangeWorkspace)
-            {
-                EditorGUILayout.LabelField("片段", clip.Name);
-                EditorGUI.BeginChangeCheck();
-                double start = EditorGUILayout.DelayedDoubleField("起点裁剪（秒）", clip.StartTime.AsSingle);
-                double end = EditorGUILayout.DelayedDoubleField("终点裁剪（秒）", clip.EndTime.AsSingle);
-                if (EditorGUI.EndChangeCheck())
-                    TimelineEditorWindow.FindOpen(asset).ApplyClipTimeRangeNumbers(clip.AuthoringId,
-                        OrchestrationTime.FromSeconds(start), OrchestrationTime.FromSeconds(end));
-                using (new EditorGUI.DisabledScope(true))
-                {
-                    EditorGUILayout.DoubleField("ClipIn", clip.ClipInTime.AsSingle);
-                    EditorGUILayout.DoubleField("混合进入", clip.SelfEaseInTime.AsSingle);
-                    EditorGUILayout.DoubleField("混合退出", clip.SelfEaseOutTime.AsSingle);
-                }
-                return;
-            }
             if (!string.IsNullOrEmpty(m_ConfigurationError))
                 EditorGUILayout.HelpBox(m_ConfigurationError, MessageType.Error);
             EditorGUILayout.LabelField("Name", clip.Name);

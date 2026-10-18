@@ -19,14 +19,16 @@ namespace BTSMTL.Timeline.Runtime
     public sealed class TimelineRuntimePreparedContent
     {
         internal TimelineRuntimePreparedContent(TimelineRuntimePreparedContent source,
-            TimelineContentUnit content, OrchestrationIdentityTable identities)
+            TimelineContentUnit content, OrchestrationIdentityTable identities, bool rebuildSampling = false)
         {
             Status = source.Status;
             NumericTarget = source.NumericTarget;
             Content = content;
             BindIdentities(identities);
             Index = new TimelineRuntimeContentIndex(content);
-            ClipSampling = new PresentationClipSampling(source.ClipSampling, content);
+            ClipSampling = rebuildSampling
+                ? new PresentationClipSampling(content, TimelineExecutionDomain.Presentation)
+                : new PresentationClipSampling(source.ClipSampling, content);
             BindingPlan = source.BindingPlan;
             CallInput = source.CallInput;
             PreparedBindings = source.PreparedBindings;
@@ -211,6 +213,78 @@ namespace BTSMTL.Timeline.Runtime
                 candidate.Loop, candidate.Tracks, candidate.Clips, candidate.Markers,
                 candidate.Sections, candidate.Bindings, candidate.Dependencies);
             return new TimelineRuntimePreparedContent(source, frozen, identities);
+        }
+
+        // 结构候选沿用原绑定、依赖与状态布局；布局变化须完整发布。
+        public static TimelineRuntimePreparedContent PrepareStructureCandidate(
+            TimelineRuntimePreparedContent source,
+            TimelineContentUnit candidate,
+            OrchestrationIdentityTable identities,
+            out string rejection)
+        {
+            rejection = FindLayoutChange(source.Content, candidate);
+            return rejection == null ? new TimelineRuntimePreparedContent(source, candidate, identities, true) : null;
+        }
+
+        static string FindLayoutChange(TimelineContentUnit source, TimelineContentUnit candidate)
+        {
+            if (source.Identity != candidate.Identity || source.AuthoringId != candidate.AuthoringId)
+                return "Timeline 身份已变化";
+            if (source.Tracks.Count != candidate.Tracks.Count)
+                return "轨道数量已变化";
+            for (int i = 0; i < source.Tracks.Count; i++)
+            {
+                TimelineContentTrack left = source.Tracks[i];
+                TimelineContentTrack right = candidate.Tracks[i];
+                if (left.AuthoringId != right.AuthoringId || left.ContractKind != right.ContractKind ||
+                    !left.ExecutionPolicy.Equals(right.ExecutionPolicy) || left.Muted != right.Muted ||
+                    !Equals(left.LogicSampleExtension, right.LogicSampleExtension) ||
+                    !left.ClipAuthoringIds.SequenceEqual(right.ClipAuthoringIds))
+                    return $"轨道 '{left.Name}' 的类型、执行域或片段组成已变化";
+            }
+            if (source.Clips.Count != candidate.Clips.Count)
+                return "片段数量已变化";
+            for (int i = 0; i < source.Clips.Count; i++)
+            {
+                TimelineContentClip left = source.Clips[i];
+                TimelineContentClip right = candidate.Clips[i];
+                if (left.AuthoringId != right.AuthoringId || left.ContractKind != right.ContractKind ||
+                    left.TrackAuthoringId != right.TrackAuthoringId || left.ContentKind != right.ContentKind ||
+                    !left.ExecutionPolicy.Equals(right.ExecutionPolicy) || left.ExitSource != right.ExitSource ||
+                    left.ExecutionPhase != right.ExecutionPhase || left.SupportsStop != right.SupportsStop ||
+                    left.TrackMuted != right.TrackMuted ||
+                    left.GraphBinding.GraphId != right.GraphBinding.GraphId ||
+                    left.GraphBinding.Revision != right.GraphBinding.Revision ||
+                    !left.Bindings.SequenceEqual(right.Bindings) ||
+                    !left.Curves.Select(curve => curve.ChannelId).SequenceEqual(right.Curves.Select(curve => curve.ChannelId)))
+                    return $"片段 '{left.AuthoringId}' 的类型、图、绑定或曲线通道已变化";
+            }
+            if (source.Markers.Count != candidate.Markers.Count)
+                return "Marker 数量已变化";
+            for (int i = 0; i < source.Markers.Count; i++)
+            {
+                TimelineContentMarker left = source.Markers[i];
+                TimelineContentMarker right = candidate.Markers[i];
+                if (left.MarkerId != right.MarkerId || left.TrackAuthoringId != right.TrackAuthoringId ||
+                    !left.ExecutionPolicy.Equals(right.ExecutionPolicy) || left.TrackMuted != right.TrackMuted ||
+                    left.GraphId != right.GraphId || left.GraphRevision != right.GraphRevision)
+                    return $"Marker '{left.MarkerId}' 的轨道或触发图已变化";
+            }
+            if (!source.Sections.Select(section => section.AuthoringId)
+                    .SequenceEqual(candidate.Sections.Select(section => section.AuthoringId)))
+                return "Section 组成已变化";
+            if (!source.Bindings.SequenceEqual(candidate.Bindings))
+                return "绑定声明已变化";
+            if (source.Dependencies.Count != candidate.Dependencies.Count)
+                return "依赖资源组成已变化";
+            for (int i = 0; i < source.Dependencies.Count; i++)
+            {
+                TimelineContentDependency left = source.Dependencies[i];
+                TimelineContentDependency right = candidate.Dependencies[i];
+                if (left.Identity != right.Identity || left.Kind != right.Kind || left.ContentHash != right.ContentHash)
+                    return $"依赖 '{left.Identity}' 已变化；资源或 TreeClip 图修改需要重新发布";
+            }
+            return null;
         }
 
         public static TimelineRuntimePreparedContent PrepareContent(

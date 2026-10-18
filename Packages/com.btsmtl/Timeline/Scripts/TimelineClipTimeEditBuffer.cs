@@ -8,9 +8,8 @@ namespace BTSMTL.Timeline
     public interface ITimelineTimeRangePreview
     {
         TimelineAsset Source { get; }
-        TimelineAsset Workspace { get; }
-        TimelineData WorkingData { get; }
         bool IsEditing { get; }
+        bool MatchesSource { get; }
         int ClipCount { get; }
         string ClipIdentityAt(int index);
         void BeginEdit(string name);
@@ -62,6 +61,21 @@ namespace BTSMTL.Timeline
         public TimelineClipTimeRange this[int index] => m_Ranges[index];
         public ReadOnlySpan<TimelineClipTimeRange> Ranges => m_Ranges;
         public Clip ClipAt(int index) => m_Clips[index];
+
+        public bool MatchesStructure(TimelineData timeline)
+        {
+            int count = 0;
+            foreach (Track track in timeline.Tracks)
+                foreach (Clip clip in track.Clips)
+                {
+                    int slot = Array.IndexOf(m_ClipIdentities, clip.AuthoringId);
+                    if (slot < 0 || m_Clips[slot].GetType() != clip.GetType() ||
+                        m_Clips[slot].Track.AuthoringId != track.AuthoringId)
+                        return false;
+                    count++;
+                }
+            return count == m_Clips.Length;
+        }
 
         public void Bind(TimelineData timeline)
         {

@@ -173,8 +173,6 @@ namespace BTSMTL.Timeline.Editor
             if (s_Current != null && ReferenceEquals(s_Current.m_Binding.Timeline, timeline))
                 s_Current.m_Binding.DrawSourceResourceInspector(clip);
         }
-        public void ApplyClipTimeRangeNumbers(string identity, OrchestrationTime start,
-            OrchestrationTime end) => m_Binding.ApplyClipTimeRangeNumbers(identity, start, end);
         public event Action<TimelineEditorSelection> SelectionChanged;
         public event Action<string> AuthoringIssue;
 

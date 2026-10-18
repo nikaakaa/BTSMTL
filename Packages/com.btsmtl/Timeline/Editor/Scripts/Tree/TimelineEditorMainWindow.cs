@@ -153,14 +153,12 @@ namespace BTSMTL.Timeline.Editor
         readonly List<RuntimeTimelinePlaybackDebugSummary> m_RuntimeObservationSummaries =
             new List<RuntimeTimelinePlaybackDebugSummary>();
 
-        public TimelineData Timeline => m_TimeRangePreview == null ? m_Timeline : m_TimeRangePreview.WorkingData;
+        public TimelineData Timeline => m_Timeline;
         public Clip SelectedClip => m_SlateProjection?.Selection.Clip;
         public string SourceGraphAuthoringId => m_SourceGraphAuthoringId ?? string.Empty;
         public string SourceNodeAuthoringId => m_SourceNodeGuid ?? string.Empty;
         public TimelineAsset SourceAsset => m_SerializedOwner as TimelineAsset;
         public ITimelineTimeRangePreview TimeRangePreview => m_TimeRangePreview;
-        public void ApplyClipTimeRangeNumbers(string identity, OrchestrationTime start,
-            OrchestrationTime end) => m_SlateProjection.ApplyClipTimeRangeNumbers(identity, start, end);
 
         public void SetTimeRangePreview(ITimelineTimeRangePreview preview)
         {
@@ -177,9 +175,8 @@ namespace BTSMTL.Timeline.Editor
             TimelineAsset source = SourceAsset;
             preview?.SynchronizeUndo();
             m_TimeRangePreview = preview;
-            Bind(preview == null ? source.Data : preview.WorkingData,
-                preview == null ? source : preview.Workspace, "m_Data",
-                preview == null ? "正式作者资产" : "预览时间草稿 · 应用后保存资产", m_SourceNodeGuid, m_SourceGraphAuthoringId);
+            Bind(source.Data, source, "m_Data",
+                preview == null ? "正式作者资产" : "作者资产 · 预览候选不自动保存或发布", m_SourceNodeGuid, m_SourceGraphAuthoringId);
             m_SlateProjection.RestoreViewState(view);
         }
         public bool RuntimeObservationReadOnly => m_RuntimeObservationReadOnly;
@@ -368,8 +365,7 @@ namespace BTSMTL.Timeline.Editor
             if (!asset)
                 return null;
             for (int index = 0; index < s_Windows.Count; index++)
-                if (ReferenceEquals(s_Windows[index].m_SerializedOwner, asset) ||
-                    ReferenceEquals(s_Windows[index].m_TimeRangePreview?.Workspace, asset))
+                if (ReferenceEquals(s_Windows[index].m_SerializedOwner, asset))
                     return s_Windows[index];
             return null;
         }
@@ -478,7 +474,7 @@ namespace BTSMTL.Timeline.Editor
                 throw new InvalidOperationException("TimelineEditorWindow requires a bound TimelineData owner/path.");
 
             DisposeView();
-            m_SerializedOwner = m_TimeRangePreview == null ? serializedOwner : m_TimeRangePreview.Source;
+            m_SerializedOwner = serializedOwner;
             m_SerializedPropertyPath = serializedPropertyPath;
             m_OwnershipLabel = ownershipLabel;
             if (string.IsNullOrEmpty(sourceNodeGuid))
@@ -489,12 +485,6 @@ namespace BTSMTL.Timeline.Editor
             ClearRuntimeObservationSelection();
             titleContent = new GUIContent("Timeline Editor");
             TimelineWorkspaceModeBridge.ApplyToWindow(this);
-            if (m_TimeRangePreview != null)
-            {
-                timeline = m_TimeRangePreview.WorkingData;
-                serializedOwner = m_TimeRangePreview.Workspace;
-                m_OwnershipLabel = "预览时间草稿 · 应用后保存资产";
-            }
             timeline.BindSerializedOwner(serializedOwner, serializedPropertyPath);
             timeline.OnValueChanged += OnTimelineValueChanged;
             m_Timeline = timeline;
@@ -767,7 +757,7 @@ namespace BTSMTL.Timeline.Editor
 
         void OnTimelineValueChanged()
         {
-            if (m_TimeRangePreview != null)
+            if (m_TimeRangePreview?.IsEditing == true)
                 return;
             m_Toolbar?.SetSourceSummary(BindingState.CreateSourceSummary());
             AuthoringRevisionChanged?.Invoke(this);
