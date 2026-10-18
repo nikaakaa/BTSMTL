@@ -650,15 +650,10 @@ namespace BTSMTL.Compilation
     public sealed partial class ProgramSourceMapEntry
     {
         public ProgramSourceMapEntry(ProgramExecutionSource source, string sourceType, string displayPath)
-            : this(source, new ProgramSourceMapText(sourceType, displayPath.Split('/')))
-        {
-        }
-
-        internal ProgramSourceMapEntry(ProgramExecutionSource source, ProgramSourceMapText text)
         {
             Source = source;
-            Text = text;
-            DisplayPath = string.Join("/", text.DisplayPathSegments);
+            Text = new ProgramSourceMapText(sourceType, displayPath.Split('/'));
+            DisplayPath = displayPath;
         }
 
         public ProgramExecutionSource Source { get; }
