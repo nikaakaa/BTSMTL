@@ -10,7 +10,7 @@ namespace BTSMTL.Diagnostics.Editor
     sealed class RuntimeTraceBinaryCodec : IDisposable
     {
         internal const int EventSize = 528;
-        const int Version = 9;
+        const int Version = 10;
         const int MaximumStringsPerEvent = 22;
         readonly Dictionary<string, int> m_StringIds;
         readonly List<string> m_Strings;

@@ -198,7 +198,8 @@ namespace BTSMTL.Diagnostics
         StateActivation,
         TimelinePlayback,
         TreeClip,
-        SkillExecution
+        SkillExecution,
+        HostSubject
     }
 
     public readonly struct RuntimeInstanceKey : IEquatable<RuntimeInstanceKey>
@@ -270,6 +271,9 @@ namespace BTSMTL.Diagnostics
         public static RuntimeInstanceKey TreeClip(Guid characterId, Guid graphId, int sourceOperationIndex, ulong playbackId, int cycle, ulong actionInstanceId = 0, int treeClipOperationIndex = -1) => new RuntimeInstanceKey(RuntimeInstanceKind.TreeClip, characterId, graphId, string.Empty, 0, playbackId, cycle, actionInstanceId, string.Empty, 0, sourceOperationIndex, treeClipOperationIndex);
         public static RuntimeInstanceKey SkillExecution(Guid characterId, Guid actionRuntimeId, string skillId, ulong instanceId, string callSiteId, ulong generation, ulong invocationGeneration = 0) =>
             new RuntimeInstanceKey(RuntimeInstanceKind.SkillExecution, characterId, actionRuntimeId, skillId, generation, 0, -1, instanceId, callSiteId, invocationGeneration);
+        // 宿主业务对象：subjectKind 为宿主常量，subjectId 为该对象在宿主内的稳定编号。
+        public static RuntimeInstanceKey HostSubject(Guid characterId, string subjectKind, ulong subjectId, ulong actionInstanceId = 0) =>
+            new RuntimeInstanceKey(RuntimeInstanceKind.HostSubject, characterId, Guid.Empty, subjectKind, subjectId, 0, -1, actionInstanceId);
 
         public bool Equals(RuntimeInstanceKey other)
         {
@@ -304,6 +308,8 @@ namespace BTSMTL.Diagnostics
                     return $"TreeClip:{SourceOperationIndex}/{TreeClipOperationIndex}/{TimelinePlaybackId}/{TreeClipCycle}/{GraphRuntimeId:N}/{ActionInstanceId}";
                 case RuntimeInstanceKind.SkillExecution:
                     return $"Skill:{GraphRuntimeId:N}/{StateId}/{ActionInstanceId}/{CallSiteId}/{ActivationGeneration}/{InvocationGeneration}";
+                case RuntimeInstanceKind.HostSubject:
+                    return $"{StateId}:{ActivationGeneration}/{ActionInstanceId}";
                 default:
                     return "None";
             }
@@ -325,9 +331,45 @@ namespace BTSMTL.Diagnostics
         StateMachine = 1 << 1,
         Timeline = 1 << 2,
         Blackboard = 1 << 3,
-        Host = 1 << 4,
         Values = 1 << 10,
-        All = Graph | StateMachine | Timeline | Blackboard | Host | Values
+        // 宿主经 RuntimeHostTraceChannels 登记的全部通道位。
+        Host = 0x7FFF0000,
+        All = Graph | StateMachine | Timeline | Blackboard | Values | Host
+    }
+
+    // 宿主通道以稳定编号占用 Host 位段；编号写入预览事件文件，只追加不复用。
+    public static class RuntimeHostTraceChannels
+    {
+        public const int FirstBit = 16;
+        public const int Capacity = 15;
+        static readonly string[] s_Names = new string[Capacity];
+
+        public static RuntimeTraceChannel Register(int hostId, string name)
+        {
+            if ((uint)hostId >= Capacity)
+                throw new ArgumentOutOfRangeException(nameof(hostId));
+            if (string.IsNullOrEmpty(name))
+                throw new ArgumentException("宿主诊断通道必须有名称。", nameof(name));
+            lock (s_Names)
+            {
+                string existing = s_Names[hostId];
+                if (existing != null && existing != name)
+                    throw new InvalidOperationException($"宿主诊断通道 {hostId} 已登记为 {existing}。");
+                s_Names[hostId] = name;
+            }
+            return (RuntimeTraceChannel)(1 << (FirstBit + hostId));
+        }
+
+        public static string Name(RuntimeTraceChannel channel)
+        {
+            int bits = (int)(channel & RuntimeTraceChannel.Host);
+            if (bits == 0 || (bits & (bits - 1)) != 0)
+                throw new ArgumentException("只能查询单个宿主通道。", nameof(channel));
+            int hostId = 0;
+            while ((bits >> (FirstBit + hostId)) != 1)
+                hostId++;
+            return s_Names[hostId] ?? $"Host#{hostId}";
+        }
     }
 
     public enum RuntimeTraceEventKind
@@ -423,7 +465,7 @@ namespace BTSMTL.Diagnostics
         public static string Name(RuntimeTraceEventKind kind) =>
             s_Names[(int)kind - First] ?? $"Host#{(int)kind - First}";
 
-        internal static RuntimeDiagnosticsCaptureDetail CaptureDetail(RuntimeTraceEventKind kind)
+        public static RuntimeDiagnosticsCaptureDetail CaptureDetail(RuntimeTraceEventKind kind)
         {
             RuntimeDiagnosticsCaptureDetail detail = s_Details[(int)kind - First];
             return detail != RuntimeDiagnosticsCaptureDetail.None

@@ -62,9 +62,16 @@ namespace BTSMTL.Diagnostics.Editor
         public ulong Position { get; }
         public ulong Sequence { get; }
         public RuntimeTracePayload Payload { get; }
-        public string Status => !string.IsNullOrEmpty(Payload.Status) ? Payload.Status
-            : RuntimeHostTraceKinds.IsHost(Kind) ? RuntimeHostTraceKinds.Name(Kind) : s_EventKindText[(int)Kind];
-        public string Detail => Payload.Detail;
+        public string Status => StatusText(Kind, Payload);
+        public string Detail => RuntimeHostTraceDisplay.Detail(Kind, Payload);
+
+        public static string StatusText(RuntimeTraceEventKind kind, in RuntimeTracePayload payload)
+        {
+            string status = RuntimeHostTraceDisplay.Status(kind, in payload);
+            if (!string.IsNullOrEmpty(status))
+                return status;
+            return RuntimeHostTraceKinds.IsHost(kind) ? RuntimeHostTraceKinds.Name(kind) : s_EventKindText[(int)kind];
+        }
     }
 
     public readonly struct RuntimeTimelinePlaybackDebugSummary
