@@ -184,6 +184,7 @@ namespace BTSMTL.Compilation
             OrchestrationIdentityTable m_Identities;
             Dictionary<string, int> m_IdentityIds;
             string[] m_OperationIdentities;
+            string[] m_GraphInvocationIdentities;
             Ports[] m_Ports;
             int[] m_ExecutionFrameOwners;
             int[] m_StateValueSlots;
@@ -230,7 +231,7 @@ namespace BTSMTL.Compilation
 
             internal OrchestrationGraphContent<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> Build()
             {
-                BuildOperationIdentities();
+                BuildExecutionIdentities();
                 m_Identities = OrchestrationIdentityPublication.Create(IdentityTexts());
                 m_IdentityIds = new Dictionary<string, int>(m_Identities.Count, StringComparer.Ordinal);
                 for (int i = 0; i < m_Identities.Count; i++)
@@ -317,7 +318,7 @@ namespace BTSMTL.Compilation
                 {
                     ProgramExecutionSource source = m_SourceMap[i].Source;
                     if (source.TargetKind == ProgramSourceTargetKind.GraphInvocation)
-                        yield return GraphInvocationIdentity(source);
+                        yield return m_GraphInvocationIdentities[i];
                     yield return source.GraphId;
                     yield return source.NodeId;
                     yield return source.PortId;
@@ -370,12 +371,15 @@ namespace BTSMTL.Compilation
                     return identity;
                 throw new KeyNotFoundException($"身份文本 '{text}' 未包含在已发布内容表 '{m_Identities.Identity}' 中。");
             }
-            void BuildOperationIdentities()
+            void BuildExecutionIdentities()
             {
                 m_OperationIdentities = new string[m_Operations.Count];
-                foreach (ProgramSourceMapEntry entry in m_SourceMap)
+                m_GraphInvocationIdentities = new string[m_SourceMap.Count];
+                for (int i = 0; i < m_SourceMap.Count; i++)
                 {
-                    ProgramExecutionSource source = entry.Source;
+                    ProgramExecutionSource source = m_SourceMap[i].Source;
+                    if (source.TargetKind == ProgramSourceTargetKind.GraphInvocation)
+                        m_GraphInvocationIdentities[i] = GraphInvocationIdentity(source);
                     if (source.TargetKind == ProgramSourceTargetKind.Operation && m_OperationIdentities[source.TargetIndex] == null)
                         m_OperationIdentities[source.TargetIndex] = StableHash.Compute("orchestration-operation", m_Identity.GraphId,
                             source.GraphInvocationPath, m_Operations[source.TargetIndex].TemplateIdentity).ToString();
@@ -1136,7 +1140,7 @@ namespace BTSMTL.Compilation
                     int sourceIdentityId = source.TargetKind switch
                     {
                         ProgramSourceTargetKind.Operation => Bind(m_OperationIdentities[source.TargetIndex]),
-                        ProgramSourceTargetKind.GraphInvocation => Bind(GraphInvocationIdentity(source)),
+                        ProgramSourceTargetKind.GraphInvocation => Bind(m_GraphInvocationIdentities[i]),
                         _ => OrchestrationGraphExecutionSource.NoExecutionIdentity
                     };
                     result.Add(new OrchestrationGraphSource(new OrchestrationGraphExecutionSource(
