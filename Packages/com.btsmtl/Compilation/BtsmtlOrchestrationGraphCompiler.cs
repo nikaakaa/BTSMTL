@@ -1125,10 +1125,18 @@ namespace BTSMTL.Compilation
             OrchestrationGraphSource[] BuildSources()
             {
                 var result = new List<OrchestrationGraphSource>();
+                var names = new Dictionary<(ProgramValuePortDirection, ProgramInvocationCallerKind),
+                    (string Direction, string Caller)>();
                 for (int i = 0; i < m_SourceMap.Count; i++)
                 {
                     ProgramSourceMapEntry entry = m_SourceMap[i];
                     ProgramExecutionSource source = entry.Source;
+                    var nameKey = (source.ValuePortDirection, source.InvocationCallerKind);
+                    if (!names.TryGetValue(nameKey, out var text))
+                    {
+                        text = (source.ValuePortDirection.ToString(), source.InvocationCallerKind.ToString());
+                        names.Add(nameKey, text);
+                    }
                     var path = new string[entry.Text.DisplayPathSegments.Count];
                     for (int segment = 0; segment < path.Length; segment++)
                         path[segment] = entry.Text.DisplayPathSegments[segment];
@@ -1160,8 +1168,8 @@ namespace BTSMTL.Compilation
                     result.Add(new OrchestrationGraphSource(new OrchestrationGraphExecutionSource(
                         targetKind, targetIndex, source.GraphId, source.NodeId, source.PortId,
                         source.EdgeId, source.DeclarationId, source.TimelineId, source.TrackId, source.ClipId,
-                        source.IsInputPort, source.GraphInvocationPath, source.CompiledPortId, source.ValuePortDirection.ToString(),
-                        source.SourceInvocationPath, source.ParentInvocationPath, source.InvocationCallerKind.ToString(),
+                        source.IsInputPort, source.GraphInvocationPath, source.CompiledPortId, text.Direction,
+                        source.SourceInvocationPath, source.ParentInvocationPath, text.Caller,
                         source.InvocationCallerId, source.InvocationCallerClipId,
                         source.InvocationCallerOperationIndex, invocationEntry, sourceIdentityId), entry.SourceType, path));
                     if (source.TargetKind == ProgramSourceTargetKind.Operation)
@@ -1170,8 +1178,8 @@ namespace BTSMTL.Compilation
                                 result.Add(new OrchestrationGraphSource(new OrchestrationGraphExecutionSource(
                                     OrchestrationGraphSourceTargetKind.Operation, port.OperationIndex, source.GraphId, source.NodeId, source.PortId,
                                     source.EdgeId, source.DeclarationId, source.TimelineId, source.TrackId, source.ClipId,
-                                    source.IsInputPort, source.GraphInvocationPath, source.CompiledPortId, source.ValuePortDirection.ToString(),
-                                    source.SourceInvocationPath, source.ParentInvocationPath, source.InvocationCallerKind.ToString(),
+                                    source.IsInputPort, source.GraphInvocationPath, source.CompiledPortId, text.Direction,
+                                    source.SourceInvocationPath, source.ParentInvocationPath, text.Caller,
                                     source.InvocationCallerId, source.InvocationCallerClipId,
                                     source.InvocationCallerOperationIndex, invocationEntry,
                                     Bind(ConstantOutputIdentity(source.TargetIndex, port.Identity))), entry.SourceType, path));
