@@ -103,7 +103,7 @@ namespace BTSMTL.EventGraphs
                         VariableId(node));
                 case EventGraphCapabilityKind.VariableSet:
                     return new EventGraphNodeOperation(OrchestrationOperationCode.BlackboardSet, 1,
-                        (int)(AssignOp)node.GetType().GetField("operation").GetValue(node), VariableId(node));
+                        (int)AssignmentOperation(node), VariableId(node));
                 case EventGraphCapabilityKind.PureValue:
                 {
                     BtsmtlNativeValueNodeCatalog.TryGetNode(node.GetType(), out BtsmtlNativeValueNodeDefinition value);
@@ -114,16 +114,26 @@ namespace BTSMTL.EventGraphs
             }
         }
 
-        public static string VariableId(FlowNode node) => ((ParameterVariableNode)node).parameter.targetVariableID;
+        public static bool IsVariable(Type nodeType) =>
+            TryGet(nodeType, out EventGraphCapabilityKind kind) &&
+            kind is EventGraphCapabilityKind.VariableGet or EventGraphCapabilityKind.VariableSet;
+
+        public static ParameterVariableNode Variable(FlowNode node) => (ParameterVariableNode)node;
+
+        public static string VariableId(FlowNode node) => Variable(node).parameter.targetVariableID;
+
+        // 原版 SetVariable<T> 的赋值字段按名称读取，调用方不必逐个 T 判断。
+        public static AssignOp AssignmentOperation(FlowNode node) =>
+            (AssignOp)node.GetType().GetField("operation").GetValue(node);
+
+        public static bool AssignmentPerSecond(FlowNode node) =>
+            (bool)node.GetType().GetField("perSecond").GetValue(node);
 
         static readonly BtsmtlRuntimeEditableAttribute s_VariableEditable =
             new BtsmtlRuntimeEditableAttribute(BtsmtlRuntimeValueKind.Variable, "parameter.targetVariableID");
 
         // 原版节点不带 BTSMTL 特性，其运行改值声明同样在此登记。
         public static BtsmtlRuntimeEditableAttribute RuntimeEditable(Type nodeType) =>
-            TryGet(nodeType, out EventGraphCapabilityKind kind) &&
-            kind is EventGraphCapabilityKind.VariableGet or EventGraphCapabilityKind.VariableSet
-                ? s_VariableEditable
-                : null;
+            IsVariable(nodeType) ? s_VariableEditable : null;
     }
 }

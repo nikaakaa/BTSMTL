@@ -74,6 +74,7 @@ sealed partial class SourceGuard(DependencyCatalog catalog, GuardRules rules, st
                     Report("RETIRED_DOMAIN_OPCODE", path, owner, node, $"using static 引用已删除领域指令 {identifier.Identifier.ValueText}。");
                 if (node is UsingDirectiveSyntax usingDirective)
                     CheckNamespace(Name(usingDirective.Name!), path, owner, usingDirective.Name!, applicable);
+                CheckNodeTypeTest(node, path, owner, aliases, imports);
                 if (node is NameSyntax or MemberAccessExpressionSyntax)
                 {
                     if (node is SimpleNameSyntax simple && !IsTypeUse(simple)) continue;

@@ -65,6 +65,8 @@ Q3 原采集工具在本批 Arm 前采用该输出，并结合当前 Build recei
 
 `THIRD_PARTY_PLUGIN_INDEPENDENT` 约束 Client 中的 ParadoxNotion、NodeCanvas、FlowCanvas 与 SLATE：它们保持原版独立，asmdef 依赖链和源码都不得引用 BTSMTL 或宿主 ThirdPerson。这些插件不在受控前缀内，只有依赖规则明确指向的 asmdef 才执行声明依赖检查，实际编译证据范围不随之扩大。BTSMTL 对原版节点的支持（EventGraph 能力种类、运行改值声明）在 `EventGraphCapabilityCatalog` 外部登记，不回写插件源码。源码类型未能语义绑定时按名字回退，顺序为所在命名空间由内向外、using 导入、最后全局命名空间；未引用程序集中的同名全局类型（如 BTSMTL 的 `ShowIfAttribute`）不会抢先于插件 using 导入的同名类型。
 
+`nodeTypeTestRules` 约束宿主编译与作者工具的节点分派。`NO_STOCK_NODE_TYPE_BRANCH` 禁止 ThirdPerson 程序集对规则列出的原版 FlowCanvas 叶子节点类型（Start／Update 事件、变量读写、SwitchBool、Split、Sequence）做 `is`／`as`／模式匹配，须经 `EventGraphCapabilityCatalog` 的能力种类分派；按种类分派后读取该节点字段的转换不受约束。宏节点属于图组合结构，闭包、拷贝与展开沿宏进入子图，不在此列；BTSMTL.EventGraphs 作为目录持有方也不受此规则约束。
+
 `unityPluginRules` 检查正式 asmdef 的 Unity 插件边界。BTSMTL、Shared 包和领域合同必须显式声明 `overrideReferences=true`；省略或 false 会接受 Unity 自动引用的启用插件，即使源码没有使用插件类型也不符合中立边界。预编译引用默认必须为空，只有已核对直接 DLL 需求的 `ThirdPerson.Shared.Contracts` 与 `BTSMTL.EventGraphs` 允许 `System.Runtime.CompilerServices.Unsafe.dll`。正常 asmdef 引用、Unity 引擎／基础库和构建期 analyzer 沿原职责解析，不作为预编译插件白名单。新增实际插件需求须先核对生产者和正式程序集引用，再修改同一规则表。
 
 该规则同时检查正式声明及其唯一同名 csproj 的实际引用。Client 根目录的生成 csproj 继承真实 asmdef 包归属；受控项目缺少同名声明时报告 `UNRESOLVED_PROJECT_ASMDEF`，同名声明有歧义时报告 `AMBIGUOUS_PROJECT_ASMDEF`，不猜一个包或忽略旧生成项目。没有 Unity asmdef 的独立 .NET 工具继续受原依赖规则约束，不套用 Unity 插件声明语义。实际 HintPath 读取 DLL 元数据以确认程序集身份，另外区分安装中的 BCL／引擎库、具有唯一同名 asmdef 的 `Library/ScriptAssemblies` 产物及预编译插件。Unity 安装需有实际 `Editor/Unity.exe`；其 `NetStandard`、`UnityReferenceAssemblies`、Mono 参考库按 Framework 分类，`Managed` 原生引擎库与 `PlaybackEngines` 内正式 `UnityEditor.*.Extensions` 按各自 SDK 职责分类。分类同时核对文件名与实际程序集身份。SDK、Client 和本地链接包内部的同名 DLL 仍是插件，不因目录片段或 `System`／`Microsoft`／`UnityEditor` 名称获得基础库身份。
