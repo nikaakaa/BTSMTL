@@ -182,6 +182,7 @@ namespace BTSMTL.Compilation
             readonly HashSet<int> m_ParameterSlots = new();
             readonly Dictionary<string, GraphInvocationFrame> m_GraphInvocationFrames = new(StringComparer.Ordinal);
             OrchestrationIdentityTable m_Identities;
+            string[] m_OperationIdentities;
             Ports[] m_Ports;
             int[] m_ExecutionFrameOwners;
             int[] m_StateValueSlots;
@@ -228,6 +229,7 @@ namespace BTSMTL.Compilation
 
             internal OrchestrationGraphContent<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> Build()
             {
+                BuildOperationIdentities();
                 m_Identities = OrchestrationIdentityPublication.Create(IdentityTexts());
                 BuildPorts();
                 BuildExecutionFrameOwners();
@@ -264,7 +266,7 @@ namespace BTSMTL.Compilation
                     yield return scope.Identity;
                 for (int i = 0; i < m_Operations.Count; i++)
                 {
-                    yield return OperationIdentity(i);
+                    yield return m_OperationIdentities[i];
                     foreach (SemanticConstantOutputBinding constant in m_Operations[i].ConstantOutputs)
                         yield return ConstantOutputIdentity(i, constant.OutputPortId);
                     foreach (SemanticHostInputPort input in m_Operations[i].HostInputs)
@@ -357,20 +359,23 @@ namespace BTSMTL.Compilation
             }
 
             int Bind(string text) => m_Identities.Bind(text);
-            string OperationIdentity(int operationIndex)
+            void BuildOperationIdentities()
             {
+                m_OperationIdentities = new string[m_Operations.Count];
                 foreach (ProgramSourceMapEntry entry in m_SourceMap)
                 {
                     ProgramExecutionSource source = entry.Source;
-                    if (source.TargetKind == ProgramSourceTargetKind.Operation && source.TargetIndex == operationIndex)
-                        return StableHash.Compute("orchestration-operation", m_Identity.GraphId,
-                            source.GraphInvocationPath, m_Operations[operationIndex].TemplateIdentity).ToString();
+                    if (source.TargetKind == ProgramSourceTargetKind.Operation && m_OperationIdentities[source.TargetIndex] == null)
+                        m_OperationIdentities[source.TargetIndex] = StableHash.Compute("orchestration-operation", m_Identity.GraphId,
+                            source.GraphInvocationPath, m_Operations[source.TargetIndex].TemplateIdentity).ToString();
                 }
-                throw new InvalidOperationException($"操作 '{operationIndex}' 缺少正式发生点来源。");
+                for (int operationIndex = 0; operationIndex < m_OperationIdentities.Length; operationIndex++)
+                    if (m_OperationIdentities[operationIndex] == null)
+                        throw new InvalidOperationException($"操作 '{operationIndex}' 缺少正式发生点来源。");
             }
 
             string ConstantOutputIdentity(int operationIndex, string portId) =>
-                StableHash.Compute("orchestration-constant-output", OperationIdentity(operationIndex), portId).ToString();
+                StableHash.Compute("orchestration-constant-output", m_OperationIdentities[operationIndex], portId).ToString();
 
             string GraphInvocationIdentity(ProgramExecutionSource source) =>
                 StableHash.Compute("orchestration-invocation", m_Identity.GraphId,
@@ -785,9 +790,9 @@ namespace BTSMTL.Compilation
                     int valueSlot = source.Code == OrchestrationOperationCode.BlackboardGet || source.Code == OrchestrationOperationCode.BlackboardSet
                         ? ValueSlot(StateReference(i)) : -1;
                     int stateId = source.Code == OrchestrationOperationCode.State || source.Code == OrchestrationOperationCode.StateExit
-                        ? Bind(OperationIdentity(i)) : 0;
+                        ? Bind(m_OperationIdentities[i]) : 0;
                     result[i] = new OrchestrationOperation(source.Code,
-                        isRunnable, Bind(OperationIdentity(i)), integer0, source.Integer1, constant,
+                        isRunnable, Bind(m_OperationIdentities[i]), integer0, source.Integer1, constant,
                         m_InputSlots[i], source.Code == OrchestrationOperationCode.InputRequest ? Bind(source.Text0) : 0,
                         valueSlot, source.Code == OrchestrationOperationCode.Timeline ? Bind(source.Text0) : 0,
                         stateId, source.Code == OrchestrationOperationCode.State ? StateMachineOwner(i) : -1,
@@ -1119,7 +1124,7 @@ namespace BTSMTL.Compilation
                         : default;
                     int sourceIdentityId = source.TargetKind switch
                     {
-                        ProgramSourceTargetKind.Operation => Bind(OperationIdentity(source.TargetIndex)),
+                        ProgramSourceTargetKind.Operation => Bind(m_OperationIdentities[source.TargetIndex]),
                         ProgramSourceTargetKind.GraphInvocation => Bind(GraphInvocationIdentity(source)),
                         _ => OrchestrationGraphExecutionSource.NoExecutionIdentity
                     };
