@@ -93,8 +93,9 @@ namespace ThirdPersonSimulation
             var parameters = new SemanticGraphParameters(Indexed(literals, value => value.Index, "semantic literal"),
                 m_Operations[0].ParameterValues);
             var callFrames = Indexed(graphCallFrames, value => value.Index, "graph call frame");
+            var contracts = new OperationValuePortContract[m_Operations.Count];
             var structure = new SemanticGraphStructure(m_Operations,
-                SortConstantInputs(constantInputBindings, m_Operations, callFrames),
+                SortConstantInputs(constantInputBindings, m_Operations, callFrames, contracts),
                 ByIdentity(controlFlow, value => value.Identity, "control-flow edge"),
                 ByIdentity(references, value => value.Identity, "reference"),
                 new SemanticStateTables(Indexed(stateDeclarations, value => value.Index, "state declaration"),
@@ -115,7 +116,7 @@ namespace ThirdPersonSimulation
                 Manifest.Root,
                 Structure.References,
                 m_Operations);
-            ValidateReferences();
+            ValidateReferences(contracts);
             ValidateGraphCallFrames();
         }
 
@@ -212,16 +213,16 @@ namespace ThirdPersonSimulation
             return ResolveOutputKind(source, sourcePort);
         }
 
-        void ValidateReferences()
+        void ValidateReferences(OperationValuePortContract[] contracts)
         {
             GameplayAbilityOperationSet.RequireVersion(Manifest.OperationSetVersion);
             for (int i = 0; i < m_Operations.Count; i++)
             {
                 SemanticOperation operation = m_Operations[i];
                 OrchestrationOperationSet.RequireOperation(operation.Code);
-                ValidateIndexes(operation.Operands, m_Operations.Count, $"Operation '{operation.Handle}' operand");
-                ValidateIndexes(operation.LiteralReferences, Parameters.Literals.Count, $"Operation '{operation.Handle}' literal");
-                ValidateIndexes(operation.StateSlots, m_StateLayout.Slots.Count, $"Operation '{operation.Handle}' state");
+                ValidateIndexes(operation.Operands, m_Operations.Count, operation.Handle, "operand");
+                ValidateIndexes(operation.LiteralReferences, Parameters.Literals.Count, operation.Handle, "literal");
+                ValidateIndexes(operation.StateSlots, m_StateLayout.Slots.Count, operation.Handle, "state");
             }
             for (int i = 0; i < m_StateLayout.Slots.Count; i++)
             {
@@ -241,7 +242,7 @@ namespace ThirdPersonSimulation
                     m_StateSlotByOperation[reference.SourceOperation.Value] < 0)
                     m_StateSlotByOperation[reference.SourceOperation.Value] = reference.TargetIndex;
             }
-            var valueSources = new HashSet<string>(StringComparer.Ordinal);
+            var valueSources = new HashSet<(int Operation, string Port)>();
             for (int i = 0; i < Structure.ControlFlow.Count; i++)
             {
                 ProgramControlFlowEdge edge = Structure.ControlFlow[i];
@@ -252,18 +253,17 @@ namespace ThirdPersonSimulation
                 if (edge.Kind != ProgramControlFlowKind.Value)
                     continue;
                 SemanticOperation target = m_Operations[edge.Target.Value];
-                OperationValuePortDefinition sourcePort = OrchestrationValuePortContracts
-                    .Require(source, m_StateLayout.GraphCallFrames)
-                    .RequireSelection(edge.SourcePort);
-                OperationValuePortDefinition targetPort = OrchestrationValuePortContracts
-                    .Require(target, m_StateLayout.GraphCallFrames)
-                    .RequireInput(edge.TargetPort);
+                OperationValuePortContract sourceContract = contracts[source.Handle.Value] ??=
+                    OrchestrationValuePortContracts.Require(source, m_StateLayout.GraphCallFrames);
+                OperationValuePortDefinition sourcePort = sourceContract.RequireSelection(edge.SourcePort);
+                OperationValuePortContract targetContract = contracts[target.Handle.Value] ??=
+                    OrchestrationValuePortContracts.Require(target, m_StateLayout.GraphCallFrames);
+                OperationValuePortDefinition targetPort = targetContract.RequireInput(edge.TargetPort);
                 SemanticValueKind sourceKind = ResolveOutputKind(source, sourcePort);
                 SemanticValueKind targetKind = ResolveInputKind(target, targetPort, sourceKind);
                 if (!targetPort.Accepts(sourceKind) || !KindsCanFlow(sourceKind, targetKind, targetPort.Constraint))
                     throw new InvalidDataException($"Value edge '{edge.Identity}' cannot assign '{sourceKind}' to '{target.Code}.{targetPort.Identity}' ({targetKind}).");
-                string key = InputKey(edge.Target.Value, edge.TargetPort);
-                if (!valueSources.Add(key))
+                if (!valueSources.Add((edge.Target.Value, edge.TargetPort ?? string.Empty)))
                     throw new InvalidDataException($"Operation '{edge.Target}' input port '{edge.TargetPort}' has multiple linked Value sources.");
             }
             for (int i = 0; i < Structure.ConstantInputBindings.Count; i++)
@@ -274,17 +274,16 @@ namespace ThirdPersonSimulation
                 if (binding.ConstantIndex < 0 || binding.ConstantIndex >= Parameters.Literals.Count)
                     throw new InvalidDataException($"Constant input binding targets unknown literal '{binding.ConstantIndex}'.");
                 SemanticOperation target = m_Operations[binding.TargetOperation.Value];
-                OperationValuePortDefinition port = OrchestrationValuePortContracts
-                    .Require(target, m_StateLayout.GraphCallFrames)
-                    .RequireInput(binding.TargetPort);
+                OperationValuePortContract contract = contracts[target.Handle.Value] ??=
+                    OrchestrationValuePortContracts.Require(target, m_StateLayout.GraphCallFrames);
+                OperationValuePortDefinition port = contract.RequireInput(binding.TargetPort);
                 SemanticValueKind literalKind = OrchestrationValuePortContracts.FromLiteral(Parameters.Literals[binding.ConstantIndex].Kind);
                 SemanticValueKind expectedKind = ResolveInputKind(target, port, binding.ResolvedValueKind);
                 if (binding.ResolvedValueKind != literalKind ||
                     !port.Accepts(binding.ResolvedValueKind) ||
                     !KindsCanFlow(binding.ResolvedValueKind, expectedKind, port.Constraint))
                     throw new InvalidDataException($"Constant input '{target.Code}.{binding.TargetPort}' has incompatible kind '{binding.ResolvedValueKind}'.");
-                string key = InputKey(binding.TargetOperation.Value, binding.TargetPort);
-                if (!valueSources.Add(key))
+                if (!valueSources.Add((binding.TargetOperation.Value, binding.TargetPort ?? string.Empty)))
                     throw new InvalidDataException($"Operation '{binding.TargetOperation}' input port '{binding.TargetPort}' has both linked and constant Value sources.");
             }
         }
@@ -337,14 +336,12 @@ namespace ThirdPersonSimulation
             };
         }
 
-        static string InputKey(int operation, string port) => operation.ToString() + ":" + (port ?? string.Empty);
-
-        static void ValidateIndexes(IReadOnlyList<int> values, int count, string label)
+        static void ValidateIndexes(IReadOnlyList<int> values, int count, OperationHandle operation, string kind)
         {
             for (int i = 0; i < values.Count; i++)
             {
                 if (values[i] < 0 || values[i] >= count)
-                    throw new InvalidDataException($"{label} reference '{values[i]}' is outside the table.");
+                    throw new InvalidDataException($"Operation '{operation}' {kind} reference '{values[i]}' is outside the table.");
             }
         }
 
@@ -375,10 +372,10 @@ namespace ThirdPersonSimulation
         static ReadOnlyCollection<SemanticConstantInputBinding> SortConstantInputs(
             IEnumerable<SemanticConstantInputBinding> source,
             IReadOnlyList<SemanticOperation> operations,
-            IReadOnlyList<ProgramGraphCallFrame> graphCallFrames)
+            IReadOnlyList<ProgramGraphCallFrame> graphCallFrames,
+            OperationValuePortContract[] contracts)
         {
             var values = new List<SemanticConstantInputBinding>(source ?? Array.Empty<SemanticConstantInputBinding>());
-            var contracts = new Dictionary<int, OperationValuePortContract>();
             values.Sort((left, right) =>
             {
                 int operation = left.TargetOperation.Value;
@@ -387,11 +384,8 @@ namespace ThirdPersonSimulation
                     return byOperation;
                 if (operation < 0 || operation >= operations.Count)
                     return string.CompareOrdinal(left.TargetPort, right.TargetPort);
-                if (!contracts.TryGetValue(operation, out OperationValuePortContract contract))
-                {
-                    contract = OrchestrationValuePortContracts.Require(operations[operation], graphCallFrames);
-                    contracts.Add(operation, contract);
-                }
+                OperationValuePortContract contract = contracts[operation] ??=
+                    OrchestrationValuePortContracts.Require(operations[operation], graphCallFrames);
                 OperationValuePortDefinition leftPort = contract.RequireInput(left.TargetPort);
                 OperationValuePortDefinition rightPort = contract.RequireInput(right.TargetPort);
                 int byOrder = leftPort.Order.CompareTo(rightPort.Order);
