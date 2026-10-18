@@ -25,6 +25,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BTSMTL.Foundation", "Projec
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Tools", "Tools", "{07C2787E-EAC7-C090-1BA3-A61EC2A24D84}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BTSMTL.Compilation", "Projects\BTSMTL.Compilation\BTSMTL.Compilation.csproj", "{BC1FD50A-641A-4EE2-9C96-4E0303E5BBFB}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -143,11 +145,24 @@ Global
 		{6E442E7B-ECED-4627-929C-5B66469ECA11}.Release|x64.Build.0 = Release|Any CPU
 		{6E442E7B-ECED-4627-929C-5B66469ECA11}.Release|x86.ActiveCfg = Release|Any CPU
 		{6E442E7B-ECED-4627-929C-5B66469ECA11}.Release|x86.Build.0 = Release|Any CPU
+		{BC1FD50A-641A-4EE2-9C96-4E0303E5BBFB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BC1FD50A-641A-4EE2-9C96-4E0303E5BBFB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BC1FD50A-641A-4EE2-9C96-4E0303E5BBFB}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{BC1FD50A-641A-4EE2-9C96-4E0303E5BBFB}.Debug|x64.Build.0 = Debug|Any CPU
+		{BC1FD50A-641A-4EE2-9C96-4E0303E5BBFB}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{BC1FD50A-641A-4EE2-9C96-4E0303E5BBFB}.Debug|x86.Build.0 = Debug|Any CPU
+		{BC1FD50A-641A-4EE2-9C96-4E0303E5BBFB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BC1FD50A-641A-4EE2-9C96-4E0303E5BBFB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BC1FD50A-641A-4EE2-9C96-4E0303E5BBFB}.Release|x64.ActiveCfg = Release|Any CPU
+		{BC1FD50A-641A-4EE2-9C96-4E0303E5BBFB}.Release|x64.Build.0 = Release|Any CPU
+		{BC1FD50A-641A-4EE2-9C96-4E0303E5BBFB}.Release|x86.ActiveCfg = Release|Any CPU
+		{BC1FD50A-641A-4EE2-9C96-4E0303E5BBFB}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{6E442E7B-ECED-4627-929C-5B66469ECA11} = {17245595-230B-9055-A944-863F0DDDA8E8}
+		{BC1FD50A-641A-4EE2-9C96-4E0303E5BBFB} = {17245595-230B-9055-A944-863F0DDDA8E8}
 	EndGlobalSection
 EndGlobal

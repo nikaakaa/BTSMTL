@@ -1,5 +1,6 @@
-namespace ThirdPersonSimulation
+namespace BTSMTL.Orchestration
 {
+    // 领域自有的状态种类使用未列出的数值声明，由领域的 ProgramStateSchema 负责编码与校验。
     public enum ProgramStateValueKind : byte
     {
         Boolean = 1,
@@ -11,9 +12,6 @@ namespace ThirdPersonSimulation
         Yaw = 7,
         Quaternion = 8,
         Enum = 9,
-        ActionTargetSnapshot = 10,
-        BlackboardOwnerToken = 11,
-        BlackboardWriteStamp = 12,
         Identity = 13
     }
 }

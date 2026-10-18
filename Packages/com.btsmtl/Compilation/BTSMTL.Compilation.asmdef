@@ -1,0 +1,20 @@
+{
+    "name": "BTSMTL.Compilation",
+    "rootNamespace": "BTSMTL.Compilation",
+    "references": [
+        "BTSMTL.Foundation",
+        "BTSMTL.Orchestration.Contracts",
+        "BTSMTL.Orchestration.Runtime"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": true
+}

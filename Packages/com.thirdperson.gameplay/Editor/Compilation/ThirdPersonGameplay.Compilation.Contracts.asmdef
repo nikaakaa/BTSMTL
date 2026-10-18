@@ -1,7 +1,7 @@
 {
     "name": "ThirdPersonGameplay.Compilation.Contracts",
     "rootNamespace": "ThirdPersonSimulation",
-    "references": ["ThirdPerson.Shared.Contracts", "BTSMTL.Foundation", "BTSMTL.Orchestration.Contracts", "ThirdPersonGameplay.Orchestration.Contracts"],
+    "references": ["ThirdPerson.Shared.Contracts", "BTSMTL.Foundation", "BTSMTL.Orchestration.Contracts", "BTSMTL.Compilation", "ThirdPersonGameplay.Orchestration.Contracts"],
     "includePlatforms": ["Editor"],
     "excludePlatforms": [],
     "allowUnsafeCode": false,

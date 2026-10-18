@@ -1,8 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using ThirdPersonSimulation;
 
-namespace ThirdPersonSimulation
+namespace BTSMTL.Compilation
 {
     [ValueStorage(UseConstructor = true)]
     public readonly partial struct ProgramIdentityDependency : IEquatable<ProgramIdentityDependency>, IComparable<ProgramIdentityDependency>

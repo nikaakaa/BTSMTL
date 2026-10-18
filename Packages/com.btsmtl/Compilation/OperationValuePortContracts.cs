@@ -2,10 +2,11 @@ using BTSMTL.Orchestration;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using ThirdPersonSimulation;
 
-namespace ThirdPersonSimulation
+namespace BTSMTL.Compilation
 {
-    public static class GameplayAbilityValuePortContracts
+    public static class OrchestrationValuePortContracts
     {
         static readonly ReadOnlyDictionary<OrchestrationOperationCode, OperationValuePortContract> s_Contracts = Build();
         static readonly IReadOnlyDictionary<int, OperationValuePortContract> s_Identities = BuildIdentities();
@@ -26,7 +27,7 @@ namespace ThirdPersonSimulation
             if (code == OrchestrationOperationCode.IdentityValue)
                 return s_Identities[variant];
             if (!s_Contracts.TryGetValue(code, out OperationValuePortContract contract))
-                throw new InvalidOperationException($"Operation '{code}' has no Value port contract in '{GameplayAbilityOperationSet.Version.Value}'.");
+                throw new InvalidOperationException($"Operation '{code}' has no Value port contract.");
             return contract;
         }
 
@@ -198,9 +199,9 @@ namespace ThirdPersonSimulation
 		static ReadOnlyDictionary<OrchestrationOperationCode, OperationValuePortContract> Build()
 		{
 			var values = new Dictionary<OrchestrationOperationCode, OperationValuePortContract>();
-			for (int i = 0; i < GameplayAbilityOperationSet.Operations.Count; i++)
+			for (int i = 0; i < OrchestrationOperationSet.Operations.Count; i++)
 			{
-				OrchestrationOperationCode code = GameplayAbilityOperationSet.Operations[i];
+				OrchestrationOperationCode code = OrchestrationOperationSet.Operations[i];
 				values.Add(code, Empty(code));
 			}
 

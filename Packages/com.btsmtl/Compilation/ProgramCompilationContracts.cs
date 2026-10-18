@@ -3,31 +3,23 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
+using ThirdPersonSimulation;
 
-namespace ThirdPersonSimulation
+namespace BTSMTL.Compilation
 {
-    public static class GameplayAbilityOperationSet
+    public static class OrchestrationOperationSet
     {
-        public const string Id = "character-gameplay-operations";
-        public static readonly OperationSetVersion Version = new OperationSetVersion(Id + "/34");
-
         static readonly ReadOnlyCollection<OrchestrationOperationCode> s_Operations =
             Array.AsReadOnly((OrchestrationOperationCode[])Enum.GetValues(typeof(OrchestrationOperationCode)));
 
         public static IReadOnlyList<OrchestrationOperationCode> Operations => s_Operations;
-
-        public static void RequireVersion(OperationSetVersion version)
-        {
-            if (!version.Equals(Version))
-                throw new InvalidOperationException($"Operation set '{version.Value}' is not supported; expected '{Version.Value}'.");
-        }
 
         public static void RequireOperation(OrchestrationOperationCode code)
         {
             for (int i = 0; i < s_Operations.Count; i++)
                 if (s_Operations[i] == code)
                     return;
-            throw new InvalidOperationException($"Operation code '{(ushort)code}' is not supported by '{Version.Value}'.");
+            throw new InvalidOperationException($"Operation code '{(ushort)code}' is not a BTSMTL orchestration operation.");
         }
     }
 
@@ -312,19 +304,16 @@ namespace ThirdPersonSimulation
         Runnable = 2,
         StateMachine = 3,
         Timeline = 4,
-        Blackboard = 5,
-        Action = 6,
-        GameplayEffect = 7,
+        Blackboard = 5
     }
 
+    // 领域自有的状态语义使用未列出的数值声明，由领域的 ProgramStateSchema 校验。
     public enum ProgramStateSemantic : ushort
     {
         RunnableLifecycle = 1,
         RunnableChildCursor = 2,
         RunnableStopBarrier = 3,
         RunnableActivationGeneration = 4,
-        LocomotionMotionElapsedTicks = 5,
-        GameplayEffectAppliedHandle = 6,
         StateMachineActive = 20,
         StateMachinePending = 21,
         StateMachineExiting = 22,
@@ -332,20 +321,11 @@ namespace ThirdPersonSimulation
         StateMachineExecutionPath = 24,
         TimelinePlayback = 40,
         TimelineLoop = 41,
-        BlackboardValue = 60,
-        BlackboardOwnerToken = 61,
-        BlackboardLifetime = 63,
-        BlackboardWriteStamp = 64,
-        AIWaitElapsedTicks = 130
+        BlackboardValue = 60
     }
 
     public sealed partial class ProgramStateSlot
     {
-        public ProgramStateSlot(int index, string identity, ProgramStateValueKind valueKind, ProgramStateOwnerKind ownerKind, ProgramStateSemantic semantic, string ownerIdentity, int defaultConstantIndex)
-            : this(index, identity, valueKind, ownerKind, semantic, ownerIdentity, null, defaultConstantIndex)
-        {
-        }
-
         public ProgramStateSlot(
             int index,
             string identity,
@@ -363,9 +343,7 @@ namespace ThirdPersonSimulation
             Semantic = semantic;
             OwnerIdentity = ownerIdentity.Trim();
             DefaultConstantIndex = defaultConstantIndex;
-            StateCodecIdentity = stateCodecIdentity == null
-                ? ProgramStateSchema.CodecIdentity(valueKind)
-                : stateCodecIdentity.Trim();
+            StateCodecIdentity = stateCodecIdentity.Trim();
             RequireRecord();
         }
         public int Index { get; }
@@ -385,13 +363,16 @@ namespace ThirdPersonSimulation
             SimulationIdentity.Require(Identity, nameof(Identity));
             SimulationIdentity.Require(OwnerIdentity, nameof(OwnerIdentity));
             SimulationIdentity.Require(StateCodecIdentity, nameof(StateCodecIdentity));
-            ProgramStateSchema.RequireSlot(ValueKind, OwnerKind, Semantic);
         }
     }
 
-    public static class ProgramStateSchema
+    public class ProgramStateSchema
     {
-        public static string CodecIdentity(ProgramStateValueKind kind)
+        public static readonly ProgramStateSchema Core = new ProgramStateSchema();
+
+        public virtual string SemanticIdentity(ProgramStateSemantic semantic) => semantic.ToString();
+
+        public virtual string CodecIdentity(ProgramStateValueKind kind)
         {
             return kind switch
             {
@@ -405,27 +386,47 @@ namespace ThirdPersonSimulation
                 ProgramStateValueKind.Enum => "state.enum/v1",
                 ProgramStateValueKind.Yaw => "state.float32-yaw/v1",
                 ProgramStateValueKind.Identity => "state.identity/v1",
-                ProgramStateValueKind.BlackboardOwnerToken => "state.blackboard-owner-token/v1",
-                ProgramStateValueKind.BlackboardWriteStamp => "state.blackboard-write-stamp/v3",
-                ProgramStateValueKind.ActionTargetSnapshot => "state.action-target-snapshot/v1",
                 _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null)
             };
         }
 
-        public static void RequireSlot(
+        public virtual bool HasDefaultValue(ProgramStateValueKind kind) => true;
+
+        public virtual OrchestrationValueKind RuntimeKind(ProgramStateValueKind kind) => kind switch
+        {
+            ProgramStateValueKind.Boolean => OrchestrationValueKind.Boolean,
+            ProgramStateValueKind.Int32 => OrchestrationValueKind.Int32,
+            ProgramStateValueKind.UInt64 => OrchestrationValueKind.UInt64,
+            ProgramStateValueKind.Scalar => OrchestrationValueKind.Scalar,
+            ProgramStateValueKind.Vector2 => OrchestrationValueKind.Vector2,
+            ProgramStateValueKind.Vector3 => OrchestrationValueKind.Vector3,
+            ProgramStateValueKind.Yaw => OrchestrationValueKind.Yaw,
+            ProgramStateValueKind.Identity => OrchestrationValueKind.Identity,
+            ProgramStateValueKind.Quaternion => OrchestrationValueKind.Quaternion,
+            ProgramStateValueKind.Enum => OrchestrationValueKind.Enum,
+            _ => throw new InvalidOperationException($"领域状态类型 '{kind}' 不属于通用值。")
+        };
+
+        public void RequireSlot(
             ProgramStateValueKind kind,
             ProgramStateOwnerKind owner,
             ProgramStateSemantic semantic)
         {
-            bool valid = semantic switch
+            if (!Accepts(kind, owner, semantic))
+                throw new ArgumentException($"State semantic '{semantic}' cannot use kind '{kind}' with owner '{owner}'.");
+        }
+
+        protected virtual bool Accepts(
+            ProgramStateValueKind kind,
+            ProgramStateOwnerKind owner,
+            ProgramStateSemantic semantic)
+        {
+            return semantic switch
             {
                 ProgramStateSemantic.RunnableLifecycle => kind == ProgramStateValueKind.Int32 && owner == ProgramStateOwnerKind.Runnable,
                 ProgramStateSemantic.RunnableChildCursor => kind == ProgramStateValueKind.Int32 && owner == ProgramStateOwnerKind.Runnable,
                 ProgramStateSemantic.RunnableStopBarrier => kind == ProgramStateValueKind.Int32 && owner == ProgramStateOwnerKind.Runnable,
                 ProgramStateSemantic.RunnableActivationGeneration => kind == ProgramStateValueKind.UInt64 && owner == ProgramStateOwnerKind.Runnable,
-                ProgramStateSemantic.GameplayEffectAppliedHandle => kind == ProgramStateValueKind.UInt64 && owner == ProgramStateOwnerKind.Runnable,
-                ProgramStateSemantic.LocomotionMotionElapsedTicks => kind == ProgramStateValueKind.Int32 && owner == ProgramStateOwnerKind.Runnable,
-                ProgramStateSemantic.AIWaitElapsedTicks => kind == ProgramStateValueKind.Int32 && owner == ProgramStateOwnerKind.Runnable,
                 ProgramStateSemantic.StateMachineActive => kind == ProgramStateValueKind.Identity && owner == ProgramStateOwnerKind.StateMachine,
                 ProgramStateSemantic.StateMachinePending => kind == ProgramStateValueKind.Identity && owner == ProgramStateOwnerKind.StateMachine,
                 ProgramStateSemantic.StateMachineExiting => kind == ProgramStateValueKind.Identity && owner == ProgramStateOwnerKind.StateMachine,
@@ -434,16 +435,11 @@ namespace ThirdPersonSimulation
                 ProgramStateSemantic.TimelinePlayback => kind == ProgramStateValueKind.UInt64 && owner == ProgramStateOwnerKind.Timeline,
                 ProgramStateSemantic.TimelineLoop => kind == ProgramStateValueKind.Boolean && owner == ProgramStateOwnerKind.Timeline,
                 ProgramStateSemantic.BlackboardValue => IsBlackboardValue(kind) && owner == ProgramStateOwnerKind.Blackboard,
-                ProgramStateSemantic.BlackboardOwnerToken => kind == ProgramStateValueKind.BlackboardOwnerToken && owner == ProgramStateOwnerKind.Blackboard,
-                ProgramStateSemantic.BlackboardLifetime => kind == ProgramStateValueKind.Int32 && owner == ProgramStateOwnerKind.Blackboard,
-                ProgramStateSemantic.BlackboardWriteStamp => kind == ProgramStateValueKind.BlackboardWriteStamp && owner == ProgramStateOwnerKind.Blackboard,
                 _ => false
             };
-            if (!valid)
-                throw new ArgumentException($"State semantic '{semantic}' cannot use kind '{kind}' with owner '{owner}'.");
         }
 
-        static bool IsBlackboardValue(ProgramStateValueKind kind)
+        protected virtual bool IsBlackboardValue(ProgramStateValueKind kind)
         {
             return kind == ProgramStateValueKind.Boolean ||
                    kind == ProgramStateValueKind.Int32 ||
@@ -454,10 +450,8 @@ namespace ThirdPersonSimulation
                    kind == ProgramStateValueKind.Yaw ||
                    kind == ProgramStateValueKind.Identity ||
                    kind == ProgramStateValueKind.Quaternion ||
-                   kind == ProgramStateValueKind.Enum ||
-                   kind == ProgramStateValueKind.ActionTargetSnapshot;
+                   kind == ProgramStateValueKind.Enum;
         }
-
     }
 
     public enum ProgramScopeKind : byte
@@ -513,36 +507,6 @@ namespace ThirdPersonSimulation
         public string OwnerIdentity { get; }
         public OperationHandle OwnerOperation { get; }
         public IReadOnlyList<int> StateSlots => m_StateSlots;
-    }
-
-    public enum ProgramOutputChannelKind : byte
-    {
-        GameplayFact = 1,
-        Presentation = 2,
-        Trace = 3
-    }
-
-    public sealed partial class ProgramOutputChannelLayout
-    {
-        public ProgramOutputChannelLayout(int index, string identity, ProgramOutputChannelKind kind)
-        {
-            Index = index;
-            Identity = identity.Trim();
-            Kind = kind;
-            RequireRecord();
-        }
-
-        public int Index { get; }
-        public string Identity { get; }
-        public ProgramOutputChannelKind Kind { get; }
-
-        [ValueValidation]
-        void RequireRecord()
-        {
-            if (Index < 0)
-                throw new ArgumentOutOfRangeException(nameof(Index));
-            SimulationIdentity.Require(Identity, nameof(Identity));
-        }
     }
 
     public enum ProgramSourceTargetKind : byte
@@ -893,40 +857,6 @@ namespace ThirdPersonSimulation
             if (targets[index])
                 throw new InvalidDataException($"Program source map {kind} target '{index}' is duplicated.");
             targets[index] = true;
-        }
-    }
-
-    public sealed partial class ProgramProducer
-    {
-        public ProgramProducer(
-            int index,
-            string identity,
-            AnimationChannelId animationChannelId,
-            string sourceIdentity,
-            ProgramOutputChannelKind channelKind)
-        {
-            Index = index;
-            Identity = identity.Trim();
-            AnimationChannelId = animationChannelId;
-            SourceIdentity = sourceIdentity.Trim();
-            ChannelKind = channelKind;
-            RequireRecord();
-        }
-        public int Index { get; }
-        public string Identity { get; }
-        public AnimationChannelId AnimationChannelId { get; }
-        public string SourceIdentity { get; }
-        public ProgramOutputChannelKind ChannelKind { get; }
-
-        [ValueValidation]
-        void RequireRecord()
-        {
-            if (Index < 0)
-                throw new ArgumentOutOfRangeException(nameof(Index));
-            if (!AnimationChannelId.IsValid)
-                throw new ArgumentException("Program Producer Animation Channel identity is invalid.");
-            SimulationIdentity.Require(Identity, nameof(Identity));
-            SimulationIdentity.Require(SourceIdentity, nameof(SourceIdentity));
         }
     }
 

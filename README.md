@@ -5,7 +5,7 @@
 | 包 | 负责什么 |
 | --- | --- |
 | `com.btsmtl.foundation` | 编排与宿主共用的中立基础：身份与稳定哈希、数值合同与 Float32 实现、曲线、录制状态和编译期值生成，不依赖 Unity 引擎与任何宿主 |
-| `com.btsmtl` | 唯一泛型编排执行器、整数 Timeline、图与黑板作者工具、EventGraph 和诊断 |
+| `com.btsmtl` | 唯一泛型编排执行器、通用图编译层、整数 Timeline、图与黑板作者工具、EventGraph 和诊断 |
 | `com.thirdperson.gameplay.contracts` | 领域扩展身份、版本、端口、只读参数与枚举 |
 | `com.thirdperson.gameplay` | 独立运动算法、攻击几何、玩法配置及仍在清理的旧冷合同 |
 | `com.thirdperson.shared` | 项目玩法与表现共用的角色身份、动画与控制 trace、性能合同、表现请求和 Luban 基础读写，依赖 Foundation |
@@ -34,7 +34,7 @@ Unity 通过各包原有 asmdef 编译同一份源码。3C 的 Assets 中不保�
 
 ## 普通 .NET 接入
 
-`BTSMTL.sln` 只装配 Foundation、Shared、编排合同／运行时、整数 Timeline、Luban、黑板默认配置与两个生成工具；Unity asmdef 与普通 .NET 工程编译同一份实现。这些编排工程不需要 Photon DLL。正式 solution 构建先执行依赖守护，源码或引用方向违规时直接失败。
+`BTSMTL.sln` 装配 Foundation、Shared、编排合同、运行时与通用编译层、整数 Timeline、Luban、黑板默认配置与两个生成工具；Unity asmdef 与普通 .NET 工程编译同一份实现。这些编排工程不需要 Photon DLL。正式 solution 构建先执行依赖守护，源码或引用方向违规时直接失败。
 
 ```powershell
 try {
@@ -46,6 +46,8 @@ try {
 
 需要编排的宿主引用 `Projects/BTSMTL.Orchestration.Runtime`，需要整数 Timeline 再引用 `Projects/ThirdPersonSimulation.Timeline`（程序集名 `BTSMTL.Timeline.Runtime`）。Quantum 宿主另引用数值策略和所需独立领域算法，并通过 `QuantumDeterministicPath` 提供官方 DLL。
 
+作者工具引用 `Projects/BTSMTL.Compilation`，将通用语义操作、常量、连线和状态声明编译为 `OrchestrationGraphContent`。该程序集不引用 Unity、Gameplay、Quantum 或 MemoryPack。宿主经 `BtsmtlOrchestrationCompilationDomain` 提供领域状态规则、扩展内容编码与 ActionInstance 黑板扩展，数值转换经 `IBtsmtlOrchestrationNumericLowering` 提供。Unity 资产读取、技能根和参数重编计划仍由宿主作者前端负责。
+
 宿主提供输入、逻辑时间、内容和 roster 绑定，唯一执行器读写宿主提供的候选区段，由宿主采用或丢弃。历史、保存与恢复继续归实际后端；Quantum 使用 SDK Frame。动画、场景、声音和资源解析归 Unity 接入。编排与领域源码编译成功不代表产品入口、内容发布和实际运行已验收。
 
 ## 源码位置与依赖
@@ -53,6 +55,7 @@ try {
 | 源码位置 | 内容 |
 | --- | --- |
 | `Packages/com.btsmtl/Runtime/Orchestration` | 泛型编排合同、执行器、区段布局与输出 |
+| `Packages/com.btsmtl/Compilation` | Editor 通用语义合同、值端口、依赖目录、状态规则及图编译器，普通 .NET 工程同源 |
 | `Packages/com.btsmtl/Scripts`、`Authoring`、`EventGraphs` | 图节点、作者合同和 EventGraph 接入 |
 | `Packages/com.btsmtl/Timeline` | 整数 Timeline 运行核心、Unity 作者对象与编辑器 |
 | `Packages/com.thirdperson.gameplay/BlackboardConfiguration` | Luban 格式的黑板默认配置读取合同（程序集 `ThirdPersonSimulation.BlackboardConfiguration`），属于项目，不随 BTSMTL 分发 |
