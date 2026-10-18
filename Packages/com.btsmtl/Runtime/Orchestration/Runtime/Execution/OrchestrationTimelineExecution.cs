@@ -169,6 +169,7 @@ namespace BTSMTL.Orchestration
 
         void ClearExecutionFrame(int frameSlot)
         {
+            OrchestrationValueOverride<TValue>.RetireExecutionFrame(m_Input.Overrides, in m_Frames.Header(frameSlot));
             m_Frames.RemoveAt(frameSlot);
             Array.Clear(m_Workspace.ForceStopVisited,
                 checked(frameSlot * m_Program.OperationCount), m_Program.OperationCount);

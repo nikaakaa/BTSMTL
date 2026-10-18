@@ -83,12 +83,12 @@ namespace BTSMTL.EventGraphs
             m_Extensions = OrchestrationExtensionBindings<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>, ValueTuple>.Prepare(
                 content.Extensions.Span, ReadOnlySpan<int>.Empty, Array.Empty<IOrchestrationExtension>());
 #if UNITY_EDITOR
-            InitializeEditor();
             PrepareEditor();
+            InitializeEditor();
 #endif
             int textCapacity = checked(program.ValueSlotCount + m_Inputs.Length
 #if UNITY_EDITOR
-                + m_VariableOverrides.Length + m_InputOverrides.Length + m_OutputOverrides.Length
+                + m_Overrides.Length
                 + m_ObservedInputs.Length + m_ObservedOutputs.Length + 1
 #endif
                 );
@@ -167,8 +167,7 @@ namespace BTSMTL.EventGraphs
             var input = new OrchestrationFrameInput<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>(tick: m_Invocation.Identity.Sequence,
                 instanceGeneration: m_ResetGeneration, hostInputs: m_Inputs, requestIdentityIds: default
 #if UNITY_EDITOR
-                , captureValues: true, useOverrides: true, valueOverrides: m_CandidateVariableOverrides,
-                inputOverrides: m_CandidateInputOverrides, outputOverrides: m_CandidateOutputOverrides
+                , captureValues: true, overrides: ActiveOverrides(m_CandidateOverrides)
 #endif
                 );
             OrchestrationIdentityOrdinalView identities = m_CandidateTexts.Ordinals;
@@ -217,8 +216,9 @@ namespace BTSMTL.EventGraphs
                 {
                     int slot = m_Bindings.PublishedSlots[i];
 #if UNITY_EDITOR
-                    OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion> value = m_CandidateVariableOverrides[slot].Kind != default
-                        ? m_CandidateVariableOverrides[slot] : values[slot];
+                    int supplied = FindOverride(m_CandidateOverrides, OrchestrationValueOverrideKind.Blackboard, slot);
+                    OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion> value = supplied >= 0
+                        ? m_CandidateOverrides[supplied].Value : values[slot];
 #else
                     OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion> value = values[slot];
 #endif
@@ -288,8 +288,9 @@ namespace BTSMTL.EventGraphs
             ReadOnlySpan<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> values)
         {
 #if UNITY_EDITOR
-            if (IsVariableLocked(slot))
-                return m_VariableOverrides[slot];
+            int supplied = FindVariableOverride(slot);
+            if (supplied >= 0)
+                return m_Overrides[supplied].Value;
 #endif
             return values[slot];
         }

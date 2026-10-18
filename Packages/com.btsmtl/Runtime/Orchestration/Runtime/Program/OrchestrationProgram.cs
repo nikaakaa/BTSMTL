@@ -55,6 +55,7 @@ namespace BTSMTL.Orchestration
         public int ValueSlotCount => m_DefaultValues.Length;
         public int InputBindingCount => m_Inputs.Length;
         public int BlackboardCount => m_Blackboards.Length;
+        public int EdgeCount => m_Edges.Length;
         public int ValueEvaluationSlotCount => m_ValueEvaluationOffsets[m_Operations.Length];
         public int InitialStateEntry(int machineOperationIndex) => m_InitialEntries[machineOperationIndex];
         public int AnyStateEntry(int machineOperationIndex) => m_AnyStateEntries[machineOperationIndex];

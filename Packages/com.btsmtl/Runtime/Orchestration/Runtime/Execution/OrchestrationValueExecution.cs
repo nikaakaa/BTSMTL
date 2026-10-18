@@ -18,9 +18,8 @@ namespace BTSMTL.Orchestration
         {
             m_CurrentOperationIndex = operationIndex;
             int slot = m_Program.ValueEvaluationSlot(operationIndex, outputPortIndex);
-            if (m_Input.UseOverrides && default(TValues).Kind(in m_Input.OutputOverrides[slot]) != 0)
+            if (TryReadPortOverride(operationIndex, slot, OrchestrationValueOverrideKind.Output, out TValue value))
             {
-                TValue value = m_Input.OutputOverrides[slot];
                 ObserveOutput(operationIndex, slot, in value);
                 return value;
             }
@@ -34,7 +33,7 @@ namespace BTSMTL.Orchestration
                 if (operation.Code == OrchestrationOperationCode.Extension &&
                     m_Bindings.Contract(operation.ExtensionBindingIndex).Kind == OrchestrationExtensionKind.Action)
                 {
-                    result = ReadValueSlot(operationIndex,
+                    result = m_Blackboards.ReadOutputValue(operationIndex,
                         operation.OutputSlotOffset + (outputPortIndex < 0 ? 0 : outputPortIndex));
                 }
                 else
@@ -151,8 +150,8 @@ namespace BTSMTL.Orchestration
 
         TValue ReadInput(int operationIndex, int inputSlot, in OrchestrationValueInputBinding input)
         {
-            if (m_Input.UseOverrides && default(TValues).Kind(in m_Input.InputOverrides[inputSlot]) != 0)
-                return m_Input.InputOverrides[inputSlot];
+            if (TryReadPortOverride(operationIndex, inputSlot, OrchestrationValueOverrideKind.Input, out TValue supplied))
+                return supplied;
             TValue value;
             switch (input.Source)
             {
@@ -189,29 +188,75 @@ namespace BTSMTL.Orchestration
             return false;
         }
 
-        TValue ReadValueSlot(int ownerOperationIndex, int valueSlot) =>
-            ReadValueSlot(valueSlot, in m_Blackboards.ReadOutputValue(ownerOperationIndex, valueSlot));
+        bool TryReadPortOverride(int operationIndex, int slot, OrchestrationValueOverrideKind kind,
+            out TValue value)
+        {
+            Span<OrchestrationValueOverride<TValue>> overrides = m_Input.Overrides;
+            for (int index = 0; index < overrides.Length; index++)
+            {
+                ref OrchestrationValueOverride<TValue> supplied = ref overrides[index];
+                if (supplied.Mode == OrchestrationValueOverrideMode.None || supplied.Address.Kind != kind ||
+                    supplied.Address.Slot != slot || supplied.Status == OrchestrationValueOverrideStatus.OwnerRetired)
+                    continue;
+                OrchestrationExecutionOwnerToken owner = ReadExecutionOwner(operationIndex);
+                if (!supplied.Address.Owner.Equals(in owner))
+                    continue;
+                value = supplied.Value;
+                if (!IsPredictiveEvaluation)
+                    supplied.Status = OrchestrationValueOverrideStatus.Consumed;
+                return true;
+            }
+            value = default;
+            return false;
+        }
 
-        TValue ReadValueSlot(int valueSlot, in TValue value) => m_Input.UseOverrides &&
-            default(TValues).Kind(in m_Input.ValueOverrides[valueSlot]) != 0
-                ? m_Input.ValueOverrides[valueSlot] : value;
+        bool TryReadBlackboardOverride(in OrchestrationValueOverrideAddress address, out TValue value)
+        {
+            int index = OrchestrationValueOverride<TValue>.Find(m_Input.Overrides, in address);
+            if (index < 0)
+            {
+                value = default;
+                return false;
+            }
+            ref OrchestrationValueOverride<TValue> supplied = ref m_Input.Overrides[index];
+            value = supplied.Value;
+            if (!IsPredictiveEvaluation)
+                supplied.Status = OrchestrationValueOverrideStatus.Consumed;
+            return true;
+        }
 
         void ObserveInput(int operationIndex, int inputSlot, in TValue value)
         {
             m_CurrentOperationIndex = operationIndex;
-            if (!m_Input.CaptureValues || IsPredictiveEvaluation)
+            if (!m_Input.CaptureValues && m_Input.Observations == null || IsPredictiveEvaluation)
                 return;
-            m_Workspace.InputObservations[inputSlot] = value;
-            m_Workspace.InputObservationWritten[inputSlot] = true;
+            if (m_Input.CaptureValues)
+            {
+                m_Workspace.InputObservations[inputSlot] = value;
+                m_Workspace.InputObservationWritten[inputSlot] = true;
+            }
+            if (m_Input.Observations != null)
+            {
+                OrchestrationValueOverrideAddress address = ReadPortOverrideAddress(operationIndex, inputSlot, true);
+                m_Input.Observations.Observe(in address, in value);
+            }
         }
 
         void ObserveOutput(int operationIndex, int outputSlot, in TValue value)
         {
             m_CurrentOperationIndex = operationIndex;
-            if (!m_Input.CaptureValues || IsPredictiveEvaluation)
+            if (!m_Input.CaptureValues && m_Input.Observations == null || IsPredictiveEvaluation)
                 return;
-            m_Workspace.OutputObservations[outputSlot] = value;
-            m_Workspace.OutputObservationWritten[outputSlot] = true;
+            if (m_Input.CaptureValues)
+            {
+                m_Workspace.OutputObservations[outputSlot] = value;
+                m_Workspace.OutputObservationWritten[outputSlot] = true;
+            }
+            if (m_Input.Observations != null)
+            {
+                OrchestrationValueOverrideAddress address = ReadPortOverrideAddress(operationIndex, outputSlot, false);
+                m_Input.Observations.Observe(in address, in value);
+            }
         }
 
         void PrepareGraphCall(int operationIndex)
@@ -245,7 +290,7 @@ namespace BTSMTL.Orchestration
                 OrchestrationOperationStatus status = m_Program.Operation(operationIndex).IsRunnable
                     ? ReadStatus(call.EntryOperationIndex) : ReadOperationState(operationIndex).Status;
                 return status == OrchestrationOperationStatus.Success
-                    ? ReadValueSlot(operationIndex, outputs[i].ValueSlot) : m_Program.DefaultValue(outputs[i].ValueSlot);
+                    ? m_Blackboards.ReadOutputValue(operationIndex, outputs[i].ValueSlot) : m_Program.DefaultValue(outputs[i].ValueSlot);
             }
             throw new InvalidOperationException($"Graph call '{operationIndex}' does not declare output '{outputPortIndex}'.");
         }

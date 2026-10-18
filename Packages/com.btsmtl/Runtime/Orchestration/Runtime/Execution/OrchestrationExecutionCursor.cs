@@ -36,6 +36,8 @@ namespace BTSMTL.Orchestration
         int m_ForceStopDepth;
         int m_TraceCount;
         int m_StateFrameCount;
+        int m_TraceContextCount;
+        int m_TraceEntryDepth;
         int m_CurrentOperationIndex;
         int m_GraphCallDepth;
         OrchestrationTimelineInvocationFacts m_TimelineInvocation;
@@ -78,18 +80,31 @@ namespace BTSMTL.Orchestration
             m_ForceStopDepth = 0;
             m_TraceCount = 0;
             m_StateFrameCount = 0;
+            m_TraceContextCount = 0;
+            m_TraceEntryDepth = 0;
             m_CurrentOperationIndex = -1;
             m_GraphCallDepth = 0;
             m_TimelineInvocation = default;
             m_TimelineTime = default;
             Array.Clear(workspace.InputObservationWritten, 0, workspace.InputObservationWritten.Length);
             Array.Clear(workspace.OutputObservationWritten, 0, workspace.OutputObservationWritten.Length);
+            workspace.TraceFrameEntries.AsSpan().Fill(-1);
+            workspace.TraceBorrowedFrameEntries.AsSpan().Fill(-1);
         }
 
         public int CurrentOperationIndex => m_CurrentOperationIndex;
         public int ExecutionFrameIndex => m_FrameSlot;
         public ReadOnlySpan<OrchestrationTraceEvent<TValue>> Trace => m_Workspace.TraceEvents.AsSpan(0, m_TraceCount);
         public ReadOnlySpan<OrchestrationStateTraceFrame> StateTraceFrames => m_Workspace.StateFrames.AsSpan(0, m_StateFrameCount);
+        public ReadOnlySpan<OrchestrationTraceContext> TraceContexts => m_Workspace.TraceContexts.AsSpan(0, m_TraceContextCount);
+
+        public void BindTraceInvocationScope(int operationIndex, OrchestrationExecutionEntry entry)
+        {
+            int frame = OperationFrame(operationIndex);
+            int[] entries = m_Blackboards.IsBorrowedOperation(operationIndex)
+                ? m_Workspace.TraceBorrowedFrameEntries : m_Workspace.TraceFrameEntries;
+            entries[frame] = entry.OperationIndex;
+        }
         public bool IsPredictiveEvaluation
         {
             get
@@ -106,6 +121,9 @@ namespace BTSMTL.Orchestration
             if (m_EntryDepth == 0)
             {
                 m_Workspace.ResetOutputs();
+                m_TraceCount = 0;
+                m_StateFrameCount = 0;
+                m_TraceContextCount = 0;
             }
             m_EntryDepth++;
         }
@@ -114,6 +132,10 @@ namespace BTSMTL.Orchestration
         {
             OrchestrationExecutionContract previous = m_Contract;
             m_Contract = entry.Contract;
+            int traceFrame = m_FrameSlot;
+            m_Workspace.TraceFrameEntries[traceFrame] = entry.OperationIndex;
+            m_Workspace.TraceEntryScopes[m_TraceEntryDepth++] =
+                new OrchestrationExecutionWorkspace<TValue>.TraceEntryScope(traceFrame, entry.OperationIndex);
             BeginInvocation();
             try
             {
@@ -124,6 +146,8 @@ namespace BTSMTL.Orchestration
             }
             finally
             {
+                m_TraceEntryDepth--;
+                m_Workspace.TraceFrameEntries[traceFrame] = entry.OperationIndex;
                 m_Contract = previous;
                 m_EntryDepth--;
             }
@@ -174,6 +198,96 @@ namespace BTSMTL.Orchestration
             m_Blackboards.ReadExecutionFrame(operationIndex);
 
         public OrchestrationExecutionSourceReader<TValue> ReadExecutionSource() => m_Blackboards.Reader;
+
+        public OrchestrationExecutionOwnerToken ReadExecutionOwner(int operationIndex)
+        {
+            int invocationIndex = ResolveTraceInvocation(
+                m_Workspace.TraceBindings[operationIndex].InvocationGroupIndex, operationIndex, false);
+            int invocationOperation = m_Workspace.TraceInvocations[invocationIndex].OwnerOperationIndex;
+            int stateOperation = m_Program.Operation(operationIndex).ParentStateOperationIndex;
+            ulong generation = ReadInvocationGeneration(invocationIndex, operationIndex, out int generationOwner);
+            return OrchestrationExecutionOwnerToken.Create(in ReadExecutionFrame(operationIndex)[0],
+                invocationOperation, generation, stateOperation,
+                stateOperation < 0 ? 0 : ReadGeneration(stateOperation), generationOwner);
+        }
+
+        ulong ReadInvocationGeneration(int invocationIndex, int operationIndex, out int generationOwner)
+        {
+            while (true)
+            {
+                ref readonly OrchestrationExecutionWorkspace<TValue>.TraceInvocation invocation =
+                    ref m_Workspace.TraceInvocations[invocationIndex];
+                if (m_Program.Operation(invocation.OwnerOperationIndex).IsRunnable)
+                {
+                    generationOwner = invocation.OwnerOperationIndex;
+                    return ReadGeneration(invocation.OwnerOperationIndex);
+                }
+                if (invocation.ParentGroupIndex < 0)
+                {
+                    generationOwner = -1;
+                    return ReadExecutionFrame(operationIndex)[0].Generation;
+                }
+                invocationIndex = ResolveTraceInvocation(invocation.ParentGroupIndex,
+                    invocation.OwnerOperationIndex, false);
+            }
+        }
+
+        public OrchestrationValueOverrideAddress ReadPortOverrideAddress(int operationIndex,
+            int slot, bool input) => new OrchestrationValueOverrideAddress
+        {
+            Kind = input ? OrchestrationValueOverrideKind.Input : OrchestrationValueOverrideKind.Output,
+            Slot = slot,
+            Owner = ReadExecutionOwner(operationIndex)
+        };
+
+        public bool TrySelectExecutionOwner(int operationIndex, in OrchestrationExecutionOwnerToken owner)
+        {
+            OrchestrationRange group = m_Workspace.TraceInvocationGroups[
+                m_Workspace.TraceBindings[operationIndex].InvocationGroupIndex];
+            int invocationIndex = -1;
+            for (int index = group.Offset; index < group.Offset + group.Count; index++)
+                if (m_Workspace.TraceInvocations[index].OwnerOperationIndex == owner.InvocationOperationIndex)
+                {
+                    invocationIndex = index;
+                    break;
+                }
+            if (invocationIndex < 0 || !IsInvocationGenerationOwner(invocationIndex, owner.GenerationOwnerOperationIndex))
+                return false;
+            int stateOperation = m_Program.Operation(operationIndex).ParentStateOperationIndex;
+            if (stateOperation != owner.StateOperationIndex)
+                return false;
+            for (int frame = 0; frame < m_Frames.Capacity; frame++)
+            {
+                if (!owner.MatchesFrame(in m_Frames.Header(frame)))
+                    continue;
+                if (frame != m_FrameSlot)
+                    SelectExecutionFrame(frame);
+                m_Workspace.TraceFrameEntries[frame] =
+                    m_Workspace.TraceInvocations[invocationIndex].EntryOperationIndex;
+                ulong generation = owner.GenerationOwnerOperationIndex < 0
+                    ? ReadExecutionFrame(operationIndex)[0].Generation : ReadGeneration(owner.GenerationOwnerOperationIndex);
+                if (generation != owner.InvocationGeneration ||
+                    stateOperation >= 0 && ReadGeneration(stateOperation) != owner.StateGeneration)
+                    return false;
+                return true;
+            }
+            return false;
+        }
+
+        bool IsInvocationGenerationOwner(int invocationIndex, int generationOwner)
+        {
+            ref readonly OrchestrationExecutionWorkspace<TValue>.TraceInvocation invocation =
+                ref m_Workspace.TraceInvocations[invocationIndex];
+            if (m_Program.Operation(invocation.OwnerOperationIndex).IsRunnable)
+                return invocation.OwnerOperationIndex == generationOwner;
+            if (invocation.ParentGroupIndex < 0)
+                return generationOwner < 0;
+            OrchestrationRange parents = m_Workspace.TraceInvocationGroups[invocation.ParentGroupIndex];
+            for (int index = parents.Offset; index < parents.Offset + parents.Count; index++)
+                if (IsInvocationGenerationOwner(index, generationOwner))
+                    return true;
+            return false;
+        }
 
         int OperationFrame(int operationIndex) => m_Blackboards.OperationFrame(operationIndex);
 
@@ -410,6 +524,7 @@ namespace BTSMTL.Orchestration
 
         void ResetOperation(int operationIndex)
         {
+            RetireOperationOverrides(operationIndex);
             ref OrchestrationOperationState state = ref m_Operations[operationIndex];
             ulong generation = state.Generation;
             state = default;
@@ -427,6 +542,29 @@ namespace BTSMTL.Orchestration
                     m_Values[parameter.ValueSlot] = m_Program.DefaultValue(parameter.ValueSlot);
                 foreach (ref readonly OrchestrationGraphParameter parameter in call.Outputs.Span)
                     m_Values[parameter.ValueSlot] = m_Program.DefaultValue(parameter.ValueSlot);
+            }
+        }
+
+        void RetireOperationOverrides(int operationIndex)
+        {
+            Span<OrchestrationValueOverride<TValue>> overrides = m_Input.Overrides;
+            for (int index = 0; index < overrides.Length; index++)
+            {
+                ref OrchestrationValueOverride<TValue> value = ref overrides[index];
+                if (value.Mode == OrchestrationValueOverrideMode.None ||
+                    !value.Address.Owner.MatchesFrame(in m_Frames.Header(m_FrameSlot)))
+                    continue;
+                ref readonly OrchestrationExecutionOwnerToken owner = ref value.Address.Owner;
+                if (value.Address.Kind == OrchestrationValueOverrideKind.Blackboard)
+                {
+                    if (owner.InvocationOperationIndex != operationIndex ||
+                        m_Program.Blackboard(value.Address.Slot).Lifetime == OrchestrationBlackboardLifetime.GraphInstance &&
+                        !m_Program.Operation(operationIndex).IsRunnable)
+                        continue;
+                }
+                else if (owner.GenerationOwnerOperationIndex != operationIndex && owner.StateOperationIndex != operationIndex)
+                    continue;
+                value.Retire();
             }
         }
 
@@ -605,8 +743,12 @@ namespace BTSMTL.Orchestration
             item.OperationIndex = operationIndex;
             item.EdgeIndex = -1;
             item.Generation = ReadGeneration(operationIndex);
+            bool lifecycleOwner = kind is OrchestrationTraceKind.Enter or OrchestrationTraceKind.Running or
+                OrchestrationTraceKind.Complete or OrchestrationTraceKind.StopRequested or
+                OrchestrationTraceKind.Stopped or OrchestrationTraceKind.ForceStopped;
+            item.ContextIndex = CaptureTraceContext(operationIndex, lifecycleOwner);
             item.StateFrameIndex = m_Program.Operation(operationIndex).Code == OrchestrationOperationCode.State
-                ? CaptureStatePath(operationIndex)
+                ? CaptureStatePath(operationIndex, lifecycleOwner)
                 : m_StateDepth == 0 ? -1 : m_Workspace.States[m_StateDepth - 1].TraceFrameIndex;
             item.Result = result;
             item.StopCause = stopCause;
@@ -624,17 +766,100 @@ namespace BTSMTL.Orchestration
             if (!m_Input.CaptureTrace || IsPredictiveEvaluation)
                 return;
             int operationIndex = m_Program.Edge(edgeIndex).SourceOperationIndex;
-            m_Workspace.TraceEvents[m_TraceCount++] = new OrchestrationTraceEvent<TValue>
+            ref OrchestrationTraceEvent<TValue> item = ref m_Workspace.TraceEvents[m_TraceCount++];
+            item = default;
+            item.Kind = OrchestrationTraceKind.Edge;
+            item.OperationIndex = operationIndex;
+            item.EdgeIndex = edgeIndex;
+            item.Generation = ReadGeneration(operationIndex);
+            item.ContextIndex = CaptureTraceContext(operationIndex);
+            item.StateFrameIndex = m_StateDepth == 0 ? -1 : m_Workspace.States[m_StateDepth - 1].TraceFrameIndex;
+            item.Selected = selected;
+            item.Passed = passed;
+            item.ValueSlot = -1;
+        }
+
+        int CaptureTraceContext(int operationIndex, bool lifecycleOwner = false)
+        {
+            ref readonly OrchestrationExecutionWorkspace<TValue>.TraceBinding binding =
+                ref m_Workspace.TraceBindings[operationIndex];
+            int invocationIndex = ResolveTraceInvocation(binding.InvocationGroupIndex, operationIndex, lifecycleOwner);
+            ref readonly OrchestrationExecutionWorkspace<TValue>.TraceInvocation invocation =
+                ref m_Workspace.TraceInvocations[invocationIndex];
+            int parentIndex = invocation.ParentGroupIndex < 0 ? -1 :
+                ResolveTraceInvocation(invocation.ParentGroupIndex, invocation.OwnerOperationIndex, false);
+            ref readonly OrchestrationExecutionFrameState frame = ref ReadExecutionFrame(operationIndex)[0];
+            int index = m_TraceContextCount++;
+            ref OrchestrationTraceContext context = ref m_Workspace.TraceContexts[index];
+            context.SourceIndex = binding.SourceIndex;
+            context.InvocationSourceIndex = invocation.SourceIndex;
+            context.ParentInvocationSourceIndex = parentIndex < 0 ? -1 :
+                m_Workspace.TraceInvocations[parentIndex].SourceIndex;
+            context.InvocationOperationIndex = invocation.OwnerOperationIndex;
+            context.ParentInvocationOperationIndex = parentIndex < 0 ? -1 :
+                m_Workspace.TraceInvocations[parentIndex].OwnerOperationIndex;
+            context.ExecutionFrameOwnerOperationIndex = frame.OwnerOperationIndex;
+            context.ActionInstanceId = frame.ActionInstanceId;
+            context.SkillExecutionGeneration = frame.Generation;
+            context.GraphInvocationGeneration = ReadGeneration(invocation.OwnerOperationIndex);
+            context.ParentInvocationGeneration = parentIndex < 0 ? 0 :
+                ReadGeneration(m_Workspace.TraceInvocations[parentIndex].OwnerOperationIndex);
+            context.TimelineStart = frame.TimelineStart;
+            context.ClipOrdinal = frame.ClipOrdinal;
+            context.Cycle = frame.Cycle;
+            context.Marker = frame.Marker;
+            return index;
+        }
+
+        int ResolveTraceInvocation(int groupIndex, int operationIndex, bool lifecycleOwner)
+        {
+            OrchestrationRange group = m_Workspace.TraceInvocationGroups[groupIndex];
+            if (group.Count == 1)
+                return group.Offset;
+            if (lifecycleOwner)
             {
-                Kind = OrchestrationTraceKind.Edge,
-                OperationIndex = operationIndex,
-                EdgeIndex = edgeIndex,
-                Generation = ReadGeneration(operationIndex),
-                StateFrameIndex = m_StateDepth == 0 ? -1 : m_Workspace.States[m_StateDepth - 1].TraceFrameIndex,
-                Selected = selected,
-                Passed = passed,
-                ValueSlot = -1
-            };
+                int owner = -1;
+                for (int index = group.Offset; index < group.Offset + group.Count; index++)
+                    if (m_Workspace.TraceInvocations[index].OwnerOperationIndex == operationIndex)
+                    {
+                        if (owner >= 0)
+                        {
+                            owner = -1;
+                            break;
+                        }
+                        owner = index;
+                    }
+                if (owner >= 0)
+                    return owner;
+            }
+            int frameOwner = m_Workspace.TraceInvocationFrameOwners[groupIndex];
+            bool borrowed = m_Blackboards.IsBorrowedOperation(frameOwner);
+            int frame = OperationFrame(frameOwner);
+            if (!borrowed)
+                for (int index = m_TraceEntryDepth - 1; index >= 0; index--)
+                {
+                    ref readonly OrchestrationExecutionWorkspace<TValue>.TraceEntryScope scope =
+                        ref m_Workspace.TraceEntryScopes[index];
+                    if (scope.FrameIndex != frame)
+                        continue;
+                    int selected = FindTraceInvocation(in group, scope.EntryOperationIndex);
+                    if (selected >= 0)
+                        return selected;
+                }
+            int entry = (borrowed ? m_Workspace.TraceBorrowedFrameEntries :
+                m_Workspace.TraceFrameEntries)[frame];
+            int invocation = FindTraceInvocation(in group, entry);
+            if (invocation < 0)
+                throw new InvalidOperationException($"Trace operation '{operationIndex}' requires its actual invocation entry scope for execution frame '{frame}'.");
+            return invocation;
+        }
+
+        int FindTraceInvocation(in OrchestrationRange group, int entryOperationIndex)
+        {
+            for (int index = group.Offset; index < group.Offset + group.Count; index++)
+                if (m_Workspace.TraceInvocations[index].EntryOperationIndex == entryOperationIndex)
+                    return index;
+            return -1;
         }
     }
 }

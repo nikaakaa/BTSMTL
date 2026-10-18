@@ -6,6 +6,27 @@ namespace BTSMTL.Orchestration
 {
     public static unsafe class OrchestrationStateBinding
     {
+        public static void RetireFrameOverrides<TValue>(ReadOnlySpan<OrchestrationProgram<TValue>> programs,
+            ReadOnlySpan<int> skillContentIds, Span<OrchestrationValueOverride<TValue>> currentOverrides,
+            ulong tick) where TValue : unmanaged
+        {
+            // 宿主只对当前输入状态更代；冻结来源快照保留其原 tick。
+            for (int programIndex = 0; programIndex < programs.Length; programIndex++)
+            {
+                OrchestrationProgram<TValue> program = programs[programIndex];
+                for (int index = 0; index < currentOverrides.Length; index++)
+                {
+                    ref OrchestrationValueOverride<TValue> value = ref currentOverrides[index];
+                    if (value.Mode != OrchestrationValueOverrideMode.None &&
+                        value.Address.Kind == OrchestrationValueOverrideKind.Blackboard &&
+                        value.Address.Owner.SkillContentId == skillContentIds[programIndex] &&
+                        program.Blackboard(value.Address.Slot).ScopeKind == OrchestrationScopeKind.Frame &&
+                        value.Address.Owner.InvocationGeneration != tick)
+                        value.Retire();
+                }
+            }
+        }
+
         public static OrchestrationCandidateState<TValue> BindCandidate<TValue>(
             OrchestrationExecutionStateLayout<TValue> prepared,
             Span<byte> memory) where TValue : unmanaged

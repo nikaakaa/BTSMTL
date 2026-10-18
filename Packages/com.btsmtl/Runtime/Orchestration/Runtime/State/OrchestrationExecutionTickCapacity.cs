@@ -105,17 +105,35 @@ namespace BTSMTL.Orchestration
         public long LogicSampleRowCount { get; }
     }
 
+    public readonly struct OrchestrationTraceCapacity
+    {
+        public OrchestrationTraceCapacity(long events, long stateFrames)
+        {
+            Events = events;
+            StateFrames = stateFrames;
+        }
+
+        public long Events { get; }
+        public long StateFrames { get; }
+        public long Contexts => checked(Events + StateFrames);
+    }
+
     public sealed class OrchestrationProgramTickCapacity
     {
         internal OrchestrationProgramTickCapacity(in OrchestrationProgramTickBudget budget,
             long countedOperationEvaluations, OrchestrationOperationTickCapacity[] operations,
-            OrchestrationTimelineTickCapacity[] timelines, in OrchestrationProgramOutputCapacity cursorOutputs)
+            OrchestrationTimelineTickCapacity[] timelines, in OrchestrationProgramOutputCapacity cursorOutputs,
+            in OrchestrationTraceCapacity cursorTrace)
         {
             Budget = budget;
             CountedOperationEvaluations = countedOperationEvaluations;
             Operations = operations;
             Timelines = timelines;
             CursorOutputs = cursorOutputs;
+            CursorTrace = cursorTrace;
+            TickTrace = new OrchestrationTraceCapacity(
+                checked(cursorTrace.Events * budget.OuterInvocationCount),
+                checked(cursorTrace.StateFrames * budget.OuterInvocationCount));
             long extensions = 0;
             long samples = 0;
             long rows = 0;
@@ -138,6 +156,8 @@ namespace BTSMTL.Orchestration
         public long LogicSampleInvocations { get; }
         public long LogicSampleRows { get; }
         public OrchestrationProgramOutputCapacity CursorOutputs { get; }
+        public OrchestrationTraceCapacity CursorTrace { get; }
+        public OrchestrationTraceCapacity TickTrace { get; }
     }
 
     public sealed class OrchestrationExecutionTickCapacity
@@ -179,6 +199,7 @@ namespace BTSMTL.Orchestration
                 OrchestrationProgram<TValue> program = programs[programIndex];
                 var analysis = new ProgramAnalysis<TValue>(program, extensions[programIndex], programIndex, timelines);
                 analysis.Analyze(budget.OuterInvocationCount > 0);
+                OrchestrationTraceCapacity trace = analysis.AnalyzeTrace(budget.OuterInvocationCount > 0);
                 long execution = checked((long)budget.OuterInvocationCount * analysis.InvocationEvaluations);
                 long evaluations = checked(execution +
                     (long)budget.StandaloneEvaluationCount * analysis.ValueEvaluations);
@@ -232,7 +253,7 @@ namespace BTSMTL.Orchestration
                 }
                 var cursorOutputs = new OrchestrationProgramOutputCapacity(outputRequests, outputValues);
                 result[programIndex] = new OrchestrationProgramTickCapacity(in budget, evaluations,
-                    operations, timelineResults, in cursorOutputs);
+                    operations, timelineResults, in cursorOutputs, in trace);
             }
             return new OrchestrationExecutionTickCapacity(result);
         }
@@ -250,6 +271,9 @@ namespace BTSMTL.Orchestration
             readonly bool[][] m_ActiveVisits;
             readonly long[] m_ValueVisits;
             int m_CountTarget = -1;
+            CapacityMetric m_Metric;
+
+            enum CapacityMetric { Evaluations, TraceEvents, StateFrames }
 
             internal ProgramAnalysis(OrchestrationProgram<TValue> program,
                 ReadOnlyMemory<OrchestrationExtensionReference> extensions, int programIndex,
@@ -315,6 +339,75 @@ namespace BTSMTL.Orchestration
                     }
             }
 
+            internal OrchestrationTraceCapacity AnalyzeTrace(bool enabled)
+            {
+                long events = enabled ? TraceMetric(CapacityMetric.TraceEvents) : 0;
+                long states = enabled ? TraceMetric(CapacityMetric.StateFrames) : 0;
+                return new OrchestrationTraceCapacity(events, states);
+            }
+
+            long TraceMetric(CapacityMetric metric)
+            {
+                m_CountTarget = -1;
+                m_Metric = metric;
+                Array.Clear(m_BoundedVisits[0], 0, m_BoundedVisits[0].Length);
+                Array.Clear(m_BoundedVisits[1], 0, m_BoundedVisits[1].Length);
+                long maximum = 0;
+                for (int root = 0; root < m_Program.OperationCount; root++)
+                    maximum = Math.Max(maximum, checked(BoundedVisits(root, false) + BoundedVisits(root, true)));
+                return maximum;
+            }
+
+            long LocalTraceCost(int index, bool stop)
+            {
+                ref readonly OrchestrationOperation operation = ref m_Program.Operation(index);
+                if (m_Metric == CapacityMetric.StateFrames)
+                {
+                    if (operation.Code == OrchestrationOperationCode.State)
+                        // 两次生命周期事件和两次主体／进入退出作用域各保存一条状态路径。
+                        return checked(4L * StateDepth(index));
+                    if (operation.Code != OrchestrationOperationCode.StateMachine || stop)
+                        return 0;
+                    int depth = 0;
+                    for (int state = 0; state < m_Program.OperationCount; state++)
+                        if (m_Program.Operation(state).Code == OrchestrationOperationCode.State &&
+                            m_Program.Operation(state).StateMachineOwnerOperationIndex == index)
+                            depth = Math.Max(depth, StateDepth(state));
+                    // AnyState 和当前状态各有一次带状态作用域的转移选择。
+                    return checked(2L * depth);
+                }
+                long count = operation.IsRunnable ? 2 : 0;
+                if (stop)
+                    return count;
+                if (operation.Code is OrchestrationOperationCode.Root or OrchestrationOperationCode.StateOnEnter or
+                    OrchestrationOperationCode.StateOnExit or OrchestrationOperationCode.TimelineEnter or
+                    OrchestrationOperationCode.Loop or OrchestrationOperationCode.Sequence or
+                    OrchestrationOperationCode.Selector or OrchestrationOperationCode.Parallel or
+                    OrchestrationOperationCode.SubGraph or OrchestrationOperationCode.State or
+                    OrchestrationOperationCode.StateMachine)
+                    count++;
+                if (operation.Code == OrchestrationOperationCode.Loop)
+                    count = checked(count + 2);
+                if (operation.Code == OrchestrationOperationCode.StateMachine)
+                    count = checked(count + 2);
+                if (operation.Code == OrchestrationOperationCode.BlackboardSet)
+                    count++;
+                count = checked(count + m_Program.OutputAssignments(index).Length);
+                foreach (int edge in m_Program.Outgoing(index, OrchestrationFlowKind.Child))
+                    count = checked(count + 1 + (m_Program.Edge(edge).HasCondition ? 2 : 0));
+                foreach (int edge in m_Program.Outgoing(index, OrchestrationFlowKind.Enter))
+                    count = checked(count + 1 + (m_Program.Edge(edge).HasCondition ? 2 : 0));
+                return count;
+            }
+
+            int StateDepth(int index)
+            {
+                int count = 0;
+                for (int state = index; state >= 0; state = m_Program.Operation(state).ParentStateOperationIndex)
+                    count++;
+                return count;
+            }
+
             long BoundedVisits(int index, bool stop)
             {
                 int mode = stop ? 1 : 0;
@@ -324,7 +417,8 @@ namespace BTSMTL.Orchestration
                     throw new InvalidOperationException($"Program '{m_ProgramIndex}' has no finite invocation bound: operation '{index}' has a {(stop ? "stop" : "execution")} call cycle.");
                 m_ActiveVisits[mode][index] = true;
                 ref readonly OrchestrationOperation operation = ref m_Program.Operation(index);
-                long count = m_CountTarget >= 0 ? !stop && index == m_CountTarget ? 1 : 0 :
+                long count = m_Metric != CapacityMetric.Evaluations ? LocalTraceCost(index, stop) :
+                    m_CountTarget >= 0 ? !stop && index == m_CountTarget ? 1 : 0 :
                     stop ? 1 : checked(1 + ValueVisits(index, -1));
                 count = checked(count + 2 * InputVisits(index));
                 if (operation.Code == OrchestrationOperationCode.Timeline)
@@ -433,8 +527,15 @@ namespace BTSMTL.Orchestration
                 return maximum;
             }
 
-            long StateEntryVisits(int edgeIndex, bool stop) => edgeIndex < 0 ? 0 :
-                BoundedVisits(m_Program.Edge(edgeIndex).TargetOperationIndex, stop);
+            long StateEntryVisits(int edgeIndex, bool stop)
+            {
+                if (edgeIndex < 0)
+                    return 0;
+                int target = m_Program.Edge(edgeIndex).TargetOperationIndex;
+                long count = BoundedVisits(target, stop);
+                return m_Metric != CapacityMetric.Evaluations && !stop
+                    ? checked(count + BoundedVisits(target, true)) : count;
+            }
 
             long TransitionVisits(int index)
             {
@@ -443,7 +544,8 @@ namespace BTSMTL.Orchestration
                 long count = 0;
                 foreach (int edge in m_Program.Outgoing(index, OrchestrationFlowKind.Transition))
                     if (m_Program.Edge(edge).HasCondition)
-                        count = checked(count + ValueVisits(m_Program.Edge(edge).ConditionOperationIndex, -1));
+                        count = checked(count + (m_Metric == CapacityMetric.TraceEvents ? 1 :
+                            ValueVisits(m_Program.Edge(edge).ConditionOperationIndex, -1)));
                 return count;
             }
 
@@ -460,6 +562,8 @@ namespace BTSMTL.Orchestration
 
             long ValueVisits(int index, int output)
             {
+                if (m_Metric != CapacityMetric.Evaluations)
+                    return 0;
                 int slot = m_Program.ValueEvaluationSlot(index, output);
                 if (m_ValueVisits[slot] != 0)
                     return m_ValueVisits[slot];

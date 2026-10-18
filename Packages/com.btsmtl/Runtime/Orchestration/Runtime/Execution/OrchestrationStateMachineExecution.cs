@@ -331,7 +331,7 @@ namespace BTSMTL.Orchestration
 
         void PopState() => m_StateDepth--;
 
-        int CaptureStatePath(int stateOperationIndex)
+        int CaptureStatePath(int stateOperationIndex, bool lifecycleOwner = false)
         {
             int parentState = m_Program.Operation(stateOperationIndex).ParentStateOperationIndex;
             int parent = parentState >= 0 ? CaptureStatePath(parentState) : -1;
@@ -340,7 +340,8 @@ namespace BTSMTL.Orchestration
             {
                 ParentIndex = parent,
                 StateOperationIndex = stateOperationIndex,
-                Generation = ReadGeneration(stateOperationIndex)
+                Generation = ReadGeneration(stateOperationIndex),
+                ContextIndex = CaptureTraceContext(stateOperationIndex, lifecycleOwner)
             };
             return index;
         }

@@ -37,6 +37,8 @@ namespace BTSMTL.Orchestration
         }
 
         internal OrchestrationExecutionSourceReader<TValue> Reader => m_Reader;
+        internal int CharacterSlot(int valueSlot) =>
+            m_CharacterSlots.IsEmpty ? valueSlot : m_CharacterSlots[valueSlot];
         internal int BorrowedStateOperationIndex => m_SourceBinding == null ? -1 : m_SourceBinding.SourceStateOperationIndex;
         internal OrchestrationStopContext BorrowedStopContext => m_Reader.SourceStopContext;
         internal bool IsBorrowedStateScope(int stateOperationIndex) =>
