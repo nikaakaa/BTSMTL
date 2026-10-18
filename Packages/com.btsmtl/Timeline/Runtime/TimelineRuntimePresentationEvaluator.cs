@@ -1,4 +1,5 @@
 using BTSMTL.Orchestration;
+using ThirdPersonSimulation;
 
 namespace BTSMTL.Timeline.Runtime
 {
@@ -38,6 +39,29 @@ namespace BTSMTL.Timeline.Runtime
                         buffer.Samples[sample.KindIndex].Add(sample);
                 }
             }
+        }
+    }
+
+    public sealed class TimelineRuntimePresentationTargetSampling
+    {
+        readonly TimelineRuntimePreparedContent m_Prepared;
+        readonly TimelineRuntimePresentationBuffer m_Buffer;
+
+        public TimelineRuntimePresentationTargetSampling(TimelineRuntimePreparedContent prepared,
+            OrchestrationTimelinePreparedContent<OrchestrationTime> executionContent)
+        {
+            m_Prepared = prepared;
+            m_Buffer = new TimelineRuntimePresentationBuffer(prepared, executionContent,
+                TimelineRuntimePresentationGraphSource.Executed);
+        }
+
+        public TimelineRuntimeSampleView<TimelineRuntimeSample<Float32Scalar>> SampleAt(
+            OrchestrationTime time, int cycle, int kindIndex)
+        {
+            m_Buffer.Clear();
+            TimelineRuntimePresentationEvaluator.Evaluate(m_Prepared, time, cycle, time, cycle,
+                TimelinePresentationSampleReason.Correction, m_Buffer);
+            return m_Buffer.Samples[kindIndex].View;
         }
     }
 }
