@@ -82,22 +82,12 @@ namespace BTSMTL.Orchestration
             return Complete(hash);
         }
 
-        private static StableHash Complete(IncrementalHash hash) => new StableHash(
-            BitConverter.ToString(hash.GetHashAndReset()).Replace("-", string.Empty).ToLowerInvariant());
+        private static StableHash Complete(IncrementalHash hash) => StableHash.Compute(hash);
 
         private static void Text(IncrementalHash hash, string value)
         {
             Integer(hash, value.Length);
-            ReadOnlySpan<char> characters = value.AsSpan();
-            Span<byte> bytes = stackalloc byte[128];
-            while (!characters.IsEmpty)
-            {
-                int count = Math.Min(bytes.Length / sizeof(char), characters.Length);
-                for (int index = 0; index < count; index++)
-                    BinaryPrimitives.WriteUInt16LittleEndian(bytes.Slice(index * sizeof(char), sizeof(char)), characters[index]);
-                hash.AppendData(bytes.Slice(0, count * sizeof(char)));
-                characters = characters.Slice(count);
-            }
+            StableHash.AppendText(hash, value.AsSpan());
         }
 
         private static void Integer(IncrementalHash hash, int value)
