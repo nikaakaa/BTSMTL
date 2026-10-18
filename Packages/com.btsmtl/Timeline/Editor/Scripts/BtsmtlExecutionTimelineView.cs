@@ -586,7 +586,7 @@ namespace BTSMTL.Timeline.Editor
                         if (span.State == RuntimeCaptureSpanState.Open)
                             return "执行中";
                         var status = span.End.GetStatus();
-                        return string.IsNullOrEmpty(status) ? RuntimeTraceDisplay.Detail(span.End.Payload) : status;
+                        return string.IsNullOrEmpty(status) ? span.End.GetDetail() : status;
                     }
                 }
                 public bool IsActive => true;

@@ -323,7 +323,7 @@
   "dependencyRules": [
     {
       "id": "BTSMTL_NO_GAMEPLAY_SDK",
-      "reason": "BTSMTL全部程序集不得引用玩法实现、模拟或Photon/Quantum数值绑定。",
+      "reason": "BTSMTL全部程序集只依赖自身与Unity/系统，不得引用任何宿主ThirdPerson程序集或包、Photon/Quantum数值绑定。",
       "sourceAssemblies": [
         "^BTSMTL(?:\\.|$)"
       ],
@@ -331,13 +331,12 @@
         "^com\\.btsmtl(?:\\.foundation)?$"
       ],
       "forbiddenAssemblies": [
-        "^ThirdPersonSimulation\\.(?:Core|FPGameplay(?:\\.|$)|Float32(?:\\.|$)|MemoryPack|AttackGeometry|Snapshot|Hosting|ServerAuthoritative|QuantumNumerics)",
-        "^ThirdPersonGameplay(?:$|\\.(?!Orchestration\\.Contracts(?:\\.|$)))",
+        "^ThirdPerson",
         "^Quantum(?:\\.|$)",
         "^Photon(?:\\.|$)"
       ],
       "forbiddenPackages": [
-        "^com\\.thirdperson\\.(?:gameplay$|numerics\\.quantum$|memorypack$|snapshot$|network\\.)"
+        "^com\\.thirdperson\\."
       ],
       "forbiddenNamespaces": [
         "^Photon(?:\\.|$)",

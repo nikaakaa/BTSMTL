@@ -3,8 +3,7 @@
     "rootNamespace": "BTSMTL.Diagnostics.Editor",
     "references": [
         "GUID:349d62e8ffbe48b8ad6e03ccd8cbaf71",
-        "BTSMTL.Foundation",
-        "ThirdPerson.Shared.Contracts"
+        "BTSMTL.Foundation"
     ],
     "includePlatforms": [
         "Editor"

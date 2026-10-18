@@ -198,12 +198,7 @@ namespace BTSMTL.Diagnostics
         StateActivation,
         TimelinePlayback,
         TreeClip,
-        ControlModule,
-        ControlState,
-        ControlTransition,
-        ActionInstance,
-        SkillExecution,
-        GameplayEffect
+        SkillExecution
     }
 
     public readonly struct RuntimeInstanceKey : IEquatable<RuntimeInstanceKey>
@@ -273,17 +268,8 @@ namespace BTSMTL.Diagnostics
         public static RuntimeInstanceKey State(Guid characterId, Guid graphId, string stateId, ulong generation) => new RuntimeInstanceKey(RuntimeInstanceKind.StateActivation, characterId, graphId, stateId, generation, 0, -1);
         public static RuntimeInstanceKey Timeline(Guid characterId, int sourceOperationIndex, ulong playbackId, ulong actionInstanceId = 0) => new RuntimeInstanceKey(RuntimeInstanceKind.TimelinePlayback, characterId, Guid.Empty, string.Empty, 0, playbackId, -1, actionInstanceId, string.Empty, 0, sourceOperationIndex);
         public static RuntimeInstanceKey TreeClip(Guid characterId, Guid graphId, int sourceOperationIndex, ulong playbackId, int cycle, ulong actionInstanceId = 0, int treeClipOperationIndex = -1) => new RuntimeInstanceKey(RuntimeInstanceKind.TreeClip, characterId, graphId, string.Empty, 0, playbackId, cycle, actionInstanceId, string.Empty, 0, sourceOperationIndex, treeClipOperationIndex);
-        public static RuntimeInstanceKey ControlModule(Guid characterId, Guid moduleRuntimeId) => new RuntimeInstanceKey(RuntimeInstanceKind.ControlModule, characterId, moduleRuntimeId, string.Empty, 0, 0, -1);
-        public static RuntimeInstanceKey ControlState(Guid characterId, Guid moduleRuntimeId, string stateId, ulong generation) => new RuntimeInstanceKey(RuntimeInstanceKind.ControlState, characterId, moduleRuntimeId, stateId, generation, 0, -1);
-        public static RuntimeInstanceKey ControlTransition(Guid characterId, Guid moduleRuntimeId, string transitionId, ulong generation) => new RuntimeInstanceKey(RuntimeInstanceKind.ControlTransition, characterId, moduleRuntimeId, transitionId, generation, 0, -1);
-        public static RuntimeInstanceKey ActionInstance(Guid characterId, Guid actionRuntimeId, string skillId, ulong instanceId, ulong generation) =>
-            new RuntimeInstanceKey(RuntimeInstanceKind.ActionInstance, characterId, actionRuntimeId, skillId, generation, 0, -1, instanceId);
         public static RuntimeInstanceKey SkillExecution(Guid characterId, Guid actionRuntimeId, string skillId, ulong instanceId, string callSiteId, ulong generation, ulong invocationGeneration = 0) =>
             new RuntimeInstanceKey(RuntimeInstanceKind.SkillExecution, characterId, actionRuntimeId, skillId, generation, 0, -1, instanceId, callSiteId, invocationGeneration);
-
-        public static RuntimeInstanceKey GameplayEffect(Guid characterId, ulong instanceId, ulong sourceActionInstanceId) =>
-            new RuntimeInstanceKey(RuntimeInstanceKind.GameplayEffect, characterId, Guid.Empty, string.Empty,
-                instanceId, 0, -1, sourceActionInstanceId);
 
         public bool Equals(RuntimeInstanceKey other)
         {
@@ -316,16 +302,6 @@ namespace BTSMTL.Diagnostics
                     return $"Timeline:{SourceOperationIndex}/{TimelinePlaybackId}/{ActionInstanceId}";
                 case RuntimeInstanceKind.TreeClip:
                     return $"TreeClip:{SourceOperationIndex}/{TreeClipOperationIndex}/{TimelinePlaybackId}/{TreeClipCycle}/{GraphRuntimeId:N}/{ActionInstanceId}";
-                case RuntimeInstanceKind.ControlModule:
-                    return $"ControlModule:{GraphRuntimeId:N}";
-                case RuntimeInstanceKind.ControlState:
-                    return $"ControlState:{GraphRuntimeId:N}/{StateId}/{ActivationGeneration}";
-                case RuntimeInstanceKind.ControlTransition:
-                    return $"ControlTransition:{GraphRuntimeId:N}/{StateId}/{ActivationGeneration}";
-                case RuntimeInstanceKind.ActionInstance:
-                    return $"Action:{GraphRuntimeId:N}/{StateId}/{ActionInstanceId}/{ActivationGeneration}";
-                case RuntimeInstanceKind.GameplayEffect:
-                    return $"Effect:{CharacterRuntimeId:N}/{ActivationGeneration}/{ActionInstanceId}";
                 case RuntimeInstanceKind.SkillExecution:
                     return $"Skill:{GraphRuntimeId:N}/{StateId}/{ActionInstanceId}/{CallSiteId}/{ActivationGeneration}/{InvocationGeneration}";
                 default:
@@ -350,13 +326,8 @@ namespace BTSMTL.Diagnostics
         Timeline = 1 << 2,
         Blackboard = 1 << 3,
         Animation = 1 << 4,
-        Motion = 1 << 5,
-        GameplayEffect = 1 << 6,
-        Network = 1 << 7,
-        FootPlacement = 1 << 8,
-        Equipment = 1 << 9,
         Values = 1 << 10,
-        All = Graph | StateMachine | Timeline | Blackboard | Animation | Motion | GameplayEffect | Network | FootPlacement | Equipment | Values
+        All = Graph | StateMachine | Timeline | Blackboard | Animation | Values
     }
 
     public enum RuntimeTraceEventKind
@@ -398,42 +369,9 @@ namespace BTSMTL.Diagnostics
         BlackboardWritten,
         BlackboardCleared,
         BlackboardProjected,
-        MotionContribution,
-        MotionResolved,
-        ActionSnapshot,
-        ActionActivationRequested,
-        ActionLifecycleTransitioned,
-        ActionWindowSampled,
-        ActionResultSubmitted,
-        GameplayEffectLifecycle,
-        GameplayAttributeChanged,
-        GameplayTagChanged,
-        GameplayCueSubmitted,
-        AnimationPlaybackCompleted,
-        AnimationPlaybackReleased,
-        AnimationSelectionSubmitted,
-        AnimationProducerSampled,
-        AnimationPlaybackPending,
-        AnimationPlaybackSelected,
-        AnimationPlaybackRetained,
-        AnimationPlaybackRetired,
-        AnimationPhaseSync,
-        MotionMatchingQuery,
-        MotionMatchingTrajectory,
-        MotionMatchingPoseHistory,
-        MotionMatchingAdmission,
-        MotionMatchingCandidateRejected,
-        MotionMatchingSearchTraversal,
-        MotionMatchingTopK,
-        MotionMatchingPlan,
-        MotionMatchingSelection,
-        MotionMatchingPoseSource,
-        MotionMatchingReset,
         PresentationInterpolated,
-        LocomotionPresentation,
         CameraSnapshot,
         CameraRequest,
-        CameraShakeRequest,
         SimulationTick,
         SimulationRestore,
         SimulationEvaluate,
@@ -443,11 +381,6 @@ namespace BTSMTL.Diagnostics
         SimulationCommit,
         SimulationFailure,
         SimulationNetworkModel,
-        FootPlacementSnapshot,
-        EquipmentSnapshot,
-        EquipmentChange,
-        EquipmentVisual,
-        MotionMatchingFrame,
         ValueSampled,
         ValueSamplingLimited,
         NodeRunning,
@@ -606,47 +539,6 @@ namespace BTSMTL.Diagnostics
                                           StateActivationGeneration != 0;
     }
 
-    public struct RuntimeFootPlacementFootTraceSnapshot
-    {
-        public bool IsAvailable;
-        public string Side;
-        public string State;
-        public string RejectReason;
-        public string StepSource;
-        public ulong LandingEventIdentity;
-        public ulong TrajectoryGeneration;
-        public float LandingConfidence;
-        public float TimeToLandingSeconds;
-        public Vector3 RootLocalLanding;
-        public Vector3 CurrentAnimatedSole;
-        public Vector3 RawLanding;
-        public bool QueryAvailable;
-        public string QueryShape;
-        public string QueryPurpose;
-        public Vector3 QueryOrigin;
-        public Vector3 QueryDirection;
-        public float QueryRadius;
-        public float QueryMaximumDistance;
-        public int QueryLayerMask;
-        public float QueryMinimumGroundNormalDot;
-        public bool Accepted;
-        public int SurfaceIdentity;
-        public Vector3 LandingPoint;
-        public Vector3 LandingNormal;
-        public float QueryDistance;
-    }
-
-    public struct RuntimeFootPlacementTraceSnapshot
-    {
-        public bool IsAvailable;
-        public ulong FrameSequence;
-        public ulong CompletionIdentity;
-        public RuntimeFootPlacementFootTraceSnapshot Left;
-        public RuntimeFootPlacementFootTraceSnapshot Right;
-    }
-
-    public enum RuntimeTraceDetailKind { Text, GameplayEffectFailure, GameplayTagCounts, EquipmentChange, ControlFlow, Motion, AnimationCommand, AbilityRuleSource, CharacterControl, AbilityAdmission, GameplayEffectScope, GameplayEffectHolder, GameplayEffectSuccess, GameplayEffectValue, AbilityMetadata }
-
     public struct RuntimeTracePayload
     {
         public string Status;
@@ -658,31 +550,17 @@ namespace BTSMTL.Diagnostics
         public string AnimationChannelId;
         public string OwnerId;
         public string RelatedElementId;
-        public string SkillId;
         public ulong InputSequence;
-        public string CharacterStateHash;
-        public string WorldHash;
         public ulong ActionInstanceId;
         public string CallSiteId;
         public ulong ActivationGeneration;
         public ulong SkillExecutionGeneration;
-        public string RuleSourceSkillId;
-        public ulong RuleSourceInstanceId;
-        public ulong RuleSourceSkillExecutionGeneration;
-        public ulong RuleSourceSegmentGeneration;
         public ulong GraphInvocationGeneration;
         public ulong ParentInvocationGeneration;
         public string ParentInvocationPath;
         public ulong StartTick;
         public ulong EndTick;
         public ulong Revision;
-        public int ActionPhase;
-        public int ActionState;
-        public int ActionResult;
-        public int LifecycleOperation;
-        public int StackCount;
-        public RuntimeTraceDetailKind DetailKind;
-        public int BeforeCount;
         public float Time;
         public float SecondaryTime;
         public float NormalizedTime;
@@ -702,11 +580,7 @@ namespace BTSMTL.Diagnostics
         public bool Flag;
         public DebugValueSnapshot Value;
         public RuntimeTimelinePlaybackProvenance TimelinePlayback;
-        public RuntimeFootPlacementTraceSnapshot FootPlacement;
-        public SimulationMotionTraceDetail MotionDetail;
-        public string MotionIdentityTableId;
         public EventId SourceEventId;
-        [NonSerialized] public AnimationClip SourceAnimationClip;
     }
 
     public readonly struct RuntimeTraceEvent
@@ -784,7 +658,6 @@ namespace BTSMTL.Diagnostics
         public string GetDetail() => m_Payload.Detail;
         public int GetCycle() => m_Payload.Cycle;
         public ulong GetActionInstanceId() => m_Payload.ActionInstanceId;
-        public int GetLifecycleOperation() => m_Payload.LifecycleOperation;
         public string GetCause() => m_Payload.Cause;
         public string GetParentInvocationPath() => m_Payload.ParentInvocationPath;
         public ulong GetParentInvocationGeneration() => m_Payload.ParentInvocationGeneration;

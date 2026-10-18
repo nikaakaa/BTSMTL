@@ -5,7 +5,7 @@
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <AssemblyName>Btsmtl.BlackboardData.Generator</AssemblyName>
+    <AssemblyName>ThirdPersonSimulation.BlackboardData.Generator</AssemblyName>
     <EnableDefaultItems>false</EnableDefaultItems>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>

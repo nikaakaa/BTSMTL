@@ -9,9 +9,9 @@ namespace BTSMTL.Diagnostics.Editor
 {
     sealed class RuntimeTraceBinaryCodec : IDisposable
     {
-        internal const int EventSize = 1055;
-        const int Version = 7;
-        const int MaximumStringsPerEvent = 41;
+        internal const int EventSize = 532;
+        const int Version = 8;
+        const int MaximumStringsPerEvent = 23;
         readonly Dictionary<string, int> m_StringIds;
         readonly List<string> m_Strings;
         readonly BinaryWriter m_Symbols;
@@ -98,11 +98,6 @@ namespace BTSMTL.Diagnostics.Editor
 
         internal void Write(BinaryWriter writer, in RuntimeTraceEvent value)
         {
-            RuntimeTracePayload payload = value.Payload;
-            if (payload.DetailKind == RuntimeTraceDetailKind.Motion &&
-                payload.MotionDetail.Kind == SimulationMotionTraceDetailKind.Channel &&
-                string.IsNullOrEmpty(payload.MotionIdentityTableId))
-                throw new InvalidDataException("V2 运动来源指纹必须同时保存实际冻结身份表的身份。");
             writer.Write(value.Sequence);
             writer.Write(value.TimeSeconds);
             writer.Write((int)value.Domain);
@@ -115,7 +110,7 @@ namespace BTSMTL.Diagnostics.Editor
             WriteRuntimeInstanceKey(writer, value.RuntimeInstance);
             WriteRuntimeSourceElementHandle(writer, value.Source);
             writer.Write((int)value.Kind);
-            WriteRuntimeTracePayload(writer, payload);
+            WriteRuntimeTracePayload(writer, value.Payload);
         }
 
         internal RuntimeTraceEvent Read(BinaryReader reader)
@@ -187,15 +182,6 @@ namespace BTSMTL.Diagnostics.Editor
             return new Guid(m_Guid);
         }
 
-        static void WriteVector3(BinaryWriter writer, Vector3 value)
-        {
-            writer.Write(value.x);
-            writer.Write(value.y);
-            writer.Write(value.z);
-        }
-
-        static Vector3 ReadVector3(BinaryReader reader) => new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
-
         static void WriteVector4(BinaryWriter writer, Vector4 value)
         {
             writer.Write(value.x);
@@ -217,31 +203,17 @@ namespace BTSMTL.Diagnostics.Editor
             WriteString(writer, value.AnimationChannelId);
             WriteString(writer, value.OwnerId);
             WriteString(writer, value.RelatedElementId);
-            WriteString(writer, value.SkillId);
             writer.Write(value.InputSequence);
-            WriteString(writer, value.CharacterStateHash);
-            WriteString(writer, value.WorldHash);
             writer.Write(value.ActionInstanceId);
             WriteString(writer, value.CallSiteId);
             writer.Write(value.ActivationGeneration);
             writer.Write(value.SkillExecutionGeneration);
-            WriteString(writer, value.RuleSourceSkillId);
-            writer.Write(value.RuleSourceInstanceId);
-            writer.Write(value.RuleSourceSkillExecutionGeneration);
-            writer.Write(value.RuleSourceSegmentGeneration);
             writer.Write(value.GraphInvocationGeneration);
             writer.Write(value.ParentInvocationGeneration);
             WriteString(writer, value.ParentInvocationPath);
             writer.Write(value.StartTick);
             writer.Write(value.EndTick);
             writer.Write(value.Revision);
-            writer.Write(value.ActionPhase);
-            writer.Write(value.ActionState);
-            writer.Write(value.ActionResult);
-            writer.Write(value.LifecycleOperation);
-            writer.Write(value.StackCount);
-            writer.Write((int)value.DetailKind);
-            writer.Write(value.BeforeCount);
             writer.Write(value.Time);
             writer.Write(value.SecondaryTime);
             writer.Write(value.NormalizedTime);
@@ -261,9 +233,6 @@ namespace BTSMTL.Diagnostics.Editor
             writer.Write(value.Flag);
             WriteDebugValueSnapshot(writer, value.Value);
             WriteRuntimeTimelinePlaybackProvenance(writer, value.TimelinePlayback);
-            WriteRuntimeFootPlacementTraceSnapshot(writer, value.FootPlacement);
-            WriteMotionDetail(writer, in value.MotionDetail);
-            WriteString(writer, value.MotionIdentityTableId);
             WriteEventId(writer, value.SourceEventId);
         }
 
@@ -278,31 +247,17 @@ namespace BTSMTL.Diagnostics.Editor
             AnimationChannelId = ReadString(reader),
             OwnerId = ReadString(reader),
             RelatedElementId = ReadString(reader),
-            SkillId = ReadString(reader),
             InputSequence = reader.ReadUInt64(),
-            CharacterStateHash = ReadString(reader),
-            WorldHash = ReadString(reader),
             ActionInstanceId = reader.ReadUInt64(),
             CallSiteId = ReadString(reader),
             ActivationGeneration = reader.ReadUInt64(),
             SkillExecutionGeneration = reader.ReadUInt64(),
-            RuleSourceSkillId = ReadString(reader),
-            RuleSourceInstanceId = reader.ReadUInt64(),
-            RuleSourceSkillExecutionGeneration = reader.ReadUInt64(),
-            RuleSourceSegmentGeneration = reader.ReadUInt64(),
             GraphInvocationGeneration = reader.ReadUInt64(),
             ParentInvocationGeneration = reader.ReadUInt64(),
             ParentInvocationPath = ReadString(reader),
             StartTick = reader.ReadUInt64(),
             EndTick = reader.ReadUInt64(),
             Revision = reader.ReadUInt64(),
-            ActionPhase = reader.ReadInt32(),
-            ActionState = reader.ReadInt32(),
-            ActionResult = reader.ReadInt32(),
-            LifecycleOperation = reader.ReadInt32(),
-            StackCount = reader.ReadInt32(),
-            DetailKind = (RuntimeTraceDetailKind)reader.ReadInt32(),
-            BeforeCount = reader.ReadInt32(),
             Time = reader.ReadSingle(),
             SecondaryTime = reader.ReadSingle(),
             NormalizedTime = reader.ReadSingle(),
@@ -322,9 +277,6 @@ namespace BTSMTL.Diagnostics.Editor
             Flag = reader.ReadBoolean(),
             Value = ReadDebugValueSnapshot(reader),
             TimelinePlayback = ReadRuntimeTimelinePlaybackProvenance(reader),
-            FootPlacement = ReadRuntimeFootPlacementTraceSnapshot(reader),
-            MotionDetail = ReadMotionDetail(reader),
-            MotionIdentityTableId = ReadString(reader),
             SourceEventId = ReadEventId(reader),
         };
 
@@ -351,140 +303,6 @@ namespace BTSMTL.Diagnostics.Editor
             }
             return isValid ? EventId.FromBytes(m_EventId) : default;
         }
-
-        void WriteMotionDetail(BinaryWriter writer, in SimulationMotionTraceDetail value)
-        {
-            writer.Write((byte)value.Kind);
-            writer.Write(value.DisplacementXRaw);
-            writer.Write(value.DisplacementYRaw);
-            writer.Write(value.DisplacementZRaw);
-            writer.Write(value.YawDegreesRaw);
-            writer.Write(value.Channel);
-            writer.Write(value.BlendMode);
-            writer.Write(value.Priority);
-            writer.Write(value.WeightRaw);
-            writer.Write(value.PlanarBasisXRaw);
-            writer.Write(value.PlanarBasisYRaw);
-            writer.Write(value.ClaimsLowerChannels);
-            writer.Write(value.HasMotion);
-            writer.Write(value.ParticipatingSourceCount);
-            writer.Write(value.ParticipatingSourceFingerprint);
-            writer.Write(value.MovementClock.IsValid);
-            WriteString(writer, value.MovementClock.OwnerIdentity);
-            writer.Write(value.MovementClock.Generation);
-            writer.Write(value.MovementClock.AuthorityTick.Value);
-            writer.Write(value.MovementClock.ContinuousTicks);
-            writer.Write(value.MovementClock.TickRate);
-        }
-
-        SimulationMotionTraceDetail ReadMotionDetail(BinaryReader reader)
-        {
-            var kind = (SimulationMotionTraceDetailKind)reader.ReadByte();
-            long x = reader.ReadInt64();
-            long y = reader.ReadInt64();
-            long z = reader.ReadInt64();
-            long yaw = reader.ReadInt64();
-            int channel = reader.ReadInt32();
-            int blend = reader.ReadInt32();
-            int priority = reader.ReadInt32();
-            long weight = reader.ReadInt64();
-            long basisX = reader.ReadInt64();
-            long basisY = reader.ReadInt64();
-            bool claim = reader.ReadBoolean();
-            bool hasMotion = reader.ReadBoolean();
-            int sources = reader.ReadInt32();
-            ulong fingerprint = reader.ReadUInt64();
-            bool hasClock = reader.ReadBoolean();
-            string clockOwner = ReadString(reader);
-            ulong clockGeneration = reader.ReadUInt64();
-            ulong clockTick = reader.ReadUInt64();
-            double clockTime = reader.ReadDouble();
-            int clockRate = reader.ReadInt32();
-            CommittedMovementPlaybackClock clock = hasClock
-                ? new CommittedMovementPlaybackClock(clockOwner, clockGeneration,
-                    new SimulationTick(clockTick), clockTime, clockRate)
-                : default;
-            return new SimulationMotionTraceDetail(kind, x, y, z, yaw, in clock,
-                channel, blend, priority, weight, basisX, basisY, claim, hasMotion, sources, fingerprint);
-        }
-
-        void WriteRuntimeFootPlacementTraceSnapshot(BinaryWriter writer, in RuntimeFootPlacementTraceSnapshot value)
-        {
-            writer.Write(value.IsAvailable);
-            writer.Write(value.FrameSequence);
-            writer.Write(value.CompletionIdentity);
-            WriteRuntimeFootPlacementFootTraceSnapshot(writer, value.Left);
-            WriteRuntimeFootPlacementFootTraceSnapshot(writer, value.Right);
-        }
-
-        RuntimeFootPlacementTraceSnapshot ReadRuntimeFootPlacementTraceSnapshot(BinaryReader reader) => new RuntimeFootPlacementTraceSnapshot
-        {
-            IsAvailable = reader.ReadBoolean(),
-            FrameSequence = reader.ReadUInt64(),
-            CompletionIdentity = reader.ReadUInt64(),
-            Left = ReadRuntimeFootPlacementFootTraceSnapshot(reader),
-            Right = ReadRuntimeFootPlacementFootTraceSnapshot(reader),
-        };
-
-        void WriteRuntimeFootPlacementFootTraceSnapshot(BinaryWriter writer, in RuntimeFootPlacementFootTraceSnapshot value)
-        {
-            writer.Write(value.IsAvailable);
-            WriteString(writer, value.Side);
-            WriteString(writer, value.State);
-            WriteString(writer, value.RejectReason);
-            WriteString(writer, value.StepSource);
-            writer.Write(value.LandingEventIdentity);
-            writer.Write(value.TrajectoryGeneration);
-            writer.Write(value.LandingConfidence);
-            writer.Write(value.TimeToLandingSeconds);
-            WriteVector3(writer, value.RootLocalLanding);
-            WriteVector3(writer, value.CurrentAnimatedSole);
-            WriteVector3(writer, value.RawLanding);
-            writer.Write(value.QueryAvailable);
-            WriteString(writer, value.QueryShape);
-            WriteString(writer, value.QueryPurpose);
-            WriteVector3(writer, value.QueryOrigin);
-            WriteVector3(writer, value.QueryDirection);
-            writer.Write(value.QueryRadius);
-            writer.Write(value.QueryMaximumDistance);
-            writer.Write(value.QueryLayerMask);
-            writer.Write(value.QueryMinimumGroundNormalDot);
-            writer.Write(value.Accepted);
-            writer.Write(value.SurfaceIdentity);
-            WriteVector3(writer, value.LandingPoint);
-            WriteVector3(writer, value.LandingNormal);
-            writer.Write(value.QueryDistance);
-        }
-
-        RuntimeFootPlacementFootTraceSnapshot ReadRuntimeFootPlacementFootTraceSnapshot(BinaryReader reader) => new RuntimeFootPlacementFootTraceSnapshot
-        {
-            IsAvailable = reader.ReadBoolean(),
-            Side = ReadString(reader),
-            State = ReadString(reader),
-            RejectReason = ReadString(reader),
-            StepSource = ReadString(reader),
-            LandingEventIdentity = reader.ReadUInt64(),
-            TrajectoryGeneration = reader.ReadUInt64(),
-            LandingConfidence = reader.ReadSingle(),
-            TimeToLandingSeconds = reader.ReadSingle(),
-            RootLocalLanding = ReadVector3(reader),
-            CurrentAnimatedSole = ReadVector3(reader),
-            RawLanding = ReadVector3(reader),
-            QueryAvailable = reader.ReadBoolean(),
-            QueryShape = ReadString(reader),
-            QueryPurpose = ReadString(reader),
-            QueryOrigin = ReadVector3(reader),
-            QueryDirection = ReadVector3(reader),
-            QueryRadius = reader.ReadSingle(),
-            QueryMaximumDistance = reader.ReadSingle(),
-            QueryLayerMask = reader.ReadInt32(),
-            QueryMinimumGroundNormalDot = reader.ReadSingle(),
-            Accepted = reader.ReadBoolean(),
-            SurfaceIdentity = reader.ReadInt32(),
-            LandingPoint = ReadVector3(reader),
-            LandingNormal = ReadVector3(reader),
-            QueryDistance = reader.ReadSingle(),
-        };
 
         void WriteRuntimeContentRevision(BinaryWriter writer, in RuntimeContentRevision value)
         {

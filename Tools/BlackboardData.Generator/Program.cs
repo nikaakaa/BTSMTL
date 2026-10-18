@@ -15,7 +15,7 @@ internal static class Program
         }
         if (args.Length != 4)
         {
-            Console.Error.WriteLine("用法：Btsmtl.BlackboardData.Generator <声明输入.json> <输出目录> <Luban.dll> <预编译程序集引用JSON数组>；导出前退役旧目标：--retire-other-targets <输出目录> <当前数值目标JSON数组>");
+            Console.Error.WriteLine("用法：ThirdPersonSimulation.BlackboardData.Generator <声明输入.json> <输出目录> <Luban.dll> <预编译程序集引用JSON数组>；导出前退役旧目标：--retire-other-targets <输出目录> <当前数值目标JSON数组>");
             return 2;
         }
 

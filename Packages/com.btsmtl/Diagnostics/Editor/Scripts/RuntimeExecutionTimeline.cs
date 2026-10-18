@@ -28,8 +28,8 @@ namespace BTSMTL.Diagnostics.Editor
             RuntimeExecutionSpanState state)
         {
             Kind = kind;
-            Start = RuntimeTraceDisplay.ForDisplay(in start);
-            End = RuntimeTraceDisplay.ForDisplay(in end);
+            Start = start;
+            End = end;
             SourceHandle = sourceHandle;
             Source = source;
             HasSource = hasSource;
@@ -54,7 +54,6 @@ namespace BTSMTL.Diagnostics.Editor
         public ulong EndSequence => End.Sequence;
         public ulong RuntimeEpoch => Start.RuntimeEpoch;
         public RuntimeContentRevision ContentRevision => Start.ContentRevision;
-        public string SkillId => Start.Payload.SkillId;
         public ulong ActionInstanceId => Start.Payload.ActionInstanceId;
         public string CallSiteId => Start.Payload.CallSiteId;
         public ulong ActivationGeneration => Start.Payload.ActivationGeneration;
@@ -150,12 +149,9 @@ namespace BTSMTL.Diagnostics.Editor
         readonly RuntimeExecutionSourceClock[] m_SourceClocks;
         readonly Guid[] m_CharacterRuntimeIds;
         readonly RuntimeInstanceKey[] m_RuntimeInstances;
-        readonly string[] m_SkillIds;
         readonly ulong[] m_ActionInstanceIds;
         readonly string[] m_CallSiteIds;
         readonly ulong[] m_InputSequences;
-        readonly string[] m_CharacterStateHashes;
-        readonly string[] m_WorldHashes;
 
         internal RuntimeExecutionTickRecord(
             ulong tick,
@@ -173,12 +169,9 @@ namespace BTSMTL.Diagnostics.Editor
             Collector<RuntimeExecutionSourceClock> sourceClocks = default;
             Collector<Guid> characterRuntimeIds = default;
             Collector<RuntimeInstanceKey> runtimeInstances = default;
-            Collector<string> skillIds = default;
             Collector<ulong> actionInstanceIds = default;
             Collector<string> callSiteIds = default;
             Collector<ulong> inputSequences = default;
-            Collector<string> characterStateHashes = default;
-            Collector<string> worldHashes = default;
             for (int i = 0; i < m_Events.Length; i++)
             {
                 RuntimeTraceEvent traceEvent = m_Events[i];
@@ -204,18 +197,12 @@ namespace BTSMTL.Diagnostics.Editor
                     characterRuntimeIds.AddDistinct(traceEvent.RuntimeInstance.CharacterRuntimeId);
                 if (traceEvent.RuntimeInstance.IsValid)
                     runtimeInstances.AddDistinct(traceEvent.RuntimeInstance);
-                if (!string.IsNullOrEmpty(traceEvent.Payload.SkillId))
-                    skillIds.AddDistinct(traceEvent.Payload.SkillId);
                 if (traceEvent.Payload.ActionInstanceId != 0)
                     actionInstanceIds.AddDistinct(traceEvent.Payload.ActionInstanceId);
                 if (!string.IsNullOrEmpty(traceEvent.Payload.CallSiteId))
                     callSiteIds.AddDistinct(traceEvent.Payload.CallSiteId);
                 if (traceEvent.Payload.InputSequence != 0)
                     inputSequences.AddDistinct(traceEvent.Payload.InputSequence);
-                if (!string.IsNullOrEmpty(traceEvent.Payload.CharacterStateHash))
-                    characterStateHashes.AddDistinct(traceEvent.Payload.CharacterStateHash);
-                if (!string.IsNullOrEmpty(traceEvent.Payload.WorldHash))
-                    worldHashes.AddDistinct(traceEvent.Payload.WorldHash);
             }
             m_ExternalResults = externalResults.ToArray();
             m_SessionIds = sessionIds.ToArray();
@@ -225,12 +212,9 @@ namespace BTSMTL.Diagnostics.Editor
             m_SourceClocks = sourceClocks.ToArray();
             m_CharacterRuntimeIds = characterRuntimeIds.ToArray();
             m_RuntimeInstances = runtimeInstances.ToArray();
-            m_SkillIds = skillIds.ToArray();
             m_ActionInstanceIds = actionInstanceIds.ToArray();
             m_CallSiteIds = callSiteIds.ToArray();
             m_InputSequences = inputSequences.ToArray();
-            m_CharacterStateHashes = characterStateHashes.ToArray();
-            m_WorldHashes = worldHashes.ToArray();
         }
 
         public ulong Tick { get; }
@@ -244,12 +228,9 @@ namespace BTSMTL.Diagnostics.Editor
         public IReadOnlyList<RuntimeExecutionSourceClock> SourceClocks => m_SourceClocks;
         public IReadOnlyList<Guid> CharacterRuntimeIds => m_CharacterRuntimeIds;
         public IReadOnlyList<RuntimeInstanceKey> RuntimeInstances => m_RuntimeInstances;
-        public IReadOnlyList<string> SkillIds => m_SkillIds;
         public IReadOnlyList<ulong> ActionInstanceIds => m_ActionInstanceIds;
         public IReadOnlyList<string> CallSiteIds => m_CallSiteIds;
         public IReadOnlyList<ulong> InputSequences => m_InputSequences;
-        public IReadOnlyList<string> CharacterStateHashes => m_CharacterStateHashes;
-        public IReadOnlyList<string> WorldHashes => m_WorldHashes;
         public bool HasSimulationTick => Contains(RuntimeTraceEventKind.SimulationTick);
         public bool HasStatePublished => Contains(RuntimeTraceEventKind.SimulationStatePublished);
         public bool HasExternalResult => m_ExternalResults.Length != 0;
@@ -591,8 +572,7 @@ namespace BTSMTL.Diagnostics.Editor
                     UnmappedEventCount++;
                     return;
                 }
-                RuntimeTraceEvent value = RuntimeTraceDisplay.ForDisplay(in sourceValue);
-                m_Facts.AppendTrack(in value, group);
+                m_Facts.AppendTrack(in sourceValue, group);
                 ProjectNewSpans();
             }
 
@@ -928,7 +908,7 @@ namespace BTSMTL.Diagnostics.Editor
 
             internal void Write(RuntimeTraceEvent value)
             {
-                m_Events[m_Count++] = RuntimeTraceDisplay.ForDisplay(in value);
+                m_Events[m_Count++] = value;
             }
         }
 

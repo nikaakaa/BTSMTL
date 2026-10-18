@@ -63,10 +63,6 @@ namespace BTSMTL.Diagnostics
             ref readonly RuntimeTracePayload payload = ref RuntimeTraceEvent.ReadPayload(in traceEvent);
             bool blackboard = Kind is RuntimeTraceEventKind.BlackboardWritten or RuntimeTraceEventKind.BlackboardSnapshot;
             BlackboardStateSlot = blackboard ? payload.BlackboardStateSlot : -1;
-            BlackboardAbilityId = blackboard ? payload.SkillId : string.Empty;
-            bool metadata = Kind == RuntimeTraceEventKind.ValueSampled &&
-                (Channel == RuntimeTraceChannel.GameplayEffect || payload.DetailKind == RuntimeTraceDetailKind.AbilityMetadata);
-            SampleIdentity = metadata ? payload.Name : default;
         }
 
         public RuntimeTraceChannel Channel { get; }
@@ -74,18 +70,15 @@ namespace BTSMTL.Diagnostics
         public RuntimeInstanceKey Instance { get; }
         public RuntimeTraceEventKind Kind { get; }
         public int BlackboardStateSlot { get; }
-        public string BlackboardAbilityId { get; }
-        public string SampleIdentity { get; }
 
         public bool Equals(RuntimeLiveStateKey other)
         {
             return Channel == other.Channel && Source.Equals(other.Source) && Instance.Equals(other.Instance) && Kind == other.Kind &&
-                BlackboardStateSlot == other.BlackboardStateSlot && string.Equals(BlackboardAbilityId, other.BlackboardAbilityId, StringComparison.Ordinal) &&
-                string.Equals(SampleIdentity, other.SampleIdentity, StringComparison.Ordinal);
+                BlackboardStateSlot == other.BlackboardStateSlot;
         }
 
         public override bool Equals(object obj) => obj is RuntimeLiveStateKey other && Equals(other);
-        public override int GetHashCode() => HashCode.Combine(Channel, Source, Instance, Kind, BlackboardStateSlot, BlackboardAbilityId, SampleIdentity);
+        public override int GetHashCode() => HashCode.Combine(Channel, Source, Instance, Kind, BlackboardStateSlot);
     }
 
     public readonly struct RuntimeLiveStateChange
@@ -596,31 +589,17 @@ namespace BTSMTL.Diagnostics
                    string.Equals(left.AnimationChannelId, right.AnimationChannelId, StringComparison.Ordinal) &&
                    string.Equals(left.OwnerId, right.OwnerId, StringComparison.Ordinal) &&
                    string.Equals(left.RelatedElementId, right.RelatedElementId, StringComparison.Ordinal) &&
-                   string.Equals(left.SkillId, right.SkillId, StringComparison.Ordinal) &&
                    left.InputSequence == right.InputSequence &&
-                   string.Equals(left.CharacterStateHash, right.CharacterStateHash, StringComparison.Ordinal) &&
-                   string.Equals(left.WorldHash, right.WorldHash, StringComparison.Ordinal) &&
                    left.ActionInstanceId == right.ActionInstanceId &&
                    string.Equals(left.CallSiteId, right.CallSiteId, StringComparison.Ordinal) &&
                    left.ActivationGeneration == right.ActivationGeneration &&
                    left.SkillExecutionGeneration == right.SkillExecutionGeneration &&
-                   string.Equals(left.RuleSourceSkillId, right.RuleSourceSkillId, StringComparison.Ordinal) &&
-                   left.RuleSourceInstanceId == right.RuleSourceInstanceId &&
-                   left.RuleSourceSkillExecutionGeneration == right.RuleSourceSkillExecutionGeneration &&
-                   left.RuleSourceSegmentGeneration == right.RuleSourceSegmentGeneration &&
                    left.GraphInvocationGeneration == right.GraphInvocationGeneration &&
                    left.ParentInvocationGeneration == right.ParentInvocationGeneration &&
                    string.Equals(left.ParentInvocationPath, right.ParentInvocationPath, StringComparison.Ordinal) &&
                    left.StartTick == right.StartTick &&
                    left.EndTick == right.EndTick &&
                    left.Revision == right.Revision &&
-                   left.ActionPhase == right.ActionPhase &&
-                   left.ActionState == right.ActionState &&
-                   left.ActionResult == right.ActionResult &&
-                   left.LifecycleOperation == right.LifecycleOperation &&
-                   left.StackCount == right.StackCount &&
-                   left.DetailKind == right.DetailKind &&
-                   left.BeforeCount == right.BeforeCount &&
                    left.Time.Equals(right.Time) &&
                    left.SecondaryTime.Equals(right.SecondaryTime) &&
                    left.NormalizedTime.Equals(right.NormalizedTime) &&
@@ -639,54 +618,8 @@ namespace BTSMTL.Diagnostics
                    left.ClipIndex == right.ClipIndex &&
                    left.Flag == right.Flag &&
                    DebugValueEquivalent(in left.Value, in right.Value) &&
-                   left.MotionDetail.Equals(in right.MotionDetail) &&
-                   string.Equals(left.MotionIdentityTableId, right.MotionIdentityTableId, StringComparison.Ordinal) &&
                    left.SourceEventId.Equals(right.SourceEventId) &&
-                   TimelineProvenanceEquivalent(in left.TimelinePlayback, in right.TimelinePlayback) &&
-                   FootPlacementEquivalent(in left.FootPlacement, in right.FootPlacement);
-        }
-
-        static bool FootPlacementEquivalent(
-            in RuntimeFootPlacementTraceSnapshot left,
-            in RuntimeFootPlacementTraceSnapshot right)
-        {
-            return left.IsAvailable == right.IsAvailable &&
-                   left.FrameSequence == right.FrameSequence &&
-                   left.CompletionIdentity == right.CompletionIdentity &&
-                   FootPlacementFootEquivalent(in left.Left, in right.Left) &&
-                   FootPlacementFootEquivalent(in left.Right, in right.Right);
-        }
-
-        static bool FootPlacementFootEquivalent(
-            in RuntimeFootPlacementFootTraceSnapshot left,
-            in RuntimeFootPlacementFootTraceSnapshot right)
-        {
-            return left.IsAvailable == right.IsAvailable &&
-                   string.Equals(left.Side, right.Side, StringComparison.Ordinal) &&
-                   string.Equals(left.State, right.State, StringComparison.Ordinal) &&
-                   string.Equals(left.RejectReason, right.RejectReason, StringComparison.Ordinal) &&
-                   string.Equals(left.StepSource, right.StepSource, StringComparison.Ordinal) &&
-                   left.LandingEventIdentity == right.LandingEventIdentity &&
-                   left.TrajectoryGeneration == right.TrajectoryGeneration &&
-                   left.LandingConfidence.Equals(right.LandingConfidence) &&
-                   left.TimeToLandingSeconds.Equals(right.TimeToLandingSeconds) &&
-                   left.RootLocalLanding.Equals(right.RootLocalLanding) &&
-                   left.CurrentAnimatedSole.Equals(right.CurrentAnimatedSole) &&
-                   left.RawLanding.Equals(right.RawLanding) &&
-                   left.QueryAvailable == right.QueryAvailable &&
-                   string.Equals(left.QueryShape, right.QueryShape, StringComparison.Ordinal) &&
-                   string.Equals(left.QueryPurpose, right.QueryPurpose, StringComparison.Ordinal) &&
-                   left.QueryOrigin.Equals(right.QueryOrigin) &&
-                   left.QueryDirection.Equals(right.QueryDirection) &&
-                   left.QueryRadius.Equals(right.QueryRadius) &&
-                   left.QueryMaximumDistance.Equals(right.QueryMaximumDistance) &&
-                   left.QueryLayerMask == right.QueryLayerMask &&
-                   left.QueryMinimumGroundNormalDot.Equals(right.QueryMinimumGroundNormalDot) &&
-                   left.Accepted == right.Accepted &&
-                   left.SurfaceIdentity == right.SurfaceIdentity &&
-                   left.LandingPoint.Equals(right.LandingPoint) &&
-                   left.LandingNormal.Equals(right.LandingNormal) &&
-                   left.QueryDistance.Equals(right.QueryDistance);
+                   TimelineProvenanceEquivalent(in left.TimelinePlayback, in right.TimelinePlayback);
         }
 
         static bool DebugValueEquivalent(in DebugValueSnapshot left, in DebugValueSnapshot right)
@@ -1191,29 +1124,7 @@ namespace BTSMTL.Diagnostics
                 RuntimeTraceEventKind.TrackActive or
                 RuntimeTraceEventKind.ClipActive or
                 RuntimeTraceEventKind.TreeClipUpdated or
-                RuntimeTraceEventKind.MotionContribution or
-                RuntimeTraceEventKind.MotionResolved or
-                RuntimeTraceEventKind.ActionSnapshot or
-                RuntimeTraceEventKind.AnimationProducerSampled or
-                RuntimeTraceEventKind.AnimationPlaybackPending or
-                RuntimeTraceEventKind.AnimationPlaybackSelected or
-                RuntimeTraceEventKind.AnimationPlaybackRetained or
-                RuntimeTraceEventKind.AnimationPlaybackRetired or
-                RuntimeTraceEventKind.AnimationPhaseSync or
-                RuntimeTraceEventKind.MotionMatchingQuery or
-                RuntimeTraceEventKind.MotionMatchingTrajectory or
-                RuntimeTraceEventKind.MotionMatchingPoseHistory or
-                RuntimeTraceEventKind.MotionMatchingAdmission or
-                RuntimeTraceEventKind.MotionMatchingCandidateRejected or
-                RuntimeTraceEventKind.MotionMatchingSearchTraversal or
-                RuntimeTraceEventKind.MotionMatchingTopK or
-                RuntimeTraceEventKind.MotionMatchingPlan or
-                RuntimeTraceEventKind.MotionMatchingSelection or
-                RuntimeTraceEventKind.MotionMatchingPoseSource or
-                RuntimeTraceEventKind.MotionMatchingFrame or
                 RuntimeTraceEventKind.PresentationInterpolated or
-                RuntimeTraceEventKind.LocomotionPresentation or
-                RuntimeTraceEventKind.FootPlacementSnapshot or
                 RuntimeTraceEventKind.CameraSnapshot or
                 RuntimeTraceEventKind.CameraRequest => RuntimeDiagnosticsCaptureDetail.Continuous,
                 _ => RuntimeDiagnosticsCaptureDetail.Boundary

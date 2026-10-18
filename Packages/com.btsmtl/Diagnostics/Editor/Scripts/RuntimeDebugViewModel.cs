@@ -1,113 +1,9 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using ThirdPersonSimulation;
 
 namespace BTSMTL.Diagnostics.Editor
 {
-    public static class RuntimeTraceDisplay
-    {
-        static readonly string[] s_MotionChannels = { "Locomotion", "Action", "GameplayResult" };
-        static readonly string[] s_MotionBlends = { "Additive", "WeightedBlend", "Override" };
-        static readonly string[] s_AnimationCommands = { "", "Select", "Sample", "Complete", "Release", "ProjectedSample", "Withdraw" };
-
-        public static string Status(in RuntimeTracePayload value) => value.DetailKind == RuntimeTraceDetailKind.AnimationCommand
-            ? s_AnimationCommands[value.LifecycleOperation] : value.Status;
-
-        static string AnimationPlayback(in RuntimeTracePayload value) =>
-            $"{value.OwnerId}/{value.RelatedElementId}@{value.ActivationGeneration}";
-
-        static string AnimationSource(in RuntimeTracePayload value)
-        {
-            if (value.SourceEventId.IsValid)
-                return value.SourceEventId.ToString();
-            if (value.ClipIndex == 0)
-                return string.Empty;
-            UnityEngine.AnimationClip clip = value.SourceAnimationClip ??
-                (UnityEngine.AnimationClip)UnityEditor.EditorUtility.InstanceIDToObject(value.ClipIndex);
-            return $"{clip.name}#{value.ClipIndex}";
-        }
-
-        public static string Detail(in RuntimeTracePayload value) => value.DetailKind switch
-        {
-            RuntimeTraceDetailKind.CharacterControl => ControlDetail(
-                (CharacterControlTraceKind)value.LifecycleOperation, value.OwnerId,
-                value.RelatedElementId, value.Flag, value.StartTick),
-            RuntimeTraceDetailKind.GameplayEffectFailure =>
-                $"{value.OwnerId}/{value.ActivationGeneration}->{value.Name}:{(GameplayEffectApplyResultKind)value.ActionResult}:{value.Detail}",
-            RuntimeTraceDetailKind.GameplayTagCounts => $"{value.BeforeCount}->{value.Value.Signed}",
-            RuntimeTraceDetailKind.EquipmentChange =>
-                $"{value.Status}:{value.ActivationGeneration}:{value.RelatedElementId}->{value.OwnerId}@{value.Revision}",
-            RuntimeTraceDetailKind.ControlFlow =>
-                $"{value.RelatedElementId}:{value.Priority}->{value.ClipIndex}:condition={(value.TrackIndex >= 0 ? value.TrackIndex.ToString() : string.Empty)}:result={value.Flag}",
-            RuntimeTraceDetailKind.Motion => MotionDetail(in value.MotionDetail, value.Detail, value.MotionIdentityTableId),
-            RuntimeTraceDetailKind.AbilityRuleSource =>
-                $"{value.Detail};source={value.RuleSourceSkillId}/{value.RuleSourceInstanceId};skillGeneration={value.RuleSourceSkillExecutionGeneration};segmentGeneration={value.RuleSourceSegmentGeneration}",
-            RuntimeTraceDetailKind.AbilityAdmission =>
-                $"{value.Detail};source={value.RuleSourceSkillId}/{value.RuleSourceInstanceId};skillGeneration={value.RuleSourceSkillExecutionGeneration};segmentGeneration={value.RuleSourceSegmentGeneration};{value.Cause}={value.Value.Unsigned}",
-            RuntimeTraceDetailKind.GameplayEffectScope =>
-                $"effect={value.OwnerId}#{value.ActivationGeneration};scope={value.Value.Text};action={value.ActionInstanceId};generation={value.SkillExecutionGeneration}",
-            RuntimeTraceDetailKind.GameplayEffectHolder =>
-                $"effect={value.OwnerId}#{value.ActivationGeneration};holder={value.Status};action={value.ActionInstanceId};generation={value.SkillExecutionGeneration};runtime={value.Value.Unsigned};content={value.CallSiteId};invocation={value.GraphInvocationGeneration};branch={value.Revision};cycle={value.Cycle}",
-            RuntimeTraceDetailKind.GameplayEffectSuccess =>
-                $"effect={value.OwnerId}#{value.ActivationGeneration};event={value.Status}#{value.Value.Unsigned};source={value.RuleSourceSkillId}/{value.RuleSourceInstanceId};generation={value.RuleSourceSkillExecutionGeneration};segment={value.RuleSourceSegmentGeneration};target={value.RelatedElementId}",
-            RuntimeTraceDetailKind.GameplayEffectValue =>
-                $"effect={value.OwnerId}#{value.ActivationGeneration};{value.Name}={value.Value.Unsigned}",
-            RuntimeTraceDetailKind.AbilityMetadata =>
-                $"{value.Name}={value.Value.Text};skill={value.SkillId};action={value.ActionInstanceId};generation={value.SkillExecutionGeneration}",
-            RuntimeTraceDetailKind.AnimationCommand =>
-                $"logicTick={value.StartTick};playback={AnimationPlayback(in value)};channel={value.AnimationChannelId};action={value.ActionInstanceId};generation={value.ActivationGeneration};time={value.Time:0.######};continuous={value.SecondaryTime:0.######};cycle={value.Cycle};weight={value.Weight:0.######};loop={value.Flag}",
-            _ => value.Detail
-        };
-
-        static string MotionDetail(in SimulationMotionTraceDetail value, string owner, string identityTableId) => value.Kind switch
-        {
-            SimulationMotionTraceDetailKind.Contribution =>
-                $"channel={s_MotionChannels[value.Channel]};blend={s_MotionBlends[value.BlendMode]};priority={value.Priority};weight={FixedPointValue(value.WeightRaw)};delta=({FixedPointValue(value.DisplacementXRaw)},{FixedPointValue(value.DisplacementYRaw)},{FixedPointValue(value.DisplacementZRaw)});yaw={FixedPointValue(value.YawDegreesRaw)};claim={value.ClaimsLowerChannels};movementClock={MovementClock(in value.MovementClock)}",
-            SimulationMotionTraceDetailKind.Channel =>
-                $"channel={s_MotionChannels[value.Channel]};owner={owner};delta=({FixedPointValue(value.DisplacementXRaw)},{FixedPointValue(value.DisplacementYRaw)},{FixedPointValue(value.DisplacementZRaw)});yaw={FixedPointValue(value.YawDegreesRaw)};planarBasis=({FixedPointValue(value.PlanarBasisXRaw)},{FixedPointValue(value.PlanarBasisYRaw)});claim={value.ClaimsLowerChannels};sources={value.ParticipatingSourceCount};fingerprintFormat=frozen-id-le32-fnv1a-v2;identityTable={identityTableId};fingerprint={value.ParticipatingSourceFingerprint:x16};movementClock={MovementClock(in value.MovementClock)}",
-            SimulationMotionTraceDetailKind.Resolved =>
-                $"delta=({FixedPointValue(value.DisplacementXRaw)},{FixedPointValue(value.DisplacementYRaw)},{FixedPointValue(value.DisplacementZRaw)});yaw={FixedPointValue(value.YawDegreesRaw)};hasMotion={value.HasMotion};movementClock={MovementClock(in value.MovementClock)}",
-            SimulationMotionTraceDetailKind.None => string.Empty,
-            _ => throw new ArgumentOutOfRangeException(nameof(value.Kind))
-        };
-
-        static string FixedPointValue(long raw) => (raw / 65536m).ToString("0.#####", CultureInfo.InvariantCulture);
-
-        static string ControlDetail(CharacterControlTraceKind kind, string source,
-            string target, bool passed, ulong tick) => kind switch
-        {
-            CharacterControlTraceKind.StateEntered or CharacterControlTraceKind.StateExited => $"state={source}:tick={tick}",
-            CharacterControlTraceKind.TransitionEvaluated => $"source={source}:target={target}:result={passed}",
-            CharacterControlTraceKind.TransitionSelected => $"source={source}:target={target}:tick={tick}",
-            _ => throw new InvalidOperationException("Character Control trace kind is unsupported.")
-        };
-
-        static string MovementClock(in CommittedMovementPlaybackClock value) => value.IsValid
-            ? $"{value.OwnerIdentity}@{value.Generation}:{value.ContinuousTicks}/{value.TickRate}#tick{value.AuthorityTick.Value}"
-            : "none";
-
-        public static RuntimeTraceEvent ForDisplay(in RuntimeTraceEvent value) => ForDisplay(in value, out _);
-
-        internal static RuntimeTraceEvent ForDisplay(in RuntimeTraceEvent value, out RuntimeLiveStateKey stateKey)
-        {
-            stateKey = new RuntimeLiveStateKey(in value);
-            RuntimeTracePayload payload = value.Payload;
-            payload.Detail = Detail(in payload);
-            if (payload.DetailKind == RuntimeTraceDetailKind.AnimationCommand)
-            {
-                payload.Status = Status(in payload);
-                string playback = AnimationPlayback(in payload);
-                payload.RelatedElementId = AnimationSource(in payload);
-                payload.OwnerId = playback;
-            }
-            payload.DetailKind = RuntimeTraceDetailKind.Text;
-            return new RuntimeTraceEvent(value.SessionId, value.ContentRevision, value.RuntimeEpoch,
-                value.ExecutionBranchId, value.Domain, value.Channel, value.Position, value.TimeSeconds,
-                value.Sequence, value.RuntimeInstance, value.Source, value.Kind, in payload);
-        }
-    }
-
     public readonly struct RuntimeDebugTargetInfo
     {
         public RuntimeDebugTargetInfo(RuntimeDiagnosticsTarget target)
@@ -166,9 +62,8 @@ namespace BTSMTL.Diagnostics.Editor
         public ulong Position { get; }
         public ulong Sequence { get; }
         public RuntimeTracePayload Payload { get; }
-        public string Status => Payload.DetailKind == RuntimeTraceDetailKind.AnimationCommand || !string.IsNullOrEmpty(Payload.Status)
-            ? RuntimeTraceDisplay.Status(Payload) : s_EventKindText[(int)Kind];
-        public string Detail => RuntimeTraceDisplay.Detail(Payload);
+        public string Status => !string.IsNullOrEmpty(Payload.Status) ? Payload.Status : s_EventKindText[(int)Kind];
+        public string Detail => Payload.Detail;
     }
 
     public readonly struct RuntimeTimelinePlaybackDebugSummary
@@ -685,7 +580,8 @@ namespace BTSMTL.Diagnostics.Editor
             in RuntimeTraceEvent sourceTrace,
             RuntimeDebugSourceMapSnapshot sourceMap)
         {
-            RuntimeTraceEvent traceEvent = RuntimeTraceDisplay.ForDisplay(in sourceTrace, out RuntimeLiveStateKey key);
+            ref readonly RuntimeTraceEvent traceEvent = ref sourceTrace;
+            var key = new RuntimeLiveStateKey(in sourceTrace);
             RuntimeSourceElementKey source = default;
             string sourceName = string.Empty;
             if (traceEvent.Source.IsValid)
