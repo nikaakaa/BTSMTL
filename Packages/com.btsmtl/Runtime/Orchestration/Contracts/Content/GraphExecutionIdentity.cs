@@ -7,7 +7,7 @@ namespace ThirdPersonSimulation
 {
     public static class GraphNodeSemanticContract
     {
-        public const string Identity = "btsmtl-operations/5";
+        public const string Identity = "btsmtl-operations/6";
     }
 
     public readonly partial struct GraphExecutionDependency
