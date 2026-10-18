@@ -159,12 +159,15 @@ sealed partial class DependencyCatalog(string sdkRoot, string? clientRoot, Guard
         return false;
     }
 
+    // 不受控的第三方插件只在规则明确指向时检查其声明依赖。
+    bool IsRuleSource(Module module) => module.Kind == "asmdef" && rules.DependencyRules.Any(rule => rule.Applies(module));
+
     bool IsUnityGeneratedProject(Module module) => module.Kind == "project" && clientRoot is not null &&
         Path.GetDirectoryName(module.Path)!.Equals(clientRoot, StringComparison.OrdinalIgnoreCase);
 
     public void CheckDeclaredDependencies()
     {
-        foreach (Module source in Modules.Where(module => IsControlled(module) && !IsUnityGeneratedProject(module)))
+        foreach (Module source in Modules.Where(module => (IsControlled(module) || IsRuleSource(module)) && !IsUnityGeneratedProject(module)))
         {
             CheckDependencyChains(source, false);
             if (source.Kind == "package")

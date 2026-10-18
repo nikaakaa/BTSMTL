@@ -137,8 +137,9 @@ sealed partial class SourceGuard(DependencyCatalog catalog, GuardRules rules, st
         string first = raw.Split('.')[0];
         if (aliases.TryGetValue(first, out string? alias)) raw = alias + raw[first.Length..];
         bool attribute = node.AncestorsAndSelf().OfType<AttributeSyntax>().Any(item => item.Name.Span.Contains(node.Span));
-        string? key = KnownTypeKey("", raw, arity, attribute);
-        if (key is not null) { yield return key; yield break; }
+        // 未绑定时按名字回退：所在命名空间由内向外，再 using，全局类型最后；
+        // 未引用程序集中的同名全局类型（如 BTSMTL 的 ShowIfAttribute）不能抢先于 using 导入的类型。
+        string? key;
         string ns = ContainingName(node);
         while (ns.Length != 0)
         {
@@ -147,11 +148,17 @@ sealed partial class SourceGuard(DependencyCatalog catalog, GuardRules rules, st
             int separator = ns.LastIndexOf('.');
             ns = separator < 0 ? "" : ns[..separator];
         }
+        bool imported = false;
         foreach (string import in imports)
         {
             key = KnownTypeKey(import, raw, arity, attribute);
-            if (key is not null) yield return key;
+            if (key is null) continue;
+            imported = true;
+            yield return key;
         }
+        if (imported) yield break;
+        key = KnownTypeKey("", raw, arity, attribute);
+        if (key is not null) yield return key;
     }
 
     bool Known(string key) => retiredTypes.Contains(key) || declarations.ContainsKey(key);

@@ -322,6 +322,21 @@
   ],
   "dependencyRules": [
     {
+      "id": "THIRD_PARTY_PLUGIN_INDEPENDENT",
+      "reason": "第三方插件保持原版独立，不得引用BTSMTL或宿主ThirdPerson程序集；BTSMTL对原版节点的支持在BTSMTL目录中外部登记。",
+      "sourceAssemblies": [
+        "^(?:ParadoxNotion|NodeCanvas|FlowCanvas|SLATE)$"
+      ],
+      "forbiddenAssemblies": [
+        "^BTSMTL(?:\\.|$)",
+        "^ThirdPerson"
+      ],
+      "forbiddenNamespaces": [
+        "^BTSMTL(?:\\.|$)",
+        "^ThirdPerson"
+      ]
+    },
+    {
       "id": "BTSMTL_NO_GAMEPLAY_SDK",
       "reason": "BTSMTL全部程序集只依赖自身与Unity/系统，不得引用任何宿主ThirdPerson程序集或包、Photon/Quantum数值绑定。",
       "sourceAssemblies": [
