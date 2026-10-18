@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using BTSMTL.Orchestration;
 
 namespace BTSMTL.Timeline
@@ -138,8 +139,27 @@ namespace BTSMTL.Timeline
                             }
                 trackStart = trackEnd;
             }
+#if UNITY_EDITOR
+            ApplyRanges(ranges);
+            try
+            {
+                for (int i = 0; i < m_Clips.Length; i++)
+                    m_Clips[i].UpdateMix();
+                var errors = new List<string>();
+                bool valid = m_Timeline.ValidateContent(catalog, errors);
+                error = string.Join("\n", errors);
+                return valid;
+            }
+            finally
+            {
+                ApplyRanges(m_Ranges);
+                for (int i = 0; i < m_Clips.Length; i++)
+                    m_Clips[i].UpdateMix();
+            }
+#else
             error = string.Empty;
             return true;
+#endif
         }
 
         public int[] CreateContentSlots(TimelineContentUnit content)
@@ -156,10 +176,15 @@ namespace BTSMTL.Timeline
         }
 
 #if UNITY_EDITOR
-        public void Apply()
+        void ApplyRanges(ReadOnlySpan<TimelineClipTimeRange> ranges)
         {
             for (int i = 0; i < m_Clips.Length; i++)
-                m_Clips[i].ApplyTimeRange(in m_Ranges[i]);
+                m_Clips[i].ApplyTimeRange(in ranges[i]);
+        }
+
+        public void Apply()
+        {
+            ApplyRanges(m_Ranges);
             m_Timeline.RefreshTimeRanges();
         }
 #endif
