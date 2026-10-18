@@ -1,8 +1,6 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using BTSMTL.Orchestration;
 using ThirdPersonSimulation;
@@ -45,6 +43,7 @@ namespace BTSMTL.Compilation
         public IBtsmtlOrchestrationContentEncoder<TValue, TScalar> ContentEncoder { get; }
         // ActionInstance 作用域黑板的读写由该扩展向宿主提供实例数据；没有此类黑板的图可以不提供。
         public OrchestrationExtensionDefinition? ActionInstanceBlackboard { get; }
+        internal BtsmtlOrchestrationGraphCompiler.IdentityCache Identities;
     }
 
     public interface IBtsmtlOrchestrationNumericLowering<TScalar, TVector2, TVector3, TYaw, TQuaternion>
@@ -87,21 +86,26 @@ namespace BTSMTL.Compilation
 
     public static class BtsmtlOrchestrationGraphCompiler
     {
-        static readonly ConditionalWeakTable<ProgramExecutionSource,
-            ConcurrentDictionary<(string GraphId, string TemplateIdentity), string>> s_ExecutionIdentities = new();
-        static readonly ConditionalWeakTable<IReadOnlyList<ProgramSourceMapEntry>,
-            StrongBox<OrchestrationIdentityTable>> s_IdentityTables = new();
+        internal sealed class IdentityCache
+        {
+            internal IdentityCache(
+                IReadOnlyDictionary<(string GraphId, string InvocationPath, string Template), string> operations,
+                IReadOnlyDictionary<(string GraphId, string SourceInvocationPath, string InvocationPath,
+                    string SourceGraphId, string TimelineId, string TrackId, string ClipId,
+                    ProgramInvocationCallerKind CallerKind, string CallerId, string CallerClipId), string> invocations,
+                OrchestrationIdentityTable table)
+            {
+                Operations = operations;
+                Invocations = invocations;
+                Table = table;
+            }
 
-        static string ExecutionIdentity(ProgramExecutionSource source, string graphId, string templateIdentity) =>
-            s_ExecutionIdentities.GetValue(source, static _ => new()).GetOrAdd((graphId, templateIdentity),
-                static (identity, input) => input.TargetKind == ProgramSourceTargetKind.Operation
-                    ? StableHash.Compute("orchestration-operation", identity.GraphId,
-                        input.GraphInvocationPath, identity.TemplateIdentity).ToString()
-                    : StableHash.Compute("orchestration-invocation", identity.GraphId,
-                        input.SourceInvocationPath, input.GraphInvocationPath, input.GraphId,
-                        input.TimelineId, input.TrackId, input.ClipId,
-                        input.InvocationCallerKind.ToString(), input.InvocationCallerId,
-                        input.InvocationCallerClipId).ToString(), source);
+            internal readonly IReadOnlyDictionary<(string GraphId, string InvocationPath, string Template), string> Operations;
+            internal readonly IReadOnlyDictionary<(string GraphId, string SourceInvocationPath, string InvocationPath,
+                string SourceGraphId, string TimelineId, string TrackId, string ClipId,
+                ProgramInvocationCallerKind CallerKind, string CallerId, string CallerClipId), string> Invocations;
+            internal readonly OrchestrationIdentityTable Table;
+        }
 
         public static OrchestrationGraphContent<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>
             Compile<TScalar, TVector2, TVector3, TYaw, TQuaternion, TLowering>(
@@ -188,6 +192,11 @@ namespace BTSMTL.Compilation
             readonly IReadOnlyList<OrchestrationExtensionReference> m_StateTransitionHooks;
             readonly TLowering m_Lowering;
             readonly BtsmtlOrchestrationCompilationDomain<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>, TScalar> m_Domain;
+            readonly IdentityCache m_PreviousIdentities;
+            readonly Dictionary<(string GraphId, string InvocationPath, string Template), string> m_OperationIdentityTexts = new();
+            readonly Dictionary<(string GraphId, string SourceInvocationPath, string InvocationPath,
+                string SourceGraphId, string TimelineId, string TrackId, string ClipId,
+                ProgramInvocationCallerKind CallerKind, string CallerId, string CallerClipId), string> m_InvocationIdentityTexts = new();
             readonly List<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> m_Constants = new();
             readonly List<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> m_DefaultValues = new();
             readonly List<OrchestrationBlackboardSlot> m_Blackboards = new();
@@ -246,14 +255,13 @@ namespace BTSMTL.Compilation
                 m_StateTransitionHooks = stateTransitionHooks;
                 m_Lowering = lowering;
                 m_Domain = domain;
+                m_PreviousIdentities = Volatile.Read(ref domain.Identities);
             }
 
             internal OrchestrationGraphContent<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> Build()
             {
                 BuildExecutionIdentities();
-                var publication = s_IdentityTables.GetValue(m_SourceMap, static _ => new());
-                m_Identities = OrchestrationIdentityPublication.Create(IdentityTexts(), Volatile.Read(ref publication.Value));
-                Volatile.Write(ref publication.Value, m_Identities);
+                m_Identities = OrchestrationIdentityPublication.Create(IdentityTexts(), m_PreviousIdentities?.Table);
                 m_IdentityIds = new Dictionary<string, int>(m_Identities.Count, StringComparer.Ordinal);
                 for (int i = 0; i < m_Identities.Count; i++)
                     m_IdentityIds.Add(m_Identities.Entries.Span[i], i + 1);
@@ -272,9 +280,12 @@ namespace BTSMTL.Compilation
                     m_BlackboardOutputs.ToArray(), m_OutputTemplates.ToArray(), new OrchestrationCorePorts(Bind("AnyState"), Bind("OnEnter"),
                         Bind("Root"), Bind("OnExit"), Bind("True"), Bind("False"), Bind("Then"), Bind("Reset")),
                     m_Entry.Value, checked(Math.Max(1024, m_Operations.Count * 128)));
-                return new OrchestrationGraphContent<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>(
+                var content = new OrchestrationGraphContent<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>(
                     m_Identity, m_Lowering.Profile, m_Identities, program, m_Extensions.ToArray(), BuildOperationContents(), BuildEntries(),
                     BuildVariables(), BuildGeneratedBlackboards(), m_HostInputs.ToArray(), BuildPortMetadata(), BuildSources());
+                Volatile.Write(ref m_Domain.Identities,
+                    new IdentityCache(m_OperationIdentityTexts, m_InvocationIdentityTexts, m_Identities));
+                return content;
             }
 
             IEnumerable<string> IdentityTexts()
@@ -400,14 +411,41 @@ namespace BTSMTL.Compilation
                 {
                     ProgramExecutionSource source = m_SourceMap[i].Source;
                     if (source.TargetKind == ProgramSourceTargetKind.GraphInvocation)
-                        m_GraphInvocationIdentities[i] = ExecutionIdentity(source, m_Identity.GraphId, null);
+                        m_GraphInvocationIdentities[i] = ExecutionIdentity(source, null);
                     if (source.TargetKind == ProgramSourceTargetKind.Operation && m_OperationIdentities[source.TargetIndex] == null)
-                        m_OperationIdentities[source.TargetIndex] = ExecutionIdentity(source, m_Identity.GraphId,
+                        m_OperationIdentities[source.TargetIndex] = ExecutionIdentity(source,
                             m_Operations[source.TargetIndex].TemplateIdentity);
                 }
                 for (int operationIndex = 0; operationIndex < m_OperationIdentities.Length; operationIndex++)
                     if (m_OperationIdentities[operationIndex] == null)
                         throw new InvalidOperationException($"操作 '{operationIndex}' 缺少正式发生点来源。");
+            }
+
+            string ExecutionIdentity(ProgramExecutionSource source, string templateIdentity)
+            {
+                if (source.TargetKind == ProgramSourceTargetKind.Operation)
+                {
+                    var operationKey = (m_Identity.GraphId, source.GraphInvocationPath, templateIdentity);
+                    if (m_OperationIdentityTexts.TryGetValue(operationKey, out string operationIdentity))
+                        return operationIdentity;
+                    if (m_PreviousIdentities == null || !m_PreviousIdentities.Operations.TryGetValue(operationKey, out operationIdentity))
+                        operationIdentity = StableHash.Compute("orchestration-operation", m_Identity.GraphId,
+                            source.GraphInvocationPath, templateIdentity).ToString();
+                    m_OperationIdentityTexts.Add(operationKey, operationIdentity);
+                    return operationIdentity;
+                }
+                var invocationKey = (m_Identity.GraphId, source.SourceInvocationPath, source.GraphInvocationPath,
+                    source.GraphId, source.TimelineId, source.TrackId, source.ClipId,
+                    source.InvocationCallerKind, source.InvocationCallerId, source.InvocationCallerClipId);
+                if (m_InvocationIdentityTexts.TryGetValue(invocationKey, out string invocationIdentity))
+                    return invocationIdentity;
+                if (m_PreviousIdentities == null || !m_PreviousIdentities.Invocations.TryGetValue(invocationKey, out invocationIdentity))
+                    invocationIdentity = StableHash.Compute("orchestration-invocation", m_Identity.GraphId,
+                        source.SourceInvocationPath, source.GraphInvocationPath, source.GraphId,
+                        source.TimelineId, source.TrackId, source.ClipId,
+                        source.InvocationCallerKind.ToString(), source.InvocationCallerId, source.InvocationCallerClipId).ToString();
+                m_InvocationIdentityTexts.Add(invocationKey, invocationIdentity);
+                return invocationIdentity;
             }
 
             string ConstantOutputIdentity(int operationIndex, string portId) =>
