@@ -30,7 +30,7 @@
 
 Unity 通过各包原有 asmdef 编译同一份源码。3C 的 Assets 中不保留副本；角色资产、生成的 C# authoring、Workbench 角色装配、表现和产品发布入口仍由 3C 持有。
 
-`com.btsmtl` 全部程序集（含 Diagnostics 与 Diagnostics.Editor）只引用 Foundation，包依赖只有 Foundation 与 Unity 官方包。诊断只保留编排自身的图、状态机、Timeline、黑板与数值通道，以及仍有宿主生产者的动画通道、相机与表现插值事件；玩法专属的动作、GE、运动、落脚、装备与 Motion Matching 词汇已删除，预览事件文件为 Version 8、每条 532 字节。依赖守护 `BTSMTL_NO_GAMEPLAY_SDK` 禁止 BTSMTL 程序集引用任何 `ThirdPerson*` 程序集或 `com.thirdperson.*` 包。Gameplay、领域合同、Quantum 数学与 MemoryPack 单向引用 BTSMTL；BTSMTL 不引用这些宿主实现。Photon Quantum SDK 由使用 Quantum 的宿主提供。Timeline 编辑外围的旧玩法引用仍在清理，包级依赖解除不等于所有 Unity 程序集已经完成解耦。
+`com.btsmtl` 全部程序集（含 Diagnostics 与 Diagnostics.Editor）只引用 Foundation，包依赖只有 Foundation 与 Unity 官方包。诊断只定义编排自身的图、状态机、Timeline、黑板与数值通道，另留一个中立的 `Host` 通道；宿主事件经 `RuntimeHostTraceKinds.Register(编号, 名称, 采集级别)` 登记，编号写入预览事件文件，只追加不复用。BTSMTL 不含动作、GE、运动、落脚、装备、动画、相机或 Motion Matching 词汇；预览事件文件为 Version 9、每条 528 字节。依赖守护 `BTSMTL_NO_GAMEPLAY_SDK` 禁止 BTSMTL 程序集引用任何 `ThirdPerson*` 程序集或 `com.thirdperson.*` 包。Gameplay、领域合同、Quantum 数学与 MemoryPack 单向引用 BTSMTL；BTSMTL 不引用这些宿主实现。Photon Quantum SDK 由使用 Quantum 的宿主提供。Timeline 编辑外围的旧玩法引用仍在清理，包级依赖解除不等于所有 Unity 程序集已经完成解耦。
 
 ## 普通 .NET 接入
 

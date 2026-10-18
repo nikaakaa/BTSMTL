@@ -586,7 +586,6 @@ namespace BTSMTL.Diagnostics
                    string.Equals(left.Cause, right.Cause, StringComparison.Ordinal) &&
                    string.Equals(left.SourceClockId, right.SourceClockId, StringComparison.Ordinal) &&
                    string.Equals(left.SourceTickKind, right.SourceTickKind, StringComparison.Ordinal) &&
-                   string.Equals(left.AnimationChannelId, right.AnimationChannelId, StringComparison.Ordinal) &&
                    string.Equals(left.OwnerId, right.OwnerId, StringComparison.Ordinal) &&
                    string.Equals(left.RelatedElementId, right.RelatedElementId, StringComparison.Ordinal) &&
                    left.InputSequence == right.InputSequence &&
@@ -1109,6 +1108,8 @@ namespace BTSMTL.Diagnostics
 
         static RuntimeDiagnosticsCaptureDetail RequiredCaptureDetail(RuntimeTraceEventKind kind)
         {
+            if (RuntimeHostTraceKinds.IsHost(kind))
+                return RuntimeHostTraceKinds.CaptureDetail(kind);
             return kind switch
             {
                 RuntimeTraceEventKind.EdgeEvaluated or
@@ -1123,10 +1124,7 @@ namespace BTSMTL.Diagnostics
                 RuntimeTraceEventKind.TimelineVisualTime or
                 RuntimeTraceEventKind.TrackActive or
                 RuntimeTraceEventKind.ClipActive or
-                RuntimeTraceEventKind.TreeClipUpdated or
-                RuntimeTraceEventKind.PresentationInterpolated or
-                RuntimeTraceEventKind.CameraSnapshot or
-                RuntimeTraceEventKind.CameraRequest => RuntimeDiagnosticsCaptureDetail.Continuous,
+                RuntimeTraceEventKind.TreeClipUpdated => RuntimeDiagnosticsCaptureDetail.Continuous,
                 _ => RuntimeDiagnosticsCaptureDetail.Boundary
             };
         }

@@ -325,9 +325,9 @@ namespace BTSMTL.Diagnostics
         StateMachine = 1 << 1,
         Timeline = 1 << 2,
         Blackboard = 1 << 3,
-        Animation = 1 << 4,
+        Host = 1 << 4,
         Values = 1 << 10,
-        All = Graph | StateMachine | Timeline | Blackboard | Animation | Values
+        All = Graph | StateMachine | Timeline | Blackboard | Host | Values
     }
 
     public enum RuntimeTraceEventKind
@@ -369,9 +369,6 @@ namespace BTSMTL.Diagnostics
         BlackboardWritten,
         BlackboardCleared,
         BlackboardProjected,
-        PresentationInterpolated,
-        CameraSnapshot,
-        CameraRequest,
         SimulationTick,
         SimulationRestore,
         SimulationEvaluate,
@@ -391,6 +388,48 @@ namespace BTSMTL.Diagnostics
         BlackboardSnapshot,
         TraceSamplingLimited,
         CaptureStateSnapshot
+    }
+
+    // 宿主事件以稳定编号登记；编号进入预览事件文件，宿主不得复用或改义。
+    public static class RuntimeHostTraceKinds
+    {
+        public const int First = 1 << 16;
+        public const int Capacity = 256;
+        static readonly string[] s_Names = new string[Capacity];
+        static readonly RuntimeDiagnosticsCaptureDetail[] s_Details = new RuntimeDiagnosticsCaptureDetail[Capacity];
+
+        public static RuntimeTraceEventKind Register(int hostId, string name, RuntimeDiagnosticsCaptureDetail detail)
+        {
+            if ((uint)hostId >= Capacity)
+                throw new ArgumentOutOfRangeException(nameof(hostId));
+            if (string.IsNullOrEmpty(name))
+                throw new ArgumentException("宿主诊断事件必须有名称。", nameof(name));
+            if (detail == RuntimeDiagnosticsCaptureDetail.None)
+                throw new ArgumentOutOfRangeException(nameof(detail));
+            lock (s_Names)
+            {
+                string existing = s_Names[hostId];
+                if (existing != null && (existing != name || s_Details[hostId] != detail))
+                    throw new InvalidOperationException($"宿主诊断事件 {hostId} 已登记为 {existing}。");
+                s_Names[hostId] = name;
+                s_Details[hostId] = detail;
+            }
+            return (RuntimeTraceEventKind)(First + hostId);
+        }
+
+        public static bool IsHost(RuntimeTraceEventKind kind) => (uint)((int)kind - First) < Capacity;
+
+        // 读取已保存文件时宿主类型可能尚未初始化，此时只显示编号。
+        public static string Name(RuntimeTraceEventKind kind) =>
+            s_Names[(int)kind - First] ?? $"Host#{(int)kind - First}";
+
+        internal static RuntimeDiagnosticsCaptureDetail CaptureDetail(RuntimeTraceEventKind kind)
+        {
+            RuntimeDiagnosticsCaptureDetail detail = s_Details[(int)kind - First];
+            return detail != RuntimeDiagnosticsCaptureDetail.None
+                ? detail
+                : throw new InvalidOperationException($"宿主诊断事件 {(int)kind - First} 未登记。");
+        }
     }
 
     public enum DebugValueKind
@@ -547,7 +586,6 @@ namespace BTSMTL.Diagnostics
         public string Cause;
         public string SourceClockId;
         public string SourceTickKind;
-        public string AnimationChannelId;
         public string OwnerId;
         public string RelatedElementId;
         public ulong InputSequence;

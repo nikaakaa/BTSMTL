@@ -9,9 +9,9 @@ namespace BTSMTL.Diagnostics.Editor
 {
     sealed class RuntimeTraceBinaryCodec : IDisposable
     {
-        internal const int EventSize = 532;
-        const int Version = 8;
-        const int MaximumStringsPerEvent = 23;
+        internal const int EventSize = 528;
+        const int Version = 9;
+        const int MaximumStringsPerEvent = 22;
         readonly Dictionary<string, int> m_StringIds;
         readonly List<string> m_Strings;
         readonly BinaryWriter m_Symbols;
@@ -200,7 +200,6 @@ namespace BTSMTL.Diagnostics.Editor
             WriteString(writer, value.Cause);
             WriteString(writer, value.SourceClockId);
             WriteString(writer, value.SourceTickKind);
-            WriteString(writer, value.AnimationChannelId);
             WriteString(writer, value.OwnerId);
             WriteString(writer, value.RelatedElementId);
             writer.Write(value.InputSequence);
@@ -244,7 +243,6 @@ namespace BTSMTL.Diagnostics.Editor
             Cause = ReadString(reader),
             SourceClockId = ReadString(reader),
             SourceTickKind = ReadString(reader),
-            AnimationChannelId = ReadString(reader),
             OwnerId = ReadString(reader),
             RelatedElementId = ReadString(reader),
             InputSequence = reader.ReadUInt64(),

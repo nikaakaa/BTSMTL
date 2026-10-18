@@ -62,7 +62,8 @@ namespace BTSMTL.Diagnostics.Editor
         public ulong Position { get; }
         public ulong Sequence { get; }
         public RuntimeTracePayload Payload { get; }
-        public string Status => !string.IsNullOrEmpty(Payload.Status) ? Payload.Status : s_EventKindText[(int)Kind];
+        public string Status => !string.IsNullOrEmpty(Payload.Status) ? Payload.Status
+            : RuntimeHostTraceKinds.IsHost(Kind) ? RuntimeHostTraceKinds.Name(Kind) : s_EventKindText[(int)Kind];
         public string Detail => Payload.Detail;
     }
 

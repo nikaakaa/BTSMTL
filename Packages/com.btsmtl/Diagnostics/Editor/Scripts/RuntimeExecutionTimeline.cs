@@ -299,15 +299,6 @@ namespace BTSMTL.Diagnostics.Editor
         public ulong Frame { get; }
         public Guid ExecutionBranchId { get; }
         public IReadOnlyList<RuntimeTraceEvent> Events => m_Events;
-        public bool IsAvailable => Contains(RuntimeTraceEventKind.PresentationInterpolated);
-
-        bool Contains(RuntimeTraceEventKind kind)
-        {
-            for (int i = 0; i < m_Events.Length; i++)
-                if (m_Events[i].Kind == kind)
-                    return true;
-            return false;
-        }
     }
 
     public sealed class RuntimeExecutionCheckpoint
