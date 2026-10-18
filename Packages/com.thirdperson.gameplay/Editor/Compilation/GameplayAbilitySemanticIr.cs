@@ -378,20 +378,22 @@ namespace ThirdPersonSimulation
             IReadOnlyList<ProgramGraphCallFrame> graphCallFrames)
         {
             var values = new List<SemanticConstantInputBinding>(source ?? Array.Empty<SemanticConstantInputBinding>());
+            var contracts = new Dictionary<int, OperationValuePortContract>();
             values.Sort((left, right) =>
             {
-                int byOperation = left.TargetOperation.Value.CompareTo(right.TargetOperation.Value);
+                int operation = left.TargetOperation.Value;
+                int byOperation = operation.CompareTo(right.TargetOperation.Value);
                 if (byOperation != 0)
                     return byOperation;
-                if (left.TargetOperation.Value < 0 || left.TargetOperation.Value >= operations.Count ||
-                    right.TargetOperation.Value < 0 || right.TargetOperation.Value >= operations.Count)
+                if (operation < 0 || operation >= operations.Count)
                     return string.CompareOrdinal(left.TargetPort, right.TargetPort);
-                OperationValuePortDefinition leftPort = OrchestrationValuePortContracts
-                    .Require(operations[left.TargetOperation.Value], graphCallFrames)
-                    .RequireInput(left.TargetPort);
-                OperationValuePortDefinition rightPort = OrchestrationValuePortContracts
-                    .Require(operations[right.TargetOperation.Value], graphCallFrames)
-                    .RequireInput(right.TargetPort);
+                if (!contracts.TryGetValue(operation, out OperationValuePortContract contract))
+                {
+                    contract = OrchestrationValuePortContracts.Require(operations[operation], graphCallFrames);
+                    contracts.Add(operation, contract);
+                }
+                OperationValuePortDefinition leftPort = contract.RequireInput(left.TargetPort);
+                OperationValuePortDefinition rightPort = contract.RequireInput(right.TargetPort);
                 int byOrder = leftPort.Order.CompareTo(rightPort.Order);
                 return byOrder != 0 ? byOrder : string.CompareOrdinal(left.TargetPort, right.TargetPort);
             });

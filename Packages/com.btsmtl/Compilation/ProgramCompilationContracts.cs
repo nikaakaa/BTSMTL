@@ -701,7 +701,7 @@ namespace BTSMTL.Compilation
         {
             ProgramExecutionSource a = left.Source;
             ProgramExecutionSource b = right.Source;
-            int result = a.TargetKind.CompareTo(b.TargetKind);
+            int result = ((byte)a.TargetKind).CompareTo((byte)b.TargetKind);
             if (result != 0) return result;
             result = a.TargetIndex.CompareTo(b.TargetIndex);
             if (result != 0) return result;
@@ -715,7 +715,7 @@ namespace BTSMTL.Compilation
             if (result != 0) return result;
             result = string.CompareOrdinal(a.CompiledPortId, b.CompiledPortId);
             if (result != 0) return result;
-            return a.ValuePortDirection.CompareTo(b.ValuePortDirection);
+            return ((byte)a.ValuePortDirection).CompareTo((byte)b.ValuePortDirection);
         }
     }
 
