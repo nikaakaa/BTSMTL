@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using BTSMTL.Orchestration;
 using ThirdPersonSimulation;
 
@@ -84,6 +86,20 @@ namespace BTSMTL.Compilation
 
     public static class BtsmtlOrchestrationGraphCompiler
     {
+        static readonly ConditionalWeakTable<ProgramExecutionSource,
+            ConcurrentDictionary<(string GraphId, string TemplateIdentity), string>> s_ExecutionIdentities = new();
+
+        static string ExecutionIdentity(ProgramExecutionSource source, string graphId, string templateIdentity) =>
+            s_ExecutionIdentities.GetValue(source, static _ => new()).GetOrAdd((graphId, templateIdentity),
+                static (identity, input) => input.TargetKind == ProgramSourceTargetKind.Operation
+                    ? StableHash.Compute("orchestration-operation", identity.GraphId,
+                        input.GraphInvocationPath, identity.TemplateIdentity).ToString()
+                    : StableHash.Compute("orchestration-invocation", identity.GraphId,
+                        input.SourceInvocationPath, input.GraphInvocationPath, input.GraphId,
+                        input.TimelineId, input.TrackId, input.ClipId,
+                        input.InvocationCallerKind.ToString(), input.InvocationCallerId,
+                        input.InvocationCallerClipId).ToString(), source);
+
         public static OrchestrationGraphContent<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>
             Compile<TScalar, TVector2, TVector3, TYaw, TQuaternion, TLowering>(
                 IReadOnlyList<SemanticOperation> operations, IReadOnlyList<SemanticLiteral> literals,
@@ -379,10 +395,10 @@ namespace BTSMTL.Compilation
                 {
                     ProgramExecutionSource source = m_SourceMap[i].Source;
                     if (source.TargetKind == ProgramSourceTargetKind.GraphInvocation)
-                        m_GraphInvocationIdentities[i] = GraphInvocationIdentity(source);
+                        m_GraphInvocationIdentities[i] = ExecutionIdentity(source, m_Identity.GraphId, null);
                     if (source.TargetKind == ProgramSourceTargetKind.Operation && m_OperationIdentities[source.TargetIndex] == null)
-                        m_OperationIdentities[source.TargetIndex] = StableHash.Compute("orchestration-operation", m_Identity.GraphId,
-                            source.GraphInvocationPath, m_Operations[source.TargetIndex].TemplateIdentity).ToString();
+                        m_OperationIdentities[source.TargetIndex] = ExecutionIdentity(source, m_Identity.GraphId,
+                            m_Operations[source.TargetIndex].TemplateIdentity);
                 }
                 for (int operationIndex = 0; operationIndex < m_OperationIdentities.Length; operationIndex++)
                     if (m_OperationIdentities[operationIndex] == null)
@@ -391,13 +407,6 @@ namespace BTSMTL.Compilation
 
             string ConstantOutputIdentity(int operationIndex, string portId) =>
                 StableHash.Compute("orchestration-constant-output", m_OperationIdentities[operationIndex], portId).ToString();
-
-            string GraphInvocationIdentity(ProgramExecutionSource source) =>
-                StableHash.Compute("orchestration-invocation", m_Identity.GraphId,
-                    source.SourceInvocationPath, source.GraphInvocationPath, source.GraphId,
-                    source.TimelineId, source.TrackId, source.ClipId,
-                    source.InvocationCallerKind.ToString(), source.InvocationCallerId,
-                    source.InvocationCallerClipId).ToString();
 
             void BuildPorts()
             {
