@@ -56,14 +56,12 @@ namespace BTSMTL.Orchestration
 
     public readonly struct OrchestrationProgramOutputCapacity
     {
-        internal OrchestrationProgramOutputCapacity(int graphOutputOperations, int requestCount, int valueCount)
+        internal OrchestrationProgramOutputCapacity(int requestCount, int valueCount)
         {
-            GraphOutputOperations = graphOutputOperations;
             RequestCount = requestCount;
             ValueCount = valueCount;
         }
 
-        public int GraphOutputOperations { get; }
         public int RequestCount { get; }
         public int ValueCount { get; }
     }
@@ -71,25 +69,22 @@ namespace BTSMTL.Orchestration
     public sealed class OrchestrationExecutionCapacity
     {
         readonly ReadOnlyMemory<int>[] m_OwnerInstances;
-        readonly OrchestrationProgramOutputCapacity[] m_Outputs;
         readonly int[] m_SourceDepths;
 
         OrchestrationExecutionCapacity(in OrchestrationExecutionStateCapacity state,
             int playbackCount, ReadOnlyMemory<int>[] ownerInstances,
-            OrchestrationProgramOutputCapacity[] outputs, int[] sourceDepths)
+            int[] sourceDepths)
         {
             State = state;
             PlaybackCount = playbackCount;
             m_OwnerInstances = ownerInstances;
-            m_Outputs = outputs;
             m_SourceDepths = sourceDepths;
         }
 
         public OrchestrationExecutionStateCapacity State { get; }
         public int PlaybackCount { get; }
-        public int ProgramCount => m_Outputs.Length;
+        public int ProgramCount => m_OwnerInstances.Length;
         public ReadOnlyMemory<int> OwnerInstances(int programIndex) => m_OwnerInstances[programIndex];
-        public OrchestrationProgramOutputCapacity Outputs(int programIndex) => m_Outputs[programIndex];
         public int SourceDepth(int programIndex) => m_SourceDepths[programIndex];
 
         internal static OrchestrationExecutionCapacity Prepare<TValue>(
@@ -104,7 +99,6 @@ namespace BTSMTL.Orchestration
             var roots = new Dictionary<(int Program, int Owner), (int Frames, int Playbacks, int[] Owners, int Depth)>();
             var ownerInstanceBuffers = new int[programs.Length][];
             var ownerInstances = new ReadOnlyMemory<int>[programs.Length];
-            var outputs = new OrchestrationProgramOutputCapacity[programs.Length];
             var sourceDepths = new int[programs.Length];
             int operations = 0;
             int values = 0;
@@ -173,28 +167,8 @@ namespace BTSMTL.Orchestration
                 frameCount = checked(frameCount + checked(admission.MaximumInstances * frames));
                 playbackCount = checked(playbackCount + checked(admission.MaximumInstances * playbacks));
             }
-            for (int programIndex = 0; programIndex < programs.Length; programIndex++)
-            {
-                OrchestrationProgram<TValue> program = programs[programIndex];
-                int outputOperations = 0;
-                int maximumOutputPorts = 0;
-                for (int operationIndex = 0; operationIndex < program.OperationCount; operationIndex++)
-                {
-                    ref readonly OrchestrationOperation operation = ref program.Operation(operationIndex);
-                    if (operation.Code == OrchestrationOperationCode.EmitOutput &&
-                        ownerInstanceBuffers[programIndex][operation.ExecutionFrameOwnerOperationIndex] != 0)
-                    {
-                        outputOperations++;
-                        maximumOutputPorts = Math.Max(maximumOutputPorts,
-                            program.OutputTemplate(operation.Integer0).Ports.Length);
-                    }
-                }
-                outputs[programIndex] = new OrchestrationProgramOutputCapacity(outputOperations,
-                    outputOperations == 0 ? 0 : program.MaximumOperationEvaluations,
-                    checked(program.MaximumOperationEvaluations * maximumOutputPorts));
-            }
             var state = new OrchestrationExecutionStateCapacity(frameCount, operations, values);
-            return new OrchestrationExecutionCapacity(in state, playbackCount, ownerInstances, outputs, sourceDepths);
+            return new OrchestrationExecutionCapacity(in state, playbackCount, ownerInstances, sourceDepths);
         }
 
         static int AccumulateOwners(int programIndex, int owner, int count,

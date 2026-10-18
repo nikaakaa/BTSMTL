@@ -23,7 +23,7 @@ namespace BTSMTL.Orchestration
         internal int OutputValueCount;
 
         public OrchestrationExecutionWorkspace(OrchestrationProgram<TValue> program, OrchestrationGraphContent<TValue> content,
-            OrchestrationExecutionCapacity capacity, int programIndex,
+            OrchestrationExecutionCapacity capacity, int programIndex, OrchestrationProgramTickCapacity tickCapacity,
             int traceCapacity = 0, int stateTraceFrameCapacity = 0)
         {
             int executionFrameCapacity = capacity.State.FrameCount;
@@ -56,7 +56,7 @@ namespace BTSMTL.Orchestration
             OutputObservationWritten = new bool[program.ValueEvaluationSlotCount];
             TraceEvents = new OrchestrationTraceEvent<TValue>[traceCapacity];
             StateFrames = new OrchestrationStateTraceFrame[stateTraceFrameCapacity];
-            OrchestrationProgramOutputCapacity output = capacity.Outputs(programIndex);
+            OrchestrationProgramOutputCapacity output = tickCapacity.CursorOutputs;
             OutputRequests = new OrchestrationOutputRequest[output.RequestCount];
             OutputValues = new TValue[output.ValueCount];
         }

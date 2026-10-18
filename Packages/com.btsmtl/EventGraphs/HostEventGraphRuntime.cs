@@ -61,7 +61,7 @@ namespace BTSMTL.EventGraphs
                 new[] { program }, new[] { new OrchestrationRootAdmission(
                     new[] { new OrchestrationExecutionRoot(0, program.RootOperationIndex) }, 1) },
                 ReadOnlySpan<OrchestrationTimelineCallCapacity>.Empty);
-            _ = OrchestrationExecutionTickCapacity.Prepare<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>(
+            OrchestrationExecutionTickCapacity tickCapacity = OrchestrationExecutionTickCapacity.Prepare<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>(
                 new[] { program }, new[] { content.Extensions },
                 new[] { new OrchestrationProgramTickBudget(1, 1) }, capacity,
                 ReadOnlySpan<OrchestrationTimelineTickContentCapacity>.Empty);
@@ -78,7 +78,8 @@ namespace BTSMTL.EventGraphs
             OrchestrationStateBinding.AdoptMemory(in preparedLayout, in m_MemoryLayout, m_Candidate);
             m_Inputs = new OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>[m_Bindings.InputCapacity];
             m_Output = new EventGraphVariableBuffer(m_Bindings.PublishedSlots.Length, m_Bindings.Prepared.Identities.Table);
-            m_Workspace = new OrchestrationExecutionWorkspace<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>(program, content, capacity, 0);
+            m_Workspace = new OrchestrationExecutionWorkspace<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>(
+                program, content, capacity, 0, tickCapacity.Programs.Span[0]);
             m_Extensions = OrchestrationExtensionBindings<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>, ValueTuple>.Prepare(
                 content.Extensions.Span, ReadOnlySpan<int>.Empty, Array.Empty<IOrchestrationExtension>());
 #if UNITY_EDITOR

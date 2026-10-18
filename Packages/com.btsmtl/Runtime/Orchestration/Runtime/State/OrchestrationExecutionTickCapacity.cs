@@ -109,12 +109,13 @@ namespace BTSMTL.Orchestration
     {
         internal OrchestrationProgramTickCapacity(in OrchestrationProgramTickBudget budget,
             long countedOperationEvaluations, OrchestrationOperationTickCapacity[] operations,
-            OrchestrationTimelineTickCapacity[] timelines)
+            OrchestrationTimelineTickCapacity[] timelines, in OrchestrationProgramOutputCapacity cursorOutputs)
         {
             Budget = budget;
             CountedOperationEvaluations = countedOperationEvaluations;
             Operations = operations;
             Timelines = timelines;
+            CursorOutputs = cursorOutputs;
             long extensions = 0;
             long samples = 0;
             long rows = 0;
@@ -136,6 +137,7 @@ namespace BTSMTL.Orchestration
         public long ExtensionInvocations { get; }
         public long LogicSampleInvocations { get; }
         public long LogicSampleRows { get; }
+        public OrchestrationProgramOutputCapacity CursorOutputs { get; }
     }
 
     public sealed class OrchestrationExecutionTickCapacity
@@ -184,6 +186,8 @@ namespace BTSMTL.Orchestration
                 var operations = new OrchestrationOperationTickCapacity[program.OperationCount];
                 var timelineResults = new OrchestrationTimelineTickCapacity[program.OperationCount];
                 ReadOnlySpan<int> owners = executionCapacity.OwnerInstances(programIndex).Span;
+                int outputRequests = 0;
+                int outputValues = 0;
                 for (int operationIndex = 0; operationIndex < program.OperationCount; operationIndex++)
                 {
                     ref readonly OrchestrationOperation operation = ref program.Operation(operationIndex);
@@ -197,12 +201,20 @@ namespace BTSMTL.Orchestration
                         ? checked(evaluations * checked(1 + analysis.UncountedEvaluations[operationIndex])) : 0;
                     long facts = checked(evaluations * checked(analysis.DirectFacts(operationIndex) +
                         analysis.UncountedFacts[operationIndex]));
+                    long outputInvocations = operation.Code == OrchestrationOperationCode.EmitOutput
+                        ? analysis.ExecuteVisits[operationIndex] : 0;
+                    if (operation.Code == OrchestrationOperationCode.EmitOutput &&
+                        owners[operation.ExecutionFrameOwnerOperationIndex] != 0)
+                    {
+                        outputRequests = checked(outputRequests + (int)outputInvocations);
+                        outputValues = checked(outputValues + (int)(outputInvocations *
+                            program.OutputTemplate(operation.Integer0).Ports.Length));
+                    }
                     operations[operationIndex] = new OrchestrationOperationTickCapacity(
                         action ? checked((long)budget.OuterInvocationCount * analysis.ExecuteVisits[operationIndex]) : 0,
                         evaluate, action ? stops : 0, hooks, facts,
                         checked(owners[operation.ExecutionFrameOwnerOperationIndex] + execution),
-                        operation.Code == OrchestrationOperationCode.EmitOutput
-                            ? checked((long)budget.OuterInvocationCount * analysis.ExecuteVisits[operationIndex]) : 0);
+                        checked((long)budget.OuterInvocationCount * outputInvocations));
                     if (operation.Code != OrchestrationOperationCode.Timeline)
                         continue;
                     if (!timelines.TryGetValue((programIndex, operationIndex), out OrchestrationTimelineTickContentCapacity content))
@@ -218,8 +230,9 @@ namespace BTSMTL.Orchestration
                         checked(timelineExecutions * content.LogicSampleInvocationsPerAdvance),
                         checked(timelineExecutions * content.LogicSampleRowsPerAdvance));
                 }
+                var cursorOutputs = new OrchestrationProgramOutputCapacity(outputRequests, outputValues);
                 result[programIndex] = new OrchestrationProgramTickCapacity(in budget, evaluations,
-                    operations, timelineResults);
+                    operations, timelineResults, in cursorOutputs);
             }
             return new OrchestrationExecutionTickCapacity(result);
         }
