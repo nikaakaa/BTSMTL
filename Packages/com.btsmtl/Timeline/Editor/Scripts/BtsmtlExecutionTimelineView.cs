@@ -460,7 +460,7 @@ namespace BTSMTL.Timeline.Editor
                 RuntimeExecutionSpan span = ((Clip)clip).Span;
                 return () => m_Open(span);
             }
-            public void RequestRepaint() => m_Repaint();
+            public void RequestRepaint(long inputStartedAt) => m_Repaint();
             public bool CanPasteClip => false;
             static InvalidOperationException ReadOnly() => new InvalidOperationException("执行记录只读，不能修改已发生的调用。");
             public void AddTrack() => throw ReadOnly();
@@ -481,7 +481,7 @@ namespace BTSMTL.Timeline.Editor
             public void CopyClip(IEmbeddedTimelineClipBinding clip) => throw ReadOnly();
             public void PasteClip(IEmbeddedTimelineTrackBinding track, double time) => throw ReadOnly();
             public void BeginEdit(string undoName, EmbeddedTimelineEditKind kind = EmbeddedTimelineEditKind.Content) => throw ReadOnly();
-            public void CommitEdit() => throw ReadOnly();
+            public void CommitEdit(long inputStartedAt) => throw ReadOnly();
             public void CancelEdit() => throw ReadOnly();
 
             sealed class Group : IEmbeddedTimelineGroupBinding

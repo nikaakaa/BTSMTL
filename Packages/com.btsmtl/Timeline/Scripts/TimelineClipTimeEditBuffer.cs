@@ -13,7 +13,7 @@ namespace BTSMTL.Timeline
         int ClipCount { get; }
         string ClipIdentityAt(int index);
         void BeginEdit(string name);
-        bool TrySetRanges(ReadOnlySpan<TimelineClipTimeRange> ranges, out string error);
+        bool TrySetRanges(ReadOnlySpan<TimelineClipTimeRange> ranges, long inputStartedAt, out string error);
         void NotifyControlsSynchronized();
         void CompleteEdit();
         void CancelEdit();

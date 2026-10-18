@@ -91,7 +91,7 @@ namespace BTSMTL.Timeline.Editor
                     m_SourceResourceClipId = editing ? null : selected.AuthoringId;
                     m_Tracks[selected.Track.AuthoringId].ShowCurves = true;
                     ResourceChanged?.Invoke();
-                    RequestRepaint();
+                    Repaint();
                 }
                 if (GUILayout.Button("创建独立资源并重绑"))
                     m_Request.AuthoringHost.ShowSourceCreation(Session.GridPipeline, source.SourceAssetType, asset, replacement =>
@@ -146,7 +146,7 @@ namespace BTSMTL.Timeline.Editor
         public bool DisplayFrames
         {
             get => m_DisplayFrames;
-            set { m_DisplayFrames = value; RequestRepaint(); }
+            set { m_DisplayFrames = value; Repaint(); }
         }
         public float SnapInterval => m_Session.SnapInterval;
         public float StepInterval => m_Session.SnapMode == TimelineAuthoringSnapMode.None
@@ -254,7 +254,7 @@ namespace BTSMTL.Timeline.Editor
                 if (!string.IsNullOrEmpty(m_Error))
                     EditorGUILayout.HelpBox(m_Error, MessageType.Error);
                 if (GUI.changed)
-                    m_Owner.RequestRepaint();
+                    m_Owner.Repaint();
             }
         }
 
@@ -272,7 +272,7 @@ namespace BTSMTL.Timeline.Editor
                 if (m_CurrentTime == nextTime)
                     return;
                 m_CurrentTime = nextTime;
-                RequestRepaint();
+                Repaint();
             }
         }
         public float ViewTimeMin
@@ -284,7 +284,7 @@ namespace BTSMTL.Timeline.Editor
                 if (Mathf.Approximately(m_ViewTimeMin, nextValue))
                     return;
                 m_ViewTimeMin = nextValue;
-                RequestRepaint();
+                Repaint();
             }
         }
         public float ViewTimeMax
@@ -296,7 +296,7 @@ namespace BTSMTL.Timeline.Editor
                 if (Mathf.Approximately(m_ViewTimeMax, nextValue))
                     return;
                 m_ViewTimeMax = nextValue;
-                RequestRepaint();
+                Repaint();
             }
         }
         public bool IsReadOnly => m_ReadOnly || m_Session.IsReadOnly;
@@ -353,7 +353,7 @@ namespace BTSMTL.Timeline.Editor
                                 ? selectedSection.Source
                                 : null);
             if (changed)
-                RequestRepaint();
+                Repaint();
         }
 
         public void BeginEdit(string undoName, EmbeddedTimelineEditKind kind = EmbeddedTimelineEditKind.Content)
@@ -372,7 +372,7 @@ namespace BTSMTL.Timeline.Editor
                 m_Request.TimeRangePreview.BeginEdit(m_EditUndoName);
         }
 
-        public void CommitEdit()
+        public void CommitEdit(long inputStartedAt)
         {
             if (!m_EditActive)
                 return;
@@ -388,7 +388,7 @@ namespace BTSMTL.Timeline.Editor
                 try
                 {
                     m_Clips[m_SourceResourceClipId].CommitResourceCurves();
-                    RequestRepaint();
+                    Repaint();
                 }
                 catch (Exception exception)
                 {
@@ -399,7 +399,7 @@ namespace BTSMTL.Timeline.Editor
             }
             if (m_Request.TimeRangePreview != null && m_EditKind == EmbeddedTimelineEditKind.ClipTimeRange)
             {
-                bool accepted = FlushTimePreviewRanges();
+                bool accepted = FlushTimePreviewRanges(inputStartedAt);
                 m_EditActive = false;
                 if (accepted)
                     m_Request.TimeRangePreview.CompleteEdit();
@@ -409,7 +409,7 @@ namespace BTSMTL.Timeline.Editor
                     Rebuild();
                 }
                 m_EditSourceRevision = 0;
-                RequestRepaint();
+                Repaint();
                 return;
             }
             float previousLength = Length;
@@ -466,7 +466,7 @@ namespace BTSMTL.Timeline.Editor
                 clip.SynchronizeTimeRange();
             m_SourceRevision = Timeline.AuthoringRevision;
             ExpandViewToLength(previousLength);
-            RequestRepaint();
+            Repaint();
         }
 
         public void CancelEdit()
@@ -480,7 +480,7 @@ namespace BTSMTL.Timeline.Editor
             Rebuild(m_SourceResourceClipId != null);
         }
 
-        bool FlushTimePreviewRanges()
+        bool FlushTimePreviewRanges(long inputStartedAt)
         {
             using var marker = s_TimeEditInput.Auto();
             bool changed = false;
@@ -496,7 +496,7 @@ namespace BTSMTL.Timeline.Editor
             string error;
             try
             {
-                accepted = m_Request.TimeRangePreview.TrySetRanges(m_TimePreviewRanges, out error);
+                accepted = m_Request.TimeRangePreview.TrySetRanges(m_TimePreviewRanges, inputStartedAt, out error);
             }
             finally
             {
@@ -519,13 +519,15 @@ namespace BTSMTL.Timeline.Editor
         public bool ClipAdjustRangeOnly => m_Request.TimeRangePreview != null;
         public bool ResourceEditing => m_SourceResourceClipId != null;
 
-        public void RequestRepaint()
+        public void RequestRepaint(long inputStartedAt)
         {
             if (m_EditActive && m_EditKind == EmbeddedTimelineEditKind.ClipTimeRange &&
                 m_Request.TimeRangePreview != null && !m_CommittingEdit)
-                FlushTimePreviewRanges();
-            RepaintRequested?.Invoke();
+                FlushTimePreviewRanges(inputStartedAt);
+            Repaint();
         }
+
+        void Repaint() => RepaintRequested?.Invoke();
 
         public void AddTrack()
         {
