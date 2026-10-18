@@ -11,10 +11,13 @@ namespace BTSMTL.Authoring.Graph
     {
         sealed class MemberBinding
         {
-            public MemberBinding(BTSMTL.Authoring.Graph.GraphAuthoringFieldAttribute field, PropertyInfo[] read)
+            public MemberBinding(Type type, BTSMTL.Authoring.Graph.GraphAuthoringFieldAttribute field, PropertyInfo[] read)
             {
                 Field = field;
                 Read = read;
+                ParameterExpression target = Expression.Parameter(typeof(object), "target");
+                Value = Expression.Lambda<Func<object, object>>(
+                    Expression.Convert(ReadExpression(type, this, target), typeof(object)), target).Compile();
             }
 
             public BTSMTL.Authoring.Graph.GraphAuthoringFieldAttribute Field { get; }
@@ -23,12 +26,7 @@ namespace BTSMTL.Authoring.Graph
             public Delegate Choices;
             public Func<object, UnityEngine.Object> ResourceOwner;
             public Func<object, UnityEngine.Object, object> BindResourceAsset;
-            public object Value(object target)
-            {
-                foreach (PropertyInfo member in Read)
-                    target = member.GetValue(target);
-                return target;
-            }
+            public Func<object, object> Value { get; }
         }
 
         sealed class OperationBinding
@@ -66,7 +64,7 @@ namespace BTSMTL.Authoring.Graph
                 }
                 if (!field.ReadOnly && string.IsNullOrEmpty(field.WriteMember))
                     throw new InvalidOperationException($"节点'{type.FullName}'字段'{field.FieldId}'的公开作者成员绑定不完整。");
-                var binding = new MemberBinding(field, members.ToArray());
+                var binding = new MemberBinding(type, field, members.ToArray());
                 if (!string.IsNullOrEmpty(field.ChoicesMember))
                 {
                     var target = Expression.Parameter(typeof(object), "target");
