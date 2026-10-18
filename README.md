@@ -56,7 +56,7 @@ try {
 | --- | --- |
 | `Packages/com.btsmtl/Runtime/Orchestration` | 泛型编排合同、执行器、区段布局与输出 |
 | `Packages/com.btsmtl/Compilation` | Editor 通用语义合同、值端口、依赖目录、状态规则及图编译器，普通 .NET 工程同源 |
-| `Packages/com.btsmtl/Scripts`、`Authoring`、`EventGraphs` | 图节点、作者合同和 EventGraph 接入 |
+| `Packages/com.btsmtl/Scripts`、`Authoring`、`Graphs` | 基础值节点、作者字段合同、通用图作者与 Canvas 编译、宿主接入 |
 | `Packages/com.btsmtl/Timeline` | 整数 Timeline 运行核心、Unity 作者对象与编辑器 |
 | `Packages/com.thirdperson.gameplay/BlackboardConfiguration` | Luban 格式的黑板默认配置读取合同（程序集 `ThirdPersonSimulation.BlackboardConfiguration`），属于项目，不随 BTSMTL 分发 |
 | `Packages/com.btsmtl/Diagnostics`、`Editor` | 编排诊断、编辑窗口和界面资源 |

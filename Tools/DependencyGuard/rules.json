@@ -83,7 +83,7 @@
         "BTSMTL.Foundation": [
           "System.Runtime.CompilerServices.Unsafe.dll"
         ],
-        "BTSMTL.EventGraphs": [
+        "BTSMTL.Graphs": [
           "System.Runtime.CompilerServices.Unsafe.dll"
         ]
       }
@@ -320,29 +320,10 @@
       ]
     }
   ],
-  "nodeTypeTestRules": [
-    {
-      "id": "NO_STOCK_NODE_TYPE_BRANCH",
-      "reason": "宿主编译与作者工具不得按原版FlowCanvas叶子节点类型分支，须经BTSMTL.EventGraphs.EventGraphCapabilityCatalog的能力种类分派。",
-      "sourceAssemblies": [
-        "^ThirdPerson"
-      ],
-      "types": [
-        "FlowCanvas.Nodes.StartEvent",
-        "FlowCanvas.Nodes.UpdateEvent",
-        "FlowCanvas.Nodes.ParameterVariableNode",
-        "FlowCanvas.Nodes.GetVariable`1",
-        "FlowCanvas.Nodes.SetVariable`1",
-        "FlowCanvas.Nodes.SwitchBool",
-        "FlowCanvas.Nodes.Split",
-        "FlowCanvas.Nodes.Sequence"
-      ]
-    }
-  ],
   "dependencyRules": [
     {
       "id": "THIRD_PARTY_PLUGIN_INDEPENDENT",
-      "reason": "第三方插件保持原版独立，不得引用BTSMTL或宿主ThirdPerson程序集；BTSMTL对原版节点的支持在BTSMTL目录中外部登记。",
+      "reason": "第三方插件保持原版独立，不得引用BTSMTL或宿主ThirdPerson程序集；BTSMTL自身提供通用编排作者合同和节点。",
       "sourceAssemblies": [
         "^(?:ParadoxNotion|NodeCanvas|FlowCanvas|SLATE)$"
       ],
@@ -480,7 +461,7 @@
       "forbiddenAssemblies": [
         "^Unity",
         "\\.Unity(?:\\.|$)",
-        "^BTSMTL(?:$|\\.(?:Authoring|Diagnostics|EventGraphs)(?:$|\\.)|\\.Timeline(?:$|\\.(?:Tree|Unity)(?:$|\\.)))",
+        "^BTSMTL(?:$|\\.(?:Authoring|Diagnostics|Graphs)(?:$|\\.)|\\.Timeline(?:$|\\.(?:Tree|Unity)(?:$|\\.)))",
         "^ThirdPerson(?:Client|Character\\.(?:Animation|Presentation)|Camera|Audio|\\.Vfx|Rendering)"
       ],
       "forbiddenNamespaces": [

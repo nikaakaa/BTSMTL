@@ -95,7 +95,8 @@ namespace BTSMTL.Compilation
                 GraphExecutionIdentity identity, OrchestrationExecutionContract contract,
                 IReadOnlyList<OrchestrationExtensionReference> stateTransitionHooks,
                 TLowering lowering,
-                BtsmtlOrchestrationCompilationDomain<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>, TScalar> domain)
+                BtsmtlOrchestrationCompilationDomain<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>, TScalar> domain,
+                IReadOnlyDictionary<string, OrchestrationExecutionContract> entryContracts = null)
             where TScalar : unmanaged, IComparable<TScalar>, IEquatable<TScalar>
             where TVector2 : unmanaged
             where TVector3 : unmanaged
@@ -105,7 +106,7 @@ namespace BTSMTL.Compilation
             new Compilation<TScalar, TVector2, TVector3, TYaw, TQuaternion, TLowering>(
                 operations, literals, constantInputs, controlFlow, references, graphCalls, stateSlots,
                 scopes, catalog, sourceMap, entry, identity, contract, stateTransitionHooks, lowering,
-                domain).Build();
+                domain, entryContracts).Build();
 
         sealed class Compilation<TScalar, TVector2, TVector3, TYaw, TQuaternion, TLowering>
             where TScalar : unmanaged, IComparable<TScalar>, IEquatable<TScalar>
@@ -164,6 +165,7 @@ namespace BTSMTL.Compilation
             readonly OperationHandle m_Entry;
             readonly GraphExecutionIdentity m_Identity;
             readonly OrchestrationExecutionContract m_Contract;
+            readonly IReadOnlyDictionary<string, OrchestrationExecutionContract> m_EntryContracts;
             readonly IReadOnlyList<OrchestrationExtensionReference> m_StateTransitionHooks;
             readonly TLowering m_Lowering;
             readonly BtsmtlOrchestrationCompilationDomain<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>, TScalar> m_Domain;
@@ -202,7 +204,8 @@ namespace BTSMTL.Compilation
                 GraphExecutionIdentity identity, OrchestrationExecutionContract contract,
                 IReadOnlyList<OrchestrationExtensionReference> stateTransitionHooks,
                 TLowering lowering,
-                BtsmtlOrchestrationCompilationDomain<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>, TScalar> domain)
+                BtsmtlOrchestrationCompilationDomain<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>, TScalar> domain,
+                IReadOnlyDictionary<string, OrchestrationExecutionContract> entryContracts)
             {
                 m_Operations = operations;
                 m_Literals = literals;
@@ -217,6 +220,7 @@ namespace BTSMTL.Compilation
                 m_Entry = entry;
                 m_Identity = identity;
                 m_Contract = contract;
+                m_EntryContracts = entryContracts;
                 m_StateTransitionHooks = stateTransitionHooks;
                 m_Lowering = lowering;
                 m_Domain = domain;
@@ -1026,7 +1030,8 @@ namespace BTSMTL.Compilation
                 foreach (ProgramReference reference in m_References)
                     if (!reference.HasSourceOperation && reference.Kind == ProgramReferenceKind.Operation)
                         result.Add(new OrchestrationGraphEntry(Bind(reference.Identity),
-                            new OrchestrationExecutionEntry(reference.TargetIndex, m_Contract)));
+                            new OrchestrationExecutionEntry(reference.TargetIndex,
+                                m_EntryContracts == null ? m_Contract : m_EntryContracts[reference.Identity])));
                 if (result.Count == 0)
                     result.Add(new OrchestrationGraphEntry(Bind(m_Identity.GraphId), new OrchestrationExecutionEntry(m_Entry.Value, m_Contract)));
                 return result.ToArray();

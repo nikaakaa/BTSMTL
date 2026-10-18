@@ -3,7 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using FlowCanvas.Nodes;
-using BTSMTL.EventGraphs;
+using BTSMTL.Graphs;
 using ThirdPersonSimulation;
 
 namespace BTSMTL
@@ -25,7 +25,6 @@ namespace BTSMTL
         public OrchestrationOperationCode Code { get; }
         public int Variant { get; }
         public IReadOnlyDictionary<string, string> Inputs { get; }
-        public EventGraphCapabilityKind EventGraphCapability => EventGraphCapabilityKind.PureValue;
 
         public string Input(string nativeId) => Inputs[nativeId];
 
@@ -74,19 +73,19 @@ namespace BTSMTL
             Add<IntegerGreaterThan>("compare.int32.greater", OrchestrationOperationCode.Compare, comparison, 5);
             AddCalculation<FloatMultiply>(GraphCalculationKind.FloatMultiply);
             AddCalculation<FloatDivide>(GraphCalculationKind.FloatDivide);
-            AddCalculation<EventGraphTextEqualNode>(GraphCalculationKind.TextEqual);
-            AddCalculation<EventGraphFloatAbsNode>(GraphCalculationKind.FloatAbs);
-            AddCalculation<EventGraphFloatClampNode>(GraphCalculationKind.FloatClamp);
-            AddCalculation<EventGraphFloatMoveTowardsNode>(GraphCalculationKind.FloatMoveTowards);
-            AddCalculation<EventGraphVector3PlanarNode>(GraphCalculationKind.Vector3Planar);
-            AddCalculation<EventGraphVector3YNode>(GraphCalculationKind.Vector3Y);
-            AddCalculation<EventGraphVector2MagnitudeNode>(GraphCalculationKind.Vector2Magnitude);
-            AddCalculation<EventGraphVector2NormalizeNode>(GraphCalculationKind.Vector2Normalize);
-            AddCalculation<EventGraphVector2SubtractNode>(GraphCalculationKind.Vector2Subtract);
-            AddCalculation<EventGraphVector2SignedAngleNode>(GraphCalculationKind.Vector2SignedAngle);
-            AddCalculation<EventGraphQuaternionForwardNode>(GraphCalculationKind.QuaternionForward);
-            AddCalculation<EventGraphQuaternionAngleAxisNode>(GraphCalculationKind.QuaternionAngleAxis);
-            Add<EventGraphFloatSelectNode>("select.number", OrchestrationOperationCode.SelectValue,
+            AddCalculation<GraphTextEqualNode>(GraphCalculationKind.TextEqual);
+            AddCalculation<GraphFloatAbsNode>(GraphCalculationKind.FloatAbs);
+            AddCalculation<GraphFloatClampNode>(GraphCalculationKind.FloatClamp);
+            AddCalculation<GraphFloatMoveTowardsNode>(GraphCalculationKind.FloatMoveTowards);
+            AddCalculation<GraphVector3PlanarNode>(GraphCalculationKind.Vector3Planar);
+            AddCalculation<GraphVector3YNode>(GraphCalculationKind.Vector3Y);
+            AddCalculation<GraphVector2MagnitudeNode>(GraphCalculationKind.Vector2Magnitude);
+            AddCalculation<GraphVector2NormalizeNode>(GraphCalculationKind.Vector2Normalize);
+            AddCalculation<GraphVector2SubtractNode>(GraphCalculationKind.Vector2Subtract);
+            AddCalculation<GraphVector2SignedAngleNode>(GraphCalculationKind.Vector2SignedAngle);
+            AddCalculation<GraphQuaternionForwardNode>(GraphCalculationKind.QuaternionForward);
+            AddCalculation<GraphQuaternionAngleAxisNode>(GraphCalculationKind.QuaternionAngleAxis);
+            Add<GraphFloatSelectNode>("select.number", OrchestrationOperationCode.SelectValue,
                 Ports(("condition", "condition"), ("whenTrue", "whenTrue"), ("whenFalse", "whenFalse")));
             return new ReadOnlyDictionary<Type, BtsmtlNativeValueNodeDefinition>(nodes);
 

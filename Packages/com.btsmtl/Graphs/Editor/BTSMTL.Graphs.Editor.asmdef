@@ -1,0 +1,18 @@
+{
+    "name": "BTSMTL.Graphs.Editor",
+    "rootNamespace": "BTSMTL.Graphs.Editor",
+    "references": [
+        "BTSMTL", "BTSMTL.Graphs", "BTSMTL.Authoring", "BTSMTL.Compilation",
+        "BTSMTL.Foundation", "BTSMTL.Orchestration.Contracts", "BTSMTL.Orchestration.Runtime",
+        "FlowCanvas", "NodeCanvas", "ParadoxNotion"
+    ],
+    "includePlatforms": ["Editor"],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

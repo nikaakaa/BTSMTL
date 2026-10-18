@@ -68,7 +68,8 @@ namespace BTSMTL.Compilation
         public OrchestrationGraphContent<OrchestrationValue<Float32Scalar, Float32Vector2, Float32Vector3,
             Float32Yaw, Float32Quaternion>> BuildOrchestrationFloat32(OperationHandle entry, GraphExecutionIdentity identity,
             IBtsmtlOrchestrationContentEncoder<OrchestrationValue<Float32Scalar, Float32Vector2, Float32Vector3,
-                Float32Yaw, Float32Quaternion>, Float32Scalar> contentEncoder = null)
+                Float32Yaw, Float32Quaternion>, Float32Scalar> contentEncoder = null,
+            IReadOnlyDictionary<string, OrchestrationExecutionContract> entryContracts = null)
         {
             ValidateSingleChildControlFlow();
             if (!m_Report.IsValid)
@@ -81,7 +82,8 @@ namespace BTSMTL.Compilation
                 Array.Empty<OrchestrationExtensionReference>(),
                 new BtsmtlFloat32OrchestrationLowering(new List<Float32ScalarConversion>()),
                 new BtsmtlOrchestrationCompilationDomain<OrchestrationValue<Float32Scalar, Float32Vector2, Float32Vector3,
-                    Float32Yaw, Float32Quaternion>, Float32Scalar>(m_StateSchema, contentEncoder, null));
+                    Float32Yaw, Float32Quaternion>, Float32Scalar>(m_StateSchema, contentEncoder, null),
+                entryContracts);
         }
 
         public bool TryGetCatalogEntry(ProgramIdentityDependency dependency, out int index)

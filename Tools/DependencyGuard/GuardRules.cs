@@ -16,7 +16,6 @@ sealed class GuardRules
     public DependencyRule[] DependencyRules { get; set; } = [];
     public UnityPluginRule[] UnityPluginRules { get; set; } = [];
     public TimelineBoundaryRule[] TimelineBoundaryRules { get; set; } = [];
-    public NodeTypeTestRule[] NodeTypeTestRules { get; set; } = [];
     public VendorSourceProvenance[] VendorSourceProvenance { get; set; } = [];
     public UnityActualBoundaryRule UnityActualBoundary { get; set; } = new();
 
@@ -110,16 +109,6 @@ sealed class TimelineBoundaryRule
 
     public bool Applies(Module module) => GuardRules.Matches(SourceAssemblies, module.Name) ||
         GuardRules.Matches(SourcePackages, module.Package);
-}
-
-sealed class NodeTypeTestRule
-{
-    public string Id { get; set; } = "";
-    public string Reason { get; set; } = "";
-    public string[] SourceAssemblies { get; set; } = [];
-    public string[] Types { get; set; } = [];
-
-    public bool Applies(Module module) => GuardRules.Matches(SourceAssemblies, module.Name);
 }
 
 sealed class TimelineTypeFamily

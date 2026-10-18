@@ -147,10 +147,12 @@ namespace BTSMTL
 
         protected virtual (string Json, List<UnityEngine.Object> References) SerializeGraphSource(Graph graph)
         {
+            IBlackboard variables = graph is IBtsmtlGraphVariableSource source
+                ? source.SourceVariables : graph.blackboard;
             var snapshot = new GraphSource
             {
                 nodes = graph.allNodes.OrderBy(node => node.UID, StringComparer.Ordinal).ToList(),
-                localBlackboard = new BlackboardSource { variables = graph.blackboard.variables
+                localBlackboard = new BlackboardSource { variables = variables.variables
                     .OrderBy(value => value.Value.ID, StringComparer.Ordinal)
                     .ToDictionary(value => value.Key, value => value.Value, StringComparer.Ordinal) }
             };
