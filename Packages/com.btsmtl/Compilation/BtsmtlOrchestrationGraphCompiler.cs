@@ -580,6 +580,7 @@ namespace BTSMTL.Compilation
 
             void BuildValueSlots()
             {
+                bool[] persistentOutputs = CollectPersistentOutputs();
                 m_StateValueSlots = EmptyIndexes(m_StateSlots.Count);
                 var inputParameters = new HashSet<int>();
                 for (int i = 0; i < m_GraphCalls.Count; i++)
@@ -615,7 +616,7 @@ namespace BTSMTL.Compilation
                 {
                     if (!m_Operations[i].Extension.HasValue ||
                         m_Operations[i].Extension.Value.Kind != OrchestrationExtensionKind.Action || ExecutionOutputCount(i) == 0 ||
-                        !HasPersistentOutput(i))
+                        !persistentOutputs[i])
                         continue;
                     m_OutputOffsets[i] = m_DefaultValues.Count;
                     foreach (Port port in ExecutionOutputs(i))
@@ -958,22 +959,29 @@ namespace BTSMTL.Compilation
                         yield return port;
             }
 
-            bool HasPersistentOutput(int operationIndex)
+            bool[] CollectPersistentOutputs()
             {
-                foreach (SemanticDerivedInput input in m_Operations[operationIndex].DerivedInputs)
-                    if (input.Source == SemanticDerivedInputSource.SelfOutput)
-                        return true;
+                var result = new bool[m_Operations.Count];
+                for (int i = 0; i < m_Operations.Count; i++)
+                    foreach (SemanticDerivedInput input in m_Operations[i].DerivedInputs)
+                        if (input.Source == SemanticDerivedInputSource.SelfOutput)
+                        {
+                            result[i] = true;
+                            break;
+                        }
                 foreach (ProgramControlFlowEdge edge in m_ControlFlow)
-                    if (edge.Kind == ProgramControlFlowKind.Value && edge.Source.Value == operationIndex &&
-                        m_Ports[operationIndex].Output(edge.SourcePort).ConstantIndex < 0)
-                        return true;
+                    if (edge.Kind == ProgramControlFlowKind.Value &&
+                        m_Ports[edge.Source.Value].Output(edge.SourcePort).ConstantIndex < 0)
+                        result[edge.Source.Value] = true;
                 foreach (ProgramSourceMapEntry entry in m_SourceMap)
-                    if (entry.Source.TargetKind == ProgramSourceTargetKind.OperationPort &&
-                        entry.Source.TargetIndex == operationIndex &&
-                        entry.Source.ValuePortDirection == ProgramValuePortDirection.Output &&
-                        m_Ports[operationIndex].Output(entry.Source.CompiledPortId).ConstantIndex < 0)
-                        return true;
-                return false;
+                {
+                    ProgramExecutionSource source = entry.Source;
+                    if (source.TargetKind == ProgramSourceTargetKind.OperationPort &&
+                        source.ValuePortDirection == ProgramValuePortDirection.Output &&
+                        m_Ports[source.TargetIndex].Output(source.CompiledPortId).ConstantIndex < 0)
+                        result[source.TargetIndex] = true;
+                }
+                return result;
             }
 
             int BoundStateSlot(int operationIndex, string portId)
