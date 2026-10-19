@@ -207,10 +207,10 @@ namespace ThirdPersonSimulation
                     (!math.IsZero(math.X2(inputDirection)) || !math.IsZero(math.Y2(inputDirection))))
                     targetYaw = math.YawFromDirection(math.X2(inputDirection), math.Y2(inputDirection));
             }
-            TScalar amount = math.Clamp(math.Multiply(response, delta), math.Zero, math.One);
             TYaw desired = math.Yaw(math.Add(math.Degrees(targetYaw), parameters.YawOffset));
-            yawDelta = math.Multiply(math.Clamp(math.DeltaYaw(currentYaw, desired),
-                math.Negate(parameters.MaximumYaw), parameters.MaximumYaw), amount);
+            yawDelta = MotionResponseCalculation<TScalar, TMath>.Evaluate(
+                math.Clamp(math.DeltaYaw(currentYaw, desired), math.Negate(parameters.MaximumYaw), parameters.MaximumYaw),
+                response, delta);
             previousDirectionDelta = math.RotatePlanar(localDelta, bodyYaw);
             nextDirectionDelta = math.RotatePlanar(localDelta, math.Yaw(math.Add(math.Degrees(currentYaw), yawDelta)));
         }

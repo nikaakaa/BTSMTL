@@ -71,11 +71,26 @@ namespace ThirdPersonSimulation
             TMath math = default;
             TScalar delta = math.Multiply(nominalTickDelta, timeScale);
             TScalar maximumYaw = math.Multiply(turnSpeed, delta);
-            displacement = math.Vector3(
+            displacement = EvaluateConstantDisplacement(move, moveSpeed, delta);
+            yaw = ResolveYaw(move, bodyYaw, maximumYaw);
+        }
+
+        public static TVector3 EvaluateConstantDisplacement(TVector2 move, TScalar moveSpeed, TScalar delta)
+        {
+            TMath math = default;
+            return math.Vector3(
                 math.Multiply(math.Multiply(math.X2(move), moveSpeed), delta),
                 math.Zero,
                 math.Multiply(math.Multiply(math.Y2(move), moveSpeed), delta));
-            yaw = ResolveYaw(move, bodyYaw, maximumYaw);
+        }
+
+        public static TScalar EvaluateResponseYaw(TVector2 move, TYaw bodyYaw, TScalar response, TScalar delta)
+        {
+            TMath math = default;
+            if (math.IsVector2Zero(move))
+                return math.Zero;
+            TYaw desired = math.YawFromDirection(math.X2(move), math.Y2(move));
+            return MotionResponseCalculation<TScalar, TMath>.Evaluate(math.DeltaYaw(bodyYaw, desired), response, delta);
         }
 
         static TScalar ResolveYaw(TVector2 move, TYaw bodyYaw, TScalar maximumYaw)
@@ -95,12 +110,7 @@ namespace ThirdPersonSimulation
         {
             TMath math = default;
             if (profile.DisplacementMode == LocomotionInputMotionDisplacementMode.ConstantSpeed)
-            {
-                return math.Vector3(
-                    math.Multiply(math.Multiply(math.X2(move), profile.MoveSpeed), profile.TickDelta),
-                    math.Zero,
-                    math.Multiply(math.Multiply(math.Y2(move), profile.MoveSpeed), profile.TickDelta));
-            }
+                return EvaluateConstantDisplacement(move, profile.MoveSpeed, profile.TickDelta);
             if (math.IsVector2Zero(move))
                 return math.ZeroVector3;
             TScalar fromTime = math.Divide(math.FromInt32(elapsedTicks), profile.TickRate);
