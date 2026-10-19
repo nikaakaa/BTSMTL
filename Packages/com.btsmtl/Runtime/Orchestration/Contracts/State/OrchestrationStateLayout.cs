@@ -31,10 +31,10 @@ namespace BTSMTL.Orchestration
             Identity.ReadValueStorage(IsValid: out _, m_A: out identity0, m_B: out identity1,
                 m_C: out identity2, m_D: out identity3);
 
-        internal OrchestrationStateView BindCandidate(Span<byte> memory) =>
+        public OrchestrationStateView BindCandidate(Span<byte> memory) =>
             new OrchestrationStateView(memory);
 
-        internal ReadOnlyOrchestrationStateView BindCommitted(ReadOnlySpan<byte> memory) =>
+        public ReadOnlyOrchestrationStateView BindCommitted(ReadOnlySpan<byte> memory) =>
             new ReadOnlyOrchestrationStateView(memory);
 
         public void RequireCompatible(in OrchestrationStateLayout source)
