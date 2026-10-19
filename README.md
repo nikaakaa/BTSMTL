@@ -32,6 +32,16 @@ Unity 通过各包原有 asmdef 编译同一份源码。3C 的 Assets 中不保�
 
 `com.btsmtl` 全部程序集（含 Diagnostics 与 Diagnostics.Editor）只引用 Foundation，包依赖只有 Foundation 与 Unity 官方包。诊断只定义编排自身的图、状态机、Timeline、黑板与数值通道，另留一个中立的 `Host` 通道；宿主事件经 `RuntimeHostTraceKinds.Register(编号, 名称, 采集级别)` 登记，编号写入预览事件文件，只追加不复用。BTSMTL 不含动作、GE、运动、落脚、装备、动画、相机或 Motion Matching 词汇；预览事件文件为 Version 9、每条 528 字节。依赖守护 `BTSMTL_NO_GAMEPLAY_SDK` 禁止 BTSMTL 程序集引用任何 `ThirdPerson*` 程序集或 `com.thirdperson.*` 包。Gameplay、领域合同、Quantum 数学与 MemoryPack 单向引用 BTSMTL；BTSMTL 不引用这些宿主实现。Photon Quantum SDK 由使用 Quantum 的宿主提供。Timeline 编辑外围的旧玩法引用仍在清理，包级依赖解除不等于所有 Unity 程序集已经完成解耦。
 
+## Timeline 作者预览与门
+
+`Compilation/Analysis/OrchestrationStaticQuery` 从正式语义操作、连线、来源与内容引用读取状态绑定、条件读取和 Clip 状态提供者；领域经 `IOrchestrationStateKeyDeclarations` 声明自己的状态键。`TimelineDoorModel` 计算门区间与去向，`TimelineStaticChain` 结合输入成立区间和逐条运行数据假设推导后续分段／状态，不执行作者图，也不把结果保存为另一份作者配置。同刻先检查 AnyState 转移，再推进 Timeline，最后检查普通状态转移；转移按较小优先级、声明顺序选择。
+
+Section 的 `NextSectionId` 只指向更晚的分段。逻辑 TreeClip 在有效区间内请求继续，调度器沿原回绕机制跳到下一段，被跳过区间不发 Marker 或 Clip 起止；未请求时在当前分段终点完成。循环播放不配置分段继续。动作身份与状态体不因分段跳转重启，待跳转请求和当前分段随正式状态捕获与恢复。分支和跨动作转移继续由 FSM 处理。
+
+Timeline 窗口的资产预览由 `TimelineAssetPreviewHost` 持有独立 `PreviewSceneStage`、准备内容和游标。`ITimelineAssetPreviewProvider` 提供配置、专用场景、输入请求元数据及会话入口；`ITimelineAssetPreviewInstance` 装配领域，`ITimelineDomainPreview` 消费正式目标采样。宿主通过正式表现图执行与领域模块完整显示输出，框架不解释业务节点；窗口只编辑作者资产与预览偏好，缺少输入时保留日程入口并显示原因。切换模式先结束原候选与 Stage，再进入目标模式，异步准备归本次取消令牌所有。
+
+`BtsmtlTimeBarView` 共用于 FSM 节点迷你时间条、资产推导链与执行记录。执行记录由原采集累加器按状态实例配对，播放携带状态来源并保存逐 Tick 游标，拖动时按实际记录换算本地时间；跳转处吸附、记录不足拒绝。宿主通过 `IBtsmtlExecutionTimelineAuthoringHost` 提供唯一时间修改事务，只允许 Clip／TreeClip 移动和裁剪；一手势一 Undo，候选完整采用后再替换执行投影。
+
 ## 普通 .NET 接入
 
 `BTSMTL.sln` 装配 Foundation、Shared、编排合同、运行时与通用编译层、整数 Timeline、Luban、黑板默认配置与两个生成工具；Unity asmdef 与普通 .NET 工程编译同一份实现。这些编排工程不需要 Photon DLL。正式 solution 构建先执行依赖守护，源码或引用方向违规时直接失败。

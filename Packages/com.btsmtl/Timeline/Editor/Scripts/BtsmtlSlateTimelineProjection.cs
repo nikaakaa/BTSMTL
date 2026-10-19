@@ -174,6 +174,12 @@ namespace BTSMTL.Timeline.Editor
                 s_Current.m_Binding.DrawSourceResourceInspector(clip);
         }
         public event Action<TimelineEditorSelection> SelectionChanged;
+        public float CurrentTime => m_Binding.CurrentTime;
+        public void SetAuthoringClipLabels(IReadOnlyDictionary<string, string> labels)
+        {
+            m_Binding.SetAuthoringClipLabels(labels);
+            m_EmbeddedEditor.RequestEmbeddedRepaint();
+        }
         public event Action<string> AuthoringIssue;
 
         public void ApplyFormalMutation(Action mutation, string undoName)

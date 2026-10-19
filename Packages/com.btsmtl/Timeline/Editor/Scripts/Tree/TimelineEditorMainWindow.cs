@@ -88,7 +88,7 @@ namespace BTSMTL.Timeline.Editor
             s_Controller?.OnWindowClosed(window);
     }
 
-    public sealed class TimelineEditorWindow : EditorWindow
+    public sealed partial class TimelineEditorWindow : EditorWindow
     {
         static readonly ProfilerMarker s_Open = new("Workbench.TimelineWindow.Open");
         static readonly ProfilerMarker s_Bind = new("Workbench.TimelineWindow.Bind");
@@ -442,6 +442,7 @@ namespace BTSMTL.Timeline.Editor
         {
             wantsMouseMove = true;
             s_Windows.Add(this);
+            Undo.undoRedoPerformed += QueueDoorQueryRefresh;
         }
 
         public void CreateGUI()
@@ -472,6 +473,10 @@ namespace BTSMTL.Timeline.Editor
             using var profile = s_Bind.Auto();
             if (timeline == null || !serializedOwner || string.IsNullOrEmpty(serializedPropertyPath))
                 throw new InvalidOperationException("TimelineEditorWindow requires a bound TimelineData owner/path.");
+
+            if ((TimelineAssetPreviewHost.Shared.IsOpen || TimelineAssetPreviewHost.Shared.IsOpeningSession) &&
+                TimelineAssetPreviewHost.Shared.Source != serializedOwner)
+                TimelineAssetPreviewHost.Shared.Close();
 
             DisposeView();
             m_SerializedOwner = serializedOwner;
@@ -537,7 +542,10 @@ namespace BTSMTL.Timeline.Editor
             m_SlateSurface.style.flexGrow = 1f;
             m_SlateSurface.style.flexShrink = 1f;
             m_SlateSurface.style.minHeight = 320f;
-            rootVisualElement.Add(m_SlateSurface);
+            var timelineRow = new VisualElement { style = { flexDirection = FlexDirection.Row, flexGrow = 1f } };
+            timelineRow.Add(m_SlateSurface);
+            timelineRow.Add(CreateDoorExitsPanel());
+            rootVisualElement.Add(timelineRow);
         }
 
         void BuildUnboundView()
@@ -637,6 +645,10 @@ namespace BTSMTL.Timeline.Editor
 
         void OnDisable()
         {
+            Undo.undoRedoPerformed -= QueueDoorQueryRefresh;
+            if ((TimelineAssetPreviewHost.Shared.IsOpen || TimelineAssetPreviewHost.Shared.IsOpeningSession) &&
+                TimelineAssetPreviewHost.Shared.Source == SourceAsset)
+                TimelineAssetPreviewHost.Shared.Close();
             s_Windows.Remove(this);
             WindowClosed?.Invoke(this);
             TimelineWorkspaceModeBridge.OnWindowClosed(this);
@@ -645,6 +657,8 @@ namespace BTSMTL.Timeline.Editor
 
         void DisposeView()
         {
+            DisposeAssetPreviewBindings();
+            DisposeDoorQueryBindings();
             if (m_Timeline != null)
                 m_Timeline.OnValueChanged -= OnTimelineValueChanged;
             if (m_SlateProjection != null)
@@ -680,6 +694,10 @@ namespace BTSMTL.Timeline.Editor
                 Mathf.Max(1f, rect.height),
                 BeginWindows,
                 EndWindows);
+            var preview = TimelineAssetPreviewHost.Shared;
+            if (preview.IsOpen && preview.Source == SourceAsset && preview.SampledSource == SourceAsset &&
+                preview.LocalTime != m_SlateProjection.CurrentTime)
+                preview.SetLocalTime(m_SlateProjection.CurrentTime);
         }
 
         TimelineEditorBindingState BindingState => new TimelineEditorBindingState(
@@ -702,6 +720,7 @@ namespace BTSMTL.Timeline.Editor
             var header = new VisualElement();
             header.Add(m_Toolbar.Toolbar);
             header.Add(m_Toolbar.Status);
+            header.Add(CreateAssetPreviewControls());
             return header;
         }
 
@@ -757,6 +776,7 @@ namespace BTSMTL.Timeline.Editor
 
         void OnTimelineValueChanged()
         {
+            QueueDoorQueryRefresh();
             if (m_TimeRangePreview?.IsEditing == true)
                 return;
             m_Toolbar?.SetSourceSummary(BindingState.CreateSourceSummary());

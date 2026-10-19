@@ -33,6 +33,9 @@ namespace BTSMTL.Timeline.Editor
         bool m_CommittingEdit;
         EmbeddedTimelineEditKind m_EditKind;
         BtsmtlTimelineClipBinding[] m_TimePreviewClips = Array.Empty<BtsmtlTimelineClipBinding>();
+        IReadOnlyDictionary<string, string> m_AuthoringClipLabels;
+
+        public void SetAuthoringClipLabels(IReadOnlyDictionary<string, string> labels) => m_AuthoringClipLabels = labels;
         TimelineClipTimeRange[] m_TimePreviewRanges = Array.Empty<TimelineClipTimeRange>();
         float m_CurrentTime;
         bool m_DisplayFrames;
@@ -1542,7 +1545,9 @@ namespace BTSMTL.Timeline.Editor
             IEmbeddedTimelineTrackBinding IEmbeddedTimelineClipBinding.Track => m_Track;
             public bool IsTimeQuantized => false;
             public string AuthoringId => Source.AuthoringId;
-            public string DisplayName => Source.Name;
+            public string DisplayName => m_Owner.m_AuthoringClipLabels != null &&
+                m_Owner.m_AuthoringClipLabels.TryGetValue(AuthoringId, out string label)
+                    ? $"{Source.Name} {label}" : Source.Name;
             public string Info => m_Info;
             public bool IsActive => m_Track.IsActive;
             public bool IsValid => !Source.Invalid;
