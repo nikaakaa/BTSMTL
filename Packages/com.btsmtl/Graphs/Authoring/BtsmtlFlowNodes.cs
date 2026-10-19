@@ -48,6 +48,13 @@ namespace BTSMTL.Graphs
         IBtsmtlGraphStepPort GetStep(int index);
     }
 
+#if UNITY_EDITOR
+    public interface IBtsmtlGraphNodeInspector
+    {
+        void DrawNodeInspector(BtsmtlFlowNode node);
+    }
+#endif
+
     public abstract class BtsmtlFlowNode : FlowScriptNode
     {
         public override bool ignoreSelfInstancePortAssignment => true;
@@ -61,6 +68,11 @@ namespace BTSMTL.Graphs
 #if UNITY_EDITOR
         protected override void OnNodeInspectorGUI()
         {
+            if (graph is IBtsmtlGraphNodeInspector inspector)
+            {
+                inspector.DrawNodeInspector(this);
+                return;
+            }
             BtsmtlGraphAuthoringGUI.DrawFields(this);
             DrawValueInputsGUI();
         }
