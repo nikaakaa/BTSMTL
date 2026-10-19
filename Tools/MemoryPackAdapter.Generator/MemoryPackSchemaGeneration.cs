@@ -42,7 +42,6 @@ namespace ThirdPerson.MemoryPackAdapters
                 string name = TypeName(type);
                 code.Append("type ").Append(name).Append('\n');
                 if (!visited.Add(name)) return;
-                if (HasAttribute(type, TextAttribute)) { code.AppendLine("utf16-text"); return; }
                 if (m_LogicalStorages.TryGetValue(Identity(type), out LogicalStoragePlan logical))
                 {
                     code.AppendLine("logical-storage");

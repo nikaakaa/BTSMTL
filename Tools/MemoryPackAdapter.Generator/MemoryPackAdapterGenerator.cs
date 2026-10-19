@@ -14,7 +14,6 @@ namespace ThirdPerson.MemoryPackAdapters
     {
         const string PresenceAttribute = "ThirdPersonSimulation.ValuePresenceAttribute";
         const string PayloadAttribute = "ThirdPersonSimulation.ValuePayloadAttribute";
-        const string TextAttribute = "ThirdPersonSimulation.ValueTextAttribute";
 
         public void Initialize(GeneratorInitializationContext context) =>
             context.RegisterForSyntaxNotifications(() => new Receiver());
@@ -203,11 +202,6 @@ namespace ThirdPerson.MemoryPackAdapters
                 {
                     records.Add(Identity(type), named);
                     foreach (Variant branch in known) Visit(branch.Type);
-                    return;
-                }
-                if (HasAttribute(named, TextAttribute))
-                {
-                    records.Add(Identity(type), named);
                     return;
                 }
                 if (HasAttribute(named, "MemoryPack.MemoryPackableAttribute") && !HasValueStorageContract(named))
@@ -403,11 +397,6 @@ namespace ThirdPerson.MemoryPackAdapters
                 EmitMemoryPackKnownTypeFormatter(code, type, ordinal, scopedReferences, schemaHash);
                 return;
             }
-            if (HasAttribute(type, TextAttribute))
-            {
-                EmitMemoryPackTextFormatter(code, type, ordinal, scopedReferences, schemaHash);
-                return;
-            }
             string name = TypeName(type);
             ISymbol presence = type.GetMembers().SingleOrDefault(member => HasAttribute(member, PresenceAttribute));
             bool partitioned = hasPayload(type);
@@ -542,27 +531,6 @@ namespace ThirdPerson.MemoryPackAdapters
             if (!partitioned) return;
             code.Append("var context = ").Append(stream).AppendLine(".Options.ServiceProvider as global::ThirdPersonSimulation.Serialization.MemoryPackContentContext;");
             code.AppendLine("var part = context == null ? global::ThirdPersonSimulation.Serialization.MemoryPackContentPart.Full : context.Part;");
-        }
-
-        static void EmitMemoryPackTextFormatter(StringBuilder code, INamedTypeSymbol type, int ordinal, bool scopedReferences, string schemaHash)
-        {
-            string name = TypeName(type);
-            IMethodSymbol factory = type.GetMembers().OfType<IMethodSymbol>().Single(method =>
-                method.MethodKind == MethodKind.Ordinary && method.IsStatic &&
-                method.DeclaredAccessibility == Accessibility.Public &&
-                SymbolEqualityComparer.Default.Equals(method.ReturnType, type) && method.Parameters.Length == 1 &&
-                method.Parameters[0].Type.SpecialType == SpecialType.System_String);
-            EmitMemoryPackFormatterHeader(code, "Formatter" + ordinal, name, schemaHash);
-            EmitMemoryPackSerializeDeclaration(code, name, scopedReferences);
-            if (type.IsReferenceType)
-                code.AppendLine("if (value == null) { writer.WriteNullCollectionHeader(); return; }");
-            code.AppendLine("if (value.IsNull) { writer.WriteNullCollectionHeader(); return; }");
-            code.AppendLine("using var read = value.AcquireRead();");
-            code.AppendLine("writer.WriteUtf16(value.Span);");
-            code.AppendLine("}");
-            EmitMemoryPackDeserializeDeclaration(code, name, scopedReferences);
-            code.Append("value = ").Append(name).Append('.').Append(Escape(factory.Name)).AppendLine("(reader.ReadString());");
-            code.AppendLine("} }");
         }
 
         static void EmitStorageRead(StringBuilder code, Member[] storage, string value, bool reading, bool partitioned)

@@ -143,7 +143,7 @@ namespace ThirdPerson.MemoryPackAdapters
                 if (type is INamedTypeSymbol namedType) type = RecordType(namedType);
                 if (!visited.Add(Identity(type)) || type.TypeKind == TypeKind.Enum) return null;
                 if (NullableElement(type) is ITypeSymbol nullable) return Visit(nullable, current);
-                if (type.SpecialType == SpecialType.System_String || HasAttribute(type, TextAttribute))
+                if (type.SpecialType == SpecialType.System_String)
                     return "prepared 文本 " + Identity(type) + " 必须在接收边界转换为身份编号，不能冷读取创建文本";
                 if (type.SpecialType != SpecialType.None) return null;
                 if (preparedPlans.TryGetValue(Identity(type), out PreparedReadPlan nestedPlan)) current = nestedPlan;

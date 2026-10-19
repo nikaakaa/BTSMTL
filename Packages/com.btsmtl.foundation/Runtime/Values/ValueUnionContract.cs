@@ -27,9 +27,6 @@ namespace ThirdPersonSimulation
     [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
     public sealed class ValueDefaultAttribute : Attribute { }
 
-    [AttributeUsage(AttributeTargets.Struct | AttributeTargets.Class)]
-    public sealed class ValueTextAttribute : Attribute { }
-
     [AttributeUsage(AttributeTargets.Method)]
     public sealed class ValueValidationAttribute : Attribute { }
 
