@@ -12,6 +12,8 @@ namespace BTSMTL.Orchestration
         Yaw = 7,
         Quaternion = 8,
         Enum = 9,
+        BlackboardOwnerToken = 11,
+        BlackboardWriteStamp = 12,
         Identity = 13
     }
 }

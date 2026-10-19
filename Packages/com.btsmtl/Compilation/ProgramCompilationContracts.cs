@@ -321,7 +321,10 @@ namespace BTSMTL.Compilation
         StateMachineExecutionPath = 24,
         TimelinePlayback = 40,
         TimelineLoop = 41,
-        BlackboardValue = 60
+        BlackboardValue = 60,
+        BlackboardOwnerToken = 61,
+        BlackboardLifetime = 63,
+        BlackboardWriteStamp = 64
     }
 
     public sealed partial class ProgramStateSlot
@@ -386,11 +389,15 @@ namespace BTSMTL.Compilation
                 ProgramStateValueKind.Enum => "state.enum/v1",
                 ProgramStateValueKind.Yaw => "state.float32-yaw/v1",
                 ProgramStateValueKind.Identity => "state.identity/v1",
+                ProgramStateValueKind.BlackboardOwnerToken => "state.blackboard-owner-token/v1",
+                ProgramStateValueKind.BlackboardWriteStamp => "state.blackboard-write-stamp/v3",
                 _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null)
             };
         }
 
-        public virtual bool HasDefaultValue(ProgramStateValueKind kind) => true;
+        public virtual bool HasDefaultValue(ProgramStateValueKind kind) =>
+            kind != ProgramStateValueKind.BlackboardOwnerToken &&
+            kind != ProgramStateValueKind.BlackboardWriteStamp;
 
         public virtual OrchestrationValueKind RuntimeKind(ProgramStateValueKind kind) => kind switch
         {
@@ -404,7 +411,7 @@ namespace BTSMTL.Compilation
             ProgramStateValueKind.Identity => OrchestrationValueKind.Identity,
             ProgramStateValueKind.Quaternion => OrchestrationValueKind.Quaternion,
             ProgramStateValueKind.Enum => OrchestrationValueKind.Enum,
-            _ => throw new InvalidOperationException($"领域状态类型 '{kind}' 不属于通用值。")
+            _ => throw new InvalidOperationException($"状态类型 '{kind}' 没有通用运行值映射。")
         };
 
         public void RequireSlot(
@@ -435,6 +442,9 @@ namespace BTSMTL.Compilation
                 ProgramStateSemantic.TimelinePlayback => kind == ProgramStateValueKind.UInt64 && owner == ProgramStateOwnerKind.Timeline,
                 ProgramStateSemantic.TimelineLoop => kind == ProgramStateValueKind.Boolean && owner == ProgramStateOwnerKind.Timeline,
                 ProgramStateSemantic.BlackboardValue => IsBlackboardValue(kind) && owner == ProgramStateOwnerKind.Blackboard,
+                ProgramStateSemantic.BlackboardOwnerToken => kind == ProgramStateValueKind.BlackboardOwnerToken && owner == ProgramStateOwnerKind.Blackboard,
+                ProgramStateSemantic.BlackboardLifetime => kind == ProgramStateValueKind.Int32 && owner == ProgramStateOwnerKind.Blackboard,
+                ProgramStateSemantic.BlackboardWriteStamp => kind == ProgramStateValueKind.BlackboardWriteStamp && owner == ProgramStateOwnerKind.Blackboard,
                 _ => false
             };
         }
