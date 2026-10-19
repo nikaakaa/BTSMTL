@@ -27,16 +27,37 @@ namespace BTSMTL.Timeline.Runtime
         public bool DeclaredEnd { get; }
     }
 
+    // 按起点排序；End 为下一分段起点或 Timeline 终点，NextSectionIndex 指向本数组中的下一段。
     public readonly struct TimelineSchedulingSection<TTime> where TTime : unmanaged
     {
-        public TimelineSchedulingSection(int sectionIndex, TTime time)
+        public TimelineSchedulingSection(int sectionIndex, TTime time, TTime end, int nextSectionIndex)
         {
             SectionIndex = sectionIndex;
             Time = time;
+            End = end;
+            NextSectionIndex = nextSectionIndex;
         }
 
         public int SectionIndex { get; }
         public TTime Time { get; }
+        public TTime End { get; }
+        public int NextSectionIndex { get; }
+        public bool Continuable => NextSectionIndex >= 0;
+    }
+
+    // 本次遍历的分段边界：Jumped 表示从 From 跳到遍历起点；SectionEnd 表示遍历终点是可继续分段的终点（不含终点处开始的内容）。
+    public readonly struct TimelineSchedulingJump<TTime> where TTime : unmanaged
+    {
+        public TimelineSchedulingJump(bool jumped, TTime from, bool sectionEnd)
+        {
+            Jumped = jumped;
+            From = from;
+            SectionEnd = sectionEnd;
+        }
+
+        public bool Jumped { get; }
+        public TTime From { get; }
+        public bool SectionEnd { get; }
     }
 
     public readonly struct TimelineSchedulingMarker<TTime> where TTime : unmanaged
@@ -166,11 +187,14 @@ namespace BTSMTL.Timeline.Runtime
             TTime duration, bool loop, bool initialBoundary,
             ReadOnlySpan<OrchestrationTimelineTreeExitRange> exited,
             ReadOnlySpan<OrchestrationTimelineClipOccurrence> pending,
-            TimelineSchedulingBoundary<TTime>[] output, int offset)
+            TimelineSchedulingBoundary<TTime>[] output, int offset,
+            in TimelineSchedulingJump<TTime> jump = default)
         {
             TClock clock = default;
             if (!clock.GreaterThan(duration, clock.Zero))
                 return 0;
+            if (jump.Jumped)
+                initialBoundary = true;
             if (loop && nextCycle - previousCycle > OrchestrationTimelineLimits.MaximumCycleAdvance)
                 throw new InvalidOperationException("Timeline playback crossed more than 20 cycles in one Advance.");
             Span<TimelineSchedulingBoundary<TTime>> result = output.AsSpan(offset);
@@ -192,8 +216,11 @@ namespace BTSMTL.Timeline.Runtime
                     for (int i = 0; i < clips.Length; i++)
                     {
                         ref readonly TimelineSchedulingClip<TTime> clip = ref clips[i];
-                        if (clip.Enabled && clock.GreaterThan(previousTime, clip.Start) &&
-                            (clip.TreeDecision || clock.GreaterThan(clip.End, previousTime)))
+                        // 跳转时只有被跳过区间内开始、仍覆盖目标起点的 Clip 在起点进入；跨两侧的 Clip 保持原生命周期。
+                        bool enter = jump.Jumped
+                            ? clock.GreaterThan(clip.Start, jump.From) && clock.GreaterThan(clip.End, previousTime)
+                            : clip.TreeDecision || clock.GreaterThan(clip.End, previousTime);
+                        if (clip.Enabled && clock.GreaterThan(previousTime, clip.Start) && enter)
                             result[count++] = new TimelineSchedulingBoundary<TTime>(i,
                                 clip.SortOrdinal, previousTime, previousCycle, true);
                     }
@@ -211,6 +238,7 @@ namespace BTSMTL.Timeline.Runtime
                             continue;
                         if ((clock.GreaterThan(clip.Start, from) || includeStart && clock.Equal(clip.Start, from)) &&
                             clock.LessThanOrEqual(clip.Start, to) &&
+                            !(jump.SectionEnd && cycle == nextCycle && clock.Equal(clip.Start, to)) &&
                             (!clip.TreeDecision || !Contains(exited, i, cycle) && !Contains(pending, i, cycle)))
                             result[count++] = new TimelineSchedulingBoundary<TTime>(i,
                                 clip.SortOrdinal, clip.Start, cycle, true);
@@ -229,10 +257,50 @@ namespace BTSMTL.Timeline.Runtime
         public static void SortBoundaries(Span<TimelineSchedulingBoundary<TTime>> values) =>
             SimulationArraySort.Sort(values, m_BoundaryComparison);
 
+        public static int SectionAt(ReadOnlySpan<TimelineSchedulingSection<TTime>> sections, TTime time)
+        {
+            TClock clock = default;
+            int lower = 0;
+            int upper = sections.Length;
+            while (lower < upper)
+            {
+                int middle = lower + (upper - lower) / 2;
+                if (clock.LessThanOrEqual(sections[middle].Time, time))
+                    lower = middle + 1;
+                else
+                    upper = middle;
+            }
+            return lower - 1;
+        }
+
+        // 跳转处退出：离开时刻生效、但不覆盖目标起点的 Clip 在目标起点按稳定顺序退出；已有退出请求的决策 Clip 由原请求退出。
+        public static int JumpExits(ReadOnlySpan<TimelineSchedulingClip<TTime>> clips,
+            TTime from, TTime to, int cycle,
+            ReadOnlySpan<OrchestrationTimelineTreeExitRange> exited,
+            ReadOnlySpan<OrchestrationTimelineClipOccurrence> pending,
+            Span<TimelineSchedulingBoundary<TTime>> output)
+        {
+            TClock clock = default;
+            int count = 0;
+            for (int i = 0; i < clips.Length; i++)
+            {
+                ref readonly TimelineSchedulingClip<TTime> clip = ref clips[i];
+                if (!Active(in clip, i, from, cycle, exited) || clock.GreaterThan(clip.End, to) ||
+                    clip.TreeDecision && Contains(pending, i, cycle))
+                    continue;
+                output[count++] = new TimelineSchedulingBoundary<TTime>(i, clip.SortOrdinal, to, cycle, false);
+            }
+            return count;
+        }
+
+        public static bool ContinuesAcrossJump(in TimelineSchedulingClip<TTime> clip, int ordinal,
+            TTime from, TTime to, int cycle, ReadOnlySpan<OrchestrationTimelineTreeExitRange> exited) =>
+            Active(in clip, ordinal, from, cycle, exited) && default(TClock).GreaterThan(clip.End, to);
+
         public int Markers(ReadOnlySpan<TimelineSchedulingMarker<TTime>> markers,
             TTime previousTime, int previousCycle, TTime nextTime, int nextCycle,
             TTime duration, bool includeStart,
-            Span<TimelineScheduledInvocation<TTime>> output)
+            Span<TimelineScheduledInvocation<TTime>> output, bool sectionEnd = false)
         {
             TClock clock = default;
             if (!clock.GreaterThan(duration, clock.Zero))
@@ -247,7 +315,8 @@ namespace BTSMTL.Timeline.Runtime
                 {
                     ref readonly TimelineSchedulingMarker<TTime> marker = ref markers[i];
                     if ((!clock.GreaterThan(marker.Time, from) && !(include && clock.Equal(marker.Time, from))) ||
-                        clock.GreaterThan(marker.Time, to))
+                        clock.GreaterThan(marker.Time, to) ||
+                        sectionEnd && cycle == nextCycle && clock.Equal(marker.Time, to))
                         continue;
                     output[count++] = new TimelineScheduledInvocation<TTime>(marker.Ordinal, i,
                         true, OrchestrationTimelineHook.Enable, marker.Time, marker.Time,

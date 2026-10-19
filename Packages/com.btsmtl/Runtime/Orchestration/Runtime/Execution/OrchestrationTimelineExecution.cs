@@ -60,6 +60,10 @@ namespace BTSMTL.Orchestration
             m_ClipExitDispatcher.RequestClipExit(m_TimelineState, operationIndex,
                 m_Input.Tick, ref m_Context);
 
+        OrchestrationOperationResult RequestTimelineSectionContinue(int operationIndex) =>
+            m_ClipExitDispatcher.RequestSectionContinue(m_TimelineState, operationIndex,
+                m_Input.Tick, ref m_Context);
+
         public void ExecuteTimelineBatch<TTime>(
             OrchestrationTimelineBatch<TTime> batch,
             in OrchestrationTimelineStart<OrchestrationTime> start,

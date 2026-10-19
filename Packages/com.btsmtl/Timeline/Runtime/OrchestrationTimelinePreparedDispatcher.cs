@@ -124,6 +124,13 @@ namespace BTSMTL.Timeline.Runtime
             return ReleaseInvocation(ref context);
         }
 
+        public OrchestrationOperationResult RequestSectionContinue(OrchestrationStateView candidate,
+            int operationIndex, ulong tick, ref TContext context)
+        {
+            m_Runtime.SectionContinue(m_Workspace);
+            return OrchestrationOperationResult.Success;
+        }
+
         public int EnterInvocation(int playbackSlot, int invocationIndex,
             ref TContext context)
         {

@@ -429,7 +429,9 @@ namespace BTSMTL.Diagnostics
         LoopIterationCompleted,
         BlackboardSnapshot,
         TraceSamplingLimited,
-        CaptureStateSnapshot
+        CaptureStateSnapshot,
+        // Detail／RelatedElementId 为源／目标分段身份，SecondaryTime／Time 为跳转前后游标。
+        TimelineSectionJumped
     }
 
     // 宿主事件以稳定编号登记；编号进入预览事件文件，宿主不得复用或改义。

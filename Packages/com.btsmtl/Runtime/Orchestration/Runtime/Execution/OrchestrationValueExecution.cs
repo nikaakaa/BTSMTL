@@ -347,6 +347,9 @@ namespace BTSMTL.Orchestration
                     case OrchestrationOperationCode.TimelineClipExitRequest:
                         return default(TValues).Boolean(in m_Workspace.Inputs[depth][0])
                             ? RequestTimelineClipExit(operationIndex) : OrchestrationOperationResult.Success;
+                    case OrchestrationOperationCode.TimelineSectionContinueRequest:
+                        return default(TValues).Boolean(in m_Workspace.Inputs[depth][0])
+                            ? RequestTimelineSectionContinue(operationIndex) : OrchestrationOperationResult.Success;
                     case OrchestrationOperationCode.Extension:
                     {
                         Span<TValue> outputs = operation.OutputSlotOffset >= 0

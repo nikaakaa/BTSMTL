@@ -81,6 +81,8 @@ namespace BTSMTL.Timeline.Runtime
             RequiredTreeExits = requiredTreeExits;
             CallCapacity = callCapacity;
             TickCapacity = tickCapacity;
+            foreach (TimelineSchedulingSection<TTime> section in sections.Span)
+                HasSectionJumps |= section.Continuable;
         }
 
         public int ContentIdentityId { get; }
@@ -100,6 +102,10 @@ namespace BTSMTL.Timeline.Runtime
         public int RequiredTreeExits { get; }
         public OrchestrationTimelineCallCapacity CallCapacity { get; }
         public OrchestrationTimelineTickContentCapacity TickCapacity { get; }
+        public bool HasSectionJumps { get; }
+        // 一次推进的遍历段数：循环按可跨圈数，分段跳转按“跳转处 + 目标起点之后”两段。
+        public int Traversals => Mode == OrchestrationTimelinePlaybackMode.Loop
+            ? OrchestrationTimelineLimits.MaximumCycleAdvance + 1 : HasSectionJumps ? 2 : 1;
     }
 
     public sealed class OrchestrationTimelineWorkspace<TTime>
@@ -129,8 +135,7 @@ namespace BTSMTL.Timeline.Runtime
             for (int i = 0; i < contents.Length; i++)
             {
                 OrchestrationTimelinePreparedContent<TTime> content = contents[i];
-                int traversals = content.Mode == OrchestrationTimelinePlaybackMode.Loop
-                    ? OrchestrationTimelineLimits.MaximumCycleAdvance + 1 : 1;
+                int traversals = content.Traversals;
                 clips = Math.Max(clips, content.Clips.Length);
                 boundaries = Math.Max(boundaries, checked(2 * content.Clips.Length * traversals +
                     capacity.TreeExitRequestsPerPlayback));

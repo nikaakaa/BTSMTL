@@ -12,7 +12,8 @@ namespace BTSMTL.Timeline.Runtime
             OrchestrationTime currentPosition,
             int currentCycle,
             TimelinePresentationSampleReason reason,
-            TimelineRuntimePresentationBuffer buffer)
+            TimelineRuntimePresentationBuffer buffer,
+            bool traversalOnly = false)
         {
             TimelineContentUnit content = preparedContent.Content;
             var selected = buffer.SamplingClips;
@@ -32,7 +33,7 @@ namespace BTSMTL.Timeline.Runtime
                         if (clip.EndTime == from && from != to)
                             continue;
                     }
-                    else if (cycle != currentCycle ||
+                    else if (traversalOnly || cycle != currentCycle ||
                         clip.EndTime < to && clip.Sampling.Extrapolation != ExtraPolationMode.Hold)
                         continue;
                     if (preparedContent.ClipSampling.TrySample(in clip, indexed.ContentIndex, from, to, cycle, reason, out var sample))

@@ -84,7 +84,9 @@ namespace BTSMTL.Timeline.Runtime
     {
         DecisionExitLifetimeUnresolved = 1,
         FrameBoundaryOutsideCycle = 2,
-        LoopDurationNotPositive = 3
+        LoopDurationNotPositive = 3,
+        SectionJumpInLoop = 4,
+        SectionContinueOutsideDoor = 5
     }
 
     public readonly struct OrchestrationTimelineCapacityIssue
@@ -174,6 +176,13 @@ namespace BTSMTL.Timeline.Runtime
                 return false;
             }
             var issues = new List<OrchestrationTimelineCapacityIssue>();
+            bool sectionJumps = ValidateSectionJumps(program, scheduling, entries, mode, operationIndex, issues);
+            if (issues.Count != 0)
+            {
+                content = null;
+                unresolved = issues.ToArray();
+                return false;
+            }
             var occurrences = new List<OrchestrationOccurrenceCapacity>();
             var clipInstances = new int[scheduling.Clips.Length];
             var exits = new OrchestrationTimelineExitAnalysis<TValue, TScalar>(program, extensions, values, math, projection);
@@ -181,7 +190,7 @@ namespace BTSMTL.Timeline.Runtime
             int decisions = 0;
             int decisionInstances = 0;
             int traversals = mode == OrchestrationTimelinePlaybackMode.Loop
-                ? OrchestrationTimelineLimits.MaximumCycleAdvance + 1 : 1;
+                ? OrchestrationTimelineLimits.MaximumCycleAdvance + 1 : sectionJumps ? 2 : 1;
             for (int ordinal = 0; ordinal < scheduling.Clips.Length; ordinal++)
             {
                 ref readonly TimelineSchedulingClip<OrchestrationTime> clip = ref scheduling.Clips.Span[ordinal];
@@ -271,6 +280,63 @@ namespace BTSMTL.Timeline.Runtime
                 mode == OrchestrationTimelinePlaybackMode.Loop ? checked(decisionInstances + decisions) : decisions,
                 call, in tickCapacity);
             return true;
+        }
+
+        // 分段跳转只允许线性推进：循环播放不得配置；"进入下一分段"只在可继续分段内、有声明终点的逻辑门 Clip 的入口与 Root 中。
+        static bool ValidateSectionJumps<TValue>(OrchestrationProgram<TValue> program,
+            TimelineRuntimeSchedulingContent scheduling, OrchestrationTimelinePreparedEntries entries,
+            OrchestrationTimelinePlaybackMode mode, int operationIndex, List<OrchestrationTimelineCapacityIssue> issues)
+            where TValue : unmanaged
+        {
+            ReadOnlySpan<TimelineSchedulingSection<OrchestrationTime>> sections = scheduling.Sections.Span;
+            bool jumps = false;
+            foreach (ref readonly TimelineSchedulingSection<OrchestrationTime> section in sections)
+                jumps |= section.Continuable;
+            if (jumps && mode == OrchestrationTimelinePlaybackMode.Loop)
+                issues.Add(new OrchestrationTimelineCapacityIssue(-1,
+                    OrchestrationTimelineCapacityIssueKind.SectionJumpInLoop, operationIndex));
+            var visited = new bool[program.OperationCount];
+            for (int ordinal = 0; ordinal < scheduling.Clips.Length; ordinal++)
+            {
+                ref readonly TimelineSchedulingClip<OrchestrationTime> clip = ref scheduling.Clips.Span[ordinal];
+                if (!clip.Enabled || !clip.Tree)
+                    continue;
+                OrchestrationTimelineEntryBinding binding = entries.ClipEntries.Span[ordinal];
+                bool open = Reaches(program, binding.Enable.OperationIndex, visited) |
+                    Reaches(program, binding.Root.OperationIndex, visited);
+                bool closing = Reaches(program, binding.Disable.OperationIndex, visited) |
+                    Reaches(program, binding.Destroy.OperationIndex, visited);
+                if (!open && !closing)
+                    continue;
+                int section = TimelineRuntimeScheduling<OrchestrationTime, OrchestrationTimeClock>.SectionAt(sections, clip.Start);
+                if (closing || scheduling.Domain != TimelineExecutionDomain.Logic || !clip.DeclaredEnd ||
+                    section < 0 || !sections[section].Continuable || clip.End > sections[section].End)
+                    issues.Add(new OrchestrationTimelineCapacityIssue(ordinal,
+                        OrchestrationTimelineCapacityIssueKind.SectionContinueOutsideDoor, operationIndex));
+            }
+            return jumps;
+        }
+
+        static bool Reaches<TValue>(OrchestrationProgram<TValue> program, int operationIndex, bool[] visited)
+            where TValue : unmanaged
+        {
+            Array.Clear(visited, 0, visited.Length);
+            var pending = new Stack<int>();
+            pending.Push(operationIndex);
+            while (pending.Count != 0)
+            {
+                int index = pending.Pop();
+                if (visited[index])
+                    continue;
+                visited[index] = true;
+                if (program.Operation(index).Code == OrchestrationOperationCode.TimelineSectionContinueRequest)
+                    return true;
+                foreach (int edge in program.Outgoing(index, OrchestrationFlowKind.Child))
+                    pending.Push(program.Edge(edge).TargetOperationIndex);
+                foreach (int edge in program.Outgoing(index, OrchestrationFlowKind.Enter))
+                    pending.Push(program.Edge(edge).TargetOperationIndex);
+            }
+            return false;
         }
 
         static OrchestrationExecutionEntry BindEntry<TValue>(int ordinal, bool marker,

@@ -202,6 +202,7 @@ namespace BTSMTL.Timeline.Runtime
                     return Result.Success;
                 case OrchestrationOperationCode.BlackboardSet:
                 case OrchestrationOperationCode.EmitOutput:
+                case OrchestrationOperationCode.TimelineSectionContinueRequest:
                     return ThenLeaf(index, Result.Success, before);
                 case OrchestrationOperationCode.TimelineClipExitRequest:
                 {

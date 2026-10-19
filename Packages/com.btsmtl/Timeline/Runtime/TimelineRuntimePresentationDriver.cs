@@ -18,10 +18,11 @@ namespace BTSMTL.Timeline.Runtime
     public readonly struct TimelineRuntimePresentationSample
     {
         public TimelineRuntimePresentationSample(ulong sourceGeneration, ulong logicTick, int contentRevisionId,
-            OrchestrationTime time, int cycle, TimelinePresentationSampleReason reason, bool retainForCorrection)
+            OrchestrationTime time, int cycle, TimelinePresentationSampleReason reason, bool retainForCorrection,
+            int sectionJumpCount = 0, OrchestrationTime sectionJumpFrom = default, OrchestrationTime sectionJumpTo = default)
         {
             if (sourceGeneration == 0 || logicTick == 0 || time < OrchestrationTime.Zero || cycle < 0 ||
-                retainForCorrection && reason != TimelinePresentationSampleReason.Withdrawn)
+                sectionJumpCount < 0 || retainForCorrection && reason != TimelinePresentationSampleReason.Withdrawn)
                 throw new ArgumentException("Timeline presentation sample is invalid.");
             SourceGeneration = sourceGeneration;
             LogicTick = logicTick;
@@ -30,6 +31,18 @@ namespace BTSMTL.Timeline.Runtime
             Cycle = cycle;
             Reason = reason;
             RetainForCorrection = retainForCorrection;
+            SectionJumpCount = sectionJumpCount;
+            SectionJumpFrom = sectionJumpFrom;
+            SectionJumpTo = sectionJumpTo;
+        }
+
+        public TimelineRuntimePresentationSample(ulong logicTick,
+            in OrchestrationTimelinePlaybackState<OrchestrationTime> playback,
+            TimelinePresentationSampleReason reason, bool retainForCorrection)
+            : this(playback.Start.SourceGeneration, logicTick, playback.Start.ContentRevisionId,
+                playback.Progress.CursorTime, playback.Progress.Cycle, reason, retainForCorrection,
+                playback.SectionJumpCount, playback.SectionJumpFrom, playback.SectionJumpTo)
+        {
         }
 
         public ulong SourceGeneration { get; }
@@ -39,6 +52,10 @@ namespace BTSMTL.Timeline.Runtime
         public int ContentRevisionId { get; }
         public TimelinePresentationSampleReason Reason { get; }
         public bool RetainForCorrection { get; }
+        // 逻辑播放已执行的分段跳转次数与最近一次跳转的离开时刻、目标起点。
+        public int SectionJumpCount { get; }
+        public OrchestrationTime SectionJumpFrom { get; }
+        public OrchestrationTime SectionJumpTo { get; }
         public bool AllowTraversal => Reason == TimelinePresentationSampleReason.Advance || Reason == TimelinePresentationSampleReason.Completed;
         public bool EndsPlayback => Reason == TimelinePresentationSampleReason.Completed || Reason == TimelinePresentationSampleReason.Stopped || Reason == TimelinePresentationSampleReason.Withdrawn;
         public bool IsValid => SourceGeneration != 0;
@@ -81,9 +98,7 @@ namespace BTSMTL.Timeline.Runtime
             in OrchestrationTimelinePlaybackState<OrchestrationTime> accepted, ulong logicTick,
             TimelinePresentationSampleReason reason, bool retainForCorrection)
         {
-            var sample = new TimelineRuntimePresentationSample(accepted.Start.SourceGeneration, logicTick,
-                accepted.Start.ContentRevisionId, accepted.Progress.CursorTime, accepted.Progress.Cycle,
-                reason, retainForCorrection);
+            var sample = new TimelineRuntimePresentationSample(logicTick, in accepted, reason, retainForCorrection);
             return new TimelineRuntimePresentationSource(playbackSlot, in accepted.Start, in sample,
                 TimelineRuntimePresentationGraphSource.Executed);
         }
@@ -249,9 +264,7 @@ namespace BTSMTL.Timeline.Runtime
 
         void PrepareGraphWorkspace(OrchestrationTimelinePreparedContent<OrchestrationTime> content)
         {
-            int traversals = content.Mode == OrchestrationTimelinePlaybackMode.Loop
-                ? OrchestrationTimelineLimits.MaximumCycleAdvance + 1 : 1;
-            int boundaries = checked(2 * content.Clips.Length * traversals);
+            int boundaries = checked(2 * content.Clips.Length * content.Traversals);
             if (m_Boundaries.Length < boundaries)
                 Array.Resize(ref m_Boundaries, boundaries);
             if (m_Scheduled.Length < content.TickCapacity.GraphInvocationsPerAdvance)
@@ -321,6 +334,12 @@ namespace BTSMTL.Timeline.Runtime
                 (currentCycle > previousCycle || currentCycle == previousCycle && currentTime >= previousTime);
             if (allowTraversal && currentCycle - previousCycle > OrchestrationTimelineLimits.MaximumCycleAdvance)
                 throw new InvalidOperationException("Timeline presentation exceeded its prepared cycle capacity.");
+            // 分段跳转按回绕拼接：先走到离开时刻，再从目标起点走到当前；两帧间跳转多次时无法拼接，按校正对齐。
+            bool jumped = sample.SectionJumpCount != state.SectionJumpCount;
+            if (jumped && allowTraversal && (sample.SectionJumpCount - state.SectionJumpCount != 1 ||
+                    currentCycle != previousCycle || previousTime > sample.SectionJumpFrom || sample.SectionJumpTo > currentTime))
+                allowTraversal = false;
+            jumped &= allowTraversal;
             if (!allowTraversal)
             {
                 previousTime = currentTime;
@@ -331,7 +350,14 @@ namespace BTSMTL.Timeline.Runtime
             bool stopped = reason == TimelinePresentationSampleReason.Stopped || reason == TimelinePresentationSampleReason.Withdrawn;
             TimelinePresentationSampleReason sampleReason = !allowTraversal && reason == TimelinePresentationSampleReason.Advance
                 ? TimelinePresentationSampleReason.Correction : reason;
-            if (!stopped)
+            if (!stopped && jumped)
+            {
+                TimelineRuntimePresentationEvaluator.Evaluate(content, previousTime, previousCycle,
+                    sample.SectionJumpFrom, previousCycle, sampleReason, state.Candidate, true);
+                TimelineRuntimePresentationEvaluator.Evaluate(content, sample.SectionJumpTo, currentCycle,
+                    currentTime, currentCycle, sampleReason, state.Candidate);
+            }
+            else if (!stopped)
                 TimelineRuntimePresentationEvaluator.Evaluate(
                 content,
                 previousTime,
@@ -343,7 +369,15 @@ namespace BTSMTL.Timeline.Runtime
             if (state.GraphSource == TimelineRuntimePresentationGraphSource.Unexecuted)
             {
                 Array.Copy(state.Graphs.MarkerLastTraversal, state.Graphs.PendingMarkerLastTraversal, state.Graphs.MarkerLastTraversal.Length);
-                if (allowTraversal)
+                if (jumped)
+                {
+                    AppendMarkerEvents(content, playbackSlot, in start, presentationFrame, state,
+                        previousTime, previousCycle, sample.SectionJumpFrom, previousCycle,
+                        !state.Graphs.InitialBoundaryConsumed, events);
+                    AppendMarkerEvents(content, playbackSlot, in start, presentationFrame, state,
+                        sample.SectionJumpTo, currentCycle, currentTime, currentCycle, true, events);
+                }
+                else if (allowTraversal)
                     AppendMarkerEvents(
                     content,
                     playbackSlot,
@@ -356,13 +390,14 @@ namespace BTSMTL.Timeline.Runtime
                     currentCycle,
                     !state.Graphs.InitialBoundaryConsumed,
                     events);
-                AppendTreeClips(content, playbackSlot, in start, presentationFrame, state, sample, allowTraversal, reason);
+                AppendTreeClips(content, playbackSlot, in start, presentationFrame, state, sample, allowTraversal, jumped, reason);
                 state.Graphs.PendingInitialBoundaryConsumed = state.Graphs.InitialBoundaryConsumed || allowTraversal ||
                     reason == TimelinePresentationSampleReason.Correction;
             }
             var operations = new TimelineRuntimePresentationOperations(state.Candidate);
             state.PendingTime = currentTime;
             state.PendingCycle = currentCycle;
+            state.PendingSectionJumpCount = sample.SectionJumpCount;
             state.PendingFinished = sample.EndsPlayback;
             frame = new TimelineRuntimePresentationFrame(
                 in start,
@@ -462,6 +497,7 @@ namespace BTSMTL.Timeline.Runtime
                     }
                     state.CursorTime = state.PendingTime;
                     state.Cycle = state.PendingCycle;
+                    state.SectionJumpCount = state.PendingSectionJumpCount;
                     state.Finished = state.PendingFinished;
                     state.SampleReason = state.PendingFrame.RetainForCorrection
                         ? TimelinePresentationSampleReason.Correction : TimelinePresentationSampleReason.Advance;
@@ -736,7 +772,7 @@ namespace BTSMTL.Timeline.Runtime
 
         void AppendTreeClips(TimelineRuntimePreparedContent content, int playbackSlot,
             in OrchestrationTimelineStart<OrchestrationTime> start, ulong presentationFrame, PresentationPlaybackState state,
-            in TimelineRuntimePresentationSample sample, bool traverse, TimelinePresentationSampleReason reason)
+            in TimelineRuntimePresentationSample sample, bool traverse, bool jumped, TimelinePresentationSampleReason reason)
         {
             bool stopped = reason == TimelinePresentationSampleReason.Stopped || reason == TimelinePresentationSampleReason.Withdrawn;
             bool correction = state.SampleReason == TimelinePresentationSampleReason.Correction ||
@@ -809,6 +845,39 @@ namespace BTSMTL.Timeline.Runtime
                     m_Boundaries.AsSpan(0, boundaryCount), m_PreviousActiveClips,
                     sample.Time, sample.Cycle, sample.Time, sample.Cycle, native.Duration,
                     false, pendingExits, m_SelectedTrees.AsSpan(0, clips.Length), m_Scheduled, 0);
+            }
+            else if (jumped)
+            {
+                // 与逻辑跳转相同：离开时生效且不覆盖目标起点的片段退出，跨两侧的片段延续，从目标起点继续遍历。
+                OrchestrationTime from = state.CursorTime;
+                OrchestrationTime to = sample.SectionJumpTo;
+                for (int ordinal = 0; ordinal < clips.Length; ordinal++)
+                    m_PreviousActiveClips[ordinal] =
+                        TimelineRuntimeScheduling<OrchestrationTime, OrchestrationTimeClock>.ContinuesAcrossJump(
+                            in clips[ordinal], ordinal, from, to, state.Cycle, exits);
+                int boundaryCount = TimelineRuntimeScheduling<OrchestrationTime, OrchestrationTimeClock>.JumpExits(
+                    clips, from, to, state.Cycle, exits, ReadOnlySpan<OrchestrationTimelineClipOccurrence>.Empty, m_Boundaries);
+                for (int i = 0; i < boundaryCount; i++)
+                    if (clips[m_Boundaries[i].ClipOrdinal].TreeDecision)
+                        OrchestrationTimelineRuntime<OrchestrationTime, OrchestrationTimeClock>.AppendExit(
+                            state.Graphs.PendingTreeExits, ref state.Graphs.PendingTreeExitCount, new OrchestrationTimelineTreeExitRange
+                            {
+                                ClipOrdinal = m_Boundaries[i].ClipOrdinal,
+                                FirstCycle = m_Boundaries[i].Cycle,
+                                LastCycle = m_Boundaries[i].Cycle
+                            });
+                var traversal = new TimelineSchedulingJump<OrchestrationTime>(true, from, false);
+                boundaryCount += m_Scheduler.Boundaries(clips, to, state.Cycle,
+                    sample.Time, sample.Cycle, native.Duration, false, true, exits,
+                    ReadOnlySpan<OrchestrationTimelineClipOccurrence>.Empty, m_Boundaries, boundaryCount, in traversal);
+                TimelineRuntimeScheduling<OrchestrationTime, OrchestrationTimeClock>.SortBoundaries(m_Boundaries.AsSpan(0, boundaryCount));
+                scheduledCount = m_Scheduler.Trees(clips, native.TreeOrdinals.Span,
+                    m_Boundaries.AsSpan(0, boundaryCount), m_PreviousActiveClips,
+                    to, state.Cycle, sample.Time, sample.Cycle, native.Duration, false, exits,
+                    m_SelectedTrees.AsSpan(0, clips.Length), m_Scheduled, 0);
+                scheduledCount += m_Scheduler.ContinueTrees(clips, active,
+                    to, state.Cycle, sample.Time, sample.Cycle, native.Duration,
+                    exits, m_Scheduled.AsSpan(scheduledCount));
             }
             else if (traverse)
             {
@@ -986,6 +1055,8 @@ namespace BTSMTL.Timeline.Runtime
             public PresentationPlaybackState NextPendingFrame;
             public OrchestrationTime CursorTime;
             public int Cycle;
+            public int SectionJumpCount;
+            public int PendingSectionJumpCount;
             public TimelinePresentationSampleReason SampleReason;
             public bool Finished;
             public TimelineRuntimePresentationFrame CachedFrame;
@@ -1000,6 +1071,8 @@ namespace BTSMTL.Timeline.Runtime
                 writer.Write(Finished);
                 writer.Write(PendingTime);
                 writer.Write(PendingCycle);
+                writer.Write(SectionJumpCount);
+                writer.Write(PendingSectionJumpCount);
                 writer.Write(PendingFinished);
                 writer.Write(LastPresentationFrame);
                 if (GraphSource == TimelineRuntimePresentationGraphSource.Unexecuted)
