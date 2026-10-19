@@ -176,7 +176,8 @@ namespace BTSMTL.Timeline.Runtime
                 return false;
             }
             var issues = new List<OrchestrationTimelineCapacityIssue>();
-            bool sectionJumps = ValidateSectionJumps(program, scheduling, entries, mode, operationIndex, issues);
+            var exits = new OrchestrationTimelineExitAnalysis<TValue, TScalar>(program, extensions, values, math, projection);
+            bool sectionJumps = ValidateSectionJumps(program, scheduling, entries, exits, mode, operationIndex, issues);
             if (issues.Count != 0)
             {
                 content = null;
@@ -187,7 +188,6 @@ namespace BTSMTL.Timeline.Runtime
             var clipInstances = new int[scheduling.Clips.Length];
             foreach (int ordinal in scheduling.Boundaries.Decisions.Span)
                 clipInstances[ordinal] = 1;
-            var exits = new OrchestrationTimelineExitAnalysis<TValue, TScalar>(program, extensions, values, math, projection);
             int activeTrees = 0;
             int decisionInstances = 0;
             int traversals = mode == OrchestrationTimelinePlaybackMode.Loop
@@ -289,11 +289,13 @@ namespace BTSMTL.Timeline.Runtime
             return true;
         }
 
-        // 分段跳转只允许线性推进：循环播放不得配置；"进入下一分段"只在可继续分段内、有声明终点的逻辑门 Clip 的入口与 Root 中。
-        static bool ValidateSectionJumps<TValue>(OrchestrationProgram<TValue> program,
+        // 分段跳转只允许线性推进，逻辑门必须在所属分段结束前退出。
+        static bool ValidateSectionJumps<TValue, TScalar>(OrchestrationProgram<TValue> program,
             TimelineRuntimeSchedulingContent scheduling, OrchestrationTimelinePreparedEntries entries,
+            OrchestrationTimelineExitAnalysis<TValue, TScalar> exits,
             OrchestrationTimelinePlaybackMode mode, int operationIndex, List<OrchestrationTimelineCapacityIssue> issues)
             where TValue : unmanaged
+            where TScalar : unmanaged
         {
             ReadOnlySpan<TimelineSchedulingSection<OrchestrationTime>> sections = scheduling.Sections.Span;
             bool jumps = false;
@@ -316,8 +318,11 @@ namespace BTSMTL.Timeline.Runtime
                 if (!open && !closing)
                     continue;
                 int section = TimelineRuntimeScheduling<OrchestrationTime, OrchestrationTimeClock>.SectionAt(sections, clip.Start);
-                if (closing || scheduling.Domain != TimelineExecutionDomain.Logic || !clip.DeclaredEnd ||
-                    section < 0 || !sections[section].Continuable || clip.End > sections[section].End)
+                OrchestrationExecutionEntry root = binding.Root;
+                if (closing || scheduling.Domain != TimelineExecutionDomain.Logic ||
+                    section < 0 || !sections[section].Continuable ||
+                    !exits.TryProve(in root, in clip, out OrchestrationTime exitTime, out _) ||
+                    exitTime > sections[section].End)
                     issues.Add(new OrchestrationTimelineCapacityIssue(ordinal,
                         OrchestrationTimelineCapacityIssueKind.SectionContinueOutsideDoor, operationIndex));
             }
