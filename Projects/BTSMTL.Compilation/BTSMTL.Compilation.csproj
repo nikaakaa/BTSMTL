@@ -12,6 +12,7 @@
     <ProjectReference Include="../BTSMTL.Foundation/BTSMTL.Foundation.csproj" />
     <ProjectReference Include="../BTSMTL.Orchestration.Contracts/BTSMTL.Orchestration.Contracts.csproj" />
     <ProjectReference Include="../BTSMTL.Orchestration.Runtime/BTSMTL.Orchestration.Runtime.csproj" />
+    <ProjectReference Include="../ThirdPersonSimulation.Timeline/ThirdPersonSimulation.Timeline.csproj" />
     <Compile Include="../../Packages/com.btsmtl/Compilation/**/*.cs" />
   </ItemGroup>
 </Project>

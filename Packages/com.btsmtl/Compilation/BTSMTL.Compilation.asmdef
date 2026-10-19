@@ -4,7 +4,8 @@
     "references": [
         "BTSMTL.Foundation",
         "BTSMTL.Orchestration.Contracts",
-        "BTSMTL.Orchestration.Runtime"
+        "BTSMTL.Orchestration.Runtime",
+        "BTSMTL.Timeline.Runtime"
     ],
     "includePlatforms": [
         "Editor"
