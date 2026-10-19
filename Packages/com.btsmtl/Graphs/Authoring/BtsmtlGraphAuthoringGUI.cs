@@ -4,6 +4,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using BTSMTL.Authoring.Blackboard;
 using BTSMTL.Authoring.Graph;
 using FlowCanvas;
 using NodeCanvas.Framework;
@@ -166,6 +167,20 @@ namespace BTSMTL.Graphs
             Add("写入变量", typeof(BtsmtlVariableSetFlowNode<>));
             menu.AddItem(new GUIContent("发布到宿主"), variable.isExposedPublic,
                 () => graph.Variables.ConfigureVariable(variable.ID, !variable.isExposedPublic));
+            BtsmtlBlackboardDeclaration current = graph.Variables.RequireDeclaration(variable.ID);
+            foreach (PipelineBlackboardVariableScope scope in Enum.GetValues(typeof(PipelineBlackboardVariableScope)))
+            {
+                PipelineBlackboardVariableLifetime lifetime = PipelineBlackboardVariablePolicy.DefaultLifetime(scope);
+                menu.AddItem(new GUIContent("黑板作用域/" + scope), current.Scope == scope, () =>
+                    graph.Variables.ConfigureBlackboard(variable.ID, scope, lifetime, current.Category));
+            }
+            foreach (PipelineBlackboardVariableLifetime lifetime in Enum.GetValues(typeof(PipelineBlackboardVariableLifetime)))
+            {
+                if (!PipelineBlackboardVariablePolicy.IsValid(current.Scope, lifetime))
+                    continue;
+                menu.AddItem(new GUIContent("黑板生命周期/" + lifetime), current.Lifetime == lifetime, () =>
+                    graph.Variables.ConfigureBlackboard(variable.ID, current.Scope, lifetime, current.Category, current.InputBinding));
+            }
             return menu;
 
             void Add(string title, Type generic) => menu.AddItem(new GUIContent(title), false, () =>

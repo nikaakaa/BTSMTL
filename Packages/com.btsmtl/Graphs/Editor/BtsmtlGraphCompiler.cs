@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using BTSMTL.Authoring.Blackboard;
 using BTSMTL.Compilation;
 using BTSMTL.Orchestration;
 using FlowCanvas;
@@ -24,7 +25,7 @@ namespace BTSMTL.Graphs.Editor
             var fingerprint = new BtsmtlGraphFingerprint();
             GraphExecutionIdentity identity = fingerprint.CreateIdentity(root, root.AuthoringId,
                 encoding.EncodingContract, "Float32");
-            OrchestrationGraphContent<RuntimeValue> content = new Compilation(root, identity.SourceRevision).Build(identity);
+            OrchestrationGraphContent<RuntimeValue> content = new Compilation(root, contract, identity.SourceRevision).Build(identity);
             root.SetExecutionData(encoding.Write(content), identity, encoding);
             EditorUtility.SetDirty(root);
         }
@@ -50,14 +51,15 @@ namespace BTSMTL.Graphs.Editor
             readonly UnitySemanticBuilder m_Builder = new();
             readonly BtsmtlGraphCompilation m_Canvas;
             readonly BtsmtlGraphOperationBindings m_Operations = new();
-            readonly Dictionary<string, int> m_Variables = new(StringComparer.Ordinal);
+            readonly BtsmtlBlackboardCompilation m_Blackboard;
 
-            internal Compilation(BtsmtlGraphRoot root, string hash)
+            internal Compilation(BtsmtlGraphRoot root, GraphHostContract contract, string hash)
             {
                 m_Root = root;
                 m_Hash = hash;
                 m_Route = "graph:" + root.AuthoringId;
                 m_Canvas = new BtsmtlGraphCompilation(m_Builder);
+                m_Blackboard = CreateBlackboard(contract);
             }
 
             internal OrchestrationGraphContent<RuntimeValue> Build(GraphExecutionIdentity identity)
@@ -74,13 +76,15 @@ namespace BTSMTL.Graphs.Editor
                     BtsmtlNativeValueNodeCatalog.TryGetNode(node.GetType(), out BtsmtlNativeValueNodeDefinition native);
                     if (node is IBtsmtlVariableFlowNode variable)
                     {
-                        BindState(operation, m_Variables[variable.VariableId], Source(node));
+                        string ownerId = m_Root.Variables.OwnerId;
+                        m_Blackboard.Bind(operation, m_Route, ownerId, variable.VariableId, null, Source(node), variable.Writes);
                         if (variable.Writes)
                         {
                             OperationHandle read = m_Builder.DeclareOperation(Source(node),
                                 OrchestrationOperationCode.BlackboardGet, Array.Empty<int>(),
                                 text0: variable.VariableId, phase: "value");
-                            BindState(read, m_Variables[variable.VariableId], Source(node));
+                            m_Blackboard.Bind(read, m_Route, ownerId, variable.VariableId, null, Source(node),
+                                binding: BtsmtlGraphVariableReference.CompileIdentity(ownerId, variable.VariableId) + "/value");
                             m_Operations.AddValueInput(node, "Value", operation, "m_Value");
                             m_Operations.AddValueOutput(node, "Value", read, "m_Output");
                         }
@@ -119,52 +123,46 @@ namespace BTSMTL.Graphs.Editor
                         m_Root.AuthoringId, GraphSource());
                     entryContracts.Add(entry.EntryId, entry.Contract);
                 }
+                m_Blackboard.EndGraph();
+                m_Blackboard.DeclareScopes();
+                if (!m_Builder.Report.IsValid)
+                    throw new InvalidOperationException($"图 '{m_Root.AuthoringId}' 编译失败：" +
+                        string.Join("；", m_Builder.Report.Messages.Select(message => $"{message.Code} {message.SourceIdentity} {message.Message}")));
                 OperationHandle owner = m_Operations.Node(m_Root.Entries[0].NodeId);
                 m_Builder.DeclareGraphInvocation(owner, owner, GraphSource(), ProgramInvocationCallerKind.None,
                     string.Empty, string.Empty, -1);
                 return m_Builder.BuildOrchestrationFloat32(owner, identity, entryContracts: entryContracts);
             }
 
-            void DeclareVariables()
+            // Graph 作用域的执行持有者保持未指定，图的各个入口共用同一份值。
+            BtsmtlBlackboardCompilation CreateBlackboard(GraphHostContract contract)
             {
                 BtsmtlGraphVariableDeclarations declarations = m_Root.Variables;
-                var slots = new List<int>();
+                declarations.Validate();
+                string contentHash = StableHash.Compute(declarations.OwnerId, declarations.Revision).Value;
+                var sources = new Dictionary<string, BtsmtlBlackboardDeclarationSource>(StringComparer.Ordinal);
                 foreach (Variable variable in declarations.Blackboard.variables.Values.OrderBy(value => value.ID, StringComparer.Ordinal))
                 {
-                    var source = new SimulationSourceLocation(variable.GetType().FullName, declarations.OwnerId,
-                        string.Empty, string.Empty, string.Empty, string.Empty,
-                        m_Route + "/blackboard:" + variable.ID, declarationId: variable.ID,
-                        contentHash: StableHash.Compute(declarations.OwnerId, declarations.Revision).Value);
-                    int slot = m_Builder.DeclareStandaloneStateSlot(source,
-                        OrchestrationValuePortContracts.ToState(BtsmtlGraphValueTypes.Kind(variable.varType)),
-                        ProgramStateOwnerKind.Blackboard, ProgramStateSemantic.BlackboardValue,
-                        m_Route + "/variable:" + variable.ID,
-                        BtsmtlGraphValueTypes.AuthoringValue(variable.varType, ((ISerializedVariableValue)variable).serializedValue));
-                    var dependency = new ProgramIdentityDependency("btsmtl.blackboard-declaration",
-                        BtsmtlGraphVariableReference.CompileIdentity(declarations.OwnerId, variable.ID));
-                    m_Builder.DeclareCatalogEntry(dependency, 2, new[]
-                    {
-                        m_Builder.ConstantField(source, "Key", variable.name),
-                        m_Builder.ConstantField(source, "ValueType", variable.varType.FullName),
-                        m_Builder.ConstantField(source, "Scope", (int)ProgramScopeKind.Graph),
-                        m_Builder.ConstantField(source, "Lifetime", (int)ProgramBlackboardLifetime.GraphInstance),
-                        m_Builder.ConstantField(source, "Public", variable.isExposedPublic),
-                        m_Builder.StateDefaultField(slot)
-                    }, source);
-                    m_Builder.DeclareReference(m_Route + "/declaration:" + variable.ID,
-                        OperationHandle.Invalid, ProgramReferenceKind.StateSlot, slot,
-                        BtsmtlGraphVariableReference.CompileIdentity(declarations.OwnerId, variable.ID), source);
-                    m_Variables.Add(variable.ID, slot);
-                    slots.Add(slot);
+                    BtsmtlBlackboardDeclaration declaration = declarations.RequireDeclaration(variable.ID);
+                    sources.Add(BtsmtlGraphVariableReference.CompileIdentity(declarations.OwnerId, variable.ID),
+                        new BtsmtlBlackboardDeclarationSource(declarations.OwnerId, variable.GetType().FullName, contentHash, variable,
+                            new BtsmtlBlackboardDeclarationSnapshot(variable.ID, variable.name, variable.varType,
+                                declaration.Scope, declaration.Lifetime, declaration.Category,
+                                ((ISerializedVariableValue)variable).serializedValue, declaration.InputBinding),
+                            m_Route));
                 }
-                if (slots.Count != 0)
-                    m_Builder.DeclareScope(m_Route + "/variables", ProgramScopeKind.Graph, m_Route,
-                        OperationHandle.Invalid, slots, GraphSource());
+                return new BtsmtlBlackboardCompilation(sources, m_Builder, contract.BlackboardScopes, true,
+                    (declaration, source, fields) => fields.Add(m_Builder.ConstantField(source, "Public",
+                        ((Variable)declaration.AuthoringDeclaration).isExposedPublic)));
             }
 
-            void BindState(OperationHandle operation, int slot, SimulationSourceLocation source) =>
-                m_Builder.DeclareReference(source.Identity + "/state:" + operation.Value, operation,
-                    ProgramReferenceKind.StateSlot, slot, string.Empty, source);
+            void DeclareVariables()
+            {
+                m_Blackboard.CompileDeclarations();
+                m_Blackboard.BeginGraph(m_Root.Variables.OwnerId, m_Route,
+                    m_Root.Variables.Blackboard.variables.Values.Select(value => value.ID).OrderBy(id => id, StringComparer.Ordinal),
+                    OperationHandle.Invalid);
+            }
 
             SimulationSourceLocation Source(FlowNode node) =>
                 BtsmtlGraphCompilation.Source(m_Root.AuthoringId, m_Route, m_Hash, node);

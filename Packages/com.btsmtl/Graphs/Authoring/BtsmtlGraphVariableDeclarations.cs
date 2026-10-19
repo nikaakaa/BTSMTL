@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using BTSMTL.Authoring.Blackboard;
 using NodeCanvas.Framework;
 using NodeCanvas.Framework.Internal;
 using ParadoxNotion.Serialization;
@@ -21,6 +22,7 @@ namespace BTSMTL.Graphs
         [SerializeField] string m_Revision = "1";
         [SerializeField] string m_SerializedBlackboard = string.Empty;
         [SerializeField] List<UnityEngine.Object> m_ObjectReferences = new();
+        [SerializeField] List<BtsmtlBlackboardDeclaration> m_BlackboardDeclarations = new();
         [NonSerialized] BlackboardSource m_Blackboard = new();
         [NonSerialized] UnityEngine.Object m_Owner;
         [NonSerialized] int m_EditDepth;
@@ -28,6 +30,25 @@ namespace BTSMTL.Graphs
         public string OwnerId => m_OwnerId;
         public string Revision => m_Revision;
         public IBlackboard Blackboard => m_Blackboard;
+        public IReadOnlyList<BtsmtlBlackboardDeclaration> BlackboardDeclarations => m_BlackboardDeclarations;
+
+        public BtsmtlBlackboardDeclaration RequireDeclaration(string variableId) =>
+            m_BlackboardDeclarations.SingleOrDefault(declaration => declaration.VariableId == variableId) ??
+            throw new InvalidOperationException($"图变量 '{variableId}' 缺少黑板声明。");
+
+        public void Validate()
+        {
+            var declared = new HashSet<string>(StringComparer.Ordinal);
+            foreach (BtsmtlBlackboardDeclaration declaration in m_BlackboardDeclarations)
+            {
+                Variable variable = m_Blackboard.variables.Values.SingleOrDefault(value => value.ID == declaration?.VariableId);
+                if (declaration == null || !declared.Add(declaration.VariableId) || variable == null)
+                    throw new InvalidOperationException($"'{OwnerId}' 的黑板声明重复或没有对应变量。");
+                declaration.Validate(variable);
+            }
+            if (declared.Count != m_Blackboard.variables.Count)
+                throw new InvalidOperationException($"'{OwnerId}' 有变量缺少黑板声明。");
+        }
 
         public void BindOwner(UnityEngine.Object owner)
         {
@@ -88,7 +109,11 @@ namespace BTSMTL.Graphs
                 if (m_Blackboard.variables.Values.Any(value => value.ID == id))
                     throw new InvalidOperationException($"变量身份 '{id}' 已存在。");
                 variable = new Variable<T>(name, id) { value = defaultValue };
+                var declaration = new BtsmtlBlackboardDeclaration(id, PipelineBlackboardVariableScope.Graph,
+                    PipelineBlackboardVariableLifetime.GraphInstance);
+                declaration.Validate(variable);
                 m_Blackboard.variables.Add(name, variable);
+                m_BlackboardDeclarations.Add(declaration);
                 Blackboard.TryInvokeOnVariableAdded(variable);
             });
             return variable;
@@ -96,6 +121,15 @@ namespace BTSMTL.Graphs
 
         public void ConfigureVariable(string id, bool isPublic) => Edit("配置图变量发布", () =>
             m_Blackboard.variables.Values.Single(variable => variable.ID == id).isExposedPublic = isPublic);
+
+        public void ConfigureBlackboard(string id, PipelineBlackboardVariableScope scope,
+            PipelineBlackboardVariableLifetime lifetime, string category = "", PipelineBlackboardInputBinding inputBinding = null) =>
+            Edit("配置图变量黑板语义", () =>
+            {
+                var declaration = new BtsmtlBlackboardDeclaration(id, scope, lifetime, category, inputBinding);
+                declaration.Validate(m_Blackboard.variables.Values.Single(variable => variable.ID == id));
+                m_BlackboardDeclarations[m_BlackboardDeclarations.FindIndex(value => value.VariableId == id)] = declaration;
+            });
 
         public void Edit(string title, Action mutation) => Edit(title, mutation, true);
 
@@ -117,6 +151,9 @@ namespace BTSMTL.Graphs
                 mutation();
                 m_Blackboard.variables = m_Blackboard.variables.Values.ToDictionary(
                     variable => variable.name, variable => variable, StringComparer.Ordinal);
+                var ids = new HashSet<string>(m_Blackboard.variables.Values.Select(variable => variable.ID), StringComparer.Ordinal);
+                m_BlackboardDeclarations.RemoveAll(declaration => !ids.Contains(declaration.VariableId));
+                Validate();
                 if (advanceRevision)
                     m_Revision = Guid.NewGuid().ToString("N");
                 Serialize();

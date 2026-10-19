@@ -1,4 +1,5 @@
 using ThirdPersonSimulation;
+using BTSMTL.Authoring.Blackboard;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -646,11 +647,13 @@ namespace BTSMTL.Graphs
             string revision,
             string updateEventId,
             IReadOnlyList<GraphHostInputDescriptor> inputs,
-            IReadOnlyList<GraphHostOutputDescriptor> outputs)
+            IReadOnlyList<GraphHostOutputDescriptor> outputs,
+            IReadOnlyList<PipelineBlackboardVariableScope> blackboardScopes)
         {
             ContractId = RequireIdentity(contractId, nameof(contractId));
             Revision = RequireIdentity(revision, nameof(revision));
             UpdateEventId = RequireIdentity(updateEventId, nameof(updateEventId));
+            BlackboardScopes = blackboardScopes?.Distinct().ToArray() ?? throw new ArgumentNullException(nameof(blackboardScopes));
             m_Inputs = (inputs ?? Array.Empty<GraphHostInputDescriptor>())
                 .OrderBy(value => value?.InputId, StringComparer.Ordinal)
                 .ToArray();
@@ -666,6 +669,8 @@ namespace BTSMTL.Graphs
         public string UpdateEventId { get; }
         public IReadOnlyList<GraphHostInputDescriptor> Inputs => m_Inputs;
         public IReadOnlyList<GraphHostOutputDescriptor> Outputs => m_Outputs;
+        // 宿主为图变量提供的黑板作用域；图声明了其它作用域时编译失败。
+        public IReadOnlyList<PipelineBlackboardVariableScope> BlackboardScopes { get; }
 
         public bool TryGetInput(string inputId, out GraphHostInputDescriptor descriptor)
         {
