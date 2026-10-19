@@ -24,6 +24,7 @@ namespace BTSMTL
         static readonly ConditionalWeakTable<fsMetaType, string[]> s_EditorProperties = new();
         static readonly ConditionalWeakTable<fsMetaType, string[]>.CreateValueCallback s_CollectEditorProperties = CollectEditorProperties;
         static readonly ConditionalWeakTable<UnityEngine.Object, StrongBox<HashedSource>> s_ObjectSourceHashes = new();
+        static readonly ConditionalWeakTable<Graph, StrongBox<HashedSource>> s_GraphHashes = new();
 
         sealed class HashedSource
         {
@@ -71,7 +72,7 @@ namespace BTSMTL
                         ? Compute(child)
                         : ComputeDependencies(AssetDatabase.GetAssetPath(reference)));
                 }
-                string hash = StableHash.Compute(parts.ToArray()).ToString();
+                string hash = ComputeHash(s_GraphHashes.GetOrCreateValue(graph), parts.ToArray());
                 m_Hashes.Add(graph, hash);
                 return hash;
             }
@@ -214,12 +215,17 @@ namespace BTSMTL
             else
                 AppendSerializedSource(parts, asset);
             string[] current = parts.ToArray();
-            StrongBox<HashedSource> cache = s_ObjectSourceHashes.GetOrCreateValue(asset);
+            string hash = ComputeHash(s_ObjectSourceHashes.GetOrCreateValue(asset), current);
+            m_ObjectHashes.Add(asset, hash);
+            return hash;
+        }
+
+        static string ComputeHash(StrongBox<HashedSource> cache, string[] current)
+        {
             HashedSource previous = cache.Value;
             string hash = previous != null && current.AsSpan().SequenceEqual(previous.Parts)
                 ? previous.Hash : StableHash.Compute(current).Value;
             cache.Value = new HashedSource(current, hash);
-            m_ObjectHashes.Add(asset, hash);
             return hash;
         }
 
