@@ -234,7 +234,7 @@ namespace ThirdPerson.ValueGeneration
                     Type = (ITypeSymbol)field.GetAttributes().Single(attribute => Identity(attribute.AttributeClass) == UnionCaseAttribute)
                         .ConstructorArguments.Single().Value,
                     IsCase = true
-                }).ToArray() : StorageMembers(type);
+                }).ToArray() : StorageMembers(type).Where(member => member.Name != "Kind").ToArray();
 
         internal static bool IsAutoProperty(IPropertySymbol property) => property.DeclaringSyntaxReferences.Length == 0
             ? property.GetMethod != null && HasAttribute(property.GetMethod, "System.Runtime.CompilerServices.CompilerGeneratedAttribute")

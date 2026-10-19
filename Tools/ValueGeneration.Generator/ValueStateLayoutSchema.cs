@@ -52,6 +52,24 @@ namespace ThirdPerson.ValueGeneration.Generator
                     ValueUnionShape union = GetValueUnionShape(named);
                     if (union != null && !ValidateUnionLayout(named, union, out reason))
                         return false;
+                    if (union != null && RequestedValueUnionLayout(named) == 2)
+                    {
+                        if (!new ValueTypeLayout(m_Compilation).TryUnion(named, union, out ValueUnionLayout explicitUnion, out reason) ||
+                            !AppendLayout(schema, named, 2, 0, explicitUnion.Size, 2, out reason))
+                            return false;
+                        foreach (Member member in union.Members)
+                        {
+                            StateSchemaPart(schema, UnionPayloadFieldName(member));
+                            StateSchemaPart(schema, explicitUnion.PayloadOffset.ToString(CultureInfo.InvariantCulture));
+                            StateSchemaPart(schema, "1");
+                            if (!Append(schema, member.Type, out reason))
+                                return false;
+                        }
+                        if (!AppendUnionKindField(schema, "<Kind>k__BackingField", 0, union, out reason))
+                            return false;
+                        StateSchemaPart(schema, "end");
+                        return true;
+                    }
                     AttributeData layout = named.GetAttributes().SingleOrDefault(attribute =>
                         Identity(attribute.AttributeClass) == StructLayoutAttribute);
                     int kind = layout == null ? union == null ? 0 : 3 :
@@ -163,7 +181,7 @@ namespace ThirdPerson.ValueGeneration.Generator
                 return Append(schema, field.Type, out reason);
             }
 
-            bool TryMetadataType(INamedTypeSymbol type, out MetadataStateType metadata)
+            internal bool TryMetadataType(INamedTypeSymbol type, out MetadataStateType metadata)
             {
                 IAssemblySymbol assembly = type.ContainingAssembly;
                 if (!m_Metadata.TryGetValue(assembly.Identity, out Dictionary<string, MetadataStateType> types))
@@ -226,7 +244,7 @@ namespace ThirdPerson.ValueGeneration.Generator
                 return true;
             }
 
-            static int LayoutArgument(AttributeData layout, string name, int defaultValue) => layout == null ? defaultValue :
+            internal static int LayoutArgument(AttributeData layout, string name, int defaultValue) => layout == null ? defaultValue :
                 layout.NamedArguments.Where(argument => argument.Key == name)
                     .Select(argument => Convert.ToInt32(argument.Value.Value, CultureInfo.InvariantCulture)).DefaultIfEmpty(defaultValue).Single();
 
@@ -248,7 +266,7 @@ namespace ThirdPerson.ValueGeneration.Generator
                 return names.Length == 0 ? name : names + "." + name;
             }
 
-            sealed class MetadataStateType
+            internal sealed class MetadataStateType
             {
                 internal MetadataReader Reader;
                 internal TypeDefinitionHandle Definition;
@@ -259,7 +277,7 @@ namespace ThirdPerson.ValueGeneration.Generator
                 internal MetadataStateField[] Fields;
             }
 
-            sealed class MetadataStateField
+            internal sealed class MetadataStateField
             {
                 internal string Name;
                 internal int Offset;

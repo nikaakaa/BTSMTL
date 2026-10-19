@@ -21,6 +21,8 @@ namespace ThirdPerson.ValueGeneration.Generator
 
         const string UnionAttribute = "ThirdPersonSimulation.ValueUnionAttribute";
 
+        const string UnionAccessAttribute = "ThirdPersonSimulation.ValueUnionAccessAttribute";
+
         const string ValueOperationsAttribute = "ThirdPersonSimulation.ValueOperationsAttribute";
 
         const string ValueStoragePurposeAttribute = "ThirdPersonSimulation.ValueStorageAttribute";
@@ -45,6 +47,7 @@ namespace ThirdPerson.ValueGeneration.Generator
             var receiver = (Receiver)context.SyntaxReceiver;
             var templates = new Dictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
             var unions = new Dictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
+            var unionAccesses = new Dictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
             var valueRecords = new Dictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
             var valueStorageRecords = new Dictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
             var valueUpdates = new Dictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
@@ -60,6 +63,8 @@ namespace ThirdPerson.ValueGeneration.Generator
                 if (!HasAttribute(type, UnionTemplateAttribute) &&
                     (HasAttribute(type, UnionAttribute) || Cases(StorageMembers(type)).Length != 0))
                     unions[Identity(type)] = type;
+                if (HasAttribute(type, UnionAccessAttribute))
+                    unionAccesses[Identity(type)] = type;
                 if (HasAttribute(type, StateLayoutAttribute))
                     stateLayouts[Identity(type)] = type;
                 foreach (IMethodSymbol method in type.GetMembers().OfType<IMethodSymbol>())
@@ -110,14 +115,17 @@ namespace ThirdPerson.ValueGeneration.Generator
             }
             foreach (INamedTypeSymbol type in unions.Values.OrderBy(t => Identity(t), StringComparer.Ordinal))
             {
-                if (!ValidateUnionLayout(type, GetValueUnionShape(type), out string reason))
+                if (!ValidateUnionLayout(type, GetValueUnionShape(type), out string reason) ||
+                    !TryExplicitValueUnionLayout((CSharpCompilation)context.Compilation, type, out ValueUnionLayout layout, out reason))
                 {
                     context.ReportDiagnostic(Diagnostic.Create(InvalidValueDeclaration, type.Locations.FirstOrDefault(), Identity(type), reason));
                     continue;
                 }
                 context.AddSource(Identity(type).Replace('.', '_').Replace('<', '_').Replace('>', '_').Replace(',', '_') + ".Values.g.cs",
-                    SourceText.From(EmitValueUnion(type), Encoding.UTF8));
+                    SourceText.From(EmitValueUnion(type, layout), Encoding.UTF8));
             }
+            foreach (INamedTypeSymbol type in unionAccesses.Values.OrderBy(Identity, StringComparer.Ordinal))
+                EmitValueUnionAccess(context, type);
             foreach (INamedTypeSymbol type in valueRecords.Values.Where(type => !unions.ContainsKey(Identity(type)))
                 .OrderBy(type => Identity(type), StringComparer.Ordinal))
                 context.AddSource(Identity(type).Replace('.', '_').Replace('<', '_').Replace('>', '_').Replace(',', '_') + ".Values.g.cs",
@@ -170,7 +178,7 @@ namespace ThirdPerson.ValueGeneration.Generator
             type.IsReferenceType ? "global::System.Object.Equals(" + left + ", " + right + ")" :
             left + ".Equals(" + right + ")";
 
-        static string EmitValueUnion(INamedTypeSymbol type)
+        static string EmitValueUnion(INamedTypeSymbol type, ValueUnionLayout layout)
         {
             ValueUnionShape shape = GetValueUnionShape(type);
             INamedTypeSymbol definition = shape.Definition;
@@ -183,13 +191,34 @@ namespace ThirdPerson.ValueGeneration.Generator
             string fullType = TypeName(type);
             var code = new StringBuilder();
             code.Append("namespace ").Append(type.ContainingNamespace.ToDisplayString()).AppendLine(" {");
-            if (!HasAttribute(type, StructLayoutAttribute))
+            if (layout != null)
+                code.Append("[global::System.Runtime.InteropServices.StructLayout(global::System.Runtime.InteropServices.LayoutKind.Explicit, Size = ")
+                    .Append(layout.Size).AppendLine(")]");
+            else if (!HasAttribute(type, StructLayoutAttribute))
                 code.AppendLine("[global::System.Runtime.InteropServices.StructLayout(global::System.Runtime.InteropServices.LayoutKind.Auto)]");
             EmitTypeDeclaration(code, type);
             foreach (Member member in members.Where(m => m.Generated))
-                code.Append("public ").Append(TypeName(member.Type)).Append(' ').Append(Escape(member.Symbol.Name)).AppendLine(" { get; }");
+            {
+                if (layout == null)
+                    code.Append("public ").Append(TypeName(member.Type)).Append(' ').Append(Escape(member.Symbol.Name)).AppendLine(" { get; }");
+                else
+                {
+                    code.AppendLine("[global::System.Runtime.CompilerServices.CompilerGenerated]");
+                    code.Append("[global::System.Runtime.InteropServices.FieldOffset(").Append(layout.PayloadOffset).AppendLine(")]");
+                    code.Append("readonly ").Append(TypeName(member.Type)).Append(' ').Append(UnionPayloadField(member)).AppendLine(";");
+                    code.Append("public ").Append(TypeName(member.Type)).Append(' ').Append(Escape(member.Symbol.Name))
+                        .Append(" => Kind == ").Append(kindType).Append('.').Append(Escape(member.Symbol.Name))
+                        .Append(" ? ").Append(UnionPayloadField(member))
+                        .Append(" : throw new global::System.InvalidOperationException(")
+                        .Append(SymbolDisplay.FormatLiteral("值联合不是 " + member.Symbol.Name + " 分支。", true)).AppendLine(");");
+                }
+            }
             if (shape.KindMember == null)
+            {
+                if (layout != null)
+                    code.AppendLine("[field: global::System.Runtime.InteropServices.FieldOffset(0)]");
                 code.Append("public ").Append(kindType).AppendLine(" Kind { get; }");
+            }
             foreach (List<Member> branches in CaseGroups(cases))
             {
                 code.Append("private ").Append(Escape(type.Name)).Append('(').Append(kindType).Append(" kind");
@@ -202,14 +231,14 @@ namespace ThirdPerson.ValueGeneration.Generator
                     code.Append("this.").Append(Escape(member.Symbol.Name)).Append(" = ")
                         .Append(Normalize(member, Parameter(member.Symbol.Name), "false")).AppendLine(";");
                 if (branches.Count == 1)
-                    code.Append("this.").Append(Escape(branches[0].Symbol.Name)).Append(" = ")
+                    code.Append("this.").Append(layout == null ? Escape(branches[0].Symbol.Name) : UnionPayloadField(branches[0])).Append(" = ")
                         .Append(Normalize(branches[0], "value", "false")).AppendLine(";");
                 else
                 {
                     code.AppendLine("switch (kind) {");
                     foreach (Member member in branches)
                         code.Append("case ").Append(kindType).Append('.').Append(Escape(member.Symbol.Name))
-                            .Append(": this.").Append(Escape(member.Symbol.Name)).Append(" = ")
+                            .Append(": this.").Append(layout == null ? Escape(member.Symbol.Name) : UnionPayloadField(member)).Append(" = ")
                             .Append(Normalize(member, "value", "false")).AppendLine("; break;");
                     code.AppendLine("}");
                 }
@@ -683,7 +712,7 @@ namespace ThirdPerson.ValueGeneration.Generator
                     Type = (ITypeSymbol)field.GetAttributes().Single(attribute => Identity(attribute.AttributeClass) == UnionCaseAttribute)
                         .ConstructorArguments.Single().Value,
                     IsCase = true
-                }).ToArray() : StorageMembers(type);
+                }).ToArray() : StorageMembers(type).Where(member => member.Symbol.Name != "Kind").ToArray();
 
         static IEnumerable<List<Member>> CaseGroups(IEnumerable<Member> cases)
         {
@@ -710,7 +739,7 @@ namespace ThirdPerson.ValueGeneration.Generator
         static void EmitKind(StringBuilder code, INamedTypeSymbol type, Member[] cases)
         {
             code.Append(type.DeclaredAccessibility == Accessibility.Public ? "public" : "internal")
-                .Append(" enum ").Append(Escape(type.Name)).Append("Kind : ")
+                .Append(" enum ").Append(Escape(ValueUnionKindName(type))).Append(" : ")
                 .AppendLine(cases.Length <= byte.MaxValue ? "byte {" : "int {");
             for (int i = 0; i < cases.Length; i++)
                 code.Append(Escape(cases[i].Symbol.Name)).Append(" = ").Append(i + 1).AppendLine(",");

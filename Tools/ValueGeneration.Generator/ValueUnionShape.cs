@@ -11,6 +11,17 @@ namespace ThirdPerson.ValueGeneration.Generator
     {
         const string StructLayoutAttribute = "System.Runtime.InteropServices.StructLayoutAttribute";
 
+        static string ValueUnionKindName(INamedTypeSymbol type)
+        {
+            ISymbol member = type.GetMembers("Kind").SingleOrDefault(value => !value.IsStatic &&
+                (value is IFieldSymbol || value is IPropertySymbol));
+            return (member is IPropertySymbol property ? property.Type : (member as IFieldSymbol)?.Type)?.Name ?? type.Name + "Kind";
+        }
+
+        static string UnionPayloadFieldName(Member member) => "m_Value_" + member.Symbol.Name;
+
+        static string UnionPayloadField(Member member) => Escape(UnionPayloadFieldName(member));
+
         sealed class ValueUnionShape
         {
             internal INamedTypeSymbol Definition;
@@ -42,7 +53,7 @@ namespace ThirdPerson.ValueGeneration.Generator
                 return null;
             INamedTypeSymbol kindOwner = definition ?? type;
             string kindIdentity = kindOwner.TypeKind == TypeKind.Enum ? Identity(kindOwner) :
-                (kindOwner.ContainingNamespace.IsGlobalNamespace ? "" : kindOwner.ContainingNamespace.ToDisplayString() + ".") + kindOwner.Name + "Kind";
+                (kindOwner.ContainingNamespace.IsGlobalNamespace ? "" : kindOwner.ContainingNamespace.ToDisplayString() + ".") + ValueUnionKindName(kindOwner);
             return new ValueUnionShape
             {
                 Definition = definition,
@@ -55,7 +66,7 @@ namespace ThirdPerson.ValueGeneration.Generator
                 KindIdentity = kindIdentity,
                 KindType = kindOwner.TypeKind == TypeKind.Enum ? TypeName(kindOwner) :
                     "global::" + (kindOwner.ContainingNamespace.IsGlobalNamespace ? "" : kindOwner.ContainingNamespace.ToDisplayString() + ".") +
-                    Escape(kindOwner.Name + "Kind")
+                    Escape(ValueUnionKindName(kindOwner))
             };
         }
 
@@ -76,7 +87,7 @@ namespace ThirdPerson.ValueGeneration.Generator
         static bool IsUnionKindField(IFieldSymbol field, ValueUnionShape union) =>
             SymbolEqualityComparer.Default.Equals(field.AssociatedSymbol ?? field, union.KindMember) &&
             (Identity(field.Type) == union.KindIdentity || field.Type.TypeKind == TypeKind.Error &&
-                field.Type.Name == union.KindOwner.Name + "Kind" &&
+                field.Type.Name == ValueUnionKindName(union.KindOwner) &&
                 (field.Type.ContainingNamespace.IsGlobalNamespace ||
                     SymbolEqualityComparer.Default.Equals(field.Type.ContainingNamespace, union.KindOwner.ContainingNamespace)));
 
@@ -108,8 +119,15 @@ namespace ThirdPerson.ValueGeneration.Generator
                     .Append("out ").Append(TypeName(member.Type)).Append(' ').Append(Escape(member.Symbol.Name));
             code.AppendLine(") {");
             code.AppendLine("Kind = this.Kind;");
-            foreach (Member member in values)
+            foreach (Member member in union.Common)
                 code.Append(Escape(member.Symbol.Name)).Append(" = this.").Append(Escape(member.Symbol.Name)).AppendLine(";");
+            foreach (Member member in union.Cases)
+                code.Append(Escape(member.Symbol.Name)).AppendLine(" = default;");
+            code.AppendLine("switch (Kind) {");
+            foreach (Member member in union.Cases)
+                code.Append("case ").Append(union.KindType).Append('.').Append(Escape(member.Symbol.Name)).Append(": ")
+                    .Append(Escape(member.Symbol.Name)).Append(" = this.").Append(Escape(member.Symbol.Name)).AppendLine("; break;");
+            code.AppendLine("}");
             code.AppendLine("}");
             code.Append("public static ").Append(TypeName(type)).Append(" FromValueStorage(in ").Append(union.KindType).Append(" Kind");
             foreach (Member member in values)

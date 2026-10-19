@@ -94,5 +94,13 @@ namespace ThirdPersonSimulation
     {
         public ValueUnionAttribute(Type definition) => Definition = definition;
         public Type Definition { get; }
+        public System.Runtime.InteropServices.LayoutKind Layout { get; set; } = System.Runtime.InteropServices.LayoutKind.Auto;
+    }
+
+    [AttributeUsage(AttributeTargets.Struct)]
+    public sealed class ValueUnionAccessAttribute : Attribute
+    {
+        public ValueUnionAccessAttribute(Type union) => Union = union;
+        public Type Union { get; }
     }
 }
