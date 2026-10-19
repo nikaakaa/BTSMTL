@@ -526,6 +526,9 @@ namespace BTSMTL.Orchestration
         {
             RetireOperationOverrides(operationIndex);
             ref OrchestrationOperationState state = ref m_Operations[operationIndex];
+            if (state.TimelineRuntimeHandle != 0)
+                m_TimelineDispatcher.ReleasePlayback(m_TimelineState, operationIndex,
+                    ref state.TimelineRuntimeHandle, in m_Context);
             ulong generation = state.Generation;
             state = default;
             state.Generation = generation;
@@ -761,11 +764,11 @@ namespace BTSMTL.Orchestration
             }
         }
 
-        void TraceEdge(int edgeIndex, bool selected, bool passed)
+        void TraceEdge(int edgeIndex, bool selected, bool passed, int sourceStateOperation = -1)
         {
             if (!m_Input.CaptureTrace || IsPredictiveEvaluation)
                 return;
-            int operationIndex = m_Program.Edge(edgeIndex).SourceOperationIndex;
+            int operationIndex = sourceStateOperation >= 0 ? sourceStateOperation : m_Program.Edge(edgeIndex).SourceOperationIndex;
             ref OrchestrationTraceEvent<TValue> item = ref m_Workspace.TraceEvents[m_TraceCount++];
             item = default;
             item.Kind = OrchestrationTraceKind.Edge;

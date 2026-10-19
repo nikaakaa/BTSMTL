@@ -271,11 +271,17 @@ namespace BTSMTL.Timeline.Runtime
                 checked((scheduling.Markers.Length + 3 * trees) * traversals +
                     (mode == OrchestrationTimelinePlaybackMode.Loop ? 2 * decisionInstances : decisionInstances)), activeTrees,
                 sampledClips, checked(sampledClips * traversals), graphEntries.ToArray());
+            bool retainsCompletedPlayback = program.RetainsTimelinePlayback(operationIndex);
+            int[] sectionIdentityIds = retainsCompletedPlayback
+                ? new int[prepared.Content.Sections.Count] : Array.Empty<int>();
+            for (int ordinal = 0; ordinal < sectionIdentityIds.Length; ordinal++)
+                sectionIdentityIds[ordinal] = prepared.Identities.Bind(prepared.Content.Sections[ordinal].AuthoringId);
             content = new OrchestrationTimelinePreparedContent<OrchestrationTime>(
                 program.Operation(operationIndex).TimelineContentIdentityId, prepared.ContentRevisionId, prepared.Content.Duration,
                 tickRate,
                 mode, domain, scheduling.Clips, scheduling.TreeOrdinals,
                 scheduling.Markers, scheduling.Sections,
+                sectionIdentityIds, retainsCompletedPlayback,
                 entries.ClipEntries, entries.MarkerEntries, activeTrees, decisionInstances,
                 mode == OrchestrationTimelinePlaybackMode.Loop ? checked(decisionInstances + decisions) : decisions,
                 call, in tickCapacity);

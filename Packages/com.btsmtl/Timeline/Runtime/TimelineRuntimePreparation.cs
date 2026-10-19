@@ -554,62 +554,20 @@ namespace BTSMTL.Timeline.Runtime
     {
         readonly TimelineContentUnit m_Content;
         readonly int[] m_Markers;
-        readonly int[] m_InitialSeekMarkers;
 
         public TimelineRuntimeMarkerIndex(TimelineContentUnit content, TimelineExecutionDomain domain)
         {
             m_Content = content;
             var markers = new List<int>();
-            var initialSeekMarkers = new List<int>();
             for (int index = 0; index < content.Markers.Count; index++)
                 if (!content.Markers[index].TrackMuted && content.Markers[index].ExecutionPolicy.Domain == domain)
-                {
-                    if (content.Markers[index].ForceTriggerOnInitialSeek)
-                        initialSeekMarkers.Add(markers.Count);
                     markers.Add(index);
-                }
             m_Markers = markers.ToArray();
-            m_InitialSeekMarkers = initialSeekMarkers.ToArray();
         }
 
         public int Count => m_Markers.Length;
         public int ContentIndexAt(int index) => m_Markers[index];
         public TimelineContentMarker this[int index] => m_Content.Markers[m_Markers[index]];
-
-        public void Select(OrchestrationTime from, OrchestrationTime to, bool includeEqual, bool initialSeek, List<int> selected)
-        {
-            selected.Clear();
-            if (initialSeek)
-                for (int index = 0; index < m_InitialSeekMarkers.Length; index++)
-                {
-                    int markerIndex = m_InitialSeekMarkers[index];
-                    if (this[markerIndex].Time >= from || this[markerIndex].Time > to)
-                        break;
-                    selected.Add(markerIndex);
-                }
-            for (int index = Find(from, includeEqual); index < Count; index++)
-            {
-                if (this[index].Time > to)
-                    break;
-                selected.Add(index);
-            }
-        }
-
-        public int Find(OrchestrationTime time, bool includeEqual)
-        {
-            int lower = 0;
-            int upper = Count;
-            while (lower < upper)
-            {
-                int middle = lower + (upper - lower) / 2;
-                OrchestrationTime position = this[middle].Time;
-                if (position < time || !includeEqual && position == time)
-                    lower = middle + 1;
-                else
-                    upper = middle;
-            }
-            return lower;
-        }
     }
 
     sealed class TimelineRuntimeDomainIndex

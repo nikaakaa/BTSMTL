@@ -93,17 +93,7 @@ namespace BTSMTL.Timeline.Runtime
         {
             ref readonly OrchestrationTimelinePlaybackState<TTime> playback = ref m_Playbacks[slot];
             ReadOnlySpan<TimelineSchedulingSection<TTime>> sections = Content(in playback.Start).Sections.Span;
-            int lower = 0;
-            int upper = sections.Length;
-            while (lower < upper)
-            {
-                int middle = lower + (upper - lower) / 2;
-                if (default(TClock).LessThanOrEqual(sections[middle].Time, playback.Progress.CursorTime))
-                    lower = middle + 1;
-                else
-                    upper = middle;
-            }
-            return lower == 0 ? -1 : sections[lower - 1].SectionIndex;
+            return playback.Section == 0 ? -1 : sections[playback.Section - 1].SectionIndex;
         }
 
         OrchestrationTimelinePreparedContent<TTime> Content(in OrchestrationTimelineStart<TTime> start) =>

@@ -29,6 +29,57 @@ namespace BTSMTL.Orchestration
 
         TValue ReadTimelineTime() => m_TimelineTime;
 
+        TValue ReadTimelineSection(int operationIndex)
+        {
+            int selected = -1;
+            ulong playbackIdentity = 0;
+            foreach (int callIndex in m_Program.TimelineSectionCalls(operationIndex))
+            {
+                int state = m_Program.Operation(callIndex).ParentStateOperationIndex;
+                if (!IsTimelineQueryStateActive(state))
+                    continue;
+                ulong handle = ReadOperationState(callIndex).TimelineRuntimeHandle;
+                if (handle > playbackIdentity)
+                {
+                    selected = callIndex;
+                    playbackIdentity = handle;
+                }
+            }
+            int section = selected < 0 ? 0 : m_TimelineDispatcher.ReadSection(
+                m_TimelineState, selected, playbackIdentity, in m_Context);
+            return default(TValues).FromIdentity(OrchestrationIdentityValue.Content(section));
+        }
+
+        bool IsTimelineQueryStateActive(int stateOperationIndex)
+        {
+            for (int state = stateOperationIndex; state >= 0;
+                state = m_Program.Operation(state).ParentStateOperationIndex)
+            {
+                ref readonly OrchestrationOperation operation = ref m_Program.Operation(state);
+                if (ReadOperationState(operation.StateMachineOwnerOperationIndex).ActiveStateIdentityId != operation.StateIdentityId)
+                    return false;
+            }
+            return true;
+        }
+
+        void ReleaseCompletedStateTimelines(int stateOperationIndex)
+        {
+            int owner = m_Program.Operation(stateOperationIndex).ExecutionFrameOwnerOperationIndex;
+            for (int operationIndex = 0; operationIndex < m_Program.OperationCount; operationIndex++)
+            {
+                ref readonly OrchestrationOperation operation = ref m_Program.Operation(operationIndex);
+                if (!m_Program.RetainsTimelinePlayback(operationIndex) ||
+                    operation.ExecutionFrameOwnerOperationIndex != owner ||
+                    ReadStatus(operationIndex) != OrchestrationOperationStatus.Success)
+                    continue;
+                int state = operation.ParentStateOperationIndex;
+                while (state >= 0 && state != stateOperationIndex)
+                    state = m_Program.Operation(state).ParentStateOperationIndex;
+                if (state >= 0)
+                    ResetOperation(operationIndex);
+            }
+        }
+
         public OrchestrationOperationResult AdvanceTimeline(
             in OrchestrationTimelineInvocationFacts invocation, in TValue time,
             in OrchestrationStopContext stopContext)

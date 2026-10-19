@@ -25,6 +25,8 @@ namespace BTSMTL.Orchestration
         readonly int[] m_StateOnExit;
         readonly int[] m_ValueEvaluationOffsets;
         readonly int[] m_StateOperations;
+        readonly int[][] m_TimelineSectionCalls;
+        readonly bool[] m_RetainedTimelineCalls;
 
         public OrchestrationProgram(OrchestrationProgramContent<TValue> content)
         {
@@ -44,7 +46,10 @@ namespace BTSMTL.Orchestration
             m_StateRoots = EmptyOperationIndexes();
             m_StateOnExit = EmptyOperationIndexes();
             m_ValueEvaluationOffsets = new int[m_Operations.Length + 1];
+            m_TimelineSectionCalls = new int[m_Operations.Length][];
+            m_RetainedTimelineCalls = new bool[m_Operations.Length];
             BuildIndexes();
+            BuildTimelineSectionCalls();
         }
 
         public OrchestrationProgramContent<TValue> Content => m_Content;
@@ -66,6 +71,8 @@ namespace BTSMTL.Orchestration
             m_StateOperations[stateIdentityId];
         public int ValueEvaluationSlot(int operationIndex, int outputPortIndex) =>
             m_ValueEvaluationOffsets[operationIndex] + outputPortIndex + 1;
+        public ReadOnlySpan<int> TimelineSectionCalls(int operationIndex) => m_TimelineSectionCalls[operationIndex];
+        public bool RetainsTimelinePlayback(int operationIndex) => m_RetainedTimelineCalls[operationIndex];
         public ref readonly OrchestrationOperation Operation(int operationIndex) => ref m_Operations[operationIndex];
         public ref readonly OrchestrationFlowEdge Edge(int edgeIndex) => ref m_Edges[edgeIndex];
         public ref readonly TValue Constant(int constantIndex) => ref m_Constants[constantIndex];
@@ -366,6 +373,28 @@ namespace BTSMTL.Orchestration
                 foreach (int edgeIndex in Outgoing(operationIndex, OrchestrationFlowKind.Exit))
                     if (m_Edges[edgeIndex].SourcePortId == Ports.StateOnExit)
                         AssignUnique(m_StateOnExit, operationIndex, edgeIndex);
+            }
+        }
+
+        void BuildTimelineSectionCalls()
+        {
+            for (int queryIndex = 0; queryIndex < m_Operations.Length; queryIndex++)
+            {
+                ref readonly OrchestrationOperation query = ref m_Operations[queryIndex];
+                if (query.Code != OrchestrationOperationCode.TimelineSection)
+                    continue;
+                var calls = new List<int>();
+                for (int callIndex = 0; callIndex < m_Operations.Length; callIndex++)
+                {
+                    ref readonly OrchestrationOperation call = ref m_Operations[callIndex];
+                    if (call.Code != OrchestrationOperationCode.Timeline ||
+                        call.TimelineContentIdentityId != query.TimelineContentIdentityId ||
+                        call.ExecutionFrameOwnerOperationIndex != query.ExecutionFrameOwnerOperationIndex)
+                        continue;
+                    calls.Add(callIndex);
+                    m_RetainedTimelineCalls[callIndex] = true;
+                }
+                m_TimelineSectionCalls[queryIndex] = calls.ToArray();
             }
         }
 

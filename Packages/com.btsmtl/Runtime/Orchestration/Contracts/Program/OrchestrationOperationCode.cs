@@ -25,6 +25,7 @@ namespace BTSMTL.Orchestration
         TimelineClipExitRequest = 51,
         TimelineTime = 52,
         TimelineSectionContinueRequest = 53,
+        TimelineSection = 54,
         BlackboardGet = 60,
         BlackboardSet = 61,
         InputBoolean = 70,

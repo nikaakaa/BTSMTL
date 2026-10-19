@@ -58,6 +58,7 @@ namespace BTSMTL.Timeline.Runtime
             ReadOnlyMemory<int> treeOrdinals,
             ReadOnlyMemory<TimelineSchedulingMarker<TTime>> markers,
             ReadOnlyMemory<TimelineSchedulingSection<TTime>> sections,
+            ReadOnlyMemory<int> sectionIdentityIds, bool retainsCompletedPlayback,
             ReadOnlyMemory<OrchestrationTimelineEntryBinding> clipEntries,
             ReadOnlyMemory<OrchestrationExecutionEntry> markerEntries,
             int requiredActiveTrees, int requiredTreeExitRequests, int requiredTreeExits,
@@ -74,6 +75,8 @@ namespace BTSMTL.Timeline.Runtime
             TreeOrdinals = treeOrdinals;
             Markers = markers;
             Sections = sections;
+            SectionIdentityIds = sectionIdentityIds;
+            RetainsCompletedPlayback = retainsCompletedPlayback;
             ClipEntries = clipEntries;
             MarkerEntries = markerEntries;
             RequiredActiveTrees = requiredActiveTrees;
@@ -95,6 +98,8 @@ namespace BTSMTL.Timeline.Runtime
         public ReadOnlyMemory<int> TreeOrdinals { get; }
         public ReadOnlyMemory<TimelineSchedulingMarker<TTime>> Markers { get; }
         public ReadOnlyMemory<TimelineSchedulingSection<TTime>> Sections { get; }
+        public ReadOnlyMemory<int> SectionIdentityIds { get; }
+        public bool RetainsCompletedPlayback { get; }
         public ReadOnlyMemory<OrchestrationTimelineEntryBinding> ClipEntries { get; }
         public ReadOnlyMemory<OrchestrationExecutionEntry> MarkerEntries { get; }
         public int RequiredActiveTrees { get; }

@@ -109,7 +109,7 @@ namespace BTSMTL.Orchestration
             }
             if (transition < 0)
                 return OrchestrationOperationResult.Running;
-            TraceEdge(transition, true, true);
+            TraceEdge(transition, true, true, active);
             ref readonly OrchestrationFlowEdge edge = ref m_Program.Edge(transition);
             machine.ExitingStateIdentityId = m_Program.Operation(active).StateIdentityId;
             machine.PendingStateIdentityId = m_Program.Operation(edge.TargetOperationIndex).StateIdentityId;
@@ -213,6 +213,7 @@ namespace BTSMTL.Orchestration
                     return OrchestrationStopStatus.Failed;
                 ForceStop(exit, OrchestrationStopContext.Reset(exit));
             }
+            ReleaseCompletedStateTimelines(stateOperationIndex);
             state.ChildCursor = 3;
             return OrchestrationStopStatus.Completed;
         }
@@ -255,6 +256,7 @@ namespace BTSMTL.Orchestration
             {
                 PopState();
             }
+            ReleaseCompletedStateTimelines(stateOperationIndex);
         }
 
         void ForceStopStateMachine(int machineOperationIndex, OrchestrationStopContext context)

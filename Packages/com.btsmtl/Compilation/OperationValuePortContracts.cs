@@ -217,6 +217,7 @@ namespace BTSMTL.Compilation
 			Set(values, Input(OrchestrationOperationCode.TimelineClipExitRequest, Fixed("m_When", 0, SemanticValueKind.Boolean)));
 			Set(values, Input(OrchestrationOperationCode.TimelineSectionContinueRequest, Fixed("m_When", 0, SemanticValueKind.Boolean)));
             Set(values, Output(OrchestrationOperationCode.TimelineTime, Fixed("m_Output", 0, SemanticValueKind.Number)));
+            Set(values, Output(OrchestrationOperationCode.TimelineSection, Fixed("m_Output", 0, SemanticValueKind.Identity)));
             Set(values, Input(OrchestrationOperationCode.Timeline,
                 Fixed("m_PlaybackRate", 0, SemanticValueKind.Number),
                 Fixed("m_Paused", 1, SemanticValueKind.Boolean),

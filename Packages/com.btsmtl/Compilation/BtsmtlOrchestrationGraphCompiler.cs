@@ -852,6 +852,8 @@ namespace BTSMTL.Compilation
                 for (int i = 0; i < m_Operations.Count; i++)
                 {
                     SemanticOperation source = m_Operations[i];
+                    if (source.Code == OrchestrationOperationCode.TimelineSection)
+                        RequireTimelineSectionCall(i);
                     int integer0 = source.Integer0;
                     if (source.Output.HasValue)
                     {
@@ -870,7 +872,8 @@ namespace BTSMTL.Compilation
                     result[i] = new OrchestrationOperation(source.Code,
                         isRunnable, Bind(m_OperationIdentities[i]), integer0, source.Integer1, constant,
                         m_InputSlots[i], source.Code == OrchestrationOperationCode.InputRequest ? Bind(source.Text0) : 0,
-                        valueSlot, source.Code == OrchestrationOperationCode.Timeline ? Bind(source.Text0) : 0,
+                        valueSlot, source.Code is OrchestrationOperationCode.Timeline or OrchestrationOperationCode.TimelineSection
+                            ? Bind(source.Text0) : 0,
                         stateId, source.Code == OrchestrationOperationCode.State ? StateMachineOwner(i) : -1,
                         m_ExtensionIndexes[i], GraphCallIndex(i), m_InputRanges[i], ExecutionOutputCount(i),
                         m_OutputOffsets[i], m_LifecycleHookRanges[i], m_BlackboardFactsIndexes[i], parents[i], m_OutputAssignmentRanges[i],
@@ -883,6 +886,16 @@ namespace BTSMTL.Compilation
                                 m_ExecutionFrameOwners[i]);
                 }
                 return result;
+            }
+
+            void RequireTimelineSectionCall(int queryIndex)
+            {
+                for (int callIndex = 0; callIndex < m_Operations.Count; callIndex++)
+                    if (m_Operations[callIndex].Code == OrchestrationOperationCode.Timeline &&
+                        m_Operations[callIndex].Text0 == m_Operations[queryIndex].Text0 &&
+                        m_ExecutionFrameOwners[callIndex] == m_ExecutionFrameOwners[queryIndex])
+                        return;
+                throw new InvalidOperationException($"Timeline 分段查询 '{m_Operations[queryIndex].TemplateIdentity}' 的内容在同一执行帧归属中没有正式播放调用。");
             }
 
             OrchestrationFlowEdge[] BuildControlFlow()

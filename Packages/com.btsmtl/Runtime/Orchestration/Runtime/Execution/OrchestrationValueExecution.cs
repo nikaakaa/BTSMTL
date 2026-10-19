@@ -107,6 +107,8 @@ namespace BTSMTL.Orchestration
                     return values.FromInt32((operation.Integer0 + ReadOperationState(operationIndex).ChildCursor) % operation.Integer1);
                 case OrchestrationOperationCode.TimelineTime:
                     return ReadTimelineTime();
+                case OrchestrationOperationCode.TimelineSection:
+                    return ReadTimelineSection(operationIndex);
                 case OrchestrationOperationCode.Extension:
                 {
                     Span<TValue> outputs = m_Workspace.Outputs[depth].AsSpan(0, operation.OutputCount);
@@ -319,6 +321,7 @@ namespace BTSMTL.Orchestration
                 case OrchestrationOperationCode.HostInput:
                 case OrchestrationOperationCode.IdentityValue:
                 case OrchestrationOperationCode.TimelineTime:
+                case OrchestrationOperationCode.TimelineSection:
                     return EvaluateControlValue(operationIndex);
                 case OrchestrationOperationCode.Extension:
                     if (m_Bindings.Contract(operation.ExtensionBindingIndex).Kind != OrchestrationExtensionKind.Action)

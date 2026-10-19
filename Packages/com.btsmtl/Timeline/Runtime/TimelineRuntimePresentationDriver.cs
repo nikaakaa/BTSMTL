@@ -838,7 +838,8 @@ namespace BTSMTL.Timeline.Runtime
                 for (int ordinal = 0; ordinal < clips.Length; ordinal++)
                     if (clips[ordinal].Tree &&
                         TimelineRuntimeScheduling<OrchestrationTime, OrchestrationTimeClock>.Active(
-                            in clips[ordinal], ordinal, sample.Time, sample.Cycle, pendingExits))
+                            in clips[ordinal], ordinal, sample.Time, sample.Cycle, pendingExits,
+                            native.Sections.Span, start.StartTime))
                         m_Boundaries[boundaryCount++] = new TimelineSchedulingBoundary<OrchestrationTime>(
                             ordinal, clips[ordinal].SortOrdinal, sample.Time, sample.Cycle, true);
                 scheduledCount = m_Scheduler.Trees(clips, native.TreeOrdinals.Span,
@@ -854,9 +855,11 @@ namespace BTSMTL.Timeline.Runtime
                 for (int ordinal = 0; ordinal < clips.Length; ordinal++)
                     m_PreviousActiveClips[ordinal] =
                         TimelineRuntimeScheduling<OrchestrationTime, OrchestrationTimeClock>.ContinuesAcrossJump(
-                            in clips[ordinal], ordinal, from, to, state.Cycle, exits);
+                            in clips[ordinal], ordinal, from, to, state.Cycle, exits,
+                            native.Sections.Span, start.StartTime);
                 int boundaryCount = TimelineRuntimeScheduling<OrchestrationTime, OrchestrationTimeClock>.JumpExits(
-                    clips, from, to, state.Cycle, exits, ReadOnlySpan<OrchestrationTimelineClipOccurrence>.Empty, m_Boundaries);
+                    clips, native.Sections.Span, start.StartTime, from, to, state.Cycle, exits,
+                    ReadOnlySpan<OrchestrationTimelineClipOccurrence>.Empty, m_Boundaries);
                 for (int i = 0; i < boundaryCount; i++)
                     if (clips[m_Boundaries[i].ClipOrdinal].TreeDecision)
                         OrchestrationTimelineRuntime<OrchestrationTime, OrchestrationTimeClock>.AppendExit(
@@ -867,7 +870,7 @@ namespace BTSMTL.Timeline.Runtime
                                 LastCycle = m_Boundaries[i].Cycle
                             });
                 var traversal = new TimelineSchedulingJump<OrchestrationTime>(true, from, false);
-                boundaryCount += m_Scheduler.Boundaries(clips, to, state.Cycle,
+                boundaryCount += m_Scheduler.Boundaries(clips, native.Sections.Span, to, state.Cycle,
                     sample.Time, sample.Cycle, native.Duration, false, true, exits,
                     ReadOnlySpan<OrchestrationTimelineClipOccurrence>.Empty, m_Boundaries, boundaryCount, in traversal);
                 TimelineRuntimeScheduling<OrchestrationTime, OrchestrationTimeClock>.SortBoundaries(m_Boundaries.AsSpan(0, boundaryCount));
@@ -884,8 +887,9 @@ namespace BTSMTL.Timeline.Runtime
                 for (int ordinal = 0; ordinal < clips.Length; ordinal++)
                     m_PreviousActiveClips[ordinal] =
                         TimelineRuntimeScheduling<OrchestrationTime, OrchestrationTimeClock>.Active(
-                            in clips[ordinal], ordinal, state.CursorTime, state.Cycle, exits);
-                int boundaryCount = m_Scheduler.Boundaries(clips, state.CursorTime, state.Cycle,
+                            in clips[ordinal], ordinal, state.CursorTime, state.Cycle, exits,
+                            native.Sections.Span, start.StartTime);
+                int boundaryCount = m_Scheduler.Boundaries(clips, native.Sections.Span, state.CursorTime, state.Cycle,
                     sample.Time, sample.Cycle, native.Duration, start.Mode == OrchestrationTimelinePlaybackMode.Loop,
                     state.Graphs.TreeInitialBoundaryState == OrchestrationTimelineInitialBoundaryState.Pending, exits,
                     ReadOnlySpan<OrchestrationTimelineClipOccurrence>.Empty, m_Boundaries, 0);

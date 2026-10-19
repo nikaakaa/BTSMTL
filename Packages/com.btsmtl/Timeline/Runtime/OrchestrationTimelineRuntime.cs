@@ -184,8 +184,11 @@ namespace BTSMTL.Timeline.Runtime
                     sectionEnd = content.Mode == OrchestrationTimelinePlaybackMode.Once;
                 }
             }
+            TTime sectionTime = !loop && content.Mode == OrchestrationTimelinePlaybackMode.Once &&
+                clock.Equal(time, content.Duration) && clock.GreaterThan(time, clock.Zero)
+                ? clock.FromRaw(clock.Raw(time) - 1L) : time;
             work.Proposed.Section = (section >= 0 && sections[section].Continuable
-                ? section : TimelineRuntimeScheduling<TTime, TClock>.SectionAt(sections, time)) + 1;
+                ? section : TimelineRuntimeScheduling<TTime, TClock>.SectionAt(sections, sectionTime)) + 1;
             if (cycle < previousCycle || cycle - previousCycle > OrchestrationTimelineLimits.MaximumCycleAdvance ||
                 cycle == previousCycle && clock.GreaterThan(previous, time))
                 throw new InvalidOperationException("Timeline interval has an invalid traversal range.");
@@ -226,7 +229,8 @@ namespace BTSMTL.Timeline.Runtime
             {
                 Span<TimelineSchedulingBoundary<TTime>> jumpExits = workspace.Boundaries.AsSpan(
                     boundaryOffset, workspace.BoundaryCapacity);
-                jumpExitCount = TimelineRuntimeScheduling<TTime, TClock>.JumpExits(clips, jumpFrom, previous,
+                jumpExitCount = TimelineRuntimeScheduling<TTime, TClock>.JumpExits(clips, sections,
+                    playback.Start.StartTime, jumpFrom, previous,
                     previousCycle, exits, pending, jumpExits);
                 for (int i = 0; i < jumpExitCount; i++)
                     if (clips[jumpExits[i].ClipOrdinal].TreeDecision)
@@ -242,15 +246,15 @@ namespace BTSMTL.Timeline.Runtime
             for (int i = 0; i < clips.Length; i++)
                 activeClips[i] = jumped
                     ? TimelineRuntimeScheduling<TTime, TClock>.ContinuesAcrossJump(in clips[i], i,
-                        jumpFrom, previous, previousCycle, exits)
+                        jumpFrom, previous, previousCycle, exits, sections, playback.Start.StartTime)
                     : TimelineRuntimeScheduling<TTime, TClock>.Active(in clips[i], i,
-                        previous, previousCycle, exits);
+                        previous, previousCycle, exits, sections, playback.Start.StartTime);
             Span<TimelineSchedulingBoundary<TTime>> active = workspace.ActiveTrees.AsSpan(
                 checked(slot * m_Capacity.ActiveTreesPerPlayback), m_Capacity.ActiveTreesPerPlayback);
             int activeCount = OrchestrationTimelineStateQueries<TTime>.CopyActiveTrees<TClock>(content, in playback, exits, active);
 
             var traversal = new TimelineSchedulingJump<TTime>(jumped, jumpFrom, sectionEnd);
-            int boundaryCount = jumpExitCount + (work.Paused ? 0 : m_Scheduler.Boundaries(clips,
+            int boundaryCount = jumpExitCount + (work.Paused ? 0 : m_Scheduler.Boundaries(clips, sections,
                 previous, previousCycle, time, cycle, content.Duration, loop,
                 playback.Progress.InitialBoundaryState == OrchestrationTimelineInitialBoundaryState.Pending, exits, pending,
                 workspace.Boundaries, boundaryOffset + jumpExitCount, in traversal));
@@ -294,7 +298,7 @@ namespace BTSMTL.Timeline.Runtime
             bool hasUnexitedDecision = false;
             for (int i = 0; i < clips.Length; i++)
                 if (clips[i].TreeDecision && TimelineRuntimeScheduling<TTime, TClock>.Active(
-                        in clips[i], i, time, cycle, consumed))
+                        in clips[i], i, time, cycle, consumed, sections, playback.Start.StartTime))
                 {
                     hasUnexitedDecision = true;
                     break;
@@ -529,7 +533,8 @@ namespace BTSMTL.Timeline.Runtime
                 return false;
             ref readonly TimelineSchedulingClip<TTime> clip = ref content.Clips.Span[ordinal];
             return TimelineRuntimeScheduling<TTime, TClock>.Active(in clip, ordinal,
-                playback.Progress.CursorTime, playback.Progress.Cycle, exits);
+                playback.Progress.CursorTime, playback.Progress.Cycle, exits,
+                content.Sections.Span, playback.Start.StartTime);
         }
 
         internal static int CopyActiveTrees<TClock>(OrchestrationTimelinePreparedContent<TTime> content,
@@ -546,7 +551,7 @@ namespace BTSMTL.Timeline.Runtime
             for (int ordinal = 0; ordinal < clips.Length; ordinal++)
             {
                 ref readonly TimelineSchedulingClip<TTime> clip = ref clips[ordinal];
-                if (!TryTreeCycles<TClock>(in clip, ordinal, in playback, exits, out long nextCycle, out long lastCycle))
+                if (!TryTreeCycles<TClock>(content, in clip, ordinal, in playback, exits, out long nextCycle, out long lastCycle))
                     continue;
                 if (!clip.TreeDecision)
                 {
@@ -570,7 +575,8 @@ namespace BTSMTL.Timeline.Runtime
             playback.Progress.InitialBoundaryState != OrchestrationTimelineInitialBoundaryState.Pending &&
             default(TClock).GreaterThan(content.Duration, default(TClock).Zero);
 
-        static bool TryTreeCycles<TClock>(in TimelineSchedulingClip<TTime> clip, int ordinal,
+        static bool TryTreeCycles<TClock>(OrchestrationTimelinePreparedContent<TTime> content,
+            in TimelineSchedulingClip<TTime> clip, int ordinal,
             in OrchestrationTimelinePlaybackState<TTime> playback,
             ReadOnlySpan<OrchestrationTimelineTreeExitRange> exits, out long firstCycle, out long lastCycle)
             where TClock : struct, IOrchestrationTimelineClock<TTime>
@@ -585,8 +591,10 @@ namespace BTSMTL.Timeline.Runtime
             if (!clip.TreeDecision)
                 return (!skippedInitial || playback.Progress.Cycle > 0) &&
                     TimelineRuntimeScheduling<TTime, TClock>.Active(in clip, ordinal,
-                        playback.Progress.CursorTime, playback.Progress.Cycle, exits);
-            firstCycle = skippedInitial ? 1 : 0;
+                        playback.Progress.CursorTime, playback.Progress.Cycle, exits,
+                        content.Sections.Span, playback.Start.StartTime);
+            firstCycle = skippedInitial || !TimelineRuntimeScheduling<TTime, TClock>.InitialClipAvailable(
+                in clip, content.Sections.Span, playback.Start.StartTime) ? 1 : 0;
             if (!clock.LessThanOrEqual(clip.Start, playback.Progress.CursorTime))
                 lastCycle--;
             return firstCycle <= lastCycle;
