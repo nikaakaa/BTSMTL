@@ -17,6 +17,7 @@ namespace BTSMTL.Diagnostics
         readonly RuntimeOrchestrationValueCapture<TValue> m_Capture;
         readonly string m_ProgramId;
         readonly RuntimeSourceElementHandle[] m_Operations;
+        readonly string[] m_OperationNodeIds;
         readonly RuntimeSourceElementHandle[] m_Edges;
         readonly Dictionary<int, RuntimeSourceElementHandle> m_Blackboards = new();
         readonly string[] m_InvocationPaths;
@@ -31,6 +32,7 @@ namespace BTSMTL.Diagnostics
             m_Capture = capture ?? throw new ArgumentNullException(nameof(capture));
             m_ProgramId = programId ?? string.Empty;
             m_Operations = new RuntimeSourceElementHandle[program.OperationCount];
+            m_OperationNodeIds = new string[program.OperationCount];
             m_InvocationPaths = new string[sources.Length];
             m_ParentInvocationPaths = new string[sources.Length];
             var edgePaths = new Dictionary<string, RuntimeSourceElementHandle>(StringComparer.Ordinal);
@@ -43,7 +45,10 @@ namespace BTSMTL.Diagnostics
                 {
                     case OrchestrationGraphSourceTargetKind.Operation:
                         if (source.TargetIndex < m_Operations.Length && !m_Operations[source.TargetIndex].IsValid)
+                        {
                             m_Operations[source.TargetIndex] = diagnostics.ResolveSourceHandle(SourceKey(source));
+                            m_OperationNodeIds[source.TargetIndex] = source.NodeId;
+                        }
                         break;
                     case OrchestrationGraphSourceTargetKind.Reference when !string.IsNullOrEmpty(source.EdgeId):
                         // 控制流身份与来源显示路径同为作者路由；Value 连线不进入运行边表。
@@ -188,6 +193,7 @@ namespace BTSMTL.Diagnostics
                         payload.Detail = s_WaitReasons[(int)item.WaitReason];
                         break;
                     case OrchestrationTraceKind.Edge:
+                        payload.OwnerId = m_OperationNodeIds[item.OperationIndex];
                         if (m_Edges[item.EdgeIndex].IsValid)
                             source = m_Edges[item.EdgeIndex];
                         payload.Status = item.Selected ? "Selected" : "Evaluated";

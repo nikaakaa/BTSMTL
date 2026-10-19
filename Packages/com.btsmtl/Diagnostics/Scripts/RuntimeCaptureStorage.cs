@@ -162,7 +162,12 @@ namespace BTSMTL.Diagnostics
         public RuntimeCaptureSpanKey(in RuntimeTraceEvent value)
         {
             Source = value.Source;
-            Instance = value.RuntimeInstance;
+            RuntimeInstanceKey instance = value.RuntimeInstance;
+            Instance = value.Kind is RuntimeTraceEventKind.StateScopeEntered or RuntimeTraceEventKind.StateScopeExited
+                ? new RuntimeInstanceKey(RuntimeInstanceKind.StateActivation, instance.CharacterRuntimeId,
+                    instance.GraphRuntimeId, instance.StateId, value.Payload.ActivationGeneration, 0, -1,
+                    value.Payload.ActionInstanceId, instance.CallSiteId, instance.InvocationGeneration)
+                : instance;
             ExecutionBranchId = value.ExecutionBranchId;
             RuntimeEpoch = value.RuntimeEpoch;
             ContentRevision = value.ContentRevision;
@@ -232,7 +237,15 @@ namespace BTSMTL.Diagnostics
                 storage.SetCurrent(in key, RuntimeCaptureSpanSlot.ClipSample, in current);
                 return location;
             }
-            if (value.Kind == RuntimeTraceEventKind.TreeClipEntered)
+            if (value.Kind is RuntimeTraceEventKind.StateTransitionSelected or RuntimeTraceEventKind.TimelineSectionJumped or
+                RuntimeTraceEventKind.TimelineLogicTime or RuntimeTraceEventKind.TimelineVisualTime or
+                RuntimeTraceEventKind.TimelineStarted or RuntimeTraceEventKind.TimelineCompleted or
+                RuntimeTraceEventKind.TimelineCancelled or RuntimeTraceEventKind.TimelineStopped)
+            {
+                storage.TryGetCurrent(in key, RuntimeCaptureSpanSlot.ClipSample, out _);
+                return storage.Create(in value, sourceGroup, RuntimeCaptureSpanState.Completed);
+            }
+            if (value.Kind is RuntimeTraceEventKind.TreeClipEntered or RuntimeTraceEventKind.StateScopeEntered)
             {
                 if (storage.TryGetCurrent(in key, RuntimeCaptureSpanSlot.OpenTree, out RuntimeCaptureSpanToken previous))
                 {
@@ -246,13 +259,14 @@ namespace BTSMTL.Diagnostics
             }
             if (storage.TryGetCurrent(in key, RuntimeCaptureSpanSlot.OpenTree, out RuntimeCaptureSpanToken active))
             {
-                bool completed = value.Kind is RuntimeTraceEventKind.TreeClipExited or RuntimeTraceEventKind.TreeClipDestroyed;
+                bool completed = value.Kind is RuntimeTraceEventKind.TreeClipExited or RuntimeTraceEventKind.TreeClipDestroyed or
+                    RuntimeTraceEventKind.StateScopeExited;
                 storage.SetEnd(active.Location, in value,
                     completed ? RuntimeCaptureSpanState.Completed : RuntimeCaptureSpanState.Open);
                 if (completed)
                     storage.RemoveCurrent(in key, RuntimeCaptureSpanSlot.OpenTree);
             }
-            else if (value.Kind == RuntimeTraceEventKind.TreeClipExited)
+            else if (value.Kind is RuntimeTraceEventKind.TreeClipExited or RuntimeTraceEventKind.StateScopeExited)
                 return storage.Create(in value, sourceGroup, RuntimeCaptureSpanState.MissingStart);
             return -1;
         }
@@ -361,11 +375,15 @@ namespace BTSMTL.Diagnostics
 
             if (value.Kind is RuntimeTraceEventKind.TraceSamplingLimited or RuntimeTraceEventKind.ValueSamplingLimited)
                 m_SamplingLimitCount++;
-            if (value.Kind is not RuntimeTraceEventKind.ClipActive and
-                not RuntimeTraceEventKind.TreeClipEntered and not RuntimeTraceEventKind.TreeClipUpdated and
-                not RuntimeTraceEventKind.TreeClipExited and not RuntimeTraceEventKind.TreeClipDestroyed ||
-                value.Source.Kind is not RuntimeSourceElementKind.Clip and not RuntimeSourceElementKind.TreeClip ||
-                value.Source.Kind == RuntimeSourceElementKind.TreeClip && value.Kind == RuntimeTraceEventKind.ClipActive)
+            bool clip = value.Kind is RuntimeTraceEventKind.ClipActive or RuntimeTraceEventKind.TreeClipEntered or
+                RuntimeTraceEventKind.TreeClipUpdated or RuntimeTraceEventKind.TreeClipExited or RuntimeTraceEventKind.TreeClipDestroyed;
+            bool execution = value.Kind is RuntimeTraceEventKind.StateScopeEntered or RuntimeTraceEventKind.StateScopeExited or
+                RuntimeTraceEventKind.StateTransitionSelected or RuntimeTraceEventKind.TimelineSectionJumped or
+                RuntimeTraceEventKind.TimelineLogicTime or RuntimeTraceEventKind.TimelineVisualTime or
+                RuntimeTraceEventKind.TimelineStarted or RuntimeTraceEventKind.TimelineCompleted or
+                RuntimeTraceEventKind.TimelineCancelled or RuntimeTraceEventKind.TimelineStopped;
+            if (!execution && (!clip ||
+                value.Source.Kind is not RuntimeSourceElementKind.Clip and not RuntimeSourceElementKind.TreeClip))
                 return -1;
             var key = (value.Source, value.ContentRevision);
             if (!m_SourceIndices.TryGetValue(key, out int index))
@@ -489,7 +507,7 @@ namespace BTSMTL.Diagnostics
             var key = new RuntimeCaptureSpanKey(in span.Start);
             if (span.State == RuntimeCaptureSpanState.Open)
                 m_Open.Add(key, index);
-            if (span.Start.Source.Kind == RuntimeSourceElementKind.Clip)
+            if (span.Start.Kind == RuntimeTraceEventKind.ClipActive)
                 m_ClipSamples[key] = index;
             if (span.State == RuntimeCaptureSpanState.MissingStart)
                 m_MissingStartCount++;

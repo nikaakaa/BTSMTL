@@ -6,7 +6,12 @@ namespace BTSMTL.Diagnostics.Editor
     public enum RuntimeExecutionSpanKind
     {
         TreeClip,
-        Clip
+        Clip,
+        State,
+        Transition,
+        SectionJump,
+        PlaybackSample,
+        PlaybackBoundary
     }
 
     public enum RuntimeExecutionSpanState
@@ -62,11 +67,14 @@ namespace BTSMTL.Diagnostics.Editor
         public ulong ParentInvocationGeneration => Start.Payload.ParentInvocationGeneration;
         public int Cycle => Math.Max(Start.Payload.Cycle, End.Payload.Cycle);
         public int LoopIteration => Start.Payload.LoopIteration;
+        public RuntimeExecutionPlaybackKey Playback => new(Start.RuntimeInstance, ExecutionBranchId,
+            RuntimeEpoch, ContentRevision, Domain);
     }
 
     public sealed class RuntimeExecutionTimeline
     {
         readonly RuntimeExecutionTimelineBuilder.SpanAccumulator.ProjectedSpans m_Spans;
+        readonly RuntimeExecutionCursorIndex m_Cursors = new();
 
         internal RuntimeExecutionTimeline(RuntimeExecutionTimelineBuilder.SpanAccumulator.ProjectedSpans spans)
         {
@@ -84,6 +92,7 @@ namespace BTSMTL.Diagnostics.Editor
         public double LatestLogicTimeSeconds { get; private set; }
         public double LatestPresentationTimeSeconds { get; private set; }
         public IReadOnlyList<RuntimeExecutionSpan> Spans => m_Spans;
+        public RuntimeExecutionCursorIndex Cursors => m_Cursors;
         public bool TryGetClockTime(RuntimeTraceDomain domain, Guid branch, ulong epoch, out double time) =>
             m_Spans.TryGetClockTime(domain, branch, epoch, out time);
         public ref readonly RuntimeCaptureSpanData GetSpanData(int index) => ref m_Spans.GetSpanData(index);
@@ -113,6 +122,7 @@ namespace BTSMTL.Diagnostics.Editor
             UnmappedEventCount = unmappedEventCount;
             LatestLogicTimeSeconds = latestLogicTimeSeconds;
             LatestPresentationTimeSeconds = latestPresentationTimeSeconds;
+            m_Cursors.Rebuild(this);
         }
     }
 
@@ -544,8 +554,7 @@ namespace BTSMTL.Diagnostics.Editor
             {
                 while (m_Processed < m_Facts.Count)
                 {
-                    if (m_Sources[m_Facts.GetSpan(m_Processed).SourceGroup].HasSource)
-                        m_Displayed.Add(m_Processed);
+                    m_Displayed.Add(m_Processed);
                     m_Processed++;
                 }
             }
@@ -559,10 +568,7 @@ namespace BTSMTL.Diagnostics.Editor
                 SourceBinding source = Resolve(sourceValue.Source, sourceValue.ContentRevision, sourceMap, sourceMaps);
                 SetSource(group, source);
                 if (!source.HasSource)
-                {
                     UnmappedEventCount++;
-                    return;
-                }
                 m_Facts.AppendTrack(in sourceValue, group);
                 ProjectNewSpans();
             }
@@ -607,10 +613,18 @@ namespace BTSMTL.Diagnostics.Editor
                     {
                         ref readonly RuntimeCaptureSpanData span = ref GetSpanData(index);
                         ref readonly RuntimeSourceElementKey source = ref GetSpanSource(index);
-                        RuntimeExecutionSpanKind kind = source.Kind == RuntimeSourceElementKind.Clip
-                            ? RuntimeExecutionSpanKind.Clip : RuntimeExecutionSpanKind.TreeClip;
+                        RuntimeExecutionSpanKind kind = span.Start.Kind switch
+                        {
+                            RuntimeTraceEventKind.StateScopeEntered or RuntimeTraceEventKind.StateScopeExited => RuntimeExecutionSpanKind.State,
+                            RuntimeTraceEventKind.StateTransitionSelected => RuntimeExecutionSpanKind.Transition,
+                            RuntimeTraceEventKind.TimelineSectionJumped => RuntimeExecutionSpanKind.SectionJump,
+                            RuntimeTraceEventKind.TimelineLogicTime or RuntimeTraceEventKind.TimelineVisualTime => RuntimeExecutionSpanKind.PlaybackSample,
+                            RuntimeTraceEventKind.TimelineStarted or RuntimeTraceEventKind.TimelineCompleted or
+                                RuntimeTraceEventKind.TimelineCancelled or RuntimeTraceEventKind.TimelineStopped => RuntimeExecutionSpanKind.PlaybackBoundary,
+                            _ => span.Start.Source.Kind == RuntimeSourceElementKind.Clip ? RuntimeExecutionSpanKind.Clip : RuntimeExecutionSpanKind.TreeClip
+                        };
                         return new RuntimeExecutionSpan(kind, in span.Start, in span.End, span.Start.Source,
-                            source, true, (RuntimeExecutionSpanState)span.State);
+                            source, m_Owner.m_Sources[span.SourceGroup].HasSource, (RuntimeExecutionSpanState)span.State);
                     }
                 }
                 public IEnumerator<RuntimeExecutionSpan> GetEnumerator()
