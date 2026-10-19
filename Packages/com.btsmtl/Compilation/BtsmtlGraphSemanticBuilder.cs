@@ -57,14 +57,19 @@ namespace BTSMTL.Compilation
         readonly HashSet<string> m_ReferenceIdentities = new HashSet<string>(StringComparer.Ordinal);
         readonly HashSet<string> m_ScopeIdentities = new HashSet<string>(StringComparer.Ordinal);
         readonly Dictionary<ProgramStateValueKind, int> m_DefaultConstants = new Dictionary<ProgramStateValueKind, int>();
+        readonly IReadOnlyDictionary<(string InvocationPath, string Template, string Field, int Ordinal), string> m_PreviousDependencyIdentityTexts;
+        readonly Dictionary<(string InvocationPath, string Template, string Field, int Ordinal), string> m_DependencyIdentityTexts = new();
 
-        public BtsmtlGraphSemanticBuilder(SimulationCompileReport report, ProgramStateSchema stateSchema)
+        public BtsmtlGraphSemanticBuilder(SimulationCompileReport report, ProgramStateSchema stateSchema,
+            IReadOnlyDictionary<(string InvocationPath, string Template, string Field, int Ordinal), string> previousDependencyIdentityTexts = null)
         {
             m_Report = report;
             m_StateSchema = stateSchema;
+            m_PreviousDependencyIdentityTexts = previousDependencyIdentityTexts;
         }
 
         public SimulationCompileReport Report => m_Report;
+        public IReadOnlyDictionary<(string InvocationPath, string Template, string Field, int Ordinal), string> DependencyIdentityTexts => m_DependencyIdentityTexts;
 
         public OrchestrationGraphContent<OrchestrationValue<Float32Scalar, Float32Vector2, Float32Vector3,
             Float32Yaw, Float32Quaternion>> BuildOrchestrationFloat32(OperationHandle entry, GraphExecutionIdentity identity,
@@ -169,9 +174,11 @@ namespace BTSMTL.Compilation
                     return;
                 var dependency = new ProgramIdentityDependency(field.IdentityDomainId, identity);
                 int catalog = DeclareCatalogEntry(dependency, 1, Array.Empty<ProgramCatalogField>(), source);
-                string reference = StableHash.Compute("orchestration-dependency", CurrentGraphInvocationPath,
-                    m_Operations[operation.Value].TemplateIdentity, field.Id,
-                    ordinal.ToString(CultureInfo.InvariantCulture)).ToString();
+                var key = (CurrentGraphInvocationPath, m_Operations[operation.Value].TemplateIdentity, field.Id, ordinal);
+                if (m_PreviousDependencyIdentityTexts == null || !m_PreviousDependencyIdentityTexts.TryGetValue(key, out string reference))
+                    reference = StableHash.Compute("orchestration-dependency", key.Item1,
+                        key.Item2, key.Item3, ordinal.ToString(CultureInfo.InvariantCulture)).ToString();
+                m_DependencyIdentityTexts.TryAdd(key, reference);
                 DeclareReference(reference, operation, ProgramReferenceKind.CatalogEntry,
                     catalog, dependency.Identity, source);
             }
