@@ -320,16 +320,7 @@ namespace BTSMTL.Orchestration
                     {
                         ref readonly OrchestrationFlowEdge left = ref m_Edges[leftIndex];
                         ref readonly OrchestrationFlowEdge right = ref m_Edges[rightIndex];
-                        int comparison = left.Kind == OrchestrationFlowKind.Transition
-                            ? left.Priority.CompareTo(right.Priority) : 0;
-                        if (comparison != 0)
-                            return comparison;
-                        comparison = left.Order.CompareTo(right.Order);
-                        if (comparison != 0)
-                            return comparison;
-                        comparison = left.SourcePortId.CompareTo(right.SourcePortId);
-                        return comparison != 0 ? comparison :
-                            left.IdentityId.CompareTo(right.IdentityId);
+                        return OrchestrationFlowEdge.CompareOrder(in left, in right);
                     });
                     result[operationIndex][kindIndex] = values.ToArray();
                 }

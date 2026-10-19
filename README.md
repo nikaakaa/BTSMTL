@@ -34,7 +34,7 @@ Unity 通过各包原有 asmdef 编译同一份源码。3C 的 Assets 中不保�
 
 ## Timeline 作者预览与门
 
-`Compilation/Analysis/OrchestrationStaticQuery` 从正式语义操作、连线、来源与内容引用读取状态绑定、条件读取和 Clip 状态提供者；领域经 `IOrchestrationStateKeyDeclarations` 声明自己的状态键。`TimelineDoorModel` 计算门区间与去向，`TimelineStaticChain` 结合输入成立区间和逐条运行数据假设推导后续分段／状态，不执行作者图，也不把结果保存为另一份作者配置。同刻先检查 AnyState 转移，再推进 Timeline，最后检查普通状态转移；转移按较小优先级、声明顺序选择。
+`Compilation/Analysis/OrchestrationStaticQuery` 从正式语义操作、连线、来源与内容引用读取状态绑定、条件读取和 Clip 状态提供者；领域经 `IOrchestrationStateKeyDeclarations` 声明自己的状态键。`TimelineDoorModel` 计算门区间与去向，`TimelineStaticChain` 结合输入成立区间和逐条运行数据假设推导后续分段／状态，不执行作者图，也不把结果保存为另一份作者配置。运行时先检查 AnyState，再执行主体，最后检查普通状态转移；主体的继续请求留待下次推进，本 Tick 普通转移成立会退出状态并取消该请求。静态最终去向按 AnyState、普通转移、继续请求选择，转移共用正式 `Priority → Order → SourcePortId → IdentityId` 比较器和发布身份表。
 
 Section 的 `NextSectionId` 只指向更晚的分段。逻辑 TreeClip 在有效区间内请求继续，调度器沿原回绕机制跳到下一段，被跳过区间不发 Marker 或 Clip 起止；未请求时在当前分段终点完成。循环播放不配置分段继续。动作身份与状态体不因分段跳转重启，待跳转请求和当前分段随正式状态捕获与恢复。分支和跨动作转移继续由 FSM 处理。
 

@@ -312,7 +312,7 @@ namespace BTSMTL.Compilation.Analysis
             IReadOnlyList<SemanticLiteral> literals, IReadOnlyList<ProgramControlFlowEdge> controlFlow,
             IReadOnlyList<ProgramSourceMapEntry> sourceMap, Func<string, TimelineContentUnit> resolveTimeline,
             IReadOnlyList<IOrchestrationStateKeyDeclarations> declarations, IReadOnlyList<ProgramReference> references,
-            IReadOnlyList<SemanticConstantInputBinding> constantInputs)
+            IReadOnlyList<SemanticConstantInputBinding> constantInputs, OrchestrationIdentityTable identities)
         {
             Operations = operations;
             Literals = literals;
@@ -322,6 +322,7 @@ namespace BTSMTL.Compilation.Analysis
             Declarations = declarations;
             References = references;
             ConstantInputs = constantInputs;
+            Identities = identities;
         }
 
         public IReadOnlyList<SemanticOperation> Operations { get; }
@@ -332,12 +333,14 @@ namespace BTSMTL.Compilation.Analysis
         public IReadOnlyList<IOrchestrationStateKeyDeclarations> Declarations { get; }
         public IReadOnlyList<ProgramReference> References { get; }
         public IReadOnlyList<SemanticConstantInputBinding> ConstantInputs { get; }
+        public OrchestrationIdentityTable Identities { get; }
     }
 
     // 只读静态查询：只读取正式编译的语义程序与图结构，不执行任何图，不识别业务节点类型。
     public sealed class OrchestrationStaticQuery
     {
         readonly OrchestrationStaticQueryInput m_Input;
+        readonly OrchestrationFlowEdge[] m_ExecutionEdges;
         readonly List<int>[] m_Outgoing;
         readonly List<int>[] m_ValueInputs;
         readonly List<int>[] m_Incoming;
@@ -356,6 +359,7 @@ namespace BTSMTL.Compilation.Analysis
         OrchestrationStaticQuery(OrchestrationStaticQueryInput input)
         {
             m_Input = input;
+            m_ExecutionEdges = new OrchestrationFlowEdge[input.ControlFlow.Count];
             int count = input.Operations.Count;
             m_Outgoing = new List<int>[count];
             m_ValueInputs = new List<int>[count];
@@ -378,7 +382,13 @@ namespace BTSMTL.Compilation.Analysis
                 if (edge.Kind == ProgramControlFlowKind.Value)
                     m_ValueInputs[edge.Target.Value].Add(i);
                 else
+                {
                     m_Incoming[edge.Target.Value].Add(i);
+                    m_ExecutionEdges[i] = new OrchestrationFlowEdge(input.Identities.Bind(edge.Identity),
+                        edge.Source.Value, edge.Target.Value, input.Identities.Bind(edge.SourcePort),
+                        input.Identities.Bind(edge.TargetPort), (OrchestrationFlowKind)edge.Kind,
+                        edge.Order, edge.Priority, edge.AbortPolicy, edge.HasCondition ? edge.Condition.Value : -1);
+                }
             }
             for (int i = 0; i < count; i++)
                 m_Outgoing[i].Sort(CompareEdges);
@@ -781,13 +791,11 @@ namespace BTSMTL.Compilation.Analysis
         {
             ProgramControlFlowEdge left = m_Input.ControlFlow[leftIndex];
             ProgramControlFlowEdge right = m_Input.ControlFlow[rightIndex];
-            int result = left.Kind == ProgramControlFlowKind.Transition && right.Kind == left.Kind
-                ? left.Priority.CompareTo(right.Priority) : 0;
-            if (result == 0)
-                result = left.Order.CompareTo(right.Order);
-            if (result == 0)
-                result = string.CompareOrdinal(left.SourcePort, right.SourcePort);
-            return result == 0 ? string.CompareOrdinal(left.Identity, right.Identity) : result;
+            int kind = left.Kind.CompareTo(right.Kind);
+            if (kind != 0)
+                return kind;
+            return left.Kind == ProgramControlFlowKind.Value ? leftIndex.CompareTo(rightIndex) :
+                OrchestrationFlowEdge.CompareOrder(in m_ExecutionEdges[leftIndex], in m_ExecutionEdges[rightIndex]);
         }
 
         int CompareTransitions(OrchestrationStaticTransition left, OrchestrationStaticTransition right)

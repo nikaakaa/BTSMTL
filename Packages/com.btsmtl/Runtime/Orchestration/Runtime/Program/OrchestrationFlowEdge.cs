@@ -30,6 +30,19 @@ namespace BTSMTL.Orchestration
         public OrchestrationAbortPolicy AbortPolicy { get; }
         public int ConditionOperationIndex { get; }
         public bool HasCondition => ConditionOperationIndex >= 0;
+
+        public static int CompareOrder(in OrchestrationFlowEdge left, in OrchestrationFlowEdge right)
+        {
+            int comparison = left.Kind == OrchestrationFlowKind.Transition
+                ? left.Priority.CompareTo(right.Priority) : 0;
+            if (comparison != 0)
+                return comparison;
+            comparison = left.Order.CompareTo(right.Order);
+            if (comparison != 0)
+                return comparison;
+            comparison = left.SourcePortId.CompareTo(right.SourcePortId);
+            return comparison != 0 ? comparison : left.IdentityId.CompareTo(right.IdentityId);
+        }
     }
 
     public enum OrchestrationValueInputSource : byte

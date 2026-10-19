@@ -238,7 +238,8 @@ namespace BTSMTL.Compilation.Analysis
             internal OrchestrationStaticClip Clip { get; }
             internal OrchestrationStaticContinueRequest Request { get; }
             internal OrchestrationStaticSection NextSection { get; }
-            internal int Phase => Transition?.FromAnyState == true ? 0 : Request != null ? 1 : 2;
+            // 继续请求留待下次推进；本 Tick 的普通转移成立时会取消它。
+            internal int Precedence => Transition?.FromAnyState == true ? 0 : Transition != null ? 1 : 2;
         }
 
         static Candidate Select(OrchestrationStaticState state, OrchestrationStaticSection section,
@@ -308,8 +309,8 @@ namespace BTSMTL.Compilation.Analysis
         static void Choose(ref Candidate selected, Candidate candidate)
         {
             if (!selected.Exists || candidate.Time < selected.Time ||
-                candidate.Time == selected.Time && (candidate.Phase < selected.Phase ||
-                    candidate.Phase == selected.Phase && candidate.Request != null &&
+                candidate.Time == selected.Time && (candidate.Precedence < selected.Precedence ||
+                    candidate.Precedence == selected.Precedence && candidate.Request != null &&
                     string.CompareOrdinal(candidate.Clip.ClipId, selected.Clip.ClipId) < 0))
                 selected = candidate;
         }
