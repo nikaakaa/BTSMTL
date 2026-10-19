@@ -870,7 +870,7 @@ namespace BTSMTL.Timeline.Editor
                 window.Timeline.AuthoringId,
                 summary.Playback,
                 observation.EventBuffer,
-                summary.Provenance.SourceGraphAuthoringId.ToString());
+                summary.Provenance.SourceGraphAuthoringId);
             IReadOnlyList<RuntimeDebugEventView> events = observation.EventBuffer;
             for (int index = 0; index < events.Count; index++)
             {
