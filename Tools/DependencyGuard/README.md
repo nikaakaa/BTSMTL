@@ -4,6 +4,8 @@
 
 ## 输入范围
 
+`POSE_RUNTIME_NO_FLOWCANVAS` 禁止 `ThirdPersonCharacter.Animation` 的源码使用及直接程序集引用 FlowCanvas、NodeCanvas。规则使用 `forbiddenDirectAssemblies`，BTSMTL 作者合同带来的间接依赖仍按其自身边界检查；已有 `forbiddenAssemblies` 继续检查完整传递依赖。
+
 默认构建只检查 SDK 自身，不要求同级 3C，也不表示 Quantum 宿主检查已通过：
 
 ```powershell

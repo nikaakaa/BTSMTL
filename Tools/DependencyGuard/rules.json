@@ -327,6 +327,19 @@
   ],
   "dependencyRules": [
     {
+      "id": "POSE_RUNTIME_NO_FLOWCANVAS",
+      "reason": "Pose 运行只消费编译计划，不得直接引用或使用 FlowCanvas、NodeCanvas 作者图；BTSMTL 作者合同的间接依赖不受此规则禁止。",
+      "sourceAssemblies": [
+        "^ThirdPersonCharacter\\.Animation$"
+      ],
+      "forbiddenDirectAssemblies": [
+        "^(?:FlowCanvas|NodeCanvas)$"
+      ],
+      "forbiddenNamespaces": [
+        "^(?:FlowCanvas|NodeCanvas)(?:\\.|$)"
+      ]
+    },
+    {
       "id": "THIRD_PARTY_PLUGIN_INDEPENDENT",
       "reason": "第三方插件保持原版独立，不得引用BTSMTL或宿主ThirdPerson程序集；BTSMTL自身提供通用编排作者合同和节点。",
       "sourceAssemblies": [

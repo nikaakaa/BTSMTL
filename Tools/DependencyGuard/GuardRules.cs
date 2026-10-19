@@ -31,6 +31,7 @@ sealed class DependencyRule
     public string[] SourceAssemblies { get; set; } = [];
     public string[] SourcePackages { get; set; } = [];
     public string[] ForbiddenAssemblies { get; set; } = [];
+    public string[] ForbiddenDirectAssemblies { get; set; } = [];
     public string[] ForbiddenPackages { get; set; } = [];
     public string[] ForbiddenNamespaces { get; set; } = [];
     public string[] AllowedAssemblies { get; set; } = [];
@@ -43,6 +44,7 @@ sealed class DependencyRule
     public bool Forbids(Module source, string dependency, string kind, bool direct = true, bool framework = false) => kind == "package"
         ? GuardRules.Matches(ForbiddenPackages, dependency)
         : GuardRules.Matches(ForbiddenAssemblies, dependency) ||
+          direct && GuardRules.Matches(ForbiddenDirectAssemblies, dependency) ||
           direct && AllowedAssemblies.Length != 0 && dependency != source.Name && !framework && !GuardRules.Matches(AllowedAssemblies, dependency);
 }
 

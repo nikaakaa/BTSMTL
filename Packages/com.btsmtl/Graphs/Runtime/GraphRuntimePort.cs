@@ -21,9 +21,9 @@ namespace BTSMTL.Graphs
         public bool IsInput { get; }
         public string GraphId { get; }
         public Type ValueType { get; }
-        public string NodeId => Port.parent.UID;
-        public string PortId => Port.ID;
-        public bool IsTrigger => Port.type == typeof(Flow);
+        public string NodeId { get; }
+        public string PortId { get; }
+        public bool IsTrigger { get; }
 
         internal GraphRuntimePort(string graph, Port port, bool input, int operation, int slot,
             int compiledPortId, int enumTypeContentId, Func<GraphRuntimePort, bool, GraphHostValue> read,
@@ -34,6 +34,9 @@ namespace BTSMTL.Graphs
             GraphId = graph;
             ValueType = port.type;
             Port = port;
+            NodeId = port.parent.UID;
+            PortId = port.ID;
+            IsTrigger = port.type == typeof(Flow);
             IsInput = input;
             Operation = operation;
             ValueSlot = slot;
@@ -49,8 +52,17 @@ namespace BTSMTL.Graphs
 
         public GraphRuntimePort(string graph, Port port, bool input, Type valueType, Func<GraphHostValue> read,
             Func<GraphHostValue> readInput, Action<GraphHostValue, GraphVariableMutation> mutate, Func<bool> isLocked)
+            : this(graph, port.parent.UID, port.ID, input, valueType, read, readInput, mutate, isLocked)
         {
-            GraphId = graph; Port = port; IsInput = input; ValueType = valueType;
+            Port = port;
+            IsTrigger = port.type == typeof(Flow);
+        }
+
+        public GraphRuntimePort(string graph, string nodeId, string portId, bool input, Type valueType,
+            Func<GraphHostValue> read, Func<GraphHostValue> readInput,
+            Action<GraphHostValue, GraphVariableMutation> mutate, Func<bool> isLocked)
+        {
+            GraphId = graph; NodeId = nodeId; PortId = portId; IsInput = input; ValueType = valueType;
             m_Read = read; m_ReadInput = readInput; m_Mutate = mutate;
             m_IsLocked = isLocked;
         }
