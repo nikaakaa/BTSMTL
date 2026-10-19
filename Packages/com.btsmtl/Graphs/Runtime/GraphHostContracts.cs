@@ -649,11 +649,13 @@ namespace BTSMTL.Graphs
             IReadOnlyList<GraphHostInputDescriptor> inputs,
             IReadOnlyList<GraphHostOutputDescriptor> outputs,
             IReadOnlyList<PipelineBlackboardVariableScope> blackboardScopes,
-            IReadOnlyList<string> domains)
+            IReadOnlyList<string> domains,
+            string numericTarget)
         {
             ContractId = RequireIdentity(contractId, nameof(contractId));
             Revision = RequireIdentity(revision, nameof(revision));
             UpdateEventId = RequireIdentity(updateEventId, nameof(updateEventId));
+            NumericTarget = RequireIdentity(numericTarget, nameof(numericTarget));
             BlackboardScopes = blackboardScopes?.Distinct().ToArray() ?? throw new ArgumentNullException(nameof(blackboardScopes));
             Domains = (domains ?? throw new ArgumentNullException(nameof(domains)))
                 .Select(domain => RequireIdentity(domain, nameof(domains))).Distinct(StringComparer.Ordinal)
@@ -677,6 +679,8 @@ namespace BTSMTL.Graphs
         public IReadOnlyList<PipelineBlackboardVariableScope> BlackboardScopes { get; }
         // 宿主提供的领域：扩展领域由宿主运行时传入的扩展实现执行，输出领域由宿主读取编排输出后消费。
         public IReadOnlyList<string> Domains { get; }
+        // 宿主选择的数值目标；编译写入内容身份，运行准备时核对，须与宿主运行时的数值类型参数一致。
+        public string NumericTarget { get; }
 
         public bool TryGetInput(string inputId, out GraphHostInputDescriptor descriptor)
         {

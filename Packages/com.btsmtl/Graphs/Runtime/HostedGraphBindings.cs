@@ -48,9 +48,9 @@ namespace BTSMTL.Graphs
         }
 
         internal HostedGraphBindings(BtsmtlGraphRoot source, GraphHostContract contract,
-            IOrchestrationGraphContentEncoding<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> encoding, string numericTarget)
+            IOrchestrationGraphContentEncoding<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> encoding)
         {
-            Content = source.RequireExecutionData(encoding, numericTarget);
+            Content = source.RequireExecutionData(encoding, contract.NumericTarget);
             FrozenOrchestrationIdentities frozen = FrozenOrchestrationIdentities.Prepare(
                 new[] { Content.Identities, OrchestrationIdentityPublication.Create(new[] { contract.ContractId }) },
                 Array.Empty<string>());

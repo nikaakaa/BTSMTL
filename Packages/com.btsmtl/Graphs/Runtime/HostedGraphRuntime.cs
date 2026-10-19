@@ -55,14 +55,14 @@ namespace BTSMTL.Graphs
         bool m_Disposed;
 
         public HostedGraphRuntime(BtsmtlGraphRoot source, GraphHostContract contract,
-            IOrchestrationGraphContentEncoding<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> encoding, string numericTarget,
+            IOrchestrationGraphContentEncoding<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> encoding,
             Func<StableHash, NumericProfileId, TargetAbiVersion, int, int, int, int, int,
                 OrchestrationExecutionStateLayout<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>> createStateLayout,
             IReadOnlyList<IOrchestrationExtension> extensions)
         {
             m_Source = source;
             m_Contract = contract;
-            m_Bindings = new HostedGraphBindings<TScalar, TVector2, TVector3, TYaw, TQuaternion, TNumeric>(source, contract, encoding, numericTarget);
+            m_Bindings = new HostedGraphBindings<TScalar, TVector2, TVector3, TYaw, TQuaternion, TNumeric>(source, contract, encoding);
             OrchestrationProgram<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> program = m_Bindings.Program;
             OrchestrationGraphContent<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> content = m_Bindings.Content;
             OrchestrationExecutionCapacity capacity = OrchestrationExecutionFrames<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>.PrepareCapacity(
