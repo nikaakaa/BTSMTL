@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using System.Reflection;
 using System.Reflection.Metadata;
+using System.Runtime.InteropServices;
 using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -33,7 +34,8 @@ namespace ThirdPerson.ValueGeneration.Generator
                 }
                 if (IsStatePrimitive(type.SpecialType))
                     return true;
-                if (!(type is INamedTypeSymbol named) || !IsStateLayoutUnmanaged(named) || ContainsStateTypeParameter(named))
+                if (!(type is INamedTypeSymbol named) || named.IsRefLikeType ||
+                    !IsStateLayoutUnmanaged(named) || ContainsStateTypeParameter(named))
                 {
                     reason = Identity(type) + ": 无法从闭合原成员确定 unmanaged 布局";
                     return false;
@@ -52,15 +54,14 @@ namespace ThirdPerson.ValueGeneration.Generator
                     ValueUnionShape union = GetValueUnionShape(named);
                     if (union != null && !ValidateUnionLayout(named, union, out reason))
                         return false;
-                    if (union != null && RequestedValueUnionLayout(named) == 2)
+                    if (union != null && RequestedValueUnionLayout(named) == LayoutKind.Explicit)
                     {
-                        if (!new ValueTypeLayout(m_Compilation).TryUnion(named, union, out ValueUnionLayout explicitUnion, out reason) ||
-                            !AppendLayout(schema, named, 2, 0, explicitUnion.Size, 2, out reason))
+                        if (!AppendLayout(schema, named, LayoutKind.Explicit, 0, 0, (int)CharSet.Ansi, out reason))
                             return false;
                         foreach (Member member in union.Members)
                         {
                             StateSchemaPart(schema, UnionPayloadFieldName(member));
-                            StateSchemaPart(schema, explicitUnion.PayloadOffset.ToString(CultureInfo.InvariantCulture));
+                            StateSchemaPart(schema, ValueUnionPayloadOffset.ToString(CultureInfo.InvariantCulture));
                             StateSchemaPart(schema, "1");
                             if (!Append(schema, member.Type, out reason))
                                 return false;
@@ -72,10 +73,10 @@ namespace ThirdPerson.ValueGeneration.Generator
                     }
                     AttributeData layout = named.GetAttributes().SingleOrDefault(attribute =>
                         Identity(attribute.AttributeClass) == StructLayoutAttribute);
-                    int kind = layout == null ? union == null ? 0 : 3 :
-                        Convert.ToInt32(layout.ConstructorArguments[0].Value, CultureInfo.InvariantCulture);
+                    LayoutKind kind = layout == null ? union == null ? LayoutKind.Sequential : LayoutKind.Auto :
+                        (LayoutKind)Convert.ToInt32(layout.ConstructorArguments[0].Value, CultureInfo.InvariantCulture);
                     if (!AppendLayout(schema, named, kind, LayoutArgument(layout, "Pack", 0),
-                        LayoutArgument(layout, "Size", 0), LayoutArgument(layout, "CharSet", 2), out reason))
+                        LayoutArgument(layout, "Size", 0), LayoutArgument(layout, "CharSet", (int)CharSet.Ansi), out reason))
                         return false;
                     IFieldSymbol[] fields = named.GetMembers().OfType<IFieldSymbol>().Where(field => !field.IsStatic).ToArray();
                     foreach (IFieldSymbol field in fields)
@@ -222,24 +223,26 @@ namespace ThirdPerson.ValueGeneration.Generator
                         continue;
                     fields.Add(new MetadataStateField { Name = metadata.Reader.GetString(field.Name), Offset = field.GetOffset() });
                 }
-                metadata.Kind = kind == TypeAttributes.SequentialLayout ? 0 : kind == TypeAttributes.ExplicitLayout ? 2 : 3;
+                metadata.Kind = kind == TypeAttributes.SequentialLayout ? LayoutKind.Sequential :
+                    kind == TypeAttributes.ExplicitLayout ? LayoutKind.Explicit : LayoutKind.Auto;
                 metadata.Pack = layout.PackingSize;
                 metadata.Size = layout.Size;
-                metadata.CharSet = charSet == TypeAttributes.UnicodeClass ? 3 : charSet == TypeAttributes.AutoClass ? 4 : 2;
+                metadata.CharSet = (int)(charSet == TypeAttributes.UnicodeClass ? CharSet.Unicode :
+                    charSet == TypeAttributes.AutoClass ? CharSet.Auto : CharSet.Ansi);
                 metadata.Fields = fields.ToArray();
                 return true;
             }
 
-            static bool AppendLayout(StringBuilder schema, INamedTypeSymbol type, int kind,
+            static bool AppendLayout(StringBuilder schema, INamedTypeSymbol type, LayoutKind kind,
                 int pack, int size, int charSet, out string reason)
             {
                 reason = null;
-                if (kind == 3)
+                if (kind == LayoutKind.Auto)
                 {
                     reason = Identity(type) + ": Auto 布局不能作为可按值复制的正式编排状态";
                     return false;
                 }
-                foreach (int value in new[] { kind, pack, size, charSet })
+                foreach (int value in new[] { (int)kind, pack, size, charSet })
                     StateSchemaPart(schema, value.ToString(CultureInfo.InvariantCulture));
                 return true;
             }
@@ -270,7 +273,7 @@ namespace ThirdPerson.ValueGeneration.Generator
             {
                 internal MetadataReader Reader;
                 internal TypeDefinitionHandle Definition;
-                internal int Kind;
+                internal LayoutKind Kind;
                 internal int Pack;
                 internal int Size;
                 internal int CharSet;

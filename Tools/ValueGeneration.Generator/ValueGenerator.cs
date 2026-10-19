@@ -192,8 +192,7 @@ namespace ThirdPerson.ValueGeneration.Generator
             var code = new StringBuilder();
             code.Append("namespace ").Append(type.ContainingNamespace.ToDisplayString()).AppendLine(" {");
             if (layout != null)
-                code.Append("[global::System.Runtime.InteropServices.StructLayout(global::System.Runtime.InteropServices.LayoutKind.Explicit, Size = ")
-                    .Append(layout.Size).AppendLine(")]");
+                code.AppendLine("[global::System.Runtime.InteropServices.StructLayout(global::System.Runtime.InteropServices.LayoutKind.Explicit)]");
             else if (!HasAttribute(type, StructLayoutAttribute))
                 code.AppendLine("[global::System.Runtime.InteropServices.StructLayout(global::System.Runtime.InteropServices.LayoutKind.Auto)]");
             EmitTypeDeclaration(code, type);
@@ -207,10 +206,7 @@ namespace ThirdPerson.ValueGeneration.Generator
                     code.Append("[global::System.Runtime.InteropServices.FieldOffset(").Append(layout.PayloadOffset).AppendLine(")]");
                     code.Append("readonly ").Append(TypeName(member.Type)).Append(' ').Append(UnionPayloadField(member)).AppendLine(";");
                     code.Append("public ").Append(TypeName(member.Type)).Append(' ').Append(Escape(member.Symbol.Name))
-                        .Append(" => Kind == ").Append(kindType).Append('.').Append(Escape(member.Symbol.Name))
-                        .Append(" ? ").Append(UnionPayloadField(member))
-                        .Append(" : throw new global::System.InvalidOperationException(")
-                        .Append(SymbolDisplay.FormatLiteral("值联合不是 " + member.Symbol.Name + " 分支。", true)).AppendLine(");");
+                        .Append(" => ").Append(UnionPayloadField(member)).AppendLine(";");
                 }
             }
             if (shape.KindMember == null)
@@ -230,9 +226,9 @@ namespace ThirdPerson.ValueGeneration.Generator
                 foreach (Member member in common)
                     code.Append("this.").Append(Escape(member.Symbol.Name)).Append(" = ")
                         .Append(Normalize(member, Parameter(member.Symbol.Name), "false")).AppendLine(";");
-                if (branches.Count == 1)
+                if (layout != null || branches.Count == 1)
                     code.Append("this.").Append(layout == null ? Escape(branches[0].Symbol.Name) : UnionPayloadField(branches[0])).Append(" = ")
-                        .Append(Normalize(branches[0], "value", "false")).AppendLine(";");
+                        .Append(layout == null ? Normalize(branches[0], "value", "false") : "value").AppendLine(";");
                 else
                 {
                     code.AppendLine("switch (kind) {");
@@ -255,7 +251,7 @@ namespace ThirdPerson.ValueGeneration.Generator
                 code.Append("return new ").Append(fullType).Append('(').Append(kindType).Append('.').Append(Escape(branch.Symbol.Name));
                 foreach (Member member in common)
                     code.Append(", ").Append(Parameter(member.Symbol.Name));
-                code.AppendLine(", value); }");
+                code.Append(", ").Append(layout == null ? "value" : Normalize(branch, "value", "false")).AppendLine("); }");
             }
             if (type.TypeKind == TypeKind.Struct)
             {
