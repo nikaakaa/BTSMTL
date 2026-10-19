@@ -53,7 +53,7 @@ namespace BTSMTL.Compilation.Analysis
         public OrchestrationStaticState State { get; }
         public OrchestrationStaticTimeline Timeline => State.Timeline;
         public IReadOnlyList<TimelineDoorDestination> Destinations => m_Destinations;
-        // 条件不读取任何 Clip 提供状态的转移：从状态节点边缘出发，随时可走。
+        // 不读取 Clip 提供状态的转移；完成点和来源分段约束仍由 Condition 持有。
         public IReadOnlyList<OrchestrationStaticTransition> Anytime => m_Anytime;
         // 读取了状态键但本 Timeline 没有 Clip 在入口无条件提供它：计入其它运行数据。
         public IReadOnlyList<(OrchestrationStaticTransition Transition, OrchestrationStaticRead Read)> UnresolvedStateReads => m_UnresolvedReads;
@@ -83,7 +83,10 @@ namespace BTSMTL.Compilation.Analysis
             if (timeline != null)
                 foreach (OrchestrationStaticClip clip in timeline.Clips)
                 {
-                    if (!clip.RequestsSectionContinue)
+                    bool requests = false;
+                    foreach (OrchestrationStaticContinueRequest request in clip.ContinueRequests)
+                        requests |= request.TimelineOperationIndex == state.TimelineOperationIndex;
+                    if (!requests)
                         continue;
                     OrchestrationStaticSection section = timeline.SectionAt(clip.Start);
                     OrchestrationStaticSection next = section != null && section.Continuable

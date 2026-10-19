@@ -13,7 +13,8 @@ namespace BTSMTL.Timeline.Runtime
             int currentCycle,
             TimelinePresentationSampleReason reason,
             TimelineRuntimePresentationBuffer buffer,
-            bool traversalOnly = false)
+            bool traversalOnly = false,
+            bool sectionEnd = false)
         {
             TimelineContentUnit content = preparedContent.Content;
             var selected = buffer.SamplingClips;
@@ -28,6 +29,8 @@ namespace BTSMTL.Timeline.Runtime
                 {
                     TimelineRuntimeIndexedClip indexed = sampled[selected[selectedIndex]];
                     TimelineContentClip clip = indexed.Clip;
+                    if (sectionEnd && cycle == currentCycle && clip.StartTime == to)
+                        continue;
                     if (clip.Sampling.Window == TimelineSampleWindow.TraversalWindow)
                     {
                         if (clip.EndTime == from && from != to)
@@ -41,12 +44,30 @@ namespace BTSMTL.Timeline.Runtime
                 }
             }
         }
+
+        internal static bool IsSectionEnd(TimelineRuntimePreparedContent preparedContent,
+            OrchestrationTime time, TimelinePresentationSampleReason reason)
+        {
+            if (reason != TimelinePresentationSampleReason.Completed)
+                return false;
+            foreach (TimelineSchedulingSection<OrchestrationTime> section in
+                     preparedContent.Scheduling(TimelineExecutionDomain.Presentation).Sections.Span)
+                if (section.Continuable && section.End == time)
+                    return true;
+            return false;
+        }
     }
 
     public sealed class TimelineRuntimePresentationTargetSampling
     {
         readonly TimelineRuntimePreparedContent m_Prepared;
         readonly TimelineRuntimePresentationBuffer m_Buffer;
+
+        public TimelineRuntimePresentationTargetSampling(TimelineRuntimePreparedContent prepared)
+        {
+            m_Prepared = prepared;
+            m_Buffer = new TimelineRuntimePresentationBuffer(prepared);
+        }
 
         public TimelineRuntimePresentationTargetSampling(TimelineRuntimePreparedContent prepared,
             OrchestrationTimelinePreparedContent<OrchestrationTime> executionContent)
@@ -57,12 +78,22 @@ namespace BTSMTL.Timeline.Runtime
         }
 
         public TimelineRuntimeSampleView<TimelineRuntimeSample<Float32Scalar>> SampleAt(
-            OrchestrationTime time, int cycle, int kindIndex)
+            OrchestrationTime time, int cycle, int kindIndex,
+            TimelinePresentationSampleReason reason = TimelinePresentationSampleReason.Correction)
         {
             m_Buffer.Clear();
             TimelineRuntimePresentationEvaluator.Evaluate(m_Prepared, time, cycle, time, cycle,
-                TimelinePresentationSampleReason.Correction, m_Buffer);
+                reason, m_Buffer, sectionEnd: TimelineRuntimePresentationEvaluator.IsSectionEnd(m_Prepared, time, reason));
             return m_Buffer.Samples[kindIndex].View;
+        }
+
+        public TimelineRuntimePresentationOperations SampleAt(OrchestrationTime time, int cycle,
+            TimelinePresentationSampleReason reason = TimelinePresentationSampleReason.Correction)
+        {
+            m_Buffer.Clear();
+            TimelineRuntimePresentationEvaluator.Evaluate(m_Prepared, time, cycle, time, cycle,
+                reason, m_Buffer, sectionEnd: TimelineRuntimePresentationEvaluator.IsSectionEnd(m_Prepared, time, reason));
+            return new TimelineRuntimePresentationOperations(m_Buffer);
         }
     }
 }

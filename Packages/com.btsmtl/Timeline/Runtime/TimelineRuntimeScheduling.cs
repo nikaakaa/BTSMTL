@@ -478,10 +478,11 @@ namespace BTSMTL.Timeline.Runtime
 
         public static bool Active(in TimelineSchedulingClip<TTime> clip, int ordinal,
             TTime time, int cycle, ReadOnlySpan<OrchestrationTimelineTreeExitRange> exited,
-            ReadOnlySpan<TimelineSchedulingSection<TTime>> sections, TTime startTime)
+            ReadOnlySpan<TimelineSchedulingSection<TTime>> sections, TTime startTime, bool sectionEnd = false)
         {
             TClock clock = default;
             return clip.Enabled && clock.LessThanOrEqual(clip.Start, time) &&
+                !(sectionEnd && clock.Equal(clip.Start, time)) &&
                 (cycle > 0 || InitialClipAvailable(in clip, sections, startTime)) &&
                 (clip.TreeDecision ? !Contains(exited, ordinal, cycle) : clock.GreaterThan(clip.End, time));
         }

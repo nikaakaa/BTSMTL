@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using BTSMTL.Orchestration;
 using BTSMTL.Timeline;
+using ThirdPersonSimulation;
 
 namespace BTSMTL.Compilation.Analysis
 {
@@ -12,11 +13,20 @@ namespace BTSMTL.Compilation.Analysis
             ICollection<string> provided, ICollection<string> read);
     }
 
+    public interface IOrchestrationStatePredicateDeclarations : IOrchestrationStateKeyDeclarations
+    {
+        bool TryDescribePredicate(in OrchestrationExtensionReference extension,
+            IReadOnlyDictionary<string, SemanticLiteral> fields, int operationIndex,
+            out OrchestrationStaticCondition condition);
+    }
+
     public enum OrchestrationStaticReadSource : byte
     {
         ClipState = 1,
         HostInput = 2,
-        RuntimeData = 3
+        RuntimeData = 3,
+        StateCompletion = 4,
+        TimelineSection = 5
     }
 
     public readonly struct OrchestrationStaticRead : IEquatable<OrchestrationStaticRead>
@@ -59,6 +69,76 @@ namespace BTSMTL.Compilation.Analysis
         public string NodeId { get; }
         public string EdgeId { get; }
         public string DisplayPath { get; }
+    }
+
+    public enum OrchestrationStaticConditionKind : byte
+    {
+        Constant,
+        All,
+        Any,
+        Not,
+        Read,
+        StateRootCompleted,
+        TimelineSection
+    }
+
+    public sealed class OrchestrationStaticCondition
+    {
+        internal OrchestrationStaticCondition(OrchestrationStaticConditionKind kind,
+            IReadOnlyList<OrchestrationStaticCondition> children, OrchestrationStaticRead read = default,
+            bool constantValue = false, string timelineIdentity = "", string sectionId = "", string frameIdentity = "")
+        {
+            Kind = kind;
+            Children = children;
+            Read = read;
+            ConstantValue = constantValue;
+            TimelineIdentity = timelineIdentity;
+            SectionId = sectionId;
+            FrameIdentity = frameIdentity;
+        }
+
+        public OrchestrationStaticConditionKind Kind { get; }
+        public IReadOnlyList<OrchestrationStaticCondition> Children { get; }
+        public OrchestrationStaticRead Read { get; }
+        public bool ConstantValue { get; }
+        public string TimelineIdentity { get; }
+        public string SectionId { get; }
+        internal string FrameIdentity { get; }
+
+        public static OrchestrationStaticCondition Constant(bool value) =>
+            new(OrchestrationStaticConditionKind.Constant, Array.Empty<OrchestrationStaticCondition>(), constantValue: value);
+
+        public static OrchestrationStaticCondition All(params OrchestrationStaticCondition[] children) => Combine(true, children);
+        public static OrchestrationStaticCondition Any(params OrchestrationStaticCondition[] children) => Combine(false, children);
+        public static OrchestrationStaticCondition Not(OrchestrationStaticCondition condition) => Negate(condition);
+        public static OrchestrationStaticCondition StateKey(int operationIndex, string key) =>
+            new(OrchestrationStaticConditionKind.Read, Array.Empty<OrchestrationStaticCondition>(),
+                new OrchestrationStaticRead(operationIndex, OrchestrationStaticReadSource.ClipState, key, false, key));
+
+        internal static OrchestrationStaticCondition Combine(bool all, params OrchestrationStaticCondition[] children) =>
+            Combine(all, (IReadOnlyList<OrchestrationStaticCondition>)children);
+
+        internal static OrchestrationStaticCondition Combine(bool all, IReadOnlyList<OrchestrationStaticCondition> children)
+        {
+            var result = new List<OrchestrationStaticCondition>();
+            foreach (OrchestrationStaticCondition child in children)
+            {
+                if (child.Kind == OrchestrationStaticConditionKind.Constant)
+                {
+                    if (child.ConstantValue != all)
+                        return Constant(!all);
+                    continue;
+                }
+                result.Add(child);
+            }
+            return result.Count == 0 ? Constant(all) : result.Count == 1 ? result[0] :
+                new OrchestrationStaticCondition(all ? OrchestrationStaticConditionKind.All : OrchestrationStaticConditionKind.Any, result);
+        }
+
+        internal static OrchestrationStaticCondition Negate(OrchestrationStaticCondition condition) =>
+            condition.Kind == OrchestrationStaticConditionKind.Constant ? Constant(!condition.ConstantValue) :
+            condition.Kind == OrchestrationStaticConditionKind.Not ? condition.Children[0] :
+            new OrchestrationStaticCondition(OrchestrationStaticConditionKind.Not, new[] { condition });
     }
 
     public sealed class OrchestrationStaticSection
@@ -119,16 +199,20 @@ namespace BTSMTL.Compilation.Analysis
     public sealed class OrchestrationStaticContinueRequest
     {
         internal OrchestrationStaticContinueRequest(int operationIndex, OrchestrationTimelineHook hook,
-            IReadOnlyList<OrchestrationStaticRead> reads)
+            int timelineOperationIndex, IReadOnlyList<OrchestrationStaticRead> reads, OrchestrationStaticCondition condition)
         {
             OperationIndex = operationIndex;
             Hook = hook;
+            TimelineOperationIndex = timelineOperationIndex;
             Reads = reads;
+            Condition = condition;
         }
 
         public int OperationIndex { get; }
         public OrchestrationTimelineHook Hook { get; }
+        public int TimelineOperationIndex { get; }
         public IReadOnlyList<OrchestrationStaticRead> Reads { get; }
+        public OrchestrationStaticCondition Condition { get; }
     }
 
     public sealed class OrchestrationStaticTimeline
@@ -169,7 +253,7 @@ namespace BTSMTL.Compilation.Analysis
     {
         internal OrchestrationStaticTransition(string identity, OrchestrationStaticState source, int targetOperation,
             int priority, int order, int controlFlowIndex, OrchestrationStaticSourceLocation location,
-            IReadOnlyList<OrchestrationStaticRead> reads)
+            IReadOnlyList<OrchestrationStaticRead> reads, OrchestrationStaticCondition condition)
         {
             Identity = identity;
             Source = source;
@@ -179,6 +263,7 @@ namespace BTSMTL.Compilation.Analysis
             ControlFlowIndex = controlFlowIndex;
             Location = location;
             Reads = reads;
+            Condition = condition;
         }
 
         public string Identity { get; }
@@ -192,6 +277,7 @@ namespace BTSMTL.Compilation.Analysis
         public bool FromAnyState { get; internal set; }
         public OrchestrationStaticSourceLocation Location { get; }
         public IReadOnlyList<OrchestrationStaticRead> Reads { get; }
+        public OrchestrationStaticCondition Condition { get; }
     }
 
     public sealed class OrchestrationStaticState
@@ -210,6 +296,12 @@ namespace BTSMTL.Compilation.Analysis
         public string TimelineIdentity { get; internal set; } = string.Empty;
         public OrchestrationTimelinePlaybackMode PlaybackMode { get; internal set; }
         public OrchestrationStaticTimeline Timeline { get; internal set; }
+        public int TimelineOperationIndex { get; internal set; }
+        public bool TimelineDeterminesRootCompletion { get; internal set; }
+        public bool HasStaticTimelineClock { get; internal set; }
+        public bool HasStaticTimelineStartTime { get; internal set; }
+        public OrchestrationTime TimelineStartTime { get; internal set; }
+        internal string FrameIdentity { get; set; }
         public IReadOnlyList<OrchestrationStaticTransition> Transitions => m_Transitions;
         internal readonly List<OrchestrationStaticTransition> m_Transitions = new();
     }
@@ -219,7 +311,8 @@ namespace BTSMTL.Compilation.Analysis
         public OrchestrationStaticQueryInput(IReadOnlyList<SemanticOperation> operations,
             IReadOnlyList<SemanticLiteral> literals, IReadOnlyList<ProgramControlFlowEdge> controlFlow,
             IReadOnlyList<ProgramSourceMapEntry> sourceMap, Func<string, TimelineContentUnit> resolveTimeline,
-            IReadOnlyList<IOrchestrationStateKeyDeclarations> declarations, IReadOnlyList<ProgramReference> references)
+            IReadOnlyList<IOrchestrationStateKeyDeclarations> declarations, IReadOnlyList<ProgramReference> references,
+            IReadOnlyList<SemanticConstantInputBinding> constantInputs)
         {
             Operations = operations;
             Literals = literals;
@@ -228,6 +321,7 @@ namespace BTSMTL.Compilation.Analysis
             ResolveTimeline = resolveTimeline;
             Declarations = declarations;
             References = references;
+            ConstantInputs = constantInputs;
         }
 
         public IReadOnlyList<SemanticOperation> Operations { get; }
@@ -237,6 +331,7 @@ namespace BTSMTL.Compilation.Analysis
         public Func<string, TimelineContentUnit> ResolveTimeline { get; }
         public IReadOnlyList<IOrchestrationStateKeyDeclarations> Declarations { get; }
         public IReadOnlyList<ProgramReference> References { get; }
+        public IReadOnlyList<SemanticConstantInputBinding> ConstantInputs { get; }
     }
 
     // 只读静态查询：只读取正式编译的语义程序与图结构，不执行任何图，不识别业务节点类型。
@@ -249,6 +344,9 @@ namespace BTSMTL.Compilation.Analysis
         readonly OrchestrationStaticSourceLocation[] m_Locations;
         readonly OrchestrationStaticSourceLocation[] m_EdgeLocations;
         readonly StateKeys[] m_StateKeys;
+        readonly string[] m_OperationInvocations;
+        readonly Dictionary<string, (string Parent, bool Timeline)> m_Invocations = new(StringComparer.Ordinal);
+        readonly Dictionary<(int Operation, string Port), int> m_ConstantInputs = new();
         readonly Dictionary<int, OrchestrationStaticState> m_States = new();
         readonly Dictionary<int, int> m_MachineEntries = new();
         readonly Dictionary<int, List<OrchestrationStaticTransition>> m_InitialTransitions = new();
@@ -265,6 +363,7 @@ namespace BTSMTL.Compilation.Analysis
             m_Locations = new OrchestrationStaticSourceLocation[count];
             m_EdgeLocations = new OrchestrationStaticSourceLocation[input.ControlFlow.Count];
             m_StateKeys = new StateKeys[count];
+            m_OperationInvocations = new string[count];
             for (int i = 0; i < count; i++)
             {
                 m_Outgoing[i] = new List<int>();
@@ -283,12 +382,26 @@ namespace BTSMTL.Compilation.Analysis
             }
             for (int i = 0; i < count; i++)
                 m_Outgoing[i].Sort(CompareEdges);
+            foreach (SemanticConstantInputBinding binding in input.ConstantInputs)
+                m_ConstantInputs.Add((binding.TargetOperation.Value, binding.TargetPort), binding.ConstantIndex);
             foreach (ProgramSourceMapEntry entry in input.SourceMap)
             {
                 ProgramExecutionSource source = entry.Source;
+                if (source.SourceInvocationPath.Length != 0)
+                {
+                    bool timeline = source.TargetKind == ProgramSourceTargetKind.GraphInvocation &&
+                        source.InvocationCallerKind is ProgramInvocationCallerKind.TimelineClip or
+                            ProgramInvocationCallerKind.PresentationMarker or ProgramInvocationCallerKind.PresentationTreeClip;
+                    if (m_Invocations.TryGetValue(source.SourceInvocationPath, out var invocation))
+                        timeline |= invocation.Timeline;
+                    m_Invocations[source.SourceInvocationPath] = (source.ParentInvocationPath, timeline);
+                }
                 if (source.TargetKind == ProgramSourceTargetKind.Operation)
+                {
+                    m_OperationInvocations[source.TargetIndex] = source.GraphInvocationPath;
                     m_Locations[source.TargetIndex] = new OrchestrationStaticSourceLocation(source.GraphId, source.NodeId,
                         source.EdgeId, entry.DisplayPath);
+                }
                 else if (source.TargetKind == ProgramSourceTargetKind.Reference && source.EdgeId.Length != 0)
                     m_EdgeLocations[source.TargetIndex] = new OrchestrationStaticSourceLocation(source.GraphId, source.NodeId,
                         source.EdgeId, entry.DisplayPath);
@@ -347,13 +460,60 @@ namespace BTSMTL.Compilation.Analysis
             }
             foreach (OrchestrationStaticState state in m_States.Values)
             {
+                state.FrameIdentity = FrameIdentity(state.OperationIndex);
                 int timeline = FindBodyTimeline(state.OperationIndex);
                 if (timeline < 0)
                     continue;
                 state.TimelineIdentity = Operations[timeline].Text0;
+                state.TimelineOperationIndex = timeline;
                 state.PlaybackMode = (OrchestrationTimelinePlaybackMode)Operations[timeline].Integer0;
                 state.Timeline = RequireTimeline(state.TimelineIdentity);
+                foreach (int edgeIndex in m_Outgoing[state.OperationIndex])
+                {
+                    ProgramControlFlowEdge edge = m_Input.ControlFlow[edgeIndex];
+                    if (edge.Kind == ProgramControlFlowKind.Enter && edge.SourcePort == "Root")
+                        state.TimelineDeterminesRootCompletion = IsTimelineRoot(edge.Target.Value, timeline);
+                }
+                bool rateKnown = TryLiteral(Input(timeline, "m_PlaybackRate"), out SemanticLiteral rate) &&
+                    rate.Kind == SemanticLiteralKind.Number && rate.Number.Value == 1d;
+                bool pauseKnown = TryLiteral(Input(timeline, "m_Paused"), out SemanticLiteral paused) &&
+                    paused.Kind == SemanticLiteralKind.Boolean && !paused.Boolean;
+                bool startKnown = TryLiteral(Input(timeline, "m_StartTime"), out SemanticLiteral start) &&
+                    start.Kind == SemanticLiteralKind.Number;
+                state.HasStaticTimelineClock = rateKnown && pauseKnown;
+                state.HasStaticTimelineStartTime = startKnown;
+                if (startKnown)
+                    state.TimelineStartTime = OrchestrationTime.FromSeconds(start.Number.Value);
             }
+        }
+
+        string FrameIdentity(int index)
+        {
+            string path = m_OperationInvocations[index];
+            while (m_Invocations[path].Parent.Length != 0 && !m_Invocations[path].Timeline)
+                path = m_Invocations[path].Parent;
+            return path;
+        }
+
+        bool IsTimelineRoot(int index, int timeline)
+        {
+            if (index == timeline)
+                return true;
+            if (Operations[index].Code is not (OrchestrationOperationCode.Root or OrchestrationOperationCode.SubGraph or
+                OrchestrationOperationCode.Sequence))
+                return false;
+            int child = -1;
+            foreach (int edgeIndex in m_Outgoing[index])
+            {
+                ProgramControlFlowEdge edge = m_Input.ControlFlow[edgeIndex];
+                if (edge.Kind != (Operations[index].Code == OrchestrationOperationCode.SubGraph
+                    ? ProgramControlFlowKind.Enter : ProgramControlFlowKind.Child))
+                    continue;
+                if (edge.HasCondition || child >= 0)
+                    return false;
+                child = edge.Target.Value;
+            }
+            return child >= 0 && IsTimelineRoot(child, timeline);
         }
 
         int FindBodyTimeline(int stateOperation)
@@ -446,10 +606,13 @@ namespace BTSMTL.Compilation.Analysis
                 foreach (int member in members)
                     if (Operations[member].Code == OrchestrationOperationCode.TimelineSectionContinueRequest)
                     {
+                        OrchestrationStaticCondition condition = OrchestrationStaticCondition.Combine(true,
+                            DescribePath(entry, member, members, new HashSet<int>()), DescribeInput(member, "m_When"));
                         var reads = new List<OrchestrationStaticRead>();
-                        CollectPathReads(member, members, reads);
+                        CollectReads(condition, reads);
                         clip.RequestsSectionContinue = true;
-                        clip.m_ContinueRequests.Add(new OrchestrationStaticContinueRequest(member, hook, reads));
+                        clip.m_ContinueRequests.Add(new OrchestrationStaticContinueRequest(member, hook,
+                            source.InvocationCallerOperationIndex, reads, condition));
                         foreach (OrchestrationStaticRead read in reads)
                             Add(clip.m_ContinueReads, read);
                     }
@@ -526,41 +689,48 @@ namespace BTSMTL.Compilation.Analysis
             return allSucceed && operation.Code is not (OrchestrationOperationCode.Selector or OrchestrationOperationCode.Loop);
         }
 
-        void CollectPathReads(int target, HashSet<int> members, List<OrchestrationStaticRead> reads)
+        OrchestrationStaticCondition DescribePath(int entry, int target, HashSet<int> members, HashSet<int> active)
         {
-            var visited = new HashSet<int>();
-            var pending = new Stack<int>();
-            pending.Push(target);
-            CollectValueReads(target, reads, new HashSet<int>());
-            while (pending.Count != 0)
+            if (target == entry)
+                return OrchestrationStaticCondition.Constant(true);
+            if (!active.Add(target))
+                return UnknownPredicate(target);
+            var paths = new List<OrchestrationStaticCondition>();
+            foreach (int edgeIndex in m_Incoming[target])
             {
-                int index = pending.Pop();
-                if (!visited.Add(index))
+                ProgramControlFlowEdge edge = m_Input.ControlFlow[edgeIndex];
+                int source = edge.Source.Value;
+                if (!members.Contains(source) || edge.Kind is not (ProgramControlFlowKind.Child or ProgramControlFlowKind.Enter))
                     continue;
-                foreach (int edgeIndex in m_Incoming[index])
+                var terms = new List<OrchestrationStaticCondition> { DescribePath(entry, source, members, active) };
+                if (edge.HasCondition)
+                    terms.Add(DescribeControl(edge.Condition.Value, new HashSet<int>()));
+                OrchestrationOperationCode code = Operations[source].Code;
+                if (code is OrchestrationOperationCode.Sequence or OrchestrationOperationCode.Selector or OrchestrationOperationCode.Root)
                 {
-                    ProgramControlFlowEdge edge = m_Input.ControlFlow[edgeIndex];
-                    int source = edge.Source.Value;
-                    if (!members.Contains(source) || edge.Kind is not (ProgramControlFlowKind.Child or ProgramControlFlowKind.Enter))
-                        continue;
-                    if (edge.HasCondition)
-                        CollectConditionReads(edge.Condition.Value, reads);
-                    CollectValueReads(source, reads, new HashSet<int>());
-                    if (Operations[source].Code is OrchestrationOperationCode.Sequence or OrchestrationOperationCode.Selector)
-                        foreach (int preceding in m_Outgoing[source])
-                        {
-                            if (preceding == edgeIndex)
-                                break;
-                            ProgramControlFlowEdge prerequisite = m_Input.ControlFlow[preceding];
-                            if (prerequisite.Kind != ProgramControlFlowKind.Child)
-                                continue;
-                            if (prerequisite.HasCondition)
-                                CollectConditionReads(prerequisite.Condition.Value, reads);
-                            CollectConditionReads(prerequisite.Target.Value, reads);
-                        }
-                    pending.Push(source);
+                    foreach (int preceding in m_Outgoing[source])
+                    {
+                        if (preceding == edgeIndex)
+                            break;
+                        ProgramControlFlowEdge prerequisite = m_Input.ControlFlow[preceding];
+                        if (prerequisite.Kind != ProgramControlFlowKind.Child)
+                            continue;
+                        OrchestrationStaticCondition predicate = DescribeEdge(prerequisite, new HashSet<int>());
+                        terms.Add(code == OrchestrationOperationCode.Selector
+                            ? OrchestrationStaticCondition.Negate(predicate) : predicate);
+                    }
                 }
+                else if (code == OrchestrationOperationCode.Branch && edge.SourcePort is "True" or "False")
+                {
+                    OrchestrationStaticCondition predicate = DescribeInput(source, "Condition");
+                    terms.Add(edge.SourcePort == "True" ? predicate : OrchestrationStaticCondition.Negate(predicate));
+                }
+                else if (code is not (OrchestrationOperationCode.SubGraph or OrchestrationOperationCode.TimelineEnter))
+                    terms.Add(DescribeControl(source, new HashSet<int>()));
+                paths.Add(OrchestrationStaticCondition.Combine(true, terms));
             }
+            active.Remove(target);
+            return OrchestrationStaticCondition.Combine(false, paths);
         }
 
         void BuildTransitions()
@@ -576,13 +746,14 @@ namespace BTSMTL.Compilation.Analysis
                 if (!any && !initial && !m_States.ContainsKey(sourceOperation))
                     continue;
                 var reads = new List<OrchestrationStaticRead>();
-                if (edge.HasCondition)
-                    CollectConditionReads(edge.Condition.Value, reads);
+                OrchestrationStaticCondition condition = edge.HasCondition
+                    ? DescribeControl(edge.Condition.Value, new HashSet<int>()) : OrchestrationStaticCondition.Constant(true);
+                CollectReads(condition, reads);
                 OrchestrationStaticSourceLocation edgeLocation = m_EdgeLocations[edgeIndex];
                 if (initial)
                 {
                     var transition = new OrchestrationStaticTransition(edge.Identity, null, edge.Target.Value,
-                        edge.Priority, edge.Order, edgeIndex, edgeLocation, reads) { Target = State(edge.Target.Value) };
+                        edge.Priority, edge.Order, edgeIndex, edgeLocation, reads, condition) { Target = State(edge.Target.Value) };
                     m_InitialTransitions[m_MachineEntries[sourceOperation]].Add(transition);
                     if (transition.Target != null)
                         transition.Target.IsInitial = true;
@@ -595,7 +766,7 @@ namespace BTSMTL.Compilation.Analysis
                         : source.OperationIndex != sourceOperation)
                         continue;
                     var transition = new OrchestrationStaticTransition(edge.Identity, source, edge.Target.Value,
-                        edge.Priority, edge.Order, edgeIndex, edgeLocation, reads) { FromAnyState = any };
+                        edge.Priority, edge.Order, edgeIndex, edgeLocation, reads, condition) { FromAnyState = any };
                     transition.Target = State(edge.Target.Value);
                     source.m_Transitions.Add(transition);
                 }
@@ -625,31 +796,234 @@ namespace BTSMTL.Compilation.Analysis
             return result == 0 ? CompareEdges(left.ControlFlowIndex, right.ControlFlowIndex) : result;
         }
 
+        public OrchestrationStaticCondition DescribeCondition(int operationIndex) =>
+            DescribeControl(operationIndex, new HashSet<int>());
+
+        public OrchestrationStaticCondition DescribeInvocationPath(int entryOperationIndex, int targetOperationIndex) =>
+            DescribePath(entryOperationIndex, targetOperationIndex, Reachable(entryOperationIndex), new HashSet<int>());
+
         void CollectConditionReads(int condition, List<OrchestrationStaticRead> reads)
         {
-            var visited = new HashSet<int>();
-            var pending = new Stack<int>();
-            pending.Push(condition);
-            var values = new HashSet<int>();
-            while (pending.Count != 0)
+            CollectReads(DescribeControl(condition, new HashSet<int>()), reads);
+        }
+
+        static void CollectReads(OrchestrationStaticCondition condition, List<OrchestrationStaticRead> reads)
+        {
+            if (condition.Kind is OrchestrationStaticConditionKind.Read or
+                OrchestrationStaticConditionKind.StateRootCompleted or OrchestrationStaticConditionKind.TimelineSection)
+                Add(reads, condition.Read);
+            foreach (OrchestrationStaticCondition child in condition.Children)
+                CollectReads(child, reads);
+        }
+
+        OrchestrationStaticCondition DescribeControl(int index, HashSet<int> active)
+        {
+            if (!active.Add(index))
+                return UnknownPredicate(index);
+            OrchestrationOperationCode code = Operations[index].Code;
+            OrchestrationStaticCondition result;
+            if (code == OrchestrationOperationCode.Succeed)
+                result = OrchestrationStaticCondition.Constant(true);
+            else if (code is OrchestrationOperationCode.Root or OrchestrationOperationCode.Sequence or
+                OrchestrationOperationCode.Selector or OrchestrationOperationCode.SubGraph or OrchestrationOperationCode.TimelineEnter)
             {
-                int index = pending.Pop();
-                if (!visited.Add(index))
-                    continue;
-                CollectValueReads(index, reads, values, true);
-                if (Operations[index].Code == OrchestrationOperationCode.Succeed)
-                    continue;
+                var children = new List<OrchestrationStaticCondition>();
                 foreach (int edgeIndex in m_Outgoing[index])
                 {
                     ProgramControlFlowEdge edge = m_Input.ControlFlow[edgeIndex];
-                    if (edge.Kind != ProgramControlFlowKind.Child &&
-                        !(Operations[index].Code == OrchestrationOperationCode.SubGraph && edge.Kind == ProgramControlFlowKind.Enter))
+                    if (edge.Kind != (code == OrchestrationOperationCode.SubGraph
+                        ? ProgramControlFlowKind.Enter : ProgramControlFlowKind.Child))
                         continue;
-                    if (edge.HasCondition)
-                        pending.Push(edge.Condition.Value);
-                    pending.Push(edge.Target.Value);
+                    children.Add(DescribeEdge(edge, active));
                 }
+                result = OrchestrationStaticCondition.Combine(code != OrchestrationOperationCode.Selector, children);
             }
+            else if (code == OrchestrationOperationCode.ConditionResult)
+                result = DescribeInput(index, "m_Result");
+            else if (code is OrchestrationOperationCode.TimelineSectionContinueRequest or OrchestrationOperationCode.TimelineClipExitRequest)
+                result = OrchestrationStaticCondition.Constant(true);
+            else
+                result = DescribeValue(new StaticValue(index, string.Empty, null), new HashSet<int>());
+            active.Remove(index);
+            return result;
+        }
+
+        OrchestrationStaticCondition DescribeEdge(ProgramControlFlowEdge edge, HashSet<int> active) =>
+            OrchestrationStaticCondition.Combine(true,
+                edge.HasCondition ? DescribeControl(edge.Condition.Value, active) : OrchestrationStaticCondition.Constant(true),
+                DescribeControl(edge.Target.Value, active));
+
+        readonly struct StaticValue
+        {
+            internal StaticValue(int operation, string port, SemanticLiteral literal, int inputOwner = -1)
+            {
+                Operation = operation;
+                Port = port;
+                Literal = literal;
+                InputOwner = inputOwner;
+            }
+
+            internal int Operation { get; }
+            internal string Port { get; }
+            internal SemanticLiteral Literal { get; }
+            internal int InputOwner { get; }
+        }
+
+        StaticValue Input(int index, string port)
+        {
+            foreach (int edgeIndex in m_ValueInputs[index])
+            {
+                ProgramControlFlowEdge edge = m_Input.ControlFlow[edgeIndex];
+                if (edge.TargetPort == port)
+                    return new StaticValue(edge.Source.Value, edge.SourcePort, null);
+            }
+            return m_ConstantInputs.TryGetValue((index, port), out int literal)
+                ? new StaticValue(-1, port, m_Input.Literals[literal]) : new StaticValue(-1, port, null, index);
+        }
+
+        StaticValue Unwrap(StaticValue value)
+        {
+            while (value.Operation >= 0 && Operations[value.Operation].Code == OrchestrationOperationCode.IdentityValue)
+                value = Input(value.Operation, "m_Value");
+            return value;
+        }
+
+        bool TryLiteral(StaticValue source, out SemanticLiteral literal)
+        {
+            StaticValue value = Unwrap(source);
+            literal = value.Literal;
+            if (value.Operation < 0)
+                return literal != null;
+            SemanticOperation operation = Operations[value.Operation];
+            foreach (SemanticConstantOutputBinding output in operation.ConstantOutputs)
+                if (output.OutputPortId == value.Port)
+                {
+                    literal = m_Input.Literals[output.LiteralIndex];
+                    return true;
+                }
+            if (operation.Code != OrchestrationOperationCode.Constant || operation.LiteralReferences.Count == 0)
+                return false;
+            literal = m_Input.Literals[operation.LiteralReferences[0]];
+            return true;
+        }
+
+        OrchestrationStaticCondition DescribeInput(int index, string port) =>
+            DescribeValue(Input(index, port), new HashSet<int>());
+
+        OrchestrationStaticCondition DescribeValue(StaticValue source, HashSet<int> active)
+        {
+            if (TryLiteral(source, out SemanticLiteral literal))
+                return OrchestrationStaticCondition.Constant(LiteralBoolean(literal));
+            StaticValue value = Unwrap(source);
+            int index = value.Operation;
+            if (index < 0)
+                return UnknownPredicate(value.InputOwner);
+            if (!active.Add(index))
+                return UnknownPredicate(index);
+            SemanticOperation operation = Operations[index];
+            OrchestrationStaticCondition result;
+            switch (operation.Code)
+            {
+                case OrchestrationOperationCode.And:
+                case OrchestrationOperationCode.Or:
+                    result = OrchestrationStaticCondition.Combine(operation.Code == OrchestrationOperationCode.And,
+                        DescribeValue(Input(index, "m_Input1"), active), DescribeValue(Input(index, "m_Input2"), active));
+                    break;
+                case OrchestrationOperationCode.Not:
+                    result = OrchestrationStaticCondition.Negate(DescribeValue(Input(index, "m_Input"), active));
+                    break;
+                case OrchestrationOperationCode.ConditionResult:
+                    result = DescribeValue(Input(index, "m_Result"), active);
+                    break;
+                case OrchestrationOperationCode.StateRootCompleted:
+                    result = new OrchestrationStaticCondition(OrchestrationStaticConditionKind.StateRootCompleted,
+                        Array.Empty<OrchestrationStaticCondition>(), new OrchestrationStaticRead(index,
+                            OrchestrationStaticReadSource.StateCompletion, "StateRootCompleted", false, "状态主体自然完成"));
+                    break;
+                case OrchestrationOperationCode.Constant:
+                    result = OrchestrationStaticCondition.Constant(false);
+                    break;
+                case OrchestrationOperationCode.TimelineSection:
+                    result = OrchestrationStaticCondition.Negate(SectionCondition(index, index, string.Empty));
+                    break;
+                case OrchestrationOperationCode.Calculate when (GraphCalculationKind)operation.Integer0 == GraphCalculationKind.TextEqual:
+                    result = DescribeTextEqual(index);
+                    break;
+                case OrchestrationOperationCode.InputBoolean:
+                case OrchestrationOperationCode.InputScalar:
+                case OrchestrationOperationCode.InputVector2Magnitude:
+                case OrchestrationOperationCode.InputRequest:
+                case OrchestrationOperationCode.HostInput:
+                {
+                    var reads = new List<OrchestrationStaticRead>();
+                    if (operation.HostInputs.Count == 0)
+                        AddHostInputs(index, operation, reads);
+                    else
+                        for (int i = 0; i < operation.HostInputs.Count; i++)
+                        {
+                            SemanticHostInputPort input = operation.HostInputs[i];
+                            if (value.Port.Length == 0 ? i == 0 : input.OutputPortId == value.Port)
+                                Add(reads, new OrchestrationStaticRead(index, OrchestrationStaticReadSource.HostInput,
+                                    input.InputId, false, input.InputId));
+                        }
+                    var terms = new List<OrchestrationStaticCondition>();
+                    foreach (OrchestrationStaticRead read in reads)
+                        terms.Add(ReadCondition(in read));
+                    result = terms.Count != 0 ? OrchestrationStaticCondition.Combine(true, terms) : UnknownPredicate(index);
+                    break;
+                }
+                case OrchestrationOperationCode.Extension:
+                    result = Declare(operation).Predicate ?? UnknownPredicate(index);
+                    break;
+                default:
+                    result = UnknownPredicate(index);
+                    break;
+            }
+            active.Remove(index);
+            return result;
+        }
+
+        static bool LiteralBoolean(SemanticLiteral literal) => literal.Kind switch
+        {
+            SemanticLiteralKind.Boolean => literal.Boolean,
+            SemanticLiteralKind.Int32 => literal.Int32 != 0,
+            SemanticLiteralKind.UInt64 => literal.UInt64 != 0,
+            SemanticLiteralKind.Number => literal.Number.Value != 0d,
+            SemanticLiteralKind.String => literal.String.Length != 0,
+            _ => false
+        };
+
+        OrchestrationStaticCondition DescribeTextEqual(int index)
+        {
+            StaticValue a = Unwrap(Input(index, "a"));
+            StaticValue b = Unwrap(Input(index, "b"));
+            bool aConstant = TryLiteral(a, out SemanticLiteral left) && left.Kind == SemanticLiteralKind.String;
+            bool bConstant = TryLiteral(b, out SemanticLiteral right) && right.Kind == SemanticLiteralKind.String;
+            if (aConstant && bConstant)
+                return OrchestrationStaticCondition.Constant(string.Equals(left.String, right.String, StringComparison.Ordinal));
+            if (a.Operation >= 0 && Operations[a.Operation].Code == OrchestrationOperationCode.TimelineSection && bConstant)
+                return SectionCondition(index, a.Operation, right.String);
+            if (b.Operation >= 0 && Operations[b.Operation].Code == OrchestrationOperationCode.TimelineSection && aConstant)
+                return SectionCondition(index, b.Operation, left.String);
+            return UnknownPredicate(index);
+        }
+
+        OrchestrationStaticCondition SectionCondition(int index, int queryIndex, string sectionId) =>
+            new(OrchestrationStaticConditionKind.TimelineSection, Array.Empty<OrchestrationStaticCondition>(),
+                new OrchestrationStaticRead(index, OrchestrationStaticReadSource.TimelineSection,
+                    $"TimelineSection:{Operations[queryIndex].Text0}:{sectionId}", false, $"Timeline 来源分段 = {sectionId}"),
+                timelineIdentity: Operations[queryIndex].Text0, sectionId: sectionId, frameIdentity: FrameIdentity(queryIndex));
+
+        static OrchestrationStaticCondition ReadCondition(in OrchestrationStaticRead read) =>
+            new(OrchestrationStaticConditionKind.Read, Array.Empty<OrchestrationStaticCondition>(), read);
+
+        OrchestrationStaticCondition UnknownPredicate(int index)
+        {
+            SemanticOperation operation = Operations[index];
+            string label = m_Locations[index].DisplayPath.Length != 0 ? m_Locations[index].DisplayPath : operation.Code.ToString();
+            var read = new OrchestrationStaticRead(index, OrchestrationStaticReadSource.RuntimeData,
+                $"Predicate:{operation.TemplateIdentity}", true, $"谓词假设：{label}");
+            return ReadCondition(in read);
         }
 
         void CollectValueReads(int index, List<OrchestrationStaticRead> reads, HashSet<int> visited, bool readsOutput = false)
@@ -657,6 +1031,11 @@ namespace BTSMTL.Compilation.Analysis
             if (!visited.Add(index))
                 return;
             SemanticOperation operation = Operations[index];
+            if (readsOutput && operation.Code is OrchestrationOperationCode.Compare or OrchestrationOperationCode.Calculate)
+            {
+                CollectReads(DescribeValue(new StaticValue(index, string.Empty, null), new HashSet<int>()), reads);
+                return;
+            }
             Classify(index, operation, reads, readsOutput);
             foreach (int operand in operation.Operands)
                 CollectValueReads(operand, reads, visited, true);
@@ -702,6 +1081,14 @@ namespace BTSMTL.Compilation.Analysis
                         Add(reads, new OrchestrationStaticRead(index, OrchestrationStaticReadSource.RuntimeData,
                             operation.Code.ToString(), false, operation.Code.ToString()));
                     break;
+                case OrchestrationOperationCode.TimelineSection:
+                    Add(reads, new OrchestrationStaticRead(index, OrchestrationStaticReadSource.TimelineSection,
+                        $"TimelineSection:{operation.Text0}", false, $"Timeline 当前或已完成分段：{operation.Text0}"));
+                    break;
+                case OrchestrationOperationCode.StateRootCompleted:
+                    Add(reads, new OrchestrationStaticRead(index, OrchestrationStaticReadSource.StateCompletion,
+                        "StateRootCompleted", false, "状态主体自然完成"));
+                    break;
                 case OrchestrationOperationCode.InputBoolean:
                 case OrchestrationOperationCode.InputScalar:
                 case OrchestrationOperationCode.InputVector2:
@@ -712,20 +1099,9 @@ namespace BTSMTL.Compilation.Analysis
                     break;
                 case OrchestrationOperationCode.Extension:
                 {
-                    if (operation.HostInputs.Count != 0)
-                        AddHostInputs(index, operation, reads);
                     StateKeys declaration = Declare(operation);
-                    OrchestrationExtensionIdentity identity = operation.Extension.Value.Identity;
-                    string label = $"{identity.DomainId}/{identity.OperationId}";
-                    if (!declaration.Declared)
-                    {
-                        if (readsOutput || operation.Extension.Value.Kind != OrchestrationExtensionKind.Action)
-                            Add(reads, new OrchestrationStaticRead(index, OrchestrationStaticReadSource.RuntimeData,
-                                label, true, label));
-                        break;
-                    }
-                    foreach (string key in declaration.Read)
-                        Add(reads, new OrchestrationStaticRead(index, OrchestrationStaticReadSource.ClipState, key, false, key));
+                    if (readsOutput || operation.Extension.Value.Kind != OrchestrationExtensionKind.Action)
+                        CollectReads(declaration.Predicate ?? UnknownPredicate(index), reads);
                     break;
                 }
                 default:
@@ -764,6 +1140,7 @@ namespace BTSMTL.Compilation.Analysis
         sealed class StateKeys
         {
             internal bool Declared;
+            internal OrchestrationStaticCondition Predicate;
             internal readonly List<string> Provided = new();
             internal readonly List<string> Read = new();
         }
@@ -784,6 +1161,9 @@ namespace BTSMTL.Compilation.Analysis
                 if (declarations.TryDeclare(in extension, fields, keys.Provided, keys.Read))
                 {
                     keys.Declared = true;
+                    if (declarations is IOrchestrationStatePredicateDeclarations predicates &&
+                        predicates.TryDescribePredicate(in extension, fields, index, out OrchestrationStaticCondition predicate))
+                        keys.Predicate = predicate;
                     break;
                 }
                 keys.Provided.Clear();
