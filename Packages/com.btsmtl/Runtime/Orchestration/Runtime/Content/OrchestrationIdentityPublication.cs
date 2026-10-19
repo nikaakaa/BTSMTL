@@ -17,7 +17,11 @@ namespace BTSMTL.Orchestration
             Array.Sort(values, StringComparer.Ordinal);
             if (previous != null && values.AsSpan().SequenceEqual(previous.Entries.Span))
                 return previous;
-            return new OrchestrationIdentityTable(values, OrchestrationIdentityContentHash.Table(values));
+            var sortedIdentityIds = new int[values.Length];
+            for (int i = 0; i < sortedIdentityIds.Length; i++)
+                sortedIdentityIds[i] = i + 1;
+            var tableIdentity = OrchestrationIdentityContentHash.Table(values);
+            return new OrchestrationIdentityTable(values, sortedIdentityIds, () => tableIdentity);
         }
 
         public static OrchestrationIdentityTable Extend(OrchestrationIdentityTable baseline,

@@ -646,14 +646,14 @@ namespace BTSMTL.Compilation
 
     public sealed partial class ProgramSourceMapText
     {
-        public ProgramSourceMapText(string sourceType, IReadOnlyList<string> displayPathSegments)
+        public ProgramSourceMapText(string sourceType, ReadOnlyMemory<string> displayPathSegments)
         {
             SourceType = sourceType;
             DisplayPathSegments = displayPathSegments;
         }
 
         public string SourceType { get; }
-        public IReadOnlyList<string> DisplayPathSegments { get; }
+        public ReadOnlyMemory<string> DisplayPathSegments { get; }
     }
 
     [ValueStorage]

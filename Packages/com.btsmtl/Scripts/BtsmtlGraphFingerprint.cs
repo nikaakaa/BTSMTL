@@ -17,6 +17,10 @@ namespace BTSMTL
 {
     public class BtsmtlGraphFingerprint
     {
+        static readonly global::Unity.Profiling.ProfilerMarker s_LoadSourceObjects = new("Btsmtl.GraphInput.LoadSourceObjects");
+        static readonly global::Unity.Profiling.ProfilerMarker s_CollectAssetDependencies = new("Btsmtl.GraphInput.CollectAssetDependencies");
+        static readonly global::Unity.Profiling.ProfilerMarker s_ComputeSourceAsset = new("Btsmtl.GraphInput.ComputeSourceAsset");
+        static readonly global::Unity.Profiling.ProfilerMarker s_ComputeSourceObject = new("Btsmtl.GraphInput.ComputeSourceObject");
         static readonly ConditionalWeakTable<fsMetaType, string[]> s_EditorProperties = new();
         static readonly ConditionalWeakTable<fsMetaType, string[]>.CreateValueCallback s_CollectEditorProperties = CollectEditorProperties;
         static readonly ConditionalWeakTable<UnityEngine.Object, StrongBox<HashedSource>> s_ObjectSourceHashes = new();
@@ -39,6 +43,7 @@ namespace BTSMTL
         readonly Dictionary<string, string> m_AssetHashes = new(StringComparer.Ordinal);
         readonly Dictionary<string, string> m_DependencyHashes = new(StringComparer.Ordinal);
         readonly Dictionary<string, string[]> m_AssetDependencies = new(StringComparer.Ordinal);
+        readonly Dictionary<string, UnityEngine.Object[]> m_SourceObjects = new(StringComparer.Ordinal);
         readonly Dictionary<UnityEngine.Object, string> m_ObjectHashes = new();
         protected readonly fsSerializer m_Serializer = new();
 
@@ -80,11 +85,12 @@ namespace BTSMTL
         {
             if (m_AssetHashes.TryGetValue(path, out string existing))
                 return existing;
+            using var profile = s_ComputeSourceAsset.Auto();
             var parts = new List<string>();
             if (string.Equals(Path.GetExtension(path), ".asset", StringComparison.OrdinalIgnoreCase))
             {
                 parts.Add("btsmtl-source-asset/3");
-                var assets = AssetDatabase.LoadAllAssetsAtPath(path)
+                var assets = ReadSourceObjects(path)
                     .Select(asset =>
                     {
                         AssetDatabase.TryGetGUIDAndLocalFileIdentifier(asset, out string _, out long fileId);
@@ -113,7 +119,8 @@ namespace BTSMTL
         {
             if (m_AssetDependencies.TryGetValue(path, out string[] existing))
                 return existing;
-            string[] dependencies = EditorUtility.CollectDependencies(AssetDatabase.LoadAllAssetsAtPath(path))
+            using var profile = s_CollectAssetDependencies.Auto();
+            string[] dependencies = EditorUtility.CollectDependencies(ReadSourceObjects(path))
                 .Select(AssetDatabase.GetAssetPath)
                 .Where(dependency => !string.IsNullOrEmpty(dependency))
                 .Distinct(StringComparer.Ordinal)
@@ -121,6 +128,16 @@ namespace BTSMTL
                 .ToArray();
             m_AssetDependencies.Add(path, dependencies);
             return dependencies;
+        }
+
+        public UnityEngine.Object[] ReadSourceObjects(string path)
+        {
+            if (m_SourceObjects.TryGetValue(path, out UnityEngine.Object[] existing))
+                return existing;
+            using var profile = s_LoadSourceObjects.Auto();
+            UnityEngine.Object[] objects = AssetDatabase.LoadAllAssetsAtPath(path);
+            m_SourceObjects.Add(path, objects);
+            return objects;
         }
 
         string ComputeDependencies(string path)
@@ -189,6 +206,7 @@ namespace BTSMTL
         {
             if (m_ObjectHashes.TryGetValue(asset, out string existing))
                 return existing;
+            using var profile = s_ComputeSourceObject.Auto();
             var parts = new List<string>();
             parts.Add(asset.GetType().FullName);
             if (asset is Graph graph)

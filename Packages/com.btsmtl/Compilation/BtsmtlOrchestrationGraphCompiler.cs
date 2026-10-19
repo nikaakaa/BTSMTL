@@ -197,6 +197,7 @@ namespace BTSMTL.Compilation
             readonly Dictionary<(string GraphId, string SourceInvocationPath, string InvocationPath,
                 string SourceGraphId, string TimelineId, string TrackId, string ClipId,
                 ProgramInvocationCallerKind CallerKind, string CallerId, string CallerClipId), string> m_InvocationIdentityTexts = new();
+            readonly Dictionary<(int Operation, string Port), string> m_ConstantOutputIdentities = new();
             readonly List<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> m_Constants = new();
             readonly List<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> m_DefaultValues = new();
             readonly List<OrchestrationBlackboardSlot> m_Blackboards = new();
@@ -448,8 +449,16 @@ namespace BTSMTL.Compilation
                 return invocationIdentity;
             }
 
-            string ConstantOutputIdentity(int operationIndex, string portId) =>
-                StableHash.Compute("orchestration-constant-output", m_OperationIdentities[operationIndex], portId).ToString();
+            string ConstantOutputIdentity(int operationIndex, string portId)
+            {
+                var key = (operationIndex, portId);
+                if (!m_ConstantOutputIdentities.TryGetValue(key, out string identity))
+                {
+                    identity = StableHash.Compute("orchestration-constant-output", m_OperationIdentities[operationIndex], portId).ToString();
+                    m_ConstantOutputIdentities.Add(key, identity);
+                }
+                return identity;
+            }
 
             void BuildPorts()
             {
@@ -1175,9 +1184,7 @@ namespace BTSMTL.Compilation
                         text = (source.ValuePortDirection.ToString(), source.InvocationCallerKind.ToString());
                         names.Add(nameKey, text);
                     }
-                    var path = new string[entry.Text.DisplayPathSegments.Count];
-                    for (int segment = 0; segment < path.Length; segment++)
-                        path[segment] = entry.Text.DisplayPathSegments[segment];
+                    ReadOnlyMemory<string> path = entry.Text.DisplayPathSegments;
                     int targetIndex = source.TargetKind == ProgramSourceTargetKind.OperationPort &&
                         source.ValuePortDirection == ProgramValuePortDirection.Output ? m_Ports[source.TargetIndex].Output(source.CompiledPortId).OperationIndex
                         : source.TargetKind == ProgramSourceTargetKind.StateSlot && m_StateValueSlots[source.TargetIndex] >= 0
