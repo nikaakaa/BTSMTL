@@ -206,7 +206,9 @@ namespace BTSMTL.Diagnostics
                         payload.BlackboardScope = (int)item.Blackboard.Owner.ScopeKind;
                         payload.BlackboardOwnerIndex = item.Blackboard.Owner.CompiledOwnerIndex;
                         payload.BlackboardOwnerGeneration = item.Blackboard.Owner.Generation;
-                        payload.BlackboardLifetime = (int)item.Blackboard.Lifetime;
+                        payload.BlackboardLifetime = (int)item.BlackboardLifetime;
+                        payload.BlackboardWriteStamp = item.BlackboardWriteStamp;
+                        payload.Revision = item.Blackboard.Revision;
                         payload.BlackboardIsActive = true;
                         break;
                 }

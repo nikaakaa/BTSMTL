@@ -7,7 +7,9 @@ namespace BTSMTL.Orchestration
     public readonly partial struct OrchestrationCharacterBlackboardStateLayout<TValue>
         where TValue : unmanaged
     {
+        [OrchestrationStateSegment(OrchestrationStateSegmentRole.CharacterMetadata)]
         public OrchestrationStateRegion<OrchestrationBlackboardMetadata> Metadata { get; }
+        [OrchestrationStateSegment(OrchestrationStateSegmentRole.CharacterValues)]
         public OrchestrationStateRegion<TValue> Values { get; }
     }
 }

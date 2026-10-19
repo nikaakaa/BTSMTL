@@ -102,6 +102,8 @@ namespace BTSMTL.Orchestration
             var sourceDepths = new int[programs.Length];
             int operations = 0;
             int values = 0;
+            int savedOutputs = 0;
+            var valueKindCounts = new int[(int)OrchestrationValueKind.SpatialIdentity + 1];
             int transitionCaches = 0;
             int transitionSnapshots = 0;
             for (int programIndex = 0; programIndex < programs.Length; programIndex++)
@@ -156,8 +158,6 @@ namespace BTSMTL.Orchestration
                         admissionOwners.Add(programIndex, perAdmission = new int[program.OperationCount]);
                     for (int owner = 0; owner < perAdmission.Length; owner++)
                         perAdmission[owner] = Math.Max(perAdmission[owner], capacity.Owners[owner]);
-                    operations = Math.Max(operations, program.OperationCount);
-                    values = Math.Max(values, program.ValueSlotCount);
                     transitionCaches = Math.Max(transitionCaches, program.ValueSchedule.TransitionCacheCount);
                     transitionSnapshots = Math.Max(transitionSnapshots, program.ValueSchedule.TransitionSnapshotCount);
                 }
@@ -171,8 +171,24 @@ namespace BTSMTL.Orchestration
                 frameCount = checked(frameCount + checked(admission.MaximumInstances * frames));
                 playbackCount = checked(playbackCount + checked(admission.MaximumInstances * playbacks));
             }
+            for (int programIndex = 0; programIndex < programs.Length; programIndex++)
+            {
+                ReadOnlySpan<int> instances = ownerInstances[programIndex].Span;
+                ReadOnlySpan<OrchestrationExecutionOwnerStorage> storages = programs[programIndex].ExecutionStorage.Owners.Span;
+                for (int owner = 0; owner < instances.Length; owner++)
+                {
+                    if (instances[owner] == 0)
+                        continue;
+                    ref readonly OrchestrationExecutionOwnerStorage storage = ref storages[owner];
+                    operations = Math.Max(operations, storage.OperationCount);
+                    values = Math.Max(values, storage.BlackboardCount);
+                    savedOutputs = Math.Max(savedOutputs, storage.SavedOutputCount);
+                    for (int kind = 0; kind < valueKindCounts.Length; kind++)
+                        valueKindCounts[kind] = Math.Max(valueKindCounts[kind], storage.ValueKindCounts.Span[kind]);
+                }
+            }
             var state = new OrchestrationExecutionStateCapacity(frameCount, operations, values,
-                transitionCaches, transitionSnapshots);
+                savedOutputs, transitionCaches, transitionSnapshots, valueKindCounts);
             return new OrchestrationExecutionCapacity(in state, playbackCount, ownerInstances, sourceDepths);
         }
 

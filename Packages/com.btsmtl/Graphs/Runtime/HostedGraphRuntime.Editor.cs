@@ -1,6 +1,7 @@
 #if UNITY_EDITOR
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using BTSMTL.Orchestration;
 using FlowCanvas;
 using NodeCanvas.Framework;
@@ -21,7 +22,7 @@ namespace BTSMTL.Graphs
         where TContext : struct
     {
         const uint RecordedStateFormat = 0x45564752;
-        const uint RecordedStateVersion = 3;
+        const uint RecordedStateVersion = 4;
         readonly Dictionary<(string Node, string Port, bool Input), GraphRuntimePort> m_EditorPorts = new();
         GraphRuntimePort[] m_RuntimePorts;
         OrchestrationValueOverride<TValue>[] m_Overrides;
@@ -74,7 +75,8 @@ namespace BTSMTL.Graphs
         }
 
         void ExecuteTriggers<TDiagnostics>(ref OrchestrationExecutionCursor<TValue, TScalar, TVector2,
-            TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics> cursor)
+            TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics,
+            OrchestrationArrayValueStorage<TValue>> cursor)
             where TDiagnostics : struct, IOrchestrationExecutionDiagnostics
         {
             for (int i = 0; i < m_CandidateTriggers.Count; i++)
@@ -213,13 +215,15 @@ namespace BTSMTL.Graphs
             });
         }
 
-        OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext, OrchestrationWorkbenchDiagnostics>
+        OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues,
+            TContext, OrchestrationWorkbenchDiagnostics, OrchestrationArrayValueStorage<TValue>>
             CreateEditorCursor(in OrchestrationFrameInput<TValue> input)
         {
             var state = OrchestrationStateBinding.BindCandidate(m_Layout, m_Candidate);
             OrchestrationIdentityOrdinalView identities = m_CandidateTexts.Ordinals;
             TContext context = default;
-            return state.CreateCursor<TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext, OrchestrationWorkbenchDiagnostics>(
+            return state.CreateCursor<TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext,
+                OrchestrationWorkbenchDiagnostics, OrchestrationArrayValueStorage<TValue>>(
                 m_Bindings.Program, m_Workspace, m_Extensions, 0, ReadOnlySpan<int>.Empty,
                 null, null, in input, in identities, in context);
         }
@@ -365,6 +369,56 @@ namespace BTSMTL.Graphs
             WriteRecordedFrameState(ref writer, false);
         }
 
+        OrchestrationStateRegion<byte> RecordedSegmentRegion(in OrchestrationStateSegment segment) =>
+            segment.PerFrame && segment.Role != OrchestrationStateSegmentRole.Frames
+                ? m_Layout.PayloadRegion(in segment, 0, 0, m_Bindings.Program.RootOperationIndex)
+                : new OrchestrationStateRegion<byte>(segment.OffsetBytes, segment.SizeBytes);
+
+        void WriteRecordedStoredValues<TWriter>(ref TWriter writer, ReadOnlySpan<TValue> values,
+            bool savedOutputs, bool maximumCapacity)
+            where TWriter : struct, IRecordedRuntimeStateWriter
+        {
+            ReadOnlySpan<OrchestrationValueStorageSlot> slots = m_Bindings.Program.ExecutionStorage.Values.Span;
+            for (int slot = 0; slot < slots.Length; slot++)
+            {
+                ref readonly OrchestrationValueStorageSlot storage = ref slots[slot];
+                int index = savedOutputs ? storage.SavedOutputIndex : storage.ValueIndex;
+                if (index < 0 || storage.OwnerOperationIndex != m_Bindings.Program.RootOperationIndex)
+                    continue;
+                ref readonly TValue value = ref values[index];
+                if (savedOutputs)
+                {
+                    bool hasValue = maximumCapacity || default(TValues).Kind(in value) != default;
+                    writer.Write(hasValue);
+                    if (!hasValue)
+                        continue;
+                }
+                if (maximumCapacity)
+                    GraphHostValue.WriteRecordedStateCapacity(ref writer, m_Bindings.StateTypes[slot]);
+                else
+                    m_Bindings.FromState(in value, m_Bindings.StateTypes[slot], m_StateTexts)
+                        .WriteRecordedFrameState(ref writer);
+            }
+        }
+
+        void ReadRecordedStoredValues(ref RecordedRuntimeStateReader reader, Span<TValue> values,
+            bool savedOutputs)
+        {
+            ReadOnlySpan<OrchestrationValueStorageSlot> slots = m_Bindings.Program.ExecutionStorage.Values.Span;
+            for (int slot = 0; slot < slots.Length; slot++)
+            {
+                ref readonly OrchestrationValueStorageSlot storage = ref slots[slot];
+                int index = savedOutputs ? storage.SavedOutputIndex : storage.ValueIndex;
+                if (index < 0 || storage.OwnerOperationIndex != m_Bindings.Program.RootOperationIndex ||
+                    savedOutputs && !reader.Read<bool>())
+                    continue;
+                int enumIdentity = m_Bindings.StateTypes[slot].IsEnum
+                    ? default(TValues).Enum(m_Bindings.Program.Content.DefaultValues.Span[slot]).TypeContentId : 0;
+                GraphHostValue value = GraphHostValue.ReadRecordedFrameState(ref reader, m_Bindings.StateTypes[slot]);
+                values[index] = m_Bindings.ToState(in value, enumIdentity, m_CandidateTexts);
+            }
+        }
+
         void WriteRecordedFrameState<TWriter>(ref TWriter writer, bool maximumCapacity)
             where TWriter : struct, IRecordedRuntimeStateWriter
         {
@@ -401,31 +455,48 @@ namespace BTSMTL.Graphs
                 writer.Write(trigger.Port);
                 writer.Write(trigger.Input);
             }
-            var state = OrchestrationStateBinding.BindCommitted(m_Layout, m_State);
-            var frames = state.Frames;
-            writer.WriteSpan<OrchestrationOperationState>(frames.Operations(0));
-            writer.WriteSpan<OrchestrationBlackboardMetadata>(frames.BlackboardMetadata(0));
-            ReadOnlyOrchestrationStateView memory = m_Layout.Layout.BindCommitted(m_State);
-            writer.WriteSpan<OrchestrationTransitionCacheState>(m_Layout.GetTransitionCaches(memory));
-            writer.WriteSpan<OrchestrationTransitionSnapshot<TValue>>(m_Layout.GetTransitionSnapshots(memory));
-            ReadOnlySpan<TValue> values = frames.Values(0);
-            for (int i = 0; i < m_Bindings.Program.ValueSlotCount; i++)
+            foreach (OrchestrationStateSegment segment in m_Layout.Segments.Span)
             {
-                if (maximumCapacity)
-                    GraphHostValue.WriteRecordedStateCapacity(ref writer, m_Bindings.StateTypes[i]);
-                else
+                OrchestrationStateRegion<byte> region = RecordedSegmentRegion(in segment);
+                ReadOnlySpan<byte> memory = m_State.AsSpan(region.OffsetBytes, region.SizeBytes);
+                switch (segment.Role)
                 {
-                    TValue value = values[i];
-                    m_Bindings.FromState(in value, m_Bindings.StateTypes[i], m_StateTexts).WriteRecordedFrameState(ref writer);
+                    case OrchestrationStateSegmentRole.PrivateValues:
+                    case OrchestrationStateSegmentRole.SavedOutputs:
+                        WriteRecordedStoredValues(ref writer, MemoryMarshal.Cast<byte, TValue>(memory),
+                            segment.Role == OrchestrationStateSegmentRole.SavedOutputs, maximumCapacity);
+                        break;
+                    case OrchestrationStateSegmentRole.TransitionSnapshots:
+                        foreach (ref readonly OrchestrationTransitionSnapshot<TValue> snapshot in
+                            MemoryMarshal.Cast<byte, OrchestrationTransitionSnapshot<TValue>>(memory))
+                        {
+                            writer.Write(snapshot.Revision);
+                            writer.Write(snapshot.OwnerGeneration);
+                            bool runtimeText = default(TValues).Kind(in snapshot.Value) == OrchestrationValueKind.Identity &&
+                                default(TValues).Identity(in snapshot.Value).Space == OrchestrationIdentitySpace.RuntimeText;
+                            writer.Write(runtimeText);
+                            if (maximumCapacity || !runtimeText)
+                                writer.Write(snapshot.Value);
+                            if (maximumCapacity || runtimeText)
+                                writer.WriteText(maximumCapacity ? null :
+                                    m_StateTexts.Resolve(default(TValues).Identity(in snapshot.Value)));
+                        }
+                        break;
+                    default:
+                        writer.WriteSpan<byte>(memory);
+                        break;
                 }
-                bool locked = maximumCapacity || IsVariableLocked(i);
+            }
+            foreach (int slot in m_Bindings.PublishedSlots)
+            {
+                bool locked = maximumCapacity || IsVariableLocked(slot);
                 writer.Write(locked);
                 if (locked)
                 {
                     if (maximumCapacity)
-                        GraphHostValue.WriteRecordedStateCapacity(ref writer, m_Bindings.StateTypes[i]);
+                        GraphHostValue.WriteRecordedStateCapacity(ref writer, m_Bindings.StateTypes[slot]);
                     else
-                        m_Bindings.FromState(in m_Overrides[FindVariableOverride(i)].Value, m_Bindings.StateTypes[i], m_StateTexts)
+                        m_Bindings.FromState(in m_Overrides[FindVariableOverride(slot)].Value, m_Bindings.StateTypes[slot], m_StateTexts)
                             .WriteRecordedFrameState(ref writer);
                 }
             }
@@ -463,7 +534,6 @@ namespace BTSMTL.Graphs
                     reader.Read<ulong>(), reader.Read<ulong>(), reader.Read<ulong>(), reader.Read<ulong>());
                 OrchestrationStateLayout preparedLayout = m_Layout.Layout;
                 OrchestrationStateBinding.AdoptMemory(in preparedLayout, in actualLayout, m_Candidate);
-                var state = OrchestrationStateBinding.BindCandidate(m_Layout, m_Candidate);
                 ulong resetGeneration = reader.Read<ulong>();
                 bool started = reader.Read<bool>();
                 bool faulted = reader.Read<bool>();
@@ -477,31 +547,43 @@ namespace BTSMTL.Graphs
                 PrepareTriggerCapacity(triggerCount);
                 for (int i = 0; i < triggerCount; i++)
                     m_CandidateTriggers.Add((reader.Read<int>(), reader.Read<int>(), reader.Read<bool>()));
-                var frames = state.Frames;
-                InitializeRootFrame(ref frames, resetGeneration);
-                Span<OrchestrationOperationState> operations = frames.Operations(0);
-                for (int i = 0; i < operations.Length; i++)
-                    operations[i] = reader.Read<OrchestrationOperationState>();
-                Span<OrchestrationBlackboardMetadata> blackboards = frames.BlackboardMetadata(0);
-                for (int i = 0; i < blackboards.Length; i++)
-                    blackboards[i] = reader.Read<OrchestrationBlackboardMetadata>();
-                Span<OrchestrationTransitionCacheState> transitionCaches = frames.TransitionCaches(0);
-                reader.ReadSpan<OrchestrationTransitionCacheState>(transitionCaches.Length).CopyTo(transitionCaches);
-                Span<OrchestrationTransitionSnapshot<TValue>> transitionSnapshots = frames.TransitionSnapshots(0);
-                reader.ReadSpan<OrchestrationTransitionSnapshot<TValue>>(transitionSnapshots.Length).CopyTo(transitionSnapshots);
-                Span<TValue> values = frames.Values(0);
-                for (int i = 0; i < m_Bindings.Program.ValueSlotCount; i++)
+                foreach (OrchestrationStateSegment segment in m_Layout.Segments.Span)
                 {
-                    int enumIdentity = m_Bindings.StateTypes[i].IsEnum
-                        ? default(TValues).Enum(m_Bindings.Program.Content.DefaultValues.Span[i]).TypeContentId : 0;
-                    GraphHostValue value = GraphHostValue.ReadRecordedFrameState(ref reader, m_Bindings.StateTypes[i]);
-                    values[i] = m_Bindings.ToState(in value, enumIdentity, m_CandidateTexts);
+                    OrchestrationStateRegion<byte> region = RecordedSegmentRegion(in segment);
+                    Span<byte> memory = m_Candidate.AsSpan(region.OffsetBytes, region.SizeBytes);
+                    switch (segment.Role)
+                    {
+                        case OrchestrationStateSegmentRole.PrivateValues:
+                        case OrchestrationStateSegmentRole.SavedOutputs:
+                            ReadRecordedStoredValues(ref reader, MemoryMarshal.Cast<byte, TValue>(memory),
+                                segment.Role == OrchestrationStateSegmentRole.SavedOutputs);
+                            break;
+                        case OrchestrationStateSegmentRole.TransitionSnapshots:
+                            foreach (ref OrchestrationTransitionSnapshot<TValue> snapshot in
+                                MemoryMarshal.Cast<byte, OrchestrationTransitionSnapshot<TValue>>(memory))
+                            {
+                                snapshot.Revision = reader.Read<ulong>();
+                                snapshot.OwnerGeneration = reader.Read<ulong>();
+                                snapshot.Value = reader.Read<bool>()
+                                    ? default(TValues).FromIdentity(m_CandidateTexts.Capture(reader.ReadText()))
+                                    : reader.Read<TValue>();
+                            }
+                            break;
+                        default:
+                            reader.ReadSpan<byte>(memory.Length).CopyTo(memory);
+                            break;
+                    }
+                }
+                foreach (int slot in m_Bindings.PublishedSlots)
+                {
                     if (reader.Read<bool>())
                     {
-                        GraphHostValue locked = GraphHostValue.ReadRecordedFrameState(ref reader, m_Bindings.StateTypes[i]);
+                        GraphHostValue locked = GraphHostValue.ReadRecordedFrameState(ref reader, m_Bindings.StateTypes[slot]);
+                        int enumIdentity = m_Bindings.StateTypes[slot].IsEnum
+                            ? default(TValues).Enum(m_Bindings.Program.Content.DefaultValues.Span[slot]).TypeContentId : 0;
                         TValue supplied =
                             m_Bindings.ToState(in locked, enumIdentity, m_CandidateTexts);
-                        MutateCandidateVariable(i, in supplied, GraphVariableMutation.Override);
+                        MutateCandidateVariable(slot, in supplied, GraphVariableMutation.Override);
                     }
                 }
                 for (int i = 0; i < m_RuntimePorts.Length; i++)

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using BTSMTL.Orchestration;
 
 namespace BTSMTL.Diagnostics
 {
@@ -612,6 +613,7 @@ namespace BTSMTL.Diagnostics
                    left.BlackboardOwnerIndex == right.BlackboardOwnerIndex &&
                    left.BlackboardOwnerGeneration == right.BlackboardOwnerGeneration &&
                    left.BlackboardLifetime == right.BlackboardLifetime &&
+                   BlackboardWriteStampEquivalent(in left.BlackboardWriteStamp, in right.BlackboardWriteStamp) &&
                    left.BlackboardIsActive == right.BlackboardIsActive &&
                    left.TrackIndex == right.TrackIndex &&
                    left.ClipIndex == right.ClipIndex &&
@@ -619,6 +621,21 @@ namespace BTSMTL.Diagnostics
                    DebugValueEquivalent(in left.Value, in right.Value) &&
                    left.SourceEventId.Equals(right.SourceEventId) &&
                    TimelineProvenanceEquivalent(in left.TimelinePlayback, in right.TimelinePlayback);
+        }
+
+        static bool BlackboardWriteStampEquivalent(in OrchestrationBlackboardWriteStamp left,
+            in OrchestrationBlackboardWriteStamp right)
+        {
+            return left.SourceOperationIndex == right.SourceOperationIndex &&
+                   left.LogicTick == right.LogicTick &&
+                   left.SourceContext.SkillContentId == right.SourceContext.SkillContentId &&
+                   left.SourceContext.InstanceId == right.SourceContext.InstanceId &&
+                   left.SourceContext.SkillExecutionGeneration == right.SourceContext.SkillExecutionGeneration &&
+                   left.SourceContext.SegmentGeneration == right.SourceContext.SegmentGeneration &&
+                   left.TimelineOperationIndex == right.TimelineOperationIndex &&
+                   left.ClipOperationIndex == right.ClipOperationIndex &&
+                   left.Cycle == right.Cycle &&
+                   left.CommandSequence == right.CommandSequence;
         }
 
         static bool DebugValueEquivalent(in DebugValueSnapshot left, in DebugValueSnapshot right)

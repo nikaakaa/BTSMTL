@@ -28,158 +28,72 @@ namespace BTSMTL.Orchestration
         }
 
         public static OrchestrationCandidateState<TValue> BindCandidate<TValue>(
-            OrchestrationExecutionStateLayout<TValue> prepared,
-            Span<byte> memory) where TValue : unmanaged
-        {
-            OrchestrationStateLayout layout = prepared.Layout;
-            OrchestrationStateView state = layout.BindCandidate(memory);
-            return new OrchestrationCandidateState<TValue>(BindFrames(prepared, state),
-                default, default, default);
-        }
-
-        public static OrchestrationCandidateState<TValue> BindCandidate<TValue, TPlayback>(
-            OrchestrationStateLayout<TValue, TPlayback> prepared,
-            Span<byte> memory)
-            where TValue : unmanaged where TPlayback : unmanaged
-        {
-            OrchestrationStateLayout layout = prepared.Layout;
-            OrchestrationStateView state = layout.BindCandidate(memory);
-            OrchestrationStateView execution = prepared.GetExecution(state);
-            OrchestrationStateView blackboard = prepared.GetBlackboard(state);
-            OrchestrationStateView timeline = prepared.GetTimeline(state);
-            return new OrchestrationCandidateState<TValue>(BindFrames(prepared.Execution, execution),
-                prepared.Blackboard.GetValues(blackboard), prepared.Blackboard.GetMetadata(blackboard),
-                timeline);
-        }
-
-        public static OrchestrationCandidateState<TValue> BindCandidate<TValue, TPlayback>(
-            OrchestrationStateLayout<TValue, TPlayback> prepared,
-            Span<byte> memory, out Span<TPlayback> playbacks)
-            where TValue : unmanaged where TPlayback : unmanaged
-        {
-            var state = BindCandidate(prepared, memory);
-            playbacks = prepared.Timeline.GetPlaybacks(state.Timeline);
-            return state;
-        }
+            OrchestrationPreparedStateLayout<TValue> plan, Span<byte> memory) where TValue : unmanaged =>
+            new OrchestrationCandidateState<TValue>(new OrchestrationExecutionFrames<TValue>(plan, memory),
+                plan.TimelineLayout.BindCandidate(memory.Slice(plan.TimelineRegion.OffsetBytes,
+                    plan.TimelineRegion.SizeBytes)));
 
         public static OrchestrationCommittedState<TValue> BindCommitted<TValue>(
-            OrchestrationExecutionStateLayout<TValue> prepared,
-            ReadOnlySpan<byte> memory) where TValue : unmanaged
-        {
-            OrchestrationStateLayout layout = prepared.Layout;
-            ReadOnlyOrchestrationStateView state = layout.BindCommitted(memory);
-            return new OrchestrationCommittedState<TValue>(BindFrames(prepared, state),
-                default, default, default);
-        }
+            OrchestrationPreparedStateLayout<TValue> plan, ReadOnlySpan<byte> memory) where TValue : unmanaged =>
+            new OrchestrationCommittedState<TValue>(new ReadOnlyOrchestrationExecutionFrames<TValue>(plan, memory),
+                plan.TimelineLayout.BindCommitted(memory.Slice(plan.TimelineRegion.OffsetBytes,
+                    plan.TimelineRegion.SizeBytes)));
 
-        public static OrchestrationCommittedState<TValue> BindCommitted<TValue, TPlayback>(
-            OrchestrationStateLayout<TValue, TPlayback> prepared,
-            ReadOnlySpan<byte> memory,
-            out ReadOnlySpan<TPlayback> playbacks)
-            where TValue : unmanaged where TPlayback : unmanaged
-        {
-            OrchestrationStateLayout layout = prepared.Layout;
-            ReadOnlyOrchestrationStateView state = layout.BindCommitted(memory);
-            ReadOnlyOrchestrationStateView execution = prepared.GetExecution(state);
-            ReadOnlyOrchestrationStateView blackboard = prepared.GetBlackboard(state);
-            ReadOnlyOrchestrationStateView timeline = prepared.GetTimeline(state);
-            playbacks = prepared.Timeline.GetPlaybacks(timeline);
-            return new OrchestrationCommittedState<TValue>(BindFrames(prepared.Execution, execution),
-                prepared.Blackboard.GetValues(blackboard), prepared.Blackboard.GetMetadata(blackboard),
-                timeline);
-        }
+        public static OrchestrationStateValidRanges<TValue> ValidRanges<TValue>(
+            OrchestrationPreparedStateLayout<TValue> plan, ReadOnlySpan<byte> memory) where TValue : unmanaged =>
+            new OrchestrationStateValidRanges<TValue>(plan, memory);
 
-        public static void CopyMemory<TValue, TPlayback>(
-            OrchestrationStateLayout<TValue, TPlayback> prepared,
-            ReadOnlySpan<int> skillContentIds, ReadOnlySpan<OrchestrationProgram<TValue>> programs,
-            ReadOnlySpan<byte> source, Span<byte> destination)
-            where TValue : unmanaged where TPlayback : unmanaged
+        public static void CopyMemory<TValue>(OrchestrationPreparedStateLayout<TValue> plan,
+            ReadOnlySpan<byte> source, Span<byte> destination) where TValue : unmanaged
         {
-            ReadOnlyOrchestrationStateView sourceView = prepared.Layout.BindCommitted(source);
-            OrchestrationStateView destinationView = prepared.Layout.BindCandidate(destination);
-            ReadOnlyOrchestrationStateView sourceExecution = prepared.GetExecution(sourceView);
-            var frames = BindFrames(prepared.Execution, prepared.GetExecution(destinationView));
-            frames.CopyPayloadsFrom(BindFrames(prepared.Execution, sourceExecution),
-                skillContentIds, programs);
-            Span<OrchestrationStateRegion<byte>> payloads = stackalloc OrchestrationStateRegion<byte>[3];
-            PreparePayloadRegions(prepared.Execution, source, sourceExecution, payloads);
-            int copied = 0;
-            foreach (OrchestrationStateRegion<byte> payload in payloads)
-            {
-                source.Slice(copied, payload.OffsetBytes - copied).CopyTo(destination.Slice(copied));
-                copied = payload.OffsetBytes + payload.SizeBytes;
-            }
-            source.Slice(copied).CopyTo(destination.Slice(copied));
+            var sourceFrames = new ReadOnlyOrchestrationExecutionFrames<TValue>(plan, source);
+            var destinationFrames = new ReadOnlyOrchestrationExecutionFrames<TValue>(plan, destination);
+            OrchestrationStateValidRanges<TValue>.Enumerator previous = ValidRanges(plan, destination).GetEnumerator();
+            while (previous.MoveNext())
+                if (previous.IsPayload)
+                {
+                    ref readonly OrchestrationExecutionFrameState oldHeader = ref destinationFrames.Header(previous.FrameSlot);
+                    ref readonly OrchestrationExecutionFrameState newHeader = ref sourceFrames.Header(previous.FrameSlot);
+                    if (oldHeader.SkillContentId != newHeader.SkillContentId ||
+                        oldHeader.OwnerOperationIndex != newHeader.OwnerOperationIndex)
+                        destination.Slice(previous.Current.OffsetBytes, previous.Current.SizeBytes).Clear();
+                }
+            foreach (OrchestrationStateRegion<byte> region in ValidRanges(plan, source))
+                source.Slice(region.OffsetBytes, region.SizeBytes).CopyTo(destination.Slice(region.OffsetBytes));
         }
-
-        public static int WriteBlitState<TValue, TPlayback>(
-            in OrchestrationStateLayout<TValue, TPlayback> prepared,
-            ReadOnlySpan<int> skillContentIds, ReadOnlySpan<OrchestrationProgram<TValue>> programs,
-            ReadOnlySpan<byte> source, Span<byte> output, bool countOnly = false)
-            where TValue : unmanaged where TPlayback : unmanaged
+        public static int WriteBlitState<TValue>(OrchestrationPreparedStateLayout<TValue> plan,
+            ReadOnlySpan<byte> source, Span<byte> output, bool countOnly = false) where TValue : unmanaged
         {
-            ReadOnlyOrchestrationStateView state = prepared.Layout.BindCommitted(source);
-            ReadOnlyOrchestrationStateView execution = prepared.GetExecution(state);
-            Span<OrchestrationStateRegion<byte>> payloads = stackalloc OrchestrationStateRegion<byte>[3];
-            PreparePayloadRegions(prepared.Execution, source, execution, payloads);
             int written = 0;
-            int copied = 0;
-            foreach (OrchestrationStateRegion<byte> payload in payloads)
+            foreach (OrchestrationStateRegion<byte> region in ValidRanges(plan, source))
             {
-                WriteBytes(source.Slice(copied, payload.OffsetBytes - copied), output, ref written, countOnly);
-                copied = payload.OffsetBytes + payload.SizeBytes;
-            }
-            WriteBytes(source.Slice(copied), output, ref written, countOnly);
-            var frames = BindFrames(prepared.Execution, execution);
-            for (int slot = 0; slot < frames.Capacity; slot++)
-            {
-                int skill = frames.Header(slot).SkillContentId;
-                if (skill == 0)
-                    continue;
-                ref readonly OrchestrationProgram<TValue> program = ref programs[skillContentIds.IndexOf(skill)];
-                WriteBytes(MemoryMarshal.AsBytes(frames.Operations(slot).Slice(0, program.OperationCount)),
-                    output, ref written, countOnly);
-                WriteBytes(MemoryMarshal.AsBytes(frames.Values(slot).Slice(0, program.ValueSlotCount)),
-                    output, ref written, countOnly);
-                WriteBytes(MemoryMarshal.AsBytes(frames.BlackboardMetadata(slot).Slice(0, program.ValueSlotCount)),
-                    output, ref written, countOnly);
+                if (!countOnly)
+                    source.Slice(region.OffsetBytes, region.SizeBytes).CopyTo(output.Slice(written));
+                written += region.SizeBytes;
             }
             return written;
         }
 
-        public static int ReadBlitState<TValue, TPlayback>(
-            in OrchestrationStateLayout<TValue, TPlayback> prepared,
-            ReadOnlySpan<int> skillContentIds, ReadOnlySpan<OrchestrationProgram<TValue>> programs,
-            ReadOnlySpan<byte> input, Span<byte> clearedMemory)
-            where TValue : unmanaged where TPlayback : unmanaged
+        public static int ReadBlitState<TValue>(OrchestrationPreparedStateLayout<TValue> plan,
+            ReadOnlySpan<byte> input, Span<byte> destination) where TValue : unmanaged
         {
-            ReadOnlyOrchestrationStateView state = prepared.Layout.BindCommitted(clearedMemory);
-            Span<OrchestrationStateRegion<byte>> payloads = stackalloc OrchestrationStateRegion<byte>[3];
-            PreparePayloadRegions(prepared.Execution, clearedMemory, prepared.GetExecution(state), payloads);
+            ClearPayloads(plan, destination);
             int read = 0;
-            int restored = 0;
-            foreach (OrchestrationStateRegion<byte> payload in payloads)
+            foreach (OrchestrationStateRegion<byte> region in ValidRanges(plan, destination))
             {
-                ReadBytes(input, clearedMemory.Slice(restored, payload.OffsetBytes - restored), ref read);
-                restored = payload.OffsetBytes + payload.SizeBytes;
-            }
-            ReadBytes(input, clearedMemory.Slice(restored), ref read);
-            var frames = BindFrames(prepared.Execution,
-                prepared.GetExecution(prepared.Layout.BindCandidate(clearedMemory)));
-            for (int slot = 0; slot < frames.Capacity; slot++)
-            {
-                int skill = frames.Header(slot).SkillContentId;
-                if (skill == 0)
-                    continue;
-                ref readonly OrchestrationProgram<TValue> program = ref programs[skillContentIds.IndexOf(skill)];
-                ReadBytes(input, MemoryMarshal.AsBytes(frames.Operations(slot).Slice(0, program.OperationCount)),
-                    ref read);
-                ReadBytes(input, MemoryMarshal.AsBytes(frames.Values(slot).Slice(0, program.ValueSlotCount)),
-                    ref read);
-                ReadBytes(input, MemoryMarshal.AsBytes(frames.BlackboardMetadata(slot).Slice(0, program.ValueSlotCount)),
-                    ref read);
+                input.Slice(read, region.SizeBytes).CopyTo(destination.Slice(region.OffsetBytes));
+                read += region.SizeBytes;
             }
             return read;
+        }
+
+        internal static void ClearPayloads<TValue>(OrchestrationPreparedStateLayout<TValue> plan,
+            Span<byte> memory) where TValue : unmanaged
+        {
+            OrchestrationStateValidRanges<TValue>.Enumerator ranges = ValidRanges(plan, memory).GetEnumerator();
+            while (ranges.MoveNext())
+                if (ranges.IsPayload)
+                    memory.Slice(ranges.Current.OffsetBytes, ranges.Current.SizeBytes).Clear();
         }
 
         public static void AdoptMemory(in OrchestrationStateLayout layout,
@@ -193,80 +107,109 @@ namespace BTSMTL.Orchestration
                     throw new ArgumentException("BTSMTL 编排区段内存地址不满足已准备布局对齐。", nameof(memory));
         }
 
-        static void PreparePayloadRegions<TValue>(
-            in OrchestrationExecutionStateLayout<TValue> prepared, ReadOnlySpan<byte> memory,
-            ReadOnlyOrchestrationStateView execution, Span<OrchestrationStateRegion<byte>> payloads)
-            where TValue : unmanaged
+    }
+
+    public readonly ref struct OrchestrationStateValidRanges<TValue> where TValue : unmanaged
+    {
+        readonly OrchestrationPreparedStateLayout<TValue> m_Plan;
+        readonly ReadOnlySpan<byte> m_Memory;
+
+        internal OrchestrationStateValidRanges(OrchestrationPreparedStateLayout<TValue> plan,
+            ReadOnlySpan<byte> memory)
         {
-            int executionOffset;
-            fixed (byte* memoryAddress = memory)
-            fixed (byte* executionAddress = execution.Get(
-                new OrchestrationStateRegion<byte>(0, prepared.Layout.SizeBytes)))
-                executionOffset = checked((int)(executionAddress - memoryAddress));
-            payloads[0] = new OrchestrationStateRegion<byte>(
-                executionOffset + prepared.BlackboardMetadata.OffsetBytes, prepared.BlackboardMetadata.SizeBytes);
-            payloads[1] = new OrchestrationStateRegion<byte>(
-                executionOffset + prepared.Operations.OffsetBytes, prepared.Operations.SizeBytes);
-            payloads[2] = new OrchestrationStateRegion<byte>(
-                executionOffset + prepared.Values.OffsetBytes, prepared.Values.SizeBytes);
-            for (int i = 1; i < payloads.Length; i++)
-                for (int j = i; j > 0 && payloads[j].OffsetBytes < payloads[j - 1].OffsetBytes; j--)
+            m_Plan = plan;
+            m_Memory = memory;
+        }
+
+        public Enumerator GetEnumerator() => new Enumerator(m_Plan, m_Memory);
+
+        public ref struct Enumerator
+        {
+            readonly OrchestrationPreparedStateLayout<TValue> m_Plan;
+            readonly ReadOnlySpan<OrchestrationStateSegment> m_Segments;
+            readonly ReadOnlySpan<OrchestrationExecutionFrameState> m_Frames;
+            int m_SegmentIndex;
+            int m_FrameSlot;
+            int m_ProgramIndex;
+
+            internal Enumerator(OrchestrationPreparedStateLayout<TValue> plan, ReadOnlySpan<byte> memory)
+            {
+                m_Plan = plan;
+                m_Segments = plan.Segments.Span;
+                OrchestrationStateSegment frames = plan.Segment(OrchestrationStateSegmentRole.Frames);
+                m_Frames = MemoryMarshal.Cast<byte, OrchestrationExecutionFrameState>(
+                    memory.Slice(frames.OffsetBytes, frames.SizeBytes));
+                m_SegmentIndex = -1;
+                m_FrameSlot = -1;
+                m_ProgramIndex = -1;
+                Current = default;
+            }
+
+            public OrchestrationStateRegion<byte> Current { get; private set; }
+            internal bool IsPayload => m_FrameSlot >= 0;
+            internal int FrameSlot => m_FrameSlot;
+
+            public bool MoveNext()
+            {
+                if (m_FrameSlot < 0)
                 {
-                    OrchestrationStateRegion<byte> previous = payloads[j - 1];
-                    payloads[j - 1] = payloads[j];
-                    payloads[j] = previous;
+                    while (++m_SegmentIndex < m_Segments.Length)
+                    {
+                        OrchestrationStateSegment segment = m_Segments[m_SegmentIndex];
+                        if ((!segment.PerFrame || segment.Role == OrchestrationStateSegmentRole.Frames) &&
+                            segment.SizeBytes > 0)
+                        {
+                            Current = new OrchestrationStateRegion<byte>(segment.OffsetBytes, segment.SizeBytes);
+                            return true;
+                        }
+                    }
+                    m_FrameSlot = 0;
+                    m_SegmentIndex = -1;
                 }
+                while (m_FrameSlot < m_Frames.Length)
+                {
+                    ref readonly OrchestrationExecutionFrameState header = ref m_Frames[m_FrameSlot];
+                    if (header.SkillContentId != 0)
+                    {
+                        if (m_SegmentIndex < 0)
+                            m_ProgramIndex = m_Plan.ProgramIndex(header.SkillContentId);
+                        while (++m_SegmentIndex < m_Segments.Length)
+                        {
+                            OrchestrationStateSegment segment = m_Segments[m_SegmentIndex];
+                            if (!segment.PerFrame || segment.Role == OrchestrationStateSegmentRole.Frames)
+                                continue;
+                            OrchestrationStateRegion<byte> region = m_Plan.PayloadRegion(in segment,
+                                m_FrameSlot, m_ProgramIndex, header.OwnerOperationIndex);
+                            if (region.SizeBytes > 0)
+                            {
+                                Current = region;
+                                return true;
+                            }
+                        }
+                    }
+                    m_FrameSlot++;
+                    m_SegmentIndex = -1;
+                }
+                return false;
+            }
         }
-
-        static void WriteBytes(ReadOnlySpan<byte> source, Span<byte> output, ref int written, bool countOnly)
-        {
-            if (!countOnly)
-                source.CopyTo(output.Slice(written));
-            written += source.Length;
-        }
-
-        static void ReadBytes(ReadOnlySpan<byte> input, Span<byte> destination, ref int read)
-        {
-            input.Slice(read, destination.Length).CopyTo(destination);
-            read += destination.Length;
-        }
-
-        static OrchestrationExecutionFrames<TValue> BindFrames<TValue>(
-            OrchestrationExecutionStateLayout<TValue> layout, OrchestrationStateView state)
-            where TValue : unmanaged =>
-            new OrchestrationExecutionFrames<TValue>(layout.GetFrames(state),
-                ref layout.GetRoster(state)[0], layout.GetOperations(state), layout.GetValues(state),
-                layout.GetBlackboardMetadata(state), layout.GetTransitionCaches(state),
-                layout.GetTransitionSnapshots(state));
-
-        static ReadOnlyOrchestrationExecutionFrames<TValue> BindFrames<TValue>(
-            OrchestrationExecutionStateLayout<TValue> layout, ReadOnlyOrchestrationStateView state)
-            where TValue : unmanaged =>
-            new ReadOnlyOrchestrationExecutionFrames<TValue>(layout.GetFrames(state),
-                layout.GetRoster(state), layout.GetOperations(state), layout.GetValues(state),
-                layout.GetBlackboardMetadata(state));
     }
 
     public readonly ref struct OrchestrationCandidateState<TValue> where TValue : unmanaged
     {
         internal OrchestrationCandidateState(OrchestrationExecutionFrames<TValue> frames,
-            Span<TValue> characterValues, Span<OrchestrationBlackboardMetadata> characterBlackboards,
             OrchestrationStateView timeline)
         {
             Frames = frames;
-            CharacterValues = characterValues;
-            CharacterBlackboards = characterBlackboards;
             Timeline = timeline;
         }
 
         public OrchestrationExecutionFrames<TValue> Frames { get; }
-        public Span<TValue> CharacterValues { get; }
-        public Span<OrchestrationBlackboardMetadata> CharacterBlackboards { get; }
         public OrchestrationStateView Timeline { get; }
 
         public OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3,
-            TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics> CreateCursor<TScalar, TVector2, TVector3,
-            TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics>(OrchestrationProgram<TValue> program,
+            TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage> CreateCursor<TScalar, TVector2, TVector3,
+            TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage>(OrchestrationProgram<TValue> program,
             OrchestrationExecutionWorkspace<TValue> workspace,
             IOrchestrationExtensionBindings<TValue, TContext> bindings, int frameSlot,
             ReadOnlySpan<int> characterSlots,
@@ -281,15 +224,16 @@ namespace BTSMTL.Orchestration
             where TMath : struct, IOrchestrationGraphMath<TScalar, TVector2, TVector3, TQuaternion>
             where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
             where TContext : struct
-            where TDiagnostics : struct, IOrchestrationExecutionDiagnostics =>
+            where TDiagnostics : struct, IOrchestrationExecutionDiagnostics
+            where TStorage : struct, IOrchestrationValueStorage<TValue> =>
             new OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3,
-                TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics>(program, workspace, bindings, Frames, frameSlot,
-                CharacterValues, CharacterBlackboards, characterSlots, timelineDispatcher,
+                TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage>(program, workspace, bindings, Frames, frameSlot,
+                characterSlots, timelineDispatcher,
                 clipExitDispatcher, Timeline, in input, in identities, in context, null, default);
 
         public OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3,
-            TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics> CreateCursor<TScalar, TVector2, TVector3,
-            TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics>(OrchestrationExecutionSourceBinding<TValue> preparedSource,
+            TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage> CreateCursor<TScalar, TVector2, TVector3,
+            TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage>(OrchestrationExecutionSourceBinding<TValue> preparedSource,
             OrchestrationExecutionWorkspace<TValue> workspace,
             IOrchestrationExtensionBindings<TValue, TContext> bindings, int frameSlot,
             OrchestrationExecutionSource<TValue> source, ReadOnlySpan<int> characterSlots,
@@ -304,34 +248,28 @@ namespace BTSMTL.Orchestration
             where TMath : struct, IOrchestrationGraphMath<TScalar, TVector2, TVector3, TQuaternion>
             where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
             where TContext : struct
-            where TDiagnostics : struct, IOrchestrationExecutionDiagnostics =>
+            where TDiagnostics : struct, IOrchestrationExecutionDiagnostics
+            where TStorage : struct, IOrchestrationValueStorage<TValue> =>
             new OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3,
-                TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics>(preparedSource.Program, workspace, bindings, Frames, frameSlot,
-                CharacterValues, CharacterBlackboards, characterSlots, timelineDispatcher,
+                TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage>(preparedSource.Program, workspace, bindings, Frames, frameSlot,
+                characterSlots, timelineDispatcher,
                 clipExitDispatcher, Timeline, in input, in identities, in context, preparedSource, source);
     }
 
     public readonly ref struct OrchestrationCommittedState<TValue> where TValue : unmanaged
     {
         internal OrchestrationCommittedState(ReadOnlyOrchestrationExecutionFrames<TValue> frames,
-            ReadOnlySpan<TValue> characterValues,
-            ReadOnlySpan<OrchestrationBlackboardMetadata> characterBlackboards,
             ReadOnlyOrchestrationStateView timeline)
         {
             Frames = frames;
-            CharacterValues = characterValues;
-            CharacterBlackboards = characterBlackboards;
             Timeline = timeline;
         }
 
         public ReadOnlyOrchestrationExecutionFrames<TValue> Frames { get; }
-        public ReadOnlySpan<TValue> CharacterValues { get; }
-        public ReadOnlySpan<OrchestrationBlackboardMetadata> CharacterBlackboards { get; }
         public ReadOnlyOrchestrationStateView Timeline { get; }
 
         public OrchestrationExecutionSource<TValue> BorrowExecutionSource(int frameSlot, ulong tick,
             in OrchestrationStopContext stopContext) =>
-            new OrchestrationExecutionSource<TValue>(Frames, CharacterValues, CharacterBlackboards,
-                frameSlot, tick, in stopContext);
+            new OrchestrationExecutionSource<TValue>(Frames, frameSlot, tick, in stopContext);
     }
 }

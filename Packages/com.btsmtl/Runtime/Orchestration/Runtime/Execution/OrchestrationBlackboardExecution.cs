@@ -4,7 +4,7 @@ using ThirdPersonSimulation;
 namespace BTSMTL.Orchestration
 {
     public ref partial struct OrchestrationExecutionCursor<TValue, TScalar, TVector2,
-        TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics>
+        TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage>
         where TValue : unmanaged
         where TScalar : unmanaged
         where TVector2 : unmanaged
@@ -15,30 +15,30 @@ namespace BTSMTL.Orchestration
         where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
         where TContext : struct
         where TDiagnostics : struct, IOrchestrationExecutionDiagnostics
+        where TStorage : struct, IOrchestrationValueStorage<TValue>
     {
-        public ref readonly TValue ReadBlackboard(int operationIndex, int valueSlot)
+        public void ReadBlackboard(int operationIndex, int valueSlot, ref TValue destination)
         {
             m_CurrentOperationIndex = operationIndex;
             ref readonly OrchestrationBlackboardSlot slot = ref m_Program.Blackboard(valueSlot);
-            OrchestrationBlackboardOwnerToken expected = ResolveOwner(operationIndex, valueSlot, out _,
-                requireActiveScope: true);
+            OrchestrationBlackboardOwnerToken expected = ResolveOwner(operationIndex, valueSlot, out _);
             int overrideIndex = default(TDiagnostics).FindOverride(ref this, operationIndex, valueSlot,
                 OrchestrationValueOverrideKind.Blackboard, in expected);
             if (overrideIndex >= 0)
-                return ref m_Input.Overrides[overrideIndex].Value;
-            if (slot.IsGraphCallParameter && IsGraphScopeActive(slot.OwnerOperationIndex))
-                return ref m_Blackboards.ReadValue(valueSlot);
-            return ref (SameOwner(in m_Blackboards.ReadMetadata(valueSlot).Owner, in expected)
-                ? ref m_Blackboards.ReadValue(valueSlot) : ref m_Program.DefaultValue(valueSlot));
+                destination = m_Input.Overrides[overrideIndex].Value;
+            else if (slot.IsGraphCallParameter && IsGraphScopeActive(slot.OwnerOperationIndex) ||
+                SameOwner(in m_Blackboards.ReadMetadata(valueSlot).Owner, in expected))
+                m_Blackboards.ReadValue(valueSlot, ref destination);
+            else
+                destination = m_Program.DefaultValue(valueSlot);
         }
 
         public void WriteBlackboard(int operationIndex, int valueSlot, in TValue value,
             OrchestrationAssignmentOpcode assignment = OrchestrationAssignmentOpcode.Set)
         {
             m_CurrentOperationIndex = operationIndex;
-            ref readonly OrchestrationBlackboardSlot slot = ref m_Program.Blackboard(valueSlot);
             OrchestrationBlackboardOwnerToken expected = ResolveOwner(operationIndex, valueSlot,
-                out OrchestrationBlackboardSourceContext source, requireActiveScope: true);
+                out OrchestrationBlackboardSourceContext source);
             WriteResolvedBlackboard(operationIndex, valueSlot, in value, assignment, in expected, in source);
         }
 
@@ -46,39 +46,29 @@ namespace BTSMTL.Orchestration
             OrchestrationAssignmentOpcode assignment, in OrchestrationBlackboardOwnerToken expected,
             in OrchestrationBlackboardSourceContext source)
         {
-            ref readonly OrchestrationBlackboardSlot slot = ref m_Program.Blackboard(valueSlot);
-            ref readonly TValue current = ref (SameOwner(in m_Blackboards.ReadMetadata(valueSlot).Owner, in expected)
-                ? ref m_Blackboards.ReadValue(valueSlot) : ref m_Program.DefaultValue(valueSlot));
+            TValue current = default;
+            if (SameOwner(in m_Blackboards.ReadMetadata(valueSlot).Owner, in expected))
+                m_Blackboards.ReadValue(valueSlot, ref current);
+            else
+                current = m_Program.DefaultValue(valueSlot);
             int overrideIndex = default(TDiagnostics).FindOverride(ref this, operationIndex, valueSlot,
                 OrchestrationValueOverrideKind.Blackboard, in expected);
             if (overrideIndex >= 0)
-                current = ref m_Input.Overrides[overrideIndex].Value;
+                current = m_Input.Overrides[overrideIndex].Value;
             OrchestrationTypedValueMath<TValue, TScalar, TVector2, TVector3,
                 TYaw, TQuaternion, TMath, TValues>.Assign(assignment, in current, in value,
-                    ref m_Blackboards.WriteValue(valueSlot));
+                    ref current);
+            m_Blackboards.WriteValue(valueSlot, in current);
             ref OrchestrationBlackboardMetadata metadata = ref m_Blackboards.WriteMetadata(valueSlot);
             metadata.Revision = checked(metadata.Revision + 1);
             metadata.Owner = expected;
-            metadata.Lifetime = slot.Lifetime;
-            metadata.WriteStamp = new OrchestrationBlackboardWriteStamp
-            {
-                SourceOperationIndex = operationIndex,
-                LogicTick = m_Input.Tick,
-                SourceContext = source,
-                TimelineOperationIndex = m_TimelineInvocation.HasInvocation
-                    ? m_Frames.Header(m_FrameSlot).ParentTimelineOperationIndex : -1,
-                ClipOperationIndex = m_TimelineInvocation.HasInvocation
-                    ? m_Frames.Header(m_FrameSlot).OwnerOperationIndex : -1,
-                Cycle = m_TimelineInvocation.HasInvocation ? m_TimelineInvocation.Invocation.Token.Cycle : 0,
-                CommandSequence = m_TimelineInvocation.HasInvocation ? m_TimelineInvocation.Invocation.Token.Sequence : 0
-            };
-            TraceOperation(OrchestrationTraceKind.Blackboard, operationIndex, valueSlot: valueSlot);
+            default(TDiagnostics).Trace(ref this, OrchestrationTraceKind.Blackboard, operationIndex,
+                -1, default, 0, default, valueSlot, false, false, in source);
         }
 
         public OrchestrationValueOverrideAddress ReadBlackboardOverrideAddress(int operationIndex, int valueSlot)
         {
-            OrchestrationBlackboardOwnerToken owner = ResolveOwner(operationIndex, valueSlot, out _,
-                requireActiveScope: false);
+            OrchestrationBlackboardOwnerToken owner = ResolveOwner(operationIndex, valueSlot, out _);
             return BlackboardOverrideAddress(valueSlot, in owner);
         }
 
@@ -113,7 +103,7 @@ namespace BTSMTL.Orchestration
                 !IsGraphScopeActive(slot.OwnerOperationIndex))
                 return false;
             OrchestrationBlackboardOwnerToken owner = ResolveOwner(operationIndex, valueSlot,
-                out OrchestrationBlackboardSourceContext source, requireActiveScope: false);
+                out OrchestrationBlackboardSourceContext source);
             OrchestrationValueOverrideAddress actual = BlackboardOverrideAddress(valueSlot, in owner);
             if (!actual.Equals(in address))
                 return false;
@@ -132,34 +122,8 @@ namespace BTSMTL.Orchestration
             return true;
         }
 
-        public void WriteInputProjection(int valueSlot, in TValue value)
-        {
-            ref readonly OrchestrationBlackboardSlot slot = ref m_Program.Blackboard(valueSlot);
-            m_Blackboards.WriteValue(valueSlot) = value;
-            ref OrchestrationBlackboardMetadata metadata = ref m_Blackboards.WriteMetadata(valueSlot);
-            ulong revision = checked(metadata.Revision + 1);
-            metadata = new OrchestrationBlackboardMetadata
-            {
-                Revision = revision,
-                Owner = new OrchestrationBlackboardOwnerToken
-                {
-                    ScopeKind = OrchestrationScopeKind.Character,
-                    CompiledOwnerIndex = slot.CompiledOwnerIndex,
-                    Generation = 1
-                },
-                Lifetime = slot.Lifetime,
-                WriteStamp = new OrchestrationBlackboardWriteStamp
-                {
-                    SourceOperationIndex = m_Program.RootOperationIndex,
-                    LogicTick = m_Input.Tick,
-                    TimelineOperationIndex = -1,
-                    ClipOperationIndex = -1
-                }
-            };
-        }
-
         OrchestrationBlackboardOwnerToken ResolveOwner(int operationIndex, int valueSlot,
-            out OrchestrationBlackboardSourceContext source, bool requireActiveScope)
+            out OrchestrationBlackboardSourceContext source)
         {
             ref readonly OrchestrationBlackboardSlot slot = ref m_Program.Blackboard(valueSlot);
             source = default;
@@ -176,8 +140,6 @@ namespace BTSMTL.Orchestration
                         generation = 1;
                     else
                     {
-                        if (requireActiveScope && !IsGraphScopeActive(slot.OwnerOperationIndex))
-                            throw new InvalidOperationException($"Operation '{operationIndex}' accesses Blackboard slot '{valueSlot}' outside its Graph scope.");
                         generation = slot.Lifetime == OrchestrationBlackboardLifetime.GraphInstance &&
                             !m_Program.Operation(slot.OwnerOperationIndex).IsRunnable
                             ? m_Blackboards.OwnerGeneration(valueSlot)
@@ -185,8 +147,6 @@ namespace BTSMTL.Orchestration
                     }
                     break;
                 case OrchestrationScopeKind.State:
-                    if (requireActiveScope && !IsCurrentStateExecution(slot.OwnerOperationIndex))
-                        throw new InvalidOperationException($"Operation '{operationIndex}' accesses Blackboard slot '{valueSlot}' outside its State scope.");
                     generation = ReadGeneration(slot.OwnerOperationIndex);
                     break;
                 case OrchestrationScopeKind.ActionInstance:

@@ -4,7 +4,7 @@ using ThirdPersonSimulation;
 namespace BTSMTL.Orchestration
 {
     public ref partial struct OrchestrationExecutionCursor<TValue, TScalar, TVector2,
-        TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics>
+        TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage>
         where TValue : unmanaged
         where TScalar : unmanaged
         where TVector2 : unmanaged
@@ -15,6 +15,7 @@ namespace BTSMTL.Orchestration
         where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
         where TContext : struct
         where TDiagnostics : struct, IOrchestrationExecutionDiagnostics
+        where TStorage : struct, IOrchestrationValueStorage<TValue>
     {
         OrchestrationOperationResult TickLoop(int operationIndex)
         {
@@ -24,7 +25,7 @@ namespace BTSMTL.Orchestration
             int edgeIndex = children[0];
             if (!EvaluateCondition(edgeIndex))
                 return OrchestrationOperationResult.Failure;
-            ref OrchestrationOperationState state = ref m_Operations[operationIndex];
+            ref OrchestrationOperationState state = ref OperationState(operationIndex);
             if (state.ChildCursor == 0 || !IsActive(m_Program.Edge(edgeIndex).TargetOperationIndex))
             {
                 state.ChildCursor = checked(state.ChildCursor + 1);
@@ -45,7 +46,7 @@ namespace BTSMTL.Orchestration
         OrchestrationOperationResult TickSequence(int operationIndex)
         {
             ReadOnlySpan<int> children = m_Program.Outgoing(operationIndex, OrchestrationFlowKind.Child);
-            ref OrchestrationOperationState state = ref m_Operations[operationIndex];
+            ref OrchestrationOperationState state = ref OperationState(operationIndex);
             int cursor = Math.Max(0, state.ChildCursor);
             OrchestrationStopContext pending = ReadStopContext(operationIndex);
             if (pending.IsValid && cursor < children.Length)
@@ -91,7 +92,7 @@ namespace BTSMTL.Orchestration
         OrchestrationOperationResult TickSelector(int operationIndex)
         {
             ReadOnlySpan<int> children = m_Program.Outgoing(operationIndex, OrchestrationFlowKind.Child);
-            ref OrchestrationOperationState state = ref m_Operations[operationIndex];
+            ref OrchestrationOperationState state = ref OperationState(operationIndex);
             int cursor = state.ChildCursor;
             OrchestrationStopContext pending = ReadStopContext(operationIndex);
             if (pending.IsValid && cursor >= 0 && cursor < children.Length)
@@ -147,7 +148,7 @@ namespace BTSMTL.Orchestration
         OrchestrationOperationResult TickParallel(int operationIndex)
         {
             ReadOnlySpan<int> children = m_Program.Outgoing(operationIndex, OrchestrationFlowKind.Child);
-            ref OrchestrationOperationState state = ref m_Operations[operationIndex];
+            ref OrchestrationOperationState state = ref OperationState(operationIndex);
             int completedMask = state.ChildCursor;
             int mode = m_Program.Payload<OrchestrationModePayload>(operationIndex).Mode;
             bool completesWithFirstChild = mode == 2;
@@ -237,11 +238,11 @@ namespace BTSMTL.Orchestration
                 OrchestrationOperationResult result = TickEdge(edgeIndex);
                 if (result == OrchestrationOperationResult.Failure)
                     continue;
-                m_Operations[operationIndex].ChildCursor = i;
+                OperationState(operationIndex).ChildCursor = i;
                 return result == OrchestrationOperationResult.Running
                     ? Wait(operationIndex, OrchestrationWaitReason.ChildCompletion) : result;
             }
-            m_Operations[operationIndex].ChildCursor = -1;
+            OperationState(operationIndex).ChildCursor = -1;
             return OrchestrationOperationResult.Failure;
         }
 

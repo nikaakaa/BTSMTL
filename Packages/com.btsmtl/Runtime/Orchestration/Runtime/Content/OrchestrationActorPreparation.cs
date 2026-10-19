@@ -25,8 +25,9 @@ namespace BTSMTL.Orchestration
             OrchestrationGraphBlackboardBinding[] characterBlackboards,
             TValue[] characterValueDefaults,
             OrchestrationBlackboardSlot[] characterValueDescriptors,
-            OrchestrationValueSlotType[] characterValueSlotTypes,
-            int[] characterValueKindSlotCounts, StableHash identity)
+            OrchestrationValueSlotType[] characterValueTypes,
+            int[] characterValueKindSlotCounts,
+            OrchestrationPreparedProgramStorage<TValue>[] preparedProgramStorages, StableHash identity)
         {
             Identities = identities;
             Sources = sources;
@@ -37,8 +38,9 @@ namespace BTSMTL.Orchestration
             CharacterBlackboards = characterBlackboards;
             CharacterValueDefaults = characterValueDefaults;
             CharacterValueDescriptors = characterValueDescriptors;
-            CharacterValueSlotTypes = characterValueSlotTypes;
+            CharacterValueTypes = characterValueTypes;
             CharacterValueKindSlotCounts = characterValueKindSlotCounts;
+            PreparedProgramStorages = preparedProgramStorages;
             Identity = identity;
         }
 
@@ -52,8 +54,9 @@ namespace BTSMTL.Orchestration
         public ReadOnlyMemory<OrchestrationGraphBlackboardBinding> CharacterBlackboards { get; }
         public ReadOnlyMemory<TValue> CharacterValueDefaults { get; }
         public ReadOnlyMemory<OrchestrationBlackboardSlot> CharacterValueDescriptors { get; }
-        public ReadOnlyMemory<OrchestrationValueSlotType> CharacterValueSlotTypes { get; }
+        public ReadOnlyMemory<OrchestrationValueSlotType> CharacterValueTypes { get; }
         public ReadOnlyMemory<int> CharacterValueKindSlotCounts { get; }
+        public ReadOnlyMemory<OrchestrationPreparedProgramStorage<TValue>> PreparedProgramStorages { get; }
 
         public ReadOnlyMemory<int> CharacterValueSlots(int programIndex) =>
             m_CharacterValueSlots[programIndex];
@@ -66,13 +69,13 @@ namespace BTSMTL.Orchestration
             ReadOnlySpan<OrchestrationTimelineCallCapacity> calls) =>
             OrchestrationExecutionFrames<TValue>.PrepareCapacity(Programs.Span, admissions, calls);
 
-        public OrchestrationStateLayout<TValue, TPlayback>
+        public OrchestrationPreparedStateLayout<TValue>
             PrepareStateLayout<TPlayback>(OrchestrationExecutionCapacity executionCapacity,
                 in OrchestrationTimelineStateLayout<TPlayback> timelineLayout,
                 NumericProfileId numericProfile, TargetAbiVersion targetAbi,
                 Func<StableHash, NumericProfileId, TargetAbiVersion, int, int,
                     OrchestrationCharacterBlackboardStateLayout<TValue>> blackboardFactory,
-                Func<StableHash, NumericProfileId, TargetAbiVersion, int, int, int, int, int, int, int,
+                Func<StableHash, NumericProfileId, TargetAbiVersion, int, int, int, int, int, int, int, int,
                     OrchestrationExecutionStateLayout<TValue>> executionFactory,
                 Func<StableHash, NumericProfileId, TargetAbiVersion,
                     OrchestrationCharacterBlackboardStateLayout<TValue>,
@@ -87,14 +90,19 @@ namespace BTSMTL.Orchestration
                 characterCount, characterCount);
             var execution = executionFactory(Identity, numericProfile, targetAbi,
                 capacity.ValueCount, capacity.FrameCount, capacity.OperationCount, 1,
-                capacity.TransitionCacheCount, capacity.TransitionSnapshotCount, capacity.ValueCount);
-            return compositeFactory(Identity, numericProfile, targetAbi,
+                capacity.SavedOutputCount, capacity.TransitionCacheCount,
+                capacity.TransitionSnapshotCount, capacity.ValueCount);
+            var composite = compositeFactory(Identity, numericProfile, targetAbi,
                 blackboard, execution, timelineLayout);
+            return new OrchestrationPreparedStateLayout<TValue>(composite.Layout, composite.StateSegments,
+                capacity.FrameCount, PreparedProgramStorages, CharacterValueTypes,
+                composite.GetTimelineRegion(), timelineLayout.Layout);
         }
 
         public static OrchestrationActorPreparation<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues> Prepare(
             FrozenOrchestrationIdentities identities,
             ReadOnlySpan<OrchestrationActorProgramSource<TValue>> sources,
+            ReadOnlySpan<int> skillContentIds,
             ReadOnlySpan<int> dependencyIdentityTableIndices,
             OrchestrationBlackboardDefaults<TValue> defaults,
             int defaultIdentityTableIndex)
@@ -137,7 +145,7 @@ namespace BTSMTL.Orchestration
             var characterDefaults = new TValue[characters.Count];
             var characterDescriptors = new OrchestrationBlackboardSlot[characters.Count];
             var characterSlotTypes = new OrchestrationValueSlotType[characters.Count];
-            var characterKindSlotCounts = new int[Enum.GetValues(typeof(OrchestrationValueKind)).Length];
+            var characterKindSlotCounts = new int[(int)OrchestrationValueKind.SpatialIdentity + 1];
             int sharedSlot = 0;
             foreach (var entry in characters)
             {
@@ -152,6 +160,7 @@ namespace BTSMTL.Orchestration
 
             var graphs = new PreparedOrchestrationGraph<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues>[sources.Length];
             var programs = new OrchestrationProgram<TValue>[sources.Length];
+            var preparedProgramStorages = new OrchestrationPreparedProgramStorage<TValue>[sources.Length];
             var characterMappings = new ReadOnlyMemory<int>[sources.Length];
             TValues values = default;
             for (int programIndex = 0; programIndex < sources.Length; programIndex++)
@@ -183,6 +192,11 @@ namespace BTSMTL.Orchestration
                 graphs[programIndex] = PreparedOrchestrationGraph<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues>.Prepare(
                     content, identities, sources[programIndex].IdentityTableIndex, overrides);
                 programs[programIndex] = new OrchestrationProgram<TValue>(graphs[programIndex].Program);
+                OrchestrationProgramContent<TValue> program = graphs[programIndex].Program;
+                preparedProgramStorages[programIndex] = new OrchestrationPreparedProgramStorage<TValue>(
+                    skillContentIds[programIndex], program.ExecutionStorage,
+                    program.ValueSlotTypes, program.ValueSchedule.TransitionCacheCount,
+                    program.ValueSchedule.TransitionSnapshotCount);
                 characterMappings[programIndex] = characterMapping;
             }
             for (int characterSlot = 0; characterSlot < characterBlackboards.Length; characterSlot++)
@@ -197,7 +211,8 @@ namespace BTSMTL.Orchestration
             return new OrchestrationActorPreparation<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues>(
                 identities, sources.ToArray(), graphs, programs, characterMappings,
                 dependencyIdentityTableIndices.ToArray(), characterBlackboards,
-                characterDefaults, characterDescriptors, characterSlotTypes, characterKindSlotCounts, identity);
+                characterDefaults, characterDescriptors, characterSlotTypes, characterKindSlotCounts,
+                preparedProgramStorages, identity);
         }
 
         static TValue RequiredDefault(

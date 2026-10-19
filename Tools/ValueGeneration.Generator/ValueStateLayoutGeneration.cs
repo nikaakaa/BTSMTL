@@ -15,6 +15,7 @@ namespace ThirdPerson.ValueGeneration.Generator
     {
         const string StateLayoutAttribute = "ThirdPersonSimulation.ValueStateLayoutAttribute";
         const string StateLayoutFactoryAttribute = "ThirdPersonSimulation.ValueStateLayoutFactoryAttribute";
+        const string StateSegmentAttribute = "BTSMTL.Orchestration.OrchestrationStateSegmentAttribute";
         const string StateRegionType = "BTSMTL.Orchestration.OrchestrationStateRegion<T>";
         const string Orchestration = "global::BTSMTL.Orchestration.";
 
@@ -29,6 +30,9 @@ namespace ThirdPerson.ValueGeneration.Generator
             var owners = BeginStateLayoutType(code, layout);
             code.Append("[").Append(Runtime).AppendLine("ValueStorageIgnore]");
             code.Append("public ").Append(Orchestration).AppendLine("OrchestrationStateLayout Layout { get; }");
+            code.Append("[").Append(Runtime).AppendLine("ValueStorageIgnore]");
+            code.Append("public global::System.ReadOnlyMemory<").Append(Orchestration)
+                .AppendLine("OrchestrationStateSegment> StateSegments { get; }");
             foreach (Member member in members.Where(value => !IsStateRegion(value)))
             {
                 code.Append("[").Append(Runtime).AppendLine("ValueStorageIgnore]");
@@ -45,6 +49,8 @@ namespace ThirdPerson.ValueGeneration.Generator
             code.AppendLine("this = default;");
             code.AppendLine("int offset = 0;");
             code.AppendLine("int alignment = 1;");
+            code.Append("var segments = new global::System.Collections.Generic.List<").Append(Orchestration)
+                .AppendLine("OrchestrationStateSegment>();");
             foreach (Member member in members)
             {
                 bool leaf = IsStateRegion(member);
@@ -60,7 +66,32 @@ namespace ThirdPerson.ValueGeneration.Generator
                     .Append(leaf ? Escape(StateParameterName(member)) : value + ".Layout.SizeBytes").AppendLine(");");
                 code.Append("offset = checked(offset + ").Append(region).AppendLine(".SizeBytes);");
                 code.Append("alignment = global::System.Math.Max(alignment, ").Append(elementAlignment).AppendLine(");");
+                if (leaf)
+                {
+                    var settings = StateSegmentSettings(member);
+                    code.Append("segments.Add(new ").Append(Orchestration).Append("OrchestrationStateSegment(")
+                        .Append(region).Append(".OffsetBytes, ").Append(region).Append(".Length, ")
+                        .Append(regionType).Append(".ElementSizeBytes, ").Append(elementAlignment)
+                        .Append(", (").Append(Orchestration).Append("OrchestrationStateSegmentRole)")
+                        .Append(settings.Role.ToString(CultureInfo.InvariantCulture))
+                        .Append(", (").Append(Orchestration).Append("OrchestrationValueKind)")
+                        .Append(settings.ValueKind.ToString(CultureInfo.InvariantCulture))
+                        .Append(", ").Append(settings.PerFrame ? "true" : "false").AppendLine("));");
+                }
+                else
+                {
+                    var settings = StateSegmentSettings(member);
+                    code.Append("foreach (var segment in ").Append(value).AppendLine(".StateSegments.Span)")
+                        .Append("segments.Add(new ").Append(Orchestration).Append("OrchestrationStateSegment(checked(")
+                        .Append(region).Append(".OffsetBytes + segment.OffsetBytes), segment.Length, ")
+                        .Append("segment.ElementSizeBytes, segment.Alignment, ")
+                        .Append(settings.Role == 0 ? "segment.Role" : "(" + Orchestration +
+                            "OrchestrationStateSegmentRole)" + settings.Role.ToString(CultureInfo.InvariantCulture))
+                        .Append(", segment.ValueKind, ")
+                        .Append(settings.PerFrame ? "true" : "segment.PerFrame").AppendLine("));");
+                }
             }
+            code.AppendLine("StateSegments = segments.ToArray();");
             code.AppendLine("int sizeBytes = checked((offset + alignment - 1) / alignment * alignment);");
             code.Append("Layout = new ").Append(Orchestration).Append("OrchestrationStateLayout(sizeBytes, alignment, ")
                 .Append(Runtime).AppendLine("StableHash.Compute(");
@@ -81,6 +112,10 @@ namespace ThirdPerson.ValueGeneration.Generator
                         .Append(".ToString(global::System.Globalization.CultureInfo.InvariantCulture)");
                 if (!leaf)
                     code.AppendLine(",").Append(value).Append(".Layout.Identity.ToString()");
+                var settings = StateSegmentSettings(member);
+                code.AppendLine(",").Append(SymbolDisplay.FormatLiteral(settings.Role.ToString(CultureInfo.InvariantCulture), true));
+                code.AppendLine(",").Append(SymbolDisplay.FormatLiteral(settings.ValueKind.ToString(CultureInfo.InvariantCulture), true));
+                code.AppendLine(",").Append(SymbolDisplay.FormatLiteral(settings.PerFrame ? "true" : "false", true));
             }
             code.AppendLine("));");
             code.AppendLine("}");
@@ -155,6 +190,10 @@ namespace ThirdPerson.ValueGeneration.Generator
             foreach (Member member in members)
             {
                 StateSchemaPart(identity, member.Symbol.Name);
+                var settings = StateSegmentSettings(member);
+                StateSchemaPart(identity, settings.Role.ToString(CultureInfo.InvariantCulture));
+                StateSchemaPart(identity, settings.ValueKind.ToString(CultureInfo.InvariantCulture));
+                StateSchemaPart(identity, settings.PerFrame ? "true" : "false");
                 var type = (INamedTypeSymbol)member.Type;
                 if (IsStateRegion(member))
                 {
@@ -254,6 +293,17 @@ namespace ThirdPerson.ValueGeneration.Generator
 
         static bool IsStateRegion(Member member) => member.Type is INamedTypeSymbol type &&
             Identity(type.OriginalDefinition) == StateRegionType;
+
+        static (int Role, int ValueKind, bool PerFrame) StateSegmentSettings(Member member)
+        {
+            AttributeData attribute = member.Symbol.GetAttributes()
+                .SingleOrDefault(value => Identity(value.AttributeClass) == StateSegmentAttribute);
+            return attribute == null ? (0, 0, false) :
+                (Convert.ToInt32(attribute.ConstructorArguments[0].Value, CultureInfo.InvariantCulture),
+                    attribute.NamedArguments.Where(value => value.Key == "ValueKind")
+                        .Select(value => Convert.ToInt32(value.Value.Value, CultureInfo.InvariantCulture)).SingleOrDefault(),
+                    (bool)attribute.ConstructorArguments[1].Value);
+        }
 
         static string StateParameterName(Member member) => char.ToLowerInvariant(member.Symbol.Name[0]) +
             member.Symbol.Name.Substring(1) + (IsStateRegion(member) ? "Capacity" : "");

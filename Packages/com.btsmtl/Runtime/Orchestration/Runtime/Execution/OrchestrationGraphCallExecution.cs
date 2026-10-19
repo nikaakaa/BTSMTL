@@ -3,7 +3,7 @@ using ThirdPersonSimulation;
 namespace BTSMTL.Orchestration
 {
     public ref partial struct OrchestrationExecutionCursor<TValue, TScalar, TVector2,
-        TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics>
+        TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage>
         where TValue : unmanaged
         where TScalar : unmanaged
         where TVector2 : unmanaged
@@ -14,6 +14,7 @@ namespace BTSMTL.Orchestration
         where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
         where TContext : struct
         where TDiagnostics : struct, IOrchestrationExecutionDiagnostics
+        where TStorage : struct, IOrchestrationValueStorage<TValue>
     {
 
         OrchestrationOperationResult TickRoot(int operationIndex)
@@ -41,7 +42,7 @@ namespace BTSMTL.Orchestration
             PrepareGraphCall(operationIndex);
             OrchestrationOperationResult result = TickSingleChild(operationIndex, OrchestrationFlowKind.Enter);
             if (!m_Program.Operation(operationIndex).IsRunnable)
-                m_Operations[operationIndex].Status = (OrchestrationOperationStatus)result;
+                OperationState(operationIndex).Status = (OrchestrationOperationStatus)result;
             return result;
         }
 

@@ -7,16 +7,7 @@ namespace BTSMTL.Orchestration
     {
         readonly Span<OrchestrationExecutionFrameState> m_Frames;
         readonly Span<OrchestrationExecutionRosterState> m_Roster;
-        readonly Span<OrchestrationOperationState> m_Operations;
-        readonly Span<TValue> m_Values;
-        readonly Span<OrchestrationBlackboardMetadata> m_BlackboardMetadata;
-        readonly Span<OrchestrationTransitionCacheState> m_TransitionCaches;
-        readonly Span<OrchestrationTransitionSnapshot<TValue>> m_TransitionSnapshots;
-        readonly int m_OperationsPerFrame;
-        readonly int m_ValuesPerFrame;
-        readonly int m_BlackboardMetadataPerFrame;
-        readonly int m_TransitionCachesPerFrame;
-        readonly int m_TransitionSnapshotsPerFrame;
+        readonly Span<byte> m_Memory;
 
         public static OrchestrationExecutionCapacity PrepareCapacity(
             ReadOnlySpan<OrchestrationProgram<TValue>> programs,
@@ -24,35 +15,26 @@ namespace BTSMTL.Orchestration
             ReadOnlySpan<OrchestrationTimelineCallCapacity> calls) =>
             OrchestrationExecutionCapacity.Prepare(programs, admissions, calls);
 
-        internal OrchestrationExecutionFrames(
-            Span<OrchestrationExecutionFrameState> frames,
-            ref OrchestrationExecutionRosterState roster,
-            Span<OrchestrationOperationState> operations,
-            Span<TValue> values,
-            Span<OrchestrationBlackboardMetadata> blackboardMetadata,
-            Span<OrchestrationTransitionCacheState> transitionCaches,
-            Span<OrchestrationTransitionSnapshot<TValue>> transitionSnapshots)
+        internal OrchestrationExecutionFrames(OrchestrationPreparedStateLayout<TValue> plan,
+            Span<byte> memory)
         {
-            m_Frames = frames;
-            m_Roster = MemoryMarshal.CreateSpan(ref roster, 1);
-            m_Operations = operations;
-            m_Values = values;
-            m_BlackboardMetadata = blackboardMetadata;
-            m_TransitionCaches = transitionCaches;
-            m_TransitionSnapshots = transitionSnapshots;
-            m_OperationsPerFrame = operations.Length / frames.Length;
-            m_ValuesPerFrame = values.Length / frames.Length;
-            m_BlackboardMetadataPerFrame = blackboardMetadata.Length / frames.Length;
-            m_TransitionCachesPerFrame = transitionCaches.Length / frames.Length;
-            m_TransitionSnapshotsPerFrame = transitionSnapshots.Length / frames.Length;
+            Plan = plan;
+            m_Memory = memory;
+            OrchestrationStateSegment frames = plan.Segment(OrchestrationStateSegmentRole.Frames);
+            m_Frames = MemoryMarshal.Cast<byte, OrchestrationExecutionFrameState>(
+                memory.Slice(frames.OffsetBytes, frames.SizeBytes));
+            OrchestrationStateSegment roster = plan.Segment(OrchestrationStateSegmentRole.Roster);
+            m_Roster = MemoryMarshal.Cast<byte, OrchestrationExecutionRosterState>(
+                memory.Slice(roster.OffsetBytes, roster.SizeBytes));
         }
 
+        public OrchestrationPreparedStateLayout<TValue> Plan { get; }
+        public Span<byte> Memory => m_Memory;
         public int Count => m_Roster[0].Count;
         public int Capacity => m_Frames.Length;
 
         public ReadOnlyOrchestrationExecutionFrames<TValue> AsReadOnly() =>
-            new ReadOnlyOrchestrationExecutionFrames<TValue>(m_Frames, m_Roster, m_Operations,
-                m_Values, m_BlackboardMetadata);
+            new ReadOnlyOrchestrationExecutionFrames<TValue>(Plan, m_Memory);
 
         public ref OrchestrationExecutionFrameState Header(int frameSlot) =>
             ref m_Frames[frameSlot];
@@ -61,20 +43,50 @@ namespace BTSMTL.Orchestration
             m_Frames.Slice(frameSlot, 1);
 
         public Span<OrchestrationOperationState> Operations(int frameSlot) =>
-            m_Operations.Slice(frameSlot * m_OperationsPerFrame, m_OperationsPerFrame);
+            Payload<OrchestrationOperationState>(frameSlot, OrchestrationStateSegmentRole.Operations,
+                Plan.ProgramIndex(m_Frames[frameSlot].SkillContentId));
 
-        public Span<TValue> Values(int frameSlot) =>
-            m_Values.Slice(frameSlot * m_ValuesPerFrame, m_ValuesPerFrame);
+        public ref OrchestrationOperationState Operation(int frameSlot, int operationIndex)
+        {
+            int programIndex = Plan.ProgramIndex(m_Frames[frameSlot].SkillContentId);
+            return ref Payload<OrchestrationOperationState>(frameSlot, OrchestrationStateSegmentRole.Operations,
+                programIndex)[Plan.Programs.Span[programIndex].Storage.OperationIndices.Span[operationIndex]];
+        }
+
+        public Span<TValue> SavedOutputs(int frameSlot) =>
+            Payload<TValue>(frameSlot, OrchestrationStateSegmentRole.SavedOutputs,
+                Plan.ProgramIndex(m_Frames[frameSlot].SkillContentId));
 
         public Span<OrchestrationBlackboardMetadata> BlackboardMetadata(int frameSlot) =>
-            m_BlackboardMetadata.Slice(frameSlot * m_BlackboardMetadataPerFrame,
-                m_BlackboardMetadataPerFrame);
+            Payload<OrchestrationBlackboardMetadata>(frameSlot, OrchestrationStateSegmentRole.PrivateMetadata,
+                Plan.ProgramIndex(m_Frames[frameSlot].SkillContentId));
+
+        public Span<OrchestrationBlackboardMetadata> CharacterMetadata
+        {
+            get
+            {
+                OrchestrationStateSegment segment = Plan.Segment(OrchestrationStateSegmentRole.CharacterMetadata);
+                return MemoryMarshal.Cast<byte, OrchestrationBlackboardMetadata>(
+                    m_Memory.Slice(segment.OffsetBytes, segment.SizeBytes));
+            }
+        }
 
         public Span<OrchestrationTransitionCacheState> TransitionCaches(int frameSlot) =>
-            m_TransitionCaches.Slice(frameSlot * m_TransitionCachesPerFrame, m_TransitionCachesPerFrame);
+            Payload<OrchestrationTransitionCacheState>(frameSlot, OrchestrationStateSegmentRole.TransitionCaches,
+                Plan.ProgramIndex(m_Frames[frameSlot].SkillContentId));
 
         public Span<OrchestrationTransitionSnapshot<TValue>> TransitionSnapshots(int frameSlot) =>
-            m_TransitionSnapshots.Slice(frameSlot * m_TransitionSnapshotsPerFrame, m_TransitionSnapshotsPerFrame);
+            Payload<OrchestrationTransitionSnapshot<TValue>>(frameSlot, OrchestrationStateSegmentRole.TransitionSnapshots,
+                Plan.ProgramIndex(m_Frames[frameSlot].SkillContentId));
+
+        internal Span<T> Payload<T>(int frameSlot, OrchestrationStateSegmentRole role,
+            int programIndex) where T : unmanaged
+        {
+            OrchestrationStateSegment segment = Plan.Segment(role);
+            OrchestrationStateRegion<byte> region = Plan.PayloadRegion(in segment, frameSlot,
+                programIndex, m_Frames[frameSlot].OwnerOperationIndex);
+            return MemoryMarshal.Cast<byte, T>(m_Memory.Slice(region.OffsetBytes, region.SizeBytes));
+        }
 
         public int Find(ulong actionInstanceId)
         {
@@ -113,57 +125,50 @@ namespace BTSMTL.Orchestration
             return frameSlot;
         }
 
-        public int Insert(OrchestrationExecutionFrameState frame, ReadOnlySpan<TValue> defaultValues)
+        public int Insert<TStorage>(OrchestrationExecutionFrameState frame, ReadOnlySpan<TValue> defaultValues)
+            where TStorage : struct, IOrchestrationValueStorage<TValue>
         {
             int slot = 0;
             while (m_Frames[slot].SkillContentId != 0)
                 slot++;
             m_Frames[slot] = frame;
-            Operations(slot).Clear();
-            BlackboardMetadata(slot).Clear();
-            TransitionCaches(slot).Clear();
-            TransitionSnapshots(slot).Clear();
-            Span<TValue> values = Values(slot);
-            defaultValues.CopyTo(values);
-            values.Slice(defaultValues.Length).Clear();
+            int programIndex = Plan.ProgramIndex(frame.SkillContentId);
+            ClearPayloads(slot, programIndex);
+            OrchestrationPreparedProgramStorage<TValue> program = Plan.Programs.Span[programIndex];
+            Span<TValue> outputs = Payload<TValue>(slot, OrchestrationStateSegmentRole.SavedOutputs, programIndex);
+            for (int valueSlot = 0; valueSlot < program.Storage.Values.Length; valueSlot++)
+            {
+                OrchestrationValueStorageSlot storage = program.Storage.Values.Span[valueSlot];
+                if (storage.OwnerOperationIndex != frame.OwnerOperationIndex)
+                    continue;
+                if (storage.ValueIndex >= 0)
+                {
+                    OrchestrationValueAddress address = Plan.PrivateAddress(programIndex, slot, valueSlot);
+                    default(TStorage).Write(m_Memory, in address, in defaultValues[valueSlot]);
+                }
+                if (storage.SavedOutputIndex >= 0)
+                    outputs[storage.SavedOutputIndex] = defaultValues[valueSlot];
+            }
             m_Roster[0].Count++;
             return slot;
         }
 
         public void RemoveAt(int frameSlot)
         {
+            ClearPayloads(frameSlot, Plan.ProgramIndex(m_Frames[frameSlot].SkillContentId));
             m_Frames[frameSlot] = default;
-            Operations(frameSlot).Clear();
-            Values(frameSlot).Clear();
-            BlackboardMetadata(frameSlot).Clear();
-            TransitionCaches(frameSlot).Clear();
-            TransitionSnapshots(frameSlot).Clear();
             m_Roster[0].Count--;
         }
 
-        internal void CopyPayloadsFrom(ReadOnlyOrchestrationExecutionFrames<TValue> source,
-            ReadOnlySpan<int> skillContentIds, ReadOnlySpan<OrchestrationProgram<TValue>> programs)
+        void ClearPayloads(int frameSlot, int program)
         {
-            for (int slot = 0; slot < m_Frames.Length; slot++)
+            foreach (OrchestrationStateSegment segment in Plan.Segments.Span)
             {
-                ref readonly OrchestrationExecutionFrameState header = ref source.Header(slot);
-                ref OrchestrationExecutionFrameState destination = ref m_Frames[slot];
-                int sourceSkill = header.SkillContentId;
-                if (sourceSkill == 0 && destination.SkillContentId == 0)
+                if (!segment.PerFrame || segment.Role == OrchestrationStateSegmentRole.Frames)
                     continue;
-                if (sourceSkill != destination.SkillContentId)
-                {
-                    Operations(slot).Clear();
-                    Values(slot).Clear();
-                    BlackboardMetadata(slot).Clear();
-                }
-                if (sourceSkill == 0)
-                    continue;
-                OrchestrationProgram<TValue> program = programs[skillContentIds.IndexOf(sourceSkill)];
-                source.Operations(slot).Slice(0, program.OperationCount).CopyTo(Operations(slot));
-                source.Values(slot).Slice(0, program.ValueSlotCount).CopyTo(Values(slot));
-                source.BlackboardMetadata(slot).Slice(0, program.ValueSlotCount)
-                    .CopyTo(BlackboardMetadata(slot));
+                OrchestrationStateRegion<byte> region = Plan.PayloadRegion(in segment, frameSlot,
+                    program, m_Frames[frameSlot].OwnerOperationIndex);
+                m_Memory.Slice(region.OffsetBytes, region.SizeBytes).Clear();
             }
         }
     }

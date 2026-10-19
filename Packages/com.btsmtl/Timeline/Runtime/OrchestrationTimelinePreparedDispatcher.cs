@@ -48,11 +48,12 @@ namespace BTSMTL.Timeline.Runtime
                 m_SampleInputs = Array.Empty<TValue>();
         }
 
-        public OrchestrationOperationResult Tick<TDiagnostics>(
-            ref OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics> cursor,
+        public OrchestrationOperationResult Tick<TDiagnostics, TStorage>(
+            ref OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage> cursor,
             OrchestrationStateView candidate, int operationIndex, int contentIdentityId,
             ulong operationGeneration, ref ulong playbackIdentity, ReadOnlySpan<TValue> inputs,
             ulong tick, ref TContext context) where TDiagnostics : struct, IOrchestrationExecutionDiagnostics
+            where TStorage : struct, IOrchestrationValueStorage<TValue>
         {
             int slot;
             if (playbackIdentity == 0)
@@ -90,11 +91,12 @@ namespace BTSMTL.Timeline.Runtime
             return Result(batch.Status);
         }
 
-        public OrchestrationStopStatus Stop<TDiagnostics>(
-            ref OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics> cursor,
+        public OrchestrationStopStatus Stop<TDiagnostics, TStorage>(
+            ref OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage> cursor,
             OrchestrationStateView candidate, int operationIndex, ref ulong playbackIdentity,
             in OrchestrationStopContext stopContext, bool force, ulong tick, ref TContext context)
             where TDiagnostics : struct, IOrchestrationExecutionDiagnostics
+            where TStorage : struct, IOrchestrationValueStorage<TValue>
         {
             int slot = m_Runtime.FindPlayback(candidate, playbackIdentity);
             ref OrchestrationTimelinePlaybackState<TTime> playback = ref m_Runtime.Playback(candidate, slot);

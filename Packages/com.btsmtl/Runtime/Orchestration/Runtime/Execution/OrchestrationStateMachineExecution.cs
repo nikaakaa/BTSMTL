@@ -4,7 +4,7 @@ using ThirdPersonSimulation;
 namespace BTSMTL.Orchestration
 {
     public ref partial struct OrchestrationExecutionCursor<TValue, TScalar, TVector2,
-        TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics>
+        TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage>
         where TValue : unmanaged
         where TScalar : unmanaged
         where TVector2 : unmanaged
@@ -15,6 +15,7 @@ namespace BTSMTL.Orchestration
         where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
         where TContext : struct
         where TDiagnostics : struct, IOrchestrationExecutionDiagnostics
+        where TStorage : struct, IOrchestrationValueStorage<TValue>
     {
         public bool CurrentStateRootCompleted()
         {
@@ -58,7 +59,7 @@ namespace BTSMTL.Orchestration
 
         OrchestrationOperationResult TickStateMachine(int operationIndex)
         {
-            ref OrchestrationOperationState machine = ref m_Operations[operationIndex];
+            ref OrchestrationOperationState machine = ref OperationState(operationIndex);
             int exiting = m_Program.StateOperationIndex(machine.ExitingStateIdentityId);
             if (exiting >= 0)
                 return ContinueStateTransition(operationIndex, exiting);
@@ -93,7 +94,7 @@ namespace BTSMTL.Orchestration
 
         OrchestrationOperationResult ContinueStateTransition(int machineOperationIndex, int exiting)
         {
-            ref OrchestrationOperationState machine = ref m_Operations[machineOperationIndex];
+            ref OrchestrationOperationState machine = ref OperationState(machineOperationIndex);
             int target = m_Program.StateOperationIndex(machine.PendingStateIdentityId);
             OrchestrationStopStatus stop = RequestStop(exiting, OrchestrationStopContext.StateTransition(exiting, target));
             if (stop == OrchestrationStopStatus.Running)
@@ -121,7 +122,7 @@ namespace BTSMTL.Orchestration
 
         OrchestrationOperationResult TickState(int operationIndex)
         {
-            ref OrchestrationOperationState state = ref m_Operations[operationIndex];
+            ref OrchestrationOperationState state = ref OperationState(operationIndex);
             if (state.ChildCursor <= 0)
             {
                 int enterEdge = m_Program.StateOnEnterEdge(operationIndex);
@@ -155,7 +156,7 @@ namespace BTSMTL.Orchestration
 
         OrchestrationStopStatus ContinueStateStop(int stateOperationIndex, OrchestrationStopContext context)
         {
-            ref OrchestrationOperationState state = ref m_Operations[stateOperationIndex];
+            ref OrchestrationOperationState state = ref OperationState(stateOperationIndex);
             if (state.ChildCursor < 2)
             {
                 int activeEdge = state.ChildCursor <= 0
@@ -194,7 +195,7 @@ namespace BTSMTL.Orchestration
 
         OrchestrationStopStatus ContinueStateMachineStop(int machineOperationIndex, OrchestrationStopContext context)
         {
-            ref OrchestrationOperationState machine = ref m_Operations[machineOperationIndex];
+            ref OrchestrationOperationState machine = ref OperationState(machineOperationIndex);
             int exiting = m_Program.StateOperationIndex(machine.ExitingStateIdentityId);
             if (exiting < 0)
                 exiting = m_Program.StateOperationIndex(machine.ActiveStateIdentityId);
@@ -235,7 +236,7 @@ namespace BTSMTL.Orchestration
 
         void ForceStopStateMachine(int machineOperationIndex, OrchestrationStopContext context)
         {
-            ref readonly OrchestrationOperationState machine = ref m_Operations[machineOperationIndex];
+            ref readonly OrchestrationOperationState machine = ref OperationState(machineOperationIndex);
             int active = m_Program.StateOperationIndex(machine.ActiveStateIdentityId);
             int exiting = m_Program.StateOperationIndex(machine.ExitingStateIdentityId);
             if (active >= 0)
@@ -246,7 +247,7 @@ namespace BTSMTL.Orchestration
 
         void ActivateState(int machineOperationIndex, int stateOperationIndex)
         {
-            m_Operations[machineOperationIndex].ActiveStateIdentityId = m_Program.Payload<OrchestrationStateIdentityPayload>(stateOperationIndex).IdentityId;
+            OperationState(machineOperationIndex).ActiveStateIdentityId = m_Program.Payload<OrchestrationStateIdentityPayload>(stateOperationIndex).IdentityId;
             InvokeHooks(machineOperationIndex, OrchestrationLifecycleHook.StateEntered,
                 machineOperationIndex, stateOperationIndex, targetStateOperationIndex: stateOperationIndex);
         }

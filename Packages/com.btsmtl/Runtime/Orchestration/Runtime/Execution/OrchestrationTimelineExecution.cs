@@ -4,7 +4,7 @@ using ThirdPersonSimulation;
 namespace BTSMTL.Orchestration
 {
     public ref partial struct OrchestrationExecutionCursor<TValue, TScalar, TVector2,
-        TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics>
+        TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage>
         where TValue : unmanaged
         where TScalar : unmanaged
         where TVector2 : unmanaged
@@ -15,18 +15,19 @@ namespace BTSMTL.Orchestration
         where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
         where TContext : struct
         where TDiagnostics : struct, IOrchestrationExecutionDiagnostics
+        where TStorage : struct, IOrchestrationValueStorage<TValue>
     {
         OrchestrationOperationResult TickTimeline(int operationIndex, int inputDepth, int inputCount) =>
             m_TimelineDispatcher.Tick(ref this, m_TimelineState, operationIndex,
                 m_Program.Payload<OrchestrationTimelinePayload>(operationIndex).ContentIdentityId, ReadGeneration(operationIndex),
-                ref m_Operations[operationIndex].TimelineRuntimeHandle,
+                ref OperationState(operationIndex).TimelineRuntimeHandle,
                 m_Workspace.Inputs[inputDepth].AsSpan(0, inputCount), m_Input.Tick,
                 ref m_Context);
 
         OrchestrationStopStatus StopTimeline(int operationIndex,
             OrchestrationStopContext context, bool force) =>
             m_TimelineDispatcher.Stop(ref this, m_TimelineState, operationIndex,
-                ref m_Operations[operationIndex].TimelineRuntimeHandle, in context,
+                ref OperationState(operationIndex).TimelineRuntimeHandle, in context,
                 force, m_Input.Tick, ref m_Context);
 
         void ReadTimelineSection(int operationIndex, ref TValue value)
@@ -212,9 +213,11 @@ namespace BTSMTL.Orchestration
             int ownerOperationIndex = m_Frames.Header(m_FrameSlot).OwnerOperationIndex;
             for (int operationIndex = 0; operationIndex < m_Program.OperationCount; operationIndex++)
                 if (m_Program.Operation(operationIndex).ExecutionFrameOwnerOperationIndex == ownerOperationIndex &&
-                    (m_Operations[operationIndex].Status == OrchestrationOperationStatus.Running ||
-                     m_Operations[operationIndex].Status == OrchestrationOperationStatus.Stopping ||
-                     m_Operations[operationIndex].TimelineRuntimeHandle != 0))
+                    m_Program.ExecutionStorage.OperationIndices.Span[operationIndex] !=
+                        OrchestrationProgramStorageLayout.NoOperationIndex &&
+                    (OperationState(operationIndex).Status == OrchestrationOperationStatus.Running ||
+                     OperationState(operationIndex).Status == OrchestrationOperationStatus.Stopping ||
+                     OperationState(operationIndex).TimelineRuntimeHandle != 0))
                     ForceStop(operationIndex, stopContext);
             for (int child = 0; child < m_Frames.Capacity; child++)
                 if (m_Frames.Header(child).SkillContentId != 0 &&

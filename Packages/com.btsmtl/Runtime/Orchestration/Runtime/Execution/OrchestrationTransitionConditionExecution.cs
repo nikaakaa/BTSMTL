@@ -4,7 +4,7 @@ using ThirdPersonSimulation;
 namespace BTSMTL.Orchestration
 {
     public ref partial struct OrchestrationExecutionCursor<TValue, TScalar, TVector2,
-        TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics>
+        TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage>
         where TValue : unmanaged
         where TScalar : unmanaged
         where TVector2 : unmanaged
@@ -15,6 +15,7 @@ namespace BTSMTL.Orchestration
         where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
         where TContext : struct
         where TDiagnostics : struct, IOrchestrationExecutionDiagnostics
+        where TStorage : struct, IOrchestrationValueStorage<TValue>
     {
         bool ReadTransitionCache(int conditionIndex, ref TValue result)
         {
@@ -75,7 +76,7 @@ namespace BTSMTL.Orchestration
                 case OrchestrationTransitionSourceKind.Blackboard:
                 {
                     OrchestrationBlackboardOwnerToken owner = ResolveOwner(m_CurrentOperationIndex, source.Index,
-                        out _, requireActiveScope: false);
+                        out _);
                     ulong revision = m_Blackboards.ReadMetadata(source.Index).Revision;
                     bool changed = initialize || snapshot.Revision != revision ||
                         snapshot.OwnerGeneration != owner.Generation;

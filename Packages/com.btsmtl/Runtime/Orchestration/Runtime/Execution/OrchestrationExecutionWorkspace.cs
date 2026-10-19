@@ -79,13 +79,15 @@ namespace BTSMTL.Orchestration
             PrepareInvocationBindings();
         }
 
-        public void PrepareTraceCapture(OrchestrationProgramTickCapacity capacity)
+        public void PrepareTraceCapture(in OrchestrationTraceCapacity trace)
         {
             PrepareInvocationBindings();
-            OrchestrationTraceCapacity trace = capacity.CursorTrace;
-            TraceEvents = new OrchestrationTraceEvent<TValue>[checked((int)trace.Events)];
-            StateFrames = new OrchestrationStateTraceFrame[checked((int)trace.StateFrames)];
-            TraceContexts = new OrchestrationTraceContext[checked((int)trace.Contexts)];
+            if (trace.Events > TraceEvents.Length)
+                TraceEvents = new OrchestrationTraceEvent<TValue>[checked((int)trace.Events)];
+            if (trace.StateFrames > StateFrames.Length)
+                StateFrames = new OrchestrationStateTraceFrame[checked((int)trace.StateFrames)];
+            if (trace.Contexts > TraceContexts.Length)
+                TraceContexts = new OrchestrationTraceContext[checked((int)trace.Contexts)];
         }
 
         public void PrepareInvocationBindings()
@@ -225,22 +227,33 @@ namespace BTSMTL.Orchestration
 
     public sealed class OrchestrationExecutionTraceBuffer<TValue> where TValue : unmanaged
     {
-        readonly OrchestrationTraceEvent<TValue>[] m_Events;
-        readonly OrchestrationStateTraceFrame[] m_StateFrames;
-        readonly OrchestrationTraceContext[] m_Contexts;
-        readonly OrchestrationTraceBatch[] m_Batches;
+        OrchestrationTraceEvent<TValue>[] m_Events;
+        OrchestrationStateTraceFrame[] m_StateFrames;
+        OrchestrationTraceContext[] m_Contexts;
+        OrchestrationTraceBatch[] m_Batches;
         int m_EventCount;
         int m_StateFrameCount;
         int m_ContextCount;
         int m_BatchCount;
 
-        public OrchestrationExecutionTraceBuffer(OrchestrationProgramTickCapacity capacity)
+        public OrchestrationExecutionTraceBuffer(in OrchestrationTraceCapacity trace, int batchCount)
         {
-            OrchestrationTraceCapacity trace = capacity.TickTrace;
             m_Events = new OrchestrationTraceEvent<TValue>[checked((int)trace.Events)];
             m_StateFrames = new OrchestrationStateTraceFrame[checked((int)trace.StateFrames)];
             m_Contexts = new OrchestrationTraceContext[checked((int)trace.Contexts)];
-            m_Batches = new OrchestrationTraceBatch[capacity.Budget.OuterInvocationCount];
+            m_Batches = new OrchestrationTraceBatch[batchCount];
+        }
+
+        public void Reserve(in OrchestrationTraceCapacity trace, int batchCount)
+        {
+            if (trace.Events > m_Events.Length)
+                Array.Resize(ref m_Events, checked((int)trace.Events));
+            if (trace.StateFrames > m_StateFrames.Length)
+                Array.Resize(ref m_StateFrames, checked((int)trace.StateFrames));
+            if (trace.Contexts > m_Contexts.Length)
+                Array.Resize(ref m_Contexts, checked((int)trace.Contexts));
+            if (batchCount > m_Batches.Length)
+                Array.Resize(ref m_Batches, batchCount);
         }
 
         public ReadOnlySpan<OrchestrationTraceEvent<TValue>> Events => m_Events.AsSpan(0, m_EventCount);

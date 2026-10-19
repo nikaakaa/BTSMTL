@@ -1,4 +1,5 @@
 using System;
+using BTSMTL.Orchestration;
 using ThirdPersonSimulation;
 using UnityEngine;
 
@@ -656,6 +657,7 @@ namespace BTSMTL.Diagnostics
         public int BlackboardOwnerIndex;
         public ulong BlackboardOwnerGeneration;
         public int BlackboardLifetime;
+        public OrchestrationBlackboardWriteStamp BlackboardWriteStamp;
         public bool BlackboardIsActive;
         public int TrackIndex;
         public int ClipIndex;

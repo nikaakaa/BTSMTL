@@ -4,7 +4,7 @@ using ThirdPersonSimulation;
 namespace BTSMTL.Orchestration
 {
     public ref partial struct OrchestrationExecutionCursor<TValue, TScalar, TVector2,
-        TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics>
+        TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage>
         where TValue : unmanaged
         where TScalar : unmanaged
         where TVector2 : unmanaged
@@ -15,6 +15,7 @@ namespace BTSMTL.Orchestration
         where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
         where TContext : struct
         where TDiagnostics : struct, IOrchestrationExecutionDiagnostics
+        where TStorage : struct, IOrchestrationValueStorage<TValue>
     {
         void InvokeHooks(int operationIndex, OrchestrationLifecycleHook phase,
             int machineOperationIndex = -1, int stateOperationIndex = -1,
@@ -142,7 +143,7 @@ namespace BTSMTL.Orchestration
             m_CurrentOperationIndex = operationIndex;
             ref readonly OrchestrationOperation operation = ref m_Program.Operation(operationIndex);
             Span<TValue> outputs = operation.OutputSlotOffset >= 0
-                ? m_Values.Slice(operation.OutputSlotOffset, operation.OutputCount)
+                ? SavedOutputs(in operation)
                 : m_Workspace.Outputs[m_InputDepth].AsSpan(0, operation.OutputCount);
             var invocation = new OrchestrationExtensionArguments<TValue>(kind,
                 operationIndex, ReadGeneration(operationIndex), m_Input.Tick, context.Cause,

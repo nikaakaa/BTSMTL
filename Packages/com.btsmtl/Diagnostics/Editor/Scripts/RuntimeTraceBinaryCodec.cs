@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using BTSMTL.Orchestration;
 using ThirdPersonSimulation;
 using UnityEngine;
 
@@ -9,8 +10,8 @@ namespace BTSMTL.Diagnostics.Editor
 {
     sealed class RuntimeTraceBinaryCodec : IDisposable
     {
-        internal const int EventSize = 528;
-        const int Version = 10;
+        internal const int EventSize = 588;
+        const int Version = 11;
         const int MaximumStringsPerEvent = 22;
         readonly Dictionary<string, int> m_StringIds;
         readonly List<string> m_Strings;
@@ -226,6 +227,7 @@ namespace BTSMTL.Diagnostics.Editor
             writer.Write(value.BlackboardOwnerIndex);
             writer.Write(value.BlackboardOwnerGeneration);
             writer.Write(value.BlackboardLifetime);
+            WriteBlackboardWriteStamp(writer, in value.BlackboardWriteStamp);
             writer.Write(value.BlackboardIsActive);
             writer.Write(value.TrackIndex);
             writer.Write(value.ClipIndex);
@@ -269,6 +271,7 @@ namespace BTSMTL.Diagnostics.Editor
             BlackboardOwnerIndex = reader.ReadInt32(),
             BlackboardOwnerGeneration = reader.ReadUInt64(),
             BlackboardLifetime = reader.ReadInt32(),
+            BlackboardWriteStamp = ReadBlackboardWriteStamp(reader),
             BlackboardIsActive = reader.ReadBoolean(),
             TrackIndex = reader.ReadInt32(),
             ClipIndex = reader.ReadInt32(),
@@ -277,6 +280,38 @@ namespace BTSMTL.Diagnostics.Editor
             TimelinePlayback = ReadRuntimeTimelinePlaybackProvenance(reader),
             SourceEventId = ReadEventId(reader),
         };
+
+        static void WriteBlackboardWriteStamp(BinaryWriter writer, in OrchestrationBlackboardWriteStamp value)
+        {
+            writer.Write(value.SourceOperationIndex);
+            writer.Write(value.LogicTick);
+            writer.Write(value.SourceContext.SkillContentId);
+            writer.Write(value.SourceContext.InstanceId);
+            writer.Write(value.SourceContext.SkillExecutionGeneration);
+            writer.Write(value.SourceContext.SegmentGeneration);
+            writer.Write(value.TimelineOperationIndex);
+            writer.Write(value.ClipOperationIndex);
+            writer.Write(value.Cycle);
+            writer.Write(value.CommandSequence);
+        }
+
+        static OrchestrationBlackboardWriteStamp ReadBlackboardWriteStamp(BinaryReader reader) =>
+            new OrchestrationBlackboardWriteStamp
+            {
+                SourceOperationIndex = reader.ReadInt32(),
+                LogicTick = reader.ReadUInt64(),
+                SourceContext = new OrchestrationBlackboardSourceContext
+                {
+                    SkillContentId = reader.ReadInt32(),
+                    InstanceId = reader.ReadUInt64(),
+                    SkillExecutionGeneration = reader.ReadUInt64(),
+                    SegmentGeneration = reader.ReadUInt64()
+                },
+                TimelineOperationIndex = reader.ReadInt32(),
+                ClipOperationIndex = reader.ReadInt32(),
+                Cycle = reader.ReadInt32(),
+                CommandSequence = reader.ReadUInt64()
+            };
 
         void WriteEventId(BinaryWriter writer, EventId value)
         {

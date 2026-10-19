@@ -29,7 +29,8 @@ namespace BTSMTL.Graphs
         readonly BtsmtlGraphRoot m_Source;
         readonly GraphHostContract m_Contract;
         readonly HostedGraphBindings<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TNumeric> m_Bindings;
-        readonly OrchestrationExecutionStateLayout<TValue> m_Layout;
+        readonly OrchestrationPreparedStateLayout<TValue> m_Layout;
+        readonly OrchestrationStateRegion<TValue> m_PrivateValues;
         readonly OrchestrationStateLayout m_MemoryLayout;
         readonly OrchestrationExecutionWorkspace<TValue> m_Workspace;
         readonly OrchestrationExtensionBindings<TValue, TContext> m_Extensions;
@@ -58,7 +59,7 @@ namespace BTSMTL.Graphs
 
         public HostedGraphRuntime(BtsmtlGraphRoot source, GraphHostContract contract,
             IOrchestrationGraphContentEncoding<TValue> encoding,
-            Func<StableHash, NumericProfileId, TargetAbiVersion, int, int, int, int, int, int, int,
+            Func<StableHash, NumericProfileId, TargetAbiVersion, int, int, int, int, int, int, int, int,
                 OrchestrationExecutionStateLayout<TValue>> createStateLayout,
             IReadOnlyList<IOrchestrationExtension> extensions)
         {
@@ -76,11 +77,20 @@ namespace BTSMTL.Graphs
                 new[] { new OrchestrationProgramTickBudget(1, 1) }, capacity,
                 ReadOnlySpan<OrchestrationTimelineTickContentCapacity>.Empty);
             OrchestrationExecutionStateCapacity stateCapacity = capacity.State;
-            m_Layout = createStateLayout(StableHash.Compute(content.Identity.GraphId, content.Identity.SourceRevision),
+            OrchestrationExecutionStateLayout<TValue> executionLayout = createStateLayout(
+                StableHash.Compute(content.Identity.GraphId, content.Identity.SourceRevision),
                 content.NumericProfile.Id, content.NumericProfile.AbiVersion,
-                program.BlackboardCount, stateCapacity.FrameCount, stateCapacity.OperationsPerFrame,
-                stateCapacity.FrameCount, stateCapacity.TransitionCacheCount,
-                stateCapacity.TransitionSnapshotCount, stateCapacity.ValuesPerFrame);
+                stateCapacity.ValueCount, stateCapacity.FrameCount, stateCapacity.OperationCount,
+                1, stateCapacity.SavedOutputCount, stateCapacity.TransitionCacheCount,
+                stateCapacity.TransitionSnapshotCount, stateCapacity.ValueCount);
+            m_PrivateValues = executionLayout.Values;
+            m_Layout = new OrchestrationPreparedStateLayout<TValue>(executionLayout.Layout,
+                executionLayout.StateSegments, stateCapacity.FrameCount,
+                new[] { new OrchestrationPreparedProgramStorage<TValue>(m_Bindings.SourceIdentityId,
+                    program.ExecutionStorage, program.Content.ValueSlotTypes,
+                    program.ValueSchedule.TransitionCacheCount, program.ValueSchedule.TransitionSnapshotCount) },
+                ReadOnlyMemory<OrchestrationValueSlotType>.Empty,
+                new OrchestrationStateRegion<byte>(executionLayout.Layout.SizeBytes, 0), default);
             m_MemoryLayout = m_Layout.Layout;
             m_State = new byte[m_MemoryLayout.SizeBytes];
             m_Candidate = new byte[m_State.Length];
@@ -114,9 +124,9 @@ namespace BTSMTL.Graphs
         }
 
         ReadOnlySpan<TValue> StateValues =>
-            OrchestrationStateBinding.BindCommitted(m_Layout, m_State).Frames.Values(0);
+            m_Layout.Layout.BindCommitted(m_State).Get(m_PrivateValues);
         Span<TValue> CandidateValues =>
-            OrchestrationStateBinding.BindCandidate(m_Layout, m_Candidate).Frames.Values(0);
+            m_Layout.Layout.BindCandidate(m_Candidate).Get(m_PrivateValues);
 
         public BtsmtlGraphRoot Source => m_Source;
         public GraphHostContract Contract => m_Contract;
@@ -196,7 +206,8 @@ namespace BTSMTL.Graphs
 #endif
                 );
             OrchestrationIdentityOrdinalView identities = m_CandidateTexts.Ordinals;
-            var cursor = state.CreateCursor<TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics>(
+            var cursor = state.CreateCursor<TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext,
+                TDiagnostics, OrchestrationArrayValueStorage<TValue>>(
                 m_Bindings.Program, m_Workspace, m_Extensions, 0, ReadOnlySpan<int>.Empty,
                 null, null, in input, in identities, in context);
             m_OutputRequestCount = 0;
@@ -271,12 +282,13 @@ namespace BTSMTL.Graphs
                 for (int i = 0; i < m_Bindings.PublishedSlots.Length; i++)
                 {
                     int slot = m_Bindings.PublishedSlots[i];
+                    int valueIndex = m_Bindings.Program.ExecutionStorage.Values.Span[slot].ValueIndex;
 #if UNITY_EDITOR
                     int supplied = FindOverride(m_CandidateOverrides, OrchestrationValueOverrideKind.Blackboard, slot);
                     TValue value = supplied >= 0
-                        ? m_CandidateOverrides[supplied].Value : values[slot];
+                        ? m_CandidateOverrides[supplied].Value : values[valueIndex];
 #else
-                    TValue value = values[slot];
+                    TValue value = values[valueIndex];
 #endif
                     GraphHostValue published = m_Bindings.FromState(in value, m_Bindings.StateTypes[slot], m_CandidateTexts);
                     m_Output.Write(i, in published);
@@ -347,17 +359,21 @@ namespace BTSMTL.Graphs
             if (supplied >= 0)
                 return m_Overrides[supplied].Value;
 #endif
-            return values[slot];
+            return values[m_Bindings.Program.ExecutionStorage.Values.Span[slot].ValueIndex];
         }
 
         void BeginCandidateState()
         {
             Array.Clear(m_TextRemap, 0, m_TextRemap.Length);
-            m_State.AsSpan().CopyTo(m_Candidate);
+            OrchestrationStateBinding.CopyMemory(m_Layout, m_State, m_Candidate);
             Span<TValue> values = CandidateValues;
             for (int i = 0; i < values.Length; i++)
                 RemapValue(ref values[i]);
-            var snapshots = OrchestrationStateBinding.BindCandidate(m_Layout, m_Candidate).Frames.TransitionSnapshots(0);
+            var frames = OrchestrationStateBinding.BindCandidate(m_Layout, m_Candidate).Frames;
+            Span<TValue> savedOutputs = frames.SavedOutputs(0);
+            for (int i = 0; i < savedOutputs.Length; i++)
+                RemapValue(ref savedOutputs[i]);
+            var snapshots = frames.TransitionSnapshots(0);
             for (int i = 0; i < snapshots.Length; i++)
                 RemapValue(ref snapshots[i].Value);
 #if UNITY_EDITOR
@@ -418,16 +434,16 @@ namespace BTSMTL.Graphs
                 ref readonly OrchestrationBlackboardSlot slot = ref m_Bindings.Program.Blackboard(i);
                 if (slot.ScopeKind == OrchestrationScopeKind.Graph &&
                     slot.Lifetime == OrchestrationBlackboardLifetime.GraphInstance && slot.OwnerOperationIndex < 0)
-                    blackboards[i] = new OrchestrationBlackboardMetadata
-                    {
-                        Owner = new OrchestrationBlackboardOwnerToken
+                    blackboards[m_Bindings.Program.ExecutionStorage.Values.Span[i].MetadataIndex] =
+                        new OrchestrationBlackboardMetadata
                         {
-                            ScopeKind = slot.ScopeKind,
-                            CompiledOwnerIndex = slot.CompiledOwnerIndex,
-                            Generation = m_ResetGeneration
-                        },
-                        Lifetime = slot.Lifetime
-                    };
+                            Owner = new OrchestrationBlackboardOwnerToken
+                            {
+                                ScopeKind = slot.ScopeKind,
+                                CompiledOwnerIndex = slot.CompiledOwnerIndex,
+                                Generation = m_ResetGeneration
+                            }
+                        };
             }
 #if UNITY_EDITOR
             ResetEditor();
@@ -438,7 +454,7 @@ namespace BTSMTL.Graphs
         void InitializeRootFrame(ref OrchestrationExecutionFrames<TValue> frames,
             ulong generation)
         {
-            frames.Insert(new OrchestrationExecutionFrameState
+            frames.Insert<OrchestrationArrayValueStorage<TValue>>(new OrchestrationExecutionFrameState
             {
                 SkillContentId = SourceIdentityId,
                 EntryOperationIndex = m_Bindings.Program.RootOperationIndex,

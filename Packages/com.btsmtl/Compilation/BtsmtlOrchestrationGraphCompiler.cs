@@ -855,7 +855,7 @@ namespace BTSMTL.Compilation
             OrchestrationValueSlotType[] BuildValueSlotTypes(out int[] counts)
             {
                 var slots = new OrchestrationValueSlotType[m_DefaultValues.Count];
-                counts = new int[Enum.GetValues(typeof(OrchestrationValueKind)).Length];
+                counts = new int[(int)OrchestrationValueKind.SpatialIdentity + 1];
                 TValues values = default;
                 for (int valueSlot = 0; valueSlot < slots.Length; valueSlot++)
                 {

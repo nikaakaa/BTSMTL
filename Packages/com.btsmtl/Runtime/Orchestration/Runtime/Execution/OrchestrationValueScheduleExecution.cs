@@ -4,7 +4,7 @@ using ThirdPersonSimulation;
 namespace BTSMTL.Orchestration
 {
     public ref partial struct OrchestrationExecutionCursor<TValue, TScalar, TVector2,
-        TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics>
+        TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage>
         where TValue : unmanaged
         where TScalar : unmanaged
         where TVector2 : unmanaged
@@ -15,6 +15,7 @@ namespace BTSMTL.Orchestration
         where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
         where TContext : struct
         where TDiagnostics : struct, IOrchestrationExecutionDiagnostics
+        where TStorage : struct, IOrchestrationValueStorage<TValue>
     {
         readonly struct ScheduledSelection
         {
@@ -65,7 +66,7 @@ namespace BTSMTL.Orchestration
                             values[instruction.Destination] = m_Program.Constant(instruction.Operand);
                             break;
                         case OrchestrationValueScheduleCode.ReadInputBlackboard:
-                            values[instruction.Destination] = ReadBlackboard(instruction.Operation, instruction.Operand);
+                            ReadBlackboard(instruction.Operation, instruction.Operand, ref values[instruction.Destination]);
                             break;
                         case OrchestrationValueScheduleCode.CopyInput:
                             m_CurrentOperationIndex = instruction.Operation;

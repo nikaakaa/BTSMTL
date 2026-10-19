@@ -1,10 +1,11 @@
 using System;
+using System.Runtime.CompilerServices;
 using ThirdPersonSimulation;
 
 namespace BTSMTL.Orchestration
 {
     public ref partial struct OrchestrationExecutionCursor<TValue, TScalar, TVector2,
-        TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics>
+        TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage>
         where TValue : unmanaged
         where TScalar : unmanaged
         where TVector2 : unmanaged
@@ -15,14 +16,15 @@ namespace BTSMTL.Orchestration
         where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
         where TContext : struct
         where TDiagnostics : struct, IOrchestrationExecutionDiagnostics
+        where TStorage : struct, IOrchestrationValueStorage<TValue>
     {
         readonly OrchestrationProgram<TValue> m_Program;
         readonly OrchestrationExecutionWorkspace<TValue> m_Workspace;
         readonly IOrchestrationExtensionBindings<TValue, TContext> m_Bindings;
         readonly OrchestrationExecutionFrames<TValue> m_Frames;
         Span<OrchestrationOperationState> m_Operations;
-        Span<TValue> m_Values;
-        OrchestrationBlackboardStorageView<TValue> m_Blackboards;
+        Span<TValue> m_SavedOutputs;
+        OrchestrationBlackboardStorageView<TValue, TStorage> m_Blackboards;
         int m_FrameSlot;
         readonly OrchestrationFrameInput<TValue> m_Input;
         readonly OrchestrationIdentityOrdinalView m_Identities;
@@ -50,7 +52,6 @@ namespace BTSMTL.Orchestration
             OrchestrationExecutionWorkspace<TValue> workspace,
             IOrchestrationExtensionBindings<TValue, TContext> bindings,
             OrchestrationExecutionFrames<TValue> frames, int frameSlot,
-            Span<TValue> characterValues, Span<OrchestrationBlackboardMetadata> characterBlackboards,
             ReadOnlySpan<int> characterSlots,
             IOrchestrationTimelineDispatcher<TValue, TScalar, TVector2,
                 TVector3, TYaw, TQuaternion, TMath, TValues, TContext> timelineDispatcher,
@@ -67,9 +68,9 @@ namespace BTSMTL.Orchestration
             m_Frames = frames;
             m_FrameSlot = frameSlot;
             m_Operations = frames.Operations(frameSlot);
-            m_Values = frames.Values(frameSlot);
-            m_Blackboards = new OrchestrationBlackboardStorageView<TValue>(program, frames, frameSlot,
-                characterValues, characterBlackboards, characterSlots, sourceBinding, source);
+            m_SavedOutputs = frames.SavedOutputs(frameSlot);
+            m_Blackboards = new OrchestrationBlackboardStorageView<TValue, TStorage>(program, frames, frameSlot,
+                characterSlots, sourceBinding, source);
             m_Input = input;
             m_Identities = identities;
             m_Context = context;
@@ -328,11 +329,19 @@ namespace BTSMTL.Orchestration
         ref readonly OrchestrationOperationState ReadOperationState(int operationIndex) =>
             ref m_Blackboards.ReadOperation(operationIndex);
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        ref OrchestrationOperationState OperationState(int operationIndex) =>
+            ref m_Operations[m_Program.ExecutionStorage.OperationIndices.Span[operationIndex]];
+
+        Span<TValue> SavedOutputs(in OrchestrationOperation operation) =>
+            m_SavedOutputs.Slice(m_Program.ExecutionStorage.Values.Span[operation.OutputSlotOffset].SavedOutputIndex,
+                operation.OutputCount);
+
         void SelectExecutionFrame(int frameSlot)
         {
             m_FrameSlot = frameSlot;
             m_Operations = m_Frames.Operations(frameSlot);
-            m_Values = m_Frames.Values(frameSlot);
+            m_SavedOutputs = m_Frames.SavedOutputs(frameSlot);
             m_Blackboards.SelectFrame(frameSlot);
             m_TimelineDispatcher.SelectExecutionFrame(frameSlot, ref m_Context);
         }
@@ -343,7 +352,7 @@ namespace BTSMTL.Orchestration
             ref readonly OrchestrationOperation operation = ref m_Program.Operation(operationIndex);
             if (!operation.IsRunnable)
                 return Execute(operationIndex, inputPortId);
-            ref OrchestrationOperationState state = ref m_Operations[operationIndex];
+            ref OrchestrationOperationState state = ref OperationState(operationIndex);
             if (state.Status == OrchestrationOperationStatus.Stopping)
                 return OrchestrationOperationResult.Running;
             bool entering = state.Status != OrchestrationOperationStatus.Running;
@@ -386,7 +395,7 @@ namespace BTSMTL.Orchestration
                 m_CurrentOperationIndex = operationIndex;
                 if (operationIndex < 0 || !m_Program.Operation(operationIndex).IsRunnable)
                     return OrchestrationStopStatus.Completed;
-                ref OrchestrationOperationState state = ref m_Operations[operationIndex];
+                ref OrchestrationOperationState state = ref OperationState(operationIndex);
                 if (state.Status == OrchestrationOperationStatus.Dormant ||
                     state.Status == OrchestrationOperationStatus.Success ||
                     state.Status == OrchestrationOperationStatus.Failure)
@@ -502,7 +511,7 @@ namespace BTSMTL.Orchestration
             switch (operation.Code)
             {
                 case OrchestrationOperationCode.Timeline:
-                    if (m_Operations[operationIndex].TimelineRuntimeHandle != 0)
+                    if (OperationState(operationIndex).TimelineRuntimeHandle != 0)
                         ForceStopLeaf(operationIndex, context);
                     break;
                 case OrchestrationOperationCode.Extension:
@@ -523,7 +532,9 @@ namespace BTSMTL.Orchestration
             }
             if (active)
                 TraceOperation(OrchestrationTraceKind.ForceStopped, operationIndex, stopCause: context.Cause);
-            ResetOperation(operationIndex);
+            if (m_Program.ExecutionStorage.OperationIndices.Span[operationIndex] !=
+                OrchestrationProgramStorageLayout.NoOperationIndex)
+                ResetOperation(operationIndex);
         }
 
         void ForceStopChildren(int operationIndex, OrchestrationStopContext context)
@@ -559,7 +570,7 @@ namespace BTSMTL.Orchestration
         void ResetOperation(int operationIndex)
         {
             RetireOperationOverrides(operationIndex);
-            ref OrchestrationOperationState state = ref m_Operations[operationIndex];
+            ref OrchestrationOperationState state = ref OperationState(operationIndex);
             if (state.TimelineRuntimeHandle != 0)
                 m_TimelineDispatcher.ReleasePlayback(m_TimelineState, operationIndex,
                     ref state.TimelineRuntimeHandle, in m_Context);
@@ -571,19 +582,20 @@ namespace BTSMTL.Orchestration
             ref readonly OrchestrationOperation operation = ref m_Program.Operation(operationIndex);
             if (operation.OutputSlotOffset >= 0)
                 for (int i = 0; i < operation.OutputCount; i++)
-                    m_Values[operation.OutputSlotOffset + i] = m_Program.DefaultValue(operation.OutputSlotOffset + i);
+                    m_SavedOutputs[m_Program.ExecutionStorage.Values.Span[operation.OutputSlotOffset + i].SavedOutputIndex] =
+                        m_Program.DefaultValue(operation.OutputSlotOffset + i);
             if (operation.Code == OrchestrationOperationCode.SubGraph)
             {
                 OrchestrationGraphCall call = m_Program.GraphCall(m_Program.Payload<OrchestrationGraphCallPayload>(operationIndex).CallIndex);
                 foreach (ref readonly OrchestrationGraphParameter parameter in call.Inputs.Span)
                 {
-                    m_Values[parameter.ValueSlot] = m_Program.DefaultValue(parameter.ValueSlot);
+                    m_Blackboards.WriteValue(parameter.ValueSlot, in m_Program.DefaultValue(parameter.ValueSlot));
                     ref OrchestrationBlackboardMetadata metadata = ref m_Blackboards.WriteMetadata(parameter.ValueSlot);
                     metadata.Revision = checked(metadata.Revision + 1);
                 }
                 foreach (ref readonly OrchestrationGraphParameter parameter in call.Outputs.Span)
                 {
-                    m_Values[parameter.ValueSlot] = m_Program.DefaultValue(parameter.ValueSlot);
+                    m_Blackboards.WriteValue(parameter.ValueSlot, in m_Program.DefaultValue(parameter.ValueSlot));
                     ref OrchestrationBlackboardMetadata metadata = ref m_Blackboards.WriteMetadata(parameter.ValueSlot);
                     metadata.Revision = checked(metadata.Revision + 1);
                 }
@@ -619,14 +631,14 @@ namespace BTSMTL.Orchestration
 
         OrchestrationStopContext ReadStopContext(int operationIndex)
         {
-            ref readonly OrchestrationOperationState state = ref m_Operations[operationIndex];
+            ref readonly OrchestrationOperationState state = ref OperationState(operationIndex);
             return new OrchestrationStopContext(state.StopCause,
                 state.StopSourceOperationIndex, state.StopReplacementOperationIndex);
         }
 
         void WriteStopContext(int operationIndex, OrchestrationStopContext context)
         {
-            ref OrchestrationOperationState state = ref m_Operations[operationIndex];
+            ref OrchestrationOperationState state = ref OperationState(operationIndex);
             state.StopCause = context.Cause;
             state.StopSourceOperationIndex = context.SourceOperationIndex;
             state.StopReplacementOperationIndex = context.ReplacementOperationIndex;
@@ -634,7 +646,7 @@ namespace BTSMTL.Orchestration
 
         void ClearStopContext(int operationIndex)
         {
-            ref OrchestrationOperationState state = ref m_Operations[operationIndex];
+            ref OrchestrationOperationState state = ref OperationState(operationIndex);
             state.StopCause = 0;
             state.StopSourceOperationIndex = -1;
             state.StopReplacementOperationIndex = -1;
@@ -731,7 +743,7 @@ namespace BTSMTL.Orchestration
 
         OrchestrationOperationResult TickCycle(int operationIndex, int inputPortId)
         {
-            ref OrchestrationOperationState state = ref m_Operations[operationIndex];
+            ref OrchestrationOperationState state = ref OperationState(operationIndex);
             if (inputPortId == m_Program.Ports.CycleReset)
             {
                 state.ChildCursor = 0;
@@ -781,11 +793,11 @@ namespace BTSMTL.Orchestration
             OrchestrationOperationResult result = default, uint stopCause = 0,
             OrchestrationWaitReason waitReason = default, int valueSlot = -1)
             => default(TDiagnostics).Trace(ref this, kind, operationIndex, -1, result,
-                stopCause, waitReason, valueSlot, false, false);
+                stopCause, waitReason, valueSlot, false, false, default);
 
         internal void TraceDiagnosticOperation(OrchestrationTraceKind kind, int operationIndex,
             OrchestrationOperationResult result, uint stopCause,
-            OrchestrationWaitReason waitReason, int valueSlot)
+            OrchestrationWaitReason waitReason, int valueSlot, in OrchestrationBlackboardSourceContext blackboardSource)
         {
             if (!m_Input.CaptureTrace || IsPredictiveEvaluation)
                 return;
@@ -808,14 +820,27 @@ namespace BTSMTL.Orchestration
             item.ValueSlot = valueSlot;
             if (kind == OrchestrationTraceKind.Blackboard)
             {
-                item.Value = m_Blackboards.ReadValue(valueSlot);
+                m_Blackboards.ReadValue(valueSlot, ref item.Value);
                 item.Blackboard = m_Blackboards.ReadMetadata(valueSlot);
+                item.BlackboardLifetime = m_Program.Blackboard(valueSlot).Lifetime;
+                item.BlackboardWriteStamp = new OrchestrationBlackboardWriteStamp
+                {
+                    SourceOperationIndex = operationIndex,
+                    LogicTick = m_Input.Tick,
+                    SourceContext = blackboardSource,
+                    TimelineOperationIndex = m_TimelineInvocation.HasInvocation
+                        ? m_Frames.Header(m_FrameSlot).ParentTimelineOperationIndex : -1,
+                    ClipOperationIndex = m_TimelineInvocation.HasInvocation
+                        ? m_Frames.Header(m_FrameSlot).OwnerOperationIndex : -1,
+                    Cycle = m_TimelineInvocation.HasInvocation ? m_TimelineInvocation.Invocation.Token.Cycle : 0,
+                    CommandSequence = m_TimelineInvocation.HasInvocation ? m_TimelineInvocation.Invocation.Token.Sequence : 0
+                };
             }
         }
 
         void TraceEdge(int edgeIndex, bool selected, bool passed, int sourceStateOperation = -1)
             => default(TDiagnostics).Trace(ref this, OrchestrationTraceKind.Edge, sourceStateOperation,
-                edgeIndex, default, 0, default, -1, selected, passed);
+                edgeIndex, default, 0, default, -1, selected, passed, default);
 
         internal void TraceDiagnosticEdge(int edgeIndex, bool selected, bool passed, int sourceStateOperation)
         {

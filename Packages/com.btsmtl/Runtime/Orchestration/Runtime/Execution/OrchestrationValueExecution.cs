@@ -4,7 +4,7 @@ using ThirdPersonSimulation;
 namespace BTSMTL.Orchestration
 {
     public ref partial struct OrchestrationExecutionCursor<TValue, TScalar, TVector2,
-        TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics>
+        TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage>
         where TValue : unmanaged
         where TScalar : unmanaged
         where TVector2 : unmanaged
@@ -15,6 +15,7 @@ namespace BTSMTL.Orchestration
         where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
         where TContext : struct
         where TDiagnostics : struct, IOrchestrationExecutionDiagnostics
+        where TStorage : struct, IOrchestrationValueStorage<TValue>
     {
         public void Evaluate(int operationIndex, ref TValue value, int outputPortIndex = -1)
         {
@@ -62,10 +63,10 @@ namespace BTSMTL.Orchestration
                     value = values.FromBoolean(HasRequest(m_Program.Payload<OrchestrationRequestPayload>(operationIndex).IdentityId));
                     return;
                 case OrchestrationValueOpcode.BlackboardGet:
-                    value = ReadBlackboard(operationIndex, typed.Argument);
+                    ReadBlackboard(operationIndex, typed.Argument, ref value);
                     return;
                 case OrchestrationValueOpcode.GraphCallOutput:
-                    value = ReadGraphCallOutput(operationIndex, typed.Argument);
+                    ReadGraphCallOutput(operationIndex, typed.Argument, ref value);
                     return;
                 case OrchestrationValueOpcode.StateRootCompleted:
                     value = values.FromBoolean(CurrentStateRootCompleted());
@@ -200,14 +201,14 @@ namespace BTSMTL.Orchestration
             {
                 foreach (ref readonly OrchestrationGraphParameter output in call.Outputs.Span)
                 {
-                    m_Values[output.ValueSlot] = m_Program.DefaultValue(output.ValueSlot);
+                    m_Blackboards.WriteValue(output.ValueSlot, in m_Program.DefaultValue(output.ValueSlot));
                     ref OrchestrationBlackboardMetadata metadata = ref m_Blackboards.WriteMetadata(output.ValueSlot);
                     metadata.Revision = checked(metadata.Revision + 1);
                 }
                 ReadOnlySpan<OrchestrationGraphParameter> parameters = call.Inputs.Span;
                 for (int i = 0; i < parameters.Length; i++)
                 {
-                    m_Values[parameters[i].ValueSlot] = m_Workspace.Inputs[depth][i];
+                    m_Blackboards.WriteValue(parameters[i].ValueSlot, in m_Workspace.Inputs[depth][i]);
                     ref OrchestrationBlackboardMetadata metadata = ref m_Blackboards.WriteMetadata(parameters[i].ValueSlot);
                     metadata.Revision = checked(metadata.Revision + 1);
                 }
@@ -218,14 +219,16 @@ namespace BTSMTL.Orchestration
             }
         }
 
-        ref readonly TValue ReadGraphCallOutput(int operationIndex, int outputPortIndex)
+        void ReadGraphCallOutput(int operationIndex, int outputPortIndex, ref TValue destination)
         {
             OrchestrationGraphCall call = m_Program.GraphCall(m_Program.Payload<OrchestrationGraphCallPayload>(operationIndex).CallIndex);
             int slot = call.Outputs.Span[outputPortIndex].ValueSlot;
             OrchestrationOperationStatus status = m_Program.Operation(operationIndex).IsRunnable
                 ? ReadStatus(call.EntryOperationIndex) : ReadOperationState(operationIndex).Status;
-            return ref (status == OrchestrationOperationStatus.Success
-                ? ref m_Blackboards.ReadOutputValue(operationIndex, slot) : ref m_Program.DefaultValue(slot));
+            if (status == OrchestrationOperationStatus.Success)
+                m_Blackboards.ReadValue(slot, ref destination);
+            else
+                destination = m_Program.DefaultValue(slot);
         }
 
         OrchestrationOperationResult ExecuteCoreLeaf(int operationIndex)
@@ -290,7 +293,7 @@ namespace BTSMTL.Orchestration
                     {
                         ushort binding = m_Program.Payload<OrchestrationExtensionPayload>(operationIndex).BindingIndex;
                         Span<TValue> outputs = operation.OutputSlotOffset >= 0
-                            ? m_Values.Slice(operation.OutputSlotOffset, operation.OutputCount)
+                            ? SavedOutputs(in operation)
                             : m_Workspace.Outputs[depth].AsSpan(0, operation.OutputCount);
                         var invocation = new OrchestrationExtensionArguments<TValue>(
                             OrchestrationExtensionInvocationKind.Execute, operationIndex, ReadGeneration(operationIndex),

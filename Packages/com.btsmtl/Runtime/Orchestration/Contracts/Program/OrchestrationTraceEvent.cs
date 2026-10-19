@@ -31,6 +31,8 @@ namespace BTSMTL.Orchestration
         public int ValueSlot;
         public TValue Value;
         public OrchestrationBlackboardMetadata Blackboard;
+        public OrchestrationBlackboardLifetime BlackboardLifetime;
+        public OrchestrationBlackboardWriteStamp BlackboardWriteStamp;
     }
 
     public struct OrchestrationStateTraceFrame
