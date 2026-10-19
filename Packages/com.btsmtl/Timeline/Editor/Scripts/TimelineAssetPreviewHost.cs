@@ -15,6 +15,7 @@ namespace BTSMTL.Timeline.Editor
     [InitializeOnLoad]
     public sealed class TimelineAssetPreviewHost
     {
+        internal const string MissingProviderReason = "当前项目尚未注册 Timeline 预览宿主。";
         public static TimelineAssetPreviewHost Shared { get; } = new();
 
         ITimelineAssetPreviewProvider m_Provider;
@@ -64,6 +65,7 @@ namespace BTSMTL.Timeline.Editor
         public TimelineAssetPreviewPreferences Preferences { get; private set; }
         public ITimelineAssetPreviewInstance Instance => m_Instance;
         public TimelineContractCatalog Contracts => m_Provider.Contracts;
+        public bool IsRegistered => m_Provider != null;
         public bool IsOpen => m_Stage;
         public bool IsOpeningSession => m_SessionOpening != null;
         public bool IsPlaying { get; private set; }
@@ -86,6 +88,8 @@ namespace BTSMTL.Timeline.Editor
             get => m_Provider == null ? null : m_Provider.Configuration;
             set
             {
+                if (!IsRegistered)
+                    throw new InvalidOperationException(MissingProviderReason);
                 Close();
                 m_Provider.Configuration = value;
                 Changed?.Invoke();
@@ -96,6 +100,7 @@ namespace BTSMTL.Timeline.Editor
         {
             m_Provider = provider;
             provider.SessionChanged += ContinueOpen;
+            Changed?.Invoke();
         }
 
         public void Open(TimelineAsset source, TimelinePreviewMode mode,
@@ -107,7 +112,7 @@ namespace BTSMTL.Timeline.Editor
             Error = string.Empty;
             if (m_Provider == null)
             {
-                Error = "当前项目尚未注册 Timeline 预览宿主。";
+                Error = MissingProviderReason;
                 Changed?.Invoke();
                 return;
             }

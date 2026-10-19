@@ -14,6 +14,7 @@ namespace BTSMTL.Timeline.Editor
     {
         [SerializeField] TimelinePreviewMode m_PreviewMode;
         Label m_AssetPreviewStatus;
+        ObjectField m_AssetPreviewConfiguration;
         IMGUIContainer m_AssetPreviewInputs;
         bool m_ShowPreviewInputs;
         Vector2 m_PreviewInputsScroll;
@@ -40,16 +41,16 @@ namespace BTSMTL.Timeline.Editor
             });
             mode.tooltip = "资产预览按目标时刻显示；会话预览确认真实运行结果。";
             toolbar.Add(mode);
-            var configuration = new ObjectField("资产预览配置")
+            m_AssetPreviewConfiguration = new ObjectField("资产预览配置")
             {
                 objectType = preview.ConfigurationType,
                 allowSceneObjects = false,
                 value = preview.Configuration
             };
-            configuration.RegisterValueChangedCallback(change => preview.Configuration = change.newValue);
-            configuration.style.minWidth = 260f;
-            configuration.style.flexGrow = 1f;
-            toolbar.Add(configuration);
+            m_AssetPreviewConfiguration.RegisterValueChangedCallback(change => preview.Configuration = change.newValue);
+            m_AssetPreviewConfiguration.style.minWidth = 260f;
+            m_AssetPreviewConfiguration.style.flexGrow = 1f;
+            toolbar.Add(m_AssetPreviewConfiguration);
             toolbar.Add(new ToolbarButton(OpenTimelinePreview) { text = "打开预览" });
             toolbar.Add(new ToolbarButton(() => preview.SetPlaying(!preview.IsPlaying)) { text = "播放／暂停" });
             toolbar.Add(new ToolbarButton(preview.Close) { text = "关闭资产预览" });
@@ -91,6 +92,7 @@ namespace BTSMTL.Timeline.Editor
         {
             TimelineAssetPreviewHost.Shared.Changed -= RefreshAssetPreviewControls;
             m_AssetPreviewStatus = null;
+            m_AssetPreviewConfiguration = null;
             m_AssetPreviewInputs = null;
             m_AssetChainView?.Dispose();
             m_AssetChainView = null;
@@ -104,8 +106,15 @@ namespace BTSMTL.Timeline.Editor
         {
             var preview = TimelineAssetPreviewHost.Shared;
             bool active = preview.IsOpen && preview.Source == SourceAsset;
+            if (m_AssetPreviewConfiguration != null)
+            {
+                m_AssetPreviewConfiguration.objectType = preview.ConfigurationType;
+                m_AssetPreviewConfiguration.SetValueWithoutNotify(preview.Configuration);
+                m_AssetPreviewConfiguration.SetEnabled(preview.IsRegistered);
+            }
             if (m_AssetPreviewStatus != null)
-                m_AssetPreviewStatus.text = preview.Error.Length != 0 ? preview.Error : active
+                m_AssetPreviewStatus.text = !preview.IsRegistered ? TimelineAssetPreviewHost.MissingProviderReason :
+                    preview.Error.Length != 0 ? preview.Error : active
                     ? $"资产预览 · 链 {preview.Time:F3} 秒 / {preview.SampledSource?.name} {preview.LocalTime:F3} 秒 · 未经物理。{preview.Status}\n{preview.Chain?.Reason}"
                     : "选择资产预览调整节奏；会话预览确认碰撞、条件与完整运行结果。";
             if (m_AssetPreviewInputs != null)
