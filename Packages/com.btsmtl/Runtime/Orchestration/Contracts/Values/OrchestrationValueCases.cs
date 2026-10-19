@@ -1,10 +1,9 @@
-using System.Runtime.InteropServices;
 using ThirdPersonSimulation;
 
 namespace BTSMTL.Orchestration
 {
-    [StructLayout(LayoutKind.Sequential), ValueStorage]
-    public readonly partial struct OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>
+    [ValueUnionTemplate]
+    public readonly struct OrchestrationValueCases<TScalar, TVector2, TVector3, TYaw, TQuaternion>
         where TScalar : unmanaged
         where TVector2 : unmanaged
         where TVector3 : unmanaged

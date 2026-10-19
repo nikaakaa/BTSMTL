@@ -4,19 +4,21 @@ using ThirdPersonSimulation;
 namespace BTSMTL.Orchestration
 {
     public ref partial struct OrchestrationExecutionCursor<TValue, TScalar, TVector2,
-        TVector3, TQuaternion, TMath, TValues, TContext>
+        TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics>
         where TValue : unmanaged
         where TScalar : unmanaged
         where TVector2 : unmanaged
         where TVector3 : unmanaged
+        where TYaw : unmanaged
         where TQuaternion : unmanaged
         where TMath : struct, IOrchestrationGraphMath<TScalar, TVector2, TVector3, TQuaternion>
-        where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TQuaternion>
+        where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
         where TContext : struct
+        where TDiagnostics : struct, IOrchestrationExecutionDiagnostics
     {
 
         void EmitOutput(int operationIndex, ReadOnlySpan<TValue> values) => AppendOutput(operationIndex,
-            m_Program.Operation(operationIndex).Integer0, values, m_TimelineInvocation.HasInvocation,
+            m_Program.Payload<OrchestrationOutputPayload>(operationIndex).TemplateIndex, values, m_TimelineInvocation.HasInvocation,
             m_TimelineInvocation.Invocation.Token, m_TimelineInvocation.Invocation.Hook);
 
         void AppendOutput(int operationIndex, int templateIndex, ReadOnlySpan<TValue> values,

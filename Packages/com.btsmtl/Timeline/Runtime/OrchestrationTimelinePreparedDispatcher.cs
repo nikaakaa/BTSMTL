@@ -5,15 +5,16 @@ using ThirdPersonSimulation;
 namespace BTSMTL.Timeline.Runtime
 {
     public sealed class OrchestrationTimelinePreparedDispatcher<TValue, TScalar, TVector2,
-        TVector3, TQuaternion, TMath, TValues, TContext, TTime, TClock, TProjection> :
-        IOrchestrationTimelineDispatcher<TValue, TScalar, TVector2, TVector3, TQuaternion, TMath, TValues, TContext>
+        TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TTime, TClock, TProjection> :
+        IOrchestrationTimelineDispatcher<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext>
         where TValue : unmanaged
         where TScalar : unmanaged
         where TVector2 : unmanaged
         where TVector3 : unmanaged
+        where TYaw : unmanaged
         where TQuaternion : unmanaged
         where TMath : struct, IOrchestrationGraphMath<TScalar, TVector2, TVector3, TQuaternion>
-        where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TQuaternion>
+        where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
         where TContext : struct
         where TTime : unmanaged, IEquatable<TTime>
         where TClock : struct, IOrchestrationTimelineClock<TTime>
@@ -47,11 +48,11 @@ namespace BTSMTL.Timeline.Runtime
                 m_SampleInputs = Array.Empty<TValue>();
         }
 
-        public OrchestrationOperationResult Tick(
-            ref OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3, TQuaternion, TMath, TValues, TContext> cursor,
+        public OrchestrationOperationResult Tick<TDiagnostics>(
+            ref OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics> cursor,
             OrchestrationStateView candidate, int operationIndex, int contentIdentityId,
             ulong operationGeneration, ref ulong playbackIdentity, ReadOnlySpan<TValue> inputs,
-            ulong tick, ref TContext context)
+            ulong tick, ref TContext context) where TDiagnostics : struct, IOrchestrationExecutionDiagnostics
         {
             int slot;
             if (playbackIdentity == 0)
@@ -89,10 +90,11 @@ namespace BTSMTL.Timeline.Runtime
             return Result(batch.Status);
         }
 
-        public OrchestrationStopStatus Stop(
-            ref OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3, TQuaternion, TMath, TValues, TContext> cursor,
+        public OrchestrationStopStatus Stop<TDiagnostics>(
+            ref OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics> cursor,
             OrchestrationStateView candidate, int operationIndex, ref ulong playbackIdentity,
             in OrchestrationStopContext stopContext, bool force, ulong tick, ref TContext context)
+            where TDiagnostics : struct, IOrchestrationExecutionDiagnostics
         {
             int slot = m_Runtime.FindPlayback(candidate, playbackIdentity);
             ref OrchestrationTimelinePlaybackState<TTime> playback = ref m_Runtime.Playback(candidate, slot);

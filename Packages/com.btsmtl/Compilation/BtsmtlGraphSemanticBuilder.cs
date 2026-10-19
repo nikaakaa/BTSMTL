@@ -71,29 +71,32 @@ namespace BTSMTL.Compilation
         public SimulationCompileReport Report => m_Report;
         public IReadOnlyDictionary<(string InvocationPath, string Template, string Field, int Ordinal), string> DependencyIdentityTexts => m_DependencyIdentityTexts;
 
-        public OrchestrationGraphContent<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>
-            BuildOrchestration<TScalar, TVector2, TVector3, TYaw, TQuaternion, TLowering>(
+        public OrchestrationGraphContent<TValue>
+            BuildOrchestration<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TLowering>(
                 OperationHandle entry, GraphExecutionIdentity identity, TLowering lowering,
-                IBtsmtlOrchestrationContentEncoder<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>, TScalar> contentEncoder,
+                IBtsmtlOrchestrationContentEncoder<TValue, TScalar> contentEncoder,
                 IReadOnlyDictionary<string, OrchestrationExecutionContract> entryContracts)
+            where TValue : unmanaged
             where TScalar : unmanaged, IComparable<TScalar>, IEquatable<TScalar>
             where TVector2 : unmanaged
             where TVector3 : unmanaged
             where TYaw : unmanaged
             where TQuaternion : unmanaged
+            where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
             where TLowering : struct, IBtsmtlOrchestrationNumericLowering<TScalar, TVector2, TVector3, TYaw, TQuaternion>
         {
             ValidateSingleChildControlFlow();
             if (!m_Report.IsValid)
                 throw new InvalidOperationException("图编译失败，见编译报告。");
-            return BtsmtlOrchestrationGraphCompiler.Compile<TScalar, TVector2, TVector3, TYaw, TQuaternion, TLowering>(
+            return BtsmtlOrchestrationGraphCompiler.Compile<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TLowering>(
                 m_Operations, m_Literals, m_ConstantInputBindings, m_ControlFlow, m_References,
                 m_GraphCallFrames, m_StateSlots, m_Scopes, m_CatalogEntries, m_SourceMap, entry, identity,
                 OrchestrationExecutionContract.Complete,
                 Array.Empty<OrchestrationExtensionReference>(),
                 lowering,
-                new BtsmtlOrchestrationCompilationDomain<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>, TScalar>(
+                new BtsmtlOrchestrationCompilationDomain<TValue, TScalar>(
                     m_StateSchema, contentEncoder, null),
+                m_Report,
                 entryContracts);
         }
 

@@ -1,15 +1,15 @@
 using System.IO;
 using BTSMTL.Orchestration;
-using Float32Value = BTSMTL.Orchestration.OrchestrationValue<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32Vector2, ThirdPersonSimulation.Float32Vector3, ThirdPersonSimulation.Float32Yaw, ThirdPersonSimulation.Float32Quaternion>;
-using FPValue = BTSMTL.Orchestration.OrchestrationValue<Photon.Deterministic.FP, Photon.Deterministic.FPVector2, Photon.Deterministic.FPVector3, Photon.Deterministic.FP, Photon.Deterministic.FPQuaternion>;
+using Float32Value = BTSMTL.Orchestration.Float32OrchestrationValue;
+using FPValue = ThirdPersonSimulation.QuantumNumerics.FPOrchestrationValue;
 
 namespace ThirdPersonSimulation.Serialization
 {
     public sealed partial class MemoryPackGraphContentPublisher :
         IOrchestrationGraphContentEncoding<Float32Value>, IOrchestrationGraphContentEncoding<FPValue>
     {
-        public const string Float32OrchestrationContractIdentity = "btsmtl.float32-orchestration.memorypack/3";
-        public const string FPOrchestrationContractIdentity = "btsmtl.fp-orchestration.memorypack/3";
+        public const string Float32OrchestrationContractIdentity = "btsmtl.float32-orchestration.memorypack/6";
+        public const string FPOrchestrationContractIdentity = "btsmtl.fp-orchestration.memorypack/6";
 
         string IOrchestrationGraphContentEncoding<Float32Value>.EncodingContract => Float32OrchestrationContractIdentity;
         string IOrchestrationGraphContentEncoding<FPValue>.EncodingContract => FPOrchestrationContractIdentity;

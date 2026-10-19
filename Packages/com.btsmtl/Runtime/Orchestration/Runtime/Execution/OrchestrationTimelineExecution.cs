@@ -4,19 +4,21 @@ using ThirdPersonSimulation;
 namespace BTSMTL.Orchestration
 {
     public ref partial struct OrchestrationExecutionCursor<TValue, TScalar, TVector2,
-        TVector3, TQuaternion, TMath, TValues, TContext>
+        TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics>
         where TValue : unmanaged
         where TScalar : unmanaged
         where TVector2 : unmanaged
         where TVector3 : unmanaged
+        where TYaw : unmanaged
         where TQuaternion : unmanaged
         where TMath : struct, IOrchestrationGraphMath<TScalar, TVector2, TVector3, TQuaternion>
-        where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TQuaternion>
+        where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
         where TContext : struct
+        where TDiagnostics : struct, IOrchestrationExecutionDiagnostics
     {
         OrchestrationOperationResult TickTimeline(int operationIndex, int inputDepth, int inputCount) =>
             m_TimelineDispatcher.Tick(ref this, m_TimelineState, operationIndex,
-                m_Program.Operation(operationIndex).TimelineContentIdentityId, ReadGeneration(operationIndex),
+                m_Program.Payload<OrchestrationTimelinePayload>(operationIndex).ContentIdentityId, ReadGeneration(operationIndex),
                 ref m_Operations[operationIndex].TimelineRuntimeHandle,
                 m_Workspace.Inputs[inputDepth].AsSpan(0, inputCount), m_Input.Tick,
                 ref m_Context);
@@ -27,9 +29,7 @@ namespace BTSMTL.Orchestration
                 ref m_Operations[operationIndex].TimelineRuntimeHandle, in context,
                 force, m_Input.Tick, ref m_Context);
 
-        TValue ReadTimelineTime() => m_TimelineTime;
-
-        TValue ReadTimelineSection(int operationIndex)
+        void ReadTimelineSection(int operationIndex, ref TValue value)
         {
             int selected = -1;
             ulong playbackIdentity = 0;
@@ -47,7 +47,7 @@ namespace BTSMTL.Orchestration
             }
             int section = selected < 0 ? 0 : m_TimelineDispatcher.ReadSection(
                 m_TimelineState, selected, playbackIdentity, in m_Context);
-            return default(TValues).FromIdentity(OrchestrationIdentityValue.Content(section));
+            value = default(TValues).FromIdentity(OrchestrationIdentityValue.Content(section));
         }
 
         bool IsTimelineQueryStateActive(int stateOperationIndex)
@@ -55,8 +55,8 @@ namespace BTSMTL.Orchestration
             for (int state = stateOperationIndex; state >= 0;
                 state = m_Program.Operation(state).ParentStateOperationIndex)
             {
-                ref readonly OrchestrationOperation operation = ref m_Program.Operation(state);
-                if (ReadOperationState(operation.StateMachineOwnerOperationIndex).ActiveStateIdentityId != operation.StateIdentityId)
+                OrchestrationStatePayload statePayload = m_Program.Payload<OrchestrationStatePayload>(state);
+                if (ReadOperationState(statePayload.MachineIndex).ActiveStateIdentityId != statePayload.Identity.IdentityId)
                     return false;
             }
             return true;
@@ -224,7 +224,7 @@ namespace BTSMTL.Orchestration
 
         void ClearExecutionFrame(int frameSlot)
         {
-            OrchestrationValueOverride<TValue>.RetireExecutionFrame(m_Input.Overrides, in m_Frames.Header(frameSlot));
+            default(TDiagnostics).Lifecycle(ref this, OrchestrationDiagnosticLifecycle.RetireFrame, -1, frameSlot);
             m_Frames.RemoveAt(frameSlot);
             Array.Clear(m_Workspace.ForceStopVisited,
                 checked(frameSlot * m_Program.OperationCount), m_Program.OperationCount);

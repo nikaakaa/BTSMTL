@@ -40,7 +40,6 @@ namespace BTSMTL.Timeline.Runtime
         readonly IOrchestrationTimelineTimeProjection<OrchestrationTime, TScalar> m_Projection;
         readonly Result[][] m_Results;
         readonly bool[][] m_Active;
-        readonly bool[] m_ActiveValues;
         OrchestrationExecutionContract m_Contract;
         OrchestrationTime m_Lower;
         OrchestrationTime m_Upper;
@@ -58,7 +57,6 @@ namespace BTSMTL.Timeline.Runtime
             m_Projection = projection;
             m_Results = new[] { new Result[program.OperationCount], new Result[program.OperationCount] };
             m_Active = new[] { new bool[program.OperationCount], new bool[program.OperationCount] };
-            m_ActiveValues = new bool[program.OperationCount];
         }
 
         internal bool TryProve(in OrchestrationExecutionEntry entry,
@@ -172,15 +170,15 @@ namespace BTSMTL.Timeline.Runtime
                     Result child = Control(edge.TargetOperationIndex, before);
                     Result result = child & (Result.Exited | Result.Running);
                     if ((child & Result.Success) != 0)
-                        result |= operation.Integer0 == 1 ? Result.Success : Result.Running;
+                        result |= m_Program.Payload<OrchestrationModePayload>(index).Mode == 1 ? Result.Success : Result.Running;
                     if ((child & Result.Failure) != 0)
-                        result |= operation.Integer0 == 2 ? Result.Failure : Result.Running;
+                        result |= m_Program.Payload<OrchestrationModePayload>(index).Mode == 2 ? Result.Failure : Result.Running;
                     if ((condition & Truth.False) != 0)
                         result |= Result.Failure;
                     return result;
                 }
                 case OrchestrationOperationCode.Parallel:
-                    return Parallel(index, in operation, children, before);
+                    return Parallel(index, children, before);
                 case OrchestrationOperationCode.Branch:
                 {
                     Truth condition = Boolean(in m_Program.Inputs(index)[0], before);
@@ -215,10 +213,10 @@ namespace BTSMTL.Timeline.Runtime
                     return ThenLeaf(index, result, before);
                 }
                 case OrchestrationOperationCode.Extension:
-                    if (m_Extensions.Span[operation.ExtensionBindingIndex].Kind == OrchestrationExtensionKind.Action)
+                    if (m_Extensions.Span[m_Program.Payload<OrchestrationExtensionPayload>(index).BindingIndex].Kind == OrchestrationExtensionKind.Action)
                     {
                         Result result = Result.Success | Result.Failure;
-                        if (m_Extensions.Span[operation.ExtensionBindingIndex].Completion == OrchestrationExtensionCompletion.Resumable)
+                        if (m_Extensions.Span[m_Program.Payload<OrchestrationExtensionPayload>(index).BindingIndex].Completion == OrchestrationExtensionCompletion.Resumable)
                         {
                             result |= Result.Running;
                             if (!before)
@@ -288,9 +286,10 @@ namespace BTSMTL.Timeline.Runtime
             return result;
         }
 
-        Result Parallel(int index, in OrchestrationOperation operation, ReadOnlySpan<int> children, bool before)
+        Result Parallel(int index, ReadOnlySpan<int> children, bool before)
         {
-            if (operation.Integer0 == 2)
+            int mode = m_Program.Payload<OrchestrationModePayload>(index).Mode;
+            if (mode == 2)
             {
                 if (children.Length == 0)
                     return Result.Success;
@@ -305,7 +304,7 @@ namespace BTSMTL.Timeline.Runtime
             {
                 int childIndex = m_Program.Edge(edge).TargetOperationIndex;
                 Result child = Edge(edge, before);
-                if (retains && operation.Integer0 != 1 &&
+                if (retains && mode != 1 &&
                     (Control(childIndex, true) & (Result.Success | Result.Failure)) != 0)
                     child |= Result.Success;
                 Result combined = 0;
@@ -373,8 +372,8 @@ namespace BTSMTL.Timeline.Runtime
             if (input.Source != OrchestrationValueInputSource.Operation)
                 return Truth.Unknown;
             ref readonly OrchestrationOperation source = ref m_Program.Operation(input.SourceIndex);
-            if (source.Code == OrchestrationOperationCode.Constant && source.ConstantIndex >= 0)
-                return ConvertedConstantTruth(in m_Program.Constant(source.ConstantIndex), input.ValueKind);
+            if (source.Code == OrchestrationOperationCode.Constant)
+                return ConvertedConstantTruth(in m_Program.Constant(m_Program.ValueOperation(input.SourceIndex).Argument), input.ValueKind);
             OrchestrationValueKind sourceKind = source.Code switch
             {
                 OrchestrationOperationCode.Constant or OrchestrationOperationCode.ConditionResult or
@@ -391,16 +390,13 @@ namespace BTSMTL.Timeline.Runtime
 
         Truth Boolean(int index, bool before)
         {
-            if (m_ActiveValues[index])
-                return Truth.Unknown;
-            m_ActiveValues[index] = true;
             ref readonly OrchestrationOperation operation = ref m_Program.Operation(index);
             ReadOnlySpan<OrchestrationValueInputBinding> inputs = m_Program.Inputs(index);
             Truth result;
             switch (operation.Code)
             {
                 case OrchestrationOperationCode.Constant:
-                    result = operation.ConstantIndex < 0 ? Truth.False : ConstantTruth(in m_Program.Constant(operation.ConstantIndex));
+                    result = ConstantTruth(in m_Program.Constant(m_Program.ValueOperation(index).Argument));
                     break;
                 case OrchestrationOperationCode.ConditionResult:
                 case OrchestrationOperationCode.IdentityValue:
@@ -436,7 +432,7 @@ namespace BTSMTL.Timeline.Runtime
                     break;
                 }
                 case OrchestrationOperationCode.Compare:
-                    result = Compare(operation.Comparison, Numeric(in inputs[0]), Numeric(in inputs[1]), before);
+                    result = Compare(m_Program.ColdOperation(index).Comparison, Numeric(in inputs[0]), Numeric(in inputs[1]), before);
                     break;
                 case OrchestrationOperationCode.TimelineTime:
                     result = before ? Truth.Unknown :
@@ -446,7 +442,6 @@ namespace BTSMTL.Timeline.Runtime
                     result = Truth.Unknown;
                     break;
             }
-            m_ActiveValues[index] = false;
             return result;
         }
 
@@ -480,18 +475,14 @@ namespace BTSMTL.Timeline.Runtime
 
         Number NumericOperation(int index)
         {
-            if (m_ActiveValues[index])
-                return default;
-            m_ActiveValues[index] = true;
             ref readonly OrchestrationOperation operation = ref m_Program.Operation(index);
             Number result = operation.Code switch
             {
                 OrchestrationOperationCode.TimelineTime => new Number(true, false, default),
-                OrchestrationOperationCode.Constant when operation.ConstantIndex >= 0 => NumericConstant(in m_Program.Constant(operation.ConstantIndex)),
+                OrchestrationOperationCode.Constant => NumericConstant(in m_Program.Constant(m_Program.ValueOperation(index).Argument)),
                 OrchestrationOperationCode.IdentityValue => Numeric(in m_Program.Inputs(index)[0]),
                 _ => default
             };
-            m_ActiveValues[index] = false;
             return result;
         }
 

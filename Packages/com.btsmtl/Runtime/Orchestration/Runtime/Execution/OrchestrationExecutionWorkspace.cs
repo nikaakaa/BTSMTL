@@ -7,17 +7,19 @@ namespace BTSMTL.Orchestration
     {
         internal readonly TValue[][] Inputs;
         internal readonly TValue[][] Outputs;
-        internal readonly bool[] ActiveValues;
+        internal readonly TValue[] ScheduledValues;
+        internal readonly ScheduledPrediction[] ScheduledPredictions;
         internal readonly bool[] ForceStopVisited;
         internal readonly GraphCallContext[] GraphCallEntries;
         internal readonly StateContext[] States;
         internal readonly OrchestrationStateAncestor[] StateAncestors;
-        internal readonly TValue[] InputObservations;
-        internal readonly bool[] InputObservationWritten;
-        internal readonly TValue[] OutputObservations;
-        internal readonly bool[] OutputObservationWritten;
+        internal TValue[] InputObservations;
+        internal bool[] InputObservationWritten;
+        internal TValue[] OutputObservations;
+        internal bool[] OutputObservationWritten;
         readonly OrchestrationProgram<TValue> m_Program;
         readonly OrchestrationGraphContent<TValue> m_Content;
+        readonly int m_ExecutionFrameCapacity;
         internal OrchestrationTraceEvent<TValue>[] TraceEvents = Array.Empty<OrchestrationTraceEvent<TValue>>();
         internal OrchestrationStateTraceFrame[] StateFrames = Array.Empty<OrchestrationStateTraceFrame>();
         internal OrchestrationTraceContext[] TraceContexts = Array.Empty<OrchestrationTraceContext>();
@@ -34,43 +36,28 @@ namespace BTSMTL.Orchestration
         internal int OutputValueCount;
 
         public OrchestrationExecutionWorkspace(OrchestrationProgram<TValue> program, OrchestrationGraphContent<TValue> content,
-            OrchestrationExecutionCapacity capacity, int programIndex, OrchestrationProgramTickCapacity tickCapacity)
+            OrchestrationExecutionCapacity capacity, OrchestrationProgramTickCapacity tickCapacity)
         {
             m_Program = program;
             m_Content = content;
-            int executionFrameCapacity = capacity.State.FrameCount;
-            // 同步调用栈沿 Timeline 父子链复用，不按并存执行帧重复准备。
-            int depth = checked(capacity.SourceDepth(programIndex) * checked(program.OperationCount + 1));
-            int maximumInputs = 4;
-            int maximumOutputs = 4;
-            for (int i = 0; i < program.OperationCount; i++)
+            m_ExecutionFrameCapacity = capacity.State.FrameCount;
+            ScheduledValues = new TValue[program.ValueSchedule.ScratchSlotCount];
+            ScheduledPredictions = new ScheduledPrediction[program.ValueSchedule.PredictionDepth];
+            OrchestrationWorkspaceCapacity workspace = program.Content.WorkspaceCapacity;
+            Inputs = new TValue[workspace.InputCounts.Length][];
+            Outputs = new TValue[workspace.OutputCounts.Length][];
+            for (int i = 0; i < Inputs.Length; i++)
             {
-                ref readonly OrchestrationOperation operation = ref program.Operation(i);
-                maximumInputs = Math.Max(maximumInputs, operation.Inputs.Count);
-                maximumOutputs = Math.Max(maximumOutputs, operation.OutputCount);
-                foreach (ref readonly OrchestrationHookBinding hook in program.Hooks(i))
-                    maximumInputs = Math.Max(maximumInputs, hook.Inputs.Count);
+                Inputs[i] = new TValue[workspace.InputCounts.Span[i]];
+                Outputs[i] = new TValue[workspace.OutputCounts.Span[i]];
             }
-            Inputs = new TValue[depth][];
-            Outputs = new TValue[depth][];
-            for (int i = 0; i < depth; i++)
-            {
-                Inputs[i] = new TValue[maximumInputs];
-                Outputs[i] = new TValue[maximumOutputs];
-            }
-            ActiveValues = new bool[program.ValueEvaluationSlotCount];
-            ForceStopVisited = new bool[checked(executionFrameCapacity * program.OperationCount)];
-            GraphCallEntries = new GraphCallContext[depth];
-            States = new StateContext[depth];
-            StateAncestors = new OrchestrationStateAncestor[program.OperationCount];
-            InputObservations = new TValue[program.InputBindingCount];
-            InputObservationWritten = new bool[program.InputBindingCount];
-            OutputObservations = new TValue[program.ValueEvaluationSlotCount];
-            OutputObservationWritten = new bool[program.ValueEvaluationSlotCount];
+            ForceStopVisited = new bool[checked(m_ExecutionFrameCapacity * program.OperationCount)];
+            GraphCallEntries = new GraphCallContext[workspace.GraphCallDepth];
+            States = new StateContext[workspace.StateDepth];
+            StateAncestors = new OrchestrationStateAncestor[workspace.StateAncestorCount];
             OrchestrationProgramOutputCapacity output = tickCapacity.CursorOutputs;
             OutputRequests = new OrchestrationOutputRequest[output.RequestCount];
             OutputValues = new TValue[output.ValueCount];
-            PrepareInvocationBindings(executionFrameCapacity);
         }
 
         public ReadOnlySpan<TValue> ObservedInputs => InputObservations;
@@ -81,20 +68,34 @@ namespace BTSMTL.Orchestration
         public int OutputValueCapacity => OutputValues.Length;
         public ReadOnlyMemory<OrchestrationGraphSource> TraceSources => m_Content.Sources;
 
+        public void PrepareValueCapture()
+        {
+            if (InputObservations != null)
+                return;
+            InputObservations = new TValue[m_Program.InputBindingCount];
+            InputObservationWritten = new bool[m_Program.InputBindingCount];
+            OutputObservations = new TValue[m_Program.ValueEvaluationSlotCount];
+            OutputObservationWritten = new bool[m_Program.ValueEvaluationSlotCount];
+            PrepareInvocationBindings();
+        }
+
         public void PrepareTraceCapture(OrchestrationProgramTickCapacity capacity)
         {
+            PrepareInvocationBindings();
             OrchestrationTraceCapacity trace = capacity.CursorTrace;
             TraceEvents = new OrchestrationTraceEvent<TValue>[checked((int)trace.Events)];
             StateFrames = new OrchestrationStateTraceFrame[checked((int)trace.StateFrames)];
             TraceContexts = new OrchestrationTraceContext[checked((int)trace.Contexts)];
         }
 
-        void PrepareInvocationBindings(int frames)
+        public void PrepareInvocationBindings()
         {
+            if (TraceBindings != null)
+                return;
             TraceBindings = new TraceBinding[m_Program.OperationCount];
-            TraceFrameEntries = new int[frames];
-            TraceBorrowedFrameEntries = new int[frames];
-            TraceEntryScopes = new TraceEntryScope[States.Length];
+            TraceFrameEntries = new int[m_ExecutionFrameCapacity];
+            TraceBorrowedFrameEntries = new int[m_ExecutionFrameCapacity];
+            TraceEntryScopes = new TraceEntryScope[m_Program.Content.WorkspaceCapacity.EntryDepth];
             ReadOnlySpan<OrchestrationGraphSource> sources = m_Content.Sources.Span;
             var groupIndexes = new Dictionary<string, int>(StringComparer.Ordinal);
             var groups = new List<List<int>>();
@@ -155,6 +156,13 @@ namespace BTSMTL.Orchestration
         {
             OutputRequestCount = 0;
             OutputValueCount = 0;
+        }
+
+        internal struct ScheduledPrediction
+        {
+            internal int PreviousFrame;
+            internal int PreviousOperation;
+            internal bool SelectedFrame;
         }
 
         internal struct StateContext

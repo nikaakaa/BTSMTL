@@ -7,29 +7,32 @@ namespace BTSMTL.Graphs
 {
     public static class GraphCompiledValues
     {
-        public static OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>
-            ToState<TScalar, TVector2, TVector3, TYaw, TQuaternion, TNumeric>(
+        public static TValue
+            ToState<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TNumeric>(
                 in GraphHostValue value, int enumTypeContentId, in OrchestrationIdentityValue identity)
+            where TValue : unmanaged
             where TScalar : unmanaged
             where TVector2 : unmanaged
             where TVector3 : unmanaged
             where TYaw : unmanaged
             where TQuaternion : unmanaged
+            where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
             where TNumeric : struct, IGraphNumericAdapter<TScalar, TVector2, TVector3, TQuaternion> =>
-            GraphNumericValues<TScalar, TVector2, TVector3, TYaw, TQuaternion, TNumeric>
+            GraphNumericValues<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TNumeric>
                 .ToState(in value, enumTypeContentId, in identity);
 
         public static GraphHostValue
-            FromState<TScalar, TVector2, TVector3, TYaw, TQuaternion, TNumeric>(
-                in OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion> value,
-                Type enumType, string identity)
+            FromState<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TNumeric>(
+                in TValue value, Type enumType, string identity)
+            where TValue : unmanaged
             where TScalar : unmanaged
             where TVector2 : unmanaged
             where TVector3 : unmanaged
             where TYaw : unmanaged
             where TQuaternion : unmanaged
+            where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
             where TNumeric : struct, IGraphNumericAdapter<TScalar, TVector2, TVector3, TQuaternion> =>
-            GraphNumericValues<TScalar, TVector2, TVector3, TYaw, TQuaternion, TNumeric>
+            GraphNumericValues<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TNumeric>
                 .FromState(in value, enumType, identity);
 
         public static string TypeIdentity(Type type)
@@ -70,17 +73,20 @@ namespace BTSMTL.Graphs
                 _ => throw new InvalidOperationException($"事件图类型身份 '{identity}' 不受支持。")
             };
         }
+
     }
 
-    internal static class GraphNumericValues<TScalar, TVector2, TVector3, TYaw, TQuaternion, TNumeric>
+    internal static class GraphNumericValues<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TNumeric>
+        where TValue : unmanaged
         where TScalar : unmanaged
         where TVector2 : unmanaged
         where TVector3 : unmanaged
         where TYaw : unmanaged
         where TQuaternion : unmanaged
+        where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
         where TNumeric : struct, IGraphNumericAdapter<TScalar, TVector2, TVector3, TQuaternion>
     {
-        internal static Type ValueType(in OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion> value, OrchestrationIdentityTable identities) => value.Kind switch
+        internal static Type ValueType(in TValue value, OrchestrationIdentityTable identities) => default(TValues).Kind(in value) switch
         {
             OrchestrationValueKind.Boolean => typeof(bool),
             OrchestrationValueKind.Int32 => typeof(int),
@@ -89,36 +95,36 @@ namespace BTSMTL.Graphs
             OrchestrationValueKind.Vector3 => typeof(Vector3),
             OrchestrationValueKind.Quaternion => typeof(Quaternion),
             OrchestrationValueKind.Identity => typeof(string),
-            OrchestrationValueKind.Enum => Type.GetType(identities.Resolve(value.Enum.TypeContentId), true),
-            _ => throw new InvalidOperationException($"事件图状态类型 '{value.Kind}' 不受支持。")
+            OrchestrationValueKind.Enum => Type.GetType(identities.Resolve(default(TValues).Enum(in value).TypeContentId), true),
+            _ => throw new InvalidOperationException($"事件图状态类型 '{default(TValues).Kind(in value)}' 不受支持。")
         };
 
-        internal static OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion> ToState(in GraphHostValue value, int enumTypeContentId,
+        internal static TValue ToState(in GraphHostValue value, int enumTypeContentId,
             in OrchestrationIdentityValue identity) => value.Kind switch
         {
-            GraphHostValueKind.Bool => OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>.FromBoolean(value.BoolValue),
-            GraphHostValueKind.Int32 => OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>.FromInt32(value.Int32Value),
-            GraphHostValueKind.Float32 => OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>.FromScalar(default(TNumeric).FromSingle(value.Float32Value)),
-            GraphHostValueKind.Vector2 => OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>.FromVector2(default(TNumeric).FromUnityVector2(value.Vector2Value)),
-            GraphHostValueKind.Vector3 => OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>.FromVector3(default(TNumeric).FromUnityVector3(value.Vector3Value)),
-            GraphHostValueKind.Quaternion => OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>.FromQuaternion(default(TNumeric).FromUnityQuaternion(value.QuaternionValue)),
-            GraphHostValueKind.Enum => OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>.FromEnum(new OrchestrationEnumValue(enumTypeContentId, value.EnumValue)),
-            GraphHostValueKind.Text => OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>.FromIdentity(identity),
+            GraphHostValueKind.Bool => default(TValues).FromBoolean(value.BoolValue),
+            GraphHostValueKind.Int32 => default(TValues).FromInt32(value.Int32Value),
+            GraphHostValueKind.Float32 => default(TValues).FromScalar(default(TNumeric).FromSingle(value.Float32Value)),
+            GraphHostValueKind.Vector2 => default(TValues).FromVector2(default(TNumeric).FromUnityVector2(value.Vector2Value)),
+            GraphHostValueKind.Vector3 => default(TValues).FromVector3(default(TNumeric).FromUnityVector3(value.Vector3Value)),
+            GraphHostValueKind.Quaternion => default(TValues).FromQuaternion(default(TNumeric).FromUnityQuaternion(value.QuaternionValue)),
+            GraphHostValueKind.Enum => default(TValues).FromEnum(new OrchestrationEnumValue(enumTypeContentId, value.EnumValue)),
+            GraphHostValueKind.Text => default(TValues).FromIdentity(identity),
             _ => throw new InvalidOperationException($"事件图输入类型 '{value.Kind}' 不受支持。")
         };
 
-        internal static GraphHostValue FromState(in OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion> value, Type enumType,
-            string identity) => value.Kind switch
+        internal static GraphHostValue FromState(in TValue value, Type enumType,
+            string identity) => default(TValues).Kind(in value) switch
         {
-            OrchestrationValueKind.Boolean => GraphHostValue.FromBool(value.Boolean),
-            OrchestrationValueKind.Int32 => GraphHostValue.FromInt32(value.Int32),
-            OrchestrationValueKind.Scalar => GraphHostValue.FromFloat32(default(TNumeric).ToSingle(value.Scalar)),
-            OrchestrationValueKind.Vector2 => GraphHostValue.FromVector2(default(TNumeric).ToUnityVector2(value.Vector2)),
-            OrchestrationValueKind.Vector3 => GraphHostValue.FromVector3(default(TNumeric).ToUnityVector3(value.Vector3)),
-            OrchestrationValueKind.Quaternion => GraphHostValue.FromQuaternion(default(TNumeric).ToUnityQuaternion(value.Quaternion)),
-            OrchestrationValueKind.Enum => GraphHostValue.FromEnum(enumType, value.Enum.Value),
+            OrchestrationValueKind.Boolean => GraphHostValue.FromBool(default(TValues).Boolean(in value)),
+            OrchestrationValueKind.Int32 => GraphHostValue.FromInt32(default(TValues).Int32(in value)),
+            OrchestrationValueKind.Scalar => GraphHostValue.FromFloat32(default(TNumeric).ToSingle(default(TValues).Scalar(in value))),
+            OrchestrationValueKind.Vector2 => GraphHostValue.FromVector2(default(TNumeric).ToUnityVector2(default(TValues).Vector2(in value))),
+            OrchestrationValueKind.Vector3 => GraphHostValue.FromVector3(default(TNumeric).ToUnityVector3(default(TValues).Vector3(in value))),
+            OrchestrationValueKind.Quaternion => GraphHostValue.FromQuaternion(default(TNumeric).ToUnityQuaternion(default(TValues).Quaternion(in value))),
+            OrchestrationValueKind.Enum => GraphHostValue.FromEnum(enumType, default(TValues).Enum(in value).Value),
             OrchestrationValueKind.Identity => GraphHostValue.FromText(identity),
-            _ => throw new InvalidOperationException($"事件图输出类型 '{value.Kind}' 不受支持。")
+            _ => throw new InvalidOperationException($"事件图输出类型 '{default(TValues).Kind(in value)}' 不受支持。")
         };
     }
 }

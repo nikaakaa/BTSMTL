@@ -28,6 +28,7 @@ namespace BTSMTL.Orchestration
         public bool CaptureValues { get; }
         public Span<OrchestrationValueOverride<TValue>> Overrides { get; }
         public IOrchestrationValueObservationSink<TValue> Observations { get; }
+        public bool HasDiagnostics => CaptureTrace || CaptureValues || Observations != null || !Overrides.IsEmpty;
     }
 
     public interface IOrchestrationValueObservationSink<TValue> where TValue : unmanaged

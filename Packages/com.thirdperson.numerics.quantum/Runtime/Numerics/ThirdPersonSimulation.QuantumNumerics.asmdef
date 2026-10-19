@@ -2,7 +2,7 @@
     "name": "ThirdPersonSimulation.QuantumNumerics",
     "rootNamespace": "ThirdPersonSimulation.QuantumNumerics",
     "references": [
-        "ThirdPerson.Shared.Contracts", "BTSMTL.Foundation"
+        "ThirdPerson.Shared.Contracts", "BTSMTL.Foundation", "BTSMTL.Orchestration.Contracts"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

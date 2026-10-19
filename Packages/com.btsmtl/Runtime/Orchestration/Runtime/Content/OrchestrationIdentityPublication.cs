@@ -20,8 +20,8 @@ namespace BTSMTL.Orchestration
             var sortedIdentityIds = new int[values.Length];
             for (int i = 0; i < sortedIdentityIds.Length; i++)
                 sortedIdentityIds[i] = i + 1;
-            var tableIdentity = OrchestrationIdentityContentHash.Table(values);
-            return new OrchestrationIdentityTable(values, sortedIdentityIds, () => tableIdentity);
+            return new OrchestrationIdentityTable(values, sortedIdentityIds,
+                () => OrchestrationIdentityContentHash.Table(values));
         }
 
         public static OrchestrationIdentityTable Extend(OrchestrationIdentityTable baseline,

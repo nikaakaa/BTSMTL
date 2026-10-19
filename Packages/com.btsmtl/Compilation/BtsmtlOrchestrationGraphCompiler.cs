@@ -62,6 +62,14 @@ namespace BTSMTL.Compilation
         TQuaternion QuaternionIdentity { get; }
     }
 
+    public sealed class OrchestrationNumericLoweringException : Exception
+    {
+        public OrchestrationNumericLoweringException(string sourceIdentity, string message) : base(message) =>
+            SourceIdentity = sourceIdentity;
+
+        public string SourceIdentity { get; }
+    }
+
     public readonly struct BtsmtlFloat32OrchestrationLowering :
         IBtsmtlOrchestrationNumericLowering<Float32Scalar, Float32Vector2, Float32Vector3, Float32Yaw, Float32Quaternion>
     {
@@ -72,7 +80,8 @@ namespace BTSMTL.Compilation
         {
             Float32ScalarConversion conversion = Float32ScalarBoundary.LowerAuthoring(value, sourceIdentity);
             if (precision == SemanticNumericPrecision.Exact && conversion.WasRounded)
-                throw new InvalidOperationException($"语义数值 '{sourceIdentity}' 无法以 Float32 精确表示。");
+                throw new OrchestrationNumericLoweringException(sourceIdentity,
+                    $"语义数值 '{sourceIdentity}' 无法以 Float32 精确表示。");
             m_Conversions.Add(conversion);
             return conversion.Value;
         }
@@ -84,7 +93,7 @@ namespace BTSMTL.Compilation
         public Float32Quaternion QuaternionIdentity => Float32Quaternion.Identity;
     }
 
-    public static class BtsmtlOrchestrationGraphCompiler
+    public static partial class BtsmtlOrchestrationGraphCompiler
     {
         internal sealed class IdentityCache
         {
@@ -107,8 +116,8 @@ namespace BTSMTL.Compilation
             internal readonly OrchestrationIdentityTable Table;
         }
 
-        public static OrchestrationGraphContent<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>
-            Compile<TScalar, TVector2, TVector3, TYaw, TQuaternion, TLowering>(
+        public static OrchestrationGraphContent<TValue>
+            Compile<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TLowering>(
                 IReadOnlyList<SemanticOperation> operations, IReadOnlyList<SemanticLiteral> literals,
                 IReadOnlyList<SemanticConstantInputBinding> constantInputs,
                 IReadOnlyList<ProgramControlFlowEdge> controlFlow, IReadOnlyList<ProgramReference> references,
@@ -118,25 +127,30 @@ namespace BTSMTL.Compilation
                 GraphExecutionIdentity identity, OrchestrationExecutionContract contract,
                 IReadOnlyList<OrchestrationExtensionReference> stateTransitionHooks,
                 TLowering lowering,
-                BtsmtlOrchestrationCompilationDomain<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>, TScalar> domain,
+                BtsmtlOrchestrationCompilationDomain<TValue, TScalar> domain,
+                SimulationCompileReport report,
                 IReadOnlyDictionary<string, OrchestrationExecutionContract> entryContracts = null)
+            where TValue : unmanaged
             where TScalar : unmanaged, IComparable<TScalar>, IEquatable<TScalar>
             where TVector2 : unmanaged
             where TVector3 : unmanaged
             where TYaw : unmanaged
             where TQuaternion : unmanaged
+            where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
             where TLowering : struct, IBtsmtlOrchestrationNumericLowering<TScalar, TVector2, TVector3, TYaw, TQuaternion> =>
-            new Compilation<TScalar, TVector2, TVector3, TYaw, TQuaternion, TLowering>(
+            new Compilation<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TLowering>(
                 operations, literals, constantInputs, controlFlow, references, graphCalls, stateSlots,
                 scopes, catalog, sourceMap, entry, identity, contract, stateTransitionHooks, lowering,
-                domain, entryContracts).Build();
+                domain, report, entryContracts).Build();
 
-        sealed class Compilation<TScalar, TVector2, TVector3, TYaw, TQuaternion, TLowering>
+        sealed partial class Compilation<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TLowering>
+            where TValue : unmanaged
             where TScalar : unmanaged, IComparable<TScalar>, IEquatable<TScalar>
             where TVector2 : unmanaged
             where TVector3 : unmanaged
             where TYaw : unmanaged
             where TQuaternion : unmanaged
+            where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
             where TLowering : struct, IBtsmtlOrchestrationNumericLowering<TScalar, TVector2, TVector3, TYaw, TQuaternion>
         {
             sealed class Port
@@ -154,16 +168,24 @@ namespace BTSMTL.Compilation
             {
                 internal Port[] Inputs;
                 internal Port[] Outputs;
+                internal Compilation<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TLowering> Owner;
+                internal int OperationIndex;
                 internal Port Input(string identity) => Find(Inputs, identity);
                 internal Port Output(string identity) => Find(Outputs, identity);
 
-                static Port Find(Port[] ports, string identity)
+                Port Find(Port[] ports, string identity)
                 {
                     for (int i = 0; i < ports.Length; i++)
                         if (ports[i].Identity == identity)
                             return ports[i];
-                    throw new InvalidOperationException($"图值端口 '{identity}' 未在正式合同中声明。");
+                    throw Owner.Invariant(ProgramSourceTargetKind.Operation, OperationIndex,
+                        $"图值端口 '{identity}' 未在正式合同中声明。");
                 }
+            }
+
+            sealed class ValueLoweringException : Exception
+            {
+                internal ValueLoweringException(string message) : base(message) { }
             }
 
             sealed class GraphInvocationFrame
@@ -185,21 +207,22 @@ namespace BTSMTL.Compilation
             readonly IReadOnlyList<ProgramScopeLayout> m_Scopes;
             readonly IReadOnlyList<ProgramCatalogEntry> m_Catalog;
             readonly IReadOnlyList<ProgramSourceMapEntry> m_SourceMap;
+            readonly SimulationCompileReport m_Report;
             readonly OperationHandle m_Entry;
             readonly GraphExecutionIdentity m_Identity;
             readonly OrchestrationExecutionContract m_Contract;
             readonly IReadOnlyDictionary<string, OrchestrationExecutionContract> m_EntryContracts;
             readonly IReadOnlyList<OrchestrationExtensionReference> m_StateTransitionHooks;
             readonly TLowering m_Lowering;
-            readonly BtsmtlOrchestrationCompilationDomain<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>, TScalar> m_Domain;
+            readonly BtsmtlOrchestrationCompilationDomain<TValue, TScalar> m_Domain;
             readonly IdentityCache m_PreviousIdentities;
             readonly Dictionary<(string GraphId, string InvocationPath, string Template), string> m_OperationIdentityTexts = new();
             readonly Dictionary<(string GraphId, string SourceInvocationPath, string InvocationPath,
                 string SourceGraphId, string TimelineId, string TrackId, string ClipId,
                 ProgramInvocationCallerKind CallerKind, string CallerId, string CallerClipId), string> m_InvocationIdentityTexts = new();
             readonly Dictionary<(int Operation, string Port), string> m_ConstantOutputIdentities = new();
-            readonly List<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> m_Constants = new();
-            readonly List<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> m_DefaultValues = new();
+            readonly List<TValue> m_Constants = new();
+            readonly List<TValue> m_DefaultValues = new();
             readonly List<OrchestrationBlackboardSlot> m_Blackboards = new();
             readonly List<OrchestrationValueInputBinding> m_Inputs = new();
             readonly List<OrchestrationExtensionReference> m_Extensions = new();
@@ -208,6 +231,8 @@ namespace BTSMTL.Compilation
             readonly List<OrchestrationGraphHostInput> m_HostInputs = new();
             readonly List<OrchestrationOutputTemplate> m_OutputTemplates = new();
             readonly Dictionary<int, int> m_ConstantIndexes = new();
+            readonly Dictionary<int, TValue> m_LoweredValues = new();
+            readonly Dictionary<int, GameplayAbilityCurve<TScalar>> m_LoweredCurves = new();
             readonly HashSet<int> m_ParameterSlots = new();
             readonly Dictionary<string, GraphInvocationFrame> m_GraphInvocationFrames = new(StringComparer.Ordinal);
             OrchestrationIdentityTable m_Identities;
@@ -236,7 +261,8 @@ namespace BTSMTL.Compilation
                 GraphExecutionIdentity identity, OrchestrationExecutionContract contract,
                 IReadOnlyList<OrchestrationExtensionReference> stateTransitionHooks,
                 TLowering lowering,
-                BtsmtlOrchestrationCompilationDomain<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>, TScalar> domain,
+                BtsmtlOrchestrationCompilationDomain<TValue, TScalar> domain,
+                SimulationCompileReport report,
                 IReadOnlyDictionary<string, OrchestrationExecutionContract> entryContracts)
             {
                 m_Operations = operations;
@@ -249,6 +275,7 @@ namespace BTSMTL.Compilation
                 m_Scopes = scopes;
                 m_Catalog = catalog;
                 m_SourceMap = sourceMap;
+                m_Report = report;
                 m_Entry = entry;
                 m_Identity = identity;
                 m_Contract = contract;
@@ -259,34 +286,235 @@ namespace BTSMTL.Compilation
                 m_PreviousIdentities = Volatile.Read(ref domain.Identities);
             }
 
-            internal OrchestrationGraphContent<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> Build()
+            internal OrchestrationGraphContent<TValue> Build()
             {
                 BuildExecutionIdentities();
+                ValidateDomain();
                 m_Identities = OrchestrationIdentityPublication.Create(IdentityTexts(), m_PreviousIdentities?.Table);
                 m_IdentityIds = new Dictionary<string, int>(m_Identities.Count, StringComparer.Ordinal);
                 for (int i = 0; i < m_Identities.Count; i++)
                     m_IdentityIds.Add(m_Identities.Entries.Span[i], i + 1);
                 BuildPorts();
                 BuildExecutionFrameOwners();
-                BuildValueSlots();
                 BuildHostInputs();
+                ValidateInputs();
+                int[] parents = BuildParentStates();
+                PrepareValues();
+                if (!m_Report.IsValid)
+                    throw new InvalidOperationException($"图 '{m_Identity.GraphId}' 编排编译失败：{string.Join("；", m_Report.Messages)}");
+                BuildValueSlots();
                 BuildExtensions();
                 BuildStateTransitionHooks();
                 BuildInputs();
                 BuildOutputAssignments();
-                OrchestrationOperation[] operations = BuildOperations();
-                var program = new OrchestrationProgramContent<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>(
-                    operations, BuildControlFlow(), m_Inputs.ToArray(), m_Constants.ToArray(), m_DefaultValues.ToArray(),
+                OperationDraft[] operations = BuildOperations(parents);
+                OrchestrationFlowEdge[] controlFlow = BuildControlFlow();
+                var corePorts = new OrchestrationCorePorts(Bind("AnyState"), Bind("OnEnter"),
+                    Bind("Root"), Bind("OnExit"), Bind("True"), Bind("False"), Bind("Then"), Bind("Reset"));
+                OrchestrationProgramStructure structure = BuildProgramStructure(operations, controlFlow, corePorts);
+                ValidateValueDependencies(operations, controlFlow, structure);
+                BuildTypedValues(operations, controlFlow, structure);
+                OrchestrationAssignmentOpcode[] assignments = BuildTypedAssignments(operations);
+                if (!m_Report.IsValid)
+                    throw new InvalidOperationException($"图 '{m_Identity.GraphId}' 编排编译失败：{string.Join("；", m_Report.Messages)}");
+                OrchestrationValueSlotType[] valueSlotTypes = BuildValueSlotTypes(out int[] valueKindSlotCounts);
+                OrchestrationValueSchedule valueSchedule = BuildValueSchedule(operations, controlFlow, structure);
+                OrchestrationGraphEntry[] entries = BuildEntries();
+                OrchestrationWorkspaceCapacity workspaceCapacity = BuildWorkspaceCapacity(operations, controlFlow,
+                    structure, valueSchedule, entries);
+                BuildOperationTables(operations, assignments, out OrchestrationOperation[] hotOperations,
+                    out byte[] operationPayloads, out OrchestrationOperationColdData[] coldOperations);
+                if (!m_Report.IsValid)
+                    throw new InvalidOperationException($"图 '{m_Identity.GraphId}' 编排编译失败：{string.Join("；", m_Report.Messages)}");
+                var program = new OrchestrationProgramContent<TValue>(
+                    hotOperations, operationPayloads, coldOperations, controlFlow, structure, valueSchedule,
+                    workspaceCapacity, m_Inputs.ToArray(), m_Constants.ToArray(), m_DefaultValues.ToArray(),
+                    valueSlotTypes, valueKindSlotCounts,
                     BuildGraphCalls(), m_LifecycleHooks.ToArray(), Array.Empty<OrchestrationHookInput>(), m_Blackboards.ToArray(),
-                    m_BlackboardOutputs.ToArray(), m_OutputTemplates.ToArray(), new OrchestrationCorePorts(Bind("AnyState"), Bind("OnEnter"),
-                        Bind("Root"), Bind("OnExit"), Bind("True"), Bind("False"), Bind("Then"), Bind("Reset")),
+                    m_BlackboardOutputs.ToArray(), m_OutputTemplates.ToArray(), corePorts,
                     m_Entry.Value, checked(Math.Max(1024, m_Operations.Count * 128)));
-                var content = new OrchestrationGraphContent<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>(
-                    m_Identity, m_Lowering.Profile, m_Identities, program, m_Extensions.ToArray(), BuildOperationContents(), BuildEntries(),
+                var content = new OrchestrationGraphContent<TValue>(
+                    m_Identity, m_Lowering.Profile, m_Identities, program, m_Extensions.ToArray(), BuildOperationContents(), entries,
                     BuildVariables(), BuildGeneratedBlackboards(), m_HostInputs.ToArray(), BuildPortMetadata(), BuildSources());
                 Volatile.Write(ref m_Domain.Identities,
                     new IdentityCache(m_OperationIdentityTexts, m_InvocationIdentityTexts, m_Identities));
                 return content;
+            }
+
+            string SourceLocation(ProgramSourceTargetKind kind, int index, string portId = null,
+                ProgramValuePortDirection direction = ProgramValuePortDirection.None)
+            {
+                if (kind == ProgramSourceTargetKind.Operation && portId != null)
+                    foreach (ProgramSourceMapEntry entry in m_SourceMap)
+                        if (entry.Source.TargetKind == ProgramSourceTargetKind.OperationPort &&
+                            entry.Source.TargetIndex == index && entry.Source.CompiledPortId == portId &&
+                            entry.Source.ValuePortDirection == direction)
+                            return Describe(entry, portId);
+                foreach (ProgramSourceMapEntry entry in m_SourceMap)
+                    if (entry.Source.TargetKind == kind && entry.Source.TargetIndex == index)
+                        return Describe(entry, portId);
+                return kind == ProgramSourceTargetKind.Operation
+                    ? $"graph:{m_Identity.GraphId}/operation:{index}/template:{m_Operations[index].TemplateIdentity}（SourceMap 缺失）"
+                    : $"graph:{m_Identity.GraphId}/{kind}:{index}（SourceMap 缺失）";
+            }
+
+            static string Describe(ProgramSourceMapEntry entry, string portId)
+            {
+                ProgramExecutionSource source = entry.Source;
+                var location = new SimulationSourceLocation(entry.SourceType, source.GraphId, source.NodeId,
+                    source.EdgeId, source.TimelineId, source.ClipId, entry.DisplayPath, source.TrackId,
+                    source.DeclarationId, source.PortId);
+                return $"{location.ImmutableDataIdentity} [路径:{entry.DisplayPath}; 调用:{source.GraphInvocationPath}; 编译端口:{portId}]";
+            }
+
+            void Error(string code, ProgramSourceTargetKind kind, int index, string message,
+                string portId = null, ProgramValuePortDirection direction = ProgramValuePortDirection.None) =>
+                m_Report.ArtifactError(code, SourceLocation(kind, index, portId, direction), message);
+
+            InvalidOperationException Invariant(ProgramSourceTargetKind kind, int index, string message) =>
+                new InvalidOperationException($"{SourceLocation(kind, index)}: {message}");
+
+            void ValidateDomain()
+            {
+                if (!m_Domain.ActionInstanceBlackboard.HasValue)
+                    foreach (ProgramScopeLayout scope in m_Scopes)
+                        if (scope.Kind == ProgramScopeKind.ActionInstance)
+                            foreach (int slot in scope.StateSlots)
+                                if (m_StateSlots[slot].Semantic == ProgramStateSemantic.BlackboardValue)
+                                    Error("action_blackboard_extension_missing", ProgramSourceTargetKind.StateSlot, slot,
+                                        $"ActionInstance 黑板作用域 '{scope.Identity}' 缺少编译领域的实例黑板扩展。");
+                if (m_Domain.ContentEncoder == null)
+                    for (int i = 0; i < m_Operations.Count; i++)
+                        if (m_Operations[i].Extension.HasValue)
+                            Error("extension_content_encoder_missing", ProgramSourceTargetKind.Operation, i,
+                                "扩展操作缺少编译领域的作者内容编码器。");
+            }
+
+            void ValidateInputs()
+            {
+                var assigned = new HashSet<(int Operation, int Port)>();
+                for (int i = 0; i < m_ControlFlow.Count; i++)
+                {
+                    ProgramControlFlowEdge edge = m_ControlFlow[i];
+                    if (edge.Kind != ProgramControlFlowKind.Value)
+                        continue;
+                    Port source = m_Ports[edge.Source.Value].Output(edge.SourcePort);
+                    Port target = m_Ports[edge.Target.Value].Input(edge.TargetPort);
+                    ValidateInputOwner(edge.Target.Value, target);
+                    if (TryOutputKind(edge.Source.Value, source, out OrchestrationValueKind kind))
+                        ValidateInputKind(edge.Target.Value, target, kind);
+                }
+                foreach (SemanticConstantInputBinding input in m_ConstantInputs)
+                {
+                    Port target = m_Ports[input.TargetOperation.Value].Input(input.TargetPort);
+                    ValidateInputOwner(input.TargetOperation.Value, target);
+                    ValidateInputKind(input.TargetOperation.Value, target, Kind(input.ResolvedValueKind));
+                }
+                for (int i = 0; i < m_Operations.Count; i++)
+                {
+                    foreach (SemanticBlackboardPortBinding input in m_Operations[i].BlackboardInputs)
+                    {
+                        Port target = m_Ports[i].Input(input.PortId);
+                        ValidateInputOwner(i, target);
+                        ValidateInputKind(i, target, Kind(input.ValueKind));
+                    }
+                    foreach (SemanticDerivedInput input in m_Operations[i].DerivedInputs)
+                    {
+                        Port target = m_Ports[i].Input(input.PortId);
+                        ValidateInputOwner(i, target);
+                        ValidateInputKind(i, target, Kind(input.ValueKind));
+                        if (input.Source == SemanticDerivedInputSource.SelfOutput &&
+                            (input.SourceOutputPortIndex < 0 || input.SourceOutputPortIndex >= ExecutionOutputCount(i)))
+                            Error("derived_output_port_invalid", ProgramSourceTargetKind.Operation, i,
+                                $"自输出输入 '{input.PortId}' 指向未声明的输出端口 '{input.SourceOutputPortIndex}'。",
+                                input.PortId, ProgramValuePortDirection.Input);
+                    }
+                }
+
+                void ValidateInputOwner(int operationIndex, Port port)
+                {
+                    if (!assigned.Add((operationIndex, port.Index)))
+                        Error("value_input_multiple_sources", ProgramSourceTargetKind.Operation, operationIndex,
+                            $"输入端口 '{port.Identity}' 连接了多个来源。", port.Identity, ProgramValuePortDirection.Input);
+                }
+            }
+
+            void PrepareValues()
+            {
+                var values = new SortedSet<int>();
+                var curves = new SortedSet<int>();
+                foreach (ProgramStateSlot slot in m_StateSlots)
+                    if (slot.Semantic == ProgramStateSemantic.BlackboardValue && slot.DefaultConstantIndex >= 0)
+                        values.Add(slot.DefaultConstantIndex);
+                foreach (SemanticConstantInputBinding input in m_ConstantInputs)
+                    values.Add(input.ConstantIndex);
+                foreach (SemanticOperation operation in m_Operations)
+                {
+                    if (operation.Code == OrchestrationOperationCode.Constant && operation.LiteralReferences.Count > 0)
+                        values.Add(operation.LiteralReferences[0]);
+                    foreach (SemanticConstantOutputBinding output in operation.ConstantOutputs)
+                        values.Add(output.LiteralIndex);
+                    if (!operation.Extension.HasValue)
+                        continue;
+                    foreach (SemanticPayloadField field in operation.PayloadFields)
+                        switch (m_Literals[field.LiteralIndex].Kind)
+                        {
+                            case SemanticLiteralKind.String:
+                            case SemanticLiteralKind.Enum:
+                            case SemanticLiteralKind.Identities:
+                                break;
+                            case SemanticLiteralKind.Curve:
+                                curves.Add(field.LiteralIndex);
+                                break;
+                            default:
+                                values.Add(field.LiteralIndex);
+                                break;
+                        }
+                }
+                foreach (int index in values)
+                    try
+                    {
+                        m_LoweredValues.Add(index, LowerValue(m_Literals[index]));
+                    }
+                    catch (ValueLoweringException exception)
+                    {
+                        Error("value_literal_kind_invalid", ProgramSourceTargetKind.Constant, index, exception.Message);
+                    }
+                    catch (OrchestrationNumericLoweringException exception)
+                    {
+                        Error("numeric_lowering_invalid", ProgramSourceTargetKind.Constant, index,
+                            $"数值 '{exception.SourceIdentity}' 无法降低：{exception.Message}");
+                    }
+                foreach (int index in curves)
+                    try
+                    {
+                        m_LoweredCurves.Add(index, LowerCurve(m_Literals[index]));
+                    }
+                    catch (OrchestrationNumericLoweringException exception)
+                    {
+                        Error("numeric_lowering_invalid", ProgramSourceTargetKind.Constant, index,
+                            $"曲线数值 '{exception.SourceIdentity}' 无法降低：{exception.Message}");
+                    }
+            }
+
+            TScalar LowerNumber(double value, string sourceIdentity, SemanticNumericPrecision precision)
+            {
+                try
+                {
+                    return m_Lowering.Number(value, sourceIdentity, precision);
+                }
+                catch (SimulationNumericConversionException exception)
+                {
+                    throw new OrchestrationNumericLoweringException(sourceIdentity, exception.Message);
+                }
+                catch (ArgumentOutOfRangeException exception)
+                {
+                    throw new OrchestrationNumericLoweringException(sourceIdentity, exception.Message);
+                }
+                catch (OverflowException exception)
+                {
+                    throw new OrchestrationNumericLoweringException(sourceIdentity, exception.Message);
+                }
             }
 
             IEnumerable<string> IdentityTexts()
@@ -386,9 +614,9 @@ namespace BTSMTL.Compilation
                         yield return field.IdentityDomainId;
                     }
                 }
-                if (HasActionBlackboards())
+                if (HasActionBlackboards() && m_Domain.ActionInstanceBlackboard.HasValue)
                 {
-                    OrchestrationExtensionDefinition facts = ActionInstanceBlackboard();
+                    OrchestrationExtensionDefinition facts = m_Domain.ActionInstanceBlackboard.Value;
                     yield return facts.Identity.DomainId;
                     yield return facts.Identity.OperationId;
                     for (int portIndex = 0; portIndex < facts.Contract.Ports.Length; portIndex++)
@@ -402,7 +630,7 @@ namespace BTSMTL.Compilation
                     return 0;
                 if (m_IdentityIds.TryGetValue(text, out int identity))
                     return identity;
-                throw new KeyNotFoundException($"身份文本 '{text}' 未包含在已发布内容表 '{m_Identities.Identity}' 中。");
+                throw new KeyNotFoundException($"图 '{m_Identity.GraphId}' 的身份文本 '{text}' 未包含在已发布内容表 '{m_Identities.Identity}' 中。");
             }
             void BuildExecutionIdentities()
             {
@@ -419,7 +647,7 @@ namespace BTSMTL.Compilation
                 }
                 for (int operationIndex = 0; operationIndex < m_OperationIdentities.Length; operationIndex++)
                     if (m_OperationIdentities[operationIndex] == null)
-                        throw new InvalidOperationException($"操作 '{operationIndex}' 缺少正式发生点来源。");
+                        throw Invariant(ProgramSourceTargetKind.Operation, operationIndex, "操作缺少正式发生点来源。");
             }
 
             string ExecutionIdentity(ProgramExecutionSource source, string templateIdentity)
@@ -484,18 +712,12 @@ namespace BTSMTL.Compilation
                     }
                     foreach (SemanticHostInputPort input in operation.HostInputs)
                         outputs.Find(value => value.Identity == input.OutputPortId).ValueTypeIdentity = input.ValueTypeIdentity;
-                    m_Ports[i] = new Ports { Inputs = inputs.ToArray(), Outputs = outputs.ToArray() };
+                    m_Ports[i] = new Ports { Inputs = inputs.ToArray(), Outputs = outputs.ToArray(),
+                        Owner = this, OperationIndex = i };
                 }
-                m_EvaluationOffsets = new int[m_RuntimeOperationCount + 1];
-                for (int i = 0; i < m_Operations.Count; i++)
-                    m_EvaluationOffsets[i + 1] = checked(m_EvaluationOffsets[i] + ExecutionOutputCount(i) + 1);
-                for (int i = 0; i < m_Operations.Count; i++)
-                    foreach (Port port in m_Ports[i].Outputs)
-                        if (port.ConstantIndex >= 0)
-                            m_EvaluationOffsets[port.OperationIndex + 1] = checked(m_EvaluationOffsets[port.OperationIndex] + 2);
             }
 
-            static void AddPorts(List<Port> target, IReadOnlyList<OperationValuePortDefinition> definitions)
+            void AddPorts(List<Port> target, IReadOnlyList<OperationValuePortDefinition> definitions)
             {
                 for (int i = 0; i < definitions.Count; i++)
                 {
@@ -534,11 +756,12 @@ namespace BTSMTL.Compilation
                 {
                     string path = operationInvocationPaths[i];
                     if (string.IsNullOrEmpty(path) || !m_GraphInvocationFrames.TryGetValue(path, out GraphInvocationFrame invocation))
-                        throw new InvalidOperationException($"操作 '{i}' 缺少正式图调用来源，无法发布执行帧 owner。");
+                        throw Invariant(ProgramSourceTargetKind.Operation, i, "操作缺少正式图调用来源，无法发布执行帧 owner。");
                     if (!invocation.IsTimelineOccurrence || m_Operations[i].Code != OrchestrationOperationCode.Root)
                         continue;
                     if (invocation.CanonicalRootOperationIndex >= 0)
-                        throw new InvalidOperationException($"Timeline 调用 '{path}' 有多个执行帧 Root：'{invocation.DisplayPath}'。");
+                        throw Invariant(ProgramSourceTargetKind.Operation, i,
+                            $"Timeline 调用 '{path}' 有多个执行帧 Root：'{invocation.DisplayPath}'。");
                     invocation.CanonicalRootOperationIndex = i;
                 }
                 foreach (KeyValuePair<string, GraphInvocationFrame> invocation in m_GraphInvocationFrames)
@@ -556,7 +779,7 @@ namespace BTSMTL.Compilation
                 if (invocation.IsTimelineOccurrence)
                 {
                     if (invocation.CanonicalRootOperationIndex < 0)
-                        throw new InvalidOperationException($"Timeline 调用 '{path}' 缺少执行帧 Root：'{invocation.DisplayPath}'。");
+                        throw new InvalidOperationException($"图 '{m_Identity.GraphId}' 的 Timeline 调用 '{path}' 缺少执行帧 Root：'{invocation.DisplayPath}'。");
                     owner = invocation.CanonicalRootOperationIndex;
                 }
                 else if (invocation.ParentPath.Length == 0)
@@ -564,7 +787,7 @@ namespace BTSMTL.Compilation
                 else
                 {
                     if (!m_GraphInvocationFrames.TryGetValue(invocation.ParentPath, out GraphInvocationFrame parent))
-                        throw new InvalidOperationException($"图调用 '{path}' 的父调用 '{invocation.ParentPath}' 未发布：'{invocation.DisplayPath}'。");
+                        throw new InvalidOperationException($"图 '{m_Identity.GraphId}' 的调用 '{path}' 的父调用 '{invocation.ParentPath}' 未发布：'{invocation.DisplayPath}'。");
                     owner = ResolveExecutionFrameOwner(invocation.ParentPath, parent);
                 }
                 invocation.OwnerOperationIndex = owner;
@@ -574,7 +797,8 @@ namespace BTSMTL.Compilation
             int ExecutionFrameOwner(ProgramScopeLayout scope)
             {
                 if (!m_GraphInvocationFrames.TryGetValue(scope.OwnerIdentity, out GraphInvocationFrame invocation))
-                    throw new InvalidOperationException($"黑板作用域 '{scope.Identity}' 的调用 owner '{scope.OwnerIdentity}' 未发布。");
+                    throw Invariant(ProgramSourceTargetKind.StateSlot, scope.StateSlots[0],
+                        $"黑板作用域 '{scope.Identity}' 的调用 owner '{scope.OwnerIdentity}' 未发布。");
                 return invocation.OwnerOperationIndex;
             }
 
@@ -627,6 +851,19 @@ namespace BTSMTL.Compilation
                 }
             }
 
+            OrchestrationValueSlotType[] BuildValueSlotTypes(out int[] counts)
+            {
+                var slots = new OrchestrationValueSlotType[m_DefaultValues.Count];
+                counts = new int[Enum.GetValues(typeof(OrchestrationValueKind)).Length];
+                TValues values = default;
+                for (int valueSlot = 0; valueSlot < slots.Length; valueSlot++)
+                {
+                    OrchestrationValueKind kind = values.Kind(m_DefaultValues[valueSlot]);
+                    slots[valueSlot] = new OrchestrationValueSlotType(kind, counts[(int)kind]++);
+                }
+                return slots;
+            }
+
             void BuildHostInputs()
             {
                 m_InputSlots = EmptyIndexes(m_Operations.Count);
@@ -638,7 +875,7 @@ namespace BTSMTL.Compilation
                     {
                         m_InputSlots[i] = m_HostInputs.Count;
                         foreach (SemanticHostInputPort input in operation.HostInputs)
-                            Add(input.InputId, input.ValueTypeIdentity);
+                            Add(i, input.InputId, input.ValueTypeIdentity);
                     }
                     else
                     {
@@ -646,14 +883,18 @@ namespace BTSMTL.Compilation
                         if (type == null)
                             continue;
                         m_InputSlots[i] = m_HostInputs.Count;
-                        Add(operation.Text0, type);
+                        Add(i, operation.Text0, type);
                     }
                 }
 
-                void Add(string identity, string type)
+                void Add(int operationIndex, string identity, string type)
                 {
                     if (inputTypes.TryGetValue(identity, out string existing) && existing != type)
-                        throw new InvalidOperationException($"宿主输入 '{identity}' 同时声明了 '{existing}' 与 '{type}'。");
+                    {
+                        Error("host_input_type_conflict", ProgramSourceTargetKind.Operation, operationIndex,
+                            $"宿主输入 '{identity}' 同时声明了 '{existing}' 与 '{type}'。");
+                        return;
+                    }
                     inputTypes[identity] = type;
                     m_HostInputs.Add(new OrchestrationGraphHostInput(Bind(identity), Bind(type), m_HostInputs.Count));
                 }
@@ -689,15 +930,11 @@ namespace BTSMTL.Compilation
                     if (!UsesActionBlackboard(i) && !observers.Contains(i))
                         continue;
                     if (factsBinding < 0)
-                        factsBinding = AddExtension(ActionInstanceBlackboard()
+                        factsBinding = AddExtension(m_Domain.ActionInstanceBlackboard.Value
                             .CreateReference(0, m_Identity.GraphId + "/action-blackboard-facts"));
                     m_BlackboardFactsIndexes[i] = factsBinding;
                 }
             }
-
-            OrchestrationExtensionDefinition ActionInstanceBlackboard() =>
-                m_Domain.ActionInstanceBlackboard ?? throw new InvalidOperationException(
-                    $"图 '{m_Identity.GraphId}' 声明了 ActionInstance 作用域黑板，编译领域必须提供对应扩展。");
 
             bool HasActionBlackboards()
             {
@@ -756,19 +993,17 @@ namespace BTSMTL.Compilation
                         continue;
                     Port source = m_Ports[edge.Source.Value].Output(edge.SourcePort);
                     Port target = m_Ports[edge.Target.Value].Input(edge.TargetPort);
-                    OrchestrationValueKind kind = OutputKind(edge.Source.Value, source);
-                    RequireInputKind(edge.Target.Value, target, kind);
-                    AddInput(grouped, edge.Target.Value, target.Index, new OrchestrationValueInputBinding(
-                        target.Index, kind, OrchestrationValueInputSource.Operation, source.OperationIndex, source.Index));
+                    OrchestrationValueKind kind = source.Kind;
+                    grouped[edge.Target.Value][target.Index] = new OrchestrationValueInputBinding(
+                        target.Index, kind, OrchestrationValueInputSource.Operation, source.OperationIndex, source.Index);
                 }
                 for (int i = 0; i < m_ConstantInputs.Count; i++)
                 {
                     SemanticConstantInputBinding input = m_ConstantInputs[i];
                     Port target = m_Ports[input.TargetOperation.Value].Input(input.TargetPort);
                     OrchestrationValueKind kind = Kind(input.ResolvedValueKind);
-                    RequireInputKind(input.TargetOperation.Value, target, kind);
-                    AddInput(grouped, input.TargetOperation.Value, target.Index, new OrchestrationValueInputBinding(
-                        target.Index, kind, OrchestrationValueInputSource.Constant, LowerConstant(input.ConstantIndex), -1));
+                    grouped[input.TargetOperation.Value][target.Index] = new OrchestrationValueInputBinding(
+                        target.Index, kind, OrchestrationValueInputSource.Constant, LowerConstant(input.ConstantIndex), -1);
                 }
                 m_InputRanges = new OrchestrationRange[m_Operations.Count];
                 for (int i = 0; i < grouped.Length; i++)
@@ -776,16 +1011,16 @@ namespace BTSMTL.Compilation
                     foreach (SemanticBlackboardPortBinding input in m_Operations[i].BlackboardInputs)
                     {
                         Port target = m_Ports[i].Input(input.PortId);
-                        AddInput(grouped, i, target.Index, new OrchestrationValueInputBinding(target.Index, Kind(input.ValueKind),
-                            OrchestrationValueInputSource.Blackboard, ValueSlot(BoundStateSlot(i, input.PortId)), -1));
+                        grouped[i][target.Index] = new OrchestrationValueInputBinding(target.Index, Kind(input.ValueKind),
+                            OrchestrationValueInputSource.Blackboard, ValueSlot(BoundStateSlot(i, input.PortId)), -1);
                     }
                     foreach (SemanticDerivedInput input in m_Operations[i].DerivedInputs)
                     {
                         Port target = m_Ports[i].Input(input.PortId);
                         OrchestrationValueInputSource source = input.Source == SemanticDerivedInputSource.SelfOutput
                             ? OrchestrationValueInputSource.Operation : OrchestrationValueInputSource.StateCompletionTransition;
-                        AddInput(grouped, i, target.Index, new OrchestrationValueInputBinding(target.Index, Kind(input.ValueKind),
-                            source, input.Source == SemanticDerivedInputSource.SelfOutput ? i : -1, input.SourceOutputPortIndex));
+                        grouped[i][target.Index] = new OrchestrationValueInputBinding(target.Index, Kind(input.ValueKind),
+                            source, input.Source == SemanticDerivedInputSource.SelfOutput ? i : -1, input.SourceOutputPortIndex);
                     }
                     int offset = m_Inputs.Count;
                     for (int port = 0; port < grouped[i].Length; port++)
@@ -795,42 +1030,56 @@ namespace BTSMTL.Compilation
                 }
             }
 
-            static void AddInput(OrchestrationValueInputBinding?[][] groups, int operationIndex, int portIndex,
-                OrchestrationValueInputBinding binding)
-            {
-                if (groups[operationIndex][portIndex].HasValue)
-                    throw new InvalidOperationException($"节点 '{operationIndex}' 输入端口 '{portIndex}' 连接了多个来源。");
-                groups[operationIndex][portIndex] = binding;
-            }
-
-            OrchestrationValueKind OutputKind(int operationIndex, Port port)
+            bool TryOutputKind(int operationIndex, Port port, out OrchestrationValueKind kind)
             {
                 if (port.Kind != 0)
-                    return port.Kind;
+                {
+                    kind = port.Kind;
+                    return true;
+                }
                 SemanticOperation operation = m_Operations[operationIndex];
                 if (operation.Code == OrchestrationOperationCode.BlackboardGet)
-                    return Kind(m_StateSlots[StateReference(operationIndex)].ValueKind);
-                if (operation.Code == OrchestrationOperationCode.Constant)
-                    return Kind(OrchestrationValuePortContracts.FromLiteral(m_Literals[operation.LiteralReferences[0]].Kind));
-                throw new InvalidOperationException($"节点 '{operationIndex}' 输出 '{port.Identity}' 未声明实际值类型。");
+                    kind = Kind(m_StateSlots[StateReference(operationIndex)].ValueKind);
+                else if (operation.Code == OrchestrationOperationCode.Constant)
+                {
+                    SemanticLiteralKind literalKind = m_Literals[operation.LiteralReferences[0]].Kind;
+                    if (literalKind == SemanticLiteralKind.Curve || literalKind == SemanticLiteralKind.Identities)
+                    {
+                        kind = default;
+                        return false;
+                    }
+                    kind = Kind(OrchestrationValuePortContracts.FromLiteral(literalKind));
+                }
+                else
+                {
+                    Error("value_output_kind_missing", ProgramSourceTargetKind.Operation, operationIndex,
+                        $"输出端口 '{port.Identity}' 未声明实际值类型。", port.Identity, ProgramValuePortDirection.Output);
+                    kind = default;
+                    return false;
+                }
+                port.Kind = kind;
+                return true;
             }
 
-            void RequireInputKind(int operationIndex, Port port, OrchestrationValueKind kind)
+            void ValidateInputKind(int operationIndex, Port port, OrchestrationValueKind kind)
             {
                 if (port.Kind != 0)
                 {
                     if (port.Kind != kind)
-                        throw new InvalidOperationException($"节点 '{operationIndex}' 输入 '{port.Identity}' 需要 '{port.Kind}'，连接值为 '{kind}'。");
+                        Error("value_input_kind_mismatch", ProgramSourceTargetKind.Operation, operationIndex,
+                            $"输入 '{port.Identity}' 需要 '{port.Kind}'，连接值为 '{kind}'。", port.Identity, ProgramValuePortDirection.Input);
                     return;
                 }
                 if (m_Operations[operationIndex].Code == OrchestrationOperationCode.BlackboardSet)
                 {
                     if (Kind(m_StateSlots[StateReference(operationIndex)].ValueKind) != kind)
-                        throw new InvalidOperationException($"节点 '{operationIndex}' 黑板输入值 '{kind}' 与声明不匹配。");
+                        Error("blackboard_input_kind_mismatch", ProgramSourceTargetKind.Operation, operationIndex,
+                            $"黑板输入值 '{kind}' 与声明不匹配。", port.Identity, ProgramValuePortDirection.Input);
                     return;
                 }
                 if (!port.AuthorDefinition.Accepts(OrchestrationValuePortContracts.FromOrchestrationKind(kind)))
-                    throw new InvalidOperationException($"节点 '{operationIndex}' 输入 '{port.Identity}' 不接受 '{kind}'。");
+                    Error("value_input_kind_rejected", ProgramSourceTargetKind.Operation, operationIndex,
+                        $"输入 '{port.Identity}' 不接受 '{kind}'。", port.Identity, ProgramValuePortDirection.Input);
             }
 
             void BuildOutputAssignments()
@@ -846,15 +1095,12 @@ namespace BTSMTL.Compilation
                 }
             }
 
-            OrchestrationOperation[] BuildOperations()
+            OperationDraft[] BuildOperations(int[] parents)
             {
-                int[] parents = BuildParentStates();
-                var result = new OrchestrationOperation[m_RuntimeOperationCount];
+                var result = new OperationDraft[m_RuntimeOperationCount];
                 for (int i = 0; i < m_Operations.Count; i++)
                 {
                     SemanticOperation source = m_Operations[i];
-                    if (source.Code == OrchestrationOperationCode.TimelineSection)
-                        RequireTimelineSectionCall(i);
                     int integer0 = source.Integer0;
                     if (source.Output.HasValue)
                     {
@@ -870,7 +1116,7 @@ namespace BTSMTL.Compilation
                         ? ValueSlot(StateReference(i)) : -1;
                     int stateId = source.Code == OrchestrationOperationCode.State || source.Code == OrchestrationOperationCode.StateExit
                         ? Bind(m_OperationIdentities[i]) : 0;
-                    result[i] = new OrchestrationOperation(source.Code,
+                    result[i] = new OperationDraft(source.Code,
                         isRunnable, Bind(m_OperationIdentities[i]), integer0, source.Integer1, constant,
                         m_InputSlots[i], source.Code == OrchestrationOperationCode.InputRequest ? Bind(source.Text0) : 0,
                         valueSlot, source.Code is OrchestrationOperationCode.Timeline or OrchestrationOperationCode.TimelineSection
@@ -881,22 +1127,12 @@ namespace BTSMTL.Compilation
                         m_ExecutionFrameOwners[i]);
                     foreach (Port port in m_Ports[i].Outputs)
                         if (port.ConstantIndex >= 0)
-                            result[port.OperationIndex] = new OrchestrationOperation(OrchestrationOperationCode.Constant,
+                            result[port.OperationIndex] = new OperationDraft(OrchestrationOperationCode.Constant,
                                 false, Bind(ConstantOutputIdentity(i, port.Identity)), 0, 0, LowerConstant(port.ConstantIndex),
                                 -1, 0, -1, 0, 0, -1, -1, -1, default, 1, -1, default, -1, parents[i], default,
                                 m_ExecutionFrameOwners[i]);
                 }
                 return result;
-            }
-
-            void RequireTimelineSectionCall(int queryIndex)
-            {
-                for (int callIndex = 0; callIndex < m_Operations.Count; callIndex++)
-                    if (m_Operations[callIndex].Code == OrchestrationOperationCode.Timeline &&
-                        m_Operations[callIndex].Text0 == m_Operations[queryIndex].Text0 &&
-                        m_ExecutionFrameOwners[callIndex] == m_ExecutionFrameOwners[queryIndex])
-                        return;
-                throw new InvalidOperationException($"Timeline 分段查询 '{m_Operations[queryIndex].TemplateIdentity}' 的内容在同一执行帧归属中没有正式播放调用。");
             }
 
             OrchestrationFlowEdge[] BuildControlFlow()
@@ -990,7 +1226,8 @@ namespace BTSMTL.Compilation
                     if (reference.Kind == ProgramReferenceKind.StateSlot && reference.HasSourceOperation &&
                         reference.SourceOperation.Value == operationIndex && reference.ExternalIdentity == portId)
                         return reference.TargetIndex;
-                throw new InvalidOperationException($"节点 '{operationIndex}' 的黑板端口 '{portId}' 未绑定正式状态槽。");
+                throw Invariant(ProgramSourceTargetKind.Operation, operationIndex,
+                    $"黑板端口 '{portId}' 未绑定正式状态槽。");
             }
 
             int[] BuildParentStates()
@@ -1014,7 +1251,11 @@ namespace BTSMTL.Compilation
                 if (operationIndex != state)
                 {
                     if (parents[operationIndex] >= 0 && parents[operationIndex] != state)
-                        throw new InvalidOperationException($"节点 '{operationIndex}' 被多个 State 主体拥有，不能发布静态状态祖先。");
+                    {
+                        Error("state_body_multiple_owners", ProgramSourceTargetKind.Operation, operationIndex,
+                            $"节点同时属于 State '{SourceLocation(ProgramSourceTargetKind.Operation, parents[operationIndex])}' 和 '{SourceLocation(ProgramSourceTargetKind.Operation, state)}'，不能发布静态状态祖先。");
+                        return;
+                    }
                     parents[operationIndex] = state;
                     if (m_Operations[operationIndex].Code == OrchestrationOperationCode.State)
                         return;
@@ -1044,7 +1285,8 @@ namespace BTSMTL.Compilation
                         m_Operations[reference.TargetIndex].Code == OrchestrationOperationCode.StateMachine)
                         return reference.TargetIndex;
                 }
-                throw new InvalidOperationException($"State 节点 '{operationIndex}' 未声明所属 StateMachine。");
+                throw Invariant(ProgramSourceTargetKind.Operation, operationIndex,
+                    "State 节点未声明所属 StateMachine。");
             }
 
             int StateReference(int operationIndex)
@@ -1053,14 +1295,14 @@ namespace BTSMTL.Compilation
                     if (m_References[i].Kind == ProgramReferenceKind.StateSlot &&
                         m_References[i].SourceOperation.Value == operationIndex)
                         return m_References[i].TargetIndex;
-                throw new InvalidOperationException($"节点 '{operationIndex}' 未声明黑板槽引用。");
+                throw Invariant(ProgramSourceTargetKind.Operation, operationIndex, "节点未声明黑板槽引用。");
             }
 
             int ValueSlot(int stateSlot)
             {
                 int result = m_StateValueSlots[stateSlot];
                 if (result < 0)
-                    throw new InvalidOperationException($"状态槽 '{stateSlot}' 不是可发布的通用黑板值。");
+                    throw Invariant(ProgramSourceTargetKind.StateSlot, stateSlot, "状态槽不是可发布的通用黑板值。");
                 return result;
             }
 
@@ -1070,7 +1312,7 @@ namespace BTSMTL.Compilation
                     foreach (int slot in m_Scopes[i].StateSlots)
                         if (slot == stateSlot)
                             return m_Scopes[i];
-                throw new InvalidOperationException($"黑板槽 '{stateSlot}' 未声明正式作用域。");
+                throw Invariant(ProgramSourceTargetKind.StateSlot, stateSlot, "黑板槽未声明正式作用域。");
             }
 
             ProgramCatalogEntry Declaration(int stateSlot)
@@ -1085,7 +1327,7 @@ namespace BTSMTL.Compilation
                             m_Catalog[entry].Dependency.Identity == reference.ExternalIdentity)
                             return m_Catalog[entry];
                 }
-                throw new InvalidOperationException($"黑板槽 '{stateSlot}' 未声明变量目录项。");
+                throw Invariant(ProgramSourceTargetKind.StateSlot, stateSlot, "黑板槽未声明变量目录项。");
             }
 
             SemanticLiteral CatalogLiteral(ProgramCatalogEntry declaration, string name)
@@ -1093,18 +1335,13 @@ namespace BTSMTL.Compilation
                 foreach (ProgramCatalogField field in declaration.Fields)
                     if (field.Name == name)
                         return m_Literals[field.ConstantIndex];
-                throw new InvalidOperationException($"黑板声明 '{declaration.Dependency.Identity}' 缺少字段 '{name}'。");
+                throw Invariant(ProgramSourceTargetKind.CatalogEntry, declaration.Index,
+                    $"黑板声明 '{declaration.Dependency.Identity}' 缺少字段 '{name}'。");
             }
 
             int CatalogInt(ProgramCatalogEntry declaration, string name) => CatalogLiteral(declaration, name).Int32;
 
-            string CatalogText(ProgramCatalogEntry declaration, string name)
-            {
-                foreach (ProgramCatalogField field in declaration.Fields)
-                    if (field.Name == name)
-                        return m_Literals[field.ConstantIndex].String;
-                throw new InvalidOperationException($"黑板声明 '{declaration.Dependency.Identity}' 缺少字段 '{name}'。");
-            }
+            string CatalogText(ProgramCatalogEntry declaration, string name) => CatalogLiteral(declaration, name).String;
 
             OrchestrationGraphBlackboardBinding[] BuildGeneratedBlackboards()
             {
@@ -1214,7 +1451,7 @@ namespace BTSMTL.Compilation
                         ? m_StateValueSlots[source.TargetIndex] < 0
                             ? OrchestrationGraphSourceTargetKind.AuthorStateSlot
                             : OrchestrationGraphSourceTargetKind.BlackboardValue
-                        : SourceTargetKind(source.TargetKind);
+                        : SourceTargetKind(source);
                     if (source.TargetKind == ProgramSourceTargetKind.Constant)
                     {
                         if (m_ConstantIndexes.TryGetValue(source.TargetIndex, out int publishedConstant))
@@ -1253,7 +1490,7 @@ namespace BTSMTL.Compilation
                 return result.ToArray();
             }
 
-            static OrchestrationGraphSourceTargetKind SourceTargetKind(ProgramSourceTargetKind kind) => kind switch
+            OrchestrationGraphSourceTargetKind SourceTargetKind(ProgramExecutionSource source) => source.TargetKind switch
             {
                 ProgramSourceTargetKind.Operation => OrchestrationGraphSourceTargetKind.Operation,
                 ProgramSourceTargetKind.Constant => OrchestrationGraphSourceTargetKind.Constant,
@@ -1266,7 +1503,8 @@ namespace BTSMTL.Compilation
                 ProgramSourceTargetKind.OperationPort => OrchestrationGraphSourceTargetKind.OperationPort,
                 ProgramSourceTargetKind.GraphInvocation => OrchestrationGraphSourceTargetKind.GraphInvocation,
                 ProgramSourceTargetKind.OptimizedAway => OrchestrationGraphSourceTargetKind.OptimizedAway,
-                _ => throw new InvalidOperationException($"来源种类 '{kind}' 没有编排发布目标。")
+                _ => throw Invariant(source.TargetKind, source.TargetIndex,
+                    $"来源种类 '{source.TargetKind}' 没有编排发布目标。")
             };
 
             bool IsPublic(ProgramCatalogEntry declaration)
@@ -1281,66 +1519,67 @@ namespace BTSMTL.Compilation
             {
                 if (m_ConstantIndexes.TryGetValue(semanticIndex, out int existing))
                     return existing;
-                var value = LowerValue(m_Literals[semanticIndex]);
+                var value = m_LoweredValues[semanticIndex];
                 int index = m_Constants.Count;
                 m_Constants.Add(value);
                 m_ConstantIndexes.Add(semanticIndex, index);
                 return index;
             }
 
-            OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion> LowerValue(SemanticLiteral literal)
+            TValue LowerValue(SemanticLiteral literal)
             {
-                OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion> value;
+                TValues values = default;
+                TValue value;
                 if (literal.Kind == SemanticLiteralKind.Curve)
-                    throw new InvalidOperationException($"曲线 '{literal.Identity}' 属于领域内容，不能进入通用值槽。");
+                    throw new ValueLoweringException($"曲线 '{literal.Identity}' 属于领域内容，不能进入通用值槽。");
                 switch (literal.Kind)
                 {
                     case SemanticLiteralKind.Boolean:
-                        value = OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>.FromBoolean(literal.Boolean);
+                        value = values.FromBoolean(literal.Boolean);
                         break;
                     case SemanticLiteralKind.Int32:
-                        value = OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>.FromInt32(literal.Int32);
+                        value = values.FromInt32(literal.Int32);
                         break;
                     case SemanticLiteralKind.UInt64:
-                        value = OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>.FromUInt64(literal.UInt64);
+                        value = values.FromUInt64(literal.UInt64);
                         break;
                     case SemanticLiteralKind.Number:
-                        value = OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>.FromScalar(
-                            m_Lowering.Number(literal.Number.Value, literal.Identity, literal.Number.Precision));
+                        value = values.FromScalar(
+                            LowerNumber(literal.Number.Value, literal.Identity, literal.Number.Precision));
                         break;
                     case SemanticLiteralKind.Vector2:
-                        value = OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>.FromVector2(m_Lowering.Vector2(
-                            m_Lowering.Number(literal.Vector2.X, literal.Identity + ".x", literal.Vector2.Precision),
-                            m_Lowering.Number(literal.Vector2.Y, literal.Identity + ".y", literal.Vector2.Precision)));
+                        value = values.FromVector2(m_Lowering.Vector2(
+                            LowerNumber(literal.Vector2.X, literal.Identity + ".x", literal.Vector2.Precision),
+                            LowerNumber(literal.Vector2.Y, literal.Identity + ".y", literal.Vector2.Precision)));
                         break;
                     case SemanticLiteralKind.Vector3:
-                        value = OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>.FromVector3(m_Lowering.Vector3(
-                            m_Lowering.Number(literal.Vector3.X, literal.Identity + ".x", literal.Vector3.Precision),
-                            m_Lowering.Number(literal.Vector3.Y, literal.Identity + ".y", literal.Vector3.Precision),
-                            m_Lowering.Number(literal.Vector3.Z, literal.Identity + ".z", literal.Vector3.Precision)));
+                        value = values.FromVector3(m_Lowering.Vector3(
+                            LowerNumber(literal.Vector3.X, literal.Identity + ".x", literal.Vector3.Precision),
+                            LowerNumber(literal.Vector3.Y, literal.Identity + ".y", literal.Vector3.Precision),
+                            LowerNumber(literal.Vector3.Z, literal.Identity + ".z", literal.Vector3.Precision)));
                         break;
                     case SemanticLiteralKind.Yaw:
-                        value = OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>.FromYaw(
-                            m_Lowering.Yaw(m_Lowering.Number(literal.Yaw.Value, literal.Identity, literal.Yaw.Precision)));
+                        value = values.FromYaw(
+                            m_Lowering.Yaw(LowerNumber(literal.Yaw.Value, literal.Identity, literal.Yaw.Precision)));
                         break;
                     case SemanticLiteralKind.String:
-                        value = OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>.FromIdentity(
+                        value = values.FromIdentity(
                             literal.String is null ? OrchestrationIdentityValue.Null :
                                 OrchestrationIdentityValue.Content(Bind(literal.String)));
                         break;
                     case SemanticLiteralKind.Quaternion:
-                        value = OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>.FromQuaternion(m_Lowering.Quaternion(
-                            m_Lowering.Number(literal.Quaternion.X, literal.Identity + ".x", SemanticNumericPrecision.TargetRounded),
-                            m_Lowering.Number(literal.Quaternion.Y, literal.Identity + ".y", SemanticNumericPrecision.TargetRounded),
-                            m_Lowering.Number(literal.Quaternion.Z, literal.Identity + ".z", SemanticNumericPrecision.TargetRounded),
-                            m_Lowering.Number(literal.Quaternion.W, literal.Identity + ".w", SemanticNumericPrecision.TargetRounded)));
+                        value = values.FromQuaternion(m_Lowering.Quaternion(
+                            LowerNumber(literal.Quaternion.X, literal.Identity + ".x", SemanticNumericPrecision.TargetRounded),
+                            LowerNumber(literal.Quaternion.Y, literal.Identity + ".y", SemanticNumericPrecision.TargetRounded),
+                            LowerNumber(literal.Quaternion.Z, literal.Identity + ".z", SemanticNumericPrecision.TargetRounded),
+                            LowerNumber(literal.Quaternion.W, literal.Identity + ".w", SemanticNumericPrecision.TargetRounded)));
                         break;
                     case SemanticLiteralKind.Enum:
-                        value = OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>.FromEnum(
+                        value = values.FromEnum(
                             new OrchestrationEnumValue(Bind(literal.Enum.TypeIdentity), literal.Enum.Value));
                         break;
                     default:
-                        throw new InvalidOperationException($"语义常量 '{literal.Identity}' 类型 '{literal.Kind}' 不属于通用值。");
+                        throw new ValueLoweringException($"语义常量 '{literal.Identity}' 类型 '{literal.Kind}' 不属于通用值。");
                 }
                 return value;
             }
@@ -1353,11 +1592,10 @@ namespace BTSMTL.Compilation
                     IReadOnlyList<SemanticPayloadField> source = m_Operations[operationIndex].PayloadFields;
                     if (!m_Operations[operationIndex].Extension.HasValue)
                         continue;
-                    IBtsmtlOrchestrationContentEncoder<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>, TScalar> encoder =
-                        m_Domain.ContentEncoder ?? throw new InvalidOperationException(
-                            $"图 '{m_Identity.GraphId}' 含扩展操作，编译领域必须提供扩展内容编码。");
+                    IBtsmtlOrchestrationContentEncoder<TValue, TScalar> encoder =
+                        m_Domain.ContentEncoder;
                     ReadOnlyMemory<OrchestrationExtensionContentField> declarations = m_Operations[operationIndex].Extension.Value.Fields;
-                    IBtsmtlOrchestrationContentBuffer<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>, TScalar> writer =
+                    IBtsmtlOrchestrationContentBuffer<TValue, TScalar> writer =
                         encoder.Begin(declarations);
                     for (int i = 0; i < source.Count; i++)
                     {
@@ -1379,10 +1617,10 @@ namespace BTSMTL.Compilation
                                 writer.WriteIdentities(in declaration, literal.Identities.Span);
                                 break;
                             case SemanticLiteralKind.Curve:
-                                writer.WriteCurve(in declaration, LowerCurve(literal));
+                                writer.WriteCurve(in declaration, m_LoweredCurves[field.LiteralIndex]);
                                 break;
                             default:
-                                var value = LowerValue(literal);
+                                var value = m_LoweredValues[field.LiteralIndex];
                                 writer.WriteValue(in declaration, in value);
                                 break;
                         }
@@ -1408,15 +1646,15 @@ namespace BTSMTL.Compilation
                         key.WeightedMode, key.Stepped);
 
                     TScalar Number(double value, string member) =>
-                        m_Lowering.Number(value, identity + member, SemanticNumericPrecision.TargetRounded);
+                        LowerNumber(value, identity + member, SemanticNumericPrecision.TargetRounded);
                 }
                 return new GameplayAbilityCurve<TScalar>(source.PreWrapMode, source.PostWrapMode, keys);
             }
 
-            OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion> DefaultValue(OrchestrationValueKind kind) =>
+            TValue DefaultValue(OrchestrationValueKind kind) =>
                 kind == OrchestrationValueKind.Quaternion
-                    ? OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>.FromQuaternion(m_Lowering.QuaternionIdentity)
-                    : OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>.Default(kind);
+                    ? default(TValues).FromQuaternion(m_Lowering.QuaternionIdentity)
+                    : default(TValues).Default(kind);
 
             static int[] EmptyIndexes(int count)
             {
@@ -1427,7 +1665,7 @@ namespace BTSMTL.Compilation
 
             OrchestrationValueKind Kind(ProgramStateValueKind kind) => m_Domain.StateSchema.RuntimeKind(kind);
 
-            static OrchestrationValueKind Kind(SemanticValueKind kind) => kind switch
+            OrchestrationValueKind Kind(SemanticValueKind kind) => kind switch
             {
                 SemanticValueKind.Boolean => OrchestrationValueKind.Boolean,
                 SemanticValueKind.Int32 => OrchestrationValueKind.Int32,
@@ -1439,7 +1677,7 @@ namespace BTSMTL.Compilation
                 SemanticValueKind.Identity => OrchestrationValueKind.Identity,
                 SemanticValueKind.Quaternion => OrchestrationValueKind.Quaternion,
                 SemanticValueKind.Enum => OrchestrationValueKind.Enum,
-                _ => throw new InvalidOperationException($"语义类型 '{kind}' 不属于通用值。")
+                _ => throw new InvalidOperationException($"图 '{m_Identity.GraphId}' 的语义类型 '{kind}' 不属于通用值。")
             };
 
         }

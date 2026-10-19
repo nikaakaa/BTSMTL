@@ -267,7 +267,7 @@ namespace BTSMTL.Orchestration
             {
                 ref readonly OrchestrationOperation operation = ref program.Operation(operationIndex);
                 if (operation.Code == OrchestrationOperationCode.Extension)
-                    required[operation.ExtensionBindingIndex] = true;
+                    required[program.Payload<OrchestrationExtensionPayload>(operationIndex).BindingIndex] = true;
                 if (operation.BlackboardFactsBindingIndex >= 0)
                     required[operation.BlackboardFactsBindingIndex] = true;
                 foreach (ref readonly OrchestrationHookBinding hook in program.Hooks(operationIndex))

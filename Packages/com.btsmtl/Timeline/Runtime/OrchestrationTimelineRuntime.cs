@@ -23,8 +23,10 @@ namespace BTSMTL.Timeline.Runtime
                     content.RequiredActiveTrees, capacity.ActiveTreesPerPlayback);
                 RequireCapacity(content.ContentIdentityId, "TreeExitRequests",
                     content.RequiredTreeExitRequests, capacity.TreeExitRequestsPerPlayback);
-                RequireCapacity(content.ContentIdentityId, "TreeExits",
-                    content.RequiredTreeExits, capacity.TreeExitsPerPlayback);
+                RequireCapacity(content.ContentIdentityId, "TreeExitFirstCycles",
+                    content.RequiredTreeExitWindows, capacity.TreeExitWindowsPerPlayback);
+                RequireCapacity(content.ContentIdentityId, "TreeExitBits",
+                    content.RequiredTreeExitWords, capacity.TreeExitWordsPerPlayback);
             }
             m_Contents = contents;
             m_Layout = layout;
@@ -62,7 +64,8 @@ namespace BTSMTL.Timeline.Runtime
         {
             int slot = FindPlayback(candidate, playbackIdentity);
             TreeExitRequests(candidate, slot).Clear();
-            TreeExits(candidate, slot).Clear();
+            TreeExitFirstCycles(candidate, slot).Clear();
+            TreeExitBits(candidate, slot).Clear();
             Playback(candidate, slot) = default;
         }
 
@@ -71,8 +74,9 @@ namespace BTSMTL.Timeline.Runtime
         {
             int slot = FindPlayback(candidate, playbackIdentity);
             ref OrchestrationTimelinePlaybackState<TTime> playback = ref Playback(candidate, slot);
-            return OrchestrationTimelineStateQueries<TTime>.CopyActiveTrees<TClock>(RequireContent(in playback.Start), in playback,
-                TreeExits(candidate, slot).Slice(0, playback.TreeExitCount), destination);
+            OrchestrationTimelinePreparedContent<TTime> content = RequireContent(in playback.Start);
+            return OrchestrationTimelineStateQueries<TTime>.CopyActiveTrees<TClock>(content, in playback,
+                TreeExits(candidate, slot, content).View, destination);
         }
 
         public void Start(OrchestrationStateView candidate, int slot,
@@ -88,6 +92,12 @@ namespace BTSMTL.Timeline.Runtime
             playback.Progress.Control.Rate = default(TClock).One;
             playback.Progress.InitialBoundaryState = OrchestrationTimelineInitialBoundaryState.Pending;
             playback.Progress.State = OrchestrationTimelinePlaybackStatus.Running;
+            TimelineTreeExitState exits = TreeExits(candidate, slot, content);
+            exits.Clear();
+            foreach (int ordinal in content.Boundaries.Decisions.Span)
+                if (!TimelineRuntimeScheduling<TTime, TClock>.InitialClipAvailable(
+                    in content.Clips.Span[ordinal], content.Sections.Span, start.StartTime))
+                    exits.SetFirstCycle(ordinal, 1);
         }
 
         public OrchestrationTimelineBatch<TTime> BeginAdvance(OrchestrationStateView candidate,
@@ -206,61 +216,34 @@ namespace BTSMTL.Timeline.Runtime
                 work.Proposed.Progress.InitialBoundaryState = OrchestrationTimelineInitialBoundaryState.Applied;
 
             ReadOnlySpan<TimelineSchedulingClip<TTime>> clips = content.Clips.Span;
-            ReadOnlySpan<OrchestrationTimelineTreeExitRange> exits = TreeExits(candidate, slot).Slice(0, playback.TreeExitCount);
+            TimelineTreeExitView exits = TreeExits(candidate, slot, content).View;
             ReadOnlySpan<OrchestrationTimelineClipOccurrence> pending = TreeExitRequests(candidate, slot).Slice(0, playback.TreeExitRequestCount);
-            Span<OrchestrationTimelineTreeExitRange> evaluationExits = workspace.EvaluationExits.AsSpan(
-                checked(slot * workspace.EvaluationExitCapacity), workspace.EvaluationExitCapacity);
-            exits.CopyTo(evaluationExits);
-            work.EvaluationExitCount = exits.Length;
+            CopyExitState(candidate, slot, workspace);
+            TimelineTreeExitState evaluationExits = EvaluationExits(workspace, slot, content);
+            if (cycle > 0 && previousCycle == 0 &&
+                playback.Progress.InitialBoundaryState == OrchestrationTimelineInitialBoundaryState.Skipped)
+                foreach (int ordinal in content.Boundaries.Decisions.Span)
+                    if (clock.LessThanOrEqual(clips[ordinal].Start, playback.Start.StartTime))
+                        evaluationExits.SetFirstCycle(ordinal, 1);
             if (!work.Paused)
-            {
                 work.InjectedExitCount = pending.Length;
-                for (int i = 0; i < pending.Length; i++)
-                    AppendExit(evaluationExits, ref work.EvaluationExitCount, new OrchestrationTimelineTreeExitRange
-                    {
-                        ClipOrdinal = pending[i].ClipOrdinal,
-                        FirstCycle = pending[i].Cycle,
-                        LastCycle = pending[i].Cycle
-                    });
-            }
             int boundaryOffset = checked(slot * workspace.BoundaryCapacity);
-            int jumpExitCount = 0;
-            if (jumped)
-            {
-                Span<TimelineSchedulingBoundary<TTime>> jumpExits = workspace.Boundaries.AsSpan(
-                    boundaryOffset, workspace.BoundaryCapacity);
-                jumpExitCount = TimelineRuntimeScheduling<TTime, TClock>.JumpExits(clips, sections,
-                    playback.Start.StartTime, jumpFrom, previous,
-                    previousCycle, exits, pending, jumpExits);
-                for (int i = 0; i < jumpExitCount; i++)
-                    if (clips[jumpExits[i].ClipOrdinal].TreeDecision)
-                        AppendExit(evaluationExits, ref work.EvaluationExitCount, new OrchestrationTimelineTreeExitRange
-                        {
-                            ClipOrdinal = jumpExits[i].ClipOrdinal,
-                            FirstCycle = jumpExits[i].Cycle,
-                            LastCycle = jumpExits[i].Cycle
-                        });
-            }
-            ReadOnlySpan<OrchestrationTimelineTreeExitRange> consumed = evaluationExits.Slice(0, work.EvaluationExitCount);
-            Span<bool> activeClips = workspace.PreviousActiveClips.AsSpan(checked(slot * workspace.ClipCapacity), clips.Length);
-            for (int i = 0; i < clips.Length; i++)
-                activeClips[i] = jumped
-                    ? TimelineRuntimeScheduling<TTime, TClock>.ContinuesAcrossJump(in clips[i], i,
-                        jumpFrom, previous, previousCycle, exits, sections, playback.Start.StartTime)
-                    : TimelineRuntimeScheduling<TTime, TClock>.Active(in clips[i], i,
-                        previous, previousCycle, exits, sections, playback.Start.StartTime);
             Span<TimelineSchedulingBoundary<TTime>> active = workspace.ActiveTrees.AsSpan(
                 checked(slot * m_Capacity.ActiveTreesPerPlayback), m_Capacity.ActiveTreesPerPlayback);
             int activeCount = OrchestrationTimelineStateQueries<TTime>.CopyActiveTrees<TClock>(content, in playback, exits, active);
 
             var traversal = new TimelineSchedulingJump<TTime>(jumped, jumpFrom, sectionEnd);
-            int boundaryCount = jumpExitCount + (work.Paused ? 0 : m_Scheduler.Boundaries(clips, sections,
+            int boundaryCount = work.Paused ? 0 : m_Scheduler.Boundaries(content.Boundaries, sections, playback.Start.StartTime,
                 previous, previousCycle, time, cycle, content.Duration, loop,
                 playback.Progress.InitialBoundaryState == OrchestrationTimelineInitialBoundaryState.Pending, exits, pending,
-                workspace.Boundaries, boundaryOffset + jumpExitCount, in traversal));
-            if (jumpExitCount != 0)
-                TimelineRuntimeScheduling<TTime, TClock>.SortBoundaries(
-                    workspace.Boundaries.AsSpan(boundaryOffset, boundaryCount));
+                workspace.Boundaries.AsSpan(boundaryOffset, workspace.BoundaryCapacity),
+                workspace.SyntheticBoundaries.AsSpan(checked(slot * workspace.SyntheticBoundaryCapacity), workspace.SyntheticBoundaryCapacity),
+                in traversal);
+            foreach (ref readonly TimelineSchedulingBoundary<TTime> boundary in
+                workspace.Boundaries.AsSpan(boundaryOffset, boundaryCount))
+                if (!boundary.Enter && clips[boundary.ClipOrdinal].TreeDecision)
+                    evaluationExits.SetExited(boundary.ClipOrdinal, boundary.Cycle);
+            TimelineTreeExitView consumed = evaluationExits.View;
             int invocationOffset = checked(slot * workspace.InvocationCapacity);
             TTime requestedAdvance = clock.Subtract(target, previous);
             work.RequestedAdvance = requestedAdvance;
@@ -270,11 +253,13 @@ namespace BTSMTL.Timeline.Runtime
                     playback.Progress.InitialBoundaryState == OrchestrationTimelineInitialBoundaryState.Pending),
                 workspace.Scheduled.AsSpan(invocationOffset, workspace.InvocationCapacity), sectionEnd);
             work.ScheduledTreeOffset = checked(invocationOffset + work.MarkerCount);
-            work.ScheduledTreeCount = m_Scheduler.Trees(clips, content.TreeOrdinals.Span,
-                workspace.Boundaries.AsSpan(boundaryOffset, boundaryCount), activeClips,
+            work.ScheduledTreeCount = m_Scheduler.Trees(clips,
+                workspace.Boundaries.AsSpan(boundaryOffset, boundaryCount), active.Slice(0, activeCount),
                 previous, previousCycle, time, cycle, content.Duration,
-                loop && !work.Paused, consumed,
-                workspace.SelectedTrees.AsSpan(checked(slot * workspace.ClipCapacity), clips.Length),
+                loop && !work.Paused, jumped, consumed,
+                workspace.SelectedTrees.AsSpan(checked(slot * workspace.ClipCapacity), workspace.ClipCapacity),
+                workspace.SelectedTreeOrdinals.AsSpan(checked(slot * workspace.ClipCapacity), workspace.ClipCapacity),
+                ref workspace.SelectedTreeCounts[slot],
                 workspace.Scheduled, work.ScheduledTreeOffset);
             work.ScheduledTreeCount += m_Scheduler.ContinueTrees(clips, active.Slice(0, activeCount),
                 previous, previousCycle, time, cycle, content.Duration, consumed,
@@ -295,17 +280,25 @@ namespace BTSMTL.Timeline.Runtime
                     AppendInvocation(content, slot, in work.Proposed.Start,
                         in request, workspace, ref work.InvocationCount);
             }
-            bool hasUnexitedDecision = false;
-            for (int i = 0; i < clips.Length; i++)
-                if (clips[i].TreeDecision && TimelineRuntimeScheduling<TTime, TClock>.Active(
-                        in clips[i], i, time, cycle, consumed, sections, playback.Start.StartTime))
-                {
-                    hasUnexitedDecision = true;
-                    break;
-                }
             if (!work.Paused && content.Mode == OrchestrationTimelinePlaybackMode.Once &&
-                (sectionEnd || clock.LessThanOrEqual(content.Duration, time)) && !hasUnexitedDecision)
-                work.Proposed.Progress.State = OrchestrationTimelinePlaybackStatus.Completed;
+                (sectionEnd || clock.LessThanOrEqual(content.Duration, time)))
+            {
+                bool hasUnexitedDecision = false;
+                int position = content.Boundaries.FindNext<TClock>(0, time, true);
+                while (position >= 0)
+                {
+                    int ordinal = content.Boundaries.StableOrder.Span[position];
+                    if (clips[ordinal].TreeDecision && TimelineRuntimeScheduling<TTime, TClock>.Active(
+                        in clips[ordinal], ordinal, time, cycle, consumed, sections, playback.Start.StartTime))
+                    {
+                        hasUnexitedDecision = true;
+                        break;
+                    }
+                    position = content.Boundaries.FindNext<TClock>(position + 1, time, true);
+                }
+                if (!hasUnexitedDecision)
+                    work.Proposed.Progress.State = OrchestrationTimelinePlaybackStatus.Completed;
+            }
             return Batch(slot, workspace);
         }
 
@@ -329,12 +322,13 @@ namespace BTSMTL.Timeline.Runtime
             work.Proposed.Progress.StopContext = context;
             work.Proposed.Progress.HasStopContext = true;
             work.Proposed.Progress.State = OrchestrationTimelinePlaybackStatus.Stopped;
+            CopyExitState(candidate, slot, workspace);
             if (context.Cause != (uint)OrchestrationStopCause.Shutdown)
             {
                 Span<TimelineSchedulingBoundary<TTime>> active = workspace.ActiveTrees.AsSpan(
                     checked(slot * m_Capacity.ActiveTreesPerPlayback), m_Capacity.ActiveTreesPerPlayback);
                 int activeCount = OrchestrationTimelineStateQueries<TTime>.CopyActiveTrees<TClock>(content, in playback,
-                    TreeExits(candidate, slot).Slice(0, playback.TreeExitCount), active);
+                    TreeExits(candidate, slot, content).View, active);
                 for (int i = 0; i < activeCount; i++)
                 {
                     TimelineSchedulingBoundary<TTime> branch = active[i];
@@ -364,16 +358,15 @@ namespace BTSMTL.Timeline.Runtime
             if (!content.Clips.Span[token.ClipOrdinal].TreeDecision)
                 return false;
             var exit = new OrchestrationTimelineClipOccurrence { ClipOrdinal = token.ClipOrdinal, Cycle = token.Cycle };
-            Span<OrchestrationTimelineClipOccurrence> pending = TreeExitRequests(candidate, token.PlaybackSlot);
-            Span<OrchestrationTimelineTreeExitRange> exits = TreeExits(candidate, token.PlaybackSlot);
+            TimelineTreeExitState exits = EvaluationExits(workspace, token.PlaybackSlot, content);
             ref OrchestrationTimelineWorkspace<TTime>.Operation work = ref workspace.Operations[token.PlaybackSlot];
             Span<OrchestrationTimelineClipOccurrence> produced = workspace.ProducedExits.AsSpan(
                 checked(token.PlaybackSlot * m_Capacity.TreeExitRequestsPerPlayback), m_Capacity.TreeExitRequestsPerPlayback);
-            if (TimelineRuntimeScheduling<TTime, TClock>.Contains(pending.Slice(0, playback.TreeExitRequestCount), exit.ClipOrdinal, exit.Cycle) ||
-                TimelineRuntimeScheduling<TTime, TClock>.Contains(exits.Slice(0, playback.TreeExitCount), exit.ClipOrdinal, exit.Cycle) ||
-                TimelineRuntimeScheduling<TTime, TClock>.Contains(produced.Slice(0, work.ProducedExitCount), exit.ClipOrdinal, exit.Cycle))
+            if (exits.View.Requested(exit.ClipOrdinal, exit.Cycle))
                 return false;
-            produced[work.ProducedExitCount++] = exit;
+            exits.SetPending(exit.ClipOrdinal, exit.Cycle);
+            TimelineRuntimeScheduling<TTime, TClock>.InsertOccurrence(content.Clips.Span,
+                produced, ref work.ProducedExitCount, in exit);
             return true;
         }
 
@@ -407,16 +400,19 @@ namespace BTSMTL.Timeline.Runtime
             Span<OrchestrationTimelineClipOccurrence> pending = TreeExitRequests(candidate, slot);
             if (!work.Stop)
             {
-                workspace.EvaluationExits.AsSpan(checked(slot * workspace.EvaluationExitCapacity),
-                    work.EvaluationExitCount).CopyTo(TreeExits(candidate, slot));
-                work.Proposed.TreeExitCount = work.EvaluationExitCount;
                 pending.Slice(work.InjectedExitCount, work.Proposed.TreeExitRequestCount - work.InjectedExitCount).CopyTo(pending);
                 work.Proposed.TreeExitRequestCount -= work.InjectedExitCount;
             }
             ReadOnlySpan<OrchestrationTimelineClipOccurrence> produced = workspace.ProducedExits.AsSpan(
                 checked(slot * m_Capacity.TreeExitRequestsPerPlayback), work.ProducedExitCount);
-            produced.CopyTo(pending.Slice(work.Proposed.TreeExitRequestCount));
-            work.Proposed.TreeExitRequestCount += produced.Length;
+            OrchestrationTimelinePreparedContent<TTime> content = RequireContent(in playback.Start);
+            foreach (ref readonly OrchestrationTimelineClipOccurrence occurrence in produced)
+                TimelineRuntimeScheduling<TTime, TClock>.InsertOccurrence(content.Clips.Span,
+                    pending, ref work.Proposed.TreeExitRequestCount, in occurrence);
+            workspace.EvaluationFirstCycles.AsSpan(checked(slot * m_Capacity.TreeExitWindowsPerPlayback),
+                m_Capacity.TreeExitWindowsPerPlayback).CopyTo(TreeExitFirstCycles(candidate, slot));
+            workspace.EvaluationExitBits.AsSpan(checked(slot * m_Capacity.TreeExitWordsPerPlayback),
+                m_Capacity.TreeExitWordsPerPlayback).CopyTo(TreeExitBits(candidate, slot));
             playback = work.Proposed;
         }
 
@@ -425,8 +421,29 @@ namespace BTSMTL.Timeline.Runtime
         Span<OrchestrationTimelineClipOccurrence> TreeExitRequests(OrchestrationStateView candidate, int slot) =>
             candidate.Get(m_Layout.TreeExitRequests).Slice(checked(slot * m_Capacity.TreeExitRequestsPerPlayback), m_Capacity.TreeExitRequestsPerPlayback);
 
-        Span<OrchestrationTimelineTreeExitRange> TreeExits(OrchestrationStateView candidate, int slot) =>
-            candidate.Get(m_Layout.TreeExits).Slice(checked(slot * m_Capacity.TreeExitsPerPlayback), m_Capacity.TreeExitsPerPlayback);
+        Span<long> TreeExitFirstCycles(OrchestrationStateView candidate, int slot) =>
+            candidate.Get(m_Layout.TreeExitFirstCycles).Slice(checked(slot * m_Capacity.TreeExitWindowsPerPlayback), m_Capacity.TreeExitWindowsPerPlayback);
+
+        Span<ulong> TreeExitBits(OrchestrationStateView candidate, int slot) =>
+            candidate.Get(m_Layout.TreeExitBits).Slice(checked(slot * m_Capacity.TreeExitWordsPerPlayback), m_Capacity.TreeExitWordsPerPlayback);
+
+        TimelineTreeExitState TreeExits(OrchestrationStateView candidate, int slot,
+            OrchestrationTimelinePreparedContent<TTime> content) =>
+            new(content.TreeCycleWindows.Span, TreeExitFirstCycles(candidate, slot), TreeExitBits(candidate, slot));
+
+        TimelineTreeExitState EvaluationExits(OrchestrationTimelineWorkspace<TTime> workspace,
+            int slot, OrchestrationTimelinePreparedContent<TTime> content) =>
+            new(content.TreeCycleWindows.Span,
+                workspace.EvaluationFirstCycles.AsSpan(checked(slot * m_Capacity.TreeExitWindowsPerPlayback), m_Capacity.TreeExitWindowsPerPlayback),
+                workspace.EvaluationExitBits.AsSpan(checked(slot * m_Capacity.TreeExitWordsPerPlayback), m_Capacity.TreeExitWordsPerPlayback));
+
+        void CopyExitState(OrchestrationStateView candidate, int slot, OrchestrationTimelineWorkspace<TTime> workspace)
+        {
+            TreeExitFirstCycles(candidate, slot).CopyTo(workspace.EvaluationFirstCycles.AsSpan(
+                checked(slot * m_Capacity.TreeExitWindowsPerPlayback), m_Capacity.TreeExitWindowsPerPlayback));
+            TreeExitBits(candidate, slot).CopyTo(workspace.EvaluationExitBits.AsSpan(
+                checked(slot * m_Capacity.TreeExitWordsPerPlayback), m_Capacity.TreeExitWordsPerPlayback));
+        }
 
         OrchestrationTimelinePreparedContent<TTime> RequireContent(in OrchestrationTimelineStart<TTime> start)
             => OrchestrationTimelineStateQueries<TTime>.RequireContent(m_Contents.Span, in start);
@@ -463,42 +480,6 @@ namespace BTSMTL.Timeline.Runtime
                     startFraction, endFraction);
         }
 
-        internal static void AppendExit(Span<OrchestrationTimelineTreeExitRange> values,
-            ref int count, OrchestrationTimelineTreeExitRange exit)
-        {
-            int index = 0;
-            while (index < count && (values[index].ClipOrdinal < exit.ClipOrdinal ||
-                values[index].ClipOrdinal == exit.ClipOrdinal && (long)values[index].LastCycle + 1 < exit.FirstCycle))
-                index++;
-            if (index < count && values[index].ClipOrdinal == exit.ClipOrdinal &&
-                values[index].FirstCycle <= (long)exit.LastCycle + 1)
-            {
-                int first = Math.Min(values[index].FirstCycle, exit.FirstCycle);
-                int last = Math.Max(values[index].LastCycle, exit.LastCycle);
-                int end = index + 1;
-                while (end < count && values[end].ClipOrdinal == exit.ClipOrdinal &&
-                    values[end].FirstCycle <= (long)last + 1)
-                {
-                    last = Math.Max(last, values[end].LastCycle);
-                    end++;
-                }
-                values[index] = new OrchestrationTimelineTreeExitRange
-                {
-                    ClipOrdinal = exit.ClipOrdinal,
-                    FirstCycle = first,
-                    LastCycle = last
-                };
-                values.Slice(end, count - end).CopyTo(values.Slice(index + 1));
-                count -= end - index - 1;
-            }
-            else
-            {
-                values.Slice(index, count - index).CopyTo(values.Slice(index + 1));
-                values[index] = exit;
-                count++;
-            }
-        }
-
         static void RequireCapacity(int content, string region, int required, int available)
         {
             if (required > available)
@@ -526,7 +507,7 @@ namespace BTSMTL.Timeline.Runtime
 
         internal static bool IsActiveClip<TClock>(OrchestrationTimelinePreparedContent<TTime> content,
             in OrchestrationTimelinePlaybackState<TTime> playback,
-            ReadOnlySpan<OrchestrationTimelineTreeExitRange> exits, int ordinal)
+            TimelineTreeExitView exits, int ordinal)
             where TClock : struct, IOrchestrationTimelineClock<TTime>
         {
             if (!IsActive(in playback))
@@ -539,33 +520,62 @@ namespace BTSMTL.Timeline.Runtime
 
         internal static int CopyActiveTrees<TClock>(OrchestrationTimelinePreparedContent<TTime> content,
             in OrchestrationTimelinePlaybackState<TTime> playback,
-            ReadOnlySpan<OrchestrationTimelineTreeExitRange> exits,
+            TimelineTreeExitView exits,
             Span<TimelineSchedulingBoundary<TTime>> destination)
             where TClock : struct, IOrchestrationTimelineClock<TTime>
         {
             if (!HasActiveTrees<TClock>(content, in playback))
                 return 0;
             int count = 0;
-            int rangeIndex = 0;
             ReadOnlySpan<TimelineSchedulingClip<TTime>> clips = content.Clips.Span;
-            for (int ordinal = 0; ordinal < clips.Length; ordinal++)
+            long firstCycle = playback.Progress.Cycle;
+            foreach (int ordinal in content.Boundaries.Decisions.Span)
             {
                 ref readonly TimelineSchedulingClip<TTime> clip = ref clips[ordinal];
-                if (!TryTreeCycles<TClock>(content, in clip, ordinal, in playback, exits, out long nextCycle, out long lastCycle))
-                    continue;
-                if (!clip.TreeDecision)
-                {
-                    AppendActiveCycles<TClock>(destination, ref count, ordinal, in clip,
-                        playback.Start.StartTime, nextCycle, lastCycle);
-                    continue;
-                }
-                while (TryActiveRange(exits, ordinal, ref rangeIndex, ref nextCycle, lastCycle,
-                    out long firstActive, out long lastActive))
-                    AppendActiveCycles<TClock>(destination, ref count, ordinal, in clip,
-                        playback.Start.StartTime, firstActive, lastActive);
+                if (TryTreeCycles<TClock>(content, in clip, ordinal, in playback, exits,
+                        out long first, out _))
+                    firstCycle = Math.Min(firstCycle, Math.Max(first, exits.FirstCycle(ordinal)));
             }
-            TimelineRuntimeScheduling<TTime, TClock>.SortBoundaries(destination.Slice(0, count));
+            TClock clock = default;
+            for (long cycle = firstCycle; cycle <= playback.Progress.Cycle; cycle++)
+            {
+                TTime time = cycle == playback.Progress.Cycle ? playback.Progress.CursorTime : content.Duration;
+                if (cycle == 0)
+                {
+                    int position = content.Boundaries.FindNext<TClock>(0, time, true);
+                    while (position >= 0)
+                    {
+                        int ordinal = content.Boundaries.StableOrder.Span[position];
+                        if (clock.LessThanOrEqual(clips[ordinal].Start, playback.Start.StartTime))
+                            AppendActiveTree<TClock>(content, in playback, exits, ordinal, 0,
+                                playback.Start.StartTime, destination, ref count);
+                        position = content.Boundaries.FindNext<TClock>(position + 1, time, true);
+                    }
+                }
+                int start = cycle == 0 ? content.Boundaries.FindStart<TClock>(playback.Start.StartTime, false) : 0;
+                int index = content.Boundaries.FindNextStart<TClock>(start, time);
+                while (index >= 0)
+                {
+                    int ordinal = content.Boundaries.Starts.Span[index];
+                    ref readonly TimelineSchedulingClip<TTime> clip = ref clips[ordinal];
+                    AppendActiveTree<TClock>(content, in playback, exits, ordinal, (int)cycle,
+                        clip.Start, destination, ref count);
+                    index = content.Boundaries.FindNextStart<TClock>(index + 1, time);
+                }
+            }
             return count;
+        }
+
+        static void AppendActiveTree<TClock>(OrchestrationTimelinePreparedContent<TTime> content,
+            in OrchestrationTimelinePlaybackState<TTime> playback, TimelineTreeExitView exits,
+            int ordinal, int cycle, TTime start, Span<TimelineSchedulingBoundary<TTime>> destination, ref int count)
+            where TClock : struct, IOrchestrationTimelineClock<TTime>
+        {
+            ref readonly TimelineSchedulingClip<TTime> clip = ref content.Clips.Span[ordinal];
+            if (TryTreeCycles<TClock>(content, in clip, ordinal, in playback, exits,
+                    out long first, out long last) && first <= cycle && cycle <= last &&
+                (!clip.TreeDecision || !exits.Exited(ordinal, cycle)))
+                destination[count++] = new TimelineSchedulingBoundary<TTime>(ordinal, clip.SortOrdinal, start, cycle, true);
         }
 
         static bool HasActiveTrees<TClock>(OrchestrationTimelinePreparedContent<TTime> content,
@@ -578,13 +588,11 @@ namespace BTSMTL.Timeline.Runtime
         static bool TryTreeCycles<TClock>(OrchestrationTimelinePreparedContent<TTime> content,
             in TimelineSchedulingClip<TTime> clip, int ordinal,
             in OrchestrationTimelinePlaybackState<TTime> playback,
-            ReadOnlySpan<OrchestrationTimelineTreeExitRange> exits, out long firstCycle, out long lastCycle)
+            TimelineTreeExitView exits, out long firstCycle, out long lastCycle)
             where TClock : struct, IOrchestrationTimelineClock<TTime>
         {
             firstCycle = playback.Progress.Cycle;
             lastCycle = firstCycle;
-            if (!clip.Enabled || !clip.Tree)
-                return false;
             TClock clock = default;
             bool skippedInitial = playback.Progress.InitialBoundaryState == OrchestrationTimelineInitialBoundaryState.Skipped &&
                 clock.LessThanOrEqual(clip.Start, playback.Start.StartTime);
@@ -600,37 +608,5 @@ namespace BTSMTL.Timeline.Runtime
             return firstCycle <= lastCycle;
         }
 
-        static bool TryActiveRange(ReadOnlySpan<OrchestrationTimelineTreeExitRange> exits, int ordinal,
-            ref int rangeIndex, ref long nextCycle, long lastCycle, out long firstActive, out long lastActive)
-        {
-            while (rangeIndex < exits.Length && exits[rangeIndex].ClipOrdinal < ordinal)
-                rangeIndex++;
-            while (nextCycle <= lastCycle && rangeIndex < exits.Length && exits[rangeIndex].ClipOrdinal == ordinal)
-            {
-                ref readonly OrchestrationTimelineTreeExitRange range = ref exits[rangeIndex++];
-                if (range.LastCycle < nextCycle)
-                    continue;
-                firstActive = nextCycle;
-                lastActive = Math.Min(lastCycle, (long)range.FirstCycle - 1);
-                nextCycle = Math.Max(nextCycle, (long)range.LastCycle + 1);
-                if (firstActive <= lastActive)
-                    return true;
-            }
-            firstActive = nextCycle;
-            lastActive = lastCycle;
-            nextCycle = lastCycle + 1;
-            return firstActive <= lastActive;
-        }
-
-        static void AppendActiveCycles<TClock>(Span<TimelineSchedulingBoundary<TTime>> destination,
-            ref int count, int ordinal, in TimelineSchedulingClip<TTime> clip,
-            TTime startTime, long firstCycle, long lastCycle)
-            where TClock : struct, IOrchestrationTimelineClock<TTime>
-        {
-            TClock clock = default;
-            for (long cycle = firstCycle; cycle <= lastCycle; cycle++)
-                destination[count++] = new TimelineSchedulingBoundary<TTime>(ordinal, clip.SortOrdinal,
-                    cycle == 0 ? clock.Max(startTime, clip.Start) : clip.Start, (int)cycle, true);
-        }
     }
 }

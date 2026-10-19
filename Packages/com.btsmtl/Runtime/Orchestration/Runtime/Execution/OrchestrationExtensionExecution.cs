@@ -4,15 +4,17 @@ using ThirdPersonSimulation;
 namespace BTSMTL.Orchestration
 {
     public ref partial struct OrchestrationExecutionCursor<TValue, TScalar, TVector2,
-        TVector3, TQuaternion, TMath, TValues, TContext>
+        TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics>
         where TValue : unmanaged
         where TScalar : unmanaged
         where TVector2 : unmanaged
         where TVector3 : unmanaged
+        where TYaw : unmanaged
         where TQuaternion : unmanaged
         where TMath : struct, IOrchestrationGraphMath<TScalar, TVector2, TVector3, TQuaternion>
-        where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TQuaternion>
+        where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
         where TContext : struct
+        where TDiagnostics : struct, IOrchestrationExecutionDiagnostics
     {
         void InvokeHooks(int operationIndex, OrchestrationLifecycleHook phase,
             int machineOperationIndex = -1, int stateOperationIndex = -1,
@@ -27,8 +29,9 @@ namespace BTSMTL.Orchestration
                 try
                 {
                     for (int i = 0; i < inputs.Length; i++)
-                        m_Workspace.Inputs[depth][i] = HookValue(in inputs[i], operationIndex, phase,
-                            machineOperationIndex, stateOperationIndex, exitingStateOperationIndex, targetStateOperationIndex);
+                        ReadHookInput(in inputs[i], operationIndex, phase,
+                            machineOperationIndex, stateOperationIndex, exitingStateOperationIndex, targetStateOperationIndex,
+                            ref m_Workspace.Inputs[depth][i]);
                     int pathState = phase == OrchestrationLifecycleHook.StateEntered ? stateOperationIndex
                         : phase == OrchestrationLifecycleHook.StateExited || phase == OrchestrationLifecycleHook.StateTransition
                             ? exitingStateOperationIndex : -1;
@@ -50,35 +53,47 @@ namespace BTSMTL.Orchestration
             }
         }
 
-        TValue HookValue(in OrchestrationHookInput input, int operationIndex, OrchestrationLifecycleHook phase,
-            int machineOperationIndex, int stateOperationIndex, int exitingStateOperationIndex, int targetStateOperationIndex)
+        void ReadHookInput(in OrchestrationHookInput input, int operationIndex, OrchestrationLifecycleHook phase,
+            int machineOperationIndex, int stateOperationIndex, int exitingStateOperationIndex, int targetStateOperationIndex,
+            ref TValue value)
         {
             TValues values = default;
             switch (input.Source)
             {
                 case OrchestrationHookInputSource.Constant:
-                    return m_Program.Constant(input.ConstantIndex);
+                    value = m_Program.Constant(input.ConstantIndex);
+                    return;
                 case OrchestrationHookInputSource.OperationIndex:
-                    return values.FromInt32(operationIndex);
+                    value = values.FromInt32(operationIndex);
+                    return;
                 case OrchestrationHookInputSource.OperationGeneration:
-                    return values.FromUInt64(ReadGeneration(operationIndex));
+                    value = values.FromUInt64(ReadGeneration(operationIndex));
+                    return;
                 case OrchestrationHookInputSource.MachineOperationIndex:
-                    return values.FromInt32(machineOperationIndex);
+                    value = values.FromInt32(machineOperationIndex);
+                    return;
                 case OrchestrationHookInputSource.StateOperationIndex:
-                    return values.FromInt32(stateOperationIndex);
+                    value = values.FromInt32(stateOperationIndex);
+                    return;
                 case OrchestrationHookInputSource.ExitingStateOperationIndex:
-                    return values.FromInt32(exitingStateOperationIndex);
+                    value = values.FromInt32(exitingStateOperationIndex);
+                    return;
                 case OrchestrationHookInputSource.TargetStateOperationIndex:
-                    return values.FromInt32(targetStateOperationIndex);
+                    value = values.FromInt32(targetStateOperationIndex);
+                    return;
                 case OrchestrationHookInputSource.Tick:
-                    return values.FromUInt64(m_Input.Tick);
+                    value = values.FromUInt64(m_Input.Tick);
+                    return;
                 case OrchestrationHookInputSource.StateGeneration:
-                    return values.FromUInt64(phase == OrchestrationLifecycleHook.StateEntered
+                    value = values.FromUInt64(phase == OrchestrationLifecycleHook.StateEntered
                         ? checked(ReadGeneration(stateOperationIndex) + 1) : ReadGeneration(stateOperationIndex));
+                    return;
                 case OrchestrationHookInputSource.ExitingStateGeneration:
-                    return values.FromUInt64(ReadGeneration(exitingStateOperationIndex));
+                    value = values.FromUInt64(ReadGeneration(exitingStateOperationIndex));
+                    return;
                 case OrchestrationHookInputSource.TargetStateGeneration:
-                    return values.FromUInt64(checked(ReadGeneration(targetStateOperationIndex) + 1));
+                    value = values.FromUInt64(checked(ReadGeneration(targetStateOperationIndex) + 1));
+                    return;
                 default:
                     throw new InvalidOperationException($"Lifecycle hook at operation '{operationIndex}' has unsupported input '{input.Source}'.");
             }
@@ -89,7 +104,7 @@ namespace BTSMTL.Orchestration
         {
             ref readonly OrchestrationOperation operation = ref m_Program.Operation(operationIndex);
             if (operation.Code == OrchestrationOperationCode.Extension &&
-                (m_Bindings.Contract(operation.ExtensionBindingIndex).Invocations &
+                (m_Bindings.Contract(m_Program.Payload<OrchestrationExtensionPayload>(operationIndex).BindingIndex).Invocations &
                     OrchestrationExtensionInvocationKind.RequestStop) != 0)
             {
                 status = InvokeExtensionStop(operationIndex, context, OrchestrationExtensionInvocationKind.RequestStop);
@@ -133,7 +148,7 @@ namespace BTSMTL.Orchestration
                 operationIndex, ReadGeneration(operationIndex), m_Input.Tick, context.Cause,
                 StateAncestors(operationIndex), ReadExecutionFrame(operationIndex),
                 ReadOnlySpan<TValue>.Empty, outputs, in m_TimelineInvocation);
-            OrchestrationExtensionResult result = m_Bindings.InvokeCandidate(operation.ExtensionBindingIndex,
+            OrchestrationExtensionResult result = m_Bindings.InvokeCandidate(m_Program.Payload<OrchestrationExtensionPayload>(operationIndex).BindingIndex,
                 ref m_Context, in invocation);
             return result switch
             {

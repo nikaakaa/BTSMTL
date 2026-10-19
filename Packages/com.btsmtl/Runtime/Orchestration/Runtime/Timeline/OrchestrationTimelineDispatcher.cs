@@ -4,27 +4,28 @@ using ThirdPersonSimulation;
 namespace BTSMTL.Orchestration
 {
     public interface IOrchestrationTimelineDispatcher<TValue, TScalar, TVector2,
-        TVector3, TQuaternion, TMath, TValues, TContext> : IOrchestrationTimelineClipExitDispatcher<TContext>
+        TVector3, TYaw, TQuaternion, TMath, TValues, TContext> : IOrchestrationTimelineClipExitDispatcher<TContext>
         where TValue : unmanaged
         where TScalar : unmanaged
         where TVector2 : unmanaged
         where TVector3 : unmanaged
+        where TYaw : unmanaged
         where TQuaternion : unmanaged
         where TMath : struct, IOrchestrationGraphMath<TScalar, TVector2, TVector3, TQuaternion>
-        where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TQuaternion>
+        where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
         where TContext : struct
     {
-        OrchestrationOperationResult Tick(
-            ref OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3, TQuaternion, TMath, TValues, TContext> cursor,
+        OrchestrationOperationResult Tick<TDiagnostics>(
+            ref OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics> cursor,
             OrchestrationStateView candidate, int operationIndex, int contentIdentityId,
             ulong operationGeneration, ref ulong playbackIdentity, ReadOnlySpan<TValue> inputs,
-            ulong tick, ref TContext context);
+            ulong tick, ref TContext context) where TDiagnostics : struct, IOrchestrationExecutionDiagnostics;
 
-        OrchestrationStopStatus Stop(
-            ref OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3, TQuaternion, TMath, TValues, TContext> cursor,
+        OrchestrationStopStatus Stop<TDiagnostics>(
+            ref OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics> cursor,
             OrchestrationStateView candidate, int operationIndex, ref ulong playbackIdentity,
             in OrchestrationStopContext stopContext,
-            bool force, ulong tick, ref TContext context);
+            bool force, ulong tick, ref TContext context) where TDiagnostics : struct, IOrchestrationExecutionDiagnostics;
 
         TValue ReadTime();
 

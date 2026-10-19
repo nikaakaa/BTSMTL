@@ -1,5 +1,17 @@
 namespace BTSMTL.Orchestration
 {
+    public readonly struct OrchestrationValueSlotType
+    {
+        public OrchestrationValueSlotType(OrchestrationValueKind valueKind, int typeIndex)
+        {
+            ValueKind = valueKind;
+            TypeIndex = typeIndex;
+        }
+
+        public OrchestrationValueKind ValueKind { get; }
+        public int TypeIndex { get; }
+    }
+
     public enum OrchestrationComparisonKind : byte
     {
         Equal = 0,
@@ -51,22 +63,30 @@ namespace BTSMTL.Orchestration
         TValue FromScalar(TScalar value);
     }
 
-    public interface IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TQuaternion> :
+    public interface IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion> :
         IOrchestrationScalarValueAccess<TValue, TScalar>
         where TValue : unmanaged
         where TScalar : unmanaged
         where TVector2 : unmanaged
         where TVector3 : unmanaged
+        where TYaw : unmanaged
         where TQuaternion : unmanaged
     {
+        TValue Default(OrchestrationValueKind kind);
         TVector2 Vector2(in TValue value);
         TVector3 Vector3(in TValue value);
+        TYaw Yaw(in TValue value);
         TQuaternion Quaternion(in TValue value);
         OrchestrationIdentityValue Identity(in TValue value);
+        OrchestrationEnumValue Enum(in TValue value);
+        OrchestrationSpatialIdentity<TVector3, TYaw> SpatialIdentity(in TValue value);
         TValue FromBoolean(bool value);
         TValue FromVector2(TVector2 value);
         TValue FromVector3(TVector3 value);
+        TValue FromYaw(TYaw value);
         TValue FromQuaternion(TQuaternion value);
         TValue FromIdentity(OrchestrationIdentityValue value);
+        TValue FromEnum(OrchestrationEnumValue value);
+        TValue FromSpatialIdentity(OrchestrationSpatialIdentity<TVector3, TYaw> value);
     }
 }

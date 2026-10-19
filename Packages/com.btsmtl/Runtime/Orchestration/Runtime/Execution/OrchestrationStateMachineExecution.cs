@@ -4,15 +4,17 @@ using ThirdPersonSimulation;
 namespace BTSMTL.Orchestration
 {
     public ref partial struct OrchestrationExecutionCursor<TValue, TScalar, TVector2,
-        TVector3, TQuaternion, TMath, TValues, TContext>
+        TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics>
         where TValue : unmanaged
         where TScalar : unmanaged
         where TVector2 : unmanaged
         where TVector3 : unmanaged
+        where TYaw : unmanaged
         where TQuaternion : unmanaged
         where TMath : struct, IOrchestrationGraphMath<TScalar, TVector2, TVector3, TQuaternion>
-        where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TQuaternion>
+        where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
         where TContext : struct
+        where TDiagnostics : struct, IOrchestrationExecutionDiagnostics
     {
         public bool CurrentStateRootCompleted()
         {
@@ -54,34 +56,6 @@ namespace BTSMTL.Orchestration
             return false;
         }
 
-        public int PredictCurrentStateRootCompletionTransition()
-        {
-            int state = m_StateDepth == 0 ? m_Blackboards.BorrowedStateOperationIndex :
-                m_Workspace.States[m_StateDepth - 1].OperationIndex;
-            if (state < 0)
-                return -1;
-            int previousFrame = m_FrameSlot;
-            int previousOperation = m_CurrentOperationIndex;
-            bool selectFrame = m_StateDepth != 0 && !m_Blackboards.IsBorrowedOperation(state) &&
-                m_Workspace.States[m_StateDepth - 1].ExecutionFrameIndex != previousFrame;
-            if (selectFrame)
-                SelectExecutionFrame(m_Workspace.States[m_StateDepth - 1].ExecutionFrameIndex);
-            PushState(state, -1, true, true);
-            try
-            {
-                return SelectTransition(state);
-            }
-            finally
-            {
-                PopState();
-                if (selectFrame)
-                {
-                    SelectExecutionFrame(previousFrame);
-                    m_CurrentOperationIndex = previousOperation;
-                }
-            }
-        }
-
         OrchestrationOperationResult TickStateMachine(int operationIndex)
         {
             ref OrchestrationOperationState machine = ref m_Operations[operationIndex];
@@ -111,8 +85,8 @@ namespace BTSMTL.Orchestration
                 return OrchestrationOperationResult.Running;
             TraceEdge(transition, true, true, active);
             ref readonly OrchestrationFlowEdge edge = ref m_Program.Edge(transition);
-            machine.ExitingStateIdentityId = m_Program.Operation(active).StateIdentityId;
-            machine.PendingStateIdentityId = m_Program.Operation(edge.TargetOperationIndex).StateIdentityId;
+            machine.ExitingStateIdentityId = m_Program.Payload<OrchestrationStateIdentityPayload>(active).IdentityId;
+            machine.PendingStateIdentityId = m_Program.Payload<OrchestrationStateIdentityPayload>(edge.TargetOperationIndex).IdentityId;
             machine.TransitionIdentityId = edge.IdentityId;
             return ContinueStateTransition(operationIndex, active);
         }
@@ -231,7 +205,7 @@ namespace BTSMTL.Orchestration
                 machine.ActiveStateIdentityId = 0;
                 return OrchestrationStopStatus.Completed;
             }
-            machine.ExitingStateIdentityId = m_Program.Operation(exiting).StateIdentityId;
+            machine.ExitingStateIdentityId = m_Program.Payload<OrchestrationStateIdentityPayload>(exiting).IdentityId;
             OrchestrationStopStatus stop = RequestStop(exiting, context);
             if (stop != OrchestrationStopStatus.Completed)
                 return stop;
@@ -272,29 +246,21 @@ namespace BTSMTL.Orchestration
 
         void ActivateState(int machineOperationIndex, int stateOperationIndex)
         {
-            m_Operations[machineOperationIndex].ActiveStateIdentityId = m_Program.Operation(stateOperationIndex).StateIdentityId;
+            m_Operations[machineOperationIndex].ActiveStateIdentityId = m_Program.Payload<OrchestrationStateIdentityPayload>(stateOperationIndex).IdentityId;
             InvokeHooks(machineOperationIndex, OrchestrationLifecycleHook.StateEntered,
                 machineOperationIndex, stateOperationIndex, targetStateOperationIndex: stateOperationIndex);
         }
 
         int SelectTransition(int sourceOperationIndex, int excludedTarget = -1, int stateContext = -1)
         {
-            if (sourceOperationIndex < 0)
-                return -1;
             bool hasScope = stateContext >= 0;
             if (hasScope)
                 PushState(stateContext, -1);
             try
             {
-                foreach (int edgeIndex in m_Program.Outgoing(sourceOperationIndex, OrchestrationFlowKind.Transition))
-                {
-                    ref readonly OrchestrationFlowEdge edge = ref m_Program.Edge(edgeIndex);
-                    if (excludedTarget >= 0 && edge.TargetOperationIndex == excludedTarget)
-                        continue;
-                    if (EvaluateCondition(edgeIndex))
-                        return edgeIndex;
-                }
-                return -1;
+                ref readonly OrchestrationValueScheduleEntry entry = ref m_Program.ValueSchedule.TransitionEntries.Span[
+                    ScheduleStateContext() * m_Program.OperationCount + sourceOperationIndex];
+                return RunValueSchedule(in entry, excludedTarget).Value;
             }
             finally
             {
@@ -319,7 +285,7 @@ namespace BTSMTL.Orchestration
         void PushState(int stateOperationIndex, int exitCause,
             bool hasRootCompletedOverride = false, bool rootCompletedOverride = false)
         {
-            bool capture = m_Input.CaptureTrace && !hasRootCompletedOverride && !IsPredictiveEvaluation;
+            int trace = default(TDiagnostics).CaptureState(ref this, stateOperationIndex, hasRootCompletedOverride);
             m_Workspace.States[m_StateDepth++] = new OrchestrationExecutionWorkspace<TValue>.StateContext
             {
                 ExecutionFrameIndex = OperationFrame(stateOperationIndex),
@@ -327,11 +293,15 @@ namespace BTSMTL.Orchestration
                 ExitCause = exitCause,
                 HasRootCompletedOverride = hasRootCompletedOverride,
                 RootCompletedOverride = rootCompletedOverride,
-                TraceFrameIndex = capture ? CaptureStatePath(stateOperationIndex) : -1
+                TraceFrameIndex = trace
             };
         }
 
         void PopState() => m_StateDepth--;
+
+        internal int CaptureDiagnosticState(int operationIndex, bool rootCompletedOverride) =>
+            m_Input.CaptureTrace && !rootCompletedOverride && !IsPredictiveEvaluation
+                ? CaptureStatePath(operationIndex) : -1;
 
         int CaptureStatePath(int stateOperationIndex, bool lifecycleOwner = false)
         {

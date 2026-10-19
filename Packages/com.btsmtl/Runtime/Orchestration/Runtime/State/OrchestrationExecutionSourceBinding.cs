@@ -40,9 +40,11 @@ namespace BTSMTL.Orchestration
                 if (operation.ExecutionFrameOwnerOperationIndex != candidateOwnerOperationIndex)
                     continue;
                 if (operation.Code == OrchestrationOperationCode.BlackboardSet)
-                    RequireCandidateWrite(program, candidateOwnerOperationIndex, index, operation.ValueSlot);
-                foreach (ref readonly OrchestrationBlackboardOutputBinding output in program.OutputAssignments(index))
-                    RequireCandidateWrite(program, candidateOwnerOperationIndex, index, output.ValueSlot);
+                    RequireCandidateWrite(program, candidateOwnerOperationIndex, index,
+                        program.Payload<OrchestrationBlackboardSetPayload>(index).Slot);
+                if (operation.Code == OrchestrationOperationCode.Extension)
+                    foreach (ref readonly OrchestrationBlackboardOutputBinding output in program.OutputAssignments(index))
+                        RequireCandidateWrite(program, candidateOwnerOperationIndex, index, output.ValueSlot);
             }
             return new OrchestrationExecutionSourceBinding<TValue>(program, candidateOwnerOperationIndex, sourceOperationIndex);
         }
@@ -82,7 +84,7 @@ namespace BTSMTL.Orchestration
             if (Program.Operation(operationIndex).Code == OrchestrationOperationCode.StateMachine)
                 for (int state = 0; state < Program.OperationCount; state++)
                     if (Program.Operation(state).Code == OrchestrationOperationCode.State &&
-                        Program.Operation(state).StateMachineOwnerOperationIndex == operationIndex)
+                        Program.Payload<OrchestrationStatePayload>(state).MachineIndex == operationIndex)
                         CollectGraphMembers(state, frameOwner, members);
         }
     }

@@ -4,15 +4,17 @@ using ThirdPersonSimulation;
 namespace BTSMTL.Orchestration
 {
     public ref partial struct OrchestrationExecutionCursor<TValue, TScalar, TVector2,
-        TVector3, TQuaternion, TMath, TValues, TContext>
+        TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics>
         where TValue : unmanaged
         where TScalar : unmanaged
         where TVector2 : unmanaged
         where TVector3 : unmanaged
+        where TYaw : unmanaged
         where TQuaternion : unmanaged
         where TMath : struct, IOrchestrationGraphMath<TScalar, TVector2, TVector3, TQuaternion>
-        where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TQuaternion>
+        where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
         where TContext : struct
+        where TDiagnostics : struct, IOrchestrationExecutionDiagnostics
     {
         OrchestrationOperationResult TickLoop(int operationIndex)
         {
@@ -31,7 +33,7 @@ namespace BTSMTL.Orchestration
             OrchestrationOperationResult child = TickEdge(edgeIndex);
             if (child != OrchestrationOperationResult.Running)
                 TraceOperation(OrchestrationTraceKind.LoopIterationComplete, operationIndex, child);
-            int mode = m_Program.Operation(operationIndex).Integer0;
+            int mode = m_Program.Payload<OrchestrationModePayload>(operationIndex).Mode;
             if (mode == 1 && child == OrchestrationOperationResult.Success)
                 return OrchestrationOperationResult.Success;
             if (mode == 2 && child == OrchestrationOperationResult.Failure)
@@ -112,36 +114,25 @@ namespace BTSMTL.Orchestration
                 ref readonly OrchestrationFlowEdge current = ref m_Program.Edge(currentIndex);
                 if (IsRunning(current.TargetOperationIndex))
                 {
-                    if (UsesSelfAbort(current.AbortPolicy) && !EvaluateCondition(currentIndex))
+                    ref readonly OrchestrationValueScheduleEntry abortEntry = ref m_Program.ValueSchedule.SelectorAbortEntries.Span[
+                        ScheduleStateContext() * m_Program.EdgeCount + currentIndex];
+                    ScheduledSelection selection = RunValueSchedule(in abortEntry);
+                    if (selection.Value >= 0)
                     {
-                        OrchestrationStopContext context = OrchestrationStopContext.SelfAbort(current.TargetOperationIndex);
+                        bool self = selection.Reason == OrchestrationValueSelectionReason.SelfAbort;
+                        OrchestrationStopContext context = self
+                            ? OrchestrationStopContext.SelfAbort(current.TargetOperationIndex)
+                            : OrchestrationStopContext.LowerPriorityAbort(current.TargetOperationIndex,
+                                m_Program.Edge(children[selection.Value]).TargetOperationIndex);
                         WriteStopContext(operationIndex, context);
                         OrchestrationStopStatus stop = RequestStop(current.TargetOperationIndex, context);
                         if (stop == OrchestrationStopStatus.Running)
-                            return Wait(operationIndex, OrchestrationWaitReason.ChildStop);
+                            return Wait(operationIndex, self ? OrchestrationWaitReason.ChildStop : OrchestrationWaitReason.PriorityReplacement);
                         ClearStopContext(operationIndex);
                         state.ChildCursor = -1;
                         if (stop == OrchestrationStopStatus.Failed)
                             return OrchestrationOperationResult.Failure;
-                        return TickSelectorFrom(operationIndex, children, 0);
-                    }
-                    for (int i = 0; i < cursor; i++)
-                    {
-                        int edgeIndex = children[i];
-                        ref readonly OrchestrationFlowEdge edge = ref m_Program.Edge(edgeIndex);
-                        if (!UsesLowerPriorityAbort(edge.AbortPolicy) || !EvaluateCondition(edgeIndex))
-                            continue;
-                        OrchestrationStopContext context = OrchestrationStopContext.LowerPriorityAbort(
-                            current.TargetOperationIndex, edge.TargetOperationIndex);
-                        WriteStopContext(operationIndex, context);
-                        OrchestrationStopStatus stop = RequestStop(current.TargetOperationIndex, context);
-                        if (stop == OrchestrationStopStatus.Running)
-                            return Wait(operationIndex, OrchestrationWaitReason.PriorityReplacement);
-                        ClearStopContext(operationIndex);
-                        state.ChildCursor = -1;
-                        if (stop == OrchestrationStopStatus.Failed)
-                            return OrchestrationOperationResult.Failure;
-                        return TickSelectorFrom(operationIndex, children, i);
+                        return TickSelectorFrom(operationIndex, children, self ? 0 : selection.Value);
                     }
                     OrchestrationOperationResult currentResult = TickEdge(currentIndex);
                     if (currentResult != OrchestrationOperationResult.Failure)
@@ -158,7 +149,7 @@ namespace BTSMTL.Orchestration
             ReadOnlySpan<int> children = m_Program.Outgoing(operationIndex, OrchestrationFlowKind.Child);
             ref OrchestrationOperationState state = ref m_Operations[operationIndex];
             int completedMask = state.ChildCursor;
-            int mode = m_Program.Operation(operationIndex).Integer0;
+            int mode = m_Program.Payload<OrchestrationModePayload>(operationIndex).Mode;
             bool completesWithFirstChild = mode == 2;
             bool ticksCompletedChildren = mode == 1;
             bool running = false;
@@ -235,11 +226,14 @@ namespace BTSMTL.Orchestration
 
         OrchestrationOperationResult TickSelectorFrom(int operationIndex, ReadOnlySpan<int> children, int start)
         {
-            for (int i = Math.Max(0, start); i < children.Length; i++)
+            for (int i = start; i < children.Length; i++)
             {
+                ref readonly OrchestrationValueScheduleEntry entry = ref m_Program.ValueSchedule.ChildSelectionEntries.Span[
+                    ScheduleStateContext() * m_Program.EdgeCount + children[i]];
+                i = RunValueSchedule(in entry).Value;
+                if (i < 0)
+                    break;
                 int edgeIndex = children[i];
-                if (!EvaluateCondition(edgeIndex))
-                    continue;
                 OrchestrationOperationResult result = TickEdge(edgeIndex);
                 if (result == OrchestrationOperationResult.Failure)
                     continue;
@@ -264,7 +258,5 @@ namespace BTSMTL.Orchestration
         static bool UsesSelfAbort(OrchestrationAbortPolicy policy) =>
             policy == OrchestrationAbortPolicy.Self || policy == OrchestrationAbortPolicy.Both;
 
-        static bool UsesLowerPriorityAbort(OrchestrationAbortPolicy policy) =>
-            policy == OrchestrationAbortPolicy.LowerPriority || policy == OrchestrationAbortPolicy.Both;
     }
 }

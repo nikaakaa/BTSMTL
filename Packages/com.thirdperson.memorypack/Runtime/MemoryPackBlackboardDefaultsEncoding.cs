@@ -1,6 +1,6 @@
 using BTSMTL.Orchestration;
-using Float32Value = BTSMTL.Orchestration.OrchestrationValue<ThirdPersonSimulation.Float32Scalar, ThirdPersonSimulation.Float32Vector2, ThirdPersonSimulation.Float32Vector3, ThirdPersonSimulation.Float32Yaw, ThirdPersonSimulation.Float32Quaternion>;
-using FPValue = BTSMTL.Orchestration.OrchestrationValue<Photon.Deterministic.FP, Photon.Deterministic.FPVector2, Photon.Deterministic.FPVector3, Photon.Deterministic.FP, Photon.Deterministic.FPQuaternion>;
+using Float32Value = BTSMTL.Orchestration.Float32OrchestrationValue;
+using FPValue = ThirdPersonSimulation.QuantumNumerics.FPOrchestrationValue;
 
 namespace ThirdPersonSimulation.Serialization
 {

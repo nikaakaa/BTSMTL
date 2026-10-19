@@ -12,6 +12,7 @@
   <ItemGroup>
     <Compile Include="$(NumericsSourceRoot)\**\*.cs" LinkBase="Source" />
     <ProjectReference Include="..\ThirdPerson.Shared.Contracts\ThirdPerson.Shared.Contracts.csproj" />
+    <ProjectReference Include="..\BTSMTL.Orchestration.Contracts\BTSMTL.Orchestration.Contracts.csproj" />
     <Reference Include="Quantum.Deterministic">
       <HintPath>$(QuantumDeterministicPath)</HintPath>
     </Reference>

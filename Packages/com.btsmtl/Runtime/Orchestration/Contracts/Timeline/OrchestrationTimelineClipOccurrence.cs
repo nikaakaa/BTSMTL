@@ -11,12 +11,18 @@ namespace BTSMTL.Orchestration
         public int Cycle;
     }
 
-    [ValueOperations]
-    public partial struct OrchestrationTimelineTreeExitRange :
-        IEquatable<OrchestrationTimelineTreeExitRange>
+    public readonly struct OrchestrationTimelineTreeCycleWindow
     {
-        public int ClipOrdinal;
-        public int FirstCycle;
-        public int LastCycle;
+        public OrchestrationTimelineTreeCycleWindow(int stateIndex, int wordOffset, int cycleCapacity)
+        {
+            StateIndex = stateIndex;
+            WordOffset = wordOffset;
+            CycleCapacity = cycleCapacity;
+        }
+
+        public int StateIndex { get; }
+        public int WordOffset { get; }
+        public int CycleCapacity { get; }
+        public int WordCount => (int)(((long)CycleCapacity + 31) / 32);
     }
 }

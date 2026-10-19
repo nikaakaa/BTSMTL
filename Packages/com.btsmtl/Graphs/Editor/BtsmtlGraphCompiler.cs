@@ -16,16 +16,18 @@ namespace BTSMTL.Graphs.Editor
     {
         // 数值类型与 lowering 由宿主按 contract.NumericTarget 选择，须与宿主运行时的数值类型参数一致。
         // contentEncoder 编码图中扩展操作的作者内容，由提供这些扩展领域的宿主给出；图没有扩展操作时传 null。
-        public static void Compile<TScalar, TVector2, TVector3, TYaw, TQuaternion, TLowering>(
+        public static void Compile<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TLowering>(
             BtsmtlGraphRoot root, GraphHostContract contract,
-            IOrchestrationGraphContentEncoding<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> encoding,
+            IOrchestrationGraphContentEncoding<TValue> encoding,
             TLowering lowering,
-            IBtsmtlOrchestrationContentEncoder<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>, TScalar> contentEncoder)
+            IBtsmtlOrchestrationContentEncoder<TValue, TScalar> contentEncoder)
+            where TValue : unmanaged
             where TScalar : unmanaged, IComparable<TScalar>, IEquatable<TScalar>
             where TVector2 : unmanaged
             where TVector3 : unmanaged
             where TYaw : unmanaged
             where TQuaternion : unmanaged
+            where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
             where TLowering : struct, IBtsmtlOrchestrationNumericLowering<TScalar, TVector2, TVector3, TYaw, TQuaternion>
         {
             BtsmtlGraphValidator.Require(root, contract);
@@ -33,8 +35,8 @@ namespace BTSMTL.Graphs.Editor
             var fingerprint = new BtsmtlGraphFingerprint();
             GraphExecutionIdentity identity = fingerprint.CreateIdentity(root, root.AuthoringId,
                 encoding.EncodingContract, contract.NumericTarget);
-            OrchestrationGraphContent<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> content =
-                new Compilation(root, contract, identity.SourceRevision).Build<TScalar, TVector2, TVector3, TYaw, TQuaternion, TLowering>(
+            OrchestrationGraphContent<TValue> content =
+                new Compilation(root, contract, identity.SourceRevision).Build<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TLowering>(
                     identity, lowering, contentEncoder);
             root.SetExecutionData(encoding.Write(content), identity, encoding);
             EditorUtility.SetDirty(root);
@@ -72,14 +74,16 @@ namespace BTSMTL.Graphs.Editor
                 m_Blackboard = CreateBlackboard(contract);
             }
 
-            internal OrchestrationGraphContent<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>
-                Build<TScalar, TVector2, TVector3, TYaw, TQuaternion, TLowering>(GraphExecutionIdentity identity, TLowering lowering,
-                    IBtsmtlOrchestrationContentEncoder<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>, TScalar> contentEncoder)
+            internal OrchestrationGraphContent<TValue>
+                Build<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TLowering>(GraphExecutionIdentity identity, TLowering lowering,
+                    IBtsmtlOrchestrationContentEncoder<TValue, TScalar> contentEncoder)
+                where TValue : unmanaged
                 where TScalar : unmanaged, IComparable<TScalar>, IEquatable<TScalar>
                 where TVector2 : unmanaged
                 where TVector3 : unmanaged
                 where TYaw : unmanaged
                 where TQuaternion : unmanaged
+                where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
                 where TLowering : struct, IBtsmtlOrchestrationNumericLowering<TScalar, TVector2, TVector3, TYaw, TQuaternion>
             {
                 using var invocation = m_Builder.PushGraphInvocation(m_Route, string.Empty);
@@ -149,7 +153,7 @@ namespace BTSMTL.Graphs.Editor
                 OperationHandle owner = m_Operations.Node(m_Root.Entries[0].NodeId);
                 m_Builder.DeclareGraphInvocation(owner, owner, GraphSource(), ProgramInvocationCallerKind.None,
                     string.Empty, string.Empty, -1);
-                return m_Builder.BuildOrchestration<TScalar, TVector2, TVector3, TYaw, TQuaternion, TLowering>(
+                return m_Builder.BuildOrchestration<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TLowering>(
                     owner, identity, lowering, contentEncoder, entryContracts);
             }
 

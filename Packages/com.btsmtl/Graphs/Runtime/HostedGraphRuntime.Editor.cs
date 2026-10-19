@@ -8,27 +8,29 @@ using ThirdPersonSimulation;
 
 namespace BTSMTL.Graphs
 {
-    public sealed partial class HostedGraphRuntime<TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TNumeric, TContext>
+    public sealed partial class HostedGraphRuntime<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TNumeric, TContext>
+        where TValue : unmanaged
         where TScalar : unmanaged
         where TVector2 : unmanaged
         where TVector3 : unmanaged
         where TYaw : unmanaged
         where TQuaternion : unmanaged
         where TMath : struct, IOrchestrationGraphMath<TScalar, TVector2, TVector3, TQuaternion>
+        where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
         where TNumeric : struct, IGraphNumericAdapter<TScalar, TVector2, TVector3, TQuaternion>
         where TContext : struct
     {
         const uint RecordedStateFormat = 0x45564752;
-        const uint RecordedStateVersion = 2;
+        const uint RecordedStateVersion = 3;
         readonly Dictionary<(string Node, string Port, bool Input), GraphRuntimePort> m_EditorPorts = new();
         GraphRuntimePort[] m_RuntimePorts;
-        OrchestrationValueOverride<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>[] m_Overrides;
-        OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>[] m_ObservedInputs;
-        OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>[] m_ObservedOutputs;
+        OrchestrationValueOverride<TValue>[] m_Overrides;
+        TValue[] m_ObservedInputs;
+        TValue[] m_ObservedOutputs;
         List<(int Operation, int Port, bool Input)> m_Triggers;
-        OrchestrationValueOverride<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>[] m_CandidateOverrides;
-        OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>[] m_CandidateObservedInputs;
-        OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>[] m_CandidateObservedOutputs;
+        OrchestrationValueOverride<TValue>[] m_CandidateOverrides;
+        TValue[] m_CandidateObservedInputs;
+        TValue[] m_CandidateObservedOutputs;
         List<(int Operation, int Port, bool Input)> m_CandidateTriggers;
 
         public event Action<int, int> RecordedStateCapacityRequired;
@@ -38,18 +40,19 @@ namespace BTSMTL.Graphs
 
         void InitializeEditor()
         {
-            OrchestrationProgram<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> program = m_Bindings.Program;
+            m_Workspace.PrepareValueCapture();
+            OrchestrationProgram<TValue> program = m_Bindings.Program;
             int overrideCapacity = m_Bindings.PublishedSlots.Length;
             foreach (GraphRuntimePort port in m_RuntimePorts)
                 if (!port.IsTrigger)
                     overrideCapacity++;
-            m_Overrides = new OrchestrationValueOverride<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>[overrideCapacity];
-            m_ObservedInputs = new OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>[program.InputBindingCount];
-            m_ObservedOutputs = new OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>[program.ValueEvaluationSlotCount];
+            m_Overrides = new OrchestrationValueOverride<TValue>[overrideCapacity];
+            m_ObservedInputs = new TValue[program.InputBindingCount];
+            m_ObservedOutputs = new TValue[program.ValueEvaluationSlotCount];
             m_Triggers = new List<(int Operation, int Port, bool Input)>(m_Bindings.Content.Ports.Length);
-            m_CandidateOverrides = new OrchestrationValueOverride<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>[overrideCapacity];
-            m_CandidateObservedInputs = new OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>[m_ObservedInputs.Length];
-            m_CandidateObservedOutputs = new OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>[m_ObservedOutputs.Length];
+            m_CandidateOverrides = new OrchestrationValueOverride<TValue>[overrideCapacity];
+            m_CandidateObservedInputs = new TValue[m_ObservedInputs.Length];
+            m_CandidateObservedOutputs = new TValue[m_ObservedOutputs.Length];
             m_CandidateTriggers = new List<(int Operation, int Port, bool Input)>(m_Triggers.Capacity);
         }
 
@@ -70,8 +73,9 @@ namespace BTSMTL.Graphs
             return false;
         }
 
-        void ExecuteTriggers(ref OrchestrationExecutionCursor<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>, TScalar, TVector2,
-            TVector3, TQuaternion, TMath, OrchestrationValueAccess<TScalar, TVector2, TVector3, TYaw, TQuaternion>, TContext> cursor)
+        void ExecuteTriggers<TDiagnostics>(ref OrchestrationExecutionCursor<TValue, TScalar, TVector2,
+            TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics> cursor)
+            where TDiagnostics : struct, IOrchestrationExecutionDiagnostics
         {
             for (int i = 0; i < m_CandidateTriggers.Count; i++)
             {
@@ -93,9 +97,10 @@ namespace BTSMTL.Graphs
             BeginCandidateState();
             try
             {
-                OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion> state = operation == GraphVariableMutation.Release ? default :
-                    m_Bindings.ToState(in value, m_Bindings.Program.Content.DefaultValues.Span[slot].Enum.TypeContentId,
-                        m_CandidateTexts);
+                int enumTypeContentId = m_Bindings.StateTypes[slot].IsEnum
+                    ? default(TValues).Enum(m_Bindings.Program.Content.DefaultValues.Span[slot]).TypeContentId : 0;
+                TValue state = operation == GraphVariableMutation.Release ? default :
+                    m_Bindings.ToState(in value, enumTypeContentId, m_CandidateTexts);
                 MutateCandidateVariable(slot, in state, operation);
                 m_CandidateTexts.PrepareOrdinals();
                 AdoptCandidateState();
@@ -109,7 +114,7 @@ namespace BTSMTL.Graphs
         public GraphHostValue ReadRuntimeVariable(string variableId)
         {
             int slot = m_Bindings.PublishedSlots[VariableContract.Layout.Bind(variableId).Index];
-            OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion> value = ReadState(slot, StateValues);
+            TValue value = ReadState(slot, StateValues);
             return m_Bindings.FromState(in value, m_Bindings.StateTypes[slot], m_StateTexts);
         }
 
@@ -120,11 +125,11 @@ namespace BTSMTL.Graphs
         public bool IsRuntimeVariableLocked(string variableId) =>
             IsVariableLocked(m_Bindings.PublishedSlots[VariableContract.Layout.Bind(variableId).Index]);
 
-        OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>[] PortObservations(GraphRuntimePort port) => port.IsInput ? m_ObservedInputs : m_ObservedOutputs;
-        OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>[] CandidatePortObservations(GraphRuntimePort port) =>
+        TValue[] PortObservations(GraphRuntimePort port) => port.IsInput ? m_ObservedInputs : m_ObservedOutputs;
+        TValue[] CandidatePortObservations(GraphRuntimePort port) =>
             port.IsInput ? m_CandidateObservedInputs : m_CandidateObservedOutputs;
 
-        static int FindOverride(ReadOnlySpan<OrchestrationValueOverride<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>> overrides,
+        static int FindOverride(ReadOnlySpan<OrchestrationValueOverride<TValue>> overrides,
             OrchestrationValueOverrideKind kind, int slot)
         {
             for (int index = 0; index < overrides.Length; index++)
@@ -142,9 +147,9 @@ namespace BTSMTL.Graphs
         {
             int slot = port.ValueSlot;
             int supplied = FindPortOverride(port);
-            OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion> value = supplied >= 0 ? m_Overrides[supplied].Value :
+            TValue value = supplied >= 0 ? m_Overrides[supplied].Value :
                 input ? default : PortObservations(port)[slot];
-            return value.Kind == default ? default : m_Bindings.FromState(in value, port.ValueType, m_StateTexts);
+            return default(TValues).Kind(in value) == default ? default : m_Bindings.FromState(in value, port.ValueType, m_StateTexts);
         }
 
         internal bool IsPortLocked(GraphRuntimePort port)
@@ -172,30 +177,30 @@ namespace BTSMTL.Graphs
         void ApplyCandidatePortMutation(GraphRuntimePort port, in GraphHostValue value,
             GraphVariableMutation operation)
         {
-            var input = new OrchestrationFrameInput<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>(
+            var input = new OrchestrationFrameInput<TValue>(
                 m_LastInvocation.Sequence, m_ResetGeneration, default, default, overrides: m_CandidateOverrides);
             var cursor = CreateEditorCursor(in input);
             cursor.BindTraceInvocationScope(port.Operation, m_Bindings.Update);
             OrchestrationValueOverrideAddress address = cursor.ReadPortOverrideAddress(port.Operation,
                 port.ValueSlot, port.IsInput);
             if (operation == GraphVariableMutation.Release)
-                OrchestrationValueOverride<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>.Release(
+                OrchestrationValueOverride<TValue>.Release(
                     m_CandidateOverrides, in address);
             else
             {
                 RequireValue(value, port.ValueType);
-                OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion> converted =
+                TValue converted =
                     m_Bindings.ToState(in value, port.EnumTypeContentId, m_CandidateTexts);
-                OrchestrationValueOverride<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>.Set(
+                OrchestrationValueOverride<TValue>.Set(
                     m_CandidateOverrides, in address, in converted, operation == GraphVariableMutation.Override
                         ? OrchestrationValueOverrideMode.Locked : OrchestrationValueOverrideMode.Once);
             }
         }
 
         void MutateCandidateVariable(int slot,
-            in OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion> value, GraphVariableMutation mutation)
+            in TValue value, GraphVariableMutation mutation)
         {
-            var input = new OrchestrationFrameInput<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>(
+            var input = new OrchestrationFrameInput<TValue>(
                 m_LastInvocation.Sequence, m_ResetGeneration, default, default, overrides: m_CandidateOverrides);
             var cursor = CreateEditorCursor(in input);
             int operation = m_Bindings.Program.RootOperationIndex;
@@ -208,16 +213,13 @@ namespace BTSMTL.Graphs
             });
         }
 
-        OrchestrationExecutionCursor<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>,
-            TScalar, TVector2, TVector3, TQuaternion, TMath,
-            OrchestrationValueAccess<TScalar, TVector2, TVector3, TYaw, TQuaternion>, TContext>
-            CreateEditorCursor(in OrchestrationFrameInput<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> input)
+        OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext, OrchestrationWorkbenchDiagnostics>
+            CreateEditorCursor(in OrchestrationFrameInput<TValue> input)
         {
             var state = OrchestrationStateBinding.BindCandidate(m_Layout, m_Candidate);
             OrchestrationIdentityOrdinalView identities = m_CandidateTexts.Ordinals;
             TContext context = default;
-            return state.CreateCursor<TScalar, TVector2, TVector3, TQuaternion, TMath,
-                OrchestrationValueAccess<TScalar, TVector2, TVector3, TYaw, TQuaternion>, TContext>(
+            return state.CreateCursor<TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext, OrchestrationWorkbenchDiagnostics>(
                 m_Bindings.Program, m_Workspace, m_Extensions, 0, ReadOnlySpan<int>.Empty,
                 null, null, in input, in identities, in context);
         }
@@ -263,7 +265,7 @@ namespace BTSMTL.Graphs
         {
             CopyObserved(m_Workspace.ObservedInputs, m_Workspace.WrittenInputs, m_CandidateObservedInputs);
             CopyObserved(m_Workspace.ObservedOutputs, m_Workspace.WrittenOutputs, m_CandidateObservedOutputs);
-            OrchestrationValueOverride<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>
+            OrchestrationValueOverride<TValue>
                 .CompleteConsumption(m_CandidateOverrides);
             m_CandidateTriggers.Clear();
         }
@@ -293,7 +295,7 @@ namespace BTSMTL.Graphs
                 m_CandidateTriggers.Add(m_Triggers[i]);
         }
 
-        void RemapValues(ReadOnlySpan<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> source, Span<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> destination)
+        void RemapValues(ReadOnlySpan<TValue> source, Span<TValue> destination)
         {
             source.CopyTo(destination);
             for (int i = 0; i < source.Length; i++)
@@ -323,16 +325,16 @@ namespace BTSMTL.Graphs
             m_CandidateTriggers.Clear();
         }
 
-        static void CopyObserved(ReadOnlySpan<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> observed, ReadOnlySpan<bool> written,
-            Span<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> destination)
+        static void CopyObserved(ReadOnlySpan<TValue> observed, ReadOnlySpan<bool> written,
+            Span<TValue> destination)
         {
             for (int i = 0; i < written.Length; i++)
                 if (written[i])
                     destination[i] = observed[i];
         }
 
-        static Span<OrchestrationValueOverride<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>> ActiveOverrides(
-            OrchestrationValueOverride<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>[] values)
+        static Span<OrchestrationValueOverride<TValue>> ActiveOverrides(
+            OrchestrationValueOverride<TValue>[] values)
         {
             int length = values.Length;
             while (length > 0 && values[length - 1].Mode == OrchestrationValueOverrideMode.None)
@@ -403,14 +405,17 @@ namespace BTSMTL.Graphs
             var frames = state.Frames;
             writer.WriteSpan<OrchestrationOperationState>(frames.Operations(0));
             writer.WriteSpan<OrchestrationBlackboardMetadata>(frames.BlackboardMetadata(0));
-            ReadOnlySpan<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> values = frames.Values(0);
+            ReadOnlyOrchestrationStateView memory = m_Layout.Layout.BindCommitted(m_State);
+            writer.WriteSpan<OrchestrationTransitionCacheState>(m_Layout.GetTransitionCaches(memory));
+            writer.WriteSpan<OrchestrationTransitionSnapshot<TValue>>(m_Layout.GetTransitionSnapshots(memory));
+            ReadOnlySpan<TValue> values = frames.Values(0);
             for (int i = 0; i < m_Bindings.Program.ValueSlotCount; i++)
             {
                 if (maximumCapacity)
                     GraphHostValue.WriteRecordedStateCapacity(ref writer, m_Bindings.StateTypes[i]);
                 else
                 {
-                    OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion> value = values[i];
+                    TValue value = values[i];
                     m_Bindings.FromState(in value, m_Bindings.StateTypes[i], m_StateTexts).WriteRecordedFrameState(ref writer);
                 }
                 bool locked = maximumCapacity || IsVariableLocked(i);
@@ -430,8 +435,8 @@ namespace BTSMTL.Graphs
                 if (port.IsTrigger)
                     continue;
                 port.WriteRecordedFrameState(ref writer, maximumCapacity);
-                OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion> observed = maximumCapacity ? default : PortObservations(port)[port.ValueSlot];
-                bool hasObserved = maximumCapacity || observed.Kind != default;
+                TValue observed = maximumCapacity ? default : PortObservations(port)[port.ValueSlot];
+                bool hasObserved = maximumCapacity || default(TValues).Kind(in observed) != default;
                 writer.Write(hasObserved);
                 if (hasObserved)
                 {
@@ -480,16 +485,21 @@ namespace BTSMTL.Graphs
                 Span<OrchestrationBlackboardMetadata> blackboards = frames.BlackboardMetadata(0);
                 for (int i = 0; i < blackboards.Length; i++)
                     blackboards[i] = reader.Read<OrchestrationBlackboardMetadata>();
-                Span<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> values = frames.Values(0);
+                Span<OrchestrationTransitionCacheState> transitionCaches = frames.TransitionCaches(0);
+                reader.ReadSpan<OrchestrationTransitionCacheState>(transitionCaches.Length).CopyTo(transitionCaches);
+                Span<OrchestrationTransitionSnapshot<TValue>> transitionSnapshots = frames.TransitionSnapshots(0);
+                reader.ReadSpan<OrchestrationTransitionSnapshot<TValue>>(transitionSnapshots.Length).CopyTo(transitionSnapshots);
+                Span<TValue> values = frames.Values(0);
                 for (int i = 0; i < m_Bindings.Program.ValueSlotCount; i++)
                 {
-                    int enumIdentity = m_Bindings.Program.Content.DefaultValues.Span[i].Enum.TypeContentId;
+                    int enumIdentity = m_Bindings.StateTypes[i].IsEnum
+                        ? default(TValues).Enum(m_Bindings.Program.Content.DefaultValues.Span[i]).TypeContentId : 0;
                     GraphHostValue value = GraphHostValue.ReadRecordedFrameState(ref reader, m_Bindings.StateTypes[i]);
                     values[i] = m_Bindings.ToState(in value, enumIdentity, m_CandidateTexts);
                     if (reader.Read<bool>())
                     {
                         GraphHostValue locked = GraphHostValue.ReadRecordedFrameState(ref reader, m_Bindings.StateTypes[i]);
-                        OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion> supplied =
+                        TValue supplied =
                             m_Bindings.ToState(in locked, enumIdentity, m_CandidateTexts);
                         MutateCandidateVariable(i, in supplied, GraphVariableMutation.Override);
                     }
@@ -528,11 +538,11 @@ namespace BTSMTL.Graphs
         {
             RequireIdle();
             m_Output.BeginWrite();
-            ReadOnlySpan<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> values = StateValues;
+            ReadOnlySpan<TValue> values = StateValues;
             for (int i = 0; i < m_Bindings.PublishedSlots.Length; i++)
             {
                 int slot = m_Bindings.PublishedSlots[i];
-                OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion> value = ReadState(slot, values);
+                TValue value = ReadState(slot, values);
                 GraphHostValue published = m_Bindings.FromState(in value, m_Bindings.StateTypes[slot], m_StateTexts);
                 m_Output.Write(i, in published);
             }

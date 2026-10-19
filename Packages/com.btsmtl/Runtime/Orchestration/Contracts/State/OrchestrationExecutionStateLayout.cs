@@ -11,6 +11,8 @@ namespace BTSMTL.Orchestration
         public OrchestrationStateRegion<OrchestrationExecutionFrameState> Frames { get; }
         public OrchestrationStateRegion<OrchestrationOperationState> Operations { get; }
         public OrchestrationStateRegion<OrchestrationExecutionRosterState> Roster { get; }
+        public OrchestrationStateRegion<OrchestrationTransitionCacheState> TransitionCaches { get; }
+        public OrchestrationStateRegion<OrchestrationTransitionSnapshot<TValue>> TransitionSnapshots { get; }
         public OrchestrationStateRegion<TValue> Values { get; }
     }
 }

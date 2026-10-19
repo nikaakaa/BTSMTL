@@ -5,5 +5,6 @@ namespace BTSMTL.Orchestration
         public OrchestrationBlackboardOwnerToken Owner;
         public OrchestrationBlackboardLifetime Lifetime;
         public OrchestrationBlackboardWriteStamp WriteStamp;
+        public ulong Revision;
     }
 }

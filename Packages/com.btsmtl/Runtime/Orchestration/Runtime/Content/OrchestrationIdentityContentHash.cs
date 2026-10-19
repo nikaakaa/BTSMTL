@@ -45,11 +45,13 @@ namespace BTSMTL.Orchestration
             ReadOnlySpan<int> dependencyIdentityTableIndices,
             ReadOnlySpan<OrchestrationGraphBlackboardBinding> characterBlackboards,
             ReadOnlySpan<OrchestrationBlackboardSlot> descriptors,
+            ReadOnlySpan<OrchestrationValueSlotType> characterSlotTypes,
+            ReadOnlySpan<int> characterKindSlotCounts,
             ReadOnlySpan<ReadOnlyMemory<int>> characterMappings)
             where TValue : unmanaged
         {
             using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-            Text(hash, "btsmtl-orchestration-actor-preparation/1");
+            Text(hash, "btsmtl-orchestration-actor-preparation/2");
             Text(hash, identities.ToString());
             Text(hash, defaults.ToString());
             Integer(hash, defaultIdentityTableIndex);
@@ -78,7 +80,12 @@ namespace BTSMTL.Orchestration
                 Integer(hash, (int)descriptor.Lifetime);
                 Integer(hash, descriptor.CompiledOwnerIndex);
                 Integer(hash, (int)descriptor.ValueKind);
+                Integer(hash, (int)characterSlotTypes[sharedSlot].ValueKind);
+                Integer(hash, characterSlotTypes[sharedSlot].TypeIndex);
             }
+            Integer(hash, characterKindSlotCounts.Length);
+            for (int kind = 0; kind < characterKindSlotCounts.Length; kind++)
+                Integer(hash, characterKindSlotCounts[kind]);
             return Complete(hash);
         }
 

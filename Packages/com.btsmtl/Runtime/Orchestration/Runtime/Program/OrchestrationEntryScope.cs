@@ -23,14 +23,8 @@ namespace BTSMTL.Orchestration
         {
             ReadOnlySpan<OrchestrationOperation> operations = program.Operations.Span;
             ReadOnlySpan<OrchestrationFlowEdge> edges = program.Edges.Span;
-            var outgoing = new List<int>[operations.Length];
-            for (int edgeIndex = 0; edgeIndex < edges.Length; edgeIndex++)
-            {
-                int source = edges[edgeIndex].SourceOperationIndex;
-                if (outgoing[source] == null)
-                    outgoing[source] = new List<int>();
-                outgoing[source].Add(edgeIndex);
-            }
+            ReadOnlySpan<int> outgoingOffsets = program.Structure.OutgoingOffsets.Span;
+            ReadOnlySpan<int> outgoingEdges = program.Structure.OutgoingEdgeIndexes.Span;
 
             var reachable = new bool[operations.Length];
             var pending = new List<int>();
@@ -52,7 +46,7 @@ namespace BTSMTL.Orchestration
                 int operationIndex = pending[cursor];
                 ref readonly OrchestrationOperation operation = ref operations[operationIndex];
                 if (operation.Code == OrchestrationOperationCode.Extension)
-                    extensionBindings.Add(operation.ExtensionBindingIndex);
+                    extensionBindings.Add(program.ReadOperationPayload<OrchestrationExtensionPayload>(operationIndex).BindingIndex);
                 if (operation.BlackboardFactsBindingIndex >= 0)
                     extensionBindings.Add(operation.BlackboardFactsBindingIndex);
                 ReadOnlySpan<OrchestrationHookBinding> hooks = program.Hooks.Span.Slice(
@@ -66,13 +60,13 @@ namespace BTSMTL.Orchestration
                     if (input.Source == OrchestrationValueInputSource.Operation)
                         AddOperation(input.SourceIndex, reachable, pending);
                 if (operation.Code == OrchestrationOperationCode.SubGraph)
-                    AddOperation(program.GraphCalls.Span[operation.GraphCallIndex].EntryOperationIndex,
+                    AddOperation(program.GraphCalls.Span[program.ReadOperationPayload<OrchestrationGraphCallPayload>(operationIndex).CallIndex].EntryOperationIndex,
                         reachable, pending);
 
-                List<int> operationEdges = outgoing[operationIndex];
-                if (operationEdges == null)
-                    continue;
-                foreach (int edgeIndex in operationEdges)
+                int segment = operationIndex * OrchestrationProgramStructure.FlowKindCount;
+                int firstEdge = outgoingOffsets[segment];
+                int endEdge = outgoingOffsets[segment + OrchestrationProgramStructure.FlowKindCount];
+                foreach (int edgeIndex in outgoingEdges.Slice(firstEdge, endEdge - firstEdge))
                 {
                     ref readonly OrchestrationFlowEdge edge = ref edges[edgeIndex];
                     AddOperation(edge.TargetOperationIndex, reachable, pending);

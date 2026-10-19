@@ -213,7 +213,7 @@ namespace BTSMTL.Orchestration
                 {
                     ref readonly OrchestrationOperation operation = ref program.Operation(operationIndex);
                     bool extension = operation.Code == OrchestrationOperationCode.Extension;
-                    bool action = extension && extensions[programIndex].Span[operation.ExtensionBindingIndex].Kind ==
+                    bool action = extension && extensions[programIndex].Span[program.Payload<OrchestrationExtensionPayload>(operationIndex).BindingIndex].Kind ==
                         OrchestrationExtensionKind.Action;
                     long stops = checked(stopTraversals * analysis.StopVisits[operationIndex]);
                     long hooks = checked(execution * analysis.ExecutionHooks(operationIndex) +
@@ -229,7 +229,7 @@ namespace BTSMTL.Orchestration
                     {
                         outputRequests = checked(outputRequests + (int)outputInvocations);
                         outputValues = checked(outputValues + (int)(outputInvocations *
-                            program.OutputTemplate(operation.Integer0).Ports.Length));
+                            program.OutputTemplate(program.Payload<OrchestrationOutputPayload>(operationIndex).TemplateIndex).Ports.Length));
                     }
                     operations[operationIndex] = new OrchestrationOperationTickCapacity(
                         action ? checked((long)budget.OuterInvocationCount * analysis.ExecuteVisits[operationIndex]) : 0,
@@ -263,7 +263,6 @@ namespace BTSMTL.Orchestration
             readonly OrchestrationProgram<TValue> m_Program;
             readonly ReadOnlyMemory<OrchestrationExtensionReference> m_Extensions;
             readonly bool[] m_ActiveStops;
-            readonly bool[] m_ActiveValues;
             readonly long[] m_StopVisits;
             readonly int m_ProgramIndex;
             readonly Dictionary<(int Program, int Operation), OrchestrationTimelineTickContentCapacity> m_Timelines;
@@ -282,7 +281,6 @@ namespace BTSMTL.Orchestration
                 m_Program = program;
                 m_Extensions = extensions;
                 m_ActiveStops = new bool[program.OperationCount];
-                m_ActiveValues = new bool[program.ValueEvaluationSlotCount];
                 m_StopVisits = new long[program.OperationCount];
                 m_ProgramIndex = programIndex;
                 m_Timelines = timelines;
@@ -328,7 +326,7 @@ namespace BTSMTL.Orchestration
                     if (m_Program.Operation(target).Code == OrchestrationOperationCode.Timeline ||
                         m_Program.Operation(target).Code == OrchestrationOperationCode.EmitOutput ||
                         m_Program.Operation(target).Code == OrchestrationOperationCode.Extension &&
-                        m_Extensions.Span[m_Program.Operation(target).ExtensionBindingIndex].Kind == OrchestrationExtensionKind.Action)
+                        m_Extensions.Span[m_Program.Payload<OrchestrationExtensionPayload>(target).BindingIndex].Kind == OrchestrationExtensionKind.Action)
                     {
                         m_CountTarget = target;
                         Array.Clear(m_BoundedVisits[0], 0, m_BoundedVisits[0].Length);
@@ -371,10 +369,10 @@ namespace BTSMTL.Orchestration
                     int depth = 0;
                     for (int state = 0; state < m_Program.OperationCount; state++)
                         if (m_Program.Operation(state).Code == OrchestrationOperationCode.State &&
-                            m_Program.Operation(state).StateMachineOwnerOperationIndex == index)
+                            m_Program.Payload<OrchestrationStatePayload>(state).MachineIndex == index)
                             depth = Math.Max(depth, StateDepth(state));
-                    // AnyState 和当前状态各有一次带状态作用域的转移选择。
-                    return checked(2L * depth);
+                    // 当前状态始终选择转移；AnyState 只在正式入口存在时参与。
+                    return checked((m_Program.AnyStateEntry(index) >= 0 ? 2L : 1L) * depth);
                 }
                 long count = operation.IsRunnable ? 2 : 0;
                 if (stop)
@@ -392,7 +390,8 @@ namespace BTSMTL.Orchestration
                     count = checked(count + 2);
                 if (operation.Code == OrchestrationOperationCode.BlackboardSet)
                     count++;
-                count = checked(count + m_Program.OutputAssignments(index).Length);
+                if (operation.Code == OrchestrationOperationCode.Extension)
+                    count = checked(count + m_Program.OutputAssignments(index).Length);
                 foreach (int edge in m_Program.Outgoing(index, OrchestrationFlowKind.Child))
                     count = checked(count + 1 + (m_Program.Edge(edge).HasCondition ? 2 : 0));
                 foreach (int edge in m_Program.Outgoing(index, OrchestrationFlowKind.Enter))
@@ -445,7 +444,7 @@ namespace BTSMTL.Orchestration
                 }
                 else if (operation.Code != OrchestrationOperationCode.Succeed &&
                     (!stop || operation.Code != OrchestrationOperationCode.Extension ||
-                        (m_Extensions.Span[operation.ExtensionBindingIndex].RequiredInvocations &
+                        (m_Extensions.Span[m_Program.Payload<OrchestrationExtensionPayload>(index).BindingIndex].RequiredInvocations &
                             OrchestrationExtensionInvocationKind.ContinueStop) == 0))
                 {
                     OrchestrationFlowKind kind = operation.Code == OrchestrationOperationCode.SubGraph
@@ -489,7 +488,7 @@ namespace BTSMTL.Orchestration
                 for (int state = 0; state < m_Program.OperationCount; state++)
                 {
                     if (m_Program.Operation(state).Code != OrchestrationOperationCode.State ||
-                        m_Program.Operation(state).StateMachineOwnerOperationIndex != index)
+                        m_Program.Payload<OrchestrationStatePayload>(state).MachineIndex != index)
                         continue;
                     long stopped = BoundedVisits(state, true);
                     if (stop)
@@ -567,14 +566,10 @@ namespace BTSMTL.Orchestration
                 int slot = m_Program.ValueEvaluationSlot(index, output);
                 if (m_ValueVisits[slot] != 0)
                     return m_ValueVisits[slot];
-                if (m_ActiveValues[slot])
-                    throw new InvalidOperationException($"Program '{m_ProgramIndex}' has no finite value bound: operation '{index}/{output}' has a value call cycle.");
-                m_ActiveValues[slot] = true;
                 ref readonly OrchestrationOperation operation = ref m_Program.Operation(index);
                 bool action = operation.Code == OrchestrationOperationCode.Extension &&
-                    m_Extensions.Span[operation.ExtensionBindingIndex].Kind == OrchestrationExtensionKind.Action;
+                    m_Extensions.Span[m_Program.Payload<OrchestrationExtensionPayload>(index).BindingIndex].Kind == OrchestrationExtensionKind.Action;
                 long count = action ? 1 : checked(1 + InputVisits(index));
-                m_ActiveValues[slot] = false;
                 return m_ValueVisits[slot] = count;
             }
 
@@ -582,7 +577,7 @@ namespace BTSMTL.Orchestration
             {
                 ref readonly OrchestrationOperation operation = ref m_Program.Operation(operationIndex);
                 if (m_ActiveStops[operationIndex])
-                    throw new InvalidOperationException($"Tick stop capacity cannot be proven finite: ordinary-stop control cycle reaches operation '{operation.IdentityId}'.");
+                    throw new InvalidOperationException($"Tick stop capacity cannot be proven finite: ordinary-stop control cycle reaches operation '{m_Program.ColdOperation(operationIndex).IdentityId}'.");
                 m_StopVisits[operationIndex] = checked(m_StopVisits[operationIndex] + 1);
                 if (!operation.IsRunnable)
                     return;
@@ -591,7 +586,7 @@ namespace BTSMTL.Orchestration
                 {
                     for (int state = 0; state < m_Program.OperationCount; state++)
                         if (m_Program.Operation(state).Code == OrchestrationOperationCode.State &&
-                            m_Program.Operation(state).StateMachineOwnerOperationIndex == operationIndex)
+                            m_Program.Payload<OrchestrationStatePayload>(state).MachineIndex == operationIndex)
                             VisitOrdinaryStop(state);
                 }
                 else if (operation.Code == OrchestrationOperationCode.State)
@@ -607,7 +602,7 @@ namespace BTSMTL.Orchestration
                     VisitOrdinaryStopChildren(operationIndex, OrchestrationFlowKind.Enter);
                 else if (operation.Code != OrchestrationOperationCode.Timeline &&
                     (operation.Code != OrchestrationOperationCode.Extension ||
-                        (m_Extensions.Span[operation.ExtensionBindingIndex].RequiredInvocations &
+                        (m_Extensions.Span[m_Program.Payload<OrchestrationExtensionPayload>(operationIndex).BindingIndex].RequiredInvocations &
                             OrchestrationExtensionInvocationKind.ContinueStop) == 0))
                     VisitOrdinaryStopChildren(operationIndex, OrchestrationFlowKind.Child);
                 m_ActiveStops[operationIndex] = false;
@@ -625,7 +620,7 @@ namespace BTSMTL.Orchestration
                 {
                     ref readonly OrchestrationOperation operation = ref m_Program.Operation(operationIndex);
                     for (int output = -1; output < operation.OutputCount; output++)
-                        VisitValue(operationIndex, output, stateContext);
+                        VisitValue(operationIndex, stateContext);
                     foreach (ref readonly OrchestrationValueInputBinding input in m_Program.Inputs(operationIndex))
                         VisitInput(operationIndex, in input, stateContext);
                 }
@@ -636,16 +631,11 @@ namespace BTSMTL.Orchestration
                             VisitInput(operationIndex, in input, stateContext);
             }
 
-            void VisitValue(int operationIndex, int outputPortIndex, int stateContext)
+            void VisitValue(int operationIndex, int stateContext)
             {
-                int slot = m_Program.ValueEvaluationSlot(operationIndex, outputPortIndex);
-                // 与 EvaluateValue 的 ActiveValues 地址相同；回边在再次调用扩展前终止。
-                if (m_ActiveValues[slot])
-                    return;
-                m_ActiveValues[slot] = true;
                 ref readonly OrchestrationOperation operation = ref m_Program.Operation(operationIndex);
                 bool action = operation.Code == OrchestrationOperationCode.Extension &&
-                    m_Extensions.Span[operation.ExtensionBindingIndex].Kind == OrchestrationExtensionKind.Action;
+                    m_Extensions.Span[m_Program.Payload<OrchestrationExtensionPayload>(operationIndex).BindingIndex].Kind == OrchestrationExtensionKind.Action;
                 if (!action)
                 {
                     foreach (ref readonly OrchestrationValueInputBinding input in m_Program.Inputs(operationIndex))
@@ -653,21 +643,21 @@ namespace BTSMTL.Orchestration
                     if (operation.Code == OrchestrationOperationCode.Extension)
                         UncountedEvaluations[operationIndex] = checked(UncountedEvaluations[operationIndex] + 1);
                     else if (operation.Code == OrchestrationOperationCode.BlackboardGet)
-                        VisitFacts(operationIndex, operation.ValueSlot);
+                        VisitFacts(operationIndex, m_Program.ValueOperation(operationIndex).Argument);
                 }
-                m_ActiveValues[slot] = false;
             }
 
             void VisitInput(int operationIndex, in OrchestrationValueInputBinding input, int stateContext)
             {
                 if (input.Source == OrchestrationValueInputSource.Operation)
-                    VisitValue(input.SourceIndex, input.SourceOutputPortIndex, stateContext);
+                    VisitValue(input.SourceIndex, stateContext);
                 else if (input.Source == OrchestrationValueInputSource.Blackboard)
                     VisitFacts(operationIndex, input.SourceIndex);
                 else if (input.Source == OrchestrationValueInputSource.StateCompletionTransition && stateContext >= 0)
                     foreach (int edge in m_Program.Outgoing(stateContext, OrchestrationFlowKind.Transition))
                         if (m_Program.Edge(edge).HasCondition)
-                            VisitValue(m_Program.Edge(edge).ConditionOperationIndex, -1, stateContext);
+                            // 可执行的预测条件已由编译边界排除再次依赖当前预测，只需统计直接值闭包。
+                            VisitValue(m_Program.Edge(edge).ConditionOperationIndex, -1);
             }
 
             void VisitFacts(int operationIndex, int valueSlot)
@@ -684,13 +674,15 @@ namespace BTSMTL.Orchestration
                     if (input.Source == OrchestrationValueInputSource.Blackboard &&
                         m_Program.Blackboard(input.SourceIndex).ScopeKind == OrchestrationScopeKind.ActionInstance)
                         count++;
-                if ((operation.Code == OrchestrationOperationCode.BlackboardGet ||
-                     operation.Code == OrchestrationOperationCode.BlackboardSet) &&
-                    m_Program.Blackboard(operation.ValueSlot).ScopeKind == OrchestrationScopeKind.ActionInstance)
+                if (operation.Code == OrchestrationOperationCode.BlackboardGet &&
+                        m_Program.Blackboard(m_Program.ValueOperation(operationIndex).Argument).ScopeKind == OrchestrationScopeKind.ActionInstance ||
+                    operation.Code == OrchestrationOperationCode.BlackboardSet &&
+                        m_Program.Blackboard(m_Program.Payload<OrchestrationBlackboardSetPayload>(operationIndex).Slot).ScopeKind == OrchestrationScopeKind.ActionInstance)
                     count++;
-                foreach (ref readonly OrchestrationBlackboardOutputBinding assignment in m_Program.OutputAssignments(operationIndex))
-                    if (m_Program.Blackboard(assignment.ValueSlot).ScopeKind == OrchestrationScopeKind.ActionInstance)
-                        count++;
+                if (operation.Code == OrchestrationOperationCode.Extension)
+                    foreach (ref readonly OrchestrationBlackboardOutputBinding assignment in m_Program.OutputAssignments(operationIndex))
+                        if (m_Program.Blackboard(assignment.ValueSlot).ScopeKind == OrchestrationScopeKind.ActionInstance)
+                            count++;
                 return count;
             }
 

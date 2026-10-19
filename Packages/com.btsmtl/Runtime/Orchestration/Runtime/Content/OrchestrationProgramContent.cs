@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.InteropServices;
 using ThirdPersonSimulation;
 
 namespace BTSMTL.Orchestration
@@ -8,10 +9,17 @@ namespace BTSMTL.Orchestration
     {
         public OrchestrationProgramContent(
             ReadOnlyMemory<OrchestrationOperation> operations,
+            ReadOnlyMemory<byte> operationPayloads,
+            ReadOnlyMemory<OrchestrationOperationColdData> coldOperations,
             ReadOnlyMemory<OrchestrationFlowEdge> edges,
+            OrchestrationProgramStructure structure,
+            OrchestrationValueSchedule valueSchedule,
+            OrchestrationWorkspaceCapacity workspaceCapacity,
             ReadOnlyMemory<OrchestrationValueInputBinding> valueInputs,
             ReadOnlyMemory<TValue> constants,
             ReadOnlyMemory<TValue> defaultValues,
+            ReadOnlyMemory<OrchestrationValueSlotType> valueSlotTypes,
+            ReadOnlyMemory<int> valueKindSlotCounts,
             ReadOnlyMemory<OrchestrationGraphCall> graphCalls,
             ReadOnlyMemory<OrchestrationHookBinding> hooks,
             ReadOnlyMemory<OrchestrationHookInput> hookInputs,
@@ -23,10 +31,17 @@ namespace BTSMTL.Orchestration
             int maximumOperationEvaluations)
         {
             Operations = operations;
+            OperationPayloads = operationPayloads;
+            ColdOperations = coldOperations;
             Edges = edges;
+            Structure = structure;
+            ValueSchedule = valueSchedule;
+            WorkspaceCapacity = workspaceCapacity;
             ValueInputs = valueInputs;
             Constants = constants;
             DefaultValues = defaultValues;
+            ValueSlotTypes = valueSlotTypes;
+            ValueKindSlotCounts = valueKindSlotCounts;
             GraphCalls = graphCalls;
             Hooks = hooks;
             HookInputs = hookInputs;
@@ -39,10 +54,19 @@ namespace BTSMTL.Orchestration
         }
 
         public ReadOnlyMemory<OrchestrationOperation> Operations { get; }
+        public ReadOnlyMemory<byte> OperationPayloads { get; }
+        public ReadOnlyMemory<OrchestrationOperationColdData> ColdOperations { get; }
+        public T ReadOperationPayload<T>(int operationIndex) where T : unmanaged =>
+            MemoryMarshal.Read<T>(OperationPayloads.Span.Slice(Operations.Span[operationIndex].PayloadOffset));
         public ReadOnlyMemory<OrchestrationFlowEdge> Edges { get; }
+        public OrchestrationProgramStructure Structure { get; }
+        public OrchestrationValueSchedule ValueSchedule { get; }
+        public OrchestrationWorkspaceCapacity WorkspaceCapacity { get; }
         public ReadOnlyMemory<OrchestrationValueInputBinding> ValueInputs { get; }
         public ReadOnlyMemory<TValue> Constants { get; }
         public ReadOnlyMemory<TValue> DefaultValues { get; }
+        public ReadOnlyMemory<OrchestrationValueSlotType> ValueSlotTypes { get; }
+        public ReadOnlyMemory<int> ValueKindSlotCounts { get; }
         public ReadOnlyMemory<OrchestrationGraphCall> GraphCalls { get; }
         public ReadOnlyMemory<OrchestrationHookBinding> Hooks { get; }
         public ReadOnlyMemory<OrchestrationHookInput> HookInputs { get; }

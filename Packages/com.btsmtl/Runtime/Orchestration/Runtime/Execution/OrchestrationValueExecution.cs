@@ -4,183 +4,119 @@ using ThirdPersonSimulation;
 namespace BTSMTL.Orchestration
 {
     public ref partial struct OrchestrationExecutionCursor<TValue, TScalar, TVector2,
-        TVector3, TQuaternion, TMath, TValues, TContext>
+        TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics>
         where TValue : unmanaged
         where TScalar : unmanaged
         where TVector2 : unmanaged
         where TVector3 : unmanaged
+        where TYaw : unmanaged
         where TQuaternion : unmanaged
         where TMath : struct, IOrchestrationGraphMath<TScalar, TVector2, TVector3, TQuaternion>
-        where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TQuaternion>
+        where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
         where TContext : struct
+        where TDiagnostics : struct, IOrchestrationExecutionDiagnostics
     {
-        public TValue Evaluate(int operationIndex, int outputPortIndex = -1)
+        public void Evaluate(int operationIndex, ref TValue value, int outputPortIndex = -1)
         {
             m_CurrentOperationIndex = operationIndex;
             int slot = m_Program.ValueEvaluationSlot(operationIndex, outputPortIndex);
-            if (TryReadPortOverride(operationIndex, slot, OrchestrationValueOverrideKind.Output, out TValue value))
-            {
-                ObserveOutput(operationIndex, slot, in value);
-                return value;
-            }
-            if (m_Workspace.ActiveValues[slot])
-                throw new InvalidOperationException($"Value operation cycle reached '{operationIndex}/{outputPortIndex}'.");
-            m_Workspace.ActiveValues[slot] = true;
-            try
-            {
-                ref readonly OrchestrationOperation operation = ref m_Program.Operation(operationIndex);
-                TValue result;
-                if (operation.Code == OrchestrationOperationCode.Extension &&
-                    m_Bindings.Contract(operation.ExtensionBindingIndex).Kind == OrchestrationExtensionKind.Action)
-                {
-                    result = m_Blackboards.ReadOutputValue(operationIndex,
-                        operation.OutputSlotOffset + (outputPortIndex < 0 ? 0 : outputPortIndex));
-                }
-                else
-                {
-                    int depth = ReadInputs(operationIndex, out int count);
-                    try
-                    {
-                        result = EvaluateCoreValue(operationIndex, outputPortIndex, depth, count);
-                    }
-                    finally
-                    {
-                        ReleaseInputs();
-                    }
-                }
-                ObserveOutput(operationIndex, slot, in result);
-                return result;
-            }
-            finally
-            {
-                m_Workspace.ActiveValues[slot] = false;
-            }
+            OrchestrationValueSchedule schedule = m_Program.ValueSchedule;
+            ref readonly OrchestrationValueScheduleEntry entry = ref schedule.ValueEntries.Span[
+                ScheduleStateContext() * schedule.ValueSlotCount + slot];
+            RunValueSchedule(in entry);
+            value = m_Workspace.ScheduledValues[slot];
         }
 
-        TValue EvaluateCoreValue(int operationIndex, int outputPortIndex, int depth, int count)
+        public bool EvaluateBoolean(int operationIndex)
+        {
+            OrchestrationValueSchedule schedule = m_Program.ValueSchedule;
+            ref readonly OrchestrationValueScheduleEntry entry = ref schedule.BooleanEntries.Span[
+                ScheduleStateContext() * m_Program.OperationCount + operationIndex];
+            RunValueSchedule(in entry);
+            return default(TValues).Boolean(in m_Workspace.ScheduledValues[schedule.BooleanSlot]);
+        }
+
+        void EvaluateCoreValue(int operationIndex, int valueOperation, int depth, int count, ref TValue value)
         {
             m_CurrentOperationIndex = operationIndex;
             ref readonly OrchestrationOperation operation = ref m_Program.Operation(operationIndex);
+            ref readonly OrchestrationValueOperation typed = ref m_Program.ValueSchedule.ValueOperations.Span[valueOperation];
             ReadOnlySpan<TValue> inputs = m_Workspace.Inputs[depth].AsSpan(0, count);
             TValues values = default;
             TMath math = default;
-            switch (operation.Code)
+            switch (typed.Code)
             {
-                case OrchestrationOperationCode.ConditionResult:
-                    return values.FromBoolean(count > 0 && ToBoolean(in inputs[0]));
-                case OrchestrationOperationCode.And:
-                    return values.FromBoolean(count >= 2 && ToBoolean(in inputs[0]) && ToBoolean(in inputs[1]));
-                case OrchestrationOperationCode.Or:
-                    return values.FromBoolean(count > 0 && (ToBoolean(in inputs[0]) || count > 1 && ToBoolean(in inputs[1])));
-                case OrchestrationOperationCode.Not:
-                    return values.FromBoolean(count == 0 || !ToBoolean(in inputs[0]));
-                case OrchestrationOperationCode.Compare:
-                    return values.FromBoolean(count >= 2 && OrchestrationValueMath<TValue, TScalar, TVector2,
-                        TVector3, TQuaternion, TMath, TValues>.Compare(operation.Comparison, inputs));
-                case OrchestrationOperationCode.Calculate:
-                    return OrchestrationValueMath<TValue, TScalar, TVector2, TVector3, TQuaternion,
-                        TMath, TValues>.Calculate(operation.Calculation, inputs, in m_Identities);
-                case OrchestrationOperationCode.IdentityValue:
-                    return inputs[0];
-                case OrchestrationOperationCode.SelectValue:
-                    return inputs[1];
-                case OrchestrationOperationCode.Constant:
-                    return operation.ConstantIndex < 0 ? values.FromBoolean(false) : m_Program.Constant(operation.ConstantIndex);
-                case OrchestrationOperationCode.InputBoolean:
-                case OrchestrationOperationCode.InputScalar:
-                case OrchestrationOperationCode.InputVector2:
-                case OrchestrationOperationCode.HostInput:
-                    return m_Input.HostInputs[operation.InputSlot + (outputPortIndex < 0 ? 0 : outputPortIndex)];
-                case OrchestrationOperationCode.InputVector2Magnitude:
-                    return values.FromScalar(math.Magnitude2(values.Vector2(in m_Input.HostInputs[operation.InputSlot])));
-                case OrchestrationOperationCode.InputRequest:
-                    return values.FromBoolean(HasRequest(operation.RequestIdentityId));
-                case OrchestrationOperationCode.BlackboardGet:
-                    return ReadBlackboard(operationIndex, operation.ValueSlot);
-                case OrchestrationOperationCode.SubGraph:
-                    return ReadGraphCallOutput(operationIndex, outputPortIndex);
-                case OrchestrationOperationCode.StateRootCompleted:
-                    return values.FromBoolean(CurrentStateRootCompleted());
-                case OrchestrationOperationCode.StateExitCause:
-                    return values.FromBoolean(operation.Integer0 == CurrentStateExitCause());
-                case OrchestrationOperationCode.Cycle:
-                    return values.FromInt32((operation.Integer0 + ReadOperationState(operationIndex).ChildCursor) % operation.Integer1);
-                case OrchestrationOperationCode.TimelineTime:
-                    return ReadTimelineTime();
-                case OrchestrationOperationCode.TimelineSection:
-                    return ReadTimelineSection(operationIndex);
-                case OrchestrationOperationCode.Extension:
+                case OrchestrationValueOpcode.Copy:
+                    value = inputs[typed.Argument];
+                    return;
+                case OrchestrationValueOpcode.Constant:
+                    value = m_Program.Constant(typed.Argument);
+                    return;
+                case OrchestrationValueOpcode.HostInput:
+                    value = m_Input.HostInputs[typed.Argument];
+                    return;
+                case OrchestrationValueOpcode.InputVector2Magnitude:
+                    value = values.FromScalar(math.Magnitude2(values.Vector2(in m_Input.HostInputs[typed.Argument])));
+                    return;
+                case OrchestrationValueOpcode.InputRequest:
+                    value = values.FromBoolean(HasRequest(m_Program.Payload<OrchestrationRequestPayload>(operationIndex).IdentityId));
+                    return;
+                case OrchestrationValueOpcode.BlackboardGet:
+                    value = ReadBlackboard(operationIndex, typed.Argument);
+                    return;
+                case OrchestrationValueOpcode.GraphCallOutput:
+                    value = ReadGraphCallOutput(operationIndex, typed.Argument);
+                    return;
+                case OrchestrationValueOpcode.StateRootCompleted:
+                    value = values.FromBoolean(CurrentStateRootCompleted());
+                    return;
+                case OrchestrationValueOpcode.StateExitCause:
+                    value = values.FromBoolean(typed.Argument == CurrentStateExitCause());
+                    return;
+                case OrchestrationValueOpcode.Cycle:
                 {
+                    OrchestrationCyclePayload cycle = m_Program.Payload<OrchestrationCyclePayload>(operationIndex);
+                    value = values.FromInt32((cycle.Start + ReadOperationState(operationIndex).ChildCursor) % cycle.Count);
+                    return;
+                }
+                case OrchestrationValueOpcode.TimelineTime:
+                    value = m_TimelineTime;
+                    return;
+                case OrchestrationValueOpcode.TimelineSection:
+                    ReadTimelineSection(operationIndex, ref value);
+                    return;
+                case OrchestrationValueOpcode.Extension:
+                {
+                    ushort binding = m_Program.Payload<OrchestrationExtensionPayload>(operationIndex).BindingIndex;
                     Span<TValue> outputs = m_Workspace.Outputs[depth].AsSpan(0, operation.OutputCount);
                     var invocation = new OrchestrationExtensionArguments<TValue>(
                         OrchestrationExtensionInvocationKind.Evaluate, operationIndex, ReadGeneration(operationIndex),
                         m_Input.Tick, 0, StateAncestors(operationIndex), ReadExecutionFrame(operationIndex),
                         inputs, outputs, in m_TimelineInvocation);
-                    RequireSynchronousValueResult(operationIndex, operation.ExtensionBindingIndex,
-                        m_Bindings.InvokeReadOnly(operation.ExtensionBindingIndex, in m_Context, in invocation));
-                    return outputs[outputPortIndex < 0 ? 0 : outputPortIndex];
+                    RequireSynchronousValueResult(operationIndex, binding,
+                        m_Bindings.InvokeReadOnly(binding, in m_Context, in invocation));
+                    value = outputs[typed.Argument];
+                    return;
                 }
                 default:
-                    throw new InvalidOperationException($"Operation '{operationIndex}' ({operation.Code}) does not provide a value.");
+                    OrchestrationTypedValueMath<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion,
+                        TMath, TValues>.Compute(typed.Code, inputs, in m_Identities, ref value);
+                    return;
             }
         }
 
         int ReadInputs(int operationIndex, out int count)
         {
             int depth = m_InputDepth++;
-            TValue[] buffer = m_Workspace.Inputs[depth];
-            ReadOnlySpan<OrchestrationValueInputBinding> inputs = m_Program.Inputs(operationIndex);
-            ref readonly OrchestrationOperation operation = ref m_Program.Operation(operationIndex);
-            count = 0;
-            for (int i = 0; i < inputs.Length; i++)
-            {
-                if (operation.Code == OrchestrationOperationCode.SelectValue && i > 0)
-                    i = ToBoolean(in buffer[0]) ? 1 : 2;
-                ref readonly OrchestrationValueInputBinding input = ref inputs[i];
-                int inputSlot = operation.Inputs.Offset + i;
-                TValue value = ReadInput(operationIndex, inputSlot, in input);
-                buffer[count++] = value;
-                ObserveInput(operationIndex, inputSlot, in value);
-                if (operation.Code == OrchestrationOperationCode.SelectValue && i > 0)
-                    break;
-                if (i == 0 && (operation.Code == OrchestrationOperationCode.And && !ToBoolean(in value) ||
-                    operation.Code == OrchestrationOperationCode.Or && ToBoolean(in value)))
-                    break;
-            }
+            OrchestrationValueSchedule schedule = m_Program.ValueSchedule;
+            ref readonly OrchestrationValueScheduleEntry entry = ref schedule.InputEntries.Span[
+                ScheduleStateContext() * m_Program.OperationCount + operationIndex];
+            int arguments = RunValueSchedule(in entry).Value;
+            count = CopyScheduledArguments(arguments, depth);
             return depth;
         }
 
-        TValue ReadInput(int operationIndex, int inputSlot, in OrchestrationValueInputBinding input)
-        {
-            if (TryReadPortOverride(operationIndex, inputSlot, OrchestrationValueOverrideKind.Input, out TValue supplied))
-                return supplied;
-            TValue value;
-            switch (input.Source)
-            {
-                case OrchestrationValueInputSource.Operation:
-                    value = Evaluate(input.SourceIndex, input.SourceOutputPortIndex);
-                    break;
-                case OrchestrationValueInputSource.Constant:
-                    value = m_Program.Constant(input.SourceIndex);
-                    break;
-                case OrchestrationValueInputSource.StateCompletionTransition:
-                    int transition = PredictCurrentStateRootCompletionTransition();
-                    value = default(TValues).FromInt32(transition < 0 ? -1 : m_Program.Edge(transition).TargetOperationIndex);
-                    break;
-                case OrchestrationValueInputSource.Blackboard:
-                    value = ReadBlackboard(operationIndex, input.SourceIndex);
-                    break;
-                default:
-                    throw new InvalidOperationException($"Operation '{operationIndex}' has an unsupported input source.");
-            }
-            return OrchestrationValueMath<TValue, TScalar, TVector2, TVector3,
-                TQuaternion, TMath, TValues>.Convert(in value, input.ValueKind);
-        }
-
         void ReleaseInputs() => m_InputDepth--;
-
-        bool ToBoolean(in TValue value) => OrchestrationValueMath<TValue, TScalar,
-            TVector2, TVector3, TQuaternion, TMath, TValues>.ToBoolean(in value, in m_Identities);
 
         bool HasRequest(int identityId)
         {
@@ -190,9 +126,14 @@ namespace BTSMTL.Orchestration
             return false;
         }
 
-        bool TryReadPortOverride(int operationIndex, int slot, OrchestrationValueOverrideKind kind,
-            out TValue value)
+        internal int FindDiagnosticOverride(int operationIndex, int slot, OrchestrationValueOverrideKind kind,
+            in OrchestrationBlackboardOwnerToken blackboardOwner)
         {
+            if (kind == OrchestrationValueOverrideKind.Blackboard)
+            {
+                OrchestrationValueOverrideAddress address = BlackboardOverrideAddress(slot, in blackboardOwner);
+                return ReadBlackboardOverrideIndex(in address);
+            }
             Span<OrchestrationValueOverride<TValue>> overrides = m_Input.Overrides;
             for (int index = 0; index < overrides.Length; index++)
             {
@@ -203,77 +144,73 @@ namespace BTSMTL.Orchestration
                 OrchestrationExecutionOwnerToken owner = ReadExecutionOwner(operationIndex);
                 if (!supplied.Address.Owner.Equals(in owner))
                     continue;
-                value = supplied.Value;
                 if (!IsPredictiveEvaluation)
                     supplied.Status = OrchestrationValueOverrideStatus.Consumed;
-                return true;
+                return index;
             }
-            value = default;
-            return false;
+            return -1;
         }
 
-        bool TryReadBlackboardOverride(in OrchestrationValueOverrideAddress address, out TValue value)
+        int ReadBlackboardOverrideIndex(in OrchestrationValueOverrideAddress address)
         {
             int index = OrchestrationValueOverride<TValue>.Find(m_Input.Overrides, in address);
             if (index < 0)
-            {
-                value = default;
-                return false;
-            }
+                return -1;
             ref OrchestrationValueOverride<TValue> supplied = ref m_Input.Overrides[index];
-            value = supplied.Value;
             if (!IsPredictiveEvaluation)
                 supplied.Status = OrchestrationValueOverrideStatus.Consumed;
-            return true;
+            return index;
         }
 
         void ObserveInput(int operationIndex, int inputSlot, in TValue value)
         {
             m_CurrentOperationIndex = operationIndex;
-            if (!m_Input.CaptureValues && m_Input.Observations == null || IsPredictiveEvaluation)
-                return;
-            if (m_Input.CaptureValues)
-            {
-                m_Workspace.InputObservations[inputSlot] = value;
-                m_Workspace.InputObservationWritten[inputSlot] = true;
-            }
-            if (m_Input.Observations != null)
-            {
-                OrchestrationValueOverrideAddress address = ReadPortOverrideAddress(operationIndex, inputSlot, true);
-                m_Input.Observations.Observe(in address, in value);
-            }
+            default(TDiagnostics).Observe(ref this, operationIndex, inputSlot, true, in value);
         }
 
         void ObserveOutput(int operationIndex, int outputSlot, in TValue value)
         {
             m_CurrentOperationIndex = operationIndex;
+            default(TDiagnostics).Observe(ref this, operationIndex, outputSlot, false, in value);
+        }
+
+        internal void ObserveDiagnosticPort(int operationIndex, int slot, bool input, in TValue value)
+        {
             if (!m_Input.CaptureValues && m_Input.Observations == null || IsPredictiveEvaluation)
                 return;
             if (m_Input.CaptureValues)
             {
-                m_Workspace.OutputObservations[outputSlot] = value;
-                m_Workspace.OutputObservationWritten[outputSlot] = true;
+                (input ? m_Workspace.InputObservations : m_Workspace.OutputObservations)[slot] = value;
+                (input ? m_Workspace.InputObservationWritten : m_Workspace.OutputObservationWritten)[slot] = true;
             }
             if (m_Input.Observations != null)
             {
-                OrchestrationValueOverrideAddress address = ReadPortOverrideAddress(operationIndex, outputSlot, false);
+                OrchestrationValueOverrideAddress address = ReadPortOverrideAddress(operationIndex, slot, input);
                 m_Input.Observations.Observe(in address, in value);
             }
         }
 
         void PrepareGraphCall(int operationIndex)
         {
-            OrchestrationGraphCall call = m_Program.GraphCall(m_Program.Operation(operationIndex).GraphCallIndex);
+            OrchestrationGraphCall call = m_Program.GraphCall(m_Program.Payload<OrchestrationGraphCallPayload>(operationIndex).CallIndex);
             if (IsActive(call.EntryOperationIndex))
                 return;
             int depth = ReadInputs(operationIndex, out int count);
             try
             {
                 foreach (ref readonly OrchestrationGraphParameter output in call.Outputs.Span)
+                {
                     m_Values[output.ValueSlot] = m_Program.DefaultValue(output.ValueSlot);
+                    ref OrchestrationBlackboardMetadata metadata = ref m_Blackboards.WriteMetadata(output.ValueSlot);
+                    metadata.Revision = checked(metadata.Revision + 1);
+                }
                 ReadOnlySpan<OrchestrationGraphParameter> parameters = call.Inputs.Span;
                 for (int i = 0; i < parameters.Length; i++)
+                {
                     m_Values[parameters[i].ValueSlot] = m_Workspace.Inputs[depth][i];
+                    ref OrchestrationBlackboardMetadata metadata = ref m_Blackboards.WriteMetadata(parameters[i].ValueSlot);
+                    metadata.Revision = checked(metadata.Revision + 1);
+                }
             }
             finally
             {
@@ -281,20 +218,14 @@ namespace BTSMTL.Orchestration
             }
         }
 
-        TValue ReadGraphCallOutput(int operationIndex, int outputPortIndex)
+        ref readonly TValue ReadGraphCallOutput(int operationIndex, int outputPortIndex)
         {
-            OrchestrationGraphCall call = m_Program.GraphCall(m_Program.Operation(operationIndex).GraphCallIndex);
-            ReadOnlySpan<OrchestrationGraphParameter> outputs = call.Outputs.Span;
-            for (int i = 0; i < outputs.Length; i++)
-            {
-                if (outputs[i].PortIndex != outputPortIndex)
-                    continue;
-                OrchestrationOperationStatus status = m_Program.Operation(operationIndex).IsRunnable
-                    ? ReadStatus(call.EntryOperationIndex) : ReadOperationState(operationIndex).Status;
-                return status == OrchestrationOperationStatus.Success
-                    ? m_Blackboards.ReadOutputValue(operationIndex, outputs[i].ValueSlot) : m_Program.DefaultValue(outputs[i].ValueSlot);
-            }
-            throw new InvalidOperationException($"Graph call '{operationIndex}' does not declare output '{outputPortIndex}'.");
+            OrchestrationGraphCall call = m_Program.GraphCall(m_Program.Payload<OrchestrationGraphCallPayload>(operationIndex).CallIndex);
+            int slot = call.Outputs.Span[outputPortIndex].ValueSlot;
+            OrchestrationOperationStatus status = m_Program.Operation(operationIndex).IsRunnable
+                ? ReadStatus(call.EntryOperationIndex) : ReadOperationState(operationIndex).Status;
+            return ref (status == OrchestrationOperationStatus.Success
+                ? ref m_Blackboards.ReadOutputValue(operationIndex, slot) : ref m_Program.DefaultValue(slot));
         }
 
         OrchestrationOperationResult ExecuteCoreLeaf(int operationIndex)
@@ -324,9 +255,10 @@ namespace BTSMTL.Orchestration
                 case OrchestrationOperationCode.TimelineSection:
                     return EvaluateControlValue(operationIndex);
                 case OrchestrationOperationCode.Extension:
-                    if (m_Bindings.Contract(operation.ExtensionBindingIndex).Kind != OrchestrationExtensionKind.Action)
+                    ushort binding = m_Program.Payload<OrchestrationExtensionPayload>(operationIndex).BindingIndex;
+                    if (m_Bindings.Contract(binding).Kind != OrchestrationExtensionKind.Action)
                         return EvaluateControlValue(operationIndex);
-                    if (!m_Bindings.ShouldExecute(operation.ExtensionBindingIndex, in m_Context))
+                    if (!m_Bindings.ShouldExecute(binding, in m_Context))
                         return OrchestrationOperationResult.Success;
                     break;
             }
@@ -341,8 +273,9 @@ namespace BTSMTL.Orchestration
                         return OrchestrationOperationResult.Success;
                     case OrchestrationOperationCode.BlackboardSet:
                     {
-                        WriteBlackboard(operationIndex, operation.ValueSlot,
-                            in m_Workspace.Inputs[depth][0], operation.Assignment);
+                        OrchestrationBlackboardSetPayload set = m_Program.Payload<OrchestrationBlackboardSetPayload>(operationIndex);
+                        WriteBlackboard(operationIndex, set.Slot,
+                            in m_Workspace.Inputs[depth][0], set.Assignment);
                         return OrchestrationOperationResult.Success;
                     }
                     case OrchestrationOperationCode.Timeline:
@@ -355,6 +288,7 @@ namespace BTSMTL.Orchestration
                             ? RequestTimelineSectionContinue(operationIndex) : OrchestrationOperationResult.Success;
                     case OrchestrationOperationCode.Extension:
                     {
+                        ushort binding = m_Program.Payload<OrchestrationExtensionPayload>(operationIndex).BindingIndex;
                         Span<TValue> outputs = operation.OutputSlotOffset >= 0
                             ? m_Values.Slice(operation.OutputSlotOffset, operation.OutputCount)
                             : m_Workspace.Outputs[depth].AsSpan(0, operation.OutputCount);
@@ -364,7 +298,7 @@ namespace BTSMTL.Orchestration
                             ReadExecutionFrame(operationIndex),
                             m_Workspace.Inputs[depth].AsSpan(0, count), outputs, in m_TimelineInvocation);
                         OrchestrationOperationResult result = (OrchestrationOperationResult)m_Bindings.InvokeCandidate(
-                            operation.ExtensionBindingIndex, ref m_Context, in invocation);
+                            binding, ref m_Context, in invocation);
                         foreach (ref readonly OrchestrationBlackboardOutputBinding assignment in m_Program.OutputAssignments(operationIndex))
                             WriteBlackboard(operationIndex, assignment.ValueSlot,
                                 in outputs[assignment.SourceOutputPortIndex]);
@@ -382,8 +316,7 @@ namespace BTSMTL.Orchestration
 
         OrchestrationOperationResult EvaluateControlValue(int operationIndex)
         {
-            TValue value = Evaluate(operationIndex);
-            return ToBoolean(in value) ? OrchestrationOperationResult.Success : OrchestrationOperationResult.Failure;
+            return EvaluateBoolean(operationIndex) ? OrchestrationOperationResult.Success : OrchestrationOperationResult.Failure;
         }
 
         static void RequireSynchronousValueResult(int operationIndex, int bindingIndex,

@@ -3,16 +3,20 @@ using System.Runtime.InteropServices;
 
 namespace BTSMTL.Orchestration
 {
-    public ref struct OrchestrationExecutionFrames<TValue> where TValue : unmanaged
+    public readonly ref struct OrchestrationExecutionFrames<TValue> where TValue : unmanaged
     {
         readonly Span<OrchestrationExecutionFrameState> m_Frames;
         readonly Span<OrchestrationExecutionRosterState> m_Roster;
         readonly Span<OrchestrationOperationState> m_Operations;
         readonly Span<TValue> m_Values;
         readonly Span<OrchestrationBlackboardMetadata> m_BlackboardMetadata;
+        readonly Span<OrchestrationTransitionCacheState> m_TransitionCaches;
+        readonly Span<OrchestrationTransitionSnapshot<TValue>> m_TransitionSnapshots;
         readonly int m_OperationsPerFrame;
         readonly int m_ValuesPerFrame;
         readonly int m_BlackboardMetadataPerFrame;
+        readonly int m_TransitionCachesPerFrame;
+        readonly int m_TransitionSnapshotsPerFrame;
 
         public static OrchestrationExecutionCapacity PrepareCapacity(
             ReadOnlySpan<OrchestrationProgram<TValue>> programs,
@@ -25,16 +29,22 @@ namespace BTSMTL.Orchestration
             ref OrchestrationExecutionRosterState roster,
             Span<OrchestrationOperationState> operations,
             Span<TValue> values,
-            Span<OrchestrationBlackboardMetadata> blackboardMetadata)
+            Span<OrchestrationBlackboardMetadata> blackboardMetadata,
+            Span<OrchestrationTransitionCacheState> transitionCaches,
+            Span<OrchestrationTransitionSnapshot<TValue>> transitionSnapshots)
         {
             m_Frames = frames;
             m_Roster = MemoryMarshal.CreateSpan(ref roster, 1);
             m_Operations = operations;
             m_Values = values;
             m_BlackboardMetadata = blackboardMetadata;
+            m_TransitionCaches = transitionCaches;
+            m_TransitionSnapshots = transitionSnapshots;
             m_OperationsPerFrame = operations.Length / frames.Length;
             m_ValuesPerFrame = values.Length / frames.Length;
             m_BlackboardMetadataPerFrame = blackboardMetadata.Length / frames.Length;
+            m_TransitionCachesPerFrame = transitionCaches.Length / frames.Length;
+            m_TransitionSnapshotsPerFrame = transitionSnapshots.Length / frames.Length;
         }
 
         public int Count => m_Roster[0].Count;
@@ -59,6 +69,12 @@ namespace BTSMTL.Orchestration
         public Span<OrchestrationBlackboardMetadata> BlackboardMetadata(int frameSlot) =>
             m_BlackboardMetadata.Slice(frameSlot * m_BlackboardMetadataPerFrame,
                 m_BlackboardMetadataPerFrame);
+
+        public Span<OrchestrationTransitionCacheState> TransitionCaches(int frameSlot) =>
+            m_TransitionCaches.Slice(frameSlot * m_TransitionCachesPerFrame, m_TransitionCachesPerFrame);
+
+        public Span<OrchestrationTransitionSnapshot<TValue>> TransitionSnapshots(int frameSlot) =>
+            m_TransitionSnapshots.Slice(frameSlot * m_TransitionSnapshotsPerFrame, m_TransitionSnapshotsPerFrame);
 
         public int Find(ulong actionInstanceId)
         {
@@ -105,6 +121,8 @@ namespace BTSMTL.Orchestration
             m_Frames[slot] = frame;
             Operations(slot).Clear();
             BlackboardMetadata(slot).Clear();
+            TransitionCaches(slot).Clear();
+            TransitionSnapshots(slot).Clear();
             Span<TValue> values = Values(slot);
             defaultValues.CopyTo(values);
             values.Slice(defaultValues.Length).Clear();
@@ -118,6 +136,8 @@ namespace BTSMTL.Orchestration
             Operations(frameSlot).Clear();
             Values(frameSlot).Clear();
             BlackboardMetadata(frameSlot).Clear();
+            TransitionCaches(frameSlot).Clear();
+            TransitionSnapshots(frameSlot).Clear();
             m_Roster[0].Count--;
         }
 

@@ -236,7 +236,8 @@ namespace BTSMTL.Orchestration
             where TValue : unmanaged =>
             new OrchestrationExecutionFrames<TValue>(layout.GetFrames(state),
                 ref layout.GetRoster(state)[0], layout.GetOperations(state), layout.GetValues(state),
-                layout.GetBlackboardMetadata(state));
+                layout.GetBlackboardMetadata(state), layout.GetTransitionCaches(state),
+                layout.GetTransitionSnapshots(state));
 
         static ReadOnlyOrchestrationExecutionFrames<TValue> BindFrames<TValue>(
             OrchestrationExecutionStateLayout<TValue> layout, ReadOnlyOrchestrationStateView state)
@@ -264,44 +265,48 @@ namespace BTSMTL.Orchestration
         public OrchestrationStateView Timeline { get; }
 
         public OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3,
-            TQuaternion, TMath, TValues, TContext> CreateCursor<TScalar, TVector2, TVector3,
-            TQuaternion, TMath, TValues, TContext>(OrchestrationProgram<TValue> program,
+            TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics> CreateCursor<TScalar, TVector2, TVector3,
+            TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics>(OrchestrationProgram<TValue> program,
             OrchestrationExecutionWorkspace<TValue> workspace,
             IOrchestrationExtensionBindings<TValue, TContext> bindings, int frameSlot,
             ReadOnlySpan<int> characterSlots,
             IOrchestrationTimelineDispatcher<TValue, TScalar, TVector2, TVector3,
-                TQuaternion, TMath, TValues, TContext> timelineDispatcher,
+                TYaw, TQuaternion, TMath, TValues, TContext> timelineDispatcher,
             IOrchestrationTimelineClipExitDispatcher<TContext> clipExitDispatcher,
             in OrchestrationFrameInput<TValue> input, in OrchestrationIdentityOrdinalView identities,
             in TContext context)
             where TScalar : unmanaged where TVector2 : unmanaged where TVector3 : unmanaged
+            where TYaw : unmanaged
             where TQuaternion : unmanaged
             where TMath : struct, IOrchestrationGraphMath<TScalar, TVector2, TVector3, TQuaternion>
-            where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TQuaternion>
-            where TContext : struct =>
+            where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
+            where TContext : struct
+            where TDiagnostics : struct, IOrchestrationExecutionDiagnostics =>
             new OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3,
-                TQuaternion, TMath, TValues, TContext>(program, workspace, bindings, Frames, frameSlot,
+                TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics>(program, workspace, bindings, Frames, frameSlot,
                 CharacterValues, CharacterBlackboards, characterSlots, timelineDispatcher,
                 clipExitDispatcher, Timeline, in input, in identities, in context, null, default);
 
         public OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3,
-            TQuaternion, TMath, TValues, TContext> CreateCursor<TScalar, TVector2, TVector3,
-            TQuaternion, TMath, TValues, TContext>(OrchestrationExecutionSourceBinding<TValue> preparedSource,
+            TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics> CreateCursor<TScalar, TVector2, TVector3,
+            TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics>(OrchestrationExecutionSourceBinding<TValue> preparedSource,
             OrchestrationExecutionWorkspace<TValue> workspace,
             IOrchestrationExtensionBindings<TValue, TContext> bindings, int frameSlot,
             OrchestrationExecutionSource<TValue> source, ReadOnlySpan<int> characterSlots,
             IOrchestrationTimelineDispatcher<TValue, TScalar, TVector2, TVector3,
-                TQuaternion, TMath, TValues, TContext> timelineDispatcher,
+                TYaw, TQuaternion, TMath, TValues, TContext> timelineDispatcher,
             IOrchestrationTimelineClipExitDispatcher<TContext> clipExitDispatcher,
             in OrchestrationFrameInput<TValue> input, in OrchestrationIdentityOrdinalView identities,
             in TContext context)
             where TScalar : unmanaged where TVector2 : unmanaged where TVector3 : unmanaged
+            where TYaw : unmanaged
             where TQuaternion : unmanaged
             where TMath : struct, IOrchestrationGraphMath<TScalar, TVector2, TVector3, TQuaternion>
-            where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TQuaternion>
-            where TContext : struct =>
+            where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
+            where TContext : struct
+            where TDiagnostics : struct, IOrchestrationExecutionDiagnostics =>
             new OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3,
-                TQuaternion, TMath, TValues, TContext>(preparedSource.Program, workspace, bindings, Frames, frameSlot,
+                TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics>(preparedSource.Program, workspace, bindings, Frames, frameSlot,
                 CharacterValues, CharacterBlackboards, characterSlots, timelineDispatcher,
                 clipExitDispatcher, Timeline, in input, in identities, in context, preparedSource, source);
     }

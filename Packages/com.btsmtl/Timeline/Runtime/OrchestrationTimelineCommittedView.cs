@@ -8,9 +8,11 @@ namespace BTSMTL.Timeline.Runtime
         where TTime : unmanaged, IEquatable<TTime>
     {
         readonly ReadOnlySpan<OrchestrationTimelinePlaybackState<TTime>> m_Playbacks;
-        readonly ReadOnlySpan<OrchestrationTimelineTreeExitRange> m_TreeExits;
+        readonly ReadOnlySpan<long> m_TreeExitFirstCycles;
+        readonly ReadOnlySpan<ulong> m_TreeExitBits;
         readonly ReadOnlyMemory<OrchestrationTimelinePreparedContent<TTime>> m_Contents;
-        readonly int m_TreeExitsPerPlayback;
+        readonly int m_TreeExitWindowsPerPlayback;
+        readonly int m_TreeExitWordsPerPlayback;
 
         public OrchestrationTimelineCommittedView(ReadOnlyOrchestrationStateView committed,
             ReadOnlyMemory<OrchestrationTimelinePreparedContent<TTime>> contents,
@@ -18,9 +20,11 @@ namespace BTSMTL.Timeline.Runtime
             in OrchestrationTimelinePreparedCapacity capacity)
         {
             m_Playbacks = committed.Get(layout.Playbacks);
-            m_TreeExits = committed.Get(layout.TreeExits);
+            m_TreeExitFirstCycles = committed.Get(layout.TreeExitFirstCycles);
+            m_TreeExitBits = committed.Get(layout.TreeExitBits);
             m_Contents = contents;
-            m_TreeExitsPerPlayback = capacity.TreeExitsPerPlayback;
+            m_TreeExitWindowsPerPlayback = capacity.TreeExitWindowsPerPlayback;
+            m_TreeExitWordsPerPlayback = capacity.TreeExitWordsPerPlayback;
         }
 
         public ReadOnlySpan<OrchestrationTimelinePlaybackState<TTime>> Playbacks => m_Playbacks;
@@ -58,10 +62,13 @@ namespace BTSMTL.Timeline.Runtime
             for (int i = 0; i < m_Playbacks.Length; i++)
             {
                 ref readonly OrchestrationTimelinePlaybackState<TTime> playback = ref m_Playbacks[i];
-                if (playback.Start.ContentIdentityId == contentIdentityId &&
-                    OrchestrationTimelineStateQueries<TTime>.IsActiveClip<TClock>(Content(in playback.Start),
-                        in playback, TreeExits(i), clipOrdinal))
-                    return true;
+                if (playback.Start.ContentIdentityId == contentIdentityId)
+                {
+                    OrchestrationTimelinePreparedContent<TTime> content = Content(in playback.Start);
+                    if (OrchestrationTimelineStateQueries<TTime>.IsActiveClip<TClock>(content,
+                        in playback, TreeExits(i, content), clipOrdinal))
+                        return true;
+                }
             }
             return false;
         }
@@ -71,12 +78,17 @@ namespace BTSMTL.Timeline.Runtime
         {
             ref readonly OrchestrationTimelinePlaybackState<TTime> playback = ref m_Playbacks[slot];
             OrchestrationTimelinePreparedContent<TTime> content = Content(in playback.Start);
-            ReadOnlySpan<OrchestrationTimelineTreeExitRange> exits = TreeExits(slot);
+            TimelineTreeExitView exits = TreeExits(slot, content);
             int count = 0;
-            for (int ordinal = 0; ordinal < content.Clips.Length; ordinal++)
+            int position = content.Lifetimes.FindNext<TClock>(0, playback.Progress.CursorTime, true);
+            while (position >= 0)
+            {
+                int ordinal = content.Lifetimes.StableOrder.Span[position];
                 if (OrchestrationTimelineStateQueries<TTime>.IsActiveClip<TClock>(content,
                     in playback, exits, ordinal))
                     destination[count++] = ordinal;
+                position = content.Lifetimes.FindNext<TClock>(position + 1, playback.Progress.CursorTime, true);
+            }
             return count;
         }
 
@@ -84,8 +96,9 @@ namespace BTSMTL.Timeline.Runtime
             where TClock : struct, IOrchestrationTimelineClock<TTime>
         {
             ref readonly OrchestrationTimelinePlaybackState<TTime> playback = ref m_Playbacks[slot];
-            return OrchestrationTimelineStateQueries<TTime>.CopyActiveTrees<TClock>(Content(in playback.Start),
-                in playback, TreeExits(slot), destination);
+            OrchestrationTimelinePreparedContent<TTime> content = Content(in playback.Start);
+            return OrchestrationTimelineStateQueries<TTime>.CopyActiveTrees<TClock>(content,
+                in playback, TreeExits(slot, content), destination);
         }
 
         public int SectionOrdinal<TClock>(int slot)
@@ -99,7 +112,9 @@ namespace BTSMTL.Timeline.Runtime
         OrchestrationTimelinePreparedContent<TTime> Content(in OrchestrationTimelineStart<TTime> start) =>
             OrchestrationTimelineStateQueries<TTime>.RequireContent(m_Contents.Span, in start);
 
-        ReadOnlySpan<OrchestrationTimelineTreeExitRange> TreeExits(int slot) =>
-            m_TreeExits.Slice(checked(slot * m_TreeExitsPerPlayback), m_Playbacks[slot].TreeExitCount);
+        TimelineTreeExitView TreeExits(int slot, OrchestrationTimelinePreparedContent<TTime> content) =>
+            new(content.TreeCycleWindows.Span,
+                m_TreeExitFirstCycles.Slice(checked(slot * m_TreeExitWindowsPerPlayback), m_TreeExitWindowsPerPlayback),
+                m_TreeExitBits.Slice(checked(slot * m_TreeExitWordsPerPlayback), m_TreeExitWordsPerPlayback));
     }
 }

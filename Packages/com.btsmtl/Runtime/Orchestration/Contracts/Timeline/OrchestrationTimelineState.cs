@@ -75,7 +75,6 @@ namespace BTSMTL.Orchestration
         public TTime LastConsumedClockTime;
         public ulong InvocationSequence;
         public int TreeExitRequestCount;
-        public int TreeExitCount;
         // 当前分段与待执行的分段跳转目标（排序后分段下标 + 1，0 为无）；跳转由下一次推进执行。
         public int Section;
         public int PendingSectionJump;

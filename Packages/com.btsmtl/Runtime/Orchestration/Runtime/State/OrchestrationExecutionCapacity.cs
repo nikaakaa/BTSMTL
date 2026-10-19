@@ -102,6 +102,8 @@ namespace BTSMTL.Orchestration
             var sourceDepths = new int[programs.Length];
             int operations = 0;
             int values = 0;
+            int transitionCaches = 0;
+            int transitionSnapshots = 0;
             for (int programIndex = 0; programIndex < programs.Length; programIndex++)
             {
                 OrchestrationProgram<TValue> program = programs[programIndex];
@@ -156,6 +158,8 @@ namespace BTSMTL.Orchestration
                         perAdmission[owner] = Math.Max(perAdmission[owner], capacity.Owners[owner]);
                     operations = Math.Max(operations, program.OperationCount);
                     values = Math.Max(values, program.ValueSlotCount);
+                    transitionCaches = Math.Max(transitionCaches, program.ValueSchedule.TransitionCacheCount);
+                    transitionSnapshots = Math.Max(transitionSnapshots, program.ValueSchedule.TransitionSnapshotCount);
                 }
                 foreach (KeyValuePair<int, int[]> item in admissionOwners)
                 {
@@ -167,7 +171,8 @@ namespace BTSMTL.Orchestration
                 frameCount = checked(frameCount + checked(admission.MaximumInstances * frames));
                 playbackCount = checked(playbackCount + checked(admission.MaximumInstances * playbacks));
             }
-            var state = new OrchestrationExecutionStateCapacity(frameCount, operations, values);
+            var state = new OrchestrationExecutionStateCapacity(frameCount, operations, values,
+                transitionCaches, transitionSnapshots);
             return new OrchestrationExecutionCapacity(in state, playbackCount, ownerInstances, sourceDepths);
         }
 

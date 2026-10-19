@@ -9,7 +9,8 @@ namespace BTSMTL.Orchestration
     {
         public OrchestrationStateRegion<TPlayback> Playbacks { get; }
         public OrchestrationStateRegion<OrchestrationTimelineSequenceState> Sequences { get; }
+        public OrchestrationStateRegion<ulong> TreeExitBits { get; }
+        public OrchestrationStateRegion<long> TreeExitFirstCycles { get; }
         public OrchestrationStateRegion<OrchestrationTimelineClipOccurrence> TreeExitRequests { get; }
-        public OrchestrationStateRegion<OrchestrationTimelineTreeExitRange> TreeExits { get; }
     }
 }

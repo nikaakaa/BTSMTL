@@ -6,13 +6,15 @@ using ThirdPersonSimulation;
 namespace BTSMTL.Graphs
 {
     // TContext 是宿主交给扩展实现的调用句柄；没有扩展领域的宿主使用 ValueTuple。
-    public sealed partial class HostedGraphRuntime<TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TNumeric, TContext> : IDisposable
+    public sealed partial class HostedGraphRuntime<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TNumeric, TContext> : IDisposable
+        where TValue : unmanaged
         where TScalar : unmanaged
         where TVector2 : unmanaged
         where TVector3 : unmanaged
         where TYaw : unmanaged
         where TQuaternion : unmanaged
         where TMath : struct, IOrchestrationGraphMath<TScalar, TVector2, TVector3, TQuaternion>
+        where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
         where TNumeric : struct, IGraphNumericAdapter<TScalar, TVector2, TVector3, TQuaternion>
         where TContext : struct
     {
@@ -26,14 +28,14 @@ namespace BTSMTL.Graphs
 
         readonly BtsmtlGraphRoot m_Source;
         readonly GraphHostContract m_Contract;
-        readonly HostedGraphBindings<TScalar, TVector2, TVector3, TYaw, TQuaternion, TNumeric> m_Bindings;
-        readonly OrchestrationExecutionStateLayout<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> m_Layout;
+        readonly HostedGraphBindings<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TNumeric> m_Bindings;
+        readonly OrchestrationExecutionStateLayout<TValue> m_Layout;
         readonly OrchestrationStateLayout m_MemoryLayout;
-        readonly OrchestrationExecutionWorkspace<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> m_Workspace;
-        readonly OrchestrationExtensionBindings<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>, TContext> m_Extensions;
-        readonly OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>[] m_Inputs;
+        readonly OrchestrationExecutionWorkspace<TValue> m_Workspace;
+        readonly OrchestrationExtensionBindings<TValue, TContext> m_Extensions;
+        readonly TValue[] m_Inputs;
         readonly OrchestrationOutputRequest[] m_OutputRequests;
-        readonly OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>[] m_OutputValues;
+        readonly TValue[] m_OutputValues;
         int m_OutputRequestCount;
         int m_OutputValueCount;
         readonly OrchestrationIdentityValue[] m_TextRemap;
@@ -55,21 +57,21 @@ namespace BTSMTL.Graphs
         bool m_Disposed;
 
         public HostedGraphRuntime(BtsmtlGraphRoot source, GraphHostContract contract,
-            IOrchestrationGraphContentEncoding<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> encoding,
-            Func<StableHash, NumericProfileId, TargetAbiVersion, int, int, int, int, int,
-                OrchestrationExecutionStateLayout<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>> createStateLayout,
+            IOrchestrationGraphContentEncoding<TValue> encoding,
+            Func<StableHash, NumericProfileId, TargetAbiVersion, int, int, int, int, int, int, int,
+                OrchestrationExecutionStateLayout<TValue>> createStateLayout,
             IReadOnlyList<IOrchestrationExtension> extensions)
         {
             m_Source = source;
             m_Contract = contract;
-            m_Bindings = new HostedGraphBindings<TScalar, TVector2, TVector3, TYaw, TQuaternion, TNumeric>(source, contract, encoding);
-            OrchestrationProgram<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> program = m_Bindings.Program;
-            OrchestrationGraphContent<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> content = m_Bindings.Content;
-            OrchestrationExecutionCapacity capacity = OrchestrationExecutionFrames<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>.PrepareCapacity(
+            m_Bindings = new HostedGraphBindings<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TNumeric>(source, contract, encoding);
+            OrchestrationProgram<TValue> program = m_Bindings.Program;
+            OrchestrationGraphContent<TValue> content = m_Bindings.Content;
+            OrchestrationExecutionCapacity capacity = OrchestrationExecutionFrames<TValue>.PrepareCapacity(
                 new[] { program }, new[] { new OrchestrationRootAdmission(
                     new[] { new OrchestrationExecutionRoot(0, program.RootOperationIndex) }, 1) },
                 ReadOnlySpan<OrchestrationTimelineCallCapacity>.Empty);
-            OrchestrationExecutionTickCapacity tickCapacity = OrchestrationExecutionTickCapacity.Prepare<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>(
+            OrchestrationExecutionTickCapacity tickCapacity = OrchestrationExecutionTickCapacity.Prepare<TValue>(
                 new[] { program }, new[] { content.Extensions },
                 new[] { new OrchestrationProgramTickBudget(1, 1) }, capacity,
                 ReadOnlySpan<OrchestrationTimelineTickContentCapacity>.Empty);
@@ -77,23 +79,24 @@ namespace BTSMTL.Graphs
             m_Layout = createStateLayout(StableHash.Compute(content.Identity.GraphId, content.Identity.SourceRevision),
                 content.NumericProfile.Id, content.NumericProfile.AbiVersion,
                 program.BlackboardCount, stateCapacity.FrameCount, stateCapacity.OperationsPerFrame,
-                stateCapacity.FrameCount, stateCapacity.ValuesPerFrame);
+                stateCapacity.FrameCount, stateCapacity.TransitionCacheCount,
+                stateCapacity.TransitionSnapshotCount, stateCapacity.ValuesPerFrame);
             m_MemoryLayout = m_Layout.Layout;
             m_State = new byte[m_MemoryLayout.SizeBytes];
             m_Candidate = new byte[m_State.Length];
             OrchestrationStateLayout preparedLayout = m_Layout.Layout;
             OrchestrationStateBinding.AdoptMemory(in preparedLayout, in m_MemoryLayout, m_State);
             OrchestrationStateBinding.AdoptMemory(in preparedLayout, in m_MemoryLayout, m_Candidate);
-            m_Inputs = new OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>[m_Bindings.InputCapacity];
+            m_Inputs = new TValue[m_Bindings.InputCapacity];
             m_Output = new GraphVariableBuffer(m_Bindings.PublishedSlots.Length, m_Bindings.Prepared.Identities.Table);
-            m_Workspace = new OrchestrationExecutionWorkspace<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>(
-                program, content, capacity, 0, tickCapacity.Programs.Span[0]);
-            m_Extensions = OrchestrationExtensionBindings<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>, TContext>.Prepare(
+            m_Workspace = new OrchestrationExecutionWorkspace<TValue>(
+                program, content, capacity, tickCapacity.Programs.Span[0]);
+            m_Extensions = OrchestrationExtensionBindings<TValue, TContext>.Prepare(
                 content.Extensions.Span, OrchestrationExtensionRequirements.Collect(program, content.Extensions.Length),
                 extensions ?? throw new ArgumentNullException(nameof(extensions)));
             // Start 与 Update 在同一次计算中各自推进，输出按两次调用的工作区容量保留。
             m_OutputRequests = new OrchestrationOutputRequest[checked(m_Workspace.OutputRequestCapacity * 2)];
-            m_OutputValues = new OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>[checked(m_Workspace.OutputValueCapacity * 2)];
+            m_OutputValues = new TValue[checked(m_Workspace.OutputValueCapacity * 2)];
 #if UNITY_EDITOR
             PrepareEditor();
             InitializeEditor();
@@ -110,9 +113,9 @@ namespace BTSMTL.Graphs
             Reset();
         }
 
-        ReadOnlySpan<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> StateValues =>
+        ReadOnlySpan<TValue> StateValues =>
             OrchestrationStateBinding.BindCommitted(m_Layout, m_State).Frames.Values(0);
-        Span<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> CandidateValues =>
+        Span<TValue> CandidateValues =>
             OrchestrationStateBinding.BindCandidate(m_Layout, m_Candidate).Frames.Values(0);
 
         public BtsmtlGraphRoot Source => m_Source;
@@ -171,20 +174,29 @@ namespace BTSMTL.Graphs
 
         public void Compute(in TContext context)
         {
+#if UNITY_EDITOR
+            Compute<OrchestrationWorkbenchDiagnostics>(in context);
+#else
+            Compute<OrchestrationProductDiagnostics>(in context);
+#endif
+        }
+
+        void Compute<TDiagnostics>(in TContext context)
+            where TDiagnostics : struct, IOrchestrationExecutionDiagnostics
+        {
             if (m_Status == EvaluationStatus.Failed)
                 return;
             if (m_Status != EvaluationStatus.Prepared)
                 throw new InvalidOperationException("图实例只能计算本次已准备的输入和候选。");
             var state = OrchestrationStateBinding.BindCandidate(m_Layout, m_Candidate);
-            var input = new OrchestrationFrameInput<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>(tick: m_Invocation.Identity.Sequence,
+            var input = new OrchestrationFrameInput<TValue>(tick: m_Invocation.Identity.Sequence,
                 instanceGeneration: m_ResetGeneration, hostInputs: m_Inputs, requestIdentityIds: default
 #if UNITY_EDITOR
                 , captureValues: true, overrides: ActiveOverrides(m_CandidateOverrides)
 #endif
                 );
             OrchestrationIdentityOrdinalView identities = m_CandidateTexts.Ordinals;
-            var cursor = state.CreateCursor<TScalar, TVector2, TVector3, TQuaternion, TMath,
-                OrchestrationValueAccess<TScalar, TVector2, TVector3, TYaw, TQuaternion>, TContext>(
+            var cursor = state.CreateCursor<TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics>(
                 m_Bindings.Program, m_Workspace, m_Extensions, 0, ReadOnlySpan<int>.Empty,
                 null, null, in input, in identities, in context);
             m_OutputRequestCount = 0;
@@ -213,7 +225,7 @@ namespace BTSMTL.Graphs
 
         // 本次计算发出的编排输出，在 Adopt 或 Discard 前有效；值中的运行文本用 ResolveOutputText 读取。
         public ReadOnlySpan<OrchestrationOutputRequest> OutputRequests => m_OutputRequests.AsSpan(0, m_OutputRequestCount);
-        public ReadOnlySpan<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> OutputValues =>
+        public ReadOnlySpan<TValue> OutputValues =>
             m_OutputValues.AsSpan(0, m_OutputValueCount);
         public ref readonly OrchestrationOutputTemplate OutputTemplate(int templateIndex) =>
             ref m_Bindings.Program.OutputTemplate(templateIndex);
@@ -222,7 +234,7 @@ namespace BTSMTL.Graphs
         void CollectOutputs()
         {
             ReadOnlySpan<OrchestrationOutputRequest> requests = m_Workspace.EmittedOutputRequests;
-            ReadOnlySpan<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> values = m_Workspace.EmittedOutputValues;
+            ReadOnlySpan<TValue> values = m_Workspace.EmittedOutputValues;
             values.CopyTo(m_OutputValues.AsSpan(m_OutputValueCount));
             for (int i = 0; i < requests.Length; i++)
             {
@@ -255,16 +267,16 @@ namespace BTSMTL.Graphs
             try
             {
                 m_Output.BeginWrite();
-                Span<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> values = CandidateValues;
+                Span<TValue> values = CandidateValues;
                 for (int i = 0; i < m_Bindings.PublishedSlots.Length; i++)
                 {
                     int slot = m_Bindings.PublishedSlots[i];
 #if UNITY_EDITOR
                     int supplied = FindOverride(m_CandidateOverrides, OrchestrationValueOverrideKind.Blackboard, slot);
-                    OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion> value = supplied >= 0
+                    TValue value = supplied >= 0
                         ? m_CandidateOverrides[supplied].Value : values[slot];
 #else
-                    OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion> value = values[slot];
+                    TValue value = values[slot];
 #endif
                     GraphHostValue published = m_Bindings.FromState(in value, m_Bindings.StateTypes[slot], m_CandidateTexts);
                     m_Output.Write(i, in published);
@@ -328,8 +340,7 @@ namespace BTSMTL.Graphs
             m_Disposed = true;
         }
 
-        internal OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion> ReadState(int slot,
-            ReadOnlySpan<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> values)
+        internal TValue ReadState(int slot, ReadOnlySpan<TValue> values)
         {
 #if UNITY_EDITOR
             int supplied = FindVariableOverride(slot);
@@ -343,26 +354,32 @@ namespace BTSMTL.Graphs
         {
             Array.Clear(m_TextRemap, 0, m_TextRemap.Length);
             m_State.AsSpan().CopyTo(m_Candidate);
-            Span<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> values = CandidateValues;
+            Span<TValue> values = CandidateValues;
             for (int i = 0; i < values.Length; i++)
                 RemapValue(ref values[i]);
+            var snapshots = OrchestrationStateBinding.BindCandidate(m_Layout, m_Candidate).Frames.TransitionSnapshots(0);
+            for (int i = 0; i < snapshots.Length; i++)
+                RemapValue(ref snapshots[i].Value);
 #if UNITY_EDITOR
             PrepareEditorCandidateState();
 #endif
         }
 
-        void RemapValue(ref OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion> value)
+        void RemapValue(ref TValue value)
         {
-            if (value.Kind != OrchestrationValueKind.Identity ||
-                value.Identity.Space != OrchestrationIdentitySpace.RuntimeText)
+            TValues values = default;
+            if (values.Kind(in value) != OrchestrationValueKind.Identity)
                 return;
-            int index = value.Identity.Index;
+            OrchestrationIdentityValue identity = values.Identity(in value);
+            if (identity.Space != OrchestrationIdentitySpace.RuntimeText)
+                return;
+            int index = identity.Index;
             ref OrchestrationIdentityValue mapped = ref m_TextRemap[index];
             if (mapped.Index == 0)
             {
-                mapped = m_CandidateTexts.Capture(m_StateTexts.Resolve(value.Identity));
+                mapped = m_CandidateTexts.Capture(m_StateTexts.Resolve(identity));
             }
-            value = OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>.FromIdentity(mapped);
+            value = values.FromIdentity(mapped);
         }
 
         void AdoptCandidateState()
@@ -418,7 +435,7 @@ namespace BTSMTL.Graphs
             m_Started = false;
         }
 
-        void InitializeRootFrame(ref OrchestrationExecutionFrames<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> frames,
+        void InitializeRootFrame(ref OrchestrationExecutionFrames<TValue> frames,
             ulong generation)
         {
             frames.Insert(new OrchestrationExecutionFrameState
@@ -442,7 +459,7 @@ namespace BTSMTL.Graphs
         internal void RequireIdle()
         {
             if (m_Disposed)
-                throw new ObjectDisposedException(nameof(HostedGraphRuntime<TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TNumeric, TContext>));
+                throw new ObjectDisposedException(nameof(HostedGraphRuntime<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TNumeric, TContext>));
             if (m_Status != EvaluationStatus.Idle)
                 throw new InvalidOperationException("图实例必须完成或丢弃已派发候选后才能改变生命周期。");
         }
