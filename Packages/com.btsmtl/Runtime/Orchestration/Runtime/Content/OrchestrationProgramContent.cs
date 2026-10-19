@@ -15,6 +15,7 @@ namespace BTSMTL.Orchestration
             OrchestrationProgramStructure structure,
             OrchestrationValueSchedule valueSchedule,
             OrchestrationWorkspaceCapacity workspaceCapacity,
+            OrchestrationProgramStorageLayout executionStorage,
             ReadOnlyMemory<OrchestrationValueInputBinding> valueInputs,
             ReadOnlyMemory<TValue> constants,
             ReadOnlyMemory<TValue> defaultValues,
@@ -37,6 +38,7 @@ namespace BTSMTL.Orchestration
             Structure = structure;
             ValueSchedule = valueSchedule;
             WorkspaceCapacity = workspaceCapacity;
+            ExecutionStorage = executionStorage;
             ValueInputs = valueInputs;
             Constants = constants;
             DefaultValues = defaultValues;
@@ -62,6 +64,7 @@ namespace BTSMTL.Orchestration
         public OrchestrationProgramStructure Structure { get; }
         public OrchestrationValueSchedule ValueSchedule { get; }
         public OrchestrationWorkspaceCapacity WorkspaceCapacity { get; }
+        public OrchestrationProgramStorageLayout ExecutionStorage { get; }
         public ReadOnlyMemory<OrchestrationValueInputBinding> ValueInputs { get; }
         public ReadOnlyMemory<TValue> Constants { get; }
         public ReadOnlyMemory<TValue> DefaultValues { get; }

@@ -324,11 +324,12 @@ namespace BTSMTL.Compilation
                     structure, valueSchedule, entries);
                 BuildOperationTables(operations, assignments, out OrchestrationOperation[] hotOperations,
                     out byte[] operationPayloads, out OrchestrationOperationColdData[] coldOperations);
+                OrchestrationProgramStorageLayout executionStorage = BuildExecutionStorage(operations, valueSlotTypes);
                 if (!m_Report.IsValid)
                     throw new InvalidOperationException($"图 '{m_Identity.GraphId}' 编排编译失败：{string.Join("；", m_Report.Messages)}");
                 var program = new OrchestrationProgramContent<TValue>(
                     hotOperations, operationPayloads, coldOperations, controlFlow, structure, valueSchedule,
-                    workspaceCapacity, m_Inputs.ToArray(), m_Constants.ToArray(), m_DefaultValues.ToArray(),
+                    workspaceCapacity, executionStorage, m_Inputs.ToArray(), m_Constants.ToArray(), m_DefaultValues.ToArray(),
                     valueSlotTypes, valueKindSlotCounts,
                     BuildGraphCalls(), m_LifecycleHooks.ToArray(), Array.Empty<OrchestrationHookInput>(), m_Blackboards.ToArray(),
                     m_BlackboardOutputs.ToArray(), m_OutputTemplates.ToArray(), corePorts,

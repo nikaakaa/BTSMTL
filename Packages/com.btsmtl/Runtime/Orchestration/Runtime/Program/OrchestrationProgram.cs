@@ -25,6 +25,7 @@ namespace BTSMTL.Orchestration
 
         public OrchestrationProgramContent<TValue> Content => m_Content;
         public OrchestrationValueSchedule ValueSchedule => m_Content.ValueSchedule;
+        public OrchestrationProgramStorageLayout ExecutionStorage => m_Content.ExecutionStorage;
         public int RootOperationIndex => m_Content.RootOperationIndex;
         public int MaximumOperationEvaluations => m_Content.MaximumOperationEvaluations;
         public OrchestrationCorePorts Ports => m_Content.CorePorts;

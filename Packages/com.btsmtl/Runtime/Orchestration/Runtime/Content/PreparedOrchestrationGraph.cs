@@ -75,7 +75,7 @@ namespace BTSMTL.Orchestration
                 finalDefaultValues[value.ValueSlot] = value.Value;
             var program = new OrchestrationProgramContent<TValue>(
                 data.Operations, MapOperationPayloads(data, mapping), cold, edges, MapStructure(data.Structure, mapping),
-                data.ValueSchedule, data.WorkspaceCapacity, data.ValueInputs, MapValues(data.Constants, mapping),
+                data.ValueSchedule, data.WorkspaceCapacity, data.ExecutionStorage, data.ValueInputs, MapValues(data.Constants, mapping),
                 finalDefaultValues, data.ValueSlotTypes, data.ValueKindSlotCounts, data.GraphCalls, data.Hooks, data.HookInputs,
                 data.BlackboardSlots, data.BlackboardOutputs, data.OutputTemplates, mappedPorts,
                 data.RootOperationIndex, data.MaximumOperationEvaluations);
@@ -152,7 +152,7 @@ namespace BTSMTL.Orchestration
                 Source.Identity, candidate.NumericProfile, candidate.Identities,
                 new OrchestrationProgramContent<TValue>(
                     edited.Operations, edited.OperationPayloads, edited.ColdOperations, edited.Edges, edited.Structure,
-                    edited.ValueSchedule, edited.WorkspaceCapacity, edited.ValueInputs, original.Constants, original.DefaultValues,
+                    edited.ValueSchedule, edited.WorkspaceCapacity, edited.ExecutionStorage, edited.ValueInputs, original.Constants, original.DefaultValues,
                     edited.ValueSlotTypes, edited.ValueKindSlotCounts,
                     edited.GraphCalls, edited.Hooks, edited.HookInputs, edited.BlackboardSlots,
                     edited.BlackboardOutputs, edited.OutputTemplates, edited.CorePorts,
@@ -172,7 +172,7 @@ namespace BTSMTL.Orchestration
             OrchestrationProgramContent<TValue> prepared = Program;
             return new OrchestrationProgramContent<TValue>(
                 prepared.Operations, prepared.OperationPayloads, prepared.ColdOperations, prepared.Edges, prepared.Structure,
-                prepared.ValueSchedule, prepared.WorkspaceCapacity, prepared.ValueInputs, MapValues(edited.Constants, LocalToShared),
+                prepared.ValueSchedule, prepared.WorkspaceCapacity, prepared.ExecutionStorage, prepared.ValueInputs, MapValues(edited.Constants, LocalToShared),
                 defaults, prepared.ValueSlotTypes, prepared.ValueKindSlotCounts,
                 prepared.GraphCalls, prepared.Hooks, prepared.HookInputs, prepared.BlackboardSlots,
                 prepared.BlackboardOutputs, prepared.OutputTemplates, prepared.CorePorts,
