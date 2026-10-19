@@ -15,6 +15,8 @@ namespace BTSMTL.Timeline
             var identities = new List<string> { content.Identity, content.ContentHash };
             for (int ordinal = 0; ordinal < content.Clips.Count; ordinal++)
                 identities.Add(content.Clips[ordinal].AuthoringId);
+            for (int ordinal = 0; ordinal < content.Sections.Count; ordinal++)
+                identities.Add(content.Sections[ordinal].AuthoringId);
             return OrchestrationIdentityPublication.Create(identities);
         }
 
