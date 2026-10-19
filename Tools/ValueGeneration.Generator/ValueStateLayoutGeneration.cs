@@ -99,6 +99,10 @@ namespace ThirdPerson.ValueGeneration.Generator
                     .Append(' ').Append(method).Append("(").Append(Orchestration).Append("ReadOnlyOrchestrationStateView state) => ")
                     .Append(leaf ? "" : value + ".Layout.BindCommitted(").Append("state.Get(").Append(region)
                     .AppendLine(leaf ? ");" : "));");
+                if (!leaf)
+                    code.Append("public ").Append(Orchestration).Append("OrchestrationStateRegion<byte> ")
+                        .Append(Escape("Get" + member.Symbol.Name + "Region")).Append("() => ")
+                        .Append(region).AppendLine(";");
             }
             EndStateLayoutType(code, owners);
             context.AddSource(StateLayoutHint(layout, "StateLayout"), SourceText.From(code.ToString(), Encoding.UTF8));
