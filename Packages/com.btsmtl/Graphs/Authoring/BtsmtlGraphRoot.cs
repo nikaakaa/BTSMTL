@@ -5,6 +5,7 @@ using BTSMTL.Orchestration;
 using FlowCanvas;
 using NodeCanvas.Framework;
 using UnityEngine;
+using UnityEngine.Scripting;
 #if UNITY_EDITOR
 using NodeCanvas.Editor;
 using UnityEditor;
@@ -72,17 +73,17 @@ namespace BTSMTL.Graphs
             typeof(IBtsmtlHostInputFlowNode).IsAssignableFrom(nodeType) ||
             BtsmtlNativeValueNodeCatalog.TryGetNode(nodeType, out _);
 
-#if UNITY_EDITOR
-        [Serializable]
+        [Serializable, Preserve]
         sealed class IdentityData
         {
-            public string Identity;
-            public string Revision;
-            public string VariableOwnerId;
-            public string VariableRevision;
-            public BtsmtlGraphEntryDeclaration[] Entries;
+            [Preserve] public string Identity;
+            [Preserve] public string Revision;
+            [Preserve] public string VariableOwnerId;
+            [Preserve] public string VariableRevision;
+            [Preserve] public BtsmtlGraphEntryDeclaration[] Entries;
         }
 
+#if UNITY_EDITOR
         public override object OnDerivedDataSerialization()
         {
             foreach (Node node in allNodes)
