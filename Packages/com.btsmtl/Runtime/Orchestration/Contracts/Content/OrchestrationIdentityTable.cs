@@ -8,11 +8,12 @@ namespace BTSMTL.Orchestration
     public sealed partial class OrchestrationIdentityTable
     {
         [ValueStorageIgnore] readonly int[] m_SortedIdentityIds;
+        [ValueStorageIgnore] readonly Lazy<StableHash> m_Identity;
 
         public OrchestrationIdentityTable(ReadOnlyMemory<string> entries, StableHash identity)
         {
             Entries = entries;
-            Identity = identity;
+            m_Identity = new Lazy<StableHash>(() => identity);
             m_SortedIdentityIds = new int[entries.Length];
             for (int i = 0; i < m_SortedIdentityIds.Length; i++)
                 m_SortedIdentityIds[i] = i + 1;
@@ -20,8 +21,16 @@ namespace BTSMTL.Orchestration
                 string.CompareOrdinal(Entries.Span[left - 1], Entries.Span[right - 1]));
         }
 
+        public OrchestrationIdentityTable(ReadOnlyMemory<string> entries, int[] sortedIdentityIds,
+            Func<StableHash> computeIdentity)
+        {
+            Entries = entries;
+            m_SortedIdentityIds = sortedIdentityIds;
+            m_Identity = new Lazy<StableHash>(computeIdentity);
+        }
+
         public ReadOnlyMemory<string> Entries { get; }
-        public StableHash Identity { get; }
+        public StableHash Identity => m_Identity.Value;
         public int Count => Entries.Length;
         public ReadOnlyMemory<int> SortedIdentityIds => m_SortedIdentityIds;
 
