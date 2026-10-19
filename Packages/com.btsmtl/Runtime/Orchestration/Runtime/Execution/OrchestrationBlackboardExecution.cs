@@ -170,17 +170,18 @@ namespace BTSMTL.Orchestration
         OrchestrationBlackboardSourceContext ReadBlackboardFacts(int operationIndex, ulong currentOwnerGeneration)
         {
             int bindingIndex = m_Program.Operation(operationIndex).BlackboardFactsBindingIndex;
-            int depth = m_InputDepth++;
+            int depth = EnterInputRow(operationIndex);
             TValues values = default;
-            m_Workspace.Inputs[depth][0] = values.FromUInt64(currentOwnerGeneration);
-            Span<TValue> outputs = m_Workspace.Outputs[depth].AsSpan(0, 4);
+            Span<TValue> inputs = m_Workspace.BorrowInputs(operationIndex, depth, 1);
+            inputs[0] = values.FromUInt64(currentOwnerGeneration);
+            Span<TValue> outputs = m_Workspace.BorrowOutputs(operationIndex, depth, 4);
             try
             {
                 var invocation = new OrchestrationExtensionArguments<TValue>(
                     OrchestrationExtensionInvocationKind.Evaluate, operationIndex, ReadGeneration(operationIndex), m_Input.Tick, 0,
                     StateAncestors(operationIndex),
                     ReadExecutionFrame(operationIndex),
-                    m_Workspace.Inputs[depth].AsSpan(0, 1), outputs, in m_TimelineInvocation);
+                    inputs, outputs, in m_TimelineInvocation);
                 RequireSynchronousValueResult(operationIndex, bindingIndex,
                     m_Bindings.InvokeReadOnly(bindingIndex, in m_Context, in invocation));
                 return new OrchestrationBlackboardSourceContext

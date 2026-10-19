@@ -34,13 +34,14 @@ namespace BTSMTL.Orchestration
 
         int ScheduleStateContext() => m_Program.ValueSchedule.StateContexts.Span[CurrentStateOperationIndex + 1];
 
-        int CopyScheduledArguments(int argumentList, int depth)
+        int CopyScheduledArguments(int argumentList, int depth, int operationIndex)
         {
             OrchestrationValueSchedule schedule = m_Program.ValueSchedule;
             OrchestrationRange range = schedule.ArgumentLists.Span[argumentList];
             ReadOnlySpan<int> slots = schedule.ArgumentSlots.Span.Slice(range.Offset, range.Count);
+            Span<TValue> inputs = m_Workspace.BorrowInputs(operationIndex, depth, slots.Length);
             for (int i = 0; i < slots.Length; i++)
-                m_Workspace.Inputs[depth][i] = m_Workspace.ScheduledValues[slots[i]];
+                inputs[i] = m_Workspace.ScheduledValues[slots[i]];
             return slots.Length;
         }
 
@@ -49,7 +50,7 @@ namespace BTSMTL.Orchestration
             int pc = default(TDiagnostics).ScheduleEntry(in entry);
             OrchestrationValueSchedule schedule = m_Program.ValueSchedule;
             TValue[] values = m_Workspace.ScheduledValues;
-            int depth = m_InputDepth++;
+            int depth = EnterInputRow(schedule.Instructions.Span[pc].Operation);
             int predictions = m_ScheduledPredictionDepth;
             try
             {
@@ -79,7 +80,7 @@ namespace BTSMTL.Orchestration
                             break;
                         case OrchestrationValueScheduleCode.Compute:
                         {
-                            int count = CopyScheduledArguments(instruction.Argument, depth);
+                            int count = CopyScheduledArguments(instruction.Argument, depth, instruction.Operation);
                             EvaluateCoreValue(instruction.Operation, instruction.Operand, depth, count,
                                 ref values[instruction.Destination]);
                             break;

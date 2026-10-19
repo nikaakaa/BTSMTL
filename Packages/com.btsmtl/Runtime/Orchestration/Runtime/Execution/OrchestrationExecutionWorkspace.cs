@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 
 namespace BTSMTL.Orchestration
 {
@@ -67,6 +68,37 @@ namespace BTSMTL.Orchestration
         public int OutputRequestCapacity => OutputRequests.Length;
         public int OutputValueCapacity => OutputValues.Length;
         public ReadOnlyMemory<OrchestrationGraphSource> TraceSources => m_Content.Sources;
+
+        internal void RequireDepth(string region, int operationIndex, int required, int capacity)
+        {
+            if (required > capacity)
+                ThrowDepthCapacity(region, operationIndex, required, capacity);
+        }
+
+        internal Span<TValue> BorrowInputs(int operationIndex, int depth, int count)
+        {
+            TValue[] row = Inputs[depth];
+            if (count > row.Length)
+                ThrowRowCapacity(nameof(Inputs), operationIndex, depth, Inputs.Length, count, row.Length);
+            return row.AsSpan(0, count);
+        }
+
+        internal Span<TValue> BorrowOutputs(int operationIndex, int depth, int count)
+        {
+            TValue[] row = Outputs[depth];
+            if (count > row.Length)
+                ThrowRowCapacity(nameof(Outputs), operationIndex, depth, Outputs.Length, count, row.Length);
+            return row.AsSpan(0, count);
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void ThrowDepthCapacity(string region, int operationIndex, int required, int capacity) =>
+            throw new InvalidOperationException($"程序 '{m_Content.Identity.GraphId}'（修订 '{m_Content.Identity.SourceRevision}'）操作 {operationIndex} 的工作区 {region} 容量不足：所需深度 {required}，发布容量 {capacity}。编译期 WorkspaceCapacity 分析少算了同步调用需求。");
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void ThrowRowCapacity(string region, int operationIndex, int depth, int depthCapacity,
+            int required, int capacity) =>
+            throw new InvalidOperationException($"程序 '{m_Content.Identity.GraphId}'（修订 '{m_Content.Identity.SourceRevision}'）操作 {operationIndex} 的工作区 {region} 容量不足：所需深度 {depth + 1}，发布深度 {depthCapacity}；本层所需宽度 {required}，发布容量 {capacity}。编译期 WorkspaceCapacity 分析少算了值行需求。");
 
         public void PrepareValueCapture()
         {

@@ -25,14 +25,15 @@ namespace BTSMTL.Orchestration
             {
                 if (hook.Hook != phase)
                     continue;
-                int depth = m_InputDepth++;
+                int depth = EnterInputRow(operationIndex);
                 ReadOnlySpan<OrchestrationHookInput> inputs = m_Program.HookInputs(in hook);
                 try
                 {
+                    Span<TValue> arguments = m_Workspace.BorrowInputs(operationIndex, depth, inputs.Length);
                     for (int i = 0; i < inputs.Length; i++)
                         ReadHookInput(in inputs[i], operationIndex, phase,
                             machineOperationIndex, stateOperationIndex, exitingStateOperationIndex, targetStateOperationIndex,
-                            ref m_Workspace.Inputs[depth][i]);
+                            ref arguments[i]);
                     int pathState = phase == OrchestrationLifecycleHook.StateEntered ? stateOperationIndex
                         : phase == OrchestrationLifecycleHook.StateExited || phase == OrchestrationLifecycleHook.StateTransition
                             ? exitingStateOperationIndex : -1;
@@ -40,7 +41,7 @@ namespace BTSMTL.Orchestration
                         OrchestrationExtensionInvocationKind.Execute, operationIndex, ReadGeneration(operationIndex),
                         m_Input.Tick, 0, StateAncestors(operationIndex, pathState, phase == OrchestrationLifecycleHook.StateEntered),
                         ReadExecutionFrame(operationIndex),
-                        m_Workspace.Inputs[depth].AsSpan(0, inputs.Length), Span<TValue>.Empty, in m_TimelineInvocation);
+                        arguments, Span<TValue>.Empty, in m_TimelineInvocation);
                     m_CurrentOperationIndex = operationIndex;
                     OrchestrationExtensionResult result = m_Bindings.InvokeCandidate(
                         hook.ExtensionBindingIndex, ref m_Context, in invocation);
@@ -142,9 +143,14 @@ namespace BTSMTL.Orchestration
         {
             m_CurrentOperationIndex = operationIndex;
             ref readonly OrchestrationOperation operation = ref m_Program.Operation(operationIndex);
-            Span<TValue> outputs = operation.OutputSlotOffset >= 0
-                ? SavedOutputs(in operation)
-                : m_Workspace.Outputs[m_InputDepth].AsSpan(0, operation.OutputCount);
+            Span<TValue> outputs;
+            if (operation.OutputSlotOffset >= 0)
+                outputs = SavedOutputs(in operation);
+            else
+            {
+                m_Workspace.RequireDepth("Inputs/Outputs", operationIndex, m_InputDepth + 1, m_Workspace.Outputs.Length);
+                outputs = m_Workspace.BorrowOutputs(operationIndex, m_InputDepth, operation.OutputCount);
+            }
             var invocation = new OrchestrationExtensionArguments<TValue>(kind,
                 operationIndex, ReadGeneration(operationIndex), m_Input.Tick, context.Cause,
                 StateAncestors(operationIndex), ReadExecutionFrame(operationIndex),

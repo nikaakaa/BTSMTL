@@ -89,7 +89,7 @@ namespace BTSMTL.Orchestration
                 case OrchestrationValueOpcode.Extension:
                 {
                     ushort binding = m_Program.Payload<OrchestrationExtensionPayload>(operationIndex).BindingIndex;
-                    Span<TValue> outputs = m_Workspace.Outputs[depth].AsSpan(0, operation.OutputCount);
+                    Span<TValue> outputs = m_Workspace.BorrowOutputs(operationIndex, depth, operation.OutputCount);
                     var invocation = new OrchestrationExtensionArguments<TValue>(
                         OrchestrationExtensionInvocationKind.Evaluate, operationIndex, ReadGeneration(operationIndex),
                         m_Input.Tick, 0, StateAncestors(operationIndex), ReadExecutionFrame(operationIndex),
@@ -108,12 +108,20 @@ namespace BTSMTL.Orchestration
 
         int ReadInputs(int operationIndex, out int count)
         {
-            int depth = m_InputDepth++;
+            int depth = EnterInputRow(operationIndex);
             OrchestrationValueSchedule schedule = m_Program.ValueSchedule;
             ref readonly OrchestrationValueScheduleEntry entry = ref schedule.InputEntries.Span[
                 ScheduleStateContext() * m_Program.OperationCount + operationIndex];
             int arguments = RunValueSchedule(in entry).Value;
-            count = CopyScheduledArguments(arguments, depth);
+            count = CopyScheduledArguments(arguments, depth, operationIndex);
+            return depth;
+        }
+
+        int EnterInputRow(int operationIndex)
+        {
+            int depth = m_InputDepth;
+            m_Workspace.RequireDepth("Inputs/Outputs", operationIndex, depth + 1, m_Workspace.Inputs.Length);
+            m_InputDepth++;
             return depth;
         }
 
@@ -294,7 +302,7 @@ namespace BTSMTL.Orchestration
                         ushort binding = m_Program.Payload<OrchestrationExtensionPayload>(operationIndex).BindingIndex;
                         Span<TValue> outputs = operation.OutputSlotOffset >= 0
                             ? SavedOutputs(in operation)
-                            : m_Workspace.Outputs[depth].AsSpan(0, operation.OutputCount);
+                            : m_Workspace.BorrowOutputs(operationIndex, depth, operation.OutputCount);
                         var invocation = new OrchestrationExtensionArguments<TValue>(
                             OrchestrationExtensionInvocationKind.Execute, operationIndex, ReadGeneration(operationIndex),
                             m_Input.Tick, 0, StateAncestors(operationIndex),

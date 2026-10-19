@@ -286,6 +286,8 @@ namespace BTSMTL.Orchestration
         void PushState(int stateOperationIndex, int exitCause,
             bool hasRootCompletedOverride = false, bool rootCompletedOverride = false)
         {
+            m_Workspace.RequireDepth(nameof(m_Workspace.States), stateOperationIndex,
+                m_StateDepth + 1, m_Workspace.States.Length);
             int trace = default(TDiagnostics).CaptureState(ref this, stateOperationIndex, hasRootCompletedOverride);
             m_Workspace.States[m_StateDepth++] = new OrchestrationExecutionWorkspace<TValue>.StateContext
             {

@@ -21,6 +21,8 @@ namespace BTSMTL.Orchestration
         {
             if (m_Contract != OrchestrationExecutionContract.Complete)
                 return TickSingleChild(operationIndex, OrchestrationFlowKind.Child);
+            m_Workspace.RequireDepth(nameof(m_Workspace.GraphCallEntries), operationIndex,
+                m_GraphCallDepth + 1, m_Workspace.GraphCallEntries.Length);
             m_Workspace.GraphCallEntries[m_GraphCallDepth++] =
                 new OrchestrationExecutionWorkspace<TValue>.GraphCallContext
                 {
