@@ -6,7 +6,7 @@ namespace ThirdPersonSimulation
 {
     public static class GeneratedBlackboardProtocol
     {
-        public const int Version = 3;
+        public const int Version = 4;
         public const int MaximumFieldsPerBlock = 32;
     }
 

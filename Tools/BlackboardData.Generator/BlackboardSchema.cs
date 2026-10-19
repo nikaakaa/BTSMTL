@@ -87,8 +87,6 @@ internal sealed class BlackboardSchema : IDisposable
         if (!File.Exists(manifestPath))
             return new();
         using JsonDocument manifest = JsonDocument.Parse(File.ReadAllText(manifestPath, Utf8));
-        if (manifest.RootElement.GetProperty("protocol").GetInt32() != GeneratedBlackboardProtocol.Version)
-            throw new InvalidDataException("黑板生成清单协议不匹配，无法读取原字段分块归属。");
         return manifest.RootElement.GetProperty("declarations").EnumerateArray()
             .GroupBy(field => (Owner: field.GetProperty("owner").GetString()!, Scope: field.GetProperty("scope").GetString()!))
             .ToDictionary(scope => scope.Key, scope => scope
@@ -147,11 +145,18 @@ internal sealed class BlackboardSchema : IDisposable
                 targets = new[] { new { name = "runtime", manager = "BlackboardModule", groups = new[] { "runtime" }, topModule = "" } }
             }, JsonOptions), Utf8);
         }
-        File.WriteAllText(Path.Combine(output, m_Namespace + ".asmdef"), JsonSerializer.Serialize(new
+        WriteAssemblyDefinition(output, m_Namespace,
+            m_Targets.Select(target => target.GetProperty("valueAssembly").GetString()!).ToArray(), precompiledReferences);
+    }
+
+    internal static void WriteAssemblyDefinition(string output, string targetNamespace, string[] valueAssemblies,
+        string[] precompiledReferences)
+    {
+        File.WriteAllText(Path.Combine(output, targetNamespace + ".asmdef"), JsonSerializer.Serialize(new
         {
-            name = m_Namespace,
+            name = targetNamespace,
             references = new[] { "ThirdPerson.Shared.Contracts", "ThirdPerson.Luban", "BTSMTL.Orchestration.Contracts",
-                "ThirdPersonSimulation.BlackboardConfiguration" },
+                "ThirdPersonSimulation.BlackboardConfiguration" }.Concat(valueAssemblies).Distinct(StringComparer.Ordinal).ToArray(),
             overrideReferences = true,
             precompiledReferences,
             noEngineReferences = true

@@ -8,14 +8,15 @@ internal static class Program
 {
     static int Main(string[] args)
     {
-        if (args.Length == 3 && args[0] == "--retire-other-targets")
+        if (args.Length == 4 && args[0] == "--retire-other-targets")
         {
-            RetireOtherTargets(Path.GetFullPath(args[1]), JsonSerializer.Deserialize<string[]>(args[2])!);
+            RetireOtherTargets(Path.GetFullPath(args[1]), JsonSerializer.Deserialize<string[]>(args[2])!,
+                JsonSerializer.Deserialize<string[]>(args[3])!);
             return 0;
         }
         if (args.Length != 4)
         {
-            Console.Error.WriteLine("用法：ThirdPersonSimulation.BlackboardData.Generator <声明输入.json> <输出目录> <Luban.dll> <预编译程序集引用JSON数组>；导出前退役旧目标：--retire-other-targets <输出目录> <当前数值目标JSON数组>");
+            Console.Error.WriteLine("用法：ThirdPersonSimulation.BlackboardData.Generator <声明输入.json> <输出目录> <Luban.dll> <预编译程序集引用JSON数组>；导出前准备：--retire-other-targets <输出目录> <保留数值目标JSON数组> <目标值程序集JSON数组>");
             return 2;
         }
 
@@ -86,10 +87,15 @@ internal static class Program
         Console.WriteLine($"黑板构建：类型结构 {(structureChanged ? "变化" : "复用")}；C# 源码 {(codeChanged ? "变化，需编译" : "复用")}；默认配置 {(defaultsChanged ? "变化，需发布" : "复用")}；图逻辑／依赖 {(logicChanged ? "变化，按原图构建" : "复用")}；C++ 仅预留 schema。");
     }
 
-    static void RetireOtherTargets(string output, string[] currentTargetNames)
+    static void RetireOtherTargets(string output, string[] currentTargetNames, string[] valueAssemblies)
     {
         using JsonDocument previous = JsonDocument.Parse(File.ReadAllText(
             Path.Combine(output, "blackboard.manifest.json"), Encoding.UTF8));
+        string targetNamespace = previous.RootElement.GetProperty("namespace").GetString()!;
+        using JsonDocument assembly = JsonDocument.Parse(File.ReadAllText(
+            Path.Combine(output, targetNamespace + ".asmdef"), Encoding.UTF8));
+        string[] precompiledReferences = assembly.RootElement.GetProperty("precompiledReferences").EnumerateArray()
+            .Select(value => value.GetString()!).ToArray();
         var current = currentTargetNames.ToHashSet(StringComparer.Ordinal);
         var retired = new HashSet<string>(StringComparer.Ordinal);
         foreach (JsonElement owner in previous.RootElement.GetProperty("owners").EnumerateArray())
@@ -106,7 +112,8 @@ internal static class Program
             RetireOwnedFile(output, relative);
             paths++;
         }
-        Console.WriteLine($"黑板导出准备：已按正式清单退役 {paths} 个旧数值目标拥有路径；根程序集与原拥有清单保留，当前数据仍须正式导出和生成。");
+        BlackboardSchema.WriteAssemblyDefinition(output, targetNamespace, valueAssemblies, precompiledReferences);
+        Console.WriteLine($"黑板导出准备：已按正式清单退役 {paths} 个旧数值目标拥有路径，并配置目标值程序集引用；原拥有清单保留，当前数据仍须正式导出和生成。");
     }
 
     static void RetireOwnedFile(string output, string relative)
