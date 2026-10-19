@@ -6,7 +6,6 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.CodeAnalysis;
 using static ThirdPerson.ValueGeneration.ValueModel;
-using static ThirdPerson.ValueGeneration.ValueSnapshotModel;
 
 namespace ThirdPerson.MemoryPackAdapters
 {
@@ -15,22 +14,18 @@ namespace ThirdPerson.MemoryPackAdapters
         sealed class MemoryPackSchemas
         {
             readonly string m_Library;
-            readonly IDictionary<string, NativeSnapshotPlan> m_Snapshots;
             readonly IDictionary<string, LogicalStoragePlan> m_LogicalStorages;
             readonly Func<ITypeSymbol, ITypeSymbol, bool> m_ImplicitReference;
 
-            internal MemoryPackSchemas(Compilation compilation, IDictionary<string, NativeSnapshotPlan> snapshots,
-                IDictionary<string, LogicalStoragePlan> logicalStorages,
+            internal MemoryPackSchemas(Compilation compilation, IDictionary<string, LogicalStoragePlan> logicalStorages,
                 Func<ITypeSymbol, ITypeSymbol, bool> implicitReference)
             {
                 m_Library = compilation.GetTypeByMetadataName("MemoryPack.MemoryPackSerializer").ContainingAssembly.Identity.ToString();
-                m_Snapshots = snapshots;
                 m_LogicalStorages = logicalStorages;
                 m_ImplicitReference = implicitReference;
             }
 
             internal string Hash(ITypeSymbol type) => Build((code, visited) => AppendType(code, type, visited));
-            internal string Hash(NativeSnapshotPlan plan) => Build((code, visited) => AppendSnapshot(code, plan, visited));
 
             string Build(Action<StringBuilder, HashSet<string>> append)
             {
@@ -47,11 +42,6 @@ namespace ThirdPerson.MemoryPackAdapters
                 string name = TypeName(type);
                 code.Append("type ").Append(name).Append('\n');
                 if (!visited.Add(name)) return;
-                if (m_Snapshots.TryGetValue(name, out NativeSnapshotPlan snapshot))
-                {
-                    AppendSnapshot(code, snapshot, visited);
-                    return;
-                }
                 if (HasAttribute(type, TextAttribute)) { code.AppendLine("utf16-text"); return; }
                 if (m_LogicalStorages.TryGetValue(Identity(type), out LogicalStoragePlan logical))
                 {
@@ -117,30 +107,6 @@ namespace ThirdPerson.MemoryPackAdapters
                 }
                 foreach (ISymbol presence in record.GetMembers().Where(member => HasAttribute(member, PresenceAttribute)))
                     code.Append("presence ").Append(presence.Name).Append('\n');
-            }
-
-            void AppendSnapshot(StringBuilder code, NativeSnapshotPlan plan, HashSet<string> visited)
-            {
-                code.Append("snapshot ").Append(plan.Name).Append('\n');
-                if (!visited.Add("snapshot:" + plan.Name)) return;
-                for (int index = 0; index < plan.Fields.Length; index++)
-                {
-                    code.Append(plan.Fields[index].Name).Append(':').Append(DeclaredText(plan.Fields[index])).Append('\n');
-                    AppendShape(code, plan.Shapes[index], visited);
-                }
-            }
-
-            void AppendShape(StringBuilder code, NativeSnapshotShape shape, HashSet<string> visited)
-            {
-                code.Append(shape.Kind).Append(':').Append(shape.FixedKeys).Append(':').Append(shape.DynamicSource).Append('\n');
-                if (shape.Kind == NativeSnapshotKind.Source && !shape.DynamicSource &&
-                    m_Snapshots.TryGetValue(!IsSnapshotCopy(shape.Type) && HasAttribute(shape.Type, SnapshotAttributeName)
-                        ? SnapshotTypeName((INamedTypeSymbol)shape.Type) : TypeName(shape.Type), out NativeSnapshotPlan nested))
-                    AppendSnapshot(code, nested, visited);
-                else if (shape.Kind == NativeSnapshotKind.Value || shape.Kind == NativeSnapshotKind.Source)
-                    AppendType(code, shape.Type, visited);
-                if (shape.Key != null) AppendShape(code, shape.Key, visited);
-                if (shape.Element != null) AppendShape(code, shape.Element, visited);
             }
 
             static void AppendLayout(StringBuilder code, ISymbol symbol)

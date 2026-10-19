@@ -124,7 +124,7 @@ namespace ThirdPerson.ValueGeneration.Generator
                 else
                 {
                     plan.Union = GetValueUnionShape(named);
-                    plan.Members = StorageMembers(named, false);
+                    plan.Members = StorageMembers(named);
                     if (plan.Union != null)
                     {
                         plan.Members = plan.Members.Where(member => member.Symbol.Name != "Kind")

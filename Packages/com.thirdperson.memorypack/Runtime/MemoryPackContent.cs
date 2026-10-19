@@ -53,12 +53,6 @@ namespace ThirdPersonSimulation.Serialization
             return ((IMemoryPackSchema)reader.GetFormatter<T>()).SchemaHash;
         }
 
-        public static StableHash GetSnapshotSchemaHash(IValueSnapshotCopy value)
-        {
-            MemoryPackReader reader = default;
-            return ((IMemoryPackSchema)reader.GetFormatter(value.GetType())).SchemaHash;
-        }
-
         public static void SerializeInto<T, TBufferWriter>(in T value, TBufferWriter destination,
             MemoryPackContentContext context) where TBufferWriter : class, IBufferWriter<byte>
         {

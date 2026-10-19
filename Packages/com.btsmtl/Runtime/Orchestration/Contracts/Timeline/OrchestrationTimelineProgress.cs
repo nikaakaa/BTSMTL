@@ -11,7 +11,7 @@ namespace BTSMTL.Orchestration
     }
 
     [ValueStorage]
-    [ValueOperations(Resources = false)]
+    [ValueOperations]
     public partial struct OrchestrationTimelineProgress<TTime, TPlaybackState, TControl, TStopContext> :
         IEquatable<OrchestrationTimelineProgress<TTime, TPlaybackState, TControl, TStopContext>>
         where TTime : unmanaged, IEquatable<TTime>

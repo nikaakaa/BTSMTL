@@ -3,7 +3,7 @@ using ThirdPersonSimulation;
 
 namespace BTSMTL.Orchestration
 {
-    [ValueOperations(Resources = false)]
+    [ValueOperations]
     public partial struct OrchestrationTimelineClipOccurrence :
         IEquatable<OrchestrationTimelineClipOccurrence>
     {
@@ -11,7 +11,7 @@ namespace BTSMTL.Orchestration
         public int Cycle;
     }
 
-    [ValueOperations(Resources = false)]
+    [ValueOperations]
     public partial struct OrchestrationTimelineTreeExitRange :
         IEquatable<OrchestrationTimelineTreeExitRange>
     {

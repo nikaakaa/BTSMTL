@@ -32,7 +32,7 @@ namespace ThirdPerson.ValueGeneration.Generator
             Member[] members = StorageMembers(type).Where(member => member.Symbol.Name != "Kind").ToArray();
             if (definition != null)
             {
-                Member[] generated = UnionMembers(definition).Where(member => !HasAttribute(member.Type, OmittedUnionValueAttribute)).ToArray();
+                Member[] generated = UnionMembers(definition);
                 foreach (Member member in generated)
                     member.Generated = true;
                 members = members.Concat(generated).OrderBy(member => member.Symbol.Name, StringComparer.Ordinal).ToArray();
@@ -98,10 +98,10 @@ namespace ThirdPerson.ValueGeneration.Generator
             return true;
         }
 
-        static void EmitUnionValueStorage(StringBuilder code, INamedTypeSymbol type, ValueUnionShape union, bool readOnly)
+        static void EmitUnionValueStorage(StringBuilder code, INamedTypeSymbol type, ValueUnionShape union)
         {
             Member[] values = union.Common.Concat(union.Cases).ToArray();
-            code.Append(readOnly ? "internal void ReadValueStorage(out " : "public void ReadValueStorage(out ")
+            code.Append("public void ReadValueStorage(out ")
                 .Append(union.KindType).Append(" Kind");
             foreach (Member member in values)
                 code.Append(", ").Append(member.Payload ? "[global::ThirdPersonSimulation.ValuePayload] " : "")
@@ -111,8 +111,6 @@ namespace ThirdPerson.ValueGeneration.Generator
             foreach (Member member in values)
                 code.Append(Escape(member.Symbol.Name)).Append(" = this.").Append(Escape(member.Symbol.Name)).AppendLine(";");
             code.AppendLine("}");
-            if (readOnly)
-                return;
             code.Append("public static ").Append(TypeName(type)).Append(" FromValueStorage(in ").Append(union.KindType).Append(" Kind");
             foreach (Member member in values)
                 code.Append(", in ").Append(TypeName(member.Type)).Append(' ').Append(Escape(member.Symbol.Name));

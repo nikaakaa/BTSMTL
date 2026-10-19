@@ -4,14 +4,14 @@ using ThirdPersonSimulation;
 namespace BTSMTL.Orchestration
 {
     [ValueStorage]
-    [ValueOperations(Resources = false)]
+    [ValueOperations]
     public partial struct OrchestrationTimelineSequenceState : IEquatable<OrchestrationTimelineSequenceState>
     {
         public ulong NextPlaybackIdentity;
     }
 
     [ValueStorage]
-    [ValueOperations(Resources = false)]
+    [ValueOperations]
     public partial struct OrchestrationTimelineControl<TTime> :
         IEquatable<OrchestrationTimelineControl<TTime>>
         where TTime : unmanaged, IEquatable<TTime>
@@ -21,7 +21,7 @@ namespace BTSMTL.Orchestration
     }
 
     [ValueStorage]
-    [ValueOperations(Resources = false)]
+    [ValueOperations]
     public partial struct OrchestrationTimelineStopContext : IEquatable<OrchestrationTimelineStopContext>
     {
         public uint Cause;
@@ -30,7 +30,7 @@ namespace BTSMTL.Orchestration
     }
 
     [ValueStorage]
-    [ValueOperations(Resources = false)]
+    [ValueOperations]
     public partial struct OrchestrationTimelineStart<TTime> :
         IEquatable<OrchestrationTimelineStart<TTime>>
         where TTime : unmanaged, IEquatable<TTime>
@@ -63,7 +63,7 @@ namespace BTSMTL.Orchestration
     }
 
     [ValueStorage]
-    [ValueOperations(Resources = false)]
+    [ValueOperations]
     public partial struct OrchestrationTimelinePlaybackState<TTime> :
         IEquatable<OrchestrationTimelinePlaybackState<TTime>>
         where TTime : unmanaged, IEquatable<TTime>

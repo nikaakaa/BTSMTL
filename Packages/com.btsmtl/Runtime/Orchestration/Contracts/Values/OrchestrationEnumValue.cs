@@ -3,7 +3,7 @@ using ThirdPersonSimulation;
 
 namespace BTSMTL.Orchestration
 {
-    [ValueStorage(UseConstructor = true), ValueOperations(Resources = false)]
+    [ValueStorage(UseConstructor = true), ValueOperations]
     public readonly partial struct OrchestrationEnumValue : IEquatable<OrchestrationEnumValue>
     {
         public OrchestrationEnumValue(int typeContentId, int value)

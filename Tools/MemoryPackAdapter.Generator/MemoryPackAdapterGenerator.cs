@@ -59,17 +59,11 @@ namespace ThirdPerson.MemoryPackAdapters
                     externalLeaves.Add(Identity(method.TypeArguments[0]));
             }
             bool valid = true;
-            bool erasedSnapshots = false;
-            var snapshotCandidates = MemoryPackSnapshotCandidates(context, externalLeaves, IsImplicitReference);
-            var snapshots = new SortedDictionary<string, NativeSnapshotPlan>(StringComparer.Ordinal);
             var preparedStorages = PreparedStorages(context.Compilation, receiver);
             foreach (var call in receiver.Calls)
             {
                 var method = context.Compilation.GetSemanticModel(call.SyntaxTree).GetSymbolInfo(call).Symbol as IMethodSymbol;
                 if (method == null || !IsMemoryPackValueCall(method)) continue;
-                if (Identity(method.ContainingType) == "ThirdPersonSimulation.Serialization.MemoryPackContent" &&
-                    (method.Name == "SerializeSnapshotInto" || method.Name == "DeserializeSnapshotInto" || method.Name == "GetSnapshotSchemaHash"))
-                    erasedSnapshots = true;
                 if (method.Name == "DeserializeInto" && method.TypeArguments.Length == 0)
                     Visit(method.ReturnType);
                 for (int i = 0; i < method.TypeArguments.Length; i++)
@@ -80,10 +74,6 @@ namespace ThirdPerson.MemoryPackAdapters
             INamedTypeSymbol contentContext = context.Compilation.GetTypeByMetadataName("ThirdPersonSimulation.Serialization.MemoryPackContentContext");
             if (contentContext != null && SymbolEqualityComparer.Default.Equals(contentContext.ContainingAssembly, context.Compilation.Assembly))
                 foreach (INamedTypeSymbol logical in LogicalStorageTypes(context.Compilation)) Visit(logical);
-            if (erasedSnapshots)
-                foreach (NativeSnapshotPlan candidate in snapshotCandidates.Values.Where(candidate =>
-                    CanEncodeSnapshot(candidate, snapshotCandidates, externalLeaves, new HashSet<string>())))
-                    VisitSnapshot(candidate);
             var preparedPlans = new Dictionary<string, PreparedReadPlan>(StringComparer.Ordinal);
             foreach (var logical in logicalStorages)
             {
@@ -124,7 +114,7 @@ namespace ThirdPerson.MemoryPackAdapters
                 HasAdapter(SequenceElement(type))).ToArray();
             INamedTypeSymbol[] adaptedNullableValues = nullableValues.Values.Where(type =>
                 HasAdapter(NullableElement(type))).ToArray();
-            if (records.Count + adaptedSequences.Length + adaptedNullableValues.Length + snapshots.Count == 0) return;
+            if (records.Count + adaptedSequences.Length + adaptedNullableValues.Length == 0) return;
             var payloadTypes = new HashSet<string>(StringComparer.Ordinal);
             bool changed;
             do
@@ -149,14 +139,10 @@ namespace ThirdPerson.MemoryPackAdapters
             foreach (var nullable in adaptedNullableValues)
                 code.Append("global::MemoryPack.MemoryPackFormatterProvider.Register(new Formatter")
                     .Append(ordinal++).AppendLine("());");
-            int snapshotOrdinal = 0;
-            foreach (var snapshot in snapshots.Values)
-                code.Append("global::MemoryPack.MemoryPackFormatterProvider.Register(new SnapshotFormatter")
-                    .Append(snapshotOrdinal++).AppendLine("());");
             code.AppendLine("}");
             ordinal = 0;
             bool scopedReferences = (int)((Microsoft.CodeAnalysis.CSharp.CSharpParseOptions)context.ParseOptions).LanguageVersion >= 1100;
-            var schemas = new MemoryPackSchemas(context.Compilation, snapshots, logicalStorages, IsImplicitReference);
+            var schemas = new MemoryPackSchemas(context.Compilation, logicalStorages, IsImplicitReference);
             foreach (var record in records.Values)
                 EmitMemoryPackFormatter(code, record, ValueMembers(record, IsImplicitReference),
                     StorageReadMembers(record, IsImplicitReference), ordinal++, scopedReferences, HasPayload, IsAccessible,
@@ -166,45 +152,8 @@ namespace ThirdPerson.MemoryPackAdapters
                 EmitMemoryPackSequenceFormatter(code, sequence, ordinal++, scopedReferences, schemas.Hash(sequence));
             foreach (var nullable in adaptedNullableValues)
                 EmitMemoryPackNullableFormatter(code, nullable, ordinal++, scopedReferences, schemas.Hash(nullable));
-            snapshotOrdinal = 0;
-            foreach (var snapshot in snapshots.Values)
-                EmitMemoryPackSnapshotFormatter(code, snapshot, snapshotOrdinal++, scopedReferences, schemas.Hash(snapshot));
             code.AppendLine("} }");
             context.AddSource("MemoryPackGeneratedFormatters.g.cs", SourceText.From(code.ToString(), Encoding.UTF8));
-
-            void VisitSnapshot(NativeSnapshotPlan snapshot)
-            {
-                if (snapshots.ContainsKey(snapshot.Name)) return;
-                string reason = snapshot.Error;
-                if (reason != null)
-                {
-                    valid = false;
-                    context.ReportDiagnostic(Diagnostic.Create(InvalidMemoryPackAdapter, snapshot.Type.Locations.FirstOrDefault(),
-                        Identity(snapshot.Type), reason));
-                    return;
-                }
-                snapshots.Add(snapshot.Name, snapshot);
-                foreach (NativeSnapshotShape shape in snapshot.Shapes) VisitSnapshotShape(shape);
-            }
-
-            void VisitSnapshotShape(NativeSnapshotShape shape)
-            {
-                if (shape.Kind == NativeSnapshotKind.Value) Visit(shape.Type);
-                else if (shape.Kind == NativeSnapshotKind.Source)
-                {
-                    if (shape.DynamicSource)
-                    {
-                        erasedSnapshots = true;
-                        return;
-                    }
-                    string name = !IsSnapshotCopy(shape.Type) && HasAttribute(shape.Type, SnapshotAttributeName) ?
-                        ThirdPerson.ValueGeneration.ValueSnapshotModel.SnapshotTypeName((INamedTypeSymbol)shape.Type) : TypeName(shape.Type);
-                    if (snapshotCandidates.TryGetValue(name, out NativeSnapshotPlan nested)) VisitSnapshot(nested);
-                    else Visit(shape.Type);
-                }
-                if (shape.Key != null) VisitSnapshotShape(shape.Key);
-                if (shape.Element != null) VisitSnapshotShape(shape.Element);
-            }
 
             void Visit(ITypeSymbol type)
             {
@@ -213,18 +162,6 @@ namespace ThirdPerson.MemoryPackAdapters
                     return;
                 if (!visited.Add(Identity(type))) return;
                 if (externalLeaves.Contains(Identity(type))) return;
-                if (snapshotCandidates.TryGetValue(TypeName(type), out NativeSnapshotPlan snapshot))
-                {
-                    VisitSnapshot(snapshot);
-                    return;
-                }
-                if (Identity(type) == SnapshotCopyContract)
-                {
-                    valid = false;
-                    context.ReportDiagnostic(Diagnostic.Create(InvalidMemoryPackAdapter, type.Locations.FirstOrDefault(),
-                        Identity(type), "字节入口必须提供具体捕获载体，不能只声明内存资源接口"));
-                    return;
-                }
                 if (MemoryPackSequence(type))
                 {
                     sequences.Add(Identity(type), type);
@@ -427,8 +364,7 @@ namespace ThirdPerson.MemoryPackAdapters
                 owner == "ThirdPersonSimulation.Serialization.MemoryPackContent" &&
                 (method.Name == "Serialize" || method.Name == "SerializeInto" || method.Name == "Deserialize" ||
                     method.Name == "DeserializeParts" || method.Name == "DeserializeInto" ||
-                    method.Name == "SerializeSnapshotInto" || method.Name == "DeserializeSnapshotInto" ||
-                    method.Name == "GetSchemaHash" || method.Name == "GetSnapshotSchemaHash") ||
+                    method.Name == "GetSchemaHash") ||
                 owner == "MemoryPack.MemoryPackWriter<TBufferWriter>" && method.Name == "WriteValue" ||
                 owner == "MemoryPack.MemoryPackReader" && method.Name == "ReadValue";
         }

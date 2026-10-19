@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using System.Security.Cryptography;
 using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -24,29 +23,11 @@ namespace ThirdPerson.ValueGeneration.Generator
 
         const string ValueOperationsAttribute = "ThirdPersonSimulation.ValueOperationsAttribute";
 
-        const string ValueResourceAttribute = "ThirdPersonSimulation.ValueResourceAttribute";
-
         const string ValueStoragePurposeAttribute = "ThirdPersonSimulation.ValueStorageAttribute";
 
         const string ValidationAttribute = "ThirdPersonSimulation.ValueValidationAttribute";
 
-        const string TextAttribute = "ThirdPersonSimulation.ValueTextAttribute";
-
-        const string BufferAttribute = "ThirdPersonSimulation.ValueBufferAttribute";
-
-        const string OmittedUnionValueAttribute = "ThirdPersonSimulation.ValueUnionOmittedAttribute";
-
-        const string BorrowedSequenceAttribute = "ThirdPersonSimulation.ValueBorrowedSequenceAttribute";
-
-        const string BorrowedObjectAttribute = "ThirdPersonSimulation.ValueBorrowedObjectAttribute";
-
         const string TextRulesAttribute = "ThirdPersonSimulation.ValueTextRulesAttribute";
-
-        const string ReferenceAccessAttribute = "ThirdPersonSimulation.ValueReferenceAccessAttribute";
-
-        const string StorageOwnerAttribute = "ThirdPersonSimulation.ValueStorageOwnerAttribute";
-
-        const string StorageAttribute = "ThirdPersonSimulation.ValueStorageMemberAttribute";
 
         const string Runtime = "global::ThirdPersonSimulation.";
 
@@ -67,9 +48,6 @@ namespace ThirdPerson.ValueGeneration.Generator
             var valueRecords = new Dictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
             var valueStorageRecords = new Dictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
             var valueUpdates = new Dictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
-            var storageOwners = new Dictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
-            var snapshotSources = new Dictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
-            var implementationIdentities = new Dictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
             var stateLayouts = new Dictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
             var stateLayoutFactories = new Dictionary<string, IMethodSymbol>(StringComparer.Ordinal);
             var valueHashes = new Dictionary<string, IMethodSymbol>(StringComparer.Ordinal);
@@ -82,12 +60,6 @@ namespace ThirdPerson.ValueGeneration.Generator
                 if (!HasAttribute(type, UnionTemplateAttribute) &&
                     (HasAttribute(type, UnionAttribute) || Cases(StorageMembers(type)).Length != 0))
                     unions[Identity(type)] = type;
-                if (HasAttribute(type, StorageOwnerAttribute))
-                    storageOwners[Identity(type)] = type;
-                if (HasAttribute(type, SnapshotAttribute))
-                    snapshotSources[Identity(type)] = type;
-                if (HasAttribute(type, "ThirdPersonSimulation.ValueImplementationIdentityAttribute"))
-                    implementationIdentities[Identity(type)] = type;
                 if (HasAttribute(type, StateLayoutAttribute))
                     stateLayouts[Identity(type)] = type;
                 foreach (IMethodSymbol method in type.GetMembers().OfType<IMethodSymbol>())
@@ -105,8 +77,6 @@ namespace ThirdPerson.ValueGeneration.Generator
                     HasAttribute(method, "ThirdPersonSimulation.ValueUpdateAttribute")))
                     valueUpdates[Identity(type)] = type;
             }
-            foreach (INamedTypeSymbol identity in implementationIdentities.Values.OrderBy(type => Identity(type), StringComparer.Ordinal))
-                EmitImplementationIdentity(context, identity);
             foreach (INamedTypeSymbol template in templates.Values.OrderBy(t => Identity(t), StringComparer.Ordinal))
                 if (!ValidateTemplate(context, template)) return;
             foreach (INamedTypeSymbol template in templates.Values.OrderBy(t => Identity(t), StringComparer.Ordinal))
@@ -152,8 +122,6 @@ namespace ThirdPerson.ValueGeneration.Generator
                 .OrderBy(type => Identity(type), StringComparer.Ordinal))
                 context.AddSource(Identity(type).Replace('.', '_').Replace('<', '_').Replace('>', '_').Replace(',', '_') + ".Values.g.cs",
                     SourceText.From(EmitValueRecord(type), Encoding.UTF8));
-            foreach (INamedTypeSymbol type in valueRecords.Values.OrderBy(type => Identity(type), StringComparer.Ordinal))
-                EmitValueChanges(context, type);
             foreach (INamedTypeSymbol type in valueStorageRecords.Values.OrderBy(type => Identity(type), StringComparer.Ordinal))
             {
                 string storage = EmitValueStorageRecord(context, type);
@@ -163,97 +131,12 @@ namespace ThirdPerson.ValueGeneration.Generator
             }
             foreach (INamedTypeSymbol type in valueUpdates.Values.OrderBy(type => Identity(type), StringComparer.Ordinal))
                 EmitValueUpdates(context, type);
-            foreach (INamedTypeSymbol owner in storageOwners.Values.OrderBy(t => Identity(t), StringComparer.Ordinal))
-                EmitStorageOwner(context, owner);
-            foreach (INamedTypeSymbol owner in snapshotSources.Values.OrderBy(t => Identity(t), StringComparer.Ordinal))
-                EmitValueSnapshot(context, owner);
             foreach (INamedTypeSymbol layout in stateLayouts.Values.OrderBy(type => Identity(type), StringComparer.Ordinal))
                 EmitStateLayout(context, layout);
             if (stateLayoutFactories.Count != 0)
                 EmitStateLayoutFactories(context, stateLayoutFactories.Values);
             if (valueHashes.Count != 0)
                 EmitValueHashes(context, valueHashes.Values);
-        }
-
-        static void EmitStorageOwner(GeneratorExecutionContext context, INamedTypeSymbol owner)
-        {
-            IFieldSymbol[] fields = owner.GetMembers().OfType<IFieldSymbol>()
-                .Where(field => HasAttribute(field, StorageAttribute)).ToArray();
-            string reason = null;
-            if (owner.ContainingType != null || fields.Length != 1 || fields[0].IsStatic ||
-                !(fields[0].Type is INamedTypeSymbol data))
-                reason = "状态 owner 必须由唯一真实字段持有正式数据，设施不进入该数据记录";
-            else if (owner.DeclaringSyntaxReferences.Any(syntax =>
-                !(syntax.GetSyntax() is TypeDeclarationSyntax declaration) || !declaration.Modifiers.Any(SyntaxKind.PartialKeyword)))
-                reason = "状态 owner 必须声明 partial，访问直接进入原类型";
-            else if (StorageMembers((INamedTypeSymbol)fields[0].Type).Any(member =>
-                owner.GetMembers(member.Symbol.Name).Length != 0))
-                reason = "状态成员由唯一正式数据生成访问，owner 不能重复声明同名成员";
-            if (reason != null)
-            {
-                context.ReportDiagnostic(Diagnostic.Create(InvalidValueDeclaration, owner.Locations.FirstOrDefault(), Identity(owner), reason));
-                return;
-            }
-            IFieldSymbol storage = fields[0];
-            Member[] members = StorageMembers((INamedTypeSymbol)storage.Type);
-            bool ownsResources = storage.Type.GetAttributes().Any(attribute => Identity(attribute.AttributeClass) == ValueOperationsAttribute &&
-                attribute.NamedArguments.Any(argument => argument.Key == "OwnsMemberResources" && (bool)argument.Value.Value));
-            var code = new StringBuilder();
-            code.Append("namespace ").Append(owner.ContainingNamespace.ToDisplayString()).AppendLine(" {");
-            code.Append(owner.DeclaredAccessibility == Accessibility.Public ? "public" : "internal")
-                .Append(owner.IsReadOnly ? " readonly" : "").Append(" partial ")
-                .Append(owner.TypeKind == TypeKind.Struct ? "struct " : "class ").Append(Escape(owner.Name));
-            if (owner.Arity != 0)
-                code.Append('<').Append(string.Join(", ", owner.TypeParameters.Select(parameter => Escape(parameter.Name)))).Append('>');
-            foreach (ITypeParameterSymbol parameter in owner.TypeParameters)
-            {
-                var constraints = new List<string>();
-                if (parameter.HasUnmanagedTypeConstraint) constraints.Add("unmanaged");
-                else if (parameter.HasValueTypeConstraint) constraints.Add("struct");
-                else if (parameter.HasReferenceTypeConstraint) constraints.Add("class");
-                constraints.AddRange(parameter.ConstraintTypes.Select(TypeName));
-                if (parameter.HasConstructorConstraint) constraints.Add("new()");
-                if (constraints.Count != 0)
-                    code.Append(" where ").Append(Escape(parameter.Name)).Append(" : ").Append(string.Join(", ", constraints));
-            }
-            code.AppendLine(" {");
-            foreach (Member member in members)
-            {
-                string target = Escape(storage.Name) + "." + Escape(member.Symbol.Name);
-                if (HasAttribute(member.Symbol, ReferenceAccessAttribute))
-                {
-                    code.Append("public ref readonly ").Append(TypeName(member.Type)).Append(" ").Append(Escape(member.Symbol.Name))
-                        .Append(" => ref ").Append(target).AppendLine(";");
-                    code.Append("public void Set").Append(member.Symbol.Name).Append("(in ").Append(TypeName(member.Type)).AppendLine(" value) {");
-                    if (ownsResources)
-                    {
-                        HoldValueResources(code, "Retain", member.Type, "value");
-                        HoldValueResources(code, "Release", member.Type, target);
-                    }
-                    code.Append(target).AppendLine(" = value; }");
-                    continue;
-                }
-                code.Append(member.Symbol.DeclaredAccessibility == Accessibility.Public ? "public " : "internal ")
-                    .Append(TypeName(member.Type)).Append(" ").Append(Escape(member.Symbol.Name)).Append(" { get => ")
-                    .Append(target).Append(";");
-                if (!owner.IsReadOnly && !IsPreparedCollection(member.Type) && !(storage.IsReadOnly && storage.Type.IsValueType) &&
-                    !(member.Symbol is IFieldSymbol field && field.IsReadOnly) &&
-                    !(member.Symbol is IPropertySymbol property && property.SetMethod == null))
-                {
-                    if (ownsResources && HasValueResources(member.Type, new HashSet<string>()))
-                    {
-                        code.AppendLine(" set {");
-                        HoldValueResources(code, "Retain", member.Type, "value");
-                        HoldValueResources(code, "Release", member.Type, target);
-                        code.Append(target).AppendLine(" = value; }");
-                    }
-                    else code.Append(" set => ").Append(target).Append(" = value;");
-                }
-                code.AppendLine(" }");
-            }
-            code.AppendLine("} }");
-            context.AddSource(Identity(owner).Replace('.', '_').Replace('<', '_').Replace('>', '_').Replace(',', '_') + ".Storage.g.cs",
-                SourceText.From(code.ToString(), Encoding.UTF8));
         }
 
         static void EmitTypeDeclaration(StringBuilder code, INamedTypeSymbol type, string baseType = null)
@@ -286,135 +169,6 @@ namespace ThirdPerson.ValueGeneration.Generator
                 "global::System.Collections.Generic.EqualityComparer<" + TypeName(type) + ">.Default.Equals(" + left + ", " + right + ")" :
             type.IsReferenceType ? "global::System.Object.Equals(" + left + ", " + right + ")" :
             left + ".Equals(" + right + ")";
-
-        static Member[] ValueMembers(INamedTypeSymbol type)
-        {
-            AttributeData union = type.GetAttributes().SingleOrDefault(a => Identity(a.AttributeClass) == UnionAttribute);
-            Member[] members = StorageMembers(type);
-            if (union == null) return members.Any(member => member.IsCase)
-                ? members.Where(member => member.Symbol.Name != "Kind").ToArray() : members;
-            Member[] generated = UnionMembers((INamedTypeSymbol)union.ConstructorArguments[0].Value)
-                .Where(m => !HasAttribute(m.Type, OmittedUnionValueAttribute)).ToArray();
-            return members.Where(m => m.Symbol.Name != "Kind" && !generated.Any(g => g.Symbol.Name == m.Symbol.Name))
-                .Concat(generated).ToArray();
-        }
-
-        static bool HasValueResources(ITypeSymbol type, HashSet<string> visited)
-        {
-            if (HasAttribute(type, TextAttribute)) return true;
-            if (type.GetAttributes().Any(attribute => Identity(attribute.AttributeClass) == ValueOperationsAttribute &&
-                attribute.NamedArguments.Any(argument => argument.Key == "Resources" && argument.Value.Value is false)))
-                return false;
-            if (type is ITypeParameterSymbol parameter)
-                return parameter.ConstraintTypes.Any(constraint => Identity(constraint) == "ThirdPersonSimulation.IValueResources");
-            if (type.TypeKind == TypeKind.Enum || BorrowedObjectStorage(type) != null || !visited.Add(Identity(type)))
-                return false;
-            if (MapTypes(type) is ITypeSymbol[] map)
-                return map.Any(item => HasValueResources(item, new HashSet<string>(visited)));
-            if (NullableElement(type) is ITypeSymbol nullable)
-                return HasValueResources(nullable, visited);
-            if (type.SpecialType != SpecialType.None) return false;
-            if (BorrowedStorage(type) != null && BorrowedSemantic(type, "HoldStorage", true))
-                return true;
-            if (SequenceElement(type) is ITypeSymbol element)
-                return HasValueResources(element, visited);
-            return type is INamedTypeSymbol record && ValueMembers(record)
-                .Any(member => HasAttribute(member.Symbol, ValueResourceAttribute) ||
-                    HasValueResources(member.Type, new HashSet<string>(visited)));
-        }
-
-        static void HoldValueMember(StringBuilder code, string operation, Member member, string owner, int depth = 0)
-        {
-            string value = owner + "." + Escape(member.Symbol.Name);
-            AttributeData resource = member.Symbol.GetAttributes().SingleOrDefault(attribute =>
-                Identity(attribute.AttributeClass) == ValueResourceAttribute);
-            if (resource == null)
-                HoldValueResources(code, operation, member.Type, value, depth);
-            else
-            {
-                bool elements = resource.NamedArguments.Any(argument => argument.Key == "Elements" && (bool)argument.Value.Value);
-                if (elements)
-                    HoldValueResourceElements(code, operation, member.Type, value, resource, depth);
-                else
-                    EmitDeclaredValueResource(code, operation, member.Type, value, resource);
-            }
-        }
-
-        static void HoldValueResources(StringBuilder code, string operation, ITypeSymbol type, string value, int depth = 0)
-        {
-            if (!HasValueResources(type, new HashSet<string>())) return;
-            if (HasAttribute(type, TextAttribute))
-            {
-                code.Append(value).Append('.').Append(operation).AppendLine("();");
-                return;
-            }
-            if (type is ITypeParameterSymbol)
-            {
-                code.Append(value).Append('.').Append(operation).AppendLine("();");
-                return;
-            }
-            if (type is INamedTypeSymbol owner && (HasAttribute(owner, ValueOperationsAttribute) ||
-                HasAttribute(owner, UnionAttribute) || Cases(ValueMembers(owner)).Length != 0))
-            {
-                string method = owner.GetMembers(operation).OfType<IMethodSymbol>()
-                    .Any(candidate => !candidate.IsStatic && candidate.Parameters.Length == 0)
-                    ? operation : owner.GetAttributes().Where(attribute => Identity(attribute.AttributeClass) == ValueOperationsAttribute)
-                        .SelectMany(attribute => attribute.NamedArguments).Where(argument => argument.Key == operation + "Method")
-                        .Select(argument => (string)argument.Value.Value).DefaultIfEmpty(operation).Single();
-                code.Append(value).Append('.').Append(Escape(method)).AppendLine("();");
-                return;
-            }
-            if (MapTypes(type) is ITypeSymbol[] map)
-            {
-                string index = "__valueIndex" + depth;
-                code.Append("for (int ").Append(index).Append(" = 0; ").Append(index).Append(" < ").Append(value)
-                    .Append(".Count; ").Append(index).AppendLine("++) {");
-                HoldValueResources(code, operation, map[0], value + ".Keys[" + index + "]", depth + 1);
-                HoldValueResources(code, operation, map[1], value + ".Values[" + index + "]", depth + 1);
-                code.AppendLine("}");
-                return;
-            }
-            if (NullableElement(type) is ITypeSymbol nullable)
-            {
-                code.Append("if (").Append(value).AppendLine(".HasValue) {");
-                HoldValueResources(code, operation, nullable, value + ".Value", depth);
-                code.AppendLine("}");
-                return;
-            }
-            if (BorrowedStorage(type) != null && BorrowedSemantic(type, "HoldStorage", true))
-            {
-                code.Append(value).Append('.').Append(operation).AppendLine("StateStorage();");
-                return;
-            }
-            if (SequenceElement(type) is ITypeSymbol element)
-            {
-                string index = "__valueIndex" + depth;
-                code.Append("for (int ").Append(index).Append(" = 0; ").Append(index).Append(" < ")
-                    .Append(SequenceCount(type, value)).Append("; ").Append(index).AppendLine("++) {");
-                HoldValueResources(code, operation, element, SequenceValue(type, value, index), depth + 1);
-                code.AppendLine("}");
-                return;
-            }
-            var record = (INamedTypeSymbol)type;
-            Member[] members = ValueMembers(record);
-            foreach (Member member in members.Where(m => !m.IsCase))
-                HoldValueMember(code, operation, member, value, depth);
-            Member[] cases = Cases(members);
-            if (cases.Length == 0) return;
-            INamedTypeSymbol definition = (INamedTypeSymbol)record.GetAttributes()
-                .SingleOrDefault(a => Identity(a.AttributeClass) == UnionAttribute)?.ConstructorArguments[0].Value;
-            INamedTypeSymbol kindOwner = definition ?? record;
-            string kindType = kindOwner.TypeKind == TypeKind.Enum ? TypeName(kindOwner) :
-                "global::" + kindOwner.ContainingNamespace.ToDisplayString() + "." + Escape(kindOwner.Name) + "Kind";
-            code.Append("switch (").Append(value).AppendLine(".Kind) {");
-            foreach (Member member in cases.Where(m => HasValueResources(m.Type, new HashSet<string>())))
-            {
-                code.Append("case ").Append(kindType).Append('.').Append(Escape(member.Symbol.Name)).AppendLine(":");
-                HoldValueResources(code, operation, member.Type, value + "." + Escape(member.Symbol.Name), depth);
-                code.AppendLine("break;");
-            }
-            code.AppendLine("}");
-        }
 
         static string EmitValueUnion(INamedTypeSymbol type)
         {
@@ -529,13 +283,6 @@ namespace ThirdPerson.ValueGeneration.Generator
             AttributeData purpose = type.GetAttributes().Single(attribute => Identity(attribute.AttributeClass) == ValueStoragePurposeAttribute);
             bool construct = purpose.NamedArguments.Any(argument => argument.Key == "Construct" && (bool)argument.Value.Value);
             bool useConstructor = purpose.NamedArguments.Any(argument => argument.Key == "UseConstructor" && (bool)argument.Value.Value);
-            bool readOnly = purpose.NamedArguments.Any(argument => argument.Key == "ReadOnly" && (bool)argument.Value.Value);
-            if (readOnly && (construct || useConstructor))
-            {
-                context.ReportDiagnostic(Diagnostic.Create(InvalidValueDeclaration, type.Locations.FirstOrDefault(), Identity(type),
-                    "只读存储视图由原 owner 恢复，不能同时声明 Construct 或 UseConstructor"));
-                return null;
-            }
             ValueUnionShape union = GetValueUnionShape(type);
             if (union != null)
             {
@@ -545,7 +292,7 @@ namespace ThirdPerson.ValueGeneration.Generator
                         "联合存储由原 Kind 与 From 分支重建，不能同时声明 Construct 或 UseConstructor"));
                     return null;
                 }
-                EmitUnionValueStorage(code, type, union, readOnly);
+                EmitUnionValueStorage(code, type, union);
             }
             else if (useConstructor)
             {
@@ -553,7 +300,7 @@ namespace ThirdPerson.ValueGeneration.Generator
             }
             else
                 EmitValueStorage(code, type, StorageMembers(type).Where(member =>
-                    !HasAttribute(member.Symbol, "ThirdPersonSimulation.ValueStorageIgnoreAttribute")).ToArray(), construct, readOnly);
+                    !HasAttribute(member.Symbol, "ThirdPersonSimulation.ValueStorageIgnoreAttribute")).ToArray(), construct);
             foreach (INamedTypeSymbol owner in owners)
                 code.AppendLine("}");
             code.AppendLine("} }");
@@ -640,25 +387,16 @@ namespace ThirdPerson.ValueGeneration.Generator
                 Identity(contract.OriginalDefinition) == "System.Collections.Generic.IEnumerable<T>" &&
                 SymbolEqualityComparer.Default.Equals(contract.TypeArguments[0], array.ElementType));
 
-        static void EmitValueStorage(StringBuilder code, INamedTypeSymbol type, Member[] members, bool construct, bool readOnly = false)
+        static void EmitValueStorage(StringBuilder code, INamedTypeSymbol type, Member[] members, bool construct)
         {
-            code.Append(readOnly ? "internal void ReadValueStorage(" : "public void ReadValueStorage(")
+            code.Append("public void ReadValueStorage(")
                 .Append(string.Join(", ", members.Select(member =>
                     (member.Payload ? "[global::ThirdPersonSimulation.ValuePayload] " : "") +
-                    "out " + (readOnly && StorageCountMember(member.Symbol) != null && member.Type is IArrayTypeSymbol array
-                        ? "global::System.ReadOnlySpan<" + TypeName(array.ElementType) + ">" : TypeName(member.Type)) + " " + Escape(member.Symbol.Name))))
+                    "out " + TypeName(member.Type) + " " + Escape(member.Symbol.Name))))
                 .AppendLine(") {");
             foreach (Member member in members)
-            {
-                code.Append(Escape(member.Symbol.Name)).Append(" = ");
-                if (readOnly && StorageCountMember(member.Symbol) is string count && member.Type is IArrayTypeSymbol array)
-                    code.Append("new global::System.ReadOnlySpan<").Append(TypeName(array.ElementType)).Append(">(this.")
-                        .Append(Escape(member.Symbol.Name)).Append(", 0, this.").Append(Escape(count)).Append(')');
-                else code.Append("this.").Append(Escape(member.Symbol.Name));
-                code.AppendLine(";");
-            }
+                code.Append(Escape(member.Symbol.Name)).Append(" = this.").Append(Escape(member.Symbol.Name)).AppendLine(";");
             code.AppendLine("}");
-            if (readOnly) return;
             Member[] constructorMembers = construct
                 ? members.OrderBy(member => member.Symbol.Locations[0].SourceSpan.Start).ToArray() : members;
             code.Append(construct ? "public " : "private ").Append(Escape(type.Name)).Append('(');
@@ -750,11 +488,7 @@ namespace ThirdPerson.ValueGeneration.Generator
         static void EmitValueOperations(StringBuilder code, INamedTypeSymbol type,
             Member[] cases, Member[] common, string kindType)
         {
-            if (type.GetAttributes().Any(attribute => Identity(attribute.AttributeClass) == ValueStoragePurposeAttribute &&
-                attribute.NamedArguments.Any(argument => argument.Key == "ReadOnly" && argument.Value.Value is true)))
-                common = StorageMembers(type, false);
             string fullType = TypeName(type);
-            AttributeData operations = type.GetAttributes().SingleOrDefault(attribute => Identity(attribute.AttributeClass) == ValueOperationsAttribute);
             if (type.AllInterfaces.Any(i => i.OriginalDefinition.Name == "IEquatable" &&
                 i.ContainingNamespace.ToDisplayString() == "System" &&
                 SymbolEqualityComparer.Default.Equals(i.TypeArguments[0], type)) &&
@@ -764,16 +498,7 @@ namespace ThirdPerson.ValueGeneration.Generator
                 code.Append("public bool Equals(").Append(fullType).AppendLine(" other) {");
                 if (type.IsReferenceType) code.AppendLine("if (other == null) return false;");
                 if (kindType != null) code.AppendLine("if (Kind != other.Kind) return false;");
-                bool explicitEquality = operations != null && operations.NamedArguments.Any(argument =>
-                    argument.Key == "ExplicitEquality" && argument.Value.Value is true);
-                IEnumerable<Member> equalityMembers = common.Concat(type.GetMembers().OfType<IPropertySymbol>()
-                    .Where(property => !IsAutoProperty(property) &&
-                        HasAttribute(property, "ThirdPersonSimulation.ValueEqualityMemberAttribute"))
-                    .OrderBy(Identity, StringComparer.Ordinal)
-                    .Select(property => new Member { Symbol = property, Type = property.Type }));
-                foreach (Member member in equalityMembers.Where(member =>
-                    !HasAttribute(member.Symbol, "ThirdPersonSimulation.ValueEqualityIgnoreAttribute") &&
-                    (!explicitEquality || HasAttribute(member.Symbol, "ThirdPersonSimulation.ValueEqualityMemberAttribute"))))
+                foreach (Member member in common)
                 {
                     string left = "this." + Escape(member.Symbol.Name);
                     string right = "other." + Escape(member.Symbol.Name);
@@ -800,40 +525,6 @@ namespace ThirdPerson.ValueGeneration.Generator
                     code.Append("case (").Append(kindType).AppendLine(")0: return true;");
                     code.AppendLine("default: throw new global::System.ArgumentOutOfRangeException(nameof(Kind)); } }");
                 }
-            }
-            if (operations != null && operations.NamedArguments.Any(argument => argument.Key == "Resources" && argument.Value.Value is false))
-                return;
-            if (operations != null && operations.NamedArguments.Any(argument => argument.Key == "ExplicitResources" && argument.Value.Value is true))
-                common = common.Where(member => HasAttribute(member.Symbol, ValueResourceAttribute)).ToArray();
-            foreach (string operation in new[] { "Retain", "Release" })
-            {
-                string method = operations == null ? operation : operations.NamedArguments
-                    .Where(argument => argument.Key == operation + "Method").Select(argument => (string)argument.Value.Value)
-                    .DefaultIfEmpty(operation).Single();
-                IMethodSymbol declaration = type.GetMembers(method).OfType<IMethodSymbol>()
-                    .SingleOrDefault(m => !m.IsStatic && m.Parameters.Length == 0);
-                bool partialDefinition = declaration != null && declaration.DeclaringSyntaxReferences.Any(reference =>
-                    reference.GetSyntax() is MethodDeclarationSyntax syntax && syntax.Modifiers.Any(SyntaxKind.PartialKeyword) &&
-                    syntax.Body == null && syntax.ExpressionBody == null);
-                if (declaration != null && !partialDefinition)
-                    continue;
-                code.Append(declaration != null ? declaration.DeclaredAccessibility.ToString().ToLowerInvariant() + " " :
-                    method == operation ? "public " : "private ")
-                    .Append(declaration != null ? "partial " : "")
-                    .Append(type.IsValueType && !type.IsReadOnly ? "readonly void " : "void ")
-                    .Append(Escape(method)).AppendLine("() {");
-                foreach (Member member in common)
-                    HoldValueMember(code, operation, member, "this");
-                Member[] resourceCases = cases.Where(m => HasValueResources(m.Type, new HashSet<string>())).ToArray();
-                if (resourceCases.Length != 0) code.AppendLine("switch (Kind) {");
-                foreach (Member member in resourceCases)
-                {
-                    code.Append("case ").Append(kindType).Append('.').Append(Escape(member.Symbol.Name)).AppendLine(":");
-                    HoldValueResources(code, operation, member.Type, "this." + Escape(member.Symbol.Name));
-                    code.AppendLine("break;");
-                }
-                if (resourceCases.Length != 0) code.AppendLine("}");
-                code.AppendLine("}");
             }
         }
 
@@ -865,6 +556,13 @@ namespace ThirdPerson.ValueGeneration.Generator
             .Where(a => Identity(a.AttributeClass) == UnionCaseAttribute).SelectMany(a => a.NamedArguments)
             .Where(a => a.Key == "DefaultMember").Select(a => (string)a.Value.Value).SingleOrDefault();
 
+        static string ValueDefault(ITypeSymbol type)
+        {
+            ISymbol member = type.GetMembers().SingleOrDefault(candidate => candidate.IsStatic &&
+                HasAttribute(candidate, "ThirdPersonSimulation.ValueDefaultAttribute"));
+            return member == null ? "default" : TypeName(type) + "." + Escape(member.Name);
+        }
+
         static string Primitive(ITypeSymbol type)
         {
             if (type is INamedTypeSymbol named && type.TypeKind == TypeKind.Enum)
@@ -887,31 +585,11 @@ namespace ThirdPerson.ValueGeneration.Generator
             }
         }
 
-        static ITypeSymbol[] MapTypes(ITypeSymbol type) => type is INamedTypeSymbol named &&
-            Identity(named.OriginalDefinition) == "System.Collections.Generic.SortedList<TKey, TValue>"
-                ? named.TypeArguments.ToArray() : null;
-
-        static bool IsPreparedCollection(ITypeSymbol type) => BufferElement(type) != null || MapTypes(type) != null ||
-            type is INamedTypeSymbol named && Identity(named.OriginalDefinition) == "System.Collections.Generic.List<T>";
-
-        static ITypeSymbol NullableElement(ITypeSymbol type) => type is INamedTypeSymbol named &&
-            named.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T ? named.TypeArguments[0] : null;
-
-        static ITypeSymbol BufferElement(ITypeSymbol type) => type is INamedTypeSymbol named &&
-            HasAttribute(named.OriginalDefinition, BufferAttribute) ? named.AllInterfaces.Single(contract =>
-                Identity(contract.OriginalDefinition) == "System.Collections.Generic.IReadOnlyList<T>").TypeArguments[0] : null;
-
         static ITypeSymbol SequenceElement(ITypeSymbol type)
         {
             if (type is IArrayTypeSymbol array && array.Rank == 1)
                 return array.ElementType;
             if (type is INamedTypeSymbol named)
-            {
-                ITypeSymbol bufferElement = BufferElement(type);
-                if (bufferElement != null)
-                    return bufferElement;
-                if (HasAttribute(named.OriginalDefinition, BorrowedSequenceAttribute))
-                    return ((INamedTypeSymbol)named.GetMembers("Span").OfType<IPropertySymbol>().Single().Type).TypeArguments[0];
                 switch (Identity(named.OriginalDefinition))
                 {
                     case "System.ReadOnlyMemory<T>":
@@ -920,36 +598,14 @@ namespace ThirdPerson.ValueGeneration.Generator
                     case "System.Collections.ObjectModel.ReadOnlyCollection<T>":
                         return named.TypeArguments[0];
                 }
-            }
             return null;
-        }
-
-        static INamedTypeSymbol BorrowedStorage(ITypeSymbol type)
-        {
-            if (!(type is INamedTypeSymbol named))
-                return null;
-            AttributeData shape = named.OriginalDefinition.GetAttributes()
-                .SingleOrDefault(a => Identity(a.AttributeClass) == BorrowedSequenceAttribute);
-            if (shape == null)
-                return null;
-            INamedTypeSymbol storage = (INamedTypeSymbol)shape.ConstructorArguments[0].Value;
-            return storage.IsGenericType ? storage.OriginalDefinition.Construct(SequenceElement(type)) : storage;
-        }
-
-        static bool BorrowedSemantic(ITypeSymbol type, string name, bool defaultValue)
-        {
-            AttributeData shape = ((INamedTypeSymbol)type).OriginalDefinition.GetAttributes()
-                .Single(a => Identity(a.AttributeClass) == BorrowedSequenceAttribute);
-            return shape.NamedArguments.Where(a => a.Key == name).Select(a => (bool)a.Value.Value)
-                .DefaultIfEmpty(defaultValue).Single();
         }
 
         static string SequenceCount(ITypeSymbol type, string value) =>
             value + (type is IArrayTypeSymbol || IsReadOnlyMemory(type) ? ".Length" : ".Count");
 
         static string SequenceValue(ITypeSymbol type, string value, string index) =>
-            IsReadOnlyMemory(type) || BorrowedStorage(type) != null ? value + ".Span[" + index + "]" :
-            BufferElement(type) == null ? value + "[" + index + "]" : value + ".Element(" + index + ")";
+            IsReadOnlyMemory(type) ? value + ".Span[" + index + "]" : value + "[" + index + "]";
 
         static bool IsReadOnlyMemory(ITypeSymbol type) => type is INamedTypeSymbol named &&
             Identity(named.OriginalDefinition) == "System.ReadOnlyMemory<T>";
@@ -963,10 +619,6 @@ namespace ThirdPerson.ValueGeneration.Generator
         static string Parameter(string name) => Escape(char.ToLowerInvariant(name[0]) + name.Substring(1));
 
         static bool HasAttribute(ISymbol symbol, string attribute) => symbol.GetAttributes().Any(a => Identity(a.AttributeClass) == attribute);
-
-        static INamedTypeSymbol BorrowedObjectStorage(ITypeSymbol type) => (INamedTypeSymbol)type.GetAttributes()
-            .Where(a => Identity(a.AttributeClass) == BorrowedObjectAttribute)
-            .Select(a => a.ConstructorArguments[0].Value).SingleOrDefault();
 
         sealed class Receiver : ISyntaxReceiver
         {
@@ -989,17 +641,10 @@ namespace ThirdPerson.ValueGeneration.Generator
             public bool Generated;
         }
 
-        static string StorageCountMember(ISymbol member) => member.GetAttributes()
-            .SingleOrDefault(attribute => Identity(attribute.AttributeClass) == StorageAttribute)?.NamedArguments
-            .FirstOrDefault(argument => argument.Key == "CountMember").Value.Value as string;
-
-        static Member[] StorageMembers(INamedTypeSymbol type, bool logicalStorage = true)
+        static Member[] StorageMembers(INamedTypeSymbol type)
         {
             ISymbol[] members = type.GetMembers().Where(symbol => !symbol.IsStatic && !symbol.IsImplicitlyDeclared).ToArray();
-            bool explicitStorage = logicalStorage && HasAttribute(type, ValueStoragePurposeAttribute) &&
-                members.Any(member => HasAttribute(member, StorageAttribute));
-            return members.Where(symbol => explicitStorage ? HasAttribute(symbol, StorageAttribute) :
-                symbol is IFieldSymbol field && !HasAttribute(field, "System.Runtime.CompilerServices.CompilerGeneratedAttribute") ||
+            return members.Where(symbol => symbol is IFieldSymbol field && !HasAttribute(field, "System.Runtime.CompilerServices.CompilerGeneratedAttribute") ||
                 symbol is IPropertySymbol property && IsAutoProperty(property))
                 .OrderBy(Identity, StringComparer.Ordinal)
                 .Select(symbol => new Member { Symbol = symbol,

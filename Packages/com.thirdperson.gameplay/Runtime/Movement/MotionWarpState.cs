@@ -2,7 +2,7 @@ using System;
 
 namespace ThirdPersonSimulation
 {
-    [ValueStorage(Construct = true), ValueOperations(Resources = false)]
+    [ValueStorage(Construct = true), ValueOperations]
     public readonly partial struct MotionWarpState<TScalar, TVector3, TYaw, TAction> :
         IEquatable<MotionWarpState<TScalar, TVector3, TYaw, TAction>>
         where TScalar : unmanaged, IEquatable<TScalar>
