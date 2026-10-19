@@ -10,7 +10,7 @@ namespace BTSMTL.Compilation
             OrchestrationProgramStorageLayout BuildExecutionStorage(OperationDraft[] operations,
                 OrchestrationValueSlotType[] valueSlotTypes)
             {
-                int kindCount = Enum.GetValues(typeof(OrchestrationValueKind)).Length;
+                int kindCount = (int)OrchestrationValueKind.SpatialIdentity + 1;
                 var operationIndices = new ushort[operations.Length];
                 var operationCounts = new int[operations.Length];
                 var savedOutputCounts = new int[operations.Length];
