@@ -19,6 +19,19 @@ namespace BTSMTL.Graphs
             GraphNumericValues<TScalar, TVector2, TVector3, TYaw, TQuaternion, TNumeric>
                 .ToState(in value, enumTypeContentId, in identity);
 
+        public static GraphHostValue
+            FromState<TScalar, TVector2, TVector3, TYaw, TQuaternion, TNumeric>(
+                in OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion> value,
+                Type enumType, string identity)
+            where TScalar : unmanaged
+            where TVector2 : unmanaged
+            where TVector3 : unmanaged
+            where TYaw : unmanaged
+            where TQuaternion : unmanaged
+            where TNumeric : struct, IGraphNumericAdapter<TScalar, TVector2, TVector3, TQuaternion> =>
+            GraphNumericValues<TScalar, TVector2, TVector3, TYaw, TQuaternion, TNumeric>
+                .FromState(in value, enumType, identity);
+
         public static string TypeIdentity(Type type)
         {
             GraphHostValueKinds.TryGet(type, out GraphHostValueKind kind);
