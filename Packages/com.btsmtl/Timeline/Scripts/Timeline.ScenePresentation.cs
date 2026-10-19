@@ -38,16 +38,7 @@ namespace BTSMTL.Timeline
     }
 
     [ScriptGuid("9a9b5b4c1d2e4f6a8b7c0d1e2f3a4b5c"), Color(132, 224, 184)]
-#if UNITY_EDITOR
-    [TimelineAuthoringProperty("targetBindingId", TimelineAuthoringPropertyKind.Text, MemberName = "m_TargetBindingId", Trimmed = true,
-        BindingValueKinds = new[] { TimelineBindingValueKind.Target }, BindingAccess = TimelineBindingAccess.Input,
-        BindingLifetime = TimelineBindingLifetime.Call)]
-    [TimelineAuthoringProperty("parameterBindingId", TimelineAuthoringPropertyKind.Text, MemberName = "m_ParameterBindingId", Trimmed = true,
-        BindingValueKinds = new[] { TimelineBindingValueKind.Scalar, TimelineBindingValueKind.Boolean },
-        BindingAccess = TimelineBindingAccess.Write, BindingLifetime = TimelineBindingLifetime.Tick)]
-    [TimelineAuthoringProperty("valueCurve", TimelineAuthoringPropertyKind.Object, MemberName = "m_ValueCurve")]
-#endif
-    public sealed class ScenePresentationParameterCurveClip : SampledClip, ITimelineExternalBindingUseSource
+    public sealed partial class ScenePresentationParameterCurveClip : SampledClip, ITimelineExternalBindingUseSource
     {
         [SerializeField, ShowInInspector, OnValueChanged("RebindTimeline")]
         string m_TargetBindingId = "target";
@@ -71,7 +62,15 @@ namespace BTSMTL.Timeline
         };
         public override TimelineContentParameters CaptureContentParameters() => new TimelineContentSceneParameter(
             TargetBindingId, ParameterBindingId, ParameterValueKind);
+#if UNITY_EDITOR
+        [BTSMTL.Authoring.Graph.GraphAuthoringField("targetBindingId", BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.String)]
+        [TimelineAuthoringProperty(Trimmed = true, BindingValueKinds = new[] { TimelineBindingValueKind.Target }, BindingAccess = TimelineBindingAccess.Input, BindingLifetime = TimelineBindingLifetime.Call)]
+#endif
         public string TargetBindingId => m_TargetBindingId ?? string.Empty;
+#if UNITY_EDITOR
+        [BTSMTL.Authoring.Graph.GraphAuthoringField("parameterBindingId", BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.String)]
+        [TimelineAuthoringProperty(Trimmed = true, BindingValueKinds = new[] { TimelineBindingValueKind.Scalar, TimelineBindingValueKind.Boolean }, BindingAccess = TimelineBindingAccess.Write, BindingLifetime = TimelineBindingLifetime.Tick)]
+#endif
         public string ParameterBindingId => m_ParameterBindingId ?? string.Empty;
         public TimelineBindingValueKind ParameterValueKind
         {
@@ -83,6 +82,9 @@ namespace BTSMTL.Timeline
                     : TimelineBindingValueKind.Scalar;
             }
         }
+#if UNITY_EDITOR
+        [BTSMTL.Authoring.Graph.GraphAuthoringField("valueCurve", BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.Object)]
+#endif
         public AnimationCurve ValueCurve => m_ValueCurve;
         public IReadOnlyList<TimelineExternalBindingUse> ExternalBindingUses => new[]
         {
@@ -90,6 +92,7 @@ namespace BTSMTL.Timeline
             new TimelineExternalBindingUse(ParameterBindingId, ParameterValueKind, TimelineBindingAccess.Write, TimelineBindingLifetime.Tick, TargetBindingId)
         };
 
+        [BTSMTL.Authoring.Graph.GraphAuthoringConfigure]
         public void ConfigureBindings(string targetBindingId, string parameterBindingId, AnimationCurve valueCurve)
         {
             m_TargetBindingId = targetBindingId?.Trim() ?? string.Empty;
@@ -110,16 +113,9 @@ namespace BTSMTL.Timeline
 
 #if UNITY_EDITOR
         public override ClipCapabilities Capabilities => ClipCapabilities.Resizable | ClipCapabilities.TickQuantized;
-        public override TimelineAuthoringClipConfiguration CaptureAuthoringDefaults()
-        {
-            TimelineAuthoringClipConfiguration defaults = base.CaptureAuthoringDefaults();
-            defaults.Set("valueCurve", AnimationCurve.Linear(0f, 0f, 1f, 0f));
-            return defaults;
-        }
+        [BTSMTL.Authoring.Graph.GraphAuthoringDefault("valueCurve")]
+        public static AnimationCurve AuthoringValueCurveDefault => AnimationCurve.Linear(0f, 0f, 1f, 0f);
 
-        public ScenePresentationParameterCurveClip(Track track, OrchestrationTime time) : base(track, time)
-        {
-        }
 #endif
     }
 

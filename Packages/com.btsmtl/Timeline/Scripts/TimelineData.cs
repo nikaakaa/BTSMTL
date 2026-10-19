@@ -358,23 +358,6 @@ namespace BTSMTL.Timeline
             m_AuthoringId = authoringId;
         }
 
-        public static TimelineSection Create(string name, OrchestrationTime time)
-        {
-            return Create(AuthoringIdentity.Create(), name, time);
-        }
-
-        public static TimelineSection Create(string authoringId, string name, OrchestrationTime time)
-        {
-            if (!AuthoringIdentity.IsValid(authoringId))
-                throw new ArgumentException("Timeline Section authoring identity is invalid.", nameof(authoringId));
-            var section = new TimelineSection
-            {
-                m_AuthoringId = authoringId
-            };
-            section.Configure(name, time);
-            return section;
-        }
-
         public void Configure(string name, OrchestrationTime time)
         {
             string value = name?.Trim() ?? string.Empty;

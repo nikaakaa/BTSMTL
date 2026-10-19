@@ -54,10 +54,13 @@ namespace ThirdPerson.ValueGeneration.Generator
             var stateLayouts = new Dictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
             var stateLayoutFactories = new Dictionary<string, IMethodSymbol>(StringComparer.Ordinal);
             var valueHashes = new Dictionary<string, IMethodSymbol>(StringComparer.Ordinal);
+            var authoringTypes = new Dictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
             foreach (BaseTypeDeclarationSyntax declaration in receiver.Types)
             {
                 var type = (INamedTypeSymbol)context.Compilation.GetSemanticModel(declaration.SyntaxTree)
                     .GetDeclaredSymbol(declaration);
+                if (type.GetMembers().Any(member => HasAttribute(member, AuthoringFieldAttribute)))
+                    authoringTypes[Identity(type)] = type;
                 if (HasAttribute(type, UnionTemplateAttribute))
                     templates[Identity(type)] = type;
                 if (!HasAttribute(type, UnionTemplateAttribute) &&
@@ -145,6 +148,8 @@ namespace ThirdPerson.ValueGeneration.Generator
                 EmitStateLayoutFactories(context, stateLayoutFactories.Values);
             if (valueHashes.Count != 0)
                 EmitValueHashes(context, valueHashes.Values);
+            foreach (INamedTypeSymbol type in authoringTypes.Values.OrderBy(Identity, StringComparer.Ordinal))
+                EmitAuthoringFields(context, type);
         }
 
         static void EmitTypeDeclaration(StringBuilder code, INamedTypeSymbol type, string baseType = null)
@@ -651,8 +656,10 @@ namespace ThirdPerson.ValueGeneration.Generator
             public void OnVisitSyntaxNode(SyntaxNode node)
             {
                 if (node is BaseTypeDeclarationSyntax type && (type.AttributeLists.Count > 0 ||
-                    type is TypeDeclarationSyntax declaration && declaration.Members.OfType<MethodDeclarationSyntax>()
-                        .Any(method => method.AttributeLists.Count > 0)))
+                    type is TypeDeclarationSyntax declaration && declaration.Members.Any(member =>
+                        member is MethodDeclarationSyntax method && method.AttributeLists.Count > 0 ||
+                        member is BasePropertyDeclarationSyntax property && property.AttributeLists.Count > 0 ||
+                        member is BaseFieldDeclarationSyntax field && field.AttributeLists.Count > 0)))
                     Types.Add(type);
             }
         }

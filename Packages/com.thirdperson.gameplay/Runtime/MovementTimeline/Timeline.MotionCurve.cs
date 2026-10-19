@@ -18,35 +18,10 @@ namespace ThirdPersonGameplay.Movement.Timeline
 #if UNITY_EDITOR
         public override Type ClipType => typeof(MotionCurveClip);
 
-        public override Clip AddClip(UnityEngine.Object referenceObject, OrchestrationTime time)
-        {
-            if (referenceObject is not RootMotionCurveAsset source)
-                throw new ArgumentException("MotionCurveClip requires a RootMotionCurveAsset source.", nameof(referenceObject));
-            MotionCurveClip clip = new MotionCurveClip(this, time, source);
-            clip.RegenerateAuthoringIdentity();
-            m_Clips.Add(clip);
-            return clip;
-        }
-
-        public override Clip AddClip(OrchestrationTime time)
-        {
-            throw new InvalidOperationException("MotionCurveClip requires a RootMotionCurveAsset source.");
-        }
 #endif
     }
 
     [ScriptGuid("6f2a51d8c9b34d5f8a0e7b4c2d9f136a"), Color(126, 220, 146)]
-#if UNITY_EDITOR
-    [TimelineAuthoringProperty("curveId", TimelineAuthoringPropertyKind.Text, MemberName = nameof(MotionCurveClip.CurveId), Trimmed = true)]
-    [TimelineAuthoringProperty("sourceCurve", TimelineAuthoringPropertyKind.Object, MemberName = nameof(MotionCurveClip.SourceCurve), IsSourceAsset = true)]
-    [TimelineAuthoringProperty("sourceStartTime", TimelineAuthoringPropertyKind.Float, MemberName = nameof(MotionCurveClip.SourceStartTime), HasMinimum = true, Minimum = 0, Finite = true)]
-    [TimelineAuthoringProperty("sourceEndTime", TimelineAuthoringPropertyKind.Float, MemberName = nameof(MotionCurveClip.SourceEndTime), HasMinimum = true, Minimum = 0, Finite = true)]
-    [TimelineAuthoringProperty("space", typeof(SimulationMotionContributionSpace), MemberName = nameof(MotionCurveClip.Space))]
-    [TimelineAuthoringProperty("channel", typeof(SimulationMotionChannel), MemberName = nameof(MotionCurveClip.Channel))]
-    [TimelineAuthoringProperty("blendMode", typeof(SimulationMotionBlendMode), MemberName = nameof(MotionCurveClip.BlendMode))]
-    [TimelineAuthoringProperty("priority", TimelineAuthoringPropertyKind.Integer, MemberName = nameof(MotionCurveClip.Priority))]
-    [TimelineAuthoringProperty("consumeLowerChannels", TimelineAuthoringPropertyKind.Boolean, MemberName = nameof(MotionCurveClip.ConsumeLowerChannels))]
-#endif
     public sealed partial class MotionCurveClip : SampledClip, ITimelineContentClosureSource,
         ITimelineClipTimeRangeValidator
 #if UNITY_EDITOR
@@ -70,20 +45,43 @@ namespace ThirdPersonGameplay.Movement.Timeline
             TimelineContentDiscovery.CaptureSourceCurve("motion.source-yaw", SourceYaw));
 
         [ShowInInspector, OnValueChanged("RebindTimeline")]
+#if UNITY_EDITOR
+        [BTSMTL.Authoring.Graph.GraphAuthoringField("curveId", BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.String)]
+        [TimelineAuthoringProperty(Trimmed = true)]
+#endif
         public string CurveId = "MotionCurve";
         [ShowInInspector, OnValueChanged("RebindTimeline")]
+#if UNITY_EDITOR
+        [BTSMTL.Authoring.Graph.GraphAuthoringField("space", typeof(SimulationMotionContributionSpace))]
+#endif
         public SimulationMotionContributionSpace Space = SimulationMotionContributionSpace.ActorLocal;
         [ShowInInspector, OnValueChanged("RebindTimeline")]
+#if UNITY_EDITOR
+        [BTSMTL.Authoring.Graph.GraphAuthoringField("channel", typeof(SimulationMotionChannel))]
+#endif
         public SimulationMotionChannel Channel = SimulationMotionChannel.Action;
         [ShowInInspector, OnValueChanged("RebindTimeline")]
+#if UNITY_EDITOR
+        [BTSMTL.Authoring.Graph.GraphAuthoringField("blendMode", typeof(SimulationMotionBlendMode))]
+#endif
         public SimulationMotionBlendMode BlendMode = SimulationMotionBlendMode.Override;
         [ShowInInspector, OnValueChanged("RebindTimeline")]
+#if UNITY_EDITOR
+        [BTSMTL.Authoring.Graph.GraphAuthoringField("priority", BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.Integer)]
+#endif
         public int Priority = 100;
         [ShowInInspector, OnValueChanged("RebindTimeline")]
+#if UNITY_EDITOR
+        [BTSMTL.Authoring.Graph.GraphAuthoringField("consumeLowerChannels", BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.Boolean)]
+#endif
         public bool ConsumeLowerChannels = true;
         [SerializeField, ShowInInspector, OnValueChanged("RebindTimeline")]
         RootMotionCurveAsset m_SourceCurve;
 
+#if UNITY_EDITOR
+        [BTSMTL.Authoring.Graph.GraphAuthoringField("sourceCurve", BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.Object)]
+        [TimelineAuthoringProperty(IsSourceAsset = true)]
+#endif
         public RootMotionCurveAsset SourceCurve => m_SourceCurve;
         public float SourceDuration => Mathf.Max(0f, SourceEndTime - SourceStartTime);
 
@@ -166,24 +164,18 @@ namespace ThirdPersonGameplay.Movement.Timeline
                 (target, sourceStart, sourceEnd, duration) =>
                     UpdateSourceDisplayCurve(target, source, sourceStart, sourceEnd, duration));
 
-        public override void ApplyAuthoringConfiguration(TimelineAuthoringClipConfiguration configuration)
+        [BTSMTL.Authoring.Graph.GraphAuthoringConfigure]
+        public void Configure(string curveId, RootMotionCurveAsset sourceCurve, float sourceStartTime,
+            float sourceEndTime, SimulationMotionContributionSpace space, SimulationMotionChannel channel,
+            SimulationMotionBlendMode blendMode, int priority, bool consumeLowerChannels)
         {
-            string curveId = configuration.Get<string>("curveId");
-            RootMotionCurveAsset source = configuration.Get<RootMotionCurveAsset>("sourceCurve");
-            float sourceStart = configuration.Get<float>("sourceStartTime");
-            float sourceEnd = configuration.Get<float>("sourceEndTime");
-            SimulationMotionContributionSpace space = configuration.Get<SimulationMotionContributionSpace>("space");
-            SimulationMotionChannel channel = configuration.Get<SimulationMotionChannel>("channel");
-            SimulationMotionBlendMode blend = configuration.Get<SimulationMotionBlendMode>("blendMode");
-            int priority = configuration.Get<int>("priority");
-            bool consumeLower = configuration.Get<bool>("consumeLowerChannels");
-            ConfigureSource(source, sourceStart, sourceEnd);
+            ConfigureSource(sourceCurve, sourceStartTime, sourceEndTime);
             CurveId = curveId;
             Space = space;
             Channel = channel;
-            BlendMode = blend;
+            BlendMode = blendMode;
             Priority = priority;
-            ConsumeLowerChannels = consumeLower;
+            ConsumeLowerChannels = consumeLowerChannels;
         }
 
         public void SplitSource(Clip copy, OrchestrationTime splitTime)
@@ -356,23 +348,23 @@ namespace ThirdPersonGameplay.Movement.Timeline
 #if UNITY_EDITOR
         public override ClipCapabilities Capabilities => ClipCapabilities.Resizable | ClipCapabilities.Mixable;
 
-        public MotionCurveClip(Track track, OrchestrationTime time) : base(track, time)
+        public override void ConfigureAuthoringReference(UnityEngine.Object referenceObject)
         {
-        }
-
-        public MotionCurveClip(Track track, OrchestrationTime time, RootMotionCurveAsset source) : this(track, time)
-        {
-            if (!source)
-                throw new ArgumentNullException(nameof(source));
-            if (!source.TryValidate(out string error))
-                throw new InvalidOperationException(error);
-            if (source.Duration <= 0f)
-                throw new ArgumentException("MotionCurve source duration must be positive.", nameof(source));
-            ConfigureTimeRange(time, time + OrchestrationTime.FromSeconds(source.Duration));
-            m_SourceCurve = source;
-            ConfigureSourceRange(0f, source.Duration);
+            if (referenceObject is not RootMotionCurveAsset source)
+                throw new ArgumentException("MotionCurveClip requires a RootMotionCurveAsset source.", nameof(referenceObject));
+            ConfigureSource(source, 0f, source.Duration);
         }
 #endif
+#if UNITY_EDITOR
+        [BTSMTL.Authoring.Graph.GraphAuthoringField("sourceStartTime", BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.Float, HasMinimum = true, Minimum = 0, Finite = true)]
+        [TimelineAuthoringProperty(SourceBoundary = TimelineAuthoringSourceBoundary.Start)]
+#endif
+        public new float SourceStartTime => base.SourceStartTime;
+#if UNITY_EDITOR
+        [BTSMTL.Authoring.Graph.GraphAuthoringField("sourceEndTime", BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.Float, HasMinimum = true, Minimum = 0, Finite = true)]
+        [TimelineAuthoringProperty(SourceBoundary = TimelineAuthoringSourceBoundary.End)]
+#endif
+        public new float SourceEndTime => base.SourceEndTime;
     }
 
     public static class MotionCurveTimelineContracts

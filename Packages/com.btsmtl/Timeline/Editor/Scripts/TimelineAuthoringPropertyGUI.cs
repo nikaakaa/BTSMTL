@@ -8,7 +8,7 @@ namespace BTSMTL.Timeline.Editor
 {
     static class TimelineAuthoringPropertyGUI
     {
-        public static object Draw(TimelineAuthoringPropertyAttribute property, string label,
+        public static object Draw(TimelineAuthoringProperty property, string label,
             object value, Type valueType, IReadOnlyList<TimelineExternalBindingDeclaration> bindings,
             AnimationCurve editableCurve = null)
         {
@@ -16,18 +16,18 @@ namespace BTSMTL.Timeline.Editor
             object changed;
             switch (property.Kind)
             {
-                case TimelineAuthoringPropertyKind.Text:
-                    changed = property.BindingValueKinds.Length == 0
+                case BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.String:
+                    changed = property.BindingValueKinds.Count == 0
                         ? EditorGUILayout.TextField(label, value as string ?? string.Empty)
                         : DrawBinding(property, label, (string)value, bindings);
                     break;
-                case TimelineAuthoringPropertyKind.Boolean:
+                case BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.Boolean:
                     changed = EditorGUILayout.Toggle(label, (bool)value);
                     break;
-                case TimelineAuthoringPropertyKind.Integer:
+                case BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.Integer:
                     changed = EditorGUILayout.IntField(label, (int)value);
                     break;
-                case TimelineAuthoringPropertyKind.Float:
+                case BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.Float:
                     float number = EditorGUILayout.FloatField(label, (float)value);
                     if (property.HasMinimum)
                         number = Mathf.Max((float)property.Minimum, number);
@@ -35,13 +35,14 @@ namespace BTSMTL.Timeline.Editor
                         number = Mathf.Min((float)property.Maximum, number);
                     changed = number;
                     break;
-                case TimelineAuthoringPropertyKind.Enum:
+                case BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.Enum:
                     changed = EditorGUILayout.EnumPopup(label, (Enum)value);
                     break;
-                case TimelineAuthoringPropertyKind.Vector2:
+                case BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.Vector2:
                     changed = EditorGUILayout.Vector2Field(label, (Vector2)value);
                     break;
-                case TimelineAuthoringPropertyKind.Object:
+                case BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.Object:
+                case BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.AssetReference:
                     changed = valueType == typeof(AnimationCurve)
                         ? EditorGUILayout.CurveField(label, editableCurve ?? (AnimationCurve)value)
                         : EditorGUILayout.ObjectField(label, value as UnityEngine.Object, valueType, false);
@@ -54,7 +55,7 @@ namespace BTSMTL.Timeline.Editor
             return property.Trimmed && changed is string text ? text.Trim() : changed;
         }
 
-        static string DrawBinding(TimelineAuthoringPropertyAttribute property, string label, string value,
+        static string DrawBinding(TimelineAuthoringProperty property, string label, string value,
             IReadOnlyList<TimelineExternalBindingDeclaration> bindings)
         {
             var options = new List<string> { "Select binding" };
@@ -63,7 +64,7 @@ namespace BTSMTL.Timeline.Editor
                 TimelineExternalBindingDeclaration binding = bindings[index];
                 if (binding.Access != property.BindingAccess || binding.Lifetime != property.BindingLifetime)
                     continue;
-                for (int kindIndex = 0; kindIndex < property.BindingValueKinds.Length; kindIndex++)
+                for (int kindIndex = 0; kindIndex < property.BindingValueKinds.Count; kindIndex++)
                 {
                     if (binding.ValueKind != property.BindingValueKinds[kindIndex])
                         continue;

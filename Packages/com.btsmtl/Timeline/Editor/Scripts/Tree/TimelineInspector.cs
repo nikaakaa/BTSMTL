@@ -22,7 +22,7 @@ namespace BTSMTL.Timeline.Editor
 
         sealed class PropertyBinding
         {
-            internal TimelineAuthoringPropertyAttribute Attribute;
+            internal TimelineAuthoringProperty Attribute;
             internal Type ValueType;
             internal string Label;
             internal object Value;
@@ -195,7 +195,7 @@ namespace BTSMTL.Timeline.Editor
         void PrepareClipProperties(Clip clip)
         {
             var bindings = new List<PropertyBinding>();
-            foreach (TimelineAuthoringPropertyAttribute attribute in TimelineAuthoringClipBinding.Properties(clip))
+            foreach (TimelineAuthoringProperty attribute in TimelineAuthoringClipBinding.Properties(clip))
             {
                 if (!attribute.Supports(clip))
                     continue;

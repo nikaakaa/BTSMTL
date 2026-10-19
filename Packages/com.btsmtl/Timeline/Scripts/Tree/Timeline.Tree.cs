@@ -6,48 +6,21 @@ using UnityEngine;
 namespace BTSMTL.Timeline
 {
     [ScriptGuid("31085f11443fe1347b871c5d69db3774"), IconGuid("c7e6321ad8b220a4aa9932b760affad7"), Ordered(3), Color(201, 060, 032)]
-#if UNITY_EDITOR
-    [TimelineAuthoringTrackField("executionDomain", "timeline_tree_execution_domain_missing", "Tree Track必须选择Logic或Presentation执行域。")]
-#endif
-    public class TreeTrack : Track
-#if UNITY_EDITOR
-        , ITimelineAuthoringTrackFieldSink
-#endif
+    public partial class TreeTrack : Track
     {
         public override string ContractKind => TimelineContractKinds.TreeTrack;
 
 #if UNITY_EDITOR
-        public string ReadAuthoringField(string fieldId) => ExecutionDomain.ToString();
-
-        public void ApplyAuthoringField(string fieldId, string value)
+        [BTSMTL.Authoring.Graph.GraphAuthoringField("executionDomain", typeof(TimelineExecutionDomain),
+            AllowedValues = new[] { "Logic", "Presentation" })]
+        [TimelineAuthoringTrackField("timeline_tree_execution_domain_missing", "Tree Track必须选择Logic或Presentation执行域。")]
+        public new TimelineExecutionDomain ExecutionDomain
         {
-            if (fieldId != "executionDomain" ||
-                !Enum.TryParse(value, true, out TimelineExecutionDomain executionDomain) ||
-                executionDomain != TimelineExecutionDomain.Logic && executionDomain != TimelineExecutionDomain.Presentation)
-            {
-                throw new ArgumentException("Tree Track执行域必须是Logic或Presentation。", nameof(value));
-            }
-            ConfigureExecutionDomain(executionDomain);
+            get => base.ExecutionDomain;
+            set => ConfigureExecutionDomain(value);
         }
 
         public override Type ClipType => typeof(TreeClip);
-
-        public override Clip AddClip(OrchestrationTime time)
-        {
-            throw new InvalidOperationException("TreeClip必须绑定正式的Timeline节点图资产。");
-        }
-
-        public override Clip AddClip(UnityEngine.Object referenceObject, OrchestrationTime time)
-        {
-            if (referenceObject is not ScriptableObject asset || asset is not ITimelineTreeGraphAsset graph || !graph.IsTimelineTree)
-                throw new ArgumentException("TreeClip必须绑定正式的Timeline节点图资产。", nameof(referenceObject));
-            var clip = new TreeClip(this, time, asset);
-            clip.RegenerateAuthoringIdentity();
-            if (ExecutionDomain == TimelineExecutionDomain.Presentation)
-                clip.SetExitSource(TimelineClipExitSource.FrameBoundary);
-            m_Clips.Add(clip);
-            return clip;
-        }
 
         public override bool DragValid()
         {
@@ -78,10 +51,19 @@ namespace BTSMTL.Timeline
         ScriptableObject m_AssetTree;
 
 
+        [BTSMTL.Authoring.Graph.GraphAuthoringField("assetTree", BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.AssetReference,
+            AuthoringVisible = false)]
+        [TimelineAuthoringProperty(IsSourceAsset = true)]
         public ScriptableObject AssetTree => m_AssetTree;
 #endif
 
+#if UNITY_EDITOR
+        [BTSMTL.Authoring.Graph.GraphAuthoringField("executionPhase", typeof(TimelineTreeExecutionPhase), AuthoringVisible = false)]
+#endif
         public TimelineTreeExecutionPhase ExecutionPhase => m_ExecutionPhase;
+#if UNITY_EDITOR
+        [BTSMTL.Authoring.Graph.GraphAuthoringField("exitSource", typeof(TimelineClipExitSource), AuthoringVisible = false)]
+#endif
         public TimelineClipExitSource ClipExitSource => m_ExitSource;
         [SerializeField] bool m_HasDeclaredEndTime;
         public bool HasDeclaredEndTime => m_HasDeclaredEndTime;
@@ -164,13 +146,12 @@ namespace BTSMTL.Timeline
                 ? ClipCapabilities.TickQuantized
                 : ClipCapabilities.Resizable | ClipCapabilities.TickQuantized;
 
-        public TreeClip(Track track, OrchestrationTime time) : base(track, time)
+        public override void ConfigureAuthoringReference(UnityEngine.Object referenceObject)
         {
-        }
-
-        public TreeClip(Track track, OrchestrationTime time, ScriptableObject assetTree) : base(track, time)
-        {
-            SetAssetTree(assetTree);
+            SetAssetTree(referenceObject as ScriptableObject);
+            SetExitSource(ExecutionDomain == TimelineExecutionDomain.Logic
+                ? TimelineClipExitSource.TreeDecision
+                : TimelineClipExitSource.FrameBoundary);
         }
 
         public void RegenerateOwnedAuthoringIdentity()
@@ -183,6 +164,15 @@ namespace BTSMTL.Timeline
                 throw new ArgumentException("TreeClip需要支持Timeline生命周期入口的正式节点图资产。", nameof(asset));
             m_AssetTree = asset;
             OnClipChanged();
+        }
+
+        [BTSMTL.Authoring.Graph.GraphAuthoringConfigure]
+        public void ConfigureTree(ScriptableObject assetTree, TimelineTreeExecutionPhase executionPhase,
+            TimelineClipExitSource exitSource)
+        {
+            SetAssetTree(assetTree);
+            SetExecutionPhase(executionPhase);
+            SetExitSource(ExecutionDomain == TimelineExecutionDomain.Logic ? TimelineClipExitSource.TreeDecision : exitSource);
         }
 
         void OnClipChanged()

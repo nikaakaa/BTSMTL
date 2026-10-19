@@ -1,5 +1,6 @@
 #if UNITY_EDITOR
 using System;
+using BTSMTL.Diagnostics;
 using BTSMTL.Orchestration;
 using System.Collections.Generic;
 using System.Linq;
@@ -102,10 +103,10 @@ namespace BTSMTL.Timeline.Editor
                         if (!ApplyImmediate(() =>
                         {
                             TimelineAuthoringClipConfiguration configuration = TimelineAuthoringClipBinding.Read(selected);
-                            foreach (TimelineAuthoringPropertyAttribute property in TimelineAuthoringClipBinding.Properties(selected))
+                            foreach (TimelineAuthoringProperty property in TimelineAuthoringClipBinding.Properties(selected))
                                 if (property.IsSourceAsset)
                                     configuration.Set(property.PropertyId, replacement);
-                            selected.ApplyAuthoringConfiguration(configuration);
+                            TimelineAuthoringClipBinding.Configure(selected.Track.Timeline, selected, configuration);
                         }, "重绑独立源资源"))
                             return "源引用提交失败。";
                         AssetDatabase.SaveAssetIfDirty(m_Request.SerializedOwner);
@@ -541,7 +542,7 @@ namespace BTSMTL.Timeline.Editor
             foreach (TimelineTrackContract contract in ContractCatalog.Tracks)
             {
                 TimelineTrackContract candidate = contract;
-                IReadOnlyList<TimelineAuthoringTrackFieldAttribute> fields = TimelineAuthoringTrackBinding.GetFields(candidate.Kind);
+                IReadOnlyList<TimelineAuthoringTrackField> fields = TimelineAuthoringTrackBinding.GetFields(candidate.Kind);
                 menu.AddItem(new GUIContent(DisplayKind(candidate.Kind)), false, () => ShowTrackCreationPopup(candidate.Kind, fields));
             }
             menu.ShowAsContext();
@@ -616,7 +617,7 @@ namespace BTSMTL.Timeline.Editor
             {
                 ScriptableObject graph = m_Request.AuthoringHost.CreateGraph(
                     m_Request.SerializedOwner, $"{formalTrack.Source.Name} Marker {time:0.#########}s", true);
-                added = formalTrack.Source.AddMarker(m_Session.SnapTime(OrchestrationTime.FromSeconds(Math.Max(0d, time))), graph);
+                added = formalTrack.Source.EnsureMarker(AuthoringIdentity.Create(), m_Session.SnapTime(OrchestrationTime.FromSeconds(Math.Max(0d, time))), graph);
             }, "Add Timeline Marker") && m_Markers.TryGetValue(added.AuthoringId, out BtsmtlTimelineMarkerBinding binding))
                 Select(binding);
         }
@@ -783,7 +784,7 @@ namespace BTSMTL.Timeline.Editor
         {
             if (IsReadOnly)
                 return;
-            ApplyImmediate(() => Timeline.AddSection("Section", m_Session.SnapTime(OrchestrationTime.FromSeconds(Math.Max(0d, time)))), "Add Timeline Section");
+            ApplyImmediate(() => Timeline.EnsureSection(AuthoringIdentity.Create(), "Section", m_Session.SnapTime(OrchestrationTime.FromSeconds(Math.Max(0d, time)))), "Add Timeline Section");
         }
 
         public bool CanPasteClip => m_CopiedClip != null;
@@ -1061,7 +1062,7 @@ namespace BTSMTL.Timeline.Editor
             }
         }
 
-        void ShowTrackCreationPopup(string kind, IReadOnlyList<TimelineAuthoringTrackFieldAttribute> fields)
+        void ShowTrackCreationPopup(string kind, IReadOnlyList<TimelineAuthoringTrackField> fields)
         {
             PopupWindow.Show(new Rect(m_PopupPosition, Vector2.zero), new TimelineTrackCreationPopup(
                 kind,
@@ -1086,10 +1087,8 @@ namespace BTSMTL.Timeline.Editor
                 if (!ApplyImmediate(() =>
                 {
                     Type trackType = TimelineAuthoringTypeCatalog.RequireTrackType(kind);
-                    int count = Timeline.Tracks.Count;
-                    Timeline.AddTrack(trackType, ContractCatalog);
-                    added = Timeline.Tracks[count];
-                    added.Name = string.IsNullOrWhiteSpace(name) ? DisplayKind(kind) : name.Trim();
+                    added = Timeline.EnsureTrack(trackType, ContractCatalog, AuthoringIdentity.Create(),
+                        string.IsNullOrWhiteSpace(name) ? DisplayKind(kind) : name.Trim());
                     TimelineAuthoringTrackBinding.Apply(added, values);
                 }, "Add Timeline Track"))
                     return "正式 Timeline Track 提交失败。";
@@ -1118,7 +1117,7 @@ namespace BTSMTL.Timeline.Editor
                 menu.AddItem(new GUIContent(creation.CreateSourceLabel), false, () =>
                     m_Request.AuthoringHost.ShowSourceCreation(Session.GridPipeline, creation.SourceAssetType, null, resource =>
                     {
-                        if (!ApplyImmediate(() => Timeline.AddClip(ContractCatalog, resource, track.Source,
+                        if (!ApplyImmediate(() => Timeline.EnsureClip(ContractCatalog, track.Source, AuthoringIdentity.Create(), resource,
                             m_Session.SnapTime(OrchestrationTime.FromSeconds(time), null)), "创建源片段"))
                             return "源片段提交失败。";
                         AssetDatabase.SaveAssetIfDirty(m_Request.SerializedOwner);
@@ -1159,9 +1158,14 @@ namespace BTSMTL.Timeline.Editor
                 EndTime = defaultEndTime,
                 DefaultEndTime = defaultEndTime,
                 TimelineEndTime = Timeline.DurationTime,
-                Prototype = (Clip)Activator.CreateInstance(track.Source.ClipType, track.Source, startTime),
+                Prototype = (Clip)Activator.CreateInstance(track.Source.ClipType),
             };
-            request.Configuration = TimelineAuthoringClipBinding.Read(request.Prototype);
+            request.Prototype.Track = track.Source;
+            request.Prototype.ConfigureTimeRange(startTime, defaultEndTime);
+            request.Configuration = new TimelineAuthoringClipConfiguration();
+            foreach (TimelineAuthoringProperty property in TimelineAuthoringClipBinding.Properties(request.Prototype))
+                request.Configuration.Set(property.PropertyId,
+                    BTSMTL.Authoring.Graph.GraphAuthoringMemberBindings.Contract(request.Prototype)[property.PropertyId].Read(request.Prototype));
             if (isTreeClip)
                 request.NewTreeGraphName = "Timeline Tree";
             PopupWindow.Show(new Rect(m_PopupPosition, Vector2.zero), new TimelineClipCreationPopup(
@@ -1219,13 +1223,11 @@ namespace BTSMTL.Timeline.Editor
                         if (treeGraph == null)
                             treeGraph = m_Request.AuthoringHost.CreateGraph(m_Request.SerializedOwner, request.NewTreeGraphName, false);
                     }
-                    added = treeGraph != null
-                        ? Timeline.AddClip(ContractCatalog, treeGraph, track.Source, request.StartTime)
-                        : TimelineAuthoringTrackBinding.CreateClip(Timeline, ContractCatalog, track.Source,
-                            request.Resource, request.StartTime);
+                    added = Timeline.EnsureClip(ContractCatalog, track.Source, AuthoringIdentity.Create(),
+                        isTreeClip ? treeGraph : request.Resource, request.StartTime,
+                        terminalLogicTreeClip ? terminalTime : presentationLayoutEnd);
                     if (added is TreeClip treeClip && track.Source.ExecutionDomain == TimelineExecutionDomain.Presentation)
                         treeClip.SetExitSource(request.TreeExitSource);
-                    added.ConfigureTimeRange(added.StartTime, terminalLogicTreeClip ? terminalTime : presentationLayoutEnd);
                     TimelineAuthoringClipBinding.Configure(Timeline, added, request.Configuration);
                     added.Track.UpdateMix();
                 }, "Add Timeline Clip"))

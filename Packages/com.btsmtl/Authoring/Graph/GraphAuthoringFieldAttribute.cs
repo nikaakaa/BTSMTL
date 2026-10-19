@@ -2,7 +2,7 @@ using System;
 
 namespace BTSMTL.Authoring.Graph
 {
-    [AttributeUsage(AttributeTargets.Class, Inherited = true, AllowMultiple = true)]
+    [AttributeUsage(AttributeTargets.Property | AttributeTargets.Field, Inherited = true)]
     public sealed class GraphAuthoringFieldAttribute : Attribute
     {
         public GraphAuthoringFieldAttribute(
@@ -43,24 +43,55 @@ namespace BTSMTL.Authoring.Graph
         public bool Finite { get; set; }
         public bool NonEmpty { get; set; }
         public string[] AllowedValues { get; set; }
-        public bool HasDefaultValue { get; set; }
-        public string DefaultValue { get; set; }
         public string PickerKind { get; set; }
         public string PickerOwnerField { get; set; }
-        public string ReadMember { get; set; }
-        public string ReadOperation { get; set; }
-        public string ChoicesMember { get; set; }
         public string ResourceDomain { get; set; }
         public Type ResourceContextType { get; set; }
-        public string ResourceContextMember { get; set; }
         public bool ResourceNavigation { get; set; }
-        public string ResourceAssetBindingMember { get; set; }
-        public string WriteMember { get; set; }
-        public string WriteParameter { get; set; }
-        public string DefaultMember { get; set; }
         public bool ReadOnly { get; set; }
         public bool AuthoringVisible { get; set; } = true;
         public string VisibleWhenField { get; set; }
         public string VisibleWhenValue { get; set; }
+    }
+
+    [AttributeUsage(AttributeTargets.Method)]
+    public sealed class GraphAuthoringConfigureAttribute : Attribute { }
+
+    [AttributeUsage(AttributeTargets.Class)]
+    public sealed class GraphAuthoringAnnotationAttribute : Attribute { }
+
+    [AttributeUsage(AttributeTargets.Property | AttributeTargets.Method, AllowMultiple = true)]
+    public sealed class GraphAuthoringChoicesAttribute : Attribute
+    {
+        public GraphAuthoringChoicesAttribute(string fieldId) => FieldId = fieldId;
+        public string FieldId { get; }
+    }
+
+    [AttributeUsage(AttributeTargets.Method)]
+    public sealed class GraphAuthoringEvaluateAttribute : Attribute
+    {
+        public GraphAuthoringEvaluateAttribute(string fieldId) => FieldId = fieldId;
+        public string FieldId { get; }
+    }
+
+    [AttributeUsage(AttributeTargets.Property | AttributeTargets.Method)]
+    public sealed class GraphAuthoringDefaultAttribute : Attribute
+    {
+        public GraphAuthoringDefaultAttribute(string fieldId) => FieldId = fieldId;
+        public string FieldId { get; }
+    }
+
+    [AttributeUsage(AttributeTargets.Property)]
+    public sealed class GraphAuthoringResourceOwnerAttribute : Attribute
+    {
+        public GraphAuthoringResourceOwnerAttribute(string fieldId) => FieldId = fieldId;
+        public string FieldId { get; }
+    }
+
+    [AttributeUsage(AttributeTargets.Method)]
+    public sealed class GraphAuthoringBindResourceAttribute : Attribute
+    {
+        public GraphAuthoringBindResourceAttribute(string fieldId) => FieldId = fieldId;
+        public string FieldId { get; }
     }
 }

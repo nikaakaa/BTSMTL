@@ -2,54 +2,54 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
+using BTSMTL.Authoring.Graph;
+using BTSMTL.Orchestration;
 using ThirdPersonSimulation;
 using UnityEngine;
 
 namespace BTSMTL.Timeline
 {
-    public enum TimelineAuthoringPropertyKind : byte
-    {
-        Text,
-        Boolean,
-        Integer,
-        Float,
-        Enum,
-        Vector2,
-        Object
-    }
+    public enum TimelineAuthoringSourceBoundary : byte { None, Start, End }
 
-    [AttributeUsage(AttributeTargets.Class, Inherited = true, AllowMultiple = true)]
+    [GraphAuthoringAnnotation]
+    [AttributeUsage(AttributeTargets.Property | AttributeTargets.Field)]
     public sealed class TimelineAuthoringPropertyAttribute : Attribute
     {
-        public TimelineAuthoringPropertyAttribute(string propertyId, TimelineAuthoringPropertyKind kind)
-        {
-            PropertyId = propertyId;
-            Kind = kind;
-        }
-
-        public TimelineAuthoringPropertyAttribute(string propertyId, Type enumType)
-            : this(propertyId, TimelineAuthoringPropertyKind.Enum)
-        {
-            EnumType = enumType;
-        }
-
-        public string PropertyId { get; }
-        public TimelineAuthoringPropertyKind Kind { get; }
-        public Type EnumType { get; }
-        public string MemberName { get; set; }
-        public bool Optional { get; set; }
         public bool Trimmed { get; set; }
-        public bool HasMinimum { get; set; }
-        public double Minimum { get; set; }
-        public bool HasMaximum { get; set; }
-        public double Maximum { get; set; }
-        public bool Finite { get; set; }
         public bool SourceMappingOnly { get; set; }
         public bool IsSourceAsset { get; set; }
+        public TimelineAuthoringSourceBoundary SourceBoundary { get; set; }
         public TimelineBindingValueKind[] BindingValueKinds { get; set; } = Array.Empty<TimelineBindingValueKind>();
         public TimelineBindingAccess BindingAccess { get; set; }
         public TimelineBindingLifetime BindingLifetime { get; set; }
+    }
+
+    public readonly struct TimelineAuthoringProperty
+    {
+        readonly GraphAuthoringMember m_Member;
+        readonly TimelineAuthoringPropertyAttribute m_Annotation;
+        public TimelineAuthoringProperty(GraphAuthoringMember member)
+        {
+            m_Member = member;
+            m_Annotation = member.Annotation<TimelineAuthoringPropertyAttribute>();
+        }
+        public string PropertyId => m_Member.Metadata.FieldId;
+        public GraphAuthoringFieldValueKind Kind => m_Member.Metadata.ValueKind;
+        public Type EnumType => m_Member.Metadata.EnumType;
+        public bool Optional => m_Member.Metadata.Optional;
+        public bool HasMinimum => m_Member.Metadata.HasMinimum;
+        public double Minimum => m_Member.Metadata.Minimum;
+        public bool HasMaximum => m_Member.Metadata.HasMaximum;
+        public double Maximum => m_Member.Metadata.Maximum;
+        public bool Finite => m_Member.Metadata.Finite;
+        public bool Trimmed => m_Annotation?.Trimmed == true;
+        public bool SourceMappingOnly => m_Annotation?.SourceMappingOnly == true;
+        public bool IsSourceAsset => m_Annotation?.IsSourceAsset == true;
+        public TimelineAuthoringSourceBoundary SourceBoundary => m_Annotation?.SourceBoundary ?? TimelineAuthoringSourceBoundary.None;
+        public IReadOnlyList<TimelineBindingValueKind> BindingValueKinds =>
+            m_Annotation?.BindingValueKinds ?? Array.Empty<TimelineBindingValueKind>();
+        public TimelineBindingAccess BindingAccess => m_Annotation.BindingAccess;
+        public TimelineBindingLifetime BindingLifetime => m_Annotation.BindingLifetime;
         public bool Supports(Clip clip) => Supports(clip, TimelineAuthoringClipBinding.SourceAsset(clip));
         public bool Supports(Clip clip, UnityEngine.Object source) =>
             !SourceMappingOnly || source is ITimelineAuthoringSourceAsset;
@@ -66,78 +66,59 @@ namespace BTSMTL.Timeline
 
     public sealed class TimelineAuthoringClipConfiguration
     {
-        readonly Dictionary<string, object> m_Values = new Dictionary<string, object>(StringComparer.Ordinal);
+        readonly Dictionary<string, object> m_Values = new(StringComparer.Ordinal);
         public object this[string propertyId]
         {
             get => m_Values[propertyId];
             set => m_Values[propertyId] = value;
         }
+        public IReadOnlyDictionary<string, object> Values => m_Values;
         public T Get<T>(string propertyId) => (T)m_Values[propertyId];
         public void Set(string propertyId, object value) => m_Values[propertyId] = value;
     }
 
     public static class TimelineAuthoringClipBinding
     {
-        const BindingFlags Members = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
-
         public static UnityEngine.Object SourceAsset(Clip clip) =>
-            clip is ITimelineAuthoringClipSource source ? source.SourceAsset : null;
+            GraphAuthoringMemberBindings.Contract(clip).Fields
+                .Where(field => field.Annotation<TimelineAuthoringPropertyAttribute>()?.IsSourceAsset == true)
+                .Select(field => (UnityEngine.Object)field.Read(clip))
+                .SingleOrDefault();
 
-        public static IReadOnlyList<TimelineAuthoringPropertyAttribute> Properties(Clip clip) =>
-            clip.GetType().GetCustomAttributes(typeof(TimelineAuthoringPropertyAttribute), true)
-                .Cast<TimelineAuthoringPropertyAttribute>()
-                .OrderBy(property => property.PropertyId, StringComparer.Ordinal).ToArray();
+        public static OrchestrationTime DefaultEndTime(Clip clip, OrchestrationTime startTime,
+            UnityEngine.Object referenceObject) =>
+            clip is ITimelineAuthoringClipSource source && referenceObject
+                ? startTime + OrchestrationTime.FromSeconds(source.GetSourceDuration(referenceObject))
+                : startTime + (clip is SignalClip ? TimelineTimeGrid.Position(1, TimelineUtility.FrameRate) : OrchestrationTime.FromSeconds(0.05d));
+
+        public static IReadOnlyList<TimelineAuthoringProperty> Properties(Clip clip) =>
+            GraphAuthoringMemberBindings.Contract(clip).Fields
+                .Where(field => field.Metadata.AuthoringVisible)
+                .OrderBy(field => field.Metadata.FieldId, StringComparer.Ordinal)
+                .Select(field => new TimelineAuthoringProperty(field)).ToArray();
 
         public static TimelineAuthoringClipConfiguration Read(Clip clip)
         {
             var result = new TimelineAuthoringClipConfiguration();
-            foreach (TimelineAuthoringPropertyAttribute property in Properties(clip))
-            {
-                MemberInfo member = RequireMember(clip.GetType(), property.MemberName);
-                result.Set(property.PropertyId, member is PropertyInfo info
-                    ? info.GetValue(clip)
-                    : ((FieldInfo)member).GetValue(clip));
-            }
+            foreach (GraphAuthoringMember member in GraphAuthoringMemberBindings.Contract(clip).Fields)
+                result.Set(member.Metadata.FieldId, member.Read(clip));
             return result;
         }
 
-        public static TimelineAuthoringClipConfiguration Defaults(Clip clip) =>
-            ((Clip)Activator.CreateInstance(clip.GetType(), clip.Track, clip.StartTime)).CaptureAuthoringDefaults();
-
-        public static Type ValueType(Clip clip, TimelineAuthoringPropertyAttribute property)
+        public static TimelineAuthoringClipConfiguration Defaults(Clip clip)
         {
-            MemberInfo member = RequireMember(clip.GetType(), property.MemberName);
-            return member is PropertyInfo info ? info.PropertyType : ((FieldInfo)member).FieldType;
+            var result = new TimelineAuthoringClipConfiguration();
+            foreach (KeyValuePair<string, object> field in GraphAuthoringMemberBindings.ReadDefaults(clip.GetType()))
+                result.Set(field.Key, field.Value);
+            return result;
         }
+
+        public static Type ValueType(Clip clip, TimelineAuthoringProperty property) =>
+            GraphAuthoringMemberBindings.ValueType(clip.GetType(), property.PropertyId);
 
         public static void Configure(TimelineData timeline, Clip clip,
             TimelineAuthoringClipConfiguration configuration) =>
-            clip.ApplyAuthoringConfiguration(configuration);
-
-        public static void ApplyMembers(Clip clip, TimelineAuthoringClipConfiguration configuration)
-        {
-            foreach (TimelineAuthoringPropertyAttribute property in Properties(clip))
-            {
-                MemberInfo member = RequireMember(clip.GetType(), property.MemberName);
-                object value = configuration[property.PropertyId];
-                if (member is PropertyInfo info)
-                    info.SetValue(clip, value);
-                else
-                    ((FieldInfo)member).SetValue(clip, value);
-            }
-        }
-
-        static MemberInfo RequireMember(Type owner, string name)
-        {
-            for (Type type = owner; type != null; type = type.BaseType)
-            {
-                MemberInfo member = type.GetProperty(name, Members | BindingFlags.DeclaredOnly) ??
-                    (MemberInfo)type.GetField(name, Members | BindingFlags.DeclaredOnly);
-                if (member != null)
-                    return member;
-            }
-            throw new InvalidOperationException($"Timeline authoring member '{owner.FullName}.{name}' is not declared.");
-        }
+            GraphAuthoringMemberBindings.Apply(clip, configuration.Values);
     }
 }
 #endif

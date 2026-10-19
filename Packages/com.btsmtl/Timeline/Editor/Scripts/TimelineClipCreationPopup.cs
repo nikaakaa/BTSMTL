@@ -31,7 +31,7 @@ namespace BTSMTL.Timeline.Editor
         readonly TimelineClipCreationRequest m_Request;
         readonly IReadOnlyList<TimelineExternalBindingDeclaration> m_Bindings;
         readonly Func<TimelineClipCreationRequest, string> m_Create;
-        readonly IReadOnlyList<TimelineAuthoringPropertyAttribute> m_Properties;
+        readonly IReadOnlyList<TimelineAuthoringProperty> m_Properties;
         string m_Error;
         string m_SubmitError;
 
@@ -79,18 +79,18 @@ namespace BTSMTL.Timeline.Editor
                     if (m_Request.EndTime == m_Request.DefaultEndTime)
                         m_Request.EndTime = end;
                     m_Request.DefaultEndTime = end;
-                    foreach (TimelineAuthoringPropertyAttribute property in m_Properties)
+                    foreach (TimelineAuthoringProperty property in m_Properties)
                     {
                         if (property.IsSourceAsset)
                             m_Request.Configuration.Set(property.PropertyId, m_Request.Resource);
-                        if (property.MemberName == nameof(SampledClip.SourceStartTime))
+                        if (property.SourceBoundary == TimelineAuthoringSourceBoundary.Start)
                             m_Request.Configuration.Set(property.PropertyId, 0f);
-                        if (property.MemberName == nameof(SampledClip.SourceEndTime))
+                        if (property.SourceBoundary == TimelineAuthoringSourceBoundary.End)
                             m_Request.Configuration.Set(property.PropertyId, duration);
                     }
                 }
             }
-            foreach (TimelineAuthoringPropertyAttribute property in m_Properties)
+            foreach (TimelineAuthoringProperty property in m_Properties)
             {
                 if (property.IsSourceAsset || !property.Supports(m_Request.Prototype, m_Request.Resource))
                     continue;

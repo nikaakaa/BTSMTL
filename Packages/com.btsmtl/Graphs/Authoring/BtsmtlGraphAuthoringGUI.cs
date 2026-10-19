@@ -3,7 +3,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using BTSMTL.Authoring.Blackboard;
 using BTSMTL.Authoring.Graph;
 using FlowCanvas;
@@ -23,7 +22,7 @@ namespace BTSMTL.Graphs
         {
             if (!s_Fields.TryGetValue(type, out GraphAuthoringFieldAttribute[] fields))
             {
-                fields = type.GetCustomAttributes<GraphAuthoringFieldAttribute>(true).ToArray();
+                fields = GraphAuthoringMemberBindings.Contract(type).Fields.Select(field => field.Metadata).ToArray();
                 s_Fields.Add(type, fields);
             }
             return fields;
@@ -54,7 +53,7 @@ namespace BTSMTL.Graphs
             {
                 if (!field.AuthoringVisible)
                     continue;
-                GraphAuthoringMemberBindings.TryRead(target, field.FieldId, out object value);
+                object value = GraphAuthoringMemberBindings.Contract(target)[field.FieldId].Read(target);
                 Type valueType = GraphAuthoringMemberBindings.ValueType(type, field.FieldId);
                 EditorGUI.BeginDisabledGroup(field.ReadOnly);
                 EditorGUI.BeginChangeCheck();

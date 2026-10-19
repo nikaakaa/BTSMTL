@@ -40,10 +40,6 @@ namespace BTSMTL.Timeline
             SourceStartTime, SourceEndTime, OtherEaseInTime, OtherEaseOutTime);
 
 #if UNITY_EDITOR
-        protected SampledClip(Track track, OrchestrationTime time) : base(track, time)
-        {
-        }
-
         public void ConfigureSourceRange(float sourceStartTime, float sourceEndTime)
         {
             m_SourceStartTime = sourceStartTime;

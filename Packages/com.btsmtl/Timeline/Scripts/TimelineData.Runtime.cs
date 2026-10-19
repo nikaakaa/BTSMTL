@@ -127,15 +127,17 @@ namespace BTSMTL.Timeline
             m_AuthoringId = AuthoringIdentity.Create();
         }
 
-        public TimelineMarker AddMarker(OrchestrationTime time, ScriptableObject graph, bool forceTriggerOnInitialSeek = false)
+        public TimelineMarker EnsureMarker(string identity, OrchestrationTime time, ScriptableObject graph, bool forceTriggerOnInitialSeek = false)
         {
-            if (time < OrchestrationTime.Zero)
-                throw new ArgumentOutOfRangeException(nameof(time));
-            var marker = new TimelineMarker();
-            marker.EnsureAuthoringIdentity();
+            TimelineMarker marker = m_Markers.SingleOrDefault(value => value.AuthoringId == identity);
+            if (marker == null)
+            {
+                marker = new TimelineMarker();
+                m_Markers.Add(marker);
+            }
+            marker.ConfigureAuthoringIdentity(identity);
             marker.Configure(time, graph, forceTriggerOnInitialSeek);
-            marker.Init(this);
-            m_Markers.Add(marker);
+            marker.BindTrack(this);
             return marker;
         }
 
@@ -283,56 +285,55 @@ namespace BTSMTL.Timeline
         public UnityEditor.SerializedObject SerializedTimeline;
         public UnityEditor.SerializedProperty SerializedData;
 
-        public void AddTrack(Type type, TimelineContractCatalog catalog)
+        public Track EnsureTrack(Type type, TimelineContractCatalog catalog, string identity, string name,
+            TimelineExecutionDomain? executionDomain = null, bool muted = false)
         {
             if (catalog == null)
                 throw new ArgumentNullException(nameof(catalog));
-            Track track = Activator.CreateInstance(type) as Track;
-            TimelineTrackContract contract = catalog.RequireTrack(track?.ContractKind);
-            track.RegenerateAuthoringIdentity();
-            track.ConfigureExecutionDomain(contract.ExecutionPolicy.Domain);
-            track.Name = type.Name.Replace("Track", string.Empty);
-            m_Tracks.Add(track);
-            track.Init(this);
+            Track track = m_Tracks.SingleOrDefault(value => value.AuthoringId == identity);
+            if (track != null && track.GetType() != type)
+                throw new InvalidOperationException($"Timeline track identity '{identity}' has a different type.");
+            if (track == null)
+            {
+                track = (Track)Activator.CreateInstance(type);
+                m_Tracks.Add(track);
+            }
+            TimelineTrackContract contract = catalog.RequireTrack(track.ContractKind);
+            TimelineExecutionDomain domain = executionDomain ?? contract.ExecutionPolicy.Domain;
+            if (!contract.SupportsExecutionDomain(domain))
+                throw new InvalidOperationException($"Timeline track '{contract.Kind}' does not support execution domain '{domain}'.");
+            track.ConfigureAuthoringIdentity(identity);
+            track.ConfigureExecutionDomain(domain);
+            track.Name = name ?? type.Name.Replace("Track", string.Empty);
+            track.PersistentMuted = muted;
+            track.BindTimeline(this);
             Init();
+            return track;
         }
         public void RemoveTrack(Track track)
         {
             m_Tracks.Remove(track);
             Init();
         }
-        public Clip AddClip(TimelineContractCatalog catalog, Track track, OrchestrationTime time)
+        public Clip EnsureClip(TimelineContractCatalog catalog, Track track, string identity,
+            UnityEngine.Object referenceObject, OrchestrationTime startTime, OrchestrationTime? endTime = null,
+            OrchestrationTime easeIn = default, OrchestrationTime easeOut = default, OrchestrationTime clipIn = default)
         {
             if (catalog == null)
                 throw new ArgumentNullException(nameof(catalog));
-            Clip clip = track.AddClip(time);
-            try
-            {
-                catalog.RequireClipPlacement(track, clip);
-            }
-            catch
-            {
-                track.RemoveClip(clip);
-                throw;
-            }
-            Init();
-            return clip;
-        }
-        public Clip AddClip(TimelineContractCatalog catalog, UnityEngine.Object referenceObject, Track track, OrchestrationTime time)
-        {
-            if (catalog == null)
-                throw new ArgumentNullException(nameof(catalog));
-            Clip clip = track.AddClip(referenceObject, time);
-            try
-            {
-                catalog.RequireClipPlacement(track, clip);
-            }
-            catch
-            {
-                if (clip != null)
-                    track.RemoveClip(clip);
-                throw;
-            }
+            Clip clip = m_Tracks.SelectMany(value => value.Clips).SingleOrDefault(value => value.AuthoringId == identity);
+            if (clip != null && clip.GetType() != track.ClipType)
+                throw new InvalidOperationException($"Timeline clip identity '{identity}' has a different type.");
+            if (clip == null)
+                clip = (Clip)Activator.CreateInstance(track.ClipType);
+            PlaceClip(clip, track);
+            clip.ConfigureAuthoringIdentity(identity);
+            clip.ConfigureAuthoringReference(referenceObject);
+            clip.ConfigureTimeRange(startTime, endTime ?? TimelineAuthoringClipBinding.DefaultEndTime(clip, startTime, referenceObject));
+            clip.ConfigureEase(easeIn, easeOut);
+            clip.ConfigureClipIn(clipIn);
+            catalog.RequireClipPlacement(track, clip);
+            track.UpdateMix();
             Init();
             return clip;
         }
@@ -356,14 +357,11 @@ namespace BTSMTL.Timeline
                     }
                     if (!overlaps)
                         continue;
-                    AddTrack(track.GetType(), catalog);
-                    Track destination = m_Tracks[m_Tracks.Count - 1];
-                    m_Tracks.RemoveAt(m_Tracks.Count - 1);
+                    Track destination = EnsureTrack(track.GetType(), catalog,
+                        new Guid(StableHash.Compute("timeline.track", track.AuthoringId, clip.AuthoringId).Value.Substring(0, 32)).ToString("D"),
+                        clip.Name, track.ExecutionDomain, track.PersistentMuted);
+                    m_Tracks.Remove(destination);
                     m_Tracks.Insert(insertionIndex++, destination);
-                    destination.ConfigureAuthoringIdentity(new Guid(StableHash.Compute("timeline.track", track.AuthoringId, clip.AuthoringId).Value.Substring(0, 32)).ToString("D"));
-                    destination.Name = clip.Name;
-                    destination.ConfigureExecutionDomain(track.ExecutionDomain);
-                    destination.PersistentMuted = track.PersistentMuted;
                     MoveClip(catalog, clip, destination);
                     clipIndex--;
                 }
@@ -372,17 +370,27 @@ namespace BTSMTL.Timeline
 
         public void MoveClip(TimelineContractCatalog catalog, Clip clip, Track destination)
         {
-            Track source = clip.Track;
-            if (source == destination)
+            if (clip.Track == destination)
                 return;
-            if (!m_Tracks.Contains(source) || !m_Tracks.Contains(destination) || source.ExecutionDomain != destination.ExecutionDomain)
-                throw new InvalidOperationException("移动片段必须使用同一Timeline内、执行域相同的轨道。");
             catalog.RequireClipPlacement(destination, clip);
-            source.RemoveClip(clip);
-            destination.Clips.Add(clip);
-            clip.Init(destination);
+            PlaceClip(clip, destination);
             destination.UpdateMix();
             Init();
+        }
+
+        void PlaceClip(Clip clip, Track destination)
+        {
+            Track source = clip.Track;
+            if (!m_Tracks.Contains(destination) || source != null && source != destination &&
+                (!m_Tracks.Contains(source) || source.ExecutionDomain != destination.ExecutionDomain))
+                throw new InvalidOperationException("片段必须属于当前Timeline的轨道，跨轨道移动必须保持执行域。");
+            if (source != destination)
+            {
+                if (source != null)
+                    source.RemoveClip(clip);
+                destination.Clips.Add(clip);
+            }
+            clip.BindTrack(destination);
         }
 
         public void RemoveClip(Clip clip)
@@ -391,17 +399,8 @@ namespace BTSMTL.Timeline
 
             Init();
         }
-        public TimelineSection AddSection(string name, OrchestrationTime time)
-        {
-            TimelineSection section = TimelineSection.Create(name, time);
-            if (m_Sections.Exists(value => value != null && string.Equals(value.Name, section.Name, StringComparison.Ordinal)))
-                throw new InvalidOperationException($"Timeline Section '{section.Name}' already exists.");
-            m_Sections.Add(section);
-            SortSections();
-            Init();
-            return section;
-        }
-        public TimelineExternalBindingDeclaration AddExternalBinding(
+        public TimelineExternalBindingDeclaration EnsureExternalBinding(
+            string identity,
             string bindingId,
             string displayName,
             string domain,
@@ -410,17 +409,16 @@ namespace BTSMTL.Timeline
             TimelineBindingLifetime lifetime,
             string parameterId = null)
         {
-            TimelineExternalBindingDeclaration binding = TimelineExternalBindingDeclaration.Create(
-                bindingId,
-                displayName,
-                domain,
-                valueKind,
-                access,
-                lifetime,
-                parameterId);
-            if (m_ExternalBindings.Exists(value => value != null && string.Equals(value.BindingId, binding.BindingId, StringComparison.Ordinal)))
+            TimelineExternalBindingDeclaration binding = m_ExternalBindings.SingleOrDefault(value => value.AuthoringId == identity);
+            if (binding == null)
+            {
+                binding = new TimelineExternalBindingDeclaration();
+                m_ExternalBindings.Add(binding);
+            }
+            binding.ConfigureAuthoringIdentity(identity);
+            binding.Configure(bindingId, displayName, domain, valueKind, access, lifetime, parameterId);
+            if (m_ExternalBindings.Exists(value => value != binding && value.BindingId == binding.BindingId))
                 throw new InvalidOperationException($"Timeline external binding '{binding.BindingId}' already exists.");
-            m_ExternalBindings.Add(binding);
             AuthoringRevision++;
             OnValueChanged?.Invoke();
             return binding;
@@ -439,9 +437,10 @@ namespace BTSMTL.Timeline
                 value != null && string.Equals(value.AuthoringId, authoringId, StringComparison.Ordinal));
             if (section == null)
             {
-                section = TimelineSection.Create(authoringId, name, time);
+                section = new TimelineSection();
                 m_Sections.Add(section);
             }
+            section.ConfigureAuthoringIdentity(authoringId);
             ConfigureSection(section, name, time);
             return section;
         }
@@ -656,18 +655,6 @@ namespace BTSMTL.Timeline
 
         public virtual Type ClipType => typeof(Clip);
 
-        public virtual Clip AddClip(OrchestrationTime time)
-        {
-            Clip clip = Activator.CreateInstance(ClipType, this, time) as Clip;
-            clip.RegenerateAuthoringIdentity();
-            m_Clips.Add(clip);
-            return clip;
-        }
-        public virtual Clip AddClip(UnityEngine.Object referenceObject, OrchestrationTime time)
-        {
-            return null;
-        }
-
         public void RemoveClip(Clip clip)
         {
             m_Clips.Remove(clip);
@@ -706,16 +693,11 @@ namespace BTSMTL.Timeline
 
         public virtual OrchestrationTime Length => DurationTime;
         public virtual ClipCapabilities Capabilities => ClipCapabilities.None;
-        public virtual void ApplyAuthoringConfiguration(TimelineAuthoringClipConfiguration configuration) =>
-            TimelineAuthoringClipBinding.ApplyMembers(this, configuration);
-        public virtual TimelineAuthoringClipConfiguration CaptureAuthoringDefaults() =>
-            TimelineAuthoringClipBinding.Read(this);
 
-        public Clip() { }
-        public Clip(Track track, OrchestrationTime time)
+        public virtual void ConfigureAuthoringReference(UnityEngine.Object referenceObject)
         {
-            Track = track;
-            ConfigureTimeRange(time, time + OrchestrationTime.FromSeconds(0.05d));
+            if (referenceObject)
+                throw new ArgumentException($"Timeline clip '{ContractKind}' 不接受素材引用。", nameof(referenceObject));
         }
 
         public void UpdateMix()
@@ -814,12 +796,5 @@ namespace BTSMTL.Timeline
         }
     }
 
-    public abstract partial class SignalClip
-    {
-        protected SignalClip(Track track, OrchestrationTime time) : base(track, time)
-        {
-            ConfigureTimeRange(time, time + TimelineTimeGrid.Position(1, TimelineUtility.FrameRate));
-        }
-    } 
 #endif
 }

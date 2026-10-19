@@ -173,21 +173,24 @@ namespace BTSMTL.Authoring.Graph
 
     public sealed class GraphAuthoringResourceReference
     {
-        public GraphAuthoringResourceReference(string domain, Type contextType, string contextMember, bool navigation,
-            string assetBindingMember)
+        public GraphAuthoringResourceReference(string domain, Type contextType, bool navigation,
+            Func<object, UnityEngine.Object> readOwner, Action<object, UnityEngine.Object> writeOwner,
+            Func<object, UnityEngine.Object, object> bindAsset)
         {
             Domain = domain;
             ContextType = contextType;
-            ContextMember = contextMember;
             Navigation = navigation;
-            AssetBindingMember = assetBindingMember;
+            ReadOwner = readOwner;
+            WriteOwner = writeOwner;
+            BindAsset = bindAsset;
         }
 
         public string Domain { get; }
         public Type ContextType { get; }
-        public string ContextMember { get; }
         public bool Navigation { get; }
-        public string AssetBindingMember { get; }
+        public Func<object, UnityEngine.Object> ReadOwner { get; }
+        public Action<object, UnityEngine.Object> WriteOwner { get; }
+        public Func<object, UnityEngine.Object, object> BindAsset { get; }
     }
 
     public sealed class GraphAuthoringFieldDescriptor
@@ -248,15 +251,26 @@ namespace BTSMTL.Authoring.Graph
 
     public readonly struct GraphAuthoringFieldValue
     {
+        readonly string m_FieldId;
+
+        public GraphAuthoringFieldValue(string fieldId, object value)
+        {
+            m_FieldId = fieldId;
+            Field = null;
+            Value = value;
+        }
+
         public GraphAuthoringFieldValue(
             GraphAuthoringFieldDescriptor field,
             object value)
         {
+            m_FieldId = null;
             Field = field ?? throw new ArgumentNullException(nameof(field));
             Value = value;
         }
 
         public GraphAuthoringFieldDescriptor Field { get; }
+        public string FieldId => Field == null ? m_FieldId : Field.FieldId.Value;
         public object Value { get; }
         public bool IsMissing => Value == null || Value is UnityEngine.Object asset && !asset;
         public string CanonicalValue => Value switch

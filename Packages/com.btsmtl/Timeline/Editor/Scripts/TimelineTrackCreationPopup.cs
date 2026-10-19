@@ -8,10 +8,8 @@ namespace BTSMTL.Timeline.Editor
 {
     sealed class TimelineTrackCreationPopup : PopupWindowContent
     {
-        static readonly string[] s_ExecutionDomains = { "Logic", "Presentation" };
-
         readonly string m_Kind;
-        readonly IReadOnlyList<TimelineAuthoringTrackFieldAttribute> m_Fields;
+        readonly IReadOnlyList<TimelineAuthoringTrackField> m_Fields;
         readonly Func<string, IReadOnlyDictionary<string, string>, string> m_Create;
         readonly Dictionary<string, string> m_Values = new Dictionary<string, string>(StringComparer.Ordinal);
         string m_Name;
@@ -21,11 +19,11 @@ namespace BTSMTL.Timeline.Editor
         public TimelineTrackCreationPopup(
             string kind,
             string displayName,
-            IReadOnlyList<TimelineAuthoringTrackFieldAttribute> fields,
+            IReadOnlyList<TimelineAuthoringTrackField> fields,
             Func<string, IReadOnlyDictionary<string, string>, string> create)
         {
             m_Kind = kind;
-            m_Fields = fields ?? Array.Empty<TimelineAuthoringTrackFieldAttribute>();
+            m_Fields = fields ?? Array.Empty<TimelineAuthoringTrackField>();
             m_Create = create;
             m_Name = displayName;
         }
@@ -38,15 +36,16 @@ namespace BTSMTL.Timeline.Editor
             m_Name = EditorGUILayout.TextField("Name", m_Name);
             for (int index = 0; index < m_Fields.Count; index++)
             {
-                TimelineAuthoringTrackFieldAttribute field = m_Fields[index];
+                TimelineAuthoringTrackField field = m_Fields[index];
                 string value = m_Values.TryGetValue(field.FieldId, out string current) ? current : string.Empty;
-                if (string.Equals(field.FieldId, "executionDomain", StringComparison.Ordinal))
+                if (field.ValueKind == BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.Enum)
                 {
-                    int selected = Array.IndexOf(s_ExecutionDomains, value);
-                    m_Values[field.FieldId] = s_ExecutionDomains[EditorGUILayout.Popup(
+                    string[] options = new List<string>(field.AllowedValues).ToArray();
+                    int selected = Array.IndexOf(options, value);
+                    m_Values[field.FieldId] = options[EditorGUILayout.Popup(
                         DisplayName(field.FieldId),
                         selected < 0 ? 0 : selected,
-                        s_ExecutionDomains)];
+                        options)];
                 }
                 else
                     m_Values[field.FieldId] = EditorGUILayout.TextField(DisplayName(field.FieldId), value);

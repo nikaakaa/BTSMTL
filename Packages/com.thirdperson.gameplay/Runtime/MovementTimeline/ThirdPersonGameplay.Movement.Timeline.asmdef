@@ -2,6 +2,7 @@
     "name": "ThirdPersonGameplay.Movement.Timeline",
     "rootNamespace": "ThirdPersonGameplay.Movement.Timeline",
     "references": [
+        "BTSMTL.Authoring",
         "BTSMTL",
         "BTSMTL.Diagnostics",
         "BTSMTL.Orchestration.Contracts",

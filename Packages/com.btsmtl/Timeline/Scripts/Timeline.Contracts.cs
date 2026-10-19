@@ -105,23 +105,6 @@ namespace BTSMTL.Timeline
         public TimelineBindingAccess Access => m_Access;
         public TimelineBindingLifetime Lifetime => m_Lifetime;
 
-        public static TimelineExternalBindingDeclaration Create(
-            string bindingId,
-            string displayName,
-            string domain,
-            TimelineBindingValueKind valueKind,
-            TimelineBindingAccess access,
-            TimelineBindingLifetime lifetime,
-            string parameterId = null)
-        {
-            var declaration = new TimelineExternalBindingDeclaration
-            {
-                m_AuthoringId = AuthoringIdentity.Create()
-            };
-            declaration.Configure(bindingId, displayName, domain, valueKind, access, lifetime, parameterId);
-            return declaration;
-        }
-
         public void Configure(
             string bindingId,
             string displayName,

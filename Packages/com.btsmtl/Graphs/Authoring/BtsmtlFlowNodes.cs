@@ -23,10 +23,7 @@ namespace BTSMTL.Graphs
     }
 
     [Serializable]
-    [GraphAuthoringField("name", GraphAuthoringFieldValueKind.String,
-        ReadMember = nameof(Name), WriteMember = nameof(ConfigureName), WriteParameter = "name",
-        DefaultMember = nameof(Name), DisplayName = "名称")]
-    public sealed class BtsmtlGraphStepPort : IBtsmtlGraphStepPort
+    public sealed partial class BtsmtlGraphStepPort : IBtsmtlGraphStepPort
     {
         [SerializeField] string m_Id;
         [SerializeField] string m_Name;
@@ -38,7 +35,9 @@ namespace BTSMTL.Graphs
             m_Name = name;
         }
         public string Id => m_Id;
+        [GraphAuthoringField("name", GraphAuthoringFieldValueKind.String, DisplayName = "名称")]
         public string Name => m_Name;
+        [GraphAuthoringConfigure]
         public void ConfigureName(string name) => m_Name = name;
     }
 
@@ -79,21 +78,21 @@ namespace BTSMTL.Graphs
 #endif
     }
 
-    [GraphAuthoringField("steps", GraphAuthoringFieldValueKind.Object,
-        ReadMember = nameof(Steps), WriteMember = nameof(SetSteps), WriteParameter = "steps",
-        CompilationImpact = GraphAuthoringFieldCompilationImpact.Structure)]
-    public abstract class BtsmtlCompositeFlowNode<TStep> : BtsmtlFlowNode, IBtsmtlCompositeFlowNode
+    public abstract partial class BtsmtlCompositeFlowNode<TStep> : BtsmtlFlowNode, IBtsmtlCompositeFlowNode
         where TStep : IBtsmtlGraphStepPort
     {
         [SerializeField, GatherPortsCallback] List<TStep> m_Steps = new();
         protected BtsmtlCompositeFlowNode() { }
         protected BtsmtlCompositeFlowNode(IEnumerable<TStep> defaultSteps) => m_Steps = defaultSteps.ToList();
+        [GraphAuthoringField("steps", GraphAuthoringFieldValueKind.Object,
+            CompilationImpact = GraphAuthoringFieldCompilationImpact.Structure)]
         public IReadOnlyList<TStep> Steps => m_Steps;
         public int StepCount => m_Steps.Count;
         public IBtsmtlGraphStepPort GetStep(int index) => m_Steps[index];
         protected virtual bool HasExecutionInput => true;
         protected virtual string ExecutionInputId => "Input";
 
+        [GraphAuthoringConfigure]
         public void SetSteps(IEnumerable<TStep> steps)
         {
             List<TStep> next = steps.ToList();
@@ -153,18 +152,17 @@ namespace BTSMTL.Graphs
 
     [Name("并行执行"), Category("BTSMTL/流程")]
     [BtsmtlGraphOperation(OrchestrationOperationCode.Parallel)]
-    [GraphAuthoringField("mode", typeof(BtsmtlParallelMode),
-        ReadMember = nameof(Mode), WriteMember = nameof(ConfigureMode), WriteParameter = "mode",
-        DefaultMember = nameof(Mode), DisplayName = "完成方式",
-        CompilationImpact = GraphAuthoringFieldCompilationImpact.Structure)]
-    public sealed class BtsmtlParallelFlowNode : BtsmtlCompositeFlowNode<BtsmtlGraphStepPort>
+    public sealed partial class BtsmtlParallelFlowNode : BtsmtlCompositeFlowNode<BtsmtlGraphStepPort>
     {
         [SerializeField] BtsmtlParallelMode m_Mode;
         public BtsmtlParallelFlowNode() : base(new[]
         {
             new BtsmtlGraphStepPort("0", "步骤 1"), new BtsmtlGraphStepPort("1", "步骤 2")
         }) { }
+        [GraphAuthoringField("mode", typeof(BtsmtlParallelMode), DisplayName = "完成方式",
+            CompilationImpact = GraphAuthoringFieldCompilationImpact.Structure)]
         public BtsmtlParallelMode Mode => m_Mode;
+        [GraphAuthoringConfigure]
         public void ConfigureMode(BtsmtlParallelMode mode) => m_Mode = mode;
     }
 
@@ -190,22 +188,20 @@ namespace BTSMTL.Graphs
         void ConfigureVariable(string ownerId, string variableId);
     }
 
-    [GraphAuthoringField("ownerId", GraphAuthoringFieldValueKind.IdentityReference,
-        ReadMember = nameof(OwnerId), WriteMember = nameof(ConfigureVariable), WriteParameter = "ownerId",
-        DefaultMember = nameof(OwnerId), AuthoringVisible = false,
-        CompilationImpact = GraphAuthoringFieldCompilationImpact.Structure)]
-    [GraphAuthoringField("variableId", GraphAuthoringFieldValueKind.IdentityReference,
-        ReadMember = nameof(VariableId), WriteMember = nameof(ConfigureVariable), WriteParameter = "variableId",
-        DefaultMember = nameof(VariableId), DisplayName = "变量", PickerKind = "graph-variable",
-        PickerOwnerField = "ownerId", CompilationImpact = GraphAuthoringFieldCompilationImpact.Structure)]
-    public abstract class BtsmtlVariableFlowNode<T> : BtsmtlFlowNode, IBtsmtlVariableFlowNode
+    public abstract partial class BtsmtlVariableFlowNode<T> : BtsmtlFlowNode, IBtsmtlVariableFlowNode
     {
         [SerializeField] string m_OwnerId;
         [SerializeField] string m_VariableId;
+        [GraphAuthoringField("ownerId", GraphAuthoringFieldValueKind.IdentityReference, AuthoringVisible = false,
+            CompilationImpact = GraphAuthoringFieldCompilationImpact.Structure)]
         public string OwnerId => m_OwnerId;
+        [GraphAuthoringField("variableId", GraphAuthoringFieldValueKind.IdentityReference,
+            DisplayName = "变量", PickerKind = "graph-variable", PickerOwnerField = "ownerId",
+            CompilationImpact = GraphAuthoringFieldCompilationImpact.Structure)]
         public string VariableId => m_VariableId;
         public Type ValueType => typeof(T);
         public abstract bool Writes { get; }
+        [GraphAuthoringConfigure]
         public void ConfigureVariable(string ownerId, string variableId)
         {
             m_OwnerId = ownerId;
@@ -241,15 +237,14 @@ namespace BTSMTL.Graphs
     }
 
     [Name("读取宿主输入"), Category("BTSMTL/输入")]
-    [GraphAuthoringField("inputId", GraphAuthoringFieldValueKind.String,
-        ReadMember = nameof(InputId), WriteMember = nameof(ConfigureInput), WriteParameter = "inputId",
-        DefaultMember = nameof(InputId), DisplayName = "输入身份", NonEmpty = true,
-        CompilationImpact = GraphAuthoringFieldCompilationImpact.Structure)]
-    public sealed class BtsmtlHostInputFlowNode<T> : BtsmtlFlowNode, IBtsmtlHostInputFlowNode
+    public sealed partial class BtsmtlHostInputFlowNode<T> : BtsmtlFlowNode, IBtsmtlHostInputFlowNode
     {
         [SerializeField] string m_InputId = string.Empty;
+        [GraphAuthoringField("inputId", GraphAuthoringFieldValueKind.String, DisplayName = "输入身份", NonEmpty = true,
+            CompilationImpact = GraphAuthoringFieldCompilationImpact.Structure)]
         public string InputId => m_InputId;
         public Type ValueType => typeof(T);
+        [GraphAuthoringConfigure]
         public void ConfigureInput(string inputId) => m_InputId = inputId;
         protected override void RegisterPorts() => AddValueOutput<T>("值", RejectAuthoringValue<T>, "Value");
     }

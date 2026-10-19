@@ -69,6 +69,7 @@ namespace BTSMTL.Graphs
                 Undo.FlushUndoRecordObjects();
                 Undo.RevertAllDownToGroup(group);
                 SelfDeserialize();
+                Validate();
                 throw;
             }
             finally
