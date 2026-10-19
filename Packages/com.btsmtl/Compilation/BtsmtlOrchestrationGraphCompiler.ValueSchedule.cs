@@ -54,14 +54,47 @@ namespace BTSMTL.Compilation
                 {
                     if (prediction.TryGetValue(operation, out bool result))
                         return result;
-                    OperationDraft op = operations[operation];
-                    result = op.Code != OrchestrationOperationCode.Constant &&
-                        op.Code != OrchestrationOperationCode.BlackboardGet &&
-                        !(op.Code == OrchestrationOperationCode.Extension &&
-                            m_Extensions[op.ExtensionBindingIndex].Kind == OrchestrationExtensionKind.Action) &&
-                        InputPrediction(operation);
-                    prediction.Add(operation, result);
-                    return result;
+                    var pending = new Stack<(int Operation, bool Complete)>();
+                    pending.Push((operation, false));
+                    while (pending.Count != 0)
+                    {
+                        var current = pending.Pop();
+                        if (prediction.ContainsKey(current.Operation))
+                            continue;
+                        ref readonly OperationDraft op = ref operations[current.Operation];
+                        if (op.Code == OrchestrationOperationCode.Constant ||
+                            op.Code == OrchestrationOperationCode.BlackboardGet ||
+                            op.Code == OrchestrationOperationCode.Extension &&
+                            m_Extensions[op.ExtensionBindingIndex].Kind == OrchestrationExtensionKind.Action)
+                        {
+                            prediction.Add(current.Operation, false);
+                            continue;
+                        }
+                        if (!current.Complete)
+                        {
+                            pending.Push((current.Operation, true));
+                            for (int i = op.Inputs.Offset; i < op.Inputs.Offset + op.Inputs.Count; i++)
+                            {
+                                OrchestrationValueInputBinding input = m_Inputs[i];
+                                if (input.Source == OrchestrationValueInputSource.Operation)
+                                    pending.Push((input.SourceIndex, false));
+                            }
+                            continue;
+                        }
+                        result = false;
+                        for (int i = op.Inputs.Offset; i < op.Inputs.Offset + op.Inputs.Count; i++)
+                        {
+                            OrchestrationValueInputBinding input = m_Inputs[i];
+                            if (input.Source == OrchestrationValueInputSource.StateCompletionTransition ||
+                                input.Source == OrchestrationValueInputSource.Operation && prediction[input.SourceIndex])
+                            {
+                                result = true;
+                                break;
+                            }
+                        }
+                        prediction.Add(current.Operation, result);
+                    }
+                    return prediction[operation];
                 }
                 ReadOnlySpan<int> Outgoing(int operation, OrchestrationFlowKind kind)
                 {
@@ -197,6 +230,29 @@ namespace BTSMTL.Compilation
             {
                 enum WorkKind : byte { Value, BooleanValue, Input, Inputs, CompleteValue, CompleteInput, Select, SelectChild, TransitionCondition, Emit, EnterPrediction, LeavePrediction }
 
+                enum CompileStepKind : byte { Expand, Alias, Emit }
+
+                readonly struct CompileStep
+                {
+                    internal readonly (int Work, BigInteger Available) Key;
+                    internal readonly CompileStepKind Kind;
+                    internal readonly OrchestrationValueScheduleInstruction Data;
+                    internal readonly BigInteger NextAvailable;
+                    internal readonly BigInteger AlternativeAvailable;
+
+                    internal CompileStep((int Work, BigInteger Available) key,
+                        CompileStepKind kind = CompileStepKind.Expand,
+                        OrchestrationValueScheduleInstruction data = default,
+                        BigInteger nextAvailable = default, BigInteger alternativeAvailable = default)
+                    {
+                        Key = key;
+                        Kind = kind;
+                        Data = data;
+                        NextAvailable = nextAvailable;
+                        AlternativeAvailable = alternativeAvailable;
+                    }
+                }
+
                 readonly Compilation<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TLowering> m_Compiler;
                 readonly OperationDraft[] m_Operations;
                 readonly OrchestrationFlowEdge[] m_Edges;
@@ -212,7 +268,7 @@ namespace BTSMTL.Compilation
                 readonly List<(WorkKind Kind, OrchestrationValueScheduleInstruction Data)> m_Work = new();
                 readonly Dictionary<(WorkKind Kind, OrchestrationValueScheduleCode Code, int Op, int Operand, int Dest, int Arg, int Next, int Alt), int> m_WorkIndexes = new();
                 readonly Dictionary<(int Work, BigInteger Available), int> m_Compiled = new();
-                readonly Dictionary<int, BigInteger> m_Liveness = new();
+                readonly List<BigInteger> m_Liveness = new();
                 readonly Dictionary<(int Operation, int Output, int Bank), BigInteger> m_ValueDependencies = new();
                 readonly Dictionary<(int Operation, int Bank, int Selected), int> m_Arguments = new();
 
@@ -353,79 +409,110 @@ namespace BTSMTL.Compilation
                 {
                     if (m_ValueDependencies.TryGetValue((operation, output, bank), out BigInteger result))
                         return result;
-                    result = BigInteger.One << ValueSlot(operation, output, bank);
-                    OperationDraft op = m_Operations[operation];
-                    if (!(op.Code == OrchestrationOperationCode.Extension &&
-                        m_Compiler.m_Extensions[op.ExtensionBindingIndex].Kind == OrchestrationExtensionKind.Action))
-                        result |= AllInputs(operation, bank);
-                    m_ValueDependencies.Add((operation, output, bank), result);
-                    return result;
+                    var pending = new Stack<(int Operation, int Output, bool Complete)>();
+                    pending.Push((operation, output, false));
+                    while (pending.Count != 0)
+                    {
+                        var current = pending.Pop();
+                        var key = (current.Operation, current.Output, bank);
+                        if (m_ValueDependencies.ContainsKey(key))
+                            continue;
+                        ref readonly OperationDraft op = ref m_Operations[current.Operation];
+                        bool action = op.Code == OrchestrationOperationCode.Extension &&
+                            m_Compiler.m_Extensions[op.ExtensionBindingIndex].Kind == OrchestrationExtensionKind.Action;
+                        if (!action && !current.Complete)
+                        {
+                            pending.Push((current.Operation, current.Output, true));
+                            for (int i = op.Inputs.Offset; i < op.Inputs.Offset + op.Inputs.Count; i++)
+                            {
+                                OrchestrationValueInputBinding input = m_Compiler.m_Inputs[i];
+                                if (input.Source == OrchestrationValueInputSource.Operation)
+                                    pending.Push((input.SourceIndex, input.SourceOutputPortIndex, false));
+                            }
+                            continue;
+                        }
+                        result = BigInteger.One << ValueSlot(current.Operation, current.Output, bank);
+                        if (!action)
+                            for (int i = op.Inputs.Offset; i < op.Inputs.Offset + op.Inputs.Count; i++)
+                            {
+                                result |= BigInteger.One << InputSlot(i, bank);
+                                OrchestrationValueInputBinding input = m_Compiler.m_Inputs[i];
+                                if (input.Source == OrchestrationValueInputSource.Operation)
+                                    result |= m_ValueDependencies[(input.SourceIndex, input.SourceOutputPortIndex, bank)];
+                            }
+                        m_ValueDependencies.Add(key, result);
+                    }
+                    return m_ValueDependencies[(operation, output, bank)];
                 }
 
                 BigInteger Live(int index)
                 {
                     if (index < 0)
                         return BigInteger.Zero;
-                    if (m_Liveness.TryGetValue(index, out BigInteger result))
-                        return result;
-                    var work = m_Work[index];
-                    OrchestrationValueScheduleInstruction d = work.Data;
-                    switch (work.Kind)
+                    BigInteger Previous(int work) => work < 0 ? BigInteger.Zero : m_Liveness[work];
+                    // Work 的后继均已先创建，活跃集合按同一追加顺序计算。
+                    for (int current = m_Liveness.Count; current <= index; current++)
                     {
-                        case WorkKind.Value:
-                        case WorkKind.BooleanValue:
-                            result = ValueDependencies(d.Operation, d.Operand, d.Argument) | Live(d.Next);
-                            break;
-                        case WorkKind.Input:
-                            result = InputDependencies(d.Operation, m_Operations[d.Operation].Inputs.Offset + d.Operand, d.Argument) | Live(d.Next);
-                            break;
-                        case WorkKind.Inputs:
-                            result = AllInputs(d.Operation, d.Argument) | Live(d.Next);
-                            break;
-                        case WorkKind.TransitionCondition:
-                            result = ValueDependencies(m_Edges[d.Operand].ConditionOperationIndex, -1, d.Argument) |
-                                Live(d.Next);
-                            break;
-                        case WorkKind.Select:
-                        case WorkKind.SelectChild:
+                        var work = m_Work[current];
+                        OrchestrationValueScheduleInstruction d = work.Data;
+                        BigInteger result;
+                        switch (work.Kind)
                         {
-                            result = Live(d.Destination);
-                            OrchestrationFlowKind kind = work.Kind == WorkKind.Select ? OrchestrationFlowKind.Transition : OrchestrationFlowKind.Child;
-                            int segment = d.Operation * OrchestrationProgramStructure.FlowKindCount + (int)kind - 1;
-                            int start = m_Structure.OutgoingOffsets.Span[segment];
-                            int end = m_Structure.OutgoingOffsets.Span[segment + 1];
-                            for (int i = start + d.Operand; i < end; i++)
+                            case WorkKind.Value:
+                            case WorkKind.BooleanValue:
+                                result = ValueDependencies(d.Operation, d.Operand, d.Argument) | Previous(d.Next);
+                                break;
+                            case WorkKind.Input:
+                                result = InputDependencies(d.Operation, m_Operations[d.Operation].Inputs.Offset + d.Operand, d.Argument) | Previous(d.Next);
+                                break;
+                            case WorkKind.Inputs:
+                                result = AllInputs(d.Operation, d.Argument) | Previous(d.Next);
+                                break;
+                            case WorkKind.TransitionCondition:
+                                result = ValueDependencies(m_Edges[d.Operand].ConditionOperationIndex, -1, d.Argument) |
+                                    Previous(d.Next);
+                                break;
+                            case WorkKind.Select:
+                            case WorkKind.SelectChild:
                             {
-                                OrchestrationFlowEdge edge = m_Edges[m_Structure.OutgoingEdgeIndexes.Span[i]];
-                                bool any = m_Operations[d.Operation].Code == OrchestrationOperationCode.StateAny;
-                                if (any && m_State >= 0 && edge.TargetOperationIndex == m_State)
-                                    continue;
-                                if (!edge.HasCondition)
+                                result = Previous(d.Destination);
+                                OrchestrationFlowKind kind = work.Kind == WorkKind.Select ? OrchestrationFlowKind.Transition : OrchestrationFlowKind.Child;
+                                int segment = d.Operation * OrchestrationProgramStructure.FlowKindCount + (int)kind - 1;
+                                int start = m_Structure.OutgoingOffsets.Span[segment];
+                                int end = m_Structure.OutgoingOffsets.Span[segment + 1];
+                                for (int i = start + d.Operand; i < end; i++)
                                 {
-                                    if (any && m_State < 0)
+                                    OrchestrationFlowEdge edge = m_Edges[m_Structure.OutgoingEdgeIndexes.Span[i]];
+                                    bool any = m_Operations[d.Operation].Code == OrchestrationOperationCode.StateAny;
+                                    if (any && m_State >= 0 && edge.TargetOperationIndex == m_State)
                                         continue;
-                                    break;
+                                    if (!edge.HasCondition)
+                                    {
+                                        if (any && m_State < 0)
+                                            continue;
+                                        break;
+                                    }
+                                    result |= ValueDependencies(edge.ConditionOperationIndex, -1, d.Argument);
                                 }
-                                result |= ValueDependencies(edge.ConditionOperationIndex, -1, d.Argument);
+                                break;
                             }
-                            break;
+                            case WorkKind.EnterPrediction:
+                            case WorkKind.LeavePrediction:
+                                result = BigInteger.Zero;
+                                break;
+                            default:
+                                result = Previous(d.Next);
+                                if (d.Code is OrchestrationValueScheduleCode.OverrideInput or OrchestrationValueScheduleCode.OverrideOutput or
+                                    OrchestrationValueScheduleCode.BranchBoolean or OrchestrationValueScheduleCode.BranchExcludedTarget or OrchestrationValueScheduleCode.BranchCondition)
+                                    result |= Previous(d.Alternative);
+                                break;
                         }
-                        case WorkKind.EnterPrediction:
-                        case WorkKind.LeavePrediction:
-                            result = BigInteger.Zero;
-                            break;
-                        default:
-                            result = Live(d.Next);
-                            if (d.Code is OrchestrationValueScheduleCode.OverrideInput or OrchestrationValueScheduleCode.OverrideOutput or
-                                OrchestrationValueScheduleCode.BranchBoolean or OrchestrationValueScheduleCode.BranchExcludedTarget or OrchestrationValueScheduleCode.BranchCondition)
-                                result |= Live(d.Alternative);
-                            break;
+                        m_Liveness.Add(result);
                     }
-                    m_Liveness.Add(index, result);
-                    return result;
+                    return m_Liveness[index];
                 }
 
-                int Inputs(int operation, int bank, int next, BigInteger available)
+                int Inputs(int operation, int bank, int next)
                 {
                     OperationDraft op = m_Operations[operation];
                     int Finish(int selected)
@@ -441,7 +528,7 @@ namespace BTSMTL.Compilation
                     int Read(int index, int continuation) => Work(WorkKind.Input, operation, index, argument: bank, next: continuation);
                     int normal = Finish(-1);
                     if (op.Inputs.Count == 0)
-                        return Compile(normal, available);
+                        return normal;
                     if (op.Code is OrchestrationOperationCode.And or OrchestrationOperationCode.Or)
                     {
                         int complete = normal;
@@ -452,29 +539,67 @@ namespace BTSMTL.Compilation
                             destination: InputSlot(op.Inputs.Offset, bank),
                             next: op.Code == OrchestrationOperationCode.And ? complete : shortCircuit,
                             alternative: op.Code == OrchestrationOperationCode.And ? shortCircuit : complete);
-                        return Compile(Read(0, branch), available);
+                        return Read(0, branch);
                     }
                     if (op.Code == OrchestrationOperationCode.SelectValue)
                     {
                         int branch = Emit(OrchestrationValueScheduleCode.BranchBoolean, operation,
                             destination: InputSlot(op.Inputs.Offset, bank),
                             next: Read(1, Finish(1)), alternative: Read(2, Finish(2)));
-                        return Compile(Read(0, branch), available);
+                        return Read(0, branch);
                     }
                     for (int i = op.Inputs.Count - 1; i >= 0; i--)
                         normal = Read(i, normal);
-                    return Compile(normal, available);
+                    return normal;
                 }
 
                 int Compile(int index, BigInteger available)
                 {
-                    available &= Live(index);
-                    if (m_Compiled.TryGetValue((index, available), out int compiled))
-                        return compiled;
-                    var work = m_Work[index];
+                    var key = (index, available & Live(index));
+                    var pending = new Stack<CompileStep>();
+                    pending.Push(new CompileStep(key));
+                    while (pending.Count != 0)
+                    {
+                        CompileStep step = pending.Pop();
+                        if (m_Compiled.ContainsKey(step.Key))
+                            continue;
+                        if (step.Kind == CompileStepKind.Expand)
+                        {
+                            step = Reduce(step.Key);
+                            pending.Push(step);
+                            if (step.Data.Alternative >= 0)
+                                pending.Push(new CompileStep((step.Data.Alternative, step.AlternativeAvailable)));
+                            if (step.Data.Next >= 0)
+                                pending.Push(new CompileStep((step.Data.Next, step.NextAvailable)));
+                            continue;
+                        }
+                        OrchestrationValueScheduleInstruction data = step.Data;
+                        int result = step.Kind == CompileStepKind.Alias
+                            ? m_Compiled[(data.Next, step.NextAvailable)]
+                            : Instruction(new OrchestrationValueScheduleInstruction(data.Code, data.Operation,
+                                data.Operand, data.Destination, data.Argument,
+                                data.Next < 0 ? -1 : m_Compiled[(data.Next, step.NextAvailable)],
+                                data.Alternative < 0 ? -1 : m_Compiled[(data.Alternative, step.AlternativeAvailable)]));
+                        m_Compiled.Add(step.Key, result);
+                    }
+                    return m_Compiled[key];
+                }
+
+                CompileStep Reduce((int Work, BigInteger Available) key)
+                {
+                    BigInteger available = key.Available;
+                    CompileStep Alias(int next, BigInteger nextAvailable) =>
+                        new(key, CompileStepKind.Alias,
+                            new OrchestrationValueScheduleInstruction(default, -1, -1, -1, 0, next, -1),
+                            nextAvailable & Live(next));
+                    CompileStep EmitStep(OrchestrationValueScheduleInstruction data,
+                        BigInteger nextAvailable, BigInteger alternativeAvailable) =>
+                        new(key, CompileStepKind.Emit, data,
+                            nextAvailable & Live(data.Next), alternativeAvailable & Live(data.Alternative));
+
+                    var work = m_Work[key.Work];
                     OrchestrationValueScheduleInstruction d = work.Data;
                     int op = d.Operation;
-                    int result;
                     switch (work.Kind)
                     {
                         case WorkKind.BooleanValue:
@@ -482,21 +607,17 @@ namespace BTSMTL.Compilation
                             int slot = ValueSlot(op, d.Operand, d.Argument);
                             OrchestrationValueOpcode conversion = BooleanConversion(m_Compiler.m_ValueKinds[
                                 m_Structure.ValueEvaluationOffsets.Span[op] + d.Operand + 1]);
-                            result = Compile(Work(WorkKind.Value, op, d.Operand, argument: d.Argument,
+                            return Alias(Work(WorkKind.Value, op, d.Operand, argument: d.Argument,
                                 next: Emit(OrchestrationValueScheduleCode.ConvertInput, op, (int)conversion,
                                     BooleanSlot(d.Argument), slot, d.Next)), available);
-                            break;
                         }
                         case WorkKind.Value:
                         {
                             int slot = ValueSlot(op, d.Operand, d.Argument);
                             if ((available & (BigInteger.One << slot)) != 0)
-                            {
-                                result = Compile(d.Next, available);
-                                break;
-                            }
+                                return Alias(d.Next, available);
                             int done = Work(WorkKind.CompleteValue, op, d.Operand, slot, next: d.Next);
-                            OperationDraft operation = m_Operations[op];
+                            ref readonly OperationDraft operation = ref m_Operations[op];
                             bool action = operation.Code == OrchestrationOperationCode.Extension &&
                                 m_Compiler.m_Extensions[operation.ExtensionBindingIndex].Kind == OrchestrationExtensionKind.Action;
                             int compute = action
@@ -504,36 +625,30 @@ namespace BTSMTL.Compilation
                                 : Work(WorkKind.Inputs, op, argument: d.Argument,
                                     next: Emit(OrchestrationValueScheduleCode.Compute, op,
                                         m_Structure.ValueEvaluationOffsets.Span[op] + d.Operand + 1, slot, next: done));
-                            result = m_Diagnostics
-                                ? Compile(Emit(OrchestrationValueScheduleCode.OverrideOutput, op,
+                            return Alias(m_Diagnostics
+                                ? Emit(OrchestrationValueScheduleCode.OverrideOutput, op,
                                     m_Structure.ValueEvaluationOffsets.Span[op] + d.Operand + 1, slot,
-                                    next: done, alternative: compute), available)
-                                : Compile(compute, available);
-                            break;
+                                    next: done, alternative: compute)
+                                : compute, available);
                         }
                         case WorkKind.Inputs:
-                            result = Inputs(op, d.Argument, d.Next, available);
-                            break;
+                            return Alias(Inputs(op, d.Argument, d.Next), available);
                         case WorkKind.TransitionCondition:
                         {
                             int condition = m_TransitionConditions.EdgeConditions[d.Operand];
                             int computed = Work(WorkKind.BooleanValue, m_Edges[d.Operand].ConditionOperationIndex,
                                 -1, argument: d.Argument, next: Emit(OrchestrationValueScheduleCode.WriteTransitionCache,
                                     op, condition, BooleanSlot(d.Argument), next: d.Next));
-                            result = Instruction(new OrchestrationValueScheduleInstruction(
+                            return EmitStep(new OrchestrationValueScheduleInstruction(
                                 OrchestrationValueScheduleCode.ReadTransitionCache, op, condition, BooleanSlot(d.Argument),
-                                0, Compile(d.Next, available), Compile(computed, available)));
-                            break;
+                                0, d.Next, computed), available, available);
                         }
                         case WorkKind.Input:
                         {
                             int inputIndex = m_Operations[op].Inputs.Offset + d.Operand;
                             int slot = InputSlot(inputIndex, d.Argument);
                             if ((available & (BigInteger.One << slot)) != 0)
-                            {
-                                result = Compile(d.Next, available);
-                                break;
-                            }
+                                return Alias(d.Next, available);
                             OrchestrationValueInputBinding input = m_Compiler.m_Inputs[inputIndex];
                             int done = Work(WorkKind.CompleteInput, op, inputIndex, slot, next: d.Next);
                             int read;
@@ -566,30 +681,29 @@ namespace BTSMTL.Compilation
                                 default:
                                     throw new InvalidOperationException($"不支持的正式值输入 '{input.Source}'。");
                             }
-                            result = m_Diagnostics
-                                ? Compile(Emit(OrchestrationValueScheduleCode.OverrideInput, op, inputIndex, slot,
-                                    next: done, alternative: read), available)
-                                : Compile(read, available);
-                            break;
+                            return Alias(m_Diagnostics
+                                ? Emit(OrchestrationValueScheduleCode.OverrideInput, op, inputIndex, slot,
+                                    next: done, alternative: read)
+                                : read, available);
                         }
                         case WorkKind.CompleteValue:
                         case WorkKind.CompleteInput:
                         {
-                            int next = Compile(d.Next, available | (BigInteger.One << d.Destination));
+                            int next = d.Next;
                             if (work.Kind == WorkKind.CompleteInput)
                             {
                                 OrchestrationValueOpcode conversion = m_Compiler.InputConversion(m_Operations[op], d.Operand);
                                 if (conversion != OrchestrationValueOpcode.Copy)
-                                    next = Instruction(new OrchestrationValueScheduleInstruction(
-                                        OrchestrationValueScheduleCode.ConvertInput, op, (int)conversion,
-                                        d.Destination, d.Destination, next, -1));
+                                    next = Emit(OrchestrationValueScheduleCode.ConvertInput, op, (int)conversion,
+                                        d.Destination, d.Destination, next);
                             }
-                            result = m_Diagnostics ? Instruction(new OrchestrationValueScheduleInstruction(
-                                work.Kind == WorkKind.CompleteValue ? OrchestrationValueScheduleCode.ObserveOutput : OrchestrationValueScheduleCode.ObserveInput,
-                                op, work.Kind == WorkKind.CompleteValue
-                                    ? m_Structure.ValueEvaluationOffsets.Span[op] + d.Operand + 1 : d.Operand,
-                                d.Destination, 0, next, -1)) : next;
-                            break;
+                            if (m_Diagnostics)
+                                next = Emit(work.Kind == WorkKind.CompleteValue
+                                        ? OrchestrationValueScheduleCode.ObserveOutput : OrchestrationValueScheduleCode.ObserveInput,
+                                    op, work.Kind == WorkKind.CompleteValue
+                                        ? m_Structure.ValueEvaluationOffsets.Span[op] + d.Operand + 1 : d.Operand,
+                                    d.Destination, next: next);
+                            return Alias(next, available | (BigInteger.One << d.Destination));
                         }
                         case WorkKind.Select:
                         case WorkKind.SelectChild:
@@ -608,19 +722,13 @@ namespace BTSMTL.Compilation
                                         : finish.Argument, finish.Next, finish.Alternative);
                             }
                             if (d.Operand == count)
-                            {
-                                result = Compile(Finish(-1), available);
-                                break;
-                            }
+                                return Alias(Finish(-1), available);
                             int edgeIndex = m_Structure.OutgoingEdgeIndexes.Span[start + d.Operand];
                             OrchestrationFlowEdge edge = m_Edges[edgeIndex];
                             int nextEdge = Work(work.Kind, op, d.Operand + 1, d.Destination, d.Argument);
                             if (m_Operations[op].Code == OrchestrationOperationCode.StateAny && m_State >= 0 &&
                                 edge.TargetOperationIndex == m_State)
-                            {
-                                result = Compile(nextEdge, available);
-                                break;
-                            }
+                                return Alias(nextEdge, available);
                             int selection = Finish(edgeIndex);
                             if (edge.HasCondition)
                             {
@@ -635,27 +743,22 @@ namespace BTSMTL.Compilation
                             if (m_Operations[op].Code == OrchestrationOperationCode.StateAny && m_State < 0)
                                 selection = Emit(OrchestrationValueScheduleCode.BranchExcludedTarget, op, edge.TargetOperationIndex,
                                     next: nextEdge, alternative: selection);
-                            result = Compile(selection, available);
-                            break;
+                            return Alias(selection, available);
                         }
                         case WorkKind.EnterPrediction:
                         case WorkKind.LeavePrediction:
-                            result = Instruction(new OrchestrationValueScheduleInstruction(
+                            return EmitStep(new OrchestrationValueScheduleInstruction(
                                 work.Kind == WorkKind.EnterPrediction ? OrchestrationValueScheduleCode.EnterPrediction : OrchestrationValueScheduleCode.LeavePrediction,
-                                op, -1, -1, 0, Compile(d.Next, BigInteger.Zero), -1));
-                            break;
+                                op, -1, -1, 0, d.Next, -1), BigInteger.Zero, BigInteger.Zero);
                         default:
                         {
                             bool terminal = d.Code is OrchestrationValueScheduleCode.Return or OrchestrationValueScheduleCode.ReturnInputs;
                             bool branch = d.Code is OrchestrationValueScheduleCode.OverrideInput or OrchestrationValueScheduleCode.OverrideOutput or
                                 OrchestrationValueScheduleCode.BranchBoolean or OrchestrationValueScheduleCode.BranchExcludedTarget or OrchestrationValueScheduleCode.BranchCondition;
-                            result = Instruction(new OrchestrationValueScheduleInstruction(d.Code, op, d.Operand, d.Destination, d.Argument,
-                                terminal ? -1 : Compile(d.Next, available), branch ? Compile(d.Alternative, available) : -1));
-                            break;
+                            return EmitStep(new OrchestrationValueScheduleInstruction(d.Code, op, d.Operand, d.Destination, d.Argument,
+                                terminal ? -1 : d.Next, branch ? d.Alternative : -1), available, available);
                         }
                     }
-                    m_Compiled.Add((index, available), result);
-                    return result;
                 }
 
                 int Instruction(OrchestrationValueScheduleInstruction instruction)
