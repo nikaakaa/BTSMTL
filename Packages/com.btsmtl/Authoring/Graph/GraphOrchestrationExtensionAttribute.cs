@@ -81,4 +81,25 @@ namespace BTSMTL.Authoring.Graph
             return new Contract(attribute.Definition, (IReadOnlyList<GraphOrchestrationExtensionPortBinding>)property.GetValue(null));
         }
     }
+
+    // 节点所属领域：扩展节点取扩展身份的 DomainId，编排输出节点取输出合同身份。图根按声明的领域准入节点，宿主按同一身份提供领域包。
+    public static class GraphNodeDomains
+    {
+        static readonly ConcurrentDictionary<Type, string> s_Domains = new();
+
+        public static bool TryGet(Type nodeType, out string domainId)
+        {
+            domainId = s_Domains.GetOrAdd(nodeType, Read);
+            return domainId.Length != 0;
+        }
+
+        static string Read(Type type)
+        {
+            if (GraphOrchestrationExtensionNodes.TryGet(type, out GraphOrchestrationExtensionNodes.Contract extension))
+                return extension.Definition.Identity.DomainId;
+            if (!type.IsAbstract && typeof(IGraphOrchestrationOutputAuthoring).IsAssignableFrom(type))
+                return ((IGraphOrchestrationOutputAuthoring)Activator.CreateInstance(type)).OutputTemplate.ContractIdentity;
+            return string.Empty;
+        }
+    }
 }

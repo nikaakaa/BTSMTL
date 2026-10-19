@@ -8,7 +8,7 @@ using ThirdPersonSimulation;
 
 namespace BTSMTL.Graphs
 {
-    public sealed partial class HostedGraphRuntime<TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TNumeric>
+    public sealed partial class HostedGraphRuntime<TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TNumeric, TContext>
         where TScalar : unmanaged
         where TVector2 : unmanaged
         where TVector3 : unmanaged
@@ -16,6 +16,7 @@ namespace BTSMTL.Graphs
         where TQuaternion : unmanaged
         where TMath : struct, IOrchestrationGraphMath<TScalar, TVector2, TVector3, TQuaternion>
         where TNumeric : struct, IGraphNumericAdapter<TScalar, TVector2, TVector3, TQuaternion>
+        where TContext : struct
     {
         const uint RecordedStateFormat = 0x45564752;
         const uint RecordedStateVersion = 2;
@@ -70,7 +71,7 @@ namespace BTSMTL.Graphs
         }
 
         void ExecuteTriggers(ref OrchestrationExecutionCursor<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>, TScalar, TVector2,
-            TVector3, TQuaternion, TMath, OrchestrationValueAccess<TScalar, TVector2, TVector3, TYaw, TQuaternion>, ValueTuple> cursor)
+            TVector3, TQuaternion, TMath, OrchestrationValueAccess<TScalar, TVector2, TVector3, TYaw, TQuaternion>, TContext> cursor)
         {
             for (int i = 0; i < m_CandidateTriggers.Count; i++)
             {
@@ -209,14 +210,14 @@ namespace BTSMTL.Graphs
 
         OrchestrationExecutionCursor<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>,
             TScalar, TVector2, TVector3, TQuaternion, TMath,
-            OrchestrationValueAccess<TScalar, TVector2, TVector3, TYaw, TQuaternion>, ValueTuple>
+            OrchestrationValueAccess<TScalar, TVector2, TVector3, TYaw, TQuaternion>, TContext>
             CreateEditorCursor(in OrchestrationFrameInput<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> input)
         {
             var state = OrchestrationStateBinding.BindCandidate(m_Layout, m_Candidate);
             OrchestrationIdentityOrdinalView identities = m_CandidateTexts.Ordinals;
-            ValueTuple context = default;
+            TContext context = default;
             return state.CreateCursor<TScalar, TVector2, TVector3, TQuaternion, TMath,
-                OrchestrationValueAccess<TScalar, TVector2, TVector3, TYaw, TQuaternion>, ValueTuple>(
+                OrchestrationValueAccess<TScalar, TVector2, TVector3, TYaw, TQuaternion>, TContext>(
                 m_Bindings.Program, m_Workspace, m_Extensions, 0, ReadOnlySpan<int>.Empty,
                 null, null, in input, in identities, in context);
         }

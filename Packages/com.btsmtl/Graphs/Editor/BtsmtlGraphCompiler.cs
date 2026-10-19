@@ -17,15 +17,17 @@ namespace BTSMTL.Graphs.Editor
 {
     public static class BtsmtlGraphCompiler
     {
+        // contentEncoder 编码图中扩展操作的作者内容，由提供这些扩展领域的宿主给出；图没有扩展操作时传 null。
         public static void CompileFloat32(BtsmtlGraphRoot root, GraphHostContract contract,
-            IOrchestrationGraphContentEncoding<RuntimeValue> encoding)
+            IOrchestrationGraphContentEncoding<RuntimeValue> encoding,
+            IBtsmtlOrchestrationContentEncoder<RuntimeValue, Float32Scalar> contentEncoder)
         {
             BtsmtlGraphValidator.Require(root, contract);
             root.SelfSerialize();
             var fingerprint = new BtsmtlGraphFingerprint();
             GraphExecutionIdentity identity = fingerprint.CreateIdentity(root, root.AuthoringId,
                 encoding.EncodingContract, "Float32");
-            OrchestrationGraphContent<RuntimeValue> content = new Compilation(root, contract, identity.SourceRevision).Build(identity);
+            OrchestrationGraphContent<RuntimeValue> content = new Compilation(root, contract, identity.SourceRevision).Build(identity, contentEncoder);
             root.SetExecutionData(encoding.Write(content), identity, encoding);
             EditorUtility.SetDirty(root);
         }
@@ -62,7 +64,8 @@ namespace BTSMTL.Graphs.Editor
                 m_Blackboard = CreateBlackboard(contract);
             }
 
-            internal OrchestrationGraphContent<RuntimeValue> Build(GraphExecutionIdentity identity)
+            internal OrchestrationGraphContent<RuntimeValue> Build(GraphExecutionIdentity identity,
+                IBtsmtlOrchestrationContentEncoder<RuntimeValue, Float32Scalar> contentEncoder)
             {
                 using var invocation = m_Builder.PushGraphInvocation(m_Route, string.Empty);
                 DeclareVariables();
@@ -131,7 +134,7 @@ namespace BTSMTL.Graphs.Editor
                 OperationHandle owner = m_Operations.Node(m_Root.Entries[0].NodeId);
                 m_Builder.DeclareGraphInvocation(owner, owner, GraphSource(), ProgramInvocationCallerKind.None,
                     string.Empty, string.Empty, -1);
-                return m_Builder.BuildOrchestrationFloat32(owner, identity, entryContracts: entryContracts);
+                return m_Builder.BuildOrchestrationFloat32(owner, identity, contentEncoder, entryContracts);
             }
 
             // Graph 作用域的执行持有者保持未指定，图的各个入口共用同一份值。
@@ -174,6 +177,8 @@ namespace BTSMTL.Graphs.Editor
         {
             if (BtsmtlNativeValueNodeCatalog.TryGetNode(node.GetType(), out BtsmtlNativeValueNodeDefinition native))
                 return new SimulationNodeEmission(native.Code, integer0: native.Variant);
+            if (BtsmtlGraphDomainNodes.TryDescribe(node, out SimulationNodeEmission domain))
+                return domain;
             if (node is IBtsmtlHostInputFlowNode input)
                 return new SimulationNodeEmission(OrchestrationOperationCode.HostInput,
                     hostInputs: new[] { new SemanticHostInputPort("m_Output", input.InputId,

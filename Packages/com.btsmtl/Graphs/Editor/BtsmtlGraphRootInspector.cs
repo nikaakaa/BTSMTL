@@ -87,6 +87,34 @@ namespace BTSMTL.Graphs.Editor
             }
             if (EditorGUI.EndChangeCheck())
                 graph.EditAuthoring("编辑图入口", () => graph.ConfigureEntries(entries.ToArray()));
+            DrawDomains(graph);
+        }
+
+        static void DrawDomains(BtsmtlGraphRoot graph)
+        {
+            var domains = graph.Domains.ToList();
+            EditorGUILayout.LabelField("使用的领域", EditorStyles.boldLabel);
+            EditorGUI.BeginChangeCheck();
+            for (int i = 0; i < domains.Count; i++)
+            {
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    domains[i] = EditorGUILayout.TextField(domains[i]);
+                    if (GUILayout.Button("移除", GUILayout.Width(48)))
+                    {
+                        domains.RemoveAt(i);
+                        GUI.changed = true;
+                        break;
+                    }
+                }
+            }
+            if (GUILayout.Button("添加领域"))
+            {
+                domains.Add("domain." + (domains.Count + 1));
+                GUI.changed = true;
+            }
+            if (EditorGUI.EndChangeCheck())
+                graph.EditAuthoring("编辑图领域", () => graph.ConfigureDomains(domains.ToArray()));
         }
     }
 }

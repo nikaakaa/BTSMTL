@@ -163,13 +163,13 @@ namespace BTSMTL.Graphs.Editor
 
         public static string Input(FlowNode node, string port, BtsmtlNativeValueNodeDefinition native) =>
             native != null ? native.Input(port) : node is IBtsmtlVariableFlowNode ? "m_Value"
-                : port;
+                : BtsmtlGraphDomainNodes.RuntimePort(node, port, OrchestrationExtensionPortDirection.Input);
 
         public static string Output(FlowNode node, string port, BtsmtlNativeValueNodeDefinition native,
             OrchestrationOperationCode code) => native != null ? native.Output(port)
                 : node is IBtsmtlVariableFlowNode || code == OrchestrationOperationCode.HostInput &&
                     node is not IGraphOrchestrationHostInputAuthoring ? "m_Output"
-                    : port;
+                    : BtsmtlGraphDomainNodes.RuntimePort(node, port, OrchestrationExtensionPortDirection.Output);
 
         string MapPort(FlowNode node, string port, BtsmtlNativeValueNodeDefinition native,
             OrchestrationOperationCode code, bool output) => native != null || m_Bindings == null

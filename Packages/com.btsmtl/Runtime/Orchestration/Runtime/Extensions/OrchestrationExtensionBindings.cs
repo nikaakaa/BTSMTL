@@ -255,4 +255,29 @@ namespace BTSMTL.Orchestration
             public readonly ICandidateOrchestrationExtensionExecutionGate<TContext> ExecutionGate;
         }
     }
+
+    public static class OrchestrationExtensionRequirements
+    {
+        // 程序实际调用的扩展绑定：扩展操作、ActionInstance 黑板事实与状态转移钩子。
+        public static int[] Collect<TValue>(OrchestrationProgram<TValue> program, int extensionCount)
+            where TValue : unmanaged
+        {
+            var required = new bool[extensionCount];
+            for (int operationIndex = 0; operationIndex < program.OperationCount; operationIndex++)
+            {
+                ref readonly OrchestrationOperation operation = ref program.Operation(operationIndex);
+                if (operation.Code == OrchestrationOperationCode.Extension)
+                    required[operation.ExtensionBindingIndex] = true;
+                if (operation.BlackboardFactsBindingIndex >= 0)
+                    required[operation.BlackboardFactsBindingIndex] = true;
+                foreach (ref readonly OrchestrationHookBinding hook in program.Hooks(operationIndex))
+                    required[hook.ExtensionBindingIndex] = true;
+            }
+            var indices = new List<int>();
+            for (int index = 0; index < required.Length; index++)
+                if (required[index])
+                    indices.Add(index);
+            return indices.ToArray();
+        }
+    }
 }

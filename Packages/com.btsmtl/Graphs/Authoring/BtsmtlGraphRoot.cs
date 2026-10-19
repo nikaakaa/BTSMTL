@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using BTSMTL.Authoring.Graph;
 using BTSMTL.Orchestration;
 using FlowCanvas;
 using NodeCanvas.Framework;
@@ -42,8 +43,11 @@ namespace BTSMTL.Graphs
         [SerializeField] string m_ContentRevision = "1";
         [SerializeField] UnityEngine.Object m_VariableOwner;
         [SerializeField] BtsmtlGraphEntryDeclaration[] m_Entries = Array.Empty<BtsmtlGraphEntryDeclaration>();
+        [SerializeField] string[] m_Domains = Array.Empty<string>();
 
         public override string AuthoringId => m_AuthoringId;
+        // 本图使用的领域；只有这些领域的扩展与输出节点可以放入，宿主合同必须提供全部领域。
+        public IReadOnlyList<string> Domains => m_Domains;
         public string ContentRevision => m_ContentRevision;
         public IBtsmtlGraphVariableOwner VariableOwner => (IBtsmtlGraphVariableOwner)m_VariableOwner;
         public BtsmtlGraphVariableDeclarations Variables => VariableOwner.VariableDeclarations;
@@ -67,11 +71,21 @@ namespace BTSMTL.Graphs
 
         public void ConfigureEntries(BtsmtlGraphEntryDeclaration[] entries) => m_Entries = entries;
 
+        public void ConfigureDomains(string[] domains)
+        {
+            if (domains == null || domains.Any(string.IsNullOrWhiteSpace) ||
+                domains.Distinct(StringComparer.Ordinal).Count() != domains.Length)
+                throw new ArgumentException("图领域必须是不重复的稳定身份。", nameof(domains));
+            m_Domains = domains.OrderBy(value => value, StringComparer.Ordinal).ToArray();
+        }
+
         public override bool CanAuthorNodeType(Type nodeType) =>
             Attribute.IsDefined(nodeType, typeof(BtsmtlGraphOperationAttribute), false) ||
             typeof(IBtsmtlVariableFlowNode).IsAssignableFrom(nodeType) ||
             typeof(IBtsmtlHostInputFlowNode).IsAssignableFrom(nodeType) ||
-            BtsmtlNativeValueNodeCatalog.TryGetNode(nodeType, out _);
+            BtsmtlNativeValueNodeCatalog.TryGetNode(nodeType, out _) ||
+            typeof(BtsmtlFlowNode).IsAssignableFrom(nodeType) &&
+            GraphNodeDomains.TryGet(nodeType, out string domain) && Array.IndexOf(m_Domains, domain) >= 0;
 
         [Serializable, Preserve]
         sealed class IdentityData
@@ -81,6 +95,7 @@ namespace BTSMTL.Graphs
             [Preserve] public string VariableOwnerId;
             [Preserve] public string VariableRevision;
             [Preserve] public BtsmtlGraphEntryDeclaration[] Entries;
+            [Preserve] public string[] Domains;
         }
 
 #if UNITY_EDITOR
@@ -98,7 +113,8 @@ namespace BTSMTL.Graphs
                 Revision = ContentRevision,
                 VariableOwnerId = m_VariableOwner ? Variables.OwnerId : string.Empty,
                 VariableRevision = m_VariableOwner ? Variables.Revision : string.Empty,
-                Entries = m_Entries
+                Entries = m_Entries,
+                Domains = m_Domains
             };
         }
 

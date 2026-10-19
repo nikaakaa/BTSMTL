@@ -1,10 +1,12 @@
 using System;
+using System.Collections.Generic;
 using BTSMTL.Orchestration;
 using ThirdPersonSimulation;
 
 namespace BTSMTL.Graphs
 {
-    public sealed partial class HostedGraphRuntime<TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TNumeric> : IDisposable
+    // TContext 是宿主交给扩展实现的调用句柄；没有扩展领域的宿主使用 ValueTuple。
+    public sealed partial class HostedGraphRuntime<TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TNumeric, TContext> : IDisposable
         where TScalar : unmanaged
         where TVector2 : unmanaged
         where TVector3 : unmanaged
@@ -12,6 +14,7 @@ namespace BTSMTL.Graphs
         where TQuaternion : unmanaged
         where TMath : struct, IOrchestrationGraphMath<TScalar, TVector2, TVector3, TQuaternion>
         where TNumeric : struct, IGraphNumericAdapter<TScalar, TVector2, TVector3, TQuaternion>
+        where TContext : struct
     {
         enum EvaluationStatus : byte
         {
@@ -27,8 +30,12 @@ namespace BTSMTL.Graphs
         readonly OrchestrationExecutionStateLayout<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> m_Layout;
         readonly OrchestrationStateLayout m_MemoryLayout;
         readonly OrchestrationExecutionWorkspace<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> m_Workspace;
-        readonly OrchestrationExtensionBindings<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>, ValueTuple> m_Extensions;
+        readonly OrchestrationExtensionBindings<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>, TContext> m_Extensions;
         readonly OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>[] m_Inputs;
+        readonly OrchestrationOutputRequest[] m_OutputRequests;
+        readonly OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>[] m_OutputValues;
+        int m_OutputRequestCount;
+        int m_OutputValueCount;
         readonly OrchestrationIdentityValue[] m_TextRemap;
         readonly GraphVariableBuffer m_Output;
         byte[] m_State;
@@ -50,7 +57,8 @@ namespace BTSMTL.Graphs
         public HostedGraphRuntime(BtsmtlGraphRoot source, GraphHostContract contract,
             IOrchestrationGraphContentEncoding<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> encoding, string numericTarget,
             Func<StableHash, NumericProfileId, TargetAbiVersion, int, int, int, int, int,
-                OrchestrationExecutionStateLayout<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>> createStateLayout)
+                OrchestrationExecutionStateLayout<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>> createStateLayout,
+            IReadOnlyList<IOrchestrationExtension> extensions)
         {
             m_Source = source;
             m_Contract = contract;
@@ -80,8 +88,12 @@ namespace BTSMTL.Graphs
             m_Output = new GraphVariableBuffer(m_Bindings.PublishedSlots.Length, m_Bindings.Prepared.Identities.Table);
             m_Workspace = new OrchestrationExecutionWorkspace<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>>(
                 program, content, capacity, 0, tickCapacity.Programs.Span[0]);
-            m_Extensions = OrchestrationExtensionBindings<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>, ValueTuple>.Prepare(
-                content.Extensions.Span, ReadOnlySpan<int>.Empty, Array.Empty<IOrchestrationExtension>());
+            m_Extensions = OrchestrationExtensionBindings<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>, TContext>.Prepare(
+                content.Extensions.Span, OrchestrationExtensionRequirements.Collect(program, content.Extensions.Length),
+                extensions ?? throw new ArgumentNullException(nameof(extensions)));
+            // Start 与 Update 在同一次计算中各自推进，输出按两次调用的工作区容量保留。
+            m_OutputRequests = new OrchestrationOutputRequest[checked(m_Workspace.OutputRequestCapacity * 2)];
+            m_OutputValues = new OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>[checked(m_Workspace.OutputValueCapacity * 2)];
 #if UNITY_EDITOR
             PrepareEditor();
             InitializeEditor();
@@ -157,7 +169,7 @@ namespace BTSMTL.Graphs
             }
         }
 
-        public void Compute()
+        public void Compute(in TContext context)
         {
             if (m_Status == EvaluationStatus.Failed)
                 return;
@@ -171,19 +183,24 @@ namespace BTSMTL.Graphs
 #endif
                 );
             OrchestrationIdentityOrdinalView identities = m_CandidateTexts.Ordinals;
-            ValueTuple context = default;
             var cursor = state.CreateCursor<TScalar, TVector2, TVector3, TQuaternion, TMath,
-                OrchestrationValueAccess<TScalar, TVector2, TVector3, TYaw, TQuaternion>, ValueTuple>(
+                OrchestrationValueAccess<TScalar, TVector2, TVector3, TYaw, TQuaternion>, TContext>(
                 m_Bindings.Program, m_Workspace, m_Extensions, 0, ReadOnlySpan<int>.Empty,
                 null, null, in input, in identities, in context);
+            m_OutputRequestCount = 0;
+            m_OutputValueCount = 0;
             try
             {
                 if (m_RunStart && m_Bindings.Start.OperationIndex >= 0)
+                {
                     cursor.Advance(m_Bindings.Start);
+                    CollectOutputs();
+                }
 #if UNITY_EDITOR
                 ExecuteTriggers(ref cursor);
 #endif
                 cursor.Advance(m_Bindings.Update);
+                CollectOutputs();
                 m_CurrentOperationIndex = cursor.CurrentOperationIndex;
                 m_Status = EvaluationStatus.Succeeded;
             }
@@ -194,8 +211,35 @@ namespace BTSMTL.Graphs
             }
         }
 
+        // 本次计算发出的编排输出，在 Adopt 或 Discard 前有效；值中的运行文本用 ResolveOutputText 读取。
+        public ReadOnlySpan<OrchestrationOutputRequest> OutputRequests => m_OutputRequests.AsSpan(0, m_OutputRequestCount);
+        public ReadOnlySpan<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> OutputValues =>
+            m_OutputValues.AsSpan(0, m_OutputValueCount);
+        public ref readonly OrchestrationOutputTemplate OutputTemplate(int templateIndex) =>
+            ref m_Bindings.Program.OutputTemplate(templateIndex);
+        public string ResolveOutputText(OrchestrationIdentityValue identity) => m_CandidateTexts.Resolve(identity);
+
+        void CollectOutputs()
+        {
+            ReadOnlySpan<OrchestrationOutputRequest> requests = m_Workspace.EmittedOutputRequests;
+            ReadOnlySpan<OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion>> values = m_Workspace.EmittedOutputValues;
+            values.CopyTo(m_OutputValues.AsSpan(m_OutputValueCount));
+            for (int i = 0; i < requests.Length; i++)
+            {
+                ref readonly OrchestrationOutputRequest request = ref requests[i];
+                m_OutputRequests[m_OutputRequestCount++] = new OrchestrationOutputRequest(request.OperationIndex,
+                    request.OperationGeneration, request.InstanceGeneration, request.TemplateIndex,
+                    new OrchestrationRange(request.Values.Offset + m_OutputValueCount, request.Values.Count),
+                    request.HasTimelineInvocation, request.TimelineInvocation, request.TimelineHook,
+                    request.TimelineSourceIdentityId, request.TimelineSourceGeneration, request.TimelineTime);
+            }
+            m_OutputValueCount += values.Length;
+        }
+
         public void Discard()
         {
+            m_OutputRequestCount = 0;
+            m_OutputValueCount = 0;
             ClearCandidateState();
             m_Invocation = default;
             m_CandidateFailure = null;
@@ -252,10 +296,10 @@ namespace BTSMTL.Graphs
             return failed;
         }
 
-        public GraphExecutionResult Execute(GraphInvocationContext invocation, IGraphHostContext hostContext)
+        public GraphExecutionResult Execute(GraphInvocationContext invocation, IGraphHostContext hostContext, in TContext context)
         {
             Prepare(invocation, hostContext);
-            Compute();
+            Compute(in context);
             return Adopt();
         }
 
@@ -398,7 +442,7 @@ namespace BTSMTL.Graphs
         internal void RequireIdle()
         {
             if (m_Disposed)
-                throw new ObjectDisposedException(nameof(HostedGraphRuntime<TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TNumeric>));
+                throw new ObjectDisposedException(nameof(HostedGraphRuntime<TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TNumeric, TContext>));
             if (m_Status != EvaluationStatus.Idle)
                 throw new InvalidOperationException("图实例必须完成或丢弃已派发候选后才能改变生命周期。");
         }

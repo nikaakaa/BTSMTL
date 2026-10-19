@@ -648,12 +648,16 @@ namespace BTSMTL.Graphs
             string updateEventId,
             IReadOnlyList<GraphHostInputDescriptor> inputs,
             IReadOnlyList<GraphHostOutputDescriptor> outputs,
-            IReadOnlyList<PipelineBlackboardVariableScope> blackboardScopes)
+            IReadOnlyList<PipelineBlackboardVariableScope> blackboardScopes,
+            IReadOnlyList<string> domains)
         {
             ContractId = RequireIdentity(contractId, nameof(contractId));
             Revision = RequireIdentity(revision, nameof(revision));
             UpdateEventId = RequireIdentity(updateEventId, nameof(updateEventId));
             BlackboardScopes = blackboardScopes?.Distinct().ToArray() ?? throw new ArgumentNullException(nameof(blackboardScopes));
+            Domains = (domains ?? throw new ArgumentNullException(nameof(domains)))
+                .Select(domain => RequireIdentity(domain, nameof(domains))).Distinct(StringComparer.Ordinal)
+                .OrderBy(domain => domain, StringComparer.Ordinal).ToArray();
             m_Inputs = (inputs ?? Array.Empty<GraphHostInputDescriptor>())
                 .OrderBy(value => value?.InputId, StringComparer.Ordinal)
                 .ToArray();
@@ -671,6 +675,8 @@ namespace BTSMTL.Graphs
         public IReadOnlyList<GraphHostOutputDescriptor> Outputs => m_Outputs;
         // 宿主为图变量提供的黑板作用域；图声明了其它作用域时编译失败。
         public IReadOnlyList<PipelineBlackboardVariableScope> BlackboardScopes { get; }
+        // 宿主提供的领域：扩展领域由宿主运行时传入的扩展实现执行，输出领域由宿主读取编排输出后消费。
+        public IReadOnlyList<string> Domains { get; }
 
         public bool TryGetInput(string inputId, out GraphHostInputDescriptor descriptor)
         {
