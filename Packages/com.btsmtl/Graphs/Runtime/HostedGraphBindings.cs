@@ -64,21 +64,24 @@ namespace BTSMTL.Graphs
             var descriptors = new List<GraphVariableDescriptor>();
             var slots = new Dictionary<string, int>(StringComparer.Ordinal);
             string variableOwnerId = source.Variables.OwnerId;
-            int graphIdentity = frozen.Table.Bind(variableOwnerId);
-            foreach (ref readonly OrchestrationGraphVariable variable in Prepared.Variables.Span)
+            if (source.Variables.BlackboardDeclarations.Count != 0)
             {
-                if (variable.GraphIdentityId != graphIdentity)
-                    continue;
-                string declaration = frozen.Table.Resolve(variable.DeclarationIdentityId);
-                Type type = StateTypes[variable.ValueSlot];
-                OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion> value = Program.DefaultValue(variable.ValueSlot);
-                string identity = value.Kind == OrchestrationValueKind.Identity
-                    ? frozen.Resolve(value.Identity) : default;
-                descriptors.Add(new GraphVariableDescriptor(
-                    new BtsmtlGraphVariableReference(variableOwnerId, declaration),
-                    frozen.Table.Resolve(variable.KeyIdentityId), type,
-                    GraphNumericValues<TScalar, TVector2, TVector3, TYaw, TQuaternion, TNumeric>.FromState(in value, type, identity), variable.IsPublic));
-                slots.Add(declaration, variable.ValueSlot);
+                int graphIdentity = frozen.Table.Bind(variableOwnerId);
+                foreach (ref readonly OrchestrationGraphVariable variable in Prepared.Variables.Span)
+                {
+                    if (variable.GraphIdentityId != graphIdentity)
+                        continue;
+                    string declaration = frozen.Table.Resolve(variable.DeclarationIdentityId);
+                    Type type = StateTypes[variable.ValueSlot];
+                    OrchestrationValue<TScalar, TVector2, TVector3, TYaw, TQuaternion> value = Program.DefaultValue(variable.ValueSlot);
+                    string identity = value.Kind == OrchestrationValueKind.Identity
+                        ? frozen.Resolve(value.Identity) : default;
+                    descriptors.Add(new GraphVariableDescriptor(
+                        new BtsmtlGraphVariableReference(variableOwnerId, declaration),
+                        frozen.Table.Resolve(variable.KeyIdentityId), type,
+                        GraphNumericValues<TScalar, TVector2, TVector3, TYaw, TQuaternion, TNumeric>.FromState(in value, type, identity), variable.IsPublic));
+                    slots.Add(declaration, variable.ValueSlot);
+                }
             }
             Variables = new GraphVariableContract(variableOwnerId, source.Variables.Revision, descriptors);
             PublishedSlots = new int[Variables.PublishedDescriptors.Count];

@@ -1,0 +1,19 @@
+{
+    "name": "ThirdPersonSimulation.QuantumNumerics.Graphs",
+    "rootNamespace": "ThirdPersonSimulation.QuantumNumerics",
+    "references": [
+        "BTSMTL.Graphs",
+        "ThirdPersonSimulation.QuantumNumerics"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "Quantum.Deterministic.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
