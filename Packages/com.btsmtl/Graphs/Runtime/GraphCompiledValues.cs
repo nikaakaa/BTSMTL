@@ -36,6 +36,27 @@ namespace BTSMTL.Graphs
             };
         }
 
+        public static Type ResolveTypeIdentity(string identity)
+        {
+            const string enumPrefix = "Enum:";
+            if (identity is string enumIdentity && enumIdentity.StartsWith(enumPrefix, StringComparison.Ordinal))
+            {
+                Type enumType = Type.GetType(enumIdentity.Substring(enumPrefix.Length), true);
+                return enumType.IsEnum ? enumType :
+                    throw new InvalidOperationException($"事件图枚举类型身份 '{identity}' 没有指向枚举类型。");
+            }
+            return identity switch
+            {
+                nameof(OrchestrationValueKind.Boolean) => typeof(bool),
+                nameof(OrchestrationValueKind.Int32) => typeof(int),
+                nameof(OrchestrationValueKind.Scalar) => typeof(float),
+                nameof(OrchestrationValueKind.Vector2) => typeof(Vector2),
+                nameof(OrchestrationValueKind.Vector3) => typeof(Vector3),
+                nameof(OrchestrationValueKind.Quaternion) => typeof(Quaternion),
+                nameof(OrchestrationValueKind.Identity) => typeof(string),
+                _ => throw new InvalidOperationException($"事件图类型身份 '{identity}' 不受支持。")
+            };
+        }
     }
 
     internal static class GraphNumericValues<TScalar, TVector2, TVector3, TYaw, TQuaternion, TNumeric>

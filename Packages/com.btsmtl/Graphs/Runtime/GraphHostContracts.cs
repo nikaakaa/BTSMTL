@@ -1,5 +1,6 @@
 using ThirdPersonSimulation;
 using BTSMTL.Authoring.Blackboard;
+using BTSMTL.Orchestration;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -668,6 +669,29 @@ namespace BTSMTL.Graphs
                 .ToArray();
             RequireUniqueInputs();
             RequireUniqueOutputs();
+        }
+
+        public static GraphHostContract FromPublishedGraph<TValue>(BtsmtlGraphRoot graph,
+            IOrchestrationGraphContentEncoding<TValue> encoding,
+            string contractId, string revision, string updateEventId,
+            IReadOnlyList<PipelineBlackboardVariableScope> blackboardScopes,
+            IReadOnlyList<string> domains, string numericTarget) where TValue : unmanaged
+        {
+            OrchestrationGraphContent<TValue> content = graph.RequireExecutionData(encoding, numericTarget);
+            var inputs = new List<GraphHostInputDescriptor>();
+            var ids = new HashSet<string>(StringComparer.Ordinal);
+            foreach (ref readonly OrchestrationGraphHostInput input in content.HostInputs.Span)
+            {
+                string inputId = content.Identities.Resolve(input.InputIdentityId);
+                if (ids.Add(inputId))
+                    inputs.Add(new GraphHostInputDescriptor(inputId,
+                        GraphCompiledValues.ResolveTypeIdentity(content.Identities.Resolve(input.ValueTypeIdentityId))));
+            }
+            var outputs = new List<GraphHostOutputDescriptor>();
+            foreach (GraphVariableDescriptor variable in graph.Variables.CreateContract().PublishedDescriptors)
+                outputs.Add(new GraphHostOutputDescriptor(variable.Reference.VariableId, variable.ValueType));
+            return new GraphHostContract(contractId, revision, updateEventId, inputs, outputs,
+                blackboardScopes, domains, numericTarget);
         }
 
         public string ContractId { get; }
