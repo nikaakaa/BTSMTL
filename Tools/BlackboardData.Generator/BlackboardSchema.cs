@@ -17,7 +17,7 @@ internal sealed class BlackboardSchema : IDisposable
     readonly ModuleFactory[] m_ModuleFactories;
     readonly List<Block> m_Blocks = new();
 
-    internal BlackboardSchema(string inputPath)
+    internal BlackboardSchema(string inputPath, string manifestPath)
     {
         m_Input = JsonDocument.Parse(File.ReadAllText(inputPath, Utf8));
         JsonElement root = m_Input.RootElement;
@@ -34,6 +34,7 @@ internal sealed class BlackboardSchema : IDisposable
                 factory.GetProperty("typeName").GetString()!, factory.GetProperty("methodName").GetString()!,
                 target.GetProperty("valueType").GetString()!);
         }).ToArray();
+        var assignments = ReadBlockAssignments(manifestPath);
         foreach (JsonElement owner in root.GetProperty("owners").EnumerateArray()
             .OrderBy(value => value.GetProperty("identity").GetString(), StringComparer.Ordinal))
         {
@@ -43,10 +44,31 @@ internal sealed class BlackboardSchema : IDisposable
             foreach (var scope in declarations.GroupBy(value => value.GetProperty("scope").GetString()!, StringComparer.Ordinal)
                 .OrderBy(value => value.Key, StringComparer.Ordinal))
             {
-                JsonElement[] fields = scope.ToArray();
-                for (int offset = 0; offset < fields.Length; offset += GeneratedBlackboardProtocol.MaximumFieldsPerBlock)
+                var unassigned = scope.ToDictionary(field => field.GetProperty("id").GetString()!, StringComparer.Ordinal);
+                var blocks = new List<List<JsonElement>>();
+                if (assignments.TryGetValue((ownerId, scope.Key), out string[][]? previous))
                 {
-                    JsonElement[] blockFields = fields.Skip(offset).Take(GeneratedBlackboardProtocol.MaximumFieldsPerBlock).ToArray();
+                    foreach (string[] assigned in previous)
+                    {
+                        var fields = new List<JsonElement>(GeneratedBlackboardProtocol.MaximumFieldsPerBlock);
+                        foreach (string id in assigned)
+                            if (unassigned.Remove(id, out JsonElement field))
+                                fields.Add(field);
+                        blocks.Add(fields);
+                    }
+                }
+                int available = 0;
+                foreach (JsonElement field in unassigned.Values.OrderBy(value => value.GetProperty("id").GetString(), StringComparer.Ordinal))
+                {
+                    while (available < blocks.Count && blocks[available].Count == GeneratedBlackboardProtocol.MaximumFieldsPerBlock)
+                        available++;
+                    if (available == blocks.Count)
+                        blocks.Add(new List<JsonElement>(GeneratedBlackboardProtocol.MaximumFieldsPerBlock));
+                    blocks[available].Add(field);
+                }
+                foreach (List<JsonElement> fields in blocks.Where(block => block.Count != 0))
+                {
+                    JsonElement[] blockFields = fields.OrderBy(field => field.GetProperty("id").GetString(), StringComparer.Ordinal).ToArray();
                     string signature = string.Join("\n", blockFields.Select(field => string.Join("|",
                         field.GetProperty("id").GetString(), field.GetProperty("key").GetString(),
                         field.GetProperty("type").GetString(), field.GetProperty("scope").GetString(),
@@ -59,6 +81,20 @@ internal sealed class BlackboardSchema : IDisposable
     }
 
     internal IEnumerable<string> TargetNames => m_Targets.Select(target => target.GetProperty("name").GetString()!);
+
+    static Dictionary<(string Owner, string Scope), string[][]> ReadBlockAssignments(string manifestPath)
+    {
+        if (!File.Exists(manifestPath))
+            return new();
+        using JsonDocument manifest = JsonDocument.Parse(File.ReadAllText(manifestPath, Utf8));
+        if (manifest.RootElement.GetProperty("protocol").GetInt32() != GeneratedBlackboardProtocol.Version)
+            throw new InvalidDataException("黑板生成清单协议不匹配，无法读取原字段分块归属。");
+        return manifest.RootElement.GetProperty("declarations").EnumerateArray()
+            .GroupBy(field => (Owner: field.GetProperty("owner").GetString()!, Scope: field.GetProperty("scope").GetString()!))
+            .ToDictionary(scope => scope.Key, scope => scope
+                .GroupBy(field => field.GetProperty("defaultsFile").GetString()!, StringComparer.Ordinal)
+                .Select(block => block.Select(field => field.GetProperty("id").GetString()!).ToArray()).ToArray());
+    }
 
     internal void Write(string output, string[] precompiledReferences)
     {

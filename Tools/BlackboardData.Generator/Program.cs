@@ -25,7 +25,7 @@ internal static class Program
         Directory.CreateDirectory(pending);
         try
         {
-            using var schema = new BlackboardSchema(args[0]);
+            using var schema = new BlackboardSchema(args[0], Path.Combine(output, "blackboard.manifest.json"));
             schema.Write(pending, JsonSerializer.Deserialize<string[]>(args[3])!);
             foreach (string target in schema.TargetNames)
                 GenerateCSharp(args[2], Path.Combine(pending, target));
