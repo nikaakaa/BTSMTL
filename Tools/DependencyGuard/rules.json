@@ -54,11 +54,16 @@
     "^com\\.thirdperson\\."
   ],
   "sourceIdentityAssemblies": [
-    "^BTSMTL\\.Foundation$",
-    "^ThirdPerson\\.Shared\\.Contracts$",
-    "^Quantum\\.Simulation$",
-    "^ThirdPersonGameplay\\.Movement$",
-    "^ThirdPersonSimulation\\.(?:Core|AttackGeometry|QuantumNumerics)$"
+    "^BTSMTL(?:\\.|$)",
+    "^ThirdPerson(?!Character\\.ContentDefinitions\\.Editor$)",
+    "^GameLogic$",
+    "^Quantum\\.Simulation$"
+  ],
+  "clientToolDirectories": [
+    "../../../Tools/ThirdPersonPerformanceCapture",
+    "../../../Tools/ThirdPersonNetworkTest",
+    "../../../Tools/ThirdPersonLocalContentService",
+    "../../../Tools/GameplayConfig/Generator"
   ],
   "roleNames": [
     "Corin"
@@ -516,6 +521,8 @@
     "AudioRequest"
   ],
   "retiredTypes": [
+    "BTSMTL.Timeline.AcceptableTrackGroups",
+    "BTSMTL.Timeline.TrackGroup",
     "ThirdPersonSimulation.AbilityStateValue",
     "ThirdPersonSimulation.AbilityTimelineAdvancePending",
     "ThirdPersonSimulation.AbilityTimelineInvocationSource",

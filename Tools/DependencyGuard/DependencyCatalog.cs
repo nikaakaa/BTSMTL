@@ -34,6 +34,8 @@ sealed partial class DependencyCatalog(string sdkRoot, string? clientRoot, Guard
                 if (Directory.Exists(Path.Combine(clientRoot, directory)))
                     files.UnionWith(Enumerate(Path.Combine(clientRoot, directory)));
             files.UnionWith(Directory.EnumerateFiles(clientRoot, "*.csproj"));
+            foreach (string directory in rules.ClientToolDirectories)
+                files.UnionWith(Enumerate(FullPath(clientRoot, directory)));
             ReadLinkedPackages(files);
         }
         LoadDeclarationFiles(files);

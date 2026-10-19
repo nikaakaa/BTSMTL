@@ -61,6 +61,12 @@ Q3 原采集工具在本批 Arm 前采用该输出，并结合当前 Build recei
 
 ## 规则与解析
 
+`sourceIdentityAssemblies` 将角色／技能文字检查应用于全部 BTSMTL 程序集、3C `ThirdPerson*` 通用工具、`GameLogic` 产品启动及 Quantum.Simulation；只排除持有具体作者内容的 `ThirdPersonCharacter.ContentDefinitions.Editor`。角色名来自规则与当前角色目录，技能身份来自正式资产字段。角色文字按独立词段及 PascalCase 段匹配，覆盖字符串、插值文字和标识符，避免 `ScoringVersion` 被误判为 Corin；技能身份继续检查实际技能常量与分派上下文。
+
+`clientToolDirectories` 是相对 Client 根的正式外置工具输入目录，当前包含性能控制器、网络编排器、本地内容服务和 Gameplay 配表生成器。它们经同一 Catalog 读取 csproj、真实 Compile 与源码归属，不依赖 Unity 编译证据。已删除的 `BTSMTL.Timeline.AcceptableTrackGroups` 与 `BTSMTL.Timeline.TrackGroup` 登记在 `retiredTypes`，声明、属性使用或反射字符串恢复这些轨道组接口都会触发 `RETIRED_TYPE`；普通相机业务的 `Camera` 文字不受此规则禁止。
+
+完整 Client 缺少本批 Unity 证据时，独立的 `StructuralSourceScan` 仍会执行。文字范围结果以 `SourceScanCompleted=true`、`InputsChanged=false`、`ScannedSources` 实际覆盖及相应身份／退役类型违规为据；整体退出码 2 和 `ScanCompleted=false` 保留完整守护尚未完成的事实，不能据文字检查通过宣称 Quantum 实际依赖检查通过。此文字检查不要求采集新的 Unity 编译证据。
+
 `rules.json` 是唯一规则表，当前规则协议使用版本 7；工具只接受该版本，旧工具与旧规则不能忽略新证据协议或退役范围后继续报告通过。它覆盖全部 BTSMTL 程序集与工具、核心合同/运行时、领域合同、Shared 和 Quantum.Simulation；按真实 asmdef 名称解析 GUID 引用，按项目路径解析 ProjectReference 与本地 imports，按 package.json 验证依赖方向与包环。合同的允许引用表约束直接依赖；禁止的实现依赖沿完整依赖链和本批产物 AssemblyReference 闭包检查。构建期 analyzer 不作为运行程序集引用，仍完整保存其实际编译输入身份。
 
 `THIRD_PARTY_PLUGIN_INDEPENDENT` 约束 Client 中的 ParadoxNotion、NodeCanvas、FlowCanvas 与 SLATE：它们保持原版独立，asmdef 依赖链和源码都不得引用 BTSMTL 或宿主 ThirdPerson。这些插件不在受控前缀内，只有依赖规则明确指向的 asmdef 才执行声明依赖检查，实际编译证据范围不随之扩大。通用流程节点由 `BTSMTL.Graphs` 声明，基础数值节点的编译合同由 `BtsmtlNativeValueNodeCatalog` 提供，不回写插件源码。源码类型未能语义绑定时按名字回退，顺序为所在命名空间由内向外、using 导入、最后全局命名空间；未引用程序集中的同名全局类型（如 BTSMTL 的 `ShowIfAttribute`）不会抢先于插件 using 导入的同名类型。

@@ -20,6 +20,9 @@ sealed partial class SourceGuard(DependencyCatalog catalog, GuardRules rules, st
 
     public int PrepareInputs() => ReadInputs().Count();
 
+    bool ContainsRole(string text) => roles.Any(role => Regex.IsMatch(text,
+        $@"(?<![A-Za-z])(?i:{Regex.Escape(role)})(?![a-z])|(?<=[a-z0-9])(?=[A-Z])(?i:{Regex.Escape(role)})(?![a-z])"));
+
     IEnumerable<(string Path, Module Owner, string Text)> ReadInputs()
     {
         ReadAuthorIdentities();
@@ -94,22 +97,27 @@ sealed partial class SourceGuard(DependencyCatalog catalog, GuardRules rules, st
                                     Report(rule.Id, path, owner, node, $"{rule.Reason} 源码类型 {key} 属于 {target.Name}（{target.Path}）。");
                     }
                 }
-                if (node is LiteralExpressionSyntax literal && literal.IsKind(SyntaxKind.StringLiteralExpression))
+                string? value = node switch
                 {
-                    string value = literal.Token.ValueText;
+                    LiteralExpressionSyntax literal when literal.IsKind(SyntaxKind.StringLiteralExpression) => literal.Token.ValueText,
+                    InterpolatedStringTextSyntax interpolated => interpolated.TextToken.ValueText,
+                    _ => null
+                };
+                if (value is not null)
+                {
                     foreach (string retired in retiredTypes)
                         if (value.Contains(retired, StringComparison.Ordinal))
                             Report("RETIRED_TYPE", path, owner, node, $"字符串或反射身份引用已删除类型 {retired}。");
-                    if (checkNames && roles.Any(role => value.Contains(role, StringComparison.OrdinalIgnoreCase)))
-                        Report("CONTENT_IDENTITY_IN_CODE", path, owner, node, $"共享/模拟代码固化角色身份：{value}。");
-                    if (checkNames && skills.Contains(value) && IsSkillIdentityContext(literal))
-                        Report("CONTENT_IDENTITY_IN_CODE", path, owner, node, $"共享/模拟代码按作者技能身份 {value} 声明常量或分派。");
+                    if (checkNames && ContainsRole(value))
+                        Report("CONTENT_IDENTITY_IN_CODE", path, owner, node, $"通用代码固化角色身份：{value}。");
+                    if (checkNames && skills.Contains(value) && IsSkillIdentityContext(node))
+                        Report("CONTENT_IDENTITY_IN_CODE", path, owner, node, $"通用代码按作者技能身份 {value} 声明常量或分派。");
                 }
             }
             if (checkNames)
                 foreach (SyntaxToken token in root.DescendantTokens().Where(token => token.IsKind(SyntaxKind.IdentifierToken)))
-                    if (roles.Any(role => token.ValueText.Contains(role, StringComparison.OrdinalIgnoreCase)))
-                        Report("CONTENT_IDENTITY_IN_CODE", path, owner, token.Parent!, $"共享/模拟标识符含角色名：{token.ValueText}。");
+                    if (ContainsRole(token.ValueText))
+                        Report("CONTENT_IDENTITY_IN_CODE", path, owner, token.Parent!, $"通用标识符含角色名：{token.ValueText}。");
         }
         CheckTimelineBoundaries();
     }
@@ -226,15 +234,15 @@ sealed partial class SourceGuard(DependencyCatalog catalog, GuardRules rules, st
             _ => false
         };
     }
-    static bool IsSkillIdentityContext(LiteralExpressionSyntax literal)
+    static bool IsSkillIdentityContext(SyntaxNode textNode)
     {
         const string identity = @"(?:skill|ability)(?:id|name|identity)?\b";
         bool Matches(string text) => Regex.IsMatch(text, identity, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-        foreach (SyntaxNode ancestor in literal.Ancestors())
+        foreach (SyntaxNode ancestor in textNode.Ancestors())
         {
             if (ancestor is VariableDeclaratorSyntax variable) return Matches(variable.Identifier.ValueText);
             if (ancestor is AssignmentExpressionSyntax assignment) return Matches(assignment.Left.ToString());
-            if (ancestor is BinaryExpressionSyntax binary) return Matches((binary.Left == literal ? binary.Right : binary.Left).ToString());
+            if (ancestor is BinaryExpressionSyntax binary) return Matches((binary.Left.Span.Contains(textNode.Span) ? binary.Right : binary.Left).ToString());
             if (ancestor is SwitchStatementSyntax statement) return Matches(statement.Expression.ToString());
             if (ancestor is SwitchExpressionSyntax expression) return Matches(expression.GoverningExpression.ToString());
             if (ancestor is InvocationExpressionSyntax invocation) return Matches(invocation.Expression.ToString()) ||

@@ -8,6 +8,7 @@ sealed class GuardRules
     public string[] ControlledAssemblies { get; set; } = [];
     public string[] ControlledPackages { get; set; } = [];
     public string[] SourceIdentityAssemblies { get; set; } = [];
+    public string[] ClientToolDirectories { get; set; } = [];
     public string[] RoleNames { get; set; } = [];
     public string AuthorIdentityDirectory { get; set; } = "";
     public string[] SkillIdentityFields { get; set; } = [];
