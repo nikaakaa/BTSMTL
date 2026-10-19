@@ -223,6 +223,11 @@ namespace BTSMTL.Diagnostics
         public static long Append<TStorage>(TStorage storage, in RuntimeTraceEvent value, int sourceGroup)
             where TStorage : class, IRuntimeCaptureSpanStorage
         {
+            if (value.Kind is RuntimeTraceEventKind.StateTransitionSelected or RuntimeTraceEventKind.TimelineSectionJumped or
+                RuntimeTraceEventKind.TimelineLogicTime or RuntimeTraceEventKind.TimelineVisualTime or
+                RuntimeTraceEventKind.TimelineStarted or RuntimeTraceEventKind.TimelineCompleted or
+                RuntimeTraceEventKind.TimelineCancelled or RuntimeTraceEventKind.TimelineStopped)
+                return storage.Create(in value, sourceGroup, RuntimeCaptureSpanState.Completed);
             var key = new RuntimeCaptureSpanKey(in value);
             if (value.Kind == RuntimeTraceEventKind.ClipActive)
             {
@@ -236,14 +241,6 @@ namespace BTSMTL.Diagnostics
                 var current = new RuntimeCaptureSpanToken(location, value.Position, value.GetCycle());
                 storage.SetCurrent(in key, RuntimeCaptureSpanSlot.ClipSample, in current);
                 return location;
-            }
-            if (value.Kind is RuntimeTraceEventKind.StateTransitionSelected or RuntimeTraceEventKind.TimelineSectionJumped or
-                RuntimeTraceEventKind.TimelineLogicTime or RuntimeTraceEventKind.TimelineVisualTime or
-                RuntimeTraceEventKind.TimelineStarted or RuntimeTraceEventKind.TimelineCompleted or
-                RuntimeTraceEventKind.TimelineCancelled or RuntimeTraceEventKind.TimelineStopped)
-            {
-                storage.TryGetCurrent(in key, RuntimeCaptureSpanSlot.ClipSample, out _);
-                return storage.Create(in value, sourceGroup, RuntimeCaptureSpanState.Completed);
             }
             if (value.Kind is RuntimeTraceEventKind.TreeClipEntered or RuntimeTraceEventKind.StateScopeEntered)
             {

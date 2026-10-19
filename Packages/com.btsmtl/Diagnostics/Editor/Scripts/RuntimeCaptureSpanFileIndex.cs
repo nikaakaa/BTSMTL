@@ -218,11 +218,6 @@ namespace BTSMTL.Diagnostics.Editor
 
         long IRuntimeCaptureSpanStorage.Create(in RuntimeTraceEvent value, int sourceGroup, RuntimeCaptureSpanState state)
         {
-            if (state != RuntimeCaptureSpanState.MissingStart && m_CurrentCandidate < 0)
-            {
-                var key = new RuntimeCaptureSpanKey(in value);
-                m_CurrentCandidate = CreateCandidate(in key);
-            }
             long location = m_SpanCount++;
             long revision = WriteRevision(-1, m_Archive.WrittenEventCount, value.TimeSeconds, state);
             long interval = AppendInterval((float)value.TimeSeconds, state);
@@ -259,6 +254,8 @@ namespace BTSMTL.Diagnostics.Editor
         void IRuntimeCaptureSpanStorage.SetCurrent(in RuntimeCaptureSpanKey key, RuntimeCaptureSpanSlot slot,
             in RuntimeCaptureSpanToken current)
         {
+            if (m_CurrentCandidate < 0)
+                m_CurrentCandidate = CreateCandidate(in key);
             m_CurrentSlot = slot;
             WriteCurrent(current.Location, current.EndPosition, current.EndCycle);
         }
