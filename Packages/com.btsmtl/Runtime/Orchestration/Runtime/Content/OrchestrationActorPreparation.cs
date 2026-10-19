@@ -75,7 +75,7 @@ namespace BTSMTL.Orchestration
                 NumericProfileId numericProfile, TargetAbiVersion targetAbi,
                 Func<StableHash, NumericProfileId, TargetAbiVersion, int, int,
                     OrchestrationCharacterBlackboardStateLayout<TValue>> blackboardFactory,
-                Func<StableHash, NumericProfileId, TargetAbiVersion, int, int, int, int, int, int, int, int,
+                Func<StableHash, NumericProfileId, TargetAbiVersion, int, int, int, int, int, int,
                     OrchestrationExecutionStateLayout<TValue>> executionFactory,
                 Func<StableHash, NumericProfileId, TargetAbiVersion,
                     OrchestrationCharacterBlackboardStateLayout<TValue>,
@@ -90,8 +90,7 @@ namespace BTSMTL.Orchestration
                 characterCount, characterCount);
             var execution = executionFactory(Identity, numericProfile, targetAbi,
                 capacity.ValueCount, capacity.FrameCount, capacity.OperationCount, 1,
-                capacity.SavedOutputCount, capacity.TransitionCacheCount,
-                capacity.TransitionSnapshotCount, capacity.ValueCount);
+                capacity.SavedOutputCount, capacity.ValueCount);
             var composite = compositeFactory(Identity, numericProfile, targetAbi,
                 blackboard, execution, timelineLayout);
             return new OrchestrationPreparedStateLayout<TValue>(composite.Layout, composite.StateSegments,
@@ -195,8 +194,7 @@ namespace BTSMTL.Orchestration
                 OrchestrationProgramContent<TValue> program = graphs[programIndex].Program;
                 preparedProgramStorages[programIndex] = new OrchestrationPreparedProgramStorage<TValue>(
                     skillContentIds[programIndex], program.ExecutionStorage,
-                    program.ValueSlotTypes, program.ValueSchedule.TransitionCacheCount,
-                    program.ValueSchedule.TransitionSnapshotCount);
+                    program.ValueSlotTypes);
                 characterMappings[programIndex] = characterMapping;
             }
             for (int characterSlot = 0; characterSlot < characterBlackboards.Length; characterSlot++)

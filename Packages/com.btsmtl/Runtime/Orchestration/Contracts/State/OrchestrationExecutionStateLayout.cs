@@ -17,10 +17,6 @@ namespace BTSMTL.Orchestration
         public OrchestrationStateRegion<OrchestrationExecutionRosterState> Roster { get; }
         [OrchestrationStateSegment(OrchestrationStateSegmentRole.SavedOutputs, perFrame: true)]
         public OrchestrationStateRegion<TValue> SavedOutputs { get; }
-        [OrchestrationStateSegment(OrchestrationStateSegmentRole.TransitionCaches, perFrame: true)]
-        public OrchestrationStateRegion<OrchestrationTransitionCacheState> TransitionCaches { get; }
-        [OrchestrationStateSegment(OrchestrationStateSegmentRole.TransitionSnapshots, perFrame: true)]
-        public OrchestrationStateRegion<OrchestrationTransitionSnapshot<TValue>> TransitionSnapshots { get; }
         [OrchestrationStateSegment(OrchestrationStateSegmentRole.PrivateValues, perFrame: true)]
         public OrchestrationStateRegion<TValue> Values { get; }
     }

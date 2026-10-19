@@ -71,14 +71,6 @@ namespace BTSMTL.Orchestration
             }
         }
 
-        public Span<OrchestrationTransitionCacheState> TransitionCaches(int frameSlot) =>
-            Payload<OrchestrationTransitionCacheState>(frameSlot, OrchestrationStateSegmentRole.TransitionCaches,
-                Plan.ProgramIndex(m_Frames[frameSlot].SkillContentId));
-
-        public Span<OrchestrationTransitionSnapshot<TValue>> TransitionSnapshots(int frameSlot) =>
-            Payload<OrchestrationTransitionSnapshot<TValue>>(frameSlot, OrchestrationStateSegmentRole.TransitionSnapshots,
-                Plan.ProgramIndex(m_Frames[frameSlot].SkillContentId));
-
         internal Span<T> Payload<T>(int frameSlot, OrchestrationStateSegmentRole role,
             int programIndex) where T : unmanaged
         {

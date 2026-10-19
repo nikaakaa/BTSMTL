@@ -12,7 +12,6 @@ namespace BTSMTL.Compilation
             OrchestrationValueSchedule BuildValueSchedule(OperationDraft[] operations,
                 OrchestrationFlowEdge[] edges, OrchestrationProgramStructure structure)
             {
-                TransitionConditions transitionConditions = BuildTransitionConditions(operations, edges, structure);
                 var states = new List<int> { -1 };
                 var contexts = new int[operations.Length + 1];
                 for (int i = 0; i < operations.Length; i++)
@@ -120,9 +119,9 @@ namespace BTSMTL.Compilation
                 for (int context = 0; context < states.Count; context++)
                 {
                     var product = new ValueScheduleBuilder(this, operations, edges, structure, states[context], false,
-                        instructions, argumentSlots, argumentLists, transitionConditions);
+                        instructions, argumentSlots, argumentLists);
                     var workbench = new ValueScheduleBuilder(this, operations, edges, structure, states[context], true,
-                        instructions, argumentSlots, argumentLists, transitionConditions);
+                        instructions, argumentSlots, argumentLists);
                     for (int operation = 0; operation < operations.Length; operation++)
                     {
                         OperationDraft op = operations[operation];
@@ -211,9 +210,7 @@ namespace BTSMTL.Compilation
                 return new OrchestrationValueSchedule(ordered, argumentSlots.ToArray(), argumentLists.ToArray(),
                     valueEntries, inputEntries, transitions, children, aborts, booleans, m_ValueOperations,
                     contexts, values, m_Inputs.Count,
-                    checked((values + m_Inputs.Count + 1) * (predicts ? 2 : 1)), predicts ? 1 : 0,
-                    transitionConditions.Conditions, transitionConditions.Sources,
-                    transitionConditions.CacheCount, transitionConditions.SnapshotCount);
+                    checked((values + m_Inputs.Count + 1) * (predicts ? 2 : 1)), predicts ? 1 : 0);
             }
 
             static bool CanEvaluate(OrchestrationOperationCode code) => code is
@@ -228,7 +225,7 @@ namespace BTSMTL.Compilation
 
             sealed class ValueScheduleBuilder
             {
-                enum WorkKind : byte { Value, BooleanValue, Input, Inputs, CompleteValue, CompleteInput, Select, SelectChild, TransitionCondition, Emit, EnterPrediction, LeavePrediction }
+                enum WorkKind : byte { Value, BooleanValue, Input, Inputs, CompleteValue, CompleteInput, Select, SelectChild, Emit, EnterPrediction, LeavePrediction }
 
                 enum CompileStepKind : byte { Expand, Alias, Emit }
 
@@ -264,7 +261,6 @@ namespace BTSMTL.Compilation
                 readonly List<OrchestrationValueScheduleInstruction> m_Instructions;
                 readonly List<int> m_ArgumentSlots;
                 readonly List<OrchestrationRange> m_ArgumentLists;
-                readonly TransitionConditions m_TransitionConditions;
                 readonly List<(WorkKind Kind, OrchestrationValueScheduleInstruction Data)> m_Work = new();
                 readonly Dictionary<(WorkKind Kind, OrchestrationValueScheduleCode Code, int Op, int Operand, int Dest, int Arg, int Next, int Alt), int> m_WorkIndexes = new();
                 readonly Dictionary<(int Work, BigInteger Available), int> m_Compiled = new();
@@ -276,8 +272,7 @@ namespace BTSMTL.Compilation
                     Compilation<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TLowering> compiler,
                     OperationDraft[] operations, OrchestrationFlowEdge[] edges, OrchestrationProgramStructure structure,
                     int state, bool diagnostics, List<OrchestrationValueScheduleInstruction> instructions,
-                    List<int> argumentSlots, List<OrchestrationRange> argumentLists,
-                    TransitionConditions transitionConditions)
+                    List<int> argumentSlots, List<OrchestrationRange> argumentLists)
                 {
                     m_Compiler = compiler;
                     m_Operations = operations;
@@ -290,7 +285,6 @@ namespace BTSMTL.Compilation
                     m_Instructions = instructions;
                     m_ArgumentSlots = argumentSlots;
                     m_ArgumentLists = argumentLists;
-                    m_TransitionConditions = transitionConditions;
                 }
 
                 int Work(WorkKind kind, int op = -1, int operand = -1, int destination = -1, int argument = 0,
@@ -468,10 +462,6 @@ namespace BTSMTL.Compilation
                             case WorkKind.Inputs:
                                 result = AllInputs(d.Operation, d.Argument) | Previous(d.Next);
                                 break;
-                            case WorkKind.TransitionCondition:
-                                result = ValueDependencies(m_Edges[d.Operand].ConditionOperationIndex, -1, d.Argument) |
-                                    Previous(d.Next);
-                                break;
                             case WorkKind.Select:
                             case WorkKind.SelectChild:
                             {
@@ -633,16 +623,6 @@ namespace BTSMTL.Compilation
                         }
                         case WorkKind.Inputs:
                             return Alias(Inputs(op, d.Argument, d.Next), available);
-                        case WorkKind.TransitionCondition:
-                        {
-                            int condition = m_TransitionConditions.EdgeConditions[d.Operand];
-                            int computed = Work(WorkKind.BooleanValue, m_Edges[d.Operand].ConditionOperationIndex,
-                                -1, argument: d.Argument, next: Emit(OrchestrationValueScheduleCode.WriteTransitionCache,
-                                    op, condition, BooleanSlot(d.Argument), next: d.Next));
-                            return EmitStep(new OrchestrationValueScheduleInstruction(
-                                OrchestrationValueScheduleCode.ReadTransitionCache, op, condition, BooleanSlot(d.Argument),
-                                0, d.Next, computed), available, available);
-                        }
                         case WorkKind.Input:
                         {
                             int inputIndex = m_Operations[op].Inputs.Offset + d.Operand;
@@ -734,11 +714,8 @@ namespace BTSMTL.Compilation
                             {
                                 int branch = Emit(OrchestrationValueScheduleCode.BranchCondition, op, edgeIndex,
                                     BooleanSlot(d.Argument), next: selection, alternative: nextEdge);
-                                int condition = m_TransitionConditions.EdgeConditions[edgeIndex];
-                                selection = work.Kind == WorkKind.Select && d.Argument == 0 && !m_Diagnostics &&
-                                    m_TransitionConditions.Conditions[condition].CacheIndex >= 0
-                                    ? Work(WorkKind.TransitionCondition, op, edgeIndex, argument: d.Argument, next: branch)
-                                    : Work(WorkKind.BooleanValue, edge.ConditionOperationIndex, -1, argument: d.Argument, next: branch);
+                                selection = Work(WorkKind.BooleanValue, edge.ConditionOperationIndex,
+                                    -1, argument: d.Argument, next: branch);
                             }
                             if (m_Operations[op].Code == OrchestrationOperationCode.StateAny && m_State < 0)
                                 selection = Emit(OrchestrationValueScheduleCode.BranchExcludedTarget, op, edge.TargetOperationIndex,

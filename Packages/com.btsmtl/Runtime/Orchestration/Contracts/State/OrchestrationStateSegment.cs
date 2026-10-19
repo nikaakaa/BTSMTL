@@ -13,8 +13,6 @@ namespace BTSMTL.Orchestration
         CharacterMetadata,
         PrivateValues,
         PrivateMetadata,
-        TransitionCaches,
-        TransitionSnapshots,
         TimelinePlaybacks,
         TimelineSequences,
         TimelineTreeExitBits,

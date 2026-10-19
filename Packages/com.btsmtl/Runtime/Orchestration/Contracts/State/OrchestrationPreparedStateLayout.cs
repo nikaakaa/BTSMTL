@@ -7,21 +7,16 @@ namespace BTSMTL.Orchestration
     {
         public OrchestrationPreparedProgramStorage(int skillContentId,
             OrchestrationProgramStorageLayout storage,
-            ReadOnlyMemory<OrchestrationValueSlotType> valueTypes,
-            int transitionCacheCount, int transitionSnapshotCount)
+            ReadOnlyMemory<OrchestrationValueSlotType> valueTypes)
         {
             SkillContentId = skillContentId;
             Storage = storage;
             ValueTypes = valueTypes;
-            TransitionCacheCount = transitionCacheCount;
-            TransitionSnapshotCount = transitionSnapshotCount;
         }
 
         public int SkillContentId { get; }
         public OrchestrationProgramStorageLayout Storage { get; }
         public ReadOnlyMemory<OrchestrationValueSlotType> ValueTypes { get; }
-        public int TransitionCacheCount { get; }
-        public int TransitionSnapshotCount { get; }
     }
 
     public sealed class OrchestrationPreparedStateLayout<TValue> where TValue : unmanaged
@@ -138,8 +133,6 @@ namespace BTSMTL.Orchestration
                         return storage.BlackboardCount;
                     int count = storage.ValueKindCounts.Span[(int)segment.ValueKind];
                     return segment.ValueKind == OrchestrationValueKind.Boolean ? (count + 63) / 64 : count;
-                case OrchestrationStateSegmentRole.TransitionCaches: return prepared.TransitionCacheCount;
-                case OrchestrationStateSegmentRole.TransitionSnapshots: return prepared.TransitionSnapshotCount;
                 default: throw new InvalidOperationException($"区段'{segment.Role}'不是执行帧载荷。");
             }
         }
@@ -156,9 +149,7 @@ namespace BTSMTL.Orchestration
             int alignment = 1;
             foreach (OrchestrationStateSegment segment in m_Segments)
             {
-                if (segment.Role == OrchestrationStateSegmentRole.TransitionCaches ||
-                    segment.Role == OrchestrationStateSegmentRole.TransitionSnapshots ||
-                    segment.Role >= OrchestrationStateSegmentRole.TimelinePlaybacks)
+                if (segment.Role >= OrchestrationStateSegmentRole.TimelinePlaybacks)
                     continue;
                 int length = segment.PerFrame ? segment.Length / FrameCapacity * frameCapacity : segment.Length;
                 offset = checked((offset + segment.Alignment - 1) / segment.Alignment * segment.Alignment);

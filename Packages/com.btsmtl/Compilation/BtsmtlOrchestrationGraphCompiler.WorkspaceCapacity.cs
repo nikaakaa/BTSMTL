@@ -278,7 +278,6 @@ namespace BTSMTL.Compilation
                             case OrchestrationValueScheduleCode.BranchBoolean:
                             case OrchestrationValueScheduleCode.BranchExcludedTarget:
                             case OrchestrationValueScheduleCode.BranchCondition:
-                            case OrchestrationValueScheduleCode.ReadTransitionCache:
                                 pending.Push((instruction.Alternative, predictions));
                                 break;
                         }

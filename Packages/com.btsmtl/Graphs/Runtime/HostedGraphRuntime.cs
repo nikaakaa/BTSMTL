@@ -59,7 +59,7 @@ namespace BTSMTL.Graphs
 
         public HostedGraphRuntime(BtsmtlGraphRoot source, GraphHostContract contract,
             IOrchestrationGraphContentEncoding<TValue> encoding,
-            Func<StableHash, NumericProfileId, TargetAbiVersion, int, int, int, int, int, int, int, int,
+            Func<StableHash, NumericProfileId, TargetAbiVersion, int, int, int, int, int, int,
                 OrchestrationExecutionStateLayout<TValue>> createStateLayout,
             IReadOnlyList<IOrchestrationExtension> extensions)
         {
@@ -81,14 +81,12 @@ namespace BTSMTL.Graphs
                 StableHash.Compute(content.Identity.GraphId, content.Identity.SourceRevision),
                 content.NumericProfile.Id, content.NumericProfile.AbiVersion,
                 stateCapacity.ValueCount, stateCapacity.FrameCount, stateCapacity.OperationCount,
-                1, stateCapacity.SavedOutputCount, stateCapacity.TransitionCacheCount,
-                stateCapacity.TransitionSnapshotCount, stateCapacity.ValueCount);
+                1, stateCapacity.SavedOutputCount, stateCapacity.ValueCount);
             m_PrivateValues = executionLayout.Values;
             m_Layout = new OrchestrationPreparedStateLayout<TValue>(executionLayout.Layout,
                 executionLayout.StateSegments, stateCapacity.FrameCount,
                 new[] { new OrchestrationPreparedProgramStorage<TValue>(m_Bindings.SourceIdentityId,
-                    program.ExecutionStorage, program.Content.ValueSlotTypes,
-                    program.ValueSchedule.TransitionCacheCount, program.ValueSchedule.TransitionSnapshotCount) },
+                    program.ExecutionStorage, program.Content.ValueSlotTypes) },
                 ReadOnlyMemory<OrchestrationValueSlotType>.Empty,
                 new OrchestrationStateRegion<byte>(executionLayout.Layout.SizeBytes, 0), default);
             m_MemoryLayout = m_Layout.Layout;
@@ -373,9 +371,6 @@ namespace BTSMTL.Graphs
             Span<TValue> savedOutputs = frames.SavedOutputs(0);
             for (int i = 0; i < savedOutputs.Length; i++)
                 RemapValue(ref savedOutputs[i]);
-            var snapshots = frames.TransitionSnapshots(0);
-            for (int i = 0; i < snapshots.Length; i++)
-                RemapValue(ref snapshots[i].Value);
 #if UNITY_EDITOR
             PrepareEditorCandidateState();
 #endif

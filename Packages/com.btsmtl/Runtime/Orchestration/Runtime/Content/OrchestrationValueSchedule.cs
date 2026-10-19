@@ -22,9 +22,7 @@ namespace BTSMTL.Orchestration
         BranchCondition,
         EnterPrediction,
         LeavePrediction,
-        WritePrediction,
-        ReadTransitionCache,
-        WriteTransitionCache
+        WritePrediction
     }
 
     public enum OrchestrationValueSelectionReason : byte
@@ -83,10 +81,7 @@ namespace BTSMTL.Orchestration
             ReadOnlyMemory<OrchestrationValueScheduleEntry> booleanEntries,
             ReadOnlyMemory<OrchestrationValueOperation> valueOperations,
             ReadOnlyMemory<int> stateContexts, int valueSlotCount, int inputBindingCount,
-            int scratchSlotCount, int predictionDepth,
-            ReadOnlyMemory<OrchestrationTransitionCondition> transitionConditions,
-            ReadOnlyMemory<OrchestrationTransitionSource> transitionSources,
-            int transitionCacheCount, int transitionSnapshotCount)
+            int scratchSlotCount, int predictionDepth)
         {
             Instructions = instructions;
             ArgumentSlots = argumentSlots;
@@ -103,10 +98,6 @@ namespace BTSMTL.Orchestration
             InputBindingCount = inputBindingCount;
             ScratchSlotCount = scratchSlotCount;
             PredictionDepth = predictionDepth;
-            TransitionConditions = transitionConditions;
-            TransitionSources = transitionSources;
-            TransitionCacheCount = transitionCacheCount;
-            TransitionSnapshotCount = transitionSnapshotCount;
         }
 
         public ReadOnlyMemory<OrchestrationValueScheduleInstruction> Instructions { get; }
@@ -125,9 +116,5 @@ namespace BTSMTL.Orchestration
         public int ScratchSlotCount { get; }
         public int PredictionDepth { get; }
         public int BooleanSlot => ValueSlotCount + InputBindingCount;
-        public ReadOnlyMemory<OrchestrationTransitionCondition> TransitionConditions { get; }
-        public ReadOnlyMemory<OrchestrationTransitionSource> TransitionSources { get; }
-        public int TransitionCacheCount { get; }
-        public int TransitionSnapshotCount { get; }
     }
 }

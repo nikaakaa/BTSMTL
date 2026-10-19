@@ -133,13 +133,6 @@ namespace BTSMTL.Orchestration
                             values[instruction.Destination] = default(TValues).FromInt32(instruction.Operand < 0
                                 ? -1 : m_Program.Edge(instruction.Operand).TargetOperationIndex);
                             break;
-                        case OrchestrationValueScheduleCode.ReadTransitionCache:
-                            pc = ReadTransitionCache(instruction.Operand, ref values[instruction.Destination])
-                                ? instruction.Next : instruction.Alternative;
-                            continue;
-                        case OrchestrationValueScheduleCode.WriteTransitionCache:
-                            WriteTransitionCache(instruction.Operand, in values[instruction.Destination]);
-                            break;
                         default:
                             throw new InvalidOperationException($"未知的值调度指令 '{instruction.Code}'。");
                     }

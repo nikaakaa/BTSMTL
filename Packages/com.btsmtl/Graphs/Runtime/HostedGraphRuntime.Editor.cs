@@ -466,22 +466,6 @@ namespace BTSMTL.Graphs
                         WriteRecordedStoredValues(ref writer, MemoryMarshal.Cast<byte, TValue>(memory),
                             segment.Role == OrchestrationStateSegmentRole.SavedOutputs, maximumCapacity);
                         break;
-                    case OrchestrationStateSegmentRole.TransitionSnapshots:
-                        foreach (ref readonly OrchestrationTransitionSnapshot<TValue> snapshot in
-                            MemoryMarshal.Cast<byte, OrchestrationTransitionSnapshot<TValue>>(memory))
-                        {
-                            writer.Write(snapshot.Revision);
-                            writer.Write(snapshot.OwnerGeneration);
-                            bool runtimeText = default(TValues).Kind(in snapshot.Value) == OrchestrationValueKind.Identity &&
-                                default(TValues).Identity(in snapshot.Value).Space == OrchestrationIdentitySpace.RuntimeText;
-                            writer.Write(runtimeText);
-                            if (maximumCapacity || !runtimeText)
-                                writer.Write(snapshot.Value);
-                            if (maximumCapacity || runtimeText)
-                                writer.WriteText(maximumCapacity ? null :
-                                    m_StateTexts.Resolve(default(TValues).Identity(in snapshot.Value)));
-                        }
-                        break;
                     default:
                         writer.WriteSpan<byte>(memory);
                         break;
@@ -557,17 +541,6 @@ namespace BTSMTL.Graphs
                         case OrchestrationStateSegmentRole.SavedOutputs:
                             ReadRecordedStoredValues(ref reader, MemoryMarshal.Cast<byte, TValue>(memory),
                                 segment.Role == OrchestrationStateSegmentRole.SavedOutputs);
-                            break;
-                        case OrchestrationStateSegmentRole.TransitionSnapshots:
-                            foreach (ref OrchestrationTransitionSnapshot<TValue> snapshot in
-                                MemoryMarshal.Cast<byte, OrchestrationTransitionSnapshot<TValue>>(memory))
-                            {
-                                snapshot.Revision = reader.Read<ulong>();
-                                snapshot.OwnerGeneration = reader.Read<ulong>();
-                                snapshot.Value = reader.Read<bool>()
-                                    ? default(TValues).FromIdentity(m_CandidateTexts.Capture(reader.ReadText()))
-                                    : reader.Read<TValue>();
-                            }
                             break;
                         default:
                             reader.ReadSpan<byte>(memory.Length).CopyTo(memory);
