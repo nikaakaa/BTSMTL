@@ -8,6 +8,8 @@ using BTSMTL.Timeline.Runtime;
 using ThirdPersonSimulation;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using UnityEngine.UIElements;
+using BTSMTL.Diagnostics.Editor;
 
 namespace BTSMTL.Timeline.Editor
 {
@@ -16,10 +18,11 @@ namespace BTSMTL.Timeline.Editor
         public TimelineAssetPreviewInputUnavailableException(string message) : base(message) { }
     }
 
+    // 快速档按静态推导与目标时刻显示；真实档以同一输入方案经正式会话重演，显示执行记录。
     public enum TimelinePreviewMode : byte
     {
-        Asset,
-        Session
+        Fast,
+        Real
     }
 
     [Serializable]
@@ -69,6 +72,21 @@ namespace BTSMTL.Timeline.Editor
         public Vector3 TargetPosition;
         public Vector3 TargetEuler;
         public float RangeEnd = 10f;
+    }
+
+    public readonly struct TimelinePreviewDifference
+    {
+        public TimelinePreviewDifference(float time, OrchestrationStaticState state, string message)
+        {
+            Time = time;
+            State = state;
+            Message = message;
+        }
+
+        public float Time { get; }
+        // 差异所在的源状态；为 null 时位于状态机外。
+        public OrchestrationStaticState State { get; }
+        public string Message { get; }
     }
 
     public readonly struct TimelineAssetPreviewTraversal
@@ -183,7 +201,15 @@ namespace BTSMTL.Timeline.Editor
         ITimelineAssetPreviewInstance CreateInstance(Scene scene, UnityEngine.Object configuration);
         bool TryCloseSession(out string reason);
         void OpenSession(TimelineAsset source, TimelineAssetPreviewPreferences preferences, CancellationToken cancellationToken);
+        IReadOnlyList<GraphHostInputDescriptor> DescribeInputs();
         IReadOnlyList<TimelinePreviewInputRequest> DescribeInputRequests();
         IReadOnlyList<TimelinePreviewInputPoint> ImportRecordedInputs(string path);
+        // 真实档：工具栏、会话游标与执行记录的作者时间入口均由宿主提供。
+        VisualElement CreateRealControls();
+        bool CanObserveReal { get; }
+        float RealTime { get; }
+        void SeekReal(float time);
+        IBtsmtlExecutionTimelineAuthoringHost RealAuthoring { get; }
+        void OpenRealSource(RuntimeExecutionSpan span);
     }
 }

@@ -54,17 +54,30 @@ namespace BTSMTL.Timeline.Editor
             m_RouteRevision = preview.Revision;
             m_RouteRows.Clear();
             m_RouteEnd = Mathf.Max(.1f, preview.Duration);
-            if (preview.Chain == null)
+            if (preview.IsReal || preview.Chain == null)
             {
-                var row = new RouteRow { Label = SourceAsset ? SourceAsset.name : "Timeline", Source = SourceAsset };
+                // 真实档与无状态上下文的单 Timeline 预览：按经过的 Timeline 分行排布播放段。
+                var rows = new Dictionary<TimelineAsset, RouteRow>();
                 foreach (TimelineAssetPreviewTraversal traversal in preview.Traversals)
+                {
+                    if (!rows.TryGetValue(traversal.Source, out RouteRow row))
+                    {
+                        row = new RouteRow { Label = (preview.IsReal ? "实际 · " : string.Empty) + traversal.Source.name, Source = traversal.Source };
+                        rows.Add(traversal.Source, row);
+                        m_RouteRows.Add(row);
+                    }
+                    string state = traversal.State == null || preview.Query == null ? string.Empty
+                        : preview.Query.DescribeState(traversal.State) + " · ";
                     row.Bars.Add(new RouteBar
                     {
                         Start = traversal.Start.AsSingle, End = traversal.End.AsSingle, UnplayedEnd = traversal.End.AsSingle,
-                        Tooltip = $"{traversal.Start.AsSingle:0.00}–{traversal.End.AsSingle:0.00} s"
+                        Tooltip = $"{state}{traversal.Start.AsSingle:0.000}–{traversal.End.AsSingle:0.000} s · 本地 " +
+                            $"{traversal.LocalStart.AsSingle:0.00}–{traversal.LocalEnd.AsSingle:0.00} s"
                     });
-                if (row.Bars.Count != 0)
-                    m_RouteRows.Add(row);
+                    m_RouteEnd = Mathf.Max(m_RouteEnd, traversal.End.AsSingle);
+                }
+                if (preview.IsReal && preview.FastChain != null)
+                    AddRouteChain(preview.Query, preview.FastChain, 0, "快速 · ");
                 return;
             }
             AddRouteChain(preview.Query, preview.Chain, 0, string.Empty);
@@ -153,6 +166,13 @@ namespace BTSMTL.Timeline.Editor
                     current.Use();
                 }
             }
+            if (preview.IsReal)
+                foreach (TimelinePreviewDifference difference in preview.Differences)
+                {
+                    float x = RouteX(axis, difference.Time);
+                    EditorGUI.DrawRect(new Rect(x - 1, RouteRowHeight, 3, height - RouteRowHeight), new Color(.95f, .3f, .25f));
+                    GUI.Label(new Rect(x - 6, 0, 12, RouteRowHeight), new GUIContent("!", difference.Message), EditorStyles.miniBoldLabel);
+                }
             float cursor = RouteX(axis, preview.Time);
             EditorGUI.DrawRect(new Rect(cursor, 0, 1, height), new Color(1f, .7f, .2f));
             Rect timeArea = Rect.MinMaxRect(axis.xMin, 0, axis.xMax, height);

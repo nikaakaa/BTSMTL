@@ -18,6 +18,7 @@ namespace BTSMTL.Timeline.Editor
         IMGUIContainer m_AssetPreviewInputs;
         ToolbarMenu m_SchemeMenu;
         ToolbarMenu m_AssumptionMenu;
+        VisualElement m_RealControls;
         bool m_ShowPreviewInputs;
         Vector2 m_PreviewInputsScroll;
         ulong m_AppliedAssetSample;
@@ -34,15 +35,16 @@ namespace BTSMTL.Timeline.Editor
             toolbar.style.height = StyleKeyword.Auto;
             toolbar.style.minHeight = 22f;
             toolbar.style.alignItems = Align.Center;
-            var mode = new PopupField<string>(new List<string> { "资产预览", "会话预览" }, (int)m_PreviewMode);
+            var mode = new PopupField<string>(new List<string> { "快速", "真实" }, (int)m_PreviewMode);
             mode.RegisterValueChangedCallback(change =>
             {
                 m_PreviewMode = (TimelinePreviewMode)mode.index;
-                if (SourceAsset)
+                if (SourceAsset && preview.IsOpen)
                     OpenTimelinePreview();
+                RefreshAssetPreviewControls();
             });
-            mode.tooltip = "资产预览按目标时刻显示；会话预览确认真实运行结果。";
-            mode.style.width = 90f;
+            mode.tooltip = "快速：按静态推导即时显示；真实：以同一输入方案经正式会话重演，并与快速结果对比。";
+            mode.style.width = 64f;
             mode.style.height = 20f;
             mode.style.alignSelf = Align.Center;
             toolbar.Add(mode);
@@ -64,13 +66,7 @@ namespace BTSMTL.Timeline.Editor
             toolbar.Add(m_AssetPreviewConfiguration);
             toolbar.Add(new ToolbarButton(OpenTimelinePreview) { text = "打开预览" });
             toolbar.Add(new ToolbarButton(() => preview.SetPlaying(!preview.IsPlaying)) { text = "播放／暂停" });
-            toolbar.Add(new ToolbarButton(preview.Close) { text = "关闭资产预览" });
-            toolbar.Add(new ToolbarButton(() =>
-            {
-                m_PreviewMode = TimelinePreviewMode.Session;
-                mode.SetValueWithoutNotify("会话预览");
-                OpenTimelinePreview();
-            }) { text = "在会话中验证" });
+            toolbar.Add(new ToolbarButton(preview.Close) { text = "关闭预览" });
             m_SchemeMenu = new ToolbarMenu { tooltip = "输入方案：与本 Timeline 并列保存，可提交" };
             toolbar.Add(m_SchemeMenu);
             m_AssumptionMenu = new ToolbarMenu
@@ -86,6 +82,8 @@ namespace BTSMTL.Timeline.Editor
             }) { text = "预览设置" });
             toolbar.SetEnabled(SourceAsset);
             panel.Add(toolbar);
+            m_RealControls = preview.CreateRealControls() ?? new VisualElement();
+            panel.Add(m_RealControls);
             m_AssetPreviewStatus = new Label { style = { whiteSpace = WhiteSpace.Normal } };
             panel.Add(m_AssetPreviewStatus);
             m_AssetPreviewInputs = new IMGUIContainer(DrawAssetPreviewInputs);
@@ -110,6 +108,7 @@ namespace BTSMTL.Timeline.Editor
             m_AssetPreviewInputs = null;
             m_SchemeMenu = null;
             m_AssumptionMenu = null;
+            m_RealControls = null;
             m_AppliedAssetSample = 0;
             m_PreviewPathRevision = -1;
             m_PreviewInputs.Clear();
@@ -143,11 +142,16 @@ namespace BTSMTL.Timeline.Editor
                 m_AssetPreviewConfiguration.SetValueWithoutNotify(preview.Configuration);
                 m_AssetPreviewConfiguration.SetEnabled(preview.IsRegistered);
             }
+            if (m_RealControls != null)
+                m_RealControls.style.display = m_PreviewMode == TimelinePreviewMode.Real ? DisplayStyle.Flex : DisplayStyle.None;
             if (m_AssetPreviewStatus != null)
                 m_AssetPreviewStatus.text = !preview.IsRegistered ? TimelineAssetPreviewHost.MissingProviderReason :
-                    preview.Error.Length != 0 ? preview.Error : active
-                    ? $"资产预览 · 链 {preview.Time:F3} 秒 / {preview.SampledSource?.name} {preview.LocalTime:F3} 秒。{preview.Status}\n{preview.Chain?.Reason}"
-                    : "选择资产预览调整节奏；会话预览确认碰撞、条件与完整运行结果。";
+                    preview.Error.Length != 0 ? preview.Error : active && preview.IsReal
+                    ? $"真实 · 会话 {preview.Time:F3} 秒 / {preview.SampledSource?.name} {preview.LocalTime:F3} 秒 · " +
+                      (preview.Differences.Count == 0 ? "与快速推导一致" : $"{preview.Differences.Count} 处与快速推导不同（悬停路线行红标查看）")
+                    : active
+                    ? $"快速 · 链 {preview.Time:F3} 秒 / {preview.SampledSource?.name} {preview.LocalTime:F3} 秒。{preview.Status}\n{preview.Chain?.Reason}"
+                    : "快速档即时调整节奏；真实档以同一输入方案经正式会话重演，确认碰撞、条件与完整运行结果。";
             if (m_AssetPreviewInputs != null)
             {
                 m_AssetPreviewInputs.style.display = active && m_ShowPreviewInputs ? DisplayStyle.Flex : DisplayStyle.None;
@@ -186,7 +190,21 @@ namespace BTSMTL.Timeline.Editor
             var visited = spans.Select(span => new Vector2(span.LocalStart.AsSingle, span.LocalEnd.AsSingle)).ToArray();
             var marks = new List<TimelinePreviewMark>();
             TimelineStaticChain chain = preview.Chain;
-            if (chain != null)
+            if (preview.IsReal)
+            {
+                // 真实档：执行记录中本 Timeline 播放段之后接上另一状态处即为实际转移；与快速推导的差异一并标出。
+                IReadOnlyList<TimelineAssetPreviewTraversal> traversals = preview.Traversals;
+                for (int i = 0; i + 1 < traversals.Count; i++)
+                    if (traversals[i].Source == SourceAsset && traversals[i + 1].State != traversals[i].State)
+                        marks.Add(new TimelinePreviewMark(traversals[i].LocalEnd.AsSingle,
+                            "实际转移到 " + (preview.Query?.DescribeState(traversals[i + 1].State) ?? traversals[i + 1].Source.name),
+                            $"会话第 {traversals[i].End.AsSingle:0.000} 秒"));
+                foreach (TimelinePreviewDifference difference in preview.Differences)
+                    if (spans.Length != 0 && difference.State != null &&
+                        preview.Query.ResolveTimeline(difference.State.TimelineIdentity) == SourceAsset)
+                        marks.Add(new TimelinePreviewMark(ToLocal(spans, difference.Time), "与快速不同", difference.Message));
+            }
+            else if (chain != null)
             {
                 foreach (TimelineStaticChainMarker marker in chain.Markers)
                 {
@@ -217,7 +235,7 @@ namespace BTSMTL.Timeline.Editor
                 inputs.Add(new TimelinePreviewMark(ToLocal(spans, point.Time), point.InputId,
                     $"预览第 {point.Time:0.00} 秒 · {reason}\n拖动改时刻，右键改键或删除", accepted));
             }
-            string[] choices = preview.Instance.Inputs.Select(descriptor => descriptor.InputId).ToArray();
+            string[] choices = preview.Inputs.Select(descriptor => descriptor.InputId).ToArray();
             m_SlateProjection.SetPreviewPath(SourceAsset.name, visited, marks, inputs, new TimelinePreviewInputTrack(
                 choices, MovePreviewInput, AddPreviewInput, ChangePreviewInput, RemovePreviewInput));
         }
@@ -239,6 +257,27 @@ namespace BTSMTL.Timeline.Editor
                 foreach (TimelinePreviewInputPoint other in points)
                     if (other != point && other.Active && other.InputId == point.InputId && other.Time > point.Time)
                         until = Math.Min(until, other.Time);
+            if (preview.IsReal)
+            {
+                IReadOnlyList<TimelineAssetPreviewTraversal> traversals = preview.Traversals;
+                for (int i = 0; i + 1 < traversals.Count; i++)
+                {
+                    double time = traversals[i].End.AsSingle;
+                    OrchestrationStaticState from = traversals[i].State;
+                    OrchestrationStaticState to = traversals[i + 1].State;
+                    if (from == null || to == from || time < point.Time || time >= until)
+                        continue;
+                    foreach (OrchestrationStaticTransition transition in from.Transitions)
+                        if (transition.Target == to && transition.Reads.Any(read =>
+                                read.Source == OrchestrationStaticReadSource.HostInput && read.Key == point.InputId))
+                        {
+                            reason = $"实际接上：{preview.Query.DescribeState(from)} → {preview.Query.DescribeState(to)}，第 {time:0.000} 秒";
+                            return true;
+                        }
+                }
+                reason = "真实重演中有效期内没有读取该键的转移发生";
+                return false;
+            }
             if (preview.Chain != null &&
                 FindAcceptance(preview.Chain, point.InputId, point.Time, until, out TimelineStaticChainMarker marker))
             {
@@ -479,7 +518,7 @@ namespace BTSMTL.Timeline.Editor
                 preferences.TargetPosition = EditorGUILayout.Vector3Field("假设目标位置", preferences.TargetPosition);
                 preferences.TargetEuler = EditorGUILayout.Vector3Field("假设目标朝向", preferences.TargetEuler);
             }
-            IReadOnlyList<GraphHostInputDescriptor> inputs = preview.Instance.Inputs;
+            IReadOnlyList<GraphHostInputDescriptor> inputs = preview.Inputs;
             foreach (TimelinePreviewInputPoint point in preferences.Inputs)
             {
                 GraphHostInputDescriptor descriptor = inputs.FirstOrDefault(value => value.InputId == point.InputId);

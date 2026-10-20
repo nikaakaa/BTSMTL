@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using BTSMTL.Compilation.Analysis;
+using BTSMTL.Diagnostics.Editor;
 using BTSMTL.Graphs;
 using BTSMTL.Orchestration;
 using BTSMTL.Timeline.Runtime;
@@ -10,6 +11,7 @@ using ThirdPersonSimulation;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.UIElements;
 
 namespace BTSMTL.Timeline.Editor
 {
@@ -40,6 +42,10 @@ namespace BTSMTL.Timeline.Editor
         readonly List<OrchestrationStaticRead> m_Assumptions = new();
         TimelineOrchestrationQuery m_Query;
         TimelinePreviewInputSchemes m_Schemes;
+        BtsmtlExecutionTimeBarDataSource m_Real;
+        long m_RealVersion = -1;
+        long m_RealProjection = -1;
+        Guid m_RealCapture;
         OrchestrationStaticState m_EntryState;
         TimelineAsset m_PendingSource;
         TimelinePreviewMode m_PendingMode;
@@ -70,7 +76,16 @@ namespace BTSMTL.Timeline.Editor
         public ITimelineAssetPreviewInstance Instance => m_Instance;
         public TimelineContractCatalog Contracts => m_Provider.Contracts;
         public bool IsRegistered => m_Provider != null;
-        public bool IsOpen => m_Stage;
+        public bool IsOpen => m_Stage || m_Real != null;
+        public bool IsReal => m_Real != null;
+        public IReadOnlyList<GraphHostInputDescriptor> Inputs =>
+            m_Instance != null ? m_Instance.Inputs : m_Provider.DescribeInputs();
+        // 真实档的静态推导路线，只供与执行记录对比。
+        public TimelineStaticChain FastChain { get; private set; }
+        // 真实档执行记录与快速推导的差异，按预览时刻排列。
+        public IReadOnlyList<TimelinePreviewDifference> Differences => m_Differences;
+        readonly List<TimelinePreviewDifference> m_Differences = new();
+        public VisualElement CreateRealControls() => m_Provider?.CreateRealControls();
         public bool IsOpeningSession => m_SessionOpening != null;
         public bool IsPlaying { get; private set; }
         public float Time { get; private set; }
@@ -146,10 +161,15 @@ namespace BTSMTL.Timeline.Editor
             m_PendingSource = null;
             Preferences = LoadPreferences(Source);
             Error = string.Empty;
-            if (Mode == TimelinePreviewMode.Session)
+            if (Mode == TimelinePreviewMode.Real)
             {
+                m_Real = new BtsmtlExecutionTimeBarDataSource(RuntimeDebugSession.Shared, m_Provider.OpenRealSource,
+                    m_Provider.SeekReal, () => m_Provider.RealTime, () => m_Provider.CanObserveReal);
+                m_Real.ConfigureAuthoring(m_Provider.RealAuthoring);
+                m_RealVersion = -1;
                 m_SessionOpening = new CancellationTokenSource();
                 m_Provider.OpenSession(Source, Preferences, m_SessionOpening.Token);
+                BuildFastChain();
                 Changed?.Invoke();
                 return;
             }
@@ -182,6 +202,12 @@ namespace BTSMTL.Timeline.Editor
 
         public void SetTime(float time)
         {
+            if (m_Real != null)
+            {
+                if (m_Provider.CanObserveReal)
+                    m_Provider.SeekReal(Mathf.Clamp(time, 0f, Duration));
+                return;
+            }
             Time = Mathf.Clamp(time, 0f, Duration);
             m_SampleRequested = true;
             Changed?.Invoke();
@@ -276,6 +302,14 @@ namespace BTSMTL.Timeline.Editor
         public void PreferencesChanged()
         {
             Persist();
+            if (m_Real != null)
+            {
+                // 真实档的会话已按打开时的方案重演；新方案在重新进入真实档时生效。
+                BuildFastChain();
+                Error = "输入方案已修改：重新进入真实档后按新方案重演。";
+                Changed?.Invoke();
+                return;
+            }
             m_ChainRequested = true;
             m_SampleRequested = true;
             Changed?.Invoke();
@@ -315,7 +349,17 @@ namespace BTSMTL.Timeline.Editor
 
         public void Close()
         {
-            bool closeSession = IsOpeningSession;
+            bool closeSession = IsOpeningSession || m_Real != null;
+            if (m_Real != null)
+            {
+                m_Real.Clear();
+                m_Real = null;
+                m_Traversals.Clear();
+                m_Differences.Clear();
+                FastChain = null;
+                SampledSource = null;
+                Changed?.Invoke();
+            }
             m_SessionOpening?.Cancel();
             m_SessionOpening?.Dispose();
             m_SessionOpening = null;
@@ -371,6 +415,11 @@ namespace BTSMTL.Timeline.Editor
         {
             if (!IsOpen || EditorApplication.isCompiling || EditorApplication.isUpdating)
                 return;
+            if (m_Real != null)
+            {
+                UpdateReal();
+                return;
+            }
             try
             {
                 if (m_Dirty.Count != 0)
@@ -537,7 +586,7 @@ namespace BTSMTL.Timeline.Editor
             }
             else
             {
-                var inputs = new TimelineAssetPreviewReadIntervals(Preferences, m_Instance.Inputs, InputRequests);
+                var inputs = new TimelineAssetPreviewReadIntervals(Preferences, Inputs, InputRequests);
                 Chain = TimelineStaticChain.Build(m_Query.Query, m_EntryState,
                     OrchestrationTime.FromSeconds(Preferences.RangeEnd), inputs);
                 OrchestrationStaticTransition entry = null;
@@ -599,6 +648,125 @@ namespace BTSMTL.Timeline.Editor
             }
         }
 
+        // 真实档：执行记录变化时按状态与播放重建经过区间，游标跟随会话。
+        void UpdateReal()
+        {
+            if (!m_Provider.CanObserveReal)
+                return;
+            RuntimeDebugSession session = RuntimeDebugSession.Shared;
+            if (m_RealVersion != session.CaptureVersion || m_RealProjection != session.ProjectionVersion ||
+                m_RealCapture != session.CaptureId)
+            {
+                RuntimeExecutionTimeline timeline = session.BuildExecutionTimeline();
+                if (timeline != null && m_Real.Apply(timeline))
+                {
+                    m_RealVersion = session.CaptureVersion;
+                    m_RealProjection = session.ProjectionVersion;
+                    m_RealCapture = session.CaptureId;
+                    RebuildRealTraversals();
+                    Compare();
+                    Revision++;
+                    Changed?.Invoke();
+                }
+            }
+            float time = m_Provider.RealTime;
+            if (time == Time)
+                return;
+            Time = time;
+            OrchestrationTime cursor = OrchestrationTime.FromSeconds(time);
+            foreach (TimelineAssetPreviewTraversal traversal in m_Traversals)
+                if (traversal.Start <= cursor && cursor <= traversal.End)
+                {
+                    SampledSource = traversal.Source;
+                    LocalTime = (traversal.LocalStart + cursor - traversal.Start).AsSingle;
+                }
+            Changed?.Invoke();
+        }
+
+        void RebuildRealTraversals()
+        {
+            m_Traversals.Clear();
+            foreach (BtsmtlExecutionTimeBarDataSource.RecordedPlayback played in m_Real.Recorded)
+            {
+                if (!played.HasLocal ||
+                    !m_Provider.RealAuthoring.TryResolveTimeline(played.TimelineAuthoringId, out TimelineAsset source, out _))
+                    continue;
+                OrchestrationStaticState state = null;
+                if (m_Query != null)
+                    foreach (OrchestrationStaticState candidate in m_Query.Query.States)
+                        if (candidate.Location.GraphId == played.StateMachineGraphId && candidate.Location.NodeId == played.StateId)
+                            state = candidate;
+                m_Traversals.Add(new TimelineAssetPreviewTraversal(source, null,
+                    OrchestrationTime.FromSeconds(played.Start), OrchestrationTime.FromSeconds(played.End),
+                    OrchestrationTime.FromSeconds(played.LocalStart), OrchestrationTime.FromSeconds(played.LocalEnd),
+                    played.Cycle, null, state, false));
+            }
+        }
+
+        // 按发生顺序配对真实转移与快速推导的转移：目标不同、未发生或时刻偏差超过一个逻辑 Tick 时记一处差异；
+        // 目标一旦不同后续路线已分叉，不再继续配对。
+        void Compare()
+        {
+            m_Differences.Clear();
+            if (FastChain == null)
+                return;
+            var real = new List<(OrchestrationTime Time, OrchestrationStaticState From, OrchestrationStaticState To)>();
+            for (int i = 0; i + 1 < m_Traversals.Count; i++)
+                if (m_Traversals[i + 1].State != m_Traversals[i].State)
+                    real.Add((m_Traversals[i].End, m_Traversals[i].State, m_Traversals[i + 1].State));
+            double tick = 1d / Math.Max(1, InputRequests.Count != 0 ? InputRequests[0].TickRate : TimelineUtility.FrameRate);
+            IReadOnlyList<TimelineStaticChainMarker> fast = FastChain.Markers;
+            int count = Math.Max(real.Count, fast.Count);
+            for (int k = 0; k < count; k++)
+            {
+                if (k >= fast.Count)
+                {
+                    m_Differences.Add(new TimelinePreviewDifference(real[k].Time.AsSingle, real[k].From,
+                        $"快速推导没有这次转移：真实在第 {real[k].Time.AsSingle:0.000} 秒从 {Describe(real[k].From)} 转到 {Describe(real[k].To)}。"));
+                    break;
+                }
+                TimelineStaticChainMarker marker = fast[k];
+                string basis = FastBasis(marker);
+                if (k >= real.Count)
+                {
+                    m_Differences.Add(new TimelinePreviewDifference(marker.Time.AsSingle, marker.Source,
+                        $"真实重演没有发生：快速推导在第 {marker.Time.AsSingle:0.000} 秒 {Describe(marker.Source)} → " +
+                        $"{Describe(marker.Transition.Target)}。{basis}"));
+                    break;
+                }
+                if (real[k].From != marker.Source || real[k].To != marker.Transition.Target)
+                {
+                    m_Differences.Add(new TimelinePreviewDifference(real[k].Time.AsSingle, real[k].From,
+                        $"目标不同：真实 {Describe(real[k].From)} → {Describe(real[k].To)}（第 {real[k].Time.AsSingle:0.000} 秒），" +
+                        $"快速 {Describe(marker.Source)} → {Describe(marker.Transition.Target)}（第 {marker.Time.AsSingle:0.000} 秒）。{basis}"));
+                    break;
+                }
+                double offset = real[k].Time.AsSingle - marker.Time.AsSingle;
+                if (Math.Abs(offset) > tick + 1e-6)
+                    m_Differences.Add(new TimelinePreviewDifference(real[k].Time.AsSingle, real[k].From,
+                        $"时刻偏差 {offset * 1000:+0;-0} ms：真实第 {real[k].Time.AsSingle:0.000} 秒，快速第 {marker.Time.AsSingle:0.000} 秒。{basis}"));
+            }
+        }
+
+        string Describe(OrchestrationStaticState state) => m_Query == null ? state?.Name ?? "出口" : m_Query.DescribeState(state);
+
+        static string FastBasis(TimelineStaticChainMarker marker)
+        {
+            OrchestrationTransitionWindow window = OrchestrationStateTransitionWindows.Build(marker.Source).Of(marker.Transition);
+            return window == null ? string.Empty : $"快速依据：{window.RowLabel}，可走 {window.EdgeLabel}。";
+        }
+
+        void BuildFastChain()
+        {
+            FastChain = null;
+            if (m_Query == null || m_EntryState == null || !float.IsFinite(Preferences.RangeEnd) || Preferences.RangeEnd <= 0f)
+                return;
+            var inputs = new TimelineAssetPreviewReadIntervals(Preferences, Inputs, InputRequests);
+            FastChain = TimelineStaticChain.Build(m_Query.Query, m_EntryState,
+                OrchestrationTime.FromSeconds(Preferences.RangeEnd), inputs);
+            Compare();
+        }
+
         TimelineAssetPreviewPreferences LoadPreferences(TimelineAsset source)
         {
             m_Schemes = TimelinePreviewInputSchemes.Load(source);
@@ -613,12 +781,12 @@ namespace BTSMTL.Timeline.Editor
         // 当前方案里按键身份已不在宿主输入中的项：加载时列出，由作者删除或改键。
         public IEnumerable<TimelinePreviewInputPoint> InvalidInputs()
         {
-            if (Preferences == null || m_Instance == null)
+            if (Preferences == null || !IsOpen)
                 yield break;
             foreach (TimelinePreviewInputPoint point in Preferences.Inputs)
             {
                 bool declared = false;
-                foreach (GraphHostInputDescriptor descriptor in m_Instance.Inputs)
+                foreach (GraphHostInputDescriptor descriptor in Inputs)
                     declared |= descriptor.InputId == point.InputId;
                 if (!declared)
                     yield return point;

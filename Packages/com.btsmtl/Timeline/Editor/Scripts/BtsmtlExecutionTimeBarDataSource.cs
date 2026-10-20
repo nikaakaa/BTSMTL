@@ -177,6 +177,7 @@ namespace BTSMTL.Timeline.Editor
             m_StateOrder.Clear();
             m_Playbacks.Clear();
             m_Transitions.Clear();
+            m_Recorded.Clear();
             double logicEnd = m_Session.GetLatestHistoryTime(timeline, RuntimeTraceDomain.Logic);
             double presentationEnd = m_Session.GetLatestHistoryTime(timeline, RuntimeTraceDomain.Presentation);
             if (m_Session.GetInvalidHistoryStart(RuntimeTraceDomain.Logic) is { } invalidLogic)
@@ -241,6 +242,7 @@ namespace BTSMTL.Timeline.Editor
                         m_AmbiguousStates.Contains(new StateKey(transition)) ? "转移 · 源状态身份不唯一" : "转移 · 缺少源状态记录");
                 }
             HighlightProviders();
+            m_Recorded.Sort((left, right) => left.Start.CompareTo(right.Start));
             m_Revision++;
             return true;
         }
@@ -287,6 +289,61 @@ namespace BTSMTL.Timeline.Editor
                 DrawPlayback(playback, row);
         }
 
+        // 按状态实例归属、按圈拆开的播放段，时间为执行时间线的会话相对时刻，本地时刻取段内首末游标样本。
+        public readonly struct RecordedPlayback
+        {
+            internal RecordedPlayback(in RuntimeExecutionSpan span, double start, double end, double localStart,
+                double localEnd, int cycle, bool hasLocal)
+            {
+                RuntimeTimelinePlaybackProvenance provenance = span.Start.Payload.TimelinePlayback;
+                TimelineAuthoringId = span.Source.TimelineAuthoringId;
+                StateMachineGraphId = provenance.StateMachineGraphAuthoringId;
+                StateId = provenance.StateId;
+                Start = start;
+                End = end;
+                LocalStart = localStart;
+                LocalEnd = localEnd;
+                Cycle = cycle;
+                HasLocal = hasLocal;
+            }
+
+            public string TimelineAuthoringId { get; }
+            public string StateMachineGraphId { get; }
+            public string StateId { get; }
+            public double Start { get; }
+            public double End { get; }
+            public double LocalStart { get; }
+            public double LocalEnd { get; }
+            public int Cycle { get; }
+            public bool HasLocal { get; }
+        }
+
+        readonly List<RecordedPlayback> m_Recorded = new();
+        public IReadOnlyList<RecordedPlayback> Recorded => m_Recorded;
+
+        void Record(PlaybackGroup playback, RuntimeExecutionPlaybackCursors cursors, double from, double to, int cycle)
+        {
+            if (playback.UnassignedReason != null)
+                return;
+            double localStart = 0, localEnd = 0;
+            bool hasLocal = false;
+            if (cursors != null)
+            {
+                double origin = Origin(cursors.Domain);
+                foreach (RuntimeExecutionCursorSample sample in cursors.Samples)
+                {
+                    double time = sample.SessionTime - origin;
+                    if (sample.Cycle != cycle || time < from || time > to)
+                        continue;
+                    if (!hasLocal)
+                        localStart = sample.Cursor;
+                    localEnd = sample.Cursor;
+                    hasLocal = true;
+                }
+            }
+            m_Recorded.Add(new RecordedPlayback(in playback.Source.Span, from, to, localStart, localEnd, cycle, hasLocal));
+        }
+
         void DrawPlayback(PlaybackGroup playback, int parent)
         {
             RuntimeExecutionPlaybackCursors cursors;
@@ -304,6 +361,7 @@ namespace BTSMTL.Timeline.Editor
                 cursors = playback.Spans[0].Cursors;
             if (cursors == null || cursors.Samples.Count == 0)
             {
+                Record(playback, null, playback.Start, playback.End, 0);
                 DrawCycle(playback, parent, "缺少游标记录", playback.Start, playback.End, 0);
                 return;
             }
@@ -317,10 +375,12 @@ namespace BTSMTL.Timeline.Editor
                 if (sample.Cycle == cycle)
                     continue;
                 double boundary = sample.SessionTime - origin;
+                Record(playback, cursors, start, boundary, cycle);
                 DrawCycle(playback, parent, CycleLabel(cycle), start, boundary, segment++);
                 start = boundary;
                 cycle = sample.Cycle;
             }
+            Record(playback, cursors, start, playback.End, cycle);
             DrawCycle(playback, parent, CycleLabel(cycle), start, playback.End, segment);
         }
 
@@ -597,6 +657,7 @@ namespace BTSMTL.Timeline.Editor
             CancelEdit();
             m_Rows.Clear();
             m_Items.Clear();
+            m_Recorded.Clear();
             m_End = 0;
             EditError = null;
             CaptureId = Guid.Empty;
