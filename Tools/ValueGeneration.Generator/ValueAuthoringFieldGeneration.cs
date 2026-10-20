@@ -317,7 +317,7 @@ namespace ThirdPerson.ValueGeneration.Generator
                 AuthoringArgument[] arguments = assigned.Select(field => new AuthoringArgument
                 {
                     Type = field.Type, Field = field,
-                    ParameterName = Parameter(field.Name)
+                    ParameterName = char.ToLowerInvariant(field.Name[0]) + field.Name.Substring(1)
                 }).ToArray();
                 EmitAuthoringConfiguration(code, "ConfigureAuthoringFields", arguments);
             }
