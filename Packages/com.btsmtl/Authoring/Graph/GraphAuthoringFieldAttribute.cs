@@ -49,6 +49,8 @@ namespace BTSMTL.Authoring.Graph
         public Type ResourceContextType { get; set; }
         public bool ResourceNavigation { get; set; }
         public bool ReadOnly { get; set; }
+        public bool ReferenceRead { get; set; }
+        public GraphAuthoringFieldApplyTiming ApplyTiming { get; set; }
         public bool AuthoringVisible { get; set; } = true;
         public string VisibleWhenField { get; set; }
         public string VisibleWhenValue { get; set; }

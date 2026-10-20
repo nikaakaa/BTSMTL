@@ -516,7 +516,7 @@ namespace ThirdPerson.ValueGeneration.Generator
         static AuthoringArgument ResolveAuthoringArgument(Compilation compilation, IParameterSymbol parameter,
             AuthoringField[] fields, HashSet<string> constructing)
         {
-            AuthoringField direct = fields.SingleOrDefault(field => field.Id == parameter.Name || Parameter(field.Name) == parameter.Name);
+            AuthoringField direct = fields.SingleOrDefault(field => field.Id == parameter.Name || Parameter(field.Name) == Escape(parameter.Name));
             if (direct != null)
             {
                 var leaf = new AuthoringArgument { Type = direct.Type, Field = direct, ParameterName = parameter.Name };

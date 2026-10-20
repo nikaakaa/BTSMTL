@@ -112,7 +112,8 @@ namespace BTSMTL.Authoring.Graph
             return new GraphAuthoringFieldDescriptor(new GraphAuthoringFieldId(field.FieldId),
                 string.IsNullOrWhiteSpace(field.DisplayName) ? field.FieldId : field.DisplayName, field.ValueKind,
                 (field.AuthoringVisible ? GraphAuthoringFieldAccess.AuthoringRead : GraphAuthoringFieldAccess.None) |
-                (field.ReadOnly ? GraphAuthoringFieldAccess.None : GraphAuthoringFieldAccess.AuthoringWrite),
+                (field.ReadOnly ? GraphAuthoringFieldAccess.None : GraphAuthoringFieldAccess.AuthoringWrite) |
+                (field.ReferenceRead ? GraphAuthoringFieldAccess.ReferenceRead : GraphAuthoringFieldAccess.None),
                 defaultValue: ExternalValue(DefaultValue(defaults)),
                 constraint: new GraphAuthoringFieldConstraint(field.HasMinimum ? field.Minimum : (double?)null,
                     field.HasMaximum ? field.Maximum : (double?)null, field.Finite, field.NonEmpty, AllowedValues),
@@ -151,10 +152,10 @@ namespace BTSMTL.Authoring.Graph
         public IReadOnlyList<GraphAuthoringConfiguration> Configurations { get; }
         public GraphAuthoringMember this[string fieldId] => m_Fields[fieldId];
 
-        public GraphAuthoringCandidate CreateCandidate(object target, bool fromDefaults = false)
+        public GraphAuthoringCandidate CreateCandidate(object target, bool fromDefaults = false, bool complete = false)
         {
             GraphAuthoringCandidate candidate = m_CreateCandidate(
-                fromDefaults ? Activator.CreateInstance(target.GetType()) : target, fromDefaults);
+                fromDefaults ? Activator.CreateInstance(target.GetType()) : target, fromDefaults || complete);
             candidate.Contract = this;
             return candidate;
         }
