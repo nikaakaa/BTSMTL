@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using BTSMTL.Compilation.Analysis;
+using BTSMTL.Graphs;
 using BTSMTL.Orchestration;
 using BTSMTL.Timeline.Runtime;
 using ThirdPersonSimulation;
@@ -38,6 +39,7 @@ namespace BTSMTL.Timeline.Editor
         readonly List<TimelineAssetPreviewTraversal> m_Traversals = new();
         readonly List<OrchestrationStaticRead> m_Assumptions = new();
         TimelineOrchestrationQuery m_Query;
+        TimelinePreviewInputSchemes m_Schemes;
         OrchestrationStaticState m_EntryState;
         TimelineAsset m_PendingSource;
         TimelinePreviewMode m_PendingMode;
@@ -273,7 +275,7 @@ namespace BTSMTL.Timeline.Editor
 
         public void PreferencesChanged()
         {
-            EditorPrefs.SetString(PreferenceKey(Source), JsonUtility.ToJson(Preferences));
+            Persist();
             m_ChainRequested = true;
             m_SampleRequested = true;
             Changed?.Invoke();
@@ -295,6 +297,7 @@ namespace BTSMTL.Timeline.Editor
             Preferences.Inputs.Clear();
             Preferences.Inputs.AddRange(imported);
             PreferencesChanged();
+            AssetDatabase.SaveAssetIfDirty(m_Schemes);
         }
 
         public void ReportSessionFailure(string reason)
@@ -318,6 +321,8 @@ namespace BTSMTL.Timeline.Editor
             m_SessionOpening = null;
             m_PendingSource = null;
             IsPlaying = false;
+            if (m_Schemes)
+                AssetDatabase.SaveAssetIfDirty(m_Schemes);
             if (m_Stage)
                 StageUtility.GoToMainStage();
             else
@@ -594,14 +599,78 @@ namespace BTSMTL.Timeline.Editor
             }
         }
 
-        static string PreferenceKey(TimelineAsset source) =>
-            "BTSMTL.Timeline.AssetPreview." + GlobalObjectId.GetGlobalObjectIdSlow(source);
-
-        static TimelineAssetPreviewPreferences LoadPreferences(TimelineAsset source)
+        TimelineAssetPreviewPreferences LoadPreferences(TimelineAsset source)
         {
-            string json = EditorPrefs.GetString(PreferenceKey(source), string.Empty);
-            return json.Length == 0 ? new TimelineAssetPreviewPreferences()
-                : JsonUtility.FromJson<TimelineAssetPreviewPreferences>(json);
+            m_Schemes = TimelinePreviewInputSchemes.Load(source);
+            return m_Schemes != null && m_Schemes.Schemes.Count != 0 ? m_Schemes.Current : new TimelineAssetPreviewPreferences();
+        }
+
+        public IReadOnlyList<TimelineAssetPreviewPreferences> Schemes =>
+            m_Schemes != null ? m_Schemes.Schemes : new[] { Preferences };
+
+        public string SchemesPath => Source ? TimelinePreviewInputSchemes.PathFor(Source) : string.Empty;
+
+        // 当前方案里按键身份已不在宿主输入中的项：加载时列出，由作者删除或改键。
+        public IEnumerable<TimelinePreviewInputPoint> InvalidInputs()
+        {
+            if (Preferences == null || m_Instance == null)
+                yield break;
+            foreach (TimelinePreviewInputPoint point in Preferences.Inputs)
+            {
+                bool declared = false;
+                foreach (GraphHostInputDescriptor descriptor in m_Instance.Inputs)
+                    declared |= descriptor.InputId == point.InputId;
+                if (!declared)
+                    yield return point;
+            }
+        }
+
+        public void SelectScheme(int index)
+        {
+            if (m_Schemes == null || index < 0 || index >= m_Schemes.Schemes.Count)
+                return;
+            m_Schemes.Selected = index;
+            EditorUtility.SetDirty(m_Schemes);
+            Preferences = m_Schemes.Current;
+            PreferencesChanged();
+        }
+
+        public void SaveSchemeAs(string name)
+        {
+            TimelineAssetPreviewPreferences copy = JsonUtility.FromJson<TimelineAssetPreviewPreferences>(JsonUtility.ToJson(Preferences));
+            copy.Name = name;
+            Persist();
+            m_Schemes.Schemes.Add(copy);
+            m_Schemes.Selected = m_Schemes.Schemes.Count - 1;
+            Preferences = copy;
+            PreferencesChanged();
+            AssetDatabase.SaveAssetIfDirty(m_Schemes);
+        }
+
+        public void RenameScheme(string name)
+        {
+            Preferences.Name = name;
+            PreferencesChanged();
+            AssetDatabase.SaveAssetIfDirty(m_Schemes);
+        }
+
+        public void DeleteScheme()
+        {
+            if (m_Schemes == null || m_Schemes.Schemes.Count <= 1)
+                return;
+            m_Schemes.Schemes.RemoveAt(Mathf.Clamp(m_Schemes.Selected, 0, m_Schemes.Schemes.Count - 1));
+            m_Schemes.Selected = Mathf.Clamp(m_Schemes.Selected, 0, m_Schemes.Schemes.Count - 1);
+            Preferences = m_Schemes.Current;
+            PreferencesChanged();
+            AssetDatabase.SaveAssetIfDirty(m_Schemes);
+        }
+
+        // 第一次改动时在作者 Timeline 旁创建方案资产，此后改动写入该资产。
+        void Persist()
+        {
+            if (m_Schemes == null)
+                m_Schemes = TimelinePreviewInputSchemes.Create(Source, Preferences);
+            EditorUtility.SetDirty(m_Schemes);
         }
     }
 }

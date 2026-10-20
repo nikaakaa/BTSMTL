@@ -96,16 +96,38 @@ namespace BTSMTL.Timeline.Editor
 
     public readonly struct TimelinePreviewMark
     {
-        public TimelinePreviewMark(float time, string label, string tooltip)
+        public TimelinePreviewMark(float time, string label, string tooltip, bool accepted = true)
         {
             Time = time;
             Label = label;
             Tooltip = tooltip;
+            Accepted = accepted;
         }
 
         public float Time { get; }
         public string Label { get; }
         public string Tooltip { get; }
+        public bool Accepted { get; }
+    }
+
+    // 预览输入轨编辑入口：时间为本 Timeline 本地时间，下标对应输入标记。
+    public sealed class TimelinePreviewInputTrack
+    {
+        public TimelinePreviewInputTrack(IReadOnlyList<string> choices, Action<int, float> move,
+            Action<string, float> add, Action<int, string> change, Action<int> remove)
+        {
+            Choices = choices;
+            Move = move;
+            Add = add;
+            Change = change;
+            Remove = remove;
+        }
+
+        public IReadOnlyList<string> Choices { get; }
+        public Action<int, float> Move { get; }
+        public Action<string, float> Add { get; }
+        public Action<int, string> Change { get; }
+        public Action<int> Remove { get; }
     }
 
     [Serializable]
@@ -190,12 +212,13 @@ namespace BTSMTL.Timeline.Editor
         public event Action<TimelineEditorSelection> SelectionChanged;
         public float CurrentTime => m_Binding.CurrentTime;
         public void SetPreviewPath(string source, IReadOnlyList<Vector2> visited, IReadOnlyList<TimelinePreviewMark> marks,
-            IReadOnlyList<TimelinePreviewMark> inputs, Action<int, float> moveInput)
+            IReadOnlyList<TimelinePreviewMark> inputs, TimelinePreviewInputTrack inputTrack)
         {
             m_Binding.SetPreviewPath(visited == null ? null : new EmbeddedTimelinePreviewPath(source, visited,
                 marks.Select(mark => new EmbeddedTimelinePreviewMark(mark.Time, mark.Label, mark.Tooltip)).ToArray(),
-                inputs.Select(input => new EmbeddedTimelinePreviewMark(input.Time, input.Label, input.Tooltip)).ToArray(),
-                moveInput));
+                inputs.Select(input => new EmbeddedTimelinePreviewMark(input.Time, input.Label, input.Tooltip, input.Accepted)).ToArray(),
+                inputTrack == null ? null : new EmbeddedTimelinePreviewInputTrack(inputTrack.Choices, inputTrack.Move,
+                    inputTrack.Add, inputTrack.Change, inputTrack.Remove)));
             m_EmbeddedEditor.RequestEmbeddedRepaint();
         }
         public event Action<string> AuthoringIssue;

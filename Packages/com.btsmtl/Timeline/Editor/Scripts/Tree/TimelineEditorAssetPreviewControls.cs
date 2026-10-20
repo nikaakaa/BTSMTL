@@ -16,6 +16,8 @@ namespace BTSMTL.Timeline.Editor
         Label m_AssetPreviewStatus;
         ObjectField m_AssetPreviewConfiguration;
         IMGUIContainer m_AssetPreviewInputs;
+        ToolbarMenu m_SchemeMenu;
+        ToolbarMenu m_AssumptionMenu;
         bool m_ShowPreviewInputs;
         Vector2 m_PreviewInputsScroll;
         ulong m_AppliedAssetSample;
@@ -69,11 +71,19 @@ namespace BTSMTL.Timeline.Editor
                 mode.SetValueWithoutNotify("会话预览");
                 OpenTimelinePreview();
             }) { text = "在会话中验证" });
+            m_SchemeMenu = new ToolbarMenu { tooltip = "输入方案：与本 Timeline 并列保存，可提交" };
+            toolbar.Add(m_SchemeMenu);
+            m_AssumptionMenu = new ToolbarMenu
+            {
+                text = "假设",
+                tooltip = "其它运行数据的假设；切换后立即重新推导"
+            };
+            toolbar.Add(m_AssumptionMenu);
             toolbar.Add(new ToolbarButton(() =>
             {
                 m_ShowPreviewInputs = !m_ShowPreviewInputs;
                 RefreshAssetPreviewControls();
-            }) { text = "输入日程与假设" });
+            }) { text = "预览设置" });
             toolbar.SetEnabled(SourceAsset);
             panel.Add(toolbar);
             m_AssetPreviewStatus = new Label { style = { whiteSpace = WhiteSpace.Normal } };
@@ -98,6 +108,8 @@ namespace BTSMTL.Timeline.Editor
             m_AssetPreviewStatus = null;
             m_AssetPreviewConfiguration = null;
             m_AssetPreviewInputs = null;
+            m_SchemeMenu = null;
+            m_AssumptionMenu = null;
             m_AppliedAssetSample = 0;
             m_PreviewPathRevision = -1;
             m_PreviewInputs.Clear();
@@ -142,6 +154,7 @@ namespace BTSMTL.Timeline.Editor
                 m_AssetPreviewInputs.MarkDirtyRepaint();
             }
             ApplyPreviewPath(active);
+            RefreshSchemeMenus(active);
             m_PreviewRoute?.MarkDirtyRepaint();
             if (active && m_AppliedAssetSample != preview.SampledRevision)
             {
@@ -200,20 +213,128 @@ namespace BTSMTL.Timeline.Editor
                 if (!point.Active || spans.Length == 0)
                     continue;
                 m_PreviewInputs.Add(i);
+                bool accepted = DescribeInput(preview, i, out string reason);
                 inputs.Add(new TimelinePreviewMark(ToLocal(spans, point.Time), point.InputId,
-                    $"输入 {point.InputId} · 预览第 {point.Time:0.00} 秒；拖动修改时刻"));
+                    $"预览第 {point.Time:0.00} 秒 · {reason}\n拖动改时刻，右键改键或删除", accepted));
             }
-            m_SlateProjection.SetPreviewPath(SourceAsset.name, visited, marks, inputs, MovePreviewInput);
+            string[] choices = preview.Instance.Inputs.Select(descriptor => descriptor.InputId).ToArray();
+            m_SlateProjection.SetPreviewPath(SourceAsset.name, visited, marks, inputs, new TimelinePreviewInputTrack(
+                choices, MovePreviewInput, AddPreviewInput, ChangePreviewInput, RemovePreviewInput));
         }
+
+        // 按键在其有效期内（请求按正式缓冲时长，其余到同键下一次改值）被读取该键的转移选中即为接上。
+        static bool DescribeInput(TimelineAssetPreviewHost preview, int index, out string reason)
+        {
+            List<TimelinePreviewInputPoint> points = preview.Preferences.Inputs;
+            TimelinePreviewInputPoint point = points[index];
+            double until = preview.Preferences.RangeEnd;
+            bool request = false;
+            foreach (TimelinePreviewInputRequest value in preview.InputRequests)
+                if (value.InputId == point.InputId)
+                {
+                    until = point.Time + value.DurationSeconds;
+                    request = true;
+                }
+            if (!request)
+                foreach (TimelinePreviewInputPoint other in points)
+                    if (other != point && other.Active && other.InputId == point.InputId && other.Time > point.Time)
+                        until = Math.Min(until, other.Time);
+            if (preview.Chain != null &&
+                FindAcceptance(preview.Chain, point.InputId, point.Time, until, out TimelineStaticChainMarker marker))
+            {
+                reason = $"接上：{preview.Query.DescribeState(marker.Source)} → " +
+                    $"{(marker.Transition.Target == null ? "出口" : preview.Query.DescribeState(marker.Transition.Target))}，" +
+                    $"第 {marker.Time.AsSingle:0.00} 秒";
+                return true;
+            }
+            TimelineAssetPreviewTraversal? at = null;
+            foreach (TimelineAssetPreviewTraversal traversal in preview.Traversals)
+                if (traversal.Start.AsSingle <= point.Time && point.Time < traversal.End.AsSingle)
+                    at = traversal;
+            if (!at.HasValue || at.Value.State == null)
+            {
+                reason = "未接上：此刻不在预览路线上的任何状态内";
+                return false;
+            }
+            OrchestrationStaticState state = at.Value.State;
+            var labels = new List<string>();
+            foreach (OrchestrationTransitionWindow window in OrchestrationStateTransitionWindows.Build(state).Windows)
+                foreach (OrchestrationStaticRead read in window.HostInputs)
+                    if (read.Key == point.InputId)
+                        labels.Add(window.EdgeLabel);
+            reason = labels.Count == 0
+                ? $"未接上：此刻在 {preview.Query.DescribeState(state)}，它的出边都不读 {point.InputId}"
+                : $"未接上：此刻在 {preview.Query.DescribeState(state)}（本地 {(at.Value.LocalStart.AsSingle + point.Time - at.Value.Start.AsSingle):0.00} 秒），" +
+                  $"读该键的转移为 {string.Join("；", labels)}，按键不在可走时段内或被更早的转移抢先";
+            return false;
+        }
+
+        static bool FindAcceptance(TimelineStaticChain chain, string inputId, double from, double until,
+            out TimelineStaticChainMarker found)
+        {
+            foreach (TimelineStaticChainMarker marker in chain.Markers)
+            {
+                double time = marker.Time.AsSingle;
+                if (time < from || time >= until)
+                    continue;
+                foreach (OrchestrationStaticRead read in marker.Transition.Reads)
+                    if (read.Source == OrchestrationStaticReadSource.HostInput && read.Key == inputId)
+                    {
+                        found = marker;
+                        return true;
+                    }
+            }
+            foreach (TimelineStaticChainBranch branch in chain.Branches)
+                if (FindAcceptance(branch.Chain, inputId, from, until, out found))
+                    return true;
+            found = null;
+            return false;
+        }
+
+        TimelineAssetPreviewTraversal[] SourceSpans() =>
+            TimelineAssetPreviewHost.Shared.Traversals.Where(span => span.Source == SourceAsset).ToArray();
 
         void MovePreviewInput(int index, float localTime)
         {
             var preview = TimelineAssetPreviewHost.Shared;
-            var spans = preview.Traversals.Where(span => span.Source == SourceAsset).ToArray();
+            TimelineAssetPreviewTraversal[] spans = SourceSpans();
             if (index < 0 || index >= m_PreviewInputs.Count || spans.Length == 0)
                 return;
             TimelinePreviewInputPoint point = preview.Preferences.Inputs[m_PreviewInputs[index]];
             point.Time = Mathf.Clamp(ToGlobal(spans, localTime), 0f, preview.Preferences.RangeEnd);
+            preview.PreferencesChanged();
+        }
+
+        void AddPreviewInput(string inputId, float localTime)
+        {
+            var preview = TimelineAssetPreviewHost.Shared;
+            TimelineAssetPreviewTraversal[] spans = SourceSpans();
+            if (spans.Length == 0)
+                return;
+            preview.Preferences.Inputs.Add(new TimelinePreviewInputPoint
+            {
+                InputId = inputId,
+                Time = Mathf.Clamp(ToGlobal(spans, localTime), 0f, preview.Preferences.RangeEnd),
+                Boolean = true
+            });
+            preview.PreferencesChanged();
+        }
+
+        void ChangePreviewInput(int index, string inputId)
+        {
+            if (index < 0 || index >= m_PreviewInputs.Count)
+                return;
+            var preview = TimelineAssetPreviewHost.Shared;
+            preview.Preferences.Inputs[m_PreviewInputs[index]].InputId = inputId;
+            preview.PreferencesChanged();
+        }
+
+        void RemovePreviewInput(int index)
+        {
+            if (index < 0 || index >= m_PreviewInputs.Count)
+                return;
+            var preview = TimelineAssetPreviewHost.Shared;
+            preview.Preferences.Inputs.RemoveAt(m_PreviewInputs[index]);
             preview.PreferencesChanged();
         }
 
@@ -244,10 +365,107 @@ namespace BTSMTL.Timeline.Editor
             return nearest.Start.AsSingle + local - nearest.LocalStart.AsSingle;
         }
 
+        // 方案菜单：切换、另存、重命名、删除与从录制输入导入；假设菜单逐条切换并立即重新推导。
+        void RefreshSchemeMenus(bool active)
+        {
+            var preview = TimelineAssetPreviewHost.Shared;
+            if (m_SchemeMenu == null || m_AssumptionMenu == null)
+                return;
+            m_SchemeMenu.SetEnabled(active);
+            m_AssumptionMenu.SetEnabled(active);
+            if (!active || preview.Preferences == null)
+            {
+                m_SchemeMenu.text = "输入方案";
+                return;
+            }
+            int invalid = preview.InvalidInputs().Count();
+            m_SchemeMenu.text = "方案：" + preview.Preferences.Name + (invalid != 0 ? $" · {invalid} 个失效按键" : string.Empty);
+            DropdownMenu schemes = m_SchemeMenu.menu;
+            schemes.MenuItems().Clear();
+            IReadOnlyList<TimelineAssetPreviewPreferences> list = preview.Schemes;
+            for (int i = 0; i < list.Count; i++)
+            {
+                int index = i;
+                schemes.AppendAction(list[i].Name, _ => preview.SelectScheme(index),
+                    list[i] == preview.Preferences ? DropdownMenuAction.Status.Checked : DropdownMenuAction.Status.Normal);
+            }
+            schemes.AppendSeparator();
+            schemes.AppendAction("另存为…", _ => AskSchemeName(preview.Preferences.Name + " 副本", preview.SaveSchemeAs));
+            schemes.AppendAction("重命名…", _ => AskSchemeName(preview.Preferences.Name, preview.RenameScheme));
+            schemes.AppendAction("删除当前方案", _ => preview.DeleteScheme(),
+                list.Count > 1 ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
+            schemes.AppendAction("从录制输入导入…", _ =>
+            {
+                string path = EditorUtility.OpenFilePanel("选择录制输入", Application.dataPath, string.Empty);
+                if (path.Length != 0)
+                    preview.ImportInputs(path);
+            });
+            DropdownMenu assumptions = m_AssumptionMenu.menu;
+            assumptions.MenuItems().Clear();
+            TimelineAssetPreviewPreferences preferences = preview.Preferences;
+            if (preview.Assumptions.Count == 0)
+                assumptions.AppendAction("本链没有需要假设的运行数据", null, DropdownMenuAction.Status.Disabled);
+            foreach (OrchestrationStaticRead read in preview.Assumptions)
+            {
+                string identity = TimelineAssetPreviewReadIntervals.ConditionIdentity(in read);
+                TimelinePreviewConditionAssumption assumption = preferences.Conditions.Find(value => value.Identity == identity);
+                bool satisfied = assumption == null ? TimelineAssetPreviewReadIntervals.DefaultSatisfied(in read) : assumption.Satisfied;
+                string note = read.Source == OrchestrationStaticReadSource.ClipState ? " · 本链没有 Clip 提供，默认不成立"
+                    : read.Undeterminable ? " · 无法静态判断" : string.Empty;
+                OrchestrationStaticRead captured = read;
+                assumptions.AppendAction((read.Label + note).Replace('/', '／'), _ =>
+                {
+                    TimelinePreviewConditionAssumption value = preferences.Conditions.Find(item => item.Identity == identity);
+                    if (value == null)
+                    {
+                        value = new TimelinePreviewConditionAssumption
+                            { Identity = identity, Satisfied = TimelineAssetPreviewReadIntervals.DefaultSatisfied(in captured) };
+                        preferences.Conditions.Add(value);
+                    }
+                    value.Satisfied = !value.Satisfied;
+                    preview.PreferencesChanged();
+                }, satisfied ? DropdownMenuAction.Status.Checked : DropdownMenuAction.Status.Normal);
+            }
+        }
+
+        void AskSchemeName(string initial, Action<string> apply)
+        {
+            Rect anchor = m_SchemeMenu.worldBound;
+            UnityEditor.PopupWindow.Show(anchor, new SchemeNamePopup(initial, apply));
+        }
+
+        sealed class SchemeNamePopup : PopupWindowContent
+        {
+            readonly Action<string> m_Apply;
+            string m_Name;
+
+            internal SchemeNamePopup(string name, Action<string> apply)
+            {
+                m_Name = name;
+                m_Apply = apply;
+            }
+
+            public override Vector2 GetWindowSize() => new(260f, 48f);
+
+            public override void OnGUI(Rect rect)
+            {
+                GUI.SetNextControlName("scheme-name");
+                m_Name = EditorGUILayout.TextField("方案名", m_Name);
+                EditorGUI.FocusTextInControl("scheme-name");
+                bool submit = Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Return;
+                if ((GUILayout.Button("确定") || submit) && !string.IsNullOrWhiteSpace(m_Name))
+                {
+                    m_Apply(m_Name.Trim());
+                    editorWindow.Close();
+                }
+            }
+        }
+
+        // 预览设置：显示范围、假设目标、非开关类按键的取值，以及方案中已失效的按键。
         void DrawAssetPreviewInputs()
         {
             var preview = TimelineAssetPreviewHost.Shared;
-            if (!preview.IsOpen || preview.Source != SourceAsset)
+            if (!preview.IsOpen || !preview.Covers(SourceAsset))
                 return;
             TimelineAssetPreviewPreferences preferences = preview.Preferences;
             m_PreviewInputsScroll = EditorGUILayout.BeginScrollView(m_PreviewInputsScroll);
@@ -262,45 +480,18 @@ namespace BTSMTL.Timeline.Editor
                 preferences.TargetEuler = EditorGUILayout.Vector3Field("假设目标朝向", preferences.TargetEuler);
             }
             IReadOnlyList<GraphHostInputDescriptor> inputs = preview.Instance.Inputs;
-            IReadOnlyList<TimelinePreviewInputRequest> requests = preview.InputRequests;
-            if (requests.Count != 0)
-                EditorGUILayout.HelpBox("请求按正式缓冲时长显示脉冲；静态推导不执行请求消费，实际接纳需在会话中验证。", MessageType.Info);
-            foreach (GraphHostInputDescriptor descriptor in inputs)
+            foreach (TimelinePreviewInputPoint point in preferences.Inputs)
             {
-                TimelinePreviewInputRequest? request = null;
-                foreach (TimelinePreviewInputRequest value in requests)
-                    if (value.InputId == descriptor.InputId)
-                        request = value;
+                GraphHostInputDescriptor descriptor = inputs.FirstOrDefault(value => value.InputId == point.InputId);
+                if (descriptor == null || descriptor.ValueKind == GraphHostValueKind.Bool)
+                    continue;
                 using (new EditorGUILayout.HorizontalScope())
                 {
-                    EditorGUILayout.LabelField((request.HasValue ? "请求 · " : string.Empty) + descriptor.InputId);
-                    if (GUILayout.Button("在游标处添加输入", GUILayout.Width(140f)))
-                    {
-                        preferences.Inputs.Add(new TimelinePreviewInputPoint
-                            { InputId = descriptor.InputId, Time = preview.Time, Boolean = true });
-                        GUI.changed = true;
-                    }
-                }
-                for (int i = 0; i < preferences.Inputs.Count; i++)
-                {
-                    TimelinePreviewInputPoint point = preferences.Inputs[i];
-                    if (point.InputId != descriptor.InputId)
-                        continue;
-                    using (new EditorGUILayout.HorizontalScope())
-                    {
-                        point.Time = EditorGUILayout.Slider(point.Time, 0f, preferences.RangeEnd, GUILayout.Width(220f));
-                        point.Active = EditorGUILayout.ToggleLeft("启用", point.Active, GUILayout.Width(56f));
-                        DrawInputValue(descriptor, point);
-                        if (request.HasValue && point.Boolean)
-                            EditorGUILayout.LabelField($"到期 {point.Time + request.Value.DurationSeconds:0.###} 秒", GUILayout.Width(110f));
-                        if (GUILayout.Button("删除", GUILayout.Width(44f)))
-                        {
-                            preferences.Inputs.RemoveAt(i--);
-                            GUI.changed = true;
-                        }
-                    }
+                    EditorGUILayout.LabelField($"{point.InputId} · {point.Time:0.###} 秒", GUILayout.Width(200f));
+                    DrawInputValue(descriptor, point);
                 }
             }
+            bool changed = EditorGUI.EndChangeCheck();
             for (int i = 0; i < preferences.Inputs.Count; i++)
             {
                 TimelinePreviewInputPoint point = preferences.Inputs[i];
@@ -308,39 +499,13 @@ namespace BTSMTL.Timeline.Editor
                     continue;
                 using (new EditorGUILayout.HorizontalScope())
                 {
-                    EditorGUILayout.LabelField($"未声明的输入：{point.InputId}");
-                    if (GUILayout.Button("删除日程项", GUILayout.Width(100f)))
+                    EditorGUILayout.LabelField($"失效按键：{point.InputId}（{point.Time:0.###} 秒），宿主已不声明该输入");
+                    if (GUILayout.Button("删除", GUILayout.Width(60f)))
                     {
                         preferences.Inputs.RemoveAt(i--);
-                        GUI.changed = true;
+                        changed = true;
                     }
                 }
-            }
-            EditorGUILayout.LabelField("运行数据假设", EditorStyles.boldLabel);
-            foreach (OrchestrationStaticRead read in preview.Assumptions)
-            {
-                string identity = TimelineAssetPreviewReadIntervals.ConditionIdentity(in read);
-                TimelinePreviewConditionAssumption assumption = preferences.Conditions.Find(value => value.Identity == identity);
-                bool satisfied = assumption == null ? TimelineAssetPreviewReadIntervals.DefaultSatisfied(in read) : assumption.Satisfied;
-                string note = read.Source == OrchestrationStaticReadSource.ClipState ? " · 本链没有 Clip 提供，默认未成立"
-                    : read.Undeterminable ? " · 无法静态判断" : string.Empty;
-                bool selected = EditorGUILayout.ToggleLeft(read.Label + note, satisfied);
-                if (selected != satisfied)
-                {
-                    if (assumption == null)
-                    {
-                        assumption = new TimelinePreviewConditionAssumption { Identity = identity };
-                        preferences.Conditions.Add(assumption);
-                    }
-                    assumption.Satisfied = selected;
-                }
-            }
-            bool changed = EditorGUI.EndChangeCheck();
-            if (GUILayout.Button("从录制输入导入"))
-            {
-                string path = EditorUtility.OpenFilePanel("选择录制输入", Application.dataPath, string.Empty);
-                if (path.Length != 0)
-                    preview.ImportInputs(path);
             }
             EditorGUILayout.EndScrollView();
             if (changed)

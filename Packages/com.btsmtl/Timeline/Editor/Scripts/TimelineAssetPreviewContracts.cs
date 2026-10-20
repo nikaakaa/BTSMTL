@@ -62,6 +62,7 @@ namespace BTSMTL.Timeline.Editor
     [Serializable]
     public sealed class TimelineAssetPreviewPreferences
     {
+        public string Name = "默认";
         public List<TimelinePreviewInputPoint> Inputs = new();
         public List<TimelinePreviewConditionAssumption> Conditions = new();
         public bool HasTarget;
