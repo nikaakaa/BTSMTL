@@ -59,6 +59,10 @@ namespace BTSMTL.Timeline.Editor
 
         internal void ConfigureSectionFocus(Action<string> focusSection) => m_FocusSection = focusSection;
 
+        public EmbeddedTimelinePreviewPath PreviewPath { get; private set; }
+
+        public void SetPreviewPath(EmbeddedTimelinePreviewPath path) => PreviewPath = path;
+
         public IReadOnlyCollection<string> CollapsedGroupIds => m_CollapsedGroups;
 
         public void SetCollapsedGroups(IEnumerable<string> groupIds)

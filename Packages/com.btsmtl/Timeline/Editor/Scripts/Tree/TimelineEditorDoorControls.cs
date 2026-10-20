@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using BTSMTL.Compilation.Analysis;
+using BTSMTL.Orchestration;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -112,8 +113,11 @@ namespace BTSMTL.Timeline.Editor
                     if (!m_ClipDestinations.TryGetValue(destination.Door.ClipId, out List<TimelineClipDestination> list))
                         m_ClipDestinations.Add(destination.Door.ClipId, list = new List<TimelineClipDestination>());
                     string text = DestinationText(destination);
+                    TimelineDoorDestination target = destination;
                     if (!list.Exists(value => value.Label == text))
-                        list.Add(new TimelineClipDestination(text, ExitActivation(context.Query, destination)));
+                        list.Add(new TimelineClipDestination(text, ExitActivation(context.Query, destination),
+                            "预览：在此" + (destination.Kind == TimelineDoorDestinationKind.NextSection ? "接 " : string.Empty) + text,
+                            () => PreviewThrough(target)));
                     if (destination.Kind == TimelineDoorDestinationKind.NextSection)
                         m_ContinueWindows.Add(new TimelineSectionContinueWindow(destination.Door.TrackId,
                             destination.Door.Start.AsSingle, destination.Door.End.AsSingle));
@@ -128,6 +132,143 @@ namespace BTSMTL.Timeline.Editor
                 m_ClipDestinations.ToDictionary(pair => pair.Key, pair => (IReadOnlyList<TimelineClipDestination>)pair.Value,
                     StringComparer.Ordinal),
                 m_ContinueWindows);
+        }
+
+        // 从入口逐段补最早的衔接输入直到链走到目标出口窗口，再在窗口起点写入目标去向读取的按键输入；target 为空时一路接到最后一段。
+        void PreviewThrough(TimelineDoorDestination target)
+        {
+            var preview = TimelineAssetPreviewHost.Shared;
+            if (m_DoorContexts.Count == 0)
+            {
+                ShowNotification(new GUIContent("当前 Timeline 没有状态上下文，无法推导接法。"));
+                return;
+            }
+            if (!preview.IsOpen || preview.Source != SourceAsset || preview.Mode != TimelinePreviewMode.Asset)
+            {
+                m_PreviewMode = TimelinePreviewMode.Asset;
+                OpenTimelinePreview();
+            }
+            if (!preview.IsOpen || preview.Instance == null)
+            {
+                ShowNotification(new GUIContent(preview.Error.Length != 0 ? preview.Error : "资产预览尚未打开。"));
+                return;
+            }
+            OrchestrationStaticState state = m_DoorContexts[m_DoorContextIndex].State;
+            TimelineStateDoors doors = TimelineStateDoors.Build(state);
+            TimelineAssetPreviewPreferences preferences = preview.Preferences;
+            preferences.Inputs.Clear();
+            string failure = string.Empty;
+            OrchestrationStaticClip previousDoor = null;
+            for (int step = 0; step < 32; step++)
+            {
+                TimelineStaticChain chain = TimelineStaticChain.Build(state, preferences.StartingSectionId,
+                    OrchestrationTime.FromSeconds(preferences.RangeEnd),
+                    new TimelineAssetPreviewReadIntervals(preferences, preview.Instance.Inputs, preview.InputRequests));
+                if (target != null && Reached(chain, target))
+                    break;
+                TimelineDoorDestination next = target;
+                TimelineStaticChainSpan span = target == null ? null : SpanCovering(chain, state, target.Door);
+                if (span == null)
+                {
+                    TimelineStaticChainSpan last = chain.Spans.Count == 0 ? null : chain.Spans[^1];
+                    next = last == null || last.State != state ? null : doors.Destinations
+                        .Where(value => value.Kind == TimelineDoorDestinationKind.NextSection && value.Section == last.Section)
+                        .OrderBy(value => value.Door.Start).FirstOrDefault();
+                    span = last;
+                }
+                if (next == null || span == null || next != target && next.Door == previousDoor)
+                {
+                    if (target != null || next != null)
+                        failure = "链在这里接不下去：" + chain.Reason;
+                    break;
+                }
+                previousDoor = next.Door;
+                OrchestrationTime local = OrchestrationTime.Max(next.Door.Start, span.LocalStart);
+                OrchestrationTime start = span.Start + local - span.LocalStart;
+                OrchestrationTime end = span.Start + next.Door.End - span.LocalStart;
+                int before = preferences.Inputs.Count;
+                foreach (string inputId in HostInputs(next, state))
+                    ScheduleInput(preferences, preview, inputId, start.AsSingle, end.AsSingle);
+                if (preferences.Inputs.Count == before)
+                {
+                    failure = "这个去向的条件不读取按键输入，需要在“输入日程与假设”里调整运行数据假设。";
+                    break;
+                }
+                if (next == target)
+                {
+                    chain = TimelineStaticChain.Build(state, preferences.StartingSectionId,
+                        OrchestrationTime.FromSeconds(preferences.RangeEnd),
+                        new TimelineAssetPreviewReadIntervals(preferences, preview.Instance.Inputs, preview.InputRequests));
+                    if (!Reached(chain, target))
+                        failure = "已在窗口起点排入输入，但条件仍未成立：" + chain.Reason;
+                    break;
+                }
+            }
+            preview.PreferencesChanged();
+            preview.SetTime(0f);
+            preview.SetPlaying(failure.Length == 0);
+            if (failure.Length != 0)
+                ShowNotification(new GUIContent(failure));
+        }
+
+        static bool Reached(TimelineStaticChain chain, TimelineDoorDestination target)
+        {
+            foreach (TimelineStaticChainMarker marker in chain.Markers)
+                if (target.Kind == TimelineDoorDestinationKind.Transition
+                        ? marker.Transition == target.Transition
+                        : marker.IsSectionJump && marker.NextSection == target.NextSection)
+                    return true;
+            return false;
+        }
+
+        static TimelineStaticChainSpan SpanCovering(TimelineStaticChain chain, OrchestrationStaticState state,
+            OrchestrationStaticClip door)
+        {
+            foreach (TimelineStaticChainSpan span in chain.Spans)
+                if (span.State == state && span.LocalStart < door.End && span.LocalEnd > door.Start)
+                    return span;
+            return null;
+        }
+
+        static IEnumerable<string> HostInputs(TimelineDoorDestination destination, OrchestrationStaticState state)
+        {
+            var result = new List<string>();
+            if (destination.Kind == TimelineDoorDestinationKind.Transition)
+                CollectHostInputs(destination.Transition.Condition, result);
+            else
+                foreach (OrchestrationStaticContinueRequest request in destination.Door.ContinueRequests)
+                    if (request.TimelineOperationIndex == state.TimelineOperationIndex)
+                        CollectHostInputs(request.Condition, result);
+            return result;
+        }
+
+        // 只取肯定分支里的输入；取反下的输入表示"不能按"，不排入。
+        static void CollectHostInputs(OrchestrationStaticCondition condition, List<string> result)
+        {
+            switch (condition.Kind)
+            {
+                case OrchestrationStaticConditionKind.All:
+                case OrchestrationStaticConditionKind.Any:
+                    foreach (OrchestrationStaticCondition child in condition.Children)
+                        CollectHostInputs(child, result);
+                    break;
+                case OrchestrationStaticConditionKind.Read:
+                    if (condition.Read.Source == OrchestrationStaticReadSource.HostInput && !result.Contains(condition.Read.Key))
+                        result.Add(condition.Read.Key);
+                    break;
+            }
+        }
+
+        static void ScheduleInput(TimelineAssetPreviewPreferences preferences, TimelineAssetPreviewHost preview,
+            string inputId, float start, float end)
+        {
+            bool request = preview.InputRequests.Any(value => value.InputId == inputId);
+            var descriptor = preview.Instance.Inputs.FirstOrDefault(value => value.InputId == inputId);
+            if (descriptor == null || !request && descriptor.ValueKind != BTSMTL.Graphs.GraphHostValueKind.Bool)
+                return;
+            preferences.Inputs.Add(new TimelinePreviewInputPoint { InputId = inputId, Time = start, Boolean = true, Active = true });
+            if (!request)
+                preferences.Inputs.Add(new TimelinePreviewInputPoint { InputId = inputId, Time = end, Boolean = false, Active = true });
         }
 
         Action ExitActivation(TimelineOrchestrationQuery query, TimelineDoorDestination destination)

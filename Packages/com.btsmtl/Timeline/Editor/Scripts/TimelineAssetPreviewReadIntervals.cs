@@ -51,8 +51,12 @@ namespace BTSMTL.Timeline.Editor
             foreach (TimelinePreviewConditionAssumption condition in m_Preferences.Conditions)
                 if (condition.Identity == identity)
                     return condition.Satisfied;
-            return true;
+            return DefaultSatisfied(in read);
         }
+
+        // 资产预览只运行本链上的 Clip：没有 Clip 提供的 Clip 状态默认未成立，其它运行数据默认成立。
+        public static bool DefaultSatisfied(in OrchestrationStaticRead read) =>
+            read.Source != OrchestrationStaticReadSource.ClipState;
 
         public static string ConditionIdentity(in OrchestrationStaticRead read) => $"{read.OperationIndex}:{read.Key}";
 

@@ -18,11 +18,9 @@ namespace BTSMTL.Timeline.Editor
         IMGUIContainer m_AssetPreviewInputs;
         bool m_ShowPreviewInputs;
         Vector2 m_PreviewInputsScroll;
-        BtsmtlTimeBarView m_AssetChainView;
-        BtsmtlAssetPreviewTimeBarDataSource m_AssetChainSource;
-        IMGUIContainer m_AssetChainPanel;
-        long m_AssetChainRevision = -1;
         ulong m_AppliedAssetSample;
+        long m_PreviewPathRevision = -1;
+        readonly List<int> m_PreviewInputs = new();
 
         VisualElement CreateAssetPreviewControls()
         {
@@ -63,6 +61,11 @@ namespace BTSMTL.Timeline.Editor
             toolbar.Add(m_AssetPreviewConfiguration);
             toolbar.Add(new ToolbarButton(OpenTimelinePreview) { text = "打开预览" });
             toolbar.Add(new ToolbarButton(() => preview.SetPlaying(!preview.IsPlaying)) { text = "播放／暂停" });
+            toolbar.Add(new ToolbarButton(() => PreviewThrough(null))
+            {
+                text = "每段都接",
+                tooltip = "在每段最早的出口窗口排入按键输入，从头预览一路接到最后一段；右键出口窗口的“去向”可预览单个接法。"
+            });
             toolbar.Add(new ToolbarButton(preview.Close) { text = "关闭资产预览" });
             toolbar.Add(new ToolbarButton(() =>
             {
@@ -82,11 +85,6 @@ namespace BTSMTL.Timeline.Editor
             m_AssetPreviewInputs = new IMGUIContainer(DrawAssetPreviewInputs);
             m_AssetPreviewInputs.style.maxHeight = 240f;
             panel.Add(m_AssetPreviewInputs);
-            m_AssetChainSource = new BtsmtlAssetPreviewTimeBarDataSource(preview);
-            m_AssetChainView = new BtsmtlTimeBarView();
-            m_AssetChainPanel = new IMGUIContainer(() => m_AssetChainView.Draw(m_AssetChainPanel.contentRect));
-            m_AssetChainPanel.style.height = 260f;
-            panel.Add(m_AssetChainPanel);
             preview.Changed += RefreshAssetPreviewControls;
             RefreshAssetPreviewControls();
             return panel;
@@ -104,12 +102,9 @@ namespace BTSMTL.Timeline.Editor
             m_AssetPreviewStatus = null;
             m_AssetPreviewConfiguration = null;
             m_AssetPreviewInputs = null;
-            m_AssetChainView?.Dispose();
-            m_AssetChainView = null;
-            m_AssetChainSource = null;
-            m_AssetChainPanel = null;
-            m_AssetChainRevision = -1;
             m_AppliedAssetSample = 0;
+            m_PreviewPathRevision = -1;
+            m_PreviewInputs.Clear();
         }
 
         void RefreshAssetPreviewControls()
@@ -132,17 +127,7 @@ namespace BTSMTL.Timeline.Editor
                 m_AssetPreviewInputs.style.display = active && m_ShowPreviewInputs ? DisplayStyle.Flex : DisplayStyle.None;
                 m_AssetPreviewInputs.MarkDirtyRepaint();
             }
-            if (m_AssetChainPanel != null)
-            {
-                m_AssetChainPanel.style.display = active ? DisplayStyle.Flex : DisplayStyle.None;
-                m_AssetChainView.SetSource(active ? m_AssetChainSource : null);
-                if (active && m_AssetChainRevision != preview.Revision)
-                {
-                    m_AssetChainRevision = preview.Revision;
-                    m_AssetChainSource.Rebuild();
-                }
-                m_AssetChainPanel.MarkDirtyRepaint();
-            }
+            ApplyPreviewPath(active);
             if (active && m_AppliedAssetSample != preview.SampledRevision)
             {
                 m_AppliedAssetSample = preview.SampledRevision;
@@ -152,6 +137,102 @@ namespace BTSMTL.Timeline.Editor
             }
             m_SlateSurface?.MarkDirtyRepaint();
         }
+
+        // 资产预览路线叠加到编辑时间轴：全部换算为本 Timeline 的本地时间。
+        void ApplyPreviewPath(bool active)
+        {
+            var preview = TimelineAssetPreviewHost.Shared;
+            if (m_SlateProjection == null)
+                return;
+            if (!active)
+            {
+                if (m_PreviewPathRevision != -1)
+                    m_SlateProjection.SetPreviewPath(null, null, null, null, null);
+                m_PreviewPathRevision = -1;
+                return;
+            }
+            if (m_PreviewPathRevision == preview.Revision)
+                return;
+            m_PreviewPathRevision = preview.Revision;
+            var spans = preview.Traversals.Where(span => span.Source == SourceAsset).ToArray();
+            var visited = spans.Select(span => new Vector2(span.LocalStart.AsSingle, span.LocalEnd.AsSingle)).ToArray();
+            var marks = new List<TimelinePreviewMark>();
+            TimelineStaticChain chain = preview.Chain;
+            if (chain != null)
+            {
+                foreach (TimelineStaticChainMarker marker in chain.Markers)
+                {
+                    if (preview.Query.ResolveTimeline(marker.Source.TimelineIdentity) != SourceAsset)
+                        continue;
+                    string label = marker.IsSectionJump
+                        ? "接 " + SectionName(marker.NextSection?.AuthoringId)
+                        : marker.Transition.Target == null ? "收招"
+                        : "转移到 " + preview.Query.DescribeState(marker.Transition.Target);
+                    marks.Add(new TimelinePreviewMark(marker.FromLocal.AsSingle, label,
+                        $"预览第 {marker.Time.AsSingle:0.00} 秒"));
+                }
+                TimelineStaticChainSpan last = chain.Spans.Count == 0 ? null : chain.Spans[^1];
+                if (last != null && chain.StopReason != TimelineStaticChainStopReason.StateMachineExited &&
+                    preview.Query.ResolveTimeline(last.State.TimelineIdentity) == SourceAsset)
+                    marks.Add(new TimelinePreviewMark(last.LocalEnd.AsSingle,
+                        chain.StopReason == TimelineStaticChainStopReason.TimelineCompleted ? "播完收招" : "预览结束",
+                        chain.Reason));
+            }
+            m_PreviewInputs.Clear();
+            var inputs = new List<TimelinePreviewMark>();
+            List<TimelinePreviewInputPoint> points = preview.Preferences.Inputs;
+            for (int i = 0; i < points.Count; i++)
+            {
+                TimelinePreviewInputPoint point = points[i];
+                if (!point.Active || spans.Length == 0)
+                    continue;
+                m_PreviewInputs.Add(i);
+                inputs.Add(new TimelinePreviewMark(ToLocal(spans, point.Time), point.InputId,
+                    $"输入 {point.InputId} · 预览第 {point.Time:0.00} 秒；拖动修改时刻"));
+            }
+            m_SlateProjection.SetPreviewPath(SourceAsset.name, visited, marks, inputs, MovePreviewInput);
+        }
+
+        void MovePreviewInput(int index, float localTime)
+        {
+            var preview = TimelineAssetPreviewHost.Shared;
+            var spans = preview.Traversals.Where(span => span.Source == SourceAsset).ToArray();
+            if (index < 0 || index >= m_PreviewInputs.Count || spans.Length == 0)
+                return;
+            TimelinePreviewInputPoint point = preview.Preferences.Inputs[m_PreviewInputs[index]];
+            point.Time = Mathf.Clamp(ToGlobal(spans, localTime), 0f, preview.Preferences.RangeEnd);
+            preview.PreferencesChanged();
+        }
+
+        // 落在经过区间内按该区间换算；区间外按最近区间线性延伸，等同 Timeline 继续播放。
+        static float ToLocal(TimelineAssetPreviewTraversal[] spans, float time)
+        {
+            TimelineAssetPreviewTraversal nearest = spans[0];
+            foreach (TimelineAssetPreviewTraversal span in spans)
+            {
+                if (time >= span.Start.AsSingle && time <= span.End.AsSingle)
+                    return span.LocalStart.AsSingle + time - span.Start.AsSingle;
+                if (span.Start.AsSingle <= time)
+                    nearest = span;
+            }
+            return nearest.LocalStart.AsSingle + time - nearest.Start.AsSingle;
+        }
+
+        static float ToGlobal(TimelineAssetPreviewTraversal[] spans, float local)
+        {
+            TimelineAssetPreviewTraversal nearest = spans[0];
+            foreach (TimelineAssetPreviewTraversal span in spans)
+            {
+                if (local >= span.LocalStart.AsSingle && local <= span.LocalEnd.AsSingle)
+                    return span.Start.AsSingle + local - span.LocalStart.AsSingle;
+                if (span.LocalStart.AsSingle <= local)
+                    nearest = span;
+            }
+            return nearest.Start.AsSingle + local - nearest.LocalStart.AsSingle;
+        }
+
+        string SectionName(string sectionId) =>
+            SourceAsset.Data.Sections.FirstOrDefault(section => section.AuthoringId == sectionId)?.Name ?? "下一分段";
 
         void DrawAssetPreviewInputs()
         {
@@ -239,8 +320,10 @@ namespace BTSMTL.Timeline.Editor
             {
                 string identity = TimelineAssetPreviewReadIntervals.ConditionIdentity(in read);
                 TimelinePreviewConditionAssumption assumption = preferences.Conditions.Find(value => value.Identity == identity);
-                bool satisfied = assumption == null || assumption.Satisfied;
-                bool selected = EditorGUILayout.ToggleLeft(read.Label + (read.Undeterminable ? " · 无法静态判断" : string.Empty), satisfied);
+                bool satisfied = assumption == null ? TimelineAssetPreviewReadIntervals.DefaultSatisfied(in read) : assumption.Satisfied;
+                string note = read.Source == OrchestrationStaticReadSource.ClipState ? " · 本链没有 Clip 提供，默认未成立"
+                    : read.Undeterminable ? " · 无法静态判断" : string.Empty;
+                bool selected = EditorGUILayout.ToggleLeft(read.Label + note, satisfied);
                 if (selected != satisfied)
                 {
                     if (assumption == null)

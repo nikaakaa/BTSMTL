@@ -574,9 +574,9 @@ namespace BTSMTL.Timeline.Editor
         {
             foreach (OrchestrationStaticRead value in reads)
             {
-                OrchestrationStaticRead read = timeline == null ? value : TimelineDoorReads.EffectiveRead(timeline, in value);
-                if (read.Source == OrchestrationStaticReadSource.RuntimeData && !m_Assumptions.Contains(read))
-                    m_Assumptions.Add(read);
+                OrchestrationStaticReadSource source = timeline == null ? value.Source : TimelineDoorReads.EffectiveSource(timeline, in value);
+                if (source == OrchestrationStaticReadSource.RuntimeData && !m_Assumptions.Contains(value))
+                    m_Assumptions.Add(value);
             }
         }
 

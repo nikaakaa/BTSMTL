@@ -26,7 +26,8 @@ namespace BTSMTL.Compilation.Analysis
         HostInput = 2,
         RuntimeData = 3,
         StateCompletion = 4,
-        TimelineSection = 5
+        TimelineSection = 5,
+        TimelineTime = 6
     }
 
     public readonly struct OrchestrationStaticRead : IEquatable<OrchestrationStaticRead>
@@ -79,14 +80,17 @@ namespace BTSMTL.Compilation.Analysis
         Not,
         Read,
         StateRootCompleted,
-        TimelineSection
+        TimelineSection,
+        // 当前 Timeline 本地时刻与常量比较：本地时刻 Comparison Threshold。
+        TimelineTime
     }
 
     public sealed class OrchestrationStaticCondition
     {
         internal OrchestrationStaticCondition(OrchestrationStaticConditionKind kind,
             IReadOnlyList<OrchestrationStaticCondition> children, OrchestrationStaticRead read = default,
-            bool constantValue = false, string timelineIdentity = "", string sectionId = "", string frameIdentity = "")
+            bool constantValue = false, string timelineIdentity = "", string sectionId = "", string frameIdentity = "",
+            OrchestrationComparisonKind comparison = default, OrchestrationTime threshold = default)
         {
             Kind = kind;
             Children = children;
@@ -95,7 +99,12 @@ namespace BTSMTL.Compilation.Analysis
             TimelineIdentity = timelineIdentity;
             SectionId = sectionId;
             FrameIdentity = frameIdentity;
+            Comparison = comparison;
+            Threshold = threshold;
         }
+
+        public OrchestrationComparisonKind Comparison { get; }
+        public OrchestrationTime Threshold { get; }
 
         public OrchestrationStaticConditionKind Kind { get; }
         public IReadOnlyList<OrchestrationStaticCondition> Children { get; }
@@ -957,6 +966,9 @@ namespace BTSMTL.Compilation.Analysis
                 case OrchestrationOperationCode.Calculate when (GraphCalculationKind)operation.Integer0 == GraphCalculationKind.TextEqual:
                     result = DescribeTextEqual(index);
                     break;
+                case OrchestrationOperationCode.Compare:
+                    result = DescribeTimelineTimeCompare(index);
+                    break;
                 case OrchestrationOperationCode.InputBoolean:
                 case OrchestrationOperationCode.InputScalar:
                 case OrchestrationOperationCode.InputVector2Magnitude:
@@ -1014,6 +1026,61 @@ namespace BTSMTL.Compilation.Analysis
             if (b.Operation >= 0 && Operations[b.Operation].Code == OrchestrationOperationCode.TimelineSection && aConstant)
                 return SectionCondition(index, b.Operation, left.String);
             return UnknownPredicate(index);
+        }
+
+        OrchestrationStaticCondition DescribeTimelineTimeCompare(int index)
+        {
+            StaticValue a = Unwrap(Input(index, "m_InputValue1"));
+            StaticValue b = Unwrap(Input(index, "m_InputValue2"));
+            var comparison = (OrchestrationComparisonKind)Operations[index].Integer0;
+            if (IsTimelineTime(a) && TryLiteralSeconds(b, out double seconds))
+                return TimelineTimeCondition(index, comparison, seconds);
+            if (IsTimelineTime(b) && TryLiteralSeconds(a, out seconds))
+                return TimelineTimeCondition(index, Mirror(comparison), seconds);
+            return UnknownPredicate(index);
+        }
+
+        bool IsTimelineTime(StaticValue value) =>
+            value.Operation >= 0 && Operations[value.Operation].Code == OrchestrationOperationCode.TimelineTime;
+
+        bool TryLiteralSeconds(StaticValue value, out double seconds)
+        {
+            seconds = 0d;
+            if (!TryLiteral(value, out SemanticLiteral literal))
+                return false;
+            switch (literal.Kind)
+            {
+                case SemanticLiteralKind.Number: seconds = literal.Number.Value; return true;
+                case SemanticLiteralKind.Int32: seconds = literal.Int32; return true;
+                default: return false;
+            }
+        }
+
+        static OrchestrationComparisonKind Mirror(OrchestrationComparisonKind comparison) => comparison switch
+        {
+            OrchestrationComparisonKind.LessThan => OrchestrationComparisonKind.GreaterThan,
+            OrchestrationComparisonKind.LessThanOrEqual => OrchestrationComparisonKind.GreaterThanOrEqual,
+            OrchestrationComparisonKind.GreaterThanOrEqual => OrchestrationComparisonKind.LessThanOrEqual,
+            OrchestrationComparisonKind.GreaterThan => OrchestrationComparisonKind.LessThan,
+            _ => comparison
+        };
+
+        static OrchestrationStaticCondition TimelineTimeCondition(int index, OrchestrationComparisonKind comparison, double seconds)
+        {
+            string symbol = comparison switch
+            {
+                OrchestrationComparisonKind.Equal => "=",
+                OrchestrationComparisonKind.NotEqual => "≠",
+                OrchestrationComparisonKind.LessThan => "<",
+                OrchestrationComparisonKind.LessThanOrEqual => "≤",
+                OrchestrationComparisonKind.GreaterThanOrEqual => "≥",
+                _ => ">"
+            };
+            return new OrchestrationStaticCondition(OrchestrationStaticConditionKind.TimelineTime,
+                Array.Empty<OrchestrationStaticCondition>(), new OrchestrationStaticRead(index,
+                    OrchestrationStaticReadSource.TimelineTime, $"TimelineTime:{(int)comparison}:{seconds:R}", false,
+                    $"Timeline 时刻 {symbol} {seconds:0.###} 秒"), comparison: comparison,
+                threshold: OrchestrationTime.FromSeconds(seconds));
         }
 
         OrchestrationStaticCondition SectionCondition(int index, int queryIndex, string sectionId) =>

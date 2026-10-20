@@ -110,16 +110,35 @@ namespace BTSMTL.Timeline.Editor
         public float EndTime { get; }
     }
 
+    public readonly struct TimelinePreviewMark
+    {
+        public TimelinePreviewMark(float time, string label, string tooltip)
+        {
+            Time = time;
+            Label = label;
+            Tooltip = tooltip;
+        }
+
+        public float Time { get; }
+        public string Label { get; }
+        public string Tooltip { get; }
+    }
+
     public readonly struct TimelineClipDestination
     {
-        public TimelineClipDestination(string label, Action activate)
+        public TimelineClipDestination(string label, Action activate, string previewLabel, Action preview)
         {
             Label = label ?? string.Empty;
             Activate = activate;
+            PreviewLabel = previewLabel ?? string.Empty;
+            Preview = preview;
         }
 
         public string Label { get; }
         public Action Activate { get; }
+        // 一键把输入日程排成"在此走这条去向"并从头播放资产预览。
+        public string PreviewLabel { get; }
+        public Action Preview { get; }
     }
 
     [Serializable]
@@ -213,10 +232,23 @@ namespace BTSMTL.Timeline.Editor
             foreach (KeyValuePair<string, IReadOnlyList<TimelineClipDestination>> pair in clipDestinations)
             {
                 labels[pair.Key] = "→ " + string.Join(" · ", pair.Value.Select(value => value.Label));
-                links[pair.Key] = pair.Value.Select(value => new EmbeddedTimelineGroupLink(value.Label, false, 0f, 0f, value.Activate)).ToArray();
+                links[pair.Key] = pair.Value.Select(value => new EmbeddedTimelineGroupLink(value.Label, false, 0f, 0f, value.Activate))
+                    .Concat(pair.Value.Where(value => value.Preview != null)
+                        .Select(value => new EmbeddedTimelineGroupLink(value.PreviewLabel, false, 0f, 0f, value.Preview)))
+                    .ToArray();
             }
             m_Binding.SetAuthoringClipDestinations(labels, links);
             m_Binding.SetSectionContinueWindows(continueWindows);
+            m_EmbeddedEditor.RequestEmbeddedRepaint();
+        }
+
+        public void SetPreviewPath(string source, IReadOnlyList<Vector2> visited, IReadOnlyList<TimelinePreviewMark> marks,
+            IReadOnlyList<TimelinePreviewMark> inputs, Action<int, float> moveInput)
+        {
+            m_Binding.SetPreviewPath(visited == null ? null : new EmbeddedTimelinePreviewPath(source, visited,
+                marks.Select(mark => new EmbeddedTimelinePreviewMark(mark.Time, mark.Label, mark.Tooltip)).ToArray(),
+                inputs.Select(input => new EmbeddedTimelinePreviewMark(input.Time, input.Label, input.Tooltip)).ToArray(),
+                moveInput));
             m_EmbeddedEditor.RequestEmbeddedRepaint();
         }
 

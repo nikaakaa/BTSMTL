@@ -19,6 +19,7 @@ namespace BTSMTL.Compilation.Analysis
     public interface ITimelineStaticReadIntervals
     {
         // 区间采用预览全局时间，左闭右开；运行数据的默认成立由预览偏好提供者持有。
+        // RuntimeData 收到原始读取：来源仍为 ClipState 表示当前 Timeline 没有 Clip 静态提供该状态。
         IReadOnlyList<TimelineStaticInterval> HostInput(string inputId);
         bool RuntimeData(in OrchestrationStaticRead read);
     }
@@ -439,6 +440,32 @@ namespace BTSMTL.Compilation.Analysis
                     Normalize(result);
                     return result;
                 }
+                case OrchestrationStaticConditionKind.TimelineTime:
+                {
+                    if (context.State?.Timeline == null)
+                    {
+                        needsSession = true;
+                        return new List<TimeRange>();
+                    }
+                    long at = (context.Start + condition.Threshold - context.Local).RawValue;
+                    long first = context.Start.RawValue;
+                    long last = context.End.RawValue - (context.IncludesEnd ? 0 : 1);
+                    var result = new List<TimeRange>();
+                    switch (condition.Comparison)
+                    {
+                        case OrchestrationComparisonKind.Equal: result.Add(new TimeRange(at, at)); break;
+                        case OrchestrationComparisonKind.NotEqual:
+                            result.Add(new TimeRange(first, at - 1));
+                            result.Add(new TimeRange(at + 1, last));
+                            break;
+                        case OrchestrationComparisonKind.LessThan: result.Add(new TimeRange(first, at - 1)); break;
+                        case OrchestrationComparisonKind.LessThanOrEqual: result.Add(new TimeRange(first, at)); break;
+                        case OrchestrationComparisonKind.GreaterThanOrEqual: result.Add(new TimeRange(at, last)); break;
+                        default: result.Add(new TimeRange(at + 1, last)); break;
+                    }
+                    Normalize(result);
+                    return Intersect(universe, result);
+                }
                 default:
                 {
                     OrchestrationStaticRead raw = condition.Read;
@@ -458,7 +485,7 @@ namespace BTSMTL.Compilation.Analysis
                                 result.Add(new TimeRange(interval.Start.RawValue, interval.End.RawValue - 1));
                             break;
                         default:
-                            if (inputs.RuntimeData(in read))
+                            if (inputs.RuntimeData(in raw))
                                 return universe;
                             break;
                     }
