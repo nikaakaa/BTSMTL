@@ -543,6 +543,7 @@ namespace BTSMTL.Timeline.Editor
             m_SlateSurface.style.flexShrink = 1f;
             m_SlateSurface.style.minHeight = 320f;
             rootVisualElement.Add(m_SlateSurface);
+            rootVisualElement.Add(CreatePreviewRouteRows());
             BindStateQueries();
         }
 

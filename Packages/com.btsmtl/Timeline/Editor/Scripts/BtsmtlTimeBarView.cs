@@ -390,21 +390,105 @@ namespace BTSMTL.Timeline.Editor
             return ItemRect(lane, item, source.StartTime, Math.Max(source.StartTime + .0001, source.EndTime));
         }
 
-        public static void DrawMini(Rect rect, IBtsmtlTimeBarDataSource source)
+        static IBtsmtlTimeBarDataSource s_MiniSource;
+        static BtsmtlTimeBarItem s_MiniItem;
+        static BtsmtlTimeBarEditKind s_MiniKind;
+        static float s_MiniPressX;
+        static double s_MiniStart;
+        static double s_MiniEnd;
+        static int s_MiniControl;
+        static string s_MiniMessage;
+
+        // 迷你时间条：单击返回被按下的条目；拖两端或中间按数据源规则调整，双击定位来源，Esc 取消。
+        public static BtsmtlTimeBarItem DrawMini(Rect rect, IBtsmtlTimeBarDataSource source, out string message)
         {
+            message = s_MiniSource == source ? s_MiniMessage : null;
             EditorGUI.DrawRect(rect, new Color(.13f, .13f, .13f));
+            Event current = Event.current;
+            BtsmtlTimeBarItem pressed = null;
+            if (current.type == EventType.MouseDown && s_MiniItem == null && s_MiniSource == source)
+                message = s_MiniMessage = null;
+            double seconds = Math.Max(.0001, source.EndTime - source.StartTime) / Math.Max(1, rect.width);
             for (int i = 0; i < source.Items.Count; i++)
             {
                 BtsmtlTimeBarItem item = source.Items[i];
                 Rect itemRect = GetItemRect(rect, source, item);
                 DrawItem(itemRect, item);
-                Event current = Event.current;
-                if (current.type == EventType.MouseDown && current.button == 0 && itemRect.Contains(current.mousePosition))
+                if (source.GetReadOnlyReason(item) == null)
                 {
-                    source.Navigate(item);
-                    current.Use();
+                    EditorGUIUtility.AddCursorRect(itemRect, MouseCursor.Pan);
+                    EditorGUIUtility.AddCursorRect(new Rect(itemRect.x - 3, itemRect.y, 6, itemRect.height), MouseCursor.ResizeHorizontal);
+                    EditorGUIUtility.AddCursorRect(new Rect(itemRect.xMax - 3, itemRect.y, 6, itemRect.height), MouseCursor.ResizeHorizontal);
                 }
+                if (current.type != EventType.MouseDown || current.button != 0 ||
+                    !Rect.MinMaxRect(itemRect.xMin - 3, itemRect.yMin, itemRect.xMax + 3, itemRect.yMax).Contains(current.mousePosition))
+                    continue;
+                pressed = item;
+                if (current.clickCount == 2)
+                    source.Navigate(item);
+                else
+                {
+                    BtsmtlTimeBarEditKind kind = current.mousePosition.x - itemRect.x < 4 ? BtsmtlTimeBarEditKind.TrimStart
+                        : itemRect.xMax - current.mousePosition.x < 4 ? BtsmtlTimeBarEditKind.TrimEnd
+                        : BtsmtlTimeBarEditKind.Move;
+                    if (source.TryBeginEdit(item, kind, out s_MiniMessage))
+                    {
+                        s_MiniSource = source;
+                        s_MiniItem = item;
+                        s_MiniKind = kind;
+                        s_MiniPressX = current.mousePosition.x;
+                        s_MiniStart = item.Start;
+                        s_MiniEnd = item.End;
+                        s_MiniControl = GUIUtility.GetControlID(FocusType.Passive);
+                        GUIUtility.hotControl = s_MiniControl;
+                        GUIUtility.keyboardControl = s_MiniControl;
+                    }
+                    else
+                        s_MiniSource = source;
+                    message = s_MiniMessage;
+                }
+                current.Use();
+                break;
             }
+            double time = source.CurrentTime;
+            if (time >= source.StartTime && time <= source.EndTime)
+                EditorGUI.DrawRect(new Rect(rect.x + (float)((time - source.StartTime) / seconds), rect.y, 1, rect.height),
+                    new Color(1f, .7f, .2f));
+            if (s_MiniSource != source || s_MiniItem == null)
+                return pressed;
+            if (current.type == EventType.MouseDrag)
+            {
+                double delta = (current.mousePosition.x - s_MiniPressX) * seconds;
+                double start = s_MiniKind == BtsmtlTimeBarEditKind.TrimEnd ? s_MiniStart : s_MiniStart + delta;
+                double end = s_MiniKind == BtsmtlTimeBarEditKind.TrimStart ? s_MiniEnd : s_MiniEnd + delta;
+                if (!source.TrySetRange(s_MiniItem, start, end, out s_MiniMessage))
+                    CancelMini();
+                message = s_MiniMessage;
+                current.Use();
+            }
+            else if (current.rawType == EventType.MouseUp && current.button == 0)
+            {
+                s_MiniItem = null;
+                s_MiniMessage = null;
+                GUIUtility.hotControl = 0;
+                source.CompleteEdit();
+                current.Use();
+            }
+            else if (current.type == EventType.KeyDown && current.keyCode == KeyCode.Escape)
+            {
+                CancelMini();
+                current.Use();
+            }
+            return pressed;
+        }
+
+        static void CancelMini()
+        {
+            if (s_MiniItem == null)
+                return;
+            s_MiniSource.CancelEdit();
+            s_MiniItem = null;
+            GUIUtility.hotControl = 0;
         }
 
         static float TimeToX(Rect rect, double value, double start, double end) =>

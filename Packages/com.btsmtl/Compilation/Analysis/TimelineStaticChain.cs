@@ -84,6 +84,26 @@ namespace BTSMTL.Compilation.Analysis
         public OrchestrationTime ToLocal { get; }
     }
 
+    // 并行分支：所属状态 Root 中的状态机在 [Start, End) 内与所属状态的 Timeline 同时推进，时间同为预览全局时间。
+    public sealed class TimelineStaticChainBranch
+    {
+        internal TimelineStaticChainBranch(OrchestrationStaticState owner, int machineOperationIndex,
+            OrchestrationTime start, OrchestrationTime end, TimelineStaticChain chain)
+        {
+            Owner = owner;
+            MachineOperationIndex = machineOperationIndex;
+            Start = start;
+            End = end;
+            Chain = chain;
+        }
+
+        public OrchestrationStaticState Owner { get; }
+        public int MachineOperationIndex { get; }
+        public OrchestrationTime Start { get; }
+        public OrchestrationTime End { get; }
+        public TimelineStaticChain Chain { get; }
+    }
+
     public sealed class TimelineStaticChain
     {
         readonly List<TimelineStaticChainSpan> m_Spans = new();
@@ -95,13 +115,28 @@ namespace BTSMTL.Compilation.Analysis
         public string Reason { get; private set; }
         public OrchestrationStaticState LastState { get; private set; }
 
+        // 状态 Root 中并行运行的状态机：每台各推导一条分支，从所属状态进入时起，到所属状态退出时止。
+        public IReadOnlyList<TimelineStaticChainBranch> Branches => m_Branches;
+        readonly List<TimelineStaticChainBranch> m_Branches = new();
+        OrchestrationStaticQuery m_Query;
+        ITimelineStaticReadIntervals m_Inputs;
+        HashSet<int> m_ActiveMachines;
+        OrchestrationStaticState m_Stay;
+        OrchestrationTime m_Entered;
+        OrchestrationTime m_Now;
+
         public static TimelineStaticChain Build(OrchestrationStaticQuery query, int machineOperationIndex,
-            OrchestrationTime previewEnd, ITimelineStaticReadIntervals inputs)
+            OrchestrationTime previewEnd, ITimelineStaticReadIntervals inputs) =>
+            BuildMachine(query, machineOperationIndex, OrchestrationTime.Zero, previewEnd, inputs, new HashSet<int>());
+
+        static TimelineStaticChain BuildMachine(OrchestrationStaticQuery query, int machineOperationIndex,
+            OrchestrationTime start, OrchestrationTime previewEnd, ITimelineStaticReadIntervals inputs,
+            HashSet<int> activeMachines)
         {
             foreach (OrchestrationStaticTransition initial in query.InitialTransitions(machineOperationIndex))
-                if (Earliest(initial.Condition, new ConditionTime(null, OrchestrationTime.Zero,
-                    OrchestrationTime.Zero, OrchestrationTime.Zero, true, false), inputs,
-                    out OrchestrationTime time, out _, out _) && time == OrchestrationTime.Zero)
+                if (Earliest(initial.Condition, new ConditionTime(null, start,
+                    OrchestrationTime.Zero, start, true, false), inputs,
+                    out OrchestrationTime time, out _, out _) && time == start)
                 {
                     if (initial.Target == null)
                         return new TimelineStaticChain
@@ -109,7 +144,10 @@ namespace BTSMTL.Compilation.Analysis
                             StopReason = TimelineStaticChainStopReason.NoInitialState,
                             Reason = "入口选中的目标不是状态，需在会话中验证。"
                         };
-                    return Build(initial.Target, previewEnd, inputs);
+                    activeMachines.Add(machineOperationIndex);
+                    TimelineStaticChain chain = Build(query, initial.Target, start, previewEnd, inputs, activeMachines);
+                    activeMachines.Remove(machineOperationIndex);
+                    return chain;
                 }
             return new TimelineStaticChain
             {
@@ -119,12 +157,30 @@ namespace BTSMTL.Compilation.Analysis
         }
 
         // 只沿状态转移推导：出边按成立区间的最早时刻与正式比较器选择，无出边成立时播到终点并按"完成"转移继续。
-        public static TimelineStaticChain Build(OrchestrationStaticState entryState,
+        public static TimelineStaticChain Build(OrchestrationStaticQuery query, OrchestrationStaticState entryState,
             OrchestrationTime previewEnd, ITimelineStaticReadIntervals inputs)
         {
-            var result = new TimelineStaticChain();
+            var active = new HashSet<int>();
+            if (entryState.MachineOperationIndex >= 0)
+                active.Add(entryState.MachineOperationIndex);
+            return Build(query, entryState, OrchestrationTime.Zero, previewEnd, inputs, active);
+        }
+
+        static TimelineStaticChain Build(OrchestrationStaticQuery query, OrchestrationStaticState entryState,
+            OrchestrationTime start, OrchestrationTime previewEnd, ITimelineStaticReadIntervals inputs,
+            HashSet<int> activeMachines)
+        {
+            var result = new TimelineStaticChain
+            {
+                m_Query = query,
+                m_Inputs = inputs,
+                m_ActiveMachines = activeMachines,
+                m_Stay = entryState,
+                m_Entered = start,
+                m_Now = start
+            };
             OrchestrationStaticState state = entryState;
-            OrchestrationTime time = OrchestrationTime.Zero;
+            OrchestrationTime time = start;
             OrchestrationTime local = state.TimelineStartTime;
             bool startKnown = state.HasStaticTimelineStartTime;
             var visited = new HashSet<(int State, long Local, long Time)>();
@@ -132,6 +188,7 @@ namespace BTSMTL.Compilation.Analysis
             while (time < previewEnd)
             {
                 result.LastState = state;
+                result.m_Now = time;
                 if (state.Timeline == null)
                     return result.Stop(TimelineStaticChainStopReason.NeedsSession, "状态没有唯一绑定的 Timeline，需在会话中验证。");
                 if (!state.TimelineDeterminesRootCompletion || !state.HasStaticTimelineClock)
@@ -165,7 +222,11 @@ namespace BTSMTL.Compilation.Analysis
                         Providers(state, selected.Transition, spanEndLocal), spanEnd, spanEndLocal,
                         selected.Transition.Target?.TimelineStartTime ?? OrchestrationTime.Zero));
                     time = spanEnd;
+                    result.m_Now = time;
+                    result.LeaveStay();
                     state = selected.Transition.Target;
+                    result.m_Stay = state;
+                    result.m_Entered = time;
                     cycle = 0;
                     if (state == null)
                         return result.Stop(TimelineStaticChainStopReason.StateMachineExited, "已到达状态机出口。");
@@ -174,6 +235,7 @@ namespace BTSMTL.Compilation.Analysis
                     continue;
                 }
                 time = end;
+                result.m_Now = time;
                 local = spanEndLocal;
                 if (local == timeline.Duration)
                 {
@@ -190,9 +252,29 @@ namespace BTSMTL.Compilation.Analysis
 
         TimelineStaticChain Stop(TimelineStaticChainStopReason reason, string message)
         {
+            LeaveStay();
             StopReason = reason;
             Reason = message;
+            m_Query = null;
+            m_Inputs = null;
+            m_ActiveMachines = null;
             return this;
+        }
+
+        // 所属状态在 [m_Entered, m_Now) 期间停留：其 Root 中的状态机同时运行，退出时一起结束。
+        void LeaveStay()
+        {
+            OrchestrationStaticState state = m_Stay;
+            m_Stay = null;
+            if (state == null || m_Now <= m_Entered)
+                return;
+            foreach (int machine in state.ConcurrentMachineOperations)
+            {
+                if (m_ActiveMachines.Contains(machine))
+                    continue;
+                TimelineStaticChain chain = BuildMachine(m_Query, machine, m_Entered, m_Now, m_Inputs, m_ActiveMachines);
+                m_Branches.Add(new TimelineStaticChainBranch(state, machine, m_Entered, m_Now, chain));
+            }
         }
 
         readonly struct Candidate

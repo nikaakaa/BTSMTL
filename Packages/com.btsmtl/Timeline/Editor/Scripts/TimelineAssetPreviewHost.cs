@@ -533,7 +533,7 @@ namespace BTSMTL.Timeline.Editor
             else
             {
                 var inputs = new TimelineAssetPreviewReadIntervals(Preferences, m_Instance.Inputs, InputRequests);
-                Chain = TimelineStaticChain.Build(m_EntryState,
+                Chain = TimelineStaticChain.Build(m_Query.Query, m_EntryState,
                     OrchestrationTime.FromSeconds(Preferences.RangeEnd), inputs);
                 OrchestrationStaticTransition entry = null;
                 foreach (TimelineStaticChainSpan span in Chain.Spans)

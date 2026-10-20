@@ -101,33 +101,14 @@ namespace BTSMTL.Timeline.Editor
             m_AppliedAssetSample = 0;
             m_PreviewPathRevision = -1;
             m_PreviewInputs.Clear();
+            DisposePreviewRouteRows();
         }
 
         // 预览链走进别的 Timeline 时编辑窗口跟过去，并把来处记为可返回的导航。
         void FollowPreview(TimelineAsset target)
         {
-            if (!target || target == SourceAsset || !TimelineAssetPreviewHost.Shared.Covers(SourceAsset))
-                return;
-            if (target == m_NavigationOwner)
-            {
-                ReturnToTimeline();
-                return;
-            }
-            if (!HasTimelineNavigation)
-            {
-                m_NavigationOwner = m_SerializedOwner;
-                m_NavigationPropertyPath = m_SerializedPropertyPath;
-                m_NavigationOwnershipLabel = m_OwnershipLabel;
-                m_NavigationTrackAuthoringId = string.Empty;
-                m_NavigationClipAuthoringId = string.Empty;
-                m_NavigationSourceNodeGuid = m_SourceNodeGuid;
-            }
-            BindAsset(target, m_SourceGraphAuthoringId, m_SourceNodeGuid);
-            if (m_Toolbar != null)
-            {
-                m_Toolbar.BackButton.text = "‹ 返回 " + m_NavigationOwner.name;
-                m_Toolbar.BackButton.tooltip = "预览链从这里进入了 " + target.name + "；点此回到原 Timeline。";
-            }
+            if (TimelineAssetPreviewHost.Shared.Covers(SourceAsset))
+                OpenRouteTimeline(target);
         }
 
         void RefreshAssetPreviewControls()
@@ -161,6 +142,7 @@ namespace BTSMTL.Timeline.Editor
                 m_AssetPreviewInputs.MarkDirtyRepaint();
             }
             ApplyPreviewPath(active);
+            m_PreviewRoute?.MarkDirtyRepaint();
             if (active && m_AppliedAssetSample != preview.SampledRevision)
             {
                 m_AppliedAssetSample = preview.SampledRevision;

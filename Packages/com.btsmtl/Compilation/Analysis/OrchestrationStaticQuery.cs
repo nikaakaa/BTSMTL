@@ -239,7 +239,10 @@ namespace BTSMTL.Compilation.Analysis
         public bool HasStaticTimelineStartTime { get; internal set; }
         public OrchestrationTime TimelineStartTime { get; internal set; }
         public IReadOnlyList<OrchestrationStaticTransition> Transitions => m_Transitions;
+        // Root 中与 Timeline 同时运行的状态机：随本状态进入启动，本状态退出时一起结束。
+        public IReadOnlyList<int> ConcurrentMachineOperations => m_ConcurrentMachines;
         internal readonly List<OrchestrationStaticTransition> m_Transitions = new();
+        internal readonly List<int> m_ConcurrentMachines = new();
     }
 
     public sealed class OrchestrationStaticQueryInput
@@ -391,6 +394,16 @@ namespace BTSMTL.Compilation.Analysis
             }
             foreach (OrchestrationStaticState state in m_States.Values)
             {
+                foreach (int edgeIndex in m_Outgoing[state.OperationIndex])
+                {
+                    ProgramControlFlowEdge edge = m_Input.ControlFlow[edgeIndex];
+                    if (edge.Kind != ProgramControlFlowKind.Enter || edge.SourcePort != "Root")
+                        continue;
+                    foreach (int target in Reachable(edge.Target.Value))
+                        if (Operations[target].Code == OrchestrationOperationCode.StateMachine &&
+                            !state.m_ConcurrentMachines.Contains(target))
+                            state.m_ConcurrentMachines.Add(target);
+                }
                 int timeline = FindBodyTimeline(state.OperationIndex);
                 if (timeline < 0)
                     continue;
@@ -421,6 +434,17 @@ namespace BTSMTL.Compilation.Analysis
         {
             if (index == timeline)
                 return true;
+            // 并行"首个步骤完成即完成"：首个步骤决定完成，其余步骤（如并行状态机）随之结束。
+            if (Operations[index].Code == OrchestrationOperationCode.Parallel && Operations[index].Integer0 == 2)
+            {
+                foreach (int edgeIndex in m_Outgoing[index])
+                {
+                    ProgramControlFlowEdge edge = m_Input.ControlFlow[edgeIndex];
+                    if (edge.Kind == ProgramControlFlowKind.Child)
+                        return !edge.HasCondition && IsTimelineRoot(edge.Target.Value, timeline);
+                }
+                return false;
+            }
             if (Operations[index].Code is not (OrchestrationOperationCode.Root or OrchestrationOperationCode.SubGraph or
                 OrchestrationOperationCode.Sequence))
                 return false;
