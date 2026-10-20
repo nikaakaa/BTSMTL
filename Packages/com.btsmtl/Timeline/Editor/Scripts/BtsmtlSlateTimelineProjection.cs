@@ -111,16 +111,20 @@ namespace BTSMTL.Timeline.Editor
     }
 
     // 预览输入轨编辑入口：时间为本 Timeline 本地时间，下标对应输入标记。
+    // Pressed 对开关类输入给出按下（true）或松开（false），其它类型为 null；SetPressed 改写该点的开关值。
     public sealed class TimelinePreviewInputTrack
     {
         public TimelinePreviewInputTrack(IReadOnlyList<string> choices, Action<int, float> move,
-            Action<string, float> add, Action<int, string> change, Action<int> remove)
+            Action<string, float> add, Action<int, string> change, Action<int> remove,
+            Func<int, bool?> pressed, Action<int, bool> setPressed)
         {
             Choices = choices;
             Move = move;
             Add = add;
             Change = change;
             Remove = remove;
+            Pressed = pressed;
+            SetPressed = setPressed;
         }
 
         public IReadOnlyList<string> Choices { get; }
@@ -128,6 +132,8 @@ namespace BTSMTL.Timeline.Editor
         public Action<string, float> Add { get; }
         public Action<int, string> Change { get; }
         public Action<int> Remove { get; }
+        public Func<int, bool?> Pressed { get; }
+        public Action<int, bool> SetPressed { get; }
     }
 
     [Serializable]
@@ -218,7 +224,7 @@ namespace BTSMTL.Timeline.Editor
                 marks.Select(mark => new EmbeddedTimelinePreviewMark(mark.Time, mark.Label, mark.Tooltip)).ToArray(),
                 inputs.Select(input => new EmbeddedTimelinePreviewMark(input.Time, input.Label, input.Tooltip, input.Accepted)).ToArray(),
                 inputTrack == null ? null : new EmbeddedTimelinePreviewInputTrack(inputTrack.Choices, inputTrack.Move,
-                    inputTrack.Add, inputTrack.Change, inputTrack.Remove)));
+                    inputTrack.Add, inputTrack.Change, inputTrack.Remove, inputTrack.Pressed, inputTrack.SetPressed)));
             m_EmbeddedEditor.RequestEmbeddedRepaint();
         }
         public event Action<string> AuthoringIssue;

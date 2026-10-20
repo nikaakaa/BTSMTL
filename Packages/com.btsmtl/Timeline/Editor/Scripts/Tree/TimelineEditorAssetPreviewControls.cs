@@ -232,12 +232,35 @@ namespace BTSMTL.Timeline.Editor
                     continue;
                 m_PreviewInputs.Add(i);
                 bool accepted = DescribeInput(preview, i, out string reason);
+                bool? pressed = PreviewInputPressed(preview, point);
+                string value = pressed == null ? string.Empty : pressed.Value ? "按下 · " : "松开 · ";
                 inputs.Add(new TimelinePreviewMark(ToLocal(spans, point.Time), point.InputId,
-                    $"预览第 {point.Time:0.00} 秒 · {reason}\n拖动改时刻，右键改键或删除", accepted));
+                    $"预览第 {point.Time:0.00} 秒 · {value}{reason}\n拖动改时刻，右键改键、改按下／松开或删除", accepted));
             }
             string[] choices = preview.Inputs.Select(descriptor => descriptor.InputId).ToArray();
             m_SlateProjection.SetPreviewPath(SourceAsset.name, visited, marks, inputs, new TimelinePreviewInputTrack(
-                choices, MovePreviewInput, AddPreviewInput, ChangePreviewInput, RemovePreviewInput));
+                choices, MovePreviewInput, AddPreviewInput, ChangePreviewInput, RemovePreviewInput,
+                index => index >= 0 && index < m_PreviewInputs.Count
+                    ? PreviewInputPressed(preview, preview.Preferences.Inputs[m_PreviewInputs[index]]) : null,
+                SetPreviewInputPressed));
+        }
+
+        // 开关类输入的按下（true）与松开（false）；其它类型返回 null。
+        static bool? PreviewInputPressed(TimelineAssetPreviewHost preview, TimelinePreviewInputPoint point)
+        {
+            foreach (GraphHostInputDescriptor descriptor in preview.Inputs)
+                if (descriptor.InputId == point.InputId)
+                    return descriptor.ValueKind == GraphHostValueKind.Bool ? point.Boolean : null;
+            return null;
+        }
+
+        void SetPreviewInputPressed(int index, bool pressed)
+        {
+            if (index < 0 || index >= m_PreviewInputs.Count)
+                return;
+            var preview = TimelineAssetPreviewHost.Shared;
+            preview.Preferences.Inputs[m_PreviewInputs[index]].Boolean = pressed;
+            preview.PreferencesChanged();
         }
 
         // 按键在其有效期内（请求按正式缓冲时长，其余到同键下一次改值）被读取该键的转移选中即为接上。
@@ -409,21 +432,39 @@ namespace BTSMTL.Timeline.Editor
                 m_SchemeMenu.text = "输入方案";
                 return;
             }
-            int invalid = preview.InvalidInputs().Count();
+            TimelinePreviewInputSchemeStore store = preview.InputSchemes;
+            int invalid = store.InvalidInputs(preview.Inputs).Count();
             m_SchemeMenu.text = "方案：" + preview.Preferences.Name + (invalid != 0 ? $" · {invalid} 个失效按键" : string.Empty);
+            m_SchemeMenu.tooltip = store.Path.Length != 0 ? "存于 " + store.Path : "尚未保存：第一次修改时在入口 Timeline 旁创建";
             DropdownMenu schemes = m_SchemeMenu.menu;
             schemes.MenuItems().Clear();
-            IReadOnlyList<TimelineAssetPreviewPreferences> list = preview.Schemes;
+            IReadOnlyList<TimelineAssetPreviewPreferences> list = store.All;
             for (int i = 0; i < list.Count; i++)
             {
                 int index = i;
-                schemes.AppendAction(list[i].Name, _ => preview.SelectScheme(index),
+                schemes.AppendAction(list[i].Name, _ =>
+                    {
+                        if (store.Select(index))
+                            preview.PreferencesChanged();
+                    },
                     list[i] == preview.Preferences ? DropdownMenuAction.Status.Checked : DropdownMenuAction.Status.Normal);
             }
             schemes.AppendSeparator();
-            schemes.AppendAction("另存为…", _ => AskSchemeName(preview.Preferences.Name + " 副本", preview.SaveSchemeAs));
-            schemes.AppendAction("重命名…", _ => AskSchemeName(preview.Preferences.Name, preview.RenameScheme));
-            schemes.AppendAction("删除当前方案", _ => preview.DeleteScheme(),
+            schemes.AppendAction("另存为…", _ => AskSchemeName(preview.Preferences.Name + " 副本", name =>
+            {
+                store.SaveAs(name);
+                preview.PreferencesChanged();
+            }));
+            schemes.AppendAction("重命名…", _ => AskSchemeName(preview.Preferences.Name, name =>
+            {
+                store.Rename(name);
+                preview.PreferencesChanged();
+            }));
+            schemes.AppendAction("删除当前方案", _ =>
+                {
+                    if (store.DeleteCurrent())
+                        preview.PreferencesChanged();
+                },
                 list.Count > 1 ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
             schemes.AppendAction("从录制输入导入…", _ =>
             {
@@ -492,7 +533,7 @@ namespace BTSMTL.Timeline.Editor
             }
         }
 
-        // 预览设置：显示范围、假设目标、非开关类按键的取值，以及方案中已失效的按键。
+        // 预览设置：显示范围、假设目标、各输入点的取值（开关类为按下／松开），以及方案中已失效的按键。
         void DrawAssetPreviewInputs()
         {
             var preview = TimelineAssetPreviewHost.Shared;
@@ -514,7 +555,7 @@ namespace BTSMTL.Timeline.Editor
             foreach (TimelinePreviewInputPoint point in preferences.Inputs)
             {
                 GraphHostInputDescriptor descriptor = inputs.FirstOrDefault(value => value.InputId == point.InputId);
-                if (descriptor == null || descriptor.ValueKind == GraphHostValueKind.Bool)
+                if (descriptor == null)
                     continue;
                 using (new EditorGUILayout.HorizontalScope())
                 {

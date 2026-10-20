@@ -1,38 +1,175 @@
+using System;
 using System.Collections.Generic;
+using BTSMTL.Graphs;
 using UnityEditor;
 using UnityEngine;
 
 namespace BTSMTL.Timeline.Editor
 {
-    // 预览入口的具名输入方案：与作者 Timeline 并列存为编辑器侧数据资产，可提交，不参与运行时。
+    // 一个预览入口的具名输入方案：按入口所属技能与入口 Timeline 的正式作者身份归属，可提交，不参与运行时。
+    // 资产文件放在哪里、叫什么都不影响归属；同一 .asset 内的多个 Timeline 子资产各有各的方案。
     public sealed class TimelinePreviewInputSchemes : ScriptableObject
     {
+        public string Owner;
+        public string Timeline;
         public List<TimelineAssetPreviewPreferences> Schemes = new();
         public int Selected;
 
         public TimelineAssetPreviewPreferences Current => Schemes[Mathf.Clamp(Selected, 0, Schemes.Count - 1)];
+    }
 
-        public static string PathFor(TimelineAsset source)
+    // 预览入口的正式身份：技能入口为所属技能身份与入口 Timeline 作者身份，独立 Timeline 只用自身作者身份。
+    public readonly struct TimelinePreviewEntryIdentity : IEquatable<TimelinePreviewEntryIdentity>
+    {
+        public TimelinePreviewEntryIdentity(string owner, string timeline)
         {
-            string path = AssetDatabase.GetAssetPath(source);
-            return path.Length == 0 ? string.Empty
-                : System.IO.Path.ChangeExtension(path, null).Replace('\\', '/') + ".PreviewInputs.asset";
+            if (string.IsNullOrEmpty(timeline))
+                throw new ArgumentException("预览入口的 Timeline 缺少作者身份。", nameof(timeline));
+            Owner = owner ?? string.Empty;
+            Timeline = timeline;
         }
 
-        public static TimelinePreviewInputSchemes Load(TimelineAsset source)
+        public string Owner { get; }
+        public string Timeline { get; }
+
+        public bool Equals(TimelinePreviewEntryIdentity other) =>
+            string.Equals(Owner, other.Owner, StringComparison.Ordinal) &&
+            string.Equals(Timeline, other.Timeline, StringComparison.Ordinal);
+        public override bool Equals(object obj) => obj is TimelinePreviewEntryIdentity other && Equals(other);
+        public override int GetHashCode() => HashCode.Combine(Owner, Timeline);
+    }
+
+    // 当前预览入口输入方案的唯一存储与操作：第一次改动时在入口 Timeline 旁创建方案资产，此后改动写入该资产；
+    // 所有操作只作用于本入口。
+    public sealed class TimelinePreviewInputSchemeStore
+    {
+        const string SearchFilter = "t:" + nameof(TimelinePreviewInputSchemes);
+        TimelinePreviewEntryIdentity m_Entry;
+        TimelineAsset m_Source;
+        TimelinePreviewInputSchemes m_Asset;
+        TimelineAssetPreviewPreferences m_Default;
+
+        public TimelineAssetPreviewPreferences Current =>
+            m_Asset != null && m_Asset.Schemes.Count != 0 ? m_Asset.Current : m_Default;
+
+        public IReadOnlyList<TimelineAssetPreviewPreferences> All =>
+            m_Asset != null && m_Asset.Schemes.Count != 0 ? m_Asset.Schemes : new[] { m_Default };
+
+        public string Path => m_Asset != null ? AssetDatabase.GetAssetPath(m_Asset) : string.Empty;
+        public TimelinePreviewEntryIdentity Entry => m_Entry;
+
+        public void Load(TimelineAsset source, TimelinePreviewEntryIdentity entry)
         {
-            string path = PathFor(source);
-            return path.Length == 0 ? null : AssetDatabase.LoadAssetAtPath<TimelinePreviewInputSchemes>(path);
+            Save();
+            m_Source = source;
+            m_Entry = entry;
+            m_Asset = Find(entry);
+            m_Default = new TimelineAssetPreviewPreferences();
         }
 
-        public static TimelinePreviewInputSchemes Create(TimelineAsset source, TimelineAssetPreviewPreferences first)
+        // 当前方案已被修改：尚无方案资产时创建，并标记待保存。
+        public void MarkChanged()
         {
-            string path = PathFor(source);
+            if (m_Asset == null)
+                m_Asset = Create();
+            if (m_Asset.Schemes.Count == 0)
+            {
+                m_Asset.Schemes.Add(m_Default);
+                m_Asset.Selected = 0;
+            }
+            EditorUtility.SetDirty(m_Asset);
+        }
+
+        public void Save()
+        {
+            if (m_Asset != null)
+                AssetDatabase.SaveAssetIfDirty(m_Asset);
+        }
+
+        public bool Select(int index)
+        {
+            if (m_Asset == null || index < 0 || index >= m_Asset.Schemes.Count)
+                return false;
+            m_Asset.Selected = index;
+            EditorUtility.SetDirty(m_Asset);
+            return true;
+        }
+
+        public void SaveAs(string name)
+        {
+            TimelineAssetPreviewPreferences copy =
+                JsonUtility.FromJson<TimelineAssetPreviewPreferences>(JsonUtility.ToJson(Current));
+            copy.Name = name;
+            MarkChanged();
+            m_Asset.Schemes.Add(copy);
+            m_Asset.Selected = m_Asset.Schemes.Count - 1;
+            Save();
+        }
+
+        public void Rename(string name)
+        {
+            Current.Name = name;
+            MarkChanged();
+            Save();
+        }
+
+        public bool DeleteCurrent()
+        {
+            if (m_Asset == null || m_Asset.Schemes.Count <= 1)
+                return false;
+            m_Asset.Schemes.RemoveAt(Mathf.Clamp(m_Asset.Selected, 0, m_Asset.Schemes.Count - 1));
+            m_Asset.Selected = Mathf.Clamp(m_Asset.Selected, 0, m_Asset.Schemes.Count - 1);
+            EditorUtility.SetDirty(m_Asset);
+            Save();
+            return true;
+        }
+
+        // 当前方案里按键身份已不在宿主输入中的项：加载时列出，由作者删除或改键。
+        public IEnumerable<TimelinePreviewInputPoint> InvalidInputs(IReadOnlyList<GraphHostInputDescriptor> declared)
+        {
+            if (Current == null)
+                yield break;
+            foreach (TimelinePreviewInputPoint point in Current.Inputs)
+            {
+                bool found = false;
+                foreach (GraphHostInputDescriptor descriptor in declared)
+                    found |= descriptor.InputId == point.InputId;
+                if (!found)
+                    yield return point;
+            }
+        }
+
+        static TimelinePreviewInputSchemes Find(TimelinePreviewEntryIdentity entry)
+        {
+            TimelinePreviewInputSchemes found = null;
+            foreach (string guid in AssetDatabase.FindAssets(SearchFilter))
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                foreach (UnityEngine.Object asset in AssetDatabase.LoadAllAssetsAtPath(path))
+                {
+                    if (asset is not TimelinePreviewInputSchemes schemes ||
+                        !entry.Equals(new TimelinePreviewEntryIdentity(schemes.Owner, schemes.Timeline)))
+                        continue;
+                    if (found != null)
+                        throw new InvalidOperationException(
+                            $"预览入口有两份输入方案：{AssetDatabase.GetAssetPath(found)} 与 {path}；请删除其中一份。");
+                    found = schemes;
+                }
+            }
+            return found;
+        }
+
+        TimelinePreviewInputSchemes Create()
+        {
+            string path = AssetDatabase.GetAssetPath(m_Source);
             if (path.Length == 0)
-                throw new System.InvalidOperationException($"Timeline '{source.name}' 不是独立资产，无法保存输入方案。");
-            var schemes = CreateInstance<TimelinePreviewInputSchemes>();
-            schemes.Schemes.Add(first);
-            AssetDatabase.CreateAsset(schemes, path);
+                throw new InvalidOperationException($"Timeline '{m_Source.name}' 不在资产中，无法保存输入方案。");
+            string directory = System.IO.Path.GetDirectoryName(path)!.Replace('\\', '/');
+            var schemes = ScriptableObject.CreateInstance<TimelinePreviewInputSchemes>();
+            schemes.Owner = m_Entry.Owner;
+            schemes.Timeline = m_Entry.Timeline;
+            AssetDatabase.CreateAsset(schemes,
+                AssetDatabase.GenerateUniqueAssetPath($"{directory}/{m_Source.name}.PreviewInputs.asset"));
             return schemes;
         }
     }

@@ -43,7 +43,6 @@ namespace BTSMTL.Timeline.Editor
         OrchestrationTime m_RouteEnd;
         readonly List<OrchestrationStaticRead> m_Assumptions = new();
         TimelineOrchestrationQuery m_Query;
-        TimelinePreviewInputSchemes m_Schemes;
         TimelinePreviewRealRoute m_Real;
         long m_RealVersion = -1;
         long m_RealProjection = -1;
@@ -74,7 +73,9 @@ namespace BTSMTL.Timeline.Editor
         public event Action Changed;
         public TimelinePreviewMode Mode { get; private set; }
         public TimelineAsset Source { get; private set; }
-        public TimelineAssetPreviewPreferences Preferences { get; private set; }
+        // 当前入口的输入方案存储；方案的切换、另存、重命名与删除都经它完成，Host 只在改动后重新推导。
+        public TimelinePreviewInputSchemeStore InputSchemes { get; } = new();
+        public TimelineAssetPreviewPreferences Preferences => InputSchemes.Current;
         public ITimelineAssetPreviewInstance Instance => m_Instance;
         public TimelineContractCatalog Contracts => m_Provider.Contracts;
         public bool IsRegistered => m_Provider != null;
@@ -167,7 +168,7 @@ namespace BTSMTL.Timeline.Editor
             Mode = m_PendingMode;
             Source = m_PendingSource;
             m_PendingSource = null;
-            Preferences = LoadPreferences(Source);
+            InputSchemes.Load(Source, EntryIdentity());
             Error = string.Empty;
             if (Mode == TimelinePreviewMode.Real)
             {
@@ -268,10 +269,18 @@ namespace BTSMTL.Timeline.Editor
                 return;
             m_Query = query;
             m_EntryState = state;
+            TimelinePreviewEntryIdentity entry = EntryIdentity();
+            if (!entry.Equals(InputSchemes.Entry))
+                InputSchemes.Load(Source, entry);
             foreach (TimelineAsset preparedSource in m_Contents.Keys)
                 m_Dirty.Add(preparedSource);
             m_ChainRequested = true;
         }
+
+        // 入口状态的 Timeline 就是所打开的 Timeline 时，入口归属所属技能；否则按独立 Timeline 归属。
+        TimelinePreviewEntryIdentity EntryIdentity() =>
+            new(m_Query != null && m_EntryState != null && m_Query.ResolveTimeline(m_EntryState.TimelineIdentity) == Source
+                ? m_Query.Owner : string.Empty, Source.Data.AuthoringId);
 
         public void SetPlaying(bool playing)
         {
@@ -298,7 +307,7 @@ namespace BTSMTL.Timeline.Editor
 
         public void PreferencesChanged()
         {
-            Persist();
+            InputSchemes.MarkChanged();
             if (m_Real != null)
             {
                 // 真实档的会话已按打开时的方案重演；新方案在重新进入真实档时生效。
@@ -328,7 +337,7 @@ namespace BTSMTL.Timeline.Editor
             Preferences.Inputs.Clear();
             Preferences.Inputs.AddRange(imported);
             PreferencesChanged();
-            AssetDatabase.SaveAssetIfDirty(m_Schemes);
+            InputSchemes.Save();
         }
 
         public void ReportSessionFailure(string reason)
@@ -361,8 +370,7 @@ namespace BTSMTL.Timeline.Editor
             m_SessionOpening = null;
             m_PendingSource = null;
             IsPlaying = false;
-            if (m_Schemes)
-                AssetDatabase.SaveAssetIfDirty(m_Schemes);
+            InputSchemes.Save();
             if (m_Stage)
                 StageUtility.GoToMainStage();
             else
@@ -738,80 +746,6 @@ namespace BTSMTL.Timeline.Editor
                     OrchestrationTime.FromSeconds(Preferences.RangeEnd),
                     new TimelineAssetPreviewReadIntervals(Preferences, Inputs, InputRequests));
             CompareReal();
-        }
-
-        TimelineAssetPreviewPreferences LoadPreferences(TimelineAsset source)
-        {
-            m_Schemes = TimelinePreviewInputSchemes.Load(source);
-            return m_Schemes != null && m_Schemes.Schemes.Count != 0 ? m_Schemes.Current : new TimelineAssetPreviewPreferences();
-        }
-
-        public IReadOnlyList<TimelineAssetPreviewPreferences> Schemes =>
-            m_Schemes != null ? m_Schemes.Schemes : new[] { Preferences };
-
-        public string SchemesPath => Source ? TimelinePreviewInputSchemes.PathFor(Source) : string.Empty;
-
-        // 当前方案里按键身份已不在宿主输入中的项：加载时列出，由作者删除或改键。
-        public IEnumerable<TimelinePreviewInputPoint> InvalidInputs()
-        {
-            if (Preferences == null || !IsOpen)
-                yield break;
-            foreach (TimelinePreviewInputPoint point in Preferences.Inputs)
-            {
-                bool declared = false;
-                foreach (GraphHostInputDescriptor descriptor in Inputs)
-                    declared |= descriptor.InputId == point.InputId;
-                if (!declared)
-                    yield return point;
-            }
-        }
-
-        public void SelectScheme(int index)
-        {
-            if (m_Schemes == null || index < 0 || index >= m_Schemes.Schemes.Count)
-                return;
-            m_Schemes.Selected = index;
-            EditorUtility.SetDirty(m_Schemes);
-            Preferences = m_Schemes.Current;
-            PreferencesChanged();
-        }
-
-        public void SaveSchemeAs(string name)
-        {
-            TimelineAssetPreviewPreferences copy = JsonUtility.FromJson<TimelineAssetPreviewPreferences>(JsonUtility.ToJson(Preferences));
-            copy.Name = name;
-            Persist();
-            m_Schemes.Schemes.Add(copy);
-            m_Schemes.Selected = m_Schemes.Schemes.Count - 1;
-            Preferences = copy;
-            PreferencesChanged();
-            AssetDatabase.SaveAssetIfDirty(m_Schemes);
-        }
-
-        public void RenameScheme(string name)
-        {
-            Preferences.Name = name;
-            PreferencesChanged();
-            AssetDatabase.SaveAssetIfDirty(m_Schemes);
-        }
-
-        public void DeleteScheme()
-        {
-            if (m_Schemes == null || m_Schemes.Schemes.Count <= 1)
-                return;
-            m_Schemes.Schemes.RemoveAt(Mathf.Clamp(m_Schemes.Selected, 0, m_Schemes.Schemes.Count - 1));
-            m_Schemes.Selected = Mathf.Clamp(m_Schemes.Selected, 0, m_Schemes.Schemes.Count - 1);
-            Preferences = m_Schemes.Current;
-            PreferencesChanged();
-            AssetDatabase.SaveAssetIfDirty(m_Schemes);
-        }
-
-        // 第一次改动时在作者 Timeline 旁创建方案资产，此后改动写入该资产。
-        void Persist()
-        {
-            if (m_Schemes == null)
-                m_Schemes = TimelinePreviewInputSchemes.Create(Source, Preferences);
-            EditorUtility.SetDirty(m_Schemes);
         }
     }
 }
