@@ -262,7 +262,6 @@ namespace BTSMTL.Timeline.Editor
             foreach (PreparedTimeline timeline in m_Contents.Values)
                 if (timeline.Fingerprint != TimelineAuthoringFingerprint.Compute(timeline.Source.Data))
                     m_Dirty.Add(timeline.Source);
-            m_ChainRequested = true;
         }
 
         public void PreferencesChanged()
@@ -366,9 +365,15 @@ namespace BTSMTL.Timeline.Editor
                 {
                     TimelineAsset[] changed = m_Dirty.ToArray();
                     m_Dirty.Clear();
+                    // 只有作者内容真的变了才重建链；编辑器刷新触发的同内容通知不打断预览的接续推进。
                     foreach (TimelineAsset timeline in changed)
-                        Prepare(timeline, true);
-                    m_ChainRequested = true;
+                    {
+                        m_Contents.TryGetValue(timeline, out PreparedTimeline before);
+                        if (before != null && before.Fingerprint == TimelineAuthoringFingerprint.Compute(timeline.Data))
+                            continue;
+                        if (Prepare(timeline, true) != before)
+                            m_ChainRequested = true;
+                    }
                 }
                 if (m_ChainRequested)
                     BuildChain();
@@ -468,7 +473,7 @@ namespace BTSMTL.Timeline.Editor
                     domain.Dispose();
                 throw;
             }
-            Action changed = () => { m_Dirty.Add(source); m_ChainRequested = true; };
+            Action changed = () => m_Dirty.Add(source);
             if (previous != null)
             {
                 source.Data.OnValueChanged -= previous.Changed;
