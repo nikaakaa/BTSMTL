@@ -580,8 +580,12 @@ namespace BTSMTL.Diagnostics
             string sourceName,
             string sourceInvocationPath = "",
             int sourceOperationIndex = -1,
-            ulong skillExecutionGeneration = 0)
+            ulong skillExecutionGeneration = 0,
+            ulong callerPlaybackId = 0,
+            string callerClipAuthoringId = "")
         {
+            CallerPlaybackId = callerPlaybackId;
+            CallerClipAuthoringId = callerClipAuthoringId ?? string.Empty;
             SourceGraphAuthoringId = sourceGraphAuthoringId ?? string.Empty;
             SourceNodeAuthoringId = sourceNodeAuthoringId ?? string.Empty;
             SourceGraphRuntimeId = sourceGraphRuntimeId;
@@ -608,6 +612,10 @@ namespace BTSMTL.Diagnostics
         public string SourceInvocationPath { get; }
         public int SourceOperationIndex { get; }
         public ulong SkillExecutionGeneration { get; }
+        public ulong CallerPlaybackId { get; }
+        public string CallerClipAuthoringId { get; }
+        public bool HasCaller => CallerPlaybackId != 0 &&
+                                 !string.IsNullOrEmpty(CallerClipAuthoringId);
         public bool IsValid => !string.IsNullOrEmpty(SourceGraphAuthoringId) &&
                                !string.IsNullOrEmpty(SourceNodeAuthoringId) &&
                                SourceActivationGeneration != 0 &&

@@ -81,7 +81,13 @@ namespace BTSMTL.Timeline.Editor
             {
                 Owner = BtsmtlExecutionStateIdentity.OfPlayback(in span);
                 PlaybackId = span.Instance.TimelinePlaybackId;
+                CharacterRuntimeId = span.Instance.CharacterRuntimeId;
                 TimelineAuthoringId = span.Source.TimelineAuthoringId;
+                RuntimeTimelinePlaybackProvenance provenance = span.Start.Payload.TimelinePlayback;
+                OperationIndex = provenance.SourceOperationIndex;
+                ActivationGeneration = provenance.SourceActivationGeneration;
+                CallerPlaybackId = provenance.CallerPlaybackId;
+                CallerClipId = provenance.CallerClipAuthoringId;
                 Start = start;
                 End = end;
                 LocalStart = localStart;
@@ -94,7 +100,19 @@ namespace BTSMTL.Timeline.Editor
 
             public BtsmtlExecutionStateIdentity Owner { get; }
             public ulong PlaybackId { get; }
+            public Guid CharacterRuntimeId { get; }
             public string TimelineAuthoringId { get; }
+            public int OperationIndex { get; }
+            public ulong ActivationGeneration { get; }
+            public ulong CallerPlaybackId { get; }
+            public string CallerClipId { get; }
+            public bool IsNested => CallerPlaybackId != 0;
+
+            public bool IsCalledBy(in RecordedPlayback other) => IsNested &&
+                CharacterRuntimeId == other.CharacterRuntimeId && Owner.ActionInstanceId == other.Owner.ActionInstanceId &&
+                Owner.SkillExecutionGeneration == other.Owner.SkillExecutionGeneration &&
+                Owner.ExecutionBranchId == other.Owner.ExecutionBranchId && Owner.RuntimeEpoch == other.Owner.RuntimeEpoch &&
+                other.PlaybackId == CallerPlaybackId;
             public double Start { get; }
             public double End { get; }
             // 段内首末游标样本；缺少游标记录时 HasLocal 为 false。
@@ -214,10 +232,9 @@ namespace BTSMTL.Timeline.Editor
             }
             foreach (PlaybackGroup playback in playbacks.Values)
             {
-                if (!playback.Source.Start.Payload.TimelinePlayback.HasStateActivation)
-                    continue;
+                RuntimeTimelinePlaybackProvenance provenance = playback.Source.Start.Payload.TimelinePlayback;
                 var owner = BtsmtlExecutionStateIdentity.OfPlayback(in playback.Source);
-                if (ambiguous.Contains(owner) || !states.Contains(owner))
+                if (!provenance.HasCaller && (!provenance.HasStateActivation || ambiguous.Contains(owner) || !states.Contains(owner)))
                     continue;
                 Split(playback);
             }

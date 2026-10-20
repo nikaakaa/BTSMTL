@@ -662,7 +662,9 @@ namespace BTSMTL.Diagnostics
                    string.Equals(left.SourceName, right.SourceName, StringComparison.Ordinal) &&
                    string.Equals(left.SourceInvocationPath, right.SourceInvocationPath, StringComparison.Ordinal) &&
                    left.SourceOperationIndex == right.SourceOperationIndex &&
-                   left.SkillExecutionGeneration == right.SkillExecutionGeneration;
+                   left.SkillExecutionGeneration == right.SkillExecutionGeneration &&
+                   left.CallerPlaybackId == right.CallerPlaybackId &&
+                   string.Equals(left.CallerClipAuthoringId, right.CallerClipAuthoringId, StringComparison.Ordinal);
         }
     }
 

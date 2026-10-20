@@ -10,9 +10,9 @@ namespace BTSMTL.Diagnostics.Editor
 {
     sealed class RuntimeTraceBinaryCodec : IDisposable
     {
-        internal const int EventSize = 588;
-        const int Version = 11;
-        const int MaximumStringsPerEvent = 22;
+        internal const int EventSize = 600;
+        const int Version = 12;
+        const int MaximumStringsPerEvent = 23;
         readonly Dictionary<string, int> m_StringIds;
         readonly List<string> m_Strings;
         readonly BinaryWriter m_Symbols;
@@ -454,6 +454,8 @@ namespace BTSMTL.Diagnostics.Editor
             WriteString(writer, value.SourceInvocationPath);
             writer.Write(value.SourceOperationIndex);
             writer.Write(value.SkillExecutionGeneration);
+            writer.Write(value.CallerPlaybackId);
+            WriteString(writer, value.CallerClipAuthoringId);
         }
 
         RuntimeTimelinePlaybackProvenance ReadRuntimeTimelinePlaybackProvenance(BinaryReader reader)
@@ -470,6 +472,8 @@ namespace BTSMTL.Diagnostics.Editor
             string sourceInvocationPath = ReadString(reader);
             int sourceOperationIndex = reader.ReadInt32();
             ulong skillExecutionGeneration = reader.ReadUInt64();
+            ulong callerPlaybackId = reader.ReadUInt64();
+            string callerClipAuthoringId = ReadString(reader);
             return sourceGraphAuthoringId == null ? default : new RuntimeTimelinePlaybackProvenance(
                 sourceGraphAuthoringId,
                 sourceNodeAuthoringId,
@@ -482,7 +486,9 @@ namespace BTSMTL.Diagnostics.Editor
                 sourceName,
                 sourceInvocationPath,
                 sourceOperationIndex,
-                skillExecutionGeneration);
+                skillExecutionGeneration,
+                callerPlaybackId,
+                callerClipAuthoringId);
         }
 
         public void Dispose()

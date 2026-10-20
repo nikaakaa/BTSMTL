@@ -39,6 +39,7 @@ namespace BTSMTL.Orchestration
         public int ContentRevisionId;
         public OrchestrationTimelinePlaybackMode Mode;
         public ulong PlaybackIdentity;
+        public ulong CallerPlaybackIdentity;
         public int SourceIdentityId;
         public ulong SourceGeneration;
         public ulong OwnerInstanceId;
@@ -53,6 +54,7 @@ namespace BTSMTL.Orchestration
             ContentRevisionId = ContentRevisionId,
             Mode = Mode,
             PlaybackIdentity = PlaybackIdentity,
+            CallerPlaybackIdentity = CallerPlaybackIdentity,
             SourceIdentityId = SourceIdentityId,
             SourceGeneration = SourceGeneration,
             OwnerInstanceId = OwnerInstanceId,

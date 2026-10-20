@@ -19,6 +19,9 @@ namespace BTSMTL.Timeline.Editor
         public BtsmtlExecutionRecord.RecordedPlayback Record { get; }
         public TimelineAsset Source { get; }
         public OrchestrationStaticState State { get; }
+        // Clip 或 Marker 调用拉起的播放：记录中调用方播放的首段；调用方没有记录时为 null，CallerNote 写明原因。
+        public TimelinePreviewRealSegment Caller { get; internal set; }
+        public string CallerNote { get; internal set; } = string.Empty;
     }
 
     // 真实档的一次正式转移：按转移连线的作者身份解析静态转移，源状态按本次激活身份解析；
@@ -77,6 +80,20 @@ namespace BTSMTL.Timeline.Editor
                 if (played.HasLocal && provider.TryResolveRealTimeline(played.TimelineAuthoringId, out TimelineAsset source))
                     m_Segments.Add(new TimelinePreviewRealSegment(in played, source,
                         FindState(query, played.Owner.GraphAuthoringId, played.Owner.StateId)));
+            // 嵌套播放按记录的调用方身份挂到调用方播放下，不按时间重叠或名称推断。
+            foreach (TimelinePreviewRealSegment nested in m_Segments)
+            {
+                if (!nested.Record.IsNested)
+                    continue;
+                foreach (TimelinePreviewRealSegment caller in m_Segments)
+                    if (nested.Record.IsCalledBy(caller.Record))
+                    {
+                        nested.Caller = caller;
+                        break;
+                    }
+                if (nested.Caller == null)
+                    nested.CallerNote = "调用方播放没有可换算的执行记录，无法归属到调用 Clip。";
+            }
             foreach (BtsmtlExecutionRecord.RecordedTransition recorded in m_Record.Transitions)
             {
                 TimelinePreviewRealSegment source = null;
@@ -85,7 +102,8 @@ namespace BTSMTL.Timeline.Editor
                 foreach (TimelinePreviewRealSegment segment in m_Segments)
                 {
                     BtsmtlExecutionRecord.RecordedPlayback played = segment.Record;
-                    if (!played.Owner.Equals(recorded.Source) || recorded.Time < played.Start - TimeTolerance ||
+                    // 状态转移发生在状态体 Timeline 上，Clip 调用拉起的嵌套播放不作为转移所在播放。
+                    if (played.IsNested || !played.Owner.Equals(recorded.Source) || recorded.Time < played.Start - TimeTolerance ||
                         recorded.Time > played.End + TimeTolerance)
                         continue;
                     if (played.TryLocal(Math.Clamp(recorded.Time, played.Start, played.End), segment.Source.Data.Duration,

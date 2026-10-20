@@ -68,8 +68,12 @@ namespace BTSMTL.Diagnostics
         }
 
         // 注册图节点、连线、黑板声明与子图调用；宿主在封存来源表前调用。
-        public static void AddSources(DebugSourceMap map, ReadOnlySpan<OrchestrationGraphSource> sources)
+        public static void AddSources(DebugSourceMap map, ReadOnlySpan<OrchestrationGraphSource> sources,
+            ThirdPersonSimulation.GraphExecutionIdentity identity)
         {
+            var revisions = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (ThirdPersonSimulation.GraphExecutionDependency dependency in identity.Dependencies)
+                revisions.Add(dependency.Identity, dependency.Revision);
             var graphByPath = new Dictionary<string, string>(StringComparer.Ordinal);
             var callers = new Dictionary<(string Path, string Kind, string Id), RuntimeSourceElementKey>();
             for (int index = 0; index < sources.Length; index++)
@@ -93,12 +97,15 @@ namespace BTSMTL.Diagnostics
                 OrchestrationGraphExecutionSource source = entry.Source;
                 if (!Registered(source) || string.IsNullOrEmpty(source.GraphId))
                     continue;
+                RuntimeSourceElementKey graph = RuntimeSourceElementKey.Graph(source.GraphId);
+                if (added.Add(graph))
+                    map.Add(graph, default, source.GraphId, revisions[source.GraphId], RuntimeSourceTarget.Source);
                 RuntimeSourceElementKey key = SourceKey(source);
                 if (added.Add(key))
                 {
                     ReadOnlySpan<string> segments = entry.DisplayPathSegments.Span;
                     map.Add(key, default, segments.Length == 0 ? source.GraphId : segments[segments.Length - 1],
-                        string.Empty, RuntimeSourceTarget.Source);
+                        revisions[source.GraphId], RuntimeSourceTarget.Source);
                 }
                 if (source.TargetKind == OrchestrationGraphSourceTargetKind.GraphInvocation &&
                     !map.TryGetInvocation(source.GraphInvocationPath, out _))
