@@ -166,6 +166,8 @@ namespace BTSMTL.Timeline.Editor
         void AdvancePreparation();
         void BeginTarget(in TimelineAssetPreviewTarget target);
         void CompleteTarget(in TimelineAssetPreviewTarget target);
+        // 空闲时沿当前链往 horizon 提前推进，不改变当前显示；返回 true 表示还有剩余。
+        bool Prefetch(in TimelineAssetPreviewTarget horizon, double seconds);
         void AbortTarget();
         void Stop();
     }

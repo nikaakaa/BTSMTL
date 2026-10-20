@@ -33,6 +33,8 @@ namespace BTSMTL.Timeline.Editor
 
         readonly Dictionary<TimelineAsset, PreparedTimeline> m_Contents = new();
         readonly HashSet<TimelineAsset> m_Dirty = new();
+        const double PrefetchSeconds = 0.008;
+        bool m_Prefetching;
         readonly List<TimelineAssetPreviewTraversal> m_Traversals = new();
         readonly List<OrchestrationStaticRead> m_Assumptions = new();
         TimelineOrchestrationQuery m_Query;
@@ -397,7 +399,17 @@ namespace BTSMTL.Timeline.Editor
                 }
                 m_LastUpdate = now;
                 if (!m_SampleRequested)
+                {
+                    // 空闲时每帧花一点时间把链往后推进，之后拖到哪里都不用现算。
+                    if (m_Prefetching && !IsPlaying && m_Traversals.Count != 0)
+                    {
+                        TimelineAssetPreviewTraversal last = m_Traversals[^1];
+                        var horizon = new TimelineAssetPreviewTarget(last.Source, last.LocalEnd, last.Cycle,
+                            m_Revision, Preferences, last.End, m_Traversals.ToArray(), Revision);
+                        m_Prefetching = m_Instance.Prefetch(in horizon, PrefetchSeconds);
+                    }
                     return;
+                }
                 m_SampleRequested = false;
                 if (m_Traversals.Count == 0)
                     return;
@@ -425,6 +437,7 @@ namespace BTSMTL.Timeline.Editor
                     domain.Sample(in target, in operations);
                 m_Instance.CompleteTarget(in target);
                 SampledRevision = target.Revision;
+                m_Prefetching = true;
                 Error = string.Empty;
                 SceneView.RepaintAll();
                 Changed?.Invoke();
