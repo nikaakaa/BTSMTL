@@ -106,7 +106,7 @@ namespace BTSMTL.Timeline.Editor
     {
         public TimelineAssetPreviewTarget(TimelineAsset source, OrchestrationTime time, int cycle,
             ulong revision, TimelineAssetPreviewPreferences preferences, OrchestrationTime previewTime,
-            IReadOnlyList<TimelineAssetPreviewTraversal> traversals)
+            IReadOnlyList<TimelineAssetPreviewTraversal> traversals, long chainRevision)
         {
             Source = source;
             Time = time;
@@ -115,7 +115,11 @@ namespace BTSMTL.Timeline.Editor
             Preferences = preferences;
             PreviewTime = previewTime;
             Traversals = traversals;
+            ChainRevision = chainRevision;
         }
+
+        // 同一链修订内，较晚目标的遍历是较早目标的延长，领域可以从上次目标继续推进。
+        public long ChainRevision { get; }
 
         public TimelineAsset Source { get; }
         public OrchestrationTime Time { get; }

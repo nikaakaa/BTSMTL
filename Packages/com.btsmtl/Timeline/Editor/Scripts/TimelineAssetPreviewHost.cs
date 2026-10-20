@@ -406,7 +406,7 @@ namespace BTSMTL.Timeline.Editor
                 LocalTime = current.LocalEnd.AsSingle;
                 SampledSource = current.Source;
                 var target = new TimelineAssetPreviewTarget(current.Source, current.LocalEnd,
-                    current.Cycle, ++m_Revision, Preferences, cursor, traversals);
+                    current.Cycle, ++m_Revision, Preferences, cursor, traversals, Revision);
                 m_Instance.BeginTarget(in target);
                 PreparedTimeline sampled = m_Contents[current.Source];
                 TimelineRuntimePresentationOperations operations = sampled.Sampling.SampleAt(target.Time, target.Cycle,
