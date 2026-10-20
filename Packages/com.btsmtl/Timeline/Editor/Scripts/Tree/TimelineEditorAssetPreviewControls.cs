@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using BTSMTL.Compilation.Analysis;
 using BTSMTL.Graphs;
+using BTSMTL.Orchestration;
 using UnityEditor;
 using UnityEditor.UIElements;
 using UnityEngine;
@@ -23,6 +24,9 @@ namespace BTSMTL.Timeline.Editor
         Vector2 m_PreviewInputsScroll;
         ulong m_AppliedAssetSample;
         long m_PreviewPathRevision = -1;
+        int m_PreviewPathPlayback = -1;
+        TimelinePreviewInputPoint m_DragPoint;
+        TimelinePreviewRouteSegment m_DragSegment;
         TimelineAsset m_ObservedPreviewSource;
         readonly List<int> m_PreviewInputs = new();
 
@@ -111,6 +115,8 @@ namespace BTSMTL.Timeline.Editor
             m_RealControls = null;
             m_AppliedAssetSample = 0;
             m_PreviewPathRevision = -1;
+            m_PreviewPathPlayback = -1;
+            m_DragPoint = null;
             m_PreviewInputs.Clear();
             DisposePreviewRouteRows();
         }
@@ -145,13 +151,21 @@ namespace BTSMTL.Timeline.Editor
             if (m_RealControls != null)
                 m_RealControls.style.display = m_PreviewMode == TimelinePreviewMode.Real ? DisplayStyle.Flex : DisplayStyle.None;
             if (m_AssetPreviewStatus != null)
+            {
+                string playback = active && preview.TryGetPlayback(SourceAsset, out TimelinePreviewRouteSegment[] spans)
+                    ? $"本轴显示 {SourceAsset.name} 第 {spans[0].Occurrence + 1} 次播放（{spans.Length} 圈，点路线行选择其它播放）"
+                    : string.Empty;
+                string note = preview.LocalNote.Length == 0 ? string.Empty : " · " + preview.LocalNote;
                 m_AssetPreviewStatus.text = !preview.IsRegistered ? TimelineAssetPreviewHost.MissingProviderReason :
                     preview.Error.Length != 0 ? preview.Error : active && preview.IsReal
-                    ? $"真实 · 会话 {preview.Time:F3} 秒 / {preview.SampledSource?.name} {preview.LocalTime:F3} 秒 · " +
-                      (preview.Differences.Count == 0 ? "与快速推导一致" : $"{preview.Differences.Count} 处与快速推导不同（悬停路线行红标查看）")
+                    ? $"真实 · 会话 {preview.Time:F3} 秒 / {preview.SampledSource?.name} {preview.LocalTime:F3} 秒{note} · " +
+                      (preview.RealStale ? "结果过期，待重演：" + preview.RealStaleReason
+                          : preview.Differences.Count == 0 ? "与快速推导一致"
+                          : $"{preview.Differences.Count} 处与快速推导不同（悬停路线行红标查看）") + "\n" + playback
                     : active
-                    ? $"快速 · 链 {preview.Time:F3} 秒 / {preview.SampledSource?.name} {preview.LocalTime:F3} 秒。{preview.Status}\n{preview.Chain?.Reason}"
+                    ? $"快速 · 链 {preview.Time:F3} 秒 / {preview.SampledSource?.name} {preview.LocalTime:F3} 秒。{preview.Status}\n{preview.Chain?.Reason}\n{playback}"
                     : "快速档即时调整节奏；真实档以同一输入方案经正式会话重演，确认碰撞、条件与完整运行结果。";
+            }
             if (m_AssetPreviewInputs != null)
             {
                 m_AssetPreviewInputs.style.display = active && m_ShowPreviewInputs ? DisplayStyle.Flex : DisplayStyle.None;
@@ -183,32 +197,36 @@ namespace BTSMTL.Timeline.Editor
                 m_PreviewPathRevision = -1;
                 return;
             }
-            if (m_PreviewPathRevision == preview.Revision)
+            // 编辑时间轴只显示本 Timeline 的一次播放（路线上选定的或游标所在的）；换播放时重建叠加。
+            preview.TryGetPlayback(SourceAsset, out TimelinePreviewRouteSegment[] spans);
+            int playback = spans.Length == 0 ? -1 : spans[0].Playback;
+            if (m_PreviewPathRevision == preview.Revision && m_PreviewPathPlayback == playback)
                 return;
             m_PreviewPathRevision = preview.Revision;
-            var spans = preview.Route.Where(span => span.Source == SourceAsset).ToArray();
+            m_PreviewPathPlayback = playback;
             var visited = spans.Select(span => new Vector2(span.LocalStart.AsSingle, span.LocalEnd.AsSingle)).ToArray();
             var marks = new List<TimelinePreviewMark>();
             TimelineStaticChain chain = preview.Chain;
             if (preview.IsReal)
             {
-                // 真实档：标出源状态在本 Timeline 播放中正式选中的转移；与快速推导的差异一并标出。
+                // 真实档：标出源状态在这次播放中正式选中的转移；与快速推导的差异一并标出。
                 foreach (TimelinePreviewRealTransition transition in preview.RealTransitions)
-                    if (transition.SourceTimeline == SourceAsset)
+                    if (transition.Playback != null && spans.Any(span => SamePlayback(span, transition.Playback.Record)))
                         marks.Add(new TimelinePreviewMark(transition.LocalTime,
                             transition.Transition == null ? "实际转移（连线已不在当前内容）"
                                 : transition.Target == null ? "实际收招" : "实际转移到 " + preview.DescribeState(transition.Target),
-                            $"会话第 {transition.Time:0.000} 秒"));
+                            $"会话第 {transition.Time:0.000} 秒" + (transition.LocalNote == null ? string.Empty : " · " + transition.LocalNote)));
                 foreach (TimelinePreviewDifference difference in preview.Differences)
-                    if (spans.Length != 0 && difference.State != null &&
-                        preview.Query.ResolveTimeline(difference.State.TimelineIdentity) == SourceAsset)
-                        marks.Add(new TimelinePreviewMark(ToLocal(spans, difference.Time), "与快速不同", difference.Message));
+                    if (difference.State != null && preview.Query.ResolveTimeline(difference.State.TimelineIdentity) == SourceAsset &&
+                        TryLocal(spans, difference.Time, out float local, out _, out _))
+                        marks.Add(new TimelinePreviewMark(local, "与快速不同", difference.Message));
             }
             else if (chain != null)
             {
                 foreach (TimelineStaticChainMarker marker in chain.Markers)
                 {
-                    if (preview.Query.ResolveTimeline(marker.Source.TimelineIdentity) != SourceAsset)
+                    if (preview.Query.ResolveTimeline(marker.Source.TimelineIdentity) != SourceAsset ||
+                        !spans.Any(span => span.Contains(marker.Time)))
                         continue;
                     string label = marker.Transition.Target == null ? "收招"
                         : "转移到 " + preview.Query.DescribeState(marker.Transition.Target);
@@ -217,7 +235,7 @@ namespace BTSMTL.Timeline.Editor
                 }
                 TimelineStaticChainSpan last = chain.Spans.Count == 0 ? null : chain.Spans[^1];
                 if (last != null && chain.StopReason != TimelineStaticChainStopReason.StateMachineExited &&
-                    preview.Query.ResolveTimeline(last.State.TimelineIdentity) == SourceAsset)
+                    spans.Any(span => span.Start == last.Start))
                     marks.Add(new TimelinePreviewMark(last.LocalEnd.AsSingle,
                         chain.StopReason == TimelineStaticChainStopReason.TimelineCompleted ? "播完收招" : "预览结束",
                         chain.Reason));
@@ -228,22 +246,27 @@ namespace BTSMTL.Timeline.Editor
             for (int i = 0; i < points.Count; i++)
             {
                 TimelinePreviewInputPoint point = points[i];
-                if (!point.Active || spans.Length == 0)
+                if (!point.Active || !TryLocal(spans, point.Time, out float local, out TimelinePreviewRouteSegment at,
+                    out string note))
                     continue;
                 m_PreviewInputs.Add(i);
                 bool accepted = DescribeInput(preview, i, out string reason);
                 bool? pressed = PreviewInputPressed(preview, point);
                 string value = pressed == null ? string.Empty : pressed.Value ? "按下 · " : "松开 · ";
-                inputs.Add(new TimelinePreviewMark(ToLocal(spans, point.Time), point.InputId,
-                    $"预览第 {point.Time:0.00} 秒 · {value}{reason}\n拖动改时刻，右键改键、改按下／松开或删除", accepted));
+                inputs.Add(new TimelinePreviewMark(local, point.InputId,
+                    $"预览第 {point.Time:0.00} 秒 · {at.Label} · {value}{reason}" +
+                    (note == null ? string.Empty : "\n" + note) + "\n拖动改时刻，右键改键、改按下／松开或删除", accepted));
             }
             string[] choices = preview.Inputs.Select(descriptor => descriptor.InputId).ToArray();
             m_SlateProjection.SetPreviewPath(SourceAsset.name, visited, marks, inputs, new TimelinePreviewInputTrack(
-                choices, MovePreviewInput, AddPreviewInput, ChangePreviewInput, RemovePreviewInput,
+                choices, BeginMovePreviewInput, MovePreviewInput, AddPreviewInput, ChangePreviewInput, RemovePreviewInput,
                 index => index >= 0 && index < m_PreviewInputs.Count
                     ? PreviewInputPressed(preview, preview.Preferences.Inputs[m_PreviewInputs[index]]) : null,
                 SetPreviewInputPressed));
         }
+
+        static bool SamePlayback(TimelinePreviewRouteSegment span, BtsmtlExecutionRecord.RecordedPlayback played) =>
+            span.Recorded is { } recorded && recorded.PlaybackId == played.PlaybackId && recorded.Owner.Equals(played.Owner);
 
         // 开关类输入的按下（true）与松开（false）；其它类型返回 null。
         static bool? PreviewInputPressed(TimelineAssetPreviewHost preview, TimelinePreviewInputPoint point)
@@ -263,7 +286,8 @@ namespace BTSMTL.Timeline.Editor
             preview.PreferencesChanged();
         }
 
-        // 按键在其有效期内（请求按正式缓冲时长，其余到同键下一次改值）被读取该键的转移选中即为接上。
+        // 输入点与转移的关系：读取列表与有效期重叠只用于找出相关转移；只有转移条件沿“全部成立”必须读到该开关键按下、
+        // 且这一点是有效期内该键唯一的值时，才确认它参与成立并标为接上。OR、NOT、非开关输入只说明相关，不声称因果。
         static bool DescribeInput(TimelineAssetPreviewHost preview, int index, out string reason)
         {
             List<TimelinePreviewInputPoint> points = preview.Preferences.Inputs;
@@ -280,95 +304,158 @@ namespace BTSMTL.Timeline.Editor
                 foreach (TimelinePreviewInputPoint other in points)
                     if (other != point && other.Active && other.InputId == point.InputId && other.Time > point.Time)
                         until = Math.Min(until, other.Time);
+            string window = $"有效期 {point.Time:0.000}–{until:0.000} 秒";
+            bool pressed = PreviewInputPressed(preview, point) == true;
             if (preview.IsReal)
             {
+                if (preview.RealStale)
+                {
+                    reason = "结果过期，待重演：" + preview.RealStaleReason;
+                    return false;
+                }
                 foreach (TimelinePreviewRealTransition real in preview.RealTransitions)
-                    if (real.Transition != null && real.Time >= point.Time && real.Time < until &&
-                        real.Transition.Reads.Any(read =>
-                            read.Source == OrchestrationStaticReadSource.HostInput && read.Key == point.InputId))
+                {
+                    if (real.Transition == null || real.Time < point.Time || real.Time >= until ||
+                        !ReadsInput(real.Transition, point.InputId))
+                        continue;
+                    string edge = $"{preview.DescribeState(real.Source)}（第 {real.Record.Source.ActivationGeneration} 次激活）→ " +
+                        $"{preview.DescribeState(real.Target)}，第 {real.Time:0.000} 秒";
+                    if (pressed && RequiresInput(real.Transition.Condition, point.InputId) &&
+                        SoleValue(points, point, real.Time))
                     {
-                        reason = $"实际接上：{preview.DescribeState(real.Source)} → {preview.DescribeState(real.Target)}，第 {real.Time:0.000} 秒";
+                        reason = $"实际接上：{edge}；该转移须读到此键按下，{window}内只有这一点";
                         return true;
                     }
-                reason = "真实重演中有效期内没有读取该键的转移发生";
+                    reason = $"实际相关：{window}内发生读取该键的转移 {edge}；条件含或／非、非开关输入或有多个输入点，无法确认这一点是否促成";
+                    return false;
+                }
+                reason = $"真实重演{window}内没有读取该键的转移发生";
                 return false;
             }
             if (preview.Chain != null &&
-                FindAcceptance(preview.Chain, point.InputId, point.Time, until, out TimelineStaticChainMarker marker))
+                FindRelated(preview.Chain, point.InputId, point.Time, until, out TimelineStaticChainMarker marker))
             {
-                reason = $"接上：{preview.Query.DescribeState(marker.Source)} → " +
+                string edge = $"{preview.Query.DescribeState(marker.Source)} → " +
                     $"{(marker.Transition.Target == null ? "出口" : preview.Query.DescribeState(marker.Transition.Target))}，" +
-                    $"第 {marker.Time.AsSingle:0.00} 秒";
-                return true;
-            }
-            TimelinePreviewRouteSegment? at = null;
-            foreach (TimelinePreviewRouteSegment segment in preview.Route)
-                if (segment.Start.AsSingle <= point.Time && point.Time < segment.End.AsSingle)
-                    at = segment;
-            if (!at.HasValue || at.Value.State == null)
-            {
-                reason = "未接上：此刻不在预览路线上的任何状态内";
+                    $"第 {marker.Time.AsSingle:0.000} 秒";
+                string basis = preview.Assumptions.Count == 0 ? "按当前方案推导" : "按当前方案与假设菜单中的运行数据假设推导";
+                if (pressed && RequiresInput(marker.Transition.Condition, point.InputId) &&
+                    SoleValue(points, point, marker.Time.AsSingle))
+                {
+                    reason = $"接上：{edge}；该转移须读到此键按下，{window}内只有这一点（{basis}）";
+                    return true;
+                }
+                reason = $"相关：{window}内推导发生读取该键的转移 {edge}；条件含或／非、非开关输入或有多个输入点，无法确认这一点是否促成（{basis}）";
                 return false;
             }
-            OrchestrationStaticState state = at.Value.State;
+            TimelinePreviewRouteSegment? at = null;
+            OrchestrationTime time = OrchestrationTime.FromSeconds(point.Time);
+            foreach (TimelinePreviewRouteSegment segment in preview.Route)
+                if (segment.Contains(time) && segment.State != null)
+                    at = segment;
+            if (at is not { } current)
+            {
+                reason = $"{window}内没有读取该键的转移发生；按下时不在预览路线上的任何状态内";
+                return false;
+            }
             var labels = new List<string>();
-            foreach (OrchestrationTransitionWindow window in OrchestrationStateTransitionWindows.Build(state).Windows)
-                foreach (OrchestrationStaticRead read in window.HostInputs)
+            foreach (OrchestrationTransitionWindow transition in OrchestrationStateTransitionWindows.Build(current.State).Windows)
+                foreach (OrchestrationStaticRead read in transition.HostInputs)
                     if (read.Key == point.InputId)
-                        labels.Add(window.EdgeLabel);
+                        labels.Add(transition.EdgeLabel);
+            string state = preview.Query.DescribeState(current.State);
+            string local = current.TryLocal(time, out OrchestrationTime mapped, out _) ? $"本地 {mapped.AsSingle:0.000} 秒" : current.Label;
             reason = labels.Count == 0
-                ? $"未接上：此刻在 {preview.Query.DescribeState(state)}，它的出边都不读 {point.InputId}"
-                : $"未接上：此刻在 {preview.Query.DescribeState(state)}（本地 {(at.Value.LocalStart.AsSingle + point.Time - at.Value.Start.AsSingle):0.00} 秒），" +
-                  $"读该键的转移为 {string.Join("；", labels)}，按键不在可走时段内或被更早的转移抢先";
+                ? $"{window}内没有读取该键的转移发生；按下时在 {state}（{local}），它的出边都不读 {point.InputId}"
+                : $"{window}内没有读取该键的转移发生；按下时在 {state}（{local}），读该键的转移可走时段：{string.Join("；", labels)}";
             return false;
         }
 
-        static bool FindAcceptance(TimelineStaticChain chain, string inputId, double from, double until,
+        static bool ReadsInput(OrchestrationStaticTransition transition, string inputId) =>
+            transition.Reads.Any(read => read.Source == OrchestrationStaticReadSource.HostInput && read.Key == inputId);
+
+        // 条件只有读到该键为真才能成立：键本身，或“全部成立”中的一项；“任一成立”需每项都要求它；NOT 下无法确认。
+        static bool RequiresInput(OrchestrationStaticCondition condition, string inputId) => condition.Kind switch
+        {
+            OrchestrationStaticConditionKind.Read => condition.Read.Source == OrchestrationStaticReadSource.HostInput &&
+                condition.Read.Key == inputId,
+            OrchestrationStaticConditionKind.All => condition.Children.Any(child => RequiresInput(child, inputId)),
+            OrchestrationStaticConditionKind.Any => condition.Children.Count != 0 &&
+                condition.Children.All(child => RequiresInput(child, inputId)),
+            _ => false
+        };
+
+        // 从这一点到转移时刻之间没有同键的其它输入点。
+        static bool SoleValue(List<TimelinePreviewInputPoint> points, TimelinePreviewInputPoint point, double time) =>
+            !points.Any(other => other != point && other.Active && other.InputId == point.InputId &&
+                other.Time >= point.Time && other.Time <= time);
+
+        static bool FindRelated(TimelineStaticChain chain, string inputId, double from, double until,
             out TimelineStaticChainMarker found)
         {
             foreach (TimelineStaticChainMarker marker in chain.Markers)
             {
                 double time = marker.Time.AsSingle;
-                if (time < from || time >= until)
-                    continue;
-                foreach (OrchestrationStaticRead read in marker.Transition.Reads)
-                    if (read.Source == OrchestrationStaticReadSource.HostInput && read.Key == inputId)
-                    {
-                        found = marker;
-                        return true;
-                    }
+                if (time >= from && time < until && ReadsInput(marker.Transition, inputId))
+                {
+                    found = marker;
+                    return true;
+                }
             }
             foreach (TimelineStaticChainBranch branch in chain.Branches)
-                if (FindAcceptance(branch.Chain, inputId, from, until, out found))
+                if (FindRelated(branch.Chain, inputId, from, until, out found))
                     return true;
             found = null;
             return false;
         }
 
-        TimelinePreviewRouteSegment[] SourceSpans() =>
-            TimelineAssetPreviewHost.Shared.Route.Where(span => span.Source == SourceAsset).ToArray();
+        // 拖动开始时固定输入点及其所在的那一圈播放，整个手势都换回这次播放的预览时刻。
+        void BeginMovePreviewInput(int index)
+        {
+            m_DragPoint = null;
+            var preview = TimelineAssetPreviewHost.Shared;
+            if (index < 0 || index >= m_PreviewInputs.Count || !preview.TryGetPlayback(SourceAsset, out var spans))
+                return;
+            TimelinePreviewInputPoint point = preview.Preferences.Inputs[m_PreviewInputs[index]];
+            if (TryLocal(spans, point.Time, out _, out TimelinePreviewRouteSegment at, out _))
+            {
+                m_DragPoint = point;
+                m_DragSegment = at;
+            }
+        }
 
         void MovePreviewInput(int index, float localTime)
         {
             var preview = TimelineAssetPreviewHost.Shared;
-            TimelinePreviewRouteSegment[] spans = SourceSpans();
-            if (index < 0 || index >= m_PreviewInputs.Count || spans.Length == 0)
+            if (m_DragPoint == null)
                 return;
-            TimelinePreviewInputPoint point = preview.Preferences.Inputs[m_PreviewInputs[index]];
-            point.Time = Mathf.Clamp(ToGlobal(spans, localTime), 0f, preview.Preferences.RangeEnd);
+            if (!TryGlobal(preview, m_DragSegment, localTime, out float time))
+                return;
+            m_DragPoint.Time = Mathf.Clamp(time, 0f, preview.Preferences.RangeEnd);
             preview.PreferencesChanged();
         }
 
         void AddPreviewInput(string inputId, float localTime)
         {
             var preview = TimelineAssetPreviewHost.Shared;
-            TimelinePreviewRouteSegment[] spans = SourceSpans();
-            if (spans.Length == 0)
+            if (!preview.TryGetPlayback(SourceAsset, out TimelinePreviewRouteSegment[] spans))
+                return;
+            OrchestrationTime local = OrchestrationTime.FromSeconds(localTime);
+            OrchestrationTime cursor = OrchestrationTime.FromSeconds(preview.Time);
+            // 优先游标所在的那一圈，其次第一个经过该本地时刻的圈；快速档在播放终点之后按该次播放继续延伸。
+            TimelinePreviewRouteSegment target = spans[^1];
+            foreach (TimelinePreviewRouteSegment span in spans.OrderBy(span => span.Contains(cursor) ? 0 : 1))
+                if (local >= span.LocalStart && local <= span.LocalEnd)
+                {
+                    target = span;
+                    break;
+                }
+            if (!TryGlobal(preview, target, localTime, out float time))
                 return;
             preview.Preferences.Inputs.Add(new TimelinePreviewInputPoint
             {
                 InputId = inputId,
-                Time = Mathf.Clamp(ToGlobal(spans, localTime), 0f, preview.Preferences.RangeEnd),
+                Time = Mathf.Clamp(time, 0f, preview.Preferences.RangeEnd),
                 Boolean = true
             });
             preview.PreferencesChanged();
@@ -392,31 +479,35 @@ namespace BTSMTL.Timeline.Editor
             preview.PreferencesChanged();
         }
 
-        // 落在经过区间内按该区间换算；区间外按最近区间线性延伸，等同 Timeline 继续播放。
-        static float ToLocal(TimelinePreviewRouteSegment[] spans, float time)
+        // 预览时刻落在这次播放的某一圈内时经该段的正式映射得到本地时刻；不在这次播放内不显示，不外推。
+        static bool TryLocal(TimelinePreviewRouteSegment[] spans, float time, out float local,
+            out TimelinePreviewRouteSegment at, out string note)
         {
-            TimelinePreviewRouteSegment nearest = spans[0];
+            OrchestrationTime value = OrchestrationTime.FromSeconds(time);
             foreach (TimelinePreviewRouteSegment span in spans)
-            {
-                if (time >= span.Start.AsSingle && time <= span.End.AsSingle)
-                    return span.LocalStart.AsSingle + time - span.Start.AsSingle;
-                if (span.Start.AsSingle <= time)
-                    nearest = span;
-            }
-            return nearest.LocalStart.AsSingle + time - nearest.Start.AsSingle;
+                if (span.Contains(value) && span.TryLocal(value, out OrchestrationTime mapped, out note))
+                {
+                    local = mapped.AsSingle;
+                    at = span;
+                    return true;
+                }
+            local = 0f;
+            at = default;
+            note = null;
+            return false;
         }
 
-        static float ToGlobal(TimelinePreviewRouteSegment[] spans, float local)
+        // 换回所选那一圈的预览时刻；真实档没有记录覆盖时拒绝并说明。
+        static bool TryGlobal(TimelineAssetPreviewHost preview, TimelinePreviewRouteSegment span, float local, out float time)
         {
-            TimelinePreviewRouteSegment nearest = spans[0];
-            foreach (TimelinePreviewRouteSegment span in spans)
+            if (span.TryGlobal(OrchestrationTime.FromSeconds(local), out OrchestrationTime mapped, out string message))
             {
-                if (local >= span.LocalStart.AsSingle && local <= span.LocalEnd.AsSingle)
-                    return span.Start.AsSingle + local - span.LocalStart.AsSingle;
-                if (span.LocalStart.AsSingle <= local)
-                    nearest = span;
+                time = mapped.AsSingle;
+                return true;
             }
-            return nearest.Start.AsSingle + local - nearest.LocalStart.AsSingle;
+            time = 0f;
+            preview.ReportRejectedEdit("无法在这次播放定位输入：" + message);
+            return false;
         }
 
         // 方案菜单：切换、另存、重命名、删除与从录制输入导入；假设菜单逐条切换并立即重新推导。

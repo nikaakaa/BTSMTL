@@ -111,14 +111,16 @@ namespace BTSMTL.Timeline.Editor
     }
 
     // 预览输入轨编辑入口：时间为本 Timeline 本地时间，下标对应输入标记。
-    // Pressed 对开关类输入给出按下（true）或松开（false），其它类型为 null；SetPressed 改写该点的开关值。
+    // BeginMove 在按下拖动时调用，固定本次拖动所在的播放；Pressed 对开关类输入给出按下（true）或松开（false），
+    // 其它类型为 null；SetPressed 改写该点的开关值。
     public sealed class TimelinePreviewInputTrack
     {
-        public TimelinePreviewInputTrack(IReadOnlyList<string> choices, Action<int, float> move,
+        public TimelinePreviewInputTrack(IReadOnlyList<string> choices, Action<int> beginMove, Action<int, float> move,
             Action<string, float> add, Action<int, string> change, Action<int> remove,
             Func<int, bool?> pressed, Action<int, bool> setPressed)
         {
             Choices = choices;
+            BeginMove = beginMove;
             Move = move;
             Add = add;
             Change = change;
@@ -128,6 +130,7 @@ namespace BTSMTL.Timeline.Editor
         }
 
         public IReadOnlyList<string> Choices { get; }
+        public Action<int> BeginMove { get; }
         public Action<int, float> Move { get; }
         public Action<string, float> Add { get; }
         public Action<int, string> Change { get; }
@@ -223,7 +226,8 @@ namespace BTSMTL.Timeline.Editor
             m_Binding.SetPreviewPath(visited == null ? null : new EmbeddedTimelinePreviewPath(source, visited,
                 marks.Select(mark => new EmbeddedTimelinePreviewMark(mark.Time, mark.Label, mark.Tooltip)).ToArray(),
                 inputs.Select(input => new EmbeddedTimelinePreviewMark(input.Time, input.Label, input.Tooltip, input.Accepted)).ToArray(),
-                inputTrack == null ? null : new EmbeddedTimelinePreviewInputTrack(inputTrack.Choices, inputTrack.Move,
+                inputTrack == null ? null : new EmbeddedTimelinePreviewInputTrack(inputTrack.Choices,
+                    inputTrack.BeginMove, inputTrack.Move,
                     inputTrack.Add, inputTrack.Change, inputTrack.Remove, inputTrack.Pressed, inputTrack.SetPressed)));
             m_EmbeddedEditor.RequestEmbeddedRepaint();
         }

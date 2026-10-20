@@ -119,12 +119,13 @@ namespace BTSMTL.Timeline.Editor
         public bool PlaybackCompleted { get; }
     }
 
-    // 两档共用的路线显示信息：经过的一段 Timeline 播放区间。Playback 相同的段属于同一次播放，只是按圈或分支边界拆开。
+    // 两档共用的路线显示信息：经过的一段 Timeline 播放区间。Playback 相同的段属于同一次播放，只是按圈或分支边界拆开；
+    // Occurrence 是该次播放在同一 Timeline 的第几次播放。真实档段带执行记录，本地与预览时刻经其正式游标换算。
     public readonly struct TimelinePreviewRouteSegment
     {
         public TimelinePreviewRouteSegment(TimelineAsset source, OrchestrationStaticState state, OrchestrationTime start,
             OrchestrationTime end, OrchestrationTime localStart, OrchestrationTime localEnd, int cycle, int playback,
-            bool playbackCompleted)
+            int occurrence, bool playbackCompleted, BtsmtlExecutionRecord.RecordedPlayback? recorded)
         {
             Source = source;
             State = state;
@@ -134,7 +135,53 @@ namespace BTSMTL.Timeline.Editor
             LocalEnd = localEnd;
             Cycle = cycle;
             Playback = playback;
+            Occurrence = occurrence;
             PlaybackCompleted = playbackCompleted;
+            Recorded = recorded;
+        }
+
+        public int Occurrence { get; }
+        // 真实档的执行记录；快速档为 null。
+        public BtsmtlExecutionRecord.RecordedPlayback? Recorded { get; }
+        public string Label => $"第 {Occurrence + 1} 次 · 第 {Cycle + 1} 圈";
+        public bool Contains(OrchestrationTime time) => Start <= time && time <= End;
+
+        // 预览时刻 → 本地时刻：快速档按推导的一倍速，真实档读该次播放的正式游标；区间外与无记录处拒绝，不外推。
+        public bool TryLocal(OrchestrationTime time, out OrchestrationTime local, out string message)
+        {
+            local = OrchestrationTime.Zero;
+            message = null;
+            if (!Contains(time))
+            {
+                message = $"预览第 {time.AsSingle:0.000} 秒不在{Label}内。";
+                return false;
+            }
+            if (Recorded is not { } recorded)
+            {
+                local = LocalStart + time - Start;
+                return true;
+            }
+            if (!recorded.TryLocal(Math.Clamp(time.AsSingle, recorded.Start, recorded.End), Source.Data.Duration,
+                out double value, out message))
+                return false;
+            local = OrchestrationTime.FromSeconds(value);
+            return true;
+        }
+
+        // 本地时刻 → 预览时刻：快速档该次播放从同一起点按一倍速继续；真实档只在本圈的正式游标记录内换算。
+        public bool TryGlobal(OrchestrationTime local, out OrchestrationTime time, out string message)
+        {
+            message = null;
+            if (Recorded is not { } recorded)
+            {
+                time = Start + local - LocalStart;
+                return true;
+            }
+            time = OrchestrationTime.Zero;
+            if (!recorded.TryGlobal(local.AsSingle, Source.Data.Duration, out double value, out message))
+                return false;
+            time = OrchestrationTime.FromSeconds(value);
+            return true;
         }
 
         public TimelineAsset Source { get; }
@@ -240,5 +287,9 @@ namespace BTSMTL.Timeline.Editor
         float RealTime { get; }
         void SeekReal(float time);
         bool TryResolveRealTimeline(string timelineAuthoringId, out TimelineAsset source);
+        // 输入方案修改后替换会话的输入日程，不立即重演；由宿主原“重新播放”或“应用并重新预览”入口采用。
+        void ReplaceRealInputs(TimelineAssetPreviewPreferences preferences);
+        // 当前执行记录是否按最新输入日程与作者内容得到；否则给出待重演原因。
+        bool IsRealResultCurrent(out string reason);
     }
 }

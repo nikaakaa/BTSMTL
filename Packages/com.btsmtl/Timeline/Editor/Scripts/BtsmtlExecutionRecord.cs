@@ -77,7 +77,7 @@ namespace BTSMTL.Timeline.Editor
         public readonly struct RecordedPlayback
         {
             internal RecordedPlayback(in RuntimeExecutionSpan span, double start, double end, double localStart,
-                double localEnd, int cycle, bool hasLocal)
+                double localEnd, int cycle, bool hasLocal, RuntimeExecutionPlaybackCursors cursors, double cursorOrigin)
             {
                 Owner = BtsmtlExecutionStateIdentity.OfPlayback(in span);
                 PlaybackId = span.Instance.TimelinePlaybackId;
@@ -88,6 +88,8 @@ namespace BTSMTL.Timeline.Editor
                 LocalEnd = localEnd;
                 Cycle = cycle;
                 HasLocal = hasLocal;
+                Cursors = cursors;
+                CursorOrigin = cursorOrigin;
             }
 
             public BtsmtlExecutionStateIdentity Owner { get; }
@@ -100,6 +102,44 @@ namespace BTSMTL.Timeline.Editor
             public double LocalEnd { get; }
             public int Cycle { get; }
             public bool HasLocal { get; }
+            // 该次播放的正式逐 Tick 游标；会话相对时刻加 CursorOrigin 得到样本时刻。
+            public RuntimeExecutionPlaybackCursors Cursors { get; }
+            public double CursorOrigin { get; }
+
+            // 本圈内会话相对时刻 → 作者本地时刻；停顿吸附等说明写入 message，无记录时拒绝。
+            public bool TryLocal(double time, double duration, out double local, out string message)
+            {
+                local = 0;
+                if (Cursors == null)
+                {
+                    message = "该次播放没有逐 Tick 游标记录，不能换算作者时间。";
+                    return false;
+                }
+                if (time < Start || time > End)
+                {
+                    message = $"会话第 {time:0.000} 秒不在这次播放第 {Cycle + 1} 圈内。";
+                    return false;
+                }
+                return Cursors.TryMap(time + CursorOrigin, duration, out local, out message);
+            }
+
+            // 作者本地时刻 → 本圈内会话相对时刻；不在本圈记录内时拒绝，不外推。
+            public bool TryGlobal(double local, double duration, out double time, out string message)
+            {
+                time = 0;
+                if (Cursors == null)
+                {
+                    message = "该次播放没有逐 Tick 游标记录，不能换算会话时间。";
+                    return false;
+                }
+                if (!Cursors.TryUnmap(local, Cycle, duration, out double session, out message))
+                    return false;
+                time = session - CursorOrigin;
+                if (time >= Start && time <= End)
+                    return true;
+                message = $"本地 {local:0.000} 秒不在这次播放第 {Cycle + 1} 圈的记录内。";
+                return false;
+            }
         }
 
         // 正式选中的状态转移：源状态激活身份、转移连线的作者身份与发生时刻。目标由作者连线决定，不由下一段播放推断。
@@ -219,9 +259,9 @@ namespace BTSMTL.Timeline.Editor
         {
             double localStart = 0, localEnd = 0;
             bool hasLocal = false;
+            double origin = cursors == null ? 0 : Origin(cursors.Domain);
             if (cursors != null)
             {
-                double origin = Origin(cursors.Domain);
                 foreach (RuntimeExecutionCursorSample sample in cursors.Samples)
                 {
                     double time = sample.SessionTime - origin;
@@ -233,7 +273,8 @@ namespace BTSMTL.Timeline.Editor
                     hasLocal = true;
                 }
             }
-            m_Recorded.Add(new RecordedPlayback(in playback.Source, from, to, localStart, localEnd, cycle, hasLocal));
+            m_Recorded.Add(new RecordedPlayback(in playback.Source, from, to, localStart, localEnd, cycle, hasLocal,
+                cursors, origin));
         }
 
         double Origin(RuntimeTraceDomain domain) =>

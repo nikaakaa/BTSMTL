@@ -22,19 +22,25 @@ namespace BTSMTL.Timeline.Editor
     }
 
     // 真实档的一次正式转移：按转移连线的作者身份解析静态转移，源状态按本次激活身份解析；
-    // 源状态这次激活中有播放记录时给出所在 Timeline 与本地时刻。
+    // 源状态这次激活中有播放记录、且正式游标能换算时给出所在播放与本地时刻；否则 LocalNote 写明原因。
     public sealed class TimelinePreviewRealTransition
     {
         internal TimelinePreviewRealTransition(in BtsmtlExecutionRecord.RecordedTransition record,
-            OrchestrationStaticTransition transition, OrchestrationStaticState source, TimelineAsset sourceTimeline,
-            float localTime)
+            OrchestrationStaticTransition transition, OrchestrationStaticState source, TimelinePreviewRealSegment playback,
+            float localTime, string localNote)
         {
             Record = record;
             Transition = transition;
             Source = source;
-            SourceTimeline = sourceTimeline;
+            Playback = playback;
             LocalTime = localTime;
+            LocalNote = localNote;
         }
+
+        // 转移发生时源状态所在的那段播放；无法换算本地时刻时为 null。
+        public TimelinePreviewRealSegment Playback { get; }
+        // 停顿吸附或无法换算的说明。
+        public string LocalNote { get; }
 
         public BtsmtlExecutionRecord.RecordedTransition Record { get; }
         // 连线不在当前查询中（重演后作者内容已改）时为 null。
@@ -42,7 +48,7 @@ namespace BTSMTL.Timeline.Editor
         public OrchestrationStaticState Source { get; }
         public OrchestrationStaticState Target => Transition?.Target;
         public float Time => (float)Record.Time;
-        public TimelineAsset SourceTimeline { get; }
+        public TimelineAsset SourceTimeline => Playback?.Source;
         public float LocalTime { get; }
     }
 
@@ -73,20 +79,25 @@ namespace BTSMTL.Timeline.Editor
                         FindState(query, played.Owner.GraphAuthoringId, played.Owner.StateId)));
             foreach (BtsmtlExecutionRecord.RecordedTransition recorded in m_Record.Transitions)
             {
-                TimelineAsset sourceTimeline = null;
-                float local = 0f;
+                TimelinePreviewRealSegment source = null;
+                double local = 0;
+                string message = "源状态这次激活没有可换算的播放记录。";
                 foreach (TimelinePreviewRealSegment segment in m_Segments)
                 {
                     BtsmtlExecutionRecord.RecordedPlayback played = segment.Record;
                     if (!played.Owner.Equals(recorded.Source) || recorded.Time < played.Start - TimeTolerance ||
                         recorded.Time > played.End + TimeTolerance)
                         continue;
-                    sourceTimeline = segment.Source;
-                    local = (float)(played.LocalStart + recorded.Time - played.Start);
+                    if (played.TryLocal(Math.Clamp(recorded.Time, played.Start, played.End), segment.Source.Data.Duration,
+                        out local, out message))
+                    {
+                        source = segment;
+                        break;
+                    }
                 }
                 OrchestrationStaticState state = FindState(query, recorded.Source.GraphAuthoringId, recorded.Source.StateId);
                 m_Transitions.Add(new TimelinePreviewRealTransition(in recorded,
-                    FindTransition(state, recorded.GraphId, recorded.EdgeId), state, sourceTimeline, local));
+                    FindTransition(state, recorded.GraphId, recorded.EdgeId), state, source, (float)local, message));
             }
         }
 

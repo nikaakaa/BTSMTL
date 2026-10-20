@@ -41,6 +41,8 @@ namespace BTSMTL.Timeline.Editor
         readonly List<TimelineAssetPreviewTraversal> m_Traversals = new();
         readonly List<TimelinePreviewRouteSegment> m_Route = new();
         OrchestrationTime m_RouteEnd;
+        TimelineAsset m_SelectedSource;
+        int m_SelectedOccurrence;
         readonly List<OrchestrationStaticRead> m_Assumptions = new();
         TimelineOrchestrationQuery m_Query;
         TimelinePreviewRealRoute m_Real;
@@ -85,9 +87,12 @@ namespace BTSMTL.Timeline.Editor
             m_Instance != null ? m_Instance.Inputs : m_Provider.DescribeInputs();
         // 真实档的静态推导路线，只供与执行记录对比。
         public TimelineStaticChain FastChain { get; private set; }
-        // 真实档执行记录与快速推导的差异，按预览时刻排列。
+        // 真实档执行记录与快速推导的差异，按预览时刻排列；结果过期时不与新快速路线比较。
         public IReadOnlyList<TimelinePreviewDifference> Differences =>
-            m_Real != null ? m_Real.Differences : Array.Empty<TimelinePreviewDifference>();
+            m_Real != null && !RealStale ? m_Real.Differences : Array.Empty<TimelinePreviewDifference>();
+        // 真实档执行记录不是按最新输入方案与作者内容得到；旧记录保留显示，待原入口重演。
+        public bool RealStale { get; private set; }
+        public string RealStaleReason { get; private set; } = string.Empty;
         // 真实档正式选中的状态转移，按发生时刻排列。
         public IReadOnlyList<TimelinePreviewRealTransition> RealTransitions =>
             m_Real != null ? m_Real.Transitions : Array.Empty<TimelinePreviewRealTransition>();
@@ -97,6 +102,8 @@ namespace BTSMTL.Timeline.Editor
         public float Time { get; private set; }
         public float Duration => m_RouteEnd.AsSingle;
         public float LocalTime { get; private set; }
+        // 当前本地时刻的换算说明：停顿吸附、缺少游标记录等；为空表示按正式映射直接得到。
+        public string LocalNote { get; private set; } = string.Empty;
         public TimelineAsset SampledSource { get; private set; }
         public ulong SampledRevision { get; private set; }
         public TimelineStaticChain Chain { get; private set; }
@@ -224,42 +231,65 @@ namespace BTSMTL.Timeline.Editor
         public bool Covers(TimelineAsset source) =>
             source && (source == Source || m_Route.Exists(segment => segment.Source == source));
 
-        // 优先落在当前所处的同一次播放同一圈内，其次取离当前时刻最近的经过区间。
+        // 在该 Timeline 的所选播放内定位：优先当前所在的那一圈，其次第一个经过该本地时刻的圈；换算经段的正式映射。
         public void SetLocalTime(TimelineAsset source, float time)
         {
-            int current = -1;
-            for (int i = 0; i < m_Route.Count; i++)
-                if (m_Route[i].Start.AsSingle <= Time)
-                    current = i;
-            float nearest = 0f;
-            float distance = float.PositiveInfinity;
-            for (int i = 0; i < m_Route.Count; i++)
+            OrchestrationTime local = OrchestrationTime.FromSeconds(time);
+            OrchestrationTime cursor = OrchestrationTime.FromSeconds(Time);
+            string message = "当前输入推导没有经过所选本地时刻；请调整输入／假设，或在会话中验证。";
+            if (TryGetPlayback(source, out TimelinePreviewRouteSegment[] segments))
             {
-                TimelinePreviewRouteSegment segment = m_Route[i];
-                if (segment.Source == source && time >= segment.LocalStart.AsSingle &&
-                    time <= segment.LocalEnd.AsSingle)
+                TimelinePreviewRouteSegment[] ordered = segments.Where(segment => segment.Contains(cursor))
+                    .Concat(segments.Where(segment => !segment.Contains(cursor))).ToArray();
+                foreach (TimelinePreviewRouteSegment segment in ordered)
                 {
-                    float mapped = segment.Start.AsSingle + time - segment.LocalStart.AsSingle;
-                    if (current >= 0 && segment.Playback == m_Route[current].Playback && segment.Cycle == m_Route[current].Cycle)
+                    if (local < segment.LocalStart || local > segment.LocalEnd)
+                        continue;
+                    if (segment.TryGlobal(local, out OrchestrationTime mapped, out string reason))
                     {
-                        SetTime(mapped);
+                        SetTime(mapped.AsSingle);
                         return;
                     }
-                    float difference = Mathf.Abs(mapped - Time);
-                    if (difference < distance)
-                    {
-                        nearest = mapped;
-                        distance = difference;
-                    }
+                    message = reason;
                 }
             }
-            if (float.IsFinite(distance))
-                SetTime(nearest);
-            else
+            Error = message;
+            Changed?.Invoke();
+        }
+
+        // 用户在路线上选定一次播放；路线重建后按 Timeline 与第几次播放找回。
+        public void SelectPlayback(int playback)
+        {
+            foreach (TimelinePreviewRouteSegment segment in m_Route)
+                if (segment.Playback == playback)
+                {
+                    m_SelectedSource = segment.Source;
+                    m_SelectedOccurrence = segment.Occurrence;
+                    Changed?.Invoke();
+                    return;
+                }
+        }
+
+        // 该 Timeline 在编辑时间轴上对应的一次播放（按圈排列）：用户选定的，否则当前游标所在的，否则第一次。
+        public bool TryGetPlayback(TimelineAsset source, out TimelinePreviewRouteSegment[] segments)
+        {
+            int playback = -1;
+            OrchestrationTime cursor = OrchestrationTime.FromSeconds(Time);
+            foreach (TimelinePreviewRouteSegment segment in m_Route)
             {
-                Error = "当前输入推导没有经过所选本地时刻；请调整输入／假设，或在会话中验证。";
-                Changed?.Invoke();
+                if (segment.Source != source)
+                    continue;
+                if (source == m_SelectedSource && segment.Occurrence == m_SelectedOccurrence)
+                {
+                    playback = segment.Playback;
+                    break;
+                }
+                if (playback < 0 || segment.Contains(cursor))
+                    playback = segment.Playback;
             }
+            segments = playback < 0 ? Array.Empty<TimelinePreviewRouteSegment>()
+                : m_Route.Where(segment => segment.Playback == playback).ToArray();
+            return segments.Length != 0;
         }
 
         public void SetOrchestrationContext(TimelineAsset source, TimelineOrchestrationQuery query, OrchestrationStaticState state)
@@ -310,9 +340,19 @@ namespace BTSMTL.Timeline.Editor
             InputSchemes.MarkChanged();
             if (m_Real != null)
             {
-                // 真实档的会话已按打开时的方案重演；新方案在重新进入真实档时生效。
+                // 真实档：替换会话输入日程，旧录制标为过期，由原“重新播放”按新方案重演。
+                Error = string.Empty;
+                try
+                {
+                    m_Provider.ReplaceRealInputs(Preferences);
+                }
+                catch (Exception exception)
+                {
+                    Error = exception.Message;
+                }
                 BuildFastChain();
-                Error = "输入方案已修改：重新进入真实档后按新方案重演。";
+                RefreshRealStale();
+                Revision++;
                 Changed?.Invoke();
                 return;
             }
@@ -340,6 +380,13 @@ namespace BTSMTL.Timeline.Editor
             InputSchemes.Save();
         }
 
+        // 编辑入口拒绝了无记录或越界的时间操作。
+        public void ReportRejectedEdit(string reason)
+        {
+            Error = reason;
+            Changed?.Invoke();
+        }
+
         public void ReportSessionFailure(string reason)
         {
             ReportSessionReady();
@@ -360,6 +407,8 @@ namespace BTSMTL.Timeline.Editor
             {
                 m_Real.Clear();
                 m_Real = null;
+                RealStale = false;
+                RealStaleReason = string.Empty;
                 ClearRoute();
                 FastChain = null;
                 SampledSource = null;
@@ -369,6 +418,7 @@ namespace BTSMTL.Timeline.Editor
             m_SessionOpening?.Dispose();
             m_SessionOpening = null;
             m_PendingSource = null;
+            m_SelectedSource = null;
             IsPlaying = false;
             InputSchemes.Save();
             if (m_Stage)
@@ -659,6 +709,12 @@ namespace BTSMTL.Timeline.Editor
         {
             if (!m_Provider.CanObserveReal)
                 return;
+            bool stale = RealStale;
+            if (RefreshRealStale() != stale)
+            {
+                Revision++;
+                Changed?.Invoke();
+            }
             RuntimeDebugSession session = RuntimeDebugSession.Shared;
             if (m_RealVersion != session.CaptureVersion || m_RealProjection != session.ProjectionVersion ||
                 m_RealCapture != session.CaptureId)
@@ -681,12 +737,21 @@ namespace BTSMTL.Timeline.Editor
                 return;
             Time = time;
             OrchestrationTime cursor = OrchestrationTime.FromSeconds(time);
+            // 本地时刻读该次播放的正式游标；所选播放在此刻时优先，其余取最后开始的一段。
+            TimelinePreviewRouteSegment? at = null;
             foreach (TimelinePreviewRouteSegment segment in m_Route)
-                if (segment.Start <= cursor && cursor <= segment.End)
-                {
-                    SampledSource = segment.Source;
-                    LocalTime = (segment.LocalStart + cursor - segment.Start).AsSingle;
-                }
+                if (segment.Contains(cursor) && (at == null || at.Value.Source != m_SelectedSource ||
+                    at.Value.Occurrence != m_SelectedOccurrence))
+                    at = segment;
+            if (at is { } current)
+            {
+                SampledSource = current.Source;
+                if (current.TryLocal(cursor, out OrchestrationTime local, out string note))
+                    LocalTime = local.AsSingle;
+                LocalNote = note ?? string.Empty;
+            }
+            else
+                LocalNote = "此刻不在任何有记录的播放内。";
             Changed?.Invoke();
         }
 
@@ -694,6 +759,14 @@ namespace BTSMTL.Timeline.Editor
         {
             m_Route.Clear();
             m_RouteEnd = OrchestrationTime.Zero;
+        }
+
+        // 新一次播放的序号与它在同一 Timeline 的第几次播放。
+        static int Occurrence(Dictionary<TimelineAsset, int> occurrences, TimelineAsset source)
+        {
+            occurrences.TryGetValue(source, out int occurrence);
+            occurrences[source] = occurrence + 1;
+            return occurrence;
         }
 
         void AddRoute(in TimelinePreviewRouteSegment segment)
@@ -706,37 +779,55 @@ namespace BTSMTL.Timeline.Editor
         void RebuildFastRoute()
         {
             ClearRoute();
-            int playback = -1;
+            var occurrences = new Dictionary<TimelineAsset, int>();
+            int playback = -1, occurrence = 0;
             for (int i = 0; i < m_Traversals.Count; i++)
             {
                 TimelineAssetPreviewTraversal traversal = m_Traversals[i];
                 if (i == 0 || traversal.Transition != null || traversal.Source != m_Traversals[i - 1].Source)
+                {
                     playback++;
+                    occurrence = Occurrence(occurrences, traversal.Source);
+                }
                 AddRoute(new TimelinePreviewRouteSegment(traversal.Source, traversal.State, traversal.Start,
-                    traversal.End, traversal.LocalStart, traversal.LocalEnd, traversal.Cycle, playback,
-                    traversal.PlaybackCompleted));
+                    traversal.End, traversal.LocalStart, traversal.LocalEnd, traversal.Cycle, playback, occurrence,
+                    traversal.PlaybackCompleted, null));
             }
         }
 
-        // 真实档：同一状态激活下的同一播放实例为一次播放。
+        // 真实档：同一状态激活下的同一播放实例为一次播放；段带执行记录，换算读正式游标。
         void RebuildRealRoute()
         {
             ClearRoute();
-            var playbacks = new Dictionary<(BtsmtlExecutionStateIdentity, ulong), int>();
+            var playbacks = new Dictionary<(BtsmtlExecutionStateIdentity, ulong), (int Playback, int Occurrence)>();
+            var occurrences = new Dictionary<TimelineAsset, int>();
             foreach (TimelinePreviewRealSegment segment in m_Real.Segments)
             {
                 BtsmtlExecutionRecord.RecordedPlayback played = segment.Record;
-                if (!playbacks.TryGetValue((played.Owner, played.PlaybackId), out int playback))
-                    playbacks.Add((played.Owner, played.PlaybackId), playback = playbacks.Count);
+                if (!playbacks.TryGetValue((played.Owner, played.PlaybackId), out var playback))
+                    playbacks.Add((played.Owner, played.PlaybackId),
+                        playback = (playbacks.Count, Occurrence(occurrences, segment.Source)));
                 AddRoute(new TimelinePreviewRouteSegment(segment.Source, segment.State,
                     OrchestrationTime.FromSeconds(played.Start), OrchestrationTime.FromSeconds(played.End),
                     OrchestrationTime.FromSeconds(played.LocalStart), OrchestrationTime.FromSeconds(played.LocalEnd),
-                    played.Cycle, playback, false));
+                    played.Cycle, playback.Playback, playback.Occurrence, false, played));
             }
         }
 
-        void CompareReal() => m_Real?.Compare(FastChain,
+        // 只比较同输入、同内容得到的结果；过期时清空差异，最新完整记录到达后随记录重建恢复。
+        void CompareReal() => m_Real?.Compare(RealStale ? null : FastChain,
             1d / Math.Max(1, InputRequests.Count != 0 ? InputRequests[0].TickRate : TimelineUtility.FrameRate), DescribeState);
+
+        bool RefreshRealStale()
+        {
+            bool stale = !m_Provider.IsRealResultCurrent(out string reason);
+            RealStaleReason = stale ? reason : string.Empty;
+            if (stale == RealStale)
+                return stale;
+            RealStale = stale;
+            CompareReal();
+            return stale;
+        }
 
         void BuildFastChain()
         {

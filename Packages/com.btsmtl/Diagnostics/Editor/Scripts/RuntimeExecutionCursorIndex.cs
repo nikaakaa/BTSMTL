@@ -99,6 +99,41 @@ namespace BTSMTL.Diagnostics.Editor
             return true;
         }
 
+        // 逆映射：在指定圈内找首个覆盖作者时刻的相邻样本并插值；停顿区间取停顿开始，跨缺失 Tick 或无覆盖时拒绝。
+        public bool TryUnmap(double localTime, int cycle, double duration, out double sessionTime, out string message)
+        {
+            sessionTime = 0;
+            double target = localTime + cycle * duration;
+            for (int i = 0; i < SampleList.Count; i++)
+            {
+                RuntimeExecutionCursorSample right = SampleList[i];
+                double rightTime = right.Cursor + right.Cycle * duration;
+                if (right.Cycle == cycle && rightTime == target)
+                {
+                    sessionTime = right.SessionTime;
+                    message = i + 1 < SampleList.Count && SampleList[i + 1].Cursor == right.Cursor &&
+                        SampleList[i + 1].Cycle == right.Cycle ? "该处为游标停顿区间，已取停顿开始。" : null;
+                    return true;
+                }
+                if (i == 0)
+                    continue;
+                RuntimeExecutionCursorSample left = SampleList[i - 1];
+                double leftTime = left.Cursor + left.Cycle * duration;
+                if (right.Cycle < cycle || left.Cycle > cycle || leftTime > target || rightTime < target)
+                    continue;
+                if (right.Position > left.Position + 1)
+                {
+                    message = "两侧游标记录不连续，缺少中间 Tick，不能换算会话时间。";
+                    return false;
+                }
+                sessionTime = Interpolate(leftTime, left.SessionTime, rightTime, right.SessionTime, target);
+                message = null;
+                return true;
+            }
+            message = $"第 {cycle + 1} 圈缺少覆盖本地 {localTime:0.000} 秒的游标记录。";
+            return false;
+        }
+
         static double Interpolate(double firstTime, double firstValue, double lastTime, double lastValue, double time) =>
             firstTime == lastTime ? lastValue : firstValue + (lastValue - firstValue) * ((time - firstTime) / (lastTime - firstTime));
     }
