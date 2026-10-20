@@ -41,7 +41,6 @@ namespace BTSMTL.Graphs
 
         void InitializeEditor()
         {
-            m_Workspace.PrepareValueCapture();
             OrchestrationProgram<TValue> program = m_Bindings.Program;
             int overrideCapacity = m_Bindings.PublishedSlots.Length;
             foreach (GraphRuntimePort port in m_RuntimePorts)
@@ -219,6 +218,7 @@ namespace BTSMTL.Graphs
             TContext, OrchestrationWorkbenchDiagnostics, OrchestrationArrayValueStorage<TValue>>
             CreateEditorCursor(in OrchestrationFrameInput<TValue> input)
         {
+            m_Workspace.PrepareInvocationBindings();
             var state = OrchestrationStateBinding.BindCandidate(m_Layout, m_Candidate);
             OrchestrationIdentityOrdinalView identities = m_CandidateTexts.Ordinals;
             TContext context = default;
@@ -267,8 +267,6 @@ namespace BTSMTL.Graphs
 
         void AdoptEditor()
         {
-            CopyObserved(m_Workspace.ObservedInputs, m_Workspace.WrittenInputs, m_CandidateObservedInputs);
-            CopyObserved(m_Workspace.ObservedOutputs, m_Workspace.WrittenOutputs, m_CandidateObservedOutputs);
             OrchestrationValueOverride<TValue>
                 .CompleteConsumption(m_CandidateOverrides);
             m_CandidateTriggers.Clear();

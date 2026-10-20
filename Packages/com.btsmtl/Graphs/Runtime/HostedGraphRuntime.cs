@@ -180,16 +180,28 @@ namespace BTSMTL.Graphs
             }
         }
 
-        public void Compute(in TContext context)
+        public void Compute(in TContext context, bool captureValues = false)
         {
+            var input = new OrchestrationFrameInput<TValue>(tick: m_Invocation.Identity.Sequence,
+                instanceGeneration: m_ResetGeneration, hostInputs: m_Inputs, requestIdentityIds: default,
+                captureValues: captureValues
 #if UNITY_EDITOR
-            Compute<OrchestrationWorkbenchDiagnostics>(in context);
-#else
-            Compute<OrchestrationProductDiagnostics>(in context);
+                , overrides: ActiveOverrides(m_CandidateOverrides)
 #endif
+                );
+            if (input.HasDiagnostics)
+            {
+                if (input.CaptureValues)
+                    m_Workspace.PrepareValueCapture();
+                else
+                    m_Workspace.PrepareInvocationBindings();
+                Compute<OrchestrationWorkbenchDiagnostics>(in context, in input);
+            }
+            else
+                Compute<OrchestrationProductDiagnostics>(in context, in input);
         }
 
-        void Compute<TDiagnostics>(in TContext context)
+        void Compute<TDiagnostics>(in TContext context, in OrchestrationFrameInput<TValue> input)
             where TDiagnostics : struct, IOrchestrationExecutionDiagnostics
         {
             if (m_Status == EvaluationStatus.Failed)
@@ -197,12 +209,6 @@ namespace BTSMTL.Graphs
             if (m_Status != EvaluationStatus.Prepared)
                 throw new InvalidOperationException("图实例只能计算本次已准备的输入和候选。");
             var state = OrchestrationStateBinding.BindCandidate(m_Layout, m_Candidate);
-            var input = new OrchestrationFrameInput<TValue>(tick: m_Invocation.Identity.Sequence,
-                instanceGeneration: m_ResetGeneration, hostInputs: m_Inputs, requestIdentityIds: default
-#if UNITY_EDITOR
-                , captureValues: true, overrides: ActiveOverrides(m_CandidateOverrides)
-#endif
-                );
             OrchestrationIdentityOrdinalView identities = m_CandidateTexts.Ordinals;
             var cursor = state.CreateCursor<TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext,
                 TDiagnostics, OrchestrationArrayValueStorage<TValue>>(
@@ -222,6 +228,13 @@ namespace BTSMTL.Graphs
 #endif
                 cursor.Advance(m_Bindings.Update);
                 CollectOutputs();
+#if UNITY_EDITOR
+                if (input.CaptureValues)
+                {
+                    CopyObserved(m_Workspace.ObservedInputs, m_Workspace.WrittenInputs, m_CandidateObservedInputs);
+                    CopyObserved(m_Workspace.ObservedOutputs, m_Workspace.WrittenOutputs, m_CandidateObservedOutputs);
+                }
+#endif
                 m_CurrentOperationIndex = cursor.CurrentOperationIndex;
                 m_Status = EvaluationStatus.Succeeded;
             }
