@@ -45,6 +45,7 @@ namespace BTSMTL.Timeline.Editor
             mode.style.height = 20f;
             mode.style.alignSelf = Align.Center;
             toolbar.Add(mode);
+            toolbar.Add(CreateDoorContextControl());
             m_AssetPreviewConfiguration = new ObjectField("资产预览配置")
             {
                 objectType = preview.ConfigurationType,

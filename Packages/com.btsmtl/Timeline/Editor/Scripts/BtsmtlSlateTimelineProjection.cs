@@ -24,7 +24,7 @@ namespace BTSMTL.Timeline.Editor
         [SerializeField] string[] m_CurveTrackAuthoringIds;
         [SerializeField] BtsmtlSlateTimelineTrackHeight[] m_TrackHeights;
         [SerializeField] BtsmtlSlateTimelineInspection[] m_InspectedParameters;
-        [SerializeField] bool m_GroupCollapsed;
+        [SerializeField] string[] m_CollapsedGroupIds;
         [SerializeField] bool m_DisplayFrames;
         [SerializeField] TimelineAuthoringSnapMode m_SnapMode;
         [SerializeField] float m_SecondsInterval;
@@ -37,7 +37,7 @@ namespace BTSMTL.Timeline.Editor
             Vector2 scrollPosition,
             string trackAuthoringId,
             string clipAuthoringId,
-            bool groupCollapsed,
+            IEnumerable<string> collapsedGroupIds,
             IEnumerable<string> curveTrackAuthoringIds = null,
             IEnumerable<BtsmtlSlateTimelineTrackHeight> trackHeights = null,
             string sectionAuthoringId = null,
@@ -65,7 +65,9 @@ namespace BTSMTL.Timeline.Editor
             m_InspectedParameters = inspectedParameters == null
                 ? Array.Empty<BtsmtlSlateTimelineInspection>()
                 : inspectedParameters.Where(value => !string.IsNullOrEmpty(value.InspectionKey) && !string.IsNullOrEmpty(value.ParameterId)).ToArray();
-            m_GroupCollapsed = groupCollapsed;
+            m_CollapsedGroupIds = collapsedGroupIds == null
+                ? Array.Empty<string>()
+                : collapsedGroupIds.Where(value => !string.IsNullOrEmpty(value)).Distinct(StringComparer.Ordinal).ToArray();
             m_DisplayFrames = displayFrames;
             m_SnapMode = snapMode;
             m_SecondsInterval = secondsInterval;
@@ -83,7 +85,7 @@ namespace BTSMTL.Timeline.Editor
         public IReadOnlyList<string> CurveTrackAuthoringIds => m_CurveTrackAuthoringIds ?? Array.Empty<string>();
         public IReadOnlyList<BtsmtlSlateTimelineTrackHeight> TrackHeights => m_TrackHeights ?? Array.Empty<BtsmtlSlateTimelineTrackHeight>();
         public IReadOnlyList<BtsmtlSlateTimelineInspection> InspectedParameters => m_InspectedParameters ?? Array.Empty<BtsmtlSlateTimelineInspection>();
-        public bool GroupCollapsed => m_GroupCollapsed;
+        public IReadOnlyList<string> CollapsedGroupIds => m_CollapsedGroupIds ?? Array.Empty<string>();
         public bool DisplayFrames => m_DisplayFrames;
         public TimelineAuthoringSnapMode SnapMode => m_SnapMode;
         public float SecondsInterval => m_SecondsInterval;
@@ -92,6 +94,24 @@ namespace BTSMTL.Timeline.Editor
                                     !string.IsNullOrEmpty(ClipAuthoringId) ||
                                     !string.IsNullOrEmpty(MarkerAuthoringId) ||
                                     !string.IsNullOrEmpty(SectionAuthoringId);
+    }
+
+    public readonly struct TimelineAuthoringExit
+    {
+        public TimelineAuthoringExit(string label, bool anytime, float startTime, float endTime, Action activate)
+        {
+            Label = label ?? string.Empty;
+            Anytime = anytime;
+            StartTime = startTime;
+            EndTime = endTime;
+            Activate = activate;
+        }
+
+        public string Label { get; }
+        public bool Anytime { get; }
+        public float StartTime { get; }
+        public float EndTime { get; }
+        public Action Activate { get; }
     }
 
     [Serializable]
@@ -180,6 +200,23 @@ namespace BTSMTL.Timeline.Editor
             m_Binding.SetAuthoringClipLabels(labels);
             m_EmbeddedEditor.RequestEmbeddedRepaint();
         }
+
+        public void SetAuthoringExits(IReadOnlyList<TimelineAuthoringExit> exits)
+        {
+            m_Binding.SetAuthoringExits(exits);
+            m_EmbeddedEditor.RequestEmbeddedRepaint();
+        }
+
+        public bool FocusSectionGroup(string sectionAuthoringId)
+        {
+            foreach (IEmbeddedTimelineGroupBinding group in m_Binding.Groups)
+                if (group.HasTimeRange && group.AuthoringId == sectionAuthoringId)
+                {
+                    m_EmbeddedEditor.FocusEmbeddedGroup(group);
+                    return true;
+                }
+            return false;
+        }
         public event Action<string> AuthoringIssue;
 
         public void ApplyFormalMutation(Action mutation, string undoName)
@@ -238,7 +275,7 @@ namespace BTSMTL.Timeline.Editor
                 .CaptureEmbeddedInspectedParameters()
                 .Select(value => new BtsmtlSlateTimelineInspection(value.Key, value.Value))
                 .ToArray();
-            bool collapsed = m_Binding.Groups.Count != 0 && m_Binding.Groups[0].IsCollapsed;
+            string[] collapsed = m_Binding.CollapsedGroupIds.ToArray();
             return new BtsmtlSlateTimelineViewState(
                 m_Binding.ViewTimeMin,
                 m_Binding.ViewTimeMax,
@@ -270,8 +307,7 @@ namespace BTSMTL.Timeline.Editor
                 m_Session.ConfigureSecondsInterval(state.SecondsInterval);
             m_Session.ConfigureGrid(state.GridPipeline, state.SnapMode);
             m_Binding.CurrentTime = state.CurrentTime;
-            if (m_Binding.Groups.Count != 0)
-                m_Binding.Groups[0].IsCollapsed = state.GroupCollapsed;
+            m_Binding.SetCollapsedGroups(state.CollapsedGroupIds);
             var expandedTracks = new HashSet<string>(state.CurveTrackAuthoringIds, StringComparer.Ordinal);
             foreach (IEmbeddedTimelineGroupBinding group in m_Binding.Groups)
                 foreach (IEmbeddedTimelineTrackBinding track in group.Tracks)

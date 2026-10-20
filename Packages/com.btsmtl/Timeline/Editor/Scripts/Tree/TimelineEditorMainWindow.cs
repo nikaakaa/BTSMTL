@@ -542,10 +542,8 @@ namespace BTSMTL.Timeline.Editor
             m_SlateSurface.style.flexGrow = 1f;
             m_SlateSurface.style.flexShrink = 1f;
             m_SlateSurface.style.minHeight = 320f;
-            var timelineRow = new VisualElement { style = { flexDirection = FlexDirection.Row, flexGrow = 1f } };
-            timelineRow.Add(m_SlateSurface);
-            timelineRow.Add(CreateDoorExitsPanel());
-            rootVisualElement.Add(timelineRow);
+            rootVisualElement.Add(m_SlateSurface);
+            BindDoorQueries();
         }
 
         void BuildUnboundView()
