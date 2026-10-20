@@ -128,10 +128,9 @@ namespace BTSMTL.Timeline.Runtime
                 Content.Clips[left].AuthoringId, Content.Clips[right].AuthoringId));
             for (int i = 0; i < count; i++)
                 sortOrdinals[order[i]] = i;
-            var errors = new List<string>();
-            TimelineSchedulingSection<OrchestrationTime>[] sections = TimelineRuntimePreparation.BuildSections(Content, errors);
-            if (errors.Count != 0)
-                throw new InvalidOperationException(string.Join("\n", errors));
+            var sections = new TimelineSchedulingSection<OrchestrationTime>[Content.Sections.Count];
+            for (int i = 0; i < sections.Length; i++)
+                sections[i] = new TimelineSchedulingSection<OrchestrationTime>(i, Content.Sections[i].Time);
             m_LogicScheduling = PrepareScheduling(TimelineExecutionDomain.Logic, Index.Logic, sortOrdinals, sections);
             m_PresentationScheduling = PrepareScheduling(TimelineExecutionDomain.Presentation, Index.Presentation, sortOrdinals, sections);
         }
@@ -279,9 +278,6 @@ namespace BTSMTL.Timeline.Runtime
             if (!source.Sections.Select(section => section.AuthoringId)
                     .SequenceEqual(candidate.Sections.Select(section => section.AuthoringId)))
                 return "Section 组成已变化";
-            if (!source.Sections.Select(section => section.NextSectionId)
-                    .SequenceEqual(candidate.Sections.Select(section => section.NextSectionId)))
-                return "分段跳转配置已变化";
             if (!source.Bindings.SequenceEqual(candidate.Bindings))
                 return "绑定声明已变化";
             if (source.Dependencies.Count != candidate.Dependencies.Count)
@@ -358,54 +354,6 @@ namespace BTSMTL.Timeline.Runtime
             }
         }
 
-        internal static TimelineSchedulingSection<OrchestrationTime>[] BuildSections(
-            TimelineContentUnit content, List<string> errors)
-        {
-            int count = content.Sections.Count;
-            var order = new int[count];
-            for (int i = 0; i < count; i++)
-                order[i] = i;
-            Array.Sort(order, (left, right) =>
-            {
-                int result = content.Sections[left].Time.CompareTo(content.Sections[right].Time);
-                return result != 0 ? result : left.CompareTo(right);
-            });
-            var sorted = new int[count];
-            for (int i = 0; i < count; i++)
-                sorted[order[i]] = i;
-            var sections = new TimelineSchedulingSection<OrchestrationTime>[count];
-            for (int i = 0; i < count; i++)
-            {
-                TimelineContentSection section = content.Sections[order[i]];
-                OrchestrationTime end = i + 1 < count ? content.Sections[order[i + 1]].Time : content.Duration;
-                int next = -1;
-                if (!string.IsNullOrEmpty(section.NextSectionId))
-                {
-                    int target = -1;
-                    for (int candidate = 0; candidate < count; candidate++)
-                        if (content.Sections[candidate].AuthoringId == section.NextSectionId)
-                            target = candidate;
-                    if (target < 0)
-                        errors.Add($"Timeline '{content.Name}' 分段 '{section.AuthoringId}' 的下一分段 '{section.NextSectionId}' 不存在。");
-                    else if (content.Sections[target].Time <= section.Time)
-                        errors.Add($"Timeline '{content.Name}' 分段 '{section.AuthoringId}' 只能跳到时间更靠后的分段；'{section.NextSectionId}' 不在其后。");
-                    else if (end <= section.Time || HasSameTime(content, order[i]) || HasSameTime(content, target))
-                        errors.Add($"Timeline '{content.Name}' 分段 '{section.AuthoringId}' 与其下一分段必须有唯一且不为空的区间。");
-                    else
-                        next = sorted[target];
-                }
-                sections[i] = new TimelineSchedulingSection<OrchestrationTime>(order[i], section.Time, end, next);
-            }
-            return sections;
-        }
-
-        static bool HasSameTime(TimelineContentUnit content, int index)
-        {
-            for (int i = 0; i < content.Sections.Count; i++)
-                if (i != index && content.Sections[i].Time == content.Sections[index].Time)
-                    return true;
-            return false;
-        }
     }
 
     readonly struct TimelineRuntimeIndexedClip

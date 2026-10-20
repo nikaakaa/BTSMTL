@@ -81,9 +81,6 @@ namespace BTSMTL.Orchestration
                 case OrchestrationValueOpcode.TimelineTime:
                     value = m_TimelineTime;
                     return;
-                case OrchestrationValueOpcode.TimelineSection:
-                    ReadTimelineSection(operationIndex, ref value);
-                    return;
                 case OrchestrationValueOpcode.Extension:
                 {
                     ref readonly OrchestrationOperation operation = ref m_Program.Operation(operationIndex);
@@ -265,7 +262,6 @@ namespace BTSMTL.Orchestration
                 case OrchestrationOperationCode.HostInput:
                 case OrchestrationOperationCode.IdentityValue:
                 case OrchestrationOperationCode.TimelineTime:
-                case OrchestrationOperationCode.TimelineSection:
                     return EvaluateControlValue(operationIndex);
                 case OrchestrationOperationCode.Extension:
                     ushort binding = m_Program.Payload<OrchestrationExtensionPayload>(operationIndex).BindingIndex;
@@ -296,9 +292,6 @@ namespace BTSMTL.Orchestration
                     case OrchestrationOperationCode.TimelineClipExitRequest:
                         return default(TValues).Boolean(in m_Workspace.Inputs[depth][0])
                             ? RequestTimelineClipExit(operationIndex) : OrchestrationOperationResult.Success;
-                    case OrchestrationOperationCode.TimelineSectionContinueRequest:
-                        return default(TValues).Boolean(in m_Workspace.Inputs[depth][0])
-                            ? RequestTimelineSectionContinue(operationIndex) : OrchestrationOperationResult.Success;
                     case OrchestrationOperationCode.Extension:
                     {
                         ushort binding = m_Program.Payload<OrchestrationExtensionPayload>(operationIndex).BindingIndex;

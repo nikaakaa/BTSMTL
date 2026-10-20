@@ -223,7 +223,7 @@ namespace BTSMTL.Diagnostics
         public static long Append<TStorage>(TStorage storage, in RuntimeTraceEvent value, int sourceGroup)
             where TStorage : class, IRuntimeCaptureSpanStorage
         {
-            if (value.Kind is RuntimeTraceEventKind.StateTransitionSelected or RuntimeTraceEventKind.TimelineSectionJumped or
+            if (value.Kind is RuntimeTraceEventKind.StateTransitionSelected or
                 RuntimeTraceEventKind.TimelineLogicTime or RuntimeTraceEventKind.TimelineVisualTime or
                 RuntimeTraceEventKind.TimelineStarted or RuntimeTraceEventKind.TimelineCompleted or
                 RuntimeTraceEventKind.TimelineCancelled or RuntimeTraceEventKind.TimelineStopped)
@@ -375,7 +375,7 @@ namespace BTSMTL.Diagnostics
             bool clip = value.Kind is RuntimeTraceEventKind.ClipActive or RuntimeTraceEventKind.TreeClipEntered or
                 RuntimeTraceEventKind.TreeClipUpdated or RuntimeTraceEventKind.TreeClipExited or RuntimeTraceEventKind.TreeClipDestroyed;
             bool execution = value.Kind is RuntimeTraceEventKind.StateScopeEntered or RuntimeTraceEventKind.StateScopeExited or
-                RuntimeTraceEventKind.StateTransitionSelected or RuntimeTraceEventKind.TimelineSectionJumped or
+                RuntimeTraceEventKind.StateTransitionSelected or
                 RuntimeTraceEventKind.TimelineLogicTime or RuntimeTraceEventKind.TimelineVisualTime or
                 RuntimeTraceEventKind.TimelineStarted or RuntimeTraceEventKind.TimelineCompleted or
                 RuntimeTraceEventKind.TimelineCancelled or RuntimeTraceEventKind.TimelineStopped;

@@ -44,7 +44,7 @@ namespace BTSMTL.Timeline.Editor
             mode.style.height = 20f;
             mode.style.alignSelf = Align.Center;
             toolbar.Add(mode);
-            toolbar.Add(CreateDoorContextControl());
+            toolbar.Add(CreateStateContextControl());
             m_AssetPreviewConfiguration = new ObjectField("资产预览配置")
             {
                 objectType = preview.ConfigurationType,
@@ -62,11 +62,6 @@ namespace BTSMTL.Timeline.Editor
             toolbar.Add(m_AssetPreviewConfiguration);
             toolbar.Add(new ToolbarButton(OpenTimelinePreview) { text = "打开预览" });
             toolbar.Add(new ToolbarButton(() => preview.SetPlaying(!preview.IsPlaying)) { text = "播放／暂停" });
-            toolbar.Add(new ToolbarButton(() => PreviewThrough(null))
-            {
-                text = "每段都接",
-                tooltip = "在每段最早的出口窗口排入按键输入，从头预览一路接到最后一段；右键出口窗口的“去向”可预览单个接法。"
-            });
             toolbar.Add(new ToolbarButton(preview.Close) { text = "关闭资产预览" });
             toolbar.Add(new ToolbarButton(() =>
             {
@@ -93,7 +88,7 @@ namespace BTSMTL.Timeline.Editor
 
         void OpenTimelinePreview()
         {
-            var context = m_DoorContexts.Count == 0 ? default : m_DoorContexts[m_DoorContextIndex];
+            var context = m_StateContexts.Count == 0 ? default : m_StateContexts[m_StateContextIndex];
             TimelineAssetPreviewHost.Shared.Open(SourceAsset, m_PreviewMode, context.Query, context.State);
         }
 
@@ -202,9 +197,7 @@ namespace BTSMTL.Timeline.Editor
                 {
                     if (preview.Query.ResolveTimeline(marker.Source.TimelineIdentity) != SourceAsset)
                         continue;
-                    string label = marker.IsSectionJump
-                        ? "接 " + SectionName(marker.NextSection?.AuthoringId)
-                        : marker.Transition.Target == null ? "收招"
+                    string label = marker.Transition.Target == null ? "收招"
                         : "转移到 " + preview.Query.DescribeState(marker.Transition.Target);
                     marks.Add(new TimelinePreviewMark(marker.FromLocal.AsSingle, label,
                         $"预览第 {marker.Time.AsSingle:0.00} 秒"));
@@ -269,9 +262,6 @@ namespace BTSMTL.Timeline.Editor
             return nearest.Start.AsSingle + local - nearest.LocalStart.AsSingle;
         }
 
-        string SectionName(string sectionId) =>
-            SourceAsset.Data.Sections.FirstOrDefault(section => section.AuthoringId == sectionId)?.Name ?? "下一分段";
-
         void DrawAssetPreviewInputs()
         {
             var preview = TimelineAssetPreviewHost.Shared;
@@ -283,15 +273,6 @@ namespace BTSMTL.Timeline.Editor
             preferences.RangeEnd = EditorGUILayout.FloatField("预览范围终点（秒）", preferences.RangeEnd);
             if (preferences.RangeEnd <= 0f)
                 EditorGUILayout.HelpBox("预览范围终点必须大于零。", MessageType.Error);
-            var sections = new List<string> { "从 Timeline 起点" };
-            foreach (var section in SourceAsset.Data.Sections)
-                sections.Add(section.Name);
-            int sectionIndex = 0;
-            for (int i = 0; i < SourceAsset.Data.Sections.Count; i++)
-                if (SourceAsset.Data.Sections[i].AuthoringId == preferences.StartingSectionId)
-                    sectionIndex = i + 1;
-            sectionIndex = EditorGUILayout.Popup("起始分段", sectionIndex, sections.ToArray());
-            preferences.StartingSectionId = sectionIndex == 0 ? string.Empty : SourceAsset.Data.Sections[sectionIndex - 1].AuthoringId;
             preferences.HasTarget = EditorGUILayout.Toggle("提供假设目标", preferences.HasTarget);
             if (preferences.HasTarget)
             {

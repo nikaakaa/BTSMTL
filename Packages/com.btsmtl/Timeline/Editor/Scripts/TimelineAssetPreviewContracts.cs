@@ -67,7 +67,6 @@ namespace BTSMTL.Timeline.Editor
         public bool HasTarget;
         public Vector3 TargetPosition;
         public Vector3 TargetEuler;
-        public string StartingSectionId = string.Empty;
         public float RangeEnd = 10f;
     }
 

@@ -66,7 +66,6 @@ namespace BTSMTL.Timeline.Runtime
             ReadOnlyMemory<int> treeOrdinals,
             ReadOnlyMemory<TimelineSchedulingMarker<TTime>> markers,
             ReadOnlyMemory<TimelineSchedulingSection<TTime>> sections,
-            ReadOnlyMemory<int> sectionIdentityIds, bool retainsCompletedPlayback,
             ReadOnlyMemory<OrchestrationTimelineEntryBinding> clipEntries,
             ReadOnlyMemory<OrchestrationExecutionEntry> markerEntries,
             int requiredActiveTrees, int requiredTreeExitRequests,
@@ -87,8 +86,6 @@ namespace BTSMTL.Timeline.Runtime
             TreeOrdinals = treeOrdinals;
             Markers = markers;
             Sections = sections;
-            SectionIdentityIds = sectionIdentityIds;
-            RetainsCompletedPlayback = retainsCompletedPlayback;
             ClipEntries = clipEntries;
             MarkerEntries = markerEntries;
             RequiredActiveTrees = requiredActiveTrees;
@@ -98,8 +95,6 @@ namespace BTSMTL.Timeline.Runtime
             RequiredTreeExitWords = requiredTreeExitWords;
             CallCapacity = callCapacity;
             TickCapacity = tickCapacity;
-            foreach (TimelineSchedulingSection<TTime> section in sections.Span)
-                HasSectionJumps |= section.Continuable;
         }
 
         public int ContentIdentityId { get; }
@@ -114,8 +109,6 @@ namespace BTSMTL.Timeline.Runtime
         public ReadOnlyMemory<int> TreeOrdinals { get; }
         public ReadOnlyMemory<TimelineSchedulingMarker<TTime>> Markers { get; }
         public ReadOnlyMemory<TimelineSchedulingSection<TTime>> Sections { get; }
-        public ReadOnlyMemory<int> SectionIdentityIds { get; }
-        public bool RetainsCompletedPlayback { get; }
         public ReadOnlyMemory<OrchestrationTimelineEntryBinding> ClipEntries { get; }
         public ReadOnlyMemory<OrchestrationExecutionEntry> MarkerEntries { get; }
         public int RequiredActiveTrees { get; }
@@ -125,10 +118,9 @@ namespace BTSMTL.Timeline.Runtime
         public int RequiredTreeExitWords { get; }
         public OrchestrationTimelineCallCapacity CallCapacity { get; }
         public OrchestrationTimelineTickContentCapacity TickCapacity { get; }
-        public bool HasSectionJumps { get; }
-        // 一次推进的遍历段数：循环按可跨圈数，分段跳转按“跳转处 + 目标起点之后”两段。
+        // 一次推进的遍历段数：循环按可跨圈数，否则一段。
         public int Traversals => Mode == OrchestrationTimelinePlaybackMode.Loop
-            ? OrchestrationTimelineLimits.MaximumCycleAdvance + 1 : HasSectionJumps ? 2 : 1;
+            ? OrchestrationTimelineLimits.MaximumCycleAdvance + 1 : 1;
     }
 
     public sealed class OrchestrationTimelineWorkspace<TTime>

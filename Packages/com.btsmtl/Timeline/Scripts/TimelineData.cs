@@ -201,12 +201,6 @@ namespace BTSMTL.Timeline
                     errors?.Add($"Timeline '{Name}' section #{i} is invalid or duplicated.");
                     valid = false;
                 }
-                else if (!string.IsNullOrEmpty(section.NextSectionId) &&
-                         !m_Sections.Any(candidate => candidate != null && candidate.AuthoringId == section.NextSectionId))
-                {
-                    errors?.Add($"Timeline '{Name}' section '{section.Name}' references unknown next Section '{section.NextSectionId}'.");
-                    valid = false;
-                }
             }
             if (m_ExternalBindings == null)
             {
@@ -225,74 +219,11 @@ namespace BTSMTL.Timeline
             return valid;
         }
 
-        public bool TryGetSectionRange(string sectionId, OrchestrationTime terminalTime,
-            out OrchestrationTime start, out OrchestrationTime end)
-        {
-            start = end = OrchestrationTime.Zero;
-            if (string.IsNullOrEmpty(sectionId))
-                return false;
-            TimelineSection owner = null;
-            for (int i = 0; i < m_Sections.Count; i++)
-                if (m_Sections[i] != null && m_Sections[i].AuthoringId == sectionId)
-                    owner = m_Sections[i];
-            if (owner == null)
-                return false;
-            start = owner.Time;
-            end = OrchestrationTime.Max(terminalTime, start);
-            for (int i = 0; i < m_Sections.Count; i++)
-                if (m_Sections[i] != null && m_Sections[i].Time > start && m_Sections[i].Time < end)
-                    end = m_Sections[i].Time;
-            return true;
-        }
-
-        public bool ValidateSectionOwnership(List<string> errors)
-        {
-            OrchestrationTime terminal = OrchestrationTime.Zero;
-            foreach (Track track in m_Tracks)
-                if (track != null)
-                {
-                    foreach (Clip clip in track.Clips)
-                        if (clip != null)
-                            terminal = OrchestrationTime.Max(terminal, clip.EndTime);
-                    foreach (TimelineMarker marker in track.Markers)
-                        if (marker != null)
-                            terminal = OrchestrationTime.Max(terminal, marker.Time);
-                }
-            bool valid = true;
-            foreach (Track track in m_Tracks)
-            {
-                if (track == null || string.IsNullOrEmpty(track.SectionId))
-                    continue;
-                if (!TryGetSectionRange(track.SectionId, terminal, out OrchestrationTime start, out OrchestrationTime end))
-                {
-                    errors?.Add($"Timeline '{Name}' 轨道 '{track.Name}' 指向不存在的分段 '{track.SectionId}'。");
-                    valid = false;
-                    continue;
-                }
-                foreach (Clip clip in track.Clips)
-                    if (clip != null && (clip.StartTime < start || clip.EndTime > end))
-                    {
-                        errors?.Add($"Timeline '{Name}' 轨道 '{track.Name}' 的片段 '{clip.AuthoringId}' " +
-                            $"({clip.StartTime.AsSingle:0.###}–{clip.EndTime.AsSingle:0.###}s) 超出所属分段 " +
-                            $"{start.AsSingle:0.###}–{end.AsSingle:0.###}s。");
-                        valid = false;
-                    }
-                foreach (TimelineMarker marker in track.Markers)
-                    if (marker != null && (marker.Time < start || marker.Time > end))
-                    {
-                        errors?.Add($"Timeline '{Name}' 轨道 '{track.Name}' 的触发点 '{marker.AuthoringId}' 超出所属分段。");
-                        valid = false;
-                    }
-            }
-            return valid;
-        }
-
         public bool ValidateContent(TimelineContractCatalog catalog, List<string> errors)
         {
             if (catalog == null)
                 throw new ArgumentNullException(nameof(catalog));
             bool valid = ValidateAuthoringIdentities(errors);
-            valid &= ValidateSectionOwnership(errors);
             int count = errors?.Count ?? 0;
             catalog.Validate(this, errors);
             return valid && (errors == null || errors.Count == count);
@@ -402,15 +333,11 @@ namespace BTSMTL.Timeline
         long m_TimeFPRawValue;
 
         [SerializeField]
-        string m_NextSectionId;
-
-        [SerializeField]
         string m_BranchId;
 
         public string AuthoringId => m_AuthoringId ?? string.Empty;
         public string Name => m_Name ?? string.Empty;
         public OrchestrationTime Time => OrchestrationTime.FromRaw(m_TimeFPRawValue);
-        public string NextSectionId => m_NextSectionId ?? string.Empty;
         public string BranchId => m_BranchId?.Trim() ?? string.Empty;
 
 #if UNITY_EDITOR
@@ -428,11 +355,6 @@ namespace BTSMTL.Timeline
                 throw new ArgumentException("Timeline Section requires a name and non-negative time.");
             m_Name = value;
             m_TimeFPRawValue = time.RawValue;
-        }
-
-        public void SetNextSection(string authoringId)
-        {
-            m_NextSectionId = authoringId?.Trim() ?? string.Empty;
         }
 
         public void ConfigureBranch(string branchId)

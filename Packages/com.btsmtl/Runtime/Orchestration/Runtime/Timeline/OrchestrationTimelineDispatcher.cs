@@ -31,9 +31,6 @@ namespace BTSMTL.Orchestration
 
         TValue ReadTime();
 
-        int ReadSection(OrchestrationStateView candidate, int operationIndex,
-            ulong playbackIdentity, in TContext context);
-
         void ReleasePlayback(OrchestrationStateView candidate, int operationIndex,
             ref ulong playbackIdentity, in TContext context);
 

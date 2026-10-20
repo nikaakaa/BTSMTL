@@ -26,8 +26,7 @@ namespace BTSMTL.Compilation.Analysis
         HostInput = 2,
         RuntimeData = 3,
         StateCompletion = 4,
-        TimelineSection = 5,
-        TimelineTime = 6
+        TimelineTime = 5
     }
 
     public readonly struct OrchestrationStaticRead : IEquatable<OrchestrationStaticRead>
@@ -80,7 +79,6 @@ namespace BTSMTL.Compilation.Analysis
         Not,
         Read,
         StateRootCompleted,
-        TimelineSection,
         // 当前 Timeline 本地时刻与常量比较：本地时刻 Comparison Threshold。
         TimelineTime
     }
@@ -89,16 +87,13 @@ namespace BTSMTL.Compilation.Analysis
     {
         internal OrchestrationStaticCondition(OrchestrationStaticConditionKind kind,
             IReadOnlyList<OrchestrationStaticCondition> children, OrchestrationStaticRead read = default,
-            bool constantValue = false, string timelineIdentity = "", string sectionId = "", string frameIdentity = "",
-            OrchestrationComparisonKind comparison = default, OrchestrationTime threshold = default)
+            bool constantValue = false, OrchestrationComparisonKind comparison = default,
+            OrchestrationTime threshold = default)
         {
             Kind = kind;
             Children = children;
             Read = read;
             ConstantValue = constantValue;
-            TimelineIdentity = timelineIdentity;
-            SectionId = sectionId;
-            FrameIdentity = frameIdentity;
             Comparison = comparison;
             Threshold = threshold;
         }
@@ -110,9 +105,6 @@ namespace BTSMTL.Compilation.Analysis
         public IReadOnlyList<OrchestrationStaticCondition> Children { get; }
         public OrchestrationStaticRead Read { get; }
         public bool ConstantValue { get; }
-        public string TimelineIdentity { get; }
-        public string SectionId { get; }
-        internal string FrameIdentity { get; }
 
         public static OrchestrationStaticCondition Constant(bool value) =>
             new(OrchestrationStaticConditionKind.Constant, Array.Empty<OrchestrationStaticCondition>(), constantValue: value);
@@ -150,26 +142,6 @@ namespace BTSMTL.Compilation.Analysis
             new OrchestrationStaticCondition(OrchestrationStaticConditionKind.Not, new[] { condition });
     }
 
-    public sealed class OrchestrationStaticSection
-    {
-        internal OrchestrationStaticSection(int ordinal, string authoringId, OrchestrationTime start,
-            OrchestrationTime end, string nextSectionId)
-        {
-            Ordinal = ordinal;
-            AuthoringId = authoringId;
-            Start = start;
-            End = end;
-            NextSectionId = nextSectionId;
-        }
-
-        public int Ordinal { get; }
-        public string AuthoringId { get; }
-        public OrchestrationTime Start { get; }
-        public OrchestrationTime End { get; }
-        public string NextSectionId { get; }
-        public bool Continuable => NextSectionId.Length != 0;
-    }
-
     public sealed class OrchestrationStaticClip
     {
         internal OrchestrationStaticClip(string timelineIdentity, string clipId, string trackId,
@@ -194,43 +166,16 @@ namespace BTSMTL.Compilation.Analysis
         public bool HasGraph { get; internal set; }
         // 入口无条件执行的状态提供操作给出的状态键。
         public IReadOnlyList<string> ProvidedStateKeys => m_Provided;
-        public bool RequestsSectionContinue { get; internal set; }
-        // "进入下一分段"请求所依赖的条件读取。
-        public IReadOnlyList<OrchestrationStaticRead> ContinueReads => m_ContinueReads;
-        public IReadOnlyList<OrchestrationStaticContinueRequest> ContinueRequests => m_ContinueRequests;
         public IReadOnlyList<OrchestrationStaticRead> Reads => m_Reads;
         internal readonly List<string> m_Provided = new();
-        internal readonly List<OrchestrationStaticRead> m_ContinueReads = new();
-        internal readonly List<OrchestrationStaticContinueRequest> m_ContinueRequests = new();
         internal readonly List<OrchestrationStaticRead> m_Reads = new();
-    }
-
-    public sealed class OrchestrationStaticContinueRequest
-    {
-        internal OrchestrationStaticContinueRequest(int operationIndex, OrchestrationTimelineHook hook,
-            int timelineOperationIndex, IReadOnlyList<OrchestrationStaticRead> reads, OrchestrationStaticCondition condition)
-        {
-            OperationIndex = operationIndex;
-            Hook = hook;
-            TimelineOperationIndex = timelineOperationIndex;
-            Reads = reads;
-            Condition = condition;
-        }
-
-        public int OperationIndex { get; }
-        public OrchestrationTimelineHook Hook { get; }
-        public int TimelineOperationIndex { get; }
-        public IReadOnlyList<OrchestrationStaticRead> Reads { get; }
-        public OrchestrationStaticCondition Condition { get; }
     }
 
     public sealed class OrchestrationStaticTimeline
     {
-        internal OrchestrationStaticTimeline(TimelineContentUnit content,
-            IReadOnlyList<OrchestrationStaticSection> sections, IReadOnlyList<OrchestrationStaticClip> clips)
+        internal OrchestrationStaticTimeline(TimelineContentUnit content, IReadOnlyList<OrchestrationStaticClip> clips)
         {
             Content = content;
-            Sections = sections;
             Clips = clips;
         }
 
@@ -238,24 +183,7 @@ namespace BTSMTL.Compilation.Analysis
         public string Identity => Content.Identity;
         public OrchestrationTime Duration => Content.Duration;
         public bool Loop => Content.Loop;
-        public IReadOnlyList<OrchestrationStaticSection> Sections { get; }
         public IReadOnlyList<OrchestrationStaticClip> Clips { get; }
-
-        public OrchestrationStaticSection SectionAt(OrchestrationTime time)
-        {
-            foreach (OrchestrationStaticSection section in Sections)
-                if (section.Start <= time && time < section.End)
-                    return section;
-            return null;
-        }
-
-        public OrchestrationStaticSection Section(string authoringId)
-        {
-            foreach (OrchestrationStaticSection section in Sections)
-                if (string.Equals(section.AuthoringId, authoringId, StringComparison.Ordinal))
-                    return section;
-            return null;
-        }
     }
 
     public sealed class OrchestrationStaticTransition
@@ -310,7 +238,6 @@ namespace BTSMTL.Compilation.Analysis
         public bool HasStaticTimelineClock { get; internal set; }
         public bool HasStaticTimelineStartTime { get; internal set; }
         public OrchestrationTime TimelineStartTime { get; internal set; }
-        internal string FrameIdentity { get; set; }
         public IReadOnlyList<OrchestrationStaticTransition> Transitions => m_Transitions;
         internal readonly List<OrchestrationStaticTransition> m_Transitions = new();
     }
@@ -356,8 +283,6 @@ namespace BTSMTL.Compilation.Analysis
         readonly OrchestrationStaticSourceLocation[] m_Locations;
         readonly OrchestrationStaticSourceLocation[] m_EdgeLocations;
         readonly StateKeys[] m_StateKeys;
-        readonly string[] m_OperationInvocations;
-        readonly Dictionary<string, (string Parent, bool Timeline)> m_Invocations = new(StringComparer.Ordinal);
         readonly Dictionary<(int Operation, string Port), int> m_ConstantInputs = new();
         readonly Dictionary<int, OrchestrationStaticState> m_States = new();
         readonly Dictionary<int, int> m_MachineEntries = new();
@@ -376,7 +301,6 @@ namespace BTSMTL.Compilation.Analysis
             m_Locations = new OrchestrationStaticSourceLocation[count];
             m_EdgeLocations = new OrchestrationStaticSourceLocation[input.ControlFlow.Count];
             m_StateKeys = new StateKeys[count];
-            m_OperationInvocations = new string[count];
             for (int i = 0; i < count; i++)
             {
                 m_Outgoing[i] = new List<int>();
@@ -406,21 +330,9 @@ namespace BTSMTL.Compilation.Analysis
             foreach (ProgramSourceMapEntry entry in input.SourceMap)
             {
                 ProgramExecutionSource source = entry.Source;
-                if (source.SourceInvocationPath.Length != 0)
-                {
-                    bool timeline = source.TargetKind == ProgramSourceTargetKind.GraphInvocation &&
-                        source.InvocationCallerKind is ProgramInvocationCallerKind.TimelineClip or
-                            ProgramInvocationCallerKind.PresentationMarker or ProgramInvocationCallerKind.PresentationTreeClip;
-                    if (m_Invocations.TryGetValue(source.SourceInvocationPath, out var invocation))
-                        timeline |= invocation.Timeline;
-                    m_Invocations[source.SourceInvocationPath] = (source.ParentInvocationPath, timeline);
-                }
                 if (source.TargetKind == ProgramSourceTargetKind.Operation)
-                {
-                    m_OperationInvocations[source.TargetIndex] = source.GraphInvocationPath;
                     m_Locations[source.TargetIndex] = new OrchestrationStaticSourceLocation(source.GraphId, source.NodeId,
                         source.EdgeId, entry.DisplayPath);
-                }
                 else if (source.TargetKind == ProgramSourceTargetKind.Reference && source.EdgeId.Length != 0)
                     m_EdgeLocations[source.TargetIndex] = new OrchestrationStaticSourceLocation(source.GraphId, source.NodeId,
                         source.EdgeId, entry.DisplayPath);
@@ -479,7 +391,6 @@ namespace BTSMTL.Compilation.Analysis
             }
             foreach (OrchestrationStaticState state in m_States.Values)
             {
-                state.FrameIdentity = FrameIdentity(state.OperationIndex);
                 int timeline = FindBodyTimeline(state.OperationIndex);
                 if (timeline < 0)
                     continue;
@@ -504,14 +415,6 @@ namespace BTSMTL.Compilation.Analysis
                 if (startKnown)
                     state.TimelineStartTime = OrchestrationTime.FromSeconds(start.Number.Value);
             }
-        }
-
-        string FrameIdentity(int index)
-        {
-            string path = m_OperationInvocations[index];
-            while (m_Invocations[path].Parent.Length != 0 && !m_Invocations[path].Timeline)
-                path = m_Invocations[path].Parent;
-            return path;
         }
 
         bool IsTimelineRoot(int index, int timeline)
@@ -571,17 +474,11 @@ namespace BTSMTL.Compilation.Analysis
                 m_Timelines.Add(identity, null);
                 return null;
             }
-            var order = new List<TimelineContentSection>(content.Sections);
-            order.Sort((left, right) => left.Time.CompareTo(right.Time));
-            var sections = new List<OrchestrationStaticSection>(order.Count);
-            for (int i = 0; i < order.Count; i++)
-                sections.Add(new OrchestrationStaticSection(i, order[i].AuthoringId, order[i].Time,
-                    i + 1 < order.Count ? order[i + 1].Time : content.Duration, order[i].NextSectionId));
             var clips = new List<OrchestrationStaticClip>(content.Clips.Count);
             foreach (TimelineContentClip clip in content.Clips)
                 clips.Add(new OrchestrationStaticClip(identity, clip.AuthoringId, clip.TrackAuthoringId,
                     clip.StartTime, clip.EndTime, clip.ExecutionPolicy.Domain, clip.TrackMuted));
-            var timeline = new OrchestrationStaticTimeline(content, sections, clips);
+            var timeline = new OrchestrationStaticTimeline(content, clips);
             m_Timelines.Add(identity, timeline);
             return timeline;
         }
@@ -622,19 +519,6 @@ namespace BTSMTL.Compilation.Analysis
                     continue;
                 CollectUnconditionalProvides(entry, clip.m_Provided, new HashSet<int>(),
                     hook == OrchestrationTimelineHook.Enable);
-                foreach (int member in members)
-                    if (Operations[member].Code == OrchestrationOperationCode.TimelineSectionContinueRequest)
-                    {
-                        OrchestrationStaticCondition condition = OrchestrationStaticCondition.Combine(true,
-                            DescribePath(entry, member, members, new HashSet<int>()), DescribeInput(member, "m_When"));
-                        var reads = new List<OrchestrationStaticRead>();
-                        CollectReads(condition, reads);
-                        clip.RequestsSectionContinue = true;
-                        clip.m_ContinueRequests.Add(new OrchestrationStaticContinueRequest(member, hook,
-                            source.InvocationCallerOperationIndex, reads, condition));
-                        foreach (OrchestrationStaticRead read in reads)
-                            Add(clip.m_ContinueReads, read);
-                    }
             }
         }
 
@@ -826,8 +710,7 @@ namespace BTSMTL.Compilation.Analysis
 
         static void CollectReads(OrchestrationStaticCondition condition, List<OrchestrationStaticRead> reads)
         {
-            if (condition.Kind is OrchestrationStaticConditionKind.Read or
-                OrchestrationStaticConditionKind.StateRootCompleted or OrchestrationStaticConditionKind.TimelineSection)
+            if (condition.Kind is OrchestrationStaticConditionKind.Read or OrchestrationStaticConditionKind.StateRootCompleted)
                 Add(reads, condition.Read);
             foreach (OrchestrationStaticCondition child in condition.Children)
                 CollectReads(child, reads);
@@ -857,7 +740,7 @@ namespace BTSMTL.Compilation.Analysis
             }
             else if (code == OrchestrationOperationCode.ConditionResult)
                 result = DescribeInput(index, "m_Result");
-            else if (code is OrchestrationOperationCode.TimelineSectionContinueRequest or OrchestrationOperationCode.TimelineClipExitRequest)
+            else if (code == OrchestrationOperationCode.TimelineClipExitRequest)
                 result = OrchestrationStaticCondition.Constant(true);
             else
                 result = DescribeValue(new StaticValue(index, string.Empty, null), new HashSet<int>());
@@ -960,9 +843,6 @@ namespace BTSMTL.Compilation.Analysis
                 case OrchestrationOperationCode.Constant:
                     result = OrchestrationStaticCondition.Constant(false);
                     break;
-                case OrchestrationOperationCode.TimelineSection:
-                    result = OrchestrationStaticCondition.Negate(SectionCondition(index, index, string.Empty));
-                    break;
                 case OrchestrationOperationCode.Calculate when (GraphCalculationKind)operation.Integer0 == GraphCalculationKind.TextEqual:
                     result = DescribeTextEqual(index);
                     break;
@@ -1017,14 +897,9 @@ namespace BTSMTL.Compilation.Analysis
         {
             StaticValue a = Unwrap(Input(index, "a"));
             StaticValue b = Unwrap(Input(index, "b"));
-            bool aConstant = TryLiteral(a, out SemanticLiteral left) && left.Kind == SemanticLiteralKind.String;
-            bool bConstant = TryLiteral(b, out SemanticLiteral right) && right.Kind == SemanticLiteralKind.String;
-            if (aConstant && bConstant)
+            if (TryLiteral(a, out SemanticLiteral left) && left.Kind == SemanticLiteralKind.String &&
+                TryLiteral(b, out SemanticLiteral right) && right.Kind == SemanticLiteralKind.String)
                 return OrchestrationStaticCondition.Constant(string.Equals(left.String, right.String, StringComparison.Ordinal));
-            if (a.Operation >= 0 && Operations[a.Operation].Code == OrchestrationOperationCode.TimelineSection && bConstant)
-                return SectionCondition(index, a.Operation, right.String);
-            if (b.Operation >= 0 && Operations[b.Operation].Code == OrchestrationOperationCode.TimelineSection && aConstant)
-                return SectionCondition(index, b.Operation, left.String);
             return UnknownPredicate(index);
         }
 
@@ -1082,12 +957,6 @@ namespace BTSMTL.Compilation.Analysis
                     $"Timeline 时刻 {symbol} {seconds:0.###} 秒"), comparison: comparison,
                 threshold: OrchestrationTime.FromSeconds(seconds));
         }
-
-        OrchestrationStaticCondition SectionCondition(int index, int queryIndex, string sectionId) =>
-            new(OrchestrationStaticConditionKind.TimelineSection, Array.Empty<OrchestrationStaticCondition>(),
-                new OrchestrationStaticRead(index, OrchestrationStaticReadSource.TimelineSection,
-                    $"TimelineSection:{Operations[queryIndex].Text0}:{sectionId}", false, $"Timeline 来源分段 = {sectionId}"),
-                timelineIdentity: Operations[queryIndex].Text0, sectionId: sectionId, frameIdentity: FrameIdentity(queryIndex));
 
         static OrchestrationStaticCondition ReadCondition(in OrchestrationStaticRead read) =>
             new(OrchestrationStaticConditionKind.Read, Array.Empty<OrchestrationStaticCondition>(), read);
@@ -1148,17 +1017,12 @@ namespace BTSMTL.Compilation.Analysis
                 case OrchestrationOperationCode.BlackboardSet:
                 case OrchestrationOperationCode.TimelineEnter:
                 case OrchestrationOperationCode.TimelineClipExitRequest:
-                case OrchestrationOperationCode.TimelineSectionContinueRequest:
                     break;
                 case OrchestrationOperationCode.SubGraph:
                 case OrchestrationOperationCode.Cycle:
                     if (readsOutput)
                         Add(reads, new OrchestrationStaticRead(index, OrchestrationStaticReadSource.RuntimeData,
                             operation.Code.ToString(), false, operation.Code.ToString()));
-                    break;
-                case OrchestrationOperationCode.TimelineSection:
-                    Add(reads, new OrchestrationStaticRead(index, OrchestrationStaticReadSource.TimelineSection,
-                        $"TimelineSection:{operation.Text0}", false, $"Timeline 当前或已完成分段：{operation.Text0}"));
                     break;
                 case OrchestrationOperationCode.StateRootCompleted:
                     Add(reads, new OrchestrationStaticRead(index, OrchestrationStaticReadSource.StateCompletion,

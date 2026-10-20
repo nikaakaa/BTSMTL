@@ -221,7 +221,7 @@ namespace BTSMTL.Compilation
                 OrchestrationOperationCode.HostInput or OrchestrationOperationCode.InputVector2Magnitude or OrchestrationOperationCode.InputRequest or
                 OrchestrationOperationCode.BlackboardGet or OrchestrationOperationCode.SubGraph or OrchestrationOperationCode.StateRootCompleted or
                 OrchestrationOperationCode.StateExitCause or OrchestrationOperationCode.Cycle or OrchestrationOperationCode.TimelineTime or
-                OrchestrationOperationCode.TimelineSection or OrchestrationOperationCode.Extension;
+                OrchestrationOperationCode.Extension;
 
             sealed class ValueScheduleBuilder
             {

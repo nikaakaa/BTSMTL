@@ -442,7 +442,7 @@ namespace BTSMTL.Timeline.Editor
         {
             wantsMouseMove = true;
             s_Windows.Add(this);
-            Undo.undoRedoPerformed += QueueDoorQueryRefresh;
+            Undo.undoRedoPerformed += QueueStateQueryRefresh;
         }
 
         public void CreateGUI()
@@ -543,7 +543,7 @@ namespace BTSMTL.Timeline.Editor
             m_SlateSurface.style.flexShrink = 1f;
             m_SlateSurface.style.minHeight = 320f;
             rootVisualElement.Add(m_SlateSurface);
-            BindDoorQueries();
+            BindStateQueries();
         }
 
         void BuildUnboundView()
@@ -643,7 +643,7 @@ namespace BTSMTL.Timeline.Editor
 
         void OnDisable()
         {
-            Undo.undoRedoPerformed -= QueueDoorQueryRefresh;
+            Undo.undoRedoPerformed -= QueueStateQueryRefresh;
             if ((TimelineAssetPreviewHost.Shared.IsOpen || TimelineAssetPreviewHost.Shared.IsOpeningSession) &&
                 TimelineAssetPreviewHost.Shared.Covers(SourceAsset))
                 TimelineAssetPreviewHost.Shared.Close();
@@ -656,7 +656,7 @@ namespace BTSMTL.Timeline.Editor
         void DisposeView()
         {
             DisposeAssetPreviewBindings();
-            DisposeDoorQueryBindings();
+            DisposeStateQueryBindings();
             if (m_Timeline != null)
                 m_Timeline.OnValueChanged -= OnTimelineValueChanged;
             if (m_SlateProjection != null)
@@ -774,7 +774,7 @@ namespace BTSMTL.Timeline.Editor
 
         void OnTimelineValueChanged()
         {
-            QueueDoorQueryRefresh();
+            QueueStateQueryRefresh();
             if (m_TimeRangePreview?.IsEditing == true)
                 return;
             m_Toolbar?.SetSourceSummary(BindingState.CreateSourceSummary());

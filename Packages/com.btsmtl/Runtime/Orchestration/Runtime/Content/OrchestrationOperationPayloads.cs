@@ -50,13 +50,6 @@ namespace BTSMTL.Orchestration
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public readonly struct OrchestrationTimelineSectionPayload
-    {
-        public OrchestrationTimelineSectionPayload(int contentIdentityId) { ContentIdentityId = contentIdentityId; }
-        public readonly int ContentIdentityId;
-    }
-
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public readonly struct OrchestrationRequestPayload
     {
         public OrchestrationRequestPayload(int identityId) { IdentityId = identityId; }

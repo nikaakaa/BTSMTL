@@ -46,13 +46,6 @@ namespace BTSMTL.Orchestration
             Structure.StateOperationIndexes.Span[stateIdentityId];
         public int ValueEvaluationSlot(int operationIndex, int outputPortIndex) =>
             Structure.ValueEvaluationOffsets.Span[operationIndex] + outputPortIndex + 1;
-        public ReadOnlySpan<int> TimelineSectionCalls(int operationIndex)
-        {
-            ReadOnlySpan<int> offsets = Structure.TimelineSectionCallOffsets.Span;
-            int start = offsets[operationIndex];
-            return Structure.TimelineSectionCallIndexes.Span.Slice(start, offsets[operationIndex + 1] - start);
-        }
-        public bool RetainsTimelinePlayback(int operationIndex) => Structure.RetainedTimelineCalls.Span[operationIndex];
         public ref readonly OrchestrationOperation Operation(int operationIndex) => ref m_Operations[operationIndex];
         public ref readonly OrchestrationOperationColdData ColdOperation(int operationIndex) =>
             ref m_Content.ColdOperations.Span[operationIndex];

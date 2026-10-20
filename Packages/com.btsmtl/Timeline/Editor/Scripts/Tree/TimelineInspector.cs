@@ -317,42 +317,9 @@ namespace BTSMTL.Timeline.Editor
             EditorGUI.BeginChangeCheck();
             double seconds = Math.Max(0d, EditorGUILayout.DoubleField("Time (Seconds)", section.Time.AsSingle));
             bool timeChanged = EditorGUI.EndChangeCheck();
-            DrawSectionNext(asset, section);
             if (name == section.Name && !timeChanged)
                 return;
             ApplySectionConfiguration(asset, section, name, timeChanged ? OrchestrationTime.FromSeconds(seconds) : section.Time);
-        }
-
-        // 只能接到时间更靠后的分段；“不接”表示本段播完就收招。
-        void DrawSectionNext(TimelineAsset asset, TimelineSection section)
-        {
-            var candidates = new List<TimelineSection> { null };
-            foreach (TimelineSection candidate in asset.Data.Sections)
-                if (candidate != null && candidate.Time > section.Time)
-                    candidates.Add(candidate);
-            int current = Math.Max(0, candidates.FindIndex(candidate => candidate?.AuthoringId == section.NextSectionId));
-            string[] labels = new string[candidates.Count];
-            for (int index = 0; index < candidates.Count; index++)
-                labels[index] = candidates[index] == null ? "不接（播完收招）"
-                    : string.IsNullOrEmpty(candidates[index].Name) ? "未命名分段" : candidates[index].Name;
-            int selected = EditorGUILayout.Popup("下一分段", current, labels);
-            if (selected == current || !TryBeginMutation(asset))
-                return;
-            try
-            {
-                string next = candidates[selected]?.AuthoringId ?? string.Empty;
-                asset.Data.ApplyModify(() =>
-                {
-                    asset.Data.ConfigureSectionNext(section, next);
-                    asset.Data.Init();
-                }, "修改下一分段");
-                m_SourceRevision = TimelineAuthoringFingerprint.Compute(asset.Data);
-                m_ConfigurationError = null;
-            }
-            catch (Exception exception)
-            {
-                m_ConfigurationError = exception.Message;
-            }
         }
 
         void ApplySectionConfiguration(TimelineAsset asset, TimelineSection section, string name, OrchestrationTime time)

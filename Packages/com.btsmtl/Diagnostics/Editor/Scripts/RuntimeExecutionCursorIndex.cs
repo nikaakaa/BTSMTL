@@ -54,36 +54,14 @@ namespace BTSMTL.Diagnostics.Editor
         public string SectionId { get; }
     }
 
-    public readonly struct RuntimeExecutionCursorJump
-    {
-        internal RuntimeExecutionCursorJump(in RuntimeTraceEvent value)
-        {
-            SessionTime = value.TimeSeconds;
-            Before = value.Payload.SecondaryTime;
-            After = value.Payload.Time;
-            SourceSection = value.Payload.Detail;
-            TargetSection = value.Payload.RelatedElementId;
-            Position = value.Position;
-        }
-        public double SessionTime { get; }
-        public double Before { get; }
-        public double After { get; }
-        public string SourceSection { get; }
-        public string TargetSection { get; }
-        public ulong Position { get; }
-    }
-
     public sealed class RuntimeExecutionPlaybackCursors
     {
         internal RuntimeExecutionPlaybackCursors(RuntimeTraceDomain domain) => Domain = domain;
         public RuntimeTraceDomain Domain { get; }
         internal readonly List<RuntimeExecutionCursorSample> SampleList = new();
-        internal readonly List<RuntimeExecutionCursorJump> JumpList = new();
         public IReadOnlyList<RuntimeExecutionCursorSample> Samples => SampleList;
-        public IReadOnlyList<RuntimeExecutionCursorJump> Jumps => JumpList;
 
-        public bool TryMap(double sessionTime, double duration, bool preferAfterJump,
-            out double localTime, out string message)
+        public bool TryMap(double sessionTime, double duration, out double localTime, out string message)
         {
             localTime = 0;
             if (SampleList.Count == 0 || sessionTime < SampleList[0].SessionTime ||
@@ -101,22 +79,6 @@ namespace BTSMTL.Diagnostics.Editor
             }
             RuntimeExecutionCursorSample right = SampleList[first];
             RuntimeExecutionCursorSample left = first == 0 ? right : SampleList[first - 1];
-            bool snapped = false;
-            for (int i = 0; i < JumpList.Count; i++)
-            {
-                RuntimeExecutionCursorJump jump = JumpList[i];
-                if (jump.SessionTime != sessionTime)
-                    continue;
-                localTime = preferAfterJump ? jump.After : jump.Before;
-                snapped = true;
-                if (!preferAfterJump)
-                    break;
-            }
-            if (snapped)
-            {
-                message = "分段跳转处已吸附到所选一侧的游标。";
-                return true;
-            }
             if (right.SessionTime == sessionTime || first == 0)
             {
                 localTime = right.Cursor;
@@ -127,33 +89,6 @@ namespace BTSMTL.Diagnostics.Editor
             {
                 message = "两侧游标记录不连续，缺少中间 Tick，不能换算作者时间。";
                 return false;
-            }
-            double segmentStart = left.SessionTime, segmentStartValue = left.Cursor;
-            double segmentEnd = right.SessionTime, segmentEndValue = right.Cursor;
-            bool split = false;
-            for (int i = 0; i < JumpList.Count; i++)
-            {
-                RuntimeExecutionCursorJump jump = JumpList[i];
-                if (jump.SessionTime < left.SessionTime || jump.SessionTime > right.SessionTime)
-                    continue;
-                split = true;
-                if (jump.SessionTime < sessionTime)
-                {
-                    segmentStart = jump.SessionTime;
-                    segmentStartValue = jump.After;
-                }
-                else
-                {
-                    segmentEnd = jump.SessionTime;
-                    segmentEndValue = jump.Before;
-                    break;
-                }
-            }
-            if (split)
-            {
-                localTime = Interpolate(segmentStart, segmentStartValue, segmentEnd, segmentEndValue, sessionTime);
-                message = null;
-                return true;
             }
             double leftTime = left.Cursor + left.Cycle * duration;
             double rightTime = right.Cursor + right.Cycle * duration;
@@ -193,19 +128,6 @@ namespace BTSMTL.Diagnostics.Editor
             foreach (RuntimeExecutionPlaybackCursors cursors in m_Playbacks.Values)
                 cursors.SampleList.Sort((left, right) => left.SessionTime != right.SessionTime
                     ? left.SessionTime.CompareTo(right.SessionTime) : left.Sequence.CompareTo(right.Sequence));
-            for (int i = 0; i < timeline.Spans.Count; i++)
-            {
-                ref readonly RuntimeCaptureSpanData span = ref timeline.GetSpanData(i);
-                if (span.Start.Kind != RuntimeTraceEventKind.TimelineSectionJumped)
-                    continue;
-                var jumpKey = new RuntimeExecutionPlaybackKey(span.Start.RuntimeInstance, span.Start.ExecutionBranchId,
-                    span.Start.RuntimeEpoch, span.Start.ContentRevision, span.Start.Domain);
-                foreach (var entry in m_Playbacks)
-                    if (entry.Key.SamePlayback(in jumpKey))
-                        entry.Value.JumpList.Add(new RuntimeExecutionCursorJump(in span.Start));
-            }
-            foreach (RuntimeExecutionPlaybackCursors cursors in m_Playbacks.Values)
-                cursors.JumpList.Sort((left, right) => left.SessionTime.CompareTo(right.SessionTime));
         }
 
         public bool TryGet(in RuntimeExecutionPlaybackKey key, out RuntimeExecutionPlaybackCursors cursors) =>

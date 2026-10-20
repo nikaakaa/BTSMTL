@@ -106,7 +106,8 @@ namespace BTSMTL.Timeline.Runtime
         {
             ref readonly OrchestrationTimelinePlaybackState<TTime> playback = ref m_Playbacks[slot];
             ReadOnlySpan<TimelineSchedulingSection<TTime>> sections = Content(in playback.Start).Sections.Span;
-            return playback.Section == 0 ? -1 : sections[playback.Section - 1].SectionIndex;
+            int section = TimelineRuntimeScheduling<TTime, TClock>.SectionAt(sections, playback.Progress.CursorTime);
+            return section < 0 ? -1 : sections[section].SectionIndex;
         }
 
         OrchestrationTimelinePreparedContent<TTime> Content(in OrchestrationTimelineStart<TTime> start) =>

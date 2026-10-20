@@ -9,7 +9,6 @@ namespace BTSMTL.Diagnostics.Editor
         Clip,
         State,
         Transition,
-        SectionJump,
         PlaybackSample,
         PlaybackBoundary
     }
@@ -617,7 +616,6 @@ namespace BTSMTL.Diagnostics.Editor
                         {
                             RuntimeTraceEventKind.StateScopeEntered or RuntimeTraceEventKind.StateScopeExited => RuntimeExecutionSpanKind.State,
                             RuntimeTraceEventKind.StateTransitionSelected => RuntimeExecutionSpanKind.Transition,
-                            RuntimeTraceEventKind.TimelineSectionJumped => RuntimeExecutionSpanKind.SectionJump,
                             RuntimeTraceEventKind.TimelineLogicTime or RuntimeTraceEventKind.TimelineVisualTime => RuntimeExecutionSpanKind.PlaybackSample,
                             RuntimeTraceEventKind.TimelineStarted or RuntimeTraceEventKind.TimelineCompleted or
                                 RuntimeTraceEventKind.TimelineCancelled or RuntimeTraceEventKind.TimelineStopped => RuntimeExecutionSpanKind.PlaybackBoundary,

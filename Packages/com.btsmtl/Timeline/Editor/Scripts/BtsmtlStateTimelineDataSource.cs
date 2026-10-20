@@ -1,77 +1,72 @@
-using System;
 using System.Collections.Generic;
 using BTSMTL.Compilation.Analysis;
 
 namespace BTSMTL.Timeline.Editor
 {
+    // 状态节点时间条：每条出边一行"按键 → 目标"，只画其可走时段；随时可走的行画满整条。
     public sealed class BtsmtlStateTimelineDataSource : BtsmtlTimeBarDataSource
     {
         readonly List<BtsmtlTimeBarRow> m_Rows = new();
         readonly List<BtsmtlTimeBarItem> m_Items = new();
-        readonly Dictionary<string, BtsmtlTimeBarItem> m_Doors = new(StringComparer.Ordinal);
+        readonly Dictionary<OrchestrationStaticTransition, BtsmtlTimeBarItem> m_First = new();
         readonly TimelineOrchestrationQuery m_Context;
 
         public BtsmtlStateTimelineDataSource(TimelineOrchestrationQuery context, OrchestrationStaticState state,
             long revision)
         {
             m_Context = context;
-            Doors = TimelineStateDoors.Build(state);
+            Windows = OrchestrationStateTransitionWindows.Build(state);
             Revision = revision;
-            m_Rows.Add(new BtsmtlTimeBarRow("sections", -1, BtsmtlTimeBarItemKind.Section, "分段"));
-            m_Rows.Add(new BtsmtlTimeBarRow("doors", -1, BtsmtlTimeBarItemKind.Door, "门"));
-            m_Rows.Add(new BtsmtlTimeBarRow("jumps", -1, BtsmtlTimeBarItemKind.SectionJump, "分段跳转"));
-            OrchestrationStaticTimeline timeline = state.Timeline;
-            foreach (OrchestrationStaticSection section in timeline.Sections)
-                m_Items.Add(new BtsmtlTimeBarItem(section.AuthoringId, 0, BtsmtlTimeBarItemKind.Section,
-                    section.Start.AsSingle, section.End.AsSingle, SectionName(section.AuthoringId),
-                    $"分段：{SectionName(section.AuthoringId)}", section));
-            foreach (OrchestrationStaticClip clip in Doors.Doors)
+            float duration = state.Timeline.Duration.AsSingle;
+            foreach (OrchestrationTransitionWindow window in Windows.Windows)
             {
-                var labels = new List<string>();
-                foreach (TimelineDoorDestination destination in Doors.DestinationsOf(clip))
-                    labels.Add(destination.Kind == TimelineDoorDestinationKind.NextSection
-                        ? "→" + SectionName(destination.NextSection.AuthoringId)
-                        : destination.Label);
-                string label = string.Join("、", labels);
-                var item = new BtsmtlTimeBarItem(clip.ClipId, 1, BtsmtlTimeBarItemKind.Door,
-                    clip.Start.AsSingle, clip.End.AsSingle, label,
-                    $"门：{clip.ClipId}\n{label}\n点击定位 Timeline Clip", clip);
-                m_Doors.Add(clip.ClipId, item);
-                m_Items.Add(item);
+                int row = m_Rows.Count;
+                string id = window.Transition.Location.EdgeId;
+                m_Rows.Add(new BtsmtlTimeBarRow(id, -1, BtsmtlTimeBarItemKind.Window, window.RowLabel));
+                string tooltip = window.EdgeLabel + (window.SoleProvider != null
+                    ? $"\n提供状态的 Clip：{window.SoleProvider.ClipId}\n点击定位该 Clip"
+                    : window.Providers.Count > 1 ? $"\n由 {window.Providers.Count} 个 Clip 共同形成" : string.Empty);
+                if (window.Anytime)
+                {
+                    Add(window, new BtsmtlTimeBarItem(id, row, BtsmtlTimeBarItemKind.Window, 0, duration,
+                        window.RowLabel + " · 随时", tooltip, window));
+                    continue;
+                }
+                for (int index = 0; index < window.Intervals.Count; index++)
+                {
+                    TimelineStaticInterval interval = window.Intervals[index];
+                    Add(window, new BtsmtlTimeBarItem(id + ":" + index, row, BtsmtlTimeBarItemKind.Window,
+                        interval.Start.AsSingle, interval.End.AsSingle, window.RowLabel, tooltip, window));
+                }
             }
-            foreach (TimelineDoorDestination destination in Doors.Destinations)
-                if (destination.Kind == TimelineDoorDestinationKind.NextSection)
-                    m_Items.Add(new BtsmtlTimeBarItem(destination.Door.ClipId + ":continue", 2,
-                        BtsmtlTimeBarItemKind.SectionJump, destination.Door.Start.AsSingle,
-                        destination.NextSection.Start.AsSingle,
-                        "→" + SectionName(destination.NextSection.AuthoringId),
-                        "分段跳转：点击定位门 Clip", destination));
         }
 
-        public TimelineStateDoors Doors { get; }
+        public OrchestrationStateTransitionWindows Windows { get; }
         public override IReadOnlyList<BtsmtlTimeBarRow> Rows => m_Rows;
         public override IReadOnlyList<BtsmtlTimeBarItem> Items => m_Items;
         public override double StartTime => 0;
-        public override double EndTime => Doors.Timeline.Duration.AsSingle;
+        public override double EndTime => Windows.Timeline.Duration.AsSingle;
         public override double CurrentTime { get; set; }
         public override long Revision { get; }
 
-        public BtsmtlTimeBarItem Door(string clipId) => m_Doors[clipId];
+        // 连线从该转移的第一段可走时段出发；无共同时段时为 null。
+        public BtsmtlTimeBarItem Item(OrchestrationStaticTransition transition) =>
+            m_First.TryGetValue(transition, out BtsmtlTimeBarItem item) ? item : null;
 
         public override void Navigate(BtsmtlTimeBarItem item)
         {
-            if (item.Context is OrchestrationStaticClip clip)
-                m_Context.OpenClip(clip.TimelineIdentity, clip.ClipId);
-            else if (item.Context is TimelineDoorDestination destination)
-                m_Context.OpenClip(destination.Door.TimelineIdentity, destination.Door.ClipId);
+            if (item.Context is not OrchestrationTransitionWindow window)
+                return;
+            if (window.SoleProvider != null)
+                m_Context.OpenClip(window.SoleProvider.TimelineIdentity, window.SoleProvider.ClipId);
+            else
+                m_Context.OpenTransition(window.Transition.Location);
         }
 
-        string SectionName(string identity)
+        void Add(OrchestrationTransitionWindow window, BtsmtlTimeBarItem item)
         {
-            foreach (TimelineSection section in m_Context.ResolveTimeline(Doors.Timeline.Identity).Data.Sections)
-                if (section.AuthoringId == identity)
-                    return section.Name;
-            return identity;
+            m_Items.Add(item);
+            m_First.TryAdd(window.Transition, item);
         }
     }
 }

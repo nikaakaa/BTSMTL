@@ -27,37 +27,16 @@ namespace BTSMTL.Timeline.Runtime
         public bool DeclaredEnd { get; }
     }
 
-    // 按起点排序；End 为下一分段起点或 Timeline 终点，NextSectionIndex 指向本数组中的下一段。
     public readonly struct TimelineSchedulingSection<TTime> where TTime : unmanaged
     {
-        public TimelineSchedulingSection(int sectionIndex, TTime time, TTime end, int nextSectionIndex)
+        public TimelineSchedulingSection(int sectionIndex, TTime time)
         {
             SectionIndex = sectionIndex;
             Time = time;
-            End = end;
-            NextSectionIndex = nextSectionIndex;
         }
 
         public int SectionIndex { get; }
         public TTime Time { get; }
-        public TTime End { get; }
-        public int NextSectionIndex { get; }
-        public bool Continuable => NextSectionIndex >= 0;
-    }
-
-    // 本次遍历的分段边界：Jumped 表示从 From 跳到遍历起点；SectionEnd 表示遍历终点是可继续分段的终点（不含终点处开始的内容）。
-    public readonly struct TimelineSchedulingJump<TTime> where TTime : unmanaged
-    {
-        public TimelineSchedulingJump(bool jumped, TTime from, bool sectionEnd)
-        {
-            Jumped = jumped;
-            From = from;
-            SectionEnd = sectionEnd;
-        }
-
-        public bool Jumped { get; }
-        public TTime From { get; }
-        public bool SectionEnd { get; }
     }
 
     public readonly struct TimelineSchedulingMarker<TTime> where TTime : unmanaged
@@ -184,51 +163,41 @@ namespace BTSMTL.Timeline.Runtime
         }
 
         public int Boundaries(TimelineRuntimeBoundaryIndex<TTime> index,
-            ReadOnlySpan<TimelineSchedulingSection<TTime>> sections, TTime startTime,
             TTime previousTime, int previousCycle, TTime nextTime, int nextCycle,
             TTime duration, bool loop, bool initialBoundary,
             TimelineTreeExitView exited,
             ReadOnlySpan<OrchestrationTimelineClipOccurrence> pending,
             Span<TimelineSchedulingBoundary<TTime>> output,
-            Span<TimelineSchedulingBoundary<TTime>> synthetic,
-            in TimelineSchedulingJump<TTime> jump = default)
+            Span<TimelineSchedulingBoundary<TTime>> synthetic)
         {
             TClock clock = default;
             if (!clock.GreaterThan(duration, clock.Zero))
                 return 0;
-            if (jump.Jumped)
-                initialBoundary = true;
             ReadOnlySpan<TimelineSchedulingClip<TTime>> clips = index.Clips.Span;
-            int jumpCount = jump.Jumped ? JumpExits(index, sections, startTime,
-                jump.From, previousTime, previousCycle, exited, synthetic) : 0;
             TTime previousAbsolute = clock.Add(clock.Multiply(duration, clock.FromInt32(previousCycle)), previousTime);
             TTime nextAbsolute = clock.Add(clock.Multiply(duration, clock.FromInt32(nextCycle)), nextTime);
             bool advances = clock.GreaterThan(nextAbsolute, previousAbsolute);
             int initialCount = 0;
             if (advances && initialBoundary)
             {
-                int position = index.FindNext<TClock>(0, previousTime, !jump.Jumped);
+                int position = index.FindNext<TClock>(0, previousTime, true);
                 while (position >= 0)
                 {
                     int ordinal = index.StableOrder.Span[position];
                     ref readonly TimelineSchedulingClip<TTime> clip = ref clips[ordinal];
-                    bool enter = jump.Jumped ? clock.GreaterThan(clip.Start, jump.From)
-                        : InitialClipAvailable(in clip, sections, previousTime);
-                    if (clock.GreaterThan(previousTime, clip.Start) && enter)
-                        synthetic[jumpCount + initialCount++] = new TimelineSchedulingBoundary<TTime>(ordinal,
+                    if (clock.GreaterThan(previousTime, clip.Start))
+                        synthetic[initialCount++] = new TimelineSchedulingBoundary<TTime>(ordinal,
                             clip.SortOrdinal, previousTime, previousCycle, true);
-                    position = index.FindNext<TClock>(position + 1, previousTime, !jump.Jumped);
+                    position = index.FindNext<TClock>(position + 1, previousTime, true);
                 }
             }
             var ordinary = new BoundaryCursor(index, previousTime, previousCycle, nextTime, nextCycle,
-                duration, loop, initialBoundary, advances, exited, jump.SectionEnd);
+                duration, loop, initialBoundary, advances, exited);
             bool hasOrdinary = ordinary.MoveNext();
             int pendingIndex = 0;
-            int jumpIndex = 0;
             int initialIndex = 0;
             int count = 0;
-            while (pendingIndex < pending.Length || jumpIndex < jumpCount ||
-                initialIndex < initialCount || hasOrdinary)
+            while (pendingIndex < pending.Length || initialIndex < initialCount || hasOrdinary)
             {
                 int stream = -1;
                 TimelineSchedulingBoundary<TTime> next = default;
@@ -240,19 +209,16 @@ namespace BTSMTL.Timeline.Runtime
                             clock.FromInt32(nextCycle - occurrence.Cycle))), occurrence.Cycle, false);
                     stream = 0;
                 }
-                if (jumpIndex < jumpCount)
-                    SelectNext(in synthetic[jumpIndex], 1, ref next, ref stream);
                 if (initialIndex < initialCount)
-                    SelectNext(in synthetic[jumpCount + initialIndex], 2, ref next, ref stream);
+                    SelectNext(in synthetic[initialIndex], 1, ref next, ref stream);
                 if (hasOrdinary)
-                    SelectNext(in ordinary.Current, 3, ref next, ref stream);
+                    SelectNext(in ordinary.Current, 2, ref next, ref stream);
                 output[count++] = next;
                 switch (stream)
                 {
                     case 0: pendingIndex++; break;
-                    case 1: jumpIndex++; break;
-                    case 2: initialIndex++; break;
-                    case 3: hasOrdinary = ordinary.MoveNext(); break;
+                    case 1: initialIndex++; break;
+                    case 2: hasOrdinary = ordinary.MoveNext(); break;
                 }
             }
             return count;
@@ -278,7 +244,6 @@ namespace BTSMTL.Timeline.Runtime
             readonly int m_NextCycle;
             readonly int m_LastCycle;
             readonly bool m_Initial;
-            readonly bool m_SectionEnd;
             readonly TimelineTreeExitView m_Exits;
             long m_Cycle;
             int m_Start;
@@ -287,7 +252,7 @@ namespace BTSMTL.Timeline.Runtime
 
             internal BoundaryCursor(TimelineRuntimeBoundaryIndex<TTime> index,
                 TTime previous, int previousCycle, TTime next, int nextCycle, TTime duration,
-                bool loop, bool initial, bool advances, TimelineTreeExitView exits, bool sectionEnd)
+                bool loop, bool initial, bool advances, TimelineTreeExitView exits)
             {
                 m_Index = index;
                 m_Previous = previous;
@@ -297,7 +262,6 @@ namespace BTSMTL.Timeline.Runtime
                 m_NextCycle = nextCycle;
                 m_LastCycle = advances ? loop ? nextCycle : 0 : -1;
                 m_Initial = initial;
-                m_SectionEnd = sectionEnd;
                 m_Exits = exits;
                 m_Cycle = loop ? previousCycle : 0;
                 m_Start = 0;
@@ -326,8 +290,7 @@ namespace BTSMTL.Timeline.Runtime
                         ref readonly TimelineSchedulingClip<TTime> clip = ref clips[ordinal];
                         if (clock.GreaterThan(clip.Start, to))
                             break;
-                        if (!(m_SectionEnd && m_Cycle == m_NextCycle && clock.Equal(clip.Start, to)) &&
-                            (!clip.TreeDecision || !m_Exits.Requested(ordinal, m_Cycle)))
+                        if (!clip.TreeDecision || !m_Exits.Requested(ordinal, m_Cycle))
                             break;
                         m_Start++;
                     }
@@ -374,42 +337,10 @@ namespace BTSMTL.Timeline.Runtime
             return lower - 1;
         }
 
-        public static bool InitialClipAvailable(in TimelineSchedulingClip<TTime> clip,
-            ReadOnlySpan<TimelineSchedulingSection<TTime>> sections, TTime startTime)
-        {
-            TClock clock = default;
-            int section = SectionAt(sections, startTime);
-            return section < 0 || clock.LessThanOrEqual(sections[section].Time, clip.Start) ||
-                clock.GreaterThan(clip.End, startTime);
-        }
-
-        // 跳转处退出：离开时刻生效、但不覆盖目标起点的 Clip 在目标起点按稳定顺序退出；已有退出请求的决策 Clip 由原请求退出。
-        static int JumpExits(TimelineRuntimeBoundaryIndex<TTime> index,
-            ReadOnlySpan<TimelineSchedulingSection<TTime>> sections, TTime startTime,
-            TTime from, TTime to, int cycle,
-            TimelineTreeExitView exited,
-            Span<TimelineSchedulingBoundary<TTime>> output)
-        {
-            TClock clock = default;
-            int count = 0;
-            ReadOnlySpan<TimelineSchedulingClip<TTime>> clips = index.Clips.Span;
-            int position = index.FindNext<TClock>(0, from, true);
-            while (position >= 0)
-            {
-                int ordinal = index.StableOrder.Span[position];
-                ref readonly TimelineSchedulingClip<TTime> clip = ref clips[ordinal];
-                if (Active(in clip, ordinal, from, cycle, exited, sections, startTime) &&
-                    clock.LessThanOrEqual(clip.End, to) && (!clip.TreeDecision || !exited.Pending(ordinal, cycle)))
-                    output[count++] = new TimelineSchedulingBoundary<TTime>(ordinal, clip.SortOrdinal, to, cycle, false);
-                position = index.FindNext<TClock>(position + 1, from, true);
-            }
-            return count;
-        }
-
         public int Markers(ReadOnlySpan<TimelineSchedulingMarker<TTime>> markers,
             TTime previousTime, int previousCycle, TTime nextTime, int nextCycle,
             TTime duration, bool includeStart,
-            Span<TimelineScheduledInvocation<TTime>> output, bool sectionEnd = false)
+            Span<TimelineScheduledInvocation<TTime>> output)
         {
             TClock clock = default;
             if (!clock.GreaterThan(duration, clock.Zero))
@@ -424,8 +355,7 @@ namespace BTSMTL.Timeline.Runtime
                 {
                     ref readonly TimelineSchedulingMarker<TTime> marker = ref markers[i];
                     if ((!clock.GreaterThan(marker.Time, from) && !(include && clock.Equal(marker.Time, from))) ||
-                        clock.GreaterThan(marker.Time, to) ||
-                        sectionEnd && cycle == nextCycle && clock.Equal(marker.Time, to))
+                        clock.GreaterThan(marker.Time, to))
                         continue;
                     output[count++] = new TimelineScheduledInvocation<TTime>(marker.Ordinal, i,
                         true, OrchestrationTimelineHook.Enable, marker.Time, marker.Time,
@@ -439,7 +369,7 @@ namespace BTSMTL.Timeline.Runtime
             ReadOnlySpan<TimelineSchedulingBoundary<TTime>> boundaries,
             ReadOnlySpan<TimelineSchedulingBoundary<TTime>> previousActive,
             TTime previousTime, int previousCycle, TTime nextTime, int nextCycle,
-            TTime duration, bool loop, bool jumped,
+            TTime duration, bool loop,
             TimelineTreeExitView exited,
             Span<bool> selected, Span<int> selectedOrdinals, ref int selectedCount,
             TimelineScheduledInvocation<TTime>[] output, int offset)
@@ -450,8 +380,7 @@ namespace BTSMTL.Timeline.Runtime
                 selected[selectedOrdinals[i]] = false;
             selectedCount = 0;
             foreach (ref readonly TimelineSchedulingBoundary<TTime> occurrence in previousActive)
-                if (occurrence.Cycle == previousCycle &&
-                    (!jumped || clock.GreaterThan(clips[occurrence.ClipOrdinal].End, previousTime)))
+                if (occurrence.Cycle == previousCycle)
                     SelectTree(occurrence.ClipOrdinal, selected, selectedOrdinals, ref selectedCount);
             Span<TimelineScheduledInvocation<TTime>> result = output.AsSpan(offset);
             for (int i = 0; i < boundaries.Length; i++)
@@ -575,13 +504,10 @@ namespace BTSMTL.Timeline.Runtime
         }
 
         public static bool Active(in TimelineSchedulingClip<TTime> clip, int ordinal,
-            TTime time, int cycle, TimelineTreeExitView exited,
-            ReadOnlySpan<TimelineSchedulingSection<TTime>> sections, TTime startTime, bool sectionEnd = false)
+            TTime time, int cycle, TimelineTreeExitView exited)
         {
             TClock clock = default;
             return clip.Enabled && clock.LessThanOrEqual(clip.Start, time) &&
-                !(sectionEnd && clock.Equal(clip.Start, time)) &&
-                (cycle > 0 || InitialClipAvailable(in clip, sections, startTime)) &&
                 (clip.TreeDecision ? !exited.Exited(ordinal, cycle) : clock.GreaterThan(clip.End, time));
         }
 

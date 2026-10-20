@@ -24,7 +24,7 @@ namespace BTSMTL.Timeline.Editor
         [SerializeField] string[] m_CurveTrackAuthoringIds;
         [SerializeField] BtsmtlSlateTimelineTrackHeight[] m_TrackHeights;
         [SerializeField] BtsmtlSlateTimelineInspection[] m_InspectedParameters;
-        [SerializeField] string[] m_CollapsedGroupIds;
+        [SerializeField] bool m_GroupCollapsed;
         [SerializeField] bool m_DisplayFrames;
         [SerializeField] TimelineAuthoringSnapMode m_SnapMode;
         [SerializeField] float m_SecondsInterval;
@@ -37,7 +37,7 @@ namespace BTSMTL.Timeline.Editor
             Vector2 scrollPosition,
             string trackAuthoringId,
             string clipAuthoringId,
-            IEnumerable<string> collapsedGroupIds,
+            bool groupCollapsed,
             IEnumerable<string> curveTrackAuthoringIds = null,
             IEnumerable<BtsmtlSlateTimelineTrackHeight> trackHeights = null,
             string sectionAuthoringId = null,
@@ -65,9 +65,7 @@ namespace BTSMTL.Timeline.Editor
             m_InspectedParameters = inspectedParameters == null
                 ? Array.Empty<BtsmtlSlateTimelineInspection>()
                 : inspectedParameters.Where(value => !string.IsNullOrEmpty(value.InspectionKey) && !string.IsNullOrEmpty(value.ParameterId)).ToArray();
-            m_CollapsedGroupIds = collapsedGroupIds == null
-                ? Array.Empty<string>()
-                : collapsedGroupIds.Where(value => !string.IsNullOrEmpty(value)).Distinct(StringComparer.Ordinal).ToArray();
+            m_GroupCollapsed = groupCollapsed;
             m_DisplayFrames = displayFrames;
             m_SnapMode = snapMode;
             m_SecondsInterval = secondsInterval;
@@ -85,7 +83,7 @@ namespace BTSMTL.Timeline.Editor
         public IReadOnlyList<string> CurveTrackAuthoringIds => m_CurveTrackAuthoringIds ?? Array.Empty<string>();
         public IReadOnlyList<BtsmtlSlateTimelineTrackHeight> TrackHeights => m_TrackHeights ?? Array.Empty<BtsmtlSlateTimelineTrackHeight>();
         public IReadOnlyList<BtsmtlSlateTimelineInspection> InspectedParameters => m_InspectedParameters ?? Array.Empty<BtsmtlSlateTimelineInspection>();
-        public IReadOnlyList<string> CollapsedGroupIds => m_CollapsedGroupIds ?? Array.Empty<string>();
+        public bool GroupCollapsed => m_GroupCollapsed;
         public bool DisplayFrames => m_DisplayFrames;
         public TimelineAuthoringSnapMode SnapMode => m_SnapMode;
         public float SecondsInterval => m_SecondsInterval;
@@ -94,22 +92,6 @@ namespace BTSMTL.Timeline.Editor
                                     !string.IsNullOrEmpty(ClipAuthoringId) ||
                                     !string.IsNullOrEmpty(MarkerAuthoringId) ||
                                     !string.IsNullOrEmpty(SectionAuthoringId);
-    }
-
-    public readonly struct TimelineSectionContinueWindow
-    {
-        public TimelineSectionContinueWindow(string trackId, string clipId, float startTime, float endTime)
-        {
-            TrackId = trackId ?? string.Empty;
-            ClipId = clipId ?? string.Empty;
-            StartTime = startTime;
-            EndTime = endTime;
-        }
-
-        public string TrackId { get; }
-        public string ClipId { get; }
-        public float StartTime { get; }
-        public float EndTime { get; }
     }
 
     public readonly struct TimelinePreviewMark
@@ -124,23 +106,6 @@ namespace BTSMTL.Timeline.Editor
         public float Time { get; }
         public string Label { get; }
         public string Tooltip { get; }
-    }
-
-    public readonly struct TimelineClipDestination
-    {
-        public TimelineClipDestination(string label, Action activate, string previewLabel, Action preview)
-        {
-            Label = label ?? string.Empty;
-            Activate = activate;
-            PreviewLabel = previewLabel ?? string.Empty;
-            Preview = preview;
-        }
-
-        public string Label { get; }
-        public Action Activate { get; }
-        // 一键把输入日程排成"在此走这条去向"并从头播放资产预览。
-        public string PreviewLabel { get; }
-        public Action Preview { get; }
     }
 
     [Serializable]
@@ -204,7 +169,6 @@ namespace BTSMTL.Timeline.Editor
             m_Binding.AuthoringIssue += OnBindingIssue;
             m_Binding.RepaintRequested += OnBindingRepaint;
             m_Binding.ResourceChanged += QueueRebuildBinding;
-            m_Binding.ConfigureSectionFocus(id => FocusSectionGroup(id));
             UnityEditor.Selection.activeObject = request.SerializedOwner;
             m_EmbeddedEditor = ScriptableObject.CreateInstance<CutsceneEditorSurface>();
             m_EmbeddedEditor.InitializeEmbedded(m_Binding, EmbeddedRepaint);
@@ -225,25 +189,6 @@ namespace BTSMTL.Timeline.Editor
         }
         public event Action<TimelineEditorSelection> SelectionChanged;
         public float CurrentTime => m_Binding.CurrentTime;
-        public void SetAuthoringDestinations(
-            IReadOnlyDictionary<string, IReadOnlyList<TimelineClipDestination>> clipDestinations,
-            IReadOnlyList<TimelineSectionContinueWindow> continueWindows)
-        {
-            var labels = new Dictionary<string, string>(StringComparer.Ordinal);
-            var links = new Dictionary<string, IReadOnlyList<EmbeddedTimelineGroupLink>>(StringComparer.Ordinal);
-            foreach (KeyValuePair<string, IReadOnlyList<TimelineClipDestination>> pair in clipDestinations)
-            {
-                labels[pair.Key] = "→ " + string.Join(" · ", pair.Value.Select(value => value.Label));
-                links[pair.Key] = pair.Value.Select(value => new EmbeddedTimelineGroupLink(value.Label, false, 0f, 0f, value.Activate))
-                    .Concat(pair.Value.Where(value => value.Preview != null)
-                        .Select(value => new EmbeddedTimelineGroupLink(value.PreviewLabel, false, 0f, 0f, value.Preview)))
-                    .ToArray();
-            }
-            m_Binding.SetAuthoringClipDestinations(labels, links);
-            m_Binding.SetSectionContinueWindows(continueWindows);
-            m_EmbeddedEditor.RequestEmbeddedRepaint();
-        }
-
         public void SetPreviewPath(string source, IReadOnlyList<Vector2> visited, IReadOnlyList<TimelinePreviewMark> marks,
             IReadOnlyList<TimelinePreviewMark> inputs, Action<int, float> moveInput)
         {
@@ -252,17 +197,6 @@ namespace BTSMTL.Timeline.Editor
                 inputs.Select(input => new EmbeddedTimelinePreviewMark(input.Time, input.Label, input.Tooltip)).ToArray(),
                 moveInput));
             m_EmbeddedEditor.RequestEmbeddedRepaint();
-        }
-
-        public bool FocusSectionGroup(string sectionAuthoringId)
-        {
-            foreach (IEmbeddedTimelineGroupBinding group in m_Binding.Groups)
-                if (group.HasTimeRange && group.AuthoringId == sectionAuthoringId)
-                {
-                    m_EmbeddedEditor.FocusEmbeddedGroup(group);
-                    return true;
-                }
-            return false;
         }
         public event Action<string> AuthoringIssue;
 
@@ -322,7 +256,7 @@ namespace BTSMTL.Timeline.Editor
                 .CaptureEmbeddedInspectedParameters()
                 .Select(value => new BtsmtlSlateTimelineInspection(value.Key, value.Value))
                 .ToArray();
-            string[] collapsed = m_Binding.CollapsedGroupIds.ToArray();
+            bool collapsed = m_Binding.Groups.Count != 0 && m_Binding.Groups[0].IsCollapsed;
             return new BtsmtlSlateTimelineViewState(
                 m_Binding.ViewTimeMin,
                 m_Binding.ViewTimeMax,
@@ -354,7 +288,8 @@ namespace BTSMTL.Timeline.Editor
                 m_Session.ConfigureSecondsInterval(state.SecondsInterval);
             m_Session.ConfigureGrid(state.GridPipeline, state.SnapMode);
             m_Binding.CurrentTime = state.CurrentTime;
-            m_Binding.SetCollapsedGroups(state.CollapsedGroupIds);
+            if (m_Binding.Groups.Count != 0)
+                m_Binding.Groups[0].IsCollapsed = state.GroupCollapsed;
             var expandedTracks = new HashSet<string>(state.CurveTrackAuthoringIds, StringComparer.Ordinal);
             foreach (IEmbeddedTimelineGroupBinding group in m_Binding.Groups)
                 foreach (IEmbeddedTimelineTrackBinding track in group.Tracks)

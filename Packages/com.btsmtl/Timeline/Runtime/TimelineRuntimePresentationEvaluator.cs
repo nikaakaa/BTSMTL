@@ -12,9 +12,7 @@ namespace BTSMTL.Timeline.Runtime
             OrchestrationTime currentPosition,
             int currentCycle,
             TimelinePresentationSampleReason reason,
-            TimelineRuntimePresentationBuffer buffer,
-            bool traversalOnly = false,
-            bool sectionEnd = false)
+            TimelineRuntimePresentationBuffer buffer)
         {
             TimelineContentUnit content = preparedContent.Content;
             var selected = buffer.SamplingClips;
@@ -29,32 +27,18 @@ namespace BTSMTL.Timeline.Runtime
                 {
                     TimelineRuntimeIndexedClip indexed = sampled[selected[selectedIndex]];
                     TimelineContentClip clip = indexed.Clip;
-                    if (sectionEnd && cycle == currentCycle && clip.StartTime == to)
-                        continue;
                     if (clip.Sampling.Window == TimelineSampleWindow.TraversalWindow)
                     {
                         if (clip.EndTime == from && from != to)
                             continue;
                     }
-                    else if (traversalOnly || cycle != currentCycle ||
+                    else if (cycle != currentCycle ||
                         clip.EndTime < to && clip.Sampling.Extrapolation != ExtraPolationMode.Hold)
                         continue;
                     if (preparedContent.ClipSampling.TrySample(in clip, indexed.ContentIndex, from, to, cycle, reason, out var sample))
                         buffer.Samples[sample.KindIndex].Add(sample);
                 }
             }
-        }
-
-        internal static bool IsSectionEnd(TimelineRuntimePreparedContent preparedContent,
-            OrchestrationTime time, TimelinePresentationSampleReason reason)
-        {
-            if (reason != TimelinePresentationSampleReason.Completed)
-                return false;
-            foreach (TimelineSchedulingSection<OrchestrationTime> section in
-                     preparedContent.Scheduling(TimelineExecutionDomain.Presentation).Sections.Span)
-                if (section.Continuable && section.End == time)
-                    return true;
-            return false;
         }
     }
 
@@ -83,7 +67,7 @@ namespace BTSMTL.Timeline.Runtime
         {
             m_Buffer.Clear();
             TimelineRuntimePresentationEvaluator.Evaluate(m_Prepared, time, cycle, time, cycle,
-                reason, m_Buffer, sectionEnd: TimelineRuntimePresentationEvaluator.IsSectionEnd(m_Prepared, time, reason));
+                reason, m_Buffer);
             return m_Buffer.Samples[kindIndex].View;
         }
 
@@ -92,7 +76,7 @@ namespace BTSMTL.Timeline.Runtime
         {
             m_Buffer.Clear();
             TimelineRuntimePresentationEvaluator.Evaluate(m_Prepared, time, cycle, time, cycle,
-                reason, m_Buffer, sectionEnd: TimelineRuntimePresentationEvaluator.IsSectionEnd(m_Prepared, time, reason));
+                reason, m_Buffer);
             return new TimelineRuntimePresentationOperations(m_Buffer);
         }
     }

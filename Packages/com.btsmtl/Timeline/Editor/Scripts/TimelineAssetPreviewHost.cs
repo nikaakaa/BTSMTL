@@ -533,7 +533,7 @@ namespace BTSMTL.Timeline.Editor
             else
             {
                 var inputs = new TimelineAssetPreviewReadIntervals(Preferences, m_Instance.Inputs, InputRequests);
-                Chain = TimelineStaticChain.Build(m_EntryState, Preferences.StartingSectionId,
+                Chain = TimelineStaticChain.Build(m_EntryState,
                     OrchestrationTime.FromSeconds(Preferences.RangeEnd), inputs);
                 OrchestrationStaticTransition entry = null;
                 foreach (TimelineStaticChainSpan span in Chain.Spans)
@@ -544,7 +544,7 @@ namespace BTSMTL.Timeline.Editor
                         span.Start, span.End, span.LocalStart, span.LocalEnd, span.Cycle, entry, span.State, span.PlaybackCompleted));
                     entry = null;
                     foreach (TimelineStaticChainMarker marker in Chain.Markers)
-                        if (marker.Time == span.End && !marker.IsSectionJump)
+                        if (marker.Time == span.End)
                             entry = marker.Transition;
                 }
                 foreach (OrchestrationStaticState state in m_Query.Query.States)
@@ -567,34 +567,20 @@ namespace BTSMTL.Timeline.Editor
             TimelineContentUnit content = prepared.Content.Content;
             if (content.Loop && content.Duration <= OrchestrationTime.Zero)
                 throw new InvalidOperationException("循环资产预览的 Timeline 时长必须大于零。");
-            OrchestrationTime local = Preferences.StartingSectionId.Length == 0 ? OrchestrationTime.Zero
-                : content.Sections.First(section => section.AuthoringId == Preferences.StartingSectionId).Time;
             OrchestrationTime limit = OrchestrationTime.FromSeconds(Preferences.RangeEnd);
             OrchestrationTime global = OrchestrationTime.Zero;
-            OrchestrationTime[] boundaries = content.Sections.Select(section => section.Time)
-                .Append(content.Duration).Distinct().OrderBy(time => time).ToArray();
             int cycle = 0;
             do
             {
-                TimelineContentSection currentSection = content.Sections.LastOrDefault(section => section.Time <= local);
-                OrchestrationTime boundary = content.Duration;
-                foreach (OrchestrationTime next in boundaries)
-                    if (next > local) { boundary = next; break; }
-                OrchestrationTime end = OrchestrationTime.Min(global + boundary - local, limit);
+                OrchestrationTime end = OrchestrationTime.Min(global + content.Duration, limit);
+                OrchestrationTime localEnd = end - global;
                 m_Traversals.Add(new TimelineAssetPreviewTraversal(Source, prepared.Content,
-                    global, end, local, local + end - global, cycle, null, null,
-                    !content.Loop && local + end - global == boundary &&
-                    (currentSection.NextSectionId?.Length > 0 || boundary == content.Duration)));
-                local += end - global;
+                    global, end, OrchestrationTime.Zero, localEnd, cycle, null, null,
+                    !content.Loop && localEnd == content.Duration));
                 global = end;
-                if (global == limit || currentSection.NextSectionId?.Length > 0 ||
-                    local == content.Duration && !content.Loop)
+                if (!content.Loop)
                     break;
-                if (local == content.Duration)
-                {
-                    local = OrchestrationTime.Zero;
-                    cycle++;
-                }
+                cycle++;
             } while (global < limit);
         }
 
@@ -602,7 +588,7 @@ namespace BTSMTL.Timeline.Editor
         {
             foreach (OrchestrationStaticRead value in reads)
             {
-                OrchestrationStaticReadSource source = timeline == null ? value.Source : TimelineDoorReads.EffectiveSource(timeline, in value);
+                OrchestrationStaticReadSource source = timeline == null ? value.Source : OrchestrationStaticReads.EffectiveSource(timeline, in value);
                 if (source == OrchestrationStaticReadSource.RuntimeData && !m_Assumptions.Contains(value))
                     m_Assumptions.Add(value);
             }

@@ -17,10 +17,7 @@ namespace BTSMTL.Orchestration
             ReadOnlyMemory<int> stateRootEdges,
             ReadOnlyMemory<int> stateOnExitEdges,
             ReadOnlyMemory<int> valueEvaluationOffsets,
-            ReadOnlyMemory<int> stateOperationIndexes,
-            ReadOnlyMemory<int> timelineSectionCallOffsets,
-            ReadOnlyMemory<int> timelineSectionCallIndexes,
-            ReadOnlyMemory<bool> retainedTimelineCalls)
+            ReadOnlyMemory<int> stateOperationIndexes)
         {
             OutgoingEdgeIndexes = outgoingEdgeIndexes;
             OutgoingOffsets = outgoingOffsets;
@@ -31,9 +28,6 @@ namespace BTSMTL.Orchestration
             StateOnExitEdges = stateOnExitEdges;
             ValueEvaluationOffsets = valueEvaluationOffsets;
             StateOperationIndexes = stateOperationIndexes;
-            TimelineSectionCallOffsets = timelineSectionCallOffsets;
-            TimelineSectionCallIndexes = timelineSectionCallIndexes;
-            RetainedTimelineCalls = retainedTimelineCalls;
         }
 
         public ReadOnlyMemory<int> OutgoingEdgeIndexes { get; }
@@ -45,8 +39,5 @@ namespace BTSMTL.Orchestration
         public ReadOnlyMemory<int> StateOnExitEdges { get; }
         public ReadOnlyMemory<int> ValueEvaluationOffsets { get; }
         public ReadOnlyMemory<int> StateOperationIndexes { get; }
-        public ReadOnlyMemory<int> TimelineSectionCallOffsets { get; }
-        public ReadOnlyMemory<int> TimelineSectionCallIndexes { get; }
-        public ReadOnlyMemory<bool> RetainedTimelineCalls { get; }
     }
 }

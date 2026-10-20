@@ -30,57 +30,6 @@ namespace BTSMTL.Orchestration
                 ref OperationState(operationIndex).TimelineRuntimeHandle, in context,
                 force, m_Input.Tick, ref m_Context);
 
-        void ReadTimelineSection(int operationIndex, ref TValue value)
-        {
-            int selected = -1;
-            ulong playbackIdentity = 0;
-            foreach (int callIndex in m_Program.TimelineSectionCalls(operationIndex))
-            {
-                int state = m_Program.Operation(callIndex).ParentStateOperationIndex;
-                if (!IsTimelineQueryStateActive(state))
-                    continue;
-                ulong handle = ReadOperationState(callIndex).TimelineRuntimeHandle;
-                if (handle > playbackIdentity)
-                {
-                    selected = callIndex;
-                    playbackIdentity = handle;
-                }
-            }
-            int section = selected < 0 ? 0 : m_TimelineDispatcher.ReadSection(
-                m_TimelineState, selected, playbackIdentity, in m_Context);
-            value = default(TValues).FromIdentity(OrchestrationIdentityValue.Content(section));
-        }
-
-        bool IsTimelineQueryStateActive(int stateOperationIndex)
-        {
-            for (int state = stateOperationIndex; state >= 0;
-                state = m_Program.Operation(state).ParentStateOperationIndex)
-            {
-                OrchestrationStatePayload statePayload = m_Program.Payload<OrchestrationStatePayload>(state);
-                if (ReadOperationState(statePayload.MachineIndex).ActiveStateIdentityId != statePayload.Identity.IdentityId)
-                    return false;
-            }
-            return true;
-        }
-
-        void ReleaseCompletedStateTimelines(int stateOperationIndex)
-        {
-            int owner = m_Program.Operation(stateOperationIndex).ExecutionFrameOwnerOperationIndex;
-            for (int operationIndex = 0; operationIndex < m_Program.OperationCount; operationIndex++)
-            {
-                ref readonly OrchestrationOperation operation = ref m_Program.Operation(operationIndex);
-                if (!m_Program.RetainsTimelinePlayback(operationIndex) ||
-                    operation.ExecutionFrameOwnerOperationIndex != owner ||
-                    ReadStatus(operationIndex) != OrchestrationOperationStatus.Success)
-                    continue;
-                int state = operation.ParentStateOperationIndex;
-                while (state >= 0 && state != stateOperationIndex)
-                    state = m_Program.Operation(state).ParentStateOperationIndex;
-                if (state >= 0)
-                    ResetOperation(operationIndex);
-            }
-        }
-
         public OrchestrationOperationResult AdvanceTimeline(
             in OrchestrationTimelineInvocationFacts invocation, in TValue time,
             in OrchestrationStopContext stopContext)
@@ -110,10 +59,6 @@ namespace BTSMTL.Orchestration
 
         OrchestrationOperationResult RequestTimelineClipExit(int operationIndex) =>
             m_ClipExitDispatcher.RequestClipExit(m_TimelineState, operationIndex,
-                m_Input.Tick, ref m_Context);
-
-        OrchestrationOperationResult RequestTimelineSectionContinue(int operationIndex) =>
-            m_ClipExitDispatcher.RequestSectionContinue(m_TimelineState, operationIndex,
                 m_Input.Tick, ref m_Context);
 
         public void ExecuteTimelineBatch<TTime>(

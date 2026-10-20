@@ -188,7 +188,6 @@ namespace BTSMTL.Orchestration
                     return OrchestrationStopStatus.Failed;
                 ForceStop(exit, OrchestrationStopContext.Reset(exit));
             }
-            ReleaseCompletedStateTimelines(stateOperationIndex);
             state.ChildCursor = 3;
             return OrchestrationStopStatus.Completed;
         }
@@ -231,7 +230,6 @@ namespace BTSMTL.Orchestration
             {
                 PopState();
             }
-            ReleaseCompletedStateTimelines(stateOperationIndex);
         }
 
         void ForceStopStateMachine(int machineOperationIndex, OrchestrationStopContext context)

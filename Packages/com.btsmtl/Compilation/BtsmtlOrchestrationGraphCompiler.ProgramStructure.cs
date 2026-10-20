@@ -145,30 +145,6 @@ namespace BTSMTL.Compilation
                     Error("program_root_invalid", ProgramSourceTargetKind.Operation, m_Entry.Value,
                         "编排程序入口必须是持有自身执行帧的 Root。");
 
-                var callOffsets = new int[count + 1];
-                var calls = new List<int>();
-                var retained = new bool[count];
-                for (int i = 0; i < count; i++)
-                {
-                    ref readonly OperationDraft query = ref operations[i];
-                    if (query.Code == OrchestrationOperationCode.TimelineSection)
-                    {
-                        for (int j = 0; j < count; j++)
-                        {
-                            ref readonly OperationDraft call = ref operations[j];
-                            if (call.Code != OrchestrationOperationCode.Timeline ||
-                                call.TimelineContentIdentityId != query.TimelineContentIdentityId ||
-                                call.ExecutionFrameOwnerOperationIndex != query.ExecutionFrameOwnerOperationIndex)
-                                continue;
-                            calls.Add(j);
-                            retained[j] = true;
-                        }
-                        if (calls.Count == callOffsets[i])
-                            Error("timeline_section_call_missing", ProgramSourceTargetKind.Operation, i,
-                                "Timeline 分段查询的内容在同一执行帧归属中没有正式播放调用。");
-                    }
-                    callOffsets[i + 1] = calls.Count;
-                }
                 foreach (ProgramGraphCallFrame frame in m_GraphCalls)
                 {
                     int owner = frame.OwnerOperation.Value;
@@ -182,7 +158,7 @@ namespace BTSMTL.Compilation
                         ValidateParameterFrame(owner, parameter, frameOwner);
                 }
                 return new OrchestrationProgramStructure(edgeIndexes, offsets, initial, any, onEnter, roots, onExit,
-                    m_EvaluationOffsets, states, callOffsets, calls.ToArray(), retained);
+                    m_EvaluationOffsets, states);
             }
 
             void StateEdge(int[] entries, int operation, int edge, string port)

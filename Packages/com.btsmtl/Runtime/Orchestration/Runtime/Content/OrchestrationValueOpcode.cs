@@ -52,7 +52,6 @@ namespace BTSMTL.Orchestration
         StateExitCause,
         Cycle,
         TimelineTime,
-        TimelineSection,
         Extension
     }
 

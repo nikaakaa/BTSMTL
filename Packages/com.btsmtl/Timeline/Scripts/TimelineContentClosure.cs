@@ -113,7 +113,6 @@ namespace BTSMTL.Timeline
                     sections.Add(new TimelineContentSection(
                         section.AuthoringId,
                         section.Time,
-                        section.NextSectionId,
                         section.BranchId));
             }
             for (int trackIndex = 0; trackIndex < timeline.Tracks.Count; trackIndex++)

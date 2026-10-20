@@ -19,7 +19,7 @@ namespace BTSMTL.Timeline.Editor
             internal RuntimeExecutionPlaybackCursors Cursors;
             internal TimelineAsset Authoring;
             internal string SourceError;
-            internal bool Door;
+            internal bool Provider;
         }
 
         readonly struct StateKey : IEquatable<StateKey>
@@ -80,7 +80,6 @@ namespace BTSMTL.Timeline.Editor
             internal SpanContext Source;
             internal string UnassignedReason;
             internal readonly List<SpanContext> Spans = new();
-            internal readonly List<SpanContext> Jumps = new();
             internal double Start = double.PositiveInfinity;
             internal double End;
         }
@@ -241,7 +240,7 @@ namespace BTSMTL.Timeline.Editor
                     AddMarker(transition, unassigned, BtsmtlTimeBarItemKind.Transition,
                         m_AmbiguousStates.Contains(new StateKey(transition)) ? "转移 · 源状态身份不唯一" : "转移 · 缺少源状态记录");
                 }
-            HighlightDoors();
+            HighlightProviders();
             m_Revision++;
             return true;
         }
@@ -261,16 +260,14 @@ namespace BTSMTL.Timeline.Editor
             double origin = Origin(span.Domain);
             group.Start = Math.Min(group.Start, context.ObservedStart - origin);
             group.End = Math.Max(group.End, context.ObservedEnd - origin);
-            if (span.Kind == RuntimeExecutionSpanKind.SectionJump)
-                group.Jumps.Add(context);
-            else if (span.Kind is RuntimeExecutionSpanKind.Clip or RuntimeExecutionSpanKind.TreeClip)
+            if (span.Kind is RuntimeExecutionSpanKind.Clip or RuntimeExecutionSpanKind.TreeClip)
             {
                 if (m_Authoring != null)
                 {
                     m_Authoring.TryResolveTimeline(span.Source.TimelineAuthoringId, out context.Authoring, out context.SourceError);
                     RuntimeTimelinePlaybackProvenance owner = span.Start.Payload.TimelinePlayback;
                     RuntimeSourceElementKey source = span.Source;
-                    context.Door = m_Authoring.IsDoor(in owner, span.ContentRevision, in source);
+                    context.Provider = m_Authoring.IsTransitionProvider(in owner, span.ContentRevision, in source);
                 }
                 group.Spans.Add(context);
             }
@@ -307,48 +304,35 @@ namespace BTSMTL.Timeline.Editor
                 cursors = playback.Spans[0].Cursors;
             if (cursors == null || cursors.Samples.Count == 0)
             {
-                DrawSection(playback, parent, "缺少分段游标记录", playback.Start, playback.End, 0);
+                DrawCycle(playback, parent, "缺少游标记录", playback.Start, playback.End, 0);
                 return;
             }
             double origin = Origin(cursors.Domain);
-            string section = cursors.Samples[0].SectionId;
             int cycle = cursors.Samples[0].Cycle;
             double start = playback.Start;
             int segment = 0;
             for (int i = 1; i < cursors.Samples.Count; i++)
             {
                 RuntimeExecutionCursorSample sample = cursors.Samples[i];
-                if (sample.SectionId == section && sample.Cycle == cycle)
+                if (sample.Cycle == cycle)
                     continue;
                 double boundary = sample.SessionTime - origin;
-                DrawSection(playback, parent, SectionLabel(section, cycle), start, boundary, segment++);
+                DrawCycle(playback, parent, CycleLabel(cycle), start, boundary, segment++);
                 start = boundary;
-                section = sample.SectionId;
                 cycle = sample.Cycle;
             }
-            DrawSection(playback, parent, SectionLabel(section, cycle), start, playback.End, segment);
+            DrawCycle(playback, parent, CycleLabel(cycle), start, playback.End, segment);
         }
 
-        static string SectionLabel(string identity, int cycle) =>
-            (string.IsNullOrEmpty(identity) ? "未分段" : "分段 " + identity) + (cycle == 0 ? "" : $" · 第 {cycle + 1} 圈");
+        static string CycleLabel(int cycle) => cycle == 0 ? string.Empty : $" · 第 {cycle + 1} 圈";
 
-        void DrawSection(PlaybackGroup playback, int parent, string label, double from, double to, int segment)
+        void DrawCycle(PlaybackGroup playback, int parent, string suffix, double from, double to, int segment)
         {
             string prefix = $"{playback.Key.Branch:N}:{playback.Key.Playback}:{playback.Key.Action}:{segment}";
-            int sectionRow = AddRow(prefix + ":section", parent, BtsmtlTimeBarItemKind.Section, label);
-            m_Items.Add(new BtsmtlTimeBarItem(prefix + ":section", sectionRow, BtsmtlTimeBarItemKind.Section,
-                from, to, label, playback.UnassignedReason, playback.Source));
-            int playbackRow = AddRow(prefix + ":play", sectionRow, BtsmtlTimeBarItemKind.Playback,
-                $"{Name(playback.Source.Span)} · 播放 {playback.Key.Playback}");
+            int playbackRow = AddRow(prefix + ":play", parent, BtsmtlTimeBarItemKind.Playback,
+                $"{Name(playback.Source.Span)} · 播放 {playback.Key.Playback}{suffix}");
             m_Items.Add(new BtsmtlTimeBarItem(prefix + ":play", playbackRow, BtsmtlTimeBarItemKind.Playback,
                 from, to, "播放", playback.UnassignedReason, playback.Source));
-            foreach (SpanContext jump in playback.Jumps)
-            {
-                double time = jump.Span.Start.TimeSeconds - Origin(jump.Span.Domain);
-                if (time > from && time <= to || segment == 0 && time == from)
-                    AddMarker(jump, sectionRow, BtsmtlTimeBarItemKind.SectionJump,
-                        jump.Span.Start.Payload.Detail + " → " + jump.Span.Start.Payload.RelatedElementId);
-            }
             var tracks = new Dictionary<(string, RuntimeTraceDomain), int>();
             foreach (SpanContext context in playback.Spans)
             {
@@ -366,7 +350,7 @@ namespace BTSMTL.Timeline.Editor
                         TrackName(span) + (span.Domain == RuntimeTraceDomain.Logic ? " · 逻辑" : " · 表现"));
                     tracks.Add(trackKey, row);
                 }
-                BtsmtlTimeBarItemKind kind = context.Door ? BtsmtlTimeBarItemKind.Door :
+                BtsmtlTimeBarItemKind kind = context.Provider ? BtsmtlTimeBarItemKind.Provider :
                     span.Kind == RuntimeExecutionSpanKind.TreeClip ? BtsmtlTimeBarItemKind.TreeClip : BtsmtlTimeBarItemKind.Clip;
                 string tooltip = $"{Name(span)}\n动作 {span.ActionInstanceId} · 激活 {span.ActivationGeneration}\n{span.ContentRevision}";
                 if (playback.UnassignedReason != null) tooltip += "\n" + playback.UnassignedReason;
@@ -389,29 +373,25 @@ namespace BTSMTL.Timeline.Editor
         {
             double time = context.Span.Start.TimeSeconds - Origin(context.Span.Domain);
             m_Items.Add(new BtsmtlTimeBarItem("marker:" + context.Span.StartSequence, row, kind, time, time,
-                label, "实际记录；该时刻由条件与门决定。双击定位状态机边或分段。", context));
+                label, "实际记录；该时刻由转移条件决定。双击定位状态机边。", context));
         }
 
-        void HighlightDoors()
+        void HighlightProviders()
         {
             foreach (BtsmtlTimeBarItem item in m_Items)
             {
-                if (item.Kind != BtsmtlTimeBarItemKind.Door)
+                if (item.Kind != BtsmtlTimeBarItemKind.Provider)
                     continue;
-                SpanContext door = (SpanContext)item.Context;
-                if (door.Span.Domain != RuntimeTraceDomain.Logic)
+                SpanContext provider = (SpanContext)item.Context;
+                if (provider.Span.Domain != RuntimeTraceDomain.Logic)
                     continue;
                 foreach (BtsmtlTimeBarItem marker in m_Items)
                 {
-                    if (marker.Kind is not BtsmtlTimeBarItemKind.Transition and not BtsmtlTimeBarItemKind.SectionJump)
+                    if (marker.Kind != BtsmtlTimeBarItemKind.Transition ||
+                        !ProvidingAt(provider, (SpanContext)marker.Context))
                         continue;
-                    SpanContext fact = (SpanContext)marker.Context;
-                    RuntimeExecutionSpan span = door.Span;
-                    RuntimeExecutionSpan selected = fact.Span;
-                    if (!ActiveDoorAt(door, fact, marker.Kind))
-                        continue;
-                    item.GateHighlighted = true;
-                    item.Tooltip += "\n转移时开着的门（同一逻辑 Tick 的激活记录）。";
+                    item.ProviderHighlighted = true;
+                    item.Tooltip += "\n转移发生时正提供其所读状态（同一逻辑 Tick 的激活记录）。";
                     break;
                 }
             }
@@ -435,7 +415,7 @@ namespace BTSMTL.Timeline.Editor
 
         public override string GetReadOnlyReason(BtsmtlTimeBarItem item)
         {
-            if (item.Kind is not BtsmtlTimeBarItemKind.Clip and not BtsmtlTimeBarItemKind.TreeClip and not BtsmtlTimeBarItemKind.Door)
+            if (item.Kind is not BtsmtlTimeBarItemKind.Clip and not BtsmtlTimeBarItemKind.TreeClip and not BtsmtlTimeBarItemKind.Provider)
                 return base.GetReadOnlyReason(item);
             SpanContext context = (SpanContext)item.Context;
             if (m_Authoring == null) return "当前宿主没有提供作者时间修改入口。";
@@ -499,17 +479,17 @@ namespace BTSMTL.Timeline.Editor
             SpanContext context = (SpanContext)item.Context;
             double duration = context.Authoring.Data.Duration;
             double origin = Origin(context.Span.Domain);
-            if (!context.Cursors.TryMap(start + origin, duration, true, out double localStart, out string startMessage) ||
-                !context.Cursors.TryMap(end + origin, duration, false, out double localEnd, out string endMessage))
+            if (!context.Cursors.TryMap(start + origin, duration, out double localStart, out string startMessage) ||
+                !context.Cursors.TryMap(end + origin, duration, out double localEnd, out string endMessage))
             {
                 message = startMessage;
                 if (message == null)
-                    context.Cursors.TryMap(end + origin, duration, false, out _, out message);
+                    context.Cursors.TryMap(end + origin, duration, out _, out message);
                 EditError = message;
                 return false;
             }
-            if (!context.Cursors.TryMap(m_EditStart + origin, duration, true, out double originalStart, out message) ||
-                !context.Cursors.TryMap(m_EditEnd + origin, duration, false, out double originalEnd, out message))
+            if (!context.Cursors.TryMap(m_EditStart + origin, duration, out double originalStart, out message) ||
+                !context.Cursors.TryMap(m_EditEnd + origin, duration, out double originalEnd, out message))
             {
                 EditError = message;
                 return false;
@@ -586,32 +566,29 @@ namespace BTSMTL.Timeline.Editor
             else m_Open(span);
         }
 
-        static bool ActiveDoorAt(SpanContext door, SpanContext marker, BtsmtlTimeBarItemKind kind)
+        static bool ProvidingAt(SpanContext provider, SpanContext marker)
         {
-            RuntimeExecutionSpan span = door.Span;
+            RuntimeExecutionSpan span = provider.Span;
             RuntimeExecutionSpan selected = marker.Span;
-            bool sameState = kind == BtsmtlTimeBarItemKind.SectionJump
-                ? span.Playback.SamePlayback(selected.Playback)
-                : new StateKey(in span).Equals(new StateKey(marker));
-            return sameState && selected.StartPosition >= span.StartPosition &&
+            return new StateKey(in span).Equals(new StateKey(marker)) && selected.StartPosition >= span.StartPosition &&
                 (span.IsOpen || selected.StartPosition <= span.EndPosition);
         }
 
         public override void AddNavigationActions(BtsmtlTimeBarItem item, GenericMenu menu)
         {
-            if (item.Kind is not BtsmtlTimeBarItemKind.Transition and not BtsmtlTimeBarItemKind.SectionJump)
+            if (item.Kind != BtsmtlTimeBarItemKind.Transition)
                 return;
             SpanContext marker = (SpanContext)item.Context;
             var added = new HashSet<RuntimeSourceElementKey>();
-            foreach (BtsmtlTimeBarItem gate in m_Items)
+            foreach (BtsmtlTimeBarItem candidate in m_Items)
             {
-                if (gate.Kind != BtsmtlTimeBarItemKind.Door) continue;
-                SpanContext door = (SpanContext)gate.Context;
-                if (door.Span.Domain != RuntimeTraceDomain.Logic || !ActiveDoorAt(door, marker, item.Kind) ||
-                    !added.Add(door.Span.Source))
+                if (candidate.Kind != BtsmtlTimeBarItemKind.Provider) continue;
+                SpanContext provider = (SpanContext)candidate.Context;
+                if (provider.Span.Domain != RuntimeTraceDomain.Logic || !ProvidingAt(provider, marker) ||
+                    !added.Add(provider.Span.Source))
                     continue;
-                BtsmtlTimeBarItem target = gate;
-                menu.AddItem(new GUIContent("定位转移时开着的门/" + gate.Label), false, () => Navigate(target));
+                BtsmtlTimeBarItem target = candidate;
+                menu.AddItem(new GUIContent("定位提供所读状态的 Clip/" + candidate.Label), false, () => Navigate(target));
             }
         }
 

@@ -205,9 +205,6 @@ namespace BTSMTL.Orchestration
                         Write(new OrchestrationTimelinePayload(Map(timeline.ContentIdentityId, mapping), timeline.Mode), operation.PayloadOffset);
                         break;
                     }
-                    case OrchestrationOperationCode.TimelineSection:
-                        Write(new OrchestrationTimelineSectionPayload(Map(source.ReadOperationPayload<OrchestrationTimelineSectionPayload>(i).ContentIdentityId, mapping)), operation.PayloadOffset);
-                        break;
                     case OrchestrationOperationCode.EmitOutput:
                     {
                         OrchestrationOutputPayload output = source.ReadOperationPayload<OrchestrationOutputPayload>(i);
@@ -237,8 +234,7 @@ namespace BTSMTL.Orchestration
                     states[Map(i, mapping)] = local[i];
             return new OrchestrationProgramStructure(source.OutgoingEdgeIndexes, source.OutgoingOffsets,
                 source.InitialStateEntries, source.AnyStateEntries, source.StateOnEnterEdges,
-                source.StateRootEdges, source.StateOnExitEdges, source.ValueEvaluationOffsets, states,
-                source.TimelineSectionCallOffsets, source.TimelineSectionCallIndexes, source.RetainedTimelineCalls);
+                source.StateRootEdges, source.StateOnExitEdges, source.ValueEvaluationOffsets, states);
         }
 
         static int Map(int identity, ReadOnlyMemory<int> mapping) =>

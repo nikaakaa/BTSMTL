@@ -123,9 +123,6 @@ namespace BTSMTL.Compilation
                         case OrchestrationOperationCode.Timeline:
                             Append(new OrchestrationTimelinePayload(d.TimelineContentIdentityId, d.Integer0));
                             break;
-                        case OrchestrationOperationCode.TimelineSection:
-                            Append(new OrchestrationTimelineSectionPayload(d.TimelineContentIdentityId));
-                            break;
                         case OrchestrationOperationCode.InputRequest:
                             Append(new OrchestrationRequestPayload(d.RequestIdentityId));
                             break;

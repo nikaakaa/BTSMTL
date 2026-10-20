@@ -72,11 +72,6 @@ namespace BTSMTL.Timeline
             }
         }
 
-        [SerializeField, HideInInspector]
-        string m_SectionId;
-        public string SectionId => m_SectionId ?? string.Empty;
-        internal void SetSection(string sectionId) => m_SectionId = sectionId ?? string.Empty;
-
         [SerializeReference]
         protected List<Clip> m_Clips = new List<Clip>();
         public List<Clip> Clips => m_Clips;
@@ -311,7 +306,6 @@ namespace BTSMTL.Timeline
             track.ConfigureExecutionDomain(domain);
             track.Name = name ?? type.Name.Replace("Track", string.Empty);
             track.PersistentMuted = muted;
-            track.SetSection(string.Empty);
             track.BindTimeline(this);
             Init();
             return track;
@@ -464,39 +458,10 @@ namespace BTSMTL.Timeline
             Init();
         }
 
-        public void ConfigureSectionNext(TimelineSection section, string nextSectionId)
-        {
-            if (section == null || !m_Sections.Contains(section))
-                throw new ArgumentException("Timeline Section is not owned by this Timeline.", nameof(section));
-            string value = nextSectionId?.Trim() ?? string.Empty;
-            if (!string.IsNullOrEmpty(value) &&
-                !m_Sections.Exists(candidate => candidate != null && candidate.AuthoringId == value))
-                throw new InvalidOperationException($"Timeline Section '{section.Name}' references unknown next Section '{value}'.");
-            section.SetNextSection(value);
-            Init();
-        }
         public void RemoveSection(TimelineSection section)
         {
             if (section == null || !m_Sections.Remove(section))
                 throw new ArgumentException("Timeline Section is not owned by this Timeline.", nameof(section));
-            foreach (Track track in m_Tracks)
-                if (track != null && track.SectionId == section.AuthoringId)
-                    track.SetSection(string.Empty);
-            foreach (TimelineSection candidate in m_Sections)
-                if (candidate != null && candidate.NextSectionId == section.AuthoringId)
-                    candidate.SetNextSection(string.Empty);
-            Init();
-        }
-
-        public void ConfigureTrackSection(Track track, string sectionId)
-        {
-            if (track == null || !m_Tracks.Contains(track))
-                throw new ArgumentException("轨道不属于当前 Timeline。", nameof(track));
-            string value = sectionId?.Trim() ?? string.Empty;
-            if (!string.IsNullOrEmpty(value) &&
-                !m_Sections.Exists(candidate => candidate != null && candidate.AuthoringId == value))
-                throw new InvalidOperationException($"轨道 '{track.Name}' 指向不存在的分段 '{value}'。");
-            track.SetSection(value);
             Init();
         }
         void SortSections()
@@ -632,14 +597,9 @@ namespace BTSMTL.Timeline
             }
             bool changed = false;
             for (int trackIndex = 0; trackIndex < m_Tracks.Count; trackIndex++)
-            {
-                Track track = m_Tracks[trackIndex];
-                OrchestrationTime trackTerminal = TryGetSectionRange(track.SectionId, terminalTime, out _, out OrchestrationTime sectionEnd)
-                    ? sectionEnd : terminalTime;
-                for (int clipIndex = 0; clipIndex < track.Clips.Count; clipIndex++)
-                    if (track.Clips[clipIndex] is ITimelineTerminalTimeAlignedClip terminalClip)
-                        changed |= terminalClip.AlignTerminalTime(trackTerminal);
-            }
+                for (int clipIndex = 0; clipIndex < m_Tracks[trackIndex].Clips.Count; clipIndex++)
+                    if (m_Tracks[trackIndex].Clips[clipIndex] is ITimelineTerminalTimeAlignedClip terminalClip)
+                        changed |= terminalClip.AlignTerminalTime(terminalTime);
             return changed;
         }
 

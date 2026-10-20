@@ -7,7 +7,7 @@ namespace BTSMTL.Timeline.Editor
 {
     public enum BtsmtlTimeBarItemKind : byte
     {
-        State, Section, Playback, Clip, TreeClip, Door, Transition, SectionJump, Input
+        State, Playback, Clip, TreeClip, Provider, Window, Transition, Input
     }
 
     public enum BtsmtlTimeBarEditKind : byte { Move, TrimStart, TrimEnd }
@@ -50,7 +50,8 @@ namespace BTSMTL.Timeline.Editor
         public string Label { get; }
         public string Tooltip { get; set; }
         public object Context { get; }
-        public bool GateHighlighted { get; set; }
+        // 该 Clip 提供了当前选中转移所读的状态。
+        public bool ProviderHighlighted { get; set; }
         public bool SourceHighlighted { get; set; }
         public bool Pending { get; set; }
     }
@@ -97,8 +98,8 @@ namespace BTSMTL.Timeline.Editor
         public abstract void Navigate(BtsmtlTimeBarItem item);
         public virtual void AddNavigationActions(BtsmtlTimeBarItem item, GenericMenu menu) { }
         public virtual string GetReadOnlyReason(BtsmtlTimeBarItem item) =>
-            item.Kind is BtsmtlTimeBarItemKind.Transition or BtsmtlTimeBarItemKind.SectionJump
-                ? "该时刻由条件与门决定；双击可定位作者来源。" : "此时间条只读；双击可定位作者来源。";
+            item.Kind == BtsmtlTimeBarItemKind.Transition
+                ? "该时刻由转移条件决定；双击可定位作者来源。" : "此时间条只读；双击可定位作者来源。";
     }
 
     public sealed class BtsmtlTimeBarView : IDisposable
@@ -361,16 +362,15 @@ namespace BTSMTL.Timeline.Editor
             Color color = item.Kind switch
             {
                 BtsmtlTimeBarItemKind.State => new Color(.3f, .45f, .67f),
-                BtsmtlTimeBarItemKind.Section => new Color(.3f, .58f, .45f),
-                BtsmtlTimeBarItemKind.Door => new Color(.72f, .52f, .22f),
+                BtsmtlTimeBarItemKind.Provider => new Color(.72f, .52f, .22f),
+                BtsmtlTimeBarItemKind.Window => new Color(.3f, .58f, .45f),
                 BtsmtlTimeBarItemKind.Transition => new Color(.95f, .6f, .16f),
-                BtsmtlTimeBarItemKind.SectionJump => new Color(.76f, .45f, .92f),
                 _ => new Color(.3f, .6f, .72f)
             };
             if (item.Pending) color.a = .45f;
-            if (item.GateHighlighted || item.SourceHighlighted)
+            if (item.ProviderHighlighted || item.SourceHighlighted)
                 EditorGUI.DrawRect(new Rect(rect.x - 1, rect.y - 1, rect.width + 2, rect.height + 2),
-                    item.GateHighlighted ? new Color(1f, .75f, .15f) : Color.cyan);
+                    item.ProviderHighlighted ? new Color(1f, .75f, .15f) : Color.cyan);
             EditorGUI.DrawRect(rect, color);
             GUI.Label(rect, new GUIContent(item.Label + (item.Pending ? " · 待更新" : ""), item.Tooltip), EditorStyles.miniLabel);
         }
@@ -379,7 +379,7 @@ namespace BTSMTL.Timeline.Editor
         {
             float left = TimeToX(rect, item.Start, start, end);
             float right = TimeToX(rect, item.End, start, end);
-            bool marker = item.Kind is BtsmtlTimeBarItemKind.Transition or BtsmtlTimeBarItemKind.SectionJump;
+            bool marker = item.Kind == BtsmtlTimeBarItemKind.Transition;
             return new Rect(marker ? left - 3 : left, rect.y, marker ? 7 : Math.Max(3, right - left), rect.height);
         }
 
@@ -398,18 +398,6 @@ namespace BTSMTL.Timeline.Editor
                 BtsmtlTimeBarItem item = source.Items[i];
                 Rect itemRect = GetItemRect(rect, source, item);
                 DrawItem(itemRect, item);
-                if (item.Kind == BtsmtlTimeBarItemKind.SectionJump && item.End != item.Start)
-                {
-                    float target = TimeToX(rect, item.End, source.StartTime, Math.Max(source.StartTime + .0001, source.EndTime));
-                    float y = itemRect.center.y;
-                    float direction = target >= itemRect.center.x ? 1 : -1;
-                    Color previous = Handles.color;
-                    Handles.color = new Color(.8f, .55f, 1f);
-                    Handles.DrawLine(new Vector3(itemRect.center.x, y), new Vector3(target, y));
-                    Handles.DrawLine(new Vector3(target - direction * 4, y - 3), new Vector3(target, y));
-                    Handles.DrawLine(new Vector3(target - direction * 4, y + 3), new Vector3(target, y));
-                    Handles.color = previous;
-                }
                 Event current = Event.current;
                 if (current.type == EventType.MouseDown && current.button == 0 && itemRect.Contains(current.mousePosition))
                 {

@@ -134,7 +134,6 @@ namespace BTSMTL.Compilation
                     case OrchestrationOperationCode.StateExitCause: code = OrchestrationValueOpcode.StateExitCause; argument = operation.Integer0; break;
                     case OrchestrationOperationCode.Cycle: code = OrchestrationValueOpcode.Cycle; break;
                     case OrchestrationOperationCode.TimelineTime: code = OrchestrationValueOpcode.TimelineTime; break;
-                    case OrchestrationOperationCode.TimelineSection: code = OrchestrationValueOpcode.TimelineSection; break;
                     case OrchestrationOperationCode.Extension: code = OrchestrationValueOpcode.Extension; argument = port; break;
                     default: throw new ArgumentOutOfRangeException(nameof(operation.Code));
                 }

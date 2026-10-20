@@ -274,19 +274,17 @@ namespace BTSMTL.Timeline
 
     public readonly struct TimelineContentSection
     {
-        public TimelineContentSection(string authoringId, OrchestrationTime time, string nextSectionId, string branchId)
+        public TimelineContentSection(string authoringId, OrchestrationTime time, string branchId)
         {
             AuthoringId = Require(authoringId, nameof(authoringId));
             if (time < OrchestrationTime.Zero)
                 throw new ArgumentOutOfRangeException(nameof(time));
             Time = time;
-            NextSectionId = nextSectionId?.Trim() ?? string.Empty;
             BranchId = branchId?.Trim() ?? string.Empty;
         }
 
         public string AuthoringId { get; }
         public OrchestrationTime Time { get; }
-        public string NextSectionId { get; }
         public string BranchId { get; }
 
         static string Require(string value, string name)

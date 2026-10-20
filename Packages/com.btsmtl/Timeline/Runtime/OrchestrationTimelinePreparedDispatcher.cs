@@ -85,8 +85,7 @@ namespace BTSMTL.Timeline.Runtime
             if (batch.Status == OrchestrationTimelinePlaybackStatus.Completed)
             {
                 m_Bindings.AcceptTerminal(operationIndex, slot, step.Tick, in playback, default, ref context);
-                if (!m_Content.RetainsCompletedPlayback)
-                    ReleasePlayback(candidate, operationIndex, ref playbackIdentity, in context);
+                ReleasePlayback(candidate, operationIndex, ref playbackIdentity, in context);
             }
             return Result(batch.Status);
         }
@@ -100,11 +99,6 @@ namespace BTSMTL.Timeline.Runtime
         {
             int slot = m_Runtime.FindPlayback(candidate, playbackIdentity);
             ref OrchestrationTimelinePlaybackState<TTime> playback = ref m_Runtime.Playback(candidate, slot);
-            if (playback.Progress.State == OrchestrationTimelinePlaybackStatus.Completed)
-            {
-                ReleasePlayback(candidate, operationIndex, ref playbackIdentity, in context);
-                return OrchestrationStopStatus.Completed;
-            }
             var stop = new OrchestrationTimelineStopContext
             {
                 Cause = stopContext.Cause,
@@ -124,15 +118,6 @@ namespace BTSMTL.Timeline.Runtime
         public TValue ReadTime() => default(TValues).FromScalar(
             default(TProjection).Project(m_Workspace.CurrentInvocation.Time));
 
-        public int ReadSection(OrchestrationStateView candidate, int operationIndex,
-            ulong playbackIdentity, in TContext context)
-        {
-            int slot = m_Runtime.FindPlayback(candidate, playbackIdentity);
-            int section = m_Runtime.Playback(candidate, slot).Section;
-            return section == 0 ? 0 : m_Content.SectionIdentityIds.Span[
-                m_Content.Sections.Span[section - 1].SectionIndex];
-        }
-
         public void ReleasePlayback(OrchestrationStateView candidate, int operationIndex,
             ref ulong playbackIdentity, in TContext context)
         {
@@ -146,13 +131,6 @@ namespace BTSMTL.Timeline.Runtime
             OrchestrationTimelineInvocationToken token = m_Workspace.CurrentInvocation.Token;
             _ = m_Runtime.TreeClipExit(candidate, m_Workspace, in token);
             return ReleaseInvocation(ref context);
-        }
-
-        public OrchestrationOperationResult RequestSectionContinue(OrchestrationStateView candidate,
-            int operationIndex, ulong tick, ref TContext context)
-        {
-            m_Runtime.SectionContinue(m_Workspace);
-            return OrchestrationOperationResult.Success;
         }
 
         public int EnterInvocation(int playbackSlot, int invocationIndex,

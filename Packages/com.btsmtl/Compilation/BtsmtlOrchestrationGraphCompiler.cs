@@ -1120,8 +1120,7 @@ namespace BTSMTL.Compilation
                     result[i] = new OperationDraft(source.Code,
                         isRunnable, Bind(m_OperationIdentities[i]), integer0, source.Integer1, constant,
                         m_InputSlots[i], source.Code == OrchestrationOperationCode.InputRequest ? Bind(source.Text0) : 0,
-                        valueSlot, source.Code is OrchestrationOperationCode.Timeline or OrchestrationOperationCode.TimelineSection
-                            ? Bind(source.Text0) : 0,
+                        valueSlot, source.Code == OrchestrationOperationCode.Timeline ? Bind(source.Text0) : 0,
                         stateId, source.Code == OrchestrationOperationCode.State ? StateMachineOwner(i) : -1,
                         m_ExtensionIndexes[i], GraphCallIndex(i), m_InputRanges[i], ExecutionOutputCount(i),
                         m_OutputOffsets[i], m_LifecycleHookRanges[i], m_BlackboardFactsIndexes[i], parents[i], m_OutputAssignmentRanges[i],
