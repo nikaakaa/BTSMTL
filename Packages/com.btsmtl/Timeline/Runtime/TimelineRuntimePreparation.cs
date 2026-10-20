@@ -216,6 +216,11 @@ namespace BTSMTL.Timeline.Runtime
             return new TimelineRuntimePreparedContent(source, frozen, identities);
         }
 
+        // 同一份已准备内容按调用方编排身份表重新编号，绑定与依赖句柄不变。
+        public static TimelineRuntimePreparedContent BindIdentities(
+            TimelineRuntimePreparedContent source, OrchestrationIdentityTable identities) =>
+            new TimelineRuntimePreparedContent(source, source.Content, identities);
+
         // 结构候选沿用原绑定、依赖与状态布局；布局变化须完整发布。
         public static TimelineRuntimePreparedContent PrepareStructureCandidate(
             TimelineRuntimePreparedContent source,

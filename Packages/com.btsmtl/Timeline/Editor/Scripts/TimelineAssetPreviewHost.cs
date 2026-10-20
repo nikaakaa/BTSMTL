@@ -495,6 +495,11 @@ namespace BTSMTL.Timeline.Editor
                 throw new TimelineAssetPreviewInputUnavailableException("预览范围终点必须是大于零的有限秒数。");
             m_Traversals.Clear();
             m_Assumptions.Clear();
+            // 编排执行的容量覆盖整份程序，同一状态机里每个 Timeline 都要先准备。
+            if (m_Query != null)
+                foreach (OrchestrationStaticState state in m_Query.Query.States)
+                    if (state.Timeline != null)
+                        Prepare(m_Query.ResolveTimeline(state.TimelineIdentity));
             if (m_Query == null || m_EntryState == null ||
                 m_Query.ResolveTimeline(m_EntryState.TimelineIdentity) != Source)
             {

@@ -170,8 +170,9 @@ namespace BTSMTL.Timeline.Editor
                 TimelineStaticChainSpan span = target == null ? null : SpanCovering(chain, state, target.Door);
                 if (span == null)
                 {
-                    TimelineStaticChainSpan last = chain.Spans.Count == 0 ? null : chain.Spans[^1];
-                    next = last == null || last.State != state ? null : doors.Destinations
+                    // 收招等后续状态不属于本 Timeline，按本状态最后一段找下一分段门。
+                    TimelineStaticChainSpan last = chain.Spans.LastOrDefault(value => value.State == state);
+                    next = last == null ? null : doors.Destinations
                         .Where(value => value.Kind == TimelineDoorDestinationKind.NextSection && value.Section == last.Section)
                         .OrderBy(value => value.Door.Start).FirstOrDefault();
                     span = last;
