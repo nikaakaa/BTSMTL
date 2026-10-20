@@ -34,17 +34,19 @@
 
 Unity 通过各包原有 asmdef 编译同一份源码。3C 的 Assets 中不保留副本；角色资产、生成的 C# authoring、Workbench 角色装配、表现和产品发布入口仍由 3C 持有。
 
-`com.btsmtl` 全部程序集（含 Diagnostics 与 Diagnostics.Editor）只引用 Foundation，包依赖只有 Foundation 与 Unity 官方包。诊断只定义编排自身的图、状态机、Timeline、黑板与数值通道，另留一个中立的 `Host` 通道；宿主事件经 `RuntimeHostTraceKinds.Register(编号, 名称, 采集级别)` 登记，编号写入预览事件文件，只追加不复用。BTSMTL 不含动作、GE、运动、落脚、装备、动画、相机或 Motion Matching 词汇；预览事件文件为 Version 9、每条 528 字节。依赖守护 `BTSMTL_NO_GAMEPLAY_SDK` 禁止 BTSMTL 程序集引用任何 `ThirdPerson*` 程序集或 `com.thirdperson.*` 包。Gameplay、领域合同、Quantum 数学与 MemoryPack 单向引用 BTSMTL；BTSMTL 不引用这些宿主实现。Photon Quantum SDK 由使用 Quantum 的宿主提供。Timeline 编辑外围的旧玩法引用仍在清理，包级依赖解除不等于所有 Unity 程序集已经完成解耦。
+`com.btsmtl` 全部程序集（含 Diagnostics 与 Diagnostics.Editor）只引用 Foundation，包依赖只有 Foundation 与 Unity 官方包。诊断只定义编排自身的图、状态机、Timeline、黑板与数值通道，另留一个中立的 `Host` 通道；宿主事件经 `RuntimeHostTraceKinds.Register(编号, 名称, 采集级别)` 登记，编号写入预览事件文件，只追加不复用。预览事件文件为 Version 12、每条 600 字节，播放来源包含调用方播放 ID 与调用元素身份。依赖守护 `BTSMTL_NO_GAMEPLAY_SDK` 禁止 BTSMTL 程序集引用任何 `ThirdPerson*` 程序集或 `com.thirdperson.*` 包。Gameplay、领域合同、Quantum 数学与 MemoryPack 单向引用 BTSMTL；BTSMTL 不引用这些宿主实现。Photon Quantum SDK 由使用 Quantum 的宿主提供。包级依赖解除与全部作者外围通过依赖守护分别检查。
 
-## Timeline 作者预览与门
+## Timeline 作者编辑与预览
 
-`Compilation/Analysis/OrchestrationStaticQuery` 从正式语义操作、连线、来源与内容引用读取状态绑定、条件读取和 Clip 状态提供者；领域经 `IOrchestrationStateKeyDeclarations` 声明自己的状态键。`TimelineDoorModel` 计算门区间与去向，`TimelineStaticChain` 结合输入成立区间和逐条运行数据假设推导后续分段／状态，不执行作者图，也不把结果保存为另一份作者配置。运行时先检查 AnyState，再执行主体，最后检查普通状态转移；主体的继续请求留待下次推进，本 Tick 普通转移成立会退出状态并取消该请求。静态最终去向按 AnyState、普通转移、继续请求选择，转移共用正式 `Priority → Order → SourcePortId → IdentityId` 比较器和发布身份表。
+`Compilation/Analysis/OrchestrationStaticQuery` 从正式语义操作、连线、来源与内容引用读取状态绑定、条件读取、Clip 状态提供者和嵌套 Timeline 调用点；领域经 `IOrchestrationStateKeyDeclarations` 声明自己的状态键。`OrchestrationStateTransitionWindows` 计算状态转移的可走时段，`TimelineStaticChain` 结合输入成立区间和逐条运行数据假设推导状态路线及并行分支，不执行作者图，不保存另一份作者配置。状态转移使用正式 `Priority → Order → SourcePortId → IdentityId` 比较器和发布身份表；跨状态的持续行为由作者的并行结构表达。
 
-Section 的 `NextSectionId` 只指向更晚的分段。逻辑 TreeClip 在有效区间内请求继续，调度器沿原回绕机制跳到下一段，被跳过区间不发 Marker 或 Clip 起止；未请求时在当前分段终点完成。循环播放不配置分段继续。动作身份与状态体不因分段跳转重启，待跳转请求和当前分段随正式状态捕获与恢复。分支和跨动作转移继续由 FSM 处理。
+Timeline 窗口是唯一预览入口，提供快速／真实两档。输入轨支持持续值的按下与松开、脉冲请求及录制导入；具名输入方案按入口所属内容与 Timeline 作者身份归属，可与资产一起提交。并排路线显示每次播放、循环圈和并行分支；编辑时间轴跟随选定的那次播放。输入提示区分有因果依据的“接上”和仅有读取关系的“相关”。
 
-Timeline 窗口的资产预览由 `TimelineAssetPreviewHost` 持有独立 `PreviewSceneStage`、准备内容和游标。`ITimelineAssetPreviewProvider` 提供配置、专用场景、输入请求元数据及会话入口；`ITimelineAssetPreviewInstance` 装配领域，`ITimelineDomainPreview` 消费正式目标采样。宿主通过正式表现图执行与领域模块完整显示输出，框架不解释业务节点；窗口只编辑作者资产与预览偏好，缺少输入时保留日程入口并显示原因。切换模式先结束原候选与 Stage，再进入目标模式，异步准备归本次取消令牌所有。
+快速档由 `TimelineAssetPreviewHost` 持有独立 `PreviewSceneStage`、准备内容和游标；`ITimelineAssetPreviewProvider` 提供配置、专用场景、输入元数据和真实会话入口，`ITimelineAssetPreviewInstance` 装配领域，`ITimelineDomainPreview` 消费同一时刻全部生效播放的正式目标采样。框架不解释领域计算。真实档沿宿主的正式会话接收相同输入日程，窗口内提供播放、定位、运行值和显式内容应用。切档先释放原候选与 Stage，异步准备归本次取消令牌所有。
 
-`BtsmtlTimeBarView` 共用于 FSM 节点迷你时间条、资产推导链与执行记录。执行记录由原采集累加器按状态实例配对，播放携带状态来源并保存逐 Tick 游标，拖动时按实际记录换算本地时间；跳转处吸附、记录不足拒绝。宿主通过 `IBtsmtlExecutionTimelineAuthoringHost` 提供唯一时间修改事务，只允许 Clip／TreeClip 移动和裁剪；一手势一 Undo，候选完整采用后再替换执行投影。
+真实路线使用正式状态进入／退出及 `StateTransitionSelected`，播放按状态激活、执行代次、实例、分支和纪元归属。两档画面均叠加在原编辑时间轴；真实时间换算只读对应播放的逐 Tick 游标，停顿吸附写明原因，缺记录时拒绝定位与编辑。Clip／TreeClip 移动和裁剪沿原 `ITimelineTimeRangePreview` 提交，一手势一 Undo，完整候选采用后替换结果。输入或作者内容改变后，旧真实结果标为过期，重演并匹配版本后才与快速路线比较。
+
+嵌套子视图挂在调用轨道下，默认收起，父视图只读；双击调用 Clip 或子视图进入原 Timeline，面包屑返回时恢复选中、滚动、缩放和展开状态。静态查询写明调用偏移、播放模式和寿命，不能确定时刻的调用交给真实会话确认；真实归属只用记录中的父播放 ID 和调用元素身份。快速档把可确定的嵌套贡献交给同一领域扩展。当前编译闭包拒绝递归引用，视图也在重复路径处截止展开。
 
 ## 普通 .NET 接入
 
