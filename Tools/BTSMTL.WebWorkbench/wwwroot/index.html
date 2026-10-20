@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>BTSMTL · Web Workbench</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%237ee7d3'/%3E%3Cpath d='M9 8h8a5 5 0 0 1 3 9 5 5 0 0 1-3 8H9z' fill='%23131a1c'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="BTSMTL 工作台"><span class="brand-mark">B</span><strong>BTSMTL</strong><span class="brand-divider"></span><span class="product-name">Web Workbench</span><span class="version">PROTOTYPE 01</span></a>
+    <div class="top-actions"><span class="core-state" id="core-state"><i></i>连接核心中</span><button id="save" class="button">保存草稿 <kbd>Ctrl S</kbd></button><button id="compile" class="button primary" disabled><span>◇</span> 编译图</button></div>
+  </header>
+
+  <main class="workbench">
+    <aside class="library">
+      <div class="workspace-label">工作空间 <span>LOCAL</span></div>
+      <button class="document-entry" id="show-document"><span class="document-icon">⌘</span><span><strong id="document-title">信号路由</strong><small>通用编排 · Float32</small></span><span class="document-dot"></span></button>
+      <div class="library-heading"><h2>节点库</h2><span id="palette-count">—</span></div>
+      <label class="search"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="搜索节点…" aria-label="搜索节点"></label>
+      <div id="palette" class="palette"></div>
+      <div class="library-bottom">
+        <button class="text-action" id="export">↗ 导出工作区</button>
+        <button class="text-action" id="import">↙ 导入工作区</button>
+        <input type="file" id="import-file" accept=".json" hidden>
+        <button class="text-action" id="api-info">⌘ 查看接口</button>
+        <div class="library-note"><i></i><span>独立 .NET 核心<br><small>无需打开 Unity</small></span></div>
+      </div>
+    </aside>
+
+    <section class="editor-area">
+      <div class="editor-toolbar">
+        <div class="breadcrumbs"><span>工作空间</span><span class="slash">/</span><strong id="breadcrumb-title">信号路由</strong><span class="unsaved" id="dirty-indicator" title="有未保存修改" hidden></span></div>
+        <div class="toolbar-actions"><button class="icon-button" id="undo" aria-label="撤销" title="撤销 Ctrl Z">↶</button><button class="icon-button" id="redo" aria-label="重做" title="重做 Ctrl Shift Z">↷</button><span class="toolbar-divider"></span><button class="button small" id="fit">适应画布</button></div>
+      </div>
+      <div class="graph-header"><span class="tab-label"><span class="tiny-grid">▦</span> 编排图</span><span id="graph-count" class="subtle">—</span><span class="graph-description">从入口组织流程</span></div>
+      <div id="canvas" class="canvas" aria-label="编排节点画布">
+        <div class="canvas-label">ORCHESTRATION GRAPH <span>01</span></div>
+        <div id="world" class="world"><svg id="edges" class="edges" width="2400" height="1600" aria-label="节点连线"></svg><div id="nodes"></div></div>
+        <div class="connection-hint" id="connection-hint" hidden>选择目标节点的左侧端口 · Esc 取消</div>
+        <div class="canvas-help">拖动节点 · 点击端口连线 · 空白处拖动画布</div>
+        <div class="zoom-controls"><button id="zoom-out" class="icon-button" aria-label="缩小">−</button><output id="zoom-value">100%</output><button id="zoom-in" class="icon-button" aria-label="放大">＋</button></div>
+      </div>
+
+      <section class="timeline" aria-label="时间轴草稿">
+        <div class="timeline-toolbar">
+          <div class="timeline-title"><span>◷</span><strong>时间轴</strong><span class="draft-badge">编辑草稿</span></div>
+          <div class="transport"><button class="icon-button" id="rewind" aria-label="回到起点">↤</button><button class="play-button" id="play" aria-label="播放时间轴草稿">▶</button><output id="time-output">0.00 <span>/ 4.00 s</span></output></div>
+          <button class="button small" id="add-clip">＋ 片段</button>
+        </div>
+        <div class="timeline-content" id="timeline-content">
+          <div class="ruler-row"><div class="track-heading">轨道 <span>3</span></div><div class="ruler" id="ruler"></div></div>
+          <div id="tracks"></div>
+          <div class="playhead-area" id="playhead-area"><div class="playhead" id="playhead"><span></span></div></div>
+        </div>
+        <div class="timeline-footer"><span>拖动片段调整位置，拖动右侧边缘调整时长</span><span>吸附 0.05 s <i>·</i> 仅预览时间位置</span></div>
+      </section>
+      <section class="console" aria-label="编译结果"><div class="console-heading"><span id="console-dot" class="status-dot"></span><strong id="console-title">准备就绪</strong><span id="console-meta">编译图将调用 BTSMTL 核心</span><button id="view-result" class="text-button">查看结果 ↗</button></div><div id="console-detail" class="console-detail" role="status" aria-live="polite">网页草稿与核心编译分别保存状态。</div></section>
+    </section>
+
+    <aside class="inspector">
+      <div class="inspector-title"><strong>属性</strong><span id="selection-kind">NODE</span></div>
+      <div id="inspector-content"></div>
+      <div class="inspector-bottom"><div class="key-hint"><kbd>Delete</kbd><span>删除选中项</span></div><div class="key-hint"><kbd>Ctrl Z</kbd><span>撤销修改</span></div><p>图编译连接真实核心。时间轴当前用于体验编辑操作，尚未接入运行。</p></div>
+    </aside>
+  </main>
+  <footer class="statusbar"><span><i class="status-dot"></i><span id="save-state">工作区草稿</span></span><span id="footer-core">BTSMTL · 引擎无关编排</span><span>WEB WORKBENCH <span class="version-number">0.1</span></span></footer>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <dialog id="detail-dialog"><div class="dialog-heading"><h2 id="dialog-title">接口与结果</h2><button id="close-dialog" class="icon-button" aria-label="关闭">×</button></div><p id="dialog-description"></p><pre id="dialog-content"></pre></dialog>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

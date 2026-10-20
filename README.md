@@ -14,6 +14,10 @@
 
 例如一次攻击由 BTSMTL 安排何时发起和结束，Quantum 领域扩展读取当前 Frame，处理攻击查询、命中与属性效果；表现请求交给 Unity 宿主消费。编排时间使用整数 Tick 与 Q48.16 整数进度、倍率和余数；黑板值、比较与曲线采样值由宿主通过泛型和数学策略决定。旧 FPGameplay／Float32 完整玩法执行器、Snapshot 包和服务器权威产品已直接删除。
 
+## HTML 工作台原型
+
+[BTSMTL.WebWorkbench](Tools/BTSMTL.WebWorkbench/README.md) 提供独立网页节点编辑和时间轴交互草稿。网页通过本地 HTTP 调用原 .NET 编译器，当前开放七种基础流程节点和布尔输入；不需要 Unity 或宿主角色配置。图编译已接通，时间轴仍是编辑草稿，完整运行与发布不在本版范围。启动方式、操作和检查范围由工具 README 维护。
+
 ## Unity 接入
 
 仓库与 `3C` 放在同一父目录。3C 客户端的 `Packages/manifest.json` 显式安装以下本地包：
