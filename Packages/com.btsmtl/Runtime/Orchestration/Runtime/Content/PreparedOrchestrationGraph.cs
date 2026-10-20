@@ -134,8 +134,7 @@ namespace BTSMTL.Orchestration
                 source, identities, mapping, program, entries, variables, hostInputs, graphPorts, sources);
         }
 
-        // 值候选只替换常量与默认值；其余内容按正式编码逐字节核对，结构、扩展参数或身份表变化均拒绝。
-        public OrchestrationProgramContent<TValue> PrepareValueCandidate(
+        public PreparedOrchestrationGraph<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues> PrepareParameterCandidate(
             OrchestrationGraphContent<TValue> candidate,
             Func<OrchestrationGraphContent<TValue>, byte[]> encode,
             out string rejection)
@@ -157,11 +156,11 @@ namespace BTSMTL.Orchestration
                     edited.GraphCalls, edited.Hooks, edited.HookInputs, edited.BlackboardSlots,
                     edited.BlackboardOutputs, edited.OutputTemplates, edited.CorePorts,
                     edited.RootOperationIndex, edited.MaximumOperationEvaluations),
-                candidate.Extensions, candidate.OperationContents, candidate.Entries, candidate.Variables,
+                candidate.Extensions, Source.OperationContents, candidate.Entries, candidate.Variables,
                 candidate.GeneratedBlackboards, candidate.HostInputs, candidate.Ports, candidate.Sources);
             if (!encode(probe).AsSpan().SequenceEqual(encode(Source)))
             {
-                rejection = "节点结构、连线、扩展参数或身份表已变化";
+                rejection = "节点结构、连线或身份表已变化";
                 return null;
             }
             var comparer = System.Collections.Generic.EqualityComparer<TValue>.Default;
@@ -170,13 +169,15 @@ namespace BTSMTL.Orchestration
                 if (comparer.Equals(defaults[i], MapValue(in original.DefaultValues.Span[i], LocalToShared)))
                     defaults[i] = MapValue(in edited.DefaultValues.Span[i], LocalToShared);
             OrchestrationProgramContent<TValue> prepared = Program;
-            return new OrchestrationProgramContent<TValue>(
+            var program = new OrchestrationProgramContent<TValue>(
                 prepared.Operations, prepared.OperationPayloads, prepared.ColdOperations, prepared.Edges, prepared.Structure,
                 prepared.ValueSchedule, prepared.WorkspaceCapacity, prepared.ExecutionStorage, prepared.ValueInputs, MapValues(edited.Constants, LocalToShared),
                 defaults, prepared.ValueSlotTypes, prepared.ValueKindSlotCounts,
                 prepared.GraphCalls, prepared.Hooks, prepared.HookInputs, prepared.BlackboardSlots,
                 prepared.BlackboardOutputs, prepared.OutputTemplates, prepared.CorePorts,
                 prepared.RootOperationIndex, prepared.MaximumOperationEvaluations);
+            return new PreparedOrchestrationGraph<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues>(
+                candidate, Identities, LocalToShared, program, Entries, Variables, HostInputs, Ports, Sources);
         }
 
         static byte[] MapOperationPayloads(OrchestrationProgramContent<TValue> source, ReadOnlyMemory<int> mapping)
