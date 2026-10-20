@@ -186,19 +186,19 @@ namespace BTSMTL.Timeline.Editor
             if (m_PreviewPathRevision == preview.Revision)
                 return;
             m_PreviewPathRevision = preview.Revision;
-            var spans = preview.Traversals.Where(span => span.Source == SourceAsset).ToArray();
+            var spans = preview.Route.Where(span => span.Source == SourceAsset).ToArray();
             var visited = spans.Select(span => new Vector2(span.LocalStart.AsSingle, span.LocalEnd.AsSingle)).ToArray();
             var marks = new List<TimelinePreviewMark>();
             TimelineStaticChain chain = preview.Chain;
             if (preview.IsReal)
             {
-                // 真实档：执行记录中本 Timeline 播放段之后接上另一状态处即为实际转移；与快速推导的差异一并标出。
-                IReadOnlyList<TimelineAssetPreviewTraversal> traversals = preview.Traversals;
-                for (int i = 0; i + 1 < traversals.Count; i++)
-                    if (traversals[i].Source == SourceAsset && traversals[i + 1].State != traversals[i].State)
-                        marks.Add(new TimelinePreviewMark(traversals[i].LocalEnd.AsSingle,
-                            "实际转移到 " + (preview.Query?.DescribeState(traversals[i + 1].State) ?? traversals[i + 1].Source.name),
-                            $"会话第 {traversals[i].End.AsSingle:0.000} 秒"));
+                // 真实档：标出源状态在本 Timeline 播放中正式选中的转移；与快速推导的差异一并标出。
+                foreach (TimelinePreviewRealTransition transition in preview.RealTransitions)
+                    if (transition.SourceTimeline == SourceAsset)
+                        marks.Add(new TimelinePreviewMark(transition.LocalTime,
+                            transition.Transition == null ? "实际转移（连线已不在当前内容）"
+                                : transition.Target == null ? "实际收招" : "实际转移到 " + preview.DescribeState(transition.Target),
+                            $"会话第 {transition.Time:0.000} 秒"));
                 foreach (TimelinePreviewDifference difference in preview.Differences)
                     if (spans.Length != 0 && difference.State != null &&
                         preview.Query.ResolveTimeline(difference.State.TimelineIdentity) == SourceAsset)
@@ -259,22 +259,14 @@ namespace BTSMTL.Timeline.Editor
                         until = Math.Min(until, other.Time);
             if (preview.IsReal)
             {
-                IReadOnlyList<TimelineAssetPreviewTraversal> traversals = preview.Traversals;
-                for (int i = 0; i + 1 < traversals.Count; i++)
-                {
-                    double time = traversals[i].End.AsSingle;
-                    OrchestrationStaticState from = traversals[i].State;
-                    OrchestrationStaticState to = traversals[i + 1].State;
-                    if (from == null || to == from || time < point.Time || time >= until)
-                        continue;
-                    foreach (OrchestrationStaticTransition transition in from.Transitions)
-                        if (transition.Target == to && transition.Reads.Any(read =>
-                                read.Source == OrchestrationStaticReadSource.HostInput && read.Key == point.InputId))
-                        {
-                            reason = $"实际接上：{preview.Query.DescribeState(from)} → {preview.Query.DescribeState(to)}，第 {time:0.000} 秒";
-                            return true;
-                        }
-                }
+                foreach (TimelinePreviewRealTransition real in preview.RealTransitions)
+                    if (real.Transition != null && real.Time >= point.Time && real.Time < until &&
+                        real.Transition.Reads.Any(read =>
+                            read.Source == OrchestrationStaticReadSource.HostInput && read.Key == point.InputId))
+                    {
+                        reason = $"实际接上：{preview.DescribeState(real.Source)} → {preview.DescribeState(real.Target)}，第 {real.Time:0.000} 秒";
+                        return true;
+                    }
                 reason = "真实重演中有效期内没有读取该键的转移发生";
                 return false;
             }
@@ -286,10 +278,10 @@ namespace BTSMTL.Timeline.Editor
                     $"第 {marker.Time.AsSingle:0.00} 秒";
                 return true;
             }
-            TimelineAssetPreviewTraversal? at = null;
-            foreach (TimelineAssetPreviewTraversal traversal in preview.Traversals)
-                if (traversal.Start.AsSingle <= point.Time && point.Time < traversal.End.AsSingle)
-                    at = traversal;
+            TimelinePreviewRouteSegment? at = null;
+            foreach (TimelinePreviewRouteSegment segment in preview.Route)
+                if (segment.Start.AsSingle <= point.Time && point.Time < segment.End.AsSingle)
+                    at = segment;
             if (!at.HasValue || at.Value.State == null)
             {
                 reason = "未接上：此刻不在预览路线上的任何状态内";
@@ -330,13 +322,13 @@ namespace BTSMTL.Timeline.Editor
             return false;
         }
 
-        TimelineAssetPreviewTraversal[] SourceSpans() =>
-            TimelineAssetPreviewHost.Shared.Traversals.Where(span => span.Source == SourceAsset).ToArray();
+        TimelinePreviewRouteSegment[] SourceSpans() =>
+            TimelineAssetPreviewHost.Shared.Route.Where(span => span.Source == SourceAsset).ToArray();
 
         void MovePreviewInput(int index, float localTime)
         {
             var preview = TimelineAssetPreviewHost.Shared;
-            TimelineAssetPreviewTraversal[] spans = SourceSpans();
+            TimelinePreviewRouteSegment[] spans = SourceSpans();
             if (index < 0 || index >= m_PreviewInputs.Count || spans.Length == 0)
                 return;
             TimelinePreviewInputPoint point = preview.Preferences.Inputs[m_PreviewInputs[index]];
@@ -347,7 +339,7 @@ namespace BTSMTL.Timeline.Editor
         void AddPreviewInput(string inputId, float localTime)
         {
             var preview = TimelineAssetPreviewHost.Shared;
-            TimelineAssetPreviewTraversal[] spans = SourceSpans();
+            TimelinePreviewRouteSegment[] spans = SourceSpans();
             if (spans.Length == 0)
                 return;
             preview.Preferences.Inputs.Add(new TimelinePreviewInputPoint
@@ -378,10 +370,10 @@ namespace BTSMTL.Timeline.Editor
         }
 
         // 落在经过区间内按该区间换算；区间外按最近区间线性延伸，等同 Timeline 继续播放。
-        static float ToLocal(TimelineAssetPreviewTraversal[] spans, float time)
+        static float ToLocal(TimelinePreviewRouteSegment[] spans, float time)
         {
-            TimelineAssetPreviewTraversal nearest = spans[0];
-            foreach (TimelineAssetPreviewTraversal span in spans)
+            TimelinePreviewRouteSegment nearest = spans[0];
+            foreach (TimelinePreviewRouteSegment span in spans)
             {
                 if (time >= span.Start.AsSingle && time <= span.End.AsSingle)
                     return span.LocalStart.AsSingle + time - span.Start.AsSingle;
@@ -391,10 +383,10 @@ namespace BTSMTL.Timeline.Editor
             return nearest.LocalStart.AsSingle + time - nearest.Start.AsSingle;
         }
 
-        static float ToGlobal(TimelineAssetPreviewTraversal[] spans, float local)
+        static float ToGlobal(TimelinePreviewRouteSegment[] spans, float local)
         {
-            TimelineAssetPreviewTraversal nearest = spans[0];
-            foreach (TimelineAssetPreviewTraversal span in spans)
+            TimelinePreviewRouteSegment nearest = spans[0];
+            foreach (TimelinePreviewRouteSegment span in spans)
             {
                 if (local >= span.LocalStart.AsSingle && local <= span.LocalEnd.AsSingle)
                     return span.Start.AsSingle + local - span.LocalStart.AsSingle;

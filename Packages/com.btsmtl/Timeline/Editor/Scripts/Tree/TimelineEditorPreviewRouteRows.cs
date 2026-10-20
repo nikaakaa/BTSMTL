@@ -58,23 +58,22 @@ namespace BTSMTL.Timeline.Editor
             {
                 // 真实档与无状态上下文的单 Timeline 预览：按经过的 Timeline 分行排布播放段。
                 var rows = new Dictionary<TimelineAsset, RouteRow>();
-                foreach (TimelineAssetPreviewTraversal traversal in preview.Traversals)
+                foreach (TimelinePreviewRouteSegment segment in preview.Route)
                 {
-                    if (!rows.TryGetValue(traversal.Source, out RouteRow row))
+                    if (!rows.TryGetValue(segment.Source, out RouteRow row))
                     {
-                        row = new RouteRow { Label = (preview.IsReal ? "实际 · " : string.Empty) + traversal.Source.name, Source = traversal.Source };
-                        rows.Add(traversal.Source, row);
+                        row = new RouteRow { Label = (preview.IsReal ? "实际 · " : string.Empty) + segment.Source.name, Source = segment.Source };
+                        rows.Add(segment.Source, row);
                         m_RouteRows.Add(row);
                     }
-                    string state = traversal.State == null || preview.Query == null ? string.Empty
-                        : preview.Query.DescribeState(traversal.State) + " · ";
+                    string state = segment.State == null ? string.Empty : preview.DescribeState(segment.State) + " · ";
                     row.Bars.Add(new RouteBar
                     {
-                        Start = traversal.Start.AsSingle, End = traversal.End.AsSingle, UnplayedEnd = traversal.End.AsSingle,
-                        Tooltip = $"{state}{traversal.Start.AsSingle:0.000}–{traversal.End.AsSingle:0.000} s · 本地 " +
-                            $"{traversal.LocalStart.AsSingle:0.00}–{traversal.LocalEnd.AsSingle:0.00} s"
+                        Start = segment.Start.AsSingle, End = segment.End.AsSingle, UnplayedEnd = segment.End.AsSingle,
+                        Tooltip = $"{state}{segment.Start.AsSingle:0.000}–{segment.End.AsSingle:0.000} s · 本地 " +
+                            $"{segment.LocalStart.AsSingle:0.00}–{segment.LocalEnd.AsSingle:0.00} s"
                     });
-                    m_RouteEnd = Mathf.Max(m_RouteEnd, traversal.End.AsSingle);
+                    m_RouteEnd = Mathf.Max(m_RouteEnd, segment.End.AsSingle);
                 }
                 if (preview.IsReal && preview.FastChain != null)
                     AddRouteChain(preview.Query, preview.FastChain, 0, "快速 · ");

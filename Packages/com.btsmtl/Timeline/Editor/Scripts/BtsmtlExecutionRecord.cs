@@ -5,56 +5,66 @@ using BTSMTL.Diagnostics.Editor;
 
 namespace BTSMTL.Timeline.Editor
 {
-    // 真实档执行记录投影：按状态实例归属 Timeline 播放，按圈拆开，时间为执行时间线的会话相对时刻；
-    // 来源身份缺失或不唯一的播放不归属任何状态，不进入路线。
+    // 一次状态激活的正式身份：运行实例、作者状态、激活代次、动作实例、技能执行代次、历史分支与纪元。
+    public readonly struct BtsmtlExecutionStateIdentity : IEquatable<BtsmtlExecutionStateIdentity>
+    {
+        BtsmtlExecutionStateIdentity(Guid runtime, string graph, string state, ulong generation, ulong action,
+            ulong execution, Guid branch, ulong epoch)
+        {
+            GraphRuntimeId = runtime;
+            GraphAuthoringId = graph ?? string.Empty;
+            StateId = state ?? string.Empty;
+            ActivationGeneration = generation;
+            ActionInstanceId = action;
+            SkillExecutionGeneration = execution;
+            ExecutionBranchId = branch;
+            RuntimeEpoch = epoch;
+        }
+
+        public Guid GraphRuntimeId { get; }
+        public string GraphAuthoringId { get; }
+        public string StateId { get; }
+        public ulong ActivationGeneration { get; }
+        public ulong ActionInstanceId { get; }
+        public ulong SkillExecutionGeneration { get; }
+        public Guid ExecutionBranchId { get; }
+        public ulong RuntimeEpoch { get; }
+
+        internal static BtsmtlExecutionStateIdentity OfState(in RuntimeExecutionSpan state) => new(
+            state.Instance.GraphRuntimeId, state.Source.GraphAuthoringId, state.Source.ElementAuthoringId,
+            state.ActivationGeneration, state.ActionInstanceId, state.SkillExecutionGeneration,
+            state.ExecutionBranchId, state.RuntimeEpoch);
+
+        // 状态转移事件由源状态操作发出：OwnerId 是源状态节点，代次是源状态本次激活。
+        internal static BtsmtlExecutionStateIdentity OfTransition(in RuntimeExecutionSpan transition) => new(
+            transition.Instance.GraphRuntimeId, transition.Source.GraphAuthoringId, transition.Start.Payload.OwnerId,
+            transition.ActivationGeneration, transition.ActionInstanceId, transition.SkillExecutionGeneration,
+            transition.ExecutionBranchId, transition.RuntimeEpoch);
+
+        internal static BtsmtlExecutionStateIdentity OfPlayback(in RuntimeExecutionSpan playback)
+        {
+            RuntimeTimelinePlaybackProvenance provenance = playback.Start.Payload.TimelinePlayback;
+            return new(provenance.StateMachineGraphRuntimeId, provenance.StateMachineGraphAuthoringId,
+                provenance.StateId, provenance.StateActivationGeneration, playback.ActionInstanceId,
+                playback.SkillExecutionGeneration, playback.ExecutionBranchId, playback.RuntimeEpoch);
+        }
+
+        public bool Equals(BtsmtlExecutionStateIdentity other) => GraphRuntimeId == other.GraphRuntimeId &&
+            GraphAuthoringId == other.GraphAuthoringId && StateId == other.StateId &&
+            ActivationGeneration == other.ActivationGeneration && ActionInstanceId == other.ActionInstanceId &&
+            SkillExecutionGeneration == other.SkillExecutionGeneration && ExecutionBranchId == other.ExecutionBranchId &&
+            RuntimeEpoch == other.RuntimeEpoch;
+        public override bool Equals(object obj) => obj is BtsmtlExecutionStateIdentity other && Equals(other);
+        public override int GetHashCode() => HashCode.Combine(GraphRuntimeId, GraphAuthoringId, StateId,
+            ActivationGeneration, ActionInstanceId, SkillExecutionGeneration, ExecutionBranchId, RuntimeEpoch);
+    }
+
+    // 真实档执行记录投影：按状态激活身份归属 Timeline 播放并按圈拆开，保留正式选中的状态转移；
+    // 时间为执行时间线的会话相对时刻。来源身份缺失或不唯一的播放不归属任何状态，不进入路线。
     public sealed class BtsmtlExecutionRecord
     {
         public const RuntimeTraceChannel TraceChannels = RuntimeTraceChannel.Graph |
             RuntimeTraceChannel.StateMachine | RuntimeTraceChannel.Timeline;
-
-        readonly struct StateKey : IEquatable<StateKey>
-        {
-            readonly Guid m_Runtime;
-            readonly string m_Graph;
-            readonly string m_State;
-            readonly ulong m_Generation;
-            readonly ulong m_Action;
-            readonly ulong m_Execution;
-            readonly Guid m_Branch;
-            readonly ulong m_Epoch;
-
-            internal StateKey(in RuntimeExecutionSpan state)
-            {
-                m_Runtime = state.Instance.GraphRuntimeId;
-                m_Graph = state.Source.GraphAuthoringId;
-                m_State = state.Source.ElementAuthoringId;
-                m_Generation = state.ActivationGeneration;
-                m_Action = state.ActionInstanceId;
-                m_Execution = state.SkillExecutionGeneration;
-                m_Branch = state.ExecutionBranchId;
-                m_Epoch = state.RuntimeEpoch;
-            }
-
-            internal StateKey(in RuntimeExecutionSpan playback, bool _)
-            {
-                RuntimeTimelinePlaybackProvenance provenance = playback.Start.Payload.TimelinePlayback;
-                m_Runtime = provenance.StateMachineGraphRuntimeId;
-                m_Graph = provenance.StateMachineGraphAuthoringId;
-                m_State = provenance.StateId;
-                m_Generation = provenance.StateActivationGeneration;
-                m_Action = playback.ActionInstanceId;
-                m_Execution = playback.SkillExecutionGeneration;
-                m_Branch = playback.ExecutionBranchId;
-                m_Epoch = playback.RuntimeEpoch;
-            }
-
-            public bool Equals(StateKey other) => m_Runtime == other.m_Runtime && m_Graph == other.m_Graph &&
-                m_State == other.m_State && m_Generation == other.m_Generation && m_Action == other.m_Action &&
-                m_Execution == other.m_Execution && m_Branch == other.m_Branch && m_Epoch == other.m_Epoch;
-            public override bool Equals(object obj) => obj is StateKey other && Equals(other);
-            public override int GetHashCode() => HashCode.Combine(m_Runtime, m_Graph, m_State, m_Generation,
-                m_Action, m_Execution, m_Branch, m_Epoch);
-        }
 
         sealed class PlaybackGroup
         {
@@ -69,10 +79,9 @@ namespace BTSMTL.Timeline.Editor
             internal RecordedPlayback(in RuntimeExecutionSpan span, double start, double end, double localStart,
                 double localEnd, int cycle, bool hasLocal)
             {
-                RuntimeTimelinePlaybackProvenance provenance = span.Start.Payload.TimelinePlayback;
+                Owner = BtsmtlExecutionStateIdentity.OfPlayback(in span);
+                PlaybackId = span.Instance.TimelinePlaybackId;
                 TimelineAuthoringId = span.Source.TimelineAuthoringId;
-                StateMachineGraphId = provenance.StateMachineGraphAuthoringId;
-                StateId = provenance.StateId;
                 Start = start;
                 End = end;
                 LocalStart = localStart;
@@ -81,9 +90,9 @@ namespace BTSMTL.Timeline.Editor
                 HasLocal = hasLocal;
             }
 
+            public BtsmtlExecutionStateIdentity Owner { get; }
+            public ulong PlaybackId { get; }
             public string TimelineAuthoringId { get; }
-            public string StateMachineGraphId { get; }
-            public string StateId { get; }
             public double Start { get; }
             public double End { get; }
             // 段内首末游标样本；缺少游标记录时 HasLocal 为 false。
@@ -93,22 +102,42 @@ namespace BTSMTL.Timeline.Editor
             public bool HasLocal { get; }
         }
 
+        // 正式选中的状态转移：源状态激活身份、转移连线的作者身份与发生时刻。目标由作者连线决定，不由下一段播放推断。
+        public readonly struct RecordedTransition
+        {
+            internal RecordedTransition(in RuntimeExecutionSpan span, double time)
+            {
+                Source = BtsmtlExecutionStateIdentity.OfTransition(in span);
+                GraphId = span.Source.GraphAuthoringId;
+                EdgeId = span.Source.ElementAuthoringId;
+                Time = time;
+            }
+
+            public BtsmtlExecutionStateIdentity Source { get; }
+            public string GraphId { get; }
+            public string EdgeId { get; }
+            public double Time { get; }
+        }
+
         readonly RuntimeDebugSession m_Session;
         readonly List<RecordedPlayback> m_Recorded = new();
+        readonly List<RecordedTransition> m_Transitions = new();
         double m_LogicOrigin;
         double m_PresentationOrigin;
 
         public BtsmtlExecutionRecord(RuntimeDebugSession session) => m_Session = session;
 
         public IReadOnlyList<RecordedPlayback> Recorded => m_Recorded;
+        public IReadOnlyList<RecordedTransition> Transitions => m_Transitions;
 
         public void Apply(RuntimeExecutionTimeline timeline)
         {
             m_Recorded.Clear();
+            m_Transitions.Clear();
             m_LogicOrigin = m_Session.GetExecutionTimeOrigin(RuntimeTraceDomain.Logic);
             m_PresentationOrigin = m_Session.GetExecutionTimeOrigin(RuntimeTraceDomain.Presentation);
-            var states = new HashSet<StateKey>();
-            var ambiguous = new HashSet<StateKey>();
+            var states = new HashSet<BtsmtlExecutionStateIdentity>();
+            var ambiguous = new HashSet<BtsmtlExecutionStateIdentity>();
             var playbacks = new Dictionary<RuntimeExecutionPlaybackKey, PlaybackGroup>();
             for (int i = 0; i < timeline.Spans.Count; i++)
             {
@@ -118,11 +147,18 @@ namespace BTSMTL.Timeline.Editor
                     continue;
                 if (span.Kind == RuntimeExecutionSpanKind.State)
                 {
-                    if (!states.Add(new StateKey(in span)))
-                        ambiguous.Add(new StateKey(in span));
+                    BtsmtlExecutionStateIdentity state = BtsmtlExecutionStateIdentity.OfState(in span);
+                    if (!states.Add(state))
+                        ambiguous.Add(state);
                     continue;
                 }
-                if (span.Kind == RuntimeExecutionSpanKind.Transition || span.Instance.TimelinePlaybackId == 0)
+                if (span.Kind == RuntimeExecutionSpanKind.Transition)
+                {
+                    if (span.Source.Kind == RuntimeSourceElementKind.Edge)
+                        m_Transitions.Add(new RecordedTransition(in span, first - Origin(span.Domain)));
+                    continue;
+                }
+                if (span.Instance.TimelinePlaybackId == 0)
                     continue;
                 var key = new RuntimeExecutionPlaybackKey(span.Instance, span.ExecutionBranchId,
                     span.RuntimeEpoch, span.ContentRevision, RuntimeTraceDomain.Logic);
@@ -140,15 +176,20 @@ namespace BTSMTL.Timeline.Editor
             {
                 if (!playback.Source.Start.Payload.TimelinePlayback.HasStateActivation)
                     continue;
-                var owner = new StateKey(in playback.Source, true);
+                var owner = BtsmtlExecutionStateIdentity.OfPlayback(in playback.Source);
                 if (ambiguous.Contains(owner) || !states.Contains(owner))
                     continue;
                 Split(playback);
             }
             m_Recorded.Sort((left, right) => left.Start.CompareTo(right.Start));
+            m_Transitions.Sort((left, right) => left.Time.CompareTo(right.Time));
         }
 
-        public void Clear() => m_Recorded.Clear();
+        public void Clear()
+        {
+            m_Recorded.Clear();
+            m_Transitions.Clear();
+        }
 
         void Split(PlaybackGroup playback)
         {

@@ -119,6 +119,36 @@ namespace BTSMTL.Timeline.Editor
         public bool PlaybackCompleted { get; }
     }
 
+    // 两档共用的路线显示信息：经过的一段 Timeline 播放区间。Playback 相同的段属于同一次播放，只是按圈或分支边界拆开。
+    public readonly struct TimelinePreviewRouteSegment
+    {
+        public TimelinePreviewRouteSegment(TimelineAsset source, OrchestrationStaticState state, OrchestrationTime start,
+            OrchestrationTime end, OrchestrationTime localStart, OrchestrationTime localEnd, int cycle, int playback,
+            bool playbackCompleted)
+        {
+            Source = source;
+            State = state;
+            Start = start;
+            End = end;
+            LocalStart = localStart;
+            LocalEnd = localEnd;
+            Cycle = cycle;
+            Playback = playback;
+            PlaybackCompleted = playbackCompleted;
+        }
+
+        public TimelineAsset Source { get; }
+        // 不在当前静态查询中的状态为 null。
+        public OrchestrationStaticState State { get; }
+        public OrchestrationTime Start { get; }
+        public OrchestrationTime End { get; }
+        public OrchestrationTime LocalStart { get; }
+        public OrchestrationTime LocalEnd { get; }
+        public int Cycle { get; }
+        public int Playback { get; }
+        public bool PlaybackCompleted { get; }
+    }
+
     public readonly struct TimelineAssetPreviewTarget
     {
         public TimelineAssetPreviewTarget(TimelineAsset source, OrchestrationTime time, int cycle,
