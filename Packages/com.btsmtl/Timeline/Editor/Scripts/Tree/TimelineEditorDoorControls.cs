@@ -83,7 +83,7 @@ namespace BTSMTL.Timeline.Editor
                             m_DoorContexts.Add((query, state));
             if (m_DoorContextIndex >= m_DoorContexts.Count)
                 m_DoorContextIndex = 0;
-            m_DoorContextLabels = m_DoorContexts.Select(context => context.Query.Label + " / " + context.State.Name).ToArray();
+            m_DoorContextLabels = m_DoorContexts.Select(context => context.Query.Label + " / " + context.Query.DescribeState(context.State)).ToArray();
             ApplyDoorContext();
             m_DoorPanel?.MarkDirtyRepaint();
         }
@@ -98,9 +98,9 @@ namespace BTSMTL.Timeline.Editor
                 m_CurrentDoors = TimelineStateDoors.Build(context.State);
                 foreach (TimelineDoorDestination destination in m_CurrentDoors.Destinations)
                     if (m_DoorLabels.TryGetValue(destination.Door.ClipId, out string previous))
-                        m_DoorLabels[destination.Door.ClipId] = previous + " · " + destination.Label;
+                        m_DoorLabels[destination.Door.ClipId] = previous + " · " + DestinationText(destination);
                     else
-                        m_DoorLabels.Add(destination.Door.ClipId, destination.Label);
+                        m_DoorLabels.Add(destination.Door.ClipId, DestinationText(destination));
             }
             else
             {
@@ -134,7 +134,8 @@ namespace BTSMTL.Timeline.Editor
             m_DoorScroll = EditorGUILayout.BeginScrollView(m_DoorScroll);
             foreach (TimelineDoorDestination destination in doors.Destinations)
             {
-                EditorGUILayout.LabelField(destination.Door.ClipId, destination.Label, EditorStyles.wordWrappedMiniLabel);
+                EditorGUILayout.LabelField(DoorText(destination.Door), EditorStyles.boldLabel);
+                EditorGUILayout.LabelField(DestinationText(destination), EditorStyles.wordWrappedMiniLabel);
                 if (GUILayout.Button(destination.Kind == TimelineDoorDestinationKind.NextSection
                         ? "定位门与目标分段" : "打开对应状态转移"))
                 {
@@ -148,11 +149,28 @@ namespace BTSMTL.Timeline.Editor
                 }
             }
             foreach (OrchestrationStaticTransition transition in doors.Anytime)
-                if (GUILayout.Button("随时 → " + (transition.Target == null ? "状态机出口" : transition.Target.Name)))
+                if (GUILayout.Button("随时 → " + StateText(transition.Target)))
                     context.Query.OpenTransition(transition.Location);
             foreach (var unresolved in doors.UnresolvedStateReads)
                 EditorGUILayout.HelpBox($"{unresolved.Read.Label}：无法静态判断，按运行数据列为假设。", MessageType.Info);
             EditorGUILayout.EndScrollView();
         }
+
+        string DoorText(OrchestrationStaticClip door)
+        {
+            string track = m_Timeline.Tracks.FirstOrDefault(item => item.AuthoringId == door.TrackId)?.Name;
+            return $"{(string.IsNullOrEmpty(track) ? "未命名轨道" : track)}  {door.Start.AsSingle:F2}–{door.End.AsSingle:F2}s";
+        }
+
+        string DestinationText(TimelineDoorDestination destination)
+        {
+            if (destination.Kind == TimelineDoorDestinationKind.Transition)
+                return "→ 转移到 " + StateText(destination.Transition.Target);
+            string section = m_Timeline.Sections.FirstOrDefault(item => item.AuthoringId == destination.NextSection?.AuthoringId)?.Name;
+            return "→ 进入分段 " + (string.IsNullOrEmpty(section) ? "未命名分段" : section);
+        }
+
+        string StateText(OrchestrationStaticState state) =>
+            m_DoorContexts[m_DoorContextIndex].Query.DescribeState(state);
     }
 }

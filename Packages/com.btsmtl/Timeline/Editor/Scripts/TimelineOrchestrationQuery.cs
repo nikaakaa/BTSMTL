@@ -17,11 +17,13 @@ namespace BTSMTL.Timeline.Editor
         readonly Action<string, string> m_OpenClip;
         readonly Action<OrchestrationStaticSourceLocation> m_OpenTransition;
         readonly Action<OrchestrationStaticSourceLocation> m_OpenState;
+        readonly Func<OrchestrationStaticSourceLocation, string> m_DescribeState;
 
         public TimelineOrchestrationQuery(string label, OrchestrationStaticQuery query,
             Func<string, TimelineAsset> resolveTimeline, Action<string, string> openClip,
             Action<OrchestrationStaticSourceLocation> openTransition,
-            Action<OrchestrationStaticSourceLocation> openState)
+            Action<OrchestrationStaticSourceLocation> openState,
+            Func<OrchestrationStaticSourceLocation, string> describeState)
         {
             Label = label;
             Query = query;
@@ -29,6 +31,7 @@ namespace BTSMTL.Timeline.Editor
             m_OpenClip = openClip;
             m_OpenTransition = openTransition;
             m_OpenState = openState;
+            m_DescribeState = describeState;
         }
 
         public string Label { get; }
@@ -37,5 +40,7 @@ namespace BTSMTL.Timeline.Editor
         public void OpenClip(string timelineIdentity, string clipId) => m_OpenClip(timelineIdentity, clipId);
         public void OpenTransition(OrchestrationStaticSourceLocation location) => m_OpenTransition(location);
         public void OpenState(OrchestrationStaticSourceLocation location) => m_OpenState(location);
+        public string DescribeState(OrchestrationStaticState state) =>
+            state == null ? "状态机出口" : m_DescribeState(state.Location);
     }
 }

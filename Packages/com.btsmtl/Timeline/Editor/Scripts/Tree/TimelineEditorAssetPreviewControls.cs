@@ -32,6 +32,7 @@ namespace BTSMTL.Timeline.Editor
             toolbar.style.flexWrap = Wrap.Wrap;
             toolbar.style.height = StyleKeyword.Auto;
             toolbar.style.minHeight = 22f;
+            toolbar.style.alignItems = Align.Center;
             var mode = new PopupField<string>(new List<string> { "资产预览", "会话预览" }, (int)m_PreviewMode);
             mode.RegisterValueChangedCallback(change =>
             {
@@ -40,6 +41,9 @@ namespace BTSMTL.Timeline.Editor
                     OpenTimelinePreview();
             });
             mode.tooltip = "资产预览按目标时刻显示；会话预览确认真实运行结果。";
+            mode.style.width = 90f;
+            mode.style.height = 20f;
+            mode.style.alignSelf = Align.Center;
             toolbar.Add(mode);
             m_AssetPreviewConfiguration = new ObjectField("资产预览配置")
             {
@@ -48,8 +52,13 @@ namespace BTSMTL.Timeline.Editor
                 value = preview.Configuration
             };
             m_AssetPreviewConfiguration.RegisterValueChangedCallback(change => preview.Configuration = change.newValue);
-            m_AssetPreviewConfiguration.style.minWidth = 260f;
-            m_AssetPreviewConfiguration.style.flexGrow = 1f;
+            m_AssetPreviewConfiguration.labelElement.style.minWidth = 0f;
+            m_AssetPreviewConfiguration.labelElement.style.width = StyleKeyword.Auto;
+            m_AssetPreviewConfiguration.style.width = 300f;
+            m_AssetPreviewConfiguration.style.height = 20f;
+            m_AssetPreviewConfiguration.style.flexGrow = 0f;
+            m_AssetPreviewConfiguration.style.flexShrink = 1f;
+            m_AssetPreviewConfiguration.style.alignSelf = Align.Center;
             toolbar.Add(m_AssetPreviewConfiguration);
             toolbar.Add(new ToolbarButton(OpenTimelinePreview) { text = "打开预览" });
             toolbar.Add(new ToolbarButton(() => preview.SetPlaying(!preview.IsPlaying)) { text = "播放／暂停" });

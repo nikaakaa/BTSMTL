@@ -56,7 +56,7 @@ namespace BTSMTL.Timeline.Editor
                 {
                     previousState = operation;
                     stateRow = AddRow($"state:{i}", -1, BtsmtlTimeBarItemKind.State,
-                        inferred == null ? span.Source.name : inferred.State.Name);
+                        inferred == null ? span.Source.name : m_Host.Query.DescribeState(inferred.State));
                     stateItem = AddItem($"state:{i}", stateRow, BtsmtlTimeBarItemKind.State,
                         span.Start.AsSingle, span.End.AsSingle, m_Rows[stateRow].Label, "静态推导状态", inferred?.State);
                 }
