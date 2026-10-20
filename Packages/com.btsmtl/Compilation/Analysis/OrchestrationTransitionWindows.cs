@@ -21,10 +21,6 @@ namespace BTSMTL.Compilation.Analysis
         public IReadOnlyList<OrchestrationStaticClip> Providers => m_Providers;
         public IReadOnlyList<string> StateKeys => m_StateKeys;
         public IReadOnlyList<OrchestrationStaticRead> HostInputs => m_HostInputs;
-        // 时段恰由一个 Clip 的起止形成时可直接改该 Clip；交集或多个 Clip 拼成的时段需分别调整。
-        public OrchestrationStaticClip SoleProvider => m_Providers.Count == 1 ? m_Providers[0] : null;
-        public bool Provides(OrchestrationStaticClip clip) => m_Providers.Contains(clip);
-
         public string InputLabel
         {
             get
@@ -161,14 +157,6 @@ namespace BTSMTL.Compilation.Analysis
                 if (window.Transition == transition)
                     return window;
             return null;
-        }
-
-        // 同一 Clip 提供的状态被多条转移读取时，这些转移的时段一起随该 Clip 变化。
-        public IEnumerable<OrchestrationTransitionWindow> ProvidedBy(OrchestrationStaticClip clip)
-        {
-            foreach (OrchestrationTransitionWindow window in m_Windows)
-                if (window.Provides(clip))
-                    yield return window;
         }
 
         public static OrchestrationStateTransitionWindows Build(OrchestrationStaticState state)

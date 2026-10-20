@@ -42,7 +42,7 @@ namespace BTSMTL.Timeline.Editor
         readonly List<OrchestrationStaticRead> m_Assumptions = new();
         TimelineOrchestrationQuery m_Query;
         TimelinePreviewInputSchemes m_Schemes;
-        BtsmtlExecutionTimeBarDataSource m_Real;
+        BtsmtlExecutionRecord m_Real;
         long m_RealVersion = -1;
         long m_RealProjection = -1;
         Guid m_RealCapture;
@@ -163,9 +163,7 @@ namespace BTSMTL.Timeline.Editor
             Error = string.Empty;
             if (Mode == TimelinePreviewMode.Real)
             {
-                m_Real = new BtsmtlExecutionTimeBarDataSource(RuntimeDebugSession.Shared, m_Provider.OpenRealSource,
-                    m_Provider.SeekReal, () => m_Provider.RealTime, () => m_Provider.CanObserveReal);
-                m_Real.ConfigureAuthoring(m_Provider.RealAuthoring);
+                m_Real = new BtsmtlExecutionRecord(RuntimeDebugSession.Shared);
                 m_RealVersion = -1;
                 m_SessionOpening = new CancellationTokenSource();
                 m_Provider.OpenSession(Source, Preferences, m_SessionOpening.Token);
@@ -658,8 +656,9 @@ namespace BTSMTL.Timeline.Editor
                 m_RealCapture != session.CaptureId)
             {
                 RuntimeExecutionTimeline timeline = session.BuildExecutionTimeline();
-                if (timeline != null && m_Real.Apply(timeline))
+                if (timeline != null)
                 {
+                    m_Real.Apply(timeline);
                     m_RealVersion = session.CaptureVersion;
                     m_RealProjection = session.ProjectionVersion;
                     m_RealCapture = session.CaptureId;
@@ -686,10 +685,9 @@ namespace BTSMTL.Timeline.Editor
         void RebuildRealTraversals()
         {
             m_Traversals.Clear();
-            foreach (BtsmtlExecutionTimeBarDataSource.RecordedPlayback played in m_Real.Recorded)
+            foreach (BtsmtlExecutionRecord.RecordedPlayback played in m_Real.Recorded)
             {
-                if (!played.HasLocal ||
-                    !m_Provider.RealAuthoring.TryResolveTimeline(played.TimelineAuthoringId, out TimelineAsset source, out _))
+                if (!played.HasLocal || !m_Provider.TryResolveRealTimeline(played.TimelineAuthoringId, out TimelineAsset source))
                     continue;
                 OrchestrationStaticState state = null;
                 if (m_Query != null)

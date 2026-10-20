@@ -9,7 +9,6 @@ using ThirdPersonSimulation;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UIElements;
-using BTSMTL.Diagnostics.Editor;
 
 namespace BTSMTL.Timeline.Editor
 {
@@ -204,12 +203,12 @@ namespace BTSMTL.Timeline.Editor
         IReadOnlyList<GraphHostInputDescriptor> DescribeInputs();
         IReadOnlyList<TimelinePreviewInputRequest> DescribeInputRequests();
         IReadOnlyList<TimelinePreviewInputPoint> ImportRecordedInputs(string path);
-        // 真实档：工具栏、会话游标与执行记录的作者时间入口均由宿主提供。
+        // 真实档：工具栏、会话游标与执行记录中 Timeline 的作者来源均由宿主提供；
+        // 编辑时间轴上的时间拖动经宿主设置的 ITimelineTimeRangePreview 写回。
         VisualElement CreateRealControls();
         bool CanObserveReal { get; }
         float RealTime { get; }
         void SeekReal(float time);
-        IBtsmtlExecutionTimelineAuthoringHost RealAuthoring { get; }
-        void OpenRealSource(RuntimeExecutionSpan span);
+        bool TryResolveRealTimeline(string timelineAuthoringId, out TimelineAsset source);
     }
 }
