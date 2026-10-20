@@ -54,8 +54,15 @@ namespace BTSMTL.Authoring.Graph
         public string VisibleWhenValue { get; set; }
     }
 
-    [AttributeUsage(AttributeTargets.Method)]
+    [AttributeUsage(AttributeTargets.Method | AttributeTargets.Constructor)]
     public sealed class GraphAuthoringConfigureAttribute : Attribute { }
+
+    [AttributeUsage(AttributeTargets.Property | AttributeTargets.Field)]
+    public sealed class GraphAuthoringInlineAttribute : Attribute
+    {
+        public GraphAuthoringInlineAttribute(string fieldId) => FieldId = fieldId;
+        public string FieldId { get; }
+    }
 
     [AttributeUsage(AttributeTargets.Class)]
     public sealed class GraphAuthoringAnnotationAttribute : Attribute { }

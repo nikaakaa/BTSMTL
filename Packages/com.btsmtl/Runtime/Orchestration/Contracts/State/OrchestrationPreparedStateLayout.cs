@@ -39,7 +39,7 @@ namespace BTSMTL.Orchestration
             internal int Stride { get; }
             internal OrchestrationValueAddress AtFrame(int frame) =>
                 new OrchestrationValueAddress(Address.Kind,
-                    Address.OffsetBytes + frame * Stride, Address.BitIndex);
+                    Address.OffsetBytes + frame * Stride, Address.SizeBytes, Address.BitIndex);
         }
 
         public OrchestrationPreparedStateLayout(OrchestrationStateLayout layout,
@@ -169,7 +169,9 @@ namespace BTSMTL.Orchestration
         static OrchestrationValueAddress Address(in OrchestrationStateSegment segment,
             OrchestrationValueKind kind, int index) =>
             kind == OrchestrationValueKind.Boolean && segment.ValueKind != 0
-                ? new OrchestrationValueAddress(kind, segment.OffsetBytes + index / 64 * segment.ElementSizeBytes, index % 64)
-                : new OrchestrationValueAddress(kind, segment.OffsetBytes + index * segment.ElementSizeBytes);
+                ? new OrchestrationValueAddress(kind, segment.OffsetBytes + index / 64 * segment.ElementSizeBytes,
+                    segment.ElementSizeBytes, index % 64)
+                : new OrchestrationValueAddress(kind, segment.OffsetBytes + index * segment.ElementSizeBytes,
+                    segment.ElementSizeBytes);
     }
 }

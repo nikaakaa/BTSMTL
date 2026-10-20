@@ -53,5 +53,24 @@ namespace ThirdPerson.ValueGeneration.Generator
             layout = new ValueUnionLayout();
             return true;
         }
+
+        static void EmitValueUnionPayloadAccess(StringBuilder code, INamedTypeSymbol type, string kindType)
+        {
+            string fullType = TypeName(type);
+            code.Append("private ").Append(Escape(type.Name)).Append('(').Append(kindType)
+                .AppendLine(" kind) { this = default; Kind = kind; }");
+            code.Append("public static unsafe void ReadPayload(").Append(kindType)
+                .Append(" kind, global::System.ReadOnlySpan<byte> payload, ref ").Append(fullType)
+                .AppendLine(" value) {");
+            code.Append("value = new ").Append(fullType).AppendLine("(kind);");
+            code.Append("fixed (").Append(fullType).AppendLine("* destination = &value)");
+            code.Append("payload.CopyTo(new global::System.Span<byte>((byte*)destination + ")
+                .Append(ValueUnionPayloadOffset).AppendLine(", payload.Length)); }");
+            code.Append("public static unsafe void WritePayload(in ").Append(fullType)
+                .AppendLine(" value, global::System.Span<byte> payload) {");
+            code.Append("fixed (").Append(fullType).AppendLine("* source = &value)");
+            code.Append("new global::System.ReadOnlySpan<byte>((byte*)source + ")
+                .Append(ValueUnionPayloadOffset).AppendLine(", payload.Length).CopyTo(payload); }");
+        }
     }
 }

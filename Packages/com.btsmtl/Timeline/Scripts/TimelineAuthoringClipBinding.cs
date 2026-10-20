@@ -66,15 +66,16 @@ namespace BTSMTL.Timeline
 
     public sealed class TimelineAuthoringClipConfiguration
     {
-        readonly Dictionary<string, object> m_Values = new(StringComparer.Ordinal);
+        internal readonly GraphAuthoringCandidate Candidate;
+        internal TimelineAuthoringClipConfiguration(Clip clip, bool fromDefaults = false) =>
+            Candidate = GraphAuthoringMemberBindings.CreateCandidate(clip, fromDefaults);
         public object this[string propertyId]
         {
-            get => m_Values[propertyId];
-            set => m_Values[propertyId] = value;
+            get => Candidate.Contract[propertyId].Evaluate(Candidate);
+            set => Candidate.Contract[propertyId].WriteCandidate(Candidate, value);
         }
-        public IReadOnlyDictionary<string, object> Values => m_Values;
-        public T Get<T>(string propertyId) => (T)m_Values[propertyId];
-        public void Set(string propertyId, object value) => m_Values[propertyId] = value;
+        public T Get<T>(string propertyId) => (T)this[propertyId];
+        public void Set(string propertyId, object value) => this[propertyId] = value;
     }
 
     public static class TimelineAuthoringClipBinding
@@ -97,28 +98,16 @@ namespace BTSMTL.Timeline
                 .OrderBy(field => field.Metadata.FieldId, StringComparer.Ordinal)
                 .Select(field => new TimelineAuthoringProperty(field)).ToArray();
 
-        public static TimelineAuthoringClipConfiguration Read(Clip clip)
-        {
-            var result = new TimelineAuthoringClipConfiguration();
-            foreach (GraphAuthoringMember member in GraphAuthoringMemberBindings.Contract(clip).Fields)
-                result.Set(member.Metadata.FieldId, member.Read(clip));
-            return result;
-        }
+        public static TimelineAuthoringClipConfiguration Read(Clip clip) => new(clip);
 
-        public static TimelineAuthoringClipConfiguration Defaults(Clip clip)
-        {
-            var result = new TimelineAuthoringClipConfiguration();
-            foreach (KeyValuePair<string, object> field in GraphAuthoringMemberBindings.ReadDefaults(clip.GetType()))
-                result.Set(field.Key, field.Value);
-            return result;
-        }
+        public static TimelineAuthoringClipConfiguration Defaults(Clip clip) => new(clip, true);
 
         public static Type ValueType(Clip clip, TimelineAuthoringProperty property) =>
             GraphAuthoringMemberBindings.ValueType(clip.GetType(), property.PropertyId);
 
         public static void Configure(TimelineData timeline, Clip clip,
             TimelineAuthoringClipConfiguration configuration) =>
-            GraphAuthoringMemberBindings.Apply(clip, configuration.Values);
+            configuration.Candidate.Apply(clip);
     }
 }
 #endif

@@ -37,24 +37,14 @@ namespace BTSMTL.Authoring.Graph
         public static object BindResourceAsset(object target, string fieldId, UnityEngine.Object source) =>
             Contract(target)[fieldId].BindResource(target, source);
 
-        public static T Candidate<T>(object target, string fieldId, IReadOnlyDictionary<string, object> candidates) =>
-            candidates.TryGetValue(fieldId, out object candidate) ? (T)candidate : (T)Contract(target)[fieldId].Read(target);
-
-        public static Func<object, IReadOnlyDictionary<string, object>, bool> Visibility(
+        public static Func<GraphAuthoringCandidate, bool> Visibility(
             Type type, string fieldId, string expected)
         {
             GraphAuthoringMember field = Contract(type)[fieldId];
             object expectedValue = field.ValueType.IsEnum
                 ? Enum.Parse(field.ValueType, expected)
                 : Convert.ChangeType(expected, field.ValueType, CultureInfo.InvariantCulture);
-            return (target, candidates) => Equals(field.Evaluate(target, candidates), expectedValue);
-        }
-
-        public static IReadOnlyDictionary<string, object> ReadDefaults(Type type)
-        {
-            object defaults = Activator.CreateInstance(type);
-            return Contract(defaults).Fields.ToDictionary(
-                field => field.Metadata.FieldId, field => field.DefaultValue(defaults), StringComparer.Ordinal);
+            return candidate => Equals(field.Evaluate(candidate), expectedValue);
         }
 
         public static IReadOnlyList<GraphAuthoringFieldValue> ReadFields(object target)
@@ -64,12 +54,8 @@ namespace BTSMTL.Authoring.Graph
                 field.Describe(defaults), field.Read(target))).ToArray();
         }
 
-        public static void Apply(object node, IReadOnlyDictionary<string, object> values)
-        {
-            foreach (GraphAuthoringConfiguration operation in Contract(node).Configurations)
-                if (operation.Fields.Any(values.ContainsKey))
-                    operation.Apply(node, values);
-        }
+        public static GraphAuthoringCandidate CreateCandidate(object target, bool fromDefaults = false) =>
+            Contract(target).CreateCandidate(target, fromDefaults);
     }
 }
 #endif

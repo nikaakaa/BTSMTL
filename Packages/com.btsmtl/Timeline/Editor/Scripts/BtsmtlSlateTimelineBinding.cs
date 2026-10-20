@@ -1162,10 +1162,7 @@ namespace BTSMTL.Timeline.Editor
             };
             request.Prototype.Track = track.Source;
             request.Prototype.ConfigureTimeRange(startTime, defaultEndTime);
-            request.Configuration = new TimelineAuthoringClipConfiguration();
-            foreach (TimelineAuthoringProperty property in TimelineAuthoringClipBinding.Properties(request.Prototype))
-                request.Configuration.Set(property.PropertyId,
-                    BTSMTL.Authoring.Graph.GraphAuthoringMemberBindings.Contract(request.Prototype)[property.PropertyId].Read(request.Prototype));
+            request.Configuration = TimelineAuthoringClipBinding.Read(request.Prototype);
             if (isTreeClip)
                 request.NewTreeGraphName = "Timeline Tree";
             PopupWindow.Show(new Rect(m_PopupPosition, Vector2.zero), new TimelineClipCreationPopup(

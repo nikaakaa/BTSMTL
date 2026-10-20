@@ -5,6 +5,7 @@
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AssemblyName>ThirdPersonSimulation.QuantumNumerics</AssemblyName>
     <RootNamespace>ThirdPersonSimulation.QuantumNumerics</RootNamespace>
     <NumericsSourceRoot>$(MSBuildThisFileDirectory)..\..\Packages\com.thirdperson.numerics.quantum\Runtime\Numerics</NumericsSourceRoot>

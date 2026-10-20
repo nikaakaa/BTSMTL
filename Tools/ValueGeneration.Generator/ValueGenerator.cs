@@ -59,7 +59,7 @@ namespace ThirdPerson.ValueGeneration.Generator
             {
                 var type = (INamedTypeSymbol)context.Compilation.GetSemanticModel(declaration.SyntaxTree)
                     .GetDeclaredSymbol(declaration);
-                if (type.GetMembers().Any(member => HasAttribute(member, AuthoringFieldAttribute)))
+                if (type.TypeKind == TypeKind.Class && AuthoringTypeHasFields(type))
                     authoringTypes[Identity(type)] = type;
                 if (HasAttribute(type, UnionTemplateAttribute))
                     templates[Identity(type)] = type;
@@ -276,6 +276,8 @@ namespace ThirdPerson.ValueGeneration.Generator
                 }
                 code.AppendLine("default: throw new global::System.ArgumentOutOfRangeException(nameof(kind)); } }");
             }
+            if (layout != null)
+                EmitValueUnionPayloadAccess(code, type, kindType);
             if (HasAttribute(type, ValueOperationsAttribute) ||
                 definition != null && HasAttribute(definition, ValueOperationsAttribute))
                 EmitValueOperations(code, type, cases, common, kindType);

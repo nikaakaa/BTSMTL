@@ -23,6 +23,9 @@ namespace ThirdPerson.ValueGeneration.Generator
             public AttributeData Metadata;
             public string Id;
             public bool ReadOnly;
+            public string[] Path;
+            public string Name => string.Join("_", Path);
+            public string Access => string.Join(".", Path.Select(Escape));
         }
 
         sealed class AuthoringArgument
@@ -31,11 +34,11 @@ namespace ThirdPerson.ValueGeneration.Generator
             public string ParameterName;
             public AuthoringField Field;
             public AuthoringArgument[] Children = Array.Empty<AuthoringArgument>();
+            public bool ToArray;
             public IEnumerable<AuthoringField> Fields => Field != null
                 ? new[] { Field } : Children.SelectMany(child => child.Fields);
             public string Expression => Field != null
-                ? AuthoringRuntime + "GraphAuthoringMemberBindings.Candidate<" + TypeName(Field.Type) + ">(target, " +
-                    Quote(Field.Id) + ", values)"
+                ? ToArray ? "global::System.Linq.Enumerable.ToArray(" + AuthoringCandidate(Field) + ")" : AuthoringCandidate(Field)
                 : "new " + TypeName(Type) + "(" + string.Join(", ", Children.Select(child => Escape(child.ParameterName) + ": " + child.Expression)) + ")";
             public string Description => "new " + AuthoringRuntime + "GraphAuthoringArgument(typeof(" + TypeName(Type) + "), " + Quote(ParameterName) + ", " +
                 (Field != null ? Quote(Field.Id) : "null") +
@@ -44,19 +47,34 @@ namespace ThirdPerson.ValueGeneration.Generator
 
         static string Quote(string text) => SymbolDisplay.FormatLiteral(text, true);
 
-        static AuthoringField[] AuthoringFields(INamedTypeSymbol type) => type.GetMembers()
-            .Where(member => HasAttribute(member, AuthoringFieldAttribute)).Select(member =>
+        static AuthoringField[] AuthoringFields(INamedTypeSymbol type) =>
+            AuthoringFields(type, Array.Empty<string>(), string.Empty).ToArray();
+
+        static IEnumerable<AuthoringField> AuthoringFields(INamedTypeSymbol type, string[] path, string prefix)
+        {
+            foreach (ISymbol member in type.GetMembers())
             {
                 AttributeData metadata = Attribute(member, AuthoringFieldAttribute);
-                return new AuthoringField
+                string[] memberPath = path.Concat(new[] { member.Name }).ToArray();
+                ITypeSymbol memberType = member is IPropertySymbol property ? property.Type :
+                    member is IFieldSymbol declaredField ? declaredField.Type : null;
+                if (metadata != null)
+                    yield return new AuthoringField
                 {
                     Symbol = member,
-                    Type = member is IPropertySymbol property ? property.Type : ((IFieldSymbol)member).Type,
+                    Type = memberType,
                     Metadata = metadata,
-                    Id = (string)metadata.ConstructorArguments[0].Value,
-                    ReadOnly = metadata.NamedArguments.Any(argument => argument.Key == "ReadOnly" && (bool)argument.Value.Value)
+                    Id = prefix + (string)metadata.ConstructorArguments[0].Value,
+                    ReadOnly = metadata.NamedArguments.Any(argument => argument.Key == "ReadOnly" && (bool)argument.Value.Value),
+                    Path = memberPath
                 };
-            }).ToArray();
+                AttributeData inline = Attribute(member, AuthoringNamespace + "GraphAuthoringInlineAttribute");
+                if (inline != null && memberType is INamedTypeSymbol embedded)
+                    foreach (AuthoringField field in AuthoringFields(embedded, memberPath,
+                        prefix + (string)inline.ConstructorArguments[0].Value + "."))
+                        yield return field;
+            }
+        }
 
         static AttributeData Attribute(ISymbol symbol, string name) => symbol.GetAttributes()
             .SingleOrDefault(attribute => Identity(attribute.AttributeClass) == name);
@@ -74,7 +92,8 @@ namespace ThirdPerson.ValueGeneration.Generator
                 ((IPropertySymbol)field.Symbol).SetMethod?.DeclaredAccessibility == Accessibility.Public);
 
         static bool AuthoringTypeHasFields(INamedTypeSymbol type) => type != null &&
-            type.GetMembers().Any(member => HasAttribute(member, AuthoringFieldAttribute));
+            type.GetMembers().Any(member => HasAttribute(member, AuthoringFieldAttribute) ||
+                HasAttribute(member, AuthoringNamespace + "GraphAuthoringInlineAttribute"));
 
         static ITypeSymbol AuthoringResultType(ISymbol member) => member is IPropertySymbol property
             ? property.Type : ((IMethodSymbol)member).ReturnType;
@@ -189,10 +208,11 @@ namespace ThirdPerson.ValueGeneration.Generator
             foreach (IMethodSymbol method in type.GetMembers().OfType<IMethodSymbol>()
                 .Where(method => HasAttribute(method, AuthoringNamespace + "GraphAuthoringConfigureAttribute")))
             {
-                if (method.IsStatic || method.DeclaredAccessibility != Accessibility.Public || !method.ReturnsVoid ||
+                if (method.IsStatic || method.DeclaredAccessibility != Accessibility.Public ||
+                    !method.ReturnsVoid && method.MethodKind != MethodKind.Constructor ||
                     method.IsGenericMethod || method.Parameters.Any(parameter => parameter.RefKind == RefKind.Out || parameter.RefKind == RefKind.Ref))
                 {
-                    Error(method, "作者配置必须是公开实例 void 方法，参数只能按值或 in 传递");
+                    Error(method, "作者配置必须是公开实例 void 方法或构造函数，参数只能按值或 in 传递");
                     valid = false;
                     continue;
                 }
@@ -223,6 +243,7 @@ namespace ThirdPerson.ValueGeneration.Generator
                     Identity(attribute.AttributeClass).StartsWith(AuthoringNamespace, StringComparison.Ordinal) &&
                     attribute.AttributeClass.Name != "GraphAuthoringFieldAttribute" &&
                     attribute.AttributeClass.Name != "GraphAuthoringConfigureAttribute" &&
+                    attribute.AttributeClass.Name != "GraphAuthoringInlineAttribute" &&
                     attribute.ConstructorArguments.Length == 1 && attribute.ConstructorArguments[0].Value is string))
                     if (!fields.Any(field => field.Id == (string)annotation.ConstructorArguments[0].Value))
                     {
@@ -241,7 +262,7 @@ namespace ThirdPerson.ValueGeneration.Generator
             code.Append("new ").Append(AuthoringRuntime).AppendLine("GraphAuthoringMember[] {");
             foreach (AuthoringField field in fields)
             {
-                string read = "((" + TypeName(type) + ")target)." + Escape(field.Symbol.Name);
+                string read = "((" + TypeName(type) + ")target)." + field.Access;
                 string evaluate = AuthoringCandidate(field);
                 ISymbol evaluator = AuthoringAuxiliary(type, "GraphAuthoringEvaluate", field.Id);
                 if (evaluator is IMethodSymbol evaluatorMethod)
@@ -266,14 +287,22 @@ namespace ThirdPerson.ValueGeneration.Generator
                 ISymbol owner = AuthoringAuxiliary(type, "GraphAuthoringResourceOwner", field.Id);
                 ISymbol binder = AuthoringAuxiliary(type, "GraphAuthoringBindResource", field.Id);
                 code.Append("new ").Append(AuthoringRuntime).Append("GraphAuthoringMember(")
-                    .Append(AuthoringAttributeExpression(field.Metadata)).Append(", typeof(").Append(TypeName(field.Type)).Append("), ")
+                    .Append(AuthoringFieldMetadata(field)).Append(", typeof(").Append(TypeName(field.Type)).Append("), ")
                     .Append("target => ").Append(read).Append(", new global::System.Func<object, ").Append(TypeName(field.Type))
-                    .Append(">(target => ").Append(read).Append("), (target, values) => ").Append(evaluate)
+                    .Append(">(target => ").Append(read).Append("), new global::System.Func<object, ").Append(TypeName(field.Type))
+                    .Append(">(candidate => ").Append(evaluate).Append("), candidate => ").Append(evaluate)
+                    .Append(", ").Append(field.ReadOnly ? "null" : "(candidate, value) => ((AuthoringCandidate)candidate).Set_" +
+                        field.Name + "(" + AuthoringConvert(field, "value") + ")")
+                    .Append(", candidate => ").Append(field.ReadOnly ? "false" : "((AuthoringCandidate)candidate).Changed_" + field.Name)
+                    .Append(", value => ").Append(AuthoringExternalValue(field, "value"))
                     .Append(", target => ").Append(defaultValue).Append(", ").Append(choice).Append(", ")
                     .Append(owner == null ? "null" : "target => " + AuthoringAuxiliaryRead(type, owner, "target")).Append(", ")
                     .Append(owner == null ? "null" : "(target, asset) => ((" + TypeName(type) + ")target)." + Escape(owner.Name) +
                         " = (" + TypeName(((IPropertySymbol)owner).Type) + ")asset").Append(", ")
-                    .Append(binder == null ? "null" : "(target, asset) => ((" + TypeName(type) + ")target)." + Escape(binder.Name) + "(asset)");
+                    .Append(binder == null ? "null" : "(target, asset) => ((" + TypeName(type) + ")target)." + Escape(binder.Name) + "(asset)")
+                    .Append(", ").Append(binder == null ? "null" : "(candidate, asset) => ((AuthoringCandidate)candidate).SelectResource_" + field.Name + "(asset)")
+                    .Append(", ").Append(binder == null ? "null" : "candidate => ((AuthoringCandidate)candidate).ResourceChanged_" + field.Name)
+                    .Append(", ").Append(binder == null ? "null" : "candidate => ((AuthoringCandidate)candidate).Resource_" + field.Name);
                 foreach (AttributeData annotation in field.Symbol.GetAttributes().Where(attribute =>
                     HasAttribute(attribute.AttributeClass, AuthoringNamespace + "GraphAuthoringAnnotationAttribute")))
                     code.Append(", ").Append(AuthoringAttributeExpression(annotation));
@@ -281,61 +310,226 @@ namespace ThirdPerson.ValueGeneration.Generator
             }
             code.Append("}, new ").Append(AuthoringRuntime).AppendLine("GraphAuthoringConfiguration[] {");
             foreach (Tuple<IMethodSymbol, AuthoringArgument[]> operation in operations)
-                EmitAuthoringConfiguration(code, type, operation.Item1.Name, operation.Item2,
-                    "((" + TypeName(type) + ")target)." + Escape(operation.Item1.Name) + "(" +
-                    string.Join(", ", operation.Item2.Select(argument => argument.Expression)) + ")");
+                EmitAuthoringConfiguration(code, operation.Item1.MethodKind == MethodKind.Constructor ? ".ctor" : operation.Item1.Name,
+                    operation.Item2);
             if (assigned.Length != 0)
             {
                 AuthoringArgument[] arguments = assigned.Select(field => new AuthoringArgument
                 {
                     Type = field.Type, Field = field,
-                    ParameterName = char.ToLowerInvariant(field.Symbol.Name[0]) + field.Symbol.Name.Substring(1)
+                    ParameterName = Parameter(field.Name)
                 }).ToArray();
-                EmitAuthoringConfiguration(code, type, "ConfigureAuthoringFields", arguments,
-                    "((" + TypeName(type) + ")target).ConfigureAuthoringFields(" + string.Join(", ", arguments.Select(argument => argument.Expression)) + ")");
+                EmitAuthoringConfiguration(code, "ConfigureAuthoringFields", arguments);
             }
-            code.Append('}').Append(inherited != null ? ", " + TypeName(inherited) + ".AuthoringContract" : "").AppendLine(");");
+            code.Append("}, (target, complete) => new AuthoringCandidate((").Append(TypeName(type)).Append(")target, complete)")
+                .Append(inherited != null ? ", " + TypeName(inherited) + ".AuthoringContract" : "").AppendLine(");");
             code.Append(AuthoringRuntime).Append("GraphAuthoringTypeContract ").Append(AuthoringRuntime)
                 .AppendLine("IGraphAuthoringFieldSource.AuthoringFields => AuthoringContract;");
             if (assigned.Length != 0)
             {
                 code.Append("public void ConfigureAuthoringFields(").Append(string.Join(", ", assigned.Select(field =>
-                    TypeName(field.Type) + " " + Parameter(field.Symbol.Name)))).AppendLine(") {");
+                    TypeName(field.Type) + " " + Parameter(field.Name)))).AppendLine(") {");
                 foreach (AuthoringField field in assigned)
-                    code.Append("this.").Append(Escape(field.Symbol.Name)).Append(" = ").Append(Parameter(field.Symbol.Name)).AppendLine(";");
+                    code.Append("this.").Append(field.Access).Append(" = ").Append(Parameter(field.Name)).AppendLine(";");
                 code.AppendLine("}");
             }
+            EmitAuthoringCandidate(code, type, fields, operations, assigned, inherited);
             code.AppendLine("} }\n#endif");
             context.AddSource(Identity(type).Replace('.', '_').Replace('<', '_').Replace('>', '_').Replace(',', '_') + ".Authoring.g.cs",
                 SourceText.From(code.ToString(), Encoding.UTF8));
         }
 
-        static string AuthoringCandidate(AuthoringField field) => AuthoringRuntime + "GraphAuthoringMemberBindings.Candidate<" +
-            TypeName(field.Type) + ">(target, " + Quote(field.Id) + ", values)";
+        static string AuthoringCandidate(AuthoringField field) => "((AuthoringCandidate)candidate)." + Escape(field.Name);
+
+        static void EmitAuthoringCandidate(StringBuilder code, INamedTypeSymbol type, AuthoringField[] fields,
+            List<Tuple<IMethodSymbol, AuthoringArgument[]>> operations, AuthoringField[] assigned, INamedTypeSymbol inherited)
+        {
+            code.Append("public ").Append(inherited != null ? "new " : "").Append("class AuthoringCandidate : ")
+                .Append(inherited != null ? TypeName(inherited) + ".AuthoringCandidate" : AuthoringRuntime + "GraphAuthoringCandidate")
+                .AppendLine(" {");
+            foreach (AuthoringField field in fields)
+            {
+                code.Append("public ").Append(TypeName(field.Type)).Append(' ').Append(Escape(field.Name)).AppendLine(";");
+                if (field.ReadOnly) continue;
+                code.Append("public bool Changed_").Append(field.Name).AppendLine(";");
+                ISymbol binder = AuthoringAuxiliary(type, "GraphAuthoringBindResource", field.Id);
+                if (binder != null)
+                {
+                    code.Append("public bool ResourceChanged_").Append(field.Name).AppendLine(";");
+                    code.Append("public global::UnityEngine.Object Resource_").Append(field.Name).AppendLine(";");
+                    code.Append("public void SelectResource_").Append(field.Name).AppendLine("(global::UnityEngine.Object asset) {")
+                        .Append("Resource_").Append(field.Name).AppendLine(" = asset;")
+                        .Append("ResourceChanged_").Append(field.Name).AppendLine(" = true;")
+                        .Append("Changed_").Append(field.Name).AppendLine(" = true; }");
+                }
+                code.Append("public void Set_").Append(field.Name).Append('(').Append(TypeName(field.Type)).AppendLine(" value) {")
+                    .Append(Escape(field.Name)).AppendLine(" = value;")
+                    .Append("Changed_").Append(field.Name).AppendLine(" = true;");
+                if (binder != null)
+                    code.Append("ResourceChanged_").Append(field.Name).AppendLine(" = false;");
+                code.AppendLine("}");
+            }
+            code.Append("public AuthoringCandidate(").Append(TypeName(type)).Append(" target, bool complete)")
+                .Append(inherited != null ? " : base(target, complete)" : "").AppendLine(" {");
+            foreach (AuthoringField field in fields)
+            {
+                ISymbol defaults = AuthoringAuxiliary(type, "GraphAuthoringDefault", field.Id);
+                string read = "target." + field.Access;
+                code.Append(Escape(field.Name)).Append(" = ")
+                    .Append(defaults == null ? read : "complete ? " + AuthoringAuxiliaryRead(type, defaults, "target") + " : " + read)
+                    .AppendLine(";");
+                if (!field.ReadOnly)
+                    code.Append("Changed_").Append(field.Name).AppendLine(" = complete;");
+            }
+            code.AppendLine("}");
+            code.Append("public override bool HasChanges => ").Append(string.Join(" || ",
+                fields.Where(field => !field.ReadOnly).Select(field => "Changed_" + field.Name)
+                    .Concat(inherited != null ? new[] { "base.HasChanges" } : new[] { "false" }))).AppendLine(";");
+            AuthoringField[] resources = fields.Where(field => AuthoringAuxiliary(type, "GraphAuthoringBindResource", field.Id) != null).ToArray();
+            if (resources.Length != 0)
+            {
+                code.AppendLine("public override void ResolveResources(object target) {");
+                if (inherited != null) code.AppendLine("base.ResolveResources(target);");
+                foreach (AuthoringField field in resources)
+                    code.Append("if (ResourceChanged_").Append(field.Name).Append(") Set_").Append(field.Name)
+                        .Append("(((").Append(TypeName(type)).Append(")target).")
+                        .Append(Escape(AuthoringAuxiliary(type, "GraphAuthoringBindResource", field.Id).Name))
+                        .Append("(Resource_").Append(field.Name).AppendLine("));");
+                code.AppendLine("}");
+            }
+            code.AppendLine("public override object Apply(object target) {")
+                .AppendLine("var candidate = this;");
+            if (inherited != null) code.AppendLine("target = base.Apply(target);");
+            foreach (Tuple<IMethodSymbol, AuthoringArgument[]> operation in operations)
+            {
+                code.Append("if (").Append(string.Join(" || ", operation.Item2.SelectMany(argument => argument.Fields)
+                    .Select(field => "Changed_" + field.Name))).Append(") ");
+                if (operation.Item1.MethodKind == MethodKind.Constructor)
+                    code.Append("return new ").Append(TypeName(type));
+                else
+                    code.Append("((").Append(TypeName(type)).Append(")target).").Append(Escape(operation.Item1.Name));
+                code.Append('(').Append(string.Join(", ", operation.Item2.Select(argument => argument.Expression))).AppendLine(");");
+            }
+            if (assigned.Length != 0)
+                code.Append("if (").Append(string.Join(" || ", assigned.Select(field => "Changed_" + field.Name)))
+                    .Append(") ((").Append(TypeName(type)).Append(")target).ConfigureAuthoringFields(")
+                    .Append(string.Join(", ", assigned.Select(AuthoringCandidate))).AppendLine(");");
+            code.AppendLine("return target; } }");
+        }
+
+        static string AuthoringFieldMetadata(AuthoringField field) => "new " + TypeName(field.Metadata.AttributeClass) +
+            "(" + Quote(field.Id) + (field.Metadata.ConstructorArguments.Length > 1 ? ", " + string.Join(", ",
+                field.Metadata.ConstructorArguments.Skip(1).Select(AuthoringConstant)) : "") + ")" +
+            (field.Metadata.NamedArguments.Length == 0 ? "" : " { " + string.Join(", ", field.Metadata.NamedArguments.Select(argument =>
+                Escape(argument.Key) + " = " + AuthoringConstant(argument.Value))) + " }");
+
+        static bool AuthoringIdentityField(AuthoringField field)
+        {
+            TypedConstant kind = field.Metadata.ConstructorArguments[1];
+            return kind.Kind == TypedConstantKind.Enum && kind.Type.GetMembers("IdentityReference").OfType<IFieldSymbol>()
+                .Any(member => Equals(member.ConstantValue, kind.Value));
+        }
+
+        static string AuthoringConvert(AuthoringField field, string value)
+        {
+            ITypeSymbol type = field.Type;
+            string target = TypeName(type);
+            if (type.TypeKind == TypeKind.Enum)
+                return value + " is " + target + " typed ? typed : (" + target + ")global::System.Enum.Parse(typeof(" + target + "), (string)" + value + ", false)";
+            string conversion = type.SpecialType == SpecialType.System_Byte ? "ToByte" :
+                type.SpecialType == SpecialType.System_SByte ? "ToSByte" :
+                type.SpecialType == SpecialType.System_Int16 ? "ToInt16" :
+                type.SpecialType == SpecialType.System_UInt16 ? "ToUInt16" :
+                type.SpecialType == SpecialType.System_Int32 ? "ToInt32" :
+                type.SpecialType == SpecialType.System_UInt32 ? "ToUInt32" :
+                type.SpecialType == SpecialType.System_Int64 ? "ToInt64" :
+                type.SpecialType == SpecialType.System_UInt64 ? "ToUInt64" :
+                type.SpecialType == SpecialType.System_Single ? "ToSingle" :
+                type.SpecialType == SpecialType.System_Double ? "ToDouble" : null;
+            if (conversion != null)
+                return "global::System.Convert." + conversion + "(" + value + ", global::System.Globalization.CultureInfo.InvariantCulture)";
+            if (AuthoringIdentityField(field) && type.SpecialType != SpecialType.System_String &&
+                AuthoringIdentityConstruction(type, "(string)" + value, new HashSet<string>()) is string identity)
+                return value + " is " + target + " typed ? typed : " + identity;
+            return "(" + target + ")" + value;
+        }
+
+        static string AuthoringIdentityConstruction(ITypeSymbol type, string text, HashSet<string> constructing)
+        {
+            if (type.SpecialType == SpecialType.System_String) return text;
+            if (!(type is INamedTypeSymbol named) || !constructing.Add(Identity(type))) return null;
+            var expressions = new List<string>();
+            foreach (IMethodSymbol constructor in named.InstanceConstructors.Where(method =>
+                method.DeclaredAccessibility == Accessibility.Public && method.Parameters.Length == 1))
+            {
+                string argument = AuthoringIdentityConstruction(constructor.Parameters[0].Type, text, constructing);
+                if (argument != null) expressions.Add("new " + TypeName(type) + "(" + argument + ")");
+            }
+            constructing.Remove(Identity(type));
+            return expressions.Count == 1 ? expressions[0] : null;
+        }
+
+        static string AuthoringExternalValue(AuthoringField field, string value)
+        {
+            string typed = "((" + TypeName(field.Type) + ")" + value + ")";
+            if (AuthoringIdentityField(field) && field.Type.SpecialType != SpecialType.System_String)
+            {
+                string text = AuthoringIdentityRead(field.Type, typed, new HashSet<string>());
+                if (text != null)
+                    return field.Type.IsReferenceType ? value + " == null ? string.Empty : " + text : text;
+            }
+            if (field.Type is INamedTypeSymbol collection && collection.AllInterfaces.Concat(new[] { collection })
+                .Any(candidate => candidate.MetadataName == "IReadOnlyList`1"))
+                return "global::System.Linq.Enumerable.ToArray(" + typed + ")";
+            return value;
+        }
+
+        static string AuthoringIdentityRead(ITypeSymbol type, string value, HashSet<string> visiting)
+        {
+            if (type.SpecialType == SpecialType.System_String) return value + " ?? string.Empty";
+            if (!(type is INamedTypeSymbol named) || !visiting.Add(Identity(type))) return null;
+            var reads = new List<string>();
+            foreach (IPropertySymbol member in named.GetMembers().OfType<IPropertySymbol>().Where(property =>
+                property.DeclaredAccessibility == Accessibility.Public && !property.IsStatic && !property.IsIndexer &&
+                property.GetMethod?.DeclaredAccessibility == Accessibility.Public))
+            {
+                string read = AuthoringIdentityRead(member.Type, value + "." + Escape(member.Name), visiting);
+                if (read != null) reads.Add(read);
+            }
+            visiting.Remove(Identity(type));
+            return reads.Count == 1 ? reads[0] : null;
+        }
 
         static string AuthoringAuxiliaryRead(INamedTypeSymbol type, ISymbol symbol, string target) =>
             (symbol.IsStatic ? TypeName(type) : "((" + TypeName(type) + ")" + target + ")") + "." +
             Escape(symbol.Name) + (symbol is IMethodSymbol ? "()" : "");
 
-        static void EmitAuthoringConfiguration(StringBuilder code, INamedTypeSymbol type, string method,
-            AuthoringArgument[] arguments, string invoke)
+        static void EmitAuthoringConfiguration(StringBuilder code, string method, AuthoringArgument[] arguments)
         {
             code.Append("new ").Append(AuthoringRuntime).Append("GraphAuthoringConfiguration(").Append(Quote(method))
                 .Append(", new ").Append(AuthoringRuntime).Append("GraphAuthoringArgument[] { ")
                 .Append(string.Join(", ", arguments.Select(argument => argument.Description))).Append(" }, new string[] { ")
                 .Append(string.Join(", ", arguments.SelectMany(argument => argument.Fields).Select(field => Quote(field.Id))))
-                .Append(" }, (target, values) => ").Append(invoke).AppendLine("),");
+                .AppendLine(" }),");
         }
 
         static AuthoringArgument ResolveAuthoringArgument(Compilation compilation, IParameterSymbol parameter,
             AuthoringField[] fields, HashSet<string> constructing)
         {
-            AuthoringField direct = fields.SingleOrDefault(field => field.Id == parameter.Name);
+            AuthoringField direct = fields.SingleOrDefault(field => field.Id == parameter.Name || Parameter(field.Name) == parameter.Name);
             if (direct != null)
             {
                 var leaf = new AuthoringArgument { Type = direct.Type, Field = direct, ParameterName = parameter.Name };
                 if (((CSharpCompilation)compilation).ClassifyConversion(direct.Type, parameter.Type).IsImplicit)
                     return leaf;
+                if (parameter.Type is IArrayTypeSymbol array && direct.Type is INamedTypeSymbol collection &&
+                    collection.AllInterfaces.Concat(new[] { collection }).Any(candidate =>
+                        candidate.MetadataName == "IReadOnlyList`1" &&
+                        SymbolEqualityComparer.Default.Equals(candidate.TypeArguments[0], array.ElementType)))
+                {
+                    leaf.ToArray = true;
+                    return leaf;
+                }
                 if (parameter.Type is INamedTypeSymbol wrapper && wrapper.InstanceConstructors.Any(constructor =>
                     constructor.DeclaredAccessibility == Accessibility.Public && constructor.Parameters.Length == 1 &&
                     SymbolEqualityComparer.Default.Equals(constructor.Parameters[0].Type, direct.Type)))

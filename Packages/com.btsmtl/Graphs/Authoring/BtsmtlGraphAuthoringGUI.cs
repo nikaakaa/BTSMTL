@@ -32,28 +32,29 @@ namespace BTSMTL.Graphs
         {
             var graph = (BtsmtlGraphRoot)node.graph;
             EditorGUI.BeginDisabledGroup(graph.isEditorReadOnly);
-            Dictionary<string, object> edits = DrawFields(node, graph);
+            GraphAuthoringCandidate edits = DrawFields(node, graph);
             EditorGUI.EndDisabledGroup();
-            if (edits.Count != 0)
+            if (edits.HasChanges)
             {
                 try
                 {
-                    graph.EditAuthoring("编辑图节点字段", () => GraphAuthoringMemberBindings.Apply(node, edits));
+                    graph.EditAuthoring("编辑图节点字段", () => edits.Apply(node));
                 }
                 catch (InvalidOperationException error) { NodeCanvas.Editor.GraphEditor.current.ShowNotification(new GUIContent(error.Message)); }
                 catch (ArgumentException error) { NodeCanvas.Editor.GraphEditor.current.ShowNotification(new GUIContent(error.Message)); }
             }
         }
 
-        static Dictionary<string, object> DrawFields(object target, BtsmtlGraphRoot graph)
+        static GraphAuthoringCandidate DrawFields(object target, BtsmtlGraphRoot graph)
         {
             Type type = target.GetType();
-            var edits = new Dictionary<string, object>(StringComparer.Ordinal);
+            GraphAuthoringCandidate edits = GraphAuthoringMemberBindings.CreateCandidate(target);
             foreach (GraphAuthoringFieldAttribute field in Fields(type))
             {
                 if (!field.AuthoringVisible)
                     continue;
-                object value = GraphAuthoringMemberBindings.Contract(target)[field.FieldId].Read(target);
+                GraphAuthoringMember member = edits.Contract[field.FieldId];
+                object value = member.Evaluate(edits);
                 Type valueType = GraphAuthoringMemberBindings.ValueType(type, field.FieldId);
                 EditorGUI.BeginDisabledGroup(field.ReadOnly);
                 EditorGUI.BeginChangeCheck();
@@ -69,14 +70,14 @@ namespace BTSMTL.Graphs
                         candidates.Select(variable => new GUIContent(variable.Name)).ToArray());
                     edited = selected >= 0 ? candidates[selected].Reference.VariableId : value;
                     if (selected != index && selected >= 0)
-                        edits[field.PickerOwnerField] = graph.Variables.OwnerId;
+                        edits.Contract[field.PickerOwnerField].WriteCandidate(edits, graph.Variables.OwnerId);
                 }
                 else
                     edited = DrawValue(label, value, valueType, graph);
                 bool changed = EditorGUI.EndChangeCheck();
                 EditorGUI.EndDisabledGroup();
                 if (changed)
-                    edits[field.FieldId] = edited;
+                    member.WriteCandidate(edits, edited);
             }
             return edits;
         }
@@ -95,12 +96,11 @@ namespace BTSMTL.Graphs
                 for (int i = 0; i < items.Length; i++)
                 {
                     EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-                    Dictionary<string, object> edits = DrawFields(items[i], graph);
-                    if (edits.Count != 0)
+                    GraphAuthoringCandidate edits = DrawFields(items[i], graph);
+                    if (edits.HasChanges)
                     {
                         object edited = JSONSerializer.Clone<object>(items[i]);
-                        GraphAuthoringMemberBindings.Apply(edited, edits);
-                        next[i] = edited;
+                        next[i] = edits.Apply(edited);
                     }
                     if (GUILayout.Button("移除"))
                     {

@@ -77,12 +77,10 @@ namespace BTSMTL.Timeline
 
         public static void Apply(Track track, IReadOnlyDictionary<string, string> values)
         {
-            GraphAuthoringTypeContract contract = GraphAuthoringMemberBindings.Contract(track);
-            var resolved = values.ToDictionary(value => value.Key,
-                value => contract[value.Key].ValueType.IsEnum
-                    ? Enum.Parse(contract[value.Key].ValueType, value.Value, true)
-                    : (object)value.Value, StringComparer.Ordinal);
-            GraphAuthoringMemberBindings.Apply(track, resolved);
+            GraphAuthoringCandidate candidate = GraphAuthoringMemberBindings.CreateCandidate(track);
+            foreach (KeyValuePair<string, string> value in values)
+                candidate.Contract[value.Key].WriteCandidate(candidate, value.Value);
+            candidate.Apply(track);
         }
 
         public static TimelineExecutionDomain RequireExecutionDomain(Track track, TimelineContractCatalog catalog)
