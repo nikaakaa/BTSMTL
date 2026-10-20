@@ -104,6 +104,7 @@ namespace BTSMTL.Timeline.Editor
 
             var backButton = new ToolbarButton(onBack) { text = "‹ Timeline" };
             backButton.style.display = hasNavigation ? DisplayStyle.Flex : DisplayStyle.None;
+            backButton.style.flexShrink = 0f;
             documentGroup.Add(backButton);
 
             var documentField = new ObjectField("Timeline")

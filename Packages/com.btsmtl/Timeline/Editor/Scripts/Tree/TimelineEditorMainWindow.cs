@@ -475,7 +475,7 @@ namespace BTSMTL.Timeline.Editor
                 throw new InvalidOperationException("TimelineEditorWindow requires a bound TimelineData owner/path.");
 
             if ((TimelineAssetPreviewHost.Shared.IsOpen || TimelineAssetPreviewHost.Shared.IsOpeningSession) &&
-                TimelineAssetPreviewHost.Shared.Source != serializedOwner)
+                !TimelineAssetPreviewHost.Shared.Covers(serializedOwner as TimelineAsset))
                 TimelineAssetPreviewHost.Shared.Close();
 
             DisposeView();
@@ -645,7 +645,7 @@ namespace BTSMTL.Timeline.Editor
         {
             Undo.undoRedoPerformed -= QueueDoorQueryRefresh;
             if ((TimelineAssetPreviewHost.Shared.IsOpen || TimelineAssetPreviewHost.Shared.IsOpeningSession) &&
-                TimelineAssetPreviewHost.Shared.Source == SourceAsset)
+                TimelineAssetPreviewHost.Shared.Covers(SourceAsset))
                 TimelineAssetPreviewHost.Shared.Close();
             s_Windows.Remove(this);
             WindowClosed?.Invoke(this);
@@ -693,9 +693,9 @@ namespace BTSMTL.Timeline.Editor
                 BeginWindows,
                 EndWindows);
             var preview = TimelineAssetPreviewHost.Shared;
-            if (preview.IsOpen && preview.Source == SourceAsset && preview.SampledSource == SourceAsset &&
+            if (preview.IsOpen && SourceAsset && preview.SampledSource == SourceAsset &&
                 preview.LocalTime != m_SlateProjection.CurrentTime)
-                preview.SetLocalTime(m_SlateProjection.CurrentTime);
+                preview.SetLocalTime(SourceAsset, m_SlateProjection.CurrentTime);
         }
 
         TimelineEditorBindingState BindingState => new TimelineEditorBindingState(

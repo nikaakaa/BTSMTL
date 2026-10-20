@@ -183,7 +183,11 @@ namespace BTSMTL.Timeline.Editor
             Changed?.Invoke();
         }
 
-        public void SetLocalTime(float time)
+        // 预览链经过的 Timeline 都由同一预览显示，编辑窗口切到其中任一条时预览保持打开。
+        public bool Covers(TimelineAsset source) =>
+            source && (source == Source || m_Traversals.Exists(traversal => traversal.Source == source));
+
+        public void SetLocalTime(TimelineAsset source, float time)
         {
             int current = 0;
             for (int i = 0; i < m_Traversals.Count; i++)
@@ -204,7 +208,7 @@ namespace BTSMTL.Timeline.Editor
             for (int i = 0; i < m_Traversals.Count; i++)
             {
                 TimelineAssetPreviewTraversal traversal = m_Traversals[i];
-                if (traversal.Source == Source && time >= traversal.LocalStart.AsSingle &&
+                if (traversal.Source == source && time >= traversal.LocalStart.AsSingle &&
                     time <= traversal.LocalEnd.AsSingle)
                 {
                     float mapped = traversal.Start.AsSingle + time - traversal.LocalStart.AsSingle;
@@ -232,7 +236,8 @@ namespace BTSMTL.Timeline.Editor
 
         public void SetOrchestrationContext(TimelineAsset source, TimelineOrchestrationQuery query, OrchestrationStaticState state)
         {
-            if (source != Source)
+            // 窗口在预览链的 Timeline 间切换会重复送来同一上下文，不重新准备。
+            if (source != Source || query == m_Query && state == m_EntryState)
                 return;
             m_Query = query;
             m_EntryState = state;

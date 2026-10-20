@@ -20,6 +20,7 @@ namespace BTSMTL.Timeline.Editor
         Vector2 m_PreviewInputsScroll;
         ulong m_AppliedAssetSample;
         long m_PreviewPathRevision = -1;
+        TimelineAsset m_ObservedPreviewSource;
         readonly List<int> m_PreviewInputs = new();
 
         VisualElement CreateAssetPreviewControls()
@@ -107,10 +108,47 @@ namespace BTSMTL.Timeline.Editor
             m_PreviewInputs.Clear();
         }
 
+        // 预览链走进别的 Timeline 时编辑窗口跟过去，并把来处记为可返回的导航。
+        void FollowPreview(TimelineAsset target)
+        {
+            if (!target || target == SourceAsset || !TimelineAssetPreviewHost.Shared.Covers(SourceAsset))
+                return;
+            if (target == m_NavigationOwner)
+            {
+                ReturnToTimeline();
+                return;
+            }
+            if (!HasTimelineNavigation)
+            {
+                m_NavigationOwner = m_SerializedOwner;
+                m_NavigationPropertyPath = m_SerializedPropertyPath;
+                m_NavigationOwnershipLabel = m_OwnershipLabel;
+                m_NavigationTrackAuthoringId = string.Empty;
+                m_NavigationClipAuthoringId = string.Empty;
+                m_NavigationSourceNodeGuid = m_SourceNodeGuid;
+            }
+            BindAsset(target, m_SourceGraphAuthoringId, m_SourceNodeGuid);
+            if (m_Toolbar != null)
+            {
+                m_Toolbar.BackButton.text = "‹ 返回 " + m_NavigationOwner.name;
+                m_Toolbar.BackButton.tooltip = "预览链从这里进入了 " + target.name + "；点此回到原 Timeline。";
+            }
+        }
+
         void RefreshAssetPreviewControls()
         {
             var preview = TimelineAssetPreviewHost.Shared;
-            bool active = preview.IsOpen && preview.Source == SourceAsset;
+            bool active = preview.IsOpen && preview.Covers(SourceAsset);
+            if (active && preview.SampledSource != m_ObservedPreviewSource)
+            {
+                m_ObservedPreviewSource = preview.SampledSource;
+                if (m_ObservedPreviewSource && m_ObservedPreviewSource != SourceAsset)
+                {
+                    // 重新绑定会重建本面板，旧面板的刷新到此为止。
+                    FollowPreview(m_ObservedPreviewSource);
+                    return;
+                }
+            }
             if (m_AssetPreviewConfiguration != null)
             {
                 m_AssetPreviewConfiguration.objectType = preview.ConfigurationType;
@@ -120,7 +158,7 @@ namespace BTSMTL.Timeline.Editor
             if (m_AssetPreviewStatus != null)
                 m_AssetPreviewStatus.text = !preview.IsRegistered ? TimelineAssetPreviewHost.MissingProviderReason :
                     preview.Error.Length != 0 ? preview.Error : active
-                    ? $"资产预览 · 链 {preview.Time:F3} 秒 / {preview.SampledSource?.name} {preview.LocalTime:F3} 秒 · 未经物理。{preview.Status}\n{preview.Chain?.Reason}"
+                    ? $"资产预览 · 链 {preview.Time:F3} 秒 / {preview.SampledSource?.name} {preview.LocalTime:F3} 秒。{preview.Status}\n{preview.Chain?.Reason}"
                     : "选择资产预览调整节奏；会话预览确认碰撞、条件与完整运行结果。";
             if (m_AssetPreviewInputs != null)
             {
