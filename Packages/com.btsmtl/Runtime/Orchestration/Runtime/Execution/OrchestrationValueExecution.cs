@@ -21,9 +21,8 @@ namespace BTSMTL.Orchestration
         {
             m_CurrentOperationIndex = operationIndex;
             int slot = m_Program.ValueEvaluationSlot(operationIndex, outputPortIndex);
-            OrchestrationValueSchedule schedule = m_Program.ValueSchedule;
-            ref readonly OrchestrationValueScheduleEntry entry = ref schedule.ValueEntries.Span[
-                ScheduleStateContext() * schedule.ValueSlotCount + slot];
+            ref readonly OrchestrationValueScheduleEntry entry = ref m_ValueEntries[
+                ScheduleStateContext() * m_Program.ValueSchedule.ValueSlotCount + slot];
             RunValueSchedule(in entry);
             value = m_Workspace.ScheduledValues[slot];
         }
@@ -31,24 +30,23 @@ namespace BTSMTL.Orchestration
         public bool EvaluateBoolean(int operationIndex)
         {
             OrchestrationValueSchedule schedule = m_Program.ValueSchedule;
-            ref readonly OrchestrationValueScheduleEntry entry = ref schedule.BooleanEntries.Span[
+            ref readonly OrchestrationValueScheduleEntry entry = ref m_BooleanEntries[
                 ScheduleStateContext() * m_Program.OperationCount + operationIndex];
             RunValueSchedule(in entry);
             return default(TValues).Boolean(in m_Workspace.ScheduledValues[schedule.BooleanSlot]);
         }
 
-        void EvaluateCoreValue(int operationIndex, int valueOperation, int depth, int count, ref TValue value)
+        void EvaluateCoreValue(int operationIndex, int valueOperation, ReadOnlySpan<int> arguments,
+            int depth, ref TValue value)
         {
             m_CurrentOperationIndex = operationIndex;
-            ref readonly OrchestrationOperation operation = ref m_Program.Operation(operationIndex);
-            ref readonly OrchestrationValueOperation typed = ref m_Program.ValueSchedule.ValueOperations.Span[valueOperation];
-            ReadOnlySpan<TValue> inputs = m_Workspace.Inputs[depth].AsSpan(0, count);
+            ref readonly OrchestrationValueOperation typed = ref m_ValueOperations[valueOperation];
             TValues values = default;
             TMath math = default;
             switch (typed.Code)
             {
                 case OrchestrationValueOpcode.Copy:
-                    value = inputs[typed.Argument];
+                    value = m_Workspace.ScheduledValues[arguments[typed.Argument]];
                     return;
                 case OrchestrationValueOpcode.Constant:
                     value = m_Program.Constant(typed.Argument);
@@ -88,7 +86,11 @@ namespace BTSMTL.Orchestration
                     return;
                 case OrchestrationValueOpcode.Extension:
                 {
+                    ref readonly OrchestrationOperation operation = ref m_Program.Operation(operationIndex);
                     ushort binding = m_Program.Payload<OrchestrationExtensionPayload>(operationIndex).BindingIndex;
+                    m_Workspace.RequireDepth("Inputs/Outputs", operationIndex, depth + 1, m_Workspace.Inputs.Length);
+                    int count = CopyScheduledArguments(arguments, depth, operationIndex);
+                    ReadOnlySpan<TValue> inputs = m_Workspace.Inputs[depth].AsSpan(0, count);
                     Span<TValue> outputs = m_Workspace.BorrowOutputs(operationIndex, depth, operation.OutputCount);
                     var invocation = new OrchestrationExtensionArguments<TValue>(
                         OrchestrationExtensionInvocationKind.Evaluate, operationIndex, ReadGeneration(operationIndex),
@@ -101,7 +103,8 @@ namespace BTSMTL.Orchestration
                 }
                 default:
                     OrchestrationTypedValueMath<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion,
-                        TMath, TValues>.Compute(typed.Code, inputs, in m_Identities, ref value);
+                        TMath, TValues>.Compute(typed.Code, m_Workspace.ScheduledValues, arguments,
+                            in m_Identities, ref value);
                     return;
             }
         }
@@ -109,11 +112,10 @@ namespace BTSMTL.Orchestration
         int ReadInputs(int operationIndex, out int count)
         {
             int depth = EnterInputRow(operationIndex);
-            OrchestrationValueSchedule schedule = m_Program.ValueSchedule;
-            ref readonly OrchestrationValueScheduleEntry entry = ref schedule.InputEntries.Span[
+            ref readonly OrchestrationValueScheduleEntry entry = ref m_InputEntries[
                 ScheduleStateContext() * m_Program.OperationCount + operationIndex];
             int arguments = RunValueSchedule(in entry).Value;
-            count = CopyScheduledArguments(arguments, depth, operationIndex);
+            count = CopyScheduledArguments(ScheduledArguments(arguments), depth, operationIndex);
             return depth;
         }
 

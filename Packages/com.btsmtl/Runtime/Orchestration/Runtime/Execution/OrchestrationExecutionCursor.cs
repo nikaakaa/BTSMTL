@@ -20,6 +20,19 @@ namespace BTSMTL.Orchestration
     {
         readonly OrchestrationProgram<TValue> m_Program;
         readonly OrchestrationExecutionWorkspace<TValue> m_Workspace;
+        readonly ReadOnlySpan<OrchestrationValueScheduleInstruction> m_ValueInstructions;
+        readonly ReadOnlySpan<int> m_ValueArgumentSlots;
+        readonly ReadOnlySpan<OrchestrationRange> m_ValueArgumentLists;
+        readonly ReadOnlySpan<OrchestrationValueScheduleEntry> m_ValueEntries;
+        readonly ReadOnlySpan<OrchestrationValueScheduleEntry> m_InputEntries;
+        readonly ReadOnlySpan<OrchestrationValueScheduleEntry> m_TransitionEntries;
+        readonly ReadOnlySpan<OrchestrationValueScheduleEntry> m_ChildSelectionEntries;
+        readonly ReadOnlySpan<OrchestrationValueScheduleEntry> m_SelectorAbortEntries;
+        readonly ReadOnlySpan<OrchestrationValueScheduleEntry> m_BooleanEntries;
+        readonly ReadOnlySpan<OrchestrationValueOperation> m_ValueOperations;
+        readonly ReadOnlySpan<int> m_StateContexts;
+        readonly ReadOnlySpan<ushort> m_OperationIndices;
+        readonly ReadOnlySpan<OrchestrationValueStorageSlot> m_ValueStorage;
         readonly IOrchestrationExtensionBindings<TValue, TContext> m_Bindings;
         readonly OrchestrationExecutionFrames<TValue> m_Frames;
         Span<OrchestrationOperationState> m_Operations;
@@ -64,13 +77,29 @@ namespace BTSMTL.Orchestration
         {
             m_Program = program;
             m_Workspace = workspace;
+            OrchestrationValueSchedule schedule = program.ValueSchedule;
+            m_ValueInstructions = schedule.Instructions.Span;
+            m_ValueArgumentSlots = schedule.ArgumentSlots.Span;
+            m_ValueArgumentLists = schedule.ArgumentLists.Span;
+            m_ValueEntries = schedule.ValueEntries.Span;
+            m_InputEntries = schedule.InputEntries.Span;
+            m_TransitionEntries = schedule.TransitionEntries.Span;
+            m_ChildSelectionEntries = schedule.ChildSelectionEntries.Span;
+            m_SelectorAbortEntries = schedule.SelectorAbortEntries.Span;
+            m_BooleanEntries = schedule.BooleanEntries.Span;
+            m_ValueOperations = schedule.ValueOperations.Span;
+            m_StateContexts = schedule.StateContexts.Span;
+            m_OperationIndices = program.ExecutionStorage.OperationIndices.Span;
+            m_ValueStorage = program.ExecutionStorage.Values.Span;
             m_Bindings = bindings;
             m_Frames = frames;
             m_FrameSlot = frameSlot;
-            m_Operations = frames.Operations(frameSlot);
-            m_SavedOutputs = frames.SavedOutputs(frameSlot);
             m_Blackboards = new OrchestrationBlackboardStorageView<TValue, TStorage>(program, frames, frameSlot,
                 characterSlots, sourceBinding, source);
+            m_Operations = frames.Payload<OrchestrationOperationState>(frameSlot,
+                OrchestrationStateSegmentRole.Operations, m_Blackboards.ProgramIndex);
+            m_SavedOutputs = frames.Payload<TValue>(frameSlot,
+                OrchestrationStateSegmentRole.SavedOutputs, m_Blackboards.ProgramIndex);
             m_Input = input;
             m_Identities = identities;
             m_Context = context;
@@ -331,17 +360,19 @@ namespace BTSMTL.Orchestration
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         ref OrchestrationOperationState OperationState(int operationIndex) =>
-            ref m_Operations[m_Program.ExecutionStorage.OperationIndices.Span[operationIndex]];
+            ref m_Operations[m_OperationIndices[operationIndex]];
 
         Span<TValue> SavedOutputs(in OrchestrationOperation operation) =>
-            m_SavedOutputs.Slice(m_Program.ExecutionStorage.Values.Span[operation.OutputSlotOffset].SavedOutputIndex,
+            m_SavedOutputs.Slice(m_ValueStorage[operation.OutputSlotOffset].SavedOutputIndex,
                 operation.OutputCount);
 
         void SelectExecutionFrame(int frameSlot)
         {
             m_FrameSlot = frameSlot;
-            m_Operations = m_Frames.Operations(frameSlot);
-            m_SavedOutputs = m_Frames.SavedOutputs(frameSlot);
+            m_Operations = m_Frames.Payload<OrchestrationOperationState>(frameSlot,
+                OrchestrationStateSegmentRole.Operations, m_Blackboards.ProgramIndex);
+            m_SavedOutputs = m_Frames.Payload<TValue>(frameSlot,
+                OrchestrationStateSegmentRole.SavedOutputs, m_Blackboards.ProgramIndex);
             m_Blackboards.SelectFrame(frameSlot);
             m_TimelineDispatcher.SelectExecutionFrame(frameSlot, ref m_Context);
         }

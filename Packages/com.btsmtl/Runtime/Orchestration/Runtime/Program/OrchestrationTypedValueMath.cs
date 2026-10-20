@@ -37,45 +37,45 @@ namespace BTSMTL.Orchestration
         }
 
         public static void Compute(OrchestrationValueOpcode code, ReadOnlySpan<TValue> inputs,
-            in OrchestrationIdentityOrdinalView identities, ref TValue result)
+            ReadOnlySpan<int> arguments, in OrchestrationIdentityOrdinalView identities, ref TValue result)
         {
             TValues values = default;
             TMath math = default;
             switch (code)
             {
-                case OrchestrationValueOpcode.BooleanNot: result = values.FromBoolean(!values.Boolean(in inputs[0])); return;
-                case OrchestrationValueOpcode.BooleanAnd: result = values.FromBoolean(values.Boolean(in inputs[0]) && values.Boolean(in inputs[1])); return;
-                case OrchestrationValueOpcode.BooleanOr: result = values.FromBoolean(values.Boolean(in inputs[0]) || values.Boolean(in inputs[1])); return;
-                case OrchestrationValueOpcode.Int32Equal: result = values.FromBoolean(values.Int32(in inputs[0]) == values.Int32(in inputs[1])); return;
-                case OrchestrationValueOpcode.Int32NotEqual: result = values.FromBoolean(values.Int32(in inputs[0]) != values.Int32(in inputs[1])); return;
-                case OrchestrationValueOpcode.Int32LessThan: result = values.FromBoolean(values.Int32(in inputs[0]) < values.Int32(in inputs[1])); return;
-                case OrchestrationValueOpcode.Int32LessThanOrEqual: result = values.FromBoolean(values.Int32(in inputs[0]) <= values.Int32(in inputs[1])); return;
-                case OrchestrationValueOpcode.Int32GreaterThanOrEqual: result = values.FromBoolean(values.Int32(in inputs[0]) >= values.Int32(in inputs[1])); return;
-                case OrchestrationValueOpcode.Int32GreaterThan: result = values.FromBoolean(values.Int32(in inputs[0]) > values.Int32(in inputs[1])); return;
-                case OrchestrationValueOpcode.ScalarEqual: result = values.FromBoolean(math.Equal(values.Scalar(in inputs[0]), values.Scalar(in inputs[1]))); return;
-                case OrchestrationValueOpcode.ScalarNotEqual: result = values.FromBoolean(!math.Equal(values.Scalar(in inputs[0]), values.Scalar(in inputs[1]))); return;
-                case OrchestrationValueOpcode.ScalarLessThan: result = values.FromBoolean(math.GreaterThan(values.Scalar(in inputs[1]), values.Scalar(in inputs[0]))); return;
-                case OrchestrationValueOpcode.ScalarLessThanOrEqual: result = values.FromBoolean(math.LessThanOrEqual(values.Scalar(in inputs[0]), values.Scalar(in inputs[1]))); return;
-                case OrchestrationValueOpcode.ScalarGreaterThanOrEqual: result = values.FromBoolean(math.LessThanOrEqual(values.Scalar(in inputs[1]), values.Scalar(in inputs[0]))); return;
-                case OrchestrationValueOpcode.ScalarGreaterThan: result = values.FromBoolean(math.GreaterThan(values.Scalar(in inputs[0]), values.Scalar(in inputs[1]))); return;
-                case OrchestrationValueOpcode.ScalarMultiply: result = values.FromScalar(math.Multiply(values.Scalar(in inputs[0]), values.Scalar(in inputs[1]))); return;
-                case OrchestrationValueOpcode.ScalarDivide: result = values.FromScalar(math.Divide(values.Scalar(in inputs[0]), values.Scalar(in inputs[1]))); return;
-                case OrchestrationValueOpcode.IdentityEqual: result = values.FromBoolean(identities.Equal(values.Identity(in inputs[0]), values.Identity(in inputs[1]))); return;
-                case OrchestrationValueOpcode.ScalarAbs: result = values.FromScalar(math.Abs(values.Scalar(in inputs[0]))); return;
-                case OrchestrationValueOpcode.ScalarClamp: result = values.FromScalar(math.ClampGraph(values.Scalar(in inputs[0]), values.Scalar(in inputs[1]), values.Scalar(in inputs[2]))); return;
-                case OrchestrationValueOpcode.ScalarMoveTowards: result = values.FromScalar(math.MoveTowardsGraph(values.Scalar(in inputs[0]), values.Scalar(in inputs[1]), values.Scalar(in inputs[2]))); return;
+                case OrchestrationValueOpcode.BooleanNot: result = values.FromBoolean(!values.Boolean(in inputs[arguments[0]])); return;
+                case OrchestrationValueOpcode.BooleanAnd: result = values.FromBoolean(values.Boolean(in inputs[arguments[0]]) && values.Boolean(in inputs[arguments[1]])); return;
+                case OrchestrationValueOpcode.BooleanOr: result = values.FromBoolean(values.Boolean(in inputs[arguments[0]]) || values.Boolean(in inputs[arguments[1]])); return;
+                case OrchestrationValueOpcode.Int32Equal: result = values.FromBoolean(values.Int32(in inputs[arguments[0]]) == values.Int32(in inputs[arguments[1]])); return;
+                case OrchestrationValueOpcode.Int32NotEqual: result = values.FromBoolean(values.Int32(in inputs[arguments[0]]) != values.Int32(in inputs[arguments[1]])); return;
+                case OrchestrationValueOpcode.Int32LessThan: result = values.FromBoolean(values.Int32(in inputs[arguments[0]]) < values.Int32(in inputs[arguments[1]])); return;
+                case OrchestrationValueOpcode.Int32LessThanOrEqual: result = values.FromBoolean(values.Int32(in inputs[arguments[0]]) <= values.Int32(in inputs[arguments[1]])); return;
+                case OrchestrationValueOpcode.Int32GreaterThanOrEqual: result = values.FromBoolean(values.Int32(in inputs[arguments[0]]) >= values.Int32(in inputs[arguments[1]])); return;
+                case OrchestrationValueOpcode.Int32GreaterThan: result = values.FromBoolean(values.Int32(in inputs[arguments[0]]) > values.Int32(in inputs[arguments[1]])); return;
+                case OrchestrationValueOpcode.ScalarEqual: result = values.FromBoolean(math.Equal(values.Scalar(in inputs[arguments[0]]), values.Scalar(in inputs[arguments[1]]))); return;
+                case OrchestrationValueOpcode.ScalarNotEqual: result = values.FromBoolean(!math.Equal(values.Scalar(in inputs[arguments[0]]), values.Scalar(in inputs[arguments[1]]))); return;
+                case OrchestrationValueOpcode.ScalarLessThan: result = values.FromBoolean(math.GreaterThan(values.Scalar(in inputs[arguments[1]]), values.Scalar(in inputs[arguments[0]]))); return;
+                case OrchestrationValueOpcode.ScalarLessThanOrEqual: result = values.FromBoolean(math.LessThanOrEqual(values.Scalar(in inputs[arguments[0]]), values.Scalar(in inputs[arguments[1]]))); return;
+                case OrchestrationValueOpcode.ScalarGreaterThanOrEqual: result = values.FromBoolean(math.LessThanOrEqual(values.Scalar(in inputs[arguments[1]]), values.Scalar(in inputs[arguments[0]]))); return;
+                case OrchestrationValueOpcode.ScalarGreaterThan: result = values.FromBoolean(math.GreaterThan(values.Scalar(in inputs[arguments[0]]), values.Scalar(in inputs[arguments[1]]))); return;
+                case OrchestrationValueOpcode.ScalarMultiply: result = values.FromScalar(math.Multiply(values.Scalar(in inputs[arguments[0]]), values.Scalar(in inputs[arguments[1]]))); return;
+                case OrchestrationValueOpcode.ScalarDivide: result = values.FromScalar(math.Divide(values.Scalar(in inputs[arguments[0]]), values.Scalar(in inputs[arguments[1]]))); return;
+                case OrchestrationValueOpcode.IdentityEqual: result = values.FromBoolean(identities.Equal(values.Identity(in inputs[arguments[0]]), values.Identity(in inputs[arguments[1]]))); return;
+                case OrchestrationValueOpcode.ScalarAbs: result = values.FromScalar(math.Abs(values.Scalar(in inputs[arguments[0]]))); return;
+                case OrchestrationValueOpcode.ScalarClamp: result = values.FromScalar(math.ClampGraph(values.Scalar(in inputs[arguments[0]]), values.Scalar(in inputs[arguments[1]]), values.Scalar(in inputs[arguments[2]]))); return;
+                case OrchestrationValueOpcode.ScalarMoveTowards: result = values.FromScalar(math.MoveTowardsGraph(values.Scalar(in inputs[arguments[0]]), values.Scalar(in inputs[arguments[1]]), values.Scalar(in inputs[arguments[2]]))); return;
                 case OrchestrationValueOpcode.Vector3Planar:
                 {
-                    TVector3 value = values.Vector3(in inputs[0]);
+                    TVector3 value = values.Vector3(in inputs[arguments[0]]);
                     result = values.FromVector2(math.Vector2(math.X3(value), math.Z3(value)));
                     return;
                 }
-                case OrchestrationValueOpcode.Vector3Y: result = values.FromScalar(math.Y3(values.Vector3(in inputs[0]))); return;
-                case OrchestrationValueOpcode.Vector2Magnitude: result = values.FromScalar(math.Magnitude2(values.Vector2(in inputs[0]))); return;
+                case OrchestrationValueOpcode.Vector3Y: result = values.FromScalar(math.Y3(values.Vector3(in inputs[arguments[0]]))); return;
+                case OrchestrationValueOpcode.Vector2Magnitude: result = values.FromScalar(math.Magnitude2(values.Vector2(in inputs[arguments[0]]))); return;
                 case OrchestrationValueOpcode.Vector2Normalize:
                 {
-                    TVector2 value = values.Vector2(in inputs[0]);
-                    TScalar minimumSquaredMagnitude = values.Scalar(in inputs[1]);
+                    TVector2 value = values.Vector2(in inputs[arguments[0]]);
+                    TScalar minimumSquaredMagnitude = values.Scalar(in inputs[arguments[1]]);
                     TScalar magnitude = math.Magnitude2(value);
                     bool aboveMinimum = math.LessThanOrEqual(minimumSquaredMagnitude, math.Zero) ||
                         math.GreaterThan(math.SqrMagnitude2(value), minimumSquaredMagnitude);
@@ -83,10 +83,10 @@ namespace BTSMTL.Orchestration
                         ? math.MultiplyVector2(value, math.Divide(math.One, magnitude)) : math.ZeroVector2);
                     return;
                 }
-                case OrchestrationValueOpcode.Vector2Subtract: result = values.FromVector2(math.SubtractVector2(values.Vector2(in inputs[0]), values.Vector2(in inputs[1]))); return;
-                case OrchestrationValueOpcode.Vector2SignedAngle: result = values.FromScalar(math.SignedAngle2(values.Vector2(in inputs[0]), values.Vector2(in inputs[1]))); return;
-                case OrchestrationValueOpcode.QuaternionForward: result = values.FromVector3(math.QuaternionForward(values.Quaternion(in inputs[0]))); return;
-                case OrchestrationValueOpcode.QuaternionAngleAxis: result = values.FromQuaternion(math.QuaternionAngleAxis(values.Scalar(in inputs[0]), values.Vector3(in inputs[1]))); return;
+                case OrchestrationValueOpcode.Vector2Subtract: result = values.FromVector2(math.SubtractVector2(values.Vector2(in inputs[arguments[0]]), values.Vector2(in inputs[arguments[1]]))); return;
+                case OrchestrationValueOpcode.Vector2SignedAngle: result = values.FromScalar(math.SignedAngle2(values.Vector2(in inputs[arguments[0]]), values.Vector2(in inputs[arguments[1]]))); return;
+                case OrchestrationValueOpcode.QuaternionForward: result = values.FromVector3(math.QuaternionForward(values.Quaternion(in inputs[arguments[0]]))); return;
+                case OrchestrationValueOpcode.QuaternionAngleAxis: result = values.FromQuaternion(math.QuaternionAngleAxis(values.Scalar(in inputs[arguments[0]]), values.Vector3(in inputs[arguments[1]]))); return;
                 default: throw new ArgumentOutOfRangeException(nameof(code));
             }
         }

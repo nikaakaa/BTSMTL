@@ -115,7 +115,7 @@ namespace BTSMTL.Orchestration
                 ref readonly OrchestrationFlowEdge current = ref m_Program.Edge(currentIndex);
                 if (IsRunning(current.TargetOperationIndex))
                 {
-                    ref readonly OrchestrationValueScheduleEntry abortEntry = ref m_Program.ValueSchedule.SelectorAbortEntries.Span[
+                    ref readonly OrchestrationValueScheduleEntry abortEntry = ref m_SelectorAbortEntries[
                         ScheduleStateContext() * m_Program.EdgeCount + currentIndex];
                     ScheduledSelection selection = RunValueSchedule(in abortEntry);
                     if (selection.Value >= 0)
@@ -229,7 +229,7 @@ namespace BTSMTL.Orchestration
         {
             for (int i = start; i < children.Length; i++)
             {
-                ref readonly OrchestrationValueScheduleEntry entry = ref m_Program.ValueSchedule.ChildSelectionEntries.Span[
+                ref readonly OrchestrationValueScheduleEntry entry = ref m_ChildSelectionEntries[
                     ScheduleStateContext() * m_Program.EdgeCount + children[i]];
                 i = RunValueSchedule(in entry).Value;
                 if (i < 0)

@@ -106,8 +106,9 @@ namespace BTSMTL.Orchestration
 
         public int ProgramIndex(int skillContentId)
         {
+            ReadOnlySpan<OrchestrationPreparedProgramStorage<TValue>> programs = Programs.Span;
             int index = 0;
-            while (Programs.Span[index].SkillContentId != skillContentId)
+            while (programs[index].SkillContentId != skillContentId)
                 index++;
             return index;
         }

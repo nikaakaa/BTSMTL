@@ -259,7 +259,7 @@ namespace BTSMTL.Orchestration
                 PushState(stateContext, -1);
             try
             {
-                ref readonly OrchestrationValueScheduleEntry entry = ref m_Program.ValueSchedule.TransitionEntries.Span[
+                ref readonly OrchestrationValueScheduleEntry entry = ref m_TransitionEntries[
                     ScheduleStateContext() * m_Program.OperationCount + sourceOperationIndex];
                 return RunValueSchedule(in entry, excludedTarget).Value;
             }
