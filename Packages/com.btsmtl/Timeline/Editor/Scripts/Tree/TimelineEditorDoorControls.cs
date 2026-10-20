@@ -120,7 +120,7 @@ namespace BTSMTL.Timeline.Editor
                             () => PreviewThrough(target)));
                     if (destination.Kind == TimelineDoorDestinationKind.NextSection)
                         m_ContinueWindows.Add(new TimelineSectionContinueWindow(destination.Door.TrackId,
-                            destination.Door.Start.AsSingle, destination.Door.End.AsSingle));
+                            destination.Door.ClipId, destination.Door.Start.AsSingle, destination.Door.End.AsSingle));
                 }
                 if (context.Query.Query.Errors.Count != 0)
                     m_DoorContextIssues = new GUIContent($"⚠ {context.Query.Query.Errors.Count} 个问题",

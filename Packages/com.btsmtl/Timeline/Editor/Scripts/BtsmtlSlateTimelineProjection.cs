@@ -98,14 +98,16 @@ namespace BTSMTL.Timeline.Editor
 
     public readonly struct TimelineSectionContinueWindow
     {
-        public TimelineSectionContinueWindow(string trackId, float startTime, float endTime)
+        public TimelineSectionContinueWindow(string trackId, string clipId, float startTime, float endTime)
         {
             TrackId = trackId ?? string.Empty;
+            ClipId = clipId ?? string.Empty;
             StartTime = startTime;
             EndTime = endTime;
         }
 
         public string TrackId { get; }
+        public string ClipId { get; }
         public float StartTime { get; }
         public float EndTime { get; }
     }

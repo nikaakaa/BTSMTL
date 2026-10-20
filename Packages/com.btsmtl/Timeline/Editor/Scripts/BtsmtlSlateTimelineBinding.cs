@@ -84,20 +84,23 @@ namespace BTSMTL.Timeline.Editor
                     string.IsNullOrEmpty(section.Source.NextSectionId) ||
                     !m_SectionsById.TryGetValue(section.Source.NextSectionId, out BtsmtlTimelineSectionBinding next))
                     continue;
-                float start = float.MaxValue;
+                string nextId = next.AuthoringId;
+                Action focus = m_FocusSection == null ? null : () => m_FocusSection(nextId);
+                bool windowed = false;
                 foreach (TimelineSectionContinueWindow window in m_ContinueWindows)
                 {
                     bool owned = m_Tracks.TryGetValue(window.TrackId, out BtsmtlTimelineTrackBinding track)
                         ? track.Group == group
                         : window.StartTime >= group.StartTime - GroupTimeTolerance && window.StartTime < group.EndTime;
-                    if (owned)
-                        start = Mathf.Min(start, window.StartTime);
+                    if (!owned)
+                        continue;
+                    windowed = true;
+                    group.AddLink(new EmbeddedTimelineGroupLink(
+                        $"可接 → {next.Name}（{window.StartTime:0.00}–{window.EndTime:0.00}s）",
+                        true, window.StartTime, window.EndTime, focus, window.ClipId));
                 }
-                string nextId = next.AuthoringId;
-                Action focus = m_FocusSection == null ? null : () => m_FocusSection(nextId);
-                group.AddLink(start == float.MaxValue
-                    ? new EmbeddedTimelineGroupLink($"衔接 → {next.Name}（没有出口窗口，播完收招）", false, 0f, 0f, focus)
-                    : new EmbeddedTimelineGroupLink($"衔接：{start:0.00}s 起可接 → {next.Name}", true, start, group.EndTime, focus));
+                if (!windowed)
+                    group.AddLink(new EmbeddedTimelineGroupLink($"接到 {next.Name}，但没有出口窗口，播完收招", false, 0f, 0f, focus));
             }
         }
 
@@ -998,6 +1001,21 @@ namespace BTSMTL.Timeline.Editor
             }
             formalSection.Name = name ?? string.Empty;
             formalSection.Time = m_Session.SnapTime(OrchestrationTime.FromSeconds(Math.Max(0d, time))).AsSingle;
+        }
+
+        public string NextSectionId(IEmbeddedTimelineSectionBinding section) =>
+            section is BtsmtlTimelineSectionBinding formalSection ? formalSection.Source.NextSectionId : string.Empty;
+
+        public void ConfigureSectionNext(IEmbeddedTimelineSectionBinding section, string nextSectionId)
+        {
+            if (IsReadOnly || !(section is BtsmtlTimelineSectionBinding formalSection))
+                return;
+            if (formalSection.IsLocked)
+            {
+                ReportIssue("当前 Section 已锁定，不能修改。");
+                return;
+            }
+            ApplyImmediate(() => Timeline.ConfigureSectionNext(formalSection.Source, nextSectionId), "修改下一分段");
         }
 
         public void DeleteSection(IEmbeddedTimelineSectionBinding section)
