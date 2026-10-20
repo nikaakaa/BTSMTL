@@ -117,7 +117,7 @@ namespace BTSMTL.Timeline.Editor
                 m_RouteEnd = Mathf.Max(m_RouteEnd, unplayed);
             }
             foreach (TimelineStaticChainBranch branch in chain.Branches)
-                AddRouteChain(query, branch.Chain, depth + 1, $"并行 · {query.DescribeState(branch.Owner)} / ");
+                AddRouteChain(query, branch.Chain, depth + 1, $"并行 · {query.DescribeState(branch.Owner)} / ", route);
         }
 
         void DrawPreviewRoute()

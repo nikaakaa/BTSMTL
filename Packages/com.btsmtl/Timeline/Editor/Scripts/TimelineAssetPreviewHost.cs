@@ -39,6 +39,7 @@ namespace BTSMTL.Timeline.Editor
         const double PrefetchSeconds = 0.008;
         bool m_Prefetching;
         readonly List<TimelineAssetPreviewTraversal> m_Traversals = new();
+        readonly List<TimelineAssetPreviewTraversal> m_Parallel = new();
         readonly List<TimelinePreviewRouteSegment> m_Route = new();
         OrchestrationTime m_RouteEnd;
         TimelineAsset m_SelectedSource;
@@ -446,6 +447,7 @@ namespace BTSMTL.Timeline.Editor
             m_Contents.Clear();
             m_Dirty.Clear();
             m_Traversals.Clear();
+            m_Parallel.Clear();
             ClearRoute();
             m_Assumptions.Clear();
             Chain = null;
@@ -512,9 +514,7 @@ namespace BTSMTL.Timeline.Editor
                     // 空闲时每帧花一点时间把链往后推进，之后拖到哪里都不用现算。
                     if (m_Prefetching && !IsPlaying && m_Traversals.Count != 0)
                     {
-                        TimelineAssetPreviewTraversal last = m_Traversals[^1];
-                        var horizon = new TimelineAssetPreviewTarget(last.Source, last.LocalEnd, last.Cycle,
-                            m_Revision, Preferences, last.End, m_Traversals.ToArray(), Revision);
+                        TimelineAssetPreviewTarget horizon = Horizon(m_Revision);
                         m_Prefetching = m_Instance.Prefetch(in horizon, PrefetchSeconds);
                     }
                     return;
@@ -522,22 +522,12 @@ namespace BTSMTL.Timeline.Editor
                 m_SampleRequested = false;
                 if (m_Traversals.Count == 0)
                     return;
-                var traversals = new List<TimelineAssetPreviewTraversal>();
+                // 截到游标的整组播放：主链与全部并行分支一起交给实例与领域。
                 OrchestrationTime cursor = OrchestrationTime.FromSeconds(Time);
-                foreach (TimelineAssetPreviewTraversal span in m_Traversals)
-                {
-                    if (span.Start > cursor)
-                        break;
-                    OrchestrationTime end = OrchestrationTime.Min(span.End, cursor);
-                    traversals.Add(new TimelineAssetPreviewTraversal(span.Source, span.Content, span.Start,
-                        end, span.LocalStart, span.LocalStart + end - span.Start, span.Cycle, span.Transition, span.State,
-                        span.PlaybackCompleted && end == span.End));
-                }
-                TimelineAssetPreviewTraversal current = traversals[^1];
+                TimelineAssetPreviewTarget target = Horizon(++m_Revision).Until(cursor);
+                TimelineAssetPreviewTraversal current = target.Traversals[^1];
                 LocalTime = current.LocalEnd.AsSingle;
                 SampledSource = current.Source;
-                var target = new TimelineAssetPreviewTarget(current.Source, current.LocalEnd,
-                    current.Cycle, ++m_Revision, Preferences, cursor, traversals, Revision);
                 m_Instance.BeginTarget(in target);
                 PreparedTimeline sampled = m_Contents[current.Source];
                 TimelineRuntimePresentationOperations operations = sampled.Sampling.SampleAt(target.Time, target.Cycle,
@@ -566,6 +556,14 @@ namespace BTSMTL.Timeline.Editor
                 Error = exception.Message;
                 Changed?.Invoke();
             }
+        }
+
+        // 主链终点处的整条路线目标。
+        TimelineAssetPreviewTarget Horizon(ulong revision)
+        {
+            TimelineAssetPreviewTraversal last = m_Traversals[^1];
+            return new TimelineAssetPreviewTarget(last.Source, last.LocalEnd, last.Cycle, revision, Preferences,
+                last.End, m_Traversals.ToArray(), m_Parallel.ToArray(), Revision);
         }
 
         PreparedTimeline Prepare(TimelineAsset source, bool discover = false)
@@ -626,6 +624,7 @@ namespace BTSMTL.Timeline.Editor
             if (!float.IsFinite(Preferences.RangeEnd) || Preferences.RangeEnd <= 0f)
                 throw new TimelineAssetPreviewInputUnavailableException("预览范围终点必须是大于零的有限秒数。");
             m_Traversals.Clear();
+            m_Parallel.Clear();
             m_Assumptions.Clear();
             // 编排执行的容量覆盖整份程序，同一状态机里每个 Timeline 都要先准备。
             if (m_Query != null)
@@ -644,18 +643,10 @@ namespace BTSMTL.Timeline.Editor
                 var inputs = new TimelineAssetPreviewReadIntervals(Preferences, Inputs, InputRequests);
                 Chain = TimelineStaticChain.Build(m_Query.Query, m_EntryState,
                     OrchestrationTime.FromSeconds(Preferences.RangeEnd), inputs);
-                OrchestrationStaticTransition entry = null;
-                foreach (TimelineStaticChainSpan span in Chain.Spans)
-                {
-                    TimelineAsset source = m_Query.ResolveTimeline(span.State.TimelineIdentity);
-                    PreparedTimeline content = Prepare(source);
-                    m_Traversals.Add(new TimelineAssetPreviewTraversal(source, content.Content,
-                        span.Start, span.End, span.LocalStart, span.LocalEnd, span.Cycle, entry, span.State, span.PlaybackCompleted));
-                    entry = null;
-                    foreach (TimelineStaticChainMarker marker in Chain.Markers)
-                        if (marker.Time == span.End)
-                            entry = marker.Transition;
-                }
+                int playback = -1;
+                AddChain(Chain, 0, m_Traversals, ref playback);
+                int branch = 0;
+                AddBranches(Chain, ref branch, ref playback);
                 foreach (OrchestrationStaticState state in m_Query.Query.States)
                 {
                     foreach (OrchestrationStaticTransition transition in state.Transitions)
@@ -672,6 +663,37 @@ namespace BTSMTL.Timeline.Editor
             Changed?.Invoke();
         }
 
+        // 一条链的各段：经转移进入或换 Timeline 时开始一次新播放，其余为同一次播放按圈拆开。
+        void AddChain(TimelineStaticChain chain, int branch, List<TimelineAssetPreviewTraversal> result, ref int playback)
+        {
+            OrchestrationStaticTransition entry = null;
+            TimelineAsset previous = null;
+            foreach (TimelineStaticChainSpan span in chain.Spans)
+            {
+                TimelineAsset source = m_Query.ResolveTimeline(span.State.TimelineIdentity);
+                PreparedTimeline content = Prepare(source);
+                if (previous == null || entry != null || source != previous)
+                    playback++;
+                result.Add(new TimelineAssetPreviewTraversal(source, content.Content, span.Start, span.End,
+                    span.LocalStart, span.LocalEnd, span.Cycle, entry, span.State, span.PlaybackCompleted, branch, playback));
+                previous = source;
+                entry = null;
+                foreach (TimelineStaticChainMarker marker in chain.Markers)
+                    if (marker.Time == span.End)
+                        entry = marker.Transition;
+            }
+        }
+
+        // 状态 Root 中并行的状态机（含嵌套）各为一个分支，与主链共用播放编号。
+        void AddBranches(TimelineStaticChain chain, ref int branch, ref int playback)
+        {
+            foreach (TimelineStaticChainBranch value in chain.Branches)
+            {
+                AddChain(value.Chain, ++branch, m_Parallel, ref playback);
+                AddBranches(value.Chain, ref branch, ref playback);
+            }
+        }
+
         void BuildStandalone(PreparedTimeline prepared)
         {
             TimelineContentUnit content = prepared.Content.Content;
@@ -686,7 +708,7 @@ namespace BTSMTL.Timeline.Editor
                 OrchestrationTime localEnd = end - global;
                 m_Traversals.Add(new TimelineAssetPreviewTraversal(Source, prepared.Content,
                     global, end, OrchestrationTime.Zero, localEnd, cycle, null, null,
-                    !content.Loop && localEnd == content.Duration));
+                    !content.Loop && localEnd == content.Duration, 0, 0));
                 global = end;
                 if (!content.Loop)
                     break;
@@ -775,23 +797,20 @@ namespace BTSMTL.Timeline.Editor
             m_RouteEnd = OrchestrationTime.Max(m_RouteEnd, segment.End);
         }
 
-        // 快速档：推导中经转移进入的段开始一次新播放，其余为同一次播放按圈拆开。
+        // 快速档：主链与并行分支的全部播放，与采样使用同一组区间；第几次播放按开始时刻计。
         void RebuildFastRoute()
         {
             ClearRoute();
             var occurrences = new Dictionary<TimelineAsset, int>();
-            int playback = -1, occurrence = 0;
-            for (int i = 0; i < m_Traversals.Count; i++)
+            var playbacks = new Dictionary<int, int>();
+            foreach (TimelineAssetPreviewTraversal traversal in m_Traversals.Concat(m_Parallel)
+                         .OrderBy(value => value.Start).ThenBy(value => value.Branch))
             {
-                TimelineAssetPreviewTraversal traversal = m_Traversals[i];
-                if (i == 0 || traversal.Transition != null || traversal.Source != m_Traversals[i - 1].Source)
-                {
-                    playback++;
-                    occurrence = Occurrence(occurrences, traversal.Source);
-                }
+                if (!playbacks.TryGetValue(traversal.Playback, out int occurrence))
+                    playbacks.Add(traversal.Playback, occurrence = Occurrence(occurrences, traversal.Source));
                 AddRoute(new TimelinePreviewRouteSegment(traversal.Source, traversal.State, traversal.Start,
-                    traversal.End, traversal.LocalStart, traversal.LocalEnd, traversal.Cycle, playback, occurrence,
-                    traversal.PlaybackCompleted, null));
+                    traversal.End, traversal.LocalStart, traversal.LocalEnd, traversal.Cycle, traversal.Playback,
+                    occurrence, traversal.PlaybackCompleted, null));
             }
         }
 

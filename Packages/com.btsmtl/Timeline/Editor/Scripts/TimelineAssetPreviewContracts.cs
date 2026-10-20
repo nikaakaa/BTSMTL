@@ -88,13 +88,16 @@ namespace BTSMTL.Timeline.Editor
         public string Message { get; }
     }
 
+    // 一段 Timeline 播放区间。Branch 为 0 是主链，其余是状态 Root 中并行状态机的分支；Playback 是整条路线中的第几次播放。
     public readonly struct TimelineAssetPreviewTraversal
     {
         public TimelineAssetPreviewTraversal(TimelineAsset source, TimelineRuntimePreparedContent content,
             OrchestrationTime start, OrchestrationTime end, OrchestrationTime localStart,
             OrchestrationTime localEnd, int cycle, OrchestrationStaticTransition transition,
-            OrchestrationStaticState state, bool playbackCompleted)
+            OrchestrationStaticState state, bool playbackCompleted, int branch, int playback)
         {
+            Branch = branch;
+            Playback = playback;
             Source = source;
             Content = content;
             Start = start;
@@ -117,6 +120,17 @@ namespace BTSMTL.Timeline.Editor
         public OrchestrationStaticTransition Transition { get; }
         public OrchestrationStaticState State { get; }
         public bool PlaybackCompleted { get; }
+        public int Branch { get; }
+        public int Playback { get; }
+        public OrchestrationTime LocalAt(OrchestrationTime time) => LocalStart + time - Start;
+
+        // 截到 time 为止的部分；到达原终点时才保留播完。
+        public TimelineAssetPreviewTraversal Until(OrchestrationTime time)
+        {
+            OrchestrationTime end = OrchestrationTime.Min(End, time);
+            return new TimelineAssetPreviewTraversal(Source, Content, Start, end, LocalStart, LocalAt(end), Cycle,
+                Transition, State, PlaybackCompleted && end == End, Branch, Playback);
+        }
     }
 
     // 两档共用的路线显示信息：经过的一段 Timeline 播放区间。Playback 相同的段属于同一次播放，只是按圈或分支边界拆开；
@@ -200,7 +214,8 @@ namespace BTSMTL.Timeline.Editor
     {
         public TimelineAssetPreviewTarget(TimelineAsset source, OrchestrationTime time, int cycle,
             ulong revision, TimelineAssetPreviewPreferences preferences, OrchestrationTime previewTime,
-            IReadOnlyList<TimelineAssetPreviewTraversal> traversals, long chainRevision)
+            IReadOnlyList<TimelineAssetPreviewTraversal> traversals,
+            IReadOnlyList<TimelineAssetPreviewTraversal> parallel, long chainRevision)
         {
             Source = source;
             Time = time;
@@ -209,7 +224,42 @@ namespace BTSMTL.Timeline.Editor
             Preferences = preferences;
             PreviewTime = previewTime;
             Traversals = traversals;
+            Parallel = parallel;
             ChainRevision = chainRevision;
+        }
+
+        // 并行分支的播放区间（截到 PreviewTime），按分支、再按时刻排列；领域在每个时刻把生效分支的贡献与主链一起交给正式模块。
+        public IReadOnlyList<TimelineAssetPreviewTraversal> Parallel { get; }
+
+        // time 时各分支生效的那一段；同一分支在转移处取后一段。
+        public void ActiveParallel(OrchestrationTime time, List<TimelineAssetPreviewTraversal> result)
+        {
+            result.Clear();
+            foreach (TimelineAssetPreviewTraversal traversal in Parallel)
+            {
+                if (traversal.Start > time || traversal.End < time)
+                    continue;
+                if (result.Count != 0 && result[^1].Branch == traversal.Branch)
+                    result[^1] = traversal;
+                else
+                    result.Add(traversal);
+            }
+        }
+
+        // 截到 time 为止的目标：较早时刻的整组播放与贡献由同一组区间重建。
+        public TimelineAssetPreviewTarget Until(OrchestrationTime time)
+        {
+            var traversals = new List<TimelineAssetPreviewTraversal>();
+            foreach (TimelineAssetPreviewTraversal traversal in Traversals)
+                if (traversal.Start <= time)
+                    traversals.Add(traversal.Until(time));
+            var parallel = new List<TimelineAssetPreviewTraversal>();
+            foreach (TimelineAssetPreviewTraversal traversal in Parallel)
+                if (traversal.Start <= time)
+                    parallel.Add(traversal.Until(time));
+            TimelineAssetPreviewTraversal current = traversals[^1];
+            return new TimelineAssetPreviewTarget(current.Source, current.LocalEnd, current.Cycle, Revision,
+                Preferences, time, traversals, parallel, ChainRevision);
         }
 
         // 同一链修订内，较晚目标的遍历是较早目标的延长，领域可以从上次目标继续推进。
