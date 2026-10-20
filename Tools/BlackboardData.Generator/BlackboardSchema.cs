@@ -155,7 +155,7 @@ internal sealed class BlackboardSchema : IDisposable
         File.WriteAllText(Path.Combine(output, targetNamespace + ".asmdef"), JsonSerializer.Serialize(new
         {
             name = targetNamespace,
-            references = new[] { "ThirdPerson.Shared.Contracts", "ThirdPerson.Luban", "BTSMTL.Orchestration.Contracts",
+            references = new[] { "ThirdPerson.Shared.Contracts", "ThirdPerson.Luban", "BTSMTL.Foundation", "BTSMTL.Orchestration.Contracts",
                 "ThirdPersonSimulation.BlackboardConfiguration" }.Concat(valueAssemblies).Distinct(StringComparer.Ordinal).ToArray(),
             overrideReferences = true,
             precompiledReferences,

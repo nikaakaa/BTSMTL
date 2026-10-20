@@ -21,7 +21,7 @@ namespace BTSMTL.Orchestration
             for (int i = 0; i < sortedIdentityIds.Length; i++)
                 sortedIdentityIds[i] = i + 1;
             return new OrchestrationIdentityTable(values, sortedIdentityIds,
-                () => OrchestrationIdentityContentHash.Table(values));
+                () => OrchestrationIdentityPublicationHash.Table(values));
         }
 
         public static OrchestrationIdentityTable Extend(OrchestrationIdentityTable baseline,
@@ -59,7 +59,7 @@ namespace BTSMTL.Orchestration
                 added++;
             }
             return new OrchestrationIdentityTable(values, sortedIdentityIds,
-                () => OrchestrationIdentityContentHash.Table(values));
+                () => OrchestrationIdentityPublicationHash.Table(values));
         }
     }
 }

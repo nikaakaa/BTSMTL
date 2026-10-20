@@ -41,10 +41,14 @@ namespace BTSMTL.Graphs
         int m_OutputValueCount;
         readonly OrchestrationIdentityValue[] m_TextRemap;
         readonly GraphVariableBuffer m_Output;
-        byte[] m_State;
-        byte[] m_Candidate;
-        GraphTextStorage m_StateTexts;
-        GraphTextStorage m_CandidateTexts;
+        readonly byte[] m_FirstMemory;
+        readonly byte[] m_SecondMemory;
+        readonly GraphStateTransaction m_StateTransaction;
+        ReadOnlySpan<byte> StateMemory => m_StateTransaction.BindCommitted(m_FirstMemory, m_SecondMemory);
+        Span<byte> CandidateMemory => m_StateTransaction.BindCandidate(m_FirstMemory, m_SecondMemory);
+        Span<byte> MutableCommittedMemory => m_StateTransaction.CommittedBank == 0 ? m_FirstMemory : m_SecondMemory;
+        GraphTextStorage m_StateTexts => m_StateTransaction.CommittedTexts;
+        GraphTextStorage m_CandidateTexts => m_StateTransaction.CandidateTexts;
         GraphExecutionFailure m_LastFailure;
         GraphExecutionFailure m_CandidateFailure;
         GraphInvocationContext m_Invocation;
@@ -90,11 +94,8 @@ namespace BTSMTL.Graphs
                 ReadOnlyMemory<OrchestrationValueSlotType>.Empty,
                 new OrchestrationStateRegion<byte>(executionLayout.Layout.SizeBytes, 0), default);
             m_MemoryLayout = m_Layout.Layout;
-            m_State = new byte[m_MemoryLayout.SizeBytes];
-            m_Candidate = new byte[m_State.Length];
-            OrchestrationStateLayout preparedLayout = m_Layout.Layout;
-            OrchestrationStateBinding.AdoptMemory(in preparedLayout, in m_MemoryLayout, m_State);
-            OrchestrationStateBinding.AdoptMemory(in preparedLayout, in m_MemoryLayout, m_Candidate);
+            m_FirstMemory = new byte[m_MemoryLayout.SizeBytes];
+            m_SecondMemory = new byte[m_FirstMemory.Length];
             m_Inputs = new TValue[m_Bindings.InputCapacity];
             m_Output = new GraphVariableBuffer(m_Bindings.PublishedSlots.Length, m_Bindings.Prepared.Identities.Table);
             m_Workspace = new OrchestrationExecutionWorkspace<TValue>(
@@ -115,16 +116,17 @@ namespace BTSMTL.Graphs
                 + m_ObservedInputs.Length + m_ObservedOutputs.Length + 1
 #endif
                 );
-            m_StateTexts = new GraphTextStorage(m_Bindings.Prepared.Identities, textCapacity);
-            m_CandidateTexts = new GraphTextStorage(m_Bindings.Prepared.Identities, textCapacity);
+            m_StateTransaction = new GraphStateTransaction(m_MemoryLayout.Identity,
+                new GraphTextStorage(m_Bindings.Prepared.Identities, textCapacity),
+                new GraphTextStorage(m_Bindings.Prepared.Identities, textCapacity));
             m_TextRemap = new OrchestrationIdentityValue[textCapacity + 1];
             Reset();
         }
 
         ReadOnlySpan<TValue> StateValues =>
-            m_Layout.Layout.BindCommitted(m_State).Get(m_PrivateValues);
+            m_Layout.Layout.BindCommitted(StateMemory).Get(m_PrivateValues);
         Span<TValue> CandidateValues =>
-            m_Layout.Layout.BindCandidate(m_Candidate).Get(m_PrivateValues);
+            m_Layout.Layout.BindCandidate(CandidateMemory).Get(m_PrivateValues);
 
         public BtsmtlGraphRoot Source => m_Source;
         public GraphHostContract Contract => m_Contract;
@@ -208,7 +210,7 @@ namespace BTSMTL.Graphs
                 return;
             if (m_Status != EvaluationStatus.Prepared)
                 throw new InvalidOperationException("图实例只能计算本次已准备的输入和候选。");
-            var state = OrchestrationStateBinding.BindCandidate(m_Layout, m_Candidate);
+            var state = OrchestrationStateBinding.BindCandidate(m_Layout, CandidateMemory);
             OrchestrationIdentityOrdinalView identities = m_CandidateTexts.Ordinals;
             var cursor = state.CreateCursor<TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext,
                 TDiagnostics, OrchestrationArrayValueStorage<TValue>>(
@@ -376,11 +378,11 @@ namespace BTSMTL.Graphs
         void BeginCandidateState()
         {
             Array.Clear(m_TextRemap, 0, m_TextRemap.Length);
-            OrchestrationStateBinding.CopyMemory(m_Layout, m_State, m_Candidate);
+            m_StateTransaction.Begin(m_FirstMemory, m_SecondMemory);
             Span<TValue> values = CandidateValues;
             for (int i = 0; i < values.Length; i++)
                 RemapValue(ref values[i]);
-            var frames = OrchestrationStateBinding.BindCandidate(m_Layout, m_Candidate).Frames;
+            var frames = OrchestrationStateBinding.BindCandidate(m_Layout, CandidateMemory).Frames;
             Span<TValue> savedOutputs = frames.SavedOutputs(0);
             for (int i = 0; i < savedOutputs.Length; i++)
                 RemapValue(ref savedOutputs[i]);
@@ -408,12 +410,7 @@ namespace BTSMTL.Graphs
 
         void AdoptCandidateState()
         {
-            byte[] previous = m_State;
-            m_State = m_Candidate;
-            m_Candidate = previous;
-            GraphTextStorage previousTexts = m_StateTexts;
-            m_StateTexts = m_CandidateTexts;
-            m_CandidateTexts = previousTexts;
+            m_StateTransaction.Commit();
 #if UNITY_EDITOR
             AdoptEditorCandidateState();
 #endif
@@ -422,7 +419,7 @@ namespace BTSMTL.Graphs
         void ClearCandidateState()
         {
             Array.Clear(m_Inputs, 0, m_Inputs.Length);
-            m_CandidateTexts.Reset();
+            m_StateTransaction.Discard();
 #if UNITY_EDITOR
             ClearEditorCandidateState();
 #endif
@@ -431,9 +428,9 @@ namespace BTSMTL.Graphs
         void ResetState()
         {
             m_Output.Invalidate();
-            Array.Clear(m_State, 0, m_State.Length);
+            MutableCommittedMemory.Clear();
             m_StateTexts.Reset();
-            var state = OrchestrationStateBinding.BindCandidate(m_Layout, m_State);
+            var state = OrchestrationStateBinding.BindCandidate(m_Layout, MutableCommittedMemory);
             var frames = state.Frames;
             InitializeRootFrame(ref frames, m_ResetGeneration);
             Span<OrchestrationBlackboardMetadata> blackboards = frames.BlackboardMetadata(0);

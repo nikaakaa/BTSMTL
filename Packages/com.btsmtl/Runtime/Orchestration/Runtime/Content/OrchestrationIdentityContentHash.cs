@@ -7,38 +7,6 @@ namespace BTSMTL.Orchestration
 {
     internal static class OrchestrationIdentityContentHash
     {
-        internal static StableHash Table(ReadOnlySpan<string> entries)
-        {
-            using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-            Text(hash, "btsmtl-orchestration-identity-table/1");
-            Integer(hash, entries.Length);
-            for (int i = 0; i < entries.Length; i++)
-                Text(hash, entries[i]);
-            return Complete(hash);
-        }
-
-        internal static StableHash Prepared(StableHash tableIdentity,
-            ReadOnlySpan<OrchestrationIdentityTable> contentTables, ReadOnlySpan<ReadOnlyMemory<int>> mappings,
-            ReadOnlySpan<int> rosterOrdinals)
-        {
-            using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-            Text(hash, "btsmtl-orchestration-prepared-identities/1");
-            Text(hash, tableIdentity.ToString());
-            Integer(hash, rosterOrdinals.Length);
-            for (int i = 0; i < rosterOrdinals.Length; i++)
-                Integer(hash, rosterOrdinals[i]);
-            Integer(hash, contentTables.Length);
-            for (int tableIndex = 0; tableIndex < contentTables.Length; tableIndex++)
-            {
-                Text(hash, contentTables[tableIndex].Identity.ToString());
-                ReadOnlySpan<int> mapping = mappings[tableIndex].Span;
-                Integer(hash, mapping.Length);
-                for (int i = 0; i < mapping.Length; i++)
-                    Integer(hash, mapping[i]);
-            }
-            return Complete(hash);
-        }
-
         internal static StableHash Actor<TValue>(StableHash identities, StableHash defaults,
             int defaultIdentityTableIndex,
             ReadOnlySpan<OrchestrationActorProgramSource<TValue>> sources,

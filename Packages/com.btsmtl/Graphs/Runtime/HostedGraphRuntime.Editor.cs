@@ -1,7 +1,6 @@
 #if UNITY_EDITOR
 using System;
 using System.Collections.Generic;
-using System.Runtime.InteropServices;
 using BTSMTL.Orchestration;
 using FlowCanvas;
 using NodeCanvas.Framework;
@@ -22,7 +21,7 @@ namespace BTSMTL.Graphs
         where TContext : struct
     {
         const uint RecordedStateFormat = 0x45564752;
-        const uint RecordedStateVersion = 4;
+        const uint RecordedStateVersion = 5;
         readonly Dictionary<(string Node, string Port, bool Input), GraphRuntimePort> m_EditorPorts = new();
         GraphRuntimePort[] m_RuntimePorts;
         OrchestrationValueOverride<TValue>[] m_Overrides;
@@ -219,7 +218,7 @@ namespace BTSMTL.Graphs
             CreateEditorCursor(in OrchestrationFrameInput<TValue> input)
         {
             m_Workspace.PrepareInvocationBindings();
-            var state = OrchestrationStateBinding.BindCandidate(m_Layout, m_Candidate);
+            var state = OrchestrationStateBinding.BindCandidate(m_Layout, CandidateMemory);
             OrchestrationIdentityOrdinalView identities = m_CandidateTexts.Ordinals;
             TContext context = default;
             return state.CreateCursor<TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext,
@@ -367,70 +366,13 @@ namespace BTSMTL.Graphs
             WriteRecordedFrameState(ref writer, false);
         }
 
-        OrchestrationStateRegion<byte> RecordedSegmentRegion(in OrchestrationStateSegment segment) =>
-            segment.PerFrame && segment.Role != OrchestrationStateSegmentRole.Frames
-                ? m_Layout.PayloadRegion(in segment, 0, 0, m_Bindings.Program.RootOperationIndex)
-                : new OrchestrationStateRegion<byte>(segment.OffsetBytes, segment.SizeBytes);
-
-        void WriteRecordedStoredValues<TWriter>(ref TWriter writer, ReadOnlySpan<TValue> values,
-            bool savedOutputs, bool maximumCapacity)
-            where TWriter : struct, IRecordedRuntimeStateWriter
-        {
-            ReadOnlySpan<OrchestrationValueStorageSlot> slots = m_Bindings.Program.ExecutionStorage.Values.Span;
-            for (int slot = 0; slot < slots.Length; slot++)
-            {
-                ref readonly OrchestrationValueStorageSlot storage = ref slots[slot];
-                int index = savedOutputs ? storage.SavedOutputIndex : storage.ValueIndex;
-                if (index < 0 || storage.OwnerOperationIndex != m_Bindings.Program.RootOperationIndex)
-                    continue;
-                ref readonly TValue value = ref values[index];
-                if (savedOutputs)
-                {
-                    bool hasValue = maximumCapacity || default(TValues).Kind(in value) != default;
-                    writer.Write(hasValue);
-                    if (!hasValue)
-                        continue;
-                }
-                if (maximumCapacity)
-                    GraphHostValue.WriteRecordedStateCapacity(ref writer, m_Bindings.StateTypes[slot]);
-                else
-                    m_Bindings.FromState(in value, m_Bindings.StateTypes[slot], m_StateTexts)
-                        .WriteRecordedFrameState(ref writer);
-            }
-        }
-
-        void ReadRecordedStoredValues(ref RecordedRuntimeStateReader reader, Span<TValue> values,
-            bool savedOutputs)
-        {
-            ReadOnlySpan<OrchestrationValueStorageSlot> slots = m_Bindings.Program.ExecutionStorage.Values.Span;
-            for (int slot = 0; slot < slots.Length; slot++)
-            {
-                ref readonly OrchestrationValueStorageSlot storage = ref slots[slot];
-                int index = savedOutputs ? storage.SavedOutputIndex : storage.ValueIndex;
-                if (index < 0 || storage.OwnerOperationIndex != m_Bindings.Program.RootOperationIndex ||
-                    savedOutputs && !reader.Read<bool>())
-                    continue;
-                int enumIdentity = m_Bindings.StateTypes[slot].IsEnum
-                    ? default(TValues).Enum(m_Bindings.Program.Content.DefaultValues.Span[slot]).TypeContentId : 0;
-                GraphHostValue value = GraphHostValue.ReadRecordedFrameState(ref reader, m_Bindings.StateTypes[slot]);
-                values[index] = m_Bindings.ToState(in value, enumIdentity, m_CandidateTexts);
-            }
-        }
-
         void WriteRecordedFrameState<TWriter>(ref TWriter writer, bool maximumCapacity)
             where TWriter : struct, IRecordedRuntimeStateWriter
         {
             writer.Write(RecordedStateFormat);
             writer.Write(RecordedStateVersion);
             writer.Write(m_Bindings.Prepared.Identities.Identity);
-            writer.Write(m_MemoryLayout.SizeBytes);
-            writer.Write(m_MemoryLayout.Alignment);
-            m_MemoryLayout.ReadIdentityWords(out ulong identity0, out ulong identity1,
-                out ulong identity2, out ulong identity3);
-            writer.Write(identity0);
-            writer.Write(identity1);
-            writer.Write(identity2);
-            writer.Write(identity3);
+            m_StateTransaction.WriteRecordedState(ref writer, m_FirstMemory, m_SecondMemory);
             writer.Write(m_ResetGeneration);
             writer.Write(m_Started);
             writer.Write(m_Faulted);
@@ -452,22 +394,6 @@ namespace BTSMTL.Graphs
                 writer.Write(trigger.Operation);
                 writer.Write(trigger.Port);
                 writer.Write(trigger.Input);
-            }
-            foreach (OrchestrationStateSegment segment in m_Layout.Segments.Span)
-            {
-                OrchestrationStateRegion<byte> region = RecordedSegmentRegion(in segment);
-                ReadOnlySpan<byte> memory = m_State.AsSpan(region.OffsetBytes, region.SizeBytes);
-                switch (segment.Role)
-                {
-                    case OrchestrationStateSegmentRole.PrivateValues:
-                    case OrchestrationStateSegmentRole.SavedOutputs:
-                        WriteRecordedStoredValues(ref writer, MemoryMarshal.Cast<byte, TValue>(memory),
-                            segment.Role == OrchestrationStateSegmentRole.SavedOutputs, maximumCapacity);
-                        break;
-                    default:
-                        writer.WriteSpan<byte>(memory);
-                        break;
-                }
             }
             foreach (int slot in m_Bindings.PublishedSlots)
             {
@@ -506,16 +432,12 @@ namespace BTSMTL.Graphs
             RequireIdle();
             try
             {
-                Array.Clear(m_Candidate, 0, m_Candidate.Length);
                 if (reader.Read<uint>() != RecordedStateFormat || reader.Read<uint>() != RecordedStateVersion)
                     throw new InvalidOperationException("事件图记录格式不受支持。");
                 StableHash identities = reader.Read<StableHash>();
                 if (!identities.Equals(m_Bindings.Prepared.Identities.Identity))
                     throw new InvalidOperationException("事件图记录的身份表与当前准备的内容不匹配。");
-                var actualLayout = new OrchestrationStateLayout(reader.Read<int>(), reader.Read<int>(),
-                    reader.Read<ulong>(), reader.Read<ulong>(), reader.Read<ulong>(), reader.Read<ulong>());
-                OrchestrationStateLayout preparedLayout = m_Layout.Layout;
-                OrchestrationStateBinding.AdoptMemory(in preparedLayout, in actualLayout, m_Candidate);
+                m_StateTransaction.RestoreRecordedState(ref reader, m_FirstMemory, m_SecondMemory);
                 ulong resetGeneration = reader.Read<ulong>();
                 bool started = reader.Read<bool>();
                 bool faulted = reader.Read<bool>();
@@ -529,22 +451,6 @@ namespace BTSMTL.Graphs
                 PrepareTriggerCapacity(triggerCount);
                 for (int i = 0; i < triggerCount; i++)
                     m_CandidateTriggers.Add((reader.Read<int>(), reader.Read<int>(), reader.Read<bool>()));
-                foreach (OrchestrationStateSegment segment in m_Layout.Segments.Span)
-                {
-                    OrchestrationStateRegion<byte> region = RecordedSegmentRegion(in segment);
-                    Span<byte> memory = m_Candidate.AsSpan(region.OffsetBytes, region.SizeBytes);
-                    switch (segment.Role)
-                    {
-                        case OrchestrationStateSegmentRole.PrivateValues:
-                        case OrchestrationStateSegmentRole.SavedOutputs:
-                            ReadRecordedStoredValues(ref reader, MemoryMarshal.Cast<byte, TValue>(memory),
-                                segment.Role == OrchestrationStateSegmentRole.SavedOutputs);
-                            break;
-                        default:
-                            reader.ReadSpan<byte>(memory.Length).CopyTo(memory);
-                            break;
-                    }
-                }
                 foreach (int slot in m_Bindings.PublishedSlots)
                 {
                     if (reader.Read<bool>())

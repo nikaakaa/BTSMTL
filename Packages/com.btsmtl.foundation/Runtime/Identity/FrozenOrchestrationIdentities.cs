@@ -64,7 +64,7 @@ namespace BTSMTL.Orchestration
             var rosterOrdinals = new int[rosterTexts.Length];
             for (int i = 0; i < rosterTexts.Length; i++)
                 rosterOrdinals[i] = table.Bind(rosterTexts[i]);
-            StableHash identity = OrchestrationIdentityContentHash.Prepared(table.Identity, contentTables,
+            StableHash identity = OrchestrationIdentityPublicationHash.Prepared(table.Identity, contentTables,
                 mappings, rosterOrdinals);
             return new FrozenOrchestrationIdentities(table, mappings, contentRanks, rosterOrdinals, identity);
         }
