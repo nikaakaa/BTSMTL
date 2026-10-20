@@ -96,23 +96,29 @@ namespace BTSMTL.Timeline.Editor
                                     !string.IsNullOrEmpty(SectionAuthoringId);
     }
 
-    public readonly struct TimelineAuthoringExit
+    public readonly struct TimelineSectionContinueWindow
     {
-        public TimelineAuthoringExit(string destination, string trackId, bool anytime, float startTime, float endTime, Action activate)
+        public TimelineSectionContinueWindow(string trackId, float startTime, float endTime)
         {
-            Destination = destination ?? string.Empty;
             TrackId = trackId ?? string.Empty;
-            Anytime = anytime;
             StartTime = startTime;
             EndTime = endTime;
+        }
+
+        public string TrackId { get; }
+        public float StartTime { get; }
+        public float EndTime { get; }
+    }
+
+    public readonly struct TimelineClipDestination
+    {
+        public TimelineClipDestination(string label, Action activate)
+        {
+            Label = label ?? string.Empty;
             Activate = activate;
         }
 
-        public string Destination { get; }
-        public string TrackId { get; }
-        public bool Anytime { get; }
-        public float StartTime { get; }
-        public float EndTime { get; }
+        public string Label { get; }
         public Action Activate { get; }
     }
 
@@ -177,6 +183,7 @@ namespace BTSMTL.Timeline.Editor
             m_Binding.AuthoringIssue += OnBindingIssue;
             m_Binding.RepaintRequested += OnBindingRepaint;
             m_Binding.ResourceChanged += QueueRebuildBinding;
+            m_Binding.ConfigureSectionFocus(id => FocusSectionGroup(id));
             UnityEditor.Selection.activeObject = request.SerializedOwner;
             m_EmbeddedEditor = ScriptableObject.CreateInstance<CutsceneEditorSurface>();
             m_EmbeddedEditor.InitializeEmbedded(m_Binding, EmbeddedRepaint);
@@ -197,15 +204,19 @@ namespace BTSMTL.Timeline.Editor
         }
         public event Action<TimelineEditorSelection> SelectionChanged;
         public float CurrentTime => m_Binding.CurrentTime;
-        public void SetAuthoringClipLabels(IReadOnlyDictionary<string, string> labels)
+        public void SetAuthoringDestinations(
+            IReadOnlyDictionary<string, IReadOnlyList<TimelineClipDestination>> clipDestinations,
+            IReadOnlyList<TimelineSectionContinueWindow> continueWindows)
         {
-            m_Binding.SetAuthoringClipLabels(labels);
-            m_EmbeddedEditor.RequestEmbeddedRepaint();
-        }
-
-        public void SetAuthoringExits(IReadOnlyList<TimelineAuthoringExit> exits)
-        {
-            m_Binding.SetAuthoringExits(exits);
+            var labels = new Dictionary<string, string>(StringComparer.Ordinal);
+            var links = new Dictionary<string, IReadOnlyList<EmbeddedTimelineGroupLink>>(StringComparer.Ordinal);
+            foreach (KeyValuePair<string, IReadOnlyList<TimelineClipDestination>> pair in clipDestinations)
+            {
+                labels[pair.Key] = "→ " + string.Join(" · ", pair.Value.Select(value => value.Label));
+                links[pair.Key] = pair.Value.Select(value => new EmbeddedTimelineGroupLink(value.Label, false, 0f, 0f, value.Activate)).ToArray();
+            }
+            m_Binding.SetAuthoringClipDestinations(labels, links);
+            m_Binding.SetSectionContinueWindows(continueWindows);
             m_EmbeddedEditor.RequestEmbeddedRepaint();
         }
 

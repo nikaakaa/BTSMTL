@@ -11,8 +11,8 @@ namespace BTSMTL.Timeline.Editor
     public sealed partial class TimelineEditorWindow
     {
         readonly List<(TimelineOrchestrationQuery Query, OrchestrationStaticState State)> m_DoorContexts = new();
-        readonly Dictionary<string, string> m_DoorLabels = new(StringComparer.Ordinal);
-        readonly List<TimelineAuthoringExit> m_AuthoringExits = new();
+        readonly Dictionary<string, List<TimelineClipDestination>> m_ClipDestinations = new(StringComparer.Ordinal);
+        readonly List<TimelineSectionContinueWindow> m_ContinueWindows = new();
         IMGUIContainer m_DoorContextControl;
         int m_DoorContextIndex;
         string[] m_DoorContextLabels = Array.Empty<string>();
@@ -54,8 +54,8 @@ namespace BTSMTL.Timeline.Editor
             m_OrchestrationHost = null;
             m_DoorRefreshQueued = false;
             m_DoorContexts.Clear();
-            m_DoorLabels.Clear();
-            m_AuthoringExits.Clear();
+            m_ClipDestinations.Clear();
+            m_ContinueWindows.Clear();
             m_DoorContextControl = null;
         }
 
@@ -99,8 +99,8 @@ namespace BTSMTL.Timeline.Editor
 
         void ApplyDoorContext()
         {
-            m_DoorLabels.Clear();
-            m_AuthoringExits.Clear();
+            m_ClipDestinations.Clear();
+            m_ContinueWindows.Clear();
             m_DoorContextIssues = GUIContent.none;
             if (m_DoorContexts.Count != 0)
             {
@@ -109,25 +109,14 @@ namespace BTSMTL.Timeline.Editor
                 TimelineStateDoors doors = TimelineStateDoors.Build(context.State);
                 foreach (TimelineDoorDestination destination in doors.Destinations)
                 {
+                    if (!m_ClipDestinations.TryGetValue(destination.Door.ClipId, out List<TimelineClipDestination> list))
+                        m_ClipDestinations.Add(destination.Door.ClipId, list = new List<TimelineClipDestination>());
                     string text = DestinationText(destination);
-                    m_DoorLabels[destination.Door.ClipId] = m_DoorLabels.TryGetValue(destination.Door.ClipId, out string previous)
-                        ? previous + " · " + text : text;
-                    m_AuthoringExits.Add(new TimelineAuthoringExit(text, destination.Door.TrackId, false,
-                        destination.Door.Start.AsSingle, destination.Door.End.AsSingle, ExitActivation(context.Query, destination)));
-                }
-                foreach (OrchestrationStaticTransition transition in doors.Anytime)
-                {
-                    OrchestrationStaticSourceLocation location = transition.Location;
-                    m_AuthoringExits.Add(new TimelineAuthoringExit(TransitionText(transition), string.Empty, true, 0f, 0f,
-                        () => context.Query.OpenTransition(location)));
-                }
-                foreach (var unresolved in doors.UnresolvedStateReads)
-                {
-                    string read = unresolved.Read.Label;
-                    read = read.Substring(read.LastIndexOf('/') + 1);
-                    if (read.StartsWith("tag:", StringComparison.Ordinal))
-                        read = read.Substring(4);
-                    m_AuthoringExits.Add(new TimelineAuthoringExit($"{read}：无法静态判断，按运行数据假设", string.Empty, true, 0f, 0f, null));
+                    if (!list.Exists(value => value.Label == text))
+                        list.Add(new TimelineClipDestination(text, ExitActivation(context.Query, destination)));
+                    if (destination.Kind == TimelineDoorDestinationKind.NextSection)
+                        m_ContinueWindows.Add(new TimelineSectionContinueWindow(destination.Door.TrackId,
+                            destination.Door.Start.AsSingle, destination.Door.End.AsSingle));
                 }
                 if (context.Query.Query.Errors.Count != 0)
                     m_DoorContextIssues = new GUIContent($"⚠ {context.Query.Query.Errors.Count} 个问题",
@@ -135,8 +124,10 @@ namespace BTSMTL.Timeline.Editor
             }
             else
                 TimelineAssetPreviewHost.Shared.SetOrchestrationContext(SourceAsset, null, null);
-            m_SlateProjection?.SetAuthoringClipLabels(m_DoorLabels);
-            m_SlateProjection?.SetAuthoringExits(m_AuthoringExits);
+            m_SlateProjection?.SetAuthoringDestinations(
+                m_ClipDestinations.ToDictionary(pair => pair.Key, pair => (IReadOnlyList<TimelineClipDestination>)pair.Value,
+                    StringComparer.Ordinal),
+                m_ContinueWindows);
         }
 
         Action ExitActivation(TimelineOrchestrationQuery query, TimelineDoorDestination destination)
@@ -178,16 +169,16 @@ namespace BTSMTL.Timeline.Editor
             if (destination.Kind == TimelineDoorDestinationKind.Transition)
                 return TransitionText(destination.Transition);
             string section = m_Timeline.Sections.FirstOrDefault(item => item.AuthoringId == destination.NextSection?.AuthoringId)?.Name;
-            return "→ 连到 " + (string.IsNullOrEmpty(section) ? "未命名分段" : section);
+            return string.IsNullOrEmpty(section) ? "未命名分段" : section;
         }
 
         string TransitionText(OrchestrationStaticTransition transition)
         {
             if (transition.Target == null)
-                return "→ 收招";
+                return "收招";
             if (transition.Target.OperationIndex == m_DoorContexts[m_DoorContextIndex].State.OperationIndex)
-                return "→ 重新开始本状态";
-            return "→ 转移到 " + StateText(transition.Target);
+                return "重新开始本状态";
+            return "转移到 " + StateText(transition.Target);
         }
 
         string StateText(OrchestrationStaticState state) =>
