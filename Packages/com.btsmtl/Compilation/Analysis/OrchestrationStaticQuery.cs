@@ -184,6 +184,60 @@ namespace BTSMTL.Compilation.Analysis
         public OrchestrationTime Duration => Content.Duration;
         public bool Loop => Content.Loop;
         public IReadOnlyList<OrchestrationStaticClip> Clips { get; }
+        // 本 Timeline 的 Clip 或 Marker 图中调用其它 Timeline 的位置；同一 Timeline 被多处播放时每次出现各有一组。
+        public IReadOnlyList<OrchestrationStaticTimelineCall> Calls => m_Calls;
+        internal readonly List<OrchestrationStaticTimelineCall> m_Calls = new();
+    }
+
+    // Timeline 调用点：编译器只允许逻辑轨 Clip 图（含钩子图）与逻辑 Marker 图放置"播放 Timeline"，调用成环时拒绝发布。
+    // 时刻都是调用方 Timeline 的本地时间；调用时刻、时钟或起播时刻需运行数据时 HasStaticOffset 为 false 并说明原因。
+    public sealed class OrchestrationStaticTimelineCall
+    {
+        internal OrchestrationStaticTimelineCall(OrchestrationStaticTimeline caller, int callerOperationIndex,
+            string callerElementId, string callerTrackId, OrchestrationStaticClip clip, OrchestrationTimelineHook hook,
+            int operationIndex, string calleeIdentity, OrchestrationStaticTimeline callee,
+            OrchestrationTimelinePlaybackMode playbackMode, OrchestrationTime offset, OrchestrationTime? limit,
+            OrchestrationTime calleeStartTime, string reason)
+        {
+            Caller = caller;
+            CallerOperationIndex = callerOperationIndex;
+            CallerElementId = callerElementId;
+            CallerTrackId = callerTrackId;
+            Clip = clip;
+            Hook = hook;
+            OperationIndex = operationIndex;
+            CalleeIdentity = calleeIdentity;
+            Callee = callee;
+            PlaybackMode = playbackMode;
+            Offset = offset;
+            Limit = limit;
+            CalleeStartTime = calleeStartTime;
+            Reason = reason ?? string.Empty;
+        }
+
+        public OrchestrationStaticTimeline Caller { get; }
+        // 调用方 Timeline 的播放操作；同一 Timeline 的不同播放位置各自编译，操作不同。
+        public int CallerOperationIndex { get; }
+        // 调用所在 Clip 或 Marker 的作者身份与所在轨道。
+        public string CallerElementId { get; }
+        public string CallerTrackId { get; }
+        // Marker 调用为 null。
+        public OrchestrationStaticClip Clip { get; }
+        public OrchestrationTimelineHook Hook { get; }
+        // 被调 Timeline 的播放操作。
+        public int OperationIndex { get; }
+        public string CalleeIdentity { get; }
+        // 被调内容无法解析时为 null。
+        public OrchestrationStaticTimeline Callee { get; }
+        public OrchestrationTimelinePlaybackMode PlaybackMode { get; }
+        public bool HasStaticOffset => Reason.Length == 0;
+        // 被调开始播放的调用方本地时刻。
+        public OrchestrationTime Offset { get; }
+        // Enable 与 Root 的执行帧存活到 Clip 结束；Marker、Disable、Destroy 在当前回调结束时关闭。
+        public OrchestrationTime? Limit { get; }
+        // 被调的起播本地时刻。
+        public OrchestrationTime CalleeStartTime { get; }
+        public string Reason { get; }
     }
 
     public sealed class OrchestrationStaticTransition
@@ -291,6 +345,7 @@ namespace BTSMTL.Compilation.Analysis
         readonly Dictionary<int, int> m_MachineEntries = new();
         readonly Dictionary<int, List<OrchestrationStaticTransition>> m_InitialTransitions = new();
         readonly Dictionary<string, OrchestrationStaticTimeline> m_Timelines = new(StringComparer.Ordinal);
+        readonly Dictionary<int, OrchestrationStaticTimelineCall> m_Calls = new();
         readonly List<string> m_Errors = new();
 
         OrchestrationStaticQuery(OrchestrationStaticQueryInput input)
@@ -352,6 +407,12 @@ namespace BTSMTL.Compilation.Analysis
         public OrchestrationStaticTimeline Timeline(string identity) =>
             identity != null && m_Timelines.TryGetValue(identity, out OrchestrationStaticTimeline timeline) ? timeline : null;
 
+        public IEnumerable<OrchestrationStaticTimelineCall> TimelineCalls => m_Calls.Values;
+
+        // 按被调 Timeline 的播放操作找调用点；不是被 Clip 或 Marker 调用的播放返回 null。
+        public OrchestrationStaticTimelineCall TimelineCall(int operationIndex) =>
+            m_Calls.TryGetValue(operationIndex, out OrchestrationStaticTimelineCall call) ? call : null;
+
         public IReadOnlyList<OrchestrationStaticTransition> InitialTransitions(int machineOperationIndex) =>
             m_InitialTransitions[machineOperationIndex];
 
@@ -359,6 +420,9 @@ namespace BTSMTL.Compilation.Analysis
         {
             var query = new OrchestrationStaticQuery(input);
             query.BuildStates();
+            foreach (SemanticOperation operation in input.Operations)
+                if (operation.Code == OrchestrationOperationCode.Timeline)
+                    query.RequireTimeline(operation.Text0);
             query.BuildClipGraphs();
             query.BuildTransitions();
             return query;
@@ -417,17 +481,23 @@ namespace BTSMTL.Compilation.Analysis
                     if (edge.Kind == ProgramControlFlowKind.Enter && edge.SourcePort == "Root")
                         state.TimelineDeterminesRootCompletion = IsTimelineRoot(edge.Target.Value, timeline);
                 }
-                bool rateKnown = TryLiteral(Input(timeline, "m_PlaybackRate"), out SemanticLiteral rate) &&
-                    rate.Kind == SemanticLiteralKind.Number && rate.Number.Value == 1d;
-                bool pauseKnown = TryLiteral(Input(timeline, "m_Paused"), out SemanticLiteral paused) &&
-                    paused.Kind == SemanticLiteralKind.Boolean && !paused.Boolean;
-                bool startKnown = TryLiteral(Input(timeline, "m_StartTime"), out SemanticLiteral start) &&
-                    start.Kind == SemanticLiteralKind.Number;
-                state.HasStaticTimelineClock = rateKnown && pauseKnown;
+                state.HasStaticTimelineClock = TimelineClock(timeline, out bool startKnown, out OrchestrationTime start);
                 state.HasStaticTimelineStartTime = startKnown;
-                if (startKnown)
-                    state.TimelineStartTime = OrchestrationTime.FromSeconds(start.Number.Value);
+                state.TimelineStartTime = start;
             }
+        }
+
+        // 播放速率为常量 1 且不暂停时返回 true；起播时刻为常量时给出它。
+        bool TimelineClock(int timeline, out bool startKnown, out OrchestrationTime startTime)
+        {
+            bool rateKnown = TryLiteral(Input(timeline, "m_PlaybackRate"), out SemanticLiteral rate) &&
+                rate.Kind == SemanticLiteralKind.Number && rate.Number.Value == 1d;
+            bool pauseKnown = TryLiteral(Input(timeline, "m_Paused"), out SemanticLiteral paused) &&
+                paused.Kind == SemanticLiteralKind.Boolean && !paused.Boolean;
+            startKnown = TryLiteral(Input(timeline, "m_StartTime"), out SemanticLiteral start) &&
+                start.Kind == SemanticLiteralKind.Number;
+            startTime = startKnown ? OrchestrationTime.FromSeconds(start.Number.Value) : OrchestrationTime.Zero;
+            return rateKnown && pauseKnown;
         }
 
         bool IsTimelineRoot(int index, int timeline)
@@ -514,7 +584,7 @@ namespace BTSMTL.Compilation.Analysis
                 ProgramExecutionSource source = sourceEntry.Source;
                 if (source.TargetKind != ProgramSourceTargetKind.GraphInvocation ||
                     source.InvocationCallerKind is not (ProgramInvocationCallerKind.TimelineClip or
-                        ProgramInvocationCallerKind.PresentationTreeClip))
+                        ProgramInvocationCallerKind.PresentationMarker or ProgramInvocationCallerKind.PresentationTreeClip))
                     continue;
                 OrchestrationStaticTimeline timeline = RequireTimeline(Operations[source.InvocationCallerOperationIndex].Text0);
                 if (timeline == null)
@@ -523,14 +593,29 @@ namespace BTSMTL.Compilation.Analysis
                 foreach (OrchestrationStaticClip candidate in timeline.Clips)
                     if (string.Equals(candidate.ClipId, source.InvocationCallerClipId, StringComparison.Ordinal))
                         clip = candidate;
+                TimelineContentMarker? marker = null;
                 if (clip == null)
+                    foreach (TimelineContentMarker candidate in timeline.Content.Markers)
+                        if (string.Equals(candidate.MarkerId, source.InvocationCallerClipId, StringComparison.Ordinal))
+                            marker = candidate;
+                if (clip == null && marker == null)
                     throw new InvalidOperationException($"Timeline '{timeline.Identity}' 未声明图调用所属的 Clip '{source.InvocationCallerClipId}'。");
-                clip.HasGraph = true;
                 int entry = source.InvocationEntryOperationIndex;
                 SemanticOperation owner = Operations[source.TargetIndex];
                 OrchestrationTimelineHook hook = owner.Code == OrchestrationOperationCode.TimelineEnter
                     ? (OrchestrationTimelineHook)owner.Integer0 : OrchestrationTimelineHook.Root;
                 HashSet<int> members = Reachable(entry);
+                if (marker is { } triggered)
+                {
+                    if (!triggered.TrackMuted)
+                        AddCalls(timeline, source.InvocationCallerOperationIndex, triggered.MarkerId,
+                            triggered.TrackAuthoringId, null, hook, entry, members, triggered.Time);
+                    continue;
+                }
+                clip.HasGraph = true;
+                if (!clip.Muted)
+                    AddCalls(timeline, source.InvocationCallerOperationIndex, clip.ClipId, clip.TrackId, clip, hook,
+                        entry, members, null);
                 foreach (int member in members)
                 {
                     CollectValueReads(member, clip.m_Reads, new HashSet<int>());
@@ -544,6 +629,64 @@ namespace BTSMTL.Compilation.Analysis
                 CollectUnconditionalProvides(entry, clip.m_Provided, new HashSet<int>(),
                     hook == OrchestrationTimelineHook.Enable);
             }
+        }
+
+        // 调用图可达的每个"播放 Timeline"各是一个调用点。Enable 与 Root 钩子在 Clip 起点进入、Disable 在 Clip 终点、Marker 在其时刻；
+        // 只有被调位于入口立即开始的步骤（顺序首步、并行各步）且时钟与起播时刻都是常量时，才给出静态调用时刻。
+        void AddCalls(OrchestrationStaticTimeline caller, int callerOperation, string elementId, string trackId,
+            OrchestrationStaticClip clip, OrchestrationTimelineHook hook, int entry, HashSet<int> members,
+            OrchestrationTime? markerTime)
+        {
+            foreach (int member in members)
+            {
+                if (Operations[member].Code != OrchestrationOperationCode.Timeline)
+                    continue;
+                string identity = Operations[member].Text0;
+                OrchestrationStaticTimeline callee = RequireTimeline(identity);
+                bool clock = TimelineClock(member, out bool startKnown, out OrchestrationTime start);
+                OrchestrationTime offset = markerTime ?? (hook == OrchestrationTimelineHook.Disable ? clip.End : clip.Start);
+                string reason = hook == OrchestrationTimelineHook.Destroy && markerTime == null
+                    ? "Destroy 钩子在调用方 Timeline 结束或停止时执行，调用时刻需在会话中确定。"
+                    : !StartsOnEnter(entry, member, new HashSet<int>())
+                    ? "被调 Timeline 前面还有其它步骤或条件，调用时刻需在会话中确定。"
+                    : !clock ? "被调 Timeline 的播放速率或暂停来自运行数据，需在会话中验证。"
+                    : !startKnown ? "被调 Timeline 的起播时刻来自运行数据，需在会话中验证。"
+                    : string.Empty;
+                OrchestrationTime? limit = markerTime.HasValue ||
+                    hook is OrchestrationTimelineHook.Disable or OrchestrationTimelineHook.Destroy
+                    ? offset : clip.End;
+                var call = new OrchestrationStaticTimelineCall(caller, callerOperation, elementId, trackId, clip, hook,
+                    member, identity, callee, (OrchestrationTimelinePlaybackMode)Operations[member].Integer0, offset, limit,
+                    start, reason);
+                caller.m_Calls.Add(call);
+                m_Calls[member] = call;
+            }
+        }
+
+        // 进入 index 时 target 是否同时开始：顺序类只有首个步骤立即开始，并行的每个无条件步骤都立即开始。
+        bool StartsOnEnter(int index, int target, HashSet<int> visited)
+        {
+            if (index == target)
+                return true;
+            if (!visited.Add(index))
+                return false;
+            OrchestrationOperationCode code = Operations[index].Code;
+            bool parallel = code == OrchestrationOperationCode.Parallel;
+            if (!parallel && code is not (OrchestrationOperationCode.Root or OrchestrationOperationCode.SubGraph or
+                OrchestrationOperationCode.Sequence or OrchestrationOperationCode.TimelineEnter))
+                return false;
+            ProgramControlFlowKind kind = code == OrchestrationOperationCode.SubGraph
+                ? ProgramControlFlowKind.Enter : ProgramControlFlowKind.Child;
+            foreach (int edgeIndex in m_Outgoing[index])
+            {
+                ProgramControlFlowEdge edge = m_Input.ControlFlow[edgeIndex];
+                if (edge.Kind != kind)
+                    continue;
+                bool starts = !edge.HasCondition && StartsOnEnter(edge.Target.Value, target, visited);
+                if (starts || !parallel)
+                    return starts;
+            }
+            return false;
         }
 
         HashSet<int> Reachable(int entry)
