@@ -81,12 +81,21 @@ namespace BTSMTL.Timeline.Editor
                     foreach (OrchestrationStaticState state in query.Query.States)
                         if (state.Timeline != null && query.ResolveTimeline(state.TimelineIdentity) == SourceAsset)
                             m_DoorContexts.Add((query, state));
+            var ordered = m_DoorContexts
+                .OrderBy(context => context.State.IsInitial ? 0 : 1)
+                .ThenBy(context => context.State.HasStaticTimelineStartTime ? 0 : 1)
+                .ThenBy(context => StartTime(context.State)).ToList();
+            m_DoorContexts.Clear();
+            m_DoorContexts.AddRange(ordered);
             if (m_DoorContextIndex >= m_DoorContexts.Count)
                 m_DoorContextIndex = 0;
             m_DoorContextLabels = m_DoorContexts.Select(context => context.Query.Label + " / " + context.Query.DescribeState(context.State)).ToArray();
             ApplyDoorContext();
             m_DoorContextControl?.MarkDirtyRepaint();
         }
+
+        static long StartTime(OrchestrationStaticState state) =>
+            state.HasStaticTimelineStartTime ? state.TimelineStartTime.RawValue : 0L;
 
         void ApplyDoorContext()
         {
@@ -103,14 +112,13 @@ namespace BTSMTL.Timeline.Editor
                     string text = DestinationText(destination);
                     m_DoorLabels[destination.Door.ClipId] = m_DoorLabels.TryGetValue(destination.Door.ClipId, out string previous)
                         ? previous + " · " + text : text;
-                    m_AuthoringExits.Add(new TimelineAuthoringExit(
-                        $"{destination.Door.Start.AsSingle:F2}–{destination.Door.End.AsSingle:F2}s  {text}", false,
+                    m_AuthoringExits.Add(new TimelineAuthoringExit(text, destination.Door.TrackId, false,
                         destination.Door.Start.AsSingle, destination.Door.End.AsSingle, ExitActivation(context.Query, destination)));
                 }
                 foreach (OrchestrationStaticTransition transition in doors.Anytime)
                 {
                     OrchestrationStaticSourceLocation location = transition.Location;
-                    m_AuthoringExits.Add(new TimelineAuthoringExit("→ 转移到 " + StateText(transition.Target), true, 0f, 0f,
+                    m_AuthoringExits.Add(new TimelineAuthoringExit(TransitionText(transition), string.Empty, true, 0f, 0f,
                         () => context.Query.OpenTransition(location)));
                 }
                 foreach (var unresolved in doors.UnresolvedStateReads)
@@ -119,7 +127,7 @@ namespace BTSMTL.Timeline.Editor
                     read = read.Substring(read.LastIndexOf('/') + 1);
                     if (read.StartsWith("tag:", StringComparison.Ordinal))
                         read = read.Substring(4);
-                    m_AuthoringExits.Add(new TimelineAuthoringExit($"{read}：无法静态判断，按运行数据假设", true, 0f, 0f, null));
+                    m_AuthoringExits.Add(new TimelineAuthoringExit($"{read}：无法静态判断，按运行数据假设", string.Empty, true, 0f, 0f, null));
                 }
                 if (context.Query.Query.Errors.Count != 0)
                     m_DoorContextIssues = new GUIContent($"⚠ {context.Query.Query.Errors.Count} 个问题",
@@ -168,9 +176,18 @@ namespace BTSMTL.Timeline.Editor
         string DestinationText(TimelineDoorDestination destination)
         {
             if (destination.Kind == TimelineDoorDestinationKind.Transition)
-                return "→ 转移到 " + StateText(destination.Transition.Target);
+                return TransitionText(destination.Transition);
             string section = m_Timeline.Sections.FirstOrDefault(item => item.AuthoringId == destination.NextSection?.AuthoringId)?.Name;
             return "→ 连到 " + (string.IsNullOrEmpty(section) ? "未命名分段" : section);
+        }
+
+        string TransitionText(OrchestrationStaticTransition transition)
+        {
+            if (transition.Target == null)
+                return "→ 收招";
+            if (transition.Target.OperationIndex == m_DoorContexts[m_DoorContextIndex].State.OperationIndex)
+                return "→ 重新开始本状态";
+            return "→ 转移到 " + StateText(transition.Target);
         }
 
         string StateText(OrchestrationStaticState state) =>

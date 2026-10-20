@@ -67,72 +67,210 @@ namespace BTSMTL.Timeline.Editor
                 group.ClearLinks();
             if (m_Groups.Count == 0)
                 return;
+            var merged = new Dictionary<(BtsmtlTimelineGroupBinding, string), (float Start, float End, int Count, Action Activate)>();
+            var order = new List<(BtsmtlTimelineGroupBinding Group, string Destination)>();
             foreach (TimelineAuthoringExit exit in m_AuthoringExits)
             {
+                BtsmtlTimelineGroupBinding owner;
                 if (exit.Anytime)
+                    owner = m_AnytimeGroup ??= new BtsmtlTimelineGroupBinding(this, Timeline.AuthoringId + "/任意时刻", "任意时刻出口", null, false, 0f, 0f);
+                else if (m_Tracks.TryGetValue(exit.TrackId, out BtsmtlTimelineTrackBinding track))
+                    owner = track.Group;
+                else
+                    owner = (BtsmtlTimelineGroupBinding)m_Groups[0];
+                var key = (owner, exit.Destination);
+                if (merged.TryGetValue(key, out var previous))
+                    merged[key] = (Mathf.Min(previous.Start, exit.StartTime), Mathf.Max(previous.End, exit.EndTime),
+                        previous.Count + 1, previous.Activate ?? exit.Activate);
+                else
                 {
-                    m_AnytimeGroup ??= new BtsmtlTimelineGroupBinding(this, Timeline.AuthoringId + "/任意时刻", "任意时刻出口", false, 0f, 0f);
-                    m_AnytimeGroup.AddLink(new EmbeddedTimelineGroupLink(exit.Label, false, 0f, 0f, exit.Activate));
-                    continue;
+                    merged.Add(key, (exit.StartTime, exit.EndTime, 1, exit.Activate));
+                    order.Add(key);
                 }
-                var owner = (BtsmtlTimelineGroupBinding)m_Groups[0];
-                foreach (BtsmtlTimelineGroupBinding group in m_Groups)
-                    if (group.HasTimeRange && exit.StartTime >= group.StartTime - GroupTimeTolerance &&
-                        exit.StartTime < group.EndTime - GroupTimeTolerance)
-                        owner = group;
-                owner.AddLink(new EmbeddedTimelineGroupLink(exit.Label, true, exit.StartTime, exit.EndTime, exit.Activate));
+            }
+            foreach (var key in order)
+            {
+                var value = merged[key];
+                string label = value.Count > 1 ? $"{key.Destination}（{value.Count} 种条件）" : key.Destination;
+                bool timed = key.Group != m_AnytimeGroup;
+                if (timed)
+                    label += $"   {value.Start:0.00}s 起";
+                key.Group.AddLink(new EmbeddedTimelineGroupLink(label, timed, value.Start, value.End, value.Activate));
             }
             if (m_AnytimeGroup != null)
                 m_Groups.Add(m_AnytimeGroup);
         }
 
-        List<BtsmtlTimelineGroupBinding> CreateGroups(out BtsmtlTimelineGroupBinding shared)
+        BtsmtlTimelineGroupBinding m_SharedGroup;
+
+        public bool CanAssignTrack(IEmbeddedTimelineGroupBinding group) =>
+            Timeline.Sections.Count != 0 && group is BtsmtlTimelineGroupBinding formal &&
+            formal != m_AnytimeGroup && (formal.HasTimeRange || formal == m_SharedGroup);
+
+        public void AssignTrack(IEmbeddedTimelineTrackBinding track, IEmbeddedTimelineGroupBinding group)
         {
-            var groups = new List<BtsmtlTimelineGroupBinding>();
-            TimelineSection[] sections = Timeline.Sections.Where(section => section != null)
-                .OrderBy(section => section.Time.AsSingle).ToArray();
-            if (sections.Length == 0)
+            if (IsReadOnly || track is not BtsmtlTimelineTrackBinding formalTrack || !CanAssignTrack(group))
+                return;
+            if (formalTrack.IsLocked)
             {
-                shared = new BtsmtlTimelineGroupBinding(this, Timeline.AuthoringId, Timeline.Name, false, 0f, 0f);
-                groups.Add(shared);
-                return groups;
+                ReportIssue("当前 Track 已锁定，不能改所属分段。");
+                return;
             }
-            float first = sections[0].Time.AsSingle;
-            if (first > GroupTimeTolerance)
-                groups.Add(new BtsmtlTimelineGroupBinding(this, Timeline.AuthoringId + "/分段前", "分段前", true, 0f, first));
-            for (int index = 0; index < sections.Length; index++)
-                groups.Add(new BtsmtlTimelineGroupBinding(this, sections[index].AuthoringId,
-                    string.IsNullOrEmpty(sections[index].Name) ? "未命名分段" : sections[index].Name, true,
-                    sections[index].Time.AsSingle,
-                    index + 1 < sections.Length ? sections[index + 1].Time.AsSingle : Mathf.Max(Length, sections[index].Time.AsSingle)));
-            shared = new BtsmtlTimelineGroupBinding(this, Timeline.AuthoringId + "/跨分段", "跨分段轨道", false, 0f, 0f);
-            return groups;
+            string sectionId = group.HasTimeRange ? group.AuthoringId : string.Empty;
+            if (group.HasTimeRange)
+                foreach (Clip clip in formalTrack.Source.Clips)
+                    if (clip is not ITimelineTerminalTimeAlignedClip &&
+                        (clip.StartTime.AsSingle < group.StartTime - GroupTimeTolerance || clip.EndTime.AsSingle > group.EndTime + GroupTimeTolerance))
+                    {
+                        ReportIssue($"轨道 '{formalTrack.DisplayName}' 有片段超出 {group.DisplayName} 的 {group.StartTime:0.00}–{group.EndTime:0.00}s，先把片段移进该段。");
+                        return;
+                    }
+            ApplyImmediate(() => Timeline.ConfigureTrackSection(formalTrack.Source, sectionId), "修改轨道所属分段");
         }
 
-        static BtsmtlTimelineGroupBinding OwnerGroup(List<BtsmtlTimelineGroupBinding> groups,
-            BtsmtlTimelineGroupBinding shared, Track source)
+        string m_PendingTrackSectionId = string.Empty;
+
+        public void AddTrack(IEmbeddedTimelineGroupBinding group)
         {
-            float start = float.MaxValue;
-            float end = float.MinValue;
-            foreach (Clip clip in source.Clips)
-                if (clip != null)
+            m_PendingTrackSectionId = group != null && group.HasTimeRange ? group.AuthoringId : string.Empty;
+            AddTrack();
+        }
+
+        public bool CanImportTimeline(IEmbeddedTimelineGroupBinding group, UnityEngine.Object[] objects) =>
+            !IsReadOnly && group != null && group.HasTimeRange && objects != null && objects.Length == 1 &&
+            objects[0] is TimelineAsset source && source.Data != null &&
+            !ReferenceEquals(source.Data, Timeline) && m_SectionsById.ContainsKey(group.AuthoringId);
+
+        public void ImportTimeline(IEmbeddedTimelineGroupBinding group, UnityEngine.Object[] objects)
+        {
+            if (!CanImportTimeline(group, objects))
+                return;
+            var source = (TimelineAsset)objects[0];
+            TimelineData data = source.Data;
+            if (data.Sections.Count != 0)
+            {
+                ReportIssue($"'{source.name}' 自己带有分段，只能把不含分段的 Timeline 接成一段。");
+                return;
+            }
+            OrchestrationTime duration = OrchestrationTime.Zero;
+            foreach (Track track in data.Tracks)
+                if (track != null)
                 {
-                    start = Mathf.Min(start, clip.StartTime.AsSingle);
-                    end = Mathf.Max(end, clip.EndTime.AsSingle);
+                    foreach (Clip clip in track.Clips)
+                        if (clip != null)
+                            duration = OrchestrationTime.Max(duration, clip.EndTime);
+                    foreach (TimelineMarker marker in track.Markers)
+                        if (marker != null)
+                            duration = OrchestrationTime.Max(duration, marker.Time);
                 }
-            foreach (TimelineMarker marker in source.Markers)
-                if (marker != null)
+            if (duration <= OrchestrationTime.Zero)
+            {
+                ReportIssue($"'{source.name}' 没有任何内容，不能接成一段。");
+                return;
+            }
+            TimelineSection target = m_SectionsById[group.AuthoringId].Source;
+            string sectionId = AuthoringIdentity.Create();
+            if (!ApplyImmediate(() =>
+            {
+                Timeline.TryGetSectionRange(target.AuthoringId, Timeline.DurationTime, out _, out OrchestrationTime at);
+                ShiftContentFrom(at, duration);
+                TimelineSection created = Timeline.EnsureSection(sectionId, UniqueSectionName(source.name), at);
+                Timeline.ConfigureSectionNext(created, target.NextSectionId);
+                Timeline.ConfigureSectionNext(target, sectionId);
+                foreach (TimelineExternalBindingDeclaration binding in data.ExternalBindings)
+                    if (binding != null && !Timeline.TryGetExternalBinding(binding.BindingId, out _))
+                        Timeline.EnsureExternalBinding(AuthoringIdentity.Create(), binding.BindingId, binding.DisplayName,
+                            binding.Domain, binding.ValueKind, binding.Access, binding.Lifetime, binding.ParameterId);
+                foreach (Track sourceTrack in data.Tracks)
                 {
-                    start = Mathf.Min(start, marker.Time.AsSingle);
-                    end = Mathf.Max(end, marker.Time.AsSingle);
+                    if (sourceTrack == null)
+                        continue;
+                    Track copy = ManagedReferenceCloneUtility.Clone(sourceTrack);
+                    copy.RegenerateAuthoringIdentity();
+                    if (copy is ITimelineTrackOwnedAuthoringIdentity ownedTrack)
+                        ownedTrack.RegenerateOwnedAuthoringIdentities();
+                    foreach (Clip clip in copy.Clips)
+                    {
+                        clip.RegenerateAuthoringIdentity();
+                        if (clip is ITimelineOwnedAuthoringIdentity ownedClip)
+                            ownedClip.RegenerateOwnedAuthoringIdentity();
+                        clip.ConfigureTimeRange(clip.StartTime + at, clip.EndTime + at);
+                    }
+                    foreach (TimelineMarker marker in copy.Markers)
+                    {
+                        marker.RegenerateAuthoringIdentity();
+                        marker.Configure(marker.Time + at, marker.Graph, marker.ForceTriggerOnInitialSeek);
+                    }
+                    Timeline.Tracks.Add(copy);
+                    Timeline.ConfigureTrackSection(copy, sectionId);
                 }
-            if (start > end)
-                return shared;
-            foreach (BtsmtlTimelineGroupBinding group in groups)
-                if (group.HasTimeRange && start >= group.StartTime - GroupTimeTolerance &&
-                    end <= group.EndTime + GroupTimeTolerance)
-                    return group;
-            return shared;
+            }, "接入 Timeline 为下一段"))
+                return;
+            m_CollapsedGroups.Remove(sectionId);
+        }
+
+        void ShiftContentFrom(OrchestrationTime at, OrchestrationTime delta)
+        {
+            foreach (Track track in Timeline.Tracks)
+            {
+                if (track == null)
+                    continue;
+                foreach (Clip clip in track.Clips)
+                    if (clip != null && clip.StartTime >= at)
+                        clip.ConfigureTimeRange(clip.StartTime + delta, clip.EndTime + delta);
+                foreach (TimelineMarker marker in track.Markers)
+                    if (marker != null && marker.Time >= at)
+                        marker.Configure(marker.Time + delta, marker.Graph, marker.ForceTriggerOnInitialSeek);
+            }
+            foreach (TimelineSection section in Timeline.Sections.ToArray())
+                if (section != null && section.Time >= at)
+                    Timeline.ConfigureSection(section, section.Name, section.Time + delta);
+        }
+
+        string UniqueSectionName(string name)
+        {
+            string value = string.IsNullOrWhiteSpace(name) ? "Section" : name.Trim();
+            string candidate = value;
+            for (int index = 2; Timeline.Sections.Any(section => section != null && section.Name == candidate); index++)
+                candidate = $"{value} {index}";
+            return candidate;
+        }
+
+        List<BtsmtlTimelineGroupBinding> CreateGroups()
+        {
+            var groups = new List<BtsmtlTimelineGroupBinding>();
+            if (Timeline.Sections.Count == 0)
+            {
+                m_SharedGroup = new BtsmtlTimelineGroupBinding(this, Timeline.AuthoringId, Timeline.Name, null, false, 0f, 0f);
+                groups.Add(m_SharedGroup);
+                return groups;
+            }
+            m_SharedGroup = new BtsmtlTimelineGroupBinding(this, Timeline.AuthoringId + "/公共", "公共轨道", null, false, 0f, 0f);
+            groups.Add(m_SharedGroup);
+            TimelineSection[] sections = Timeline.Sections.Where(section => section != null)
+                .OrderBy(section => section.Time).ToArray();
+            var parents = new Dictionary<string, TimelineSection>(StringComparer.Ordinal);
+            foreach (TimelineSection section in sections)
+                if (!string.IsNullOrEmpty(section.NextSectionId) && !parents.ContainsKey(section.NextSectionId))
+                    parents.Add(section.NextSectionId, section);
+            var visited = new HashSet<string>(StringComparer.Ordinal);
+            foreach (TimelineSection root in sections)
+            {
+                if (parents.ContainsKey(root.AuthoringId) || visited.Contains(root.AuthoringId))
+                    continue;
+                BtsmtlTimelineGroupBinding parent = null;
+                for (TimelineSection section = root; section != null && visited.Add(section.AuthoringId);
+                     section = sections.FirstOrDefault(candidate => candidate.AuthoringId == section.NextSectionId))
+                {
+                    Timeline.TryGetSectionRange(section.AuthoringId, Timeline.DurationTime,
+                        out OrchestrationTime start, out OrchestrationTime end);
+                    parent = new BtsmtlTimelineGroupBinding(this, section.AuthoringId,
+                        string.IsNullOrEmpty(section.Name) ? "未命名分段" : section.Name, parent, true,
+                        start.AsSingle, end.AsSingle);
+                    groups.Add(parent);
+                }
+            }
+            return groups;
         }
         TimelineClipTimeRange[] m_TimePreviewRanges = Array.Empty<TimelineClipTimeRange>();
         float m_CurrentTime;
@@ -634,6 +772,8 @@ namespace BTSMTL.Timeline.Editor
         {
             if (IsReadOnly)
                 return;
+            if (m_PendingTrackSectionId.Length != 0 && !m_SectionsById.ContainsKey(m_PendingTrackSectionId))
+                m_PendingTrackSectionId = string.Empty;
             CapturePopupPosition();
             var menu = new GenericMenu();
             foreach (TimelineTrackContract contract in ContractCatalog.Tracks)
@@ -1098,7 +1238,7 @@ namespace BTSMTL.Timeline.Editor
             m_Markers.Clear();
             m_SectionsById.Clear();
             m_AnytimeGroup = null;
-            List<BtsmtlTimelineGroupBinding> groups = CreateGroups(out BtsmtlTimelineGroupBinding sharedGroup);
+            List<BtsmtlTimelineGroupBinding> groups = CreateGroups();
             for (int trackIndex = 0; trackIndex < Timeline.Tracks.Count; trackIndex++)
             {
                 Track source = Timeline.Tracks[trackIndex];
@@ -1110,7 +1250,8 @@ namespace BTSMTL.Timeline.Editor
                         .Select(clip => $"'{clip.AuthoringId}' [{clip.ContractKind}]"));
                     throw new InvalidOperationException($"Timeline '{Timeline.Name}' track '{source.AuthoringId}' has unknown contract kind '{source.ContractKind}'; clips: {clipReferences}.");
                 }
-                BtsmtlTimelineGroupBinding group = OwnerGroup(groups, sharedGroup, source);
+                BtsmtlTimelineGroupBinding group = groups.FirstOrDefault(candidate =>
+                    candidate.HasTimeRange && candidate.AuthoringId == source.SectionId) ?? m_SharedGroup;
                 var track = new BtsmtlTimelineTrackBinding(this, group, source);
                 track.ShowCurves = expandedTracks.Contains(source.AuthoringId);
                 track.IsLocked = lockedTracks.Contains(source.AuthoringId);
@@ -1154,8 +1295,6 @@ namespace BTSMTL.Timeline.Editor
                 m_SectionsById[source.AuthoringId] = section;
             }
             m_Groups.AddRange(groups);
-            if (!groups.Contains(sharedGroup) && sharedGroup.Tracks.Count != 0)
-                m_Groups.Add(sharedGroup);
             AssignAuthoringExits();
             m_SourceRevision = Timeline.AuthoringRevision;
             m_CurrentTime = Mathf.Clamp(m_CurrentTime, 0f, Length);
@@ -1197,6 +1336,8 @@ namespace BTSMTL.Timeline.Editor
                     added = Timeline.EnsureTrack(trackType, ContractCatalog, AuthoringIdentity.Create(),
                         string.IsNullOrWhiteSpace(name) ? DisplayKind(kind) : name.Trim());
                     TimelineAuthoringTrackBinding.Apply(added, values);
+                    if (m_PendingTrackSectionId.Length != 0)
+                        Timeline.ConfigureTrackSection(added, m_PendingTrackSectionId);
                 }, "Add Timeline Track"))
                     return "正式 Timeline Track 提交失败。";
                 if (added != null && m_Tracks.TryGetValue(added.AuthoringId, out BtsmtlTimelineTrackBinding addedBinding))
@@ -1440,16 +1581,20 @@ namespace BTSMTL.Timeline.Editor
             readonly List<IEmbeddedTimelineTrackBinding> m_Tracks = new List<IEmbeddedTimelineTrackBinding>();
             readonly List<EmbeddedTimelineGroupLink> m_Links = new List<EmbeddedTimelineGroupLink>();
             public BtsmtlTimelineGroupBinding(BtsmtlSlateTimelineBinding owner, string authoringId, string name,
-                bool hasTimeRange, float startTime, float endTime)
+                BtsmtlTimelineGroupBinding parent, bool hasTimeRange, float startTime, float endTime)
             {
                 Owner = owner;
                 AuthoringId = authoringId;
                 DisplayName = string.IsNullOrEmpty(name) ? "Timeline" : name;
+                Parent = parent;
+                Depth = parent == null ? 0 : parent.Depth + 1;
                 HasTimeRange = hasTimeRange;
                 StartTime = startTime;
                 EndTime = endTime;
             }
             public BtsmtlSlateTimelineBinding Owner { get; }
+            public IEmbeddedTimelineGroupBinding Parent { get; }
+            public int Depth { get; }
             public string AuthoringId { get; }
             public string DisplayName { get; }
             public bool IsActive { get; set; } = true;

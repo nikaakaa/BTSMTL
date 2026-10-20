@@ -98,16 +98,18 @@ namespace BTSMTL.Timeline.Editor
 
     public readonly struct TimelineAuthoringExit
     {
-        public TimelineAuthoringExit(string label, bool anytime, float startTime, float endTime, Action activate)
+        public TimelineAuthoringExit(string destination, string trackId, bool anytime, float startTime, float endTime, Action activate)
         {
-            Label = label ?? string.Empty;
+            Destination = destination ?? string.Empty;
+            TrackId = trackId ?? string.Empty;
             Anytime = anytime;
             StartTime = startTime;
             EndTime = endTime;
             Activate = activate;
         }
 
-        public string Label { get; }
+        public string Destination { get; }
+        public string TrackId { get; }
         public bool Anytime { get; }
         public float StartTime { get; }
         public float EndTime { get; }
