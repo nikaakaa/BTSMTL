@@ -88,14 +88,18 @@ namespace BTSMTL.Timeline.Editor
         public string Message { get; }
     }
 
-    // 一段 Timeline 播放区间。Branch 为 0 是主链，其余是状态 Root 中并行状态机的分支；Playback 是整条路线中的第几次播放。
+    // 一段 Timeline 播放区间。Branch 为 0 是主链，其余是状态 Root 中并行状态机的分支或 Clip 调用拉起的嵌套播放；
+    // Playback 是整条路线中的第几次播放。嵌套播放带调用点与调用方播放编号，State 为 null。
     public readonly struct TimelineAssetPreviewTraversal
     {
         public TimelineAssetPreviewTraversal(TimelineAsset source, TimelineRuntimePreparedContent content,
             OrchestrationTime start, OrchestrationTime end, OrchestrationTime localStart,
             OrchestrationTime localEnd, int cycle, OrchestrationStaticTransition transition,
-            OrchestrationStaticState state, bool playbackCompleted, int branch, int playback)
+            OrchestrationStaticState state, bool playbackCompleted, int branch, int playback,
+            OrchestrationStaticTimelineCall call = null, int callerPlayback = -1)
         {
+            Call = call;
+            CallerPlayback = callerPlayback;
             Branch = branch;
             Playback = playback;
             Source = source;
@@ -122,14 +126,17 @@ namespace BTSMTL.Timeline.Editor
         public bool PlaybackCompleted { get; }
         public int Branch { get; }
         public int Playback { get; }
-        public OrchestrationTime LocalAt(OrchestrationTime time) => LocalStart + time - Start;
+        public OrchestrationStaticTimelineCall Call { get; }
+        public int CallerPlayback { get; }
+        public OrchestrationTime LocalAt(OrchestrationTime time) =>
+            OrchestrationTime.Min(LocalEnd, LocalStart + time - Start);
 
         // 截到 time 为止的部分；到达原终点时才保留播完。
         public TimelineAssetPreviewTraversal Until(OrchestrationTime time)
         {
             OrchestrationTime end = OrchestrationTime.Min(End, time);
             return new TimelineAssetPreviewTraversal(Source, Content, Start, end, LocalStart, LocalAt(end), Cycle,
-                Transition, State, PlaybackCompleted && end == End, Branch, Playback);
+                Transition, State, PlaybackCompleted && end == End, Branch, Playback, Call, CallerPlayback);
         }
     }
 
@@ -139,8 +146,12 @@ namespace BTSMTL.Timeline.Editor
     {
         public TimelinePreviewRouteSegment(TimelineAsset source, OrchestrationStaticState state, OrchestrationTime start,
             OrchestrationTime end, OrchestrationTime localStart, OrchestrationTime localEnd, int cycle, int playback,
-            int occurrence, bool playbackCompleted, BtsmtlExecutionRecord.RecordedPlayback? recorded)
+            int occurrence, bool playbackCompleted, BtsmtlExecutionRecord.RecordedPlayback? recorded,
+            int callerPlayback = -1, string callerClipId = null, OrchestrationStaticTimelineCall call = null)
         {
+            CallerPlayback = callerPlayback;
+            CallerClipId = callerClipId ?? string.Empty;
+            Call = call;
             Source = source;
             State = state;
             Start = start;
@@ -155,6 +166,12 @@ namespace BTSMTL.Timeline.Editor
         }
 
         public int Occurrence { get; }
+        // Clip 或 Marker 调用拉起的嵌套播放：调用方是路线中的第几次播放与调用所在元素；快速档另带静态调用点。
+        // 调用方不在路线中为 -1。
+        public int CallerPlayback { get; }
+        public string CallerClipId { get; }
+        public OrchestrationStaticTimelineCall Call { get; }
+        public bool IsNested => CallerClipId.Length != 0;
         // 真实档的执行记录；快速档为 null。
         public BtsmtlExecutionRecord.RecordedPlayback? Recorded { get; }
         public string Label => $"第 {Occurrence + 1} 次 · 第 {Cycle + 1} 圈";
@@ -172,7 +189,7 @@ namespace BTSMTL.Timeline.Editor
             }
             if (Recorded is not { } recorded)
             {
-                local = LocalStart + time - Start;
+                local = OrchestrationTime.Min(LocalEnd, LocalStart + time - Start);
                 return true;
             }
             if (!recorded.TryLocal(Math.Clamp(time.AsSingle, recorded.Start, recorded.End), Source.Data.Duration,
@@ -189,6 +206,8 @@ namespace BTSMTL.Timeline.Editor
             if (Recorded is not { } recorded)
             {
                 time = Start + local - LocalStart;
+                if (LocalStart == LocalEnd && End > Start)
+                    message = "播放已停留在末帧；定位到首次到达该帧的时刻。";
                 return true;
             }
             time = OrchestrationTime.Zero;

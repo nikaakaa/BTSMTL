@@ -20,6 +20,11 @@ namespace BTSMTL.Timeline.Editor
         readonly List<IEmbeddedTimelineGroupBinding> m_Groups = new List<IEmbeddedTimelineGroupBinding>();
         readonly List<IEmbeddedTimelineSectionBinding> m_Sections = new List<IEmbeddedTimelineSectionBinding>();
         readonly Dictionary<string, BtsmtlTimelineTrackBinding> m_Tracks = new Dictionary<string, BtsmtlTimelineTrackBinding>(StringComparer.Ordinal);
+        IReadOnlyDictionary<string, List<EmbeddedTimelineSubTimeline>> m_NestedViews =
+            new Dictionary<string, List<EmbeddedTimelineSubTimeline>>();
+
+        internal void SetNestedViews(IReadOnlyDictionary<string, List<EmbeddedTimelineSubTimeline>> views) =>
+            m_NestedViews = views;
         readonly Dictionary<string, BtsmtlTimelineClipBinding> m_Clips = new Dictionary<string, BtsmtlTimelineClipBinding>(StringComparer.Ordinal);
         readonly Dictionary<string, BtsmtlTimelineMarkerBinding> m_Markers = new Dictionary<string, BtsmtlTimelineMarkerBinding>(StringComparer.Ordinal);
         readonly Dictionary<string, BtsmtlTimelineSectionBinding> m_SectionsById = new Dictionary<string, BtsmtlTimelineSectionBinding>(StringComparer.Ordinal);
@@ -1347,7 +1352,8 @@ namespace BTSMTL.Timeline.Editor
             public void AddTrack(BtsmtlTimelineTrackBinding track) => m_Tracks.Add(track);
         }
 
-        sealed class BtsmtlTimelineTrackBinding : IEmbeddedTimelineTrackBinding, IEmbeddedTimelineMarkerTrackBinding
+        sealed class BtsmtlTimelineTrackBinding : IEmbeddedTimelineTrackBinding, IEmbeddedTimelineMarkerTrackBinding,
+            IEmbeddedTimelineNestedTrackBinding
         {
             readonly List<IEmbeddedTimelineClipBinding> m_Clips = new List<IEmbeddedTimelineClipBinding>();
             readonly List<IEmbeddedTimelineMarkerBinding> m_Markers = new List<IEmbeddedTimelineMarkerBinding>();
@@ -1412,6 +1418,9 @@ namespace BTSMTL.Timeline.Editor
                 return parameterHeight + 65f;
             }
             public IReadOnlyList<IEmbeddedTimelineClipBinding> Clips => m_Clips;
+            public IReadOnlyList<EmbeddedTimelineSubTimeline> SubTimelines =>
+                Owner.m_NestedViews.TryGetValue(AuthoringId, out List<EmbeddedTimelineSubTimeline> views)
+                    ? views : Array.Empty<EmbeddedTimelineSubTimeline>();
             public IEmbeddedTimelineClipBinding SelectedClip =>
                 Owner.Selected is BtsmtlTimelineClipBinding selected &&
                 ReferenceEquals(selected.Track, this)

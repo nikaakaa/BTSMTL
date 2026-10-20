@@ -101,7 +101,7 @@ namespace BTSMTL.Timeline.Editor
         void OpenTimelinePreview()
         {
             var context = m_StateContexts.Count == 0 ? default : m_StateContexts[m_StateContextIndex];
-            TimelineAssetPreviewHost.Shared.Open(SourceAsset, m_PreviewMode, context.Query, context.State);
+            TimelineAssetPreviewHost.Shared.Open(SourceAsset, m_PreviewMode, context.Query, context.State, context.Call);
         }
 
         void DisposeAssetPreviewBindings()
@@ -193,7 +193,10 @@ namespace BTSMTL.Timeline.Editor
             if (!active)
             {
                 if (m_PreviewPathRevision != -1)
+                {
                     m_SlateProjection.SetPreviewPath(null, null, null, null, null);
+                    RefreshNestedViews();
+                }
                 m_PreviewPathRevision = -1;
                 return;
             }
@@ -204,6 +207,7 @@ namespace BTSMTL.Timeline.Editor
                 return;
             m_PreviewPathRevision = preview.Revision;
             m_PreviewPathPlayback = playback;
+            RefreshNestedViews();
             var visited = spans.Select(span => new Vector2(span.LocalStart.AsSingle, span.LocalEnd.AsSingle)).ToArray();
             var marks = new List<TimelinePreviewMark>();
             TimelineStaticChain chain = preview.Chain;

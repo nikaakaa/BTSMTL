@@ -220,6 +220,8 @@ namespace BTSMTL.Timeline.Editor
         }
         public event Action<TimelineEditorSelection> SelectionChanged;
         public float CurrentTime => m_Binding.CurrentTime;
+        internal void SetNestedViews(IReadOnlyDictionary<string, List<EmbeddedTimelineSubTimeline>> views) =>
+            m_Binding.SetNestedViews(views);
         public void SetPreviewPath(string source, IReadOnlyList<Vector2> visited, IReadOnlyList<TimelinePreviewMark> marks,
             IReadOnlyList<TimelinePreviewMark> inputs, TimelinePreviewInputTrack inputTrack)
         {

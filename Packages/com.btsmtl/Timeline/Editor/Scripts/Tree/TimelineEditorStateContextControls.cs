@@ -10,7 +10,8 @@ namespace BTSMTL.Timeline.Editor
 {
     public sealed partial class TimelineEditorWindow
     {
-        readonly List<(TimelineOrchestrationQuery Query, OrchestrationStaticState State)> m_StateContexts = new();
+        readonly List<(TimelineOrchestrationQuery Query, OrchestrationStaticState State, OrchestrationStaticTimelineCall Call)> m_StateContexts = new();
+        readonly List<TimelineOrchestrationQuery> m_TimelineQueries = new();
         IMGUIContainer m_StateContextControl;
         int m_StateContextIndex;
         string[] m_StateContextLabels = Array.Empty<string>();
@@ -44,6 +45,7 @@ namespace BTSMTL.Timeline.Editor
             m_OrchestrationHost = null;
             m_StateContextRefreshQueued = false;
             m_StateContexts.Clear();
+            m_TimelineQueries.Clear();
             m_StateContextControl = null;
         }
 
@@ -59,26 +61,44 @@ namespace BTSMTL.Timeline.Editor
         {
             m_StateContextRefreshQueued = false;
             m_StateContexts.Clear();
+            m_TimelineQueries.Clear();
             m_StateQueryReason = string.Empty;
             if (m_Timeline == null)
                 return;
             if (TimelineWorkspaceModeBridge.Authoring is ITimelineOrchestrationAuthoringHost host &&
                 host.TryGetOrchestrationQueries(m_Timeline, out IReadOnlyList<TimelineOrchestrationQuery> queries,
                     out m_StateQueryReason))
+            {
+                m_TimelineQueries.AddRange(queries);
                 foreach (TimelineOrchestrationQuery query in queries)
+                {
                     foreach (OrchestrationStaticState state in query.Query.States)
                         if (state.Timeline != null && query.ResolveTimeline(state.TimelineIdentity) == SourceAsset)
-                            m_StateContexts.Add((query, state));
+                            m_StateContexts.Add((query, state, null));
+                    foreach (OrchestrationStaticTimelineCall call in query.Query.TimelineCalls)
+                        if (call.Callee != null && query.ResolveTimeline(call.CalleeIdentity) == SourceAsset)
+                            m_StateContexts.Add((query, null, call));
+                }
+            }
             var ordered = m_StateContexts
-                .OrderBy(context => context.State.IsInitial ? 0 : 1)
-                .ThenBy(context => context.State.HasStaticTimelineStartTime ? 0 : 1)
-                .ThenBy(context => StartTime(context.State)).ToList();
+                .OrderBy(context => context.State?.IsInitial == true ? 0 : 1)
+                .ThenBy(context => context.State?.HasStaticTimelineStartTime == true ? 0 : 1)
+                .ThenBy(context => context.State == null ? 0 : StartTime(context.State)).ToList();
             m_StateContexts.Clear();
             m_StateContexts.AddRange(ordered);
-            if (m_StateContextIndex >= m_StateContexts.Count)
+            if (m_NestedContextRequest is { } requested)
+            {
+                m_StateContextIndex = m_StateContexts.FindIndex(context => context.Query.Owner == requested.Owner &&
+                    context.Call?.OperationIndex == requested.Operation);
+                m_NestedContextRequest = null;
+            }
+            if (m_StateContextIndex < 0 || m_StateContextIndex >= m_StateContexts.Count)
                 m_StateContextIndex = 0;
-            m_StateContextLabels = m_StateContexts.Select(context => context.Query.Label + " / " + context.Query.DescribeState(context.State)).ToArray();
+            m_StateContextLabels = m_StateContexts.Select(context => context.Query.Label + " / " +
+                (context.State != null ? context.Query.DescribeState(context.State) :
+                    $"{context.Query.ResolveTimeline(context.Call.Caller.Identity).name} / {context.Call.CallerElementId} · {context.Call.Hook}")).ToArray();
             ApplyStateContext();
+            RefreshNestedViews();
             m_StateContextControl?.MarkDirtyRepaint();
         }
 
@@ -94,7 +114,7 @@ namespace BTSMTL.Timeline.Editor
                 return;
             }
             var context = m_StateContexts[m_StateContextIndex];
-            TimelineAssetPreviewHost.Shared.SetOrchestrationContext(SourceAsset, context.Query, context.State);
+            TimelineAssetPreviewHost.Shared.SetOrchestrationContext(SourceAsset, context.Query, context.State, context.Call);
             if (context.Query.Query.Errors.Count != 0)
                 m_StateContextIssues = new GUIContent($"⚠ {context.Query.Query.Errors.Count} 个问题",
                     string.Join("\n", context.Query.Query.Errors));
@@ -117,6 +137,7 @@ namespace BTSMTL.Timeline.Editor
             {
                 m_StateContextIndex = selected;
                 ApplyStateContext();
+                RefreshNestedViews();
             }
             if (issuesWidth > 0f)
                 EditorGUI.LabelField(new Rect(popupRect.xMax + 4f, rect.y, issuesWidth - 4f, rect.height),

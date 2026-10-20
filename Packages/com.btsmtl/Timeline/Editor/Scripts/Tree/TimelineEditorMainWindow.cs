@@ -118,27 +118,6 @@ namespace BTSMTL.Timeline.Editor
         [SerializeField]
         string m_SourceGraphAuthoringId;
 
-        [SerializeField]
-        UnityEngine.Object m_NavigationOwner;
-
-        [SerializeField]
-        string m_NavigationPropertyPath;
-
-        [SerializeField]
-        string m_NavigationOwnershipLabel;
-
-        [SerializeField]
-        string m_NavigationTrackAuthoringId;
-
-        [SerializeField]
-        string m_NavigationClipAuthoringId;
-
-        [SerializeField]
-        string m_NavigationSourceNodeGuid;
-
-        [SerializeField]
-        Vector2 m_NavigationViewport;
-
         BtsmtlSlateTimelineProjection m_SlateProjection;
         IMGUIContainer m_SlateSurface;
         TimelineData m_Timeline;
@@ -607,6 +586,8 @@ namespace BTSMTL.Timeline.Editor
 
         void OpenClip(Clip clip)
         {
+            if (TryOpenNestedClip(clip))
+                return;
             UnityEngine.Object sourceAsset = TimelineAuthoringClipBinding.SourceAsset(clip);
             if (sourceAsset)
             {
@@ -688,14 +669,17 @@ namespace BTSMTL.Timeline.Editor
             if (m_SlateProjection == null || m_SlateSurface == null)
                 return;
             Rect rect = m_SlateSurface.contentRect;
+            float previousTime = m_SlateProjection.CurrentTime;
+            bool timeInput = Event.current.rawType is EventType.MouseDown or EventType.MouseDrag or
+                EventType.MouseUp or EventType.KeyDown;
             m_SlateProjection.DrawEmbeddedGUI(
                 Mathf.Max(1f, rect.width),
                 Mathf.Max(1f, rect.height),
                 BeginWindows,
                 EndWindows);
             var preview = TimelineAssetPreviewHost.Shared;
-            if (preview.IsOpen && SourceAsset && preview.SampledSource == SourceAsset &&
-                preview.LocalTime != m_SlateProjection.CurrentTime)
+            if (timeInput && previousTime != m_SlateProjection.CurrentTime && preview.IsOpen && SourceAsset &&
+                preview.SampledSource == SourceAsset)
                 preview.SetLocalTime(SourceAsset, m_SlateProjection.CurrentTime);
         }
 
@@ -719,39 +703,23 @@ namespace BTSMTL.Timeline.Editor
             var header = new VisualElement();
             header.Add(m_Toolbar.Toolbar);
             header.Add(m_Toolbar.Status);
+            AddTimelineBreadcrumbs(header);
             header.Add(CreateAssetPreviewControls());
             return header;
         }
 
-        bool HasTimelineNavigation => m_NavigationOwner && !string.IsNullOrWhiteSpace(m_NavigationPropertyPath);
+        bool HasTimelineNavigation => m_TimelineNavigation.Count != 0;
 
         void ReturnToTimeline()
         {
-            if (!HasTimelineNavigation)
-                return;
-            UnityEngine.Object owner = m_NavigationOwner;
-            string propertyPath = m_NavigationPropertyPath;
-            string ownershipLabel = m_NavigationOwnershipLabel;
-            string trackAuthoringId = m_NavigationTrackAuthoringId;
-            string clipAuthoringId = m_NavigationClipAuthoringId;
-            string sourceNodeGuid = m_NavigationSourceNodeGuid;
-            TimelineData timeline = ResolveTimelineData(owner, propertyPath);
-            if (timeline == null)
-                throw new InvalidOperationException("The source Action Timeline can no longer be resolved.");
-            ClearNavigation();
-            Bind(timeline, owner, propertyPath, ownershipLabel, sourceNodeGuid);
-            m_SlateProjection?.FocusSource(trackAuthoringId, clipAuthoringId);
+            if (HasTimelineNavigation)
+                ReturnToTimeline(m_TimelineNavigation.Count - 1);
         }
 
         void ClearNavigation()
         {
-            m_NavigationOwner = null;
-            m_NavigationPropertyPath = string.Empty;
-            m_NavigationOwnershipLabel = string.Empty;
-            m_NavigationTrackAuthoringId = string.Empty;
-            m_NavigationClipAuthoringId = string.Empty;
-            m_NavigationSourceNodeGuid = string.Empty;
-            m_NavigationViewport = Vector2.zero;
+            m_TimelineNavigation.Clear();
+            m_NestedExpanded.Clear();
             m_Toolbar?.SetBackVisible(false);
         }
 

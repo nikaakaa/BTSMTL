@@ -41,6 +41,7 @@ namespace BTSMTL.Timeline.Editor
             m_PreviewRoute = new IMGUIContainer(DrawPreviewRoute) { name = "preview-route-rows" };
             m_PreviewRoute.style.flexShrink = 0f;
             m_RouteRevision = -1;
+            RefreshPreviewRouteRows();
             return m_PreviewRoute;
         }
 
@@ -64,7 +65,8 @@ namespace BTSMTL.Timeline.Editor
                 {
                     if (!rows.TryGetValue(segment.Source, out RouteRow row))
                     {
-                        row = new RouteRow { Label = (preview.IsReal ? "实际 · " : string.Empty) + segment.Source.name, Source = segment.Source };
+                        row = new RouteRow { Label = (preview.IsReal ? "实际 · " : string.Empty) +
+                            (segment.IsNested ? "↳ " : string.Empty) + segment.Source.name, Source = segment.Source };
                         rows.Add(segment.Source, row);
                         m_RouteRows.Add(row);
                     }
@@ -74,7 +76,8 @@ namespace BTSMTL.Timeline.Editor
                         Start = segment.Start.AsSingle, End = segment.End.AsSingle, UnplayedEnd = segment.End.AsSingle,
                         Playback = segment.Playback,
                         Tooltip = $"{state}{segment.Label} · {segment.Start.AsSingle:0.000}–{segment.End.AsSingle:0.000} s · 本地 " +
-                            $"{segment.LocalStart.AsSingle:0.00}–{segment.LocalEnd.AsSingle:0.00} s · 单击选定这次播放"
+                            $"{segment.LocalStart.AsSingle:0.00}–{segment.LocalEnd.AsSingle:0.00} s · 单击选定这次播放" +
+                            (segment.IsNested && segment.CallerPlayback < 0 ? "\n调用方没有可换算的记录，无法归属调用 Clip。" : string.Empty)
                     });
                     m_RouteEnd = Mathf.Max(m_RouteEnd, segment.End.AsSingle);
                 }
@@ -83,6 +86,17 @@ namespace BTSMTL.Timeline.Editor
                 return;
             }
             AddRouteChain(preview.Query, preview.Chain, 0, string.Empty, preview.Route);
+            foreach (TimelinePreviewRouteSegment segment in preview.Route)
+                if (segment.IsNested)
+                {
+                    var row = new RouteRow { Label = "调用 · " + segment.Source.name, Source = segment.Source, Depth = 1 };
+                    row.Bars.Add(new RouteBar
+                    {
+                        Start = segment.Start.AsSingle, End = segment.End.AsSingle, UnplayedEnd = segment.End.AsSingle,
+                        Playback = segment.Playback, Tooltip = $"{segment.Label} · 调用元素 {segment.CallerClipId}"
+                    });
+                    m_RouteRows.Add(row);
+                }
         }
 
         void AddRouteChain(TimelineOrchestrationQuery query, TimelineStaticChain chain, int depth, string prefix,
@@ -120,7 +134,7 @@ namespace BTSMTL.Timeline.Editor
                 AddRouteChain(query, branch.Chain, depth + 1, $"并行 · {query.DescribeState(branch.Owner)} / ", route);
         }
 
-        void DrawPreviewRoute()
+        bool RefreshPreviewRouteRows()
         {
             var preview = TimelineAssetPreviewHost.Shared;
             bool active = preview.IsOpen && preview.Covers(SourceAsset);
@@ -129,12 +143,20 @@ namespace BTSMTL.Timeline.Editor
                 if (m_RouteRows.Count != 0)
                     DisposeRouteRowsContent();
                 m_PreviewRoute.style.height = 0f;
-                return;
+                return false;
             }
             if (m_RouteRevision != preview.Revision)
                 RebuildRouteRows();
+            m_PreviewRoute.style.height = (m_RouteRows.Count + 1) * RouteRowHeight;
+            return true;
+        }
+
+        void DrawPreviewRoute()
+        {
+            if (!RefreshPreviewRouteRows())
+                return;
+            var preview = TimelineAssetPreviewHost.Shared;
             float height = (m_RouteRows.Count + 1) * RouteRowHeight;
-            m_PreviewRoute.style.height = height;
             Rect rect = new(0, 0, m_PreviewRoute.contentRect.width, height);
             EditorGUI.DrawRect(rect, new Color(.15f, .15f, .15f));
             Rect axis = new(RouteLabelWidth, 0, Mathf.Max(1f, rect.width - RouteLabelWidth - 4f), RouteRowHeight);
@@ -213,26 +235,7 @@ namespace BTSMTL.Timeline.Editor
         {
             if (!target || target == SourceAsset)
                 return;
-            if (target == m_NavigationOwner)
-            {
-                ReturnToTimeline();
-                return;
-            }
-            if (!HasTimelineNavigation)
-            {
-                m_NavigationOwner = m_SerializedOwner;
-                m_NavigationPropertyPath = m_SerializedPropertyPath;
-                m_NavigationOwnershipLabel = m_OwnershipLabel;
-                m_NavigationTrackAuthoringId = string.Empty;
-                m_NavigationClipAuthoringId = string.Empty;
-                m_NavigationSourceNodeGuid = m_SourceNodeGuid;
-            }
-            BindAsset(target, m_SourceGraphAuthoringId, m_SourceNodeGuid);
-            if (m_Toolbar != null)
-            {
-                m_Toolbar.BackButton.text = "‹ 返回 " + m_NavigationOwner.name;
-                m_Toolbar.BackButton.tooltip = "预览路线进入了 " + target.name + "；点此回到原 Timeline。";
-            }
+            NavigateTimeline(target, string.Empty);
         }
     }
 }
