@@ -334,6 +334,8 @@ namespace BTSMTL.Timeline.Editor
             {
                 m_Dirty.Add(Source);
                 m_ChainRequested = true;
+                Revision++;
+                Changed?.Invoke();
             }
         }
 
@@ -347,6 +349,7 @@ namespace BTSMTL.Timeline.Editor
         public void PreferencesChanged()
         {
             InputSchemes.MarkChanged();
+            Revision++;
             if (m_Real != null)
             {
                 // 真实档：替换会话输入日程，旧录制标为过期，由原“重新播放”按新方案重演。
@@ -361,7 +364,6 @@ namespace BTSMTL.Timeline.Editor
                 }
                 BuildFastChain();
                 RefreshRealStale();
-                Revision++;
                 Changed?.Invoke();
                 return;
             }
