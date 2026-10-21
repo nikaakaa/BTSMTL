@@ -85,6 +85,7 @@ namespace BTSMTL.Graphs
                         OrchestrationExecutionContract.Complete, trigger.Port));
                 else
                     cursor.ExecuteOutput(trigger.Operation, trigger.Port, OrchestrationExecutionContract.Complete);
+                CollectOutputs();
             }
         }
 
@@ -277,6 +278,13 @@ namespace BTSMTL.Graphs
             int candidateTriggerCapacity = m_CandidateTriggers.Capacity;
             m_Triggers.Capacity = Math.Max(triggerCapacity, count);
             m_CandidateTriggers.Capacity = Math.Max(candidateTriggerCapacity, count);
+            int invocationCapacity = checked(count + 2);
+            int requestCapacity = checked(m_Workspace.OutputRequestCapacity * invocationCapacity);
+            int valueCapacity = checked(m_Workspace.OutputValueCapacity * invocationCapacity);
+            if (requestCapacity > m_OutputRequests.Length)
+                Array.Resize(ref m_OutputRequests, requestCapacity);
+            if (valueCapacity > m_OutputValues.Length)
+                Array.Resize(ref m_OutputValues, valueCapacity);
             if (m_Triggers.Capacity > triggerCapacity || m_CandidateTriggers.Capacity > candidateTriggerCapacity)
             {
                 GetRecordedStateCapacity(out int byteCapacity, out int textReferenceCapacity);

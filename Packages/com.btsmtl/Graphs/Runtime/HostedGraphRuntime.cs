@@ -35,8 +35,8 @@ namespace BTSMTL.Graphs
         readonly OrchestrationExecutionWorkspace<TValue> m_Workspace;
         readonly OrchestrationExtensionBindings<TValue, TContext> m_Extensions;
         readonly TValue[] m_Inputs;
-        readonly OrchestrationOutputRequest[] m_OutputRequests;
-        readonly TValue[] m_OutputValues;
+        OrchestrationOutputRequest[] m_OutputRequests;
+        TValue[] m_OutputValues;
         int m_OutputRequestCount;
         int m_OutputValueCount;
         readonly OrchestrationIdentityValue[] m_TextRemap;
@@ -103,7 +103,7 @@ namespace BTSMTL.Graphs
             m_Extensions = OrchestrationExtensionBindings<TValue, TContext>.Prepare(
                 content.Extensions.Span, OrchestrationExtensionRequirements.Collect(program, content.Extensions.Length),
                 extensions ?? throw new ArgumentNullException(nameof(extensions)));
-            // Start 与 Update 在同一次计算中各自推进，输出按两次调用的工作区容量保留。
+            // Start 与 Update 的输出按两次调用保留；编辑器排队触发时提前准备额外容量。
             m_OutputRequests = new OrchestrationOutputRequest[checked(m_Workspace.OutputRequestCapacity * 2)];
             m_OutputValues = new TValue[checked(m_Workspace.OutputValueCapacity * 2)];
 #if UNITY_EDITOR
