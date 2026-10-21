@@ -1079,8 +1079,37 @@ namespace BTSMTL.Compilation.Analysis
                 return TimelineTimeCondition(index, comparison, seconds);
             if (IsTimelineTime(b) && TryLiteralSeconds(a, out seconds))
                 return TimelineTimeCondition(index, Mirror(comparison), seconds);
+            if (TryHostInputCompare(a, b, comparison, out OrchestrationStaticCondition input))
+                return input;
+            if (TryHostInputCompare(b, a, Mirror(comparison), out input))
+                return input;
             return UnknownPredicate(index);
         }
+
+        // 宿主输入的量值与阈值比较（如摇杆幅度 > 停止阈值）：按输入方案中该输入被保持的区间判断，
+        // 大于／大于等于为保持期间成立，小于／小于等于为未保持期间成立；阈值本身不参与静态推导。
+        bool TryHostInputCompare(StaticValue input, StaticValue threshold, OrchestrationComparisonKind comparison,
+            out OrchestrationStaticCondition condition)
+        {
+            condition = null;
+            if (!IsHostInputValue(input) || IsHostInputValue(threshold))
+                return false;
+            bool held = comparison is OrchestrationComparisonKind.GreaterThan or OrchestrationComparisonKind.GreaterThanOrEqual;
+            if (!held && comparison is not (OrchestrationComparisonKind.LessThan or OrchestrationComparisonKind.LessThanOrEqual))
+                return false;
+            var reads = new List<OrchestrationStaticRead>();
+            AddHostInputs(input.Operation, Operations[input.Operation], reads);
+            var terms = new List<OrchestrationStaticCondition>();
+            foreach (OrchestrationStaticRead read in reads)
+                terms.Add(ReadCondition(in read));
+            OrchestrationStaticCondition pressed = OrchestrationStaticCondition.Combine(true, terms);
+            condition = held ? pressed : OrchestrationStaticCondition.Negate(pressed);
+            return true;
+        }
+
+        bool IsHostInputValue(StaticValue value) =>
+            value.Operation >= 0 && Operations[value.Operation].Code is OrchestrationOperationCode.InputScalar or
+                OrchestrationOperationCode.InputVector2Magnitude or OrchestrationOperationCode.HostInput;
 
         bool IsTimelineTime(StaticValue value) =>
             value.Operation >= 0 && Operations[value.Operation].Code == OrchestrationOperationCode.TimelineTime;
