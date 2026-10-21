@@ -23,7 +23,6 @@ namespace BTSMTL.Timeline.Editor
         PopupField<string> m_PreviewChoice;
         ToolbarToggle m_PreviewSettingsToggle;
         ToolbarButton m_FastPlayback;
-        ToolbarMenu m_PlaybackMenu;
         ToolbarMenu m_SchemeMenu;
         ToolbarMenu m_AssumptionMenu;
         TimelinePreviewRealControls m_RealControls;
@@ -33,7 +32,7 @@ namespace BTSMTL.Timeline.Editor
         long m_PreviewPathRevision = -1;
         int m_PreviewPathPlayback = -1;
         bool m_SeekToSourcePlayback;
-        [SerializeField] bool m_InputViewExpanded = true;
+        TimelineAsset m_RouteInputs;
 
         // 唯一的预览工具栏只有四样：预览（关／快速／真实）、入口状态、播放与 ⚙；其下一行状态。
         // 方案、假设、预览配置、真实档的单步与动作设置和输入点取值都在 ⚙ 面板。
@@ -97,8 +96,6 @@ namespace BTSMTL.Timeline.Editor
             m_AssetPreviewStatus.style.overflow = Overflow.Hidden;
             m_AssetPreviewStatus.style.textOverflow = TextOverflow.Ellipsis;
             m_AssetPreviewStatusRow.Add(m_AssetPreviewStatus);
-            m_PlaybackMenu = new ToolbarMenu { tooltip = "本 Timeline 在这次预览中播放了多次；选择编辑时间轴显示哪一次" };
-            m_AssetPreviewStatusRow.Add(m_PlaybackMenu);
             if (m_RealControls != null)
             {
                 m_RealControls.Status.style.flexGrow = 1f;
@@ -165,7 +162,7 @@ namespace BTSMTL.Timeline.Editor
             m_AppliedAssetSample = 0;
             m_PreviewPathRevision = -1;
             m_PreviewPathPlayback = -1;
-            m_PlaybackMenu = null;
+            m_RouteInputs = null;
         }
 
         void RefreshAssetPreviewControls()
@@ -218,7 +215,9 @@ namespace BTSMTL.Timeline.Editor
             if (active && m_AppliedAssetSample != preview.SampledRevision)
             {
                 m_AppliedAssetSample = preview.SampledRevision;
-                if (preview.SampledSource == SourceAsset && m_SlateProjection != null &&
+                if (m_SlateProjection?.ShowsRoute == true)
+                    m_SlateProjection.ApplyRouteTime(preview.Time);
+                else if (preview.SampledSource == SourceAsset && m_SlateProjection != null &&
                     m_SlateProjection.CurrentTime != preview.LocalTime)
                     m_SlateProjection.ApplyAuthoringPreviewTime(preview.LocalTime);
             }
@@ -248,11 +247,17 @@ namespace BTSMTL.Timeline.Editor
                 text = string.Empty;
             else
             {
-                string playback = preview.TryGetPlayback(SourceAsset, out TimelinePreviewRouteSegment[] spans)
-                    ? spans.Length > 1 ? $"{spans.Length} 圈" : string.Empty
-                    : "从技能根按当前输入没有走到本 Timeline";
-                string at = $"{preview.SampledSource?.name} {preview.LocalTime:0.000} 秒" +
-                    (playback.Length == 0 ? string.Empty : " · " + playback);
+                string at;
+                if (m_SlateProjection?.ShowsRoute == true)
+                    at = $"{preview.Time:0.000} 秒 · 在 {preview.SampledSource?.name} 本地 {preview.LocalTime:0.000} 秒";
+                else
+                {
+                    string playback = preview.TryGetPlayback(SourceAsset, out TimelinePreviewRouteSegment[] spans)
+                        ? spans.Length > 1 ? $"{spans.Length} 圈" : string.Empty
+                        : "从技能根按当前输入没有走到本 Timeline";
+                    at = $"{preview.SampledSource?.name} {preview.LocalTime:0.000} 秒" +
+                        (playback.Length == 0 ? string.Empty : " · " + playback);
+                }
                 string note = preview.LocalNote.Length == 0 ? string.Empty : "\n" + preview.LocalNote;
                 if (preview.IsReal)
                 {
@@ -277,33 +282,6 @@ namespace BTSMTL.Timeline.Editor
             m_AssetPreviewStatus.tooltip = detail.Trim();
             m_AssetPreviewStatus.style.color = color;
             SetDisplayed(m_AssetPreviewStatusRow, text.Length != 0);
-            RefreshPlaybackMenu(preview, active);
-        }
-
-        // 本 Timeline 在预览中播放多次时才出现；选中的那次决定编辑时间轴上的输入点、标记与游标换算。
-        void RefreshPlaybackMenu(TimelineAssetPreviewHost preview, bool active)
-        {
-            var playbacks = new List<TimelinePreviewRouteSegment>();
-            if (active)
-                foreach (TimelinePreviewRouteSegment segment in preview.Route)
-                    if (segment.Source == SourceAsset && !playbacks.Any(known => known.Playback == segment.Playback))
-                        playbacks.Add(segment);
-            SetDisplayed(m_PlaybackMenu, playbacks.Count > 1);
-            if (playbacks.Count <= 1)
-                return;
-            int selected = preview.TryGetPlayback(SourceAsset, out TimelinePreviewRouteSegment[] spans) ? spans[0].Playback : -1;
-            DropdownMenu menu = m_PlaybackMenu.menu;
-            menu.MenuItems().Clear();
-            foreach (TimelinePreviewRouteSegment segment in playbacks)
-            {
-                int playback = segment.Playback;
-                string label = $"第 {segment.Occurrence + 1} 次播放 · {segment.Start.AsSingle:0.00} 秒起" +
-                    (segment.IsNested ? " · 被调用" : string.Empty);
-                if (playback == selected)
-                    m_PlaybackMenu.text = $"第 {segment.Occurrence + 1}／{playbacks.Count} 次播放";
-                menu.AppendAction(label, _ => preview.SelectPlayback(playback),
-                    playback == selected ? DropdownMenuAction.Status.Checked : DropdownMenuAction.Status.Normal);
-            }
         }
 
         static string FirstLine(string value)
@@ -312,23 +290,104 @@ namespace BTSMTL.Timeline.Editor
             return end < 0 ? value : value[..end];
         }
 
+        // 有技能根上下文、窗口在导航起点且不是输入 Timeline 本身时，预览以路线视图显示；双击组头进入的单个 Timeline 不切。
+        bool ShowsRouteView(TimelineAssetPreviewHost preview, bool active) =>
+            active && preview.Query != null && preview.Route.Count != 0 && !HasTimelineNavigation &&
+            !TimelinePreviewInputAuthoringHost.Owns(m_Timeline);
+
+        // 预览路线视图：输入 Timeline 一组、路线上每次播放一组，摆在预览全局时刻。
+        void ApplyRouteView(TimelineAssetPreviewHost preview)
+        {
+            TimelineAsset inputs = preview.Preferences.InputTimeline;
+            if (m_PreviewPathRevision == preview.Revision && m_RouteInputs == inputs && m_SlateProjection.ShowsRoute)
+                return;
+            m_PreviewPathRevision = preview.Revision;
+            m_RouteInputs = inputs;
+            float duration = preview.Duration;
+            string error = preview.InputError;
+            var groups = new List<TimelineRouteGroup>
+            {
+                new(inputs, "预览输入 · " + preview.Preferences.Name +
+                        (!inputs ? " · 右键 Add Track 开始摆输入" : error.Length != 0 ? " · 有错误：" + FirstLine(error) : string.Empty),
+                    0f, 0f, duration, inputs ? OpenInputTimeline : null,
+                    (graph, start) => DescribeInputContent(preview, graph, start))
+            };
+            foreach (TimelinePreviewRouteSegment segment in preview.Route.OrderBy(value => value.Start))
+            {
+                float start = segment.Start.AsSingle;
+                float end = segment.End.AsSingle;
+                float offset = start - segment.LocalStart.AsSingle;
+                string note = segment.IsNested ? " · 被调用" : string.Empty;
+                if (segment.Cycle > 0)
+                    note += $" · 第 {segment.Cycle + 1} 圈";
+                if (preview.IsReal && segment.TryLocal(segment.End, out OrchestrationTime local, out _) &&
+                    Math.Abs(local.AsSingle - (segment.LocalStart.AsSingle + end - start)) > 0.001f)
+                    note += " · 含停顿，组内位置按 1 倍速";
+                TimelineAsset source = segment.Source;
+                groups.Add(new TimelineRouteGroup(source,
+                    $"{source.name} · {preview.DescribeState(segment.State)} · {start:0.00}–{end:0.00} s{note}",
+                    offset, start, end, () => EditorApplication.delayCall += () => NavigateTimeline(source, string.Empty)));
+            }
+            m_SlateProjection.ShowRoute(groups, duration, RouteMarks(preview), preview.IsReal,
+                TimelineWorkspaceModeBridge.AuthoringFor, () => preview.InputSchemes.EnsureInputTimeline());
+            m_SlateProjection.ApplyRouteTime(preview.Time);
+        }
+
+        // 路线上的转移时刻：快速档来自推导链（含并行分支），真实档来自执行记录。
+        static List<TimelinePreviewMark> RouteMarks(TimelineAssetPreviewHost preview)
+        {
+            var marks = new List<TimelinePreviewMark>();
+            if (preview.IsReal)
+            {
+                foreach (TimelinePreviewRealTransition transition in preview.RealTransitions)
+                    marks.Add(new TimelinePreviewMark(transition.Time,
+                        transition.Target == null ? "实际收招" : "实际转移到 " + preview.DescribeState(transition.Target),
+                        $"会话第 {transition.Time:0.000} 秒"));
+                foreach (TimelinePreviewDifference difference in preview.Differences)
+                    marks.Add(new TimelinePreviewMark((float)difference.Time, "与快速不同", difference.Message));
+            }
+            else if (preview.Chain != null)
+                AddChainMarks(preview, preview.Chain, marks);
+            return marks;
+        }
+
+        static void AddChainMarks(TimelineAssetPreviewHost preview, TimelineStaticChain chain, List<TimelinePreviewMark> marks)
+        {
+            foreach (TimelineStaticChainMarker marker in chain.Markers)
+                marks.Add(new TimelinePreviewMark(marker.Time.AsSingle,
+                    marker.Transition.Target == null ? "收招" : "转移到 " + preview.Query.DescribeState(marker.Transition.Target),
+                    $"预览第 {marker.Time.AsSingle:0.00} 秒"));
+            foreach (TimelineStaticChainBranch branch in chain.Branches)
+                AddChainMarks(preview, branch.Chain, marks);
+        }
+
         // 资产预览路线叠加到编辑时间轴：全部换算为本 Timeline 的本地时间。
         void ApplyPreviewPath(bool active)
         {
             var preview = TimelineAssetPreviewHost.Shared;
             if (m_SlateProjection == null)
                 return;
+            if (ShowsRouteView(preview, active))
+            {
+                ApplyRouteView(preview);
+                return;
+            }
+            if (m_SlateProjection.ShowsRoute)
+            {
+                m_SlateProjection.HideRoute();
+                m_PreviewPathRevision = -2;
+            }
             if (!active)
             {
                 if (m_PreviewPathRevision != -1)
                 {
-                    m_SlateProjection.SetPreviewPath(null, null, null, null);
+                    m_SlateProjection.SetPreviewPath(null, null, null);
                     RefreshNestedViews();
                 }
                 m_PreviewPathRevision = -1;
                 return;
             }
-            // 编辑时间轴只显示本 Timeline 的一次播放（路线上选定的或游标所在的）；换播放时重建叠加。
+            // 编辑时间轴只显示本 Timeline 的一次播放（游标所在的，否则第一次）；换播放时重建叠加。
             preview.TryGetPlayback(SourceAsset, out TimelinePreviewRouteSegment[] spans);
             int playback = spans.Length == 0 ? -1 : spans[0].Playback;
             if (m_PreviewPathRevision == preview.Revision && m_PreviewPathPlayback == playback)
@@ -372,80 +431,23 @@ namespace BTSMTL.Timeline.Editor
                         chain.StopReason == TimelineStaticChainStopReason.TimelineCompleted ? "播完收招" : "预览结束",
                         chain.Reason));
             }
-            m_SlateProjection.SetPreviewPath(SourceAsset.name, visited, marks, BuildInputView(preview, spans));
+            m_SlateProjection.SetPreviewPath(SourceAsset.name, visited, marks);
         }
 
-        static readonly Color InputAcceptedColor = new(0.35f, 0.85f, 1f);
-        static readonly Color InputOtherColor = new(0.55f, 0.55f, 0.55f);
-
-        // 当前方案的输入 Timeline 按所选那次播放换算到本 Timeline 本地时间，只读显示；颜色与悬停按推导或执行证据给出。
-        EmbeddedTimelineSubTimeline BuildInputView(TimelineAssetPreviewHost preview, TimelinePreviewRouteSegment[] spans)
+        // 预览输入组中一个 Clip 或 Marker 的文字：所写的值，加上各输入在起点的推导或执行结论（接上的标 ✔）。
+        static string DescribeInputContent(TimelineAssetPreviewHost preview, ScriptableObject graph, OrchestrationTime start)
         {
-            TimelineAssetPreviewPreferences preferences = preview.Preferences;
-            TimelineAsset inputs = preferences.InputTimeline;
-            string error = preview.InputError;
-            var view = new EmbeddedTimelineSubTimeline
-            {
-                Label = (inputs ? "预览输入 · " + preferences.Name : "预览输入 · 双击创建") +
-                    (error.Length != 0 ? " · 有错误" : string.Empty),
-                Tooltip = error.Length != 0 ? error
-                    : "当前输入方案的输入 Timeline（预览全局时刻）；双击进入编辑，Clip 期间按住、Marker 写入并保持。",
-                Expanded = m_InputViewExpanded,
-                SetExpanded = expanded => m_InputViewExpanded = expanded,
-                Open = OpenInputTimeline,
-                ExplainReadOnly = () => preview.ReportRejectedEdit("预览输入在输入 Timeline 中编辑：双击上方“预览输入”进入。")
-            };
-            if (!inputs)
-                return view;
-            foreach (Track track in inputs.Data.Tracks)
-            {
-                if (track.PersistentMuted)
-                    continue;
-                var row = new EmbeddedTimelineNestedRow { Label = track.Name, Color = InputOtherColor };
-                foreach (Clip clip in track.Clips)
-                    foreach (TimelinePreviewRouteSegment span in spans)
-                    {
-                        // 起点正好在这次播放的终点也显示：按键常常就是离开这次播放的原因。
-                        if (clip.StartTime > span.End || clip.EndTime <= span.Start)
-                            continue;
-                        OrchestrationTime start = OrchestrationTime.Max(clip.StartTime, span.Start);
-                        OrchestrationTime end = OrchestrationTime.Min(clip.EndTime, span.End);
-                        if (!span.TryLocal(start, out OrchestrationTime localStart, out _) ||
-                            !span.TryLocal(end, out OrchestrationTime localEnd, out _))
-                            continue;
-                        row.Clips.Add(DescribeInputElement(preview, clip is TreeClip tree ? tree.AssetTree : null,
-                            clip.StartTime, localStart.AsSingle, localEnd.AsSingle));
-                    }
-                foreach (TimelineMarker marker in track.Markers)
-                    if (TryLocal(spans, marker.Time.AsSingle, out float local, out _, out _))
-                        row.Clips.Add(DescribeInputElement(preview, marker.Graph, marker.Time, local, local));
-                view.Rows.Add(row);
-            }
-            return view;
-        }
-
-        // 一个 Clip 或 Marker 的显示：取它在起点写入的各输入的推导或执行结论，有一项接上即用接上颜色。
-        static EmbeddedTimelineNestedClip DescribeInputElement(TimelineAssetPreviewHost preview, ScriptableObject graph,
-            OrchestrationTime start, float localStart, float localEnd)
-        {
-            var element = new EmbeddedTimelineNestedClip { Start = localStart, End = localEnd, Color = InputOtherColor };
             if (!TimelinePreviewInputTimeline.TryDescribe(graph, out string name, out string[] inputIds))
-            {
-                element.Label = "未引用预览输入图";
-                return element;
-            }
-            element.Label = name;
-            var lines = new List<string> { $"预览第 {start.AsSingle:0.000} 秒 · {name}" };
+                return "未引用预览输入图";
+            var parts = new List<string> { name };
             foreach (TimelinePreviewInputPoint point in preview.Preferences.Inputs)
             {
                 if (OrchestrationTime.FromSeconds(point.Time) != start || Array.IndexOf(inputIds, point.InputId) < 0)
                     continue;
-                if (DescribeInput(preview, point, out string reason))
-                    element.Color = InputAcceptedColor;
-                lines.Add($"{point.InputId}：{reason}");
+                bool accepted = DescribeInput(preview, point, out string reason);
+                parts.Add((accepted ? "✔ " : string.Empty) + reason);
             }
-            element.Tooltip = string.Join("\n", lines) + "\n双击进入输入 Timeline 编辑";
-            return element;
+            return string.Join(" · ", parts);
         }
 
         void OpenInputTimeline()

@@ -595,9 +595,9 @@ namespace BTSMTL.Timeline.Editor
             }
             if (clip is TreeClip assetClip && assetClip.AssetTree)
             {
-                if (TimelinePreviewInputAuthoringHost.Owns(m_Timeline))
+                if (TimelinePreviewInputAuthoringHost.Owns(clip.Timeline))
                 {
-                    TimelineWorkspaceModeBridge.AuthoringFor(m_Timeline).OpenGraph(assetClip.AssetTree);
+                    TimelineWorkspaceModeBridge.AuthoringFor(clip.Timeline).OpenGraph(assetClip.AssetTree);
                     return;
                 }
                 if (OpenAssetTree(assetClip))
@@ -681,9 +681,13 @@ namespace BTSMTL.Timeline.Editor
                 BeginWindows,
                 EndWindows);
             var preview = TimelineAssetPreviewHost.Shared;
-            // 拖本轴游标即把预览定位到本 Timeline 的所选播放，即使预览游标此刻在链上别的 Timeline。
-            if (timeInput && previousTime != m_SlateProjection.CurrentTime && preview.IsOpen && SourceAsset &&
-                preview.Covers(SourceAsset))
+            // 路线视图的游标就是预览全局时刻；单个 Timeline 时拖本轴游标把预览定位到本 Timeline 的那次播放。
+            if (!timeInput || previousTime == m_SlateProjection.CurrentTime || !preview.IsOpen || !SourceAsset ||
+                !preview.Covers(SourceAsset))
+                return;
+            if (m_SlateProjection.ShowsRoute)
+                preview.SetTime(m_SlateProjection.CurrentTime);
+            else
                 preview.SetLocalTime(SourceAsset, m_SlateProjection.CurrentTime);
         }
 

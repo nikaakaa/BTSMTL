@@ -151,7 +151,9 @@ namespace BTSMTL.Timeline.Editor
         float? m_RuntimeVisualTime;
         float? m_HistoryVisualTime;
         readonly Action m_ExternalRepaint;
+        readonly Action<Clip> m_OpenSourceClip;
         TimelineData m_ObservedTimeline;
+        TimelineRouteBinding m_Route;
 
         static BtsmtlSlateTimelineProjection s_Current;
 
@@ -159,6 +161,7 @@ namespace BTSMTL.Timeline.Editor
         {
             m_Request = request ?? throw new ArgumentNullException(nameof(request));
             m_ExternalRepaint = repaint;
+            m_OpenSourceClip = openSourceClip;
             m_Session = new TimelineEditorSessionContext(request);
             m_Binding = new BtsmtlSlateTimelineBinding(request, m_Session, openSourceClip);
             m_Binding.AuthoringIssue += OnBindingIssue;
@@ -184,15 +187,63 @@ namespace BTSMTL.Timeline.Editor
                 s_Current.m_Binding.DrawSourceResourceInspector(clip);
         }
         public event Action<TimelineEditorSelection> SelectionChanged;
-        public float CurrentTime => m_Binding.CurrentTime;
+        public float CurrentTime => m_Route?.CurrentTime ?? m_Binding.CurrentTime;
+        // 路线视图开着时刻度与游标是预览全局时刻。
+        public bool ShowsRoute => m_Route != null;
+
+        // 预览路线视图：输入 Timeline 与路线上每次播放各成一组；再次调用只更新分组。
+        public void ShowRoute(IReadOnlyList<TimelineRouteGroup> groups, float length, IReadOnlyList<TimelinePreviewMark> marks,
+            bool readOnly, Func<TimelineData, ITimelineEditorAuthoringHost> hostFor, Func<TimelineAsset> createInput)
+        {
+            EmbeddedTimelinePreviewMark[] previewMarks = marks
+                .Select(mark => new EmbeddedTimelinePreviewMark(mark.Time, mark.Label, mark.Tooltip)).ToArray();
+            if (m_Route != null)
+            {
+                m_Route.Configure(groups, length, previewMarks, readOnly);
+                return;
+            }
+            m_EmbeddedEditor.CancelEmbeddedEdit();
+            m_Route = new TimelineRouteBinding(m_Request.ContractCatalog, hostFor, m_OpenSourceClip, createInput);
+            m_Route.RepaintRequested += m_EmbeddedEditor.RequestEmbeddedRepaint;
+            m_Route.AuthoringIssue += ReportIssue;
+            m_Route.Rebuilt += m_EmbeddedEditor.InvalidateEmbeddedClipBindings;
+            m_Route.Configure(groups, length, previewMarks, readOnly);
+            m_EmbeddedEditor.InitializeEmbedded(m_Route, EmbeddedRepaint);
+            m_EmbeddedEditor.RequestEmbeddedRepaint();
+        }
+
+        public void HideRoute()
+        {
+            if (m_Route == null)
+                return;
+            m_EmbeddedEditor.CancelEmbeddedEdit();
+            DisposeRoute();
+            m_EmbeddedEditor.InitializeEmbedded(m_Binding, EmbeddedRepaint);
+            m_EmbeddedEditor.RequestEmbeddedRepaint();
+        }
+
+        void DisposeRoute()
+        {
+            m_Route.RepaintRequested -= m_EmbeddedEditor.RequestEmbeddedRepaint;
+            m_Route.AuthoringIssue -= ReportIssue;
+            m_Route.Rebuilt -= m_EmbeddedEditor.InvalidateEmbeddedClipBindings;
+            m_Route.Dispose();
+            m_Route = null;
+        }
+
+        public void ApplyRouteTime(float time)
+        {
+            if (m_Route == null)
+                return;
+            m_Route.CurrentTime = time;
+            m_EmbeddedEditor.RequestEmbeddedRepaint();
+        }
         internal void SetNestedViews(IReadOnlyDictionary<string, List<EmbeddedTimelineSubTimeline>> views) =>
             m_Binding.SetNestedViews(views);
-        // inputs 为预览输入 Timeline 的只读子视图，时间已换算为本 Timeline 本地时间。
-        public void SetPreviewPath(string source, IReadOnlyList<Vector2> visited, IReadOnlyList<TimelinePreviewMark> marks,
-            EmbeddedTimelineSubTimeline inputs)
+        public void SetPreviewPath(string source, IReadOnlyList<Vector2> visited, IReadOnlyList<TimelinePreviewMark> marks)
         {
             m_Binding.SetPreviewPath(visited == null ? null : new EmbeddedTimelinePreviewPath(source, visited,
-                marks.Select(mark => new EmbeddedTimelinePreviewMark(mark.Time, mark.Label, mark.Tooltip)).ToArray(), inputs));
+                marks.Select(mark => new EmbeddedTimelinePreviewMark(mark.Time, mark.Label, mark.Tooltip)).ToArray()));
             m_EmbeddedEditor.RequestEmbeddedRepaint();
         }
         public event Action<string> AuthoringIssue;
@@ -564,6 +615,8 @@ namespace BTSMTL.Timeline.Editor
             if (m_Disposed)
                 return;
             m_Disposed = true;
+            if (m_Route != null)
+                DisposeRoute();
             m_Binding.CancelEdit();
             if (m_RebuildQueued)
                 EditorApplication.delayCall -= RebuildBinding;

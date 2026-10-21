@@ -42,8 +42,6 @@ namespace BTSMTL.Timeline.Editor
         readonly List<TimelineAssetPreviewTraversal> m_Parallel = new();
         readonly List<TimelinePreviewRouteSegment> m_Route = new();
         OrchestrationTime m_RouteEnd;
-        TimelineAsset m_SelectedSource;
-        int m_SelectedOccurrence;
         readonly List<OrchestrationStaticRead> m_Assumptions = new();
         TimelineOrchestrationQuery m_Query;
         TimelinePreviewRealRoute m_Real;
@@ -262,20 +260,7 @@ namespace BTSMTL.Timeline.Editor
             Changed?.Invoke();
         }
 
-        // 用户在路线上选定一次播放；路线重建后按 Timeline 与第几次播放找回。
-        public void SelectPlayback(int playback)
-        {
-            foreach (TimelinePreviewRouteSegment segment in m_Route)
-                if (segment.Playback == playback)
-                {
-                    m_SelectedSource = segment.Source;
-                    m_SelectedOccurrence = segment.Occurrence;
-                    Changed?.Invoke();
-                    return;
-                }
-        }
-
-        // 该 Timeline 在编辑时间轴上对应的一次播放（按圈排列）：用户选定的，否则当前游标所在的，否则第一次。
+        // 单个 Timeline 编辑时对应的一次播放（按圈排列）：当前游标所在的，否则第一次。
         public bool TryGetPlayback(TimelineAsset source, out TimelinePreviewRouteSegment[] segments)
         {
             int playback = -1;
@@ -284,11 +269,6 @@ namespace BTSMTL.Timeline.Editor
             {
                 if (segment.Source != source)
                     continue;
-                if (source == m_SelectedSource && segment.Occurrence == m_SelectedOccurrence)
-                {
-                    playback = segment.Playback;
-                    break;
-                }
                 if (playback < 0 || segment.Contains(cursor))
                     playback = segment.Playback;
             }
@@ -454,7 +434,6 @@ namespace BTSMTL.Timeline.Editor
             m_SessionOpening?.Dispose();
             m_SessionOpening = null;
             m_PendingSource = null;
-            m_SelectedSource = null;
             IsPlaying = false;
             InputSchemes.Save();
             if (m_Stage)
@@ -881,16 +860,11 @@ namespace BTSMTL.Timeline.Editor
                 return;
             Time = time;
             OrchestrationTime cursor = OrchestrationTime.FromSeconds(time);
-            // 本地时刻读该次播放的正式游标；所选播放在此刻时优先，其余取最后开始的一段。
-            // 嵌套播放与调用方同时进行，只有被选定时才代替调用方作为当前播放。
+            // 本地时刻读该次播放的正式游标，取此刻最后开始的一段；嵌套播放与调用方同时进行，不代替调用方作为当前播放。
             TimelinePreviewRouteSegment? at = null;
             foreach (TimelinePreviewRouteSegment segment in m_Route)
-            {
-                bool selected = segment.Source == m_SelectedSource && segment.Occurrence == m_SelectedOccurrence;
-                if (segment.Contains(cursor) && (!segment.IsNested || selected) && (at == null ||
-                    at.Value.Source != m_SelectedSource || at.Value.Occurrence != m_SelectedOccurrence))
+                if (segment.Contains(cursor) && !segment.IsNested)
                     at = segment;
-            }
             if (at is { } current)
             {
                 SampledSource = current.Source;

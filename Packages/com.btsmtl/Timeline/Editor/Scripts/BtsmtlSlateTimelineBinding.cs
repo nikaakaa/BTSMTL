@@ -919,8 +919,15 @@ namespace BTSMTL.Timeline.Editor
                 throw new InvalidOperationException(string.Join("\n", errors));
         }
 
+        // 每次重建轨道、Clip 与 Marker 绑定对象时递增；外层包装据此判断引用是否过期。
+        internal int BuildVersion { get; private set; }
+        internal static Clip SourceOf(IEmbeddedTimelineClipBinding clip) => (clip as BtsmtlTimelineClipBinding)?.Source;
+        internal static TimelineMarker SourceOf(IEmbeddedTimelineMarkerBinding marker) =>
+            (marker as BtsmtlTimelineMarkerBinding)?.Source;
+
         void BuildBindings()
         {
+            BuildVersion++;
             UnbindResources();
             var expandedTracks = new HashSet<string>(
                 m_Tracks.Values
