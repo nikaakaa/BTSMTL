@@ -379,7 +379,11 @@ namespace BTSMTL.Timeline.Editor
         void OpenSession(TimelineAsset source, TimelineAssetPreviewPreferences preferences, CancellationToken cancellationToken);
         IReadOnlyList<GraphHostInputDescriptor> DescribeInputs();
         IReadOnlyList<TimelinePreviewInputRequest> DescribeInputRequests();
-        IReadOnlyList<TimelinePreviewInputPoint> ImportRecordedInputs(string path);
+        // 输入 Timeline 与普通 Timeline 用同一宿主作者入口；读法、写法与图的输入说明由宿主按其正式输入层提供。
+        // 读出按时刻排序的输入值变化与请求；有错误时逐条写明元素并返回空列表。
+        List<TimelinePreviewInputPoint> ReadInputTimeline(TimelineAsset timeline, List<string> errors);
+        void ImportRecordedInputs(string path, TimelineAsset inputTimeline);
+        bool TryDescribeInputGraph(ScriptableObject graph, out string name, out IReadOnlyList<string> inputIds);
         // 真实档：工具栏、会话游标与执行记录中 Timeline 的作者来源均由宿主提供；
         // 编辑时间轴上的时间拖动经宿主设置的 ITimelineTimeRangePreview 写回。
         TimelinePreviewRealControls CreateRealControls();

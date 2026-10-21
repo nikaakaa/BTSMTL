@@ -193,7 +193,7 @@ namespace BTSMTL.Timeline.Editor
 
         // 预览路线视图：输入 Timeline 与路线上每次播放各成一组；再次调用只更新分组。
         public void ShowRoute(IReadOnlyList<TimelineRouteGroup> groups, float length, IReadOnlyList<TimelinePreviewMark> marks,
-            bool readOnly, Func<TimelineData, ITimelineEditorAuthoringHost> hostFor, Func<TimelineAsset> createInput)
+            bool readOnly, Func<TimelineAsset> createInput)
         {
             EmbeddedTimelinePreviewMark[] previewMarks = marks
                 .Select(mark => new EmbeddedTimelinePreviewMark(mark.Time, mark.Label, mark.Tooltip)).ToArray();
@@ -203,7 +203,7 @@ namespace BTSMTL.Timeline.Editor
                 return;
             }
             m_EmbeddedEditor.CancelEmbeddedEdit();
-            m_Route = new TimelineRouteBinding(m_Request.ContractCatalog, hostFor, m_OpenSourceClip, createInput);
+            m_Route = new TimelineRouteBinding(m_Request.ContractCatalog, m_Request.AuthoringHost, m_OpenSourceClip, createInput);
             m_Route.RepaintRequested += m_EmbeddedEditor.RequestEmbeddedRepaint;
             m_Route.AuthoringIssue += ReportIssue;
             m_Route.Rebuilt += m_EmbeddedEditor.InvalidateEmbeddedClipBindings;

@@ -67,7 +67,7 @@ namespace BTSMTL.Timeline.Editor
             m_StateQueryReason = string.Empty;
             if (m_Timeline == null)
                 return;
-            if (TimelinePreviewInputAuthoringHost.Owns(m_Timeline))
+            if (TimelinePreviewInputSchemeStore.OwnsInputTimeline(m_Timeline))
             {
                 m_StateQueryReason = "这是预览输入 Timeline，预览起点沿用进入前所选的技能根。";
                 m_StateContextControl?.MarkDirtyRepaint();
@@ -154,7 +154,7 @@ namespace BTSMTL.Timeline.Editor
             Rect rect = m_StateContextControl.contentRect;
             if (m_StateContexts.Count == 0)
             {
-                string label = m_Timeline != null && TimelinePreviewInputAuthoringHost.Owns(m_Timeline) ? "预览输入" : "无技能上下文";
+                string label = m_Timeline != null && TimelinePreviewInputSchemeStore.OwnsInputTimeline(m_Timeline) ? "预览输入" : "无技能上下文";
                 EditorGUI.LabelField(rect, new GUIContent(m_StateQueryReason.Length == 0 ? label : label + " ⓘ",
                     m_StateQueryReason.Length == 0 ? "当前 Timeline 不属于任何技能；仍可独立预览资产。" : m_StateQueryReason),
                     EditorStyles.miniLabel);

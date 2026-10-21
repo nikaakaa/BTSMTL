@@ -126,6 +126,8 @@ namespace BTSMTL.Timeline.Editor
             state == null ? "出口" : m_Query == null ? state.Name : m_Query.DescribeState(state);
         public IReadOnlyList<OrchestrationStaticRead> Assumptions => m_Assumptions;
         public IReadOnlyList<TimelinePreviewInputRequest> InputRequests => m_Provider.DescribeInputRequests();
+        public bool TryDescribeInputGraph(ScriptableObject graph, out string name, out IReadOnlyList<string> inputIds) =>
+            m_Provider.TryDescribeInputGraph(graph, out name, out inputIds);
         public long Revision { get; private set; }
         public string Error { get; private set; } = string.Empty;
         public string Status => m_Instance == null ? Error : m_Instance.Status;
@@ -350,7 +352,7 @@ namespace BTSMTL.Timeline.Editor
         {
             try
             {
-                return InputSchemes.RefreshInputs(Inputs);
+                return InputSchemes.RefreshInputs(m_Provider, Inputs);
             }
             catch (Exception exception)
             {
@@ -392,10 +394,9 @@ namespace BTSMTL.Timeline.Editor
 
         public void ImportInputs(string path)
         {
-            IReadOnlyList<TimelinePreviewInputPoint> imported;
             try
             {
-                imported = m_Provider.ImportRecordedInputs(path);
+                m_Provider.ImportRecordedInputs(path, InputSchemes.EnsureInputTimeline());
             }
             catch (Exception exception)
             {
@@ -403,7 +404,6 @@ namespace BTSMTL.Timeline.Editor
                 Changed?.Invoke();
                 return;
             }
-            TimelinePreviewInputTimeline.Replace(InputSchemes.EnsureInputTimeline(), Contracts, Inputs, imported);
             PreferencesChanged();
             InputSchemes.Save();
         }

@@ -19,7 +19,7 @@ namespace BTSMTL.Timeline.Editor
                 serializedPropertyPath,
                 ownershipLabel,
                 runtimeDebugBinding,
-                contracts, TimelineWorkspaceModeBridge.AuthoringFor(timeline),
+                contracts, TimelineWorkspaceModeBridge.Authoring,
                 timeRangePreview: timeRangePreview);
         }
     }

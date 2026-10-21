@@ -293,7 +293,7 @@ namespace BTSMTL.Timeline.Editor
         // 有技能根上下文、窗口在导航起点且不是输入 Timeline 本身时，预览以路线视图显示；双击组头进入的单个 Timeline 不切。
         bool ShowsRouteView(TimelineAssetPreviewHost preview, bool active) =>
             active && preview.Query != null && preview.Route.Count != 0 && !HasTimelineNavigation &&
-            !TimelinePreviewInputAuthoringHost.Owns(m_Timeline);
+            !TimelinePreviewInputSchemeStore.OwnsInputTimeline(m_Timeline);
 
         // 预览路线视图：输入 Timeline 一组、路线上每次播放一组，摆在预览全局时刻。
         void ApplyRouteView(TimelineAssetPreviewHost preview)
@@ -335,7 +335,7 @@ namespace BTSMTL.Timeline.Editor
                     offset, start, end, () => EditorApplication.delayCall += () => NavigateTimeline(source, string.Empty)));
             }
             m_SlateProjection.ShowRoute(groups, length, RouteMarks(preview), preview.IsReal,
-                TimelineWorkspaceModeBridge.AuthoringFor, () => preview.InputSchemes.EnsureInputTimeline());
+                () => preview.InputSchemes.EnsureInputTimeline());
             m_SlateProjection.ApplyRouteTime(preview.Time);
         }
 
@@ -443,12 +443,12 @@ namespace BTSMTL.Timeline.Editor
         // 预览输入组中一个 Clip 或 Marker 的文字：所写的值，加上各输入在起点的推导或执行结论（接上的标 ✔）。
         static string DescribeInputContent(TimelineAssetPreviewHost preview, ScriptableObject graph, OrchestrationTime start)
         {
-            if (!TimelinePreviewInputTimeline.TryDescribe(graph, out string name, out string[] inputIds))
-                return "未引用预览输入图";
+            if (!preview.TryDescribeInputGraph(graph, out string name, out IReadOnlyList<string> inputIds))
+                return name.Length != 0 ? name + " · 没有写入按键" : "未引用片段图";
             var parts = new List<string> { name };
             foreach (TimelinePreviewInputPoint point in preview.Preferences.Inputs)
             {
-                if (OrchestrationTime.FromSeconds(point.Time) != start || Array.IndexOf(inputIds, point.InputId) < 0)
+                if (OrchestrationTime.FromSeconds(point.Time) != start || !inputIds.Contains(point.InputId))
                     continue;
                 bool accepted = DescribeInput(preview, point, out string reason);
                 parts.Add((accepted ? "✔ " : string.Empty) + reason);

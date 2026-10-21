@@ -42,9 +42,6 @@ namespace BTSMTL.Timeline.Editor
 
         public static Type PreviewConfigurationType => s_Controller.PreviewConfigurationType;
         public static ITimelineEditorAuthoringHost Authoring => s_Controller.Authoring;
-        // 具体 Timeline 的作者宿主：预览输入 Timeline 用输入宿主，其余用正式作者宿主。
-        public static ITimelineEditorAuthoringHost AuthoringFor(TimelineData timeline) =>
-            TimelinePreviewInputAuthoringHost.For(timeline, s_Controller.Authoring);
         public static UnityEngine.Object PreviewConfiguration
         {
             get => s_Controller.PreviewConfiguration;
@@ -595,11 +592,6 @@ namespace BTSMTL.Timeline.Editor
             }
             if (clip is TreeClip assetClip && assetClip.AssetTree)
             {
-                if (TimelinePreviewInputAuthoringHost.Owns(clip.Timeline))
-                {
-                    TimelineWorkspaceModeBridge.AuthoringFor(clip.Timeline).OpenGraph(assetClip.AssetTree);
-                    return;
-                }
                 if (OpenAssetTree(assetClip))
                 {
                     AssetTreeOpened?.Invoke(this, assetClip);

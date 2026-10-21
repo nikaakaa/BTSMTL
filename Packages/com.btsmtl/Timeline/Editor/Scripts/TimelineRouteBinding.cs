@@ -48,7 +48,7 @@ namespace BTSMTL.Timeline.Editor
         }
 
         readonly TimelineContractCatalog m_Contracts;
-        readonly Func<TimelineData, ITimelineEditorAuthoringHost> m_HostFor;
+        readonly ITimelineEditorAuthoringHost m_Host;
         readonly Action<Clip> m_OpenSourceClip;
         readonly Func<TimelineAsset> m_CreateInput;
         readonly Dictionary<TimelineAsset, Source> m_Sources = new();
@@ -63,11 +63,11 @@ namespace BTSMTL.Timeline.Editor
         bool m_ReadOnly;
         bool m_DisplayFrames;
 
-        internal TimelineRouteBinding(TimelineContractCatalog contracts, Func<TimelineData, ITimelineEditorAuthoringHost> hostFor,
+        internal TimelineRouteBinding(TimelineContractCatalog contracts, ITimelineEditorAuthoringHost host,
             Action<Clip> openSourceClip, Func<TimelineAsset> createInput)
         {
             m_Contracts = contracts;
-            m_HostFor = hostFor;
+            m_Host = host;
             m_OpenSourceClip = openSourceClip;
             m_CreateInput = createInput;
         }
@@ -109,7 +109,7 @@ namespace BTSMTL.Timeline.Editor
         {
             var request = new TimelineEditorOpenRequest(asset.Data, asset, "m_Data",
                 AssetDatabase.IsSubAsset(asset) ? "Private Asset" : "Shared Asset", null, m_Contracts,
-                m_HostFor(asset.Data));
+                m_Host);
             var source = new Source { Asset = asset, Session = new TimelineEditorSessionContext(request) };
             source.Binding = new BtsmtlSlateTimelineBinding(request, source.Session, m_OpenSourceClip);
             source.Binding.RepaintRequested += Repaint;
@@ -216,7 +216,7 @@ namespace BTSMTL.Timeline.Editor
             {
                 foreach (TimelineRouteGroup spec in m_Specs)
                     if (spec.Asset && m_Sources.TryGetValue(spec.Asset, out Source source) &&
-                        !TimelinePreviewInputAuthoringHost.Owns(spec.Asset.Data))
+                        !TimelinePreviewInputSchemeStore.OwnsInputTimeline(spec.Asset.Data))
                         return source;
                 return m_Sources.Values.FirstOrDefault();
             }

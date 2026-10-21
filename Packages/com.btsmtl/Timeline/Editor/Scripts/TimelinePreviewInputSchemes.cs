@@ -141,8 +141,13 @@ namespace BTSMTL.Timeline.Editor
             return timeline;
         }
 
-        // 输入 Timeline 或其引用的图改动后重新读出；返回读出结果是否变化。
-        public bool RefreshInputs(IReadOnlyList<GraphHostInputDescriptor> declared)
+        // 输入 Timeline 是输入方案资产的子资产；按所在资产判断，不按名称。
+        public static bool OwnsInputTimeline(TimelineData timeline) =>
+            timeline?.SerializedOwner is TimelineAsset asset &&
+            AssetDatabase.LoadMainAssetAtPath(AssetDatabase.GetAssetPath(asset)) is TimelinePreviewInputSchemes;
+
+        // 输入 Timeline 或其引用的图改动后经宿主重新读出；返回读出结果是否变化。
+        public bool RefreshInputs(ITimelineAssetPreviewProvider provider, IReadOnlyList<GraphHostInputDescriptor> declared)
         {
             TimelineAssetPreviewPreferences current = Current;
             string fingerprint = InputsFingerprint(current.InputTimeline, declared);
@@ -151,7 +156,7 @@ namespace BTSMTL.Timeline.Editor
             m_InputsFingerprint = fingerprint;
             m_ReadScheme = current;
             current.InputErrors.Clear();
-            current.Inputs = TimelinePreviewInputTimeline.Read(current.InputTimeline, declared, current.InputErrors);
+            current.Inputs = provider.ReadInputTimeline(current.InputTimeline, current.InputErrors);
             return true;
         }
 
