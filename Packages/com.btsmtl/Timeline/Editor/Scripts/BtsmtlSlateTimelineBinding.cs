@@ -563,12 +563,6 @@ namespace BTSMTL.Timeline.Editor
                 contract.AllowedClipKinds.Count == 1 &&
                 string.Equals(contract.AllowedClipKinds[0], TimelineContractKinds.TreeClip, StringComparison.Ordinal))
             {
-                if (formalTrack.Source.ExecutionDomain == TimelineExecutionDomain.Presentation &&
-                    !m_Request.AuthoringHost.AllowsPresentationTreeClips)
-                {
-                    ReportIssue("表现域点事件请使用 Add Marker 创建触发图。");
-                    return;
-                }
                 ShowClipCreationPopup(formalTrack.Source.AuthoringId, TimelineContractKinds.TreeClip, time);
                 return;
             }
