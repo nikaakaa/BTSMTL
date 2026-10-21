@@ -238,7 +238,8 @@ namespace BTSMTL.Timeline.Editor
         public TimelineAssetPreviewTarget(TimelineAsset source, OrchestrationTime time, int cycle,
             ulong revision, TimelineAssetPreviewPreferences preferences, OrchestrationTime previewTime,
             IReadOnlyList<TimelineAssetPreviewTraversal> traversals,
-            IReadOnlyList<TimelineAssetPreviewTraversal> parallel, long chainRevision)
+            IReadOnlyList<TimelineAssetPreviewTraversal> parallel, long chainRevision, long chainBase,
+            OrchestrationTime chainBaseUntil)
         {
             Source = source;
             Time = time;
@@ -249,6 +250,8 @@ namespace BTSMTL.Timeline.Editor
             Traversals = traversals;
             Parallel = parallel;
             ChainRevision = chainRevision;
+            ChainBase = chainBase;
+            ChainBaseUntil = chainBaseUntil;
         }
 
         // 并行分支的播放区间（截到 PreviewTime），按分支、再按时刻排列；领域在每个时刻把生效分支的贡献与主链一起交给正式模块。
@@ -282,11 +285,18 @@ namespace BTSMTL.Timeline.Editor
                     parallel.Add(traversal.Until(time));
             TimelineAssetPreviewTraversal current = traversals[^1];
             return new TimelineAssetPreviewTarget(current.Source, current.LocalEnd, current.Cycle, Revision,
-                Preferences, time, traversals, parallel, ChainRevision);
+                Preferences, time, traversals, parallel, ChainRevision, ChainBase, ChainBaseUntil);
         }
 
         // 同一链修订内，较晚目标的遍历是较早目标的延长，领域可以从上次目标继续推进。
         public long ChainRevision { get; }
+        // 上一条交给领域的链与本链在 ChainBaseUntil 之前的播放、输入与设置完全相同。
+        public long ChainBase { get; }
+        public OrchestrationTime ChainBaseUntil { get; }
+
+        // 领域在 revision 链上推进到 reached 的状态能否直接接着本目标推进。
+        public bool Continues(long revision, OrchestrationTime reached) =>
+            revision == ChainRevision || revision == ChainBase && reached <= ChainBaseUntil;
 
         public TimelineAsset Source { get; }
         public OrchestrationTime Time { get; }
@@ -331,8 +341,10 @@ namespace BTSMTL.Timeline.Editor
         string Status { get; }
         TimelineAssetPreviewContent PrepareContent(TimelineAsset source, TimelineContentUnit content);
         void AdvancePreparation();
-        void BeginTarget(in TimelineAssetPreviewTarget target);
-        void CompleteTarget(in TimelineAssetPreviewTarget target);
+        // 在 seconds 预算内准备目标（如积分位移）；返回 false 表示还没准备好，下次更新以同一目标继续调用，之后才交给各领域取样。
+        bool BeginTarget(in TimelineAssetPreviewTarget target, double seconds);
+        // 在 seconds 预算内把需逐帧累积的领域推进到目标；返回 false 表示还没追上，下次更新以同一目标继续调用。
+        bool CompleteTarget(in TimelineAssetPreviewTarget target, double seconds);
         // 空闲时沿当前链往 horizon 提前推进，不改变当前显示；返回 true 表示还有剩余。
         bool Prefetch(in TimelineAssetPreviewTarget horizon, double seconds);
         void AbortTarget();

@@ -58,6 +58,18 @@ namespace BTSMTL.Timeline.Editor
         bool m_SampleRequested;
         double m_LastUpdate;
         ulong m_Revision;
+        // 上一条交给领域的链：新链与它相同的前段，领域已推进的状态可以直接沿用。
+        long m_GivenChain = -1;
+        TimelineAssetPreviewTraversal[] m_GivenTraversals = Array.Empty<TimelineAssetPreviewTraversal>();
+        TimelineAssetPreviewTraversal[] m_GivenParallel = Array.Empty<TimelineAssetPreviewTraversal>();
+        List<TimelinePreviewInputPoint> m_GivenInputs;
+        string m_GivenSettings;
+        long m_ChainBase = -1;
+        OrchestrationTime m_ChainBaseUntil;
+        enum TargetStage : byte { None, Beginning, Completing }
+        TargetStage m_TargetStep;
+        TimelineAssetPreviewTarget m_PendingTarget;
+        const double StepSeconds = 0.012d;
 
         static TimelineAssetPreviewHost()
         {
@@ -468,6 +480,9 @@ namespace BTSMTL.Timeline.Editor
             SampledSource = null;
             SampledRevision = 0;
             m_SampleRequested = false;
+            m_TargetStep = TargetStage.None;
+            m_GivenChain = -1;
+            m_GivenInputs = null;
             try
             {
                 if (m_Instance != null)
@@ -525,6 +540,13 @@ namespace BTSMTL.Timeline.Editor
                         IsPlaying = false;
                 }
                 m_LastUpdate = now;
+                if (m_SampleRequested)
+                    m_TargetStep = TargetStage.None;
+                else if (m_TargetStep != TargetStage.None)
+                {
+                    AdvanceTarget();
+                    return;
+                }
                 if (!m_SampleRequested)
                 {
                     // 空闲时每帧花一点时间把链往后推进，之后拖到哪里都不用现算。
@@ -540,25 +562,17 @@ namespace BTSMTL.Timeline.Editor
                     return;
                 // 截到游标的整组播放：主链与全部并行分支一起交给实例与领域。
                 OrchestrationTime cursor = OrchestrationTime.FromSeconds(Time);
-                TimelineAssetPreviewTarget target = Horizon(++m_Revision).Until(cursor);
-                TimelineAssetPreviewTraversal current = target.Traversals[^1];
+                m_PendingTarget = Horizon(++m_Revision).Until(cursor);
+                TimelineAssetPreviewTraversal current = m_PendingTarget.Traversals[^1];
                 LocalTime = current.LocalEnd.AsSingle;
                 SampledSource = current.Source;
-                m_Instance.BeginTarget(in target);
-                PreparedTimeline sampled = m_Contents[current.Source];
-                TimelineRuntimePresentationOperations operations = sampled.Sampling.SampleAt(target.Time, target.Cycle,
-                    current.PlaybackCompleted ? TimelinePresentationSampleReason.Completed : TimelinePresentationSampleReason.Correction);
-                foreach (ITimelineDomainPreview domain in sampled.Domains.Domains)
-                    domain.Sample(in target, in operations);
-                m_Instance.CompleteTarget(in target);
-                SampledRevision = target.Revision;
-                m_Prefetching = true;
-                Error = string.Empty;
-                SceneView.RepaintAll();
-                Changed?.Invoke();
+                m_TargetStep = TargetStage.Beginning;
+                m_Prefetching = false;
+                AdvanceTarget();
             }
             catch (TimelineAssetPreviewInputUnavailableException exception)
             {
+                m_TargetStep = TargetStage.None;
                 m_Instance.AbortTarget();
                 IsPlaying = false;
                 m_SampleRequested = false;
@@ -568,18 +582,119 @@ namespace BTSMTL.Timeline.Editor
             }
             catch (Exception exception)
             {
+                m_TargetStep = TargetStage.None;
                 Close();
                 Error = exception.Message;
                 Changed?.Invoke();
             }
         }
 
-        // 主链终点处的整条路线目标。
+        // 目标分三步，每次 Editor 更新只花一份预算：实例准备（位移积分）→ 各领域在目标时刻取样 → 逐帧累积的领域追到目标。
+        // 没走完时 Scene 保持当前画面，窗口照常响应；新的取样请求会放弃未完成的目标。
+        void AdvanceTarget()
+        {
+            if (m_TargetStep == TargetStage.Beginning)
+            {
+                if (!m_Instance.BeginTarget(in m_PendingTarget, StepSeconds))
+                    return;
+                TimelineAssetPreviewTraversal current = m_PendingTarget.Traversals[^1];
+                PreparedTimeline sampled = m_Contents[current.Source];
+                TimelineRuntimePresentationOperations operations = sampled.Sampling.SampleAt(m_PendingTarget.Time,
+                    m_PendingTarget.Cycle, current.PlaybackCompleted
+                        ? TimelinePresentationSampleReason.Completed : TimelinePresentationSampleReason.Correction);
+                foreach (ITimelineDomainPreview domain in sampled.Domains.Domains)
+                    domain.Sample(in m_PendingTarget, in operations);
+                m_TargetStep = TargetStage.Completing;
+            }
+            if (m_Instance.CompleteTarget(in m_PendingTarget, StepSeconds))
+                FinishTarget(in m_PendingTarget);
+            else
+                SceneView.RepaintAll();
+        }
+
+        void FinishTarget(in TimelineAssetPreviewTarget target)
+        {
+            m_TargetStep = TargetStage.None;
+            SampledRevision = target.Revision;
+            m_Prefetching = true;
+            Error = string.Empty;
+            SceneView.RepaintAll();
+            Changed?.Invoke();
+        }
+
+        // 主链终点处的整条路线目标。链修订变化时与上一条交给领域的链比较，记下两者相同到哪一刻。
         TimelineAssetPreviewTarget Horizon(ulong revision)
         {
             TimelineAssetPreviewTraversal last = m_Traversals[^1];
+            TimelineAssetPreviewTraversal[] traversals = m_Traversals.ToArray();
+            TimelineAssetPreviewTraversal[] parallel = m_Parallel.ToArray();
+            if (Revision != m_GivenChain)
+            {
+                string settings = PreviewSettings(Preferences);
+                m_ChainBase = m_GivenChain;
+                m_ChainBaseUntil = m_GivenChain < 0 || settings != m_GivenSettings
+                    ? OrchestrationTime.Zero
+                    : OrchestrationTime.Min(OrchestrationTime.Min(
+                            SameUntil(m_GivenTraversals, traversals), SameUntil(m_GivenParallel, parallel)),
+                        SameUntil(m_GivenInputs, Preferences.Inputs));
+                m_GivenChain = Revision;
+                m_GivenTraversals = traversals;
+                m_GivenParallel = parallel;
+                m_GivenInputs = Preferences.Inputs;
+                m_GivenSettings = settings;
+            }
             return new TimelineAssetPreviewTarget(last.Source, last.LocalEnd, last.Cycle, revision, Preferences,
-                last.End, m_Traversals.ToArray(), m_Parallel.ToArray(), Revision);
+                last.End, traversals, parallel, Revision, m_ChainBase, m_ChainBaseUntil);
+        }
+
+        static string PreviewSettings(TimelineAssetPreviewPreferences preferences)
+        {
+            var builder = new System.Text.StringBuilder();
+            builder.Append(preferences.HasTarget).Append('|').Append(preferences.TargetPosition).Append('|')
+                .Append(preferences.TargetEuler);
+            foreach (TimelinePreviewConditionAssumption condition in preferences.Conditions)
+                builder.Append('|').Append(condition.Identity).Append('=').Append(condition.Satisfied);
+            return builder.ToString();
+        }
+
+        // 两组播放区间逐段相同到哪一刻：内容、起点、圈数与所属状态都相同的段只差终点时取较早终点。
+        static OrchestrationTime SameUntil(TimelineAssetPreviewTraversal[] before, TimelineAssetPreviewTraversal[] after)
+        {
+            int count = Math.Min(before.Length, after.Length);
+            for (int i = 0; i < count; i++)
+            {
+                TimelineAssetPreviewTraversal a = before[i];
+                TimelineAssetPreviewTraversal b = after[i];
+                if (a.Source != b.Source || !ReferenceEquals(a.Content, b.Content) || a.Start != b.Start ||
+                    a.LocalStart != b.LocalStart || a.Cycle != b.Cycle || a.Branch != b.Branch ||
+                    a.Playback != b.Playback || a.CallerPlayback != b.CallerPlayback ||
+                    a.State?.Location.DisplayPath != b.State?.Location.DisplayPath ||
+                    a.Transition?.Identity != b.Transition?.Identity ||
+                    a.Call?.OperationIndex != b.Call?.OperationIndex)
+                    return OrchestrationTime.Min(a.Start, b.Start);
+                if (a.End != b.End || a.PlaybackCompleted != b.PlaybackCompleted)
+                    return OrchestrationTime.Min(a.End, b.End);
+            }
+            if (before.Length > count)
+                return before[count].Start;
+            return after.Length > count ? after[count].Start : OrchestrationTime.MaxValue;
+        }
+
+        static OrchestrationTime SameUntil(List<TimelinePreviewInputPoint> before, List<TimelinePreviewInputPoint> after)
+        {
+            int count = Math.Min(before.Count, after.Count);
+            for (int i = 0; i < count; i++)
+            {
+                TimelinePreviewInputPoint a = before[i];
+                TimelinePreviewInputPoint b = after[i];
+                if (a.InputId != b.InputId || a.Time != b.Time || a.Boolean != b.Boolean || a.Integer != b.Integer ||
+                    a.Scalar != b.Scalar || a.Vector2 != b.Vector2 || a.Vector3 != b.Vector3 ||
+                    a.Rotation != b.Rotation || a.Text != b.Text)
+                    return OrchestrationTime.FromSeconds(Math.Min(a.Time, b.Time));
+            }
+            if (before.Count > count)
+                return OrchestrationTime.FromSeconds(before[count].Time);
+            return after.Count > count ? OrchestrationTime.FromSeconds(after[count].Time) : OrchestrationTime.MaxValue;
         }
 
         PreparedTimeline Prepare(TimelineAsset source, bool discover = false)
