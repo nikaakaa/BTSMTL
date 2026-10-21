@@ -315,8 +315,6 @@ namespace BTSMTL.Orchestration
                 {
                     Array.Clear(m_StopVisits, 0, m_StopVisits.Length);
                     VisitOrdinaryStop(root);
-                    for (int operation = 0; operation < StopVisits.Length; operation++)
-                        StopVisits[operation] = Math.Max(StopVisits[operation], m_StopVisits[operation]);
                 }
                 AnalyzeValues(-1);
                 for (int state = 0; state < m_Program.OperationCount; state++)
@@ -579,6 +577,7 @@ namespace BTSMTL.Orchestration
                 if (m_ActiveStops[operationIndex])
                     throw new InvalidOperationException($"Tick stop capacity cannot be proven finite: ordinary-stop control cycle reaches operation '{m_Program.ColdOperation(operationIndex).IdentityId}'.");
                 m_StopVisits[operationIndex] = checked(m_StopVisits[operationIndex] + 1);
+                StopVisits[operationIndex] = Math.Max(StopVisits[operationIndex], m_StopVisits[operationIndex]);
                 if (!operation.IsRunnable)
                     return;
                 m_ActiveStops[operationIndex] = true;
