@@ -167,8 +167,11 @@ namespace BTSMTL.Compilation.Analysis
         // 入口无条件执行的状态提供操作给出的状态键。
         public IReadOnlyList<string> ProvidedStateKeys => m_Provided;
         public IReadOnlyList<OrchestrationStaticRead> Reads => m_Reads;
+        // 入口无条件执行、在 Clip 起点写入黑板的数值常量（变量声明身份，秒数）。
+        public IReadOnlyList<(string Variable, double Value)> StartWrites => m_StartWrites;
         internal readonly List<string> m_Provided = new();
         internal readonly List<OrchestrationStaticRead> m_Reads = new();
+        internal readonly List<(string Variable, double Value)> m_StartWrites = new();
     }
 
     public sealed class OrchestrationStaticTimeline
@@ -292,6 +295,8 @@ namespace BTSMTL.Compilation.Analysis
         public bool HasStaticTimelineClock { get; internal set; }
         public bool HasStaticTimelineStartTime { get; internal set; }
         public OrchestrationTime TimelineStartTime { get; internal set; }
+        // 起播时刻直接读一个黑板变量时为该变量的声明身份；推导按路线上的写入与声明默认值取它。
+        public string TimelineStartVariable { get; internal set; } = string.Empty;
         public IReadOnlyList<OrchestrationStaticTransition> Transitions => m_Transitions;
         // Root 中与 Timeline 同时运行的状态机：随本状态进入启动，本状态退出时一起结束。
         public IReadOnlyList<int> ConcurrentMachineOperations => m_ConcurrentMachines;
@@ -305,8 +310,10 @@ namespace BTSMTL.Compilation.Analysis
             IReadOnlyList<SemanticLiteral> literals, IReadOnlyList<ProgramControlFlowEdge> controlFlow,
             IReadOnlyList<ProgramSourceMapEntry> sourceMap, Func<string, TimelineContentUnit> resolveTimeline,
             IReadOnlyList<IOrchestrationStateKeyDeclarations> declarations, IReadOnlyList<ProgramReference> references,
-            IReadOnlyList<SemanticConstantInputBinding> constantInputs, OrchestrationIdentityTable identities)
+            IReadOnlyList<SemanticConstantInputBinding> constantInputs, OrchestrationIdentityTable identities,
+            IReadOnlyDictionary<string, double> numberDefaults)
         {
+            NumberDefaults = numberDefaults ?? throw new ArgumentNullException(nameof(numberDefaults));
             Operations = operations;
             Literals = literals;
             ControlFlow = controlFlow;
@@ -327,6 +334,8 @@ namespace BTSMTL.Compilation.Analysis
         public IReadOnlyList<ProgramReference> References { get; }
         public IReadOnlyList<SemanticConstantInputBinding> ConstantInputs { get; }
         public OrchestrationIdentityTable Identities { get; }
+        // 数值黑板变量的声明默认值（声明身份 → 数值），作为每次激活开始时的取值。
+        public IReadOnlyDictionary<string, double> NumberDefaults { get; }
     }
 
     // 只读静态查询：只读取正式编译的语义程序与图结构，不执行任何图，不识别业务节点类型。
@@ -505,8 +514,14 @@ namespace BTSMTL.Compilation.Analysis
                 state.HasStaticTimelineClock = TimelineClock(timeline, out bool startKnown, out OrchestrationTime start);
                 state.HasStaticTimelineStartTime = startKnown;
                 state.TimelineStartTime = start;
+                if (!startKnown && Unwrap(Input(timeline, "m_StartTime")) is { Operation: >= 0 } source &&
+                    Operations[source.Operation].Code == OrchestrationOperationCode.BlackboardGet)
+                    state.TimelineStartVariable = Operations[source.Operation].Text0;
             }
         }
+
+        public bool TryNumberDefault(string variable, out double value) =>
+            m_Input.NumberDefaults.TryGetValue(variable, out value);
 
         // 播放速率为常量 1 且不暂停时返回 true；起播时刻为常量时给出它。
         bool TimelineClock(int timeline, out bool startKnown, out OrchestrationTime startTime)
@@ -647,7 +662,7 @@ namespace BTSMTL.Compilation.Analysis
                 if (clip.Muted || clip.Domain != TimelineExecutionDomain.Logic ||
                     hook is not (OrchestrationTimelineHook.Enable or OrchestrationTimelineHook.Root))
                     continue;
-                CollectUnconditionalProvides(entry, clip.m_Provided, new HashSet<int>(),
+                CollectUnconditionalProvides(entry, clip.m_Provided, clip.m_StartWrites, new HashSet<int>(),
                     hook == OrchestrationTimelineHook.Enable);
             }
         }
@@ -734,11 +749,15 @@ namespace BTSMTL.Compilation.Analysis
             return visited;
         }
 
-        bool CollectUnconditionalProvides(int index, List<string> provided, HashSet<int> visited, bool complete)
+        bool CollectUnconditionalProvides(int index, List<string> provided, List<(string, double)> writes,
+            HashSet<int> visited, bool complete)
         {
             if (!visited.Add(index))
                 return false;
             SemanticOperation operation = Operations[index];
+            if (operation.Code == OrchestrationOperationCode.BlackboardSet &&
+                TryLiteralSeconds(Input(index, "m_Value"), out double written))
+                writes.Add((operation.Text0, written));
             if (operation.Code == OrchestrationOperationCode.Extension)
             {
                 if (operation.Extension.Value.Kind == OrchestrationExtensionKind.Action)
@@ -771,7 +790,8 @@ namespace BTSMTL.Compilation.Analysis
                 if (edge.Kind != (operation.Code == OrchestrationOperationCode.SubGraph
                     ? ProgramControlFlowKind.Enter : ProgramControlFlowKind.Child))
                     continue;
-                bool succeeds = !edge.HasCondition && CollectUnconditionalProvides(edge.Target.Value, provided, visited, complete);
+                bool succeeds = !edge.HasCondition &&
+                    CollectUnconditionalProvides(edge.Target.Value, provided, writes, visited, complete);
                 allSucceed &= succeeds;
                 if (!parallel && !succeeds || parallel && operation.Integer0 == 2 ||
                     operation.Code is OrchestrationOperationCode.Selector or OrchestrationOperationCode.Loop)

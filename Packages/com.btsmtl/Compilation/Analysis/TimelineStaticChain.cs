@@ -157,6 +157,19 @@ namespace BTSMTL.Compilation.Analysis
         }
 
         // 只沿状态转移推导：出边按成立区间的最早时刻与正式比较器选择，无出边成立时播到终点并按"完成"转移继续。
+        // 起播时刻读黑板变量时取该变量此刻的值：路线上已写入的值优先，否则用声明默认值；都没有则仍需会话验证。
+        static void ResolveStart(OrchestrationStaticQuery query, OrchestrationStaticState state,
+            Dictionary<string, double> blackboard, ref OrchestrationTime local, ref bool known)
+        {
+            if (known || state == null || state.TimelineStartVariable.Length == 0)
+                return;
+            if (!blackboard.TryGetValue(state.TimelineStartVariable, out double seconds) &&
+                !query.TryNumberDefault(state.TimelineStartVariable, out seconds))
+                return;
+            local = OrchestrationTime.FromSeconds(seconds);
+            known = true;
+        }
+
         static TimelineStaticChain Build(OrchestrationStaticQuery query, OrchestrationStaticState entryState,
             OrchestrationTime start, OrchestrationTime previewEnd, ITimelineStaticReadIntervals inputs,
             HashSet<int> activeMachines)
@@ -174,6 +187,9 @@ namespace BTSMTL.Compilation.Analysis
             OrchestrationTime time = start;
             OrchestrationTime local = state.TimelineStartTime;
             bool startKnown = state.HasStaticTimelineStartTime;
+            // 本次激活的数值黑板：声明默认值打底，路线经过的 Clip 起点写入覆盖。
+            var blackboard = new Dictionary<string, double>(StringComparer.Ordinal);
+            ResolveStart(query, state, blackboard, ref local, ref startKnown);
             var visited = new HashSet<(int State, long Local, long Time)>();
             int cycle = 0;
             while (time < previewEnd)
@@ -207,11 +223,18 @@ namespace BTSMTL.Compilation.Analysis
                 bool playbackCompleted = completed && spanEnd == end && selected.Transition?.FromAnyState != true;
                 result.m_Spans.Add(new TimelineStaticChainSpan(state, time, spanEnd, local,
                     spanEndLocal, cycle, playbackCompleted));
+                foreach (OrchestrationStaticClip clip in timeline.Clips)
+                    if (clip.Start >= local && clip.Start < spanEndLocal)
+                        foreach ((string variable, double value) in clip.StartWrites)
+                            blackboard[variable] = value;
                 if (selected.Exists)
                 {
+                    OrchestrationStaticState target = selected.Transition.Target;
+                    OrchestrationTime targetLocal = target?.TimelineStartTime ?? OrchestrationTime.Zero;
+                    bool targetKnown = target?.HasStaticTimelineStartTime ?? true;
+                    ResolveStart(query, target, blackboard, ref targetLocal, ref targetKnown);
                     result.m_Markers.Add(new TimelineStaticChainMarker(state, selected.Transition,
-                        Providers(state, selected.Transition, spanEndLocal), spanEnd, spanEndLocal,
-                        selected.Transition.Target?.TimelineStartTime ?? OrchestrationTime.Zero));
+                        Providers(state, selected.Transition, spanEndLocal), spanEnd, spanEndLocal, targetLocal));
                     time = spanEnd;
                     result.m_Now = time;
                     result.LeaveStay();
@@ -221,8 +244,8 @@ namespace BTSMTL.Compilation.Analysis
                     cycle = 0;
                     if (state == null)
                         return result.Stop(TimelineStaticChainStopReason.StateMachineExited, "已到达状态机出口。");
-                    local = state.TimelineStartTime;
-                    startKnown = state.HasStaticTimelineStartTime;
+                    local = targetLocal;
+                    startKnown = targetKnown;
                     continue;
                 }
                 time = end;
