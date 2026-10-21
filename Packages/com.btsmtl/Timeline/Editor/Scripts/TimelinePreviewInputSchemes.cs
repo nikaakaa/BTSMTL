@@ -109,6 +109,7 @@ namespace BTSMTL.Timeline.Editor
             if (Current.InputTimeline)
             {
                 copy.InputTimeline = UnityEngine.Object.Instantiate(Current.InputTimeline);
+                copy.InputTimeline.Data.RegenerateAuthoringIdentities();
                 copy.InputTimeline.name = name + " 输入";
                 AssetDatabase.AddObjectToAsset(copy.InputTimeline, m_Asset);
             }
@@ -124,8 +125,13 @@ namespace BTSMTL.Timeline.Editor
             MarkChanged();
             TimelineAssetPreviewPreferences current = Current;
             if (current.InputTimeline)
+            {
+                if (current.InputTimeline.Data.EnsureAuthoringIdentities())
+                    EditorUtility.SetDirty(current.InputTimeline);
                 return current.InputTimeline;
+            }
             var timeline = ScriptableObject.CreateInstance<TimelineAsset>();
+            timeline.Data.EnsureAuthoringIdentities();
             timeline.name = current.Name + " 输入";
             AssetDatabase.AddObjectToAsset(timeline, m_Asset);
             current.InputTimeline = timeline;

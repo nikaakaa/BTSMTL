@@ -94,7 +94,7 @@ namespace BTSMTL.Timeline.Editor
         void DrawSelectedInspector(TimelineAsset asset, object selected)
         {
             if (selected is TimelineMarker marker && GUILayout.Button("Open Trigger Graph"))
-                TimelineWorkspaceModeBridge.Authoring.OpenGraph(marker.Graph);
+                TimelineWorkspaceModeBridge.AuthoringFor(asset.Data).OpenGraph(marker.Graph);
             using var disabled = new EditorGUI.DisabledScope(EditorApplication.isPlayingOrWillChangePlaymode ||
                 TimelineEditorWindow.FindOpen(asset)?.RuntimeObservationReadOnly == true);
             switch (selected)
@@ -270,7 +270,7 @@ namespace BTSMTL.Timeline.Editor
                 return;
             try
             {
-                asset.Data.ApplyModify(() => TimelineWorkspaceModeBridge.Authoring.MutateOwnedContent(
+                asset.Data.ApplyModify(() => TimelineWorkspaceModeBridge.AuthoringFor(asset.Data).MutateOwnedContent(
                     asset.Data, () => marker.Configure(time, graph, forceTriggerOnInitialSeek)), "Edit Timeline Marker");
                 m_SourceRevision = TimelineAuthoringFingerprint.Compute(asset.Data);
                 m_ConfigurationError = null;

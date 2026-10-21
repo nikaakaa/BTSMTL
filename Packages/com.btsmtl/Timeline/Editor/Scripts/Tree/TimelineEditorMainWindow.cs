@@ -42,6 +42,9 @@ namespace BTSMTL.Timeline.Editor
 
         public static Type PreviewConfigurationType => s_Controller.PreviewConfigurationType;
         public static ITimelineEditorAuthoringHost Authoring => s_Controller.Authoring;
+        // 具体 Timeline 的作者宿主：预览输入 Timeline 用输入宿主，其余用正式作者宿主。
+        public static ITimelineEditorAuthoringHost AuthoringFor(TimelineData timeline) =>
+            TimelinePreviewInputAuthoringHost.For(timeline, s_Controller.Authoring);
         public static UnityEngine.Object PreviewConfiguration
         {
             get => s_Controller.PreviewConfiguration;
@@ -453,8 +456,10 @@ namespace BTSMTL.Timeline.Editor
             if (timeline == null || !serializedOwner || string.IsNullOrEmpty(serializedPropertyPath))
                 throw new InvalidOperationException("TimelineEditorWindow requires a bound TimelineData owner/path.");
 
+            // 编辑当前方案的输入 Timeline 时预览保持打开，改输入即在 Scene 中看到结果。
             if ((TimelineAssetPreviewHost.Shared.IsOpen || TimelineAssetPreviewHost.Shared.IsOpeningSession) &&
-                !TimelineAssetPreviewHost.Shared.Covers(serializedOwner as TimelineAsset))
+                !TimelineAssetPreviewHost.Shared.Covers(serializedOwner as TimelineAsset) &&
+                !TimelineAssetPreviewHost.Shared.IsInputTimeline(serializedOwner as TimelineAsset))
                 TimelineAssetPreviewHost.Shared.Close();
 
             DisposeView();
@@ -590,6 +595,11 @@ namespace BTSMTL.Timeline.Editor
             }
             if (clip is TreeClip assetClip && assetClip.AssetTree)
             {
+                if (TimelinePreviewInputAuthoringHost.Owns(m_Timeline))
+                {
+                    TimelineWorkspaceModeBridge.AuthoringFor(m_Timeline).OpenGraph(assetClip.AssetTree);
+                    return;
+                }
                 if (OpenAssetTree(assetClip))
                 {
                     AssetTreeOpened?.Invoke(this, assetClip);
@@ -620,7 +630,7 @@ namespace BTSMTL.Timeline.Editor
         {
             Undo.undoRedoPerformed -= QueueStateQueryRefresh;
             if ((TimelineAssetPreviewHost.Shared.IsOpen || TimelineAssetPreviewHost.Shared.IsOpeningSession) &&
-                TimelineAssetPreviewHost.Shared.Covers(SourceAsset))
+                (TimelineAssetPreviewHost.Shared.Covers(SourceAsset) || TimelineAssetPreviewHost.Shared.IsInputTimeline(SourceAsset)))
                 TimelineAssetPreviewHost.Shared.Close();
             s_Windows.Remove(this);
             WindowClosed?.Invoke(this);

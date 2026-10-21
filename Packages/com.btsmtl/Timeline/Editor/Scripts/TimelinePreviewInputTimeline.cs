@@ -147,6 +147,63 @@ namespace BTSMTL.Timeline.Editor
         }
     }
 
+    // 输入 Timeline 的作者宿主：沿用原 Track／Clip／Marker 创建与编辑流程，只把节点图换成预览输入图；
+    // 输入 Timeline 不属于技能内容，提交改动不做技能资产回收。时间网格与源资源编辑交给原宿主。
+    public sealed class TimelinePreviewInputAuthoringHost : ITimelineEditorAuthoringHost
+    {
+        readonly ITimelineEditorAuthoringHost m_Base;
+
+        TimelinePreviewInputAuthoringHost(ITimelineEditorAuthoringHost baseHost) =>
+            m_Base = baseHost ?? throw new ArgumentNullException(nameof(baseHost));
+
+        // 输入 Timeline 是输入方案资产的子资产；按所在资产判断，不按名称。
+        public static bool Owns(TimelineData timeline) =>
+            timeline?.SerializedOwner is TimelineAsset asset &&
+            AssetDatabase.LoadMainAssetAtPath(AssetDatabase.GetAssetPath(asset)) is TimelinePreviewInputSchemes;
+
+        public static ITimelineEditorAuthoringHost For(TimelineData timeline, ITimelineEditorAuthoringHost baseHost) =>
+            Owns(timeline) ? new TimelinePreviewInputAuthoringHost(baseHost) : baseHost;
+
+        public TimelineContractCatalog Contracts => m_Base.Contracts;
+        public Type TreeGraphType => typeof(TimelinePreviewInputGraph);
+        public bool AllowsPresentationTreeClips => true;
+        public Type TimeGridSourceType => m_Base.TimeGridSourceType;
+        public int GetTimeGridTickRate(ScriptableObject source) => m_Base.GetTimeGridTickRate(source);
+
+        public ScriptableObject CreateGraph(UnityEngine.Object container, string graphName, bool isTrigger)
+        {
+            string path = AssetDatabase.GetAssetPath(container);
+            if (string.IsNullOrEmpty(path))
+                throw new InvalidOperationException("输入 Timeline 不在资产中，无法创建预览输入图。");
+            var graph = ScriptableObject.CreateInstance<TimelinePreviewInputGraph>();
+            graph.name = string.IsNullOrWhiteSpace(graphName) || graphName == "Timeline Tree" ? "预览输入" : graphName.Trim();
+            graph.AddNode(typeof(TimelinePreviewInputWriteNode), Vector2.zero);
+            graph.SelfSerialize();
+            AssetDatabase.AddObjectToAsset(graph, path);
+            Undo.RegisterCreatedObjectUndo(graph, "创建预览输入图");
+            EditorUtility.SetDirty(container);
+            AssetDatabase.SaveAssetIfDirty(container);
+            return graph;
+        }
+
+        public void OpenGraph(ScriptableObject source)
+        {
+            if (source is not TimelinePreviewInputGraph)
+                throw new InvalidOperationException("输入 Timeline 的 Clip 与 Marker 只能引用预览输入图。");
+            AssetDatabase.OpenAsset(source);
+        }
+
+        public void MutateOwnedContent(TimelineData timeline, Action mutation) => mutation();
+
+        public void ShowSourceCreation(ScriptableObject pipeline, Type sourceType, UnityEngine.Object source,
+            Func<UnityEngine.Object, string> attach) => m_Base.ShowSourceCreation(pipeline, sourceType, source, attach);
+
+        public void DrawSourceInspector(ScriptableObject pipeline, UnityEngine.Object source, float sourceTime) =>
+            m_Base.DrawSourceInspector(pipeline, source, sourceTime);
+
+        public void ReleaseSourceEditing() => m_Base.ReleaseSourceEditing();
+    }
+
     // 输入 Timeline 的唯一读法与写法：Clip 起点写值、终点写回零值，Marker 写值并保持；静音 Track 不参与。
     public static class TimelinePreviewInputTimeline
     {

@@ -7,6 +7,8 @@ namespace BTSMTL.Timeline.Editor
     {
         TimelineContractCatalog Contracts { get; }
         Type TreeGraphType { get; }
+        // 表现域 Tree Track 能否直接添加 Clip；不能时表现域点事件改用 Marker。
+        bool AllowsPresentationTreeClips { get; }
         Type TimeGridSourceType { get; }
         int GetTimeGridTickRate(ScriptableObject source);
         ScriptableObject CreateGraph(UnityEngine.Object container, string graphName, bool isTrigger);

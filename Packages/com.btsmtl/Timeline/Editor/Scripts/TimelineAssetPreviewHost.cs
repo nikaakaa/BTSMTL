@@ -367,6 +367,8 @@ namespace BTSMTL.Timeline.Editor
             }
         }
 
+        public bool IsInputTimeline(TimelineAsset timeline) => timeline && Preferences.InputTimeline == timeline;
+
         // 当前方案的输入 Timeline 读取错误；有错误时两档都不使用该输入 Timeline。
         public string InputError => string.Join("\n", Preferences.InputErrors);
 
