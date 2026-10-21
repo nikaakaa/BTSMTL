@@ -23,6 +23,16 @@ namespace BTSMTL.Timeline.Editor
     {
         internal const string MissingProviderReason = "当前项目尚未注册 Timeline 预览宿主。";
         public static TimelineAssetPreviewHost Shared { get; } = new();
+        static readonly Unity.Profiling.ProfilerMarker s_BuildChainMarker = new("TimelinePreview.BuildChain");
+        static readonly Unity.Profiling.ProfilerMarker s_PrepareContentMarker = new("TimelinePreview.PrepareContent");
+        static readonly Unity.Profiling.ProfilerMarker s_DiscoverContentMarker = new("TimelinePreview.Content.Discover");
+        static readonly Unity.Profiling.ProfilerMarker s_CreateDomainsMarker = new("TimelinePreview.Content.CreateDomains");
+        static readonly Unity.Profiling.ProfilerMarker s_PrepareBindingsMarker = new("TimelinePreview.Content.PrepareBindings");
+        static readonly Unity.Profiling.ProfilerMarker s_PrepareDomainsMarker = new("TimelinePreview.Content.PrepareDomains");
+        static readonly Unity.Profiling.ProfilerMarker s_ReleaseDomainsMarker = new("TimelinePreview.Content.ReleaseDomains");
+        static readonly Unity.Profiling.ProfilerMarker s_OpenSceneMarker = new("TimelinePreview.OpenScene");
+        static readonly Unity.Profiling.ProfilerMarker s_EnterStageMarker = new("TimelinePreview.EnterStage");
+        static readonly Unity.Profiling.ProfilerMarker s_CreateInstanceMarker = new("TimelinePreview.CreateInstance");
 
         ITimelineAssetPreviewProvider m_Provider;
         ITimelineAssetPreviewInstance m_Instance;
@@ -250,6 +260,7 @@ namespace BTSMTL.Timeline.Editor
 
         void OpenScene()
         {
+            using var measure = s_OpenSceneMarker.Auto();
             if (!m_Provider.Configuration)
             {
                 SetLifecycle(TimelinePreviewLifecycle.Failed, "没有选择预览场景，在右侧“场景”里选择", string.Empty);
@@ -260,8 +271,10 @@ namespace BTSMTL.Timeline.Editor
             m_Stage.ScenePath = m_Provider.ScenePath;
             try
             {
-                StageUtility.GoToStage(m_Stage, false);
-                m_Instance = m_Provider.CreateInstance(m_Stage.scene, m_Provider.Configuration);
+                using (s_EnterStageMarker.Auto())
+                    StageUtility.GoToStage(m_Stage, false);
+                using (s_CreateInstanceMarker.Auto())
+                    m_Instance = m_Provider.CreateInstance(m_Stage.scene, m_Provider.Configuration);
                 // 路线已按无 Scene 推导过时，内容要按实例重新准备。
                 m_ChainRequested = true;
                 SceneView.RepaintAll();
@@ -887,11 +900,14 @@ namespace BTSMTL.Timeline.Editor
 
         PreparedTimeline Prepare(TimelineAsset source, bool discover = false)
         {
+            using var measure = s_PrepareContentMarker.Auto();
             string fingerprint = TimelineAuthoringFingerprint.Compute(source.Data);
             m_Contents.TryGetValue(source, out PreparedTimeline previous);
             if (previous != null && !discover)
                 return previous;
-            TimelineContentDiscoveryResult discovery = TimelineContentDiscovery.Discover(source, m_Provider.Contracts);
+            TimelineContentDiscoveryResult discovery;
+            using (s_DiscoverContentMarker.Auto())
+                discovery = TimelineContentDiscovery.Discover(source, m_Provider.Contracts);
             if (!discovery.IsValid)
                 throw new InvalidOperationException(string.Join("\n", discovery.Errors));
             if (previous != null && previous.Content.Content.ContentHash == discovery.Content.ContentHash)
@@ -899,17 +915,25 @@ namespace BTSMTL.Timeline.Editor
                 previous.Fingerprint = fingerprint;
                 return previous;
             }
-            TimelineAssetPreviewContent domains = m_Instance.PrepareContent(source, discovery.Content);
+            TimelineAssetPreviewContent domains;
+            using (s_CreateDomainsMarker.Auto())
+                domains = m_Instance.PrepareContent(source, discovery.Content);
             TimelineRuntimePreparedContent prepared;
             try
             {
-                prepared = TimelineRuntimePreparation.PrepareContent(discovery.Content,
-                    m_Provider.NumericTarget, domains.Inputs,
-                    domains.Bindings, domains.Dependencies, discovery.Identities);
+                using (s_PrepareBindingsMarker.Auto())
+                    prepared = TimelineRuntimePreparation.PrepareContent(discovery.Content,
+                        m_Provider.NumericTarget, domains.Inputs,
+                        domains.Bindings, domains.Dependencies, discovery.Identities);
                 if (!prepared.IsReady)
                     throw new InvalidOperationException(string.Join("\n", prepared.Errors));
-                foreach (ITimelineDomainPreview domain in domains.Domains)
-                    domain.Prepare(prepared);
+                using (s_PrepareDomainsMarker.Auto())
+                    foreach (ITimelineDomainPreview domain in domains.Domains)
+                    {
+                        using var domainMeasure = new Unity.Profiling.ProfilerMarker(
+                            "TimelinePreview.Domain.Prepare." + domain.GetType().Name).Auto();
+                        domain.Prepare(prepared);
+                    }
             }
             catch
             {
@@ -919,6 +943,7 @@ namespace BTSMTL.Timeline.Editor
             }
             if (previous != null)
             {
+                using var releaseMeasure = s_ReleaseDomainsMarker.Auto();
                 foreach (ITimelineDomainPreview domain in previous.Domains.Domains)
                 {
                     domain.Stop();
@@ -948,6 +973,7 @@ namespace BTSMTL.Timeline.Editor
 
         void BuildChain()
         {
+            using var measure = s_BuildChainMarker.Auto();
             m_ChainRequested = false;
             if (!float.IsFinite(Preferences.RangeEnd) || Preferences.RangeEnd <= 0f)
                 throw new TimelineAssetPreviewInputUnavailableException("预览范围终点必须是大于零的有限秒数。");
