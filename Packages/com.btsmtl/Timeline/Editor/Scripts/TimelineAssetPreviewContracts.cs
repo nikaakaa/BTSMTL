@@ -38,11 +38,34 @@ namespace BTSMTL.Timeline.Editor
         public string Text = string.Empty;
     }
 
-    [Serializable]
-    public sealed class TimelinePreviewConditionAssumption
+    // 路线上没走成的出边与它所缺的条件；区间为源状态这次播放的预览全局时刻。
+    public sealed class TimelinePreviewConditionSuggestion
     {
-        public string Identity;
-        public bool Satisfied = true;
+        public TimelinePreviewConditionSuggestion(OrchestrationStaticState source, OrchestrationStaticTransition transition,
+            IReadOnlyList<OrchestrationStaticRead> missing, OrchestrationTime start, OrchestrationTime end)
+        {
+            Source = source;
+            Transition = transition;
+            Missing = missing;
+            Start = start;
+            End = end;
+        }
+
+        public OrchestrationStaticState Source { get; }
+        public OrchestrationStaticTransition Transition { get; }
+        public IReadOnlyList<OrchestrationStaticRead> Missing { get; }
+        public OrchestrationTime Start { get; }
+        public OrchestrationTime End { get; }
+    }
+
+    // 输入 Timeline 上"预览条件"的一次写入：条件按含义键，状态保持到同一条件的下一次写入。
+    public sealed class TimelinePreviewConditionPoint
+    {
+        public string Key;
+        public float Time;
+        public bool Satisfied;
+        // 回到默认值（其它运行数据成立，本链没有 Clip 提供的状态不成立），此时 Satisfied 不用。
+        public bool RestoreDefault;
     }
 
     public readonly struct TimelinePreviewInputRequest
@@ -70,7 +93,8 @@ namespace BTSMTL.Timeline.Editor
         [NonSerialized] public List<TimelinePreviewInputPoint> Inputs = new();
         // 输入 Timeline 的读取错误；有错误时 Inputs 为空。
         [NonSerialized] public List<string> InputErrors = new();
-        public List<TimelinePreviewConditionAssumption> Conditions = new();
+        // 由输入 Timeline 读出的条件写入，按时刻排序；只影响快速档推导。
+        [NonSerialized] public List<TimelinePreviewConditionPoint> ConditionPoints = new();
         public bool HasTarget;
         public Vector3 TargetPosition;
         public Vector3 TargetEuler;
@@ -380,10 +404,13 @@ namespace BTSMTL.Timeline.Editor
         IReadOnlyList<GraphHostInputDescriptor> DescribeInputs();
         IReadOnlyList<TimelinePreviewInputRequest> DescribeInputRequests();
         // 输入 Timeline 与普通 Timeline 用同一宿主作者入口；读法、写法与图的输入说明由宿主按其正式输入层提供。
-        // 读出按时刻排序的输入值变化与请求；有错误时逐条写明元素并返回空列表。
-        List<TimelinePreviewInputPoint> ReadInputTimeline(TimelineAsset timeline, List<string> errors);
+        // 读出按时刻排序的输入值变化与请求，以及"预览条件"的写入；有错误时逐条写明元素并返回空列表。
+        List<TimelinePreviewInputPoint> ReadInputTimeline(TimelineAsset timeline, List<TimelinePreviewConditionPoint> conditions,
+            List<string> errors);
         void ImportRecordedInputs(string path, TimelineAsset inputTimeline);
         bool TryDescribeInputGraph(ScriptableObject graph, out string name, out IReadOnlyList<string> inputIds);
+        // 在输入 Timeline 上生成一段条件 Clip：区间内该条件按 satisfied 取值，Clip 结束时回到默认值。
+        void AddConditionClip(TimelineAsset inputTimeline, string key, string label, bool satisfied, double start, double end);
         // 真实档：工具栏、会话游标与执行记录中 Timeline 的作者来源均由宿主提供；
         // 编辑时间轴上的时间拖动经宿主设置的 ITimelineTimeRangePreview 写回。
         TimelinePreviewRealControls CreateRealControls();

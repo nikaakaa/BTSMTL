@@ -156,7 +156,8 @@ namespace BTSMTL.Timeline.Editor
             m_InputsFingerprint = fingerprint;
             m_ReadScheme = current;
             current.InputErrors.Clear();
-            current.Inputs = provider.ReadInputTimeline(current.InputTimeline, current.InputErrors);
+            current.ConditionPoints = new List<TimelinePreviewConditionPoint>();
+            current.Inputs = provider.ReadInputTimeline(current.InputTimeline, current.ConditionPoints, current.InputErrors);
             return true;
         }
 

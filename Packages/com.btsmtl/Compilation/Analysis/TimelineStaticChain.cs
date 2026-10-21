@@ -18,10 +18,10 @@ namespace BTSMTL.Compilation.Analysis
 
     public interface ITimelineStaticReadIntervals
     {
-        // 区间采用预览全局时间，左闭右开；运行数据的默认成立由预览偏好提供者持有。
+        // 区间采用预览全局时间，左闭右开；运行数据的成立区间（含默认值）由预览提供者持有。
         // RuntimeData 收到原始读取：来源仍为 ClipState 表示当前 Timeline 没有 Clip 静态提供该状态。
         IReadOnlyList<TimelineStaticInterval> HostInput(string inputId);
-        bool RuntimeData(in OrchestrationStaticRead read);
+        IReadOnlyList<TimelineStaticInterval> RuntimeData(in OrchestrationStaticRead read);
     }
 
     public enum TimelineStaticChainStopReason : byte
@@ -483,8 +483,9 @@ namespace BTSMTL.Compilation.Analysis
                                 result.Add(new TimeRange(interval.Start.RawValue, interval.End.RawValue - 1));
                             break;
                         default:
-                            if (inputs.RuntimeData(in raw))
-                                return universe;
+                            foreach (TimelineStaticInterval interval in inputs.RuntimeData(in raw))
+                                result.Add(new TimeRange(interval.Start.RawValue,
+                                    interval.End == OrchestrationTime.MaxValue ? long.MaxValue : interval.End.RawValue - 1));
                             break;
                     }
                     Normalize(result);

@@ -112,9 +112,19 @@ namespace BTSMTL.Compilation.Analysis
         public static OrchestrationStaticCondition All(params OrchestrationStaticCondition[] children) => Combine(true, children);
         public static OrchestrationStaticCondition Any(params OrchestrationStaticCondition[] children) => Combine(false, children);
         public static OrchestrationStaticCondition Not(OrchestrationStaticCondition condition) => Negate(condition);
-        public static OrchestrationStaticCondition StateKey(int operationIndex, string key) =>
+        public static OrchestrationStaticCondition StateKey(int operationIndex, string key, string label) =>
             new(OrchestrationStaticConditionKind.Read, Array.Empty<OrchestrationStaticCondition>(),
-                new OrchestrationStaticRead(operationIndex, OrchestrationStaticReadSource.ClipState, key, false, key));
+                new OrchestrationStaticRead(operationIndex, OrchestrationStaticReadSource.ClipState, key, false, label));
+
+        // 宿主声明的谓词可直接由宿主输入推出：按输入方案中该输入的成立区间求值。
+        public static OrchestrationStaticCondition HostInput(int operationIndex, string inputId) =>
+            new(OrchestrationStaticConditionKind.Read, Array.Empty<OrchestrationStaticCondition>(),
+                new OrchestrationStaticRead(operationIndex, OrchestrationStaticReadSource.HostInput, inputId, false, inputId));
+
+        // 宿主声明了含义的运行数据：同一含义键在不同节点上是同一条件。
+        public static OrchestrationStaticCondition RuntimeData(int operationIndex, string key, string label) =>
+            new(OrchestrationStaticConditionKind.Read, Array.Empty<OrchestrationStaticCondition>(),
+                new OrchestrationStaticRead(operationIndex, OrchestrationStaticReadSource.RuntimeData, key, false, label));
 
         internal static OrchestrationStaticCondition Combine(bool all, params OrchestrationStaticCondition[] children) =>
             Combine(all, (IReadOnlyList<OrchestrationStaticCondition>)children);

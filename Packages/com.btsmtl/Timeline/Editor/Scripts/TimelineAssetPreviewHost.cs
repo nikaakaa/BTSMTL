@@ -49,7 +49,8 @@ namespace BTSMTL.Timeline.Editor
         readonly List<TimelineAssetPreviewTraversal> m_Parallel = new();
         readonly List<TimelinePreviewRouteSegment> m_Route = new();
         OrchestrationTime m_RouteEnd;
-        readonly List<OrchestrationStaticRead> m_Assumptions = new();
+        readonly List<OrchestrationStaticRead> m_Conditions = new();
+        readonly List<TimelinePreviewConditionSuggestion> m_Suggestions = new();
         TimelineOrchestrationQuery m_Query;
         TimelinePreviewRealRoute m_Real;
         long m_RealVersion = -1;
@@ -70,6 +71,7 @@ namespace BTSMTL.Timeline.Editor
         TimelineAssetPreviewTraversal[] m_GivenTraversals = Array.Empty<TimelineAssetPreviewTraversal>();
         TimelineAssetPreviewTraversal[] m_GivenParallel = Array.Empty<TimelineAssetPreviewTraversal>();
         List<TimelinePreviewInputPoint> m_GivenInputs;
+        List<TimelinePreviewConditionPoint> m_GivenConditions;
         string m_GivenSettings;
         long m_ChainBase = -1;
         OrchestrationTime m_ChainBaseUntil;
@@ -137,7 +139,19 @@ namespace BTSMTL.Timeline.Editor
         public IReadOnlyList<TimelinePreviewRouteSegment> Route => m_Route;
         public string DescribeState(OrchestrationStaticState state) =>
             state == null ? "出口" : m_Query == null ? state.Name : m_Query.DescribeState(state);
-        public IReadOnlyList<OrchestrationStaticRead> Assumptions => m_Assumptions;
+        // 路线经过的状态读到的运行数据条件，按含义键去重；取值来自输入 Timeline 上的"预览条件"，没写过取默认值。
+        public IReadOnlyList<OrchestrationStaticRead> Conditions => m_Conditions;
+        // 路线上没走成、且读到未全程成立条件的出边。
+        public IReadOnlyList<TimelinePreviewConditionSuggestion> ConditionSuggestions => m_Suggestions;
+
+        // 在输入 Timeline 上生成条件 Clip，经宿主的正式写法与 Undo；改动随后照常重新读取与推导。
+        public void AddConditionClip(OrchestrationStaticRead read, bool satisfied, OrchestrationTime start, OrchestrationTime end)
+        {
+            TimelineAsset inputs = InputSchemes.EnsureInputTimeline();
+            m_Provider.AddConditionClip(inputs, read.Key, read.Label, satisfied, start.AsSingle,
+                Math.Min(end.AsSingle, Preferences.RangeEnd));
+            InputSchemes.Save();
+        }
         public IReadOnlyList<TimelinePreviewInputRequest> InputRequests => m_Provider.DescribeInputRequests();
         public bool TryDescribeInputGraph(ScriptableObject graph, out string name, out IReadOnlyList<string> inputIds) =>
             m_Provider.TryDescribeInputGraph(graph, out name, out inputIds);
@@ -547,7 +561,8 @@ namespace BTSMTL.Timeline.Editor
             m_Traversals.Clear();
             m_Parallel.Clear();
             ClearRoute();
-            m_Assumptions.Clear();
+            m_Conditions.Clear();
+            m_Suggestions.Clear();
             Chain = null;
             SampledSource = null;
             SetLifecycle(TimelinePreviewLifecycle.Closed, string.Empty, string.Empty);
@@ -574,6 +589,7 @@ namespace BTSMTL.Timeline.Editor
             m_TargetStep = TargetStage.None;
             m_GivenChain = -1;
             m_GivenInputs = null;
+            m_GivenConditions = null;
             try
             {
                 if (m_Instance != null)
@@ -768,11 +784,13 @@ namespace BTSMTL.Timeline.Editor
                     ? OrchestrationTime.Zero
                     : OrchestrationTime.Min(OrchestrationTime.Min(
                             SameUntil(m_GivenTraversals, traversals), SameUntil(m_GivenParallel, parallel)),
-                        SameUntil(m_GivenInputs, Preferences.Inputs));
+                        OrchestrationTime.Min(SameUntil(m_GivenInputs, Preferences.Inputs),
+                            SameUntil(m_GivenConditions, Preferences.ConditionPoints)));
                 m_GivenChain = Revision;
                 m_GivenTraversals = traversals;
                 m_GivenParallel = parallel;
                 m_GivenInputs = Preferences.Inputs;
+                m_GivenConditions = Preferences.ConditionPoints;
                 m_GivenSettings = settings;
             }
             return new TimelineAssetPreviewTarget(last.Source, last.LocalEnd, last.Cycle, revision, Preferences,
@@ -784,9 +802,22 @@ namespace BTSMTL.Timeline.Editor
             var builder = new System.Text.StringBuilder();
             builder.Append(preferences.HasTarget).Append('|').Append(preferences.TargetPosition).Append('|')
                 .Append(preferences.TargetEuler);
-            foreach (TimelinePreviewConditionAssumption condition in preferences.Conditions)
-                builder.Append('|').Append(condition.Identity).Append('=').Append(condition.Satisfied);
             return builder.ToString();
+        }
+
+        static OrchestrationTime SameUntil(List<TimelinePreviewConditionPoint> before, List<TimelinePreviewConditionPoint> after)
+        {
+            int count = Math.Min(before.Count, after.Count);
+            for (int i = 0; i < count; i++)
+            {
+                TimelinePreviewConditionPoint a = before[i];
+                TimelinePreviewConditionPoint b = after[i];
+                if (a.Key != b.Key || a.Time != b.Time || a.Satisfied != b.Satisfied || a.RestoreDefault != b.RestoreDefault)
+                    return OrchestrationTime.FromSeconds(Math.Min(a.Time, b.Time));
+            }
+            if (before.Count > count)
+                return OrchestrationTime.FromSeconds(before[count].Time);
+            return after.Count > count ? OrchestrationTime.FromSeconds(after[count].Time) : OrchestrationTime.MaxValue;
         }
 
         // 两组播放区间逐段相同到哪一刻：内容、起点、圈数与所属状态都相同的段只差终点时取较早终点。
@@ -897,7 +928,8 @@ namespace BTSMTL.Timeline.Editor
                 throw new TimelineAssetPreviewInputUnavailableException("预览范围终点必须是大于零的有限秒数。");
             m_Traversals.Clear();
             m_Parallel.Clear();
-            m_Assumptions.Clear();
+            m_Conditions.Clear();
+            m_Suggestions.Clear();
             int playback = -1;
             int branch = 0;
             // 编排执行的容量覆盖整份程序，同一状态机里每个 Timeline 都要先准备。
@@ -924,14 +956,6 @@ namespace BTSMTL.Timeline.Editor
                     OrchestrationTime.FromSeconds(Preferences.RangeEnd), inputs);
                 AddChain(Chain, 0, m_Traversals, ref playback);
                 AddBranches(Chain, ref branch, ref playback);
-                foreach (OrchestrationStaticState state in m_Query.Query.States)
-                {
-                    foreach (OrchestrationStaticTransition transition in state.Transitions)
-                        CollectAssumptions(state.Timeline, transition.Reads);
-                    if (state.Timeline != null)
-                        foreach (OrchestrationStaticClip clip in state.Timeline.Clips)
-                            CollectAssumptions(state.Timeline, clip.Reads);
-                }
             }
             if (m_Query != null)
             {
@@ -940,6 +964,8 @@ namespace BTSMTL.Timeline.Editor
                     AddCalls(caller.ToArray(), new HashSet<string>(StringComparer.Ordinal), ref branch, ref playback);
             }
             RebuildFastRoute();
+            if (Chain != null)
+                CollectConditions(new TimelineAssetPreviewReadIntervals(Preferences, Inputs, InputRequests));
             Time = Mathf.Min(Time, Duration);
             m_SampleRequested = true;
             Revision++;
@@ -1080,14 +1106,68 @@ namespace BTSMTL.Timeline.Editor
             } while (global < limit);
         }
 
-        void CollectAssumptions(OrchestrationStaticTimeline timeline, IReadOnlyList<OrchestrationStaticRead> reads)
+        // 路线经过的状态出边读到的条件（按含义键去重），以及没走成的出边所缺条件：读到的运行数据在该状态播放区间内没有全程成立。
+        void CollectConditions(TimelineAssetPreviewReadIntervals inputs)
         {
-            foreach (OrchestrationStaticRead value in reads)
+            m_Conditions.Clear();
+            m_Suggestions.Clear();
+            var taken = new HashSet<OrchestrationStaticTransition>();
+            CollectTaken(Chain, taken);
+            var keys = new HashSet<string>(StringComparer.Ordinal);
+            var suggested = new HashSet<(OrchestrationStaticTransition, OrchestrationTime)>();
+            foreach (TimelinePreviewRouteSegment segment in m_Route)
             {
-                OrchestrationStaticReadSource source = timeline == null ? value.Source : OrchestrationStaticReads.EffectiveSource(timeline, in value);
-                if (source == OrchestrationStaticReadSource.RuntimeData && !m_Assumptions.Contains(value))
-                    m_Assumptions.Add(value);
+                OrchestrationStaticState state = segment.State;
+                if (state == null)
+                    continue;
+                // 只列决定走哪条转移的读取；Clip 内部读取（如 Motion Warp 目标）按默认值，不进条件菜单。
+                foreach (OrchestrationStaticTransition transition in state.Transitions)
+                {
+                    var missing = new List<OrchestrationStaticRead>();
+                    foreach (OrchestrationStaticRead read in transition.Reads)
+                        if (AddCondition(state.Timeline, in read, keys) &&
+                            !Covers(inputs.RuntimeData(in read), segment.Start, segment.End) &&
+                            !missing.Exists(value => value.Key == read.Key))
+                            missing.Add(read);
+                    if (missing.Count != 0 && !taken.Contains(transition) && suggested.Add((transition, segment.Start)))
+                        m_Suggestions.Add(new TimelinePreviewConditionSuggestion(state, transition, missing,
+                            segment.Start, segment.End));
+                }
             }
+        }
+
+        // 是条件（运行数据，含本链没有 Clip 提供的状态）时登记并返回 true。
+        bool AddCondition(OrchestrationStaticTimeline timeline, in OrchestrationStaticRead read, HashSet<string> keys)
+        {
+            OrchestrationStaticReadSource source = timeline == null ? read.Source : OrchestrationStaticReads.EffectiveSource(timeline, in read);
+            if (source != OrchestrationStaticReadSource.RuntimeData)
+                return false;
+            if (keys.Add(read.Key))
+                m_Conditions.Add(read);
+            return true;
+        }
+
+        static void CollectTaken(TimelineStaticChain chain, HashSet<OrchestrationStaticTransition> taken)
+        {
+            foreach (TimelineStaticChainMarker marker in chain.Markers)
+                taken.Add(marker.Transition);
+            foreach (TimelineStaticChainBranch branch in chain.Branches)
+                CollectTaken(branch.Chain, taken);
+        }
+
+        static bool Covers(IReadOnlyList<TimelineStaticInterval> intervals, OrchestrationTime start, OrchestrationTime end)
+        {
+            OrchestrationTime reached = start;
+            foreach (TimelineStaticInterval interval in intervals.OrderBy(value => value.Start))
+            {
+                if (interval.Start > reached)
+                    return false;
+                if (interval.End > reached)
+                    reached = interval.End;
+                if (reached >= end)
+                    return true;
+            }
+            return reached >= end;
         }
 
         // 真实档：执行记录变化时重建真实路线并与快速推导对比，游标跟随会话。

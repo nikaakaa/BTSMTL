@@ -33,7 +33,7 @@ namespace BTSMTL.Timeline.Editor
         Label m_PreviewTimeLabel;
         ToolbarButton m_SaveButton;
         ToolbarMenu m_SchemeMenu;
-        ToolbarMenu m_AssumptionMenu;
+        ToolbarMenu m_ConditionMenu;
         TimelinePreviewRealControls m_RealControls;
         bool m_ShowPreviewSettings;
         Vector2 m_PreviewInputsScroll;
@@ -44,7 +44,7 @@ namespace BTSMTL.Timeline.Editor
         TimelineAsset m_RouteInputs;
         readonly List<UnityEngine.Object> m_UnsavedAssets = new();
 
-        // 工具栏里的预览控制：档位（快速｜真实）、播放与时刻、真实档控制、方案、假设、Scene、保存与 ⚙。
+        // 工具栏里的预览控制：档位（快速｜真实）、播放与时刻、真实档控制、方案、条件、Scene、保存与 ⚙。
         VisualElement CreateAssetPreviewToolbar()
         {
             var preview = TimelineAssetPreviewHost.Shared;
@@ -71,8 +71,8 @@ namespace BTSMTL.Timeline.Editor
             }
             m_SchemeMenu = new ToolbarMenu { tooltip = "输入方案：与入口 Timeline 并列保存，可提交" };
             row.Add(m_SchemeMenu);
-            m_AssumptionMenu = new ToolbarMenu { text = "假设", tooltip = "其它运行数据的假设；切换后立即重新推导" };
-            row.Add(m_AssumptionMenu);
+            m_ConditionMenu = new ToolbarMenu { text = "条件", tooltip = "路线读到的运行数据条件：在输入轨上生成条件 Clip，或让没走成的转移可走" };
+            row.Add(m_ConditionMenu);
             m_SceneToggle = new ToolbarToggle { text = "Scene", tooltip = "在 Scene 窗口显示预览角色；关掉只释放预览场景，路线与推导保留" };
             m_SceneToggle.RegisterValueChangedCallback(change =>
             {
@@ -241,7 +241,7 @@ namespace BTSMTL.Timeline.Editor
             m_PreviewTimeLabel = null;
             m_SaveButton = null;
             m_SchemeMenu = null;
-            m_AssumptionMenu = null;
+            m_ConditionMenu = null;
             m_RealControls = null;
             m_AppliedAssetSample = 0;
             m_PreviewPathRevision = -1;
@@ -270,7 +270,7 @@ namespace BTSMTL.Timeline.Editor
                     return;
                 }
             }
-            if (active)
+            if (active && !m_RestorePreviewTime)
             {
                 m_PreviewTime = preview.Time;
                 if (!preview.IsReal)
@@ -654,7 +654,7 @@ namespace BTSMTL.Timeline.Editor
                 string edge = $"{preview.Query.DescribeState(marker.Source)} → " +
                     $"{(marker.Transition.Target == null ? "出口" : preview.Query.DescribeState(marker.Transition.Target))}，" +
                     $"第 {marker.Time.AsSingle:0.000} 秒";
-                string basis = preview.Assumptions.Count == 0 ? "按当前方案推导" : "按当前方案与假设菜单中的运行数据假设推导";
+                string basis = preview.Conditions.Count == 0 ? "按当前方案推导" : "按当前方案与输入轨上的预览条件推导";
                 if (pressed && RequiresInput(marker.Transition.Condition, point.InputId) &&
                     SoleValue(points, point, marker.Time.AsSingle))
                 {
@@ -743,14 +743,14 @@ namespace BTSMTL.Timeline.Editor
             return false;
         }
 
-        // 方案菜单：切换、另存、重命名、删除与从录制输入导入；假设菜单逐条切换并立即重新推导。
+        // 方案菜单：切换、另存、重命名、删除与从录制输入导入；条件菜单在输入轨上生成条件 Clip。
         void RefreshSchemeMenus(bool active)
         {
             var preview = TimelineAssetPreviewHost.Shared;
-            if (m_SchemeMenu == null || m_AssumptionMenu == null)
+            if (m_SchemeMenu == null || m_ConditionMenu == null)
                 return;
             m_SchemeMenu.SetEnabled(active);
-            m_AssumptionMenu.SetEnabled(active);
+            m_ConditionMenu.SetEnabled(active);
             if (!active || preview.Preferences == null)
             {
                 m_SchemeMenu.text = "输入方案";
@@ -796,33 +796,74 @@ namespace BTSMTL.Timeline.Editor
                 if (path.Length != 0)
                     preview.ImportInputs(path);
             });
-            DropdownMenu assumptions = m_AssumptionMenu.menu;
-            assumptions.MenuItems().Clear();
-            TimelineAssetPreviewPreferences preferences = preview.Preferences;
-            if (preview.Assumptions.Count == 0)
-                assumptions.AppendAction("本链没有需要假设的运行数据", null, DropdownMenuAction.Status.Disabled);
-            foreach (OrchestrationStaticRead read in preview.Assumptions)
+            RefreshConditionMenu(preview);
+        }
+
+        // 条件菜单：路线上没走成的出边所缺条件一键生成；路线读到的每个条件可在游标所在状态的播放区间生成成立或不成立的 Clip。
+        void RefreshConditionMenu(TimelineAssetPreviewHost preview)
+        {
+            DropdownMenu menu = m_ConditionMenu.menu;
+            menu.MenuItems().Clear();
+            if (preview.IsReal)
             {
-                string identity = TimelineAssetPreviewReadIntervals.ConditionIdentity(in read);
-                TimelinePreviewConditionAssumption assumption = preferences.Conditions.Find(value => value.Identity == identity);
-                bool satisfied = assumption == null ? TimelineAssetPreviewReadIntervals.DefaultSatisfied(in read) : assumption.Satisfied;
-                string note = read.Source == OrchestrationStaticReadSource.ClipState ? " · 本链没有 Clip 提供，默认不成立"
-                    : read.Undeterminable ? " · 无法静态判断" : string.Empty;
-                OrchestrationStaticRead captured = read;
-                assumptions.AppendAction((read.Label + note).Replace('/', '／'), _ =>
+                menu.AppendAction("真实档用会话的真实数据，条件只影响快速档", null, DropdownMenuAction.Status.Disabled);
+                return;
+            }
+            foreach (TimelinePreviewConditionSuggestion suggestion in preview.ConditionSuggestions)
+            {
+                string missing = string.Join("、", suggestion.Missing.Select(read => read.Label));
+                string target = suggestion.Transition.Target == null ? "出口" : preview.DescribeState(suggestion.Transition.Target);
+                TimelinePreviewConditionSuggestion captured = suggestion;
+                menu.AppendAction(MenuText($"让没走成的转移可走/{preview.DescribeState(suggestion.Source)} → {target}：缺 {missing}，" +
+                    $"在 {suggestion.Start.AsSingle:0.00}–{suggestion.End.AsSingle:0.00} 秒让它成立"), _ =>
                 {
-                    TimelinePreviewConditionAssumption value = preferences.Conditions.Find(item => item.Identity == identity);
-                    if (value == null)
-                    {
-                        value = new TimelinePreviewConditionAssumption
-                            { Identity = identity, Satisfied = TimelineAssetPreviewReadIntervals.DefaultSatisfied(in captured) };
-                        preferences.Conditions.Add(value);
-                    }
-                    value.Satisfied = !value.Satisfied;
-                    preview.PreferencesChanged();
-                }, satisfied ? DropdownMenuAction.Status.Checked : DropdownMenuAction.Status.Normal);
+                    foreach (OrchestrationStaticRead read in captured.Missing)
+                        preview.AddConditionClip(read, true, captured.Start, captured.End);
+                });
+            }
+            if (preview.Conditions.Count == 0)
+            {
+                menu.AppendAction("路线没有读到运行数据条件", null, DropdownMenuAction.Status.Disabled);
+                return;
+            }
+            TimelinePreviewRouteSegment? at = null;
+            OrchestrationTime cursor = OrchestrationTime.FromSeconds(preview.Time);
+            foreach (TimelinePreviewRouteSegment segment in preview.Route)
+                if (segment.State != null && !segment.IsNested && segment.Contains(cursor))
+                    at = segment;
+            TimelineAssetPreviewReadIntervals values;
+            try
+            {
+                values = new TimelineAssetPreviewReadIntervals(preview.Preferences, preview.Inputs, preview.InputRequests);
+            }
+            catch (TimelineAssetPreviewInputUnavailableException)
+            {
+                values = null;
+            }
+            foreach (OrchestrationStaticRead read in preview.Conditions)
+            {
+                string current = string.Empty;
+                if (values != null)
+                {
+                    bool value = values.ValueAt(in read, cursor, out bool written);
+                    current = $"（游标处{(value ? "成立" : "不成立")}，{(written ? "来自输入轨" : "默认")}）";
+                }
+                string label = MenuText(read.Label + current);
+                if (at is not { } span)
+                {
+                    menu.AppendAction($"路线读到的条件/{label}/游标不在任何状态的播放内", null, DropdownMenuAction.Status.Disabled);
+                    continue;
+                }
+                OrchestrationStaticRead captured = read;
+                string range = $"{span.Start.AsSingle:0.00}–{span.End.AsSingle:0.00} 秒";
+                menu.AppendAction($"路线读到的条件/{label}/在 {range} 设为成立",
+                    _ => preview.AddConditionClip(captured, true, span.Start, span.End));
+                menu.AppendAction($"路线读到的条件/{label}/在 {range} 设为不成立",
+                    _ => preview.AddConditionClip(captured, false, span.Start, span.End));
             }
         }
+
+        static string MenuText(string value) => value.Replace('/', '／');
 
         void AskSchemeName(string initial, Action<string> apply)
         {
