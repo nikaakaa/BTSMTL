@@ -19,6 +19,7 @@ namespace BTSMTL.Timeline.Editor
         GUIContent m_StateContextIssues = GUIContent.none;
         ITimelineOrchestrationAuthoringHost m_OrchestrationHost;
         bool m_StateContextRefreshQueued;
+        bool m_OpenPreviewAfterContext;
         string m_StateQueryReason = string.Empty;
 
         VisualElement CreateStateContextControl()
@@ -66,14 +67,22 @@ namespace BTSMTL.Timeline.Editor
             m_StateQueryReason = string.Empty;
             if (m_Timeline == null)
                 return;
-            if (TimelineWorkspaceModeBridge.Authoring is ITimelineOrchestrationAuthoringHost host &&
-                host.TryGetOrchestrationQueries(m_Timeline, out IReadOnlyList<TimelineOrchestrationQuery> queries,
-                    out m_StateQueryReason))
+            if (TimelinePreviewInputAuthoringHost.Owns(m_Timeline))
             {
-                m_TimelineQueries.AddRange(queries);
-                foreach (TimelineOrchestrationQuery query in queries)
-                    foreach (int machine in query.Query.RootMachineOperations)
-                        m_StateContexts.Add((query, machine));
+                m_StateQueryReason = "这是预览输入 Timeline，预览起点沿用进入前所选的技能根。";
+                m_StateContextControl?.MarkDirtyRepaint();
+                return;
+            }
+            if (TimelineWorkspaceModeBridge.Authoring is ITimelineOrchestrationAuthoringHost host)
+            {
+                if (host.TryGetOrchestrationQueries(m_Timeline, out IReadOnlyList<TimelineOrchestrationQuery> queries,
+                        out _))
+                    m_TimelineQueries.AddRange(queries);
+                // 引用本 Timeline 的技能排在前面；其余技能选中后转到其根状态机的起始 Timeline。
+                if (host.TryGetAllOrchestrationQueries(out IReadOnlyList<TimelineOrchestrationQuery> all, out m_StateQueryReason))
+                    foreach (TimelineOrchestrationQuery query in m_TimelineQueries.Concat(all.Except(m_TimelineQueries)))
+                        foreach (int machine in query.Query.RootMachineOperations)
+                            m_StateContexts.Add((query, machine));
             }
             if (m_NestedContextRequest is { } requested)
             {
@@ -84,10 +93,45 @@ namespace BTSMTL.Timeline.Editor
                 m_StateContextIndex = 0;
             m_StateContextLabels = m_StateContexts.Select(context =>
                 context.Query.Label + " / 技能根" + (m_StateContexts.Count(other => other.Query == context.Query) > 1
-                    ? $" #{context.Machine}" : string.Empty)).ToArray();
+                    ? $" #{context.Machine}" : string.Empty) +
+                (m_TimelineQueries.Contains(context.Query) ? string.Empty : " ↗")).ToArray();
             ApplyStateContext();
             RefreshNestedViews();
             m_StateContextControl?.MarkDirtyRepaint();
+            if (m_OpenPreviewAfterContext)
+            {
+                m_OpenPreviewAfterContext = false;
+                OpenTimelinePreview();
+            }
+        }
+
+        // 选中的技能不引用当前 Timeline 时转到其根状态机起始状态的 Timeline；预览开着就在新起点重新打开。
+        void SelectStateContext(int index)
+        {
+            m_StateContextIndex = index;
+            var context = m_StateContexts[index];
+            TimelineAsset entry = m_TimelineQueries.Contains(context.Query) ? null : EntryTimeline(context.Query, context.Machine);
+            if (!entry || entry == SourceAsset)
+            {
+                ApplyStateContext();
+                RefreshNestedViews();
+                return;
+            }
+            m_OpenPreviewAfterContext = TimelineAssetPreviewHost.Shared.IsOpen;
+            m_NestedContextRequest = context.Query.Owner;
+            ClearNavigation();
+            BindAsset(entry, string.Empty, string.Empty);
+            EditorApplication.delayCall -= RefreshStateQueries;
+            RefreshStateQueries();
+        }
+
+        static TimelineAsset EntryTimeline(TimelineOrchestrationQuery query, int machine)
+        {
+            // 起始转移已按求值顺序排列，取第一个带 Timeline 的起始状态。
+            foreach (OrchestrationStaticTransition transition in query.Query.InitialTransitions(machine))
+                if (transition.Target != null && transition.Target.TimelineIdentity.Length != 0)
+                    return query.ResolveTimeline(transition.Target.TimelineIdentity);
+            return null;
         }
 
         void ApplyStateContext()
@@ -110,7 +154,8 @@ namespace BTSMTL.Timeline.Editor
             Rect rect = m_StateContextControl.contentRect;
             if (m_StateContexts.Count == 0)
             {
-                EditorGUI.LabelField(rect, new GUIContent(m_StateQueryReason.Length == 0 ? "无技能上下文" : "无技能上下文 ⓘ",
+                string label = m_Timeline != null && TimelinePreviewInputAuthoringHost.Owns(m_Timeline) ? "预览输入" : "无技能上下文";
+                EditorGUI.LabelField(rect, new GUIContent(m_StateQueryReason.Length == 0 ? label : label + " ⓘ",
                     m_StateQueryReason.Length == 0 ? "当前 Timeline 不属于任何技能；仍可独立预览资产。" : m_StateQueryReason),
                     EditorStyles.miniLabel);
                 return;
@@ -119,11 +164,7 @@ namespace BTSMTL.Timeline.Editor
             Rect popupRect = new Rect(rect.x, rect.y + 1f, rect.width - issuesWidth, 18f);
             int selected = EditorGUI.Popup(popupRect, m_StateContextIndex, m_StateContextLabels, EditorStyles.toolbarPopup);
             if (selected != m_StateContextIndex)
-            {
-                m_StateContextIndex = selected;
-                ApplyStateContext();
-                RefreshNestedViews();
-            }
+                SelectStateContext(selected);
             if (issuesWidth > 0f)
                 EditorGUI.LabelField(new Rect(popupRect.xMax + 4f, rect.y, issuesWidth - 4f, rect.height),
                     m_StateContextIssues, EditorStyles.miniLabel);

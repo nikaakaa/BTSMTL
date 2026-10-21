@@ -9,6 +9,8 @@ namespace BTSMTL.Timeline.Editor
         event Action OrchestrationQueriesChanged;
         bool TryGetOrchestrationQueries(TimelineData timeline,
             out IReadOnlyList<TimelineOrchestrationQuery> queries, out string reason);
+        // 所选配置下的全部技能：预览起点可从任一技能根开始，不限于引用当前 Timeline 的技能。
+        bool TryGetAllOrchestrationQueries(out IReadOnlyList<TimelineOrchestrationQuery> queries, out string reason);
     }
 
     public sealed class TimelineOrchestrationQuery
