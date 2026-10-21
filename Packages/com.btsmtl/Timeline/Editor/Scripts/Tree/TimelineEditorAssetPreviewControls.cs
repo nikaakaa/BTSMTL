@@ -19,7 +19,7 @@ namespace BTSMTL.Timeline.Editor
         ObjectField m_AssetPreviewConfiguration;
         IMGUIContainer m_AssetPreviewInputs;
         VisualElement m_AssetPreviewSettings;
-        ToolbarToggle m_PreviewOpen;
+        PopupField<string> m_PreviewChoice;
         ToolbarToggle m_PreviewSettingsToggle;
         ToolbarButton m_FastPlayback;
         ToolbarMenu m_PlaybackMenu;
@@ -36,8 +36,8 @@ namespace BTSMTL.Timeline.Editor
         TimelineAsset m_ObservedPreviewSource;
         readonly List<int> m_PreviewInputs = new();
 
-        // 唯一的预览工具栏：档位、开关、入口状态、方案与假设、播放组（快速档本地播放或真实档宿主控制）与 ⚙；
-        // 其下一行状态，⚙ 展开预览配置、真实档设置与输入点取值。
+        // 唯一的预览工具栏只有四样：预览（关／快速／真实）、入口状态、播放与 ⚙；其下一行状态。
+        // 方案、假设、预览配置、真实档的单步与动作设置和输入点取值都在 ⚙ 面板。
         VisualElement CreateAssetPreviewControls()
         {
             var preview = TimelineAssetPreviewHost.Shared;
@@ -47,39 +47,26 @@ namespace BTSMTL.Timeline.Editor
             toolbar.style.height = StyleKeyword.Auto;
             toolbar.style.minHeight = 22f;
             toolbar.style.alignItems = Align.Center;
-            var mode = new PopupField<string>(new List<string> { "快速", "真实" }, (int)m_PreviewMode);
-            mode.RegisterValueChangedCallback(change =>
+            m_PreviewChoice = new PopupField<string>(new List<string> { "预览：关", "预览：快速", "预览：真实" }, 0)
             {
-                m_PreviewMode = (TimelinePreviewMode)mode.index;
-                if (SourceAsset && preview.IsOpen)
-                    OpenTimelinePreview();
-                RefreshAssetPreviewControls();
-            });
-            mode.tooltip = "快速：按静态推导即时显示；真实：以同一输入方案经正式会话重演，并与快速结果对比。";
-            mode.style.width = 64f;
-            mode.style.height = 20f;
-            mode.style.alignSelf = Align.Center;
-            toolbar.Add(mode);
-            m_PreviewOpen = new ToolbarToggle { text = "预览", tooltip = "打开或关闭当前档位的预览" };
-            m_PreviewOpen.RegisterValueChangedCallback(change =>
-            {
-                if (change.newValue)
-                    OpenTimelinePreview();
-                else
-                    preview.Close();
-                RefreshAssetPreviewControls();
-            });
-            toolbar.Add(m_PreviewOpen);
-            toolbar.Add(CreateStateContextControl());
-            m_SchemeMenu = new ToolbarMenu { tooltip = "输入方案：与本 Timeline 并列保存，可提交" };
-            toolbar.Add(m_SchemeMenu);
-            m_AssumptionMenu = new ToolbarMenu
-            {
-                text = "假设",
-                tooltip = "其它运行数据的假设；切换后立即重新推导"
+                tooltip = "快速：按静态推导即时显示；真实：以同一输入方案经正式会话重演，并与快速结果对比。"
             };
-            toolbar.Add(m_AssumptionMenu);
-            toolbar.Add(new ToolbarSpacer());
+            m_PreviewChoice.RegisterValueChangedCallback(change =>
+            {
+                if (m_PreviewChoice.index == 0)
+                    preview.Close();
+                else
+                {
+                    m_PreviewMode = (TimelinePreviewMode)(m_PreviewChoice.index - 1);
+                    OpenTimelinePreview();
+                }
+                RefreshAssetPreviewControls();
+            });
+            m_PreviewChoice.style.width = 96f;
+            m_PreviewChoice.style.height = 20f;
+            m_PreviewChoice.style.alignSelf = Align.Center;
+            toolbar.Add(m_PreviewChoice);
+            toolbar.Add(CreateStateContextControl());
             m_FastPlayback = new ToolbarButton(() => preview.SetPlaying(!preview.IsPlaying));
             toolbar.Add(m_FastPlayback);
             m_RealControls = preview.CreateRealControls();
@@ -90,7 +77,7 @@ namespace BTSMTL.Timeline.Editor
                 toolbar.Add(m_RealControls.Transport);
             }
             toolbar.Add(new VisualElement { style = { flexGrow = 1f } });
-            m_PreviewSettingsToggle = new ToolbarToggle { text = "⚙", tooltip = "预览设置：预览配置、真实档场景与动作、输入点取值" };
+            m_PreviewSettingsToggle = new ToolbarToggle { text = "⚙", tooltip = "预览设置：输入方案、假设、预览配置、真实档单步与动作、输入点取值" };
             m_PreviewSettingsToggle.SetValueWithoutNotify(m_ShowPreviewSettings);
             m_PreviewSettingsToggle.RegisterValueChangedCallback(change =>
             {
@@ -124,6 +111,16 @@ namespace BTSMTL.Timeline.Editor
             m_AssetPreviewSettings = new VisualElement();
             m_AssetPreviewSettings.style.paddingLeft = 4f;
             m_AssetPreviewSettings.style.paddingBottom = 4f;
+            var schemes = new Toolbar();
+            m_SchemeMenu = new ToolbarMenu { tooltip = "输入方案：与本 Timeline 并列保存，可提交" };
+            schemes.Add(m_SchemeMenu);
+            m_AssumptionMenu = new ToolbarMenu
+            {
+                text = "假设",
+                tooltip = "其它运行数据的假设；切换后立即重新推导"
+            };
+            schemes.Add(m_AssumptionMenu);
+            m_AssetPreviewSettings.Add(schemes);
             m_AssetPreviewConfiguration = new ObjectField("预览配置")
             {
                 objectType = preview.ConfigurationType,
@@ -159,7 +156,7 @@ namespace BTSMTL.Timeline.Editor
             m_AssetPreviewConfiguration = null;
             m_AssetPreviewInputs = null;
             m_AssetPreviewSettings = null;
-            m_PreviewOpen = null;
+            m_PreviewChoice = null;
             m_PreviewSettingsToggle = null;
             m_FastPlayback = null;
             m_SchemeMenu = null;
@@ -201,7 +198,11 @@ namespace BTSMTL.Timeline.Editor
                 m_AssetPreviewConfiguration.SetValueWithoutNotify(preview.Configuration);
                 m_AssetPreviewConfiguration.SetEnabled(preview.IsRegistered);
             }
-            m_PreviewOpen?.SetValueWithoutNotify(active || preview.IsOpeningSession);
+            if (m_PreviewChoice != null)
+            {
+                bool open = active || preview.IsOpeningSession;
+                m_PreviewChoice.SetValueWithoutNotify(m_PreviewChoice.choices[open ? (int)m_PreviewMode + 1 : 0]);
+            }
             if (m_FastPlayback != null)
             {
                 SetDisplayed(m_FastPlayback, !real);
