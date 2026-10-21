@@ -262,6 +262,7 @@ namespace BTSMTL.Orchestration
         {
             readonly OrchestrationProgram<TValue> m_Program;
             readonly ReadOnlyMemory<OrchestrationExtensionReference> m_Extensions;
+            readonly int[] m_States;
             readonly bool[] m_ActiveStops;
             readonly long[] m_StopVisits;
             readonly int m_ProgramIndex;
@@ -284,6 +285,11 @@ namespace BTSMTL.Orchestration
                 m_StopVisits = new long[program.OperationCount];
                 m_ProgramIndex = programIndex;
                 m_Timelines = timelines;
+                var states = new List<int>();
+                for (int operation = 0; operation < program.OperationCount; operation++)
+                    if (program.Operation(operation).Code == OrchestrationOperationCode.State)
+                        states.Add(operation);
+                m_States = states.ToArray();
                 m_BoundedVisits = new[] { new long[program.OperationCount], new long[program.OperationCount] };
                 m_ActiveVisits = new[] { new bool[program.OperationCount], new bool[program.OperationCount] };
                 m_ValueVisits = new long[program.ValueEvaluationSlotCount];
@@ -317,22 +323,44 @@ namespace BTSMTL.Orchestration
                     VisitOrdinaryStop(root);
                 }
                 AnalyzeValues(-1);
-                for (int state = 0; state < m_Program.OperationCount; state++)
-                    if (m_Program.Operation(state).Code == OrchestrationOperationCode.State)
-                        AnalyzeValues(state);
-                for (int target = 0; includeStops && target < m_Program.OperationCount; target++)
-                    if (m_Program.Operation(target).Code == OrchestrationOperationCode.Timeline ||
-                        m_Program.Operation(target).Code == OrchestrationOperationCode.EmitOutput ||
-                        m_Program.Operation(target).Code == OrchestrationOperationCode.Extension &&
-                        m_Extensions.Span[m_Program.Payload<OrchestrationExtensionPayload>(target).BindingIndex].Kind == OrchestrationExtensionKind.Action)
-                    {
-                        m_CountTarget = target;
-                        Array.Clear(m_BoundedVisits[0], 0, m_BoundedVisits[0].Length);
-                        Array.Clear(m_BoundedVisits[1], 0, m_BoundedVisits[1].Length);
-                        for (int root = 0; root < m_Program.OperationCount; root++)
-                            ExecuteVisits[target] = Math.Max(ExecuteVisits[target],
-                                checked(BoundedVisits(root, false) + BoundedVisits(root, true)));
-                    }
+                foreach (int state in m_States)
+                    AnalyzeValues(state);
+                if (includeStops)
+                    AnalyzeExecuteVisits();
+            }
+
+            void AnalyzeExecuteVisits()
+            {
+                int operationCount = m_Program.OperationCount;
+                var outgoing = new bool[operationCount];
+                foreach (ref readonly OrchestrationFlowEdge edge in m_Program.Content.Edges.Span)
+                    outgoing[edge.SourceOperationIndex] = true;
+                var roots = new int[operationCount];
+                var targets = new int[operationCount];
+                int rootCount = 0;
+                int targetCount = 0;
+                for (int operation = 0; operation < operationCount; operation++)
+                {
+                    OrchestrationOperationCode code = m_Program.Operation(operation).Code;
+                    bool target = code == OrchestrationOperationCode.Timeline ||
+                        code == OrchestrationOperationCode.EmitOutput ||
+                        code == OrchestrationOperationCode.Extension &&
+                        m_Extensions.Span[m_Program.Payload<OrchestrationExtensionPayload>(operation).BindingIndex].Kind == OrchestrationExtensionKind.Action;
+                    if (target)
+                        targets[targetCount++] = operation;
+                    if (target || outgoing[operation] || code is OrchestrationOperationCode.State or OrchestrationOperationCode.StateMachine)
+                        roots[rootCount++] = operation;
+                }
+                for (int index = 0; index < targetCount; index++)
+                {
+                    int target = targets[index];
+                    m_CountTarget = target;
+                    Array.Clear(m_BoundedVisits[0], 0, m_BoundedVisits[0].Length);
+                    Array.Clear(m_BoundedVisits[1], 0, m_BoundedVisits[1].Length);
+                    for (int root = 0; root < rootCount; root++)
+                        ExecuteVisits[target] = Math.Max(ExecuteVisits[target],
+                            checked(BoundedVisits(roots[root], false) + BoundedVisits(roots[root], true)));
+                }
             }
 
             internal OrchestrationTraceCapacity AnalyzeTrace(bool enabled)
@@ -365,9 +393,8 @@ namespace BTSMTL.Orchestration
                     if (operation.Code != OrchestrationOperationCode.StateMachine || stop)
                         return 0;
                     int depth = 0;
-                    for (int state = 0; state < m_Program.OperationCount; state++)
-                        if (m_Program.Operation(state).Code == OrchestrationOperationCode.State &&
-                            m_Program.Payload<OrchestrationStatePayload>(state).MachineIndex == index)
+                    foreach (int state in m_States)
+                        if (m_Program.Payload<OrchestrationStatePayload>(state).MachineIndex == index)
                             depth = Math.Max(depth, StateDepth(state));
                     // 当前状态始终选择转移；AnyState 只在正式入口存在时参与。
                     return checked((m_Program.AnyStateEntry(index) >= 0 ? 2L : 1L) * depth);
@@ -483,10 +510,9 @@ namespace BTSMTL.Orchestration
             {
                 long maximum = 0;
                 int any = m_Program.AnyStateEntry(index);
-                for (int state = 0; state < m_Program.OperationCount; state++)
+                foreach (int state in m_States)
                 {
-                    if (m_Program.Operation(state).Code != OrchestrationOperationCode.State ||
-                        m_Program.Payload<OrchestrationStatePayload>(state).MachineIndex != index)
+                    if (m_Program.Payload<OrchestrationStatePayload>(state).MachineIndex != index)
                         continue;
                     long stopped = BoundedVisits(state, true);
                     if (stop)
@@ -583,9 +609,8 @@ namespace BTSMTL.Orchestration
                 m_ActiveStops[operationIndex] = true;
                 if (operation.Code == OrchestrationOperationCode.StateMachine)
                 {
-                    for (int state = 0; state < m_Program.OperationCount; state++)
-                        if (m_Program.Operation(state).Code == OrchestrationOperationCode.State &&
-                            m_Program.Payload<OrchestrationStatePayload>(state).MachineIndex == operationIndex)
+                    foreach (int state in m_States)
+                        if (m_Program.Payload<OrchestrationStatePayload>(state).MachineIndex == operationIndex)
                             VisitOrdinaryStop(state);
                 }
                 else if (operation.Code == OrchestrationOperationCode.State)
