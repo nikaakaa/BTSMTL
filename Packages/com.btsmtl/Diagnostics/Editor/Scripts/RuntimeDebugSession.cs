@@ -370,7 +370,7 @@ namespace BTSMTL.Diagnostics.Editor
                 lease.Channels = channels;
             }
 
-            if (CanControlLiveTarget && !lease.Handle.IsValid)
+            if ((CanControlLiveTarget || m_TimeReplay) && !lease.Handle.IsValid)
             {
                 lease.Handle = m_Target.Store.AcquireInterest(new RuntimeDiagnosticsInterest(RuntimeDiagnosticsInterestKind.LiveState, lease.Channels));
                 changed = true;
@@ -425,6 +425,7 @@ namespace BTSMTL.Diagnostics.Editor
             if (m_ReadRequest != 0) m_PendingSnapshot.CancelRead();
             m_ReadRequest = 0;
             m_TimeReplay = true;
+            RebindLiveInterests();
             SetHistoryNavigationEnabled(false);
         }
 
@@ -1004,7 +1005,7 @@ namespace BTSMTL.Diagnostics.Editor
 
         void RebindLiveInterests()
         {
-            if (!CanControlLiveTarget)
+            if (!CanControlLiveTarget && !m_TimeReplay)
                 return;
 
             foreach (LiveInterestLease lease in m_LiveInterests.Values)

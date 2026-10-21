@@ -136,10 +136,7 @@ namespace BTSMTL.Diagnostics.Editor
                 return m_Resolution;
             }
 
-            if (session.CanControlLiveTarget)
-                session.EnsureLiveInterest(this, channels);
-            else
-                session.ReleaseLiveInterest(this);
+            session.EnsureLiveInterest(this, channels);
 
             RuntimeDebugViewModel view = session.ViewModel;
             if (m_BoundCharacterRuntimeId != view.Target.CharacterRuntimeId)
