@@ -75,8 +75,9 @@ namespace BTSMTL.Timeline.Editor
         string m_GivenSettings;
         long m_ChainBase = -1;
         OrchestrationTime m_ChainBaseUntil;
-        enum TargetStage : byte { None, Beginning, Completing }
+        enum TargetStage : byte { None, Beginning, Completing, Sampling }
         TargetStage m_TargetStep;
+        int m_SampledDomain;
         TimelineAssetPreviewTarget m_PendingTarget;
         const double StepSeconds = 0.012d;
 
@@ -681,11 +682,15 @@ namespace BTSMTL.Timeline.Editor
                     SetLifecycle(TimelinePreviewLifecycle.Waiting, "动画资源加载中，完成后自动继续。", string.Empty);
                     return;
                 }
-                if (m_SampleRequested)
+                if (m_SampleRequested && m_TargetStep != TargetStage.None)
+                {
+                    // 新取样请求放弃未完成的目标，Scene 回到上一完整发布。
                     m_TargetStep = TargetStage.None;
+                    m_Instance.RestorePublished();
+                }
                 else if (m_TargetStep != TargetStage.None)
                 {
-                    AdvanceTarget();
+                    AdvanceTarget(Deadline(StepSeconds));
                     return;
                 }
                 if (!m_SampleRequested)
@@ -694,22 +699,20 @@ namespace BTSMTL.Timeline.Editor
                     if (m_Prefetching && !IsPlaying && m_Traversals.Count != 0)
                     {
                         TimelineAssetPreviewTarget horizon = Horizon(m_Revision);
-                        m_Prefetching = m_Instance.Prefetch(in horizon, PrefetchSeconds);
+                        m_Prefetching = m_Instance.Prefetch(in horizon, Deadline(PrefetchSeconds));
                     }
                     return;
                 }
+                long deadline = Deadline(StepSeconds);
                 m_SampleRequested = false;
                 if (m_Traversals.Count == 0)
                     return;
                 // 截到游标的整组播放：主链与全部并行分支一起交给实例与领域。
                 OrchestrationTime cursor = OrchestrationTime.FromSeconds(Time);
                 m_PendingTarget = Horizon(++m_Revision).Until(cursor);
-                TimelineAssetPreviewTraversal current = m_PendingTarget.Traversals[^1];
-                LocalTime = current.LocalEnd.AsSingle;
-                SampledSource = current.Source;
                 m_TargetStep = TargetStage.Beginning;
                 m_Prefetching = false;
-                AdvanceTarget();
+                AdvanceTarget(deadline);
             }
             catch (TimelineAssetPreviewInputUnavailableException exception)
             {
@@ -728,40 +731,62 @@ namespace BTSMTL.Timeline.Editor
             }
         }
 
-        // 目标分三步，每次 Editor 更新只花一份预算：实例准备（位移积分）→ 各领域在目标时刻取样 → 逐帧累积的领域追到目标。
-        // 没走完时 Scene 保持当前画面，窗口照常响应；新的取样请求会放弃未完成的目标。
-        void AdvanceTarget()
+        static long Deadline(double seconds) => System.Diagnostics.Stopwatch.GetTimestamp() +
+            (long)(seconds * System.Diagnostics.Stopwatch.Frequency);
+
+        // 目标分三步，整次 Editor 更新共用一个截止时刻：实例准备（位移积分）→ 逐帧累积的领域追到目标 → 各领域在目标时刻取样。
+        // 走完才发布；没走完时让出并恢复上一完整发布，Scene、状态行与游标标注停在同一已发布时刻，窗口照常响应。
+        void AdvanceTarget(long deadline)
         {
             if (m_TargetStep == TargetStage.Beginning)
             {
-                if (!m_Instance.BeginTarget(in m_PendingTarget, StepSeconds))
+                if (!m_Instance.BeginTarget(in m_PendingTarget, deadline))
                 {
-                    if (!m_Instance.IsReady)
-                        SetLifecycle(TimelinePreviewLifecycle.Waiting, "动画资源加载中，完成后自动继续。", string.Empty);
+                    YieldTarget();
                     return;
                 }
-                TimelineAssetPreviewTraversal current = m_PendingTarget.Traversals[^1];
-                PreparedTimeline sampled = m_Contents[current.Source];
-                TimelineRuntimePresentationOperations operations = sampled.Sampling.SampleAt(m_PendingTarget.Time,
-                    m_PendingTarget.Cycle, current.PlaybackCompleted
-                        ? TimelinePresentationSampleReason.Completed : TimelinePresentationSampleReason.Correction);
-                foreach (ITimelineDomainPreview domain in sampled.Domains.Domains)
-                    domain.Sample(in m_PendingTarget, in operations);
                 m_TargetStep = TargetStage.Completing;
             }
-            if (m_Instance.CompleteTarget(in m_PendingTarget, StepSeconds))
-                FinishTarget(in m_PendingTarget);
-            else
+            if (m_TargetStep == TargetStage.Completing)
             {
-                if (!m_Instance.IsReady)
-                    SetLifecycle(TimelinePreviewLifecycle.Waiting, "动画资源加载中，完成后自动继续。", string.Empty);
-                SceneView.RepaintAll();
+                if (!m_Instance.CompleteTarget(in m_PendingTarget, deadline))
+                {
+                    YieldTarget();
+                    return;
+                }
+                m_TargetStep = TargetStage.Sampling;
+                m_SampledDomain = 0;
             }
+            TimelineAssetPreviewTraversal current = m_PendingTarget.Traversals[^1];
+            PreparedTimeline sampled = m_Contents[current.Source];
+            TimelineRuntimePresentationOperations operations = sampled.Sampling.SampleAt(m_PendingTarget.Time,
+                m_PendingTarget.Cycle, current.PlaybackCompleted
+                    ? TimelinePresentationSampleReason.Completed : TimelinePresentationSampleReason.Correction);
+            IReadOnlyList<ITimelineDomainPreview> domains = sampled.Domains.Domains;
+            for (; m_SampledDomain < domains.Count; m_SampledDomain++)
+                if (!domains[m_SampledDomain].Sample(in m_PendingTarget, in operations, deadline))
+                {
+                    YieldTarget();
+                    return;
+                }
+            m_Instance.PublishTarget(in m_PendingTarget);
+            FinishTarget(in m_PendingTarget);
+        }
+
+        void YieldTarget()
+        {
+            m_Instance.RestorePublished();
+            if (!m_Instance.IsReady)
+                SetLifecycle(TimelinePreviewLifecycle.Waiting, "动画资源加载中，完成后自动继续。", string.Empty);
+            SceneView.RepaintAll();
         }
 
         void FinishTarget(in TimelineAssetPreviewTarget target)
         {
             m_TargetStep = TargetStage.None;
+            TimelineAssetPreviewTraversal current = target.Traversals[^1];
+            LocalTime = current.LocalEnd.AsSingle;
+            SampledSource = current.Source;
             SampledRevision = target.Revision;
             m_Prefetching = true;
             Error = string.Empty;

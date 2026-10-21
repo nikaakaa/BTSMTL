@@ -354,7 +354,9 @@ namespace BTSMTL.Timeline.Editor
         string Name { get; }
         bool SimulatesClipAge { get; }
         void Prepare(TimelineRuntimePreparedContent content);
-        void Sample(in TimelineAssetPreviewTarget target, in TimelineRuntimePresentationOperations operations);
+        // 到 deadline（Stopwatch 计数）还没取完就记住进度返回 false，下次以同一目标继续调用。
+        bool Sample(in TimelineAssetPreviewTarget target, in TimelineRuntimePresentationOperations operations,
+            long deadline);
         void Stop();
     }
 
@@ -365,12 +367,16 @@ namespace BTSMTL.Timeline.Editor
         string Status { get; }
         TimelineAssetPreviewContent PrepareContent(TimelineAsset source, TimelineContentUnit content);
         void AdvancePreparation();
-        // 在 seconds 预算内准备目标（如积分位移）；返回 false 表示还没准备好，下次更新以同一目标继续调用，之后才交给各领域取样。
-        bool BeginTarget(in TimelineAssetPreviewTarget target, double seconds);
-        // 在 seconds 预算内把需逐帧累积的领域推进到目标；返回 false 表示还没追上，下次更新以同一目标继续调用。
-        bool CompleteTarget(in TimelineAssetPreviewTarget target, double seconds);
-        // 空闲时沿当前链往 horizon 提前推进，不改变当前显示；返回 true 表示还有剩余。
-        bool Prefetch(in TimelineAssetPreviewTarget horizon, double seconds);
+        // 目标分三步：准备（如积分位移）→ 逐帧累积的领域追到目标 → 各领域在目标时刻取样，之后由宿主发布。
+        // deadline 是整次 Editor 更新共用的截止时刻（Stopwatch 计数）；返回 false 表示还没走完，下次以同一目标继续调用。
+        bool BeginTarget(in TimelineAssetPreviewTarget target, long deadline);
+        bool CompleteTarget(in TimelineAssetPreviewTarget target, long deadline);
+        // 目标走完：当前画面成为已发布画面。
+        void PublishTarget(in TimelineAssetPreviewTarget target);
+        // 补算让出或被放弃时恢复上一完整发布，Scene 不出现中途画面。
+        void RestorePublished();
+        // 空闲时沿当前链往 horizon 提前推进，结束时恢复已发布画面；返回 true 表示还有剩余。
+        bool Prefetch(in TimelineAssetPreviewTarget horizon, long deadline);
         void AbortTarget();
         void Stop();
     }
