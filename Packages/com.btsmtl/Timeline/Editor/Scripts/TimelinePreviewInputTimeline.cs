@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using BTSMTL.Diagnostics;
 using BTSMTL.Graphs;
 using BTSMTL.Orchestration;
 using FlowCanvas;
@@ -278,7 +279,7 @@ namespace BTSMTL.Timeline.Editor
             {
                 GraphHostInputDescriptor descriptor = declared.FirstOrDefault(value => value.InputId == input.Key) ??
                     throw new InvalidOperationException($"宿主未声明输入 '{input.Key}'。");
-                Track track = data.EnsureTrack(typeof(TreeTrack), catalog, Guid.NewGuid().ToString("N"), input.Key,
+                Track track = data.EnsureTrack(typeof(TreeTrack), catalog, AuthoringIdentity.Create(), input.Key,
                     TimelineExecutionDomain.Presentation);
                 TimelinePreviewInputPoint[] ordered = input.OrderBy(point => point.Time).ToArray();
                 for (int i = 0; i < ordered.Length; i++)
@@ -288,12 +289,12 @@ namespace BTSMTL.Timeline.Editor
                     if (descriptor.ValueKind == GraphHostValueKind.Bool && point.Boolean && i + 1 < ordered.Length &&
                         !ordered[i + 1].Boolean)
                     {
-                        data.EnsureClip(catalog, track, Guid.NewGuid().ToString("N"), GraphFor(timeline, graphs, point),
+                        data.EnsureClip(catalog, track, AuthoringIdentity.Create(), GraphFor(timeline, graphs, point),
                             start, OrchestrationTime.FromSeconds(ordered[i + 1].Time));
                         i++;
                         continue;
                     }
-                    track.EnsureMarker(Guid.NewGuid().ToString("N"), start, GraphFor(timeline, graphs, point));
+                    track.EnsureMarker(AuthoringIdentity.Create(), start, GraphFor(timeline, graphs, point));
                 }
             }
             data.Init();

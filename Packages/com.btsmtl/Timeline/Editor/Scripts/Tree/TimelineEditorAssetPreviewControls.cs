@@ -405,9 +405,12 @@ namespace BTSMTL.Timeline.Editor
                 foreach (Clip clip in track.Clips)
                     foreach (TimelinePreviewRouteSegment span in spans)
                     {
+                        // 起点正好在这次播放的终点也显示：按键常常就是离开这次播放的原因。
+                        if (clip.StartTime > span.End || clip.EndTime <= span.Start)
+                            continue;
                         OrchestrationTime start = OrchestrationTime.Max(clip.StartTime, span.Start);
                         OrchestrationTime end = OrchestrationTime.Min(clip.EndTime, span.End);
-                        if (end <= start || !span.TryLocal(start, out OrchestrationTime localStart, out _) ||
+                        if (!span.TryLocal(start, out OrchestrationTime localStart, out _) ||
                             !span.TryLocal(end, out OrchestrationTime localEnd, out _))
                             continue;
                         row.Clips.Add(DescribeInputElement(preview, clip is TreeClip tree ? tree.AssetTree : null,
