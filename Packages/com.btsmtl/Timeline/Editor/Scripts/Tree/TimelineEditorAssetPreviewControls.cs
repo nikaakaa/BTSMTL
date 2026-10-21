@@ -14,15 +14,24 @@ namespace BTSMTL.Timeline.Editor
 {
     public sealed partial class TimelineEditorWindow
     {
+        // 窗口记住的预览：档位、Scene 开关与游标；域重载与退出 Play 后按这些恢复同一预览。
         [SerializeField] TimelinePreviewMode m_PreviewMode;
+        [SerializeField] bool m_PreviewHidesScene;
+        [SerializeField] float m_PreviewTime;
+        bool m_RestorePreviewTime;
         Label m_AssetPreviewStatus;
+        Button m_PreviewRetry;
         VisualElement m_AssetPreviewStatusRow;
         ObjectField m_AssetPreviewConfiguration;
         IMGUIContainer m_AssetPreviewInputs;
         VisualElement m_AssetPreviewSettings;
-        PopupField<string> m_PreviewChoice;
+        ToolbarToggle m_FastTier;
+        ToolbarToggle m_RealTier;
+        ToolbarToggle m_SceneToggle;
         ToolbarToggle m_PreviewSettingsToggle;
         ToolbarButton m_FastPlayback;
+        Label m_PreviewTimeLabel;
+        ToolbarButton m_SaveButton;
         ToolbarMenu m_SchemeMenu;
         ToolbarMenu m_AssumptionMenu;
         TimelinePreviewRealControls m_RealControls;
@@ -33,59 +42,64 @@ namespace BTSMTL.Timeline.Editor
         int m_PreviewPathPlayback = -1;
         bool m_SeekToSourcePlayback;
         TimelineAsset m_RouteInputs;
+        readonly List<UnityEngine.Object> m_UnsavedAssets = new();
 
-        // 唯一的预览工具栏只有四样：预览（关／快速／真实）、入口状态、播放与 ⚙；其下一行状态。
-        // 方案、假设、预览配置、真实档的单步与动作设置和输入点取值都在 ⚙ 面板。
-        VisualElement CreateAssetPreviewControls()
+        // 工具栏里的预览控制：档位（快速｜真实）、播放与时刻、真实档控制、方案、假设、Scene、保存与 ⚙。
+        VisualElement CreateAssetPreviewToolbar()
         {
             var preview = TimelineAssetPreviewHost.Shared;
-            var panel = new VisualElement();
-            var toolbar = new Toolbar();
-            toolbar.style.flexWrap = Wrap.Wrap;
-            toolbar.style.height = StyleKeyword.Auto;
-            toolbar.style.minHeight = 22f;
-            toolbar.style.alignItems = Align.Center;
-            m_PreviewChoice = new PopupField<string>(new List<string> { "预览：关", "预览：快速", "预览：真实" }, 0)
-            {
-                tooltip = "快速：按静态推导即时显示；真实：以同一输入方案经正式会话重演，并与快速结果对比。"
-            };
-            m_PreviewChoice.RegisterValueChangedCallback(change =>
-            {
-                if (m_PreviewChoice.index == 0)
-                    preview.Close();
-                else
-                {
-                    m_PreviewMode = (TimelinePreviewMode)(m_PreviewChoice.index - 1);
-                    OpenTimelinePreview();
-                }
-                RefreshAssetPreviewControls();
-            });
-            m_PreviewChoice.style.width = 96f;
-            m_PreviewChoice.style.height = 20f;
-            m_PreviewChoice.style.alignSelf = Align.Center;
-            toolbar.Add(m_PreviewChoice);
-            toolbar.Add(CreateStateContextControl());
+            var row = new VisualElement();
+            row.style.flexDirection = FlexDirection.Row;
+            row.style.flexWrap = Wrap.Wrap;
+            row.style.alignItems = Align.Center;
+            m_FastTier = new ToolbarToggle { text = "快速", tooltip = "按静态推导即时显示，改输入与作者内容立即重新推导" };
+            m_RealTier = new ToolbarToggle { text = "真实", tooltip = "以同一输入方案经正式会话重演，并与快速结果对比" };
+            m_FastTier.RegisterValueChangedCallback(change => SelectPreviewTier(TimelinePreviewMode.Fast));
+            m_RealTier.RegisterValueChangedCallback(change => SelectPreviewTier(TimelinePreviewMode.Real));
+            row.Add(m_FastTier);
+            row.Add(m_RealTier);
             m_FastPlayback = new ToolbarButton(() => preview.SetPlaying(!preview.IsPlaying));
-            toolbar.Add(m_FastPlayback);
+            row.Add(m_FastPlayback);
+            m_PreviewTimeLabel = new Label { style = { minWidth = 64f, unityTextAlign = TextAnchor.MiddleLeft, paddingLeft = 4f } };
+            row.Add(m_PreviewTimeLabel);
             m_RealControls = preview.CreateRealControls();
             if (m_RealControls != null)
             {
                 m_RealControls.Transport.style.flexDirection = FlexDirection.Row;
                 m_RealControls.Transport.style.alignItems = Align.Center;
-                toolbar.Add(m_RealControls.Transport);
+                row.Add(m_RealControls.Transport);
             }
-            toolbar.Add(new VisualElement { style = { flexGrow = 1f } });
-            m_PreviewSettingsToggle = new ToolbarToggle { text = "⚙", tooltip = "预览设置：输入方案、假设、预览配置、真实档单步与动作、输入点取值" };
+            m_SchemeMenu = new ToolbarMenu { tooltip = "输入方案：与入口 Timeline 并列保存，可提交" };
+            row.Add(m_SchemeMenu);
+            m_AssumptionMenu = new ToolbarMenu { text = "假设", tooltip = "其它运行数据的假设；切换后立即重新推导" };
+            row.Add(m_AssumptionMenu);
+            m_SceneToggle = new ToolbarToggle { text = "Scene", tooltip = "在 Scene 窗口显示预览角色；关掉只释放预览场景，路线与推导保留" };
+            m_SceneToggle.RegisterValueChangedCallback(change =>
+            {
+                m_PreviewHidesScene = !change.newValue;
+                preview.SetShowsScene(change.newValue);
+            });
+            row.Add(m_SceneToggle);
+            m_SaveButton = new ToolbarButton(SaveRouteAssets);
+            m_SaveButton.schedule.Execute(RefreshSaveButton).Every(500);
+            row.Add(m_SaveButton);
+            m_PreviewSettingsToggle = new ToolbarToggle { text = "⚙", tooltip = "预览设置：预览场景、真实档单步与动作、范围与假设目标、输入 Timeline" };
             m_PreviewSettingsToggle.SetValueWithoutNotify(m_ShowPreviewSettings);
             m_PreviewSettingsToggle.RegisterValueChangedCallback(change =>
             {
                 m_ShowPreviewSettings = change.newValue;
                 RefreshAssetPreviewControls();
             });
-            toolbar.Add(m_PreviewSettingsToggle);
-            toolbar.SetEnabled(SourceAsset);
-            panel.Add(toolbar);
+            row.Add(m_PreviewSettingsToggle);
+            row.SetEnabled(SourceAsset);
+            return row;
+        }
 
+        // 工具栏下：一行状态（生命周期结论，出错带重试）与 ⚙ 面板。
+        VisualElement CreateAssetPreviewPanel()
+        {
+            var preview = TimelineAssetPreviewHost.Shared;
+            var panel = new VisualElement();
             m_AssetPreviewStatusRow = new VisualElement();
             m_AssetPreviewStatusRow.style.flexDirection = FlexDirection.Row;
             m_AssetPreviewStatusRow.style.alignItems = Align.Center;
@@ -96,6 +110,8 @@ namespace BTSMTL.Timeline.Editor
             m_AssetPreviewStatus.style.overflow = Overflow.Hidden;
             m_AssetPreviewStatus.style.textOverflow = TextOverflow.Ellipsis;
             m_AssetPreviewStatusRow.Add(m_AssetPreviewStatus);
+            m_PreviewRetry = new Button(() => preview.Retry()) { text = "重试" };
+            m_AssetPreviewStatusRow.Add(m_PreviewRetry);
             if (m_RealControls != null)
             {
                 m_RealControls.Status.style.flexGrow = 1f;
@@ -107,22 +123,12 @@ namespace BTSMTL.Timeline.Editor
             m_AssetPreviewSettings = new VisualElement();
             m_AssetPreviewSettings.style.paddingLeft = 4f;
             m_AssetPreviewSettings.style.paddingBottom = 4f;
-            var schemes = new Toolbar();
-            m_SchemeMenu = new ToolbarMenu { tooltip = "输入方案：与本 Timeline 并列保存，可提交" };
-            schemes.Add(m_SchemeMenu);
-            m_AssumptionMenu = new ToolbarMenu
-            {
-                text = "假设",
-                tooltip = "其它运行数据的假设；切换后立即重新推导"
-            };
-            schemes.Add(m_AssumptionMenu);
-            m_AssetPreviewSettings.Add(schemes);
-            m_AssetPreviewConfiguration = new ObjectField("预览配置")
+            m_AssetPreviewConfiguration = new ObjectField("预览场景")
             {
                 objectType = preview.ConfigurationType,
                 allowSceneObjects = false,
                 value = preview.Configuration,
-                tooltip = "快速档与真实档共用的预览配置"
+                tooltip = "快速档与真实档共用的预览场景；更换后原地重新准备"
             };
             m_AssetPreviewConfiguration.RegisterValueChangedCallback(change => preview.Configuration = change.newValue);
             m_AssetPreviewConfiguration.style.maxWidth = 420f;
@@ -138,24 +144,102 @@ namespace BTSMTL.Timeline.Editor
             return panel;
         }
 
+        void SelectPreviewTier(TimelinePreviewMode mode)
+        {
+            var preview = TimelineAssetPreviewHost.Shared;
+            bool current = preview.IsOpen && preview.Mode == mode;
+            m_PreviewMode = mode;
+            if (!current)
+            {
+                m_RestorePreviewTime = false;
+                OpenTimelinePreview();
+            }
+            RefreshAssetPreviewControls();
+        }
+
         void OpenTimelinePreview()
         {
             var context = m_StateContexts.Count == 0 ? (null, -1) : m_StateContexts[m_StateContextIndex];
-            m_SeekToSourcePlayback = true;
-            TimelineAssetPreviewHost.Shared.Open(SourceAsset, m_PreviewMode, context.Query, context.Machine);
+            m_SeekToSourcePlayback = !m_RestorePreviewTime;
+            TimelineAssetPreviewHost.Shared.Open(SourceAsset, m_PreviewMode, context.Query, context.Machine, !m_PreviewHidesScene);
+        }
+
+        // 窗口有主体且未在 Play 中时预览常开；输入 Timeline 本身沿用进入前的预览。
+        void EnsurePreview()
+        {
+            var preview = TimelineAssetPreviewHost.Shared;
+            if (!SourceAsset || !preview.IsRegistered || EditorApplication.isPlayingOrWillChangePlaymode ||
+                EditorApplication.isCompiling || preview.IsOpeningSession ||
+                TimelinePreviewInputSchemeStore.OwnsInputTimeline(m_Timeline) ||
+                preview.IsOpen && preview.Covers(SourceAsset))
+                return;
+            OpenTimelinePreview();
+        }
+
+        void OnPreviewPlayModeChanged(PlayModeStateChange state)
+        {
+            if (state == PlayModeStateChange.EnteredEditMode)
+            {
+                m_RestorePreviewTime = true;
+                EnsurePreview();
+            }
+            RefreshAssetPreviewControls();
+        }
+
+        // 本技能根内未保存的作者资产：路线上与技能引用的 Timeline 及其所在资产。
+        void CollectUnsavedAssets(TimelineAssetPreviewHost preview)
+        {
+            m_UnsavedAssets.Clear();
+            var timelines = new HashSet<TimelineAsset>();
+            if (SourceAsset)
+                timelines.Add(SourceAsset);
+            if (preview.IsOpen && preview.Query != null)
+                foreach (OrchestrationStaticTimeline timeline in preview.Query.Query.Timelines)
+                    if (preview.Query.ResolveTimeline(timeline.Identity) is { } resolved && resolved)
+                        timelines.Add(resolved);
+            foreach (TimelineAsset timeline in timelines)
+            {
+                UnityEngine.Object main = AssetDatabase.LoadMainAssetAtPath(AssetDatabase.GetAssetPath(timeline));
+                if (main && (EditorUtility.IsDirty(main) || EditorUtility.IsDirty(timeline)) && !m_UnsavedAssets.Contains(main))
+                    m_UnsavedAssets.Add(main);
+            }
+        }
+
+        void RefreshSaveButton()
+        {
+            if (m_SaveButton == null)
+                return;
+            CollectUnsavedAssets(TimelineAssetPreviewHost.Shared);
+            m_SaveButton.text = m_UnsavedAssets.Count == 0 ? "已保存" : $"保存 {m_UnsavedAssets.Count}";
+            m_SaveButton.tooltip = m_UnsavedAssets.Count == 0 ? "本技能根内的作者资产都已保存"
+                : "未保存：\n" + string.Join("\n", m_UnsavedAssets.Select(asset => AssetDatabase.GetAssetPath(asset)));
+            m_SaveButton.SetEnabled(m_UnsavedAssets.Count != 0);
+        }
+
+        void SaveRouteAssets()
+        {
+            CollectUnsavedAssets(TimelineAssetPreviewHost.Shared);
+            foreach (UnityEngine.Object asset in m_UnsavedAssets)
+                AssetDatabase.SaveAssetIfDirty(asset);
+            RefreshSaveButton();
         }
 
         void DisposeAssetPreviewBindings()
         {
             TimelineAssetPreviewHost.Shared.Changed -= RefreshAssetPreviewControls;
             m_AssetPreviewStatus = null;
+            m_PreviewRetry = null;
             m_AssetPreviewStatusRow = null;
             m_AssetPreviewConfiguration = null;
             m_AssetPreviewInputs = null;
             m_AssetPreviewSettings = null;
-            m_PreviewChoice = null;
+            m_FastTier = null;
+            m_RealTier = null;
+            m_SceneToggle = null;
             m_PreviewSettingsToggle = null;
             m_FastPlayback = null;
+            m_PreviewTimeLabel = null;
+            m_SaveButton = null;
             m_SchemeMenu = null;
             m_AssumptionMenu = null;
             m_RealControls = null;
@@ -169,13 +253,28 @@ namespace BTSMTL.Timeline.Editor
         {
             var preview = TimelineAssetPreviewHost.Shared;
             bool active = preview.IsOpen && preview.Covers(SourceAsset);
-            // 从技能根起播时游标在根上；打开后第一次推导出本 Timeline 的播放就把游标放到它的起点。编辑窗口不随游标切换 Timeline。
-            if (active && m_SeekToSourcePlayback && !preview.IsReal &&
-                preview.TryGetPlayback(SourceAsset, out TimelinePreviewRouteSegment[] own))
+            if (active && preview.Route.Count != 0 && !preview.IsReal)
             {
-                m_SeekToSourcePlayback = false;
-                preview.SetTime(own[0].Start.AsSingle);
-                return;
+                // 恢复（域重载、退出 Play）回到原游标；新打开时游标放到本 Timeline 第一次播放的起点。
+                if (m_RestorePreviewTime)
+                {
+                    m_RestorePreviewTime = false;
+                    m_SeekToSourcePlayback = false;
+                    preview.SetTime(m_PreviewTime);
+                    return;
+                }
+                if (m_SeekToSourcePlayback && preview.TryGetPlayback(SourceAsset, out TimelinePreviewRouteSegment[] own))
+                {
+                    m_SeekToSourcePlayback = false;
+                    preview.SetTime(own[0].Start.AsSingle);
+                    return;
+                }
+            }
+            if (active)
+            {
+                m_PreviewTime = preview.Time;
+                if (!preview.IsReal)
+                    m_PreviewHidesScene = !preview.ShowsScene;
             }
             bool real = m_PreviewMode == TimelinePreviewMode.Real;
             if (m_AssetPreviewConfiguration != null)
@@ -184,10 +283,13 @@ namespace BTSMTL.Timeline.Editor
                 m_AssetPreviewConfiguration.SetValueWithoutNotify(preview.Configuration);
                 m_AssetPreviewConfiguration.SetEnabled(preview.IsRegistered);
             }
-            if (m_PreviewChoice != null)
+            if (m_FastTier != null)
             {
-                bool open = active || preview.IsOpeningSession;
-                m_PreviewChoice.SetValueWithoutNotify(m_PreviewChoice.choices[open ? (int)m_PreviewMode + 1 : 0]);
+                m_FastTier.SetValueWithoutNotify(!real);
+                m_RealTier.SetValueWithoutNotify(real);
+                m_SceneToggle.SetValueWithoutNotify(real || !m_PreviewHidesScene);
+                m_SceneToggle.SetEnabled(!real && active);
+                m_PreviewTimeLabel.text = active ? $"{preview.Time:0.000} s" : string.Empty;
             }
             if (m_FastPlayback != null)
             {
@@ -227,24 +329,50 @@ namespace BTSMTL.Timeline.Editor
         static void SetDisplayed(VisualElement element, bool displayed) =>
             element.style.display = displayed ? DisplayStyle.Flex : DisplayStyle.None;
 
-        // 状态行只保留一行结论：档位、所在 Timeline 与本地时刻、结果是否最新；会话时刻、过期原因与差异进悬停说明。
+        // 状态行只保留一行结论：先是生命周期（Play 中、出错、等待、准备中），就绪时为档位、所在 Timeline 与本地时刻、
+        // 结果是否最新；原始异常、会话时刻、过期原因与差异进悬停说明。
         void RefreshAssetPreviewStatus(TimelineAssetPreviewHost preview, bool active)
         {
             string text;
             string detail = string.Empty;
             Color color = new(.78f, .78f, .78f);
+            Color warning = new(1f, .78f, .3f);
+            Color error = new(.95f, .45f, .4f);
+            bool retry = false;
             if (!preview.IsRegistered)
                 text = TimelineAssetPreviewHost.MissingProviderReason;
+            else if (EditorApplication.isPlayingOrWillChangePlaymode)
+            {
+                text = "等待 · Play 模式中，退出后自动恢复预览";
+                color = warning;
+            }
+            else if (preview.Lifecycle == TimelinePreviewLifecycle.Failed)
+            {
+                text = "出错 · " + preview.LifecycleReason;
+                detail = preview.LifecycleDetail;
+                color = error;
+                retry = true;
+            }
             else if (preview.Error.Length != 0)
             {
                 text = FirstLine(preview.Error);
                 detail = preview.Error;
-                color = new Color(.95f, .45f, .4f);
+                color = error;
             }
-            else if (preview.IsOpeningSession)
-                text = "真实 · 正在准备会话…";
+            else if (preview.Lifecycle == TimelinePreviewLifecycle.Waiting)
+            {
+                text = "等待 · " + preview.LifecycleReason;
+                color = warning;
+            }
+            else if (preview.Lifecycle == TimelinePreviewLifecycle.Preparing || preview.IsOpeningSession)
+                text = "准备中 · " + preview.LifecycleReason;
             else if (!active)
                 text = string.Empty;
+            else if (!preview.IsReal && !preview.ShowsScene)
+            {
+                text = $"快速 · {preview.Time:0.000} 秒 · 只推导路线，Scene 未显示角色";
+                detail = preview.Chain?.Reason ?? string.Empty;
+            }
             else
             {
                 string at;
@@ -281,6 +409,7 @@ namespace BTSMTL.Timeline.Editor
             m_AssetPreviewStatus.text = text;
             m_AssetPreviewStatus.tooltip = detail.Trim();
             m_AssetPreviewStatus.style.color = color;
+            SetDisplayed(m_PreviewRetry, retry);
             SetDisplayed(m_AssetPreviewStatusRow, text.Length != 0);
         }
 

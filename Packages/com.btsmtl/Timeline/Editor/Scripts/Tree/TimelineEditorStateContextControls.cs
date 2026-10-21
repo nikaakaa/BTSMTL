@@ -19,7 +19,8 @@ namespace BTSMTL.Timeline.Editor
         GUIContent m_StateContextIssues = GUIContent.none;
         ITimelineOrchestrationAuthoringHost m_OrchestrationHost;
         bool m_StateContextRefreshQueued;
-        bool m_OpenPreviewAfterContext;
+        // 换到另一技能根时按新起点重新打开预览。
+        bool m_ReopenPreview;
         string m_StateQueryReason = string.Empty;
 
         VisualElement CreateStateContextControl()
@@ -98,11 +99,13 @@ namespace BTSMTL.Timeline.Editor
             ApplyStateContext();
             RefreshNestedViews();
             m_StateContextControl?.MarkDirtyRepaint();
-            if (m_OpenPreviewAfterContext)
+            if (m_ReopenPreview && SourceAsset)
             {
-                m_OpenPreviewAfterContext = false;
+                m_ReopenPreview = false;
                 OpenTimelinePreview();
             }
+            else
+                EnsurePreview();
         }
 
         // 选中的技能不引用当前 Timeline 时转到其根状态机起始状态的 Timeline；预览开着就在新起点重新打开。
@@ -117,7 +120,7 @@ namespace BTSMTL.Timeline.Editor
                 RefreshNestedViews();
                 return;
             }
-            m_OpenPreviewAfterContext = TimelineAssetPreviewHost.Shared.IsOpen;
+            m_ReopenPreview = true;
             m_NestedContextRequest = context.Query.Owner;
             ClearNavigation();
             BindAsset(entry, string.Empty, string.Empty);
@@ -154,7 +157,8 @@ namespace BTSMTL.Timeline.Editor
             Rect rect = m_StateContextControl.contentRect;
             if (m_StateContexts.Count == 0)
             {
-                string label = m_Timeline != null && TimelinePreviewInputSchemeStore.OwnsInputTimeline(m_Timeline) ? "预览输入" : "无技能上下文";
+                string label = m_Timeline != null && TimelinePreviewInputSchemeStore.OwnsInputTimeline(m_Timeline) ? "预览输入"
+                    : SourceAsset ? SourceAsset.name + "（不属于技能）" : "未打开 Timeline";
                 EditorGUI.LabelField(rect, new GUIContent(m_StateQueryReason.Length == 0 ? label : label + " ⓘ",
                     m_StateQueryReason.Length == 0 ? "当前 Timeline 不属于任何技能；仍可独立预览资产。" : m_StateQueryReason),
                     EditorStyles.miniLabel);

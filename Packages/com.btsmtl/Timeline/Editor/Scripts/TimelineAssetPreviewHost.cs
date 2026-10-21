@@ -15,6 +15,9 @@ using UnityEngine.UIElements;
 
 namespace BTSMTL.Timeline.Editor
 {
+    // 预览生命周期：等待在条件解除后自动继续；出错保留路线，Scene 部分待重试。
+    public enum TimelinePreviewLifecycle : byte { Closed, Preparing, Waiting, Ready, Failed }
+
     [InitializeOnLoad]
     public sealed class TimelineAssetPreviewHost
     {
@@ -28,7 +31,6 @@ namespace BTSMTL.Timeline.Editor
         {
             internal TimelineAsset Source;
             internal string Fingerprint;
-            internal Action Changed;
             internal TimelineAssetPreviewContent Domains;
             internal TimelineRuntimePreparedContent Content;
             internal TimelineRuntimePresentationTargetSampling Sampling;
@@ -36,6 +38,11 @@ namespace BTSMTL.Timeline.Editor
 
         readonly Dictionary<TimelineAsset, PreparedTimeline> m_Contents = new();
         readonly HashSet<TimelineAsset> m_Dirty = new();
+        // 路线经过的 Timeline 的作者改动通知；不显示 Scene 时也据此重新推导路线。
+        readonly Dictionary<TimelineAsset, Action> m_Watched = new();
+        bool m_Active;
+        bool m_ReleasingStage;
+        bool m_PendingScene;
         const double PrefetchSeconds = 0.008;
         bool m_Prefetching;
         readonly List<TimelineAssetPreviewTraversal> m_Traversals = new();
@@ -93,7 +100,13 @@ namespace BTSMTL.Timeline.Editor
         public ITimelineAssetPreviewInstance Instance => m_Instance;
         public TimelineContractCatalog Contracts => m_Provider.Contracts;
         public bool IsRegistered => m_Provider != null;
-        public bool IsOpen => m_Stage || m_Real != null;
+        // 打开即有路线与推导；Scene 角色只在 ShowsScene 时存在。
+        public bool IsOpen => m_Active;
+        public bool ShowsScene { get; private set; }
+        public TimelinePreviewLifecycle Lifecycle { get; private set; }
+        // 一句中文结论；原始异常文本只在 LifecycleDetail。
+        public string LifecycleReason { get; private set; } = string.Empty;
+        public string LifecycleDetail { get; private set; } = string.Empty;
         public bool IsReal => m_Real != null;
         public IReadOnlyList<GraphHostInputDescriptor> Inputs =>
             m_Instance != null ? m_Instance.Inputs : m_Provider.DescribeInputs();
@@ -139,8 +152,9 @@ namespace BTSMTL.Timeline.Editor
             {
                 if (!IsRegistered)
                     throw new InvalidOperationException(MissingProviderReason);
-                Close();
                 m_Provider.Configuration = value;
+                if (m_Active)
+                    Retry();
                 Changed?.Invoke();
             }
         }
@@ -153,7 +167,7 @@ namespace BTSMTL.Timeline.Editor
         }
 
         public void Open(TimelineAsset source, TimelinePreviewMode mode,
-            TimelineOrchestrationQuery query, int entryMachine)
+            TimelineOrchestrationQuery query, int entryMachine, bool showScene)
         {
             Close();
             m_Query = query;
@@ -161,13 +175,20 @@ namespace BTSMTL.Timeline.Editor
             Error = string.Empty;
             if (m_Provider == null)
             {
-                Error = MissingProviderReason;
-                Changed?.Invoke();
+                SetLifecycle(TimelinePreviewLifecycle.Failed, MissingProviderReason, string.Empty);
                 return;
             }
             m_PendingSource = source;
             m_PendingMode = mode;
+            m_PendingScene = showScene;
             ContinueOpen();
+        }
+
+        // 按当前技能根、档位与 Scene 开关重新准备一次。
+        public void Retry()
+        {
+            if (Source)
+                Open(Source, Mode, m_Query, m_EntryMachine, ShowsScene);
         }
 
         void ContinueOpen()
@@ -181,14 +202,15 @@ namespace BTSMTL.Timeline.Editor
             finally { m_Opening = false; }
             if (!closed)
             {
-                Error = reason;
-                Changed?.Invoke();
+                SetLifecycle(TimelinePreviewLifecycle.Waiting, reason, string.Empty);
                 return;
             }
             StageUtility.GoToMainStage();
             Mode = m_PendingMode;
             Source = m_PendingSource;
+            ShowsScene = Mode == TimelinePreviewMode.Real || m_PendingScene;
             m_PendingSource = null;
+            m_Active = true;
             InputSchemes.Load(Source, EntryIdentity());
             Error = string.Empty;
             RefreshInputs();
@@ -197,15 +219,25 @@ namespace BTSMTL.Timeline.Editor
                 m_Real = new TimelinePreviewRealRoute(RuntimeDebugSession.Shared);
                 m_RealVersion = -1;
                 m_SessionOpening = new CancellationTokenSource();
+                SetLifecycle(TimelinePreviewLifecycle.Preparing, "正在准备会话…", string.Empty);
                 m_Provider.OpenSession(Source, Preferences, m_SessionOpening.Token);
                 BuildFastChain();
                 Changed?.Invoke();
                 return;
             }
+            m_ChainRequested = true;
+            m_LastUpdate = EditorApplication.timeSinceStartup;
+            SetLifecycle(TimelinePreviewLifecycle.Preparing, "正在准备预览…", string.Empty);
+            if (ShowsScene)
+                OpenScene();
+            Changed?.Invoke();
+        }
+
+        void OpenScene()
+        {
             if (!m_Provider.Configuration)
             {
-                Error = "请选择资产预览配置。";
-                Changed?.Invoke();
+                SetLifecycle(TimelinePreviewLifecycle.Failed, "没有选择预览场景：在 ⚙ 里选择后点“重试”。", string.Empty);
                 return;
             }
             m_Stage = ScriptableObject.CreateInstance<TimelineAssetPreviewStage>();
@@ -215,18 +247,74 @@ namespace BTSMTL.Timeline.Editor
             {
                 StageUtility.GoToStage(m_Stage, false);
                 m_Instance = m_Provider.CreateInstance(m_Stage.scene, m_Provider.Configuration);
-                m_Dirty.Add(Source);
+                // 路线已按无 Scene 推导过时，内容要按实例重新准备。
                 m_ChainRequested = true;
-                m_LastUpdate = EditorApplication.timeSinceStartup;
                 SceneView.RepaintAll();
             }
             catch (Exception exception)
             {
-                Close();
-                Error = exception.Message;
-                StageUtility.GoToMainStage();
+                Fail("打开预览场景失败，点“重试”重新准备。", exception);
+            }
+        }
+
+        // Scene 角色开关：关掉只释放 Stage 与实例，路线、输入组与状态机高亮保留。
+        public void SetShowsScene(bool show)
+        {
+            if (!m_Active || m_Real != null || show == ShowsScene)
+                return;
+            ShowsScene = show;
+            if (show)
+            {
+                SetLifecycle(TimelinePreviewLifecycle.Preparing, "正在准备预览…", string.Empty);
+                OpenScene();
+            }
+            else
+            {
+                ReleaseScene();
+                m_ChainRequested = true;
             }
             Changed?.Invoke();
+        }
+
+        void SetLifecycle(TimelinePreviewLifecycle state, string reason, string detail)
+        {
+            if (Lifecycle == state && LifecycleReason == reason && LifecycleDetail == detail)
+                return;
+            Lifecycle = state;
+            LifecycleReason = reason;
+            LifecycleDetail = detail;
+            Changed?.Invoke();
+        }
+
+        // 出错只释放 Scene 部分并停在出错，路线与输入组保留；原始异常进悬停说明。
+        void Fail(string reason, Exception exception)
+        {
+            IsPlaying = false;
+            m_TargetStep = TargetStage.None;
+            m_SampleRequested = false;
+            ReleaseScene();
+            SetLifecycle(TimelinePreviewLifecycle.Failed, reason, exception.Message);
+        }
+
+        // 本宿主主动释放：先释放实例并解除 Stage 归属，再回主 Stage；Stage 迟到的关闭回调不再被当成作者离开。
+        void ReleaseScene()
+        {
+            TimelineAssetPreviewStage stage = m_Stage;
+            m_ReleasingStage = true;
+            try
+            {
+                if (stage || m_Instance != null)
+                    ReleaseStage();
+            }
+            finally
+            {
+                m_ReleasingStage = false;
+            }
+            if (!stage)
+                return;
+            stage.Owner = null;
+            if (StageUtility.GetCurrentStage() == stage)
+                StageUtility.GoToMainStage();
         }
 
         public void SetTime(float time)
@@ -335,6 +423,8 @@ namespace BTSMTL.Timeline.Editor
 
         void OnUndo()
         {
+            if (m_Active && m_Instance == null)
+                m_ChainRequested = true;
             foreach (PreparedTimeline timeline in m_Contents.Values)
                 if (timeline.Fingerprint != TimelineAuthoringFingerprint.Compute(timeline.Source.Data))
                     m_Dirty.Add(timeline.Source);
@@ -418,8 +508,7 @@ namespace BTSMTL.Timeline.Editor
         public void ReportSessionFailure(string reason)
         {
             ReportSessionReady();
-            Error = reason;
-            Changed?.Invoke();
+            SetLifecycle(TimelinePreviewLifecycle.Failed, "会话准备失败，点“重试”重新准备。", reason);
         }
 
         public void ReportSessionReady()
@@ -448,29 +537,12 @@ namespace BTSMTL.Timeline.Editor
             m_PendingSource = null;
             IsPlaying = false;
             InputSchemes.Save();
-            if (m_Stage)
-                StageUtility.GoToMainStage();
-            else
-                ReleaseStage();
-            if (closeSession && !m_Provider.TryCloseSession(out string reason))
-            {
-                Error = reason;
-                Changed?.Invoke();
-            }
-        }
-
-        internal void ReleaseStage()
-        {
-            foreach (PreparedTimeline timeline in m_Contents.Values)
-            {
-                timeline.Source.Data.OnValueChanged -= timeline.Changed;
-                foreach (ITimelineDomainPreview domain in timeline.Domains.Domains)
-                {
-                    domain.Stop();
-                    domain.Dispose();
-                }
-            }
-            m_Contents.Clear();
+            m_Active = false;
+            ReleaseScene();
+            foreach (KeyValuePair<TimelineAsset, Action> watched in m_Watched)
+                if (watched.Key)
+                    watched.Key.Data.OnValueChanged -= watched.Value;
+            m_Watched.Clear();
             m_Dirty.Clear();
             m_Traversals.Clear();
             m_Parallel.Clear();
@@ -478,6 +550,25 @@ namespace BTSMTL.Timeline.Editor
             m_Assumptions.Clear();
             Chain = null;
             SampledSource = null;
+            SetLifecycle(TimelinePreviewLifecycle.Closed, string.Empty, string.Empty);
+            if (closeSession && !m_Provider.TryCloseSession(out string reason))
+            {
+                Error = reason;
+                Changed?.Invoke();
+            }
+        }
+
+        // 释放 Scene 部分：领域、实例与 Stage；路线与推导留给仍打开的预览。
+        // 作者从 Scene 面包屑离开预览 Stage 时也经这里，按关闭 Scene 开关处理。
+        internal void ReleaseStage()
+        {
+            foreach (PreparedTimeline timeline in m_Contents.Values)
+                foreach (ITimelineDomainPreview domain in timeline.Domains.Domains)
+                {
+                    domain.Stop();
+                    domain.Dispose();
+                }
+            m_Contents.Clear();
             SampledRevision = 0;
             m_SampleRequested = false;
             m_TargetStep = TargetStage.None;
@@ -493,21 +584,39 @@ namespace BTSMTL.Timeline.Editor
                 m_Instance?.Dispose();
                 m_Instance = null;
                 m_Stage = null;
+                if (m_Active && !m_ReleasingStage)
+                {
+                    ShowsScene = false;
+                    m_ChainRequested = true;
+                }
                 Changed?.Invoke();
             }
         }
 
         void Update()
         {
-            if (!IsOpen || EditorApplication.isCompiling || EditorApplication.isUpdating)
+            if (!IsOpen)
                 return;
+            if (EditorApplication.isCompiling || EditorApplication.isUpdating)
+            {
+                if (Lifecycle != TimelinePreviewLifecycle.Failed)
+                    SetLifecycle(TimelinePreviewLifecycle.Waiting, "脚本编译或资源导入中，完成后自动继续。", string.Empty);
+                return;
+            }
             if (RefreshInputs())
                 ApplyInputs();
             if (m_Real != null)
             {
+                if (Lifecycle != TimelinePreviewLifecycle.Failed)
+                    SetLifecycle(IsOpeningSession ? TimelinePreviewLifecycle.Preparing : TimelinePreviewLifecycle.Ready,
+                        IsOpeningSession ? "正在准备会话…" : string.Empty, string.Empty);
                 UpdateReal();
                 return;
             }
+            // 编译、导入或资源等待解除后回到就绪；仍在补算的目标完成时也会回到就绪。
+            if (Lifecycle == TimelinePreviewLifecycle.Waiting && m_TargetStep == TargetStage.None &&
+                (m_Instance == null || m_Instance.IsReady))
+                SetLifecycle(TimelinePreviewLifecycle.Ready, string.Empty, string.Empty);
             try
             {
                 if (m_Dirty.Count != 0)
@@ -517,6 +626,11 @@ namespace BTSMTL.Timeline.Editor
                     // 只有作者内容真的变了才重建链；编辑器刷新触发的同内容通知不打断预览的接续推进。
                     foreach (TimelineAsset timeline in changed)
                     {
+                        if (m_Instance == null)
+                        {
+                            m_ChainRequested = true;
+                            continue;
+                        }
                         m_Contents.TryGetValue(timeline, out PreparedTimeline before);
                         if (before != null && before.Fingerprint == TimelineAuthoringFingerprint.Compute(timeline.Data))
                             continue;
@@ -526,11 +640,6 @@ namespace BTSMTL.Timeline.Editor
                 }
                 if (m_ChainRequested)
                     BuildChain();
-                if (!m_Instance.IsReady)
-                {
-                    m_Instance.AdvancePreparation();
-                    return;
-                }
                 double now = EditorApplication.timeSinceStartup;
                 if (IsPlaying)
                 {
@@ -538,8 +647,24 @@ namespace BTSMTL.Timeline.Editor
                     m_SampleRequested = true;
                     if (Time == Duration)
                         IsPlaying = false;
+                    if (m_Instance == null)
+                        Changed?.Invoke();
                 }
                 m_LastUpdate = now;
+                if (m_Instance == null)
+                {
+                    // 不显示 Scene：只有路线与推导。
+                    m_SampleRequested = false;
+                    if (Lifecycle != TimelinePreviewLifecycle.Failed)
+                        SetLifecycle(TimelinePreviewLifecycle.Ready, string.Empty, string.Empty);
+                    return;
+                }
+                if (!m_Instance.IsReady)
+                {
+                    m_Instance.AdvancePreparation();
+                    SetLifecycle(TimelinePreviewLifecycle.Waiting, "动画资源加载中，完成后自动继续。", string.Empty);
+                    return;
+                }
                 if (m_SampleRequested)
                     m_TargetStep = TargetStage.None;
                 else if (m_TargetStep != TargetStage.None)
@@ -573,7 +698,7 @@ namespace BTSMTL.Timeline.Editor
             catch (TimelineAssetPreviewInputUnavailableException exception)
             {
                 m_TargetStep = TargetStage.None;
-                m_Instance.AbortTarget();
+                m_Instance?.AbortTarget();
                 IsPlaying = false;
                 m_SampleRequested = false;
                 Error = exception.Message;
@@ -582,10 +707,8 @@ namespace BTSMTL.Timeline.Editor
             }
             catch (Exception exception)
             {
-                m_TargetStep = TargetStage.None;
-                Close();
-                Error = exception.Message;
-                Changed?.Invoke();
+                string at = SampledSource ? $"在 {SampledSource.name} 本地 {LocalTime:0.000} 秒" : "准备路线时";
+                Fail($"预览{at}出错，点“重试”重新准备。", exception);
             }
         }
 
@@ -596,7 +719,11 @@ namespace BTSMTL.Timeline.Editor
             if (m_TargetStep == TargetStage.Beginning)
             {
                 if (!m_Instance.BeginTarget(in m_PendingTarget, StepSeconds))
+                {
+                    if (!m_Instance.IsReady)
+                        SetLifecycle(TimelinePreviewLifecycle.Waiting, "动画资源加载中，完成后自动继续。", string.Empty);
                     return;
+                }
                 TimelineAssetPreviewTraversal current = m_PendingTarget.Traversals[^1];
                 PreparedTimeline sampled = m_Contents[current.Source];
                 TimelineRuntimePresentationOperations operations = sampled.Sampling.SampleAt(m_PendingTarget.Time,
@@ -609,7 +736,11 @@ namespace BTSMTL.Timeline.Editor
             if (m_Instance.CompleteTarget(in m_PendingTarget, StepSeconds))
                 FinishTarget(in m_PendingTarget);
             else
+            {
+                if (!m_Instance.IsReady)
+                    SetLifecycle(TimelinePreviewLifecycle.Waiting, "动画资源加载中，完成后自动继续。", string.Empty);
                 SceneView.RepaintAll();
+            }
         }
 
         void FinishTarget(in TimelineAssetPreviewTarget target)
@@ -618,6 +749,7 @@ namespace BTSMTL.Timeline.Editor
             SampledRevision = target.Revision;
             m_Prefetching = true;
             Error = string.Empty;
+            SetLifecycle(TimelinePreviewLifecycle.Ready, string.Empty, string.Empty);
             SceneView.RepaintAll();
             Changed?.Invoke();
         }
@@ -729,10 +861,8 @@ namespace BTSMTL.Timeline.Editor
                     domain.Dispose();
                 throw;
             }
-            Action changed = () => m_Dirty.Add(source);
             if (previous != null)
             {
-                source.Data.OnValueChanged -= previous.Changed;
                 foreach (ITimelineDomainPreview domain in previous.Domains.Domains)
                 {
                     domain.Stop();
@@ -741,12 +871,23 @@ namespace BTSMTL.Timeline.Editor
             }
             var result = new PreparedTimeline
             {
-                Source = source, Fingerprint = fingerprint, Changed = changed, Domains = domains,
+                Source = source, Fingerprint = fingerprint, Domains = domains,
                 Content = prepared, Sampling = new TimelineRuntimePresentationTargetSampling(prepared)
             };
             m_Contents[source] = result;
-            source.Data.OnValueChanged += changed;
             return result;
+        }
+
+        // 路线上的 Timeline：关注作者改动；有 Scene 时按实例准备内容，没有时只推导路线。
+        TimelineRuntimePreparedContent ContentFor(TimelineAsset source)
+        {
+            if (!m_Watched.ContainsKey(source))
+            {
+                Action changed = () => m_Dirty.Add(source);
+                m_Watched.Add(source, changed);
+                source.Data.OnValueChanged += changed;
+            }
+            return m_Instance == null ? null : Prepare(source).Content;
         }
 
         void BuildChain()
@@ -764,15 +905,15 @@ namespace BTSMTL.Timeline.Editor
             {
                 foreach (OrchestrationStaticState state in m_Query.Query.States)
                     if (state.Timeline != null)
-                        Prepare(m_Query.ResolveTimeline(state.TimelineIdentity));
+                        ContentFor(m_Query.ResolveTimeline(state.TimelineIdentity));
                 foreach (OrchestrationStaticTimelineCall call in m_Query.Query.TimelineCalls)
                     if (call.Callee != null)
-                        Prepare(m_Query.ResolveTimeline(call.CalleeIdentity));
+                        ContentFor(m_Query.ResolveTimeline(call.CalleeIdentity));
             }
             if (m_EntryMachine < 0)
             {
-                PreparedTimeline source = Prepare(Source);
-                BuildStandalone(source);
+                TimelineRuntimePreparedContent source = ContentFor(Source);
+                BuildStandalone(source?.Content ?? Discover(Source), source);
                 playback = 0;
                 Chain = null;
             }
@@ -813,10 +954,10 @@ namespace BTSMTL.Timeline.Editor
             foreach (TimelineStaticChainSpan span in chain.Spans)
             {
                 TimelineAsset source = m_Query.ResolveTimeline(span.State.TimelineIdentity);
-                PreparedTimeline content = Prepare(source);
+                TimelineRuntimePreparedContent content = ContentFor(source);
                 if (previous == null || entry != null || source != previous)
                     playback++;
-                result.Add(new TimelineAssetPreviewTraversal(source, content.Content, span.Start, span.End,
+                result.Add(new TimelineAssetPreviewTraversal(source, content, span.Start, span.End,
                     span.LocalStart, span.LocalEnd, span.Cycle, entry, span.State, span.PlaybackCompleted, branch, playback));
                 previous = source;
                 entry = null;
@@ -866,7 +1007,7 @@ namespace BTSMTL.Timeline.Editor
                     if (end <= start)
                         continue;
                     TimelineAsset source = m_Query.ResolveTimeline(call.CalleeIdentity);
-                    PreparedTimeline content = Prepare(source);
+                    TimelineRuntimePreparedContent content = ContentFor(source);
                     int nestedPlayback = ++playback;
                     int nestedBranch = ++branch;
                     OrchestrationTime duration = call.Callee.Duration;
@@ -880,7 +1021,7 @@ namespace BTSMTL.Timeline.Editor
                         {
                             if (call.PlaybackMode == OrchestrationTimelinePlaybackMode.HoldLastFrame)
                             {
-                                nested.Add(new TimelineAssetPreviewTraversal(source, content.Content, time, end,
+                                nested.Add(new TimelineAssetPreviewTraversal(source, content, time, end,
                                     duration, duration, cycle, null, null, false, nestedBranch, nestedPlayback, call,
                                     span.Playback));
                                 break;
@@ -893,7 +1034,7 @@ namespace BTSMTL.Timeline.Editor
                         OrchestrationTime spanEnd = OrchestrationTime.Min(end, time + duration - local);
                         bool completed = call.PlaybackMode == OrchestrationTimelinePlaybackMode.Once &&
                             spanEnd == time + duration - local;
-                        nested.Add(new TimelineAssetPreviewTraversal(source, content.Content, time, spanEnd, local,
+                        nested.Add(new TimelineAssetPreviewTraversal(source, content, time, spanEnd, local,
                             local + spanEnd - time, cycle, null, null, completed, nestedBranch, nestedPlayback, call,
                             span.Playback));
                         local += spanEnd - time;
@@ -910,9 +1051,16 @@ namespace BTSMTL.Timeline.Editor
             chain.Remove(timeline.Identity);
         }
 
-        void BuildStandalone(PreparedTimeline prepared)
+        TimelineContentUnit Discover(TimelineAsset source)
         {
-            TimelineContentUnit content = prepared.Content.Content;
+            TimelineContentDiscoveryResult discovery = TimelineContentDiscovery.Discover(source, m_Provider.Contracts);
+            if (!discovery.IsValid)
+                throw new InvalidOperationException(string.Join("\n", discovery.Errors));
+            return discovery.Content;
+        }
+
+        void BuildStandalone(TimelineContentUnit content, TimelineRuntimePreparedContent prepared)
+        {
             if (content.Loop && content.Duration <= OrchestrationTime.Zero)
                 throw new InvalidOperationException("循环资产预览的 Timeline 时长必须大于零。");
             OrchestrationTime limit = OrchestrationTime.FromSeconds(Preferences.RangeEnd);
@@ -922,7 +1070,7 @@ namespace BTSMTL.Timeline.Editor
             {
                 OrchestrationTime end = OrchestrationTime.Min(global + content.Duration, limit);
                 OrchestrationTime localEnd = end - global;
-                m_Traversals.Add(new TimelineAssetPreviewTraversal(Source, prepared.Content,
+                m_Traversals.Add(new TimelineAssetPreviewTraversal(Source, prepared,
                     global, end, OrchestrationTime.Zero, localEnd, cycle, null, null,
                     !content.Loop && localEnd == content.Duration, 0, 0));
                 global = end;

@@ -234,7 +234,10 @@ namespace BTSMTL.Timeline.Editor
             for (int i = 0; i < m_TimelineNavigation.Count; i++)
             {
                 int index = i;
-                row.Add(new Button(() => ReturnToTimeline(index)) { text = m_TimelineNavigation[i].Source.name + " ›" });
+                // 导航起点显示的是技能根路线，面包屑写成技能根。
+                string label = index == 0 && m_StateContexts.Count != 0
+                    ? m_StateContextLabels[m_StateContextIndex] : m_TimelineNavigation[i].Source.name;
+                row.Add(new Button(() => ReturnToTimeline(index)) { text = label + " ›" });
             }
             row.Add(new Label(SourceAsset.name));
             header.Add(row);

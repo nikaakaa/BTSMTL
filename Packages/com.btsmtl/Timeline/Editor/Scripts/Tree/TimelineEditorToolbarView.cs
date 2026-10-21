@@ -1,7 +1,5 @@
 using BTSMTL.Timeline;
-using UnityEditor;
 using UnityEditor.UIElements;
-using UnityEngine;
 using UnityEngine.UIElements;
 
 namespace BTSMTL.Timeline.Editor
@@ -46,21 +44,17 @@ namespace BTSMTL.Timeline.Editor
 
     internal sealed class TimelineEditorToolbarControls
     {
-        public TimelineEditorToolbarControls(
-            Toolbar toolbar,
-            ToolbarButton backButton,
-            ObjectField documentField,
-            Label status)
+        public TimelineEditorToolbarControls(Toolbar toolbar, ToolbarButton backButton, VisualElement subject, Label status)
         {
             Toolbar = toolbar;
             BackButton = backButton;
-            DocumentField = documentField;
+            Subject = subject;
             Status = status;
         }
 
         public Toolbar Toolbar { get; }
         public ToolbarButton BackButton { get; }
-        public ObjectField DocumentField { get; }
+        public VisualElement Subject { get; }
         public Label Status { get; }
 
         public void SetBackVisible(bool visible)
@@ -68,14 +62,9 @@ namespace BTSMTL.Timeline.Editor
             BackButton.style.display = visible ? DisplayStyle.Flex : DisplayStyle.None;
         }
 
-        public void SetDocumentWithoutNotify(TimelineAsset document)
-        {
-            DocumentField.SetValueWithoutNotify(document);
-        }
-
         public void SetSourceSummary(string value)
         {
-            DocumentField.tooltip = value;
+            Subject.tooltip = value;
         }
 
         public void SetStatus(string value)
@@ -86,64 +75,43 @@ namespace BTSMTL.Timeline.Editor
         }
     }
 
+    // 唯一一行工具栏：返回、主体（技能根）与预览控制在前，工作区切换在后；放不下时换行。
     internal static class TimelineEditorToolbarView
     {
         public static TimelineEditorToolbarControls Create(
             TimelineEditorBindingState binding,
             bool hasNavigation,
             System.Action onBack,
-            EventCallback<ChangeEvent<UnityEngine.Object>> onDocumentChanged,
+            VisualElement subject,
+            VisualElement previewControls,
             VisualElement workspaceControls)
         {
             var toolbar = new Toolbar();
             toolbar.AddToClassList("timeline-editor-toolbar");
+            toolbar.style.flexWrap = Wrap.Wrap;
+            toolbar.style.height = StyleKeyword.Auto;
+            toolbar.style.minHeight = 22f;
+            toolbar.style.alignItems = Align.Center;
 
-            var documentGroup = new VisualElement();
-            documentGroup.AddToClassList("timeline-editor-toolbar-group");
-            documentGroup.style.flexDirection = FlexDirection.Row;
-            documentGroup.style.alignItems = Align.Center;
-
-            var backButton = new ToolbarButton(onBack) { text = "‹ Timeline" };
+            var backButton = new ToolbarButton(onBack) { text = "‹ 返回", tooltip = "回到技能根路线" };
             backButton.style.display = hasNavigation ? DisplayStyle.Flex : DisplayStyle.None;
             backButton.style.flexShrink = 0f;
-            documentGroup.Add(backButton);
+            toolbar.Add(backButton);
 
-            var documentField = new ObjectField("Timeline")
-            {
-                objectType = typeof(TimelineAsset),
-                allowSceneObjects = false
-            };
-            documentField.style.width = 220f;
-            documentField.style.flexShrink = 1f;
-            documentField.labelElement.style.minWidth = 52f;
-            documentField.labelElement.style.width = 52f;
-            documentGroup.style.flexShrink = 1f;
-            documentField.SetValueWithoutNotify(binding.Document);
-            documentField.RegisterValueChangedCallback(onDocumentChanged);
-            documentGroup.Add(documentField);
-
-            documentField.tooltip = binding.CreateSourceSummary();
-
-            var workspaceGroup = new VisualElement();
-            workspaceGroup.AddToClassList("timeline-editor-toolbar-group");
-            workspaceGroup.style.flexDirection = FlexDirection.Row;
-            workspaceGroup.style.alignItems = Align.Center;
+            subject.tooltip = binding.CreateSourceSummary();
+            toolbar.Add(subject);
+            if (previewControls != null)
+                toolbar.Add(previewControls);
+            toolbar.Add(new VisualElement { style = { flexGrow = 1f } });
             if (workspaceControls != null)
-                workspaceGroup.Add(workspaceControls);
+                toolbar.Add(workspaceControls);
 
             var status = new Label { style = { display = DisplayStyle.None } };
             status.style.whiteSpace = WhiteSpace.Normal;
             status.style.paddingLeft = 8f;
             status.style.paddingTop = 2f;
             status.style.paddingBottom = 2f;
-
-            toolbar.Add(documentGroup);
-            toolbar.Add(workspaceGroup);
-            return new TimelineEditorToolbarControls(
-                toolbar,
-                backButton,
-                documentField,
-                status);
+            return new TimelineEditorToolbarControls(toolbar, backButton, subject, status);
         }
     }
 }

@@ -422,6 +422,7 @@ namespace BTSMTL.Timeline.Editor
             wantsMouseMove = true;
             s_Windows.Add(this);
             Undo.undoRedoPerformed += QueueStateQueryRefresh;
+            EditorApplication.playModeStateChanged += OnPreviewPlayModeChanged;
         }
 
         public void CreateGUI()
@@ -529,19 +530,6 @@ namespace BTSMTL.Timeline.Editor
             SetStatus("选择一个 Timeline 资产或从 Skill Graph 打开 Timeline。");
         }
 
-        void ClearBinding()
-        {
-            ClearNavigation();
-            DisposeView();
-            m_SerializedOwner = null;
-            m_SerializedPropertyPath = string.Empty;
-            m_OwnershipLabel = string.Empty;
-            m_SourceNodeGuid = string.Empty;
-            m_SourceGraphAuthoringId = string.Empty;
-            ClearRuntimeObservationSelection();
-            BuildUnboundView();
-        }
-
         void TryRestoreBinding()
         {
             if (m_SlateProjection != null || !m_SerializedOwner || string.IsNullOrEmpty(m_SerializedPropertyPath))
@@ -551,6 +539,8 @@ namespace BTSMTL.Timeline.Editor
             if (timeline == null)
                 return;
 
+            // 域重载后窗口按序列化的主体、档位、Scene 开关与游标恢复同一预览。
+            m_RestorePreviewTime = true;
             Bind(
                 timeline,
                 m_SerializedOwner,
@@ -621,6 +611,7 @@ namespace BTSMTL.Timeline.Editor
         void OnDisable()
         {
             Undo.undoRedoPerformed -= QueueStateQueryRefresh;
+            EditorApplication.playModeStateChanged -= OnPreviewPlayModeChanged;
             if ((TimelineAssetPreviewHost.Shared.IsOpen || TimelineAssetPreviewHost.Shared.IsOpeningSession) &&
                 (TimelineAssetPreviewHost.Shared.Covers(SourceAsset) || TimelineAssetPreviewHost.Shared.IsInputTimeline(SourceAsset)))
                 TimelineAssetPreviewHost.Shared.Close();
@@ -698,13 +689,14 @@ namespace BTSMTL.Timeline.Editor
                 BindingState,
                 HasTimelineNavigation,
                 ReturnToTimeline,
-                OnSharedTimelineChanged,
+                CreateStateContextControl(),
+                CreateAssetPreviewToolbar(),
                 m_WorkspaceModeControls);
             var header = new VisualElement();
             header.Add(m_Toolbar.Toolbar);
             header.Add(m_Toolbar.Status);
             AddTimelineBreadcrumbs(header);
-            header.Add(CreateAssetPreviewControls());
+            header.Add(CreateAssetPreviewPanel());
             return header;
         }
 
@@ -721,22 +713,6 @@ namespace BTSMTL.Timeline.Editor
             m_TimelineNavigation.Clear();
             m_NestedExpanded.Clear();
             m_Toolbar?.SetBackVisible(false);
-        }
-
-        void OnSharedTimelineChanged(ChangeEvent<UnityEngine.Object> evt)
-        {
-            TimelineAsset asset = evt.newValue as TimelineAsset;
-            if (asset)
-            {
-                ClearNavigation();
-                BindAsset(asset, m_SourceGraphAuthoringId, m_SourceNodeGuid);
-                return;
-            }
-
-            if (m_SerializedOwner is TimelineAsset)
-                ClearBinding();
-            else
-                m_Toolbar?.SetDocumentWithoutNotify(null);
         }
 
         void SetStatus(string value) => m_Toolbar?.SetStatus(value);

@@ -27,7 +27,7 @@ namespace BTSMTL.Timeline.Editor
         {
             try
             {
-                Owner.ReleaseStage();
+                Owner?.ReleaseStage();
             }
             finally
             {
