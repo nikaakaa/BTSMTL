@@ -44,18 +44,17 @@ namespace BTSMTL.Timeline.Editor
 
     internal sealed class TimelineEditorToolbarControls
     {
-        public TimelineEditorToolbarControls(Toolbar toolbar, ToolbarButton backButton, VisualElement subject, Label status)
+        public TimelineEditorToolbarControls(Toolbar toolbar, ToolbarButton backButton, VisualElement subject)
         {
             Toolbar = toolbar;
             BackButton = backButton;
             Subject = subject;
-            Status = status;
         }
 
         public Toolbar Toolbar { get; }
         public ToolbarButton BackButton { get; }
         public VisualElement Subject { get; }
-        public Label Status { get; }
+        public string Status { get; private set; } = string.Empty;
 
         public void SetBackVisible(bool visible)
         {
@@ -69,9 +68,7 @@ namespace BTSMTL.Timeline.Editor
 
         public void SetStatus(string value)
         {
-            Status.text = value ?? string.Empty;
-            Status.tooltip = value ?? string.Empty;
-            Status.style.display = string.IsNullOrEmpty(value) ? DisplayStyle.None : DisplayStyle.Flex;
+            Status = value ?? string.Empty;
         }
     }
 
@@ -106,12 +103,7 @@ namespace BTSMTL.Timeline.Editor
             if (workspaceControls != null)
                 toolbar.Add(workspaceControls);
 
-            var status = new Label { style = { display = DisplayStyle.None } };
-            status.style.whiteSpace = WhiteSpace.Normal;
-            status.style.paddingLeft = 8f;
-            status.style.paddingTop = 2f;
-            status.style.paddingBottom = 2f;
-            return new TimelineEditorToolbarControls(toolbar, backButton, subject, status);
+            return new TimelineEditorToolbarControls(toolbar, backButton, subject);
         }
     }
 }

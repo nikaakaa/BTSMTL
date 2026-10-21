@@ -210,7 +210,8 @@ namespace BTSMTL.Compilation.Analysis
             string callerElementId, string callerTrackId, OrchestrationStaticClip clip, OrchestrationTimelineHook hook,
             int operationIndex, string calleeIdentity, OrchestrationStaticTimeline callee,
             OrchestrationTimelinePlaybackMode playbackMode, OrchestrationTime offset, OrchestrationTime? limit,
-            OrchestrationTime calleeStartTime, string reason)
+            OrchestrationTime calleeStartTime, string reason, OrchestrationStaticSourceLocation location,
+            bool startsOnCallback)
         {
             Caller = caller;
             CallerOperationIndex = callerOperationIndex;
@@ -226,6 +227,8 @@ namespace BTSMTL.Compilation.Analysis
             Limit = limit;
             CalleeStartTime = calleeStartTime;
             Reason = reason ?? string.Empty;
+            Location = location;
+            StartsOnCallback = startsOnCallback;
         }
 
         public OrchestrationStaticTimeline Caller { get; }
@@ -240,10 +243,13 @@ namespace BTSMTL.Compilation.Analysis
         // 被调 Timeline 的播放操作。
         public int OperationIndex { get; }
         public string CalleeIdentity { get; }
+        public OrchestrationStaticSourceLocation Location { get; }
         // 被调内容无法解析时为 null。
         public OrchestrationStaticTimeline Callee { get; }
         public OrchestrationTimelinePlaybackMode PlaybackMode { get; }
-        public bool HasStaticOffset => Reason.Length == 0;
+        public bool StartsOnCallback { get; }
+        public bool HasStaticOffset => StartsOnCallback && Hook != OrchestrationTimelineHook.Destroy;
+        public bool IsInstantaneous => Clip == null || Hook is OrchestrationTimelineHook.Disable or OrchestrationTimelineHook.Destroy;
         // 被调开始播放的调用方本地时刻。
         public OrchestrationTime Offset { get; }
         // Enable 与 Root 的执行帧存活到 Clip 结束；Marker、Disable、Destroy 在当前回调结束时关闭。
@@ -690,20 +696,21 @@ namespace BTSMTL.Compilation.Analysis
                 string identity = Operations[member].Text0;
                 OrchestrationStaticTimeline callee = RequireTimeline(identity);
                 bool clock = TimelineClock(member, out bool startKnown, out OrchestrationTime start);
+                bool immediate = StartsOnEnter(entry, member, new HashSet<int>());
                 OrchestrationTime offset = markerTime ?? (hook == OrchestrationTimelineHook.Disable ? clip.End : clip.Start);
-                string reason = hook == OrchestrationTimelineHook.Destroy && markerTime == null
-                    ? "Destroy 钩子在调用方 Timeline 结束或停止时执行，调用时刻需在会话中确定。"
-                    : !StartsOnEnter(entry, member, new HashSet<int>())
+                string reason = !immediate
                     ? "被调 Timeline 前面还有其它步骤或条件，调用时刻需在会话中确定。"
                     : !clock ? "被调 Timeline 的播放速率或暂停来自运行数据，需在会话中验证。"
                     : !startKnown ? "被调 Timeline 的起播时刻来自运行数据，需在会话中验证。"
+                    : hook == OrchestrationTimelineHook.Destroy && markerTime == null
+                    ? "Destroy 钩子在调用方 Timeline 结束或停止时执行，时刻取该次父播放的终点。"
                     : string.Empty;
                 OrchestrationTime? limit = markerTime.HasValue ||
                     hook is OrchestrationTimelineHook.Disable or OrchestrationTimelineHook.Destroy
                     ? offset : clip.End;
                 var call = new OrchestrationStaticTimelineCall(caller, callerOperation, elementId, trackId, clip, hook,
                     member, identity, callee, (OrchestrationTimelinePlaybackMode)Operations[member].Integer0, offset, limit,
-                    start, reason);
+                    start, reason, m_Locations[member], immediate && clock && startKnown);
                 caller.m_Calls.Add(call);
                 m_Calls[member] = call;
             }

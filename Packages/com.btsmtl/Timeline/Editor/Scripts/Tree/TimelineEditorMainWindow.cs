@@ -694,7 +694,6 @@ namespace BTSMTL.Timeline.Editor
                 m_WorkspaceModeControls);
             var header = new VisualElement();
             header.Add(m_Toolbar.Toolbar);
-            header.Add(m_Toolbar.Status);
             AddTimelineBreadcrumbs(header);
             header.Add(CreateAssetPreviewRow());
             return header;

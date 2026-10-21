@@ -180,6 +180,14 @@ namespace BTSMTL.Timeline.Editor
         }
 
         public TimelineEditorSelection Selection => m_Session.Selection;
+        public Action SelectedClipGraphNavigation
+        {
+            get
+            {
+                IEmbeddedTimelineBinding binding = m_Route ?? (IEmbeddedTimelineBinding)m_Binding;
+                return binding.Selected is IEmbeddedTimelineClipBinding clip ? binding.CreateGraphNavigation(clip) : null;
+            }
+        }
         internal bool IsCommittingTimeEdit => m_Binding.IsCommittingTimeEdit;
         public static void DrawSourceResourceInspector(TimelineData timeline, Clip clip)
         {

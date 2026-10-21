@@ -1043,19 +1043,27 @@ namespace BTSMTL.Timeline.Editor
             chain.Add(timeline.Identity);
             foreach (OrchestrationStaticTimelineCall call in timeline.Calls)
             {
-                if (call.CallerOperationIndex != operation || !call.HasStaticOffset || call.Callee == null ||
+                if (call.CallerOperationIndex != operation || !call.StartsOnCallback || call.Callee == null ||
                     chain.Contains(call.CalleeIdentity))
                     continue;
-                foreach (TimelineAssetPreviewTraversal span in caller)
+                for (int callerIndex = 0; callerIndex < caller.Length; callerIndex++)
                 {
-                    if (call.Offset < span.LocalStart || call.Offset > span.LocalEnd ||
-                        call.Offset == span.LocalEnd && !span.PlaybackCompleted)
+                    TimelineAssetPreviewTraversal span = caller[callerIndex];
+                    bool destroy = call.Hook == OrchestrationTimelineHook.Destroy;
+                    if (destroy && callerIndex != caller.Length - 1)
                         continue;
-                    OrchestrationTime start = span.Start + call.Offset - span.LocalStart;
+                    OrchestrationTime offset = destroy ? span.LocalEnd : call.Offset;
+                    if (call.Hook == OrchestrationTimelineHook.Disable && callerIndex == caller.Length - 1 &&
+                        call.Clip.Start <= span.LocalEnd && call.Clip.End > span.LocalEnd)
+                        offset = span.LocalEnd;
+                    if (offset < span.LocalStart || offset > span.LocalEnd ||
+                        offset == span.LocalEnd && !span.PlaybackCompleted && !call.IsInstantaneous)
+                        continue;
+                    OrchestrationTime start = span.Start + offset - span.LocalStart;
                     OrchestrationTime end = OrchestrationTime.Min(playbackEnd, OrchestrationTime.FromSeconds(Preferences.RangeEnd));
-                    if (call.Limit is { } limit)
+                    if (!call.IsInstantaneous && call.Limit is { } limit)
                         end = OrchestrationTime.Min(end, span.Start + limit - span.LocalStart);
-                    if (end <= start)
+                    if (end < start || end == start && !call.IsInstantaneous)
                         continue;
                     TimelineAsset source = m_Query.ResolveTimeline(call.CalleeIdentity);
                     TimelineRuntimePreparedContent content = ContentFor(source);
@@ -1066,7 +1074,10 @@ namespace BTSMTL.Timeline.Editor
                     OrchestrationTime time = start;
                     int cycle = 0;
                     var nested = new List<TimelineAssetPreviewTraversal>();
-                    while (time < end)
+                    if (call.IsInstantaneous)
+                        nested.Add(new TimelineAssetPreviewTraversal(source, content, start, start, local, local,
+                            cycle, null, null, false, nestedBranch, nestedPlayback, call, span.Playback));
+                    while (!call.IsInstantaneous && time < end)
                     {
                         if (local >= duration)
                         {

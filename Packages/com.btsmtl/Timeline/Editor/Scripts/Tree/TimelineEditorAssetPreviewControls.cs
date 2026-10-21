@@ -77,6 +77,10 @@ namespace BTSMTL.Timeline.Editor
             {
                 m_RealControls.Transport.style.flexDirection = FlexDirection.Row;
                 m_RealControls.Transport.style.alignItems = Align.Center;
+                m_RealControls.AuthoringMenu.AppendAction("打开所选片段图",
+                    _ => m_SlateProjection.SelectedClipGraphNavigation.Invoke(),
+                    _ => m_SlateProjection?.SelectedClipGraphNavigation != null
+                        ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
                 row.Add(m_RealControls.Transport);
             }
             m_AssetPreviewStatus = new Label();
@@ -88,11 +92,6 @@ namespace BTSMTL.Timeline.Editor
             m_AssetPreviewStatus.style.overflow = Overflow.Hidden;
             m_AssetPreviewStatus.style.textOverflow = TextOverflow.Ellipsis;
             row.Add(m_AssetPreviewStatus);
-            if (m_RealControls != null)
-            {
-                m_RealControls.Status.style.flexShrink = 1f;
-                row.Add(m_RealControls.Status);
-            }
             m_PreviewRetry = new ToolbarButton(() => preview.Retry()) { text = "重试" };
             row.Add(m_PreviewRetry);
             m_PreviewCopyDetail = new ToolbarButton(() => EditorGUIUtility.systemCopyBuffer = m_AssetPreviewStatus.tooltip)
@@ -287,7 +286,6 @@ namespace BTSMTL.Timeline.Editor
             {
                 SetDisplayed(m_RealControls.Transport, real && !failed);
                 SetDisplayed(m_RealControls.Settings, real && !failed);
-                SetDisplayed(m_RealControls.Status, real && active);
             }
             if (m_AssetPreviewStatus != null)
                 RefreshAssetPreviewStatus(preview, active);
@@ -346,7 +344,7 @@ namespace BTSMTL.Timeline.Editor
             else if (preview.Lifecycle == TimelinePreviewLifecycle.Preparing || preview.IsOpeningSession)
                 text = "准备中 · " + preview.LifecycleReason;
             else if (!active)
-                text = string.Empty;
+                text = m_Toolbar.Status;
             else if (!preview.IsReal && !preview.ShowsScene)
             {
                 text = "未显示角色，只推导路线";
@@ -384,6 +382,13 @@ namespace BTSMTL.Timeline.Editor
                     text = at + (preview.Status.Length == 0 ? string.Empty : " · " + FirstLine(preview.Status));
                     detail = $"预览 {preview.Time:0.000} 秒{note}\n{preview.Status}\n{preview.Chain?.Reason}";
                 }
+            }
+            if (active && preview.IsReal && m_RealControls != null)
+            {
+                var session = m_RealControls.Status();
+                if (session.Summary.Length != 0)
+                    text += " · " + session.Summary;
+                detail += "\n" + session.Detail;
             }
             m_AssetPreviewStatus.text = text;
             m_AssetPreviewStatus.tooltip = detail.Trim();

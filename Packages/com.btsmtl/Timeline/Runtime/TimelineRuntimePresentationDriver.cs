@@ -316,7 +316,8 @@ namespace BTSMTL.Timeline.Runtime
             }
             if (state.HasCachedFrame)
             {
-                if (presentationFrame == state.LastPresentationFrame)
+                // 回调内启动后立即停止仍须提交同帧终止，重复的非终止取样才复用缓存。
+                if (presentationFrame == state.LastPresentationFrame && (!sample.EndsPlayback || state.Finished))
                 {
                     frame = state.CachedFrame;
                     return false;

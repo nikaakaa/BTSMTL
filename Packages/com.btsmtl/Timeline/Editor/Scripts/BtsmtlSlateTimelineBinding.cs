@@ -792,6 +792,10 @@ namespace BTSMTL.Timeline.Editor
             return () => m_OpenSourceClip?.Invoke(source);
         }
 
+        public Action CreateGraphNavigation(IEmbeddedTimelineClipBinding clip) =>
+            clip is BtsmtlTimelineClipBinding { Source: TreeClip { AssetTree: { } graph } }
+                ? () => m_Request.AuthoringHost.OpenGraph(graph) : null;
+
 
         public bool TryGetTrack(string authoringId, out Track track)
         {

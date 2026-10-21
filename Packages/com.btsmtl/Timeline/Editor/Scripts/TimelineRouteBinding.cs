@@ -429,6 +429,9 @@ namespace BTSMTL.Timeline.Editor
         public Action CreateSourceNavigation(IEmbeddedTimelineClipBinding clip) =>
             clip is RouteClip route ? route.Owner.CreateSourceNavigation(route.Inner) : null;
 
+        public Action CreateGraphNavigation(IEmbeddedTimelineClipBinding clip) =>
+            clip is RouteClip route ? route.Owner.CreateGraphNavigation(route.Inner) : null;
+
         // Slate 的编辑事务不带元素，交给每份 Timeline 的绑定；没有改动的绑定提交时什么也不做。
         public void BeginEdit(string undoName, EmbeddedTimelineEditKind kind = EmbeddedTimelineEditKind.Content)
         {

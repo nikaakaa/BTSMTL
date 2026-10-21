@@ -16,6 +16,24 @@ namespace BTSMTL.Timeline.Editor
         public int Selected;
 
         public TimelineAssetPreviewPreferences Current => Schemes[Mathf.Clamp(Selected, 0, Schemes.Count - 1)];
+
+        public void ReleaseUnreferencedGraphs()
+        {
+            var referenced = new HashSet<UnityEngine.Object>();
+            foreach (TimelineAssetPreviewPreferences scheme in Schemes)
+                if (scheme.InputTimeline)
+                    foreach (Track track in scheme.InputTimeline.Data.Tracks)
+                    {
+                        foreach (Clip clip in track.Clips)
+                            if (clip is TreeClip tree)
+                                referenced.Add(tree.AssetTree);
+                        foreach (TimelineMarker marker in track.Markers)
+                            referenced.Add(marker.Graph);
+                    }
+            foreach (UnityEngine.Object asset in AssetDatabase.LoadAllAssetsAtPath(AssetDatabase.GetAssetPath(this)))
+                if (asset is ITimelineTreeGraphAsset && !referenced.Contains(asset))
+                    Undo.DestroyObjectImmediate(asset);
+        }
     }
 
     // 预览入口的正式身份：技能入口为所属技能身份与入口 Timeline 作者身份，独立 Timeline 只用自身作者身份。
@@ -192,11 +210,13 @@ namespace BTSMTL.Timeline.Editor
         {
             if (m_Asset == null || m_Asset.Schemes.Count <= 1)
                 return false;
+            Undo.RegisterCompleteObjectUndo(m_Asset, "删除输入方案");
             int index = Mathf.Clamp(m_Asset.Selected, 0, m_Asset.Schemes.Count - 1);
             if (m_Asset.Schemes[index].InputTimeline)
-                UnityEngine.Object.DestroyImmediate(m_Asset.Schemes[index].InputTimeline, true);
+                Undo.DestroyObjectImmediate(m_Asset.Schemes[index].InputTimeline);
             m_Asset.Schemes.RemoveAt(index);
             m_Asset.Selected = Mathf.Clamp(m_Asset.Selected, 0, m_Asset.Schemes.Count - 1);
+            m_Asset.ReleaseUnreferencedGraphs();
             EditorUtility.SetDirty(m_Asset);
             Save();
             return true;

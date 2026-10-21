@@ -37,6 +37,7 @@ namespace BTSMTL.Timeline.Editor
                 return;
             TimelineAssetPreviewHost preview = TimelineAssetPreviewHost.Shared;
             preview.TryGetPlayback(SourceAsset, out TimelinePreviewRouteSegment[] parents);
+            var shown = new HashSet<(string Element, string Graph, string Node)>();
             foreach (TimelineOrchestrationQuery query in m_TimelineQueries)
                 foreach (OrchestrationStaticTimelineCall call in query.Query.TimelineCalls)
                 {
@@ -46,6 +47,8 @@ namespace BTSMTL.Timeline.Editor
                         continue;
                     if (parents.Length != 0 && (parents[0].State != null || parents[0].Call != null) &&
                         call.CallerOperationIndex != (parents[0].Call?.OperationIndex ?? parents[0].State.TimelineOperationIndex))
+                        continue;
+                    if (!shown.Add((call.CallerElementId, call.Location.GraphId, call.Location.NodeId)))
                         continue;
                     if (!m_NestedViews.TryGetValue(call.CallerTrackId, out List<EmbeddedTimelineSubTimeline> views))
                         m_NestedViews.Add(call.CallerTrackId, views = new());
@@ -65,9 +68,14 @@ namespace BTSMTL.Timeline.Editor
             bool cycle = chain.Contains(call.CalleeIdentity);
             string name = source ? source.name : call.CalleeIdentity;
             string note = cycle ? "循环调用，已在当前路径出现，截止展开。" : call.Reason;
+            bool atParentEnd = call.Hook == OrchestrationTimelineHook.Destroy && call.StartsOnCallback;
+            bool staticOffset = call.HasStaticOffset || atParentEnd;
+            OrchestrationTime callbackAt = atParentEnd
+                ? callers.Length == 0 ? call.Caller.Duration : callers[^1].LocalEnd : call.Offset;
             var view = new EmbeddedTimelineSubTimeline
             {
-                Label = $"↳ {name} · {call.Hook}" + (cycle ? " · 循环调用" : call.HasStaticOffset ? $" · {call.Offset.AsSingle:0.###} s" : " · 时刻待会话确认"),
+                Label = $"↳ {name} · {call.Hook}" + (cycle ? " · 循环调用" : atParentEnd ? " · 父播放结束时"
+                    : call.HasStaticOffset ? $" · {call.Offset.AsSingle:0.###} s" : " · 时刻待会话确认"),
                 Tooltip = $"调用元素 {call.CallerElementId}\n父视图只读；双击进入原 Timeline 编辑。\n{note}",
                 Expanded = m_NestedExpanded.Contains(path),
                 SetExpanded = expanded =>
@@ -86,9 +94,9 @@ namespace BTSMTL.Timeline.Editor
                 segment.Source == source && segment.CallerClipId == call.CallerElementId &&
                 callers.Any(caller => caller.Playback == segment.CallerPlayback) &&
                 (segment.Recorded is not { } record || record.OperationIndex == call.OperationIndex)).ToArray();
-            if (!source || call.Callee == null || cycle || !call.HasStaticOffset && played.Length == 0)
+            if (!source || call.Callee == null || cycle || !staticOffset && played.Length == 0)
                 return view;
-            float offset = parentOffset + call.Offset.AsSingle - call.CalleeStartTime.AsSingle;
+            float offset = parentOffset + callbackAt.AsSingle - call.CalleeStartTime.AsSingle;
             foreach (Track track in source.Data.Tracks)
             {
                 var row = new EmbeddedTimelineNestedRow { Label = track.Name, Color = track.Color() };
@@ -117,7 +125,7 @@ namespace BTSMTL.Timeline.Editor
                                 item.Visited.Add(new Vector2(localStart.AsSingle, localEnd.AsSingle));
                         }
                     }
-                    if (call.HasStaticOffset)
+                    if (staticOffset)
                         row.Clips.Add(item);
                     else if (item.Visited.Count != 0)
                     {
@@ -129,8 +137,10 @@ namespace BTSMTL.Timeline.Editor
                 view.Rows.Add(row);
             }
             chain.Add(call.CalleeIdentity);
+            var shown = new HashSet<(string Element, string Graph, string Node)>();
             foreach (OrchestrationStaticTimelineCall child in call.Callee.Calls)
-                if (child.CallerOperationIndex == call.OperationIndex)
+                if (child.CallerOperationIndex == call.OperationIndex &&
+                    shown.Add((child.CallerElementId, child.Location.GraphId, child.Location.NodeId)))
                     view.Children.Add(BuildNestedView(query, child, offset, played, roots, chain,
                         path + "/" + child.OperationIndex));
             chain.Remove(call.CalleeIdentity);
@@ -140,10 +150,12 @@ namespace BTSMTL.Timeline.Editor
         bool TryOpenNestedClip(Clip clip)
         {
             var calls = new List<(TimelineOrchestrationQuery Query, OrchestrationStaticTimelineCall Call)>();
+            var shown = new HashSet<(string Element, string Graph, string Node)>();
             foreach (TimelineOrchestrationQuery query in m_TimelineQueries)
                 foreach (OrchestrationStaticTimelineCall call in query.Query.TimelineCalls)
                     if (call.CallerElementId == clip.AuthoringId && query.ResolveTimeline(call.Caller.Identity) == SourceAsset &&
-                        MatchesSelectedCaller(query, call))
+                        MatchesSelectedCaller(query, call) &&
+                        shown.Add((call.CallerElementId, call.Location.GraphId, call.Location.NodeId)))
                         calls.Add((query, call));
             if (calls.Count == 0)
                 return false;

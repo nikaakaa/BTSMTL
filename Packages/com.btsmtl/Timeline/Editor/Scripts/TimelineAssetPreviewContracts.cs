@@ -384,16 +384,20 @@ namespace BTSMTL.Timeline.Editor
     // 真实档控制分三处放入 Timeline 窗口唯一的预览工具栏：内联播放组、⚙ 设置面板与状态行尾部；布局由窗口持有。
     public sealed class TimelinePreviewRealControls
     {
-        public TimelinePreviewRealControls(VisualElement transport, VisualElement settings, VisualElement status)
+        public TimelinePreviewRealControls(VisualElement transport, VisualElement settings,
+            Func<(string Summary, string Detail)> status,
+            DropdownMenu authoringMenu)
         {
             Transport = transport ?? throw new ArgumentNullException(nameof(transport));
             Settings = settings ?? throw new ArgumentNullException(nameof(settings));
             Status = status ?? throw new ArgumentNullException(nameof(status));
+            AuthoringMenu = authoringMenu;
         }
 
         public VisualElement Transport { get; }
         public VisualElement Settings { get; }
-        public VisualElement Status { get; }
+        public Func<(string Summary, string Detail)> Status { get; }
+        public DropdownMenu AuthoringMenu { get; }
     }
 
     public interface ITimelineAssetPreviewProvider
