@@ -22,6 +22,7 @@ namespace BTSMTL.Timeline.Editor
         ToolbarToggle m_PreviewOpen;
         ToolbarToggle m_PreviewSettingsToggle;
         ToolbarButton m_FastPlayback;
+        ToolbarMenu m_PlaybackMenu;
         ToolbarMenu m_SchemeMenu;
         ToolbarMenu m_AssumptionMenu;
         TimelinePreviewRealControls m_RealControls;
@@ -110,6 +111,8 @@ namespace BTSMTL.Timeline.Editor
             m_AssetPreviewStatus.style.overflow = Overflow.Hidden;
             m_AssetPreviewStatus.style.textOverflow = TextOverflow.Ellipsis;
             m_AssetPreviewStatusRow.Add(m_AssetPreviewStatus);
+            m_PlaybackMenu = new ToolbarMenu { tooltip = "本 Timeline 在这次预览中播放了多次；选择编辑时间轴显示哪一次" };
+            m_AssetPreviewStatusRow.Add(m_PlaybackMenu);
             if (m_RealControls != null)
             {
                 m_RealControls.Status.style.flexGrow = 1f;
@@ -167,14 +170,14 @@ namespace BTSMTL.Timeline.Editor
             m_PreviewPathPlayback = -1;
             m_DragPoint = null;
             m_PreviewInputs.Clear();
-            DisposePreviewRouteRows();
+            m_PlaybackMenu = null;
         }
 
         // 预览链走进别的 Timeline 时编辑窗口跟过去，并把来处记为可返回的导航。
         void FollowPreview(TimelineAsset target)
         {
-            if (TimelineAssetPreviewHost.Shared.Covers(SourceAsset))
-                OpenRouteTimeline(target);
+            if (TimelineAssetPreviewHost.Shared.Covers(SourceAsset) && target && target != SourceAsset)
+                NavigateTimeline(target, string.Empty);
         }
 
         void RefreshAssetPreviewControls()
@@ -222,7 +225,6 @@ namespace BTSMTL.Timeline.Editor
             }
             ApplyPreviewPath(active);
             RefreshSchemeMenus(active);
-            m_PreviewRoute?.MarkDirtyRepaint();
             if (active && m_AppliedAssetSample != preview.SampledRevision)
             {
                 m_AppliedAssetSample = preview.SampledRevision;
@@ -236,7 +238,7 @@ namespace BTSMTL.Timeline.Editor
         static void SetDisplayed(VisualElement element, bool displayed) =>
             element.style.display = displayed ? DisplayStyle.Flex : DisplayStyle.None;
 
-        // 状态行只保留一行结论：档位、所在 Timeline 与本地时刻、结果是否最新；会话时刻、原因与播放次序进悬停说明。
+        // 状态行只保留一行结论：档位、所在 Timeline 与本地时刻、结果是否最新；会话时刻、过期原因与差异进悬停说明。
         void RefreshAssetPreviewStatus(TimelineAssetPreviewHost preview, bool active)
         {
             string text;
@@ -257,33 +259,61 @@ namespace BTSMTL.Timeline.Editor
             else
             {
                 string playback = preview.TryGetPlayback(SourceAsset, out TimelinePreviewRouteSegment[] spans)
-                    ? $"第 {spans[0].Occurrence + 1} 次播放" + (spans.Length > 1 ? $" · {spans.Length} 圈" : string.Empty)
-                    : "本轴不在预览路线上";
-                string at = $"{preview.SampledSource?.name} {preview.LocalTime:0.000} 秒";
+                    ? spans.Length > 1 ? $"{spans.Length} 圈" : string.Empty
+                    : "本轴不在预览链上";
+                string at = $"{preview.SampledSource?.name} {preview.LocalTime:0.000} 秒" +
+                    (playback.Length == 0 ? string.Empty : " · " + playback);
                 string note = preview.LocalNote.Length == 0 ? string.Empty : "\n" + preview.LocalNote;
                 if (preview.IsReal)
                 {
                     string result = preview.RealStale ? "● 过期"
                         : preview.Differences.Count == 0 ? "与快速一致"
                         : $"{preview.Differences.Count} 处与快速不同";
-                    text = $"真实 · {at} · {playback} · {result}";
+                    text = $"真实 · {at} · {result}";
                     detail = $"会话 {preview.Time:0.000} 秒{note}" +
-                        (preview.RealStale ? "\n结果过期，待重演：" + preview.RealStaleReason
-                            : preview.Differences.Count != 0 ? "\n悬停路线行红标查看差异" : string.Empty);
+                        (preview.RealStale ? "\n结果过期，待重演：" + preview.RealStaleReason : string.Empty);
+                    foreach (TimelinePreviewDifference difference in preview.Differences)
+                        detail += $"\n第 {difference.Time:0.000} 秒：{difference.Message}";
                     if (preview.RealStale)
                         color = new Color(1f, .78f, .3f);
                 }
                 else
                 {
-                    text = $"快速 · {at} · {playback}" + (preview.Status.Length == 0 ? string.Empty : " · " + FirstLine(preview.Status));
+                    text = $"快速 · {at}" + (preview.Status.Length == 0 ? string.Empty : " · " + FirstLine(preview.Status));
                     detail = $"预览 {preview.Time:0.000} 秒{note}\n{preview.Status}\n{preview.Chain?.Reason}";
                 }
-                detail += "\n点路线行选择其它播放";
             }
             m_AssetPreviewStatus.text = text;
             m_AssetPreviewStatus.tooltip = detail.Trim();
             m_AssetPreviewStatus.style.color = color;
             SetDisplayed(m_AssetPreviewStatusRow, text.Length != 0);
+            RefreshPlaybackMenu(preview, active);
+        }
+
+        // 本 Timeline 在预览中播放多次时才出现；选中的那次决定编辑时间轴上的输入点、标记与游标换算。
+        void RefreshPlaybackMenu(TimelineAssetPreviewHost preview, bool active)
+        {
+            var playbacks = new List<TimelinePreviewRouteSegment>();
+            if (active)
+                foreach (TimelinePreviewRouteSegment segment in preview.Route)
+                    if (segment.Source == SourceAsset && !playbacks.Any(known => known.Playback == segment.Playback))
+                        playbacks.Add(segment);
+            SetDisplayed(m_PlaybackMenu, playbacks.Count > 1);
+            if (playbacks.Count <= 1)
+                return;
+            int selected = preview.TryGetPlayback(SourceAsset, out TimelinePreviewRouteSegment[] spans) ? spans[0].Playback : -1;
+            DropdownMenu menu = m_PlaybackMenu.menu;
+            menu.MenuItems().Clear();
+            foreach (TimelinePreviewRouteSegment segment in playbacks)
+            {
+                int playback = segment.Playback;
+                string label = $"第 {segment.Occurrence + 1} 次播放 · {segment.Start.AsSingle:0.00} 秒起" +
+                    (segment.IsNested ? " · 被调用" : string.Empty);
+                if (playback == selected)
+                    m_PlaybackMenu.text = $"第 {segment.Occurrence + 1}／{playbacks.Count} 次播放";
+                menu.AppendAction(label, _ => preview.SelectPlayback(playback),
+                    playback == selected ? DropdownMenuAction.Status.Checked : DropdownMenuAction.Status.Normal);
+            }
         }
 
         static string FirstLine(string value)

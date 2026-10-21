@@ -516,7 +516,6 @@ namespace BTSMTL.Timeline.Editor
             m_SlateSurface.style.flexShrink = 1f;
             m_SlateSurface.style.minHeight = 320f;
             rootVisualElement.Add(m_SlateSurface);
-            rootVisualElement.Add(CreatePreviewRouteRows());
             BindStateQueries();
         }
 
@@ -671,17 +670,6 @@ namespace BTSMTL.Timeline.Editor
                 Mathf.Max(1f, rect.height),
                 BeginWindows,
                 EndWindows);
-            // 路线行与时间尺共用刻度：缩放、平移或改左栏宽后跟着重画。
-            if (Event.current.type == EventType.Repaint && m_PreviewRoute != null &&
-                m_SlateProjection.TryGetTimeAxis(out float left, out float width, out float viewMin, out float viewMax))
-            {
-                var axis = new Vector4(left, width, viewMin, viewMax);
-                if (axis != m_DrawnTimeAxis)
-                {
-                    m_DrawnTimeAxis = axis;
-                    m_PreviewRoute.MarkDirtyRepaint();
-                }
-            }
             var preview = TimelineAssetPreviewHost.Shared;
             if (timeInput && previousTime != m_SlateProjection.CurrentTime && preview.IsOpen && SourceAsset &&
                 preview.SampledSource == SourceAsset)

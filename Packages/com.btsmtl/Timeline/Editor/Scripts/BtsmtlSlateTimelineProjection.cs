@@ -221,17 +221,6 @@ namespace BTSMTL.Timeline.Editor
         }
         public event Action<TimelineEditorSelection> SelectionChanged;
         public float CurrentTime => m_Binding.CurrentTime;
-
-        // 时间区在嵌入绘制矩形内的横向范围与可见时间段；路线行据此与编辑时间轴共用同一刻度。
-        public bool TryGetTimeAxis(out float left, out float width, out float viewMin, out float viewMax)
-        {
-            Rect area = m_EmbeddedEditor.EmbeddedTimeArea;
-            left = area.x;
-            width = area.width;
-            viewMin = m_EmbeddedEditor.viewTimeMin;
-            viewMax = m_EmbeddedEditor.viewTimeMax;
-            return width > 1f && viewMax > viewMin;
-        }
         internal void SetNestedViews(IReadOnlyDictionary<string, List<EmbeddedTimelineSubTimeline>> views) =>
             m_Binding.SetNestedViews(views);
         public void SetPreviewPath(string source, IReadOnlyList<Vector2> visited, IReadOnlyList<TimelinePreviewMark> marks,

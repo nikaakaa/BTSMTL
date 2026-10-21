@@ -88,7 +88,7 @@ namespace BTSMTL.Timeline.Editor
         public IReadOnlyList<GraphHostInputDescriptor> Inputs =>
             m_Instance != null ? m_Instance.Inputs : m_Provider.DescribeInputs();
         // 真实档的静态推导路线，只供与执行记录对比。
-        public TimelineStaticChain FastChain { get; private set; }
+        TimelineStaticChain FastChain { get; set; }
         // 真实档执行记录与快速推导的差异，按预览时刻排列；结果过期时不与新快速路线比较。
         public IReadOnlyList<TimelinePreviewDifference> Differences =>
             m_Real != null && !RealStale ? m_Real.Differences : Array.Empty<TimelinePreviewDifference>();
