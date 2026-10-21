@@ -385,6 +385,8 @@ namespace BTSMTL.Compilation.Analysis
                 m_Outgoing[i].Sort(CompareEdges);
             foreach (SemanticConstantInputBinding binding in input.ConstantInputs)
                 m_ConstantInputs.Add((binding.TargetOperation.Value, binding.TargetPort), binding.ConstantIndex);
+            // 控制流来源的下标是编译前的声明顺序，与压平后的控制流表不同；按作者路由（即连线身份）对应。
+            var edgeLocations = new Dictionary<string, OrchestrationStaticSourceLocation>(StringComparer.Ordinal);
             foreach (ProgramSourceMapEntry entry in input.SourceMap)
             {
                 ProgramExecutionSource source = entry.Source;
@@ -392,9 +394,12 @@ namespace BTSMTL.Compilation.Analysis
                     m_Locations[source.TargetIndex] = new OrchestrationStaticSourceLocation(source.GraphId, source.NodeId,
                         source.EdgeId, entry.DisplayPath);
                 else if (source.TargetKind == ProgramSourceTargetKind.Reference && source.EdgeId.Length != 0)
-                    m_EdgeLocations[source.TargetIndex] = new OrchestrationStaticSourceLocation(source.GraphId, source.NodeId,
+                    edgeLocations[entry.DisplayPath] = new OrchestrationStaticSourceLocation(source.GraphId, source.NodeId,
                         source.EdgeId, entry.DisplayPath);
             }
+            for (int i = 0; i < input.ControlFlow.Count; i++)
+                if (edgeLocations.TryGetValue(input.ControlFlow[i].Identity, out OrchestrationStaticSourceLocation location))
+                    m_EdgeLocations[i] = location;
         }
 
         public IEnumerable<OrchestrationStaticState> States => m_States.Values;
