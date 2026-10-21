@@ -20,22 +20,18 @@ namespace BTSMTL.Timeline.Editor
         [SerializeField] float m_PreviewTime;
         bool m_RestorePreviewTime;
         Label m_AssetPreviewStatus;
-        Button m_PreviewRetry;
-        VisualElement m_AssetPreviewStatusRow;
+        ToolbarButton m_PreviewRetry;
+        ToolbarButton m_PreviewCopyDetail;
         ObjectField m_AssetPreviewConfiguration;
-        IMGUIContainer m_AssetPreviewInputs;
-        VisualElement m_AssetPreviewSettings;
         ToolbarToggle m_FastTier;
         ToolbarToggle m_RealTier;
         ToolbarToggle m_SceneToggle;
-        ToolbarToggle m_PreviewSettingsToggle;
         ToolbarButton m_FastPlayback;
+        Image m_FastPlaybackIcon;
         Label m_PreviewTimeLabel;
         ToolbarButton m_SaveButton;
-        ToolbarMenu m_SchemeMenu;
-        ToolbarMenu m_ConditionMenu;
         TimelinePreviewRealControls m_RealControls;
-        bool m_ShowPreviewSettings;
+        Rect m_InputHeaderAnchor;
         Vector2 m_PreviewInputsScroll;
         ulong m_AppliedAssetSample;
         long m_PreviewPathRevision = -1;
@@ -44,21 +40,35 @@ namespace BTSMTL.Timeline.Editor
         TimelineAsset m_RouteInputs;
         readonly List<UnityEngine.Object> m_UnsavedAssets = new();
 
-        // 工具栏里的预览控制：档位（快速｜真实）、播放与时刻、真实档控制、方案、条件、Scene、保存与 ⚙。
-        VisualElement CreateAssetPreviewToolbar()
+        // 编辑行右侧的保存：只在本技能根有未保存作者资产时出现。
+        ToolbarButton CreateSaveButton()
+        {
+            m_SaveButton = new ToolbarButton(SaveRouteAssets);
+            m_SaveButton.schedule.Execute(RefreshSaveButton).Every(500);
+            RefreshSaveButton();
+            return m_SaveButton;
+        }
+
+        // 预览行：档位、播放与时刻（出错时换成原因、重试与复制详情）、真实档控制与结论，右侧显示角色与预览场景；
+        // 真实档的单步、动作与控制输入在下一行。方案与条件在轨道区预览输入组的组头。
+        VisualElement CreateAssetPreviewRow()
         {
             var preview = TimelineAssetPreviewHost.Shared;
-            var row = new VisualElement();
-            row.style.flexDirection = FlexDirection.Row;
+            var panel = new VisualElement();
+            var row = new Toolbar();
             row.style.flexWrap = Wrap.Wrap;
+            row.style.height = StyleKeyword.Auto;
+            row.style.minHeight = 22f;
             row.style.alignItems = Align.Center;
-            m_FastTier = new ToolbarToggle { text = "快速", tooltip = "按静态推导即时显示，改输入与作者内容立即重新推导" };
-            m_RealTier = new ToolbarToggle { text = "真实", tooltip = "以同一输入方案经正式会话重演，并与快速结果对比" };
+            m_FastTier = new ToolbarToggle { text = "快速推导", tooltip = "按静态推导即时显示，改输入与作者内容立即重新推导" };
+            m_RealTier = new ToolbarToggle { text = "真实重演", tooltip = "以同一输入方案经正式会话重演，确认物理与命中，并与快速推导对比" };
             m_FastTier.RegisterValueChangedCallback(change => SelectPreviewTier(TimelinePreviewMode.Fast));
             m_RealTier.RegisterValueChangedCallback(change => SelectPreviewTier(TimelinePreviewMode.Real));
             row.Add(m_FastTier);
             row.Add(m_RealTier);
+            m_FastPlaybackIcon = new Image { scaleMode = ScaleMode.ScaleToFit, style = { width = 16f, height = 16f } };
             m_FastPlayback = new ToolbarButton(() => preview.SetPlaying(!preview.IsPlaying));
+            m_FastPlayback.Add(m_FastPlaybackIcon);
             row.Add(m_FastPlayback);
             m_PreviewTimeLabel = new Label { style = { minWidth = 64f, unityTextAlign = TextAnchor.MiddleLeft, paddingLeft = 4f } };
             row.Add(m_PreviewTimeLabel);
@@ -69,76 +79,51 @@ namespace BTSMTL.Timeline.Editor
                 m_RealControls.Transport.style.alignItems = Align.Center;
                 row.Add(m_RealControls.Transport);
             }
-            m_SchemeMenu = new ToolbarMenu { tooltip = "输入方案：与入口 Timeline 并列保存，可提交" };
-            row.Add(m_SchemeMenu);
-            m_ConditionMenu = new ToolbarMenu { text = "条件", tooltip = "路线读到的运行数据条件：在输入轨上生成条件 Clip，或让没走成的转移可走" };
-            row.Add(m_ConditionMenu);
-            m_SceneToggle = new ToolbarToggle { text = "Scene", tooltip = "在 Scene 窗口显示预览角色；关掉只释放预览场景，路线与推导保留" };
+            m_AssetPreviewStatus = new Label();
+            m_AssetPreviewStatus.style.flexGrow = 1f;
+            m_AssetPreviewStatus.style.flexShrink = 1f;
+            m_AssetPreviewStatus.style.minWidth = 0f;
+            m_AssetPreviewStatus.style.paddingLeft = 6f;
+            m_AssetPreviewStatus.style.unityTextAlign = TextAnchor.MiddleLeft;
+            m_AssetPreviewStatus.style.overflow = Overflow.Hidden;
+            m_AssetPreviewStatus.style.textOverflow = TextOverflow.Ellipsis;
+            row.Add(m_AssetPreviewStatus);
+            if (m_RealControls != null)
+            {
+                m_RealControls.Status.style.flexShrink = 1f;
+                row.Add(m_RealControls.Status);
+            }
+            m_PreviewRetry = new ToolbarButton(() => preview.Retry()) { text = "重试" };
+            row.Add(m_PreviewRetry);
+            m_PreviewCopyDetail = new ToolbarButton(() => EditorGUIUtility.systemCopyBuffer = m_AssetPreviewStatus.tooltip)
+            {
+                text = "复制详情",
+                tooltip = "复制完整错误信息"
+            };
+            row.Add(m_PreviewCopyDetail);
+            m_SceneToggle = new ToolbarToggle { text = "显示角色", tooltip = "在 Scene 窗口显示预览角色；关掉只释放预览场景，路线与推导保留" };
             m_SceneToggle.RegisterValueChangedCallback(change =>
             {
                 m_PreviewHidesScene = !change.newValue;
                 preview.SetShowsScene(change.newValue);
             });
             row.Add(m_SceneToggle);
-            m_SaveButton = new ToolbarButton(SaveRouteAssets);
-            m_SaveButton.schedule.Execute(RefreshSaveButton).Every(500);
-            row.Add(m_SaveButton);
-            m_PreviewSettingsToggle = new ToolbarToggle { text = "⚙", tooltip = "预览设置：预览场景、真实档单步与动作、范围与假设目标、输入 Timeline" };
-            m_PreviewSettingsToggle.SetValueWithoutNotify(m_ShowPreviewSettings);
-            m_PreviewSettingsToggle.RegisterValueChangedCallback(change =>
-            {
-                m_ShowPreviewSettings = change.newValue;
-                RefreshAssetPreviewControls();
-            });
-            row.Add(m_PreviewSettingsToggle);
-            row.SetEnabled(SourceAsset);
-            return row;
-        }
-
-        // 工具栏下：一行状态（生命周期结论，出错带重试）与 ⚙ 面板。
-        VisualElement CreateAssetPreviewPanel()
-        {
-            var preview = TimelineAssetPreviewHost.Shared;
-            var panel = new VisualElement();
-            m_AssetPreviewStatusRow = new VisualElement();
-            m_AssetPreviewStatusRow.style.flexDirection = FlexDirection.Row;
-            m_AssetPreviewStatusRow.style.alignItems = Align.Center;
-            m_AssetPreviewStatusRow.style.paddingLeft = 4f;
-            m_AssetPreviewStatusRow.style.minHeight = 18f;
-            m_AssetPreviewStatus = new Label();
-            m_AssetPreviewStatus.style.flexShrink = 1f;
-            m_AssetPreviewStatus.style.overflow = Overflow.Hidden;
-            m_AssetPreviewStatus.style.textOverflow = TextOverflow.Ellipsis;
-            m_AssetPreviewStatusRow.Add(m_AssetPreviewStatus);
-            m_PreviewRetry = new Button(() => preview.Retry()) { text = "重试" };
-            m_AssetPreviewStatusRow.Add(m_PreviewRetry);
-            if (m_RealControls != null)
-            {
-                m_RealControls.Status.style.flexGrow = 1f;
-                m_RealControls.Status.style.flexShrink = 1f;
-                m_AssetPreviewStatusRow.Add(m_RealControls.Status);
-            }
-            panel.Add(m_AssetPreviewStatusRow);
-
-            m_AssetPreviewSettings = new VisualElement();
-            m_AssetPreviewSettings.style.paddingLeft = 4f;
-            m_AssetPreviewSettings.style.paddingBottom = 4f;
-            m_AssetPreviewConfiguration = new ObjectField("预览场景")
+            row.Add(new Label("场景") { style = { paddingLeft = 6f, paddingRight = 2f, unityTextAlign = TextAnchor.MiddleLeft } });
+            m_AssetPreviewConfiguration = new ObjectField
             {
                 objectType = preview.ConfigurationType,
                 allowSceneObjects = false,
                 value = preview.Configuration,
-                tooltip = "快速档与真实档共用的预览场景；更换后原地重新准备"
+                tooltip = "快速推导与真实重演共用的预览场景；更换后原地重新准备"
             };
+            m_AssetPreviewConfiguration.style.width = 220f;
+            m_AssetPreviewConfiguration.style.flexShrink = 0f;
             m_AssetPreviewConfiguration.RegisterValueChangedCallback(change => preview.Configuration = change.newValue);
-            m_AssetPreviewConfiguration.style.maxWidth = 420f;
-            m_AssetPreviewSettings.Add(m_AssetPreviewConfiguration);
+            row.Add(m_AssetPreviewConfiguration);
+            panel.Add(row);
             if (m_RealControls != null)
-                m_AssetPreviewSettings.Add(m_RealControls.Settings);
-            m_AssetPreviewInputs = new IMGUIContainer(DrawAssetPreviewInputs);
-            m_AssetPreviewInputs.style.maxHeight = 240f;
-            m_AssetPreviewSettings.Add(m_AssetPreviewInputs);
-            panel.Add(m_AssetPreviewSettings);
+                panel.Add(m_RealControls.Settings);
+            panel.SetEnabled(SourceAsset);
             preview.Changed += RefreshAssetPreviewControls;
             RefreshAssetPreviewControls();
             return panel;
@@ -210,10 +195,11 @@ namespace BTSMTL.Timeline.Editor
             if (m_SaveButton == null)
                 return;
             CollectUnsavedAssets(TimelineAssetPreviewHost.Shared);
-            m_SaveButton.text = m_UnsavedAssets.Count == 0 ? "已保存" : $"保存 {m_UnsavedAssets.Count}";
-            m_SaveButton.tooltip = m_UnsavedAssets.Count == 0 ? "本技能根内的作者资产都已保存"
-                : "未保存：\n" + string.Join("\n", m_UnsavedAssets.Select(asset => AssetDatabase.GetAssetPath(asset)));
-            m_SaveButton.SetEnabled(m_UnsavedAssets.Count != 0);
+            SetDisplayed(m_SaveButton, m_UnsavedAssets.Count != 0);
+            if (m_UnsavedAssets.Count == 0)
+                return;
+            m_SaveButton.text = $"保存 {m_UnsavedAssets.Count}";
+            m_SaveButton.tooltip = "未保存：\n" + string.Join("\n", m_UnsavedAssets.Select(asset => AssetDatabase.GetAssetPath(asset)));
         }
 
         void SaveRouteAssets()
@@ -229,19 +215,15 @@ namespace BTSMTL.Timeline.Editor
             TimelineAssetPreviewHost.Shared.Changed -= RefreshAssetPreviewControls;
             m_AssetPreviewStatus = null;
             m_PreviewRetry = null;
-            m_AssetPreviewStatusRow = null;
+            m_PreviewCopyDetail = null;
             m_AssetPreviewConfiguration = null;
-            m_AssetPreviewInputs = null;
-            m_AssetPreviewSettings = null;
             m_FastTier = null;
             m_RealTier = null;
             m_SceneToggle = null;
-            m_PreviewSettingsToggle = null;
             m_FastPlayback = null;
+            m_FastPlaybackIcon = null;
             m_PreviewTimeLabel = null;
             m_SaveButton = null;
-            m_SchemeMenu = null;
-            m_ConditionMenu = null;
             m_RealControls = null;
             m_AppliedAssetSample = 0;
             m_PreviewPathRevision = -1;
@@ -283,37 +265,33 @@ namespace BTSMTL.Timeline.Editor
                 m_AssetPreviewConfiguration.SetValueWithoutNotify(preview.Configuration);
                 m_AssetPreviewConfiguration.SetEnabled(preview.IsRegistered);
             }
+            // 出错时播放与时刻整段让位给原因和重试，不留看似可用的控件。
+            bool failed = !preview.IsRegistered || preview.Lifecycle == TimelinePreviewLifecycle.Failed;
             if (m_FastTier != null)
             {
                 m_FastTier.SetValueWithoutNotify(!real);
                 m_RealTier.SetValueWithoutNotify(real);
-                m_SceneToggle.SetValueWithoutNotify(real || !m_PreviewHidesScene);
-                m_SceneToggle.SetEnabled(!real && active);
-                m_PreviewTimeLabel.text = active ? $"{preview.Time:0.000} s" : string.Empty;
+                m_SceneToggle.SetValueWithoutNotify(!m_PreviewHidesScene);
+                SetDisplayed(m_SceneToggle, !real);
+                m_SceneToggle.SetEnabled(active);
+                SetDisplayed(m_PreviewTimeLabel, active);
+                m_PreviewTimeLabel.text = active ? $"{preview.Time:0.000} 秒" : string.Empty;
             }
             if (m_FastPlayback != null)
             {
-                SetDisplayed(m_FastPlayback, !real);
-                m_FastPlayback.text = preview.IsPlaying ? "⏸" : "▶";
-                m_FastPlayback.tooltip = preview.IsPlaying ? "暂停快速预览" : "播放快速预览";
-                m_FastPlayback.SetEnabled(active);
+                SetDisplayed(m_FastPlayback, !real && active);
+                m_FastPlaybackIcon.image = EditorGUIUtility.IconContent(preview.IsPlaying ? "PauseButton" : "PlayButton").image;
+                m_FastPlayback.tooltip = preview.IsPlaying ? "暂停快速推导" : "播放快速推导";
             }
             if (m_RealControls != null)
             {
-                SetDisplayed(m_RealControls.Transport, real);
-                SetDisplayed(m_RealControls.Settings, real);
+                SetDisplayed(m_RealControls.Transport, real && !failed);
+                SetDisplayed(m_RealControls.Settings, real && !failed);
                 SetDisplayed(m_RealControls.Status, real && active);
             }
             if (m_AssetPreviewStatus != null)
                 RefreshAssetPreviewStatus(preview, active);
-            if (m_AssetPreviewSettings != null)
-            {
-                SetDisplayed(m_AssetPreviewSettings, m_ShowPreviewSettings);
-                SetDisplayed(m_AssetPreviewInputs, active);
-                m_AssetPreviewInputs.MarkDirtyRepaint();
-            }
             ApplyPreviewPath(active);
-            RefreshSchemeMenus(active);
             if (active && m_AppliedAssetSample != preview.SampledRevision)
             {
                 m_AppliedAssetSample = preview.SampledRevision;
@@ -329,8 +307,8 @@ namespace BTSMTL.Timeline.Editor
         static void SetDisplayed(VisualElement element, bool displayed) =>
             element.style.display = displayed ? DisplayStyle.Flex : DisplayStyle.None;
 
-        // 状态行只保留一行结论：先是生命周期（Play 中、出错、等待、准备中），就绪时为档位、所在 Timeline 与本地时刻、
-        // 结果是否最新；原始异常、会话时刻、过期原因与差异进悬停说明。
+        // 预览行的一句结论：先是生命周期（Play 中、出错、等待、准备中），就绪时为所在 Timeline 与本地时刻、
+        // 结果是否最新；档位与全局时刻已在左侧。出错带原因第一行，完整异常、会话时刻、过期原因与差异进悬停说明。
         void RefreshAssetPreviewStatus(TimelineAssetPreviewHost preview, bool active)
         {
             string text;
@@ -348,8 +326,9 @@ namespace BTSMTL.Timeline.Editor
             }
             else if (preview.Lifecycle == TimelinePreviewLifecycle.Failed)
             {
-                text = "出错 · " + preview.LifecycleReason;
                 detail = preview.LifecycleDetail;
+                string cause = FirstLine(detail.Trim());
+                text = "预览出错 · " + preview.LifecycleReason + (cause.Length == 0 ? string.Empty : "：" + cause);
                 color = error;
                 retry = true;
             }
@@ -370,14 +349,14 @@ namespace BTSMTL.Timeline.Editor
                 text = string.Empty;
             else if (!preview.IsReal && !preview.ShowsScene)
             {
-                text = $"快速 · {preview.Time:0.000} 秒 · 只推导路线，Scene 未显示角色";
+                text = "未显示角色，只推导路线";
                 detail = preview.Chain?.Reason ?? string.Empty;
             }
             else
             {
                 string at;
                 if (m_SlateProjection?.ShowsRoute == true)
-                    at = $"{preview.Time:0.000} 秒 · 在 {preview.SampledSource?.name} 本地 {preview.LocalTime:0.000} 秒";
+                    at = $"在 {preview.SampledSource?.name} 本地 {preview.LocalTime:0.000} 秒";
                 else
                 {
                     string playback = preview.TryGetPlayback(SourceAsset, out TimelinePreviewRouteSegment[] spans)
@@ -389,10 +368,10 @@ namespace BTSMTL.Timeline.Editor
                 string note = preview.LocalNote.Length == 0 ? string.Empty : "\n" + preview.LocalNote;
                 if (preview.IsReal)
                 {
-                    string result = preview.RealStale ? "● 过期"
-                        : preview.Differences.Count == 0 ? "与快速一致"
-                        : $"{preview.Differences.Count} 处与快速不同";
-                    text = $"真实 · {at} · {result}";
+                    string result = preview.RealStale ? "结果过期"
+                        : preview.Differences.Count == 0 ? "与快速推导一致"
+                        : $"{preview.Differences.Count} 处与快速推导不同";
+                    text = $"{at} · {result}";
                     detail = $"会话 {preview.Time:0.000} 秒{note}" +
                         (preview.RealStale ? "\n结果过期，待重演：" + preview.RealStaleReason : string.Empty);
                     foreach (TimelinePreviewDifference difference in preview.Differences)
@@ -402,7 +381,7 @@ namespace BTSMTL.Timeline.Editor
                 }
                 else
                 {
-                    text = $"快速 · {at}" + (preview.Status.Length == 0 ? string.Empty : " · " + FirstLine(preview.Status));
+                    text = at + (preview.Status.Length == 0 ? string.Empty : " · " + FirstLine(preview.Status));
                     detail = $"预览 {preview.Time:0.000} 秒{note}\n{preview.Status}\n{preview.Chain?.Reason}";
                 }
             }
@@ -410,7 +389,7 @@ namespace BTSMTL.Timeline.Editor
             m_AssetPreviewStatus.tooltip = detail.Trim();
             m_AssetPreviewStatus.style.color = color;
             SetDisplayed(m_PreviewRetry, retry);
-            SetDisplayed(m_AssetPreviewStatusRow, text.Length != 0);
+            SetDisplayed(m_PreviewCopyDetail, retry && m_AssetPreviewStatus.tooltip.Length != 0);
         }
 
         static string FirstLine(string value)
@@ -435,16 +414,10 @@ namespace BTSMTL.Timeline.Editor
             float duration = preview.Duration;
             // 时间轴要容下路线结束后的输入与各组完整内容，路线结束后的部分压暗并在输入组头说明。
             float length = inputs ? Mathf.Max(duration, inputs.Data.Duration) : duration;
-            string error = preview.InputError;
-            string ended = inputs && inputs.Data.Duration > duration + 0.001f && preview.Chain != null
-                ? $" · 路线在 {duration:0.00} s 结束（{preview.Chain.Reason.TrimEnd('。')}），之后的输入不起作用"
-                : string.Empty;
             var groups = new List<TimelineRouteGroup>
             {
-                new(inputs, "预览输入 · " + preview.Preferences.Name +
-                        (!inputs ? " · 右键 Add Track 开始摆输入" : error.Length != 0 ? " · 有错误：" + FirstLine(error) : ended),
-                    0f, 0f, duration, inputs ? OpenInputTimeline : null,
-                    (graph, start) => DescribeInputContent(preview, graph, start))
+                new(inputs, "预览输入", 0f, 0f, duration, inputs ? OpenInputTimeline : null,
+                    (graph, start) => DescribeInputContent(preview, graph, start), DrawInputGroupHeader)
             };
             foreach (TimelinePreviewRouteSegment segment in preview.Route.OrderBy(value => value.Start))
             {
@@ -743,70 +716,129 @@ namespace BTSMTL.Timeline.Editor
             return false;
         }
 
-        // 方案菜单：切换、另存、重命名、删除与从录制输入导入；条件菜单在输入轨上生成条件 Clip。
-        void RefreshSchemeMenus(bool active)
+        // 预览输入组头：方案菜单、条件菜单，其后是输入错误、还没有输入或路线提前结束的提示。
+        void DrawInputGroupHeader(Rect rect)
         {
             var preview = TimelineAssetPreviewHost.Shared;
-            if (m_SchemeMenu == null || m_ConditionMenu == null)
+            if (preview.Preferences == null)
                 return;
-            m_SchemeMenu.SetEnabled(active);
-            m_ConditionMenu.SetEnabled(active);
-            if (!active || preview.Preferences == null)
-            {
-                m_SchemeMenu.text = "输入方案";
-                return;
-            }
             TimelinePreviewInputSchemeStore store = preview.InputSchemes;
+            GUIStyle pullDown = EditorStyles.miniPullDown;
+            var scheme = new GUIContent("方案：" + preview.Preferences.Name,
+                store.Path.Length != 0 ? "输入方案存于 " + store.Path : "输入方案尚未保存：第一次修改时在入口 Timeline 旁创建");
+            float height = Mathf.Min(rect.height, 16f);
+            float y = rect.y + (rect.height - height) * 0.5f;
+            var schemeRect = new Rect(rect.x, y, Mathf.Min(pullDown.CalcSize(scheme).x, rect.width), height);
+            if (EditorGUI.DropdownButton(schemeRect, scheme, FocusType.Passive, pullDown))
+            {
+                m_InputHeaderAnchor = WindowRect(schemeRect);
+                ShowSchemeMenu(preview, schemeRect);
+            }
+            var condition = new GUIContent("条件",
+                "路线读到的运行数据条件：在输入轨上生成条件 Clip，或让没走成的转移可走");
+            var conditionRect = new Rect(schemeRect.xMax + 4f, y, pullDown.CalcSize(condition).x, height);
+            if (conditionRect.xMax > rect.xMax)
+                return;
+            if (EditorGUI.DropdownButton(conditionRect, condition, FocusType.Passive, pullDown))
+                ShowConditionMenu(preview, conditionRect);
+            string note = InputGroupNote(preview, out bool error);
+            if (note.Length == 0)
+                return;
+            var noteRect = Rect.MinMaxRect(conditionRect.xMax + 6f, rect.y, rect.xMax, rect.yMax);
+            Color previous = GUI.contentColor;
+            if (error)
+                GUI.contentColor = new Color(.95f, .45f, .4f);
+            GUI.Label(noteRect, new GUIContent(note, note), EditorStyles.miniLabel);
+            GUI.contentColor = previous;
+        }
+
+        static string InputGroupNote(TimelineAssetPreviewHost preview, out bool error)
+        {
+            TimelineAsset inputs = preview.Preferences.InputTimeline;
             int invalid = preview.Preferences.InputErrors.Count;
-            m_SchemeMenu.text = "方案：" + preview.Preferences.Name + (invalid != 0 ? $" · 输入 {invalid} 处错误" : string.Empty);
-            m_SchemeMenu.tooltip = store.Path.Length != 0 ? "存于 " + store.Path : "尚未保存：第一次修改时在入口 Timeline 旁创建";
-            DropdownMenu schemes = m_SchemeMenu.menu;
-            schemes.MenuItems().Clear();
+            string inputError = preview.InputError;
+            error = invalid != 0 || inputError.Length != 0;
+            if (!inputs)
+                return "右键“添加轨道”开始摆输入";
+            if (invalid != 0)
+                return $"输入 {invalid} 处错误" + (inputError.Length != 0 ? "：" + FirstLine(inputError) : string.Empty);
+            if (inputError.Length != 0)
+                return "有错误：" + FirstLine(inputError);
+            float duration = preview.Duration;
+            return inputs.Data.Duration > duration + 0.001f && preview.Chain != null
+                ? $"路线在 {duration:0.00} 秒结束（{preview.Chain.Reason.TrimEnd('。')}），之后的输入不起作用"
+                : string.Empty;
+        }
+
+        // IMGUI 区域换算到窗口坐标，供菜单回调里弹出命名与设置窗口。
+        Rect WindowRect(Rect guiRect)
+        {
+            Rect screen = GUIUtility.GUIToScreenRect(guiRect);
+            screen.position -= position.position;
+            return screen;
+        }
+
+        // 方案菜单：切换、另存、重命名、删除、从录制输入导入，范围与假设目标，编辑输入 Timeline。
+        void ShowSchemeMenu(TimelineAssetPreviewHost preview, Rect anchor)
+        {
+            TimelinePreviewInputSchemeStore store = preview.InputSchemes;
+            var menu = new GenericMenu();
             IReadOnlyList<TimelineAssetPreviewPreferences> list = store.All;
             for (int i = 0; i < list.Count; i++)
             {
                 int index = i;
-                schemes.AppendAction(list[i].Name, _ =>
-                    {
-                        if (store.Select(index))
-                            preview.PreferencesChanged();
-                    },
-                    list[i] == preview.Preferences ? DropdownMenuAction.Status.Checked : DropdownMenuAction.Status.Normal);
+                menu.AddItem(new GUIContent(MenuText(list[i].Name)), list[i] == preview.Preferences, () =>
+                {
+                    if (store.Select(index))
+                        preview.PreferencesChanged();
+                });
             }
-            schemes.AppendSeparator();
-            schemes.AppendAction("另存为…", _ => AskSchemeName(preview.Preferences.Name + " 副本", name =>
+            menu.AddSeparator(string.Empty);
+            menu.AddItem(new GUIContent("另存为…"), false, () => AskSchemeName(preview.Preferences.Name + " 副本", name =>
             {
                 store.SaveAs(name);
                 preview.PreferencesChanged();
             }));
-            schemes.AppendAction("重命名…", _ => AskSchemeName(preview.Preferences.Name, name =>
+            menu.AddItem(new GUIContent("重命名…"), false, () => AskSchemeName(preview.Preferences.Name, name =>
             {
                 store.Rename(name);
                 preview.PreferencesChanged();
             }));
-            schemes.AppendAction("删除当前方案", _ =>
+            if (list.Count > 1)
+                menu.AddItem(new GUIContent("删除当前方案"), false, () =>
                 {
                     if (store.DeleteCurrent())
                         preview.PreferencesChanged();
-                },
-                list.Count > 1 ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
-            schemes.AppendAction("从录制输入导入…", _ =>
+                });
+            else
+                menu.AddDisabledItem(new GUIContent("删除当前方案"));
+            menu.AddItem(new GUIContent("从录制输入导入…"), false, () =>
             {
                 string path = EditorUtility.OpenFilePanel("选择录制输入", Application.dataPath, string.Empty);
                 if (path.Length != 0)
                     preview.ImportInputs(path);
             });
-            RefreshConditionMenu(preview);
+            menu.AddSeparator(string.Empty);
+            menu.AddItem(new GUIContent("范围与假设目标…"), false,
+                () => UnityEditor.PopupWindow.Show(m_InputHeaderAnchor, new InputSettingsPopup(this)));
+            menu.AddItem(new GUIContent(preview.Preferences.InputTimeline ? "编辑输入 Timeline" : "创建输入 Timeline"), false,
+                OpenInputTimeline);
+            menu.DropDown(anchor);
         }
 
         // 条件菜单：路线上没走成的出边所缺条件一键生成；路线读到的每个条件可在游标所在状态的播放区间生成成立或不成立的 Clip。
-        void RefreshConditionMenu(TimelineAssetPreviewHost preview)
+        static void ShowConditionMenu(TimelineAssetPreviewHost preview, Rect anchor)
         {
-            DropdownMenu menu = m_ConditionMenu.menu;
-            menu.MenuItems().Clear();
+            var menu = new GenericMenu();
+            AddConditionItems(preview, menu);
+            menu.DropDown(anchor);
+        }
+
+        static void AddConditionItems(TimelineAssetPreviewHost preview, GenericMenu menu)
+        {
             if (preview.IsReal)
             {
-                menu.AppendAction("真实档用会话的真实数据，条件只影响快速档", null, DropdownMenuAction.Status.Disabled);
+                menu.AddDisabledItem(new GUIContent("真实重演用会话的真实数据，条件只影响快速推导"));
                 return;
             }
             foreach (TimelinePreviewConditionSuggestion suggestion in preview.ConditionSuggestions)
@@ -814,8 +846,8 @@ namespace BTSMTL.Timeline.Editor
                 string missing = string.Join("、", suggestion.Missing.Select(read => read.Label));
                 string target = suggestion.Transition.Target == null ? "出口" : preview.DescribeState(suggestion.Transition.Target);
                 TimelinePreviewConditionSuggestion captured = suggestion;
-                menu.AppendAction(MenuText($"让没走成的转移可走/{preview.DescribeState(suggestion.Source)} → {target}：缺 {missing}，" +
-                    $"在 {suggestion.Start.AsSingle:0.00}–{suggestion.End.AsSingle:0.00} 秒让它成立"), _ =>
+                menu.AddItem(new GUIContent(MenuText($"让没走成的转移可走/{preview.DescribeState(suggestion.Source)} → {target}：缺 {missing}，" +
+                    $"在 {suggestion.Start.AsSingle:0.00}–{suggestion.End.AsSingle:0.00} 秒让它成立")), false, () =>
                 {
                     foreach (OrchestrationStaticRead read in captured.Missing)
                         preview.AddConditionClip(read, true, captured.Start, captured.End);
@@ -823,7 +855,7 @@ namespace BTSMTL.Timeline.Editor
             }
             if (preview.Conditions.Count == 0)
             {
-                menu.AppendAction("路线没有读到运行数据条件", null, DropdownMenuAction.Status.Disabled);
+                menu.AddDisabledItem(new GUIContent("路线没有读到运行数据条件"));
                 return;
             }
             TimelinePreviewRouteSegment? at = null;
@@ -851,24 +883,32 @@ namespace BTSMTL.Timeline.Editor
                 string label = MenuText(read.Label + current);
                 if (at is not { } span)
                 {
-                    menu.AppendAction($"路线读到的条件/{label}/游标不在任何状态的播放内", null, DropdownMenuAction.Status.Disabled);
+                    menu.AddDisabledItem(new GUIContent($"路线读到的条件/{label}/游标不在任何状态的播放内"));
                     continue;
                 }
                 OrchestrationStaticRead captured = read;
                 string range = $"{span.Start.AsSingle:0.00}–{span.End.AsSingle:0.00} 秒";
-                menu.AppendAction($"路线读到的条件/{label}/在 {range} 设为成立",
-                    _ => preview.AddConditionClip(captured, true, span.Start, span.End));
-                menu.AppendAction($"路线读到的条件/{label}/在 {range} 设为不成立",
-                    _ => preview.AddConditionClip(captured, false, span.Start, span.End));
+                menu.AddItem(new GUIContent($"路线读到的条件/{label}/在 {range} 设为成立"), false,
+                    () => preview.AddConditionClip(captured, true, span.Start, span.End));
+                menu.AddItem(new GUIContent($"路线读到的条件/{label}/在 {range} 设为不成立"), false,
+                    () => preview.AddConditionClip(captured, false, span.Start, span.End));
             }
         }
 
         static string MenuText(string value) => value.Replace('/', '／');
 
-        void AskSchemeName(string initial, Action<string> apply)
+        void AskSchemeName(string initial, Action<string> apply) =>
+            UnityEditor.PopupWindow.Show(m_InputHeaderAnchor, new SchemeNamePopup(initial, apply));
+
+        sealed class InputSettingsPopup : PopupWindowContent
         {
-            Rect anchor = m_SchemeMenu.worldBound;
-            UnityEditor.PopupWindow.Show(anchor, new SchemeNamePopup(initial, apply));
+            readonly TimelineEditorWindow m_Owner;
+
+            internal InputSettingsPopup(TimelineEditorWindow owner) => m_Owner = owner;
+
+            public override Vector2 GetWindowSize() => new(380f, 200f);
+
+            public override void OnGUI(Rect rect) => m_Owner.DrawAssetPreviewInputs();
         }
 
         sealed class SchemeNamePopup : PopupWindowContent
@@ -898,7 +938,7 @@ namespace BTSMTL.Timeline.Editor
             }
         }
 
-        // 预览设置：显示范围、假设目标、输入 Timeline 的读取错误与编辑入口。
+        // 方案的范围与假设目标，以及输入 Timeline 的读取错误；从方案菜单打开。
         void DrawAssetPreviewInputs()
         {
             var preview = TimelineAssetPreviewHost.Shared;
@@ -919,8 +959,6 @@ namespace BTSMTL.Timeline.Editor
             bool changed = EditorGUI.EndChangeCheck();
             foreach (string error in preferences.InputErrors)
                 EditorGUILayout.HelpBox(error, MessageType.Error);
-            if (GUILayout.Button(preferences.InputTimeline ? "编辑输入 Timeline" : "创建输入 Timeline", GUILayout.Width(160f)))
-                OpenInputTimeline();
             EditorGUILayout.EndScrollView();
             if (changed)
                 preview.PreferencesChanged();

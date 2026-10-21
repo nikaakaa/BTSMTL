@@ -12,10 +12,11 @@ namespace BTSMTL.Timeline.Editor
     // 路线视图的一组：Asset 为空表示还没有输入 Timeline 的预览输入组。
     // 时间换算：全局 = 本地 + Offset；[PlayedStart, PlayedEnd] 为这次播放实际走过的全局区间。
     // Describe 给出元素的显示文字（图、起点 → 文字），为空时用原名称；预览输入组用它显示推导或执行证据。
+    // DrawHeader 在组头标题右侧绘制附加控件（IMGUI），预览输入组用它放方案与条件。
     public readonly struct TimelineRouteGroup
     {
         public TimelineRouteGroup(TimelineAsset asset, string label, float offset, float playedStart, float playedEnd,
-            Action open, Func<ScriptableObject, OrchestrationTime, string> describe = null)
+            Action open, Func<ScriptableObject, OrchestrationTime, string> describe = null, Action<Rect> drawHeader = null)
         {
             Asset = asset;
             Label = label ?? string.Empty;
@@ -24,6 +25,7 @@ namespace BTSMTL.Timeline.Editor
             PlayedEnd = playedEnd;
             Open = open;
             Describe = describe;
+            DrawHeader = drawHeader;
         }
 
         public TimelineAsset Asset { get; }
@@ -33,6 +35,7 @@ namespace BTSMTL.Timeline.Editor
         public float PlayedEnd { get; }
         public Action Open { get; }
         public Func<ScriptableObject, OrchestrationTime, string> Describe { get; }
+        public Action<Rect> DrawHeader { get; }
     }
 
     // 预览路线视图：输入 Timeline 与路线上每次播放各成一组，摆在预览全局时刻上。
@@ -335,8 +338,9 @@ namespace BTSMTL.Timeline.Editor
             TimelineAsset created = m_CreateInput?.Invoke();
             if (!created)
                 return;
-            m_Specs[group.Index] = new TimelineRouteGroup(created, m_Specs[group.Index].Label,
-                m_Specs[group.Index].Offset, m_Specs[group.Index].PlayedStart, m_Specs[group.Index].PlayedEnd, null);
+            TimelineRouteGroup spec = m_Specs[group.Index];
+            m_Specs[group.Index] = new TimelineRouteGroup(created, spec.Label, spec.Offset, spec.PlayedStart, spec.PlayedEnd,
+                null, spec.Describe, spec.DrawHeader);
             Configure(m_Specs.ToArray(), m_Length, PreviewPath.Marks, m_ReadOnly);
             m_Groups[group.Index].Source?.Binding.AddTrack();
         }
@@ -448,7 +452,8 @@ namespace BTSMTL.Timeline.Editor
 
         public void RequestRepaint(long inputStartedAt) => Repaint();
 
-        sealed class RouteGroup : IEmbeddedTimelineGroupBinding, IEmbeddedTimelineGroupCommands, IEmbeddedTimelineGroupPlayback
+        sealed class RouteGroup : IEmbeddedTimelineGroupBinding, IEmbeddedTimelineGroupCommands, IEmbeddedTimelineGroupPlayback,
+            IEmbeddedTimelineGroupHeader
         {
             readonly TimelineRouteBinding m_Owner;
             readonly TimelineRouteGroup m_Spec;
@@ -489,6 +494,7 @@ namespace BTSMTL.Timeline.Editor
             public bool CanOpen => m_Spec.Open != null;
             public void AddTrack() => m_Owner.AddTrackTo(this);
             public void Open() => m_Spec.Open?.Invoke();
+            public void DrawHeader(Rect rect) => m_Spec.DrawHeader?.Invoke(rect);
             internal string Prefix => AuthoringId + "/";
         }
 

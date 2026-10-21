@@ -75,7 +75,7 @@ namespace BTSMTL.Timeline.Editor
         }
     }
 
-    // 唯一一行工具栏：返回、主体（技能根）与预览控制在前，工作区切换在后；放不下时换行。
+    // 编辑行：返回与主体（技能根）在前，保存与工作区工具、模式切换在后；预览控制在下一行。
     internal static class TimelineEditorToolbarView
     {
         public static TimelineEditorToolbarControls Create(
@@ -83,7 +83,7 @@ namespace BTSMTL.Timeline.Editor
             bool hasNavigation,
             System.Action onBack,
             VisualElement subject,
-            VisualElement previewControls,
+            VisualElement documentControls,
             VisualElement workspaceControls)
         {
             var toolbar = new Toolbar();
@@ -100,9 +100,9 @@ namespace BTSMTL.Timeline.Editor
 
             subject.tooltip = binding.CreateSourceSummary();
             toolbar.Add(subject);
-            if (previewControls != null)
-                toolbar.Add(previewControls);
             toolbar.Add(new VisualElement { style = { flexGrow = 1f } });
+            if (documentControls != null)
+                toolbar.Add(documentControls);
             if (workspaceControls != null)
                 toolbar.Add(workspaceControls);
 

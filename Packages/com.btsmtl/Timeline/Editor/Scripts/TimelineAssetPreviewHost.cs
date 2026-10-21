@@ -252,7 +252,7 @@ namespace BTSMTL.Timeline.Editor
         {
             if (!m_Provider.Configuration)
             {
-                SetLifecycle(TimelinePreviewLifecycle.Failed, "没有选择预览场景：在 ⚙ 里选择后点“重试”。", string.Empty);
+                SetLifecycle(TimelinePreviewLifecycle.Failed, "没有选择预览场景，在右侧“场景”里选择", string.Empty);
                 return;
             }
             m_Stage = ScriptableObject.CreateInstance<TimelineAssetPreviewStage>();
@@ -268,7 +268,7 @@ namespace BTSMTL.Timeline.Editor
             }
             catch (Exception exception)
             {
-                Fail("打开预览场景失败，点“重试”重新准备。", exception);
+                Fail("打开预览场景失败", exception);
             }
         }
 
@@ -523,7 +523,7 @@ namespace BTSMTL.Timeline.Editor
         public void ReportSessionFailure(string reason)
         {
             ReportSessionReady();
-            SetLifecycle(TimelinePreviewLifecycle.Failed, "会话准备失败，点“重试”重新准备。", reason);
+            SetLifecycle(TimelinePreviewLifecycle.Failed, "会话准备失败", reason);
         }
 
         public void ReportSessionReady()
