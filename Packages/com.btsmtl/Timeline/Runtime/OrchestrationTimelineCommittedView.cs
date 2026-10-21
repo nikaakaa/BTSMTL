@@ -101,15 +101,6 @@ namespace BTSMTL.Timeline.Runtime
                 in playback, TreeExits(slot, content), destination);
         }
 
-        public int SectionOrdinal<TClock>(int slot)
-            where TClock : struct, IOrchestrationTimelineClock<TTime>
-        {
-            ref readonly OrchestrationTimelinePlaybackState<TTime> playback = ref m_Playbacks[slot];
-            ReadOnlySpan<TimelineSchedulingSection<TTime>> sections = Content(in playback.Start).Sections.Span;
-            int section = TimelineRuntimeScheduling<TTime, TClock>.SectionAt(sections, playback.Progress.CursorTime);
-            return section < 0 ? -1 : sections[section].SectionIndex;
-        }
-
         OrchestrationTimelinePreparedContent<TTime> Content(in OrchestrationTimelineStart<TTime> start) =>
             OrchestrationTimelineStateQueries<TTime>.RequireContent(m_Contents.Span, in start);
 

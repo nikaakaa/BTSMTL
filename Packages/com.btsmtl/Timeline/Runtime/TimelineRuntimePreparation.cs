@@ -128,16 +128,12 @@ namespace BTSMTL.Timeline.Runtime
                 Content.Clips[left].AuthoringId, Content.Clips[right].AuthoringId));
             for (int i = 0; i < count; i++)
                 sortOrdinals[order[i]] = i;
-            var sections = new TimelineSchedulingSection<OrchestrationTime>[Content.Sections.Count];
-            for (int i = 0; i < sections.Length; i++)
-                sections[i] = new TimelineSchedulingSection<OrchestrationTime>(i, Content.Sections[i].Time);
-            m_LogicScheduling = PrepareScheduling(TimelineExecutionDomain.Logic, Index.Logic, sortOrdinals, sections);
-            m_PresentationScheduling = PrepareScheduling(TimelineExecutionDomain.Presentation, Index.Presentation, sortOrdinals, sections);
+            m_LogicScheduling = PrepareScheduling(TimelineExecutionDomain.Logic, Index.Logic, sortOrdinals);
+            m_PresentationScheduling = PrepareScheduling(TimelineExecutionDomain.Presentation, Index.Presentation, sortOrdinals);
         }
 
         TimelineRuntimeSchedulingContent PrepareScheduling(TimelineExecutionDomain domain,
-            TimelineRuntimeDomainIndex index, int[] sortOrdinals,
-            TimelineSchedulingSection<OrchestrationTime>[] sections)
+            TimelineRuntimeDomainIndex index, int[] sortOrdinals)
         {
             int count = Content.Clips.Count;
             var enabled = new bool[count];
@@ -159,7 +155,7 @@ namespace BTSMTL.Timeline.Runtime
             for (int i = 0; i < markers.Length; i++)
                 markers[i] = new TimelineSchedulingMarker<OrchestrationTime>(index.Markers.ContentIndexAt(i),
                     index.Markers[i].Time);
-            return new TimelineRuntimeSchedulingContent(domain, clips, trees, markers, sections);
+            return new TimelineRuntimeSchedulingContent(domain, clips, trees, markers);
         }
 
         internal static TimelineRuntimePreparedContent Failed(
@@ -211,7 +207,7 @@ namespace BTSMTL.Timeline.Runtime
             var frozen = new TimelineContentUnit(candidate.Identity, candidate.AuthoringId,
                 candidate.ContentHash, candidate.RootFingerprint, candidate.Name, candidate.Duration,
                 candidate.Loop, candidate.Tracks, candidate.Clips, candidate.Markers,
-                candidate.Sections, candidate.Bindings, candidate.Dependencies);
+                candidate.Bindings, candidate.Dependencies);
             return new TimelineRuntimePreparedContent(source, frozen, identities);
         }
 
@@ -275,9 +271,6 @@ namespace BTSMTL.Timeline.Runtime
                     left.GraphId != right.GraphId || left.GraphRevision != right.GraphRevision)
                     return $"Marker '{left.MarkerId}' 的轨道或触发图已变化";
             }
-            if (!source.Sections.Select(section => section.AuthoringId)
-                    .SequenceEqual(candidate.Sections.Select(section => section.AuthoringId)))
-                return "Section 组成已变化";
             if (!source.Bindings.SequenceEqual(candidate.Bindings))
                 return "绑定声明已变化";
             if (source.Dependencies.Count != candidate.Dependencies.Count)
@@ -619,21 +612,6 @@ namespace BTSMTL.Timeline.Runtime
             bool found = m_Clips.TryGetValue(identity, out TimelineRuntimeIndexedClip indexed);
             clip = indexed.Clip;
             return found;
-        }
-
-        public string SectionAt(OrchestrationTime time)
-        {
-            int lower = 0;
-            int upper = m_Content.Sections.Count;
-            while (lower < upper)
-            {
-                int middle = lower + (upper - lower) / 2;
-                if (m_Content.Sections[middle].Time <= time)
-                    lower = middle + 1;
-                else
-                    upper = middle;
-            }
-            return lower == 0 ? string.Empty : m_Content.Sections[lower - 1].AuthoringId;
         }
     }
 }

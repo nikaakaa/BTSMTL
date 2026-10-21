@@ -44,14 +44,12 @@ namespace BTSMTL.Diagnostics.Editor
             Cycle = value.Payload.Cycle;
             Position = value.Position;
             Sequence = value.Sequence;
-            SectionId = value.Payload.RelatedElementId;
         }
         public double SessionTime { get; }
         public double Cursor { get; }
         public int Cycle { get; }
         public ulong Position { get; }
         public ulong Sequence { get; }
-        public string SectionId { get; }
     }
 
     public sealed class RuntimeExecutionPlaybackCursors

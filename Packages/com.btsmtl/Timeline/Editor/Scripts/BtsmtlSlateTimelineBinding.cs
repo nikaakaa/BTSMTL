@@ -18,7 +18,6 @@ namespace BTSMTL.Timeline.Editor
         readonly TimelineEditorSessionContext m_Session;
         readonly Action<Clip> m_OpenSourceClip;
         readonly List<IEmbeddedTimelineGroupBinding> m_Groups = new List<IEmbeddedTimelineGroupBinding>();
-        readonly List<IEmbeddedTimelineSectionBinding> m_Sections = new List<IEmbeddedTimelineSectionBinding>();
         readonly Dictionary<string, BtsmtlTimelineTrackBinding> m_Tracks = new Dictionary<string, BtsmtlTimelineTrackBinding>(StringComparer.Ordinal);
         IReadOnlyDictionary<string, List<EmbeddedTimelineSubTimeline>> m_NestedViews =
             new Dictionary<string, List<EmbeddedTimelineSubTimeline>>();
@@ -27,7 +26,6 @@ namespace BTSMTL.Timeline.Editor
             m_NestedViews = views;
         readonly Dictionary<string, BtsmtlTimelineClipBinding> m_Clips = new Dictionary<string, BtsmtlTimelineClipBinding>(StringComparer.Ordinal);
         readonly Dictionary<string, BtsmtlTimelineMarkerBinding> m_Markers = new Dictionary<string, BtsmtlTimelineMarkerBinding>(StringComparer.Ordinal);
-        readonly Dictionary<string, BtsmtlTimelineSectionBinding> m_SectionsById = new Dictionary<string, BtsmtlTimelineSectionBinding>(StringComparer.Ordinal);
         TimelineData m_Timeline;
         ulong m_SourceRevision;
         IEmbeddedTimelineElementBinding m_Selected;
@@ -272,7 +270,6 @@ namespace BTSMTL.Timeline.Editor
         public float Length => Timeline.Duration;
         public float Duration => Timeline.Duration;
         public IReadOnlyList<Track> Tracks => Timeline.Tracks;
-        public IReadOnlyList<TimelineSection> SourceSections => Timeline.Sections;
         public float CurrentTime
         {
             get => m_CurrentTime;
@@ -311,8 +308,8 @@ namespace BTSMTL.Timeline.Editor
         }
         public bool IsReadOnly => m_ReadOnly || m_Session.IsReadOnly;
         internal bool IsCommittingEdit => m_CommittingEdit;
+        internal bool IsCommittingTimeEdit => m_CommittingEdit && m_EditKind == EmbeddedTimelineEditKind.ClipTimeRange;
         public IReadOnlyList<IEmbeddedTimelineGroupBinding> Groups => m_Groups;
-        public IReadOnlyList<IEmbeddedTimelineSectionBinding> Sections => m_Sections;
         public IEmbeddedTimelineElementBinding Selected => m_Selected;
 
         public void SetReadOnly(bool readOnly)
@@ -345,9 +342,7 @@ namespace BTSMTL.Timeline.Editor
                     ? clipSource.Source
                     : element is BtsmtlTimelineTrackBinding trackSource
                     ? trackSource.Source
-                    : element is BtsmtlTimelineSectionBinding sectionSource
-                            ? sectionSource.Source
-                            : null;
+                    : null;
             if (source != null && Timeline.TryGetSerializedPropertyPath(source, out string propertyPath))
                 TimelineInspectorSelection.Set(m_Request.SerializedOwner, propertyPath, source);
             else
@@ -359,9 +354,7 @@ namespace BTSMTL.Timeline.Editor
                         ? selectedClip.Source
                         : element is BtsmtlTimelineTrackBinding selectedTrack
                             ? selectedTrack.Source
-                            : element is BtsmtlTimelineSectionBinding selectedSection
-                                ? selectedSection.Source
-                                : null);
+                            : null);
             if (changed)
                 Repaint();
         }
@@ -434,8 +427,7 @@ namespace BTSMTL.Timeline.Editor
                 return;
             }
             if (!m_Clips.Values.Any(clip => clip.HasChanges()) &&
-                !m_Markers.Values.Any(marker => marker.HasChanges()) &&
-                !m_SectionsById.Values.Any(section => section.HasChanges()))
+                !m_Markers.Values.Any(marker => marker.HasChanges()))
             {
                 m_EditSourceRevision = 0;
                 ExpandViewToLength(previousLength);
@@ -451,8 +443,6 @@ namespace BTSMTL.Timeline.Editor
                         changed |= clip.CommitSource();
                     foreach (BtsmtlTimelineMarkerBinding marker in m_Markers.Values)
                         changed |= marker.CommitSource();
-                    foreach (BtsmtlTimelineSectionBinding section in m_SectionsById.Values)
-                        changed |= section.CommitSource();
                     if (!changed)
                         return;
                     Timeline.Init();
@@ -761,38 +751,6 @@ namespace BTSMTL.Timeline.Editor
             }, "Reorder Timeline Track");
         }
 
-        public void ConfigureSection(IEmbeddedTimelineSectionBinding section, string name, double time)
-        {
-            if (IsReadOnly || !(section is BtsmtlTimelineSectionBinding formalSection))
-                return;
-            if (formalSection.IsLocked)
-            {
-                ReportIssue("当前 Section 已锁定，不能修改。");
-                return;
-            }
-            formalSection.Name = name ?? string.Empty;
-            formalSection.Time = m_Session.SnapTime(OrchestrationTime.FromSeconds(Math.Max(0d, time))).AsSingle;
-        }
-
-        public void DeleteSection(IEmbeddedTimelineSectionBinding section)
-        {
-            if (IsReadOnly || !(section is BtsmtlTimelineSectionBinding formalSection))
-                return;
-            if (formalSection.IsLocked)
-            {
-                ReportIssue("当前 Section 已锁定，不能删除。");
-                return;
-            }
-            ApplyImmediate(() => Timeline.RemoveSection(formalSection.Source), "Delete Timeline Section");
-        }
-
-        public void AddSection(double time)
-        {
-            if (IsReadOnly)
-                return;
-            ApplyImmediate(() => Timeline.EnsureSection(AuthoringIdentity.Create(), "Section", m_Session.SnapTime(OrchestrationTime.FromSeconds(Math.Max(0d, time)))), "Add Timeline Section");
-        }
-
         public bool CanPasteClip => m_CopiedClip != null;
         public event Action<string> AuthoringIssue;
 
@@ -858,17 +816,6 @@ namespace BTSMTL.Timeline.Editor
             return false;
         }
 
-        public bool TryGetSectionBinding(string authoringId, out IEmbeddedTimelineSectionBinding binding)
-        {
-            if (m_SectionsById.TryGetValue(authoringId ?? string.Empty, out BtsmtlTimelineSectionBinding value))
-            {
-                binding = value;
-                return true;
-            }
-            binding = null;
-            return false;
-        }
-
         bool IEmbeddedTimelineBinding.TryGetTrack(string authoringId, out IEmbeddedTimelineTrackBinding track)
         {
             return TryGetTrackBinding(authoringId, out track);
@@ -925,8 +872,6 @@ namespace BTSMTL.Timeline.Editor
                 Select(marker);
             else if (m_Tracks.TryGetValue(selectedId, out BtsmtlTimelineTrackBinding track))
                 Select(track);
-            else if (m_SectionsById.TryGetValue(selectedId, out BtsmtlTimelineSectionBinding section))
-                Select(section);
             else
                 Select(null);
         }
@@ -996,11 +941,9 @@ namespace BTSMTL.Timeline.Editor
                 track => track.CustomHeight,
                 StringComparer.Ordinal);
             m_Groups.Clear();
-            m_Sections.Clear();
             m_Tracks.Clear();
             m_Clips.Clear();
             m_Markers.Clear();
-            m_SectionsById.Clear();
             var group = new BtsmtlTimelineGroupBinding(this, Timeline.Name);
             m_Groups.Add(group);
             for (int trackIndex = 0; trackIndex < Timeline.Tracks.Count; trackIndex++)
@@ -1046,15 +989,6 @@ namespace BTSMTL.Timeline.Editor
                     track.AddClip(clip);
                     m_Clips[sourceClip.AuthoringId] = clip;
                 }
-            }
-            for (int sectionIndex = 0; sectionIndex < Timeline.Sections.Count; sectionIndex++)
-            {
-                TimelineSection source = Timeline.Sections[sectionIndex];
-                if (source == null)
-                    continue;
-                var section = new BtsmtlTimelineSectionBinding(this, source);
-                m_Sections.Add(section);
-                m_SectionsById[source.AuthoringId] = section;
             }
             m_SourceRevision = Timeline.AuthoringRevision;
             m_CurrentTime = Mathf.Clamp(m_CurrentTime, 0f, Length);
@@ -2157,41 +2091,6 @@ namespace BTSMTL.Timeline.Editor
             public float Duration => m_Clip.Length;
             public void Replace(AnimationCurve curve) { }
             public void Refresh() => m_UpdateCurve(m_Curve);
-        }
-
-        sealed class BtsmtlTimelineSectionBinding : IEmbeddedTimelineSectionBinding
-        {
-            readonly BtsmtlSlateTimelineBinding m_Owner;
-            float m_InitialTime;
-            public BtsmtlTimelineSectionBinding(BtsmtlSlateTimelineBinding owner, TimelineSection source)
-            {
-                m_Owner = owner;
-                Source = source;
-                Name = source.Name;
-                Time = source.Time.AsSingle;
-                m_InitialTime = Time;
-            }
-            public TimelineSection Source { get; internal set; }
-            public string AuthoringId => Source.AuthoringId;
-            public string DisplayName => Name;
-            public bool IsLocked { get; set; }
-            public string Name { get; set; }
-            public float Time { get; set; }
-            public Color Color => Color.white;
-            public bool CommitSource()
-            {
-                if (!HasChanges())
-                    return false;
-                m_Owner.Timeline.ConfigureSection(Source, Name, Time == m_InitialTime ? Source.Time :
-                    m_Owner.Session.SnapTime(OrchestrationTime.FromSeconds(Math.Max(0d, Time))));
-                m_InitialTime = Time;
-                return true;
-            }
-
-            public bool HasChanges()
-            {
-                return !string.Equals(Source.Name, Name, StringComparison.Ordinal) || Time != m_InitialTime;
-            }
         }
     }
 }

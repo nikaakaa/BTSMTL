@@ -20,9 +20,6 @@ namespace BTSMTL.Timeline
         List<Track> m_Tracks = new List<Track>();
 
         [SerializeField]
-        List<TimelineSection> m_Sections = new List<TimelineSection>();
-
-        [SerializeField]
         List<TimelineExternalBindingDeclaration> m_ExternalBindings = new List<TimelineExternalBindingDeclaration>();
 
         [SerializeField]
@@ -37,7 +34,6 @@ namespace BTSMTL.Timeline
         public string Name { get => string.IsNullOrEmpty(m_Name) ? "Timeline" : m_Name; set => m_Name = value; }
         public string AuthoringId => m_AuthoringId ?? string.Empty;
         public List<Track> Tracks => m_Tracks;
-        public IReadOnlyList<TimelineSection> Sections => m_Sections;
         public IReadOnlyList<TimelineExternalBindingDeclaration> ExternalBindings => m_ExternalBindings;
         public bool Loop { get => m_Loop; set => m_Loop = value; }
         public UnityEngine.Object SerializedOwner => m_SerializedOwner;
@@ -99,8 +95,6 @@ namespace BTSMTL.Timeline
                 for (int markerIndex = 0; markerIndex < track.Markers.Count; markerIndex++)
                     changed |= track.Markers[markerIndex]?.EnsureAuthoringIdentity() ?? false;
             }
-            for (int i = 0; i < m_Sections.Count; i++)
-                changed |= m_Sections[i]?.EnsureAuthoringIdentity() ?? false;
             for (int i = 0; i < m_ExternalBindings.Count; i++)
                 changed |= m_ExternalBindings[i]?.EnsureAuthoringIdentity() ?? false;
             return changed;
@@ -127,8 +121,6 @@ namespace BTSMTL.Timeline
                 for (int markerIndex = 0; markerIndex < track.Markers.Count; markerIndex++)
                     track.Markers[markerIndex]?.RegenerateAuthoringIdentity();
             }
-            for (int i = 0; i < m_Sections.Count; i++)
-                m_Sections[i]?.RegenerateAuthoringIdentity();
             for (int i = 0; i < m_ExternalBindings.Count; i++)
                 m_ExternalBindings[i]?.RegenerateAuthoringIdentity();
         }
@@ -143,7 +135,6 @@ namespace BTSMTL.Timeline
                 valid = false;
             }
             var identities = new HashSet<string>(StringComparer.Ordinal);
-            var sectionNames = new HashSet<string>(StringComparer.Ordinal);
             if (m_Tracks == null)
             {
                 errors?.Add($"Timeline '{Name}' has no track list.");
@@ -185,21 +176,6 @@ namespace BTSMTL.Timeline
                             valid = false;
                         }
                     }
-                }
-            }
-            if (m_Sections == null)
-            {
-                errors?.Add($"Timeline '{Name}' has no section list.");
-                valid = false;
-            }
-            else for (int i = 0; i < m_Sections.Count; i++)
-            {
-                TimelineSection section = m_Sections[i];
-                if (section == null || !section.RequireValid() || !identities.Add(section.AuthoringId) ||
-                    !sectionNames.Add(section.Name))
-                {
-                    errors?.Add($"Timeline '{Name}' section #{i} is invalid or duplicated.");
-                    valid = false;
                 }
             }
             if (m_ExternalBindings == null)
@@ -301,12 +277,6 @@ namespace BTSMTL.Timeline
                         return true;
                     }
             }
-            for (int sectionIndex = 0; sectionIndex < m_Sections.Count; sectionIndex++)
-                if (ReferenceEquals(m_Sections[sectionIndex], element))
-                {
-                    propertyPath = GetSerializedPropertyPath($"m_Sections.Array.data[{sectionIndex}]");
-                    return true;
-                }
             propertyPath = string.Empty;
             return false;
         }
@@ -318,70 +288,6 @@ namespace BTSMTL.Timeline
             return string.IsNullOrEmpty(SerializedPropertyPath) ? relativePath : $"{SerializedPropertyPath}.{relativePath}";
         }
 
-    }
-
-    [Serializable]
-    public sealed class TimelineSection
-    {
-        [SerializeField, HideInInspector]
-        string m_AuthoringId;
-
-        [SerializeField]
-        string m_Name;
-
-        [SerializeField]
-        long m_TimeFPRawValue;
-
-        [SerializeField]
-        string m_BranchId;
-
-        public string AuthoringId => m_AuthoringId ?? string.Empty;
-        public string Name => m_Name ?? string.Empty;
-        public OrchestrationTime Time => OrchestrationTime.FromRaw(m_TimeFPRawValue);
-        public string BranchId => m_BranchId?.Trim() ?? string.Empty;
-
-#if UNITY_EDITOR
-        public void ConfigureAuthoringIdentity(string authoringId)
-        {
-            if (!AuthoringIdentity.IsValid(authoringId))
-                throw new ArgumentException("Timeline section authoring identity is invalid.", nameof(authoringId));
-            m_AuthoringId = authoringId;
-        }
-
-        public void Configure(string name, OrchestrationTime time)
-        {
-            string value = name?.Trim() ?? string.Empty;
-            if (string.IsNullOrEmpty(value) || time < OrchestrationTime.Zero)
-                throw new ArgumentException("Timeline Section requires a name and non-negative time.");
-            m_Name = value;
-            m_TimeFPRawValue = time.RawValue;
-        }
-
-        public void ConfigureBranch(string branchId)
-        {
-            m_BranchId = branchId?.Trim() ?? string.Empty;
-        }
-
-        public bool EnsureAuthoringIdentity()
-        {
-            if (AuthoringIdentity.IsValid(m_AuthoringId))
-                return false;
-            m_AuthoringId = AuthoringIdentity.Create();
-            return true;
-        }
-
-        public void RegenerateAuthoringIdentity()
-        {
-            m_AuthoringId = AuthoringIdentity.Create();
-        }
-
-#endif
-
-        public bool RequireValid() =>
-            AuthoringIdentity.IsValid(AuthoringId) &&
-            !string.IsNullOrWhiteSpace(Name) &&
-            string.Equals(Name, Name.Trim(), StringComparison.Ordinal) &&
-            m_TimeFPRawValue >= 0;
     }
 
     public interface ITimelineOwnedAuthoringIdentity

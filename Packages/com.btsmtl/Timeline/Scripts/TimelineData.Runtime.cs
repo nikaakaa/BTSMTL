@@ -30,12 +30,6 @@ namespace BTSMTL.Timeline
                 track.Init(this);
                 DurationTime = OrchestrationTime.Max(DurationTime, track.DurationTime);
             }
-            for (int i = 0; i < m_Sections.Count; i++)
-            {
-                TimelineSection section = m_Sections[i];
-                if (section != null)
-                    DurationTime = OrchestrationTime.Max(DurationTime, section.Time);
-            }
             AuthoringRevision++;
             OnValueChanged?.Invoke();
         }
@@ -430,48 +424,6 @@ namespace BTSMTL.Timeline
             AuthoringRevision++;
             OnValueChanged?.Invoke();
         }
-#if UNITY_EDITOR
-        public TimelineSection EnsureSection(string authoringId, string name, OrchestrationTime time)
-        {
-            TimelineSection section = m_Sections.SingleOrDefault(value =>
-                value != null && string.Equals(value.AuthoringId, authoringId, StringComparison.Ordinal));
-            if (section == null)
-            {
-                section = new TimelineSection();
-                m_Sections.Add(section);
-            }
-            section.ConfigureAuthoringIdentity(authoringId);
-            ConfigureSection(section, name, time);
-            return section;
-        }
-#endif
-        public void ConfigureSection(TimelineSection section, string name, OrchestrationTime time)
-        {
-            if (section == null || !m_Sections.Contains(section))
-                throw new ArgumentException("Timeline Section is not owned by this Timeline.", nameof(section));
-            string value = name?.Trim() ?? string.Empty;
-            if (m_Sections.Exists(candidate => candidate != null && !ReferenceEquals(candidate, section) &&
-                string.Equals(candidate.Name, value, StringComparison.Ordinal)))
-                throw new InvalidOperationException($"Timeline Section '{value}' already exists.");
-            section.Configure(value, time);
-            SortSections();
-            Init();
-        }
-
-        public void RemoveSection(TimelineSection section)
-        {
-            if (section == null || !m_Sections.Remove(section))
-                throw new ArgumentException("Timeline Section is not owned by this Timeline.", nameof(section));
-            Init();
-        }
-        void SortSections()
-        {
-            m_Sections.Sort((left, right) =>
-            {
-                int frame = (left?.Time ?? OrchestrationTime.MaxValue).CompareTo(right?.Time ?? OrchestrationTime.MaxValue);
-                return frame != 0 ? frame : string.CompareOrdinal(left?.AuthoringId, right?.AuthoringId);
-            });
-        }
         public void UpdateMix()
         {
             for (int i = 0; i < m_Tracks.Count; i++)
@@ -589,12 +541,6 @@ namespace BTSMTL.Timeline
                         terminalTime = OrchestrationTime.Max(terminalTime, clip.EndTime);
                 }
             }
-            for (int sectionIndex = 0; sectionIndex < m_Sections.Count; sectionIndex++)
-            {
-                TimelineSection section = m_Sections[sectionIndex];
-                if (section != null)
-                    terminalTime = OrchestrationTime.Max(terminalTime, section.Time);
-            }
             bool changed = false;
             for (int trackIndex = 0; trackIndex < m_Tracks.Count; trackIndex++)
                 for (int clipIndex = 0; clipIndex < m_Tracks[trackIndex].Clips.Count; clipIndex++)
@@ -614,8 +560,6 @@ namespace BTSMTL.Timeline
                 track.RefreshDuration();
                 DurationTime = OrchestrationTime.Max(DurationTime, track.DurationTime);
             }
-            for (int i = 0; i < m_Sections.Count; i++)
-                DurationTime = OrchestrationTime.Max(DurationTime, m_Sections[i].Time);
             AuthoringRevision++;
             OnValueChanged?.Invoke();
         }

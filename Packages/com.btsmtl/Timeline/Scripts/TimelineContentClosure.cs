@@ -15,8 +15,6 @@ namespace BTSMTL.Timeline
             var identities = new List<string> { content.Identity, content.ContentHash };
             for (int ordinal = 0; ordinal < content.Clips.Count; ordinal++)
                 identities.Add(content.Clips[ordinal].AuthoringId);
-            for (int ordinal = 0; ordinal < content.Sections.Count; ordinal++)
-                identities.Add(content.Sections[ordinal].AuthoringId);
             return OrchestrationIdentityPublication.Create(identities);
         }
 
@@ -59,7 +57,6 @@ namespace BTSMTL.Timeline
             var clips = new List<TimelineContentClip>();
             var markers = new List<TimelineContentMarker>();
             var tracks = new List<TimelineContentTrack>();
-            var sections = new List<TimelineContentSection>();
             var closure = new TimelineContentClosureBuilder();
             OrchestrationTime duration = OrchestrationTime.Zero;
             for (int trackIndex = 0; trackIndex < timeline.Tracks.Count; trackIndex++)
@@ -103,17 +100,6 @@ namespace BTSMTL.Timeline
                     clipAuthoringIds,
                     trackContract.LogicSampleExtension,
                     track.Name));
-            }
-            for (int sectionIndex = 0; sectionIndex < timeline.Sections.Count; sectionIndex++)
-            {
-                TimelineSection section = timeline.Sections[sectionIndex];
-                if (section != null)
-                    duration = OrchestrationTime.Max(duration, section.Time);
-                if (section != null)
-                    sections.Add(new TimelineContentSection(
-                        section.AuthoringId,
-                        section.Time,
-                        section.BranchId));
             }
             for (int trackIndex = 0; trackIndex < timeline.Tracks.Count; trackIndex++)
             {
@@ -230,11 +216,6 @@ namespace BTSMTL.Timeline
                 int frame = left.Time.CompareTo(right.Time);
                 return frame != 0 ? frame : string.CompareOrdinal(left.MarkerId, right.MarkerId);
             });
-            sections.Sort((left, right) =>
-            {
-                int frame = left.Time.CompareTo(right.Time);
-                return frame != 0 ? frame : string.CompareOrdinal(left.AuthoringId, right.AuthoringId);
-            });
             bindings.Sort((left, right) => string.CompareOrdinal(left.BindingId, right.BindingId));
             errors.AddRange(closure.Errors);
             List<TimelineContentDependency> dependencies = new List<TimelineContentDependency>(closure.Dependencies);
@@ -292,7 +273,6 @@ namespace BTSMTL.Timeline
                 tracks,
                 clips,
                 markers,
-                sections,
                 bindings,
                 dependencies);
             return new TimelineContentDiscoveryResult(content, errors, PublishIdentities(content));

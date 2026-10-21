@@ -272,29 +272,6 @@ namespace BTSMTL.Timeline
         }
     }
 
-    public readonly struct TimelineContentSection
-    {
-        public TimelineContentSection(string authoringId, OrchestrationTime time, string branchId)
-        {
-            AuthoringId = Require(authoringId, nameof(authoringId));
-            if (time < OrchestrationTime.Zero)
-                throw new ArgumentOutOfRangeException(nameof(time));
-            Time = time;
-            BranchId = branchId?.Trim() ?? string.Empty;
-        }
-
-        public string AuthoringId { get; }
-        public OrchestrationTime Time { get; }
-        public string BranchId { get; }
-
-        static string Require(string value, string name)
-        {
-            return string.IsNullOrWhiteSpace(value)
-                ? throw new ArgumentException("Timeline section identity is required.", name)
-                : value.Trim();
-        }
-    }
-
     public readonly struct TimelineContentTrack
     {
         public TimelineContentTrack(
@@ -353,7 +330,6 @@ namespace BTSMTL.Timeline
             IReadOnlyList<TimelineContentTrack> tracks,
             IReadOnlyList<TimelineContentClip> clips,
             IReadOnlyList<TimelineContentMarker> markers,
-            IReadOnlyList<TimelineContentSection> sections,
             IReadOnlyList<TimelineBindingDeclaration> bindings,
             IReadOnlyList<TimelineContentDependency> dependencies)
         {
@@ -367,7 +343,6 @@ namespace BTSMTL.Timeline
             Tracks = new ReadOnlyCollection<TimelineContentTrack>(new List<TimelineContentTrack>(tracks ?? Array.Empty<TimelineContentTrack>()));
             Clips = new ReadOnlyCollection<TimelineContentClip>(new List<TimelineContentClip>(clips ?? Array.Empty<TimelineContentClip>()));
             Markers = new ReadOnlyCollection<TimelineContentMarker>(new List<TimelineContentMarker>(markers ?? Array.Empty<TimelineContentMarker>()));
-            Sections = new ReadOnlyCollection<TimelineContentSection>(new List<TimelineContentSection>(sections ?? Array.Empty<TimelineContentSection>()));
             Bindings = new ReadOnlyCollection<TimelineBindingDeclaration>(new List<TimelineBindingDeclaration>(bindings ?? Array.Empty<TimelineBindingDeclaration>()));
             Dependencies = new ReadOnlyCollection<TimelineContentDependency>(new List<TimelineContentDependency>(dependencies ?? Array.Empty<TimelineContentDependency>()));
         }
@@ -382,14 +357,13 @@ namespace BTSMTL.Timeline
         public IReadOnlyList<TimelineContentTrack> Tracks { get; }
         public IReadOnlyList<TimelineContentClip> Clips { get; private set; }
         public IReadOnlyList<TimelineContentMarker> Markers { get; }
-        public IReadOnlyList<TimelineContentSection> Sections { get; }
         public IReadOnlyList<TimelineBindingDeclaration> Bindings { get; }
         public IReadOnlyList<TimelineContentDependency> Dependencies { get; }
 
         public TimelineContentUnit CreateTimeRangeCandidate(ReadOnlySpan<int> authoringSlots)
         {
             var candidate = new TimelineContentUnit(Identity, AuthoringId, ContentHash, RootFingerprint, Name, Duration, Loop,
-                Tracks, Clips, Markers, Sections, Bindings, Dependencies);
+                Tracks, Clips, Markers, Bindings, Dependencies);
             candidate.m_TimeClips = new TimelineContentClip[Clips.Count];
             candidate.m_TimeClipSlots = authoringSlots.ToArray();
             for (int i = 0; i < Clips.Count; i++)

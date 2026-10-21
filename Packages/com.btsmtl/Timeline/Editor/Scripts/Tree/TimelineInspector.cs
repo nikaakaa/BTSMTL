@@ -108,9 +108,6 @@ namespace BTSMTL.Timeline.Editor
                 case TimelineMarker selectedMarker:
                     DrawMarkerInspector(asset, selectedMarker);
                     break;
-                case TimelineSection section:
-                    DrawSectionInspector(asset, section);
-                    break;
             }
         }
 
@@ -302,37 +299,6 @@ namespace BTSMTL.Timeline.Editor
             {
                 asset.Data.ConfigureTrackAuthoring(track, name, muted, executionDomain,
                     m_Contracts);
-                m_SourceRevision = TimelineAuthoringFingerprint.Compute(asset.Data);
-                m_ConfigurationError = null;
-            }
-            catch (Exception exception)
-            {
-                m_ConfigurationError = exception.Message;
-            }
-        }
-
-        void DrawSectionInspector(TimelineAsset asset, TimelineSection section)
-        {
-            string name = EditorGUILayout.TextField("Name", section.Name);
-            EditorGUI.BeginChangeCheck();
-            double seconds = Math.Max(0d, EditorGUILayout.DoubleField("Time (Seconds)", section.Time.AsSingle));
-            bool timeChanged = EditorGUI.EndChangeCheck();
-            if (name == section.Name && !timeChanged)
-                return;
-            ApplySectionConfiguration(asset, section, name, timeChanged ? OrchestrationTime.FromSeconds(seconds) : section.Time);
-        }
-
-        void ApplySectionConfiguration(TimelineAsset asset, TimelineSection section, string name, OrchestrationTime time)
-        {
-            if (!TryBeginMutation(asset))
-                return;
-            try
-            {
-                asset.Data.ApplyModify(() =>
-                {
-                    asset.Data.ConfigureSection(section, name, time);
-                    asset.Data.Init();
-                }, "Edit Timeline Section");
                 m_SourceRevision = TimelineAuthoringFingerprint.Compute(asset.Data);
                 m_ConfigurationError = null;
             }

@@ -268,7 +268,7 @@ namespace BTSMTL.Timeline.Runtime
                 program.Payload<OrchestrationTimelinePayload>(operationIndex).ContentIdentityId, prepared.ContentRevisionId, prepared.Content.Duration,
                 tickRate,
                 mode, domain, scheduling.Clips, scheduling.Boundaries, scheduling.Lifetimes, scheduling.TreeOrdinals,
-                scheduling.Markers, scheduling.Sections,
+                scheduling.Markers,
                 entries.ClipEntries, entries.MarkerEntries, activeTrees, decisionInstances, cycleWindows, exitWords,
                 call, in tickCapacity);
             return true;

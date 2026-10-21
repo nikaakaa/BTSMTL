@@ -27,18 +27,6 @@ namespace BTSMTL.Timeline.Runtime
         public bool DeclaredEnd { get; }
     }
 
-    public readonly struct TimelineSchedulingSection<TTime> where TTime : unmanaged
-    {
-        public TimelineSchedulingSection(int sectionIndex, TTime time)
-        {
-            SectionIndex = sectionIndex;
-            Time = time;
-        }
-
-        public int SectionIndex { get; }
-        public TTime Time { get; }
-    }
-
     public readonly struct TimelineSchedulingMarker<TTime> where TTime : unmanaged
     {
         public TimelineSchedulingMarker(int ordinal, TTime time)
@@ -56,8 +44,7 @@ namespace BTSMTL.Timeline.Runtime
         internal TimelineRuntimeSchedulingContent(TimelineExecutionDomain domain,
             ReadOnlyMemory<TimelineSchedulingClip<OrchestrationTime>> clips,
             ReadOnlyMemory<int> treeOrdinals,
-            ReadOnlyMemory<TimelineSchedulingMarker<OrchestrationTime>> markers,
-            ReadOnlyMemory<TimelineSchedulingSection<OrchestrationTime>> sections)
+            ReadOnlyMemory<TimelineSchedulingMarker<OrchestrationTime>> markers)
         {
             Domain = domain;
             Clips = clips;
@@ -65,7 +52,6 @@ namespace BTSMTL.Timeline.Runtime
             Lifetimes = TimelineRuntimeBoundaryIndex<OrchestrationTime>.Prepare<OrchestrationTimeClock>(clips, false);
             TreeOrdinals = treeOrdinals;
             Markers = markers;
-            Sections = sections;
         }
 
         public TimelineExecutionDomain Domain { get; }
@@ -74,7 +60,6 @@ namespace BTSMTL.Timeline.Runtime
         public TimelineRuntimeBoundaryIndex<OrchestrationTime> Lifetimes { get; }
         public ReadOnlyMemory<int> TreeOrdinals { get; }
         public ReadOnlyMemory<TimelineSchedulingMarker<OrchestrationTime>> Markers { get; }
-        public ReadOnlyMemory<TimelineSchedulingSection<OrchestrationTime>> Sections { get; }
     }
 
     public readonly struct TimelineSchedulingBoundary<TTime> where TTime : unmanaged
@@ -319,22 +304,6 @@ namespace BTSMTL.Timeline.Runtime
                 }
                 return false;
             }
-        }
-
-        public static int SectionAt(ReadOnlySpan<TimelineSchedulingSection<TTime>> sections, TTime time)
-        {
-            TClock clock = default;
-            int lower = 0;
-            int upper = sections.Length;
-            while (lower < upper)
-            {
-                int middle = lower + (upper - lower) / 2;
-                if (clock.LessThanOrEqual(sections[middle].Time, time))
-                    lower = middle + 1;
-                else
-                    upper = middle;
-            }
-            return lower - 1;
         }
 
         public int Markers(ReadOnlySpan<TimelineSchedulingMarker<TTime>> markers,

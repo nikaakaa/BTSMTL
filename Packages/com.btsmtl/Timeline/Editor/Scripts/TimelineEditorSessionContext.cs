@@ -66,7 +66,6 @@ namespace BTSMTL.Timeline.Editor
         Clip = 2,
         TreeClip = 3,
         Curve = 4,
-        Section = 5,
         Marker = 6
     }
 
@@ -101,24 +100,6 @@ namespace BTSMTL.Timeline.Editor
         {
         }
 
-        public TimelineEditorSelection(TimelineSection section)
-            : this(section, 0UL)
-        {
-        }
-
-        internal TimelineEditorSelection(TimelineSection section, ulong revision)
-            : this(
-                section != null ? TimelineEditorSelectionKind.Section : TimelineEditorSelectionKind.None,
-                null,
-                null,
-                section?.AuthoringId ?? string.Empty,
-                string.Empty,
-                Array.Empty<int>(),
-                revision)
-        {
-            Section = section;
-        }
-
         internal TimelineEditorSelection(TimelineMarker marker, ulong revision)
             : this(TimelineEditorSelectionKind.Marker, marker.Track, null, marker.AuthoringId,
                 string.Empty, Array.Empty<int>(), revision)
@@ -138,7 +119,6 @@ namespace BTSMTL.Timeline.Editor
             Kind = kind;
             Track = track;
             Clip = clip;
-            Section = null;
             Marker = null;
             ElementAuthoringId =
                 elementAuthoringId ?? string.Empty;
@@ -150,7 +130,6 @@ namespace BTSMTL.Timeline.Editor
         public TimelineEditorSelectionKind Kind { get; }
         public Track Track { get; }
         public Clip Clip { get; }
-        public TimelineSection Section { get; }
         public TimelineMarker Marker { get; }
         public string ElementAuthoringId { get; }
         public string SubElementId { get; }
@@ -294,8 +273,6 @@ namespace BTSMTL.Timeline.Editor
                 AlignClip(Selection.Clip);
             else if (Selection.Marker != null)
                 Selection.Marker.Configure(SnapTime(Selection.Marker.Time), Selection.Marker.Graph, Selection.Marker.ForceTriggerOnInitialSeek);
-            else if (Selection.Section != null)
-                Timeline.ConfigureSection(Selection.Section, Selection.Section.Name, SnapTime(Selection.Section.Time));
             else if (Selection.Track != null)
             {
                 foreach (Clip clip in Selection.Track.Clips)
@@ -304,7 +281,7 @@ namespace BTSMTL.Timeline.Editor
                     marker.Configure(SnapTime(marker.Time), marker.Graph, marker.ForceTriggerOnInitialSeek);
             }
             else
-                throw new InvalidOperationException("请选中要对齐的 Clip、Marker、Section 或轨道。");
+                throw new InvalidOperationException("请选中要对齐的 Clip、Marker 或轨道。");
         }
 
         void AlignClip(Clip clip)
@@ -332,7 +309,6 @@ namespace BTSMTL.Timeline.Editor
             {
                 Clip clip => new TimelineEditorSelection(clip.Track, clip, revision),
                 Track track => new TimelineEditorSelection(track, null, revision),
-                TimelineSection section => new TimelineEditorSelection(section, revision),
                 TimelineMarker marker => new TimelineEditorSelection(marker, revision),
                 _ => default
             };
@@ -343,9 +319,6 @@ namespace BTSMTL.Timeline.Editor
                 ReferenceEquals(
                     selection.Clip,
                     m_Selection.Clip) &&
-                ReferenceEquals(
-                    selection.Section,
-                    m_Selection.Section) &&
                 ReferenceEquals(selection.Marker, m_Selection.Marker) &&
                 string.Equals(
                     selection.ElementAuthoringId,
