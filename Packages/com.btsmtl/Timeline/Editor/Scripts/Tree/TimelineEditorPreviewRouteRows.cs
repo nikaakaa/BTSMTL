@@ -1,16 +1,16 @@
 using System.Collections.Generic;
 using BTSMTL.Compilation.Analysis;
+using BTSMTL.Orchestration;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
 
 namespace BTSMTL.Timeline.Editor
 {
-    // 编辑时间轴下方的并排路线：每个经过的 Timeline 一行、按预览全局时刻排布，被打断的未播部分淡色标出，
+    // 编辑时间轴下方的并排路线：每个经过的 Timeline 一行、按预览时刻排布并与编辑时间轴共用刻度，被打断的未播部分淡色标出，
     // 并行分支各占一行；共用预览播放头，点击定位预览时刻，双击一行把编辑时间轴切到该 Timeline。
     public sealed partial class TimelineEditorWindow
     {
-        const float RouteLabelWidth = 170f;
         const float RouteRowHeight = 18f;
 
         sealed class RouteBar
@@ -34,7 +34,6 @@ namespace BTSMTL.Timeline.Editor
         IMGUIContainer m_PreviewRoute;
         readonly List<RouteRow> m_RouteRows = new();
         long m_RouteRevision = -1;
-        float m_RouteEnd = 1f;
 
         VisualElement CreatePreviewRouteRows()
         {
@@ -56,7 +55,6 @@ namespace BTSMTL.Timeline.Editor
             var preview = TimelineAssetPreviewHost.Shared;
             m_RouteRevision = preview.Revision;
             m_RouteRows.Clear();
-            m_RouteEnd = Mathf.Max(.1f, preview.Duration);
             if (preview.IsReal || preview.Chain == null)
             {
                 // 真实档与无状态上下文的单 Timeline 预览：按经过的 Timeline 分行排布播放段。
@@ -79,7 +77,6 @@ namespace BTSMTL.Timeline.Editor
                             $"{segment.LocalStart.AsSingle:0.00}–{segment.LocalEnd.AsSingle:0.00} s · 单击选定这次播放" +
                             (segment.IsNested && segment.CallerPlayback < 0 ? "\n调用方没有可换算的记录，无法归属调用 Clip。" : string.Empty)
                     });
-                    m_RouteEnd = Mathf.Max(m_RouteEnd, segment.End.AsSingle);
                 }
                 if (preview.IsReal && preview.FastChain != null)
                     AddRouteChain(preview.Query, preview.FastChain, 0, "快速 · ");
@@ -128,7 +125,6 @@ namespace BTSMTL.Timeline.Editor
                         $"{span.LocalStart.AsSingle:0.00}–{span.LocalEnd.AsSingle:0.00} s" +
                         (span.Interrupted ? " · 被转移打断，淡色为未播部分" : span.PlaybackCompleted ? " · 播到终点" : string.Empty)
                 });
-                m_RouteEnd = Mathf.Max(m_RouteEnd, unplayed);
             }
             foreach (TimelineStaticChainBranch branch in chain.Branches)
                 AddRouteChain(query, branch.Chain, depth + 1, $"并行 · {query.DescribeState(branch.Owner)} / ", route);
@@ -147,45 +143,41 @@ namespace BTSMTL.Timeline.Editor
             }
             if (m_RouteRevision != preview.Revision)
                 RebuildRouteRows();
-            m_PreviewRoute.style.height = (m_RouteRows.Count + 1) * RouteRowHeight;
-            return true;
+            m_PreviewRoute.style.height = m_RouteRows.Count * RouteRowHeight;
+            return m_RouteRows.Count != 0;
         }
 
+        // 路线行与编辑时间轴共用同一刻度：本轴所选那次播放的时刻与上方时间尺对齐，其它行按预览时刻同步平移。
         void DrawPreviewRoute()
         {
-            if (!RefreshPreviewRouteRows())
+            if (!RefreshPreviewRouteRows() || m_SlateProjection == null ||
+                !m_SlateProjection.TryGetTimeAxis(out float axisLeft, out float axisWidth, out float viewMin, out float viewMax))
                 return;
             var preview = TimelineAssetPreviewHost.Shared;
-            float height = (m_RouteRows.Count + 1) * RouteRowHeight;
+            m_RouteAxis = new RouteAxis(axisLeft, axisWidth, viewMin, viewMax - viewMin, RouteOffset(preview));
+            float height = m_RouteRows.Count * RouteRowHeight;
             Rect rect = new(0, 0, m_PreviewRoute.contentRect.width, height);
             EditorGUI.DrawRect(rect, new Color(.15f, .15f, .15f));
-            Rect axis = new(RouteLabelWidth, 0, Mathf.Max(1f, rect.width - RouteLabelWidth - 4f), RouteRowHeight);
-            GUI.Label(new Rect(4, 0, RouteLabelWidth - 8, RouteRowHeight), preview.IsReal && preview.RealStale
-                ? new GUIContent("预览路线 · 结果过期", "结果过期，待重演：" + preview.RealStaleReason)
-                : new GUIContent("预览路线"), EditorStyles.miniBoldLabel);
-            for (int tick = 0; tick <= 4; tick++)
-            {
-                float time = m_RouteEnd * tick / 4f;
-                float x = RouteX(axis, time);
-                EditorGUI.DrawRect(new Rect(x, axis.yMax - 4, 1, 4), Color.gray);
-                GUI.Label(new Rect(x + 2, 0, 60, RouteRowHeight), time.ToString("0.##") + "s", EditorStyles.miniLabel);
-            }
+            float axisRight = axisLeft + axisWidth;
             Event current = Event.current;
             for (int i = 0; i < m_RouteRows.Count; i++)
             {
                 RouteRow row = m_RouteRows[i];
-                Rect line = new(0, (i + 1) * RouteRowHeight, rect.width, RouteRowHeight);
+                Rect line = new(0, i * RouteRowHeight, rect.width, RouteRowHeight);
                 if (row.Source == SourceAsset)
                     EditorGUI.DrawRect(line, new Color(.22f, .26f, .32f));
-                GUI.Label(new Rect(4 + row.Depth * 10, line.y, RouteLabelWidth - 8 - row.Depth * 10, RouteRowHeight),
+                GUI.Label(new Rect(4 + row.Depth * 10, line.y, axisLeft - 8 - row.Depth * 10, RouteRowHeight),
                     new GUIContent(row.Label, "双击把编辑时间轴切到该 Timeline"), EditorStyles.miniLabel);
                 foreach (RouteBar bar in row.Bars)
                 {
-                    float left = RouteX(axis, bar.Start);
-                    float right = RouteX(axis, bar.End);
-                    if (bar.UnplayedEnd > bar.End)
-                        EditorGUI.DrawRect(new Rect(right, line.y + 4, Mathf.Max(1, RouteX(axis, bar.UnplayedEnd) - right),
-                            RouteRowHeight - 8), new Color(.35f, .45f, .55f, .35f));
+                    float left = Mathf.Max(axisLeft, RouteX(bar.Start));
+                    float right = Mathf.Min(axisRight, RouteX(bar.End));
+                    float unplayed = Mathf.Min(axisRight, RouteX(bar.UnplayedEnd));
+                    if (bar.UnplayedEnd > bar.End && unplayed > right)
+                        EditorGUI.DrawRect(new Rect(Mathf.Max(axisLeft, right), line.y + 4,
+                            unplayed - Mathf.Max(axisLeft, right), RouteRowHeight - 8), new Color(.35f, .45f, .55f, .35f));
+                    if (right <= left)
+                        continue;
                     Rect body = new(left, line.y + 3, Mathf.Max(2, right - left), RouteRowHeight - 6);
                     EditorGUI.DrawRect(body, row.Depth == 0 ? new Color(.3f, .55f, .78f) : new Color(.45f, .62f, .4f));
                     if (bar.Playback >= 0 && row.Source == SourceAsset && bar.Playback == m_PreviewPathPlayback)
@@ -207,19 +199,35 @@ namespace BTSMTL.Timeline.Editor
             if (preview.IsReal)
                 foreach (TimelinePreviewDifference difference in preview.Differences)
                 {
-                    float x = RouteX(axis, difference.Time);
-                    EditorGUI.DrawRect(new Rect(x - 1, RouteRowHeight, 3, height - RouteRowHeight), new Color(.95f, .3f, .25f));
-                    GUI.Label(new Rect(x - 6, 0, 12, RouteRowHeight), new GUIContent("!", difference.Message), EditorStyles.miniBoldLabel);
+                    float x = RouteX(difference.Time);
+                    if (x < axisLeft || x > axisRight)
+                        continue;
+                    EditorGUI.DrawRect(new Rect(x - 1, 0, 3, height), new Color(.95f, .3f, .25f));
+                    GUI.Label(new Rect(x - 6, 0, 12, RouteRowHeight), new GUIContent(string.Empty, difference.Message));
                 }
-            float cursor = RouteX(axis, preview.Time);
-            EditorGUI.DrawRect(new Rect(cursor, 0, 1, height), new Color(1f, .7f, .2f));
-            Rect timeArea = Rect.MinMaxRect(axis.xMin, 0, axis.xMax, height);
+            float cursor = RouteX(preview.Time);
+            if (cursor >= axisLeft && cursor <= axisRight)
+                EditorGUI.DrawRect(new Rect(cursor, 0, 1, height), new Color(1f, .7f, .2f));
+            Rect timeArea = Rect.MinMaxRect(axisLeft, 0, axisRight, height);
             if ((current.type == EventType.MouseDown && current.clickCount == 1 || current.type == EventType.MouseDrag) &&
                 current.button == 0 && timeArea.Contains(current.mousePosition))
             {
-                preview.SetTime((current.mousePosition.x - axis.x) / axis.width * m_RouteEnd);
+                preview.SetTime(Mathf.Max(0f, RouteTime(current.mousePosition.x)));
                 current.Use();
             }
+        }
+
+        // 本轴所选那次播放（游标所在的一圈优先）把预览时刻换成本地时刻的平移量；本轴不在路线上时按预览时刻直接对齐。
+        float RouteOffset(TimelineAssetPreviewHost preview)
+        {
+            if (!preview.TryGetPlayback(SourceAsset, out TimelinePreviewRouteSegment[] spans))
+                return 0f;
+            OrchestrationTime cursor = OrchestrationTime.FromSeconds(preview.Time);
+            TimelinePreviewRouteSegment selected = spans[0];
+            foreach (TimelinePreviewRouteSegment span in spans)
+                if (span.Contains(cursor))
+                    selected = span;
+            return selected.Start.AsSingle - selected.LocalStart.AsSingle;
         }
 
         void DisposeRouteRowsContent()
@@ -228,7 +236,30 @@ namespace BTSMTL.Timeline.Editor
             m_RouteRevision = -1;
         }
 
-        float RouteX(Rect axis, float time) => axis.x + Mathf.Clamp01(time / m_RouteEnd) * axis.width;
+        readonly struct RouteAxis
+        {
+            internal RouteAxis(float left, float width, float viewMin, float viewSpan, float offset)
+            {
+                Left = left;
+                Width = width;
+                ViewMin = viewMin;
+                ViewSpan = viewSpan;
+                Offset = offset;
+            }
+
+            internal readonly float Left;
+            internal readonly float Width;
+            internal readonly float ViewMin;
+            internal readonly float ViewSpan;
+            internal readonly float Offset;
+        }
+
+        RouteAxis m_RouteAxis;
+        Vector4 m_DrawnTimeAxis;
+
+        float RouteX(float time) => m_RouteAxis.Left + (time - m_RouteAxis.Offset - m_RouteAxis.ViewMin) / m_RouteAxis.ViewSpan * m_RouteAxis.Width;
+
+        float RouteTime(float x) => (x - m_RouteAxis.Left) / m_RouteAxis.Width * m_RouteAxis.ViewSpan + m_RouteAxis.ViewMin + m_RouteAxis.Offset;
 
         // 切到路线上的另一条 Timeline，来处记为可返回的导航。
         void OpenRouteTimeline(TimelineAsset target)

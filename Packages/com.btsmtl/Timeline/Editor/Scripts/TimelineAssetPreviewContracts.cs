@@ -335,6 +335,21 @@ namespace BTSMTL.Timeline.Editor
         void Stop();
     }
 
+    // 真实档控制分三处放入 Timeline 窗口唯一的预览工具栏：内联播放组、⚙ 设置面板与状态行尾部；布局由窗口持有。
+    public sealed class TimelinePreviewRealControls
+    {
+        public TimelinePreviewRealControls(VisualElement transport, VisualElement settings, VisualElement status)
+        {
+            Transport = transport ?? throw new ArgumentNullException(nameof(transport));
+            Settings = settings ?? throw new ArgumentNullException(nameof(settings));
+            Status = status ?? throw new ArgumentNullException(nameof(status));
+        }
+
+        public VisualElement Transport { get; }
+        public VisualElement Settings { get; }
+        public VisualElement Status { get; }
+    }
+
     public interface ITimelineAssetPreviewProvider
     {
         event Action SessionChanged;
@@ -351,7 +366,7 @@ namespace BTSMTL.Timeline.Editor
         IReadOnlyList<TimelinePreviewInputPoint> ImportRecordedInputs(string path);
         // 真实档：工具栏、会话游标与执行记录中 Timeline 的作者来源均由宿主提供；
         // 编辑时间轴上的时间拖动经宿主设置的 ITimelineTimeRangePreview 写回。
-        VisualElement CreateRealControls();
+        TimelinePreviewRealControls CreateRealControls();
         bool CanObserveReal { get; }
         float RealTime { get; }
         void SeekReal(float time);

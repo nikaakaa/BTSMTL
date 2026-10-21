@@ -98,7 +98,7 @@ namespace BTSMTL.Timeline.Editor
         // 真实档正式选中的状态转移，按发生时刻排列。
         public IReadOnlyList<TimelinePreviewRealTransition> RealTransitions =>
             m_Real != null ? m_Real.Transitions : Array.Empty<TimelinePreviewRealTransition>();
-        public VisualElement CreateRealControls() => m_Provider?.CreateRealControls();
+        public TimelinePreviewRealControls CreateRealControls() => m_Provider?.CreateRealControls();
         public bool IsOpeningSession => m_SessionOpening != null;
         public bool IsPlaying { get; private set; }
         public float Time { get; private set; }

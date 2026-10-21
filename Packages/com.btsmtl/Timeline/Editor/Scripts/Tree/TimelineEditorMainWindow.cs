@@ -508,12 +508,6 @@ namespace BTSMTL.Timeline.Editor
             WindowOpened?.Invoke(this);
             rootVisualElement.Clear();
             rootVisualElement.Add(CreateWorkspaceHeader());
-            Label ownership = new Label($"Timeline Ownership: {m_OwnershipLabel}");
-            ownership.style.unityFontStyleAndWeight = FontStyle.Bold;
-            ownership.style.paddingLeft = 8f;
-            ownership.style.paddingTop = 4f;
-            ownership.style.paddingBottom = 4f;
-            rootVisualElement.Add(ownership);
             m_SlateSurface = new IMGUIContainer(DrawSlateSurface)
             {
                 name = "slate-timeline-surface"
@@ -677,6 +671,17 @@ namespace BTSMTL.Timeline.Editor
                 Mathf.Max(1f, rect.height),
                 BeginWindows,
                 EndWindows);
+            // 路线行与时间尺共用刻度：缩放、平移或改左栏宽后跟着重画。
+            if (Event.current.type == EventType.Repaint && m_PreviewRoute != null &&
+                m_SlateProjection.TryGetTimeAxis(out float left, out float width, out float viewMin, out float viewMax))
+            {
+                var axis = new Vector4(left, width, viewMin, viewMax);
+                if (axis != m_DrawnTimeAxis)
+                {
+                    m_DrawnTimeAxis = axis;
+                    m_PreviewRoute.MarkDirtyRepaint();
+                }
+            }
             var preview = TimelineAssetPreviewHost.Shared;
             if (timeInput && previousTime != m_SlateProjection.CurrentTime && preview.IsOpen && SourceAsset &&
                 preview.SampledSource == SourceAsset)
@@ -744,7 +749,7 @@ namespace BTSMTL.Timeline.Editor
         void OnTimelineValueChanged()
         {
             QueueStateQueryRefresh();
-            if (m_TimeRangePreview?.IsEditing == true)
+            if (m_TimeRangePreview != null && m_SlateProjection?.IsCommittingTimeEdit == true)
                 return;
             m_Toolbar?.SetSourceSummary(BindingState.CreateSourceSummary());
             AuthoringRevisionChanged?.Invoke(this);

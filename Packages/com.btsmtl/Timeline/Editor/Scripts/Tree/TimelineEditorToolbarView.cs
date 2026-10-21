@@ -82,6 +82,7 @@ namespace BTSMTL.Timeline.Editor
         {
             Status.text = value ?? string.Empty;
             Status.tooltip = value ?? string.Empty;
+            Status.style.display = string.IsNullOrEmpty(value) ? DisplayStyle.None : DisplayStyle.Flex;
         }
     }
 
@@ -130,7 +131,7 @@ namespace BTSMTL.Timeline.Editor
             if (workspaceControls != null)
                 workspaceGroup.Add(workspaceControls);
 
-            var status = new Label("作者编辑");
+            var status = new Label { style = { display = DisplayStyle.None } };
             status.style.whiteSpace = WhiteSpace.Normal;
             status.style.paddingLeft = 8f;
             status.style.paddingTop = 2f;
