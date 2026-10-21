@@ -174,8 +174,7 @@ namespace BTSMTL.Orchestration
         {
             default(TDiagnostics).Lifecycle(ref this, OrchestrationDiagnosticLifecycle.RetireFrame, -1, frameSlot);
             m_Frames.RemoveAt(frameSlot);
-            Array.Clear(m_Workspace.ForceStopVisited,
-                checked(frameSlot * m_Program.OperationCount), m_Program.OperationCount);
+            m_Workspace.ClearForceStopFrame(frameSlot);
         }
     }
 }

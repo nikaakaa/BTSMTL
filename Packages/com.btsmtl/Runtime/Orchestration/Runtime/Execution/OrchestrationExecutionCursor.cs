@@ -524,7 +524,7 @@ namespace BTSMTL.Orchestration
                 m_EntryDepth--;
                 m_ForceStopDepth--;
                 if (ownsVisited)
-                    Array.Clear(m_Workspace.ForceStopVisited, 0, m_Workspace.ForceStopVisited.Length);
+                    m_Workspace.ClearForceStopVisits();
             }
         }
 
@@ -532,10 +532,8 @@ namespace BTSMTL.Orchestration
         {
             if (operationIndex < 0)
                 return;
-            int visitedIndex = checked(m_FrameSlot * m_Program.OperationCount + operationIndex);
-            if (m_Workspace.ForceStopVisited[visitedIndex])
+            if (!m_Workspace.VisitForceStop(m_FrameSlot, operationIndex))
                 return;
-            m_Workspace.ForceStopVisited[visitedIndex] = true;
             m_CurrentOperationIndex = operationIndex;
             bool active = IsActive(operationIndex);
             ref readonly OrchestrationOperation operation = ref m_Program.Operation(operationIndex);

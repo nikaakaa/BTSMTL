@@ -10,7 +10,10 @@ namespace BTSMTL.Orchestration
         internal readonly TValue[][] Outputs;
         internal readonly TValue[] ScheduledValues;
         internal readonly ScheduledPrediction[] ScheduledPredictions;
-        internal readonly bool[] ForceStopVisited;
+        const int UnvisitedForceStopWord = -2;
+        readonly ulong[] m_ForceStopVisited;
+        readonly int[] m_ForceStopNextWord;
+        int m_ForceStopVisitedWord = -1;
         internal readonly GraphCallContext[] GraphCallEntries;
         internal readonly StateContext[] States;
         internal readonly OrchestrationStateAncestor[] StateAncestors;
@@ -52,7 +55,11 @@ namespace BTSMTL.Orchestration
                 Inputs[i] = new TValue[workspace.InputCounts.Span[i]];
                 Outputs[i] = new TValue[workspace.OutputCounts.Span[i]];
             }
-            ForceStopVisited = new bool[checked(m_ExecutionFrameCapacity * program.OperationCount)];
+            int visitCapacity = checked(m_ExecutionFrameCapacity * program.OperationCount);
+            int visitWordCapacity = (int)((visitCapacity + 63L) / 64);
+            m_ForceStopVisited = new ulong[visitWordCapacity];
+            m_ForceStopNextWord = new int[visitWordCapacity];
+            Array.Fill(m_ForceStopNextWord, UnvisitedForceStopWord);
             GraphCallEntries = new GraphCallContext[workspace.GraphCallDepth];
             States = new StateContext[workspace.StateDepth];
             StateAncestors = new OrchestrationStateAncestor[workspace.StateAncestorCount];
@@ -68,6 +75,50 @@ namespace BTSMTL.Orchestration
         public int OutputRequestCapacity => OutputRequests.Length;
         public int OutputValueCapacity => OutputValues.Length;
         public ReadOnlyMemory<OrchestrationGraphSource> TraceSources => m_Content.Sources;
+
+        internal bool VisitForceStop(int frameSlot, int operationIndex)
+        {
+            int index = checked(frameSlot * m_Program.OperationCount + operationIndex);
+            int word = index >> 6;
+            ulong mask = 1UL << (index & 63);
+            if ((m_ForceStopVisited[word] & mask) != 0)
+                return false;
+            if (m_ForceStopNextWord[word] == UnvisitedForceStopWord)
+            {
+                m_ForceStopNextWord[word] = m_ForceStopVisitedWord;
+                m_ForceStopVisitedWord = word;
+            }
+            m_ForceStopVisited[word] |= mask;
+            return true;
+        }
+
+        internal void ClearForceStopVisits()
+        {
+            while (m_ForceStopVisitedWord >= 0)
+            {
+                int word = m_ForceStopVisitedWord;
+                m_ForceStopVisitedWord = m_ForceStopNextWord[word];
+                m_ForceStopNextWord[word] = UnvisitedForceStopWord;
+                m_ForceStopVisited[word] = 0;
+            }
+        }
+
+        internal void ClearForceStopFrame(int frameSlot)
+        {
+            int index = checked(frameSlot * m_Program.OperationCount);
+            int remaining = m_Program.OperationCount;
+            int word = index >> 6;
+            int offset = index & 63;
+            while (remaining > 0)
+            {
+                int count = Math.Min(64 - offset, remaining);
+                ulong mask = (ulong.MaxValue >> (64 - count)) << offset;
+                m_ForceStopVisited[word++] &= ~mask;
+                remaining -= count;
+                offset = 0;
+            }
+            // 帧复用只清访问位，块的链表归属保留到最外层停止结束，避免同一块重复入链。
+        }
 
         internal void RequireDepth(string region, int operationIndex, int required, int capacity)
         {
