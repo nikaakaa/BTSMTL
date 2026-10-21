@@ -304,11 +304,16 @@ namespace BTSMTL.Timeline.Editor
             m_PreviewPathRevision = preview.Revision;
             m_RouteInputs = inputs;
             float duration = preview.Duration;
+            // 时间轴要容下路线结束后的输入与各组完整内容，路线结束后的部分压暗并在输入组头说明。
+            float length = inputs ? Mathf.Max(duration, inputs.Data.Duration) : duration;
             string error = preview.InputError;
+            string ended = inputs && inputs.Data.Duration > duration + 0.001f && preview.Chain != null
+                ? $" · 路线在 {duration:0.00} s 结束（{preview.Chain.Reason.TrimEnd('。')}），之后的输入不起作用"
+                : string.Empty;
             var groups = new List<TimelineRouteGroup>
             {
                 new(inputs, "预览输入 · " + preview.Preferences.Name +
-                        (!inputs ? " · 右键 Add Track 开始摆输入" : error.Length != 0 ? " · 有错误：" + FirstLine(error) : string.Empty),
+                        (!inputs ? " · 右键 Add Track 开始摆输入" : error.Length != 0 ? " · 有错误：" + FirstLine(error) : ended),
                     0f, 0f, duration, inputs ? OpenInputTimeline : null,
                     (graph, start) => DescribeInputContent(preview, graph, start))
             };
@@ -324,11 +329,12 @@ namespace BTSMTL.Timeline.Editor
                     Math.Abs(local.AsSingle - (segment.LocalStart.AsSingle + end - start)) > 0.001f)
                     note += " · 含停顿，组内位置按 1 倍速";
                 TimelineAsset source = segment.Source;
+                length = Mathf.Max(length, offset + source.Data.Duration);
                 groups.Add(new TimelineRouteGroup(source,
                     $"{source.name} · {preview.DescribeState(segment.State)} · {start:0.00}–{end:0.00} s{note}",
                     offset, start, end, () => EditorApplication.delayCall += () => NavigateTimeline(source, string.Empty)));
             }
-            m_SlateProjection.ShowRoute(groups, duration, RouteMarks(preview), preview.IsReal,
+            m_SlateProjection.ShowRoute(groups, length, RouteMarks(preview), preview.IsReal,
                 TimelineWorkspaceModeBridge.AuthoringFor, () => preview.InputSchemes.EnsureInputTimeline());
             m_SlateProjection.ApplyRouteTime(preview.Time);
         }
