@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using ThirdPersonSimulation;
 
 namespace BTSMTL.Orchestration
@@ -46,6 +47,27 @@ namespace BTSMTL.Orchestration
         public ulong InputSequence;
         public ulong StartTick;
         public TTime StartTime;
+
+        public bool IsSamePlayback(in OrchestrationTimelineStart<TTime> other) =>
+            ContentIdentityId == other.ContentIdentityId && ContentRevisionId == other.ContentRevisionId &&
+            Mode == other.Mode && PlaybackIdentity == other.PlaybackIdentity &&
+            CallerPlaybackIdentity == other.CallerPlaybackIdentity &&
+            SourceIdentityId == other.SourceIdentityId && SourceGeneration == other.SourceGeneration &&
+            OwnerInstanceId == other.OwnerInstanceId && InputSequence == other.InputSequence;
+
+        public static IEqualityComparer<OrchestrationTimelineStart<TTime>> PlaybackComparer { get; } =
+            new PlaybackIdentityComparer();
+
+        sealed class PlaybackIdentityComparer : IEqualityComparer<OrchestrationTimelineStart<TTime>>
+        {
+            public bool Equals(OrchestrationTimelineStart<TTime> left, OrchestrationTimelineStart<TTime> right) =>
+                left.IsSamePlayback(in right);
+
+            public int GetHashCode(OrchestrationTimelineStart<TTime> value) =>
+                HashCode.Combine(HashCode.Combine(value.ContentIdentityId, value.ContentRevisionId, value.Mode,
+                    value.PlaybackIdentity, value.CallerPlaybackIdentity, value.SourceIdentityId,
+                    value.SourceGeneration, value.OwnerInstanceId), value.InputSequence);
+        }
 
         public OrchestrationTimelineStart<TTarget> WithStartTime<TTarget>(TTarget startTime)
             where TTarget : unmanaged, IEquatable<TTarget> => new()
