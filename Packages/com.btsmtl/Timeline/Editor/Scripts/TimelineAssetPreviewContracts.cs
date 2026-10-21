@@ -24,12 +24,11 @@ namespace BTSMTL.Timeline.Editor
         Real
     }
 
-    [Serializable]
+    // 输入 Timeline 读出的一次值变化（预览全局时刻），只作派生数据。
     public sealed class TimelinePreviewInputPoint
     {
         public string InputId;
         public float Time;
-        public bool Active = true;
         public bool Boolean;
         public int Integer;
         public float Scalar;
@@ -65,7 +64,12 @@ namespace BTSMTL.Timeline.Editor
     public sealed class TimelineAssetPreviewPreferences
     {
         public string Name = "默认";
-        public List<TimelinePreviewInputPoint> Inputs = new();
+        // 方案的输入 Timeline，方案资产的子资产；第一次编辑输入时创建。
+        public TimelineAsset InputTimeline;
+        // 由输入 Timeline 读出的值变化，按时刻排序；两档与领域取值只读这一份，不保存。
+        [NonSerialized] public List<TimelinePreviewInputPoint> Inputs = new();
+        // 输入 Timeline 的读取错误；有错误时 Inputs 为空。
+        [NonSerialized] public List<string> InputErrors = new();
         public List<TimelinePreviewConditionAssumption> Conditions = new();
         public bool HasTarget;
         public Vector3 TargetPosition;

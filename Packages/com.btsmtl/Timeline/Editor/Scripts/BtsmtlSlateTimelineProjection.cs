@@ -91,47 +91,16 @@ namespace BTSMTL.Timeline.Editor
 
     public readonly struct TimelinePreviewMark
     {
-        public TimelinePreviewMark(float time, string label, string tooltip, bool accepted = true)
+        public TimelinePreviewMark(float time, string label, string tooltip)
         {
             Time = time;
             Label = label;
             Tooltip = tooltip;
-            Accepted = accepted;
         }
 
         public float Time { get; }
         public string Label { get; }
         public string Tooltip { get; }
-        public bool Accepted { get; }
-    }
-
-    // 预览输入轨编辑入口：时间为本 Timeline 本地时间，下标对应输入标记。
-    // BeginMove 在按下拖动时调用，固定本次拖动所在的播放；Pressed 对开关类输入给出按下（true）或松开（false），
-    // 其它类型为 null；SetPressed 改写该点的开关值。
-    public sealed class TimelinePreviewInputTrack
-    {
-        public TimelinePreviewInputTrack(IReadOnlyList<string> choices, Action<int> beginMove, Action<int, float> move,
-            Action<string, float> add, Action<int, string> change, Action<int> remove,
-            Func<int, bool?> pressed, Action<int, bool> setPressed)
-        {
-            Choices = choices;
-            BeginMove = beginMove;
-            Move = move;
-            Add = add;
-            Change = change;
-            Remove = remove;
-            Pressed = pressed;
-            SetPressed = setPressed;
-        }
-
-        public IReadOnlyList<string> Choices { get; }
-        public Action<int> BeginMove { get; }
-        public Action<int, float> Move { get; }
-        public Action<string, float> Add { get; }
-        public Action<int, string> Change { get; }
-        public Action<int> Remove { get; }
-        public Func<int, bool?> Pressed { get; }
-        public Action<int, bool> SetPressed { get; }
     }
 
     [Serializable]
@@ -218,15 +187,12 @@ namespace BTSMTL.Timeline.Editor
         public float CurrentTime => m_Binding.CurrentTime;
         internal void SetNestedViews(IReadOnlyDictionary<string, List<EmbeddedTimelineSubTimeline>> views) =>
             m_Binding.SetNestedViews(views);
+        // inputs 为预览输入 Timeline 的只读子视图，时间已换算为本 Timeline 本地时间。
         public void SetPreviewPath(string source, IReadOnlyList<Vector2> visited, IReadOnlyList<TimelinePreviewMark> marks,
-            IReadOnlyList<TimelinePreviewMark> inputs, TimelinePreviewInputTrack inputTrack)
+            EmbeddedTimelineSubTimeline inputs)
         {
             m_Binding.SetPreviewPath(visited == null ? null : new EmbeddedTimelinePreviewPath(source, visited,
-                marks.Select(mark => new EmbeddedTimelinePreviewMark(mark.Time, mark.Label, mark.Tooltip)).ToArray(),
-                inputs.Select(input => new EmbeddedTimelinePreviewMark(input.Time, input.Label, input.Tooltip, input.Accepted)).ToArray(),
-                inputTrack == null ? null : new EmbeddedTimelinePreviewInputTrack(inputTrack.Choices,
-                    inputTrack.BeginMove, inputTrack.Move,
-                    inputTrack.Add, inputTrack.Change, inputTrack.Remove, inputTrack.Pressed, inputTrack.SetPressed)));
+                marks.Select(mark => new EmbeddedTimelinePreviewMark(mark.Time, mark.Label, mark.Tooltip)).ToArray(), inputs));
             m_EmbeddedEditor.RequestEmbeddedRepaint();
         }
         public event Action<string> AuthoringIssue;

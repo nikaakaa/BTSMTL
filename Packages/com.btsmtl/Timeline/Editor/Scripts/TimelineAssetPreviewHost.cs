@@ -179,6 +179,7 @@ namespace BTSMTL.Timeline.Editor
             m_PendingSource = null;
             InputSchemes.Load(Source, EntryIdentity());
             Error = string.Empty;
+            RefreshInputs();
             if (Mode == TimelinePreviewMode.Real)
             {
                 m_Real = new TimelinePreviewRealRoute(RuntimeDebugSession.Shared);
@@ -307,7 +308,10 @@ namespace BTSMTL.Timeline.Editor
             m_EntryMachine = entryMachine;
             TimelinePreviewEntryIdentity entry = EntryIdentity();
             if (!entry.Equals(InputSchemes.Entry))
+            {
                 InputSchemes.Load(Source, entry);
+                RefreshInputs();
+            }
             foreach (TimelineAsset preparedSource in m_Contents.Keys)
                 m_Dirty.Add(preparedSource);
             m_ChainRequested = true;
@@ -345,6 +349,30 @@ namespace BTSMTL.Timeline.Editor
         public void PreferencesChanged()
         {
             InputSchemes.MarkChanged();
+            RefreshInputs();
+            ApplyInputs();
+        }
+
+        // 输入 Timeline 或其图改动后重新读出；读出结果变化时返回 true。宿主输入描述不可用时记为错误。
+        bool RefreshInputs()
+        {
+            try
+            {
+                return InputSchemes.RefreshInputs(Inputs);
+            }
+            catch (Exception exception)
+            {
+                Error = exception.Message;
+                return false;
+            }
+        }
+
+        // 当前方案的输入 Timeline 读取错误；有错误时两档都不使用该输入 Timeline。
+        public string InputError => string.Join("\n", Preferences.InputErrors);
+
+        // 新读出的输入交给两档：快速档重新推导与采样，真实档替换会话输入日程并标为过期。
+        void ApplyInputs()
+        {
             Revision++;
             if (m_Real != null)
             {
@@ -381,8 +409,7 @@ namespace BTSMTL.Timeline.Editor
                 Changed?.Invoke();
                 return;
             }
-            Preferences.Inputs.Clear();
-            Preferences.Inputs.AddRange(imported);
+            TimelinePreviewInputTimeline.Replace(InputSchemes.EnsureInputTimeline(), Contracts, Inputs, imported);
             PreferencesChanged();
             InputSchemes.Save();
         }
@@ -478,6 +505,8 @@ namespace BTSMTL.Timeline.Editor
         {
             if (!IsOpen || EditorApplication.isCompiling || EditorApplication.isUpdating)
                 return;
+            if (RefreshInputs())
+                ApplyInputs();
             if (m_Real != null)
             {
                 UpdateReal();

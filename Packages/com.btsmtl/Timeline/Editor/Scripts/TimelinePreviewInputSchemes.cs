@@ -48,6 +48,8 @@ namespace BTSMTL.Timeline.Editor
         TimelineAsset m_Source;
         TimelinePreviewInputSchemes m_Asset;
         TimelineAssetPreviewPreferences m_Default;
+        string m_InputsFingerprint;
+        TimelineAssetPreviewPreferences m_ReadScheme;
 
         public TimelineAssetPreviewPreferences Current =>
             m_Asset != null && m_Asset.Schemes.Count != 0 ? m_Asset.Current : m_Default;
@@ -65,6 +67,8 @@ namespace BTSMTL.Timeline.Editor
             m_Entry = entry;
             m_Asset = Find(entry);
             m_Default = new TimelineAssetPreviewPreferences();
+            m_InputsFingerprint = null;
+            m_ReadScheme = null;
         }
 
         // 当前方案已被修改：尚无方案资产时创建，并标记待保存。
@@ -95,15 +99,74 @@ namespace BTSMTL.Timeline.Editor
             return true;
         }
 
+        // 复制方案连同输入 Timeline；Timeline 引用的预览输入图共用，不复制。
         public void SaveAs(string name)
         {
             TimelineAssetPreviewPreferences copy =
                 JsonUtility.FromJson<TimelineAssetPreviewPreferences>(JsonUtility.ToJson(Current));
             copy.Name = name;
             MarkChanged();
+            if (Current.InputTimeline)
+            {
+                copy.InputTimeline = UnityEngine.Object.Instantiate(Current.InputTimeline);
+                copy.InputTimeline.name = name + " 输入";
+                AssetDatabase.AddObjectToAsset(copy.InputTimeline, m_Asset);
+            }
             m_Asset.Schemes.Add(copy);
             m_Asset.Selected = m_Asset.Schemes.Count - 1;
+            m_InputsFingerprint = null;
             Save();
+        }
+
+        // 当前方案的输入 Timeline；尚无时在方案资产内创建。
+        public TimelineAsset EnsureInputTimeline()
+        {
+            MarkChanged();
+            TimelineAssetPreviewPreferences current = Current;
+            if (current.InputTimeline)
+                return current.InputTimeline;
+            var timeline = ScriptableObject.CreateInstance<TimelineAsset>();
+            timeline.name = current.Name + " 输入";
+            AssetDatabase.AddObjectToAsset(timeline, m_Asset);
+            current.InputTimeline = timeline;
+            EditorUtility.SetDirty(m_Asset);
+            Save();
+            m_InputsFingerprint = null;
+            return timeline;
+        }
+
+        // 输入 Timeline 或其引用的图改动后重新读出；返回读出结果是否变化。
+        public bool RefreshInputs(IReadOnlyList<GraphHostInputDescriptor> declared)
+        {
+            TimelineAssetPreviewPreferences current = Current;
+            string fingerprint = InputsFingerprint(current.InputTimeline, declared);
+            if (fingerprint == m_InputsFingerprint && ReferenceEquals(current, m_ReadScheme))
+                return false;
+            m_InputsFingerprint = fingerprint;
+            m_ReadScheme = current;
+            current.InputErrors.Clear();
+            current.Inputs = TimelinePreviewInputTimeline.Read(current.InputTimeline, declared, current.InputErrors);
+            return true;
+        }
+
+        static string InputsFingerprint(TimelineAsset timeline, IReadOnlyList<GraphHostInputDescriptor> declared)
+        {
+            if (!timeline)
+                return string.Empty;
+            var builder = new System.Text.StringBuilder();
+            builder.Append(timeline.GetInstanceID()).Append(':').Append(EditorUtility.GetDirtyCount(timeline));
+            foreach (Track track in timeline.Data.Tracks)
+            {
+                foreach (Clip clip in track.Clips)
+                    if (clip is TreeClip { AssetTree: { } graph })
+                        builder.Append('|').Append(graph.GetInstanceID()).Append(':').Append(EditorUtility.GetDirtyCount(graph));
+                foreach (TimelineMarker marker in track.Markers)
+                    if (marker.Graph)
+                        builder.Append('|').Append(marker.Graph.GetInstanceID()).Append(':')
+                            .Append(EditorUtility.GetDirtyCount(marker.Graph));
+            }
+            builder.Append('#').Append(declared.Count);
+            return builder.ToString();
         }
 
         public void Rename(string name)
@@ -117,26 +180,14 @@ namespace BTSMTL.Timeline.Editor
         {
             if (m_Asset == null || m_Asset.Schemes.Count <= 1)
                 return false;
-            m_Asset.Schemes.RemoveAt(Mathf.Clamp(m_Asset.Selected, 0, m_Asset.Schemes.Count - 1));
+            int index = Mathf.Clamp(m_Asset.Selected, 0, m_Asset.Schemes.Count - 1);
+            if (m_Asset.Schemes[index].InputTimeline)
+                UnityEngine.Object.DestroyImmediate(m_Asset.Schemes[index].InputTimeline, true);
+            m_Asset.Schemes.RemoveAt(index);
             m_Asset.Selected = Mathf.Clamp(m_Asset.Selected, 0, m_Asset.Schemes.Count - 1);
             EditorUtility.SetDirty(m_Asset);
             Save();
             return true;
-        }
-
-        // 当前方案里按键身份已不在宿主输入中的项：加载时列出，由作者删除或改键。
-        public IEnumerable<TimelinePreviewInputPoint> InvalidInputs(IReadOnlyList<GraphHostInputDescriptor> declared)
-        {
-            if (Current == null)
-                yield break;
-            foreach (TimelinePreviewInputPoint point in Current.Inputs)
-            {
-                bool found = false;
-                foreach (GraphHostInputDescriptor descriptor in declared)
-                    found |= descriptor.InputId == point.InputId;
-                if (!found)
-                    yield return point;
-            }
         }
 
         static TimelinePreviewInputSchemes Find(TimelinePreviewEntryIdentity entry)

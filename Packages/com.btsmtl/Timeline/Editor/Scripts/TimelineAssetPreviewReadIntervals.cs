@@ -20,7 +20,7 @@ namespace BTSMTL.Timeline.Editor
             var requestInputs = requests.ToDictionary(request => request.InputId, StringComparer.Ordinal);
             foreach (var input in preferences.Inputs.GroupBy(point => point.InputId))
             {
-                TimelinePreviewInputPoint[] points = input.Where(point => point.Active).OrderBy(point => point.Time).ToArray();
+                TimelinePreviewInputPoint[] points = input.OrderBy(point => point.Time).ToArray();
                 GraphHostInputDescriptor descriptor = descriptors.FirstOrDefault(value => value.InputId == input.Key);
                 if (descriptor == null)
                     throw new TimelineAssetPreviewInputUnavailableException($"预览日程中的输入 '{input.Key}' 已不在当前角色的正式输入声明中，请删除该日程项。");
