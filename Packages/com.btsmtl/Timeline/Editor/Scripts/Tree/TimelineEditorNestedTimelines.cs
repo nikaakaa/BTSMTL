@@ -27,7 +27,8 @@ namespace BTSMTL.Timeline.Editor
         [SerializeField] List<TimelineNavigationFrame> m_TimelineNavigation = new();
         [SerializeField] List<string> m_NestedExpanded = new();
         readonly Dictionary<string, List<EmbeddedTimelineSubTimeline>> m_NestedViews = new(StringComparer.Ordinal);
-        (string Owner, int Operation)? m_NestedContextRequest;
+        // 从调用进入被调 Timeline 后，起点选调用所属技能的根。
+        string m_NestedContextRequest;
 
         void RefreshNestedViews()
         {
@@ -169,9 +170,7 @@ namespace BTSMTL.Timeline.Editor
         {
             if (m_StateContexts.Count == 0)
                 return true;
-            var context = m_StateContexts[m_StateContextIndex];
-            return query.Owner == context.Query.Owner &&
-                call.CallerOperationIndex == (context.Call?.OperationIndex ?? context.State.TimelineOperationIndex);
+            return query.Owner == m_StateContexts[m_StateContextIndex].Query.Owner;
         }
 
         void QueueOpenNestedTimeline(TimelineOrchestrationQuery query, OrchestrationStaticTimelineCall call, TimelineAsset source) =>
@@ -191,7 +190,7 @@ namespace BTSMTL.Timeline.Editor
             else
                 note = "其它引用查询未完成：" + reason;
             NavigateTimeline(source, note);
-            m_NestedContextRequest = (query.Owner, call.OperationIndex);
+            m_NestedContextRequest = query.Owner;
         }
 
         void NavigateTimeline(TimelineAsset target, string note)

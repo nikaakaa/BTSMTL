@@ -33,7 +33,7 @@ namespace BTSMTL.Timeline.Editor
         int m_PreviewPathPlayback = -1;
         TimelinePreviewInputPoint m_DragPoint;
         TimelinePreviewRouteSegment m_DragSegment;
-        TimelineAsset m_ObservedPreviewSource;
+        bool m_SeekToSourcePlayback;
         readonly List<int> m_PreviewInputs = new();
 
         // 唯一的预览工具栏只有四样：预览（关／快速／真实）、入口状态、播放与 ⚙；其下一行状态。
@@ -144,8 +144,9 @@ namespace BTSMTL.Timeline.Editor
 
         void OpenTimelinePreview()
         {
-            var context = m_StateContexts.Count == 0 ? default : m_StateContexts[m_StateContextIndex];
-            TimelineAssetPreviewHost.Shared.Open(SourceAsset, m_PreviewMode, context.Query, context.State, context.Call);
+            var context = m_StateContexts.Count == 0 ? (null, -1) : m_StateContexts[m_StateContextIndex];
+            m_SeekToSourcePlayback = true;
+            TimelineAssetPreviewHost.Shared.Open(SourceAsset, m_PreviewMode, context.Query, context.Machine);
         }
 
         void DisposeAssetPreviewBindings()
@@ -170,26 +171,17 @@ namespace BTSMTL.Timeline.Editor
             m_PlaybackMenu = null;
         }
 
-        // 预览链走进别的 Timeline 时编辑窗口跟过去，并把来处记为可返回的导航。
-        void FollowPreview(TimelineAsset target)
-        {
-            if (TimelineAssetPreviewHost.Shared.Covers(SourceAsset) && target && target != SourceAsset)
-                NavigateTimeline(target, string.Empty);
-        }
-
         void RefreshAssetPreviewControls()
         {
             var preview = TimelineAssetPreviewHost.Shared;
             bool active = preview.IsOpen && preview.Covers(SourceAsset);
-            if (active && preview.SampledSource != m_ObservedPreviewSource)
+            // 从技能根起播时游标在根上；打开后第一次推导出本 Timeline 的播放就把游标放到它的起点。编辑窗口不随游标切换 Timeline。
+            if (active && m_SeekToSourcePlayback && !preview.IsReal &&
+                preview.TryGetPlayback(SourceAsset, out TimelinePreviewRouteSegment[] own))
             {
-                m_ObservedPreviewSource = preview.SampledSource;
-                if (m_ObservedPreviewSource && m_ObservedPreviewSource != SourceAsset)
-                {
-                    // 重新绑定会重建本面板，旧面板的刷新到此为止。
-                    FollowPreview(m_ObservedPreviewSource);
-                    return;
-                }
+                m_SeekToSourcePlayback = false;
+                preview.SetTime(own[0].Start.AsSingle);
+                return;
             }
             bool real = m_PreviewMode == TimelinePreviewMode.Real;
             if (m_AssetPreviewConfiguration != null)
@@ -261,7 +253,7 @@ namespace BTSMTL.Timeline.Editor
             {
                 string playback = preview.TryGetPlayback(SourceAsset, out TimelinePreviewRouteSegment[] spans)
                     ? spans.Length > 1 ? $"{spans.Length} 圈" : string.Empty
-                    : "本轴不在预览链上";
+                    : "从技能根按当前输入没有走到本 Timeline";
                 string at = $"{preview.SampledSource?.name} {preview.LocalTime:0.000} 秒" +
                     (playback.Length == 0 ? string.Empty : " · " + playback);
                 string note = preview.LocalNote.Length == 0 ? string.Empty : "\n" + preview.LocalNote;

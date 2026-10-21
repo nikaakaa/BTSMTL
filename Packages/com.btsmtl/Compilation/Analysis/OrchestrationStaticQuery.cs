@@ -416,6 +416,22 @@ namespace BTSMTL.Compilation.Analysis
         public IReadOnlyList<OrchestrationStaticTransition> InitialTransitions(int machineOperationIndex) =>
             m_InitialTransitions[machineOperationIndex];
 
+        // 技能根：不由任何状态 Root 拉起的状态机。
+        public IEnumerable<int> RootMachineOperations
+        {
+            get
+            {
+                foreach (int machine in m_InitialTransitions.Keys)
+                {
+                    bool nested = false;
+                    foreach (OrchestrationStaticState state in m_States.Values)
+                        nested |= state.m_ConcurrentMachines.Contains(machine);
+                    if (!nested)
+                        yield return machine;
+                }
+            }
+        }
+
         public static OrchestrationStaticQuery Build(OrchestrationStaticQueryInput input)
         {
             var query = new OrchestrationStaticQuery(input);

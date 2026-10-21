@@ -671,8 +671,9 @@ namespace BTSMTL.Timeline.Editor
                 BeginWindows,
                 EndWindows);
             var preview = TimelineAssetPreviewHost.Shared;
+            // 拖本轴游标即把预览定位到本 Timeline 的所选播放，即使预览游标此刻在链上别的 Timeline。
             if (timeInput && previousTime != m_SlateProjection.CurrentTime && preview.IsOpen && SourceAsset &&
-                preview.SampledSource == SourceAsset)
+                preview.Covers(SourceAsset))
                 preview.SetLocalTime(SourceAsset, m_SlateProjection.CurrentTime);
         }
 

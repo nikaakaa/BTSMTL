@@ -157,15 +157,6 @@ namespace BTSMTL.Compilation.Analysis
         }
 
         // 只沿状态转移推导：出边按成立区间的最早时刻与正式比较器选择，无出边成立时播到终点并按"完成"转移继续。
-        public static TimelineStaticChain Build(OrchestrationStaticQuery query, OrchestrationStaticState entryState,
-            OrchestrationTime previewEnd, ITimelineStaticReadIntervals inputs)
-        {
-            var active = new HashSet<int>();
-            if (entryState.MachineOperationIndex >= 0)
-                active.Add(entryState.MachineOperationIndex);
-            return Build(query, entryState, OrchestrationTime.Zero, previewEnd, inputs, active);
-        }
-
         static TimelineStaticChain Build(OrchestrationStaticQuery query, OrchestrationStaticState entryState,
             OrchestrationTime start, OrchestrationTime previewEnd, ITimelineStaticReadIntervals inputs,
             HashSet<int> activeMachines)

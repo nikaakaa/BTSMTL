@@ -50,8 +50,8 @@ namespace BTSMTL.Timeline.Editor
         long m_RealVersion = -1;
         long m_RealProjection = -1;
         Guid m_RealCapture;
-        OrchestrationStaticState m_EntryState;
-        OrchestrationStaticTimelineCall m_EntryCall;
+        // 预览起点：技能根状态机；-1 表示没有编排上下文，按独立 Timeline 预览。
+        int m_EntryMachine = -1;
         TimelineAsset m_PendingSource;
         TimelinePreviewMode m_PendingMode;
         CancellationTokenSource m_SessionOpening;
@@ -141,13 +141,11 @@ namespace BTSMTL.Timeline.Editor
         }
 
         public void Open(TimelineAsset source, TimelinePreviewMode mode,
-            TimelineOrchestrationQuery query, OrchestrationStaticState entryState,
-            OrchestrationStaticTimelineCall entryCall = null)
+            TimelineOrchestrationQuery query, int entryMachine)
         {
             Close();
             m_Query = query;
-            m_EntryState = entryState;
-            m_EntryCall = entryCall;
+            m_EntryMachine = query == null ? -1 : entryMachine;
             Error = string.Empty;
             if (m_Provider == null)
             {
@@ -298,15 +296,15 @@ namespace BTSMTL.Timeline.Editor
             return segments.Length != 0;
         }
 
-        public void SetOrchestrationContext(TimelineAsset source, TimelineOrchestrationQuery query,
-            OrchestrationStaticState state, OrchestrationStaticTimelineCall call = null)
+        public void SetOrchestrationContext(TimelineAsset source, TimelineOrchestrationQuery query, int entryMachine)
         {
+            if (query == null)
+                entryMachine = -1;
             // 窗口在预览链的 Timeline 间切换会重复送来同一上下文，不重新准备。
-            if (source != Source || query == m_Query && state == m_EntryState && call == m_EntryCall)
+            if (source != Source || query == m_Query && entryMachine == m_EntryMachine)
                 return;
             m_Query = query;
-            m_EntryState = state;
-            m_EntryCall = call;
+            m_EntryMachine = entryMachine;
             TimelinePreviewEntryIdentity entry = EntryIdentity();
             if (!entry.Equals(InputSchemes.Entry))
                 InputSchemes.Load(Source, entry);
@@ -315,11 +313,9 @@ namespace BTSMTL.Timeline.Editor
             m_ChainRequested = true;
         }
 
-        // 状态或嵌套调用提供入口技能；没有编排上下文时按独立 Timeline 归属。
+        // 技能根提供入口技能；没有编排上下文时按独立 Timeline 归属。
         TimelinePreviewEntryIdentity EntryIdentity() =>
-            new(m_Query != null && (m_EntryCall != null ||
-                m_EntryState != null && m_Query.ResolveTimeline(m_EntryState.TimelineIdentity) == Source)
-                ? m_Query.Owner : string.Empty, Source.Data.AuthoringId);
+            new(m_EntryMachine >= 0 ? m_Query.Owner : string.Empty, Source.Data.AuthoringId);
 
         public void SetPlaying(bool playing)
         {
@@ -648,8 +644,7 @@ namespace BTSMTL.Timeline.Editor
                     if (call.Callee != null)
                         Prepare(m_Query.ResolveTimeline(call.CalleeIdentity));
             }
-            if (m_Query == null || m_EntryState == null ||
-                m_Query.ResolveTimeline(m_EntryState.TimelineIdentity) != Source)
+            if (m_EntryMachine < 0)
             {
                 PreparedTimeline source = Prepare(Source);
                 BuildStandalone(source);
@@ -659,7 +654,7 @@ namespace BTSMTL.Timeline.Editor
             else
             {
                 var inputs = new TimelineAssetPreviewReadIntervals(Preferences, Inputs, InputRequests);
-                Chain = TimelineStaticChain.Build(m_Query.Query, m_EntryState,
+                Chain = TimelineStaticChain.Build(m_Query.Query, m_EntryMachine,
                     OrchestrationTime.FromSeconds(Preferences.RangeEnd), inputs);
                 AddChain(Chain, 0, m_Traversals, ref playback);
                 AddBranches(Chain, ref branch, ref playback);
@@ -804,7 +799,7 @@ namespace BTSMTL.Timeline.Editor
                 OrchestrationTime localEnd = end - global;
                 m_Traversals.Add(new TimelineAssetPreviewTraversal(Source, prepared.Content,
                     global, end, OrchestrationTime.Zero, localEnd, cycle, null, null,
-                    !content.Loop && localEnd == content.Duration, 0, 0, m_EntryCall));
+                    !content.Loop && localEnd == content.Duration, 0, 0));
                 global = end;
                 if (!content.Loop)
                     break;
@@ -958,8 +953,8 @@ namespace BTSMTL.Timeline.Editor
         void BuildFastChain()
         {
             FastChain = null;
-            if (m_Query != null && m_EntryState != null && float.IsFinite(Preferences.RangeEnd) && Preferences.RangeEnd > 0f)
-                FastChain = TimelineStaticChain.Build(m_Query.Query, m_EntryState,
+            if (m_EntryMachine >= 0 && float.IsFinite(Preferences.RangeEnd) && Preferences.RangeEnd > 0f)
+                FastChain = TimelineStaticChain.Build(m_Query.Query, m_EntryMachine,
                     OrchestrationTime.FromSeconds(Preferences.RangeEnd),
                     new TimelineAssetPreviewReadIntervals(Preferences, Inputs, InputRequests));
             CompareReal();
