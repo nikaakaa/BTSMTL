@@ -34,6 +34,11 @@ namespace ThirdPersonSimulation
             if (positionExceeded)
                 effectiveCorrection = math.GreaterThan(maximumPosition, math.Zero)
                     ? math.MultiplyVector3(correction, math.Divide(maximumPosition, positionMagnitude)) : math.ZeroVector3;
+            TScalar verticalCorrection = math.Subtract(math.Y3(requestedPosition), math.Y3(nominalEnd));
+            bool verticalExceeded = math.GreaterThan(math.Abs(verticalCorrection), parameters.MaximumVertical);
+            effectiveCorrection = math.Vector3(math.X3(effectiveCorrection),
+                math.Clamp(verticalCorrection, math.Negate(parameters.MaximumVertical), parameters.MaximumVertical),
+                math.Z3(effectiveCorrection));
             resolvedTargetPosition = math.AddVector3(nominalEnd, effectiveCorrection);
             TYaw nominalYaw = math.Yaw(math.Add(math.Degrees(startBodyYaw), sourceWindowYawDelta));
             TYaw requestedYaw = nominalYaw;
@@ -59,7 +64,7 @@ namespace ThirdPersonSimulation
                 math.GreaterThan(math.Abs(yawCorrection), maximumYaw);
             TScalar effectiveYaw = math.Clamp(yawCorrection, math.Negate(maximumYaw), maximumYaw);
             resolvedTargetYaw = math.Yaw(math.Add(math.Degrees(nominalYaw), effectiveYaw));
-            bool exceeded = positionExceeded || yawExceeded;
+            bool exceeded = positionExceeded || verticalExceeded || yawExceeded;
             limitResult = exceeded ? ProgramMotionWarpLimitResult.AppliedClamped : ProgramMotionWarpLimitResult.Applied;
             if (exceeded && parameters.LimitPolicy == ProgramMotionWarpLimitPolicy.PreserveSource)
                 limitResult = ProgramMotionWarpLimitResult.PreservedByLimitPolicy;
@@ -70,7 +75,7 @@ namespace ThirdPersonSimulation
             TVector3 targetPosition, TYaw targetYaw, TVector3 startBodyPosition, TYaw startBodyYaw, TScalar targetY)
         {
             TMath math = default;
-            TVector3 localOffset = math.Vector3(parameters.OffsetX, math.Zero, parameters.OffsetZ);
+            TVector3 localOffset = math.Vector3(parameters.OffsetX, parameters.OffsetY, parameters.OffsetZ);
             TVector3 worldOffset;
             switch (parameters.TargetOffsetSpace)
             {
@@ -88,7 +93,7 @@ namespace ThirdPersonSimulation
                     TVector2 forward = math.Normalize2(outward);
                     worldOffset = math.Vector3(
                         math.Add(math.Multiply(math.Y2(forward), parameters.OffsetX), math.Multiply(math.X2(forward), parameters.OffsetZ)),
-                        math.Zero,
+                        parameters.OffsetY,
                         math.Add(math.Multiply(math.Negate(math.X2(forward)), parameters.OffsetX), math.Multiply(math.Y2(forward), parameters.OffsetZ)));
                     break;
                 }
@@ -102,7 +107,9 @@ namespace ThirdPersonSimulation
                     throw Failure(MotionModifierDiagnosticCode.InvalidState,
                         $"Unsupported target offset space '{parameters.TargetOffsetSpace}'.");
             }
-            return math.Vector3(math.Add(math.X3(targetPosition), math.X3(worldOffset)), targetY,
+            return math.Vector3(math.Add(math.X3(targetPosition), math.X3(worldOffset)),
+                parameters.PositionAxes == ProgramMotionWarpPositionAxes.Full3D
+                    ? math.Add(math.Y3(targetPosition), math.Y3(worldOffset)) : targetY,
                 math.Add(math.Z3(targetPosition), math.Z3(worldOffset)));
         }
 
@@ -163,20 +170,22 @@ namespace ThirdPersonSimulation
                 case ProgramMotionWarpTranslationMode.SkewToTarget:
                 {
                     TVector3 endpointCorrection = math.SubtractVector3(targetRelative, rotatedEnd);
-                    endpointCorrection = math.Vector3(math.X3(endpointCorrection), math.Zero, math.Z3(endpointCorrection));
+                    if (parameters.PositionAxes == ProgramMotionWarpPositionAxes.Planar)
+                        endpointCorrection = math.Vector3(math.X3(endpointCorrection), math.Zero, math.Z3(endpointCorrection));
                     warpedRelative = math.AddVector3(rotatedSource, math.MultiplyVector3(endpointCorrection, positionProgress));
                     break;
                 }
                 case ProgramMotionWarpTranslationMode.LinearToTarget:
-                    warpedRelative = math.Vector3(math.Multiply(math.X3(targetRelative), positionProgress), math.Y3(sourceRelative),
+                    warpedRelative = math.Vector3(math.Multiply(math.X3(targetRelative), positionProgress),
+                        parameters.PositionAxes == ProgramMotionWarpPositionAxes.Full3D
+                            ? math.Multiply(math.Y3(targetRelative), positionProgress) : math.Y3(sourceRelative),
                         math.Multiply(math.Z3(targetRelative), positionProgress));
                     break;
                 default:
                     throw Failure(MotionModifierDiagnosticCode.InvalidState,
                         $"Unsupported translation mode '{parameters.TranslationMode}'.");
             }
-            warpedPosition = math.AddVector3(startBodyPosition,
-                math.Vector3(math.X3(warpedRelative), math.Y3(sourceRelative), math.Z3(warpedRelative)));
+            warpedPosition = math.AddVector3(startBodyPosition, warpedRelative);
         }
 
         public static void TargetResponse(

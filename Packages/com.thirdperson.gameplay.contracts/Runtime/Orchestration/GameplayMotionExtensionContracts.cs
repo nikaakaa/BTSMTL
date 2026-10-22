@@ -48,13 +48,15 @@ namespace ThirdPersonGameplay.Orchestration
             public static readonly Field SourceMotionClipId = Field.Identity("SourceMotionClipId", "timeline-clip");
             public static readonly Field WindowEndTime = Field.Value("WindowEndTime", OrchestrationValueKind.Scalar);
             public static readonly Field TranslationMode = Field.Enum<ProgramMotionWarpTranslationMode>("TranslationMode");
+            public static readonly Field PositionAxes = Field.Enum<ProgramMotionWarpPositionAxes>("PositionAxes");
             public static readonly Field TargetOffsetSpace = Field.Enum<ProgramMotionWarpTargetOffsetSpace>("TargetOffsetSpace");
             public static readonly Field RotationMode = Field.Enum<ProgramMotionWarpRotationMode>("RotationMode");
             public static readonly Field RotationMethod = Field.Enum<ProgramMotionWarpRotationMethod>("RotationMethod");
             public static readonly Field LimitPolicy = Field.Enum<ProgramMotionWarpLimitPolicy>("LimitPolicy");
-            public static readonly Field TargetPlanarOffset = Field.Value("TargetPlanarOffset", OrchestrationValueKind.Vector2);
+            public static readonly Field TargetOffset = Field.Value("TargetOffset", OrchestrationValueKind.Vector3);
             public static readonly Field TargetYawOffsetDegrees = Field.Value("TargetYawOffsetDegrees", OrchestrationValueKind.Scalar);
             public static readonly Field MaximumPositionCorrection = Field.Value("MaximumPositionCorrection", OrchestrationValueKind.Scalar);
+            public static readonly Field MaximumVerticalCorrection = Field.Value("MaximumVerticalCorrection", OrchestrationValueKind.Scalar);
             public static readonly Field MaximumYawCorrectionDegrees = Field.Value("MaximumYawCorrectionDegrees", OrchestrationValueKind.Scalar);
             public static readonly Field MaximumYawRateDegreesPerSecond = Field.Value("MaximumYawRateDegreesPerSecond", OrchestrationValueKind.Scalar);
             public static readonly Field PositionProgressCurve = Field.Data("PositionProgressCurve", GameplayOrchestrationPayloadContract.CurveTypeIdentity, false);
@@ -63,8 +65,8 @@ namespace ThirdPersonGameplay.Orchestration
             public static readonly Field InputYawResponseCurve = Field.Data("InputYawResponseCurve", GameplayOrchestrationPayloadContract.CurveTypeIdentity, false);
             public static readonly ReadOnlyMemory<Field> All = new[]
             {
-                SourceMotionClipId, WindowEndTime, TranslationMode, TargetOffsetSpace, RotationMode, RotationMethod,
-                LimitPolicy, TargetPlanarOffset, TargetYawOffsetDegrees, MaximumPositionCorrection,
+                SourceMotionClipId, WindowEndTime, TranslationMode, PositionAxes, TargetOffsetSpace, RotationMode, RotationMethod,
+                LimitPolicy, TargetOffset, TargetYawOffsetDegrees, MaximumPositionCorrection, MaximumVerticalCorrection,
                 MaximumYawCorrectionDegrees, MaximumYawRateDegreesPerSecond,
                 PositionProgressCurve, YawProgressCurve, YawResponseCurve, InputYawResponseCurve
             };
@@ -193,7 +195,7 @@ namespace ThirdPersonGameplay.Orchestration
 
             public static readonly OrchestrationExtensionDefinition<MotionWarpAction> Definition = new(
                 new OrchestrationExtensionIdentity(DomainId, "motion-warp"),
-                3, new OrchestrationExtensionContract(OrchestrationExtensionKind.Action,
+                4, new OrchestrationExtensionContract(OrchestrationExtensionKind.Action,
                     OrchestrationExtensionAccess.CandidateWrite, OrchestrationExtensionInvocationKind.Execute,
                     OrchestrationExtensionCompletion.Immediate,
                     new[]

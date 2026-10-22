@@ -1,5 +1,11 @@
 namespace ThirdPersonSimulation
 {
+    public enum ProgramMotionWarpPositionAxes : byte
+    {
+        Planar = 0,
+        Full3D = 1
+    }
+
     public enum ProgramMotionWarpTranslationMode : byte
     {
         Disabled = 0,
