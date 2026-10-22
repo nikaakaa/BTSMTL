@@ -954,7 +954,7 @@ namespace BTSMTL.Timeline.Editor
             }
         }
 
-        // 方案的范围与假设目标，以及输入 Timeline 的读取错误；从方案菜单打开。
+        // 方案的范围、角色起点与假设目标，以及输入 Timeline 的读取错误；从方案菜单打开。
         void DrawAssetPreviewInputs()
         {
             var preview = TimelineAssetPreviewHost.Shared;
@@ -966,6 +966,8 @@ namespace BTSMTL.Timeline.Editor
             preferences.RangeEnd = EditorGUILayout.FloatField("预览范围终点（秒）", preferences.RangeEnd);
             if (preferences.RangeEnd <= 0f)
                 EditorGUILayout.HelpBox("预览范围终点必须大于零。", MessageType.Error);
+            preferences.StartPosition = EditorGUILayout.Vector3Field("角色起点位置", preferences.StartPosition);
+            preferences.StartYaw = EditorGUILayout.FloatField("角色起点朝向（度）", preferences.StartYaw);
             preferences.HasTarget = EditorGUILayout.Toggle("提供假设目标", preferences.HasTarget);
             if (preferences.HasTarget)
             {

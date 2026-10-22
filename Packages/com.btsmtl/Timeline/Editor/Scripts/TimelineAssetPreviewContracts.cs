@@ -140,6 +140,9 @@ namespace BTSMTL.Timeline.Editor
         public bool HasTarget;
         public Vector3 TargetPosition;
         public Vector3 TargetEuler;
+        // 角色在预览场景中的起点，只取水平朝向。
+        public Vector3 StartPosition;
+        public float StartYaw;
         public float RangeEnd = 10f;
     }
 

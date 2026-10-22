@@ -846,7 +846,8 @@ namespace BTSMTL.Timeline.Editor
         {
             var builder = new System.Text.StringBuilder();
             builder.Append(preferences.HasTarget).Append('|').Append(preferences.TargetPosition).Append('|')
-                .Append(preferences.TargetEuler);
+                .Append(preferences.TargetEuler).Append('|').Append(preferences.StartPosition).Append('|')
+                .Append(preferences.StartYaw);
             return builder.ToString();
         }
 
