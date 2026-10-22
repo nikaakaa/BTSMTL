@@ -25,6 +25,7 @@ namespace ThirdPersonGameplay.Movement.Timeline
         [SerializeField] Vector3 totalLocalPosition;
         [SerializeField] float totalForwardDistance;
         [SerializeField] float totalYaw;
+        [SerializeField] string authoredSource;
 
         public AnimationClip SourceClip => sourceClip;
         public float Duration => duration;
@@ -38,6 +39,9 @@ namespace ThirdPersonGameplay.Movement.Timeline
         public Vector3 TotalLocalPosition => totalLocalPosition;
         public float TotalForwardDistance => totalForwardDistance;
         public float TotalYaw => totalYaw;
+        public string AuthoredSource => authoredSource;
+
+        public void SetAuthoredSource(string source) => authoredSource = source;
 
         public Vector3 EvaluatePosition(float sourceTime)
         {
@@ -138,6 +142,7 @@ namespace ThirdPersonGameplay.Movement.Timeline
             totalLocalPosition = totalPosition;
             totalForwardDistance = Mathf.Max(0f, totalDistance);
             totalYaw = totalRotationYaw;
+            authoredSource = string.Empty;
         }
 
         static AnimationCurve CopyCurve(AnimationCurve source)
