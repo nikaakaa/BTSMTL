@@ -1,5 +1,11 @@
 namespace ThirdPersonSimulation
 {
+    public enum BodyMotionMode : byte
+    {
+        FreeFall,
+        AuthoredTrajectory = 3
+    }
+
     public readonly struct BodyMotionIntegrationPlan<TScalar, TVector3>
         where TScalar : struct
         where TVector3 : struct
@@ -30,10 +36,14 @@ namespace ThirdPersonSimulation
         where TMath : struct, IScalarMath<TScalar>, IVectorMath<TScalar, TVector2, TVector3>
     {
         public static BodyMotionIntegrationPlan<TScalar, TVector3> Prepare(
-            ActorId actorId, SimulationTick tick, TScalar previousVerticalVelocity, TVector3 gameplayDisplacement,
+            ActorId actorId, SimulationTick tick, BodyMotionMode mode,
+            TScalar previousVerticalVelocity, TVector3 gameplayDisplacement,
             in BodyMotionParameters<TScalar> parameters, TScalar tickDelta)
         {
             TMath math = default;
+            if (mode == BodyMotionMode.AuthoredTrajectory)
+                return new BodyMotionIntegrationPlan<TScalar, TVector3>(actorId, tick, tickDelta,
+                    previousVerticalVelocity, math.Divide(math.Y3(gameplayDisplacement), tickDelta), gameplayDisplacement);
             TScalar candidate = math.Max(
                 math.Add(previousVerticalVelocity, math.Multiply(parameters.GravityAcceleration, tickDelta)),
                 math.Negate(parameters.MaximumFallSpeed));

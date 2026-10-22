@@ -15,7 +15,8 @@ namespace ThirdPersonSimulation
     public enum GameplayAbilityRuleTargetPolicy : byte
     {
         Grant = 0,
-        SelectedSource = 1
+        SelectedSource = 1,
+        CapturedRequest = 2
     }
 
     public enum GameplayAbilityAvailabilityReason : byte

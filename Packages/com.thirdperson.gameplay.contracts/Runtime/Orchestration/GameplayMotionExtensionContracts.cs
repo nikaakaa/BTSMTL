@@ -5,7 +5,7 @@ using Field = BTSMTL.Orchestration.OrchestrationExtensionContentField;
 
 namespace ThirdPersonGameplay.Orchestration
 {
-    public static class GameplayMotionExtensionContracts
+    public static partial class GameplayMotionExtensionContracts
     {
         public const string DomainId = "gameplay.motion";
         public const string MotionCurveSampleOperationId = "motion-curve.sample";

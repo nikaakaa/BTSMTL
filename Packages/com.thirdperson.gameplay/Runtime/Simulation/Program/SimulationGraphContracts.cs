@@ -20,7 +20,8 @@ namespace ThirdPersonSimulation
     {
         None = 0,
         SnapshotRequired = 1,
-        OptionalSnapshot = 2
+        OptionalSnapshot = 2,
+        StaticObstacleRequired = 4
     }
 
 }
