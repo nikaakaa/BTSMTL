@@ -66,9 +66,9 @@ namespace BTSMTL.Timeline.Editor
         long m_RealVersion = -1;
         long m_RealProjection = -1;
         Guid m_RealCapture;
-        // 预览起点：技能根状态机；-1 表示没有编排上下文，按独立 Timeline 预览。
+        // 预览起点：根的入口状态机；-1 表示独立 Timeline 根。与 m_Query 均取自 Root。
         int m_EntryMachine = -1;
-        TimelineAsset m_PendingSource;
+        TimelinePreviewRoot m_PendingRoot;
         TimelinePreviewMode m_PendingMode;
         CancellationTokenSource m_SessionOpening;
         bool m_ChainRequested;
@@ -106,8 +106,11 @@ namespace BTSMTL.Timeline.Editor
 
         public event Action Changed;
         public TimelinePreviewMode Mode { get; private set; }
+        // 预览身份；窗口显示路线上的哪个 Timeline 不改变它。
+        public TimelinePreviewRoot Root { get; private set; }
+        // 根的入口 Timeline（独立根即该 Timeline 本身）。
         public TimelineAsset Source { get; private set; }
-        // 当前入口的输入方案存储；方案的切换、另存、重命名与删除都经它完成，Host 只在改动后重新推导。
+        // 当前根的输入方案存储；方案的切换、另存、重命名与删除都经它完成，Host 只在改动后重新推导。
         public TimelinePreviewInputSchemeStore InputSchemes { get; } = new();
         public TimelineAssetPreviewPreferences Preferences => InputSchemes.Current;
         public ITimelineAssetPreviewInstance Instance => m_Instance;
@@ -130,6 +133,8 @@ namespace BTSMTL.Timeline.Editor
             m_Real != null && !RealStale ? m_Real.Differences : Array.Empty<TimelinePreviewDifference>();
         // 真实档执行记录不是按最新输入方案与作者内容得到；旧记录保留显示，待原入口重演。
         public bool RealStale { get; private set; }
+        // 真实执行离开本根的时刻；此后超出快速档范围。
+        public double? RealLeftRootAt => m_Real?.LeftRootAt;
         public string RealStaleReason { get; private set; } = string.Empty;
         // 真实档正式选中的状态转移，按发生时刻排列。
         public IReadOnlyList<TimelinePreviewRealTransition> RealTransitions =>
@@ -191,34 +196,36 @@ namespace BTSMTL.Timeline.Editor
             Changed?.Invoke();
         }
 
-        public void Open(TimelineAsset source, TimelinePreviewMode mode,
-            TimelineOrchestrationQuery query, int entryMachine, bool showScene)
+        public void Open(TimelinePreviewRoot root, TimelinePreviewMode mode, bool showScene)
         {
             Close();
-            m_Query = query;
-            m_EntryMachine = query == null ? -1 : entryMachine;
             Error = string.Empty;
             if (m_Provider == null)
             {
                 SetLifecycle(TimelinePreviewLifecycle.Failed, MissingProviderReason, string.Empty);
                 return;
             }
-            m_PendingSource = source;
+            if (!root.Entry)
+            {
+                SetLifecycle(TimelinePreviewLifecycle.Failed, $"“{root.Label}”的起始状态没有 Timeline，无法预览。", string.Empty);
+                return;
+            }
+            m_PendingRoot = root;
             m_PendingMode = mode;
             m_PendingScene = showScene;
             ContinueOpen();
         }
 
-        // 按当前技能根、档位与 Scene 开关重新准备一次。
+        // 按当前根、档位与 Scene 开关重新准备一次。
         public void Retry()
         {
-            if (Source)
-                Open(Source, Mode, m_Query, m_EntryMachine, ShowsScene);
+            if (Root != null)
+                Open(Root, Mode, ShowsScene);
         }
 
         void ContinueOpen()
         {
-            if (!m_PendingSource || m_Opening)
+            if (m_PendingRoot == null || m_Opening)
                 return;
             m_Opening = true;
             bool closed;
@@ -232,11 +239,11 @@ namespace BTSMTL.Timeline.Editor
             }
             StageUtility.GoToMainStage();
             Mode = m_PendingMode;
-            Source = m_PendingSource;
+            UseRoot(m_PendingRoot);
             ShowsScene = Mode == TimelinePreviewMode.Real || m_PendingScene;
-            m_PendingSource = null;
+            m_PendingRoot = null;
             m_Active = true;
-            InputSchemes.Load(Source, EntryIdentity());
+            InputSchemes.Load(Root);
             Error = string.Empty;
             RefreshInputs();
             if (Mode == TimelinePreviewMode.Real)
@@ -245,7 +252,7 @@ namespace BTSMTL.Timeline.Editor
                 m_RealVersion = -1;
                 m_SessionOpening = new CancellationTokenSource();
                 SetLifecycle(TimelinePreviewLifecycle.Preparing, "正在准备会话…", string.Empty);
-                m_Provider.OpenSession(Source, Preferences, m_SessionOpening.Token);
+                m_Provider.OpenSession(Preferences, m_SessionOpening.Token);
                 BuildFastChain();
                 Changed?.Invoke();
                 return;
@@ -407,29 +414,29 @@ namespace BTSMTL.Timeline.Editor
             return segments.Length != 0;
         }
 
-        public void SetOrchestrationContext(TimelineAsset source, TimelineOrchestrationQuery query, int entryMachine)
+        // 作者改动后同一根的查询重建：只换查询并续推，不重新打开；换到别的根由窗口重新打开预览。
+        public void RefreshRoot(TimelinePreviewRoot root)
         {
-            if (query == null)
-                entryMachine = -1;
-            // 窗口在预览链的 Timeline 间切换会重复送来同一上下文，不重新准备。
-            if (source != Source || query == m_Query && entryMachine == m_EntryMachine)
+            if (!m_Active || !root.SameAs(Root) || root.Query == m_Query && root.Entry == Source)
                 return;
-            m_Query = query;
-            m_EntryMachine = entryMachine;
-            TimelinePreviewEntryIdentity entry = EntryIdentity();
-            if (!entry.Equals(InputSchemes.Entry))
+            if (!root.Entry)
             {
-                InputSchemes.Load(Source, entry);
-                RefreshInputs();
+                SetLifecycle(TimelinePreviewLifecycle.Failed, $"“{root.Label}”的起始状态没有 Timeline，无法预览。", string.Empty);
+                return;
             }
+            UseRoot(root);
             foreach (TimelineAsset preparedSource in m_Contents.Keys)
                 m_Dirty.Add(preparedSource);
             m_ChainRequested = true;
         }
 
-        // 技能根提供入口技能；没有编排上下文时按独立 Timeline 归属。
-        TimelinePreviewEntryIdentity EntryIdentity() =>
-            new(m_EntryMachine >= 0 ? m_Query.Owner : string.Empty, Source.Data.AuthoringId);
+        void UseRoot(TimelinePreviewRoot root)
+        {
+            Root = root;
+            Source = root.Entry;
+            m_Query = root.Query;
+            m_EntryMachine = root.Machine;
+        }
 
         public void SetPlaying(bool playing)
         {
@@ -562,7 +569,7 @@ namespace BTSMTL.Timeline.Editor
             m_SessionOpening?.Cancel();
             m_SessionOpening?.Dispose();
             m_SessionOpening = null;
-            m_PendingSource = null;
+            m_PendingRoot = null;
             IsPlaying = false;
             InputSchemes.Save();
             m_Active = false;

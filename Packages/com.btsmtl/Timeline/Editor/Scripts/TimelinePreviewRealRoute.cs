@@ -69,6 +69,8 @@ namespace BTSMTL.Timeline.Editor
         public IReadOnlyList<TimelinePreviewRealSegment> Segments => m_Segments;
         public IReadOnlyList<TimelinePreviewRealTransition> Transitions => m_Transitions;
         public IReadOnlyList<TimelinePreviewDifference> Differences => m_Differences;
+        // 真实执行进入本根之后，首次播放根外状态的时刻；此后超出快速档范围，不参与对比。
+        public double? LeftRootAt { get; private set; }
 
         public void Apply(RuntimeExecutionTimeline timeline, TimelineOrchestrationQuery query,
             ITimelineAssetPreviewProvider provider)
@@ -76,10 +78,20 @@ namespace BTSMTL.Timeline.Editor
             m_Record.Apply(timeline);
             m_Segments.Clear();
             m_Transitions.Clear();
+            LeftRootAt = null;
             foreach (BtsmtlExecutionRecord.RecordedPlayback played in m_Record.Recorded)
                 if (played.HasLocal && provider.TryResolveRealTimeline(played.TimelineAuthoringId, out TimelineAsset source))
                     m_Segments.Add(new TimelinePreviewRealSegment(in played, source,
                         FindState(query, played.Owner.GraphAuthoringId, played.Owner.StateId)));
+            double? entered = null;
+            foreach (TimelinePreviewRealSegment segment in m_Segments)
+                if (!segment.Record.IsNested && segment.State != null && (entered == null || segment.Record.Start < entered))
+                    entered = segment.Record.Start;
+            if (entered != null)
+                foreach (TimelinePreviewRealSegment segment in m_Segments)
+                    if (!segment.Record.IsNested && segment.State == null && segment.Record.Start >= entered &&
+                        (LeftRootAt == null || segment.Record.Start < LeftRootAt))
+                        LeftRootAt = segment.Record.Start;
             // 嵌套播放按记录的调用方身份挂到调用方播放下，不按时间重叠或名称推断。
             foreach (TimelinePreviewRealSegment nested in m_Segments)
             {
@@ -125,20 +137,22 @@ namespace BTSMTL.Timeline.Editor
             m_Segments.Clear();
             m_Transitions.Clear();
             m_Differences.Clear();
+            LeftRootAt = null;
         }
 
         // 每台状态机内按发生顺序配对真实转移与快速推导的转移：目标不同、未发生或时刻偏差超过一个逻辑 Tick 记一处差异；
-        // 目标一旦不同该状态机后续已分叉，不再继续配对。进入状态机的初始转移不参与对比。
+        // 目标一旦不同该状态机后续已分叉，不再继续配对。进入状态机的初始转移不参与对比；离开本根之后的两侧转移都不参与。
         public void Compare(TimelineStaticChain fast, double tick, Func<OrchestrationStaticState, string> describe)
         {
             m_Differences.Clear();
             if (fast == null)
                 return;
+            double until = LeftRootAt ?? double.PositiveInfinity;
             var machines = new SortedDictionary<int, (List<TimelinePreviewRealTransition> Real, List<TimelineStaticChainMarker> Fast)>();
             foreach (TimelinePreviewRealTransition real in m_Transitions)
             {
                 // 源不是状态（状态机入口的初始转移）不参与对比。
-                if (real.Source == null)
+                if (real.Source == null || real.Record.Time >= until)
                     continue;
                 if (real.Transition == null)
                 {
@@ -148,7 +162,7 @@ namespace BTSMTL.Timeline.Editor
                 }
                 Machine(machines, real.Source.MachineOperationIndex).Real.Add(real);
             }
-            CollectFast(fast, machines);
+            CollectFast(fast, until, machines);
             foreach ((List<TimelinePreviewRealTransition> real, List<TimelineStaticChainMarker> markers) in machines.Values)
             {
                 markers.Sort((left, right) => left.Time.CompareTo(right.Time));
@@ -192,14 +206,14 @@ namespace BTSMTL.Timeline.Editor
             }
         }
 
-        static void CollectFast(TimelineStaticChain chain,
+        static void CollectFast(TimelineStaticChain chain, double until,
             SortedDictionary<int, (List<TimelinePreviewRealTransition> Real, List<TimelineStaticChainMarker> Fast)> machines)
         {
             foreach (TimelineStaticChainMarker marker in chain.Markers)
-                if (marker.Source != null)
+                if (marker.Source != null && marker.Time.AsSingle < until)
                     Machine(machines, marker.Source.MachineOperationIndex).Fast.Add(marker);
             foreach (TimelineStaticChainBranch branch in chain.Branches)
-                CollectFast(branch.Chain, machines);
+                CollectFast(branch.Chain, until, machines);
         }
 
         static (List<TimelinePreviewRealTransition> Real, List<TimelineStaticChainMarker> Fast) Machine(

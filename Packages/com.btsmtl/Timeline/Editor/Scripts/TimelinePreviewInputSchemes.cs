@@ -6,8 +6,8 @@ using UnityEngine;
 
 namespace BTSMTL.Timeline.Editor
 {
-    // 一个预览入口的具名输入方案：按入口所属技能与入口 Timeline 的正式作者身份归属，可提交，不参与运行时。
-    // 资产文件放在哪里、叫什么都不影响归属；同一 .asset 内的多个 Timeline 子资产各有各的方案。
+    // 一个预览根的具名输入方案：编排根按根程序的正式身份归属（Owner），独立 Timeline 按自身作者身份归属（Timeline）；
+    // 可提交，不参与运行时。资产文件放在哪里、叫什么都不影响归属。
     public sealed class TimelinePreviewInputSchemes : ScriptableObject
     {
         public string Owner;
@@ -36,34 +36,35 @@ namespace BTSMTL.Timeline.Editor
         }
     }
 
-    // 预览入口的正式身份：技能入口为所属技能身份与入口 Timeline 作者身份，独立 Timeline 只用自身作者身份。
-    public readonly struct TimelinePreviewEntryIdentity : IEquatable<TimelinePreviewEntryIdentity>
+    // 预览根的正式身份：编排根只用根程序身份，独立 Timeline 只用自身作者身份，二者恰有其一。
+    public readonly struct TimelinePreviewRootIdentity : IEquatable<TimelinePreviewRootIdentity>
     {
-        public TimelinePreviewEntryIdentity(string owner, string timeline)
+        public TimelinePreviewRootIdentity(string owner, string timeline)
         {
-            if (string.IsNullOrEmpty(timeline))
-                throw new ArgumentException("预览入口的 Timeline 缺少作者身份。", nameof(timeline));
             Owner = owner ?? string.Empty;
-            Timeline = timeline;
+            Timeline = timeline ?? string.Empty;
+            if (Owner.Length == 0 == (Timeline.Length == 0))
+                throw new ArgumentException("预览根必须恰有根程序身份或独立 Timeline 身份之一。");
         }
 
         public string Owner { get; }
         public string Timeline { get; }
 
-        public bool Equals(TimelinePreviewEntryIdentity other) =>
+        public bool Equals(TimelinePreviewRootIdentity other) =>
             string.Equals(Owner, other.Owner, StringComparison.Ordinal) &&
             string.Equals(Timeline, other.Timeline, StringComparison.Ordinal);
-        public override bool Equals(object obj) => obj is TimelinePreviewEntryIdentity other && Equals(other);
+        public override bool Equals(object obj) => obj is TimelinePreviewRootIdentity other && Equals(other);
         public override int GetHashCode() => HashCode.Combine(Owner, Timeline);
     }
 
-    // 当前预览入口输入方案的唯一存储与操作：第一次改动时在入口 Timeline 旁创建方案资产，此后改动写入该资产；
-    // 所有操作只作用于本入口。
+    // 当前预览根输入方案的唯一存储与操作：第一次改动时在根入口 Timeline 旁创建方案资产，此后改动写入该资产；
+    // 所有操作只作用于本根。
     public sealed class TimelinePreviewInputSchemeStore
     {
         const string SearchFilter = "t:" + nameof(TimelinePreviewInputSchemes);
-        TimelinePreviewEntryIdentity m_Entry;
+        TimelinePreviewRootIdentity m_Root;
         TimelineAsset m_Source;
+        string m_Label;
         TimelinePreviewInputSchemes m_Asset;
         TimelineAssetPreviewPreferences m_Default;
         string m_InputsFingerprint;
@@ -76,14 +77,15 @@ namespace BTSMTL.Timeline.Editor
             m_Asset != null && m_Asset.Schemes.Count != 0 ? m_Asset.Schemes : new[] { m_Default };
 
         public string Path => m_Asset != null ? AssetDatabase.GetAssetPath(m_Asset) : string.Empty;
-        public TimelinePreviewEntryIdentity Entry => m_Entry;
+        public TimelinePreviewRootIdentity Root => m_Root;
 
-        public void Load(TimelineAsset source, TimelinePreviewEntryIdentity entry)
+        public void Load(TimelinePreviewRoot root)
         {
             Save();
-            m_Source = source;
-            m_Entry = entry;
-            m_Asset = Find(entry);
+            m_Source = root.Entry;
+            m_Label = root.Label;
+            m_Root = root.Identity;
+            m_Asset = Find(root.Identity);
             m_Default = new TimelineAssetPreviewPreferences();
             m_InputsFingerprint = null;
             m_ReadScheme = null;
@@ -222,7 +224,7 @@ namespace BTSMTL.Timeline.Editor
             return true;
         }
 
-        static TimelinePreviewInputSchemes Find(TimelinePreviewEntryIdentity entry)
+        static TimelinePreviewInputSchemes Find(TimelinePreviewRootIdentity root)
         {
             TimelinePreviewInputSchemes found = null;
             foreach (string guid in AssetDatabase.FindAssets(SearchFilter))
@@ -231,11 +233,12 @@ namespace BTSMTL.Timeline.Editor
                 foreach (UnityEngine.Object asset in AssetDatabase.LoadAllAssetsAtPath(path))
                 {
                     if (asset is not TimelinePreviewInputSchemes schemes ||
-                        !entry.Equals(new TimelinePreviewEntryIdentity(schemes.Owner, schemes.Timeline)))
+                        !string.Equals(root.Owner, schemes.Owner, StringComparison.Ordinal) ||
+                        !string.Equals(root.Timeline, schemes.Timeline, StringComparison.Ordinal))
                         continue;
                     if (found != null)
                         throw new InvalidOperationException(
-                            $"预览入口有两份输入方案：{AssetDatabase.GetAssetPath(found)} 与 {path}；请删除其中一份。");
+                            $"预览根有两份输入方案：{AssetDatabase.GetAssetPath(found)} 与 {path}；请删除其中一份。");
                     found = schemes;
                 }
             }
@@ -249,10 +252,10 @@ namespace BTSMTL.Timeline.Editor
                 throw new InvalidOperationException($"Timeline '{m_Source.name}' 不在资产中，无法保存输入方案。");
             string directory = System.IO.Path.GetDirectoryName(path)!.Replace('\\', '/');
             var schemes = ScriptableObject.CreateInstance<TimelinePreviewInputSchemes>();
-            schemes.Owner = m_Entry.Owner;
-            schemes.Timeline = m_Entry.Timeline;
+            schemes.Owner = m_Root.Owner;
+            schemes.Timeline = m_Root.Timeline;
             AssetDatabase.CreateAsset(schemes,
-                AssetDatabase.GenerateUniqueAssetPath($"{directory}/{m_Source.name}.PreviewInputs.asset"));
+                AssetDatabase.GenerateUniqueAssetPath($"{directory}/{m_Label}.PreviewInputs.asset"));
             return schemes;
         }
     }

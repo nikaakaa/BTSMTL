@@ -90,6 +90,14 @@ namespace BTSMTL.Timeline.Editor
                 m_StateContextIndex = m_StateContexts.FindIndex(context => context.Query.Owner == requested);
                 m_NestedContextRequest = null;
             }
+            // 预览开着时保持它的根：在同一根路线上的 Timeline 间切换只换显示。
+            else if (TimelineAssetPreviewHost.Shared is { IsOpen: true, Root: { Query: not null } root })
+            {
+                int index = m_StateContexts.FindIndex(context =>
+                    context.Query.Owner == root.Identity.Owner && context.Machine == root.Machine);
+                if (index >= 0)
+                    m_StateContextIndex = index;
+            }
             if (m_StateContextIndex < 0 || m_StateContextIndex >= m_StateContexts.Count)
                 m_StateContextIndex = 0;
             m_StateContextLabels = m_StateContexts.Select(context =>
@@ -113,11 +121,13 @@ namespace BTSMTL.Timeline.Editor
         {
             m_StateContextIndex = index;
             var context = m_StateContexts[index];
-            TimelineAsset entry = m_TimelineQueries.Contains(context.Query) ? null : EntryTimeline(context.Query, context.Machine);
+            TimelineAsset entry = m_TimelineQueries.Contains(context.Query) ? null
+                : TimelinePreviewRoot.EntryTimeline(context.Query, context.Machine);
             if (!entry || entry == SourceAsset)
             {
                 ApplyStateContext();
                 RefreshNestedViews();
+                EnsurePreview();
                 return;
             }
             m_ReopenPreview = true;
@@ -128,25 +138,30 @@ namespace BTSMTL.Timeline.Editor
             RefreshStateQueries();
         }
 
-        static TimelineAsset EntryTimeline(TimelineOrchestrationQuery query, int machine)
+        // 节点图打开根时进入同一份预览：窗口切到该根（必要时转到其起始 Timeline）并按它重新打开预览。
+        public static void PreviewRoot(TimelineOrchestrationQuery query, int machine)
         {
-            // 起始转移已按求值顺序排列，取第一个带 Timeline 的起始状态。
-            foreach (OrchestrationStaticTransition transition in query.Query.InitialTransitions(machine))
-                if (transition.Target != null && transition.Target.TimelineIdentity.Length != 0)
-                    return query.ResolveTimeline(transition.Target.TimelineIdentity);
-            return null;
+            TimelineAssetPreviewHost preview = TimelineAssetPreviewHost.Shared;
+            if (preview.IsOpen && preview.Root.SameAs(TimelinePreviewRoot.Orchestration(query, machine)))
+                return;
+            foreach (TimelineEditorWindow window in Resources.FindObjectsOfTypeAll<TimelineEditorWindow>())
+            {
+                int index = window.m_StateContexts.FindIndex(context => context.Query.Owner == query.Owner && context.Machine == machine);
+                if (index >= 0)
+                    window.SelectStateContext(index);
+                return;
+            }
         }
 
         void ApplyStateContext()
         {
             m_StateContextIssues = GUIContent.none;
+            TimelineAssetPreviewHost preview = TimelineAssetPreviewHost.Shared;
+            if (preview.IsOpen && SourceAsset)
+                preview.RefreshRoot(SelectedRoot());
             if (m_StateContexts.Count == 0)
-            {
-                TimelineAssetPreviewHost.Shared.SetOrchestrationContext(SourceAsset, null, -1);
                 return;
-            }
             var context = m_StateContexts[m_StateContextIndex];
-            TimelineAssetPreviewHost.Shared.SetOrchestrationContext(SourceAsset, context.Query, context.Machine);
             if (context.Query.Query.Errors.Count != 0)
                 m_StateContextIssues = new GUIContent($"⚠ {context.Query.Query.Errors.Count} 个问题",
                     string.Join("\n", context.Query.Query.Errors));

@@ -143,19 +143,27 @@ namespace BTSMTL.Timeline.Editor
 
         void OpenTimelinePreview()
         {
-            var context = m_StateContexts.Count == 0 ? (null, -1) : m_StateContexts[m_StateContextIndex];
             m_SeekToSourcePlayback = !m_RestorePreviewTime;
-            TimelineAssetPreviewHost.Shared.Open(SourceAsset, m_PreviewMode, context.Query, context.Machine, !m_PreviewHidesScene);
+            TimelineAssetPreviewHost.Shared.Open(SelectedRoot(), m_PreviewMode, !m_PreviewHidesScene);
         }
 
-        // 窗口有主体且未在 Play 中时预览常开；输入 Timeline 本身沿用进入前的预览。
+        // 窗口所选的预览根：顶栏选中的编排根；当前 Timeline 不属于任何根时为它自身。
+        TimelinePreviewRoot SelectedRoot()
+        {
+            if (m_StateContexts.Count == 0)
+                return TimelinePreviewRoot.Standalone(SourceAsset);
+            var context = m_StateContexts[m_StateContextIndex];
+            return TimelinePreviewRoot.Orchestration(context.Query, context.Machine);
+        }
+
+        // 窗口有主体且未在 Play 中时预览常开；在同一根的 Timeline 间切换只换显示，输入 Timeline 本身沿用进入前的预览。
         void EnsurePreview()
         {
             var preview = TimelineAssetPreviewHost.Shared;
             if (!SourceAsset || !preview.IsRegistered || EditorApplication.isPlayingOrWillChangePlaymode ||
                 EditorApplication.isCompiling || preview.IsOpeningSession ||
                 TimelinePreviewInputSchemeStore.OwnsInputTimeline(m_Timeline) ||
-                preview.IsOpen && preview.Covers(SourceAsset))
+                preview.IsOpen && preview.Root.SameAs(SelectedRoot()))
                 return;
             OpenTimelinePreview();
         }
@@ -359,7 +367,7 @@ namespace BTSMTL.Timeline.Editor
                 {
                     string playback = preview.TryGetPlayback(SourceAsset, out TimelinePreviewRouteSegment[] spans)
                         ? spans.Length > 1 ? $"{spans.Length} 圈" : string.Empty
-                        : "从技能根按当前输入没有走到本 Timeline";
+                        : "从根按当前输入没有走到本 Timeline";
                     at = $"{preview.SampledSource?.name} {preview.LocalTime:0.000} 秒" +
                         (playback.Length == 0 ? string.Empty : " · " + playback);
                 }
@@ -369,9 +377,12 @@ namespace BTSMTL.Timeline.Editor
                     string result = preview.RealStale ? "结果过期"
                         : preview.Differences.Count == 0 ? "与快速推导一致"
                         : $"{preview.Differences.Count} 处与快速推导不同";
+                    if (preview.RealLeftRootAt is { } left)
+                        result += $" · {left:0.000} 秒后离开本根";
                     text = $"{at} · {result}";
                     detail = $"会话 {preview.Time:0.000} 秒{note}" +
-                        (preview.RealStale ? "\n结果过期，待重演：" + preview.RealStaleReason : string.Empty);
+                        (preview.RealStale ? "\n结果过期，待重演：" + preview.RealStaleReason : string.Empty) +
+                        (preview.RealLeftRootAt is { } exit ? $"\n第 {exit:0.000} 秒起执行到本根之外，超出快速档范围，不参与对比。" : string.Empty);
                     foreach (TimelinePreviewDifference difference in preview.Differences)
                         detail += $"\n第 {difference.Time:0.000} 秒：{difference.Message}";
                     if (preview.RealStale)

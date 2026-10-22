@@ -17,6 +17,48 @@ namespace BTSMTL.Timeline.Editor
         public TimelineAssetPreviewInputUnavailableException(string message) : base(message) { }
     }
 
+    // 预览身份：编排根（程序与入口状态机）或未被任何根引用的独立 Timeline。
+    // 窗口当前显示哪个 Timeline 只是视图，不改变预览身份；Entry 是根起始状态的 Timeline，没有时该根不能预览。
+    public sealed class TimelinePreviewRoot
+    {
+        TimelinePreviewRoot(TimelineOrchestrationQuery query, int machine, TimelineAsset entry,
+            TimelinePreviewRootIdentity identity, string label)
+        {
+            Query = query;
+            Machine = machine;
+            Entry = entry;
+            Identity = identity;
+            Label = label;
+        }
+
+        public static TimelinePreviewRoot Orchestration(TimelineOrchestrationQuery query, int machine) =>
+            new(query, machine, EntryTimeline(query, machine), new TimelinePreviewRootIdentity(query.Owner, string.Empty),
+                query.Label);
+
+        public static TimelinePreviewRoot Standalone(TimelineAsset timeline) =>
+            new(null, -1, timeline, new TimelinePreviewRootIdentity(string.Empty, timeline.Data.AuthoringId), timeline.name);
+
+        public TimelineOrchestrationQuery Query { get; }
+        // 入口状态机操作；独立 Timeline 为 -1。
+        public int Machine { get; }
+        public TimelineAsset Entry { get; }
+        public TimelinePreviewRootIdentity Identity { get; }
+        public string Label { get; }
+
+        // 同一根：根身份与入口状态机相同；查询对象随作者改动重建，不参与比较。
+        public bool SameAs(TimelinePreviewRoot other) =>
+            other != null && Identity.Equals(other.Identity) && Machine == other.Machine;
+
+        // 起始转移已按求值顺序排列，取第一个带 Timeline 的起始状态。
+        public static TimelineAsset EntryTimeline(TimelineOrchestrationQuery query, int machine)
+        {
+            foreach (OrchestrationStaticTransition transition in query.Query.InitialTransitions(machine))
+                if (transition.Target != null && transition.Target.TimelineIdentity.Length != 0)
+                    return query.ResolveTimeline(transition.Target.TimelineIdentity);
+            return null;
+        }
+    }
+
     // 快速档按静态推导与目标时刻显示；真实档以同一输入方案经正式会话重演，显示执行记录。
     public enum TimelinePreviewMode : byte
     {
@@ -410,7 +452,8 @@ namespace BTSMTL.Timeline.Editor
         TimelineRuntimeNumericTarget NumericTarget { get; }
         ITimelineAssetPreviewInstance CreateInstance(Scene scene, UnityEngine.Object configuration);
         bool TryCloseSession(out string reason);
-        void OpenSession(TimelineAsset source, TimelineAssetPreviewPreferences preferences, CancellationToken cancellationToken);
+        // 真实档按预览配置的角色与当前输入方案开跑，由会话自己按输入选择执行的根，不以打开的 Timeline 为入口。
+        void OpenSession(TimelineAssetPreviewPreferences preferences, CancellationToken cancellationToken);
         IReadOnlyList<GraphHostInputDescriptor> DescribeInputs();
         IReadOnlyList<TimelinePreviewInputRequest> DescribeInputRequests();
         // 输入 Timeline 与普通 Timeline 用同一宿主作者入口；读法、写法与图的输入说明由宿主按其正式输入层提供。
