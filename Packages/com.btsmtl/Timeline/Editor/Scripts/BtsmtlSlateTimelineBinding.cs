@@ -666,7 +666,8 @@ namespace BTSMTL.Timeline.Editor
                 ReportIssue("当前 Clip 或所属 Track 已锁定，不能删除。");
                 return;
             }
-            ApplyImmediate(() => Timeline.RemoveClip(formalClip.Source), "Delete Timeline Clip");
+            ApplyImmediate(() => m_Request.AuthoringHost.MutateOwnedContent(
+                Timeline, () => Timeline.RemoveClip(formalClip.Source)), "Delete Timeline Clip");
         }
 
         public void DeleteClips(IReadOnlyList<IEmbeddedTimelineClipBinding> clips)
@@ -681,12 +682,12 @@ namespace BTSMTL.Timeline.Editor
                     return;
                 }
             }
-            ApplyImmediate(() =>
+            ApplyImmediate(() => m_Request.AuthoringHost.MutateOwnedContent(Timeline, () =>
             {
                 for (int index = 0; index < clips.Count; index++)
                     if (clips[index] is BtsmtlTimelineClipBinding formalClip)
                         Timeline.RemoveClip(formalClip.Source);
-            }, "Delete Timeline Clips");
+            }), "Delete Timeline Clips");
         }
 
         public void SplitClip(IEmbeddedTimelineClipBinding clip, double time)

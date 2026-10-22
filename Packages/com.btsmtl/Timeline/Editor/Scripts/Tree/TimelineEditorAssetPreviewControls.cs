@@ -189,10 +189,11 @@ namespace BTSMTL.Timeline.Editor
                 foreach (OrchestrationStaticTimeline timeline in preview.Query.Query.Timelines)
                     if (preview.Query.ResolveTimeline(timeline.Identity) is { } resolved && resolved)
                         timelines.Add(resolved);
-            foreach (TimelineAsset timeline in timelines)
+            // Clip／Marker 的节点图是同文件子资产，只改图时主资产与 Timeline 都不脏，按整份文件判断。
+            foreach (string path in timelines.Select(AssetDatabase.GetAssetPath).Distinct())
             {
-                UnityEngine.Object main = AssetDatabase.LoadMainAssetAtPath(AssetDatabase.GetAssetPath(timeline));
-                if (main && (EditorUtility.IsDirty(main) || EditorUtility.IsDirty(timeline)) && !m_UnsavedAssets.Contains(main))
+                UnityEngine.Object main = AssetDatabase.LoadMainAssetAtPath(path);
+                if (main && AssetDatabase.LoadAllAssetsAtPath(path).Any(EditorUtility.IsDirty))
                     m_UnsavedAssets.Add(main);
             }
         }
