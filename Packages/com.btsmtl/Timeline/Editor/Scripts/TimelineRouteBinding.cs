@@ -258,12 +258,27 @@ namespace BTSMTL.Timeline.Editor
         public float ViewTimeMin
         {
             get => m_ViewTimeMin;
-            set { m_ViewTimeMin = Mathf.Min(value, m_ViewTimeMax - 0.001f); Repaint(); }
+            set
+            {
+                // Slate 每次绘制都把滑块值写回；值不变不重绘，否则路线视图每帧自激重绘。
+                float next = Mathf.Min(value, m_ViewTimeMax - 0.001f);
+                if (next == m_ViewTimeMin)
+                    return;
+                m_ViewTimeMin = next;
+                Repaint();
+            }
         }
         public float ViewTimeMax
         {
             get => m_ViewTimeMax;
-            set { m_ViewTimeMax = Mathf.Max(value, m_ViewTimeMin + 0.001f); Repaint(); }
+            set
+            {
+                float next = Mathf.Max(value, m_ViewTimeMin + 0.001f);
+                if (next == m_ViewTimeMax)
+                    return;
+                m_ViewTimeMax = next;
+                Repaint();
+            }
         }
         public bool IsReadOnly => m_ReadOnly;
         public bool ClipAdjustRangeOnly => false;
