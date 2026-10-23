@@ -11,7 +11,8 @@ namespace ThirdPersonSimulation
         Disabled = 0,
         ScaleToTarget = 1,
         SkewToTarget = 2,
-        LinearToTarget = 3
+        LinearToTarget = 3,
+        SkewRootMotion = 4
     }
 
     public enum ProgramMotionWarpTargetOffsetSpace : byte

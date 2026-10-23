@@ -188,6 +188,92 @@ namespace ThirdPersonSimulation
             warpedPosition = math.AddVector3(startBodyPosition, warpedRelative);
         }
 
+        public static void EvaluateSkewStep(
+            in MotionWarpParameters<TScalar> parameters,
+            TVector3 sourceDelta, TVector3 sourceRemaining, TVector3 sourceWindow,
+            TScalar sourceYawDelta, TScalar sourceYawRemaining, TScalar deltaTime,
+            TScalar previousPositionProgress, TScalar positionProgress,
+            TScalar previousYawProgress, TScalar yawProgress,
+            TVector3 bodyPosition, TYaw bodyYaw, TVector3 targetPosition, TYaw targetYaw,
+            out TVector3 displacement, out TScalar yawDelta)
+        {
+            TMath math = default;
+            TVector3 delta = math.RotatePlanar(sourceDelta, bodyYaw);
+            TVector3 remaining = math.RotatePlanar(sourceRemaining, bodyYaw);
+            TVector3 target = math.SubtractVector3(targetPosition, bodyPosition);
+            if (parameters.PositionAxes == ProgramMotionWarpPositionAxes.Planar)
+            {
+                delta = math.Vector3(math.X3(delta), math.Zero, math.Z3(delta));
+                remaining = math.Vector3(math.X3(remaining), math.Zero, math.Z3(remaining));
+                target = math.Vector3(math.X3(target), math.Zero, math.Z3(target));
+                sourceWindow = math.Vector3(math.X3(sourceWindow), math.Zero, math.Z3(sourceWindow));
+            }
+            if (math.IsVector3Zero(sourceWindow))
+            {
+                TScalar fraction = RemainingProgressFraction(previousPositionProgress, positionProgress);
+                displacement = math.MultiplyVector3(target, fraction);
+            }
+            else
+                displacement = SkewTranslation(delta, remaining, target);
+            if (parameters.PositionAxes == ProgramMotionWarpPositionAxes.Planar)
+                displacement = math.Vector3(math.X3(displacement), math.Y3(sourceDelta), math.Z3(displacement));
+            yawDelta = sourceYawDelta;
+            if (parameters.RotationMode == ProgramMotionWarpRotationMode.Disabled)
+                return;
+            TScalar correction = math.DeltaYaw(math.Yaw(math.Add(math.Degrees(bodyYaw), sourceYawRemaining)), targetYaw);
+            switch (parameters.RotationMethod)
+            {
+                case ProgramMotionWarpRotationMethod.ProgressCurve:
+                    correction = math.Multiply(correction, RemainingProgressFraction(previousYawProgress, yawProgress));
+                    break;
+                case ProgramMotionWarpRotationMethod.ConstantRate:
+                    TScalar maximum = math.Multiply(parameters.MaximumYawRate, deltaTime);
+                    correction = math.Clamp(correction, math.Negate(maximum), maximum);
+                    break;
+                case ProgramMotionWarpRotationMethod.ScaleSourceYaw:
+                    correction = math.IsZero(sourceYawDelta) ? math.Zero :
+                        math.Multiply(correction, math.Divide(sourceYawDelta, sourceYawRemaining));
+                    break;
+                default:
+                    throw Failure(MotionModifierDiagnosticCode.InvalidState,
+                        $"Unsupported SkewRootMotion rotation method '{parameters.RotationMethod}'.");
+            }
+            yawDelta = math.Add(yawDelta, correction);
+        }
+
+        public static TVector3 SkewTranslation(TVector3 delta, TVector3 remaining, TVector3 target)
+        {
+            TMath math = default;
+            if (math.IsVector3Zero(delta))
+                return math.ZeroVector3;
+            if (math.IsZero(Dot3(target, remaining)))
+                return math.MultiplyVector3(target, math.Divide(Magnitude3(delta), Magnitude3(remaining)));
+            // UE SkewWarp's forward scale and two shears reduce to this rank-one transform.
+            TScalar forwardFraction = math.Divide(Dot3(delta, remaining), Dot3(remaining, remaining));
+            return math.AddVector3(delta,
+                math.MultiplyVector3(math.SubtractVector3(target, remaining), forwardFraction));
+        }
+
+        static TScalar RemainingProgressFraction(TScalar previous, TScalar current)
+        {
+            TMath math = default;
+            return math.Equal(previous, math.One) ? math.Zero :
+                math.Divide(math.Subtract(current, previous), math.Subtract(math.One, previous));
+        }
+
+        static TScalar Dot3(TVector3 left, TVector3 right)
+        {
+            TMath math = default;
+            return math.Add(math.Add(math.Multiply(math.X3(left), math.X3(right)),
+                math.Multiply(math.Y3(left), math.Y3(right))), math.Multiply(math.Z3(left), math.Z3(right)));
+        }
+
+        static TScalar Magnitude3(TVector3 value)
+        {
+            TMath math = default;
+            return math.Magnitude2(math.Vector2(math.Magnitude2(math.Vector2(math.X3(value), math.Z3(value))), math.Y3(value)));
+        }
+
         public static void TargetResponse(
             in MotionWarpParameters<TScalar> parameters,
             bool hasTarget, TVector3 capturedTargetPosition, TYaw capturedTargetYaw,

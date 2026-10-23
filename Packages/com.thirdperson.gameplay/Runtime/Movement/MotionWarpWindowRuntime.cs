@@ -42,6 +42,8 @@ namespace ThirdPersonSimulation
             TVector3 startBodyPosition, TYaw startBodyYaw, TVector3 sourceStartPosition, TScalar sourceStartYaw,
             TVector3 resolvedTargetPosition, TYaw resolvedTargetYaw, out TVector3 position, out TYaw yaw);
         void ApplyResponse(in TRequest request, in MotionWarpParameters<TScalar> parameters, in TState state);
+        void EvaluateStep(in TRequest request, in MotionWarpParameters<TScalar> parameters, in TState state,
+            out TVector3 position, out TYaw yaw);
         void Trace(in TRequest request, string code);
     }
 
@@ -121,9 +123,15 @@ namespace ThirdPersonSimulation
                     target.ApplyMotionWarp(rawDelta, sourceYawDelta, rawDelta, sourceYawDelta);
                     return;
                 }
-                target.EvaluatePose(in request, in parameters, true, startBodyPosition, startBodyYaw,
-                    sourceStartPosition, sourceStartYaw, resolvedTargetPosition, resolvedTargetYaw,
-                    out previousPosition, out previousYaw);
+                if (parameters.TranslationMode == ProgramMotionWarpTranslationMode.SkewRootMotion)
+                {
+                    previousPosition = startBodyPosition;
+                    previousYaw = startBodyYaw;
+                }
+                else
+                    target.EvaluatePose(in request, in parameters, true, startBodyPosition, startBodyYaw,
+                        sourceStartPosition, sourceStartYaw, resolvedTargetPosition, resolvedTargetYaw,
+                        out previousPosition, out previousYaw);
                 target.ReadProgress(in request, true, out previousPositionProgress, out previousYawProgress);
                 state = new MotionWarpState<TScalar, TVector3, TYaw, TAction>(
                     true, true, request.PlaybackGeneration, request.Cycle, state.ActionInstance,
@@ -150,9 +158,14 @@ namespace ThirdPersonSimulation
             if (math.GreaterThan(previousPositionProgress, positionProgress) || math.GreaterThan(previousYawProgress, yawProgress))
                 throw new InvalidOperationException(MotionModifierDiagnosticCode.InvalidState +
                     ": Cumulative Timeline MotionWarp progress moved backwards.");
-            target.EvaluatePose(in request, in parameters, false, startBodyPosition, startBodyYaw,
-                sourceStartPosition, sourceStartYaw, resolvedTargetPosition, resolvedTargetYaw,
-                out TVector3 currentPosition, out TYaw currentYaw);
+            TVector3 currentPosition;
+            TYaw currentYaw;
+            if (parameters.TranslationMode == ProgramMotionWarpTranslationMode.SkewRootMotion)
+                target.EvaluateStep(in request, in parameters, in state, out currentPosition, out currentYaw);
+            else
+                target.EvaluatePose(in request, in parameters, false, startBodyPosition, startBodyYaw,
+                    sourceStartPosition, sourceStartYaw, resolvedTargetPosition, resolvedTargetYaw,
+                    out currentPosition, out currentYaw);
             target.ApplyMotionWarp(rawDelta, sourceYawDelta, math.SubtractVector3(currentPosition, previousPosition),
                 math.DeltaYaw(previousYaw, currentYaw));
             state = state.WithProgress(currentPosition, currentYaw, positionProgress, yawProgress);
