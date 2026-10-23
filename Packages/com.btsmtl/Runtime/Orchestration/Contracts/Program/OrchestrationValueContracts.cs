@@ -46,7 +46,9 @@ namespace BTSMTL.Orchestration
         Vector2Subtract = 11,
         Vector2SignedAngle = 12,
         QuaternionForward = 13,
-        QuaternionAngleAxis = 14
+        QuaternionAngleAxis = 14,
+        Vector2Dot = 15,
+        Vector2Cross = 16
     }
 
     public interface IOrchestrationScalarValueAccess<TValue, TScalar>

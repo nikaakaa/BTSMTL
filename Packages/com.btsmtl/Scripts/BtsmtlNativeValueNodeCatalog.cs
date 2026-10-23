@@ -83,6 +83,8 @@ namespace BTSMTL
             AddCalculation<GraphVector2NormalizeNode>(GraphCalculationKind.Vector2Normalize);
             AddCalculation<GraphVector2SubtractNode>(GraphCalculationKind.Vector2Subtract);
             AddCalculation<GraphVector2SignedAngleNode>(GraphCalculationKind.Vector2SignedAngle);
+            AddCalculation<GraphVector2DotNode>(GraphCalculationKind.Vector2Dot);
+            AddCalculation<GraphVector2CrossNode>(GraphCalculationKind.Vector2Cross);
             AddCalculation<GraphQuaternionForwardNode>(GraphCalculationKind.QuaternionForward);
             AddCalculation<GraphQuaternionAngleAxisNode>(GraphCalculationKind.QuaternionAngleAxis);
             Add<GraphFloatSelectNode>("select.number", OrchestrationOperationCode.SelectValue,

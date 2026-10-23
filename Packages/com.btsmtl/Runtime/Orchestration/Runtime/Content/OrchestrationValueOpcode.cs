@@ -52,7 +52,9 @@ namespace BTSMTL.Orchestration
         StateExitCause,
         Cycle,
         TimelineTime,
-        Extension
+        Extension,
+        Vector2Dot,
+        Vector2Cross
     }
 
     public enum OrchestrationAssignmentOpcode : byte

@@ -118,6 +118,8 @@ namespace BTSMTL.Compilation
                             OrchestrationCalculationKind.Vector2SignedAngle => OrchestrationValueOpcode.Vector2SignedAngle,
                             OrchestrationCalculationKind.QuaternionForward => OrchestrationValueOpcode.QuaternionForward,
                             OrchestrationCalculationKind.QuaternionAngleAxis => OrchestrationValueOpcode.QuaternionAngleAxis,
+                            OrchestrationCalculationKind.Vector2Dot => OrchestrationValueOpcode.Vector2Dot,
+                            OrchestrationCalculationKind.Vector2Cross => OrchestrationValueOpcode.Vector2Cross,
                             _ => throw new ArgumentOutOfRangeException(nameof(operation.Calculation))
                         };
                         break;

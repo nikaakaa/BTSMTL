@@ -55,6 +55,22 @@ namespace BTSMTL.Graphs
             throw new InvalidOperationException("BTSMTL 基础值节点由共用图求值器执行。");
     }
 
+    [Name("Vector2 Dot")]
+    [Category("Values/Vector2")]
+    public sealed class GraphVector2DotNode : PureFunctionNode<float, Vector2, Vector2>
+    {
+        public override float Invoke(Vector2 a, Vector2 b) =>
+            throw new InvalidOperationException("BTSMTL 基础值节点由共用图求值器执行。");
+    }
+
+    [Name("Vector2 Cross")]
+    [Category("Values/Vector2")]
+    public sealed class GraphVector2CrossNode : PureFunctionNode<float, Vector2, Vector2>
+    {
+        public override float Invoke(Vector2 a, Vector2 b) =>
+            throw new InvalidOperationException("BTSMTL 基础值节点由共用图求值器执行。");
+    }
+
     [Name("Quaternion Forward")]
     [Category("Values/Quaternion")]
     public sealed class GraphQuaternionForwardNode : PureFunctionNode<Vector3, Quaternion>

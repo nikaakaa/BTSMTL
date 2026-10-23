@@ -85,6 +85,20 @@ namespace BTSMTL.Orchestration
                 }
                 case OrchestrationValueOpcode.Vector2Subtract: result = values.FromVector2(math.SubtractVector2(values.Vector2(in inputs[arguments[0]]), values.Vector2(in inputs[arguments[1]]))); return;
                 case OrchestrationValueOpcode.Vector2SignedAngle: result = values.FromScalar(math.SignedAngle2(values.Vector2(in inputs[arguments[0]]), values.Vector2(in inputs[arguments[1]]))); return;
+                case OrchestrationValueOpcode.Vector2Dot:
+                {
+                    TVector2 a = values.Vector2(in inputs[arguments[0]]);
+                    TVector2 b = values.Vector2(in inputs[arguments[1]]);
+                    result = values.FromScalar(math.Add(math.Multiply(math.X2(a), math.X2(b)), math.Multiply(math.Y2(a), math.Y2(b))));
+                    return;
+                }
+                case OrchestrationValueOpcode.Vector2Cross:
+                {
+                    TVector2 a = values.Vector2(in inputs[arguments[0]]);
+                    TVector2 b = values.Vector2(in inputs[arguments[1]]);
+                    result = values.FromScalar(math.Subtract(math.Multiply(math.X2(a), math.Y2(b)), math.Multiply(math.Y2(a), math.X2(b))));
+                    return;
+                }
                 case OrchestrationValueOpcode.QuaternionForward: result = values.FromVector3(math.QuaternionForward(values.Quaternion(in inputs[arguments[0]]))); return;
                 case OrchestrationValueOpcode.QuaternionAngleAxis: result = values.FromQuaternion(math.QuaternionAngleAxis(values.Scalar(in inputs[arguments[0]]), values.Vector3(in inputs[arguments[1]]))); return;
                 default: throw new ArgumentOutOfRangeException(nameof(code));

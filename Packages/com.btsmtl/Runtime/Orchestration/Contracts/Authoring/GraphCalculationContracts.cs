@@ -20,7 +20,9 @@ namespace ThirdPersonSimulation
         Vector2Subtract = 11,
         Vector2SignedAngle = 12,
         QuaternionForward = 13,
-        QuaternionAngleAxis = 14
+        QuaternionAngleAxis = 14,
+        Vector2Dot = 15,
+        Vector2Cross = 16
     }
 
     public static class GraphCalculationContracts
@@ -55,6 +57,10 @@ namespace ThirdPersonSimulation
             Add(GraphCalculationKind.QuaternionForward, SemanticValueKind.Vector3, ("value", SemanticValueKind.Quaternion));
             Add(GraphCalculationKind.QuaternionAngleAxis, SemanticValueKind.Quaternion,
                 ("angle", SemanticValueKind.Number), ("axis", SemanticValueKind.Vector3));
+            Add(GraphCalculationKind.Vector2Dot, SemanticValueKind.Number,
+                ("a", SemanticValueKind.Vector2), ("b", SemanticValueKind.Vector2));
+            Add(GraphCalculationKind.Vector2Cross, SemanticValueKind.Number,
+                ("a", SemanticValueKind.Vector2), ("b", SemanticValueKind.Vector2));
             return new ReadOnlyDictionary<GraphCalculationKind, OperationValuePortContract>(values);
 
             void Add(GraphCalculationKind kind, SemanticValueKind output, params (string Name, SemanticValueKind Kind)[] inputs)
