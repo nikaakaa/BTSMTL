@@ -28,12 +28,14 @@ public sealed partial class TargetAttributeSnapshotMagnitude : Magnitude
     }
 
     public readonly string AttributeId;
+    public ThirdPersonGameplay.Configuration.Attribute AttributeId_Ref { get; private set; }
     public readonly float Coefficient;
     public readonly float PostAdd;
 
     public override void ResolveRef(GameplayTables tables)
     {
         base.ResolveRef(tables);
+        AttributeId_Ref = tables.Attributes.Get(AttributeId);
     }
 }
 }

@@ -13,27 +13,25 @@ using System.Collections.Generic;
 
 namespace ThirdPersonGameplay.Configuration
 {
-public sealed partial class AttributeBound
+public abstract partial class AttributeBound
 {
     public AttributeBound(ByteBuf buffer)
     {
-        Enabled = buffer.ReadBool();
-        Source = (ThirdPersonGameplay.Configuration.BoundSource)buffer.ReadInt();
-        Constant = buffer.ReadFloat();
-        AttributeId = buffer.ReadString();
     }
 
     public static AttributeBound DeserializeAttributeBound(ByteBuf buffer)
     {
-        return new AttributeBound(buffer);
+        switch (buffer.ReadInt())
+        {
+            case -1675740446: return new ThirdPersonGameplay.Configuration.UnboundedAttributeBound(buffer);
+            case 1070051818: return new ThirdPersonGameplay.Configuration.ConstantAttributeBound(buffer);
+            case -1500749237: return new ThirdPersonGameplay.Configuration.AttributeReferenceBound(buffer);
+            default: throw new SerializationException("配置组件类型不属于当前 schema。");
+        }
     }
 
-    public readonly bool Enabled;
-    public readonly ThirdPersonGameplay.Configuration.BoundSource Source;
-    public readonly float Constant;
-    public readonly string AttributeId;
 
-    public  void ResolveRef(GameplayTables tables)
+    public virtual void ResolveRef(GameplayTables tables)
     {
     }
 }

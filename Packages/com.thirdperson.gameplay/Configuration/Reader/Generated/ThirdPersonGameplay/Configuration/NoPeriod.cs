@@ -7,15 +7,27 @@
 // </auto-generated>
 //------------------------------------------------------------------------------
 
-
+using Luban;
+using System;
+using System.Collections.Generic;
 
 namespace ThirdPersonGameplay.Configuration
-{ 
-    public enum ParameterSource
+{
+public sealed partial class NoPeriod : EffectPeriod
+{
+    public NoPeriod(ByteBuf buffer) : base(buffer)
     {
-        ParentSetByCaller = 0,
-        Constant = 1,
     }
 
-} 
+    public static NoPeriod DeserializeNoPeriod(ByteBuf buffer)
+    {
+        return new NoPeriod(buffer);
+    }
 
+
+    public override void ResolveRef(GameplayTables tables)
+    {
+        base.ResolveRef(tables);
+    }
+}
+}

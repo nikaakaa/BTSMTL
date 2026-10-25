@@ -18,9 +18,7 @@ public sealed partial class ParameterBinding
     public ParameterBinding(ByteBuf buffer)
     {
         ChildParameterId = buffer.ReadString();
-        Source = (ThirdPersonGameplay.Configuration.ParameterSource)buffer.ReadInt();
-        ParentParameterId = buffer.ReadString();
-        Constant = buffer.ReadFloat();
+        Value = global::ThirdPersonGameplay.Configuration.ParameterValue.DeserializeParameterValue(buffer);
     }
 
     public static ParameterBinding DeserializeParameterBinding(ByteBuf buffer)
@@ -29,12 +27,11 @@ public sealed partial class ParameterBinding
     }
 
     public readonly string ChildParameterId;
-    public readonly ThirdPersonGameplay.Configuration.ParameterSource Source;
-    public readonly string ParentParameterId;
-    public readonly float Constant;
+    public readonly ThirdPersonGameplay.Configuration.ParameterValue Value;
 
     public  void ResolveRef(GameplayTables tables)
     {
+        Value.ResolveRef(tables);
     }
 }
 }

@@ -19,9 +19,6 @@ public sealed partial class Effect
     {
         Id = buffer.ReadString();
         EffectId = buffer.ReadString();
-        long value_DefinitionRevision;
-        value_DefinitionRevision = buffer.ReadLong();
-        DefinitionRevision = checked((uint)value_DefinitionRevision);
         DisplayName = buffer.ReadString();
         DebugCategory = buffer.ReadString();
         ScopePolicy = (ThirdPersonGameplay.Configuration.ScopePolicy)buffer.ReadInt();
@@ -48,7 +45,6 @@ public sealed partial class Effect
 
     public readonly string Id;
     public readonly string EffectId;
-    public readonly uint DefinitionRevision;
     public readonly string DisplayName;
     public readonly string DebugCategory;
     public readonly ThirdPersonGameplay.Configuration.ScopePolicy ScopePolicy;

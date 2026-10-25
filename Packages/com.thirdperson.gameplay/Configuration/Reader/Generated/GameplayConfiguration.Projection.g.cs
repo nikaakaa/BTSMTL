@@ -27,17 +27,66 @@ return new PublishedTargetAttributeLiveMagnitude(value.AttributeId, value.Coeffi
 public static PublishedTagQuery Publish(TagQuery value) {
 return new PublishedTagQuery(value.All.ToArray(), value.Any.ToArray(), value.None.ToArray()); }
 public static PublishedAttributeBound Publish(AttributeBound value) {
-return new PublishedAttributeBound(value.Enabled, value.Source, value.Constant, value.AttributeId); }
+return value switch {
+UnboundedAttributeBound child => PublishedAttributeBound.FromUnboundedAttributeBound(Publish(child)),
+ConstantAttributeBound child => PublishedAttributeBound.FromConstantAttributeBound(Publish(child)),
+AttributeReferenceBound child => PublishedAttributeBound.FromAttributeReferenceBound(Publish(child)),
+_ => throw new InvalidOperationException("配置组件不属于正式 schema。") }; }
+public static PublishedUnboundedAttributeBound Publish(UnboundedAttributeBound value) {
+return new PublishedUnboundedAttributeBound(); }
+public static PublishedConstantAttributeBound Publish(ConstantAttributeBound value) {
+return new PublishedConstantAttributeBound(value.Value); }
+public static PublishedAttributeReferenceBound Publish(AttributeReferenceBound value) {
+return new PublishedAttributeReferenceBound(value.AttributeId); }
 public static PublishedAttribute Publish(Attribute value) {
 return new PublishedAttribute(value.Id, value.AttributeId, Publish(value.Minimum), Publish(value.Maximum)); }
 public static PublishedEffectDuration Publish(EffectDuration value) {
-return new PublishedEffectDuration(value.Policy, Publish(value.Magnitude)); }
+return value switch {
+InstantDuration child => PublishedEffectDuration.FromInstantDuration(Publish(child)),
+InfiniteDuration child => PublishedEffectDuration.FromInfiniteDuration(Publish(child)),
+TimedDuration child => PublishedEffectDuration.FromTimedDuration(Publish(child)),
+_ => throw new InvalidOperationException("配置组件不属于正式 schema。") }; }
+public static PublishedInstantDuration Publish(InstantDuration value) {
+return new PublishedInstantDuration(); }
+public static PublishedInfiniteDuration Publish(InfiniteDuration value) {
+return new PublishedInfiniteDuration(); }
+public static PublishedTimedDuration Publish(TimedDuration value) {
+return new PublishedTimedDuration(Publish(value.Magnitude)); }
 public static PublishedEffectPeriod Publish(EffectPeriod value) {
-return new PublishedEffectPeriod(value.Enabled, Publish(value.Magnitude)); }
+return value switch {
+NoPeriod child => PublishedEffectPeriod.FromNoPeriod(Publish(child)),
+FixedPeriod child => PublishedEffectPeriod.FromFixedPeriod(Publish(child)),
+_ => throw new InvalidOperationException("配置组件不属于正式 schema。") }; }
+public static PublishedNoPeriod Publish(NoPeriod value) {
+return new PublishedNoPeriod(); }
+public static PublishedFixedPeriod Publish(FixedPeriod value) {
+return new PublishedFixedPeriod(Publish(value.Magnitude)); }
 public static PublishedEffectStacking Publish(EffectStacking value) {
-return new PublishedEffectStacking(value.Policy, value.MaxStacks, value.DurationUpdate, value.PeriodUpdate, value.OverflowPolicy); }
+return value switch {
+IndependentStacking child => PublishedEffectStacking.FromIndependentStacking(Publish(child)),
+AggregateStacking child => PublishedEffectStacking.FromAggregateStacking(Publish(child)),
+_ => throw new InvalidOperationException("配置组件不属于正式 schema。") }; }
+public static PublishedIndependentStacking Publish(IndependentStacking value) {
+return new PublishedIndependentStacking(); }
+public static PublishedAggregateStacking Publish(AggregateStacking value) {
+return new PublishedAggregateStacking(value.By, value.MaxStacks, value.DurationUpdate, value.PeriodUpdate, value.OverflowPolicy); }
+public static PublishedAttributeOperation Publish(AttributeOperation value) {
+return value switch {
+AdditiveOperation child => PublishedAttributeOperation.FromAdditiveOperation(Publish(child)),
+MultiplicativeOperation child => PublishedAttributeOperation.FromMultiplicativeOperation(Publish(child)),
+OverrideOperation child => PublishedAttributeOperation.FromOverrideOperation(Publish(child)),
+ClampOperation child => PublishedAttributeOperation.FromClampOperation(Publish(child)),
+_ => throw new InvalidOperationException("配置组件不属于正式 schema。") }; }
+public static PublishedAdditiveOperation Publish(AdditiveOperation value) {
+return new PublishedAdditiveOperation(); }
+public static PublishedMultiplicativeOperation Publish(MultiplicativeOperation value) {
+return new PublishedMultiplicativeOperation(); }
+public static PublishedOverrideOperation Publish(OverrideOperation value) {
+return new PublishedOverrideOperation(); }
+public static PublishedClampOperation Publish(ClampOperation value) {
+return new PublishedClampOperation(value.Bound); }
 public static PublishedEffect Publish(Effect value) {
-return new PublishedEffect(value.Id, value.EffectId, value.DefinitionRevision, value.ScopePolicy, value.LifetimePolicy, value.EffectTags.ToArray(), Publish(value.Duration), Publish(value.Period), value.ExecuteOnApplication, Publish(value.Stacking), value.SetByCallerParameters.ToArray(), value.Components.Select(item => Publish(item)).ToArray()); }
+return new PublishedEffect(value.Id, value.EffectId, value.ScopePolicy, value.LifetimePolicy, value.EffectTags.ToArray(), Publish(value.Duration), Publish(value.Period), value.ExecuteOnApplication, Publish(value.Stacking), value.SetByCallerParameters.ToArray(), value.Components.Select(item => Publish(item)).ToArray()); }
 public static PublishedComponent Publish(Component value) {
 return value switch {
 Modifier child => PublishedComponent.FromModifier(Publish(child)),
@@ -51,7 +100,7 @@ AdditionalEffectsComponent child => PublishedComponent.FromAdditionalEffectsComp
 CueBinding child => PublishedComponent.FromCueBinding(Publish(child)),
 _ => throw new InvalidOperationException("配置组件不属于正式 schema。") }; }
 public static PublishedModifier Publish(Modifier value) {
-return new PublishedModifier(value.AttributeId, value.Application, value.Operation, Publish(value.Magnitude), value.Priority, value.ClampBound, value.ScaleWithStack); }
+return new PublishedModifier(value.AttributeId, value.Application, Publish(value.Operation), Publish(value.Magnitude), value.Priority, value.ScaleWithStack); }
 public static PublishedGrantedTags Publish(GrantedTags value) {
 return new PublishedGrantedTags(value.Tags.ToArray()); }
 public static PublishedBlockAbilities Publish(BlockAbilities value) {
@@ -69,11 +118,20 @@ return new PublishedAdditionalEffectsComponent(value.Effects.Select(item => Publ
 public static PublishedCueBinding Publish(CueBinding value) {
 return new PublishedCueBinding(value.CueId, value.Trigger); }
 public static PublishedMutation Publish(Mutation value) {
-return new PublishedMutation(value.AttributeId, value.Operation, Publish(value.Magnitude), value.ClampBound); }
+return new PublishedMutation(value.AttributeId, Publish(value.Operation), Publish(value.Magnitude)); }
 public static PublishedAdditionalEffect Publish(AdditionalEffect value) {
 return new PublishedAdditionalEffect(value.Trigger, value.Effect, value.ParameterBindings.Select(item => Publish(item)).ToArray()); }
 public static PublishedParameterBinding Publish(ParameterBinding value) {
-return new PublishedParameterBinding(value.ChildParameterId, value.Source, value.ParentParameterId, value.Constant); }
+return new PublishedParameterBinding(value.ChildParameterId, Publish(value.Value)); }
+public static PublishedParameterValue Publish(ParameterValue value) {
+return value switch {
+ParentParameterValue child => PublishedParameterValue.FromParentParameterValue(Publish(child)),
+ConstantParameterValue child => PublishedParameterValue.FromConstantParameterValue(Publish(child)),
+_ => throw new InvalidOperationException("配置组件不属于正式 schema。") }; }
+public static PublishedParentParameterValue Publish(ParentParameterValue value) {
+return new PublishedParentParameterValue(value.ParentParameterId); }
+public static PublishedConstantParameterValue Publish(ConstantParameterValue value) {
+return new PublishedConstantParameterValue(value.Value); }
 public static PublishedInitialAttribute Publish(InitialAttribute value) {
 return new PublishedInitialAttribute(value.Attribute, value.BaseValue); }
 public static PublishedInitialEffect Publish(InitialEffect value) {

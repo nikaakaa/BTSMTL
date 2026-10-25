@@ -13,25 +13,26 @@ using System.Collections.Generic;
 
 namespace ThirdPersonGameplay.Configuration
 {
-public sealed partial class EffectDuration
+public abstract partial class EffectDuration
 {
     public EffectDuration(ByteBuf buffer)
     {
-        Policy = (ThirdPersonGameplay.Configuration.DurationPolicy)buffer.ReadInt();
-        Magnitude = global::ThirdPersonGameplay.Configuration.Magnitude.DeserializeMagnitude(buffer);
     }
 
     public static EffectDuration DeserializeEffectDuration(ByteBuf buffer)
     {
-        return new EffectDuration(buffer);
+        switch (buffer.ReadInt())
+        {
+            case 1605733937: return new ThirdPersonGameplay.Configuration.InstantDuration(buffer);
+            case 1343001516: return new ThirdPersonGameplay.Configuration.InfiniteDuration(buffer);
+            case -1056640889: return new ThirdPersonGameplay.Configuration.TimedDuration(buffer);
+            default: throw new SerializationException("配置组件类型不属于当前 schema。");
+        }
     }
 
-    public readonly ThirdPersonGameplay.Configuration.DurationPolicy Policy;
-    public readonly ThirdPersonGameplay.Configuration.Magnitude Magnitude;
 
-    public  void ResolveRef(GameplayTables tables)
+    public virtual void ResolveRef(GameplayTables tables)
     {
-        Magnitude.ResolveRef(tables);
     }
 }
 }

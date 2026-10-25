@@ -19,10 +19,9 @@ public sealed partial class Modifier : Component
     {
         AttributeId = buffer.ReadString();
         Application = (ThirdPersonGameplay.Configuration.ModifierApplication)buffer.ReadInt();
-        Operation = (ThirdPersonGameplay.Configuration.ModifierOperation)buffer.ReadInt();
+        Operation = global::ThirdPersonGameplay.Configuration.AttributeOperation.DeserializeAttributeOperation(buffer);
         Magnitude = global::ThirdPersonGameplay.Configuration.Magnitude.DeserializeMagnitude(buffer);
         Priority = buffer.ReadInt();
-        ClampBound = (ThirdPersonGameplay.Configuration.ClampBound)buffer.ReadInt();
         ScaleWithStack = buffer.ReadBool();
     }
 
@@ -32,16 +31,18 @@ public sealed partial class Modifier : Component
     }
 
     public readonly string AttributeId;
+    public ThirdPersonGameplay.Configuration.Attribute AttributeId_Ref { get; private set; }
     public readonly ThirdPersonGameplay.Configuration.ModifierApplication Application;
-    public readonly ThirdPersonGameplay.Configuration.ModifierOperation Operation;
+    public readonly ThirdPersonGameplay.Configuration.AttributeOperation Operation;
     public readonly ThirdPersonGameplay.Configuration.Magnitude Magnitude;
     public readonly int Priority;
-    public readonly ThirdPersonGameplay.Configuration.ClampBound ClampBound;
     public readonly bool ScaleWithStack;
 
     public override void ResolveRef(GameplayTables tables)
     {
         base.ResolveRef(tables);
+        AttributeId_Ref = tables.Attributes.Get(AttributeId);
+        Operation.ResolveRef(tables);
         Magnitude.ResolveRef(tables);
     }
 }

@@ -11,10 +11,10 @@
 
 namespace ThirdPersonGameplay.Configuration
 { 
-    public enum BoundSource
+    public enum StackingAggregation
     {
-        Constant = 0,
-        Attribute = 1,
+        Source = 0,
+        Target = 1,
     }
 
 } 

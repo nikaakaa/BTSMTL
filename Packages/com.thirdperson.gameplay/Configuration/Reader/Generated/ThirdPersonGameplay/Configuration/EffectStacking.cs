@@ -13,29 +13,24 @@ using System.Collections.Generic;
 
 namespace ThirdPersonGameplay.Configuration
 {
-public sealed partial class EffectStacking
+public abstract partial class EffectStacking
 {
     public EffectStacking(ByteBuf buffer)
     {
-        Policy = (ThirdPersonGameplay.Configuration.StackingPolicy)buffer.ReadInt();
-        MaxStacks = buffer.ReadInt();
-        DurationUpdate = (ThirdPersonGameplay.Configuration.DurationUpdate)buffer.ReadInt();
-        PeriodUpdate = (ThirdPersonGameplay.Configuration.PeriodUpdate)buffer.ReadInt();
-        OverflowPolicy = (ThirdPersonGameplay.Configuration.OverflowPolicy)buffer.ReadInt();
     }
 
     public static EffectStacking DeserializeEffectStacking(ByteBuf buffer)
     {
-        return new EffectStacking(buffer);
+        switch (buffer.ReadInt())
+        {
+            case -1126751344: return new ThirdPersonGameplay.Configuration.IndependentStacking(buffer);
+            case -687911979: return new ThirdPersonGameplay.Configuration.AggregateStacking(buffer);
+            default: throw new SerializationException("配置组件类型不属于当前 schema。");
+        }
     }
 
-    public readonly ThirdPersonGameplay.Configuration.StackingPolicy Policy;
-    public readonly int MaxStacks;
-    public readonly ThirdPersonGameplay.Configuration.DurationUpdate DurationUpdate;
-    public readonly ThirdPersonGameplay.Configuration.PeriodUpdate PeriodUpdate;
-    public readonly ThirdPersonGameplay.Configuration.OverflowPolicy OverflowPolicy;
 
-    public  void ResolveRef(GameplayTables tables)
+    public virtual void ResolveRef(GameplayTables tables)
     {
     }
 }

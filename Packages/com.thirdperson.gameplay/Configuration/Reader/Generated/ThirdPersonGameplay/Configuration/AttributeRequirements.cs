@@ -32,12 +32,14 @@ public sealed partial class AttributeRequirements : Component
     public readonly ThirdPersonGameplay.Configuration.RequirementPhase Phase;
     public readonly ThirdPersonGameplay.Configuration.AttributeSource Source;
     public readonly string AttributeId;
+    public ThirdPersonGameplay.Configuration.Attribute AttributeId_Ref { get; private set; }
     public readonly ThirdPersonGameplay.Configuration.AttributeComparison Comparison;
     public readonly ThirdPersonGameplay.Configuration.Magnitude Threshold;
 
     public override void ResolveRef(GameplayTables tables)
     {
         base.ResolveRef(tables);
+        AttributeId_Ref = tables.Attributes.Get(AttributeId);
         Threshold.ResolveRef(tables);
     }
 }

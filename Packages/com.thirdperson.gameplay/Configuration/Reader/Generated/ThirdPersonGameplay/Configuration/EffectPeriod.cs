@@ -13,25 +13,25 @@ using System.Collections.Generic;
 
 namespace ThirdPersonGameplay.Configuration
 {
-public sealed partial class EffectPeriod
+public abstract partial class EffectPeriod
 {
     public EffectPeriod(ByteBuf buffer)
     {
-        Enabled = buffer.ReadBool();
-        Magnitude = global::ThirdPersonGameplay.Configuration.Magnitude.DeserializeMagnitude(buffer);
     }
 
     public static EffectPeriod DeserializeEffectPeriod(ByteBuf buffer)
     {
-        return new EffectPeriod(buffer);
+        switch (buffer.ReadInt())
+        {
+            case -1483322682: return new ThirdPersonGameplay.Configuration.NoPeriod(buffer);
+            case 78985201: return new ThirdPersonGameplay.Configuration.FixedPeriod(buffer);
+            default: throw new SerializationException("配置组件类型不属于当前 schema。");
+        }
     }
 
-    public readonly bool Enabled;
-    public readonly ThirdPersonGameplay.Configuration.Magnitude Magnitude;
 
-    public  void ResolveRef(GameplayTables tables)
+    public virtual void ResolveRef(GameplayTables tables)
     {
-        Magnitude.ResolveRef(tables);
     }
 }
 }

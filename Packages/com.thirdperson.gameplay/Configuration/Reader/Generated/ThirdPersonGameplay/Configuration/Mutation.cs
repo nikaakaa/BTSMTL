@@ -18,9 +18,8 @@ public sealed partial class Mutation
     public Mutation(ByteBuf buffer)
     {
         AttributeId = buffer.ReadString();
-        Operation = (ThirdPersonGameplay.Configuration.ModifierOperation)buffer.ReadInt();
+        Operation = global::ThirdPersonGameplay.Configuration.AttributeOperation.DeserializeAttributeOperation(buffer);
         Magnitude = global::ThirdPersonGameplay.Configuration.Magnitude.DeserializeMagnitude(buffer);
-        ClampBound = (ThirdPersonGameplay.Configuration.ClampBound)buffer.ReadInt();
     }
 
     public static Mutation DeserializeMutation(ByteBuf buffer)
@@ -29,12 +28,14 @@ public sealed partial class Mutation
     }
 
     public readonly string AttributeId;
-    public readonly ThirdPersonGameplay.Configuration.ModifierOperation Operation;
+    public ThirdPersonGameplay.Configuration.Attribute AttributeId_Ref { get; private set; }
+    public readonly ThirdPersonGameplay.Configuration.AttributeOperation Operation;
     public readonly ThirdPersonGameplay.Configuration.Magnitude Magnitude;
-    public readonly ThirdPersonGameplay.Configuration.ClampBound ClampBound;
 
     public  void ResolveRef(GameplayTables tables)
     {
+        AttributeId_Ref = tables.Attributes.Get(AttributeId);
+        Operation.ResolveRef(tables);
         Magnitude.ResolveRef(tables);
     }
 }

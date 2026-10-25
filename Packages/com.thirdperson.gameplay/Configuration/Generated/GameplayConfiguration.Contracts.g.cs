@@ -79,16 +79,28 @@ public IReadOnlyList<string> All { get; }
 public IReadOnlyList<string> Any { get; }
 public IReadOnlyList<string> None { get; }
 }
-public sealed partial class PublishedAttributeBound {
-public PublishedAttributeBound(bool value_Enabled, BoundSource value_Source, float value_Constant, string value_AttributeId) {
-Enabled = value_Enabled;
-Source = value_Source;
-Constant = value_Constant;
+[ValueUnionTemplate]
+public readonly struct AttributeBoundValue {
+[ValueUnionCase] public readonly PublishedUnboundedAttributeBound UnboundedAttributeBound;
+[ValueUnionCase] public readonly PublishedConstantAttributeBound ConstantAttributeBound;
+[ValueUnionCase] public readonly PublishedAttributeReferenceBound AttributeReferenceBound;
+}
+[ValueUnion(typeof(AttributeBoundValue))]
+public readonly partial struct PublishedAttributeBound {}
+public sealed partial class PublishedUnboundedAttributeBound {
+public PublishedUnboundedAttributeBound() {
+}
+}
+public sealed partial class PublishedConstantAttributeBound {
+public PublishedConstantAttributeBound(float value_Value) {
+Value = value_Value;
+}
+public float Value { get; }
+}
+public sealed partial class PublishedAttributeReferenceBound {
+public PublishedAttributeReferenceBound(string value_AttributeId) {
 AttributeId = value_AttributeId;
 }
-public bool Enabled { get; }
-public BoundSource Source { get; }
-public float Constant { get; }
 public string AttributeId { get; }
 }
 public sealed partial class PublishedAttribute {
@@ -103,41 +115,101 @@ public string AttributeId { get; }
 public PublishedAttributeBound Minimum { get; }
 public PublishedAttributeBound Maximum { get; }
 }
-public sealed partial class PublishedEffectDuration {
-public PublishedEffectDuration(DurationPolicy value_Policy, PublishedMagnitude value_Magnitude) {
-Policy = value_Policy;
+[ValueUnionTemplate]
+public readonly struct EffectDurationValue {
+[ValueUnionCase] public readonly PublishedInstantDuration InstantDuration;
+[ValueUnionCase] public readonly PublishedInfiniteDuration InfiniteDuration;
+[ValueUnionCase] public readonly PublishedTimedDuration TimedDuration;
+}
+[ValueUnion(typeof(EffectDurationValue))]
+public readonly partial struct PublishedEffectDuration {}
+public sealed partial class PublishedInstantDuration {
+public PublishedInstantDuration() {
+}
+}
+public sealed partial class PublishedInfiniteDuration {
+public PublishedInfiniteDuration() {
+}
+}
+public sealed partial class PublishedTimedDuration {
+public PublishedTimedDuration(PublishedMagnitude value_Magnitude) {
 Magnitude = value_Magnitude;
 }
-public DurationPolicy Policy { get; }
 public PublishedMagnitude Magnitude { get; }
 }
-public sealed partial class PublishedEffectPeriod {
-public PublishedEffectPeriod(bool value_Enabled, PublishedMagnitude value_Magnitude) {
-Enabled = value_Enabled;
+[ValueUnionTemplate]
+public readonly struct EffectPeriodValue {
+[ValueUnionCase] public readonly PublishedNoPeriod NoPeriod;
+[ValueUnionCase] public readonly PublishedFixedPeriod FixedPeriod;
+}
+[ValueUnion(typeof(EffectPeriodValue))]
+public readonly partial struct PublishedEffectPeriod {}
+public sealed partial class PublishedNoPeriod {
+public PublishedNoPeriod() {
+}
+}
+public sealed partial class PublishedFixedPeriod {
+public PublishedFixedPeriod(PublishedMagnitude value_Magnitude) {
 Magnitude = value_Magnitude;
 }
-public bool Enabled { get; }
 public PublishedMagnitude Magnitude { get; }
 }
-public sealed partial class PublishedEffectStacking {
-public PublishedEffectStacking(StackingPolicy value_Policy, int value_MaxStacks, DurationUpdate value_DurationUpdate, PeriodUpdate value_PeriodUpdate, OverflowPolicy value_OverflowPolicy) {
-Policy = value_Policy;
+[ValueUnionTemplate]
+public readonly struct EffectStackingValue {
+[ValueUnionCase] public readonly PublishedIndependentStacking IndependentStacking;
+[ValueUnionCase] public readonly PublishedAggregateStacking AggregateStacking;
+}
+[ValueUnion(typeof(EffectStackingValue))]
+public readonly partial struct PublishedEffectStacking {}
+public sealed partial class PublishedIndependentStacking {
+public PublishedIndependentStacking() {
+}
+}
+public sealed partial class PublishedAggregateStacking {
+public PublishedAggregateStacking(StackingAggregation value_By, int value_MaxStacks, DurationUpdate value_DurationUpdate, PeriodUpdate value_PeriodUpdate, OverflowPolicy value_OverflowPolicy) {
+By = value_By;
 MaxStacks = value_MaxStacks;
 DurationUpdate = value_DurationUpdate;
 PeriodUpdate = value_PeriodUpdate;
 OverflowPolicy = value_OverflowPolicy;
 }
-public StackingPolicy Policy { get; }
+public StackingAggregation By { get; }
 public int MaxStacks { get; }
 public DurationUpdate DurationUpdate { get; }
 public PeriodUpdate PeriodUpdate { get; }
 public OverflowPolicy OverflowPolicy { get; }
 }
+[ValueUnionTemplate]
+public readonly struct AttributeOperationValue {
+[ValueUnionCase] public readonly PublishedAdditiveOperation AdditiveOperation;
+[ValueUnionCase] public readonly PublishedMultiplicativeOperation MultiplicativeOperation;
+[ValueUnionCase] public readonly PublishedOverrideOperation OverrideOperation;
+[ValueUnionCase] public readonly PublishedClampOperation ClampOperation;
+}
+[ValueUnion(typeof(AttributeOperationValue))]
+public readonly partial struct PublishedAttributeOperation {}
+public sealed partial class PublishedAdditiveOperation {
+public PublishedAdditiveOperation() {
+}
+}
+public sealed partial class PublishedMultiplicativeOperation {
+public PublishedMultiplicativeOperation() {
+}
+}
+public sealed partial class PublishedOverrideOperation {
+public PublishedOverrideOperation() {
+}
+}
+public sealed partial class PublishedClampOperation {
+public PublishedClampOperation(ClampBound value_Bound) {
+Bound = value_Bound;
+}
+public ClampBound Bound { get; }
+}
 public sealed partial class PublishedEffect {
-public PublishedEffect(string value_Id, string value_EffectId, uint value_DefinitionRevision, ScopePolicy value_ScopePolicy, LifetimePolicy value_LifetimePolicy, IReadOnlyList<string> value_EffectTags, PublishedEffectDuration value_Duration, PublishedEffectPeriod value_Period, bool value_ExecuteOnApplication, PublishedEffectStacking value_Stacking, IReadOnlyList<string> value_SetByCallerParameters, IReadOnlyList<PublishedComponent> value_Components) {
+public PublishedEffect(string value_Id, string value_EffectId, ScopePolicy value_ScopePolicy, LifetimePolicy value_LifetimePolicy, IReadOnlyList<string> value_EffectTags, PublishedEffectDuration value_Duration, PublishedEffectPeriod value_Period, bool value_ExecuteOnApplication, PublishedEffectStacking value_Stacking, IReadOnlyList<string> value_SetByCallerParameters, IReadOnlyList<PublishedComponent> value_Components) {
 Id = value_Id;
 EffectId = value_EffectId;
-DefinitionRevision = value_DefinitionRevision;
 ScopePolicy = value_ScopePolicy;
 LifetimePolicy = value_LifetimePolicy;
 EffectTags = value_EffectTags;
@@ -150,7 +222,6 @@ Components = value_Components;
 }
 public string Id { get; }
 public string EffectId { get; }
-public uint DefinitionRevision { get; }
 public ScopePolicy ScopePolicy { get; }
 public LifetimePolicy LifetimePolicy { get; }
 public IReadOnlyList<string> EffectTags { get; }
@@ -176,21 +247,19 @@ public readonly struct ComponentValue {
 [ValueUnion(typeof(ComponentValue))]
 public readonly partial struct PublishedComponent {}
 public sealed partial class PublishedModifier {
-public PublishedModifier(string value_AttributeId, ModifierApplication value_Application, ModifierOperation value_Operation, PublishedMagnitude value_Magnitude, int value_Priority, ClampBound value_ClampBound, bool value_ScaleWithStack) {
+public PublishedModifier(string value_AttributeId, ModifierApplication value_Application, PublishedAttributeOperation value_Operation, PublishedMagnitude value_Magnitude, int value_Priority, bool value_ScaleWithStack) {
 AttributeId = value_AttributeId;
 Application = value_Application;
 Operation = value_Operation;
 Magnitude = value_Magnitude;
 Priority = value_Priority;
-ClampBound = value_ClampBound;
 ScaleWithStack = value_ScaleWithStack;
 }
 public string AttributeId { get; }
 public ModifierApplication Application { get; }
-public ModifierOperation Operation { get; }
+public PublishedAttributeOperation Operation { get; }
 public PublishedMagnitude Magnitude { get; }
 public int Priority { get; }
-public ClampBound ClampBound { get; }
 public bool ScaleWithStack { get; }
 }
 public sealed partial class PublishedGrantedTags {
@@ -258,16 +327,14 @@ public string CueId { get; }
 public CueTrigger Trigger { get; }
 }
 public sealed partial class PublishedMutation {
-public PublishedMutation(string value_AttributeId, ModifierOperation value_Operation, PublishedMagnitude value_Magnitude, ClampBound value_ClampBound) {
+public PublishedMutation(string value_AttributeId, PublishedAttributeOperation value_Operation, PublishedMagnitude value_Magnitude) {
 AttributeId = value_AttributeId;
 Operation = value_Operation;
 Magnitude = value_Magnitude;
-ClampBound = value_ClampBound;
 }
 public string AttributeId { get; }
-public ModifierOperation Operation { get; }
+public PublishedAttributeOperation Operation { get; }
 public PublishedMagnitude Magnitude { get; }
-public ClampBound ClampBound { get; }
 }
 public sealed partial class PublishedAdditionalEffect {
 public PublishedAdditionalEffect(AdditionalTrigger value_Trigger, string value_Effect, IReadOnlyList<PublishedParameterBinding> value_ParameterBindings) {
@@ -280,16 +347,31 @@ public string Effect { get; }
 public IReadOnlyList<PublishedParameterBinding> ParameterBindings { get; }
 }
 public sealed partial class PublishedParameterBinding {
-public PublishedParameterBinding(string value_ChildParameterId, ParameterSource value_Source, string value_ParentParameterId, float value_Constant) {
+public PublishedParameterBinding(string value_ChildParameterId, PublishedParameterValue value_Value) {
 ChildParameterId = value_ChildParameterId;
-Source = value_Source;
-ParentParameterId = value_ParentParameterId;
-Constant = value_Constant;
+Value = value_Value;
 }
 public string ChildParameterId { get; }
-public ParameterSource Source { get; }
+public PublishedParameterValue Value { get; }
+}
+[ValueUnionTemplate]
+public readonly struct ParameterValueValue {
+[ValueUnionCase] public readonly PublishedParentParameterValue ParentParameterValue;
+[ValueUnionCase] public readonly PublishedConstantParameterValue ConstantParameterValue;
+}
+[ValueUnion(typeof(ParameterValueValue))]
+public readonly partial struct PublishedParameterValue {}
+public sealed partial class PublishedParentParameterValue {
+public PublishedParentParameterValue(string value_ParentParameterId) {
+ParentParameterId = value_ParentParameterId;
+}
 public string ParentParameterId { get; }
-public float Constant { get; }
+}
+public sealed partial class PublishedConstantParameterValue {
+public PublishedConstantParameterValue(float value_Value) {
+Value = value_Value;
+}
+public float Value { get; }
 }
 public sealed partial class PublishedInitialAttribute {
 public PublishedInitialAttribute(string value_Attribute, float value_BaseValue) {
@@ -346,4 +428,4 @@ Attributes,
 Effects,
 Characters,
 } }
-namespace ThirdPersonGameplay.Configuration { public static class GameplayConfigGeneratedContract { public const string SchemaIdentity = "32dac6db02fd97fd5348991422fe5bcd9ae60ccb435b513a21bc4c7e4e45d9fb"; } }
+namespace ThirdPersonGameplay.Configuration { public static class GameplayConfigGeneratedContract { public const string SchemaIdentity = "8ba8a41dc7f18df3bc1b7b325685fbb4bed7fae1319a9f97a57cd26c19cd09ad"; } }
