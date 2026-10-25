@@ -60,7 +60,7 @@ namespace ThirdPersonSimulation
                 if (selected >= 0)
                 {
                     ref readonly TRequest previous = ref warps[selected];
-                    if (!IsLoopContinuation(in previous, in warp))
+                    if (!IsLoopContinuation(in previous, in warp) && !IsOrderedWindow(in previous, in warp))
                     {
                         target.FailAmbiguousModifier(in previous, in warp);
                         return false;
@@ -96,5 +96,13 @@ namespace ThirdPersonSimulation
             current.Cycle == previous.Cycle + 1 &&
             default(TMath).Equal(previous.CurrentTime, previous.EndTime) &&
             default(TMath).Equal(current.PreviousTime, current.StartTime);
+
+        static bool IsOrderedWindow<TRequest>(in TRequest previous, in TRequest current)
+            where TRequest : struct, ITimelineMotionWarpArbitrationRequest<TTime> =>
+            previous.ActionInstanceId == current.ActionInstanceId &&
+            previous.ExecutionGeneration == current.ExecutionGeneration &&
+            previous.PlaybackGeneration == current.PlaybackGeneration &&
+            previous.Cycle == current.Cycle &&
+            !default(TMath).GreaterThan(previous.CurrentTime, current.PreviousTime);
     }
 }
