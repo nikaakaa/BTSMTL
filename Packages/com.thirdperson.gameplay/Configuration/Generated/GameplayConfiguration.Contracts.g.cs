@@ -346,4 +346,4 @@ Attributes,
 Effects,
 Characters,
 } }
-namespace ThirdPersonGameplay.Configuration { public static class GameplayConfigGeneratedContract { public const string SchemaIdentity = "09965fb7db093f7708d3925003e612bb74b7a0fa5b4b20cba698d77726ccf694"; } }
+namespace ThirdPersonGameplay.Configuration { public static class GameplayConfigGeneratedContract { public const string SchemaIdentity = "32dac6db02fd97fd5348991422fe5bcd9ae60ccb435b513a21bc4c7e4e45d9fb"; } }
