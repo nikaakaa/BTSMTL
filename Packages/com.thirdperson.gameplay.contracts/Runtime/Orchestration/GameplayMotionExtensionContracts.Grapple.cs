@@ -53,13 +53,15 @@ namespace ThirdPersonGameplay.Orchestration
             public static readonly OrchestrationExtensionOutputPort<ReadGrapple> GroundHandoff = new("ground-handoff", OrchestrationValueKind.Boolean, 5);
             public static readonly OrchestrationExtensionOutputPort<ReadGrapple> Steady = new("steady", OrchestrationValueKind.Boolean, 6);
             public static readonly OrchestrationExtensionOutputPort<ReadGrapple> Active = new("active", OrchestrationValueKind.Boolean, 7);
+            public static readonly OrchestrationExtensionOutputPort<ReadGrapple> Approaching = new("approaching", OrchestrationValueKind.Boolean, 8);
             public static readonly OrchestrationExtensionDefinition<ReadGrapple> Definition = new(
-                new OrchestrationExtensionIdentity(DomainId, "read-grapple"), 3,
+                new OrchestrationExtensionIdentity(DomainId, "read-grapple"), 4,
                 new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
                     OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
                     OrchestrationExtensionCompletion.Immediate,
                     new[] { Ended.Declaration, Reason.Declaration, Direction.Declaration, Attached.Declaration,
-                        InFlight.Declaration, GroundHandoff.Declaration, Steady.Declaration, Active.Declaration }, Array.Empty<Field>()));
+                        InFlight.Declaration, GroundHandoff.Declaration, Steady.Declaration, Active.Declaration,
+                        Approaching.Declaration }, Array.Empty<Field>()));
         }
 
         public readonly struct EndGrapple
