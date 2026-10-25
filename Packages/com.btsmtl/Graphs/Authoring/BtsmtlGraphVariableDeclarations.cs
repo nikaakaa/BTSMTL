@@ -145,9 +145,7 @@ namespace BTSMTL.Graphs
             Serialize();
             string previousBlackboard = m_SerializedBlackboard;
             UnityEngine.Object[] previousReferences = m_ObjectReferences.ToArray();
-            var declarationReferences = new List<UnityEngine.Object>();
-            string previousDeclarations = JSONSerializer.Serialize(typeof(List<BtsmtlBlackboardDeclaration>),
-                m_BlackboardDeclarations, declarationReferences);
+            var previousDeclarations = m_BlackboardDeclarations.Select(DeclarationSemantics).ToArray();
             UnityEditor.Undo.IncrementCurrentGroup();
             int group = UnityEditor.Undo.GetCurrentGroup();
             UnityEditor.Undo.SetCurrentGroupName(title);
@@ -162,12 +160,9 @@ namespace BTSMTL.Graphs
                 m_BlackboardDeclarations.RemoveAll(declaration => !ids.Contains(declaration.VariableId));
                 Validate();
                 Serialize();
-                var currentDeclarationReferences = new List<UnityEngine.Object>();
-                string currentDeclarations = JSONSerializer.Serialize(typeof(List<BtsmtlBlackboardDeclaration>),
-                    m_BlackboardDeclarations, currentDeclarationReferences);
                 if (advanceRevision && (previousBlackboard != m_SerializedBlackboard ||
-                    !previousReferences.SequenceEqual(m_ObjectReferences) || previousDeclarations != currentDeclarations ||
-                    !declarationReferences.SequenceEqual(currentDeclarationReferences)))
+                    !previousReferences.SequenceEqual(m_ObjectReferences) ||
+                    !previousDeclarations.SequenceEqual(m_BlackboardDeclarations.Select(DeclarationSemantics))))
                     m_Revision = Guid.NewGuid().ToString("N");
                 UnityEditor.EditorUtility.SetDirty(m_Owner);
                 UnityEditor.Undo.CollapseUndoOperations(group);
@@ -183,6 +178,11 @@ namespace BTSMTL.Graphs
                 m_EditDepth--;
             }
         }
+
+        static (string, PipelineBlackboardVariableScope, PipelineBlackboardVariableLifetime,
+            string, string, PipelineBlackboardInputProjection?) DeclarationSemantics(BtsmtlBlackboardDeclaration declaration) =>
+            (declaration.VariableId, declaration.Scope, declaration.Lifetime, declaration.Category,
+                declaration.InputBinding?.InputValueId, declaration.InputBinding?.Projection);
 
         public void Replace(IReadOnlyList<Variable> variables) => Edit("编辑图变量列表", () =>
             m_Blackboard.variables = variables.ToDictionary(variable => variable.name,
