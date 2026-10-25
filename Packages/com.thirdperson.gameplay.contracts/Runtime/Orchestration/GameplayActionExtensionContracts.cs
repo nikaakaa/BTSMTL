@@ -143,6 +143,19 @@ namespace ThirdPersonGameplay.Orchestration
                     }, new[] { Fields.Phase }));
         }
 
+        public readonly struct RequestTargetDiffersFromSource
+        {
+            public static readonly OrchestrationExtensionOutputPort<RequestTargetDiffersFromSource> Result =
+                new("result", OrchestrationValueKind.Boolean, 0);
+
+            public static readonly OrchestrationExtensionDefinition<RequestTargetDiffersFromSource> Definition = new(
+                new OrchestrationExtensionIdentity(DomainId, "request-target-differs-from-source"), 1,
+                new OrchestrationExtensionContract(OrchestrationExtensionKind.Condition,
+                    OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
+                    OrchestrationExtensionCompletion.Immediate, new[] { Result.Declaration },
+                    Array.Empty<OrchestrationExtensionContentField>()));
+        }
+
         public readonly struct CanActivateAction
         {
             public static readonly OrchestrationExtensionInputPort<CanActivateAction> TargetId =

@@ -14,6 +14,7 @@ namespace ThirdPersonSimulation
         public const string BasisAimPointPortId = "Aim Point";
         public const string BasisYawPortId = "Yaw";
         public const string BasisPitchPortId = "Pitch";
+        public const string BasisPositionPortId = "Position";
         public const string BasisValidInputId = "camera-basis.valid";
         public const string BasisPlanarForwardInputId = "camera-basis.planar-forward";
         public const string BasisPlanarRightInputId = "camera-basis.planar-right";
@@ -21,6 +22,7 @@ namespace ThirdPersonSimulation
         public const string BasisAimPointInputId = "camera-basis.aim-point";
         public const string BasisYawInputId = "camera-basis.yaw";
         public const string BasisPitchInputId = "camera-basis.pitch";
+        public const string BasisPositionInputId = "camera-basis.position";
 
         public static bool IsCameraBasisInputId(string inputId)
         {
@@ -45,7 +47,9 @@ namespace ThirdPersonSimulation
             new GraphOrchestrationHostInputPort(BasisYawPortId, BasisYawInputId,
                 OrchestrationValueKind.Yaw, GraphValueTypeIdentity.Of(OrchestrationValueKind.Yaw)),
             new GraphOrchestrationHostInputPort(BasisPitchPortId, BasisPitchInputId,
-                OrchestrationValueKind.Scalar, GraphValueTypeIdentity.Of(OrchestrationValueKind.Scalar))
+                OrchestrationValueKind.Scalar, GraphValueTypeIdentity.Of(OrchestrationValueKind.Scalar)),
+            new GraphOrchestrationHostInputPort(BasisPositionPortId, BasisPositionInputId,
+                OrchestrationValueKind.Vector3, GraphValueTypeIdentity.Of(OrchestrationValueKind.Vector3))
         });
     }
 }

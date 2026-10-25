@@ -15,7 +15,11 @@ namespace ThirdPersonSimulation
         ActorAbilityBlocked = 10,
         SourceAbilityBlocked = 11,
         ReplacementSourceRequirementFailed = 12,
-        OpportunityUnavailable = 13
+        OpportunityUnavailable = 13,
+        ScenePointUnavailable = 14,
+        ScenePointTagsRejected = 15,
+        TargetOutOfRange = 16,
+        TargetOccluded = 17
     }
 
 }
