@@ -18,6 +18,7 @@ namespace ThirdPersonGameplay.Orchestration
             public static readonly Field PullAcceleration = Field.Value("PullAcceleration", OrchestrationValueKind.Scalar);
             public static readonly Field InitialImpulse = Field.Value("InitialImpulse", OrchestrationValueKind.Scalar);
             public static readonly Field AirAcceleration = Field.Value("AirAcceleration", OrchestrationValueKind.Scalar);
+            public static readonly Field AirSteeringAcceleration = Field.Value("AirSteeringAcceleration", OrchestrationValueKind.Scalar);
             public static readonly Field AirSpeed = Field.Value("AirSpeed", OrchestrationValueKind.Scalar);
             public static readonly Field GravityScale = Field.Value("GravityScale", OrchestrationValueKind.Scalar);
             public static readonly Field MinimumGravityScale = Field.Value("MinimumGravityScale", OrchestrationValueKind.Scalar);
@@ -29,7 +30,7 @@ namespace ThirdPersonGameplay.Orchestration
             public static readonly Field BlockTimeout = Field.Value("BlockTimeout", OrchestrationValueKind.Scalar);
             public static readonly Field TurnSpeed = Field.Value("TurnSpeed", OrchestrationValueKind.Scalar);
             public static readonly ReadOnlyMemory<Field> All = new[]
-                { MaximumLength, HookSpeed, PreparationTime, TakeoffDelay, PullStartSpeed, PullSpeed, PullRampTime, PullAcceleration, InitialImpulse, AirAcceleration, AirSpeed,
+                { MaximumLength, HookSpeed, PreparationTime, TakeoffDelay, PullStartSpeed, PullSpeed, PullRampTime, PullAcceleration, InitialImpulse, AirAcceleration, AirSteeringAcceleration, AirSpeed,
                     MinimumGravityScale, GravityScale, TangentialDeceleration, LaunchHeight, SurfaceMask,
                     ReleaseRadius, BlockedSpeed, BlockTimeout, TurnSpeed };
         }
@@ -37,7 +38,7 @@ namespace ThirdPersonGameplay.Orchestration
         public readonly struct BeginGrapple
         {
             public static readonly OrchestrationExtensionDefinition<BeginGrapple> Definition = new(
-                new OrchestrationExtensionIdentity(DomainId, "begin-grapple"), 3,
+                new OrchestrationExtensionIdentity(DomainId, "begin-grapple"), 4,
                 new OrchestrationExtensionContract(OrchestrationExtensionKind.Action,
                     OrchestrationExtensionAccess.CandidateWrite, OrchestrationExtensionInvocationKind.Execute,
                     OrchestrationExtensionCompletion.Immediate, Array.Empty<OrchestrationExtensionPort>(), GrappleFields.All));
