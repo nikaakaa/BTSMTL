@@ -246,10 +246,14 @@ namespace ThirdPersonSimulation
             TMath math = default;
             if (math.IsVector3Zero(delta))
                 return math.ZeroVector3;
-            if (math.IsZero(Dot3(target, remaining)))
-                return math.MultiplyVector3(target, math.Divide(Magnitude3(delta), Magnitude3(remaining)));
+            TScalar remainingScale = math.Max(math.Abs(math.X3(remaining)),
+                math.Max(math.Abs(math.Y3(remaining)), math.Abs(math.Z3(remaining))));
+            TVector3 scaledRemaining = math.DivideVector3(remaining, remainingScale);
+            TVector3 scaledDelta = math.DivideVector3(delta, remainingScale);
+            if (math.IsZero(Dot3(target, scaledRemaining)))
+                return math.MultiplyVector3(target, math.Divide(Magnitude3(scaledDelta), Magnitude3(scaledRemaining)));
             // UE SkewWarp's forward scale and two shears reduce to this rank-one transform.
-            TScalar forwardFraction = math.Divide(Dot3(delta, remaining), Dot3(remaining, remaining));
+            TScalar forwardFraction = math.Divide(Dot3(scaledDelta, scaledRemaining), Dot3(scaledRemaining, scaledRemaining));
             return math.AddVector3(delta,
                 math.MultiplyVector3(math.SubtractVector3(target, remaining), forwardFraction));
         }
