@@ -21,7 +21,9 @@ namespace ThirdPersonSimulation
         None = 0,
         SnapshotRequired = 1,
         OptionalSnapshot = 2,
-        StaticObstacleRequired = 4
+        ScenePointRequired = 3,
+        StaticObstacleRequired = 4,
+        SpatialPointOptional = 5
     }
 
 }
