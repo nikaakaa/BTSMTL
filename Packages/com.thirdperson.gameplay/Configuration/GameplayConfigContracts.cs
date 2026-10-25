@@ -58,24 +58,45 @@ namespace ThirdPersonGameplay.Configuration
         public bool CanRead => ValueKind != GameplayConfigValueKind.Unsupported;
     }
 
+    public enum GameplayConfigSourceLocationKind : byte
+    {
+        WorkbookRow,
+        File
+    }
+
     public readonly partial struct GameplayConfigRecordSource
     {
-        public GameplayConfigRecordSource(string table, string recordId, string workbook, string sheet, int row, string contentIdentity)
+        public GameplayConfigRecordSource(string table, string recordId, GameplayConfigSourceLocationKind kind,
+            string path, string sheet, int row, string contentIdentity)
         {
+            bool workbook = kind == GameplayConfigSourceLocationKind.WorkbookRow;
+            if (workbook ? string.IsNullOrEmpty(sheet) || row <= 0 : kind != GameplayConfigSourceLocationKind.File || !string.IsNullOrEmpty(sheet) || row != 0)
+                throw new ArgumentException("Gameplay 配置来源位置与种类不一致：" + table + "/" + recordId);
             Table = table;
             RecordId = recordId;
-            Workbook = workbook;
+            Kind = kind;
+            Path = path;
             Sheet = sheet;
             Row = row;
             ContentIdentity = contentIdentity;
         }
 
+        public static GameplayConfigRecordSource WorkbookRow(string table, string recordId, string path, string sheet, int row,
+            string contentIdentity) =>
+            new GameplayConfigRecordSource(table, recordId, GameplayConfigSourceLocationKind.WorkbookRow, path, sheet, row, contentIdentity);
+
+        public static GameplayConfigRecordSource File(string table, string recordId, string path, string contentIdentity) =>
+            new GameplayConfigRecordSource(table, recordId, GameplayConfigSourceLocationKind.File, path, string.Empty, 0, contentIdentity);
+
         public string Table { get; }
         public string RecordId { get; }
-        public string Workbook { get; }
+        public GameplayConfigSourceLocationKind Kind { get; }
+        public string Path { get; }
         public string Sheet { get; }
         public int Row { get; }
         public string ContentIdentity { get; }
+
+        public string Describe() => Kind == GameplayConfigSourceLocationKind.WorkbookRow ? Path + "#" + Sheet + ":" + Row : Path;
     }
 
     public readonly partial struct GameplayConfigDataFile
@@ -113,7 +134,7 @@ namespace ThirdPersonGameplay.Configuration
 
     public static class GameplayConfigProtocol
     {
-        public const int Version = 1;
+        public const int Version = 2;
         public const string MetadataFile = "gameplay-config.identity";
     }
 }
