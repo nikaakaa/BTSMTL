@@ -111,9 +111,12 @@ namespace BTSMTL.Graphs
                 variable = new Variable<T>(name, id) { value = defaultValue };
                 var declaration = new BtsmtlBlackboardDeclaration(id, PipelineBlackboardVariableScope.Graph,
                     PipelineBlackboardVariableLifetime.GraphInstance);
-                declaration.Validate(variable);
                 m_Blackboard.variables.Add(name, variable);
-                m_BlackboardDeclarations.Add(declaration);
+                int declarationIndex = m_BlackboardDeclarations.FindIndex(value => value.VariableId == id);
+                if (declarationIndex < 0)
+                    m_BlackboardDeclarations.Add(declaration);
+                else
+                    m_BlackboardDeclarations[declarationIndex] = declaration;
                 Blackboard.TryInvokeOnVariableAdded(variable);
             });
             return variable;
@@ -127,7 +130,6 @@ namespace BTSMTL.Graphs
             Edit("配置图变量黑板语义", () =>
             {
                 var declaration = new BtsmtlBlackboardDeclaration(id, scope, lifetime, category, inputBinding);
-                declaration.Validate(m_Blackboard.variables.Values.Single(variable => variable.ID == id));
                 m_BlackboardDeclarations[m_BlackboardDeclarations.FindIndex(value => value.VariableId == id)] = declaration;
             });
 
