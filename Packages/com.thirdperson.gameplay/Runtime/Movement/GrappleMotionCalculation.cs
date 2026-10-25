@@ -6,6 +6,26 @@ namespace ThirdPersonSimulation
         where TVector3 : struct
         where TMath : struct, IScalarMath<TScalar>, IVectorMath<TScalar, TVector2, TVector3>
     {
+        public static TVector3 ArrivalPosition(TVector3 start, TVector3 startVelocity,
+            TVector3 target, TVector3 exitVelocity, TScalar duration, TScalar progress)
+        {
+            TMath math = default;
+            TScalar squared = math.Multiply(progress, progress);
+            TScalar cubed = math.Multiply(squared, progress);
+            TScalar twiceCubed = math.Multiply(math.FromInt32(2), cubed);
+            TScalar threeSquared = math.Multiply(math.FromInt32(3), squared);
+            TScalar startWeight = math.Add(math.Subtract(twiceCubed, threeSquared), math.One);
+            TScalar startTangent = math.Add(math.Subtract(cubed,
+                math.Multiply(math.FromInt32(2), squared)), progress);
+            TScalar targetWeight = math.Subtract(threeSquared, twiceCubed);
+            TScalar targetTangent = math.Subtract(cubed, squared);
+            return math.AddVector3(
+                math.AddVector3(math.MultiplyVector3(start, startWeight),
+                    math.MultiplyVector3(startVelocity, math.Multiply(startTangent, duration))),
+                math.AddVector3(math.MultiplyVector3(target, targetWeight),
+                    math.MultiplyVector3(exitVelocity, math.Multiply(targetTangent, duration))));
+        }
+
         public static TScalar GravityScale(TVector3 pull, TVector3 look, TVector2 move,
             TScalar minimum, TScalar maximum)
         {
