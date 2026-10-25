@@ -9,6 +9,9 @@ namespace BTSMTL.Compilation
     {
         sealed partial class Compilation<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TLowering>
         {
+            readonly Dictionary<(OrchestrationValueScheduleCode Code, int Operation, int Operand, int Destination,
+                int Argument, int Next, int Alternative), int> m_ValueInstructionIndexes = new();
+
             OrchestrationValueSchedule BuildValueSchedule(OperationDraft[] operations,
                 OrchestrationFlowEdge[] edges, OrchestrationProgramStructure structure)
             {
@@ -740,7 +743,12 @@ namespace BTSMTL.Compilation
 
                 int Instruction(OrchestrationValueScheduleInstruction instruction)
                 {
+                    var key = (instruction.Code, instruction.Operation, instruction.Operand, instruction.Destination,
+                        instruction.Argument, instruction.Next, instruction.Alternative);
+                    if (m_Compiler.m_ValueInstructionIndexes.TryGetValue(key, out int existing))
+                        return existing;
                     int result = m_Instructions.Count;
+                    m_Compiler.m_ValueInstructionIndexes.Add(key, result);
                     m_Instructions.Add(instruction);
                     return result;
                 }

@@ -55,7 +55,7 @@ namespace BTSMTL.Graphs.Editor
         {
             var parts = new List<string>
             {
-                "btsmtl-graph-compiler/1", sourceIdentity, loweringType, valueAccessType, contentContract,
+                "btsmtl-graph-compiler/2", sourceIdentity, loweringType, valueAccessType, contentContract,
                 contract.ContractId, contract.Revision, contract.UpdateEventId, contract.NumericTarget
             };
             foreach (GraphHostInputDescriptor input in contract.Inputs)
