@@ -141,6 +141,11 @@ namespace BTSMTL.Graphs
                 return;
             }
             Serialize();
+            string previousBlackboard = m_SerializedBlackboard;
+            UnityEngine.Object[] previousReferences = m_ObjectReferences.ToArray();
+            var declarationReferences = new List<UnityEngine.Object>();
+            string previousDeclarations = JSONSerializer.Serialize(typeof(List<BtsmtlBlackboardDeclaration>),
+                m_BlackboardDeclarations, declarationReferences);
             UnityEditor.Undo.IncrementCurrentGroup();
             int group = UnityEditor.Undo.GetCurrentGroup();
             UnityEditor.Undo.SetCurrentGroupName(title);
@@ -154,9 +159,14 @@ namespace BTSMTL.Graphs
                 var ids = new HashSet<string>(m_Blackboard.variables.Values.Select(variable => variable.ID), StringComparer.Ordinal);
                 m_BlackboardDeclarations.RemoveAll(declaration => !ids.Contains(declaration.VariableId));
                 Validate();
-                if (advanceRevision)
-                    m_Revision = Guid.NewGuid().ToString("N");
                 Serialize();
+                var currentDeclarationReferences = new List<UnityEngine.Object>();
+                string currentDeclarations = JSONSerializer.Serialize(typeof(List<BtsmtlBlackboardDeclaration>),
+                    m_BlackboardDeclarations, currentDeclarationReferences);
+                if (advanceRevision && (previousBlackboard != m_SerializedBlackboard ||
+                    !previousReferences.SequenceEqual(m_ObjectReferences) || previousDeclarations != currentDeclarations ||
+                    !declarationReferences.SequenceEqual(currentDeclarationReferences)))
+                    m_Revision = Guid.NewGuid().ToString("N");
                 UnityEditor.EditorUtility.SetDirty(m_Owner);
                 UnityEditor.Undo.CollapseUndoOperations(group);
             }
