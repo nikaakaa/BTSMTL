@@ -476,7 +476,17 @@ namespace BTSMTL.Timeline.Editor
             m_EditActive = false;
             m_EditSourceRevision = 0;
             if (m_Request.TimeRangePreview != null && m_EditKind == EmbeddedTimelineEditKind.ClipTimeRange)
-                m_Request.TimeRangePreview.CancelEdit();
+            {
+                m_CommittingEdit = true;
+                try
+                {
+                    m_Request.TimeRangePreview.CancelEdit();
+                }
+                finally
+                {
+                    m_CommittingEdit = false;
+                }
+            }
             Rebuild(m_SourceResourceClipId != null);
         }
 
