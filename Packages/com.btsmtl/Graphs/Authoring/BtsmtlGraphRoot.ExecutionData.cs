@@ -10,6 +10,7 @@ namespace BTSMTL.Graphs
     {
         [SerializeField, HideInInspector] byte[] m_ExecutionData = Array.Empty<byte>();
         [SerializeField, HideInInspector] byte[] m_ExecutionIdentity = Array.Empty<byte>();
+        [SerializeField, HideInInspector] string m_CompilationInputIdentity = string.Empty;
         [NonSerialized] GraphExecutionIdentity m_PreparedIdentity;
 
         public GraphExecutionIdentity ExecutionIdentity => m_PreparedIdentity;
@@ -41,11 +42,15 @@ namespace BTSMTL.Graphs
         }
 
 #if UNITY_EDITOR
+        public string CompilationInputIdentity => m_CompilationInputIdentity;
+
         public void SetExecutionData<TValue>(byte[] bytes, GraphExecutionIdentity identity,
-            IOrchestrationGraphContentEncoding<TValue> encoding) where TValue : unmanaged
+            IOrchestrationGraphContentEncoding<TValue> encoding, string compilationInputIdentity) where TValue : unmanaged
         {
             m_ExecutionData = bytes;
             m_ExecutionIdentity = encoding.WriteIdentity(identity);
+            m_CompilationInputIdentity = compilationInputIdentity;
+            m_PreparedIdentity = identity;
         }
 #endif
     }

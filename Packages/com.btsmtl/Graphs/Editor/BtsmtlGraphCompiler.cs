@@ -30,16 +30,47 @@ namespace BTSMTL.Graphs.Editor
             where TValues : struct, IOrchestrationValueAccess<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion>
             where TLowering : struct, IBtsmtlOrchestrationNumericLowering<TScalar, TVector2, TVector3, TYaw, TQuaternion>
         {
-            BtsmtlGraphValidator.Require(root, contract);
-            root.SelfSerialize();
             var fingerprint = new BtsmtlGraphFingerprint();
             GraphExecutionIdentity identity = fingerprint.CreateIdentity(root, root.AuthoringId,
                 encoding.EncodingContract, contract.NumericTarget);
+            string inputIdentity = ComputeCompilationInputIdentity(contract,
+                StableHash.Compute(encoding.WriteIdentity(identity)).Value,
+                typeof(TLowering).FullName, typeof(TValues).FullName, contentEncoder?.ContractIdentity ?? string.Empty);
+            if (root.CompilationInputIdentity == inputIdentity)
+            {
+                Debug.Log($"Graph '{root.AuthoringId}' is up to date; validation, compilation and asset writes skipped.");
+                return;
+            }
+            BtsmtlGraphValidator.Require(root, contract);
+            root.SelfSerialize();
             OrchestrationGraphContent<TValue> content =
                 new Compilation(root, contract, identity.SourceRevision).Build<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TLowering>(
                     identity, lowering, contentEncoder);
-            root.SetExecutionData(encoding.Write(content), identity, encoding);
+            root.SetExecutionData(encoding.Write(content), identity, encoding, inputIdentity);
             EditorUtility.SetDirty(root);
+        }
+
+        static string ComputeCompilationInputIdentity(GraphHostContract contract, string sourceIdentity,
+            string loweringType, string valueAccessType, string contentContract)
+        {
+            var parts = new List<string>
+            {
+                "btsmtl-graph-compiler/1", sourceIdentity, loweringType, valueAccessType, contentContract,
+                contract.ContractId, contract.Revision, contract.UpdateEventId, contract.NumericTarget
+            };
+            foreach (GraphHostInputDescriptor input in contract.Inputs)
+            {
+                parts.Add(input.InputId);
+                parts.Add(input.ValueType.AssemblyQualifiedName);
+            }
+            foreach (GraphHostOutputDescriptor output in contract.Outputs)
+            {
+                parts.Add(output.VariableId);
+                parts.Add(output.ValueType.AssemblyQualifiedName);
+            }
+            parts.AddRange(contract.BlackboardScopes.Select(scope => scope.ToString()));
+            parts.AddRange(contract.Domains);
+            return StableHash.Compute(parts.ToArray()).Value;
         }
 
         sealed class UnitySemanticBuilder : BtsmtlGraphSemanticBuilder
