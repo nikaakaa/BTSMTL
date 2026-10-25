@@ -71,7 +71,9 @@ namespace ThirdPerson.MemoryPackAdapters
                         Visit(method.TypeArguments[i]);
             }
             INamedTypeSymbol contentContext = context.Compilation.GetTypeByMetadataName("ThirdPersonSimulation.Serialization.MemoryPackContentContext");
-            if (contentContext != null && SymbolEqualityComparer.Default.Equals(contentContext.ContainingAssembly, context.Compilation.Assembly))
+            bool ownsContentContext = contentContext != null &&
+                SymbolEqualityComparer.Default.Equals(contentContext.ContainingAssembly, context.Compilation.Assembly);
+            if (ownsContentContext)
                 foreach (INamedTypeSymbol logical in LogicalStorageTypes(context.Compilation)) Visit(logical);
             var preparedPlans = new Dictionary<string, PreparedReadPlan>(StringComparer.Ordinal);
             foreach (var logical in logicalStorages)
@@ -113,7 +115,7 @@ namespace ThirdPerson.MemoryPackAdapters
                 HasAdapter(SequenceElement(type))).ToArray();
             INamedTypeSymbol[] adaptedNullableValues = nullableValues.Values.Where(type =>
                 HasAdapter(NullableElement(type))).ToArray();
-            if (records.Count + adaptedSequences.Length + adaptedNullableValues.Length == 0) return;
+            if (records.Count + adaptedSequences.Length + adaptedNullableValues.Length == 0 && !ownsContentContext) return;
             var payloadTypes = new HashSet<string>(StringComparer.Ordinal);
             bool changed;
             do
