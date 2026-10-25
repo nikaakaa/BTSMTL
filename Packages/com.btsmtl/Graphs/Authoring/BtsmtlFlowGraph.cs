@@ -41,6 +41,8 @@ namespace BTSMTL.Graphs
 #if UNITY_EDITOR
         [NonSerialized] int m_EditDepth;
         static int s_ConnectionValidationDepth;
+        public override UnityEngine.Object EditorUndoTarget => m_EditDepth == 0 ? this : null;
+
         public void EditAuthoring(string title, Action mutation)
         {
             if (m_EditDepth != 0)
