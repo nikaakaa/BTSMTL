@@ -59,6 +59,11 @@ namespace ThirdPersonSimulation
         TScalar Magnitude2(TVector2 value);
         TScalar SqrMagnitude2(TVector2 value);
         TVector2 Normalize2(TVector2 value);
+        TScalar Dot2(TVector2 left, TVector2 right);
+        TScalar Dot3(TVector3 left, TVector3 right);
+        TScalar Magnitude3(TVector3 value);
+        TScalar SqrMagnitude3(TVector3 value);
+        TVector3 Normalize3(TVector3 value);
         TVector3 AddVector3(TVector3 left, TVector3 right);
         TVector3 SubtractVector3(TVector3 left, TVector3 right);
         TVector3 MultiplyVector3(TVector3 value, TScalar scale);

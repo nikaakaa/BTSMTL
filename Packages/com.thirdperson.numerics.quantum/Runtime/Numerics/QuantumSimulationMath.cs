@@ -45,6 +45,11 @@ namespace ThirdPersonSimulation.QuantumNumerics
         public FP Magnitude2(FPVector2 value) => value.Magnitude;
         public FP SqrMagnitude2(FPVector2 value) => value.SqrMagnitude;
         public FPVector2 Normalize2(FPVector2 value) => value.Normalized;
+        public FP Dot2(FPVector2 left, FPVector2 right) => FPVector2.Dot(left, right);
+        public FP Dot3(FPVector3 left, FPVector3 right) => FPVector3.Dot(left, right);
+        public FP Magnitude3(FPVector3 value) => value.Magnitude;
+        public FP SqrMagnitude3(FPVector3 value) => value.SqrMagnitude;
+        public FPVector3 Normalize3(FPVector3 value) => value.Normalized;
         public FPVector2 MultiplyVector2(FPVector2 value, FP scale) => value * scale;
         public FPVector2 SubtractVector2(FPVector2 left, FPVector2 right) => left - right;
         public FP SignedAngle2(FPVector2 from, FPVector2 to) =>

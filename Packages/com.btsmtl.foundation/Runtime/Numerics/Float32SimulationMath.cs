@@ -54,6 +54,11 @@ namespace ThirdPersonSimulation
         public Float32Scalar Magnitude2(Float32Vector2 value) => value.Magnitude;
         public Float32Scalar SqrMagnitude2(Float32Vector2 value) => value.SqrMagnitude;
         public Float32Vector2 Normalize2(Float32Vector2 value) => value.Normalized;
+        public Float32Scalar Dot2(Float32Vector2 left, Float32Vector2 right) => left.X * right.X + left.Y * right.Y;
+        public Float32Scalar Dot3(Float32Vector3 left, Float32Vector3 right) => left.X * right.X + left.Y * right.Y + left.Z * right.Z;
+        public Float32Scalar Magnitude3(Float32Vector3 value) => value.Magnitude;
+        public Float32Scalar SqrMagnitude3(Float32Vector3 value) => value.SqrMagnitude;
+        public Float32Vector3 Normalize3(Float32Vector3 value) => value.Normalized;
         public Float32Vector2 MultiplyVector2(Float32Vector2 value, Float32Scalar scale) => value * scale;
         public Float32Vector2 SubtractVector2(Float32Vector2 left, Float32Vector2 right) => left - right;
         public Float32Vector3 AddVector3(Float32Vector3 left, Float32Vector3 right) => left + right;
