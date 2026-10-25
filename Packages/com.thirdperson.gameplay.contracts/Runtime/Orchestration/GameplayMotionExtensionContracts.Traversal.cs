@@ -52,14 +52,15 @@ namespace ThirdPersonGameplay.Orchestration
             public static readonly OrchestrationExtensionOutputPort<ReadObstacleTraversal> HasTarget = new("has-target", OrchestrationValueKind.Boolean, 8);
             public static readonly OrchestrationExtensionOutputPort<ReadObstacleTraversal> EntryTime = new("entry-time", OrchestrationValueKind.Scalar, 9);
             public static readonly OrchestrationExtensionOutputPort<ReadObstacleTraversal> ShouldRelease = new("should-release", OrchestrationValueKind.Boolean, 10);
+            public static readonly OrchestrationExtensionOutputPort<ReadObstacleTraversal> PlaybackRate = new("playback-rate", OrchestrationValueKind.Scalar, 11);
             public static readonly OrchestrationExtensionDefinition<ReadObstacleTraversal> Definition = new(
-                new OrchestrationExtensionIdentity(DomainId, "read-obstacle-traversal"), 2,
+                new OrchestrationExtensionIdentity(DomainId, "read-obstacle-traversal"), 3,
                 new OrchestrationExtensionContract(OrchestrationExtensionKind.Value,
                     OrchestrationExtensionAccess.ReadOnly, OrchestrationExtensionInvocationKind.Evaluate,
                     OrchestrationExtensionCompletion.Immediate,
                     new[] { Variant.Declaration, FrontLedge.Declaration, BackLedge.Declaration, BackFloor.Declaration,
                         Yaw.Declaration, Ended.Declaration, Succeeded.Declaration, Reason.Declaration, HasTarget.Declaration,
-                        EntryTime.Declaration, ShouldRelease.Declaration },
+                        EntryTime.Declaration, ShouldRelease.Declaration, PlaybackRate.Declaration },
                     Array.Empty<OrchestrationExtensionContentField>()));
         }
     }
