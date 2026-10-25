@@ -3,8 +3,24 @@ namespace ThirdPersonSimulation
     public enum BodyMotionMode : byte
     {
         FreeFall,
+        Grappling = 1,
         AuthoredTrajectory = 3
     }
+
+    public enum GrappleEndReason : byte
+    {
+        None,
+        Arrived,
+        Blocked,
+        Interrupted,
+        Released,
+        Missed,
+        OutOfRange,
+        RopeCapacity,
+        Landed
+    }
+
+    public enum GrapplePhase : byte { Idle, Shooting, Attached, Retracting, Preparing }
 
     public readonly struct BodyMotionIntegrationPlan<TScalar, TVector3>
         where TScalar : struct
@@ -41,7 +57,8 @@ namespace ThirdPersonSimulation
             in BodyMotionParameters<TScalar> parameters, TScalar tickDelta)
         {
             TMath math = default;
-            if (mode == BodyMotionMode.AuthoredTrajectory)
+            if (mode == BodyMotionMode.Grappling ||
+                mode == BodyMotionMode.AuthoredTrajectory)
                 return new BodyMotionIntegrationPlan<TScalar, TVector3>(actorId, tick, tickDelta,
                     previousVerticalVelocity, math.Divide(math.Y3(gameplayDisplacement), tickDelta), gameplayDisplacement);
             TScalar candidate = math.Max(
