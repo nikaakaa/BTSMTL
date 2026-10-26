@@ -6,6 +6,7 @@ using System.Linq;
 
 namespace BTSMTL.Authoring.Storage
 {
+
 public sealed class AuthoringFileChange
 {
     public AuthoringFileChange(string path, byte[]? before, byte[]? after)

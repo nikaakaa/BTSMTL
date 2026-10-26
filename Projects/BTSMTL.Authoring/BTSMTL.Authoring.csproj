@@ -7,6 +7,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../../Packages/com.btsmtl/Authoring/Documents/*.cs" />
+    <Compile Include="../../Packages/com.btsmtl/Authoring/Storage/*.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/GraphAuthoringFieldMetadata.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/GraphAuthoringFieldAttribute.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/GraphAuthoringIdentities.cs" />
