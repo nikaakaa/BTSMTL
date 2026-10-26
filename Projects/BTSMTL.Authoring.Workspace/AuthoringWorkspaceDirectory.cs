@@ -18,6 +18,8 @@ public sealed class AuthoringWorkspaceDirectory
     public AuthoringWorkspaceDirectory(string path) => Path = System.IO.Path.GetFullPath(path);
     public string Path { get; }
 
+    public AuthoringSourceFile ReadSource(string relativePath) => ReadFile(Resolve(Path, relativePath));
+
     public AuthoringPage<AuthoringRootEntry> List(int offset, int limit)
     {
         RequirePage(offset, limit);

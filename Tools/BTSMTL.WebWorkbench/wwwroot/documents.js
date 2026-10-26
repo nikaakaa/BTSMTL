@@ -34,8 +34,24 @@ function renderRoots() {
 async function openRoot(path) {
   const entry = state.roots.find(root => root.path === path);
   if (entry.problems.length) {
+    state.selectedRoot = entry;
+    state.snapshot = null;
+    state.selectedFile = null;
+    state.selectedNode = null;
     $('document-title').textContent = entry.displayName;
+    $('root-kind').textContent = '外部文件尚未接收';
+    $('files').innerHTML = '';
+    $('file-path').textContent = entry.path;
+    $('file-revision').textContent = '';
+    $('selection-name').textContent = '无法解析对象';
+    $('inspector-content').innerHTML = '';
+    $('document-actions').hidden = true;
+    $('source-text').value = '';
     $('document-view').innerHTML = `<div class="notice error"><h2>作者文件需要修正</h2>${entry.problems.map(problem => `<p>${escapeHtml(problem.message)}</p><code>${escapeHtml(problem.path)}</code>`).join('')}</div>`;
+    renderRoots();
+    const source = await request(`/api/workspace/source?path=${encodeURIComponent(entry.path)}`);
+    $('source-text').value = source.text;
+    $('file-revision').textContent = source.revision.slice(0, 12);
     report('原文件已保留，未接收为可编译内容。', true);
     return;
   }
@@ -50,7 +66,7 @@ async function openRoot(path) {
   $('root-kind').textContent = `${root.domain} · ${root.kind}`;
   $('revision').textContent = snapshot.revision.slice(0, 12);
   $('revision').title = snapshot.revision;
-  $('saved-state').textContent = '已读取磁盘文件';
+  $('saved-state').textContent = '已读取的文件版本';
   $('document-actions').hidden = false;
   renderRoots();
   renderFiles();
@@ -78,16 +94,17 @@ function renderDocument() {
   $('file-path').textContent = file.path;
   $('file-revision').textContent = file.revision.slice(0, 12);
   $('source-text').value = file.content;
-  let document;
-  try { document = JSON.parse(file.content); }
+  try {
+    const document = JSON.parse(file.content);
+    if (Array.isArray(document.nodes) && Array.isArray(document.edges)) renderGraph(document);
+    else renderRoot(document);
+    renderInspector(document);
+  }
   catch (error) {
     $('document-view').innerHTML = `<div class="notice error"><h2>文档格式无效</h2><p>${escapeHtml(error.message)}</p><p>原始内容保留在“源文件”页，未被旧缓存覆盖。</p></div>`;
     $('inspector-content').innerHTML = '';
     return;
   }
-  if (Array.isArray(document.nodes) && Array.isArray(document.edges)) renderGraph(document);
-  else renderRoot(document);
-  renderInspector(document);
 }
 
 function renderRoot(document) {
@@ -112,7 +129,7 @@ function renderGraph(graph) {
   const nodes = graph.nodes.map(node => {
     const position = positions.get(node.id);
     const fieldCount = Object.keys(node.fields).length;
-    return `<button class="graph-node ${state.selectedNode === node.id ? 'selected' : ''}" data-node="${escapeHtml(node.id)}" style="left:${position.x}px;top:${position.y}px"><span class="node-type">${escapeHtml(node.capability)}</span><strong>${escapeHtml(node.displayName)}</strong><small>${fieldCount} 个作者字段</small><i class="port in"></i><i class="port out"></i></button>`;
+    return `<button class="graph-node ${state.selectedNode === node.id ? 'selected' : ''}" data-node="${escapeHtml(node.id)}" style="left:${escapeHtml(position.x)}px;top:${escapeHtml(position.y)}px"><span class="node-type">${escapeHtml(node.capability)}</span><strong>${escapeHtml(node.displayName)}</strong><small>${fieldCount} 个作者字段</small><i class="port in"></i><i class="port out"></i></button>`;
   }).join('');
   $('document-view').innerHTML = `<div class="graph-surface" id="graph-surface"><div class="graph-caption">${escapeHtml(graph.role)}<span>${graph.nodes.length} 个节点 · ${graph.edges.length} 条连接</span></div><div class="graph-world" id="graph-world"><svg width="6000" height="4000">${links}</svg>${nodes}</div><div class="canvas-tools"><button id="fit-graph">复位视图</button><span id="zoom-value">100%</span></div><div class="canvas-hint">空白处拖动画布 · 滚轮缩放 · 选择节点查看实际字段</div></div>`;
   updateView();
