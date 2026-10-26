@@ -1,21 +1,61 @@
-using System.Security.Cryptography;
+#nullable enable
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 
-namespace BTSMTL.Authoring.Workspace;
+namespace BTSMTL.Authoring.Storage
+{
+public sealed class AuthoringFileChange
+{
+    public AuthoringFileChange(string path, byte[]? before, byte[]? after)
+    { Path = path; Before = before; After = after; }
+    public string Path { get; }
+    public byte[]? Before { get; }
+    public byte[]? After { get; }
+}
 
-public sealed record AuthoringFileChange(string Path, byte[]? Before, byte[]? After);
-public sealed record AuthoringFileRecovery(string Path, string BackupPath, string Error);
-public sealed record AuthoringFileWriteResult(bool Success, string FailedPath, string Error,
-    IReadOnlyList<string> Created, IReadOnlyList<string> Modified, IReadOnlyList<string> Deleted,
-    IReadOnlyList<string> Restored, IReadOnlyList<AuthoringFileRecovery> Recovery);
+public sealed class AuthoringFileRecovery
+{
+    public AuthoringFileRecovery(string path, string backupPath, string error)
+    { Path = path; BackupPath = backupPath; Error = error; }
+    public string Path { get; }
+    public string BackupPath { get; }
+    public string Error { get; }
+}
+
+public sealed class AuthoringFileWriteResult
+{
+    public AuthoringFileWriteResult(bool success, string failedPath, string error,
+        IReadOnlyList<string> created, IReadOnlyList<string> modified, IReadOnlyList<string> deleted,
+        IReadOnlyList<string> restored, IReadOnlyList<AuthoringFileRecovery> recovery)
+    {
+        Success = success; FailedPath = failedPath; Error = error;
+        Created = created; Modified = modified; Deleted = deleted; Restored = restored; Recovery = recovery;
+    }
+    public bool Success { get; }
+    public string FailedPath { get; }
+    public string Error { get; }
+    public IReadOnlyList<string> Created { get; }
+    public IReadOnlyList<string> Modified { get; }
+    public IReadOnlyList<string> Deleted { get; }
+    public IReadOnlyList<string> Restored { get; }
+    public IReadOnlyList<AuthoringFileRecovery> Recovery { get; }
+}
 
 public static class AuthoringFileTransaction
 {
-    sealed class Entry(AuthoringFileChange change, string directory, string id, int index)
+    sealed class Entry
     {
-        internal readonly AuthoringFileChange Change = change;
-        internal readonly string Staging = System.IO.Path.Combine(
-            System.IO.Path.GetDirectoryName(change.Path)!, $".btsmtl-{id}-{index}.write");
-        internal readonly string Backup = System.IO.Path.Combine(directory, $".btsmtl-{id}-{index}.restore");
+        internal Entry(AuthoringFileChange change, string directory, string id, int index)
+        {
+            Change = change;
+            Staging = Path.Combine(Path.GetDirectoryName(change.Path)!, $".btsmtl-{id}-{index}.write");
+            Backup = Path.Combine(directory, $".btsmtl-{id}-{index}.restore");
+        }
+        internal readonly AuthoringFileChange Change;
+        internal readonly string Staging;
+        internal readonly string Backup;
     }
 
     public static AuthoringFileWriteResult Write(string directory, IReadOnlyList<AuthoringFileChange> changes,
@@ -93,8 +133,7 @@ public static class AuthoringFileTransaction
                     else
                     {
                         byte[] current = File.ReadAllBytes(change.Path);
-                        if (!CryptographicOperations.FixedTimeEquals(SHA256.HashData(current),
-                            SHA256.HashData(change.After)))
+                        if (!current.AsSpan().SequenceEqual(change.After))
                             throw new IOException("文件在本次写入后被其它入口修改，保留其内容和原始恢复文件。");
                         if (change.Before == null) File.Delete(change.Path);
                         else File.Replace(entry.Backup, change.Path, null);
@@ -126,4 +165,5 @@ public static class AuthoringFileTransaction
             { recovery.Add(new(path, path, error.Message)); }
         }
     }
+}
 }

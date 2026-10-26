@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
+using BTSMTL.Authoring.Storage;
 
 namespace BTSMTL.Authoring.Workspace;
 
