@@ -60,6 +60,7 @@ namespace BTSMTL.Orchestration
                 case OrchestrationValueOpcode.ScalarGreaterThan: result = values.FromBoolean(math.GreaterThan(values.Scalar(in inputs[arguments[0]]), values.Scalar(in inputs[arguments[1]]))); return;
                 case OrchestrationValueOpcode.ScalarMultiply: result = values.FromScalar(math.Multiply(values.Scalar(in inputs[arguments[0]]), values.Scalar(in inputs[arguments[1]]))); return;
                 case OrchestrationValueOpcode.ScalarDivide: result = values.FromScalar(math.Divide(values.Scalar(in inputs[arguments[0]]), values.Scalar(in inputs[arguments[1]]))); return;
+                case OrchestrationValueOpcode.ScalarSubtract: result = values.FromScalar(math.Subtract(values.Scalar(in inputs[arguments[0]]), values.Scalar(in inputs[arguments[1]]))); return;
                 case OrchestrationValueOpcode.IdentityEqual: result = values.FromBoolean(identities.Equal(values.Identity(in inputs[arguments[0]]), values.Identity(in inputs[arguments[1]]))); return;
                 case OrchestrationValueOpcode.ScalarAbs: result = values.FromScalar(math.Abs(values.Scalar(in inputs[arguments[0]]))); return;
                 case OrchestrationValueOpcode.ScalarClamp: result = values.FromScalar(math.ClampGraph(values.Scalar(in inputs[arguments[0]]), values.Scalar(in inputs[arguments[1]]), values.Scalar(in inputs[arguments[2]]))); return;

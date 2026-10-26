@@ -22,7 +22,8 @@ namespace ThirdPersonSimulation
         QuaternionForward = 13,
         QuaternionAngleAxis = 14,
         Vector2Dot = 15,
-        Vector2Cross = 16
+        Vector2Cross = 16,
+        FloatSubtract = 17
     }
 
     public static class GraphCalculationContracts
@@ -37,6 +38,8 @@ namespace ThirdPersonSimulation
             Add(GraphCalculationKind.FloatMultiply, SemanticValueKind.Number,
                 ("a", SemanticValueKind.Number), ("b", SemanticValueKind.Number));
             Add(GraphCalculationKind.FloatDivide, SemanticValueKind.Number,
+                ("a", SemanticValueKind.Number), ("b", SemanticValueKind.Number));
+            Add(GraphCalculationKind.FloatSubtract, SemanticValueKind.Number,
                 ("a", SemanticValueKind.Number), ("b", SemanticValueKind.Number));
             Add(GraphCalculationKind.TextEqual, SemanticValueKind.Boolean,
                 ("a", SemanticValueKind.Identity), ("b", SemanticValueKind.Identity));

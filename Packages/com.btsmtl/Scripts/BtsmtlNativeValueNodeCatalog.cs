@@ -73,6 +73,7 @@ namespace BTSMTL
             Add<IntegerGreaterThan>("compare.int32.greater", OrchestrationOperationCode.Compare, comparison, 5);
             AddCalculation<FloatMultiply>(GraphCalculationKind.FloatMultiply);
             AddCalculation<FloatDivide>(GraphCalculationKind.FloatDivide);
+            AddCalculation<FloatSubtract>(GraphCalculationKind.FloatSubtract);
             AddCalculation<GraphTextEqualNode>(GraphCalculationKind.TextEqual);
             AddCalculation<GraphFloatAbsNode>(GraphCalculationKind.FloatAbs);
             AddCalculation<GraphFloatClampNode>(GraphCalculationKind.FloatClamp);

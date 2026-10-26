@@ -54,7 +54,8 @@ namespace BTSMTL.Orchestration
         TimelineTime,
         Extension,
         Vector2Dot,
-        Vector2Cross
+        Vector2Cross,
+        ScalarSubtract
     }
 
     public enum OrchestrationAssignmentOpcode : byte

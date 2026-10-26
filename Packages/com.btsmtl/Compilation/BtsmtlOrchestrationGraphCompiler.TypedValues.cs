@@ -106,6 +106,7 @@ namespace BTSMTL.Compilation
                         {
                             OrchestrationCalculationKind.ScalarMultiply => OrchestrationValueOpcode.ScalarMultiply,
                             OrchestrationCalculationKind.ScalarDivide => OrchestrationValueOpcode.ScalarDivide,
+                            OrchestrationCalculationKind.ScalarSubtract => OrchestrationValueOpcode.ScalarSubtract,
                             OrchestrationCalculationKind.IdentityEqual => OrchestrationValueOpcode.IdentityEqual,
                             OrchestrationCalculationKind.ScalarAbs => OrchestrationValueOpcode.ScalarAbs,
                             OrchestrationCalculationKind.ScalarClamp => OrchestrationValueOpcode.ScalarClamp,
