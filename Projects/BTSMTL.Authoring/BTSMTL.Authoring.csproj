@@ -7,6 +7,7 @@
     <DefineConstants>$(DefineConstants);BTSMTL_AUTHORING</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="../BTSMTL.Orchestration.Contracts/BTSMTL.Orchestration.Contracts.csproj" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Documents/*.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Storage/*.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/GraphAuthoringFieldMetadata.cs" />
@@ -15,6 +16,11 @@
     <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/GraphAuthoringMemberBindings.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/GraphAuthoringFieldAttribute.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/GraphAuthoringIdentities.cs" />
+    <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/CapabilityCatalog.cs" />
+    <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/PortContracts.cs" />
+    <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/GraphAuthoringColor.cs" />
+    <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/GraphOrchestrationPayloadAuthoring.cs" />
+    <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/GraphOrchestrationExtensionAttribute.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Blackboard/PipelineBlackboardVariableScope.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Blackboard/PipelineBlackboardVariableLifetime.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Blackboard/PipelineBlackboardVariablePolicy.cs" />

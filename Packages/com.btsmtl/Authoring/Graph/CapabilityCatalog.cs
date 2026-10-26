@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using BTSMTL.Orchestration;
-using UnityEngine;
 
 namespace BTSMTL.Authoring.Graph
 {
@@ -73,7 +72,7 @@ namespace BTSMTL.Authoring.Graph
             IReadOnlyList<GraphAuthoringDocumentRoleId> allowedDocumentRoles,
             string displayName,
             string category,
-            Color color,
+            GraphAuthoringColor color,
             IReadOnlyList<GraphAuthoringFieldDescriptor> fields = null,
             IReadOnlyList<GraphAuthoringPortDescriptor> fixedPorts = null,
             GraphAuthoringDynamicPortPolicy dynamicPortPolicy = GraphAuthoringDynamicPortPolicy.None,
@@ -145,7 +144,7 @@ namespace BTSMTL.Authoring.Graph
         public IReadOnlyCollection<GraphAuthoringDocumentRoleId> AllowedDocumentRoles => m_AllowedDocumentRoles;
         public string DisplayName { get; }
         public string Category { get; }
-        public Color Color { get; }
+        public GraphAuthoringColor Color { get; }
         public IReadOnlyCollection<GraphAuthoringFieldDescriptor> Fields => m_Fields.Values;
         public IReadOnlyCollection<GraphAuthoringPortDescriptor> FixedPorts => m_FixedPorts.Values;
         public GraphAuthoringDynamicPortPolicy DynamicPortPolicy { get; }
