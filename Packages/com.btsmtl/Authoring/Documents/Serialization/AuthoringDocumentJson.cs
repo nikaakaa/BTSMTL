@@ -21,7 +21,7 @@ namespace BTSMTL.Authoring.Documents
         public string ElementPath { get; }
     }
 
-    public static class AuthoringDocumentJson
+    public static partial class AuthoringDocumentJson
     {
         public static string WriteRoot(AuthoringRootDocument root) => Write(new JObject
         {
