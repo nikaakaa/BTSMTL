@@ -265,6 +265,21 @@ namespace BTSMTL.Graphs
         public void ConfigureValueInput<T>(FlowNode node, string portId, T value) =>
             Edit("配置图常量", () => ((ValueInput)node.GetInputPort(portId)).serializedValue = value);
 
+        // 调用节点按目标子图的最新接口收集端口，并在同一事务内复核端口登记。
+        public void ConfigureMacroCall(FlowNode node, BtsmtlMacroGraph macro)
+        {
+            if (node is not MacroNodeWrapper call || node.graph != m_Graph)
+                throw new InvalidOperationException("子图调用必须是当前图中的调用节点。");
+            if (!macro)
+                throw new ArgumentNullException(nameof(macro));
+            Edit("配置子图调用", () =>
+            {
+                call.macro = macro;
+                call.GatherPorts();
+                BtsmtlMacroInterface.ValidateCall(call, macro, $"{m_Graph.name}/node:{call.UID}");
+            });
+        }
+
         public void ConfigureCanvasGroups(IEnumerable<BtsmtlCanvasGroupDeclaration> groups) =>
             Edit("配置图分组注释", () => BtsmtlCanvasGroupDeclaration.Apply(m_Graph, groups));
 

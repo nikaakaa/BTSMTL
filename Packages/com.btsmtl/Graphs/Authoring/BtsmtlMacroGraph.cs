@@ -206,6 +206,9 @@ namespace BTSMTL.Graphs
         {
             if (node is not BtsmtlMacroInputNode && node is not BtsmtlMacroOutputNode)
                 base.RemoveNode(node, false, false);
+            else
+                foreach (Connection connection in node.outConnections.ToArray())
+                    base.RemoveConnection(connection, false);
         });
 
         public override GenericMenu GetNodesMenu(Vector2 position, Port context, UnityEngine.Object instance) =>
@@ -245,6 +248,29 @@ namespace BTSMTL.Graphs
 
         public void ConfigureCanvasGroups(params BtsmtlCanvasGroupDeclaration[] groups) =>
             Authoring.ConfigureCanvasGroups(groups);
+
+        public void ConfigureMacroCall(FlowNode node, BtsmtlMacroGraph macro) =>
+            Authoring.ConfigureMacroCall(node, macro);
+
+        // 生成顺序：接口 → 锚点 → 节点 → 连接；接口替换会同时刷新全部调用节点的端口。
+        public void ConfigureInterface(DynamicParameterDefinition[] inputs, DynamicParameterDefinition[] outputs) =>
+            BtsmtlMacroInterface.Configure(this, inputs, outputs);
+
+        public void ConfigureAnchors(string inputId, Vector2 inputPosition, string outputId, Vector2 outputPosition) =>
+            EditAuthoring("配置子图出入口", () =>
+            {
+                EnsureAnchors();
+                if (InputAnchor.UID != inputId && allNodes.Any(node => node.UID == inputId) ||
+                    OutputAnchor.UID != outputId && allNodes.Any(node => node.UID == outputId))
+                    throw new InvalidOperationException("子图出入口身份与已有节点重复。");
+                InputAnchor.ConfigureAuthoringIdentity(inputId);
+                InputAnchor.position = inputPosition;
+                OutputAnchor.ConfigureAuthoringIdentity(outputId);
+                OutputAnchor.position = outputPosition;
+            });
+
+        // 生成的整根重建即明确清空页面：保留出入口锚点，清除其它节点、连接与分组后按声明重建。
+        public void ClearAuthoringContent() => ClearGraph();
 
         public override IBlackboard editorBlackboard => Variables.Blackboard;
         public bool IsReadOnly => isEditorReadOnly;

@@ -142,6 +142,9 @@ namespace BTSMTL.Graphs
         public void ConfigureCanvasGroups(params BtsmtlCanvasGroupDeclaration[] groups) =>
             Authoring.ConfigureCanvasGroups(groups);
 
+        public void ConfigureMacroCall(FlowNode node, BtsmtlMacroGraph macro) =>
+            Authoring.ConfigureMacroCall(node, macro);
+
         // 生成的整根重建即明确清空页面：节点、连接与分组一起清除，再按声明重建。
         public void ClearAuthoringContent() => ClearGraph();
         public override IBlackboard editorBlackboard => m_VariableOwner ? Variables.Blackboard : null;
