@@ -398,19 +398,17 @@ public string ParameterId { get; }
 public float Value { get; }
 }
 public sealed partial class PublishedCharacter {
-public PublishedCharacter(string value_Id, IReadOnlyList<string> value_Attributes, IReadOnlyList<PublishedInitialAttribute> value_InitialAttributes, IReadOnlyList<string> value_InitialTags, IReadOnlyList<string> value_Effects, IReadOnlyList<PublishedInitialEffect> value_InitialEffects) {
+public PublishedCharacter(string value_Id, IReadOnlyList<string> value_Attributes, IReadOnlyList<PublishedInitialAttribute> value_InitialAttributes, IReadOnlyList<string> value_InitialTags, IReadOnlyList<PublishedInitialEffect> value_InitialEffects) {
 Id = value_Id;
 Attributes = value_Attributes;
 InitialAttributes = value_InitialAttributes;
 InitialTags = value_InitialTags;
-Effects = value_Effects;
 InitialEffects = value_InitialEffects;
 }
 public string Id { get; }
 public IReadOnlyList<string> Attributes { get; }
 public IReadOnlyList<PublishedInitialAttribute> InitialAttributes { get; }
 public IReadOnlyList<string> InitialTags { get; }
-public IReadOnlyList<string> Effects { get; }
 public IReadOnlyList<PublishedInitialEffect> InitialEffects { get; }
 }
 public sealed partial class PublishedGameplayConfiguration {
@@ -428,4 +426,4 @@ Attributes,
 Effects,
 Characters,
 } }
-namespace ThirdPersonGameplay.Configuration { public static class GameplayConfigGeneratedContract { public const string SchemaIdentity = "8ba8a41dc7f18df3bc1b7b325685fbb4bed7fae1319a9f97a57cd26c19cd09ad"; } }
+namespace ThirdPersonGameplay.Configuration { public static class GameplayConfigGeneratedContract { public const string SchemaIdentity = "bde616df70a1cca8967ad7d7d125723bcb229168101b7ead6132483e7a3f4f42"; } }

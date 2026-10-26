@@ -26,7 +26,6 @@ new GameplayConfigFieldDescription("19bc880486413a05498566725bbe35724a75286f8c00
 new GameplayConfigFieldDescription("9cc7ccb9fee6dad5d5d6adbede625d8b5cfd487a303b11bb1d7bc79d278f6672", "ca60fdb3e55286c1b7151a3ae2da39a551e1a4a4790c2db40fe08d1323f83f63", "Attributes", "array,string", GameplayConfigValueKind.Unsupported),
 new GameplayConfigFieldDescription("b9f6ea474fc417b09e85e8ffbaf3252c475c2aaaac07a4fbfec902b1a895fe56", "3877fa9dd7c52495e863494e1da0fa2dea8c574ba9dd8f44f93fe9d46bec6a4a", "InitialAttributes", "array,InitialAttribute", GameplayConfigValueKind.Unsupported),
 new GameplayConfigFieldDescription("80db5eab739680fdf1617dc32cb3bc4e9f18bccd228ccd5371d1db6a85fede94", "eba6c1f86f5117831c94c964622c6b4c7ca7afcf9fac1576cd396da5a5e7ce20", "InitialTags", "array,string", GameplayConfigValueKind.Unsupported),
-new GameplayConfigFieldDescription("eab12776ab905a8b4bf4ee0eb0b9dd46d3e7d8b40d8e3326972b74f377c70b29", "86474526feaabe58a51f2a450790f6e7d23c73cfad2cd513baca16c521800fa2", "Effects", "array,string", GameplayConfigValueKind.Unsupported),
 new GameplayConfigFieldDescription("23c39309645f0d786e5126ff40ffbcbb4f6d6f949a120ac1dbfd7d135e49da3c", "0f214fa56dccfa0089c1ad0cc3336aae16d9120ab3356d9309491b05a88fd884", "InitialEffects", "array,InitialEffect", GameplayConfigValueKind.Unsupported),
 });
 public static IReadOnlyList<GameplayConfigFieldDescription> Describe(GameplayConfigRecordKind kind) => kind switch {

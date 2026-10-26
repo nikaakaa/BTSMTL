@@ -114,7 +114,6 @@ Include(value.Effect_Ref);
 void Visit(Character value) {
 foreach (var child in value.Attributes_Ref) Include(child);
 foreach (var child in value.InitialAttributes) Visit(child);
-foreach (var child in value.Effects_Ref) Include(child);
 foreach (var child in value.InitialEffects) Visit(child);
 }
 public PublishedGameplayConfiguration Publish() => new PublishedGameplayConfiguration(
