@@ -34,7 +34,7 @@ namespace BTSMTL.Graphs
     }
 
     [CreateAssetMenu(fileName = "BtsmtlGraph", menuName = "BTSMTL/Graph")]
-    public sealed partial class BtsmtlGraphRoot : BtsmtlFlowGraph
+    public sealed partial class BtsmtlGraphRoot : BtsmtlFlowGraph, IBtsmtlMacroHostProvider
 #if UNITY_EDITOR
         , IBlackboardEditorAdapter
 #endif
@@ -79,13 +79,17 @@ namespace BTSMTL.Graphs
             m_Domains = domains.OrderBy(value => value, StringComparer.Ordinal).ToArray();
         }
 
-        public override bool CanAuthorNodeType(Type nodeType) =>
+        public override bool CanAuthorNodeType(Type nodeType) => AllowsNodeType(nodeType, m_Domains);
+        public BtsmtlMacroHost CreatePrivateMacroHost() => new BtsmtlGraphMacroHost(m_Domains);
+
+        // 通用图与声明通用图宿主的子图共用的节点准入。
+        public static bool AllowsNodeType(Type nodeType, IReadOnlyList<string> domains) =>
             Attribute.IsDefined(nodeType, typeof(BtsmtlGraphOperationAttribute), false) ||
             typeof(IBtsmtlVariableFlowNode).IsAssignableFrom(nodeType) ||
             typeof(IBtsmtlHostInputFlowNode).IsAssignableFrom(nodeType) ||
             BtsmtlNativeValueNodeCatalog.TryGetNode(nodeType, out _) ||
             typeof(BtsmtlFlowNode).IsAssignableFrom(nodeType) &&
-            GraphNodeDomains.TryGet(nodeType, out string domain) && Array.IndexOf(m_Domains, domain) >= 0;
+            GraphNodeDomains.TryGet(nodeType, out string domain) && domains.Contains(domain, StringComparer.Ordinal);
 
         [Serializable, Preserve]
         sealed class IdentityData

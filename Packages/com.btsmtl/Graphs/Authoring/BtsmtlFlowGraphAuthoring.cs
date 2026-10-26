@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using FlowCanvas;
+using FlowCanvas.Macros;
 using FlowCanvas.Nodes;
 using NodeCanvas.Framework;
 using UnityEditor;
@@ -128,9 +129,57 @@ namespace BTSMTL.Graphs
         {
             GenericMenu menu = m_Graph.AppendFlowNodesMenu(new GenericMenu(), string.Empty, position, context, instance);
             foreach (BtsmtlNativeValueNodeDefinition definition in BtsmtlNativeValueNodeCatalog.All)
-                AppendNodeCreationItem(menu, "数值/" + definition.Kind,
-                    typeof(SimplexNodeWrapper<>).MakeGenericType(definition.NodeType), position, context);
+            {
+                Type type = typeof(SimplexNodeWrapper<>).MakeGenericType(definition.NodeType);
+                if (m_Graph.CanAuthorNodeType(type))
+                    AppendNodeCreationItem(menu, "数值/" + definition.Kind, type, position, context);
+            }
+            AppendMacroItems(menu, position, context);
             return menu;
+        }
+
+        // 子图入口：新建私有子图取本图准入；共享子图只列出其全部节点都被本图接受的资产。
+        void AppendMacroItems(GenericMenu menu, Vector2 position, Port context)
+        {
+            if (m_Graph.isEditorReadOnly || !m_Graph.CanAuthorNodeType(typeof(MacroNodeWrapper)) ||
+                m_Graph is not IBtsmtlMacroHostProvider provider || context != null && context is not FlowOutput)
+                return;
+            menu.AddItem(new GUIContent("子图/新建私有子图"), false, () => Run(() => Edit("创建私有子图", () =>
+            {
+                string path = AssetDatabase.GetAssetPath(m_Graph);
+                if (string.IsNullOrEmpty(path))
+                    throw new InvalidOperationException("所属图保存为资产后才能创建私有子图。");
+                BtsmtlMacroGraph macro = BtsmtlMacroGraph.Create(m_Graph.name + " 子图", provider.CreatePrivateMacroHost());
+                AssetDatabase.AddObjectToAsset(macro, path);
+                Undo.RegisterCreatedObjectUndo(macro, "创建私有子图");
+                AddCall(macro, position, context);
+            })));
+            foreach (string guid in AssetDatabase.FindAssets("t:" + nameof(BtsmtlMacroGraph)))
+            {
+                var macro = AssetDatabase.LoadMainAssetAtPath(AssetDatabase.GUIDToAssetPath(guid)) as BtsmtlMacroGraph;
+                if (macro == null || macro == m_Graph || !macro.allNodes.All(node =>
+                        node is BtsmtlMacroInputNode || node is BtsmtlMacroOutputNode || m_Graph.CanAuthorNodeType(node.GetType())))
+                    continue;
+                menu.AddItem(new GUIContent("子图/调用共享子图/" + macro.name), false,
+                    () => Run(() => Edit("调用共享子图", () => AddCall(macro, position, context))));
+            }
+        }
+
+        void AddCall(BtsmtlMacroGraph macro, Vector2 position, Port context)
+        {
+            var call = (MacroNodeWrapper)m_Graph.AddNode(typeof(MacroNodeWrapper), position);
+            call.macro = macro;
+            if (context != null)
+                ConnectCreated(context, call, macro.inputDefinitions.Single(value => value.type == typeof(Flow)).ID);
+        }
+
+        static void Run(Action action)
+        {
+            try { action(); }
+            catch (InvalidOperationException error)
+            {
+                NodeCanvas.Editor.GraphEditor.current?.ShowNotification(new GUIContent(error.Message));
+            }
         }
 
         public void AppendNodeCreationItem(GenericMenu menu, string category, Type type, Vector2 position, Port context)
