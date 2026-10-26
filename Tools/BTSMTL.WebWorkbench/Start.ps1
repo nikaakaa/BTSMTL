@@ -1,5 +1,6 @@
 param(
     [Parameter(Mandatory = $true)][string]$WorkspaceRoot,
+    [string]$AnimationLibrary,
     [int]$Port = 5367
 )
 
@@ -14,6 +15,13 @@ $env:TEMP = $processTemp
 $env:TMP = $processTemp
 
 try {
+    Push-Location $PSScriptRoot
+    try {
+        npm ci --ignore-scripts --no-audit --no-fund --cache (Join-Path $repositoryRoot '.codex/tmp/web-workbench/npm-cache')
+        if ($LASTEXITCODE -ne 0) { throw '网页依赖安装失败，服务未启动。' }
+    } finally {
+        Pop-Location
+    }
     try {
         dotnet build (Join-Path $PSScriptRoot 'BTSMTL.WebWorkbench.csproj') --configuration Release --disable-build-servers /nr:false /p:UseSharedCompilation=false /m:1 /p:UseArtifactsOutput=true "/p:ArtifactsPath=$buildArtifacts"
         $buildExit = $LASTEXITCODE
@@ -23,7 +31,10 @@ try {
     if ($buildExit -ne 0) {
         throw '网页工作台编译失败，服务未启动。'
     }
-    dotnet (Join-Path $buildArtifacts 'bin/BTSMTL.WebWorkbench/release/BTSMTL.WebWorkbench.dll') --urls "http://127.0.0.1:$Port" --contentRoot $PSScriptRoot --Workspace ([IO.Path]::GetFullPath($WorkspaceRoot))
+    $serviceArguments = @('--urls', "http://127.0.0.1:$Port", '--contentRoot', $PSScriptRoot,
+        '--Workspace', [IO.Path]::GetFullPath($WorkspaceRoot))
+    if ($AnimationLibrary) { $serviceArguments += @('--AnimationLibrary', [IO.Path]::GetFullPath($AnimationLibrary)) }
+    dotnet (Join-Path $buildArtifacts 'bin/BTSMTL.WebWorkbench/release/BTSMTL.WebWorkbench.dll') @serviceArguments
     if ($LASTEXITCODE -ne 0) {
         throw '网页工作台服务退出，原因见上方日志。'
     }

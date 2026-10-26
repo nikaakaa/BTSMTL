@@ -8,6 +8,8 @@
   <ItemGroup>
     <Compile Include="Program.cs" />
     <Compile Include="WorkspaceApi.cs" />
+    <Compile Include="WebAnimationLibrary.cs" />
+    <Compile Include="AnimationResourceApi.cs" />
     <ProjectReference Include="../../Projects/BTSMTL.Authoring.Workspace/BTSMTL.Authoring.Workspace.csproj" />
   </ItemGroup>
 </Project>
