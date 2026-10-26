@@ -231,8 +231,7 @@ namespace BTSMTL.Authoring.Documents
             using var source = new StringReader(text);
             using var reader = new JsonTextReader(source) { DateParseHandling = DateParseHandling.None };
             var document = JObject.Load(reader, new JsonLoadSettings { DuplicatePropertyNameHandling = DuplicatePropertyNameHandling.Error });
-            if (reader.Read())
-                throw new JsonReaderException("作者 JSON 只能包含一个对象。");
+            while (reader.Read()) { }
             return document;
         }
 
