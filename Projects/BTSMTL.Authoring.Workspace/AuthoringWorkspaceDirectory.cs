@@ -8,7 +8,7 @@ public sealed record AuthoringSourceFile(string Path, string Revision, string Te
 public sealed record AuthoringRootFiles(AuthoringRootDocument Root, string Revision,
     IReadOnlyList<AuthoringSourceFile> Files);
 public sealed record AuthoringRootEntry(string Id, string DisplayName, string Domain, string Kind,
-    string Path, string Revision, IReadOnlyList<AuthoringSourceProblem> Problems);
+    string Path, string Revision, IReadOnlyList<string> ReferencedRoots, IReadOnlyList<AuthoringSourceProblem> Problems);
 public sealed record AuthoringSourceProblem(string Path, string Code, string Message);
 public sealed record AuthoringPage<T>(IReadOnlyList<T> Items, int Offset, int Total, int? NextOffset);
 
@@ -32,6 +32,8 @@ public sealed class AuthoringWorkspaceDirectory
                 AuthoringRootDocument root = AuthoringDocumentJson.ReadRoot(file.Text, file.Path);
                 items.Add(new(root.Id.Value, root.DisplayName, root.DomainId.Value, root.Kind,
                     System.IO.Path.GetRelativePath(Path, path).Replace('\\', '/'), file.Revision,
+                    root.ExternalReferences.ToArray().Select(reference => reference.RootId.Value)
+                        .Distinct(StringComparer.Ordinal).OrderBy(id => id, StringComparer.Ordinal).ToArray(),
                     Array.Empty<AuthoringSourceProblem>()));
             }
             catch (Exception error) when (error is IOException or FormatException or
@@ -39,7 +41,8 @@ public sealed class AuthoringWorkspaceDirectory
             {
                 items.Add(new(string.Empty, System.IO.Path.GetFileName(System.IO.Path.GetDirectoryName(path))!,
                     string.Empty, string.Empty, System.IO.Path.GetRelativePath(Path, path).Replace('\\', '/'),
-                    string.Empty, new[] { new AuthoringSourceProblem(path, "root_input_invalid", error.Message) }));
+                    string.Empty, Array.Empty<string>(),
+                    new[] { new AuthoringSourceProblem(path, "root_input_invalid", error.Message) }));
             }
         }
         int next = offset + items.Count;
@@ -71,14 +74,8 @@ public sealed class AuthoringWorkspaceDirectory
             AuthoringPage<AuthoringRootEntry> page = List(cursor, 200);
             foreach (AuthoringRootEntry entry in page.Items)
             {
-                if (entry.Problems.Count != 0) continue;
-                AuthoringRootFiles candidate = Read(entry.Path);
-                foreach (AuthoringContentReference reference in candidate.Root.ExternalReferences.Span)
-                    if (reference.RootId.Value == rootId)
-                    {
-                        matches.Add(entry);
-                        break;
-                    }
+                if (entry.ReferencedRoots.Contains(rootId, StringComparer.Ordinal))
+                    matches.Add(entry);
             }
             if (page.NextOffset is not int next) break;
             cursor = next;
