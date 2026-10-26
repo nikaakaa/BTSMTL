@@ -1,0 +1,9 @@
+{
+  "name": "btsmtl-web-workbench",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "three": "0.186.1"
+  }
+}
