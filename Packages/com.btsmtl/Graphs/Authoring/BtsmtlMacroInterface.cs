@@ -175,12 +175,18 @@ namespace BTSMTL.Graphs
             }
         }
 
-        // 接口编辑是低频操作，按资产扫描调用方，不维护常驻索引。
+        // 接口编辑是低频操作，不维护常驻索引；先用资产数据库已缓存的直接依赖筛出引用本子图所在资产的图，
+        // 只加载这些资产，避免为一次接口修改反序列化工程内全部图。
         static IEnumerable<Caller> FindCallers(BtsmtlMacroGraph macro)
         {
+            string macroPath = AssetDatabase.GetAssetPath(macro);
+            if (string.IsNullOrEmpty(macroPath))
+                yield break;
             foreach (string guid in AssetDatabase.FindAssets("t:" + nameof(FlowGraph)))
             {
                 string path = AssetDatabase.GUIDToAssetPath(guid);
+                if (path != macroPath && Array.IndexOf(AssetDatabase.GetDependencies(path, false), macroPath) < 0)
+                    continue;
                 foreach (FlowGraph graph in AssetDatabase.LoadAllAssetsAtPath(path).OfType<FlowGraph>())
                     foreach (MacroNodeWrapper call in graph.allNodes.OfType<MacroNodeWrapper>())
                         if (ReferenceEquals(call.macro, macro))
