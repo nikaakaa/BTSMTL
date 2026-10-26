@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BTSMTL · Quantum 运行观察</title>
+  <link rel="stylesheet" href="documents.css">
+  <link rel="stylesheet" href="preview.css">
+  <script type="importmap">{"imports":{"three":"/vendor/three/build/three.module.js","three/addons/":"/vendor/three/examples/jsm/"}}</script>
+</head>
+<body>
+  <header class="topbar"><div class="brand"><span class="brand-mark">B</span><strong>BTSMTL</strong><span>Quantum 运行观察</span></div><a href="/">返回作者工作台</a><span id="connection" class="connection">正在连接项目宿主</span></header>
+  <main class="preview-layout">
+    <aside class="preview-sidebar">
+      <div class="eyebrow">SDK REPLAY</div><h1>采用正式来源</h1>
+      <label for="scene">保存场景的离线包</label><select id="scene"></select><code id="scene-version"></code>
+      <label for="replay">原 SDK 录像</label><select id="replay"></select><code id="replay-version"></code>
+      <button id="start" class="primary" disabled>提交真实重放</button><button id="refresh">重读来源与作业</button>
+      <p id="source-state" class="muted"></p>
+      <h2>已有运行</h2><div id="runs" class="run-list"></div>
+      <div class="preview-note">每次运行固定采用所选版本。历史画面读取封存确认帧；移动帧条不会推进 SDK。</div>
+    </aside>
+    <section class="preview-main">
+      <header class="preview-header"><div><h1 id="run-title">选择运行</h1><code id="run-identity"></code></div><button id="cancel" hidden>请求取消运行</button></header>
+      <div id="run-state" class="run-state" role="status">正在查询正式离线包和原录像…</div>
+      <div class="preview-stage"><div id="viewport"></div><div class="view-label">确认帧根位置 · 标记近似显示<br>参考网格不是碰撞地面</div></div>
+      <div class="frame-transport"><button id="previous-frame" disabled aria-label="上一个封存帧">←</button><input id="frame" type="range" min="0" max="0" value="0" disabled aria-label="封存确认帧"><button id="next-frame" disabled aria-label="下一个封存帧">→</button><output id="frame-label">无确认帧</output><button id="fit-view" disabled>适应角色根</button></div>
+      <div class="frame-facts"><dl id="frame-facts"></dl><div id="actors"></div></div>
+      <details class="raw-record"><summary>所选帧的同源 JSON</summary><pre id="frame-json"></pre></details>
+    </section>
+    <aside class="preview-details"><h2>采用与观察范围</h2><dl id="run-details"></dl><p id="channels" class="muted">尚未读取实际运行记录。</p><h2>同条件比较</h2><label for="comparison">另一份确认帧记录</label><select id="comparison"></select><button id="compare" disabled>比较实际记录</button><pre id="comparison-result"></pre></aside>
+  </main>
+  <footer class="statusbar"><span id="status" role="status">正在连接…</span></footer>
+  <script type="module" src="preview.js"></script>
+</body>
+</html>
