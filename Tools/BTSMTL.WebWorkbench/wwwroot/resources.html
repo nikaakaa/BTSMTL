@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BTSMTL · 动画资源查看</title>
+  <link rel="stylesheet" href="documents.css">
+  <link rel="stylesheet" href="resources.css">
+  <script type="importmap">{"imports":{"three":"/vendor/three/build/three.module.js","three/addons/":"/vendor/three/examples/jsm/"}}</script>
+</head>
+<body>
+  <header class="topbar"><div class="brand"><span class="brand-mark">B</span><strong>BTSMTL</strong><span>动画资源查看</span></div><a href="/">返回作者工作台</a></header>
+  <main class="resource-layout">
+    <aside class="resource-sidebar"><div class="eyebrow">WEB ANIMATION LIBRARY</div><h1>来源与片段</h1><p id="source-version" class="muted">正在读取资源清单…</p><input id="clip-search" class="search" type="search" placeholder="查找片段" aria-label="查找动画片段"><div id="animation-list" class="animation-list"></div><div class="resource-note">表现：Blender 派生片段预览<br>运行绑定：尚未绑定游戏确认帧<br>物理、IK、技能和装备采用由正式运行管线决定。</div></aside>
+    <section class="resource-stage"><div id="viewport" class="viewport"></div><div id="resource-state" class="resource-state" role="status">正在加载 Three 视口…</div><div class="resource-transport"><button id="play-resource" disabled aria-label="播放素材动画">播放</button><input id="resource-time" type="range" min="0" max="1" step="0.0001" value="0" disabled aria-label="素材时间"><output id="resource-time-output">0.000 s</output><button id="frame-resource" disabled>适应角色</button></div><div class="resource-caption"><strong id="clip-name">未选择片段</strong><span id="clip-provenance"></span></div></section>
+    <aside class="resource-details"><h2>实际资源版本</h2><dl id="resource-details"></dl><p>坐标按 glTF 的 Y 向上、右手系显示。此视图保留素材根位移；游戏观察视图由正式逻辑根位置驱动。</p></aside>
+  </main>
+  <script type="module" src="resources.js"></script>
+</body>
+</html>
