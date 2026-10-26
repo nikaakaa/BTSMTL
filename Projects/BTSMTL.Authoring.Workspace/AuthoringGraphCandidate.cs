@@ -73,7 +73,30 @@ public sealed class AuthoringGraphCandidate
 
     public static AuthoringGraphCandidate Create(string requestId, AuthoringRootFiles root,
         IReadOnlyList<AuthoringGraphEditBatch> batches,
-        Action<IReadOnlyList<AuthoringGraphDocument>> receive)
+        Action<IReadOnlyList<AuthoringGraphDocument>> receive) => Build(requestId, root, batches,
+            receive, AuthoringGraphMutation.Apply);
+
+    public static AuthoringGraphCandidate CreateInverse(string requestId, AuthoringRootFiles current,
+        AuthoringGraphCandidate applied, Action<IReadOnlyList<AuthoringGraphDocument>> receive)
+    {
+        if (!current.Root.Id.Equals(applied.RootId) ||
+            current.Root.DefinitionVersion != applied.Baseline.Root.DefinitionVersion)
+            throw new AuthoringUndoConflictException(current.Root.Id.Value, current.Root.Id.Value,
+                "root-context", applied.RootId.Value + "@" + applied.Baseline.Root.DefinitionVersion,
+                current.Root.Id.Value + "@" + current.Root.DefinitionVersion);
+        var expected = applied.Documents.ToDictionary(document => document.Id);
+        return Build(requestId, current, applied.ReverseEdits, receive, (graph, edits) =>
+        {
+            AuthoringGraphEditResult result = AuthoringGraphMutation.ApplyInverse(expected[graph.Id], graph,
+                edits, out AuthoringGraphDocument after);
+            expected[graph.Id] = after;
+            return result;
+        });
+    }
+
+    static AuthoringGraphCandidate Build(string requestId, AuthoringRootFiles root,
+        IReadOnlyList<AuthoringGraphEditBatch> batches, Action<IReadOnlyList<AuthoringGraphDocument>> receive,
+        Func<AuthoringGraphDocument, IReadOnlyList<AuthoringGraphEdit>, AuthoringGraphEditResult> mutate)
     {
         string directory = System.IO.Path.GetDirectoryName(root.Files[0].Path)!;
         var rootFiles = root.Files.ToDictionary(file => file.Path, StringComparer.OrdinalIgnoreCase);
@@ -87,7 +110,7 @@ public sealed class AuthoringGraphCandidate
         var inverses = new List<AuthoringGraphEditBatch>();
         foreach (AuthoringGraphEditBatch batch in batches)
         {
-            AuthoringGraphEditResult result = AuthoringGraphMutation.Apply(documents[batch.DocumentId], batch.Edits);
+            AuthoringGraphEditResult result = mutate(documents[batch.DocumentId], batch.Edits);
             documents[batch.DocumentId] = result.Document;
             if (!changed.TryGetValue(batch.DocumentId, out HashSet<GraphAuthoringElementId>? elements))
                 changed.Add(batch.DocumentId, elements = new());
