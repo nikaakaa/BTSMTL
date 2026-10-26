@@ -67,12 +67,12 @@ namespace ThirdPersonGameplay.Orchestration
 
         public readonly struct EndGrapple
         {
-            public static readonly OrchestrationExtensionInputPort<EndGrapple> Requested = new("requested", OrchestrationValueKind.Boolean, 0);
+            public static readonly Field RequestId = Field.Text("RequestId");
             public static readonly OrchestrationExtensionDefinition<EndGrapple> Definition = new(
-                new OrchestrationExtensionIdentity(DomainId, "end-grapple"), 2,
+                new OrchestrationExtensionIdentity(DomainId, "end-grapple"), 3,
                 new OrchestrationExtensionContract(OrchestrationExtensionKind.Action,
                     OrchestrationExtensionAccess.CandidateWrite, OrchestrationExtensionInvocationKind.Execute,
-                    OrchestrationExtensionCompletion.Immediate, new[] { Requested.Declaration }, Array.Empty<Field>()));
+                    OrchestrationExtensionCompletion.Immediate, Array.Empty<OrchestrationExtensionPort>(), new[] { RequestId }));
         }
     }
 }
