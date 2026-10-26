@@ -216,7 +216,7 @@ namespace BTSMTL.Orchestration
             IOrchestrationTimelineDispatcher<TValue, TScalar, TVector2, TVector3,
                 TYaw, TQuaternion, TMath, TValues, TContext> timelineDispatcher,
             IOrchestrationTimelineClipExitDispatcher<TContext> clipExitDispatcher,
-            in OrchestrationFrameInput<TValue> input, in OrchestrationIdentityOrdinalView identities,
+            in OrchestrationFrameInput<TValue> input, OrchestrationIdentityOrdinalView identities,
             in TContext context)
             where TScalar : unmanaged where TVector2 : unmanaged where TVector3 : unmanaged
             where TYaw : unmanaged
@@ -229,7 +229,7 @@ namespace BTSMTL.Orchestration
             new OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3,
                 TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage>(program, workspace, bindings, Frames, frameSlot,
                 characterSlots, timelineDispatcher,
-                clipExitDispatcher, Timeline, in input, in identities, in context, null, default);
+                clipExitDispatcher, Timeline, in input, identities, in context, null, default);
 
         public OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3,
             TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage> CreateCursor<TScalar, TVector2, TVector3,
@@ -240,7 +240,7 @@ namespace BTSMTL.Orchestration
             IOrchestrationTimelineDispatcher<TValue, TScalar, TVector2, TVector3,
                 TYaw, TQuaternion, TMath, TValues, TContext> timelineDispatcher,
             IOrchestrationTimelineClipExitDispatcher<TContext> clipExitDispatcher,
-            in OrchestrationFrameInput<TValue> input, in OrchestrationIdentityOrdinalView identities,
+            in OrchestrationFrameInput<TValue> input, OrchestrationIdentityOrdinalView identities,
             in TContext context)
             where TScalar : unmanaged where TVector2 : unmanaged where TVector3 : unmanaged
             where TYaw : unmanaged
@@ -253,7 +253,7 @@ namespace BTSMTL.Orchestration
             new OrchestrationExecutionCursor<TValue, TScalar, TVector2, TVector3,
                 TYaw, TQuaternion, TMath, TValues, TContext, TDiagnostics, TStorage>(preparedSource.Program, workspace, bindings, Frames, frameSlot,
                 characterSlots, timelineDispatcher,
-                clipExitDispatcher, Timeline, in input, in identities, in context, preparedSource, source);
+                clipExitDispatcher, Timeline, in input, identities, in context, preparedSource, source);
     }
 
     public readonly ref struct OrchestrationCommittedState<TValue> where TValue : unmanaged

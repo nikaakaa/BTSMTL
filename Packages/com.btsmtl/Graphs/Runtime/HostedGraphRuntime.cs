@@ -215,7 +215,7 @@ namespace BTSMTL.Graphs
             var cursor = state.CreateCursor<TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext,
                 TDiagnostics, OrchestrationArrayValueStorage<TValue>>(
                 m_Bindings.Program, m_Workspace, m_Extensions, 0, ReadOnlySpan<int>.Empty,
-                null, null, in input, in identities, in context);
+                null, null, in input, identities, in context);
             m_OutputRequestCount = 0;
             m_OutputValueCount = 0;
             try

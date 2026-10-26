@@ -71,7 +71,7 @@ namespace BTSMTL.Orchestration
             IOrchestrationTimelineClipExitDispatcher<TContext> clipExitDispatcher,
             OrchestrationStateView timelineState,
             in OrchestrationFrameInput<TValue> input,
-            in OrchestrationIdentityOrdinalView identities,
+            OrchestrationIdentityOrdinalView identities,
             in TContext context, OrchestrationExecutionSourceBinding<TValue> sourceBinding,
             OrchestrationExecutionSource<TValue> source)
         {

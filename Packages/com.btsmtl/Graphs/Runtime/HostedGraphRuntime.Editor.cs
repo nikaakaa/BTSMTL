@@ -225,7 +225,7 @@ namespace BTSMTL.Graphs
             return state.CreateCursor<TScalar, TVector2, TVector3, TYaw, TQuaternion, TMath, TValues, TContext,
                 OrchestrationWorkbenchDiagnostics, OrchestrationArrayValueStorage<TValue>>(
                 m_Bindings.Program, m_Workspace, m_Extensions, 0, ReadOnlySpan<int>.Empty,
-                null, null, in input, in identities, in context);
+                null, null, in input, identities, in context);
         }
 
         static void RequireValue(GraphHostValue value, Type type)
