@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AssemblyName>BTSMTL.Authoring</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/GraphAuthoringFieldMetadata.cs" />
+    <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/GraphAuthoringFieldAttribute.cs" />
+    <Compile Include="../../Packages/com.btsmtl/Authoring/Blackboard/PipelineBlackboardVariableScope.cs" />
+    <Compile Include="../../Packages/com.btsmtl/Authoring/Blackboard/PipelineBlackboardVariableLifetime.cs" />
+    <Compile Include="../../Packages/com.btsmtl/Authoring/Blackboard/PipelineBlackboardVariablePolicy.cs" />
+  </ItemGroup>
+</Project>
