@@ -17,7 +17,8 @@ namespace ThirdPersonSimulation
         Missed,
         OutOfRange,
         RopeCapacity,
-        Landed
+        Landed,
+        TurnLimit
     }
 
     public enum GrapplePhase : byte { Idle, Shooting, Attached, Retracting, Preparing, PointArrival }

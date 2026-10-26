@@ -6,6 +6,17 @@ namespace ThirdPersonSimulation
         where TVector3 : struct
         where TMath : struct, IScalarMath<TScalar>, IVectorMath<TScalar, TVector2, TVector3>
     {
+        public static TScalar TurnYaw(TScalar targetDelta, TScalar lateralInput,
+            TScalar turnSpeed, TScalar inputTurnSpeedBonus, TScalar delta)
+        {
+            TMath math = default;
+            TScalar sameSideInput = math.Max(math.Zero,
+                math.GreaterThan(targetDelta, math.Zero) ? lateralInput : math.Negate(lateralInput));
+            TScalar maximumStep = math.Multiply(math.Add(turnSpeed,
+                math.Multiply(inputTurnSpeedBonus, sameSideInput)), delta);
+            return math.Clamp(targetDelta, math.Negate(maximumStep), maximumStep);
+        }
+
         public static TVector3 ArrivalPosition(TVector3 start, TVector3 startVelocity,
             TVector3 target, TVector3 exitVelocity, TScalar duration, TScalar progress)
         {

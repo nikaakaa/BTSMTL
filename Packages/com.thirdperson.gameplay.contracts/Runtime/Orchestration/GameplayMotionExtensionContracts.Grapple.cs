@@ -32,17 +32,19 @@ namespace ThirdPersonGameplay.Orchestration
             public static readonly Field BlockedSpeed = Field.Value("BlockedSpeed", OrchestrationValueKind.Scalar);
             public static readonly Field BlockTimeout = Field.Value("BlockTimeout", OrchestrationValueKind.Scalar);
             public static readonly Field TurnSpeed = Field.Value("TurnSpeed", OrchestrationValueKind.Scalar);
+            public static readonly Field InputTurnSpeedBonus = Field.Value("InputTurnSpeedBonus", OrchestrationValueKind.Scalar);
+            public static readonly Field DetachAngle = Field.Value("DetachAngle", OrchestrationValueKind.Scalar);
             public static readonly ReadOnlyMemory<Field> All = new[]
                 { MaximumLength, HookSpeed, PreparationTime, TakeoffDelay, PullStartSpeed, PullSpeed, PullRampTime, PullAcceleration, InitialImpulse,
                     AttachVerticalSpeed, ArrivalVerticalBoost, ArrivalVerticalMaxSpeed, AirAcceleration, AirSteeringAcceleration, AirSpeed,
                     MinimumGravityScale, GravityScale, TangentialDeceleration, LaunchHeight, SurfaceMask,
-                    ReleaseRadius, BlockedSpeed, BlockTimeout, TurnSpeed };
+                    ReleaseRadius, BlockedSpeed, BlockTimeout, TurnSpeed, InputTurnSpeedBonus, DetachAngle };
         }
 
         public readonly struct BeginGrapple
         {
             public static readonly OrchestrationExtensionDefinition<BeginGrapple> Definition = new(
-                new OrchestrationExtensionIdentity(DomainId, "begin-grapple"), 5,
+                new OrchestrationExtensionIdentity(DomainId, "begin-grapple"), 6,
                 new OrchestrationExtensionContract(OrchestrationExtensionKind.Action,
                     OrchestrationExtensionAccess.CandidateWrite, OrchestrationExtensionInvocationKind.Execute,
                     OrchestrationExtensionCompletion.Immediate, Array.Empty<OrchestrationExtensionPort>(), GrappleFields.All));
