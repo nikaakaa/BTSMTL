@@ -140,7 +140,7 @@ namespace BTSMTL.Authoring.Documents
         }
 
         public static string WriteValue(AuthoringValue value) => Write(ValueToken(value));
-        public static AuthoringValue ReadValue(string text, string sourcePath) => ReadValue(JToken.Parse(text), sourcePath);
+        public static AuthoringValue ReadValue(string text, string sourcePath) => ReadValue(ReadObject(text), sourcePath);
 
         static JToken ValueToken(AuthoringValue value)
         {
@@ -219,12 +219,20 @@ namespace BTSMTL.Authoring.Documents
 
         static JObject ReadDocument(string text, string sourcePath)
         {
-            using var source = new StringReader(text);
-            using var reader = new JsonTextReader(source) { DateParseHandling = DateParseHandling.None };
-            var document = JObject.Load(reader, new JsonLoadSettings { DuplicatePropertyNameHandling = DuplicatePropertyNameHandling.Error });
+            JObject document = ReadObject(text);
             int version = Required(document, "formatVersion", sourcePath).Value<int>();
             if (version != AuthoringRootDocument.FormatVersion)
                 throw new AuthoringDocumentFormatException(sourcePath, "formatVersion", $"不支持作者文档版本 '{version}'。");
+            return document;
+        }
+
+        static JObject ReadObject(string text)
+        {
+            using var source = new StringReader(text);
+            using var reader = new JsonTextReader(source) { DateParseHandling = DateParseHandling.None };
+            var document = JObject.Load(reader, new JsonLoadSettings { DuplicatePropertyNameHandling = DuplicatePropertyNameHandling.Error });
+            if (reader.Read())
+                throw new JsonReaderException("作者 JSON 只能包含一个对象。");
             return document;
         }
 
