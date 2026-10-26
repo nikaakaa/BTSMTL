@@ -4,7 +4,8 @@ using BTSMTL.Authoring.Documents;
 
 namespace BTSMTL.Authoring.Workspace;
 
-public sealed record AuthoringSourceFile(string Path, string Revision, string Text);
+public sealed record AuthoringSourceFile(string Path, string Revision, string Text,
+    [property: System.Text.Json.Serialization.JsonIgnore] ReadOnlyMemory<byte> Bytes);
 public sealed record AuthoringRootFiles(AuthoringRootDocument Root, string Revision,
     IReadOnlyList<AuthoringSourceFile> Files);
 public sealed record AuthoringRootEntry(string Id, string DisplayName, string Domain, string Kind,
@@ -101,7 +102,7 @@ public sealed class AuthoringWorkspaceDirectory
     {
         byte[] bytes = File.ReadAllBytes(path);
         bool bom = bytes.AsSpan().StartsWith(Encoding.UTF8.Preamble);
-        return new(path, Convert.ToHexString(SHA256.HashData(bytes)), Utf8.GetString(bytes.AsSpan(bom ? 3 : 0)));
+        return new(path, Convert.ToHexString(SHA256.HashData(bytes)), Utf8.GetString(bytes.AsSpan(bom ? 3 : 0)), bytes);
     }
 
     static void RequirePage(int offset, int limit)

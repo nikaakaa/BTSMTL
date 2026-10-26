@@ -46,16 +46,18 @@ public sealed record AuthoringCandidateFile(string Path, string BeforeRevision, 
 
 public sealed class AuthoringGraphCandidate
 {
-    AuthoringGraphCandidate(string requestId, GraphAuthoringElementId rootId,
+    AuthoringGraphCandidate(string requestId, AuthoringRootFiles baseline,
         AuthoringCandidateFile[] files, AuthoringGraphEditBatch[] reverseEdits,
         IReadOnlyList<AuthoringGraphDocument> documents)
     {
         RequestId = requestId;
-        RootId = rootId;
+        RootId = baseline.Root.Id;
+        Baseline = baseline;
         Files = files;
         ReverseEdits = reverseEdits;
         Documents = documents;
-        var identity = new StringBuilder(requestId).Append('\n').Append(rootId.Value).Append('\n');
+        var identity = new StringBuilder(requestId).Append('\n').Append(RootId.Value).Append('\n')
+            .Append(baseline.Revision).Append('\n');
         foreach (AuthoringCandidateFile file in files.OrderBy(file => file.Path, StringComparer.Ordinal))
             identity.Append(file.Path).Append('\n').Append(file.BeforeRevision).Append('\n').Append(file.AfterRevision).Append('\n');
         Id = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(identity.ToString())));
@@ -64,14 +66,21 @@ public sealed class AuthoringGraphCandidate
     public string Id { get; }
     public string RequestId { get; }
     public GraphAuthoringElementId RootId { get; }
+    public AuthoringRootFiles Baseline { get; }
     public IReadOnlyList<AuthoringCandidateFile> Files { get; }
     public IReadOnlyList<AuthoringGraphEditBatch> ReverseEdits { get; }
     public IReadOnlyList<AuthoringGraphDocument> Documents { get; }
 
-    public static AuthoringGraphCandidate Create(string requestId, GraphAuthoringElementId rootId,
-        IReadOnlyList<AuthoringGraphWorkspaceFile> baseline, IReadOnlyList<AuthoringGraphEditBatch> batches,
+    public static AuthoringGraphCandidate Create(string requestId, AuthoringRootFiles root,
+        IReadOnlyList<AuthoringGraphEditBatch> batches,
         Action<IReadOnlyList<AuthoringGraphDocument>> receive)
     {
+        string directory = System.IO.Path.GetDirectoryName(root.Files[0].Path)!;
+        var rootFiles = root.Files.ToDictionary(file => file.Path, StringComparer.OrdinalIgnoreCase);
+        AuthoringGraphWorkspaceFile[] baseline = root.Root.Files.ToArray()
+            .Where(file => file.Kind == AuthoringDocumentKind.Graph)
+            .Select(file => rootFiles[AuthoringWorkspaceDirectory.Resolve(directory, file.Path)])
+            .Select(file => new AuthoringGraphWorkspaceFile(file.Path, file.Bytes.ToArray())).ToArray();
         var documents = baseline.ToDictionary(file => file.Document.Id, file => file.Document);
         var sources = baseline.ToDictionary(file => file.Document.Id);
         var changed = new Dictionary<GraphAuthoringElementId, HashSet<GraphAuthoringElementId>>();
@@ -100,6 +109,6 @@ public sealed class AuthoringGraphCandidate
                 Convert.ToHexString(SHA256.HashData(after)), source.Bytes, after, change.Key,
                 change.Value.OrderBy(element => element.Value, StringComparer.Ordinal).ToArray()));
         }
-        return new AuthoringGraphCandidate(requestId, rootId, files.ToArray(), inverses.ToArray(), complete);
+        return new AuthoringGraphCandidate(requestId, root, files.ToArray(), inverses.ToArray(), complete);
     }
 }
