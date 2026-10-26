@@ -9,6 +9,11 @@ namespace BTSMTL.Authoring.Documents
         public string TypeId { get; }
     }
 
+    public sealed class AuthoringNullValue : AuthoringValue
+    {
+        public AuthoringNullValue(string typeId) : base(typeId) { }
+    }
+
     public sealed class AuthoringScalarValue : AuthoringValue
     {
         public AuthoringScalarValue(string typeId, GraphAuthoringFieldValueKind kind, string value) : base(typeId)
