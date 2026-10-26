@@ -1,4 +1,4 @@
-#if UNITY_EDITOR
+#if UNITY_EDITOR || BTSMTL_AUTHORING
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -31,10 +31,10 @@ namespace BTSMTL.Authoring.Graph
         public static Func<object, IReadOnlyList<TChoice>> Choices<TChoice>(Type type, string fieldId) =>
             (Func<object, IReadOnlyList<TChoice>>)Contract(type)[fieldId].Choices;
 
-        public static UnityEngine.Object ResourceOwner(object target, string fieldId) =>
+        public static object ResourceOwner(object target, string fieldId) =>
             Contract(target)[fieldId].ResourceOwner(target);
 
-        public static object BindResourceAsset(object target, string fieldId, UnityEngine.Object source) =>
+        public static object BindResourceAsset(object target, string fieldId, object source) =>
             Contract(target)[fieldId].BindResource(target, source);
 
         public static Func<GraphAuthoringCandidate, bool> Visibility(

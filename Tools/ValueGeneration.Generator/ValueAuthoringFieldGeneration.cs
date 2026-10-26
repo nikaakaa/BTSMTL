@@ -159,7 +159,6 @@ namespace ThirdPerson.ValueGeneration.Generator
                     }
             }
             if (!valid) return;
-            ITypeSymbol unityObject = context.Compilation.GetTypeByMetadataName("UnityEngine.Object");
             foreach (AuthoringField field in fields)
             {
                 ISymbol defaults = AuthoringAuxiliary(type, "GraphAuthoringDefault", field.Id);
@@ -181,9 +180,9 @@ namespace ThirdPerson.ValueGeneration.Generator
                 ISymbol owner = AuthoringAuxiliary(type, "GraphAuthoringResourceOwner", field.Id);
                 if (owner != null && (!(owner is IPropertySymbol ownerProperty) || owner.IsStatic ||
                     !PublicAuthoringRead(owner) || ownerProperty.SetMethod?.DeclaredAccessibility != Accessibility.Public ||
-                    !((CSharpCompilation)context.Compilation).ClassifyConversion(ownerProperty.Type, unityObject).IsImplicit))
+                    !ownerProperty.Type.IsReferenceType))
                 {
-                    Error(owner, "资源 owner 必须是公开可读写的 Unity 资产属性");
+                    Error(owner, "资源 owner 必须是公开可读写的平台资源引用属性");
                     valid = false;
                 }
                 ISymbol binder = AuthoringAuxiliary(type, "GraphAuthoringBindResource", field.Id);
@@ -195,10 +194,10 @@ namespace ThirdPerson.ValueGeneration.Generator
                 }
                 if (binder != null && (!(binder is IMethodSymbol method) || method.IsStatic || method.IsGenericMethod ||
                     method.DeclaredAccessibility != Accessibility.Public || method.Parameters.Length != 1 ||
-                    !SymbolEqualityComparer.Default.Equals(method.Parameters[0].Type, unityObject) ||
+                    !method.Parameters[0].Type.IsReferenceType ||
                     !SymbolEqualityComparer.Default.Equals(method.ReturnType, field.Type)))
                 {
-                    Error(binder, "资源绑定必须是公开实例方法，接收 UnityEngine.Object 并返回正式字段的准确类型");
+                    Error(binder, "资源绑定必须是公开实例方法，接收平台资源引用并返回正式字段的准确类型");
                     valid = false;
                 }
             }
@@ -254,7 +253,7 @@ namespace ThirdPerson.ValueGeneration.Generator
 
             INamedTypeSymbol inherited = type.BaseType;
             while (inherited != null && !AuthoringTypeHasFields(inherited)) inherited = inherited.BaseType;
-            var code = new StringBuilder("#if UNITY_EDITOR\n");
+            var code = new StringBuilder("#if UNITY_EDITOR || BTSMTL_AUTHORING\n");
             code.Append("namespace ").Append(type.ContainingNamespace.ToDisplayString()).AppendLine(" {");
             EmitTypeDeclaration(code, type, AuthoringRuntime + "IGraphAuthoringFieldSource");
             code.Append("public ").Append(inherited != null ? "new " : "").Append("static ")
@@ -299,8 +298,8 @@ namespace ThirdPerson.ValueGeneration.Generator
                     .Append(owner == null ? "null" : "target => " + AuthoringAuxiliaryRead(type, owner, "target")).Append(", ")
                     .Append(owner == null ? "null" : "(target, asset) => ((" + TypeName(type) + ")target)." + Escape(owner.Name) +
                         " = (" + TypeName(((IPropertySymbol)owner).Type) + ")asset").Append(", ")
-                    .Append(binder == null ? "null" : "(target, asset) => ((" + TypeName(type) + ")target)." + Escape(binder.Name) + "(asset)")
-                    .Append(", ").Append(binder == null ? "null" : "(candidate, asset) => ((AuthoringCandidate)candidate).SelectResource_" + field.Name + "(asset)")
+                    .Append(binder == null ? "null" : "(target, asset) => ((" + TypeName(type) + ")target)." + Escape(binder.Name) + "((" + TypeName(((IMethodSymbol)binder).Parameters[0].Type) + ")asset)")
+                    .Append(", ").Append(binder == null ? "null" : "(candidate, asset) => ((AuthoringCandidate)candidate).SelectResource_" + field.Name + "((" + TypeName(((IMethodSymbol)binder).Parameters[0].Type) + ")asset)")
                     .Append(", ").Append(binder == null ? "null" : "candidate => ((AuthoringCandidate)candidate).ResourceChanged_" + field.Name)
                     .Append(", ").Append(binder == null ? "null" : "candidate => ((AuthoringCandidate)candidate).Resource_" + field.Name);
                 foreach (AttributeData annotation in field.Symbol.GetAttributes().Where(attribute =>
@@ -356,8 +355,9 @@ namespace ThirdPerson.ValueGeneration.Generator
                 if (binder != null)
                 {
                     code.Append("public bool ResourceChanged_").Append(field.Name).AppendLine(";");
-                    code.Append("public global::UnityEngine.Object Resource_").Append(field.Name).AppendLine(";");
-                    code.Append("public void SelectResource_").Append(field.Name).AppendLine("(global::UnityEngine.Object asset) {")
+                    string resourceType = TypeName(((IMethodSymbol)binder).Parameters[0].Type);
+                    code.Append("public ").Append(resourceType).Append(" Resource_").Append(field.Name).AppendLine(";");
+                    code.Append("public void SelectResource_").Append(field.Name).Append('(').Append(resourceType).AppendLine(" asset) {")
                         .Append("Resource_").Append(field.Name).AppendLine(" = asset;")
                         .Append("ResourceChanged_").Append(field.Name).AppendLine(" = true;")
                         .Append("Changed_").Append(field.Name).AppendLine(" = true; }");

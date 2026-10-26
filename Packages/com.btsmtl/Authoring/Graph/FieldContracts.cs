@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using UnityEngine;
 
 namespace BTSMTL.Authoring.Graph
 {
@@ -99,8 +98,8 @@ namespace BTSMTL.Authoring.Graph
     public sealed class GraphAuthoringResourceReference
     {
         public GraphAuthoringResourceReference(string domain, Type contextType, bool navigation,
-            Func<object, UnityEngine.Object> readOwner, Action<object, UnityEngine.Object> writeOwner,
-            Func<object, UnityEngine.Object, object> bindAsset)
+            Func<object, object> readOwner, Action<object, object> writeOwner,
+            Func<object, object, object> bindAsset)
         {
             Domain = domain;
             ContextType = contextType;
@@ -113,9 +112,9 @@ namespace BTSMTL.Authoring.Graph
         public string Domain { get; }
         public Type ContextType { get; }
         public bool Navigation { get; }
-        public Func<object, UnityEngine.Object> ReadOwner { get; }
-        public Action<object, UnityEngine.Object> WriteOwner { get; }
-        public Func<object, UnityEngine.Object, object> BindAsset { get; }
+        public Func<object, object> ReadOwner { get; }
+        public Action<object, object> WriteOwner { get; }
+        public Func<object, object, object> BindAsset { get; }
     }
 
     public sealed class GraphAuthoringFieldDescriptor
@@ -125,6 +124,7 @@ namespace BTSMTL.Authoring.Graph
             string displayName,
             GraphAuthoringFieldValueKind valueKind,
             GraphAuthoringFieldAccess access,
+            Type valueType,
             GraphAuthoringDetailsSection section = GraphAuthoringDetailsSection.Authoring,
             object defaultValue = null,
             GraphAuthoringFieldConstraint constraint = null,
@@ -140,6 +140,7 @@ namespace BTSMTL.Authoring.Graph
             DisplayName = string.IsNullOrWhiteSpace(displayName) ? throw new ArgumentException("Field display name is missing.", nameof(displayName)) : displayName;
             ValueKind = valueKind;
             Access = access;
+            ValueType = valueType;
             Section = section;
             DefaultValue = defaultValue;
             Constraint = constraint ?? new GraphAuthoringFieldConstraint();
@@ -156,6 +157,7 @@ namespace BTSMTL.Authoring.Graph
         public string DisplayName { get; }
         public GraphAuthoringFieldValueKind ValueKind { get; }
         public GraphAuthoringFieldAccess Access { get; }
+        public Type ValueType { get; }
         public GraphAuthoringDetailsSection Section { get; }
         public object DefaultValue { get; }
         public GraphAuthoringFieldConstraint Constraint { get; }
@@ -197,7 +199,7 @@ namespace BTSMTL.Authoring.Graph
         public GraphAuthoringFieldDescriptor Field { get; }
         public string FieldId => Field == null ? m_FieldId : Field.FieldId.Value;
         public object Value { get; }
-        public bool IsMissing => Value == null || Value is UnityEngine.Object asset && !asset;
+        public bool IsMissing => Value == null || Value.Equals(null);
         public string CanonicalValue => Value switch
         {
             string text => text,
@@ -243,12 +245,12 @@ namespace BTSMTL.Authoring.Graph
                 GraphAuthoringFieldValueKind.Boolean => Value is bool,
                 GraphAuthoringFieldValueKind.Integer => Value is sbyte or byte or short or ushort or int or uint or long or ulong,
                 GraphAuthoringFieldValueKind.Float => Value is float or double or decimal or int,
-                GraphAuthoringFieldValueKind.Vector2 => Value is Vector2,
-                GraphAuthoringFieldValueKind.Vector3 => Value is Vector3,
-                GraphAuthoringFieldValueKind.Quaternion => Value is Quaternion,
+                GraphAuthoringFieldValueKind.Vector2 => Field.ValueType.IsInstanceOfType(Value),
+                GraphAuthoringFieldValueKind.Vector3 => Field.ValueType.IsInstanceOfType(Value),
+                GraphAuthoringFieldValueKind.Quaternion => Field.ValueType.IsInstanceOfType(Value),
                 GraphAuthoringFieldValueKind.Enum => Value is string || Value.GetType().IsEnum,
-                GraphAuthoringFieldValueKind.AssetReference => Value is UnityEngine.Object,
-                GraphAuthoringFieldValueKind.IdentityReference => Field.ObjectType != null || Value is string || Value is UnityEngine.Object,
+                GraphAuthoringFieldValueKind.AssetReference => Field.ValueType.IsInstanceOfType(Value),
+                GraphAuthoringFieldValueKind.IdentityReference => Value is string || Field.ValueType.IsInstanceOfType(Value),
                 GraphAuthoringFieldValueKind.Object => true,
                 _ => false
             };

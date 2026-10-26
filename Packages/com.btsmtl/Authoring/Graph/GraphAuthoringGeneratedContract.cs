@@ -1,4 +1,4 @@
-#if UNITY_EDITOR
+#if UNITY_EDITOR || BTSMTL_AUTHORING
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -55,12 +55,12 @@ namespace BTSMTL.Authoring.Graph
             Action<GraphAuthoringCandidate, object> writeCandidate,
             Func<GraphAuthoringCandidate, bool> isChanged, Func<object, object> externalValue,
             Func<object, object> defaultValue, Delegate choices = null,
-            Func<object, UnityEngine.Object> resourceOwner = null,
-            Action<object, UnityEngine.Object> writeResourceOwner = null,
-            Func<object, UnityEngine.Object, object> bindResource = null,
-            Action<GraphAuthoringCandidate, UnityEngine.Object> selectResource = null,
+            Func<object, object> resourceOwner = null,
+            Action<object, object> writeResourceOwner = null,
+            Func<object, object, object> bindResource = null,
+            Action<GraphAuthoringCandidate, object> selectResource = null,
             Func<GraphAuthoringCandidate, bool> hasResourceSelection = null,
-            Func<GraphAuthoringCandidate, UnityEngine.Object> selectedResource = null,
+            Func<GraphAuthoringCandidate, object> selectedResource = null,
             params Attribute[] annotations)
         {
             Metadata = metadata;
@@ -96,12 +96,12 @@ namespace BTSMTL.Authoring.Graph
         public Func<object, object> ExternalValue { get; }
         public Func<object, object> DefaultValue { get; }
         public Delegate Choices { get; }
-        public Func<object, UnityEngine.Object> ResourceOwner { get; }
-        public Action<object, UnityEngine.Object> WriteResourceOwner { get; }
-        public Func<object, UnityEngine.Object, object> BindResource { get; }
-        public Action<GraphAuthoringCandidate, UnityEngine.Object> SelectResource { get; }
+        public Func<object, object> ResourceOwner { get; }
+        public Action<object, object> WriteResourceOwner { get; }
+        public Func<object, object, object> BindResource { get; }
+        public Action<GraphAuthoringCandidate, object> SelectResource { get; }
         public Func<GraphAuthoringCandidate, bool> HasResourceSelection { get; }
-        public Func<GraphAuthoringCandidate, UnityEngine.Object> SelectedResource { get; }
+        public Func<GraphAuthoringCandidate, object> SelectedResource { get; }
         public IReadOnlyList<Attribute> Annotations { get; }
         public IReadOnlyList<string> AllowedValues { get; }
         public T Annotation<T>() where T : Attribute => Annotations.OfType<T>().SingleOrDefault();
@@ -114,6 +114,7 @@ namespace BTSMTL.Authoring.Graph
                 (field.AuthoringVisible ? GraphAuthoringFieldAccess.AuthoringRead : GraphAuthoringFieldAccess.None) |
                 (field.ReadOnly ? GraphAuthoringFieldAccess.None : GraphAuthoringFieldAccess.AuthoringWrite) |
                 (field.ReferenceRead ? GraphAuthoringFieldAccess.ReferenceRead : GraphAuthoringFieldAccess.None),
+                ValueType,
                 defaultValue: ExternalValue(DefaultValue(defaults)),
                 constraint: new GraphAuthoringFieldConstraint(field.HasMinimum ? field.Minimum : (double?)null,
                     field.HasMaximum ? field.Maximum : (double?)null, field.Finite, field.NonEmpty, AllowedValues),
