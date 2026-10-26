@@ -55,16 +55,16 @@ public static class AuthoringGraphMutation
                     Record(insert.Node.Id, new DeleteNode(insert.Node.Id));
                     break;
                 case DeleteNode delete:
-                    int nodeIndex = nodes.FindIndex(node => node.Id == delete.NodeId);
+                    int nodeIndex = nodes.FindIndex(node => node.Id.Equals(delete.NodeId));
                     AuthoringNodeDocument removedNode = nodes[nodeIndex];
                     var restore = new List<AuthoringGraphEdit> { new InsertNode(nodeIndex, removedNode) };
                     for (int index = 0; index < edges.Count; index++)
-                        if (edges[index].SourceNodeId == delete.NodeId || edges[index].TargetNodeId == delete.NodeId)
+                        if (edges[index].SourceNodeId.Equals(delete.NodeId) || edges[index].TargetNodeId.Equals(delete.NodeId))
                         {
                             restore.Add(new InsertEdge(index, edges[index]));
                             changed.Add(edges[index].Id);
                         }
-                    edges.RemoveAll(edge => edge.SourceNodeId == delete.NodeId || edge.TargetNodeId == delete.NodeId);
+                    edges.RemoveAll(edge => edge.SourceNodeId.Equals(delete.NodeId) || edge.TargetNodeId.Equals(delete.NodeId));
                     nodes.RemoveAt(nodeIndex);
                     Record(delete.NodeId, restore.ToArray());
                     break;
@@ -104,13 +104,13 @@ public static class AuthoringGraphMutation
                     Record(insert.Edge.Id, new DeleteEdge(insert.Edge.Id));
                     break;
                 case DeleteEdge delete:
-                    int edgeIndex = edges.FindIndex(edge => edge.Id == delete.EdgeId);
+                    int edgeIndex = edges.FindIndex(edge => edge.Id.Equals(delete.EdgeId));
                     Record(delete.EdgeId, new InsertEdge(edgeIndex, edges[edgeIndex]));
                     edges.RemoveAt(edgeIndex);
                     break;
                 case ReorderEdges reorder:
-                    AuthoringEdgeDocument[] previous = edges.Where(edge => edge.SourceNodeId == reorder.SourceNodeId &&
-                        edge.SourcePortId == reorder.SourcePortId).OrderBy(edge => edge.Order).ToArray();
+                    AuthoringEdgeDocument[] previous = edges.Where(edge => edge.SourceNodeId.Equals(reorder.SourceNodeId) &&
+                        edge.SourcePortId.Equals(reorder.SourcePortId)).OrderBy(edge => edge.Order).ToArray();
                     if (previous.Length != reorder.EdgeIds.Length ||
                         !previous.Select(edge => edge.Id).ToHashSet().SetEquals(reorder.EdgeIds))
                         throw new InvalidOperationException("连接重排必须提供该出口的完整连接集合，不能增加或遗漏连接。");
@@ -118,7 +118,7 @@ public static class AuthoringGraphMutation
                         (AuthoringGraphEdit)new SetEdgeOrder(edge.Id, edge.Order)).ToArray());
                     for (int index = 0; index < reorder.EdgeIds.Length; index++)
                     {
-                        int current = edges.FindIndex(edge => edge.Id == reorder.EdgeIds[index]);
+                        int current = edges.FindIndex(edge => edge.Id.Equals(reorder.EdgeIds[index]));
                         AuthoringEdgeDocument edge = edges[current];
                         edges[current] = Copy(edge, order: index);
                     }
@@ -152,12 +152,12 @@ public static class AuthoringGraphMutation
                     Record(insert.Variable.Id, new DeleteVariable(insert.Variable.Id));
                     break;
                 case DeleteVariable delete:
-                    int variableIndex = variables.FindIndex(variable => variable.Id == delete.VariableId);
+                    int variableIndex = variables.FindIndex(variable => variable.Id.Equals(delete.VariableId));
                     Record(delete.VariableId, new InsertVariable(variableIndex, variables[variableIndex]));
                     variables.RemoveAt(variableIndex);
                     break;
                 case ConfigureVariable configure:
-                    int target = variables.FindIndex(variable => variable.Id == configure.VariableId);
+                    int target = variables.FindIndex(variable => variable.Id.Equals(configure.VariableId));
                     AuthoringVariableDocument old = variables[target];
                     Record(old.Id, new ConfigureVariable(old.Id, old.Key, old.TypeId, old.Declaration.ToArray(), old.DefaultValue));
                     variables[target] = new AuthoringVariableDocument(old.Id, configure.Key, configure.TypeId,
@@ -171,7 +171,7 @@ public static class AuthoringGraphMutation
         void SetField(List<AuthoringNamedValue> values, GraphAuthoringFieldId id, AuthoringValue value,
             Func<AuthoringValue?, AuthoringGraphEdit> reverse, GraphAuthoringElementId element)
         {
-            int index = values.FindIndex(field => field.FieldId == id);
+            int index = values.FindIndex(field => field.FieldId.Equals(id));
             Record(element, reverse(index < 0 ? null : values[index].Value));
             var field = new AuthoringNamedValue(id, value);
             if (index < 0) values.Add(field);
@@ -181,20 +181,20 @@ public static class AuthoringGraphMutation
         void RemoveField(List<AuthoringNamedValue> values, GraphAuthoringFieldId id,
             Func<AuthoringValue, AuthoringGraphEdit> reverse, GraphAuthoringElementId element)
         {
-            int index = values.FindIndex(field => field.FieldId == id);
+            int index = values.FindIndex(field => field.FieldId.Equals(id));
             Record(element, reverse(values[index].Value));
             values.RemoveAt(index);
         }
 
         void UpdateNode(GraphAuthoringElementId id, Func<AuthoringNodeDocument, AuthoringNodeDocument> update)
         {
-            int index = nodes.FindIndex(node => node.Id == id);
+            int index = nodes.FindIndex(node => node.Id.Equals(id));
             nodes[index] = update(nodes[index]);
         }
 
         void UpdateEdge(GraphAuthoringElementId id, Func<AuthoringEdgeDocument, AuthoringEdgeDocument> update)
         {
-            int index = edges.FindIndex(edge => edge.Id == id);
+            int index = edges.FindIndex(edge => edge.Id.Equals(id));
             edges[index] = update(edges[index]);
         }
 
