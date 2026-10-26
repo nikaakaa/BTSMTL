@@ -169,6 +169,8 @@ namespace BTSMTL
                 m_GraphSources.Add(graph, source);
             }
             parts.Add(source.Json);
+            if (graph is IBtsmtlGraphCompilationInputs inputs)
+                inputs.AppendCompilationInputs(parts);
             AppendLifecycle(parts, graph, true);
             AppendLifecycle(parts, graph, false);
             parts.Add((source.References.Count).ToString(CultureInfo.InvariantCulture));

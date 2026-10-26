@@ -10,6 +10,8 @@ namespace BTSMTL.Graphs
     public abstract class BtsmtlMacroHost
     {
         public abstract string DisplayName { get; }
+        // 准入声明的稳定内容，进入调用方编译身份。
+        public abstract string Identity { get; }
         public abstract bool CanAuthorNodeType(Type nodeType);
         // 私有子图在所属图中创建时取所属图的准入；各子图持有独立副本。
         public abstract BtsmtlMacroHost Clone();
@@ -41,6 +43,7 @@ namespace BTSMTL.Graphs
         public IReadOnlyList<string> Domains => m_Domains;
         public override string DisplayName => m_Domains.Length == 0
             ? "通用图" : "通用图（" + string.Join("、", m_Domains) + "）";
+        public override string Identity => "graph:" + string.Join(",", m_Domains);
         public override bool CanAuthorNodeType(Type nodeType) => BtsmtlGraphRoot.AllowsNodeType(nodeType, m_Domains);
         public override BtsmtlMacroHost Clone() => new BtsmtlGraphMacroHost(m_Domains);
     }

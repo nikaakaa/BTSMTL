@@ -16,7 +16,7 @@ namespace BTSMTL.Graphs
 {
     // BTSMTL 通用参数化子图。不独立运行：每个调用位置由调用方编译器按出现路径展开。
     public sealed class BtsmtlMacroGraph : Macro, IBtsmtlGraphVariableOwner, IBtsmtlGraphVariableSource,
-        IBtsmtlMacroHostProvider
+        IBtsmtlGraphCompilationInputs, IBtsmtlMacroHostProvider
 #if UNITY_EDITOR
         , IBtsmtlAuthoringGraph, IBlackboardEditorAdapter
 #endif
@@ -65,6 +65,31 @@ namespace BTSMTL.Graphs
 
         public BtsmtlMacroHost CreatePrivateMacroHost() =>
             m_Host?.Clone() ?? throw new InvalidOperationException("子图尚未声明宿主准入。");
+
+        // 参数接口、身份、宿主准入与局部变量语义不在节点快照中，但决定每个调用位置的编译结果。
+        public void AppendCompilationInputs(List<string> parts)
+        {
+            parts.Add(m_AuthoringId);
+            parts.Add(m_ContentRevision);
+            parts.Add(m_Host?.Identity ?? string.Empty);
+            foreach (DynamicParameterDefinition parameter in inputDefinitions.Concat(outputDefinitions))
+            {
+                parts.Add(parameter.ID);
+                parts.Add(parameter.name);
+                parts.Add(parameter.type?.AssemblyQualifiedName ?? string.Empty);
+            }
+            parts.Add(inputDefinitions.Count.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            BtsmtlGraphVariableDeclarations variables = Variables;
+            parts.Add(variables.OwnerId);
+            parts.Add(variables.Revision);
+            foreach (BtsmtlBlackboardDeclaration declaration in variables.BlackboardDeclarations)
+            {
+                parts.Add(declaration.VariableId);
+                parts.Add(declaration.Scope.ToString());
+                parts.Add(declaration.Lifetime.ToString());
+                parts.Add(declaration.Category);
+            }
+        }
 
         protected override void OnGraphInitialize() =>
             throw new InvalidOperationException("BTSMTL 子图只能由调用方编译后的编排内容执行。");
