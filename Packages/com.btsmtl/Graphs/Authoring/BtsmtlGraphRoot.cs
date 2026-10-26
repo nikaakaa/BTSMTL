@@ -139,6 +139,10 @@ namespace BTSMTL.Graphs
         public void ConfigureCanvas(string category, string comments, Vector2 translation, float zoomFactor) =>
             Authoring.ConfigureCanvas(category, comments, translation, zoomFactor);
 
+        public void ConfigureCanvasGroups(params BtsmtlCanvasGroupDeclaration[] groups) =>
+            Authoring.ConfigureCanvasGroups(groups);
+
+        // 生成的整根重建即明确清空页面：节点、连接与分组一起清除，再按声明重建。
         public void ClearAuthoringContent() => ClearGraph();
         public override IBlackboard editorBlackboard => m_VariableOwner ? Variables.Blackboard : null;
         public bool IsReadOnly => isEditorReadOnly;

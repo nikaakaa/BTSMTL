@@ -243,6 +243,9 @@ namespace BTSMTL.Graphs
         public void ConfigureCanvas(string category, string comments, Vector2 translation, float zoomFactor) =>
             Authoring.ConfigureCanvas(category, comments, translation, zoomFactor);
 
+        public void ConfigureCanvasGroups(params BtsmtlCanvasGroupDeclaration[] groups) =>
+            Authoring.ConfigureCanvasGroups(groups);
+
         public override IBlackboard editorBlackboard => Variables.Blackboard;
         public bool IsReadOnly => isEditorReadOnly;
         public bool AllowVariablePick => !IsReadOnly;

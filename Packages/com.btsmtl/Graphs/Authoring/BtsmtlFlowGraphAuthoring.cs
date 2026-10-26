@@ -21,6 +21,36 @@ namespace BTSMTL.Graphs
         bool PublishesVariables { get; }
     }
 
+    // 分组注释的作者声明：名称、范围、颜色、自动包围与说明。生成时整体替换图的分组列表；编译与指纹不读取分组。
+    public sealed class BtsmtlCanvasGroupDeclaration
+    {
+        public BtsmtlCanvasGroupDeclaration(string name, Rect rect, Color color, bool autoGroup, string notes = "")
+        {
+            if (string.IsNullOrWhiteSpace(name))
+                throw new ArgumentException("分组注释必须有名称。", nameof(name));
+            Name = name;
+            Rect = rect;
+            Color = color;
+            AutoGroup = autoGroup;
+            Notes = notes ?? string.Empty;
+        }
+
+        public string Name { get; }
+        public Rect Rect { get; }
+        public Color Color { get; }
+        public bool AutoGroup { get; }
+        public string Notes { get; }
+
+        // 所属图的编辑事务由调用方提供；技能页与状态机页在各自的生成事务内直接调用。
+        public static void Apply(Graph graph, IEnumerable<BtsmtlCanvasGroupDeclaration> groups) =>
+            graph.canvasGroups = groups.Select(group => new NodeCanvas.Framework.CanvasGroup(group.Rect, group.Name)
+            {
+                color = group.Color,
+                autoGroup = group.AutoGroup,
+                notes = group.Notes
+            }).ToList();
+    }
+
     // FlowCanvas 编辑入口的共同实现；通用图和子图因基类不同各持有一份，只转发不复制。
     public sealed class BtsmtlFlowGraphAuthoring
     {
@@ -234,6 +264,9 @@ namespace BTSMTL.Graphs
 
         public void ConfigureValueInput<T>(FlowNode node, string portId, T value) =>
             Edit("配置图常量", () => ((ValueInput)node.GetInputPort(portId)).serializedValue = value);
+
+        public void ConfigureCanvasGroups(IEnumerable<BtsmtlCanvasGroupDeclaration> groups) =>
+            Edit("配置图分组注释", () => BtsmtlCanvasGroupDeclaration.Apply(m_Graph, groups));
 
         public void ConfigureCanvas(string category, string comments, Vector2 translation, float zoomFactor) =>
             Edit("配置图画布", () =>
