@@ -66,7 +66,7 @@ namespace BTSMTL.Orchestration
         OrchestrationExtensionPort Declaration { get; }
     }
 
-    public readonly struct OrchestrationExtensionInputPort<TOperation> : IOrchestrationExtensionPort
+    public sealed class OrchestrationExtensionInputPort<TOperation> : IOrchestrationExtensionPort
         where TOperation : struct
     {
         public OrchestrationExtensionInputPort(string id, OrchestrationValueKind valueKind, int index)
@@ -83,7 +83,7 @@ namespace BTSMTL.Orchestration
             Id, ValueKind, OrchestrationExtensionPortDirection.Input, Index);
     }
 
-    public readonly struct OrchestrationExtensionOutputPort<TOperation> : IOrchestrationExtensionPort
+    public sealed class OrchestrationExtensionOutputPort<TOperation> : IOrchestrationExtensionPort
         where TOperation : struct
     {
         public OrchestrationExtensionOutputPort(string id, OrchestrationValueKind valueKind, int index)

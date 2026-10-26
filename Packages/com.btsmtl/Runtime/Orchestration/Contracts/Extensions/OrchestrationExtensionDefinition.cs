@@ -5,7 +5,7 @@ namespace BTSMTL.Orchestration
         OrchestrationExtensionDefinition Declaration { get; }
     }
 
-    public readonly struct OrchestrationExtensionDefinition<TOperation> : IOrchestrationExtensionDefinition
+    public sealed class OrchestrationExtensionDefinition<TOperation> : IOrchestrationExtensionDefinition
         where TOperation : struct
     {
         readonly OrchestrationExtensionDefinition m_Declaration;

@@ -91,7 +91,7 @@ namespace ThirdPersonGameplay.Orchestration
                     case OrchestrationExtensionFieldKind.Enum:
                     case OrchestrationExtensionFieldKind.Data:
                         if (!string.Equals(field.TypeIdentity, declaration.TypeIdentity, StringComparison.Ordinal))
-                            throw new InvalidOperationException($"Gameplay 扩展字段 '{field.Id}' 的类型身份与合同不一致。");
+                            throw new InvalidOperationException($"Gameplay 扩展字段 '{field.Id}' 的类型身份与合同不一致：实际 '{field.TypeIdentity}'，需要 '{declaration.TypeIdentity}'。");
                         break;
                     case OrchestrationExtensionFieldKind.Identity:
                         if (!string.Equals(field.IdentityDomainId, declaration.IdentityDomainId, StringComparison.Ordinal))
