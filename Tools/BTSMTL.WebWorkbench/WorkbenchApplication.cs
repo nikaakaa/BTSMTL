@@ -9,8 +9,23 @@ public static class WorkbenchApplication
     {
         var builder = WebApplication.CreateBuilder(args);
         builder.Services.ConfigureHttpJsonOptions(options =>
-            options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+        {
+            options.SerializerOptions.IncludeFields = true;
+            options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
+        });
         var app = builder.Build();
+        app.UseExceptionHandler(handler => handler.Run(async context =>
+        {
+            Exception exception = context.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerFeature>()!.Error;
+            context.Response.StatusCode = exception switch
+            {
+                FileNotFoundException or DirectoryNotFoundException or KeyNotFoundException => 404,
+                ArgumentException or InvalidDataException => 400,
+                InvalidOperationException => 409,
+                _ => 500
+            };
+            await context.Response.WriteAsJsonAsync(new { Error = exception.Message });
+        }));
         app.UseDefaultFiles();
         app.UseStaticFiles();
         app.UseStaticFiles(new StaticFileOptions
