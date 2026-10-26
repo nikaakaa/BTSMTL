@@ -30,22 +30,22 @@ namespace BTSMTL.Graphs
 
         internal static void DrawFields(BtsmtlFlowNode node)
         {
-            var graph = (BtsmtlGraphRoot)node.graph;
-            EditorGUI.BeginDisabledGroup(graph.isEditorReadOnly);
+            var graph = (IBtsmtlAuthoringGraph)node.graph;
+            EditorGUI.BeginDisabledGroup(graph.Graph.isEditorReadOnly);
             GraphAuthoringCandidate edits = DrawFields(node, graph);
             EditorGUI.EndDisabledGroup();
             if (edits.HasChanges)
             {
                 try
                 {
-                    graph.EditAuthoring("编辑图节点字段", () => edits.Apply(node));
+                    graph.Authoring.Edit("编辑图节点字段", () => edits.Apply(node));
                 }
                 catch (InvalidOperationException error) { NodeCanvas.Editor.GraphEditor.current.ShowNotification(new GUIContent(error.Message)); }
                 catch (ArgumentException error) { NodeCanvas.Editor.GraphEditor.current.ShowNotification(new GUIContent(error.Message)); }
             }
         }
 
-        static GraphAuthoringCandidate DrawFields(object target, BtsmtlGraphRoot graph)
+        static GraphAuthoringCandidate DrawFields(object target, IBtsmtlAuthoringGraph graph)
         {
             Type type = target.GetType();
             GraphAuthoringCandidate edits = GraphAuthoringMemberBindings.CreateCandidate(target);
@@ -82,7 +82,7 @@ namespace BTSMTL.Graphs
             return edits;
         }
 
-        static object DrawValue(GUIContent label, object value, Type type, BtsmtlGraphRoot graph)
+        static object DrawValue(GUIContent label, object value, Type type, IBtsmtlAuthoringGraph graph)
         {
             Type collection = type.GetInterfaces().Concat(new[] { type })
                 .FirstOrDefault(candidate => candidate.IsGenericType &&
@@ -119,27 +119,27 @@ namespace BTSMTL.Graphs
                     array.SetValue(next[i], i);
                 return array;
             }
-            return EditorUtils.DirectFieldControl(label, value, type, graph,
+            return EditorUtils.DirectFieldControl(label, value, type, graph.Graph,
                 Array.Empty<object>(), out _);
         }
 
-        internal static void DrawValueInputs(BtsmtlGraphRoot graph, FlowNode node)
+        internal static void DrawValueInputs(IBtsmtlAuthoringGraph graph, FlowNode node)
         {
-            EditorGUI.BeginDisabledGroup(graph.isEditorReadOnly);
+            EditorGUI.BeginDisabledGroup(graph.Graph.isEditorReadOnly);
             foreach (ValueInput input in node.GetInputValuePorts())
             {
                 if (input.isConnected)
                     continue;
                 EditorGUI.BeginChangeCheck();
                 object value = EditorUtils.DirectFieldControl(new GUIContent(input.name),
-                    input.serializedValue, input.type, graph, Array.Empty<object>(), out _);
+                    input.serializedValue, input.type, graph.Graph, Array.Empty<object>(), out _);
                 if (EditorGUI.EndChangeCheck())
-                    graph.EditAuthoring("编辑图输入常量", () => input.serializedValue = value);
+                    graph.Authoring.Edit("编辑图输入常量", () => input.serializedValue = value);
             }
             EditorGUI.EndDisabledGroup();
         }
 
-        internal static GenericMenu VariableCreationMenu(BtsmtlGraphRoot graph)
+        internal static GenericMenu VariableCreationMenu(IBtsmtlAuthoringGraph graph)
         {
             var menu = new GenericMenu();
             foreach (Type type in new[] { typeof(bool), typeof(int), typeof(float), typeof(string),
@@ -159,11 +159,13 @@ namespace BTSMTL.Graphs
             return menu;
         }
 
-        internal static GenericMenu VariableNodeMenu(BtsmtlGraphRoot graph, Variable variable, Vector2 position)
+        internal static GenericMenu VariableNodeMenu(IBtsmtlAuthoringGraph graph, Variable variable, Vector2 position)
         {
             var menu = new GenericMenu();
             Add("读取变量", typeof(BtsmtlVariableGetFlowNode<>));
             Add("写入变量", typeof(BtsmtlVariableSetFlowNode<>));
+            if (!graph.PublishesVariables)
+                return menu;
             menu.AddItem(new GUIContent("发布到宿主"), variable.isExposedPublic,
                 () => graph.Variables.ConfigureVariable(variable.ID, !variable.isExposedPublic));
             BtsmtlBlackboardDeclaration current = graph.Variables.RequireDeclaration(variable.ID);
@@ -183,9 +185,9 @@ namespace BTSMTL.Graphs
             return menu;
 
             void Add(string title, Type generic) => menu.AddItem(new GUIContent(title), false, () =>
-                graph.EditAuthoring(title, () =>
+                graph.Authoring.Edit(title, () =>
                 {
-                    var node = (IBtsmtlVariableFlowNode)graph.AddNode(generic.MakeGenericType(variable.varType), position);
+                    var node = (IBtsmtlVariableFlowNode)graph.Graph.AddNode(generic.MakeGenericType(variable.varType), position);
                     node.ConfigureVariable(graph.Variables.OwnerId, variable.ID);
                 }));
         }

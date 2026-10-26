@@ -118,36 +118,20 @@ namespace BTSMTL.Graphs
             };
         }
 
-        public FlowNode AddAuthoringNode(Type type, string id, Vector2 position)
-        {
-            var node = (FlowNode)AddNode(type, position);
-            EditAuthoring("配置图节点身份", () => node.ConfigureAuthoringIdentity(id));
-            return node;
-        }
+        public FlowNode AddAuthoringNode(Type type, string id, Vector2 position) =>
+            Authoring.AddAuthoringNode(type, id, position);
 
         public BinderConnection ConnectAuthoringPorts(string id, Node source, string output,
-            Node target, string input)
-        {
-            BinderConnection connection = CreatePortConnection(((FlowNode)source).GetOutputPort(output),
-                ((FlowNode)target).GetInputPort(input));
-            EditAuthoring("配置图连接身份", () => connection.ConfigureAuthoringIdentity(id));
-            return connection;
-        }
+            Node target, string input) => Authoring.ConnectAuthoringPorts(id, source, output, target, input);
 
         public void ConfigureNodeMetadata(Node node, string name, bool breakpoint = false) =>
-            EditAuthoring("配置图节点", () => { node.name = name; node.isBreakpoint = breakpoint; });
+            Authoring.ConfigureNodeMetadata(node, name, breakpoint);
 
         public void ConfigureValueInput<T>(FlowNode node, string portId, T value) =>
-            EditAuthoring("配置图常量", () => ((ValueInput)node.GetInputPort(portId)).serializedValue = value);
+            Authoring.ConfigureValueInput(node, portId, value);
 
         public void ConfigureCanvas(string category, string comments, Vector2 translation, float zoomFactor) =>
-            EditAuthoring("配置图画布", () =>
-            {
-                this.category = category;
-                this.comments = comments;
-                this.translation = translation;
-                this.zoomFactor = zoomFactor;
-            });
+            Authoring.ConfigureCanvas(category, comments, translation, zoomFactor);
 
         public void ClearAuthoringContent() => ClearGraph();
         public override IBlackboard editorBlackboard => m_VariableOwner ? Variables.Blackboard : null;
