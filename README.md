@@ -36,6 +36,12 @@ Unity 通过各包原有 asmdef 编译同一份源码。3C 的 Assets 中不保�
 
 `com.btsmtl` 全部程序集（含 Diagnostics 与 Diagnostics.Editor）只引用 Foundation，包依赖只有 Foundation 与 Unity 官方包。诊断只定义编排自身的图、状态机、Timeline、黑板与数值通道，另留一个中立的 `Host` 通道；宿主事件经 `RuntimeHostTraceKinds.Register(编号, 名称, 采集级别)` 登记，编号写入预览事件文件，只追加不复用。预览事件文件为 Version 12、每条 600 字节，播放来源包含调用方播放 ID 与调用元素身份。依赖守护 `BTSMTL_NO_GAMEPLAY_SDK` 禁止 BTSMTL 程序集引用任何 `ThirdPerson*` 程序集或 `com.thirdperson.*` 包。Gameplay、领域合同、Quantum 数学与 MemoryPack 单向引用 BTSMTL；BTSMTL 不引用这些宿主实现。Photon Quantum SDK 由使用 Quantum 的宿主提供。包级依赖解除与全部作者外围通过依赖守护分别检查。
 
+## 通用图子图与分组
+
+`BtsmtlMacroGraph` 是通用事件图的子图资产，声明稳定身份、宿主准入、参数接口、输入／输出锚点及局部变量。`MacroNodeWrapper` 引用共享资产，或引用由所属图拥有的私有子图；`Graphs/Editor/BtsmtlMacroCompilation` 按调用位置展开参数与调用帧，宿主继续确认节点和输入可用。共享子图的角色历史值可由调用方显式传入、接回并保存。
+
+作者通过 `ConfigureInterface` 及同一接口事务修改参数和调用端口。C# authoring 的独立子图根、正式导出与生成仍由 3C 持有；共享引用不进入调用方写集，私有子图随所属根重建和退役。`ConfigureCanvasGroups` 整体配置名称、范围、颜色及自动包围，分组随导出生成保存，只影响编辑画布。
+
 ## Timeline 作者编辑与预览
 
 `Compilation/Analysis/OrchestrationStaticQuery` 从正式语义操作、连线、来源与内容引用读取状态绑定、条件读取、Clip 状态提供者和嵌套 Timeline 调用点；领域经 `IOrchestrationStateKeyDeclarations` 声明自己的状态键。`OrchestrationStateTransitionWindows` 计算状态转移的可走时段，`TimelineStaticChain` 结合输入成立区间和逐条运行数据假设推导状态路线及并行分支，不执行作者图，不保存另一份作者配置。状态转移使用正式 `Priority → Order → SourcePortId → IdentityId` 比较器和发布身份表；跨状态的持续行为由作者的并行结构表达。
