@@ -120,6 +120,7 @@ export function editField(field, value, apply, references = []) {
       await apply(value);
     });
   const editor = bindValueEditor(modal.querySelector('.typed-value-editor'), value, field.constraint?.AllowedValues || [], references, field.valueDefinition);
+  const typed = modal.querySelector('.typed-value-editor');
   const raw = modal.querySelector('.raw-value-editor textarea');
   raw.oninput = () => { rawEdited = true; };
   modal.querySelector('.raw-value-editor').addEventListener('toggle', event => {
@@ -134,6 +135,7 @@ export function editField(field, value, apply, references = []) {
         event.currentTarget.open = true;
       }
     }
+    typed.hidden = event.currentTarget.open;
   });
 }
 
