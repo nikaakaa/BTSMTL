@@ -11,7 +11,7 @@ namespace BTSMTL.Timeline
     }
 
     [Serializable]
-    public abstract class SampledClip : Clip
+    public abstract partial class SampledClip : Clip
     {
         [SerializeField]
         float m_SourceStartTime;
