@@ -1,14 +1,18 @@
 using System;
-using UnityEngine;
 
 namespace BTSMTL.Authoring.Blackboard
 {
     [Serializable]
     public sealed class PipelineBlackboardInputBinding
     {
-        [SerializeField]
+#if UNITY_5_3_OR_NEWER
+        [UnityEngine.SerializeField]
+#endif
         string m_InputValueId;
-        [SerializeField] PipelineBlackboardInputProjection m_Projection;
+#if UNITY_5_3_OR_NEWER
+        [UnityEngine.SerializeField]
+#endif
+        PipelineBlackboardInputProjection m_Projection;
 
         public string InputValueId => m_InputValueId ?? string.Empty;
         public bool IsDefined => !string.IsNullOrWhiteSpace(m_InputValueId);
