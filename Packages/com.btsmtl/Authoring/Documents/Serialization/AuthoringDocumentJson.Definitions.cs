@@ -48,8 +48,35 @@ namespace BTSMTL.Authoring.Documents
                 visibility.Type == JTokenType.Null ? null : new GraphAuthoringFieldVisibilityCondition(
                     new GraphAuthoringFieldId(Text(visibility, "fieldId", sourcePath)), Text(visibility, "equals", sourcePath)),
                 new GraphAuthoringFieldCompilation(Enumeration<GraphAuthoringFieldCompilationImpact>(compilation, "impact", sourcePath),
-                    Text(compilation, "unit", sourcePath)));
+                    compilation["unit"].Type == JTokenType.Null ? null : Text(compilation, "unit", sourcePath)));
         }
+
+        public static AuthoringNodeDefinition ReadNodeDefinition(string text, string sourcePath)
+        {
+            JObject node = ReadObject(text);
+            var id = new GraphAuthoringCapabilityId(Text(node, "id", sourcePath));
+            return new(id, new GraphAuthoringDomainId(Text(node, "domain", sourcePath)),
+                Array(node, "roles", sourcePath).Select(role => new GraphAuthoringDocumentRoleId(role.Value<string>())).ToArray(),
+                Array(node, "fields", sourcePath).Select(field => ReadFieldDefinition(field.ToString(), sourcePath)).ToArray(),
+                new GraphAuthoringPortShapeDefinition(id, Array(node, "ports", sourcePath).Select(port => ReadDefinitionPort(port, sourcePath)).ToArray(),
+                    Array(node, "portVariants", sourcePath).Select(variant => new GraphAuthoringPortVariantDescriptor(
+                        Text(variant, "id", sourcePath), new GraphAuthoringPortVariantCondition(
+                            new GraphAuthoringFieldId(Text(variant["when"], "fieldId", sourcePath)),
+                            Enumeration<GraphAuthoringFieldValueKind>(variant["when"], "valueKind", sourcePath), Text(variant["when"], "equals", sourcePath)),
+                        Array(variant, "ports", sourcePath).Select(port => ReadDefinitionPort(port, sourcePath)).ToArray())).ToArray(),
+                    Enumeration<GraphAuthoringDynamicPortPolicy>(node, "dynamicPortPolicy", sourcePath)),
+                Enumeration<GraphAuthoringDynamicPortSource>(node, "dynamicPortSource", sourcePath),
+                Required(node, "systemOwned", sourcePath).Value<bool>(), Text(node, "anchorId", sourcePath),
+                Required(node, "stateKind", sourcePath).Type == JTokenType.Null ? null : Enumeration<AuthoringStateKind>(node, "stateKind", sourcePath));
+        }
+
+        static GraphAuthoringPortDescriptor ReadDefinitionPort(JToken port, string sourcePath) => new(
+            new GraphAuthoringPortId(Text(port, "id", sourcePath)), Text(port, "displayName", sourcePath),
+            Text(port, "valueType", sourcePath), Enumeration<GraphAuthoringPortDirection>(port, "direction", sourcePath),
+            Enumeration<GraphAuthoringPortCapacity>(port, "capacity", sourcePath), Required(port, "required", sourcePath).Value<bool>(),
+            Required(port, "order", sourcePath).Value<int>(), Text(port, "interfacePortId", sourcePath),
+            Required(port, "valueTypeFieldId", sourcePath).Type == JTokenType.Null ? default :
+                new GraphAuthoringFieldId(Text(port, "valueTypeFieldId", sourcePath)));
 
         static JObject DefinitionToken(AuthoringValueDefinition definition) => new JObject
         {
