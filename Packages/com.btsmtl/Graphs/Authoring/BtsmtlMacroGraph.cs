@@ -139,6 +139,7 @@ namespace BTSMTL.Graphs
             macro.ConfigureHost(host);
             macro.inputDefinitions.Add(new DynamicParameterDefinition("执行", typeof(Flow)));
             macro.EnsureAnchors();
+            host.OnMacroCreated(macro);
             return macro;
         }
 
@@ -211,15 +212,22 @@ namespace BTSMTL.Graphs
                     base.RemoveConnection(connection, false);
         });
 
-        public override GenericMenu GetNodesMenu(Vector2 position, Port context, UnityEngine.Object instance) =>
-            Authoring.NodesMenu(position, context, instance);
+        public override GenericMenu GetNodesMenu(Vector2 position, Port context, UnityEngine.Object instance)
+        {
+            GenericMenu menu = Authoring.NodesMenu(position, context, instance);
+            m_Host?.AppendNodesMenu(this, menu, position, context, instance);
+            return menu;
+        }
 
         public override void AppendNodeCreationItem(GenericMenu menu, string category, Type type,
             Vector2 position, Port context, object instance) =>
             Authoring.AppendNodeCreationItem(menu, category, type, position, context);
 
-        public override void DrawNodeValueInputsInspectorGUI(FlowNode node) =>
-            BtsmtlGraphAuthoringGUI.DrawValueInputs(this, node);
+        public override void DrawNodeValueInputsInspectorGUI(FlowNode node)
+        {
+            if (m_Host == null || !m_Host.DrawValueInputs(this, node))
+                BtsmtlGraphAuthoringGUI.DrawValueInputs(this, node);
+        }
 
         protected override GenericMenu OnNodesContextMenu(GenericMenu menu, Node[] nodes) => menu;
 

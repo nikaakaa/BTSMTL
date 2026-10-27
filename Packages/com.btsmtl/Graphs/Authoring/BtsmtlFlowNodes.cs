@@ -72,6 +72,8 @@ namespace BTSMTL.Graphs
                 inspector.DrawNodeInspector(this);
                 return;
             }
+            if (graph is BtsmtlMacroGraph { Host: { } host } && host.DrawNodeInspector(this))
+                return;
             BtsmtlGraphAuthoringGUI.DrawFields(this);
             DrawValueInputsGUI();
         }
