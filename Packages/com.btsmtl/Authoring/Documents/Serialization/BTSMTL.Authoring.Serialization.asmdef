@@ -2,7 +2,9 @@
     "name": "BTSMTL.Authoring.Serialization",
     "rootNamespace": "BTSMTL.Authoring.Documents",
     "references": [
-        "BTSMTL.Authoring"
+        "BTSMTL.Authoring",
+        "BTSMTL.Orchestration.Contracts",
+        "BTSMTL.Timeline.Runtime"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
