@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 const $ = id => document.getElementById(id);
-const state = { sources: null, runs: [], selected: null, summary: null, frames: new Map(), count: 0, sealed: false };
+const state = { sources: null, runs: [], selected: null, summary: null, frames: new Map(), count: 0, sealed: false, initialFrameIndex: 0 };
 let pollTimer;
 const stages = { accepted: '已接收', running: '独立会话运行中', completed: '完整重放已封存', stopped: '会话已停止并封存', failed: '执行失败', cancelled: '已取消' };
 const playbackNames = { paused: '已暂停', playing: '正在播放', stepping: '等待下一个确认帧', stopped: '已停止', completed: '已完成' };
@@ -73,10 +73,13 @@ async function start() {
   await selectRun(receipt.jobId);
 }
 
-async function selectRun(id) {
+async function selectRun(id, frameIndex = 0) {
+  if (!Number.isSafeInteger(frameIndex) || frameIndex < 0) throw new Error('帧序号必须是非负整数。');
   clearTimeout(pollTimer);
   state.selected = id; state.summary = null; state.frames.clear(); state.count = 0; state.sealed = false;
-  history.replaceState(null, '', `?run=${encodeURIComponent(id)}`);
+  state.initialFrameIndex = frameIndex;
+  delete document.documentElement.dataset.previewImageReady;
+  history.replaceState(null, '', `?run=${encodeURIComponent(id)}&frameIndex=${frameIndex}`);
   $('playback-controls').hidden = true;
   clearActors(); $('run-details').replaceChildren(); $('frame-facts').replaceChildren();
   $('actors').replaceChildren(); $('action-changes').replaceChildren(); $('frame-json').textContent = '';
@@ -136,6 +139,7 @@ async function displayObservation(summary, sealed) {
   const first = state.summary === null;
   state.summary = summary; state.count = summary.frameCount;
   state.sealed = sealed;
+  if (sealed && state.initialFrameIndex >= state.count) throw new Error('请求的帧序号超出本次已封存范围。');
   const facts = { '运行身份': summary.runId, '场景修订': summary.sceneRevision,
     '原录像修订': summary.replaySourceHash, '来源场景': summary.scene.path,
     '场景定义': summary.definition.path, '内容身份': summary.sessionIdentity.gameplayContent,
@@ -144,7 +148,7 @@ async function displayObservation(summary, sealed) {
   $('run-details').innerHTML = Object.entries(facts).map(([name, value]) => `<dt>${escapeHtml(name)}</dt><dd>${escapeHtml(value)}</dd>`).join('');
   $('channels').textContent = `本次实际观察：${summary.channels.join('、')}。视口只显示根标记；尚未提供动画、碰撞及命中画面。`;
   $('frame').max = Math.max(0, state.count - 1);
-  if (first) $('frame').value = 0;
+  if (first) $('frame').value = state.initialFrameIndex;
   if (!sealed && $('follow-live').checked) $('frame').value = Math.max(0, state.count - 1);
   $('frame').disabled = state.count === 0;
   $('fit-view').disabled = state.count === 0;
@@ -193,6 +197,15 @@ async function showFrame(index) {
   } else $('action-changes').innerHTML = '<p class="muted">此运行未采集动作变化通道。</p>';
   $('frame-json').textContent = JSON.stringify(frame, null, 2);
   drawActors(frame.actors);
+  renderer.render(scene, camera);
+  const rendered = document.documentElement.dataset;
+  rendered.previewRun = state.summary.runId;
+  rendered.previewFrame = String(frame.frame);
+  rendered.previewFrameIndex = String(index);
+  rendered.previewChecksum = frame.checksum;
+  rendered.previewScene = state.summary.sceneRevision;
+  rendered.previewImageReady = 'true';
+  history.replaceState(null, '', `?run=${encodeURIComponent(id)}&frameIndex=${index}`);
 }
 
 const viewport = $('viewport');
@@ -245,4 +258,4 @@ function moveFrame(delta) { $('follow-live').checked = false; $('frame').value =
 $('previous-frame').onclick = () => guarded(() => moveFrame(-1)); $('next-frame').onclick = () => guarded(() => moveFrame(1));
 $('fit-view').onclick = fitView;
 $('compare').onclick = () => guarded(async () => { const result = await request(`/api/preview/runs/${state.selected}/compare/${$('comparison').value}`); $('comparison-result').textContent = JSON.stringify(result, null, 2); report(!result.comparable ? '运行条件不同，未比较 checksum。' : result.equal ? `已比较 ${result.comparedFrames} 帧，本次已记录范围内一致。` : `首个差异在 SDK 帧 ${result.firstDifference.frame}。`); });
-guarded(async () => { await refresh(); const pending = sessionStorage.getItem('btsmtl.preview.pending-request'); if (pending) { report('上次提交结果尚未确认，正在以原请求身份重查。'); await start(); } else { const run = new URLSearchParams(location.search).get('run'); if (run) await selectRun(run); else report('已读取实际来源。选择正式离线包与原 SDK 录像后可提交重放。'); } });
+guarded(async () => { await refresh(); const pending = sessionStorage.getItem('btsmtl.preview.pending-request'); if (pending) { report('上次提交结果尚未确认，正在以原请求身份重查。'); await start(); } else { const query = new URLSearchParams(location.search); const run = query.get('run'); if (run) await selectRun(run, Number(query.get('frameIndex') ?? '0')); else report('已读取实际来源。选择正式离线包与原 SDK 录像后可提交重放。'); } });
