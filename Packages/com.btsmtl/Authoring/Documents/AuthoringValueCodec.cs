@@ -11,6 +11,40 @@ namespace BTSMTL.Authoring.Documents
     public class AuthoringValueCodec
     {
         readonly Dictionary<Type, AuthoringObjectContract> m_Objects = new Dictionary<Type, AuthoringObjectContract>();
+        readonly Dictionary<Type, AuthoringValueDefinition> m_Definitions = new Dictionary<Type, AuthoringValueDefinition>();
+
+        public virtual AuthoringValueDefinition Describe(Type type)
+        {
+            if (m_Definitions.TryGetValue(type, out AuthoringValueDefinition known)) return known;
+            string id = TypeIdentity(type);
+            TypeCode scalar = Type.GetTypeCode(type);
+            AuthoringValueDefinition definition;
+            if (type.IsEnum)
+                definition = new(id, AuthoringValueDefinitionKind.Enumeration, scalar, false,
+                    Enum.GetNames(type), type.IsDefined(typeof(FlagsAttribute), false), Array.Empty<AuthoringValueMemberDefinition>(), null);
+            else if (scalar != TypeCode.Object)
+                definition = new(id, AuthoringValueDefinitionKind.Scalar, scalar, !type.IsValueType,
+                    Array.Empty<string>(), false, Array.Empty<AuthoringValueMemberDefinition>(), null);
+            else if (typeof(IEnumerable).IsAssignableFrom(type))
+                definition = new(id, AuthoringValueDefinitionKind.Sequence, TypeCode.Empty, !type.IsValueType,
+                    Array.Empty<string>(), false, Array.Empty<AuthoringValueMemberDefinition>(), Describe(ElementType(type)));
+            else
+            {
+                AuthoringObjectContract contract = Contract(type);
+                var members = contract.Construction == AuthoringObjectConstruction.PublicFields
+                    ? contract.Fields.Select(field => new AuthoringValueMemberDefinition(field.Name, Describe(field.FieldType))).ToList()
+                    : contract.Parameters.Select(parameter => new AuthoringValueMemberDefinition(parameter.Name, Describe(parameter.ParameterType))).ToList();
+                foreach (GraphAuthoringMember member in GraphAuthoringMemberBindings.Contract(type).Fields)
+                {
+                    members.RemoveAll(field => field.Id == member.Metadata.FieldId);
+                    members.Add(new AuthoringValueMemberDefinition(member.Metadata.FieldId, Describe(member.ValueType)));
+                }
+                definition = new(id, AuthoringValueDefinitionKind.Object, TypeCode.Empty, !type.IsValueType,
+                    Array.Empty<string>(), false, members.ToArray(), null);
+            }
+            m_Definitions.Add(type, definition);
+            return definition;
+        }
 
         public AuthoringNamedValue[] CaptureFields(object target) => GraphAuthoringMemberBindings.Contract(target).Fields
             .Select(field => Member(field.Metadata.FieldId, field.ValueType, field.Read(target))).ToArray();
