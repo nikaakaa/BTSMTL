@@ -14,6 +14,7 @@
     <aside class="sidebar">
       <div class="sidebar-heading"><div>项目内容<small id="root-count"></small></div><button id="refresh-roots" class="icon-button" title="重读磁盘目录" aria-label="重读目录">↻</button></div>
       <input id="search-roots" class="search" type="search" placeholder="查找技能、图或时间轴" aria-label="搜索内容根">
+      <label class="source-selector">内容来源<select id="content-source" aria-label="选择作者内容或迁移候选"><option value="workspace">正式作者文档</option><option value="migrations">迁移候选 · 只读检查</option></select></label>
       <div id="roots" class="root-list"></div>
       <button id="load-more" class="load-more" hidden>继续加载</button>
       <p id="empty-roots" class="empty-roots" hidden>此目录还没有共同作者文档。已有 Unity 技能尚未迁移，不能把原型草稿当作正式技能。</p>
@@ -22,7 +23,7 @@
     </aside>
     <section class="editor">
       <header class="editor-header"><h1 id="document-title">选择内容根</h1><small id="root-kind">同一份作者文档 · 稳定身份</small><div id="document-actions" class="document-actions" hidden><span id="saved-state"></span><code id="revision"></code><button id="reload-root">重新读取</button></div></header>
-      <nav class="tabs" aria-label="编辑器页签"><button data-tab="document" class="active">内容视图</button><button data-tab="source">源文件</button><span class="file-info"><code id="file-path"></code><code id="file-revision"></code></span></nav>
+      <nav class="tabs" aria-label="编辑器页签"><button data-tab="document" class="active">内容视图</button><button data-tab="variables">变量与归属</button><button data-tab="source">源文件</button><span class="file-info"><code id="file-path"></code><code id="file-revision"></code></span></nav>
       <div id="document-view" class="document-view"><div class="welcome"><div class="eyebrow">BTSMTL WORKBENCH</div><h1>从正式内容开始</h1><p>左侧读取项目作者目录。选择一个根，查看它拥有的图、时间轴、输入与变量文件。磁盘内容、领域接收、编译发布和运行采用分别显示状态。</p></div></div>
       <section id="source-view" class="source-view" hidden><textarea id="source-text" readonly spellcheck="false" aria-label="实际作者文件内容"></textarea></section>
       <section class="runtime-strip" aria-label="运行采用状态"><strong>独立 Quantum 预览</strong><a href="preview.html">打开真实重放与确认帧观察 ↗</a><span>内容采用以具体运行回执为准</span></section>

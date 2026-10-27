@@ -6,7 +6,7 @@ namespace BTSMTL.WebWorkbench;
 public static class WorkspaceApi
 {
     public static void MapAuthoringReadApi(this WebApplication app, AuthoringWorkspaceDirectory workspace,
-        string route, string source)
+        string route, string sourceKind)
     {
         RouteGroupBuilder routes = app.MapGroup(route);
         routes.AddEndpointFilter(async (context, next) =>
@@ -29,7 +29,8 @@ public static class WorkspaceApi
         {
             path = workspace.Path,
             documentFormat = AuthoringRootDocument.FormatVersion,
-            source
+            timelineTimeScale = BTSMTL.Orchestration.OrchestrationTime.Scale.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            source = sourceKind
         });
         routes.MapGet("/roots", (int offset, int limit) => workspace.List(offset, limit));
         routes.MapGet("/source", (string path) => workspace.ReadSource(path));
