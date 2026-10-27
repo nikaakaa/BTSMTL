@@ -186,33 +186,8 @@ namespace BTSMTL.Timeline
     {
         public static ITimelineContractProvider CreateProvider(
             TimelineContentParameterCodec<TimelineContentTree> parameterCodec) => new TimelineContractProvider(
-            new[]
-            {
-                new TimelineTrackContract(
-                    TimelineContractKinds.TreeTrack,
-                    TimelineTrackOverlapPolicy.Reject,
-                    TimelineContentKind.Discrete,
-                    TimelineExecutionDomain.Logic,
-                    TimelineOutputKind.LogicFact,
-                    TimelineExecutionDomainMask.Logic |
-                    TimelineExecutionDomainMask.Presentation,
-                    null,
-                    TimelineContractKinds.TreeClip)
-            },
-            new[]
-            {
-                new TimelineClipContract(
-                    TimelineContractKinds.TreeClip,
-                    TimelineContractKinds.TreeTrack,
-                    TimelineClipExecutionPhase.DecisionAndCommit,
-                    TimelineContentKind.Discrete,
-                    true,
-                    true,
-                    TimelineExecutionDomain.Logic,
-                    TimelineOutputKind.LogicFact,
-                    TimelineExecutionDomainMask.Logic | TimelineExecutionDomainMask.Presentation,
-                    ValidateClip)
-            },
+            new[] { TreeTimelineDefinition.Track },
+            new[] { new TimelineClipContract(TreeTimelineDefinition.Clip, ValidateClip) },
             new ITimelineContentParameterCodec[] { parameterCodec });
 
         static void ValidateClip(Clip clip, List<string> errors)
@@ -222,25 +197,12 @@ namespace BTSMTL.Timeline
                 errors?.Add($"Timeline TreeClip '{clip?.AuthoringId}' is invalid.");
                 return;
             }
-            switch (treeClip.ExecutionDomain)
-            {
-                case TimelineExecutionDomain.Logic:
-                    if (treeClip.ClipExitSource != TimelineClipExitSource.TreeDecision)
-                        errors?.Add($"Timeline Logic TreeClip '{treeClip.AuthoringId}' must use TreeDecision exit.");
+            TreeTimelineDefinition.Validate(treeClip.AuthoringId, treeClip.ExecutionDomain, treeClip.ClipExitSource,
+                treeClip.ExecutionPhase, errors);
 #if UNITY_EDITOR
-                    ((ITimelineTreeGraphAsset)treeClip.AssetTree).ValidateTimelineBinding(treeClip.Timeline, treeClip, errors, true);
+            if (treeClip.ExecutionDomain == TimelineExecutionDomain.Logic)
+                ((ITimelineTreeGraphAsset)treeClip.AssetTree).ValidateTimelineBinding(treeClip.Timeline, treeClip, errors, true);
 #endif
-                    break;
-                case TimelineExecutionDomain.Presentation:
-                    if (treeClip.ClipExitSource != TimelineClipExitSource.FrameBoundary && treeClip.ClipExitSource != TimelineClipExitSource.TreeDecision)
-                        errors?.Add($"Timeline Presentation TreeClip '{treeClip.AuthoringId}' has an invalid exit source.");
-                    if (treeClip.ExecutionPhase != TimelineTreeExecutionPhase.Commit)
-                        errors?.Add($"Timeline Presentation TreeClip '{treeClip.AuthoringId}' must use Commit phase.");
-                    break;
-                default:
-                    errors?.Add($"Timeline TreeClip '{treeClip.AuthoringId}' has an invalid execution domain.");
-                    break;
-            }
         }
     }
 }

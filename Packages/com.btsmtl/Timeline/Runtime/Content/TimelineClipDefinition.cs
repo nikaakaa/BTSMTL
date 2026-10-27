@@ -9,6 +9,20 @@ namespace BTSMTL.Timeline
     {
         readonly ReadOnlyCollection<TimelineBindingRequirement> m_Bindings;
 
+        protected TimelineClipDefinition(TimelineClipDefinition definition)
+        {
+            Kind = definition.Kind;
+            TrackKind = definition.TrackKind;
+            SupportedExecutionPhases = definition.SupportedExecutionPhases;
+            DefaultExecutionPhase = definition.DefaultExecutionPhase;
+            ContentKind = definition.ContentKind;
+            SupportsStop = definition.SupportsStop;
+            RequiresPositiveDuration = definition.RequiresPositiveDuration;
+            ExecutionPolicy = definition.ExecutionPolicy;
+            AllowedExecutionDomains = definition.AllowedExecutionDomains;
+            m_Bindings = definition.m_Bindings;
+        }
+
         public TimelineClipDefinition(
             string kind,
             string trackKind,

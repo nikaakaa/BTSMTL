@@ -232,6 +232,12 @@ namespace BTSMTL.Timeline
 
     public sealed class TimelineClipContract : TimelineClipDefinition
     {
+        public TimelineClipContract(TimelineClipDefinition definition, TimelineClipContractValidator validator)
+            : base(definition)
+        {
+            Validator = validator;
+        }
+
         public TimelineClipContract(
             string kind,
             string trackKind,
