@@ -390,7 +390,7 @@ function renderInspector(document) {
     editable.forEach(field => {
       const value = target.fields[field.id] || field.defaultValue;
       const rendered = [...$('inspector-content').querySelectorAll('.field')].find(element => element.querySelector('label')?.title === field.id);
-      const button = `<button class="edit-field" data-edit-field="${escapeHtml(field.id)}">编辑候选${target.fields[field.id] ? '' : ' · 默认值'}</button>`;
+      const button = `<button class="edit-field" data-edit-field="${escapeHtml(field.id)}">编辑候选${target.fields[field.id] ? '' : ' · 默认值'}</button>${target.fields[field.id] ? `<button class="edit-field" data-reset-field="${escapeHtml(field.id)}">使用领域默认值</button>` : ''}`;
       if (rendered && field.writable) rendered.insertAdjacentHTML('beforeend', button);
       else if (!rendered) $('inspector-content').insertAdjacentHTML('beforeend', `<div class="field"><label title="${escapeHtml(field.id)}">${escapeHtml(field.displayName)} · 原定义默认值</label>${renderValue(value)}${field.writable ? button : ''}</div>`);
     });
@@ -619,7 +619,12 @@ $('inspector-content').onclick = event => {
     return;
   }
   const fieldButton = event.target.closest('[data-edit-field]');
+  const resetField = event.target.closest('[data-reset-field]');
   const edgeField = event.target.closest('[data-edit-edge-field]');
+  if (resetField) {
+    guarded(() => applyGraphEdits([{ kind: 'remove-node-field', nodeId: node.id, fieldId: resetField.dataset.resetField }]));
+    return;
+  }
   if (edgeField) {
     const id = edgeField.dataset.editEdgeField;
     editField({ id }, edge.fields[id], value => applyGraphEdits([{ kind: 'set-edge-field', edgeId: edge.id, fieldId: id, value }]), state.references);
