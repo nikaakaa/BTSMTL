@@ -23,8 +23,6 @@ namespace ThirdPersonSimulation
 
     public enum GrapplePhase : byte { Idle, Shooting, Attached, Retracting, Preparing, PointArrival }
 
-    public enum GrappleRopeMode : byte { Pulling, Braking, Locked, Restoring }
-
     public readonly struct BodyMotionIntegrationPlan<TScalar, TVector3>
         where TScalar : struct
         where TVector3 : struct
