@@ -82,6 +82,70 @@ namespace BTSMTL.Authoring.Graph
         }
     }
 
+    // 编排输出节点以 GraphOrchestrationOutput 标明输出模板所在的静态成员。
+    [AttributeUsage(AttributeTargets.Class, Inherited = true)]
+    public sealed class GraphOrchestrationOutputAttribute : Attribute
+    {
+        public GraphOrchestrationOutputAttribute(Type contractOwner, string memberName)
+        {
+            ContractOwner = contractOwner;
+            MemberName = memberName;
+        }
+
+        public Type ContractOwner { get; }
+        public string MemberName { get; }
+    }
+
+    // 宿主输入节点以 GraphOrchestrationHostInput 标明宿主输入端口表所在的静态成员。
+    [AttributeUsage(AttributeTargets.Class, Inherited = true)]
+    public sealed class GraphOrchestrationHostInputAttribute : Attribute
+    {
+        public GraphOrchestrationHostInputAttribute(Type contractOwner, string memberName)
+        {
+            ContractOwner = contractOwner;
+            MemberName = memberName;
+        }
+
+        public Type ContractOwner { get; }
+        public string MemberName { get; }
+    }
+
+    public static class GraphOrchestrationOutputNodes
+    {
+        static readonly ConcurrentDictionary<Type, OrchestrationOutputTemplate?> s_Outputs = new();
+        static readonly ConcurrentDictionary<Type, IReadOnlyList<GraphOrchestrationHostInputPort>> s_HostInputs = new();
+
+        public static bool TryGetOutput(Type nodeType, out OrchestrationOutputTemplate template)
+        {
+            OrchestrationOutputTemplate? result = s_Outputs.GetOrAdd(nodeType, type =>
+                type.GetCustomAttribute<GraphOrchestrationOutputAttribute>() is { } attribute
+                    ? (OrchestrationOutputTemplate)StaticMember(attribute.ContractOwner, attribute.MemberName)
+                    : null);
+            template = result.GetValueOrDefault();
+            return result.HasValue;
+        }
+
+        public static bool TryGetHostInputs(Type nodeType, out IReadOnlyList<GraphOrchestrationHostInputPort> inputs)
+        {
+            inputs = s_HostInputs.GetOrAdd(nodeType, type =>
+                type.GetCustomAttribute<GraphOrchestrationHostInputAttribute>() is { } attribute
+                    ? (IReadOnlyList<GraphOrchestrationHostInputPort>)StaticMember(attribute.ContractOwner, attribute.MemberName)
+                    : null);
+            return inputs != null;
+        }
+
+        static object StaticMember(Type owner, string name)
+        {
+            const BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static;
+            PropertyInfo property = owner.GetProperty(name, flags);
+            if (property != null)
+                return property.GetValue(null);
+            FieldInfo field = owner.GetField(name, flags);
+            return field != null ? field.GetValue(null) :
+                throw new InvalidOperationException($"编排声明 '{owner.FullName}.{name}' 不存在。");
+        }
+    }
+
     // 节点所属领域：扩展节点取扩展身份的 DomainId，编排输出节点取输出合同身份。图根按声明的领域准入节点，宿主按同一身份提供领域包。
     public static class GraphNodeDomains
     {
@@ -97,8 +161,8 @@ namespace BTSMTL.Authoring.Graph
         {
             if (GraphOrchestrationExtensionNodes.TryGet(type, out GraphOrchestrationExtensionNodes.Contract extension))
                 return extension.Definition.Identity.DomainId;
-            if (!type.IsAbstract && typeof(IGraphOrchestrationOutputAuthoring).IsAssignableFrom(type))
-                return ((IGraphOrchestrationOutputAuthoring)Activator.CreateInstance(type)).OutputTemplate.ContractIdentity;
+            if (GraphOrchestrationOutputNodes.TryGetOutput(type, out OrchestrationOutputTemplate output))
+                return output.ContractIdentity;
             return string.Empty;
         }
     }

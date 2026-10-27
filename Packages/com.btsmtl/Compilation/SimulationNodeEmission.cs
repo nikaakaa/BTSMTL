@@ -23,7 +23,8 @@ namespace BTSMTL.Compilation
             IEnumerable<SemanticBlackboardPortBinding> blackboardOutputs = null,
             IEnumerable<SemanticConstantPortDeclaration> constantInputs = null,
             IEnumerable<SemanticConstantPortDeclaration> constantOutputs = null,
-            IEnumerable<SemanticDerivedInput> derivedInputs = null)
+            IEnumerable<SemanticDerivedInput> derivedInputs = null,
+            IEnumerable<string> requiredInputConnections = null)
         {
             Code = code;
             Integer0 = integer0;
@@ -39,6 +40,7 @@ namespace BTSMTL.Compilation
             ConstantInputs = constantInputs == null ? Array.Empty<SemanticConstantPortDeclaration>() : constantInputs.ToArray();
             ConstantOutputs = constantOutputs == null ? Array.Empty<SemanticConstantPortDeclaration>() : constantOutputs.ToArray();
             DerivedInputs = derivedInputs == null ? Array.Empty<SemanticDerivedInput>() : derivedInputs.ToArray();
+            RequiredInputConnections = requiredInputConnections == null ? Array.Empty<string>() : requiredInputConnections.ToArray();
             Constants = constants == null
                 ? Array.Empty<KeyValuePair<string, object>>()
                 : extension.HasValue
@@ -55,6 +57,7 @@ namespace BTSMTL.Compilation
         public IReadOnlyList<SemanticConstantPortDeclaration> ConstantInputs { get; }
         public IReadOnlyList<SemanticConstantPortDeclaration> ConstantOutputs { get; }
         public IReadOnlyList<SemanticDerivedInput> DerivedInputs { get; }
+        public IReadOnlyList<string> RequiredInputConnections { get; }
         public int Integer0 { get; }
         public int Integer1 { get; }
         public ulong Unsigned0 { get; }

@@ -1,23 +1,7 @@
-using System.Collections.Generic;
 using BTSMTL.Orchestration;
 
 namespace BTSMTL.Authoring.Graph
 {
-    public interface IGraphOrchestrationPayloadAuthoring
-    {
-        IReadOnlyList<KeyValuePair<string, object>> DescribeOrchestrationPayload();
-    }
-
-    public interface IGraphOrchestrationOutputAuthoring : IGraphOrchestrationPayloadAuthoring
-    {
-        OrchestrationOutputTemplate OutputTemplate { get; }
-    }
-
-    public interface IGraphOrchestrationHostInputAuthoring
-    {
-        IReadOnlyList<GraphOrchestrationHostInputPort> HostInputs { get; }
-    }
-
     public readonly struct GraphOrchestrationBlackboardPort
     {
         public GraphOrchestrationBlackboardPort(string portId, string ownerId, string declarationId,
@@ -37,12 +21,6 @@ namespace BTSMTL.Authoring.Graph
         public string ValueTypeIdentity { get; }
     }
 
-    public interface IGraphOrchestrationBlackboardAuthoring
-    {
-        IReadOnlyList<GraphOrchestrationBlackboardPort> ReadBindings { get; }
-        IReadOnlyList<GraphOrchestrationBlackboardPort> WriteBindings { get; }
-    }
-
     public readonly struct GraphOrchestrationConstantPort
     {
         public GraphOrchestrationConstantPort(string portId, string payloadFieldName,
@@ -58,12 +36,6 @@ namespace BTSMTL.Authoring.Graph
         public string PayloadFieldName { get; }
         public OrchestrationValueKind ValueKind { get; }
         public string ValueTypeIdentity { get; }
-    }
-
-    public interface IGraphOrchestrationConstantPortAuthoring
-    {
-        IReadOnlyList<GraphOrchestrationConstantPort> ConstantInputs { get; }
-        IReadOnlyList<GraphOrchestrationConstantPort> ConstantOutputs { get; }
     }
 
     public enum GraphOrchestrationDerivedInputSource : byte
@@ -89,15 +61,5 @@ namespace BTSMTL.Authoring.Graph
         public int SourceOutputPortIndex { get; }
         public OrchestrationValueKind ValueKind { get; }
         public string ValueTypeIdentity { get; }
-    }
-
-    public interface IGraphOrchestrationDerivedInputAuthoring
-    {
-        IReadOnlyList<GraphOrchestrationDerivedInput> DerivedInputs { get; }
-    }
-
-    public interface IGraphOrchestrationRequiredInputAuthoring
-    {
-        IReadOnlyList<string> RequiredInputConnections { get; }
     }
 }

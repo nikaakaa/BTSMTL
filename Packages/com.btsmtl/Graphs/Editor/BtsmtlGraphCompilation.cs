@@ -53,9 +53,7 @@ namespace BTSMTL.Graphs.Editor
             if (!declaredInputs.SetEquals(contract.Inputs.Select(port => port.Identity)) ||
                 !nativeSet && !declaredOutputs.SetEquals(contract.Outputs.Select(port => port.Identity)))
                 throw new InvalidOperationException($"图节点 '{node.UID}' 的值端口与编译合同不匹配。");
-            var required = node is IGraphOrchestrationRequiredInputAuthoring connections
-                ? new HashSet<string>(connections.RequiredInputConnections, StringComparer.Ordinal)
-                : new HashSet<string>(StringComparer.Ordinal);
+            var required = new HashSet<string>(emission.RequiredInputConnections, StringComparer.Ordinal);
             var constants = new List<SimulationConstantInput>();
             foreach (ValueInput port in inputs.OrderBy(value => value.ID, StringComparer.Ordinal))
             {
@@ -168,7 +166,7 @@ namespace BTSMTL.Graphs.Editor
         public static string Output(FlowNode node, string port, BtsmtlNativeValueNodeDefinition native,
             OrchestrationOperationCode code) => native != null ? native.Output(port)
                 : node is IBtsmtlVariableFlowNode || code == OrchestrationOperationCode.HostInput &&
-                    node is not IGraphOrchestrationHostInputAuthoring ? "m_Output"
+                    !GraphOrchestrationOutputNodes.TryGetHostInputs(node.GetType(), out _) ? "m_Output"
                     : BtsmtlGraphDomainNodes.RuntimePort(node, port, OrchestrationExtensionPortDirection.Output);
 
         string MapPort(FlowNode node, string port, BtsmtlNativeValueNodeDefinition native,

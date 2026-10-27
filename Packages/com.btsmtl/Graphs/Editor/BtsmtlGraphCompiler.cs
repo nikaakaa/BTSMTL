@@ -16,11 +16,13 @@ namespace BTSMTL.Graphs.Editor
     {
         // 数值类型与 lowering 由宿主按 contract.NumericTarget 选择，须与宿主运行时的数值类型参数一致。
         // contentEncoder 编码图中扩展操作的作者内容，由提供这些扩展领域的宿主给出；图没有扩展操作时传 null。
+        // nodes 由宿主按节点能力提供领域节点的编译描述。
         public static void Compile<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TLowering>(
             BtsmtlGraphRoot root, GraphHostContract contract,
             IOrchestrationGraphContentEncoding<TValue> encoding,
             TLowering lowering,
-            IBtsmtlOrchestrationContentEncoder<TValue, TScalar> contentEncoder)
+            IBtsmtlOrchestrationContentEncoder<TValue, TScalar> contentEncoder,
+            IBtsmtlGraphNodeCompileSource nodes)
             where TValue : unmanaged
             where TScalar : unmanaged, IComparable<TScalar>, IEquatable<TScalar>
             where TVector2 : unmanaged
@@ -44,7 +46,7 @@ namespace BTSMTL.Graphs.Editor
             BtsmtlGraphValidator.Require(root, contract);
             root.SelfSerialize();
             OrchestrationGraphContent<TValue> content =
-                new Compilation(root, contract, identity.SourceRevision).Build<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TLowering>(
+                new Compilation(root, contract, identity.SourceRevision, nodes).Build<TValue, TScalar, TVector2, TVector3, TYaw, TQuaternion, TValues, TLowering>(
                     identity, lowering, contentEncoder);
             root.SetExecutionData(encoding.Write(content), identity, encoding, inputIdentity);
             EditorUtility.SetDirty(root);
@@ -94,10 +96,13 @@ namespace BTSMTL.Graphs.Editor
             readonly UnitySemanticBuilder m_Builder = new();
             readonly BtsmtlGraphCompilation m_Canvas;
             readonly BtsmtlBlackboardCompilation m_Blackboard;
+            readonly IBtsmtlGraphNodeCompileSource m_Nodes;
 
-            internal Compilation(BtsmtlGraphRoot root, GraphHostContract contract, string hash)
+            internal Compilation(BtsmtlGraphRoot root, GraphHostContract contract, string hash,
+                IBtsmtlGraphNodeCompileSource nodes)
             {
                 m_Root = root;
+                m_Nodes = nodes;
                 m_Hash = hash;
                 m_Route = "graph:" + root.AuthoringId;
                 m_Canvas = new BtsmtlGraphCompilation(m_Builder);
@@ -186,8 +191,9 @@ namespace BTSMTL.Graphs.Editor
 
             void EmitLeaf(FlowNode node, string graphId, string route, BtsmtlGraphOperationBindings operations)
             {
-                SimulationNodeEmission emission = Describe(node, m_Builder.Report);
-                OperationHandle operation = m_Canvas.EmitLeaf(node, graphId, route, m_Hash, emission, Describe);
+                SimulationNodeEmission emission = Describe(node, m_Nodes);
+                OperationHandle operation = m_Canvas.EmitLeaf(node, graphId, route, m_Hash, emission,
+                    (value, _) => Describe(value, m_Nodes));
                 operations.AddNode(node, operation);
                 BtsmtlNativeValueNodeCatalog.TryGetNode(node.GetType(), out BtsmtlNativeValueNodeDefinition native);
                 SimulationSourceLocation source = BtsmtlGraphCompilation.Source(graphId, route, m_Hash, node);
@@ -288,11 +294,11 @@ namespace BTSMTL.Graphs.Editor
                     route, contentHash: m_Hash);
         }
 
-        public static SimulationNodeEmission Describe(FlowNode node, SimulationCompileReport report)
+        public static SimulationNodeEmission Describe(FlowNode node, IBtsmtlGraphNodeCompileSource nodes)
         {
             if (BtsmtlNativeValueNodeCatalog.TryGetNode(node.GetType(), out BtsmtlNativeValueNodeDefinition native))
                 return new SimulationNodeEmission(native.Code, integer0: native.Variant);
-            if (BtsmtlGraphDomainNodes.TryDescribe(node, out SimulationNodeEmission domain))
+            if (BtsmtlGraphDomainNodes.TryDescribe(node, nodes, out SimulationNodeEmission domain))
                 return domain;
             if (node is IBtsmtlHostInputFlowNode input)
                 return new SimulationNodeEmission(OrchestrationOperationCode.HostInput,

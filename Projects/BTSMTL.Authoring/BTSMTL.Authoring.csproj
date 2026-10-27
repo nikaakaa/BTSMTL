@@ -20,7 +20,7 @@
     <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/CapabilityCatalog.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/PortContracts.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/GraphAuthoringColor.cs" />
-    <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/GraphOrchestrationPayloadAuthoring.cs" />
+    <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/GraphOrchestrationPorts.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/GraphOrchestrationExtensionAttribute.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Blackboard/PipelineBlackboardVariableScope.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Blackboard/PipelineBlackboardVariableLifetime.cs" />
