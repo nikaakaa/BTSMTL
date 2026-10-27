@@ -156,8 +156,15 @@ namespace BTSMTL.Graphs
             });
         }
 
-        public void ConfigureHost(BtsmtlMacroHost host) =>
-            EditAuthoring("配置子图宿主", () => m_Host = host ?? throw new ArgumentNullException(nameof(host)));
+        // 同类型、同准入身份的宿主保持原对象，重复生成不改写序列化引用。
+        public void ConfigureHost(BtsmtlMacroHost host)
+        {
+            if (host == null)
+                throw new ArgumentNullException(nameof(host));
+            if (m_Host != null && m_Host.GetType() == host.GetType() && m_Host.Identity == host.Identity)
+                return;
+            EditAuthoring("配置子图宿主", () => m_Host = host);
+        }
 
         public void EnsureAnchors() => EditAuthoring("配置子图出入口", () =>
         {
