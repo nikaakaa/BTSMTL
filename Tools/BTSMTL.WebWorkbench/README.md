@@ -44,6 +44,10 @@ HTML、CSS、JavaScript 修改后刷新页面即可看到结果；修改 C# 接�
 
 共同 `AuthoringStateMachineContract` 接收普通状态与转移快照，也接收正式图文档及引用解析器。3C Native 适配与 `POST /api/authoring/state-machines/validate` 消费同一规则；原状态字段、系统锚点及连接容量生成对应能力声明。共同库与 Host 编译通过，目标 Editor 已采用并完成正式导出，Corin FSM 的 15 个状态、42 条转移和实际图引用已接收通过。页面显示同一回执，失败仍保留原图；FSM 接收不表示完整技能已保存或发布。JavaScript 语法检查通过，本轮无头浏览器截图被自动审批拒绝，视觉检查尚未完成。
 
+普通流图由共同 `AuthoringFlowGraphContract` 检查页面允许节点、固定入口、连线类型容量与环路。3C Native 原入口和 `POST /api/authoring/graphs/validate` 共用实现，页面显示对应结构接收结果；错误由作者 HTTP 边界返回 422、请求身份和具体原因。目标 Editor 已采用并导出正式页面入口，Corin 技能的 248 张普通流图全部通过，额外输入方案的 2 张图也通过；此阶段不接收尚未迁出的全部字段与根业务规则，不开放不完整的保存入口。共同作者库为 0 警告、0 错误；最新项目 Host 为 0 错误、5 个既有警告。
+
+3C 原迁移入口现可将独立输入方案资产及其私有输入时间轴、片段图和 Marker 图保存为另一份共同作者根。实际候选保留原资产 GUID、`Owner=ability:Attack`、方案参数与当前选择，不改变 Unity 资产来源。项目工作台已读取 1 个方案、1 条输入 Timeline、2 张图的 5 个文件；输入图通过同一结构检查。项目 CLI 和 MCP 的文档查询显式接受 `Workspace`／`Migrations` 来源，图检查也调用相同 HTTP 服务。CLI、MCP 均构建通过，0 警告、0 错误；22 项 MCP 工具已发现，真实图检查回执已与 CLI 对应。251 张图、13 条 Timeline／输入时间轴及 2 份根文档在 .NET 10.0.11 的文本回读无差异，具体入口、原始回执与未完成范围归项目 `Tools/CharacterWorkbench/README.md`。
+
 `WorkbenchApplication.Create` 供项目宿主装配共同 HTTP 与页面。3C 项目宿主接入原 SDK 重放作业与封存记录后，`/preview.html` 提供正式来源选择、提交／重查／取消、实际会话播放／暂停／单步／停止、确认帧分页、根标记与同条件比较；通用服务自身不装配项目模拟。控制命令使用固定 commandId，经同一宿主送到实际会话；页面只读取对应确认帧，历史帧查看不推进 SDK。暂停页面已通过实际无头浏览器截图检查，实际控制及完整重放 checksum 比较证据归项目 `Tools/CharacterWorkbench/README.md`。页面仍未接入动画、碰撞及命中画面，用户端到端验收尚未完成。
 
 帧记录声明 `action-changes` 时，页面显示同一记录中的激活请求、动作实例、阶段、来源操作及业务结果；未采集通道与本帧没有变化分别显示。项目宿主新增采集源码已构建通过，但当前离线包包含已被运行源码移除的字段，新会话在准备阶段失败，动作通道尚未实跑。`?run=<运行身份>&frameIndex=<封存序号>` 可精确定位已封存帧；页面在真实视口完成该帧渲染后公开运行、SDK 帧号、checksum 和场景修订，项目 `CapturePreview.ps1` 核对后生成图片、同源帧 JSON 和元数据。实际 SDK 60、120 两帧已截图回读，采用的仍是此前真实封存的两通道运行。
