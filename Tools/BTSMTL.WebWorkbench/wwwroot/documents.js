@@ -1,4 +1,4 @@
-import { GraphEditSession, editField, renameElement, createNode, createConnection, showGraphDiff } from './graph-edits.js';
+import { GraphEditSession, editField, editVariable, renameElement, createNode, createConnection, showGraphDiff } from './graph-edits.js';
 
 const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
@@ -319,7 +319,9 @@ function requireDraftSettled() {
 
 function renderDraftToolbar() {
   const graph = Array.isArray(state.selectedFile?.document?.nodes);
-  $('draft-toolbar').hidden = !graph;
+  $('draft-toolbar').hidden = !graph && !state.draft?.receipt;
+  $('draft-add-node').disabled = !graph || state.tab !== 'document';
+  $('draft-add-edge').disabled = !graph || state.tab !== 'document';
   $('draft-undo').disabled = !state.draft?.batches.length;
   $('draft-redo').disabled = !state.draft?.redoBatches.length;
   $('draft-diff').disabled = !state.draft?.receipt;
@@ -377,7 +379,7 @@ function renderVariables() {
     path: file.path, document: state.snapshot.files.find(source => source.path === file.path).document
   }));
   const variables = graphs.flatMap(graph => graph.document.variables.map(variable => ({ ...variable, graph })));
-  $('document-view').innerHTML = `<div class="variables-page"><div class="eyebrow">BLACKBOARD DECLARATIONS</div><h1>变量与归属</h1><p>${variables.length} 条实际声明。默认值与声明分别显示，所属图保持原 owner。</p><div class="variable-list">${variables.map(variable => `<article><header><strong>${escapeHtml(variable.key)}</strong><span title="${escapeHtml(variable.type)}">${escapeHtml(typeName(variable.type))}</span><button data-document="${escapeHtml(variable.graph.path)}">所属图 ↗</button></header><code>${escapeHtml(variable.id)}</code><div class="variable-columns"><div><h3>默认值</h3>${renderValue(variable.defaultValue)}</div><div><h3>作用域、生命周期与输入声明</h3>${Object.entries(variable.declaration).map(([field, value]) => `<div class="nested-value"><label>${escapeHtml(field)}</label>${renderValue(value)}</div>`).join('')}</div></div></article>`).join('') || '<p class="muted">本内容根没有黑板声明。</p>'}</div></div>`;
+  $('document-view').innerHTML = `<div class="variables-page"><div class="eyebrow">BLACKBOARD DECLARATIONS</div><h1>变量与归属</h1><p>${variables.length} 条实际声明。默认值与声明分别显示，所属图保持原 owner。修改生成本会话候选，尚未保存或运行。</p><div class="variable-list">${variables.map(variable => `<article><header><strong>${escapeHtml(variable.key)}</strong><span title="${escapeHtml(variable.type)}">${escapeHtml(typeName(variable.type))}</span><button data-document="${escapeHtml(variable.graph.path)}">所属图 ↗</button><button data-edit-variable="${escapeHtml(variable.id)}" data-variable-document="${escapeHtml(variable.graph.path)}">编辑声明候选</button></header><code>${escapeHtml(variable.id)}</code><div class="variable-columns"><div><h3>默认值</h3>${renderValue(variable.defaultValue)}</div><div><h3>作用域、生命周期与输入声明</h3>${Object.entries(variable.declaration).map(([field, value]) => `<div class="nested-value"><label>${escapeHtml(field)}</label>${renderValue(value)}</div>`).join('')}</div></div></article>`).join('') || '<p class="muted">本内容根没有黑板声明。</p>'}</div></div>`;
 }
 
 async function guarded(action) {
@@ -388,6 +390,16 @@ async function guarded(action) {
 $('roots').onclick = event => { const item = event.target.closest('[data-root]'); if (item) guarded(() => openRoot(item.dataset.root)); };
 $('files').onclick = event => { const item = event.target.closest('[data-file]'); if (item) guarded(() => selectFile(item.dataset.file)); };
 $('document-view').onclick = event => {
+  const variableButton = event.target.closest('[data-edit-variable]');
+  if (variableButton) {
+    const file = state.snapshot.files.find(item => item.path === variableButton.dataset.variableDocument);
+    const variable = file.document.variables.find(item => item.id === variableButton.dataset.editVariable);
+    editVariable(variable, async fields => {
+      await state.draft.apply(file.document.id, [{ kind: 'configure-variable', variableId: variable.id, ...fields }]);
+      await showDraft();
+    });
+    return;
+  }
   const reference = event.target.closest('[data-document]');
   if (reference) { state.tab = 'document'; showTab(); guarded(() => selectFile(reference.dataset.document)); return; }
   const timeline = event.target.closest('[data-timeline]');

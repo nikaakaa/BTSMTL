@@ -135,6 +135,16 @@ export function renameElement(name, apply) {
     form => apply(new FormData(form).get('displayName')));
 }
 
+export function editVariable(variable, apply) {
+  const declarations = Object.entries(variable.declaration);
+  dialog('修改所属图的黑板声明候选',
+    `<p class="dialog-intro">声明身份与所属图保持。当前正式类型：${html(variable.type)}</p><label>变量名称<input name="key" value="${html(variable.key)}" autocomplete="off"></label><fieldset data-variable-default><legend>默认值</legend>${valueControls(variable.defaultValue)}</fieldset>${declarations.map(([key, value]) => `<fieldset data-declaration="${html(key)}"><legend>${html(key)}</legend>${valueControls(value)}</fieldset>`).join('')}`,
+    form => apply({ key: new FormData(form).get('key'), typeId: variable.type,
+      defaultValue: readValue(form.querySelector('[data-variable-default]'), variable.defaultValue),
+      declaration: Object.fromEntries(declarations.map(([key, value]) => [key,
+        readValue([...form.querySelectorAll('[data-declaration]')].find(element => element.dataset.declaration === key), value)])) }));
+}
+
 export function createNode(capabilities, role, apply) {
   const allowed = [...capabilities.values()].filter(capability => capability.roles.includes(role) && !capability.systemOwned)
     .sort((left, right) => `${left.category}/${left.displayName}`.localeCompare(`${right.category}/${right.displayName}`));
