@@ -11,6 +11,7 @@ public static class WorkbenchApplication
         builder.Services.ConfigureHttpJsonOptions(options =>
         {
             options.SerializerOptions.IncludeFields = true;
+            options.SerializerOptions.AllowOutOfOrderMetadataProperties = true;
             options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
         });
         var app = builder.Build();
