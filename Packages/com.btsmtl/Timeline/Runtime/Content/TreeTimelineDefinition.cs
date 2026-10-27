@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using BTSMTL.Orchestration;
 
 namespace BTSMTL.Timeline
 {
@@ -35,6 +36,19 @@ namespace BTSMTL.Timeline
         public static TimelineClipExecutionPhase ExecutionPhase(TimelineTreeExecutionPhase phase) =>
             phase == TimelineTreeExecutionPhase.Decision
                 ? TimelineClipExecutionPhase.Decision : TimelineClipExecutionPhase.Commit;
+
+        public static TimelineClipExitSource ConfiguredExitSource(TimelineExecutionDomain domain, TimelineClipExitSource source) =>
+            domain == TimelineExecutionDomain.Logic ? TimelineClipExitSource.TreeDecision : source;
+
+        public static OrchestrationTime TerminalTime(string identity, OrchestrationTime startTime,
+            OrchestrationTime terminalTime, OrchestrationTime? declaredEnd)
+        {
+            if (!declaredEnd.HasValue)
+                return OrchestrationTime.Max(startTime + OrchestrationTime.FromRaw(1), terminalTime);
+            if (declaredEnd.Value <= startTime)
+                throw new InvalidOperationException($"TreeClip '{identity}' 的结束声明必须晚于起点 {startTime.AsSingle}。");
+            return declaredEnd.Value;
+        }
 
         public static void RequireExitSource(TimelineExecutionDomain domain, TimelineClipExitSource source)
         {

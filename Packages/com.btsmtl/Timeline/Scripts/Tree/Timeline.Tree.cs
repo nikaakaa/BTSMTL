@@ -97,19 +97,10 @@ namespace BTSMTL.Timeline
             {
                 return false;
             }
-            OrchestrationTime endTime;
             OrchestrationTime declaredEnd = default;
             bool declared = m_AssetTree is ITimelineTreeGraphAsset graph && graph.TryGetDeclaredEndTime(out declaredEnd);
-            if (declared)
-            {
-                if (declaredEnd <= StartTime)
-                    throw new InvalidOperationException($"TreeClip '{AuthoringId}' 的结束声明必须晚于起点 {StartTime.AsSingle}。");
-                endTime = declaredEnd;
-            }
-            else
-            {
-                endTime = OrchestrationTime.Max(StartTime + OrchestrationTime.FromRaw(1), terminalTime);
-            }
+            OrchestrationTime endTime = TreeTimelineDefinition.TerminalTime(AuthoringId, StartTime, terminalTime,
+                declared ? declaredEnd : null);
             bool changed = m_HasDeclaredEndTime != declared;
             m_HasDeclaredEndTime = declared;
             if (EndTime == endTime && !changed)
@@ -142,9 +133,7 @@ namespace BTSMTL.Timeline
         public override void ConfigureAuthoringReference(UnityEngine.Object referenceObject)
         {
             SetAssetTree(referenceObject as ScriptableObject);
-            SetExitSource(ExecutionDomain == TimelineExecutionDomain.Logic
-                ? TimelineClipExitSource.TreeDecision
-                : TimelineClipExitSource.FrameBoundary);
+            SetExitSource(TreeTimelineDefinition.ConfiguredExitSource(ExecutionDomain, TimelineClipExitSource.FrameBoundary));
         }
 
         public void RegenerateOwnedAuthoringIdentity()
@@ -165,7 +154,7 @@ namespace BTSMTL.Timeline
         {
             SetAssetTree(assetTree);
             SetExecutionPhase(executionPhase);
-            SetExitSource(ExecutionDomain == TimelineExecutionDomain.Logic ? TimelineClipExitSource.TreeDecision : exitSource);
+            SetExitSource(TreeTimelineDefinition.ConfiguredExitSource(ExecutionDomain, exitSource));
         }
 
         void OnClipChanged()
