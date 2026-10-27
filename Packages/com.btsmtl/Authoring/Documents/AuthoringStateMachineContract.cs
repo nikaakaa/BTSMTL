@@ -19,9 +19,10 @@ namespace BTSMTL.Authoring.Documents
     public sealed class AuthoringStateMachineDefinition
     {
         public AuthoringStateMachineDefinition(IReadOnlyList<AuthoringStateAnchor> anchors,
-            GraphAuthoringDocumentRoleId conditionRole)
-        { Anchors = anchors; ConditionRole = conditionRole; }
+            GraphAuthoringDocumentRoleId bodyRole, GraphAuthoringDocumentRoleId conditionRole)
+        { Anchors = anchors; BodyRole = bodyRole; ConditionRole = conditionRole; }
         public IReadOnlyList<AuthoringStateAnchor> Anchors { get; }
+        public GraphAuthoringDocumentRoleId BodyRole { get; }
         public GraphAuthoringDocumentRoleId ConditionRole { get; }
     }
 
@@ -48,6 +49,48 @@ namespace BTSMTL.Authoring.Documents
 
     public static class AuthoringStateMachineContract
     {
+        public static void ValidateDocument(AuthoringGraphDocument machine,
+            IReadOnlyDictionary<GraphAuthoringCapabilityId, AuthoringStateKind> kinds,
+            GraphAuthoringFieldId bodyField, GraphAuthoringFieldId conditionField,
+            Func<AuthoringContentReference, AuthoringGraphDocument> resolve,
+            AuthoringStateMachineDefinition definition, bool requireComplete)
+        {
+            var states = new List<AuthoringState>();
+            foreach (AuthoringNodeDocument node in machine.Nodes.Span)
+            {
+                AuthoringStateKind kind = kinds[node.CapabilityId];
+                bool hasBody = false;
+                if (kind == AuthoringStateKind.State)
+                {
+                    AuthoringValue body = node.Fields.ToArray().Single(field => field.FieldId.Equals(bodyField)).Value;
+                    if (body is AuthoringReferenceValue reference)
+                    {
+                        if (!resolve(reference.Target).RoleId.Equals(definition.BodyRole))
+                            throw new InvalidOperationException($"原生状态 {node.Id} 的主体图不是StateBody。");
+                        hasBody = true;
+                    }
+                    else if (body is not AuthoringNullValue)
+                        throw new ArgumentException($"原生状态 {node.Id} 的StateBody必须是正式图引用。");
+                }
+                states.Add(new AuthoringState(node.Id.Value, kind, hasBody));
+            }
+            var transitions = new List<AuthoringStateTransition>();
+            foreach (AuthoringEdgeDocument edge in machine.Edges.Span)
+            {
+                AuthoringValue condition = edge.Fields.ToArray().Single(field => field.FieldId.Equals(conditionField)).Value;
+                GraphAuthoringDocumentRoleId conditionRole = default;
+                if (condition is AuthoringReferenceValue reference)
+                    conditionRole = resolve(reference.Target).RoleId;
+                else if (condition is not AuthoringNullValue)
+                    throw new ArgumentException($"原生转移 {edge.Id} 的条件必须是正式图引用。");
+                transitions.Add(new AuthoringStateTransition(edge.Id.Value, edge.SourceNodeId.Value,
+                    edge.TargetNodeId.Value, edge.Order, conditionRole));
+            }
+            Validate(machine.Id.Value, machine.Owner.DocumentId.Value, machine.Owner.ElementId.Value,
+                definition.Anchors.Single(anchor => anchor.Kind == AuthoringStateKind.Entry).Identity,
+                states, transitions, definition, requireComplete);
+        }
+
         public static void RequireTransitionEndpoints(AuthoringStateKind source, AuthoringStateKind target)
         {
             if (target == AuthoringStateKind.Entry || target == AuthoringStateKind.Any || source == AuthoringStateKind.Exit)
