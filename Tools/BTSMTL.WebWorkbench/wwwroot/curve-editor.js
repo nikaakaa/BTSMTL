@@ -9,7 +9,8 @@ export function bindCurveEditor(container, curve, definition) {
   container.innerHTML = '<div class="curve-tools"><button type="button" data-curve-fit>适应关键点</button><button type="button" data-curve-copy>复制当前关键点</button><button type="button" data-curve-delete>删除当前关键点</button></div><svg class="curve-plot" viewBox="0 0 720 260" role="img" aria-label="曲线关键点、切线与权重"></svg><p class="curve-status" role="status"></p><div class="curve-selected"></div><div class="curve-wrap"></div>';
   const svg = container.querySelector('svg'), controls = container.querySelector('.curve-selected');
   const number = (key, field) => Number(key.members[field].value);
-  const weighted = (key, side) => ['Both', side === 'in' ? 'In' : 'Out'].includes(key.members.weightedMode.value);
+  const weighted = (key, side) => key.members.weightedMode.value.split(',')
+    .some(value => ['Both', side === 'in' ? 'In' : 'Out'].includes(value.trim()));
   const weight = (key, side) => weighted(key, side) ? number(key, `${side}Weight`) : 1 / 3;
   const x = time => 40 + (time - view.left) / view.width * 650;
   const y = value => 225 - (value - view.bottom) / view.height * 195;
