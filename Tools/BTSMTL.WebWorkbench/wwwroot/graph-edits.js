@@ -46,21 +46,6 @@ function valueControls(value, path = [], choices = [], references = [], definiti
   return `<p>当前值为 null；完整类型化 JSON 可在下方编辑。</p>`;
 }
 
-function readValue(form, original, references = []) {
-  let copy = structuredClone(original);
-  const at = path => path.reduce((item, key) => item[key], copy);
-  form.querySelectorAll('[data-value-path]').forEach(input => { at(JSON.parse(input.dataset.valuePath)).value = input.value; });
-  form.querySelectorAll('[data-reference-path]').forEach(input => {
-    at(JSON.parse(input.dataset.referencePath)).target[input.dataset.referenceMember] = input.value;
-  });
-  form.querySelectorAll('[data-reference-choice]').forEach(input => {
-    const path = JSON.parse(input.dataset.referenceChoice), previous = at(path);
-    const selected = input.value === '' ? { kind: 'null', type: previous.type } : structuredClone(references[Number(input.value)].value);
-    if (path.length) at(path.slice(0, -1))[path.at(-1)] = selected; else copy = selected;
-  });
-  return copy;
-}
-
 function referenceIdentity(value) {
   return JSON.stringify([value.type, value.target.rootId, value.target.documentId, value.target.elementId]);
 }
@@ -84,24 +69,34 @@ export function referenceChoices(snapshot) {
 }
 
 function bindValueEditor(container, value, choices = [], references = [], definition = null) {
-  let original = structuredClone(value);
+  let current = structuredClone(value);
+  const at = path => path.reduce((item, key) => item[key], current);
   const render = () => {
-    container.innerHTML = valueControls(original, [], choices, references, definition);
+    container.innerHTML = valueControls(current, [], choices, references, definition);
     container.querySelectorAll('[data-curve-path]').forEach(element => {
       const path = JSON.parse(element.dataset.curvePath);
       let curveDefinition = definition;
       for (let index = 0; index < path.length; index += 2)
         curveDefinition = path[index] === 'members'
           ? curveDefinition?.members.find(member => member.id === path[index + 1])?.definition : curveDefinition?.element;
-      bindCurveEditor(element, path.reduce((value, key) => value[key], original), curveDefinition);
+      bindCurveEditor(element, at(path), curveDefinition);
     });
   };
-  const read = () => readValue(container, original, references);
+  container.oninput = event => {
+    const input = event.target;
+    if (input.hasAttribute('data-value-path')) at(JSON.parse(input.dataset.valuePath)).value = input.value;
+    else if (input.hasAttribute('data-reference-path'))
+      at(JSON.parse(input.dataset.referencePath)).target[input.dataset.referenceMember] = input.value;
+    else if (input.hasAttribute('data-reference-choice')) {
+      const path = JSON.parse(input.dataset.referenceChoice), previous = at(path);
+      const selected = input.value === '' ? { kind: 'null', type: previous.type } : structuredClone(references[Number(input.value)].value);
+      if (path.length) at(path.slice(0, -1))[path.at(-1)] = selected; else current = selected;
+    }
+  };
   container.onclick = event => {
     const button = event.target.closest('[data-sequence]');
     if (!button) return;
-    original = read();
-    const sequence = JSON.parse(button.dataset.sequence).reduce((item, key) => item[key], original);
+    const sequence = at(JSON.parse(button.dataset.sequence));
     const index = Number(button.dataset.index), items = sequence.items;
     if (button.dataset.action === 'duplicate') items.splice(index + 1, 0, structuredClone(items[index]));
     else if (button.dataset.action === 'remove') items.splice(index, 1);
@@ -112,7 +107,7 @@ function bindValueEditor(container, value, choices = [], references = [], defini
     render();
   };
   render();
-  return { read, replace(value) { original = value; render(); } };
+  return { read() { return structuredClone(current); }, replace(value) { current = value; render(); } };
 }
 
 export function editField(field, value, apply, references = []) {
