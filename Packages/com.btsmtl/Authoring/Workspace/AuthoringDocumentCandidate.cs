@@ -18,7 +18,7 @@ public interface IAuthoringDocumentDomain
 }
 
 public sealed record AuthoringDocumentText(string Path, string Text);
-public sealed record AuthoringDocumentDifference(string Path, GraphAuthoringElementId DocumentId,
+public sealed record AuthoringDocumentDifference(string Path, IReadOnlyList<GraphAuthoringElementId> DocumentIds,
     string Kind, string BeforeRevision, string AfterRevision);
 
 public sealed class AuthoringDocumentCandidate
@@ -74,6 +74,9 @@ public sealed class AuthoringDocumentCandidate
         domain.Receive(parsed);
 
         var original = baseline.Files.ToDictionary(file => file.Path, StringComparer.OrdinalIgnoreCase);
+        var originalIdentities = baseline.Root.Files.ToArray().ToDictionary(
+            file => AuthoringWorkspaceDirectory.Resolve(directory, file.Path), file => file.Id, StringComparer.OrdinalIgnoreCase);
+        originalIdentities.Add(rootPath, baseline.Root.Id);
         var priorDocuments = baseline.Root.Files.ToArray().ToDictionary(file => file.Id,
             file => original[AuthoringWorkspaceDirectory.Resolve(directory, file.Path)]);
         priorDocuments.Add(baseline.Root.Id, original[rootPath]);
@@ -101,11 +104,14 @@ public sealed class AuthoringDocumentCandidate
         {
             original.TryGetValue(path, out AuthoringSourceFile? before);
             final.TryGetValue(path, out AuthoringSourceFile? after);
-            if (before?.Revision == after?.Revision) continue;
-            GraphAuthoringElementId document = identities.TryGetValue(path, out var current) ? current :
-                baseline.Root.Files.ToArray().Single(file => AuthoringWorkspaceDirectory.Resolve(directory, file.Path) == path).Id;
-            changes.Add(new(path, before?.Bytes.ToArray(), after?.Bytes.ToArray()));
-            differences.Add(new(path, document, before == null ? "Create" : after == null ? "Delete" : "Modify",
+            originalIdentities.TryGetValue(path, out var beforeId);
+            identities.TryGetValue(path, out var afterId);
+            if (before?.Revision == after?.Revision && beforeId.Equals(afterId)) continue;
+            if (before?.Revision != after?.Revision)
+                changes.Add(new(path, before?.Bytes.ToArray(), after?.Bytes.ToArray()));
+            GraphAuthoringElementId[] affected = new[] { beforeId, afterId }.Where(id => id.IsValid).Distinct().ToArray();
+            differences.Add(new(path, affected, before == null ? "Create" : after == null ? "Delete" :
+                beforeId.Equals(afterId) ? "Modify" : "Replace",
                 before?.Revision ?? "", after?.Revision ?? ""));
         }
         AuthoringSourceFile[] accepted = new[] { final[rootPath] }.Concat(root.Files.ToArray()

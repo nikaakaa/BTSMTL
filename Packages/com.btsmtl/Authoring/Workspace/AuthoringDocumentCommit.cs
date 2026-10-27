@@ -75,7 +75,8 @@ public sealed class AuthoringDocumentCommit
                 string[] objects = candidate.Baseline.Root.Files.ToArray().Where(file => string.Equals(
                     AuthoringWorkspaceDirectory.Resolve(directory, file.Path), path, StringComparison.OrdinalIgnoreCase))
                     .Select(file => file.Id.Value).Concat(candidate.Differences.Where(file =>
-                        string.Equals(file.Path, path, StringComparison.OrdinalIgnoreCase)).Select(file => file.DocumentId.Value))
+                        string.Equals(file.Path, path, StringComparison.OrdinalIgnoreCase))
+                        .SelectMany(file => file.DocumentIds).Select(id => id.Value))
                     .Distinct(StringComparer.Ordinal).ToArray();
                 if (string.Equals(path, candidate.Baseline.Files[0].Path, StringComparison.OrdinalIgnoreCase))
                     objects = new[] { candidate.Baseline.Root.Id.Value };
@@ -103,7 +104,7 @@ public sealed class AuthoringDocumentCommit
                 status == AuthoringCommitStatus.Saved ? candidate.Documents.Source.Revision : "",
                 status == AuthoringCommitStatus.Saved ? candidate.Documents.ContentRevision : "",
                 status == AuthoringCommitStatus.Saved ? candidate.Differences.Select(file => new AuthoringCommittedFile(
-                    file.Path, file.AfterRevision, new[] { file.DocumentId.Value })).ToArray() : Array.Empty<AuthoringCommittedFile>(),
+                    file.Path, file.AfterRevision, file.DocumentIds.Select(id => id.Value).ToArray())).ToArray() : Array.Empty<AuthoringCommittedFile>(),
                 conflicts, transaction);
     }
 }
