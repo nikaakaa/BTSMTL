@@ -29,13 +29,48 @@ namespace BTSMTL.Authoring.Documents
         public IReadOnlyDictionary<GraphAuthoringFieldId, AuthoringValue> EffectiveFields(AuthoringNodeDocument node)
         {
             var fields = Fields.ToDictionary(field => field.Key, field => field.Value.DefaultValue);
-            foreach (AuthoringNamedValue field in node.Fields.Span) fields[field.FieldId] = field.Value;
+            var authored = new HashSet<GraphAuthoringFieldId>();
+            foreach (AuthoringNamedValue field in node.Fields.Span)
+            {
+                if (!authored.Add(field.FieldId))
+                    throw Error(node, field.FieldId.Value, "作者字段重复。");
+                if (field.FieldId.Value.StartsWith("input:", StringComparison.Ordinal)) continue;
+                if (!Fields.ContainsKey(field.FieldId))
+                    throw Error(node, field.FieldId.Value, "字段不属于原节点定义。");
+                fields[field.FieldId] = field.Value;
+            }
             return fields;
         }
 
-        public IReadOnlyList<GraphAuthoringDynamicPortProjection> ProjectPorts(AuthoringNodeDocument node)
+        public IReadOnlyList<GraphAuthoringDynamicPortProjection> Receive(AuthoringNodeDocument node,
+            GraphAuthoringDocumentRoleId role, IReadOnlyDictionary<string, AuthoringValueDefinition> inputTypes)
         {
+            if (!node.CapabilityId.Equals(Id) || !Roles.Contains(role))
+                throw Error(node, "capability", "节点能力不属于当前定义或图角色。");
             IReadOnlyDictionary<GraphAuthoringFieldId, AuthoringValue> fields = EffectiveFields(node);
+            foreach (var field in fields) Fields[field.Key].Receive(field.Value, "node:" + node.Id + "/" + field.Key);
+            IReadOnlyList<GraphAuthoringDynamicPortProjection> ports = ProjectPorts(node, fields);
+            var inputs = ports.Where(port => port.Direction == GraphAuthoringPortDirection.Input)
+                .ToDictionary(port => port.PortId.Value, StringComparer.Ordinal);
+            foreach (AuthoringNamedValue field in node.Fields.Span)
+            {
+                string id = field.FieldId.Value;
+                if (!id.StartsWith("input:", StringComparison.Ordinal)) continue;
+                string portId = id.Substring("input:".Length);
+                if (!inputs.TryGetValue(portId, out GraphAuthoringDynamicPortProjection port) ||
+                    !inputTypes.TryGetValue(port.ValueTypeId, out AuthoringValueDefinition definition))
+                    throw Error(node, id, "常量字段没有对应的正式值输入端口和类型定义。");
+                definition.Receive(field.Value, "node:" + node.Id + "/" + id);
+            }
+            return ports;
+        }
+
+        public IReadOnlyList<GraphAuthoringDynamicPortProjection> ProjectPorts(AuthoringNodeDocument node) =>
+            ProjectPorts(node, EffectiveFields(node));
+
+        IReadOnlyList<GraphAuthoringDynamicPortProjection> ProjectPorts(AuthoringNodeDocument node,
+            IReadOnlyDictionary<GraphAuthoringFieldId, AuthoringValue> fields)
+        {
             var controls = PortShape.PortVariants.Select(variant => variant.When.FieldId).ToHashSet();
             controls.UnionWith(PortShape.FixedPorts.Concat(PortShape.PortVariants.SelectMany(variant => variant.Ports))
                 .Select(port => port.ValueTypeFieldId).Where(field => field.IsValid));
@@ -46,5 +81,8 @@ namespace BTSMTL.Authoring.Documents
                     port.Direction, port.Capacity, false, order, port.InterfacePortId)).ToArray();
             return GraphAuthoringNodePortShapeProjector.ProjectComplete(PortShape, properties, authored);
         }
+
+        static InvalidOperationException Error(AuthoringNodeDocument node, string field, string reason) =>
+            new InvalidOperationException("node:" + node.Id + "/" + field + ": " + reason);
     }
 }
