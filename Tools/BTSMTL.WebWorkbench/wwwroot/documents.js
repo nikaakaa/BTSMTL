@@ -1,12 +1,12 @@
 import { editField, editVariable, renameElement, createNode, createConnection, reorderConnections, referenceChoices, showDocumentDiff } from './graph-edits.js';
 import { DocumentEditSession } from './document-session.js';
 import { editTimeRange, editMarkerTime, moveClip, bindTimelineDrag } from './timeline-edits.js';
-import { showReferences } from './references.js';
+import { showReferences, showReferenceResource } from './references.js';
 
 const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 const state = { roots: [], nextOffset: 0, selectedRoot: null, snapshot: null, references: [], selectedFile: null, selectedNode: null, selectedEdge: null, selectedTimeline: null, linkStart: null, tab: 'document', source: 'workspace', timeScale: null, query: '', capabilities: new Map(), definitionRevision: null, draft: null, authoringState: null, authoringProblem: '', view: { x: 35, y: 45, scale: 1 } };
-const kindNames = { Graph: '图', Timeline: '时间轴', InputPlan: '输入方案', Layout: '布局' };
+const kindNames = { Graph: '图', Timeline: '时间轴', InputPlan: '输入方案', Layout: '布局', References: '外部引用记录' };
 const api = () => `/api/${state.source}`;
 const typeName = value => value.split(',')[0].split('.').pop();
 
@@ -228,6 +228,7 @@ function renderDocument() {
     if (state.tab === 'variables') renderVariables();
     else if (Array.isArray(document.nodes) && Array.isArray(document.edges)) renderGraph(document);
     else if (Array.isArray(document.tracks)) renderTimeline(document);
+    else if (Array.isArray(document.entries)) renderReferenceTable(document);
     else renderRoot(document);
     renderInspector(document);
   }
@@ -352,6 +353,11 @@ function updateView() {
 }
 
 function renderInspector(document) {
+  if (Array.isArray(document.entries)) {
+    $('selection-name').textContent = '外部引用记录';
+    $('inspector-content').innerHTML = '<p class="muted">此表保存原资源导出时提供的引用字段。内容由原 owner 维护，网页只读；当前根的业务字段仍通过原图、时间轴及变量入口编辑。</p>';
+    return;
+  }
   const target = state.selectedTimeline
     ? [...document.tracks.flatMap(track => [track, ...track.clips, ...track.markers]), ...document.bindings].find(item => item.id === state.selectedTimeline)
     : state.selectedEdge ? document.edges.find(edge => edge.id === state.selectedEdge)
@@ -492,7 +498,7 @@ function renderValue(value) {
     case 'reference': {
       const target = state.snapshot.root.files.find(file => file.id === value.target.documentId);
       const mapping = state.snapshot.root.unityOutputs.find(item => item.documentId === value.target.documentId && item.elementId === value.target.elementId);
-      return `<div class="reference-value">${target && value.target.rootId === state.snapshot.root.id ? `<button data-document="${escapeHtml(target.path)}" data-element="${escapeHtml(value.target.elementId)}">打开 ${escapeHtml(kindNames[target.kind])} ↗</button>` : '<strong>只读资源引用</strong>'}<span>${escapeHtml(mapping?.assetPath || value.target.rootId)}</span><button data-reference-root="${escapeHtml(value.target.rootId)}" data-reference-document="${escapeHtml(value.target.documentId)}" data-reference-element="${escapeHtml(value.target.elementId)}">查看引用位置</button><details><summary>稳定引用</summary><code>${escapeHtml(value.target.rootId)} / ${escapeHtml(value.target.documentId)} / ${escapeHtml(value.target.elementId)}</code></details></div>`;
+      return `<div class="reference-value">${target && value.target.rootId === state.snapshot.root.id ? `<button data-document="${escapeHtml(target.path)}" data-element="${escapeHtml(value.target.elementId)}">打开 ${escapeHtml(kindNames[target.kind])} ↗</button>` : `<strong>只读资源引用</strong><button data-resource-root="${escapeHtml(value.target.rootId)}" data-resource-document="${escapeHtml(value.target.documentId)}" data-resource-element="${escapeHtml(value.target.elementId)}">查看引用详情</button>`}<span>${escapeHtml(mapping?.assetPath || value.target.rootId)}</span><button data-reference-root="${escapeHtml(value.target.rootId)}" data-reference-document="${escapeHtml(value.target.documentId)}" data-reference-element="${escapeHtml(value.target.elementId)}">查看引用位置</button><details><summary>稳定引用</summary><code>${escapeHtml(value.target.rootId)} / ${escapeHtml(value.target.documentId)} / ${escapeHtml(value.target.elementId)}</code></details></div>`;
     }
     case 'object': return `<details><summary title="${escapeHtml(value.type)}">${escapeHtml(typeName(value.type))}</summary>${Object.entries(value.members).map(([key, member]) => `<div class="nested-value"><label>${escapeHtml(key)}</label>${renderValue(member)}</div>`).join('')}</details>`;
     case 'sequence': return `<details><summary>${value.items.length} 项 · ${escapeHtml(typeName(value.type))}</summary>${value.items.map((item, index) => `<div class="nested-value"><label>${index + 1}</label>${renderValue(item)}</div>`).join('')}</details>`;
@@ -518,6 +524,10 @@ function renderTimeline(timeline) {
     bindTimelineDrag($('document-view').querySelector('.timeline-content'), timeline, state.timeScale, pixels,
       applyTimelineEdits, error => report(error.message, true));
   }
+}
+
+function renderReferenceTable(table) {
+  $('document-view').innerHTML = `<div class="variables-page reference-table"><div class="eyebrow">REFERENCED CONTENT</div><h1>外部引用记录</h1><p>${table.entries.length} 项原资源提供的记录。此页只读，字段来自当前根的引用文件；不重新求值外部资源或将其复制为本根作者内容。</p>${table.entries.map(entry => `<details><summary>${escapeHtml(entry.kind)}</summary>${renderValue(entry.source)}<div class="resource-reference-fields">${Object.entries(entry.fields).map(([key, value]) => `<div class="field"><label>${escapeHtml(key)}</label>${renderValue(value)}</div>`).join('')}</div></details>`).join('')}</div>`;
 }
 
 function renderVariables() {
@@ -588,12 +598,6 @@ $('document-view').onkeydown = event => {
   }
 };
 $('inspector-content').onclick = event => {
-  const usage = event.target.closest('[data-reference-root]');
-  if (usage) {
-    const query = new URLSearchParams({ rootId: usage.dataset.referenceRoot, documentId: usage.dataset.referenceDocument, elementId: usage.dataset.referenceElement });
-    guarded(() => showReferences('实际引用位置', `${api()}/reference-uses?${query}`, state.source, request));
-    return;
-  }
   const reference = event.target.closest('[data-document]');
   if (reference) { state.tab = 'document'; showTab(); guarded(() => selectFile(reference.dataset.document, reference.dataset.element)); return; }
   if (Array.isArray(state.selectedFile.document.tracks)) { handleTimelineAction(event); return; }
@@ -630,6 +634,23 @@ $('inspector-content').onclick = event => {
   else if (event.target.closest('[data-delete-node]')) guarded(() => applyGraphEdits([{ kind: 'delete-node', nodeId: node.id }]));
   else if (event.target.closest('[data-delete-edge]')) guarded(() => applyGraphEdits([{ kind: 'delete-edge', edgeId: event.target.closest('[data-delete-edge]').dataset.deleteEdge }]));
 };
+document.body.addEventListener('click', event => {
+  const resource = event.target.closest('[data-resource-root]');
+  const usage = event.target.closest('[data-reference-root]');
+  if (resource) guarded(() => showReferenceResource(state.snapshot, { rootId: resource.dataset.resourceRoot,
+    documentId: resource.dataset.resourceDocument, elementId: resource.dataset.resourceElement }, request, renderValue));
+  else if (usage) {
+    const query = new URLSearchParams({ rootId: usage.dataset.referenceRoot, documentId: usage.dataset.referenceDocument,
+      elementId: usage.dataset.referenceElement });
+    guarded(() => showReferences('实际引用位置', `${api()}/reference-uses?${query}`, state.source, request));
+  } else {
+    const reference = event.target.closest('.resource-dialog [data-document]');
+    if (reference) {
+      reference.closest('dialog').close(); state.tab = 'document'; showTab();
+      guarded(() => selectFile(reference.dataset.document, reference.dataset.element));
+    }
+  }
+});
 
 function handleTimelineAction(event) {
   const timeline = state.selectedFile.document;

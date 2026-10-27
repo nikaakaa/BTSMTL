@@ -1,6 +1,32 @@
 const html = value => String(value).replace(/[&<>"']/g,
   char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 
+export async function showReferenceResource(snapshot, target, request, renderValue) {
+  const same = value => value.kind === 'reference' && value.target.rootId === target.rootId &&
+    value.target.documentId === target.documentId && value.target.elementId === target.elementId;
+  const mapping = snapshot.root.unityOutputs.find(item => item.documentId === target.documentId &&
+    item.elementId === target.elementId);
+  const entries = snapshot.root.files.filter(file => file.kind === 'References').flatMap(declaration => {
+    const file = snapshot.files.find(file => file.path === declaration.path);
+    return file.document.entries.filter(entry => same(entry.source)).map(entry => ({ entry, file }));
+  });
+  const modal = document.createElement('dialog');
+  modal.className = 'edit-dialog resource-dialog';
+  modal.innerHTML = `<header><h2>引用资源的只读详情</h2><button type="button" aria-label="关闭">×</button></header><p>外部配置由原资源维护。下方字段来自本次文档保存的引用记录，不表示当前 Unity 资源已经重新读取。</p><dl><dt>根身份</dt><dd><code>${html(target.rootId)}</code></dd><dt>文档身份</dt><dd><code>${html(target.documentId)}</code></dd><dt>对象身份</dt><dd><code>${html(target.elementId)}</code></dd>${mapping ? `<dt>Unity 来源</dt><dd>${html(mapping.assetPath)}</dd><dt>GUID / local file ID</dt><dd><code>${html(mapping.guid)} / ${html(mapping.localFileId)}</code></dd>` : ''}<dt>本次根修订</dt><dd><code>${html(snapshot.revision)}</code></dd></dl><div class="resource-reference-fields">${entries.map(({ entry, file }) => `<section><h3>${html(entry.kind)}</h3><small>${html(file.path)} · ${html(file.revision)}${file.draftChanged ? ' · 当前候选尚未保存' : ''}</small>${Object.entries(entry.fields).map(([key, value]) => `<div class="field"><label>${html(key)}</label>${renderValue(value)}</div>`).join('')}</section>`).join('') || '<p>本次文档未记录此引用的详情字段；原引用身份保持不变。</p>'}</div><div class="resource-preview" role="status">正在查询已导出的网页素材…</div>`;
+  document.body.append(modal);
+  modal.addEventListener('close', () => modal.remove());
+  modal.querySelector('header button').onclick = () => modal.close();
+  modal.showModal();
+  const preview = modal.querySelector('.resource-preview');
+  try {
+    const library = await request('/api/resources/animations');
+    const clip = library.clips.find(item => item.resource.guid === target.rootId &&
+      item.resource.localFileId === target.elementId);
+    preview.innerHTML = clip ? `<a href="/resources.html?${html(new URLSearchParams({ resource: clip.resource.identity }))}" target="_blank" rel="noopener">浏览已导出的动画片段 ↗</a><small>素材库中的资源修订 ${html(clip.resource.contentRevision)}</small><small>预览使用素材库的实际导出版本，文档引用保持不变。</small>`
+      : '当前网页素材库未导出此引用。上方仍可查看原资源身份与文档记录。';
+  } catch (error) { preview.textContent = error.message; }
+}
+
 export async function showReferences(title, endpoint, source, request) {
   const dialog = document.createElement('dialog');
   dialog.className = 'edit-dialog reference-dialog';
