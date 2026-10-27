@@ -116,16 +116,17 @@ export function editField(field, value, apply, references = []) {
     `<p class="dialog-intro">${html(field.displayName || field.id)}。复合值可逐项修改，集合可复制、删除和重排。</p><div class="typed-value-editor"></div><details class="raw-value-editor"><summary>完整类型化 JSON（用于尚无默认形状的空集合或 null）</summary><textarea spellcheck="false">${html(JSON.stringify(value, null, 2))}</textarea></details>`,
     async form => {
       const value = form.querySelector('.raw-value-editor').open
-        ? JSON.parse(form.querySelector('textarea').value) : editor.read();
+        ? JSON.parse(form.querySelector('.raw-value-editor textarea').value) : editor.read();
       await apply(value);
     });
   const editor = bindValueEditor(modal.querySelector('.typed-value-editor'), value, field.constraint?.AllowedValues || [], references, field.valueDefinition);
-  modal.querySelector('textarea').oninput = () => { rawEdited = true; };
+  const raw = modal.querySelector('.raw-value-editor textarea');
+  raw.oninput = () => { rawEdited = true; };
   modal.querySelector('.raw-value-editor').addEventListener('toggle', event => {
-    if (event.currentTarget.open && !rawEdited) modal.querySelector('textarea').value = JSON.stringify(editor.read(), null, 2);
+    if (event.currentTarget.open && !rawEdited) raw.value = JSON.stringify(editor.read(), null, 2);
     else if (!event.currentTarget.open && rawEdited) {
       try {
-        editor.replace(JSON.parse(modal.querySelector('textarea').value));
+        editor.replace(JSON.parse(raw.value));
         rawEdited = false;
         modal.querySelector('.dialog-error').textContent = '';
       } catch (error) {

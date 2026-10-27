@@ -3,7 +3,7 @@ const html = value => String(value).replace(/[&<>"']/g,
 
 export function scalarControl(value, attributes, definition = null, allowedValues = []) {
   if (value.valueKind === 'String' && !allowedValues.length)
-    return `<textarea ${attributes} spellcheck="false">\n${html(value.value)}</textarea>`;
+    return `<textarea class="scalar-text" ${attributes} rows="2" spellcheck="false">\n${html(value.value)}</textarea>`;
   const values = allowedValues.length ? allowedValues : value.valueKind === 'Boolean' ? ['true', 'false']
     : definition?.kind === 'Enumeration' ? definition.enumValues : [];
   const input = `<input ${attributes} value="${html(value.value)}" autocomplete="off" spellcheck="false"`;
