@@ -93,6 +93,20 @@ public sealed class AuthoringDocumentService
     public AuthoringDocumentCandidate Candidate(string id) => m_Candidates[id];
     public AuthoringDocumentCommitResult? Query(string requestId) => m_Commit.Query(requestId);
 
+    public AuthoringDocumentCandidate PreviewInverse(string requestId, string rootPath, string baselineRevision,
+        string appliedCandidateId)
+    {
+        AuthoringDocumentCandidate applied = m_Candidates[appliedCandidateId];
+        AuthoringDocumentCommitResult? receipt = m_Commit.Query(applied.RequestId);
+        if (receipt?.Status != AuthoringCommitStatus.Saved)
+            throw new InvalidOperationException("撤销和重做必须引用实际已保存的共同修改。");
+        AuthoringRootFiles current = Baseline(rootPath, baselineRevision);
+        if (!current.Root.Id.Equals(applied.Baseline.Root.Id))
+            throw new InvalidOperationException("反向修改不能改变实际保存根。");
+        return Remember(AuthoringDocumentCandidate.Create(requestId, current,
+            AuthoringDocumentInverse.Create(applied, current), m_Domain));
+    }
+
     public async Task<AuthoringDocumentCommitResult> Commit(string candidateId, CancellationToken cancellation = default)
     {
         AuthoringDocumentCommitResult result = await m_Commit.Commit(m_Candidates[candidateId], cancellation);
