@@ -103,7 +103,7 @@ public sealed class AuthoringDocumentCandidate
         }
         AuthoringSourceFile[] accepted = new[] { final[rootPath] }.Concat(root.Files.ToArray()
             .Select(file => final[AuthoringWorkspaceDirectory.Resolve(directory, file.Path)])).ToArray();
-        return new(requestId, baseline, new AuthoringDocumentSet(AuthoringWorkspaceDirectory.Snapshot(root, accepted)),
+        return new(requestId, baseline, parsed.WithSource(AuthoringWorkspaceDirectory.Snapshot(root, accepted)),
             changes.ToArray(), differences.ToArray());
     }
 

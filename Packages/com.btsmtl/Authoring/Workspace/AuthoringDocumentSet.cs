@@ -16,6 +16,18 @@ public sealed class AuthoringDocumentSet
     readonly Dictionary<GraphAuthoringElementId, AuthoringSourceFile> m_Sources = new();
     readonly Dictionary<GraphAuthoringElementId, HashSet<GraphAuthoringElementId>> m_Elements = new();
 
+    AuthoringDocumentSet(AuthoringDocumentSet accepted, AuthoringRootFiles source)
+    {
+        Source = source;
+        ContentRevision = accepted.ContentRevision;
+        m_Documents = accepted.m_Documents;
+        m_Elements = accepted.m_Elements;
+        string directory = Path.GetDirectoryName(source.Files[0].Path)!;
+        var files = source.Files.ToDictionary(file => file.Path, StringComparer.OrdinalIgnoreCase);
+        foreach (AuthoringDocumentFile file in source.Root.Files.Span)
+            m_Sources.Add(file.Id, files[AuthoringWorkspaceDirectory.Resolve(directory, file.Path)]);
+    }
+
     public AuthoringDocumentSet(AuthoringRootFiles source)
     {
         Source = source;
@@ -84,6 +96,7 @@ public sealed class AuthoringDocumentSet
     public IReadOnlyDictionary<GraphAuthoringElementId, object> Documents => m_Documents;
     public IReadOnlyDictionary<GraphAuthoringElementId, AuthoringSourceFile> Sources => m_Sources;
     public T Require<T>(GraphAuthoringElementId id) where T : class => (T)m_Documents[id];
+    internal AuthoringDocumentSet WithSource(AuthoringRootFiles source) => new(this, source);
 
     public void ReceiveReferences()
     {

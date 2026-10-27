@@ -23,6 +23,8 @@ namespace BTSMTL.Authoring.Documents
             foreach (AuthoringNamedValue value in fields.Span)
             {
                 GraphAuthoringMember member = contract[value.FieldId.Value];
+                if (member.Metadata.ReadOnly)
+                    throw new InvalidOperationException($"作者字段 '{value.FieldId}' 只读，不能作为修改提交。");
                 member.WriteCandidate(candidate, Restore(member.ValueType, value.Value));
             }
             return candidate.Apply(target);
@@ -131,7 +133,7 @@ namespace BTSMTL.Authoring.Documents
         {
             GraphAuthoringTypeContract fields = GraphAuthoringMemberBindings.Contract(instance);
             GraphAuthoringCandidate candidate = fields.CreateCandidate(instance);
-            foreach (GraphAuthoringMember field in fields.Fields)
+            foreach (GraphAuthoringMember field in fields.Fields.Where(field => !field.Metadata.ReadOnly))
                 field.WriteCandidate(candidate, Restore(field.ValueType, members[field.Metadata.FieldId]));
             return candidate.Apply(instance);
         }
