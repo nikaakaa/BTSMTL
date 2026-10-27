@@ -4,7 +4,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using System.Reflection;
 using BTSMTL.Authoring.Graph;
 
 namespace BTSMTL.Authoring.Documents
@@ -159,6 +158,8 @@ namespace BTSMTL.Authoring.Documents
                 AuthoringObjectContract contract = Contract(type);
                 var members = composite.Members.ToArray().ToDictionary(member => member.FieldId.Value, member => member.Value,
                     StringComparer.Ordinal);
+                if (!members.Keys.ToHashSet(StringComparer.Ordinal).SetEquals(Describe(type).Members.Select(member => member.Id)))
+                    throw new InvalidOperationException($"复合作者值 '{type.FullName}' 的成员与原公开构造及作者合同不一致。");
                 if (contract.Construction == AuthoringObjectConstruction.PublicFields)
                 {
                     object instance = Activator.CreateInstance(type);
