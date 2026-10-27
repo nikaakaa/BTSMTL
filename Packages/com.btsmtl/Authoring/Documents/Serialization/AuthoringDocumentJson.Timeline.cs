@@ -100,6 +100,6 @@ namespace BTSMTL.Authoring.Documents
             ReadTime(range, "otherEaseInRaw", sourcePath), ReadTime(range, "otherEaseOutRaw", sourcePath));
 
         static OrchestrationTime ReadTime(JToken value, string key, string sourcePath) =>
-            OrchestrationTime.FromRaw(long.Parse(Text(value, key, sourcePath), CultureInfo.InvariantCulture));
+            OrchestrationTime.FromRaw(Int64Text(value, key, sourcePath));
     }
 }

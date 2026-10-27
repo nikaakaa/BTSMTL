@@ -46,7 +46,9 @@ namespace BTSMTL.Authoring.Documents
                         _ => GraphAuthoringFieldValueKind.Integer
                     };
                     if (scalar.Kind != scalarKind) throw Error(path, "标量值种类与正式类型不一致。");
-                    Convert.ChangeType(scalar.Value, ScalarType, CultureInfo.InvariantCulture);
+                    try { Convert.ChangeType(scalar.Value, ScalarType, CultureInfo.InvariantCulture); }
+                    catch (Exception error) when (error is FormatException || error is OverflowException)
+                    { throw Error(path, $"值不属于正式 {ScalarType} 类型：{error.Message}"); }
                     break;
                 case AuthoringValueDefinitionKind.Enumeration when value is AuthoringScalarValue enumeration:
                     if (enumeration.Kind != GraphAuthoringFieldValueKind.Enum) throw Error(path, "枚举必须使用正式枚举值种类。");

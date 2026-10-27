@@ -63,7 +63,7 @@ namespace BTSMTL.Authoring.Documents
                 Array(root, "unityOutputs", sourcePath).Select(value => new AuthoringUnityOutput(
                     Id(value, "documentId", sourcePath), Id(value, "elementId", sourcePath),
                     Text(value, "assetPath", sourcePath), Text(value, "guid", sourcePath),
-                    long.Parse(Text(value, "localFileId", sourcePath), CultureInfo.InvariantCulture))).ToArray());
+                    Int64Text(value, "localFileId", sourcePath))).ToArray());
             return ReceiveMembers(root, result, sourcePath);
         }
 
@@ -132,7 +132,7 @@ namespace BTSMTL.Authoring.Documents
                     Id(edge, "id", sourcePath), Id(edge, "sourceNode", sourcePath),
                     new GraphAuthoringPortId(Text(edge, "sourcePort", sourcePath)), Id(edge, "targetNode", sourcePath),
                     new GraphAuthoringPortId(Text(edge, "targetPort", sourcePath)),
-                    Required(edge, "order", sourcePath).Value<int>(),
+                    Integer(edge, "order", sourcePath),
                     ReadFields(Required(edge, "fields", sourcePath), sourcePath))).ToArray(),
                 Array(graph, "variables", sourcePath).Select(variable => new AuthoringVariableDocument(
                     Id(variable, "id", sourcePath), Text(variable, "key", sourcePath), Text(variable, "type", sourcePath),
@@ -251,7 +251,7 @@ namespace BTSMTL.Authoring.Documents
         static JObject ReadDocument(string text, string sourcePath)
         {
             JObject document = ReadObject(text);
-            int version = Required(document, "formatVersion", sourcePath).Value<int>();
+            int version = Integer(document, "formatVersion", sourcePath);
             if (version != AuthoringRootDocument.FormatVersion)
                 throw new AuthoringDocumentFormatException(sourcePath, "formatVersion", $"不支持作者文档版本 '{version}'。");
             return document;
@@ -268,6 +268,23 @@ namespace BTSMTL.Authoring.Documents
 
         static GraphAuthoringElementId Id(JToken token, string name, string sourcePath) =>
             new GraphAuthoringElementId(Text(token, name, sourcePath));
+
+        static int Integer(JToken token, string name, string sourcePath)
+        {
+            JToken value = Required(token, name, sourcePath);
+            if (value.Type != JTokenType.Integer || !int.TryParse(value.ToString(Formatting.None),
+                NumberStyles.Integer, CultureInfo.InvariantCulture, out int result))
+                throw new AuthoringDocumentFormatException(sourcePath, value.Path, "必须使用 Int32 范围内的 JSON 整数。");
+            return result;
+        }
+
+        static long Int64Text(JToken token, string name, string sourcePath)
+        {
+            string text = Text(token, name, sourcePath);
+            if (!long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out long result))
+                throw new AuthoringDocumentFormatException(sourcePath, token[name].Path, "必须使用 Int64 范围内的无损文本整数。");
+            return result;
+        }
 
         static string Text(JToken token, string name, string sourcePath)
         {
