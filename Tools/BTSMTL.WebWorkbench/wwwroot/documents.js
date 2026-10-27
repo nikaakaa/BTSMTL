@@ -1,5 +1,6 @@
 import { editField, editVariable, renameElement, createNode, createConnection, reorderConnections, referenceChoices, showDocumentDiff } from './graph-edits.js';
 import { DocumentEditSession } from './document-session.js';
+import { editTimeRange, editMarkerTime, moveClip, bindTimelineDrag } from './timeline-edits.js';
 import { showReferences } from './references.js';
 
 const $ = id => document.getElementById(id);
@@ -151,7 +152,8 @@ async function selectFile(path, elementId = null) {
   state.selectedNode = file.document?.nodes?.some(node => node.id === elementId) ? elementId : null;
   state.selectedEdge = file.document?.edges?.some(edge => edge.id === elementId) ? elementId : null;
   state.selectedTimeline = file.document?.tracks?.some(track => track.id === elementId ||
-    [...track.clips, ...track.markers].some(item => item.id === elementId)) ? elementId : null;
+    [...track.clips, ...track.markers].some(item => item.id === elementId)) ||
+    file.document?.bindings?.some(binding => binding.id === elementId) ? elementId : null;
   state.view = { x: 35, y: 45, scale: 1, needsFit: true };
   const locationQuery = new URLSearchParams({ source: state.source, root: state.selectedRoot.path, file: path, tab: state.tab });
   if (elementId) locationQuery.set('element', elementId);
@@ -351,7 +353,7 @@ function updateView() {
 
 function renderInspector(document) {
   const target = state.selectedTimeline
-    ? document.tracks.flatMap(track => [track, ...track.clips, ...track.markers]).find(item => item.id === state.selectedTimeline)
+    ? [...document.tracks.flatMap(track => [track, ...track.clips, ...track.markers]), ...document.bindings].find(item => item.id === state.selectedTimeline)
     : state.selectedEdge ? document.edges.find(edge => edge.id === state.selectedEdge)
     : state.selectedNode ? document.nodes.find(node => node.id === state.selectedNode) : document;
   const definition = target.capability ? state.capabilities.get(target.capability) : null;
@@ -390,6 +392,20 @@ function renderInspector(document) {
     }
     if (state.selectedFile.draftChanged) $('inspector-content').querySelector('.read-state').textContent = '本会话候选 · 尚未保存或发布';
   }
+  if (Array.isArray(document.tracks) && state.draft) renderTimelineActions(document, target);
+}
+
+function renderTimelineActions(timeline, target) {
+  const track = timeline.tracks.find(track => track.id === target.id || [...track.clips, ...track.markers].some(item => item.id === target.id));
+  const clip = track?.clips.find(clip => clip.id === target.id);
+  const marker = track?.markers.find(marker => marker.id === target.id);
+  const binding = timeline.bindings.find(binding => binding.id === target.id);
+  $('inspector-content').insertAdjacentHTML('afterbegin', `<div class="inspector-actions"><button data-timeline-rename>修改名称</button>${target === timeline ? `<button data-timeline-loop>${timeline.loop ? '改为单次' : '改为循环'}</button>` : ''}${clip ? '<button data-timeline-range>配置时间与素材范围</button><button data-timeline-move-clip>移动到轨道</button>' : ''}${marker ? '<button data-timeline-marker-time>配置时刻</button>' : ''}${track === target ? `<button data-timeline-track-move="-1" ${timeline.tracks.indexOf(track) === 0 ? 'disabled' : ''}>轨道上移</button><button data-timeline-track-move="1" ${timeline.tracks.indexOf(track) === timeline.tracks.length - 1 ? 'disabled' : ''}>轨道下移</button>` : ''}${track || binding ? '<button class="danger" data-timeline-delete>删除当前内容</button>' : ''}</div>`);
+  if (binding) $('inspector-content').querySelector('[data-timeline-rename]').remove();
+  Object.keys(target.fields).forEach(id => {
+    const element = [...$('inspector-content').querySelectorAll('.field')].find(item => item.querySelector('label').title === id);
+    element.insertAdjacentHTML('beforeend', `<button class="edit-field" data-timeline-field="${escapeHtml(id)}">编辑作者值</button>`);
+  });
 }
 
 function requireDraftSettled() {
@@ -442,6 +458,11 @@ async function applyGraphEdits(edits) {
   await showDraft();
 }
 
+async function applyTimelineEdits(edits) {
+  await state.draft.applyTimeline(state.selectedFile.document.id, edits);
+  await showDraft();
+}
+
 async function choosePort(element) {
   const graph = state.selectedFile.document, nodeId = element.dataset.portNode, portId = element.dataset.port;
   const port = state.selectedFile.portShapes.get(nodeId).ports.find(port => port.id === portId &&
@@ -489,6 +510,12 @@ function renderTimeline(timeline) {
   const ticks = Array.from({ length: Math.floor(duration / tick) + 1 }, (_, index) => index * tick);
   const rows = timeline.tracks.map((track, index) => `<div class="timeline-row"><button class="timeline-track ${state.selectedTimeline === track.id ? 'selected' : ''}" data-timeline="${escapeHtml(track.id)}"><small>${index + 1} · ${escapeHtml(track.contract)}</small><strong>${escapeHtml(track.displayName)}</strong><span>${track.clips.length} 片段 · ${track.markers.length} 标记</span></button><div class="timeline-lane" style="width:${width}px">${ticks.map(time => `<i class="timeline-grid" style="left:${time * pixels}px"></i>`).join('')}${track.clips.map(clip => `<button class="timeline-clip ${state.selectedTimeline === clip.id ? 'selected' : ''}" data-timeline="${escapeHtml(clip.id)}" style="left:${seconds(clip.timeRange.startRaw) * pixels}px;width:${Math.max(4, (seconds(clip.timeRange.endRaw) - seconds(clip.timeRange.startRaw)) * pixels)}px" title="${escapeHtml(clip.displayName)} · ${seconds(clip.timeRange.startRaw).toFixed(4)}—${seconds(clip.timeRange.endRaw).toFixed(4)} 秒"><span>${escapeHtml(clip.displayName)}</span><small>${escapeHtml(clip.contract)}</small></button>`).join('')}${track.markers.map(marker => `<button class="timeline-marker ${state.selectedTimeline === marker.id ? 'selected' : ''}" data-timeline="${escapeHtml(marker.id)}" style="left:${seconds(marker.timeRaw) * pixels}px" title="标记 · ${seconds(marker.timeRaw).toFixed(4)} 秒">◆</button>`).join('')}</div></div>`).join('');
   $('document-view').innerHTML = `<div class="timeline-heading"><div><small>正式时间数据</small><h2>${escapeHtml(timeline.displayName)}</h2></div><span>${timeline.loop ? '循环' : '单次'} · ${duration.toFixed(3)} 秒 · ${timeline.tracks.length} 条轨道</span></div><div class="timeline-scroll"><div class="timeline-content" style="width:${width + 224}px"><div class="timeline-ruler"><div>作者时间 · 秒</div><div style="width:${width}px">${ticks.map(time => `<span style="left:${time * pixels}px">${time.toFixed(2)}</span>`).join('')}</div></div>${rows}</div></div><p class="timeline-note">选择片段或标记查看实际参数及图引用。时间轴显示作者时间；真实模拟结果位于独立 Quantum 预览。</p>`;
+  $('document-view').insertAdjacentHTML('beforeend', `<div class="timeline-bindings">${timeline.bindings.map(binding => `<button data-timeline="${escapeHtml(binding.id)}">绑定 ${escapeHtml(binding.id)}</button>`).join('')}</div>`);
+  if (state.draft) {
+    $('document-view').querySelector('.timeline-note').textContent = '拖动片段或标记，松开时生成一次共同时间候选；原始整数区间可在属性中精确编辑。';
+    bindTimelineDrag($('document-view').querySelector('.timeline-content'), timeline, state.timeScale, pixels,
+      applyTimelineEdits, error => report(error.message, true));
+  }
 }
 
 function renderVariables() {
@@ -567,6 +594,7 @@ $('inspector-content').onclick = event => {
   }
   const reference = event.target.closest('[data-document]');
   if (reference) { state.tab = 'document'; showTab(); guarded(() => selectFile(reference.dataset.document, reference.dataset.element)); return; }
+  if (Array.isArray(state.selectedFile.document.tracks)) { handleTimelineAction(event); return; }
   const graph = state.selectedFile?.document;
   const node = state.selectedNode ? graph.nodes.find(item => item.id === state.selectedNode) : null;
   const edge = state.selectedEdge ? graph.edges.find(item => item.id === state.selectedEdge) : null;
@@ -600,6 +628,39 @@ $('inspector-content').onclick = event => {
   else if (event.target.closest('[data-delete-node]')) guarded(() => applyGraphEdits([{ kind: 'delete-node', nodeId: node.id }]));
   else if (event.target.closest('[data-delete-edge]')) guarded(() => applyGraphEdits([{ kind: 'delete-edge', edgeId: event.target.closest('[data-delete-edge]').dataset.deleteEdge }]));
 };
+
+function handleTimelineAction(event) {
+  const timeline = state.selectedFile.document;
+  const target = state.selectedTimeline ? [...timeline.tracks.flatMap(track => [track, ...track.clips, ...track.markers]),
+    ...timeline.bindings].find(item => item.id === state.selectedTimeline) : timeline;
+  const track = timeline.tracks.find(track => track.id === target.id || [...track.clips, ...track.markers].some(item => item.id === target.id));
+  const clip = track?.clips.find(clip => clip.id === target.id);
+  const marker = track?.markers.find(marker => marker.id === target.id);
+  const binding = timeline.bindings.find(binding => binding.id === target.id);
+  const configure = (fields, displayName = target.displayName) => target === timeline ? { kind: 'configure-timeline-fields', fields }
+    : clip ? { kind: 'configure-clip', trackId: track.id, clipId: clip.id, displayName, fields }
+    : marker ? { kind: 'configure-marker', trackId: track.id, markerId: marker.id, displayName, timeRaw: marker.timeRaw, fields }
+    : binding ? { kind: 'configure-binding', bindingId: binding.id, fields }
+    : { kind: 'configure-track', trackId: track.id, displayName, fields };
+  const field = event.target.closest('[data-timeline-field]');
+  if (field) {
+    const id = field.dataset.timelineField;
+    editField({ id }, target.fields[id], value => applyTimelineEdits([configure({ ...target.fields, [id]: value })]), state.references);
+  } else if (event.target.closest('[data-timeline-rename]')) {
+    renameElement(target.displayName, displayName => applyTimelineEdits([target === timeline
+      ? { kind: 'rename-timeline', displayName } : configure(target.fields, displayName)]));
+  } else if (event.target.closest('[data-timeline-loop]')) guarded(() => applyTimelineEdits([{ kind: 'set-timeline-loop', loop: !timeline.loop }]));
+  else if (event.target.closest('[data-timeline-range]')) editTimeRange(clip, state.timeScale, range =>
+    applyTimelineEdits([{ kind: 'set-clip-range', trackId: track.id, clipId: clip.id, range }]));
+  else if (event.target.closest('[data-timeline-marker-time]')) editMarkerTime(marker, state.timeScale, timeRaw =>
+    applyTimelineEdits([{ ...configure(marker.fields), timeRaw }]));
+  else if (event.target.closest('[data-timeline-move-clip]')) moveClip(timeline, track, clip, edit => applyTimelineEdits([edit]));
+  else if (event.target.closest('[data-timeline-track-move]')) guarded(() => applyTimelineEdits([{ kind: 'move-track', trackId: track.id,
+    index: timeline.tracks.indexOf(track) + Number(event.target.closest('[data-timeline-track-move]').dataset.timelineTrackMove) }]));
+  else if (event.target.closest('[data-timeline-delete]')) guarded(() => applyTimelineEdits([clip ? { kind: 'delete-clip', trackId: track.id, clipId: clip.id }
+    : marker ? { kind: 'delete-marker', trackId: track.id, markerId: marker.id }
+    : binding ? { kind: 'delete-binding', bindingId: binding.id } : { kind: 'delete-track', trackId: track.id }]));
+}
 $('draft-add-node').onclick = () => createNode(state.capabilities, state.selectedFile.document.role,
   node => applyGraphEdits([{ kind: 'insert-node', index: state.selectedFile.document.nodes.length, node }]));
 $('draft-add-edge').onclick = () => createConnection(state.selectedFile.document, state.selectedFile.portShapes,

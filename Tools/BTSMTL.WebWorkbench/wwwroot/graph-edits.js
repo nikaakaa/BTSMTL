@@ -1,7 +1,7 @@
 const html = value => String(value).replace(/[&<>"']/g,
   char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 
-function dialog(title, contents, submit) {
+export function dialog(title, contents, submit) {
   const modal = document.createElement('dialog');
   modal.className = 'edit-dialog';
   modal.innerHTML = `<form><header><h2>${html(title)}</h2><button type="button" data-close aria-label="关闭">×</button></header>${contents}<p class="dialog-error" role="alert"></p><footer><span>修改仅生成候选，尚未保存或发布</span><button type="button" data-close>取消</button>${submit ? '<button class="primary" type="submit">预览修改</button>' : ''}</footer></form>`;
