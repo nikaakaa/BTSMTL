@@ -5,7 +5,7 @@ import { showReferences, showReferenceResource } from './references.js';
 
 const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
-const state = { roots: [], nextOffset: 0, selectedRoot: null, snapshot: null, references: [], selectedFile: null, selectedNode: null, selectedEdge: null, selectedTimeline: null, linkStart: null, tab: 'document', source: 'workspace', timeScale: null, query: '', capabilities: new Map(), definitionRevision: null, draft: null, authoringState: null, authoringProblem: '', view: { x: 35, y: 45, scale: 1 } };
+const state = { roots: [], nextOffset: 0, selectedRoot: null, snapshot: null, references: [], selectedFile: null, selectedNode: null, selectedEdge: null, selectedTimeline: null, linkStart: null, tab: 'document', source: 'workspace', timeScale: null, query: '', capabilities: new Map(), definitions: null, definitionRevision: null, draft: null, authoringState: null, authoringProblem: '', view: { x: 35, y: 45, scale: 1 } };
 const kindNames = { Graph: '图', Timeline: '时间轴', InputPlan: '输入方案', Layout: '布局', References: '外部引用记录' };
 const api = () => `/api/${state.source}`;
 const typeName = value => value.split(',')[0].split('.').pop();
@@ -46,18 +46,11 @@ function report(message, error = false) {
 }
 
 async function loadDefinitions(domain) {
-  const capabilities = new Map();
-  let offset = 0, revision = null;
-  do {
-    const page = await request(`/api/authoring/capabilities?offset=${offset}&limit=200`);
-    if (page.domain !== domain) throw new Error(`服务的原能力目录属于 ${page.domain}，当前内容属于 ${domain}。`);
-    if (revision !== null && revision !== page.revision) throw new Error('读取能力目录期间定义发生变更，请重新读取本根。');
-    revision = page.revision;
-    page.items.forEach(capability => capabilities.set(capability.id, capability));
-    offset = page.nextOffset;
-  } while (offset !== null);
-  state.capabilities = capabilities;
-  state.definitionRevision = revision;
+  const source = await request('/api/authoring/definitions/document');
+  if (source.domain !== domain) throw new Error(`服务的原能力目录属于 ${source.domain}，当前内容属于 ${domain}。`);
+  state.definitions = source.definition;
+  state.capabilities = new Map(source.definition.capabilities.map(capability => [capability.id, capability]));
+  state.definitionRevision = source.revision;
 }
 
 async function loadRoots(reset = false) {
