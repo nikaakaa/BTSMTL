@@ -19,10 +19,22 @@ namespace BTSMTL.Timeline
         float m_SourceEndTime;
 
         [ShowInInspector, OnValueChanged("RebindTimeline")]
+#if UNITY_EDITOR
+        [BTSMTL.Authoring.Graph.GraphAuthoringField("weightCurve", BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.Object,
+            ObjectType = typeof(AnimationCurve))]
+#endif
         public AnimationCurve WeightCurve = AnimationCurve.Linear(0f, 1f, 1f, 1f);
         [ShowInInspector, OnValueChanged("RebindTimeline")]
+#if UNITY_EDITOR
+        [BTSMTL.Authoring.Graph.GraphAuthoringField("easeInCurve", BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.Object,
+            ObjectType = typeof(AnimationCurve))]
+#endif
         public AnimationCurve EaseInCurve = AnimationCurve.Linear(0f, 0f, 1f, 1f);
         [ShowInInspector, OnValueChanged("RebindTimeline")]
+#if UNITY_EDITOR
+        [BTSMTL.Authoring.Graph.GraphAuthoringField("easeOutCurve", BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.Object,
+            ObjectType = typeof(AnimationCurve))]
+#endif
         public AnimationCurve EaseOutCurve = AnimationCurve.Linear(0f, 0f, 1f, 1f);
 
         public abstract string CurveChannelPrefix { get; }
