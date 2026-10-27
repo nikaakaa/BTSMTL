@@ -265,6 +265,7 @@ async function sendPendingControl() {
 
 async function showFrame(index) {
   const id = state.selected;
+  delete document.documentElement.dataset.previewImageReady;
   const page = Math.floor(index / 128) * 128;
   if (!state.frames.has(index)) {
     const result = await request(`/api/preview/runs/${id}/frames?offset=${page}&limit=128`);
@@ -275,15 +276,18 @@ async function showFrame(index) {
   let frame = state.frames.get(index);
   let observation = null;
   if (state.summary.channels.some(channel => ['collision-geometry', 'operation-states', 'blackboard-values'].includes(channel))) {
-    if (state.summary.channels.includes('collision-geometry') && !viewport.geometry)
-      viewport.setGeometry(await request(`/api/preview/runs/${id}/geometry`));
+    if (state.summary.channels.includes('collision-geometry') && !viewport.geometry) {
+      const geometry = await request(`/api/preview/runs/${id}/geometry`);
+      if (id !== state.selected || index !== Number($('frame').value)) return;
+      viewport.setGeometry(geometry);
+    }
     if (state.sourceMap === null) {
       const sources = []; let offset = 0;
       do {
         const page = await request(`/api/preview/runs/${id}/source-map?offset=${offset}&limit=512`);
+        if (id !== state.selected || index !== Number($('frame').value)) return;
         sources.push(...page.items); offset = page.nextOffset;
       } while (offset !== null);
-      if (id !== state.selected) return;
       state.sourceMap = sources;
     }
     const page = await request(`/api/preview/runs/${id}/observations?firstFrame=${frame.frame}&lastFrame=${frame.frame}&offset=0&limit=1`);
