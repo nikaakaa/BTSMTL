@@ -2,9 +2,9 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 const $ = id => document.getElementById(id);
-const state = { sources: null, runs: [], selected: null, summary: null, frames: new Map(), count: 0, sealed: false, initialFrameIndex: 0 };
+const state = { sources: null, runs: [], selected: null, summary: null, frames: new Map(), count: 0, sealed: false, initialFrameIndex: 0, inputCatalog: null, inputScene: null };
 let pollTimer;
-const stages = { accepted: '已接收', running: '独立会话运行中', completed: '完整重放已封存', stopped: '会话已停止并封存', failed: '执行失败', cancelled: '已取消' };
+const stages = { accepted: '已接收', running: '独立会话运行中', completed: '完整运行已封存', stopped: '会话已停止并封存', failed: '执行失败', cancelled: '已取消' };
 const playbackNames = { paused: '已暂停', playing: '正在播放', stepping: '等待下一个确认帧', stopped: '已停止', completed: '已完成' };
 const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 
@@ -28,9 +28,9 @@ async function guarded(action) {
 }
 
 function options(element, entries, label, value, selected) {
-  element.replaceChildren(...entries.map(entry => {
+  element.replaceChildren(...entries.map((entry, index) => {
     const option = document.createElement('option');
-    option.value = value(entry); option.textContent = label(entry);
+    option.value = value(entry, index); option.textContent = label(entry);
     option.selected = option.value === selected;
     return option;
   }));
@@ -41,7 +41,13 @@ function sourceVersion() {
   const replay = state.sources.replays.find(item => item.path === $('replay').value);
   $('scene-version').textContent = scene?.revision || '尚未导出正式离线包';
   $('replay-version').textContent = replay?.revision || '尚无原 SDK 录像';
-  $('start').disabled = !scene || !replay;
+  const local = $('run-source').value === 'local';
+  const catalogReady = scene && state.inputCatalog?.revision === scene.revision && state.inputScene === scene.path;
+  $('replay-source').hidden = local; $('local-source').hidden = !local;
+  $('load-inputs').disabled = !scene;
+  $('add-input').disabled = !catalogReady || !state.inputCatalog.players.some(player => player.values.length || player.requests.length);
+  $('start').textContent = local ? '按输入新建真实运行' : '新建真实重放';
+  $('start').disabled = !scene || (local ? !catalogReady : !replay);
 }
 
 async function refresh() {
@@ -61,9 +67,13 @@ async function refresh() {
 async function start() {
   let pending = sessionStorage.getItem('btsmtl.preview.pending-request');
   if (!pending) {
+    const source = $('run-source').value === 'local' ? localSource() : {
+      kind: 'replay', path: $('replay').value,
+      revision: state.sources.replays.find(item => item.path === $('replay').value).revision
+    };
     pending = JSON.stringify({ requestId: crypto.randomUUID(), scene: $('scene').value,
       sceneRevision: state.sources.scenes.find(item => item.path === $('scene').value).revision,
-      replay: $('replay').value, replayRevision: state.sources.replays.find(item => item.path === $('replay').value).revision,
+      source,
       interactive: $('interactive').checked });
     sessionStorage.setItem('btsmtl.preview.pending-request', pending);
   }
@@ -71,6 +81,76 @@ async function start() {
   sessionStorage.removeItem('btsmtl.preview.pending-request');
   await refresh();
   await selectRun(receipt.jobId);
+}
+
+async function loadInputs() {
+  const selected = state.sources.scenes.find(item => item.path === $('scene').value);
+  report('正在准备所选离线包，读取正式输入声明…');
+  const catalog = await request(`/api/preview/inputs?scene=${encodeURIComponent(selected.path)}&revision=${encodeURIComponent(selected.revision)}`);
+  if ($('scene').value !== selected.path) return;
+  state.inputCatalog = catalog; state.inputScene = selected.path;
+  $('input-events').replaceChildren();
+  $('input-state').textContent = `${catalog.players.length} 个本地角色 · ${catalog.tickRate} Tick/秒。日程零点为玩家加入后的下一个输入帧。`;
+  sourceVersion(); report('正式输入已读取，可添加请求或输入值。');
+}
+
+function addInput() {
+  const row = document.createElement('div'); row.className = 'input-event';
+  row.innerHTML = '<label>时刻（秒）<input class="input-seconds" type="number" required min="0" step="any" value="0"></label><label>本地角色<select class="input-player"></select></label><label>正式输入<select class="input-binding"></select></label><div class="input-value"></div><button class="remove-input" type="button">移除此时刻</button>';
+  const playerSelect = row.querySelector('.input-player');
+  const bindingSelect = row.querySelector('.input-binding');
+  options(playerSelect, state.inputCatalog.players.filter(player => player.values.length || player.requests.length),
+    player => player.actorId, player => player.actorId);
+  let bindings;
+  function renderValue() {
+    const binding = bindings[Number(bindingSelect.value)];
+    const value = row.querySelector('.input-value'); value.replaceChildren();
+    if (binding.eventKind === 'request') return;
+    switch (binding.kind) {
+      case 'Boolean': value.innerHTML = '<label>布尔值<select class="input-boolean"><option value="true">true</option><option value="false">false</option></select></label>'; break;
+      case 'Scalar': value.innerHTML = '<label>数值<input class="input-scalar" type="number" required step="any" value="0"></label>'; break;
+      case 'Vector2': value.innerHTML = '<label>X<input class="input-x" type="number" required step="any" value="0"></label><label>Y<input class="input-y" type="number" required step="any" value="0"></label>'; break;
+      default: throw new Error(`输入 ${binding.inputId} 的 ${binding.kind} 类型没有网页编辑映射。`);
+    }
+  }
+  function renderBindings() {
+    const player = state.inputCatalog.players.find(player => player.actorId === playerSelect.value);
+    bindings = [...player.requests.map(input => ({ ...input, eventKind: 'request' })),
+      ...player.values.map(input => ({ ...input, eventKind: 'value' }))];
+    options(bindingSelect, bindings, input => `${input.eventKind === 'request' ? '请求' : input.kind} · ${input.inputId}`,
+      (_, index) => String(index));
+    renderValue();
+  }
+  playerSelect.onchange = () => guarded(async () => renderBindings());
+  bindingSelect.onchange = () => guarded(async () => renderValue());
+  row.querySelector('.remove-input').onclick = () => row.remove();
+  row.readInput = () => {
+    const binding = bindings[Number(bindingSelect.value)];
+    const input = { kind: binding.eventKind, inputId: binding.inputId, seconds: Number(row.querySelector('.input-seconds').value) };
+    if (input.kind === 'value') {
+      switch (binding.kind) {
+        case 'Boolean': input.value = { kind: 'boolean', value: row.querySelector('.input-boolean').value === 'true' }; break;
+        case 'Scalar': input.value = { kind: 'scalar', value: Number(row.querySelector('.input-scalar').value) }; break;
+        case 'Vector2': input.value = { kind: 'vector2', x: Number(row.querySelector('.input-x').value), y: Number(row.querySelector('.input-y').value) }; break;
+        default: throw new Error(`输入 ${binding.inputId} 的 ${binding.kind} 类型没有正式映射。`);
+      }
+    }
+    return { actorId: playerSelect.value, input };
+  };
+  renderBindings(); $('input-events').append(row);
+}
+
+function localSource() {
+  for (const input of $('local-source').querySelectorAll('input'))
+    if (!input.reportValidity()) throw new Error('请补齐输入时刻、数值及结束 SDK 帧。');
+  const players = new Map();
+  for (const row of $('input-events').children) {
+    const { actorId, input } = row.readInput();
+    if (!players.has(actorId)) players.set(actorId, []);
+    players.get(actorId).push(input);
+  }
+  return { kind: 'local', lastSdkFrame: Number($('last-sdk-frame').value),
+    players: [...players].map(([actorId, inputs]) => ({ actorId, inputs: inputs.sort((left, right) => left.seconds - right.seconds) })) };
 }
 
 async function selectRun(id, frameIndex = 0) {
@@ -98,7 +178,7 @@ async function updateRun() {
   if (id !== state.selected) return;
   $('run-title').textContent = stages[receipt.stage];
   $('cancel').hidden = !['accepted', 'running'].includes(receipt.stage);
-  $('run-state').textContent = receipt.error || (receipt.stage === 'completed' ? '原 SDK 重放已完成。下方读取本次封存的确认帧。' : receipt.stage === 'stopped' ? '实际会话已停止，保留停止前已形成的确认帧。' : receipt.stage === 'cancelled' ? '进程已确认取消。此运行没有完整封存记录。' : '正在准备或执行实际独立会话。');
+  $('run-state').textContent = receipt.error || (receipt.stage === 'completed' ? '独立运行已完成。下方读取本次封存的确认帧。' : receipt.stage === 'stopped' ? '实际会话已停止，保留停止前已形成的确认帧。' : receipt.stage === 'cancelled' ? '进程已确认取消。此运行没有完整封存记录。' : '正在准备或执行实际独立会话。');
   $('run-state').classList.toggle('error', receipt.stage === 'failed');
   if (['accepted', 'running'].includes(receipt.stage)) {
     const playback = await request(`/api/preview/runs/${id}/playback`);
@@ -244,7 +324,12 @@ function fitView() {
 new ResizeObserver(() => { renderer.setSize(viewport.clientWidth, viewport.clientHeight); camera.aspect = viewport.clientWidth / viewport.clientHeight; camera.updateProjectionMatrix(); }).observe(viewport);
 renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
 
-$('scene').onchange = sourceVersion; $('replay').onchange = sourceVersion;
+$('scene').onchange = () => {
+  state.inputCatalog = null; state.inputScene = null; $('input-events').replaceChildren();
+  $('add-input').disabled = true; $('input-state').textContent = '场景已切换，请读取该版本的正式输入。'; sourceVersion();
+};
+$('replay').onchange = sourceVersion; $('run-source').onchange = sourceVersion;
+$('load-inputs').onclick = () => guarded(loadInputs); $('add-input').onclick = () => guarded(async () => addInput());
 $('start').onclick = () => guarded(start); $('refresh').onclick = () => guarded(refresh);
 $('runs').onclick = event => { const button = event.target.closest('[data-run]'); if (button) guarded(() => selectRun(button.dataset.run)); };
 $('cancel').onclick = () => guarded(async () => { const result = await request(`/api/preview/runs/${state.selected}/cancel`, {}); report(result.cancellationRequested ? '取消请求已送达，等待进程确认。' : '本宿主没有仍在执行的对应进程，请查询当前回执。'); await updateRun(); });
