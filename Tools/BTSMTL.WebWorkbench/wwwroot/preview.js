@@ -115,6 +115,8 @@ async function updateRun() {
       state.frames.clear(); observation.frames.forEach((frame, index) => state.frames.set(index, frame));
       await displayObservation(summary, false);
       await sendPendingControl();
+      if (!sessionStorage.getItem('btsmtl.preview.pending-control'))
+        report(`实际会话${playbackNames[snapshot.state]} · 已记录 ${summary.frameCount} 个确认帧。`);
     }
     pollTimer = setTimeout(() => guarded(updateRun), 500);
     return;
@@ -125,10 +127,12 @@ async function updateRun() {
   const summary = await request(`/api/preview/runs/${id}/summary`);
   if (id !== state.selected) return;
   await displayObservation(summary, true);
+  report(`${stages[receipt.stage]} · 保留 ${summary.frameCount} 个确认帧。`);
   await refresh();
 }
 
 async function displayObservation(summary, sealed) {
+  const firstFrame = state.count === 0 && summary.frameCount > 0;
   const first = state.summary === null;
   state.summary = summary; state.count = summary.frameCount;
   state.sealed = sealed;
@@ -144,7 +148,7 @@ async function displayObservation(summary, sealed) {
   if (!sealed && $('follow-live').checked) $('frame').value = Math.max(0, state.count - 1);
   $('frame').disabled = state.count === 0;
   $('fit-view').disabled = state.count === 0;
-  if (state.count) { await showFrame(Number($('frame').value)); if (first) fitView(); }
+  if (state.count) { await showFrame(Number($('frame').value)); if (firstFrame) fitView(); }
 }
 
 async function sendPendingControl() {
@@ -223,7 +227,7 @@ $('playback-controls').onclick = event => { const button = event.target.closest(
   await sendPendingControl(); await updateRun();
 }); };
 $('frame').oninput = () => { $('follow-live').checked = false; guarded(() => showFrame(Number($('frame').value))); };
-function moveFrame(delta) { $('frame').value = Math.max(0, Math.min(state.count - 1, Number($('frame').value) + delta)); return showFrame(Number($('frame').value)); }
+function moveFrame(delta) { $('follow-live').checked = false; $('frame').value = Math.max(0, Math.min(state.count - 1, Number($('frame').value) + delta)); return showFrame(Number($('frame').value)); }
 $('previous-frame').onclick = () => guarded(() => moveFrame(-1)); $('next-frame').onclick = () => guarded(() => moveFrame(1));
 $('fit-view').onclick = fitView;
 $('compare').onclick = () => guarded(async () => { const result = await request(`/api/preview/runs/${state.selected}/compare/${$('comparison').value}`); $('comparison-result').textContent = JSON.stringify(result, null, 2); report(!result.comparable ? '运行条件不同，未比较 checksum。' : result.equal ? `已比较 ${result.comparedFrames} 帧，本次已记录范围内一致。` : `首个差异在 SDK 帧 ${result.firstDifference.frame}。`); });
