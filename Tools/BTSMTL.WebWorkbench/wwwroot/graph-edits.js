@@ -105,6 +105,7 @@ function readValue(form, original) {
 
 export function editField(field, value, apply) {
   let original = value;
+  let rawEdited = false;
   const modal = dialog(field.displayName || field.id,
     `<p class="dialog-intro">${html(field.id)}。控件保留正式类型；复合值可展开逐项修改。</p><div class="typed-value-editor">${valueControls(value, [], field.constraint?.AllowedValues || [])}</div><details class="raw-value-editor"><summary>完整类型化 JSON（用于空集合、新成员或 null）</summary><textarea spellcheck="false">${html(JSON.stringify(value, null, 2))}</textarea></details>`,
     async form => {
@@ -112,12 +113,14 @@ export function editField(field, value, apply) {
         ? JSON.parse(form.querySelector('textarea').value) : readValue(form, original);
       await apply(value);
     });
+  modal.querySelector('textarea').oninput = () => { rawEdited = true; };
   modal.querySelector('.raw-value-editor').addEventListener('toggle', event => {
-    if (event.currentTarget.open) modal.querySelector('textarea').value = JSON.stringify(readValue(modal, original), null, 2);
-    else {
+    if (event.currentTarget.open && !rawEdited) modal.querySelector('textarea').value = JSON.stringify(readValue(modal, original), null, 2);
+    else if (!event.currentTarget.open && rawEdited) {
       try {
         original = JSON.parse(modal.querySelector('textarea').value);
         modal.querySelector('.typed-value-editor').innerHTML = valueControls(original, [], field.constraint?.AllowedValues || []);
+        rawEdited = false;
         modal.querySelector('.dialog-error').textContent = '';
       } catch (error) {
         modal.querySelector('.dialog-error').textContent = error.message;
