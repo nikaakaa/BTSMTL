@@ -122,7 +122,10 @@ function renderDocument() {
 
 function renderRoot(document) {
   const root = state.snapshot.root;
-  $('document-view').innerHTML = `<div class="overview"><div class="eyebrow">AUTHORING DOCUMENT</div><h1>${escapeHtml(document.displayName || root.displayName)}</h1><p class="intro">编辑来源保存在项目作者目录。各阶段分别记录实际完成的修订。</p><div class="phase-grid"><div><span class="phase-state saved">已读取</span><strong>磁盘内容</strong><small>${state.snapshot.files.length} 个文件</small></div><div><span class="phase-state pending">未完成</span><strong>领域接收</strong><small>尚未接入完整作者定义</small></div><div><span class="phase-state pending">未执行</span><strong>编译与发布</strong><small>没有本修订的正式产物</small></div><div><span class="phase-state pending">未准备</span><strong>运行预览</strong><small>独立会话尚未采用</small></div></div><h2>引用与归属</h2><dl><dt>稳定身份</dt><dd><code>${escapeHtml(document.id)}</code></dd><dt>定义版本</dt><dd>${escapeHtml(document.definitionVersion)}</dd><dt>外部引用</dt><dd>${root.externalReferences.length} 项</dd><dt>Unity 对象映射</dt><dd>${root.unityOutputs.length} 项</dd></dl><div class="notice">当前读取入口已接通。创建、业务属性修改及保存需共同领域接收完成后开放。</div></div>`;
+  const introduction = state.source === 'migrations'
+    ? '该候选从现有 Unity 资产读取，用于核对迁移结果。原资产仍是当前正式作者来源。'
+    : '编辑来源保存在项目作者目录。各阶段分别记录实际完成的修订。';
+  $('document-view').innerHTML = `<div class="overview"><div class="eyebrow">${state.source === 'migrations' ? 'MIGRATION CANDIDATE' : 'AUTHORING DOCUMENT'}</div><h1>${escapeHtml(document.displayName || root.displayName)}</h1><p class="intro">${introduction}</p><div class="phase-grid"><div><span class="phase-state saved">已读取</span><strong>磁盘内容</strong><small>${state.snapshot.files.length} 个文件</small></div><div><span class="phase-state pending">未完成</span><strong>领域接收</strong><small>尚未接入完整作者定义</small></div><div><span class="phase-state pending">未执行</span><strong>编译与发布</strong><small>没有本修订的正式产物</small></div><div><span class="phase-state pending">未准备</span><strong>运行预览</strong><small>独立会话尚未采用</small></div></div><h2>引用与归属</h2><dl><dt>稳定身份</dt><dd><code>${escapeHtml(document.id)}</code></dd><dt>定义版本</dt><dd>${escapeHtml(document.definitionVersion)}</dd><dt>外部引用</dt><dd>${root.externalReferences.length} 项</dd><dt>Unity 对象映射</dt><dd>${root.unityOutputs.length} 项</dd></dl><div class="notice">当前读取入口已接通。创建、业务属性修改及保存需共同领域接收完成后开放。</div></div>`;
 }
 
 function renderGraph(graph) {
@@ -249,6 +252,9 @@ function showTab() {
   document.querySelectorAll('[data-tab]').forEach(item => item.classList.toggle('active', item.dataset.tab === state.tab));
   $('source-view').hidden = state.tab !== 'source';
   $('document-view').hidden = state.tab === 'source';
+  const query = new URLSearchParams(location.search);
+  query.set('tab', state.tab);
+  history.replaceState(null, '', `?${query}`);
 }
 
 document.querySelectorAll('[data-tab]').forEach(button => button.onclick = () => {
