@@ -102,13 +102,18 @@ namespace BTSMTL.Graphs
         public static void OpenEditor(BtsmtlMacroGraph macro) =>
             BtsmtlMacroInterfaceWindow.Open(macro ? macro : throw new ArgumentNullException(nameof(macro)));
 
-        // 生成与人工编辑共用：整体替换接口并重新收集出入口端口。
+        // 生成与人工编辑共用：整体替换接口并重新收集出入口端口。接口未变时不触碰子图与调用方；
+        // 删除参数或修改类型沿人工编辑的同一规则，调用方已连接该端口时拒绝。
         public static void Configure(BtsmtlMacroGraph macro, IEnumerable<DynamicParameterDefinition> inputs,
             IEnumerable<DynamicParameterDefinition> outputs)
         {
             List<DynamicParameterDefinition> inputValues = inputs.ToList();
             List<DynamicParameterDefinition> outputValues = outputs.ToList();
             Validate(inputValues, outputValues);
+            if (SameParameters(macro.inputDefinitions, inputValues) && SameParameters(macro.outputDefinitions, outputValues))
+                return;
+            RequireRetainedParametersAllowed(macro, macro.inputDefinitions, inputValues);
+            RequireRetainedParametersAllowed(macro, macro.outputDefinitions, outputValues);
             ApplyMutation(macro, "配置子图接口", () =>
             {
                 macro.inputDefinitions.Clear();
@@ -118,7 +123,32 @@ namespace BTSMTL.Graphs
             });
         }
 
+        static bool SameParameters(List<DynamicParameterDefinition> current, List<DynamicParameterDefinition> next)
+        {
+            if (current.Count != next.Count)
+                return false;
+            for (int i = 0; i < current.Count; i++)
+                if (current[i] == null || current[i].ID != next[i].ID || current[i].name != next[i].name ||
+                    current[i].type != next[i].type)
+                    return false;
+            return true;
+        }
+
+        static void RequireRetainedParametersAllowed(BtsmtlMacroGraph macro, List<DynamicParameterDefinition> current,
+            List<DynamicParameterDefinition> next)
+        {
+            foreach (DynamicParameterDefinition parameter in current)
+            {
+                if (parameter == null || !parameter.hasStableIdentity)
+                    continue;
+                DynamicParameterDefinition retained = next.Find(value => value.ID == parameter.ID);
+                if (retained == null || retained.type != parameter.type)
+                    RequireParameterChangeAllowed(macro, parameter.ID);
+            }
+        }
+
         // 接口变更与全部调用节点的端口刷新在同一撤销组内完成，任一调用不一致则整体回退。
+        // 调用方只在序列化内容实际变化时标记修改；端口按参数身份连接，重命名或排序不改变调用方资产。
         public static void ApplyMutation(BtsmtlMacroGraph macro, string title, Action mutation)
         {
             Caller[] callers = FindCallers(macro).ToArray();
@@ -145,10 +175,8 @@ namespace BTSMTL.Graphs
                     ValidateCall(caller.Call, macro, caller.Path);
                 }
                 foreach (FlowGraph graph in graphs)
-                {
-                    graph.SelfSerialize();
-                    EditorUtility.SetDirty(graph);
-                }
+                    if (graph.SelfSerialize() || ReferenceEquals(graph, macro))
+                        EditorUtility.SetDirty(graph);
                 Undo.CollapseUndoOperations(group);
             }
             catch
