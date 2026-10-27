@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Linq;
 using BTSMTL.Diagnostics;
 using BTSMTL.Orchestration;
+using ThirdPersonSimulation;
 
 namespace BTSMTL.Timeline
 {
