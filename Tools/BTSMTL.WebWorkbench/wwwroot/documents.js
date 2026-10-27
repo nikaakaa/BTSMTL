@@ -1,9 +1,9 @@
-import { GraphEditSession, editField, editVariable, renameElement, createNode, createConnection, showGraphDiff } from './graph-edits.js';
+import { GraphEditSession, editField, editVariable, renameElement, createNode, createConnection, reorderConnections, showGraphDiff } from './graph-edits.js';
 import { showReferences } from './references.js';
 
 const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
-const state = { roots: [], nextOffset: 0, selectedRoot: null, snapshot: null, selectedFile: null, selectedNode: null, selectedTimeline: null, tab: 'document', source: 'workspace', timeScale: null, query: '', capabilities: new Map(), definitionRevision: null, draft: null, view: { x: 35, y: 45, scale: 1 } };
+const state = { roots: [], nextOffset: 0, selectedRoot: null, snapshot: null, selectedFile: null, selectedNode: null, selectedEdge: null, selectedTimeline: null, tab: 'document', source: 'workspace', timeScale: null, query: '', capabilities: new Map(), definitionRevision: null, draft: null, view: { x: 35, y: 45, scale: 1 } };
 const kindNames = { Graph: '图', Timeline: '时间轴', InputPlan: '输入方案', Layout: '布局' };
 const api = () => `/api/${state.source}`;
 const typeName = value => value.split(',')[0].split('.').pop();
@@ -71,6 +71,7 @@ async function openRoot(path) {
     $('selection-name').textContent = '无法解析对象';
     $('inspector-content').innerHTML = '';
     $('document-actions').hidden = true;
+    $('document-navigation').hidden = true;
     $('source-text').value = '';
     $('document-view').innerHTML = `<div class="notice error"><h2>作者文件需要修正</h2>${entry.problems.map(problem => `<p>${escapeHtml(problem.message)}</p><code>${escapeHtml(problem.path)}</code>`).join('')}</div>`;
     renderRoots();
@@ -112,15 +113,19 @@ function renderFiles() {
   $('files').innerHTML = files.filter(file => `${file.document?.displayName} ${file.document?.role} ${file.path}`.toLowerCase().includes(query)).map(file => `<button class="file-item ${state.selectedFile?.path === file.path ? 'selected' : ''}" data-file="${escapeHtml(file.path)}" title="${escapeHtml(file.path)}"><span>${file.problem ? '!' : file.declaration?.kind === 'Graph' ? '⌘' : file.declaration?.kind === 'Timeline' ? '◷' : '▤'}</span><span>${escapeHtml(file.document?.displayName || file.path)}<small>${escapeHtml(file.problem ? '文件格式错误' : file.document?.role || (file.declaration ? kindNames[file.declaration.kind] : '内容根'))}</small></span></button>`).join('');
 }
 
-async function selectFile(path) {
+async function selectFile(path, elementId = null) {
   state.selectedFile = state.snapshot.files.find(file => file.path === path);
   const file = state.selectedFile;
-  state.selectedNode = null;
-  state.selectedTimeline = null;
+  state.selectedNode = file.document?.nodes?.some(node => node.id === elementId) ? elementId : null;
+  state.selectedEdge = file.document?.edges?.some(edge => edge.id === elementId) ? elementId : null;
+  state.selectedTimeline = file.document?.tracks?.some(track => track.id === elementId ||
+    [...track.clips, ...track.markers].some(item => item.id === elementId)) ? elementId : null;
   state.view = { x: 35, y: 45, scale: 1, needsFit: true };
   const locationQuery = new URLSearchParams({ source: state.source, root: state.selectedRoot.path, file: path, tab: state.tab });
+  if (elementId) locationQuery.set('element', elementId);
   history.replaceState(null, '', `?${locationQuery}`);
   renderFiles();
+  renderNavigation();
   if (!file.problem && Array.isArray(file.document.nodes) && !file.portShapes) {
     $('document-view').innerHTML = '<div class="notice">正在从共同定义投影端口…</div>';
     const projected = await request('/api/authoring/ports', {
@@ -148,6 +153,31 @@ async function selectFile(path) {
     } catch (error) { file.topologyProblem = error.message; }
   }
   if (state.selectedFile !== file) return;
+  renderDocument();
+}
+
+function renderNavigation() {
+  const files = state.snapshot.files, rootFile = files[0], path = [];
+  let current = state.selectedFile;
+  while (current !== rootFile) {
+    path.unshift(current);
+    const owner = current.document?.owner;
+    current = owner?.rootId === state.snapshot.root.id && owner.documentId !== current.document.id
+      ? files.find(file => file.document?.id === owner.documentId) : null;
+    if (!current) break;
+  }
+  path.unshift(rootFile);
+  $('document-navigation').hidden = false;
+  $('document-navigation').innerHTML = path.map(file => `<button data-document="${escapeHtml(file.path)}" ${file === state.selectedFile ? 'aria-current="page"' : ''}>${escapeHtml(file.document?.displayName || file.path)}</button>`).join('<span aria-hidden="true">›</span>');
+}
+
+function selectElement(kind, id) {
+  state.selectedNode = kind === 'node' ? id : null;
+  state.selectedEdge = kind === 'edge' ? id : null;
+  state.selectedTimeline = kind === 'timeline' ? id : null;
+  const query = new URLSearchParams(location.search);
+  if (id) query.set('element', id); else query.delete('element');
+  history.replaceState(null, '', `?${query}`);
   renderDocument();
 }
 
@@ -204,7 +234,8 @@ function renderGraph(graph) {
     const input = shapes.get(edge.targetNode).inputs.findIndex(port => port.id === edge.targetPort);
     if (output < 0 || input < 0) return `<text class="port-problem" x="${source.x + 8}" y="${source.y - 10}">${escapeHtml(edge.id)}：端口描述缺失</text>`;
     const x1 = source.x + 250, y1 = source.y + 85 + output * 25, x2 = target.x, y2 = target.y + 85 + input * 25;
-    return `<g><path d="M${x1},${y1} C${x1 + 80},${y1} ${x2 - 80},${y2} ${x2},${y2}"/><title>${escapeHtml(edge.id)} · ${escapeHtml(edge.sourcePort)} → ${escapeHtml(edge.targetPort)} · 顺序 ${edge.order}</title></g>`;
+    const curve = `M${x1},${y1} C${x1 + 80},${y1} ${x2 - 80},${y2} ${x2},${y2}`;
+    return `<g class="graph-edge ${state.selectedEdge === edge.id ? 'selected' : ''}"><path d="${curve}"/><path class="edge-hit" data-edge="${escapeHtml(edge.id)}" tabindex="0" role="button" aria-label="${escapeHtml(edge.sourcePort)} → ${escapeHtml(edge.targetPort)}，顺序 ${edge.order}" d="${curve}"/><title>${escapeHtml(edge.id)} · ${escapeHtml(edge.sourcePort)} → ${escapeHtml(edge.targetPort)} · 顺序 ${edge.order}</title></g>`;
   }).join('');
   const nodes = graph.nodes.map(node => {
     const position = positions.get(node.id);
@@ -255,7 +286,7 @@ function renderGraph(graph) {
   if (state.view.needsFit) fitGraph();
   let drag = null;
   surface.addEventListener('pointerdown', event => {
-    if (event.target.closest('button')) return;
+    if (event.target.closest('button, [data-edge]')) return;
     drag = { x: event.clientX - state.view.x, y: event.clientY - state.view.y };
     surface.setPointerCapture(event.pointerId);
   });
@@ -286,6 +317,7 @@ function updateView() {
 function renderInspector(document) {
   const target = state.selectedTimeline
     ? document.tracks.flatMap(track => [track, ...track.clips, ...track.markers]).find(item => item.id === state.selectedTimeline)
+    : state.selectedEdge ? document.edges.find(edge => edge.id === state.selectedEdge)
     : state.selectedNode ? document.nodes.find(node => node.id === state.selectedNode) : document;
   const definition = target.capability ? state.capabilities.get(target.capability) : null;
   $('selection-name').textContent = target.displayName || definition?.displayName || target.id;
@@ -294,6 +326,18 @@ function renderInspector(document) {
     return `<div class="field"><label title="${escapeHtml(id)}">${escapeHtml(field?.displayName || id)}${field && !field.writable ? ' · 原定义只读' : ''}</label>${renderValue(value)}${field?.constraint?.AllowedValues.length ? `<small>声明选项：${field.constraint.AllowedValues.map(escapeHtml).join('、')}</small>` : ''}</div>`;
   }).join('') || '<p class="muted">此对象没有显式作者字段。</p>'}`;
   if (Array.isArray(document.nodes) && !state.selectedTimeline) {
+    if (state.selectedEdge) {
+      const source = document.nodes.find(node => node.id === target.sourceNode);
+      const destination = document.nodes.find(node => node.id === target.targetNode);
+      $('selection-name').textContent = `${source.displayName} → ${destination.displayName}`;
+      $('inspector-content').insertAdjacentHTML('afterbegin', `<div class="inspector-actions"><button data-select-node="${escapeHtml(source.id)}">来源节点</button><button data-select-node="${escapeHtml(destination.id)}">目标节点</button><button data-edge-order>调整执行顺序</button><button data-element-dependencies>本连接引用</button><button class="danger" data-delete-edge="${escapeHtml(target.id)}">删除连接</button></div><p class="muted">同一输出的第 ${target.order + 1} 项。业务优先级、中断规则及条件取自下方实际作者字段。</p>`);
+      Object.keys(target.fields).forEach(id => {
+        const rendered = [...$('inspector-content').querySelectorAll('.field')].find(element => element.querySelector('label').title === id);
+        rendered.insertAdjacentHTML('beforeend', `<button class="edit-field" data-edit-edge-field="${escapeHtml(id)}">编辑候选</button>`);
+      });
+      if (state.selectedFile.draftChanged) $('inspector-content').querySelector('.read-state').textContent = '本会话候选 · 尚未保存或发布';
+      return;
+    }
     const editable = definition?.fields.filter(field => field.visible && (!field.visibility ||
       (target.fields[field.visibility.fieldId] || definition.fields.find(item => item.id === field.visibility.fieldId).defaultValue).value === field.visibility.equals)) || [];
     const actions = `<div class="inspector-actions"><button data-rename-element>修改名称</button><button data-element-dependencies>本对象引用</button>${definition && !definition.systemOwned ? '<button class="danger" data-delete-node>删除节点及其连接</button>' : ''}</div>`;
@@ -307,7 +351,7 @@ function renderInspector(document) {
     });
     if (state.selectedNode) {
       const edges = document.edges.filter(edge => edge.sourceNode === target.id || edge.targetNode === target.id);
-      $('inspector-content').insertAdjacentHTML('beforeend', `<section class="connection-list"><h3>本节点连接</h3>${edges.map(edge => `<div><code>${escapeHtml(edge.sourcePort)} → ${escapeHtml(edge.targetPort)}</code><small>${escapeHtml(edge.id)}</small><button data-delete-edge="${escapeHtml(edge.id)}">删除连接候选</button></div>`).join('') || '<small>当前没有连接</small>'}</section>`);
+      $('inspector-content').insertAdjacentHTML('beforeend', `<section class="connection-list"><h3>本节点连接</h3>${edges.map(edge => `<div><button data-select-edge="${escapeHtml(edge.id)}">${escapeHtml(edge.sourcePort)} → ${escapeHtml(edge.targetPort)} · 顺序 ${edge.order}</button><small>${escapeHtml(edge.id)}</small></div>`).join('') || '<small>当前没有连接</small>'}</section>`);
     }
     if (state.selectedFile.draftChanged) $('inspector-content').querySelector('.read-state').textContent = '本会话候选 · 尚未保存或发布';
   }
@@ -331,11 +375,10 @@ function renderDraftToolbar() {
 }
 
 async function showDraft() {
-  const path = state.selectedFile.path, node = state.selectedNode;
+  const path = state.selectedFile.path, element = state.selectedNode || state.selectedEdge || state.selectedTimeline;
   state.snapshot.files = state.draft.files();
   $('saved-state').textContent = state.draft.batches.length ? '本会话候选 · 未保存或发布' : '已读取的文件版本';
-  await selectFile(path);
-  if (state.selectedFile.document.nodes?.some(item => item.id === node)) state.selectedNode = node;
+  await selectFile(path, element);
   renderDocument();
   report(state.draft.batches.length ? '共同操作已生成候选，图结构诊断来自服务。完整领域接收尚未完成，原文件保持原修订。' : '已回到本次读取的原文件内容。');
 }
@@ -353,7 +396,7 @@ function renderValue(value) {
     case 'reference': {
       const target = state.snapshot.root.files.find(file => file.id === value.target.documentId);
       const mapping = state.snapshot.root.unityOutputs.find(item => item.documentId === value.target.documentId && item.elementId === value.target.elementId);
-      return `<div class="reference-value">${target && value.target.rootId === state.snapshot.root.id ? `<button data-document="${escapeHtml(target.path)}">打开 ${escapeHtml(kindNames[target.kind])} ↗</button>` : '<strong>只读资源引用</strong>'}<span>${escapeHtml(mapping?.assetPath || value.target.rootId)}</span><button data-reference-root="${escapeHtml(value.target.rootId)}" data-reference-document="${escapeHtml(value.target.documentId)}" data-reference-element="${escapeHtml(value.target.elementId)}">查看引用位置</button><details><summary>稳定引用</summary><code>${escapeHtml(value.target.rootId)} / ${escapeHtml(value.target.documentId)} / ${escapeHtml(value.target.elementId)}</code></details></div>`;
+      return `<div class="reference-value">${target && value.target.rootId === state.snapshot.root.id ? `<button data-document="${escapeHtml(target.path)}" data-element="${escapeHtml(value.target.elementId)}">打开 ${escapeHtml(kindNames[target.kind])} ↗</button>` : '<strong>只读资源引用</strong>'}<span>${escapeHtml(mapping?.assetPath || value.target.rootId)}</span><button data-reference-root="${escapeHtml(value.target.rootId)}" data-reference-document="${escapeHtml(value.target.documentId)}" data-reference-element="${escapeHtml(value.target.elementId)}">查看引用位置</button><details><summary>稳定引用</summary><code>${escapeHtml(value.target.rootId)} / ${escapeHtml(value.target.documentId)} / ${escapeHtml(value.target.elementId)}</code></details></div>`;
     }
     case 'object': return `<details><summary title="${escapeHtml(value.type)}">${escapeHtml(typeName(value.type))}</summary>${Object.entries(value.members).map(([key, member]) => `<div class="nested-value"><label>${escapeHtml(key)}</label>${renderValue(member)}</div>`).join('')}</details>`;
     case 'sequence': return `<details><summary>${value.items.length} 项 · ${escapeHtml(typeName(value.type))}</summary>${value.items.map((item, index) => `<div class="nested-value"><label>${index + 1}</label>${renderValue(item)}</div>`).join('')}</details>`;
@@ -390,6 +433,7 @@ async function guarded(action) {
 
 $('roots').onclick = event => { const item = event.target.closest('[data-root]'); if (item) guarded(() => openRoot(item.dataset.root)); };
 $('files').onclick = event => { const item = event.target.closest('[data-file]'); if (item) guarded(() => selectFile(item.dataset.file)); };
+$('document-navigation').onclick = event => { const item = event.target.closest('[data-document]'); if (item) guarded(() => selectFile(item.dataset.document)); };
 $('document-view').onclick = event => {
   const variableButton = event.target.closest('[data-edit-variable]');
   if (variableButton) {
@@ -402,13 +446,14 @@ $('document-view').onclick = event => {
     return;
   }
   const reference = event.target.closest('[data-document]');
-  if (reference) { state.tab = 'document'; showTab(); guarded(() => selectFile(reference.dataset.document)); return; }
+  if (reference) { state.tab = 'document'; showTab(); guarded(() => selectFile(reference.dataset.document, reference.dataset.element)); return; }
   const timeline = event.target.closest('[data-timeline]');
-  if (timeline) { state.selectedTimeline = timeline.dataset.timeline; renderDocument(); return; }
+  if (timeline) { selectElement('timeline', timeline.dataset.timeline); return; }
+  const edge = event.target.closest('[data-edge]');
+  if (edge) { selectElement('edge', edge.dataset.edge); return; }
   const node = event.target.closest('[data-node]');
   if (!node) return;
-  state.selectedNode = node.dataset.node;
-  renderDocument();
+  selectElement('node', node.dataset.node);
 };
 $('inspector-content').onclick = event => {
   const usage = event.target.closest('[data-reference-root]');
@@ -418,15 +463,31 @@ $('inspector-content').onclick = event => {
     return;
   }
   const reference = event.target.closest('[data-document]');
-  if (reference) { state.tab = 'document'; showTab(); guarded(() => selectFile(reference.dataset.document)); return; }
+  if (reference) { state.tab = 'document'; showTab(); guarded(() => selectFile(reference.dataset.document, reference.dataset.element)); return; }
   const graph = state.selectedFile?.document;
   const node = state.selectedNode ? graph.nodes.find(item => item.id === state.selectedNode) : null;
+  const edge = state.selectedEdge ? graph.edges.find(item => item.id === state.selectedEdge) : null;
+  const selectNode = event.target.closest('[data-select-node]');
+  if (selectNode) { selectElement('node', selectNode.dataset.selectNode); return; }
+  const selectEdge = event.target.closest('[data-select-edge]');
+  if (selectEdge) { selectElement('edge', selectEdge.dataset.selectEdge); return; }
   if (event.target.closest('[data-element-dependencies]')) {
-    const query = new URLSearchParams({ path: state.selectedRoot.path, documentId: graph.id, elementId: (node || graph).id });
+    const query = new URLSearchParams({ path: state.selectedRoot.path, documentId: graph.id, elementId: (node || edge || graph).id });
     guarded(() => showReferences('本对象的实际引用', `${api()}/dependencies?${query}`, state.source, request));
     return;
   }
   const fieldButton = event.target.closest('[data-edit-field]');
+  const edgeField = event.target.closest('[data-edit-edge-field]');
+  if (edgeField) {
+    const id = edgeField.dataset.editEdgeField;
+    editField({ id }, edge.fields[id], value => applyGraphEdits([{ kind: 'set-edge-field', edgeId: edge.id, fieldId: id, value }]));
+    return;
+  }
+  if (event.target.closest('[data-edge-order]')) {
+    reorderConnections(graph, edge, edgeIds => applyGraphEdits([{ kind: 'reorder-edges',
+      sourceNodeId: edge.sourceNode, sourcePortId: edge.sourcePort, edgeIds }]));
+    return;
+  }
   if (fieldButton) {
     const field = state.capabilities.get(node.capability).fields.find(item => item.id === fieldButton.dataset.editField);
     editField(field, node.fields[field.id] || field.defaultValue,
@@ -479,10 +540,12 @@ async function selectSource(source) {
   state.draft = null;
   $('draft-toolbar').hidden = true;
   state.selectedNode = null;
+  state.selectedEdge = null;
   state.selectedTimeline = null;
   $('search-files').value = '';
   $('files').innerHTML = '';
   $('document-actions').hidden = true;
+  $('document-navigation').hidden = true;
   $('inspector-content').innerHTML = '';
   $('document-title').textContent = source === 'migrations' ? '选择迁移候选' : '选择内容根';
   $('document-view').innerHTML = `<div class="welcome"><div class="eyebrow">${source === 'migrations' ? 'MIGRATION REVIEW' : 'AUTHORING DOCUMENTS'}</div><h1>${source === 'migrations' ? '检查原资产的完整内容' : '打开正式作者文档'}</h1><p>${source === 'migrations' ? '候选用于核对迁移读取结果，原 Unity 作者资产仍是当前正式来源。选择左侧内容查看图、状态、时间轴和变量。' : '选择左侧作者根。尚未接收的迁移候选可从“内容来源”切换查看。'}</p></div>`;
@@ -498,7 +561,7 @@ guarded(async () => {
   if (query.has('root')) {
     await openRoot(query.get('root'));
     if (query.get('tab') === 'variables' || query.get('tab') === 'source') { state.tab = query.get('tab'); showTab(); }
-    if (query.has('file')) await selectFile(query.get('file'));
+    if (query.has('file')) await selectFile(query.get('file'), query.get('element'));
     else renderDocument();
     if (query.has('element')) {
       const document = state.selectedFile.document, element = query.get('element');

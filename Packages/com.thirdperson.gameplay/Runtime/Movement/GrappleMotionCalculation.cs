@@ -6,6 +6,41 @@ namespace ThirdPersonSimulation
         where TVector3 : struct
         where TMath : struct, IScalarMath<TScalar>, IVectorMath<TScalar, TVector2, TVector3>
     {
+        public static TScalar RopeTransitionBlend(TScalar age, TScalar duration)
+        {
+            TMath math = default;
+            TScalar progress = math.Divide(age, duration);
+            return math.Multiply(math.Multiply(progress, progress),
+                math.Subtract(math.FromInt32(3), math.Multiply(math.FromInt32(2), progress)));
+        }
+
+        public static TVector3 BrakeRopeVelocity(TVector3 velocity, TVector3 pull,
+            TScalar initialRadialSpeed, TScalar blend)
+        {
+            TMath math = default;
+            TScalar target = math.Multiply(initialRadialSpeed, math.Subtract(math.One, blend));
+            return math.AddVector3(velocity, math.MultiplyVector3(pull,
+                math.Subtract(target, math.Dot3(velocity, pull))));
+        }
+
+        public static TVector3 ConstrainRopeDisplacement(TVector3 origin, TVector3 velocity,
+            TVector3 anchor, TScalar length, TScalar delta, out TVector3 constrainedVelocity)
+        {
+            TMath math = default;
+            TVector3 radial = math.Normalize3(math.SubtractVector3(origin, anchor));
+            TVector3 tangent = math.SubtractVector3(velocity,
+                math.MultiplyVector3(radial, math.Dot3(velocity, radial)));
+            TVector3 predicted = math.AddVector3(origin, math.MultiplyVector3(tangent, delta));
+            TVector3 nextRadial = math.Normalize3(math.SubtractVector3(predicted, anchor));
+            TVector3 target = math.AddVector3(anchor, math.MultiplyVector3(nextRadial, length));
+            constrainedVelocity = math.SubtractVector3(tangent,
+                math.MultiplyVector3(nextRadial, math.Dot3(tangent, nextRadial)));
+            TScalar speed = math.Magnitude3(tangent);
+            if (math.GreaterThan(speed, math.Zero))
+                constrainedVelocity = math.MultiplyVector3(math.Normalize3(constrainedVelocity), speed);
+            return math.SubtractVector3(target, origin);
+        }
+
         public static TScalar TurnYaw(TScalar targetDelta, TScalar lateralInput,
             TScalar turnSpeed, TScalar inputTurnSpeedBonus, TScalar delta)
         {

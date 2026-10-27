@@ -189,6 +189,28 @@ export function createConnection(graph, shapes, apply) {
   fill();
 }
 
+export function reorderConnections(graph, edge, apply) {
+  const siblings = graph.edges.filter(item => item.sourceNode === edge.sourceNode && item.sourcePort === edge.sourcePort)
+    .sort((left, right) => left.order - right.order);
+  const modal = dialog('调整同一输出的执行顺序',
+    '<p>优先级字段与执行顺序分别保存。选择连接后上移或下移，整次操作形成一项候选。</p><ol class="reorder-list"></ol>',
+    () => apply(siblings.map(item => item.id)));
+  const fill = () => {
+    modal.querySelector('ol').innerHTML = siblings.map((item, index) => {
+      const target = graph.nodes.find(node => node.id === item.targetNode);
+      return `<li><span>${index + 1}. ${html(target.displayName || target.id)} / ${html(item.targetPort)}<small>${html(item.id)}</small></span><button type="button" data-move="${index}" data-direction="-1" ${index === 0 ? 'disabled' : ''}>上移</button><button type="button" data-move="${index}" data-direction="1" ${index === siblings.length - 1 ? 'disabled' : ''}>下移</button></li>`;
+    }).join('');
+  };
+  modal.querySelector('ol').onclick = event => {
+    const button = event.target.closest('[data-move]');
+    if (!button) return;
+    const index = Number(button.dataset.move), next = index + Number(button.dataset.direction);
+    [siblings[index], siblings[next]] = [siblings[next], siblings[index]];
+    fill();
+  };
+  fill();
+}
+
 export function showGraphDiff(session) {
   const files = session.receipt?.files.filter(file => file.changed) || [];
   dialog('批量修改差异', `<p class="dialog-intro">${files.length} 个图文件发生变化。基线 ${html(session.context.rootRevision)}。以下候选尚未通过完整领域接收，未保存或发布。</p>${files.map(file =>
