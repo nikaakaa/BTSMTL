@@ -75,8 +75,12 @@ function dialog(title, contents, submit) {
   return modal;
 }
 
-function valueControls(value, path = [], choices = []) {
+function valueControls(value, path = [], choices = [], references = []) {
   const location = html(JSON.stringify(path));
+  const matching = references.map((item, index) => ({ ...item, index })).filter(item => item.value.type === value.type);
+  if ((value.kind === 'reference' || value.kind === 'null') && matching.length) {
+    return `<label>当前根已使用的同类型引用<select data-reference-choice="${location}"><option value="" ${value.kind === 'null' ? 'selected' : ''}>未设置</option>${matching.map(item => `<option value="${item.index}" ${value.kind === 'reference' && JSON.stringify(item.value.target) === JSON.stringify(value.target) ? 'selected' : ''}>${html(item.label)}</option>`).join('')}</select></label><small>${html(value.type)} · 稳定身份随引用提交</small>`;
+  }
   if (value.kind === 'scalar') {
     const values = value.valueKind === 'Boolean' ? ['true', 'false'] : choices;
     const control = values.length
@@ -85,41 +89,79 @@ function valueControls(value, path = [], choices = []) {
     return `${control}<small>${html(value.type)} · ${html(value.valueKind)} · 原值按文本提交</small>`;
   }
   if (value.kind === 'object') return Object.entries(value.members).map(([key, member]) =>
-    `<fieldset><legend>${html(key)}</legend>${valueControls(member, [...path, 'members', key])}</fieldset>`).join('');
+    `<fieldset><legend>${html(key)}</legend>${valueControls(member, [...path, 'members', key], [], references)}</fieldset>`).join('');
   if (value.kind === 'sequence') return `<p>${value.items.length} 项。类型和顺序随候选保留。</p>${value.items.map((item, index) =>
-    `<fieldset><legend>第 ${index + 1} 项</legend>${valueControls(item, [...path, 'items', index])}</fieldset>`).join('')}`;
+    `<fieldset><legend>第 ${index + 1} 项</legend><div class="sequence-actions"><button type="button" data-sequence="${location}" data-index="${index}" data-action="duplicate">复制此项</button><button type="button" data-sequence="${location}" data-index="${index}" data-action="remove">删除此项</button><button type="button" data-sequence="${location}" data-index="${index}" data-action="up" ${index === 0 ? 'disabled' : ''}>上移</button><button type="button" data-sequence="${location}" data-index="${index}" data-action="down" ${index === value.items.length - 1 ? 'disabled' : ''}>下移</button></div>${valueControls(item, [...path, 'items', index], [], references)}</fieldset>`).join('')}`;
   if (value.kind === 'reference') return Object.entries(value.target).map(([key, target]) =>
     `<label>${html(key)}<input data-reference-path="${location}" data-reference-member="${html(key)}" value="${html(target)}" autocomplete="off" spellcheck="false"></label>`).join('');
   return `<p>当前值为 null；完整类型化 JSON 可在下方编辑。</p>`;
 }
 
-function readValue(form, original) {
-  const copy = structuredClone(original);
+function readValue(form, original, references = []) {
+  let copy = structuredClone(original);
   const at = path => path.reduce((item, key) => item[key], copy);
   form.querySelectorAll('[data-value-path]').forEach(input => { at(JSON.parse(input.dataset.valuePath)).value = input.value; });
   form.querySelectorAll('[data-reference-path]').forEach(input => {
     at(JSON.parse(input.dataset.referencePath)).target[input.dataset.referenceMember] = input.value;
   });
+  form.querySelectorAll('[data-reference-choice]').forEach(input => {
+    const path = JSON.parse(input.dataset.referenceChoice), previous = at(path);
+    const selected = input.value === '' ? { kind: 'null', type: previous.type } : structuredClone(references[Number(input.value)].value);
+    if (path.length) at(path.slice(0, -1))[path.at(-1)] = selected; else copy = selected;
+  });
   return copy;
 }
 
-export function editField(field, value, apply) {
+export function referenceChoices(snapshot) {
+  const choices = new Map();
+  const visit = value => {
+    if (!value || typeof value !== 'object') return;
+    if (value.kind === 'reference') {
+      const target = value.target;
+      const file = snapshot.files.find(file => file.document?.id === target.documentId && target.rootId === snapshot.root.id);
+      const mapping = snapshot.root.unityOutputs.find(item => item.documentId === target.documentId && item.elementId === target.elementId);
+      choices.set(JSON.stringify(value), { value, label: mapping?.assetPath || file?.document.displayName ||
+        `${target.rootId} / ${target.elementId}` });
+      return;
+    }
+    Object.values(value).forEach(visit);
+  };
+  snapshot.files.forEach(file => visit(file.document));
+  return [...choices.values()];
+}
+
+export function editField(field, value, apply, references = []) {
   let original = value;
   let rawEdited = false;
   const modal = dialog(field.displayName || field.id,
-    `<p class="dialog-intro">${html(field.id)}。控件保留正式类型；复合值可展开逐项修改。</p><div class="typed-value-editor">${valueControls(value, [], field.constraint?.AllowedValues || [])}</div><details class="raw-value-editor"><summary>完整类型化 JSON（用于空集合、新成员或 null）</summary><textarea spellcheck="false">${html(JSON.stringify(value, null, 2))}</textarea></details>`,
+    `<p class="dialog-intro">${html(field.displayName || field.id)}。复合值可逐项修改，集合可复制、删除和重排。</p><div class="typed-value-editor">${valueControls(value, [], field.constraint?.AllowedValues || [], references)}</div><details class="raw-value-editor"><summary>完整类型化 JSON（用于尚无默认形状的空集合或 null）</summary><textarea spellcheck="false">${html(JSON.stringify(value, null, 2))}</textarea></details>`,
     async form => {
       const value = form.querySelector('.raw-value-editor').open
-        ? JSON.parse(form.querySelector('textarea').value) : readValue(form, original);
+        ? JSON.parse(form.querySelector('textarea').value) : readValue(form, original, references);
       await apply(value);
     });
+  const editor = modal.querySelector('.typed-value-editor');
+  editor.onclick = event => {
+    const button = event.target.closest('[data-sequence]');
+    if (!button) return;
+    original = readValue(editor, original, references);
+    const sequence = JSON.parse(button.dataset.sequence).reduce((item, key) => item[key], original);
+    const index = Number(button.dataset.index), items = sequence.items;
+    if (button.dataset.action === 'duplicate') items.splice(index + 1, 0, structuredClone(items[index]));
+    else if (button.dataset.action === 'remove') items.splice(index, 1);
+    else {
+      const next = index + (button.dataset.action === 'up' ? -1 : 1);
+      [items[index], items[next]] = [items[next], items[index]];
+    }
+    editor.innerHTML = valueControls(original, [], field.constraint?.AllowedValues || [], references);
+  };
   modal.querySelector('textarea').oninput = () => { rawEdited = true; };
   modal.querySelector('.raw-value-editor').addEventListener('toggle', event => {
-    if (event.currentTarget.open && !rawEdited) modal.querySelector('textarea').value = JSON.stringify(readValue(modal, original), null, 2);
+    if (event.currentTarget.open && !rawEdited) modal.querySelector('textarea').value = JSON.stringify(readValue(modal, original, references), null, 2);
     else if (!event.currentTarget.open && rawEdited) {
       try {
         original = JSON.parse(modal.querySelector('textarea').value);
-        modal.querySelector('.typed-value-editor').innerHTML = valueControls(original, [], field.constraint?.AllowedValues || []);
+        editor.innerHTML = valueControls(original, [], field.constraint?.AllowedValues || [], references);
         rawEdited = false;
         modal.querySelector('.dialog-error').textContent = '';
       } catch (error) {

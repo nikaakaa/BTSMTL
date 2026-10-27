@@ -1,9 +1,9 @@
-import { GraphEditSession, editField, editVariable, renameElement, createNode, createConnection, reorderConnections, showGraphDiff } from './graph-edits.js';
+import { GraphEditSession, editField, editVariable, renameElement, createNode, createConnection, reorderConnections, referenceChoices, showGraphDiff } from './graph-edits.js';
 import { showReferences } from './references.js';
 
 const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
-const state = { roots: [], nextOffset: 0, selectedRoot: null, snapshot: null, selectedFile: null, selectedNode: null, selectedEdge: null, selectedTimeline: null, tab: 'document', source: 'workspace', timeScale: null, query: '', capabilities: new Map(), definitionRevision: null, draft: null, view: { x: 35, y: 45, scale: 1 } };
+const state = { roots: [], nextOffset: 0, selectedRoot: null, snapshot: null, references: [], selectedFile: null, selectedNode: null, selectedEdge: null, selectedTimeline: null, tab: 'document', source: 'workspace', timeScale: null, query: '', capabilities: new Map(), definitionRevision: null, draft: null, view: { x: 35, y: 45, scale: 1 } };
 const kindNames = { Graph: '图', Timeline: '时间轴', InputPlan: '输入方案', Layout: '布局' };
 const api = () => `/api/${state.source}`;
 const typeName = value => value.split(',')[0].split('.').pop();
@@ -91,6 +91,7 @@ async function openRoot(path) {
     catch (error) { return { ...file, document: null, problem: error.message }; }
   });
   state.snapshot = { ...snapshot, root, files };
+  state.references = referenceChoices(state.snapshot);
   state.draft = new GraphEditSession(state.snapshot, path, state.source, state.definitionRevision, request);
   state.selectedNode = null;
   state.selectedFile = files[0];
@@ -377,6 +378,7 @@ function renderDraftToolbar() {
 async function showDraft() {
   const path = state.selectedFile.path, element = state.selectedNode || state.selectedEdge || state.selectedTimeline;
   state.snapshot.files = state.draft.files();
+  state.references = referenceChoices(state.snapshot);
   $('saved-state').textContent = state.draft.batches.length ? '本会话候选 · 未保存或发布' : '已读取的文件版本';
   await selectFile(path, element);
   renderDocument();
@@ -480,7 +482,7 @@ $('inspector-content').onclick = event => {
   const edgeField = event.target.closest('[data-edit-edge-field]');
   if (edgeField) {
     const id = edgeField.dataset.editEdgeField;
-    editField({ id }, edge.fields[id], value => applyGraphEdits([{ kind: 'set-edge-field', edgeId: edge.id, fieldId: id, value }]));
+    editField({ id }, edge.fields[id], value => applyGraphEdits([{ kind: 'set-edge-field', edgeId: edge.id, fieldId: id, value }]), state.references);
     return;
   }
   if (event.target.closest('[data-edge-order]')) {
@@ -491,7 +493,7 @@ $('inspector-content').onclick = event => {
   if (fieldButton) {
     const field = state.capabilities.get(node.capability).fields.find(item => item.id === fieldButton.dataset.editField);
     editField(field, node.fields[field.id] || field.defaultValue,
-      value => applyGraphEdits([{ kind: 'set-node-field', nodeId: node.id, fieldId: field.id, value }]));
+      value => applyGraphEdits([{ kind: 'set-node-field', nodeId: node.id, fieldId: field.id, value }]), state.references);
   } else if (event.target.closest('[data-rename-element]')) renameElement((node || graph).displayName,
     displayName => applyGraphEdits([node ? { kind: 'rename-node', nodeId: node.id, displayName } : { kind: 'rename-graph', displayName }]));
   else if (event.target.closest('[data-delete-node]')) guarded(() => applyGraphEdits([{ kind: 'delete-node', nodeId: node.id }]));
