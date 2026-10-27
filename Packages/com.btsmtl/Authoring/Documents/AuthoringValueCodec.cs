@@ -12,6 +12,22 @@ namespace BTSMTL.Authoring.Documents
     {
         readonly Dictionary<Type, AuthoringObjectContract> m_Objects = new Dictionary<Type, AuthoringObjectContract>();
 
+        public AuthoringNamedValue[] CaptureFields(object target) => GraphAuthoringMemberBindings.Contract(target).Fields
+            .Select(field => Member(field.Metadata.FieldId, field.ValueType, field.Read(target))).ToArray();
+
+        public object ApplyFields(object target, ReadOnlyMemory<AuthoringNamedValue> fields,
+            bool fromDefaults = false, bool complete = false)
+        {
+            GraphAuthoringTypeContract contract = GraphAuthoringMemberBindings.Contract(target);
+            GraphAuthoringCandidate candidate = contract.CreateCandidate(target, fromDefaults, complete);
+            foreach (AuthoringNamedValue value in fields.Span)
+            {
+                GraphAuthoringMember member = contract[value.FieldId.Value];
+                member.WriteCandidate(candidate, Restore(member.ValueType, value.Value));
+            }
+            return candidate.Apply(target);
+        }
+
         public virtual AuthoringValue Capture(Type type, object value)
         {
             string identity = TypeIdentity(type);
@@ -57,8 +73,8 @@ namespace BTSMTL.Authoring.Documents
                 : contract.Parameters.Select(parameter => Member(parameter.Name, parameter.ParameterType,
                     AuthoringObjectContract.ReadableProperty(type, parameter).GetValue(value))).ToArray();
             var members = construction.ToDictionary(member => member.FieldId.Value, StringComparer.Ordinal);
-            foreach (GraphAuthoringMember field in GraphAuthoringMemberBindings.Contract(value).Fields)
-                members[field.Metadata.FieldId] = Member(field.Metadata.FieldId, field.ValueType, field.Read(value));
+            foreach (AuthoringNamedValue field in CaptureFields(value))
+                members[field.FieldId.Value] = field;
             return new AuthoringObjectValue(identity, members.Values.ToArray());
         }
 
