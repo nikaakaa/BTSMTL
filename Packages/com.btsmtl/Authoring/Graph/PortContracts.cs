@@ -152,6 +152,25 @@ namespace BTSMTL.Authoring.Graph
         public string Code { get; }
     }
 
+    public sealed class GraphAuthoringPortShapeDefinition
+    {
+        public GraphAuthoringPortShapeDefinition(GraphAuthoringCapabilityId capabilityId,
+            IReadOnlyCollection<GraphAuthoringPortDescriptor> fixedPorts,
+            IReadOnlyList<GraphAuthoringPortVariantDescriptor> portVariants,
+            GraphAuthoringDynamicPortPolicy dynamicPortPolicy)
+        {
+            CapabilityId = capabilityId;
+            FixedPorts = fixedPorts;
+            PortVariants = portVariants;
+            DynamicPortPolicy = dynamicPortPolicy;
+        }
+
+        public GraphAuthoringCapabilityId CapabilityId { get; }
+        public IReadOnlyCollection<GraphAuthoringPortDescriptor> FixedPorts { get; }
+        public IReadOnlyList<GraphAuthoringPortVariantDescriptor> PortVariants { get; }
+        public GraphAuthoringDynamicPortPolicy DynamicPortPolicy { get; }
+    }
+
     public static class GraphAuthoringNodePortShapeProjector
     {
         public static IReadOnlyList<GraphAuthoringDynamicPortProjection>
@@ -159,10 +178,14 @@ namespace BTSMTL.Authoring.Graph
                 GraphAuthoringCapabilityDescriptor capability,
                 IReadOnlyList<GraphAuthoringTypedPropertyValue> properties,
                 IReadOnlyList<GraphAuthoringDynamicPortProjection>
-                    authoredDynamicPorts = null)
+                    authoredDynamicPorts = null) =>
+            ProjectComplete(capability.PortShape, properties, authoredDynamicPorts);
+
+        public static IReadOnlyList<GraphAuthoringDynamicPortProjection> ProjectComplete(
+            GraphAuthoringPortShapeDefinition capability,
+            IReadOnlyList<GraphAuthoringTypedPropertyValue> properties,
+            IReadOnlyList<GraphAuthoringDynamicPortProjection> authoredDynamicPorts = null)
         {
-            if (capability == null)
-                throw new ArgumentNullException(nameof(capability));
             GraphAuthoringDynamicPortProjection[] fixedPorts = capability
                 .FixedPorts
                 .OrderBy(value => value.Order)
@@ -191,11 +214,14 @@ namespace BTSMTL.Authoring.Graph
         public static IReadOnlyList<GraphAuthoringDynamicPortProjection> Project(
             GraphAuthoringCapabilityDescriptor capability,
             IReadOnlyList<GraphAuthoringTypedPropertyValue> properties,
+            IReadOnlyList<GraphAuthoringDynamicPortProjection> authoredDynamicPorts = null) =>
+            Project(capability.PortShape, properties, authoredDynamicPorts);
+
+        public static IReadOnlyList<GraphAuthoringDynamicPortProjection> Project(
+            GraphAuthoringPortShapeDefinition capability,
+            IReadOnlyList<GraphAuthoringTypedPropertyValue> properties,
             IReadOnlyList<GraphAuthoringDynamicPortProjection> authoredDynamicPorts = null)
         {
-            if (capability == null)
-                throw new ArgumentNullException(nameof(capability));
-
             GraphAuthoringPortVariantDescriptor variant = ResolveVariant(
                 capability,
                 properties ?? Array.Empty<GraphAuthoringTypedPropertyValue>());
@@ -247,7 +273,7 @@ namespace BTSMTL.Authoring.Graph
         }
 
         static GraphAuthoringPortVariantDescriptor ResolveVariant(
-            GraphAuthoringCapabilityDescriptor capability,
+            GraphAuthoringPortShapeDefinition capability,
             IReadOnlyList<GraphAuthoringTypedPropertyValue> properties)
         {
             if (capability.PortVariants.Count == 0)
@@ -306,7 +332,7 @@ namespace BTSMTL.Authoring.Graph
         }
 
         static void ValidateDynamicPort(
-            GraphAuthoringCapabilityDescriptor capability,
+            GraphAuthoringPortShapeDefinition capability,
             GraphAuthoringDynamicPortProjection port)
         {
             if (capability.DynamicPortPolicy ==
