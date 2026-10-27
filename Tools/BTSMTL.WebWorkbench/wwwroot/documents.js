@@ -500,7 +500,10 @@ function renderValue(value) {
       const mapping = state.snapshot.root.unityOutputs.find(item => item.documentId === value.target.documentId && item.elementId === value.target.elementId);
       return `<div class="reference-value">${target && value.target.rootId === state.snapshot.root.id ? `<button data-document="${escapeHtml(target.path)}" data-element="${escapeHtml(value.target.elementId)}">打开 ${escapeHtml(kindNames[target.kind])} ↗</button>` : `<strong>只读资源引用</strong><button data-resource-root="${escapeHtml(value.target.rootId)}" data-resource-document="${escapeHtml(value.target.documentId)}" data-resource-element="${escapeHtml(value.target.elementId)}">查看引用详情</button>`}<span>${escapeHtml(mapping?.assetPath || value.target.rootId)}</span><button data-reference-root="${escapeHtml(value.target.rootId)}" data-reference-document="${escapeHtml(value.target.documentId)}" data-reference-element="${escapeHtml(value.target.elementId)}">查看引用位置</button><details><summary>稳定引用</summary><code>${escapeHtml(value.target.rootId)} / ${escapeHtml(value.target.documentId)} / ${escapeHtml(value.target.elementId)}</code></details></div>`;
     }
-    case 'object': return `<details><summary title="${escapeHtml(value.type)}">${escapeHtml(typeName(value.type))}</summary>${Object.entries(value.members).map(([key, member]) => `<div class="nested-value"><label>${escapeHtml(key)}</label>${renderValue(member)}</div>`).join('')}</details>`;
+    case 'object':
+      if (value.type === 'UnityEngine.CoreModule:UnityEngine.AnimationCurve')
+        return `<details><summary>${value.members.keys.items.length} 个关键点 · 曲线记录</summary><pre>${escapeHtml(JSON.stringify(value, null, 2))}</pre></details>`;
+      return `<details><summary title="${escapeHtml(value.type)}">${escapeHtml(typeName(value.type))}</summary>${Object.entries(value.members).map(([key, member]) => `<div class="nested-value"><label>${escapeHtml(key)}</label>${renderValue(member)}</div>`).join('')}</details>`;
     case 'sequence': return `<details><summary>${value.items.length} 项 · ${escapeHtml(typeName(value.type))}</summary>${value.items.map((item, index) => `<div class="nested-value"><label>${index + 1}</label>${renderValue(item)}</div>`).join('')}</details>`;
     default: return `<pre class="error">无法识别作者值 ${escapeHtml(value.kind)}</pre>`;
   }
