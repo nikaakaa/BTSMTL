@@ -339,7 +339,7 @@ function renderCommittedFacts(frame, observation) {
     .map(([name, value]) => `<dt>${escapeHtml(name)}</dt><dd>${escapeHtml(value)}</dd>`).join('')}</dl></div>`;
   $('operation-states').innerHTML = observation?.operations.length ? observation.operations.map(operation => {
     const sources = state.sourceMap.filter(map => map.rosterIndex === operation.rosterIndex &&
-      map.programIndex === operation.programIndex && map.source.targetKind === 1 && map.source.targetIndex === operation.operationIndex);
+      map.programIndex === operation.programIndex && map.source.targetKind === 'Operation' && map.source.targetIndex === operation.operationIndex);
     return detail(`${operation.status} · Roster ${operation.rosterIndex}`, {
       '活动状态': operation.activeState, '待进入状态': operation.pendingState, '退出状态': operation.exitingState,
       '实际转移': operation.transition, '动作 / 播放': `${operation.actionInstanceId} / ${operation.playbackIdentity}`,
