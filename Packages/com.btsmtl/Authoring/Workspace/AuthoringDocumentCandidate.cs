@@ -84,8 +84,12 @@ public sealed class AuthoringDocumentCandidate
         {
             string text = canonical[identities[file.Path]];
             byte[] bytes = original.TryGetValue(file.Path, out AuthoringSourceFile? prior)
-                ? Encode(prior, text) : Utf8.GetBytes(text);
-            final.Add(file.Path, new(file.Path, AuthoringFileRevision.Compute(bytes), Utf8.GetString(bytes), bytes));
+                ? Newtonsoft.Json.Linq.JToken.DeepEquals(Newtonsoft.Json.Linq.JToken.Parse(prior.Text),
+                    Newtonsoft.Json.Linq.JToken.Parse(text)) ? prior.Bytes.ToArray() : Encode(prior, text)
+                : Utf8.GetBytes(text);
+            bool bom = bytes.AsSpan().StartsWith(Encoding.UTF8.Preamble);
+            final.Add(file.Path, new(file.Path, AuthoringFileRevision.Compute(bytes),
+                Utf8.GetString(bytes.AsSpan(bom ? 3 : 0)), bytes));
         }
         var changes = new List<AuthoringFileChange>();
         var differences = new List<AuthoringDocumentDifference>();
