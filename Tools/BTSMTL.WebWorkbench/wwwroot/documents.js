@@ -425,7 +425,7 @@ function renderVariables() {
     path: file.path, document: state.snapshot.files.find(source => source.path === file.path).document
   }));
   const variables = graphs.flatMap(graph => graph.document.variables.map(variable => ({ ...variable, graph })));
-  $('document-view').innerHTML = `<div class="variables-page"><div class="eyebrow">BLACKBOARD DECLARATIONS</div><h1>变量与归属</h1><p>${variables.length} 条实际声明。默认值与声明分别显示，所属图保持原 owner。修改生成本会话候选，尚未保存或运行。</p><div class="variable-list">${variables.map(variable => `<article><header><strong>${escapeHtml(variable.key)}</strong><span title="${escapeHtml(variable.type)}">${escapeHtml(typeName(variable.type))}</span><button data-document="${escapeHtml(variable.graph.path)}">所属图 ↗</button><button data-edit-variable="${escapeHtml(variable.id)}" data-variable-document="${escapeHtml(variable.graph.path)}">编辑声明候选</button></header><code>${escapeHtml(variable.id)}</code><div class="variable-columns"><div><h3>默认值</h3>${renderValue(variable.defaultValue)}</div><div><h3>作用域、生命周期与输入声明</h3>${Object.entries(variable.declaration).map(([field, value]) => `<div class="nested-value"><label>${escapeHtml(field)}</label>${renderValue(value)}</div>`).join('')}</div></div></article>`).join('') || '<p class="muted">本内容根没有黑板声明。</p>'}</div></div>`;
+  $('document-view').innerHTML = `<div class="variables-page"><div class="eyebrow">BLACKBOARD DECLARATIONS</div><h1>变量与归属</h1><p>${variables.length} 条实际声明。默认值与声明分别显示，所属图保持原 owner。修改生成本会话候选，尚未保存或运行。</p><div class="variable-list">${variables.map(variable => `<article><header><strong>${escapeHtml(variable.key)}</strong><span title="${escapeHtml(variable.type)}">${escapeHtml(typeName(variable.type))}</span><button data-document="${escapeHtml(variable.graph.path)}">所属图 ↗</button></header><code>${escapeHtml(variable.id)}</code><div class="inspector-actions"><button data-edit-variable="${escapeHtml(variable.id)}" data-variable-document="${escapeHtml(variable.graph.path)}">编辑声明</button><button data-copy-variable="${escapeHtml(variable.id)}" data-variable-document="${escapeHtml(variable.graph.path)}">复制为新变量</button><button class="danger" data-delete-variable="${escapeHtml(variable.id)}" data-variable-document="${escapeHtml(variable.graph.path)}">删除声明</button></div><div class="variable-columns"><div><h3>默认值</h3>${renderValue(variable.defaultValue)}</div><div><h3>作用域、生命周期与输入声明</h3>${Object.entries(variable.declaration).map(([field, value]) => `<div class="nested-value"><label>${escapeHtml(field)}</label>${renderValue(value)}</div>`).join('')}</div></div></article>`).join('') || '<p class="muted">本内容根没有黑板声明。</p>'}</div></div>`;
 }
 
 async function guarded(action) {
@@ -437,14 +437,28 @@ $('roots').onclick = event => { const item = event.target.closest('[data-root]')
 $('files').onclick = event => { const item = event.target.closest('[data-file]'); if (item) guarded(() => selectFile(item.dataset.file)); };
 $('document-navigation').onclick = event => { const item = event.target.closest('[data-document]'); if (item) guarded(() => selectFile(item.dataset.document)); };
 $('document-view').onclick = event => {
-  const variableButton = event.target.closest('[data-edit-variable]');
+  const variableButton = event.target.closest('[data-edit-variable], [data-copy-variable], [data-delete-variable]');
   if (variableButton) {
     const file = state.snapshot.files.find(item => item.path === variableButton.dataset.variableDocument);
-    const variable = file.document.variables.find(item => item.id === variableButton.dataset.editVariable);
-    editVariable(variable, async fields => {
-      await state.draft.apply(file.document.id, [{ kind: 'configure-variable', variableId: variable.id, ...fields }]);
+    const identity = variableButton.dataset.editVariable || variableButton.dataset.copyVariable || variableButton.dataset.deleteVariable;
+    const variable = file.document.variables.find(item => item.id === identity);
+    if (variableButton.hasAttribute('data-delete-variable')) {
+      guarded(async () => {
+        await state.draft.apply(file.document.id, [{ kind: 'delete-variable', variableId: identity }]);
+        await showDraft();
+      });
+      return;
+    }
+    const copy = variableButton.hasAttribute('data-copy-variable');
+    const edited = copy ? { ...structuredClone(variable), key: '' } : variable;
+    editVariable(edited, async fields => {
+      const operation = copy ? { kind: 'insert-variable', index: file.document.variables.length, variable: {
+        id: `local:${crypto.randomUUID()}`, key: fields.key, type: fields.typeId,
+        defaultValue: fields.defaultValue, declaration: fields.declaration
+      } } : { kind: 'configure-variable', variableId: variable.id, ...fields };
+      await state.draft.apply(file.document.id, [operation]);
       await showDraft();
-    });
+    }, state.references);
     return;
   }
   const reference = event.target.closest('[data-document]');

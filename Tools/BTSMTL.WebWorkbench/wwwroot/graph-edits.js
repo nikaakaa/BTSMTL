@@ -130,21 +130,14 @@ export function referenceChoices(snapshot) {
   return [...choices.values()];
 }
 
-export function editField(field, value, apply, references = []) {
+function bindValueEditor(container, value, choices = [], references = []) {
   let original = value;
-  let rawEdited = false;
-  const modal = dialog(field.displayName || field.id,
-    `<p class="dialog-intro">${html(field.displayName || field.id)}。复合值可逐项修改，集合可复制、删除和重排。</p><div class="typed-value-editor">${valueControls(value, [], field.constraint?.AllowedValues || [], references)}</div><details class="raw-value-editor"><summary>完整类型化 JSON（用于尚无默认形状的空集合或 null）</summary><textarea spellcheck="false">${html(JSON.stringify(value, null, 2))}</textarea></details>`,
-    async form => {
-      const value = form.querySelector('.raw-value-editor').open
-        ? JSON.parse(form.querySelector('textarea').value) : readValue(form, original, references);
-      await apply(value);
-    });
-  const editor = modal.querySelector('.typed-value-editor');
-  editor.onclick = event => {
+  const render = () => { container.innerHTML = valueControls(original, [], choices, references); };
+  const read = () => readValue(container, original, references);
+  container.onclick = event => {
     const button = event.target.closest('[data-sequence]');
     if (!button) return;
-    original = readValue(editor, original, references);
+    original = read();
     const sequence = JSON.parse(button.dataset.sequence).reduce((item, key) => item[key], original);
     const index = Number(button.dataset.index), items = sequence.items;
     if (button.dataset.action === 'duplicate') items.splice(index + 1, 0, structuredClone(items[index]));
@@ -153,15 +146,28 @@ export function editField(field, value, apply, references = []) {
       const next = index + (button.dataset.action === 'up' ? -1 : 1);
       [items[index], items[next]] = [items[next], items[index]];
     }
-    editor.innerHTML = valueControls(original, [], field.constraint?.AllowedValues || [], references);
+    render();
   };
+  render();
+  return { read, replace(value) { original = value; render(); } };
+}
+
+export function editField(field, value, apply, references = []) {
+  let rawEdited = false;
+  const modal = dialog(field.displayName || field.id,
+    `<p class="dialog-intro">${html(field.displayName || field.id)}。复合值可逐项修改，集合可复制、删除和重排。</p><div class="typed-value-editor"></div><details class="raw-value-editor"><summary>完整类型化 JSON（用于尚无默认形状的空集合或 null）</summary><textarea spellcheck="false">${html(JSON.stringify(value, null, 2))}</textarea></details>`,
+    async form => {
+      const value = form.querySelector('.raw-value-editor').open
+        ? JSON.parse(form.querySelector('textarea').value) : editor.read();
+      await apply(value);
+    });
+  const editor = bindValueEditor(modal.querySelector('.typed-value-editor'), value, field.constraint?.AllowedValues || [], references);
   modal.querySelector('textarea').oninput = () => { rawEdited = true; };
   modal.querySelector('.raw-value-editor').addEventListener('toggle', event => {
-    if (event.currentTarget.open && !rawEdited) modal.querySelector('textarea').value = JSON.stringify(readValue(modal, original, references), null, 2);
+    if (event.currentTarget.open && !rawEdited) modal.querySelector('textarea').value = JSON.stringify(editor.read(), null, 2);
     else if (!event.currentTarget.open && rawEdited) {
       try {
-        original = JSON.parse(modal.querySelector('textarea').value);
-        editor.innerHTML = valueControls(original, [], field.constraint?.AllowedValues || [], references);
+        editor.replace(JSON.parse(modal.querySelector('textarea').value));
         rawEdited = false;
         modal.querySelector('.dialog-error').textContent = '';
       } catch (error) {
@@ -177,14 +183,16 @@ export function renameElement(name, apply) {
     form => apply(new FormData(form).get('displayName')));
 }
 
-export function editVariable(variable, apply) {
+export function editVariable(variable, apply, references = []) {
   const declarations = Object.entries(variable.declaration);
-  dialog('修改所属图的黑板声明候选',
-    `<p class="dialog-intro">声明身份与所属图保持。当前正式类型：${html(variable.type)}</p><label>变量名称<input name="key" value="${html(variable.key)}" autocomplete="off"></label><fieldset data-variable-default><legend>默认值</legend>${valueControls(variable.defaultValue)}</fieldset>${declarations.map(([key, value]) => `<fieldset data-declaration="${html(key)}"><legend>${html(key)}</legend>${valueControls(value)}</fieldset>`).join('')}`,
+  const modal = dialog('配置所属图的黑板声明候选',
+    `<p class="dialog-intro">当前正式类型：${html(variable.type)}。默认值、作用域、生命周期和输入绑定都写回此声明的原所属图。</p><label>变量名称<input name="key" value="${html(variable.key)}" autocomplete="off" required></label><fieldset><legend>默认值</legend><div data-variable-default></div></fieldset>${declarations.map(([key]) => `<fieldset><legend>${html(key)}</legend><div data-declaration="${html(key)}"></div></fieldset>`).join('')}`,
     form => apply({ key: new FormData(form).get('key'), typeId: variable.type,
-      defaultValue: readValue(form.querySelector('[data-variable-default]'), variable.defaultValue),
-      declaration: Object.fromEntries(declarations.map(([key, value]) => [key,
-        readValue([...form.querySelectorAll('[data-declaration]')].find(element => element.dataset.declaration === key), value)])) }));
+      defaultValue: defaultEditor.read(),
+      declaration: Object.fromEntries([...declarationEditors].map(([key, editor]) => [key, editor.read()])) }));
+  const defaultEditor = bindValueEditor(modal.querySelector('[data-variable-default]'), variable.defaultValue, [], references);
+  const declarationEditors = new Map(declarations.map(([key, value]) => [key, bindValueEditor(
+    [...modal.querySelectorAll('[data-declaration]')].find(element => element.dataset.declaration === key), value, [], references)]));
 }
 
 export function createNode(capabilities, role, apply) {
