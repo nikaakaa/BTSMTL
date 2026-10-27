@@ -6,39 +6,93 @@ namespace ThirdPersonGameplay.Orchestration
 {
     public static partial class GameplayMotionExtensionContracts
     {
+        public readonly struct GrappleParameter
+        {
+            internal GrappleParameter(int index, int scalarIndex, Field field, string group, string label, string unit,
+                double minimum, double maximum, string description)
+            {
+                Index = index;
+                ScalarIndex = scalarIndex;
+                Field = field;
+                Group = group;
+                Label = label;
+                Unit = unit;
+                Minimum = minimum;
+                Maximum = maximum;
+                Description = description;
+            }
+
+            public int Index { get; }
+            public int ScalarIndex { get; }
+            public Field Field { get; }
+            public string Id => Field.Id;
+            public bool IsScalar => ScalarIndex >= 0;
+            public string Group { get; }
+            public string Label { get; }
+            public string Unit { get; }
+            public double Minimum { get; }
+            public double Maximum { get; }
+            public string Description { get; }
+        }
+
+        // 声明顺序即内容字段顺序，改动会改变已发布内容布局。
         public static class GrappleFields
         {
-            public static readonly Field MaximumLength = Field.Value("MaximumLength", OrchestrationValueKind.Scalar);
-            public static readonly Field HookSpeed = Field.Value("HookSpeed", OrchestrationValueKind.Scalar);
-            public static readonly Field PreparationTime = Field.Value("PreparationTime", OrchestrationValueKind.Scalar);
-            public static readonly Field TakeoffDelay = Field.Value("TakeoffDelay", OrchestrationValueKind.Scalar);
-            public static readonly Field PullStartSpeed = Field.Value("PullStartSpeed", OrchestrationValueKind.Scalar);
-            public static readonly Field PullSpeed = Field.Value("PullSpeed", OrchestrationValueKind.Scalar);
-            public static readonly Field PullRampTime = Field.Value("PullRampTime", OrchestrationValueKind.Scalar);
-            public static readonly Field PullAcceleration = Field.Value("PullAcceleration", OrchestrationValueKind.Scalar);
-            public static readonly Field InitialImpulse = Field.Value("InitialImpulse", OrchestrationValueKind.Scalar);
-            public static readonly Field AttachVerticalSpeed = Field.Value("AttachVerticalSpeed", OrchestrationValueKind.Scalar);
-            public static readonly Field ArrivalVerticalBoost = Field.Value("ArrivalVerticalBoost", OrchestrationValueKind.Scalar);
-            public static readonly Field ArrivalVerticalMaxSpeed = Field.Value("ArrivalVerticalMaxSpeed", OrchestrationValueKind.Scalar);
-            public static readonly Field AirAcceleration = Field.Value("AirAcceleration", OrchestrationValueKind.Scalar);
-            public static readonly Field AirSteeringAcceleration = Field.Value("AirSteeringAcceleration", OrchestrationValueKind.Scalar);
-            public static readonly Field AirSpeed = Field.Value("AirSpeed", OrchestrationValueKind.Scalar);
-            public static readonly Field GravityScale = Field.Value("GravityScale", OrchestrationValueKind.Scalar);
-            public static readonly Field MinimumGravityScale = Field.Value("MinimumGravityScale", OrchestrationValueKind.Scalar);
-            public static readonly Field TangentialDeceleration = Field.Value("TangentialDeceleration", OrchestrationValueKind.Scalar);
-            public static readonly Field LaunchHeight = Field.Value("LaunchHeight", OrchestrationValueKind.Scalar);
-            public static readonly Field SurfaceMask = Field.Value("SurfaceMask", OrchestrationValueKind.Int32);
-            public static readonly Field ReleaseRadius = Field.Value("ReleaseRadius", OrchestrationValueKind.Scalar);
-            public static readonly Field BlockedSpeed = Field.Value("BlockedSpeed", OrchestrationValueKind.Scalar);
-            public static readonly Field BlockTimeout = Field.Value("BlockTimeout", OrchestrationValueKind.Scalar);
-            public static readonly Field TurnSpeed = Field.Value("TurnSpeed", OrchestrationValueKind.Scalar);
-            public static readonly Field InputTurnSpeedBonus = Field.Value("InputTurnSpeedBonus", OrchestrationValueKind.Scalar);
-            public static readonly Field DetachAngle = Field.Value("DetachAngle", OrchestrationValueKind.Scalar);
-            public static readonly ReadOnlyMemory<Field> All = new[]
-                { MaximumLength, HookSpeed, PreparationTime, TakeoffDelay, PullStartSpeed, PullSpeed, PullRampTime, PullAcceleration, InitialImpulse,
-                    AttachVerticalSpeed, ArrivalVerticalBoost, ArrivalVerticalMaxSpeed, AirAcceleration, AirSteeringAcceleration, AirSpeed,
-                    MinimumGravityScale, GravityScale, TangentialDeceleration, LaunchHeight, SurfaceMask,
-                    ReleaseRadius, BlockedSpeed, BlockTimeout, TurnSpeed, InputTurnSpeedBonus, DetachAngle };
+            static readonly System.Collections.Generic.List<GrappleParameter> s_Declared = new();
+            static int s_ScalarCount;
+
+            public static readonly GrappleParameter MaximumLength = Scalar("MaximumLength", "起手与飞钩", "最大绳长", "米", 1d, 150d, "限制飞钩和含拐点的实际绳长；调短到当前长度以下会断钩。选点范围仍由技能准入配置提供。");
+            public static readonly GrappleParameter HookSpeed = Scalar("HookSpeed", "起手与飞钩", "钩头飞行／收回速度", "米/秒", 1d, 200d, "调钩头到达与收回速度，不是角色牵引速度。");
+            public static readonly GrappleParameter PreparationTime = Scalar("PreparationTime", "起手与飞钩", "地面准备停顿", "秒", 0.01d, 1.5d, "地面起手停止平移并转向，之后发射。空中换钩沿现有空中规则。");
+            public static readonly GrappleParameter TakeoffDelay = Scalar("TakeoffDelay", "起手与飞钩", "准备期起跳时刻", "秒", 0d, 1.5d, "相对准备开始的起跳时刻，不能晚于准备结束。");
+            public static readonly GrappleParameter PullStartSpeed = Scalar("PullStartSpeed", "牵引", "初始牵引目标速度", "米/秒", 0d, 60d, "牵引加速曲线的起点。");
+            public static readonly GrappleParameter PullSpeed = Scalar("PullSpeed", "牵引", "稳定牵引目标速度", "米/秒", 0d, 100d, "朝钩点的目标速度，不会清掉已有绕行惯性。");
+            public static readonly GrappleParameter PullRampTime = Scalar("PullRampTime", "牵引", "目标速度展开时间", "秒", 0.01d, 3d, "从初始速度展开到稳定速度的时长，也供钩锁稳态动画条件读取。");
+            public static readonly GrappleParameter PullAcceleration = Scalar("PullAcceleration", "牵引", "钩点牵引加速度", "米/秒²", 0d, 200d, "持续朝绳路方向补速度。过大会抵消 S 的反向操控。");
+            public static readonly GrappleParameter InitialImpulse = Scalar("InitialImpulse", "牵引", "挂上瞬间速度增量", "米/秒", 0d, 20d, "钩头挂上时，沿钩点方向增加的速度。");
+            public static readonly GrappleParameter AttachVerticalSpeed = Scalar("AttachVerticalSpeed", "牵引", "表面挂接最小上升速度", "米/秒", 0d, 20d, "普通表面挂接时托起身体；固定点按自己的进场轨迹。");
+            public static readonly GrappleParameter ArrivalVerticalBoost = Scalar("ArrivalVerticalBoost", "抵达与受阻", "表面抵达向上借力", "米/秒", 0d, 20d, "普通表面自动松钩时增加的上升速度，用于越过平台边缘。");
+            public static readonly GrappleParameter ArrivalVerticalMaxSpeed = Scalar("ArrivalVerticalMaxSpeed", "抵达与受阻", "抵达借力上升速度上限", "米/秒", 0d, 30d, "只限制本次抵达借力，不截掉更高的已有上升速度。");
+            public static readonly GrappleParameter AirAcceleration = Scalar("AirAcceleration", "W/S 与空中操控", "方向操控加速度", "米/秒²", 0d, 150d, "W/S 沿相机水平前后方向加速或减速，A/D 沿相机水平左右方向施力。");
+            public static readonly GrappleParameter AirSteeringAcceleration = Scalar("AirSteeringAcceleration", "W/S 与空中操控", "达到目标后的改向强度", "米/秒²", 0d, 20d, "输入方向已达到目标时，以保速改向分支调整方向；原值很小，可用数值框精调。");
+            public static readonly GrappleParameter AirSpeed = Scalar("AirSpeed", "W/S 与空中操控", "输入方向目标速度", "米/秒", 0d, 50d, "控制输入方向还能补多少速度，不是整体硬截速上限。");
+            public static readonly GrappleParameter MinimumGravityScale = Scalar("MinimumGravityScale", "W/S 与空中操控", "最小重力倍率", "倍", 0d, 3d, "绳向、视线和操控共同决定当前重力，不能大于最大重力。");
+            public static readonly GrappleParameter GravityScale = Scalar("GravityScale", "W/S 与空中操控", "最大重力倍率", "倍", 0d, 3d, "牵引中使用的重力上界。普通自由落体参数不在这里修改。");
+            public static readonly GrappleParameter TangentialDeceleration = Scalar("TangentialDeceleration", "牵引", "绕行速度衰减", "米/秒²", 0d, 80d, "与拉绳方向垂直的速度衰减；降低可保留更多绕行惯性。");
+            public static readonly GrappleParameter LaunchHeight = Scalar("LaunchHeight", "起手与飞钩", "绳路起点高度", "米", 0d, 3d, "运动计算的出绳起点，相对角色身体位置。");
+            public static readonly GrappleParameter SurfaceMask = Declare(Field.Value("SurfaceMask", OrchestrationValueKind.Int32), -1,
+                "起手与飞钩", "可附着场景层", string.Empty, 0d, 0d, "选点与绳路检测使用的场景层。");
+            public static readonly GrappleParameter ReleaseRadius = Scalar("ReleaseRadius", "抵达与受阻", "表面自动松钩距离", "米", 0.05d, 8d, "普通表面抵达半径。固定点使用场景点自己的进入范围和指定收势轨迹。");
+            public static readonly GrappleParameter BlockedSpeed = Scalar("BlockedSpeed", "抵达与受阻", "受阻判定速度", "米/秒", 0d, 5d, "发生碰撞且实际速度低于此值时，累计受阻时间。");
+            public static readonly GrappleParameter BlockTimeout = Scalar("BlockTimeout", "抵达与受阻", "受阻后松钩等待", "秒", 0d, 2d, "持续受阻达到该时间后结束钩锁。");
+            public static readonly GrappleParameter TurnSpeed = Scalar("TurnSpeed", "身体转向与断钩", "基础转向速度", "度/秒", 0d, 1080d, "身体追随实际飞行方向的基础转速。");
+            public static readonly GrappleParameter InputTurnSpeedBonus = Scalar("InputTurnSpeedBonus", "身体转向与断钩", "同侧 A/D 转向加成", "度/秒", 0d, 1080d, "按下转向同侧的 A/D 时，增加身体转向速度。");
+            public static readonly GrappleParameter DetachAngle = Scalar("DetachAngle", "身体转向与断钩", "跟不上时断钩夹角", "度", 1d, 120d, "碰撞后身体水平朝向与实际速度方向的夹角。与相机选点吸附框独立；调小可能立即断钩。");
+
+            public static readonly ReadOnlyMemory<GrappleParameter> Parameters = s_Declared.ToArray();
+            public static readonly ReadOnlyMemory<Field> All = Project(Parameters.Span);
+            public static readonly int ScalarCount = s_ScalarCount;
+
+            static GrappleParameter Scalar(string id, string group, string label, string unit, double minimum, double maximum,
+                string description) => Declare(Field.Value(id, OrchestrationValueKind.Scalar), s_ScalarCount++,
+                group, label, unit, minimum, maximum, description);
+
+            static GrappleParameter Declare(Field field, int scalarIndex, string group, string label, string unit,
+                double minimum, double maximum, string description)
+            {
+                var parameter = new GrappleParameter(s_Declared.Count, scalarIndex, field, group, label, unit,
+                    minimum, maximum, description);
+                s_Declared.Add(parameter);
+                return parameter;
+            }
+
+            static Field[] Project(ReadOnlySpan<GrappleParameter> parameters)
+            {
+                var fields = new Field[parameters.Length];
+                for (int index = 0; index < fields.Length; index++)
+                    fields[index] = parameters[index].Field;
+                return fields;
+            }
         }
 
         public readonly struct BeginGrapple
