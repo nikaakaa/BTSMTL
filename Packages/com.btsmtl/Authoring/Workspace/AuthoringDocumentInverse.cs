@@ -10,24 +10,52 @@ using Newtonsoft.Json.Linq;
 
 namespace BTSMTL.Authoring.Workspace
 {
-static class AuthoringDocumentInverse
+public static class AuthoringDocumentInverse
 {
-    internal static IReadOnlyList<AuthoringDocumentText> Create(AuthoringDocumentCandidate applied, AuthoringRootFiles current)
+    public static IReadOnlyList<AuthoringDocumentText> Create(AuthoringRootFiles before, AuthoringRootFiles after,
+        IReadOnlyList<GraphAuthoringElementId> changedDocuments, AuthoringRootFiles current)
     {
         string directory = Path.GetDirectoryName(current.Files[0].Path)!;
         var texts = current.Files.ToDictionary(file => file.Path, file => file.Text, StringComparer.OrdinalIgnoreCase);
-        foreach (var change in applied.Changes)
+        var original = Sources(before);
+        var applied = Sources(after);
+        var actual = Sources(current);
+        string rootId = current.Root.Id.Value;
+        JToken root = Merge(rootId, rootId, "", Parse(after.Files[0].Text),
+            Parse(before.Files[0].Text), Parse(current.Files[0].Text))!;
+        string rootText = root.ToString(Formatting.Indented) + "\n";
+        AuthoringRootDocument manifest = AuthoringDocumentJson.ReadRoot(rootText, current.Files[0].Path);
+        var destinations = manifest.Files.ToArray().ToDictionary(file => file.Id,
+            file => AuthoringWorkspaceDirectory.Resolve(directory, file.Path));
+        var pending = new List<(string Id, string? CurrentPath, string? TargetPath, JToken? Value)>();
+        foreach (GraphAuthoringElementId id in changedDocuments.Distinct().Where(id => !id.Equals(current.Root.Id)))
         {
-            string documentId = applied.Differences.Single(file => file.Path == change.Path).DocumentId.Value;
-            JToken? expected = change.After == null ? null : Parse(change.After);
-            JToken? target = change.Before == null ? null : Parse(change.Before);
-            JToken? actual = texts.TryGetValue(change.Path, out var text) ? Parse(text) : null;
-            JToken? inverse = Merge(documentId, documentId, "", expected, target, actual);
-            if (inverse == null) texts.Remove(change.Path);
-            else texts[change.Path] = inverse.ToString(Formatting.Indented) + "\n";
+            original.TryGetValue(id, out AuthoringSourceFile? prior);
+            applied.TryGetValue(id, out AuthoringSourceFile? saved);
+            actual.TryGetValue(id, out AuthoringSourceFile? now);
+            JToken? inverse = Merge(id.Value, id.Value, "", saved == null ? null : Parse(saved.Text),
+                prior == null ? null : Parse(prior.Text), now == null ? null : Parse(now.Text));
+            pending.Add((id.Value, now?.Path, inverse == null ? null : destinations[id], inverse));
         }
+        foreach (var change in pending)
+            if (change.CurrentPath != null) texts.Remove(change.CurrentPath);
+        foreach (var change in pending.Where(change => change.Value != null))
+        {
+            if (texts.TryGetValue(change.TargetPath!, out string? occupied))
+                throw Conflict(change.Id, change.Id, "/file", null, Parse(occupied));
+            texts.Add(change.TargetPath!, change.Value!.ToString(Formatting.Indented) + "\n");
+        }
+        texts[current.Files[0].Path] = rootText;
         return texts.Select(file => new AuthoringDocumentText(Path.GetRelativePath(directory, file.Key)
             .Replace('\\', '/'), file.Value)).ToArray();
+    }
+
+    static IReadOnlyDictionary<GraphAuthoringElementId, AuthoringSourceFile> Sources(AuthoringRootFiles source)
+    {
+        string directory = Path.GetDirectoryName(source.Files[0].Path)!;
+        var byPath = source.Files.ToDictionary(file => file.Path, StringComparer.OrdinalIgnoreCase);
+        return source.Root.Files.ToArray().ToDictionary(file => file.Id,
+            file => byPath[AuthoringWorkspaceDirectory.Resolve(directory, file.Path)]);
     }
 
     static JToken? Merge(string document, string element, string path, JToken? expected, JToken? target, JToken? current)
@@ -100,8 +128,6 @@ static class AuthoringDocumentInverse
     }
 
     static string Key(JToken value) => value.Value<string>("id")!;
-    static JToken Parse(byte[] value) => Parse(new System.Text.UTF8Encoding(false, true).GetString(
-        value.AsSpan(value.AsSpan().StartsWith(System.Text.Encoding.UTF8.Preamble) ? 3 : 0)));
     static JToken Parse(string value) => AuthoringDocumentJson.ReadObject(value);
     static AuthoringUndoConflictException Conflict(string document, string element, string path,
         JToken? expected, JToken? current) => new(document, element, path,

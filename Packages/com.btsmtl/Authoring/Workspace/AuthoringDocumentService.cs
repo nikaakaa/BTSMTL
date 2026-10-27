@@ -116,7 +116,8 @@ public sealed class AuthoringDocumentService
         if (!current.Root.Id.Equals(applied.Baseline.Root.Id))
             throw new InvalidOperationException("反向修改不能改变实际保存根。");
         return Remember(AuthoringDocumentCandidate.Create(requestId, current,
-            AuthoringDocumentInverse.Create(applied, current), m_Domain));
+            AuthoringDocumentInverse.Create(applied.Baseline, applied.Documents.Source,
+                applied.Differences.Select(file => file.DocumentId).Distinct().ToArray(), current), m_Domain));
     }
 
     public async Task<AuthoringDocumentCommitResult> Commit(string candidateId, CancellationToken cancellation = default)
