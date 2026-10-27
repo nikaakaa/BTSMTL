@@ -54,7 +54,7 @@ async function refresh() {
   $('runs').innerHTML = runs.map(run => `<button data-run="${escapeHtml(run.jobId)}" class="${run.jobId === state.selected ? 'selected' : ''}">${escapeHtml(stages[run.stage])}<small>${escapeHtml(run.acceptedAt)}</small><code>${escapeHtml(run.jobId)}</code></button>`).join('') || '<p class="muted">尚未提交运行。</p>';
   options($('comparison'), runs.filter(run => run.stage === 'completed' && run.jobId !== state.selected),
     entry => `${entry.acceptedAt} · ${entry.jobId.slice(0, 8)}`, entry => entry.jobId, $('comparison').value);
-  $('compare').disabled = !state.summary || !$('comparison').value;
+  $('compare').disabled = !state.sealed || !$('comparison').value;
   $('connection').textContent = '项目宿主已连接';
 }
 
@@ -76,6 +76,7 @@ async function start() {
 async function selectRun(id) {
   clearTimeout(pollTimer);
   state.selected = id; state.summary = null; state.frames.clear(); state.count = 0; state.sealed = false;
+  history.replaceState(null, '', `?run=${encodeURIComponent(id)}`);
   $('playback-controls').hidden = true;
   clearActors(); $('run-details').replaceChildren(); $('frame-facts').replaceChildren();
   $('actors').replaceChildren(); $('frame-json').textContent = '';
@@ -155,7 +156,7 @@ async function sendPendingControl() {
   if (result.stage === 'submitted') { report('命令已提交，等待真实会话确认。'); return; }
   sessionStorage.removeItem('btsmtl.preview.pending-control');
   report(result.stage === 'applied' ? `命令已执行，实际确认帧 ${result.verifiedFrame ?? '尚未形成'}。` : result.error,
-    result.stage === 'rejected');
+    result.stage !== 'applied');
 }
 
 async function showFrame(index) {
@@ -226,4 +227,4 @@ function moveFrame(delta) { $('frame').value = Math.max(0, Math.min(state.count 
 $('previous-frame').onclick = () => guarded(() => moveFrame(-1)); $('next-frame').onclick = () => guarded(() => moveFrame(1));
 $('fit-view').onclick = fitView;
 $('compare').onclick = () => guarded(async () => { const result = await request(`/api/preview/runs/${state.selected}/compare/${$('comparison').value}`); $('comparison-result').textContent = JSON.stringify(result, null, 2); report(!result.comparable ? '运行条件不同，未比较 checksum。' : result.equal ? `已比较 ${result.comparedFrames} 帧，本次已记录范围内一致。` : `首个差异在 SDK 帧 ${result.firstDifference.frame}。`); });
-guarded(async () => { await refresh(); const pending = sessionStorage.getItem('btsmtl.preview.pending-request'); if (pending) { report('上次提交结果尚未确认，正在以原请求身份重查。'); await start(); } else report('已读取实际来源。选择正式离线包与原 SDK 录像后可提交重放。'); });
+guarded(async () => { await refresh(); const pending = sessionStorage.getItem('btsmtl.preview.pending-request'); if (pending) { report('上次提交结果尚未确认，正在以原请求身份重查。'); await start(); } else { const run = new URLSearchParams(location.search).get('run'); if (run) await selectRun(run); else report('已读取实际来源。选择正式离线包与原 SDK 录像后可提交重放。'); } });
