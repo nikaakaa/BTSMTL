@@ -8,10 +8,10 @@ const stages = { accepted: '已接收', running: '独立会话运行中', comple
 const playbackNames = { paused: '已暂停', playing: '正在播放', stepping: '等待下一个确认帧', stopped: '已停止', completed: '已完成' };
 const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 
-async function request(path, body) {
-  const response = await fetch(path, body === undefined ? undefined : {
+async function request(path, body, signal) {
+  const response = await fetch(path, { signal, ...(body === undefined ? {} : {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
-  });
+  }) });
   const text = await response.text();
   if (!response.ok) throw new Error(`${response.status} · ${text}`);
   return JSON.parse(text);
