@@ -76,6 +76,17 @@ public static class AuthoringReferenceQuery
             AuthoringSourceFile file = files[AuthoringWorkspaceDirectory.Resolve(directory, declaration.Path)];
             source = source with { DocumentPath = declaration.Path, DocumentId = declaration.Id.Value,
                 FileRevision = file.Revision, ElementId = declaration.Id.Value, Pointer = "" };
+            if (declaration.Kind == AuthoringDocumentKind.References)
+            {
+                AuthoringReferenceTable references = AuthoringDocumentJson.ReadReferenceTable(file.Text, file.Path);
+                for (int index = 0; index < references.Entries.Length; index++)
+                {
+                    AuthoringReferenceEntry entry = references.Entries.Span[index];
+                    Value(entry.Source, source with { Pointer = "/entries/" + index + "/source" }, uses);
+                    Fields(entry.Fields, source, "/entries/" + index + "/fields", uses);
+                }
+                continue;
+            }
             if (declaration.Kind == AuthoringDocumentKind.Graph)
             {
                 AuthoringGraphDocument graph = AuthoringDocumentJson.ReadGraph(file.Text, file.Path);
@@ -100,6 +111,8 @@ public static class AuthoringReferenceQuery
                 }
                 continue;
             }
+            if (declaration.Kind is not (AuthoringDocumentKind.Timeline or AuthoringDocumentKind.InputPlan))
+                throw new InvalidDataException($"文件 '{file.Path}' 的作者种类 '{declaration.Kind}' 没有正式引用读取入口。");
             AuthoringTimelineDocument timeline = AuthoringDocumentJson.ReadTimeline(file.Text, file.Path);
             Reference(source with { Pointer = "/owner" }, "owner", null, timeline.Owner, uses);
             Fields(timeline.Fields, source, "/fields", uses);
