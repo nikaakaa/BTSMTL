@@ -50,7 +50,7 @@ namespace BTSMTL.Authoring.Graph
 
         public readonly struct Contract
         {
-            internal Contract(OrchestrationExtensionDefinition definition, IReadOnlyList<GraphOrchestrationExtensionPortBinding> ports)
+            public Contract(OrchestrationExtensionDefinition definition, IReadOnlyList<GraphOrchestrationExtensionPortBinding> ports)
             {
                 Definition = definition;
                 Ports = ports;
@@ -143,6 +143,45 @@ namespace BTSMTL.Authoring.Graph
             FieldInfo field = owner.GetField(name, flags);
             return field != null ? field.GetValue(null) :
                 throw new InvalidOperationException($"编排声明 '{owner.FullName}.{name}' 不存在。");
+        }
+    }
+
+    // 节点的编排声明：宿主输入、编排输出或扩展操作三者至多其一；Unity 端从节点类读取，独立编译从能力导出读取。
+    public sealed class GraphOrchestrationNodeDeclaration
+    {
+        public static readonly GraphOrchestrationNodeDeclaration None = new(null, null, null);
+
+        public GraphOrchestrationNodeDeclaration(IReadOnlyList<GraphOrchestrationHostInputPort> hostInputs,
+            OrchestrationOutputTemplate? output, GraphOrchestrationExtensionNodes.Contract? extension)
+        {
+            HostInputs = hostInputs;
+            Output = output;
+            Extension = extension;
+        }
+
+        public IReadOnlyList<GraphOrchestrationHostInputPort> HostInputs { get; }
+        public OrchestrationOutputTemplate? Output { get; }
+        public GraphOrchestrationExtensionNodes.Contract? Extension { get; }
+
+        public static GraphOrchestrationNodeDeclaration Of(Type nodeType)
+        {
+            if (GraphOrchestrationOutputNodes.TryGetHostInputs(nodeType, out IReadOnlyList<GraphOrchestrationHostInputPort> inputs))
+                return new GraphOrchestrationNodeDeclaration(inputs, null, null);
+            if (GraphOrchestrationOutputNodes.TryGetOutput(nodeType, out OrchestrationOutputTemplate output))
+                return new GraphOrchestrationNodeDeclaration(null, output, null);
+            return GraphOrchestrationExtensionNodes.TryGet(nodeType, out GraphOrchestrationExtensionNodes.Contract extension)
+                ? new GraphOrchestrationNodeDeclaration(null, null, extension) : None;
+        }
+
+        // 扩展端口按作者端口映射到运行端口；未映射的作者端口（常量输出）保持原身份，由编译合同核对。
+        public string RuntimePort(string port, OrchestrationExtensionPortDirection direction)
+        {
+            if (Extension is not { } extension)
+                return port;
+            foreach (GraphOrchestrationExtensionPortBinding binding in extension.Ports)
+                if (binding.AuthoringPortId == port && binding.RuntimePort.Direction == direction)
+                    return binding.RuntimePort.Id;
+            return port;
         }
     }
 

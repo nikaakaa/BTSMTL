@@ -1,19 +1,15 @@
-using BTSMTL.Compilation;
 using System;
 using System.Collections.Generic;
 using ThirdPersonSimulation;
-using FlowCanvas;
 
-namespace BTSMTL.Graphs.Editor
+namespace BTSMTL.Compilation
 {
+    // 参数计划登记：宿主记录节点操作、载荷常量与输入默认值对应的字面量，参数变化时按节点重新描述。
     public interface IBtsmtlCanvasCompilationBindings
     {
-        string MapPort(FlowNode node, string port, BTSMTL.Orchestration.OrchestrationExtensionPortDirection direction);
         void BindInput(string graphId, string nodeId, string portId, int constant);
-        void BindConstant(string graphId, string nodeId, string field, int constant,
-            Func<FlowNode, SimulationCompileReport, SimulationNodeEmission> describe);
-        void BindOperation(string graphId, string nodeId, OperationHandle operation,
-            Func<FlowNode, SimulationCompileReport, SimulationNodeEmission> describe);
+        void BindConstant(string graphId, string nodeId, string field, int constant);
+        void BindOperation(string graphId, string nodeId, OperationHandle operation);
     }
 
     public readonly struct SimulationConstantInput
@@ -44,11 +40,12 @@ namespace BTSMTL.Graphs.Editor
             m_Bindings = bindings;
         }
 
+        // bindNode 为 true 时操作与载荷常量登记到参数计划，供参数变化时按节点重新描述。
         public OperationHandle Emit(
             SimulationSourceLocation source,
             SimulationNodeEmission emission,
             IReadOnlyList<SimulationConstantInput> inputs,
-            Func<FlowNode, SimulationCompileReport, SimulationNodeEmission> describe = null)
+            bool bindNode = false)
         {
             var constants = new List<int>();
             var payloadFields = new List<SemanticPayloadField>();
@@ -74,8 +71,8 @@ namespace BTSMTL.Graphs.Editor
                     constants.Add(constant);
                     payloadFields.Add(new SemanticPayloadField(pair.Key, constant));
                     payloadByName.Add(pair.Key, constant);
-                    if (describe != null)
-                        m_Bindings?.BindConstant(source.GraphId, source.NodeId, pair.Key, constant, describe);
+                    if (bindNode)
+                        m_Bindings?.BindConstant(source.GraphId, source.NodeId, pair.Key, constant);
                 }
             }
             var constantOutputs = new List<SemanticConstantOutputBinding>();
@@ -100,8 +97,8 @@ namespace BTSMTL.Graphs.Editor
                 blackboardOutputs: emission.BlackboardOutputs,
                 constantOutputs: constantOutputs,
                 derivedInputs: emission.DerivedInputs);
-            if (describe != null)
-                m_Bindings?.BindOperation(source.GraphId, source.NodeId, operation, describe);
+            if (bindNode)
+                m_Bindings?.BindOperation(source.GraphId, source.NodeId, operation);
             foreach (var binding in bindings)
                 m_Builder.DeclareConstantInputBinding(operation, binding.Input.PortId,
                     binding.Constant, binding.Input.Kind, binding.Input.Source);

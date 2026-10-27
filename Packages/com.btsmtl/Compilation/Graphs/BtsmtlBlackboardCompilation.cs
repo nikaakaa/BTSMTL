@@ -6,13 +6,13 @@ using BTSMTL.Compilation;
 using BTSMTL.Orchestration;
 using ThirdPersonSimulation;
 
-namespace BTSMTL.Graphs.Editor
+namespace BTSMTL.Compilation
 {
     public sealed class BtsmtlBlackboardDeclarationSnapshot
     {
-        public BtsmtlBlackboardDeclarationSnapshot(string identity, string key, Type valueType,
+        public BtsmtlBlackboardDeclarationSnapshot(string identity, string key, CompileValueType valueType,
             PipelineBlackboardVariableScope scope, PipelineBlackboardVariableLifetime lifetime, string category,
-            object defaultValue, PipelineBlackboardInputBinding inputBinding)
+            object defaultValue, string inputValueId, PipelineBlackboardInputProjection inputProjection)
         {
             DeclarationId = identity;
             BlackboardKey = key;
@@ -21,18 +21,21 @@ namespace BTSMTL.Graphs.Editor
             BlackboardLifetime = lifetime;
             BlackboardCategoryPath = category;
             DefaultValue = defaultValue;
-            InputBinding = inputBinding;
+            InputValueId = inputValueId ?? string.Empty;
+            InputProjection = inputProjection;
         }
 
         public string DeclarationId { get; }
         public string BlackboardKey { get; }
-        public Type ValueType { get; }
+        public CompileValueType ValueType { get; }
         public PipelineBlackboardVariableScope BlackboardScope { get; }
         public PipelineBlackboardVariableLifetime BlackboardLifetime { get; }
         public string BlackboardCategoryPath { get; }
         public object DefaultValue { get; }
-        public PipelineBlackboardInputBinding InputBinding { get; }
-        public string InputValueId => InputBinding?.InputValueId ?? string.Empty;
+        // 空表示没有输入绑定。
+        public string InputValueId { get; }
+        public PipelineBlackboardInputProjection InputProjection { get; }
+        public bool HasInputBinding => InputValueId.Length != 0;
     }
 
     public sealed class BtsmtlBlackboardDeclarationSource
@@ -110,10 +113,10 @@ namespace BTSMTL.Graphs.Editor
                     m_Builder.ConstantField(source, "Category", declaration.BlackboardCategoryPath)
                 };
                 m_DomainFields?.Invoke(item, source, fields);
-                if (declaration.InputBinding != null)
+                if (declaration.HasInputBinding)
                 {
-                    fields.Add(m_Builder.ConstantField(source, "InputValueId", declaration.InputBinding.InputValueId));
-                    fields.Add(m_Builder.ConstantField(source, "InputProjection", declaration.InputBinding.Projection));
+                    fields.Add(m_Builder.ConstantField(source, "InputValueId", declaration.InputValueId));
+                    fields.Add(m_Builder.ConstantField(source, "InputProjection", declaration.InputProjection));
                 }
                 m_Builder.DeclareCatalogEntry(
                     new ProgramIdentityDependency("btsmtl.blackboard-declaration", identity),
@@ -163,7 +166,7 @@ namespace BTSMTL.Graphs.Editor
             string route,
             string declarationOwnerId,
             string declarationId,
-            Type expectedValueType,
+            CompileValueType expectedValueType,
             SimulationSourceLocation source,
             bool requireWritable = false, string binding = null)
         {
@@ -175,10 +178,10 @@ namespace BTSMTL.Graphs.Editor
                 return;
             }
 
-            if (expectedValueType != null && declaration.Declaration.ValueType != expectedValueType)
+            if (expectedValueType != null && !expectedValueType.SameType(declaration.Declaration.ValueType))
             {
                 Report.Error("blackboard_value_type_mismatch", source.Identity,
-                    $"Blackboard '{declarationIdentity}' is '{declaration.Declaration.ValueType}', expected '{expectedValueType}'.");
+                    $"Blackboard '{declarationIdentity}' is '{declaration.Declaration.ValueType.FullName}', expected '{expectedValueType.FullName}'.");
                 return;
             }
             if (requireWritable && declaration.Declaration.BlackboardLifetime == PipelineBlackboardVariableLifetime.Config)
@@ -212,8 +215,8 @@ namespace BTSMTL.Graphs.Editor
             if (!m_Scopes.Contains(item.Declaration.BlackboardScope))
                 return -1;
 
-            Type valueType = item.Declaration.ValueType;
-            ProgramStateValueKind valueKind = OrchestrationValuePortContracts.ToState(BtsmtlGraphValueTypes.Kind(valueType));
+            CompileValueType valueType = item.Declaration.ValueType;
+            ProgramStateValueKind valueKind = OrchestrationValuePortContracts.ToState(valueType.Kind);
             SimulationSourceLocation source = DeclarationSource(item, route);
             int value = m_ContentDefaults
                 ? m_Builder.DeclareStandaloneStateSlot(
@@ -222,7 +225,7 @@ namespace BTSMTL.Graphs.Editor
                     ProgramStateOwnerKind.Blackboard,
                     ProgramStateSemantic.BlackboardValue,
                     stateKey,
-                    BtsmtlGraphValueTypes.AuthoringValue(valueType, item.Declaration.DefaultValue))
+                    valueType.AuthoringValue(item.Declaration.DefaultValue))
                 : m_Builder.DeclareStandaloneStateSlot(
                     source,
                     valueKind,

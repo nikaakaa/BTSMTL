@@ -3,14 +3,6 @@ using UnityEngine;
 
 namespace BTSMTL.Authoring.Blackboard
 {
-    public enum PipelineBlackboardInputProjection
-    {
-        Direct,
-        ActionTargetIdentity,
-        ActionTargetPosition,
-        ActionTargetYaw
-    }
-
     [Serializable]
     public sealed class PipelineBlackboardInputBinding
     {

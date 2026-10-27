@@ -25,5 +25,6 @@
     <Compile Include="../../Packages/com.btsmtl/Authoring/Blackboard/PipelineBlackboardVariableScope.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Blackboard/PipelineBlackboardVariableLifetime.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Blackboard/PipelineBlackboardVariablePolicy.cs" />
+    <Compile Include="../../Packages/com.btsmtl/Authoring/Blackboard/PipelineBlackboardInputProjection.cs" />
   </ItemGroup>
 </Project>

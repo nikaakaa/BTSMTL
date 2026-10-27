@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using BTSMTL.Authoring.Graph;
 using BTSMTL.Compilation;
 using BTSMTL.Orchestration;
 using FlowCanvas;
@@ -96,17 +97,19 @@ namespace BTSMTL.Graphs.Editor
             readonly UnitySemanticBuilder m_Builder = new();
             readonly BtsmtlGraphCompilation m_Canvas;
             readonly BtsmtlBlackboardCompilation m_Blackboard;
-            readonly IBtsmtlGraphNodeCompileSource m_Nodes;
+            readonly BtsmtlFlowCompileGraphs m_Graphs;
 
             internal Compilation(BtsmtlGraphRoot root, GraphHostContract contract, string hash,
                 IBtsmtlGraphNodeCompileSource nodes)
             {
                 m_Root = root;
-                m_Nodes = nodes;
                 m_Hash = hash;
                 m_Route = "graph:" + root.AuthoringId;
                 m_Canvas = new BtsmtlGraphCompilation(m_Builder);
                 m_Blackboard = CreateBlackboard(contract);
+                m_Graphs = new BtsmtlFlowCompileGraphs(
+                    node => new BtsmtlFlowCompileNodeInfo(string.Empty, null, compiled => Describe(m_Graphs.Source(compiled), nodes)),
+                    graph => graph is BtsmtlMacroGraph macro ? macro.AuthoringId : ((BtsmtlGraphRoot)graph).AuthoringId);
             }
 
             internal OrchestrationGraphContent<TValue>
@@ -123,8 +126,8 @@ namespace BTSMTL.Graphs.Editor
             {
                 using var invocation = m_Builder.PushGraphInvocation(m_Route, string.Empty);
                 m_Blackboard.CompileDeclarations();
-                BtsmtlGraphOperationBindings operations = EmitGraph(m_Root, m_Root.AuthoringId, m_Route,
-                    m_Root.Variables, null, out _);
+                BtsmtlGraphOperationBindings operations = EmitGraph(m_Graphs.Read(m_Root), m_Root.AuthoringId, m_Route,
+                    m_Root.Variables, out _);
                 var entryContracts = new Dictionary<string, OrchestrationExecutionContract>(StringComparer.Ordinal);
                 foreach (BtsmtlGraphEntryDeclaration entry in m_Root.Entries)
                 {
@@ -145,8 +148,8 @@ namespace BTSMTL.Graphs.Editor
             }
 
             // 图根与每个子图出现共用：叶子、变量绑定、子图调用与连接按所属出现路径发射。
-            BtsmtlGraphOperationBindings EmitGraph(FlowGraph graph, string graphId, string route,
-                BtsmtlGraphVariableDeclarations variables, BtsmtlMacroGraph macro, out BtsmtlMacroCompilation compiled)
+            BtsmtlGraphOperationBindings EmitGraph(CompileGraph graph, string graphId, string route,
+                BtsmtlGraphVariableDeclarations variables, out BtsmtlMacroCompilation compiled)
             {
                 var operations = new BtsmtlGraphOperationBindings();
                 m_Blackboard.BeginGraph(variables.OwnerId, route,
@@ -154,33 +157,29 @@ namespace BTSMTL.Graphs.Editor
                     OperationHandle.Invalid);
                 try
                 {
-                    compiled = macro != null
-                        ? new BtsmtlMacroCompilation(m_Builder, null, graphId, route, m_Hash, macro, operations)
+                    compiled = graph.IsMacro
+                        ? new BtsmtlMacroCompilation(m_Builder, null, graphId, route, m_Hash, graph, operations)
                         : null;
-                    FlowNode[] nodes = BtsmtlGraphCompilation.ReadNodes(graph);
-                    foreach (FlowNode node in nodes)
+                    foreach (CompileNode node in graph.Nodes)
                     {
-                        if (node is MacroInputNode || node is MacroOutputNode)
+                        if (node.Role == CompileNodeRole.MacroInput || node.Role == CompileNodeRole.MacroOutput)
                             continue;
-                        if (node is MacroNodeWrapper call)
-                            EmitCall(call, graphId, route, operations);
+                        if (node.Role == CompileNodeRole.MacroCall)
+                            EmitCall(node, graphId, route, operations);
                         else
                             EmitLeaf(node, graphId, route, operations);
                     }
-                    foreach (FlowNode node in nodes)
-                    {
-                        FlowOutput[] ports = node.GetOutputFlowPorts().ToArray();
-                        for (int i = 0; i < node.outConnections.Count; i++)
+                    foreach (CompileNode node in graph.Nodes)
+                        for (int i = 0; i < node.OutEdges.Count; i++)
                         {
-                            var edge = (BinderConnection)node.outConnections[i];
-                            int portIndex = edge.sourcePort is FlowOutput flow ? Array.IndexOf(ports, flow) : 0;
-                            m_Canvas.EmitEdge(graphId, route + "/edge:" + edge.UID, m_Hash,
+                            CompileEdge edge = node.OutEdges[i];
+                            int portIndex = edge.IsValue ? 0 : IndexOf(node.FlowOutputs, edge.SourcePortId);
+                            m_Canvas.EmitEdge(graphId, route + "/edge:" + edge.Id, m_Hash,
                                 edge, operations, ProgramControlFlowKind.Child,
-                                portIndex * (node.outConnections.Count + 1) + i, portIndex,
+                                portIndex * (node.OutEdges.Count + 1) + i, portIndex,
                                 OrchestrationAbortPolicy.None, OperationHandle.Invalid);
                         }
-                    }
-                    m_Canvas.PublishPortSources(graphId, route, m_Hash, nodes, operations);
+                    m_Canvas.PublishPortSources(graphId, route, m_Hash, graph.Nodes, operations);
                     return operations;
                 }
                 finally
@@ -189,24 +188,30 @@ namespace BTSMTL.Graphs.Editor
                 }
             }
 
-            void EmitLeaf(FlowNode node, string graphId, string route, BtsmtlGraphOperationBindings operations)
+            static int IndexOf(IReadOnlyList<string> ports, string port)
             {
-                SimulationNodeEmission emission = Describe(node, m_Nodes);
-                OperationHandle operation = m_Canvas.EmitLeaf(node, graphId, route, m_Hash, emission,
-                    (value, _) => Describe(value, m_Nodes));
+                for (int i = 0; i < ports.Count; i++)
+                    if (ports[i] == port)
+                        return i;
+                return -1;
+            }
+
+            void EmitLeaf(CompileNode node, string graphId, string route, BtsmtlGraphOperationBindings operations)
+            {
+                SimulationNodeEmission emission = node.Describe();
+                OperationHandle operation = m_Canvas.EmitLeaf(node, graphId, route, m_Hash, emission);
                 operations.AddNode(node, operation);
-                BtsmtlNativeValueNodeCatalog.TryGetNode(node.GetType(), out BtsmtlNativeValueNodeDefinition native);
                 SimulationSourceLocation source = BtsmtlGraphCompilation.Source(graphId, route, m_Hash, node);
-                if (node is IBtsmtlVariableFlowNode variable)
+                if (node.Role == CompileNodeRole.Variable)
                 {
-                    m_Blackboard.Bind(operation, route, variable.OwnerId, variable.VariableId, null, source, variable.Writes);
-                    if (variable.Writes)
+                    m_Blackboard.Bind(operation, route, node.VariableOwnerId, node.VariableId, null, source, node.VariableWrites);
+                    if (node.VariableWrites)
                     {
                         OperationHandle read = m_Builder.DeclareOperation(source,
                             OrchestrationOperationCode.BlackboardGet, Array.Empty<int>(),
-                            text0: variable.VariableId, phase: "value");
-                        m_Blackboard.Bind(read, route, variable.OwnerId, variable.VariableId, null, source,
-                            binding: BtsmtlGraphVariableReference.CompileIdentity(variable.OwnerId, variable.VariableId) + "/value");
+                            text0: node.VariableId, phase: "value");
+                        m_Blackboard.Bind(read, route, node.VariableOwnerId, node.VariableId, null, source,
+                            binding: BtsmtlGraphVariableReference.CompileIdentity(node.VariableOwnerId, node.VariableId) + "/value");
                         operations.AddValueInput(node, "Value", operation, "m_Value");
                         operations.AddValueOutput(node, "Value", read, "m_Output");
                     }
@@ -214,25 +219,23 @@ namespace BTSMTL.Graphs.Editor
                         operations.AddValueOutput(node, "Value", operation, "m_Output");
                     return;
                 }
-                foreach (ValueInput input in node.GetInputValuePorts())
-                    operations.AddValueInput(node, input.ID, operation,
-                        BtsmtlGraphCompilation.Input(node, input.ID, native));
-                foreach (ValueOutput output in node.GetOutputValuePorts())
-                    operations.AddValueOutput(node, output.ID, operation,
-                        BtsmtlGraphCompilation.Output(node, output.ID, native, emission.Code));
+                foreach (CompileValuePort input in node.ValueInputs)
+                    operations.AddValueInput(node, input.Id, operation, input.CompiledId);
+                foreach (CompileValuePort output in node.ValueOutputs)
+                    operations.AddValueOutput(node, output.Id, operation, output.CompiledId);
             }
 
             // 每个调用位置是一次独立出现：子图体、参数槽与局部变量都按 调用方Route/call:<节点UID> 声明。
-            void EmitCall(MacroNodeWrapper call, string callerGraphId, string callerRoute,
+            void EmitCall(CompileNode call, string callerGraphId, string callerRoute,
                 BtsmtlGraphOperationBindings parent)
             {
-                var macro = (BtsmtlMacroGraph)call.macro;
-                string route = $"{callerRoute}/call:{call.UID}";
+                var macro = (BtsmtlMacroGraph)((MacroNodeWrapper)m_Graphs.Source(call)).macro;
+                string route = $"{callerRoute}/call:{call.Id}";
                 using (m_Builder.PushGraphInvocation(route, m_Builder.CurrentGraphInvocationPath))
                 {
-                    EmitGraph(macro, macro.AuthoringId, route, macro.Variables, macro, out BtsmtlMacroCompilation compiled);
+                    EmitGraph(call.Callee, macro.AuthoringId, route, macro.Variables, out BtsmtlMacroCompilation compiled);
                     m_Builder.DeclareGraphInvocation(compiled.Entry, compiled.Entry, GraphSource(macro, macro.AuthoringId, route),
-                        ProgramInvocationCallerKind.Node, call.UID, string.Empty, -1);
+                        ProgramInvocationCallerKind.Node, call.Id, string.Empty, -1);
                     compiled.EmitCall(call, callerGraphId, route, m_Hash, parent);
                 }
             }
@@ -252,7 +255,7 @@ namespace BTSMTL.Graphs.Editor
             static void CollectMacros(FlowGraph graph, string route,
                 Dictionary<string, BtsmtlBlackboardDeclarationSource> sources, Dictionary<string, BtsmtlMacroGraph> owners)
             {
-                foreach (MacroNodeWrapper call in BtsmtlGraphCompilation.ReadNodes(graph).OfType<MacroNodeWrapper>())
+                foreach (MacroNodeWrapper call in BtsmtlFlowCompileGraphs.ReadNodes(graph).OfType<MacroNodeWrapper>())
                 {
                     var macro = (BtsmtlMacroGraph)call.macro;
                     string callRoute = $"{route}/call:{call.UID}";
@@ -282,9 +285,11 @@ namespace BTSMTL.Graphs.Editor
                     BtsmtlBlackboardDeclaration declaration = declarations.RequireDeclaration(variable.ID);
                     sources.Add(BtsmtlGraphVariableReference.CompileIdentity(declarations.OwnerId, variable.ID),
                         new BtsmtlBlackboardDeclarationSource(declarations.OwnerId, variable.GetType().FullName, contentHash, variable,
-                            new BtsmtlBlackboardDeclarationSnapshot(variable.ID, variable.name, variable.varType,
+                            new BtsmtlBlackboardDeclarationSnapshot(variable.ID, variable.name,
+                                BtsmtlFlowCompileGraphs.ValueType(variable.varType),
                                 declaration.Scope, declaration.Lifetime, declaration.Category,
-                                ((ISerializedVariableValue)variable).serializedValue, declaration.InputBinding),
+                                ((ISerializedVariableValue)variable).serializedValue, declaration.InputBinding?.InputValueId,
+                                declaration.InputBinding?.Projection ?? default),
                             route));
                 }
             }
@@ -298,7 +303,8 @@ namespace BTSMTL.Graphs.Editor
         {
             if (BtsmtlNativeValueNodeCatalog.TryGetNode(node.GetType(), out BtsmtlNativeValueNodeDefinition native))
                 return new SimulationNodeEmission(native.Code, integer0: native.Variant);
-            if (BtsmtlGraphDomainNodes.TryDescribe(node, nodes, out SimulationNodeEmission domain))
+            if (BtsmtlGraphDomainNodes.TryDescribe(GraphOrchestrationNodeDeclaration.Of(node.GetType()),
+                    () => nodes.Describe(node), out SimulationNodeEmission domain))
                 return domain;
             if (node is IBtsmtlHostInputFlowNode input)
                 return new SimulationNodeEmission(OrchestrationOperationCode.HostInput,
