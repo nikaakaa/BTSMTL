@@ -66,8 +66,8 @@ public sealed class AuthoringDocumentService
         return Remember(AuthoringDocumentCandidate.Create(requestId, baseline, completeFiles, m_Domain));
     }
 
-    public AuthoringDocumentCandidate PreviewGraphs(string requestId, string rootPath, string baselineRevision,
-        IReadOnlyList<AuthoringGraphEditBatch> batches)
+    public AuthoringDocumentCandidate PreviewEdits(string requestId, string rootPath, string baselineRevision,
+        IReadOnlyList<AuthoringGraphEditBatch> graphBatches, IReadOnlyList<AuthoringTimelineEditBatch> timelineBatches)
     {
         AuthoringRootFiles baseline = Baseline(rootPath, baselineRevision);
         var documents = new AuthoringDocumentSet(baseline);
@@ -75,7 +75,7 @@ public sealed class AuthoringDocumentService
         var content = AuthoringDocumentCandidate.Texts(baseline).ToDictionary(file => file.Path, file => file.Text,
             StringComparer.OrdinalIgnoreCase);
         var graphs = new Dictionary<GraphAuthoringElementId, AuthoringGraphDocument>();
-        foreach (AuthoringGraphEditBatch batch in batches)
+        foreach (AuthoringGraphEditBatch batch in graphBatches)
         {
             AuthoringGraphDocument graph = graphs.TryGetValue(batch.DocumentId, out var current) ? current :
                 documents.Require<AuthoringGraphDocument>(batch.DocumentId);
@@ -85,6 +85,18 @@ public sealed class AuthoringDocumentService
         {
             string path = Path.GetRelativePath(directory, documents.Sources[graph.Key].Path).Replace('\\', '/');
             content[path] = AuthoringDocumentJson.WriteGraph(graph.Value);
+        }
+        var timelines = new Dictionary<GraphAuthoringElementId, AuthoringTimelineDocument>();
+        foreach (AuthoringTimelineEditBatch batch in timelineBatches)
+        {
+            AuthoringTimelineDocument timeline = timelines.TryGetValue(batch.DocumentId, out var current) ? current :
+                documents.Require<AuthoringTimelineDocument>(batch.DocumentId);
+            timelines[batch.DocumentId] = AuthoringTimelineMutation.Apply(timeline, batch.Edits);
+        }
+        foreach (var timeline in timelines)
+        {
+            string path = Path.GetRelativePath(directory, documents.Sources[timeline.Key].Path).Replace('\\', '/');
+            content[path] = AuthoringDocumentJson.WriteTimeline(timeline.Value);
         }
         return Remember(AuthoringDocumentCandidate.Create(requestId, baseline,
             content.Select(file => new AuthoringDocumentText(file.Key, file.Value)).ToArray(), m_Domain));
