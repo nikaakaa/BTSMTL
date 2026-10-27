@@ -1,6 +1,8 @@
+import { GraphEditSession, editField, renameElement, createNode, createConnection, showGraphDiff } from './graph-edits.js';
+
 const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
-const state = { roots: [], nextOffset: 0, selectedRoot: null, snapshot: null, selectedFile: null, selectedNode: null, selectedTimeline: null, tab: 'document', source: 'workspace', timeScale: null, query: '', capabilities: new Map(), definitionRevision: null, view: { x: 35, y: 45, scale: 1 } };
+const state = { roots: [], nextOffset: 0, selectedRoot: null, snapshot: null, selectedFile: null, selectedNode: null, selectedTimeline: null, tab: 'document', source: 'workspace', timeScale: null, query: '', capabilities: new Map(), definitionRevision: null, draft: null, view: { x: 35, y: 45, scale: 1 } };
 const kindNames = { Graph: '图', Timeline: '时间轴', InputPlan: '输入方案', Layout: '布局' };
 const api = () => `/api/${state.source}`;
 const typeName = value => value.split(',')[0].split('.').pop();
@@ -51,10 +53,13 @@ function renderRoots() {
 }
 
 async function openRoot(path) {
+  requireDraftSettled();
   const entry = state.roots.find(root => root.path === path);
   if (entry.problems.length) {
     state.selectedRoot = entry;
     state.snapshot = null;
+    state.draft = null;
+    $('draft-toolbar').hidden = true;
     state.selectedFile = null;
     state.selectedNode = null;
     $('document-title').textContent = entry.displayName;
@@ -84,6 +89,7 @@ async function openRoot(path) {
     catch (error) { return { ...file, document: null, problem: error.message }; }
   });
   state.snapshot = { ...snapshot, root, files };
+  state.draft = new GraphEditSession(state.snapshot, path, state.source, state.definitionRevision, request);
   state.selectedNode = null;
   state.selectedFile = files[0];
   $('document-title').textContent = root.displayName;
@@ -147,6 +153,7 @@ async function selectFile(path) {
 function renderDocument() {
   if (!state.snapshot) return;
   const file = state.selectedFile;
+  renderDraftToolbar();
   $('file-path').textContent = file.path;
   $('file-revision').textContent = file.revision.slice(0, 12);
   $('source-text').value = file.content;
@@ -285,6 +292,55 @@ function renderInspector(document) {
     const field = definition?.fields.find(field => field.id === id);
     return `<div class="field"><label title="${escapeHtml(id)}">${escapeHtml(field?.displayName || id)}${field && !field.writable ? ' · 原定义只读' : ''}</label>${renderValue(value)}${field?.constraint?.AllowedValues.length ? `<small>声明选项：${field.constraint.AllowedValues.map(escapeHtml).join('、')}</small>` : ''}</div>`;
   }).join('') || '<p class="muted">此对象没有显式作者字段。</p>'}`;
+  if (Array.isArray(document.nodes) && !state.selectedTimeline) {
+    const editable = definition?.fields.filter(field => field.visible && (!field.visibility ||
+      (target.fields[field.visibility.fieldId] || definition.fields.find(item => item.id === field.visibility.fieldId).defaultValue).value === field.visibility.equals)) || [];
+    const actions = `<div class="inspector-actions"><button data-rename-element>修改名称</button>${definition && !definition.systemOwned ? '<button class="danger" data-delete-node>删除节点及其连接</button>' : ''}</div>`;
+    $('inspector-content').insertAdjacentHTML('afterbegin', actions);
+    editable.forEach(field => {
+      const value = target.fields[field.id] || field.defaultValue;
+      const rendered = [...$('inspector-content').querySelectorAll('.field')].find(element => element.querySelector('label')?.title === field.id);
+      const button = `<button class="edit-field" data-edit-field="${escapeHtml(field.id)}">编辑候选${target.fields[field.id] ? '' : ' · 默认值'}</button>`;
+      if (rendered && field.writable) rendered.insertAdjacentHTML('beforeend', button);
+      else if (!rendered) $('inspector-content').insertAdjacentHTML('beforeend', `<div class="field"><label title="${escapeHtml(field.id)}">${escapeHtml(field.displayName)} · 原定义默认值</label>${renderValue(value)}${field.writable ? button : ''}</div>`);
+    });
+    if (state.selectedNode) {
+      const edges = document.edges.filter(edge => edge.sourceNode === target.id || edge.targetNode === target.id);
+      $('inspector-content').insertAdjacentHTML('beforeend', `<section class="connection-list"><h3>本节点连接</h3>${edges.map(edge => `<div><code>${escapeHtml(edge.sourcePort)} → ${escapeHtml(edge.targetPort)}</code><small>${escapeHtml(edge.id)}</small><button data-delete-edge="${escapeHtml(edge.id)}">删除连接候选</button></div>`).join('') || '<small>当前没有连接</small>'}</section>`);
+    }
+    if (state.selectedFile.draftChanged) $('inspector-content').querySelector('.read-state').textContent = '本会话候选 · 尚未保存或发布';
+  }
+}
+
+function requireDraftSettled() {
+  if (state.draft?.busy) throw new Error('请等待当前图修改预览返回。');
+  if (state.draft?.batches.length) throw new Error('当前有未保存的图候选。可继续查看本根文件；切换来源、内容根或重读前，请先查看差异并明确丢弃候选。');
+}
+
+function renderDraftToolbar() {
+  const graph = Array.isArray(state.selectedFile?.document?.nodes);
+  $('draft-toolbar').hidden = !graph;
+  $('draft-undo').disabled = !state.draft?.batches.length;
+  $('draft-redo').disabled = !state.draft?.redoBatches.length;
+  $('draft-diff').disabled = !state.draft?.receipt;
+  $('draft-discard').disabled = !state.draft?.receipt;
+  $('draft-state').textContent = state.draft?.batches.length ? `${state.draft.batches.length} 步候选修改 · 未保存` : '共同图操作 · 预览候选';
+}
+
+async function showDraft() {
+  const path = state.selectedFile.path, node = state.selectedNode;
+  state.snapshot.files = state.draft.files();
+  $('saved-state').textContent = state.draft.batches.length ? '本会话候选 · 未保存或发布' : '已读取的文件版本';
+  await selectFile(path);
+  if (state.selectedFile.document.nodes?.some(item => item.id === node)) state.selectedNode = node;
+  renderDocument();
+  report(state.draft.batches.length ? '共同操作已生成候选，图结构诊断来自服务。完整领域接收尚未完成，原文件保持原修订。' : '已回到本次读取的原文件内容。');
+}
+
+async function applyGraphEdits(edits) {
+  const file = state.selectedFile;
+  await state.draft.apply(file.document.id, edits);
+  await showDraft();
 }
 
 function renderValue(value) {
@@ -341,7 +397,29 @@ $('document-view').onclick = event => {
   state.selectedNode = node.dataset.node;
   renderDocument();
 };
-$('inspector-content').onclick = event => { const reference = event.target.closest('[data-document]'); if (reference) { state.tab = 'document'; showTab(); guarded(() => selectFile(reference.dataset.document)); } };
+$('inspector-content').onclick = event => {
+  const reference = event.target.closest('[data-document]');
+  if (reference) { state.tab = 'document'; showTab(); guarded(() => selectFile(reference.dataset.document)); return; }
+  const graph = state.selectedFile?.document;
+  const node = state.selectedNode ? graph.nodes.find(item => item.id === state.selectedNode) : null;
+  const fieldButton = event.target.closest('[data-edit-field]');
+  if (fieldButton) {
+    const field = state.capabilities.get(node.capability).fields.find(item => item.id === fieldButton.dataset.editField);
+    editField(field, node.fields[field.id] || field.defaultValue,
+      value => applyGraphEdits([{ kind: 'set-node-field', nodeId: node.id, fieldId: field.id, value }]));
+  } else if (event.target.closest('[data-rename-element]')) renameElement((node || graph).displayName,
+    displayName => applyGraphEdits([node ? { kind: 'rename-node', nodeId: node.id, displayName } : { kind: 'rename-graph', displayName }]));
+  else if (event.target.closest('[data-delete-node]')) guarded(() => applyGraphEdits([{ kind: 'delete-node', nodeId: node.id }]));
+  else if (event.target.closest('[data-delete-edge]')) guarded(() => applyGraphEdits([{ kind: 'delete-edge', edgeId: event.target.closest('[data-delete-edge]').dataset.deleteEdge }]));
+};
+$('draft-add-node').onclick = () => createNode(state.capabilities, state.selectedFile.document.role,
+  node => applyGraphEdits([{ kind: 'insert-node', index: state.selectedFile.document.nodes.length, node }]));
+$('draft-add-edge').onclick = () => createConnection(state.selectedFile.document, state.selectedFile.portShapes,
+  edge => applyGraphEdits([{ kind: 'insert-edge', index: state.selectedFile.document.edges.length, edge }]));
+$('draft-undo').onclick = () => guarded(async () => { await state.draft.undo(); await showDraft(); });
+$('draft-redo').onclick = () => guarded(async () => { await state.draft.redo(); await showDraft(); });
+$('draft-diff').onclick = () => showGraphDiff(state.draft);
+$('draft-discard').onclick = () => guarded(async () => { state.draft.discard(); await showDraft(); });
 $('search-roots').oninput = event => { state.query = event.target.value.trim().toLowerCase(); renderRoots(); };
 $('search-files').oninput = renderFiles;
 $('refresh-roots').onclick = () => guarded(() => loadRoots(true));
@@ -362,6 +440,8 @@ document.querySelectorAll('[data-tab]').forEach(button => button.onclick = () =>
   renderDocument();
 });
 async function selectSource(source) {
+  try { requireDraftSettled(); }
+  catch (error) { $('content-source').value = state.source; throw error; }
   state.source = source;
   $('content-source').value = source;
   const info = await request(api());
@@ -370,6 +450,8 @@ async function selectSource(source) {
   $('workspace-path').textContent = info.path;
   state.selectedRoot = null;
   state.snapshot = null;
+  state.draft = null;
+  $('draft-toolbar').hidden = true;
   state.selectedNode = null;
   state.selectedTimeline = null;
   $('search-files').value = '';
