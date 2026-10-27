@@ -1,5 +1,11 @@
 namespace ThirdPersonCharacter.Pipeline
 {
+    public enum BtsmtlScenePlayScheduledInputKind
+    {
+        Value,
+        Request
+    }
+
     public readonly struct BtsmtlScenePlayFrame
     {
         public BtsmtlScenePlayFrame(long frameNumber, ulong logicTick, double logicSeconds)
