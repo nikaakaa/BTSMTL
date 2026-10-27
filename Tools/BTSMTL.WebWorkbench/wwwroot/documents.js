@@ -9,12 +9,30 @@ const api = () => `/api/${state.source}`;
 const typeName = value => value.split(',')[0].split('.').pop();
 
 async function request(path, body) {
-  const response = await fetch(path, body === undefined ? undefined : {
+  let response;
+  try { response = await fetch(path, body === undefined ? undefined : {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
-  });
+  }); }
+  catch (error) {
+    $('service-state').textContent = '服务连接中断';
+    $('service-state').classList.add('error');
+    throw new Error(`无法连接作者服务，当前候选仍保留在本页：${error.message}`, { cause: error });
+  }
+  $('service-state').textContent = '服务已连接';
+  $('service-state').classList.remove('error');
   const text = await response.text();
-  if (!response.ok) throw new Error(`服务返回 ${response.status}：${text}`);
-  return JSON.parse(text);
+  const result = JSON.parse(text);
+  if (!response.ok) {
+    const conflict = result.stage === 'baseline-conflict' || result.stage === 'definitions-conflict';
+    const message = conflict ? '文件或作者定义已由其它入口修改。当前候选保留；请先查看候选差异，再明确丢弃并重新读取当前版本。'
+      : result.message || result.error || `作者服务返回 ${response.status}。`;
+    $('request-problem').hidden = false;
+    $('request-problem-title').textContent = conflict ? '当前基线已过期，未覆盖磁盘内容' : '本次操作未完成';
+    $('request-problem-message').textContent = message;
+    $('request-problem-details').textContent = JSON.stringify(result, null, 2);
+    throw new Error(message);
+  }
+  return result;
 }
 
 function report(message, error = false) {
@@ -111,7 +129,7 @@ function renderFiles() {
   const root = state.snapshot.root;
   const files = state.snapshot.files.map((file, index) => ({ ...file, declaration: index === 0 ? null : root.files[index - 1] }));
   const query = $('search-files').value.trim().toLowerCase();
-  $('files').innerHTML = files.filter(file => `${file.document?.displayName} ${file.document?.role} ${file.path}`.toLowerCase().includes(query)).map(file => `<button class="file-item ${state.selectedFile?.path === file.path ? 'selected' : ''}" data-file="${escapeHtml(file.path)}" title="${escapeHtml(file.path)}"><span>${file.problem ? '!' : file.declaration?.kind === 'Graph' ? '⌘' : file.declaration?.kind === 'Timeline' ? '◷' : '▤'}</span><span>${escapeHtml(file.document?.displayName || file.path)}<small>${escapeHtml(file.problem ? '文件格式错误' : file.document?.role || (file.declaration ? kindNames[file.declaration.kind] : '内容根'))}</small></span></button>`).join('');
+  $('files').innerHTML = files.filter(file => `${file.document?.displayName} ${file.document?.role} ${file.path}`.toLowerCase().includes(query)).map(file => `<button class="file-item ${state.selectedFile?.path === file.path ? 'selected' : ''}" data-file="${escapeHtml(file.path)}" title="${escapeHtml(file.path)}"><span>${file.problem ? '!' : file.declaration?.kind === 'Graph' ? '⌘' : file.declaration?.kind === 'Timeline' ? '◷' : '▤'}</span><span>${escapeHtml(file.document?.displayName || file.path)}<small>${escapeHtml(file.problem ? '文件格式错误' : file.document?.role || (file.declaration ? kindNames[file.declaration.kind] : '内容根'))}${file.draftChanged ? ' · 未保存' : ''}</small></span></button>`).join('');
 }
 
 async function selectFile(path, elementId = null) {
@@ -187,7 +205,7 @@ function renderDocument() {
   const file = state.selectedFile;
   renderDraftToolbar();
   $('file-path').textContent = file.path;
-  $('file-revision').textContent = file.revision.slice(0, 12);
+  $('file-revision').textContent = `${file.revision.slice(0, 12)}${file.draftChanged ? ' · 候选尚未保存' : ''}`;
   $('source-text').value = file.content;
   try {
     if (file.problem) throw new Error(file.problem);
@@ -521,6 +539,7 @@ $('draft-undo').onclick = () => guarded(async () => { await state.draft.undo(); 
 $('draft-redo').onclick = () => guarded(async () => { await state.draft.redo(); await showDraft(); });
 $('draft-diff').onclick = () => showGraphDiff(state.draft);
 $('draft-discard').onclick = () => guarded(async () => { state.draft.discard(); await showDraft(); });
+$('request-problem-close').onclick = () => { $('request-problem').hidden = true; };
 $('search-roots').oninput = event => { state.query = event.target.value.trim().toLowerCase(); renderRoots(); };
 $('search-files').oninput = renderFiles;
 $('refresh-roots').onclick = () => guarded(() => loadRoots(true));
