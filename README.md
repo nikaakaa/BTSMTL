@@ -38,9 +38,9 @@ Unity 通过各包原有 asmdef 编译同一份源码。3C 的 Assets 中不保�
 
 ## 通用图子图与分组
 
-`BtsmtlMacroGraph` 是通用事件图的子图资产，声明稳定身份、宿主准入、参数接口、输入／输出锚点及局部变量。`MacroNodeWrapper` 引用共享资产，或引用由所属图拥有的私有子图；`Graphs/Editor/BtsmtlMacroCompilation` 按调用位置展开参数与调用帧，宿主继续确认节点和输入可用。共享子图的角色历史值可由调用方显式传入、接回并保存。
+`BtsmtlMacroGraph` 是通用事件图与领域图（如技能图）共用的子图资产，声明稳定身份、宿主准入、参数接口、输入／输出锚点及局部变量。`MacroNodeWrapper` 引用共享资产，或引用由所属图拥有的私有子图；`Graphs/Editor/BtsmtlMacroCompilation` 按调用位置展开参数与调用帧，宿主继续确认节点和输入可用。共享子图的角色历史值可由调用方显式传入、接回并保存。
 
-作者通过 `ConfigureInterface` 及同一接口事务修改参数和调用端口。C# authoring 的独立子图根、正式导出与生成仍由 3C 持有；共享引用不进入调用方写集，私有子图随所属根重建和退役。`ConfigureCanvasGroups` 整体配置名称、范围、颜色及自动包围，分组随导出生成保存，只影响编辑画布。
+领域经 `BtsmtlMacroHost` 子类声明准入，并可覆盖节点 Inspector、值输入、节点菜单与创建时锚点。作者通过 `ConfigureInterface` 及同一接口事务修改参数和调用端口；接口未变时不改写，事务只标脏实际写入的图，调用方资产不被连带改写。C# authoring 的独立子图根、正式导出与生成仍由 3C 持有；共享引用不进入调用方写集，私有子图随所属根重建和退役。`ConfigureCanvasGroups` 整体配置名称、范围、颜色及自动包围，分组随导出生成保存，只影响编辑画布。
 
 ## Timeline 作者编辑与预览
 
