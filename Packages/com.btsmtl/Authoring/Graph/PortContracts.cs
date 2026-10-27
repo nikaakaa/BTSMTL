@@ -67,11 +67,14 @@ namespace BTSMTL.Authoring.Graph
             GraphAuthoringPortCapacity capacity,
             bool required,
             int order,
-            string interfacePortId = "")
+            string interfacePortId = "",
+            GraphAuthoringFieldId valueTypeFieldId = default)
         {
             PortId = portId.IsValid ? portId : throw new ArgumentException("Port identity is missing.", nameof(portId));
             DisplayName = displayName ?? string.Empty;
-            ValueTypeId = GraphAuthoringIdentity.Require(valueTypeId, nameof(valueTypeId));
+            ValueTypeId = valueTypeFieldId.IsValid ? string.Empty :
+                GraphAuthoringIdentity.Require(valueTypeId, nameof(valueTypeId));
+            ValueTypeFieldId = valueTypeFieldId;
             Direction = direction;
             Capacity = capacity;
             Required = required;
@@ -84,6 +87,7 @@ namespace BTSMTL.Authoring.Graph
         public GraphAuthoringPortId PortId { get; }
         public string DisplayName { get; }
         public string ValueTypeId { get; }
+        public GraphAuthoringFieldId ValueTypeFieldId { get; }
         public GraphAuthoringPortDirection Direction { get; }
         public GraphAuthoringPortCapacity Capacity { get; }
         public bool Required { get; }
@@ -194,7 +198,7 @@ namespace BTSMTL.Authoring.Graph
                     new GraphAuthoringDynamicPortProjection(
                         value.PortId,
                         value.DisplayName,
-                        value.ValueTypeId,
+                        ResolveValueType(value, properties),
                         value.Direction,
                         value.Capacity,
                         value.Required,
@@ -246,7 +250,7 @@ namespace BTSMTL.Authoring.Graph
                         new GraphAuthoringDynamicPortProjection(
                             port.PortId,
                             port.DisplayName,
-                            port.ValueTypeId,
+                            ResolveValueType(port, properties),
                             port.Direction,
                             port.Capacity,
                             port.Required,
@@ -271,6 +275,12 @@ namespace BTSMTL.Authoring.Graph
                 .ThenBy(value => value.PortId.Value, StringComparer.Ordinal)
                 .ToArray();
         }
+
+        static string ResolveValueType(GraphAuthoringPortDescriptor port,
+            IReadOnlyList<GraphAuthoringTypedPropertyValue> properties) =>
+            port.ValueTypeFieldId.IsValid
+                ? properties.Single(value => value.FieldId.Equals(port.ValueTypeFieldId)).CanonicalValue
+                : port.ValueTypeId;
 
         static GraphAuthoringPortVariantDescriptor ResolveVariant(
             GraphAuthoringPortShapeDefinition capability,
