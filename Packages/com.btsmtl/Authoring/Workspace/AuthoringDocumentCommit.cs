@@ -48,7 +48,7 @@ public sealed class AuthoringDocumentCommit
                     if (WaitHandle.WaitAny(new WaitHandle[] { mutex, cancellation.WaitHandle }) == 1)
                     { mutex.Dispose(); cancellation.ThrowIfCancellationRequested(); }
                 }
-                catch (AbandonedMutexException) { }
+                catch (AbandonedMutexException) { acquired.Add(mutex); continue; }
                 acquired.Add(mutex);
             }
             if (m_Results.TryGetValue(candidate.RequestId, out var recorded))

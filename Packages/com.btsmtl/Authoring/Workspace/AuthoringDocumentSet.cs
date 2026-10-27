@@ -80,8 +80,14 @@ public sealed class AuthoringDocumentSet
                 foreach (AuthoringTimelineBindingDocument binding in timeline.Bindings.Span) AddElement(elements, file.Id, binding.Id);
             }
         }
+        var ownedFiles = source.Root.UnityOutputs.ToArray().Where(output => output.DocumentId.Equals(Root.Id))
+            .Select(output => output.Guid).ToHashSet(StringComparer.Ordinal);
         foreach (AuthoringUnityOutput output in source.Root.UnityOutputs.Span)
-            m_Elements[output.DocumentId].Add(output.ElementId);
+        {
+            if (m_Elements.TryGetValue(output.DocumentId, out var elements)) elements.Add(output.ElementId);
+            else if (ownedFiles.Contains(output.Guid))
+                m_Elements.Add(output.DocumentId, new HashSet<GraphAuthoringElementId> { output.ElementId });
+        }
         foreach (var item in m_Documents.OrderBy(item => item.Key.Value, StringComparer.Ordinal))
         {
             if (item.Value is JObject) continue;
