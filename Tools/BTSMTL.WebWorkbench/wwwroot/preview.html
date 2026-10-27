@@ -31,7 +31,7 @@
       <header class="preview-header"><div><h1 id="run-title">选择运行</h1><code id="run-identity"></code></div><button id="cancel" hidden>请求取消运行</button></header>
       <div id="run-state" class="run-state" role="status">正在查询正式离线包和原录像…</div>
       <div id="playback-controls" class="frame-transport" hidden><button data-control="Play">播放会话</button><button data-control="Pause">暂停会话</button><button data-control="Step">单步一个确认帧</button><button data-control="Stop">停止并封存</button><label><input id="follow-live" type="checkbox" checked> 跟随最新确认帧</label><output id="playback-state"></output></div>
-      <div class="preview-stage"><div id="viewport"></div><div class="view-label">确认帧根位置 · 标记近似显示<br>参考网格不是碰撞地面</div></div>
+      <div class="preview-stage"><div id="viewport"></div><div class="view-label">确认帧逻辑几何 · 1 单位 = 1 米<br>橙色：扫掠采样两端 · 红色：实际命中点<br>角色完整画面请进入 Unity 预览</div></div>
       <div class="frame-transport"><button id="previous-frame" disabled aria-label="上一个封存帧">←</button><input id="frame" type="range" min="0" max="0" value="0" disabled aria-label="封存确认帧"><button id="next-frame" disabled aria-label="下一个封存帧">→</button><output id="frame-label">无确认帧</output><button id="fit-view" disabled>适应角色根</button></div>
       <div class="frame-facts"><dl id="frame-facts"></dl><div id="actors"></div><h2>动作变化</h2><div id="action-changes"><p class="muted">选择确认帧后显示实际动作记录。</p></div><h2>Timeline 播放</h2><div id="timeline-playbacks"><p class="muted">选择确认帧后显示实际逻辑播放。</p></div></div>
       <details class="raw-record"><summary>所选帧的同源 JSON</summary><pre id="frame-json"></pre></details>

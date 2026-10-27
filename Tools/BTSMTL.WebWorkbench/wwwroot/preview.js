@@ -1,5 +1,4 @@
-import * as THREE from 'three';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { LogicViewport, fixed as fp } from './logic-viewport.js';
 
 const $ = id => document.getElementById(id);
 const state = { sources: null, runs: [], selected: null, summary: null, frames: new Map(), count: 0, sealed: false, initialFrameIndex: 0, inputCatalog: null, inputScene: null };
@@ -238,7 +237,7 @@ async function displayObservation(summary, sealed) {
     'TickRate': summary.sessionIdentity.tickRate, 'SDK 帧范围': `${summary.initialSdkFrame} — ${summary.lastSdkFrame}`,
     '已记录确认帧': summary.frameCount, '记录状态': sealed ? '已封存' : '实际会话观察中' };
   $('run-details').innerHTML = Object.entries(facts).map(([name, value]) => `<dt>${escapeHtml(name)}</dt><dd>${escapeHtml(value)}</dd>`).join('');
-  $('channels').textContent = `本次实际观察：${summary.channels.join('、')}。视口只显示根标记；尚未提供动画、碰撞及命中画面。`;
+  $('channels').textContent = `本次实际观察：${summary.channels.join('、')}。${summary.channels.includes('collision-geometry') ? '视口显示 SDK 世界、角色接收体、扫掠采样两端及实际命中点。' : '该记录只提供角色根坐标轴；参考网格不代表碰撞地面。'}`;
   $('frame').max = Math.max(0, state.count - 1);
   if (first) $('frame').value = state.initialFrameIndex;
   if (!sealed && $('follow-live').checked) $('frame').value = Math.max(0, state.count - 1);
@@ -268,7 +267,14 @@ async function showFrame(index) {
     result.items.forEach((frame, offset) => state.frames.set(page + offset, frame));
   }
   if (index !== Number($('frame').value)) return;
-  const frame = state.frames.get(index);
+  let frame = state.frames.get(index);
+  let observation = null;
+  if (state.summary.channels.includes('collision-geometry')) {
+    if (!viewport.geometry) viewport.setGeometry(await request(`/api/preview/runs/${id}/geometry`));
+    const page = await request(`/api/preview/runs/${id}/observations?firstFrame=${frame.frame}&lastFrame=${frame.frame}&offset=0&limit=1`);
+    if (id !== state.selected || index !== Number($('frame').value)) return;
+    observation = page.items[0]; frame = observation.frame;
+  }
   $('previous-frame').disabled = index === 0; $('next-frame').disabled = index === state.count - 1;
   $('frame-label').textContent = `SDK ${frame.frame}`;
   $('frame-facts').innerHTML = `<dt>确认 SDK 帧</dt><dd>${escapeHtml(frame.frame)}</dd><dt>玩法 Tick</dt><dd>${escapeHtml(frame.gameplayTick)}</dd><dt>完整 checksum</dt><dd><code>${escapeHtml(frame.checksum)}</code></dd>`;
@@ -301,54 +307,22 @@ async function showFrame(index) {
         .map(([name, value]) => `<dt>${escapeHtml(name)}</dt><dd>${escapeHtml(value)}</dd>`).join('')}</dl></div>`;
     }).join('') : '<p class="muted">此确认帧没有活动的逻辑 Timeline。</p>';
   } else $('timeline-playbacks').innerHTML = '<p class="muted">此运行未采集 Timeline 播放通道。</p>';
-  $('frame-json').textContent = JSON.stringify(frame, null, 2);
-  drawActors(frame.actors);
-  renderer.render(scene, camera);
+  $('frame-json').textContent = JSON.stringify(observation || frame, null, 2);
+  viewport.draw(frame, observation?.queries || []);
   const rendered = document.documentElement.dataset;
   rendered.previewRun = state.summary.runId;
   rendered.previewFrame = String(frame.frame);
   rendered.previewFrameIndex = String(index);
   rendered.previewChecksum = frame.checksum;
   rendered.previewScene = state.summary.sceneRevision;
+  rendered.previewRendered = viewport.geometry ? 'sdk-world-receivers-sweeps-hits' : 'root-axes';
   rendered.previewImageReady = 'true';
   history.replaceState(null, '', `?run=${encodeURIComponent(id)}&frameIndex=${index}`);
 }
 
-const viewport = $('viewport');
-const scene = new THREE.Scene(); scene.background = new THREE.Color('#10171d');
-const camera = new THREE.PerspectiveCamera(42, 1, 0.01, 2000); camera.position.set(4, 3, 5);
-const renderer = new THREE.WebGLRenderer({ antialias: true }); renderer.setPixelRatio(window.devicePixelRatio);
-viewport.appendChild(renderer.domElement);
-const controls = new OrbitControls(camera, renderer.domElement); controls.target.set(0, 0.6, 0);
-scene.add(new THREE.GridHelper(40, 40, '#39505b', '#24323a'));
-scene.add(new THREE.HemisphereLight('#deefff', '#26353e', 2));
-const actorRoots = new Map();
-function clearActors() {
-  actorRoots.forEach(root => { scene.remove(root); root.traverse(item => { item.geometry?.dispose(); item.material?.dispose(); }); });
-  actorRoots.clear();
-}
-function fp(value) { const raw = BigInt(value); return Number(raw / 65536n) + Number(raw % 65536n) / 65536; }
-function drawActors(actors) {
-  clearActors();
-  actors.forEach(actor => {
-    const root = new THREE.Group();
-    const marker = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.5, 12), new THREE.MeshStandardMaterial({ color: new THREE.Color().setHSL((actor.rosterIndex * 0.23) % 1, 0.5, 0.65) }));
-    marker.rotation.x = Math.PI / 2; marker.position.y = 0.3; root.add(marker);
-    root.add(new THREE.AxesHelper(0.7));
-    const [x, y, z] = actor.positionRaw.map(fp), [qx, qy, qz, qw] = actor.rotationRaw.map(fp);
-    root.position.set(x, y, -z); root.quaternion.set(-qx, -qy, qz, qw);
-    scene.add(root); actorRoots.set(actor.rosterIndex, root);
-  });
-}
-function fitView() {
-  if (!actorRoots.size) return;
-  const bounds = new THREE.Box3(); actorRoots.forEach(root => bounds.expandByObject(root));
-  const center = bounds.getCenter(new THREE.Vector3());
-  const size = Math.max(2, bounds.getSize(new THREE.Vector3()).length());
-  controls.target.copy(center); camera.position.copy(center).add(new THREE.Vector3(size, size * 0.7, size)); controls.update();
-}
-new ResizeObserver(() => { renderer.setSize(viewport.clientWidth, viewport.clientHeight); camera.aspect = viewport.clientWidth / viewport.clientHeight; camera.updateProjectionMatrix(); }).observe(viewport);
-renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
+const viewport = new LogicViewport($('viewport'));
+function clearActors() { viewport.reset(); }
+function fitView() { viewport.fit(); }
 
 $('scene').onchange = () => {
   state.inputCatalog = null; state.inputScene = null; $('input-events').replaceChildren();
