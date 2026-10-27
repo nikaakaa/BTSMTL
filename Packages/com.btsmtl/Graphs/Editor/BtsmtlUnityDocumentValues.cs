@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using BTSMTL.Authoring.Documents;
 using BTSMTL.Authoring.Graph;
 using UnityEngine;
@@ -11,6 +13,11 @@ namespace BTSMTL.Graphs.Editor
     {
         readonly Func<UnityEngine.Object, AuthoringContentReference> m_Identify;
         readonly Func<Type, AuthoringContentReference, UnityEngine.Object> m_Resolve;
+        static readonly IReadOnlyDictionary<Type, PropertyInfo[]> s_Properties = new Dictionary<Type, PropertyInfo[]>
+        {
+            [typeof(AnimationCurve)] = Properties(typeof(AnimationCurve)),
+            [typeof(Keyframe)] = Properties(typeof(Keyframe))
+        };
 
         public BtsmtlUnityDocumentValues(Func<UnityEngine.Object, AuthoringContentReference> identify,
             Func<Type, AuthoringContentReference, UnityEngine.Object> resolve)
@@ -23,51 +30,41 @@ namespace BTSMTL.Graphs.Editor
         {
             if (value is UnityEngine.Object asset)
                 return new AuthoringReferenceValue(TypeIdentity(type), m_Identify(asset));
-            if (value is AnimationCurve curve)
-            {
-                AuthoringValue[] keys = curve.keys.Select(key => (AuthoringValue)new AuthoringObjectValue(
-                    TypeIdentity(typeof(Keyframe)), new[]
-                    {
-                        Member("time", typeof(float), key.time), Member("value", typeof(float), key.value),
-                        Member("inTangent", typeof(float), key.inTangent), Member("outTangent", typeof(float), key.outTangent),
-                        Member("inWeight", typeof(float), key.inWeight), Member("outWeight", typeof(float), key.outWeight),
-                        Member("weightedMode", typeof(WeightedMode), key.weightedMode)
-                    })).ToArray();
-                return new AuthoringObjectValue(TypeIdentity(type), new[]
-                {
-                    new AuthoringNamedValue(new GraphAuthoringFieldId("keys"),
-                        new AuthoringSequenceValue(TypeIdentity(typeof(Keyframe[])), keys)),
-                    Member("preWrapMode", typeof(WrapMode), curve.preWrapMode),
-                    Member("postWrapMode", typeof(WrapMode), curve.postWrapMode)
-                });
-            }
+            if (value != null && s_Properties.TryGetValue(type, out PropertyInfo[] properties))
+                return new AuthoringObjectValue(TypeIdentity(type), properties.Select(property =>
+                    Member(property.Name, property.PropertyType, property.GetValue(value))).ToArray());
             return base.Capture(type, value);
+        }
+
+        public override AuthoringValueDefinition Describe(Type type)
+        {
+            if (typeof(UnityEngine.Object).IsAssignableFrom(type))
+                return new AuthoringValueDefinition(TypeIdentity(type), AuthoringValueDefinitionKind.Reference,
+                    TypeCode.Empty, true, Array.Empty<string>(), false, Array.Empty<AuthoringValueMemberDefinition>(), null);
+            if (s_Properties.TryGetValue(type, out PropertyInfo[] properties))
+                return new AuthoringValueDefinition(TypeIdentity(type), AuthoringValueDefinitionKind.Object,
+                    TypeCode.Empty, !type.IsValueType, Array.Empty<string>(), false, properties.Select(property =>
+                        new AuthoringValueMemberDefinition(property.Name, Describe(property.PropertyType))).ToArray(), null);
+            return base.Describe(type);
         }
 
         protected override object RestoreContent(Type type, AuthoringValue value)
         {
             if (value is AuthoringReferenceValue reference)
                 return m_Resolve(type, reference.Target);
-            if (type == typeof(AnimationCurve) && value is AuthoringObjectValue composite)
+            if (s_Properties.TryGetValue(type, out PropertyInfo[] properties) && value is AuthoringObjectValue composite)
             {
                 var fields = composite.Members.ToArray().ToDictionary(member => member.FieldId.Value, member => member.Value);
-                var keys = (AuthoringSequenceValue)fields["keys"];
-                Keyframe[] keyframes = keys.Items.ToArray().Cast<AuthoringObjectValue>().Select(key =>
-                {
-                    var parts = key.Members.ToArray().ToDictionary(member => member.FieldId.Value, member => member.Value);
-                    return new Keyframe(
-                        (float)Restore(typeof(float), parts["time"]), (float)Restore(typeof(float), parts["value"]),
-                        (float)Restore(typeof(float), parts["inTangent"]), (float)Restore(typeof(float), parts["outTangent"]),
-                        (float)Restore(typeof(float), parts["inWeight"]), (float)Restore(typeof(float), parts["outWeight"]))
-                    { weightedMode = (WeightedMode)Restore(typeof(WeightedMode), parts["weightedMode"]) };
-                }).ToArray();
-                return new AnimationCurve(keyframes)
-                {
-                    preWrapMode = (WrapMode)Restore(typeof(WrapMode), fields["preWrapMode"]),
-                    postWrapMode = (WrapMode)Restore(typeof(WrapMode), fields["postWrapMode"])
-                };
+                object instance = Activator.CreateInstance(type);
+                foreach (PropertyInfo property in properties)
+                    property.SetValue(instance, Restore(property.PropertyType, fields[property.Name]));
+                return instance;
             }
             return base.RestoreContent(type, value);
         }
+
+        static PropertyInfo[] Properties(Type type) => type.GetProperties(BindingFlags.Instance | BindingFlags.Public)
+            .Where(property => property.GetMethod?.IsPublic == true && property.SetMethod?.IsPublic == true &&
+                !property.IsDefined(typeof(ObsoleteAttribute), true)).OrderBy(property => property.MetadataToken).ToArray();
     }
 }
