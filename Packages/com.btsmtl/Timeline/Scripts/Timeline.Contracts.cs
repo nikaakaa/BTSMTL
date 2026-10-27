@@ -365,22 +365,36 @@ namespace BTSMTL.Timeline
         public TimelineContentContractValidator ContentValidator { get; }
     }
 
-    internal sealed class TimelineContractCatalogData
+    public sealed class TimelineContractCatalog : TimelineDefinitionCatalog<TimelineClipContract>
     {
-        readonly ReadOnlyCollection<TimelineTrackContract> m_Tracks;
-        readonly ReadOnlyCollection<TimelineClipContract> m_Clips;
-        readonly Dictionary<string, TimelineTrackContract> m_TracksByKind;
-        readonly Dictionary<string, TimelineClipContract> m_ClipsByKind;
         readonly List<TimelineContentContractValidator> m_ContentValidators;
 
-        public TimelineContractCatalogData(IEnumerable<ITimelineContractProvider> providers)
+        public TimelineContractCatalog(IEnumerable<ITimelineContractProvider> providers) : this(Compose(providers))
+        {
+        }
+
+        TimelineContractCatalog((List<TimelineTrackContract> Tracks, List<TimelineClipContract> Clips,
+            List<ITimelineContentParameterCodec> Codecs, List<TimelineContentContractValidator> Validators) composition)
+            : base(composition.Tracks, composition.Clips)
+        {
+            ParameterCodecs = new TimelineContentParameterCodecs(composition.Codecs);
+            m_ContentValidators = composition.Validators;
+            foreach (TimelineClipContract clip in Clips)
+                ParameterCodecs.Require(clip.Kind);
+        }
+
+        public TimelineContentParameterCodecs ParameterCodecs { get; }
+
+        static (List<TimelineTrackContract> Tracks, List<TimelineClipContract> Clips,
+            List<ITimelineContentParameterCodec> Codecs, List<TimelineContentContractValidator> Validators) Compose(
+            IEnumerable<ITimelineContractProvider> providers)
         {
             if (providers == null)
                 throw new ArgumentNullException(nameof(providers));
             var tracks = new List<TimelineTrackContract>();
             var clips = new List<TimelineClipContract>();
             var parameterCodecs = new List<ITimelineContentParameterCodec>();
-            m_ContentValidators = new List<TimelineContentContractValidator>();
+            var contentValidators = new List<TimelineContentContractValidator>();
             foreach (ITimelineContractProvider provider in providers)
             {
                 if (provider == null)
@@ -389,93 +403,9 @@ namespace BTSMTL.Timeline
                 clips.AddRange(provider.Clips ?? throw new InvalidOperationException("Timeline contract provider has no Clip contracts."));
                 parameterCodecs.AddRange(provider.ParameterCodecs);
                 if (provider.ContentValidator != null)
-                    m_ContentValidators.Add(provider.ContentValidator);
+                    contentValidators.Add(provider.ContentValidator);
             }
-            m_TracksByKind = BuildTrackIndex(tracks);
-            m_ClipsByKind = BuildClipIndex(clips);
-            ParameterCodecs = new TimelineContentParameterCodecs(parameterCodecs);
-            for (int i = 0; i < clips.Count; i++)
-            {
-                if (!m_TracksByKind.ContainsKey(clips[i].TrackKind))
-                    throw new InvalidOperationException($"Timeline Clip contract '{clips[i].Kind}' references missing Track contract '{clips[i].TrackKind}'.");
-                ParameterCodecs.Require(clips[i].Kind);
-            }
-            m_Tracks = new ReadOnlyCollection<TimelineTrackContract>(tracks);
-            m_Clips = new ReadOnlyCollection<TimelineClipContract>(clips);
-        }
-
-        public IReadOnlyList<TimelineTrackContract> Tracks => m_Tracks;
-        public IReadOnlyList<TimelineClipContract> Clips => m_Clips;
-        public TimelineContentParameterCodecs ParameterCodecs { get; }
-
-        public bool TryGetTrack(string kind, out TimelineTrackContract contract) =>
-            m_TracksByKind.TryGetValue(kind ?? string.Empty, out contract);
-
-        public bool TryGetClip(string kind, out TimelineClipContract contract) =>
-            m_ClipsByKind.TryGetValue(kind ?? string.Empty, out contract);
-
-        public void ValidateContent(TimelineData timeline, List<string> errors)
-        {
-            for (int i = 0; i < m_ContentValidators.Count; i++)
-                m_ContentValidators[i](timeline, errors);
-        }
-
-        static Dictionary<string, TimelineTrackContract> BuildTrackIndex(IReadOnlyList<TimelineTrackContract> contracts)
-        {
-            var result = new Dictionary<string, TimelineTrackContract>(StringComparer.Ordinal);
-            for (int i = 0; i < contracts.Count; i++)
-            {
-                string kind = contracts[i].Kind;
-                if (!result.TryAdd(kind, contracts[i]))
-                    throw new InvalidOperationException($"Timeline Track contract '{kind}' is registered more than once.");
-            }
-            return result;
-        }
-
-        static Dictionary<string, TimelineClipContract> BuildClipIndex(IReadOnlyList<TimelineClipContract> contracts)
-        {
-            var result = new Dictionary<string, TimelineClipContract>(StringComparer.Ordinal);
-            for (int i = 0; i < contracts.Count; i++)
-            {
-                string kind = contracts[i].Kind;
-                if (!result.TryAdd(kind, contracts[i]))
-                    throw new InvalidOperationException($"Timeline Clip contract '{kind}' is registered more than once.");
-            }
-            return result;
-        }
-    }
-
-    public sealed class TimelineContractCatalog
-    {
-        readonly TimelineContractCatalogData m_Data;
-
-        public TimelineContractCatalog(IEnumerable<ITimelineContractProvider> providers)
-        {
-            m_Data = new TimelineContractCatalogData(providers);
-        }
-
-        public IReadOnlyList<TimelineTrackContract> Tracks => m_Data.Tracks;
-        public IReadOnlyList<TimelineClipContract> Clips => m_Data.Clips;
-        public TimelineContentParameterCodecs ParameterCodecs => m_Data.ParameterCodecs;
-
-        public bool TryGetTrack(string kind, out TimelineTrackContract contract) =>
-            m_Data.TryGetTrack(kind, out contract);
-
-        public bool TryGetClip(string kind, out TimelineClipContract contract) =>
-            m_Data.TryGetClip(kind, out contract);
-
-        public TimelineTrackContract RequireTrack(string kind)
-        {
-            return TryGetTrack(kind, out TimelineTrackContract contract)
-                ? contract
-                : throw new InvalidOperationException($"Unknown Timeline Track contract kind '{kind}'.");
-        }
-
-        public TimelineClipContract RequireClip(string kind)
-        {
-            return TryGetClip(kind, out TimelineClipContract contract)
-                ? contract
-                : throw new InvalidOperationException($"Unknown Timeline Clip contract kind '{kind}'.");
+            return (tracks, clips, parameterCodecs, contentValidators);
         }
 
         public void RequireClipPlacement(Track track, Clip clip)
@@ -484,19 +414,7 @@ namespace BTSMTL.Timeline
                 throw new ArgumentNullException(nameof(track));
             if (clip == null)
                 throw new ArgumentNullException(nameof(clip));
-            TimelineTrackContract trackContract = RequireTrack(track.ContractKind);
-            TimelineClipContract clipContract = RequireClip(clip.ContractKind);
-            if (!trackContract.AllowsClip(clipContract.Kind) ||
-                !string.Equals(trackContract.Kind, clipContract.TrackKind, StringComparison.Ordinal))
-            {
-                throw new InvalidOperationException(
-                    $"Timeline Clip '{clip.ContractKind}' cannot be added to Track '{track.ContractKind}'.");
-            }
-            TimelineExecutionDomain domain = track.ExecutionDomain;
-            if (!track.HasExplicitExecutionDomain || !trackContract.SupportsExecutionDomain(domain) ||
-                !clipContract.SupportsExecutionDomain(domain))
-                throw new InvalidOperationException(
-                    $"Timeline Clip '{clip.AuthoringId}' cannot use execution domain '{domain}' on Track '{track.AuthoringId}'.");
+            RequireClipPlacement(track.ContractKind, clip.ContractKind, track.ExecutionDomain, track.AuthoringId, clip.AuthoringId);
         }
 
         public void Validate(TimelineData timeline, List<string> errors)
@@ -573,7 +491,8 @@ namespace BTSMTL.Timeline
             }
 
             ValidateBindings(timeline, errors);
-            m_Data.ValidateContent(timeline, errors);
+            for (int i = 0; i < m_ContentValidators.Count; i++)
+                m_ContentValidators[i](timeline, errors);
         }
 
         static void ValidateRejectedOverlap(Track track, int clipIndex, Clip clip, List<string> errors)

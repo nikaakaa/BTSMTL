@@ -45,7 +45,7 @@ namespace BTSMTL.Authoring.Documents
             }))
         });
 
-        public static (TimelineTrackContract[] Tracks, TimelineClipDefinition[] Clips) ReadTimelineContracts(
+        public static TimelineDefinitionCatalog<TimelineClipDefinition> ReadTimelineContracts(
             string text, string sourcePath)
         {
             JObject document = ReadObject(text);
@@ -74,7 +74,7 @@ namespace BTSMTL.Authoring.Documents
                         Enumeration<ThirdPersonSimulation.TimelineBindingValueKind>(binding, "valueKind", sourcePath),
                         Enumeration<ThirdPersonSimulation.TimelineBindingAccess>(binding, "access", sourcePath),
                         Enumeration<ThirdPersonSimulation.TimelineBindingLifetime>(binding, "lifetime", sourcePath))).ToArray())).ToArray();
-            return ReceiveMembers(document, (tracks, clips), sourcePath);
+            return ReceiveMembers(document, new TimelineDefinitionCatalog<TimelineClipDefinition>(tracks, clips), sourcePath);
         }
 
         static JObject WriteLogicSample(TimelineLogicSampleExtension extension) => new JObject
