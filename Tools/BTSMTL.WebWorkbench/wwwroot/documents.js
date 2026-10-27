@@ -23,7 +23,9 @@ async function request(path, body) {
   $('service-state').textContent = '服务已连接';
   $('service-state').classList.remove('error');
   const text = await response.text();
-  if (response.status === 404 && !text) throw new Error(`服务尚未装配此操作入口：${path}`);
+  if (response.status === 404 && !text) throw new Error(path.startsWith('/api/authoring/documents/requests/')
+    ? '原保存请求尚无已记录的结果，原候选仍保留。可继续查询，或按原候选重试保存。'
+    : `服务尚未装配此操作入口：${path}`);
   const result = JSON.parse(text);
   if (!response.ok) {
     const conflict = result.stage === 'baseline-conflict' || result.stage === 'definitions-conflict';
