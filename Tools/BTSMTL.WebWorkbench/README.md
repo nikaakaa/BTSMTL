@@ -38,11 +38,11 @@ HTML、CSS、JavaScript 修改后刷新页面即可看到结果；修改 C# 接�
 
 原 `GraphAuthoringGeneratedContract`、成员绑定和字段描述已纳入普通 .NET 作者库。字段类型来自原成员，资源绑定回调使用所属平台的实际资源类型；Unity Inspector 在平台边界转换原对象。生成器和网页服务本轮构建均为 0 警告、0 错误；这一步尚未迁出完整技能节点及领域接收，不代表网页已可修改技能。
 
-原能力目录、端口投影及编排声明直接进入普通 .NET 作者工程。RGBA 颜色由共同值持有，仅 Unity 适配器转换为原生颜色。3C 宿主从原正式目录导出描述，通过 `/api/authoring/definitions`、有界 `/capabilities`、精确 `/capabilities/{id}` 和 `POST /ports` 提供同一来源；网页只显示共同投影器返回的固定、字段派生及作者动态端口。变量端口直接引用正式 `valueType` 字段；目标读取与捕获保留原固定端口。实际导出的 249 张图、1379 个节点投影 2272 个端口，原 68 处变量／目标问题已消除，15 个 FSM 节点仍待新目录导出。
+原能力目录、端口投影及编排声明直接进入普通 .NET 作者工程。RGBA 颜色由共同值持有，仅 Unity 适配器转换为原生颜色。3C 宿主从原正式 C# 导出模块读取描述，通过 `/api/authoring/definitions`、有界 `/capabilities`、精确 `/capabilities/{id}` 和 `POST /ports` 提供同一来源；网页只显示共同投影器返回的固定、字段派生及作者动态端口。变量端口直接引用正式 `valueType` 字段，目标读取与捕获保留原固定端口。实际重新导出的 117 种能力覆盖 249 张图、1379 个节点，2299 个端口投影的问题数为 0。
 
 共同作者值格式 2 的类型身份不包含 CLR 核心库名或程序集版本，保留基础类型、递归泛型／数组形状和业务程序集名。3C Editor 已实际采用 Single `G9`／Double `G17`，重新导出的 249 个图与 12 个 Timeline 在普通 .NET 文本回读全部一致；33 个变量声明及四类基础默认值的恢复证据保留。正式作者工作区为空，完整技能的创建、修改、领域接收和保存入口仍未接通。
 
-共同 `AuthoringStateMachineContract` 接收普通状态与转移快照，也接收正式图文档及引用解析器。3C Native 适配与 `POST /api/authoring/state-machines/validate` 消费同一规则；原状态字段、系统锚点及连接容量生成对应能力声明。共同库与 Host 已编译通过，但目标 Editor 尚有 Pose 编译错误，新 FSM 描述与真实文档接收尚待采用和导出；FSM 接收不表示完整技能已保存或发布。
+共同 `AuthoringStateMachineContract` 接收普通状态与转移快照，也接收正式图文档及引用解析器。3C Native 适配与 `POST /api/authoring/state-machines/validate` 消费同一规则；原状态字段、系统锚点及连接容量生成对应能力声明。共同库与 Host 编译通过，目标 Editor 已采用并完成正式导出，Corin FSM 的 15 个状态、42 条转移和实际图引用已接收通过。页面显示同一回执，失败仍保留原图；FSM 接收不表示完整技能已保存或发布。JavaScript 语法检查通过，本轮无头浏览器截图被自动审批拒绝，视觉检查尚未完成。
 
 `WorkbenchApplication.Create` 供项目宿主装配共同 HTTP 与页面。3C 项目宿主接入原 SDK 重放作业与封存记录后，`/preview.html` 提供正式来源选择、提交／重查／取消、实际会话播放／暂停／单步／停止、确认帧分页、根标记与同条件比较；通用服务自身不装配项目模拟。控制命令使用固定 commandId，经同一宿主送到实际会话；页面只读取对应确认帧，历史帧查看不推进 SDK。暂停页面已通过实际无头浏览器截图检查，实际控制及完整重放 checksum 比较证据归项目 `Tools/CharacterWorkbench/README.md`。页面仍未接入动画、碰撞及命中画面，用户端到端验收尚未完成。
 
