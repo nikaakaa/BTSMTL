@@ -27,7 +27,7 @@ namespace BTSMTL.Compilation
                     constants: describe().Payload, output: output);
                 return true;
             }
-            if (declaration.Extension is GraphOrchestrationExtensionNodes.Contract extension)
+            if (declaration.Extension is GraphOrchestrationExtensionContract extension)
             {
                 GraphNodeCompileDescription description = describe();
                 emission = new SimulationNodeEmission(OrchestrationOperationCode.Extension,
