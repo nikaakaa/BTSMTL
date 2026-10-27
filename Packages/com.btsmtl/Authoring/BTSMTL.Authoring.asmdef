@@ -2,7 +2,8 @@
     "name": "BTSMTL.Authoring",
     "rootNamespace": "BTSMTL.Authoring",
     "references": [
-        "BTSMTL.Orchestration.Contracts"
+        "BTSMTL.Orchestration.Contracts",
+        "BTSMTL.Timeline.Runtime"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
