@@ -174,6 +174,7 @@ async function selectRun(id, frameIndex = 0) {
   $('playback-controls').hidden = true;
   clearActors(); $('run-details').replaceChildren(); $('frame-facts').replaceChildren();
   $('actors').replaceChildren(); $('action-changes').replaceChildren(); $('frame-json').textContent = '';
+  $('timeline-playbacks').replaceChildren();
   $('frame').disabled = true; $('previous-frame').disabled = true; $('next-frame').disabled = true;
   $('fit-view').disabled = true; $('compare').disabled = true; $('frame-label').textContent = '无确认帧';
   $('comparison-result').textContent = '';
@@ -286,6 +287,20 @@ async function showFrame(index) {
         .map(([name, value]) => `<dt>${escapeHtml(name)}</dt><dd>${escapeHtml(value)}</dd>`).join('')}</dl></div>`;
     }).join('') : '<p class="muted">此确认帧没有动作变化。完整请求与失败字段保留在同源 JSON 中。</p>';
   } else $('action-changes').innerHTML = '<p class="muted">此运行未采集动作变化通道。</p>';
+  if (state.summary.channels.includes('timeline-playbacks')) {
+    $('timeline-playbacks').innerHTML = frame.timelinePlaybacks.length ? frame.timelinePlaybacks.map(playback => {
+      const facts = { '角色 / 播放槽': `${playback.rosterIndex} / ${playback.playbackSlot}`,
+        '实际内容': playback.contentIdentity, '内容修订': playback.contentRevision,
+        '播放 / 父播放': `${playback.playbackIdentity} / ${playback.callerPlaybackIdentity}`,
+        '所属动作 / 输入': `${playback.ownerInstanceId} / ${playback.inputSequence}`,
+        '调用来源': playback.sourceIdentity, '来源代数': playback.sourceGeneration,
+        '逻辑游标': `${fp(playback.cursorTimeRaw).toFixed(4)} 秒 · raw ${playback.cursorTimeRaw}`,
+        '倍率 / 循环': `${fp(playback.rateRaw).toFixed(4)} / ${playback.cycle}`,
+        '状态': `${playback.status}${playback.paused ? ' · 暂停' : ''}` };
+      return `<div class="actor-fact"><strong>逻辑 Timeline · ${escapeHtml(playback.playbackIdentity)}</strong><dl>${Object.entries(facts)
+        .map(([name, value]) => `<dt>${escapeHtml(name)}</dt><dd>${escapeHtml(value)}</dd>`).join('')}</dl></div>`;
+    }).join('') : '<p class="muted">此确认帧没有活动的逻辑 Timeline。</p>';
+  } else $('timeline-playbacks').innerHTML = '<p class="muted">此运行未采集 Timeline 播放通道。</p>';
   $('frame-json').textContent = JSON.stringify(frame, null, 2);
   drawActors(frame.actors);
   renderer.render(scene, camera);
