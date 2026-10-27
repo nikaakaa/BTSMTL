@@ -53,11 +53,14 @@ namespace BTSMTL.Authoring.Documents
         public static AuthoringTimelineDocument ReadTimeline(string text, string sourcePath)
         {
             JObject timeline = ReadDocument(text, sourcePath);
+            JToken loop = Required(timeline, "loop", sourcePath);
+            if (loop.Type != JTokenType.Boolean)
+                throw new AuthoringDocumentFormatException(sourcePath, loop.Path, "循环状态必须使用 JSON Boolean。");
             return new AuthoringTimelineDocument(Id(timeline, "id", sourcePath),
                 new GraphAuthoringDocumentRoleId(Text(timeline, "role", sourcePath)),
                 ReadReference(Required(timeline, "owner", sourcePath), sourcePath),
                 Text(timeline, "displayName", sourcePath), Text(timeline, "definitionVersion", sourcePath),
-                Required(timeline, "loop", sourcePath).Value<bool>(),
+                loop.Value<bool>(),
                 ReadFields(Required(timeline, "fields", sourcePath), sourcePath),
                 Array(timeline, "tracks", sourcePath).Select(track => new AuthoringTimelineTrackDocument(
                     Id(track, "id", sourcePath), Text(track, "contract", sourcePath), Text(track, "displayName", sourcePath),
