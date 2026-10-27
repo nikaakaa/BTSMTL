@@ -139,7 +139,7 @@ async function displayObservation(summary, sealed) {
   const first = state.summary === null;
   state.summary = summary; state.count = summary.frameCount;
   state.sealed = sealed;
-  if (sealed && state.initialFrameIndex >= state.count) throw new Error('请求的帧序号超出本次已封存范围。');
+  if (sealed && state.initialFrameIndex > 0 && state.initialFrameIndex >= state.count) throw new Error('请求的帧序号超出本次已封存范围。');
   const facts = { '运行身份': summary.runId, '场景修订': summary.sceneRevision,
     '原录像修订': summary.replaySourceHash, '来源场景': summary.scene.path,
     '场景定义': summary.definition.path, '内容身份': summary.sessionIdentity.gameplayContent,
