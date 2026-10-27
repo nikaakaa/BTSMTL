@@ -1,9 +1,10 @@
-import { GraphEditSession, editField, editVariable, renameElement, createNode, createConnection, reorderConnections, referenceChoices, showGraphDiff } from './graph-edits.js';
+import { editField, editVariable, renameElement, createNode, createConnection, reorderConnections, referenceChoices, showDocumentDiff } from './graph-edits.js';
+import { DocumentEditSession } from './document-session.js';
 import { showReferences } from './references.js';
 
 const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
-const state = { roots: [], nextOffset: 0, selectedRoot: null, snapshot: null, references: [], selectedFile: null, selectedNode: null, selectedEdge: null, selectedTimeline: null, linkStart: null, tab: 'document', source: 'workspace', timeScale: null, query: '', capabilities: new Map(), definitionRevision: null, draft: null, view: { x: 35, y: 45, scale: 1 } };
+const state = { roots: [], nextOffset: 0, selectedRoot: null, snapshot: null, references: [], selectedFile: null, selectedNode: null, selectedEdge: null, selectedTimeline: null, linkStart: null, tab: 'document', source: 'workspace', timeScale: null, query: '', capabilities: new Map(), definitionRevision: null, draft: null, authoringState: null, authoringProblem: '', view: { x: 35, y: 45, scale: 1 } };
 const kindNames = { Graph: '图', Timeline: '时间轴', InputPlan: '输入方案', Layout: '布局' };
 const api = () => `/api/${state.source}`;
 const typeName = value => value.split(',')[0].split('.').pop();
@@ -21,6 +22,7 @@ async function request(path, body) {
   $('service-state').textContent = '服务已连接';
   $('service-state').classList.remove('error');
   const text = await response.text();
+  if (response.status === 404 && !text) throw new Error(`服务尚未装配此操作入口：${path}`);
   const result = JSON.parse(text);
   if (!response.ok) {
     const conflict = result.stage === 'baseline-conflict' || result.stage === 'definitions-conflict';
@@ -110,19 +112,29 @@ async function openRoot(path) {
   });
   state.snapshot = { ...snapshot, root, files };
   state.references = referenceChoices(state.snapshot);
-  state.draft = new GraphEditSession(state.snapshot, path, state.source, state.definitionRevision, request);
+  state.draft = null;
+  state.authoringState = null;
+  state.authoringProblem = state.source === 'migrations' ? '迁移候选用于核对原资产；正式接收后从作者工作区编辑。' : '';
+  if (state.source === 'workspace') {
+    try {
+      state.authoringState = await request(`/api/authoring/documents/state?path=${encodeURIComponent(path)}`);
+      if (state.authoringState.adoptable)
+        state.draft = new DocumentEditSession(state.snapshot, path, state.definitionRevision, request);
+      else state.authoringProblem = state.authoringState.problems.map(problem => problem.message).join('；');
+    } catch (error) { state.authoringProblem = error.message; }
+  }
   state.selectedNode = null;
   state.selectedFile = files[0];
   $('document-title').textContent = root.displayName;
   $('root-kind').textContent = `${root.domain} · ${root.kind}`;
   $('revision').textContent = snapshot.revision.slice(0, 12);
   $('revision').title = snapshot.revision;
-  $('saved-state').textContent = state.source === 'migrations' ? '迁移候选 · 尚未切换正式来源' : '已读取的文件版本';
+  $('saved-state').textContent = state.draft ? '正式领域已接收 · 磁盘版本' : '只读核对 · 尚未进入正式编辑';
   $('document-actions').hidden = false;
   renderRoots();
   renderFiles();
   await selectFile(state.selectedFile.path);
-  report(state.source === 'migrations' ? '正在查看从原资产读取的候选。当前修改仍由原 Unity 作者资产持有。' : '文件已读取。当前尚未完成领域接收，未编译、发布或运行。');
+  report(state.draft ? '完整根已由共同领域接收，可编辑并预览同一候选；保存、发布和运行采用分别处理。' : state.authoringProblem);
 }
 
 function renderFiles() {
@@ -154,7 +166,7 @@ async function selectFile(path, elementId = null) {
     file.portShapes = new Map(projected.nodes.map(node => [node.nodeId, node]));
   }
   if (state.selectedFile !== file) return;
-  if (file.document?.role === 'StateMachine' && !file.stateMachineReceipt && !file.stateMachineProblem) {
+  if (!state.draft && file.document?.role === 'StateMachine' && !file.stateMachineReceipt && !file.stateMachineProblem) {
     try {
       file.stateMachineReceipt = await request('/api/authoring/state-machines/validate', {
         content: file.content, definitionsRevision: state.definitionRevision,
@@ -164,7 +176,7 @@ async function selectFile(path, elementId = null) {
     } catch (error) { file.stateMachineProblem = error.message; }
   }
   if (state.selectedFile !== file) return;
-  if (!file.problem && Array.isArray(file.document.nodes) && file.document.role !== 'StateMachine' &&
+  if (!state.draft && !file.problem && Array.isArray(file.document.nodes) && file.document.role !== 'StateMachine' &&
       !file.topologyReceipt && !file.topologyProblem) {
     try {
       file.topologyReceipt = await request('/api/authoring/graphs/validate', {
@@ -229,7 +241,7 @@ function renderRoot(document) {
   const introduction = state.source === 'migrations'
     ? '该候选从现有 Unity 资产读取，用于核对迁移结果。原资产仍是当前正式作者来源。'
     : '编辑来源保存在项目作者目录。各阶段分别记录实际完成的修订。';
-  $('document-view').innerHTML = `<div class="overview"><div class="eyebrow">${state.source === 'migrations' ? 'MIGRATION CANDIDATE' : 'AUTHORING DOCUMENT'}</div><h1>${escapeHtml(document.displayName || root.displayName)}</h1><p class="intro">${introduction}</p><div class="phase-grid"><div><span class="phase-state saved">已读取</span><strong>磁盘内容</strong><small>${state.snapshot.files.length} 个文件</small></div><div><span class="phase-state pending">未完成</span><strong>领域接收</strong><small>尚未接入完整作者定义</small></div><div><span class="phase-state pending">未执行</span><strong>编译与发布</strong><small>没有本修订的正式产物</small></div><div><span class="phase-state pending">未准备</span><strong>运行预览</strong><small>独立会话尚未采用</small></div></div><h2>引用与归属</h2><dl><dt>稳定身份</dt><dd><code>${escapeHtml(document.id)}</code></dd><dt>定义版本</dt><dd>${escapeHtml(document.definitionVersion)}</dd><dt>外部引用</dt><dd>${root.externalReferences.length} 项</dd><dt>Unity 对象映射</dt><dd>${root.unityOutputs.length} 项</dd></dl><div class="notice">打开本根图文件可预览字段、节点和连线修改，撤销重做并查看差异。完整领域接收和正式保存尚未接通，原文件仍是当前修订。</div></div>`;
+  $('document-view').innerHTML = `<div class="overview"><div class="eyebrow">${state.source === 'migrations' ? 'MIGRATION CANDIDATE' : 'AUTHORING DOCUMENT'}</div><h1>${escapeHtml(document.displayName || root.displayName)}</h1><p class="intro">${introduction}</p><div class="phase-grid"><div><span class="phase-state saved">已读取</span><strong>磁盘内容</strong><small>${state.snapshot.files.length} 个文件 · ${state.draft?.changed ? '存在未保存候选' : '当前磁盘修订'}</small></div><div><span class="phase-state ${state.draft ? 'saved' : 'pending'}">${state.draft ? '已接收' : '未接收'}</span><strong>领域接收</strong><small>${escapeHtml(state.authoringProblem || '完整根经同一正式领域规则接收')}</small></div><div><span class="phase-state pending">未查询</span><strong>编译与发布</strong><small>保存不代表发布</small></div><div><span class="phase-state pending">未查询</span><strong>运行预览</strong><small>以具体运行采用回执为准</small></div></div><h2>引用与归属</h2><dl><dt>稳定身份</dt><dd><code>${escapeHtml(document.id)}</code></dd><dt>定义版本</dt><dd>${escapeHtml(document.definitionVersion)}</dd><dt>外部引用</dt><dd>${root.externalReferences.length} 项</dd><dt>Unity 对象映射</dt><dd>${root.unityOutputs.length} 项</dd></dl><div class="notice">${escapeHtml(state.authoringProblem || '图与时间轴编辑生成同一完整候选。查看差异后保存；保存后的撤销通过共同服务提交反向修改，并保留其它入口的后续改动。')}</div></div>`;
 }
 
 function renderGraph(graph) {
@@ -270,6 +282,9 @@ function renderGraph(graph) {
     return `<button class="graph-node ${shape.problem ? 'missing-definition' : ''} ${state.selectedNode === node.id ? 'selected' : ''}" data-node="${escapeHtml(node.id)}" title="${escapeHtml(shape.problem ? shape.problem.message : node.id)}" style="left:${escapeHtml(position.x)}px;top:${escapeHtml(position.y)}px"><span class="node-type">${escapeHtml(node.capability)}</span><strong>${escapeHtml(node.displayName || definition?.displayName || node.capability)}</strong><small>${fieldCount} 个作者字段${shape.problem ? ' · ' + escapeHtml(shape.problem.code) : ''}</small><div class="node-ports">${portRows}</div></button>`;
   }).join('');
   $('document-view').innerHTML = `<div class="graph-surface" id="graph-surface"><div class="graph-caption">${escapeHtml(graph.role)}<span>${graph.nodes.length} 个节点 · ${graph.edges.length} 条连接</span></div><div class="graph-world" id="graph-world"><svg width="6000" height="4000">${links}</svg>${nodes}</div><div class="canvas-tools">${state.linkStart ? '<button data-cancel-connection>取消连线</button>' : ''}<button id="fit-graph">适应全图</button><span id="zoom-value">100%</span></div><div class="canvas-hint">${state.linkStart ? '选择目标输入完成连接 · Esc 取消' : '空白处拖动画布 · 滚轮缩放 · 点击输出端口开始连接'}</div></div>`;
+  if (!state.draft) $('document-view').querySelectorAll('[data-port]').forEach(port => {
+    port.removeAttribute('data-port'); port.removeAttribute('role'); port.removeAttribute('tabindex');
+  });
   updateView();
   const surface = $('graph-surface');
   const topology = state.selectedFile.topologyReceipt;
@@ -345,7 +360,7 @@ function renderInspector(document) {
     const field = definition?.fields.find(field => field.id === id);
     return `<div class="field"><label title="${escapeHtml(id)}">${escapeHtml(field?.displayName || id)}${field && !field.writable ? ' · 原定义只读' : ''}</label>${renderValue(value)}${field?.constraint?.AllowedValues.length ? `<small>声明选项：${field.constraint.AllowedValues.map(escapeHtml).join('、')}</small>` : ''}</div>`;
   }).join('') || '<p class="muted">此对象没有显式作者字段。</p>'}`;
-  if (Array.isArray(document.nodes) && !state.selectedTimeline) {
+  if (state.draft && Array.isArray(document.nodes) && !state.selectedTimeline) {
     if (state.selectedEdge) {
       const source = document.nodes.find(node => node.id === target.sourceNode);
       const destination = document.nodes.find(node => node.id === target.targetNode);
@@ -378,30 +393,47 @@ function renderInspector(document) {
 }
 
 function requireDraftSettled() {
-  if (state.draft?.busy) throw new Error('请等待当前图修改预览返回。');
-  if (state.draft?.batches.length) throw new Error('当前有未保存的图候选。可继续查看本根文件；切换来源、内容根或重读前，请先查看差异并明确丢弃候选。');
+  if (state.draft?.busy) throw new Error('请等待当前作者操作返回。');
+  if (state.draft?.unsettled) throw new Error('当前有未保存候选或结果未确认的保存。切换根或重读前，请先保存、查询原请求结果或明确丢弃候选。');
 }
 
 function renderDraftToolbar() {
   const graph = Array.isArray(state.selectedFile?.document?.nodes);
-  $('draft-toolbar').hidden = !graph && !state.draft?.receipt;
-  $('draft-add-node').disabled = !graph || state.tab !== 'document';
-  $('draft-add-edge').disabled = !graph || state.tab !== 'document';
-  $('draft-undo').disabled = !state.draft?.batches.length;
-  $('draft-redo').disabled = !state.draft?.redoBatches.length;
+  const ready = state.draft && !state.draft.busy && !state.draft.pendingCommit;
+  $('draft-toolbar').hidden = !state.snapshot;
+  $('draft-add-node').disabled = !ready || !graph || state.tab !== 'document';
+  $('draft-add-edge').disabled = !ready || !graph || state.tab !== 'document';
+  $('draft-undo').disabled = !ready || !state.draft.canUndo;
+  $('draft-redo').disabled = !ready || !state.draft.canRedo;
   $('draft-diff').disabled = !state.draft?.receipt;
-  $('draft-discard').disabled = !state.draft?.receipt;
-  $('draft-state').textContent = state.draft?.batches.length ? `${state.draft.batches.length} 步候选修改 · 未保存` : '共同图操作 · 预览候选';
+  $('draft-discard').disabled = !ready || !state.draft.receipt;
+  $('draft-save').disabled = !ready || !state.draft.changed;
+  $('draft-query').hidden = !state.draft?.pendingCommit;
+  $('draft-retry').hidden = !state.draft?.pendingCommit;
+  $('draft-state').textContent = state.draft?.pendingCommit ? `保存结果待查询 · ${state.draft.pendingCommit.requestId}`
+    : state.draft?.changed ? `${state.draft.steps.length} 步修改 · 已接收未保存` : state.draft ? '正式作者版本 · 保存与发布分别处理' : state.authoringProblem;
 }
 
 async function showDraft() {
   const path = state.selectedFile.path, element = state.selectedNode || state.selectedEdge || state.selectedTimeline;
   state.snapshot.files = state.draft.files();
+  state.snapshot.root = state.snapshot.files[0].document;
+  state.snapshot.revision = state.draft.context.rootRevision;
   state.references = referenceChoices(state.snapshot);
-  $('saved-state').textContent = state.draft.batches.length ? '本会话候选 · 未保存或发布' : '已读取的文件版本';
-  await selectFile(path, element);
+  $('saved-state').textContent = state.draft.changed ? '领域已接收 · 尚未保存' : '当前磁盘作者版本';
+  $('revision').textContent = state.snapshot.revision.slice(0, 12);
+  $('revision').title = state.snapshot.revision;
+  const selected = state.snapshot.files.find(file => file.path === path) || state.snapshot.files[0];
+  await selectFile(selected.path, element);
   renderDocument();
-  report(state.draft.batches.length ? '共同操作已生成候选，图结构诊断来自服务。完整领域接收尚未完成，原文件保持原修订。' : '已回到本次读取的原文件内容。');
+  if (state.draft.result && state.draft.result.status !== 'Saved') {
+    $('request-problem').hidden = false;
+    $('request-problem-title').textContent = state.draft.result.status === 'Conflict' ? '保存冲突，未覆盖当前文件' : '文件保存失败';
+    $('request-problem-message').textContent = '候选仍保留。请核对实际文件和对象修订后处理。';
+    $('request-problem-details').textContent = JSON.stringify(state.draft.result, null, 2);
+  }
+  report(state.draft.result?.status === 'Saved' ? '作者文件已保存并重新读取。编译、发布和运行采用另看对应回执。'
+    : state.draft.changed ? '完整候选已由共同领域接收，可查看差异后保存。' : '已回到本次读取的磁盘版本。');
 }
 
 async function applyGraphEdits(edits) {
@@ -465,6 +497,8 @@ function renderVariables() {
   }));
   const variables = graphs.flatMap(graph => graph.document.variables.map(variable => ({ ...variable, graph })));
   $('document-view').innerHTML = `<div class="variables-page"><div class="eyebrow">BLACKBOARD DECLARATIONS</div><h1>变量与归属</h1><p>${variables.length} 条实际声明。默认值与声明分别显示，所属图保持原 owner。修改生成本会话候选，尚未保存或运行。</p><div class="variable-list">${variables.map(variable => `<article><header><strong>${escapeHtml(variable.key)}</strong><span title="${escapeHtml(variable.type)}">${escapeHtml(typeName(variable.type))}</span><button data-document="${escapeHtml(variable.graph.path)}">所属图 ↗</button></header><code>${escapeHtml(variable.id)}</code><div class="inspector-actions"><button data-edit-variable="${escapeHtml(variable.id)}" data-variable-document="${escapeHtml(variable.graph.path)}">编辑声明</button><button data-copy-variable="${escapeHtml(variable.id)}" data-variable-document="${escapeHtml(variable.graph.path)}">复制为新变量</button><button class="danger" data-delete-variable="${escapeHtml(variable.id)}" data-variable-document="${escapeHtml(variable.graph.path)}">删除声明</button></div><div class="variable-columns"><div><h3>默认值</h3>${renderValue(variable.defaultValue)}</div><div><h3>作用域、生命周期与输入声明</h3>${Object.entries(variable.declaration).map(([field, value]) => `<div class="nested-value"><label>${escapeHtml(field)}</label>${renderValue(value)}</div>`).join('')}</div></div></article>`).join('') || '<p class="muted">本内容根没有黑板声明。</p>'}</div></div>`;
+  if (!state.draft) $('document-view').querySelectorAll('[data-edit-variable], [data-copy-variable], [data-delete-variable]')
+    .forEach(button => { button.disabled = true; button.title = state.authoringProblem; });
 }
 
 async function guarded(action) {
@@ -570,10 +604,23 @@ $('draft-add-node').onclick = () => createNode(state.capabilities, state.selecte
   node => applyGraphEdits([{ kind: 'insert-node', index: state.selectedFile.document.nodes.length, node }]));
 $('draft-add-edge').onclick = () => createConnection(state.selectedFile.document, state.selectedFile.portShapes,
   edge => applyGraphEdits([{ kind: 'insert-edge', index: state.selectedFile.document.edges.length, edge }]));
-$('draft-undo').onclick = () => guarded(async () => { await state.draft.undo(); await showDraft(); });
-$('draft-redo').onclick = () => guarded(async () => { await state.draft.redo(); await showDraft(); });
-$('draft-diff').onclick = () => showGraphDiff(state.draft);
+$('draft-undo').onclick = () => editAction(() => state.draft.undo());
+$('draft-redo').onclick = () => editAction(() => state.draft.redo());
+$('draft-diff').onclick = () => showDocumentDiff(state.draft);
 $('draft-discard').onclick = () => guarded(async () => { state.draft.discard(); await showDraft(); });
+$('draft-save').onclick = () => editAction(() => state.draft.commit());
+$('draft-query').onclick = () => editAction(() => state.draft.queryCommit());
+$('draft-retry').onclick = () => editAction(() => state.draft.retryCommit());
+async function editAction(action) {
+  await guarded(async () => {
+    const pending = action();
+    renderDraftToolbar();
+    try { await pending; await showDraft(); } finally { renderDraftToolbar(); }
+  });
+}
+window.addEventListener('beforeunload', event => {
+  if (state.draft?.unsettled || state.draft?.busy) { event.preventDefault(); event.returnValue = ''; }
+});
 $('request-problem-close').onclick = () => { $('request-problem').hidden = true; };
 $('search-roots').oninput = event => { state.query = event.target.value.trim().toLowerCase(); renderRoots(); };
 $('search-files').oninput = renderFiles;

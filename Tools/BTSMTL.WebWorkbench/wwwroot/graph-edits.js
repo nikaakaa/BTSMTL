@@ -1,57 +1,3 @@
-export class GraphEditSession {
-  constructor(snapshot, rootPath, source, definitionsRevision, send) {
-    this.baseline = snapshot.files.map(file => ({ ...file }));
-    this.context = { rootPath, source: source === 'migrations' ? 'Migrations' : 'Workspace',
-      rootRevision: snapshot.revision, definitionsRevision };
-    this.send = send;
-    this.batches = [];
-    this.redoBatches = [];
-    this.receipt = null;
-    this.busy = false;
-  }
-
-  async apply(documentId, edits) {
-    await this.preview([...this.batches, { documentId, edits }], []);
-  }
-
-  async undo() {
-    await this.preview(this.batches.slice(0, -1), [...this.redoBatches, this.batches.at(-1)]);
-  }
-
-  async redo() {
-    await this.preview([...this.batches, this.redoBatches.at(-1)], this.redoBatches.slice(0, -1));
-  }
-
-  async preview(batches, redoBatches) {
-    if (this.busy) throw new Error('上一项图修改预览尚未返回。');
-    this.busy = true;
-    try {
-      const receipt = await this.send('/api/authoring/graphs/edits/preview', {
-        ...this.context, requestId: crypto.randomUUID(), batches
-      });
-      this.batches = batches;
-      this.redoBatches = redoBatches;
-      this.receipt = receipt;
-    } finally { this.busy = false; }
-  }
-
-  files() {
-    const candidates = new Map(this.receipt?.files.map(file => [file.path, file]) || []);
-    return this.baseline.map(file => {
-      const candidate = candidates.get(file.path);
-      return candidate ? { ...file, content: candidate.content, document: JSON.parse(candidate.content),
-        portShapes: undefined, stateMachineReceipt: undefined, stateMachineProblem: undefined,
-        topologyReceipt: undefined, topologyProblem: undefined, draftChanged: candidate.changed } : { ...file };
-    });
-  }
-
-  discard() {
-    this.batches = [];
-    this.redoBatches = [];
-    this.receipt = null;
-  }
-}
-
 const html = value => String(value).replace(/[&<>"']/g,
   char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 
@@ -266,8 +212,10 @@ export function reorderConnections(graph, edge, apply) {
   fill();
 }
 
-export function showGraphDiff(session) {
-  const files = session.receipt?.files.filter(file => file.changed) || [];
-  dialog('批量修改差异', `<p class="dialog-intro">${files.length} 个图文件发生变化。基线 ${html(session.context.rootRevision)}。以下候选尚未通过完整领域接收，未保存或发布。</p>${files.map(file =>
-    `<section class="file-diff"><h3>${html(file.path)}</h3><small>${file.changedElements.length} 个相关对象 · ${file.topology.valid ? '图结构通过' : html(file.topology.message)}</small><div class="diff-columns"><label>磁盘原文<textarea readonly spellcheck="false">${html(file.beforeContent)}</textarea></label><label>候选原文<textarea readonly spellcheck="false">${html(file.content)}</textarea></label></div></section>`).join('') || '<p>当前候选与原始文件相同。</p>'}`, null);
+export function showDocumentDiff(session) {
+  const before = new Map(session.baseline.map(file => [file.path, file.content]));
+  const after = new Map(session.files().map(file => [file.path, file.content]));
+  const paths = [...new Set([...before.keys(), ...after.keys()])].filter(path => before.get(path) !== after.get(path));
+  dialog('批量修改差异', `<p class="dialog-intro">${paths.length} 个文件发生变化。基线 ${html(session.context.rootRevision)}。候选已通过共同领域接收，尚未保存或发布。</p>${paths.map(path =>
+    `<section class="file-diff"><h3>${html(path)}</h3><div class="diff-columns"><label>磁盘原文<textarea readonly spellcheck="false">${html(before.get(path) || '')}</textarea></label><label>候选原文<textarea readonly spellcheck="false">${html(after.get(path) || '')}</textarea></label></div></section>`).join('') || '<p>当前候选与原始文件相同。</p>'}`, null);
 }
