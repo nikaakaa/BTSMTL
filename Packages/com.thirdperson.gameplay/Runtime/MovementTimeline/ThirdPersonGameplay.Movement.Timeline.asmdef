@@ -4,7 +4,7 @@
     "references": [
         "BTSMTL.Authoring",
         "BTSMTL",
-        "BTSMTL.Diagnostics",
+        "BTSMTL.Foundation",
         "BTSMTL.Orchestration.Contracts",
         "BTSMTL.Timeline",
         "BTSMTL.Timeline.Runtime",
