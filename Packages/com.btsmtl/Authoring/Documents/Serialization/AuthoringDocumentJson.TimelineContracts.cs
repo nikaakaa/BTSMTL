@@ -57,9 +57,9 @@ namespace BTSMTL.Authoring.Documents
                     Enumeration<TimelineContentKind>(track, "contentKind", sourcePath),
                     Enumeration<TimelineExecutionDomain>(track, "executionDomain", sourcePath),
                     Enumeration<TimelineOutputKind>(track, "outputKind", sourcePath),
-                    Enum.Parse<TimelineExecutionDomainMask>(Text(track, "allowedExecutionDomains", sourcePath)),
+                    ExecutionDomains(track, "allowedExecutionDomains", sourcePath),
                     extension.Type == JTokenType.Null ? null : ReadLogicSample(extension, sourcePath),
-                    Array(track, "allowedClipKinds", sourcePath).Select(value => value.Value<string>()).ToArray());
+                    Array(track, "allowedClipKinds", sourcePath).Select(value => Text(value, sourcePath)).ToArray());
             }).ToArray();
             TimelineClipDefinition[] clips = Array(document, "clips", sourcePath).Select(clip =>
                 new TimelineClipDefinition(Text(clip, "kind", sourcePath), Text(clip, "trackKind", sourcePath),
@@ -68,7 +68,7 @@ namespace BTSMTL.Authoring.Documents
                     Boolean(clip, "supportsStop", sourcePath), Boolean(clip, "requiresPositiveDuration", sourcePath),
                     Enumeration<TimelineExecutionDomain>(clip, "executionDomain", sourcePath),
                     Enumeration<TimelineOutputKind>(clip, "outputKind", sourcePath),
-                    Enum.Parse<TimelineExecutionDomainMask>(Text(clip, "allowedExecutionDomains", sourcePath)),
+                    ExecutionDomains(clip, "allowedExecutionDomains", sourcePath),
                     Array(clip, "bindings", sourcePath).Select(binding => new TimelineBindingRequirement(
                         Text(binding, "bindingId", sourcePath),
                         Enumeration<ThirdPersonSimulation.TimelineBindingValueKind>(binding, "valueKind", sourcePath),
@@ -86,7 +86,25 @@ namespace BTSMTL.Authoring.Documents
 
         static TimelineLogicSampleExtension ReadLogicSample(JToken extension, string sourcePath) => new(
             new OrchestrationExtensionIdentity(Text(extension, "domainId", sourcePath), Text(extension, "operationId", sourcePath)),
-            uint.Parse(Text(extension, "semanticVersion", sourcePath), CultureInfo.InvariantCulture));
+            UInt32Text(extension, "semanticVersion", sourcePath));
+
+        static TimelineExecutionDomainMask ExecutionDomains(JToken token, string name, string sourcePath)
+        {
+            string value = Text(token, name, sourcePath);
+            TimelineExecutionDomainMask declared = System.Enum.GetValues(typeof(TimelineExecutionDomainMask))
+                .Cast<TimelineExecutionDomainMask>().Aggregate(TimelineExecutionDomainMask.None, (mask, domain) => mask | domain);
+            if (!System.Enum.TryParse(value, false, out TimelineExecutionDomainMask result) || (result & ~declared) != 0)
+                throw new AuthoringDocumentFormatException(sourcePath, token[name].Path, $"未知 TimelineExecutionDomainMask 值 '{value}'。");
+            return result;
+        }
+
+        static uint UInt32Text(JToken token, string name, string sourcePath)
+        {
+            string value = Text(token, name, sourcePath);
+            if (!uint.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out uint result))
+                throw new AuthoringDocumentFormatException(sourcePath, token[name].Path, "必须使用 UInt32 范围内的无损文本整数。");
+            return result;
+        }
 
         static bool Boolean(JToken token, string name, string sourcePath)
         {

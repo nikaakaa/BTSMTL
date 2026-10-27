@@ -286,9 +286,10 @@ namespace BTSMTL.Authoring.Documents
             return result;
         }
 
-        static string Text(JToken token, string name, string sourcePath)
+        static string Text(JToken token, string name, string sourcePath) => Text(Required(token, name, sourcePath), sourcePath);
+
+        static string Text(JToken value, string sourcePath)
         {
-            JToken value = Required(token, name, sourcePath);
             if (value.Type != JTokenType.String)
                 throw new AuthoringDocumentFormatException(sourcePath, value.Path, "必须使用文本，数值原值不能经过 JSON Number 转换。");
             return value.Value<string>();
