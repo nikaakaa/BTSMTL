@@ -122,6 +122,14 @@ async function selectFile(path) {
     file.portShapes = new Map(projected.nodes.map(node => [node.nodeId, node]));
   }
   if (state.selectedFile !== file) return;
+  if (file.document.role === 'StateMachine' && !file.stateMachineReceipt) {
+    file.stateMachineReceipt = await request('/api/authoring/state-machines/validate', {
+      content: file.content, definitionsRevision: state.definitionRevision,
+      relatedGraphs: state.snapshot.files.filter(related => related !== file && Array.isArray(related.document?.nodes))
+        .map(related => related.content)
+    });
+  }
+  if (state.selectedFile !== file) return;
   renderDocument();
 }
 
@@ -194,6 +202,12 @@ function renderGraph(graph) {
   $('document-view').innerHTML = `<div class="graph-surface" id="graph-surface"><div class="graph-caption">${escapeHtml(graph.role)}<span>${graph.nodes.length} 个节点 · ${graph.edges.length} 条连接</span></div><div class="graph-world" id="graph-world"><svg width="6000" height="4000">${links}</svg>${nodes}</div><div class="canvas-tools"><button id="fit-graph">适应全图</button><span id="zoom-value">100%</span></div><div class="canvas-hint">空白处拖动画布 · 滚轮缩放 · 选择节点查看实际字段</div></div>`;
   updateView();
   const surface = $('graph-surface');
+  const receipt = state.selectedFile.stateMachineReceipt;
+  if (receipt) {
+    surface.dataset.stateMachineValid = String(receipt.valid);
+    surface.querySelector('.graph-caption').insertAdjacentHTML('beforeend',
+      '<span title="仅表示 FSM 合同已接收，完整技能保存与发布尚未接通">FSM 合同已接收</span>');
+  }
   function fitGraph() {
     if (graph.nodes.length === 0) { state.view = { x: 35, y: 45, scale: 1 }; updateView(); return; }
     const bounds = graph.nodes.map(node => {
