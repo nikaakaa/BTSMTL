@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace BTSMTL.Timeline
@@ -24,6 +25,30 @@ namespace BTSMTL.Timeline
             TimelineExecutionDomain.Logic,
             TimelineOutputKind.LogicFact,
             TimelineExecutionDomainMask.Logic | TimelineExecutionDomainMask.Presentation);
+
+        public const TimelineClipExitSource DefaultExitSource = TimelineClipExitSource.TreeDecision;
+
+        public static TimelineTreeExecutionPhase DefaultExecutionPhase =>
+            Clip.DefaultExecutionPhase == TimelineClipExecutionPhase.Decision
+                ? TimelineTreeExecutionPhase.Decision : TimelineTreeExecutionPhase.Commit;
+
+        public static TimelineClipExecutionPhase ExecutionPhase(TimelineTreeExecutionPhase phase) =>
+            phase == TimelineTreeExecutionPhase.Decision
+                ? TimelineClipExecutionPhase.Decision : TimelineClipExecutionPhase.Commit;
+
+        public static void RequireExitSource(TimelineExecutionDomain domain, TimelineClipExitSource source)
+        {
+            if (!Enum.IsDefined(typeof(TimelineClipExitSource), source))
+                throw new ArgumentOutOfRangeException(nameof(source), source, "TimelineTree exit source is invalid.");
+            if (domain == TimelineExecutionDomain.Logic && source != TimelineClipExitSource.TreeDecision)
+                throw new InvalidOperationException("Logic TreeClip必须由节点图决定退出。");
+        }
+
+        public static void RequireExecutionPhase(TimelineTreeExecutionPhase phase)
+        {
+            if (!Enum.IsDefined(typeof(TimelineTreeExecutionPhase), phase))
+                throw new ArgumentOutOfRangeException(nameof(phase), phase, "TimelineTree execution phase is invalid.");
+        }
 
         public static void Validate(string identity, TimelineExecutionDomain domain, TimelineClipExitSource exitSource,
             TimelineTreeExecutionPhase executionPhase, List<string> errors)

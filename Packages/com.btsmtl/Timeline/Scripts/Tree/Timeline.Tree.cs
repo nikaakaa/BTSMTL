@@ -41,10 +41,10 @@ namespace BTSMTL.Timeline
         public override string ContractKind => TimelineContractKinds.TreeClip;
 
         [SerializeField, ShowInInspector, OnValueChanged("OnClipChanged", "RepaintInspector")]
-        TimelineTreeExecutionPhase m_ExecutionPhase = TimelineTreeExecutionPhase.Commit;
+        TimelineTreeExecutionPhase m_ExecutionPhase = TreeTimelineDefinition.DefaultExecutionPhase;
 
         [SerializeField, ShowInInspector, OnValueChanged("OnClipChanged", "RepaintInspector")]
-        TimelineClipExitSource m_ExitSource = TimelineClipExitSource.TreeDecision;
+        TimelineClipExitSource m_ExitSource = TreeTimelineDefinition.DefaultExitSource;
 
 #if UNITY_EDITOR
         [SerializeField]
@@ -71,10 +71,7 @@ namespace BTSMTL.Timeline
 
         public void SetExitSource(TimelineClipExitSource source)
         {
-            if (!Enum.IsDefined(typeof(TimelineClipExitSource), source))
-                throw new ArgumentOutOfRangeException(nameof(source), source, "TimelineTree exit source is invalid.");
-            if (ExecutionDomain == TimelineExecutionDomain.Logic && source != TimelineClipExitSource.TreeDecision)
-                throw new InvalidOperationException("Logic TreeClip必须由节点图决定退出。");
+            TreeTimelineDefinition.RequireExitSource(ExecutionDomain, source);
             m_ExitSource = source;
             if (source == TimelineClipExitSource.FrameBoundary)
                 m_HasDeclaredEndTime = false;
@@ -82,15 +79,11 @@ namespace BTSMTL.Timeline
             OnClipChanged();
 #endif
         }
-        public TimelineClipExecutionPhase TimelineExecutionPhase =>
-            m_ExecutionPhase == TimelineTreeExecutionPhase.Decision
-                ? TimelineClipExecutionPhase.Decision
-                : TimelineClipExecutionPhase.Commit;
+        public TimelineClipExecutionPhase TimelineExecutionPhase => TreeTimelineDefinition.ExecutionPhase(m_ExecutionPhase);
 
         public void SetExecutionPhase(TimelineTreeExecutionPhase phase)
         {
-            if (!Enum.IsDefined(typeof(TimelineTreeExecutionPhase), phase))
-                throw new ArgumentOutOfRangeException(nameof(phase), phase, "TimelineTree execution phase is invalid.");
+            TreeTimelineDefinition.RequireExecutionPhase(phase);
             m_ExecutionPhase = phase;
 #if UNITY_EDITOR
             OnClipChanged();
