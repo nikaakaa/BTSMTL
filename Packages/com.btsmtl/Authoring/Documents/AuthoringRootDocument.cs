@@ -8,7 +8,8 @@ namespace BTSMTL.Authoring.Documents
         Graph,
         Timeline,
         InputPlan,
-        Layout
+        Layout,
+        References
     }
 
     public sealed class AuthoringRootDocument

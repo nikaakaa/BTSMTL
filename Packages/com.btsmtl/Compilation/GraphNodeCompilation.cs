@@ -133,6 +133,7 @@ namespace BTSMTL.Compilation
         public int Int32(string fieldId) => int.Parse(Scalar(fieldId), NumberStyles.Integer, CultureInfo.InvariantCulture);
         public long Int64(string fieldId) => long.Parse(Scalar(fieldId), NumberStyles.Integer, CultureInfo.InvariantCulture);
         public uint UInt32(string fieldId) => uint.Parse(Scalar(fieldId), NumberStyles.Integer, CultureInfo.InvariantCulture);
+        public ulong UInt64(string fieldId) => ulong.Parse(Scalar(fieldId), NumberStyles.Integer, CultureInfo.InvariantCulture);
         public float Single(string fieldId) => float.Parse(Scalar(fieldId), NumberStyles.Float, CultureInfo.InvariantCulture);
         public double Double(string fieldId) => double.Parse(Scalar(fieldId), NumberStyles.Float, CultureInfo.InvariantCulture);
         public TEnum Enum<TEnum>(string fieldId) where TEnum : struct, Enum => (TEnum)System.Enum.Parse(typeof(TEnum), Scalar(fieldId), false);

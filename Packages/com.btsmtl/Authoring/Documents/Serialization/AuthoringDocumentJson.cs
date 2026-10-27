@@ -139,6 +139,24 @@ namespace BTSMTL.Authoring.Documents
                     ReadValue(Required(variable, "defaultValue", sourcePath), sourcePath))).ToArray());
         }
 
+        public static string WriteReferenceTable(AuthoringReferenceTable table) => Write(new JObject
+        {
+            ["formatVersion"] = AuthoringRootDocument.FormatVersion,
+            ["entries"] = new JArray(table.Entries.ToArray()
+                .OrderBy(entry => entry.Key, StringComparer.Ordinal)
+                .Select(entry => new JObject
+                {
+                    ["source"] = ValueToken(entry.Source),
+                    ["kind"] = entry.Kind,
+                    ["fields"] = WriteFields(entry.Fields)
+                }))
+        });
+
+        public static AuthoringReferenceTable ReadReferenceTable(string text, string sourcePath) => new(
+            Array(ReadDocument(text, sourcePath), "entries", sourcePath).Select(entry => new AuthoringReferenceEntry(
+                ReadValue(Required(entry, "source", sourcePath), sourcePath), Text(entry, "kind", sourcePath),
+                ReadFields(Required(entry, "fields", sourcePath), sourcePath))).ToArray());
+
         public static string WriteValue(AuthoringValue value) => Write(ValueToken(value));
         public static AuthoringValue ReadValue(string text, string sourcePath) => ReadValue(ReadObject(text), sourcePath);
 
