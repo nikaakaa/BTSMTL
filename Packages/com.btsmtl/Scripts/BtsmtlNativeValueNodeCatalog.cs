@@ -8,29 +8,24 @@ using ThirdPersonSimulation;
 
 namespace BTSMTL
 {
+    // FlowCanvas 原生节点类型与其 kind 合同的对应；编译规则由 GraphNativeValueKinds 按 kind 给出。
     public sealed class BtsmtlNativeValueNodeDefinition
     {
-        internal BtsmtlNativeValueNodeDefinition(Type nodeType, string kind,
-            OrchestrationOperationCode code, int variant, IReadOnlyDictionary<string, string> inputs)
+        internal BtsmtlNativeValueNodeDefinition(Type nodeType, GraphNativeValueKind contract)
         {
             NodeType = nodeType;
-            Kind = kind;
-            Code = code;
-            Variant = variant;
-            Inputs = inputs;
+            Contract = contract;
         }
 
         public Type NodeType { get; }
-        public string Kind { get; }
-        public OrchestrationOperationCode Code { get; }
-        public int Variant { get; }
-        public IReadOnlyDictionary<string, string> Inputs { get; }
+        public GraphNativeValueKind Contract { get; }
+        public string Kind => Contract.Kind;
+        public OrchestrationOperationCode Code => Contract.Code;
+        public int Variant => Contract.Variant;
 
-        public string Input(string nativeId) => Inputs[nativeId];
+        public string Input(string nativeId) => Contract.Input(nativeId);
 
-        public string Output(string nativeId) => nativeId == "Value"
-            ? Code == OrchestrationOperationCode.Compare ? "m_Result" : "m_Output"
-            : throw new InvalidOperationException($"Native value output '{nativeId}' is not declared for '{Kind}'.");
+        public string Output(string nativeId) => Contract.Output(nativeId);
     }
 
     public static class BtsmtlNativeValueNodeCatalog
@@ -54,23 +49,21 @@ namespace BTSMTL
         static IReadOnlyDictionary<Type, BtsmtlNativeValueNodeDefinition> Create()
         {
             var nodes = new Dictionary<Type, BtsmtlNativeValueNodeDefinition>();
-            var boolean = Ports(("a", "m_Input1"), ("b", "m_Input2"));
-            var comparison = Ports(("a", "m_InputValue1"), ("b", "m_InputValue2"));
-            Add<AND>("and", OrchestrationOperationCode.And, boolean);
-            Add<OR>("or", OrchestrationOperationCode.Or, boolean);
-            Add<NOT>("not", OrchestrationOperationCode.Not, Ports(("value", "m_Input")));
-            Add<FloatEqual>("compare.number.equal", OrchestrationOperationCode.Compare, comparison, 0);
-            Add<FloatNotEqual>("compare.number.not-equal", OrchestrationOperationCode.Compare, comparison, 1);
-            Add<FloatLessThan>("compare.number.less", OrchestrationOperationCode.Compare, comparison, 2);
-            Add<FloatLessEqualThan>("compare.number.less-equal", OrchestrationOperationCode.Compare, comparison, 3);
-            Add<FloatGreaterEqualThan>("compare.number.greater-equal", OrchestrationOperationCode.Compare, comparison, 4);
-            Add<FloatGreaterThan>("compare.number.greater", OrchestrationOperationCode.Compare, comparison, 5);
-            Add<IntegerEqual>("compare.int32.equal", OrchestrationOperationCode.Compare, comparison, 0);
-            Add<IntegerNotEqual>("compare.int32.not-equal", OrchestrationOperationCode.Compare, comparison, 1);
-            Add<IntegerLessThan>("compare.int32.less", OrchestrationOperationCode.Compare, comparison, 2);
-            Add<IntegerLessEqualThan>("compare.int32.less-equal", OrchestrationOperationCode.Compare, comparison, 3);
-            Add<IntegerGreaterEqualThan>("compare.int32.greater-equal", OrchestrationOperationCode.Compare, comparison, 4);
-            Add<IntegerGreaterThan>("compare.int32.greater", OrchestrationOperationCode.Compare, comparison, 5);
+            Add<AND>("and");
+            Add<OR>("or");
+            Add<NOT>("not");
+            Add<FloatEqual>("compare.number.equal");
+            Add<FloatNotEqual>("compare.number.not-equal");
+            Add<FloatLessThan>("compare.number.less");
+            Add<FloatLessEqualThan>("compare.number.less-equal");
+            Add<FloatGreaterEqualThan>("compare.number.greater-equal");
+            Add<FloatGreaterThan>("compare.number.greater");
+            Add<IntegerEqual>("compare.int32.equal");
+            Add<IntegerNotEqual>("compare.int32.not-equal");
+            Add<IntegerLessThan>("compare.int32.less");
+            Add<IntegerLessEqualThan>("compare.int32.less-equal");
+            Add<IntegerGreaterEqualThan>("compare.int32.greater-equal");
+            Add<IntegerGreaterThan>("compare.int32.greater");
             AddCalculation<FloatMultiply>(GraphCalculationKind.FloatMultiply);
             AddCalculation<FloatDivide>(GraphCalculationKind.FloatDivide);
             AddCalculation<FloatSubtract>(GraphCalculationKind.FloatSubtract);
@@ -88,34 +81,14 @@ namespace BTSMTL
             AddCalculation<GraphVector2CrossNode>(GraphCalculationKind.Vector2Cross);
             AddCalculation<GraphQuaternionForwardNode>(GraphCalculationKind.QuaternionForward);
             AddCalculation<GraphQuaternionAngleAxisNode>(GraphCalculationKind.QuaternionAngleAxis);
-            Add<GraphFloatSelectNode>("select.number", OrchestrationOperationCode.SelectValue,
-                Ports(("condition", "condition"), ("whenTrue", "whenTrue"), ("whenFalse", "whenFalse")));
+            Add<GraphFloatSelectNode>("select.number");
             return new ReadOnlyDictionary<Type, BtsmtlNativeValueNodeDefinition>(nodes);
 
-            void AddCalculation<T>(GraphCalculationKind kind) where T : SimplexNode
-            {
-                OperationValuePortContract contract = GraphCalculationContracts.Require(kind);
-                var inputs = new Dictionary<string, string>(StringComparer.Ordinal);
-                foreach (OperationValuePortDefinition port in contract.Inputs)
-                    inputs.Add(port.Identity, port.Identity);
-                Add<T>("calculate." + kind, OrchestrationOperationCode.Calculate,
-                    new ReadOnlyDictionary<string, string>(inputs), (int)kind);
-            }
+            void AddCalculation<T>(GraphCalculationKind kind) where T : SimplexNode =>
+                Add<T>(GraphNativeValueKinds.Calculation(kind));
 
-            void Add<T>(string kind, OrchestrationOperationCode code,
-                IReadOnlyDictionary<string, string> inputs, int variant = 0) where T : SimplexNode
-            {
-                Type nodeType = typeof(T);
-                nodes.Add(nodeType, new BtsmtlNativeValueNodeDefinition(nodeType, kind, code, variant, inputs));
-            }
-        }
-
-        static IReadOnlyDictionary<string, string> Ports(params (string Native, string Compiled)[] values)
-        {
-            var ports = new Dictionary<string, string>(StringComparer.Ordinal);
-            foreach (var value in values)
-                ports.Add(value.Native, value.Compiled);
-            return new ReadOnlyDictionary<string, string>(ports);
+            void Add<T>(string kind) where T : SimplexNode =>
+                nodes.Add(typeof(T), new BtsmtlNativeValueNodeDefinition(typeof(T), GraphNativeValueKinds.Require(kind)));
         }
     }
 }
