@@ -10,14 +10,6 @@ namespace BTSMTL.Timeline
 {
     public static class TimelineContentDiscovery
     {
-        public static OrchestrationIdentityTable PublishIdentities(TimelineContentUnit content)
-        {
-            var identities = new List<string> { content.Identity, content.ContentHash };
-            for (int ordinal = 0; ordinal < content.Clips.Count; ordinal++)
-                identities.Add(content.Clips[ordinal].AuthoringId);
-            return OrchestrationIdentityPublication.Create(identities);
-        }
-
         public static TimelineContentCurve CaptureSourceCurve(string channelId, AnimationCurve curve)
         {
             var keys = new TimelineContentCurveKey[curve.length];
@@ -210,72 +202,14 @@ namespace BTSMTL.Timeline
                     binding.Access,
                     binding.Lifetime));
             }
-            clips.Sort((left, right) => string.CompareOrdinal(left.AuthoringId, right.AuthoringId));
-            markers.Sort((left, right) =>
-            {
-                int frame = left.Time.CompareTo(right.Time);
-                return frame != 0 ? frame : string.CompareOrdinal(left.MarkerId, right.MarkerId);
-            });
-            bindings.Sort((left, right) => string.CompareOrdinal(left.BindingId, right.BindingId));
             errors.AddRange(closure.Errors);
             List<TimelineContentDependency> dependencies = new List<TimelineContentDependency>(closure.Dependencies);
-            dependencies.Sort((left, right) => string.CompareOrdinal(left.Identity, right.Identity));
             if (errors.Count > 0)
                 return new TimelineContentDiscoveryResult(null, errors, null);
             string rootFingerprint = TimelineAuthoringFingerprint.Compute(timeline);
-            var hashParts = new List<string>
-            {
-                "timeline-content-closure/1",
-                timeline.AuthoringId,
-                rootFingerprint
-            };
-            for (int i = 0; i < dependencies.Count; i++)
-            {
-                hashParts.Add(dependencies[i].Identity);
-                hashParts.Add(dependencies[i].Kind);
-                hashParts.Add(dependencies[i].ContentHash);
-            }
-            for (int i = 0; i < tracks.Count; i++)
-            {
-                hashParts.Add(tracks[i].ContractKind);
-                hashParts.Add(tracks[i].ExecutionPolicy.Domain.ToString("G"));
-                hashParts.Add(tracks[i].ExecutionPolicy.OutputKind.ToString("G"));
-                if (tracks[i].LogicSampleExtension.HasValue)
-                {
-                    TimelineLogicSampleExtension extension = tracks[i].LogicSampleExtension.Value;
-                    hashParts.Add(extension.Identity.DomainId);
-                    hashParts.Add(extension.Identity.OperationId);
-                    hashParts.Add(extension.SemanticVersion.ToString(System.Globalization.CultureInfo.InvariantCulture));
-                }
-            }
-            for (int i = 0; i < clips.Count; i++)
-            {
-                hashParts.Add(clips[i].AuthoringId);
-                hashParts.Add(clips[i].ExecutionPolicy.Domain.ToString("G"));
-                hashParts.Add(clips[i].ExecutionPolicy.OutputKind.ToString("G"));
-            }
-            for (int i = 0; i < markers.Count; i++)
-            {
-                hashParts.Add(markers[i].MarkerId);
-                hashParts.Add(markers[i].ExecutionPolicy.Domain.ToString("G"));
-                hashParts.Add(markers[i].ExecutionPolicy.OutputKind.ToString("G"));
-                hashParts.Add(markers[i].Time.RawValue.ToString(System.Globalization.CultureInfo.InvariantCulture));
-                hashParts.Add(markers[i].ForceTriggerOnInitialSeek ? "1" : "0");
-            }
-            var content = new TimelineContentUnit(
-                $"timeline:{timeline.AuthoringId}",
-                timeline.AuthoringId,
-                SourceContentHasher.Hash(hashParts.ToArray()),
-                rootFingerprint,
-                timeline.Name,
-                duration,
-                timeline.Loop,
-                tracks,
-                clips,
-                markers,
-                bindings,
-                dependencies);
-            return new TimelineContentDiscoveryResult(content, errors, PublishIdentities(content));
+            TimelineContentUnit content = TimelineContentCompilation.Compile(timeline.AuthoringId,
+                timeline.Name, timeline.Loop, rootFingerprint, duration, tracks, clips, markers, bindings, dependencies);
+            return new TimelineContentDiscoveryResult(content, errors, TimelineContentCompilation.PublishIdentities(content));
         }
     }
 }
