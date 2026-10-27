@@ -1,4 +1,5 @@
 import { GraphEditSession, editField, editVariable, renameElement, createNode, createConnection, showGraphDiff } from './graph-edits.js';
+import { showReferences } from './references.js';
 
 const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
@@ -295,7 +296,7 @@ function renderInspector(document) {
   if (Array.isArray(document.nodes) && !state.selectedTimeline) {
     const editable = definition?.fields.filter(field => field.visible && (!field.visibility ||
       (target.fields[field.visibility.fieldId] || definition.fields.find(item => item.id === field.visibility.fieldId).defaultValue).value === field.visibility.equals)) || [];
-    const actions = `<div class="inspector-actions"><button data-rename-element>修改名称</button>${definition && !definition.systemOwned ? '<button class="danger" data-delete-node>删除节点及其连接</button>' : ''}</div>`;
+    const actions = `<div class="inspector-actions"><button data-rename-element>修改名称</button><button data-element-dependencies>本对象引用</button>${definition && !definition.systemOwned ? '<button class="danger" data-delete-node>删除节点及其连接</button>' : ''}</div>`;
     $('inspector-content').insertAdjacentHTML('afterbegin', actions);
     editable.forEach(field => {
       const value = target.fields[field.id] || field.defaultValue;
@@ -352,7 +353,7 @@ function renderValue(value) {
     case 'reference': {
       const target = state.snapshot.root.files.find(file => file.id === value.target.documentId);
       const mapping = state.snapshot.root.unityOutputs.find(item => item.documentId === value.target.documentId && item.elementId === value.target.elementId);
-      return `<div class="reference-value">${target && value.target.rootId === state.snapshot.root.id ? `<button data-document="${escapeHtml(target.path)}">打开 ${escapeHtml(kindNames[target.kind])} ↗</button>` : '<strong>只读资源引用</strong>'}<span>${escapeHtml(mapping?.assetPath || value.target.rootId)}</span><details><summary>稳定引用</summary><code>${escapeHtml(value.target.rootId)} / ${escapeHtml(value.target.documentId)} / ${escapeHtml(value.target.elementId)}</code></details></div>`;
+      return `<div class="reference-value">${target && value.target.rootId === state.snapshot.root.id ? `<button data-document="${escapeHtml(target.path)}">打开 ${escapeHtml(kindNames[target.kind])} ↗</button>` : '<strong>只读资源引用</strong>'}<span>${escapeHtml(mapping?.assetPath || value.target.rootId)}</span><button data-reference-root="${escapeHtml(value.target.rootId)}" data-reference-document="${escapeHtml(value.target.documentId)}" data-reference-element="${escapeHtml(value.target.elementId)}">查看引用位置</button><details><summary>稳定引用</summary><code>${escapeHtml(value.target.rootId)} / ${escapeHtml(value.target.documentId)} / ${escapeHtml(value.target.elementId)}</code></details></div>`;
     }
     case 'object': return `<details><summary title="${escapeHtml(value.type)}">${escapeHtml(typeName(value.type))}</summary>${Object.entries(value.members).map(([key, member]) => `<div class="nested-value"><label>${escapeHtml(key)}</label>${renderValue(member)}</div>`).join('')}</details>`;
     case 'sequence': return `<details><summary>${value.items.length} 项 · ${escapeHtml(typeName(value.type))}</summary>${value.items.map((item, index) => `<div class="nested-value"><label>${index + 1}</label>${renderValue(item)}</div>`).join('')}</details>`;
@@ -410,10 +411,21 @@ $('document-view').onclick = event => {
   renderDocument();
 };
 $('inspector-content').onclick = event => {
+  const usage = event.target.closest('[data-reference-root]');
+  if (usage) {
+    const query = new URLSearchParams({ rootId: usage.dataset.referenceRoot, documentId: usage.dataset.referenceDocument, elementId: usage.dataset.referenceElement });
+    guarded(() => showReferences('实际引用位置', `${api()}/reference-uses?${query}`, state.source, request));
+    return;
+  }
   const reference = event.target.closest('[data-document]');
   if (reference) { state.tab = 'document'; showTab(); guarded(() => selectFile(reference.dataset.document)); return; }
   const graph = state.selectedFile?.document;
   const node = state.selectedNode ? graph.nodes.find(item => item.id === state.selectedNode) : null;
+  if (event.target.closest('[data-element-dependencies]')) {
+    const query = new URLSearchParams({ path: state.selectedRoot.path, documentId: graph.id, elementId: (node || graph).id });
+    guarded(() => showReferences('本对象的实际引用', `${api()}/dependencies?${query}`, state.source, request));
+    return;
+  }
   const fieldButton = event.target.closest('[data-edit-field]');
   if (fieldButton) {
     const field = state.capabilities.get(node.capability).fields.find(item => item.id === fieldButton.dataset.editField);
@@ -437,6 +449,8 @@ $('search-files').oninput = renderFiles;
 $('refresh-roots').onclick = () => guarded(() => loadRoots(true));
 $('load-more').onclick = () => guarded(() => loadRoots());
 $('reload-root').onclick = () => guarded(() => openRoot(state.selectedRoot.path));
+$('root-dependencies').onclick = () => guarded(() => showReferences('本根的实际引用',
+  `${api()}/dependencies?path=${encodeURIComponent(state.selectedRoot.path)}`, state.source, request));
 function showTab() {
   document.querySelectorAll('[data-tab]').forEach(item => item.classList.toggle('active', item.dataset.tab === state.tab));
   $('source-view').hidden = state.tab !== 'source';
@@ -486,5 +500,13 @@ guarded(async () => {
     if (query.get('tab') === 'variables' || query.get('tab') === 'source') { state.tab = query.get('tab'); showTab(); }
     if (query.has('file')) await selectFile(query.get('file'));
     else renderDocument();
+    if (query.has('element')) {
+      const document = state.selectedFile.document, element = query.get('element');
+      if (document.nodes?.some(node => node.id === element)) state.selectedNode = element;
+      else if (document.tracks?.some(track => [track, ...track.clips, ...track.markers].some(item => item.id === element))) state.selectedTimeline = element;
+      else if (document.variables?.some(variable => variable.id === element)) { state.tab = 'variables'; showTab(); }
+      renderDocument();
+      report(`已定位磁盘文档对象 ${element}${query.has('pointer') ? ' · JSON 位置 ' + query.get('pointer') : ''}。`);
+    }
   }
 });
