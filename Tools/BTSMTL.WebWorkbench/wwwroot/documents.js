@@ -122,12 +122,14 @@ async function selectFile(path) {
     file.portShapes = new Map(projected.nodes.map(node => [node.nodeId, node]));
   }
   if (state.selectedFile !== file) return;
-  if (file.document.role === 'StateMachine' && !file.stateMachineReceipt) {
-    file.stateMachineReceipt = await request('/api/authoring/state-machines/validate', {
-      content: file.content, definitionsRevision: state.definitionRevision,
-      relatedGraphs: state.snapshot.files.filter(related => related !== file && Array.isArray(related.document?.nodes))
-        .map(related => related.content)
-    });
+  if (file.document?.role === 'StateMachine' && !file.stateMachineReceipt && !file.stateMachineProblem) {
+    try {
+      file.stateMachineReceipt = await request('/api/authoring/state-machines/validate', {
+        content: file.content, definitionsRevision: state.definitionRevision,
+        relatedGraphs: state.snapshot.files.filter(related => related !== file && Array.isArray(related.document?.nodes))
+          .map(related => related.content)
+      });
+    } catch (error) { file.stateMachineProblem = error.message; }
   }
   if (state.selectedFile !== file) return;
   renderDocument();
@@ -208,6 +210,9 @@ function renderGraph(graph) {
     surface.querySelector('.graph-caption').insertAdjacentHTML('beforeend',
       '<span title="仅表示 FSM 合同已接收，完整技能保存与发布尚未接通">FSM 合同已接收</span>');
   }
+  if (state.selectedFile.stateMachineProblem)
+    surface.querySelector('.graph-caption').insertAdjacentHTML('beforeend',
+      `<span class="error">FSM 合同未接收：${escapeHtml(state.selectedFile.stateMachineProblem)}</span>`);
   function fitGraph() {
     if (graph.nodes.length === 0) { state.view = { x: 35, y: 45, scale: 1 }; updateView(); return; }
     const bounds = graph.nodes.map(node => {
