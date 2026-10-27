@@ -58,10 +58,15 @@ namespace BTSMTL.Authoring.Documents
             return new AuthoringObjectValue(identity, members);
         }
 
-        public virtual object Restore(Type type, AuthoringValue value)
+        public object Restore(Type type, AuthoringValue value)
         {
             if (value.TypeId != TypeIdentity(type))
                 throw new ArgumentException($"作者值类型 '{value.TypeId}' 与正式字段 '{TypeIdentity(type)}' 不匹配。");
+            return RestoreContent(type, value);
+        }
+
+        protected virtual object RestoreContent(Type type, AuthoringValue value)
+        {
             if (value is AuthoringNullValue)
                 return null;
             if (value is AuthoringScalarValue scalar)
