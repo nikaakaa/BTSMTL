@@ -5,8 +5,10 @@ const kindNames = { Graph: '图', Timeline: '时间轴', InputPlan: '输入方�
 const api = () => `/api/${state.source}`;
 const typeName = value => value.split(',')[0].split('.').pop();
 
-async function request(path) {
-  const response = await fetch(path);
+async function request(path, body) {
+  const response = await fetch(path, body === undefined ? undefined : {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+  });
   const text = await response.text();
   if (!response.ok) throw new Error(`服务返回 ${response.status}：${text}`);
   return JSON.parse(text);
@@ -92,7 +94,7 @@ async function openRoot(path) {
   $('document-actions').hidden = false;
   renderRoots();
   renderFiles();
-  selectFile(state.selectedFile.path);
+  await selectFile(state.selectedFile.path);
   report(state.source === 'migrations' ? '正在查看从原资产读取的候选。当前修改仍由原 Unity 作者资产持有。' : '文件已读取。当前尚未完成领域接收，未编译、发布或运行。');
 }
 
@@ -103,14 +105,23 @@ function renderFiles() {
   $('files').innerHTML = files.filter(file => `${file.document?.displayName} ${file.document?.role} ${file.path}`.toLowerCase().includes(query)).map(file => `<button class="file-item ${state.selectedFile?.path === file.path ? 'selected' : ''}" data-file="${escapeHtml(file.path)}" title="${escapeHtml(file.path)}"><span>${file.problem ? '!' : file.declaration?.kind === 'Graph' ? '⌘' : file.declaration?.kind === 'Timeline' ? '◷' : '▤'}</span><span>${escapeHtml(file.document?.displayName || file.path)}<small>${escapeHtml(file.problem ? '文件格式错误' : file.document?.role || (file.declaration ? kindNames[file.declaration.kind] : '内容根'))}</small></span></button>`).join('');
 }
 
-function selectFile(path) {
+async function selectFile(path) {
   state.selectedFile = state.snapshot.files.find(file => file.path === path);
+  const file = state.selectedFile;
   state.selectedNode = null;
   state.selectedTimeline = null;
   state.view = { x: 35, y: 45, scale: 1, needsFit: true };
   const locationQuery = new URLSearchParams({ source: state.source, root: state.selectedRoot.path, file: path, tab: state.tab });
   history.replaceState(null, '', `?${locationQuery}`);
   renderFiles();
+  if (!file.problem && Array.isArray(file.document.nodes) && !file.portShapes) {
+    $('document-view').innerHTML = '<div class="notice">正在从共同定义投影端口…</div>';
+    const projected = await request('/api/authoring/ports', {
+      content: file.content, definitionsRevision: state.definitionRevision
+    });
+    file.portShapes = new Map(projected.nodes.map(node => [node.nodeId, node]));
+  }
+  if (state.selectedFile !== file) return;
   renderDocument();
 }
 
@@ -154,8 +165,9 @@ function renderGraph(graph) {
   });
   const shapes = new Map(graph.nodes.map(node => {
     const definition = state.capabilities.get(node.capability);
-    const ports = [...(definition?.ports || []), ...node.dynamicPorts];
-    return [node.id, { definition, inputs: ports.filter(port => port.direction === 'Input'),
+    const projection = state.selectedFile.portShapes.get(node.id);
+    const ports = projection.ports;
+    return [node.id, { definition, problem: projection.problem, inputs: ports.filter(port => port.direction === 'Input'),
       outputs: ports.filter(port => port.direction === 'Output') }];
   }));
   const links = graph.edges.map(edge => {
@@ -177,7 +189,7 @@ function renderGraph(graph) {
       const label = (port, side) => port ? `<span class="${side}" title="${escapeHtml(port.id)} · ${escapeHtml(port.valueType)}"><i></i><em>${escapeHtml(port.displayName || port.id)}</em></span>` : '<span></span>';
       return `<div class="node-port-row">${label(input, 'input')}${label(output, 'output')}</div>`;
     }).join('');
-    return `<button class="graph-node ${definition ? '' : 'missing-definition'} ${state.selectedNode === node.id ? 'selected' : ''}" data-node="${escapeHtml(node.id)}" style="left:${escapeHtml(position.x)}px;top:${escapeHtml(position.y)}px"><span class="node-type">${escapeHtml(node.capability)}</span><strong>${escapeHtml(node.displayName || definition?.displayName || node.capability)}</strong><small>${fieldCount} 个作者字段${definition ? '' : ' · 原能力描述缺失'}</small><div class="node-ports">${portRows}</div></button>`;
+    return `<button class="graph-node ${shape.problem ? 'missing-definition' : ''} ${state.selectedNode === node.id ? 'selected' : ''}" data-node="${escapeHtml(node.id)}" title="${escapeHtml(shape.problem ? shape.problem.message : node.id)}" style="left:${escapeHtml(position.x)}px;top:${escapeHtml(position.y)}px"><span class="node-type">${escapeHtml(node.capability)}</span><strong>${escapeHtml(node.displayName || definition?.displayName || node.capability)}</strong><small>${fieldCount} 个作者字段${shape.problem ? ' · ' + escapeHtml(shape.problem.code) : ''}</small><div class="node-ports">${portRows}</div></button>`;
   }).join('');
   $('document-view').innerHTML = `<div class="graph-surface" id="graph-surface"><div class="graph-caption">${escapeHtml(graph.role)}<span>${graph.nodes.length} 个节点 · ${graph.edges.length} 条连接</span></div><div class="graph-world" id="graph-world"><svg width="6000" height="4000">${links}</svg>${nodes}</div><div class="canvas-tools"><button id="fit-graph">适应全图</button><span id="zoom-value">100%</span></div><div class="canvas-hint">空白处拖动画布 · 滚轮缩放 · 选择节点查看实际字段</div></div>`;
   updateView();
@@ -284,7 +296,7 @@ $('roots').onclick = event => { const item = event.target.closest('[data-root]')
 $('files').onclick = event => { const item = event.target.closest('[data-file]'); if (item) guarded(() => selectFile(item.dataset.file)); };
 $('document-view').onclick = event => {
   const reference = event.target.closest('[data-document]');
-  if (reference) { state.tab = 'document'; showTab(); selectFile(reference.dataset.document); return; }
+  if (reference) { state.tab = 'document'; showTab(); guarded(() => selectFile(reference.dataset.document)); return; }
   const timeline = event.target.closest('[data-timeline]');
   if (timeline) { state.selectedTimeline = timeline.dataset.timeline; renderDocument(); return; }
   const node = event.target.closest('[data-node]');
@@ -292,7 +304,7 @@ $('document-view').onclick = event => {
   state.selectedNode = node.dataset.node;
   renderDocument();
 };
-$('inspector-content').onclick = event => { const reference = event.target.closest('[data-document]'); if (reference) { state.tab = 'document'; showTab(); selectFile(reference.dataset.document); } };
+$('inspector-content').onclick = event => { const reference = event.target.closest('[data-document]'); if (reference) { state.tab = 'document'; showTab(); guarded(() => selectFile(reference.dataset.document)); } };
 $('search-roots').oninput = event => { state.query = event.target.value.trim().toLowerCase(); renderRoots(); };
 $('search-files').oninput = renderFiles;
 $('refresh-roots').onclick = () => guarded(() => loadRoots(true));
@@ -341,7 +353,7 @@ guarded(async () => {
   if (query.has('root')) {
     await openRoot(query.get('root'));
     if (query.get('tab') === 'variables' || query.get('tab') === 'source') { state.tab = query.get('tab'); showTab(); }
-    if (query.has('file')) selectFile(query.get('file'));
+    if (query.has('file')) await selectFile(query.get('file'));
     else renderDocument();
   }
 });
