@@ -36,10 +36,10 @@ namespace BTSMTL.Authoring.Documents
                         Convert.ToString(value, CultureInfo.InvariantCulture));
                 case TypeCode.Single:
                     return new AuthoringScalarValue(identity, GraphAuthoringFieldValueKind.Float,
-                        ((float)value).ToString("R", CultureInfo.InvariantCulture));
+                        ((float)value).ToString("G9", CultureInfo.InvariantCulture));
                 case TypeCode.Double:
                     return new AuthoringScalarValue(identity, GraphAuthoringFieldValueKind.Float,
-                        ((double)value).ToString("R", CultureInfo.InvariantCulture));
+                        ((double)value).ToString("G17", CultureInfo.InvariantCulture));
                 case TypeCode.Decimal:
                     return new AuthoringScalarValue(identity, GraphAuthoringFieldValueKind.Float,
                         ((decimal)value).ToString(CultureInfo.InvariantCulture));

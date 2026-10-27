@@ -84,8 +84,8 @@ namespace BTSMTL.Authoring.Documents
             ["easeInRaw"] = range.EaseIn.RawValue.ToString(CultureInfo.InvariantCulture),
             ["easeOutRaw"] = range.EaseOut.RawValue.ToString(CultureInfo.InvariantCulture),
             ["clipInRaw"] = range.ClipIn.RawValue.ToString(CultureInfo.InvariantCulture),
-            ["sourceStart"] = range.SourceStart.ToString("R", CultureInfo.InvariantCulture),
-            ["sourceEnd"] = range.SourceEnd.ToString("R", CultureInfo.InvariantCulture),
+            ["sourceStart"] = range.SourceStart.ToString("G9", CultureInfo.InvariantCulture),
+            ["sourceEnd"] = range.SourceEnd.ToString("G9", CultureInfo.InvariantCulture),
             ["otherEaseInRaw"] = range.OtherEaseIn.RawValue.ToString(CultureInfo.InvariantCulture),
             ["otherEaseOutRaw"] = range.OtherEaseOut.RawValue.ToString(CultureInfo.InvariantCulture)
         };
