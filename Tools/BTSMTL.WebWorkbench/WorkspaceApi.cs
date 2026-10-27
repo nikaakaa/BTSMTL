@@ -52,5 +52,9 @@ public static class WorkspaceApi
         });
         routes.MapGet("/references", (string rootId, int offset, int limit) =>
             workspace.Referencing(rootId, offset, limit));
+        routes.MapGet("/dependencies", (string path, string? documentId, string? elementId, int offset, int limit) =>
+            AuthoringReferenceQuery.Dependencies(workspace, path, documentId, elementId, offset, limit));
+        routes.MapGet("/reference-uses", (string rootId, string? documentId, string? elementId, int offset, int limit) =>
+            AuthoringReferenceQuery.Uses(workspace, rootId, documentId, elementId, offset, limit));
     }
 }
