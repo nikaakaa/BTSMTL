@@ -60,7 +60,9 @@ function showClip(index) {
   $('clip-provenance').textContent = clip.provenance.description;
   $('resource-time').max = clip.exportedDuration;
   $('resource-details').innerHTML = [
-    ['片段', clip.name], ['Unity 来源', clip.unityAsset], ['来源资产 SHA-256', clip.unityAssetSha256],
+    ['片段', clip.name], ['资源身份', clip.resource.identity], ['Unity 来源', clip.unityAsset],
+    ['GUID', clip.resource.guid], ['Local file ID', clip.resource.localFileId],
+    ['来源资产 SHA-256', clip.resource.contentRevision],
     ['素材时长', clip.duration + ' s'], ['glb 时长', clip.exportedDuration + ' s'],
     ['源帧率', clip.frameRate + ' fps'], ['来源 Blend SHA-256', state.library.sourceSha256],
     ['glb SHA-256', state.library.sha256]
@@ -89,6 +91,13 @@ function frame(now) {
   if (state.action) setTime();
   controls.update();
   renderer.render(scene, camera);
+  if (state.clip) {
+    Object.assign(document.documentElement.dataset, {
+      resourceImageReady: 'true', resourceIdentity: state.clip.resource.identity,
+      resourceRevision: state.clip.resource.contentRevision, resourceLibrary: state.library.sha256,
+      resourceSource: state.library.sourceSha256, resourceTime: String(state.cursor)
+    });
+  }
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
@@ -108,6 +117,11 @@ async function load() {
   const manifest = await response.json();
   if (!response.ok) throw new Error(manifest.message);
   state.library = manifest;
+  const query = new URLSearchParams(location.search);
+  const resource = query.get('resource');
+  const selected = resource === null ? manifest.clips[0] :
+    manifest.clips.find(clip => clip.resource.identity === resource);
+  if (!selected) throw new Error(`该版本资源清单不包含所选资源 ${resource}。`);
   $('source-version').textContent = `${manifest.clips.length} 段 · 来源 ${manifest.sourceSha256.slice(0, 12)}`;
   $('resource-state').textContent = '正在加载同版模型与动画…';
   const gltf = await new GLTFLoader().loadAsync(`/api/resources/animations/file/${manifest.sha256}`);
@@ -125,7 +139,14 @@ async function load() {
   });
   scene.add(state.model);
   state.mixer = new THREE.AnimationMixer(state.model);
-  showClip(manifest.clips[0].animationIndex);
+  showClip(selected.animationIndex);
+  if (query.has('time')) {
+    const time = Number(query.get('time'));
+    if (!Number.isFinite(time) || time < 0 || time > selected.exportedDuration)
+      throw new Error('请求的素材秒数超出该片段的实际导出范围。');
+    state.cursor = time;
+    setTime();
+  }
   $('play-resource').disabled = false;
   $('resource-time').disabled = false;
   $('frame-resource').disabled = false;
