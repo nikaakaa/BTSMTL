@@ -54,8 +54,9 @@ export class DocumentEditSession {
 
   async inverse(direction, appliedCandidateId) {
     await this.perform(async () => {
+      const current = await this.send(`/api/workspace/root?path=${encodeURIComponent(this.context.rootPath)}`);
       const receipt = await this.send('/api/authoring/documents/inverse', { ...this.context,
-        requestId: crypto.randomUUID(), appliedCandidateId });
+        rootRevision: current.revision, requestId: crypto.randomUUID(), appliedCandidateId });
       this.receipt = { ...receipt, historyDirection: direction };
       this.pendingCommit = this.receipt;
       await this.submitCommit();
