@@ -1,7 +1,7 @@
 import { LogicViewport, fixed as fp } from './logic-viewport.js';
 
 const $ = id => document.getElementById(id);
-const state = { sources: null, runs: [], selected: null, summary: null, frames: new Map(), count: 0, sealed: false, initialFrameIndex: 0, inputCatalog: null, inputScene: null };
+const state = { sources: null, runs: [], selected: null, summary: null, frames: new Map(), count: 0, sealed: false, initialFrameIndex: 0, inputCatalog: null, inputScene: null, sourceMap: null };
 let pollTimer;
 const stages = { accepted: '已接收', running: '独立会话运行中', completed: '完整运行已封存', stopped: '会话已停止并封存', failed: '执行失败', cancelled: '已取消' };
 const playbackNames = { paused: '已暂停', playing: '正在播放', stepping: '等待下一个确认帧', stopped: '已停止', completed: '已完成' };
@@ -174,6 +174,8 @@ async function selectRun(id, frameIndex = 0) {
   clearActors(); $('run-details').replaceChildren(); $('frame-facts').replaceChildren();
   $('actors').replaceChildren(); $('action-changes').replaceChildren(); $('frame-json').textContent = '';
   $('timeline-playbacks').replaceChildren();
+  state.sourceMap = null;
+  ['operation-states', 'blackboard-values', 'combat-facts', 'output-events'].forEach(id => $(id).replaceChildren());
   $('frame').disabled = true; $('previous-frame').disabled = true; $('next-frame').disabled = true;
   $('fit-view').disabled = true; $('compare').disabled = true; $('frame-label').textContent = '无确认帧';
   $('comparison-result').textContent = '';
@@ -269,8 +271,18 @@ async function showFrame(index) {
   if (index !== Number($('frame').value)) return;
   let frame = state.frames.get(index);
   let observation = null;
-  if (state.summary.channels.includes('collision-geometry')) {
-    if (!viewport.geometry) viewport.setGeometry(await request(`/api/preview/runs/${id}/geometry`));
+  if (state.summary.channels.some(channel => ['collision-geometry', 'operation-states', 'blackboard-values'].includes(channel))) {
+    if (state.summary.channels.includes('collision-geometry') && !viewport.geometry)
+      viewport.setGeometry(await request(`/api/preview/runs/${id}/geometry`));
+    if (state.sourceMap === null) {
+      const sources = []; let offset = 0;
+      do {
+        const page = await request(`/api/preview/runs/${id}/source-map?offset=${offset}&limit=512`);
+        sources.push(...page.items); offset = page.nextOffset;
+      } while (offset !== null);
+      if (id !== state.selected) return;
+      state.sourceMap = sources;
+    }
     const page = await request(`/api/preview/runs/${id}/observations?firstFrame=${frame.frame}&lastFrame=${frame.frame}&offset=0&limit=1`);
     if (id !== state.selected || index !== Number($('frame').value)) return;
     observation = page.items[0]; frame = observation.frame;
@@ -307,6 +319,7 @@ async function showFrame(index) {
         .map(([name, value]) => `<dt>${escapeHtml(name)}</dt><dd>${escapeHtml(value)}</dd>`).join('')}</dl></div>`;
     }).join('') : '<p class="muted">此确认帧没有活动的逻辑 Timeline。</p>';
   } else $('timeline-playbacks').innerHTML = '<p class="muted">此运行未采集 Timeline 播放通道。</p>';
+  renderCommittedFacts(frame, observation);
   $('frame-json').textContent = JSON.stringify(observation || frame, null, 2);
   viewport.draw(frame, observation?.queries || []);
   const rendered = document.documentElement.dataset;
@@ -318,6 +331,46 @@ async function showFrame(index) {
   rendered.previewRendered = viewport.geometry ? 'sdk-world-receivers-sweeps-hits' : 'root-axes';
   rendered.previewImageReady = 'true';
   history.replaceState(null, '', `?run=${encodeURIComponent(id)}&frameIndex=${index}`);
+}
+
+function renderCommittedFacts(frame, observation) {
+  const detail = (title, fields) => `<div class="actor-fact"><strong>${escapeHtml(title)}</strong><dl>${Object.entries(fields)
+    .filter(([, value]) => value !== null && value !== undefined && value !== '')
+    .map(([name, value]) => `<dt>${escapeHtml(name)}</dt><dd>${escapeHtml(value)}</dd>`).join('')}</dl></div>`;
+  $('operation-states').innerHTML = observation?.operations.length ? observation.operations.map(operation => {
+    const sources = state.sourceMap.filter(map => map.rosterIndex === operation.rosterIndex &&
+      map.programIndex === operation.programIndex && map.source.targetKind === 1 && map.source.targetIndex === operation.operationIndex);
+    return detail(`${operation.status} · Roster ${operation.rosterIndex}`, {
+      '活动状态': operation.activeState, '待进入状态': operation.pendingState, '退出状态': operation.exitingState,
+      '实际转移': operation.transition, '动作 / 播放': `${operation.actionInstanceId} / ${operation.playbackIdentity}`,
+      '执行 / 调用代次': `${operation.executionGeneration} / ${operation.generation}`,
+      '作者来源': sources.map(map => `${map.source.graphId} / ${map.source.nodeId || map.source.edgeId}`).join('；')
+    });
+  }).join('') : `<p class="muted">${state.summary.channels.includes('operation-states') ? '本帧没有活动操作记录。' : '该运行未采集操作状态。'}</p>`;
+  $('blackboard-values').innerHTML = observation?.variables.length ? observation.variables.map(variable => detail(variable.key, {
+    '有效值': variable.available ? JSON.stringify(variable.value) : variable.reason,
+    '类型': variable.valueType, '作用域 / 生命周期': `${variable.scope} / ${variable.lifetime}`,
+    '动作 / 执行代次': `${variable.actionInstanceId} / ${variable.executionGeneration}`,
+    '调用代次': variable.invocationGeneration, '声明来源': `${variable.graphId} / ${variable.declarationId}`,
+    '调用路径': variable.invocationPath
+  })).join('') : `<p class="muted">${state.summary.channels.includes('blackboard-values') ? '本帧没有对应调用的黑板观察。' : '该运行未采集黑板有效值。'}</p>`;
+  const hits = frame.hits || [], failures = frame.queryFailures || [], queries = observation?.queries || [];
+  $('combat-facts').innerHTML = hits.map(hit => detail(`实际命中 ${hit.resultId}`, {
+    '攻击方 → 目标': `${hit.sourceIndex}:${hit.sourceVersion} → ${hit.targetIndex}:${hit.targetVersion}`,
+    '动作 / 执行代次': `${hit.attack.actionInstanceId} / ${hit.attack.executionGeneration}`,
+    '命中点 FP Raw': hit.pointRaw.join(' / '), '法线 FP Raw': hit.normalRaw.join(' / '),
+    '接触时刻 FP Raw': hit.contactTimeRaw, '处理结果': hit.disposition
+  })).concat(failures.map(failure => detail('实际查询失败', { '失败种类': failure.kind, '扫掠状态': failure.sweepStatus,
+    '请求': failure.requestId, '动作实例': failure.attack.actionInstanceId })),
+  queries.map(query => detail(`扫掠查询 · ${query.status}`, { '攻击事件': query.attackEventId,
+    '正式后端已执行': query.backendInvoked, '采样分段 / 目标': `${query.segments.length} / ${query.targets.length}`,
+    '动作 / 播放': `${query.attack.actionInstanceId} / ${query.attack.playbackIdentity}` }))).join('') ||
+    `<p class="muted">${state.summary.channels.includes('combat-results') ? '本帧没有命中或失败事实。' : '该运行未采集命中通道。'}</p>`;
+  $('output-events').innerHTML = observation?.outputEvents.length ? observation.outputEvents.map(event => detail(
+    `${event.kind} · ${event.lifecycle}`, { '角色 / 动作': `${event.rosterIndex} / ${event.actionInstanceId}`,
+      '逻辑 Tick': event.logicTick, '播放身份': event.playbackIdentity, '来源': event.sourceIdentity,
+      '实际请求数': event.requests.length, '请求来源': event.requests.map(request => request.sourceIdentity).join('；') }
+  )).join('') : `<p class="muted">${state.summary.channels.includes('output-events') ? '本帧没有表现请求事件。' : '该运行未采集表现请求。'}</p>`;
 }
 
 const viewport = new LogicViewport($('viewport'));
