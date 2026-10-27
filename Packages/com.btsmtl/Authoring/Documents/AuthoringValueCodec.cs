@@ -1,3 +1,4 @@
+#if UNITY_EDITOR || BTSMTL_AUTHORING
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -145,3 +146,4 @@ namespace BTSMTL.Authoring.Documents
                 candidate.GetGenericTypeDefinition() == typeof(IEnumerable<>)).GetGenericArguments()[0];
     }
 }
+#endif
