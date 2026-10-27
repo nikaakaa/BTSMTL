@@ -284,7 +284,7 @@ function renderGraph(graph) {
     return `<button class="graph-node ${shape.problem ? 'missing-definition' : ''} ${state.selectedNode === node.id ? 'selected' : ''}" data-node="${escapeHtml(node.id)}" title="${escapeHtml(shape.problem ? shape.problem.message : node.id)}" style="left:${escapeHtml(position.x)}px;top:${escapeHtml(position.y)}px"><span class="node-type">${escapeHtml(node.capability)}</span><strong>${escapeHtml(node.displayName || definition?.displayName || node.capability)}</strong><small>${fieldCount} 个作者字段${shape.problem ? ' · ' + escapeHtml(shape.problem.code) : ''}</small><div class="node-ports">${portRows}</div></button>`;
   }).join('');
   $('document-view').innerHTML = `<div class="graph-surface" id="graph-surface"><div class="graph-caption">${escapeHtml(graph.role)}<span>${graph.nodes.length} 个节点 · ${graph.edges.length} 条连接</span></div><div class="graph-world" id="graph-world"><svg width="6000" height="4000">${links}</svg>${nodes}</div><div class="canvas-tools">${state.linkStart ? '<button data-cancel-connection>取消连线</button>' : ''}<button id="fit-graph">适应全图</button><span id="zoom-value">100%</span></div><div class="canvas-hint">${state.linkStart ? '选择目标输入完成连接 · Esc 取消' : '空白处拖动画布 · 滚轮缩放 · 点击输出端口开始连接'}</div></div>`;
-  if (!state.draft) $('document-view').querySelectorAll('[data-port]').forEach(port => {
+  if (!state.draft?.canEdit) $('document-view').querySelectorAll('[data-port]').forEach(port => {
     port.removeAttribute('data-port'); port.removeAttribute('role'); port.removeAttribute('tabindex');
   });
   updateView();
@@ -362,7 +362,8 @@ function renderInspector(document) {
     const field = definition?.fields.find(field => field.id === id);
     return `<div class="field"><label title="${escapeHtml(id)}">${escapeHtml(field?.displayName || id)}${field && !field.writable ? ' · 原定义只读' : ''}</label>${renderValue(value)}${field?.constraint?.AllowedValues.length ? `<small>声明选项：${field.constraint.AllowedValues.map(escapeHtml).join('、')}</small>` : ''}</div>`;
   }).join('') || '<p class="muted">此对象没有显式作者字段。</p>'}`;
-  if (state.draft && Array.isArray(document.nodes) && !state.selectedTimeline) {
+  if (state.selectedFile.draftChanged) $('inspector-content').querySelector('.read-state').textContent = '本会话候选 · 尚未保存或发布';
+  if (state.draft?.canEdit && Array.isArray(document.nodes) && !state.selectedTimeline) {
     if (state.selectedEdge) {
       const source = document.nodes.find(node => node.id === target.sourceNode);
       const destination = document.nodes.find(node => node.id === target.targetNode);
@@ -372,7 +373,6 @@ function renderInspector(document) {
         const rendered = [...$('inspector-content').querySelectorAll('.field')].find(element => element.querySelector('label').title === id);
         rendered.insertAdjacentHTML('beforeend', `<button class="edit-field" data-edit-edge-field="${escapeHtml(id)}">编辑候选</button>`);
       });
-      if (state.selectedFile.draftChanged) $('inspector-content').querySelector('.read-state').textContent = '本会话候选 · 尚未保存或发布';
       return;
     }
     const editable = definition?.fields.filter(field => field.visible && (!field.visibility ||
@@ -390,9 +390,8 @@ function renderInspector(document) {
       const edges = document.edges.filter(edge => edge.sourceNode === target.id || edge.targetNode === target.id);
       $('inspector-content').insertAdjacentHTML('beforeend', `<section class="connection-list"><h3>本节点连接</h3>${edges.map(edge => `<div><button data-select-edge="${escapeHtml(edge.id)}">${escapeHtml(edge.sourcePort)} → ${escapeHtml(edge.targetPort)} · 顺序 ${edge.order}</button><small>${escapeHtml(edge.id)}</small></div>`).join('') || '<small>当前没有连接</small>'}</section>`);
     }
-    if (state.selectedFile.draftChanged) $('inspector-content').querySelector('.read-state').textContent = '本会话候选 · 尚未保存或发布';
   }
-  if (Array.isArray(document.tracks) && state.draft) renderTimelineActions(document, target);
+  if (Array.isArray(document.tracks) && state.draft?.canEdit) renderTimelineActions(document, target);
 }
 
 function renderTimelineActions(timeline, target) {
@@ -417,17 +416,19 @@ function renderDraftToolbar() {
   const graph = Array.isArray(state.selectedFile?.document?.nodes);
   const ready = state.draft && !state.draft.busy && !state.draft.pendingCommit;
   $('draft-toolbar').hidden = !state.snapshot;
-  $('draft-add-node').disabled = !ready || !graph || state.tab !== 'document';
-  $('draft-add-edge').disabled = !ready || !graph || state.tab !== 'document';
+  $('draft-add-node').disabled = !ready || !state.draft.canEdit || !graph || state.tab !== 'document';
+  $('draft-add-edge').disabled = !ready || !state.draft.canEdit || !graph || state.tab !== 'document';
   $('draft-undo').disabled = !ready || !state.draft.canUndo;
   $('draft-redo').disabled = !ready || !state.draft.canRedo;
   $('draft-diff').disabled = !state.draft?.receipt;
   $('draft-discard').disabled = !ready || !state.draft.receipt;
-  $('draft-save').disabled = !ready || !state.draft.changed;
+  $('draft-save').disabled = !ready || !state.draft.canSave;
   $('draft-query').hidden = !state.draft?.pendingCommit;
   $('draft-retry').hidden = !state.draft?.pendingCommit;
   $('draft-state').textContent = state.draft?.pendingCommit ? `保存结果待查询 · ${state.draft.pendingCommit.requestId}`
+    : state.draft?.result && state.draft.result.status !== 'Saved' ? '保存未完成 · 候选已保留，请查看原因'
     : state.draft?.changed ? `${state.draft.steps.length} 步修改 · 已接收未保存` : state.draft ? '正式作者版本 · 保存与发布分别处理' : state.authoringProblem;
+  $('draft-query').disabled = $('draft-retry').disabled = state.draft?.busy === true;
 }
 
 async function showDraft() {
@@ -445,10 +446,11 @@ async function showDraft() {
   if (state.draft.result && state.draft.result.status !== 'Saved') {
     $('request-problem').hidden = false;
     $('request-problem-title').textContent = state.draft.result.status === 'Conflict' ? '保存冲突，未覆盖当前文件' : '文件保存失败';
-    $('request-problem-message').textContent = '候选仍保留。请核对实际文件和对象修订后处理。';
+    $('request-problem-message').textContent = '原请求的终态与候选仍保留。核对差异后，明确丢弃候选并重新读取当前文件，再重新操作。';
     $('request-problem-details').textContent = JSON.stringify(state.draft.result, null, 2);
   }
   report(state.draft.result?.status === 'Saved' ? '作者文件已保存并重新读取。编译、发布和运行采用另看对应回执。'
+    : state.draft.result ? '保存未完成，候选已保留，请查看具体原因。'
     : state.draft.changed ? '完整候选已由共同领域接收，可查看差异后保存。' : '已回到本次读取的磁盘版本。');
 }
 
@@ -511,7 +513,7 @@ function renderTimeline(timeline) {
   const rows = timeline.tracks.map((track, index) => `<div class="timeline-row"><button class="timeline-track ${state.selectedTimeline === track.id ? 'selected' : ''}" data-timeline="${escapeHtml(track.id)}"><small>${index + 1} · ${escapeHtml(track.contract)}</small><strong>${escapeHtml(track.displayName)}</strong><span>${track.clips.length} 片段 · ${track.markers.length} 标记</span></button><div class="timeline-lane" style="width:${width}px">${ticks.map(time => `<i class="timeline-grid" style="left:${time * pixels}px"></i>`).join('')}${track.clips.map(clip => `<button class="timeline-clip ${state.selectedTimeline === clip.id ? 'selected' : ''}" data-timeline="${escapeHtml(clip.id)}" style="left:${seconds(clip.timeRange.startRaw) * pixels}px;width:${Math.max(4, (seconds(clip.timeRange.endRaw) - seconds(clip.timeRange.startRaw)) * pixels)}px" title="${escapeHtml(clip.displayName)} · ${seconds(clip.timeRange.startRaw).toFixed(4)}—${seconds(clip.timeRange.endRaw).toFixed(4)} 秒"><span>${escapeHtml(clip.displayName)}</span><small>${escapeHtml(clip.contract)}</small></button>`).join('')}${track.markers.map(marker => `<button class="timeline-marker ${state.selectedTimeline === marker.id ? 'selected' : ''}" data-timeline="${escapeHtml(marker.id)}" style="left:${seconds(marker.timeRaw) * pixels}px" title="标记 · ${seconds(marker.timeRaw).toFixed(4)} 秒">◆</button>`).join('')}</div></div>`).join('');
   $('document-view').innerHTML = `<div class="timeline-heading"><div><small>正式时间数据</small><h2>${escapeHtml(timeline.displayName)}</h2></div><span>${timeline.loop ? '循环' : '单次'} · ${duration.toFixed(3)} 秒 · ${timeline.tracks.length} 条轨道</span></div><div class="timeline-scroll"><div class="timeline-content" style="width:${width + 224}px"><div class="timeline-ruler"><div>作者时间 · 秒</div><div style="width:${width}px">${ticks.map(time => `<span style="left:${time * pixels}px">${time.toFixed(2)}</span>`).join('')}</div></div>${rows}</div></div><p class="timeline-note">选择片段或标记查看实际参数及图引用。时间轴显示作者时间；真实模拟结果位于独立 Quantum 预览。</p>`;
   $('document-view').insertAdjacentHTML('beforeend', `<div class="timeline-bindings">${timeline.bindings.map(binding => `<button data-timeline="${escapeHtml(binding.id)}">绑定 ${escapeHtml(binding.id)}</button>`).join('')}</div>`);
-  if (state.draft) {
+  if (state.draft?.canEdit) {
     $('document-view').querySelector('.timeline-note').textContent = '拖动片段或标记，松开时生成一次共同时间候选；原始整数区间可在属性中精确编辑。';
     bindTimelineDrag($('document-view').querySelector('.timeline-content'), timeline, state.timeScale, pixels,
       applyTimelineEdits, error => report(error.message, true));
@@ -524,7 +526,7 @@ function renderVariables() {
   }));
   const variables = graphs.flatMap(graph => graph.document.variables.map(variable => ({ ...variable, graph })));
   $('document-view').innerHTML = `<div class="variables-page"><div class="eyebrow">BLACKBOARD DECLARATIONS</div><h1>变量与归属</h1><p>${variables.length} 条实际声明。默认值与声明分别显示，所属图保持原 owner。修改生成本会话候选，尚未保存或运行。</p><div class="variable-list">${variables.map(variable => `<article><header><strong>${escapeHtml(variable.key)}</strong><span title="${escapeHtml(variable.type)}">${escapeHtml(typeName(variable.type))}</span><button data-document="${escapeHtml(variable.graph.path)}">所属图 ↗</button></header><code>${escapeHtml(variable.id)}</code><div class="inspector-actions"><button data-edit-variable="${escapeHtml(variable.id)}" data-variable-document="${escapeHtml(variable.graph.path)}">编辑声明</button><button data-copy-variable="${escapeHtml(variable.id)}" data-variable-document="${escapeHtml(variable.graph.path)}">复制为新变量</button><button class="danger" data-delete-variable="${escapeHtml(variable.id)}" data-variable-document="${escapeHtml(variable.graph.path)}">删除声明</button></div><div class="variable-columns"><div><h3>默认值</h3>${renderValue(variable.defaultValue)}</div><div><h3>作用域、生命周期与输入声明</h3>${Object.entries(variable.declaration).map(([field, value]) => `<div class="nested-value"><label>${escapeHtml(field)}</label>${renderValue(value)}</div>`).join('')}</div></div></article>`).join('') || '<p class="muted">本内容根没有黑板声明。</p>'}</div></div>`;
-  if (!state.draft) $('document-view').querySelectorAll('[data-edit-variable], [data-copy-variable], [data-delete-variable]')
+  if (!state.draft?.canEdit) $('document-view').querySelectorAll('[data-edit-variable], [data-copy-variable], [data-delete-variable]')
     .forEach(button => { button.disabled = true; button.title = state.authoringProblem; });
 }
 
@@ -728,7 +730,7 @@ async function selectSource(source) {
   $('document-title').textContent = source === 'migrations' ? '选择迁移候选' : '选择内容根';
   $('document-view').innerHTML = `<div class="welcome"><div class="eyebrow">${source === 'migrations' ? 'MIGRATION REVIEW' : 'AUTHORING DOCUMENTS'}</div><h1>${source === 'migrations' ? '检查原资产的完整内容' : '打开正式作者文档'}</h1><p>${source === 'migrations' ? '候选用于核对迁移读取结果，原 Unity 作者资产仍是当前正式来源。选择左侧内容查看图、状态、时间轴和变量。' : '选择左侧作者根。尚未接收的迁移候选可从“内容来源”切换查看。'}</p></div>`;
   await loadRoots(true);
-  report(source === 'migrations' ? '迁移候选可预览共同图修改；尚未保存或切换正式来源。' : '请选择作者内容根。');
+  report(source === 'migrations' ? '迁移候选仅用于只读核对；正式接收后从作者工作区编辑。' : '请选择作者内容根。');
 }
 
 $('content-source').onchange = event => guarded(() => selectSource(event.target.value));

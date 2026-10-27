@@ -14,9 +14,12 @@ export class DocumentEditSession {
   }
 
   get changed() { return this.receipt?.differences.length > 0; }
-  get unsettled() { return this.steps.length > 0 || this.pendingCommit !== null; }
-  get canUndo() { return this.steps.length > 0 || this.savedUndo.length > 0; }
-  get canRedo() { return this.redoSteps.length > 0 || this.savedRedo.length > 0; }
+  get unsettled() { return this.steps.length > 0 || this.changed || this.pendingCommit !== null; }
+  get canEdit() { return !this.receipt || this.receipt.historyDirection === 'edit'; }
+  get canSave() { return this.changed && this.result === null; }
+  get canUndo() { return this.canEdit && (this.steps.length > 0 || this.savedUndo.length > 0); }
+  get canRedo() { return this.canEdit && (this.redoSteps.length > 0 ||
+    (this.steps.length === 0 && this.savedRedo.length > 0)); }
 
   apply(documentId, edits) {
     return this.preview([...this.steps, { graphBatches: [{ documentId, edits }], timelineBatches: [] }], []);
@@ -28,12 +31,13 @@ export class DocumentEditSession {
 
   async preview(steps, redoSteps) {
     await this.perform(async () => {
+      if (!this.canEdit) throw new Error('请先处理当前撤销或重做候选，再继续编辑。');
       const receipt = await this.send('/api/authoring/documents/edits', { ...this.context,
         requestId: crypto.randomUUID(), graphBatches: steps.flatMap(step => step.graphBatches),
         timelineBatches: steps.flatMap(step => step.timelineBatches) });
       this.steps = steps;
       this.redoSteps = redoSteps;
-      this.receipt = receipt;
+      this.receipt = { ...receipt, historyDirection: 'edit' };
       this.result = null;
     });
   }
@@ -52,15 +56,15 @@ export class DocumentEditSession {
     await this.perform(async () => {
       const receipt = await this.send('/api/authoring/documents/inverse', { ...this.context,
         requestId: crypto.randomUUID(), appliedCandidateId });
-      this.receipt = receipt;
-      this.pendingCommit = { candidateId: receipt.candidateId, requestId: receipt.requestId, direction };
+      this.receipt = { ...receipt, historyDirection: direction };
+      this.pendingCommit = this.receipt;
       await this.submitCommit();
     });
   }
 
   async commit() {
     await this.perform(async () => {
-      this.pendingCommit = { candidateId: this.receipt.candidateId, requestId: this.receipt.requestId, direction: 'edit' };
+      this.pendingCommit = this.receipt;
       await this.submitCommit();
     });
   }
@@ -85,7 +89,7 @@ export class DocumentEditSession {
     this.result = result;
     if (result.status !== 'Saved') { this.pendingCommit = null; return; }
     const snapshot = await this.send(`/api/workspace/root?path=${encodeURIComponent(this.context.rootPath)}`);
-    const { candidateId, direction } = this.pendingCommit;
+    const { candidateId, historyDirection: direction } = this.pendingCommit;
     if (direction === 'undo') { this.savedUndo.pop(); this.savedRedo.push(candidateId); }
     else if (direction === 'redo') { this.savedRedo.pop(); this.savedUndo.push(candidateId); }
     else { this.savedUndo.push(candidateId); this.savedRedo = []; }
