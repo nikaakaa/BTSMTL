@@ -1,0 +1,10 @@
+{
+    "name": "BTSMTL.Authoring.Workspace",
+    "rootNamespace": "BTSMTL.Authoring.Workspace",
+    "references": ["BTSMTL.Authoring", "BTSMTL.Authoring.Serialization"],
+    "includePlatforms": ["Editor"],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "autoReferenced": false,
+    "noEngineReferences": true
+}

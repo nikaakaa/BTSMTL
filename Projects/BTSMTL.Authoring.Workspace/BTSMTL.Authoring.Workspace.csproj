@@ -2,9 +2,11 @@
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>9.0</LangVersion>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../BTSMTL.Authoring.Serialization/BTSMTL.Authoring.Serialization.csproj" />
+    <Compile Include="../../Packages/com.btsmtl/Authoring/Workspace/*.cs" />
   </ItemGroup>
 </Project>

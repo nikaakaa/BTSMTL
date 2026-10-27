@@ -1,9 +1,14 @@
-using System.Security.Cryptography;
+#nullable enable
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Text;
 using BTSMTL.Authoring.Documents;
 using BTSMTL.Authoring.Graph;
 
-namespace BTSMTL.Authoring.Workspace;
+namespace BTSMTL.Authoring.Workspace
+{
 
 public sealed class AuthoringGraphWorkspaceFile
 {
@@ -13,7 +18,7 @@ public sealed class AuthoringGraphWorkspaceFile
     {
         Path = System.IO.Path.GetFullPath(path);
         Bytes = bytes;
-        Revision = Convert.ToHexString(SHA256.HashData(bytes));
+        Revision = AuthoringFileRevision.Compute(bytes);
         HasByteOrderMark = bytes.AsSpan().StartsWith(Encoding.UTF8.Preamble);
         Text = Utf8.GetString(bytes.AsSpan(HasByteOrderMark ? 3 : 0));
         NewLine = Text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
@@ -60,7 +65,7 @@ public sealed class AuthoringGraphCandidate
             .Append(baseline.Revision).Append('\n');
         foreach (AuthoringCandidateFile file in files.OrderBy(file => file.Path, StringComparer.Ordinal))
             identity.Append(file.Path).Append('\n').Append(file.BeforeRevision).Append('\n').Append(file.AfterRevision).Append('\n');
-        Id = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(identity.ToString())));
+        Id = AuthoringFileRevision.Compute(Encoding.UTF8.GetBytes(identity.ToString()));
     }
 
     public string Id { get; }
@@ -129,9 +134,10 @@ public sealed class AuthoringGraphCandidate
                 continue;
             byte[] after = source.Encode(canonical);
             files.Add(new AuthoringCandidateFile(source.Path, source.Revision,
-                Convert.ToHexString(SHA256.HashData(after)), source.Bytes, after, change.Key,
+                AuthoringFileRevision.Compute(after), source.Bytes, after, change.Key,
                 change.Value.OrderBy(element => element.Value, StringComparer.Ordinal).ToArray()));
         }
         return new AuthoringGraphCandidate(requestId, root, files.ToArray(), inverses.ToArray(), complete);
     }
+}
 }

@@ -1,8 +1,15 @@
+#nullable enable
+using System;
 using System.Collections.Concurrent;
-using System.Security.Cryptography;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using BTSMTL.Authoring.Storage;
 
-namespace BTSMTL.Authoring.Workspace;
+namespace BTSMTL.Authoring.Workspace
+{
 
 public enum AuthoringCommitStatus { Saved, Conflict, Failed }
 public sealed record AuthoringRevisionConflict(string Path, string ExpectedRevision, string CurrentRevision,
@@ -36,7 +43,7 @@ public sealed class AuthoringGraphCommit
             foreach (AuthoringSourceFile source in candidate.Baseline.Files)
             {
                 string current = File.Exists(source.Path)
-                    ? Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(source.Path))) : "";
+                    ? AuthoringFileRevision.Compute(File.ReadAllBytes(source.Path)) : "";
                 if (current == source.Revision) continue;
                 AuthoringCandidateFile? change = candidate.Files.SingleOrDefault(file => file.Path == source.Path);
                 conflicts.Add(new(source.Path, source.Revision, current,
@@ -61,4 +68,5 @@ public sealed class AuthoringGraphCommit
             IReadOnlyList<AuthoringRevisionConflict> conflicts, AuthoringFileWriteResult? transaction) =>
             new(candidate.Id, candidate.RequestId, candidate.RootId.Value, status, files, conflicts, transaction);
     }
+}
 }

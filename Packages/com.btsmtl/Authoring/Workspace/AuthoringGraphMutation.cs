@@ -1,7 +1,12 @@
+#nullable enable
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using BTSMTL.Authoring.Documents;
 using BTSMTL.Authoring.Graph;
 
-namespace BTSMTL.Authoring.Workspace;
+namespace BTSMTL.Authoring.Workspace
+{
 
 public static class AuthoringGraphMutation
 {
@@ -337,4 +342,5 @@ public static class AuthoringGraphMutation
             AuthoringNamedValue[]? fields = null) => new(edge.Id, edge.SourceNodeId, edge.SourcePortId,
             edge.TargetNodeId, edge.TargetPortId, order ?? edge.Order, fields ?? edge.Fields);
     }
+}
 }

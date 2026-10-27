@@ -1,7 +1,9 @@
+using System.Collections.Generic;
 using BTSMTL.Authoring.Documents;
 using BTSMTL.Authoring.Graph;
 
-namespace BTSMTL.Authoring.Workspace;
+namespace BTSMTL.Authoring.Workspace
+{
 
 public abstract record AuthoringGraphEdit;
 public sealed record RenameGraph(string DisplayName) : AuthoringGraphEdit;
@@ -30,3 +32,4 @@ public sealed record ConfigureVariable(GraphAuthoringElementId VariableId, strin
 
 public sealed record AuthoringGraphEditResult(AuthoringGraphDocument Document,
     IReadOnlyList<AuthoringGraphEdit> ReverseEdits, IReadOnlyList<GraphAuthoringElementId> ChangedElements);
+}

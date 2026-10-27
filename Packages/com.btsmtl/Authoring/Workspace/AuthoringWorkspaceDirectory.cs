@@ -1,11 +1,19 @@
-using System.Security.Cryptography;
+#nullable enable
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Text;
 using BTSMTL.Authoring.Documents;
 
-namespace BTSMTL.Authoring.Workspace;
+namespace BTSMTL.Authoring.Workspace
+{
 
 public sealed record AuthoringSourceFile(string Path, string Revision, string Text,
-    [property: System.Text.Json.Serialization.JsonIgnore] ReadOnlyMemory<byte> Bytes);
+#if !UNITY_5_3_OR_NEWER
+    [property: System.Text.Json.Serialization.JsonIgnore]
+#endif
+    ReadOnlyMemory<byte> Bytes);
 public sealed record AuthoringRootFiles(AuthoringRootDocument Root, string Revision,
     IReadOnlyList<AuthoringSourceFile> Files);
 public sealed record AuthoringRootEntry(string Id, string DisplayName, string Domain, string Kind,
@@ -61,9 +69,9 @@ public sealed class AuthoringWorkspaceDirectory
         var files = new List<AuthoringSourceFile> { source };
         foreach (AuthoringDocumentFile file in root.Files.Span)
             files.Add(ReadFile(Resolve(directory, file.Path)));
-        string revision = Convert.ToHexString(SHA256.HashData(Utf8.GetBytes(string.Join("\n",
+        string revision = AuthoringFileRevision.Compute(Utf8.GetBytes(string.Join("\n",
             files.Select(file => System.IO.Path.GetRelativePath(directory, file.Path).Replace('\\', '/') +
-                ":" + file.Revision).OrderBy(value => value, StringComparer.Ordinal)))));
+                        ":" + file.Revision).OrderBy(value => value, StringComparer.Ordinal))));
         return new(root, revision, files);
     }
 
@@ -102,7 +110,7 @@ public sealed class AuthoringWorkspaceDirectory
     {
         byte[] bytes = File.ReadAllBytes(path);
         bool bom = bytes.AsSpan().StartsWith(Encoding.UTF8.Preamble);
-        return new(path, Convert.ToHexString(SHA256.HashData(bytes)), Utf8.GetString(bytes.AsSpan(bom ? 3 : 0)), bytes);
+        return new(path, AuthoringFileRevision.Compute(bytes), Utf8.GetString(bytes.AsSpan(bom ? 3 : 0)), bytes);
     }
 
     static void RequirePage(int offset, int limit)
@@ -110,4 +118,5 @@ public sealed class AuthoringWorkspaceDirectory
         if (offset < 0 || limit < 1 || limit > 200)
             throw new ArgumentException("分页要求 offset ≥ 0，limit 在 1～200 之间。");
     }
+}
 }
