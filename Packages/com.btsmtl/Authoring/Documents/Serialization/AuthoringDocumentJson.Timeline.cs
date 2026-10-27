@@ -56,7 +56,7 @@ namespace BTSMTL.Authoring.Documents
             JToken loop = Required(timeline, "loop", sourcePath);
             if (loop.Type != JTokenType.Boolean)
                 throw new AuthoringDocumentFormatException(sourcePath, loop.Path, "循环状态必须使用 JSON Boolean。");
-            return new AuthoringTimelineDocument(Id(timeline, "id", sourcePath),
+            var result = new AuthoringTimelineDocument(Id(timeline, "id", sourcePath),
                 new GraphAuthoringDocumentRoleId(Text(timeline, "role", sourcePath)),
                 ReadReference(Required(timeline, "owner", sourcePath), sourcePath),
                 Text(timeline, "displayName", sourcePath), Text(timeline, "definitionVersion", sourcePath),
@@ -75,6 +75,7 @@ namespace BTSMTL.Authoring.Documents
                         ReadFields(Required(marker, "fields", sourcePath), sourcePath))).ToArray())).ToArray(),
                 Array(timeline, "bindings", sourcePath).Select(binding => new AuthoringTimelineBindingDocument(
                     Id(binding, "id", sourcePath), ReadFields(Required(binding, "fields", sourcePath), sourcePath))).ToArray());
+            return ReceiveMembers(timeline, result, sourcePath);
         }
 
         static JObject WriteTimeRange(TimelineClipTimeRange range) => new JObject

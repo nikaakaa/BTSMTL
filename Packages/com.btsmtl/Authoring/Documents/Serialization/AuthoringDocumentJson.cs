@@ -52,7 +52,7 @@ namespace BTSMTL.Authoring.Documents
         public static AuthoringRootDocument ReadRoot(string text, string sourcePath)
         {
             JObject root = ReadDocument(text, sourcePath);
-            return new AuthoringRootDocument(Id(root, "id", sourcePath),
+            var result = new AuthoringRootDocument(Id(root, "id", sourcePath),
                 new GraphAuthoringDomainId(Text(root, "domain", sourcePath)), Text(root, "kind", sourcePath),
                 Text(root, "definitionVersion", sourcePath), Text(root, "displayName", sourcePath),
                 ReadFields(Required(root, "fields", sourcePath), sourcePath),
@@ -64,6 +64,7 @@ namespace BTSMTL.Authoring.Documents
                     Id(value, "documentId", sourcePath), Id(value, "elementId", sourcePath),
                     Text(value, "assetPath", sourcePath), Text(value, "guid", sourcePath),
                     long.Parse(Text(value, "localFileId", sourcePath), CultureInfo.InvariantCulture))).ToArray());
+            return ReceiveMembers(root, result, sourcePath);
         }
 
         public static string WriteGraph(AuthoringGraphDocument graph) => Write(new JObject
@@ -114,7 +115,7 @@ namespace BTSMTL.Authoring.Documents
         public static AuthoringGraphDocument ReadGraph(string text, string sourcePath)
         {
             JObject graph = ReadDocument(text, sourcePath);
-            return new AuthoringGraphDocument(Id(graph, "id", sourcePath),
+            var result = new AuthoringGraphDocument(Id(graph, "id", sourcePath),
                 new GraphAuthoringDocumentRoleId(Text(graph, "role", sourcePath)),
                 ReadReference(Required(graph, "owner", sourcePath), sourcePath),
                 Text(graph, "displayName", sourcePath), Text(graph, "definitionVersion", sourcePath),
@@ -137,6 +138,7 @@ namespace BTSMTL.Authoring.Documents
                     Id(variable, "id", sourcePath), Text(variable, "key", sourcePath), Text(variable, "type", sourcePath),
                     ReadFields(Required(variable, "declaration", sourcePath), sourcePath),
                     ReadValue(Required(variable, "defaultValue", sourcePath), sourcePath))).ToArray());
+            return ReceiveMembers(graph, result, sourcePath);
         }
 
         public static string WriteReferenceTable(AuthoringReferenceTable table) => Write(new JObject
@@ -152,13 +154,21 @@ namespace BTSMTL.Authoring.Documents
                 }))
         });
 
-        public static AuthoringReferenceTable ReadReferenceTable(string text, string sourcePath) => new(
-            Array(ReadDocument(text, sourcePath), "entries", sourcePath).Select(entry => new AuthoringReferenceEntry(
+        public static AuthoringReferenceTable ReadReferenceTable(string text, string sourcePath)
+        {
+            JObject document = ReadDocument(text, sourcePath);
+            var result = new AuthoringReferenceTable(Array(document, "entries", sourcePath).Select(entry => new AuthoringReferenceEntry(
                 ReadValue(Required(entry, "source", sourcePath), sourcePath), Text(entry, "kind", sourcePath),
                 ReadFields(Required(entry, "fields", sourcePath), sourcePath))).ToArray());
+            return ReceiveMembers(document, result, sourcePath);
+        }
 
         public static string WriteValue(AuthoringValue value) => Write(ValueToken(value));
-        public static AuthoringValue ReadValue(string text, string sourcePath) => ReadValue(ReadObject(text), sourcePath);
+        public static AuthoringValue ReadValue(string text, string sourcePath)
+        {
+            JObject document = ReadObject(text);
+            return ReceiveMembers(document, ReadValue(document, sourcePath), sourcePath);
+        }
 
         static JToken ValueToken(AuthoringValue value)
         {
@@ -221,8 +231,11 @@ namespace BTSMTL.Authoring.Documents
         {
             if (token is not JObject fields)
                 throw new AuthoringDocumentFormatException(sourcePath, token.Path, "字段集合必须是对象。");
-            return fields.Properties().Select(field => new AuthoringNamedValue(
-                new GraphAuthoringFieldId(field.Name), ReadValue(field.Value, sourcePath))).ToArray();
+            return fields.Properties().Select(field =>
+            {
+                field.AddAnnotation(ReadMember.Instance);
+                return new AuthoringNamedValue(new GraphAuthoringFieldId(field.Name), ReadValue(field.Value, sourcePath));
+            }).ToArray();
         }
 
         static JObject WriteReference(AuthoringContentReference reference) => new JObject
@@ -278,8 +291,25 @@ namespace BTSMTL.Authoring.Documents
             return value as JArray ?? throw new AuthoringDocumentFormatException(sourcePath, value.Path, "必须使用数组。");
         }
 
-        static JToken Required(JToken token, string name, string sourcePath) =>
-            token[name] ?? throw new AuthoringDocumentFormatException(sourcePath, token.Path + "." + name, "缺少必需字段。");
+        static JToken Required(JToken token, string name, string sourcePath)
+        {
+            JToken value = token[name] ?? throw new AuthoringDocumentFormatException(sourcePath, token.Path + "." + name, "缺少必需字段。");
+            value.Parent.AddAnnotation(ReadMember.Instance);
+            return value;
+        }
+
+        static T ReceiveMembers<T>(JObject document, T result, string sourcePath)
+        {
+            foreach (JProperty member in document.Descendants().OfType<JProperty>())
+                if (member.Annotation<ReadMember>() == null)
+                    throw new AuthoringDocumentFormatException(sourcePath, member.Path, "当前文档格式未接收此成员，不能无损保存。");
+            return result;
+        }
+
+        sealed class ReadMember
+        {
+            public static readonly ReadMember Instance = new ReadMember();
+        }
 
         static string Write(JToken token)
         {
