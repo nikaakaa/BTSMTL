@@ -79,7 +79,7 @@ async function selectRun(id) {
   history.replaceState(null, '', `?run=${encodeURIComponent(id)}`);
   $('playback-controls').hidden = true;
   clearActors(); $('run-details').replaceChildren(); $('frame-facts').replaceChildren();
-  $('actors').replaceChildren(); $('frame-json').textContent = '';
+  $('actors').replaceChildren(); $('action-changes').replaceChildren(); $('frame-json').textContent = '';
   $('frame').disabled = true; $('previous-frame').disabled = true; $('next-frame').disabled = true;
   $('fit-view').disabled = true; $('compare').disabled = true; $('frame-label').textContent = '无确认帧';
   $('comparison-result').textContent = '';
@@ -177,6 +177,20 @@ async function showFrame(index) {
   $('frame-label').textContent = `SDK ${frame.frame}`;
   $('frame-facts').innerHTML = `<dt>确认 SDK 帧</dt><dd>${escapeHtml(frame.frame)}</dd><dt>玩法 Tick</dt><dd>${escapeHtml(frame.gameplayTick)}</dd><dt>完整 checksum</dt><dd><code>${escapeHtml(frame.checksum)}</code></dd>`;
   $('actors').innerHTML = frame.actors.map(actor => `<div class="actor-fact"><strong>Roster ${actor.rosterIndex}</strong> · Entity ${actor.entityIndex}:${actor.entityVersion}<code>Position FP Raw · ${actor.positionRaw.map(escapeHtml).join(' / ')}</code><code>Rotation FP Raw · ${actor.rotationRaw.map(escapeHtml).join(' / ')}</code></div>`).join('');
+  if (state.summary.channels.includes('action-changes')) {
+    $('action-changes').innerHTML = frame.actionChanges.length ? frame.actionChanges.map(action => {
+      const hasAction = action.instanceId !== '0';
+      const title = hasAction ? `动作实例 ${action.instanceId} · ${action.phase}` : `激活请求 ${action.requestId} · ${action.admission}`;
+      const facts = { '角色': `Roster ${action.rosterIndex}`, '能力资产': action.abilityAssetId,
+        '输入序号': action.inputSequence, '执行代数': action.executionGeneration,
+        '上下文 / 操作': `${action.contextId} / ${action.entryOperationIndex}`,
+        '业务结果': action.committed ? '动作已提交' : action.reason,
+        '控制意图': action.controlIntent, '执行失败': action.stepKind };
+      return `<div class="actor-fact"><strong>${escapeHtml(title)}</strong><dl>${Object.entries(facts)
+        .filter(([, value]) => value !== null && value !== '')
+        .map(([name, value]) => `<dt>${escapeHtml(name)}</dt><dd>${escapeHtml(value)}</dd>`).join('')}</dl></div>`;
+    }).join('') : '<p class="muted">此确认帧没有动作变化。完整请求与失败字段保留在同源 JSON 中。</p>';
+  } else $('action-changes').innerHTML = '<p class="muted">此运行未采集动作变化通道。</p>';
   $('frame-json').textContent = JSON.stringify(frame, null, 2);
   drawActors(frame.actors);
 }
