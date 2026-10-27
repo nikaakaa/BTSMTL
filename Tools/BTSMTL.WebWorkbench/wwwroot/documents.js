@@ -178,7 +178,7 @@ function renderRoot(document) {
   const introduction = state.source === 'migrations'
     ? '该候选从现有 Unity 资产读取，用于核对迁移结果。原资产仍是当前正式作者来源。'
     : '编辑来源保存在项目作者目录。各阶段分别记录实际完成的修订。';
-  $('document-view').innerHTML = `<div class="overview"><div class="eyebrow">${state.source === 'migrations' ? 'MIGRATION CANDIDATE' : 'AUTHORING DOCUMENT'}</div><h1>${escapeHtml(document.displayName || root.displayName)}</h1><p class="intro">${introduction}</p><div class="phase-grid"><div><span class="phase-state saved">已读取</span><strong>磁盘内容</strong><small>${state.snapshot.files.length} 个文件</small></div><div><span class="phase-state pending">未完成</span><strong>领域接收</strong><small>尚未接入完整作者定义</small></div><div><span class="phase-state pending">未执行</span><strong>编译与发布</strong><small>没有本修订的正式产物</small></div><div><span class="phase-state pending">未准备</span><strong>运行预览</strong><small>独立会话尚未采用</small></div></div><h2>引用与归属</h2><dl><dt>稳定身份</dt><dd><code>${escapeHtml(document.id)}</code></dd><dt>定义版本</dt><dd>${escapeHtml(document.definitionVersion)}</dd><dt>外部引用</dt><dd>${root.externalReferences.length} 项</dd><dt>Unity 对象映射</dt><dd>${root.unityOutputs.length} 项</dd></dl><div class="notice">当前读取入口已接通。创建、业务属性修改及保存需共同领域接收完成后开放。</div></div>`;
+  $('document-view').innerHTML = `<div class="overview"><div class="eyebrow">${state.source === 'migrations' ? 'MIGRATION CANDIDATE' : 'AUTHORING DOCUMENT'}</div><h1>${escapeHtml(document.displayName || root.displayName)}</h1><p class="intro">${introduction}</p><div class="phase-grid"><div><span class="phase-state saved">已读取</span><strong>磁盘内容</strong><small>${state.snapshot.files.length} 个文件</small></div><div><span class="phase-state pending">未完成</span><strong>领域接收</strong><small>尚未接入完整作者定义</small></div><div><span class="phase-state pending">未执行</span><strong>编译与发布</strong><small>没有本修订的正式产物</small></div><div><span class="phase-state pending">未准备</span><strong>运行预览</strong><small>独立会话尚未采用</small></div></div><h2>引用与归属</h2><dl><dt>稳定身份</dt><dd><code>${escapeHtml(document.id)}</code></dd><dt>定义版本</dt><dd>${escapeHtml(document.definitionVersion)}</dd><dt>外部引用</dt><dd>${root.externalReferences.length} 项</dd><dt>Unity 对象映射</dt><dd>${root.unityOutputs.length} 项</dd></dl><div class="notice">打开本根图文件可预览字段、节点和连线修改，撤销重做并查看差异。完整领域接收和正式保存尚未接通，原文件仍是当前修订。</div></div>`;
 }
 
 function renderGraph(graph) {
@@ -461,7 +461,7 @@ async function selectSource(source) {
   $('document-title').textContent = source === 'migrations' ? '选择迁移候选' : '选择内容根';
   $('document-view').innerHTML = `<div class="welcome"><div class="eyebrow">${source === 'migrations' ? 'MIGRATION REVIEW' : 'AUTHORING DOCUMENTS'}</div><h1>${source === 'migrations' ? '检查原资产的完整内容' : '打开正式作者文档'}</h1><p>${source === 'migrations' ? '候选用于核对迁移读取结果，原 Unity 作者资产仍是当前正式来源。选择左侧内容查看图、状态、时间轴和变量。' : '选择左侧作者根。尚未接收的迁移候选可从“内容来源”切换查看。'}</p></div>`;
   await loadRoots(true);
-  report(source === 'migrations' ? '迁移候选只读检查；尚未切换正式来源。' : '请选择作者内容根。');
+  report(source === 'migrations' ? '迁移候选可预览共同图修改；尚未保存或切换正式来源。' : '请选择作者内容根。');
 }
 
 $('content-source').onchange = event => guarded(() => selectSource(event.target.value));
