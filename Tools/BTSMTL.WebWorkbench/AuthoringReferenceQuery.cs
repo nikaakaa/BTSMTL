@@ -1,5 +1,6 @@
 using BTSMTL.Authoring.Documents;
 using BTSMTL.Authoring.Workspace;
+using Newtonsoft.Json.Linq;
 
 namespace BTSMTL.WebWorkbench;
 
@@ -13,6 +14,28 @@ public sealed record AuthoringReferencePage(AuthoringReferenceUse[] Items, int O
 
 public static class AuthoringReferenceQuery
 {
+    public static object Content(AuthoringWorkspaceDirectory workspace, string path,
+        string documentId, string elementId)
+    {
+        AuthoringRootFiles root = workspace.Read(path);
+        string directory = Path.GetDirectoryName(root.Files[0].Path)!;
+        string sourcePath = documentId == root.Root.Id.Value ? root.Files[0].Path :
+            AuthoringWorkspaceDirectory.Resolve(directory, root.Root.Files.ToArray()
+                .Single(file => file.Id.Value == documentId).Path);
+        AuthoringSourceFile source = root.Files.Single(file => file.Path == sourcePath);
+        JObject content = JObject.Parse(source.Text);
+        JObject[] elements = content.DescendantsAndSelf().OfType<JObject>()
+            .Where(value => value["id"]?.Type == JTokenType.String && value["id"]!.Value<string>() == elementId).ToArray();
+        if (elements.Length != 1)
+            throw new InvalidDataException($"文档 '{documentId}' 的稳定对象 '{elementId}' 匹配 {elements.Length} 项。");
+        JObject element = elements[0];
+        return new { RootPath = path, RootId = root.Root.Id.Value, RootRevision = root.Revision,
+            DocumentId = documentId, ElementId = elementId,
+            SourcePath = Path.GetRelativePath(directory, source.Path).Replace('\\', '/'),
+            FileRevision = source.Revision, JsonPath = element.Path,
+            Content = element.ToString(Newtonsoft.Json.Formatting.Indented) };
+    }
+
     public static AuthoringReferencePage Dependencies(AuthoringWorkspaceDirectory workspace, string path,
         string? documentId, string? elementId, int offset, int limit)
     {
