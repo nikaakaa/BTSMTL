@@ -119,7 +119,16 @@ namespace BTSMTL.Authoring.Documents
             return candidate.Apply(instance);
         }
 
-        public static string TypeIdentity(Type type) => type.AssemblyQualifiedName;
+        public static string TypeIdentity(Type type)
+        {
+            if (type.IsArray)
+                return TypeIdentity(type.GetElementType()) + "[" + new string(',', type.GetArrayRank() - 1) + "]";
+            Type definition = type.IsGenericType ? type.GetGenericTypeDefinition() : type;
+            string name = definition.FullName;
+            if (type.IsGenericType)
+                name += "<" + string.Join(",", type.GetGenericArguments().Select(TypeIdentity)) + ">";
+            return definition.Assembly == typeof(object).Assembly ? name : definition.Assembly.GetName().Name + ":" + name;
+        }
 
         AuthoringObjectContract Contract(Type type)
         {

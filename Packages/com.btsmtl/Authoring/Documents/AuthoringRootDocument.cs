@@ -13,7 +13,7 @@ namespace BTSMTL.Authoring.Documents
 
     public sealed class AuthoringRootDocument
     {
-        public const int FormatVersion = 1;
+        public const int FormatVersion = 2;
 
         public AuthoringRootDocument(GraphAuthoringElementId id, GraphAuthoringDomainId domainId,
             string kind, string definitionVersion, string displayName,
