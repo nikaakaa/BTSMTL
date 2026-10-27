@@ -13,7 +13,7 @@ namespace BTSMTL.Authoring.Workspace
 public static class AuthoringDocumentInverse
 {
     public static IReadOnlyList<AuthoringDocumentText> Create(AuthoringRootFiles before, AuthoringRootFiles after,
-        IReadOnlyList<GraphAuthoringElementId> changedDocuments, AuthoringRootFiles current)
+        AuthoringRootFiles current)
     {
         string directory = Path.GetDirectoryName(current.Files[0].Path)!;
         var texts = current.Files.ToDictionary(file => file.Path, file => file.Text, StringComparer.OrdinalIgnoreCase);
@@ -28,10 +28,12 @@ public static class AuthoringDocumentInverse
         var destinations = manifest.Files.ToArray().ToDictionary(file => file.Id,
             file => AuthoringWorkspaceDirectory.Resolve(directory, file.Path));
         var pending = new List<(string Id, string? CurrentPath, string? TargetPath, JToken? Value)>();
-        foreach (GraphAuthoringElementId id in changedDocuments.Distinct().Where(id => !id.Equals(current.Root.Id)))
+        foreach (GraphAuthoringElementId id in original.Keys.Union(applied.Keys))
         {
             original.TryGetValue(id, out AuthoringSourceFile? prior);
             applied.TryGetValue(id, out AuthoringSourceFile? saved);
+            if (prior != null && saved != null && prior.Revision == saved.Revision &&
+                string.Equals(prior.Path, saved.Path, StringComparison.OrdinalIgnoreCase)) continue;
             actual.TryGetValue(id, out AuthoringSourceFile? now);
             JToken? inverse = Merge(id.Value, id.Value, "", saved == null ? null : Parse(saved.Text),
                 prior == null ? null : Parse(prior.Text), now == null ? null : Parse(now.Text));

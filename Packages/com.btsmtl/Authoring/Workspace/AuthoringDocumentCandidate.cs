@@ -74,6 +74,9 @@ public sealed class AuthoringDocumentCandidate
         domain.Receive(parsed);
 
         var original = baseline.Files.ToDictionary(file => file.Path, StringComparer.OrdinalIgnoreCase);
+        var priorDocuments = baseline.Root.Files.ToArray().ToDictionary(file => file.Id,
+            file => original[AuthoringWorkspaceDirectory.Resolve(directory, file.Path)]);
+        priorDocuments.Add(baseline.Root.Id, original[rootPath]);
         var final = new Dictionary<string, AuthoringSourceFile>(StringComparer.OrdinalIgnoreCase);
         var identities = root.Files.ToArray().ToDictionary(file => AuthoringWorkspaceDirectory.Resolve(directory, file.Path),
             file => file.Id, StringComparer.OrdinalIgnoreCase);
@@ -83,7 +86,7 @@ public sealed class AuthoringDocumentCandidate
         foreach (AuthoringSourceFile file in files)
         {
             string text = canonical[identities[file.Path]];
-            byte[] bytes = original.TryGetValue(file.Path, out AuthoringSourceFile? prior)
+            byte[] bytes = priorDocuments.TryGetValue(identities[file.Path], out AuthoringSourceFile? prior)
                 ? Newtonsoft.Json.Linq.JToken.DeepEquals(AuthoringDocumentJson.ReadObject(prior.Text),
                     AuthoringDocumentJson.ReadObject(text)) ? prior.Bytes.ToArray() : Encode(prior, text)
                 : Utf8.GetBytes(text);
