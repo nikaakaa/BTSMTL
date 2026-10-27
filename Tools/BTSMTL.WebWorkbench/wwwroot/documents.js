@@ -132,6 +132,15 @@ async function selectFile(path) {
     } catch (error) { file.stateMachineProblem = error.message; }
   }
   if (state.selectedFile !== file) return;
+  if (!file.problem && Array.isArray(file.document.nodes) && file.document.role !== 'StateMachine' &&
+      !file.topologyReceipt && !file.topologyProblem) {
+    try {
+      file.topologyReceipt = await request('/api/authoring/graphs/validate', {
+        content: file.content, definitionsRevision: state.definitionRevision
+      });
+    } catch (error) { file.topologyProblem = error.message; }
+  }
+  if (state.selectedFile !== file) return;
   renderDocument();
 }
 
@@ -204,6 +213,15 @@ function renderGraph(graph) {
   $('document-view').innerHTML = `<div class="graph-surface" id="graph-surface"><div class="graph-caption">${escapeHtml(graph.role)}<span>${graph.nodes.length} 个节点 · ${graph.edges.length} 条连接</span></div><div class="graph-world" id="graph-world"><svg width="6000" height="4000">${links}</svg>${nodes}</div><div class="canvas-tools"><button id="fit-graph">适应全图</button><span id="zoom-value">100%</span></div><div class="canvas-hint">空白处拖动画布 · 滚轮缩放 · 选择节点查看实际字段</div></div>`;
   updateView();
   const surface = $('graph-surface');
+  const topology = state.selectedFile.topologyReceipt;
+  if (topology) {
+    surface.dataset.topologyValid = String(topology.valid);
+    surface.querySelector('.graph-caption').insertAdjacentHTML('beforeend',
+      '<span title="仅检查节点所属页面、固定入口、连线类型、容量与环路；不代表完整技能已接收或发布">图结构已接收</span>');
+  }
+  if (state.selectedFile.topologyProblem)
+    surface.querySelector('.graph-caption').insertAdjacentHTML('beforeend',
+      `<span class="error">图结构未接收：${escapeHtml(state.selectedFile.topologyProblem)}</span>`);
   const receipt = state.selectedFile.stateMachineReceipt;
   if (receipt) {
     surface.dataset.stateMachineValid = String(receipt.valid);
