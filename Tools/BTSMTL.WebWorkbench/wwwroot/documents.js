@@ -61,9 +61,13 @@ async function openRoot(path) {
   const snapshot = await request(`${api()}/root?path=${encodeURIComponent(path)}`);
   const root = JSON.parse(snapshot.root);
   state.selectedRoot = entry;
-  state.snapshot = { ...snapshot, root };
+  const files = snapshot.files.map(file => {
+    try { return { ...file, document: JSON.parse(file.content), problem: null }; }
+    catch (error) { return { ...file, document: null, problem: error.message }; }
+  });
+  state.snapshot = { ...snapshot, root, files };
   state.selectedNode = null;
-  state.selectedFile = snapshot.files[0];
+  state.selectedFile = files[0];
   $('document-title').textContent = root.displayName;
   $('root-kind').textContent = `${root.domain} · ${root.kind}`;
   $('revision').textContent = snapshot.revision.slice(0, 12);
@@ -79,7 +83,8 @@ async function openRoot(path) {
 function renderFiles() {
   const root = state.snapshot.root;
   const files = state.snapshot.files.map((file, index) => ({ ...file, declaration: index === 0 ? null : root.files[index - 1] }));
-  $('files').innerHTML = files.map(file => `<button class="file-item ${state.selectedFile?.path === file.path ? 'selected' : ''}" data-file="${escapeHtml(file.path)}"><span>${file.declaration?.kind === 'Graph' ? '⌘' : file.declaration?.kind === 'Timeline' ? '◷' : '▤'}</span><span>${escapeHtml(file.path)}<small>${escapeHtml(file.declaration ? kindNames[file.declaration.kind] : '内容根')}</small></span></button>`).join('');
+  const query = $('search-files').value.trim().toLowerCase();
+  $('files').innerHTML = files.filter(file => `${file.document?.displayName} ${file.document?.role} ${file.path}`.toLowerCase().includes(query)).map(file => `<button class="file-item ${state.selectedFile?.path === file.path ? 'selected' : ''}" data-file="${escapeHtml(file.path)}" title="${escapeHtml(file.path)}"><span>${file.problem ? '!' : file.declaration?.kind === 'Graph' ? '⌘' : file.declaration?.kind === 'Timeline' ? '◷' : '▤'}</span><span>${escapeHtml(file.document?.displayName || file.path)}<small>${escapeHtml(file.problem ? '文件格式错误' : file.document?.role || (file.declaration ? kindNames[file.declaration.kind] : '内容根'))}</small></span></button>`).join('');
 }
 
 function selectFile(path) {
@@ -87,6 +92,8 @@ function selectFile(path) {
   state.selectedNode = null;
   state.selectedTimeline = null;
   state.view = { x: 35, y: 45, scale: 1 };
+  const locationQuery = new URLSearchParams({ source: state.source, root: state.selectedRoot.path, file: path, tab: state.tab });
+  history.replaceState(null, '', `?${locationQuery}`);
   renderFiles();
   renderDocument();
 }
@@ -98,7 +105,8 @@ function renderDocument() {
   $('file-revision').textContent = file.revision.slice(0, 12);
   $('source-text').value = file.content;
   try {
-    const document = JSON.parse(file.content);
+    if (file.problem) throw new Error(file.problem);
+    const document = file.document;
     if (state.tab === 'variables') renderVariables();
     else if (Array.isArray(document.nodes) && Array.isArray(document.edges)) renderGraph(document);
     else if (Array.isArray(document.tracks)) renderTimeline(document);
@@ -119,7 +127,7 @@ function renderRoot(document) {
 
 function renderGraph(graph) {
   const layoutFile = state.snapshot.files.find(file => state.snapshot.root.files.find(declaration => declaration.path === file.path)?.kind === 'Layout');
-  const layout = layoutFile ? JSON.parse(layoutFile.content) : { elements: [] };
+  const layout = layoutFile ? layoutFile.document : { elements: [] };
   const positions = new Map();
   graph.nodes.forEach((node, index) => {
     const saved = layout.elements?.find(element => element.id === node.id);
@@ -208,7 +216,7 @@ function renderTimeline(timeline) {
 
 function renderVariables() {
   const graphs = state.snapshot.root.files.filter(file => file.kind === 'Graph').map(file => ({
-    path: file.path, document: JSON.parse(state.snapshot.files.find(source => source.path === file.path).content)
+    path: file.path, document: state.snapshot.files.find(source => source.path === file.path).document
   }));
   const variables = graphs.flatMap(graph => graph.document.variables.map(variable => ({ ...variable, graph })));
   $('document-view').innerHTML = `<div class="variables-page"><div class="eyebrow">BLACKBOARD DECLARATIONS</div><h1>变量与归属</h1><p>${variables.length} 条实际声明。默认值与声明分别显示，所属图保持原 owner。</p><div class="variable-list">${variables.map(variable => `<article><header><strong>${escapeHtml(variable.key)}</strong><span title="${escapeHtml(variable.type)}">${escapeHtml(typeName(variable.type))}</span><button data-document="${escapeHtml(variable.graph.path)}">所属图 ↗</button></header><code>${escapeHtml(variable.id)}</code><div class="variable-columns"><div><h3>默认值</h3>${renderValue(variable.defaultValue)}</div><div><h3>作用域、生命周期与输入声明</h3>${Object.entries(variable.declaration).map(([field, value]) => `<div class="nested-value"><label>${escapeHtml(field)}</label>${renderValue(value)}</div>`).join('')}</div></div></article>`).join('') || '<p class="muted">本内容根没有黑板声明。</p>'}</div></div>`;
@@ -233,6 +241,7 @@ $('document-view').onclick = event => {
 };
 $('inspector-content').onclick = event => { const reference = event.target.closest('[data-document]'); if (reference) { state.tab = 'document'; showTab(); selectFile(reference.dataset.document); } };
 $('search-roots').oninput = event => { state.query = event.target.value.trim().toLowerCase(); renderRoots(); };
+$('search-files').oninput = renderFiles;
 $('refresh-roots').onclick = () => guarded(() => loadRoots(true));
 $('load-more').onclick = () => guarded(() => loadRoots());
 $('reload-root').onclick = () => guarded(() => openRoot(state.selectedRoot.path));
@@ -258,6 +267,7 @@ async function selectSource(source) {
   state.snapshot = null;
   state.selectedNode = null;
   state.selectedTimeline = null;
+  $('search-files').value = '';
   $('files').innerHTML = '';
   $('document-actions').hidden = true;
   $('inspector-content').innerHTML = '';
@@ -272,5 +282,10 @@ $('content-source').onchange = event => guarded(() => selectSource(event.target.
 guarded(async () => {
   const query = new URLSearchParams(location.search);
   await selectSource(query.get('source') === 'migrations' ? 'migrations' : 'workspace');
-  if (query.has('root')) await openRoot(query.get('root'));
+  if (query.has('root')) {
+    await openRoot(query.get('root'));
+    if (query.get('tab') === 'variables' || query.get('tab') === 'source') { state.tab = query.get('tab'); showTab(); }
+    if (query.has('file')) selectFile(query.get('file'));
+    else renderDocument();
+  }
 });
