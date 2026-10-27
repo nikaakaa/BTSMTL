@@ -69,6 +69,12 @@ public sealed class AuthoringWorkspaceDirectory
         var files = new List<AuthoringSourceFile> { source };
         foreach (AuthoringDocumentFile file in root.Files.Span)
             files.Add(ReadFile(Resolve(directory, file.Path)));
+        return Snapshot(root, files);
+    }
+
+    internal static AuthoringRootFiles Snapshot(AuthoringRootDocument root, IReadOnlyList<AuthoringSourceFile> files)
+    {
+        string directory = System.IO.Path.GetDirectoryName(files[0].Path)!;
         string revision = AuthoringFileRevision.Compute(Utf8.GetBytes(string.Join("\n",
             files.Select(file => System.IO.Path.GetRelativePath(directory, file.Path).Replace('\\', '/') +
                         ":" + file.Revision).OrderBy(value => value, StringComparer.Ordinal))));
