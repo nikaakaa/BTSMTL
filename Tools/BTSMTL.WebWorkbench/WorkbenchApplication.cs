@@ -36,7 +36,7 @@ public static class WorkbenchApplication
         });
         string workspacePath = builder.Configuration["Workspace"]
             ?? throw new InvalidOperationException("请用 --Workspace 指定项目正式作者文档目录。");
-        app.MapWorkspaceApi(new AuthoringWorkspaceDirectory(workspacePath));
+        app.MapAuthoringReadApi(new AuthoringWorkspaceDirectory(workspacePath), "/api/workspace", "authoring-documents");
         app.MapAnimationResourceApi(builder.Configuration["AnimationLibrary"]);
         return app;
     }
