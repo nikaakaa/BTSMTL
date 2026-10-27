@@ -1,4 +1,4 @@
-import { editField, editVariable, renameElement, createNode, createConnection, reorderConnections, referenceChoices, showDocumentDiff } from './graph-edits.js';
+import { editField, editNodeFields, editVariable, renameElement, createNode, createConnection, reorderConnections, referenceChoices, showDocumentDiff } from './graph-edits.js';
 import { DocumentEditSession } from './document-session.js';
 import { editTimeRange, editMarkerTime, moveClip, bindTimelineDrag } from './timeline-edits.js';
 import { showReferences, showReferenceResource } from './references.js';
@@ -380,6 +380,8 @@ function renderInspector(document) {
       (target.fields[field.visibility.fieldId] || definition.fields.find(item => item.id === field.visibility.fieldId).defaultValue).value === field.visibility.equals)) || [];
     const actions = `<div class="inspector-actions"><button data-rename-element>修改名称</button><button data-element-dependencies>本对象引用</button>${definition && !definition.systemOwned ? '<button class="danger" data-delete-node>删除节点及其连接</button>' : ''}</div>`;
     $('inspector-content').insertAdjacentHTML('afterbegin', actions);
+    if (state.selectedNode && definition.fields.some(field => field.visible && field.writable))
+      $('inspector-content').querySelector('.inspector-actions').insertAdjacentHTML('beforeend', '<button data-configure-node>同时配置参数</button>');
     editable.forEach(field => {
       const value = target.fields[field.id] || field.defaultValue;
       const rendered = [...$('inspector-content').querySelectorAll('.field')].find(element => element.querySelector('label')?.title === field.id);
@@ -609,6 +611,10 @@ $('inspector-content').onclick = event => {
   if (event.target.closest('[data-element-dependencies]')) {
     const query = new URLSearchParams({ path: state.selectedRoot.path, documentId: graph.id, elementId: (node || edge || graph).id });
     guarded(() => showReferences('本对象的实际引用', `${api()}/dependencies?${query}`, state.source, request));
+    return;
+  }
+  if (event.target.closest('[data-configure-node]')) {
+    editNodeFields(node, state.capabilities.get(node.capability), applyGraphEdits, state.references);
     return;
   }
   const fieldButton = event.target.closest('[data-edit-field]');

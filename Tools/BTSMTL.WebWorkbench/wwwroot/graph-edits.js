@@ -144,6 +144,26 @@ export function renameElement(name, apply) {
     form => apply(new FormData(form).get('displayName')));
 }
 
+export function editNodeFields(node, definition, apply, references = []) {
+  const fields = definition.fields.filter(field => field.visible && field.writable);
+  const editors = new Map();
+  const initial = field => node.fields[field.id] || field.defaultValue;
+  const modal = dialog('同时配置节点参数',
+    `<p>列出此节点可写的作者参数，便于同时填写模式和配套值。预览修改时一起提交已改字段，当前未改字段保持原值。</p>${fields.map(field => `<fieldset><legend>${html(field.displayName || field.id)}${node.fields[field.id] ? '' : ' · 领域默认值'}</legend><div data-configure-field="${html(field.id)}"></div></fieldset>`).join('')}`,
+    async () => {
+      const edits = fields.flatMap(field => {
+        const value = editors.get(field.id).read();
+        return JSON.stringify(value) === JSON.stringify(initial(field)) ? [] :
+          [{ kind: 'set-node-field', nodeId: node.id, fieldId: field.id, value }];
+      });
+      if (edits.length) await apply(edits);
+    });
+  modal.querySelectorAll('[data-configure-field]').forEach(container => {
+    const field = fields.find(field => field.id === container.dataset.configureField);
+    editors.set(field.id, bindValueEditor(container, initial(field), field.constraint.AllowedValues, references, field.valueDefinition));
+  });
+}
+
 export function editVariable(variable, apply, references = []) {
   const declarations = Object.entries(variable.declaration);
   const modal = dialog('配置所属图的黑板声明候选',
