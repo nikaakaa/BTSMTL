@@ -1,9 +1,10 @@
 using System;
+using BTSMTL.Authoring.Graph;
 
 namespace BTSMTL.Authoring.Blackboard
 {
     [Serializable]
-    public sealed class PipelineBlackboardInputBinding
+    public sealed partial class PipelineBlackboardInputBinding
     {
 #if UNITY_5_3_OR_NEWER
         [UnityEngine.SerializeField]
@@ -14,8 +15,10 @@ namespace BTSMTL.Authoring.Blackboard
 #endif
         PipelineBlackboardInputProjection m_Projection;
 
+        [GraphAuthoringField(nameof(m_InputValueId), GraphAuthoringFieldValueKind.IdentityReference, ReadOnly = true)]
         public string InputValueId => m_InputValueId ?? string.Empty;
         public bool IsDefined => !string.IsNullOrWhiteSpace(m_InputValueId);
+        [GraphAuthoringField(nameof(m_Projection), typeof(PipelineBlackboardInputProjection), ReadOnly = true)]
         public PipelineBlackboardInputProjection Projection => m_Projection;
 
         public PipelineBlackboardInputBinding(string inputValueId, PipelineBlackboardInputProjection projection = PipelineBlackboardInputProjection.Direct)

@@ -34,7 +34,8 @@ namespace BTSMTL.Authoring.Documents
                 AuthoringObjectContract contract = Contract(type);
                 var members = contract.Construction == AuthoringObjectConstruction.PublicFields
                     ? contract.Fields.Select(field => new AuthoringValueMemberDefinition(field.Name, Describe(field.FieldType))).ToList()
-                    : contract.Parameters.Select(parameter => new AuthoringValueMemberDefinition(parameter.Name, Describe(parameter.ParameterType))).ToList();
+                    : contract.Parameters.Select((parameter, index) => new AuthoringValueMemberDefinition(
+                        contract.ParameterMemberIds[index], Describe(parameter.ParameterType))).ToList();
                 GraphAuthoringTypeContract authoring = typeof(IGraphAuthoringFieldSource).IsAssignableFrom(type)
                     ? GraphAuthoringMemberBindings.Contract(type) : GraphAuthoringTypeContract.Empty;
                 foreach (GraphAuthoringMember member in authoring.Fields)
@@ -58,12 +59,10 @@ namespace BTSMTL.Authoring.Documents
             if (construction.Construction != AuthoringObjectConstruction.Constructor)
                 throw new InvalidOperationException($"声明类型 '{type.FullName}' 没有原公开构造合同。");
             var values = fields.ToArray().ToDictionary(field => field.FieldId.Value, field => field.Value, StringComparer.Ordinal);
-            object[] arguments = construction.Parameters.Select(parameter =>
-            {
-                PropertyInfo property = AuthoringObjectContract.ReadableProperty(type, parameter);
-                string id = property.GetCustomAttribute<GraphAuthoringFieldAttribute>()?.FieldId ?? parameter.Name;
-                return Restore(parameter.ParameterType, values[id]);
-            }).ToArray();
+            if (!values.Keys.ToHashSet(StringComparer.Ordinal).SetEquals(construction.ParameterMemberIds))
+                throw new InvalidOperationException($"声明类型 '{type.FullName}' 的字段与原公开构造合同不一致。");
+            object[] arguments = construction.Parameters.Select((parameter, index) =>
+                Restore(parameter.ParameterType, values[construction.ParameterMemberIds[index]])).ToArray();
             return construction.Constructor.Invoke(arguments);
         }
 
@@ -124,7 +123,7 @@ namespace BTSMTL.Authoring.Documents
             AuthoringObjectContract contract = Contract(type);
             AuthoringNamedValue[] construction = contract.Construction == AuthoringObjectConstruction.PublicFields
                 ? contract.Fields.Select(field => Member(field.Name, field.FieldType, field.GetValue(value))).ToArray()
-                : contract.Parameters.Select(parameter => Member(parameter.Name, parameter.ParameterType,
+                : contract.Parameters.Select((parameter, index) => Member(contract.ParameterMemberIds[index], parameter.ParameterType,
                     AuthoringObjectContract.ReadableProperty(type, parameter).GetValue(value))).ToArray();
             var members = construction.ToDictionary(member => member.FieldId.Value, StringComparer.Ordinal);
             foreach (AuthoringNamedValue field in CaptureFields(value))
@@ -165,15 +164,15 @@ namespace BTSMTL.Authoring.Documents
                     object instance = Activator.CreateInstance(type);
                     foreach (var field in contract.Fields)
                         field.SetValue(instance, Restore(field.FieldType, members[field.Name]));
-                    return ApplyMembers(instance, members);
+                    return ApplyMembers(instance, members, contract);
                 }
-                object[] arguments = contract.Parameters.Select(parameter =>
-                    Restore(parameter.ParameterType, members[parameter.Name])).ToArray();
+                object[] arguments = contract.Parameters.Select((parameter, index) =>
+                    Restore(parameter.ParameterType, members[contract.ParameterMemberIds[index]])).ToArray();
                 if (contract.Construction == AuthoringObjectConstruction.Constructor)
-                    return ApplyMembers(contract.Constructor.Invoke(arguments), members);
+                    return ApplyMembers(contract.Constructor.Invoke(arguments), members, contract);
                 object configured = Activator.CreateInstance(type);
                 contract.Configure.Invoke(configured, arguments);
-                return ApplyMembers(configured, members);
+                return ApplyMembers(configured, members, contract);
             }
             throw new ArgumentException($"作者值 '{value.GetType().Name}' 没有 '{type.FullName}' 的正式读取映射。");
         }
@@ -181,11 +180,13 @@ namespace BTSMTL.Authoring.Documents
         protected AuthoringNamedValue Member(string name, Type type, object value) =>
             new AuthoringNamedValue(new GraphAuthoringFieldId(name), Capture(type, value));
 
-        object ApplyMembers(object instance, IReadOnlyDictionary<string, AuthoringValue> members)
+        object ApplyMembers(object instance, IReadOnlyDictionary<string, AuthoringValue> members,
+            AuthoringObjectContract construction)
         {
             GraphAuthoringTypeContract fields = GraphAuthoringMemberBindings.Contract(instance);
             GraphAuthoringCandidate candidate = fields.CreateCandidate(instance);
-            foreach (GraphAuthoringMember field in fields.Fields.Where(field => !field.Metadata.ReadOnly))
+            foreach (GraphAuthoringMember field in fields.Fields.Where(field => !field.Metadata.ReadOnly &&
+                !construction.ParameterMemberIds.Contains(field.Metadata.FieldId, StringComparer.Ordinal)))
                 field.WriteCandidate(candidate, Restore(field.ValueType, members[field.Metadata.FieldId]));
             return candidate.Apply(instance);
         }

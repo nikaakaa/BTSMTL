@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using System.Reflection;
+using BTSMTL.Authoring.Graph;
 
 namespace BTSMTL.Authoring.Documents
 {
@@ -22,6 +23,8 @@ namespace BTSMTL.Authoring.Documents
             Constructor = constructor;
             Configure = configure;
             Parameters = parameters;
+            ParameterMemberIds = parameters.Select(parameter => ReadableProperty(valueType, parameter)
+                .GetCustomAttribute<GraphAuthoringFieldAttribute>()?.FieldId ?? parameter.Name).ToArray();
         }
 
         public Type ValueType { get; }
@@ -30,6 +33,7 @@ namespace BTSMTL.Authoring.Documents
         public ConstructorInfo Constructor { get; }
         public MethodInfo Configure { get; }
         public ParameterInfo[] Parameters { get; }
+        public string[] ParameterMemberIds { get; }
 
         public static AuthoringObjectContract Read(Type type)
         {
