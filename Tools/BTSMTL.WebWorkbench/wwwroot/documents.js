@@ -389,6 +389,13 @@ function renderInspector(document) {
       if (rendered && field.writable) rendered.insertAdjacentHTML('beforeend', button);
       else if (!rendered) $('inspector-content').insertAdjacentHTML('beforeend', `<div class="field"><label title="${escapeHtml(field.id)}">${escapeHtml(field.displayName)} · 原定义默认值</label>${renderValue(value)}${field.writable ? button : ''}</div>`);
     });
+    if (state.selectedNode) Object.keys(target.fields).filter(id => id.startsWith('input:')).forEach(id => {
+      const port = state.selectedFile.portShapes.get(target.id).ports.find(port => port.id === id.slice(6) && port.direction === 'Input');
+      const rendered = [...$('inspector-content').querySelectorAll('.field')].find(element => element.querySelector('label').title === id);
+      rendered.querySelector('label').textContent = `${port.displayName || port.id} · 输入常量`;
+      const connected = document.edges.some(edge => edge.targetNode === target.id && edge.targetPort === port.id);
+      rendered.insertAdjacentHTML('beforeend', `<small>${connected ? '此输入已连接，运行值由上游提供；这里编辑未连接时使用的常量。' : '未连接时，此常量提供正式输入值。'}</small><button class="edit-field" data-edit-input="${escapeHtml(id)}">编辑输入常量</button>`);
+    });
     if (state.selectedNode) {
       const edges = document.edges.filter(edge => edge.sourceNode === target.id || edge.targetNode === target.id);
       $('inspector-content').insertAdjacentHTML('beforeend', `<section class="connection-list"><h3>本节点连接</h3>${edges.map(edge => `<div><button data-select-edge="${escapeHtml(edge.id)}">${escapeHtml(edge.sourcePort)} → ${escapeHtml(edge.targetPort)} · 顺序 ${edge.order}</button><small>${escapeHtml(edge.id)}</small></div>`).join('') || '<small>当前没有连接</small>'}</section>`);
@@ -618,8 +625,16 @@ $('inspector-content').onclick = event => {
     return;
   }
   const fieldButton = event.target.closest('[data-edit-field]');
+  const inputField = event.target.closest('[data-edit-input]');
   const resetField = event.target.closest('[data-reset-field]');
   const edgeField = event.target.closest('[data-edit-edge-field]');
+  if (inputField) {
+    const id = inputField.dataset.editInput;
+    const port = state.selectedFile.portShapes.get(node.id).ports.find(port => port.id === id.slice(6) && port.direction === 'Input');
+    editField({ id, displayName: `${port.displayName || port.id} · 输入常量`, valueDefinition: state.definitions.valueTypes[port.valueType] },
+      node.fields[id], value => applyGraphEdits([{ kind: 'set-node-field', nodeId: node.id, fieldId: id, value }]), state.references);
+    return;
+  }
   if (resetField) {
     guarded(() => applyGraphEdits([{ kind: 'remove-node-field', nodeId: node.id, fieldId: resetField.dataset.resetField }]));
     return;
