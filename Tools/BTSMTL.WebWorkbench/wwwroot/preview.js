@@ -38,9 +38,9 @@ function options(element, entries, label, value, selected) {
 
 function sourceVersion() {
   const scene = state.sources.scenes.find(item => item.path === $('scene').value);
-  const replay = state.sources.replays.find(item => item.path === $('replay').value);
+  const replay = state.sources.replays.find(item => item.id === $('replay').value);
   $('scene-version').textContent = scene?.revision || '尚未导出正式离线包';
-  $('replay-version').textContent = replay?.revision || '尚无原 SDK 录像';
+  $('replay-version').textContent = replay?.source.revision || '尚无原 SDK 录像';
   const local = $('run-source').value === 'local';
   const catalogReady = scene && state.inputCatalog?.revision === scene.revision && state.inputScene === scene.path;
   $('replay-source').hidden = local; $('local-source').hidden = !local;
@@ -54,7 +54,7 @@ async function refresh() {
   const [sources, runs] = await Promise.all([request('/api/preview/sources'), request('/api/preview/runs')]);
   state.sources = sources; state.runs = runs;
   options($('scene'), sources.scenes, entry => entry.path, entry => entry.path, $('scene').value);
-  options($('replay'), sources.replays, entry => entry.path, entry => entry.path, $('replay').value);
+  options($('replay'), sources.replays, entry => entry.displayName, entry => entry.id, $('replay').value);
   sourceVersion();
   $('source-state').textContent = `${sources.scenes.length} 个离线包 · ${sources.replays.length} 份原录像。${!sources.scenes.length ? '请先从已保存 Unity 场景正式导出。' : ''}${!sources.replays.length ? '真实重放需要原 SDK 录像文件。' : ''}`;
   $('runs').innerHTML = runs.map(run => `<button data-run="${escapeHtml(run.jobId)}" class="${run.jobId === state.selected ? 'selected' : ''}">${escapeHtml(stages[run.stage])}<small>${escapeHtml(run.acceptedAt)}</small><code>${escapeHtml(run.jobId)}</code></button>`).join('') || '<p class="muted">尚未提交运行。</p>';
@@ -67,10 +67,8 @@ async function refresh() {
 async function start() {
   let pending = sessionStorage.getItem('btsmtl.preview.pending-request');
   if (!pending) {
-    const source = $('run-source').value === 'local' ? localSource() : {
-      kind: 'replay', path: $('replay').value,
-      revision: state.sources.replays.find(item => item.path === $('replay').value).revision
-    };
+    const source = $('run-source').value === 'local' ? localSource() :
+      state.sources.replays.find(item => item.id === $('replay').value).source;
     pending = JSON.stringify({ requestId: crypto.randomUUID(), scene: $('scene').value,
       sceneRevision: state.sources.scenes.find(item => item.path === $('scene').value).revision,
       source,
@@ -109,7 +107,17 @@ function addInput() {
     switch (binding.kind) {
       case 'Boolean': value.innerHTML = '<label>布尔值<select class="input-boolean"><option value="true">true</option><option value="false">false</option></select></label>'; break;
       case 'Scalar': value.innerHTML = '<label>数值<input class="input-scalar" type="number" required step="any" value="0"></label>'; break;
+      case 'Yaw': value.innerHTML = '<label>朝向值（Yaw）<input class="input-scalar" type="number" required step="any" value="0"></label>'; break;
       case 'Vector2': value.innerHTML = '<label>X<input class="input-x" type="number" required step="any" value="0"></label><label>Y<input class="input-y" type="number" required step="any" value="0"></label>'; break;
+      case 'Vector3': value.innerHTML = '<label>X<input class="input-x" type="number" required step="any" value="0"></label><label>Y<input class="input-y" type="number" required step="any" value="0"></label><label>Z<input class="input-z" type="number" required step="any" value="0"></label>'; break;
+      case 'Identity': {
+        const label = document.createElement('label'); label.textContent = '目标身份（留空清除）';
+        const input = document.createElement('input'); input.className = 'input-identity'; input.type = 'text';
+        const choices = document.createElement('datalist'); choices.id = `targets-${crypto.randomUUID()}`;
+        input.setAttribute('list', choices.id);
+        choices.replaceChildren(...state.inputCatalog.actorTargets.map(actorId => { const option = document.createElement('option'); option.value = actorId; return option; }));
+        label.append(input); value.append(label, choices); break;
+      }
       default: throw new Error(`输入 ${binding.inputId} 的 ${binding.kind} 类型没有网页编辑映射。`);
     }
   }
@@ -131,7 +139,10 @@ function addInput() {
       switch (binding.kind) {
         case 'Boolean': input.value = { kind: 'boolean', value: row.querySelector('.input-boolean').value === 'true' }; break;
         case 'Scalar': input.value = { kind: 'scalar', value: Number(row.querySelector('.input-scalar').value) }; break;
+        case 'Yaw': input.value = { kind: 'yaw', value: Number(row.querySelector('.input-scalar').value) }; break;
         case 'Vector2': input.value = { kind: 'vector2', x: Number(row.querySelector('.input-x').value), y: Number(row.querySelector('.input-y').value) }; break;
+        case 'Vector3': input.value = { kind: 'vector3', x: Number(row.querySelector('.input-x').value), y: Number(row.querySelector('.input-y').value), z: Number(row.querySelector('.input-z').value) }; break;
+        case 'Identity': input.value = { kind: 'identity', value: row.querySelector('.input-identity').value }; break;
         default: throw new Error(`输入 ${binding.inputId} 的 ${binding.kind} 类型没有正式映射。`);
       }
     }
