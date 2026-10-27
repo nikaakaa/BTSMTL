@@ -2,6 +2,7 @@ using BTSMTL.Orchestration;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
 
 namespace ThirdPersonSimulation
 {
@@ -9,18 +10,28 @@ namespace ThirdPersonSimulation
     public sealed class GraphNativeValueKind
     {
         internal GraphNativeValueKind(string kind, OrchestrationOperationCode code, int variant,
-            IReadOnlyDictionary<string, string> inputs)
+            IReadOnlyDictionary<string, string> inputs, SemanticValueKind valueKind)
         {
             Kind = kind;
             Code = code;
             Variant = variant;
             Inputs = inputs;
+            ValuePorts = code == OrchestrationOperationCode.Calculate
+                ? GraphCalculationContracts.Require((GraphCalculationKind)variant)
+                : new OperationValuePortContract(code,
+                    inputs.Values.Select((id, order) => new OperationValuePortDefinition(id, order,
+                        OperationValuePortConstraint.Fixed, code == OrchestrationOperationCode.SelectValue && order == 0
+                            ? SemanticValueKind.Boolean : valueKind)),
+                    new[] { new OperationValuePortDefinition(code == OrchestrationOperationCode.Compare ? "m_Result" : "m_Output",
+                        0, OperationValuePortConstraint.Fixed,
+                        code == OrchestrationOperationCode.SelectValue ? valueKind : SemanticValueKind.Boolean) });
         }
 
         public string Kind { get; }
         public OrchestrationOperationCode Code { get; }
         public int Variant { get; }
         public IReadOnlyDictionary<string, string> Inputs { get; }
+        public OperationValuePortContract ValuePorts { get; }
 
         public string Input(string nativeId) => Inputs[nativeId];
 
@@ -52,18 +63,18 @@ namespace ThirdPersonSimulation
             Add("and", OrchestrationOperationCode.And, boolean);
             Add("or", OrchestrationOperationCode.Or, boolean);
             Add("not", OrchestrationOperationCode.Not, Ports(("value", "m_Input")));
-            Add("compare.number.equal", OrchestrationOperationCode.Compare, comparison, 0);
-            Add("compare.number.not-equal", OrchestrationOperationCode.Compare, comparison, 1);
-            Add("compare.number.less", OrchestrationOperationCode.Compare, comparison, 2);
-            Add("compare.number.less-equal", OrchestrationOperationCode.Compare, comparison, 3);
-            Add("compare.number.greater-equal", OrchestrationOperationCode.Compare, comparison, 4);
-            Add("compare.number.greater", OrchestrationOperationCode.Compare, comparison, 5);
-            Add("compare.int32.equal", OrchestrationOperationCode.Compare, comparison, 0);
-            Add("compare.int32.not-equal", OrchestrationOperationCode.Compare, comparison, 1);
-            Add("compare.int32.less", OrchestrationOperationCode.Compare, comparison, 2);
-            Add("compare.int32.less-equal", OrchestrationOperationCode.Compare, comparison, 3);
-            Add("compare.int32.greater-equal", OrchestrationOperationCode.Compare, comparison, 4);
-            Add("compare.int32.greater", OrchestrationOperationCode.Compare, comparison, 5);
+            Add("compare.number.equal", OrchestrationOperationCode.Compare, comparison, 0, SemanticValueKind.Number);
+            Add("compare.number.not-equal", OrchestrationOperationCode.Compare, comparison, 1, SemanticValueKind.Number);
+            Add("compare.number.less", OrchestrationOperationCode.Compare, comparison, 2, SemanticValueKind.Number);
+            Add("compare.number.less-equal", OrchestrationOperationCode.Compare, comparison, 3, SemanticValueKind.Number);
+            Add("compare.number.greater-equal", OrchestrationOperationCode.Compare, comparison, 4, SemanticValueKind.Number);
+            Add("compare.number.greater", OrchestrationOperationCode.Compare, comparison, 5, SemanticValueKind.Number);
+            Add("compare.int32.equal", OrchestrationOperationCode.Compare, comparison, 0, SemanticValueKind.Int32);
+            Add("compare.int32.not-equal", OrchestrationOperationCode.Compare, comparison, 1, SemanticValueKind.Int32);
+            Add("compare.int32.less", OrchestrationOperationCode.Compare, comparison, 2, SemanticValueKind.Int32);
+            Add("compare.int32.less-equal", OrchestrationOperationCode.Compare, comparison, 3, SemanticValueKind.Int32);
+            Add("compare.int32.greater-equal", OrchestrationOperationCode.Compare, comparison, 4, SemanticValueKind.Int32);
+            Add("compare.int32.greater", OrchestrationOperationCode.Compare, comparison, 5, SemanticValueKind.Int32);
             foreach (GraphCalculationKind calculation in Enum.GetValues(typeof(GraphCalculationKind)))
             {
                 var inputs = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -73,11 +84,12 @@ namespace ThirdPersonSimulation
                     new ReadOnlyDictionary<string, string>(inputs), (int)calculation);
             }
             Add("select.number", OrchestrationOperationCode.SelectValue,
-                Ports(("condition", "condition"), ("whenTrue", "whenTrue"), ("whenFalse", "whenFalse")));
+                Ports(("condition", "condition"), ("whenTrue", "whenTrue"), ("whenFalse", "whenFalse")), 0, SemanticValueKind.Number);
             return new ReadOnlyDictionary<string, GraphNativeValueKind>(kinds);
 
-            void Add(string kind, OrchestrationOperationCode code, IReadOnlyDictionary<string, string> inputs, int variant = 0) =>
-                kinds.Add(kind, new GraphNativeValueKind(kind, code, variant, inputs));
+            void Add(string kind, OrchestrationOperationCode code, IReadOnlyDictionary<string, string> inputs, int variant = 0,
+                SemanticValueKind valueKind = SemanticValueKind.Boolean) =>
+                kinds.Add(kind, new GraphNativeValueKind(kind, code, variant, inputs, valueKind));
         }
 
         static IReadOnlyDictionary<string, string> Ports(params (string Native, string Compiled)[] values)
