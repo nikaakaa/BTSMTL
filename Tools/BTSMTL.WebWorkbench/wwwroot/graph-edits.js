@@ -1,3 +1,5 @@
+import { bindCurveEditor } from './curve-editor.js';
+
 const html = value => String(value).replace(/[&<>"']/g,
   char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 
@@ -24,6 +26,8 @@ export function dialog(title, contents, submit) {
 
 function valueControls(value, path = [], choices = [], references = []) {
   const location = html(JSON.stringify(path));
+  if (value.kind === 'object' && value.type === 'UnityEngine.CoreModule:UnityEngine.AnimationCurve')
+    return `<div class="curve-value-editor" data-curve-path="${location}"></div>`;
   const matching = references.map((item, index) => ({ ...item, index })).filter(item => item.value.type === value.type);
   if ((value.kind === 'reference' || value.kind === 'null') && matching.length) {
     return `<label>当前根已使用的同类型引用<select data-reference-choice="${location}"><option value="" ${value.kind === 'null' ? 'selected' : ''}>未设置</option>${matching.map(item => `<option value="${item.index}" ${value.kind === 'reference' && referenceIdentity(item.value) === referenceIdentity(value) ? 'selected' : ''}>${html(item.label)}</option>`).join('')}</select></label><small>${html(value.type)} · 稳定身份随引用提交</small>`;
@@ -82,8 +86,12 @@ export function referenceChoices(snapshot) {
 }
 
 function bindValueEditor(container, value, choices = [], references = []) {
-  let original = value;
-  const render = () => { container.innerHTML = valueControls(original, [], choices, references); };
+  let original = structuredClone(value);
+  const render = () => {
+    container.innerHTML = valueControls(original, [], choices, references);
+    container.querySelectorAll('[data-curve-path]').forEach(element => bindCurveEditor(element,
+      JSON.parse(element.dataset.curvePath).reduce((value, key) => value[key], original)));
+  };
   const read = () => readValue(container, original, references);
   container.onclick = event => {
     const button = event.target.closest('[data-sequence]');
