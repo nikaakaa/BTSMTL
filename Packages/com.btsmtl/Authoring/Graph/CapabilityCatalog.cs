@@ -105,10 +105,10 @@ namespace BTSMTL.Authoring.Graph
             m_FixedPorts = Index(fixedPorts ?? Array.Empty<GraphAuthoringPortDescriptor>(), value => value.PortId, "port");
             DynamicPortPolicy = dynamicPortPolicy;
             DynamicPortSource = dynamicPortSource;
-            PortShape = new GraphAuthoringPortShapeDefinition(CapabilityId, m_FixedPorts.Values,
-                m_PortVariants, dynamicPortPolicy);
             m_PortVariants = ValidatePortVariants(
                 portVariants ?? Array.Empty<GraphAuthoringPortVariantDescriptor>());
+            PortShape = new GraphAuthoringPortShapeDefinition(CapabilityId, m_FixedPorts.Values,
+                m_PortVariants, dynamicPortPolicy);
             ChildSurfaces = childSurfaces ?? Array.Empty<GraphAuthoringChildSurfaceDescriptor>();
             Commands = commands ?? Array.Empty<GraphAuthoringCommandDescriptor>();
             IconName = iconName ?? string.Empty;
