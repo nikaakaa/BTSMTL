@@ -3,7 +3,7 @@ import { showReferences } from './references.js';
 
 const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
-const state = { roots: [], nextOffset: 0, selectedRoot: null, snapshot: null, references: [], selectedFile: null, selectedNode: null, selectedEdge: null, selectedTimeline: null, tab: 'document', source: 'workspace', timeScale: null, query: '', capabilities: new Map(), definitionRevision: null, draft: null, view: { x: 35, y: 45, scale: 1 } };
+const state = { roots: [], nextOffset: 0, selectedRoot: null, snapshot: null, references: [], selectedFile: null, selectedNode: null, selectedEdge: null, selectedTimeline: null, linkStart: null, tab: 'document', source: 'workspace', timeScale: null, query: '', capabilities: new Map(), definitionRevision: null, draft: null, view: { x: 35, y: 45, scale: 1 } };
 const kindNames = { Graph: '图', Timeline: '时间轴', InputPlan: '输入方案', Layout: '布局' };
 const api = () => `/api/${state.source}`;
 const typeName = value => value.split(',')[0].split('.').pop();
@@ -135,6 +135,7 @@ function renderFiles() {
 async function selectFile(path, elementId = null) {
   state.selectedFile = state.snapshot.files.find(file => file.path === path);
   const file = state.selectedFile;
+  state.linkStart = null;
   state.selectedNode = file.document?.nodes?.some(node => node.id === elementId) ? elementId : null;
   state.selectedEdge = file.document?.edges?.some(edge => edge.id === elementId) ? elementId : null;
   state.selectedTimeline = file.document?.tracks?.some(track => track.id === elementId ||
@@ -263,12 +264,12 @@ function renderGraph(graph) {
     const rows = Math.max(shape.inputs.length, shape.outputs.length);
     const portRows = Array.from({ length: rows }, (_, index) => {
       const input = shape.inputs[index], output = shape.outputs[index];
-      const label = (port, side) => port ? `<span class="${side}" title="${escapeHtml(port.id)} · ${escapeHtml(port.valueType)}"><i></i><em>${escapeHtml(port.displayName || port.id)}</em></span>` : '<span></span>';
+      const label = (port, side) => port ? `<span class="${side} ${state.linkStart?.nodeId === node.id && state.linkStart.portId === port.id ? 'port-start' : ''} ${state.linkStart && side === 'input' && port.valueType === state.linkStart.valueType ? 'port-target' : ''}" data-port-node="${escapeHtml(node.id)}" data-port="${escapeHtml(port.id)}" data-port-direction="${escapeHtml(port.direction)}" tabindex="0" role="button" aria-label="${escapeHtml(port.direction)} ${escapeHtml(port.displayName || port.id)}" title="${escapeHtml(port.id)} · ${escapeHtml(port.valueType)}"><i></i><em>${escapeHtml(port.displayName || port.id)}</em></span>` : '<span></span>';
       return `<div class="node-port-row">${label(input, 'input')}${label(output, 'output')}</div>`;
     }).join('');
     return `<button class="graph-node ${shape.problem ? 'missing-definition' : ''} ${state.selectedNode === node.id ? 'selected' : ''}" data-node="${escapeHtml(node.id)}" title="${escapeHtml(shape.problem ? shape.problem.message : node.id)}" style="left:${escapeHtml(position.x)}px;top:${escapeHtml(position.y)}px"><span class="node-type">${escapeHtml(node.capability)}</span><strong>${escapeHtml(node.displayName || definition?.displayName || node.capability)}</strong><small>${fieldCount} 个作者字段${shape.problem ? ' · ' + escapeHtml(shape.problem.code) : ''}</small><div class="node-ports">${portRows}</div></button>`;
   }).join('');
-  $('document-view').innerHTML = `<div class="graph-surface" id="graph-surface"><div class="graph-caption">${escapeHtml(graph.role)}<span>${graph.nodes.length} 个节点 · ${graph.edges.length} 条连接</span></div><div class="graph-world" id="graph-world"><svg width="6000" height="4000">${links}</svg>${nodes}</div><div class="canvas-tools"><button id="fit-graph">适应全图</button><span id="zoom-value">100%</span></div><div class="canvas-hint">空白处拖动画布 · 滚轮缩放 · 选择节点查看实际字段</div></div>`;
+  $('document-view').innerHTML = `<div class="graph-surface" id="graph-surface"><div class="graph-caption">${escapeHtml(graph.role)}<span>${graph.nodes.length} 个节点 · ${graph.edges.length} 条连接</span></div><div class="graph-world" id="graph-world"><svg width="6000" height="4000">${links}</svg>${nodes}</div><div class="canvas-tools">${state.linkStart ? '<button data-cancel-connection>取消连线</button>' : ''}<button id="fit-graph">适应全图</button><span id="zoom-value">100%</span></div><div class="canvas-hint">${state.linkStart ? '选择目标输入完成连接 · Esc 取消' : '空白处拖动画布 · 滚轮缩放 · 点击输出端口开始连接'}</div></div>`;
   updateView();
   const surface = $('graph-surface');
   const topology = state.selectedFile.topologyReceipt;
@@ -409,6 +410,26 @@ async function applyGraphEdits(edits) {
   await showDraft();
 }
 
+async function choosePort(element) {
+  const graph = state.selectedFile.document, nodeId = element.dataset.portNode, portId = element.dataset.port;
+  const port = state.selectedFile.portShapes.get(nodeId).ports.find(port => port.id === portId &&
+    port.direction === element.dataset.portDirection);
+  if (port.direction === 'Output') {
+    state.linkStart = { nodeId, portId, valueType: port.valueType };
+    renderDocument();
+    report('已选择输出端口；选择目标输入，服务将按原图规则接收连接。');
+    return;
+  }
+  if (!state.linkStart) { report('请先选择一个输出端口，再选择目标输入。'); return; }
+  const source = state.linkStart;
+  await applyGraphEdits([{ kind: 'insert-edge', index: graph.edges.length, edge: {
+    id: `local:${crypto.randomUUID()}`, sourceNode: source.nodeId, sourcePort: source.portId,
+    targetNode: nodeId, targetPort: portId,
+    order: Math.max(-1, ...graph.edges.filter(edge => edge.sourceNode === source.nodeId && edge.sourcePort === source.portId)
+      .map(edge => edge.order)) + 1, fields: {}
+  } }]);
+}
+
 function renderValue(value) {
   switch (value.kind) {
     case 'scalar': return `<div class="field-value">${escapeHtml(value.value)}</div><small title="${escapeHtml(value.type)}">${escapeHtml(typeName(value.type))} · ${escapeHtml(value.valueKind)}</small>`;
@@ -455,6 +476,9 @@ $('roots').onclick = event => { const item = event.target.closest('[data-root]')
 $('files').onclick = event => { const item = event.target.closest('[data-file]'); if (item) guarded(() => selectFile(item.dataset.file)); };
 $('document-navigation').onclick = event => { const item = event.target.closest('[data-document]'); if (item) guarded(() => selectFile(item.dataset.document)); };
 $('document-view').onclick = event => {
+  const port = event.target.closest('[data-port]');
+  if (port) { guarded(() => choosePort(port)); return; }
+  if (event.target.closest('[data-cancel-connection]')) { state.linkStart = null; renderDocument(); return; }
   const variableButton = event.target.closest('[data-edit-variable], [data-copy-variable], [data-delete-variable]');
   if (variableButton) {
     const file = state.snapshot.files.find(item => item.path === variableButton.dataset.variableDocument);
@@ -488,6 +512,17 @@ $('document-view').onclick = event => {
   const node = event.target.closest('[data-node]');
   if (!node) return;
   selectElement('node', node.dataset.node);
+};
+$('document-view').onkeydown = event => {
+  const port = event.target.closest('[data-port]'), edge = event.target.closest('[data-edge]');
+  if ((event.key === 'Enter' || event.key === ' ') && (port || edge)) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (port) guarded(() => choosePort(port)); else selectElement('edge', edge.dataset.edge);
+  } else if (event.key === 'Escape' && state.linkStart) {
+    state.linkStart = null;
+    renderDocument();
+  }
 };
 $('inspector-content').onclick = event => {
   const usage = event.target.closest('[data-reference-root]');
