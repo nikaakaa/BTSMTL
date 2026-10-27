@@ -1,4 +1,8 @@
 <Project>
+  <PropertyGroup>
+    <!-- 与 Unity asmdef 程序集版本一致；编排身份表记录程序集限定类型名。 -->
+    <AssemblyVersion>0.0.0.0</AssemblyVersion>
+  </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="$(MSBuildThisFileDirectory)..\Tools\ValueGeneration.Generator\ValueGeneration.Generator.csproj"
                       OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
