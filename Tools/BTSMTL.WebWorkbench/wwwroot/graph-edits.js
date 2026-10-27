@@ -66,10 +66,11 @@ function dialog(title, contents, submit) {
     event.preventDefault();
     if (!submit) return;
     const form = event.currentTarget;
-    form.querySelectorAll('button').forEach(button => { button.disabled = true; });
+    const buttons = [...form.querySelectorAll('button')].map(button => ({ button, disabled: button.disabled }));
+    buttons.forEach(({ button }) => { button.disabled = true; });
     try { await submit(form); modal.close(); }
     catch (error) { modal.querySelector('.dialog-error').textContent = error.message; }
-    finally { form.querySelectorAll('button').forEach(button => { button.disabled = false; }); }
+    finally { buttons.forEach(({ button, disabled }) => { button.disabled = disabled; }); }
   };
   modal.showModal();
   return modal;
@@ -79,7 +80,7 @@ function valueControls(value, path = [], choices = [], references = []) {
   const location = html(JSON.stringify(path));
   const matching = references.map((item, index) => ({ ...item, index })).filter(item => item.value.type === value.type);
   if ((value.kind === 'reference' || value.kind === 'null') && matching.length) {
-    return `<label>当前根已使用的同类型引用<select data-reference-choice="${location}"><option value="" ${value.kind === 'null' ? 'selected' : ''}>未设置</option>${matching.map(item => `<option value="${item.index}" ${value.kind === 'reference' && JSON.stringify(item.value.target) === JSON.stringify(value.target) ? 'selected' : ''}>${html(item.label)}</option>`).join('')}</select></label><small>${html(value.type)} · 稳定身份随引用提交</small>`;
+    return `<label>当前根已使用的同类型引用<select data-reference-choice="${location}"><option value="" ${value.kind === 'null' ? 'selected' : ''}>未设置</option>${matching.map(item => `<option value="${item.index}" ${value.kind === 'reference' && referenceIdentity(item.value) === referenceIdentity(value) ? 'selected' : ''}>${html(item.label)}</option>`).join('')}</select></label><small>${html(value.type)} · 稳定身份随引用提交</small>`;
   }
   if (value.kind === 'scalar') {
     const values = value.valueKind === 'Boolean' ? ['true', 'false'] : choices;
@@ -112,6 +113,10 @@ function readValue(form, original, references = []) {
   return copy;
 }
 
+function referenceIdentity(value) {
+  return JSON.stringify([value.type, value.target.rootId, value.target.documentId, value.target.elementId]);
+}
+
 export function referenceChoices(snapshot) {
   const choices = new Map();
   const visit = value => {
@@ -120,7 +125,7 @@ export function referenceChoices(snapshot) {
       const target = value.target;
       const file = snapshot.files.find(file => file.document?.id === target.documentId && target.rootId === snapshot.root.id);
       const mapping = snapshot.root.unityOutputs.find(item => item.documentId === target.documentId && item.elementId === target.elementId);
-      choices.set(JSON.stringify(value), { value, label: mapping?.assetPath || file?.document.displayName ||
+      choices.set(referenceIdentity(value), { value, label: mapping?.assetPath || file?.document.displayName ||
         `${target.rootId} / ${target.elementId}` });
       return;
     }
