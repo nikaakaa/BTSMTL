@@ -44,15 +44,21 @@ namespace BTSMTL.Timeline.Runtime
             return false;
         }
 
-        public bool IsActive(int contentIdentityId)
+        public bool IsActive(int contentIdentityId) => TryFindActivePlayback(contentIdentityId, out _);
+
+        public bool TryFindActivePlayback(int contentIdentityId, out int slot)
         {
             for (int i = 0; i < m_Playbacks.Length; i++)
             {
                 ref readonly OrchestrationTimelinePlaybackState<TTime> playback = ref m_Playbacks[i];
                 if (playback.Start.ContentIdentityId == contentIdentityId &&
                     OrchestrationTimelineStateQueries<TTime>.IsActive(in playback))
+                {
+                    slot = i;
                     return true;
+                }
             }
+            slot = -1;
             return false;
         }
 
