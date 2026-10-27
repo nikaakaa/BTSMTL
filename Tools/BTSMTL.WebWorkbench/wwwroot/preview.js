@@ -2,9 +2,10 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 const $ = id => document.getElementById(id);
-const state = { sources: null, runs: [], selected: null, summary: null, frames: new Map(), count: 0 };
+const state = { sources: null, runs: [], selected: null, summary: null, frames: new Map(), count: 0, sealed: false };
 let pollTimer;
-const stages = { accepted: '已接收', running: '独立进程执行中', completed: '已封存', failed: '执行失败', cancelled: '已取消' };
+const stages = { accepted: '已接收', running: '独立会话运行中', completed: '完整重放已封存', stopped: '会话已停止并封存', failed: '执行失败', cancelled: '已取消' };
+const playbackNames = { paused: '已暂停', playing: '正在播放', stepping: '等待下一个确认帧', stopped: '已停止', completed: '已完成' };
 const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 
 async function request(path, body) {
@@ -62,7 +63,8 @@ async function start() {
   if (!pending) {
     pending = JSON.stringify({ requestId: crypto.randomUUID(), scene: $('scene').value,
       sceneRevision: state.sources.scenes.find(item => item.path === $('scene').value).revision,
-      replay: $('replay').value, replayRevision: state.sources.replays.find(item => item.path === $('replay').value).revision });
+      replay: $('replay').value, replayRevision: state.sources.replays.find(item => item.path === $('replay').value).revision,
+      interactive: $('interactive').checked });
     sessionStorage.setItem('btsmtl.preview.pending-request', pending);
   }
   const receipt = await request('/api/preview/runs', JSON.parse(pending));
@@ -73,7 +75,8 @@ async function start() {
 
 async function selectRun(id) {
   clearTimeout(pollTimer);
-  state.selected = id; state.summary = null; state.frames.clear(); state.count = 0;
+  state.selected = id; state.summary = null; state.frames.clear(); state.count = 0; state.sealed = false;
+  $('playback-controls').hidden = true;
   clearActors(); $('run-details').replaceChildren(); $('frame-facts').replaceChildren();
   $('actors').replaceChildren(); $('frame-json').textContent = '';
   $('frame').disabled = true; $('previous-frame').disabled = true; $('next-frame').disabled = true;
@@ -91,28 +94,68 @@ async function updateRun() {
   if (id !== state.selected) return;
   $('run-title').textContent = stages[receipt.stage];
   $('cancel').hidden = !['accepted', 'running'].includes(receipt.stage);
-  $('run-state').textContent = receipt.error || (receipt.stage === 'completed' ? '原 SDK 重放已完成。下方读取本次封存的确认帧。' : receipt.stage === 'cancelled' ? '进程已确认取消。此运行没有完整封存记录。' : '等待独立进程封存。HTTP 请求结束不会重新提交运行。');
+  $('run-state').textContent = receipt.error || (receipt.stage === 'completed' ? '原 SDK 重放已完成。下方读取本次封存的确认帧。' : receipt.stage === 'stopped' ? '实际会话已停止，保留停止前已形成的确认帧。' : receipt.stage === 'cancelled' ? '进程已确认取消。此运行没有完整封存记录。' : '正在准备或执行实际独立会话。');
   $('run-state').classList.toggle('error', receipt.stage === 'failed');
   if (['accepted', 'running'].includes(receipt.stage)) {
-    pollTimer = setTimeout(() => guarded(updateRun), 2500);
+    const playback = await request(`/api/preview/runs/${id}/playback`);
+    if (id !== state.selected) return;
+    if (playback.ready) {
+      const snapshot = playback.snapshot;
+      $('playback-controls').hidden = false;
+      $('playback-state').textContent = playbackNames[snapshot.state];
+      document.querySelectorAll('[data-control]').forEach(button => {
+        button.disabled = !!sessionStorage.getItem('btsmtl.preview.pending-control') ||
+          (button.dataset.control === 'Play' && snapshot.state === 'playing') ||
+          (button.dataset.control === 'Pause' && snapshot.state === 'paused') ||
+          (button.dataset.control === 'Step' && snapshot.state !== 'paused');
+      });
+      const observation = snapshot.observation;
+      const summary = { ...observation, frameCount: observation.frames.length };
+      state.frames.clear(); observation.frames.forEach((frame, index) => state.frames.set(index, frame));
+      await displayObservation(summary, false);
+      await sendPendingControl();
+    }
+    pollTimer = setTimeout(() => guarded(updateRun), 500);
     return;
   }
-  if (receipt.stage !== 'completed' || state.summary) return;
+  $('playback-controls').hidden = true;
+  await sendPendingControl();
+  if (!['completed', 'stopped'].includes(receipt.stage) || state.sealed) return;
   const summary = await request(`/api/preview/runs/${id}/summary`);
   if (id !== state.selected) return;
+  await displayObservation(summary, true);
+  await refresh();
+}
+
+async function displayObservation(summary, sealed) {
+  const first = state.summary === null;
   state.summary = summary; state.count = summary.frameCount;
+  state.sealed = sealed;
   const facts = { '运行身份': summary.runId, '场景修订': summary.sceneRevision,
     '原录像修订': summary.replaySourceHash, '来源场景': summary.scene.path,
     '场景定义': summary.definition.path, '内容身份': summary.sessionIdentity.gameplayContent,
     'TickRate': summary.sessionIdentity.tickRate, 'SDK 帧范围': `${summary.initialSdkFrame} — ${summary.lastSdkFrame}`,
-    '封存帧数': summary.frameCount };
+    '已记录确认帧': summary.frameCount, '记录状态': sealed ? '已封存' : '实际会话观察中' };
   $('run-details').innerHTML = Object.entries(facts).map(([name, value]) => `<dt>${escapeHtml(name)}</dt><dd>${escapeHtml(value)}</dd>`).join('');
   $('channels').textContent = `本次实际观察：${summary.channels.join('、')}。视口只显示根标记；尚未提供动画、碰撞及命中画面。`;
-  $('frame').max = Math.max(0, state.count - 1); $('frame').value = 0;
+  $('frame').max = Math.max(0, state.count - 1);
+  if (first) $('frame').value = 0;
+  if (!sealed && $('follow-live').checked) $('frame').value = Math.max(0, state.count - 1);
   $('frame').disabled = state.count === 0;
   $('fit-view').disabled = state.count === 0;
-  if (state.count) { await showFrame(0); fitView(); }
-  await refresh();
+  if (state.count) { await showFrame(Number($('frame').value)); if (first) fitView(); }
+}
+
+async function sendPendingControl() {
+  const pending = sessionStorage.getItem('btsmtl.preview.pending-control');
+  if (!pending) return;
+  const { runId, ...command } = JSON.parse(pending);
+  if (runId !== state.selected) return;
+  const result = await request(`/api/preview/runs/${runId}/controls`, command);
+  if (result.stage === 'submitted') { report('命令已提交，等待真实会话确认。'); return; }
+  sessionStorage.removeItem('btsmtl.preview.pending-control');
+  report(result.stage === 'applied' ? `命令已执行，实际确认帧 ${result.verifiedFrame ?? '尚未形成'}。` : result.error,
+    result.stage === 'rejected');
 }
 
 async function showFrame(index) {
@@ -173,7 +216,12 @@ $('scene').onchange = sourceVersion; $('replay').onchange = sourceVersion;
 $('start').onclick = () => guarded(start); $('refresh').onclick = () => guarded(refresh);
 $('runs').onclick = event => { const button = event.target.closest('[data-run]'); if (button) guarded(() => selectRun(button.dataset.run)); };
 $('cancel').onclick = () => guarded(async () => { const result = await request(`/api/preview/runs/${state.selected}/cancel`, {}); report(result.cancellationRequested ? '取消请求已送达，等待进程确认。' : '本宿主没有仍在执行的对应进程，请查询当前回执。'); await updateRun(); });
-$('frame').oninput = () => guarded(() => showFrame(Number($('frame').value)));
+$('playback-controls').onclick = event => { const button = event.target.closest('[data-control]'); if (!button) return; guarded(async () => {
+  sessionStorage.setItem('btsmtl.preview.pending-control', JSON.stringify({ runId: state.selected, commandId: crypto.randomUUID(), command: button.dataset.control }));
+  document.querySelectorAll('[data-control]').forEach(control => { control.disabled = true; });
+  await sendPendingControl(); await updateRun();
+}); };
+$('frame').oninput = () => { $('follow-live').checked = false; guarded(() => showFrame(Number($('frame').value))); };
 function moveFrame(delta) { $('frame').value = Math.max(0, Math.min(state.count - 1, Number($('frame').value) + delta)); return showFrame(Number($('frame').value)); }
 $('previous-frame').onclick = () => guarded(() => moveFrame(-1)); $('next-frame').onclick = () => guarded(() => moveFrame(1));
 $('fit-view').onclick = fitView;
