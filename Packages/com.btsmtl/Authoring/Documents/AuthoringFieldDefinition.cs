@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using BTSMTL.Authoring.Graph;
@@ -29,6 +30,24 @@ namespace BTSMTL.Authoring.Documents
         public GraphAuthoringFieldConstraint Constraint { get; }
         public GraphAuthoringFieldVisibilityCondition Visibility { get; }
         public GraphAuthoringFieldCompilation Compilation { get; }
+
+        public static IReadOnlyDictionary<GraphAuthoringFieldId, AuthoringValue> ReceiveFields(
+            IReadOnlyList<AuthoringFieldDefinition> definitions, ReadOnlyMemory<AuthoringNamedValue> authored, string path)
+        {
+            var declared = definitions.ToDictionary(field => field.Id);
+            var values = definitions.ToDictionary(field => field.Id, field => field.DefaultValue);
+            var supplied = new HashSet<GraphAuthoringFieldId>();
+            foreach (AuthoringNamedValue field in authored.Span)
+            {
+                if (!supplied.Add(field.FieldId))
+                    throw new InvalidOperationException(path + "/" + field.FieldId + ": 作者字段重复。");
+                if (!declared.ContainsKey(field.FieldId))
+                    throw new InvalidOperationException(path + "/" + field.FieldId + ": 字段不属于原正式定义。");
+                values[field.FieldId] = field.Value;
+            }
+            foreach (var field in values) declared[field.Key].Receive(field.Value, path + "/" + field.Key);
+            return values;
+        }
 
 #if UNITY_EDITOR || BTSMTL_AUTHORING
         public static AuthoringFieldDefinition Capture(GraphAuthoringFieldDescriptor field, AuthoringValueCodec values) => new(

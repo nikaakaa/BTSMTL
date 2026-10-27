@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using BTSMTL.Authoring.Graph;
 
 namespace BTSMTL.Authoring.Documents
@@ -25,6 +26,28 @@ namespace BTSMTL.Authoring.Documents
 
     public static class AuthoringFlowGraphContract
     {
+        public static void ReceiveDocument(AuthoringGraphDocument graph,
+            IReadOnlyList<AuthoringFieldDefinition> graphFields, IReadOnlyList<AuthoringFieldDefinition> edgeFields,
+            IReadOnlyDictionary<GraphAuthoringCapabilityId, AuthoringNodeDefinition> capabilities,
+            IReadOnlyDictionary<string, AuthoringValueDefinition> inputTypes,
+            IReadOnlyList<AuthoringFlowGraphAnchor> anchors, bool requireComplete)
+        {
+            string path = "graph:" + graph.Id;
+            AuthoringFieldDefinition.ReceiveFields(graphFields, graph.Fields, path);
+            foreach (AuthoringEdgeDocument edge in graph.Edges.Span)
+                AuthoringFieldDefinition.ReceiveFields(edgeFields, edge.Fields, path + "/edge:" + edge.Id);
+            var nodes = new List<AuthoringFlowGraphNode>();
+            foreach (AuthoringNodeDocument node in graph.Nodes.Span)
+            {
+                if (!capabilities.TryGetValue(node.CapabilityId, out AuthoringNodeDefinition definition))
+                    throw Error(path + "/node:" + node.Id, "原能力目录没有此节点能力。");
+                nodes.Add(new AuthoringFlowGraphNode(node.Id, node.CapabilityId,
+                    definition.Receive(node, graph.RoleId, inputTypes)));
+            }
+            Validate(path, nodes, graph.Edges.ToArray(), capabilities.Values.Where(definition =>
+                definition.Roles.Contains(graph.RoleId)).Select(definition => definition.Id).ToHashSet(), anchors, requireComplete);
+        }
+
         public static void Validate(string path, IReadOnlyList<AuthoringFlowGraphNode> nodes,
             IReadOnlyList<AuthoringEdgeDocument> edges, ISet<GraphAuthoringCapabilityId> allowedCapabilities,
             IReadOnlyList<AuthoringFlowGraphAnchor> anchors, bool requireComplete)
