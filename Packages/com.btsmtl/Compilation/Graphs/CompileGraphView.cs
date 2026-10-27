@@ -110,12 +110,15 @@ namespace BTSMTL.Compilation
     public sealed class CompileNode
     {
         readonly Func<CompileNode, SimulationNodeEmission> m_Describe;
+        readonly Func<GraphNodeFields> m_ReadFields;
+        GraphNodeFields m_Fields;
         List<CompileEdge> m_OutEdges;
 
+        // fields 在首次读取作者字段时调用一次；节点没有作者字段时可为 null。
         public CompileNode(string id, string sourceType, string kind, CompileNodeRole role,
             IReadOnlyList<string> flowInputs, IReadOnlyList<string> flowOutputs,
             IReadOnlyList<CompileValuePort> valueInputs, IReadOnlyList<CompileValuePort> valueOutputs,
-            GraphNodeFields fields, Func<CompileNode, SimulationNodeEmission> describe)
+            Func<GraphNodeFields> fields, Func<CompileNode, SimulationNodeEmission> describe)
         {
             Id = id;
             SourceType = sourceType;
@@ -125,7 +128,7 @@ namespace BTSMTL.Compilation
             FlowOutputs = flowOutputs;
             ValueInputs = valueInputs;
             ValueOutputs = valueOutputs;
-            Fields = fields;
+            m_ReadFields = fields;
             m_Describe = describe;
         }
 
@@ -137,7 +140,8 @@ namespace BTSMTL.Compilation
         public IReadOnlyList<string> FlowOutputs { get; }
         public IReadOnlyList<CompileValuePort> ValueInputs { get; }
         public IReadOnlyList<CompileValuePort> ValueOutputs { get; }
-        public GraphNodeFields Fields { get; }
+        public GraphNodeFields Fields => m_Fields ??= m_ReadFields?.Invoke() ??
+            throw new InvalidOperationException($"图节点 '{Id}' 没有作者字段。");
         public CompileGraph Graph { get; private set; }
         public IReadOnlyList<CompileEdge> OutEdges => m_OutEdges;
 

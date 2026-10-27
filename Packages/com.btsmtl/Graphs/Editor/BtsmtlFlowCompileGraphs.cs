@@ -20,7 +20,7 @@ namespace BTSMTL.Graphs.Editor
     // 节点的平台补充信息：能力 kind、文档字段与编译描述，由宿主按节点能力给出。
     public readonly struct BtsmtlFlowCompileNodeInfo
     {
-        public BtsmtlFlowCompileNodeInfo(string kind, GraphNodeFields fields, Func<CompileNode, SimulationNodeEmission> describe)
+        public BtsmtlFlowCompileNodeInfo(string kind, Func<GraphNodeFields> fields, Func<CompileNode, SimulationNodeEmission> describe)
         {
             Kind = kind;
             Fields = fields;
@@ -28,7 +28,7 @@ namespace BTSMTL.Graphs.Editor
         }
 
         public string Kind { get; }
-        public GraphNodeFields Fields { get; }
+        public Func<GraphNodeFields> Fields { get; }
         public Func<CompileNode, SimulationNodeEmission> Describe { get; }
     }
 
@@ -86,7 +86,7 @@ namespace BTSMTL.Graphs.Editor
             var inputs = node.GetInputValuePorts().Select(port => new CompileValuePort(port.ID,
                 native != null ? native.Input(port.ID) : node is IBtsmtlVariableFlowNode ? "m_Value"
                     : declaration.RuntimePort(port.ID, OrchestrationExtensionPortDirection.Input),
-                ValueType(port.type), port.isConnected, port.isRequired, port.serializedValue)).ToArray();
+                ValueType(port.type), port.isConnected, port.isRequired, SemanticValue(port.serializedValue))).ToArray();
             var outputs = node.GetOutputValuePorts().Select(port => new CompileValuePort(port.ID,
                 native != null ? native.Output(port.ID) : node is IBtsmtlVariableFlowNode || hostOutput ? "m_Output"
                     : declaration.RuntimePort(port.ID, OrchestrationExtensionPortDirection.Output),
@@ -120,7 +120,16 @@ namespace BTSMTL.Graphs.Editor
         }
 
         public static CompileValueType ValueType(Type type) => new(BtsmtlGraphValueTypes.Kind(type), type.FullName,
-            type == typeof(string) ? string.Empty : type == typeof(Quaternion) ? Quaternion.identity : Activator.CreateInstance(type),
+            type == typeof(string) ? string.Empty : SemanticValue(type == typeof(Quaternion) ? Quaternion.identity : Activator.CreateInstance(type)),
             type.IsEnum ? type.AssemblyQualifiedName : null);
+
+        // 引擎向量与旋转转为通用语义值，编译视图不携带引擎类型。
+        public static object SemanticValue(object value) => value switch
+        {
+            Vector2 vector => new SemanticVector2Value(vector.x, vector.y),
+            Vector3 vector => new SemanticVector3Value(vector.x, vector.y, vector.z),
+            Quaternion rotation => new SemanticQuaternionValue(rotation.x, rotation.y, rotation.z, rotation.w),
+            _ => value
+        };
     }
 }
