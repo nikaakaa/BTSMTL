@@ -244,7 +244,7 @@ namespace BTSMTL.Authoring.Documents
             return document;
         }
 
-        static JObject ReadObject(string text)
+        public static JObject ReadObject(string text)
         {
             using var source = new StringReader(text);
             using var reader = new JsonTextReader(source) { DateParseHandling = DateParseHandling.None };

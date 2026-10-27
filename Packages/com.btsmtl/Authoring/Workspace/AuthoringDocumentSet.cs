@@ -35,7 +35,7 @@ public sealed class AuthoringDocumentSet
         var files = source.Files.Skip(1).ToDictionary(file => file.Path, StringComparer.OrdinalIgnoreCase);
         var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var identity = new StringBuilder();
-        JObject rootContent = JObject.Parse(AuthoringDocumentJson.WriteRoot(source.Root));
+        JObject rootContent = AuthoringDocumentJson.ReadObject(AuthoringDocumentJson.WriteRoot(source.Root));
         rootContent.Remove("unityOutputs");
         rootContent["files"] = new JArray(source.Root.Files.ToArray()
             .Where(file => file.Kind != AuthoringDocumentKind.Layout)
@@ -54,7 +54,7 @@ public sealed class AuthoringDocumentSet
                 AuthoringDocumentKind.Timeline or AuthoringDocumentKind.InputPlan =>
                     AuthoringDocumentJson.ReadTimeline(input.Text, input.Path),
                 AuthoringDocumentKind.References => AuthoringDocumentJson.ReadReferenceTable(input.Text, input.Path),
-                AuthoringDocumentKind.Layout => JObject.Parse(input.Text),
+                AuthoringDocumentKind.Layout => AuthoringDocumentJson.ReadObject(input.Text),
                 _ => throw Error(file.Id, "未定义的作者文件种类。")
             };
             m_Documents.Add(file.Id, document);

@@ -35,7 +35,7 @@ public sealed class AuthoringDocumentService
     readonly ConcurrentDictionary<string, AuthoringDocumentCandidate> m_Candidates = new(StringComparer.Ordinal);
 
     public AuthoringDocumentService(AuthoringWorkspaceDirectory workspace, IAuthoringDocumentDomain domain)
-    { m_Workspace = workspace; m_Domain = domain; }
+    { m_Workspace = workspace; m_Domain = domain; m_Commit.Saved += result => Saved?.Invoke(result); }
 
     public AuthoringWorkspaceDirectory Workspace => m_Workspace;
     public event Action<AuthoringDocumentCommitResult>? Saved;
@@ -110,7 +110,6 @@ public sealed class AuthoringDocumentService
     public async Task<AuthoringDocumentCommitResult> Commit(string candidateId, CancellationToken cancellation = default)
     {
         AuthoringDocumentCommitResult result = await m_Commit.Commit(m_Candidates[candidateId], cancellation);
-        if (result.Status == AuthoringCommitStatus.Saved) Saved?.Invoke(result);
         return result;
     }
 

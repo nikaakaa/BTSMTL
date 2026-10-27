@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using BTSMTL.Authoring.Graph;
+using BTSMTL.Authoring.Documents;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -86,7 +87,8 @@ static class AuthoringDocumentInverse
         string[] desired = target.Select(Key).Where(before.ContainsKey).ToArray();
         if (!retained.SequenceEqual(desired, StringComparer.Ordinal))
         {
-            if (!current.Select(Key).Where(before.ContainsKey).SequenceEqual(retained, StringComparer.Ordinal))
+            if (!current.Select(Key).Where(id => before.ContainsKey(id) && after.ContainsKey(id))
+                .SequenceEqual(retained, StringComparer.Ordinal))
                 throw Conflict(document, document, path + "/order", expected, current);
             var positions = result.Select((value, index) => (Id: Key(value), Index: index))
                 .Where(value => after.ContainsKey(value.Id)).Select(value => value.Index).ToArray();
@@ -100,11 +102,7 @@ static class AuthoringDocumentInverse
     static string Key(JToken value) => value.Value<string>("id")!;
     static JToken Parse(byte[] value) => Parse(new System.Text.UTF8Encoding(false, true).GetString(
         value.AsSpan(value.AsSpan().StartsWith(System.Text.Encoding.UTF8.Preamble) ? 3 : 0)));
-    static JToken Parse(string value)
-    {
-        using var reader = new JsonTextReader(new StringReader(value)) { DateParseHandling = DateParseHandling.None };
-        return JToken.Load(reader, new JsonLoadSettings { DuplicatePropertyNameHandling = DuplicatePropertyNameHandling.Error });
-    }
+    static JToken Parse(string value) => AuthoringDocumentJson.ReadObject(value);
     static AuthoringUndoConflictException Conflict(string document, string element, string path,
         JToken? expected, JToken? current) => new(document, element, path,
             expected?.ToString(Formatting.None) ?? "absent", current?.ToString(Formatting.None) ?? "absent");

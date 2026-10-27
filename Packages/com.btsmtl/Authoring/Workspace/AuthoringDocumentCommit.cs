@@ -24,6 +24,7 @@ public sealed record AuthoringDocumentCommitResult(string CandidateId, string Re
 public sealed class AuthoringDocumentCommit
 {
     readonly ConcurrentDictionary<string, AuthoringDocumentCommitResult> m_Results = new(StringComparer.Ordinal);
+    public event Action<AuthoringDocumentCommitResult>? Saved;
 
     public AuthoringDocumentCommitResult? Query(string requestId) => m_Results.TryGetValue(requestId, out var result) ? result : null;
 
@@ -70,9 +71,15 @@ public sealed class AuthoringDocumentCommit
             {
                 string expected = baseline.TryGetValue(path, out var revision) ? revision : "";
                 if (current[path] == expected) continue;
-                conflicts.Add(new(path, expected, current[path], candidate.Differences.Where(file =>
-                    string.Equals(file.Path, path, StringComparison.OrdinalIgnoreCase))
-                    .Select(file => file.DocumentId.Value).ToArray()));
+                string directory = Path.GetDirectoryName(candidate.Baseline.Files[0].Path)!;
+                string[] objects = candidate.Baseline.Root.Files.ToArray().Where(file => string.Equals(
+                    AuthoringWorkspaceDirectory.Resolve(directory, file.Path), path, StringComparison.OrdinalIgnoreCase))
+                    .Select(file => file.Id.Value).Concat(candidate.Differences.Where(file =>
+                        string.Equals(file.Path, path, StringComparison.OrdinalIgnoreCase)).Select(file => file.DocumentId.Value))
+                    .Distinct(StringComparer.Ordinal).ToArray();
+                if (string.Equals(path, candidate.Baseline.Files[0].Path, StringComparison.OrdinalIgnoreCase))
+                    objects = new[] { candidate.Baseline.Root.Id.Value };
+                conflicts.Add(new(path, expected, current[path], objects));
             }
             if (conflicts.Count != 0)
                 return Record(Result(AuthoringCommitStatus.Conflict, conflicts, null));
@@ -85,7 +92,10 @@ public sealed class AuthoringDocumentCommit
         finally { foreach (Mutex mutex in acquired.AsEnumerable().Reverse()) { mutex.ReleaseMutex(); mutex.Dispose(); } }
 
         AuthoringDocumentCommitResult Record(AuthoringDocumentCommitResult result)
-        { m_Results.TryAdd(candidate.RequestId, result); return result; }
+        {
+            if (m_Results.TryAdd(candidate.RequestId, result) && result.Status == AuthoringCommitStatus.Saved) Saved?.Invoke(result);
+            return result;
+        }
 
         AuthoringDocumentCommitResult Result(AuthoringCommitStatus status,
             IReadOnlyList<AuthoringRevisionConflict> conflicts, AuthoringFileWriteResult? transaction) =>

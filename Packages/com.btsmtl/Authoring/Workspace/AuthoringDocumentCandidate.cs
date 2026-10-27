@@ -84,8 +84,8 @@ public sealed class AuthoringDocumentCandidate
         {
             string text = canonical[identities[file.Path]];
             byte[] bytes = original.TryGetValue(file.Path, out AuthoringSourceFile? prior)
-                ? Newtonsoft.Json.Linq.JToken.DeepEquals(Newtonsoft.Json.Linq.JToken.Parse(prior.Text),
-                    Newtonsoft.Json.Linq.JToken.Parse(text)) ? prior.Bytes.ToArray() : Encode(prior, text)
+                ? Newtonsoft.Json.Linq.JToken.DeepEquals(AuthoringDocumentJson.ReadObject(prior.Text),
+                    AuthoringDocumentJson.ReadObject(text)) ? prior.Bytes.ToArray() : Encode(prior, text)
                 : Utf8.GetBytes(text);
             bool bom = bytes.AsSpan().StartsWith(Encoding.UTF8.Preamble);
             final.Add(file.Path, new(file.Path, AuthoringFileRevision.Compute(bytes),
