@@ -34,7 +34,9 @@ namespace BTSMTL.Authoring.Documents
                 var members = contract.Construction == AuthoringObjectConstruction.PublicFields
                     ? contract.Fields.Select(field => new AuthoringValueMemberDefinition(field.Name, Describe(field.FieldType))).ToList()
                     : contract.Parameters.Select(parameter => new AuthoringValueMemberDefinition(parameter.Name, Describe(parameter.ParameterType))).ToList();
-                foreach (GraphAuthoringMember member in GraphAuthoringMemberBindings.Contract(type).Fields)
+                GraphAuthoringTypeContract authoring = typeof(IGraphAuthoringFieldSource).IsAssignableFrom(type)
+                    ? GraphAuthoringMemberBindings.Contract(type) : GraphAuthoringTypeContract.Empty;
+                foreach (GraphAuthoringMember member in authoring.Fields)
                 {
                     members.RemoveAll(field => field.Id == member.Metadata.FieldId);
                     members.Add(new AuthoringValueMemberDefinition(member.Metadata.FieldId, Describe(member.ValueType)));
