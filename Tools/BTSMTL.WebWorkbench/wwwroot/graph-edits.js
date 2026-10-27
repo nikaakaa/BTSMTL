@@ -1,4 +1,5 @@
 import { bindCurveEditor } from './curve-editor.js';
+import { scalarControl } from './scalar-editor.js';
 
 const html = value => String(value).replace(/[&<>"']/g,
   char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
@@ -24,7 +25,7 @@ export function dialog(title, contents, submit) {
   return modal;
 }
 
-function valueControls(value, path = [], choices = [], references = []) {
+function valueControls(value, path = [], choices = [], references = [], definition = null) {
   const location = html(JSON.stringify(path));
   if (value.kind === 'object' && value.type === 'UnityEngine.CoreModule:UnityEngine.AnimationCurve')
     return `<div class="curve-value-editor" data-curve-path="${location}"></div>`;
@@ -33,16 +34,13 @@ function valueControls(value, path = [], choices = [], references = []) {
     return `<label>当前根已使用的同类型引用<select data-reference-choice="${location}"><option value="" ${value.kind === 'null' ? 'selected' : ''}>未设置</option>${matching.map(item => `<option value="${item.index}" ${value.kind === 'reference' && referenceIdentity(item.value) === referenceIdentity(value) ? 'selected' : ''}>${html(item.label)}</option>`).join('')}</select></label><small>${html(value.type)} · 稳定身份随引用提交</small>`;
   }
   if (value.kind === 'scalar') {
-    const values = value.valueKind === 'Boolean' ? ['true', 'false'] : choices;
-    const control = values.length
-      ? `<select data-value-path="${location}">${values.map(item => `<option value="${html(item)}" ${item === value.value ? 'selected' : ''}>${html(item)}</option>`).join('')}</select>`
-      : `<input data-value-path="${location}" value="${html(value.value)}" autocomplete="off" spellcheck="false">`;
-    return `${control}<small>${html(value.type)} · ${html(value.valueKind)} · 原值按文本提交</small>`;
+    return `${scalarControl(value, `data-value-path="${location}"`, definition, choices)}<small>${html(value.type)} · ${html(value.valueKind)} · 原值按文本提交</small>`;
   }
   if (value.kind === 'object') return Object.entries(value.members).map(([key, member]) =>
-    `<fieldset><legend>${html(key)}</legend>${valueControls(member, [...path, 'members', key], [], references)}</fieldset>`).join('');
+    `<fieldset><legend>${html(key)}</legend>${valueControls(member, [...path, 'members', key], [], references,
+      definition?.members.find(member => member.id === key)?.definition)}</fieldset>`).join('');
   if (value.kind === 'sequence') return `<p>${value.items.length} 项。类型和顺序随候选保留。</p>${value.items.map((item, index) =>
-    `<fieldset><legend>第 ${index + 1} 项</legend><div class="sequence-actions"><button type="button" data-sequence="${location}" data-index="${index}" data-action="duplicate">复制此项</button><button type="button" data-sequence="${location}" data-index="${index}" data-action="remove">删除此项</button><button type="button" data-sequence="${location}" data-index="${index}" data-action="up" ${index === 0 ? 'disabled' : ''}>上移</button><button type="button" data-sequence="${location}" data-index="${index}" data-action="down" ${index === value.items.length - 1 ? 'disabled' : ''}>下移</button></div>${valueControls(item, [...path, 'items', index], [], references)}</fieldset>`).join('')}`;
+    `<fieldset><legend>第 ${index + 1} 项</legend><div class="sequence-actions"><button type="button" data-sequence="${location}" data-index="${index}" data-action="duplicate">复制此项</button><button type="button" data-sequence="${location}" data-index="${index}" data-action="remove">删除此项</button><button type="button" data-sequence="${location}" data-index="${index}" data-action="up" ${index === 0 ? 'disabled' : ''}>上移</button><button type="button" data-sequence="${location}" data-index="${index}" data-action="down" ${index === value.items.length - 1 ? 'disabled' : ''}>下移</button></div>${valueControls(item, [...path, 'items', index], [], references, definition?.element)}</fieldset>`).join('')}`;
   if (value.kind === 'reference') return Object.entries(value.target).map(([key, target]) =>
     `<label>${html(key)}<input data-reference-path="${location}" data-reference-member="${html(key)}" value="${html(target)}" autocomplete="off" spellcheck="false"></label>`).join('');
   return `<p>当前值为 null；完整类型化 JSON 可在下方编辑。</p>`;
@@ -85,12 +83,18 @@ export function referenceChoices(snapshot) {
   return [...choices.values()];
 }
 
-function bindValueEditor(container, value, choices = [], references = []) {
+function bindValueEditor(container, value, choices = [], references = [], definition = null) {
   let original = structuredClone(value);
   const render = () => {
-    container.innerHTML = valueControls(original, [], choices, references);
-    container.querySelectorAll('[data-curve-path]').forEach(element => bindCurveEditor(element,
-      JSON.parse(element.dataset.curvePath).reduce((value, key) => value[key], original)));
+    container.innerHTML = valueControls(original, [], choices, references, definition);
+    container.querySelectorAll('[data-curve-path]').forEach(element => {
+      const path = JSON.parse(element.dataset.curvePath);
+      let curveDefinition = definition;
+      for (let index = 0; index < path.length; index += 2)
+        curveDefinition = path[index] === 'members'
+          ? curveDefinition?.members.find(member => member.id === path[index + 1])?.definition : curveDefinition?.element;
+      bindCurveEditor(element, path.reduce((value, key) => value[key], original), curveDefinition);
+    });
   };
   const read = () => readValue(container, original, references);
   container.onclick = event => {
@@ -120,7 +124,7 @@ export function editField(field, value, apply, references = []) {
         ? JSON.parse(form.querySelector('textarea').value) : editor.read();
       await apply(value);
     });
-  const editor = bindValueEditor(modal.querySelector('.typed-value-editor'), value, field.constraint?.AllowedValues || [], references);
+  const editor = bindValueEditor(modal.querySelector('.typed-value-editor'), value, field.constraint?.AllowedValues || [], references, field.valueDefinition);
   modal.querySelector('textarea').oninput = () => { rawEdited = true; };
   modal.querySelector('.raw-value-editor').addEventListener('toggle', event => {
     if (event.currentTarget.open && !rawEdited) modal.querySelector('textarea').value = JSON.stringify(editor.read(), null, 2);

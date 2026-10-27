@@ -1,7 +1,9 @@
+import { scalarControl } from './scalar-editor.js';
+
 const html = value => String(value).replace(/[&<>"']/g,
   char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 
-export function bindCurveEditor(container, curve) {
+export function bindCurveEditor(container, curve, definition) {
   const keys = curve.members.keys.items;
   let selected = keys.length ? 0 : -1, drag = null, view;
   container.innerHTML = '<div class="curve-tools"><button type="button" data-curve-fit>适应关键点</button><button type="button" data-curve-copy>复制当前关键点</button><button type="button" data-curve-delete>删除当前关键点</button></div><svg class="curve-plot" viewBox="0 0 720 260" role="img" aria-label="曲线关键点、切线与权重"></svg><p class="curve-status" role="status"></p><div class="curve-selected"></div><div class="curve-wrap"></div>';
@@ -12,6 +14,8 @@ export function bindCurveEditor(container, curve) {
   const x = time => 40 + (time - view.left) / view.width * 650;
   const y = value => 225 - (value - view.bottom) / view.height * 195;
   const point = key => `${x(number(key, 'time'))},${y(number(key, 'value'))}`;
+  const memberDefinition = (definition, field) => definition?.members.find(member => member.id === field)?.definition;
+  const keyDefinition = memberDefinition(definition, 'keys')?.element;
 
   function fit() {
     const times = keys.map(key => number(key, 'time')), values = keys.map(key => number(key, 'value'));
@@ -54,9 +58,9 @@ export function bindCurveEditor(container, curve) {
   function fields() {
     container.querySelector('[data-curve-copy]').disabled = container.querySelector('[data-curve-delete]').disabled = selected < 0;
     controls.innerHTML = selected < 0 ? '<p>当前曲线没有关键点。空曲线的完整创建形状由正式定义提供，也可使用完整类型化 JSON。</p>'
-      : `<label>选择关键点<select data-curve-index>${keys.map((key, index) => `<option value="${index}" ${selected === index ? 'selected' : ''}>${index + 1} · ${html(key.members.time.value)} s</option>`).join('')}</select></label><div class="curve-key-fields">${Object.entries(keys[selected].members).map(([field, value]) => `<label>${html(field)}<input data-curve-field="${html(field)}" value="${html(value.value)}" spellcheck="false"><small>${html(value.type)}</small></label>`).join('')}</div>`;
+      : `<label>选择关键点<select data-curve-index>${keys.map((key, index) => `<option value="${index}" ${selected === index ? 'selected' : ''}>${index + 1} · ${html(key.members.time.value)} s</option>`).join('')}</select></label><div class="curve-key-fields">${Object.entries(keys[selected].members).map(([field, value]) => `<label>${html(field)}${scalarControl(value, `data-curve-field="${html(field)}"`, memberDefinition(keyDefinition, field))}<small>${html(value.type)}</small></label>`).join('')}</div>`;
     container.querySelector('.curve-wrap').innerHTML = Object.entries(curve.members).filter(([field]) => field !== 'keys')
-      .map(([field, value]) => `<label>${html(field)}<input data-curve-wrap="${html(field)}" value="${html(value.value)}" spellcheck="false"></label>`).join('');
+      .map(([field, value]) => `<label>${html(field)}${scalarControl(value, `data-curve-wrap="${html(field)}"`, memberDefinition(definition, field))}</label>`).join('');
   }
 
   container.addEventListener('input', event => {
