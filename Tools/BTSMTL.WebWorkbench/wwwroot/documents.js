@@ -1,6 +1,6 @@
 const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
-const state = { roots: [], nextOffset: 0, selectedRoot: null, snapshot: null, selectedFile: null, selectedNode: null, selectedTimeline: null, tab: 'document', source: 'workspace', timeScale: null, query: '', view: { x: 35, y: 45, scale: 1 } };
+const state = { roots: [], nextOffset: 0, selectedRoot: null, snapshot: null, selectedFile: null, selectedNode: null, selectedTimeline: null, tab: 'document', source: 'workspace', timeScale: null, query: '', capabilities: new Map(), definitionRevision: null, view: { x: 35, y: 45, scale: 1 } };
 const kindNames = { Graph: '图', Timeline: '时间轴', InputPlan: '输入方案', Layout: '布局' };
 const api = () => `/api/${state.source}`;
 const typeName = value => value.split(',')[0].split('.').pop();
@@ -15,6 +15,21 @@ async function request(path) {
 function report(message, error = false) {
   $('status-message').textContent = message;
   $('status-message').classList.toggle('error', error);
+}
+
+async function loadDefinitions(domain) {
+  const capabilities = new Map();
+  let offset = 0, revision = null;
+  do {
+    const page = await request(`/api/authoring/capabilities?offset=${offset}&limit=200`);
+    if (page.domain !== domain) throw new Error(`服务的原能力目录属于 ${page.domain}，当前内容属于 ${domain}。`);
+    if (revision !== null && revision !== page.revision) throw new Error('读取能力目录期间定义发生变更，请重新读取本根。');
+    revision = page.revision;
+    page.items.forEach(capability => capabilities.set(capability.id, capability));
+    offset = page.nextOffset;
+  } while (offset !== null);
+  state.capabilities = capabilities;
+  state.definitionRevision = revision;
 }
 
 async function loadRoots(reset = false) {
@@ -60,6 +75,7 @@ async function openRoot(path) {
   report('正在读取正式文件…');
   const snapshot = await request(`${api()}/root?path=${encodeURIComponent(path)}`);
   const root = JSON.parse(snapshot.root);
+  await loadDefinitions(root.domain);
   state.selectedRoot = entry;
   const files = snapshot.files.map(file => {
     try { return { ...file, document: JSON.parse(file.content), problem: null }; }
@@ -133,19 +149,35 @@ function renderGraph(graph) {
   const layout = layoutFile ? layoutFile.document : { elements: [] };
   const positions = new Map();
   graph.nodes.forEach((node, index) => {
-    const saved = layout.elements?.find(element => element.id === node.id);
+    const saved = layout.elements?.find(element => element.documentId === graph.id && element.id === node.id);
     positions.set(node.id, saved ? { x: saved.x, y: saved.y } : { x: (index % 4) * 270, y: Math.floor(index / 4) * 155 });
   });
+  const shapes = new Map(graph.nodes.map(node => {
+    const definition = state.capabilities.get(node.capability);
+    const ports = [...(definition?.ports || []), ...node.dynamicPorts];
+    return [node.id, { definition, inputs: ports.filter(port => port.direction === 'Input'),
+      outputs: ports.filter(port => port.direction === 'Output') }];
+  }));
   const links = graph.edges.map(edge => {
     const source = positions.get(edge.sourceNode), target = positions.get(edge.targetNode);
     if (!source || !target) return '';
-    const x1 = source.x + 214, y1 = source.y + 53, x2 = target.x, y2 = target.y + 53;
+    const output = shapes.get(edge.sourceNode).outputs.findIndex(port => port.id === edge.sourcePort);
+    const input = shapes.get(edge.targetNode).inputs.findIndex(port => port.id === edge.targetPort);
+    if (output < 0 || input < 0) return `<text class="port-problem" x="${source.x + 8}" y="${source.y - 10}">${escapeHtml(edge.id)}：端口描述缺失</text>`;
+    const x1 = source.x + 250, y1 = source.y + 85 + output * 25, x2 = target.x, y2 = target.y + 85 + input * 25;
     return `<g><path d="M${x1},${y1} C${x1 + 80},${y1} ${x2 - 80},${y2} ${x2},${y2}"/><title>${escapeHtml(edge.id)} · ${escapeHtml(edge.sourcePort)} → ${escapeHtml(edge.targetPort)} · 顺序 ${edge.order}</title></g>`;
   }).join('');
   const nodes = graph.nodes.map(node => {
     const position = positions.get(node.id);
     const fieldCount = Object.keys(node.fields).length;
-    return `<button class="graph-node ${state.selectedNode === node.id ? 'selected' : ''}" data-node="${escapeHtml(node.id)}" style="left:${escapeHtml(position.x)}px;top:${escapeHtml(position.y)}px"><span class="node-type">${escapeHtml(node.capability)}</span><strong>${escapeHtml(node.displayName)}</strong><small>${fieldCount} 个作者字段</small><i class="port in"></i><i class="port out"></i></button>`;
+    const shape = shapes.get(node.id), definition = shape.definition;
+    const rows = Math.max(shape.inputs.length, shape.outputs.length);
+    const portRows = Array.from({ length: rows }, (_, index) => {
+      const input = shape.inputs[index], output = shape.outputs[index];
+      const label = (port, side) => port ? `<span class="${side}" title="${escapeHtml(port.id)} · ${escapeHtml(port.valueType)}"><i></i><em>${escapeHtml(port.displayName || port.id)}</em></span>` : '<span></span>';
+      return `<div class="node-port-row">${label(input, 'input')}${label(output, 'output')}</div>`;
+    }).join('');
+    return `<button class="graph-node ${definition ? '' : 'missing-definition'} ${state.selectedNode === node.id ? 'selected' : ''}" data-node="${escapeHtml(node.id)}" style="left:${escapeHtml(position.x)}px;top:${escapeHtml(position.y)}px"><span class="node-type">${escapeHtml(node.capability)}</span><strong>${escapeHtml(node.displayName || definition?.displayName || node.capability)}</strong><small>${fieldCount} 个作者字段${definition ? '' : ' · 原能力描述缺失'}</small><div class="node-ports">${portRows}</div></button>`;
   }).join('');
   $('document-view').innerHTML = `<div class="graph-surface" id="graph-surface"><div class="graph-caption">${escapeHtml(graph.role)}<span>${graph.nodes.length} 个节点 · ${graph.edges.length} 条连接</span></div><div class="graph-world" id="graph-world"><svg width="6000" height="4000">${links}</svg>${nodes}</div><div class="canvas-tools"><button id="fit-graph">复位视图</button><span id="zoom-value">100%</span></div><div class="canvas-hint">空白处拖动画布 · 滚轮缩放 · 选择节点查看实际字段</div></div>`;
   updateView();
@@ -184,8 +216,12 @@ function renderInspector(document) {
   const target = state.selectedTimeline
     ? document.tracks.flatMap(track => [track, ...track.clips, ...track.markers]).find(item => item.id === state.selectedTimeline)
     : state.selectedNode ? document.nodes.find(node => node.id === state.selectedNode) : document;
-  $('selection-name').textContent = target.displayName || target.id;
-  $('inspector-content').innerHTML = `<div class="identity">${escapeHtml(target.id)}</div><div class="read-state">${state.source === 'migrations' ? '迁移候选中的实际值' : '磁盘作者值'}</div>${target.timeRange ? `<div class="time-details"><strong>${seconds(target.timeRange.startRaw).toFixed(4)} ～ ${seconds(target.timeRange.endRaw).toFixed(4)} 秒</strong><details><summary>无损时间与素材范围</summary>${Object.entries(target.timeRange).map(([key, value]) => `<div><label>${escapeHtml(key)}</label><code>${escapeHtml(value)}</code></div>`).join('')}</details></div>` : ''}${Object.entries(target.fields || {}).map(([id, value]) => `<div class="field"><label>${escapeHtml(id)}</label>${renderValue(value)}</div>`).join('') || '<p class="muted">此对象没有显式作者字段。</p>'}`;
+  const definition = target.capability ? state.capabilities.get(target.capability) : null;
+  $('selection-name').textContent = target.displayName || definition?.displayName || target.id;
+  $('inspector-content').innerHTML = `<div class="identity">${escapeHtml(target.id)}</div><div class="read-state">${state.source === 'migrations' ? '迁移候选中的实际值' : '磁盘作者值'}</div>${definition ? `<details class="definition-info"><summary>原能力定义</summary><code>${escapeHtml(definition.id)}</code><small>角色：${escapeHtml(definition.roles.join('、'))}</small><code>定义修订 ${escapeHtml(state.definitionRevision)}</code></details>` : ''}${target.timeRange ? `<div class="time-details"><strong>${seconds(target.timeRange.startRaw).toFixed(4)} ～ ${seconds(target.timeRange.endRaw).toFixed(4)} 秒</strong><details><summary>无损时间与素材范围</summary>${Object.entries(target.timeRange).map(([key, value]) => `<div><label>${escapeHtml(key)}</label><code>${escapeHtml(value)}</code></div>`).join('')}</details></div>` : ''}${Object.entries(target.fields || {}).map(([id, value]) => {
+    const field = definition?.fields.find(field => field.id === id);
+    return `<div class="field"><label title="${escapeHtml(id)}">${escapeHtml(field?.displayName || id)}${field && !field.writable ? ' · 原定义只读' : ''}</label>${renderValue(value)}${field?.constraint?.AllowedValues.length ? `<small>声明选项：${field.constraint.AllowedValues.map(escapeHtml).join('、')}</small>` : ''}</div>`;
+  }).join('') || '<p class="muted">此对象没有显式作者字段。</p>'}`;
 }
 
 function renderValue(value) {
