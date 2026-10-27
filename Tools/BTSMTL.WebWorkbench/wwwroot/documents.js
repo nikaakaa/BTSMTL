@@ -107,7 +107,7 @@ function selectFile(path) {
   state.selectedFile = state.snapshot.files.find(file => file.path === path);
   state.selectedNode = null;
   state.selectedTimeline = null;
-  state.view = { x: 35, y: 45, scale: 1 };
+  state.view = { x: 35, y: 45, scale: 1, needsFit: true };
   const locationQuery = new URLSearchParams({ source: state.source, root: state.selectedRoot.path, file: path, tab: state.tab });
   history.replaceState(null, '', `?${locationQuery}`);
   renderFiles();
@@ -179,9 +179,23 @@ function renderGraph(graph) {
     }).join('');
     return `<button class="graph-node ${definition ? '' : 'missing-definition'} ${state.selectedNode === node.id ? 'selected' : ''}" data-node="${escapeHtml(node.id)}" style="left:${escapeHtml(position.x)}px;top:${escapeHtml(position.y)}px"><span class="node-type">${escapeHtml(node.capability)}</span><strong>${escapeHtml(node.displayName || definition?.displayName || node.capability)}</strong><small>${fieldCount} 个作者字段${definition ? '' : ' · 原能力描述缺失'}</small><div class="node-ports">${portRows}</div></button>`;
   }).join('');
-  $('document-view').innerHTML = `<div class="graph-surface" id="graph-surface"><div class="graph-caption">${escapeHtml(graph.role)}<span>${graph.nodes.length} 个节点 · ${graph.edges.length} 条连接</span></div><div class="graph-world" id="graph-world"><svg width="6000" height="4000">${links}</svg>${nodes}</div><div class="canvas-tools"><button id="fit-graph">复位视图</button><span id="zoom-value">100%</span></div><div class="canvas-hint">空白处拖动画布 · 滚轮缩放 · 选择节点查看实际字段</div></div>`;
+  $('document-view').innerHTML = `<div class="graph-surface" id="graph-surface"><div class="graph-caption">${escapeHtml(graph.role)}<span>${graph.nodes.length} 个节点 · ${graph.edges.length} 条连接</span></div><div class="graph-world" id="graph-world"><svg width="6000" height="4000">${links}</svg>${nodes}</div><div class="canvas-tools"><button id="fit-graph">适应全图</button><span id="zoom-value">100%</span></div><div class="canvas-hint">空白处拖动画布 · 滚轮缩放 · 选择节点查看实际字段</div></div>`;
   updateView();
   const surface = $('graph-surface');
+  function fitGraph() {
+    if (graph.nodes.length === 0) { state.view = { x: 35, y: 45, scale: 1 }; updateView(); return; }
+    const bounds = graph.nodes.map(node => {
+      const position = positions.get(node.id), shape = shapes.get(node.id);
+      return { ...position, width: 250, height: Math.max(86, 72 + Math.max(shape.inputs.length, shape.outputs.length) * 25) };
+    });
+    const left = Math.min(...bounds.map(node => node.x)), right = Math.max(...bounds.map(node => node.x + node.width));
+    const top = Math.min(...bounds.map(node => node.y)), bottom = Math.max(...bounds.map(node => node.y + node.height));
+    const scale = Math.min(1, (surface.clientWidth - 80) / (right - left), (surface.clientHeight - 120) / (bottom - top));
+    state.view = { x: (surface.clientWidth - (right - left) * scale) / 2 - left * scale,
+      y: (surface.clientHeight - (bottom - top) * scale) / 2 - top * scale, scale };
+    updateView();
+  }
+  if (state.view.needsFit) fitGraph();
   let drag = null;
   surface.addEventListener('pointerdown', event => {
     if (event.target.closest('button')) return;
@@ -204,7 +218,7 @@ function renderGraph(graph) {
     state.view.scale = next;
     updateView();
   }, { passive: false });
-  $('fit-graph').onclick = () => { state.view = { x: 35, y: 45, scale: 1 }; updateView(); };
+  $('fit-graph').onclick = fitGraph;
 }
 
 function updateView() {
