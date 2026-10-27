@@ -14,6 +14,7 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 $('viewport').append(renderer.domElement);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
+scene.add(new THREE.HemisphereLight(0xffffff, 0x334451, 2));
 scene.add(new THREE.GridHelper(12, 24, 0x426473, 0x223541));
 const axes = new THREE.AxesHelper(0.6);
 axes.position.set(-0.8, 0.005, -0.8);
@@ -30,6 +31,7 @@ resizeObserver.observe($('viewport'));
 
 function fit() {
   state.model.updateMatrixWorld(true);
+  state.model.traverse(object => { if (object.isSkinnedMesh) object.computeBoundingBox(); });
   const bounds = new THREE.Box3().setFromObject(state.model);
   const center = bounds.getCenter(new THREE.Vector3());
   const size = bounds.getSize(new THREE.Vector3());
@@ -127,16 +129,6 @@ async function load() {
   const gltf = await new GLTFLoader().loadAsync(`/api/resources/animations/file/${manifest.sha256}`);
   state.model = gltf.scene;
   state.animations = gltf.animations;
-  state.model.traverse(object => {
-    if (!object.isMesh) return;
-    const source = Array.isArray(object.material) ? object.material : [object.material];
-    const materials = source.map(material => new THREE.MeshBasicMaterial({
-      map: material.map, color: material.color, alphaMap: material.alphaMap, opacity: material.opacity,
-      transparent: material.transparent, alphaTest: material.alphaTest, side: material.side
-    }));
-    object.material = Array.isArray(object.material) ? materials : materials[0];
-    source.forEach(material => material.dispose());
-  });
   scene.add(state.model);
   state.mixer = new THREE.AnimationMixer(state.model);
   showClip(selected.animationIndex);
@@ -146,6 +138,7 @@ async function load() {
       throw new Error('请求的素材秒数超出该片段的实际导出范围。');
     state.cursor = time;
     setTime();
+    fit();
   }
   $('play-resource').disabled = false;
   $('resource-time').disabled = false;
@@ -164,7 +157,10 @@ window.addEventListener('pagehide', () => {
   scene.traverse(object => {
     if (object.geometry) object.geometry.dispose();
     const materials = Array.isArray(object.material) ? object.material : object.material ? [object.material] : [];
-    materials.forEach(material => { if (material.map) textures.add(material.map); if (material.alphaMap) textures.add(material.alphaMap); material.dispose(); });
+    materials.forEach(material => {
+      Object.values(material).forEach(value => { if (value?.isTexture) textures.add(value); });
+      material.dispose();
+    });
   });
   textures.forEach(texture => { if (texture.source.data instanceof ImageBitmap) texture.source.data.close(); texture.dispose(); });
   renderer.dispose();
