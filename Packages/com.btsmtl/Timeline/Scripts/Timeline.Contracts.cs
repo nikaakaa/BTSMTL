@@ -558,7 +558,7 @@ namespace BTSMTL.Timeline
                     {
                         errors?.Add($"Timeline '{timeline.Name}' clip '{clip.AuthoringId}' uses unsupported execution domain '{executionDomain}'.");
                     }
-                    if (clip.StartTime < OrchestrationTime.Zero || clip.EndTime < clip.StartTime || clipContract.RequiresPositiveDuration && clip.DurationTime <= OrchestrationTime.Zero)
+                    if (!clipContract.AllowsTimeRange(clip.StartTime, clip.EndTime))
                         errors?.Add($"Timeline '{timeline.Name}' clip '{clip.AuthoringId}' has an invalid frame range.");
                     TimelineClipExecutionPhase executionPhase = clipContract.DefaultExecutionPhase;
                     if (clip is ITimelineClipExecutionPhaseSource phaseSource)

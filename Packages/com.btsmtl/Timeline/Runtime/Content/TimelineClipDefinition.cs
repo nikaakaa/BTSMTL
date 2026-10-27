@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using BTSMTL.Orchestration;
 
 namespace BTSMTL.Timeline
 {
@@ -73,6 +74,9 @@ namespace BTSMTL.Timeline
         public bool SupportsExecutionDomain(TimelineExecutionDomain domain) =>
             TimelineExecutionDomains.IsValid(domain) &&
             (AllowedExecutionDomains & TimelineExecutionDomains.ToMask(domain)) != 0;
+
+        public bool AllowsTimeRange(OrchestrationTime start, OrchestrationTime end) =>
+            start >= OrchestrationTime.Zero && end >= start && (!RequiresPositiveDuration || end > start);
 
         static string Require(string value, string name)
         {
