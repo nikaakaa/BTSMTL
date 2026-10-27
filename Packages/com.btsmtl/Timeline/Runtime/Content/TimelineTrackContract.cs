@@ -83,6 +83,9 @@ namespace BTSMTL.Timeline
             TimelineExecutionDomains.IsValid(domain) &&
             (AllowedExecutionDomains & TimelineExecutionDomains.ToMask(domain)) != 0;
 
+        public bool AllowsClip(TimelineClipDefinition clip) =>
+            AllowsClip(clip.Kind) && string.Equals(Kind, clip.TrackKind, StringComparison.Ordinal);
+
         static string Require(string value, string name)
         {
             return string.IsNullOrWhiteSpace(value)

@@ -42,7 +42,7 @@ namespace BTSMTL.Timeline
         {
             TimelineTrackContract track = RequireTrack(trackKind);
             TClip clip = RequireClip(clipKind);
-            if (!track.AllowsClip(clip.Kind) || !string.Equals(track.Kind, clip.TrackKind, StringComparison.Ordinal))
+            if (!track.AllowsClip(clip))
                 throw new InvalidOperationException($"Timeline Clip '{clipKind}' cannot be added to Track '{trackKind}'.");
             if (!track.SupportsExecutionDomain(executionDomain) || !clip.SupportsExecutionDomain(executionDomain))
                 throw new InvalidOperationException(

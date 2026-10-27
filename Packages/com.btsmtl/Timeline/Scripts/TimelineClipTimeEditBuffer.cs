@@ -126,8 +126,7 @@ namespace BTSMTL.Timeline
             for (int i = 0; i < m_Clips.Length; i++)
             {
                 ref readonly TimelineClipTimeRange range = ref ranges[i];
-                if (!catalog.RequireClip(m_Clips[i].ContractKind).AllowsTimeRange(range.Start, range.End) ||
-                    range.EaseIn < OrchestrationTime.Zero || range.EaseOut < OrchestrationTime.Zero || range.ClipIn < OrchestrationTime.Zero)
+                if (!catalog.RequireClip(m_Clips[i].ContractKind).AllowsTimeRange(in range))
                 {
                     error = m_InvalidRangeErrors[i];
                     return false;

@@ -78,6 +78,10 @@ namespace BTSMTL.Timeline
         public bool AllowsTimeRange(OrchestrationTime start, OrchestrationTime end) =>
             start >= OrchestrationTime.Zero && end >= start && (!RequiresPositiveDuration || end > start);
 
+        public bool AllowsTimeRange(in TimelineClipTimeRange range) =>
+            AllowsTimeRange(range.Start, range.End) && range.EaseIn >= OrchestrationTime.Zero &&
+            range.EaseOut >= OrchestrationTime.Zero && range.ClipIn >= OrchestrationTime.Zero;
+
         static string Require(string value, string name)
         {
             return string.IsNullOrWhiteSpace(value)

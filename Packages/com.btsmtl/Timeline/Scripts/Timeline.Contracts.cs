@@ -468,7 +468,7 @@ namespace BTSMTL.Timeline
                         errors?.Add($"Timeline '{timeline.Name}' clip '{clip.AuthoringId}' has unknown contract kind '{clip.ContractKind}'.");
                         continue;
                     }
-                    if (!trackContract.AllowsClip(clipContract.Kind) || !string.Equals(clipContract.TrackKind, trackContract.Kind, StringComparison.Ordinal))
+                    if (!trackContract.AllowsClip(clipContract))
                         errors?.Add($"Timeline '{timeline.Name}' clip '{clip.AuthoringId}' is not allowed on track '{track.AuthoringId}'.");
                     TimelineExecutionDomain executionDomain = track.ExecutionDomain;
                     if (!trackContract.SupportsExecutionDomain(executionDomain) ||
