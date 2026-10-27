@@ -4,6 +4,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Reflection;
 using BTSMTL.Authoring.Graph;
 
 namespace BTSMTL.Authoring.Documents
@@ -50,6 +51,21 @@ namespace BTSMTL.Authoring.Documents
 
         public AuthoringNamedValue[] CaptureFields(object target) => GraphAuthoringMemberBindings.Contract(target).Fields
             .Select(field => Member(field.Metadata.FieldId, field.ValueType, field.Read(target))).ToArray();
+
+        public object RestoreDeclaredFields(Type type, ReadOnlyMemory<AuthoringNamedValue> fields)
+        {
+            AuthoringObjectContract construction = Contract(type);
+            if (construction.Construction != AuthoringObjectConstruction.Constructor)
+                throw new InvalidOperationException($"声明类型 '{type.FullName}' 没有原公开构造合同。");
+            var values = fields.ToArray().ToDictionary(field => field.FieldId.Value, field => field.Value, StringComparer.Ordinal);
+            object[] arguments = construction.Parameters.Select(parameter =>
+            {
+                PropertyInfo property = AuthoringObjectContract.ReadableProperty(type, parameter);
+                string id = property.GetCustomAttribute<GraphAuthoringFieldAttribute>()?.FieldId ?? parameter.Name;
+                return Restore(parameter.ParameterType, values[id]);
+            }).ToArray();
+            return construction.Constructor.Invoke(arguments);
+        }
 
         public object ApplyFields(object target, ReadOnlyMemory<AuthoringNamedValue> fields,
             bool fromDefaults = false, bool complete = false)

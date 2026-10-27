@@ -1,11 +1,12 @@
 using System;
 using BTSMTL.Authoring.Blackboard;
+using BTSMTL.Authoring.Graph;
 using ThirdPersonSimulation;
 
 namespace BTSMTL.Graphs
 {
     [Serializable]
-    public sealed class BtsmtlBlackboardDeclaration
+    public sealed partial class BtsmtlBlackboardDeclaration
     {
 #if UNITY_5_3_OR_NEWER
         [UnityEngine.SerializeField]
@@ -37,10 +38,15 @@ namespace BTSMTL.Graphs
             m_Category = category ?? string.Empty; m_InputBinding = inputBinding;
         }
 
+        [GraphAuthoringField(nameof(m_VariableId), GraphAuthoringFieldValueKind.IdentityReference, ReadOnly = true)]
         public string VariableId => m_VariableId;
+        [GraphAuthoringField(nameof(m_Scope), typeof(PipelineBlackboardVariableScope), ReadOnly = true)]
         public PipelineBlackboardVariableScope Scope => m_Scope;
+        [GraphAuthoringField(nameof(m_Lifetime), typeof(PipelineBlackboardVariableLifetime), ReadOnly = true)]
         public PipelineBlackboardVariableLifetime Lifetime => m_Lifetime;
+        [GraphAuthoringField(nameof(m_Category), GraphAuthoringFieldValueKind.String, ReadOnly = true)]
         public string Category => m_Category;
+        [GraphAuthoringField(nameof(m_InputBinding), GraphAuthoringFieldValueKind.Object, ReadOnly = true, Optional = true)]
         public PipelineBlackboardInputBinding InputBinding => m_InputBinding != null && m_InputBinding.IsDefined ? m_InputBinding : null;
 
         public static void ValidateDefinition(SemanticValueKind kind, TypeCode typeCode,

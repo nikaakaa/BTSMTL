@@ -1,6 +1,8 @@
 #if UNITY_EDITOR || BTSMTL_AUTHORING
 using System;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
+using System.Reflection;
 using System.Linq;
 using System.Globalization;
 
@@ -8,20 +10,18 @@ namespace BTSMTL.Authoring.Graph
 {
     public static class GraphAuthoringMemberBindings
     {
-        static readonly Dictionary<Type, GraphAuthoringTypeContract> s_Contracts = new();
+        static readonly ConcurrentDictionary<Type, GraphAuthoringTypeContract> s_Contracts = new();
 
         public static GraphAuthoringTypeContract Contract(object target) =>
             target is IGraphAuthoringFieldSource source ? source.AuthoringFields : GraphAuthoringTypeContract.Empty;
 
-        public static GraphAuthoringTypeContract Contract(Type type)
-        {
-            if (!s_Contracts.TryGetValue(type, out GraphAuthoringTypeContract contract))
-            {
-                contract = Contract(Activator.CreateInstance(type));
-                s_Contracts.Add(type, contract);
-            }
-            return contract;
-        }
+        public static GraphAuthoringTypeContract Contract(Type type) => s_Contracts.GetOrAdd(type, declared =>
+            typeof(IGraphAuthoringFieldSource).IsAssignableFrom(declared)
+                ? (GraphAuthoringTypeContract)(declared.GetProperty("AuthoringContract",
+                    BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy) ??
+                    throw new InvalidOperationException($"作者类型 '{declared.FullName}' 缺少正式生成合同。"))
+                    .GetValue(null)
+                : GraphAuthoringTypeContract.Empty);
 
         public static object DefaultValue(Type type, GraphAuthoringFieldAttribute field) =>
             Contract(type)[field.FieldId].DefaultValue(Activator.CreateInstance(type));
