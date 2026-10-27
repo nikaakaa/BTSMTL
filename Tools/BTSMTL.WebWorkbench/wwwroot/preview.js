@@ -1,4 +1,5 @@
 import { LogicViewport, fixed as fp } from './logic-viewport.js';
+import { ObservationQuery } from './observation-query.js';
 
 const $ = id => document.getElementById(id);
 const state = { sources: null, runs: [], selected: null, summary: null, frames: new Map(), count: 0, sealed: false, initialFrameIndex: 0, inputCatalog: null, inputScene: null, sourceMap: null };
@@ -166,6 +167,7 @@ function localSource() {
 async function selectRun(id, frameIndex = 0) {
   if (!Number.isSafeInteger(frameIndex) || frameIndex < 0) throw new Error('帧序号必须是非负整数。');
   clearTimeout(pollTimer);
+  observationQuery.reset();
   state.selected = id; state.summary = null; state.frames.clear(); state.count = 0; state.sealed = false;
   state.initialFrameIndex = frameIndex;
   delete document.documentElement.dataset.previewImageReady;
@@ -231,6 +233,7 @@ async function displayObservation(summary, sealed) {
   const firstFrame = state.count === 0 && summary.frameCount > 0;
   const first = state.summary === null;
   state.summary = summary; state.count = summary.frameCount;
+  if (first) observationQuery.bind(state.selected, summary);
   state.sealed = sealed;
   if (sealed && state.initialFrameIndex > 0 && state.initialFrameIndex >= state.count) throw new Error('请求的帧序号超出本次已封存范围。');
   const facts = { '运行身份': summary.runId, '场景修订': summary.sceneRevision,
@@ -374,6 +377,8 @@ function renderCommittedFacts(frame, observation) {
 }
 
 const viewport = new LogicViewport($('viewport'));
+const observationQuery = new ObservationQuery($('observation-query'), request);
+window.addEventListener('pagehide', () => observationQuery.close());
 function clearActors() { viewport.reset(); }
 function fitView() { viewport.fit(); }
 
