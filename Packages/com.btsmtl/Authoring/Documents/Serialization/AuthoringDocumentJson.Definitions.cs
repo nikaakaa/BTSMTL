@@ -14,6 +14,8 @@ namespace BTSMTL.Authoring.Documents
         public static string WriteObjectDefinition(AuthoringObjectDefinition definition) => Write(new JObject
         {
             ["authoringType"] = definition.TypeId,
+            ["members"] = new JObject(definition.Members.OrderBy(member => member.Key, StringComparer.Ordinal)
+                .Select(member => new JProperty(member.Key, member.Value.Value))),
             ["fields"] = new JArray(definition.Fields.OrderBy(field => field.Id.Value, StringComparer.Ordinal)
                 .Select(field => JToken.Parse(WriteFieldDefinition(field))))
         });
@@ -22,7 +24,9 @@ namespace BTSMTL.Authoring.Documents
         {
             JObject definition = ReadObject(text);
             return new(Text(definition, "authoringType", sourcePath), Array(definition, "fields", sourcePath)
-                .Select(field => ReadFieldDefinition(field.ToString(), sourcePath)).ToArray());
+                .Select(field => ReadFieldDefinition(field.ToString(), sourcePath)).ToArray(),
+                Object(definition, "members", sourcePath).Properties().ToDictionary(member => member.Name,
+                    member => new GraphAuthoringFieldId(Text(member.Value, sourcePath)), StringComparer.Ordinal));
         }
 
         public static string WriteFieldDefinition(AuthoringFieldDefinition field) => Write(new JObject
