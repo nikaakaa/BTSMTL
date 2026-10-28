@@ -36,6 +36,8 @@ public static class WorkspaceApi
         routes.MapGet("/source", (string path) => workspace.ReadSource(path));
         routes.MapGet("/element", (string path, string documentId, string elementId) =>
             AuthoringReferenceQuery.Content(workspace, path, documentId, elementId));
+        routes.MapGet("/locations", (string documentId, string elementId, int offset, int limit) =>
+            AuthoringReferenceQuery.Locations(workspace, documentId, elementId, offset, limit));
         routes.MapGet("/root", (string path) =>
         {
             AuthoringRootFiles source = workspace.Read(path);

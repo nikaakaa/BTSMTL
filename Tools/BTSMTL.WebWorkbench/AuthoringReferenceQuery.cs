@@ -11,13 +11,63 @@ public sealed record AuthoringReferenceUse(AuthoringReferenceSource Source, Auth
     string Relation, string? ValueType);
 public sealed record AuthoringReferencePage(AuthoringReferenceUse[] Items, int Offset, int Total,
     int? NextOffset, bool Complete, AuthoringSourceProblem[] Problems);
+public sealed record AuthoringLocationPage(AuthoringReferenceSource[] Items, int Offset, int Total,
+    int? NextOffset, bool Complete, AuthoringSourceProblem[] Problems);
 
 public static class AuthoringReferenceQuery
 {
+    public static AuthoringLocationPage Locations(AuthoringWorkspaceDirectory workspace, string documentId,
+        string elementId, int offset, int limit)
+    {
+        RequirePage(offset, limit);
+        var matches = new List<AuthoringReferenceSource>();
+        var problems = new List<AuthoringSourceProblem>();
+        int cursor = 0;
+        do
+        {
+            AuthoringPage<AuthoringRootEntry> page = workspace.List(cursor, 200);
+            foreach (AuthoringRootEntry entry in page.Items)
+            {
+                if (entry.Problems.Count != 0) { problems.AddRange(entry.Problems); continue; }
+                try
+                {
+                    AuthoringSourceFile manifest = workspace.ReadSource(entry.Path);
+                    AuthoringRootDocument declaration = AuthoringDocumentJson.ReadRoot(manifest.Text, manifest.Path);
+                    if (declaration.Id.Value != documentId && !declaration.Files.ToArray().Any(file => file.Id.Value == documentId)) continue;
+                    AuthoringRootFiles root = workspace.Read(entry.Path);
+                    (AuthoringSourceFile file, JObject element) = Element(root, documentId, elementId);
+                    string directory = Path.GetDirectoryName(root.Files[0].Path)!;
+                    matches.Add(new(entry.Path, root.Root.Id.Value, root.Revision,
+                        Path.GetRelativePath(directory, file.Path).Replace('\\', '/'), documentId, file.Revision,
+                        elementId, element.Path));
+                }
+                catch (Exception error) when (error is IOException or FormatException or
+                    Newtonsoft.Json.JsonException or ArgumentException)
+                { problems.Add(new(entry.Path, "authoring_location_invalid", error.Message)); }
+            }
+            if (page.NextOffset is not int next) break;
+            cursor = next;
+        } while (true);
+        return new(matches.Skip(offset).Take(limit).ToArray(), offset, matches.Count,
+            offset + limit < matches.Count ? offset + limit : null, problems.Count == 0, problems.ToArray());
+    }
+
     public static object Content(AuthoringWorkspaceDirectory workspace, string path,
         string documentId, string elementId)
     {
         AuthoringRootFiles root = workspace.Read(path);
+        (AuthoringSourceFile source, JObject element) = Element(root, documentId, elementId);
+        string directory = Path.GetDirectoryName(root.Files[0].Path)!;
+        return new { RootPath = path, RootId = root.Root.Id.Value, RootRevision = root.Revision,
+            DocumentId = documentId, ElementId = elementId,
+            SourcePath = Path.GetRelativePath(directory, source.Path).Replace('\\', '/'),
+            FileRevision = source.Revision, JsonPath = element.Path,
+            Content = element.ToString(Newtonsoft.Json.Formatting.Indented) };
+    }
+
+    static (AuthoringSourceFile File, JObject Element) Element(AuthoringRootFiles root,
+        string documentId, string elementId)
+    {
         string directory = Path.GetDirectoryName(root.Files[0].Path)!;
         string sourcePath = documentId == root.Root.Id.Value ? root.Files[0].Path :
             AuthoringWorkspaceDirectory.Resolve(directory, root.Root.Files.ToArray()
@@ -28,12 +78,7 @@ public static class AuthoringReferenceQuery
             .Where(value => value["id"]?.Type == JTokenType.String && value["id"]!.Value<string>() == elementId).ToArray();
         if (elements.Length != 1)
             throw new InvalidDataException($"文档 '{documentId}' 的稳定对象 '{elementId}' 匹配 {elements.Length} 项。");
-        JObject element = elements[0];
-        return new { RootPath = path, RootId = root.Root.Id.Value, RootRevision = root.Revision,
-            DocumentId = documentId, ElementId = elementId,
-            SourcePath = Path.GetRelativePath(directory, source.Path).Replace('\\', '/'),
-            FileRevision = source.Revision, JsonPath = element.Path,
-            Content = element.ToString(Newtonsoft.Json.Formatting.Indented) };
+        return (source, elements[0]);
     }
 
     public static AuthoringReferencePage Dependencies(AuthoringWorkspaceDirectory workspace, string path,
