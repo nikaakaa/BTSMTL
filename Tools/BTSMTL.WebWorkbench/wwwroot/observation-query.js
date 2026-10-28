@@ -109,7 +109,7 @@ export class ObservationQuery {
   }
 
   append(items) {
-    this.items.insertAdjacentHTML('beforeend', items.map(frame => `<details><summary>帧 ${html(frame.hostFrame)} · ${html(frame.seconds)} 秒 · ${frame.actors.length} 个角色</summary>${sectionsHtml(frame.sections)}<details><summary>原始记录</summary><pre>${html(frame.rawJson)}</pre></details></details>`).join(''));
+    this.items.insertAdjacentHTML('beforeend', items.map(frame => `<details><summary>帧 ${html(frame.hostFrame)} · ${html(frame.seconds)} 秒 · ${frame.actors.length} 个角色</summary>${sectionsHtml(frame.sections)}<details><summary>宿主记录</summary><pre>${html(frame.rawJson)}</pre></details></details>`).join(''));
   }
 
   close() {

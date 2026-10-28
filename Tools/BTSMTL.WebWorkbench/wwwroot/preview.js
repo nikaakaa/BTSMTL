@@ -280,7 +280,7 @@ async function showFrame(index) {
   $('frame-label').textContent = `${state.summary.frameDisplayName} ${frame.hostFrame}`;
   $('frame-facts').innerHTML = fieldsHtml([{ displayName: '运行相对秒数', value: frame.seconds },
     ...frame.fields, ...(frame.consistency ? [{ displayName: frame.consistency.displayName, value: frame.consistency.value }] : [])]);
-  $('actors').innerHTML = frame.actors.map(actor => `<article class="actor-fact"><strong>${escapeHtml(actor.displayName)}</strong><dl>${fieldsHtml(actor.fields)}</dl><details><summary>原始角色记录</summary><pre>${escapeHtml(actor.rawJson)}</pre></details></article>`).join('');
+  $('actors').innerHTML = frame.actors.map(actor => `<article class="actor-fact"><strong>${escapeHtml(actor.displayName)}</strong><dl>${fieldsHtml(actor.fields)}</dl><details><summary>宿主角色记录</summary><pre>${escapeHtml(actor.rawJson)}</pre></details></article>`).join('');
   $('frame-sections').innerHTML = sectionsHtml(frame.sections);
   $('frame-json').textContent = frame.rawJson;
   viewport.draw(frame);

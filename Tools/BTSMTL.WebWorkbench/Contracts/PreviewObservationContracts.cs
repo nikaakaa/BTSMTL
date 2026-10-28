@@ -16,7 +16,7 @@ public sealed record PreviewWorldCollider(string Identity, string Kind, PreviewP
 public sealed record PreviewTriangle(double[] A, double[] B, double[] C);
 public sealed record PreviewActorCollider(string ActorId, double Radius, double HalfLength, double[] CenterOffset);
 public sealed record PreviewGeometry(string RunId, string ContentRevision, PreviewWorldCollider[] World,
-    PreviewTriangle[] WorldTriangles, PreviewActorCollider[] Actors, PreviewShape[] Shapes);
+    PreviewTriangle[] WorldTriangles, PreviewActorCollider[] Actors, PreviewShape[] Shapes, string RawJson);
 public sealed record PreviewSweepSegment(int ShapeIndex, PreviewPose Start, PreviewPose End);
 public sealed record PreviewSweep(PreviewSweepSegment[] Segments, PreviewSweepSegment[] Targets);
 public sealed record PreviewContact(double[] Point, double[] Normal);
