@@ -35,9 +35,19 @@ namespace BTSMTL.Authoring.Documents
         public ParameterInfo[] Parameters { get; }
         public string[] ParameterMemberIds { get; }
 
-        static string MemberIdentity(PropertyInfo property, string parameter) =>
+        public static string MemberIdentity(PropertyInfo property, string parameter)
+        {
+            string declared = DeclaredIdentity(property);
+            if (declared != null) return declared;
+            return property.DeclaringType.GetInterfaces().Select(type => type.GetProperty(property.Name))
+                .Where(member => member != null && member.PropertyType == property.PropertyType)
+                .Select(DeclaredIdentity).Where(identity => identity != null)
+                .Distinct(StringComparer.Ordinal).SingleOrDefault() ?? parameter;
+        }
+
+        static string DeclaredIdentity(PropertyInfo property) =>
             property.GetCustomAttribute<GraphAuthoringFieldAttribute>()?.FieldId ??
-            property.GetCustomAttribute<DataMemberAttribute>()?.Name ?? parameter;
+            property.GetCustomAttribute<DataMemberAttribute>()?.Name;
 
         public static AuthoringObjectContract Read(Type type)
         {
