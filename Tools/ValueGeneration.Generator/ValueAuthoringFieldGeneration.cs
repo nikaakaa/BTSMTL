@@ -287,6 +287,8 @@ namespace ThirdPerson.ValueGeneration.Generator
                 ISymbol binder = AuthoringAuxiliary(type, "GraphAuthoringBindResource", field.Id);
                 code.Append("new ").Append(AuthoringRuntime).Append("GraphAuthoringMember(")
                     .Append(AuthoringFieldMetadata(field)).Append(", typeof(").Append(TypeName(field.Type)).Append("), ")
+                    .Append("new string[] { ").Append(string.Join(", ",
+                        AuthoringSerializedMemberPath(context.Compilation, type, field).Select(Quote))).Append(" }, ")
                     .Append("target => ").Append(read).Append(", new global::System.Func<object, ").Append(TypeName(field.Type))
                     .Append(">(target => ").Append(read).Append("), new global::System.Func<object, ").Append(TypeName(field.Type))
                     .Append(">(candidate => ").Append(evaluate).Append("), candidate => ").Append(evaluate)
