@@ -3,17 +3,17 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>BTSMTL · Quantum 运行观察</title>
+  <title>BTSMTL · 运行观察</title>
   <link rel="stylesheet" href="documents.css">
   <link rel="stylesheet" href="preview.css">
   <link rel="stylesheet" href="authoring-locations.css">
   <script type="importmap">{"imports":{"three":"/vendor/three/build/three.module.js","three/addons/":"/vendor/three/examples/jsm/"}}</script>
 </head>
 <body>
-  <header class="topbar"><div class="brand"><span class="brand-mark">B</span><strong>BTSMTL</strong><span>Quantum 运行观察</span></div><a href="/">返回作者工作台</a><a href="player.html">Unity 预览画面 ↗</a><span id="connection" class="connection">正在连接项目宿主</span></header>
+  <header class="topbar"><div class="brand"><span class="brand-mark">B</span><strong>BTSMTL</strong><span>运行观察</span></div><a href="/">返回作者工作台</a><a href="player.html">预览画面 ↗</a><span id="connection" class="connection">正在连接项目宿主</span></header>
   <main class="preview-layout">
-    <aside class="preview-sidebar">
-      <div class="eyebrow">QUANTUM SESSION</div><h1>采用正式来源</h1>
+    <aside class="preview-sidebar" id="runtime-sources" inert>
+      <div class="eyebrow">PREVIEW SESSION</div><h1>采用正式来源</h1>
       <label for="scene">保存场景的离线包</label><select id="scene"></select><code id="scene-version"></code>
       <label for="run-source">运行输入来源</label><select id="run-source"><option value="replay">原录像</option><option value="local">本次输入日程</option></select>
       <div id="replay-source"><label for="replay">原录像</label><select id="replay"></select><code id="replay-version"></code></div>

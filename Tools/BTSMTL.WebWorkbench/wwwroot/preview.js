@@ -328,6 +328,7 @@ guarded(async () => {
   const host = await request('/api/preview/host');
   if (!host.available) { $('connection').textContent = '未接入运行宿主'; report('当前工作台未接入运行宿主。作者页面仍可继续工作。'); return; }
   state.host = host.description; observationQuery.configure(state.host);
+  $('runtime-sources').inert = false;
   const limit = state.host.inputLimit;
   $('input-limit-label').textContent = limit.displayName;
   $('input-limit').min = limit.minimum; $('input-limit').step = limit.step; $('input-limit').value = limit.initialValue;

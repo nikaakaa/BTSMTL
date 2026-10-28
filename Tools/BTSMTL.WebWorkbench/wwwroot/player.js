@@ -42,9 +42,9 @@ async function refresh() {
     request('/api/preview/live'), request('/api/preview/runs'), request('/api/preview/sources')]);
   state.builds = builds.items; state.lives = lives; state.scenes = sources.scenes;
   state.runs = runs.filter(run => ['completed', 'stopped'].includes(run.stage));
-  options($('build'), state.builds, build => `${build.builtAt} · ${build.scene?.path ?? ''}`, build => build.buildId);
+  options($('build'), state.builds, build => build.displayName, build => build.buildId);
   const build = state.builds.find(item => item.buildId === $('build').value);
-  $('build-info').textContent = build ? `${build.buildId} · ${build.buildMode}/${build.scriptingBackend} · 资源 ${build.resourceCount}` : '尚无构建，请先在 Editor 构建预览播放器。';
+  $('build-info').textContent = build ? build.fields.map(field => `${field.displayName} ${field.value}`).join(' · ') : '画面来源尚未提供可用构建。';
   $('start-live').disabled = !build;
   options($('run'), state.runs, run => `${run.acceptedAt} · ${run.jobId.slice(0, 8)}`, run => run.jobId);
   options($('scene'), state.scenes, scene => scene.path, scene => scene.path);
