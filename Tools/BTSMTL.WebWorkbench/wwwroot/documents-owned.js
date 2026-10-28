@@ -1,4 +1,4 @@
-import { dialog } from './graph-edits.js';
+import { dialog, referenceIdentity } from './graph-edits.js';
 
 const html = value => String(value).replace(/[&<>"']/g,
   char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
@@ -17,6 +17,24 @@ export function privateGraphFields(graph, target, definitions) {
   return graph.role === contract.role && graph.edges.includes(target)
     ? [{ field: definitions.graphAuthoring.edge.fields.find(field => field.id === contract.conditionField),
       role: contract.conditionRole }] : [];
+}
+
+export function privateGraphReferences(graph, target, definitions, references, files) {
+  const declarations = privateGraphFields(graph, target, definitions);
+  if (!declarations.length) return references;
+  const types = new Set(declarations.map(item => item.field.valueType));
+  const current = new Set(declarations.map(({ field }) => target.fields[field.id] || field.defaultValue)
+    .filter(value => value.kind === 'reference').map(referenceIdentity));
+  const documents = new Map(files.filter(file => Array.isArray(file.document?.nodes))
+    .map(file => [file.document.id, file.document]));
+  return references.filter(item => {
+    if (!types.has(item.value.type) || current.has(referenceIdentity(item.value))) return true;
+    const reference = item.value.target;
+    if (reference.rootId !== graph.owner.rootId) return false;
+    const document = documents.get(reference.documentId);
+    return document && declarations.some(item => item.role === document.role) &&
+      document.owner.documentId === graph.id && document.owner.elementId === target.id;
+  });
 }
 
 function newGraph(parent, target, role, displayName, rootId, definitions) {

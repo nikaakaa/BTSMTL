@@ -47,7 +47,7 @@ function valueControls(value, path = [], choices = [], references = [], definiti
   return `<p>当前值为 null；完整类型化 JSON 可在下方编辑。</p>`;
 }
 
-function referenceIdentity(value) {
+export function referenceIdentity(value) {
   return JSON.stringify([value.type, value.target.rootId, value.target.documentId, value.target.elementId]);
 }
 

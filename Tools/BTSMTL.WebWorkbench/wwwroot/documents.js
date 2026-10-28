@@ -3,7 +3,7 @@ import { DocumentEditSession, candidateAcceptance } from './document-session.js'
 import { createTrack, createClip, createMarker, createBinding, editTimeRange, editMarkerTime, moveClip, bindTimelineDrag, timelineObjectDefinition, editTimelineFields } from './timeline-edits.js';
 import { showReferences, showReferenceResource } from './references.js';
 import { graphContext, editTransition } from './documents-fsm.js';
-import { privateGraphFields, privateGraphFiles, createPrivateGraph } from './documents-owned.js';
+import { privateGraphFields, privateGraphFiles, privateGraphReferences, createPrivateGraph } from './documents-owned.js';
 
 const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
@@ -785,11 +785,13 @@ $('inspector-content').onclick = event => {
     return;
   }
   if (event.target.closest('[data-configure-node]')) {
-    editNodeFields(node, state.capabilities.get(node.capability), applyGraphEdits, state.references);
+    editNodeFields(node, state.capabilities.get(node.capability), applyGraphEdits,
+      privateGraphReferences(graph, node, state.definitions, state.references, state.snapshot.files));
     return;
   }
   if (event.target.closest('[data-configure-transition]')) {
-    editTransition(edge, state.definitions, state.references, applyGraphEdits);
+    editTransition(edge, state.definitions,
+      privateGraphReferences(graph, edge, state.definitions, state.references, state.snapshot.files), applyGraphEdits);
     return;
   }
   const fieldButton = event.target.closest('[data-edit-field]');
@@ -810,7 +812,8 @@ $('inspector-content').onclick = event => {
   if (edgeField) {
     const field = state.definitions.graphAuthoring.edge.fields.find(field => field.id === edgeField.dataset.editEdgeField);
     editField(field, edge.fields[field.id] || field.defaultValue,
-      value => applyGraphEdits([{ kind: 'set-edge-field', edgeId: edge.id, fieldId: field.id, value }]), state.references);
+      value => applyGraphEdits([{ kind: 'set-edge-field', edgeId: edge.id, fieldId: field.id, value }]),
+      privateGraphReferences(graph, edge, state.definitions, state.references, state.snapshot.files));
     return;
   }
   if (event.target.closest('[data-edge-order]')) {
@@ -821,7 +824,8 @@ $('inspector-content').onclick = event => {
   if (fieldButton) {
     const field = state.capabilities.get(node.capability).fields.find(item => item.id === fieldButton.dataset.editField);
     editField(field, node.fields[field.id] || field.defaultValue,
-      value => applyGraphEdits([{ kind: 'set-node-field', nodeId: node.id, fieldId: field.id, value }]), state.references);
+      value => applyGraphEdits([{ kind: 'set-node-field', nodeId: node.id, fieldId: field.id, value }]),
+      privateGraphReferences(graph, node, state.definitions, state.references, state.snapshot.files));
   } else if (event.target.closest('[data-rename-element]')) renameElement((node || graph).displayName,
     displayName => applyGraphEdits([node ? { kind: 'rename-node', nodeId: node.id, displayName } : { kind: 'rename-graph', displayName }]));
   else if (event.target.closest('[data-delete-node]')) guarded(() => applyGraphEdits([{ kind: 'delete-node', nodeId: node.id }]));
