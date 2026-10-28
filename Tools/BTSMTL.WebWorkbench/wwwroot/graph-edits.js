@@ -1,5 +1,6 @@
 import { bindCurveEditor } from './curve-editor.js';
 import { scalarControl } from './scalar-editor.js';
+import { candidateAcceptance } from './document-session.js';
 
 const html = value => String(value).replace(/[&<>"']/g,
   char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
@@ -249,6 +250,6 @@ export function showDocumentDiff(session) {
   const before = new Map(session.baseline.map(file => [file.path, file.content]));
   const after = new Map(session.files().map(file => [file.path, file.content]));
   const paths = [...new Set([...before.keys(), ...after.keys()])].filter(path => before.get(path) !== after.get(path));
-  dialog('批量修改差异', `<p class="dialog-intro">${paths.length} 个文件发生变化。基线 ${html(session.context.rootRevision)}。候选已通过共同领域接收，尚未保存或发布。</p>${paths.map(path =>
+  dialog('批量修改差异', `<p class="dialog-intro">${paths.length} 个文件发生变化。基线 ${html(session.context.rootRevision)}。${candidateAcceptance(session.receipt)}；尚未保存或发布。</p>${paths.map(path =>
     `<section class="file-diff"><h3>${html(path)}</h3><div class="diff-columns"><label>磁盘原文<textarea readonly spellcheck="false">${html(before.get(path) || '')}</textarea></label><label>候选原文<textarea readonly spellcheck="false">${html(after.get(path) || '')}</textarea></label></div></section>`).join('') || '<p>当前候选与原始文件相同。</p>'}`, null);
 }

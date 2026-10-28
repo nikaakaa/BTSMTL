@@ -4,7 +4,7 @@ import { privateGraphFields } from './documents-owned.js';
 const html = value => String(value).replace(/[&<>"']/g,
   char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 
-export function graphContext(graph, target, files, definitions, capabilities, canEdit) {
+export function graphContext(graph, target, files, definitions, canEdit) {
   const contract = definitions.stateMachine;
   if (contract === undefined) return '';
   const linked = Object.entries(target.fields).flatMap(([field, value]) => {

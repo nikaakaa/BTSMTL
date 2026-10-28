@@ -1,3 +1,7 @@
+export function candidateAcceptance(receipt) {
+  return receipt.saveReady ? '完整领域已接收' : '仅结构接收 · 尚缺完整领域接收，暂不能保存';
+}
+
 export class DocumentEditSession {
   constructor(snapshot, rootPath, definitionsRevision, send) {
     this.context = { rootPath, rootRevision: snapshot.revision, definitionsRevision };
@@ -16,7 +20,7 @@ export class DocumentEditSession {
   get changed() { return this.receipt?.differences.length > 0; }
   get unsettled() { return this.steps.length > 0 || this.changed || this.pendingCommit !== null; }
   get canEdit() { return !this.receipt || this.receipt.historyDirection === 'edit'; }
-  get canSave() { return this.changed && this.result === null; }
+  get canSave() { return this.changed && this.receipt.saveReady && this.result === null; }
   get canUndo() { return this.canEdit && (this.steps.length > 0 || this.savedUndo.length > 0); }
   get canRedo() { return this.canEdit && (this.redoSteps.length > 0 ||
     (this.steps.length === 0 && this.savedRedo.length > 0)); }
