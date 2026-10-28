@@ -1,5 +1,6 @@
 import { LogicViewport, fixed as fp } from './logic-viewport.js';
 import { ObservationQuery } from './observation-query.js';
+import { authoringSourceLinks, showAuthoringLocation } from './authoring-locations.js';
 
 const $ = id => document.getElementById(id);
 const state = { sources: null, runs: [], selected: null, summary: null, frames: new Map(), count: 0, sealed: false, initialFrameIndex: 0, inputCatalog: null, inputScene: null, sourceMap: null };
@@ -275,7 +276,7 @@ async function showFrame(index) {
   if (index !== Number($('frame').value)) return;
   let frame = state.frames.get(index);
   let observation = null;
-  if (state.summary.channels.some(channel => ['collision-geometry', 'operation-states', 'blackboard-values'].includes(channel))) {
+  if (state.summary.channels.some(channel => ['collision-geometry', 'operation-states', 'blackboard-values', 'output-events'].includes(channel))) {
     if (state.summary.channels.includes('collision-geometry') && !viewport.geometry) {
       const geometry = await request(`/api/preview/runs/${id}/geometry`);
       if (id !== state.selected || index !== Number($('frame').value)) return;
@@ -341,9 +342,9 @@ async function showFrame(index) {
 }
 
 function renderCommittedFacts(frame, observation) {
-  const detail = (title, fields) => `<div class="actor-fact"><strong>${escapeHtml(title)}</strong><dl>${Object.entries(fields)
+  const detail = (title, fields, links = '') => `<div class="actor-fact"><strong>${escapeHtml(title)}</strong><dl>${Object.entries(fields)
     .filter(([, value]) => value !== null && value !== undefined && value !== '')
-    .map(([name, value]) => `<dt>${escapeHtml(name)}</dt><dd>${escapeHtml(value)}</dd>`).join('')}</dl></div>`;
+    .map(([name, value]) => `<dt>${escapeHtml(name)}</dt><dd>${escapeHtml(value)}</dd>`).join('')}</dl><div class="source-links">${links}</div></div>`;
   $('operation-states').innerHTML = observation?.operations.length ? observation.operations.map(operation => {
     const sources = state.sourceMap.filter(map => map.rosterIndex === operation.rosterIndex &&
       map.programIndex === operation.programIndex && map.source.targetKind === 'Operation' && map.source.targetIndex === operation.operationIndex);
@@ -352,7 +353,7 @@ function renderCommittedFacts(frame, observation) {
       '实际转移': operation.transition, '动作 / 播放': `${operation.actionInstanceId} / ${operation.playbackIdentity}`,
       '执行 / 调用代次': `${operation.executionGeneration} / ${operation.generation}`,
       '作者来源': sources.map(map => `${map.source.graphId} / ${map.source.nodeId || map.source.edgeId}`).join('；')
-    });
+    }, authoringSourceLinks(sources.map(map => map.source)));
   }).join('') : `<p class="muted">${state.summary.channels.includes('operation-states') ? '本帧没有活动操作记录。' : '该运行未采集操作状态。'}</p>`;
   $('blackboard-values').innerHTML = observation?.variables.length ? observation.variables.map(variable => detail(variable.key, {
     '有效值': variable.available ? JSON.stringify(variable.value) : variable.reason,
@@ -360,7 +361,7 @@ function renderCommittedFacts(frame, observation) {
     '动作 / 执行代次': `${variable.actionInstanceId} / ${variable.executionGeneration}`,
     '调用代次': variable.invocationGeneration, '声明来源': `${variable.graphId} / ${variable.declarationId}`,
     '调用路径': variable.invocationPath
-  })).join('') : `<p class="muted">${state.summary.channels.includes('blackboard-values') ? '本帧没有对应调用的黑板观察。' : '该运行未采集黑板有效值。'}</p>`;
+  }, authoringSourceLinks([{ graphId: variable.graphId, declarationId: variable.declarationId }]))).join('') : `<p class="muted">${state.summary.channels.includes('blackboard-values') ? '本帧没有对应调用的黑板观察。' : '该运行未采集黑板有效值。'}</p>`;
   const hits = frame.hits || [], failures = frame.queryFailures || [], queries = observation?.queries || [];
   $('combat-facts').innerHTML = hits.map(hit => detail(`实际命中 ${hit.resultId}`, {
     '攻击方 → 目标': `${hit.sourceIndex}:${hit.sourceVersion} → ${hit.targetIndex}:${hit.targetVersion}`,
@@ -376,13 +377,19 @@ function renderCommittedFacts(frame, observation) {
   $('output-events').innerHTML = observation?.outputEvents.length ? observation.outputEvents.map(event => detail(
     `${event.kind} · ${event.lifecycle}`, { '角色 / 动作': `${event.rosterIndex} / ${event.actionInstanceId}`,
       '逻辑 Tick': event.logicTick, '播放身份': event.playbackIdentity, '来源': event.sourceIdentity,
-      '实际请求数': event.requests.length, '请求来源': event.requests.map(request => request.sourceIdentity).join('；') }
-  )).join('') : `<p class="muted">${state.summary.channels.includes('output-events') ? '本帧没有表现请求事件。' : '该运行未采集表现请求。'}</p>`;
+      '实际请求数': event.requests.length, '请求来源': event.requests.map(request => request.sourceIdentity).join('；') },
+    authoringSourceLinks(state.sourceMap.filter(map => map.rosterIndex === event.rosterIndex &&
+      (map.identity === event.sourceIdentity || event.requests.some(request => request.sourceIdentity === map.identity)))
+      .map(map => map.source)))).join('') : `<p class="muted">${state.summary.channels.includes('output-events') ? '本帧没有表现请求事件。' : '该运行未采集表现请求。'}</p>`;
 }
 
 const viewport = new LogicViewport($('viewport'));
 const observationQuery = new ObservationQuery($('observation-query'), request);
 window.addEventListener('pagehide', () => observationQuery.close());
+document.addEventListener('click', event => {
+  const button = event.target.closest('[data-authoring-document]');
+  if (button) guarded(() => showAuthoringLocation(button.dataset.authoringDocument, button.dataset.authoringElement, request));
+});
 function clearActors() { viewport.reset(); }
 function fitView() { viewport.fit(); }
 
