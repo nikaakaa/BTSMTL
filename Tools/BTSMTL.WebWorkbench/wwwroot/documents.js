@@ -155,54 +155,64 @@ function renderFiles() {
 async function selectFile(path, elementId = null) {
   reads.file?.abort();
   const reading = new AbortController(); reads.file = reading;
-  state.selectedFile = state.snapshot.files.find(file => file.path === path);
-  const file = state.selectedFile;
-  state.linkStart = null;
-  state.selectedNode = file.document?.nodes?.some(node => node.id === elementId) ? elementId : null;
-  state.selectedEdge = file.document?.edges?.some(edge => edge.id === elementId) ? elementId : null;
-  state.selectedTimeline = file.document?.tracks?.some(track => track.id === elementId ||
-    [...track.clips, ...track.markers].some(item => item.id === elementId)) ||
-    file.document?.bindings?.some(binding => binding.id === elementId) ? elementId : null;
-  if (file.document?.variables?.some(variable => variable.id === elementId)) { state.tab = 'variables'; showTab(); }
-  state.view = { x: 35, y: 45, scale: 1, needsFit: true };
-  const locationQuery = new URLSearchParams({ source: state.source, root: state.selectedRoot.path, file: path, tab: state.tab });
-  if (elementId) locationQuery.set('element', elementId);
-  history.replaceState(null, '', `?${locationQuery}`);
-  renderFiles();
-  renderNavigation();
-  if (!file.problem && Array.isArray(file.document.nodes) && !file.portShapes) {
-    $('document-view').innerHTML = '<div class="notice">正在从共同定义投影端口…</div>';
-    const projected = await request('/api/authoring/ports', {
-      content: file.content, definitionsRevision: state.definitionRevision
-    }, reading.signal);
-    file.portShapes = new Map(projected.nodes.map(node => [node.nodeId, node]));
-  }
-  const machineRole = state.definitions.stateMachine?.role;
-  if (!state.draft && machineRole !== undefined && file.document?.role === machineRole &&
-      !file.stateMachineReceipt && !file.stateMachineProblem) {
-    try {
-      file.stateMachineReceipt = await request('/api/authoring/state-machines/validate', {
-        content: file.content, definitionsRevision: state.definitionRevision,
-        relatedGraphs: state.snapshot.files.filter(related => related !== file && Array.isArray(related.document?.nodes))
-          .map(related => related.content)
-      }, reading.signal);
-    } catch (error) {
-      if (reading.signal.aborted) throw error;
-      file.stateMachineProblem = error.message;
-    }
-  }
-  if (!state.draft && !file.problem && Array.isArray(file.document.nodes) && file.document.role !== machineRole &&
-      !file.topologyReceipt && !file.topologyProblem) {
-    try {
-      file.topologyReceipt = await request('/api/authoring/graphs/validate', {
+  try {
+    state.selectedFile = state.snapshot.files.find(file => file.path === path);
+    const file = state.selectedFile;
+    state.linkStart = null;
+    state.selectedNode = file.document?.nodes?.some(node => node.id === elementId) ? elementId : null;
+    state.selectedEdge = file.document?.edges?.some(edge => edge.id === elementId) ? elementId : null;
+    state.selectedTimeline = file.document?.tracks?.some(track => track.id === elementId ||
+      [...track.clips, ...track.markers].some(item => item.id === elementId)) ||
+      file.document?.bindings?.some(binding => binding.id === elementId) ? elementId : null;
+    if (file.document?.variables?.some(variable => variable.id === elementId)) { state.tab = 'variables'; showTab(); }
+    state.view = { x: 35, y: 45, scale: 1, needsFit: true };
+    const locationQuery = new URLSearchParams({ source: state.source, root: state.selectedRoot.path, file: path, tab: state.tab });
+    if (elementId) locationQuery.set('element', elementId);
+    history.replaceState(null, '', `?${locationQuery}`);
+    $('file-path').textContent = file.path;
+    $('file-revision').textContent = `${file.revision.slice(0, 12)}${file.draftChanged ? ' · 候选尚未保存' : ''}`;
+    $('source-text').value = file.content;
+    $('document-view').innerHTML = '<div class="notice">图与参数控件等待所选文档的正式描述，原文见“源文件”。</div>';
+    $('selection-name').textContent = '正在读取所选对象';
+    $('inspector-content').replaceChildren();
+    renderFiles();
+    renderNavigation();
+    renderDraftToolbar();
+    if (!file.problem && Array.isArray(file.document.nodes) && !file.portShapes) {
+      const projected = await request('/api/authoring/ports', {
         content: file.content, definitionsRevision: state.definitionRevision
       }, reading.signal);
-    } catch (error) {
-      if (reading.signal.aborted) throw error;
-      file.topologyProblem = error.message;
+      file.portShapes = new Map(projected.nodes.map(node => [node.nodeId, node]));
     }
+    const machineRole = state.definitions.stateMachine?.role;
+    if (!state.draft && machineRole !== undefined && file.document?.role === machineRole &&
+        !file.stateMachineReceipt && !file.stateMachineProblem) {
+      try {
+        file.stateMachineReceipt = await request('/api/authoring/state-machines/validate', {
+          content: file.content, definitionsRevision: state.definitionRevision,
+          relatedGraphs: state.snapshot.files.filter(related => related !== file && Array.isArray(related.document?.nodes))
+            .map(related => related.content)
+        }, reading.signal);
+      } catch (error) {
+        if (reading.signal.aborted) throw error;
+        file.stateMachineProblem = error.message;
+      }
+    }
+    if (!state.draft && !file.problem && Array.isArray(file.document.nodes) && file.document.role !== machineRole &&
+        !file.topologyReceipt && !file.topologyProblem) {
+      try {
+        file.topologyReceipt = await request('/api/authoring/graphs/validate', {
+          content: file.content, definitionsRevision: state.definitionRevision
+        }, reading.signal);
+      } catch (error) {
+        if (reading.signal.aborted) throw error;
+        file.topologyProblem = error.message;
+      }
+    }
+    renderDocument();
+  } finally {
+    if (reads.file === reading) { reads.file = null; renderDraftToolbar(); }
   }
-  renderDocument();
 }
 
 function renderNavigation() {
@@ -249,9 +259,6 @@ function renderDocument() {
   if (!state.snapshot) return;
   const file = state.selectedFile;
   renderDraftToolbar();
-  $('file-path').textContent = file.path;
-  $('file-revision').textContent = `${file.revision.slice(0, 12)}${file.draftChanged ? ' · 候选尚未保存' : ''}`;
-  $('source-text').value = file.content;
   try {
     if (file.problem) throw new Error(file.problem);
     const document = file.document;
@@ -500,10 +507,10 @@ function requireDraftSettled() {
 
 function renderDraftToolbar() {
   const graph = Array.isArray(state.selectedFile?.document?.nodes);
-  const ready = state.draft && !state.draft.busy && !state.draft.pendingCommit;
+  const ready = state.draft && !state.draft.busy && !state.draft.pendingCommit && !reads.file;
   $('draft-toolbar').hidden = !state.snapshot;
   $('draft-add-node').disabled = !ready || !state.draft.canEdit || !graph || state.tab !== 'document';
-  $('draft-add-edge').disabled = !ready || !state.draft.canEdit || !graph || state.tab !== 'document';
+  $('draft-add-edge').disabled = !ready || !state.draft.canEdit || !graph || !state.selectedFile.portShapes || state.tab !== 'document';
   $('draft-undo').disabled = !ready || !state.draft.canUndo;
   $('draft-redo').disabled = !ready || !state.draft.canRedo;
   $('draft-diff').disabled = !state.draft?.receipt;
@@ -512,6 +519,7 @@ function renderDraftToolbar() {
   $('draft-query').hidden = !state.draft?.pendingCommit;
   $('draft-retry').hidden = !state.draft?.pendingCommit;
   $('draft-state').textContent = state.draft?.busy ? '正在处理正式作者操作 · 结果尚未返回'
+    : reads.file ? '正在读取所选文档的正式描述 · 当前候选保留'
     : state.draft?.pendingCommit ? `保存结果待查询 · ${state.draft.pendingCommit.requestId}`
     : state.draft?.result && state.draft.result.status !== 'Saved' ? '保存未完成 · 候选已保留，请查看原因'
     : state.draft?.changed ? `${state.draft.steps.length} 步修改 · 已接收未保存`
