@@ -47,7 +47,6 @@ function sourceVersion() {
   const catalogReady = scene && state.inputCatalog?.revision === scene.revision && state.inputScene === scene.path;
   $('replay-source').hidden = local; $('local-source').hidden = !local;
   $('load-inputs').disabled = !scene;
-  $('add-input').disabled = !catalogReady || !state.inputCatalog.players.some(player => player.values.length || player.requests.length);
   $('start').textContent = local ? '按输入新建真实运行' : '新建真实重放';
   $('start').disabled = !scene || (local ? !catalogReady : !replay);
 }
@@ -88,82 +87,43 @@ async function loadInputs() {
   report('正在准备所选离线包，读取正式输入声明…');
   const catalog = await request(`/api/preview/inputs?scene=${encodeURIComponent(selected.path)}&revision=${encodeURIComponent(selected.revision)}`);
   if ($('scene').value !== selected.path) return;
-  state.inputCatalog = catalog; state.inputScene = selected.path;
-  $('input-events').replaceChildren();
-  $('input-state').textContent = `${catalog.players.length} 个本地角色 · ${catalog.tickRate} Tick/秒。日程零点为玩家加入后的下一个输入帧。`;
-  sourceVersion(); report('正式输入已读取，可添加请求或输入值。');
+  const [workspace, roots] = await Promise.all([request('/api/workspace'), request('/api/workspace/roots?offset=0&limit=200')]);
+  const plans = await Promise.all(roots.items.filter(root => root.kind === 'TimelinePreviewInputSchemes').map(async root => {
+    const files = await request(`/api/workspace/root?path=${encodeURIComponent(root.path)}`);
+    const schemes = JSON.parse(files.root).fields.Schemes.items.map((scheme, index) => scheme.members.Name?.value || `方案 ${index}`);
+    return { path: root.path, displayName: root.displayName, revision: files.revision, schemes,
+      directory: `${workspace.path}/${root.path.slice(0, root.path.lastIndexOf('/'))}` };
+  }));
+  if ($('scene').value !== selected.path) return;
+  state.inputCatalog = catalog; state.inputScene = selected.path; state.inputPlans = plans;
+  $('input-events').replaceChildren(...catalog.players.filter(player => player.values.length || player.requests.length).map(planRow));
+  $('input-state').textContent = `${catalog.players.length} 个本地角色 · ${catalog.tickRate} Tick/秒 · 工作区 ${plans.length} 份输入方案。日程零点为玩家加入后的下一个输入帧。`;
+  sourceVersion(); report(plans.length ? '正式输入已读取，请为角色选择输入方案。' : '工作区没有输入方案文档，本地运行只能不带输入。');
 }
 
-function addInput() {
+function planRow(player) {
   const row = document.createElement('div'); row.className = 'input-event';
-  row.innerHTML = '<label>时刻（秒）<input class="input-seconds" type="number" required min="0" step="any" value="0"></label><label>本地角色<select class="input-player"></select></label><label>正式输入<select class="input-binding"></select></label><div class="input-value"></div><button class="remove-input" type="button">移除此时刻</button>';
-  const playerSelect = row.querySelector('.input-player');
-  const bindingSelect = row.querySelector('.input-binding');
-  options(playerSelect, state.inputCatalog.players.filter(player => player.values.length || player.requests.length),
-    player => player.actorId, player => player.actorId);
-  let bindings;
-  function renderValue() {
-    const binding = bindings[Number(bindingSelect.value)];
-    const value = row.querySelector('.input-value'); value.replaceChildren();
-    if (binding.eventKind === 'request') return;
-    switch (binding.kind) {
-      case 'Boolean': value.innerHTML = '<label>布尔值<select class="input-boolean"><option value="true">true</option><option value="false">false</option></select></label>'; break;
-      case 'Scalar': value.innerHTML = '<label>数值<input class="input-scalar" type="number" required step="any" value="0"></label>'; break;
-      case 'Yaw': value.innerHTML = '<label>朝向值（Yaw）<input class="input-scalar" type="number" required step="any" value="0"></label>'; break;
-      case 'Vector2': value.innerHTML = '<label>X<input class="input-x" type="number" required step="any" value="0"></label><label>Y<input class="input-y" type="number" required step="any" value="0"></label>'; break;
-      case 'Vector3': value.innerHTML = '<label>X<input class="input-x" type="number" required step="any" value="0"></label><label>Y<input class="input-y" type="number" required step="any" value="0"></label><label>Z<input class="input-z" type="number" required step="any" value="0"></label>'; break;
-      case 'Identity': {
-        const label = document.createElement('label'); label.textContent = '目标身份（留空清除）';
-        const input = document.createElement('input'); input.className = 'input-identity'; input.type = 'text';
-        const choices = document.createElement('datalist'); choices.id = `targets-${crypto.randomUUID()}`;
-        input.setAttribute('list', choices.id);
-        choices.replaceChildren(...state.inputCatalog.actorTargets.map(actorId => { const option = document.createElement('option'); option.value = actorId; return option; }));
-        label.append(input); value.append(label, choices); break;
-      }
-      default: throw new Error(`输入 ${binding.inputId} 的 ${binding.kind} 类型没有网页编辑映射。`);
-    }
-  }
-  function renderBindings() {
-    const player = state.inputCatalog.players.find(player => player.actorId === playerSelect.value);
-    bindings = [...player.requests.map(input => ({ ...input, eventKind: 'request' })),
-      ...player.values.map(input => ({ ...input, eventKind: 'value' }))];
-    options(bindingSelect, bindings, input => `${input.eventKind === 'request' ? '请求' : input.kind} · ${input.inputId}`,
-      (_, index) => String(index));
-    renderValue();
-  }
-  playerSelect.onchange = () => guarded(async () => renderBindings());
-  bindingSelect.onchange = () => guarded(async () => renderValue());
-  row.querySelector('.remove-input').onclick = () => row.remove();
-  row.readInput = () => {
-    const binding = bindings[Number(bindingSelect.value)];
-    const input = { kind: binding.eventKind, inputId: binding.inputId, seconds: Number(row.querySelector('.input-seconds').value) };
-    if (input.kind === 'value') {
-      switch (binding.kind) {
-        case 'Boolean': input.value = { kind: 'boolean', value: row.querySelector('.input-boolean').value === 'true' }; break;
-        case 'Scalar': input.value = { kind: 'scalar', value: Number(row.querySelector('.input-scalar').value) }; break;
-        case 'Yaw': input.value = { kind: 'yaw', value: Number(row.querySelector('.input-scalar').value) }; break;
-        case 'Vector2': input.value = { kind: 'vector2', x: Number(row.querySelector('.input-x').value), y: Number(row.querySelector('.input-y').value) }; break;
-        case 'Vector3': input.value = { kind: 'vector3', x: Number(row.querySelector('.input-x').value), y: Number(row.querySelector('.input-y').value), z: Number(row.querySelector('.input-z').value) }; break;
-        case 'Identity': input.value = { kind: 'identity', value: row.querySelector('.input-identity').value }; break;
-        default: throw new Error(`输入 ${binding.inputId} 的 ${binding.kind} 类型没有正式映射。`);
-      }
-    }
-    return { actorId: playerSelect.value, input };
+  row.innerHTML = `<strong>${escapeHtml(player.actorId)}</strong><label>输入方案<select class="input-plan"></select></label><label>方案<select class="input-scheme"></select></label>`;
+  const planSelect = row.querySelector('.input-plan'), schemeSelect = row.querySelector('.input-scheme');
+  options(planSelect, [null, ...state.inputPlans], plan => plan ? `${plan.displayName} · ${plan.path}` : '不带输入', plan => plan?.path ?? '');
+  const renderSchemes = () => {
+    const plan = state.inputPlans.find(entry => entry.path === planSelect.value);
+    options(schemeSelect, plan?.schemes ?? [], name => name, (_, index) => String(index));
+    schemeSelect.disabled = !plan;
   };
-  renderBindings(); $('input-events').append(row);
+  planSelect.onchange = renderSchemes; renderSchemes();
+  row.readInput = () => {
+    const plan = state.inputPlans.find(entry => entry.path === planSelect.value);
+    return plan && { actorId: player.actorId, inputPlanRoot: plan.directory, inputPlanRevision: plan.revision,
+      schemeIndex: Number(schemeSelect.value) };
+  };
+  return row;
 }
 
 function localSource() {
-  for (const input of $('local-source').querySelectorAll('input'))
-    if (!input.reportValidity()) throw new Error('请补齐输入时刻、数值及宿主声明的停止位置。');
-  const players = new Map();
-  for (const row of $('input-events').children) {
-    const { actorId, input } = row.readInput();
-    if (!players.has(actorId)) players.set(actorId, []);
-    players.get(actorId).push(input);
-  }
+  if (!$('input-limit').reportValidity()) throw new Error('请填写宿主声明的停止位置。');
   return { kind: 'local', [state.host.inputLimit.name]: Number($('input-limit').value),
-    players: [...players].map(([actorId, inputs]) => ({ actorId, inputs: inputs.sort((left, right) => left.seconds - right.seconds) })) };
+    players: [...$('input-events').children].map(row => row.readInput()).filter(Boolean) };
 }
 
 async function selectRun(id, frameIndex = 0) {
@@ -307,10 +267,10 @@ function fitView() { viewport.fit(); }
 
 $('scene').onchange = () => {
   state.inputCatalog = null; state.inputScene = null; $('input-events').replaceChildren();
-  $('add-input').disabled = true; $('input-state').textContent = '场景已切换，请读取该版本的正式输入。'; sourceVersion();
+  $('input-state').textContent = '场景已切换，请读取该版本的正式输入。'; sourceVersion();
 };
 $('replay').onchange = sourceVersion; $('run-source').onchange = sourceVersion;
-$('load-inputs').onclick = () => guarded(loadInputs); $('add-input').onclick = () => guarded(async () => addInput());
+$('load-inputs').onclick = () => guarded(loadInputs);
 $('start').onclick = () => guarded(start); $('refresh').onclick = () => guarded(refresh);
 $('runs').onclick = event => { const button = event.target.closest('[data-run]'); if (button) guarded(() => selectRun(button.dataset.run)); };
 $('cancel').onclick = () => guarded(async () => { const result = await request(`/api/preview/runs/${state.selected}/cancel`, {}); report(result.cancellationRequested ? '取消请求已送达，等待进程确认。' : '本宿主没有仍在执行的对应进程，请查询当前回执。'); await updateRun(); });
