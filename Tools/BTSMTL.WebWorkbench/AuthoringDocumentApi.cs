@@ -11,7 +11,8 @@ public static class AuthoringDocumentApi
         routes.MapGet("/state", (string path) =>
         {
             AuthoringDocumentState state = documents.ReadExternal(path);
-            return new { state.RootPath, state.Revision, state.Adoptable, state.Problems };
+            return new { state.RootPath, state.Revision, state.Adoptable, state.Problems,
+                DefinitionsRevision = currentDefinitionsRevision() };
         });
         routes.MapPost("/edits", (DocumentEditPreviewRequest request) => Receive(request, currentDefinitionsRevision,
             () => documents.PreviewEdits(request.RequestId.ToString("N"), request.RootPath,
@@ -54,6 +55,7 @@ public static class AuthoringDocumentApi
     static object Candidate(AuthoringDocumentCandidate candidate) => new
     {
         CandidateId = candidate.Id, candidate.RequestId, Stage = "domain-received",
+        SaveReady = true, Acceptance = "domain-received",
         RootId = candidate.Baseline.Root.Id.Value, BaselineRevision = candidate.Baseline.Revision,
         candidate.WriteSet, candidate.Differences,
         Files = AuthoringDocumentCandidate.Texts(candidate.Documents.Source)
