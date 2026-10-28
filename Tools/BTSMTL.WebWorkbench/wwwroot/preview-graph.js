@@ -110,7 +110,7 @@ export class PreviewGraph {
   render() {
     if (!this.definitions.length) return;
     const route = this.frame?.route;
-    const occurrences = route ? [...route.nodes, ...route.edges, ...route.ports] : [];
+    const occurrences = route ? [...route.nodes, ...route.edges, ...route.ports.filter(sample => sample.sourceAvailable)] : [];
     if (!this.selectedGraph && occurrences.length) {
       const graph = this.definitions.find(graph => occurrences.some(item => item.graphId === graph.id && belongsTo(item.call, graph)));
       if (graph) this.selectedGraph = graphKey(graph);
