@@ -68,40 +68,61 @@ export function moveClip(timeline, track, clip, contracts, apply) {
 export function bindTimelineDrag(surface, timeline, scale, pixels, apply, onError) {
   let drag = null, suppressClick = false;
   surface.addEventListener('pointerdown', event => {
-    if (event.button !== 0) return;
+    if (drag || event.button !== 0) return;
     const element = event.target.closest('.timeline-clip, .timeline-marker');
     if (!element) return;
     const track = timeline.tracks.find(track => [...track.clips, ...track.markers]
       .some(item => item.id === element.dataset.timeline));
     const clip = track.clips.find(item => item.id === element.dataset.timeline);
     const marker = track.markers.find(item => item.id === element.dataset.timeline);
-    drag = { element, track, clip, marker, x: event.clientX, delta: 0n, translate: element.style.translate };
+    const boundary = event.target.closest('[data-timeline-boundary]');
+    drag = { element, track, clip, marker, boundary: boundary?.dataset.timelineBoundary,
+      pointerId: event.pointerId, x: event.clientX, delta: 0n, translate: element.style.translate,
+      left: element.style.left, width: element.style.width };
     element.setPointerCapture(event.pointerId);
+    event.preventDefault();
   });
   surface.addEventListener('pointermove', event => {
-    if (!drag) return;
+    if (!drag || drag.pointerId !== event.pointerId) return;
     drag.delta = BigInt(Math.round((event.clientX - drag.x) * Number(scale) / pixels));
-    drag.element.style.translate = `${event.clientX - drag.x}px 0`;
+    const distance = Number(drag.delta) * pixels / Number(scale);
+    if (drag.boundary === 'start') {
+      drag.element.style.left = `${parseFloat(drag.left) + distance}px`;
+      drag.element.style.width = `${Math.max(4, parseFloat(drag.width) - distance)}px`;
+    } else if (drag.boundary === 'end') drag.element.style.width = `${Math.max(4, parseFloat(drag.width) + distance)}px`;
+    else drag.element.style.translate = `${distance}px 0`;
   });
-  surface.addEventListener('pointerup', async () => {
-    if (!drag) return;
-    const { element, track, clip, marker, delta, translate } = drag;
+  const restore = gesture => {
+    gesture.element.style.translate = gesture.translate;
+    gesture.element.style.left = gesture.left;
+    gesture.element.style.width = gesture.width;
+  };
+  surface.addEventListener('pointerup', async event => {
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const { element, track, clip, marker, boundary, delta } = drag;
+    restore(drag);
     drag = null;
-    element.style.translate = translate;
     if (delta === 0n) return;
-    suppressClick = true;
+    suppressClick = element;
     const edit = clip ? { kind: 'set-clip-range', trackId: track.id, clipId: clip.id,
-      range: timelineRange({ ...clip.timeRange, startRaw: String(BigInt(clip.timeRange.startRaw) + delta),
-        endRaw: String(BigInt(clip.timeRange.endRaw) + delta) }) }
+      range: timelineRange({ ...clip.timeRange,
+        startRaw: boundary === 'end' ? clip.timeRange.startRaw : String(BigInt(clip.timeRange.startRaw) + delta),
+        endRaw: boundary === 'start' ? clip.timeRange.endRaw : String(BigInt(clip.timeRange.endRaw) + delta) }) }
       : { kind: 'configure-marker', trackId: track.id, markerId: marker.id, displayName: marker.displayName,
         timeRaw: String(BigInt(marker.timeRaw) + delta), fields: marker.fields };
     try { await apply([edit]); } catch (error) { onError(error); }
   });
-  surface.addEventListener('pointercancel', () => {
-    if (drag) drag.element.style.translate = drag.translate;
+  const cancel = event => {
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    restore(drag);
     drag = null;
-  });
+  };
+  surface.addEventListener('pointercancel', cancel);
+  surface.addEventListener('lostpointercapture', cancel);
   surface.addEventListener('click', event => {
-    if (suppressClick) { event.stopPropagation(); suppressClick = false; }
+    if (suppressClick) {
+      if (suppressClick.contains(event.target)) event.stopPropagation();
+      suppressClick = false;
+    }
   }, true);
 }
