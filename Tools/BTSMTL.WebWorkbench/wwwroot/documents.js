@@ -674,7 +674,7 @@ function renderTimeline(timeline) {
     $('document-view').querySelector('.timeline-note').textContent = '拖动片段中部平移或放入可接收的轨道，跨轨插入末尾；拖动两端只调整对应起止时间，标记可平移。松开时将轨道与时间修改合为一次共同候选，取消拖动不提交。素材范围和其余时间参数保持原值，可在属性中精确编辑。';
     if (!ready) $('document-view').querySelector('.timeline-note').textContent +=
       ' 正式轨道作者字段及初始值尚未导出，新建轨道暂不可用。';
-    $('document-view').insertAdjacentHTML('beforeend', '<p class="authoring-gap">Section 尚缺共同文档结构与修改协议。现有图引用可在属性中选择、编辑或下钻。</p>');
+    $('document-view').insertAdjacentHTML('beforeend', '<p class="authoring-gap">Section 尚缺共同文档结构与修改协议。片段和标记的新私有图仍缺正式的图角色与 owner 绑定描述；现有图引用可在属性中选择、编辑或下钻。</p>');
     bindTimelineDrag($('document-view').querySelector('.timeline-content'), timeline, state.definitions.timelineContracts, state.timeScale, pixels,
       applyTimelineEdits, error => report(error.message, true));
   }
