@@ -12,10 +12,10 @@ export function authoringSourceLinks(sources) {
     `<button type="button" data-authoring-document="${html(document)}" data-authoring-element="${html(element)}">定位${label}</button>`).join('');
 }
 
-export async function showAuthoringLocation(documentId, elementId, request) {
+export async function showAuthoringLocation(documentId, elementId, request, rootId) {
   const modal = document.createElement('dialog');
   modal.className = 'source-location-dialog';
-  modal.innerHTML = `<header><h2>定位作者来源</h2><button type="button" data-close aria-label="关闭">×</button></header><p>按记录中的文档和元素身份查找当前文件。当前作者版本可能已改变，运行记录仍保留原版本。</p><label>查询目录<select><option value="workspace">正式作者工作区</option><option value="migrations">迁移候选 · 只读核对</option></select></label><dl><dt>文档身份</dt><dd><code>${html(documentId)}</code></dd><dt>元素身份</dt><dd><code>${html(elementId)}</code></dd></dl><p data-status role="status"></p><div data-problems></div><div data-locations></div><button type="button" data-more hidden>继续读取位置</button>`;
+  modal.innerHTML = `<header><h2>定位作者来源</h2><button type="button" data-close aria-label="关闭">×</button></header><p>按记录中的文档和元素身份查找当前文件。当前作者版本可能已改变，原记录仍保留原版本。</p><label>查询目录<select><option value="workspace">正式作者工作区</option><option value="migrations">迁移候选 · 只读核对</option></select></label><dl>${rootId === undefined ? '' : `<dt>根身份</dt><dd><code>${html(rootId)}</code></dd>`}<dt>文档身份</dt><dd><code>${html(documentId)}</code></dd><dt>元素身份</dt><dd><code>${html(elementId)}</code></dd></dl><p data-status role="status"></p><div data-problems></div><div data-locations></div><button type="button" data-more hidden>继续读取位置</button>`;
   document.body.append(modal);
   let reading = null, offset = 0;
   const select = modal.querySelector('select'), more = modal.querySelector('[data-more]');
@@ -29,7 +29,8 @@ export async function showAuthoringLocation(documentId, elementId, request) {
     more.disabled = true;
     modal.querySelector('[data-status]').textContent = '正在按稳定身份查询…';
     try {
-      const query = new URLSearchParams({ documentId, elementId, offset, limit: 100 });
+      const query = new URLSearchParams({ documentId, elementId, offset, limit: 100,
+        ...(rootId === undefined ? {} : { rootId }) });
       const page = await request(`/api/${source}/locations?${query}`, undefined, current.signal);
       if (reading !== current) return;
       modal.querySelector('[data-status]').textContent = `${page.total} 个实际位置 · ${page.complete ? '查询完整' : '部分来源未能读取'}`;

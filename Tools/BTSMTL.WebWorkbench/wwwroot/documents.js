@@ -10,12 +10,13 @@ const kindNames = { Graph: '图', Timeline: '时间轴', InputPlan: '输入方�
 const api = () => `/api/${state.source}`;
 const typeName = value => value.split(',')[0].split('.').pop();
 
-async function request(path, body) {
+async function request(path, body, signal) {
   let response;
-  try { response = await fetch(path, body === undefined ? undefined : {
+  try { response = await fetch(path, { signal, ...(body === undefined ? {} : {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
-  }); }
+  }) }); }
   catch (error) {
+    if (signal?.aborted) throw error;
     $('service-state').textContent = '服务连接中断';
     $('service-state').classList.add('error');
     throw new Error(`无法连接作者服务，当前候选仍保留在本页：${error.message}`, { cause: error });

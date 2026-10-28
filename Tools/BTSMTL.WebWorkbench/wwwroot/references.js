@@ -1,3 +1,5 @@
+import { showAuthoringLocation } from './authoring-locations.js';
+
 const html = value => String(value).replace(/[&<>"']/g,
   char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 
@@ -16,6 +18,10 @@ export async function showReferenceResource(snapshot, target, request, renderVal
   document.body.append(modal);
   modal.addEventListener('close', () => modal.remove());
   modal.querySelector('header button').onclick = () => modal.close();
+  modal.querySelector('.resource-reference-fields').insertAdjacentHTML('beforebegin',
+    '<button type="button" data-locate-authoring>按稳定引用定位作者内容</button>');
+  modal.querySelector('[data-locate-authoring]').onclick = () =>
+    showAuthoringLocation(target.documentId, target.elementId, request, target.rootId);
   modal.showModal();
   const preview = modal.querySelector('.resource-preview');
   try {

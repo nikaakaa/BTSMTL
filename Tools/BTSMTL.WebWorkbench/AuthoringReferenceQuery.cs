@@ -17,7 +17,7 @@ public sealed record AuthoringLocationPage(AuthoringReferenceSource[] Items, int
 public static class AuthoringReferenceQuery
 {
     public static AuthoringLocationPage Locations(AuthoringWorkspaceDirectory workspace, string documentId,
-        string elementId, int offset, int limit)
+        string elementId, int offset, int limit, string? rootId)
     {
         RequirePage(offset, limit);
         var matches = new List<AuthoringReferenceSource>();
@@ -33,6 +33,7 @@ public static class AuthoringReferenceQuery
                 {
                     AuthoringSourceFile manifest = workspace.ReadSource(entry.Path);
                     AuthoringRootDocument declaration = AuthoringDocumentJson.ReadRoot(manifest.Text, manifest.Path);
+                    if (rootId != null && declaration.Id.Value != rootId) continue;
                     if (declaration.Id.Value != documentId && !declaration.Files.ToArray().Any(file => file.Id.Value == documentId)) continue;
                     AuthoringRootFiles root = workspace.Read(entry.Path);
                     (AuthoringSourceFile file, JObject? element) = FindElement(root, documentId, elementId);
