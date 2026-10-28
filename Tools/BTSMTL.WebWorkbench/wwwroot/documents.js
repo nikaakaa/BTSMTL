@@ -701,7 +701,8 @@ function handleTimelineAction(event) {
     applyTimelineEdits([{ kind: 'set-clip-range', trackId: track.id, clipId: clip.id, range }]));
   else if (event.target.closest('[data-timeline-marker-time]')) editMarkerTime(marker, state.timeScale, timeRaw =>
     applyTimelineEdits([{ ...configure(marker.fields), timeRaw }]));
-  else if (event.target.closest('[data-timeline-move-clip]')) moveClip(timeline, track, clip, edit => applyTimelineEdits([edit]));
+  else if (event.target.closest('[data-timeline-move-clip]')) moveClip(timeline, track, clip,
+    state.definitions.timelineContracts, edit => applyTimelineEdits([edit]));
   else if (event.target.closest('[data-timeline-track-move]')) guarded(() => applyTimelineEdits([{ kind: 'move-track', trackId: track.id,
     index: timeline.tracks.indexOf(track) + Number(event.target.closest('[data-timeline-track-move]').dataset.timelineTrackMove) }]));
   else if (event.target.closest('[data-timeline-delete]')) guarded(() => applyTimelineEdits([clip ? { kind: 'delete-clip', trackId: track.id, clipId: clip.id }

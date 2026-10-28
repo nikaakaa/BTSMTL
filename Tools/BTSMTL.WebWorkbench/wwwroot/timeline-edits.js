@@ -23,8 +23,10 @@ export function editMarkerTime(marker, scale, apply) {
     form => apply(new FormData(form).get('time')));
 }
 
-export function moveClip(timeline, track, clip, apply) {
-  dialog('移动片段到轨道', `<label>目标轨道<select name="track">${timeline.tracks.map(item => `<option value="${html(item.id)}" ${item.id === track.id ? 'selected' : ''}>${html(item.displayName)} · ${html(item.contract)}</option>`).join('')}</select></label><p>保留片段身份、图引用和时间，插入目标轨道末尾。轨道兼容性仍由共同领域接收。</p>`,
+export function moveClip(timeline, track, clip, contracts, apply) {
+  const targets = timeline.tracks.filter(item => contracts.tracks.find(contract => contract.kind === item.contract)
+    .allowedClipKinds.includes(clip.contract));
+  dialog('移动片段到轨道', `<label>目标轨道<select name="track">${targets.map(item => `<option value="${html(item.id)}" ${item.id === track.id ? 'selected' : ''}>${html(item.displayName)} · ${html(item.contract)}</option>`).join('')}</select></label><p>菜单按共同轨道合同列出可接收此片段的轨道。保留片段身份、图引用和时间，插入目标轨道末尾，形成同一领域候选。</p>`,
     form => {
       const target = timeline.tracks.find(item => item.id === new FormData(form).get('track'));
       return apply({ kind: 'move-clip', sourceTrackId: track.id, targetTrackId: target.id,
