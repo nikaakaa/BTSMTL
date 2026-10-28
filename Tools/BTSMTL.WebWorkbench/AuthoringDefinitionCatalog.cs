@@ -1,7 +1,9 @@
 using System.Text.Json;
+using System.Text;
 using BTSMTL.Authoring.Documents;
 using BTSMTL.Authoring.Graph;
 using BTSMTL.Authoring.Storage;
+using BTSMTL.Authoring.Workspace;
 
 namespace BTSMTL.WebWorkbench;
 
@@ -18,8 +20,12 @@ public sealed class AuthoringDefinitionCatalog(string path) : IAuthoringDefiniti
         JsonElement source = document.RootElement;
         if (source.GetProperty("format").GetString() != "character-workbench.authoring-definitions/2")
             throw new InvalidDataException("能力描述格式不属于当前正式导出协议。");
-        return new(AuthoringFileRevision.Compute(bytes).ToLowerInvariant(), source.GetProperty("domain").GetString()!,
-            source.GetProperty("capabilities").EnumerateArray().Select(value => value.Clone()).ToArray(), source.Clone());
+        string revision = AuthoringFileRevision.Compute(bytes);
+        bool bom = bytes.AsSpan().StartsWith(Encoding.UTF8.Preamble);
+        var file = new AuthoringSourceFile(m_Path, revision,
+            new UTF8Encoding(false, true).GetString(bytes.AsSpan(bom ? 3 : 0)), bytes);
+        return new(revision.ToLowerInvariant(), source.GetProperty("domain").GetString()!,
+            source.GetProperty("capabilities").EnumerateArray().Select(value => value.Clone()).ToArray(), source.Clone(), file);
     }
 
     public object Info()
@@ -126,5 +132,5 @@ public sealed class AuthoringDefinitionCatalog(string path) : IAuthoringDefiniti
 }
 
 public sealed record AuthoringDefinitionSnapshot(string Revision, string Domain,
-    IReadOnlyList<JsonElement> Capabilities, JsonElement Document);
+    IReadOnlyList<JsonElement> Capabilities, JsonElement Document, AuthoringSourceFile Source);
 
