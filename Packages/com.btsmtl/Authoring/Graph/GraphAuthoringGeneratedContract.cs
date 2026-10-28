@@ -49,7 +49,7 @@ namespace BTSMTL.Authoring.Graph
 
     public sealed class GraphAuthoringMember
     {
-        public GraphAuthoringMember(GraphAuthoringFieldAttribute metadata, Type valueType,
+        public GraphAuthoringMember(GraphAuthoringFieldAttribute metadata, Type valueType, string[] serializedMemberPath,
             Func<object, object> read, Delegate reader,
             Delegate candidateReader, Func<GraphAuthoringCandidate, object> evaluate,
             Action<GraphAuthoringCandidate, object> writeCandidate,
@@ -65,6 +65,7 @@ namespace BTSMTL.Authoring.Graph
         {
             Metadata = metadata;
             ValueType = valueType;
+            SerializedMemberPath = serializedMemberPath;
             Read = read;
             Reader = reader;
             CandidateReader = candidateReader;
@@ -87,6 +88,7 @@ namespace BTSMTL.Authoring.Graph
         }
         public GraphAuthoringFieldAttribute Metadata { get; }
         public Type ValueType { get; }
+        public IReadOnlyList<string> SerializedMemberPath { get; }
         public Func<object, object> Read { get; }
         public Delegate Reader { get; }
         public Delegate CandidateReader { get; }
