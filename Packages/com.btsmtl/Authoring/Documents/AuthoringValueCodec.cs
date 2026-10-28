@@ -210,7 +210,7 @@ namespace BTSMTL.Authoring.Documents
             string name = definition.FullName;
             if (type.IsGenericType)
                 name += "<" + string.Join(",", type.GetGenericArguments().Select(TypeIdentity)) + ">";
-            return definition.Assembly == typeof(object).Assembly ? name : definition.Assembly.GetName().Name + ":" + name;
+            return name;
         }
 
         AuthoringObjectContract Contract(Type type)
