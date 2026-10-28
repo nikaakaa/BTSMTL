@@ -35,7 +35,8 @@ public static class AuthoringReferenceQuery
                     AuthoringRootDocument declaration = AuthoringDocumentJson.ReadRoot(manifest.Text, manifest.Path);
                     if (declaration.Id.Value != documentId && !declaration.Files.ToArray().Any(file => file.Id.Value == documentId)) continue;
                     AuthoringRootFiles root = workspace.Read(entry.Path);
-                    (AuthoringSourceFile file, JObject element) = Element(root, documentId, elementId);
+                    (AuthoringSourceFile file, JObject? element) = FindElement(root, documentId, elementId);
+                    if (element == null) continue;
                     string directory = Path.GetDirectoryName(root.Files[0].Path)!;
                     matches.Add(new(entry.Path, root.Root.Id.Value, root.Revision,
                         Path.GetRelativePath(directory, file.Path).Replace('\\', '/'), documentId, file.Revision,
@@ -56,7 +57,9 @@ public static class AuthoringReferenceQuery
         string documentId, string elementId)
     {
         AuthoringRootFiles root = workspace.Read(path);
-        (AuthoringSourceFile source, JObject element) = Element(root, documentId, elementId);
+        (AuthoringSourceFile source, JObject? element) = FindElement(root, documentId, elementId);
+        if (element == null)
+            throw new InvalidDataException($"文档 '{documentId}' 不存在稳定对象 '{elementId}'。");
         string directory = Path.GetDirectoryName(root.Files[0].Path)!;
         return new { RootPath = path, RootId = root.Root.Id.Value, RootRevision = root.Revision,
             DocumentId = documentId, ElementId = elementId,
@@ -65,7 +68,7 @@ public static class AuthoringReferenceQuery
             Content = element.ToString(Newtonsoft.Json.Formatting.Indented) };
     }
 
-    static (AuthoringSourceFile File, JObject Element) Element(AuthoringRootFiles root,
+    static (AuthoringSourceFile File, JObject? Element) FindElement(AuthoringRootFiles root,
         string documentId, string elementId)
     {
         string directory = Path.GetDirectoryName(root.Files[0].Path)!;
@@ -76,9 +79,9 @@ public static class AuthoringReferenceQuery
         JObject content = JObject.Parse(source.Text);
         JObject[] elements = content.DescendantsAndSelf().OfType<JObject>()
             .Where(value => value["id"]?.Type == JTokenType.String && value["id"]!.Value<string>() == elementId).ToArray();
-        if (elements.Length != 1)
+        if (elements.Length > 1)
             throw new InvalidDataException($"文档 '{documentId}' 的稳定对象 '{elementId}' 匹配 {elements.Length} 项。");
-        return (source, elements[0]);
+        return (source, elements.Length == 0 ? null : elements[0]);
     }
 
     public static AuthoringReferencePage Dependencies(AuthoringWorkspaceDirectory workspace, string path,
