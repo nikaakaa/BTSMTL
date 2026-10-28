@@ -9,6 +9,7 @@ let pollTimer;
 let historyTimer;
 const stages = { accepted: '准备中', running: '运行中', completed: '已封存', stopped: '已停止', failed: '执行失败', cancelled: '已取消' };
 const playbackNames = { paused: '已暂停', playing: '正在播放', stepping: '等待下一个确认帧', stopped: '已停止', completed: '已完成' };
+const runLabel = run => `${new Date(run.acceptedAt).toLocaleString()} · ${stages[run.stage]}`;
 const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 
 async function request(path, body, signal) {
@@ -58,7 +59,7 @@ async function refresh() {
   options($('replay'), sources.replays, entry => entry.displayName, entry => entry.id, $('replay').value);
   sourceVersion();
   $('source-state').textContent = `${sources.scenes.length} 个正式内容包 · ${sources.replays.length} 份原录像。${!sources.scenes.length ? '宿主尚未提供正式内容。' : ''}${!sources.replays.length ? '真实重放需要宿主的原录像。' : ''}`;
-  options($('run-select'), [null, ...runs], run => run ? `${new Date(run.acceptedAt).toLocaleString()} · ${stages[run.stage]}` : '选择运行', run => run?.jobId ?? '', state.selected ?? '');
+  options($('run-select'), [null, ...runs], run => run ? runLabel(run) : '选择运行', run => run?.jobId ?? '', state.selected ?? '');
   $('run-select').disabled = runs.length === 0;
   options($('comparison'), runs.filter(run => ['completed', 'stopped'].includes(run.stage) && run.jobId !== state.selected),
     entry => `${entry.acceptedAt} · ${entry.jobId.slice(0, 8)}`, entry => entry.jobId, $('comparison').value);
@@ -111,6 +112,7 @@ async function selectRun(id, frameIndex = 0) {
   $('comparison-result').textContent = '';
   updateTransport();
   $('run-identity').textContent = id;
+  $('run-select').value = id;
   await updateRun();
   await refresh();
 }
@@ -121,8 +123,10 @@ async function updateRun() {
   const receipt = await request(`/api/preview/runs/${id}`);
   if (id !== state.selected) return;
   $('run-title').textContent = stages[receipt.stage];
+  $('run-select').selectedOptions[0].textContent = runLabel(receipt);
   $('cancel').hidden = !['accepted', 'running'].includes(receipt.stage);
-  $('run-state').textContent = receipt.error || '';
+  $('run-state').textContent = receipt.error ? receipt.error.split(/\r?\n/, 1)[0].replace(/^[\w.]+Exception: /, '') : '';
+  $('run-error-detail').textContent = receipt.error || '';
   $('run-state').hidden = receipt.stage !== 'failed';
   $('run-state').classList.toggle('error', receipt.stage === 'failed');
   if (['accepted', 'running'].includes(receipt.stage)) {
@@ -145,6 +149,11 @@ async function updateRun() {
   }
   state.playback = null; updateTransport();
   await sendPendingControl();
+  if (receipt.stage === 'failed' || receipt.stage === 'cancelled') {
+    report(stages[receipt.stage], receipt.stage === 'failed');
+    await refresh();
+    return;
+  }
   if (!['completed', 'stopped'].includes(receipt.stage) || state.sealed) return;
   const summary = await request(`/api/preview/runs/${id}/summary`);
   if (id !== state.selected) return;
