@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using BTSMTL.Authoring.Documents;
+using BTSMTL.Authoring.Graph;
 using BTSMTL.Authoring.Storage;
 
 namespace BTSMTL.Authoring.Workspace
@@ -82,6 +83,44 @@ public sealed class AuthoringWorkspaceDirectory
         foreach (AuthoringDocumentFile file in root.Files.Span)
             files.Add(ReadFile(Resolve(directory, file.Path)));
         return Snapshot(root, files);
+    }
+
+    public AuthoringDocumentSnapshot ReadRoots(IReadOnlyList<GraphAuthoringElementId> rootIds)
+    {
+        string[] requested = rootIds.Select(id => id.Value).Distinct(StringComparer.Ordinal)
+            .OrderBy(id => id, StringComparer.Ordinal).ToArray();
+        var entries = requested.ToDictionary(id => id, _ => new List<AuthoringRootEntry>(), StringComparer.Ordinal);
+        int cursor = 0;
+        do
+        {
+            AuthoringPage<AuthoringRootEntry> page = List(cursor, 200);
+            foreach (AuthoringRootEntry entry in page.Items)
+                if (entries.TryGetValue(entry.Id, out var matches)) matches.Add(entry);
+            if (page.NextOffset is not int next) break;
+            cursor = next;
+        } while (true);
+        var plans = requested.Select(id =>
+        {
+            if (entries[id].Count != 1)
+                throw new InvalidOperationException($"作者根 {id} 必须在工作区中有唯一可读来源，当前为 {entries[id].Count} 个。");
+            AuthoringSourceFile source = ReadSource(entries[id][0].Path);
+            AuthoringRootDocument root = AuthoringDocumentJson.ReadRoot(source.Text, source.Path);
+            if (root.Id.Value != id)
+                throw new IOException("读取期间作者根身份已变化：" + source.Path);
+            return (Root: root, Source: source, Directory: System.IO.Path.GetDirectoryName(source.Path)!);
+        }).ToArray();
+        using var scope = AuthoringFileAccessScope.Acquire(plans.SelectMany(plan =>
+            new[] { plan.Source.Path }.Concat(plan.Root.Files.ToArray().Select(file => Resolve(plan.Directory, file.Path)))));
+        var roots = new List<AuthoringRootFiles>();
+        foreach (var plan in plans)
+        {
+            AuthoringSourceFile source = ReadFile(plan.Source.Path);
+            if (source.Revision != plan.Source.Revision)
+                throw new IOException("冻结依赖期间作者根清单已变化，请按当前文件重新读取：" + source.Path);
+            roots.Add(Snapshot(plan.Root, new[] { source }.Concat(plan.Root.Files.ToArray()
+                .Select(file => ReadFile(Resolve(plan.Directory, file.Path)))).ToArray()));
+        }
+        return new AuthoringDocumentSnapshot(roots);
     }
 
     internal static AuthoringRootFiles Snapshot(AuthoringRootDocument root, IReadOnlyList<AuthoringSourceFile> files)
