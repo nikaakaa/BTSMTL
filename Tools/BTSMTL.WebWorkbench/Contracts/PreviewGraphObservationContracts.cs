@@ -10,7 +10,11 @@ public sealed record PreviewNodeOccurrence(string Sequence, string GraphId, stri
 public sealed record PreviewEdgeOccurrence(string Sequence, string GraphId, string EdgeId,
     bool Selected, bool Passed, PreviewExecutionCall Call);
 public sealed record PreviewPortSample(string Sequence, string GraphId, string NodeId, string PortId,
-    string Direction, string ValueType, string Value, string RawJson, PreviewExecutionCall Call);
+    string Direction, string ValueType, string Value, string RawJson, PreviewExecutionCall Call)
+{
+    public bool SourceAvailable { get; init; }
+    public string Reason { get; init; } = string.Empty;
+}
 public sealed record PreviewGraphEndpoint(string GraphId, string NodeId, string PortId);
 public sealed record PreviewGraphNode(string Id, string DisplayName, string InvocationPath);
 public sealed record PreviewGraphPort(string NodeId, string Id, string DisplayName, string Direction,
