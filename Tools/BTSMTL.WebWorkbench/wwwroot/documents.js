@@ -2,6 +2,7 @@ import { editField, editNodeFields, editVariable, renameElement, createNode, cre
 import { DocumentEditSession } from './document-session.js';
 import { createTrack, editTimeRange, editMarkerTime, moveClip, bindTimelineDrag } from './timeline-edits.js';
 import { showReferences, showReferenceResource } from './references.js';
+import { graphContext, editTransition } from './documents-fsm.js';
 
 const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
@@ -120,11 +121,11 @@ async function openRoot(path) {
   state.authoringState = null;
   state.authoringProblem = state.source === 'migrations' ? '迁移候选用于核对原资产；正式接收后从作者工作区编辑。' : '';
   if (state.source === 'workspace') {
+    state.draft = new DocumentEditSession(state.snapshot, path, state.definitionRevision, request);
     try {
       state.authoringState = await request(`/api/authoring/documents/state?path=${encodeURIComponent(path)}`, undefined, reading.signal);
-      if (state.authoringState.adoptable)
-        state.draft = new DocumentEditSession(state.snapshot, path, state.definitionRevision, request);
-      else state.authoringProblem = state.authoringState.problems.map(problem => problem.message).join('；');
+      if (!state.authoringState.adoptable)
+        state.authoringProblem = state.authoringState.problems.map(problem => problem.message).join('；');
     } catch (error) {
       if (reading.signal.aborted) throw error;
       state.authoringProblem = error.message;
@@ -134,12 +135,13 @@ async function openRoot(path) {
   $('root-kind').textContent = `${root.domain} · ${root.kind}`;
   $('revision').textContent = snapshot.revision.slice(0, 12);
   $('revision').title = snapshot.revision;
-  $('saved-state').textContent = state.draft ? '正式领域已接收 · 磁盘版本' : '只读核对 · 尚未进入正式编辑';
+  $('saved-state').textContent = state.authoringState?.adoptable ? '正式领域已接收 · 磁盘版本'
+    : state.draft ? '参数可配置 · 正式候选尚未接收' : '只读核对 · 尚未进入正式编辑';
   $('document-actions').hidden = false;
   renderRoots();
   renderFiles();
   await selectFile(state.selectedFile.path);
-  report(state.draft ? '完整根已由共同领域接收，可编辑并预览同一候选；保存、发布和运行采用分别处理。' : state.authoringProblem);
+  report(state.authoringProblem || '完整根已由共同领域接收，可编辑并预览同一候选；保存、发布和运行采用分别处理。');
 }
 
 function renderFiles() {
@@ -212,7 +214,7 @@ function renderNavigation() {
   }
   path.unshift(rootFile);
   $('document-navigation').hidden = false;
-  $('document-navigation').innerHTML = path.map(file => `<button data-document="${escapeHtml(file.path)}" ${file === state.selectedFile ? 'aria-current="page"' : ''}>${escapeHtml(file.document?.displayName || file.path)}</button>`).join('<span aria-hidden="true">›</span>');
+  $('document-navigation').innerHTML = path.map((file, index) => `<button data-document="${escapeHtml(file.path)}" ${index + 1 < path.length ? `data-element="${escapeHtml(path[index + 1].document.owner.elementId)}"` : ''} ${file === state.selectedFile ? 'aria-current="page"' : ''}>${escapeHtml(file.document?.displayName || file.path)}</button>`).join('<span aria-hidden="true">›</span>');
 }
 
 function selectElement(kind, id) {
@@ -251,10 +253,11 @@ function renderDocument() {
 
 function renderRoot(document) {
   const root = state.snapshot.root;
+  const accepted = state.authoringState?.adoptable || state.draft?.receipt;
   const introduction = state.source === 'migrations'
     ? '该候选从现有 Unity 资产读取，用于核对迁移结果。原资产仍是当前正式作者来源。'
     : '编辑来源保存在项目作者目录。各阶段分别记录实际完成的修订。';
-  $('document-view').innerHTML = `<div class="overview"><div class="eyebrow">${state.source === 'migrations' ? 'MIGRATION CANDIDATE' : 'AUTHORING DOCUMENT'}</div><h1>${escapeHtml(document.displayName || root.displayName)}</h1><p class="intro">${introduction}</p><div class="phase-grid"><div><span class="phase-state saved">已读取</span><strong>磁盘内容</strong><small>${state.snapshot.files.length} 个文件 · ${state.draft?.changed ? '存在未保存候选' : '当前磁盘修订'}</small></div><div><span class="phase-state ${state.draft ? 'saved' : 'pending'}">${state.draft ? '已接收' : '未接收'}</span><strong>领域接收</strong><small>${escapeHtml(state.authoringProblem || '完整根经同一正式领域规则接收')}</small></div><div><span class="phase-state pending">未查询</span><strong>编译与发布</strong><small>保存不代表发布</small></div><div><span class="phase-state pending">未查询</span><strong>运行预览</strong><small>以具体运行采用回执为准</small></div></div><h2>引用与归属</h2><dl><dt>稳定身份</dt><dd><code>${escapeHtml(document.id)}</code></dd><dt>定义版本</dt><dd>${escapeHtml(document.definitionVersion)}</dd><dt>外部引用</dt><dd>${root.externalReferences.length} 项</dd><dt>Unity 对象映射</dt><dd>${root.unityOutputs.length} 项</dd></dl><div class="notice">${escapeHtml(state.authoringProblem || '图与时间轴编辑生成同一完整候选。查看差异后保存；保存后的撤销通过共同服务提交反向修改，并保留其它入口的后续改动。')}</div></div>`;
+  $('document-view').innerHTML = `<div class="overview"><div class="eyebrow">${state.source === 'migrations' ? 'MIGRATION CANDIDATE' : 'AUTHORING DOCUMENT'}</div><h1>${escapeHtml(document.displayName || root.displayName)}</h1><p class="intro">${introduction}</p><div class="phase-grid"><div><span class="phase-state saved">已读取</span><strong>磁盘内容</strong><small>${state.snapshot.files.length} 个文件 · ${state.draft?.changed ? '存在未保存候选' : '当前磁盘修订'}</small></div><div><span class="phase-state ${accepted ? 'saved' : 'pending'}">${accepted ? '已接收' : '未接收'}</span><strong>领域接收</strong><small>${escapeHtml(state.authoringProblem || '完整根经同一正式领域规则接收')}</small></div><div><span class="phase-state pending">未查询</span><strong>编译与发布</strong><small>保存不代表发布</small></div><div><span class="phase-state pending">未查询</span><strong>运行预览</strong><small>以具体运行采用回执为准</small></div></div><h2>引用与归属</h2><dl><dt>稳定身份</dt><dd><code>${escapeHtml(document.id)}</code></dd><dt>定义版本</dt><dd>${escapeHtml(document.definitionVersion)}</dd><dt>外部引用</dt><dd>${root.externalReferences.length} 项</dd><dt>Unity 对象映射</dt><dd>${root.unityOutputs.length} 项</dd></dl><div class="notice">${escapeHtml(state.authoringProblem || '图与时间轴编辑生成同一完整候选。查看差异后保存；保存后的撤销通过共同服务提交反向修改，并保留其它入口的后续改动。')}</div></div>`;
 }
 
 function renderGraph(graph) {
@@ -379,12 +382,18 @@ function renderInspector(document) {
     return `<div class="field"><label title="${escapeHtml(id)}">${escapeHtml(field?.displayName || id)}${field && !field.writable ? ' · 原定义只读' : ''}</label>${renderValue(value)}${field?.constraint?.AllowedValues.length ? `<small>声明选项：${field.constraint.AllowedValues.map(escapeHtml).join('、')}</small>` : ''}</div>`;
   }).join('') || '<p class="muted">此对象没有显式作者字段。</p>'}`;
   if (state.selectedFile.draftChanged) $('inspector-content').querySelector('.read-state').textContent = '本会话候选 · 尚未保存或发布';
+  if (Array.isArray(document.nodes))
+    $('inspector-content').insertAdjacentHTML('afterbegin', graphContext(document, target, state.snapshot.files,
+      state.definitions, state.capabilities));
   if (state.draft?.canEdit && Array.isArray(document.nodes) && !state.selectedTimeline) {
     if (state.selectedEdge) {
       const source = document.nodes.find(node => node.id === target.sourceNode);
       const destination = document.nodes.find(node => node.id === target.targetNode);
       $('selection-name').textContent = `${source.displayName} → ${destination.displayName}`;
       $('inspector-content').insertAdjacentHTML('afterbegin', `<div class="inspector-actions"><button data-select-node="${escapeHtml(source.id)}">来源节点</button><button data-select-node="${escapeHtml(destination.id)}">目标节点</button><button data-edge-order>调整执行顺序</button><button data-element-dependencies>本连接引用</button><button class="danger" data-delete-edge="${escapeHtml(target.id)}">删除连接</button></div><p class="muted">同一输出的第 ${target.order + 1} 项。业务优先级、中断规则及条件取自下方实际作者字段。</p>`);
+      if (document.role === state.definitions.stateMachine.role)
+        $('inspector-content').querySelector('.inspector-actions').insertAdjacentHTML('beforeend',
+          '<button data-configure-transition>同时配置转移字段</button>');
       Object.keys(target.fields).forEach(id => {
         const rendered = [...$('inspector-content').querySelectorAll('.field')].find(element => element.querySelector('label').title === id);
         rendered.insertAdjacentHTML('beforeend', `<button class="edit-field" data-edit-edge-field="${escapeHtml(id)}">编辑候选</button>`);
@@ -452,7 +461,8 @@ function renderDraftToolbar() {
   $('draft-retry').hidden = !state.draft?.pendingCommit;
   $('draft-state').textContent = state.draft?.pendingCommit ? `保存结果待查询 · ${state.draft.pendingCommit.requestId}`
     : state.draft?.result && state.draft.result.status !== 'Saved' ? '保存未完成 · 候选已保留，请查看原因'
-    : state.draft?.changed ? `${state.draft.steps.length} 步修改 · 已接收未保存` : state.draft ? '正式作者版本 · 保存与发布分别处理' : state.authoringProblem;
+    : state.draft?.changed ? `${state.draft.steps.length} 步修改 · 已接收未保存`
+    : state.authoringProblem || (state.draft ? '正式作者版本 · 保存与发布分别处理' : '未建立作者会话');
   $('draft-query').disabled = $('draft-retry').disabled = state.draft?.busy === true;
 }
 
@@ -643,6 +653,10 @@ $('inspector-content').onclick = event => {
   }
   if (event.target.closest('[data-configure-node]')) {
     editNodeFields(node, state.capabilities.get(node.capability), applyGraphEdits, state.references);
+    return;
+  }
+  if (event.target.closest('[data-configure-transition]')) {
+    editTransition(edge, state.definitions, state.references, applyGraphEdits);
     return;
   }
   const fieldButton = event.target.closest('[data-edit-field]');
