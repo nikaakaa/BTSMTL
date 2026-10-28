@@ -1,6 +1,6 @@
 import { editField, editNodeFields, editVariable, renameElement, createNode, createConnection, reorderConnections, referenceChoices, showDocumentDiff } from './graph-edits.js';
 import { DocumentEditSession } from './document-session.js';
-import { createTrack, editTimeRange, editMarkerTime, moveClip, bindTimelineDrag, timelineObjectDefinition, editTimelineFields } from './timeline-edits.js';
+import { createTrack, createClip, editTimeRange, editMarkerTime, moveClip, bindTimelineDrag, timelineObjectDefinition, editTimelineFields } from './timeline-edits.js';
 import { showReferences, showReferenceResource } from './references.js';
 import { graphContext, editTransition } from './documents-fsm.js';
 
@@ -436,6 +436,14 @@ function renderTimelineActions(timeline, target, definition) {
   const binding = timeline.bindings.find(binding => binding.id === target.id);
   $('inspector-content').insertAdjacentHTML('afterbegin', `<div class="inspector-actions"><button data-timeline-rename>修改名称</button>${target === timeline ? `<button data-timeline-loop>${timeline.loop ? '改为单次' : '改为循环'}</button>` : ''}${clip ? '<button data-timeline-range>配置时间与素材范围</button><button data-timeline-move-clip>移动到轨道</button>' : ''}${marker ? '<button data-timeline-marker-time>配置时刻</button>' : ''}${track === target ? `<button data-timeline-track-move="-1" ${timeline.tracks.indexOf(track) === 0 ? 'disabled' : ''}>轨道上移</button><button data-timeline-track-move="1" ${timeline.tracks.indexOf(track) === timeline.tracks.length - 1 ? 'disabled' : ''}>轨道下移</button>` : ''}${track || binding ? '<button class="danger" data-timeline-delete>删除当前内容</button>' : ''}</div>`);
   if (binding) $('inspector-content').querySelector('[data-timeline-rename]').remove();
+  if (track) {
+    const kinds = state.definitions.timelineContracts.tracks.find(contract => contract.kind === track.contract).allowedClipKinds;
+    const ready = state.definitions.timelineAuthoring !== undefined;
+    $('inspector-content').querySelector('.inspector-actions').insertAdjacentHTML('beforeend',
+      `<button data-timeline-add-clip ${ready && kinds.length ? '' : 'disabled'}>在此轨道新建片段</button>`);
+    if (!ready || !kinds.length) $('inspector-content').insertAdjacentHTML('beforeend',
+      `<p class="authoring-gap">${!kinds.length ? '此轨道的正式合同没有可接收的片段类型。' : '正式片段作者字段及初始值尚未导出，新建片段暂不可用。'}</p>`);
+  }
   if (definition?.fields.some(field => field.visible && field.writable))
     $('inspector-content').querySelector('.inspector-actions').insertAdjacentHTML('beforeend',
       '<button data-timeline-configure-fields>同时配置参数</button>');
@@ -751,6 +759,8 @@ function handleTimelineAction(event) {
   const field = event.target.closest('[data-timeline-field]');
   if (event.target.closest('[data-timeline-add-track]')) {
     createTrack(timeline, state.definitions, state.references, applyTimelineEdits);
+  } else if (event.target.closest('[data-timeline-add-clip]')) {
+    createClip(track, state.definitions, state.references, state.timeScale, applyTimelineEdits);
   } else if (event.target.closest('[data-timeline-configure-fields]')) {
     editTimelineFields(target, timelineObjectDefinition(target, state.definitions), state.references,
       fields => applyTimelineEdits([configure(fields)]));
