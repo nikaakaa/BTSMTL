@@ -177,7 +177,9 @@ async function selectFile(path, elementId = null) {
     }, reading.signal);
     file.portShapes = new Map(projected.nodes.map(node => [node.nodeId, node]));
   }
-  if (!state.draft && file.document?.role === 'StateMachine' && !file.stateMachineReceipt && !file.stateMachineProblem) {
+  const machineRole = state.definitions.stateMachine?.role;
+  if (!state.draft && machineRole !== undefined && file.document?.role === machineRole &&
+      !file.stateMachineReceipt && !file.stateMachineProblem) {
     try {
       file.stateMachineReceipt = await request('/api/authoring/state-machines/validate', {
         content: file.content, definitionsRevision: state.definitionRevision,
@@ -189,7 +191,7 @@ async function selectFile(path, elementId = null) {
       file.stateMachineProblem = error.message;
     }
   }
-  if (!state.draft && !file.problem && Array.isArray(file.document.nodes) && file.document.role !== 'StateMachine' &&
+  if (!state.draft && !file.problem && Array.isArray(file.document.nodes) && file.document.role !== machineRole &&
       !file.topologyReceipt && !file.topologyProblem) {
     try {
       file.topologyReceipt = await request('/api/authoring/graphs/validate', {
