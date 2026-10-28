@@ -87,11 +87,7 @@ export class PreviewGraph {
       this.y = y - (y - this.y) * scale / this.scale;
       this.scale = scale; this.transform();
     };
-    this.resize = new ResizeObserver(() => { if (!this.world.hidden) this.fit(); });
-    this.resize.observe(this.canvas);
   }
-
-  close() { this.resize.disconnect(); }
 
   setDefinitions(definitions, availability) {
     this.definitions = definitions;
@@ -189,7 +185,7 @@ export class PreviewGraph {
     this.container.querySelectorAll('[data-inspect-node]').forEach(button => {
       button.onclick = () => { this.selectedNode = this.nodes[Number(button.dataset.inspectNode)].id; this.highlight(); this.showInspector(); };
     });
-    this.fit();
+    if (this.nodes.length) this.reveal();
   }
 
   highlight() {
@@ -233,6 +229,15 @@ export class PreviewGraph {
       `<article data-occurrence-sequence="${html(item.sequence)}"><strong>${html(item.kind)}</strong><output>${html(item.result)}</output>${details(item)}</article>`).join('')}${ports.map(item =>
       `<article data-port-sequence="${html(item.sequence)}"><strong>${html(item.portId)}</strong><output>${html(item.value)}</output><span>${html(item.direction)} · ${html(item.valueType)}</span>${details(item)}</article>`).join('')}${!records.length ? '<p>本帧无发生记录</p>' : ''}</div>`;
     this.inspector.querySelector('[data-inspector-close]').onclick = () => { this.selectedNode = ''; this.highlight(); this.showInspector(); };
+  }
+
+  reveal() {
+    const first = this.records.find(record => this.nodes.some(node => node.id === record.nodeId));
+    const node = first ? this.nodes.find(node => node.id === first.nodeId) : this.nodes[0];
+    this.scale = 1;
+    this.x = this.width <= this.canvas.clientWidth ? (this.canvas.clientWidth - this.width) / 2 : 30 - node.x;
+    this.y = this.height <= this.canvas.clientHeight ? (this.canvas.clientHeight - this.height) / 2 : 30 - node.y;
+    this.transform();
   }
 
   fit() {

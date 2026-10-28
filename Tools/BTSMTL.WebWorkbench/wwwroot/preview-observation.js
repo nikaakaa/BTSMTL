@@ -11,7 +11,6 @@ export class PreviewObservation {
   }
 
   reset() {
-    if (this.graph) this.graph.close();
     this.loading = null;
     this.runId = null;
     this.routeFrames = [];

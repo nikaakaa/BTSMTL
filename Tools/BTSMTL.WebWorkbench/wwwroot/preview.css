@@ -47,8 +47,8 @@ pre { white-space: pre-wrap; max-height: 350px; overflow: auto; }
 .preview-toolbar label { margin-left: auto; color: #bbb; }
 #scene { max-width: 310px; width: 25vw; }
 .run-error { flex-shrink: 0; padding: 8px 12px; background: #513532; color: #f1c3bd; max-height: 120px; overflow: auto; white-space: pre-wrap; }
-#preview-content { flex: 1; min-height: 0; }
-#execution-observation { height: 100%; display: grid; grid-template-rows: minmax(160px, 42%) minmax(140px, 1fr); }
+#preview-content { flex: 1; min-width: 0; min-height: 0; }
+#execution-observation { height: 100%; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(160px, 42%) minmax(140px, 1fr); }
 .observation-empty { display: grid; place-items: center; height: 100%; min-height: 100px; color: var(--muted); }
 .observed-timeline { min-height: 0; overflow: hidden; border-bottom: 4px solid #1f1f1f; }
 .observed-timeline-scroll { height: 100%; overflow: auto; }
@@ -71,11 +71,11 @@ pre { white-space: pre-wrap; max-height: 350px; overflow: auto; }
 .observed-cursor { position: absolute; top: 28px; bottom: 0; left: var(--track-head); right: 35px; pointer-events: none; z-index: 1; }
 .observed-cursor i { position: absolute; left: var(--cursor-position); top: 0; bottom: 0; border-left: 1px solid #e6d789; }
 .observed-cursor i:before { content: ""; position: absolute; top: 0; left: -4px; border-top: 6px solid #e6d789; border-inline: 4px solid transparent; }
-.observed-graph { display: flex; flex-direction: column; min-height: 0; }
+.observed-graph { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .observed-graph > header { display: flex; align-items: center; gap: 8px; height: 29px; padding: 3px 9px; background: #363636; border-bottom: 1px solid var(--line); flex-shrink: 0; }
 .observed-graph > header > strong { white-space: nowrap; }
 [data-graph-choice] { width: 160px; }
-[data-graph-call] { flex: 1; }
+[data-graph-call] { flex: 1; width: 0; }
 [data-graph-fit] { width: 25px; padding: 0; font-size: 17px; }
 .observed-graph-body { display: flex; flex: 1; min-height: 0; }
 .graph-viewport { flex: 1; min-width: 0; position: relative; overflow: hidden; touch-action: none; background-color: #282828; background-image: radial-gradient(#414141 1px, transparent 1px); background-size: 16px 16px; }
