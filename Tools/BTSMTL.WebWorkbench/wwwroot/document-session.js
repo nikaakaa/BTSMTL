@@ -77,6 +77,8 @@ export class DocumentEditSession {
       const receipt = await this.send('/api/authoring/documents/inverse', { ...this.context,
         rootRevision: current.revision, requestId: crypto.randomUUID(), appliedCandidateId });
       this.receipt = { ...receipt, historyDirection: direction };
+      this.result = null;
+      if (!receipt.saveReady) return;
       this.pendingCommit = this.receipt;
       await this.submitCommit();
     });
