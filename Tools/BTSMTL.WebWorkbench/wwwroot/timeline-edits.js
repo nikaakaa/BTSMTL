@@ -116,9 +116,13 @@ export function createClip(track, definitions, references, scale, apply) {
   fill();
 }
 
-export function moveClip(timeline, track, clip, contracts, apply) {
-  const targets = timeline.tracks.filter(item => contracts.tracks.find(contract => contract.kind === item.contract)
+function clipTrackChoices(timeline, clip, contracts) {
+  return timeline.tracks.filter(item => contracts.tracks.find(contract => contract.kind === item.contract)
     .allowedClipKinds.includes(clip.contract));
+}
+
+export function moveClip(timeline, track, clip, contracts, apply) {
+  const targets = clipTrackChoices(timeline, clip, contracts);
   const modal = dialog('移动片段及调整顺序', `<label>目标轨道<select name="track">${targets.map(item => `<option value="${html(item.id)}" ${item.id === track.id ? 'selected' : ''}>${html(item.displayName)} · ${html(item.contract)}</option>`).join('')}</select></label><label>目标轨道内的顺序<select name="index"></select></label><p>菜单按共同轨道合同列出可接收此片段的轨道。可调整同轨顺序或跨轨插入位置；默认放在目标轨道末尾。片段身份、图引用和时间保持原值，修改交给同一领域候选。</p>`,
     form => {
       const input = new FormData(form);
@@ -135,7 +139,7 @@ export function moveClip(timeline, track, clip, contracts, apply) {
   fillPositions();
 }
 
-export function bindTimelineDrag(surface, timeline, scale, pixels, apply, onError) {
+export function bindTimelineDrag(surface, timeline, contracts, scale, pixels, apply, onError) {
   let drag = null, suppressClick = false;
   surface.addEventListener('pointerdown', event => {
     if (drag || event.button !== 0) return;
@@ -147,8 +151,9 @@ export function bindTimelineDrag(surface, timeline, scale, pixels, apply, onErro
     const marker = track.markers.find(item => item.id === element.dataset.timeline);
     const boundary = event.target.closest('[data-timeline-boundary]');
     drag = { element, track, clip, marker, boundary: boundary?.dataset.timelineBoundary,
-      pointerId: event.pointerId, x: event.clientX, delta: 0n, translate: element.style.translate,
-      left: element.style.left, width: element.style.width };
+      pointerId: event.pointerId, x: event.clientX, y: event.clientY, delta: 0n, translate: element.style.translate,
+      left: element.style.left, width: element.style.width, zIndex: element.style.zIndex, targetTrack: track,
+      targets: clip ? clipTrackChoices(timeline, clip, contracts) : null, lane: null };
     element.setPointerCapture(event.pointerId);
     event.preventDefault();
   });
@@ -160,27 +165,48 @@ export function bindTimelineDrag(surface, timeline, scale, pixels, apply, onErro
       drag.element.style.left = `${parseFloat(drag.left) + distance}px`;
       drag.element.style.width = `${Math.max(4, parseFloat(drag.width) - distance)}px`;
     } else if (drag.boundary === 'end') drag.element.style.width = `${Math.max(4, parseFloat(drag.width) + distance)}px`;
-    else drag.element.style.translate = `${distance}px 0`;
+    else {
+      drag.element.style.translate = `${distance}px ${drag.clip ? event.clientY - drag.y : 0}px`;
+      if (drag.clip) {
+        drag.element.style.zIndex = '6';
+        drag.lane?.classList.remove('timeline-drop-target', 'timeline-drop-blocked');
+        drag.lane = surface.ownerDocument.elementsFromPoint(event.clientX, event.clientY)
+          .find(element => element.matches('.timeline-lane'));
+        drag.targetTrack = drag.lane ? timeline.tracks.find(track => track.id === drag.lane.dataset.timelineTrack) : null;
+        drag.lane?.classList.add(drag.targets.includes(drag.targetTrack) ? 'timeline-drop-target' : 'timeline-drop-blocked');
+      }
+    }
   });
   const restore = gesture => {
     gesture.element.style.translate = gesture.translate;
     gesture.element.style.left = gesture.left;
     gesture.element.style.width = gesture.width;
+    gesture.element.style.zIndex = gesture.zIndex;
+    gesture.lane?.classList.remove('timeline-drop-target', 'timeline-drop-blocked');
   };
   surface.addEventListener('pointerup', async event => {
     if (!drag || drag.pointerId !== event.pointerId) return;
-    const { element, track, clip, marker, boundary, delta } = drag;
+    const { element, track, clip, marker, boundary, delta, targetTrack, targets } = drag;
     restore(drag);
     drag = null;
-    if (delta === 0n) return;
+    if (delta === 0n && targetTrack === track) return;
     suppressClick = element;
-    const edit = clip ? { kind: 'set-clip-range', trackId: track.id, clipId: clip.id,
+    const destination = clip && !boundary ? targetTrack : track;
+    if (clip && !boundary && !targets.includes(destination)) {
+      onError(new Error(destination ? `轨道“${destination.displayName}”不接收此片段类型，本次拖动未提交。`
+        : '请将片段放到时间轴的轨道区域内，本次拖动未提交。'));
+      return;
+    }
+    const edits = [];
+    if (destination !== track) edits.push({ kind: 'move-clip', sourceTrackId: track.id,
+      targetTrackId: destination.id, clipId: clip.id, index: destination.clips.length });
+    if (delta !== 0n) edits.push(clip ? { kind: 'set-clip-range', trackId: destination.id, clipId: clip.id,
       range: timelineRange({ ...clip.timeRange,
         startRaw: boundary === 'end' ? clip.timeRange.startRaw : String(BigInt(clip.timeRange.startRaw) + delta),
         endRaw: boundary === 'start' ? clip.timeRange.endRaw : String(BigInt(clip.timeRange.endRaw) + delta) }) }
       : { kind: 'configure-marker', trackId: track.id, markerId: marker.id, displayName: marker.displayName,
-        timeRaw: String(BigInt(marker.timeRaw) + delta), fields: marker.fields };
-    try { await apply([edit]); } catch (error) { onError(error); }
+        timeRaw: String(BigInt(marker.timeRaw) + delta), fields: marker.fields });
+    try { await apply(edits); } catch (error) { onError(error); }
   });
   const cancel = event => {
     if (!drag || drag.pointerId !== event.pointerId) return;
