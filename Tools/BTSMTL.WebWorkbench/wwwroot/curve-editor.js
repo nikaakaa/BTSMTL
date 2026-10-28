@@ -83,19 +83,21 @@ export function bindCurveEditor(container, curve, definition) {
     }
   });
   svg.addEventListener('pointerdown', event => {
-    if (event.button !== 0) return;
+    if (drag || event.button !== 0) return;
     const key = event.target.closest('[data-curve-key]'), tangent = event.target.closest('[data-tangent]');
     if (!key && !tangent) return;
     if (key) selected = Number(key.dataset.curveKey);
-    drag = { original: structuredClone(keys[selected]), side: tangent?.dataset.tangent };
+    drag = { index: selected, pointerId: event.pointerId, original: structuredClone(keys[selected]),
+      side: tangent?.dataset.tangent };
+    event.preventDefault();
     svg.setPointerCapture(event.pointerId); fields(); plot();
   });
   svg.addEventListener('pointermove', event => {
-    if (!drag) return;
+    if (!drag || drag.pointerId !== event.pointerId) return;
     const coordinates = new DOMPoint(event.clientX, event.clientY).matrixTransform(svg.getScreenCTM().inverse());
     const time = view.left + (coordinates.x - 40) / 650 * view.width;
     const value = view.bottom + (225 - coordinates.y) / 195 * view.height;
-    const key = keys[selected];
+    const key = keys[drag.index];
     if (drag.side) {
       const delta = time - number(key, 'time');
       if (delta === 0) return;
@@ -106,9 +108,16 @@ export function bindCurveEditor(container, curve, definition) {
     }
     fields(); plot();
   });
-  svg.addEventListener('pointerup', () => { drag = null; });
-  svg.addEventListener('pointercancel', () => {
-    if (drag) { keys[selected] = drag.original; drag = null; fields(); plot(); }
+  svg.addEventListener('pointerup', event => {
+    if (drag?.pointerId === event.pointerId) drag = null;
   });
+  const cancel = event => {
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    keys[drag.index] = drag.original;
+    drag = null;
+    fields(); plot();
+  };
+  svg.addEventListener('pointercancel', cancel);
+  svg.addEventListener('lostpointercapture', cancel);
   fit(); fields(); plot();
 }
