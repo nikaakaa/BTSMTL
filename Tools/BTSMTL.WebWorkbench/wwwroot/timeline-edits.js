@@ -63,7 +63,7 @@ export function editTimelineFields(target, definition, references, apply) {
   modal.querySelectorAll('[data-timeline-field-editor]').forEach(container => {
     const field = fields.find(field => field.id === container.dataset.timelineFieldEditor);
     editors.set(field.id, bindValueEditor(container, initial(field), field.constraint.AllowedValues,
-      references, field.valueDefinition));
+      references, field.valueDefinition, field.defaultValue));
   });
 }
 
@@ -95,7 +95,7 @@ function bindNewTimelineFields(surface, description, references) {
   surface.querySelectorAll('[data-new-timeline-field]').forEach(container => {
     const field = fields.find(field => field.id === container.dataset.newTimelineField);
     editors.set(field.id, bindValueEditor(container, field.defaultValue, field.constraint.AllowedValues,
-      references, field.valueDefinition));
+      references, field.valueDefinition, field.defaultValue));
   });
   return () => Object.fromEntries(description.fields.map(field => [field.id, editors.has(field.id)
     ? editors.get(field.id).read() : structuredClone(field.defaultValue)]));

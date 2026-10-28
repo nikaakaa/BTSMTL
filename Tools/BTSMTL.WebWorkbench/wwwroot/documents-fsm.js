@@ -60,6 +60,6 @@ export function editTransition(edge, definitions, references, apply) {
   modal.querySelectorAll('[data-transition-field]').forEach(container => {
     const field = fields.find(field => field.id === container.dataset.transitionField);
     editors.set(field.id, bindValueEditor(container, initial(field), field.constraint.AllowedValues,
-      references, field.valueDefinition));
+      references, field.valueDefinition, field.defaultValue));
   });
 }

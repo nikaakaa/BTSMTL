@@ -68,7 +68,7 @@ export function referenceChoices(snapshot) {
   return [...choices.values()];
 }
 
-export function bindValueEditor(container, value, choices = [], references = [], definition = null) {
+export function bindValueEditor(container, value, choices = [], references = [], definition = null, defaultValue) {
   let current = structuredClone(value);
   const at = path => path.reduce((item, key) => item[key], current);
   const render = () => {
@@ -79,7 +79,8 @@ export function bindValueEditor(container, value, choices = [], references = [],
       for (let index = 0; index < path.length; index += 2)
         curveDefinition = path[index] === 'members'
           ? curveDefinition?.members.find(member => member.id === path[index + 1])?.definition : curveDefinition?.element;
-      bindCurveEditor(element, at(path), curveDefinition);
+      bindCurveEditor(element, at(path), curveDefinition,
+        path.reduce((value, key) => value?.[key], defaultValue));
     });
   };
   container.oninput = event => {
@@ -119,7 +120,8 @@ export function editField(field, value, apply, references = []) {
         ? JSON.parse(form.querySelector('.raw-value-editor textarea').value) : editor.read();
       await apply(value);
     });
-  const editor = bindValueEditor(modal.querySelector('.typed-value-editor'), value, field.constraint?.AllowedValues || [], references, field.valueDefinition);
+  const editor = bindValueEditor(modal.querySelector('.typed-value-editor'), value, field.constraint?.AllowedValues || [],
+    references, field.valueDefinition, field.defaultValue);
   const typed = modal.querySelector('.typed-value-editor');
   const raw = modal.querySelector('.raw-value-editor textarea');
   raw.oninput = () => { rawEdited = true; };
@@ -160,7 +162,8 @@ export function editNodeFields(node, definition, apply, references = []) {
     });
   modal.querySelectorAll('[data-configure-field]').forEach(container => {
     const field = fields.find(field => field.id === container.dataset.configureField);
-    editors.set(field.id, bindValueEditor(container, initial(field), field.constraint.AllowedValues, references, field.valueDefinition));
+    editors.set(field.id, bindValueEditor(container, initial(field), field.constraint.AllowedValues,
+      references, field.valueDefinition, field.defaultValue));
   });
 }
 

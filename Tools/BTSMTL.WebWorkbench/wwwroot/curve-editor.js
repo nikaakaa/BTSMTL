@@ -3,10 +3,11 @@ import { scalarControl } from './scalar-editor.js';
 const html = value => String(value).replace(/[&<>"']/g,
   char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 
-export function bindCurveEditor(container, curve, definition) {
+export function bindCurveEditor(container, curve, definition, defaultCurve) {
   const keys = curve.members.keys.items;
+  const initialKeys = defaultCurve?.kind === 'object' ? defaultCurve.members.keys.items : [];
   let selected = keys.length ? 0 : -1, drag = null, view;
-  container.innerHTML = '<div class="curve-tools"><button type="button" data-curve-fit>适应关键点</button><button type="button" data-curve-copy>复制当前关键点</button><button type="button" data-curve-delete>删除当前关键点</button></div><svg class="curve-plot" viewBox="0 0 720 260" role="img" aria-label="曲线关键点、切线与权重"></svg><p class="curve-status" role="status"></p><div class="curve-selected"></div><div class="curve-wrap"></div>';
+  container.innerHTML = `<div class="curve-tools"><button type="button" data-curve-fit>适应关键点</button><button type="button" data-curve-copy>复制当前关键点</button><button type="button" data-curve-delete>删除当前关键点</button></div>${initialKeys.length ? `<div class="curve-tools"><label>原字段定义中的关键点<select data-curve-initial-key>${initialKeys.map((key, index) => `<option value="${index}">第 ${index + 1} 点 · 时间 ${html(key.members.time.value)} · 值 ${html(key.members.value.value)}</option>`).join('')}</select></label><button type="button" data-curve-create>添加所选关键点</button></div>` : '<p class="muted">原字段定义没有提供关键点初始值；已有关键点可复制、编辑或删除。</p>'}<svg class="curve-plot" viewBox="0 0 720 260" role="img" aria-label="曲线关键点、切线与权重"></svg><p class="curve-status" role="status"></p><div class="curve-selected"></div><div class="curve-wrap"></div>`;
   const svg = container.querySelector('svg'), controls = container.querySelector('.curve-selected');
   const number = (key, field) => Number(key.members[field].value);
   const weighted = (key, side) => key.members.weightedMode.value.split(',')
@@ -58,7 +59,7 @@ export function bindCurveEditor(container, curve, definition) {
 
   function fields() {
     container.querySelector('[data-curve-copy]').disabled = container.querySelector('[data-curve-delete]').disabled = selected < 0;
-    controls.innerHTML = selected < 0 ? '<p>当前曲线没有关键点。空曲线的完整创建形状由正式定义提供，也可使用完整类型化 JSON。</p>'
+    controls.innerHTML = selected < 0 ? `<p>当前曲线没有关键点。${initialKeys.length ? '从上方选择原定义中的关键点添加后，可填写时间、值、切线和权重。' : '此字段尚缺新关键点的正式初始形状。'}修改只保留在本表的曲线副本中。</p>`
       : `<label>选择关键点<select data-curve-index>${keys.map((key, index) => `<option value="${index}" ${selected === index ? 'selected' : ''}>${index + 1} · ${html(key.members.time.value)} s</option>`).join('')}</select></label><div class="curve-key-fields">${Object.entries(keys[selected].members).map(([field, value]) => `<label>${html(field)}${scalarControl(value, `data-curve-field="${html(field)}"`, memberDefinition(keyDefinition, field))}<small>${html(value.type)}</small></label>`).join('')}</div>`;
     container.querySelector('.curve-wrap').innerHTML = Object.entries(curve.members).filter(([field]) => field !== 'keys')
       .map(([field, value]) => `<label>${html(field)}${scalarControl(value, `data-curve-wrap="${html(field)}"`, memberDefinition(definition, field))}</label>`).join('');
@@ -76,7 +77,11 @@ export function bindCurveEditor(container, curve, definition) {
   });
   container.addEventListener('click', event => {
     if (event.target.closest('[data-curve-fit]')) { fit(); plot(); }
-    else if (event.target.closest('[data-curve-copy]')) {
+    else if (event.target.closest('[data-curve-create]')) {
+      keys.push(structuredClone(initialKeys[Number(container.querySelector('[data-curve-initial-key]').value)]));
+      selected = keys.length - 1;
+      fit(); fields(); plot();
+    } else if (event.target.closest('[data-curve-copy]')) {
       keys.splice(selected + 1, 0, structuredClone(keys[selected])); selected++; fields(); plot();
     } else if (event.target.closest('[data-curve-delete]')) {
       keys.splice(selected, 1); selected = Math.min(selected, keys.length - 1); fields(); plot();
