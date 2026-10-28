@@ -503,7 +503,8 @@ function renderDraftToolbar() {
   $('draft-save').disabled = !ready || !state.draft.canSave;
   $('draft-query').hidden = !state.draft?.pendingCommit;
   $('draft-retry').hidden = !state.draft?.pendingCommit;
-  $('draft-state').textContent = state.draft?.pendingCommit ? `保存结果待查询 · ${state.draft.pendingCommit.requestId}`
+  $('draft-state').textContent = state.draft?.busy ? '正在处理正式作者操作 · 结果尚未返回'
+    : state.draft?.pendingCommit ? `保存结果待查询 · ${state.draft.pendingCommit.requestId}`
     : state.draft?.result && state.draft.result.status !== 'Saved' ? '保存未完成 · 候选已保留，请查看原因'
     : state.draft?.changed ? `${state.draft.steps.length} 步修改 · 已接收未保存`
     : state.authoringProblem || (state.draft ? '正式作者版本 · 保存与发布分别处理' : '未建立作者会话');
@@ -535,13 +536,11 @@ async function showDraft() {
 
 async function applyGraphEdits(edits) {
   const file = state.selectedFile;
-  await state.draft.apply(file.document.id, edits);
-  await showDraft();
+  await presentDraftOperation(() => state.draft.apply(file.document.id, edits));
 }
 
 async function applyTimelineEdits(edits) {
-  await state.draft.applyTimeline(state.selectedFile.document.id, edits);
-  await showDraft();
+  await presentDraftOperation(() => state.draft.applyTimeline(state.selectedFile.document.id, edits));
 }
 
 async function choosePort(element) {
@@ -673,8 +672,7 @@ $('document-view').onclick = event => {
     const variable = file.document.variables.find(item => item.id === identity);
     if (variableButton.hasAttribute('data-delete-variable')) {
       guarded(async () => {
-        await state.draft.apply(file.document.id, [{ kind: 'delete-variable', variableId: identity }]);
-        await showDraft();
+        await presentDraftOperation(() => state.draft.apply(file.document.id, [{ kind: 'delete-variable', variableId: identity }]));
       });
       return;
     }
@@ -685,8 +683,7 @@ $('document-view').onclick = event => {
         id: `local:${crypto.randomUUID()}`, key: fields.key, type: fields.typeId,
         defaultValue: fields.defaultValue, declaration: fields.declaration
       } } : { kind: 'configure-variable', variableId: variable.id, ...fields };
-      await state.draft.apply(file.document.id, [operation]);
-      await showDraft();
+      await presentDraftOperation(() => state.draft.apply(file.document.id, [operation]));
     }, state.references);
     return;
   }
@@ -841,11 +838,12 @@ $('draft-save').onclick = () => editAction(() => state.draft.commit());
 $('draft-query').onclick = () => editAction(() => state.draft.queryCommit());
 $('draft-retry').onclick = () => editAction(() => state.draft.retryCommit());
 async function editAction(action) {
-  await guarded(async () => {
-    const pending = action();
-    renderDraftToolbar();
-    try { await pending; await showDraft(); } finally { renderDraftToolbar(); }
-  });
+  await guarded(() => presentDraftOperation(action));
+}
+async function presentDraftOperation(action) {
+  const pending = action();
+  renderDraftToolbar();
+  try { await pending; await showDraft(); } finally { renderDraftToolbar(); }
 }
 window.addEventListener('beforeunload', event => {
   if (state.draft?.unsettled || state.draft?.busy) { event.preventDefault(); event.returnValue = ''; }
