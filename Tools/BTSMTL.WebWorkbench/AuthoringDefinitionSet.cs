@@ -5,9 +5,6 @@ using BTSMTL.Timeline;
 
 namespace BTSMTL.WebWorkbench;
 
-public sealed record AuthoringGraphReferenceDefinition(GraphAuthoringFieldId Field,
-    GraphAuthoringDocumentRoleId Role);
-
 public sealed class AuthoringDefinitionSet
 {
     public AuthoringDefinitionSet(AuthoringDefinitionSnapshot source)
@@ -40,11 +37,6 @@ public sealed class AuthoringDefinitionSet
             new(machine.GetProperty("bodyRole").GetString()!), new(machine.GetProperty("conditionRole").GetString()!));
         StateKinds = Nodes.Values.Where(node => node.StateKind.HasValue)
             .ToDictionary(node => node.Id, node => node.StateKind!.Value);
-        GraphReferences = source.Document.GetProperty("nodeAuthoring").EnumerateArray().ToDictionary(
-            node => new GraphAuthoringCapabilityId(node.GetProperty("id").GetString()!),
-            node => (IReadOnlyList<AuthoringGraphReferenceDefinition>)node.GetProperty("graphs").EnumerateArray()
-                .Select(reference => new AuthoringGraphReferenceDefinition(new(reference.GetProperty("field").GetString()!),
-                    new(reference.GetProperty("role").GetString()!))).ToArray());
         TimelineContracts = AuthoringDocumentJson.ReadTimelineContracts(
             source.Document.GetProperty("timelineContracts").GetRawText(), "definitions/timeline-contracts");
         JsonElement timeline = source.Document.GetProperty("timelineAuthoring");
@@ -71,7 +63,6 @@ public sealed class AuthoringDefinitionSet
     public GraphAuthoringFieldId MachineConditionField { get; }
     public AuthoringStateMachineDefinition Machine { get; }
     public IReadOnlyDictionary<GraphAuthoringCapabilityId, AuthoringStateKind> StateKinds { get; }
-    public IReadOnlyDictionary<GraphAuthoringCapabilityId, IReadOnlyList<AuthoringGraphReferenceDefinition>> GraphReferences { get; }
     public TimelineDefinitionCatalog<TimelineClipDefinition> TimelineContracts { get; }
     public AuthoringObjectDefinition Timeline { get; }
     public IReadOnlyDictionary<string, AuthoringObjectDefinition> Tracks { get; }
