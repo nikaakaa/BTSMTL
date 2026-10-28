@@ -1,6 +1,7 @@
 using System;
 using BTSMTL.Authoring.Graph;
 using BTSMTL.Diagnostics;
+using ThirdPersonSimulation;
 
 namespace BTSMTL.Timeline
 {
