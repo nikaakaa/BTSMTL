@@ -119,12 +119,20 @@ export function createClip(track, definitions, references, scale, apply) {
 export function moveClip(timeline, track, clip, contracts, apply) {
   const targets = timeline.tracks.filter(item => contracts.tracks.find(contract => contract.kind === item.contract)
     .allowedClipKinds.includes(clip.contract));
-  dialog('移动片段到轨道', `<label>目标轨道<select name="track">${targets.map(item => `<option value="${html(item.id)}" ${item.id === track.id ? 'selected' : ''}>${html(item.displayName)} · ${html(item.contract)}</option>`).join('')}</select></label><p>菜单按共同轨道合同列出可接收此片段的轨道。保留片段身份、图引用和时间，插入目标轨道末尾，形成同一领域候选。</p>`,
+  const modal = dialog('移动片段及调整顺序', `<label>目标轨道<select name="track">${targets.map(item => `<option value="${html(item.id)}" ${item.id === track.id ? 'selected' : ''}>${html(item.displayName)} · ${html(item.contract)}</option>`).join('')}</select></label><label>目标轨道内的顺序<select name="index"></select></label><p>菜单按共同轨道合同列出可接收此片段的轨道。可调整同轨顺序或跨轨插入位置；默认放在目标轨道末尾。片段身份、图引用和时间保持原值，修改交给同一领域候选。</p>`,
     form => {
-      const target = timeline.tracks.find(item => item.id === new FormData(form).get('track'));
-      return apply({ kind: 'move-clip', sourceTrackId: track.id, targetTrackId: target.id,
-        clipId: clip.id, index: target.clips.length - (target.id === track.id ? 1 : 0) });
+      const input = new FormData(form);
+      return apply({ kind: 'move-clip', sourceTrackId: track.id, targetTrackId: input.get('track'),
+        clipId: clip.id, index: Number(input.get('index')) });
     });
+  const fillPositions = () => {
+    const target = targets.find(item => item.id === modal.querySelector('[name=track]').value);
+    const others = target.clips.filter(item => item.id !== clip.id);
+    modal.querySelector('[name=index]').innerHTML = Array.from({ length: others.length + 1 }, (_, index) =>
+      `<option value="${index}" ${index === others.length ? 'selected' : ''}>${index + 1} · ${index === others.length ? '末尾' : `位于 ${html(others[index].displayName)} 之前`}</option>`).join('');
+  };
+  modal.querySelector('[name=track]').onchange = fillPositions;
+  fillPositions();
 }
 
 export function bindTimelineDrag(surface, timeline, scale, pixels, apply, onError) {

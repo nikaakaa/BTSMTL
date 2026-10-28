@@ -434,7 +434,7 @@ function renderTimelineActions(timeline, target, definition) {
   const clip = track?.clips.find(clip => clip.id === target.id);
   const marker = track?.markers.find(marker => marker.id === target.id);
   const binding = timeline.bindings.find(binding => binding.id === target.id);
-  $('inspector-content').insertAdjacentHTML('afterbegin', `<div class="inspector-actions"><button data-timeline-rename>修改名称</button>${target === timeline ? `<button data-timeline-loop>${timeline.loop ? '改为单次' : '改为循环'}</button>` : ''}${clip ? '<button data-timeline-range>配置时间与素材范围</button><button data-timeline-move-clip>移动到轨道</button>' : ''}${marker ? '<button data-timeline-marker-time>配置时刻</button>' : ''}${track === target ? `<button data-timeline-track-move="-1" ${timeline.tracks.indexOf(track) === 0 ? 'disabled' : ''}>轨道上移</button><button data-timeline-track-move="1" ${timeline.tracks.indexOf(track) === timeline.tracks.length - 1 ? 'disabled' : ''}>轨道下移</button>` : ''}${track || binding ? '<button class="danger" data-timeline-delete>删除当前内容</button>' : ''}</div>`);
+  $('inspector-content').insertAdjacentHTML('afterbegin', `<div class="inspector-actions"><button data-timeline-rename>修改名称</button>${target === timeline ? `<button data-timeline-loop>${timeline.loop ? '改为单次' : '改为循环'}</button>` : ''}${clip ? '<button data-timeline-range>配置时间与素材范围</button><button data-timeline-move-clip>轨道与片段顺序</button>' : ''}${marker ? '<button data-timeline-marker-time>配置时刻</button>' : ''}${track === target ? `<button data-timeline-track-move="-1" ${timeline.tracks.indexOf(track) === 0 ? 'disabled' : ''}>轨道上移</button><button data-timeline-track-move="1" ${timeline.tracks.indexOf(track) === timeline.tracks.length - 1 ? 'disabled' : ''}>轨道下移</button>` : ''}${track || binding ? '<button class="danger" data-timeline-delete>删除当前内容</button>' : ''}</div>`);
   if (binding) $('inspector-content').querySelector('[data-timeline-rename]').remove();
   if (track) {
     const kinds = state.definitions.timelineContracts.tracks.find(contract => contract.kind === track.contract).allowedClipKinds;
@@ -579,6 +579,7 @@ function renderTimeline(timeline) {
     $('document-view').querySelector('.timeline-note').textContent = '拖动片段中部平移，拖动两端只调整对应起止时间；标记可平移。松开时提交一次共同候选，取消拖动不提交。素材范围和其余时间参数保持原值，可在属性中精确编辑。';
     if (!ready) $('document-view').querySelector('.timeline-note').textContent +=
       ' 正式轨道作者字段及初始值尚未导出，新建轨道暂不可用。';
+    $('document-view').insertAdjacentHTML('beforeend', '<p class="authoring-gap">新建标记、绑定及私有片段图尚缺共同创建描述；Section 尚缺共同文档结构与修改协议。当前页面不补造这些内容。</p>');
     bindTimelineDrag($('document-view').querySelector('.timeline-content'), timeline, state.timeScale, pixels,
       applyTimelineEdits, error => report(error.message, true));
   }
