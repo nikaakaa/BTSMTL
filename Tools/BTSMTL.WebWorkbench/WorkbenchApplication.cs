@@ -1,5 +1,4 @@
 using System.Text.Json.Serialization;
-using BTSMTL.Authoring.Workspace;
 
 namespace BTSMTL.WebWorkbench;
 
@@ -35,9 +34,6 @@ public static class WorkbenchApplication
                 Path.Combine(builder.Environment.ContentRootPath, "node_modules", "three")),
             RequestPath = "/vendor/three"
         });
-        string workspacePath = builder.Configuration["Workspace"]
-            ?? throw new InvalidOperationException("请用 --Workspace 指定项目正式作者文档目录。");
-        app.MapAuthoringReadApi(new AuthoringWorkspaceDirectory(workspacePath), "/api/workspace", "authoring-documents");
         app.MapAnimationResourceApi(builder.Configuration["AnimationLibrary"]);
         return app;
     }

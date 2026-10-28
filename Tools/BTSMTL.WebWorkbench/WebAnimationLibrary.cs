@@ -1,7 +1,6 @@
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using BTSMTL.Authoring.Workspace;
 
 namespace BTSMTL.WebWorkbench;
 
@@ -32,7 +31,11 @@ public sealed class WebAnimationLibrary
             Header header = JsonSerializer.Deserialize<Header>(bytes, options)!;
             if (header.Schema != "btsmtl-web-animation-library/1" || !header.Complete)
                 throw new InvalidDataException("网页动画清单尚未完整导出或使用了未知协议。");
-            string path = AuthoringWorkspaceDirectory.Resolve(Path.GetDirectoryName(manifestPath)!, header.File);
+            string directory = Path.GetDirectoryName(manifestPath)!;
+            string path = Path.GetFullPath(Path.Combine(directory, header.File));
+            if (Path.IsPathRooted(header.File) || !path.StartsWith(directory + Path.DirectorySeparatorChar,
+                    StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException($"网页动画文件必须属于清单所在目录：'{header.File}'。");
             using (FileStream file = File.OpenRead(path))
                 if (!string.Equals(Convert.ToHexString(SHA256.HashData(file)), header.Sha256,
                         StringComparison.OrdinalIgnoreCase))
