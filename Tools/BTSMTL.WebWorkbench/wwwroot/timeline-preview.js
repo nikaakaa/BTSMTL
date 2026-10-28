@@ -165,6 +165,7 @@ async function nodeValues(context) {
   const records = preview.frameRecords.get(index).sections.flatMap(section => section.records.map(record => ({ section: section.displayName, record })))
     .filter(entry => entry.record.locations.some(location => location.elementId === context.selectedNode ||
       (location.documentId === context.document.id && entry.section.includes('黑板'))));
+  report(`运行 ${preview.runId.slice(0, 8)} · 帧 ${frame.hostFrame} 的节点记录已读取。`);
   panel.innerHTML = `<h3>运行值 · 帧 ${escapeHtml(frame.hostFrame)}</h3>${records.length ? records.slice(0, 40).map(({ section, record }) =>
     `<details><summary>${escapeHtml(section)} · ${escapeHtml(record.displayName)}</summary>${record.fields.map(field =>
       `<div class="field"><label>${escapeHtml(field.displayName)}</label><code>${escapeHtml(field.value)}</code></div>`).join('')}</details>`).join('')
