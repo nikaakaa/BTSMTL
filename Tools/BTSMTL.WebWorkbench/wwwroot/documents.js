@@ -504,8 +504,12 @@ function renderTimelineActions(timeline, target, definition) {
       '<button data-timeline-configure-fields>同时配置参数</button>');
   Object.keys(target.fields).forEach(id => {
     const field = definition?.fields.find(field => field.id === id);
-    if (field && (!field.visible || !field.writable)) return;
     const element = [...$('inspector-content').querySelectorAll('.field')].find(item => item.querySelector('label').title === id);
+    if (!field) {
+      element.insertAdjacentHTML('beforeend', '<small>当前类型的正式作者定义未声明此字段，暂只读；需由原定义补全后编辑。</small>');
+      return;
+    }
+    if (!field.visible || !field.writable) return;
     element.insertAdjacentHTML('beforeend', `<button class="edit-field" data-timeline-field="${escapeHtml(id)}">编辑作者值</button>`);
   });
   definition?.fields.filter(field => field.visible && !Object.hasOwn(target.fields, field.id)).forEach(field => {
@@ -843,8 +847,8 @@ function handleTimelineAction(event) {
       fields => applyTimelineEdits([configure(fields)]));
   } else if (field) {
     const id = field.dataset.timelineField;
-    const declaration = timelineObjectDefinition(target, state.definitions)?.fields.find(field => field.id === id);
-    editField(declaration || { id }, target.fields[id] || declaration.defaultValue,
+    const declaration = timelineObjectDefinition(target, state.definitions).fields.find(field => field.id === id);
+    editField(declaration, target.fields[id] || declaration.defaultValue,
       value => applyTimelineEdits([configure({ ...target.fields, [id]: value })]), state.references);
   } else if (event.target.closest('[data-timeline-rename]')) {
     renameElement(target.displayName, displayName => applyTimelineEdits([target === timeline
