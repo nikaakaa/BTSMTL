@@ -110,6 +110,8 @@ async function selectRun(id, frameIndex = 0) {
   $('actors').replaceChildren(); $('frame-sections').replaceChildren(); $('frame-json').textContent = '';
   $('compare').disabled = true; $('frame-label').textContent = '无确认帧';
   $('comparison-result').textContent = '';
+  $('run-state').hidden = true; $('run-error-detail').textContent = '';
+  $('run-title').textContent = '读取中';
   updateTransport();
   $('run-identity').textContent = id;
   $('run-select').value = id;
@@ -140,7 +142,9 @@ async function updateRun() {
       const summary = observation.summary;
       state.frames.clear(); observation.frames.forEach((frame, index) => state.frames.set(index, frame));
       await displayObservation(summary, false);
+      if (id !== state.selected) return;
       await sendPendingControl();
+      if (id !== state.selected) return;
       if (!sessionStorage.getItem('btsmtl.preview.pending-control'))
         report(`实际会话${playbackNames[snapshot.state]} · 已记录 ${summary.frameCount} 个确认帧。`);
     }
@@ -158,6 +162,7 @@ async function updateRun() {
   const summary = await request(`/api/preview/runs/${id}/summary`);
   if (id !== state.selected) return;
   await displayObservation(summary, true);
+  if (id !== state.selected) return;
   report(`${stages[receipt.stage]} · 保留 ${summary.frameCount} 个确认帧。`);
   await refresh();
 }
@@ -270,10 +275,9 @@ function pauseHistory() {
   updateTransport();
 }
 
-async function control(command) {
+function control(command) {
   sessionStorage.setItem('btsmtl.preview.pending-control', JSON.stringify({ runId: state.selected, commandId: crypto.randomUUID(), command }));
   updateTransport();
-  await sendPendingControl(); await updateRun();
 }
 
 async function playHistory() {
@@ -309,14 +313,14 @@ $('replay').onchange = sourceVersion; $('run-source').onchange = sourceVersion;
 $('load-inputs').onclick = () => guarded(loadInputs);
 $('start').onclick = () => guarded(start); $('refresh').onclick = () => guarded(refresh);
 $('run-select').onchange = () => { if ($('run-select').value) guarded(() => selectRun($('run-select').value)); };
-$('cancel').onclick = () => guarded(async () => { const result = await request(`/api/preview/runs/${state.selected}/cancel`, {}); report(result.cancellationRequested ? '取消请求已送达，等待进程确认。' : '本宿主没有仍在执行的对应进程，请查询当前回执。'); await updateRun(); });
+$('cancel').onclick = () => guarded(async () => { const result = await request(`/api/preview/runs/${state.selected}/cancel`, {}); report(result.cancellationRequested ? '取消请求已送达，等待进程确认。' : '本宿主没有仍在执行的对应进程，请查询当前回执。'); });
 $('playback-controls').onclick = event => { const button = event.target.closest('[data-control]'); if (button) guarded(() => control(button.dataset.control)); };
 $('preview-toggle').onclick = () => guarded(() => state.sealed ? state.historyPlayback ? pauseHistory() : playHistory() : control(state.playback === 'playing' ? 'Pause' : 'Play'));
 document.querySelectorAll('[data-preview-mode]').forEach(button => { button.onclick = () => guarded(async () => {
   state.mode = button.dataset.previewMode;
   pauseHistory();
   if (state.mode === 'off') {
-    if (state.playback === 'playing') await control('Pause');
+    if (state.playback === 'playing') control('Pause');
     report('预览已关闭');
   }
   updateTransport(); sourceVersion();
