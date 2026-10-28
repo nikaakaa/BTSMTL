@@ -175,6 +175,11 @@ async function displayObservation(summary, sealed) {
   const firstFrame = state.count === 0 && summary.frameCount > 0;
   const first = state.summary === null;
   state.summary = summary; state.count = summary.frameCount;
+  if (first) {
+    const source = state.sources.scenes.find(source => source.revision === summary.contentRevision);
+    $('scene').value = source ? source.path : '';
+    sourceVersion();
+  }
   if (first) observationQuery.bind(state.selected, summary);
   state.sealed = sealed;
   if (executionObservation.runId !== state.selected) await executionObservation.load(state.selected);

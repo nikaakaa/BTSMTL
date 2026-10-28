@@ -96,7 +96,7 @@ export class PreviewGraph {
   setDefinitions(definitions, availability) {
     this.definitions = definitions;
     const select = this.container.querySelector('[data-graph-choice]');
-    select.innerHTML = definitions.map(graph => `<option value="${html(graphKey(graph))}" title="${html(`${graph.displayName}\n角色 ${graph.actorId}\n程序 ${graph.programId}\n版本 ${graph.programRevision}`)}">${html(shortName(graph))}</option>`).join('');
+    select.innerHTML = definitions.map(graph => `<option value="${html(graphKey(graph))}" title="${html(`${graph.displayName}\n角色 ${graph.actorId}\n程序 ${graph.programId}\n版本 ${graph.programRevision}`)}">${html(graph.programId)} · ${html(shortName(graph))}</option>`).join('');
     select.disabled = !definitions.length;
     this.container.querySelector('[data-graph-fit]').disabled = !definitions.length;
     this.container.querySelector('.observation-empty').textContent = definitions.length ? '等待确认帧' :
