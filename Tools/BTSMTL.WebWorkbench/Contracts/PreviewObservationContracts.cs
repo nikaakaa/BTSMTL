@@ -28,17 +28,29 @@ public sealed record PreviewSummary(string RunId, string ContentRevision, string
     string FirstFrame, string LastFrame, int FrameCount, string[] Channels, bool GeometryAvailable,
     PreviewField[] Fields, string RawJson);
 public sealed record PreviewPage<T>(T[] Items, int Total, int? NextOffset);
-// 作者页轻量路线：逐帧只给活动时间轴游标与正在执行的作者对象，完整记录仍按帧读取。
 public sealed record PreviewRoutePlayback(string DocumentId, double CursorSeconds, string Status);
 public sealed record PreviewRouteFrame(string HostFrame, double Seconds, PreviewRoutePlayback[] Playbacks,
-    PreviewAuthoringLocation[] Active);
-public sealed record PreviewRoute(string RunId, string ContentRevision, PreviewRouteFrame[] Frames);
+    PreviewAuthoringLocation[] Active)
+{
+    public PreviewNodeOccurrence[] Nodes { get; init; } = [];
+    public PreviewEdgeOccurrence[] Edges { get; init; } = [];
+    public PreviewPortSample[] Ports { get; init; } = [];
+    public PreviewObservationAvailability[] Availability { get; init; } = [];
+}
+public sealed record PreviewRoute(string RunId, string ContentRevision, PreviewRouteFrame[] Frames)
+{
+    public string Protocol => "btsmtl.preview-route/2";
+    public PreviewObservationAvailability[] Availability { get; init; } = [];
+}
 public sealed record PreviewObservationPage(string RunId, string ContentRevision, string[] Channels,
     string FirstFrame, string LastFrame, int Offset, int Total, int? NextOffset, PreviewFrame[] Items);
 public sealed record PreviewQueryField(string Name, string DisplayName, string InputType, string Placeholder);
 public sealed record PreviewNumberInput(string Name, string DisplayName, string Minimum, string Step, string InitialValue);
 public sealed record PreviewHostDescription(string DisplayName, string FrameDisplayName,
-    PreviewQueryField[] Filters, PreviewNumberInput InputLimit);
+    PreviewQueryField[] Filters, PreviewNumberInput InputLimit)
+{
+    public PreviewModeAvailability[] Modes { get; init; } = [];
+}
 public sealed record PreviewPlaybackObservation(PreviewSummary Summary, PreviewFrame[] Frames);
 public sealed record PreviewPlaybackState(string State, Guid? LastCommandId, PreviewPlaybackObservation Observation);
 public sealed record PreviewPlaybackView(bool Ready, object Receipt, PreviewPlaybackState? Snapshot);
