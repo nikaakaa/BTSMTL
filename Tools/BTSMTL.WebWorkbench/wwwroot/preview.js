@@ -1,9 +1,10 @@
-import { LogicViewport, fixed as fp } from './logic-viewport.js';
+import { LogicViewport } from './logic-viewport.js';
 import { ObservationQuery } from './observation-query.js';
-import { authoringSourceLinks, showAuthoringLocation } from './authoring-locations.js';
+import { showAuthoringLocation } from './authoring-locations.js';
+import { fieldsHtml, sectionsHtml } from './preview-records.js';
 
 const $ = id => document.getElementById(id);
-const state = { sources: null, runs: [], selected: null, summary: null, frames: new Map(), count: 0, sealed: false, initialFrameIndex: 0, inputCatalog: null, inputScene: null, sourceMap: null };
+const state = { sources: null, runs: [], selected: null, summary: null, frames: new Map(), count: 0, sealed: false, initialFrameIndex: 0, inputCatalog: null, inputScene: null, host: null };
 let pollTimer;
 const stages = { accepted: '已接收', running: '独立会话运行中', completed: '完整运行已封存', stopped: '会话已停止并封存', failed: '执行失败', cancelled: '已取消' };
 const playbackNames = { paused: '已暂停', playing: '正在播放', stepping: '等待下一个确认帧', stopped: '已停止', completed: '已完成' };
@@ -175,10 +176,7 @@ async function selectRun(id, frameIndex = 0) {
   history.replaceState(null, '', `?run=${encodeURIComponent(id)}&frameIndex=${frameIndex}`);
   $('playback-controls').hidden = true;
   clearActors(); $('run-details').replaceChildren(); $('frame-facts').replaceChildren();
-  $('actors').replaceChildren(); $('action-changes').replaceChildren(); $('frame-json').textContent = '';
-  $('timeline-playbacks').replaceChildren();
-  state.sourceMap = null;
-  ['operation-states', 'blackboard-values', 'combat-facts', 'output-events'].forEach(id => $(id).replaceChildren());
+  $('actors').replaceChildren(); $('frame-sections').replaceChildren(); $('frame-json').textContent = '';
   $('frame').disabled = true; $('previous-frame').disabled = true; $('next-frame').disabled = true;
   $('fit-view').disabled = true; $('compare').disabled = true; $('frame-label').textContent = '无确认帧';
   $('comparison-result').textContent = '';
@@ -210,7 +208,7 @@ async function updateRun() {
           (button.dataset.control === 'Step' && snapshot.state !== 'paused');
       });
       const observation = snapshot.observation;
-      const summary = { ...observation, frameCount: observation.frames.length };
+      const summary = observation.summary;
       state.frames.clear(); observation.frames.forEach((frame, index) => state.frames.set(index, frame));
       await displayObservation(summary, false);
       await sendPendingControl();
@@ -237,13 +235,11 @@ async function displayObservation(summary, sealed) {
   if (first) observationQuery.bind(state.selected, summary);
   state.sealed = sealed;
   if (sealed && state.initialFrameIndex > 0 && state.initialFrameIndex >= state.count) throw new Error('请求的帧序号超出本次已封存范围。');
-  const facts = { '运行身份': summary.runId, '场景修订': summary.sceneRevision,
-    '原录像修订': summary.replaySourceHash, '来源场景': summary.scene.path,
-    '场景定义': summary.definition.path, '内容身份': summary.sessionIdentity.gameplayContent,
-    'TickRate': summary.sessionIdentity.tickRate, 'SDK 帧范围': `${summary.initialSdkFrame} — ${summary.lastSdkFrame}`,
-    '已记录确认帧': summary.frameCount, '记录状态': sealed ? '已封存' : '实际会话观察中' };
-  $('run-details').innerHTML = Object.entries(facts).map(([name, value]) => `<dt>${escapeHtml(name)}</dt><dd>${escapeHtml(value)}</dd>`).join('');
-  $('channels').textContent = `本次实际观察：${summary.channels.join('、')}。${summary.channels.includes('collision-geometry') ? '视口显示 SDK 世界、角色接收体、扫掠采样两端及实际命中点。' : '该记录只提供角色根坐标轴；参考网格不代表碰撞地面。'}`;
+  $('run-details').innerHTML = fieldsHtml([...summary.fields,
+    { displayName: `${summary.frameDisplayName}范围`, value: `${summary.firstFrame} — ${summary.lastFrame}` },
+    { displayName: '已记录确认帧', value: summary.frameCount },
+    { displayName: '记录状态', value: sealed ? '已封存' : '实际会话观察中' }]);
+  $('channels').textContent = `本次实际观察：${summary.channels.join('、')}。${summary.geometryAvailable ? '视口显示世界、角色接收体、扫掠采样两端及实际命中点。' : '该记录只提供角色根坐标轴；参考网格不代表碰撞地面。'}`;
   $('frame').max = Math.max(0, state.count - 1);
   if (first) $('frame').value = state.initialFrameIndex;
   if (!sealed && $('follow-live').checked) $('frame').value = Math.max(0, state.count - 1);
@@ -260,7 +256,7 @@ async function sendPendingControl() {
   const result = await request(`/api/preview/runs/${runId}/controls`, command);
   if (result.stage === 'submitted') { report('命令已提交，等待真实会话确认。'); return; }
   sessionStorage.removeItem('btsmtl.preview.pending-control');
-  report(result.stage === 'applied' ? `命令已执行，实际确认帧 ${result.verifiedFrame ?? '尚未形成'}。` : result.error,
+  report(result.stage === 'applied' ? `命令已执行，实际确认帧 ${result.hostFrame ?? '尚未形成'}。` : result.error,
     result.stage !== 'applied');
 }
 
@@ -274,113 +270,29 @@ async function showFrame(index) {
     result.items.forEach((frame, offset) => state.frames.set(page + offset, frame));
   }
   if (index !== Number($('frame').value)) return;
-  let frame = state.frames.get(index);
-  let observation = null;
-  if (state.summary.channels.some(channel => ['collision-geometry', 'operation-states', 'blackboard-values', 'output-events'].includes(channel))) {
-    if (state.summary.channels.includes('collision-geometry') && !viewport.geometry) {
-      const geometry = await request(`/api/preview/runs/${id}/geometry`);
-      if (id !== state.selected || index !== Number($('frame').value)) return;
-      viewport.setGeometry(geometry);
-    }
-    if (state.sourceMap === null) {
-      const sources = []; let offset = 0;
-      do {
-        const page = await request(`/api/preview/runs/${id}/source-map?offset=${offset}&limit=512`);
-        if (id !== state.selected || index !== Number($('frame').value)) return;
-        sources.push(...page.items); offset = page.nextOffset;
-      } while (offset !== null);
-      state.sourceMap = sources;
-    }
-    const page = await request(`/api/preview/runs/${id}/observations?firstFrame=${frame.frame}&lastFrame=${frame.frame}&offset=0&limit=1`);
+  const frame = state.frames.get(index);
+  if (state.summary.geometryAvailable && !viewport.geometry) {
+    const geometry = await request(`/api/preview/runs/${id}/geometry`);
     if (id !== state.selected || index !== Number($('frame').value)) return;
-    observation = page.items[0]; frame = observation.frame;
+    viewport.setGeometry(geometry);
   }
   $('previous-frame').disabled = index === 0; $('next-frame').disabled = index === state.count - 1;
-  $('frame-label').textContent = `SDK ${frame.frame}`;
-  $('frame-facts').innerHTML = `<dt>确认 SDK 帧</dt><dd>${escapeHtml(frame.frame)}</dd><dt>玩法 Tick</dt><dd>${escapeHtml(frame.gameplayTick)}</dd><dt>完整 checksum</dt><dd><code>${escapeHtml(frame.checksum)}</code></dd>`;
-  $('actors').innerHTML = frame.actors.map(actor => `<div class="actor-fact"><strong>Roster ${actor.rosterIndex}</strong> · Entity ${actor.entityIndex}:${actor.entityVersion}<code>Position FP Raw · ${actor.positionRaw.map(escapeHtml).join(' / ')}</code><code>Rotation FP Raw · ${actor.rotationRaw.map(escapeHtml).join(' / ')}</code></div>`).join('');
-  if (state.summary.channels.includes('action-changes')) {
-    $('action-changes').innerHTML = frame.actionChanges.length ? frame.actionChanges.map(action => {
-      const hasAction = action.instanceId !== '0';
-      const title = hasAction ? `动作实例 ${action.instanceId} · ${action.phase}` : `激活请求 ${action.requestId} · ${action.admission}`;
-      const facts = { '角色': `Roster ${action.rosterIndex}`, '能力资产': action.abilityAssetId,
-        '输入序号': action.inputSequence, '执行代数': action.executionGeneration,
-        '上下文 / 操作': `${action.contextId} / ${action.entryOperationIndex}`,
-        '业务结果': action.committed ? '动作已提交' : action.reason,
-        '控制意图': action.controlIntent, '执行失败': action.stepKind };
-      return `<div class="actor-fact"><strong>${escapeHtml(title)}</strong><dl>${Object.entries(facts)
-        .filter(([, value]) => value !== null && value !== '')
-        .map(([name, value]) => `<dt>${escapeHtml(name)}</dt><dd>${escapeHtml(value)}</dd>`).join('')}</dl></div>`;
-    }).join('') : '<p class="muted">此确认帧没有动作变化。完整请求与失败字段保留在同源 JSON 中。</p>';
-  } else $('action-changes').innerHTML = '<p class="muted">此运行未采集动作变化通道。</p>';
-  if (state.summary.channels.includes('timeline-playbacks')) {
-    $('timeline-playbacks').innerHTML = frame.timelinePlaybacks.length ? frame.timelinePlaybacks.map(playback => {
-      const facts = { '角色 / 播放槽': `${playback.rosterIndex} / ${playback.playbackSlot}`,
-        '实际内容': playback.contentIdentity, '内容修订': playback.contentRevision,
-        '播放 / 父播放': `${playback.playbackIdentity} / ${playback.callerPlaybackIdentity}`,
-        '所属动作 / 输入': `${playback.ownerInstanceId} / ${playback.inputSequence}`,
-        '调用来源': playback.sourceIdentity, '来源代数': playback.sourceGeneration,
-        '逻辑游标': `${fp(playback.cursorTimeRaw).toFixed(4)} 秒 · raw ${playback.cursorTimeRaw}`,
-        '倍率 / 循环': `${fp(playback.rateRaw).toFixed(4)} / ${playback.cycle}`,
-        '状态': `${playback.status}${playback.paused ? ' · 暂停' : ''}` };
-      return `<div class="actor-fact"><strong>逻辑 Timeline · ${escapeHtml(playback.playbackIdentity)}</strong><dl>${Object.entries(facts)
-        .map(([name, value]) => `<dt>${escapeHtml(name)}</dt><dd>${escapeHtml(value)}</dd>`).join('')}</dl></div>`;
-    }).join('') : '<p class="muted">此确认帧没有活动的逻辑 Timeline。</p>';
-  } else $('timeline-playbacks').innerHTML = '<p class="muted">此运行未采集 Timeline 播放通道。</p>';
-  renderCommittedFacts(frame, observation);
-  $('frame-json').textContent = JSON.stringify(observation || frame, null, 2);
-  viewport.draw(frame, observation?.queries || []);
+  $('frame-label').textContent = `${state.summary.frameDisplayName} ${frame.hostFrame}`;
+  $('frame-facts').innerHTML = fieldsHtml([{ displayName: '运行相对秒数', value: frame.seconds },
+    ...frame.fields, ...(frame.consistency ? [{ displayName: frame.consistency.displayName, value: frame.consistency.value }] : [])]);
+  $('actors').innerHTML = frame.actors.map(actor => `<article class="actor-fact"><strong>${escapeHtml(actor.displayName)}</strong><dl>${fieldsHtml(actor.fields)}</dl><details><summary>原始角色记录</summary><pre>${escapeHtml(actor.rawJson)}</pre></details></article>`).join('');
+  $('frame-sections').innerHTML = sectionsHtml(frame.sections);
+  $('frame-json').textContent = frame.rawJson;
+  viewport.draw(frame);
   const rendered = document.documentElement.dataset;
   rendered.previewRun = state.summary.runId;
-  rendered.previewFrame = String(frame.frame);
+  rendered.previewFrame = frame.hostFrame;
   rendered.previewFrameIndex = String(index);
-  rendered.previewChecksum = frame.checksum;
-  rendered.previewScene = state.summary.sceneRevision;
-  rendered.previewRendered = viewport.geometry ? 'sdk-world-receivers-sweeps-hits' : 'root-axes';
+  rendered.previewConsistency = frame.consistency?.value ?? '';
+  rendered.previewContent = state.summary.contentRevision;
+  rendered.previewRendered = viewport.geometry ? 'world-receivers-sweeps-contacts' : 'root-axes';
   rendered.previewImageReady = 'true';
   history.replaceState(null, '', `?run=${encodeURIComponent(id)}&frameIndex=${index}`);
-}
-
-function renderCommittedFacts(frame, observation) {
-  const detail = (title, fields, links = '') => `<div class="actor-fact"><strong>${escapeHtml(title)}</strong><dl>${Object.entries(fields)
-    .filter(([, value]) => value !== null && value !== undefined && value !== '')
-    .map(([name, value]) => `<dt>${escapeHtml(name)}</dt><dd>${escapeHtml(value)}</dd>`).join('')}</dl><div class="source-links">${links}</div></div>`;
-  $('operation-states').innerHTML = observation?.operations.length ? observation.operations.map(operation => {
-    const sources = state.sourceMap.filter(map => map.rosterIndex === operation.rosterIndex &&
-      map.programIndex === operation.programIndex && map.source.targetKind === 'Operation' && map.source.targetIndex === operation.operationIndex);
-    return detail(`${operation.status} · Roster ${operation.rosterIndex}`, {
-      '活动状态': operation.activeState, '待进入状态': operation.pendingState, '退出状态': operation.exitingState,
-      '实际转移': operation.transition, '动作 / 播放': `${operation.actionInstanceId} / ${operation.playbackIdentity}`,
-      '执行 / 调用代次': `${operation.executionGeneration} / ${operation.generation}`,
-      '作者来源': sources.map(map => `${map.source.graphId} / ${map.source.nodeId || map.source.edgeId}`).join('；')
-    }, authoringSourceLinks(sources.map(map => map.source)));
-  }).join('') : `<p class="muted">${state.summary.channels.includes('operation-states') ? '本帧没有活动操作记录。' : '该运行未采集操作状态。'}</p>`;
-  $('blackboard-values').innerHTML = observation?.variables.length ? observation.variables.map(variable => detail(variable.key, {
-    '有效值': variable.available ? JSON.stringify(variable.value) : variable.reason,
-    '类型': variable.valueType, '作用域 / 生命周期': `${variable.scope} / ${variable.lifetime}`,
-    '动作 / 执行代次': `${variable.actionInstanceId} / ${variable.executionGeneration}`,
-    '调用代次': variable.invocationGeneration, '声明来源': `${variable.graphId} / ${variable.declarationId}`,
-    '调用路径': variable.invocationPath
-  }, authoringSourceLinks([{ graphId: variable.graphId, declarationId: variable.declarationId }]))).join('') : `<p class="muted">${state.summary.channels.includes('blackboard-values') ? '本帧没有对应调用的黑板观察。' : '该运行未采集黑板有效值。'}</p>`;
-  const hits = frame.hits || [], failures = frame.queryFailures || [], queries = observation?.queries || [];
-  $('combat-facts').innerHTML = hits.map(hit => detail(`实际命中 ${hit.resultId}`, {
-    '攻击方 → 目标': `${hit.sourceIndex}:${hit.sourceVersion} → ${hit.targetIndex}:${hit.targetVersion}`,
-    '动作 / 执行代次': `${hit.attack.actionInstanceId} / ${hit.attack.executionGeneration}`,
-    '命中点 FP Raw': hit.pointRaw.join(' / '), '法线 FP Raw': hit.normalRaw.join(' / '),
-    '接触时刻 FP Raw': hit.contactTimeRaw, '处理结果': hit.disposition
-  })).concat(failures.map(failure => detail('实际查询失败', { '失败种类': failure.kind, '扫掠状态': failure.sweepStatus,
-    '请求': failure.requestId, '动作实例': failure.attack.actionInstanceId })),
-  queries.map(query => detail(`扫掠查询 · ${query.status}`, { '攻击事件': query.attackEventId,
-    '正式后端已执行': query.backendInvoked, '采样分段 / 目标': `${query.segments.length} / ${query.targets.length}`,
-    '动作 / 播放': `${query.attack.actionInstanceId} / ${query.attack.playbackIdentity}` }))).join('') ||
-    `<p class="muted">${state.summary.channels.includes('combat-results') ? '本帧没有命中或失败事实。' : '该运行未采集命中通道。'}</p>`;
-  $('output-events').innerHTML = observation?.outputEvents.length ? observation.outputEvents.map(event => detail(
-    `${event.kind} · ${event.lifecycle}`, { '角色 / 动作': `${event.rosterIndex} / ${event.actionInstanceId}`,
-      '逻辑 Tick': event.logicTick, '播放身份': event.playbackIdentity, '来源': event.sourceIdentity,
-      '实际请求数': event.requests.length, '请求来源': event.requests.map(request => request.sourceIdentity).join('；') },
-    authoringSourceLinks(state.sourceMap.filter(map => map.rosterIndex === event.rosterIndex &&
-      (map.identity === event.sourceIdentity || event.requests.some(request => request.sourceIdentity === map.identity)))
-      .map(map => map.source)))).join('') : `<p class="muted">${state.summary.channels.includes('output-events') ? '本帧没有表现请求事件。' : '该运行未采集表现请求。'}</p>`;
 }
 
 const viewport = new LogicViewport($('viewport'));
@@ -411,5 +323,17 @@ $('frame').oninput = () => { $('follow-live').checked = false; guarded(() => sho
 function moveFrame(delta) { $('follow-live').checked = false; $('frame').value = Math.max(0, Math.min(state.count - 1, Number($('frame').value) + delta)); return showFrame(Number($('frame').value)); }
 $('previous-frame').onclick = () => guarded(() => moveFrame(-1)); $('next-frame').onclick = () => guarded(() => moveFrame(1));
 $('fit-view').onclick = fitView;
-$('compare').onclick = () => guarded(async () => { const result = await request(`/api/preview/runs/${state.selected}/compare/${$('comparison').value}`); $('comparison-result').textContent = JSON.stringify(result, null, 2); report(!result.comparable ? '运行条件不同，未比较 checksum。' : result.equal ? `已比较 ${result.comparedFrames} 帧，本次已记录范围内一致。` : `首个差异在 SDK 帧 ${result.firstDifference.frame}。`); });
-guarded(async () => { await refresh(); const pending = sessionStorage.getItem('btsmtl.preview.pending-request'); if (pending) { report('上次提交结果尚未确认，正在以原请求身份重查。'); await start(); } else { const query = new URLSearchParams(location.search); const run = query.get('run'); if (run) await selectRun(run, Number(query.get('frameIndex') ?? '0')); else report('已读取实际来源。选择正式离线包与原 SDK 录像后可提交重放。'); } });
+$('compare').onclick = () => guarded(async () => { const result = await request(`/api/preview/runs/${state.selected}/compare/${$('comparison').value}`); $('comparison-result').textContent = result.rawJson; report(!result.comparable ? '运行条件不同，未比较一致性值。' : result.equal ? `已比较 ${result.comparedFrames} 帧，本次已记录范围内一致。` : `首个差异在${state.summary.frameDisplayName} ${result.firstDifference.hostFrame}。`); });
+guarded(async () => {
+  const host = await request('/api/preview/host');
+  if (!host.available) { $('connection').textContent = '未接入运行宿主'; report('当前工作台未接入运行宿主。作者页面仍可继续工作。'); return; }
+  state.host = host.description; observationQuery.configure(state.host);
+  await refresh();
+  const pending = sessionStorage.getItem('btsmtl.preview.pending-request');
+  if (pending) { report('上次提交结果尚未确认，正在以原请求身份重查。'); await start(); }
+  else {
+    const query = new URLSearchParams(location.search), run = query.get('run');
+    if (run) await selectRun(run, Number(query.get('frameIndex') ?? '0'));
+    else report('已读取实际来源。选择正式内容与录像后可提交重放。');
+  }
+});

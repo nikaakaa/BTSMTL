@@ -1,3 +1,6 @@
 using BTSMTL.WebWorkbench;
 
-WorkbenchApplication.Create(args).Run();
+var app = WorkbenchApplication.Create(args);
+app.MapPreviewApi(null);
+app.MapPreviewImageApi(null);
+app.Run();

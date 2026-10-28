@@ -21,7 +21,7 @@ public static class WorkbenchApplication
             context.Response.StatusCode = exception switch
             {
                 FileNotFoundException or DirectoryNotFoundException or KeyNotFoundException => 404,
-                ArgumentException or InvalidDataException => 400,
+                ArgumentException or InvalidDataException or FormatException or OverflowException or System.Text.Json.JsonException => 400,
                 InvalidOperationException => 409,
                 _ => 500
             };

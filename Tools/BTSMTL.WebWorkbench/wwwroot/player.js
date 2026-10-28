@@ -1,6 +1,8 @@
+import { fieldsHtml } from './preview-records.js';
+
 const $ = id => document.getElementById(id);
 const state = { builds: [], lives: [], runs: [], scenes: [], selected: null, socket: null, live: null,
-  alignment: null, frame: -1, video: null, dotnet: new Map(), dotnetRun: null, keys: new Set(),
+  alignment: null, frame: null, video: null, dotnet: new Map(), dotnetRun: null, source: null, keys: new Set(),
   mouse: { dx: 0, dy: 0, buttons: 0, scroll: 0 }, captured: false, pendingCamera: null, acks: [] };
 const playerStates = { idle: '空闲，等待载入', loading: '正在载入离线包', paused: '已暂停', playing: '正在播放', stepping: '单步中', seeking: '正在跳帧', failed: '载入或运行失败' };
 const alignmentNames = { matched: '一致', mismatch: '不一致', pending: '等待对照', 'no-dotnet-record': '.NET 记录未封存', 'live-input': '实时试玩（无对照）', 'not-loaded': '未载入' };
@@ -70,7 +72,7 @@ async function startLive() {
 
 function select(id) {
   state.socket?.close();
-  state.selected = id; state.live = null; state.alignment = null; state.frame = -1; state.acks = [];
+  state.selected = id; state.live = null; state.alignment = null; state.frame = null; state.acks = [];
   $('acks').textContent = ''; $('live-identity').textContent = id;
   history.replaceState(null, '', `?live=${encodeURIComponent(id)}`);
   const socket = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/preview/live/${id}/view`);
@@ -92,7 +94,7 @@ function send(type, fields = {}, needsId = true) {
 async function onText(message) {
   switch (message.type) {
     case 'status': state.live = message.live; state.alignment = message.live.alignment; renderLive(); break;
-    case 'frames': state.alignment = message.alignment; if (message.items.length) state.frame = message.items.at(-1).frame; renderAlignment(); break;
+    case 'frames': state.alignment = message.alignment; if (message.items.length) state.frame = message.items.at(-1).hostFrame; renderAlignment(); break;
     case 'ack': case 'pick': onAck(message); break;
     case 'error': report(message.error, true); break;
   }
@@ -103,14 +105,14 @@ function onAck(message) {
   $('acks').textContent = state.acks.map(ack => JSON.stringify(ack, null, 1)).join('\n');
   if (message.type === 'pick') {
     $('pick-result').innerHTML = message.actorId
-      ? `<div class="actor-fact"><strong>${escapeHtml(message.actorId)}</strong> · 确认帧 ${message.frame}<code>根位置 ${message.position.map(value => value.toFixed(3)).join(' / ')}</code>${message.hitCollider ? `<code>射线命中 ${escapeHtml(message.hitCollider)}</code>` : ''}<button id="focus-picked">环绕此角色</button></div>`
+      ? `<div class="actor-fact"><strong>${escapeHtml(message.actorId)}</strong> · 确认帧 ${message.hostFrame}<code>根位置 ${message.position.map(value => value.toFixed(3)).join(' / ')}</code>${message.hitCollider ? `<code>射线命中 ${escapeHtml(message.hitCollider)}</code>` : ''}<button id="focus-picked">环绕此角色</button></div>`
       : `<p class="muted">点击处附近没有角色${message.hitCollider ? `；射线命中 ${escapeHtml(message.hitCollider)}` : ''}。</p>`;
     $('focus-picked')?.addEventListener('click', () => guarded(async () => {
       $('orbit').checked = true; send('camera', { mode: 'orbit', focusActorId: message.actorId }, false);
     }));
     return;
   }
-  report(message.ok ? `命令已执行 · 确认帧 ${message.frame}` : `命令被拒绝：${message.error}`, !message.ok);
+  report(message.ok ? `命令已执行 · 确认帧 ${message.hostFrame}` : `命令被拒绝：${message.error}`, !message.ok);
   if (message.ok && message.path) {
     const name = message.commandId.replaceAll('-', '') + '.png';
     report(`截图已保存：${message.path}`);
@@ -126,16 +128,11 @@ function renderLive() {
     !player ? '等待播放器连回主机…' : player.state === 'idle' ? '已连接。选择运行或离线包载入。' : '');
   $('live-state').classList.toggle('error', !!player?.error);
   if (player) {
-    state.frame = player.frame;
-    const facts = { '构建': live.buildId, '场景修订': player.sceneRevision, '输入方式': player.inputMode === 'device' ? '实时试玩' : player.inputMode === 'schedule' ? '输入日程' : '',
-      '确认帧': player.frame, '结束帧': player.lastSdkFrame || '不限', '日程零点': player.scheduleStartFrame,
-      '表现就绪': player.presentationPrepared ? '是' : '否', '相机': player.cameraMode === 'orbit' ? `环绕 ${player.focusActorId}` : '游戏相机',
-      '角色': (player.actors || []).join('、'), '缺少资源': player.missingResource, '失败类型': player.failureKind };
-    $('live-facts').innerHTML = Object.entries(facts).filter(([, value]) => value !== '' && value !== undefined && value !== -1)
-      .map(([name, value]) => `<dt>${escapeHtml(name)}</dt><dd>${escapeHtml(value)}</dd>`).join('');
-    if (player.lastSdkFrame > 0) $('seek').max = player.lastSdkFrame;
-    else $('seek').max = Math.max(Number($('seek').max), player.frame);
-    if (document.activeElement !== $('seek')) $('seek').value = Math.max(0, player.frame);
+    state.frame = player.hostFrame;
+    $('live-facts').innerHTML = fieldsHtml([{ displayName: '构建', value: live.buildId }, ...player.fields]);
+    if (player.lastFrame !== null) $('seek').max = player.lastFrame;
+    else $('seek').max = Math.max(Number($('seek').max), Number(player.hostFrame));
+    if (document.activeElement !== $('seek')) $('seek').value = Math.max(0, Number(player.hostFrame));
     $('orbit').checked = player.cameraMode === 'orbit';
   }
   renderAlignment(); updateControls();
@@ -143,7 +140,7 @@ function renderLive() {
 
 function renderAlignment() {
   const alignment = state.alignment;
-  $('frame-label').textContent = state.frame >= 0 ? `SDK ${state.frame}` : '无确认帧';
+  $('frame-label').textContent = state.frame !== null ? `${state.source.frameDisplayName} ${state.frame}` : '无确认帧';
   if (!alignment) { $('alignment').replaceChildren(); return; }
   const facts = { '结论': alignmentNames[alignment.state] ?? alignment.state, '已对照帧': alignment.comparedFrames,
     '首个不一致': alignment.firstMismatchFrame, '播放器最新帧': alignment.lastPlayerFrame, '需要的更新': alignment.changeKind, '说明': alignment.reason };
@@ -169,13 +166,11 @@ function updateControls() {
   $('load-scene').disabled = !connected || !$('scene').value || player?.state === 'loading';
 }
 
-// 画面帧：84 字节帧头（'Q3PV'、确认帧、宽、高、标志、viewProjection 列主序）后接 JPEG。
 async function onVideo(buffer) {
-  const header = new DataView(buffer, 0, 84);
-  const frame = header.getInt32(4, true), width = header.getInt32(8, true), height = header.getInt32(12, true);
-  const flipY = (header.getInt32(16, true) & 1) !== 0;
-  const matrix = Array.from({ length: 16 }, (_, index) => header.getFloat32(20 + index * 4, true));
-  const image = await createImageBitmap(new Blob([new Uint8Array(buffer, 84)], { type: 'image/jpeg' }));
+  const metadataLength = new DataView(buffer, 0, 4).getInt32(0, true);
+  const metadata = JSON.parse(new TextDecoder().decode(new Uint8Array(buffer, 4, metadataLength)));
+  const { hostFrame, width, height, flipY, worldToClip } = metadata;
+  const image = await createImageBitmap(new Blob([new Uint8Array(buffer, 4 + metadataLength)], { type: metadata.mediaType }));
   const canvas = $('video'), overlay = $('overlay');
   if (canvas.width !== width || canvas.height !== height) { canvas.width = overlay.width = width; canvas.height = overlay.height = height; }
   const context = canvas.getContext('2d');
@@ -183,11 +178,9 @@ async function onVideo(buffer) {
   if (flipY) { context.translate(0, height); context.scale(1, -1); }
   context.drawImage(image, 0, 0, width, height);
   context.restore(); image.close();
-  state.video = { frame, width, height, matrix };
+  state.video = { hostFrame, width, height, matrix: worldToClip };
   await drawOverlay();
 }
-
-function fp(value) { const raw = BigInt(value); return Number(raw / 65536n) + Number(raw % 65536n) / 65536; }
 
 async function drawOverlay() {
   const overlay = $('overlay'), context = overlay.getContext('2d');
@@ -195,19 +188,19 @@ async function drawOverlay() {
   const video = state.video;
   if (!$('overlay-dotnet').checked || !video || !state.live?.runId) return;
   await loadDotnetFrames(state.live.runId);
-  const record = state.dotnet.get(video.frame);
+  const record = state.dotnet.get(video.hostFrame);
   if (!record) return;
   const m = video.matrix;
   context.font = '12px Consolas, monospace'; context.lineWidth = 2;
   for (const actor of record.actors) {
-    const [x, y, z] = actor.positionRaw.map(fp);
+    const [x, y, z] = actor.root.position;
     const cx = m[0] * x + m[4] * y + m[8] * z + m[12], cy = m[1] * x + m[5] * y + m[9] * z + m[13];
     const cw = m[3] * x + m[7] * y + m[11] * z + m[15];
     if (cw <= 0) continue;
     const sx = (cx / cw + 1) / 2 * video.width, sy = (1 - cy / cw) / 2 * video.height;
     context.strokeStyle = context.fillStyle = '#89dec9';
     context.beginPath(); context.arc(sx, sy, 8, 0, Math.PI * 2); context.stroke();
-    context.fillText(`.NET Roster ${actor.rosterIndex}`, sx + 11, sy - 6);
+    context.fillText(actor.displayName, sx + 11, sy - 6);
   }
 }
 
@@ -216,7 +209,7 @@ async function loadDotnetFrames(runId) {
   state.dotnetRun = runId; state.dotnet.clear();
   for (let offset = 0; offset !== null;) {
     const page = await request(`/api/preview/runs/${runId}/frames?offset=${offset}&limit=512`);
-    page.items.forEach(frame => state.dotnet.set(frame.frame, frame));
+    page.items.forEach(frame => state.dotnet.set(frame.hostFrame, frame));
     offset = page.nextOffset;
   }
 }
@@ -322,7 +315,7 @@ $('load-scene').onclick = () => guarded(async () => {
   send('load', { scene: scene.path, sceneRevision: scene.revision, inputMode: 'device' }); report('正在载入离线包，完成后可接管输入试玩…');
 });
 $('transport').onclick = event => { const button = event.target.closest('[data-command]'); if (button) guarded(async () => send(button.dataset.command, button.dataset.command === 'step' ? { count: 1 } : {})); };
-$('seek').onchange = () => guarded(async () => { send('seek', { frame: Number($('seek').value) }); report(`跳到 SDK ${$('seek').value}…`); });
+$('seek').onchange = () => guarded(async () => { send('seek', { frame: Number($('seek').value) }); report(`跳到${state.source.frameDisplayName} ${$('seek').value}…`); });
 $('orbit').onchange = () => guarded(async () => { send('camera', { mode: $('orbit').checked ? 'orbit' : 'game' }, false); updateControls(); });
 $('reset-camera').onclick = () => guarded(async () => send('camera', { mode: 'orbit', reset: true }, false));
 $('overlay-dotnet').onchange = () => guarded(drawOverlay);
@@ -330,8 +323,12 @@ $('capture-input').onchange = () => { if (!$('capture-input').checked) { documen
 $('capture').onclick = () => guarded(async () => send('capture'));
 
 requestAnimationFrame(tick);
-setInterval(() => guarded(refresh), 3000);
 guarded(async () => {
+  const source = await request('/api/preview/images');
+  if (!source.available) { $('connection').textContent = '未接入画面来源'; report('当前工作台未接入画面来源，可返回作者页继续工作。'); return; }
+  state.source = source.description;
+  $('connection').textContent = state.source.displayName;
+  setInterval(() => guarded(refresh), 3000);
   await refresh();
   if (sessionStorage.getItem('btsmtl.player.pending-start')) { report('上次启动结果尚未确认，正在以原请求身份重查。'); await startLive(); return; }
   const live = new URLSearchParams(location.search).get('live');

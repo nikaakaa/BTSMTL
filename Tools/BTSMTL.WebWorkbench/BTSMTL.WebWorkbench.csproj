@@ -15,6 +15,8 @@
     <Compile Include="AuthoringGraphEditsApi.cs" />
     <Compile Include="AuthoringPortProjection.cs" />
     <Compile Include="AuthoringTimelineEditTransport.cs" />
+    <Compile Include="PreviewApi.cs" />
+    <Compile Include="PreviewImageApi.cs" />
     <Compile Include="WebAnimationLibrary.cs" />
     <Compile Include="AnimationResourceApi.cs" />
     <ProjectReference Include="../../Projects/BTSMTL.Authoring.Workspace/BTSMTL.Authoring.Workspace.csproj" />

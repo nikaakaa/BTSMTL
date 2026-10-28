@@ -2,16 +2,10 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { ConvexGeometry } from 'three/addons/geometries/ConvexGeometry.js';
 
-export function fixed(value) {
-  const raw = BigInt(value);
-  return Number(raw / 65536n) + Number(raw % 65536n) / 65536;
-}
-
-const position = raw => new THREE.Vector3(fixed(raw[0]), fixed(raw[1]), -fixed(raw[2]));
+const position = value => new THREE.Vector3(...value);
 function pose(object, value) {
-  object.position.copy(position(value.positionRaw));
-  const [x, y, z, w] = value.rotationRaw.map(fixed);
-  object.quaternion.set(-x, -y, z, w);
+  object.position.copy(position(value.position));
+  object.quaternion.set(...value.rotation);
 }
 
 function clear(group) {
@@ -68,19 +62,14 @@ export class LogicViewport {
   setGeometry(geometry) {
     clear(this.world);
     this.geometry = geometry;
-    if (geometry.coordinateSystem !== 'quantum-y-up-left-handed' || geometry.lengthUnit !== 'metre' ||
-        geometry.fixedPointScale !== '65536') throw new Error('本次运行几何坐标或定点单位与视口合同不同。');
     geometry.world.forEach(collider => {
       if (['Mesh', 'Terrain'].includes(collider.kind)) return;
-      const radius = fixed(collider.radiusRaw);
-      const shape = primitive(collider.kind, radius, (fixed(collider.heightRaw) - radius * 2) / 2,
-        collider.halfExtentsRaw.map(fixed));
+      const shape = primitive(collider.kind, collider.radius, collider.halfLength, collider.halfExtents);
       const object = new THREE.Mesh(shape, material(collider.isTrigger ? '#8164ad' : '#426b7c', 0.45));
       pose(object, collider.pose); object.userData.identity = collider.identity; this.world.add(object);
     });
     if (geometry.worldTriangles.length) {
-      const vertices = geometry.worldTriangles.flatMap(triangle => [triangle.a, triangle.c, triangle.b]
-        .flatMap(raw => position(raw).toArray()));
+      const vertices = geometry.worldTriangles.flatMap(triangle => [triangle.a, triangle.b, triangle.c].flat());
       const surface = new THREE.BufferGeometry();
       surface.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
       this.world.add(new THREE.Mesh(surface, material('#426b7c', 0.45)));
@@ -97,40 +86,40 @@ export class LogicViewport {
       });
       return group;
     }
-    const geometry = definition.kind === 'ConvexHull' ? new ConvexGeometry(definition.verticesRaw.map(position)) :
-      primitive(definition.kind, fixed(definition.radiusRaw), fixed(definition.halfLengthRaw), definition.halfExtentsRaw.map(fixed));
+    const geometry = definition.kind === 'ConvexHull' ? new ConvexGeometry(definition.vertices.map(position)) :
+      primitive(definition.kind, definition.radius, definition.halfLength, definition.halfExtents);
     return new THREE.Mesh(geometry, material(color, opacity));
   }
 
-  draw(frame, queries) {
+  draw(frame) {
     clear(this.actors); clear(this.queries);
     frame.actors.forEach(actor => {
-      const root = new THREE.Group(); pose(root, actor);
+      const root = new THREE.Group(); pose(root, actor.root);
       root.add(new THREE.AxesHelper(0.7));
-      const receiver = this.geometry?.actors.find(item => item.rosterIndex === actor.rosterIndex);
+      const receiver = this.geometry?.actors.find(item => item.actorId === actor.id);
       if (receiver) {
-        const geometry = primitive('Capsule', fixed(receiver.radiusRaw), fixed(receiver.halfLengthRaw), []);
+        const geometry = primitive('Capsule', receiver.radius, receiver.halfLength, []);
         const collider = new THREE.Mesh(geometry, material('#87cfc0', 0.8));
-        collider.position.copy(position(receiver.centerOffsetRaw)); root.add(collider);
+        collider.position.copy(position(receiver.centerOffset)); root.add(collider);
       }
       this.actors.add(root);
     });
-    queries.forEach(query => {
+    frame.geometry.sweeps.forEach(query => {
       query.segments.forEach(segment => {
         const start = this.shape(segment.shapeIndex, '#d49651', 0.3); pose(start, segment.start);
         const end = this.shape(segment.shapeIndex, '#f4b963', 0.9); pose(end, segment.end);
-        const path = new THREE.BufferGeometry().setFromPoints([position(segment.start.positionRaw), position(segment.end.positionRaw)]);
+        const path = new THREE.BufferGeometry().setFromPoints([position(segment.start.position), position(segment.end.position)]);
         this.queries.add(start, end, new THREE.Line(path, new THREE.LineBasicMaterial({ color: '#f4b963' })));
       });
       query.targets.forEach(target => {
         const object = this.shape(target.shapeIndex, '#719ce0', 0.55); pose(object, target.end); this.queries.add(object);
       });
     });
-    (frame.hits || []).forEach(hit => {
-      const point = position(hit.pointRaw);
+    frame.geometry.contacts.forEach(hit => {
+      const point = position(hit.point);
       const marker = new THREE.Mesh(new THREE.SphereGeometry(0.045, 10, 8), new THREE.MeshBasicMaterial({ color: '#fc7980' }));
       marker.position.copy(point);
-      const normal = new THREE.BufferGeometry().setFromPoints([point, point.clone().addScaledVector(position(hit.normalRaw), 0.4)]);
+      const normal = new THREE.BufferGeometry().setFromPoints([point, point.clone().addScaledVector(position(hit.normal), 0.4)]);
       this.queries.add(marker, new THREE.Line(normal, new THREE.LineBasicMaterial({ color: '#fc7980' })));
     });
     this.render();

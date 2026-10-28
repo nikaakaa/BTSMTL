@@ -1,5 +1,4 @@
-const html = value => String(value).replace(/[&<>"']/g,
-  char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
+import { html, sectionsHtml } from './preview-records.js';
 
 export class ObservationQuery {
   constructor(container, request) {
@@ -9,7 +8,7 @@ export class ObservationQuery {
     this.stream = null;
     this.reading = null;
     this.query = null;
-    container.innerHTML = `<h2>按角色与来源查询确认帧</h2><form class="observation-query"><label>起始 SDK 帧<input name="firstFrame" type="number" min="0" step="1" required value="0"></label><label>结束 SDK 帧<input name="lastFrame" type="number" min="0" step="1" required value="0"></label><label>角色 Roster 序号<input name="rosterIndex" type="number" min="0" step="1" placeholder="全部角色"></label><label>来源身份<input name="source" placeholder="图、节点、连接、声明或来源 ID"></label><button type="submit">读取记录</button><button type="button" data-stream>跟随此范围的帧流</button><button type="button" data-stop hidden>停止读取流</button></form><p class="observation-query-status" role="status">选择运行后可查询其实际记录。</p><div class="observation-query-items"></div><button type="button" data-more hidden>下一页</button>`;
+    container.innerHTML = `<h2>按范围查询确认帧</h2><form class="observation-query"><label><span data-first-label>起始帧</span><input name="firstFrame" required></label><label><span data-last-label>结束帧</span><input name="lastFrame" required></label><div data-filters></div><button type="submit">读取记录</button><button type="button" data-stream>跟随此范围的帧流</button><button type="button" data-stop hidden>停止读取流</button></form><p class="observation-query-status" role="status">选择运行后可查询其实际记录。</p><div class="observation-query-items"></div><button type="button" data-more hidden>下一页</button>`;
     this.form = container.querySelector('form');
     this.items = container.querySelector('.observation-query-items');
     this.status = container.querySelector('.observation-query-status');
@@ -22,14 +21,22 @@ export class ObservationQuery {
     this.enable(false);
   }
 
+  configure(host) {
+    this.container.querySelector('[data-first-label]').textContent = `起始${host.frameDisplayName}`;
+    this.container.querySelector('[data-last-label]').textContent = `结束${host.frameDisplayName}`;
+    this.container.querySelector('[data-filters]').innerHTML = host.filters.map(field =>
+      `<label>${html(field.displayName)}<input name="${html(field.name)}" type="${html(field.inputType)}" placeholder="${html(field.placeholder)}"></label>`).join('');
+    this.enable(false);
+  }
+
   bind(runId, summary) {
     this.close();
     this.runId = runId;
     this.query = null;
     this.items.replaceChildren();
     this.more.hidden = true;
-    this.form.elements.firstFrame.value = summary.initialSdkFrame;
-    this.form.elements.lastFrame.value = summary.lastSdkFrame;
+    this.form.elements.firstFrame.value = summary.firstFrame;
+    this.form.elements.lastFrame.value = summary.lastFrame;
     this.status.textContent = `运行 ${runId}。结果来自该运行的实际记录，未采集的通道不会补造。`;
     this.enable(true);
   }
@@ -63,7 +70,7 @@ export class ObservationQuery {
       this.query = query;
       if (!more) this.items.replaceChildren();
       this.append(page.items);
-      this.status.textContent = `${page.total} 个实际匹配帧 · 已读取至 ${Math.min(page.offset + page.items.length, page.total)} · 场景修订 ${page.sceneRevision}`;
+      this.status.textContent = `${page.total} 个实际匹配帧 · 已读取至 ${Math.min(page.offset + page.items.length, page.total)} · 内容修订 ${page.contentRevision}`;
       this.more.hidden = page.nextOffset === null;
       this.more.dataset.offset = page.nextOffset;
     } catch (error) {
@@ -87,7 +94,7 @@ export class ObservationQuery {
       const item = JSON.parse(event.data);
       this.append([item.observation]);
       while (this.items.children.length > 512) this.items.firstElementChild.remove();
-      this.status.textContent = `实际 SDK 帧 ${event.lastEventId} · 场景修订 ${item.sceneRevision} · 断线按此事件身份续读`;
+      this.status.textContent = `实际帧 ${event.lastEventId} · 内容修订 ${item.contentRevision} · 断线按此事件身份续读`;
     });
     stream.addEventListener('end', () => {
       if (this.stream !== stream) return;
@@ -102,7 +109,7 @@ export class ObservationQuery {
   }
 
   append(items) {
-    this.items.insertAdjacentHTML('beforeend', items.map(item => `<details><summary>SDK ${item.frame.frame} · ${item.frame.actors.length} 个角色 · ${item.operations.length} 条操作 · ${item.variables.length} 个变量 · ${item.outputEvents.length} 条表现事件</summary><pre>${html(JSON.stringify(item, null, 2))}</pre></details>`).join(''));
+    this.items.insertAdjacentHTML('beforeend', items.map(frame => `<details><summary>帧 ${html(frame.hostFrame)} · ${html(frame.seconds)} 秒 · ${frame.actors.length} 个角色</summary>${sectionsHtml(frame.sections)}<details><summary>原始记录</summary><pre>${html(frame.rawJson)}</pre></details></details>`).join(''));
   }
 
   close() {
