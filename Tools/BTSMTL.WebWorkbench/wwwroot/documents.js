@@ -278,11 +278,21 @@ function renderDocument() {
 
 function renderRoot(document) {
   const root = state.snapshot.root;
-  const accepted = state.authoringState?.adoptable || state.draft?.receipt;
+  const candidate = state.draft?.receipt;
+  const saved = state.draft?.result?.status === 'Saved' && state.draft.pendingCommit === null;
+  const receivedRevision = state.authoringState?.revision === state.snapshot.revision;
+  const known = candidate || saved || receivedRevision;
+  const accepted = candidate || saved || (receivedRevision && state.authoringState.adoptable);
+  const acceptanceMessage = candidate ? '当前完整候选已由共同领域接收，保存、发布和运行采用分别处理。'
+    : saved ? '作者文件已保存并完成回读，发布和运行采用仍看各自回执。'
+    : receivedRevision ? state.authoringProblem || '当前磁盘修订已由共同领域接收。'
+    : '当前修订尚无领域接收回执。';
   const introduction = state.source === 'migrations'
     ? '该候选从现有 Unity 资产读取，用于核对迁移结果。原资产仍是当前正式作者来源。'
     : '编辑来源保存在项目作者目录。各阶段分别记录实际完成的修订。';
-  $('document-view').innerHTML = `<div class="overview"><div class="eyebrow">${state.source === 'migrations' ? 'MIGRATION CANDIDATE' : 'AUTHORING DOCUMENT'}</div><h1>${escapeHtml(document.displayName || root.displayName)}</h1><p class="intro">${introduction}</p><div class="phase-grid"><div><span class="phase-state saved">已读取</span><strong>磁盘内容</strong><small>${state.snapshot.files.length} 个文件 · ${state.draft?.changed ? '存在未保存候选' : '当前磁盘修订'}</small></div><div><span class="phase-state ${accepted ? 'saved' : 'pending'}">${accepted ? '已接收' : '未接收'}</span><strong>领域接收</strong><small>${escapeHtml(state.authoringProblem || '完整根经同一正式领域规则接收')}</small></div><div><span class="phase-state pending">未查询</span><strong>编译与发布</strong><small>保存不代表发布</small></div><div><span class="phase-state pending">未查询</span><strong>运行预览</strong><small>以具体运行采用回执为准</small></div></div><h2>引用与归属</h2><dl><dt>稳定身份</dt><dd><code>${escapeHtml(document.id)}</code></dd><dt>定义版本</dt><dd>${escapeHtml(document.definitionVersion)}</dd><dt>外部引用</dt><dd>${root.externalReferences.length} 项</dd><dt>Unity 对象映射</dt><dd>${root.unityOutputs.length} 项</dd></dl><div class="notice">${escapeHtml(state.authoringProblem || '图与时间轴编辑生成同一完整候选。查看差异后保存；保存后的撤销通过共同服务提交反向修改，并保留其它入口的后续改动。')}</div></div>`;
+  const workflow = state.draft?.pendingCommit ? '保存结果尚未确认，请按原请求查询结果。'
+    : '图与时间轴编辑生成同一完整候选。查看差异后保存；保存后的撤销通过共同服务提交反向修改，并保留其它入口的后续改动。';
+  $('document-view').innerHTML = `<div class="overview"><div class="eyebrow">${state.source === 'migrations' ? 'MIGRATION CANDIDATE' : 'AUTHORING DOCUMENT'}</div><h1>${escapeHtml(document.displayName || root.displayName)}</h1><p class="intro">${introduction}</p><div class="phase-grid"><div><span class="phase-state ${candidate ? 'pending' : 'saved'}">${state.draft?.pendingCommit ? '保存待确认' : candidate ? '未保存' : '已读取'}</span><strong>${candidate ? '当前候选' : '磁盘内容'}</strong><small>${state.snapshot.files.length} 个文件 · ${state.draft?.changed ? '存在未保存候选' : '与当前磁盘基线一致'}</small></div><div><span class="phase-state ${accepted ? 'saved' : 'pending'}">${accepted ? '已接收' : known ? '未接收' : '未查询'}</span><strong>领域接收</strong><small>${escapeHtml(acceptanceMessage)}</small></div><div><span class="phase-state pending">未查询</span><strong>编译与发布</strong><small>保存不代表发布</small></div><div><span class="phase-state pending">未查询</span><strong>运行预览</strong><small>以具体运行采用回执为准</small></div></div><h2>引用与归属</h2><dl><dt>稳定身份</dt><dd><code>${escapeHtml(document.id)}</code></dd><dt>定义版本</dt><dd>${escapeHtml(document.definitionVersion)}</dd><dt>外部引用</dt><dd>${root.externalReferences.length} 项</dd><dt>Unity 对象映射</dt><dd>${root.unityOutputs.length} 项</dd></dl><div class="notice">${escapeHtml(accepted ? workflow : acceptanceMessage)}</div>${state.authoringProblem && (!receivedRevision || candidate || saved) ? `<details class="notice"><summary>本次打开时的磁盘接收记录</summary><p>${escapeHtml(state.authoringProblem)}</p></details>` : ''}</div>`;
 }
 
 function renderGraph(graph) {
@@ -523,6 +533,8 @@ function renderDraftToolbar() {
     : state.draft?.pendingCommit ? `保存结果待查询 · ${state.draft.pendingCommit.requestId}`
     : state.draft?.result && state.draft.result.status !== 'Saved' ? '保存未完成 · 候选已保留，请查看原因'
     : state.draft?.changed ? `${state.draft.steps.length} 步修改 · 已接收未保存`
+    : state.draft?.result?.status === 'Saved' ? '作者文件已保存并回读 · 发布与运行采用另看回执'
+    : state.draft?.receipt ? '完整候选已由领域接收 · 没有文件差异'
     : state.authoringProblem || (state.draft ? '正式作者版本 · 保存与发布分别处理' : '未建立作者会话');
   $('draft-query').disabled = $('draft-retry').disabled = state.draft?.busy === true;
 }
