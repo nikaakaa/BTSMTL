@@ -1,6 +1,6 @@
 import { editField, editNodeFields, editVariable, renameElement, createNode, createConnection, reorderConnections, referenceChoices, showDocumentDiff } from './graph-edits.js';
 import { DocumentEditSession } from './document-session.js';
-import { editTimeRange, editMarkerTime, moveClip, bindTimelineDrag } from './timeline-edits.js';
+import { createTrack, editTimeRange, editMarkerTime, moveClip, bindTimelineDrag } from './timeline-edits.js';
 import { showReferences, showReferenceResource } from './references.js';
 
 const $ = id => document.getElementById(id);
@@ -411,6 +411,13 @@ function renderTimelineActions(timeline, target) {
   const binding = timeline.bindings.find(binding => binding.id === target.id);
   $('inspector-content').insertAdjacentHTML('afterbegin', `<div class="inspector-actions"><button data-timeline-rename>修改名称</button>${target === timeline ? `<button data-timeline-loop>${timeline.loop ? '改为单次' : '改为循环'}</button>` : ''}${clip ? '<button data-timeline-range>配置时间与素材范围</button><button data-timeline-move-clip>移动到轨道</button>' : ''}${marker ? '<button data-timeline-marker-time>配置时刻</button>' : ''}${track === target ? `<button data-timeline-track-move="-1" ${timeline.tracks.indexOf(track) === 0 ? 'disabled' : ''}>轨道上移</button><button data-timeline-track-move="1" ${timeline.tracks.indexOf(track) === timeline.tracks.length - 1 ? 'disabled' : ''}>轨道下移</button>` : ''}${track || binding ? '<button class="danger" data-timeline-delete>删除当前内容</button>' : ''}</div>`);
   if (binding) $('inspector-content').querySelector('[data-timeline-rename]').remove();
+  if (target === timeline) {
+    const ready = state.definitions.timelineAuthoring !== undefined;
+    $('inspector-content').querySelector('.inspector-actions').insertAdjacentHTML('beforeend',
+      `<button data-timeline-add-track ${ready ? '' : 'disabled'}>新建轨道</button>`);
+    if (!ready) $('inspector-content').insertAdjacentHTML('beforeend',
+      '<p class="muted">正式轨道作者字段及初始值尚未导出，新建轨道暂不可用。</p>');
+  }
   Object.keys(target.fields).forEach(id => {
     const element = [...$('inspector-content').querySelectorAll('.field')].find(item => item.querySelector('label').title === id);
     element.insertAdjacentHTML('beforeend', `<button class="edit-field" data-timeline-field="${escapeHtml(id)}">编辑作者值</button>`);
@@ -690,7 +697,9 @@ function handleTimelineAction(event) {
     : binding ? { kind: 'configure-binding', bindingId: binding.id, fields }
     : { kind: 'configure-track', trackId: track.id, displayName, fields };
   const field = event.target.closest('[data-timeline-field]');
-  if (field) {
+  if (event.target.closest('[data-timeline-add-track]')) {
+    createTrack(timeline, state.definitions, state.references, applyTimelineEdits);
+  } else if (field) {
     const id = field.dataset.timelineField;
     editField({ id }, target.fields[id], value => applyTimelineEdits([configure({ ...target.fields, [id]: value })]), state.references);
   } else if (event.target.closest('[data-timeline-rename]')) {

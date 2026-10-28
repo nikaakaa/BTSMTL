@@ -68,7 +68,7 @@ export function referenceChoices(snapshot) {
   return [...choices.values()];
 }
 
-function bindValueEditor(container, value, choices = [], references = [], definition = null) {
+export function bindValueEditor(container, value, choices = [], references = [], definition = null) {
   let current = structuredClone(value);
   const at = path => path.reduce((item, key) => item[key], current);
   const render = () => {
