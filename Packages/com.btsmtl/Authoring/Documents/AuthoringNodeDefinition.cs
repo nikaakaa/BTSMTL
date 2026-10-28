@@ -10,11 +10,17 @@ namespace BTSMTL.Authoring.Documents
         public AuthoringNodeDefinition(GraphAuthoringCapabilityId id, GraphAuthoringDomainId domain,
             IReadOnlyList<GraphAuthoringDocumentRoleId> roles, IReadOnlyList<AuthoringFieldDefinition> fields,
             GraphAuthoringPortShapeDefinition portShape, GraphAuthoringDynamicPortSource dynamicPortSource,
-            bool systemOwned, string anchorId, AuthoringStateKind? stateKind)
+            bool systemOwned, string anchorId, AuthoringStateKind? stateKind,
+            string displayName, string category, GraphAuthoringColor color, string authoringType,
+            string iconName, GraphAuthoringNodePresentationKind presentationKind,
+            IReadOnlyList<GraphAuthoringChildSurfaceDescriptor> childSurfaces,
+            IReadOnlyList<GraphAuthoringCommandDescriptor> commands)
         {
             Id = id; Domain = domain; Roles = roles; Fields = fields.ToDictionary(field => field.Id);
             PortShape = portShape; DynamicPortSource = dynamicPortSource;
             SystemOwned = systemOwned; AnchorId = anchorId; StateKind = stateKind;
+            DisplayName = displayName; Category = category; Color = color; AuthoringType = authoringType;
+            IconName = iconName; PresentationKind = presentationKind; ChildSurfaces = childSurfaces; Commands = commands;
         }
         public GraphAuthoringCapabilityId Id { get; }
         public GraphAuthoringDomainId Domain { get; }
@@ -25,6 +31,25 @@ namespace BTSMTL.Authoring.Documents
         public bool SystemOwned { get; }
         public string AnchorId { get; }
         public AuthoringStateKind? StateKind { get; }
+        public string DisplayName { get; }
+        public string Category { get; }
+        public GraphAuthoringColor Color { get; }
+        public string AuthoringType { get; }
+        public string IconName { get; }
+        public GraphAuthoringNodePresentationKind PresentationKind { get; }
+        public IReadOnlyList<GraphAuthoringChildSurfaceDescriptor> ChildSurfaces { get; }
+        public IReadOnlyList<GraphAuthoringCommandDescriptor> Commands { get; }
+
+#if UNITY_EDITOR || BTSMTL_AUTHORING
+        public static AuthoringNodeDefinition Capture(GraphAuthoringCapabilityDescriptor capability,
+            AuthoringValueCodec values, AuthoringStateKind? stateKind) => new(capability.CapabilityId,
+            capability.DomainId, capability.AllowedDocumentRoles.OrderBy(role => role.Value, StringComparer.Ordinal).ToArray(),
+            capability.Fields.OrderBy(field => field.FieldId.Value, StringComparer.Ordinal)
+                .Select(field => AuthoringFieldDefinition.Capture(field, values)).ToArray(),
+            capability.PortShape, capability.DynamicPortSource, capability.SystemOwned, capability.AnchorId, stateKind,
+            capability.DisplayName, capability.Category, capability.Color, AuthoringValueCodec.TypeIdentity(capability.AuthoringType),
+            capability.IconName, capability.PresentationKind, capability.ChildSurfaces, capability.Commands);
+#endif
 
         public IReadOnlyDictionary<GraphAuthoringFieldId, AuthoringValue> EffectiveFields(AuthoringNodeDocument node)
         {

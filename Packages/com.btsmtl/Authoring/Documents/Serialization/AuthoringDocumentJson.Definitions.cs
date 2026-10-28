@@ -67,6 +67,42 @@ namespace BTSMTL.Authoring.Documents
                 Enumeration<GraphAuthoringDocumentMember>(field, "documentMember", sourcePath));
         }
 
+        public static string WriteNodeDefinition(AuthoringNodeDefinition node) => Write(new JObject
+        {
+            ["id"] = node.Id.Value, ["domain"] = node.Domain.Value,
+            ["roles"] = new JArray(node.Roles.Select(role => role.Value).OrderBy(role => role, StringComparer.Ordinal)),
+            ["displayName"] = node.DisplayName, ["category"] = node.Category,
+            ["color"] = new JArray(node.Color.Red, node.Color.Green, node.Color.Blue, node.Color.Alpha),
+            ["authoringType"] = node.AuthoringType, ["iconName"] = node.IconName,
+            ["presentationKind"] = node.PresentationKind.ToString(),
+            ["systemOwned"] = node.SystemOwned, ["anchorId"] = node.AnchorId,
+            ["stateKind"] = node.StateKind.HasValue ? node.StateKind.Value.ToString() : JValue.CreateNull(),
+            ["dynamicPortPolicy"] = node.PortShape.DynamicPortPolicy.ToString(),
+            ["dynamicPortSource"] = node.DynamicPortSource.ToString(),
+            ["fields"] = new JArray(node.Fields.Values.OrderBy(field => field.Id.Value, StringComparer.Ordinal)
+                .Select(field => JToken.Parse(WriteFieldDefinition(field)))),
+            ["ports"] = new JArray(node.PortShape.FixedPorts.OrderBy(port => port.Order)
+                .ThenBy(port => port.PortId.Value, StringComparer.Ordinal).Select(DefinitionPort)),
+            ["portVariants"] = new JArray(node.PortShape.PortVariants.Select(variant => new JObject
+            {
+                ["id"] = variant.VariantId, ["when"] = new JObject
+                {
+                    ["fieldId"] = variant.When.FieldId.Value, ["valueKind"] = variant.When.ValueKind.ToString(),
+                    ["equals"] = variant.When.ExpectedValue
+                },
+                ["ports"] = new JArray(variant.Ports.OrderBy(port => port.Order).Select(DefinitionPort))
+            })),
+            ["childSurfaces"] = new JArray(node.ChildSurfaces.Select(child => new JObject
+            {
+                ["command"] = child.CommandId.Value, ["role"] = child.DocumentRoleId.Value, ["displayName"] = child.DisplayName
+            })),
+            ["commands"] = new JArray(node.Commands.Select(command => new JObject
+            {
+                ["id"] = command.CommandId.Value, ["displayName"] = command.DisplayName,
+                ["destructive"] = command.Destructive, ["presentationKind"] = command.PresentationKind.ToString()
+            }))
+        });
+
         public static AuthoringNodeDefinition ReadNodeDefinition(string text, string sourcePath)
         {
             JObject node = ReadObject(text);
@@ -83,8 +119,34 @@ namespace BTSMTL.Authoring.Documents
                     Enumeration<GraphAuthoringDynamicPortPolicy>(node, "dynamicPortPolicy", sourcePath)),
                 Enumeration<GraphAuthoringDynamicPortSource>(node, "dynamicPortSource", sourcePath),
                 Required(node, "systemOwned", sourcePath).Value<bool>(), Text(node, "anchorId", sourcePath),
-                Required(node, "stateKind", sourcePath).Type == JTokenType.Null ? null : Enumeration<AuthoringStateKind>(node, "stateKind", sourcePath));
+                Required(node, "stateKind", sourcePath).Type == JTokenType.Null ? null : Enumeration<AuthoringStateKind>(node, "stateKind", sourcePath),
+                Text(node, "displayName", sourcePath), Text(node, "category", sourcePath),
+                ReadDefinitionColor(node, sourcePath), Text(node, "authoringType", sourcePath), Text(node, "iconName", sourcePath),
+                Enumeration<GraphAuthoringNodePresentationKind>(node, "presentationKind", sourcePath),
+                Array(node, "childSurfaces", sourcePath).Select(child => new GraphAuthoringChildSurfaceDescriptor(
+                    new GraphAuthoringCommandId(Text(child, "command", sourcePath)),
+                    new GraphAuthoringDocumentRoleId(Text(child, "role", sourcePath)), Text(child, "displayName", sourcePath))).ToArray(),
+                Array(node, "commands", sourcePath).Select(command => new GraphAuthoringCommandDescriptor(
+                    new GraphAuthoringCommandId(Text(command, "id", sourcePath)), Text(command, "displayName", sourcePath),
+                    Required(command, "destructive", sourcePath).Value<bool>(),
+                    Enumeration<GraphAuthoringCommandPresentationKind>(command, "presentationKind", sourcePath))).ToArray());
         }
+
+        static GraphAuthoringColor ReadDefinitionColor(JToken node, string sourcePath)
+        {
+            JArray color = Array(node, "color", sourcePath);
+            if (color.Count != 4)
+                throw new AuthoringDocumentFormatException(sourcePath, color.Path, "作者颜色必须包含四个通道。");
+            return new(color[0].Value<float>(), color[1].Value<float>(), color[2].Value<float>(), color[3].Value<float>());
+        }
+
+        static JObject DefinitionPort(GraphAuthoringPortDescriptor port) => new JObject
+        {
+            ["id"] = port.PortId.Value, ["displayName"] = port.DisplayName, ["valueType"] = port.ValueTypeId,
+            ["direction"] = port.Direction.ToString(), ["capacity"] = port.Capacity.ToString(),
+            ["required"] = port.Required, ["order"] = port.Order, ["interfacePortId"] = port.InterfacePortId,
+            ["valueTypeFieldId"] = port.ValueTypeFieldId.IsValid ? port.ValueTypeFieldId.Value : JValue.CreateNull()
+        };
 
         static GraphAuthoringPortDescriptor ReadDefinitionPort(JToken port, string sourcePath) => new(
             new GraphAuthoringPortId(Text(port, "id", sourcePath)), Text(port, "displayName", sourcePath),
