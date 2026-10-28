@@ -23,7 +23,10 @@ public sealed record PreviewContact(double[] Point, double[] Normal);
 public sealed record PreviewFrameGeometry(PreviewSweep[] Sweeps, PreviewContact[] Contacts);
 public sealed record PreviewFrame(string HostFrame, double Seconds, PreviewActor[] Actors,
     string[] Channels, PreviewConsistency? Consistency, PreviewField[] Fields,
-    PreviewSection[] Sections, PreviewFrameGeometry Geometry, string RawJson);
+    PreviewSection[] Sections, PreviewFrameGeometry Geometry, string RawJson)
+{
+    public PreviewRouteFrame? Route { get; init; }
+}
 public sealed record PreviewSummary(string RunId, string ContentRevision, string FrameDisplayName,
     string FirstFrame, string LastFrame, int FrameCount, string[] Channels, bool GeometryAvailable,
     PreviewField[] Fields, string RawJson);

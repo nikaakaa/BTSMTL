@@ -17,6 +17,8 @@ public interface IPreviewHost
     PreviewSummary Summary(Guid id);
     PreviewPage<PreviewFrame> Frames(Guid id, int offset, int limit);
     PreviewRoute Route(Guid id);
+    PreviewRoutePage RouteFrames(Guid id, IReadOnlyDictionary<string, string> query);
+    PreviewGraphPage Graphs(Guid id, int? rosterIndex, string? graphId, int offset, int limit);
     object Compare(Guid left, Guid right);
     PreviewObservationPage Observations(Guid id, IReadOnlyDictionary<string, string> query);
     IResult Geometry(Guid id);
@@ -46,6 +48,9 @@ public static class PreviewApi
         routes.MapGet("/runs/{id:guid}/summary", (Guid id) => host.Summary(id));
         routes.MapGet("/runs/{id:guid}/frames", (Guid id, int offset, int limit) => host.Frames(id, offset, limit));
         routes.MapGet("/runs/{id:guid}/route", (Guid id) => host.Route(id));
+        routes.MapGet("/runs/{id:guid}/route/frames", (Guid id, HttpRequest request) => host.RouteFrames(id, Query(request)));
+        routes.MapGet("/runs/{id:guid}/graphs", (Guid id, int? rosterIndex, string? graphId, int offset, int limit) =>
+            host.Graphs(id, rosterIndex, graphId, offset, limit));
         routes.MapGet("/runs/{left:guid}/compare/{right:guid}", (Guid left, Guid right) => host.Compare(left, right));
         routes.MapGet("/runs/{id:guid}/observations", (Guid id, HttpRequest request) => host.Observations(id, Query(request)));
         routes.MapGet("/runs/{id:guid}/geometry", (Guid id) => host.Geometry(id));
