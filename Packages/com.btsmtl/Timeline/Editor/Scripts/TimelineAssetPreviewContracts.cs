@@ -128,7 +128,7 @@ namespace BTSMTL.Timeline.Editor
     [Serializable]
     public sealed partial class TimelineAssetPreviewPreferences
     {
-        [BTSMTL.Authoring.Graph.GraphAuthoringField(nameof(Name), BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.String, NonEmpty = true)]
+        [BTSMTL.Authoring.Graph.GraphAuthoringField(nameof(Name), BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.String)]
         public string Name = "默认";
         // 方案的输入 Timeline，方案资产的子资产；第一次编辑输入时创建。
         [BTSMTL.Authoring.Graph.GraphAuthoringField(nameof(InputTimeline), BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.AssetReference, Optional = true)]
@@ -148,9 +148,9 @@ namespace BTSMTL.Timeline.Editor
         // 角色在预览场景中的起点，只取水平朝向。
         [BTSMTL.Authoring.Graph.GraphAuthoringField(nameof(StartPosition), BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.Vector3)]
         public Vector3 StartPosition;
-        [BTSMTL.Authoring.Graph.GraphAuthoringField(nameof(StartYaw), BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.Float, Finite = true)]
+        [BTSMTL.Authoring.Graph.GraphAuthoringField(nameof(StartYaw), BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.Float)]
         public float StartYaw;
-        [BTSMTL.Authoring.Graph.GraphAuthoringField(nameof(RangeEnd), BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.Float, Finite = true)]
+        [BTSMTL.Authoring.Graph.GraphAuthoringField(nameof(RangeEnd), BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.Float)]
         public float RangeEnd = 10f;
     }
 

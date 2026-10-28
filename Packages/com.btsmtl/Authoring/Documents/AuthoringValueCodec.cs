@@ -50,6 +50,7 @@ namespace BTSMTL.Authoring.Documents
         }
 
         public AuthoringNamedValue[] CaptureFields(object target) => GraphAuthoringMemberBindings.Contract(target).Fields
+            .Where(field => field.Metadata.DocumentMember == GraphAuthoringDocumentMember.Field)
             .Select(field => Member(field.Metadata.FieldId, field.ValueType, field.Read(target))).ToArray();
 
         public object RestoreDeclaredFields(Type type, ReadOnlyMemory<AuthoringNamedValue> fields)

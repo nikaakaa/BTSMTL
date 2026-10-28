@@ -2,6 +2,8 @@ using System;
 
 namespace BTSMTL.Authoring.Graph
 {
+    public enum GraphAuthoringDocumentMember { Field, DisplayName, Order }
+
     [AttributeUsage(AttributeTargets.Property | AttributeTargets.Field, Inherited = true)]
     public sealed class GraphAuthoringFieldAttribute : Attribute
     {
@@ -29,6 +31,7 @@ namespace BTSMTL.Authoring.Graph
         }
 
         public string FieldId { get; }
+        public GraphAuthoringDocumentMember DocumentMember { get; set; }
         public GraphAuthoringFieldValueKind ValueKind { get; }
         public GraphAuthoringFieldCompilationImpact CompilationImpact { get; set; }
         public string Unit { get; set; } = string.Empty;

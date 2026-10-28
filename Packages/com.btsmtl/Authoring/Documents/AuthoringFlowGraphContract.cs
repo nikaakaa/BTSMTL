@@ -33,9 +33,9 @@ namespace BTSMTL.Authoring.Documents
             IReadOnlyList<AuthoringFlowGraphAnchor> anchors, bool requireComplete)
         {
             string path = "graph:" + graph.Id;
-            AuthoringFieldDefinition.ReceiveFields(graphFields, graph.Fields, path);
+            AuthoringFieldDefinition.ReceiveFields(graphFields, graph.Fields, path, graph.DisplayName);
             foreach (AuthoringEdgeDocument edge in graph.Edges.Span)
-                AuthoringFieldDefinition.ReceiveFields(edgeFields, edge.Fields, path + "/edge:" + edge.Id);
+                AuthoringFieldDefinition.ReceiveFields(edgeFields, edge.Fields, path + "/edge:" + edge.Id, order: edge.Order);
             var nodes = new List<AuthoringFlowGraphNode>();
             foreach (AuthoringNodeDocument node in graph.Nodes.Span)
             {

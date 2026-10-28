@@ -14,6 +14,7 @@ namespace BTSMTL.Authoring.Documents
         public static string WriteFieldDefinition(AuthoringFieldDefinition field) => Write(new JObject
         {
             ["id"] = field.Id.Value, ["displayName"] = field.DisplayName,
+            ["documentMember"] = field.DocumentMember.ToString(),
             ["valueType"] = field.ValueDefinition.TypeId, ["valueKind"] = field.ValueKind.ToString(),
             ["visible"] = field.Visible, ["writable"] = field.Writable, ["optional"] = field.Optional,
             ["pickerKind"] = field.PickerKind, ["constraint"] = new JObject
@@ -48,7 +49,8 @@ namespace BTSMTL.Authoring.Documents
                 visibility.Type == JTokenType.Null ? null : new GraphAuthoringFieldVisibilityCondition(
                     new GraphAuthoringFieldId(Text(visibility, "fieldId", sourcePath)), Text(visibility, "equals", sourcePath)),
                 new GraphAuthoringFieldCompilation(Enumeration<GraphAuthoringFieldCompilationImpact>(compilation, "impact", sourcePath),
-                    compilation["unit"].Type == JTokenType.Null ? null : Text(compilation, "unit", sourcePath)));
+                    compilation["unit"].Type == JTokenType.Null ? null : Text(compilation, "unit", sourcePath)),
+                Enumeration<GraphAuthoringDocumentMember>(field, "documentMember", sourcePath));
         }
 
         public static AuthoringNodeDefinition ReadNodeDefinition(string text, string sourcePath)

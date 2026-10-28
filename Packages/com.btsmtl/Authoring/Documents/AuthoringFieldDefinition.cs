@@ -11,14 +11,17 @@ namespace BTSMTL.Authoring.Documents
         public AuthoringFieldDefinition(GraphAuthoringFieldId id, string displayName, GraphAuthoringFieldValueKind valueKind,
             AuthoringValueDefinition valueDefinition, AuthoringValue defaultValue, bool visible, bool writable,
             bool optional, string pickerKind, GraphAuthoringFieldConstraint constraint,
-            GraphAuthoringFieldVisibilityCondition visibility, GraphAuthoringFieldCompilation compilation)
+            GraphAuthoringFieldVisibilityCondition visibility, GraphAuthoringFieldCompilation compilation,
+            GraphAuthoringDocumentMember documentMember = GraphAuthoringDocumentMember.Field)
         {
             Id = id; DisplayName = displayName; ValueKind = valueKind; ValueDefinition = valueDefinition;
             DefaultValue = defaultValue; Visible = visible; Writable = writable; Optional = optional;
             PickerKind = pickerKind; Constraint = constraint; Visibility = visibility; Compilation = compilation;
+            DocumentMember = documentMember;
         }
 
         public GraphAuthoringFieldId Id { get; }
+        public GraphAuthoringDocumentMember DocumentMember { get; }
         public string DisplayName { get; }
         public GraphAuthoringFieldValueKind ValueKind { get; }
         public AuthoringValueDefinition ValueDefinition { get; }
@@ -32,7 +35,8 @@ namespace BTSMTL.Authoring.Documents
         public GraphAuthoringFieldCompilation Compilation { get; }
 
         public static IReadOnlyDictionary<GraphAuthoringFieldId, AuthoringValue> ReceiveFields(
-            IReadOnlyList<AuthoringFieldDefinition> definitions, ReadOnlyMemory<AuthoringNamedValue> authored, string path)
+            IReadOnlyList<AuthoringFieldDefinition> definitions, ReadOnlyMemory<AuthoringNamedValue> authored, string path,
+            string displayName = null, int? order = null)
         {
             var declared = definitions.ToDictionary(field => field.Id);
             var values = definitions.ToDictionary(field => field.Id, field => field.DefaultValue);
@@ -43,8 +47,20 @@ namespace BTSMTL.Authoring.Documents
                     throw new InvalidOperationException(path + "/" + field.FieldId + ": 作者字段重复。");
                 if (!declared.ContainsKey(field.FieldId))
                     throw new InvalidOperationException(path + "/" + field.FieldId + ": 字段不属于原正式定义。");
+                if (declared[field.FieldId].DocumentMember != GraphAuthoringDocumentMember.Field)
+                    throw new InvalidOperationException(path + "/" + field.FieldId + ": 此成员由文档结构持有，不能重复保存为字段。");
                 values[field.FieldId] = field.Value;
             }
+            foreach (AuthoringFieldDefinition field in definitions)
+                values[field.Id] = field.DocumentMember switch
+                {
+                    GraphAuthoringDocumentMember.Field => values[field.Id],
+                    GraphAuthoringDocumentMember.DisplayName when displayName != null => new AuthoringScalarValue(
+                        field.ValueDefinition.TypeId, GraphAuthoringFieldValueKind.String, displayName),
+                    GraphAuthoringDocumentMember.Order when order.HasValue => new AuthoringScalarValue(
+                        field.ValueDefinition.TypeId, GraphAuthoringFieldValueKind.Integer, order.Value.ToString(CultureInfo.InvariantCulture)),
+                    _ => throw new InvalidOperationException(path + "/" + field.Id + ": 缺少原定义要求的文档结构成员。")
+                };
             foreach (var field in values) declared[field.Key].Receive(field.Value, path + "/" + field.Key);
             return values;
         }
@@ -53,7 +69,7 @@ namespace BTSMTL.Authoring.Documents
         public static AuthoringFieldDefinition Capture(GraphAuthoringFieldDescriptor field, AuthoringValueCodec values) => new(
             field.FieldId, field.DisplayName, field.ValueKind, values.Describe(field.ValueType),
             values.Capture(field.ValueType, field.DefaultValue), field.AuthoringVisible, field.AuthoringWritable,
-            field.Optional, field.PickerKind, field.Constraint, field.Visibility, field.Compilation);
+            field.Optional, field.PickerKind, field.Constraint, field.Visibility, field.Compilation, field.DocumentMember);
 #endif
 
         public void Receive(AuthoringValue value, string path)
