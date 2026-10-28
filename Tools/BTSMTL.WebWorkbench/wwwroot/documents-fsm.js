@@ -1,9 +1,10 @@
 import { bindValueEditor, dialog } from './graph-edits.js';
+import { privateGraphFields } from './documents-owned.js';
 
 const html = value => String(value).replace(/[&<>"']/g,
   char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 
-export function graphContext(graph, target, files, definitions, capabilities) {
+export function graphContext(graph, target, files, definitions, capabilities, canEdit) {
   const contract = definitions.stateMachine;
   if (contract === undefined) return '';
   const linked = Object.entries(target.fields).flatMap(([field, value]) => {
@@ -31,16 +32,16 @@ export function graphContext(graph, target, files, definitions, capabilities) {
         `<button data-select-node="${html(node.id)}">${html(node.displayName)}<small>${html(anchor.name)}</small></button>`)).join('')}</section>`;
   }
   if (graph.role === contract.role && graph.nodes.includes(target)) {
-    const declaration = capabilities.get(target.capability);
-    if (declaration.fields.some(field => field.id === contract.bodyField) &&
-        !linked.some(link => link.file.document.role === contract.bodyRole))
-      content += '<p class="authoring-gap">此状态尚未引用可下钻的 StateBody。创建私有图需要共同创建合同，不能复用其它状态的可变 StateBody。</p>';
     const outgoing = graph.edges.filter(edge => edge.sourceNode === target.id).sort((left, right) => left.order - right.order);
     content += `<section class="owned-graph-links"><h3>从此状态出发的转移</h3>${outgoing.map(edge => {
       const destination = graph.nodes.find(node => node.id === edge.targetNode);
       return `<button data-select-edge="${html(edge.id)}">${html(destination.displayName)}<small>同输出顺序 ${edge.order + 1} · ${html(edge.sourcePort)}</small></button>`;
     }).join('') || '<p class="muted">此状态没有出边。</p>'}</section>`;
   }
+  const missing = privateGraphFields(graph, target, definitions).filter(({ field }) =>
+    (target.fields[field.id] || field.defaultValue).kind === 'null');
+  if (canEdit && missing.length) content += `<section class="owned-graph-links"><h3>创建当前对象的私有图</h3>${missing.map(({ field, role }) =>
+    `<button data-create-private-graph="${html(field.id)}">新建 ${html(roleName(role))}<small>${html(field.displayName)} · 随同一候选编辑和保存</small></button>`).join('')}</section>`;
   return content;
 }
 

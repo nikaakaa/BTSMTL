@@ -3,6 +3,7 @@ import { DocumentEditSession } from './document-session.js';
 import { createTrack, createClip, createMarker, createBinding, editTimeRange, editMarkerTime, moveClip, bindTimelineDrag, timelineObjectDefinition, editTimelineFields } from './timeline-edits.js';
 import { showReferences, showReferenceResource } from './references.js';
 import { graphContext, editTransition } from './documents-fsm.js';
+import { privateGraphFields, privateGraphFiles, createPrivateGraph } from './documents-owned.js';
 
 const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
@@ -439,7 +440,7 @@ function renderInspector(document) {
   if (state.selectedFile.draftChanged) $('inspector-content').querySelector('.read-state').textContent = '本会话候选 · 尚未保存或发布';
   if (Array.isArray(document.nodes))
     $('inspector-content').insertAdjacentHTML('afterbegin', graphContext(document, target, state.snapshot.files,
-      state.definitions, state.capabilities));
+      state.definitions, state.capabilities, state.draft?.canEdit === true));
   if (state.draft?.canEdit && Array.isArray(document.nodes) && !state.selectedTimeline) {
     if (state.selectedEdge) {
       const source = document.nodes.find(node => node.id === target.sourceNode);
@@ -761,6 +762,16 @@ $('inspector-content').onclick = event => {
   if (selectNode) { selectElement('node', selectNode.dataset.selectNode); return; }
   const selectEdge = event.target.closest('[data-select-edge]');
   if (selectEdge) { selectElement('edge', selectEdge.dataset.selectEdge); return; }
+  const privateGraph = event.target.closest('[data-create-private-graph]');
+  if (privateGraph) {
+    const target = node || edge;
+    const declaration = privateGraphFields(graph, target, state.definitions).find(item => item.field.id === privateGraph.dataset.createPrivateGraph);
+    createPrivateGraph(state.snapshot, graph, target, declaration, state.definitions, async (files, path) => {
+      await presentDraftOperation(() => state.draft.applyFiles(files));
+      await followDocument(path);
+    });
+    return;
+  }
   if (event.target.closest('[data-element-dependencies]')) {
     const query = new URLSearchParams({ path: state.selectedRoot.path, documentId: graph.id, elementId: (node || edge || graph).id });
     guarded(() => showReferences('本对象的实际引用', `${api()}/dependencies?${query}`, state.source, request));
@@ -874,7 +885,17 @@ function handleTimelineAction(event) {
     : binding ? { kind: 'delete-binding', bindingId: binding.id } : { kind: 'delete-track', trackId: track.id }]));
 }
 $('draft-add-node').onclick = () => createNode(state.capabilities, state.selectedFile.document.role,
-  node => applyGraphEdits([{ kind: 'insert-node', index: state.selectedFile.document.nodes.length, node }]));
+  node => presentDraftOperation(async () => {
+    const graph = state.selectedFile.document;
+    const declarations = privateGraphFields(graph, node, state.definitions).filter(item => !item.field.optional);
+    if (declarations.length) {
+      const candidate = privateGraphFiles(state.snapshot, graph, node, declarations.map(item => ({ ...item,
+        displayName: `${node.displayName} · ${item.role}` })), state.definitions, true);
+      await state.draft.applyFiles(candidate.files);
+    } else await state.draft.apply(graph.id, [{ kind: 'insert-node', index: graph.nodes.length, node }]);
+    state.selectedNode = node.id;
+    state.selectedEdge = null;
+  }));
 $('draft-add-edge').onclick = () => createConnection(state.selectedFile.document, state.selectedFile.portShapes,
   edge => applyGraphEdits([{ kind: 'insert-edge', index: state.selectedFile.document.edges.length, edge }]));
 $('draft-undo').onclick = () => editAction(() => state.draft.undo());

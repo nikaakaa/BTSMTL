@@ -22,34 +22,49 @@ export class DocumentEditSession {
     (this.steps.length === 0 && this.savedRedo.length > 0)); }
 
   apply(documentId, edits) {
-    return this.preview([...this.steps, { graphBatches: [{ documentId, edits }], timelineBatches: [] }], []);
+    return this.preview('edits', { graphBatches: [{ documentId, edits }], timelineBatches: [] });
   }
 
   applyTimeline(documentId, edits) {
-    return this.preview([...this.steps, { graphBatches: [], timelineBatches: [{ documentId, edits }] }], []);
+    return this.preview('edits', { graphBatches: [], timelineBatches: [{ documentId, edits }] });
   }
 
-  async preview(steps, redoSteps) {
+  applyFiles(files) {
+    return this.preview('candidates', { files });
+  }
+
+  async preview(endpoint, request) {
     await this.perform(async () => {
       if (!this.canEdit) throw new Error('请先处理当前撤销或重做候选，再继续编辑。');
-      const receipt = await this.send('/api/authoring/documents/edits', { ...this.context,
-        requestId: crypto.randomUUID(), graphBatches: steps.flatMap(step => step.graphBatches),
-        timelineBatches: steps.flatMap(step => step.timelineBatches) });
-      this.steps = steps;
-      this.redoSteps = redoSteps;
+      const receipt = await this.send(`/api/authoring/documents/${endpoint}`, { ...this.context,
+        requestId: crypto.randomUUID(), baseCandidateId: this.receipt?.candidateId ?? null, ...request });
+      this.steps = [...this.steps, receipt.candidateId];
+      this.redoSteps = [];
       this.receipt = { ...receipt, historyDirection: 'edit' };
       this.result = null;
     });
   }
 
   undo() {
-    return this.steps.length ? this.preview(this.steps.slice(0, -1), [...this.redoSteps, this.steps.at(-1)])
+    return this.steps.length ? this.restore(this.steps.slice(0, -1), [...this.redoSteps, this.steps.at(-1)])
       : this.inverse('undo', this.savedUndo.at(-1));
   }
 
   redo() {
-    return this.redoSteps.length ? this.preview([...this.steps, this.redoSteps.at(-1)], this.redoSteps.slice(0, -1))
+    return this.redoSteps.length ? this.restore([...this.steps, this.redoSteps.at(-1)], this.redoSteps.slice(0, -1))
       : this.inverse('redo', this.savedRedo.at(-1));
+  }
+
+  async restore(steps, redoSteps) {
+    await this.perform(async () => {
+      if (!this.canEdit) throw new Error('请先处理当前撤销或重做候选，再继续编辑。');
+      const receipt = steps.length
+        ? await this.send(`/api/authoring/documents/candidates/${steps.at(-1)}`) : null;
+      this.steps = steps;
+      this.redoSteps = redoSteps;
+      this.receipt = receipt ? { ...receipt, historyDirection: 'edit' } : null;
+      this.result = null;
+    });
   }
 
   async inverse(direction, appliedCandidateId) {
