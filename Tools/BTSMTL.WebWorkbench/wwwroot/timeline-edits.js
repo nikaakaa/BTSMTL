@@ -23,12 +23,17 @@ export function editMarkerTime(marker, scale, apply) {
     form => apply(new FormData(form).get('time')));
 }
 
+function timelineFieldDescription(catalog, kind) {
+  const description = catalog.find(item => item.kind === kind).description;
+  return { ...description, fields: description.fields.filter(field => field.documentMember === 'Field') };
+}
+
 export function timelineObjectDefinition(target, definitions) {
   if (definitions.timelineAuthoring === undefined) return null;
   if (Array.isArray(target.clips))
-    return definitions.timelineAuthoring.tracks.find(item => item.kind === target.contract).description;
+    return timelineFieldDescription(definitions.timelineAuthoring.tracks, target.contract);
   if (target.timeRange)
-    return definitions.timelineAuthoring.clips.find(item => item.kind === target.contract).description;
+    return timelineFieldDescription(definitions.timelineAuthoring.clips, target.contract);
   return null;
 }
 
@@ -60,7 +65,7 @@ export function createTrack(timeline, definitions, references, apply) {
     form => {
       const input = new FormData(form);
       const contractKind = input.get('contract');
-      const description = definitions.timelineAuthoring.tracks.find(track => track.kind === contractKind).description;
+      const description = timelineFieldDescription(definitions.timelineAuthoring.tracks, contractKind);
       return apply([{ kind: 'insert-track', index: timeline.tracks.length, track: {
         id: `local:${crypto.randomUUID()}`, contractKind, displayName: input.get('displayName'),
         fields: Object.fromEntries(description.fields.map(field => [field.id, editors.has(field.id)
@@ -68,7 +73,7 @@ export function createTrack(timeline, definitions, references, apply) {
       } }]);
     });
   const fill = () => {
-    const description = definitions.timelineAuthoring.tracks.find(track => track.kind === modal.querySelector('select').value).description;
+    const description = timelineFieldDescription(definitions.timelineAuthoring.tracks, modal.querySelector('select').value);
     const fields = description.fields.filter(field => field.visible && field.writable);
     editors.clear();
     const surface = modal.querySelector('[data-track-fields]');
