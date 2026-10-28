@@ -14,5 +14,6 @@
     <Compile Include="WebAnimationLibrary.cs" />
     <Compile Include="AnimationResourceApi.cs" />
     <ProjectReference Include="../../Projects/BTSMTL.Authoring.Workspace/BTSMTL.Authoring.Workspace.csproj" />
+    <ProjectReference Include="Contracts/BTSMTL.WebWorkbench.Contracts.csproj" />
   </ItemGroup>
 </Project>
