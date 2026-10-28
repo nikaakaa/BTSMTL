@@ -126,10 +126,12 @@ namespace BTSMTL.Timeline.Editor
     }
 
     [Serializable]
-    public sealed class TimelineAssetPreviewPreferences
+    public sealed partial class TimelineAssetPreviewPreferences
     {
+        [BTSMTL.Authoring.Graph.GraphAuthoringField(nameof(Name), BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.String, NonEmpty = true)]
         public string Name = "默认";
         // 方案的输入 Timeline，方案资产的子资产；第一次编辑输入时创建。
+        [BTSMTL.Authoring.Graph.GraphAuthoringField(nameof(InputTimeline), BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.AssetReference, Optional = true)]
         public TimelineAsset InputTimeline;
         // 由输入 Timeline 读出的值变化，按时刻排序；两档与领域取值只读这一份，不保存。
         [NonSerialized] public List<TimelinePreviewInputPoint> Inputs = new();
@@ -137,12 +139,18 @@ namespace BTSMTL.Timeline.Editor
         [NonSerialized] public List<string> InputErrors = new();
         // 由输入 Timeline 读出的条件写入，按时刻排序；只影响快速档推导。
         [NonSerialized] public List<TimelinePreviewConditionPoint> ConditionPoints = new();
+        [BTSMTL.Authoring.Graph.GraphAuthoringField(nameof(HasTarget), BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.Boolean)]
         public bool HasTarget;
+        [BTSMTL.Authoring.Graph.GraphAuthoringField(nameof(TargetPosition), BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.Vector3)]
         public Vector3 TargetPosition;
+        [BTSMTL.Authoring.Graph.GraphAuthoringField(nameof(TargetEuler), BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.Vector3)]
         public Vector3 TargetEuler;
         // 角色在预览场景中的起点，只取水平朝向。
+        [BTSMTL.Authoring.Graph.GraphAuthoringField(nameof(StartPosition), BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.Vector3)]
         public Vector3 StartPosition;
+        [BTSMTL.Authoring.Graph.GraphAuthoringField(nameof(StartYaw), BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.Float, Finite = true)]
         public float StartYaw;
+        [BTSMTL.Authoring.Graph.GraphAuthoringField(nameof(RangeEnd), BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.Float, Finite = true)]
         public float RangeEnd = 10f;
     }
 
