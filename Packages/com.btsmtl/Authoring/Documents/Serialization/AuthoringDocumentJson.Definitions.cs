@@ -27,9 +27,13 @@ namespace BTSMTL.Authoring.Documents
             if (declaredMembers is not JObject members)
                 throw new AuthoringDocumentFormatException(sourcePath, declaredMembers.Path, "成员绑定必须使用 JSON Object。");
             var result = new AuthoringObjectDefinition(Text(definition, "authoringType", sourcePath), Array(definition, "fields", sourcePath)
-                .Select(field => ReadFieldDefinition(field.ToString(), sourcePath)).ToArray(),
+                .Select(field => ReadFieldDefinition(field, sourcePath)).ToArray(),
                 members.Properties().ToDictionary(member => member.Name,
-                    member => new GraphAuthoringFieldId(Text(member.Value, sourcePath)), StringComparer.Ordinal));
+                    member =>
+                    {
+                        member.AddAnnotation(ReadMember.Instance);
+                        return new GraphAuthoringFieldId(Text(member.Value, sourcePath));
+                    }, StringComparer.Ordinal));
             return ReceiveMembers(definition, result, sourcePath);
         }
 
@@ -53,26 +57,36 @@ namespace BTSMTL.Authoring.Documents
             ["defaultValue"] = ValueToken(field.DefaultValue), ["valueDefinition"] = DefinitionToken(field.ValueDefinition)
         });
 
-        public static AuthoringFieldDefinition ReadFieldDefinition(string text, string sourcePath)
+        public static AuthoringFieldDefinition ReadFieldDefinition(string text, string sourcePath) =>
+            ReadFieldDefinition(ReadObject(text), sourcePath);
+
+        static AuthoringFieldDefinition ReadFieldDefinition(JToken token, string sourcePath)
         {
-            JObject field = ReadObject(text);
+            if (token is not JObject field)
+                throw new AuthoringDocumentFormatException(sourcePath, token.Path, "字段描述必须使用 JSON Object。");
             JToken constraint = Required(field, "constraint", sourcePath);
             JToken visibility = Required(field, "visibility", sourcePath);
             JToken compilation = Required(field, "compilation", sourcePath);
-            return new(new GraphAuthoringFieldId(Text(field, "id", sourcePath)), Text(field, "displayName", sourcePath),
+            JToken unit = Required(compilation, "unit", sourcePath);
+            AuthoringValueDefinition value = ReadDefinition(Required(field, "valueDefinition", sourcePath), sourcePath);
+            if (Text(field, "valueType", sourcePath) != value.TypeId)
+                throw new AuthoringDocumentFormatException(sourcePath, field.Path + ".valueType", "字段类型与原值定义不一致。");
+            var result = new AuthoringFieldDefinition(new GraphAuthoringFieldId(Text(field, "id", sourcePath)), Text(field, "displayName", sourcePath),
                 Enumeration<GraphAuthoringFieldValueKind>(field, "valueKind", sourcePath),
-                ReadDefinition(Required(field, "valueDefinition", sourcePath), sourcePath),
+                value,
                 ReadValue(Required(field, "defaultValue", sourcePath), sourcePath),
-                Required(field, "visible", sourcePath).Value<bool>(), Required(field, "writable", sourcePath).Value<bool>(),
-                Required(field, "optional", sourcePath).Value<bool>(), Text(field, "pickerKind", sourcePath),
-                new GraphAuthoringFieldConstraint(constraint["Minimum"].Value<double?>(), constraint["Maximum"].Value<double?>(),
-                    constraint["Finite"].Value<bool>(), constraint["NonEmpty"].Value<bool>(),
-                    Array(constraint, "AllowedValues", sourcePath).Select(value => value.Value<string>()).ToArray()),
+                Boolean(field, "visible", sourcePath), Boolean(field, "writable", sourcePath),
+                Boolean(field, "optional", sourcePath), Text(field, "pickerKind", sourcePath),
+                new GraphAuthoringFieldConstraint(Required(constraint, "Minimum", sourcePath).Value<double?>(),
+                    Required(constraint, "Maximum", sourcePath).Value<double?>(),
+                    Boolean(constraint, "Finite", sourcePath), Boolean(constraint, "NonEmpty", sourcePath),
+                    Array(constraint, "AllowedValues", sourcePath).Select(item => Text(item, sourcePath)).ToArray()),
                 visibility.Type == JTokenType.Null ? null : new GraphAuthoringFieldVisibilityCondition(
                     new GraphAuthoringFieldId(Text(visibility, "fieldId", sourcePath)), Text(visibility, "equals", sourcePath)),
                 new GraphAuthoringFieldCompilation(Enumeration<GraphAuthoringFieldCompilationImpact>(compilation, "impact", sourcePath),
-                    compilation["unit"].Type == JTokenType.Null ? null : Text(compilation, "unit", sourcePath)),
+                    unit.Type == JTokenType.Null ? null : Text(unit, sourcePath)),
                 Enumeration<GraphAuthoringDocumentMember>(field, "documentMember", sourcePath));
+            return ReceiveMembers(field, result, sourcePath);
         }
 
         public static string WriteNodeDefinition(AuthoringNodeDefinition node) => Write(new JObject
