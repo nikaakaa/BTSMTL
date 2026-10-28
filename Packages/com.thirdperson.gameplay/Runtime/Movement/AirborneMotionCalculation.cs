@@ -3,13 +3,13 @@ namespace ThirdPersonSimulation
     public readonly struct AirborneMotionParameters<TScalar> where TScalar : struct
     {
         public AirborneMotionParameters(TScalar maximumSpeed, TScalar acceleration, TScalar turnSpeed,
-            TScalar inputTurnSpeedBonus, TScalar trajectoryTurnSpeed, TScalar trajectoryInputTurnSpeedBonus,
+            TScalar turnSpeedHalfSpeed, TScalar trajectoryTurnSpeed, TScalar trajectoryInputTurnSpeedBonus,
             TScalar maximumHeadingLag, TScalar alignmentSpeed)
         {
             MaximumSpeed = maximumSpeed;
             Acceleration = acceleration;
             TurnSpeed = turnSpeed;
-            InputTurnSpeedBonus = inputTurnSpeedBonus;
+            TurnSpeedHalfSpeed = turnSpeedHalfSpeed;
             TrajectoryTurnSpeed = trajectoryTurnSpeed;
             TrajectoryInputTurnSpeedBonus = trajectoryInputTurnSpeedBonus;
             MaximumHeadingLag = maximumHeadingLag;
@@ -19,7 +19,7 @@ namespace ThirdPersonSimulation
         public readonly TScalar MaximumSpeed;
         public readonly TScalar Acceleration;
         public readonly TScalar TurnSpeed;
-        public readonly TScalar InputTurnSpeedBonus;
+        public readonly TScalar TurnSpeedHalfSpeed;
         public readonly TScalar TrajectoryTurnSpeed;
         public readonly TScalar TrajectoryInputTurnSpeedBonus;
         public readonly TScalar MaximumHeadingLag;
@@ -39,6 +39,9 @@ namespace ThirdPersonSimulation
             TMath math = default;
             TScalar vertical = math.Y3(velocity);
             TVector3 planar = math.Vector3(math.X3(velocity), math.Zero, math.Z3(velocity));
+            TScalar maximumBodyTurn = math.Multiply(TurnSpeedAtSpeed(math.Magnitude3(planar),
+                parameters.TurnSpeed, parameters.TurnSpeedHalfSpeed), delta);
+            TScalar minimumBodyTurn = math.Negate(maximumBodyTurn);
             TVector3 candidate = AirMotionCalculation<TScalar, TVector2, TVector3, TMath>.Steer(
                 planar, move, parameters.MaximumSpeed, parameters.Acceleration, parameters.Acceleration, delta);
             if (math.IsVector3Zero(candidate))
@@ -61,8 +64,7 @@ namespace ThirdPersonSimulation
                 TScalar trajectoryDelta = TurnStep(math.DeltaYaw(beforeYaw, candidateYaw), lateral,
                     parameters.TrajectoryTurnSpeed, parameters.TrajectoryInputTurnSpeedBonus, delta);
                 heading = math.Add(beforeYaw, trajectoryDelta);
-                TScalar bodyStep = TurnStep(math.DeltaYaw(bodyYaw, heading), lateral,
-                    parameters.TurnSpeed, parameters.InputTurnSpeedBonus, delta);
+                TScalar bodyStep = math.Clamp(math.DeltaYaw(bodyYaw, heading), minimumBodyTurn, maximumBodyTurn);
                 TScalar previousLag = math.DeltaYaw(math.Add(bodyYaw, bodyStep), beforeYaw);
                 trajectoryDelta = math.Clamp(trajectoryDelta,
                     math.Min(math.Zero, math.Subtract(math.Negate(parameters.MaximumHeadingLag), previousLag)),
@@ -74,7 +76,7 @@ namespace ThirdPersonSimulation
                 turn = math.DeltaYaw(bodyYaw, heading);
             }
 
-            yawDelta = TurnStep(turn, lateral, parameters.TurnSpeed, parameters.InputTurnSpeedBonus, delta);
+            yawDelta = math.Clamp(turn, minimumBodyTurn, maximumBodyTurn);
             if (!math.IsVector2Zero(move) && math.GreaterThan(
                 math.Abs(math.DeltaYaw(math.Add(bodyYaw, yawDelta), heading)), parameters.MaximumHeadingLag))
             {
@@ -83,6 +85,12 @@ namespace ThirdPersonSimulation
                     candidate = math.MultiplyVector3(candidate, math.Divide(allowedSpeed, speed));
             }
             return math.Vector3(math.X3(candidate), vertical, math.Z3(candidate));
+        }
+
+        public static TScalar TurnSpeedAtSpeed(TScalar planarSpeed, TScalar stationaryTurnSpeed, TScalar halfSpeed)
+        {
+            TMath math = default;
+            return math.Multiply(stationaryTurnSpeed, math.Divide(halfSpeed, math.Add(halfSpeed, planarSpeed)));
         }
 
         static TScalar TurnStep(TScalar target, TScalar lateral, TScalar speed, TScalar bonus, TScalar delta)
