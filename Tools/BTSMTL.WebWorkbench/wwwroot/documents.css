@@ -31,3 +31,4 @@
 .owned-graph-links button{display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:7px 0;width:100%;text-align:left;color:var(--accent)}
 .owned-graph-links button small{font-size:9px;color:var(--muted)}
 .authoring-gap{margin:12px 0;padding:10px;border-left:2px solid #d1a566;color:var(--muted);font-size:11px;line-height:1.7}
+.timeline-bindings button.selected{border-color:var(--accent);background:#89dec912}
