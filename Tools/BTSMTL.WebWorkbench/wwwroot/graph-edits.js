@@ -27,7 +27,7 @@ export function dialog(title, contents, submit) {
 
 function valueControls(value, path = [], choices = [], references = [], definition = null) {
   const location = html(JSON.stringify(path));
-  if (value.kind === 'object' && value.type === 'UnityEngine.CoreModule:UnityEngine.AnimationCurve')
+  if (value.kind === 'object' && value.type === 'UnityEngine.AnimationCurve')
     return `<div class="curve-value-editor" data-curve-path="${location}"></div>`;
   const matching = references.map((item, index) => ({ ...item, index })).filter(item => item.value.type === value.type);
   if ((value.kind === 'reference' || value.kind === 'null') && matching.length) {

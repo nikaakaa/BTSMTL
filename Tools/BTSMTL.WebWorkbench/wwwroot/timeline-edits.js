@@ -29,17 +29,22 @@ export function editMarkerTime(marker, scale, apply) {
 }
 
 function timelineFieldDescription(catalog, kind) {
-  const description = catalog.find(item => item.kind === kind).description;
+  return ordinaryFields(catalog.find(item => item.kind === kind).description);
+}
+
+function ordinaryFields(description) {
   return { ...description, fields: description.fields.filter(field => field.documentMember === 'Field') };
 }
 
 export function timelineObjectDefinition(target, definitions) {
   if (definitions.timelineAuthoring === undefined) return null;
+  if (Array.isArray(target.tracks)) return ordinaryFields(definitions.timelineAuthoring.document);
   if (Array.isArray(target.clips))
     return timelineFieldDescription(definitions.timelineAuthoring.tracks, target.contract);
   if (target.timeRange)
     return timelineFieldDescription(definitions.timelineAuthoring.clips, target.contract);
-  return null;
+  if (Object.hasOwn(target, 'timeRaw')) return ordinaryFields(definitions.timelineAuthoring.marker.description);
+  return ordinaryFields(definitions.timelineAuthoring.binding);
 }
 
 export function editTimelineFields(target, definition, references, apply) {
@@ -114,6 +119,32 @@ export function createClip(track, definitions, references, scale, apply) {
   };
   modal.querySelector('select').onchange = fill;
   fill();
+}
+
+export function createMarker(track, definitions, references, scale, apply) {
+  const contract = definitions.timelineAuthoring.marker;
+  const time = contract.description.fields.find(field => field.documentMember === 'Time');
+  let readFields;
+  const modal = dialog('在当前轨道新建标记', `<p>目标轨道：${html(track.displayName)}。类型与参数来自正式标记定义。每秒 ${html(scale)} 个 Raw 单位；时刻由文档结构保存。</p><label>标记名称<input name="displayName" required autocomplete="off"></label><label>时刻 · Raw<input name="timeRaw" value="${html(time.defaultValue.value)}" inputmode="numeric" pattern="-?[0-9]+" required></label><div data-marker-fields></div>`,
+    form => {
+      const input = new FormData(form);
+      return apply([{ kind: 'insert-marker', trackId: track.id, index: track.markers.length, marker: {
+        id: `local:${crypto.randomUUID()}`, contractKind: contract.kind,
+        displayName: input.get('displayName'), timeRaw: input.get('timeRaw'), fields: readFields()
+      } }]);
+    });
+  readFields = bindNewTimelineFields(modal.querySelector('[data-marker-fields]'),
+    ordinaryFields(contract.description), references);
+}
+
+export function createBinding(timeline, definitions, references, apply) {
+  let readFields;
+  const modal = dialog('新建时间轴绑定', '<p>绑定字段、枚举和初始值来自正式绑定描述。确认后加入当前时间轴末尾，由共同领域接收。</p><div data-binding-fields></div>',
+    () => apply([{ kind: 'insert-binding', index: timeline.bindings.length, binding: {
+      id: `local:${crypto.randomUUID()}`, fields: readFields()
+    } }]));
+  readFields = bindNewTimelineFields(modal.querySelector('[data-binding-fields]'),
+    ordinaryFields(definitions.timelineAuthoring.binding), references);
 }
 
 function clipTrackChoices(timeline, clip, contracts) {

@@ -1,6 +1,6 @@
 import { editField, editNodeFields, editVariable, renameElement, createNode, createConnection, reorderConnections, referenceChoices, showDocumentDiff } from './graph-edits.js';
 import { DocumentEditSession } from './document-session.js';
-import { createTrack, createClip, editTimeRange, editMarkerTime, moveClip, bindTimelineDrag, timelineObjectDefinition, editTimelineFields } from './timeline-edits.js';
+import { createTrack, createClip, createMarker, createBinding, editTimeRange, editMarkerTime, moveClip, bindTimelineDrag, timelineObjectDefinition, editTimelineFields } from './timeline-edits.js';
 import { showReferences, showReferenceResource } from './references.js';
 import { graphContext, editTransition } from './documents-fsm.js';
 
@@ -492,7 +492,7 @@ function renderTimelineActions(timeline, target, definition) {
     const kinds = state.definitions.timelineContracts.tracks.find(contract => contract.kind === track.contract).allowedClipKinds;
     const ready = state.definitions.timelineAuthoring !== undefined;
     $('inspector-content').querySelector('.inspector-actions').insertAdjacentHTML('beforeend',
-      `<button data-timeline-add-clip ${ready && kinds.length ? '' : 'disabled'}>在此轨道新建片段</button>`);
+      `<button data-timeline-add-clip ${ready && kinds.length ? '' : 'disabled'}>在此轨道新建片段</button><button data-timeline-add-marker ${ready ? '' : 'disabled'}>在此轨道新建标记</button>`);
     if (!ready || !kinds.length) $('inspector-content').insertAdjacentHTML('beforeend',
       `<p class="authoring-gap">${!kinds.length ? '此轨道的正式合同没有可接收的片段类型。' : '正式片段作者字段及初始值尚未导出，新建片段暂不可用。'}</p>`);
   }
@@ -601,7 +601,7 @@ function renderValue(value) {
       return `<div class="reference-value">${target && value.target.rootId === state.snapshot.root.id ? `<button data-document="${escapeHtml(target.path)}" data-element="${escapeHtml(value.target.elementId)}">打开 ${escapeHtml(kindNames[target.kind])} ↗</button>` : `<strong>只读资源引用</strong><button data-resource-root="${escapeHtml(value.target.rootId)}" data-resource-document="${escapeHtml(value.target.documentId)}" data-resource-element="${escapeHtml(value.target.elementId)}">查看引用详情</button>`}<span>${escapeHtml(mapping?.assetPath || value.target.rootId)}</span><button data-reference-root="${escapeHtml(value.target.rootId)}" data-reference-document="${escapeHtml(value.target.documentId)}" data-reference-element="${escapeHtml(value.target.elementId)}">查看引用位置</button><details><summary>稳定引用</summary><code>${escapeHtml(value.target.rootId)} / ${escapeHtml(value.target.documentId)} / ${escapeHtml(value.target.elementId)}</code></details></div>`;
     }
     case 'object':
-      if (value.type === 'UnityEngine.CoreModule:UnityEngine.AnimationCurve')
+      if (value.type === 'UnityEngine.AnimationCurve')
         return `<details><summary>${value.members.keys.items.length} 个关键点 · 曲线记录</summary><pre>${escapeHtml(JSON.stringify(value, null, 2))}</pre></details>`;
       return `<details><summary title="${escapeHtml(value.type)}">${escapeHtml(typeName(value.type))}</summary>${Object.entries(value.members).map(([key, member]) => `<div class="nested-value"><label>${escapeHtml(key)}</label>${renderValue(member)}</div>`).join('')}</details>`;
     case 'sequence': return `<details><summary>${value.items.length} 项 · ${escapeHtml(typeName(value.type))}</summary>${value.items.map((item, index) => `<div class="nested-value"><label>${index + 1}</label>${renderValue(item)}</div>`).join('')}</details>`;
@@ -629,11 +629,11 @@ function renderTimeline(timeline) {
   if (state.draft?.canEdit) {
     const ready = state.definitions.timelineAuthoring !== undefined;
     $('document-view').querySelector('.timeline-heading').insertAdjacentHTML('beforeend',
-      `<button data-timeline-add-track ${ready ? '' : 'disabled'}>新建轨道</button>`);
+      `<button data-timeline-add-track ${ready ? '' : 'disabled'}>新建轨道</button><button data-timeline-add-binding ${ready ? '' : 'disabled'}>新建绑定</button>`);
     $('document-view').querySelector('.timeline-note').textContent = '拖动片段中部平移或放入可接收的轨道，跨轨插入末尾；拖动两端只调整对应起止时间，标记可平移。松开时将轨道与时间修改合为一次共同候选，取消拖动不提交。素材范围和其余时间参数保持原值，可在属性中精确编辑。';
     if (!ready) $('document-view').querySelector('.timeline-note').textContent +=
       ' 正式轨道作者字段及初始值尚未导出，新建轨道暂不可用。';
-    $('document-view').insertAdjacentHTML('beforeend', '<p class="authoring-gap">新建标记、绑定及私有片段图尚缺共同创建描述；Section 尚缺共同文档结构与修改协议。现有标记、绑定和图引用可在属性中选择、编辑或下钻。</p>');
+    $('document-view').insertAdjacentHTML('beforeend', '<p class="authoring-gap">Section 尚缺共同文档结构与修改协议。现有图引用可在属性中选择、编辑或下钻。</p>');
     bindTimelineDrag($('document-view').querySelector('.timeline-content'), timeline, state.definitions.timelineContracts, state.timeScale, pixels,
       applyTimelineEdits, error => report(error.message, true));
   }
@@ -692,7 +692,7 @@ $('document-view').onclick = event => {
   const port = event.target.closest('[data-port]');
   if (port) { guarded(() => choosePort(port)); return; }
   if (event.target.closest('[data-cancel-connection]')) { state.linkStart = null; renderDocument(); return; }
-  if (event.target.closest('[data-timeline-add-track]')) { handleTimelineAction(event); return; }
+  if (event.target.closest('[data-timeline-add-track], [data-timeline-add-binding]')) { handleTimelineAction(event); return; }
   const variableButton = event.target.closest('[data-edit-variable], [data-copy-variable], [data-delete-variable]');
   if (variableButton) {
     const file = state.snapshot.files.find(item => item.path === variableButton.dataset.variableDocument);
@@ -828,6 +828,10 @@ function handleTimelineAction(event) {
   const field = event.target.closest('[data-timeline-field]');
   if (event.target.closest('[data-timeline-add-track]')) {
     createTrack(timeline, state.definitions, state.references, applyTimelineEdits);
+  } else if (event.target.closest('[data-timeline-add-binding]')) {
+    createBinding(timeline, state.definitions, state.references, applyTimelineEdits);
+  } else if (event.target.closest('[data-timeline-add-marker]')) {
+    createMarker(track, state.definitions, state.references, state.timeScale, applyTimelineEdits);
   } else if (event.target.closest('[data-timeline-add-clip]')) {
     createClip(track, state.definitions, state.references, state.timeScale, applyTimelineEdits);
   } else if (event.target.closest('[data-timeline-configure-fields]')) {
