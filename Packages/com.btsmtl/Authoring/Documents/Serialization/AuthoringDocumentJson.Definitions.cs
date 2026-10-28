@@ -23,10 +23,14 @@ namespace BTSMTL.Authoring.Documents
         public static AuthoringObjectDefinition ReadObjectDefinition(string text, string sourcePath)
         {
             JObject definition = ReadObject(text);
-            return new(Text(definition, "authoringType", sourcePath), Array(definition, "fields", sourcePath)
+            JToken declaredMembers = Required(definition, "members", sourcePath);
+            if (declaredMembers is not JObject members)
+                throw new AuthoringDocumentFormatException(sourcePath, declaredMembers.Path, "成员绑定必须使用 JSON Object。");
+            var result = new AuthoringObjectDefinition(Text(definition, "authoringType", sourcePath), Array(definition, "fields", sourcePath)
                 .Select(field => ReadFieldDefinition(field.ToString(), sourcePath)).ToArray(),
-                Object(definition, "members", sourcePath).Properties().ToDictionary(member => member.Name,
+                members.Properties().ToDictionary(member => member.Name,
                     member => new GraphAuthoringFieldId(Text(member.Value, sourcePath)), StringComparer.Ordinal));
+            return ReceiveMembers(definition, result, sourcePath);
         }
 
         public static string WriteFieldDefinition(AuthoringFieldDefinition field) => Write(new JObject

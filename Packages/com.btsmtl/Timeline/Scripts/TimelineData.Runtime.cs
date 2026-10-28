@@ -53,6 +53,9 @@ namespace BTSMTL.Timeline
         [SerializeField, ShowInInspector, OnValueChanged("RebindTimeline")]
         TimelineExecutionDomain m_ExecutionDomain;
 
+#if UNITY_EDITOR
+        [GraphAuthoringField(nameof(m_ExecutionDomain), typeof(TimelineExecutionDomain))]
+#endif
         public TimelineExecutionDomain ExecutionDomain => m_ExecutionDomain;
         public bool HasExplicitExecutionDomain => TimelineExecutionDomains.IsValid(m_ExecutionDomain);
 
@@ -109,6 +112,7 @@ namespace BTSMTL.Timeline
         }
 
 #if UNITY_EDITOR
+        [GraphAuthoringConfigure]
         public void ConfigureExecutionDomain(TimelineExecutionDomain executionDomain)
         {
             if (!TimelineExecutionDomains.IsValid(executionDomain))

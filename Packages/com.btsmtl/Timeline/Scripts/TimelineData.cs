@@ -3,6 +3,7 @@ using BTSMTL.Orchestration;
 using System.Collections.Generic;
 using System.Linq;
 using BTSMTL.Diagnostics;
+using BTSMTL.Authoring.Graph;
 using UnityEngine;
 
 namespace BTSMTL.Timeline
@@ -31,10 +32,18 @@ namespace BTSMTL.Timeline
         [NonSerialized]
         string m_SerializedPropertyPath;
 
+#if UNITY_EDITOR
+        [GraphAuthoringField(nameof(m_Name), GraphAuthoringFieldValueKind.String,
+            DocumentMember = GraphAuthoringDocumentMember.DisplayName)]
+#endif
         public string Name { get => string.IsNullOrEmpty(m_Name) ? "Timeline" : m_Name; set => m_Name = value; }
         public string AuthoringId => m_AuthoringId ?? string.Empty;
         public List<Track> Tracks => m_Tracks;
         public IReadOnlyList<TimelineExternalBindingDeclaration> ExternalBindings => m_ExternalBindings;
+#if UNITY_EDITOR
+        [GraphAuthoringField(nameof(m_Loop), GraphAuthoringFieldValueKind.Boolean,
+            DocumentMember = GraphAuthoringDocumentMember.Loop)]
+#endif
         public bool Loop { get => m_Loop; set => m_Loop = value; }
         public UnityEngine.Object SerializedOwner => m_SerializedOwner;
         public string SerializedPropertyPath => m_SerializedPropertyPath ?? string.Empty;

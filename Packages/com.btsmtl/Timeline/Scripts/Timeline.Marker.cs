@@ -9,6 +9,8 @@ namespace BTSMTL.Timeline
     [Serializable]
     public sealed partial class TimelineMarker
     {
+        public const string ContractKind = "marker";
+
         [SerializeField, HideInInspector]
         string m_AuthoringId;
 
