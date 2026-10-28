@@ -31,9 +31,9 @@
       <label for="scene">场景</label><select id="scene" aria-label="场景"></select>
     </section>
     <div id="run-state" class="run-error" role="alert" hidden></div>
-    <section id="preview-content"><section id="execution-observation" aria-label="Timeline 与来源观察"></section></section>
+    <section id="preview-content"><section id="execution-observation" aria-label="Timeline 与节点图"></section></section>
   </main>
-  <footer class="statusbar"><span id="status" role="status">连接中</span><span id="capability-state" title="宿主尚未提供快速预览、正式输入方案按键轨、图连接端点、逐次执行路线及端口采样。">未提供：快预览 · 输入轨 · 图连线 · 端口值</span></footer>
+  <footer class="statusbar"><span id="status" role="status">连接中</span><span id="capability-state"></span></footer>
   <dialog id="preview-settings">
     <header><strong>预览设置</strong><button id="settings-close" aria-label="关闭预览设置">×</button></header>
     <section id="runtime-sources" inert>
@@ -45,6 +45,7 @@
       <div id="playback-controls" class="settings-actions" hidden><button data-control="Step">单步</button><button data-control="Stop">停止</button><label class="checkbox-label"><input id="follow-live" type="checkbox" checked> 跟随当前帧</label><output id="playback-state"></output></div>
     </section>
     <details><summary>运行信息</summary><code id="run-identity"></code><pre id="run-error-detail"></pre><dl id="run-details"></dl><p id="channels"></p><code id="scene-version"></code><code id="replay-version"></code><p id="source-state"></p></details>
+    <details><summary>预览能力</summary><dl id="capability-details"></dl></details>
     <details><summary>逻辑视图</summary><div class="preview-stage"><div id="viewport"></div></div><button id="fit-view" disabled>适配角色</button></details>
     <details><summary>帧记录</summary><dl id="frame-facts"></dl><div id="actors"></div><details id="frame-record-details"><summary>完整记录</summary><div id="frame-sections"></div></details><details><summary>JSON</summary><pre id="frame-json"></pre></details></details>
     <details><summary>记录查询</summary><section id="observation-query"></section></details>

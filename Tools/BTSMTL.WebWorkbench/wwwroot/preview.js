@@ -65,7 +65,10 @@ async function refresh() {
     entry => `${entry.acceptedAt} · ${entry.jobId.slice(0, 8)}`, entry => entry.jobId, $('comparison').value);
   $('compare').disabled = !state.sealed || !$('comparison').value;
   $('connection').textContent = '已连接';
-  document.querySelectorAll('[data-preview-mode]').forEach(button => { button.disabled = button.dataset.previewMode === 'quick'; });
+  document.querySelectorAll('[data-preview-mode]').forEach(button => {
+    const mode = state.host.modes.find(mode => mode.id === button.dataset.previewMode);
+    button.disabled = !mode.available; button.title = mode.reason || mode.displayName;
+  });
 }
 
 async function start() {
@@ -174,7 +177,9 @@ async function displayObservation(summary, sealed) {
   state.summary = summary; state.count = summary.frameCount;
   if (first) observationQuery.bind(state.selected, summary);
   state.sealed = sealed;
-  if (sealed && executionObservation.runId !== state.selected) await executionObservation.load(state.selected);
+  if (executionObservation.runId !== state.selected) await executionObservation.load(state.selected);
+  if (runId !== state.selected) return;
+  await executionObservation.sync(summary);
   if (runId !== state.selected) return;
   if (sealed && state.initialFrameIndex > 0 && state.initialFrameIndex >= state.count) throw new Error('请求的帧序号超出本次已封存范围。');
   $('run-details').innerHTML = fieldsHtml([...summary.fields,
@@ -244,7 +249,24 @@ const observationQuery = new ObservationQuery($('observation-query'), request);
 const executionObservation = new PreviewObservation($('execution-observation'), request, index => {
   pauseHistory(); $('follow-live').checked = false; $('frame').value = index;
   guarded(() => showFrame(index));
-});
+}, updateCapabilities);
+
+function updateCapabilities(availability) {
+  const channels = new Map(availability.map(channel => [channel.channel, channel]));
+  const gaps = [{ name: '输入轨', reason: '宿主尚未提供正式输入方案及按键轨。' }];
+  if (state.host) for (const mode of state.host.modes) {
+    if (!mode.available) gaps.push({ name: `${mode.displayName}预览`, reason: mode.reason });
+  }
+  const names = { 'graph-definitions': '节点图', 'node-occurrences': '节点路线', 'edge-occurrences': '连线路线',
+    'port-values': '端口值', 'author-layout': '作者布局', 'author-display-names': '作者名称', 'author-value-connections': '数值连线' };
+  for (const channel of channels.values()) {
+    if ((!channel.available || !channel.complete) && names[channel.channel])
+      gaps.push({ name: `${names[channel.channel]}${channel.available ? '不完整' : ''}`, reason: channel.reason });
+  }
+  $('capability-state').textContent = `未提供：${gaps.map(gap => gap.name).join(' · ')}`;
+  $('capability-state').title = gaps.map(gap => `${gap.name}：${gap.reason}`).join('\n');
+  $('capability-details').innerHTML = fieldsHtml(gaps.map(gap => ({ displayName: gap.name, value: gap.reason })));
+}
 window.addEventListener('pagehide', () => { observationQuery.close(); pauseHistory(); clearTimeout(pollTimer); });
 function clearActors() { viewport.reset(); }
 function fitView() { viewport.fit(); }
@@ -339,6 +361,7 @@ guarded(async () => {
   const host = await request('/api/preview/host');
   if (!host.available) { $('connection').textContent = '未接入运行宿主'; report('当前工作台未接入正式运行宿主，预览不可用。'); return; }
   state.host = host.description; observationQuery.configure(state.host);
+  updateCapabilities([]);
   $('runtime-sources').inert = false;
   await refresh();
   const pending = sessionStorage.getItem('btsmtl.preview.pending-request');
