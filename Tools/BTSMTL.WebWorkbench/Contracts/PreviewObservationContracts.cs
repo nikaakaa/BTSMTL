@@ -31,7 +31,9 @@ public sealed record PreviewPage<T>(T[] Items, int Total, int? NextOffset);
 public sealed record PreviewObservationPage(string RunId, string ContentRevision, string[] Channels,
     string FirstFrame, string LastFrame, int Offset, int Total, int? NextOffset, PreviewFrame[] Items);
 public sealed record PreviewQueryField(string Name, string DisplayName, string InputType, string Placeholder);
-public sealed record PreviewHostDescription(string DisplayName, string FrameDisplayName, PreviewQueryField[] Filters);
+public sealed record PreviewNumberInput(string Name, string DisplayName, string Minimum, string Step, string InitialValue);
+public sealed record PreviewHostDescription(string DisplayName, string FrameDisplayName,
+    PreviewQueryField[] Filters, PreviewNumberInput InputLimit);
 public sealed record PreviewPlaybackObservation(PreviewSummary Summary, PreviewFrame[] Frames);
 public sealed record PreviewPlaybackState(string State, Guid? LastCommandId, PreviewPlaybackObservation Observation);
 public sealed record PreviewPlaybackView(bool Ready, object Receipt, PreviewPlaybackState? Snapshot);

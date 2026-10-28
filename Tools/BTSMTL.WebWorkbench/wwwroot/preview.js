@@ -42,7 +42,7 @@ function sourceVersion() {
   const scene = state.sources.scenes.find(item => item.path === $('scene').value);
   const replay = state.sources.replays.find(item => item.id === $('replay').value);
   $('scene-version').textContent = scene?.revision || '尚未导出正式离线包';
-  $('replay-version').textContent = replay?.source.revision || '尚无原 SDK 录像';
+  $('replay-version').textContent = replay?.source.revision || '尚无原录像';
   const local = $('run-source').value === 'local';
   const catalogReady = scene && state.inputCatalog?.revision === scene.revision && state.inputScene === scene.path;
   $('replay-source').hidden = local; $('local-source').hidden = !local;
@@ -58,7 +58,7 @@ async function refresh() {
   options($('scene'), sources.scenes, entry => entry.path, entry => entry.path, $('scene').value);
   options($('replay'), sources.replays, entry => entry.displayName, entry => entry.id, $('replay').value);
   sourceVersion();
-  $('source-state').textContent = `${sources.scenes.length} 个离线包 · ${sources.replays.length} 份原录像。${!sources.scenes.length ? '请先从已保存 Unity 场景正式导出。' : ''}${!sources.replays.length ? '真实重放需要原 SDK 录像文件。' : ''}`;
+  $('source-state').textContent = `${sources.scenes.length} 个正式内容包 · ${sources.replays.length} 份原录像。${!sources.scenes.length ? '宿主尚未提供正式内容。' : ''}${!sources.replays.length ? '真实重放需要宿主的原录像。' : ''}`;
   $('runs').innerHTML = runs.map(run => `<button data-run="${escapeHtml(run.jobId)}" class="${run.jobId === state.selected ? 'selected' : ''}">${escapeHtml(stages[run.stage])}<small>${escapeHtml(run.acceptedAt)}</small><code>${escapeHtml(run.jobId)}</code></button>`).join('') || '<p class="muted">尚未提交运行。</p>';
   options($('comparison'), runs.filter(run => ['completed', 'stopped'].includes(run.stage) && run.jobId !== state.selected),
     entry => `${entry.acceptedAt} · ${entry.jobId.slice(0, 8)}`, entry => entry.jobId, $('comparison').value);
@@ -155,14 +155,14 @@ function addInput() {
 
 function localSource() {
   for (const input of $('local-source').querySelectorAll('input'))
-    if (!input.reportValidity()) throw new Error('请补齐输入时刻、数值及结束 SDK 帧。');
+    if (!input.reportValidity()) throw new Error('请补齐输入时刻、数值及宿主声明的停止位置。');
   const players = new Map();
   for (const row of $('input-events').children) {
     const { actorId, input } = row.readInput();
     if (!players.has(actorId)) players.set(actorId, []);
     players.get(actorId).push(input);
   }
-  return { kind: 'local', lastSdkFrame: Number($('last-sdk-frame').value),
+  return { kind: 'local', [state.host.inputLimit.name]: Number($('input-limit').value),
     players: [...players].map(([actorId, inputs]) => ({ actorId, inputs: inputs.sort((left, right) => left.seconds - right.seconds) })) };
 }
 
@@ -328,6 +328,9 @@ guarded(async () => {
   const host = await request('/api/preview/host');
   if (!host.available) { $('connection').textContent = '未接入运行宿主'; report('当前工作台未接入运行宿主。作者页面仍可继续工作。'); return; }
   state.host = host.description; observationQuery.configure(state.host);
+  const limit = state.host.inputLimit;
+  $('input-limit-label').textContent = limit.displayName;
+  $('input-limit').min = limit.minimum; $('input-limit').step = limit.step; $('input-limit').value = limit.initialValue;
   await refresh();
   const pending = sessionStorage.getItem('btsmtl.preview.pending-request');
   if (pending) { report('上次提交结果尚未确认，正在以原请求身份重查。'); await start(); }
