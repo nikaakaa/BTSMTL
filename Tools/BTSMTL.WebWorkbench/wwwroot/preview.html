@@ -34,6 +34,7 @@
         <div id="playback-controls" class="frame-transport" hidden><button data-control="Step">单步一个确认帧</button><button data-control="Stop">停止并封存</button><label><input id="follow-live" type="checkbox" checked> 跟随最新确认帧</label><output id="playback-state"></output></div>
       </section>
       <div id="preview-content">
+      <section id="execution-observation" aria-label="Timeline 与来源观察"></section>
       <div class="preview-stage"><div id="viewport"></div><div class="view-label">确认帧逻辑几何 · 1 单位 = 1 米<br>橙色：扫掠采样两端 · 红色：实际命中点<br>角色完整画面请进入画面预览</div></div>
       <div class="frame-facts"><dl id="frame-facts"></dl><div id="actors"></div><div id="frame-sections"></div></div>
       <details class="raw-record"><summary>所选帧的同源 JSON</summary><pre id="frame-json"></pre></details>

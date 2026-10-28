@@ -1,6 +1,7 @@
 import { LogicViewport } from './logic-viewport.js';
 import { ObservationQuery } from './observation-query.js';
 import { fieldsHtml, sectionsHtml } from './preview-records.js';
+import { PreviewObservation } from './preview-observation.js';
 
 const $ = id => document.getElementById(id);
 const state = { sources: null, runs: [], selected: null, summary: null, frames: new Map(), count: 0, sealed: false, initialFrameIndex: 0, inputCatalog: null, inputScene: null, host: null, playback: null, historyPlaying: false };
@@ -96,6 +97,7 @@ async function selectRun(id, frameIndex = 0) {
   clearTimeout(pollTimer);
   pauseHistory(); state.playback = null;
   observationQuery.reset();
+  executionObservation.reset();
   state.selected = id; state.summary = null; state.frames.clear(); state.count = 0; state.sealed = false;
   state.initialFrameIndex = frameIndex;
   delete document.documentElement.dataset.previewImageReady;
@@ -158,11 +160,14 @@ async function updateRun() {
 }
 
 async function displayObservation(summary, sealed) {
+  const runId = state.selected;
   const firstFrame = state.count === 0 && summary.frameCount > 0;
   const first = state.summary === null;
   state.summary = summary; state.count = summary.frameCount;
   if (first) observationQuery.bind(state.selected, summary);
   state.sealed = sealed;
+  if (sealed && executionObservation.runId !== state.selected) await executionObservation.load(state.selected);
+  if (runId !== state.selected) return;
   if (sealed && state.initialFrameIndex > 0 && state.initialFrameIndex >= state.count) throw new Error('请求的帧序号超出本次已封存范围。');
   $('run-details').innerHTML = fieldsHtml([...summary.fields,
     { displayName: `${summary.frameDisplayName}范围`, value: `${summary.firstFrame} — ${summary.lastFrame}` },
@@ -214,6 +219,7 @@ async function showFrame(index) {
   $('actors').innerHTML = frame.actors.map(actor => `<article class="actor-fact"><strong>${escapeHtml(actor.displayName)}</strong><dl>${fieldsHtml(actor.fields)}</dl><details><summary>宿主角色记录</summary><pre>${escapeHtml(actor.rawJson)}</pre></details></article>`).join('');
   $('frame-sections').innerHTML = sectionsHtml(frame.sections);
   $('frame-json').textContent = frame.rawJson;
+  executionObservation.showFrame(frame, index);
   viewport.draw(frame);
   const rendered = document.documentElement.dataset;
   rendered.previewRun = state.summary.runId;
@@ -228,6 +234,10 @@ async function showFrame(index) {
 
 const viewport = new LogicViewport($('viewport'));
 const observationQuery = new ObservationQuery($('observation-query'), request);
+const executionObservation = new PreviewObservation($('execution-observation'), request, index => {
+  pauseHistory(); $('follow-live').checked = false; $('frame').value = index;
+  guarded(() => showFrame(index));
+});
 window.addEventListener('pagehide', () => { observationQuery.close(); pauseHistory(); clearTimeout(pollTimer); });
 function clearActors() { viewport.reset(); }
 function fitView() { viewport.fit(); }
