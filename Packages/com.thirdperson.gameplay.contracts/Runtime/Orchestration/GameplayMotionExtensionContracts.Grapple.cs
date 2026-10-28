@@ -15,8 +15,7 @@ namespace ThirdPersonGameplay.Orchestration
 
             public static readonly Parameter MaximumLength = Scalar("MaximumLength", "起手与飞钩", "最大绳长", "米", 1d, 150d, "限制飞钩和含拐点的实际绳长；调短到当前长度以下会断钩。选点范围仍由技能准入配置提供。");
             public static readonly Parameter HookSpeed = Scalar("HookSpeed", "起手与飞钩", "钩头飞行／收回速度", "米/秒", 1d, 200d, "调钩头到达与收回速度，不是角色牵引速度。");
-            public static readonly Parameter PreparationTime = Scalar("PreparationTime", "起手与飞钩", "地面准备停顿", "秒", 0.01d, 1.5d, "地面起手停止平移并转向，之后发射。空中换钩沿现有空中规则。");
-            public static readonly Parameter TakeoffDelay = Scalar("TakeoffDelay", "起手与飞钩", "准备期起跳时刻", "秒", 0d, 1.5d, "相对准备开始的起跳时刻，不能晚于准备结束。");
+            public static readonly Parameter PreparationTime = Scalar("PreparationTime", "起手与飞钩", "出钩准备时间", "秒", 0.01d, 1.5d, "地面起手短暂停步并转向，时间到只发射钩头，不自动起跳。空中换钩沿现有空中规则。");
             public static readonly Parameter PullStartSpeed = Scalar("PullStartSpeed", "牵引", "初始牵引目标速度", "米/秒", 0d, 60d, "牵引加速曲线的起点。");
             public static readonly Parameter PullSpeed = Scalar("PullSpeed", "牵引", "稳定牵引目标速度", "米/秒", 0d, 100d, "朝钩点的目标速度，不会清掉已有绕行惯性。");
             public static readonly Parameter PullRampTime = Scalar("PullRampTime", "牵引", "目标速度展开时间", "秒", 0.01d, 3d, "从初始速度展开到稳定速度的时长，也供钩锁稳态动画条件读取。");
@@ -52,7 +51,7 @@ namespace ThirdPersonGameplay.Orchestration
         public readonly struct BeginGrapple
         {
             public static readonly OrchestrationExtensionDefinition<BeginGrapple> Definition = new(
-                new OrchestrationExtensionIdentity(DomainId, "begin-grapple"), 8,
+                new OrchestrationExtensionIdentity(DomainId, "begin-grapple"), 9,
                 new OrchestrationExtensionContract(OrchestrationExtensionKind.Action,
                     OrchestrationExtensionAccess.CandidateWrite, OrchestrationExtensionInvocationKind.Execute,
                     OrchestrationExtensionCompletion.Immediate, Array.Empty<OrchestrationExtensionPort>(), GrappleFields.All));
