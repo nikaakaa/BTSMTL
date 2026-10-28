@@ -258,12 +258,14 @@ function updateCapabilities(availability) {
     if (!mode.available) gaps.push({ name: `${mode.displayName}预览`, reason: mode.reason });
   }
   const names = { 'graph-definitions': '节点图', 'node-occurrences': '节点路线', 'edge-occurrences': '连线路线',
-    'port-values': '端口值', 'author-layout': '作者布局', 'author-display-names': '作者名称', 'author-value-connections': '数值连线' };
+    'port-values': '端口值', 'author-layout': '作者布局', 'author-display-names': '作者名称', 'author-value-connections': '数值连线',
+    'execution-source-bindings': '节点来源', 'port-source-bindings': '端口来源', 'port-parent-invocation-generation': '父调用代次' };
   for (const channel of channels.values()) {
-    if ((!channel.available || !channel.complete) && names[channel.channel])
-      gaps.push({ name: `${names[channel.channel]}${channel.available ? '不完整' : ''}`, reason: channel.reason });
+    if (!channel.available || !channel.complete)
+      gaps.push({ name: `${names[channel.channel] ?? channel.channel}${channel.available ? '不完整' : ''}`, reason: channel.reason });
   }
-  $('capability-state').textContent = `未提供：${gaps.map(gap => gap.name).join(' · ')}`;
+  $('capability-state').hidden = !state.host || !gaps.length;
+  $('capability-state').textContent = `预览缺项 ${gaps.length}`;
   $('capability-state').title = gaps.map(gap => `${gap.name}：${gap.reason}`).join('\n');
   $('capability-details').innerHTML = fieldsHtml(gaps.map(gap => ({ displayName: gap.name, value: gap.reason })));
 }
@@ -355,6 +357,7 @@ $('previous-frame').onclick = () => guarded(() => moveFrame(-1)); $('next-frame'
 $('fit-view').onclick = fitView;
 $('frame-record-details').ontoggle = () => { if ($('frame-record-details').open && state.currentFrame) renderFrameRecords(); };
 $('settings-open').onclick = () => $('preview-settings').showModal();
+$('capability-state').onclick = () => { $('capabilities').open = true; $('preview-settings').showModal(); $('capabilities').scrollIntoView(); };
 $('settings-close').onclick = () => $('preview-settings').close();
 $('compare').onclick = () => guarded(async () => { const result = await request(`/api/preview/runs/${state.selected}/compare/${$('comparison').value}`); $('comparison-result').textContent = result.rawJson; report(!result.comparable ? '运行条件不同，未比较一致性值。' : result.equal ? `已比较 ${result.comparedFrames} 帧，本次已记录范围内一致。` : `首个差异在${state.summary.frameDisplayName} ${result.firstDifference.hostFrame}。`); });
 guarded(async () => {

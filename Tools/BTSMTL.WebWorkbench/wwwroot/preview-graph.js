@@ -119,6 +119,10 @@ export class PreviewGraph {
     const select = this.container.querySelector('[data-graph-choice]');
     select.value = graphKey(graph); select.title = `${graph.displayName}\n角色 ${graph.actorId}\n程序 ${graph.programId}`;
     if (!graph.nodes.length) {
+      this.viewKey = ''; this.selectedNode = '';
+      this.inspector.hidden = true; this.inspector.replaceChildren();
+      this.container.querySelector('[data-graph-call]').replaceChildren();
+      this.container.querySelector('[data-graph-call]').disabled = true;
       this.world.hidden = true;
       this.container.querySelector('.observation-empty').hidden = false;
       this.container.querySelector('.observation-empty').textContent = '此图未保留作者节点来源';
@@ -222,9 +226,13 @@ export class PreviewGraph {
     if (!this.selectedNode) { this.inspector.replaceChildren(); return; }
     const node = this.nodes.find(node => node.id === this.selectedNode);
     if (!node) { this.selectedNode = ''; this.inspector.hidden = true; return; }
-    const records = this.records.filter(item => item.nodeId === node.id).sort((a, b) => Number(a.sequence) - Number(b.sequence));
-    this.inspector.innerHTML = `<header><strong>${html(node.displayName)}</strong><button data-inspector-close aria-label="关闭节点记录">×</button></header><div>${records.length ? records.map(item =>
-      `<article data-occurrence-sequence="${html(item.sequence)}">${'portId' in item ? `<strong>${html(item.portId)}</strong><output>${html(item.value)}</output><span>${html(item.direction)} · ${html(item.valueType)}</span>` : `<strong>${html(item.kind)}</strong><output>${html(item.result)}</output>`}<details><summary>发生记录</summary><pre>${html(JSON.stringify(item, null, 2))}</pre></details></article>`).join('') : '<p>本帧无发生记录</p>'}</div>`;
+    const records = this.records.filter(item => item.nodeId === node.id);
+    const events = records.filter(item => !('portId' in item)).sort((a, b) => Number(a.sequence) - Number(b.sequence));
+    const ports = records.filter(item => 'portId' in item).sort((a, b) => Number(a.sequence) - Number(b.sequence));
+    const details = item => `<details><summary>发生记录</summary><pre>${html(JSON.stringify(item, null, 2))}</pre></details>`;
+    this.inspector.innerHTML = `<header><strong>${html(node.displayName)}</strong><button data-inspector-close aria-label="关闭节点记录">×</button></header><div>${events.map(item =>
+      `<article data-occurrence-sequence="${html(item.sequence)}"><strong>${html(item.kind)}</strong><output>${html(item.result)}</output>${details(item)}</article>`).join('')}${ports.map(item =>
+      `<article data-port-sequence="${html(item.sequence)}"><strong>${html(item.portId)}</strong><output>${html(item.value)}</output><span>${html(item.direction)} · ${html(item.valueType)}</span>${details(item)}</article>`).join('')}${!records.length ? '<p>本帧无发生记录</p>' : ''}</div>`;
     this.inspector.querySelector('[data-inspector-close]').onclick = () => { this.selectedNode = ''; this.highlight(); this.showInspector(); };
   }
 
