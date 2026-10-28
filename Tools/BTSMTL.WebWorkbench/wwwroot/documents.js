@@ -6,7 +6,7 @@ import { graphContext, editTransition } from './documents-fsm.js';
 
 const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
-const state = { roots: [], nextOffset: 0, selectedRoot: null, snapshot: null, references: [], selectedFile: null, selectedNode: null, selectedEdge: null, selectedTimeline: null, linkStart: null, tab: 'document', source: 'workspace', timeScale: null, query: '', capabilities: new Map(), definitions: null, definitionRevision: null, draft: null, authoringState: null, authoringProblem: '', view: { x: 35, y: 45, scale: 1 } };
+const state = { roots: [], nextOffset: 0, selectedRoot: null, snapshot: null, references: [], selectedFile: null, selectedNode: null, selectedEdge: null, selectedTimeline: null, linkStart: null, tab: 'document', source: 'workspace', timeScale: null, timelineZoom: 1, query: '', capabilities: new Map(), definitions: null, definitionRevision: null, draft: null, authoringState: null, authoringProblem: '', view: { x: 35, y: 45, scale: 1 } };
 const reads = { source: null, roots: null, root: null, file: null };
 const kindNames = { Graph: '图', Timeline: '时间轴', InputPlan: '输入方案', Layout: '布局', References: '外部引用记录' };
 const api = () => `/api/${state.source}`;
@@ -545,12 +545,15 @@ function seconds(raw) {
 
 function renderTimeline(timeline) {
   const times = timeline.tracks.flatMap(track => [...track.clips.map(clip => seconds(clip.timeRange.endRaw)), ...track.markers.map(marker => seconds(marker.timeRaw))]);
-  const duration = Math.max(1, ...times), width = Math.max(900, duration * 120), pixels = width / duration;
+  const duration = Math.max(1, ...times), width = Math.max(900, duration * 120) * state.timelineZoom, pixels = width / duration;
   const tick = duration > 20 ? Math.ceil(duration / 20) : duration > 5 ? 1 : 0.25;
   const ticks = Array.from({ length: Math.floor(duration / tick) + 1 }, (_, index) => index * tick);
   const handles = state.draft?.canEdit ? '<span class="timeline-boundary" data-timeline-boundary="start" title="调整片段起点"></span><span class="timeline-boundary" data-timeline-boundary="end" title="调整片段终点"></span>' : '';
   const rows = timeline.tracks.map((track, index) => `<div class="timeline-row"><button class="timeline-track ${state.selectedTimeline === track.id ? 'selected' : ''}" data-timeline="${escapeHtml(track.id)}"><small>${index + 1} · ${escapeHtml(track.contract)}</small><strong>${escapeHtml(track.displayName)}</strong><span>${track.clips.length} 片段 · ${track.markers.length} 标记</span></button><div class="timeline-lane" style="width:${width}px">${ticks.map(time => `<i class="timeline-grid" style="left:${time * pixels}px"></i>`).join('')}${track.clips.map(clip => `<button class="timeline-clip ${state.selectedTimeline === clip.id ? 'selected' : ''}" data-timeline="${escapeHtml(clip.id)}" style="left:${seconds(clip.timeRange.startRaw) * pixels}px;width:${Math.max(4, (seconds(clip.timeRange.endRaw) - seconds(clip.timeRange.startRaw)) * pixels)}px" title="${escapeHtml(clip.displayName)} · ${seconds(clip.timeRange.startRaw).toFixed(4)}—${seconds(clip.timeRange.endRaw).toFixed(4)} 秒">${handles}<span>${escapeHtml(clip.displayName)}</span><small>${escapeHtml(clip.contract)}</small></button>`).join('')}${track.markers.map(marker => `<button class="timeline-marker ${state.selectedTimeline === marker.id ? 'selected' : ''}" data-timeline="${escapeHtml(marker.id)}" style="left:${seconds(marker.timeRaw) * pixels}px" title="标记 · ${seconds(marker.timeRaw).toFixed(4)} 秒">◆</button>`).join('')}</div></div>`).join('');
   $('document-view').innerHTML = `<div class="timeline-heading"><div><small>正式时间数据</small><h2>${escapeHtml(timeline.displayName)}</h2></div><span>${timeline.loop ? '循环' : '单次'} · ${duration.toFixed(3)} 秒 · ${timeline.tracks.length} 条轨道</span></div><div class="timeline-scroll"><div class="timeline-content" style="width:${width + 224}px"><div class="timeline-ruler"><div>作者时间 · 秒</div><div style="width:${width}px">${ticks.map(time => `<span style="left:${time * pixels}px">${time.toFixed(2)}</span>`).join('')}</div></div>${rows}</div></div><p class="timeline-note">选择片段或标记查看实际参数及图引用。时间轴显示作者时间；真实模拟结果位于运行观察。</p>`;
+  $('document-view').querySelector('.timeline-heading').insertAdjacentHTML('beforeend',
+    `<label class="timeline-zoom">查看比例<select data-timeline-zoom>${[0.5, 1, 2, 4, 8].map(zoom =>
+      `<option value="${zoom}" ${zoom === state.timelineZoom ? 'selected' : ''}>${zoom * 100}%</option>`).join('')}</select></label>`);
   $('document-view').insertAdjacentHTML('beforeend', `<div class="timeline-bindings">${timeline.bindings.map(binding => `<button data-timeline="${escapeHtml(binding.id)}">绑定 ${escapeHtml(binding.id)}</button>`).join('')}</div>`);
   if (state.draft?.canEdit) {
     const ready = state.definitions.timelineAuthoring !== undefined;
@@ -585,7 +588,18 @@ async function guarded(action) {
 
 $('roots').onclick = event => { const item = event.target.closest('[data-root]'); if (item) guarded(() => openRoot(item.dataset.root)); };
 $('files').onclick = event => { const item = event.target.closest('[data-file]'); if (item) guarded(() => selectFile(item.dataset.file)); };
-$('document-navigation').onclick = event => { const item = event.target.closest('[data-document]'); if (item) guarded(() => selectFile(item.dataset.document)); };
+$('document-navigation').onclick = event => { const item = event.target.closest('[data-document]'); if (item) guarded(() => selectFile(item.dataset.document, item.dataset.element)); };
+$('document-view').onchange = event => {
+  const zoom = event.target.closest('[data-timeline-zoom]');
+  if (!zoom) return;
+  const scroll = $('document-view').querySelector('.timeline-scroll');
+  const horizontal = scroll.scrollLeft / state.timelineZoom, vertical = scroll.scrollTop;
+  state.timelineZoom = Number(zoom.value);
+  renderTimeline(state.selectedFile.document);
+  const resized = $('document-view').querySelector('.timeline-scroll');
+  resized.scrollLeft = horizontal * state.timelineZoom;
+  resized.scrollTop = vertical;
+};
 $('document-view').onclick = event => {
   const port = event.target.closest('[data-port]');
   if (port) { guarded(() => choosePort(port)); return; }
