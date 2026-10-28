@@ -37,9 +37,9 @@ namespace ThirdPersonGameplay.Orchestration
             public static readonly Parameter ReleaseRadius = Scalar("ReleaseRadius", "抵达与受阻", "表面自动松钩距离", "米", 0.05d, 8d, "普通表面抵达半径。固定点使用场景点自己的进入范围和指定收势轨迹。");
             public static readonly Parameter BlockedSpeed = Scalar("BlockedSpeed", "抵达与受阻", "受阻判定速度", "米/秒", 0d, 5d, "发生碰撞且实际速度低于此值时，累计受阻时间。");
             public static readonly Parameter BlockTimeout = Scalar("BlockTimeout", "抵达与受阻", "受阻后松钩等待", "秒", 0d, 2d, "持续受阻达到该时间后结束钩锁。");
-            public static readonly Parameter TurnSpeed = Scalar("TurnSpeed", "身体转向与断钩", "基础转向速度", "度/秒", 0d, 1080d, "身体追随实际飞行方向的基础转速。");
+            public static readonly Parameter TurnSpeed = Scalar("TurnSpeed", "身体转向与断钩", "基础转向速度", "度/秒", 0d, 1080d, "准备和发射时朝钩点、牵引时追随实际飞行方向的基础转速，整个过程均限速。");
             public static readonly Parameter InputTurnSpeedBonus = Scalar("InputTurnSpeedBonus", "身体转向与断钩", "同侧 A/D 转向加成", "度/秒", 0d, 1080d, "按下转向同侧的 A/D 时，增加身体转向速度。");
-            public static readonly Parameter DetachAngle = Scalar("DetachAngle", "身体转向与断钩", "跟不上时断钩夹角", "度", 1d, 120d, "碰撞后身体水平朝向与实际速度方向的夹角。与相机选点吸附框独立；调小可能立即断钩。");
+            public static readonly Parameter DetachAngle = Scalar("DetachAngle", "身体转向与断钩", "人物／绳方向断钩夹角", "度", 1d, 120d, "挂接牵引时，碰撞后人物逻辑朝向与实际绳方向的水平夹角，超过此值直接断钩。与相机选点吸附框独立。");
 
             public static readonly ReadOnlyMemory<Parameter> Parameters = s_Declared.ToParameters();
             public static readonly ReadOnlyMemory<Field> All = s_Declared.ToFields();
