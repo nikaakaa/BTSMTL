@@ -8,7 +8,7 @@ namespace BTSMTL.WebWorkbench;
 public sealed class AuthoringDocumentReception
 {
     public AuthoringDocumentReception(AuthoringDocumentSet documents, AuthoringDefinitionSet definitions,
-        Func<AuthoringContentReference, AuthoringGraphDocument> resolveGraph)
+        Func<AuthoringContentReference, object> resolveDocument)
     {
         Documents = documents;
         Definitions = definitions;
@@ -17,7 +17,7 @@ public sealed class AuthoringDocumentReception
             "root:" + documents.Root.Id, documents.Root.DisplayName);
         foreach (object document in documents.Documents.Values)
         {
-            if (document is AuthoringGraphDocument graph) ReceiveGraph(graph, resolveGraph);
+            if (document is AuthoringGraphDocument graph) ReceiveGraph(graph, resolveDocument);
             else if (document is AuthoringTimelineDocument timeline) ReceiveTimeline(timeline);
         }
     }
@@ -28,7 +28,7 @@ public sealed class AuthoringDocumentReception
     public IReadOnlyDictionary<GraphAuthoringFieldId, AuthoringValue> RootFields { get; }
     public AuthoringValue RootMember(string member) => RootFields[RootDefinition.Members[member]];
 
-    void ReceiveGraph(AuthoringGraphDocument graph, Func<AuthoringContentReference, AuthoringGraphDocument> resolve)
+    void ReceiveGraph(AuthoringGraphDocument graph, Func<AuthoringContentReference, object> resolve)
     {
         if (graph.RoleId.Equals(Definitions.MachineRole))
         {
@@ -40,11 +40,31 @@ public sealed class AuthoringDocumentReception
             foreach (AuthoringNodeDocument node in graph.Nodes.Span)
                 Definitions.Nodes[node.CapabilityId].Receive(node, graph.RoleId, Definitions.InputTypes);
             AuthoringStateMachineContract.ValidateDocument(graph, Definitions.StateKinds,
-                Definitions.MachineBodyField, Definitions.MachineConditionField, resolve, Definitions.Machine, true);
+                Definitions.MachineBodyField, Definitions.MachineConditionField,
+                reference => (AuthoringGraphDocument)resolve(reference), Definitions.Machine, true);
         }
         else
+        {
             AuthoringFlowGraphContract.ReceiveDocument(graph, Definitions.FlowGraph.Fields, Definitions.Edge.Fields,
                 Definitions.Nodes, Definitions.InputTypes, Definitions.FlowAnchors[graph.RoleId], true);
+            foreach (AuthoringNodeDocument node in graph.Nodes.Span)
+                foreach (AuthoringGraphReferenceDefinition binding in Definitions.GraphReferences[node.CapabilityId])
+                {
+                    AuthoringValue value = Definitions.Nodes[node.CapabilityId].Fields[binding.Field].DefaultValue;
+                    foreach (AuthoringNamedValue field in node.Fields.Span)
+                        if (field.FieldId.Equals(binding.Field)) value = field.Value;
+                    if (value is AuthoringNullValue) continue;
+                    var reference = (AuthoringReferenceValue)value;
+                    GraphAuthoringDocumentRoleId role = resolve(reference.Target) switch
+                    {
+                        AuthoringGraphDocument target => target.RoleId,
+                        AuthoringTimelineDocument target => target.RoleId,
+                        _ => throw new InvalidOperationException($"node:{node.Id}/{binding.Field}: 引用目标不是图或 Timeline 文档。")
+                    };
+                    if (!reference.Target.ElementId.Equals(reference.Target.DocumentId) || !role.Equals(binding.Role))
+                        throw new InvalidOperationException($"node:{node.Id}/{binding.Field}: 必须引用完整的 {binding.Role} 文档。");
+                }
+        }
     }
 
     void ReceiveTimeline(AuthoringTimelineDocument timeline)
