@@ -45,20 +45,21 @@ export function graphContext(graph, target, files, definitions, capabilities) {
 }
 
 export function editTransition(edge, definitions, references, apply) {
-  const fields = Object.entries(edge.fields);
-  const descriptions = definitions.capabilities.flatMap(capability => capability.fields);
+  const fields = definitions.graphAuthoring.edge.fields.filter(field =>
+    field.documentMember === 'Field' && field.visible && field.writable);
   const editors = new Map();
-  const modal = dialog('配置当前转移', `<p>同时修改此连接的实际作者字段，作为一批共同候选提交。执行顺序通过“调整执行顺序”单独编辑；本表不补造缺失字段或默认值。</p>${fields.map(([id]) =>
-    `<fieldset><legend>${html(id)}</legend><div data-transition-field="${html(id)}"></div></fieldset>`).join('')}`,
+  const initial = field => edge.fields[field.id] || field.defaultValue;
+  const modal = dialog('配置当前转移', `<p>条件、优先级和中断规则使用此连接的原作者定义。未写出的字段显示领域默认值，只有实际修改才写入候选。执行顺序通过“调整执行顺序”编辑。</p>${fields.map(field =>
+    `<fieldset><legend>${html(field.displayName)}${edge.fields[field.id] ? '' : ' · 领域默认值'}</legend><div data-transition-field="${html(field.id)}"></div></fieldset>`).join('')}`,
     fields.length ? () => {
-      const edits = fields.map(([fieldId, before]) => ({ fieldId, before, value: editors.get(fieldId).read() }))
+      const edits = fields.map(field => ({ fieldId: field.id, before: initial(field), value: editors.get(field.id).read() }))
         .filter(field => JSON.stringify(field.value) !== JSON.stringify(field.before))
         .map(({ fieldId, value }) => ({ kind: 'set-edge-field', edgeId: edge.id, fieldId, value }));
       return edits.length ? apply(edits) : undefined;
     } : null);
   modal.querySelectorAll('[data-transition-field]').forEach(container => {
-    const id = container.dataset.transitionField, value = edge.fields[id];
-    const definition = descriptions.find(field => field.valueType === value.type)?.valueDefinition;
-    editors.set(id, bindValueEditor(container, value, [], references, definition));
+    const field = fields.find(field => field.id === container.dataset.transitionField);
+    editors.set(field.id, bindValueEditor(container, initial(field), field.constraint.AllowedValues,
+      references, field.valueDefinition));
   });
 }

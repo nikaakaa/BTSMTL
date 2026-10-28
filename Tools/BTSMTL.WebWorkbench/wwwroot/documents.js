@@ -428,9 +428,10 @@ function renderInspector(document) {
     : state.selectedEdge ? document.edges.find(edge => edge.id === state.selectedEdge)
     : state.selectedNode ? document.nodes.find(node => node.id === state.selectedNode) : document;
   const definition = target.capability ? state.capabilities.get(target.capability)
-    : Array.isArray(document.tracks) ? timelineObjectDefinition(target, state.definitions) : null;
+    : Array.isArray(document.tracks) ? timelineObjectDefinition(target, state.definitions)
+    : state.selectedEdge && document.role === state.definitions.stateMachine.role ? state.definitions.graphAuthoring.edge : null;
   $('selection-name').textContent = target.displayName || definition?.displayName || target.id;
-  $('inspector-content').innerHTML = `<div class="identity">${escapeHtml(target.id)}</div><div class="read-state">${state.source === 'migrations' ? '迁移候选中的实际值' : '磁盘作者值'}</div>${definition ? `<details class="definition-info"><summary>原作者定义</summary><code>${escapeHtml(target.capability ? definition.id : target.contract)}</code>${target.capability ? `<small>角色：${escapeHtml(definition.roles.join('、'))}</small>` : ''}<code>定义修订 ${escapeHtml(state.definitionRevision)}</code></details>` : ''}${target.timeRange ? `<div class="time-details"><strong>${seconds(target.timeRange.startRaw).toFixed(4)} ～ ${seconds(target.timeRange.endRaw).toFixed(4)} 秒</strong><details><summary>无损时间与素材范围</summary>${Object.entries(target.timeRange).map(([key, value]) => `<div><label>${escapeHtml(key)}</label><code>${escapeHtml(value)}</code></div>`).join('')}</details></div>` : ''}${Object.entries(target.fields || {}).map(([id, value]) => {
+  $('inspector-content').innerHTML = `<div class="identity">${escapeHtml(target.id)}</div><div class="read-state">${state.source === 'migrations' ? '迁移候选中的实际值' : '磁盘作者值'}</div>${definition ? `<details class="definition-info"><summary>原作者定义</summary><code>${escapeHtml(target.capability ? definition.id : definition.authoringType)}</code>${target.capability ? `<small>角色：${escapeHtml(definition.roles.join('、'))}</small>` : ''}<code>定义修订 ${escapeHtml(state.definitionRevision)}</code></details>` : ''}${target.timeRange ? `<div class="time-details"><strong>${seconds(target.timeRange.startRaw).toFixed(4)} ～ ${seconds(target.timeRange.endRaw).toFixed(4)} 秒</strong><details><summary>无损时间与素材范围</summary>${Object.entries(target.timeRange).map(([key, value]) => `<div><label>${escapeHtml(key)}</label><code>${escapeHtml(value)}</code></div>`).join('')}</details></div>` : ''}${Object.entries(target.fields || {}).map(([id, value]) => {
     const field = definition?.fields.find(field => field.id === id);
     return `<div class="field"><label title="${escapeHtml(id)}">${escapeHtml(field?.displayName || id)}${field && !field.writable ? ' · 原定义只读' : ''}</label>${renderValue(value)}${field?.constraint?.AllowedValues.length ? `<small>声明选项：${field.constraint.AllowedValues.map(escapeHtml).join('、')}</small>` : ''}</div>`;
   }).join('') || '<p class="muted">此对象没有显式作者字段。</p>'}`;
@@ -447,9 +448,11 @@ function renderInspector(document) {
       if (document.role === state.definitions.stateMachine?.role)
         $('inspector-content').querySelector('.inspector-actions').insertAdjacentHTML('beforeend',
           '<button data-configure-transition>同时配置转移字段</button>');
-      Object.keys(target.fields).forEach(id => {
-        const rendered = [...$('inspector-content').querySelectorAll('.field')].find(element => element.querySelector('label').title === id);
-        rendered.insertAdjacentHTML('beforeend', `<button class="edit-field" data-edit-edge-field="${escapeHtml(id)}">编辑候选</button>`);
+      definition?.fields.filter(field => field.documentMember === 'Field' && field.visible).forEach(field => {
+        const rendered = [...$('inspector-content').querySelectorAll('.field')].find(element => element.querySelector('label').title === field.id);
+        const button = field.writable ? `<button class="edit-field" data-edit-edge-field="${escapeHtml(field.id)}">编辑候选${target.fields[field.id] ? '' : ' · 默认值'}</button>` : '';
+        if (rendered) rendered.insertAdjacentHTML('beforeend', button);
+        else $('inspector-content').insertAdjacentHTML('beforeend', `<div class="field"><label title="${escapeHtml(field.id)}">${escapeHtml(field.displayName)} · 原定义默认值</label>${renderValue(field.defaultValue)}${button}</div>`);
       });
       return;
     }
@@ -776,8 +779,9 @@ $('inspector-content').onclick = event => {
     return;
   }
   if (edgeField) {
-    const id = edgeField.dataset.editEdgeField;
-    editField({ id }, edge.fields[id], value => applyGraphEdits([{ kind: 'set-edge-field', edgeId: edge.id, fieldId: id, value }]), state.references);
+    const field = state.definitions.graphAuthoring.edge.fields.find(field => field.id === edgeField.dataset.editEdgeField);
+    editField(field, edge.fields[field.id] || field.defaultValue,
+      value => applyGraphEdits([{ kind: 'set-edge-field', edgeId: edge.id, fieldId: field.id, value }]), state.references);
     return;
   }
   if (event.target.closest('[data-edge-order]')) {
