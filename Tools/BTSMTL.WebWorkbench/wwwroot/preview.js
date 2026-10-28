@@ -4,10 +4,10 @@ import { fieldsHtml, sectionsHtml } from './preview-records.js';
 import { PreviewObservation } from './preview-observation.js';
 
 const $ = id => document.getElementById(id);
-const state = { sources: null, runs: [], selected: null, summary: null, frames: new Map(), count: 0, sealed: false, initialFrameIndex: 0, host: null, playback: null, historyPlayback: null, currentFrame: null };
+const state = { sources: null, runs: [], selected: null, summary: null, frames: new Map(), count: 0, sealed: false, initialFrameIndex: 0, host: null, playback: null, historyPlayback: null, currentFrame: null, mode: 'real' };
 let pollTimer;
 let historyTimer;
-const stages = { accepted: '已接收', running: '独立会话运行中', completed: '完整运行已封存', stopped: '会话已停止并封存', failed: '执行失败', cancelled: '已取消' };
+const stages = { accepted: '准备中', running: '运行中', completed: '已封存', stopped: '已停止', failed: '执行失败', cancelled: '已取消' };
 const playbackNames = { paused: '已暂停', playing: '正在播放', stepping: '等待下一个确认帧', stopped: '已停止', completed: '已完成' };
 const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 
@@ -47,22 +47,24 @@ function sourceVersion() {
   const local = $('run-source').value === 'local';
   $('replay-source').hidden = local; $('local-source').hidden = !local;
   $('load-inputs').disabled = !scene;
-  $('start').textContent = local ? '按输入新建真实运行' : '新建真实重放';
-  $('start').disabled = !scene || local || !replay || $('preview-mode').value === 'off';
+  $('start').textContent = local ? '输入方案不可用' : '重新播放';
+  $('start').disabled = !scene || local || !replay || state.mode === 'off';
 }
 
 async function refresh() {
   const [sources, runs] = await Promise.all([request('/api/preview/sources'), request('/api/preview/runs')]);
   state.sources = sources; state.runs = runs;
-  options($('scene'), sources.scenes, entry => entry.path, entry => entry.path, $('scene').value);
+  options($('scene'), sources.scenes, entry => entry.path.split('/')[0], entry => entry.path, $('scene').value);
   options($('replay'), sources.replays, entry => entry.displayName, entry => entry.id, $('replay').value);
   sourceVersion();
   $('source-state').textContent = `${sources.scenes.length} 个正式内容包 · ${sources.replays.length} 份原录像。${!sources.scenes.length ? '宿主尚未提供正式内容。' : ''}${!sources.replays.length ? '真实重放需要宿主的原录像。' : ''}`;
-  $('runs').innerHTML = runs.map(run => `<button data-run="${escapeHtml(run.jobId)}" class="${run.jobId === state.selected ? 'selected' : ''}">${escapeHtml(stages[run.stage])}<small>${escapeHtml(run.acceptedAt)}</small><code>${escapeHtml(run.jobId)}</code></button>`).join('') || '<p class="muted">尚未提交运行。</p>';
+  options($('run-select'), [null, ...runs], run => run ? `${new Date(run.acceptedAt).toLocaleString()} · ${stages[run.stage]}` : '选择运行', run => run?.jobId ?? '', state.selected ?? '');
+  $('run-select').disabled = runs.length === 0;
   options($('comparison'), runs.filter(run => ['completed', 'stopped'].includes(run.stage) && run.jobId !== state.selected),
     entry => `${entry.acceptedAt} · ${entry.jobId.slice(0, 8)}`, entry => entry.jobId, $('comparison').value);
   $('compare').disabled = !state.sealed || !$('comparison').value;
-  $('connection').textContent = '项目宿主已连接';
+  $('connection').textContent = '已连接';
+  document.querySelectorAll('[data-preview-mode]').forEach(button => { button.disabled = button.dataset.previewMode === 'quick'; });
 }
 
 async function start() {
@@ -79,6 +81,7 @@ async function start() {
   sessionStorage.removeItem('btsmtl.preview.pending-request');
   await refresh();
   await selectRun(receipt.jobId);
+  $('preview-settings').close();
 }
 
 async function loadInputs() {
@@ -119,7 +122,8 @@ async function updateRun() {
   if (id !== state.selected) return;
   $('run-title').textContent = stages[receipt.stage];
   $('cancel').hidden = !['accepted', 'running'].includes(receipt.stage);
-  $('run-state').textContent = receipt.error || (receipt.stage === 'completed' ? '独立运行已完成。下方读取本次封存的确认帧。' : receipt.stage === 'stopped' ? '实际会话已停止，保留停止前已形成的确认帧。' : receipt.stage === 'cancelled' ? '进程已确认取消。此运行没有完整封存记录。' : '正在准备或执行实际独立会话。');
+  $('run-state').textContent = receipt.error || '';
+  $('run-state').hidden = receipt.stage !== 'failed';
   $('run-state').classList.toggle('error', receipt.stage === 'failed');
   if (['accepted', 'running'].includes(receipt.stage)) {
     const playback = await request(`/api/preview/runs/${id}/playback`);
@@ -199,8 +203,8 @@ async function showFrame(index) {
     if (id !== state.selected || index !== Number($('frame').value)) return;
     viewport.setGeometry(geometry);
   }
-  $('frame-label').textContent = `${state.summary.frameDisplayName} ${frame.hostFrame}`;
-  $('cursor-state').textContent = `${state.sealed ? '回看封存记录' : '读取已提交记录'} · ${frame.seconds.toFixed(3)} 秒 · 移动游标未重新执行会话。`;
+  $('frame-label').textContent = `${frame.hostFrame} f · ${frame.seconds.toFixed(3)} s`;
+  report(`${state.sealed ? '记录' : '确认帧'} ${frame.hostFrame}`);
   $('frame-facts').innerHTML = fieldsHtml([{ displayName: '运行相对秒数', value: frame.seconds },
     ...frame.fields, ...(frame.consistency ? [{ displayName: frame.consistency.displayName, value: frame.consistency.value }] : [])]);
   $('actors').innerHTML = frame.actors.map(actor => `<article class="actor-fact"><strong>${escapeHtml(actor.displayName)}</strong><dl>${fieldsHtml(actor.fields)}</dl><details><summary>宿主角色记录</summary><pre>${escapeHtml(actor.rawJson)}</pre></details></article>`).join('');
@@ -233,12 +237,14 @@ function fitView() { viewport.fit(); }
 function renderFrameRecords() { $('frame-sections').innerHTML = sectionsHtml(state.currentFrame.sections); }
 
 function updateTransport() {
-  const off = $('preview-mode').value === 'off';
+  const off = state.mode === 'off';
   const pending = !!sessionStorage.getItem('btsmtl.preview.pending-control');
-  $('preview-play').disabled = off || pending || (state.sealed ? !state.count || !!state.historyPlayback : !state.playback || state.playback === 'playing');
-  $('preview-pause').disabled = off || pending || (state.sealed ? !state.historyPlayback : state.playback !== 'playing');
-  $('preview-play').textContent = state.sealed ? '播放记录' : '播放';
-  $('preview-pause').textContent = state.sealed ? '暂停记录' : '暂停';
+  const playing = state.sealed ? !!state.historyPlayback : state.playback === 'playing';
+  $('preview-toggle').disabled = off || pending || (state.sealed ? !state.count : !state.playback);
+  $('preview-toggle').textContent = playing ? 'Ⅱ' : '▶';
+  $('preview-toggle').setAttribute('aria-label', playing ? '暂停' : '播放');
+  $('preview-toggle').title = playing ? '暂停' : '播放';
+  document.querySelectorAll('[data-preview-mode]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.previewMode === state.mode)));
   $('frame').disabled = off || !state.count;
   $('previous-frame').disabled = off || !state.count || Number($('frame').value) === 0;
   $('next-frame').disabled = off || !state.count || Number($('frame').value) === state.count - 1;
@@ -293,24 +299,26 @@ $('scene').onchange = () => {
 $('replay').onchange = sourceVersion; $('run-source').onchange = sourceVersion;
 $('load-inputs').onclick = () => guarded(loadInputs);
 $('start').onclick = () => guarded(start); $('refresh').onclick = () => guarded(refresh);
-$('runs').onclick = event => { const button = event.target.closest('[data-run]'); if (button) guarded(() => selectRun(button.dataset.run)); };
+$('run-select').onchange = () => { if ($('run-select').value) guarded(() => selectRun($('run-select').value)); };
 $('cancel').onclick = () => guarded(async () => { const result = await request(`/api/preview/runs/${state.selected}/cancel`, {}); report(result.cancellationRequested ? '取消请求已送达，等待进程确认。' : '本宿主没有仍在执行的对应进程，请查询当前回执。'); await updateRun(); });
 $('playback-controls').onclick = event => { const button = event.target.closest('[data-control]'); if (button) guarded(() => control(button.dataset.control)); };
-$('preview-play').onclick = () => guarded(() => state.sealed ? playHistory() : control('Play'));
-$('preview-pause').onclick = () => guarded(() => state.sealed ? pauseHistory() : control('Pause'));
-$('preview-mode').onchange = () => guarded(async () => {
+$('preview-toggle').onclick = () => guarded(() => state.sealed ? state.historyPlayback ? pauseHistory() : playHistory() : control(state.playback === 'playing' ? 'Pause' : 'Play'));
+document.querySelectorAll('[data-preview-mode]').forEach(button => { button.onclick = () => guarded(async () => {
+  state.mode = button.dataset.previewMode;
   pauseHistory();
-  if ($('preview-mode').value === 'off') {
+  if (state.mode === 'off') {
     if (state.playback === 'playing') await control('Pause');
-    $('cursor-state').textContent = '预览已关闭，保留所选运行与游标。';
+    report('预览已关闭');
   }
   updateTransport(); sourceVersion();
-});
+}); });
 $('frame').oninput = () => { pauseHistory(); $('follow-live').checked = false; guarded(() => showFrame(Number($('frame').value))); };
 function moveFrame(delta) { pauseHistory(); $('follow-live').checked = false; $('frame').value = Math.max(0, Math.min(state.count - 1, Number($('frame').value) + delta)); return showFrame(Number($('frame').value)); }
 $('previous-frame').onclick = () => guarded(() => moveFrame(-1)); $('next-frame').onclick = () => guarded(() => moveFrame(1));
 $('fit-view').onclick = fitView;
 $('frame-record-details').ontoggle = () => { if ($('frame-record-details').open && state.currentFrame) renderFrameRecords(); };
+$('settings-open').onclick = () => $('preview-settings').showModal();
+$('settings-close').onclick = () => $('preview-settings').close();
 $('compare').onclick = () => guarded(async () => { const result = await request(`/api/preview/runs/${state.selected}/compare/${$('comparison').value}`); $('comparison-result').textContent = result.rawJson; report(!result.comparable ? '运行条件不同，未比较一致性值。' : result.equal ? `已比较 ${result.comparedFrames} 帧，本次已记录范围内一致。` : `首个差异在${state.summary.frameDisplayName} ${result.firstDifference.hostFrame}。`); });
 guarded(async () => {
   const host = await request('/api/preview/host');
