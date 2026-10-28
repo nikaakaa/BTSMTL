@@ -50,7 +50,7 @@ export class PreviewGraph {
     this.selectedNode = '';
     this.viewKey = '';
     this.frame = null;
-    container.innerHTML = `<header><strong>编译图</strong><select data-graph-choice aria-label="节点图" disabled></select><select data-graph-call aria-label="实际调用" disabled></select><button data-graph-fit title="适配节点图" aria-label="适配节点图" disabled>⊡</button></header>
+    container.innerHTML = `<header><strong>编译图</strong><select data-graph-choice aria-label="节点图" disabled></select><select data-graph-call-choice aria-label="实际调用" disabled></select><button data-graph-fit title="适配节点图" aria-label="适配节点图" disabled>⊡</button></header>
       <div class="observed-graph-body"><div class="graph-viewport"><div class="graph-world" hidden><svg class="graph-edges" aria-label="编译连线"></svg><div class="graph-nodes"></div></div><div class="observation-empty">等待确认帧</div></div><section class="graph-inspector" aria-label="所选节点的本帧记录" hidden></section></div>`;
     this.canvas = container.querySelector('.graph-viewport');
     this.world = container.querySelector('.graph-world');
@@ -58,7 +58,7 @@ export class PreviewGraph {
     container.querySelector('[data-graph-choice]').onchange = event => {
       this.selectedGraph = event.target.value; this.selectedCall = ''; this.selectedNode = ''; this.render();
     };
-    container.querySelector('[data-graph-call]').onchange = event => {
+    container.querySelector('[data-graph-call-choice]').onchange = event => {
       this.selectedCall = event.target.value; this.selectedNode = ''; this.render();
     };
     container.querySelector('[data-graph-fit]').onclick = () => this.fit();
@@ -116,8 +116,8 @@ export class PreviewGraph {
     if (!graph.nodes.length) {
       this.viewKey = ''; this.selectedNode = '';
       this.inspector.hidden = true; this.inspector.replaceChildren();
-      this.container.querySelector('[data-graph-call]').replaceChildren();
-      this.container.querySelector('[data-graph-call]').disabled = true;
+      this.container.querySelector('[data-graph-call-choice]').replaceChildren();
+      this.container.querySelector('[data-graph-call-choice]').disabled = true;
       this.world.hidden = true;
       this.container.querySelector('.observation-empty').hidden = false;
       this.container.querySelector('.observation-empty').textContent = '此图未保留作者节点来源';
@@ -126,7 +126,7 @@ export class PreviewGraph {
     const records = occurrences.filter(item => item.graphId === graph.id && belongsTo(item.call, graph));
     this.calls = new Map(records.map(item => [callKey(item.call), item.call]));
     const paths = [...new Set(graph.nodes.map(node => node.invocationPath))];
-    const callSelect = this.container.querySelector('[data-graph-call]');
+    const callSelect = this.container.querySelector('[data-graph-call-choice]');
     callSelect.innerHTML = this.calls.size ? [...this.calls].map(([key, call]) =>
       `<option value="${html(key)}" title="${html(key)}">${html(call.invocationPath)} · ${html(call.invocationGeneration)}</option>`).join('') :
       paths.map(path => `<option value="${html(path)}">${html(path)}</option>`).join('');

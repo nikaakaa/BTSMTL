@@ -75,7 +75,7 @@ pre { white-space: pre-wrap; max-height: 350px; overflow: auto; }
 .observed-graph > header { display: flex; align-items: center; gap: 8px; height: 29px; padding: 3px 9px; background: #363636; border-bottom: 1px solid var(--line); flex-shrink: 0; }
 .observed-graph > header > strong { white-space: nowrap; }
 [data-graph-choice] { width: 160px; }
-[data-graph-call] { flex: 1; width: 0; }
+[data-graph-call-choice] { flex: 1; width: 0; }
 [data-graph-fit] { width: 25px; padding: 0; font-size: 17px; }
 .observed-graph-body { display: flex; flex: 1; min-height: 0; }
 .graph-viewport { flex: 1; min-width: 0; position: relative; overflow: hidden; touch-action: none; background-color: #282828; background-image: radial-gradient(#414141 1px, transparent 1px); background-size: 16px 16px; }
