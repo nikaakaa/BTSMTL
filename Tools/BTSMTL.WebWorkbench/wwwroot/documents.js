@@ -36,7 +36,9 @@ async function request(path, body, signal) {
     $('request-problem-title').textContent = conflict ? '当前基线已过期，未覆盖磁盘内容' : '本次操作未完成';
     $('request-problem-message').textContent = message;
     $('request-problem-details').textContent = JSON.stringify(result, null, 2);
-    throw new Error(message);
+    const error = new Error(message);
+    error.result = result;
+    throw error;
   }
   return result;
 }
@@ -72,37 +74,39 @@ function renderRoots() {
 
 async function openRoot(path) {
   requireDraftSettled();
-  const entry = state.roots.find(root => root.path === path);
-  if (entry.problems.length) {
-    state.selectedRoot = entry;
+  report('正在读取正式文件…');
+  let snapshot;
+  try { snapshot = await request(`${api()}/root?path=${encodeURIComponent(path)}`); }
+  catch (error) {
+    if (error.result?.stage !== 'source-read') throw error;
+    const problems = error.result.diagnostics;
+    state.selectedRoot = { path };
     state.snapshot = null;
     state.draft = null;
     $('draft-toolbar').hidden = true;
     state.selectedFile = null;
     state.selectedNode = null;
-    $('document-title').textContent = entry.displayName;
+    $('document-title').textContent = path;
     $('root-kind').textContent = '外部文件尚未接收';
     $('files').innerHTML = '';
-    $('file-path').textContent = entry.path;
+    $('file-path').textContent = path;
     $('file-revision').textContent = '';
     $('selection-name').textContent = '无法解析对象';
     $('inspector-content').innerHTML = '';
     $('document-actions').hidden = true;
     $('document-navigation').hidden = true;
     $('source-text').value = '';
-    $('document-view').innerHTML = `<div class="notice error"><h2>作者文件需要修正</h2>${entry.problems.map(problem => `<p>${escapeHtml(problem.message)}</p><code>${escapeHtml(problem.path)}</code>`).join('')}</div>`;
+    $('document-view').innerHTML = `<div class="notice error"><h2>作者文件需要修正</h2>${problems.map(problem => `<p>${escapeHtml(problem.message)}</p><code>${escapeHtml(problem.path)}</code>`).join('')}</div>`;
     renderRoots();
-    const source = await request(`${api()}/source?path=${encodeURIComponent(entry.path)}`);
+    const source = await request(`${api()}/source?path=${encodeURIComponent(path)}`);
     $('source-text').value = source.text;
     $('file-revision').textContent = source.revision.slice(0, 12);
     report('原文件已保留，未接收为可编译内容。', true);
     return;
   }
-  report('正在读取正式文件…');
-  const snapshot = await request(`${api()}/root?path=${encodeURIComponent(path)}`);
   const root = JSON.parse(snapshot.root);
   await loadDefinitions(root.domain);
-  state.selectedRoot = entry;
+  state.selectedRoot = { path };
   const files = snapshot.files.map(file => {
     try { return { ...file, document: JSON.parse(file.content), problem: null }; }
     catch (error) { return { ...file, document: null, problem: error.message }; }
@@ -150,6 +154,7 @@ async function selectFile(path, elementId = null) {
   state.selectedTimeline = file.document?.tracks?.some(track => track.id === elementId ||
     [...track.clips, ...track.markers].some(item => item.id === elementId)) ||
     file.document?.bindings?.some(binding => binding.id === elementId) ? elementId : null;
+  if (file.document?.variables?.some(variable => variable.id === elementId)) { state.tab = 'variables'; showTab(); }
   state.view = { x: 35, y: 45, scale: 1, needsFit: true };
   const locationQuery = new URLSearchParams({ source: state.source, root: state.selectedRoot.path, file: path, tab: state.tab });
   if (elementId) locationQuery.set('element', elementId);
@@ -799,12 +804,10 @@ guarded(async () => {
     if (query.has('file')) await selectFile(query.get('file'), query.get('element'));
     else renderDocument();
     if (query.has('element')) {
-      const document = state.selectedFile.document, element = query.get('element');
-      if (document.nodes?.some(node => node.id === element)) state.selectedNode = element;
-      else if (document.tracks?.some(track => [track, ...track.clips, ...track.markers].some(item => item.id === element))) state.selectedTimeline = element;
-      else if (document.variables?.some(variable => variable.id === element)) { state.tab = 'variables'; showTab(); }
-      renderDocument();
-      report(`已定位磁盘文档对象 ${element}${query.has('pointer') ? ' · JSON 位置 ' + query.get('pointer') : ''}。`);
+      const exact = new URLSearchParams({ path: state.selectedRoot.path,
+        documentId: state.selectedFile.document.id, elementId: query.get('element') });
+      const located = await request(`${api()}/element?${exact}`);
+      report(`已定位磁盘文档对象 ${located.elementId}${query.has('pointer') ? ' · JSON 位置 ' + query.get('pointer') : ''}。`);
     }
   }
 });
