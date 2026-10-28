@@ -922,7 +922,7 @@ namespace BTSMTL.Compilation
                 if (HasActionBlackboards())
                     foreach (ProgramSourceMapEntry entry in m_SourceMap)
                         if (entry.Source.TargetKind == ProgramSourceTargetKind.GraphInvocation)
-                            observers.Add(entry.Source.TargetIndex);
+                            observers.Add(entry.Source.InvocationEntryOperationIndex);
                 int factsBinding = -1;
                 for (int i = 0; i < m_Operations.Count; i++)
                 {
