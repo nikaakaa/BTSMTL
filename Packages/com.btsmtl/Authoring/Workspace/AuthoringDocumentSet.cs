@@ -99,12 +99,13 @@ public sealed class AuthoringDocumentSet
 
     public void ReceiveReferences()
     {
+        var owners = new Dictionary<GraphAuthoringElementId, AuthoringContentReference>();
         ReceiveFields(Root.Id, Root.Fields);
         foreach (var item in m_Documents)
         {
             if (item.Value is AuthoringGraphDocument graph)
             {
-                ReceiveReference(item.Key, graph.Owner);
+                ReceiveOwner(item.Key, graph.Owner);
                 ReceiveFields(item.Key, graph.Fields);
                 foreach (AuthoringNodeDocument node in graph.Nodes.Span) ReceiveFields(item.Key, node.Fields);
                 foreach (AuthoringEdgeDocument edge in graph.Edges.Span) ReceiveFields(item.Key, edge.Fields);
@@ -116,7 +117,7 @@ public sealed class AuthoringDocumentSet
             }
             else if (item.Value is AuthoringTimelineDocument timeline)
             {
-                ReceiveReference(item.Key, timeline.Owner);
+                ReceiveOwner(item.Key, timeline.Owner);
                 ReceiveFields(item.Key, timeline.Fields);
                 foreach (AuthoringTimelineTrackDocument track in timeline.Tracks.Span)
                 {
@@ -126,6 +127,28 @@ public sealed class AuthoringDocumentSet
                 }
                 foreach (AuthoringTimelineBindingDocument binding in timeline.Bindings.Span) ReceiveFields(item.Key, binding.Fields);
             }
+        }
+        var received = new HashSet<GraphAuthoringElementId> { Root.Id };
+        foreach (GraphAuthoringElementId document in owners.Keys)
+        {
+            var chain = new HashSet<GraphAuthoringElementId>();
+            GraphAuthoringElementId current = document;
+            while (!received.Contains(current))
+            {
+                if (!chain.Add(current)) throw Error(document, "文档 owner 形成循环，不能回到所属根。");
+                if (!owners.TryGetValue(current, out AuthoringContentReference owner))
+                    throw Error(document, "文档 owner 必须由本根、图或 Timeline 的业务元素持有。");
+                current = owner.DocumentId;
+            }
+            received.UnionWith(chain);
+        }
+
+        void ReceiveOwner(GraphAuthoringElementId document, AuthoringContentReference owner)
+        {
+            if (!owner.RootId.Equals(Root.Id))
+                throw Error(document, "根清单拥有的文档不能交由外部根持有。");
+            ReceiveReference(document, owner);
+            owners.Add(document, owner);
         }
     }
 
