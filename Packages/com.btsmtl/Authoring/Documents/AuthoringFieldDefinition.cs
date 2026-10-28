@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using BTSMTL.Authoring.Graph;
+using BTSMTL.Orchestration;
 
 namespace BTSMTL.Authoring.Documents
 {
@@ -36,7 +37,7 @@ namespace BTSMTL.Authoring.Documents
 
         public static IReadOnlyDictionary<GraphAuthoringFieldId, AuthoringValue> ReceiveFields(
             IReadOnlyList<AuthoringFieldDefinition> definitions, ReadOnlyMemory<AuthoringNamedValue> authored, string path,
-            string displayName = null, int? order = null)
+            string displayName = null, int? order = null, OrchestrationTime? time = null)
         {
             var declared = definitions.ToDictionary(field => field.Id);
             var values = definitions.ToDictionary(field => field.Id, field => field.DefaultValue);
@@ -59,6 +60,8 @@ namespace BTSMTL.Authoring.Documents
                         field.ValueDefinition.TypeId, GraphAuthoringFieldValueKind.String, displayName),
                     GraphAuthoringDocumentMember.Order when order.HasValue => new AuthoringScalarValue(
                         field.ValueDefinition.TypeId, GraphAuthoringFieldValueKind.Integer, order.Value.ToString(CultureInfo.InvariantCulture)),
+                    GraphAuthoringDocumentMember.Time when time.HasValue => new AuthoringScalarValue(
+                        field.ValueDefinition.TypeId, GraphAuthoringFieldValueKind.Integer, time.Value.RawValue.ToString(CultureInfo.InvariantCulture)),
                     _ => throw new InvalidOperationException(path + "/" + field.Id + ": 缺少原定义要求的文档结构成员。")
                 };
             foreach (var field in values) declared[field.Key].Receive(field.Value, path + "/" + field.Key);

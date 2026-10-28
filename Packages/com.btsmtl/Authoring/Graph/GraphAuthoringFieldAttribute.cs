@@ -2,7 +2,7 @@ using System;
 
 namespace BTSMTL.Authoring.Graph
 {
-    public enum GraphAuthoringDocumentMember { Field, DisplayName, Order }
+    public enum GraphAuthoringDocumentMember { Field, DisplayName, Order, Time }
 
     [AttributeUsage(AttributeTargets.Property | AttributeTargets.Field, Inherited = true)]
     public sealed class GraphAuthoringFieldAttribute : Attribute

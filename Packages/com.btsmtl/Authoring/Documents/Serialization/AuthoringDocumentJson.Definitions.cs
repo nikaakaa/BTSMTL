@@ -11,6 +11,20 @@ namespace BTSMTL.Authoring.Documents
         public static AuthoringValueDefinition ReadValueDefinition(string text, string sourcePath) =>
             ReadDefinition(ReadObject(text), sourcePath);
 
+        public static string WriteObjectDefinition(AuthoringObjectDefinition definition) => Write(new JObject
+        {
+            ["authoringType"] = definition.TypeId,
+            ["fields"] = new JArray(definition.Fields.OrderBy(field => field.Id.Value, StringComparer.Ordinal)
+                .Select(field => JToken.Parse(WriteFieldDefinition(field))))
+        });
+
+        public static AuthoringObjectDefinition ReadObjectDefinition(string text, string sourcePath)
+        {
+            JObject definition = ReadObject(text);
+            return new(Text(definition, "authoringType", sourcePath), Array(definition, "fields", sourcePath)
+                .Select(field => ReadFieldDefinition(field.ToString(), sourcePath)).ToArray());
+        }
+
         public static string WriteFieldDefinition(AuthoringFieldDefinition field) => Write(new JObject
         {
             ["id"] = field.Id.Value, ["displayName"] = field.DisplayName,

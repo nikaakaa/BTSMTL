@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using BTSMTL.Authoring.Graph;
+using BTSMTL.Orchestration;
 
 namespace BTSMTL.Authoring.Documents
 {
@@ -19,7 +20,10 @@ namespace BTSMTL.Authoring.Documents
             string id = TypeIdentity(type);
             TypeCode scalar = Type.GetTypeCode(type);
             AuthoringValueDefinition definition;
-            if (type.IsEnum)
+            if (type == typeof(OrchestrationTime))
+                definition = new(id, AuthoringValueDefinitionKind.Scalar, TypeCode.Int64, false,
+                    Array.Empty<string>(), false, Array.Empty<AuthoringValueMemberDefinition>(), null);
+            else if (type.IsEnum)
                 definition = new(id, AuthoringValueDefinitionKind.Enumeration, scalar, false,
                     Enum.GetNames(type), type.IsDefined(typeof(FlagsAttribute), false), Array.Empty<AuthoringValueMemberDefinition>(), null);
             else if (scalar != TypeCode.Object)
@@ -86,6 +90,9 @@ namespace BTSMTL.Authoring.Documents
             string identity = TypeIdentity(type);
             if (value == null)
                 return new AuthoringNullValue(identity);
+            if (type == typeof(OrchestrationTime))
+                return new AuthoringScalarValue(identity, GraphAuthoringFieldValueKind.Integer,
+                    ((OrchestrationTime)value).RawValue.ToString(CultureInfo.InvariantCulture));
             if (type.IsEnum)
                 return new AuthoringScalarValue(identity, GraphAuthoringFieldValueKind.Enum, value.ToString());
             switch (Type.GetTypeCode(type))
@@ -142,6 +149,8 @@ namespace BTSMTL.Authoring.Documents
         {
             if (value is AuthoringNullValue)
                 return null;
+            if (type == typeof(OrchestrationTime) && value is AuthoringScalarValue time)
+                return OrchestrationTime.FromRaw(long.Parse(time.Value, CultureInfo.InvariantCulture));
             if (value is AuthoringScalarValue scalar)
                 return type.IsEnum ? Enum.Parse(type, scalar.Value, false) :
                     Convert.ChangeType(scalar.Value, type, CultureInfo.InvariantCulture);
