@@ -110,7 +110,7 @@ public sealed class AuthoringDocumentService
     {
         AuthoringDocumentCandidate applied = m_Candidates[appliedCandidateId];
         AuthoringDocumentCommitResult? receipt = m_Commit.Query(applied.RequestId);
-        if (receipt?.Status != AuthoringCommitStatus.Saved)
+        if (receipt?.Status != AuthoringCommitStatus.Saved || receipt.CandidateId != applied.Id)
             throw new InvalidOperationException("撤销和重做必须引用实际已保存的共同修改。");
         AuthoringRootFiles current = Baseline(rootPath, baselineRevision);
         if (!current.Root.Id.Equals(applied.Baseline.Root.Id))
