@@ -14,6 +14,7 @@
     <Compile Include="AuthoringDefinitionCatalog.cs" />
     <Compile Include="AuthoringDocumentApi.cs" />
     <Compile Include="AuthoringGraphEditsApi.cs" />
+    <Compile Include="AuthoringGraphEdits.cs" />
     <Compile Include="AuthoringGraphEditTransport.cs" />
     <Compile Include="AuthoringPortProjection.cs" />
     <Compile Include="AuthoringTimelineEditTransport.cs" />
