@@ -79,30 +79,29 @@ async function openRoot(path) {
   requireDraftSettled();
   reads.root?.abort(); reads.file?.abort();
   const reading = new AbortController(); reads.root = reading;
+  state.selectedRoot = { path };
+  state.snapshot = null; state.draft = null; state.selectedFile = null;
+  state.selectedNode = null; state.selectedEdge = null; state.selectedTimeline = null;
+  $('draft-toolbar').hidden = true;
+  $('document-title').textContent = path;
+  $('root-kind').textContent = '作者文档尚未读取';
+  $('files').innerHTML = '';
+  $('file-path').textContent = path; $('file-revision').textContent = '';
+  $('selection-name').textContent = '未选择内容';
+  $('inspector-content').innerHTML = '';
+  $('document-actions').hidden = true; $('document-navigation').hidden = true;
+  $('source-text').value = '';
+  $('document-view').innerHTML = '<div class="notice">正在读取正式作者文档…</div>';
+  renderRoots();
   report('正在读取正式文件…');
   let snapshot;
   try { snapshot = await request(`${api()}/root?path=${encodeURIComponent(path)}`, undefined, reading.signal); }
   catch (error) {
     if (error.result?.stage !== 'source-read') throw error;
     const problems = error.result.diagnostics;
-    state.selectedRoot = { path };
-    state.snapshot = null;
-    state.draft = null;
-    $('draft-toolbar').hidden = true;
-    state.selectedFile = null;
-    state.selectedNode = null;
-    $('document-title').textContent = path;
     $('root-kind').textContent = '外部文件尚未接收';
-    $('files').innerHTML = '';
-    $('file-path').textContent = path;
-    $('file-revision').textContent = '';
     $('selection-name').textContent = '无法解析对象';
-    $('inspector-content').innerHTML = '';
-    $('document-actions').hidden = true;
-    $('document-navigation').hidden = true;
-    $('source-text').value = '';
     $('document-view').innerHTML = `<div class="notice error"><h2>作者文件需要修正</h2>${problems.map(problem => `<p>${escapeHtml(problem.message)}</p><code>${escapeHtml(problem.path)}</code>`).join('')}</div>`;
-    renderRoots();
     const source = await request(`${api()}/source?path=${encodeURIComponent(path)}`, undefined, reading.signal);
     $('source-text').value = source.text;
     $('file-revision').textContent = source.revision.slice(0, 12);
@@ -111,14 +110,13 @@ async function openRoot(path) {
   }
   const root = JSON.parse(snapshot.root);
   await loadDefinitions(root.domain, reading.signal);
-  state.selectedRoot = { path };
   const files = snapshot.files.map(file => {
     try { return { ...file, document: JSON.parse(file.content), problem: null }; }
     catch (error) { return { ...file, document: null, problem: error.message }; }
   });
   state.snapshot = { ...snapshot, root, files };
+  state.selectedFile = files[0];
   state.references = referenceChoices(state.snapshot);
-  state.draft = null;
   state.authoringState = null;
   state.authoringProblem = state.source === 'migrations' ? '迁移候选用于核对原资产；正式接收后从作者工作区编辑。' : '';
   if (state.source === 'workspace') {
@@ -132,8 +130,6 @@ async function openRoot(path) {
       state.authoringProblem = error.message;
     }
   }
-  state.selectedNode = null;
-  state.selectedFile = files[0];
   $('document-title').textContent = root.displayName;
   $('root-kind').textContent = `${root.domain} · ${root.kind}`;
   $('revision').textContent = snapshot.revision.slice(0, 12);
