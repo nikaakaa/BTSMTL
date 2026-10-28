@@ -36,7 +36,7 @@ HTML、CSS、JavaScript 修改后刷新页面即可看到结果；修改 C# 接�
 
 `AuthoringWorkspaceDirectory` 负责文件范围和读取；`WorkspaceApi` 只投影 HTTP 协议；`wwwroot/documents.js` 展示同一内容。根内文件路径不能越出 owner 目录；布局与业务文档分别持有。64 位数值和定点原值在作者值中使用文本，不经过 JavaScript Number。
 
-候选绑定整个根的原始文件修订。共同文档服务接收领域结果后才允许提交，过期请求返回冲突路径、当前修订和相关对象；共同文件事务处理创建、替换、删除及失败恢复。3C 的 `AuthoringDocumentApi` 保存装配单元仍由项目共同基础接续，当前启动尚未登记正式领域接收器，真实保存和跨端撤销尚未验证。
+候选绑定整个根的原始文件修订。共同文档服务接收领域结果后才允许提交，过期请求返回冲突路径、当前修订和相关对象；共同文件事务处理创建、替换、删除及失败恢复。`AuthoringDocumentApi` 已归共同工作台，图／Timeline请求转换也使用共同实现；项目启动尚未登记正式领域接收器，真实保存和跨端撤销尚未验证。
 
 `Contracts/BTSMTL.WebWorkbench.Contracts.csproj` 持有唯一的图修改、文档候选、Timeline 修改、端口及结构校验请求，独立于 ASP.NET 和项目运行库。Host、CLI、MCP 引用同一程序集，保留原多态 `kind`、必需字段和无损时间原值。`AuthoringDefinitionApi` 负责定义、能力、端口及结构校验的公共路由，项目通过 `IAuthoringDefinitionQueries` 提供实际描述与校验；`AuthoringPortProjection`、`AuthoringTimelineEditTransport` 复用原共同投影和修改器。
 
@@ -54,9 +54,13 @@ HTML、CSS、JavaScript 修改后刷新页面即可看到结果；修改 C# 接�
 
 3C 原迁移入口现可将独立输入方案资产及其私有输入时间轴、片段图和 Marker 图保存为另一份共同作者根。实际候选保留原资产 GUID、`Owner=ability:Attack`、方案参数与当前选择，不改变 Unity 资产来源。项目工作台已读取 1 个方案、1 条输入 Timeline、2 张图的 5 个文件；输入图通过同一结构检查。项目 CLI 和 MCP 的文档查询显式接受 `Workspace`／`Migrations` 来源，图检查也调用相同 HTTP 服务。CLI、MCP 均构建通过，0 警告、0 错误；22 项 MCP 工具已发现，真实图检查回执已与 CLI 对应。251 张图、13 条 Timeline／输入时间轴及 2 份根文档在 .NET 10.0.11 的文本回读无差异，具体入口、原始回执与未完成范围归项目 `Tools/CharacterWorkbench/README.md`。
 
-`WorkbenchApplication.Create` 供项目宿主装配共同 HTTP 与页面。3C 项目宿主接入真实运行作业与封存记录后，`/preview.html` 支持从所选离线包读取正式本地输入声明，用请求、布尔、数值、朝向、向量和目标身份表单新建运行，也能原地重放已封存 SDK 录制；页面不保留另一份输入业务清单。输入与录像使用同一 `/api/preview/runs` 来源请求，已录制文件按原运行身份读取，不复制为另一来源。播放、暂停、单步、停止、取消、确认帧分页和同条件比较继续使用原作业，历史帧查看不推进 SDK。独立 Attack 已实际录制并完成181帧 checksum、根变换和动作变化比较，证据归项目 `Tools/CharacterWorkbench/README.md`。three.js 逻辑视口已消费碰撞几何实现，但新通道尚待匹配当前源码的内容包实采；此前图片只验证根标记。当前 `preview`、`player` 页面仍读取项目帧字段，8.9的通用宿主、通用帧与画面来源尚未完成；输入 Timeline 文档自动换算和正式作者保存链也未完成。
+`WorkbenchApplication.Create` 装配共同页面，`PreviewApi` 消费项目实现的 `IPreviewHost`：来源与正式输入、开始／控制／取消、运行回执、帧分页、观察查询、SSE和原比较器均进入所属宿主。`GET /api/preview/host` 返回可用状态、帧显示名、筛选及停止位置声明；独立服务未登记宿主时返回 `available=false`，作者页面仍可读取工作区。网页沿原请求身份恢复结果，历史帧查看不推进会话，输入日程继续消费宿主正式目录。
 
-帧记录声明 `action-changes` 时，页面显示同一记录中的激活请求、动作实例、阶段、来源操作及业务结果；未采集通道与本帧没有变化分别显示。项目正式发布及重新导出后，Attack 曾在 SDK 62 启动、232 完成，并与原 SDK 重放的动作变化一致。后继共享滑行源码新增运行字段，当前包缺少该字段，最新宿主准备失败；原录制来源已实际接收，运行仍须等待项目发布及重新导出匹配版本。具体版本、失败及 181 帧成功证据均归项目 README，不把旧成功说成新版本通过。`?run=<运行身份>&frameIndex=<封存序号>` 可精确定位已封存帧；页面在真实视口完成该帧渲染后公开运行、SDK 帧号、checksum 和场景修订，项目 `CapturePreview.ps1` 核对后生成图片、同源帧 JSON 和元数据。此前 SDK 60、120 两帧截图采用两通道静止运行，不作为本轮动作画面证据。
+`Contracts/PreviewObservationContracts.cs` 定义宿主无关的帧：无损文本帧号、运行相对秒数、Actor 根变换、通道及可选一致性值。根与几何采用右手坐标、Y轴向上、米，旋转为 `[x,y,z,w]`；项目负责正式数值和坐标换算。宿主专有字段作为带显示名的字段及区块提供，作者定位直接携带文档／元素身份。`RawJson` 保留正式读取模型的无损 JSON 文本，页面不重新解析其中的大整数；它不承诺与磁盘原文件字节或字段集合相同。公共 `preview`、`player`、`logic-viewport` 和观察查询不读取项目动作、SDK、FP或Roster字段。
+
+可选 `IPreviewImageSource` 交付画面来源、构建显示字段，以及按运行、来源作业和宿主帧读取的图片与元数据。`PreviewImageApi` 接管原 `/api/preview/players`、`/runs/{runId}/player/{sourceId}/frames/{hostFrame}` 和常驻 `/live/{id}/view`，不保留第二个同义图片入口。视频正文为4字节小端元数据长度、UTF-8 JSON和图像字节；元数据提供无损帧号、尺寸、方向、媒体类型及适配公共坐标的列主序 `worldToClip`。独立服务未登记画面来源时明确返回不可用。
+
+3C已实现 `QuantumPreviewHost`、`QuantumPreviewProjection` 和 `UnityPreviewImageSource`，保留原模拟、存档、比较、播放器进程及命令路径。181帧历史真实记录的帧号、时钟、根、一致性值及全部既有字段已通过HTTP逐值核对，分页与SSE一致，原请求恢复返回原结果且正式文件未变；旧模型额外补出的两处空字段及首次检查失败均保留证据。新状态／变量／几何通道、真实画面协议、空点选修复及浏览器交互仍须实际验证，输入Timeline自动换算及正式作者保存也未完成。版本、步骤与证据统一见3C `Tools/CharacterWorkbench/README.md`。
 
 ## 已检查范围
 
