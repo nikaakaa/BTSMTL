@@ -4,7 +4,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using BTSMTL.Authoring.Storage;
@@ -36,22 +35,8 @@ public sealed class AuthoringDocumentCommit
         string[] paths = candidate.Baseline.Files.Select(file => file.Path)
             .Concat(candidate.WriteSet).Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(path => path, StringComparer.OrdinalIgnoreCase).ToArray();
-        var acquired = new List<Mutex>();
-        try
+        using (AuthoringFileAccessScope.Acquire(paths, cancellation))
         {
-            foreach (string path in paths)
-            {
-                string key = Path.GetFullPath(path);
-                if (Path.DirectorySeparatorChar == '\\') key = key.ToUpperInvariant();
-                var mutex = new Mutex(false, "BTSMTL.Authoring." + AuthoringFileRevision.Compute(Encoding.UTF8.GetBytes(key)));
-                try
-                {
-                    if (WaitHandle.WaitAny(new WaitHandle[] { mutex, cancellation.WaitHandle }) == 1)
-                    { mutex.Dispose(); cancellation.ThrowIfCancellationRequested(); }
-                }
-                catch (AbandonedMutexException) { acquired.Add(mutex); continue; }
-                acquired.Add(mutex);
-            }
             if (m_Results.TryGetValue(candidate.RequestId, out var recorded))
             {
                 if (recorded.CandidateId != candidate.Id)
@@ -90,7 +75,6 @@ public sealed class AuthoringDocumentCommit
             return Record(Result(transaction.Success ? AuthoringCommitStatus.Saved : AuthoringCommitStatus.Failed,
                 Array.Empty<AuthoringRevisionConflict>(), transaction));
         }
-        finally { foreach (Mutex mutex in acquired.AsEnumerable().Reverse()) { mutex.ReleaseMutex(); mutex.Dispose(); } }
 
         AuthoringDocumentCommitResult Record(AuthoringDocumentCommitResult result)
         {

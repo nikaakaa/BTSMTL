@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text;
 using BTSMTL.Authoring.Documents;
 using BTSMTL.Authoring.Graph;
+using BTSMTL.Authoring.Storage;
 
 namespace BTSMTL.Authoring.Workspace
 {

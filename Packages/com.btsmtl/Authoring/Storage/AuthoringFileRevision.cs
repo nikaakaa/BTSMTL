@@ -1,11 +1,11 @@
 using System;
 using System.Security.Cryptography;
 
-namespace BTSMTL.Authoring.Workspace
+namespace BTSMTL.Authoring.Storage
 {
-    static class AuthoringFileRevision
+    public static class AuthoringFileRevision
     {
-        internal static string Compute(byte[] bytes)
+        public static string Compute(byte[] bytes)
         {
             using SHA256 hash = SHA256.Create();
             return BitConverter.ToString(hash.ComputeHash(bytes)).Replace("-", string.Empty);

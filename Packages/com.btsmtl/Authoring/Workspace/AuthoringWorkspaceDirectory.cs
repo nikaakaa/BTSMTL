@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using BTSMTL.Authoring.Documents;
+using BTSMTL.Authoring.Storage;
 
 namespace BTSMTL.Authoring.Workspace
 {
@@ -27,7 +28,12 @@ public sealed class AuthoringWorkspaceDirectory
     public AuthoringWorkspaceDirectory(string path) => Path = System.IO.Path.GetFullPath(path);
     public string Path { get; }
 
-    public AuthoringSourceFile ReadSource(string relativePath) => ReadFile(Resolve(Path, relativePath));
+    public AuthoringSourceFile ReadSource(string relativePath)
+    {
+        string path = Resolve(Path, relativePath);
+        using var scope = AuthoringFileAccessScope.Acquire(new[] { path });
+        return ReadFile(path);
+    }
 
     public AuthoringPage<AuthoringRootEntry> List(int offset, int limit)
     {
@@ -39,7 +45,8 @@ public sealed class AuthoringWorkspaceDirectory
         {
             try
             {
-                AuthoringSourceFile file = ReadFile(path);
+                AuthoringSourceFile file;
+                using (AuthoringFileAccessScope.Acquire(new[] { path })) file = ReadFile(path);
                 AuthoringRootDocument root = AuthoringDocumentJson.ReadRoot(file.Text, file.Path);
                 items.Add(new(root.Id.Value, root.DisplayName, root.DomainId.Value, root.Kind,
                     System.IO.Path.GetRelativePath(Path, path).Replace('\\', '/'), file.Revision,
@@ -63,9 +70,14 @@ public sealed class AuthoringWorkspaceDirectory
     public AuthoringRootFiles Read(string rootPath)
     {
         string path = Resolve(Path, rootPath);
-        AuthoringSourceFile source = ReadFile(path);
-        AuthoringRootDocument root = AuthoringDocumentJson.ReadRoot(source.Text, source.Path);
+        AuthoringSourceFile manifest = ReadFile(path);
+        AuthoringRootDocument root = AuthoringDocumentJson.ReadRoot(manifest.Text, manifest.Path);
         string directory = System.IO.Path.GetDirectoryName(path)!;
+        using var scope = AuthoringFileAccessScope.Acquire(new[] { path }.Concat(root.Files.ToArray()
+            .Select(file => Resolve(directory, file.Path))));
+        AuthoringSourceFile source = ReadFile(path);
+        if (source.Revision != manifest.Revision)
+            throw new IOException("读取期间作者根清单已变化，请按当前文件重新读取：" + path);
         var files = new List<AuthoringSourceFile> { source };
         foreach (AuthoringDocumentFile file in root.Files.Span)
             files.Add(ReadFile(Resolve(directory, file.Path)));
