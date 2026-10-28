@@ -12,15 +12,17 @@ public interface IDocumentReceiveRequest
 public sealed record DocumentTextRequest([property: JsonRequired] string Path, [property: JsonRequired] string Text);
 public sealed record DocumentCandidateRequest([property: JsonRequired] Guid RequestId,
     [property: JsonRequired] string RootPath, [property: JsonRequired] string RootRevision,
-    [property: JsonRequired] string DefinitionsRevision, [property: JsonRequired] DocumentTextRequest[] Files) : IDocumentReceiveRequest;
+    [property: JsonRequired] string DefinitionsRevision, [property: JsonRequired] DocumentTextRequest[] Files,
+    string? BaseCandidateId = null) : IDocumentReceiveRequest;
 public sealed record DocumentInverseRequest([property: JsonRequired] Guid RequestId,
     [property: JsonRequired] string RootPath, [property: JsonRequired] string RootRevision,
-    [property: JsonRequired] string DefinitionsRevision, [property: JsonRequired] string AppliedCandidateId) : IDocumentReceiveRequest;
+    [property: JsonRequired] string DefinitionsRevision, [property: JsonRequired] string AppliedCandidateId,
+    string? BaseCandidateId = null) : IDocumentReceiveRequest;
 
 public sealed record DocumentEditPreviewRequest([property: JsonRequired] Guid RequestId,
     [property: JsonRequired] string RootPath, [property: JsonRequired] string RootRevision,
     [property: JsonRequired] string DefinitionsRevision, [property: JsonRequired] GraphEditBatchRequest[] GraphBatches,
-    [property: JsonRequired] TimelineEditBatchRequest[] TimelineBatches) : IDocumentReceiveRequest;
+    [property: JsonRequired] TimelineEditBatchRequest[] TimelineBatches, string? BaseCandidateId = null) : IDocumentReceiveRequest;
 public sealed record TimelineEditBatchRequest([property: JsonRequired] string DocumentId,
     [property: JsonRequired] TimelineEditRequest[] Edits);
 

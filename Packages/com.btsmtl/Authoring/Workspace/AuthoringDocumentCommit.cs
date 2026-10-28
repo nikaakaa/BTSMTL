@@ -29,7 +29,11 @@ public sealed class AuthoringDocumentCommit
     public AuthoringDocumentCommitResult? Query(string requestId) => m_Results.TryGetValue(requestId, out var result) ? result : null;
 
     public Task<AuthoringDocumentCommitResult> Commit(AuthoringDocumentCandidate candidate,
-        CancellationToken cancellation = default) => Task.Run(() =>
+        CancellationToken cancellation = default)
+    {
+        if (candidate.Stage != AuthoringDocumentAcceptanceStage.Domain)
+            throw new InvalidOperationException("候选尚未完成原领域业务接收，不能保存。");
+        return Task.Run(() =>
         {
             var request = m_Requests.GetOrAdd(candidate.RequestId, _ => (candidate.Id,
                 new Lazy<AuthoringDocumentCommitResult>(() => Execute(candidate, cancellation))));
@@ -37,14 +41,18 @@ public sealed class AuthoringDocumentCommit
                 throw new InvalidOperationException("同一保存请求身份不能提交不同候选。");
             return request.Result.Value;
         }, cancellation);
+    }
 
     AuthoringDocumentCommitResult Execute(AuthoringDocumentCandidate candidate, CancellationToken cancellation)
     {
         string[] paths = candidate.Baseline.Files.Select(file => file.Path)
-            .Concat(candidate.Documents.Source.Files.Select(file => file.Path)).Distinct(StringComparer.OrdinalIgnoreCase)
+            .Concat(candidate.Documents.Source.Files.Select(file => file.Path))
+            .Concat(candidate.Dependencies.Select(file => file.Path)).Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(path => path, StringComparer.OrdinalIgnoreCase).ToArray();
-        var baseline = candidate.Baseline.Files.ToDictionary(file => file.Path, StringComparer.OrdinalIgnoreCase);
-        var accepted = candidate.Documents.Source.Files.ToDictionary(file => file.Path, StringComparer.OrdinalIgnoreCase);
+        var baseline = candidate.Baseline.Files.Concat(candidate.Dependencies)
+            .ToDictionary(file => file.Path, StringComparer.OrdinalIgnoreCase);
+        var accepted = candidate.Documents.Source.Files.Concat(candidate.Dependencies)
+            .ToDictionary(file => file.Path, StringComparer.OrdinalIgnoreCase);
         AuthoringFileChange[] files = paths.Select(path => new AuthoringFileChange(path,
             baseline.TryGetValue(path, out var before) ? before.Bytes.ToArray() : null,
             accepted.TryGetValue(path, out var after) ? after.Bytes.ToArray() : null)).ToArray();

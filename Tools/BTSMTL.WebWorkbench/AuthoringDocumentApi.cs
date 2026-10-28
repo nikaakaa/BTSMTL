@@ -11,35 +11,46 @@ public static class AuthoringDocumentApi
         routes.MapGet("/state", (string path) =>
         {
             AuthoringDocumentState state = documents.ReadExternal(path);
-            return new { state.RootPath, state.Revision, state.Adoptable, state.Problems,
+            return new { state.RootPath, state.Revision, state.Adoptable, state.Stage, state.Problems,
                 DefinitionsRevision = currentDefinitionsRevision() };
         });
-        routes.MapPost("/edits", (DocumentEditPreviewRequest request) => Receive(request, currentDefinitionsRevision,
+        routes.MapPost("/edits", (DocumentEditPreviewRequest request) => Receive(request,
             () => documents.PreviewEdits(request.RequestId.ToString("N"), request.RootPath,
-                request.RootRevision, request.GraphBatches.Select(batch => new AuthoringGraphEditBatch(new(batch.DocumentId),
+                request.RootRevision, request.DefinitionsRevision,
+                request.GraphBatches.Select(batch => new AuthoringGraphEditBatch(new(batch.DocumentId),
                     batch.Edits.Select(AuthoringGraphEditTransport.Read).ToArray())).ToArray(),
                 request.TimelineBatches.Select(batch => new AuthoringTimelineEditBatch(new(batch.DocumentId),
-                    batch.Edits.Select(AuthoringTimelineEditTransport.Read).ToArray())).ToArray())));
-        routes.MapPost("/candidates", (DocumentCandidateRequest request) => Receive(request, currentDefinitionsRevision,
+                    batch.Edits.Select(AuthoringTimelineEditTransport.Read).ToArray())).ToArray(), request.BaseCandidateId)));
+        routes.MapPost("/candidates", (DocumentCandidateRequest request) => Receive(request,
             () => documents.Preview(request.RequestId.ToString("N"), request.RootPath,
-                request.RootRevision, request.Files.Select(file => new AuthoringDocumentText(file.Path, file.Text)).ToArray())));
-        routes.MapPost("/inverse", (DocumentInverseRequest request) => Receive(request, currentDefinitionsRevision,
+                request.RootRevision, request.DefinitionsRevision,
+                request.Files.Select(file => new AuthoringDocumentText(file.Path, file.Text)).ToArray(), request.BaseCandidateId)));
+        routes.MapPost("/inverse", (DocumentInverseRequest request) => Receive(request,
             () => documents.PreviewInverse(request.RequestId.ToString("N"), request.RootPath,
-                request.RootRevision, request.AppliedCandidateId)));
+                request.RootRevision, request.DefinitionsRevision, request.AppliedCandidateId, request.BaseCandidateId)));
         routes.MapGet("/candidates/{id}", (string id) => Candidate(documents.Candidate(id)));
-        routes.MapPost("/candidates/{id}/commit", (string id, CancellationToken cancellation) => documents.Commit(id, cancellation));
+        routes.MapPost("/candidates/{id}/commit", async (string id, CancellationToken cancellation) =>
+        {
+            try { return Results.Ok(await documents.Commit(id, cancellation)); }
+            catch (InvalidOperationException error)
+            { return Results.UnprocessableEntity(new { Stage = "candidate-commit", Message = error.Message }); }
+        });
         routes.MapGet("/requests/{id:guid}", (Guid id) =>
             documents.Query(id.ToString("N")) is { } result ? Results.Ok(result) : Results.NotFound());
     }
 
-    static IResult Receive(IDocumentReceiveRequest request, Func<string> currentDefinitionsRevision,
-        Func<AuthoringDocumentCandidate> receive)
+    static IResult Receive(IDocumentReceiveRequest request, Func<AuthoringDocumentCandidate> receive)
     {
-        string revision = currentDefinitionsRevision();
-        if (revision != request.DefinitionsRevision)
+        try
+        {
+            if (request.RequestId == Guid.Empty) throw new ArgumentException("作者修改需要非空 requestId。");
+            return Results.Ok(Candidate(receive()));
+        }
+        catch (AuthoringDefinitionsConflictException conflict)
+        {
             return Results.Conflict(new { request.RequestId, Stage = "definitions-conflict",
-                ExpectedRevision = request.DefinitionsRevision, ActualRevision = revision });
-        try { return Results.Ok(Candidate(receive())); }
+                conflict.ExpectedRevision, ActualRevision = conflict.CurrentRevision });
+        }
         catch (AuthoringBaselineConflictException conflict)
         {
             return Results.Conflict(new { request.RequestId, Stage = "baseline-conflict", conflict.RootId,
@@ -54,9 +65,13 @@ public static class AuthoringDocumentApi
 
     static object Candidate(AuthoringDocumentCandidate candidate) => new
     {
-        CandidateId = candidate.Id, candidate.RequestId, Stage = "domain-received",
-        SaveReady = true, Acceptance = "domain-received",
+        CandidateId = candidate.Id, candidate.RequestId,
+        Stage = candidate.Stage == AuthoringDocumentAcceptanceStage.Domain ? "domain-received" : "structure-received",
+        SaveReady = candidate.Stage == AuthoringDocumentAcceptanceStage.Domain,
+        Acceptance = candidate.Stage.ToString(), candidate.DefinitionsRevision,
         RootId = candidate.Baseline.Root.Id.Value, BaselineRevision = candidate.Baseline.Revision,
+        InputRevision = candidate.Input.Revision,
+        ReadSet = candidate.Baseline.Files.Concat(candidate.Dependencies).Select(file => new { file.Path, file.Revision }),
         candidate.WriteSet, candidate.Differences,
         Files = AuthoringDocumentCandidate.Texts(candidate.Documents.Source)
     };

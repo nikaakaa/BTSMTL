@@ -12,9 +12,22 @@ namespace BTSMTL.Authoring.Workspace
 {
 public interface IAuthoringDocumentDomain
 {
-    GraphAuthoringDomainId DomainId { get; }
-    string DefinitionVersion { get; }
-    void Receive(AuthoringDocumentSet documents);
+    AuthoringDocumentAcceptance Receive(AuthoringDocumentSet documents, string? expectedDefinitionsRevision);
+}
+
+public enum AuthoringDocumentAcceptanceStage { Structure, Domain }
+
+public sealed record AuthoringDocumentAcceptance(AuthoringDocumentSet Documents, AuthoringDocumentAcceptanceStage Stage,
+    string DefinitionsRevision,
+    IReadOnlyList<AuthoringSourceFile> Dependencies);
+
+public sealed class AuthoringDefinitionsConflictException : InvalidOperationException
+{
+    public AuthoringDefinitionsConflictException(string expected, string current)
+        : base($"作者定义已变化：请求 {expected}，当前 {current}。")
+    { ExpectedRevision = expected; CurrentRevision = current; }
+    public string ExpectedRevision { get; }
+    public string CurrentRevision { get; }
 }
 
 public sealed record AuthoringDocumentText(string Path, string Text);
@@ -26,16 +39,23 @@ public sealed class AuthoringDocumentCandidate
     static readonly UTF8Encoding Utf8 = new(false, true);
     readonly AuthoringFileChange[] m_Changes;
 
-    AuthoringDocumentCandidate(string requestId, AuthoringRootFiles baseline, AuthoringDocumentSet documents,
-        AuthoringFileChange[] changes, AuthoringDocumentDifference[] differences)
+    AuthoringDocumentCandidate(string requestId, AuthoringRootFiles baseline, AuthoringRootFiles input,
+        AuthoringDocumentAcceptance acceptance, AuthoringFileChange[] changes, AuthoringDocumentDifference[] differences)
     {
         RequestId = requestId;
         Baseline = baseline;
-        Documents = documents;
+        Input = input;
+        Documents = acceptance.Documents;
+        Stage = acceptance.Stage;
+        DefinitionsRevision = acceptance.DefinitionsRevision;
+        Dependencies = acceptance.Dependencies.ToArray();
         m_Changes = changes;
         Differences = differences;
         var identity = new StringBuilder(requestId).Append('\n').Append(baseline.Root.Id.Value)
-            .Append('\n').Append(baseline.Revision).Append('\n');
+            .Append('\n').Append(baseline.Revision).Append('\n').Append(input.Revision)
+            .Append('\n').Append(DefinitionsRevision).Append('\n').Append(Stage).Append('\n');
+        foreach (AuthoringSourceFile dependency in Dependencies.OrderBy(file => file.Path, StringComparer.OrdinalIgnoreCase))
+            identity.Append(dependency.Path).Append('\n').Append(dependency.Revision).Append('\n');
         foreach (AuthoringDocumentDifference difference in differences)
             identity.Append(difference.Path).Append('\n').Append(difference.BeforeRevision)
                 .Append('\n').Append(difference.AfterRevision).Append('\n');
@@ -45,23 +65,26 @@ public sealed class AuthoringDocumentCandidate
     public string Id { get; }
     public string RequestId { get; }
     public AuthoringRootFiles Baseline { get; }
+    public AuthoringRootFiles Input { get; }
     public AuthoringDocumentSet Documents { get; }
+    public AuthoringDocumentAcceptanceStage Stage { get; }
+    public string DefinitionsRevision { get; }
+    public IReadOnlyList<AuthoringSourceFile> Dependencies { get; }
     public IReadOnlyList<AuthoringDocumentDifference> Differences { get; }
     public IReadOnlyList<string> WriteSet => m_Changes.Select(change => change.Path).ToArray();
     internal IReadOnlyList<AuthoringFileChange> Changes => m_Changes;
 
     public static AuthoringDocumentCandidate Create(string requestId, AuthoringRootFiles baseline,
-        IReadOnlyList<AuthoringDocumentText> completeFiles, IAuthoringDocumentDomain domain)
+        AuthoringRootFiles inputSource, IReadOnlyList<AuthoringDocumentText> completeFiles,
+        IAuthoringDocumentDomain domain, string definitionsRevision)
     {
         string rootPath = baseline.Files[0].Path;
         string directory = Path.GetDirectoryName(rootPath)!;
         var input = completeFiles.ToDictionary(file => AuthoringWorkspaceDirectory.Resolve(directory, file.Path),
             file => file.Text, StringComparer.OrdinalIgnoreCase);
         AuthoringRootDocument root = AuthoringDocumentJson.ReadRoot(input[rootPath], rootPath);
-        if (!root.Id.Equals(baseline.Root.Id) || !root.DomainId.Equals(domain.DomainId))
-            throw new InvalidOperationException("候选必须保留精确根身份和原领域。");
-        if (root.DefinitionVersion != domain.DefinitionVersion)
-            throw new InvalidOperationException($"候选默认定义版本 {root.DefinitionVersion} 不属于当前领域 {domain.DefinitionVersion}。");
+        if (!root.Id.Equals(baseline.Root.Id))
+            throw new InvalidOperationException("候选必须保留精确根身份。");
         var files = new List<AuthoringSourceFile> { Source(rootPath, input[rootPath]) };
         foreach (AuthoringDocumentFile file in root.Files.Span)
         {
@@ -70,8 +93,10 @@ public sealed class AuthoringDocumentCandidate
         }
         if (files.Count != input.Count) throw new InvalidOperationException("完整候选包含未由精确根声明的文件。");
         var parsed = new AuthoringDocumentSet(AuthoringWorkspaceDirectory.Snapshot(root, files));
+        AuthoringDocumentAcceptance acceptance = domain.Receive(parsed, definitionsRevision);
+        parsed = acceptance.Documents;
+        root = parsed.Root;
         parsed.ReceiveReferences();
-        domain.Receive(parsed);
 
         var original = baseline.Files.ToDictionary(file => file.Path, StringComparer.OrdinalIgnoreCase);
         var originalIdentities = baseline.Root.Files.ToArray().ToDictionary(
@@ -116,7 +141,8 @@ public sealed class AuthoringDocumentCandidate
         }
         AuthoringSourceFile[] accepted = new[] { final[rootPath] }.Concat(root.Files.ToArray()
             .Select(file => final[AuthoringWorkspaceDirectory.Resolve(directory, file.Path)])).ToArray();
-        return new(requestId, baseline, parsed.WithSource(AuthoringWorkspaceDirectory.Snapshot(root, accepted)),
+        return new(requestId, baseline, inputSource,
+            acceptance with { Documents = parsed.WithSource(AuthoringWorkspaceDirectory.Snapshot(root, accepted)) },
             changes.ToArray(), differences.ToArray());
     }
 
