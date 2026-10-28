@@ -11,7 +11,7 @@ public sealed class AuthoringDefinitionCatalog(string path) : IAuthoringDefiniti
 
     public string CurrentRevision() => Read().Revision;
 
-    Catalog Read()
+    public AuthoringDefinitionSnapshot Read()
     {
         byte[] bytes = File.ReadAllBytes(m_Path);
         using JsonDocument document = JsonDocument.Parse(bytes);
@@ -24,14 +24,14 @@ public sealed class AuthoringDefinitionCatalog(string path) : IAuthoringDefiniti
 
     public object Info()
     {
-        Catalog source = Read();
+        AuthoringDefinitionSnapshot source = Read();
         return new { Path = m_Path, source.Revision, source.Domain,
-            Count = source.Capabilities.Length, Source = "native-authoring-definitions" };
+            Count = source.Capabilities.Count, Source = "native-authoring-definitions" };
     }
 
     public object Document()
     {
-        Catalog source = Read();
+        AuthoringDefinitionSnapshot source = Read();
         return new { source.Revision, source.Domain, Definition = source.Document };
     }
 
@@ -39,7 +39,7 @@ public sealed class AuthoringDefinitionCatalog(string path) : IAuthoringDefiniti
     {
         if (offset < 0 || limit < 1 || limit > 200)
             throw new ArgumentException("能力查询要求 offset ≥ 0，limit 在 1～200 之间。");
-        Catalog source = Read();
+        AuthoringDefinitionSnapshot source = Read();
         JsonElement[] selected = source.Capabilities.Where(capability => role == null ||
             capability.GetProperty("roles").EnumerateArray().Any(value => value.GetString() == role)).ToArray();
         return new { source.Revision, source.Domain, Items = selected.Skip(offset).Take(limit),
@@ -48,7 +48,7 @@ public sealed class AuthoringDefinitionCatalog(string path) : IAuthoringDefiniti
 
     public object Require(string id)
     {
-        Catalog source = Read();
+        AuthoringDefinitionSnapshot source = Read();
         JsonElement capability = source.Capabilities.SingleOrDefault(value => value.GetProperty("id").GetString() == id);
         if (capability.ValueKind == JsonValueKind.Undefined)
             throw new KeyNotFoundException($"原能力目录没有 '{id}'。");
@@ -57,7 +57,7 @@ public sealed class AuthoringDefinitionCatalog(string path) : IAuthoringDefiniti
 
     public object ProjectPorts(AuthoringGraphPortRequest request)
     {
-        Catalog source = Read();
+        AuthoringDefinitionSnapshot source = Read();
         if (source.Revision != request.DefinitionsRevision)
             throw new InvalidOperationException($"端口投影的定义修订已变化：请求 {request.DefinitionsRevision}，当前 {source.Revision}。");
         AuthoringGraphDocument graph = AuthoringDocumentJson.ReadGraph(request.Content, "graph-port-request");
@@ -73,7 +73,7 @@ public sealed class AuthoringDefinitionCatalog(string path) : IAuthoringDefiniti
 
     public object ValidateStateMachine(AuthoringStateMachineValidationRequest request)
     {
-        Catalog source = Read();
+        AuthoringDefinitionSnapshot source = Read();
         if (source.Revision != request.DefinitionsRevision)
             throw new InvalidOperationException($"状态机接收的定义修订已变化：请求 {request.DefinitionsRevision}，当前 {source.Revision}。");
         AuthoringGraphDocument machine = AuthoringDocumentJson.ReadGraph(request.Content, "state-machine-request");
@@ -100,7 +100,7 @@ public sealed class AuthoringDefinitionCatalog(string path) : IAuthoringDefiniti
 
     public object ValidateFlowGraph(AuthoringFlowGraphValidationRequest request)
     {
-        Catalog source = Read();
+        AuthoringDefinitionSnapshot source = Read();
         if (source.Revision != request.DefinitionsRevision)
             throw new InvalidOperationException($"流图接收的定义修订已变化：请求 {request.DefinitionsRevision}，当前 {source.Revision}。");
         AuthoringGraphDocument graph = AuthoringDocumentJson.ReadGraph(request.Content, "flow-graph-request");
@@ -123,6 +123,8 @@ public sealed class AuthoringDefinitionCatalog(string path) : IAuthoringDefiniti
             Valid = true, NodeCount = graph.Nodes.Length, EdgeCount = graph.Edges.Length };
     }
 
-    sealed record Catalog(string Revision, string Domain, JsonElement[] Capabilities, JsonElement Document);
 }
+
+public sealed record AuthoringDefinitionSnapshot(string Revision, string Domain,
+    IReadOnlyList<JsonElement> Capabilities, JsonElement Document);
 
