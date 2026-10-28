@@ -2,6 +2,7 @@
     "name": "BTSMTL.Authoring",
     "rootNamespace": "BTSMTL.Authoring",
     "references": [
+        "BTSMTL.Foundation",
         "BTSMTL.Orchestration.Contracts",
         "BTSMTL.Timeline.Runtime"
     ],

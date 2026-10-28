@@ -1,4 +1,5 @@
 using System;
+using BTSMTL.Authoring.Graph;
 using BTSMTL.Diagnostics;
 using BTSMTL.Orchestration;
 using UnityEngine;
@@ -6,7 +7,7 @@ using UnityEngine;
 namespace BTSMTL.Timeline
 {
     [Serializable]
-    public sealed class TimelineMarker
+    public sealed partial class TimelineMarker
     {
         [SerializeField, HideInInspector]
         string m_AuthoringId;
@@ -25,9 +26,17 @@ namespace BTSMTL.Timeline
         Track m_Track;
 
         public string AuthoringId => m_AuthoringId ?? string.Empty;
+#if UNITY_EDITOR
+        [GraphAuthoringField("time", GraphAuthoringFieldValueKind.Integer, HasMinimum = true, Minimum = 0,
+            DocumentMember = GraphAuthoringDocumentMember.Time)]
+#endif
         public OrchestrationTime Time => OrchestrationTime.FromRaw(m_TimeFPRawValue);
+#if UNITY_EDITOR
+        [GraphAuthoringField(nameof(m_ForceTriggerOnInitialSeek), GraphAuthoringFieldValueKind.Boolean)]
+#endif
         public bool ForceTriggerOnInitialSeek => m_ForceTriggerOnInitialSeek;
 #if UNITY_EDITOR
+        [GraphAuthoringField(nameof(m_Graph), GraphAuthoringFieldValueKind.IdentityReference)]
         public ScriptableObject Graph => m_Graph;
 #endif
         public Track Track => m_Track;
@@ -44,6 +53,7 @@ namespace BTSMTL.Timeline
         }
 
 #if UNITY_EDITOR
+        [GraphAuthoringConfigure]
         public void Configure(OrchestrationTime time, ScriptableObject graph, bool forceTriggerOnInitialSeek)
         {
             if (time < OrchestrationTime.Zero)

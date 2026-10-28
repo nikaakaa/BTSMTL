@@ -61,9 +61,7 @@ namespace BTSMTL.Diagnostics
     {
         public static string Create() => Guid.NewGuid().ToString("D");
 
-        public static bool IsValid(string value)
-        {
-            return !string.IsNullOrWhiteSpace(value) && Guid.TryParseExact(value, "D", out _);
-        }
+        public static bool IsValid(string value) =>
+            !string.IsNullOrWhiteSpace(value) && Guid.TryParseExact(value, "D", out _);
     }
 }
