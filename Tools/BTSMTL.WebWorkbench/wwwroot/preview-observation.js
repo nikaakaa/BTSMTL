@@ -61,6 +61,12 @@ export class PreviewObservation {
     this.container.querySelectorAll('[data-record-index]').forEach(button => {
       button.onclick = () => this.seek(Number(button.dataset.recordIndex));
     });
+    if (route.frames.length) {
+      const ruler = this.container.querySelector('.observed-time-ruler > div');
+      ruler.onpointerdown = event => { ruler.setPointerCapture(event.pointerId); this.seekRuler(event, ruler); };
+      ruler.onpointermove = event => { if (ruler.hasPointerCapture(event.pointerId)) this.seekRuler(event, ruler); };
+      ruler.onpointerup = event => ruler.releasePointerCapture(event.pointerId);
+    }
     this.container.querySelector('[data-source-document]').onchange = event => {
       this.selectedDocument = event.target.value;
       this.selectedElement = '';
@@ -71,6 +77,19 @@ export class PreviewObservation {
   }
 
   position(seconds) { return this.duration ? (seconds - this.firstSeconds) / this.duration * 100 : 0; }
+
+  seekRuler(event, ruler) {
+    const bounds = ruler.getBoundingClientRect();
+    const seconds = this.firstSeconds + Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width)) * this.duration;
+    const frames = this.route.frames;
+    let first = 0, last = frames.length - 1;
+    while (first < last) {
+      const middle = Math.floor((first + last) / 2);
+      if (frames[middle].seconds < seconds) first = middle + 1;
+      else last = middle;
+    }
+    this.seek(first > 0 && seconds - frames[first - 1].seconds < frames[first].seconds - seconds ? first - 1 : first);
+  }
 
   mountSources() {
     const locations = this.documents.get(this.selectedDocument);

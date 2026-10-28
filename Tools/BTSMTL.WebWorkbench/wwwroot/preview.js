@@ -323,6 +323,8 @@ document.querySelectorAll('[data-preview-mode]').forEach(button => { button.oncl
     if (state.playback === 'playing') control('Pause');
     report('预览已关闭');
   }
+  else if (state.count) await showFrame(Number($('frame').value));
+  else report(state.selected ? $('run-title').textContent : '选择运行', !$('run-state').hidden);
   updateTransport(); sourceVersion();
 }); });
 $('frame').oninput = () => { pauseHistory(); $('follow-live').checked = false; guarded(() => showFrame(Number($('frame').value))); };

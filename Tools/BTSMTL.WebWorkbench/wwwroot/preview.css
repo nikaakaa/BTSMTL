@@ -56,7 +56,7 @@ pre { white-space: pre-wrap; max-height: 350px; overflow: auto; }
 .observed-time-ruler, .observed-timeline-row { display: grid; grid-template-columns: var(--track-head) minmax(0, 1fr); }
 .observed-time-ruler { height: 28px; background: #373737; border-bottom: 1px solid #1c1c1c; position: sticky; top: 0; z-index: 2; font-variant-numeric: tabular-nums; }
 .observed-time-ruler > span { padding: 5px 10px; border-right: 1px solid var(--line); }
-.observed-time-ruler > div { position: relative; margin-right: 35px; }
+.observed-time-ruler > div { position: relative; margin-right: 35px; cursor: ew-resize; touch-action: none; }
 .observed-time-ruler > div > span { position: absolute; top: 5px; font-size: 11px; }
 .observed-timeline-row { min-height: 36px; border-bottom: 1px solid #1d1d1d; }
 .observed-track-name { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 10px; background: #343434; border-right: 1px solid #1c1c1c; overflow: hidden; white-space: nowrap; }
