@@ -6,7 +6,7 @@ import { graphContext, editTransition } from './documents-fsm.js';
 
 const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
-const state = { roots: [], nextOffset: 0, selectedRoot: null, snapshot: null, references: [], selectedFile: null, selectedNode: null, selectedEdge: null, selectedTimeline: null, linkStart: null, tab: 'document', source: 'workspace', timeScale: null, timelineZoom: 1, query: '', capabilities: new Map(), definitions: null, definitionRevision: null, draft: null, authoringState: null, authoringProblem: '', view: { x: 35, y: 45, scale: 1 } };
+const state = { roots: [], nextOffset: 0, selectedRoot: null, snapshot: null, references: [], navigation: [], selectedFile: null, selectedNode: null, selectedEdge: null, selectedTimeline: null, linkStart: null, tab: 'document', source: 'workspace', timeScale: null, timelineZoom: 1, query: '', capabilities: new Map(), definitions: null, definitionRevision: null, draft: null, authoringState: null, authoringProblem: '', view: { x: 35, y: 45, scale: 1 } };
 const reads = { source: null, roots: null, root: null, file: null };
 const kindNames = { Graph: '图', Timeline: '时间轴', InputPlan: '输入方案', Layout: '布局', References: '外部引用记录' };
 const api = () => `/api/${state.source}`;
@@ -83,6 +83,7 @@ async function openRoot(path) {
   state.selectedRoot = { path };
   state.snapshot = null; state.draft = null; state.selectedFile = null;
   state.selectedNode = null; state.selectedEdge = null; state.selectedTimeline = null;
+  state.navigation = [];
   $('draft-toolbar').hidden = true;
   $('document-title').textContent = path;
   $('root-kind').textContent = '作者文档尚未读取';
@@ -215,6 +216,21 @@ function renderNavigation() {
   path.unshift(rootFile);
   $('document-navigation').hidden = false;
   $('document-navigation').innerHTML = path.map((file, index) => `<button data-document="${escapeHtml(file.path)}" ${index + 1 < path.length ? `data-element="${escapeHtml(path[index + 1].document.owner.elementId)}"` : ''} ${file === state.selectedFile ? 'aria-current="page"' : ''}>${escapeHtml(file.document?.displayName || file.path)}</button>`).join('<span aria-hidden="true">›</span>');
+  if (state.navigation.length) {
+    const source = state.navigation.at(-1);
+    $('document-navigation').insertAdjacentHTML('afterbegin',
+      `<button data-navigation-back title="返回来源并恢复原对象选择">← 返回来源：${escapeHtml(source.label)}</button>`);
+  }
+}
+
+async function followDocument(path, element) {
+  const selected = state.selectedNode || state.selectedEdge || state.selectedTimeline;
+  if (path !== state.selectedFile.path || element !== selected)
+    state.navigation.push({ path: state.selectedFile.path, element: selected,
+      label: $('selection-name').textContent });
+  state.tab = 'document';
+  showTab();
+  await selectFile(path, element);
 }
 
 function selectElement(kind, id) {
@@ -579,7 +595,7 @@ function renderTimeline(timeline) {
     $('document-view').querySelector('.timeline-note').textContent = '拖动片段中部平移，拖动两端只调整对应起止时间；标记可平移。松开时提交一次共同候选，取消拖动不提交。素材范围和其余时间参数保持原值，可在属性中精确编辑。';
     if (!ready) $('document-view').querySelector('.timeline-note').textContent +=
       ' 正式轨道作者字段及初始值尚未导出，新建轨道暂不可用。';
-    $('document-view').insertAdjacentHTML('beforeend', '<p class="authoring-gap">新建标记、绑定及私有片段图尚缺共同创建描述；Section 尚缺共同文档结构与修改协议。当前页面不补造这些内容。</p>');
+    $('document-view').insertAdjacentHTML('beforeend', '<p class="authoring-gap">新建标记、绑定及私有片段图尚缺共同创建描述；Section 尚缺共同文档结构与修改协议。现有标记、绑定和图引用可在属性中选择、编辑或下钻。</p>');
     bindTimelineDrag($('document-view').querySelector('.timeline-content'), timeline, state.timeScale, pixels,
       applyTimelineEdits, error => report(error.message, true));
   }
@@ -605,8 +621,19 @@ async function guarded(action) {
 }
 
 $('roots').onclick = event => { const item = event.target.closest('[data-root]'); if (item) guarded(() => openRoot(item.dataset.root)); };
-$('files').onclick = event => { const item = event.target.closest('[data-file]'); if (item) guarded(() => selectFile(item.dataset.file)); };
-$('document-navigation').onclick = event => { const item = event.target.closest('[data-document]'); if (item) guarded(() => selectFile(item.dataset.document, item.dataset.element)); };
+$('files').onclick = event => {
+  const item = event.target.closest('[data-file]');
+  if (item) { state.navigation = []; guarded(() => selectFile(item.dataset.file)); }
+};
+$('document-navigation').onclick = event => {
+  if (event.target.closest('[data-navigation-back]')) {
+    const source = state.navigation.pop();
+    guarded(() => selectFile(source.path, source.element));
+    return;
+  }
+  const item = event.target.closest('[data-document]');
+  if (item) { state.navigation = []; guarded(() => selectFile(item.dataset.document, item.dataset.element)); }
+};
 $('document-view').onchange = event => {
   const zoom = event.target.closest('[data-timeline-zoom]');
   if (!zoom) return;
@@ -648,7 +675,7 @@ $('document-view').onclick = event => {
     return;
   }
   const reference = event.target.closest('[data-document]');
-  if (reference) { state.tab = 'document'; showTab(); guarded(() => selectFile(reference.dataset.document, reference.dataset.element)); return; }
+  if (reference) { guarded(() => followDocument(reference.dataset.document, reference.dataset.element)); return; }
   const timeline = event.target.closest('[data-timeline]');
   if (timeline) { selectElement('timeline', timeline.dataset.timeline); return; }
   const edge = event.target.closest('[data-edge]');
@@ -670,7 +697,7 @@ $('document-view').onkeydown = event => {
 };
 $('inspector-content').onclick = event => {
   const reference = event.target.closest('[data-document]');
-  if (reference) { state.tab = 'document'; showTab(); guarded(() => selectFile(reference.dataset.document, reference.dataset.element)); return; }
+  if (reference) { guarded(() => followDocument(reference.dataset.document, reference.dataset.element)); return; }
   if (Array.isArray(state.selectedFile.document.tracks)) { handleTimelineAction(event); return; }
   const graph = state.selectedFile?.document;
   const node = state.selectedNode ? graph.nodes.find(item => item.id === state.selectedNode) : null;
@@ -738,8 +765,8 @@ document.body.addEventListener('click', event => {
   } else {
     const reference = event.target.closest('.resource-dialog [data-document]');
     if (reference) {
-      reference.closest('dialog').close(); state.tab = 'document'; showTab();
-      guarded(() => selectFile(reference.dataset.document, reference.dataset.element));
+      reference.closest('dialog').close();
+      guarded(() => followDocument(reference.dataset.document, reference.dataset.element));
     }
   }
 });
