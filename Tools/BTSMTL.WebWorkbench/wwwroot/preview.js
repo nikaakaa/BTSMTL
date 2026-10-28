@@ -4,7 +4,7 @@ import { fieldsHtml, sectionsHtml } from './preview-records.js';
 import { PreviewObservation } from './preview-observation.js';
 
 const $ = id => document.getElementById(id);
-const state = { sources: null, runs: [], selected: null, summary: null, frames: new Map(), count: 0, sealed: false, initialFrameIndex: 0, inputCatalog: null, inputScene: null, host: null, playback: null, historyPlaying: false };
+const state = { sources: null, runs: [], selected: null, summary: null, frames: new Map(), count: 0, sealed: false, initialFrameIndex: 0, host: null, playback: null, historyPlayback: null, currentFrame: null };
 let pollTimer;
 let historyTimer;
 const stages = { accepted: '已接收', running: '独立会话运行中', completed: '完整运行已封存', stopped: '会话已停止并封存', failed: '执行失败', cancelled: '已取消' };
@@ -86,7 +86,6 @@ async function loadInputs() {
   report('正在准备所选离线包，读取正式输入声明…');
   const catalog = await request(`/api/preview/inputs?scene=${encodeURIComponent(selected.path)}&revision=${encodeURIComponent(selected.revision)}`);
   if ($('scene').value !== selected.path) return;
-  state.inputCatalog = catalog; state.inputScene = selected.path;
   $('input-events').innerHTML = catalog.players.map(player => `<article class="input-event"><strong>${escapeHtml(player.actorId)}</strong><ul class="input-declarations">${[...player.values, ...player.requests].map(input => `<li>${escapeHtml(input.inputId)}</li>`).join('')}</ul></article>`).join('');
   $('input-state').textContent = `${catalog.players.length} 个本地角色 · ${catalog.tickRate} Tick/秒。宿主尚未提供正式输入方案目录及按键轨，本页只能读取输入声明。请选用正式录像运行。`;
   sourceVersion(); report('已读取正式输入声明；输入方案运行等待宿主提供正式方案来源。');
@@ -99,14 +98,13 @@ async function selectRun(id, frameIndex = 0) {
   observationQuery.reset();
   executionObservation.reset();
   state.selected = id; state.summary = null; state.frames.clear(); state.count = 0; state.sealed = false;
+  state.currentFrame = null;
   state.initialFrameIndex = frameIndex;
   delete document.documentElement.dataset.previewImageReady;
   history.replaceState(null, '', `?run=${encodeURIComponent(id)}&frameIndex=${frameIndex}`);
-  $('playback-controls').hidden = true;
   clearActors(); $('run-details').replaceChildren(); $('frame-facts').replaceChildren();
   $('actors').replaceChildren(); $('frame-sections').replaceChildren(); $('frame-json').textContent = '';
-  $('frame').disabled = true; $('previous-frame').disabled = true; $('next-frame').disabled = true;
-  $('fit-view').disabled = true; $('compare').disabled = true; $('frame-label').textContent = '无确认帧';
+  $('compare').disabled = true; $('frame-label').textContent = '无确认帧';
   $('comparison-result').textContent = '';
   updateTransport();
   $('run-identity').textContent = id;
@@ -129,14 +127,7 @@ async function updateRun() {
     if (playback.ready) {
       const snapshot = playback.snapshot;
       state.playback = snapshot.state;
-      $('playback-controls').hidden = false;
       $('playback-state').textContent = playbackNames[snapshot.state];
-      document.querySelectorAll('[data-control]').forEach(button => {
-        button.disabled = !!sessionStorage.getItem('btsmtl.preview.pending-control') ||
-          (button.dataset.control === 'Play' && snapshot.state === 'playing') ||
-          (button.dataset.control === 'Pause' && snapshot.state === 'paused') ||
-          (button.dataset.control === 'Step' && snapshot.state !== 'paused');
-      });
       const observation = snapshot.observation;
       const summary = observation.summary;
       state.frames.clear(); observation.frames.forEach((frame, index) => state.frames.set(index, frame));
@@ -148,7 +139,6 @@ async function updateRun() {
     pollTimer = setTimeout(() => guarded(updateRun), 500);
     return;
   }
-  $('playback-controls').hidden = true;
   state.playback = null; updateTransport();
   await sendPendingControl();
   if (!['completed', 'stopped'].includes(receipt.stage) || state.sealed) return;
@@ -177,8 +167,6 @@ async function displayObservation(summary, sealed) {
   $('frame').max = Math.max(0, state.count - 1);
   if (first) $('frame').value = state.initialFrameIndex;
   if (!sealed && $('follow-live').checked) $('frame').value = Math.max(0, state.count - 1);
-  $('frame').disabled = state.count === 0;
-  $('fit-view').disabled = state.count === 0;
   updateTransport();
   if (state.count) { await showFrame(Number($('frame').value)); if (firstFrame) fitView(); }
 }
@@ -211,13 +199,13 @@ async function showFrame(index) {
     if (id !== state.selected || index !== Number($('frame').value)) return;
     viewport.setGeometry(geometry);
   }
-  $('previous-frame').disabled = index === 0; $('next-frame').disabled = index === state.count - 1;
   $('frame-label').textContent = `${state.summary.frameDisplayName} ${frame.hostFrame}`;
   $('cursor-state').textContent = `${state.sealed ? '回看封存记录' : '读取已提交记录'} · ${frame.seconds.toFixed(3)} 秒 · 移动游标未重新执行会话。`;
   $('frame-facts').innerHTML = fieldsHtml([{ displayName: '运行相对秒数', value: frame.seconds },
     ...frame.fields, ...(frame.consistency ? [{ displayName: frame.consistency.displayName, value: frame.consistency.value }] : [])]);
   $('actors').innerHTML = frame.actors.map(actor => `<article class="actor-fact"><strong>${escapeHtml(actor.displayName)}</strong><dl>${fieldsHtml(actor.fields)}</dl><details><summary>宿主角色记录</summary><pre>${escapeHtml(actor.rawJson)}</pre></details></article>`).join('');
-  $('frame-sections').innerHTML = sectionsHtml(frame.sections);
+  state.currentFrame = frame;
+  if ($('frame-record-details').open) renderFrameRecords();
   $('frame-json').textContent = frame.rawJson;
   executionObservation.showFrame(frame, index);
   viewport.draw(frame);
@@ -229,6 +217,7 @@ async function showFrame(index) {
   rendered.previewContent = state.summary.contentRevision;
   rendered.previewRendered = viewport.geometry ? 'world-receivers-sweeps-contacts' : 'root-axes';
   rendered.previewImageReady = 'true';
+  updateTransport();
   history.replaceState(null, '', `?run=${encodeURIComponent(id)}&frameIndex=${index}`);
 }
 
@@ -241,46 +230,56 @@ const executionObservation = new PreviewObservation($('execution-observation'), 
 window.addEventListener('pagehide', () => { observationQuery.close(); pauseHistory(); clearTimeout(pollTimer); });
 function clearActors() { viewport.reset(); }
 function fitView() { viewport.fit(); }
+function renderFrameRecords() { $('frame-sections').innerHTML = sectionsHtml(state.currentFrame.sections); }
 
 function updateTransport() {
   const off = $('preview-mode').value === 'off';
-  $('preview-play').disabled = off || (state.sealed ? !state.count || state.historyPlaying : !state.playback || state.playback === 'playing');
-  $('preview-pause').disabled = off || (state.sealed ? !state.historyPlaying : state.playback !== 'playing');
+  const pending = !!sessionStorage.getItem('btsmtl.preview.pending-control');
+  $('preview-play').disabled = off || pending || (state.sealed ? !state.count || !!state.historyPlayback : !state.playback || state.playback === 'playing');
+  $('preview-pause').disabled = off || pending || (state.sealed ? !state.historyPlayback : state.playback !== 'playing');
   $('preview-play').textContent = state.sealed ? '播放记录' : '播放';
   $('preview-pause').textContent = state.sealed ? '暂停记录' : '暂停';
   $('frame').disabled = off || !state.count;
+  $('previous-frame').disabled = off || !state.count || Number($('frame').value) === 0;
+  $('next-frame').disabled = off || !state.count || Number($('frame').value) === state.count - 1;
+  $('fit-view').disabled = off || !state.count;
   $('preview-content').hidden = off;
+  $('playback-controls').hidden = off || !state.playback;
+  document.querySelectorAll('[data-control]').forEach(button => {
+    button.disabled = off || pending || !state.playback || (button.dataset.control === 'Step' && state.playback !== 'paused');
+  });
 }
 
 function pauseHistory() {
-  clearTimeout(historyTimer); state.historyPlaying = false;
+  clearTimeout(historyTimer); state.historyPlayback = null;
   updateTransport();
 }
 
 async function control(command) {
   sessionStorage.setItem('btsmtl.preview.pending-control', JSON.stringify({ runId: state.selected, commandId: crypto.randomUUID(), command }));
-  document.querySelectorAll('[data-control], #preview-play, #preview-pause').forEach(button => { button.disabled = true; });
+  updateTransport();
   await sendPendingControl(); await updateRun();
 }
 
 async function playHistory() {
   if (Number($('frame').value) === state.count - 1) { $('frame').value = 0; await showFrame(0); }
-  const origin = state.frames.get(Number($('frame').value)).seconds, started = performance.now();
-  state.historyPlaying = true; updateTransport();
+  const playback = { runId: state.selected, origin: state.frames.get(Number($('frame').value)).seconds, started: performance.now() };
+  state.historyPlayback = playback; updateTransport();
   const advance = async () => {
-    const target = origin + (performance.now() - started) / 1000;
+    const target = playback.origin + (performance.now() - playback.started) / 1000;
     let index = Number($('frame').value);
     while (index < state.count - 1) {
       if (!state.frames.has(index + 1)) {
-        const page = await request(`/api/preview/runs/${state.selected}/frames?offset=${index + 1}&limit=128`);
-        if (!state.historyPlaying) return;
+        const page = await request(`/api/preview/runs/${playback.runId}/frames?offset=${index + 1}&limit=128`);
+        if (state.historyPlayback !== playback) return;
         page.items.forEach((frame, offset) => state.frames.set(index + 1 + offset, frame));
       }
       if (state.frames.get(index + 1).seconds > target) break;
       index++;
     }
-    if (!state.historyPlaying) return;
+    if (state.historyPlayback !== playback) return;
     if (index !== Number($('frame').value)) { $('frame').value = index; await showFrame(index); }
+    if (state.historyPlayback !== playback) return;
     if (index === state.count - 1) { pauseHistory(); return; }
     historyTimer = setTimeout(() => guarded(advance), 16);
   };
@@ -288,7 +287,7 @@ async function playHistory() {
 }
 
 $('scene').onchange = () => {
-  state.inputCatalog = null; state.inputScene = null; $('input-events').replaceChildren();
+  $('input-events').replaceChildren();
   $('input-state').textContent = '场景已切换，请读取该版本的正式输入。'; sourceVersion();
 };
 $('replay').onchange = sourceVersion; $('run-source').onchange = sourceVersion;
@@ -311,6 +310,7 @@ $('frame').oninput = () => { pauseHistory(); $('follow-live').checked = false; g
 function moveFrame(delta) { pauseHistory(); $('follow-live').checked = false; $('frame').value = Math.max(0, Math.min(state.count - 1, Number($('frame').value) + delta)); return showFrame(Number($('frame').value)); }
 $('previous-frame').onclick = () => guarded(() => moveFrame(-1)); $('next-frame').onclick = () => guarded(() => moveFrame(1));
 $('fit-view').onclick = fitView;
+$('frame-record-details').ontoggle = () => { if ($('frame-record-details').open && state.currentFrame) renderFrameRecords(); };
 $('compare').onclick = () => guarded(async () => { const result = await request(`/api/preview/runs/${state.selected}/compare/${$('comparison').value}`); $('comparison-result').textContent = result.rawJson; report(!result.comparable ? '运行条件不同，未比较一致性值。' : result.equal ? `已比较 ${result.comparedFrames} 帧，本次已记录范围内一致。` : `首个差异在${state.summary.frameDisplayName} ${result.firstDifference.hostFrame}。`); });
 guarded(async () => {
   const host = await request('/api/preview/host');

@@ -9,7 +9,7 @@ export class PreviewObservation {
   }
 
   reset() {
-    this.reading?.abort();
+    this.loading = null;
     this.runId = null;
     this.route = null;
     this.routeFrame = null;
@@ -22,10 +22,9 @@ export class PreviewObservation {
 
   async load(runId) {
     this.runId = runId;
-    const reading = new AbortController();
-    this.reading = reading;
-    const route = await this.request(`/api/preview/runs/${runId}/route`, undefined, reading.signal);
-    if (this.reading !== reading) return;
+    const loading = this.loading = {};
+    const route = await this.request(`/api/preview/runs/${runId}/route`);
+    if (this.loading !== loading) return;
     this.route = route;
     for (const frame of route.frames) {
       for (const location of frame.active) {
@@ -116,7 +115,11 @@ export class PreviewObservation {
       if (current) count++;
     });
     this.container.querySelector('[data-source-count]').textContent = `帧 ${this.frame.hostFrame} · 此文档 ${count} 个活动来源`;
-    const records = this.frame.sections.flatMap(section => section.records.filter(record => record.locations.some(location => location.documentId === this.selectedDocument && (!this.selectedElement || location.elementId === this.selectedElement))).map(record => ({ section: section.displayName, record })));
+    if (!this.selectedElement) {
+      this.container.querySelector('.observed-source-values').innerHTML = '<p class="observation-note">选择一个来源，查看它在本帧的正式关联记录。端口采样值尚未由宿主提供。</p>';
+      return;
+    }
+    const records = this.frame.sections.flatMap(section => section.records.filter(record => record.locations.some(location => location.documentId === this.selectedDocument && location.elementId === this.selectedElement)).map(record => ({ section: section.displayName, record })));
     this.container.querySelector('.observed-source-values').innerHTML = `<h3>本帧关联记录${this.selectedElement ? ` · ${html(this.selectedElement)}` : ''}</h3>${records.map(({ section, record }) => `<article><strong>${html(section)} · ${html(record.displayName)}</strong><dl>${fieldsHtml(record.fields)}</dl></article>`).join('') || '<p class="observation-note">该来源在本帧没有关联记录。</p>'}<p class="observation-note">端口采样值不可用：宿主尚未交付该通道。</p>`;
   }
 }
