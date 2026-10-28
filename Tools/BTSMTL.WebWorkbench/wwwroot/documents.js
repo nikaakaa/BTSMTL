@@ -1,6 +1,6 @@
 import { editField, editNodeFields, editVariable, renameElement, createNode, createConnection, reorderConnections, referenceChoices, showDocumentDiff } from './graph-edits.js';
 import { DocumentEditSession } from './document-session.js';
-import { createTrack, editTimeRange, editMarkerTime, moveClip, bindTimelineDrag } from './timeline-edits.js';
+import { createTrack, editTimeRange, editMarkerTime, moveClip, bindTimelineDrag, timelineObjectDefinition, editTimelineFields } from './timeline-edits.js';
 import { showReferences, showReferenceResource } from './references.js';
 import { graphContext, editTransition } from './documents-fsm.js';
 
@@ -375,9 +375,10 @@ function renderInspector(document) {
     ? [...document.tracks.flatMap(track => [track, ...track.clips, ...track.markers]), ...document.bindings].find(item => item.id === state.selectedTimeline)
     : state.selectedEdge ? document.edges.find(edge => edge.id === state.selectedEdge)
     : state.selectedNode ? document.nodes.find(node => node.id === state.selectedNode) : document;
-  const definition = target.capability ? state.capabilities.get(target.capability) : null;
+  const definition = target.capability ? state.capabilities.get(target.capability)
+    : Array.isArray(document.tracks) ? timelineObjectDefinition(target, state.definitions) : null;
   $('selection-name').textContent = target.displayName || definition?.displayName || target.id;
-  $('inspector-content').innerHTML = `<div class="identity">${escapeHtml(target.id)}</div><div class="read-state">${state.source === 'migrations' ? '迁移候选中的实际值' : '磁盘作者值'}</div>${definition ? `<details class="definition-info"><summary>原能力定义</summary><code>${escapeHtml(definition.id)}</code><small>角色：${escapeHtml(definition.roles.join('、'))}</small><code>定义修订 ${escapeHtml(state.definitionRevision)}</code></details>` : ''}${target.timeRange ? `<div class="time-details"><strong>${seconds(target.timeRange.startRaw).toFixed(4)} ～ ${seconds(target.timeRange.endRaw).toFixed(4)} 秒</strong><details><summary>无损时间与素材范围</summary>${Object.entries(target.timeRange).map(([key, value]) => `<div><label>${escapeHtml(key)}</label><code>${escapeHtml(value)}</code></div>`).join('')}</details></div>` : ''}${Object.entries(target.fields || {}).map(([id, value]) => {
+  $('inspector-content').innerHTML = `<div class="identity">${escapeHtml(target.id)}</div><div class="read-state">${state.source === 'migrations' ? '迁移候选中的实际值' : '磁盘作者值'}</div>${definition ? `<details class="definition-info"><summary>原作者定义</summary><code>${escapeHtml(target.capability ? definition.id : target.contract)}</code>${target.capability ? `<small>角色：${escapeHtml(definition.roles.join('、'))}</small>` : ''}<code>定义修订 ${escapeHtml(state.definitionRevision)}</code></details>` : ''}${target.timeRange ? `<div class="time-details"><strong>${seconds(target.timeRange.startRaw).toFixed(4)} ～ ${seconds(target.timeRange.endRaw).toFixed(4)} 秒</strong><details><summary>无损时间与素材范围</summary>${Object.entries(target.timeRange).map(([key, value]) => `<div><label>${escapeHtml(key)}</label><code>${escapeHtml(value)}</code></div>`).join('')}</details></div>` : ''}${Object.entries(target.fields || {}).map(([id, value]) => {
     const field = definition?.fields.find(field => field.id === id);
     return `<div class="field"><label title="${escapeHtml(id)}">${escapeHtml(field?.displayName || id)}${field && !field.writable ? ' · 原定义只读' : ''}</label>${renderValue(value)}${field?.constraint?.AllowedValues.length ? `<small>声明选项：${field.constraint.AllowedValues.map(escapeHtml).join('、')}</small>` : ''}</div>`;
   }).join('') || '<p class="muted">此对象没有显式作者字段。</p>'}`;
@@ -425,19 +426,27 @@ function renderInspector(document) {
       $('inspector-content').insertAdjacentHTML('beforeend', `<section class="connection-list"><h3>本节点连接</h3>${edges.map(edge => `<div><button data-select-edge="${escapeHtml(edge.id)}">${escapeHtml(edge.sourcePort)} → ${escapeHtml(edge.targetPort)} · 顺序 ${edge.order}</button><small>${escapeHtml(edge.id)}</small></div>`).join('') || '<small>当前没有连接</small>'}</section>`);
     }
   }
-  if (Array.isArray(document.tracks) && state.draft?.canEdit) renderTimelineActions(document, target);
+  if (Array.isArray(document.tracks) && state.draft?.canEdit) renderTimelineActions(document, target, definition);
 }
 
-function renderTimelineActions(timeline, target) {
+function renderTimelineActions(timeline, target, definition) {
   const track = timeline.tracks.find(track => track.id === target.id || [...track.clips, ...track.markers].some(item => item.id === target.id));
   const clip = track?.clips.find(clip => clip.id === target.id);
   const marker = track?.markers.find(marker => marker.id === target.id);
   const binding = timeline.bindings.find(binding => binding.id === target.id);
   $('inspector-content').insertAdjacentHTML('afterbegin', `<div class="inspector-actions"><button data-timeline-rename>修改名称</button>${target === timeline ? `<button data-timeline-loop>${timeline.loop ? '改为单次' : '改为循环'}</button>` : ''}${clip ? '<button data-timeline-range>配置时间与素材范围</button><button data-timeline-move-clip>移动到轨道</button>' : ''}${marker ? '<button data-timeline-marker-time>配置时刻</button>' : ''}${track === target ? `<button data-timeline-track-move="-1" ${timeline.tracks.indexOf(track) === 0 ? 'disabled' : ''}>轨道上移</button><button data-timeline-track-move="1" ${timeline.tracks.indexOf(track) === timeline.tracks.length - 1 ? 'disabled' : ''}>轨道下移</button>` : ''}${track || binding ? '<button class="danger" data-timeline-delete>删除当前内容</button>' : ''}</div>`);
   if (binding) $('inspector-content').querySelector('[data-timeline-rename]').remove();
+  if (definition?.fields.some(field => field.visible && field.writable))
+    $('inspector-content').querySelector('.inspector-actions').insertAdjacentHTML('beforeend',
+      '<button data-timeline-configure-fields>同时配置参数</button>');
   Object.keys(target.fields).forEach(id => {
+    const field = definition?.fields.find(field => field.id === id);
+    if (field && (!field.visible || !field.writable)) return;
     const element = [...$('inspector-content').querySelectorAll('.field')].find(item => item.querySelector('label').title === id);
     element.insertAdjacentHTML('beforeend', `<button class="edit-field" data-timeline-field="${escapeHtml(id)}">编辑作者值</button>`);
+  });
+  definition?.fields.filter(field => field.visible && !Object.hasOwn(target.fields, field.id)).forEach(field => {
+    $('inspector-content').insertAdjacentHTML('beforeend', `<div class="field"><label title="${escapeHtml(field.id)}">${escapeHtml(field.displayName || field.id)} · 领域默认值</label>${renderValue(field.defaultValue)}${field.writable ? `<button class="edit-field" data-timeline-field="${escapeHtml(field.id)}">编辑作者值</button>` : ''}</div>`);
   });
 }
 
@@ -742,9 +751,14 @@ function handleTimelineAction(event) {
   const field = event.target.closest('[data-timeline-field]');
   if (event.target.closest('[data-timeline-add-track]')) {
     createTrack(timeline, state.definitions, state.references, applyTimelineEdits);
+  } else if (event.target.closest('[data-timeline-configure-fields]')) {
+    editTimelineFields(target, timelineObjectDefinition(target, state.definitions), state.references,
+      fields => applyTimelineEdits([configure(fields)]));
   } else if (field) {
     const id = field.dataset.timelineField;
-    editField({ id }, target.fields[id], value => applyTimelineEdits([configure({ ...target.fields, [id]: value })]), state.references);
+    const declaration = timelineObjectDefinition(target, state.definitions)?.fields.find(field => field.id === id);
+    editField(declaration || { id }, target.fields[id] || declaration.defaultValue,
+      value => applyTimelineEdits([configure({ ...target.fields, [id]: value })]), state.references);
   } else if (event.target.closest('[data-timeline-rename]')) {
     renameElement(target.displayName, displayName => applyTimelineEdits([target === timeline
       ? { kind: 'rename-timeline', displayName } : configure(target.fields, displayName)]));

@@ -23,6 +23,35 @@ export function editMarkerTime(marker, scale, apply) {
     form => apply(new FormData(form).get('time')));
 }
 
+export function timelineObjectDefinition(target, definitions) {
+  if (definitions.timelineAuthoring === undefined) return null;
+  if (Array.isArray(target.clips))
+    return definitions.timelineAuthoring.tracks.find(item => item.kind === target.contract).description;
+  if (target.timeRange)
+    return definitions.timelineAuthoring.clips.find(item => item.kind === target.contract).description;
+  return null;
+}
+
+export function editTimelineFields(target, definition, references, apply) {
+  const fields = definition.fields.filter(field => field.visible && field.writable);
+  const initial = field => target.fields[field.id] || field.defaultValue;
+  const editors = new Map();
+  const modal = dialog('同时配置时间轴参数', `<p>字段、类型、选项和默认值来自此类型的正式作者定义。可同时填写模式及配套参数；只提交实际修改的字段，其余字段保留。</p>${fields.map(field =>
+    `<fieldset><legend>${html(field.displayName || field.id)}${target.fields[field.id] ? '' : ' · 领域默认值'}</legend><div data-timeline-field-editor="${html(field.id)}"></div></fieldset>`).join('')}`,
+    () => {
+      const changed = fields.flatMap(field => {
+        const value = editors.get(field.id).read();
+        return JSON.stringify(value) === JSON.stringify(initial(field)) ? [] : [[field.id, value]];
+      });
+      if (changed.length) return apply({ ...target.fields, ...Object.fromEntries(changed) });
+    });
+  modal.querySelectorAll('[data-timeline-field-editor]').forEach(container => {
+    const field = fields.find(field => field.id === container.dataset.timelineFieldEditor);
+    editors.set(field.id, bindValueEditor(container, initial(field), field.constraint.AllowedValues,
+      references, field.valueDefinition));
+  });
+}
+
 export function createTrack(timeline, definitions, references, apply) {
   const contracts = definitions.timelineContracts.tracks;
   const editors = new Map();
