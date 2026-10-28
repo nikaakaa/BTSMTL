@@ -1,4 +1,5 @@
 using System;
+using BTSMTL.Authoring.Graph;
 using BTSMTL.Orchestration;
 using System.Linq;
 using System.Collections.Generic;
@@ -41,6 +42,10 @@ namespace BTSMTL.Timeline
         [SerializeField, HideInInspector]
         string m_AuthoringId;
 
+#if UNITY_EDITOR
+        [GraphAuthoringField(nameof(Name), GraphAuthoringFieldValueKind.String,
+            DocumentMember = GraphAuthoringDocumentMember.DisplayName)]
+#endif
         public string Name;
         public string AuthoringId => m_AuthoringId ?? string.Empty;
         public virtual string ContractKind => string.Empty;
@@ -53,6 +58,9 @@ namespace BTSMTL.Timeline
 
         [SerializeField]
         protected bool m_PersistentMuted;
+#if UNITY_EDITOR
+        [GraphAuthoringField(nameof(m_PersistentMuted), GraphAuthoringFieldValueKind.Boolean)]
+#endif
         public bool PersistentMuted
         {
             get => m_PersistentMuted;
