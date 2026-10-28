@@ -363,17 +363,23 @@ function renderGraph(graph) {
   }
   let drag = null;
   surface.addEventListener('pointerdown', event => {
-    if (event.target.closest('button, [data-edge]')) return;
-    drag = { x: event.clientX - state.view.x, y: event.clientY - state.view.y };
+    if (drag || event.button !== 0 || event.target.closest('button, [data-edge]')) return;
+    drag = { pointerId: event.pointerId, x: event.clientX - state.view.x, y: event.clientY - state.view.y };
     surface.setPointerCapture(event.pointerId);
+    event.preventDefault();
   });
   surface.addEventListener('pointermove', event => {
-    if (!drag) return;
+    if (!drag || drag.pointerId !== event.pointerId) return;
     state.view.x = event.clientX - drag.x;
     state.view.y = event.clientY - drag.y;
     updateView();
   });
-  surface.addEventListener('pointerup', () => { drag = null; });
+  const endPan = event => {
+    if (drag?.pointerId === event.pointerId) drag = null;
+  };
+  surface.addEventListener('pointerup', endPan);
+  surface.addEventListener('pointercancel', endPan);
+  surface.addEventListener('lostpointercapture', endPan);
   surface.addEventListener('wheel', event => {
     event.preventDefault();
     const bounds = surface.getBoundingClientRect();
