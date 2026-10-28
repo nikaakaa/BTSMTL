@@ -14,5 +14,6 @@
     <ProjectReference Include="..\BTSMTL.Orchestration.Contracts\BTSMTL.Orchestration.Contracts.csproj" />
     <ProjectReference Include="..\BTSMTL.Orchestration.Runtime\BTSMTL.Orchestration.Runtime.csproj" />
     <Compile Include="$(TimelineSourceRoot)\**\*.cs" LinkBase="Source" />
+    <Compile Include="$(TimelineSourceRoot)\..\Scripts\ActionContextSlot.cs" LinkBase="Source" />
   </ItemGroup>
 </Project>
