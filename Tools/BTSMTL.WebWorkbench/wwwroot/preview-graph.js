@@ -2,8 +2,7 @@ import { html } from './preview-records.js';
 
 const graphKey = graph => JSON.stringify([graph.actorId, graph.programId, graph.programRevision, graph.id]);
 const callKey = call => JSON.stringify([call.actorId, call.programId, call.programRevision, call.invocationPath,
-  call.parentInvocationPath, call.actionId, call.executionGeneration, call.invocationGeneration,
-  call.parentInvocationGeneration, call.playbackId]);
+  call.actionId, call.executionGeneration, call.invocationGeneration, call.playbackId]);
 const belongsTo = (call, graph) => call.actorId === graph.actorId && call.programId === graph.programId && call.programRevision === graph.programRevision;
 const shortName = graph => graph.displayName === graph.id ? graph.id.slice(0, 8) : graph.displayName;
 
