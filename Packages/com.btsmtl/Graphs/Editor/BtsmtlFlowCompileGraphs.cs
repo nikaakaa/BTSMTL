@@ -38,13 +38,16 @@ namespace BTSMTL.Graphs.Editor
     {
         readonly Func<FlowNode, BtsmtlFlowCompileNodeInfo> m_Info;
         readonly Func<FlowGraph, string> m_GraphId;
+        readonly Func<object, string> m_SourceType;
         readonly Dictionary<FlowGraph, CompileGraph> m_Graphs = new();
         readonly Dictionary<CompileNode, FlowNode> m_Nodes = new();
 
-        public BtsmtlFlowCompileGraphs(Func<FlowNode, BtsmtlFlowCompileNodeInfo> info, Func<FlowGraph, string> graphId)
+        public BtsmtlFlowCompileGraphs(Func<FlowNode, BtsmtlFlowCompileNodeInfo> info, Func<FlowGraph, string> graphId,
+            Func<object, string> sourceType)
         {
             m_Info = info ?? throw new ArgumentNullException(nameof(info));
             m_GraphId = graphId ?? throw new ArgumentNullException(nameof(graphId));
+            m_SourceType = sourceType;
         }
 
         public FlowNode Source(CompileNode node) => m_Nodes[node];
@@ -63,7 +66,7 @@ namespace BTSMTL.Graphs.Editor
                 inputs = macro.inputDefinitions.Select(Parameter).ToArray();
                 outputs = macro.outputDefinitions.Select(Parameter).ToArray();
             }
-            var view = new CompileGraph(m_GraphId(graph), graph.GetType().FullName, inputs, outputs);
+            var view = new CompileGraph(m_GraphId(graph), m_SourceType(graph), inputs, outputs);
             m_Graphs.Add(graph, view);
             var nodes = new Dictionary<FlowNode, CompileNode>();
             foreach (FlowNode node in graph.allNodes.Cast<FlowNode>())
@@ -72,7 +75,7 @@ namespace BTSMTL.Graphs.Editor
             {
                 FlowNode node = m_Nodes[compiled];
                 return node.outConnections.Cast<BinderConnection>().Select(edge => new CompileEdge(edge.UID,
-                    edge.GetType().FullName, compiled, edge.sourcePortID, edge.targetNode.UID, edge.targetPortID,
+                    m_SourceType(edge), compiled, edge.sourcePortID, edge.targetNode.UID, edge.targetPortID,
                     edge.sourcePort is ValueOutput)).ToArray();
             });
             return view;
@@ -100,7 +103,7 @@ namespace BTSMTL.Graphs.Editor
                 IBtsmtlVariableFlowNode => CompileNodeRole.Variable,
                 _ => CompileNodeRole.Leaf
             };
-            var compiled = new CompileNode(node.UID, node.GetType().FullName, info.Kind, role,
+            var compiled = new CompileNode(node.UID, m_SourceType(node), info.Kind, role,
                 node.GetInputFlowPorts().Select(port => port.ID).ToArray(),
                 node.GetOutputFlowPorts().Select(port => port.ID).ToArray(),
                 inputs, outputs, info.Fields, info.Describe);

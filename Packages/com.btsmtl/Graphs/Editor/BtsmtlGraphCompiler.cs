@@ -109,7 +109,8 @@ namespace BTSMTL.Graphs.Editor
                 m_Blackboard = CreateBlackboard(contract);
                 m_Graphs = new BtsmtlFlowCompileGraphs(
                     node => new BtsmtlFlowCompileNodeInfo(string.Empty, null, compiled => Describe(m_Graphs.Source(compiled), nodes)),
-                    graph => graph is BtsmtlMacroGraph macro ? macro.AuthoringId : ((BtsmtlGraphRoot)graph).AuthoringId);
+                    graph => graph is BtsmtlMacroGraph macro ? macro.AuthoringId : ((BtsmtlGraphRoot)graph).AuthoringId,
+                    source => source.GetType().FullName);
             }
 
             internal OrchestrationGraphContent<TValue>
