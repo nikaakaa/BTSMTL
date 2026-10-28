@@ -1,8 +1,13 @@
+#nullable enable
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using BTSMTL.Authoring.Documents;
-using BTSMTL.Authoring.Workspace;
 using Newtonsoft.Json.Linq;
 
-namespace BTSMTL.WebWorkbench;
+namespace BTSMTL.Authoring.Workspace
+{
 
 public sealed record AuthoringReferenceSource(string RootPath, string RootId, string RootRevision,
     string DocumentPath, string DocumentId, string FileRevision, string ElementId, string Pointer);
@@ -246,4 +251,5 @@ public static class AuthoringReferenceQuery
         if (offset < 0 || limit < 1 || limit > 200)
             throw new ArgumentException("文档引用查询要求 offset ≥ 0，limit 在 1～200 之间。");
     }
+}
 }

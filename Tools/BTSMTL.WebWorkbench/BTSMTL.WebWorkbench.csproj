@@ -10,7 +10,6 @@
     <Compile Include="Program.cs" />
     <Compile Include="WorkbenchApplication.cs" />
     <Compile Include="WorkspaceApi.cs" />
-    <Compile Include="AuthoringReferenceQuery.cs" />
     <Compile Include="AuthoringDefinitionApi.cs" />
     <Compile Include="AuthoringDocumentApi.cs" />
     <Compile Include="AuthoringGraphEditsApi.cs" />
