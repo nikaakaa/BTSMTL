@@ -6,6 +6,7 @@ import { showReferences, showReferenceResource } from './references.js';
 const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 const state = { roots: [], nextOffset: 0, selectedRoot: null, snapshot: null, references: [], selectedFile: null, selectedNode: null, selectedEdge: null, selectedTimeline: null, linkStart: null, tab: 'document', source: 'workspace', timeScale: null, query: '', capabilities: new Map(), definitions: null, definitionRevision: null, draft: null, authoringState: null, authoringProblem: '', view: { x: 35, y: 45, scale: 1 } };
+const reads = { source: null, roots: null, root: null, file: null };
 const kindNames = { Graph: '图', Timeline: '时间轴', InputPlan: '输入方案', Layout: '布局', References: '外部引用记录' };
 const api = () => `/api/${state.source}`;
 const typeName = value => value.split(',')[0].split('.').pop();
@@ -48,8 +49,8 @@ function report(message, error = false) {
   $('status-message').classList.toggle('error', error);
 }
 
-async function loadDefinitions(domain) {
-  const source = await request('/api/authoring/definitions/document');
+async function loadDefinitions(domain, signal) {
+  const source = await request('/api/authoring/definitions/document', undefined, signal);
   if (source.domain !== domain) throw new Error(`服务的原能力目录属于 ${source.domain}，当前内容属于 ${domain}。`);
   state.definitions = source.definition;
   state.capabilities = new Map(source.definition.capabilities.map(capability => [capability.id, capability]));
@@ -57,8 +58,10 @@ async function loadDefinitions(domain) {
 }
 
 async function loadRoots(reset = false) {
+  reads.roots?.abort();
+  const reading = new AbortController(); reads.roots = reading;
   if (reset) { state.roots = []; state.nextOffset = 0; }
-  const page = await request(`${api()}/roots?offset=${state.nextOffset}&limit=100`);
+  const page = await request(`${api()}/roots?offset=${state.nextOffset}&limit=100`, undefined, reading.signal);
   state.roots.push(...page.items);
   state.nextOffset = page.nextOffset;
   $('root-count').textContent = `${page.total} 个内容根`;
@@ -74,9 +77,11 @@ function renderRoots() {
 
 async function openRoot(path) {
   requireDraftSettled();
+  reads.root?.abort(); reads.file?.abort();
+  const reading = new AbortController(); reads.root = reading;
   report('正在读取正式文件…');
   let snapshot;
-  try { snapshot = await request(`${api()}/root?path=${encodeURIComponent(path)}`); }
+  try { snapshot = await request(`${api()}/root?path=${encodeURIComponent(path)}`, undefined, reading.signal); }
   catch (error) {
     if (error.result?.stage !== 'source-read') throw error;
     const problems = error.result.diagnostics;
@@ -98,14 +103,14 @@ async function openRoot(path) {
     $('source-text').value = '';
     $('document-view').innerHTML = `<div class="notice error"><h2>作者文件需要修正</h2>${problems.map(problem => `<p>${escapeHtml(problem.message)}</p><code>${escapeHtml(problem.path)}</code>`).join('')}</div>`;
     renderRoots();
-    const source = await request(`${api()}/source?path=${encodeURIComponent(path)}`);
+    const source = await request(`${api()}/source?path=${encodeURIComponent(path)}`, undefined, reading.signal);
     $('source-text').value = source.text;
     $('file-revision').textContent = source.revision.slice(0, 12);
     report('原文件已保留，未接收为可编译内容。', true);
     return;
   }
   const root = JSON.parse(snapshot.root);
-  await loadDefinitions(root.domain);
+  await loadDefinitions(root.domain, reading.signal);
   state.selectedRoot = { path };
   const files = snapshot.files.map(file => {
     try { return { ...file, document: JSON.parse(file.content), problem: null }; }
@@ -118,11 +123,14 @@ async function openRoot(path) {
   state.authoringProblem = state.source === 'migrations' ? '迁移候选用于核对原资产；正式接收后从作者工作区编辑。' : '';
   if (state.source === 'workspace') {
     try {
-      state.authoringState = await request(`/api/authoring/documents/state?path=${encodeURIComponent(path)}`);
+      state.authoringState = await request(`/api/authoring/documents/state?path=${encodeURIComponent(path)}`, undefined, reading.signal);
       if (state.authoringState.adoptable)
         state.draft = new DocumentEditSession(state.snapshot, path, state.definitionRevision, request);
       else state.authoringProblem = state.authoringState.problems.map(problem => problem.message).join('；');
-    } catch (error) { state.authoringProblem = error.message; }
+    } catch (error) {
+      if (reading.signal.aborted) throw error;
+      state.authoringProblem = error.message;
+    }
   }
   state.selectedNode = null;
   state.selectedFile = files[0];
@@ -146,6 +154,8 @@ function renderFiles() {
 }
 
 async function selectFile(path, elementId = null) {
+  reads.file?.abort();
+  const reading = new AbortController(); reads.file = reading;
   state.selectedFile = state.snapshot.files.find(file => file.path === path);
   const file = state.selectedFile;
   state.linkStart = null;
@@ -165,29 +175,32 @@ async function selectFile(path, elementId = null) {
     $('document-view').innerHTML = '<div class="notice">正在从共同定义投影端口…</div>';
     const projected = await request('/api/authoring/ports', {
       content: file.content, definitionsRevision: state.definitionRevision
-    });
+    }, reading.signal);
     file.portShapes = new Map(projected.nodes.map(node => [node.nodeId, node]));
   }
-  if (state.selectedFile !== file) return;
   if (!state.draft && file.document?.role === 'StateMachine' && !file.stateMachineReceipt && !file.stateMachineProblem) {
     try {
       file.stateMachineReceipt = await request('/api/authoring/state-machines/validate', {
         content: file.content, definitionsRevision: state.definitionRevision,
         relatedGraphs: state.snapshot.files.filter(related => related !== file && Array.isArray(related.document?.nodes))
           .map(related => related.content)
-      });
-    } catch (error) { file.stateMachineProblem = error.message; }
+      }, reading.signal);
+    } catch (error) {
+      if (reading.signal.aborted) throw error;
+      file.stateMachineProblem = error.message;
+    }
   }
-  if (state.selectedFile !== file) return;
   if (!state.draft && !file.problem && Array.isArray(file.document.nodes) && file.document.role !== 'StateMachine' &&
       !file.topologyReceipt && !file.topologyProblem) {
     try {
       file.topologyReceipt = await request('/api/authoring/graphs/validate', {
         content: file.content, definitionsRevision: state.definitionRevision
-      });
-    } catch (error) { file.topologyProblem = error.message; }
+      }, reading.signal);
+    } catch (error) {
+      if (reading.signal.aborted) throw error;
+      file.topologyProblem = error.message;
+    }
   }
-  if (state.selectedFile !== file) return;
   renderDocument();
 }
 
@@ -560,7 +573,7 @@ function renderVariables() {
 
 async function guarded(action) {
   try { await action(); }
-  catch (error) { report(error.message, true); }
+  catch (error) { if (error.name !== 'AbortError') report(error.message, true); }
 }
 
 $('roots').onclick = event => { const item = event.target.closest('[data-root]'); if (item) guarded(() => openRoot(item.dataset.root)); };
@@ -769,15 +782,17 @@ document.querySelectorAll('[data-tab]').forEach(button => button.onclick = () =>
 async function selectSource(source) {
   try { requireDraftSettled(); }
   catch (error) { $('content-source').value = state.source; throw error; }
+  Object.values(reads).forEach(read => read?.abort());
+  const reading = new AbortController(); reads.source = reading;
+  $('refresh-roots').disabled = true;
   state.source = source;
   $('content-source').value = source;
-  const info = await request(api());
-  state.timeScale = BigInt(info.timelineTimeScale);
-  $('service-state').textContent = '服务已连接';
-  $('workspace-path').textContent = info.path;
+  $('workspace-path').textContent = '目录尚未读取';
+  state.roots = []; state.nextOffset = 0;
   state.selectedRoot = null;
   state.snapshot = null;
   state.draft = null;
+  state.selectedFile = null;
   $('draft-toolbar').hidden = true;
   state.selectedNode = null;
   state.selectedEdge = null;
@@ -786,11 +801,21 @@ async function selectSource(source) {
   $('files').innerHTML = '';
   $('document-actions').hidden = true;
   $('document-navigation').hidden = true;
+  $('file-path').textContent = ''; $('file-revision').textContent = '';
+  $('source-text').value = '';
+  $('selection-name').textContent = '未选择内容';
   $('inspector-content').innerHTML = '';
   $('document-title').textContent = source === 'migrations' ? '选择迁移候选' : '选择内容根';
   $('document-view').innerHTML = `<div class="welcome"><div class="eyebrow">${source === 'migrations' ? 'MIGRATION REVIEW' : 'AUTHORING DOCUMENTS'}</div><h1>${source === 'migrations' ? '检查原资产的完整内容' : '打开正式作者文档'}</h1><p>${source === 'migrations' ? '候选用于核对迁移读取结果，原 Unity 作者资产仍是当前正式来源。选择左侧内容查看图、状态、时间轴和变量。' : '选择左侧作者根。尚未接收的迁移候选可从“内容来源”切换查看。'}</p></div>`;
-  await loadRoots(true);
-  report(source === 'migrations' ? '迁移候选仅用于只读核对；正式接收后从作者工作区编辑。' : '请选择作者内容根。');
+  renderRoots(); $('root-count').textContent = '0 个内容根'; $('load-more').hidden = true;
+  try {
+    const info = await request(api(), undefined, reading.signal);
+    state.timeScale = BigInt(info.timelineTimeScale);
+    $('service-state').textContent = '服务已连接';
+    $('workspace-path').textContent = info.path;
+    await loadRoots();
+    report(source === 'migrations' ? '迁移候选仅用于只读核对；正式接收后从作者工作区编辑。' : '请选择作者内容根。');
+  } finally { if (reads.source === reading) $('refresh-roots').disabled = false; }
 }
 
 $('content-source').onchange = event => guarded(() => selectSource(event.target.value));
@@ -806,7 +831,7 @@ guarded(async () => {
     if (query.has('element')) {
       const exact = new URLSearchParams({ path: state.selectedRoot.path,
         documentId: state.selectedFile.document.id, elementId: query.get('element') });
-      const located = await request(`${api()}/element?${exact}`);
+      const located = await request(`${api()}/element?${exact}`, undefined, reads.file.signal);
       report(`已定位磁盘文档对象 ${located.elementId}${query.has('pointer') ? ' · JSON 位置 ' + query.get('pointer') : ''}。`);
     }
   }
