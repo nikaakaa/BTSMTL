@@ -171,7 +171,12 @@ export function bindTimelineDrag(surface, timeline, contracts, scale, pixels, ap
         drag.element.style.zIndex = '6';
         drag.lane?.classList.remove('timeline-drop-target', 'timeline-drop-blocked');
         drag.lane = surface.ownerDocument.elementsFromPoint(event.clientX, event.clientY)
-          .find(element => element.matches('.timeline-lane'));
+          .find(element => {
+            if (!element.matches('.timeline-lane')) return false;
+            const bounds = element.getBoundingClientRect();
+            return event.clientX >= bounds.left && event.clientX < bounds.right &&
+              event.clientY >= bounds.top && event.clientY < bounds.bottom;
+          });
         drag.targetTrack = drag.lane ? timeline.tracks.find(track => track.id === drag.lane.dataset.timelineTrack) : null;
         drag.lane?.classList.add(drag.targets.includes(drag.targetTrack) ? 'timeline-drop-target' : 'timeline-drop-blocked');
       }
