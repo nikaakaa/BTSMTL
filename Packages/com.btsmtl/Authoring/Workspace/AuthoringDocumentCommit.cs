@@ -23,57 +23,48 @@ public sealed record AuthoringDocumentCommitResult(string CandidateId, string Re
 public sealed class AuthoringDocumentCommit
 {
     readonly ConcurrentDictionary<string, AuthoringDocumentCommitResult> m_Results = new(StringComparer.Ordinal);
+    readonly ConcurrentDictionary<string, (string CandidateId, Lazy<AuthoringDocumentCommitResult> Result)> m_Requests = new(StringComparer.Ordinal);
     public event Action<AuthoringDocumentCommitResult>? Saved;
 
     public AuthoringDocumentCommitResult? Query(string requestId) => m_Results.TryGetValue(requestId, out var result) ? result : null;
 
     public Task<AuthoringDocumentCommitResult> Commit(AuthoringDocumentCandidate candidate,
-        CancellationToken cancellation = default) => Task.Run(() => Execute(candidate, cancellation), cancellation);
+        CancellationToken cancellation = default) => Task.Run(() =>
+        {
+            var request = m_Requests.GetOrAdd(candidate.RequestId, _ => (candidate.Id,
+                new Lazy<AuthoringDocumentCommitResult>(() => Execute(candidate, cancellation))));
+            if (request.CandidateId != candidate.Id)
+                throw new InvalidOperationException("同一保存请求身份不能提交不同候选。");
+            return request.Result.Value;
+        }, cancellation);
 
     AuthoringDocumentCommitResult Execute(AuthoringDocumentCandidate candidate, CancellationToken cancellation)
     {
         string[] paths = candidate.Baseline.Files.Select(file => file.Path)
-            .Concat(candidate.WriteSet).Distinct(StringComparer.OrdinalIgnoreCase)
+            .Concat(candidate.Documents.Source.Files.Select(file => file.Path)).Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(path => path, StringComparer.OrdinalIgnoreCase).ToArray();
-        using (AuthoringFileAccessScope.Acquire(paths, cancellation))
+        var baseline = candidate.Baseline.Files.ToDictionary(file => file.Path, StringComparer.OrdinalIgnoreCase);
+        var accepted = candidate.Documents.Source.Files.ToDictionary(file => file.Path, StringComparer.OrdinalIgnoreCase);
+        AuthoringFileChange[] files = paths.Select(path => new AuthoringFileChange(path,
+            baseline.TryGetValue(path, out var before) ? before.Bytes.ToArray() : null,
+            accepted.TryGetValue(path, out var after) ? after.Bytes.ToArray() : null)).ToArray();
+        AuthoringFileWriteResult transaction = AuthoringFileTransaction.Write(
+            Path.GetDirectoryName(candidate.Baseline.Files[0].Path)!, files, Array.Empty<string>(), cancellation);
+        AuthoringRevisionConflict[] conflicts = transaction.Conflicts.Select(conflict => new AuthoringRevisionConflict(
+            conflict.Path, conflict.ExpectedRevision, conflict.CurrentRevision, Elements(conflict.Path))).ToArray();
+        return Record(Result(transaction.Success ? AuthoringCommitStatus.Saved :
+            conflicts.Length != 0 ? AuthoringCommitStatus.Conflict : AuthoringCommitStatus.Failed, conflicts, transaction));
+
+        string[] Elements(string path)
         {
-            if (m_Results.TryGetValue(candidate.RequestId, out var recorded))
-            {
-                if (recorded.CandidateId != candidate.Id)
-                    throw new InvalidOperationException("同一保存请求身份不能提交不同候选。");
-                return recorded;
-            }
-            var baseline = candidate.Baseline.Files.ToDictionary(file => file.Path, file => file.Revision,
-                StringComparer.OrdinalIgnoreCase);
-            var accepted = candidate.Documents.Source.Files.ToDictionary(file => file.Path, file => file.Revision,
-                StringComparer.OrdinalIgnoreCase);
-            var current = paths.ToDictionary(path => path, path => File.Exists(path)
-                ? AuthoringFileRevision.Compute(File.ReadAllBytes(path)) : "", StringComparer.OrdinalIgnoreCase);
-            bool alreadySaved = current.All(file => file.Value == (accepted.TryGetValue(file.Key, out var revision) ? revision : ""));
-            if (alreadySaved) return Record(Result(AuthoringCommitStatus.Saved, Array.Empty<AuthoringRevisionConflict>(), null));
-            var conflicts = new List<AuthoringRevisionConflict>();
-            foreach (string path in paths)
-            {
-                string expected = baseline.TryGetValue(path, out var revision) ? revision : "";
-                if (current[path] == expected) continue;
-                string directory = Path.GetDirectoryName(candidate.Baseline.Files[0].Path)!;
-                string[] objects = candidate.Baseline.Root.Files.ToArray().Where(file => string.Equals(
+            if (string.Equals(path, candidate.Baseline.Files[0].Path, StringComparison.OrdinalIgnoreCase))
+                return new[] { candidate.Baseline.Root.Id.Value };
+            string directory = Path.GetDirectoryName(candidate.Baseline.Files[0].Path)!;
+            return candidate.Baseline.Root.Files.ToArray().Where(file => string.Equals(
                     AuthoringWorkspaceDirectory.Resolve(directory, file.Path), path, StringComparison.OrdinalIgnoreCase))
-                    .Select(file => file.Id.Value).Concat(candidate.Differences.Where(file =>
-                        string.Equals(file.Path, path, StringComparison.OrdinalIgnoreCase))
-                        .SelectMany(file => file.DocumentIds).Select(id => id.Value))
-                    .Distinct(StringComparer.Ordinal).ToArray();
-                if (string.Equals(path, candidate.Baseline.Files[0].Path, StringComparison.OrdinalIgnoreCase))
-                    objects = new[] { candidate.Baseline.Root.Id.Value };
-                conflicts.Add(new(path, expected, current[path], objects));
-            }
-            if (conflicts.Count != 0)
-                return Record(Result(AuthoringCommitStatus.Conflict, conflicts, null));
-            cancellation.ThrowIfCancellationRequested();
-            AuthoringFileWriteResult transaction = AuthoringFileTransaction.Write(
-                Path.GetDirectoryName(candidate.Baseline.Files[0].Path)!, candidate.Changes, Array.Empty<string>());
-            return Record(Result(transaction.Success ? AuthoringCommitStatus.Saved : AuthoringCommitStatus.Failed,
-                Array.Empty<AuthoringRevisionConflict>(), transaction));
+                .Select(file => file.Id.Value).Concat(candidate.Differences.Where(file =>
+                    string.Equals(file.Path, path, StringComparison.OrdinalIgnoreCase))
+                    .SelectMany(file => file.DocumentIds).Select(id => id.Value)).Distinct(StringComparer.Ordinal).ToArray();
         }
 
         AuthoringDocumentCommitResult Record(AuthoringDocumentCommitResult result)

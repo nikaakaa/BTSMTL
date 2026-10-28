@@ -42,7 +42,7 @@ namespace BTSMTL.Authoring.Documents
         public static AuthoringObjectContract Read(Type type)
         {
             FieldInfo[] fields = type.GetFields(BindingFlags.Instance | BindingFlags.Public)
-                .Where(field => !field.IsNotSerialized).ToArray();
+                .Where(field => !field.IsDefined(typeof(NonSerializedAttribute), false)).ToArray();
             ConstructorInfo[] constructors = type.GetConstructors()
                 .Where(constructor => constructor.GetParameters().Length != 0).ToArray();
             MethodInfo configure = constructors.Length == 0 ? type.GetMethod("Configure") : null;
