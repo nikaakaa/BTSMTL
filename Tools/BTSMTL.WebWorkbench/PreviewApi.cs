@@ -16,6 +16,7 @@ public interface IPreviewHost
     object ReadControl(Guid id, Guid commandId);
     PreviewSummary Summary(Guid id);
     PreviewPage<PreviewFrame> Frames(Guid id, int offset, int limit);
+    PreviewRoute Route(Guid id);
     object Compare(Guid left, Guid right);
     PreviewObservationPage Observations(Guid id, IReadOnlyDictionary<string, string> query);
     IResult Geometry(Guid id);
@@ -44,6 +45,7 @@ public static class PreviewApi
         routes.MapGet("/runs/{id:guid}/controls/{commandId:guid}", (Guid id, Guid commandId) => host.ReadControl(id, commandId));
         routes.MapGet("/runs/{id:guid}/summary", (Guid id) => host.Summary(id));
         routes.MapGet("/runs/{id:guid}/frames", (Guid id, int offset, int limit) => host.Frames(id, offset, limit));
+        routes.MapGet("/runs/{id:guid}/route", (Guid id) => host.Route(id));
         routes.MapGet("/runs/{left:guid}/compare/{right:guid}", (Guid left, Guid right) => host.Compare(left, right));
         routes.MapGet("/runs/{id:guid}/observations", (Guid id, HttpRequest request) => host.Observations(id, Query(request)));
         routes.MapGet("/runs/{id:guid}/geometry", (Guid id) => host.Geometry(id));

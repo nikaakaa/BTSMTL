@@ -4,6 +4,7 @@ import { createTrack, createClip, createMarker, createBinding, editTimeRange, ed
 import { showReferences, showReferenceResource } from './references.js';
 import { graphContext, editTransition } from './documents-fsm.js';
 import { privateGraphFields, privateGraphFiles, privateGraphReferences, createPrivateGraph } from './documents-owned.js';
+import { mountRunPreview } from './timeline-preview.js';
 
 const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
@@ -272,6 +273,8 @@ function renderDocument() {
     else if (Array.isArray(document.entries)) renderReferenceTable(document);
     else renderRoot(document);
     renderInspector(document);
+    mountRunPreview({ kind: Array.isArray(document.tracks) ? 'timeline' : Array.isArray(document.nodes) ? 'graph' : 'other',
+      view: $('document-view'), inspector: $('inspector-content'), document, root: state.snapshot.root, selectedNode: state.selectedNode });
   }
   catch (error) {
     $('document-view').innerHTML = `<div class="notice error"><h2>文档格式无效</h2><p>${escapeHtml(error.message)}</p><p>原始内容保留在“源文件”页，未被旧缓存覆盖。</p></div>`;
@@ -663,6 +666,7 @@ function renderTimeline(timeline) {
   const handles = state.draft?.canEdit ? '<span class="timeline-boundary" data-timeline-boundary="start" title="调整片段起点"></span><span class="timeline-boundary" data-timeline-boundary="end" title="调整片段终点"></span>' : '';
   const rows = timeline.tracks.map((track, index) => `<div class="timeline-row"><button class="timeline-track ${state.selectedTimeline === track.id ? 'selected' : ''}" data-timeline="${escapeHtml(track.id)}"><small>${index + 1} · ${escapeHtml(track.contract)}</small><strong>${escapeHtml(track.displayName)}</strong><span>${track.clips.length} 片段 · ${track.markers.length} 标记</span></button><div class="timeline-lane" data-timeline-track="${escapeHtml(track.id)}" style="width:${width}px">${ticks.map(time => `<i class="timeline-grid" style="left:${time * pixels}px"></i>`).join('')}${track.clips.map(clip => `<button class="timeline-clip ${state.selectedTimeline === clip.id ? 'selected' : ''}" data-timeline="${escapeHtml(clip.id)}" style="left:${seconds(clip.timeRange.startRaw) * pixels}px;width:${Math.max(4, (seconds(clip.timeRange.endRaw) - seconds(clip.timeRange.startRaw)) * pixels)}px" title="${escapeHtml(clip.displayName)} · ${seconds(clip.timeRange.startRaw).toFixed(4)}—${seconds(clip.timeRange.endRaw).toFixed(4)} 秒">${handles}<span>${escapeHtml(clip.displayName)}</span><small>${escapeHtml(clip.contract)}</small></button>`).join('')}${track.markers.map(marker => `<button class="timeline-marker ${state.selectedTimeline === marker.id ? 'selected' : ''}" data-timeline="${escapeHtml(marker.id)}" style="left:${seconds(marker.timeRaw) * pixels}px" title="${escapeHtml(marker.displayName)} · ${seconds(marker.timeRaw).toFixed(4)} 秒" aria-label="${escapeHtml(marker.displayName)} · ${seconds(marker.timeRaw).toFixed(4)} 秒">◆</button>`).join('')}</div></div>`).join('');
   $('document-view').innerHTML = `<div class="timeline-heading"><div><small>正式时间数据</small><h2>${escapeHtml(timeline.displayName)}</h2></div><span>${timeline.loop ? '循环' : '单次'} · ${duration.toFixed(3)} 秒 · ${timeline.tracks.length} 条轨道</span></div><div class="timeline-scroll"><div class="timeline-content" style="width:${width + 224}px"><div class="timeline-ruler"><div>作者时间 · 秒</div><div style="width:${width}px">${ticks.map(time => `<span style="left:${time * pixels}px">${time.toFixed(2)}</span>`).join('')}</div></div>${rows}</div></div><p class="timeline-note">选择片段或标记查看实际参数及图引用。时间轴显示作者时间；真实模拟结果位于运行观察。</p>`;
+  $('document-view').querySelector('.timeline-content').dataset.pixels = pixels;
   $('document-view').querySelector('.timeline-heading').insertAdjacentHTML('beforeend',
     `<label class="timeline-zoom">查看比例<select data-timeline-zoom>${[0.5, 1, 2, 4, 8].map(zoom =>
       `<option value="${zoom}" ${zoom === state.timelineZoom ? 'selected' : ''}>${zoom * 100}%</option>`).join('')}</select></label>`);

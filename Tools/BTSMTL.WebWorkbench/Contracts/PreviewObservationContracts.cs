@@ -28,6 +28,11 @@ public sealed record PreviewSummary(string RunId, string ContentRevision, string
     string FirstFrame, string LastFrame, int FrameCount, string[] Channels, bool GeometryAvailable,
     PreviewField[] Fields, string RawJson);
 public sealed record PreviewPage<T>(T[] Items, int Total, int? NextOffset);
+// 作者页轻量路线：逐帧只给活动时间轴游标与正在执行的作者对象，完整记录仍按帧读取。
+public sealed record PreviewRoutePlayback(string DocumentId, double CursorSeconds, string Status);
+public sealed record PreviewRouteFrame(string HostFrame, double Seconds, PreviewRoutePlayback[] Playbacks,
+    PreviewAuthoringLocation[] Active);
+public sealed record PreviewRoute(string RunId, string ContentRevision, PreviewRouteFrame[] Frames);
 public sealed record PreviewObservationPage(string RunId, string ContentRevision, string[] Channels,
     string FirstFrame, string LastFrame, int Offset, int Total, int? NextOffset, PreviewFrame[] Items);
 public sealed record PreviewQueryField(string Name, string DisplayName, string InputType, string Placeholder);
