@@ -313,7 +313,7 @@ function renderGraph(graph) {
     }).join('');
     return `<button class="graph-node ${shape.problem ? 'missing-definition' : ''} ${state.selectedNode === node.id ? 'selected' : ''}" data-node="${escapeHtml(node.id)}" title="${escapeHtml(shape.problem ? shape.problem.message : node.id)}" style="left:${escapeHtml(position.x)}px;top:${escapeHtml(position.y)}px"><span class="node-type">${escapeHtml(node.capability)}</span><strong>${escapeHtml(node.displayName || definition?.displayName || node.capability)}</strong><small>${fieldCount} 个作者字段${shape.problem ? ' · ' + escapeHtml(shape.problem.code) : ''}</small><div class="node-ports">${portRows}</div></button>`;
   }).join('');
-  $('document-view').innerHTML = `<div class="graph-surface" id="graph-surface"><div class="graph-caption">${escapeHtml(graph.role)}<span>${graph.nodes.length} 个节点 · ${graph.edges.length} 条连接</span></div><div class="graph-world" id="graph-world"><svg width="6000" height="4000">${links}</svg>${nodes}</div><div class="canvas-tools">${state.linkStart ? '<button data-cancel-connection>取消连线</button>' : ''}<button id="fit-graph">适应全图</button><span id="zoom-value">100%</span></div><div class="canvas-hint">${state.linkStart ? '选择目标输入完成连接 · Esc 取消' : '空白处拖动画布 · 滚轮缩放 · 点击输出端口开始连接'}</div></div>`;
+  $('document-view').innerHTML = `<div class="graph-surface" id="graph-surface"><div class="graph-caption">${escapeHtml(graph.role)}<span>${graph.nodes.length} 个节点 · ${graph.edges.length} 条连接</span></div><div class="graph-world" id="graph-world"><svg width="6000" height="4000">${links}</svg>${nodes}</div><div class="canvas-tools">${state.linkStart ? '<button data-cancel-connection>取消连线</button>' : ''}<button id="focus-graph" ${state.selectedNode || state.selectedEdge ? '' : 'disabled'}>定位所选对象</button><button id="fit-graph">适应全图</button><span id="zoom-value">100%</span></div><div class="canvas-hint">${state.linkStart ? '选择目标输入完成连接 · Esc 取消' : '空白处拖动画布 · 滚轮缩放 · 点击输出端口开始连接'}</div></div>`;
   if (!state.draft?.canEdit) $('document-view').querySelectorAll('[data-port]').forEach(port => {
     port.removeAttribute('data-port'); port.removeAttribute('role'); port.removeAttribute('tabindex');
   });
@@ -337,9 +337,9 @@ function renderGraph(graph) {
   if (state.selectedFile.stateMachineProblem)
     surface.querySelector('.graph-caption').insertAdjacentHTML('beforeend',
       `<span class="error">FSM 合同未接收：${escapeHtml(state.selectedFile.stateMachineProblem)}</span>`);
-  function fitGraph() {
-    if (graph.nodes.length === 0) { state.view = { x: 35, y: 45, scale: 1 }; updateView(); return; }
-    const bounds = graph.nodes.map(node => {
+  function fitGraph(nodes) {
+    if (nodes.length === 0) { state.view = { x: 35, y: 45, scale: 1 }; updateView(); return; }
+    const bounds = nodes.map(node => {
       const position = positions.get(node.id), shape = shapes.get(node.id);
       return { ...position, width: 250, height: Math.max(86, 72 + Math.max(shape.inputs.length, shape.outputs.length) * 25) };
     });
@@ -350,7 +350,17 @@ function renderGraph(graph) {
       y: (surface.clientHeight - (bottom - top) * scale) / 2 - top * scale, scale };
     updateView();
   }
-  if (state.view.needsFit) fitGraph();
+  function focusSelection() {
+    if (state.selectedNode) fitGraph(graph.nodes.filter(node => node.id === state.selectedNode));
+    else {
+      const edge = graph.edges.find(edge => edge.id === state.selectedEdge);
+      fitGraph(graph.nodes.filter(node => node.id === edge.sourceNode || node.id === edge.targetNode));
+    }
+  }
+  if (state.view.needsFit) {
+    if (state.selectedNode || state.selectedEdge) focusSelection();
+    else fitGraph(graph.nodes);
+  }
   let drag = null;
   surface.addEventListener('pointerdown', event => {
     if (event.target.closest('button, [data-edge]')) return;
@@ -373,7 +383,8 @@ function renderGraph(graph) {
     state.view.scale = next;
     updateView();
   }, { passive: false });
-  $('fit-graph').onclick = fitGraph;
+  $('fit-graph').onclick = () => fitGraph(graph.nodes);
+  $('focus-graph').onclick = focusSelection;
 }
 
 function updateView() {
@@ -598,6 +609,11 @@ function renderTimeline(timeline) {
     $('document-view').insertAdjacentHTML('beforeend', '<p class="authoring-gap">新建标记、绑定及私有片段图尚缺共同创建描述；Section 尚缺共同文档结构与修改协议。现有标记、绑定和图引用可在属性中选择、编辑或下钻。</p>');
     bindTimelineDrag($('document-view').querySelector('.timeline-content'), timeline, state.timeScale, pixels,
       applyTimelineEdits, error => report(error.message, true));
+  }
+  if (state.view.needsFit) {
+    if (state.selectedTimeline) $('document-view').querySelector(`[data-timeline="${CSS.escape(state.selectedTimeline)}"]`)
+      .scrollIntoView({ block: 'nearest', inline: 'center' });
+    state.view.needsFit = false;
   }
 }
 
