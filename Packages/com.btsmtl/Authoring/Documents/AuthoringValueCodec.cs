@@ -138,7 +138,7 @@ namespace BTSMTL.Authoring.Documents
             return new AuthoringObjectValue(identity, members.Values.ToArray());
         }
 
-        public object Restore(Type type, AuthoringValue value)
+        public virtual object Restore(Type type, AuthoringValue value)
         {
             if (value.TypeId != TypeIdentity(type))
                 throw new ArgumentException($"作者值类型 '{value.TypeId}' 与正式字段 '{TypeIdentity(type)}' 不匹配。");
