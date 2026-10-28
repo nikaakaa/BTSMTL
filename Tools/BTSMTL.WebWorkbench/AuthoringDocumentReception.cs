@@ -61,7 +61,7 @@ public sealed class AuthoringDocumentReception
             var domain = Enum.Parse<TimelineExecutionDomain>(
                 ((AuthoringScalarValue)fields[trackDefinition.Members["ExecutionDomain"]]).Value);
             TimelineTrackContract contract = Definitions.TimelineContracts.RequireTrack(track.ContractKind);
-            if (!contract.SupportsExecutionDomain(domain))
+            if (track.Clips.Length == 0 && !contract.SupportsExecutionDomain(domain))
                 throw new InvalidOperationException(trackPath + ": 执行域不属于原轨道合同。");
             foreach (AuthoringTimelineClipDocument clip in track.Clips.Span)
             {
