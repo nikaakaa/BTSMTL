@@ -45,7 +45,7 @@ export class PreviewObservation {
     const loading = this.loading;
     const before = this.routeFrames.length;
     while (this.routeFrames.length < summary.frameCount) {
-      const page = await this.request(`/api/preview/runs/${this.runId}/route/frames?offset=${this.routeFrames.length}&limit=${Math.min(128, summary.frameCount - this.routeFrames.length)}`);
+      const page = await this.request(`/api/preview/runs/${this.runId}/route/frames?firstFrame=${encodeURIComponent(summary.firstFrame)}&lastFrame=${encodeURIComponent(summary.lastFrame)}&offset=${this.routeFrames.length}&limit=${Math.min(128, summary.frameCount - this.routeFrames.length)}`);
       if (this.loading !== loading) return;
       this.routeFrames.push(...page.items.map(({ hostFrame, seconds, playbacks }) => ({ hostFrame, seconds, playbacks })));
       this.availability = page.availability;
