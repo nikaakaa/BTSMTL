@@ -199,29 +199,33 @@ export function createNode(capabilities, role, apply) {
   fill();
 }
 
-export function createConnection(graph, shapes, apply) {
+export function createConnection(graph, shapes, apply, options = {}) {
   const sources = graph.nodes.flatMap(node => shapes.get(node.id).ports.filter(port => port.direction === 'Output')
     .map(port => ({ node, port })));
   const targets = graph.nodes.flatMap(node => shapes.get(node.id).ports.filter(port => port.direction === 'Input')
     .map(port => ({ node, port })));
   const label = item => `${item.node.displayName || item.node.id} / ${item.port.displayName} (${item.port.valueType})`;
   const modal = dialog('创建连接候选', `<label>输出<select name="source" required>${sources.map((item, index) =>
-    `<option value="${index}">${html(label(item))}</option>`).join('')}</select></label><label>输入<select name="target" required></select></label><p>只列出原端口投影中类型一致的输入。容量、顺序与环路由同一服务返回诊断。</p>`,
+    `<option value="${index}">${html(label(item))}</option>`).join('')}</select></label><label>输入<select name="target" required></select></label><p>只列出原端口投影中类型一致的输入。容量、顺序与环路由同一服务返回诊断。</p>${options.contents || ''}`,
     form => {
       const data = new FormData(form), source = sources[Number(data.get('source'))], target = targets[Number(data.get('target'))];
       return apply({ id: `local:${crypto.randomUUID()}`, sourceNode: source.node.id, sourcePort: source.port.id,
         targetNode: target.node.id, targetPort: target.port.id,
         order: Math.max(-1, ...graph.edges.filter(edge => edge.sourceNode === source.node.id && edge.sourcePort === source.port.id).map(edge => edge.order)) + 1,
-        fields: {} });
+        fields: {} }, data);
     });
   const fill = () => {
     const source = sources[Number(modal.querySelector('[name=source]').value)];
     modal.querySelector('[name=target]').innerHTML = targets.map((item, index) => ({ item, index }))
-      .filter(({ item }) => source && item.node.id !== source.node.id && item.port.valueType === source.port.valueType)
+      .filter(({ item }) => source && (options.selfConnections || item.node.id !== source.node.id) && item.port.valueType === source.port.valueType)
       .map(({ item, index }) => `<option value="${index}">${html(label(item))}</option>`).join('');
   };
   modal.querySelector('[name=source]').onchange = fill;
+  if (options.source) modal.querySelector('[name=source]').value = sources.findIndex(item =>
+    item.node.id === options.source.nodeId && item.port.id === options.source.portId);
   fill();
+  if (options.target) modal.querySelector('[name=target]').value = targets.findIndex(item =>
+    item.node.id === options.target.nodeId && item.port.id === options.target.portId);
 }
 
 export function reorderConnections(graph, edge, apply) {

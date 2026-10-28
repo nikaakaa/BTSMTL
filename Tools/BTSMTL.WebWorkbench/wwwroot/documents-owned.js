@@ -14,7 +14,7 @@ export function privateGraphFields(graph, target, definitions) {
         return field ? [{ field, role: item.role }] : [];
       });
   }
-  return graph.role === contract.role && graph.edges.includes(target)
+  return graph.role === contract.role && Object.hasOwn(target, 'sourceNode')
     ? [{ field: definitions.graphAuthoring.edge.fields.find(field => field.id === contract.conditionField),
       role: contract.conditionRole }] : [];
 }
@@ -55,9 +55,10 @@ function newGraph(parent, target, role, displayName, rootId, definitions) {
       .map(field => [field.id, structuredClone(field.defaultValue)])), nodes, edges: [], variables: [] };
 }
 
-export function privateGraphFiles(snapshot, parent, target, declarations, definitions, insertNode = false) {
+export function privateGraphFiles(snapshot, parent, target, declarations, definitions, insertKind = null) {
   const root = structuredClone(snapshot.root), graph = structuredClone(parent);
-  if (insertNode) graph.nodes.push(structuredClone(target));
+  if (insertKind === 'node') graph.nodes.push(structuredClone(target));
+  else if (insertKind === 'edge') graph.edges.push(structuredClone(target));
   const owner = [...graph.nodes, ...graph.edges].find(item => item.id === target.id);
   const added = declarations.map(({ field, role, displayName }) => {
     const document = newGraph(graph, owner, role, displayName, root.id, definitions);

@@ -612,6 +612,12 @@ async function choosePort(element) {
   }
   if (!state.linkStart) { report('请先选择一个输出端口，再选择目标输入。'); return; }
   const source = state.linkStart;
+  if (graph.role === state.definitions.stateMachine.role) {
+    state.linkStart = null;
+    renderDocument();
+    createGraphConnection({ source, target: { nodeId, portId } });
+    return;
+  }
   await applyGraphEdits([{ kind: 'insert-edge', index: graph.edges.length, edge: {
     id: `local:${crypto.randomUUID()}`, sourceNode: source.nodeId, sourcePort: source.portId,
     targetNode: nodeId, targetPort: portId,
@@ -914,14 +920,26 @@ $('draft-add-node').onclick = () => createNode(state.capabilities, state.selecte
     const declarations = privateGraphFields(graph, node, state.definitions).filter(item => !item.field.optional);
     if (declarations.length) {
       const candidate = privateGraphFiles(state.snapshot, graph, node, declarations.map(item => ({ ...item,
-        displayName: `${node.displayName} · ${item.role}` })), state.definitions, true);
+        displayName: `${node.displayName} · ${item.role}` })), state.definitions, 'node');
       await state.draft.applyFiles(candidate.files);
     } else await state.draft.apply(graph.id, [{ kind: 'insert-node', index: graph.nodes.length, node }]);
     state.selectedNode = node.id;
     state.selectedEdge = null;
   }));
-$('draft-add-edge').onclick = () => createConnection(state.selectedFile.document, state.selectedFile.portShapes,
-  edge => applyGraphEdits([{ kind: 'insert-edge', index: state.selectedFile.document.edges.length, edge }]));
+function createGraphConnection(selection = {}) {
+  const graph = state.selectedFile.document, machine = graph.role === state.definitions.stateMachine.role;
+  createConnection(graph, state.selectedFile.portShapes, (edge, input) => presentDraftOperation(async () => {
+    if (input.has('privateCondition')) {
+      const candidate = privateGraphFiles(state.snapshot, graph, edge, privateGraphFields(graph, edge, state.definitions)
+        .map(item => ({ ...item, displayName: '转移条件' })), state.definitions, 'edge');
+      await state.draft.applyFiles(candidate.files);
+    } else await state.draft.apply(graph.id, [{ kind: 'insert-edge', index: graph.edges.length, edge }]);
+    state.selectedNode = null;
+    state.selectedEdge = edge.id;
+  }), { ...selection, selfConnections: machine, contents: machine
+    ? '<label class="transition-condition-option"><input type="checkbox" name="privateCondition">同时创建此转移的私有条件图</label><p>需要条件的转移可在接收前一并创建条件图，再下钻编辑。固定入口来自正式定义，连接、条件及根文件清单一起形成候选。</p>' : '' });
+}
+$('draft-add-edge').onclick = () => createGraphConnection();
 $('draft-undo').onclick = () => editAction(() => state.draft.undo());
 $('draft-redo').onclick = () => editAction(() => state.draft.redo());
 $('draft-diff').onclick = () => showDocumentDiff(state.draft);
