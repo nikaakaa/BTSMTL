@@ -15,6 +15,7 @@
     <Compile Include="AuthoringDefinitionSet.cs" />
     <Compile Include="AuthoringDocumentReception.cs" />
     <Compile Include="AuthoringBlackboardReception.cs" />
+    <Compile Include="AuthoringNumericsValueCodec.cs" />
     <Compile Include="AuthoringDocumentApi.cs" />
     <Compile Include="AuthoringGraphEditsApi.cs" />
     <Compile Include="AuthoringGraphEdits.cs" />
