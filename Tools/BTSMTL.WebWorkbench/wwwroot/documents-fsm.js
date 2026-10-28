@@ -6,12 +6,24 @@ const html = value => String(value).replace(/[&<>"']/g,
 export function graphContext(graph, target, files, definitions, capabilities) {
   const contract = definitions.stateMachine;
   if (contract === undefined) return '';
+  const linked = Object.entries(target.fields).flatMap(([field, value]) => {
+    if (value.kind !== 'reference' || value.target.rootId !== graph.owner.rootId) return [];
+    const file = files.find(file => file.document?.id === value.target.documentId && Array.isArray(file.document.nodes));
+    return file ? [{ field, file, element: value.target.elementId }] : [];
+  });
   const owned = files.filter(file => Array.isArray(file.document?.nodes) &&
-    file.document.owner.documentId === graph.id && file.document.owner.elementId === target.id);
+    file.document.owner.documentId === graph.id && file.document.owner.elementId === target.id &&
+    !linked.some(link => link.file === file));
   const roleName = role => role === contract.bodyRole ? 'StateBody'
     : role === contract.conditionRole ? '转移条件' : role === contract.role ? '嵌套 FSM' : role;
-  let content = owned.length ? `<section class="owned-graph-links"><h3>本对象拥有的图</h3>${owned.map(file =>
-    `<button data-document="${html(file.path)}"><strong>${html(file.document.displayName)}</strong><small>${html(roleName(file.document.role))}</small></button>`).join('')}</section>` : '';
+  let content = linked.length ? `<section class="owned-graph-links"><h3>本对象引用的图</h3>${linked.map(link =>
+    `<button data-document="${html(link.file.path)}" data-element="${html(link.element)}"><strong>${html(link.file.document.displayName)}</strong><small>${html(roleName(link.file.document.role))} · ${html(link.field)}</small></button>`).join('')}</section>` : '';
+  if (owned.length) content += `<section class="owned-graph-links"><h3>本对象拥有的图</h3>${owned.map(file =>
+    `<button data-document="${html(file.path)}"><strong>${html(file.document.displayName)}</strong><small>${html(roleName(file.document.role))}</small></button>`).join('')}</section>`;
+  if (graph.role === contract.role && target === graph)
+    content += `<section class="owned-graph-links"><h3>FSM 系统入口</h3>${contract.anchors.flatMap(anchor =>
+      graph.nodes.filter(node => node.id === anchor.identity).map(node =>
+        `<button data-select-node="${html(node.id)}">${html(node.displayName)}<small>${html(anchor.kind)} · ${html(anchor.name)}</small></button>`)).join('')}</section>`;
   if (graph.role === contract.bodyRole && target === graph) {
     const declaration = definitions.flowGraphs.find(item => item.role === graph.role);
     content += `<section class="owned-graph-links"><h3>StateBody 生命周期入口</h3>${declaration.anchors.flatMap(anchor =>
@@ -21,8 +33,8 @@ export function graphContext(graph, target, files, definitions, capabilities) {
   if (graph.role === contract.role && graph.nodes.includes(target)) {
     const declaration = capabilities.get(target.capability);
     if (declaration.fields.some(field => field.id === contract.bodyField) &&
-        !owned.some(file => file.document.role === contract.bodyRole))
-      content += '<p class="authoring-gap">此状态尚无可下钻的私有 StateBody。创建私有图需要共同创建合同，不能复用其它状态的可变 StateBody。</p>';
+        !linked.some(link => link.file.document.role === contract.bodyRole))
+      content += '<p class="authoring-gap">此状态尚未引用可下钻的 StateBody。创建私有图需要共同创建合同，不能复用其它状态的可变 StateBody。</p>';
     const outgoing = graph.edges.filter(edge => edge.sourceNode === target.id).sort((left, right) => left.order - right.order);
     content += `<section class="owned-graph-links"><h3>从此状态出发的转移</h3>${outgoing.map(edge => {
       const destination = graph.nodes.find(node => node.id === edge.targetNode);
