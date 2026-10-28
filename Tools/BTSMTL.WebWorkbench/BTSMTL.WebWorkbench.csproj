@@ -11,6 +11,8 @@
     <Compile Include="WorkbenchApplication.cs" />
     <Compile Include="WorkspaceApi.cs" />
     <Compile Include="AuthoringReferenceQuery.cs" />
+    <Compile Include="AuthoringPortProjection.cs" />
+    <Compile Include="AuthoringTimelineEditTransport.cs" />
     <Compile Include="WebAnimationLibrary.cs" />
     <Compile Include="AnimationResourceApi.cs" />
     <ProjectReference Include="../../Projects/BTSMTL.Authoring.Workspace/BTSMTL.Authoring.Workspace.csproj" />
