@@ -145,7 +145,13 @@ namespace BTSMTL.Authoring.Graph
             Section = section;
             DefaultValue = defaultValue;
             Constraint = constraint ?? new GraphAuthoringFieldConstraint();
-            PickerKind = pickerKind ?? string.Empty;
+            PickerKind = string.IsNullOrWhiteSpace(pickerKind) ? valueKind switch
+            {
+                GraphAuthoringFieldValueKind.IdentityReference => "identity",
+                GraphAuthoringFieldValueKind.AssetReference => "asset",
+                GraphAuthoringFieldValueKind.Object => "object",
+                _ => string.Empty
+            } : pickerKind;
             Optional = optional;
             ObjectType = objectType;
             Visibility = visibility;
