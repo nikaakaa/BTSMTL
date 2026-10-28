@@ -408,7 +408,7 @@ function renderInspector(document) {
       const destination = document.nodes.find(node => node.id === target.targetNode);
       $('selection-name').textContent = `${source.displayName} → ${destination.displayName}`;
       $('inspector-content').insertAdjacentHTML('afterbegin', `<div class="inspector-actions"><button data-select-node="${escapeHtml(source.id)}">来源节点</button><button data-select-node="${escapeHtml(destination.id)}">目标节点</button><button data-edge-order>调整执行顺序</button><button data-element-dependencies>本连接引用</button><button class="danger" data-delete-edge="${escapeHtml(target.id)}">删除连接</button></div><p class="muted">同一输出的第 ${target.order + 1} 项。业务优先级、中断规则及条件取自下方实际作者字段。</p>`);
-      if (document.role === state.definitions.stateMachine.role)
+      if (document.role === state.definitions.stateMachine?.role)
         $('inspector-content').querySelector('.inspector-actions').insertAdjacentHTML('beforeend',
           '<button data-configure-transition>同时配置转移字段</button>');
       Object.keys(target.fields).forEach(id => {
