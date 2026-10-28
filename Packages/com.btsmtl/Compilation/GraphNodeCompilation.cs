@@ -1,15 +1,13 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
 using System.Reflection;
-using BTSMTL.Authoring.Documents;
 using BTSMTL.Authoring.Graph;
 using ThirdPersonSimulation;
 
 namespace BTSMTL.Compilation
 {
-    // 节点编译描述按能力的 CompilerBindingId 登记，只读文档作者值和编译期引用，不读平台节点对象。
+    // 节点编译描述按能力的 CompilerBindingId 登记，由来源读取器提供作者字段及编译期引用。
     [AttributeUsage(AttributeTargets.Class)]
     public sealed class GraphNodeCompilerAttribute : Attribute
     {
@@ -25,7 +23,8 @@ namespace BTSMTL.Compilation
     // 平台按引用身份提供被引用内容的编译所需值：Unity 读资产，.NET 读导出的身份表；缺失时抛出带引用身份的异常。
     public interface IGraphCompileReferences
     {
-        T Resolve<T>(AuthoringValue value) where T : class;
+        T Resolve<T>(GraphNodeField value) where T : class;
+        GraphCompileReference Reference(GraphNodeField value);
     }
 
     public sealed class GraphNodeCompileDescription
@@ -104,133 +103,87 @@ namespace BTSMTL.Compilation
         public GraphNodeCompileException(string message, Exception inner = null) : base(message, inner) { }
     }
 
-    // 节点文档字段的类型化读取；数值按文档无损文本还原为原字段的 CLR 类型。
-    public sealed class GraphNodeFields
+    public interface IGraphNodeFieldReader
     {
-        readonly Dictionary<string, AuthoringValue> m_Values;
+        T Read<T>(string fieldId);
+        bool IsNull(string fieldId);
+        IGraphNodeFieldReader Object(string fieldId);
+        IReadOnlyList<IGraphNodeFieldReader> Objects(string fieldId);
+    }
+
+    public readonly struct GraphNodeField
+    {
+        readonly IGraphNodeFieldReader m_Reader;
+        readonly string m_FieldId;
+
+        public GraphNodeField(IGraphNodeFieldReader reader, string fieldId)
+        {
+            m_Reader = reader;
+            m_FieldId = fieldId;
+        }
+
+        public bool IsNull => m_Reader.IsNull(m_FieldId);
+        public T Read<T>() => m_Reader.Read<T>(m_FieldId);
+    }
+
+    public readonly struct GraphCompileReference
+    {
+        public GraphCompileReference(string assetId, string contentId, string elementId)
+        {
+            AssetId = assetId;
+            ContentId = contentId;
+            ElementId = elementId;
+        }
+
+        public string AssetId { get; }
+        public string ContentId { get; }
+        public string ElementId { get; }
+    }
+
+    public sealed partial class GraphNodeFields
+    {
+        readonly IGraphNodeFieldReader m_Reader;
         readonly IGraphCompileReferences m_References;
 
-        public GraphNodeFields(ReadOnlyMemory<AuthoringNamedValue> values, IGraphCompileReferences references)
+        public GraphNodeFields(IGraphNodeFieldReader reader, IGraphCompileReferences references)
         {
-            m_Values = new Dictionary<string, AuthoringValue>(StringComparer.Ordinal);
-            foreach (AuthoringNamedValue value in values.Span)
-                m_Values.Add(value.FieldId.Value, value.Value);
+            m_Reader = reader;
             m_References = references;
         }
 
-        public AuthoringValue Value(string fieldId) => m_Values.TryGetValue(fieldId, out AuthoringValue value)
-            ? value
-            : throw new GraphNodeCompileException($"节点缺少作者字段 '{fieldId}'。");
+        public GraphNodeField Value(string fieldId) => new(m_Reader, fieldId);
+        public bool IsNull(string fieldId) => m_Reader.IsNull(fieldId);
+        public string String(string fieldId) => m_Reader.Read<string>(fieldId);
+        public bool Boolean(string fieldId) => m_Reader.Read<bool>(fieldId);
+        public int Int32(string fieldId) => m_Reader.Read<int>(fieldId);
+        public long Int64(string fieldId) => m_Reader.Read<long>(fieldId);
+        public uint UInt32(string fieldId) => m_Reader.Read<uint>(fieldId);
+        public ulong UInt64(string fieldId) => m_Reader.Read<ulong>(fieldId);
+        public float Single(string fieldId) => m_Reader.Read<float>(fieldId);
+        public double Double(string fieldId) => m_Reader.Read<double>(fieldId);
+        public TEnum Enum<TEnum>(string fieldId) where TEnum : struct, Enum => m_Reader.Read<TEnum>(fieldId);
+        public SemanticVector2Value Vector2(string fieldId) => m_Reader.Read<SemanticVector2Value>(fieldId);
+        public SemanticVector3Value Vector3(string fieldId) => m_Reader.Read<SemanticVector3Value>(fieldId);
 
-        public bool IsNull(string fieldId) => Value(fieldId) is AuthoringNullValue;
-        public string String(string fieldId) => Value(fieldId) is AuthoringNullValue ? null : Scalar(fieldId);
-        public bool Boolean(string fieldId) => Scalar(fieldId) switch
-        {
-            "true" => true,
-            "false" => false,
-            string text => throw new GraphNodeCompileException($"作者字段 '{fieldId}' 不是布尔值：'{text}'。")
-        };
-        public int Int32(string fieldId) => int.Parse(Scalar(fieldId), NumberStyles.Integer, CultureInfo.InvariantCulture);
-        public long Int64(string fieldId) => long.Parse(Scalar(fieldId), NumberStyles.Integer, CultureInfo.InvariantCulture);
-        public uint UInt32(string fieldId) => uint.Parse(Scalar(fieldId), NumberStyles.Integer, CultureInfo.InvariantCulture);
-        public ulong UInt64(string fieldId) => ulong.Parse(Scalar(fieldId), NumberStyles.Integer, CultureInfo.InvariantCulture);
-        public float Single(string fieldId) => float.Parse(Scalar(fieldId), NumberStyles.Float, CultureInfo.InvariantCulture);
-        public double Double(string fieldId) => double.Parse(Scalar(fieldId), NumberStyles.Float, CultureInfo.InvariantCulture);
-        public TEnum Enum<TEnum>(string fieldId) where TEnum : struct, Enum => (TEnum)System.Enum.Parse(typeof(TEnum), Scalar(fieldId), false);
+        public GraphNodeFields Object(string fieldId) => m_Reader.Object(fieldId) is { } reader
+            ? new GraphNodeFields(reader, m_References) : null;
 
-        public SemanticVector2Value Vector2(string fieldId)
+        public IReadOnlyList<GraphNodeFields> Objects(string fieldId) => m_Reader.Objects(fieldId)
+            .Select(reader => new GraphNodeFields(reader, m_References)).ToArray();
+
+        public GraphCompileReference? Reference(string fieldId)
         {
-            GraphNodeFields vector = Object(fieldId);
-            return new SemanticVector2Value(vector.Single("x"), vector.Single("y"));
+            GraphNodeField value = Value(fieldId);
+            return value.IsNull ? null : m_References.Reference(value);
         }
 
-        public SemanticVector3Value Vector3(string fieldId)
-        {
-            GraphNodeFields vector = Object(fieldId);
-            return new SemanticVector3Value(vector.Single("x"), vector.Single("y"), vector.Single("z"));
-        }
-
-        public GraphNodeFields Object(string fieldId) => Value(fieldId) switch
-        {
-            AuthoringNullValue => null,
-            AuthoringObjectValue composite => new GraphNodeFields(composite.Members, m_References),
-            _ => throw new GraphNodeCompileException($"作者字段 '{fieldId}' 不是复合值。")
-        };
-
-        public IReadOnlyList<GraphNodeFields> Objects(string fieldId) => Value(fieldId) switch
-        {
-            AuthoringNullValue => Array.Empty<GraphNodeFields>(),
-            AuthoringSequenceValue sequence => sequence.Items.ToArray().Select(item => item switch
-            {
-                AuthoringObjectValue composite => new GraphNodeFields(composite.Members, m_References),
-                _ => throw new GraphNodeCompileException($"作者字段 '{fieldId}' 的元素不是复合值。")
-            }).ToArray(),
-            _ => throw new GraphNodeCompileException($"作者字段 '{fieldId}' 不是序列。")
-        };
-
-        public AuthoringContentReference? Reference(string fieldId) => Value(fieldId) switch
-        {
-            AuthoringNullValue => null,
-            AuthoringReferenceValue reference => reference.Target,
-            _ => throw new GraphNodeCompileException($"作者字段 '{fieldId}' 不是引用。")
-        };
-
-        // 被引用内容的编译值；字段为空时返回 null。
         public T Resolve<T>(string fieldId) where T : class
         {
-            AuthoringValue value = Value(fieldId);
-            if (value is AuthoringNullValue)
-                return null;
-            return m_References.Resolve<T>(value) ??
-                throw new GraphNodeCompileException($"作者字段 '{fieldId}' 的引用没有 '{typeof(T).Name}' 编译值。");
+            GraphNodeField value = Value(fieldId);
+            return value.IsNull ? null : m_References.Resolve<T>(value);
         }
 
-        // 文档中的曲线值：键序列与前后循环方式，按平台曲线语义转为编译曲线。
-        public GameplayAbilityCurve<double> Curve(string fieldId)
-        {
-            GraphNodeFields curve = Object(fieldId);
-            if (curve == null)
-                return null;
-            IReadOnlyList<GraphNodeFields> source = curve.Objects("keys");
-            var keys = new GameplayAbilityCurveKey<double>[source.Count];
-            for (int i = 0; i < keys.Length; i++)
-            {
-                GraphNodeFields key = source[i];
-                float inTangent = key.Single("inTangent");
-                float outTangent = key.Single("outTangent");
-                keys[i] = new GameplayAbilityCurveKey<double>(key.Single("time"), key.Single("value"),
-                    float.IsInfinity(inTangent) ? 0f : inTangent,
-                    float.IsInfinity(outTangent) ? 0f : outTangent,
-                    key.Single("inWeight"), key.Single("outWeight"), CurveWeightedMode(key.Scalar("weightedMode")),
-                    i + 1 < source.Count && (float.IsInfinity(outTangent) || float.IsInfinity(source[i + 1].Single("inTangent"))));
-            }
-            return new GameplayAbilityCurve<double>(CurveWrapMode(curve.Scalar("preWrapMode")),
-                CurveWrapMode(curve.Scalar("postWrapMode")), keys);
-        }
-
-        public bool CurveIsEmpty(string fieldId) => Object(fieldId) is not { } curve || curve.Objects("keys").Count == 0;
-
-        string Scalar(string fieldId) => Value(fieldId) is AuthoringScalarValue scalar
-            ? scalar.Value
-            : throw new GraphNodeCompileException($"作者字段 '{fieldId}' 不是标量。");
-
-        static int CurveWrapMode(string name) => name switch
-        {
-            "Default" => 0,
-            "Once" or "Clamp" => 1,
-            "Loop" => 2,
-            "PingPong" => 4,
-            "ClampForever" => 8,
-            _ => throw new GraphNodeCompileException($"曲线循环方式 '{name}' 不属于正式曲线语义。")
-        };
-
-        static int CurveWeightedMode(string name) => name switch
-        {
-            "None" => 0,
-            "In" => 1,
-            "Out" => 2,
-            "Both" => 3,
-            _ => throw new GraphNodeCompileException($"曲线权重方式 '{name}' 不属于正式曲线语义。")
-        };
+        public GameplayAbilityCurve<double> Curve(string fieldId) => m_Reader.Read<GameplayAbilityCurve<double>>(fieldId);
+        public bool CurveIsEmpty(string fieldId) => Curve(fieldId) is not { } curve || curve.Keys.Count == 0;
     }
 }

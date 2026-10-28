@@ -7,17 +7,18 @@ using BTSMTL.Orchestration;
 using FlowCanvas;
 using FlowCanvas.Macros;
 using ParadoxNotion;
+using ThirdPersonSimulation;
 using UnityEngine;
 
 namespace BTSMTL.Graphs.Editor
 {
-    // 宿主按节点能力取得编译描述：节点字段先读成文档作者值，再交给按 CompilerBindingId 登记的描述。
+    // 宿主按节点能力取得编译描述，字段直接取自平台作者对象。
     public interface IBtsmtlGraphNodeCompileSource
     {
         GraphNodeCompileDescription Describe(FlowNode node);
     }
 
-    // 节点的平台补充信息：能力 kind、文档字段与编译描述，由宿主按节点能力给出。
+    // 节点的平台补充信息由宿主按节点能力给出。
     public readonly struct BtsmtlFlowCompileNodeInfo
     {
         public BtsmtlFlowCompileNodeInfo(string kind, Func<GraphNodeFields> fields, Func<CompileNode, SimulationNodeEmission> describe)
@@ -129,7 +130,25 @@ namespace BTSMTL.Graphs.Editor
             Vector2 vector => new SemanticVector2Value(vector.x, vector.y),
             Vector3 vector => new SemanticVector3Value(vector.x, vector.y, vector.z),
             Quaternion rotation => new SemanticQuaternionValue(rotation.x, rotation.y, rotation.z, rotation.w),
+            AnimationCurve curve => Curve(curve),
             _ => value
         };
+
+        public static GameplayAbilityCurve<double> Curve(AnimationCurve source)
+        {
+            if (source == null) return null;
+            Keyframe[] sourceKeys = source.keys;
+            var keys = new GameplayAbilityCurveKey<double>[sourceKeys.Length];
+            for (int i = 0; i < keys.Length; i++)
+            {
+                Keyframe key = sourceKeys[i];
+                keys[i] = new GameplayAbilityCurveKey<double>(key.time, key.value,
+                    float.IsInfinity(key.inTangent) ? 0f : key.inTangent,
+                    float.IsInfinity(key.outTangent) ? 0f : key.outTangent,
+                    key.inWeight, key.outWeight, (int)key.weightedMode,
+                    i + 1 < keys.Length && (float.IsInfinity(key.outTangent) || float.IsInfinity(sourceKeys[i + 1].inTangent)));
+            }
+            return new GameplayAbilityCurve<double>((int)source.preWrapMode, (int)source.postWrapMode, keys);
+        }
     }
 }
