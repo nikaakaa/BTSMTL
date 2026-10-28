@@ -555,16 +555,29 @@ function renderDraftToolbar() {
 }
 
 async function showDraft() {
-  const path = state.selectedFile.path, element = state.selectedNode || state.selectedEdge || state.selectedTimeline;
+  const previousFiles = state.snapshot.files;
+  let selected = state.selectedFile, element = state.selectedNode || state.selectedEdge || state.selectedTimeline;
   state.snapshot.files = state.draft.files();
   state.snapshot.root = state.snapshot.files[0].document;
   state.snapshot.revision = state.draft.context.rootRevision;
+  const available = new Set(state.snapshot.files.map(file => file.path));
+  while (!available.has(selected.path)) {
+    const owner = selected.document.owner;
+    if (!owner || owner.rootId !== state.snapshot.root.id) {
+      selected = previousFiles[0]; element = null;
+      break;
+    }
+    element = owner.elementId;
+    selected = previousFiles.find(file => file.document?.id === owner.documentId);
+  }
+  state.navigation = state.navigation.filter(source => available.has(source.path));
+  while (state.navigation.at(-1)?.path === selected.path && state.navigation.at(-1).element === element)
+    state.navigation.pop();
   state.references = referenceChoices(state.snapshot);
   $('saved-state').textContent = state.draft.receipt
     ? `${candidateAcceptance(state.draft.receipt)} · ${state.draft.changed ? '尚未保存' : '没有文件差异'}` : '当前磁盘作者版本';
   $('revision').textContent = state.snapshot.revision.slice(0, 12);
   $('revision').title = state.snapshot.revision;
-  const selected = state.snapshot.files.find(file => file.path === path) || state.snapshot.files[0];
   await selectFile(selected.path, element);
   renderDocument();
   if (state.draft.result && state.draft.result.status !== 'Saved') {
