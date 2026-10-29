@@ -3,12 +3,15 @@ import type { FunctionComponent } from 'react';
 import { PanelFrame } from '../shell/panel';
 import { panelInfo, panelTypes, type PanelType } from '../shell/panelTypes';
 import { Empty } from '../ui/blocks';
+import { ConsolePanel } from './ConsolePanel';
 
 function Placeholder({ type }: { type: PanelType }) {
   return <Empty text={`${panelInfo[type].title}尚未接入`} />;
 }
 
-const contents: Partial<Record<PanelType, FunctionComponent>> = {};
+const contents: Partial<Record<PanelType, FunctionComponent>> = {
+  console: ConsolePanel,
+};
 
 export const panelComponents: Record<string, FunctionComponent<IDockviewPanelProps>> = Object.fromEntries(
   panelTypes.map(type => {

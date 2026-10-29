@@ -110,3 +110,15 @@
   overflow: auto;
   outline: none;
 }
+
+.errorLine {
+  all: unset;
+  display: block;
+  padding: 2px var(--gap-2);
+  color: var(--reject);
+  cursor: pointer;
+}
+
+.errorLine:hover {
+  text-decoration: underline;
+}

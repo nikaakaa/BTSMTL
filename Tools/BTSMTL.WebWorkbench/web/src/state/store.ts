@@ -128,6 +128,8 @@ export interface ConsoleSlice {
   entries: ConsoleEntry[];
   unread: number;
   nextEntryId: number;
+  // 其它面板的一行错误提示点击后要定位的记录。
+  focusedEntry: number | null;
 }
 
 // ── layout：布局本身由 dockview 持有 ──
@@ -164,7 +166,7 @@ export const useWorkbench = create<WorkbenchState>()(() => ({
 
   selection: null,
 
-  entries: [], unread: 0, nextEntryId: 1,
+  entries: [], unread: 0, nextEntryId: 1, focusedEntry: null,
 
   openPanels: [], activePanel: null,
 }));
@@ -286,7 +288,7 @@ export const consoleActions = {
     const entries = state.entries.length >= consoleLimit
       ? [...state.entries.slice(state.entries.length - consoleLimit + 1), entry]
       : [...state.entries, entry];
-    set({ entries, nextEntryId: entry.id + 1, unread: state.unread + 1 });
+    set({ entries, nextEntryId: entry.id + 1, unread: state.unread + (level === 'info' ? 0 : 1) });
     return entry.id;
   },
   // 请求失败统一入口：取消不记录；宿主错误带状态码与原始回执。
@@ -299,8 +301,11 @@ export const consoleActions = {
   markRead() {
     if (getState().unread) set({ unread: 0 });
   },
+  focus(entryId: number | null) {
+    set({ focusedEntry: entryId });
+  },
   clear() {
-    set({ entries: [], unread: 0 });
+    set({ entries: [], unread: 0, focusedEntry: null });
   },
 };
 

@@ -1,0 +1,85 @@
+.console {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-1);
+  height: calc(var(--control) + 6px);
+  padding: 0 var(--gap-1);
+  border-bottom: 1px solid var(--line);
+  flex: none;
+}
+
+.list {
+  flex: 1;
+  overflow: auto;
+}
+
+.entry {
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.entry[data-focused] {
+  background: var(--accent-soft);
+}
+
+.line {
+  all: unset;
+  display: flex;
+  gap: var(--gap-2);
+  align-items: baseline;
+  width: 100%;
+  min-height: var(--row);
+  padding: 2px var(--gap-2);
+  box-sizing: border-box;
+  cursor: default;
+}
+
+.line:not(:disabled):hover {
+  background: var(--bg-hover);
+}
+
+.arrow {
+  width: 10px;
+  color: var(--text-dim);
+  flex: none;
+}
+
+.time {
+  font: var(--mono);
+  color: var(--text-dim);
+  flex: none;
+}
+
+.source {
+  width: 64px;
+  color: var(--text-dim);
+  flex: none;
+}
+
+.reason {
+  flex: 1;
+  word-break: break-word;
+}
+
+.entry[data-level='error'] .reason {
+  color: var(--reject);
+}
+
+.entry[data-level='warn'] .reason {
+  color: var(--warn);
+}
+
+.raw {
+  margin: 0;
+  padding: var(--gap-1) var(--gap-2) var(--gap-2) 92px;
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: var(--text-dim);
+}
