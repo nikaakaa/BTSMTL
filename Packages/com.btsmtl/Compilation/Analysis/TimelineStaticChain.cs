@@ -126,8 +126,8 @@ namespace BTSMTL.Compilation.Analysis
         OrchestrationTime m_Now;
 
         public static TimelineStaticChain Build(OrchestrationStaticQuery query, int machineOperationIndex,
-            OrchestrationTime previewEnd, ITimelineStaticReadIntervals inputs) =>
-            BuildMachine(query, machineOperationIndex, OrchestrationTime.Zero, previewEnd, inputs, new HashSet<int>());
+            OrchestrationTime start, OrchestrationTime previewEnd, ITimelineStaticReadIntervals inputs) =>
+            BuildMachine(query, machineOperationIndex, start, previewEnd, inputs, new HashSet<int>());
 
         static TimelineStaticChain BuildMachine(OrchestrationStaticQuery query, int machineOperationIndex,
             OrchestrationTime start, OrchestrationTime previewEnd, ITimelineStaticReadIntervals inputs,

@@ -144,6 +144,8 @@ namespace BTSMTL.Timeline.Editor
         public bool IsPlaying { get; private set; }
         public float Time { get; private set; }
         public float Duration => m_RouteEnd.AsSingle;
+        // 快速档根的起手时刻：输入方案最早一次动作请求；起手前取样停在根起点。
+        public OrchestrationTime RootStart { get; private set; }
         public float LocalTime { get; private set; }
         // 当前本地时刻的换算说明：停顿吸附、缺少游标记录等；为空表示按正式映射直接得到。
         public string LocalNote { get; private set; } = string.Empty;
@@ -728,7 +730,7 @@ namespace BTSMTL.Timeline.Editor
                 if (m_Traversals.Count == 0)
                     return;
                 // 截到游标的整组播放：主链与全部并行分支一起交给实例与领域。
-                OrchestrationTime cursor = OrchestrationTime.FromSeconds(Time);
+                OrchestrationTime cursor = OrchestrationTime.Max(OrchestrationTime.FromSeconds(Time), RootStart);
                 m_PendingTarget = Horizon(++m_Revision).Until(cursor);
                 m_TargetStep = TargetStage.Beginning;
                 m_Prefetching = false;
@@ -1005,14 +1007,19 @@ namespace BTSMTL.Timeline.Editor
             {
                 TimelineRuntimePreparedContent source = ContentFor(Source);
                 BuildStandalone(source?.Content ?? Discover(Source), source);
+                RootStart = OrchestrationTime.Zero;
                 playback = 0;
                 Chain = null;
             }
             else
             {
                 var inputs = new TimelineAssetPreviewReadIntervals(Preferences, Inputs, InputRequests);
-                Chain = TimelineStaticChain.Build(m_Query.Query, m_EntryMachine,
+                if (inputs.RootStart >= OrchestrationTime.FromSeconds(Preferences.RangeEnd))
+                    throw new TimelineAssetPreviewInputUnavailableException(
+                        $"输入方案在 {inputs.RootStart.AsSingle:0.###} 秒才起手根，已超出预览范围终点。");
+                Chain = TimelineStaticChain.Build(m_Query.Query, m_EntryMachine, inputs.RootStart,
                     OrchestrationTime.FromSeconds(Preferences.RangeEnd), inputs);
+                RootStart = inputs.RootStart;
                 AddChain(Chain, 0, m_Traversals, ref playback);
                 AddBranches(Chain, ref branch, ref playback);
             }
@@ -1372,9 +1379,11 @@ namespace BTSMTL.Timeline.Editor
         {
             FastChain = null;
             if (m_EntryMachine >= 0 && float.IsFinite(Preferences.RangeEnd) && Preferences.RangeEnd > 0f)
-                FastChain = TimelineStaticChain.Build(m_Query.Query, m_EntryMachine,
-                    OrchestrationTime.FromSeconds(Preferences.RangeEnd),
-                    new TimelineAssetPreviewReadIntervals(Preferences, Inputs, InputRequests));
+            {
+                var inputs = new TimelineAssetPreviewReadIntervals(Preferences, Inputs, InputRequests);
+                FastChain = TimelineStaticChain.Build(m_Query.Query, m_EntryMachine, inputs.RootStart,
+                    OrchestrationTime.FromSeconds(Preferences.RangeEnd), inputs);
+            }
             CompareReal();
         }
     }

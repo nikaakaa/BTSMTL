@@ -19,6 +19,16 @@ namespace BTSMTL.Timeline.Editor
         {
             m_Preferences = preferences;
             var requestInputs = requests.ToDictionary(request => request.InputId, StringComparer.Ordinal);
+            // 作者假设：方案里最早的一次动作请求起手根，被起手消耗，不再作为根内读取；起手按会话逻辑 Tick 向上取整。
+            TimelinePreviewInputPoint activation = preferences.Inputs
+                .Where(point => point.Boolean && requestInputs.ContainsKey(point.InputId))
+                .OrderBy(point => point.Time).FirstOrDefault();
+            if (activation != null)
+            {
+                int tickRate = requestInputs[activation.InputId].TickRate;
+                Activation = activation;
+                RootStart = OrchestrationTime.FromSeconds(Math.Ceiling(activation.Time * tickRate - 1e-6) / tickRate);
+            }
             foreach (var input in preferences.Inputs.GroupBy(point => point.InputId))
             {
                 TimelinePreviewInputPoint[] points = input.OrderBy(point => point.Time).ToArray();
@@ -29,7 +39,7 @@ namespace BTSMTL.Timeline.Editor
                 if (requestInputs.TryGetValue(input.Key, out TimelinePreviewInputRequest request))
                 {
                     foreach (TimelinePreviewInputPoint point in points)
-                        if (point.Boolean)
+                        if (point.Boolean && !ReferenceEquals(point, Activation))
                             intervals.Add(new TimelineStaticInterval(OrchestrationTime.FromSeconds(point.Time),
                                 OrchestrationTime.FromSeconds(point.Time + request.DurationSeconds)));
                 }
@@ -41,6 +51,10 @@ namespace BTSMTL.Timeline.Editor
                 m_Intervals.Add(input.Key, intervals);
             }
         }
+
+        // 起手根的请求；方案没有动作请求时为 null，根从 0 秒开始。
+        public TimelinePreviewInputPoint Activation { get; }
+        public OrchestrationTime RootStart { get; } = OrchestrationTime.Zero;
 
         // 输入作为条件读取时：开关为真、数值与向量非零才算成立（如"有移动输入"读方向键非零）。
         static bool Holds(GraphHostInputDescriptor descriptor, TimelinePreviewInputPoint point) => descriptor.ValueKind switch
