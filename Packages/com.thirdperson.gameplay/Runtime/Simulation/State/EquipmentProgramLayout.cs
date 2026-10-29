@@ -73,7 +73,8 @@ namespace ThirdPersonSimulation
             EquipmentId equipmentId,
             EquipmentSlotId slotId,
             EquipmentFeatureId featureId,
-            EquipmentVisualBindingId visualBindingId)
+            EquipmentVisualBindingId visualBindingId,
+            EquipmentHandUsage handUsage)
         {
             if (!equipmentId.IsValid || !slotId.IsValid || !featureId.IsValid || !visualBindingId.IsValid)
                 throw new ArgumentException("Equipment Program Item is invalid.");
@@ -81,12 +82,14 @@ namespace ThirdPersonSimulation
             SlotId = slotId;
             FeatureId = featureId;
             VisualBindingId = visualBindingId;
+            HandUsage = handUsage;
         }
 
         public EquipmentId EquipmentId { get; }
         public EquipmentSlotId SlotId { get; }
         public EquipmentFeatureId FeatureId { get; }
         public EquipmentVisualBindingId VisualBindingId { get; }
+        public EquipmentHandUsage HandUsage { get; }
     }
 
     public sealed class EquipmentProgramRoute

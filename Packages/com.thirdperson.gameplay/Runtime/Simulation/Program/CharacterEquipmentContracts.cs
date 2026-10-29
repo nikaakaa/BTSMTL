@@ -183,6 +183,16 @@ namespace ThirdPersonSimulation
         SpawnedVisualAsset = 2
     }
 
+    [Flags]
+    public enum EquipmentHandUsage : sbyte
+    {
+        Unspecified = -1,
+        None = 0,
+        Left = 1,
+        Right = 2,
+        Both = Left | Right
+    }
+
     public enum EquipmentVisualLifecyclePolicy : byte
     {
         KeepWhileEquipped = 1
@@ -195,15 +205,19 @@ namespace ThirdPersonSimulation
             EquipmentSlotId slotId,
             EquipmentId equipmentId,
             EquipmentVisualBindingId visualBindingId,
+            EquipmentHandUsage handUsage,
             ulong equipmentRevision,
             ulong sourceTick)
         {
-            if (!actorId.IsValid || !slotId.IsValid || equipmentRevision == 0 || equipmentId.IsValid != visualBindingId.IsValid)
+            if (!actorId.IsValid || !slotId.IsValid || equipmentRevision == 0 || equipmentId.IsValid != visualBindingId.IsValid ||
+                handUsage < EquipmentHandUsage.None || handUsage > EquipmentHandUsage.Both ||
+                !equipmentId.IsValid && handUsage != EquipmentHandUsage.None)
                 throw new ArgumentException("Equipment visual selection is incomplete.");
             ActorId = actorId;
             SlotId = slotId;
             EquipmentId = equipmentId;
             VisualBindingId = visualBindingId;
+            HandUsage = handUsage;
             EquipmentRevision = equipmentRevision;
             SourceTick = sourceTick;
         }
@@ -212,14 +226,16 @@ namespace ThirdPersonSimulation
         public EquipmentSlotId SlotId { get; }
         public EquipmentId EquipmentId { get; }
         public EquipmentVisualBindingId VisualBindingId { get; }
+        public EquipmentHandUsage HandUsage { get; }
         public ulong EquipmentRevision { get; }
         public ulong SourceTick { get; }
         public bool IsEquipped => EquipmentId.IsValid;
         public bool Equals(EquipmentVisualSelection other) =>
             ActorId == other.ActorId && SlotId == other.SlotId && EquipmentId == other.EquipmentId &&
-            VisualBindingId == other.VisualBindingId && EquipmentRevision == other.EquipmentRevision && SourceTick == other.SourceTick;
+            VisualBindingId == other.VisualBindingId && HandUsage == other.HandUsage &&
+            EquipmentRevision == other.EquipmentRevision && SourceTick == other.SourceTick;
         public override bool Equals(object obj) => obj is EquipmentVisualSelection other && Equals(other);
-        public override int GetHashCode() => HashCode.Combine(ActorId, SlotId, EquipmentId, VisualBindingId, EquipmentRevision, SourceTick);
+        public override int GetHashCode() => HashCode.Combine(ActorId, SlotId, EquipmentId, VisualBindingId, HandUsage, EquipmentRevision, SourceTick);
     }
 
 }
