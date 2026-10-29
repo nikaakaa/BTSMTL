@@ -479,6 +479,31 @@
   outline-offset: -1px;
 }
 
+/* 作者模式可拖动的片段；所在 Timeline 有未保存修改时左上角加小三角 */
+.clip[data-editable] {
+  cursor: grab;
+}
+
+.clip[data-changed]::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  border-top: 6px solid var(--cursor);
+  border-right: 6px solid transparent;
+  z-index: 1;
+}
+
+.authorDirty {
+  padding: 0 6px;
+  color: var(--cursor);
+}
+
+.authorWarn {
+  padding: 0 6px;
+  color: var(--reject);
+}
+
 .clipLabel {
   position: absolute;
   left: 5px;

@@ -1,5 +1,6 @@
 import {
-  TimelineContext, useItem, useRow, useTimelineContext, type Range, type UsePanStrategy,
+  TimelineContext, useItem, useRow, useTimelineContext, useTimelineMonitor, type DragItemData, type Range,
+  type ResizeEndEvent, type ResizeItemData, type TimelineContextProps, type UsePanStrategy,
 } from 'dnd-timeline';
 import {
   createContext, memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent,
@@ -11,6 +12,9 @@ import { usePanelId, usePanelParams, usePanelVisible, usePanelWindow } from '../
 import { clearRendered, frameKey, reportRendered } from '../../shell/readiness';
 import { FrameField, useTransportState } from '../../shell/Toolbar';
 import { openPanel } from '../../shell/layout';
+import {
+  applyTimelineEdits, authoringActions, saveBlockedReason, timelinePath, useAuthoring,
+} from '../../state/authoring';
 import {
   consoleActions, getState, inputRootKey, runActions, selectionActions, useWorkbench, type RouteFrameSpan,
 } from '../../state/store';
@@ -100,12 +104,48 @@ function TimelineWindow({ frames }: { frames: RouteFrameSpan[] }) {
   }, [bounds, setParams]);
 
   return (
-    <TimelineContext range={range} onRangeChanged={onRangeChanged} onResizeEnd={() => {}} sidebarWidth={sidebarWidth}
-      usePanStrategy={panStrategy}>
+    <TimelineContext range={range} onRangeChanged={onRangeChanged} onResizeEnd={() => {}} modifiers={horizontalOnly}
+      sidebarWidth={sidebarWidth} usePanStrategy={panStrategy}>
+      <ClipEditing frames={frames} />
       <TimelineBody params={params} setParams={setParams} bounds={bounds} frames={frames} onRangeChanged={onRangeChanged} />
     </TimelineContext>
   );
 }
+
+// 作者模式拖动、拖端写回片段时间：原起止加上拖动的像素位移换成的秒数，按运行帧步长取整，
+// 再减去本段零点得到 Timeline 本地秒数。
+function ClipEditing({ frames }: { frames: RouteFrameSpan[] }) {
+  const { range, timelineRef, sidebarWidth: sidebar } = useTimelineContext();
+  // 像素位移换成秒数：可见范围除以时间区宽度。
+  const pixelsToValue = (pixels: number) => {
+    const width = (timelineRef.current?.clientWidth ?? 0) - sidebar;
+    return width > 0 ? pixels * (range.end - range.start) / width : 0;
+  };
+  const frameStep = frames.length > 1 ? frames[1].seconds - frames[0].seconds : 1 / 60;
+  const write = (edit: ClipEdit | undefined, span: Range, deltaStart: number, deltaEnd: number) => {
+    if (!edit) return;
+    const local = (value: number) => Math.round((value - edit.origin) / frameStep) * frameStep;
+    const start = Math.max(0, local(span.start + deltaStart));
+    const end = Math.max(start + frameStep, local(span.end + deltaEnd));
+    authoringActions.setClipTime(edit.documentId, edit.clipId, start, end);
+  };
+  useTimelineMonitor({
+    onDragEnd(event) {
+      const data = event.active.data.current as (DragItemData & { edit?: ClipEdit }) | undefined;
+      const delta = pixelsToValue(event.delta.x);
+      if (data && delta) write(data.edit, data.span, delta, delta);
+    },
+    onResizeEnd(event: ResizeEndEvent) {
+      const data = event.active.data.current as ResizeItemData & { edit?: ClipEdit };
+      const delta = pixelsToValue(event.delta.x);
+      if (delta) write(data.edit, data.span, event.direction === 'start' ? delta : 0, event.direction === 'end' ? delta : 0);
+    },
+  });
+  return null;
+}
+
+// 片段只在本轨内左右拖动。
+const horizontalOnly: NonNullable<TimelineContextProps['modifiers']> = [({ transform }) => ({ ...transform, y: 0 })];
 
 // 平移：Ctrl＋滚轮以鼠标为中心缩放；普通滚轮在时间区横移，在轨道列表上纵向滚动；中键拖动横移。
 const panStrategy: UsePanStrategy = (bag, onPanEnd) => {
@@ -162,9 +202,12 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
   onRangeChanged(update: (previous: Range) => Range): void;
 }) {
   const { setTimelineRef, getValueFromScreenX } = useTimelineContext();
-  const { timelines, inputTimeline, inputRoot, graphs } = useWorkbench(useShallow(state => ({
+  const { timelines: runTimelines, inputTimeline, inputRoot, graphs } = useWorkbench(useShallow(state => ({
     timelines: state.timelines, inputTimeline: state.inputTimeline, inputRoot: state.inputRoot, graphs: state.graphs,
   })));
+  // 作者模式下未保存的片段时间叠加到运行的作者 Timeline 上。
+  const edited = useAuthoring(state => state.edited);
+  const timelines = useMemo(() => applyTimelineEdits(runTimelines, edited), [runTimelines, edited]);
   const allSegments = useMemo(() => routeSegments(frames, timelines, graphs), [frames, timelines, graphs]);
   const graphNames = useMemo(() => new Map((graphs ?? []).filter(graph => graph.displayName && graph.displayName !== graph.id)
     .map(graph => [graph.id, graph.displayName!])), [graphs]);
@@ -303,6 +346,48 @@ interface Subject {
   back(): void;
 }
 
+// 编辑行右侧：照 Timeline Editor 的未保存提示与保存（只在有未保存修改时出现），作者／运行观察切换。
+function AuthoringControls({ program }: { program: string | null }) {
+  const state = useAuthoring(useShallow(current => ({
+    available: current.available, reason: current.unavailableReason, author: current.author, skill: current.skill,
+    loading: current.loading, edited: current.edited, externalChange: current.externalChange,
+  })));
+  const dirty = Object.keys(state.edited).length;
+  // 作者模式下定时检查技能文件是否在别处（Unity、AI、编辑器）被修改。
+  useEffect(() => {
+    if (!state.author || !state.skill) return;
+    const timer = setInterval(() => void authoringActions.checkExternal(), 3000);
+    return () => clearInterval(timer);
+  }, [state.author, state.skill]);
+  const enter = async () => {
+    if (state.available === null) await authoringActions.probe();
+    if (!useAuthoring.getState().available) {
+      consoleActions.log('warn', '作者', useAuthoring.getState().unavailableReason ?? '作者接口不可用');
+      return;
+    }
+    if (program) void authoringActions.open(program);
+    authoringActions.setAuthor(true);
+  };
+  return (
+    <>
+      {state.externalChange && <span className={styles.authorWarn} title="技能文件在别处被修改；保存会覆盖外部修改，还原会丢弃网页修改">外部已修改</span>}
+      {dirty > 0 && (
+        <>
+          <span className={styles.authorDirty}>{dirty} 个文件未保存</span>
+          <Button variant="ghost" tip="丢弃网页中的全部未保存修改" onClick={() => authoringActions.revert()}>还原</Button>
+          <Button variant="ghost" disabled tip={saveBlockedReason}>保存</Button>
+        </>
+      )}
+      <Button variant="ghost" pressed={state.author} disabled={state.available === false}
+        tip={state.available === false ? state.reason ?? '作者接口不可用'
+          : state.author ? (state.loading ? '正在读取技能文件' : `编辑技能 ${state.skill ?? '—'} 的 JSON：拖动片段改时间，拖两端改起止`)
+            : '进入作者模式，编辑当前技能'}
+        onClick={() => void enter()}>作者</Button>
+      <Button variant="ghost" pressed={!state.author} tip="只观察已确认的运行记录" onClick={() => authoringActions.setAuthor(false)}>运行观察</Button>
+    </>
+  );
+}
+
 // 照 Timeline Editor：编辑行返回、技能根与面包屑，右侧作者／运行观察；预览行档位、播放、全局秒数与结论；下行逐帧、适配与设置。
 function TimelineToolbar({ settings, fit, subject }: { settings: MenuEntry[]; fit(): void; subject: Subject }) {
   const { playing, blocked, previous, next } = useTransportState();
@@ -333,8 +418,7 @@ function TimelineToolbar({ settings, fit, subject }: { settings: MenuEntry[]; fi
           </span>
         )}
         <span className={styles.grow} />
-        <Button variant="ghost" disabled tip="作者编辑在 Unity 的 Timeline Editor 进行；网页只观察运行">作者</Button>
-        <Button variant="ghost" pressed tip="观察已确认的运行记录">运行观察</Button>
+        <AuthoringControls program={subject.program} />
       </div>
       <div className={styles.toolbar}>
         {(modes ?? []).map(item => (
@@ -653,7 +737,8 @@ const TrackLine = memo(function TrackLine({ row }: { row: TrackRow }) {
     }>
       <Positioned start={segment.origin} end={segment.origin + segment.length} className={styles.authoredRange} />
       <Positioned start={segment.start} end={segment.end} className={styles.playedRange} />
-      {visible.map(clip => <Clip key={clip.key} clip={clip} kind={row.trackKind} next={nextStarts.get(clip.key)!} />)}
+      {visible.map(clip => <Clip key={clip.key} clip={clip} kind={row.trackKind} next={nextStarts.get(clip.key)!}
+        documentId={row.timeline.documentId} />)}
       {blends.filter(blend => blend.end >= range.start && blend.start <= range.end).map(blend => (
         <Blend key={blend.key} start={blend.start} end={blend.end} />
       ))}
@@ -686,20 +771,32 @@ function Positioned({ start, end, className, children, style, title }: {
   );
 }
 
-const Clip = memo(function Clip({ clip, kind, next }: { clip: ClipInstance; kind: TrackKind; next: number }) {
+const Clip = memo(function Clip({ clip, kind, next, documentId }: {
+  clip: ClipInstance; kind: TrackKind; next: number; documentId: string;
+}) {
+  const author = useAuthoring(state => state.author && !!state.skill);
+  const edit = useMemo<ClipEdit>(() => ({ documentId, clipId: clip.clip.id, origin: clip.start - clip.clip.startSeconds }),
+    [documentId, clip]);
+  const changed = useAuthoring(state => author && !!state.edited[timelinePath(documentId)]);
   return (
     <ClipBox boxKey={clip.key} selectId={clip.selectId} kind={kind} label={clip.label} start={clip.start} end={clip.end}
-      exit={clip.exit} next={next} graphId={clip.clip.graphId} />
+      exit={clip.exit} next={next} graphId={clip.clip.graphId} edit={author ? edit : undefined} changed={changed} />
   );
 });
 
+// 片段拖动写回作者 JSON 所需的位置：所属 Timeline、片段身份，以及本段的运行秒数零点。
+interface ClipEdit { documentId: string; clipId: string; origin: number }
+
 // 片段框：作者片段与预览输入的按住段共用同一外观、选中、框选与双击打开节点图。
 // exit 之后的部分压暗；next 为同轨下一个片段的起点，窄片段的名字画在两者之间。
-function ClipBox({ boxKey, selectId, kind, label, start, end, exit, next, graphId }: {
+// 作者模式下给出 edit 时可拖动平移、拖两端改起止（照 Timeline Editor）。
+function ClipBox({ boxKey, selectId, kind, label, start, end, exit, next, graphId, edit, changed }: {
   boxKey: string; selectId: string; kind: TrackKind; label: string; start: number; end: number; exit: number; next: number;
-  graphId: string | null;
+  graphId: string | null; edit?: ClipEdit; changed?: boolean;
 }) {
-  const { setNodeRef, itemStyle, itemContentStyle } = useItem({ id: boxKey, span: { start, end }, disabled: true });
+  const { setNodeRef, itemStyle, itemContentStyle, listeners, attributes } = useItem({
+    id: boxKey, span: { start, end }, disabled: !edit, data: edit ? { edit } : undefined, resizeHandleWidth: 6,
+  });
   const { valueToPixels } = useTimelineContext();
   const active = useWorkbench(state => state.seconds !== null && start <= state.seconds && state.seconds < Math.min(end, exit));
   const boxed = useContext(BoxedContext).has(boxKey);
@@ -711,11 +808,12 @@ function ClipBox({ boxKey, selectId, kind, label, start, end, exit, next, graphI
   const inside = band || width >= labelInside;
   const outsideWidth = Number.isFinite(next) ? valueToPixels(next - end) - 10 : 400;
   return (
-    <div ref={setNodeRef} style={itemStyle} className={styles.item}>
+    <div ref={setNodeRef} style={itemStyle} className={styles.item} {...(edit ? { ...listeners, ...attributes } : {})}>
       <div style={itemContentStyle}>
         <button className={styles.clip} data-box={boxKey} data-select={selectId} data-kind={kind} data-active={active || undefined}
-          data-selected={selected || undefined} data-dim={dimmed || undefined}
-          title={`${label} · ${start.toFixed(3)}–${end.toFixed(3)} s${end > exit ? `（${exit.toFixed(3)} s 离开本段）` : ''}\n双击打开节点图`}
+          data-selected={selected || undefined} data-dim={dimmed || undefined} data-editable={edit ? true : undefined}
+          data-changed={changed || undefined}
+          title={`${label} · ${start.toFixed(3)}–${end.toFixed(3)} s${end > exit ? `（${exit.toFixed(3)} s 离开本段）` : ''}\n双击打开节点图${edit ? '\n拖动平移，拖两端改起止' : ''}`}
           onClick={() => selectionActions.select({ kind: 'clip', id: selectId })}
           onDoubleClick={() => openClipGraph(graphId, label)}>
           {inside && <span className={styles.clipLabel}>{label}</span>}
