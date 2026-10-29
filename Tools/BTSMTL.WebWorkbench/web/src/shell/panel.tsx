@@ -1,5 +1,5 @@
 import type { DockviewPanelApi, IDockviewPanelProps } from 'dockview-react';
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { PortalContainerProvider } from '../ui/portal';
 import { requestLayoutSave } from './layout';
 import type { PanelType } from './panelTypes';
@@ -70,13 +70,14 @@ export function usePanelApi(): DockviewPanelApi {
 export function usePanelParams<T extends object>(defaults: T): [T, (patch: Partial<T>) => void] {
   const { api } = usePanelEnvironment();
   const [params, setParams] = useState<T>(() => ({ ...defaults, ...(api.getParameters() as Partial<T>) }));
+  const current = useRef(params);
+  // 写入 dockview 参数是副作用，不能放进 React 的状态更新函数。
   const update = useCallback((patch: Partial<T>) => {
-    setParams(previous => {
-      const next = { ...previous, ...patch };
-      api.updateParameters(next as Record<string, unknown>);
-      requestLayoutSave();
-      return next;
-    });
+    const next = { ...current.current, ...patch };
+    current.current = next;
+    setParams(next);
+    api.updateParameters(next as Record<string, unknown>);
+    requestLayoutSave();
   }, [api]);
   return [params, update];
 }

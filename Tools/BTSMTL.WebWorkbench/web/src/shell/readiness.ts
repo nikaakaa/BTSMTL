@@ -6,6 +6,8 @@ import { panelTypeOf, type PanelType } from './panelTypes';
 // 只有可见面板参与，帧或运行变化时先删除就绪标记。
 
 const rendered = new Map<string, { key: string; detail?: string }>();
+// 按当前帧绘制、会报告已绘制的面板类型。
+const frameDrawn = new Set<PanelType>(['timeline', 'graph', 'viewport']);
 let addressPanel: PanelType | null = null;
 let currentKey: string | null = null;
 let scheduled = false;
@@ -50,10 +52,11 @@ function evaluate() {
     const type = panelTypeOf(id);
     return type === 'timeline' || type === 'graph';
   });
+  // 地址指定的面板必须可见；按帧绘制的类型还必须报告已绘制。
   if (addressPanel) {
     const target = visible.find(id => panelTypeOf(id) === addressPanel);
     if (!target) return;
-    if (!required.includes(target)) required.push(target);
+    if (frameDrawn.has(addressPanel) && !required.includes(target)) required.push(target);
   }
   if (required.some(id => rendered.get(id)?.key !== key)) return;
   const viewport = visible.map(id => panelTypeOf(id) === 'viewport' ? rendered.get(id) : undefined)

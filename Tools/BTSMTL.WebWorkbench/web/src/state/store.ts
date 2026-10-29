@@ -2,7 +2,8 @@ import { create } from 'zustand';
 import { ApiError, isAbort } from '../api/http';
 import type {
   Alignment, AuthorTimeline, Availability, Frame, FrozenInputTimeline, Geometry, GraphDefinition, HostDescription, ImageSourceAvailability,
-  InputCatalog, InputTimeline, LiveCommandStage, PlaybackState, PlayerInputChoice, RouteFrame, RunReceipt, Sources,
+  InputCatalog, InputTimeline, LiveCommandStage, LivePlayer, PlaybackState, PlayerBuild, PlayerInputChoice, RouteFrame,
+  RunReceipt, Sources,
   Summary, ViewerLive,
 } from '../api/types';
 
@@ -86,6 +87,8 @@ export interface PlayerCommandRecord {
   error: string | null;
 }
 export interface PlayerSlice {
+  playerBuilds: PlayerBuild[] | null;
+  lives: LivePlayer[];
   liveId: string | null;
   live: ViewerLive | null;
   viewerOpen: boolean;
@@ -162,7 +165,7 @@ export const useWorkbench = create<WorkbenchState>()(() => ({
 
   ...initialCursor,
 
-  liveId: null, live: null, viewerOpen: false, alignment: null, ...initialPlayerTarget, capturing: false,
+  playerBuilds: null, lives: [], liveId: null, live: null, viewerOpen: false, alignment: null, ...initialPlayerTarget, capturing: false,
 
   identity: null, time: 0, playing: false,
 

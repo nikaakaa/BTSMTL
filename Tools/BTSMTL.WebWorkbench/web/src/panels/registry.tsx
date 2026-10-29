@@ -7,6 +7,7 @@ import { ConsolePanel } from './ConsolePanel';
 import { ContentPanel } from './ContentPanel';
 import { GraphPanel } from './graph/GraphPanel';
 import { InspectorPanel } from './inspector/InspectorPanel';
+import { PlayerPanel } from './player/PlayerPanel';
 import { ComparePanel } from './records/ComparePanel';
 import { FramesPanel } from './records/FramesPanel';
 import { QueryPanel } from './records/QueryPanel';
@@ -24,6 +25,7 @@ const contents: Partial<Record<PanelType, FunctionComponent>> = {
   graph: GraphPanel,
   inspector: InspectorPanel,
   viewport: ViewportPanel,
+  player: PlayerPanel,
   frames: FramesPanel,
   query: QueryPanel,
   compare: ComparePanel,

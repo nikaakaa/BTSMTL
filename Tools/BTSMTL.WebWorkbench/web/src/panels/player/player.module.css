@@ -1,0 +1,96 @@
+/* 照 Unity Game 视图：工具条 + 画面，右上角 Statistics 小窗。 */
+.root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--viewport-bg);
+  user-select: none;
+}
+
+.stage[data-captured] {
+  cursor: none;
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.stats {
+  position: absolute;
+  right: 6px;
+  top: 6px;
+  width: 196px;
+  background: var(--overlay-bg);
+  border: 1px solid var(--viewport-bg);
+  color: var(--text);
+  font-size: 11.5px;
+}
+
+.stats b {
+  display: block;
+  padding: 3px 6px;
+  background: var(--bg-2);
+  font-weight: 600;
+  border-bottom: 1px solid var(--viewport-bg);
+}
+
+.stats div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--gap-2);
+  padding: 2px 6px;
+}
+
+.stats div span:last-child {
+  font: var(--mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stats [data-state='matched'] {
+  color: var(--ok);
+}
+
+.stats [data-state='mismatch'] {
+  color: var(--reject);
+}
+
+.error span:last-child {
+  color: var(--reject);
+}
+
+.badge {
+  position: absolute;
+  left: 6px;
+  top: 6px;
+  padding: 2px 6px;
+  background: var(--overlay-bg);
+  border: 1px solid var(--viewport-bg);
+  font: var(--mono);
+  color: var(--warn);
+}
+
+.hint {
+  position: absolute;
+  left: 50%;
+  bottom: 8px;
+  transform: translateX(-50%);
+  padding: 2px 8px;
+  background: var(--overlay-bg);
+  color: var(--text-dim);
+}
