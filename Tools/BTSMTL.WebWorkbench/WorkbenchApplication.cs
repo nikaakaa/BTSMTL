@@ -28,12 +28,6 @@ public static class WorkbenchApplication
         }));
         app.UseDefaultFiles();
         app.UseStaticFiles();
-        app.UseStaticFiles(new StaticFileOptions
-        {
-            FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(
-                Path.Combine(builder.Environment.ContentRootPath, "node_modules", "three")),
-            RequestPath = "/vendor/three"
-        });
         app.MapAnimationResourceApi(builder.Configuration["AnimationLibrary"]);
         return app;
     }
