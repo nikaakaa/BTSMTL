@@ -188,6 +188,11 @@ export const edgeChildGraphs = (hierarchy: GraphHierarchy, graph: GraphDefinitio
 export const nodeTimeline = (hierarchy: GraphHierarchy, graph: GraphDefinition, nodeId: string) =>
   hierarchy.timelines.get(elementPath(hierarchy, graph, 'node', nodeId)) ?? null;
 
+// 节点或状态播放的 Timeline：状态本身不播放，取状态体里播放的那条。
+export const playedTimeline = (hierarchy: GraphHierarchy, graph: GraphDefinition, nodeId: string) =>
+  nodeTimeline(hierarchy, graph, nodeId) ?? childGraphs(hierarchy, graph, nodeId).flatMap(child =>
+    child.nodes.map(node => nodeTimeline(hierarchy, child, node.id))).find(item => item) ?? null;
+
 export interface Crumb {
   graph: GraphDefinition | null;
   label: string;

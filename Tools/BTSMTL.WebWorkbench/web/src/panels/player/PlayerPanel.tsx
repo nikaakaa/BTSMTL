@@ -79,18 +79,22 @@ function PlayerView({ frameName }: { frameName: string }) {
           onClick={() => void playerService.loadRun(state.runId!)}>载入运行</Button>
         <Button variant="ghost" disabled={!!loadSceneBlocked} tip={loadSceneBlocked ?? '载入当前内容的离线包，接管输入试玩'}
           onClick={() => void playerService.loadScene(scene!.path, scene!.revision)}>离线包试玩</Button>
-        <BarSeparator />
+      </PanelBar>
+      {/* 照 Unity Game 视图工具条：相机与输入在左，Stats、Gizmos 在右 */}
+      <PanelBar>
         <Button variant="ghost" pressed={orbit} disabled={!ready} onClick={() => playerService.camera({ mode: orbit ? 'game' : 'orbit' })}>环绕</Button>
         <Button variant="ghost" disabled={!ready || !orbit} onClick={() => playerService.camera({ mode: 'orbit', reset: true })}>重置</Button>
         <Button variant="ghost" disabled={!ready || !focusActor} tip={focusActor ? '环绕所选角色' : '点选画面中的角色'}
           onClick={() => playerService.camera({ mode: 'orbit', focusActorId: focusActor! })}>环绕所选</Button>
-        <Button variant="ghost" pressed={params.overlay} disabled={!ready || !state.live?.runId}
-          tip={state.live?.runId ? '叠加 .NET 根位置' : '载入运行后可叠加'} onClick={() => setParams({ overlay: !params.overlay })}>Gizmos</Button>
+        <BarSeparator />
         <Button variant="ghost" pressed={captureEnabled} disabled={!ready || player?.inputMode !== 'device'}
           tip={player?.inputMode === 'device' ? '点击画面接管键鼠，Esc 释放' : '离线包试玩时可接管'}
           onClick={() => setCaptureEnabled(!captureEnabled)}>接管输入</Button>
         <Button variant="ghost" disabled={!ready} onClick={() => void playerService.capture()}>截图</Button>
+        <span className={styles.grow} />
         <Button variant="ghost" pressed={params.stats} onClick={() => setParams({ stats: !params.stats })}>Stats</Button>
+        <Button variant="ghost" pressed={params.overlay} disabled={!ready || !state.live?.runId}
+          tip={state.live?.runId ? '叠加 .NET 根位置' : '载入运行后可叠加'} onClick={() => setParams({ overlay: !params.overlay })}>Gizmos</Button>
       </PanelBar>
       <Stage stageRef={stage} ready={ready} orbit={orbit} overlay={params.overlay} stats={params.stats}
         captureEnabled={captureEnabled && player?.inputMode === 'device'} frameName={frameName} />

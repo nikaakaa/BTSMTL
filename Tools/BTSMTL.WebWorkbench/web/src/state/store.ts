@@ -118,6 +118,10 @@ export interface Selection {
 }
 export interface SelectionSlice {
   selection: Selection | null;
+  // 其它面板请求节点图面板显示的图（graphKey）；sequence 让同一张图可重复请求。
+  graphRequest: { key: string; sequence: number } | null;
+  // 其它面板请求 Timeline 面板进入的单个 Timeline（documentId）。
+  timelineRequest: { documentId: string; sequence: number } | null;
 }
 
 // ── console ──
@@ -170,7 +174,7 @@ export const useWorkbench = create<WorkbenchState>()(() => ({
 
   identity: null, time: 0, playing: false,
 
-  selection: null,
+  selection: null, graphRequest: null, timelineRequest: null,
 
   entries: [], unread: 0, nextEntryId: 1, focusedEntry: null,
 
@@ -290,6 +294,12 @@ export const selectionActions = {
     const current = getState().selection;
     if (current?.kind === selection?.kind && current?.id === selection?.id) return;
     set({ selection });
+  },
+  showGraph(key: string) {
+    set({ graphRequest: { key, sequence: (getState().graphRequest?.sequence ?? 0) + 1 } });
+  },
+  showTimeline(documentId: string) {
+    set({ timelineRequest: { documentId, sequence: (getState().timelineRequest?.sequence ?? 0) + 1 } });
   },
 };
 

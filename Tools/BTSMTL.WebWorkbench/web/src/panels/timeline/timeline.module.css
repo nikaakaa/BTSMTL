@@ -57,6 +57,55 @@
   flex: 1;
 }
 
+/* 编辑行的技能根下拉：照 Timeline Editor 占编辑行左侧一大段 */
+.subject {
+  display: flex;
+  flex: 0 1 340px;
+  min-width: 120px;
+}
+
+.subject > :first-child {
+  flex: 1;
+  max-width: none;
+}
+
+.crumbs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 0 4px;
+  overflow: hidden;
+}
+
+.crumbLink {
+  all: unset;
+  color: #79a6e9;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.crumbLink:hover {
+  text-decoration: underline;
+}
+
+.crumbLink:focus-visible {
+  outline: 1px solid var(--accent);
+}
+
+/* 刻度上的转移标记：与段分隔线同色的下指三角 */
+.routeMark {
+  position: absolute;
+  top: 0;
+  width: 0;
+  height: 0;
+  margin-left: -5px;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 7px solid var(--segment-line);
+  cursor: help;
+}
+
 .timeline {
   position: relative;
   display: flex;

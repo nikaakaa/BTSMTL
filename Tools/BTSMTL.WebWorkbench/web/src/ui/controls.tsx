@@ -186,15 +186,21 @@ export function ContextMenu({ entries, children }: { entries: MenuEntry[]; child
 
 // ── 输入 ──
 
-// 对象引用框（只读显示）：kind 为类型色变量，如 'var(--track-anim)'。
-export function ObjectField({ text, kind, className }: { text: ReactNode; kind?: string; className?: string }) {
-  return (
-    <span className={join(styles.objectField, className)} style={kind ? { ['--kind' as string]: kind } : undefined}>
+// 对象引用框：kind 为类型色变量，如 'var(--track-anim)'。给出 onOpen 时整框可点击，跳到所引用的对象。
+export function ObjectField({ text, kind, className, onOpen, tip }: {
+  text: ReactNode; kind?: string; className?: string; onOpen?(): void; tip?: string;
+}) {
+  const content = (
+    <>
       <i className={styles.objectIcon} />
       <span className={styles.objectText}>{text}</span>
       <i className={styles.objectPick} />
-    </span>
+    </>
   );
+  const style = kind ? { ['--kind' as string]: kind } : undefined;
+  return onOpen
+    ? <button type="button" className={join(styles.objectField, styles.objectLink, className)} style={style} title={tip} onClick={onOpen}>{content}</button>
+    : <span className={join(styles.objectField, className)} style={style} title={tip}>{content}</span>;
 }
 
 export function CheckMark({ checked }: { checked: boolean }) {

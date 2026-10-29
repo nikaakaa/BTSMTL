@@ -186,6 +186,25 @@
   overflow: hidden;
 }
 
+.objectLink {
+  font: inherit;
+  text-align: left;
+  cursor: default;
+}
+
+.objectLink:hover {
+  border-color: var(--button-hover);
+}
+
+.objectLink:hover .objectPick {
+  border-color: var(--text);
+}
+
+.objectLink:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
 .objectIcon {
   width: 12px;
   height: 12px;

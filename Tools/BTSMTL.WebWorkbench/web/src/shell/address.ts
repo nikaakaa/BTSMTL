@@ -58,7 +58,8 @@ function write() {
   if (state.selection) params.set('select', `${state.selection.kind}:${state.selection.id}`);
   const panel = activePanelType();
   if (panel) params.set('panel', panel);
-  if (state.identity) {
+  // 资源只在看资源面板或没有运行时写入，避免运行地址带上资源面板自动选中的片段。
+  if (state.identity && (panel === 'resources' || !state.runId)) {
     params.set('resource', state.identity);
     params.set('time', String(Number(state.time.toFixed(4))));
   }

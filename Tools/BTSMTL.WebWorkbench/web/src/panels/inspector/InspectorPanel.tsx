@@ -1,15 +1,18 @@
 import { useMemo, type ReactNode } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import type { Availability, Field, Frame, HostRecord } from '../../api/types';
+import type { Availability, Field, Frame, GraphDefinition, HostRecord } from '../../api/types';
+import { openPanel } from '../../shell/layout';
 import { usePanelParams } from '../../shell/panel';
 import {
-  findGraphNode, graphName, graphRecords, isNodeOccurrence, isPortSample, nodeName, portColor,
+  childGraphs, edgeChildGraphs, findGraphNode, graphHierarchy, graphKey, graphName, graphRecords, isNodeOccurrence,
+  isPortSample, nodeName, playedTimeline, portColor,
 } from '../../state/graphModel';
 import { stageNames } from '../../state/session';
-import { useWorkbench, type Selection } from '../../state/store';
+import { getState, selectionActions, useWorkbench, type Selection } from '../../state/store';
 import {
-  clipKind, findTimelineClip, findTimelineTrack, playSegments, trackColors, trackKind,
+  clipKind, findTimelineClip, findTimelineTrack, nearestFrame, playSegments, trackColors, trackKind,
 } from '../../state/timelineModel';
+import { transport } from '../../state/transport';
 import { BarLabel, BarSeparator, Empty, Fold, IdentityFold, PanelBar } from '../../ui/blocks';
 import { Button, ObjectField } from '../../ui/controls';
 import styles from './inspector.module.css';
@@ -78,6 +81,28 @@ function Value({ label, value, mono = true }: { label: string; value: ReactNode;
   );
 }
 
+// 引用字段：照 Unity 对象引用框，点击在节点图或 Timeline 面板打开所引用的对象。
+function Link({ label, text, kind, tip, onOpen }: { label: string; text: ReactNode; kind: string; tip: string; onOpen(): void }) {
+  return <div className={styles.field}><label title={label}>{label}</label><ObjectField kind={kind} text={text} tip={tip} onOpen={onOpen} /></div>;
+}
+
+function openGraph(graph: GraphDefinition) {
+  selectionActions.showGraph(graphKey(graph));
+  openPanel('graph');
+}
+
+function openTimeline(documentId: string) {
+  selectionActions.showTimeline(documentId);
+  openPanel('timeline');
+}
+
+function useTimelineName(documentId: string | null) {
+  return useWorkbench(state => documentId ? state.timelines.find(item => item.documentId === documentId)?.displayName ?? documentId.slice(0, 8) : null);
+}
+
+// 哈希类身份值（十六进制长串）只放身份折叠。
+const isIdentityValue = (field: Field) => /^[0-9a-f]{16,}$/i.test(field.value);
+
 function Values({ fields }: { fields: Field[] }) {
   return <>{fields.map((field, index) => <Value key={index} label={field.displayName} value={field.value} />)}</>;
 }
@@ -141,7 +166,7 @@ function RunSummary() {
       <Fold title="运行" kind="var(--accent)" defaultOpen>
         <Value label="确认帧数" value={String(summary.frameCount)} />
         <Value label="起止帧" value={`${summary.firstFrame} — ${summary.lastFrame}`} />
-        <Values fields={summary.fields} />
+        <Values fields={summary.fields.filter(field => !isIdentityValue(field) && field.value !== summary.runId)} />
       </Fold>
       {frame && (
         <Fold title="本帧" kind="var(--value)" defaultOpen>
@@ -163,7 +188,7 @@ function RunSummary() {
           )) : <div className={styles.note}>{section.emptyMessage}</div>}
         </Fold>
       ))}
-      <Identity />
+      <Identity extra={summary.fields.filter(field => isIdentityValue(field) && field.value !== summary.runId)} />
     </>
   );
 }
@@ -212,6 +237,7 @@ function NodeInspector({ id, missing }: { id: string; missing: ReactNode }) {
   return (
     <>
       <Head kind={kind} name={nodeName(node)} sub={`${graph.programId} · ${graphName(graph)}`} />
+      <NodeLinks graph={graph} nodeId={node.id} invocationPath={node.invocationPath} />
       <Fold title="本帧" kind={kind} defaultOpen>
         <Value label="状态" mono={false} value={events.some(item => item.result === 'Failure') ? '失败' : events.length ? '已发生' : '未发生'} />
         {events.length ? (
@@ -251,17 +277,54 @@ function NodeInspector({ id, missing }: { id: string; missing: ReactNode }) {
   );
 }
 
+// 节点的引用：所在图、子图（状态体或调用的状态机）、播放的 Timeline、出去的转移及其条件图。
+function NodeLinks({ graph, nodeId, invocationPath }: { graph: GraphDefinition; nodeId: string; invocationPath: string }) {
+  const graphs = useWorkbench(state => state.graphs);
+  const hierarchy = useMemo(() => graphHierarchy(graphs ?? []), [graphs]);
+  const children = childGraphs(hierarchy, graph, nodeId);
+  const timeline = playedTimeline(hierarchy, graph, nodeId);
+  const timelineName = useTimelineName(timeline);
+  const names = new Map(graph.nodes.map(node => [node.id, nodeName(node)]));
+  const transitions = graph.edges.filter(edge => edge.kind === 'Transition' && edge.source?.nodeId === nodeId &&
+    edge.invocationPath === invocationPath);
+  return (
+    <Fold title="引用" kind="var(--node-cmp)" defaultOpen>
+      <Link label="所在图" text={graphName(graph)} kind="var(--node-flow)" tip="在节点图面板打开" onOpen={() => openGraph(graph)} />
+      {children.map(child => (
+        <Link key={child.id} label={childLabel(child)} text={graphName(child)} kind="var(--node-flow)" tip="在节点图面板打开"
+          onOpen={() => openGraph(child)} />
+      ))}
+      {timeline && <Link label="Timeline" text={timelineName} kind="var(--track-anim)" tip="在 Timeline 面板进入"
+        onOpen={() => openTimeline(timeline)} />}
+      {transitions.map(edge => {
+        const conditions = edgeChildGraphs(hierarchy, graph, edge.id);
+        const target = edge.target ? names.get(edge.target.nodeId) ?? '—' : '收招';
+        return conditions.length
+          ? conditions.map(condition => (
+            <Link key={`${edge.id}/${condition.id}`} label={`→ ${target}`} text={graphName(condition)} kind="var(--port-bool)"
+              tip="转移条件图，在节点图面板打开" onOpen={() => openGraph(condition)} />
+          ))
+          : <Value key={edge.id} label={`→ ${target}`} mono={false} value="无条件" />;
+      })}
+    </Fold>
+  );
+}
+
+const childLabel = (graph: GraphDefinition) => graph.edges.some(edge => edge.kind === 'Transition') ? '子状态机' : '子图';
+
 // ── Timeline 片段与轨道 ──
 
 function ClipInspector({ id, missing }: { id: string; missing: ReactNode }) {
-  const { timelines, routeFrames, seconds, frame } = useWorkbench(useShallow(state => ({
-    timelines: state.timelines, routeFrames: state.routeFrames, seconds: state.seconds, frame: state.frame,
+  const { timelines, routeFrames, seconds, frame, graphs } = useWorkbench(useShallow(state => ({
+    timelines: state.timelines, routeFrames: state.routeFrames, seconds: state.seconds, frame: state.frame, graphs: state.graphs,
   })));
   const found = useMemo(() => findTimelineClip(timelines, id), [timelines, id]);
   const segments = useMemo(() => found ? playSegments(routeFrames).get(found.timeline.documentId) ?? [] : [], [found, routeFrames]);
   if (!found) return missing;
   const { timeline, track, clip } = found;
   const kind = trackColors[clipKind(clip)];
+  const clipGraphId = clip.graphId?.slice(clip.graphId.indexOf(':') + 1);
+  const clipGraph = clipGraphId ? graphs?.find(graph => graph.id === clipGraphId) ?? null : null;
   const instances = segments.map(segment => ({
     segment, start: segment.origin + clip.startSeconds, end: Math.min(segment.origin + clip.endSeconds, segment.end),
   })).filter(item => item.start <= item.segment.end);
@@ -269,12 +332,15 @@ function ClipInspector({ id, missing }: { id: string; missing: ReactNode }) {
     <>
       <Head kind={kind} name={clip.displayName ?? clip.contract} sub={`${timeline.displayName} · ${track.displayName}`} />
       <Fold title="片段" kind={kind} defaultOpen>
-        <div className={styles.field}><label>片段</label><ObjectField kind={kind} text={clip.displayName ?? clip.contract} /></div>
+        <Link label="Timeline" text={timeline.displayName} kind="var(--track-anim)" tip="在 Timeline 面板进入"
+          onOpen={() => openTimeline(timeline.documentId)} />
+        {clipGraph
+          ? <Link label="节点图" text={graphName(clipGraph)} kind="var(--node-flow)" tip="在节点图面板打开" onOpen={() => openGraph(clipGraph)} />
+          : <Value label="节点图" mono={false} value={clip.graphId ? '本次运行没有这张图' : '无'} />}
         <Value label="合同" value={clip.contract} />
         <Value label="起点" value={clip.startSeconds.toFixed(3)} />
         <Value label="终点" value={clip.endSeconds.toFixed(3)} />
         <Value label="时长" value={(clip.endSeconds - clip.startSeconds).toFixed(3)} />
-        <Value label="节点图" mono={false} value={clip.graphId ? '有' : '无'} />
       </Fold>
       <Fold title="本次运行" kind="var(--value)" defaultOpen>
         {instances.length ? (
@@ -282,7 +348,10 @@ function ClipInspector({ id, missing }: { id: string; missing: ReactNode }) {
             {instances.map(item => {
               const active = seconds !== null && item.start <= seconds && seconds <= item.end;
               return (
-                <div key={item.segment.index} className={styles.listRow}>
+                <div key={item.segment.index} className={`${styles.listRow} ${styles.listLink}`} role="button" tabIndex={0}
+                  title="跳到这次播放的片段起点"
+                  onClick={() => transport.seek(nearestFrame(getState().routeFrames, item.start))}
+                  onKeyDown={event => { if (event.key === 'Enter') transport.seek(nearestFrame(getState().routeFrames, item.start)); }}>
                   <span className={styles.listText}>第 {item.segment.index + 1} 次播放{active ? ' · 游标所在' : ''}</span>
                   <span className={styles.listValue} data-sampled={active || undefined}>{item.start.toFixed(3)} — {item.end.toFixed(3)} s</span>
                 </div>

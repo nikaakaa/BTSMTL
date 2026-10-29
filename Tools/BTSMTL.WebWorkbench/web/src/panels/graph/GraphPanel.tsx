@@ -5,7 +5,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/base.css';
 import {
-  createContext, memo, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore,
+  createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore,
 } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { GraphDefinition, GraphEdge, GraphPort } from '../../api/types';
@@ -14,11 +14,9 @@ import { usePanelId, usePanelParams, usePanelVisible, usePanelWindow } from '../
 import { clearRendered, frameKey, reportRendered } from '../../shell/readiness';
 import {
   belongsTo, callKey, childGraphs, edgeChildGraphs, graphCrumbs, graphHierarchy, graphKey, graphName, graphRecords,
-  isStateMachine, layoutGraph, nodeName, nodeSelectId, nodeTimeline, nodeWidth, portColor, type GraphHierarchy, type LaidNode,
+  isStateMachine, layoutGraph, nodeName, nodeSelectId, nodeTimeline, playedTimeline, portColor, type GraphHierarchy, type LaidNode,
 } from '../../state/graphModel';
 import { getState, selectionActions, useWorkbench } from '../../state/store';
-import { playSegments } from '../../state/timelineModel';
-import { transport } from '../../state/transport';
 import { Empty, PanelBar } from '../../ui/blocks';
 import { Button, MenuButton, Select, type MenuEntry } from '../../ui/controls';
 import { RouteStore, type RouteHistory } from './routeStore';
@@ -160,6 +158,15 @@ function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
   const path = call === null ? null : calls.includes(call) ? (JSON.parse(call) as string[])[3] : call;
 
   const enter = useCallback((target: GraphDefinition) => setParams({ graph: graphKey(target), call: null, viewport: null }), [setParams]);
+
+  // 其它面板请求显示某张图（检查器跳转、Timeline 片段）。
+  const request = useWorkbench(state => state.graphRequest);
+  const handled = useRef(request?.sequence ?? 0);
+  useEffect(() => {
+    if (!request || request.sequence === handled.current) return;
+    handled.current = request.sequence;
+    if (graphs.some(item => graphKey(item) === request.key)) setParams({ graph: request.key, call: null, viewport: null });
+  }, [request, graphs, setParams]);
   const crumbs = useMemo(() => graphCrumbs(hierarchy, graph), [hierarchy, graph]);
   const programOptions = [...programs].map(([value, item]) => ({ value, label: item.label }));
 
@@ -250,16 +257,13 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams }:
   const store = useMemo(() => new RouteStore(), []);
   const [nodes, setNodes] = useState<FlowNode[]>(() => layout.nodes.map((laid, index) => {
     const children = childGraphs(hierarchy, graph, laid.node.id);
-    // 状态本身不播放 Timeline，取状态体里播放的那条。
-    const timeline = nodeTimeline(hierarchy, graph, laid.node.id) ?? children.flatMap(child =>
-      child.nodes.map(node => nodeTimeline(hierarchy, child, node.id))).find(item => item) ?? null;
+    const timeline = playedTimeline(hierarchy, graph, laid.node.id);
     return {
       id: laid.node.id, type: machine ? 'state' : 'flow', position: { x: laid.x, y: laid.y },
       data: {
         laid, index, selectId: nodeSelectId(graph, laid.node), system: machine && isSystemNode(graph, hierarchy, laid),
         timeline, children,
       },
-      ...(machine ? {} : { width: nodeWidth }),
     };
   }));
   const edges = useMemo<FlowEdge[]>(() => {
@@ -369,8 +373,7 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams }:
 
 // 跳到该 Timeline 第一次播放的帧并显示 Timeline 面板。
 function showTimeline(documentId: string) {
-  const segment = playSegments(getState().routeFrames).get(documentId)?.[0];
-  if (segment) transport.seek(segment.firstIndex);
+  selectionActions.showTimeline(documentId);
   openPanel('timeline');
 }
 

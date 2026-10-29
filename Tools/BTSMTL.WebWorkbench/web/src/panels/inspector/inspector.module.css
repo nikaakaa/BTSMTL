@@ -111,6 +111,15 @@
   background: var(--bg-2);
 }
 
+.listLink:hover {
+  background: var(--button-hover);
+}
+
+.listLink:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
 .listText {
   flex: 1;
   min-width: 0;

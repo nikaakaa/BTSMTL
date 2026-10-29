@@ -6,6 +6,10 @@
   min-height: 0;
 }
 
+.grow {
+  flex: 1;
+}
+
 .stage {
   position: relative;
   flex: 1;
