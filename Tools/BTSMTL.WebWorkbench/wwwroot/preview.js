@@ -23,6 +23,7 @@ async function request(path, body, signal) {
 
 function report(text, error = false) {
   $('status').textContent = text;
+  $('status').title = text;
   $('status').classList.toggle('error', error);
 }
 
@@ -60,6 +61,7 @@ async function refresh() {
   sourceVersion();
   $('source-state').textContent = `${sources.scenes.length} 个正式内容包 · ${sources.replays.length} 份原录像。${!sources.scenes.length ? '宿主尚未提供正式内容。' : ''}${!sources.replays.length ? '真实重放需要宿主的原录像。' : ''}`;
   options($('run-select'), [null, ...runs], run => run ? runLabel(run) : '选择运行', run => run?.jobId ?? '', state.selected ?? '');
+  $('run-select').options[0].disabled = true;
   $('run-select').disabled = runs.length === 0;
   options($('comparison'), runs.filter(run => ['completed', 'stopped'].includes(run.stage) && run.jobId !== state.selected),
     entry => `${entry.acceptedAt} · ${entry.jobId.slice(0, 8)}`, entry => entry.jobId, $('comparison').value);
@@ -340,7 +342,7 @@ $('scene').onchange = () => {
 $('replay').onchange = sourceVersion; $('run-source').onchange = sourceVersion;
 $('load-inputs').onclick = () => guarded(loadInputs);
 $('start').onclick = () => guarded(start); $('refresh').onclick = () => guarded(refresh);
-$('run-select').onchange = () => { if ($('run-select').value) guarded(() => selectRun($('run-select').value)); };
+$('run-select').onchange = () => guarded(() => selectRun($('run-select').value));
 $('cancel').onclick = () => guarded(async () => { const result = await request(`/api/preview/runs/${state.selected}/cancel`, {}); report(result.cancellationRequested ? '取消请求已送达，等待进程确认。' : '本宿主没有仍在执行的对应进程，请查询当前回执。'); });
 $('playback-controls').onclick = event => { const button = event.target.closest('[data-control]'); if (button) guarded(() => control(button.dataset.control)); };
 $('preview-toggle').onclick = () => guarded(() => state.sealed ? state.historyPlayback ? pauseHistory() : playHistory() : control(state.playback === 'playing' ? 'Pause' : 'Play'));
