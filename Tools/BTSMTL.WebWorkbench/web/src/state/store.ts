@@ -1,8 +1,9 @@
 import { create } from 'zustand';
 import { ApiError, isAbort } from '../api/http';
 import type {
-  Alignment, HostDescription, ImageSourceAvailability, InputCatalog, LiveCommandStage, PlaybackState,
-  PlayerInputChoice, RunReceipt, Sources, Summary, ViewerLive,
+  Alignment, AuthorTimeline, Availability, Frame, Geometry, GraphDefinition, HostDescription, ImageSourceAvailability,
+  InputCatalog, InputTimeline, LiveCommandStage, PlaybackState, PlayerInputChoice, RouteFrame, RunReceipt, Sources,
+  Summary, ViewerLive,
 } from '../api/types';
 
 // ── connection ──
@@ -27,7 +28,27 @@ export interface ContentSlice {
 }
 
 // ── run ──
-export interface RunSlice {
+export type RouteFrameSpan = Pick<RouteFrame, 'hostFrame' | 'seconds' | 'playbacks'>;
+
+export interface RunData {
+  // 帧序号对应的宿主帧、秒数与 Timeline 播放状态。
+  routeFrames: RouteFrameSpan[];
+  routeProtocol: string | null;
+  routeAvailability: Availability[];
+  graphs: GraphDefinition[] | null;
+  graphAvailability: Availability[];
+  inputTimeline: InputTimeline | null;
+  timelines: AuthorTimeline[];
+  metadataAvailability: Availability[];
+  geometry: Geometry | null;
+  // 游标所在帧的完整记录；读取中保留上一帧。
+  frame: Frame | null;
+  frameKey: string | null;
+  // 运行失败或未启动时的原因与控制台记录。
+  failure: { reason: string; entryId: number } | null;
+}
+
+export interface RunSlice extends RunData {
   runs: RunReceipt[];
   runId: string | null;
   receipt: RunReceipt | null;
@@ -40,6 +61,11 @@ export interface RunSlice {
   mode: string;
   generation: number;
 }
+
+export const emptyRunData: RunData = {
+  routeFrames: [], routeProtocol: null, routeAvailability: [], graphs: null, graphAvailability: [], inputTimeline: null,
+  timelines: [], metadataAvailability: [], geometry: null, frame: null, frameKey: null, failure: null,
+};
 
 // ── cursor：只能由 transport 写入 ──
 export interface CursorSlice {
@@ -128,7 +154,7 @@ export const useWorkbench = create<WorkbenchState>()(() => ({
   interactive: false,
 
   runs: [], runId: null, receipt: null, summary: null, sealed: false, hostPlayback: null, reviewing: false,
-  mode: 'real', generation: 0,
+  mode: 'real', generation: 0, ...emptyRunData,
 
   ...initialCursor,
 
@@ -181,9 +207,9 @@ export const contentActions = {
   setSources(sources: Sources) {
     set({ sources });
   },
+  // 场景只决定新建运行的内容，不打断当前运行；输入声明按场景路径丢弃旧结果。
   selectScene(scenePath: string | null) {
     if (getState().scenePath === scenePath) return;
-    bumpGeneration();
     set({ scenePath, inputCatalog: null, inputChoices: [] });
   },
   setSourceKind(sourceKind: RunSourceKind) {
@@ -192,8 +218,8 @@ export const contentActions = {
   selectReplay(replayId: string | null) {
     set({ replayId });
   },
-  setInputCatalog(generation: number, inputCatalog: InputCatalog) {
-    if (isCurrent(generation)) set({ inputCatalog });
+  setInputCatalog(scenePath: string, inputCatalog: InputCatalog) {
+    if (getState().scenePath === scenePath) set({ inputCatalog });
   },
   setInputChoices(inputChoices: PlayerInputChoice[]) {
     set({ inputChoices });
@@ -212,7 +238,7 @@ export const runActions = {
     const generation = bumpGeneration();
     set({
       runId, receipt: null, summary: null, sealed: false, hostPlayback: null, reviewing: false,
-      selection: null, ...initialCursor,
+      selection: null, ...initialCursor, ...emptyRunData,
     });
     return generation;
   },
@@ -224,6 +250,9 @@ export const runActions = {
   },
   setHostPlayback(generation: number, hostPlayback: PlaybackState | null) {
     if (isCurrent(generation)) set({ hostPlayback });
+  },
+  setData(generation: number, data: Partial<RunData>) {
+    if (isCurrent(generation)) set(data);
   },
   setMode(mode: string) {
     set({ mode });

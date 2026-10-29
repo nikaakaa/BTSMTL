@@ -8,3 +8,47 @@
   border-bottom: 1px solid var(--line);
   flex: none;
 }
+
+.divider {
+  width: 1px;
+  height: 18px;
+  margin: 0 var(--gap-1);
+  background: var(--line-soft);
+}
+
+.grow {
+  flex: 1;
+}
+
+.frame {
+  min-width: 150px;
+  padding: 0 var(--gap-2);
+  font: var(--mono);
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.segment {
+  display: flex;
+  gap: 1px;
+  padding: 1px;
+  background: var(--bg-0);
+  border-radius: var(--radius);
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  margin: 0 var(--gap-1) 0 var(--gap-2);
+  border-radius: 50%;
+  background: var(--text-disabled);
+  outline: none;
+}
+
+.dot[data-status='ok'] {
+  background: var(--ok);
+}
+
+.dot[data-status='down'] {
+  background: var(--reject);
+}

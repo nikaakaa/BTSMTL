@@ -169,6 +169,11 @@ export const transport = {
     if (getState().runId === runId && frameCount()) writeCursor(Math.min(getState().frameIndex, frameCount() - 1));
   },
 
+  // 运行载入或地址恢复时定位到指定帧序号，不改变跟随状态。
+  place(frameIndex: number) {
+    moveCursor(frameIndex);
+  },
+
   // 切换运行后由运行服务调用：停止回看，清空播放器目标。
   reset() {
     stopReview();
