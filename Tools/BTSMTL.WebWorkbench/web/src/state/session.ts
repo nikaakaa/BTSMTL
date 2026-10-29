@@ -274,14 +274,16 @@ export const session = {
     }
   },
 
-  async loadInputs() {
+  // 失败时返回控制台记录号，面板显示一行错误。
+  async loadInputs(): Promise<number | null> {
     const { sources, scenePath } = getState();
     const scene = sources?.scenes.find(item => item.path === scenePath);
-    if (!scene) return;
+    if (!scene) return null;
     try {
       contentActions.setInputCatalog(scene.path, await previewApi.inputs(scene.path, scene.revision));
+      return null;
     } catch (error) {
-      consoleActions.error('content', error);
+      return consoleActions.error('content', error);
     }
   },
 };

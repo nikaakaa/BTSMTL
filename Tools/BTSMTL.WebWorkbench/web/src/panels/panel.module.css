@@ -1,0 +1,85 @@
+/* 面板共用版式：工具条 + 滚动内容；Unity 式列表行。 */
+.root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  all: unset;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: var(--row);
+  padding: 0 var(--gap-2);
+  box-sizing: border-box;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: default;
+}
+
+.row:nth-child(even) {
+  background: rgb(255 255 255 / 2%);
+}
+
+.row:hover {
+  background: var(--bg-3);
+}
+
+.row[aria-selected='true'], .row[aria-pressed='true'] {
+  background: var(--select);
+}
+
+.row[aria-disabled='true'] {
+  color: var(--text-disabled);
+}
+
+.row:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.rowText {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rowValue {
+  margin-left: auto;
+  font: var(--mono);
+  color: var(--text-dim);
+}
+
+.mono {
+  font: var(--mono);
+}
+
+.dim {
+  color: var(--text-dim);
+}
+
+.value {
+  font: var(--mono);
+  color: var(--value);
+}
+
+.grow {
+  flex: 1;
+}
