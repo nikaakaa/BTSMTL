@@ -1,5 +1,6 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import './shell/theme.css';
 import { Workbench } from './shell/Workbench';
 
 const root = document.getElementById('root');

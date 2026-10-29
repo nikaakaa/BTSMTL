@@ -1,0 +1,81 @@
+/* 唯一主题文件。组件样式只引用这里的变量；换风格只改变量值。 */
+:root {
+  --bg-0: #1e1e1e;
+  --bg-1: #282828;
+  --bg-2: #303030;
+  --bg-3: #3c3c3c;
+  --bg-hover: #464646;
+  --bg-active: #505050;
+  --line: #1a1a1a;
+  --line-soft: #3a3a3a;
+
+  --text: #d2d2d2;
+  --text-dim: #8f8f8f;
+  --text-disabled: #5e5e5e;
+  --text-on-accent: #ffffff;
+
+  --accent: #4d8fd1;
+  --accent-soft: rgb(77 143 209 / 28%);
+  --ok: #8fbf8f;
+  --warn: #d6b25e;
+  --reject: #c97a72;
+  --cursor: #e6d27a;
+  --select: #7eb8df;
+
+  --font: 12px 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  --mono: 11px Consolas, 'Cascadia Mono', monospace;
+
+  --row: 22px;
+  --control: 22px;
+  --toolbar: 40px;
+  --radius: 2px;
+  --gap-1: 4px;
+  --gap-2: 8px;
+  --gap-3: 12px;
+
+  --popup-bg: var(--bg-2);
+  --popup-shadow: 0 4px 14px rgb(0 0 0 / 45%);
+
+  color-scheme: dark;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--bg-0);
+  color: var(--text);
+  font: var(--font);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+code, pre, kbd {
+  font: var(--mono);
+}
+
+::selection {
+  background: var(--accent-soft);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--bg-3);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner {
+  background: transparent;
+}

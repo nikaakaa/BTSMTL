@@ -1,0 +1,112 @@
+.empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 48px;
+  padding: var(--gap-3);
+  color: var(--text-dim);
+  text-align: center;
+}
+
+.fold {
+  border-top: 1px solid var(--line);
+}
+
+.foldTrigger {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-1);
+  width: 100%;
+  height: var(--row);
+  padding: 0 var(--gap-2);
+  border: 0;
+  background: var(--bg-2);
+  color: var(--text);
+  font: var(--font);
+  text-align: left;
+  cursor: default;
+}
+
+.foldTrigger:hover {
+  background: var(--bg-hover);
+}
+
+.foldTrigger:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.foldArrow {
+  width: 10px;
+  color: var(--text-dim);
+  font-size: 9px;
+  transition: transform 80ms;
+}
+
+.foldTrigger[data-panel-open] .foldArrow {
+  transform: rotate(90deg);
+}
+
+.foldPanel {
+  padding: var(--gap-1) var(--gap-2) var(--gap-2);
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: minmax(80px, max-content) 1fr;
+  gap: 2px var(--gap-2);
+  margin: 0;
+}
+
+.facts dt {
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.facts dd {
+  margin: 0;
+  font: var(--mono);
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.tabs {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.tabList {
+  display: flex;
+  position: relative;
+  height: var(--row);
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-2);
+}
+
+.tab {
+  padding: 0 var(--gap-3);
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+  font: var(--font);
+  cursor: default;
+}
+
+.tab[data-active] {
+  color: var(--text);
+  background: var(--bg-1);
+}
+
+.tab:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.tabPanel {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  outline: none;
+}
