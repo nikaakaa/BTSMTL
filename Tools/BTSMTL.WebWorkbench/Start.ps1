@@ -1,4 +1,4 @@
-param(
+﻿param(
     [Parameter(Mandatory = $true)][string]$WorkspaceRoot,
     [string]$AnimationLibrary,
     [int]$Port = 5367
@@ -15,10 +15,15 @@ $env:TEMP = $processTemp
 $env:TMP = $processTemp
 
 try {
-    Push-Location $PSScriptRoot
+    # 网页前端：安装依赖、类型检查、构建到 wwwroot；任一步失败即停止，不用旧产物启动宿主。
+    Push-Location (Join-Path $PSScriptRoot 'web')
     try {
         npm ci --ignore-scripts --no-audit --no-fund --cache (Join-Path $repositoryRoot '.codex/tmp/web-workbench/npm-cache')
         if ($LASTEXITCODE -ne 0) { throw '网页依赖安装失败，服务未启动。' }
+        npm run typecheck
+        if ($LASTEXITCODE -ne 0) { throw '网页前端类型检查失败，服务未启动。' }
+        npm run build
+        if ($LASTEXITCODE -ne 0) { throw '网页前端构建失败，服务未启动。' }
     } finally {
         Pop-Location
     }
