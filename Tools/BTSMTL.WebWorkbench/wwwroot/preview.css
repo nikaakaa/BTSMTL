@@ -59,11 +59,17 @@ pre { white-space: pre-wrap; max-height: 350px; overflow: auto; }
 .observed-time-ruler > div > span { position: absolute; top: 5px; font-size: 11px; }
 .observed-timeline-row { min-height: 36px; border-bottom: 1px solid #1d1d1d; }
 .observed-track-name { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 10px; background: #343434; border-right: 1px solid #1c1c1c; overflow: hidden; white-space: nowrap; }
+.observed-track-name > strong { overflow: hidden; text-overflow: ellipsis; }
 .observed-track-name output { color: #b9cbd7; font-size: 11px; }
 .observed-input-group .observed-track-name { background: #3b3b3b; }
 .observed-timeline-lane { position: relative; margin-right: 35px; min-width: 0; }
-.input-scheme { flex-shrink: 0; padding-inline: 6px; }
-.observed-timeline-segment { position: absolute; top: 6px; bottom: 6px; min-width: 3px; background: #4d728f; border: 1px solid #6a92b0; border-radius: 2px; pointer-events: none; }
+.input-scheme { min-width: 0; max-width: 100px; flex: 1; padding-inline: 6px; }
+.observed-track-toggle { flex-shrink: 0; padding: 0; border: 0; background: transparent; }
+.observed-input-track .observed-track-name { padding-left: 24px; }
+.observed-input-track .observed-timeline-lane { overflow: hidden; }
+.observed-timeline-segment { position: absolute; top: 6px; bottom: 6px; min-width: 3px; background: #4d728f; border: 1px solid #6a92b0; border-radius: 2px; }
+.observed-input-clip { background: #625779; border-color: #8f7fa9; padding-inline: 4px; overflow: hidden; white-space: nowrap; }
+.observed-input-marker { position: absolute; top: 12px; width: 10px; height: 10px; background: #a58cbe; border: 1px solid #c4b2d6; transform: translateX(-50%) rotate(45deg); }
 [data-recorded-lane] { cursor: ew-resize; touch-action: none; }
 .observed-timeline-row.active .observed-track-name { background: #3b4f5c; }
 .observed-timeline-row.active .observed-timeline-segment { background: #608bac; }

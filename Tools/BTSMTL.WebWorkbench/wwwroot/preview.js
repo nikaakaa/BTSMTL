@@ -258,14 +258,15 @@ const executionObservation = new PreviewObservation($('execution-observation'), 
 
 function updateCapabilities(availability) {
   const channels = new Map(availability.map(channel => [channel.channel, channel]));
-  const gaps = [{ name: '输入轨', reason: '宿主尚未提供正式输入方案及按键轨。' }];
+  const gaps = [];
   if (state.host) for (const mode of state.host.modes) {
     if (!mode.available) gaps.push({ name: `${mode.displayName}预览`, reason: mode.reason });
   }
   const names = { 'graph-definitions': '节点图', 'node-occurrences': '节点路线', 'edge-occurrences': '连线路线',
     'port-values': '端口值', 'author-layout': '作者布局', 'author-display-names': '作者名称', 'author-value-connections': '数值连线',
     'execution-source-bindings': '节点来源', 'port-source-bindings': '端口来源', 'port-parent-invocation-generation': '父调用代次',
-    'compiled-control-flow': '控制连线' };
+    'compiled-control-flow': '控制连线', 'frozen-input-timeline': '输入轨',
+    'frozen-runtime-timelines': 'Timeline名称', 'frozen-authoring': '作者来源' };
   for (const channel of channels.values()) {
     if (!channel.available || !channel.complete)
       gaps.push({ name: `${names[channel.channel] ?? channel.channel}${channel.available ? '不完整' : ''}`, reason: channel.reason });
