@@ -4,6 +4,7 @@ import { fieldsHtml, sectionsHtml } from './preview-records.js';
 import { PreviewObservation } from './preview-observation.js';
 
 const $ = id => document.getElementById(id);
+const frameCacheLimit = 4;
 const state = { sources: null, runs: [], selected: null, summary: null, frames: new Map(), count: 0, sealed: false, frameIndex: 0, host: null, playback: null, historyPlayback: null, currentFrame: null, mode: 'real' };
 let pollTimer;
 let historyTimer;
@@ -145,7 +146,6 @@ async function updateRun() {
       $('playback-state').textContent = playbackNames[snapshot.state];
       const observation = snapshot.observation;
       const summary = observation.summary;
-      state.frames.clear(); observation.frames.forEach((frame, index) => state.frames.set(index, frame));
       await displayObservation(summary, false);
       if (id !== state.selected) return;
       await sendPendingControl();
@@ -214,11 +214,11 @@ async function sendPendingControl() {
 async function showFrame(index) {
   const id = state.selected;
   delete document.documentElement.dataset.previewImageReady;
-  const page = Math.floor(index / 128) * 128;
   if (!state.frames.has(index)) {
-    const result = await request(`/api/preview/runs/${id}/frames?offset=${page}&limit=128`);
+    const result = await request(`/api/preview/runs/${id}/frames?offset=${index}&limit=1`);
     if (id !== state.selected) return;
-    result.items.forEach((frame, offset) => state.frames.set(page + offset, frame));
+    state.frames.set(index, result.items[0]);
+    if (state.frames.size > frameCacheLimit) state.frames.delete(state.frames.keys().next().value);
   }
   if (index !== state.frameIndex) return;
   const frame = state.frames.get(index);
@@ -313,18 +313,13 @@ function control(command) {
 
 async function playHistory() {
   if (state.frameIndex === state.count - 1) { state.frameIndex = 0; await showFrame(0); }
-  const playback = { runId: state.selected, origin: state.frames.get(state.frameIndex).seconds, started: performance.now() };
+  const playback = { runId: state.selected, origin: executionObservation.routeFrames[state.frameIndex].seconds, started: performance.now() };
   state.historyPlayback = playback; updateTransport();
   const advance = async () => {
     const target = playback.origin + (performance.now() - playback.started) / 1000;
     let index = state.frameIndex;
     while (index < state.count - 1) {
-      if (!state.frames.has(index + 1)) {
-        const page = await request(`/api/preview/runs/${playback.runId}/frames?offset=${index + 1}&limit=128`);
-        if (state.historyPlayback !== playback) return;
-        page.items.forEach((frame, offset) => state.frames.set(index + 1 + offset, frame));
-      }
-      if (state.frames.get(index + 1).seconds > target) break;
+      if (executionObservation.routeFrames[index + 1].seconds > target) break;
       index++;
     }
     if (state.historyPlayback !== playback) return;
