@@ -298,6 +298,7 @@ function updateTransport() {
 }
 
 function pauseHistory() {
+  if (state.historyPlayback) report('记录回看');
   clearTimeout(historyTimer); state.historyPlayback = null;
   updateTransport();
 }
