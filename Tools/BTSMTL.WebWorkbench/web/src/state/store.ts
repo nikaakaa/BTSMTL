@@ -66,6 +66,8 @@ export interface PlayerSlice {
   actualFrame: string | null;
   pendingSeek: { commandId: string; frame: number } | null;
   lastCommand: PlayerCommandRecord | null;
+  // 画面面板正在接管键鼠时，运行快捷键不响应。
+  capturing: boolean;
 }
 
 // ── resource：素材秒数，与运行游标无关 ──
@@ -130,7 +132,7 @@ export const useWorkbench = create<WorkbenchState>()(() => ({
 
   ...initialCursor,
 
-  liveId: null, live: null, viewerOpen: false, alignment: null, ...initialPlayerTarget,
+  liveId: null, live: null, viewerOpen: false, alignment: null, ...initialPlayerTarget, capturing: false,
 
   identity: null, time: 0, playing: false,
 

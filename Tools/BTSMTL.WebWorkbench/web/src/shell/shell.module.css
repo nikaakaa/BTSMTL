@@ -1,0 +1,37 @@
+.workbench {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.dock {
+  flex: 1;
+  min-height: 0;
+}
+
+.panel {
+  position: relative;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg-1);
+  color: var(--text);
+  font: var(--font);
+}
+
+.groupActions {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding: 0 var(--gap-1);
+  gap: 2px;
+}
+
+.watermark {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--gap-2);
+  height: 100%;
+  color: var(--text-dim);
+}
