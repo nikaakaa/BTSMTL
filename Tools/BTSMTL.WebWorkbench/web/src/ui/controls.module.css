@@ -2,14 +2,14 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: var(--gap-1);
+  gap: 6px;
   height: var(--control);
   min-width: var(--control);
   padding: 0 var(--gap-2);
-  border: 1px solid var(--line);
+  border: 1px solid var(--button-line);
   border-radius: var(--radius);
-  background: var(--bg-3);
-  color: var(--text);
+  background: var(--button);
+  color: var(--text-strong);
   font: var(--font);
   white-space: nowrap;
   cursor: default;
@@ -17,15 +17,12 @@
 }
 
 .button:hover:not([data-disabled]) {
-  background: var(--bg-hover);
+  background: var(--button-hover);
 }
 
-.button:active:not([data-disabled]), .button[data-pressed], .button[aria-pressed='true'], .button[data-popup-open] {
-  background: var(--bg-active);
-}
-
-.button[aria-pressed='true'] {
-  color: var(--select);
+.button[aria-pressed='true'], .button[data-popup-open] {
+  background: var(--button-on);
+  border-color: var(--button-on-line);
 }
 
 .button[data-disabled] {
@@ -42,18 +39,28 @@
   width: var(--control);
 }
 
+/* 面板工具条按钮：平时无底色，开启时 --tool-on */
 .ghost {
   background: transparent;
   border-color: transparent;
 }
 
+.ghost:hover:not([data-disabled]) {
+  background: var(--tool-on);
+}
+
+.ghost[aria-pressed='true'], .ghost[data-popup-open] {
+  background: var(--tool-on);
+  border-color: var(--tool-on-line);
+}
+
 .field {
   height: var(--control);
   min-width: 0;
-  padding: 0 6px;
-  border: 1px solid var(--line);
+  padding: 0 5px;
+  border: 1px solid var(--field-line);
   border-radius: var(--radius);
-  background: var(--bg-0);
+  background: var(--field);
   color: var(--text);
   font: var(--font);
 }
@@ -68,7 +75,7 @@
 }
 
 .numberGroup .field {
-  width: 72px;
+  width: 56px;
   font: var(--mono);
   text-align: right;
 }
@@ -77,7 +84,7 @@
   composes: button;
   justify-content: space-between;
   min-width: 96px;
-  max-width: 260px;
+  max-width: 280px;
 }
 
 .triggerValue {
@@ -85,9 +92,15 @@
   text-overflow: ellipsis;
 }
 
+/* 下拉小三角 */
 .caret {
-  color: var(--text-dim);
-  font-size: 9px;
+  width: 0;
+  height: 0;
+  margin-left: 2px;
+  border-left: 3.5px solid transparent;
+  border-right: 3.5px solid transparent;
+  border-top: 4px solid var(--glyph);
+  flex: none;
 }
 
 .positioner {
@@ -121,8 +134,7 @@
 }
 
 .item[data-highlighted] {
-  background: var(--accent);
-  color: var(--text-on-accent);
+  background: var(--select);
 }
 
 .item[data-disabled] {
@@ -138,7 +150,7 @@
 .separator {
   height: 1px;
   margin: var(--gap-1) 0;
-  background: var(--line-soft);
+  background: var(--line);
 }
 
 .groupLabel {
@@ -156,4 +168,66 @@
   color: var(--text);
   box-shadow: var(--popup-shadow);
   white-space: pre-line;
+}
+
+/* 对象引用框：输入框 + 左侧类型色小方块 + 右侧圆形选取钮 */
+.objectField {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: var(--control);
+  min-width: 0;
+  padding: 0 5px;
+  border: 1px solid var(--field-line);
+  border-radius: var(--radius);
+  background: var(--field);
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.objectIcon {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  background: var(--kind, var(--node-anim));
+  flex: none;
+}
+
+.objectText {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.objectPick {
+  position: relative;
+  width: 11px;
+  height: 11px;
+  border: 1px solid var(--text-disabled);
+  border-radius: 50%;
+  flex: none;
+}
+
+.objectPick::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  background: var(--text-disabled);
+}
+
+.check {
+  display: inline-grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--field-line);
+  border-radius: 2px;
+  background: var(--field);
+  color: var(--text-strong);
+  font-size: 11px;
+  line-height: 1;
+  flex: none;
 }

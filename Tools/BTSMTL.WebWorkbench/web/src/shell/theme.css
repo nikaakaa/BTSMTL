@@ -1,34 +1,96 @@
-/* 唯一主题文件。组件样式只引用这里的变量；换风格只改变量值。 */
+/* 唯一主题文件（D7：Unity 2022／6 Pro 深色皮肤）。组件样式只引用这里的变量；换风格只改变量值。 */
 :root {
-  --bg-0: #1e1e1e;
+  --bg-0: #191919;
   --bg-1: #282828;
-  --bg-2: #303030;
+  --bg-2: #383838;
   --bg-3: #3c3c3c;
-  --bg-hover: #464646;
-  --bg-active: #505050;
-  --line: #1a1a1a;
-  --line-soft: #3a3a3a;
+  --header: #3e3e3e;
+  --field: #2a2a2a;
+  --field-line: #212121;
+  --button: #585858;
+  --button-hover: #676767;
+  --button-line: #303030;
+  --button-on: #46607c;
+  --button-on-line: #2b3c4f;
+  --tool-on: #4d4d4d;
+  --tool-on-line: #2e2e2e;
+  --line: #232323;
+  --seam: #1f1f1f;
 
   --text: #d2d2d2;
-  --text-dim: #8f8f8f;
-  --text-disabled: #5e5e5e;
-  --text-on-accent: #ffffff;
+  --text-strong: #e4e4e4;
+  --text-dim: #a0a0a0;
+  --text-disabled: #7d7d7d;
+  --glyph: #bdbdbd;
 
-  --accent: #4d8fd1;
-  --accent-soft: rgb(77 143 209 / 28%);
-  --ok: #8fbf8f;
-  --warn: #d6b25e;
-  --reject: #c97a72;
-  --cursor: #e6d27a;
-  --select: #7eb8df;
+  --accent: #3a79bb;
+  --accent-line: #244d75;
+  --select: #2c5d87;
+  --select-graph: #44c0ff;
+  --cursor: #e6e6e6;
+  --cursor-text: #111111;
+  --ok: #5cb85c;
+  --reject: #d9534f;
+  --warn: #e8b84a;
+  --value: #e6c35c;
 
-  --font: 12px 'Segoe UI', 'Microsoft YaHei', sans-serif;
-  --mono: 11px Consolas, 'Cascadia Mono', monospace;
+  --track-anim: #4d9ae0;
+  --track-act: #3fa34d;
+  --track-cam: #d98c32;
+  --track-vfx: #3fb3a8;
+  --track-in: #9a78d0;
+  --track-list: #2e2e2e;
+  --track-head: #3a3a3a;
+  --track-head-select: #3e5168;
+  --track-group: #454545;
+  --track-lane: #292929;
+  --track-lane-group: #303030;
+  --track-ruler: #333333;
+  --track-markers: #2d2d2d;
+  --track-row-line: #262626;
+  --clip: #5d6873;
+  --clip-line: #1d1d1d;
+  --clip-text: #f0f0f0;
+  --clip-active: #e8e8e8;
+  --input-key: #d2d2d2;
+  --input-key-active: #e8b84a;
+  --input-hold: #6f5b8f;
+  --preview-on: #6a3131;
+  --preview-on-line: #3d1c1c;
+
+  --node-event: #c45656;
+  --node-anim: #4d86c4;
+  --node-cam: #c98a3c;
+  --node-cmp: #5c9c5c;
+  --node-skill: #8a6cb8;
+  --node-flow: #8c8c8c;
+  --graph-bg: #202020;
+  --graph-grid: #272727;
+  --graph-grid-major: #2e2e2e;
+  --node-bg: rgb(38 38 38 / 97%);
+  --node-header: #3a3a3a;
+  --node-line: #111111;
+  --edge-idle: #5a5a5a;
+
+  --port-float: #6cc4d8;
+  --port-bool: #a98ad8;
+  --port-enum: #d8c45a;
+  --port-asset: #d88a8a;
+  --port-exec: #d6d6d6;
+  --port-exec-off: #626262;
+
+  --viewport-bg: #111111;
+  --overlay-bg: rgb(32 32 32 / 90%);
+
+  --font: 12px 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', sans-serif;
+  --mono: 11.5px Consolas, 'Microsoft YaHei UI', monospace;
 
   --row: 22px;
-  --control: 22px;
+  --control: 20px;
+  --tab: 22px;
+  --panel-bar: 24px;
   --toolbar: 40px;
-  --radius: 2px;
+  --radius: 3px;
   --gap-1: 4px;
   --gap-2: 8px;
   --gap-3: 12px;
@@ -61,7 +123,7 @@ code, pre, kbd {
 }
 
 ::selection {
-  background: var(--accent-soft);
+  background: var(--select);
 }
 
 ::-webkit-scrollbar {
@@ -70,7 +132,7 @@ code, pre, kbd {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--bg-3);
+  background: var(--button);
   border: 2px solid transparent;
   background-clip: padding-box;
   border-radius: 5px;

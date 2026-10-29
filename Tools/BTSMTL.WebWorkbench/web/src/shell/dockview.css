@@ -1,21 +1,21 @@
-/* dockview 外观：只把 dockview 变量映射到主题变量。 */
+/* dockview 外观：只把 dockview 变量映射到主题变量（D7：面板拼接缝 2px，页签栏 22px，平矩形页签）。 */
 .dockview-theme-btsmtl {
   color-scheme: dark;
   --dv-paneview-active-outline-color: var(--accent);
   --dv-tabs-and-actions-container-font-size: 12px;
-  --dv-tabs-and-actions-container-height: 24px;
-  --dv-drag-over-background-color: var(--accent-soft);
+  --dv-tabs-and-actions-container-height: var(--tab);
+  --dv-drag-over-background-color: rgb(58 121 187 / 28%);
   --dv-drag-over-border-color: var(--accent);
   --dv-edge-dock-indicator-color: var(--accent);
-  --dv-tabs-container-scrollbar-color: var(--bg-3);
-  --dv-icon-hover-background-color: var(--bg-hover);
+  --dv-tabs-container-scrollbar-color: var(--button);
+  --dv-icon-hover-background-color: var(--tool-on);
   --dv-floating-box-shadow: var(--popup-shadow);
   --dv-floating-border: 1px solid var(--line);
   --dv-overlay-z-index: 999;
   --dv-tab-font-size: 12px;
   --dv-border-radius: 0px;
   --dv-tab-margin: 0;
-  --dv-sash-color: transparent;
+  --dv-sash-color: var(--bg-0);
   --dv-active-sash-color: var(--accent);
   --dv-active-sash-transition-duration: 0.1s;
   --dv-active-sash-transition-delay: 0.3s;
@@ -28,33 +28,35 @@
   --dv-drag-over-border: none;
   --dv-floating-group-dragging-opacity: 0.6;
   --dv-floating-titlebar-height: 18px;
-  --dv-floating-titlebar-background-color: var(--bg-2);
+  --dv-floating-titlebar-background-color: var(--bg-1);
   --dv-floating-titlebar-border-bottom: 1px solid var(--line);
   --dv-context-menu-background-color: var(--popup-bg);
   --dv-context-menu-color: var(--text);
-  --dv-scrollbar-background-color: var(--bg-3);
+  --dv-scrollbar-background-color: var(--button);
 
-  --dv-group-view-background-color: var(--bg-1);
-  --dv-tabs-and-actions-container-background-color: var(--bg-2);
-  --dv-activegroup-visiblepanel-tab-background-color: var(--bg-1);
-  --dv-activegroup-hiddenpanel-tab-background-color: var(--bg-2);
-  --dv-inactivegroup-visiblepanel-tab-background-color: var(--bg-1);
-  --dv-inactivegroup-hiddenpanel-tab-background-color: var(--bg-2);
-  --dv-tab-divider-color: var(--line);
+  --dv-group-view-background-color: var(--bg-2);
+  --dv-tabs-and-actions-container-background-color: var(--bg-1);
+  --dv-activegroup-visiblepanel-tab-background-color: var(--bg-3);
+  --dv-activegroup-hiddenpanel-tab-background-color: var(--bg-1);
+  --dv-inactivegroup-visiblepanel-tab-background-color: var(--bg-3);
+  --dv-inactivegroup-hiddenpanel-tab-background-color: var(--bg-1);
+  --dv-tab-divider-color: var(--seam);
   --dv-activegroup-visiblepanel-tab-color: var(--text);
   --dv-activegroup-hiddenpanel-tab-color: var(--text-dim);
   --dv-inactivegroup-visiblepanel-tab-color: var(--text);
   --dv-inactivegroup-hiddenpanel-tab-color: var(--text-dim);
-  --dv-separator-border: var(--line);
+  --dv-separator-border: var(--bg-0);
   --dv-paneview-header-border-color: var(--line);
 
+  background: var(--bg-0);
   font: var(--font);
 }
 
 .dockview-theme-btsmtl .dv-tab {
-  padding: 0 10px;
+  padding: 0 var(--gap-3);
+  border-right: 1px solid var(--seam);
 }
 
-.dockview-theme-btsmtl .dv-groupview.dv-active-group > .dv-tabs-and-actions-container .dv-tab.dv-active-tab {
-  box-shadow: inset 0 1px 0 var(--accent);
+.dockview-theme-btsmtl .dv-tab.dv-active-tab {
+  box-shadow: inset 0 1px 0 var(--edge-idle);
 }

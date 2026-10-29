@@ -9,27 +9,26 @@
   text-align: center;
 }
 
+/* 折叠：Unity 组件头，22px，折叠三角 + 类别色小方块 + 标题 */
 .fold {
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--seam);
 }
 
 .foldTrigger {
   display: flex;
   align-items: center;
-  gap: var(--gap-1);
+  gap: 6px;
   width: 100%;
   height: var(--row);
-  padding: 0 var(--gap-2);
+  padding: 0 6px;
   border: 0;
-  background: var(--bg-2);
+  border-bottom: 1px solid var(--bg-3);
+  background: var(--header);
   color: var(--text);
   font: var(--font);
+  font-weight: 600;
   text-align: left;
   cursor: default;
-}
-
-.foldTrigger:hover {
-  background: var(--bg-hover);
 }
 
 .foldTrigger:focus-visible {
@@ -38,29 +37,56 @@
 }
 
 .foldArrow {
-  width: 10px;
-  color: var(--text-dim);
-  font-size: 9px;
-  transition: transform 80ms;
+  width: 0;
+  height: 0;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 5px solid var(--glyph);
+  flex: none;
 }
 
 .foldTrigger[data-panel-open] .foldArrow {
-  transform: rotate(90deg);
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid var(--glyph);
+  border-bottom: 0;
+}
+
+.foldKind {
+  width: 14px;
+  height: 14px;
+  border-radius: 2px;
+  background: var(--kind);
+  flex: none;
+}
+
+.foldMore {
+  margin-left: auto;
+  color: var(--text-disabled);
+  font-weight: 400;
+  letter-spacing: 2px;
 }
 
 .foldPanel {
-  padding: var(--gap-1) var(--gap-2) var(--gap-2);
+  padding: var(--gap-1) 6px var(--gap-2) 18px;
 }
 
+/* 字段：标签占 42% 宽 */
 .facts {
   display: grid;
-  grid-template-columns: minmax(80px, max-content) 1fr;
-  gap: 2px var(--gap-2);
+  grid-template-columns: 42% 1fr;
+  align-items: center;
+  gap: 0 var(--gap-1);
   margin: 0;
 }
 
 .facts dt {
-  color: var(--text-dim);
+  min-height: var(--row);
+  display: flex;
+  align-items: center;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -80,14 +106,15 @@
 .tabList {
   display: flex;
   position: relative;
-  height: var(--row);
-  border-bottom: 1px solid var(--line);
-  background: var(--bg-2);
+  height: var(--tab);
+  background: var(--bg-1);
+  flex: none;
 }
 
 .tab {
   padding: 0 var(--gap-3);
   border: 0;
+  border-right: 1px solid var(--seam);
   background: transparent;
   color: var(--text-dim);
   font: var(--font);
@@ -96,7 +123,8 @@
 
 .tab[data-active] {
   color: var(--text);
-  background: var(--bg-1);
+  background: var(--bg-3);
+  box-shadow: inset 0 1px 0 var(--edge-idle);
 }
 
 .tab:focus-visible {
@@ -121,4 +149,31 @@
 
 .errorLine:hover {
   text-decoration: underline;
+}
+
+/* 面板工具条：24px，--bg-3 */
+.panelBar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: var(--panel-bar);
+  padding: 0 var(--gap-1);
+  background: var(--bg-3);
+  border-bottom: 1px solid var(--line);
+  flex: none;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.barSeparator {
+  width: 1px;
+  height: 14px;
+  margin: 0 3px;
+  background: var(--field);
+  flex: none;
+}
+
+.barLabel {
+  padding: 0 var(--gap-1);
+  color: var(--text-dim);
 }

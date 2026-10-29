@@ -6,7 +6,7 @@ import { openNewInstance, openPanel, popoutGroup, resetLayout } from './layout';
 import { panelInfo, panelTypes } from './panelTypes';
 import styles from './shell.module.css';
 
-function panelMenu(): MenuEntry[] {
+export function panelMenu(): MenuEntry[] {
   return [
     { kind: 'label', label: '打开面板' },
     ...panelTypes.map(type => ({ label: panelInfo[type].title, onSelect: () => openPanel(type) })),
@@ -35,9 +35,10 @@ export function GroupActions({ group, api }: IDockviewHeaderActionsProps) {
     <PortalContainerProvider value={groupWindow.document.body}>
       <div className={styles.groupActions}>
         {location !== 'popout' && (
-          <Button variant="icon" tip="拆到独立窗口" aria-label="拆到独立窗口" onClick={() => void popoutGroup(group)}>⧉</Button>
+          <Button variant="ghost" tip="拆到独立窗口" aria-label="拆到独立窗口"
+            onClick={() => void popoutGroup(group)}>⧉</Button>
         )}
-        <MenuButton label="面板菜单" variant="icon" entries={panelMenu()}>⋯</MenuButton>
+        <MenuButton label="面板菜单" variant="ghost" entries={panelMenu()}>⋮</MenuButton>
       </div>
     </PortalContainerProvider>
   );

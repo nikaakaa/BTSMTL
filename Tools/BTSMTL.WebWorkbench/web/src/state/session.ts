@@ -4,7 +4,7 @@ import { previewApi } from '../api/preview';
 import type { Availability, GraphDefinition, RunReceipt, RunStage, Summary } from '../api/types';
 import { invalidateTail, readFrame } from './frames';
 import {
-  connectionActions, consoleActions, contentActions, getState, isCurrent, runActions, useWorkbench,
+  connectionActions, consoleActions, contentActions, getState, inputRootKey, isCurrent, runActions, useWorkbench,
 } from './store';
 import { transport } from './transport';
 
@@ -84,6 +84,7 @@ async function loadMetadata(runId: string, generation: number) {
       graphs: graphs.items as GraphDefinition[],
       graphAvailability: graphs.last.availability,
       inputTimeline: inputs,
+      inputRoot: inputs.roots.length ? inputRootKey(inputs.roots[0]) : null,
       timelines: timelines.items.map(item => item.timeline),
       metadataAvailability: [...inputs.availability, ...timelines.last.availability],
     });

@@ -9,16 +9,36 @@ export function Empty({ text }: { text: string }) {
   return <div className={styles.empty}>{text}</div>;
 }
 
-export function Fold({ title, defaultOpen = false, children }: { title: ReactNode; defaultOpen?: boolean; children: ReactNode }) {
+// 折叠按 Unity 组件头画；kind 为类别色变量，如 'var(--node-anim)'。
+export function Fold({ title, kind, defaultOpen = false, children }: {
+  title: ReactNode;
+  kind?: string;
+  defaultOpen?: boolean;
+  children: ReactNode;
+}) {
   return (
     <Collapsible.Root defaultOpen={defaultOpen} className={styles.fold}>
       <Collapsible.Trigger className={styles.foldTrigger}>
-        <span className={styles.foldArrow}>▶</span>
+        <span className={styles.foldArrow} />
+        {kind && <span className={styles.foldKind} style={{ ['--kind' as string]: kind }} />}
         {title}
+        <span className={styles.foldMore}>⋮</span>
       </Collapsible.Trigger>
       <Collapsible.Panel className={styles.foldPanel}>{children}</Collapsible.Panel>
     </Collapsible.Root>
   );
+}
+
+export function PanelBar({ children }: { children: ReactNode }) {
+  return <div className={styles.panelBar}>{children}</div>;
+}
+
+export function BarSeparator() {
+  return <span className={styles.barSeparator} />;
+}
+
+export function BarLabel({ children }: { children: ReactNode }) {
+  return <span className={styles.barLabel}>{children}</span>;
 }
 
 export function Facts({ fields }: { fields: Field[] }) {

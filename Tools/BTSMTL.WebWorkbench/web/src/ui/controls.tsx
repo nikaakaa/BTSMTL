@@ -76,7 +76,7 @@ export function Select<T extends string>({ value, options, onChange, placeholder
   const trigger = (
     <BaseSelect.Trigger className={styles.trigger} aria-label={label}>
       <BaseSelect.Value className={styles.triggerValue} placeholder={placeholder} />
-      <BaseSelect.Icon className={styles.caret}>▾</BaseSelect.Icon>
+      <BaseSelect.Icon className={styles.caret} />
     </BaseSelect.Trigger>
   );
   return (
@@ -142,11 +142,12 @@ function MenuEntries({ parts, entries }: { parts: MenuParts; entries: MenuEntry[
   });
 }
 
-export function MenuButton({ label, entries, children, variant = 'default' }: {
+export function MenuButton({ label, entries, children, variant = 'default', caret = false }: {
   label: string;
   entries: MenuEntry[];
   children: ReactNode;
   variant?: ButtonProps['variant'];
+  caret?: boolean;
 }) {
   const container = usePortalContainer();
   return (
@@ -154,6 +155,7 @@ export function MenuButton({ label, entries, children, variant = 'default' }: {
       <BaseMenu.Trigger aria-label={label}
         className={join(styles.button, variant === 'icon' && styles.icon, variant === 'ghost' && styles.ghost)}>
         {children}
+        {caret && <span className={styles.caret} />}
       </BaseMenu.Trigger>
       <BaseMenu.Portal container={container}>
         <BaseMenu.Positioner className={styles.positioner} sideOffset={2} align="start">
@@ -183,6 +185,21 @@ export function ContextMenu({ entries, children }: { entries: MenuEntry[]; child
 }
 
 // ── 输入 ──
+
+// 对象引用框（只读显示）：kind 为类型色变量，如 'var(--track-anim)'。
+export function ObjectField({ text, kind, className }: { text: ReactNode; kind?: string; className?: string }) {
+  return (
+    <span className={join(styles.objectField, className)} style={kind ? { ['--kind' as string]: kind } : undefined}>
+      <i className={styles.objectIcon} />
+      <span className={styles.objectText}>{text}</span>
+      <i className={styles.objectPick} />
+    </span>
+  );
+}
+
+export function CheckMark({ checked }: { checked: boolean }) {
+  return <span className={styles.check} aria-hidden>{checked ? '✓' : ''}</span>;
+}
 
 export function TextInput({ className, ...props }: Omit<ComponentProps<typeof Input>, 'className'> & { className?: string }) {
   return <Input {...props} className={join(styles.field, className)} />;

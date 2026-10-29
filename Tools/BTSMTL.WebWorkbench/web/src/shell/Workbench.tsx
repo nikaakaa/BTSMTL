@@ -15,7 +15,7 @@ const theme: DockviewTheme = {
   name: 'btsmtl',
   className: 'dockview-theme-btsmtl',
   colorScheme: 'dark',
-  gap: 0,
+  gap: 2,
   dndOverlayMounting: 'absolute',
 };
 

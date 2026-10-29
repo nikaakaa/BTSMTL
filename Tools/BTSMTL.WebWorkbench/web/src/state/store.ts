@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { ApiError, isAbort } from '../api/http';
 import type {
-  Alignment, AuthorTimeline, Availability, Frame, Geometry, GraphDefinition, HostDescription, ImageSourceAvailability,
+  Alignment, AuthorTimeline, Availability, Frame, FrozenInputTimeline, Geometry, GraphDefinition, HostDescription, ImageSourceAvailability,
   InputCatalog, InputTimeline, LiveCommandStage, PlaybackState, PlayerInputChoice, RouteFrame, RunReceipt, Sources,
   Summary, ViewerLive,
 } from '../api/types';
@@ -38,6 +38,8 @@ export interface RunData {
   graphs: GraphDefinition[] | null;
   graphAvailability: Availability[];
   inputTimeline: InputTimeline | null;
+  // Timeline 输入组与工具栏共同显示的已采用输入方案（inputRootKey）。
+  inputRoot: string | null;
   timelines: AuthorTimeline[];
   metadataAvailability: Availability[];
   geometry: Geometry | null;
@@ -63,7 +65,7 @@ export interface RunSlice extends RunData {
 }
 
 export const emptyRunData: RunData = {
-  routeFrames: [], routeProtocol: null, routeAvailability: [], graphs: null, graphAvailability: [], inputTimeline: null,
+  routeFrames: [], routeProtocol: null, routeAvailability: [], graphs: null, graphAvailability: [], inputTimeline: null, inputRoot: null,
   timelines: [], metadataAvailability: [], geometry: null, frame: null, frameKey: null, failure: null,
 };
 
@@ -259,7 +261,13 @@ export const runActions = {
   setMode(mode: string) {
     set({ mode });
   },
+  selectInputRoot(inputRoot: string) {
+    set({ inputRoot });
+  },
 };
+
+export const inputRootKey = (root: FrozenInputTimeline) =>
+  JSON.stringify([root.actorId, root.programId, root.programRevision, root.planId, root.planRevision, root.schemeIndex]);
 
 export const resourceActions = {
   select(identity: string | null) {
