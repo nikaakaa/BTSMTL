@@ -115,6 +115,12 @@ export class PreviewGraph {
     const graph = this.definitions.find(graph => graphKey(graph) === this.selectedGraph) ?? this.definitions[0];
     this.availability = graph.availability;
     this.selectionChanged();
+    this.container.dataset.graphId = graph.id;
+    this.container.dataset.graphActor = graph.actorId;
+    this.container.dataset.graphProgram = graph.programId;
+    this.container.dataset.graphRevision = graph.programRevision;
+    this.container.dataset.graphCall = '';
+    this.container.dataset.graphFrame = this.frame?.hostFrame ?? '';
     const select = this.container.querySelector('[data-graph-choice]');
     select.value = graphKey(graph); select.title = `${graph.displayName}\n角色 ${graph.actorId}\n程序 ${graph.programId}`;
     if (!graph.nodes.length) {
@@ -122,6 +128,9 @@ export class PreviewGraph {
       this.inspector.hidden = true; this.inspector.replaceChildren();
       this.container.querySelector('[data-graph-call-choice]').replaceChildren();
       this.container.querySelector('[data-graph-call-choice]').disabled = true;
+      this.container.querySelector('[data-graph-fit]').disabled = true;
+      this.container.querySelector('.graph-nodes').replaceChildren();
+      this.container.querySelector('.graph-edges').replaceChildren();
       this.world.hidden = true;
       this.container.querySelector('.observation-empty').hidden = false;
       this.container.querySelector('.observation-empty').textContent = '此图未保留作者节点来源';
@@ -153,12 +162,8 @@ export class PreviewGraph {
     }
     this.highlight();
     this.showInspector();
-    this.container.dataset.graphId = graph.id;
-    this.container.dataset.graphActor = graph.actorId;
-    this.container.dataset.graphProgram = graph.programId;
-    this.container.dataset.graphRevision = graph.programRevision;
+    this.container.querySelector('[data-graph-fit]').disabled = !this.nodes.length;
     this.container.dataset.graphCall = call ? this.selectedCall : '';
-    this.container.dataset.graphFrame = this.frame?.hostFrame ?? '';
   }
 
   mount() {
