@@ -23,6 +23,7 @@
     <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/GraphOrchestrationNodeDeclarations.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/GraphNodePortDeclarations.cs" />
     <Compile Include="../../Packages/com.btsmtl/Graphs/Authoring/BtsmtlCompositeFlowNodeConfiguration.cs" />
+    <Compile Include="../../Packages/com.btsmtl/Graphs/Authoring/BtsmtlCompositeFlowNodePorts.cs" />
     <Compile Include="../../Packages/com.btsmtl/Scripts/BtsmtlNativeValueNodeCatalog.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Blackboard/PipelineBlackboardVariableScope.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Blackboard/PipelineBlackboardVariableLifetime.cs" />

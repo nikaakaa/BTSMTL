@@ -77,15 +77,13 @@ namespace BTSMTL.Graphs
     public abstract partial class BtsmtlCompositeFlowNode<TStep> : BtsmtlFlowNode, IBtsmtlCompositeFlowNode
         where TStep : IBtsmtlGraphStepPort
     {
-        protected virtual bool HasExecutionInput => true;
-        protected virtual string ExecutionInputId => "Input";
-
         protected override void RegisterPorts()
         {
-            if (HasExecutionInput)
-                AddFlowInput("执行", RejectAuthoringExecution, ExecutionInputId);
-            for (int i = 0; i < m_Steps.Count; i++)
-                AddFlowOutput($"{i + 1}. {m_Steps[i].Name}", m_Steps[i].Id);
+            foreach (GraphNodePortDeclaration port in DeclarePorts())
+                if (port.IsInput)
+                    AddFlowInput(port.DisplayName, RejectAuthoringExecution, port.Id);
+                else
+                    AddFlowOutput(port.DisplayName, port.Id);
         }
     }
 

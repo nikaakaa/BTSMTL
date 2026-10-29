@@ -4,6 +4,11 @@ using System.Collections.Generic;
 
 namespace BTSMTL.Authoring.Graph
 {
+    public interface IGraphNodePortsSource
+    {
+        GraphNodePorts DeclarePorts();
+    }
+
     // 节点端口的平台无关声明：Unity 节点按此注册端口，独立编译按此建立编译视图。
     // 值类型使用作者值类型身份（bool、float、vector3 等）；DefaultFieldId 非空时未连接输入取该作者字段的值。
     public sealed class GraphNodePortDeclaration

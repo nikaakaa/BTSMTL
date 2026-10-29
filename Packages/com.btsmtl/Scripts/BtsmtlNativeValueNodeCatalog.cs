@@ -1,4 +1,5 @@
 using BTSMTL.Orchestration;
+using BTSMTL.Authoring.Graph;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -11,7 +12,7 @@ using ThirdPersonSimulation;
 
 namespace BTSMTL
 {
-    public sealed class BtsmtlNativeValueNodeDefinition
+    public sealed class BtsmtlNativeValueNodeDefinition : IGraphNodePortsSource
     {
         internal BtsmtlNativeValueNodeDefinition(string nodeTypeName, GraphNativeValueKind contract)
         {
@@ -31,6 +32,23 @@ namespace BTSMTL
         public string Input(string nativeId) => Contract.Input(nativeId);
 
         public string Output(string nativeId) => Contract.Output(nativeId);
+
+        public GraphNodePorts DeclarePorts()
+        {
+            var ports = new GraphNodePorts();
+            foreach (KeyValuePair<string, string> input in Contract.Inputs)
+                ports.ValueIn(input.Key, input.Key, ValueType(Contract.ValuePorts.RequireInput(input.Value).FixedKind));
+            return ports.ValueOut("Value", "Value", ValueType(Contract.ValuePorts.RequireSelection(Output("Value")).FixedKind));
+        }
+
+        static string ValueType(SemanticValueKind kind) => kind switch
+        {
+            SemanticValueKind.Boolean => "bool", SemanticValueKind.Int32 => "int",
+            SemanticValueKind.UInt64 => "ulong", SemanticValueKind.Number => "float",
+            SemanticValueKind.Identity => "string", SemanticValueKind.Vector2 => "vector2",
+            SemanticValueKind.Vector3 => "vector3", SemanticValueKind.Quaternion => "quaternion",
+            _ => throw new ArgumentException($"原生端口没有作者值类型：{kind}。", nameof(kind))
+        };
     }
 
     public static class BtsmtlNativeValueNodeCatalog
