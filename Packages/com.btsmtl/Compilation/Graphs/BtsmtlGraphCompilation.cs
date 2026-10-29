@@ -55,7 +55,7 @@ namespace BTSMTL.Compilation
                 if (required.Contains(port.Id))
                     throw new InvalidOperationException($"图节点 '{node.Id}' 必须连接目标输入 '{port.Id}'。");
                 constants.Add(new SimulationConstantInput(port.CompiledId, kind,
-                    port.Type.AuthoringValue(port.DefaultValue), Source(graphId, route, hash, node, port.Id)));
+                    port.Type.ToSemanticLiteral(port.DefaultValue), Source(graphId, route, hash, node, port.Id)));
             }
             if (!nativeSet)
                 foreach (CompileValuePort port in outputs)
@@ -89,7 +89,7 @@ namespace BTSMTL.Compilation
         public void BindDefaultInput(OperationHandle operation, string compiledPort, CompileValuePort port,
             SimulationSourceLocation source)
         {
-            int constant = m_Builder.DeclareConstant(source, "default-value", port.Type.AuthoringValue(port.DefaultValue));
+            int constant = m_Builder.DeclareConstant(source, "default-value", port.Type.ToSemanticLiteral(port.DefaultValue));
             if (constant >= 0)
             {
                 m_Builder.DeclareConstantInputBinding(operation, compiledPort, constant, port.Type.Kind, source);

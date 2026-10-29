@@ -9,9 +9,7 @@
   <ItemGroup>
     <ProjectReference Include="../BTSMTL.Orchestration.Contracts/BTSMTL.Orchestration.Contracts.csproj" />
     <ProjectReference Include="../ThirdPersonSimulation.Timeline/ThirdPersonSimulation.Timeline.csproj" />
-    <Compile Include="../../Packages/com.btsmtl/Authoring/Documents/*.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Timeline/*.cs" />
-    <Compile Include="../../Packages/com.btsmtl/Authoring/Storage/*.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/GraphAuthoringFieldMetadata.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/FieldContracts.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/GraphAuthoringGeneratedContract.cs" />
@@ -24,6 +22,8 @@
     <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/GraphOrchestrationPorts.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/GraphOrchestrationNodeDeclarations.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/GraphNodePortDeclarations.cs" />
+    <Compile Include="../../Packages/com.btsmtl/Graphs/Authoring/BtsmtlCompositeFlowNodeConfiguration.cs" />
+    <Compile Include="../../Packages/com.btsmtl/Scripts/BtsmtlNativeValueNodeCatalog.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Blackboard/PipelineBlackboardVariableScope.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Blackboard/PipelineBlackboardVariableLifetime.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Blackboard/PipelineBlackboardVariablePolicy.cs" />

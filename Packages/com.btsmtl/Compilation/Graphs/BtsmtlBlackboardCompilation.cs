@@ -225,7 +225,7 @@ namespace BTSMTL.Compilation
                     ProgramStateOwnerKind.Blackboard,
                     ProgramStateSemantic.BlackboardValue,
                     stateKey,
-                    valueType.AuthoringValue(item.Declaration.DefaultValue))
+                    valueType.ToSemanticLiteral(item.Declaration.DefaultValue))
                 : m_Builder.DeclareStandaloneStateSlot(
                     source,
                     valueKind,

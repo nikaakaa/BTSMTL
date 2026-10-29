@@ -26,7 +26,7 @@ namespace BTSMTL.Compilation
         public bool IsEnum => Kind == SemanticValueKind.Enum;
 
         // 作者值转为编译字面量：枚举按枚举身份与整数值，其余保持原值。
-        public object AuthoringValue(object value) => IsEnum
+        public object ToSemanticLiteral(object value) => IsEnum
             ? new SemanticEnumValue(EnumIdentity, Convert.ToInt32(value, CultureInfo.InvariantCulture))
             : value;
 

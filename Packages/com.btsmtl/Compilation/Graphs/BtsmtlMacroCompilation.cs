@@ -102,7 +102,7 @@ namespace BTSMTL.Compilation
             SemanticValueKind kind = parameter.Type.Kind;
             int value = m_Builder.DeclareStandaloneStateSlot(source, OrchestrationValuePortContracts.ToState(kind),
                 ProgramStateOwnerKind.Blackboard, ProgramStateSemantic.BlackboardValue, owner,
-                parameter.Type.AuthoringValue(parameter.Type.DefaultValue));
+                parameter.Type.ToSemanticLiteral(parameter.Type.DefaultValue));
             m_StateSlots.Add(value);
             m_StateSlots.Add(m_Builder.DeclareStandaloneStateSlot(source, ProgramStateValueKind.BlackboardOwnerToken,
                 ProgramStateOwnerKind.Blackboard, ProgramStateSemantic.BlackboardOwnerToken, owner));
@@ -121,7 +121,7 @@ namespace BTSMTL.Compilation
             object value = port.DefaultValue;
             if (value == null && port.Type.FullName == "System.String")
                 value = string.Empty;
-            int constant = m_Builder.DeclareConstant(source, "default-value", port.Type.AuthoringValue(value));
+            int constant = m_Builder.DeclareConstant(source, "default-value", port.Type.ToSemanticLiteral(value));
             if (constant >= 0)
             {
                 m_Builder.DeclareConstantInputBinding(operation, compiledPort, constant, port.Type.Kind, source);

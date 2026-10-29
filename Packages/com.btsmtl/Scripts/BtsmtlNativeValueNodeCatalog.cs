@@ -44,7 +44,7 @@ namespace BTSMTL
 
 #if UNITY_5_3_OR_NEWER
         static readonly IReadOnlyDictionary<string, Type> s_SourceTypes =
-            new[] { typeof(SimplexNode).Assembly, typeof(BtsmtlFlowNode).Assembly }.Distinct()
+            new[] { typeof(SimplexNode).Assembly, typeof(BtsmtlNativeValueNodeCatalog).Assembly }.Distinct()
                 .SelectMany(assembly => assembly.GetTypes()).Where(type => s_Nodes.ContainsKey(type.Name))
                 .ToDictionary(type => type.Name, StringComparer.Ordinal);
 

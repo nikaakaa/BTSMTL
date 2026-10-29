@@ -21,7 +21,7 @@ namespace BTSMTL
             throw new InvalidOperationException($"图值类型 '{type.FullName}' 没有编译合同。");
         }
 
-        public static object AuthoringValue(Type type, object value) => type.IsEnum
+        public static object ToSemanticLiteral(Type type, object value) => type.IsEnum
             ? new SemanticEnumValue(type.AssemblyQualifiedName, Convert.ToInt32(value, CultureInfo.InvariantCulture))
             : value;
     }

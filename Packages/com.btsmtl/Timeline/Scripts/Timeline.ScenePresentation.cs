@@ -114,7 +114,7 @@ namespace BTSMTL.Timeline
 #if UNITY_EDITOR
         public override ClipCapabilities Capabilities => ClipCapabilities.Resizable | ClipCapabilities.TickQuantized;
         [BTSMTL.Authoring.Graph.GraphAuthoringDefault("valueCurve")]
-        public static AnimationCurve AuthoringValueCurveDefault => AnimationCurve.Linear(0f, 0f, 1f, 0f);
+        public static AnimationCurve DefaultValueCurve => AnimationCurve.Linear(0f, 0f, 1f, 0f);
 
 #endif
     }

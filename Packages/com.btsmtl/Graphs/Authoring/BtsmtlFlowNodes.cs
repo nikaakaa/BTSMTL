@@ -55,7 +55,7 @@ namespace BTSMTL.Graphs
         protected static void RejectAuthoringExecution(Flow flow) =>
             throw new InvalidOperationException("BTSMTL 作者图只能运行正式编译内容。");
 
-        protected static T RejectAuthoringValue<T>() =>
+        protected static T RejectAuthoringEvaluation<T>() =>
             throw new InvalidOperationException("BTSMTL 作者值只能由正式编排求值器读取。");
 
 #if UNITY_EDITOR
@@ -186,7 +186,7 @@ namespace BTSMTL.Graphs
     public sealed class BtsmtlVariableGetFlowNode<T> : BtsmtlVariableFlowNode<T>
     {
         public override bool Writes => false;
-        protected override void RegisterPorts() => AddValueOutput<T>("值", RejectAuthoringValue<T>, "Value");
+        protected override void RegisterPorts() => AddValueOutput<T>("值", RejectAuthoringEvaluation<T>, "Value");
     }
 
     [Name("写入图变量"), Category("BTSMTL/变量")]
@@ -198,7 +198,7 @@ namespace BTSMTL.Graphs
             AddFlowInput("执行", RejectAuthoringExecution, "In");
             AddValueInput<T>("值", "Value");
             AddFlowOutput("继续", "Out");
-            AddValueOutput<T>("值", RejectAuthoringValue<T>, "Value");
+            AddValueOutput<T>("值", RejectAuthoringEvaluation<T>, "Value");
         }
     }
 
@@ -219,6 +219,6 @@ namespace BTSMTL.Graphs
         public Type ValueType => typeof(T);
         [GraphAuthoringConfigure]
         public void ConfigureInput(string inputId) => m_InputId = inputId;
-        protected override void RegisterPorts() => AddValueOutput<T>("值", RejectAuthoringValue<T>, "Value");
+        protected override void RegisterPorts() => AddValueOutput<T>("值", RejectAuthoringEvaluation<T>, "Value");
     }
 }
