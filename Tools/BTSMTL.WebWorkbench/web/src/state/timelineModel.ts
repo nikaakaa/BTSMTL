@@ -148,9 +148,9 @@ export const segmentTitle = (segment: RouteSegment) =>
   `${segment.timeline?.displayName ?? segment.documentId.slice(0, 8)}${segment.state ? ` · ${segment.state.name}` : ''} · ${segment.start.toFixed(2)}–${segment.end.toFixed(2)} s`;
 
 // 片段引用的节点图（graphId 形如 `类别:图身份`）；本次运行没有这张图时为 null。
-export function clipGraph(graphs: GraphDefinition[] | null, clip: AuthorClip): GraphDefinition | null {
-  if (!clip.graphId) return null;
-  const id = clip.graphId.slice(clip.graphId.indexOf(':') + 1);
+export function clipGraph(graphs: GraphDefinition[] | null, graphId: string | null): GraphDefinition | null {
+  if (!graphId) return null;
+  const id = graphId.slice(graphId.indexOf(':') + 1);
   return graphs?.find(graph => graph.id === id) ?? null;
 }
 

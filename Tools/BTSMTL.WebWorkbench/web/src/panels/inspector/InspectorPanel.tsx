@@ -323,7 +323,7 @@ function ClipInspector({ id, missing }: { id: string; missing: ReactNode }) {
   if (!found) return missing;
   const { timeline, track, clip } = found;
   const kind = trackColors[clipKind(clip)];
-  const graph = clipGraph(graphs, clip);
+  const graph = clipGraph(graphs, clip.graphId);
   const instances = segments.map(segment => ({
     segment, start: segment.origin + clip.startSeconds, end: Math.min(segment.origin + clip.endSeconds, segment.end),
   })).filter(item => item.start <= item.segment.end);
@@ -416,15 +416,23 @@ function InputItemInspector({ id, missing }: { id: string; missing: ReactNode })
   const [, trackId, itemId] = id.split('/');
   const found = useInputTrack(trackId);
   const seconds = useWorkbench(state => state.seconds);
+  const graphs = useWorkbench(state => state.graphs);
   const clip = found?.track.clips.find(item => item.id === itemId);
   const marker = found?.track.markers.find(item => item.id === itemId);
   if (!found || (!clip && !marker)) return missing;
   const writes = (clip ?? marker)!.writes;
   const kind = 'var(--track-in)';
+  const graph = clipGraph(graphs, (clip ?? marker)!.graphId);
+  const at = clip ? clip.startSeconds : marker!.seconds;
   return (
     <>
       <Head kind={kind} name={[...new Set(writes.map(write => write.keyId))].join(' / ') || '输入'} sub={`${found.root.displayName} · ${found.track.displayName}`} />
       <Fold title={clip ? '按住段' : '输入标记'} kind={kind} defaultOpen>
+        {graph
+          ? <Link label="节点图" text={graphName(graph)} kind="var(--node-flow)" tip="在节点图面板打开" onOpen={() => openGraph(graph)} />
+          : <Value label="节点图" mono={false} value="本次运行没有这张图" />}
+        <Link label="跳到" text={`${at.toFixed(3)} s`} kind={kind} tip="游标跳到这里"
+          onOpen={() => transport.seek(nearestFrame(getState().routeFrames, at))} />
         {clip ? (
           <>
             <Value label="开始" value={`${clip.startSeconds.toFixed(3)} s`} />

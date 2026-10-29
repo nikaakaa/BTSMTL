@@ -6,7 +6,7 @@ import {
   type ReactNode,
 } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import type { FrozenInputTimeline } from '../../api/types';
+import type { FrozenInputTimeline, InputWrite } from '../../api/types';
 import { usePanelId, usePanelParams, usePanelVisible, usePanelWindow } from '../../shell/panel';
 import { clearRendered, frameKey, reportRendered } from '../../shell/readiness';
 import { FrameField, useTransportState } from '../../shell/Toolbar';
@@ -30,7 +30,7 @@ import styles from './timeline.module.css';
 
 const sidebarWidth = 320;
 const minSpan = 0.05;
-const rowHeights = { group: 26, anim: 40, motion: 40, act: 34, in: 36, other: 34, inputGroup: 26 } as const;
+const rowHeights = { group: 26, anim: 40, motion: 40, act: 34, in: 34, other: 34, inputGroup: 26 } as const;
 const overscan = 120;
 // 窄于此宽度的片段把名字画在片段后面。
 const labelInside = 46;
@@ -658,7 +658,7 @@ const TrackLine = memo(function TrackLine({ row }: { row: TrackRow }) {
         <Blend key={blend.key} start={blend.start} end={blend.end} />
       ))}
       {row.markers.filter(marker => marker.seconds >= range.start && marker.seconds <= range.end).map(marker => (
-        <Marker key={marker.key} seconds={marker.seconds} title={marker.graphId} />
+        <Marker key={marker.key} seconds={marker.seconds} label={`${row.track.displayName} 标记`} graphId={marker.graphId} />
       ))}
     </Line>
   );
@@ -687,43 +687,54 @@ function Positioned({ start, end, className, children, style, title }: {
 }
 
 const Clip = memo(function Clip({ clip, kind, next }: { clip: ClipInstance; kind: TrackKind; next: number }) {
-  const { setNodeRef, itemStyle, itemContentStyle } = useItem({ id: clip.key, span: { start: clip.start, end: clip.end }, disabled: true });
+  return (
+    <ClipBox boxKey={clip.key} selectId={clip.selectId} kind={kind} label={clip.label} start={clip.start} end={clip.end}
+      exit={clip.exit} next={next} graphId={clip.clip.graphId} />
+  );
+});
+
+// 片段框：作者片段与预览输入的按住段共用同一外观、选中、框选与双击打开节点图。
+// exit 之后的部分压暗；next 为同轨下一个片段的起点，窄片段的名字画在两者之间。
+function ClipBox({ boxKey, selectId, kind, label, start, end, exit, next, graphId }: {
+  boxKey: string; selectId: string; kind: TrackKind; label: string; start: number; end: number; exit: number; next: number;
+  graphId: string | null;
+}) {
+  const { setNodeRef, itemStyle, itemContentStyle } = useItem({ id: boxKey, span: { start, end }, disabled: true });
   const { valueToPixels } = useTimelineContext();
-  const active = useWorkbench(state => state.seconds !== null && clip.start <= state.seconds && state.seconds < Math.min(clip.end, clip.exit));
-  const boxed = useContext(BoxedContext).has(clip.key);
-  const selected = useSelected(clip.selectId, 'clip') || boxed;
-  const width = valueToPixels(clip.end - clip.start);
-  const dimmed = clip.start >= clip.exit;
-  // 超出段离开时刻的部分压暗。
-  const cut = !dimmed && clip.end > clip.exit ? valueToPixels(clip.exit - clip.start) : null;
+  const active = useWorkbench(state => state.seconds !== null && start <= state.seconds && state.seconds < Math.min(end, exit));
+  const boxed = useContext(BoxedContext).has(boxKey);
+  const selected = useSelected(selectId, 'clip') || boxed;
+  const width = valueToPixels(end - start);
+  const dimmed = start >= exit;
+  const cut = !dimmed && end > exit ? valueToPixels(exit - start) : null;
   const band = kind === 'anim' || kind === 'motion';
   const inside = band || width >= labelInside;
-  const outsideWidth = Number.isFinite(next) ? valueToPixels(next - clip.end) - 10 : 400;
+  const outsideWidth = Number.isFinite(next) ? valueToPixels(next - end) - 10 : 400;
   return (
     <div ref={setNodeRef} style={itemStyle} className={styles.item}>
       <div style={itemContentStyle}>
-        <button className={styles.clip} data-box={clip.key} data-select={clip.selectId} data-kind={kind} data-active={active || undefined} data-selected={selected || undefined}
-          data-dim={dimmed || undefined}
-          title={`${clip.label} · ${clip.start.toFixed(3)}–${clip.end.toFixed(3)} s${clip.end > clip.exit ? `（${clip.exit.toFixed(3)} s 离开本段）` : ''}`}
-          onClick={() => selectionActions.select({ kind: 'clip', id: clip.selectId })}
-          onDoubleClick={() => openClipGraph(clip)}>
-          {inside && <span className={styles.clipLabel}>{clip.label}</span>}
+        <button className={styles.clip} data-box={boxKey} data-select={selectId} data-kind={kind} data-active={active || undefined}
+          data-selected={selected || undefined} data-dim={dimmed || undefined}
+          title={`${label} · ${start.toFixed(3)}–${end.toFixed(3)} s${end > exit ? `（${exit.toFixed(3)} s 离开本段）` : ''}\n双击打开节点图`}
+          onClick={() => selectionActions.select({ kind: 'clip', id: selectId })}
+          onDoubleClick={() => openClipGraph(graphId, label)}>
+          {inside && <span className={styles.clipLabel}>{label}</span>}
           {band && <><i className={styles.easeIn} /><i className={styles.easeOut} /></>}
           {cut !== null && <i className={styles.clipCut} style={{ left: cut }} />}
         </button>
         {!inside && outsideWidth > 12 && (
-          <span className={styles.clipOut} data-dim={dimmed || undefined} style={{ left: width + 5, maxWidth: outsideWidth }}>{clip.label}</span>
+          <span className={styles.clipOut} data-dim={dimmed || undefined} style={{ left: width + 5, maxWidth: outsideWidth }}>{label}</span>
         )}
       </div>
     </div>
   );
-});
+}
 
-// 照 Timeline Editor：双击片段打开它的节点图。
-function openClipGraph(clip: ClipInstance) {
-  const graph = clipGraph(getState().graphs, clip.clip);
+// 照 Timeline Editor：双击片段或标记打开它的节点图。
+function openClipGraph(graphId: string | null, label: string) {
+  const graph = clipGraph(getState().graphs, graphId);
   if (!graph) {
-    consoleActions.log('warn', 'Timeline', clip.clip.graphId ? `片段 ${clip.label} 的节点图不在本次运行中` : `片段 ${clip.label} 没有节点图`);
+    consoleActions.log('warn', 'Timeline', graphId ? `${label} 的节点图不在本次运行中` : `${label} 没有节点图`);
     return;
   }
   selectionActions.showGraph(graphKey(graph));
@@ -740,9 +751,21 @@ function Blend({ start, end }: { start: number; end: number }) {
   );
 }
 
-function Marker({ seconds, title }: { seconds: number; title: string }) {
+// 标记：作者标记与预览输入的单次按键共用；单击选中（有 selectId 时），双击打开节点图。
+function Marker({ seconds, label, graphId, selectId }: { seconds: number; label: string; graphId: string; selectId?: string }) {
   const { range, valueToPixels } = useTimelineContext();
-  return <span className={styles.marker} style={{ left: valueToPixels(seconds - range.start) }} title={title} />;
+  const active = useWorkbench(state => {
+    const current = state.routeFrames[state.frameIndex]?.seconds;
+    const previous = state.frameIndex > 0 ? state.routeFrames[state.frameIndex - 1].seconds : -Infinity;
+    return current !== undefined && seconds > previous && seconds <= current;
+  });
+  const selected = useWorkbench(state => !!selectId && state.selection?.kind === 'clip' && state.selection.id === selectId);
+  return (
+    <button className={styles.marker} data-active={active || undefined} data-selected={selected || undefined}
+      style={{ left: valueToPixels(seconds - range.start) }} title={`${label} · ${seconds.toFixed(3)} s\n双击打开节点图`}
+      onClick={() => { if (selectId) selectionActions.select({ kind: 'clip', id: selectId }); }}
+      onDoubleClick={() => openClipGraph(graphId, label)} />
+  );
 }
 
 // ── 预览输入组 ──
@@ -760,7 +783,7 @@ function InputGroupLine({ open, toggle, roots }: {
           aria-label={open ? '折叠' : '展开'}>
           <Triangle open={open && !!options.length} />
         </button>
-        <span className={styles.name}>预览输入</span>
+        <span className={styles.segmentTitle}>预览输入</span>
         <span className={styles.scheme}>
           <Select label="已采用输入方案" placeholder="方案" value={inputRoot} options={options}
             disabled={options.length < 2} tip={options.length ? undefined : reason || '本次运行没有预览输入'}
@@ -771,70 +794,42 @@ function InputGroupLine({ open, toggle, roots }: {
   );
 }
 
+// 预览输入的按住段名字：所写的键，与 Timeline Editor 的“Fire 按住”一致。
+const inputLabel = (writes: InputWrite[], hold: boolean) =>
+  `${[...new Set(writes.map(write => write.keyId))].join(' / ') || '输入'}${hold ? ' 按住' : ''}`;
+
+// 预览输入轨与作者轨同一外观：轨道头、片段框、标记；路线结束后的部分压暗。
 const InputTrackLine = memo(function InputTrackLine({ row }: { row: InputTrackRow }) {
   const selected = useSelected(row.selectId, 'track');
-  const value = useWorkbench(state => {
-    const seconds = state.seconds;
-    if (seconds === null) return '';
-    const clip = row.track.clips.find(item => item.startSeconds <= seconds && seconds <= item.endSeconds);
-    return clip ? [...new Set(clip.writes.map(write => write.keyId))].join(' / ') : '';
-  });
+  const routeEnd = useWorkbench(state => state.routeFrames.at(-1)?.seconds ?? Infinity);
   const { range } = useTimelineContext();
+  const clips = row.track.clips;
+  const nextStarts = useMemo(() => {
+    const starts = clips.map(clip => clip.startSeconds).sort((left, right) => left - right);
+    return new Map(clips.map(clip => [clip.id, starts.find(start => start > clip.startSeconds) ?? Infinity]));
+  }, [clips]);
   return (
     <Line id={row.id} height={rowHeights.in} headClass={styles.trackHead} head={
-      <button className={`${styles.headButton} ${styles.inputHead}`} data-selected={selected || undefined}
+      <button className={styles.headButton} data-selected={selected || undefined}
         style={{ ['--tc' as string]: trackColors.in }} onClick={() => selectionActions.select({ kind: 'track', id: row.selectId })}>
         <span className={styles.slot} />
         <span className={styles.name}>{row.track.displayName}</span>
-        <span className={styles.frameValue}>{value || '—'}</span>
       </button>
     }>
-      {row.track.clips.filter(clip => clip.endSeconds >= range.start && clip.startSeconds <= range.end).map(clip => (
-        <InputHold key={clip.id} trackId={row.track.id} clip={clip} />
-      ))}
+      {clips.filter(clip => clip.endSeconds >= range.start && clip.startSeconds <= range.end).map(clip => {
+        const selectId = inputClipSelectId(row.track.id, clip.id);
+        return (
+          <ClipBox key={clip.id} boxKey={selectId} selectId={selectId} kind="in" label={inputLabel(clip.writes, true)}
+            start={clip.startSeconds} end={clip.endSeconds} exit={routeEnd} next={nextStarts.get(clip.id)!} graphId={clip.graphId} />
+        );
+      })}
       {row.track.markers.filter(marker => marker.seconds >= range.start && marker.seconds <= range.end).map(marker => (
-        <InputKey key={marker.id} trackId={row.track.id} id={marker.id} seconds={marker.seconds}
-          title={`${marker.seconds.toFixed(3)} s\n${marker.writes.map(write => write.keyId).join(' / ')}`} />
+        <Marker key={marker.id} seconds={marker.seconds} label={inputLabel(marker.writes, false)} graphId={marker.graphId}
+          selectId={inputClipSelectId(row.track.id, marker.id)} />
       ))}
     </Line>
   );
 });
-
-type InputClip = FrozenInputTimeline['tracks'][number]['clips'][number];
-
-const InputHold = memo(function InputHold({ trackId, clip }: { trackId: string; clip: InputClip }) {
-  const { setNodeRef, itemStyle } = useItem({ id: `input/${trackId}/${clip.id}`, span: { start: clip.startSeconds, end: clip.endSeconds }, disabled: true });
-  const active = useWorkbench(state => state.seconds !== null && clip.startSeconds <= state.seconds && state.seconds <= clip.endSeconds);
-  const selectId = inputClipSelectId(trackId, clip.id);
-  const boxed = useContext(BoxedContext).has(selectId);
-  const selected = useSelected(selectId, 'clip') || boxed;
-  const keys = [...new Set(clip.writes.map(write => write.keyId))].join(' / ');
-  return (
-    <div ref={setNodeRef} style={itemStyle} className={styles.item}>
-      <button className={styles.hold} data-box={selectId} data-select={selectId} data-active={active || undefined} data-selected={selected || undefined}
-        title={`${clip.startSeconds.toFixed(3)} — ${clip.endSeconds.toFixed(3)} s\n${keys}`}
-        onClick={() => selectionActions.select({ kind: 'clip', id: selectId })}>
-        <i className={styles.holdBar} /><i className={styles.key} /><i className={styles.keyEnd} />
-        <span>{keys}</span>
-      </button>
-    </div>
-  );
-});
-
-function InputKey({ trackId, id, seconds, title }: { trackId: string; id: string; seconds: number; title: string }) {
-  const { range, valueToPixels } = useTimelineContext();
-  const active = useWorkbench(state => {
-    const current = state.routeFrames[state.frameIndex]?.seconds;
-    const previous = state.frameIndex > 0 ? state.routeFrames[state.frameIndex - 1].seconds : -Infinity;
-    return current !== undefined && seconds > previous && seconds <= current;
-  });
-  const selectId = inputClipSelectId(trackId, id);
-  return (
-    <button className={styles.inputKey} data-active={active || undefined} title={title}
-      style={{ left: valueToPixels(seconds - range.start) }}
-      onClick={() => selectionActions.select({ kind: 'clip', id: selectId })} />
-  );
-}
 
 // ── 游标覆盖线与结束线：直接改 transform，不经过 React ──
 
