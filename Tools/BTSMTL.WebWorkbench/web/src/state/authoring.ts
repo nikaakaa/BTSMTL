@@ -353,12 +353,17 @@ export const authoringActions = {
     previewController?.abort();
     set({ saving: true });
     const accept = (content: SkillSnapshot, lastSave: SaveOutcome) => {
+      if (get().skill !== skill) {
+        set({ saving: false });
+        return false;
+      }
       clearHistory();
       set({
         revision: content.revision, files: Object.fromEntries(content.files.map(file => [file.path, file.content])),
         edited: {}, removed: [], addedPorts: {}, externalChange: false, version: get().version + 1, saving: false, lastSave,
       });
       void reloadDocument();
+      return true;
     };
     try {
       const selection = await selectedPreview();
@@ -366,9 +371,9 @@ export const authoringActions = {
         content: { files, removedFiles: removed }, preview: selection.kind === 'selected' ? selection.target : null,
       });
       const outcome = savedOutcome(result, result.preview, selection.kind === 'unavailable' ? selection.reason : '');
-      accept(result.content, outcome);
+      const currentSkill = accept(result.content, outcome);
       consoleActions.log('info', '作者', `${skill} 已保存并编译：${result.compilation.sourceRevision}`);
-      if (result.preview !== null) {
+      if (currentSkill && result.preview !== null) {
         consoleActions.log(outcome.ok ? 'info' : 'error', '预览', outcome.message, JSON.stringify(result.preview));
         const controller = previewController = new AbortController();
         void trackPreview({ save: result, receipt: result.preview, controller });
