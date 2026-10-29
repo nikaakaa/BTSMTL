@@ -13,9 +13,11 @@ import { QueryPanel } from './records/QueryPanel';
 import { ResourcesPanel } from './resources/ResourcesPanel';
 import { TimelinePanel } from './timeline/TimelinePanel';
 import { ViewportPanel } from './viewport/ViewportPanel';
+import { WallContactPanel } from './wall-contact/WallContactPanel';
 
 const contents: Record<PanelType, FunctionComponent> = {
   player: PlayerPanel,
+  'wall-contact': WallContactPanel,
   viewport: ViewportPanel,
   resources: ResourcesPanel,
   graph: GraphPanel,

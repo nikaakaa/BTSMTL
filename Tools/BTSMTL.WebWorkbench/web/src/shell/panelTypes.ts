@@ -1,12 +1,13 @@
 // 面板类型表（D3）。类型 id 固定，实例 id 为"类型 id-序号"。
 export const panelTypes = [
-  'player', 'viewport', 'resources', 'graph', 'inspector', 'frames', 'timeline', 'query', 'compare', 'console', 'content',
+  'player', 'viewport', 'resources', 'wall-contact', 'graph', 'inspector', 'frames', 'timeline', 'query', 'compare', 'console', 'content',
 ] as const;
 
 export type PanelType = typeof panelTypes[number];
 
 export const panelInfo: Record<PanelType, { title: string; multi: boolean }> = {
   player: { title: '画面', multi: false },
+  'wall-contact': { title: '扶墙调节', multi: false },
   viewport: { title: '逻辑视图', multi: true },
   resources: { title: '动画资源', multi: false },
   graph: { title: '节点图', multi: true },

@@ -26,6 +26,7 @@ const companions: Record<PanelType, PanelType[]> = {
   resources: ['player', 'viewport', 'resources'],
   graph: ['graph'],
   inspector: ['inspector', 'frames'],
+  'wall-contact': ['inspector', 'frames'],
   frames: ['inspector', 'frames'],
   timeline: ['timeline', 'query', 'compare', 'console'],
   query: ['timeline', 'query', 'compare', 'console'],
