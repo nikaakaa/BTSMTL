@@ -416,6 +416,8 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
   const build = useCallback((previous: CanvasNode[]) => {
     const selected = pendingSelect.current ?? new Set(previous.filter(node => node.selected).map(node => node.id));
     pendingSelect.current = null;
+    // 重建保留已测量的尺寸：否则节点要等重新测量才显示，连线在此之前不画。
+    const measured = new Map(previous.map(node => [node.id, node.measured]));
     // 分组画在节点下面，只有标题可以拖动。
     const groupNodes = groups.map((group): GroupNode => ({
       id: groupNodeId(group), type: 'canvasGroup', position: { x: group.rect.x, y: group.rect.y },
@@ -427,6 +429,7 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
       const timeline = playedTimeline(hierarchy, graph, laid.node.id);
       return {
         id: laid.node.id, type: machine ? 'state' : 'flow', position: { x: laid.x, y: laid.y }, selected: selected.has(laid.node.id),
+        measured: measured.get(laid.node.id),
         data: {
           laid, index, selectId: nodeSelectId(graph, laid.node), system: machine && isSystemNode(graph, hierarchy, laid),
           timeline, children,

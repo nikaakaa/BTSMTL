@@ -135,8 +135,9 @@ export interface GraphAnchor {
   kind: string;
   type: string;
   uid: string;
-  x: number;
-  y: number;
+  // 按技能 JSON 规则解析：1.0 形式为浮点对象，用 numberOf 取值。
+  x: JsonValue;
+  y: JsonValue;
 }
 
 // 可新建元素的原 C# 默认值与存储形状；轨道、片段带 ContractKind。

@@ -14,7 +14,7 @@ import { clearRendered, frameKey, reportRendered } from '../../shell/readiness';
 import { FrameField, useTransportState } from '../../shell/Toolbar';
 import { openPanel } from '../../shell/layout';
 import {
-  applyTimelineEdits, authoringActions, clipTemplatesFor, timelinePath, trackContract, useAuthoring, useSkillElements,
+  applyTimelineEdits, authoringActions, clipTemplatesFor, timelinePath, trackContract, trackDomains, useAuthoring, useSkillElements,
 } from '../../state/authoring';
 import {
   consoleActions, getState, inputRootKey, runActions, selectionActions, useWorkbench, type RouteFrameSpan,
@@ -464,13 +464,14 @@ function AddTrack({ documentId }: { documentId: string | null }) {
   const author = useAuthoring(state => state.author && !!state.skill);
   const elements = useSkillElements(author && documentId !== null);
   if (!author || !documentId) return null;
-  const entries: MenuEntry[] = elements ? elements.tracks.map(template => ({
-    label: template.kind ?? template.clrType,
+  // 每种轨道按可用执行域各列一项。
+  const entries: MenuEntry[] = elements ? elements.tracks.flatMap(template => trackDomains(template).map((domain): MenuEntry => ({
+    label: `${template.kind ?? template.clrType} · ${domain}`,
     onSelect: () => {
-      const id = authoringActions.addTrack(documentId, template.value, template.kind ?? '新轨道');
+      const id = authoringActions.addTrack(documentId, { ...template.value, m_ExecutionDomain: domain }, template.kind ?? '新轨道');
       selectionActions.select({ kind: 'track', id: trackSelectId(documentId, id) });
     },
-  })) : [{ label: '读取中', disabled: true, onSelect: () => {} }];
+  }))) : [{ label: '读取中', disabled: true, onSelect: () => {} }];
   return <MenuButton label="添加轨道" caret entries={entries}>添加轨道</MenuButton>;
 }
 

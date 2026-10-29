@@ -434,6 +434,17 @@ export function trackContract(documentId: string, trackId: string): string | nul
   return (document ? tracksOf(document).find(track => track.m_AuthoringId === trackId)?.ContractKind as string | undefined : undefined) ?? null;
 }
 
+// 新轨道的执行域：Unity 取放置目录里该轨道合同的默认域，.NET 侧没有目录，
+// 按技能现有同种轨道用过的域给出；没有先例时列出枚举的全部域。由作者在添加时选择。
+export function trackDomains(template: ElementTemplate): string[] {
+  const used = new Set<string>();
+  for (const path of livePaths().filter(item => item.startsWith('timelines/')))
+    for (const track of tracksOf(currentDocument(path)!))
+      if (track.ContractKind === template.kind && typeof track.m_ExecutionDomain === 'string') used.add(track.m_ExecutionDomain);
+  const all = template.shape.members?.find(member => member.member === 'm_ExecutionDomain')?.enumValues ?? [];
+  return used.size ? all.filter(domain => used.has(domain)) : all;
+}
+
 // 轨道可放的片段种类：Unity 的放置目录（TimelineContractCatalog）在 .NET 侧不可得，
 // 按技能现有 Timeline 中同种轨道已放过的片段种类给出；没有先例的轨道列出全部种类，由保存时的正式编译判断。
 export function clipTemplatesFor(elements: SkillElements, contract: string | null): ElementTemplate[] {
@@ -738,7 +749,8 @@ export function createGraph(elements: SkillElements, role: string, name: string)
   if (currentDocument(layoutPath))
     authoringActions.edit(layoutPath, document => {
       const nodes = layoutNodes(document, id);
-      for (const anchor of anchors) nodes[anchor.uid] = positionValue(anchor);
+      // 锚点坐标按技能 JSON 规则解析，可能是 1.0 形式的浮点对象。
+      for (const anchor of anchors) nodes[anchor.uid] = positionValue({ x: numberOf(anchor.x), y: numberOf(anchor.y) });
     });
   return id;
 }

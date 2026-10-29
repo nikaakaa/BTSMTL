@@ -342,9 +342,8 @@ export function BlackboardFields({ graphId, shape, editable }: { graphId: string
   const add = () => {
     const name = draft.name.trim();
     if (!name) return;
-    const scope = member('m_Scope')?.enumValues?.[0] ?? 'ActionInstance';
-    const lifetime = member('m_Lifetime')?.enumValues?.[0] ?? 'ActionInstance';
-    graphAuthoring.addVariable(graphId, name, draft.varType, { m_Scope: scope, m_Lifetime: lifetime, m_Category: '' });
+    // 新变量默认动作实例作用域与生命周期（合法配对），在声明里改。
+    graphAuthoring.addVariable(graphId, name, draft.varType, { m_Scope: 'ActionInstance', m_Lifetime: 'ActionInstance', m_Category: '' });
     setDraft({ ...draft, name: '' });
   };
   return (
