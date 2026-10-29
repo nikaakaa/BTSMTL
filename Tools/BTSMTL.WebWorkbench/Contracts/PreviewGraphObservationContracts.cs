@@ -16,13 +16,17 @@ public sealed record PreviewPortSample(string Sequence, string GraphId, string N
     public string Reason { get; init; } = string.Empty;
 }
 public sealed record PreviewGraphEndpoint(string GraphId, string NodeId, string PortId);
-public sealed record PreviewGraphNode(string Id, string DisplayName, string InvocationPath);
+public sealed record PreviewGraphPosition(double X, double Y);
+public sealed record PreviewGraphNode(string Id, string? DisplayName, string InvocationPath)
+{
+    public PreviewGraphPosition? Position { get; init; }
+}
 public sealed record PreviewGraphPort(string NodeId, string Id, string DisplayName, string Direction,
     bool IsTrigger, string InvocationPath);
 public sealed record PreviewGraphEdge(string Id, string Kind, string InvocationPath,
     PreviewGraphEndpoint? Source, PreviewGraphEndpoint? Target, bool Available, string Reason);
 public sealed record PreviewGraphDefinition(string ActorId, string ProgramId, string ProgramRevision,
-    string Id, string DisplayName, PreviewGraphNode[] Nodes, PreviewGraphPort[] Ports, PreviewGraphEdge[] Edges,
+    string Id, string? DisplayName, PreviewGraphNode[] Nodes, PreviewGraphPort[] Ports, PreviewGraphEdge[] Edges,
     PreviewObservationAvailability[] Availability);
 public sealed record PreviewGraphPage(string RunId, string ContentRevision, string Protocol,
     PreviewObservationAvailability[] Availability, int Offset, int Total, int? NextOffset,

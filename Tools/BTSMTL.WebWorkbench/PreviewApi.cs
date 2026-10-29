@@ -15,6 +15,8 @@ public interface IPreviewHost
     Task<object> Control(Guid id, JsonElement request);
     object ReadControl(Guid id, Guid commandId);
     PreviewSummary Summary(Guid id);
+    object InputTimeline(Guid id);
+    object Timelines(Guid id, int offset, int limit);
     PreviewPage<PreviewFrame> Frames(Guid id, int offset, int limit);
     PreviewRoute Route(Guid id);
     PreviewRoutePage RouteFrames(Guid id, IReadOnlyDictionary<string, string> query);
@@ -46,6 +48,8 @@ public static class PreviewApi
         routes.MapPost("/runs/{id:guid}/controls", (Guid id, JsonElement request) => host.Control(id, request));
         routes.MapGet("/runs/{id:guid}/controls/{commandId:guid}", (Guid id, Guid commandId) => host.ReadControl(id, commandId));
         routes.MapGet("/runs/{id:guid}/summary", (Guid id) => host.Summary(id));
+        routes.MapGet("/runs/{id:guid}/input-timeline", (Guid id) => host.InputTimeline(id));
+        routes.MapGet("/runs/{id:guid}/timelines", (Guid id, int offset, int limit) => host.Timelines(id, offset, limit));
         routes.MapGet("/runs/{id:guid}/frames", (Guid id, int offset, int limit) => host.Frames(id, offset, limit));
         routes.MapGet("/runs/{id:guid}/route", (Guid id) => host.Route(id));
         routes.MapGet("/runs/{id:guid}/route/frames", (Guid id, HttpRequest request) => host.RouteFrames(id, Query(request)));
