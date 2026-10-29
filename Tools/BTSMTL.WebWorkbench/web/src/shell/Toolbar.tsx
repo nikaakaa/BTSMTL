@@ -7,7 +7,7 @@ import { Button, MenuButton, Select, Tip, type MenuEntry } from '../ui/controls'
 import { panelMenu } from './GroupActions';
 import styles from './toolbar.module.css';
 
-// 顶部工具栏（D7）：左侧内容、输入方案与运行；正中播放、暂停、下一帧和帧号；右侧档位、布局与连接状态。
+// 顶部工具栏（D7）：左侧内容、输入方案与运行；正中播放、暂停、下一帧和帧号；右侧布局与连接状态。
 export function Toolbar() {
   return (
     <header className={styles.toolbar}>
@@ -22,7 +22,6 @@ export function Toolbar() {
         <FrameField />
       </div>
       <div className={styles.right}>
-        <Modes />
         <MenuButton label="布局" entries={panelMenu()} caret>Layout</MenuButton>
         <Connection />
       </div>
@@ -67,8 +66,7 @@ function RunChoice() {
 function RunMenu() {
   const state = useWorkbench(useShallow(state => ({
     interactive: state.interactive, followLive: state.followLive, receipt: state.receipt,
-    sources: state.sources, scenePath: state.scenePath, replayId: state.replayId, mode: state.mode,
-    hostAvailable: state.hostAvailable, sourceKind: state.sourceKind,
+    sources: state.sources, scenePath: state.scenePath, replayId: state.replayId, hostAvailable: state.hostAvailable,
   })));
   const startBlocked = session.canStart();
   const running = state.receipt?.stage === 'accepted' || state.receipt?.stage === 'running';
@@ -90,11 +88,9 @@ export function useTransportState() {
   return useWorkbench(useShallow(state => {
     const source = transport.source();
     const count = state.summary?.frameCount ?? 0;
-    const off = state.mode === 'off';
     const playing = source ? transport.isPlaying() : false;
     let blocked: string | null = null;
-    if (off) blocked = '预览已关闭';
-    else if (!source) blocked = state.runId ? (state.receipt ? stageNames[state.receipt.stage] : '读取中') : '选择一个运行';
+    if (!source) blocked = state.runId ? (state.receipt ? stageNames[state.receipt.stage] : '读取中') : '选择一个运行';
     else if (source !== 'player-live' && !count) blocked = '还没有确认帧';
     let previous = blocked, next = blocked;
     if (!blocked) {
@@ -163,17 +159,6 @@ export function FrameField({ showSeconds = true }: { showSeconds?: boolean }) {
       <span>/ {view.last} 帧</span>
       {showSeconds && view.seconds !== null && <span className={styles.seconds}>{view.seconds.toFixed(3)} s</span>}
     </div>
-  );
-}
-
-function Modes() {
-  const { modes, mode } = useWorkbench(useShallow(state => ({ modes: state.host?.modes, mode: state.mode })));
-  const available = modes?.filter(item => item.available) ?? [];
-  if (available.length < 2) return null;
-  return (
-    <Select label="预览档位" value={mode}
-      options={available.map(item => ({ value: item.id, label: `预览档位：${item.displayName}` }))}
-      onChange={id => { if (id === 'off') transport.pause(); runActions.setMode(id); }} />
   );
 }
 

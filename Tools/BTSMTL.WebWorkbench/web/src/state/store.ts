@@ -17,11 +17,9 @@ export interface ConnectionSlice {
 }
 
 // ── content ──
-export type RunSourceKind = 'replay' | 'local';
 export interface ContentSlice {
   sources: Sources | null;
   scenePath: string | null;
-  sourceKind: RunSourceKind;
   replayId: string | null;
   inputCatalog: InputCatalog | null;
   inputChoices: PlayerInputChoice[];
@@ -62,7 +60,6 @@ export interface RunSlice extends RunData {
   hostPlayback: PlaybackState | null;
   // 已封存运行在本页回看播放。
   reviewing: boolean;
-  mode: string;
   generation: number;
 }
 
@@ -162,11 +159,11 @@ export const initialPlayerTarget = {
 export const useWorkbench = create<WorkbenchState>()(() => ({
   hostAvailable: null, host: null, images: null, connected: false, lastError: null,
 
-  sources: null, scenePath: null, sourceKind: 'replay', replayId: null, inputCatalog: null, inputChoices: [],
+  sources: null, scenePath: null, replayId: null, inputCatalog: null, inputChoices: [],
   interactive: false,
 
   runs: [], runId: null, receipt: null, summary: null, sealed: false, hostPlayback: null, reviewing: false,
-  mode: 'real', generation: 0, ...emptyRunData,
+  generation: 0, ...emptyRunData,
 
   ...initialCursor,
 
@@ -224,9 +221,6 @@ export const contentActions = {
     if (getState().scenePath === scenePath) return;
     set({ scenePath, inputCatalog: null, inputChoices: [] });
   },
-  setSourceKind(sourceKind: RunSourceKind) {
-    set({ sourceKind });
-  },
   selectReplay(replayId: string | null) {
     set({ replayId });
   },
@@ -265,9 +259,6 @@ export const runActions = {
   },
   setData(generation: number, data: Partial<RunData>) {
     if (isCurrent(generation)) set(data);
-  },
-  setMode(mode: string) {
-    set({ mode });
   },
   selectInputRoot(inputRoot: string) {
     set({ inputRoot });

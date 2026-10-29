@@ -1,3 +1,4 @@
+import { PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import {
   TimelineContext, useItem, useRow, useTimelineContext, useTimelineMonitor, type DragItemData, type Range,
   type ResizeEndEvent, type ResizeItemData, type TimelineContextProps, type UsePanStrategy,
@@ -145,8 +146,11 @@ function TimelineWindow({ frames }: { frames: RouteFrameSpan[] | null }) {
     setParams({ range: { start, end: start + span } });
   }, [bounds, setParams]);
 
+  // 按下后移动超过 4 像素才算拖动，单击仍选中片段、双击打开节点图。
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+
   return (
-    <TimelineContext range={range} onRangeChanged={onRangeChanged} onResizeEnd={() => {}} modifiers={horizontalOnly}
+    <TimelineContext range={range} onRangeChanged={onRangeChanged} onResizeEnd={() => {}} modifiers={horizontalOnly} sensors={sensors}
       sidebarWidth={sidebarWidth} usePanStrategy={panStrategy}>
       {frameStep !== null && <ClipEditing frameStep={frameStep} />}
       <TimelineBody params={params} setParams={setParams} bounds={bounds} frames={frames} onRangeChanged={onRangeChanged} />
@@ -448,10 +452,9 @@ function AuthoringControls({ program }: { program: string | null }) {
   );
 }
 
-// 照 Timeline Editor：编辑行返回、技能根与面包屑，右侧作者／运行观察；预览行档位、播放、全局秒数与结论；下行逐帧、适配与设置。
+// 照 Timeline Editor：编辑行返回、技能根与面包屑，右侧作者／运行观察；预览行播放、全局秒数与结论；下行逐帧、适配与设置。
 function TimelineToolbar({ settings, fit, subject }: { settings: MenuEntry[]; fit(): void; subject: Subject }) {
   const { playing, blocked, previous, next } = useTransportState();
-  const { mode, modes } = useWorkbench(useShallow(state => ({ mode: state.mode, modes: state.host?.modes })));
   const seconds = useWorkbench(state => state.seconds);
   const segment = useWorkbench(state => {
     const frame = state.routeFrames[state.frameIndex];
@@ -489,13 +492,6 @@ function TimelineToolbar({ settings, fit, subject }: { settings: MenuEntry[]; fi
         <AuthoringControls program={subject.program} />
       </div>
       <div className={styles.toolbar}>
-        {(modes ?? []).map(item => (
-          <Button key={item.id} variant="ghost" className={styles.mode} pressed={mode === item.id} disabled={!item.available}
-            tip={item.available ? `预览档位：${item.displayName}` : item.reason}
-            onClick={() => { if (item.id === 'off') transport.pause(); runActions.setMode(item.id); }}>
-            {item.displayName}
-          </Button>
-        ))}
         <Button variant="ghost" aria-label={playing ? '暂停' : '播放'} pressed={playing} tip={blocked ?? '播放／暂停（空格）'}
           disabled={!!blocked} onClick={() => transport.toggle()}>
           <i className={playing ? styles.pauseGlyph : styles.playGlyph} />

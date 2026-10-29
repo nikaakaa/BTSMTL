@@ -4,7 +4,7 @@ import { ErrorLine } from '../ui/ErrorLine';
 import { session } from '../state/session';
 import { contentActions, useWorkbench } from '../state/store';
 import { BarSeparator, Empty, Facts, Fold, PanelBar } from '../ui/blocks';
-import { Button, Tip } from '../ui/controls';
+import { Button } from '../ui/controls';
 import styles from './panel.module.css';
 
 // 内容面板：场景与录像列表、输入声明；选择结果写入 content 分片，工具栏新建运行使用。
@@ -47,25 +47,18 @@ function Scenes() {
 }
 
 function RunSources() {
-  const { replays, replayId, sourceKind } = useWorkbench(useShallow(state => ({
-    replays: state.sources?.replays ?? [], replayId: state.replayId, sourceKind: state.sourceKind,
+  const { replays, replayId } = useWorkbench(useShallow(state => ({
+    replays: state.sources?.replays ?? [], replayId: state.replayId,
   })));
   return (
     <div className={styles.list} role="listbox" aria-label="运行来源">
       {replays.map(replay => (
         <button key={replay.id} className={styles.row} role="option"
-          aria-selected={sourceKind === 'replay' && replay.id === replayId}
-          onClick={() => { contentActions.setSourceKind('replay'); contentActions.selectReplay(replay.id); }}>
+          aria-selected={replay.id === replayId} onClick={() => contentActions.selectReplay(replay.id)}>
           <span className={styles.rowText}>{replay.displayName}</span>
           <span className={styles.rowValue}>录像</span>
         </button>
       ))}
-      <Tip content="宿主尚未提供输入方案目录">
-        <button className={styles.row} role="option" aria-selected={sourceKind === 'local'} aria-disabled
-          onClick={() => contentActions.setSourceKind('local')}>
-          <span className={styles.rowText}>本地输入方案</span>
-        </button>
-      </Tip>
     </div>
   );
 }

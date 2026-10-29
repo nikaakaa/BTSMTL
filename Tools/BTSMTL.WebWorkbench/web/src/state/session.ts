@@ -238,12 +238,10 @@ export const session = {
   },
 
   canStart(): string | null {
-    const { sources, scenePath, replayId, sourceKind, mode, hostAvailable } = getState();
+    const { sources, scenePath, replayId, hostAvailable } = getState();
     if (!hostAvailable) return '宿主不可用';
-    if (mode === 'off') return '预览已关闭';
     const scene = sources?.scenes.find(item => item.path === scenePath);
     if (!scene) return '先选择内容';
-    if (sourceKind === 'local') return '宿主尚未提供输入方案目录';
     if (!sources?.replays.some(item => item.id === replayId)) return '先选择录像';
     return null;
   },

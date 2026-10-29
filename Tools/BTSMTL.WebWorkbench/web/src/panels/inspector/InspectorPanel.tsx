@@ -7,6 +7,7 @@ import {
   childGraphs, edgeChildGraphs, findGraphNode, graphHierarchy, graphKey, graphName, graphRecords, isNodeOccurrence,
   isPortSample, nodeName, playedTimeline, portColor,
 } from '../../state/graphModel';
+import { applyTimelineEdits, useAuthoring } from '../../state/authoring';
 import { stageNames } from '../../state/session';
 import { getState, selectionActions, useWorkbench, type Selection } from '../../state/store';
 import {
@@ -29,7 +30,12 @@ const kindNames: Record<Selection['kind'], string> = { node: '节点', edge: '�
 export function InspectorPanel() {
   const [params, setParams] = usePanelParams<Params>({ locked: null });
   const { selection, runId } = useWorkbench(useShallow(state => ({ selection: state.selection, runId: state.runId })));
+  const skill = useAuthoring(state => state.skill);
   const shown = params.locked ?? selection;
+  // 没选运行时检查打开的技能文档；没有选中对象时提示从节点图或 Timeline 选。
+  const content = runId ? <Content shown={shown} locked={!!params.locked} />
+    : !skill ? <Empty text="选择一个技能或运行" />
+      : shown ? <Content shown={shown} locked={!!params.locked} /> : <Empty text="在节点图或 Timeline 中选中对象" />;
   return (
     <div className={styles.root}>
       <PanelBar>
@@ -40,7 +46,7 @@ export function InspectorPanel() {
         <BarLabel>{shown ? kindNames[shown.kind] : '运行'}</BarLabel>
       </PanelBar>
       <div className={styles.scroll}>
-        {!runId ? <Empty text="选择一个运行" /> : <Content shown={shown} locked={!!params.locked} />}
+        {content}
       </div>
     </div>
   );
@@ -315,9 +321,13 @@ const childLabel = (graph: GraphDefinition) => graph.edges.some(edge => edge.kin
 // ── Timeline 片段与轨道 ──
 
 function ClipInspector({ id, missing }: { id: string; missing: ReactNode }) {
-  const { timelines, routeFrames, seconds, frame, graphs } = useWorkbench(useShallow(state => ({
+  const { timelines: shownTimelines, routeFrames, seconds, frame, graphs, runId } = useWorkbench(useShallow(state => ({
     timelines: state.timelines, routeFrames: state.routeFrames, seconds: state.seconds, frame: state.frame, graphs: state.graphs,
+    runId: state.runId,
   })));
+  // 作者模式下未保存的片段时间同样显示在检查器里。
+  const edited = useAuthoring(state => state.edited);
+  const timelines = useMemo(() => applyTimelineEdits(shownTimelines, edited), [shownTimelines, edited]);
   const found = useMemo(() => findTimelineClip(timelines, id), [timelines, id]);
   const segments = useMemo(() => found ? playSegments(routeFrames).get(found.timeline.documentId) ?? [] : [], [found, routeFrames]);
   if (!found) return missing;
@@ -341,7 +351,7 @@ function ClipInspector({ id, missing }: { id: string; missing: ReactNode }) {
         <Value label="终点" value={clip.endSeconds.toFixed(3)} />
         <Value label="时长" value={(clip.endSeconds - clip.startSeconds).toFixed(3)} />
       </Fold>
-      <Fold title="本次运行" kind="var(--value)" defaultOpen>
+      {runId && <Fold title="本次运行" kind="var(--value)" defaultOpen>
         {instances.length ? (
           <div className={styles.list}>
             {instances.map(item => {
@@ -358,7 +368,7 @@ function ClipInspector({ id, missing }: { id: string; missing: ReactNode }) {
             })}
           </div>
         ) : <div className={styles.note}>本次运行没有播放到这个片段</div>}
-      </Fold>
+      </Fold>}
       <HostRecords records={locatedRecords(frame, (documentId, elementId) => documentId === timeline.documentId && elementId === clip.id)} />
       <Identity extra={[
         { displayName: '片段', value: clip.id }, { displayName: 'Timeline', value: timeline.documentId },
