@@ -6,7 +6,7 @@ using System.Runtime.ExceptionServices;
 using System.Threading;
 using Unity.Profiling;
 
-namespace BTSMTL.Diagnostics.Editor
+namespace BTSMTL.Diagnostics
 {
     public sealed class RuntimeCaptureFileArchive : IRuntimeCaptureArchive
     {
@@ -26,6 +26,8 @@ namespace BTSMTL.Diagnostics.Editor
         readonly Queue<int> m_Pending = new(PageCount);
         readonly AutoResetEvent m_Wake = new(false);
         readonly string m_Directory;
+        readonly bool m_KeepFiles;
+        readonly Thread m_Worker;
         readonly Dictionary<(RuntimeTraceDomain, Guid, ulong), TimeIndex> m_Times = new();
         readonly Queue<TimeIndex> m_UnusedTimes = new();
         readonly RuntimeCaptureReadWindow m_State = new(StateCapacity, 0);
@@ -83,10 +85,15 @@ namespace BTSMTL.Diagnostics.Editor
         long m_ReadStateOrdinal = -1;
         long m_ReadStateBaseEvictions;
 
-        public RuntimeCaptureFileArchive()
+        public RuntimeCaptureFileArchive() : this(Path.Combine("Library", "WorkbenchPreviewHistory", Guid.NewGuid().ToString("N")), false)
+        {
+        }
+
+        public RuntimeCaptureFileArchive(string directory, bool keepFiles)
         {
             CaptureId = Guid.NewGuid();
-            m_Directory = Path.GetFullPath(Path.Combine("Library", "WorkbenchPreviewHistory", CaptureId.ToString("N")));
+            m_Directory = Path.GetFullPath(directory);
+            m_KeepFiles = keepFiles;
             Directory.CreateDirectory(m_Directory);
             Array.Fill(m_PageStates, Array.Empty<RuntimeTraceEvent>());
             for (int i = 0; i < PageCount; i++)
@@ -95,7 +102,8 @@ namespace BTSMTL.Diagnostics.Editor
                 m_Free.Enqueue(i);
             }
             m_Current = m_Free.Dequeue();
-            new Thread(Run) { IsBackground = true, Name = "Workbench event history" }.Start();
+            m_Worker = new Thread(Run) { IsBackground = true, Name = "Workbench event history" };
+            m_Worker.Start();
         }
 
         public Guid CaptureId { get; private set; }
@@ -280,8 +288,8 @@ namespace BTSMTL.Diagnostics.Editor
                     bool reset = false;
                     lock (m_Gate)
                     {
-                        if (m_Stop) break;
                         if (m_Pending.Count != 0) page = m_Pending.Dequeue();
+                        else if (m_Stop) break;
                         else if (m_ResetRequested) reset = true;
                         else if (m_QuerySnapshot.IsValid && m_ResultVersion != m_QueryVersion)
                         { request = m_QueryVersion; snapshot = m_QuerySnapshot; query = m_Query; stateVersion = m_QueryStateVersion; }
@@ -331,7 +339,8 @@ namespace BTSMTL.Diagnostics.Editor
             {
                 foreach (TimeIndex index in m_Times.Values) index.Dispose();
                 foreach (TimeIndex index in m_UnusedTimes) index.Dispose();
-                Directory.Delete(m_Directory, true);
+                if (!m_KeepFiles)
+                    Directory.Delete(m_Directory, true);
             }
         }
 
@@ -795,6 +804,14 @@ namespace BTSMTL.Diagnostics.Editor
         public void Dispose()
         {
             lock (m_Gate) { m_Stop = true; if (!m_Finished) m_Wake.Set(); }
+        }
+
+        public void Complete()
+        {
+            Seal();
+            Dispose();
+            m_Worker.Join();
+            Volatile.Read(ref m_Failure)?.Throw();
         }
 
         struct Page

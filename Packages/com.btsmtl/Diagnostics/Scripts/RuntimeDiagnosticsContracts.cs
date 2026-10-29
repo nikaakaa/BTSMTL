@@ -1,7 +1,11 @@
 using System;
 using BTSMTL.Orchestration;
 using ThirdPersonSimulation;
+#if UNITY_5_3_OR_NEWER
 using UnityEngine;
+#else
+using System.Numerics;
+#endif
 
 namespace BTSMTL.Diagnostics
 {
@@ -531,11 +535,15 @@ namespace BTSMTL.Diagnostics
             if (value is Guid guid)
                 return new DebugValueSnapshot(DebugValueKind.Guid, false, 0, 0, 0, guid.ToString("D"), default);
             if (value is Vector2 vector2)
-                return new DebugValueSnapshot(DebugValueKind.Vector2, false, 0, 0, 0, string.Empty, new Vector4(vector2.x, vector2.y, 0, 0));
+                return new DebugValueSnapshot(DebugValueKind.Vector2, false, 0, 0, 0, string.Empty, new Vector4(vector2[0], vector2[1], 0, 0));
             if (value is Vector3 vector3)
-                return new DebugValueSnapshot(DebugValueKind.Vector3, false, 0, 0, 0, string.Empty, new Vector4(vector3.x, vector3.y, vector3.z, 0));
+                return new DebugValueSnapshot(DebugValueKind.Vector3, false, 0, 0, 0, string.Empty, new Vector4(vector3[0], vector3[1], vector3[2], 0));
             if (value is Quaternion quaternion)
+#if UNITY_5_3_OR_NEWER
                 return new DebugValueSnapshot(DebugValueKind.Quaternion, false, 0, 0, 0, string.Empty, new Vector4(quaternion.x, quaternion.y, quaternion.z, quaternion.w));
+#else
+                return new DebugValueSnapshot(DebugValueKind.Quaternion, false, 0, 0, 0, string.Empty, new Vector4(quaternion.X, quaternion.Y, quaternion.Z, quaternion.W));
+#endif
             Type type = value.GetType();
             return new DebugValueSnapshot(DebugValueKind.TypeOnly, false, 0, 0, 0, type.FullName ?? type.Name, default);
         }
@@ -552,13 +560,13 @@ namespace BTSMTL.Diagnostics
                 case DebugValueKind.Guid:
                 case DebugValueKind.TypeOnly: return Text;
                 case DebugValueKind.FPVector2:
-                case DebugValueKind.Vector2: return $"({Vector.x:0.###}, {Vector.y:0.###})";
+                case DebugValueKind.Vector2: return $"({Vector[0]:0.###}, {Vector[1]:0.###})";
                 case DebugValueKind.FPVector3:
-                case DebugValueKind.Vector3: return $"({Vector.x:0.###}, {Vector.y:0.###}, {Vector.z:0.###})";
-                case DebugValueKind.Quaternion: return $"({Vector.x:0.###}, {Vector.y:0.###}, {Vector.z:0.###}, {Vector.w:0.###})";
+                case DebugValueKind.Vector3: return $"({Vector[0]:0.###}, {Vector[1]:0.###}, {Vector[2]:0.###})";
+                case DebugValueKind.Quaternion: return $"({Vector[0]:0.###}, {Vector[1]:0.###}, {Vector[2]:0.###}, {Vector[3]:0.###})";
                 case DebugValueKind.FPActionTargetSnapshot:
-                    ulong targetZ = ((ulong)Number << 24) | (ulong)Vector.x;
-                    ulong targetYaw = (ulong)Vector.y | ((ulong)Vector.z << 24) | ((ulong)Vector.w << 48);
+                    ulong targetZ = ((ulong)Number << 24) | (ulong)Vector[0];
+                    ulong targetYaw = (ulong)Vector[1] | ((ulong)Vector[2] << 24) | ((ulong)Vector[3] << 48);
                     const double fpScale = 1L << 16;
                     return $"{Text} · ({Signed / fpScale:0.###}, {unchecked((long)Unsigned) / fpScale:0.###}, {unchecked((long)targetZ) / fpScale:0.###}) · {unchecked((long)targetYaw) / fpScale:0.###}°";
                 default: return string.Empty;

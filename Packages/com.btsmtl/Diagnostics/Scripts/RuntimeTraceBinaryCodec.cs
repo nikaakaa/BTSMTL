@@ -4,9 +4,13 @@ using System.IO;
 using System.Text;
 using BTSMTL.Orchestration;
 using ThirdPersonSimulation;
+#if UNITY_5_3_OR_NEWER
 using UnityEngine;
+#else
+using Vector4 = System.Numerics.Vector4;
+#endif
 
-namespace BTSMTL.Diagnostics.Editor
+namespace BTSMTL.Diagnostics
 {
     sealed class RuntimeTraceBinaryCodec : IDisposable
     {
@@ -111,7 +115,7 @@ namespace BTSMTL.Diagnostics.Editor
             WriteRuntimeInstanceKey(writer, value.RuntimeInstance);
             WriteRuntimeSourceElementHandle(writer, value.Source);
             writer.Write((int)value.Kind);
-            WriteRuntimeTracePayload(writer, value.Payload);
+            WriteRuntimeTracePayload(writer, in RuntimeTraceEvent.ReadPayload(in value));
         }
 
         internal RuntimeTraceEvent Read(BinaryReader reader)
@@ -185,10 +189,10 @@ namespace BTSMTL.Diagnostics.Editor
 
         static void WriteVector4(BinaryWriter writer, Vector4 value)
         {
-            writer.Write(value.x);
-            writer.Write(value.y);
-            writer.Write(value.z);
-            writer.Write(value.w);
+            writer.Write(value[0]);
+            writer.Write(value[1]);
+            writer.Write(value[2]);
+            writer.Write(value[3]);
         }
 
         static Vector4 ReadVector4(BinaryReader reader) => new Vector4(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
