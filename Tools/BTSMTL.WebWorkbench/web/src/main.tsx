@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import './shell/theme.css';
+import { applyStateAddress } from './shell/address';
 import { Workbench } from './shell/Workbench';
 import { session } from './state/session';
 
@@ -13,4 +14,4 @@ createRoot(root).render(
   </StrictMode>,
 );
 
-void session.connect();
+void session.connect().then(applyStateAddress);

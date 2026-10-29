@@ -1,6 +1,7 @@
 import { DockviewReact, type DockviewTheme } from 'dockview-react';
 import 'dockview-react/dist/styles/dockview.css';
 import { useEffect } from 'react';
+import { applyPanelAddress } from './address';
 import { panelComponents } from '../panels/registry';
 import { TipProvider } from '../ui/controls';
 import './dockview.css';
@@ -31,7 +32,7 @@ export function Workbench() {
           rightHeaderActionsComponent={GroupActions}
           watermarkComponent={Watermark}
           popoutUrl="/popout.html"
-          onReady={event => attachLayout(event.api)}
+          onReady={event => { attachLayout(event.api); applyPanelAddress(); }}
         />
       </div>
     </TipProvider>

@@ -210,3 +210,11 @@ export async function popoutGroup(group: DockviewGroupPanel) {
 export function firstInstance(type: PanelType): IDockviewPanel | undefined {
   return api ? instances(type)[0] : undefined;
 }
+
+export function visiblePanels(): string[] {
+  return api ? api.panels.filter(panel => panel.api.isVisible).map(panel => panel.id) : [];
+}
+
+export function activePanelType(): PanelType | null {
+  return api?.activePanel ? panelTypeOf(api.activePanel.id) : null;
+}
