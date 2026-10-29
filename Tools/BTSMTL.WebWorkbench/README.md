@@ -54,7 +54,11 @@ HTML、CSS、JavaScript 修改后刷新页面即可看到结果；修改 C# 接�
 
 3C 原迁移入口现可将独立输入方案资产及其私有输入时间轴、片段图和 Marker 图保存为另一份共同作者根。实际候选保留原资产 GUID、`Owner=ability:Attack`、方案参数与当前选择，不改变 Unity 资产来源。项目工作台已读取 1 个方案、1 条输入 Timeline、2 张图的 5 个文件；输入图通过同一结构检查。项目 CLI 和 MCP 的文档查询显式接受 `Workspace`／`Migrations` 来源，图检查也调用相同 HTTP 服务。CLI、MCP 均构建通过，0 警告、0 错误；22 项 MCP 工具已发现，真实图检查回执已与 CLI 对应。251 张图、13 条 Timeline／输入时间轴及 2 份根文档在 .NET 10.0.11 的文本回读无差异，具体入口、原始回执与未完成范围归项目 `Tools/CharacterWorkbench/README.md`。
 
-`WorkbenchApplication.Create` 装配共同页面，`PreviewApi` 消费项目实现的 `IPreviewHost`：来源与正式输入、开始／控制／取消、运行回执、帧分页、观察查询、SSE和原比较器均进入所属宿主。`GET /api/preview/host` 返回可用状态、帧显示名、筛选及停止位置声明；独立服务未登记宿主时返回 `available=false`，作者页面仍可读取工作区。网页沿原请求身份恢复结果，历史帧查看不推进会话，输入日程继续消费宿主正式目录。
+`WorkbenchApplication.Create` 装配共同页面，`PreviewApi` 消费项目实现的 `IPreviewHost`：来源与正式输入、开始／控制／取消、运行回执、帧分页、图定义、路线观察、SSE 和原比较器均进入所属宿主。`GET /api/preview/host` 返回可用状态、帧显示名、筛选、停止位置及各预览档位的可用声明；独立服务未登记宿主时返回 `available=false`。网页沿原请求身份恢复结果，历史帧查看不推进会话。
+
+`preview.html` 按 Unity Timeline 的位置组织预览：单行放档位、播放、逐帧、时刻、状态和场景，输入方案入口位于“预览输入”组头，节点图显示当前调用的实际路线及有明确作者来源的端口值。时间标尺直接拖动，聚焦后支持左右键及 Home／End；唯一帧序号同时驱动帧读取、时间游标与节点观察。连接、完整调用身份、能力缺项和原始记录按需查看，不另设页签、底栏或重复滑条。图调用列表的序号仅用于选择，完整运行身份仍保存在选项值与悬停信息中。
+
+当前 Host 未提供输入方案及按键轨，`快`档也明确不可用；方案按钮与对应档位保持禁用。图定义仍缺作者名称、坐标和数值连线，页面只消费正式编译定义并按控制连线排列，不将其称为 Unity 作者布局，也不读取源 JSON 补造输入或名称。正式无头入口为 3C `Tools/CharacterWorkbench/CapturePreview.ps1`；本轮 1600×1050 截图采用运行 `aaf63465396440f4b91c03e7976501c0` 的第 110 帧，游标序号 50、一致性值 `1efb40f515b77ede`，显示 2 个实际经过节点和 1 条选中连线。图片及元数据位于 `D:/Unity_Project_1/3C/.codex/tmp/cw-preview-c-20261028/timeline-unity-row-1600.*`；截图不代替尚未执行的交互与端到端验收。
 
 `Contracts/PreviewObservationContracts.cs` 定义宿主无关的帧：无损文本帧号、运行相对秒数、Actor 根变换、通道及可选一致性值。根与几何采用右手坐标、Y轴向上、米，旋转为 `[x,y,z,w]`；项目负责正式数值和坐标换算。宿主专有字段作为带显示名的字段及区块提供，作者定位直接携带文档／元素身份。`RawJson` 保留正式读取模型的无损 JSON 文本，页面不重新解析其中的大整数；它不承诺与磁盘原文件字节或字段集合相同。公共 `preview`、`player`、`logic-viewport` 和观察查询不读取项目动作、SDK、FP或Roster字段。
 
