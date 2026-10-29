@@ -1,29 +1,29 @@
 .root { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .scroll { flex: 1; overflow: auto; min-height: 0; }
 .error, .notice { padding: 8px 12px; line-height: 1.5; overflow-wrap: anywhere; }
-.error { color: var(--error, #ed9c91); background: rgb(220 65 65 / 10%); }
-.notice { color: var(--text); background: rgb(75 150 105 / 12%); }
+.error { color: var(--reject); background: var(--bg-1); border-left: 2px solid var(--reject); }
+.notice { color: var(--text); background: var(--bg-1); border-left: 2px solid var(--ok); }
 .fields { margin: 0; padding: 8px 12px; border: 0; display: flex; flex-direction: column; gap: 7px; min-width: 0; }
 .field { display: flex; align-items: center; gap: 8px; min-height: 25px; }
 .field > span { flex: 1; }
 .field > input[type='number'] { width: 115px; }
-.fields input[type='number'] { color: var(--text); background: var(--bg-1); border: 1px solid var(--border); border-radius: 3px; padding: 4px 6px; min-width: 0; font: inherit; }
+.fields input[type='number'] { color: var(--text); background: var(--field); border: 1px solid var(--field-line); border-radius: 3px; padding: 4px 6px; min-width: 0; font: inherit; }
 .fields input:focus { outline: 1px solid var(--accent); }
 .fields:disabled { opacity: .65; }
 .hands { display: grid; grid-template-columns: repeat(auto-fit, minmax(235px, 1fr)); gap: 12px; padding: 10px 12px; }
 .hands section { min-width: 0; }
 .hands strong { display: block; margin-bottom: 6px; font-weight: 600; }
-.status { color: var(--text-muted); font-size: 11px; }
+.status { color: var(--text-dim); font-size: 11px; }
 .checks { display: flex; gap: 16px; margin-bottom: 4px; }
 .checks label { display: flex; align-items: center; gap: 4px; }
 .vector { display: flex; flex-direction: column; gap: 4px; }
 .vector > div { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
 .vector input { width: 100%; box-sizing: border-box; }
 .fields > button { align-self: flex-start; margin-top: 4px; }
-.fields small, .path { color: var(--text-muted); font-size: 11px; line-height: 1.5; }
+.fields small, .path { color: var(--text-dim); font-size: 11px; line-height: 1.5; }
 .path { padding: 8px 12px; overflow-wrap: anywhere; }
 .curves { display: flex; padding: 4px 12px 8px; gap: 12px; }
-.curves figure { flex: 1; margin: 0; min-width: 0; color: var(--text-muted); font-size: 11px; }
+.curves figure { flex: 1; margin: 0; min-width: 0; color: var(--text-dim); font-size: 11px; }
 .curves svg { width: 100%; max-height: 120px; }
-.axis { stroke: var(--border); stroke-width: 1; fill: none; }
+.axis { stroke: var(--text-disabled); stroke-width: 1; fill: none; }
 .curve { stroke: var(--accent); stroke-width: 2; fill: none; }
