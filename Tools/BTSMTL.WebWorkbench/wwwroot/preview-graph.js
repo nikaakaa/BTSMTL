@@ -73,19 +73,43 @@ export class PreviewGraph {
     container.querySelector('[data-graph-fit]').onclick = () => this.fit();
     this.canvas.onpointerdown = event => {
       if (this.world.hidden) return;
-      if (event.button !== 1 && (event.button !== 0 || event.target.closest('.graph-node'))) return;
-      event.preventDefault(); this.canvas.setPointerCapture(event.pointerId);
-      this.drag = { x: event.clientX, y: event.clientY, originX: this.x, originY: this.y };
+      if (event.button !== 0 && event.button !== 1) return;
+      const element = event.button === 0 ? event.target.closest('[data-graph-node]') : null;
+      const node = element ? this.nodes[Number(element.dataset.graphNode)] : null;
+      event.preventDefault(); event.target.setPointerCapture(event.pointerId);
+      this.drag = { pointerId: event.pointerId, x: event.clientX, y: event.clientY,
+        originX: node ? node.x : this.x, originY: node ? node.y : this.y, node, element, moved: false };
+      this.canvas.classList.add('dragging');
     };
     this.canvas.onpointermove = event => {
-      if (!this.canvas.hasPointerCapture(event.pointerId)) return;
-      this.x = this.drag.originX + event.clientX - this.drag.x;
-      this.y = this.drag.originY + event.clientY - this.drag.y;
-      this.transform();
+      const drag = this.drag;
+      if (!drag || drag.pointerId !== event.pointerId) return;
+      const dx = event.clientX - drag.x, dy = event.clientY - drag.y;
+      if (!drag.moved && Math.hypot(dx, dy) < 3) return;
+      drag.moved = true;
+      if (drag.node) {
+        drag.node.x = drag.originX + dx / this.scale; drag.node.y = drag.originY + dy / this.scale;
+        drag.element.style.left = `${drag.node.x}px`; drag.element.style.top = `${drag.node.y}px`;
+        this.container.dataset.graphLayout = 'view';
+        this.container.querySelectorAll('[data-graph-edge]').forEach(path => {
+          const edge = this.edges[Number(path.dataset.graphEdge)];
+          if (edge.source.nodeId === drag.node.id || edge.target.nodeId === drag.node.id)
+            path.setAttribute('d', this.edgePath(edge));
+        });
+      } else {
+        this.x = drag.originX + dx; this.y = drag.originY + dy; this.transform();
+      }
     };
-    this.canvas.onpointerup = event => {
-      if (this.canvas.hasPointerCapture(event.pointerId)) this.canvas.releasePointerCapture(event.pointerId);
+    const finishDrag = event => {
+      const drag = this.drag;
+      if (!drag || drag.pointerId !== event.pointerId) return;
+      this.drag = null; this.canvas.classList.remove('dragging');
+      if (drag.node && drag.moved) this.measureBounds();
+      if (event.type === 'pointerup' && drag.node && !drag.moved) this.inspectNode(drag.node);
     };
+    this.canvas.onpointerup = finishDrag;
+    this.canvas.onpointercancel = finishDrag;
+    this.canvas.onlostpointercapture = finishDrag;
     this.canvas.onwheel = event => {
       if (this.world.hidden) return;
       event.preventDefault();
@@ -127,11 +151,11 @@ export class PreviewGraph {
     this.container.dataset.graphProgram = graph.programId;
     this.container.dataset.graphRevision = graph.programRevision;
     this.container.dataset.graphCall = '';
-    this.container.dataset.graphLayout = '';
     this.container.dataset.graphFrame = this.frame?.hostFrame ?? '';
     const select = this.container.querySelector('[data-graph-choice]');
     select.value = graphKey(graph); select.title = `${shortName(graph)}\n角色 ${graph.actorId}\n程序 ${graph.programId}`;
     if (!graph.nodes.length) {
+      this.container.dataset.graphLayout = '';
       this.viewKey = ''; this.selectedNode = '';
       this.inspector.hidden = true; this.inspector.replaceChildren();
       this.container.querySelector('[data-graph-call-choice]').replaceChildren();
@@ -182,33 +206,43 @@ export class PreviewGraph {
     const empty = this.container.querySelector('.observation-empty');
     empty.hidden = this.nodes.length > 0;
     empty.textContent = '此调用未保留可显示的节点来源';
+    this.measureBounds();
+    this.nodeMap = new Map(this.nodes.map(node => [node.id, node]));
+    const svg = this.container.querySelector('.graph-edges');
+    svg.innerHTML = this.edges.map((edge, index) =>
+      `<path data-graph-edge="${index}" data-edge-id="${html(edge.id)}" d="${this.edgePath(edge)}"><title>${html(`${edge.id} · ${edge.kind}`)}</title></path>`).join('');
+    const port = (item, index) => `<div class="graph-port ${item.direction}${item.isTrigger ? ' trigger' : ''}" style="top:${32 + index * 24}px" data-port-id="${html(item.id)}" data-port-direction="${item.direction}"><i></i><span>${html(item.displayName)}</span><output></output></div>`;
+    this.container.querySelector('.graph-nodes').innerHTML = this.nodes.map((node, index) =>
+      `<article class="graph-node" data-graph-node="${index}" data-node-id="${html(node.id)}" style="left:${node.x}px;top:${node.y}px;width:${node.width}px;height:${node.height}px"><button class="graph-node-title" data-inspect-node="${index}" title="${html(`${nodeName(node)}\n${node.id}\n${node.invocationPath}`)}">${html(nodeName(node))}</button>${node.inputs.map(port).join('')}${node.outputs.map(port).join('')}</article>`).join('');
+    this.container.querySelectorAll('[data-inspect-node]').forEach(button => {
+      button.onclick = event => { if (event.detail === 0) this.inspectNode(this.nodes[Number(button.dataset.inspectNode)]); };
+    });
+    if (this.nodes.length) this.reveal();
+  }
+
+  measureBounds() {
     this.left = Math.min(...this.nodes.map(node => node.x)) - 30;
     this.top = Math.min(...this.nodes.map(node => node.y)) - 30;
     this.width = Math.max(...this.nodes.map(node => node.x + node.width)) - this.left + 30;
     this.height = Math.max(...this.nodes.map(node => node.y + node.height)) - this.top + 30;
     this.world.style.width = `${this.width}px`; this.world.style.height = `${this.height}px`;
-    const nodeMap = new Map(this.nodes.map(node => [node.id, node]));
+    const svg = this.container.querySelector('.graph-edges');
+    svg.setAttribute('width', this.width); svg.setAttribute('height', this.height);
+  }
+
+  edgePath(edge) {
     const point = (endpoint, direction) => {
-      const node = nodeMap.get(endpoint.nodeId);
+      const node = this.nodeMap.get(endpoint.nodeId);
       const ports = direction === 'input' ? node.inputs : node.outputs;
       const index = ports.findIndex(port => port.id === endpoint.portId);
       return { x: node.x + (direction === 'input' ? 0 : node.width), y: node.y + (index < 0 ? 16 : 44 + index * 24) };
     };
-    const svg = this.container.querySelector('.graph-edges');
-    svg.setAttribute('width', this.width); svg.setAttribute('height', this.height);
-    svg.innerHTML = this.edges.map((edge, index) => {
-      const from = point(edge.source, 'output'), to = point(edge.target, 'input');
-      const bend = Math.max(55, Math.abs(to.x - from.x) * 0.45);
-      return `<path data-graph-edge="${index}" data-edge-id="${html(edge.id)}" d="M${from.x},${from.y} C${from.x + bend},${from.y} ${to.x - bend},${to.y} ${to.x},${to.y}"><title>${html(`${edge.id} · ${edge.kind}`)}</title></path>`;
-    }).join('');
-    const port = (item, index) => `<div class="graph-port ${item.direction}${item.isTrigger ? ' trigger' : ''}" style="top:${32 + index * 24}px" data-port-id="${html(item.id)}" data-port-direction="${item.direction}"><i></i><span>${html(item.displayName)}</span><output></output></div>`;
-    this.container.querySelector('.graph-nodes').innerHTML = this.nodes.map((node, index) =>
-      `<article class="graph-node" data-graph-node="${index}" data-node-id="${html(node.id)}" style="left:${node.x}px;top:${node.y}px;width:${node.width}px;height:${node.height}px"><button class="graph-node-title" data-inspect-node="${index}" title="${html(`${nodeName(node)}\n${node.id}\n${node.invocationPath}`)}">${html(nodeName(node))}</button>${node.inputs.map(port).join('')}${node.outputs.map(port).join('')}</article>`).join('');
-    this.container.querySelectorAll('[data-inspect-node]').forEach(button => {
-      button.onclick = () => { this.selectedNode = this.nodes[Number(button.dataset.inspectNode)].id; this.highlight(); this.showInspector(); };
-    });
-    if (this.nodes.length) this.reveal();
+    const from = point(edge.source, 'output'), to = point(edge.target, 'input');
+    const bend = Math.max(55, Math.abs(to.x - from.x) * 0.45);
+    return `M${from.x},${from.y} C${from.x + bend},${from.y} ${to.x - bend},${to.y} ${to.x},${to.y}`;
   }
+
+  inspectNode(node) { this.selectedNode = node.id; this.highlight(); this.showInspector(); }
 
   highlight() {
     this.container.querySelectorAll('[data-graph-node]').forEach(element => {
