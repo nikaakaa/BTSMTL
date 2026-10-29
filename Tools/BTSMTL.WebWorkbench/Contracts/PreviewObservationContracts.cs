@@ -26,10 +26,21 @@ public sealed record PreviewFrame(string HostFrame, double Seconds, PreviewActor
     PreviewSection[] Sections, PreviewFrameGeometry Geometry, string RawJson)
 {
     public PreviewRouteFrame? Route { get; init; }
+    public PreviewFrameSource? Source { get; init; }
+    public PreviewObservationAvailability[] Availability { get; init; } = [];
 }
+public sealed record PreviewFrameSource(string PlayerBuildId, string ContentRevision, string SceneRevision,
+    string InputSource, string InputRevision, string SdkFrame, string GameplayTick);
 public sealed record PreviewSummary(string RunId, string ContentRevision, string FrameDisplayName,
     string FirstFrame, string LastFrame, int FrameCount, string[] Channels, bool GeometryAvailable,
-    PreviewField[] Fields, string RawJson);
+    PreviewField[] Fields, string RawJson)
+{
+    public string PlayerBuildId { get; init; } = string.Empty;
+    public string SceneRevision { get; init; } = string.Empty;
+    public string InputSource { get; init; } = string.Empty;
+    public string InputRevision { get; init; } = string.Empty;
+    public PreviewObservationAvailability[] Availability { get; init; } = [];
+}
 public sealed record PreviewPage<T>(T[] Items, int Total, int? NextOffset);
 public sealed record PreviewRoutePlayback(string DocumentId, double CursorSeconds, string Status);
 public sealed record PreviewRouteFrame(string HostFrame, double Seconds, PreviewRoutePlayback[] Playbacks,
