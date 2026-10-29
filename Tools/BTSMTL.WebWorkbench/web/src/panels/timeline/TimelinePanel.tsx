@@ -19,7 +19,7 @@ import {
   consoleActions, getState, inputRootKey, runActions, selectionActions, useWorkbench, type RouteFrameSpan,
 } from '../../state/store';
 import {
-  clipGraph, inputClipSelectId, inputTrackSelectId, nearestFrame, routeSegments, segmentRows, segmentTitle, selectedInputRoot,
+  clipGraph, documentSegments, inputClipSelectId, inputTrackSelectId, nearestFrame, routeSegments, timelineLength, segmentRows, segmentTitle, selectedInputRoot,
   trackColors, type ClipInstance, type GroupRow, type RouteSegment, type TrackKind, type TrackRow,
 } from '../../state/timelineModel';
 import { graphKey, nodeSelectId } from '../../state/graphModel';
@@ -75,11 +75,43 @@ function rowHeight(row: Row): number {
   }
 }
 
+// 选了运行：沿运行路线显示；没选运行：直接打开技能 JSON 中的 Timeline，运行只是叠加层。
 export function TimelinePanel() {
   const { runId, frames } = useWorkbench(useShallow(state => ({ runId: state.runId, frames: state.routeFrames })));
-  if (!runId) return <Empty text="选择一个运行" />;
-  if (!frames.length) return <Empty text="还没有确认帧" />;
-  return <TimelineWindow frames={frames} />;
+  if (runId) return frames.length ? <TimelineWindow frames={frames} /> : <Empty text="还没有确认帧" />;
+  return <DocumentTimeline />;
+}
+
+// 未打开技能时只有技能选择；打开后与运行视图同一窗口，固定为单个 Timeline。
+function DocumentTimeline() {
+  const { skills, skill, loading, available, reason, error } = useAuthoring(useShallow(state => ({
+    skills: state.skills, skill: state.skill, loading: state.loading, available: state.available,
+    reason: state.unavailableReason, error: state.documentError,
+  })));
+  const count = useWorkbench(state => state.timelines.length);
+  useEffect(() => { if (skills === null) void authoringActions.listSkills(); }, [skills]);
+  if (available === false) return <Empty text={reason ?? '作者接口不可用'} />;
+  if (!skill || loading || !count) {
+    return (
+      <div className={styles.window}>
+        <div className={styles.toolbar}>
+          <SkillPicker />
+        </div>
+        <Empty text={loading ? '正在读取技能' : error ?? (skill ? '此技能没有 Timeline' : '选择一个技能，直接编辑它的 JSON')} />
+      </div>
+    );
+  }
+  return <TimelineWindow frames={null} />;
+}
+
+function SkillPicker() {
+  const { skills, skill } = useAuthoring(useShallow(state => ({ skills: state.skills, skill: state.skill })));
+  return (
+    <span className={styles.subject}>
+      <Select label="技能" placeholder="选择技能" value={skill} options={(skills ?? []).map(item => ({ value: item, label: item }))}
+        disabled={!skills?.length} tip="技能文件夹；不需要先运行" onChange={value => void authoringActions.openSkill(value)} />
+    </span>
+  );
 }
 
 function fitRange(bounds: Range): Range {
@@ -87,9 +119,18 @@ function fitRange(bounds: Range): Range {
   return { start: bounds.start - pad, end: bounds.end + pad };
 }
 
-function TimelineWindow({ frames }: { frames: RouteFrameSpan[] }) {
+// frames 为 null 时显示打开的技能文档：范围为所看 Timeline 的长度，按编译帧率取整。
+function TimelineWindow({ frames }: { frames: RouteFrameSpan[] | null }) {
   const [params, setParams] = usePanelParams<Params>(defaults);
-  const bounds = useMemo(() => ({ start: frames[0].seconds, end: frames[frames.length - 1].seconds }), [frames]);
+  const documentLength = useWorkbench(state => {
+    if (frames) return 0;
+    const timeline = state.timelines.find(item => item.documentId === params.focus) ?? state.timelines[0];
+    return timeline ? timelineLength(timeline) : 0;
+  });
+  const tickRate = useAuthoring(state => state.tickRate);
+  const frameStep = frames ? (frames.length > 1 ? frames[1].seconds - frames[0].seconds : 1 / 60) : tickRate ? 1 / tickRate : null;
+  const bounds = useMemo(() => frames ? { start: frames[0].seconds, end: frames[frames.length - 1].seconds }
+    : { start: 0, end: Math.max(minSpan, documentLength) }, [frames, documentLength]);
   const range = params.range && params.range.end > bounds.start && params.range.start < bounds.end ? params.range : fitRange(bounds);
   const rangeRef = useRef(range);
   rangeRef.current = range;
@@ -107,22 +148,21 @@ function TimelineWindow({ frames }: { frames: RouteFrameSpan[] }) {
   return (
     <TimelineContext range={range} onRangeChanged={onRangeChanged} onResizeEnd={() => {}} modifiers={horizontalOnly}
       sidebarWidth={sidebarWidth} usePanStrategy={panStrategy}>
-      <ClipEditing frames={frames} />
+      {frameStep !== null && <ClipEditing frameStep={frameStep} />}
       <TimelineBody params={params} setParams={setParams} bounds={bounds} frames={frames} onRangeChanged={onRangeChanged} />
     </TimelineContext>
   );
 }
 
-// 作者模式拖动、拖端写回片段时间：原起止加上拖动的像素位移换成的秒数，按运行帧步长取整，
+// 作者模式拖动、拖端写回片段时间：原起止加上拖动的像素位移换成的秒数，按帧步长取整，
 // 再减去本段零点得到 Timeline 本地秒数。
-function ClipEditing({ frames }: { frames: RouteFrameSpan[] }) {
+function ClipEditing({ frameStep }: { frameStep: number }) {
   const { range, timelineRef, sidebarWidth: sidebar } = useTimelineContext();
   // 像素位移换成秒数：可见范围除以时间区宽度。
   const pixelsToValue = (pixels: number) => {
     const width = (timelineRef.current?.clientWidth ?? 0) - sidebar;
     return width > 0 ? pixels * (range.end - range.start) / width : 0;
   };
-  const frameStep = frames.length > 1 ? frames[1].seconds - frames[0].seconds : 1 / 60;
   const write = (edit: ClipEdit | undefined, span: Range, deltaStart: number, deltaEnd: number) => {
     if (!edit) return;
     const local = (value: number) => Math.round((value - edit.origin) / frameStep) * frameStep;
@@ -199,7 +239,7 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
   params: Params;
   setParams(patch: Partial<Params>): void;
   bounds: Range;
-  frames: RouteFrameSpan[];
+  frames: RouteFrameSpan[] | null;
   onRangeChanged(update: (previous: Range) => Range): void;
 }) {
   const { setTimelineRef, getValueFromScreenX } = useTimelineContext();
@@ -209,7 +249,7 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
   // 作者模式下未保存的片段时间叠加到运行的作者 Timeline 上。
   const edited = useAuthoring(state => state.edited);
   const timelines = useMemo(() => applyTimelineEdits(runTimelines, edited), [runTimelines, edited]);
-  const allSegments = useMemo(() => routeSegments(frames, timelines, graphs), [frames, timelines, graphs]);
+  const allSegments = useMemo(() => frames ? routeSegments(frames, timelines, graphs) : documentSegments(timelines), [frames, timelines, graphs]);
   const graphNames = useMemo(() => new Map((graphs ?? []).filter(graph => graph.displayName && graph.displayName !== graph.id)
     .map(graph => [graph.id, graph.displayName!])), [graphs]);
 
@@ -226,15 +266,21 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
   }), [allSegments, programOf, program]);
 
   const focusId = useWorkbench(state => params.focus ? playbackAt(segments, params.focus, state.frameIndex)?.id ?? null : null);
-  const focused = focusId ? segments.find(segment => segment.id === focusId) ?? null : null;
+  // 技能文档固定看单个 Timeline：所选的那条，否则第一条。
+  const focused = frames ? (focusId ? segments.find(segment => segment.id === focusId) ?? null : null)
+    : segments.find(segment => segment.documentId === params.focus) ?? segments[0] ?? null;
 
   const enter = useCallback((documentId: string) => {
     const segment = playbackAt(segments, documentId, getState().frameIndex);
     if (!segment) return;
+    if (!frames) {
+      setParams({ focus: documentId, range: segmentRange(segment) });
+      return;
+    }
     const frameIndex = getState().frameIndex;
     if (frameIndex < segment.firstIndex || frameIndex > segment.lastIndex) transport.seek(segment.firstIndex);
     setParams({ focus: documentId, routeRange: params.focus ? params.routeRange : params.range, range: segmentRange(segment) });
-  }, [segments, setParams, params.focus, params.routeRange, params.range]);
+  }, [frames, segments, setParams, params.focus, params.routeRange, params.range]);
   const back = useCallback(() => setParams({ focus: null, range: params.routeRange, routeRange: null }), [setParams, params.routeRange]);
 
   // 节点图双击播放 Timeline 的节点时进入该 Timeline。
@@ -289,6 +335,7 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
   }, [params.collapsed, setParams]);
 
   const seekAt = useCallback((clientX: number) => {
+    if (!getState().routeFrames.length) return;
     transport.seek(nearestFrame(getState().routeFrames, getValueFromScreenX(clientX)));
   }, [getValueFromScreenX]);
 
@@ -303,10 +350,13 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
   ];
 
   const origin = focused?.origin ?? 0;
-  const subject: Subject = {
+  const subject: Subject = frames ? {
     options: programs.map(item => ({ value: item, label: `${item.slice(item.indexOf(':') + 1)} / 技能根` })),
     program, setProgram: next => setParams({ program: next, focus: null, routeRange: null }),
-    focus: focused?.timeline?.displayName ?? (params.focus ? params.focus.slice(0, 8) : null), back,
+    focus: focused?.timeline?.displayName ?? (params.focus ? params.focus.slice(0, 8) : null), back, timelines: null,
+  } : {
+    options: [], program: null, setProgram: () => {}, focus: focused?.timeline?.displayName ?? null, back,
+    timelines: { value: focused?.documentId ?? null, options: segments.map(segment => ({ value: segment.documentId, label: segmentTitle(segment) })), select: enter },
   };
 
   return (
@@ -345,6 +395,8 @@ interface Subject {
   // 单个 Timeline 视图的名字；路线视图为 null。
   focus: string | null;
   back(): void;
+  // 技能文档：所看的 Timeline 与技能内全部 Timeline；运行视图为 null。
+  timelines: { value: string | null; options: { value: string; label: string }[]; select(documentId: string): void } | null;
 }
 
 // 编辑行右侧：照 Timeline Editor 的未保存提示与保存（只在有未保存修改时出现），作者／运行观察切换。
@@ -412,8 +464,16 @@ function TimelineToolbar({ settings, fit, subject }: { settings: MenuEntry[]; fi
   return (
     <>
       <div className={styles.toolbar}>
-        {subject.focus !== null && <Button variant="ghost" tip="回到技能根路线" onClick={subject.back}>‹ 返回</Button>}
-        {subject.focus === null ? (
+        {subject.timelines ? (
+          <>
+            <SkillPicker />
+            <span className={styles.subject}>
+              <Select label="Timeline" value={subject.timelines.value} options={subject.timelines.options}
+                tip="技能内的 Timeline；节点图双击播放它的节点也会切到这里" onChange={subject.timelines.select} />
+            </span>
+          </>
+        ) : subject.focus !== null && <Button variant="ghost" tip="回到技能根路线" onClick={subject.back}>‹ 返回</Button>}
+        {subject.timelines ? null : subject.focus === null ? (
           <span className={styles.subject}>
             <Select label="技能根" placeholder="没有技能根" value={subject.program} options={subject.options}
               disabled={!subject.options.length} tip={subject.options.length ? '路线所属的技能根状态机' : '路线没有经过状态机'}

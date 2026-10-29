@@ -1,4 +1,5 @@
 import { parseSkillJson, type JsonObject } from '../state/skillJson';
+import type { GraphDefinition } from './types';
 import { getJson, postText, putJson, query } from './http';
 
 // 技能作者 HTTP 接口（宿主以 --SkillAuthoring 启用）：技能文件夹内全部 JSON 文件原文与内容修订。
@@ -89,6 +90,15 @@ export interface SkillSaveRejection {
   error?: string;
 }
 
+// 不经运行、按编译器同一展开得到的技能全部图实例；调用路径与运行记录同一语法。
+export interface SkillDocument {
+  skill: string;
+  programId: string;
+  sourceRevision: string;
+  tickRate: number;
+  graphs: GraphDefinition[];
+}
+
 const base = '/api/authoring/skills';
 const skillPath = (skill: string) => `${base}/${encodeURIComponent(skill)}`;
 
@@ -97,6 +107,7 @@ export const authoringApi = {
   read: (skill: string, signal?: AbortSignal) => getJson<SkillSnapshot>(skillPath(skill), signal),
   changes: (skill: string, revision: string, signal?: AbortSignal) =>
     getJson<SkillChanges>(`${skillPath(skill)}/changes?revision=${encodeURIComponent(revision)}`, signal),
+  document: (skill: string, signal?: AbortSignal) => getJson<SkillDocument>(`${skillPath(skill)}/document`, signal),
   save: (skill: string, files: SkillFile[], removedFiles: string[]) =>
     putJson<SkillSaveResult>(skillPath(skill), { content: { files, removedFiles } }),
   types: (skill: string, offset: number, signal?: AbortSignal) =>

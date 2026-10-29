@@ -81,7 +81,14 @@ export function GraphPanel() {
   const { runId, graphs, availability } = useWorkbench(useShallow(state => ({
     runId: state.runId, graphs: state.graphs, availability: state.graphAvailability,
   })));
-  if (!runId) return <ReportEmpty text="选择一个运行" />;
+  // 没选运行时显示打开的技能（在 Timeline 面板选技能）。
+  const opened = useAuthoring(useShallow(state => ({ skill: state.skill, loading: state.loading, error: state.documentError })));
+  if (!runId) {
+    if (!opened.skill) return <ReportEmpty text="在 Timeline 选择一个技能，或选择一个运行" />;
+    if (opened.loading || !graphs) return <ReportEmpty text="读取中" />;
+    if (!graphs.length) return <ReportEmpty text={opened.error ?? '此技能没有节点图'} />;
+    return <GraphView graphs={graphs} />;
+  }
   if (!graphs) return <ReportEmpty text="读取中" />;
   if (!graphs.length) return <ReportEmpty text={availability.find(item => item.channel === 'graph-definitions')?.reason || '本次运行没有节点图'} />;
   return <GraphView graphs={graphs} />;
@@ -128,7 +135,10 @@ function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
       const key = programOf(graph);
       const crumbs = graphCrumbs(hierarchy, graph);
       const root = crumbs[0]?.graph ?? graph;
-      if (!result.has(key) || root === graph) result.set(key, { label: `${graph.actorId} · ${graph.programId}`, root });
+      // 取程序里第一张根图（技能入口图在前，激活规则等根图在后）。
+      const existing = result.get(key);
+      if (!existing || (root === graph && graphCrumbs(hierarchy, existing.root)[0]?.graph !== existing.root))
+        result.set(key, { label: `${graph.actorId} · ${graph.programId}`, root });
     }
     return result;
   }, [graphs, hierarchy]);

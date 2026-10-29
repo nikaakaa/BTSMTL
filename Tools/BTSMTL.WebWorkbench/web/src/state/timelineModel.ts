@@ -107,6 +107,15 @@ export const trackSelectId = (documentId: string, trackId: string) => `${documen
 export const inputClipSelectId = (trackId: string, clipId: string) => `input/${trackId}/${clipId}`;
 export const inputTrackSelectId = (trackId: string) => `input/${trackId}`;
 
+// 不经运行打开技能时，每条 Timeline 自成一段，本地零点即运行零点。
+export const documentSegments = (timelines: AuthorTimeline[]): RouteSegment[] => timelines.map(timeline => {
+  const length = timelineLength(timeline);
+  return {
+    id: `document:${timeline.documentId}`, documentId: timeline.documentId, index: 0, firstIndex: 0, lastIndex: 0,
+    origin: 0, start: 0, end: length, timeline, state: null, length,
+  };
+});
+
 export function timelineLength(timeline: AuthorTimeline): number {
   let length = 0;
   for (const track of timeline.tracks) {

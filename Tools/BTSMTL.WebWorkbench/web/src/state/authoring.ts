@@ -5,7 +5,7 @@ import type { AuthorTimeline, GraphDefinition, GraphNode, GraphPort } from '../a
 import {
   JsonFloat, cloneJson, fpRaw, fpSeconds, numberOf, parseSkillJson, shapeOf, writeSkillJson, type JsonObject, type JsonValue,
 } from './skillJson';
-import { consoleActions } from './store';
+import { consoleActions, useWorkbench } from './store';
 
 // 作者编辑（共享文档 9.x）：当前运行所属技能的 JSON 文件。原文按路径保存；编辑过的文件解析后改写，
 // 保存时整份写回。宿主未启用作者接口时 available=false，作者模式不可用。
@@ -31,6 +31,12 @@ export interface AuthoringState {
   saving: boolean;
   // 最近一次保存的编译结论；文件写入后由正式编译器判断。
   lastSave: SaveOutcome | null;
+  // 技能文件夹；null 为尚未读取。
+  skills: string[] | null;
+  // 不经运行从 JSON 展开的全部图实例（未叠加网页修改）；严格读取被拒时为空并给出原因。
+  documentGraphs: GraphDefinition[] | null;
+  documentError: string | null;
+  tickRate: number | null;
 }
 
 export interface SaveOutcome {
@@ -49,6 +55,7 @@ export interface AddedPort {
 export const useAuthoring = create<AuthoringState>()(() => ({
   available: null, unavailableReason: null, author: false, programId: null, skill: null, revision: null,
   files: {}, edited: {}, version: 0, loading: false, externalChange: false, addedPorts: {}, saving: false, lastSave: null,
+  skills: null, documentGraphs: null, documentError: null, tickRate: null,
 }));
 
 const get = useAuthoring.getState;
@@ -60,7 +67,94 @@ export const timelinePath = (documentId: string) => `timelines/${documentId}.jso
 
 let loadController: AbortController | null = null;
 
+// 技能 JSON 中的 Timeline：轨道、片段与标记，时间由 FP 原始值换算；片段与标记的图为 m_AssetTree／m_Graph。
+export function documentTimelines(files: Record<string, string>): AuthorTimeline[] {
+  return Object.entries(files).filter(([path]) => path.startsWith('timelines/') && path.endsWith('.json')).map(([path, text]) => {
+    const document = parseSkillJson(text) as JsonObject;
+    const documentId = path.slice('timelines/'.length, -'.json'.length);
+    return {
+      documentId, contentIdentity: documentId, contentRevision: '', displayName: document.m_Name as string,
+      tracks: (document.m_Tracks as JsonObject[]).map(track => ({
+        id: track.m_AuthoringId as string, displayName: track.Name as string, muted: track.m_PersistentMuted === true,
+        clips: (track.m_Clips as JsonObject[]).map(clip => ({
+          id: clip.m_AuthoringId as string, contract: clip.ContractKind as string, displayName: null,
+          startSeconds: fpSeconds(numberOf(clip.m_StartTimeFPRawValue)), endSeconds: fpSeconds(numberOf(clip.m_EndTimeFPRawValue)),
+          graphId: (clip.m_AssetTree as string | undefined) ?? null,
+        })),
+        markers: ((track.m_Markers as JsonObject[] | undefined) ?? []).map(marker => ({
+          id: marker.m_AuthoringId as string, seconds: fpSeconds(numberOf(marker.m_TimeFPRawValue)), graphId: marker.m_Graph as string,
+        })),
+      })),
+    };
+  });
+}
+
+// 没有选运行时，各面板直接显示打开的技能：图与 Timeline 取自 JSON，运行结果只在选了运行后叠加。
+function publishDocument() {
+  if (useWorkbench.getState().runId !== null) return;
+  const { documentGraphs, files, skill } = get();
+  useWorkbench.setState({
+    graphs: skill ? documentGraphs : null, graphAvailability: [], timelines: skill ? documentTimelines(files) : [],
+  });
+}
+
+useWorkbench.subscribe((state, previous) => {
+  if (previous.runId !== null && state.runId === null) publishDocument();
+});
+
+async function readDocument(skill: string, signal?: AbortSignal) {
+  try {
+    const document = await authoringApi.document(skill, signal);
+    set({ documentGraphs: document.graphs, documentError: null, tickRate: document.tickRate, programId: document.programId });
+  } catch (error) {
+    if (isAbort(error)) throw error;
+    set({ documentGraphs: [], documentError: error instanceof ApiError ? error.reason : String(error) });
+    consoleActions.error('作者', error);
+  }
+}
+
+// 保存或外部修改后重新展开图（端口、新节点与连线以宿主读取为准）。
+async function reloadDocument() {
+  const skill = get().skill;
+  if (!skill) return;
+  await readDocument(skill);
+  if (get().skill === skill) publishDocument();
+}
+
 export const authoringActions = {
+  async listSkills() {
+    try {
+      set({ skills: await authoringApi.list(), available: true, unavailableReason: null });
+    } catch (error) {
+      set({ skills: [], available: false, unavailableReason: error instanceof ApiError && error.status === 404
+        ? '宿主未启用作者接口（启动时需 --SkillAuthoring true）' : error instanceof Error ? error.message : String(error) });
+    }
+  },
+
+  // 直接打开技能文件夹：读原文件与图展开，不需要运行；进入作者模式。
+  async openSkill(skill: string) {
+    if (get().skill === skill && get().documentGraphs) return;
+    if (Object.keys(get().edited).length) {
+      consoleActions.log('warn', '作者', `有未保存的修改，未切换到 ${skill}`);
+      return;
+    }
+    loadController?.abort();
+    const controller = loadController = new AbortController();
+    set({ skill: null, revision: null, files: {}, edited: {}, addedPorts: {}, documentGraphs: null, documentError: null,
+      loading: true, externalChange: false, lastSave: null });
+    try {
+      const snapshot = await authoringApi.read(skill, controller.signal);
+      set({ skill: snapshot.skill, revision: snapshot.revision, files: Object.fromEntries(snapshot.files.map(file => [file.path, file.content])) });
+      await readDocument(skill, controller.signal);
+      set({ loading: false, author: true });
+      publishDocument();
+    } catch (error) {
+      if (isAbort(error)) return;
+      set({ loading: false });
+      consoleActions.error('作者', error);
+    }
+  },
+
   async probe() {
     try {
       await authoringApi.list();
@@ -144,10 +238,13 @@ export const authoringActions = {
     const files = authoringActions.changedFiles();
     if (!skill || saving || !files.length) return;
     set({ saving: true });
-    const accept = (content: SkillSnapshot, lastSave: SaveOutcome) => set({
-      revision: content.revision, files: Object.fromEntries(content.files.map(file => [file.path, file.content])),
-      edited: {}, addedPorts: {}, externalChange: false, version: get().version + 1, saving: false, lastSave,
-    });
+    const accept = (content: SkillSnapshot, lastSave: SaveOutcome) => {
+      set({
+        revision: content.revision, files: Object.fromEntries(content.files.map(file => [file.path, file.content])),
+        edited: {}, addedPorts: {}, externalChange: false, version: get().version + 1, saving: false, lastSave,
+      });
+      void reloadDocument();
+    };
     try {
       const result = await authoringApi.save(skill, files, []);
       accept(result.content, { ok: true, message: `已保存 ${files.length} 个文件，编译通过`, errors: [] });
@@ -180,6 +277,7 @@ export const authoringActions = {
       else {
         const snapshot = await authoringApi.read(skill);
         set({ revision: snapshot.revision, files: Object.fromEntries(snapshot.files.map(file => [file.path, file.content])) });
+        await reloadDocument();
       }
     } catch (error) {
       consoleActions.error('作者', error);
