@@ -19,7 +19,7 @@ namespace BTSMTL.Timeline.Editor
     public enum TimelinePreviewLifecycle : byte { Closed, Preparing, Waiting, Ready, Failed }
 
     [InitializeOnLoad]
-    public sealed class TimelineAssetPreviewHost
+    public sealed partial class TimelineAssetPreviewHost
     {
         internal const string MissingProviderReason = "当前项目尚未注册 Timeline 预览宿主。";
         public static TimelineAssetPreviewHost Shared { get; } = new();
@@ -94,6 +94,7 @@ namespace BTSMTL.Timeline.Editor
         static TimelineAssetPreviewHost()
         {
             EditorApplication.update += Shared.Update;
+            EditorApplication.update += Shared.UpdateCharacterCamera;
             Undo.undoRedoPerformed += Shared.OnUndo;
             AssemblyReloadEvents.beforeAssemblyReload += Shared.Close;
             EditorApplication.quitting += Shared.Close;
@@ -575,6 +576,7 @@ namespace BTSMTL.Timeline.Editor
             IsPlaying = false;
             InputSchemes.Save();
             m_Active = false;
+            RestoreObserverViews();
             ReleaseScene();
             foreach (KeyValuePair<TimelineAsset, Action> watched in m_Watched)
                 if (watched.Key)

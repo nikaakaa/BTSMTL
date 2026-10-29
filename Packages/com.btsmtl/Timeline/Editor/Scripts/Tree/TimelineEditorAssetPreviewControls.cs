@@ -17,6 +17,7 @@ namespace BTSMTL.Timeline.Editor
         // 窗口记住的预览：档位、Scene 开关与游标；域重载与退出 Play 后按这些恢复同一预览。
         [SerializeField] TimelinePreviewMode m_PreviewMode;
         [SerializeField] bool m_PreviewHidesScene;
+        [SerializeField] bool m_PreviewViewsCharacterCamera;
         [SerializeField] float m_PreviewTime;
         bool m_RestorePreviewTime;
         Label m_AssetPreviewStatus;
@@ -26,6 +27,8 @@ namespace BTSMTL.Timeline.Editor
         ToolbarToggle m_FastTier;
         ToolbarToggle m_RealTier;
         ToolbarToggle m_SceneToggle;
+        ToolbarToggle m_CharacterCameraToggle;
+        const string CharacterCameraTooltip = "Scene 窗口逐帧对齐本档角色相机，看到游戏里的镜头；关掉回到切换前的观察视角";
         ToolbarButton m_FastPlayback;
         Image m_FastPlaybackIcon;
         Label m_PreviewTimeLabel;
@@ -107,6 +110,13 @@ namespace BTSMTL.Timeline.Editor
                 preview.SetShowsScene(change.newValue);
             });
             row.Add(m_SceneToggle);
+            m_CharacterCameraToggle = new ToolbarToggle { text = "角色相机", tooltip = CharacterCameraTooltip };
+            m_CharacterCameraToggle.RegisterValueChangedCallback(change =>
+            {
+                m_PreviewViewsCharacterCamera = change.newValue;
+                preview.SetViewsCharacterCamera(change.newValue);
+            });
+            row.Add(m_CharacterCameraToggle);
             row.Add(new Label("场景") { style = { paddingLeft = 6f, paddingRight = 2f, unityTextAlign = TextAnchor.MiddleLeft } });
             m_AssetPreviewConfiguration = new ObjectField
             {
@@ -144,6 +154,7 @@ namespace BTSMTL.Timeline.Editor
         void OpenTimelinePreview()
         {
             m_SeekToSourcePlayback = !m_RestorePreviewTime;
+            TimelineAssetPreviewHost.Shared.SetViewsCharacterCamera(m_PreviewViewsCharacterCamera);
             TimelineAssetPreviewHost.Shared.Open(SelectedRoot(), m_PreviewMode, !m_PreviewHidesScene);
         }
 
@@ -228,6 +239,7 @@ namespace BTSMTL.Timeline.Editor
             m_FastTier = null;
             m_RealTier = null;
             m_SceneToggle = null;
+            m_CharacterCameraToggle = null;
             m_FastPlayback = null;
             m_FastPlaybackIcon = null;
             m_PreviewTimeLabel = null;
@@ -282,6 +294,11 @@ namespace BTSMTL.Timeline.Editor
                 m_SceneToggle.SetValueWithoutNotify(!m_PreviewHidesScene);
                 SetDisplayed(m_SceneToggle, !real);
                 m_SceneToggle.SetEnabled(active);
+                bool characterCamera = active && preview.CharacterCameraReason.Length == 0;
+                m_CharacterCameraToggle.SetValueWithoutNotify(m_PreviewViewsCharacterCamera);
+                m_CharacterCameraToggle.SetEnabled(characterCamera);
+                m_CharacterCameraToggle.tooltip = characterCamera || !active
+                    ? CharacterCameraTooltip : $"{CharacterCameraTooltip}\n当前不可用：{preview.CharacterCameraReason}";
                 SetDisplayed(m_PreviewTimeLabel, active);
                 m_PreviewTimeLabel.text = active ? $"{preview.Time:0.000} 秒" : string.Empty;
             }
