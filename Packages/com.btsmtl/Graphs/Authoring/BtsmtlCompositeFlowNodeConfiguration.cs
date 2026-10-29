@@ -17,6 +17,7 @@ namespace BTSMTL.Graphs
 #if UNITY_5_3_OR_NEWER
         [UnityEngine.SerializeField, FlowCanvas.FlowNode.GatherPortsCallback]
 #endif
+        [GraphNodePortState]
         List<TStep> m_Steps = new();
 
         protected BtsmtlCompositeFlowNode() { }

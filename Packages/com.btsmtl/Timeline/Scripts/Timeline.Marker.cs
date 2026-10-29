@@ -11,20 +11,6 @@ namespace BTSMTL.Timeline
     {
         public const string ContractKind = "marker";
 
-        [SerializeField, HideInInspector]
-        string m_AuthoringId;
-
-        [SerializeField]
-        long m_TimeFPRawValue;
-
-        [SerializeField]
-        bool m_ForceTriggerOnInitialSeek;
-
-#if UNITY_EDITOR
-        [SerializeField]
-        ScriptableObject m_Graph;
-#endif
-
         Track m_Track;
 
         public string AuthoringId => m_AuthoringId ?? string.Empty;

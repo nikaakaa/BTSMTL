@@ -11,21 +11,6 @@ namespace BTSMTL.Timeline
     [Serializable]
     public sealed partial class TimelineData
     {
-        [SerializeField, HideInInspector]
-        string m_AuthoringId;
-
-        [SerializeField]
-        string m_Name = "Timeline";
-
-        [SerializeReference]
-        List<Track> m_Tracks = new List<Track>();
-
-        [SerializeField]
-        List<TimelineExternalBindingDeclaration> m_ExternalBindings = new List<TimelineExternalBindingDeclaration>();
-
-        [SerializeField]
-        bool m_Loop;
-
         [NonSerialized]
         UnityEngine.Object m_SerializedOwner;
 

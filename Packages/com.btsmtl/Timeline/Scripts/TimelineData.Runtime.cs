@@ -39,19 +39,7 @@ namespace BTSMTL.Timeline
     [Serializable]
     public abstract partial class Track
     {
-        [SerializeField, HideInInspector]
-        string m_AuthoringId;
-
-#if UNITY_EDITOR
-        [GraphAuthoringField(nameof(Name), GraphAuthoringFieldValueKind.String,
-            DocumentMember = GraphAuthoringDocumentMember.DisplayName)]
-#endif
-        public string Name;
         public string AuthoringId => m_AuthoringId ?? string.Empty;
-        public virtual string ContractKind => string.Empty;
-
-        [SerializeField, ShowInInspector, OnValueChanged("RebindTimeline")]
-        TimelineExecutionDomain m_ExecutionDomain;
 
 #if UNITY_EDITOR
         [GraphAuthoringField(nameof(m_ExecutionDomain), typeof(TimelineExecutionDomain))]
@@ -59,8 +47,6 @@ namespace BTSMTL.Timeline
         public TimelineExecutionDomain ExecutionDomain => m_ExecutionDomain;
         public bool HasExplicitExecutionDomain => TimelineExecutionDomains.IsValid(m_ExecutionDomain);
 
-        [SerializeField]
-        protected bool m_PersistentMuted;
 #if UNITY_EDITOR
         [GraphAuthoringField(nameof(m_PersistentMuted), GraphAuthoringFieldValueKind.Boolean)]
 #endif
@@ -77,12 +63,7 @@ namespace BTSMTL.Timeline
             }
         }
 
-        [SerializeReference]
-        protected List<Clip> m_Clips = new List<Clip>();
         public List<Clip> Clips => m_Clips;
-
-        [SerializeField]
-        List<TimelineMarker> m_Markers = new List<TimelineMarker>();
         public List<TimelineMarker> Markers => m_Markers;
 
         public Action OnUpdateMix;
@@ -165,27 +146,8 @@ namespace BTSMTL.Timeline
     [Serializable]
     public abstract partial class Clip
     {
-        [SerializeField, HideInInspector]
-        string m_AuthoringId;
-
         #region Time
-        [SerializeField]
-        long m_StartTimeFPRawValue;
-        [SerializeField]
-        long m_EndTimeFPRawValue;
-        [SerializeField]
-        long m_OtherEaseInTimeFPRawValue;
-        [SerializeField]
-        long m_OtherEaseOutTimeFPRawValue;
-        [SerializeField]
-        long m_SelfEaseInTimeFPRawValue;
-        [SerializeField]
-        long m_SelfEaseOutTimeFPRawValue;
-        [SerializeField]
-        long m_ClipInTimeFPRawValue;
-
         public string AuthoringId => m_AuthoringId ?? string.Empty;
-        public virtual string ContractKind => string.Empty;
         public TimelineExecutionDomain ExecutionDomain => Track != null
             ? Track.ExecutionDomain
             : throw new InvalidOperationException("Timeline Clip has no owning Track.");

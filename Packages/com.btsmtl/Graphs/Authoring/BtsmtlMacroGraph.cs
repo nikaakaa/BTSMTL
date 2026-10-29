@@ -309,7 +309,7 @@ namespace BTSMTL.Graphs
     }
 
     [DoNotList, ProtectedSingleton, Name("子图输入")]
-    public sealed class BtsmtlMacroInputNode : MacroInputNode
+    public sealed partial class BtsmtlMacroInputNode : MacroInputNode
     {
 #if UNITY_EDITOR
         protected override GenericMenu OnDragAndDropPortContextMenu(GenericMenu menu, Port port) => menu;
@@ -324,7 +324,7 @@ namespace BTSMTL.Graphs
     }
 
     [DoNotList, ProtectedSingleton, Name("子图输出")]
-    public sealed class BtsmtlMacroOutputNode : MacroOutputNode
+    public sealed partial class BtsmtlMacroOutputNode : MacroOutputNode
     {
 #if UNITY_EDITOR
         protected override GenericMenu OnDragAndDropPortContextMenu(GenericMenu menu, Port port) => menu;

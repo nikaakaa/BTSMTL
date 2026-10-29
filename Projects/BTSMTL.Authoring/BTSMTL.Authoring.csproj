@@ -24,6 +24,9 @@
     <Compile Include="../../Packages/com.btsmtl/Authoring/Graph/GraphNodePortDeclarations.cs" />
     <Compile Include="../../Packages/com.btsmtl/Graphs/Authoring/BtsmtlCompositeFlowNodeConfiguration.cs" />
     <Compile Include="../../Packages/com.btsmtl/Graphs/Authoring/BtsmtlCompositeFlowNodePorts.cs" />
+    <Compile Include="../../Packages/com.btsmtl/Timeline/Scripts/*SerializedFields.cs" />
+    <Compile Include="../../Packages/com.btsmtl/Timeline/Scripts/Tree/*SerializedFields.cs" />
+    <Compile Include="../../Packages/com.btsmtl/Timeline/Editor/Scripts/*SerializedFields.cs" />
     <Compile Include="../../Packages/com.btsmtl/Scripts/BtsmtlNativeValueNodeCatalog.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Blackboard/PipelineBlackboardVariableScope.cs" />
     <Compile Include="../../Packages/com.btsmtl/Authoring/Blackboard/PipelineBlackboardVariableLifetime.cs" />

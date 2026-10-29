@@ -4,6 +4,9 @@ using System.Collections.Generic;
 
 namespace BTSMTL.Authoring.Graph
 {
+    [AttributeUsage(AttributeTargets.Field)]
+    public sealed class GraphNodePortStateAttribute : Attribute { }
+
     public interface IGraphNodePortsSource
     {
         GraphNodePorts DeclarePorts();

@@ -8,8 +8,6 @@ namespace BTSMTL.Timeline
     [ScriptGuid("31085f11443fe1347b871c5d69db3774"), IconGuid("c7e6321ad8b220a4aa9932b760affad7"), Ordered(3), Color(201, 060, 032)]
     public partial class TreeTrack : Track
     {
-        public override string ContractKind => TimelineContractKinds.TreeTrack;
-
 #if UNITY_EDITOR
         [BTSMTL.Authoring.Graph.GraphAuthoringField("executionDomain", typeof(TimelineExecutionDomain),
             AllowedValues = new[] { "Logic", "Presentation" })]
@@ -38,19 +36,7 @@ namespace BTSMTL.Timeline
         , ITimelineTerminalTimeAlignedClip, ITimelineTreeClipAuthoringSource
 #endif
     {
-        public override string ContractKind => TimelineContractKinds.TreeClip;
-
-        [SerializeField, ShowInInspector, OnValueChanged("OnClipChanged", "RepaintInspector")]
-        TimelineTreeExecutionPhase m_ExecutionPhase = TreeTimelineDefinition.DefaultExecutionPhase;
-
-        [SerializeField, ShowInInspector, OnValueChanged("OnClipChanged", "RepaintInspector")]
-        TimelineClipExitSource m_ExitSource = TreeTimelineDefinition.DefaultExitSource;
-
 #if UNITY_EDITOR
-        [SerializeField]
-        ScriptableObject m_AssetTree;
-
-
         [BTSMTL.Authoring.Graph.GraphAuthoringField("assetTree", BTSMTL.Authoring.Graph.GraphAuthoringFieldValueKind.AssetReference,
             AuthoringVisible = false)]
         [TimelineAuthoringProperty(IsSourceAsset = true)]
@@ -65,7 +51,6 @@ namespace BTSMTL.Timeline
         [BTSMTL.Authoring.Graph.GraphAuthoringField("exitSource", typeof(TimelineClipExitSource), AuthoringVisible = false)]
 #endif
         public TimelineClipExitSource ClipExitSource => m_ExitSource;
-        [SerializeField] bool m_HasDeclaredEndTime;
         public bool HasDeclaredEndTime => m_HasDeclaredEndTime;
         public override TimelineContentParameters CaptureContentParameters() => new TimelineContentTree(HasDeclaredEndTime);
 

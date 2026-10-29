@@ -11,15 +11,6 @@ namespace BTSMTL.Timeline.Editor
     // 可提交，不参与运行时。资产文件放在哪里、叫什么都不影响归属。
     public sealed partial class TimelinePreviewInputSchemes : ScriptableObject
     {
-        [GraphAuthoringField(nameof(Owner), GraphAuthoringFieldValueKind.String)]
-        public string Owner;
-        [GraphAuthoringField(nameof(Timeline), GraphAuthoringFieldValueKind.String)]
-        public string Timeline;
-        [GraphAuthoringField(nameof(Schemes), GraphAuthoringFieldValueKind.Object)]
-        public List<TimelineAssetPreviewPreferences> Schemes = new();
-        [GraphAuthoringField(nameof(Selected), GraphAuthoringFieldValueKind.Integer, HasMinimum = true, Minimum = 0)]
-        public int Selected;
-
         public TimelineAssetPreviewPreferences Current => Schemes[Mathf.Clamp(Selected, 0, Schemes.Count - 1)];
 
         public void ReleaseUnreferencedGraphs()
@@ -91,7 +82,7 @@ namespace BTSMTL.Timeline.Editor
         public void Save()
         {
             if (m_Asset != null)
-                AssetDatabase.SaveAssetIfDirty(m_Asset);
+                TimelineAuthoringSave.Save(m_Asset);
         }
 
         public bool Select(int index)
