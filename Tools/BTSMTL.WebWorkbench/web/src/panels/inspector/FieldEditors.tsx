@@ -6,7 +6,8 @@ import {
 } from '../../api/authoring';
 import { ApiError, isAbort } from '../../api/http';
 import {
-  authoringActions, graphAuthoring, graphPath, inputAuthoring, timelinePath, useAuthoring, useCurrentDocument, variableTypes, type JsonKey,
+  authoringActions, graphAuthoring, graphPath, inputAuthoring, timelinePath, useAuthoring, useCurrentDocument, useSkillElements, variableTypes,
+  type JsonKey,
 } from '../../state/authoring';
 import { JsonFloat, cloneJson, fpRaw, fpSeconds, numberOf, stringifySkillJson, type JsonObject, type JsonValue } from '../../state/skillJson';
 import { Fold } from '../../ui/blocks';
@@ -431,10 +432,19 @@ export function InputPlanFields({ path, editable }: { path: string; editable: bo
 
 const trackFixed = new Set(['m_AuthoringId', 'ContractKind', 'm_Clips', 'm_Markers']);
 
+// 轨道与片段按原 C# 类型的存储形状编辑（枚举给下拉、布尔给勾选）；形状取宿主 elements 中同合同种类的模板。
+function useElementShape(kind: 'tracks' | 'clips', contract: JsonValue | undefined): StorageShape | null {
+  const elements = useSkillElements(true);
+  return elements?.[kind].find(item => item.kind === contract)?.shape ?? null;
+}
+
+const memberShape = (shape: StorageShape | null, member: string) => shape?.members?.find(item => item.member === member) ?? null;
+
 export function TrackFields({ documentId, trackId }: { documentId: string; trackId: string }) {
   const skill = useAuthoring(state => state.skill);
   const { document } = useCurrentDocument(skill ? timelinePath(documentId) : null);
   const track = (((document as JsonObject | null)?.m_Tracks as JsonObject[] | undefined) ?? []).find(item => item.m_AuthoringId === trackId) ?? null;
+  const shape = useElementShape('tracks', track?.ContractKind);
   if (!track) return null;
   const listId = `identities-${documentId}-${trackId}`;
   const set: SetValue = (keys, value) => authoringActions.setTrackValue(documentId, trackId, keys, value);
@@ -442,7 +452,7 @@ export function TrackFields({ documentId, trackId }: { documentId: string; track
     <Fold title="字段" kind="var(--port-enum)" defaultOpen>
       <IdentityList id={listId} />
       {Object.keys(track).filter(key => !trackFixed.has(key)).map(key => (
-        <ValueEditor key={key} label={memberLabel(key)} value={track[key]} shape={null} keys={[key]} onSet={set} identities={listId} />
+        <ValueEditor key={key} label={memberLabel(key)} value={track[key]} shape={memberShape(shape, key)} keys={[key]} onSet={set} identities={listId} />
       ))}
     </Fold>
   );
@@ -538,6 +548,7 @@ export function ClipFields({ documentId, clipId }: { documentId: string; clipId:
   const { document } = useCurrentDocument(skill ? timelinePath(documentId) : null);
   const clip = (((document as JsonObject | null)?.m_Tracks as JsonObject[] | undefined) ?? [])
     .flatMap(track => (track.m_Clips as JsonObject[] | undefined) ?? []).find(item => item.m_AuthoringId === clipId) ?? null;
+  const shape = useElementShape('clips', clip?.ContractKind);
   if (!clip) return null;
   const listId = `identities-${documentId}-${clipId}`;
   const set: SetValue = (keys, value) => authoringActions.setClipValue(documentId, clipId, keys, value);
@@ -554,7 +565,7 @@ export function ClipFields({ documentId, clipId }: { documentId: string; clipId:
           <NumberInput wide label={key} value={fpSeconds(numberOf(clip[key]))} min={0}
             onChange={next => { if (next !== null && fpRaw(next) !== numberOf(clip[key])) set([key], fpRaw(next)); }} />
         </Row>
-      ) : <ValueEditor key={key} label={memberLabel(key)} value={clip[key]} shape={null} keys={[key]} onSet={set} identities={listId} />)}
+      ) : <ValueEditor key={key} label={memberLabel(key)} value={clip[key]} shape={memberShape(shape, key)} keys={[key]} onSet={set} identities={listId} />)}
     </Fold>
   );
 }

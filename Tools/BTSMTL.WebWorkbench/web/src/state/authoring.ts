@@ -395,6 +395,43 @@ export const authoringActions = {
     dropOrphans(seeds);
   },
 
+  // 轨道排序（照 Unity MoveTrack）：移到 index 位置。
+  moveTrack(documentId: string, trackId: string, index: number) {
+    authoringActions.edit(timelinePath(documentId), document => {
+      const tracks = tracksOf(document);
+      const from = tracks.findIndex(track => track.m_AuthoringId === trackId);
+      if (from < 0) throw new Error(`Timeline ${documentId} 中没有轨道 ${trackId}`);
+      const [track] = tracks.splice(from, 1);
+      tracks.splice(Math.max(0, Math.min(index, tracks.length)), 0, track);
+    });
+  },
+
+  // 复制粘贴片段（照 Unity CopyClip／PasteClip）：新身份、保留时长，tree 片段与原片段共用同一张图。
+  copyClip(documentId: string, clipId: string): boolean {
+    const document = currentDocument(timelinePath(documentId));
+    const clip = document ? findTimelineClip(document as JsonObject, clipId) : null;
+    clipClipboard = clip ? cloneJson(clip) : null;
+    return clip !== null;
+  },
+
+  canPasteClip: () => clipClipboard !== null,
+
+  pasteClip(documentId: string, trackId: string, startSeconds: number): string | null {
+    const source = clipClipboard;
+    if (!source) return null;
+    const id = crypto.randomUUID();
+    const length = numberOf(source.m_EndTimeFPRawValue) - numberOf(source.m_StartTimeFPRawValue);
+    authoringActions.edit(timelinePath(documentId), document => {
+      const track = tracksOf(document).find(item => item.m_AuthoringId === trackId);
+      if (!track) throw new Error(`Timeline ${documentId} 中没有轨道 ${trackId}`);
+      const start = fpRaw(startSeconds);
+      (track.m_Clips as JsonObject[]).push(sortedObject({
+        ...cloneJson(source), m_AuthoringId: id, m_StartTimeFPRawValue: start, m_EndTimeFPRawValue: start + length,
+      }));
+    });
+    return id;
+  },
+
   setMarkerTime(documentId: string, markerId: string, seconds: number) {
     authoringActions.edit(timelinePath(documentId), document => {
       const marker = tracksOf(document).flatMap(track => (track.m_Markers as JsonObject[] | undefined) ?? []).find(item => item.m_AuthoringId === markerId);
@@ -427,6 +464,8 @@ export const authoringActions = {
 };
 
 const tracksOf = (document: JsonValue) => (document as JsonObject).m_Tracks as JsonObject[];
+
+let clipClipboard: JsonObject | null = null;
 
 // 轨道的合同种类（ContractKind），取当前（可能未保存的）Timeline 文档。
 export function trackContract(documentId: string, trackId: string): string | null {

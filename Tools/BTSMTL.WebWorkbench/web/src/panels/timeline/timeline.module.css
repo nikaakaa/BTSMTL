@@ -1,4 +1,9 @@
 /* 照 BTSMTL Timeline Editor 实际画面（D5）。 */
+.frame {
+  height: 100%;
+  min-height: 0;
+}
+
 .window {
   display: flex;
   flex-direction: column;
@@ -57,7 +62,8 @@
 .subject {
   display: flex;
   flex: 0 1 340px;
-  min-width: 120px;
+  /* 面板窄时技能与 Timeline 选择先收窄，右侧作者按钮保持完整 */
+  min-width: 64px;
 }
 
 .subject > :first-child {
@@ -664,6 +670,17 @@
 
 .marker[data-selected] {
   background: var(--clip-select);
+}
+
+.marker[data-editable] {
+  cursor: ew-resize;
+}
+
+/* 轨道头双击改名 */
+.nameInput {
+  flex: 1;
+  min-width: 0;
+  margin-top: 4px;
 }
 
 /* 覆盖层：起点、段边界、结束线与游标 */
