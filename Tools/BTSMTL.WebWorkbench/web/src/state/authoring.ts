@@ -363,7 +363,7 @@ export const authoringActions = {
     try {
       const selection = await selectedPreview();
       const result = await authoringApi.save(skill, {
-        content: { files, removedFiles }, preview: selection.kind === 'selected' ? selection.target : null,
+        content: { files, removedFiles: removed }, preview: selection.kind === 'selected' ? selection.target : null,
       });
       const outcome = savedOutcome(result, result.preview, selection.kind === 'unavailable' ? selection.reason : '');
       accept(result.content, outcome);
