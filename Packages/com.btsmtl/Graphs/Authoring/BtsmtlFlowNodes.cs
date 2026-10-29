@@ -16,12 +16,6 @@ namespace BTSMTL.Graphs
         public OrchestrationOperationCode Code { get; }
     }
 
-    public interface IBtsmtlGraphStepPort
-    {
-        string Id { get; }
-        string Name { get; }
-    }
-
     [Serializable]
     public sealed partial class BtsmtlGraphStepPort : IBtsmtlGraphStepPort
     {
@@ -83,31 +77,8 @@ namespace BTSMTL.Graphs
     public abstract partial class BtsmtlCompositeFlowNode<TStep> : BtsmtlFlowNode, IBtsmtlCompositeFlowNode
         where TStep : IBtsmtlGraphStepPort
     {
-        [SerializeField, GatherPortsCallback] List<TStep> m_Steps = new();
-        protected BtsmtlCompositeFlowNode() { }
-        protected BtsmtlCompositeFlowNode(IEnumerable<TStep> defaultSteps) => m_Steps = defaultSteps.ToList();
-        [GraphAuthoringField("steps", GraphAuthoringFieldValueKind.Object,
-            CompilationImpact = GraphAuthoringFieldCompilationImpact.Structure)]
-        public IReadOnlyList<TStep> Steps => m_Steps;
-        public int StepCount => m_Steps.Count;
-        public IBtsmtlGraphStepPort GetStep(int index) => m_Steps[index];
         protected virtual bool HasExecutionInput => true;
         protected virtual string ExecutionInputId => "Input";
-
-        [GraphAuthoringConfigure]
-        public void SetSteps(IEnumerable<TStep> steps)
-        {
-            List<TStep> next = steps.ToList();
-            var ids = new HashSet<string>(StringComparer.Ordinal);
-            foreach (TStep step in next)
-                if (string.IsNullOrWhiteSpace(step.Id) || !ids.Add(step.Id))
-                    throw new ArgumentException("组合步骤必须具有唯一的稳定端口身份。", nameof(steps));
-            foreach (BinderConnection connection in outConnections.OfType<BinderConnection>())
-                if (!ids.Contains(connection.sourcePortID))
-                    throw new InvalidOperationException("删除步骤前必须先断开其端口。");
-            m_Steps = next;
-            GatherPorts();
-        }
 
         protected override void RegisterPorts()
         {
