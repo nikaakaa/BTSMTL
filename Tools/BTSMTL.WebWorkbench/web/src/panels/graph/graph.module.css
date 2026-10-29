@@ -1,0 +1,217 @@
+/* 照 Unity Visual Scripting（D4）。 */
+.root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.canvas {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  background: var(--graph-bg);
+}
+
+.canvas :global(.react-flow) {
+  --xy-background-color: var(--graph-bg);
+  --xy-node-border-radius: 4px;
+  background: var(--graph-bg);
+}
+
+.gridMinor {
+  stroke: var(--graph-grid);
+}
+
+.gridMajor {
+  stroke: var(--graph-grid-major);
+}
+
+.minimap {
+  border: 1px solid var(--line);
+}
+
+.node {
+  width: 200px;
+  background: var(--node-bg);
+  border: 1px solid var(--node-line);
+  border-radius: 4px;
+  color: var(--text);
+  font: var(--font);
+}
+
+.node[data-selected] {
+  border-color: var(--select-graph);
+}
+
+.node[data-faded] {
+  opacity: 0.4;
+}
+
+.node[data-failed] .header {
+  box-shadow: inset 0 -2px 0 var(--reject);
+}
+
+.header {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 8px 5px;
+  background: var(--node-header);
+  border-bottom: 1px solid var(--bg-0);
+  border-radius: 3px 3px 0 0;
+}
+
+.glyph {
+  width: 14px;
+  height: 14px;
+  border-radius: 2px;
+  flex: none;
+}
+
+.titles {
+  min-width: 0;
+}
+
+.titles small {
+  display: block;
+  font-size: 10.5px;
+  line-height: 1.15;
+  color: var(--text-disabled);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.titles b {
+  display: block;
+  font-weight: 600;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.body {
+  padding: 4px 0 6px;
+}
+
+.portRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  height: 22px;
+}
+
+.portIn, .portOut, .portEmpty {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 0 10px;
+  white-space: nowrap;
+}
+
+.portOut {
+  flex-direction: row-reverse;
+}
+
+.portName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.inputValue {
+  height: 18px;
+  min-width: 40px;
+  max-width: 90px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 5px;
+  border: 1px solid var(--field-line);
+  border-radius: var(--radius);
+  background: var(--field);
+  font: var(--mono);
+  overflow: hidden;
+}
+
+.outputValue {
+  font: var(--mono);
+  color: var(--value);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 端口：执行端口箭头，数据端口圆点（有值实心） */
+.execPort, .valuePort, .hiddenHandle {
+  position: absolute;
+  top: 50%;
+  min-width: 0;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.portIn .execPort, .portIn .valuePort {
+  left: -5px;
+}
+
+.portOut .execPort, .portOut .valuePort {
+  right: -5px;
+  left: auto;
+}
+
+.execPort {
+  width: 9px;
+  height: 11px;
+  transform: translateY(-50%);
+  background: var(--port-exec);
+  clip-path: polygon(0 0, 50% 0, 100% 50%, 50% 100%, 0 100%);
+}
+
+.execPort[data-off] {
+  background: var(--port-exec-off);
+}
+
+.valuePort {
+  width: 9px;
+  height: 9px;
+  transform: translateY(-50%);
+  border-radius: 50%;
+  background: var(--node-header);
+  border: 1.5px solid var(--pc);
+}
+
+.valuePort[data-filled] {
+  background: var(--pc);
+}
+
+.hiddenHandle {
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+/* 连线：执行线 --port-exec；本帧走过 2px，其余 1.2px 灰 */
+.edge {
+  fill: none;
+  stroke: var(--edge-idle);
+  stroke-width: 1.2;
+}
+
+.edge[data-status='passed'] {
+  stroke: var(--port-exec);
+  stroke-width: 2;
+}
+
+.edge[data-status='rejected'] {
+  stroke: var(--reject);
+}
+
+.edge[data-faded] {
+  opacity: 0.25;
+}
