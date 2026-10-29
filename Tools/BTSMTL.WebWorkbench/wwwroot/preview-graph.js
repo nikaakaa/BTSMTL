@@ -52,7 +52,7 @@ export class PreviewGraph {
     this.selectedNode = '';
     this.viewKey = '';
     this.frame = null;
-    container.innerHTML = `<header><strong>编译图</strong><select data-graph-choice aria-label="节点图" disabled></select><select data-graph-call-choice aria-label="实际调用" disabled></select><button data-graph-fit title="适配节点图" aria-label="适配节点图" disabled>⊡</button></header>
+    container.innerHTML = `<header><strong>节点图</strong><select data-graph-choice aria-label="节点图" disabled></select><select data-graph-call-choice aria-label="实际调用" disabled></select><button data-graph-fit title="适配节点图" aria-label="适配节点图" disabled>⊡</button></header>
       <div class="observed-graph-body"><div class="graph-viewport"><div class="graph-world" hidden><svg class="graph-edges" aria-label="编译连线"></svg><div class="graph-nodes"></div></div><div class="observation-empty">等待确认帧</div></div><section class="graph-inspector" aria-label="所选节点的本帧记录" hidden></section></div>`;
     this.canvas = container.querySelector('.graph-viewport');
     this.world = container.querySelector('.graph-world');
@@ -140,9 +140,9 @@ export class PreviewGraph {
     this.calls = new Map(records.map(item => [callKey(item.call), item.call]));
     const paths = [...new Set(graph.nodes.map(node => node.invocationPath))];
     const callSelect = this.container.querySelector('[data-graph-call-choice]');
-    callSelect.innerHTML = this.calls.size ? [...this.calls].map(([key, call]) =>
-      `<option value="${html(key)}" title="${html(key)}">${html(call.invocationPath)} · ${html(call.invocationGeneration)}</option>`).join('') :
-      paths.map(path => `<option value="${html(path)}">${html(path)}</option>`).join('');
+    callSelect.innerHTML = this.calls.size ? [...this.calls].map(([key], index) =>
+      `<option value="${html(key)}" title="${html(key)}">调用 ${index + 1}</option>`).join('') :
+      paths.map((path, index) => `<option value="${html(path)}" title="${html(path)}">图实例 ${index + 1}</option>`).join('');
     if (![...callSelect.options].some(option => option.value === this.selectedCall)) this.selectedCall = callSelect.options[0].value;
     callSelect.value = this.selectedCall; callSelect.title = this.selectedCall;
     callSelect.disabled = callSelect.options.length < 2;

@@ -12,9 +12,7 @@
     <header class="subject-toolbar">
       <strong>Timeline</strong>
       <select id="run-select" aria-label="选择运行" disabled><option>选择运行</option></select>
-      <span id="run-title"></span>
       <span class="toolbar-spacer"></span>
-      <span id="connection" class="connection">连接中</span>
       <button id="settings-open" title="预览设置" aria-label="预览设置">⚙</button>
     </header>
     <section class="preview-toolbar" aria-label="预览行">
@@ -27,15 +25,14 @@
       <button id="previous-frame" disabled aria-label="上一个封存帧" title="上一帧">‹</button>
       <button id="next-frame" disabled aria-label="下一个封存帧" title="下一帧">›</button>
       <output id="frame-label">—</output>
-      <input id="frame" type="range" min="0" max="0" value="0" disabled aria-label="封存确认帧游标">
+      <span id="status" role="status">连接中</span>
       <label for="scene">场景</label><select id="scene" aria-label="场景"></select>
     </section>
     <div id="run-state" class="run-error" role="alert" hidden></div>
     <section id="preview-content"><section id="execution-observation" aria-label="Timeline 与节点图"></section></section>
   </main>
-  <footer class="statusbar"><span id="status" role="status">连接中</span><button id="capability-state" hidden></button></footer>
   <dialog id="preview-settings">
-    <header><strong>预览设置</strong><button id="settings-close" aria-label="关闭预览设置">×</button></header>
+    <header><strong>预览设置</strong><span id="connection">连接中</span><button id="settings-close" aria-label="关闭预览设置">×</button></header>
     <section id="runtime-sources" inert>
       <label for="run-source">输入来源</label><select id="run-source"><option value="replay">录像</option><option value="local">输入方案</option></select>
       <div id="replay-source"><label for="replay">录像</label><select id="replay"></select></div>
@@ -44,8 +41,8 @@
       <div class="settings-actions"><button id="start" disabled>重新播放</button><button id="refresh">刷新</button><button id="cancel" hidden>取消运行</button></div>
       <div id="playback-controls" class="settings-actions" hidden><button data-control="Step">单步</button><button data-control="Stop">停止</button><label class="checkbox-label"><input id="follow-live" type="checkbox" checked> 跟随当前帧</label><output id="playback-state"></output></div>
     </section>
-    <details><summary>运行信息</summary><code id="run-identity"></code><pre id="run-error-detail"></pre><dl id="run-details"></dl><p id="channels"></p><code id="scene-version"></code><code id="replay-version"></code><p id="source-state"></p></details>
-    <details id="capabilities"><summary>预览能力</summary><dl id="capability-details"></dl></details>
+    <details><summary>运行信息</summary><output id="run-title"></output><code id="run-identity"></code><pre id="run-error-detail"></pre><dl id="run-details"></dl><p id="channels"></p><code id="scene-version"></code><code id="replay-version"></code><p id="source-state"></p></details>
+    <details id="capabilities" hidden><summary id="capability-state">预览能力</summary><dl id="capability-details"></dl></details>
     <details><summary>逻辑视图</summary><div class="preview-stage"><div id="viewport"></div></div><button id="fit-view" disabled>适配角色</button></details>
     <details><summary>帧记录</summary><dl id="frame-facts"></dl><div id="actors"></div><details id="frame-record-details"><summary>完整记录</summary><div id="frame-sections"></div></details><details><summary>JSON</summary><pre id="frame-json"></pre></details></details>
     <details><summary>记录查询</summary><section id="observation-query"></section></details>

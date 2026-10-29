@@ -4,7 +4,7 @@ import { fieldsHtml, sectionsHtml } from './preview-records.js';
 import { PreviewObservation } from './preview-observation.js';
 
 const $ = id => document.getElementById(id);
-const state = { sources: null, runs: [], selected: null, summary: null, frames: new Map(), count: 0, sealed: false, initialFrameIndex: 0, host: null, playback: null, historyPlayback: null, currentFrame: null, mode: 'real' };
+const state = { sources: null, runs: [], selected: null, summary: null, frames: new Map(), count: 0, sealed: false, frameIndex: 0, host: null, playback: null, historyPlayback: null, currentFrame: null, mode: 'real' };
 let pollTimer;
 let historyTimer;
 const stages = { accepted: '准备中', running: '运行中', completed: '已封存', stopped: '已停止', failed: '执行失败', cancelled: '已取消' };
@@ -106,7 +106,7 @@ async function selectRun(id, frameIndex = 0) {
   executionObservation.reset();
   state.selected = id; state.summary = null; state.frames.clear(); state.count = 0; state.sealed = false;
   state.currentFrame = null;
-  state.initialFrameIndex = frameIndex;
+  state.frameIndex = frameIndex;
   delete document.documentElement.dataset.previewImageReady;
   history.replaceState(null, '', `?run=${encodeURIComponent(id)}&frameIndex=${frameIndex}`);
   clearActors(); $('run-details').replaceChildren(); $('frame-facts').replaceChildren();
@@ -149,7 +149,7 @@ async function updateRun() {
       await sendPendingControl();
       if (id !== state.selected) return;
       if (!sessionStorage.getItem('btsmtl.preview.pending-control'))
-        report(`实际会话${playbackNames[snapshot.state]} · 已记录 ${summary.frameCount} 个确认帧。`);
+        report(playbackNames[snapshot.state]);
     }
     pollTimer = setTimeout(() => guarded(updateRun), 500);
     return;
@@ -166,7 +166,7 @@ async function updateRun() {
   if (id !== state.selected) return;
   await displayObservation(summary, true);
   if (id !== state.selected) return;
-  report(`${stages[receipt.stage]} · 保留 ${summary.frameCount} 个确认帧。`);
+  report(stages[receipt.stage]);
   await refresh();
 }
 
@@ -186,17 +186,15 @@ async function displayObservation(summary, sealed) {
   if (runId !== state.selected) return;
   await executionObservation.sync(summary);
   if (runId !== state.selected) return;
-  if (sealed && state.initialFrameIndex > 0 && state.initialFrameIndex >= state.count) throw new Error('请求的帧序号超出本次已封存范围。');
+  if (sealed && state.frameIndex > 0 && state.frameIndex >= state.count) throw new Error('请求的帧序号超出本次已封存范围。');
   $('run-details').innerHTML = fieldsHtml([...summary.fields,
     { displayName: `${summary.frameDisplayName}范围`, value: `${summary.firstFrame} — ${summary.lastFrame}` },
     { displayName: '已记录确认帧', value: summary.frameCount },
     { displayName: '记录状态', value: sealed ? '已封存' : '实际会话观察中' }]);
   $('channels').textContent = `本次实际观察：${summary.channels.join('、')}。${summary.geometryAvailable ? '视口显示世界、角色接收体、扫掠采样两端及实际命中点。' : '该记录只提供角色根坐标轴；参考网格不代表碰撞地面。'}`;
-  $('frame').max = Math.max(0, state.count - 1);
-  if (first) $('frame').value = state.initialFrameIndex;
-  if (!sealed && $('follow-live').checked) $('frame').value = Math.max(0, state.count - 1);
+  if (!sealed && $('follow-live').checked) state.frameIndex = Math.max(0, state.count - 1);
   updateTransport();
-  if (state.count) { await showFrame(Number($('frame').value)); if (firstFrame) fitView(); }
+  if (state.count) { await showFrame(state.frameIndex); if (firstFrame) fitView(); }
 }
 
 async function sendPendingControl() {
@@ -220,15 +218,15 @@ async function showFrame(index) {
     if (id !== state.selected) return;
     result.items.forEach((frame, offset) => state.frames.set(page + offset, frame));
   }
-  if (index !== Number($('frame').value)) return;
+  if (index !== state.frameIndex) return;
   const frame = state.frames.get(index);
   if (state.summary.geometryAvailable && !viewport.geometry) {
     const geometry = await request(`/api/preview/runs/${id}/geometry`);
-    if (id !== state.selected || index !== Number($('frame').value)) return;
+    if (id !== state.selected || index !== state.frameIndex) return;
     viewport.setGeometry(geometry);
   }
   $('frame-label').textContent = `${frame.hostFrame} f · ${frame.seconds.toFixed(3)} s`;
-  report(`${state.sealed ? '记录' : '确认帧'} ${frame.hostFrame}`);
+  report(state.sealed ? state.historyPlayback ? '正在回看' : '记录回看' : playbackNames[state.playback]);
   $('frame-facts').innerHTML = fieldsHtml([{ displayName: '运行相对秒数', value: frame.seconds },
     ...frame.fields, ...(frame.consistency ? [{ displayName: frame.consistency.displayName, value: frame.consistency.value }] : [])]);
   $('actors').innerHTML = frame.actors.map(actor => `<article class="actor-fact"><strong>${escapeHtml(actor.displayName)}</strong><dl>${fieldsHtml(actor.fields)}</dl><details><summary>宿主角色记录</summary><pre>${escapeHtml(actor.rawJson)}</pre></details></article>`).join('');
@@ -252,7 +250,7 @@ async function showFrame(index) {
 const viewport = new LogicViewport($('viewport'));
 const observationQuery = new ObservationQuery($('observation-query'), request);
 const executionObservation = new PreviewObservation($('execution-observation'), request, index => {
-  pauseHistory(); $('follow-live').checked = false; $('frame').value = index;
+  pauseHistory(); $('follow-live').checked = false; state.frameIndex = index;
   guarded(() => showFrame(index));
 }, updateCapabilities);
 
@@ -270,8 +268,8 @@ function updateCapabilities(availability) {
     if (!channel.available || !channel.complete)
       gaps.push({ name: `${names[channel.channel] ?? channel.channel}${channel.available ? '不完整' : ''}`, reason: channel.reason });
   }
-  $('capability-state').hidden = !state.host || !gaps.length;
-  $('capability-state').textContent = `预览缺项 ${gaps.length}`;
+  $('capabilities').hidden = !state.host || !gaps.length;
+  $('capability-state').textContent = `预览能力（缺项 ${gaps.length}）`;
   $('capability-state').title = gaps.map(gap => `${gap.name}：${gap.reason}`).join('\n');
   $('capability-details').innerHTML = fieldsHtml(gaps.map(gap => ({ displayName: gap.name, value: gap.reason })));
 }
@@ -289,9 +287,8 @@ function updateTransport() {
   $('preview-toggle').setAttribute('aria-label', playing ? '暂停' : '播放');
   $('preview-toggle').title = playing ? '暂停' : '播放';
   document.querySelectorAll('[data-preview-mode]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.previewMode === state.mode)));
-  $('frame').disabled = off || !state.count;
-  $('previous-frame').disabled = off || !state.count || Number($('frame').value) === 0;
-  $('next-frame').disabled = off || !state.count || Number($('frame').value) === state.count - 1;
+  $('previous-frame').disabled = off || !state.count || state.frameIndex === 0;
+  $('next-frame').disabled = off || !state.count || state.frameIndex === state.count - 1;
   $('fit-view').disabled = off || !state.count;
   $('preview-content').hidden = off;
   $('playback-controls').hidden = off || !state.playback;
@@ -311,12 +308,12 @@ function control(command) {
 }
 
 async function playHistory() {
-  if (Number($('frame').value) === state.count - 1) { $('frame').value = 0; await showFrame(0); }
-  const playback = { runId: state.selected, origin: state.frames.get(Number($('frame').value)).seconds, started: performance.now() };
+  if (state.frameIndex === state.count - 1) { state.frameIndex = 0; await showFrame(0); }
+  const playback = { runId: state.selected, origin: state.frames.get(state.frameIndex).seconds, started: performance.now() };
   state.historyPlayback = playback; updateTransport();
   const advance = async () => {
     const target = playback.origin + (performance.now() - playback.started) / 1000;
-    let index = Number($('frame').value);
+    let index = state.frameIndex;
     while (index < state.count - 1) {
       if (!state.frames.has(index + 1)) {
         const page = await request(`/api/preview/runs/${playback.runId}/frames?offset=${index + 1}&limit=128`);
@@ -327,7 +324,7 @@ async function playHistory() {
       index++;
     }
     if (state.historyPlayback !== playback) return;
-    if (index !== Number($('frame').value)) { $('frame').value = index; await showFrame(index); }
+    if (index !== state.frameIndex) { state.frameIndex = index; await showFrame(index); }
     if (state.historyPlayback !== playback) return;
     if (index === state.count - 1) { pauseHistory(); return; }
     historyTimer = setTimeout(() => guarded(advance), 16);
@@ -353,17 +350,15 @@ document.querySelectorAll('[data-preview-mode]').forEach(button => { button.oncl
     if (state.playback === 'playing') control('Pause');
     report('预览已关闭');
   }
-  else if (state.count) await showFrame(Number($('frame').value));
+  else if (state.count) await showFrame(state.frameIndex);
   else report(state.selected ? $('run-title').textContent : '选择运行', !$('run-state').hidden);
   updateTransport(); sourceVersion();
 }); });
-$('frame').oninput = () => { pauseHistory(); $('follow-live').checked = false; guarded(() => showFrame(Number($('frame').value))); };
-function moveFrame(delta) { pauseHistory(); $('follow-live').checked = false; $('frame').value = Math.max(0, Math.min(state.count - 1, Number($('frame').value) + delta)); return showFrame(Number($('frame').value)); }
+function moveFrame(delta) { pauseHistory(); $('follow-live').checked = false; state.frameIndex = Math.max(0, Math.min(state.count - 1, state.frameIndex + delta)); return showFrame(state.frameIndex); }
 $('previous-frame').onclick = () => guarded(() => moveFrame(-1)); $('next-frame').onclick = () => guarded(() => moveFrame(1));
 $('fit-view').onclick = fitView;
 $('frame-record-details').ontoggle = () => { if ($('frame-record-details').open && state.currentFrame) renderFrameRecords(); };
 $('settings-open').onclick = () => $('preview-settings').showModal();
-$('capability-state').onclick = () => { $('capabilities').open = true; $('preview-settings').showModal(); $('capabilities').scrollIntoView(); };
 $('settings-close').onclick = () => $('preview-settings').close();
 $('compare').onclick = () => guarded(async () => { const result = await request(`/api/preview/runs/${state.selected}/compare/${$('comparison').value}`); $('comparison-result').textContent = result.rawJson; report(!result.comparable ? '运行条件不同，未比较一致性值。' : result.equal ? `已比较 ${result.comparedFrames} 帧，本次已记录范围内一致。` : `首个差异在${state.summary.frameDisplayName} ${result.firstDifference.hostFrame}。`); });
 guarded(async () => {

@@ -69,11 +69,24 @@ export class PreviewObservation {
     }));
     this.firstSeconds = this.routeFrames[0]?.seconds ?? 0;
     this.duration = this.routeFrames.length > 1 ? this.routeFrames.at(-1).seconds - this.firstSeconds : 0;
-    this.container.querySelector('.observed-timeline-content').innerHTML = `<div class="observed-time-ruler"><span>轨道</span><div>${Array.from({ length: 9 }, (_, index) => `<span style="left:${index * 12.5}%">${(this.firstSeconds + this.duration * index / 8).toFixed(2)}</span>`).join('')}</div></div>
-      <section class="observed-timeline-row observed-input-group" data-availability="unavailable"><div class="observed-track-name"><strong>▾ 预览输入</strong></div><div class="observed-timeline-lane"><button class="input-scheme" disabled title="宿主尚未提供正式输入方案与按键轨">方案 ▾</button></div></section>
+    this.container.querySelector('.observed-timeline-content').innerHTML = `<div class="observed-time-ruler"><span>轨道</span><div role="slider" tabindex="${this.routeFrames.length ? 0 : -1}" aria-label="记录游标" aria-disabled="${!this.routeFrames.length}" aria-valuemin="0" aria-valuemax="${Math.max(0, this.routeFrames.length - 1)}" aria-valuenow="0">${Array.from({ length: 9 }, (_, index) => `<span style="left:${index * 12.5}%">${(this.firstSeconds + this.duration * index / 8).toFixed(2)}</span>`).join('')}</div></div>
+      <section class="observed-timeline-row observed-input-group" data-availability="unavailable"><div class="observed-track-name"><strong>▾ 预览输入</strong><button class="input-scheme" disabled title="宿主尚未提供正式输入方案与按键轨">方案 ▾</button></div><div class="observed-timeline-lane"></div></section>
       ${[...timelines].map(([id, segments]) => `<div class="observed-timeline-row"><div class="observed-track-name" title="${html(id)}"><strong>▾ ${html(id.slice(0, 8))}</strong><output data-timeline-id="${html(id)}"></output></div><div class="observed-timeline-lane" data-recorded-lane>${segments.map(segment => `<div class="observed-timeline-segment" style="left:${this.position(segment.first.seconds)}%;width:${this.position(segment.last.seconds) - this.position(segment.first.seconds)}%" title="${html(id)} · 实际记录 ${html(segment.first.hostFrame)} — ${html(segment.last.hostFrame)}"></div>`).join('')}</div></div>`).join('')}
       <div class="observed-cursor" hidden><i></i></div>`;
     if (this.routeFrames.length) {
+      const ruler = this.container.querySelector('[role=slider]');
+      ruler.onkeydown = event => {
+        let index = Number(ruler.getAttribute('aria-valuenow'));
+        switch (event.key) {
+          case 'ArrowLeft': index--; break;
+          case 'ArrowRight': index++; break;
+          case 'Home': index = 0; break;
+          case 'End': index = this.routeFrames.length - 1; break;
+          default: return;
+        }
+        event.preventDefault();
+        this.seek(Math.max(0, Math.min(this.routeFrames.length - 1, index)));
+      };
       this.container.querySelectorAll('.observed-time-ruler > div, [data-recorded-lane]').forEach(lane => {
         lane.onpointerdown = event => { lane.setPointerCapture(event.pointerId); this.seekRuler(event, lane); };
         lane.onpointermove = event => { if (lane.hasPointerCapture(event.pointerId)) this.seekRuler(event, lane); };
@@ -100,6 +113,9 @@ export class PreviewObservation {
   showFrame(frame, index) {
     this.frame = frame;
     const routeFrame = this.routeFrames[index];
+    const ruler = this.container.querySelector('[role=slider]');
+    ruler.setAttribute('aria-valuenow', String(index));
+    ruler.setAttribute('aria-valuetext', `${frame.hostFrame} f · ${routeFrame.seconds.toFixed(3)} s`);
     const cursor = this.container.querySelector('.observed-cursor');
     cursor.hidden = false;
     cursor.style.setProperty('--cursor-position', `${this.position(routeFrame.seconds)}%`);
