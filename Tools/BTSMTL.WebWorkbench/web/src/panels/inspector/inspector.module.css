@@ -1,0 +1,171 @@
+/* 照 Unity 检查器（D7）：对象头、组件头 22px、字段标签占 42% 宽。 */
+.root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.head {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 6px;
+  align-items: center;
+  padding: 6px 6px 6px 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.big {
+  position: relative;
+  grid-row: 1 / 3;
+  width: 30px;
+  height: 30px;
+  border-radius: 3px;
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+}
+
+.big::after {
+  content: '';
+  position: absolute;
+  inset: 8px;
+  border-radius: 2px;
+  background: var(--kind);
+}
+
+.name {
+  font-weight: 600;
+}
+
+.subline {
+  display: flex;
+  gap: 6px;
+  color: var(--text-dim);
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.field {
+  display: grid;
+  grid-template-columns: 42% 1fr;
+  align-items: center;
+  gap: 4px;
+  min-height: var(--row);
+}
+
+.field > label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.box {
+  min-height: var(--control);
+  display: flex;
+  align-items: center;
+  padding: 0 5px;
+  background: var(--field);
+  border: 1px solid var(--field-line);
+  border-radius: var(--radius);
+  color: var(--text);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  user-select: text;
+}
+
+.mono {
+  font: var(--mono);
+}
+
+.list {
+  margin: 2px 0;
+  border: 1px solid var(--field-line);
+  border-radius: var(--radius);
+  background: var(--bg-3);
+  overflow: hidden;
+}
+
+.listRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 20px;
+  padding: 0 6px;
+  border-bottom: 1px solid var(--line);
+}
+
+.listRow:last-child {
+  border-bottom: 0;
+}
+
+.listRow:nth-child(even) {
+  background: var(--bg-2);
+}
+
+.listText {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.listValue {
+  margin-left: auto;
+  font: var(--mono);
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.listValue[data-sampled] {
+  color: var(--value);
+}
+
+.listValue[data-failed] {
+  color: var(--reject);
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--pc);
+  flex: none;
+}
+
+.exec {
+  width: 7px;
+  height: 9px;
+  background: var(--port-exec);
+  clip-path: polygon(0 0, 50% 0, 100% 50%, 50% 100%, 0 100%);
+  flex: none;
+}
+
+.raw {
+  margin: 2px 0 4px;
+  max-height: 240px;
+  overflow: auto;
+  padding: 4px 6px;
+  background: var(--field);
+  border: 1px solid var(--field-line);
+  border-radius: var(--radius);
+  font: var(--mono);
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: var(--text-dim);
+  user-select: text;
+}
+
+.note {
+  color: var(--text-dim);
+  padding: 2px 0;
+}

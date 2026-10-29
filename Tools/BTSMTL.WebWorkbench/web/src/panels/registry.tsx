@@ -6,6 +6,7 @@ import { Empty } from '../ui/blocks';
 import { ConsolePanel } from './ConsolePanel';
 import { ContentPanel } from './ContentPanel';
 import { GraphPanel } from './graph/GraphPanel';
+import { InspectorPanel } from './inspector/InspectorPanel';
 import { TimelinePanel } from './timeline/TimelinePanel';
 
 function Placeholder({ type }: { type: PanelType }) {
@@ -17,6 +18,7 @@ const contents: Partial<Record<PanelType, FunctionComponent>> = {
   content: ContentPanel,
   timeline: TimelinePanel,
   graph: GraphPanel,
+  inspector: InspectorPanel,
 };
 
 export const panelComponents: Record<string, FunctionComponent<IDockviewPanelProps>> = Object.fromEntries(
