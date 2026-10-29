@@ -1,6 +1,6 @@
 import {
   Background, BackgroundVariant, BaseEdge, EdgeLabelRenderer, getBezierPath, Handle, MiniMap, Position, ReactFlow,
-  ReactFlowProvider, applyNodeChanges, useInternalNode, useReactFlow, type Edge, type EdgeProps, type Node, type NodeChange,
+  ReactFlowProvider, SelectionMode, applyNodeChanges, useInternalNode, useReactFlow, type Edge, type EdgeProps, type Node, type NodeChange,
   type NodeProps, type Viewport,
 } from '@xyflow/react';
 import '@xyflow/react/dist/base.css';
@@ -18,7 +18,7 @@ import {
 } from '../../state/graphModel';
 import { getState, selectionActions, useWorkbench } from '../../state/store';
 import { Empty, PanelBar } from '../../ui/blocks';
-import { Button, MenuButton, Select, type MenuEntry } from '../../ui/controls';
+import { Button, ContextMenu, MenuButton, Select, type MenuEntry } from '../../ui/controls';
 import { RouteStore, type RouteHistory } from './routeStore';
 import styles from './graph.module.css';
 
@@ -345,16 +345,31 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams }:
   const view = `${graphKey(graph)}|${path}`;
   const saved = params.viewport?.view === view ? params.viewport : null;
   const onMoveEnd = useCallback((_: unknown, viewport: Viewport) => setParams({ viewport: { ...viewport, view } }), [setParams, view]);
+  // 框选结束：选中了一个节点时同步给检查器；框到多个时检查器显示第一个。
+  const onSelectionEnd = useCallback(() => {
+    const picked = nodes.filter(node => node.selected);
+    if (picked.length) selectionActions.select({ kind: 'node', id: picked[0].data.selectId });
+  }, [nodes]);
+  const { fitView } = useReactFlow();
+  const menu: MenuEntry[] = [
+    { label: '添加节点…', onSelect: () => {}, disabled: true, tip: '网页还没有作者写入接口；添加节点目前在 Unity 的 NodeCanvas 中进行' },
+    { kind: 'separator' },
+    { label: '全部居中', onSelect: () => void fitView({ padding: 0.12, maxZoom: 1, duration: 200 }) },
+    { label: '全选', onSelect: () => setNodes(current => current.map(node => ({ ...node, selected: true }))) },
+  ];
 
   return (
     <ViewContext.Provider value={options}>
+      <ContextMenu entries={menu}>
       <div className={styles.canvas}>
+        {/* 照 NodeCanvas：中键拖动平移，左键在空白处拖出框选，滚轮缩放，Ctrl／Shift 加选 */}
         <ReactFlow<FlowNode, FlowEdge> nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes}
           onNodesChange={onNodesChange} onNodeClick={onNodeClick} onNodeDoubleClick={onNodeDoubleClick}
-          onEdgeDoubleClick={onEdgeDoubleClick} onMoveEnd={onMoveEnd} zoomOnDoubleClick={false}
+          onEdgeDoubleClick={onEdgeDoubleClick} onMoveEnd={onMoveEnd} onSelectionEnd={onSelectionEnd} zoomOnDoubleClick={false}
+          panOnDrag={[1]} selectionOnDrag selectionMode={SelectionMode.Partial}
           defaultViewport={saved ?? undefined} fitView={!saved} fitViewOptions={{ padding: 0.12, maxZoom: 1 }}
           minZoom={0.1} maxZoom={2} nodesConnectable={false} edgesFocusable={false} elementsSelectable
-          deleteKeyCode={null} selectionKeyCode={null} multiSelectionKeyCode={null} proOptions={{ hideAttribution: true }}
+          deleteKeyCode={null} selectionKeyCode={null} multiSelectionKeyCode={['Control', 'Shift']} proOptions={{ hideAttribution: true }}
           colorMode="dark">
           <Background id="minor" variant={BackgroundVariant.Lines} gap={20} patternClassName={styles.gridMinor} />
           <Background id="major" variant={BackgroundVariant.Lines} gap={200} patternClassName={styles.gridMajor} />
@@ -365,8 +380,11 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams }:
               nodeStrokeWidth={0} />
           )}
         </ReactFlow>
-        <div className={styles.hint}>{machine ? '双击状态进入状态体 · 双击转移进入条件' : '双击节点进入子图或跳到 Timeline'}</div>
+        <div className={styles.hint}>
+          {machine ? '双击状态进入状态体 · 双击转移进入条件' : '双击节点进入子图或跳到 Timeline'} · 中键拖动平移 · 左键框选
+        </div>
       </div>
+      </ContextMenu>
     </ViewContext.Provider>
   );
 }
@@ -382,11 +400,11 @@ function useNodeState(store: RouteStore, id: string) {
 }
 
 // 状态机的状态：NodeCanvas 状态块，正在运行的加黄框，走过的加金色外框。
-function StateNodeView({ data }: NodeProps<FlowNode>) {
+function StateNodeView({ data, selected: boxed }: NodeProps<FlowNode>) {
   const { laid, index, selectId, system, timeline, children } = data;
   const { store, related } = useView();
   const state = useNodeState(store, laid.node.id);
-  const selected = useWorkbench(current => current.selection?.kind === 'node' && current.selection.id === selectId);
+  const selected = useWorkbench(current => current.selection?.kind === 'node' && current.selection.id === selectId) || boxed;
   const running = state.occurred > 0;
   const local = useWorkbench(current => {
     if (!running || !timeline) return null;
@@ -409,11 +427,11 @@ function StateNodeView({ data }: NodeProps<FlowNode>) {
 }
 
 // 流图节点：NodeCanvas 节点，标题下按行列出输入与输出端口。
-function FlowNodeView({ data }: NodeProps<FlowNode>) {
+function FlowNodeView({ data, selected: boxed }: NodeProps<FlowNode>) {
   const { laid, selectId, children, timeline } = data;
   const { store, values, dim, related } = useView();
   const state = useNodeState(store, laid.node.id);
-  const selected = useWorkbench(current => current.selection?.kind === 'node' && current.selection.id === selectId);
+  const selected = useWorkbench(current => current.selection?.kind === 'node' && current.selection.id === selectId) || boxed;
   const faded = (dim && !state.occurred) || (related !== null && !related.has(laid.node.id));
   const rows = Math.max(laid.inputs.length, laid.outputs.length);
   const inputs = laid.inputs.filter(port => !port.isTrigger), outputs = laid.outputs.filter(port => !port.isTrigger);

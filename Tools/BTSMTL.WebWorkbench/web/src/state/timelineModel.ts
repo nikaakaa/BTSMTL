@@ -147,6 +147,13 @@ export function routeSegments(frames: RouteFrameSpan[], timelines: AuthorTimelin
 export const segmentTitle = (segment: RouteSegment) =>
   `${segment.timeline?.displayName ?? segment.documentId.slice(0, 8)}${segment.state ? ` · ${segment.state.name}` : ''} · ${segment.start.toFixed(2)}–${segment.end.toFixed(2)} s`;
 
+// 片段引用的节点图（graphId 形如 `类别:图身份`）；本次运行没有这张图时为 null。
+export function clipGraph(graphs: GraphDefinition[] | null, clip: AuthorClip): GraphDefinition | null {
+  if (!clip.graphId) return null;
+  const id = clip.graphId.slice(clip.graphId.indexOf(':') + 1);
+  return graphs?.find(graph => graph.id === id) ?? null;
+}
+
 // 片段显示名：作者名，其次所调用图的名称，最后轨道名。
 export function clipLabel(clip: AuthorClip, track: AuthorTrack, graphNames: Map<string, string>): string {
   if (clip.displayName) return clip.displayName;

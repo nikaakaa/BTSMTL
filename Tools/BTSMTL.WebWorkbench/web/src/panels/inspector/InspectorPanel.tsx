@@ -10,7 +10,7 @@ import {
 import { stageNames } from '../../state/session';
 import { getState, selectionActions, useWorkbench, type Selection } from '../../state/store';
 import {
-  clipKind, findTimelineClip, findTimelineTrack, nearestFrame, playSegments, trackColors, trackKind,
+  clipGraph, clipKind, findTimelineClip, findTimelineTrack, nearestFrame, playSegments, trackColors, trackKind,
 } from '../../state/timelineModel';
 import { transport } from '../../state/transport';
 import { BarLabel, BarSeparator, Empty, Fold, IdentityFold, PanelBar } from '../../ui/blocks';
@@ -323,8 +323,7 @@ function ClipInspector({ id, missing }: { id: string; missing: ReactNode }) {
   if (!found) return missing;
   const { timeline, track, clip } = found;
   const kind = trackColors[clipKind(clip)];
-  const clipGraphId = clip.graphId?.slice(clip.graphId.indexOf(':') + 1);
-  const clipGraph = clipGraphId ? graphs?.find(graph => graph.id === clipGraphId) ?? null : null;
+  const graph = clipGraph(graphs, clip);
   const instances = segments.map(segment => ({
     segment, start: segment.origin + clip.startSeconds, end: Math.min(segment.origin + clip.endSeconds, segment.end),
   })).filter(item => item.start <= item.segment.end);
@@ -334,8 +333,8 @@ function ClipInspector({ id, missing }: { id: string; missing: ReactNode }) {
       <Fold title="片段" kind={kind} defaultOpen>
         <Link label="Timeline" text={timeline.displayName} kind="var(--track-anim)" tip="在 Timeline 面板进入"
           onOpen={() => openTimeline(timeline.documentId)} />
-        {clipGraph
-          ? <Link label="节点图" text={graphName(clipGraph)} kind="var(--node-flow)" tip="在节点图面板打开" onOpen={() => openGraph(clipGraph)} />
+        {graph
+          ? <Link label="节点图" text={graphName(graph)} kind="var(--node-flow)" tip="在节点图面板打开" onOpen={() => openGraph(graph)} />
           : <Value label="节点图" mono={false} value={clip.graphId ? '本次运行没有这张图' : '无'} />}
         <Value label="合同" value={clip.contract} />
         <Value label="起点" value={clip.startSeconds.toFixed(3)} />

@@ -2,7 +2,7 @@ import {
   TimelineContext, useItem, useRow, useTimelineContext, type Range, type UsePanStrategy,
 } from 'dnd-timeline';
 import {
-  memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent,
+  createContext, memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent,
   type ReactNode,
 } from 'react';
 import { useShallow } from 'zustand/react/shallow';
@@ -10,11 +10,12 @@ import type { FrozenInputTimeline } from '../../api/types';
 import { usePanelId, usePanelParams, usePanelVisible, usePanelWindow } from '../../shell/panel';
 import { clearRendered, frameKey, reportRendered } from '../../shell/readiness';
 import { FrameField, useTransportState } from '../../shell/Toolbar';
+import { openPanel } from '../../shell/layout';
 import {
-  getState, inputRootKey, runActions, selectionActions, useWorkbench, type RouteFrameSpan,
+  consoleActions, getState, inputRootKey, runActions, selectionActions, useWorkbench, type RouteFrameSpan,
 } from '../../state/store';
 import {
-  inputClipSelectId, inputTrackSelectId, nearestFrame, routeSegments, segmentRows, segmentTitle, selectedInputRoot,
+  clipGraph, inputClipSelectId, inputTrackSelectId, nearestFrame, routeSegments, segmentRows, segmentTitle, selectedInputRoot,
   trackColors, type ClipInstance, type GroupRow, type RouteSegment, type TrackKind, type TrackRow,
 } from '../../state/timelineModel';
 import { graphKey, nodeSelectId } from '../../state/graphModel';
@@ -271,7 +272,11 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
       <div className={styles.timeline} ref={setTimelineRef}>
         <div className={styles.header}>
           <div className={styles.timeHead}>时间</div>
-          <Ruler bounds={bounds} origin={origin} marks={marks} seekAt={seekAt} />
+          <div className={styles.headerLane}>
+            <TimeScroller bounds={focused ? { start: focused.origin, end: focused.origin + focused.length } : bounds}
+              onRangeChanged={onRangeChanged} />
+            <Ruler bounds={bounds} origin={origin} marks={marks} seekAt={seekAt} />
+          </div>
         </div>
         <div className={styles.filterRow}>
           <div className={styles.filter}>
@@ -280,8 +285,8 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
           </div>
           <div className={styles.filterLane} />
         </div>
-        <Rows rows={rows} collapsed={params.collapsed} toggle={toggle} enter={enter} seekAt={seekAt} inputRoots={inputTimeline?.roots} />
-        <Overlay bounds={bounds} origin={origin} segments={focused ? [] : segments} follow={params.follow} onRangeChanged={onRangeChanged} />
+        <Rows rows={rows} collapsed={params.collapsed} toggle={toggle} enter={enter} inputRoots={inputTimeline?.roots} />
+        <Overlay bounds={bounds} origin={origin} seekAt={seekAt} segments={focused ? [] : segments} follow={params.follow} onRangeChanged={onRangeChanged} />
       </div>
     </div>
   );
@@ -363,6 +368,47 @@ function TimelineToolbar({ settings, fit, subject }: { settings: MenuEntry[]; fi
 
 const tickSteps = [1 / 60, 1 / 30, 0.05, 0.1, 0.2, 0.25, 0.5, 1, 2, 5, 10, 30, 60];
 
+// 照 Timeline Editor 刻度上方的时间滚动条：滑块是当前可见范围，拖滑块平移，拖两端缩放。
+function TimeScroller({ bounds, onRangeChanged }: { bounds: Range; onRangeChanged(update: (previous: Range) => Range): void }) {
+  const { range } = useTimelineContext();
+  const track = useRef<HTMLDivElement>(null);
+  const total = { start: Math.min(bounds.start, range.start), end: Math.max(bounds.end, range.end) };
+  const span = total.end - total.start || 1;
+  const left = (range.start - total.start) / span * 100;
+  const width = (range.end - range.start) / span * 100;
+  const drag = (mode: 'move' | 'start' | 'end') => (event: PointerEvent<HTMLElement>) => {
+    if (event.button !== 0 || !track.current) return;
+    event.stopPropagation();
+    const element = event.currentTarget;
+    element.setPointerCapture(event.pointerId);
+    const scale = span / track.current.clientWidth;
+    let lastX = event.clientX;
+    const move = (next: globalThis.PointerEvent) => {
+      const delta = (next.clientX - lastX) * scale;
+      lastX = next.clientX;
+      onRangeChanged(previous => mode === 'move' ? { start: previous.start + delta, end: previous.end + delta }
+        : mode === 'start' ? { start: Math.min(previous.end - minSpan, previous.start + delta), end: previous.end }
+          : { start: previous.start, end: Math.max(previous.start + minSpan, previous.end + delta) });
+    };
+    const up = () => {
+      element.removeEventListener('pointermove', move);
+      element.removeEventListener('pointerup', up);
+      element.removeEventListener('pointercancel', up);
+    };
+    element.addEventListener('pointermove', move);
+    element.addEventListener('pointerup', up);
+    element.addEventListener('pointercancel', up);
+  };
+  return (
+    <div className={styles.scroller} ref={track}>
+      <div className={styles.scrollThumb} style={{ left: `${left}%`, width: `${width}%` }} onPointerDown={drag('move')}>
+        <i className={styles.scrollEnd} data-side="start" onPointerDown={drag('start')} />
+        <i className={styles.scrollEnd} data-side="end" onPointerDown={drag('end')} />
+      </div>
+    </div>
+  );
+}
+
 // origin：刻度零点。单个 Timeline 视图按该次播放的本地时间标注。
 function Ruler({ bounds, origin, marks, seekAt }: {
   bounds: Range; origin: number; marks: { key: string; seconds: number; label: string }[]; seekAt(clientX: number): void;
@@ -402,15 +448,60 @@ function Ruler({ bounds, origin, marks, seekAt }: {
 
 // ── 行：只渲染可见行 ──
 
-function Rows({ rows, collapsed, toggle, enter, seekAt, inputRoots }: {
+// 框选中的片段（data-box 键）；照 Timeline Editor 在轨道空白处左键拖出选框。
+const BoxedContext = createContext<ReadonlySet<string>>(new Set());
+interface Box { x0: number; y0: number; x1: number; y1: number }
+
+function Rows({ rows, collapsed, toggle, enter, inputRoots }: {
   rows: Row[];
   collapsed: string[];
   toggle(id: string): void;
   enter(documentId: string): void;
-  seekAt(clientX: number): void;
   inputRoots: FrozenInputTimeline[] | undefined;
 }) {
   const scroller = useRef<HTMLDivElement>(null);
+  const [boxed, setBoxed] = useState<ReadonlySet<string>>(() => new Set());
+  const [box, setBox] = useState<Box | null>(null);
+  const boxStart = useRef<{ x: number; y: number } | null>(null);
+  // 框选后选中的是第一个片段；其它面板或单击换了选中时，框选结果作废。
+  const boxedSelect = useRef<string | null>(null);
+  const selection = useWorkbench(state => state.selection);
+  useEffect(() => {
+    if (boxed.size && !(selection?.kind === 'clip' && selection.id === boxedSelect.current)) setBoxed(new Set());
+  }, [selection, boxed]);
+
+  const boxDown = (event: PointerEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement;
+    if (event.button !== 0 || !target.closest('[data-lane]') || target.closest('button')) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    boxStart.current = { x: event.clientX, y: event.clientY };
+  };
+  const boxMove = (event: PointerEvent<HTMLDivElement>) => {
+    const start = boxStart.current;
+    if (!start) return;
+    setBox({ x0: start.x, y0: start.y, x1: event.clientX, y1: event.clientY });
+  };
+  const boxUp = (event: PointerEvent<HTMLDivElement>) => {
+    const start = boxStart.current;
+    if (!start) return;
+    boxStart.current = null;
+    setBox(null);
+    const left = Math.min(start.x, event.clientX), right = Math.max(start.x, event.clientX);
+    const top = Math.min(start.y, event.clientY), bottom = Math.max(start.y, event.clientY);
+    // 单击空白：取消选中。
+    if (right - left < 3 && bottom - top < 3) {
+      setBoxed(new Set());
+      selectionActions.select(null);
+      return;
+    }
+    const hits = [...event.currentTarget.querySelectorAll<HTMLElement>('[data-box]')].filter(element => {
+      const rect = element.getBoundingClientRect();
+      return rect.right >= left && rect.left <= right && rect.bottom >= top && rect.top <= bottom;
+    });
+    boxedSelect.current = hits[0]?.dataset.select ?? null;
+    setBoxed(new Set(hits.map(element => element.dataset.box!)));
+    selectionActions.select(hits.length ? { kind: 'clip', id: hits[0].dataset.select! } : null);
+  };
   const panelWindow = usePanelWindow();
   const [view, setView] = useState({ top: 0, height: 600 });
   useLayoutEffect(() => {
@@ -437,40 +528,48 @@ function Rows({ rows, collapsed, toggle, enter, seekAt, inputRoots }: {
   const collapsedSet = new Set(collapsed);
 
   return (
-    <div className={styles.rows} ref={scroller} onScroll={event => {
-      const top = event.currentTarget.scrollTop;
-      setView(previous => previous.top === top ? previous : { ...previous, top });
-    }}>
+    <div className={styles.rows} ref={scroller} onPointerDown={boxDown} onPointerMove={boxMove} onPointerUp={boxUp}
+      onPointerCancel={() => { boxStart.current = null; setBox(null); }}
+      onScroll={event => {
+        const top = event.currentTarget.scrollTop;
+        setView(previous => previous.top === top ? previous : { ...previous, top });
+      }}>
+      <BoxedContext.Provider value={boxed}>
       <div style={{ height: offsets[first] }} />
       {rows.slice(first, last).map(row => {
         switch (row.kind) {
-          case 'group': return <GroupLine key={row.id} row={row} open={!collapsedSet.has(row.id)} toggle={toggle} enter={enter} seekAt={seekAt} />;
-          case 'track': return <TrackLine key={row.id} row={row} seekAt={seekAt} />;
+          case 'group': return <GroupLine key={row.id} row={row} open={!collapsedSet.has(row.id)} toggle={toggle} enter={enter} />;
+          case 'track': return <TrackLine key={row.id} row={row} />;
           case 'inputGroup':
-            return <InputGroupLine key={row.id} open={!collapsedSet.has(row.id)} toggle={toggle} roots={inputRoots} seekAt={seekAt} />;
-          case 'inputTrack': return <InputTrackLine key={row.id} row={row} seekAt={seekAt} />;
+            return <InputGroupLine key={row.id} open={!collapsedSet.has(row.id)} toggle={toggle} roots={inputRoots} />;
+          case 'inputTrack': return <InputTrackLine key={row.id} row={row} />;
         }
       })}
       <div style={{ height: total - offsets[last] }} />
+      </BoxedContext.Provider>
+      {box && (
+        <div className={styles.selectBox} style={{
+          left: Math.min(box.x0, box.x1), top: Math.min(box.y0, box.y1),
+          width: Math.abs(box.x1 - box.x0), height: Math.abs(box.y1 - box.y0),
+        }} />
+      )}
     </div>
   );
 }
 
-function Line({ id, height, head, headClass, children, seekAt, laneClass }: {
+function Line({ id, height, head, headClass, children, laneClass }: {
   id: string;
   height: number;
   head: ReactNode;
   headClass?: string;
   children?: ReactNode;
-  seekAt(clientX: number): void;
   laneClass?: string;
 }) {
   const { setNodeRef, rowWrapperStyle, rowStyle, rowSidebarStyle } = useRow({ id, disabled: true });
   return (
     <div className={styles.line} style={{ ...rowWrapperStyle, height }}>
       <div className={headClass} style={rowSidebarStyle}>{head}</div>
-      <div ref={setNodeRef} className={laneClass ?? styles.lane} style={rowStyle}
-        onPointerDown={event => { if (event.button === 0 && event.target === event.currentTarget) seekAt(event.clientX); }}>
+      <div ref={setNodeRef} className={laneClass ?? styles.lane} style={rowStyle} data-lane>
         {children}
       </div>
     </div>
@@ -479,8 +578,8 @@ function Line({ id, height, head, headClass, children, seekAt, laneClass }: {
 
 const Triangle = ({ open }: { open: boolean }) => <i className={open ? styles.foldOpen : styles.foldClosed} />;
 
-const GroupLine = memo(function GroupLine({ row, open, toggle, enter, seekAt }: {
-  row: GroupRow; open: boolean; toggle(id: string): void; enter(documentId: string): void; seekAt(clientX: number): void;
+const GroupLine = memo(function GroupLine({ row, open, toggle, enter }: {
+  row: GroupRow; open: boolean; toggle(id: string): void; enter(documentId: string): void;
 }) {
   const segment = row.segment;
   const now = useWorkbench(state => state.frameIndex >= segment.firstIndex && state.frameIndex <= segment.lastIndex);
@@ -495,7 +594,7 @@ const GroupLine = memo(function GroupLine({ row, open, toggle, enter, seekAt }: 
   }));
   const authoredEnd = segment.origin + segment.length;
   return (
-    <Line id={row.id} height={rowHeights.group} seekAt={seekAt} laneClass={styles.groupLane} headClass={styles.groupHead} head={
+    <Line id={row.id} height={rowHeights.group} laneClass={styles.groupLane} headClass={styles.groupHead} head={
       <>
         <button className={styles.fold} onClick={() => toggle(row.id)} aria-expanded={open} aria-label={open ? '折叠' : '展开'}>
           <Triangle open={open} />
@@ -531,7 +630,7 @@ function useSelected(selectId: string, kind: 'clip' | 'track') {
   return useWorkbench(state => state.selection?.kind === kind && state.selection.id === selectId);
 }
 
-const TrackLine = memo(function TrackLine({ row, seekAt }: { row: TrackRow; seekAt(clientX: number): void }) {
+const TrackLine = memo(function TrackLine({ row }: { row: TrackRow }) {
   const selected = useSelected(row.selectId, 'track');
   const { range } = useTimelineContext();
   const visible = row.clips.filter(clip => clip.end >= range.start && clip.start <= range.end);
@@ -543,7 +642,7 @@ const TrackLine = memo(function TrackLine({ row, seekAt }: { row: TrackRow; seek
     return new Map(row.clips.map(clip => [clip.key, starts.find(start => start > clip.start) ?? Infinity]));
   }, [row.clips]);
   return (
-    <Line id={row.id} height={rowHeights[row.trackKind]} seekAt={seekAt} headClass={styles.trackHead} head={
+    <Line id={row.id} height={rowHeights[row.trackKind]} headClass={styles.trackHead} head={
       <button className={styles.headButton} data-selected={selected || undefined}
         style={{ ['--tc' as string]: trackColors[row.trackKind] }}
         onClick={() => selectionActions.select({ kind: 'track', id: row.selectId })}>
@@ -591,7 +690,8 @@ const Clip = memo(function Clip({ clip, kind, next }: { clip: ClipInstance; kind
   const { setNodeRef, itemStyle, itemContentStyle } = useItem({ id: clip.key, span: { start: clip.start, end: clip.end }, disabled: true });
   const { valueToPixels } = useTimelineContext();
   const active = useWorkbench(state => state.seconds !== null && clip.start <= state.seconds && state.seconds < Math.min(clip.end, clip.exit));
-  const selected = useSelected(clip.selectId, 'clip');
+  const boxed = useContext(BoxedContext).has(clip.key);
+  const selected = useSelected(clip.selectId, 'clip') || boxed;
   const width = valueToPixels(clip.end - clip.start);
   const dimmed = clip.start >= clip.exit;
   // 超出段离开时刻的部分压暗。
@@ -602,10 +702,11 @@ const Clip = memo(function Clip({ clip, kind, next }: { clip: ClipInstance; kind
   return (
     <div ref={setNodeRef} style={itemStyle} className={styles.item}>
       <div style={itemContentStyle}>
-        <button className={styles.clip} data-kind={kind} data-active={active || undefined} data-selected={selected || undefined}
+        <button className={styles.clip} data-box={clip.key} data-select={clip.selectId} data-kind={kind} data-active={active || undefined} data-selected={selected || undefined}
           data-dim={dimmed || undefined}
           title={`${clip.label} · ${clip.start.toFixed(3)}–${clip.end.toFixed(3)} s${clip.end > clip.exit ? `（${clip.exit.toFixed(3)} s 离开本段）` : ''}`}
-          onClick={() => selectionActions.select({ kind: 'clip', id: clip.selectId })}>
+          onClick={() => selectionActions.select({ kind: 'clip', id: clip.selectId })}
+          onDoubleClick={() => openClipGraph(clip)}>
           {inside && <span className={styles.clipLabel}>{clip.label}</span>}
           {band && <><i className={styles.easeIn} /><i className={styles.easeOut} /></>}
           {cut !== null && <i className={styles.clipCut} style={{ left: cut }} />}
@@ -617,6 +718,17 @@ const Clip = memo(function Clip({ clip, kind, next }: { clip: ClipInstance; kind
     </div>
   );
 });
+
+// 照 Timeline Editor：双击片段打开它的节点图。
+function openClipGraph(clip: ClipInstance) {
+  const graph = clipGraph(getState().graphs, clip.clip);
+  if (!graph) {
+    consoleActions.log('warn', 'Timeline', clip.clip.graphId ? `片段 ${clip.label} 的节点图不在本次运行中` : `片段 ${clip.label} 没有节点图`);
+    return;
+  }
+  selectionActions.showGraph(graphKey(graph));
+  openPanel('graph');
+}
 
 function Blend({ start, end }: { start: number; end: number }) {
   return (
@@ -635,14 +747,14 @@ function Marker({ seconds, title }: { seconds: number; title: string }) {
 
 // ── 预览输入组 ──
 
-function InputGroupLine({ open, toggle, roots, seekAt }: {
-  open: boolean; toggle(id: string): void; roots: FrozenInputTimeline[] | undefined; seekAt(clientX: number): void;
+function InputGroupLine({ open, toggle, roots }: {
+  open: boolean; toggle(id: string): void; roots: FrozenInputTimeline[] | undefined;
 }) {
   const inputRoot = useWorkbench(state => state.inputRoot);
   const reason = useWorkbench(state => state.inputTimeline?.availability[0]?.reason ?? '');
   const options = (roots ?? []).map(root => ({ value: inputRootKey(root), label: root.displayName }));
   return (
-    <Line id="input" height={rowHeights.inputGroup} seekAt={seekAt} laneClass={styles.groupLane} headClass={styles.groupHead} head={
+    <Line id="input" height={rowHeights.inputGroup} laneClass={styles.groupLane} headClass={styles.groupHead} head={
       <>
         <button className={styles.fold} onClick={() => toggle('input')} aria-expanded={open} disabled={!options.length}
           aria-label={open ? '折叠' : '展开'}>
@@ -659,7 +771,7 @@ function InputGroupLine({ open, toggle, roots, seekAt }: {
   );
 }
 
-const InputTrackLine = memo(function InputTrackLine({ row, seekAt }: { row: InputTrackRow; seekAt(clientX: number): void }) {
+const InputTrackLine = memo(function InputTrackLine({ row }: { row: InputTrackRow }) {
   const selected = useSelected(row.selectId, 'track');
   const value = useWorkbench(state => {
     const seconds = state.seconds;
@@ -669,7 +781,7 @@ const InputTrackLine = memo(function InputTrackLine({ row, seekAt }: { row: Inpu
   });
   const { range } = useTimelineContext();
   return (
-    <Line id={row.id} height={rowHeights.in} seekAt={seekAt} headClass={styles.trackHead} head={
+    <Line id={row.id} height={rowHeights.in} headClass={styles.trackHead} head={
       <button className={`${styles.headButton} ${styles.inputHead}`} data-selected={selected || undefined}
         style={{ ['--tc' as string]: trackColors.in }} onClick={() => selectionActions.select({ kind: 'track', id: row.selectId })}>
         <span className={styles.slot} />
@@ -694,11 +806,12 @@ const InputHold = memo(function InputHold({ trackId, clip }: { trackId: string; 
   const { setNodeRef, itemStyle } = useItem({ id: `input/${trackId}/${clip.id}`, span: { start: clip.startSeconds, end: clip.endSeconds }, disabled: true });
   const active = useWorkbench(state => state.seconds !== null && clip.startSeconds <= state.seconds && state.seconds <= clip.endSeconds);
   const selectId = inputClipSelectId(trackId, clip.id);
-  const selected = useSelected(selectId, 'clip');
+  const boxed = useContext(BoxedContext).has(selectId);
+  const selected = useSelected(selectId, 'clip') || boxed;
   const keys = [...new Set(clip.writes.map(write => write.keyId))].join(' / ');
   return (
     <div ref={setNodeRef} style={itemStyle} className={styles.item}>
-      <button className={styles.hold} data-active={active || undefined} data-selected={selected || undefined}
+      <button className={styles.hold} data-box={selectId} data-select={selectId} data-active={active || undefined} data-selected={selected || undefined}
         title={`${clip.startSeconds.toFixed(3)} — ${clip.endSeconds.toFixed(3)} s\n${keys}`}
         onClick={() => selectionActions.select({ kind: 'clip', id: selectId })}>
         <i className={styles.holdBar} /><i className={styles.key} /><i className={styles.keyEnd} />
@@ -725,8 +838,9 @@ function InputKey({ trackId, id, seconds, title }: { trackId: string; id: string
 
 // ── 游标覆盖线与结束线：直接改 transform，不经过 React ──
 
-function Overlay({ bounds, origin, segments, follow, onRangeChanged }: {
-  bounds: Range; origin: number; segments: RouteSegment[]; follow: boolean; onRangeChanged(update: (previous: Range) => Range): void;
+function Overlay({ bounds, origin, seekAt, segments, follow, onRangeChanged }: {
+  bounds: Range; origin: number; seekAt(clientX: number): void; segments: RouteSegment[]; follow: boolean;
+  onRangeChanged(update: (previous: Range) => Range): void;
 }) {
   const { range, valueToPixels } = useTimelineContext();
   const line = useRef<HTMLDivElement>(null);
@@ -751,7 +865,7 @@ function Overlay({ bounds, origin, segments, follow, onRangeChanged }: {
     const x = valueToPixels(state.seconds - range.start);
     lineElement.hidden = tagElement.hidden = false;
     lineElement.style.transform = tagElement.style.transform = `translateX(${x}px)`;
-    tagElement.textContent = `${(state.seconds - origin).toFixed(3)} s`;
+    tagElement.textContent = `${(state.seconds - origin).toFixed(6)} s`;
     // 下一次绘制后报告就绪：片段的游标 class 由 React 提交，等到绘制完成。
     if (visible && !pending.current) {
       pending.current = true;
@@ -782,7 +896,16 @@ function Overlay({ bounds, origin, segments, follow, onRangeChanged }: {
       ))}
       <div className={styles.endLine} style={{ transform: x(bounds.end) }} />
       <div ref={line} className={styles.cursorLine} hidden />
-      <div ref={tag} className={styles.cursorTag} hidden />
+      {/* 游标头：按住拖动移动游标 */}
+      <div ref={tag} className={styles.cursorTag} hidden title="拖动移动游标"
+        onPointerDown={event => {
+          if (event.button !== 0) return;
+          event.currentTarget.setPointerCapture(event.pointerId);
+          event.currentTarget.dataset.dragging = '';
+        }}
+        onPointerMove={event => { if (event.currentTarget.hasPointerCapture(event.pointerId)) seekAt(event.clientX); }}
+        onPointerUp={event => { delete event.currentTarget.dataset.dragging; }}
+        onPointerCancel={event => { delete event.currentTarget.dataset.dragging; }} />
     </div>
   );
 }

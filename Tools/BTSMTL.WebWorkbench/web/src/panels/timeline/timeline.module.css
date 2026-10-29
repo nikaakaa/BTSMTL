@@ -93,6 +93,15 @@
   outline: 1px solid var(--accent);
 }
 
+/* 轨道区左键拖出的选框 */
+.selectBox {
+  position: fixed;
+  z-index: 20;
+  border: 1px solid rgb(141 141 240 / 90%);
+  background: rgb(141 141 240 / 15%);
+  pointer-events: none;
+}
+
 /* 刻度上的转移标记：与段分隔线同色的下指三角 */
 .routeMark {
   position: absolute;
@@ -117,8 +126,56 @@
 
 .header {
   display: flex;
-  height: 30px;
+  height: 50px;
   flex: none;
+}
+
+.headerLane {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+/* 刻度上方的时间滚动条：深槽 + 圆头浅色滑块 */
+.scroller {
+  position: relative;
+  height: 16px;
+  margin: 0 4px;
+  flex: none;
+  background: var(--track-ruler);
+}
+
+.scrollThumb {
+  position: absolute;
+  top: 3px;
+  height: 10px;
+  min-width: 16px;
+  background: #9a9a9a;
+  border-radius: 5px;
+  touch-action: none;
+}
+
+.scrollThumb:hover {
+  background: #b4b4b4;
+}
+
+.scrollEnd {
+  position: absolute;
+  top: -1px;
+  width: 10px;
+  height: 12px;
+  border-radius: 6px;
+  background: #e2e2e2;
+  cursor: ew-resize;
+}
+
+.scrollEnd[data-side='start'] {
+  left: -2px;
+}
+
+.scrollEnd[data-side='end'] {
+  right: -2px;
 }
 
 .timeHead {
@@ -140,7 +197,6 @@
   overflow: hidden;
   background: var(--track-ruler);
   border-bottom: 1px dotted #b8b8b8;
-  cursor: ew-resize;
   touch-action: none;
 }
 
@@ -594,7 +650,7 @@
 
 .cursorLine, .endLine, .startLine, .segmentLine {
   position: absolute;
-  top: 0;
+  top: 16px;
   bottom: 0;
   left: 0;
   width: 1px;
@@ -621,17 +677,22 @@
   background: var(--cursor);
 }
 
+/* 游标头：照 Timeline Editor 刻度上的大号黄色时刻，可拖动 */
 .cursorTag {
   position: absolute;
-  top: 3px;
+  top: 18px;
   left: 0;
-  padding: 0 6px;
+  padding: 0 8px;
   background: var(--cursor-tag);
   color: var(--cursor);
-  font-size: 16px;
+  font-size: 21px;
   font-weight: 700;
-  line-height: 22px;
-  border-radius: 3px;
+  line-height: 28px;
+  border-radius: 4px;
+  pointer-events: auto;
+  cursor: ew-resize;
+  touch-action: none;
+  user-select: none;
   font-variant-numeric: tabular-nums;
   translate: -50% 0;
   will-change: transform;
