@@ -7,16 +7,19 @@ import {
   childGraphs, edgeChildGraphs, findGraphNode, graphHierarchy, graphKey, graphName, graphRecords, isNodeOccurrence,
   isPortSample, nodeName, playedTimeline, portColor,
 } from '../../state/graphModel';
-import { applyTimelineEdits, useAuthoring } from '../../state/authoring';
+import {
+  applyTimelineEdits, authoringActions, findEditedGraph, graphAuthoring, graphPath, useAuthoring, useCurrentDocument, useSkillElements,
+} from '../../state/authoring';
+import type { JsonObject } from '../../state/skillJson';
 import { stageNames } from '../../state/session';
 import { getState, selectionActions, useWorkbench, type Selection } from '../../state/store';
 import {
-  clipGraph, clipKind, findTimelineClip, findTimelineTrack, nearestFrame, playSegments, trackColors, trackKind,
+  clipGraph, clipKind, findTimelineClip, findTimelineMarker, findTimelineTrack, nearestFrame, playSegments, trackColors, trackKind,
 } from '../../state/timelineModel';
 import { transport } from '../../state/transport';
 import { BarLabel, BarSeparator, Empty, Fold, IdentityFold, PanelBar } from '../../ui/blocks';
-import { Button, ObjectField } from '../../ui/controls';
-import { ClipFields, NodeFields } from './FieldEditors';
+import { Button, NumberInput, ObjectField } from '../../ui/controls';
+import { ClipFields, InputPlanFields, NodeFields, TrackFields, TransitionFields } from './FieldEditors';
 import styles from './inspector.module.css';
 
 // 检查器（D7）：按 selection 显示所选对象在当前帧的记录；不选中时显示运行摘要。
@@ -36,7 +39,7 @@ export function InspectorPanel() {
   // 没选运行时检查打开的技能文档；没有选中对象时提示从节点图或 Timeline 选。
   const content = runId ? <Content shown={shown} locked={!!params.locked} />
     : !skill ? <Empty text="选择一个技能或运行" />
-      : shown ? <Content shown={shown} locked={!!params.locked} /> : <Empty text="在节点图或 Timeline 中选中对象" />;
+      : shown ? <Content shown={shown} locked={!!params.locked} /> : <SkillSummary />;
   return (
     <div className={styles.root}>
       <PanelBar>
@@ -63,7 +66,7 @@ function Content({ shown, locked }: { shown: Selection | null; locked: boolean }
     case 'track': return shown.id.startsWith('input/') ? <InputTrackInspector id={shown.id} missing={missing} />
       : <TrackInspector id={shown.id} missing={missing} />;
     case 'actor': return <ActorInspector id={shown.id} missing={missing} />;
-    case 'edge': return missing;
+    case 'edge': return <EdgeInspector id={shown.id} missing={missing} />;
   }
 }
 
@@ -200,6 +203,25 @@ function RunSummary() {
   );
 }
 
+// 打开技能、没有选中对象时：技能的预览输入方案（作者模式可编辑）。
+function SkillSummary() {
+  const { skill, plans, editable } = useAuthoring(useShallow(state => ({
+    skill: state.skill, editable: state.author,
+    plans: [...new Set([...Object.keys(state.files), ...Object.keys(state.edited)])]
+      .filter(path => path.startsWith('inputs/') && !state.removed.includes(path)).sort().join('\n'),
+  })));
+  return (
+    <>
+      <Head kind="var(--accent)" name={skill ?? '技能'} sub="在节点图或 Timeline 中选中对象查看与编辑" />
+      {plans ? plans.split('\n').map(path => (
+        <Fold key={path} title={`预览输入 · ${path.slice('inputs/'.length, -'.json'.length).slice(0, 8)}`} kind="var(--track-in)" defaultOpen>
+          <InputPlanFields path={path} editable={editable} />
+        </Fold>
+      )) : <div className={styles.note}>此技能没有预览输入方案</div>}
+    </>
+  );
+}
+
 // 画面面板的逐帧对照明细。
 function PlayerAlignment() {
   const { live, alignment, targetFrame, actualFrame, lastCommand } = useWorkbench(useShallow(state => ({
@@ -229,13 +251,25 @@ function PlayerAlignment() {
 
 // ── 节点 ──
 
+// 作者模式下按叠加了未保存修改的图查找，新建的状态与转移也能检查。
+function useAuthorGraphs() {
+  return useAuthoring(useShallow(state => ({
+    program: state.author && state.skill ? state.programId : null, edited: state.edited, ports: state.addedPorts,
+  })));
+}
+
 function NodeInspector({ id, missing }: { id: string; missing: ReactNode }) {
   const { graphs, frame } = useWorkbench(useShallow(state => ({ graphs: state.graphs, frame: state.frame })));
-  const found = useMemo(() => findGraphNode(graphs, id), [graphs, id]);
-  const authorProgram = useAuthoring(state => state.author && state.skill ? state.programId : null);
+  const author = useAuthorGraphs();
+  const found = useMemo(() => {
+    if (author.program === null) return findGraphNode(graphs, id);
+    const located = findEditedGraph(graphs, id, author.edited, author.ports);
+    const node = located?.graph.nodes.find(item => item.id === located.id && item.invocationPath === located.path);
+    return located && node ? { graph: located.graph, node } : null;
+  }, [graphs, id, author]);
   if (!found) return missing;
   const { graph, node } = found;
-  const editable = authorProgram !== null && authorProgram === graph.programId;
+  const editable = author.program !== null && author.program === graph.programId;
   const records = graphRecords(frame, graph).filter(item => 'nodeId' in item && item.nodeId === node.id &&
     item.call.invocationPath === node.invocationPath);
   const events = records.filter(isNodeOccurrence).sort((left, right) => Number(left.sequence) - Number(right.sequence));
@@ -247,6 +281,7 @@ function NodeInspector({ id, missing }: { id: string; missing: ReactNode }) {
     <>
       <Head kind={kind} name={nodeName(node)} sub={`${graph.programId} · ${graphName(graph)}`} />
       {editable && <NodeFields graphId={graph.id} nodeId={node.id} />}
+      {editable && <StateBody graph={graph} nodeId={node.id} />}
       <NodeLinks graph={graph} nodeId={node.id} invocationPath={node.invocationPath} />
       <Fold title="本帧" kind={kind} defaultOpen>
         <Value label="状态" mono={false} value={events.some(item => item.result === 'Failure') ? '失败' : events.length ? '已发生' : '未发生'} />
@@ -320,6 +355,92 @@ function NodeLinks({ graph, nodeId, invocationPath }: { graph: GraphDefinition; 
   );
 }
 
+// 专属图（状态体、转移条件）：已在展开结果里的可进入；网页新建的保存后才有展开结果。
+function OwnedGraph({ label, owner, id, onCreate, onRemove, createText }: {
+  label: string; owner: GraphDefinition; id: string | null; onCreate: (() => void) | null; onRemove(id: string): void; createText: string;
+}) {
+  const graphs = useWorkbench(state => state.graphs);
+  const target = id ? graphs?.find(item => item.id === id && item.programId === owner.programId) ?? null : null;
+  return (
+    <div className={styles.field}>
+      <label title={label}>{label}</label>
+      <div className={styles.actions}>
+        {id === null ? <Button variant="ghost" disabled={!onCreate} onClick={() => onCreate?.()}>{createText}</Button> : (
+          <>
+            {target ? <ObjectField kind="var(--node-flow)" text={graphName(target)} tip="在节点图面板打开" onOpen={() => openGraph(target)} />
+              : <span className={styles.note}>未保存，保存后可进入</span>}
+            <Button variant="ghost" tip="移除；不再被引用的图保存时删除" onClick={() => onRemove(id)}>移除</Button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function StateBody({ graph, nodeId }: { graph: GraphDefinition; nodeId: string }) {
+  const { document } = useCurrentDocument(graphPath(graph.id));
+  const elements = useSkillElements(true);
+  const node = ((document as JsonObject | null)?.allNodes as JsonObject[] | undefined)?.find(item => item.UID === nodeId);
+  // 只有普通状态带状态体；入口、任意状态与出口是系统锚点。
+  if (node?.type !== 'BtsmtlSkillNativeState') return null;
+  return (
+    <Fold title="状态体" kind="var(--node-flow)" defaultOpen>
+      <OwnedGraph label="状态体" owner={graph} id={(node.m_Body as string | null) ?? null} createText="新建状态体"
+        onCreate={elements ? () => graphAuthoring.createStateBody(graph.id, elements, nodeId) : null}
+        onRemove={body => graphAuthoring.removeStateBody(graph.id, nodeId, body)} />
+    </Fold>
+  );
+}
+
+// ── 状态机转移 ──
+
+function EdgeInspector({ id, missing }: { id: string; missing: ReactNode }) {
+  const graphs = useWorkbench(state => state.graphs);
+  const author = useAuthorGraphs();
+  const found = useMemo(() => {
+    const located = findEditedGraph(graphs, id, author.program === null ? {} : author.edited, author.ports);
+    const edge = located?.graph.edges.find(item => item.id === located.id && item.invocationPath === located.path);
+    return located && edge ? { graph: located.graph, edge } : null;
+  }, [graphs, id, author]);
+  const hierarchy = useMemo(() => graphHierarchy(graphs ?? []), [graphs]);
+  const editable = !!found && author.program === found.graph.programId;
+  const elements = useSkillElements(editable);
+  const { document } = useCurrentDocument(editable ? graphPath(found!.graph.id) : null);
+  if (!found) return missing;
+  const { graph, edge } = found;
+  const names = new Map(graph.nodes.map(node => [node.id, nodeName(node)]));
+  const name = `${edge.source ? names.get(edge.source.nodeId) ?? '—' : '—'} → ${edge.target ? names.get(edge.target.nodeId) ?? '—' : '收招'}`;
+  const connection = (((document as JsonObject | null)?.allNodes as JsonObject[] | undefined) ?? [])
+    .flatMap(node => node.outConnections as JsonObject[]).find(item => item.UID === edge.id);
+  const condition = ((connection?.Payload as JsonObject | undefined)?.m_Condition as string | null | undefined) ?? null;
+  return (
+    <>
+      <Head kind="var(--port-bool)" name={name} sub={`${graph.programId} · ${graphName(graph)}`} />
+      {editable && elements && <TransitionFields graphId={graph.id} connectionId={edge.id} shape={elements.transition.shape} />}
+      <Fold title="条件" kind="var(--port-bool)" defaultOpen>
+        {editable ? (
+          <OwnedGraph label="条件图" owner={graph} id={condition} createText="新建条件"
+            onCreate={elements ? () => graphAuthoring.createCondition(graph.id, elements, edge.id) : null}
+            onRemove={item => graphAuthoring.removeCondition(graph.id, edge.id, item)} />
+        ) : edgeChildGraphs(hierarchy, graph, edge.id).map(item => (
+          <Link key={item.id} label="条件图" text={graphName(item)} kind="var(--port-bool)" tip="在节点图面板打开" onOpen={() => openGraph(item)} />
+        ))}
+        {!editable && !edgeChildGraphs(hierarchy, graph, edge.id).length && <Value label="条件图" mono={false} value="无条件" />}
+        <Link label="所在图" text={graphName(graph)} kind="var(--node-flow)" tip="在节点图面板打开" onOpen={() => openGraph(graph)} />
+      </Fold>
+      {editable && (
+        <div className={styles.actions}>
+          <Button variant="ghost" tip="删除这条转移；不再被引用的条件图保存时删除"
+            onClick={() => { graphAuthoring.disconnect(graph.id, [edge.id]); selectionActions.select(null); }}>删除转移</Button>
+        </div>
+      )}
+      <Identity extra={[
+        { displayName: '转移', value: edge.id }, { displayName: '图', value: graph.id }, { displayName: '调用路径', value: edge.invocationPath },
+      ]} />
+    </>
+  );
+}
+
 const childLabel = (graph: GraphDefinition) => graph.edges.some(edge => edge.kind === 'Transition') ? '子状态机' : '子图';
 
 // ── Timeline 片段与轨道 ──
@@ -334,7 +455,8 @@ function ClipInspector({ id, missing }: { id: string; missing: ReactNode }) {
   const timelines = useMemo(() => applyTimelineEdits(shownTimelines, edited), [shownTimelines, edited]);
   const found = useMemo(() => findTimelineClip(timelines, id), [timelines, id]);
   const segments = useMemo(() => found ? playSegments(routeFrames).get(found.timeline.documentId) ?? [] : [], [found, routeFrames]);
-  if (!found) return missing;
+  const marker = useMemo(() => found ? null : findTimelineMarker(timelines, id), [found, timelines, id]);
+  if (!found) return marker ? <MarkerInspector found={marker} editable={editable} /> : missing;
   const { timeline, track, clip } = found;
   const kind = trackColors[clipKind(clip)];
   const graph = clipGraph(graphs, clip.graphId);
@@ -356,6 +478,12 @@ function ClipInspector({ id, missing }: { id: string; missing: ReactNode }) {
         <Value label="时长" value={(clip.endSeconds - clip.startSeconds).toFixed(3)} />
       </Fold>
       {editable && <ClipFields documentId={timeline.documentId} clipId={clip.id} />}
+      {editable && (
+        <div className={styles.actions}>
+          <Button variant="ghost" tip="删除片段；不再被引用的片段图保存时删除"
+            onClick={() => { authoringActions.deleteClips(timeline.documentId, [clip.id]); selectionActions.select(null); }}>删除片段</Button>
+        </div>
+      )}
       {runId && <Fold title="本次运行" kind="var(--value)" defaultOpen>
         {instances.length ? (
           <div className={styles.list}>
@@ -384,8 +512,44 @@ function ClipInspector({ id, missing }: { id: string; missing: ReactNode }) {
   );
 }
 
+// 标记：时刻与触发图；作者模式可改时刻、删除。
+function MarkerInspector({ found, editable }: { found: NonNullable<ReturnType<typeof findTimelineMarker>>; editable: boolean }) {
+  const { timeline, track, marker } = found;
+  const graph = useWorkbench(state => clipGraph(state.graphs, marker.graphId));
+  const tickRate = useAuthoring(state => state.tickRate);
+  const step = tickRate ? 1 / tickRate : 1 / 60;
+  const kind = 'var(--track-act)';
+  return (
+    <>
+      <Head kind={kind} name={`${track.displayName} 标记`} sub={timeline.displayName} />
+      <Fold title="标记" kind={kind} defaultOpen>
+        <Link label="Timeline" text={timeline.displayName} kind="var(--track-anim)" tip="在 Timeline 面板进入" onOpen={() => openTimeline(timeline.documentId)} />
+        {graph
+          ? <Link label="触发图" text={graphName(graph)} kind="var(--node-flow)" tip="在节点图面板打开" onOpen={() => openGraph(graph)} />
+          : <Value label="触发图" mono={false} value="未保存，保存后可进入" />}
+        {editable ? (
+          <div className={styles.field}>
+            <label>时刻（秒）</label>
+            <NumberInput wide label="时刻" value={marker.seconds} min={0} step={step}
+              onChange={next => { if (next !== null) authoringActions.setMarkerTime(timeline.documentId, marker.id, Math.round(next / step) * step); }} />
+          </div>
+        ) : <Value label="时刻" value={`${marker.seconds.toFixed(3)} s`} />}
+      </Fold>
+      {editable && (
+        <div className={styles.actions}>
+          <Button variant="ghost" tip="删除标记；不再被引用的触发图保存时删除"
+            onClick={() => { authoringActions.deleteClips(timeline.documentId, [marker.id]); selectionActions.select(null); }}>删除标记</Button>
+        </div>
+      )}
+      <Identity extra={[{ displayName: '标记', value: marker.id }, { displayName: 'Timeline', value: timeline.documentId }]} />
+    </>
+  );
+}
+
 function TrackInspector({ id, missing }: { id: string; missing: ReactNode }) {
-  const { timelines, frame } = useWorkbench(useShallow(state => ({ timelines: state.timelines, frame: state.frame })));
+  const { timelines: shownTimelines, frame } = useWorkbench(useShallow(state => ({ timelines: state.timelines, frame: state.frame })));
+  const { edited, editable } = useAuthoring(useShallow(state => ({ edited: state.edited, editable: state.author && !!state.skill })));
+  const timelines = useMemo(() => applyTimelineEdits(shownTimelines, edited), [shownTimelines, edited]);
   const found = useMemo(() => findTimelineTrack(timelines, id), [timelines, id]);
   if (!found) return missing;
   const { timeline, track } = found;
@@ -398,6 +562,13 @@ function TrackInspector({ id, missing }: { id: string; missing: ReactNode }) {
         <Value label="片段数" value={String(track.clips.length)} />
         <Value label="标记数" value={String(track.markers.length)} />
       </Fold>
+      {editable && <TrackFields documentId={timeline.documentId} trackId={track.id} />}
+      {editable && (
+        <div className={styles.actions}>
+          <Button variant="ghost" tip="删除轨道及其片段与标记；不再被引用的图保存时删除"
+            onClick={() => { authoringActions.deleteTracks(timeline.documentId, [track.id]); selectionActions.select(null); }}>删除轨道</Button>
+        </div>
+      )}
       <Fold title="片段" kind={kind} defaultOpen>
         <div className={styles.list}>
           {track.clips.map(clip => (

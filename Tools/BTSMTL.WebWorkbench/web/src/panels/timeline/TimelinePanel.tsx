@@ -14,19 +14,19 @@ import { clearRendered, frameKey, reportRendered } from '../../shell/readiness';
 import { FrameField, useTransportState } from '../../shell/Toolbar';
 import { openPanel } from '../../shell/layout';
 import {
-  applyTimelineEdits, authoringActions, timelinePath, useAuthoring,
+  applyTimelineEdits, authoringActions, clipTemplatesFor, timelinePath, trackContract, useAuthoring, useSkillElements,
 } from '../../state/authoring';
 import {
   consoleActions, getState, inputRootKey, runActions, selectionActions, useWorkbench, type RouteFrameSpan,
 } from '../../state/store';
 import {
-  clipGraph, documentSegments, inputClipSelectId, inputTrackSelectId, nearestFrame, routeSegments, timelineLength, segmentRows, segmentTitle, selectedInputRoot,
+  clipGraph, clipSelectId, documentSegments, inputClipSelectId, trackSelectId, inputTrackSelectId, nearestFrame, routeSegments, timelineLength, segmentRows, segmentTitle, selectedInputRoot,
   trackColors, type ClipInstance, type GroupRow, type RouteSegment, type TrackKind, type TrackRow,
 } from '../../state/timelineModel';
 import { graphKey, nodeSelectId } from '../../state/graphModel';
 import { transport } from '../../state/transport';
 import { Empty } from '../../ui/blocks';
-import { Button, MenuButton, Select, TextInput, type MenuEntry } from '../../ui/controls';
+import { Button, ContextMenu, MenuButton, Select, TextInput, type MenuEntry } from '../../ui/controls';
 import styles from './timeline.module.css';
 
 // Timeline 面板（D5）：照 BTSMTL Timeline Editor，按路线段（状态 → Timeline）分组，每段可折叠。
@@ -365,7 +365,7 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
 
   return (
     <div className={styles.window} style={{ ['--sidebar' as string]: `${sidebarWidth}px` }}>
-      <TimelineToolbar settings={settings} subject={subject}
+      <TimelineToolbar settings={settings} subject={subject} documentId={focused?.timeline ? focused.documentId : null}
         fit={() => setParams({ range: focused ? segmentRange(focused) : fitRange(bounds) })} />
       <div className={styles.timeline} ref={setTimelineRef}>
         <div className={styles.header}>
@@ -407,10 +407,10 @@ interface Subject {
 function AuthoringControls({ program }: { program: string | null }) {
   const state = useAuthoring(useShallow(current => ({
     available: current.available, reason: current.unavailableReason, author: current.author, skill: current.skill,
-    loading: current.loading, edited: current.edited, externalChange: current.externalChange,
-    saving: current.saving, lastSave: current.lastSave,
+    loading: current.loading, edited: current.edited, removed: current.removed, externalChange: current.externalChange,
+    saving: current.saving, lastSave: current.lastSave, undoDepth: current.undoDepth, redoDepth: current.redoDepth,
   })));
-  const dirty = Object.keys(state.edited).length;
+  const dirty = Object.keys(state.edited).length + state.removed.length;
   // 作者模式下定时检查技能文件是否在别处（Unity、AI、编辑器）被修改。
   useEffect(() => {
     if (!state.author || !state.skill) return;
@@ -428,10 +428,16 @@ function AuthoringControls({ program }: { program: string | null }) {
   };
   return (
     <>
+      {state.author && state.skill && (
+        <>
+          <Button variant="ghost" aria-label="撤销" disabled={!state.undoDepth} tip="撤销（Ctrl+Z）" onClick={() => authoringActions.undo()}>↶</Button>
+          <Button variant="ghost" aria-label="重做" disabled={!state.redoDepth} tip="重做（Ctrl+Y／Ctrl+Shift+Z）" onClick={() => authoringActions.redo()}>↷</Button>
+        </>
+      )}
       {state.externalChange && <span className={styles.authorWarn} title="技能文件在别处被修改；保存会覆盖外部修改，还原会丢弃网页修改">外部已修改</span>}
       {dirty > 0 && (
         <>
-          <span className={styles.authorDirty}>{dirty} 个文件未保存</span>
+          <span className={styles.authorDirty}>{dirty} 个文件未保存{state.removed.length ? `（含 ${state.removed.length} 个待删除）` : ''}</span>
           <Button variant="ghost" tip="丢弃网页中的全部未保存修改" onClick={() => authoringActions.revert()}>还原</Button>
           <Button variant="ghost" disabled={state.saving} tip="写回技能 JSON，宿主用正式编译器检查"
             onClick={() => void authoringActions.save()}>{state.saving ? '保存中' : '保存'}</Button>
@@ -453,7 +459,22 @@ function AuthoringControls({ program }: { program: string | null }) {
 }
 
 // 照 Timeline Editor：编辑行返回、技能根与面包屑，右侧作者／运行观察；预览行播放、全局秒数与结论；下行逐帧、适配与设置。
-function TimelineToolbar({ settings, fit, subject }: { settings: MenuEntry[]; fit(): void; subject: Subject }) {
+// 作者模式在所看的单个 Timeline 上添加轨道：种类与默认值取原 C# 轨道类型。
+function AddTrack({ documentId }: { documentId: string | null }) {
+  const author = useAuthoring(state => state.author && !!state.skill);
+  const elements = useSkillElements(author && documentId !== null);
+  if (!author || !documentId) return null;
+  const entries: MenuEntry[] = elements ? elements.tracks.map(template => ({
+    label: template.kind ?? template.clrType,
+    onSelect: () => {
+      const id = authoringActions.addTrack(documentId, template.value, template.kind ?? '新轨道');
+      selectionActions.select({ kind: 'track', id: trackSelectId(documentId, id) });
+    },
+  })) : [{ label: '读取中', disabled: true, onSelect: () => {} }];
+  return <MenuButton label="添加轨道" caret entries={entries}>添加轨道</MenuButton>;
+}
+
+function TimelineToolbar({ settings, fit, subject, documentId }: { settings: MenuEntry[]; fit(): void; subject: Subject; documentId: string | null }) {
   const { playing, blocked, previous, next } = useTransportState();
   const seconds = useWorkbench(state => state.seconds);
   const segment = useWorkbench(state => {
@@ -506,6 +527,7 @@ function TimelineToolbar({ settings, fit, subject }: { settings: MenuEntry[]; fi
         <Button aria-label="下一帧" tip={next ?? '下一帧（→）'} disabled={!!next} onClick={() => transport.step(1)}>›</Button>
         <Button tip="显示整条运行" onClick={fit}>适配</Button>
         <span className={styles.grow} />
+        <AddTrack documentId={documentId} />
         <MenuButton label="Timeline 设置" caret entries={settings}>显示设置</MenuButton>
       </div>
     </>
@@ -676,7 +698,16 @@ function Rows({ rows, collapsed, toggle, enter, inputRoots }: {
   const collapsedSet = new Set(collapsed);
 
   return (
-    <div className={styles.rows} ref={scroller} onPointerDown={boxDown} onPointerMove={boxMove} onPointerUp={boxUp}
+    <div className={styles.rows} ref={scroller} tabIndex={-1} onPointerDown={boxDown} onPointerMove={boxMove} onPointerUp={boxUp}
+      onKeyDown={event => {
+        // 作者模式 Delete：删除框选的片段，否则删除选中的片段、标记或轨道。
+        if (event.key !== 'Delete' || !useAuthoring.getState().author || (event.target as HTMLElement).closest('input, textarea')) return;
+        event.preventDefault();
+        if (!boxed.size) { deleteSelection(); return; }
+        deleteClips([...event.currentTarget.querySelectorAll<HTMLElement>('[data-box]')]
+          .filter(element => boxed.has(element.dataset.box!)).map(element => element.dataset.select!));
+        setBoxed(new Set());
+      }}
       onPointerCancel={() => { boxStart.current = null; setBox(null); }}
       onScroll={event => {
         const top = event.currentTarget.scrollTop;
@@ -788,9 +819,64 @@ function useSelected(selectId: string, kind: 'clip' | 'track') {
   return useWorkbench(state => state.selection?.kind === kind && state.selection.id === selectId);
 }
 
+// 删除选中的作者片段与标记（选中身份为 `Timeline/元素`）；预览输入不在作者文件里。
+function deleteClips(selectIds: string[]) {
+  const byDocument = new Map<string, string[]>();
+  for (const id of selectIds) {
+    if (id.startsWith('input/')) continue;
+    const [documentId, itemId] = id.split('/');
+    byDocument.set(documentId, [...byDocument.get(documentId) ?? [], itemId]);
+  }
+  for (const [documentId, ids] of byDocument) authoringActions.deleteClips(documentId, ids);
+  if (byDocument.size) selectionActions.select(null);
+}
+
+function deleteSelection() {
+  const selection = getState().selection;
+  if (selection?.kind === 'clip') deleteClips([selection.id]);
+  else if (selection?.kind === 'track' && !selection.id.startsWith('input/')) {
+    const [documentId, trackId] = selection.id.split('/');
+    authoringActions.deleteTracks(documentId, [trackId]);
+    selectionActions.select(null);
+  }
+}
+
+// 作者模式右键轨道：在点击处添加片段或标记（按帧步长取整），删除所选或整条轨道。
+function useTrackMenu(row: TrackRow, at: { current: number }): MenuEntry[] {
+  const author = useAuthoring(state => state.author && !!state.skill);
+  const version = useAuthoring(state => state.version);
+  const tickRate = useAuthoring(state => state.tickRate);
+  const elements = useSkillElements(author);
+  const documentId = row.timeline.documentId;
+  const templates = useMemo(() => elements ? clipTemplatesFor(elements, trackContract(documentId, row.track.id)) : [],
+    // version：轨道与片段的配对随编辑变化。
+    [elements, documentId, row.track.id, version]);
+  if (!author) return [{ label: '进入作者模式后可增删片段与标记', disabled: true, onSelect: () => {} }];
+  if (!elements) return [{ label: '读取中', disabled: true, onSelect: () => {} }];
+  const step = tickRate ? 1 / tickRate : 1 / 60;
+  const local = () => Math.max(0, Math.round((at.current - row.segment.origin) / step) * step);
+  const select = (id: string) => selectionActions.select({ kind: 'clip', id: clipSelectId(documentId, id) });
+  return [
+    { kind: 'label', label: '在此处添加' },
+    ...templates.map((template): MenuEntry => ({
+      label: `${template.kind ?? template.clrType} 片段`,
+      onSelect: () => {
+        const start = local();
+        select(authoringActions.addClipAt(documentId, row.track.id, elements, template, start, start + Math.max(step, Math.round(0.5 / step) * step)));
+      },
+    })),
+    { label: '标记', onSelect: () => select(authoringActions.addMarkerAt(documentId, row.track.id, elements, local())) },
+    { kind: 'separator' },
+    { label: '删除所选片段或标记（Delete）', onSelect: deleteSelection },
+    { label: '删除轨道', onSelect: () => { authoringActions.deleteTracks(documentId, [row.track.id]); selectionActions.select(null); } },
+  ];
+}
+
 const TrackLine = memo(function TrackLine({ row }: { row: TrackRow }) {
   const selected = useSelected(row.selectId, 'track');
-  const { range } = useTimelineContext();
+  const { range, getValueFromScreenX } = useTimelineContext();
+  const at = useRef(0);
+  const menu = useTrackMenu(row, at);
   const visible = row.clips.filter(clip => clip.end >= range.start && clip.start <= range.end);
   const blends = useMemo(() => blendRegions(row.clips), [row.clips]);
   const segment = row.segment;
@@ -800,6 +886,8 @@ const TrackLine = memo(function TrackLine({ row }: { row: TrackRow }) {
     return new Map(row.clips.map(clip => [clip.key, starts.find(start => start > clip.start) ?? Infinity]));
   }, [row.clips]);
   return (
+    <ContextMenu entries={menu}>
+    <div className={styles.menuArea} onContextMenuCapture={event => { at.current = getValueFromScreenX(event.clientX); }}>
     <Line id={row.id} height={rowHeights[row.trackKind]} headClass={styles.trackHead} head={
       <button className={styles.headButton} data-selected={selected || undefined}
         style={{ ['--tc' as string]: trackColors[row.trackKind] }}
@@ -818,9 +906,12 @@ const TrackLine = memo(function TrackLine({ row }: { row: TrackRow }) {
         <Blend key={blend.key} start={blend.start} end={blend.end} />
       ))}
       {row.markers.filter(marker => marker.seconds >= range.start && marker.seconds <= range.end).map(marker => (
-        <Marker key={marker.key} seconds={marker.seconds} label={`${row.track.displayName} 标记`} graphId={marker.graphId} />
+        <Marker key={marker.key} seconds={marker.seconds} label={`${row.track.displayName} 标记`} graphId={marker.graphId}
+          selectId={marker.selectId} />
       ))}
     </Line>
+    </div>
+    </ContextMenu>
   );
 });
 

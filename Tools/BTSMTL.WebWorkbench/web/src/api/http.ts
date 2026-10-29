@@ -80,6 +80,10 @@ export async function postText(path: string, body: unknown, signal?: AbortSignal
   return response.text();
 }
 
+export async function getText(path: string, signal?: AbortSignal): Promise<string> {
+  return (await send(path, { signal })).text();
+}
+
 export async function getBlob(path: string, signal?: AbortSignal): Promise<Response> {
   return send(path, { signal });
 }

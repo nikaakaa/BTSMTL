@@ -261,6 +261,15 @@
   display: none;
 }
 
+.rows:focus {
+  outline: none;
+}
+
+/* 轨道右键菜单的触发区：不参与布局 */
+.menuArea {
+  display: contents;
+}
+
 .line {
   width: 100%;
   border-bottom: 2px solid var(--track-row-line);

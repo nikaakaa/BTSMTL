@@ -16,6 +16,15 @@ export const nodeName = (node: GraphNode) => node.displayName ?? '未命名节�
 // 调用路径已含程序与图身份。
 export const nodeSelectId = (graph: GraphDefinition, node: GraphNode) => `${graph.actorId}/${node.invocationPath}/${node.id}`;
 
+export const edgeSelectId = (graph: GraphDefinition, edge: GraphEdge) => `${graph.actorId}/${edge.invocationPath}/${edge.id}`;
+
+export function findGraphEdge(graphs: GraphDefinition[] | null, selectId: string) {
+  for (const graph of graphs ?? [])
+    for (const edge of graph.edges)
+      if (edgeSelectId(graph, edge) === selectId) return { graph, edge };
+  return null;
+}
+
 export function findGraphNode(graphs: GraphDefinition[] | null, selectId: string) {
   for (const graph of graphs ?? [])
     for (const node of graph.nodes)

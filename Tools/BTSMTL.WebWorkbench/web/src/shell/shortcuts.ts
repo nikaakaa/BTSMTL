@@ -1,3 +1,4 @@
+import { authoringActions, useAuthoring } from '../state/authoring';
 import { getState } from '../state/store';
 import { transport } from '../state/transport';
 
@@ -11,7 +12,15 @@ function editable(target: EventTarget | null): boolean {
 }
 
 function onKeyDown(event: KeyboardEvent) {
-  if (event.defaultPrevented || event.ctrlKey || event.altKey || event.metaKey) return;
+  if (event.defaultPrevented || event.altKey) return;
+  // 作者模式：Ctrl+Z 撤销，Ctrl+Y／Ctrl+Shift+Z 重做；输入框内保留文本自身的撤销。
+  if (event.ctrlKey || event.metaKey) {
+    const key = event.key.toLowerCase();
+    if (!useAuthoring.getState().author || editable(event.target) || (key !== 'z' && key !== 'y')) return;
+    if (key === 'y' || event.shiftKey) authoringActions.redo(); else authoringActions.undo();
+    event.preventDefault();
+    return;
+  }
   if (getState().capturing || editable(event.target)) return;
   switch (event.key) {
     case ' ': transport.toggle(); break;

@@ -59,7 +59,7 @@ export interface TrackRow {
   track: AuthorTrack;
   trackKind: TrackKind;
   clips: ClipInstance[];
-  markers: { key: string; seconds: number; graphId: string }[];
+  markers: { key: string; selectId: string; seconds: number; graphId: string }[];
 }
 
 export interface GroupRow {
@@ -181,7 +181,10 @@ export function segmentRows(segment: RouteSegment, graphNames: Map<string, strin
       kind: clipKind(clip), label: clipLabel(clip, track, graphNames),
       start: segment.origin + clip.startSeconds, end: segment.origin + clip.endSeconds, exit: segment.end,
     })),
-    markers: track.markers.map(marker => ({ key: `${segment.id}/${marker.id}`, seconds: segment.origin + marker.seconds, graphId: marker.graphId })),
+    markers: track.markers.map(marker => ({
+      key: `${segment.id}/${marker.id}`, selectId: clipSelectId(timeline.documentId, marker.id), seconds: segment.origin + marker.seconds,
+      graphId: marker.graphId,
+    })),
   }));
 }
 
@@ -195,6 +198,14 @@ export function findTimelineClip(timelines: AuthorTimeline[], selectId: string) 
     for (const track of timeline.tracks)
       for (const clip of track.clips)
         if (clipSelectId(timeline.documentId, clip.id) === selectId) return { timeline, track, clip };
+  return null;
+}
+
+export function findTimelineMarker(timelines: AuthorTimeline[], selectId: string) {
+  for (const timeline of timelines)
+    for (const track of timeline.tracks)
+      for (const marker of track.markers)
+        if (clipSelectId(timeline.documentId, marker.id) === selectId) return { timeline, track, marker };
   return null;
 }
 

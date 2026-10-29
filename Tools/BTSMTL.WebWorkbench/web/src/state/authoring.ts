@@ -1,7 +1,7 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
-import { authoringApi, type SkillFormatError, type SkillSaveRejection, type SkillSnapshot } from '../api/authoring';
+import { authoringApi, type ElementTemplate, type SkillElements, type SkillFormatError, type SkillSaveRejection, type SkillSnapshot } from '../api/authoring';
 import { ApiError, isAbort } from '../api/http';
 import type { AuthorTimeline, GraphDefinition, GraphNode, GraphPort } from '../api/types';
 import {
@@ -22,9 +22,14 @@ export interface AuthoringState {
   skill: string | null;
   revision: string | null;
   files: Record<string, string>;
-  // 编辑过的文件（路径 → 解析后的文档），逐次修改递增 version。
+  // 编辑过及新建的文件（路径 → 解析后的文档），逐次修改递增 version。
   edited: Record<string, JsonValue>;
+  // 待删除的原文件（删除状态、节点或片段后不再被引用的专属图与 Timeline）。
+  removed: string[];
   version: number;
+  // 可撤销与可重做的步数。
+  undoDepth: number;
+  redoDepth: number;
   loading: boolean;
   // 外部修改了技能文件而本地有未保存修改。
   externalChange: boolean;
@@ -56,7 +61,8 @@ export interface AddedPort {
 
 export const useAuthoring = create<AuthoringState>()(() => ({
   available: null, unavailableReason: null, author: false, programId: null, skill: null, revision: null,
-  files: {}, edited: {}, version: 0, loading: false, externalChange: false, addedPorts: {}, saving: false, lastSave: null,
+  files: {}, edited: {}, removed: [], version: 0, undoDepth: 0, redoDepth: 0, loading: false, externalChange: false, addedPorts: {},
+  saving: false, lastSave: null,
   skills: null, documentGraphs: null, documentError: null, tickRate: null,
 }));
 
@@ -71,24 +77,25 @@ let loadController: AbortController | null = null;
 
 // 技能 JSON 中的 Timeline：轨道、片段与标记，时间由 FP 原始值换算；片段与标记的图为 m_AssetTree／m_Graph。
 export function documentTimelines(files: Record<string, string>): AuthorTimeline[] {
-  return Object.entries(files).filter(([path]) => path.startsWith('timelines/') && path.endsWith('.json')).map(([path, text]) => {
-    const document = parseSkillJson(text) as JsonObject;
-    const documentId = path.slice('timelines/'.length, -'.json'.length);
-    return {
-      documentId, contentIdentity: documentId, contentRevision: '', displayName: document.m_Name as string,
-      tracks: (document.m_Tracks as JsonObject[]).map(track => ({
-        id: track.m_AuthoringId as string, displayName: track.Name as string, muted: track.m_PersistentMuted === true,
-        clips: (track.m_Clips as JsonObject[]).map(clip => ({
-          id: clip.m_AuthoringId as string, contract: clip.ContractKind as string, displayName: null,
-          startSeconds: fpSeconds(numberOf(clip.m_StartTimeFPRawValue)), endSeconds: fpSeconds(numberOf(clip.m_EndTimeFPRawValue)),
-          graphId: (clip.m_AssetTree as string | undefined) ?? null,
-        })),
-        markers: ((track.m_Markers as JsonObject[] | undefined) ?? []).map(marker => ({
-          id: marker.m_AuthoringId as string, seconds: fpSeconds(numberOf(marker.m_TimeFPRawValue)), graphId: marker.m_Graph as string,
-        })),
+  return Object.entries(files).filter(([path]) => path.startsWith('timelines/') && path.endsWith('.json'))
+    .map(([path, text]) => timelineOf(path.slice('timelines/'.length, -'.json'.length), parseSkillJson(text) as JsonObject));
+}
+
+function timelineOf(documentId: string, document: JsonObject): AuthorTimeline {
+  return {
+    documentId, contentIdentity: documentId, contentRevision: '', displayName: document.m_Name as string,
+    tracks: (document.m_Tracks as JsonObject[]).map(track => ({
+      id: track.m_AuthoringId as string, displayName: track.Name as string, muted: track.m_PersistentMuted === true,
+      clips: (track.m_Clips as JsonObject[]).map(clip => ({
+        id: clip.m_AuthoringId as string, contract: clip.ContractKind as string, displayName: null,
+        startSeconds: fpSeconds(numberOf(clip.m_StartTimeFPRawValue)), endSeconds: fpSeconds(numberOf(clip.m_EndTimeFPRawValue)),
+        graphId: (clip.m_AssetTree as string | undefined) ?? null,
       })),
-    };
-  });
+      markers: ((track.m_Markers as JsonObject[] | undefined) ?? []).map(marker => ({
+        id: marker.m_AuthoringId as string, seconds: fpSeconds(numberOf(marker.m_TimeFPRawValue)), graphId: marker.m_Graph as string,
+      })),
+    })),
+  };
 }
 
 // 没有选运行时，各面板直接显示打开的技能：图与 Timeline 取自 JSON，运行结果只在选了运行后叠加。
@@ -136,13 +143,14 @@ export const authoringActions = {
   // 直接打开技能文件夹：读原文件与图展开，不需要运行；进入作者模式。
   async openSkill(skill: string) {
     if (get().skill === skill && get().documentGraphs) return;
-    if (Object.keys(get().edited).length) {
+    if (hasChanges()) {
       consoleActions.log('warn', '作者', `有未保存的修改，未切换到 ${skill}`);
       return;
     }
     loadController?.abort();
     const controller = loadController = new AbortController();
-    set({ skill: null, revision: null, files: {}, edited: {}, addedPorts: {}, documentGraphs: null, documentError: null,
+    clearHistory();
+    set({ skill: null, revision: null, files: {}, edited: {}, removed: [], addedPorts: {}, documentGraphs: null, documentError: null,
       loading: true, externalChange: false, lastSave: null });
     try {
       const snapshot = await authoringApi.read(skill, controller.signal);
@@ -170,13 +178,14 @@ export const authoringActions = {
   // 打开运行所属技能：技能文件夹按 skill.json 的 m_AbilityId 与程序身份对应。
   async open(programId: string) {
     if (get().programId === programId && get().skill) return;
-    if (Object.keys(get().edited).length) {
+    if (hasChanges()) {
       consoleActions.log('warn', '作者', `有未保存的修改，未切换到 ${programId}`);
       return;
     }
     loadController?.abort();
     const controller = loadController = new AbortController();
-    set({ programId, skill: null, revision: null, files: {}, edited: {}, loading: true, externalChange: false });
+    clearHistory();
+    set({ programId, skill: null, revision: null, files: {}, edited: {}, removed: [], loading: true, externalChange: false });
     try {
       const ability = abilityOf(programId);
       const folders = await authoringApi.list(controller.signal);
@@ -205,51 +214,78 @@ export const authoringActions = {
     set({ author });
   },
 
-  // 取可编辑的文档：首次编辑时从原文解析。
+  // 取可编辑的文档：首次编辑时从原文解析。同一轮事件里的多次编辑记为一步撤销。
   edit(path: string, mutate: (document: JsonValue) => void) {
     const state = get();
-    const document = state.edited[path] ?? (state.files[path] !== undefined ? parseSkillJson(state.files[path]) : null);
+    const document = state.removed.includes(path) ? null
+      : state.edited[path] ?? (state.files[path] !== undefined ? parseSkillJson(state.files[path]) : null);
     if (document === null) {
       consoleActions.log('error', '作者', `技能 ${state.skill ?? '—'} 中没有文件 ${path}`);
       return;
     }
+    record();
     try {
       mutate(document);
     } catch (error) {
       consoleActions.error('作者', error);
       return;
     }
-    set({ edited: { ...state.edited, [path]: document }, version: state.version + 1 });
+    set({ edited: { ...get().edited, [path]: document }, version: get().version + 1 });
+  },
+
+  // 新建技能文件（状态体、条件图、Timeline 片段图）；保存时一并写出。
+  create(path: string, document: JsonValue) {
+    record();
+    const state = get();
+    set({ edited: { ...state.edited, [path]: document }, removed: state.removed.filter(item => item !== path), version: state.version + 1 });
+  },
+
+  // 删除文件：网页新建的直接丢弃，原有的保存时删除。
+  remove(paths: string[]) {
+    if (!paths.length) return;
+    record();
+    const state = get();
+    const edited = { ...state.edited };
+    for (const path of paths) delete edited[path];
+    set({
+      edited, removed: [...new Set([...state.removed, ...paths.filter(path => state.files[path] !== undefined)])], version: state.version + 1,
+    });
   },
 
   revert() {
-    set({ edited: {}, version: get().version + 1, externalChange: false, addedPorts: {} });
+    clearHistory();
+    set({ edited: {}, removed: [], version: get().version + 1, externalChange: false, addedPorts: {} });
   },
 
-  // 编辑过的文件按原文格式写出；与原文相同的不算修改。
+  undo() { step(undoStack, redoStack); },
+  redo() { step(redoStack, undoStack); },
+
+  // 编辑过及新建的文件按原文格式写出（新文件取 skill.json 的格式）；与原文相同的不算修改。
   changedFiles(): { path: string; content: string }[] {
     const state = get();
-    return Object.entries(state.edited).map(([path, document]) => ({
-      path, content: writeSkillJson(document, shapeOf(state.files[path])),
+    const fallback = shapeOf(state.files['skill.json'] ?? '\n');
+    return Object.entries(state.edited).filter(([path]) => !state.removed.includes(path)).map(([path, document]) => ({
+      path, content: writeSkillJson(document, state.files[path] !== undefined ? shapeOf(state.files[path]) : fallback),
     })).filter(file => file.content !== state.files[file.path]);
   },
 
   // 写回编辑过的文件；宿主保存后编译。被拒绝时文件也已写入，网页改用宿主回读的内容并列出诊断。
   async save() {
-    const { skill, saving } = get();
+    const { skill, saving, removed } = get();
     const files = authoringActions.changedFiles();
-    if (!skill || saving || !files.length) return;
+    if (!skill || saving || (!files.length && !removed.length)) return;
     set({ saving: true });
     const accept = (content: SkillSnapshot, lastSave: SaveOutcome) => {
+      clearHistory();
       set({
         revision: content.revision, files: Object.fromEntries(content.files.map(file => [file.path, file.content])),
-        edited: {}, addedPorts: {}, externalChange: false, version: get().version + 1, saving: false, lastSave,
+        edited: {}, removed: [], addedPorts: {}, externalChange: false, version: get().version + 1, saving: false, lastSave,
       });
       void reloadDocument();
     };
     try {
-      const result = await authoringApi.save(skill, files, []);
-      accept(result.content, { ok: true, message: `已保存 ${files.length} 个文件，编译通过`, errors: [] });
+      const result = await authoringApi.save(skill, files, removed);
+      accept(result.content, { ok: true, message: `已保存 ${files.length + removed.length} 个文件，编译通过`, errors: [] });
       consoleActions.log('info', '作者', `${skill} 已保存并编译：${result.compilation.sourceRevision}`);
     } catch (error) {
       if (error instanceof ApiError && error.status === 422) {
@@ -275,7 +311,7 @@ export const authoringActions = {
     try {
       const changes = await authoringApi.changes(skill, revision);
       if (!changes.changed) return;
-      if (Object.keys(get().edited).length) set({ externalChange: true });
+      if (hasChanges()) set({ externalChange: true });
       else {
         const snapshot = await authoringApi.read(skill);
         set({ revision: snapshot.revision, files: Object.fromEntries(snapshot.files.map(file => [file.path, file.content])) });
@@ -305,7 +341,217 @@ export const authoringActions = {
       setIn(clip, keys, value);
     });
   },
+
+  setTrackValue(documentId: string, trackId: string, keys: JsonKey[], value: JsonValue) {
+    authoringActions.edit(timelinePath(documentId), document => {
+      const track = tracksOf(document).find(item => item.m_AuthoringId === trackId);
+      if (!track) throw new Error(`Timeline ${documentId} 中没有轨道 ${trackId}`);
+      setIn(track, keys, value);
+    });
+  },
+
+  // 轨道、片段与标记取原 C# 默认值，身份新建；删除时专属的片段图、标记图不再被引用就一并删除。
+  addTrack(documentId: string, template: JsonObject, name: string): string {
+    const id = crypto.randomUUID();
+    authoringActions.edit(timelinePath(documentId), document => {
+      tracksOf(document).push(sortedObject({ ...cloneJson(template), Name: name, m_AuthoringId: id, m_Clips: [], m_Markers: [] }));
+    });
+    return id;
+  },
+
+  deleteTracks(documentId: string, trackIds: string[]) {
+    const removed = new Set(trackIds);
+    const source = currentDocument(timelinePath(documentId));
+    const seeds = source ? tracksOf(source).filter(track => removed.has(track.m_AuthoringId as string)).flatMap(referencedFiles) : [];
+    authoringActions.edit(timelinePath(documentId), document => {
+      (document as JsonObject).m_Tracks = tracksOf(document).filter(track => !removed.has(track.m_AuthoringId as string));
+    });
+    dropOrphans(seeds);
+  },
+
+  addClip(documentId: string, trackId: string, template: JsonObject, startSeconds: number, endSeconds: number, graph: string | null): string {
+    const id = crypto.randomUUID();
+    authoringActions.edit(timelinePath(documentId), document => {
+      const track = tracksOf(document).find(item => item.m_AuthoringId === trackId);
+      if (!track) throw new Error(`Timeline ${documentId} 中没有轨道 ${trackId}`);
+      const clip: JsonObject = { ...cloneJson(template), m_AuthoringId: id, m_StartTimeFPRawValue: fpRaw(startSeconds), m_EndTimeFPRawValue: fpRaw(endSeconds) };
+      if (graph !== null) clip.m_AssetTree = graph;
+      (track.m_Clips as JsonObject[]).push(sortedObject(clip));
+    });
+    return id;
+  },
+
+  deleteClips(documentId: string, clipIds: string[]) {
+    const removed = new Set(clipIds);
+    const source = currentDocument(timelinePath(documentId));
+    const seeds = source ? tracksOf(source).flatMap(track => [...track.m_Clips as JsonObject[], ...(track.m_Markers as JsonObject[] | undefined) ?? []])
+      .filter(item => removed.has(item.m_AuthoringId as string)).flatMap(referencedFiles) : [];
+    authoringActions.edit(timelinePath(documentId), document => {
+      for (const track of tracksOf(document)) {
+        track.m_Clips = (track.m_Clips as JsonObject[]).filter(clip => !removed.has(clip.m_AuthoringId as string));
+        if (track.m_Markers) track.m_Markers = (track.m_Markers as JsonObject[]).filter(marker => !removed.has(marker.m_AuthoringId as string));
+      }
+    });
+    dropOrphans(seeds);
+  },
+
+  setMarkerTime(documentId: string, markerId: string, seconds: number) {
+    authoringActions.edit(timelinePath(documentId), document => {
+      const marker = tracksOf(document).flatMap(track => (track.m_Markers as JsonObject[] | undefined) ?? []).find(item => item.m_AuthoringId === markerId);
+      if (!marker) throw new Error(`Timeline ${documentId} 中没有标记 ${markerId}`);
+      marker.m_TimeFPRawValue = fpRaw(seconds);
+    });
+  },
+
+  // 片段图种类（tree.clip）带专属 TimelineBody 图；标记带专属 TimelineTrigger 图。
+  addClipAt(documentId: string, trackId: string, elements: SkillElements, template: ElementTemplate, startSeconds: number, endSeconds: number): string {
+    const graph = 'm_AssetTree' in template.value ? createGraph(elements, 'TimelineBody', '片段内容') : null;
+    return authoringActions.addClip(documentId, trackId, template.value, startSeconds, endSeconds, graph);
+  },
+
+  addMarkerAt(documentId: string, trackId: string, elements: SkillElements, seconds: number): string {
+    return authoringActions.addMarker(documentId, trackId, elements.marker.value, seconds, createGraph(elements, 'TimelineTrigger', '标记触发'));
+  },
+
+  addMarker(documentId: string, trackId: string, template: JsonObject, seconds: number, graph: string): string {
+    const id = crypto.randomUUID();
+    authoringActions.edit(timelinePath(documentId), document => {
+      const track = tracksOf(document).find(item => item.m_AuthoringId === trackId);
+      if (!track) throw new Error(`Timeline ${documentId} 中没有轨道 ${trackId}`);
+      ((track.m_Markers ??= []) as JsonObject[]).push(sortedObject({
+        ...cloneJson(template), m_AuthoringId: id, m_Graph: graph, m_TimeFPRawValue: fpRaw(seconds),
+      }));
+    });
+    return id;
+  },
 };
+
+const tracksOf = (document: JsonValue) => (document as JsonObject).m_Tracks as JsonObject[];
+
+// 轨道的合同种类（ContractKind），取当前（可能未保存的）Timeline 文档。
+export function trackContract(documentId: string, trackId: string): string | null {
+  const document = currentDocument(timelinePath(documentId));
+  return (document ? tracksOf(document).find(track => track.m_AuthoringId === trackId)?.ContractKind as string | undefined : undefined) ?? null;
+}
+
+// 轨道可放的片段种类：Unity 的放置目录（TimelineContractCatalog）在 .NET 侧不可得，
+// 按技能现有 Timeline 中同种轨道已放过的片段种类给出；没有先例的轨道列出全部种类，由保存时的正式编译判断。
+export function clipTemplatesFor(elements: SkillElements, contract: string | null): ElementTemplate[] {
+  const paired = new Set<string>();
+  for (const path of livePaths().filter(item => item.startsWith('timelines/')))
+    for (const track of tracksOf(currentDocument(path)!))
+      if (track.ContractKind === contract)
+        for (const clip of track.m_Clips as JsonObject[]) paired.add(clip.ContractKind as string);
+  return paired.size ? elements.clips.filter(template => paired.has(template.kind ?? '')) : elements.clips;
+}
+
+export const hasChanges = () => Object.keys(get().edited).length + get().removed.length > 0;
+
+// ── 撤销：每步前保存编辑副本、待删文件与新节点端口；编辑在文档上原地进行，快照取深拷贝 ──
+
+interface Snapshot {
+  edited: Record<string, JsonValue>;
+  removed: string[];
+  addedPorts: Record<string, AddedPort[]>;
+}
+
+const undoStack: Snapshot[] = [];
+const redoStack: Snapshot[] = [];
+const historyLimit = 100;
+let recording = false;
+
+const snapshot = (): Snapshot => {
+  const state = get();
+  return { edited: Object.fromEntries(Object.entries(state.edited).map(([path, document]) => [path, cloneJson(document)])),
+    removed: [...state.removed], addedPorts: state.addedPorts };
+};
+
+function record() {
+  if (recording) return;
+  recording = true;
+  queueMicrotask(() => { recording = false; });
+  undoStack.push(snapshot());
+  if (undoStack.length > historyLimit) undoStack.shift();
+  redoStack.length = 0;
+  set({ undoDepth: undoStack.length, redoDepth: 0 });
+}
+
+function step(from: Snapshot[], to: Snapshot[]) {
+  const target = from.pop();
+  if (!target) return;
+  to.push(snapshot());
+  set({ ...target, version: get().version + 1, undoDepth: undoStack.length, redoDepth: redoStack.length });
+}
+
+function clearHistory() {
+  undoStack.length = 0;
+  redoStack.length = 0;
+  set({ undoDepth: 0, redoDepth: 0 });
+}
+
+// ── 专属内容：图与 Timeline 文件以文件名为身份，被删除的元素引用、且别处不再引用的文件随之删除 ──
+
+const fileIdOf = (path: string) => /^(?:graphs|timelines)\/(.+)\.json$/.exec(path)?.[1] ?? null;
+// 文件自身与所属关系的身份字段不算引用。
+const selfKeys = new Set(['AuthoringId', 'OwnerGraphId', 'OwnerNodeId']);
+
+function collectIds(value: JsonValue | undefined, ids: ReadonlySet<string>, out: Set<string>) {
+  if (typeof value === 'string') { if (ids.has(value)) out.add(value); return; }
+  if (value === null || typeof value !== 'object' || value instanceof JsonFloat) return;
+  if (Array.isArray(value)) { for (const item of value) collectIds(item, ids, out); return; }
+  for (const [key, item] of Object.entries(value)) if (!selfKeys.has(key)) collectIds(item, ids, out);
+}
+
+export function referencedFiles(value: JsonValue): string[] {
+  const out = new Set<string>();
+  collectIds(value, new Set(livePaths().map(fileIdOf).filter((id): id is string => id !== null)), out);
+  return [...out];
+}
+
+function livePaths(): string[] {
+  const state = get();
+  return [...new Set([...Object.keys(state.files), ...Object.keys(state.edited)])].filter(path => !state.removed.includes(path));
+}
+
+// seeds 为删掉的元素引用到的文件身份；沿引用找出它们的专属内容，排除仍被其它文件引用的部分。
+function orphanFiles(seeds: string[]): string[] {
+  const paths = livePaths();
+  const byId = new Map(paths.flatMap(path => { const id = fileIdOf(path); return id ? [[id, path] as const] : []; }));
+  const ids = new Set(byId.keys());
+  const candidates = new Set<string>();
+  const queue = seeds.filter(id => ids.has(id));
+  while (queue.length) {
+    const id = queue.pop()!;
+    if (candidates.has(id)) continue;
+    candidates.add(id);
+    const found = new Set<string>();
+    collectIds(currentDocument(byId.get(id)!) ?? null, ids, found);
+    queue.push(...found);
+  }
+  const kept = new Set<string>();
+  for (const path of paths) {
+    const id = fileIdOf(path);
+    if (path === layoutPath || path === 'references.json' || (id && candidates.has(id))) continue;
+    collectIds(currentDocument(path) ?? null, candidates, kept);
+  }
+  const keep = [...kept];
+  while (keep.length) {
+    const found = new Set<string>();
+    collectIds(currentDocument(byId.get(keep.pop()!)!) ?? null, candidates, found);
+    for (const id of found) if (!kept.has(id)) { kept.add(id); keep.push(id); }
+  }
+  return [...candidates].filter(id => !kept.has(id)).map(id => byId.get(id)!);
+}
+
+// 删除不再被引用的专属文件及其布局。
+function dropOrphans(seeds: string[]) {
+  const orphans = orphanFiles(seeds);
+  if (!orphans.length) return;
+  const graphs = orphans.filter(path => path.startsWith('graphs/')).map(path => fileIdOf(path)!);
+  if (graphs.length && currentDocument(layoutPath))
+    authoringActions.edit(layoutPath, document => { for (const id of graphs) delete (document as JsonObject)[id]; });
+  authoringActions.remove(orphans);
+}
 
 export type JsonKey = string | number;
 
@@ -320,17 +566,30 @@ function setIn(target: JsonValue, keys: JsonKey[], value: JsonValue) {
 }
 
 // 文件的当前内容：编辑过的取编辑版本，否则解析原文；只读使用。
+// 原文解析结果按文本缓存；调用方只读。
+const parsedFiles = new Map<string, { text: string; document: JsonValue }>();
+
 export function currentDocument(path: string): JsonValue | null {
   const state = get();
-  return state.edited[path] ?? (state.files[path] !== undefined ? parseSkillJson(state.files[path]) : null);
+  if (state.removed.includes(path)) return null;
+  if (state.edited[path]) return state.edited[path];
+  const text = state.files[path];
+  if (text === undefined) return null;
+  const cached = parsedFiles.get(path);
+  if (cached?.text === text) return cached.document;
+  const document = parseSkillJson(text);
+  parsedFiles.set(path, { text, document });
+  return document;
 }
 
 // 编辑在原文档对象上原地修改，version 变化即重新读取。
 export function useCurrentDocument(path: string | null): { document: JsonValue | null; version: number } {
-  const { edited, text, version } = useAuthoring(useShallow(state => ({
-    edited: path ? state.edited[path] : undefined, text: path ? state.files[path] : undefined, version: state.version,
+  const { edited, text, removed, version } = useAuthoring(useShallow(state => ({
+    edited: path ? state.edited[path] : undefined, text: path ? state.files[path] : undefined,
+    removed: !!path && state.removed.includes(path), version: state.version,
   })));
-  return useMemo(() => ({ document: edited ?? (text !== undefined ? parseSkillJson(text) : null), version }), [edited, text, version]);
+  return useMemo(() => ({ document: removed ? null : edited ?? (text !== undefined ? parseSkillJson(text) : null), version }),
+    [edited, text, removed, version]);
 }
 
 // ── 节点图（流图）：节点在 graphs/<图>.json 的 allNodes，连线在源节点的 outConnections，位置在 layout.json ──
@@ -358,6 +617,132 @@ function layoutNodes(document: JsonValue, graphId: string): JsonObject {
 const positionValue = (position: { x: number; y: number }) =>
   ({ comments: null, position: { x: new JsonFloat(Math.round(position.x)), y: new JsonFloat(Math.round(position.y)) } });
 
+export interface GroupRect { x: number; y: number; width: number; height: number }
+
+const rectValue = (rect: GroupRect): JsonObject => ({
+  height: new JsonFloat(Math.round(rect.height)), width: new JsonFloat(Math.round(rect.width)),
+  x: new JsonFloat(Math.round(rect.x)), y: new JsonFloat(Math.round(rect.y)),
+});
+
+function groupsOf(document: JsonValue, graphId: string): JsonObject[] {
+  layoutNodes(document, graphId);
+  const graph = (document as JsonObject)[graphId] as JsonObject;
+  return (graph.canvasGroups ??= []) as JsonObject[];
+}
+
+export interface CanvasGroup { index: number; name: string; rect: GroupRect; color: string | null }
+
+// 布局中的分组；颜色全透明为 NodeCanvas 默认色。
+export function graphGroups(layout: JsonValue | null, graphId: string): CanvasGroup[] {
+  const groups = ((layout as JsonObject | null)?.[graphId] as JsonObject | undefined)?.canvasGroups as JsonObject[] | undefined;
+  return (groups ?? []).map((group, index) => {
+    const rect = group.rect as JsonObject, color = group.color as JsonObject | null;
+    const alpha = color ? numberOf(color.a) : 0;
+    return {
+      index, name: (group.name as string | null) ?? '',
+      rect: { x: numberOf(rect.x), y: numberOf(rect.y), width: numberOf(rect.width), height: numberOf(rect.height) },
+      color: alpha > 0 ? `rgb(${numberOf(color!.r) * 255} ${numberOf(color!.g) * 255} ${numberOf(color!.b) * 255} / ${alpha})` : null,
+    };
+  });
+}
+
+// 技能黑板支持的原生变量类型（与 Unity BtsmtlSkillBlackboardValueContract 一致）及其默认值。
+export const variableTypes = ['Boolean', 'Int32', 'UInt64', 'Single', 'String', 'Vector2', 'Vector3'];
+
+function variableDefault(varType: string): JsonValue {
+  switch (varType) {
+    case 'Boolean': return false;
+    case 'Int32': case 'UInt64': return 0;
+    case 'Single': return new JsonFloat(0);
+    case 'String': return '';
+    case 'Vector2': return { x: new JsonFloat(0), y: new JsonFloat(0) };
+    case 'Vector3': return { x: new JsonFloat(0), y: new JsonFloat(0), z: new JsonFloat(0) };
+  }
+  throw new Error(`技能黑板不支持 ${varType}`);
+}
+
+const variablesOf = (document: JsonValue) => (((document as JsonObject).localBlackboard as JsonObject).variables ?? {}) as JsonObject;
+const setVariables = (document: JsonValue, variables: JsonObject) => {
+  ((document as JsonObject).localBlackboard as JsonObject).variables = sortedObject(variables);
+};
+const declarationsOf = (document: JsonValue) => (document as JsonObject).BlackboardDeclarations as JsonObject[];
+
+// ── 预览输入方案（inputs/<方案>.json）：每个方案带一条输入 Timeline ──
+
+export const inputAuthoring = {
+  setValue(path: string, keys: JsonKey[], value: JsonValue) {
+    authoringActions.edit(path, document => setIn(document, keys, value));
+  },
+
+  // 新方案复制所选方案的设置，配一条新的空输入 Timeline。
+  addScheme(path: string, name: string) {
+    const timeline = crypto.randomUUID();
+    authoringActions.create(timelinePath(timeline), {
+      m_AuthoringId: timeline, m_ExternalBindings: [], m_Loop: false, m_Name: 'Timeline', m_Tracks: [],
+    });
+    authoringActions.edit(path, document => {
+      const plan = document as JsonObject;
+      const schemes = plan.Schemes as JsonObject[];
+      const source = schemes[numberOf(plan.Selected)] ?? schemes[0];
+      schemes.push(sortedObject({ ...cloneJson(source), InputTimeline: timeline, Name: name }));
+      plan.Selected = schemes.length - 1;
+    });
+  },
+
+  removeScheme(path: string, index: number) {
+    const plan = currentDocument(path) as JsonObject | null;
+    const timeline = ((plan?.Schemes as JsonObject[] | undefined)?.[index]?.InputTimeline as string | undefined) ?? null;
+    authoringActions.edit(path, document => {
+      const target = document as JsonObject;
+      const schemes = target.Schemes as JsonObject[];
+      schemes.splice(index, 1);
+      target.Selected = Math.min(numberOf(target.Selected), schemes.length - 1);
+    });
+    if (timeline) dropOrphans([timeline]);
+  },
+};
+
+// 新建元素用的锚点与默认值：每个技能读一次。
+let elementCache: { skill: string; items: Promise<SkillElements> } | null = null;
+export function skillElements(): Promise<SkillElements> {
+  const skill = get().skill;
+  if (!skill) return Promise.reject(new Error('没有打开的技能'));
+  if (elementCache?.skill !== skill) {
+    const items = authoringApi.elements(skill);
+    elementCache = { skill, items };
+    items.catch(() => { elementCache = null; });
+  }
+  return elementCache.items;
+}
+
+export function useSkillElements(enabled: boolean): SkillElements | null {
+  const skill = useAuthoring(state => state.skill);
+  const [elements, setElements] = useState<{ skill: string; items: SkillElements } | null>(null);
+  useEffect(() => {
+    if (!enabled || !skill) return;
+    let live = true;
+    skillElements().then(items => { if (live) setElements({ skill, items }); }, (error: unknown) => consoleActions.error('作者', error));
+    return () => { live = false; };
+  }, [enabled, skill]);
+  return enabled && elements?.skill === skill ? elements.items : null;
+}
+
+// 新建一张专属图（状态体、转移条件、Timeline 片段图）：带角色的系统锚点，锚点按默认坐标写入布局。
+export function createGraph(elements: SkillElements, role: string, name: string): string {
+  const id = nodeUid();
+  const anchors = elements.anchors[role] ?? [];
+  authoringActions.create(graphPath(id), sortedObject({
+    AuthoringId: id, BlackboardDeclarations: [], Role: role, localBlackboard: { variables: {} }, name,
+    allNodes: anchors.map(anchor => ({ UID: anchor.uid, outConnections: [], type: anchor.type })),
+  }));
+  if (currentDocument(layoutPath))
+    authoringActions.edit(layoutPath, document => {
+      const nodes = layoutNodes(document, id);
+      for (const anchor of anchors) nodes[anchor.uid] = positionValue(anchor);
+    });
+  return id;
+}
+
 // 复制缓冲：节点原对象、相对位置与端口，跨图粘贴时生成新身份。
 let clipboard: { nodes: JsonObject[]; positions: Record<string, { x: number; y: number }>; ports: Record<string, AddedPort[]> } | null = null;
 
@@ -373,9 +758,12 @@ export const graphAuthoring = {
     return uid;
   },
 
-  // 删除节点及所有指向它们的连线与布局。
+  // 删除节点及所有指向它们的连线与布局；它们专属的状态体、条件图、状态机与 Timeline 不再被引用时一并删除。
   deleteNodes(graphId: string, nodeIds: string[]) {
     const removed = new Set(nodeIds);
+    const source = currentDocument(graphPath(graphId));
+    const seeds = source ? nodesOf(source).flatMap(node => removed.has(node.UID as string) ? referencedFiles(node)
+      : connectionsOf(node).filter(connection => removed.has(connection.targetNode as string)).flatMap(referencedFiles)) : [];
     authoringActions.edit(graphPath(graphId), document => {
       const graph = document as JsonObject;
       graph.allNodes = nodesOf(graph).filter(node => !removed.has(node.UID as string));
@@ -385,6 +773,62 @@ export const graphAuthoring = {
       const nodes = layoutNodes(document, graphId);
       for (const id of nodeIds) delete nodes[id];
     });
+    dropOrphans(seeds);
+  },
+
+  // ── 状态机（照 Unity 原生 Skill FSM）：新状态带专属状态体；转移按序号排在源状态之后，条件图按需创建 ──
+
+  addState(graphId: string, elements: SkillElements, configuration: JsonObject, position: { x: number; y: number }): string {
+    const uid = nodeUid();
+    const body = createGraph(elements, 'StateBody', '状态内容');
+    authoringActions.edit(graphPath(graphId), document => {
+      nodesOf(document).push(sortedObject({
+        ...cloneJson(configuration), UID: uid, _name: '新状态', m_Body: body, outConnections: [], type: 'BtsmtlSkillNativeState',
+      }));
+    });
+    authoringActions.edit(layoutPath, document => { layoutNodes(document, graphId)[uid] = positionValue(position); });
+    return uid;
+  },
+
+  connectStates(graphId: string, elements: SkillElements, sourceId: string, targetId: string) {
+    authoringActions.edit(graphPath(graphId), document => {
+      const node = nodesOf(document).find(item => item.UID === sourceId);
+      if (!node) throw new Error(`状态机 ${graphId} 中没有状态 ${sourceId}`);
+      const order = Math.max(-1, ...connectionsOf(node).map(connection => numberOf((connection.Payload as JsonObject).m_Order))) + 1;
+      connectionsOf(node).push({
+        Payload: sortedObject({ ...cloneJson(elements.transition.value), m_Order: order }), UID: connectionUid(), targetNode: targetId,
+      });
+    });
+  },
+
+  // 转移字段：Payload 内按键写值。
+  setTransitionValue(graphId: string, connectionId: string, keys: JsonKey[], value: JsonValue) {
+    authoringActions.edit(graphPath(graphId), document => {
+      const connection = nodesOf(document).flatMap(connectionsOf).find(item => item.UID === connectionId);
+      if (!connection) throw new Error(`状态机 ${graphId} 中没有转移 ${connectionId}`);
+      setIn(connection.Payload as JsonObject, keys, value);
+    });
+  },
+
+  // 给状态建状态体、给转移建条件图；移除时原图不再被引用就删除。
+  createStateBody(graphId: string, elements: SkillElements, nodeId: string) {
+    const body = createGraph(elements, 'StateBody', '状态内容');
+    graphAuthoring.setNodeValue(graphId, nodeId, ['m_Body'], body);
+  },
+
+  createCondition(graphId: string, elements: SkillElements, connectionId: string) {
+    const condition = createGraph(elements, 'ConditionRule', '转移条件');
+    graphAuthoring.setTransitionValue(graphId, connectionId, ['m_Condition'], condition);
+  },
+
+  removeStateBody(graphId: string, nodeId: string, body: string) {
+    graphAuthoring.setNodeValue(graphId, nodeId, ['m_Body'], null);
+    dropOrphans([body]);
+  },
+
+  removeCondition(graphId: string, connectionId: string, condition: string) {
+    graphAuthoring.setTransitionValue(graphId, connectionId, ['m_Condition'], null);
+    dropOrphans([condition]);
   },
 
   connect(graphId: string, source: { nodeId: string; portId: string }, target: { nodeId: string; portId: string }) {
@@ -400,9 +844,12 @@ export const graphAuthoring = {
 
   disconnect(graphId: string, connectionIds: string[]) {
     const removed = new Set(connectionIds);
+    const source = currentDocument(graphPath(graphId));
+    const seeds = source ? nodesOf(source).flatMap(connectionsOf).filter(connection => removed.has(connection.UID as string)).flatMap(referencedFiles) : [];
     authoringActions.edit(graphPath(graphId), document => {
       for (const node of nodesOf(document)) node.outConnections = connectionsOf(node).filter(connection => !removed.has(connection.UID as string));
     });
+    dropOrphans(seeds);
   },
 
   // 检查器字段：节点对象内按键路径写值（成员、端口默认值或节点名）。
@@ -411,6 +858,85 @@ export const graphAuthoring = {
       const node = nodesOf(document).find(item => item.UID === nodeId);
       if (!node) throw new Error(`图 ${graphId} 中没有节点 ${nodeId}`);
       setIn(node, keys, value);
+    });
+  },
+
+  // ── 分组（NodeCanvas CanvasGroup，存于布局）：名称、矩形、颜色、自动分组与备注 ──
+
+  addGroup(graphId: string, rect: GroupRect, name: string) {
+    authoringActions.edit(layoutPath, document => {
+      groupsOf(document, graphId).push({
+        autoGroup: false, color: { a: new JsonFloat(0), b: new JsonFloat(0), g: new JsonFloat(0), r: new JsonFloat(0) },
+        name, notes: null, rect: rectValue(rect),
+      });
+    });
+  },
+
+  updateGroup(graphId: string, index: number, patch: { name?: string; rect?: GroupRect }) {
+    authoringActions.edit(layoutPath, document => {
+      const group = groupsOf(document, graphId)[index];
+      if (!group) throw new Error(`图 ${graphId} 中没有第 ${index} 个分组`);
+      if (patch.name !== undefined) group.name = patch.name;
+      if (patch.rect) group.rect = rectValue(patch.rect);
+    });
+  },
+
+  deleteGroups(graphId: string, indices: number[]) {
+    const removed = new Set(indices);
+    authoringActions.edit(layoutPath, document => {
+      const graph = (document as JsonObject)[graphId] as JsonObject;
+      graph.canvasGroups = groupsOf(document, graphId).filter((_, index) => !removed.has(index));
+    });
+  },
+
+  // ── 黑板（照 Unity 技能黑板声明）：原生变量在 localBlackboard.variables（按名称索引），
+  // BTSMTL 作用域声明在 BlackboardDeclarations，两者以变量身份一一对应 ──
+
+  addVariable(graphId: string, name: string, varType: string, declaration: { m_Scope: string; m_Lifetime: string; m_Category: string }): string {
+    const id = crypto.randomUUID();
+    authoringActions.edit(graphPath(graphId), document => {
+      const variables = variablesOf(document);
+      if (variables[name]) throw new Error(`黑板已有变量 ${name}`);
+      setVariables(document, { ...variables, [name]: { ID: id, name, serializedValue: variableDefault(varType), varType } });
+      declarationsOf(document).push(sortedObject({
+        ...declaration, m_InputBinding: { m_InputValueId: null, m_Projection: 'Direct' }, m_VariableId: id,
+      }));
+    });
+    return id;
+  },
+
+  renameVariable(graphId: string, variableId: string, name: string) {
+    authoringActions.edit(graphPath(graphId), document => {
+      const variables = variablesOf(document);
+      const [key, variable] = Object.entries(variables).find(([, item]) => (item as JsonObject).ID === variableId) ?? [];
+      if (!variable) throw new Error(`黑板没有变量 ${variableId}`);
+      if (name !== key && variables[name]) throw new Error(`黑板已有变量 ${name}`);
+      const next = { ...variables };
+      delete next[key!];
+      setVariables(document, { ...next, [name]: { ...(variable as JsonObject), name } });
+    });
+  },
+
+  setVariableValue(graphId: string, variableId: string, keys: JsonKey[], value: JsonValue) {
+    authoringActions.edit(graphPath(graphId), document => {
+      const variable = Object.values(variablesOf(document)).find(item => (item as JsonObject).ID === variableId);
+      if (!variable) throw new Error(`黑板没有变量 ${variableId}`);
+      setIn(variable, ['serializedValue', ...keys], value);
+    });
+  },
+
+  setDeclarationValue(graphId: string, variableId: string, keys: JsonKey[], value: JsonValue) {
+    authoringActions.edit(graphPath(graphId), document => {
+      const declaration = declarationsOf(document).find(item => item.m_VariableId === variableId);
+      if (!declaration) throw new Error(`黑板没有变量 ${variableId} 的声明`);
+      setIn(declaration, keys, value);
+    });
+  },
+
+  removeVariable(graphId: string, variableId: string) {
+    authoringActions.edit(graphPath(graphId), document => {
+      setVariables(document, Object.fromEntries(Object.entries(variablesOf(document)).filter(([, item]) => (item as JsonObject).ID !== variableId)));
+      (document as JsonObject).BlackboardDeclarations = declarationsOf(document).filter(item => item.m_VariableId !== variableId);
     });
   },
 
@@ -493,16 +1019,30 @@ export function applyGraphEdits(graph: GraphDefinition, path: string, edited: Re
     const existing = new Set(graph.edges.filter(edge => edge.invocationPath === path).map(edge => edge.id));
     edges = [
       ...graph.edges.filter(edge => edge.invocationPath !== path || ids.has(edge.id)),
+      // 状态机转移没有端口，带 Payload。
       ...connections.filter(item => !existing.has(item.connection.UID as string)).map(({ node, connection }) => ({
         id: connection.UID as string,
-        kind: triggers.has(`${node.UID}/output/${connection.sourcePortID}`) ? 'Child' : 'Value',
+        kind: connection.Payload ? 'Transition' : triggers.has(`${node.UID}/output/${connection.sourcePortID}`) ? 'Child' : 'Value',
         invocationPath: path, available: true, reason: '',
-        source: { graphId: graph.id, nodeId: node.UID as string, portId: connection.sourcePortID as string },
-        target: { graphId: graph.id, nodeId: connection.targetNode as string, portId: connection.targetPortID as string },
+        source: { graphId: graph.id, nodeId: node.UID as string, portId: (connection.sourcePortID as string | undefined) ?? '' },
+        target: { graphId: graph.id, nodeId: connection.targetNode as string, portId: (connection.targetPortID as string | undefined) ?? '' },
       })),
     ];
   }
   return { ...graph, nodes, ports, edges };
+}
+
+// 检查器按选中身份（角色/调用路径/元素）找图：所在图有未保存修改时先叠加，新建的状态与转移也能检查。
+export function findEditedGraph(graphs: GraphDefinition[] | null, selectId: string, edited: Record<string, JsonValue>,
+  addedPorts: Record<string, AddedPort[]>): { graph: GraphDefinition; path: string; id: string } | null {
+  for (const graph of graphs ?? [])
+    for (const path of new Set(graph.nodes.map(node => node.invocationPath))) {
+      const prefix = `${graph.actorId}/${path}/`;
+      const id = selectId.slice(prefix.length);
+      if (!selectId.startsWith(prefix) || id.includes('/')) continue;
+      return { graph: applyGraphEdits(graph, path, edited, addedPorts), path, id };
+    }
+  return null;
 }
 
 function findTimelineClip(timeline: JsonObject, clipId: string): JsonObject | null {
@@ -512,22 +1052,17 @@ function findTimelineClip(timeline: JsonObject, clipId: string): JsonObject | nu
   return null;
 }
 
-// 运行中的作者 Timeline 叠加未保存修改：片段起止取编辑后的 FP 时间。
+// 作者 Timeline 叠加未保存修改：轨道、片段与标记取编辑后的文档，宿主给出的片段显示名按身份保留。
 export function applyTimelineEdits(timelines: AuthorTimeline[], edited: Record<string, JsonValue>): AuthorTimeline[] {
   if (!Object.keys(edited).length) return timelines;
   return timelines.map(timeline => {
     const document = edited[timelinePath(timeline.documentId)] as JsonObject | undefined;
     if (!document) return timeline;
+    const names = new Map(timeline.tracks.flatMap(track => track.clips.map(clip => [clip.id, clip.displayName])));
+    const tracks = timelineOf(timeline.documentId, document).tracks;
     return {
       ...timeline,
-      tracks: timeline.tracks.map(track => ({
-        ...track,
-        clips: track.clips.map(clip => {
-          const source = findTimelineClip(document, clip.id);
-          if (!source) return clip;
-          return { ...clip, startSeconds: fpSeconds(numberOf(source.m_StartTimeFPRawValue)), endSeconds: fpSeconds(numberOf(source.m_EndTimeFPRawValue)) };
-        }),
-      })),
+      tracks: tracks.map(track => ({ ...track, clips: track.clips.map(clip => ({ ...clip, displayName: names.get(clip.id) ?? null })) })),
     };
   });
 }

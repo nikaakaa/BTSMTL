@@ -1,6 +1,6 @@
 import {
-  Background, BackgroundVariant, BaseEdge, EdgeLabelRenderer, getBezierPath, Handle, MiniMap, Position, ReactFlow,
-  ReactFlowProvider, SelectionMode, applyNodeChanges, useInternalNode, useReactFlow, type Edge, type EdgeProps, type Node, type NodeChange,
+  Background, BackgroundVariant, BaseEdge, EdgeLabelRenderer, getBezierPath, Handle, MiniMap, NodeResizer, Position, ReactFlow,
+  ReactFlowProvider, SelectionMode, applyNodeChanges, useConnection, useInternalNode, useReactFlow, type Edge, type EdgeProps, type Node, type NodeChange,
   type Connection, type NodeProps, type Viewport,
 } from '@xyflow/react';
 import '@xyflow/react/dist/base.css';
@@ -9,19 +9,24 @@ import {
   type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent,
 } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { authoringApi, type NodeTypeInfo } from '../../api/authoring';
+import { authoringApi, type NodeTypeInfo, type SkillElements } from '../../api/authoring';
 import type { GraphDefinition, GraphEdge, GraphPort } from '../../api/types';
-import { applyGraphEdits, graphAuthoring, useAuthoring } from '../../state/authoring';
+import {
+  applyGraphEdits, currentDocument, graphAuthoring, graphGroups, graphPath, layoutPath, skillElements, useAuthoring, useCurrentDocument, useSkillElements,
+  type CanvasGroup,
+} from '../../state/authoring';
+import type { JsonObject } from '../../state/skillJson';
 import { openPanel } from '../../shell/layout';
 import { usePanelId, usePanelParams, usePanelVisible, usePanelWindow } from '../../shell/panel';
 import { clearRendered, frameKey, reportRendered } from '../../shell/readiness';
 import {
-  belongsTo, callKey, childGraphs, edgeChildGraphs, graphCrumbs, graphHierarchy, graphKey, graphName, graphRecords,
+  belongsTo, callKey, childGraphs, edgeChildGraphs, edgeSelectId, graphCrumbs, graphHierarchy, graphKey, graphName, graphRecords,
   isStateMachine, layoutGraph, nodeName, nodeSelectId, nodeTimeline, playedTimeline, portColor, type GraphHierarchy, type LaidNode,
 } from '../../state/graphModel';
 import { consoleActions, getState, selectionActions, useWorkbench } from '../../state/store';
 import { Empty, PanelBar } from '../../ui/blocks';
 import { Button, ContextMenu, MenuButton, Select, TextInput, type MenuEntry } from '../../ui/controls';
+import { BlackboardFields } from '../inspector/FieldEditors';
 import { RouteStore, type RouteHistory } from './routeStore';
 import styles from './graph.module.css';
 
@@ -55,6 +60,10 @@ interface ViewOptions {
   graph: GraphDefinition;
   // 作者模式下端口可拖出连线。
   editable?: boolean;
+  // 按住分组标题拖动前选中分组及其中的节点，一起拖动。
+  grabGroup?(group: CanvasGroup): void;
+  renameGroup?(group: CanvasGroup, name: string): void;
+  resizeGroup?(group: CanvasGroup, rect: CanvasGroup['rect']): void;
 }
 const ViewContext = createContext<ViewOptions | null>(null);
 const useView = () => useContext(ViewContext)!;
@@ -68,6 +77,17 @@ interface NodeData extends Record<string, unknown> {
   children: GraphDefinition[];
 }
 type FlowNode = Node<NodeData, 'flow' | 'state'>;
+interface GroupData extends Record<string, unknown> {
+  group: CanvasGroup;
+}
+type GroupNode = Node<GroupData, 'canvasGroup'>;
+type CanvasNode = FlowNode | GroupNode;
+const isGroupNode = (node: CanvasNode): node is GroupNode => node.type === 'canvasGroup';
+const groupNodeId = (group: CanvasGroup) => `group:${group.index}`;
+
+// 分组包含左上角落在矩形内的节点（照 NodeCanvas）。
+const inside = (rect: CanvasGroup['rect'], position: { x: number; y: number }) =>
+  position.x >= rect.x && position.y >= rect.y && position.x <= rect.x + rect.width && position.y <= rect.y + rect.height;
 interface EdgeData extends Record<string, unknown> {
   edge: GraphEdge;
   label: string;
@@ -183,6 +203,7 @@ function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
     if (graphs.some(item => graphKey(item) === request.key)) setParams({ graph: request.key, call: null, viewport: null });
   }, [request, graphs, setParams]);
   const crumbs = useMemo(() => graphCrumbs(hierarchy, graph), [hierarchy, graph]);
+  const [blackboard, setBlackboard] = useState(false);
   const programOptions = [...programs].map(([value, item]) => ({ value, label: item.label }));
 
   const settings: MenuEntry[] = [
@@ -218,8 +239,10 @@ function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
           <Select label="实际调用" value={call} options={callOptions} disabled={callOptions.length < 2}
             tip={callOptions.length ? undefined : '此图没有节点'} onChange={value => setParams({ call: value })} />
           <FitButton />
+          <Button variant="ghost" pressed={blackboard} tip="本图的黑板变量与声明" onClick={() => setBlackboard(!blackboard)}>黑板</Button>
           <MenuButton label="显示设置" caret entries={settings}>显示设置</MenuButton>
         </PanelBar>
+        {blackboard && <BlackboardPanel graph={graph} onClose={() => setBlackboard(false)} />}
         <div className={styles.title}>
           {graphName(graph)}
           <SelectedSummary graph={graph} />
@@ -310,6 +333,24 @@ function NodeTypePicker({ graph, at, onClose }: {
   );
 }
 
+// 黑板浮层：读打开技能里这张图的文件；作者模式可增删、改名、改默认值与声明。
+function BlackboardPanel({ graph, onClose }: { graph: GraphDefinition; onClose(): void }) {
+  const author = useAuthoring(useShallow(state => ({ own: !!state.skill && state.programId === graph.programId, editable: state.author })));
+  const elements = useSkillElements(author.own && author.editable);
+  return (
+    <div className={styles.blackboard}>
+      <div className={styles.pickerHead}>
+        <b>黑板 · {graphName(graph)}</b>
+        <button className={styles.pickerClose} onClick={onClose} aria-label="关闭">×</button>
+      </div>
+      <div className={styles.blackboardBody}>
+        {author.own ? <BlackboardFields graphId={graph.id} shape={elements?.blackboard ?? null} editable={author.editable && !!elements} />
+          : <div className={styles.pickerNote}>这张图不属于打开的技能</div>}
+      </div>
+    </div>
+  );
+}
+
 function FitButton() {
   const flow = useReactFlow();
   return <Button variant="ghost" tip="适配视图" onClick={() => void flow.fitView({ padding: 0.12 })}>全部居中</Button>;
@@ -327,7 +368,7 @@ function SelectedSummary({ graph }: { graph: GraphDefinition }) {
   return <em>{text}</em>;
 }
 
-const nodeTypes = { flow: memo(FlowNodeView), state: memo(StateNodeView) };
+const nodeTypes = { flow: memo(FlowNodeView), state: memo(StateNodeView), canvasGroup: memo(GroupView) };
 const edgeTypes = { route: memo(RouteEdgeView), transition: memo(TransitionEdgeView) };
 
 // 状态机里没有入边且没有子图、也不播放 Timeline 的节点（入口、出口、任意状态）画成灰色。
@@ -335,16 +376,22 @@ function isSystemNode(graph: GraphDefinition, hierarchy: GraphHierarchy, laid: L
   return !childGraphs(hierarchy, graph, laid.node.id).length && !nodeTimeline(hierarchy, graph, laid.node.id);
 }
 
-// 作者模式：当前技能的流图叠加网页中未保存的修改后显示，并可编辑。状态机编辑另做（共享文档 9.5）。
-function AuthoredCanvas(props: Omit<GraphCanvasProps, 'editable'>) {
+// 作者模式：当前技能的图（流图与状态机）叠加网页中未保存的修改后显示，并可编辑；分组取自布局文件。
+function AuthoredCanvas(props: Omit<GraphCanvasProps, 'editable' | 'groups' | 'elements'>) {
   const { graph, path } = props;
   const author = useAuthoring(useShallow(state => ({
     on: state.author && !!state.skill && state.programId === graph.programId, edited: state.edited, ports: state.addedPorts,
+    own: !!state.skill && state.programId === graph.programId,
   })));
-  const editable = author.on && !isStateMachine(graph);
+  const editable = author.on;
   const shown = useMemo(() => editable ? applyGraphEdits(graph, path, author.edited, author.ports) : graph,
     [editable, graph, path, author.edited, author.ports]);
-  return <GraphCanvas {...props} graph={shown} editable={editable} />;
+  const { document: layout } = useCurrentDocument(author.own ? layoutPath : null);
+  const groupsText = JSON.stringify(graphGroups(layout, graph.id));
+  const groups = useMemo(() => JSON.parse(groupsText) as CanvasGroup[], [groupsText]);
+  // 新建状态、转移与图的锚点和默认值。
+  const elements = useSkillElements(editable);
+  return <GraphCanvas {...props} graph={shown} editable={editable} groups={groups} elements={elements} />;
 }
 
 interface GraphCanvasProps {
@@ -356,18 +403,26 @@ interface GraphCanvasProps {
   params: Params;
   setParams(patch: Partial<Params>): void;
   editable: boolean;
+  groups: CanvasGroup[];
+  elements: SkillElements | null;
 }
 
-function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, editable }: GraphCanvasProps) {
-  const machine = isStateMachine(graph);
+function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, editable, groups, elements }: GraphCanvasProps) {
+  const machine = isStateMachine(graph) || (currentDocument(graphPath(graph.id)) as JsonObject | null)?.Role === 'StateMachine';
   const layout = useMemo(() => layoutGraph(graph, path), [graph, path]);
   const store = useMemo(() => new RouteStore(), []);
   // 粘贴出的新节点在下次重建时选中。
   const pendingSelect = useRef<ReadonlySet<string> | null>(null);
-  const build = useCallback((previous: FlowNode[]) => {
+  const build = useCallback((previous: CanvasNode[]) => {
     const selected = pendingSelect.current ?? new Set(previous.filter(node => node.selected).map(node => node.id));
     pendingSelect.current = null;
-    return layout.nodes.map((laid, index): FlowNode => {
+    // 分组画在节点下面，只有标题可以拖动。
+    const groupNodes = groups.map((group): GroupNode => ({
+      id: groupNodeId(group), type: 'canvasGroup', position: { x: group.rect.x, y: group.rect.y },
+      width: group.rect.width, height: group.rect.height, zIndex: -1, selected: selected.has(groupNodeId(group)),
+      dragHandle: `.${styles.groupHead}`, className: styles.groupNode, data: { group },
+    }));
+    return [...groupNodes, ...layout.nodes.map((laid, index): FlowNode => {
       const children = childGraphs(hierarchy, graph, laid.node.id);
       const timeline = playedTimeline(hierarchy, graph, laid.node.id);
       return {
@@ -377,16 +432,16 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
           timeline, children,
         },
       };
-    });
-  }, [layout, hierarchy, graph, machine]);
-  const [nodes, setNodes] = useState<FlowNode[]>(() => build([]));
-  // 作者修改后图结构变化：重建节点，保留选中。
-  const built = useRef(layout);
+    })];
+  }, [layout, hierarchy, graph, machine, groups]);
+  const [nodes, setNodes] = useState<CanvasNode[]>(() => build([]));
+  // 作者修改后图结构或分组变化：重建节点，保留选中。
+  const built = useRef(build);
   useEffect(() => {
-    if (built.current === layout) return;
-    built.current = layout;
+    if (built.current === build) return;
+    built.current = build;
     setNodes(build);
-  }, [layout, build]);
+  }, [build]);
   const edges = useMemo<FlowEdge[]>(() => {
     const pairs = new Map<string, number>();
     const counts = new Map<string, number>();
@@ -454,9 +509,12 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
   const options = useMemo<ViewOptions>(() => ({
     store, values: params.values, dim: params.dim, related, labels: params.labels, enter, hierarchy, graph,
   }), [store, params.values, params.dim, related, params.labels, enter, hierarchy, graph]);
-  const onNodesChange = useCallback((changes: NodeChange<FlowNode>[]) => setNodes(current => applyNodeChanges(changes, current)), []);
-  const onNodeClick = useCallback((_: unknown, node: FlowNode) => selectionActions.select({ kind: 'node', id: node.data.selectId }), []);
-  const onNodeDoubleClick = useCallback((_: unknown, node: FlowNode) => {
+  const onNodesChange = useCallback((changes: NodeChange<CanvasNode>[]) => setNodes(current => applyNodeChanges(changes, current)), []);
+  const onNodeClick = useCallback((_: unknown, node: CanvasNode) => {
+    if (!isGroupNode(node)) selectionActions.select({ kind: 'node', id: node.data.selectId });
+  }, []);
+  const onNodeDoubleClick = useCallback((_: unknown, node: CanvasNode) => {
+    if (isGroupNode(node)) return;
     if (node.data.children.length) enter(node.data.children[0]);
     else if (node.data.timeline) showTimeline(node.data.timeline);
   }, [enter]);
@@ -468,7 +526,7 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
   const onMoveEnd = useCallback((_: unknown, viewport: Viewport) => setParams({ viewport: { ...viewport, view } }), [setParams, view]);
   // 框选结束：选中了一个节点时同步给检查器；框到多个时检查器显示第一个。
   const onSelectionEnd = useCallback(() => {
-    const picked = nodes.filter(node => node.selected);
+    const picked = nodes.filter((node): node is FlowNode => node.selected === true && !isGroupNode(node));
     if (picked.length) selectionActions.select({ kind: 'node', id: picked[0].data.selectId });
   }, [nodes]);
   const { fitView, screenToFlowPosition } = useReactFlow();
@@ -478,53 +536,115 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
   const [picker, setPicker] = useState<{ x: number; y: number; flow: { x: number; y: number } } | null>(null);
   const menuAt = useRef({ x: 0, y: 0 });
   const shownEdges = useMemo(() => edges.map(edge => selectedEdges.has(edge.id) ? { ...edge, selected: true } : edge), [edges, selectedEdges]);
+  // 单击连线选中（Ctrl／Shift 加选）；状态机的转移同时交给检查器。
   const onEdgeClick = useCallback((event: ReactMouseEvent, edge: FlowEdge) => {
+    if (machine) selectionActions.select({ kind: 'edge', id: edgeSelectId(graph, edge.data!.edge) });
     if (!editable) return;
     setSelectedEdges(current => {
       const next = new Set(event.ctrlKey || event.shiftKey ? current : []);
       if (!next.delete(edge.id)) next.add(edge.id);
       return next;
     });
-  }, [editable]);
+  }, [editable, machine, graph]);
   const portOf = (handle: string | null | undefined) => handle?.slice(handle.indexOf(':') + 1) ?? '';
   const onConnect = useCallback((connection: Connection) => {
     if (!connection.source || !connection.target) return;
+    if (machine) {
+      if (elements) graphAuthoring.connectStates(graph.id, elements, connection.source, connection.target);
+      return;
+    }
     graphAuthoring.connect(graph.id, { nodeId: connection.source, portId: portOf(connection.sourceHandle) },
       { nodeId: connection.target, portId: portOf(connection.targetHandle) });
-  }, [graph.id]);
-  const onNodeDragStop = useCallback((_: unknown, __: FlowNode, dragged: FlowNode[]) => {
-    if (editable) graphAuthoring.move(graph.id, Object.fromEntries(dragged.map(node => [node.id, node.position])));
-  }, [editable, graph.id]);
+  }, [graph.id, machine, elements]);
+  // 拖动结束写布局：分组写矩形，分组里没有一起拖动的节点按同一位移移动。
+  const onNodeDragStop = useCallback((_: unknown, __: CanvasNode, dragged: CanvasNode[]) => {
+    if (!editable) return;
+    const moved: Record<string, { x: number; y: number }> = Object.fromEntries(dragged.filter(node => !isGroupNode(node))
+      .map(node => [node.id, node.position]));
+    for (const node of dragged.filter(isGroupNode)) {
+      const { rect } = node.data.group;
+      const dx = node.position.x - rect.x, dy = node.position.y - rect.y;
+      graphAuthoring.updateGroup(graph.id, node.data.group.index, { rect: { ...rect, x: node.position.x, y: node.position.y } });
+      for (const laid of layout.nodes)
+        if (!moved[laid.node.id] && inside(rect, laid)) moved[laid.node.id] = { x: laid.x + dx, y: laid.y + dy };
+    }
+    if (Object.keys(moved).length) graphAuthoring.move(graph.id, moved);
+  }, [editable, graph.id, layout]);
   const portsOf = useCallback((ids: string[]) => Object.fromEntries(ids.map(id => [id, graph.ports
     .filter(port => port.nodeId === id && port.invocationPath === path)
     .map(port => ({ id: port.id, displayName: port.displayName, direction: port.direction as 'input' | 'output', isTrigger: port.isTrigger }))])), [graph, path]);
+  // 系统锚点（入口、出口、任意状态、状态体与片段图的固定节点）不能删除，与 Unity 一致。
+  const anchorIds = useMemo(() => new Set(Object.values(elements?.anchors ?? {}).flat().map(anchor => anchor.uid)), [elements]);
+  const deleteSelected = () => {
+    const picked = nodes.filter(node => node.selected);
+    const groupIndices = picked.filter(isGroupNode).map(node => node.data.group.index);
+    const ids = picked.filter(node => !isGroupNode(node)).map(node => node.id);
+    const kept = ids.filter(id => anchorIds.has(id));
+    if (kept.length) consoleActions.log('warn', '作者', `${kept.length} 个系统锚点不能删除，已跳过`);
+    const removable = ids.filter(id => !anchorIds.has(id));
+    if (removable.length) graphAuthoring.deleteNodes(graph.id, removable);
+    if (groupIndices.length) graphAuthoring.deleteGroups(graph.id, groupIndices);
+    if (selectedEdges.size) graphAuthoring.disconnect(graph.id, [...selectedEdges]);
+    setSelectedEdges(new Set());
+  };
   const onKeyDown = (event: ReactKeyboardEvent) => {
     if (!editable || (event.target as HTMLElement).closest('input, textarea')) return;
-    const picked = nodes.filter(node => node.selected);
-    if (event.key === 'Delete') {
-      if (picked.length) graphAuthoring.deleteNodes(graph.id, picked.map(node => node.id));
-      if (selectedEdges.size) graphAuthoring.disconnect(graph.id, [...selectedEdges]);
-      setSelectedEdges(new Set());
-    } else if ((event.ctrlKey || event.metaKey) && event.key === 'c' && picked.length) {
+    const picked = nodes.filter((node): node is FlowNode => node.selected === true && !isGroupNode(node));
+    if (event.key === 'Delete') deleteSelected();
+    else if ((event.ctrlKey || event.metaKey) && event.key === 'c' && picked.length && !machine) {
       graphAuthoring.copy(graph.id, picked.map(node => node.id), Object.fromEntries(picked.map(node => [node.id, node.position])),
         portsOf(picked.map(node => node.id)));
-    } else if ((event.ctrlKey || event.metaKey) && event.key === 'v') {
+    } else if ((event.ctrlKey || event.metaKey) && event.key === 'v' && !machine) {
       const pasted = graphAuthoring.paste(graph.id, { x: 40, y: 40 });
       if (pasted.length) pendingSelect.current = new Set(pasted);
     } else return;
     event.preventDefault();
   };
-  const blocked = machine ? '状态机的状态与转移编辑另做（共享文档 9.5）' : '进入 Timeline 编辑行的“作者”模式后可编辑当前技能的流图';
+  // 添加状态：默认配置取宿主对状态类型的描述。
+  const addState = async (position: { x: number; y: number }) => {
+    try {
+      const skill = useAuthoring.getState().skill!;
+      const description = await authoringApi.describeType(skill, 'BtsmtlSkillNativeState', graph.id);
+      if (!description.availability.available) throw new Error(description.availability.reason ?? '状态类型不可创建');
+      const elementsNow = elements ?? await skillElements();
+      pendingSelect.current = new Set([graphAuthoring.addState(graph.id, elementsNow, description.configuration, position)]);
+    } catch (error) {
+      consoleActions.error('作者', error);
+    }
+  };
+  // 分组：框住选中节点（留出标题与边距），没有选中时在右键位置新建。
+  const addGroup = () => {
+    const picked = layout.nodes.filter(laid => nodes.some(node => node.id === laid.node.id && node.selected));
+    const at = screenToFlowPosition(menuAt.current);
+    const rect = picked.length ? (() => {
+      const measured = (id: string) => nodes.find(node => node.id === id)?.measured;
+      const left = Math.min(...picked.map(laid => laid.x)) - 30, top = Math.min(...picked.map(laid => laid.y)) - 50;
+      const right = Math.max(...picked.map(laid => laid.x + (measured(laid.node.id)?.width ?? 200))) + 30;
+      const bottom = Math.max(...picked.map(laid => laid.y + (measured(laid.node.id)?.height ?? 60))) + 30;
+      return { x: left, y: top, width: right - left, height: bottom - top };
+    })() : { x: at.x, y: at.y, width: 400, height: 260 };
+    graphAuthoring.addGroup(graph.id, rect, '新分组');
+  };
+  const blocked = '进入 Timeline 编辑行的“作者”模式后可编辑当前技能的图';
   const menu: MenuEntry[] = [
-    editable
-      ? { label: '添加节点…', onSelect: () => setPicker({ ...menuAt.current, flow: screenToFlowPosition(menuAt.current) }) }
-      : { label: '添加节点…', onSelect: () => {}, disabled: true, tip: blocked },
-    { label: '粘贴', disabled: !editable, tip: editable ? undefined : blocked, onSelect: () => graphAuthoring.paste(graph.id, { x: 40, y: 40 }) },
+    !editable ? { label: machine ? '添加状态' : '添加节点…', onSelect: () => {}, disabled: true, tip: blocked }
+      : machine ? { label: '添加状态', onSelect: () => void addState(screenToFlowPosition(menuAt.current)) }
+        : { label: '添加节点…', onSelect: () => setPicker({ ...menuAt.current, flow: screenToFlowPosition(menuAt.current) }) },
+    ...(machine ? [] : [{ label: '粘贴', disabled: !editable, tip: editable ? undefined : blocked, onSelect: () => graphAuthoring.paste(graph.id, { x: 40, y: 40 }) }]),
+    { label: '新建分组', disabled: !editable, tip: editable ? '框住选中的节点；没有选中时在此处新建' : blocked, onSelect: addGroup },
+    { label: '删除所选', disabled: !editable, tip: editable ? undefined : blocked, onSelect: deleteSelected },
     { kind: 'separator' },
     { label: '全部居中', onSelect: () => void fitView({ padding: 0.12, maxZoom: 1, duration: 200 }) },
-    { label: '全选', onSelect: () => setNodes(current => current.map(node => ({ ...node, selected: true }))) },
+    { label: '全选', onSelect: () => setNodes(current => current.map(node => ({ ...node, selected: !isGroupNode(node) }))) },
   ];
-  const viewOptions = useMemo(() => ({ ...options, editable }), [options, editable]);
+  const grabGroup = useCallback((group: CanvasGroup) => setNodes(current => current.map(node => ({
+    ...node, selected: node.id === groupNodeId(group) || (!isGroupNode(node) && inside(group.rect, node.position)),
+  }))), []);
+  const renameGroup = useCallback((group: CanvasGroup, name: string) => graphAuthoring.updateGroup(graph.id, group.index, { name }), [graph.id]);
+  const resizeGroup = useCallback((group: CanvasGroup, rect: CanvasGroup['rect']) =>
+    graphAuthoring.updateGroup(graph.id, group.index, { rect }), [graph.id]);
+  const viewOptions = useMemo(() => ({ ...options, editable, grabGroup, renameGroup, resizeGroup }),
+    [options, editable, grabGroup, renameGroup, resizeGroup]);
 
   return (
     <ViewContext.Provider value={viewOptions}>
@@ -532,7 +652,7 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
       <div className={styles.canvas} tabIndex={-1} onKeyDown={onKeyDown} data-author={editable || undefined}
         onContextMenuCapture={event => { menuAt.current = { x: event.clientX, y: event.clientY }; }}>
         {/* 照 NodeCanvas：中键拖动平移，左键在空白处拖出框选，滚轮缩放，Ctrl／Shift 加选 */}
-        <ReactFlow<FlowNode, FlowEdge> nodes={nodes} edges={shownEdges} nodeTypes={nodeTypes} edgeTypes={edgeTypes}
+        <ReactFlow<CanvasNode, FlowEdge> nodes={nodes} edges={shownEdges} nodeTypes={nodeTypes} edgeTypes={edgeTypes}
           onNodesChange={onNodesChange} onNodeClick={onNodeClick} onNodeDoubleClick={onNodeDoubleClick}
           onEdgeDoubleClick={onEdgeDoubleClick} onEdgeClick={onEdgeClick} onPaneClick={() => setSelectedEdges(new Set())}
           onMoveEnd={onMoveEnd} onSelectionEnd={onSelectionEnd} zoomOnDoubleClick={false}
@@ -547,12 +667,15 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
           {params.minimap && (
             <MiniMap className={styles.minimap} style={{ width: 204, height: 104, marginBottom: 24 }} pannable zoomable
               bgColor="#181818" maskColor="rgb(255 255 255 / 4%)"
-              maskStrokeColor="#9a9a9a" nodeColor={node => (node.data as NodeData).system ? '#8a8a8a' : machine ? '#f0634f' : '#5a5a5a'}
+              maskStrokeColor="#9a9a9a" nodeColor={node => node.type === 'canvasGroup' ?'rgb(255 255 255 / 6%)'
+                : (node.data as NodeData).system ? '#8a8a8a' : machine ? '#f0634f' : '#5a5a5a'}
               nodeStrokeWidth={0} />
           )}
         </ReactFlow>
         <div className={styles.hint}>
-          {editable ? '作者模式 · 右键添加节点 · 从端口拖出连线 · Delete 删除 · Ctrl+C／Ctrl+V 复制粘贴 · 中键拖动平移 · 左键框选'
+          {editable ? (machine
+            ? '作者模式 · 右键添加状态或分组 · 从状态右侧圆点拖到目标状态建转移 · 单击转移在检查器编辑 · Delete 删除 · Ctrl+Z／Ctrl+Y 撤销重做'
+            : '作者模式 · 右键添加节点或分组 · 从端口拖出连线 · Delete 删除 · Ctrl+C／Ctrl+V 复制粘贴 · Ctrl+Z／Ctrl+Y 撤销重做 · 拖分组标题连同组内节点移动')
             : `${machine ? '双击状态进入状态体 · 双击转移进入条件' : '双击节点进入子图或跳到 Timeline'} · 中键拖动平移 · 左键框选`}
         </div>
         {picker && <NodeTypePicker graph={graph} at={picker} onClose={() => setPicker(null)} />}
@@ -575,7 +698,9 @@ function useNodeState(store: RouteStore, id: string) {
 // 状态机的状态：NodeCanvas 状态块，正在运行的加黄框，走过的加金色外框。
 function StateNodeView({ data, selected: boxed }: NodeProps<FlowNode>) {
   const { laid, index, selectId, system, timeline, children } = data;
-  const { store, related } = useView();
+  const { store, related, editable } = useView();
+  // 拖转移时整个状态块都是落点；平时不挡状态的拖动。
+  const connecting = useConnection(connection => connection.inProgress);
   const state = useNodeState(store, laid.node.id);
   const selected = useWorkbench(current => current.selection?.kind === 'node' && current.selection.id === selectId) || boxed;
   const running = state.occurred > 0;
@@ -590,11 +715,43 @@ function StateNodeView({ data, selected: boxed }: NodeProps<FlowNode>) {
       data-visited={(state.visited && !running) || undefined} data-selected={selected || undefined} data-faded={faded || undefined}
       title={`${nodeName(laid.node)}\n${laid.node.id}${children.length ? '\n双击进入状态体' : ''}${state.detail ? `\n${state.detail}` : ''}`}>
       <span className={styles.stateId}>#{index}</span>
-      <Handle id="in:@node" type="target" position={Position.Left} className={styles.hiddenHandle} isConnectable={false} />
-      <Handle id="out:@node" type="source" position={Position.Right} className={styles.hiddenHandle} isConnectable={false} />
+      {/* 作者模式：从右侧圆点拖出转移，松开在目标状态任意位置 */}
+      <Handle id="in:@node" type="target" position={Position.Left} isConnectable={!!editable} isConnectableStart={false}
+        className={editable && connecting ? styles.stateTarget : styles.hiddenHandle} />
+      <Handle id="out:@node" type="source" position={Position.Right} isConnectable={!!editable}
+        className={editable ? styles.stateSource : styles.hiddenHandle} />
       <div className={styles.stateTitle}>{running && <i className={styles.clock} />}{nodeName(laid.node)}</div>
       {running && local !== null && <div className={styles.stateBody}>本地 {local.toFixed(2)} s</div>}
       {timelineName && <span className={styles.stateCaption}>{timelineName}</span>}
+    </div>
+  );
+}
+
+// 分组（NodeCanvas CanvasGroup）：标题可拖动（连同组内节点）、双击改名，作者模式选中后可拉伸。
+function GroupView({ data, selected }: NodeProps<GroupNode>) {
+  const { group } = data;
+  const { editable, grabGroup, renameGroup, resizeGroup } = useView();
+  const [naming, setNaming] = useState(false);
+  const tint = group.color ?? undefined;
+  return (
+    <div className={styles.group} data-selected={selected || undefined} style={tint ? { borderColor: tint } : undefined}>
+      {editable && (
+        <NodeResizer isVisible={!!selected} minWidth={120} minHeight={80} lineClassName={styles.groupResizeLine}
+          handleClassName={styles.groupResizeHandle}
+          onResizeEnd={(_, size) => resizeGroup?.(group, { x: size.x, y: size.y, width: size.width, height: size.height })} />
+      )}
+      <div className={styles.groupHead} style={tint ? { background: tint } : undefined}
+        onPointerDownCapture={event => { if (editable && event.button === 0 && !naming) grabGroup?.(group); }}
+        onDoubleClick={() => { if (editable) setNaming(true); }}>
+        {naming ? (
+          <TextInput autoFocus defaultValue={group.name} className="nodrag"
+            onBlur={event => { setNaming(false); if (event.currentTarget.value !== group.name) renameGroup?.(group, event.currentTarget.value); }}
+            onKeyDown={event => {
+              if (event.key === 'Enter') event.currentTarget.blur();
+              else if (event.key === 'Escape') { event.currentTarget.value = group.name; event.currentTarget.blur(); }
+            }} />
+        ) : group.name || '分组'}
+      </div>
     </div>
   );
 }

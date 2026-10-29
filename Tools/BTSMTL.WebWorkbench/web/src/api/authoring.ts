@@ -1,6 +1,6 @@
 import { parseSkillJson, stringifySkillJson, type JsonObject, type JsonValue } from '../state/skillJson';
 import type { GraphDefinition } from './types';
-import { getJson, postText, putJson, query } from './http';
+import { getJson, getText, postText, putJson, query } from './http';
 
 // 技能作者 HTTP 接口（宿主以 --SkillAuthoring 启用）：技能文件夹内全部 JSON 文件原文与内容修订。
 // 文件文本原样返回，网页只在编辑的文件上解析、改写并整份写回。
@@ -130,6 +130,33 @@ export interface BlackboardItem {
   category: string;
 }
 
+// 图角色必须带的系统锚点（节点类型短名、稳定身份与默认坐标），与 Unity 作者工具同一份。
+export interface GraphAnchor {
+  kind: string;
+  type: string;
+  uid: string;
+  x: number;
+  y: number;
+}
+
+// 可新建元素的原 C# 默认值与存储形状；轨道、片段带 ContractKind。
+export interface ElementTemplate {
+  kind: string | null;
+  clrType: string;
+  value: JsonObject;
+  shape: StorageShape;
+}
+
+export interface SkillElements {
+  anchors: Record<string, GraphAnchor[]>;
+  transition: ElementTemplate;
+  tracks: ElementTemplate[];
+  clips: ElementTemplate[];
+  marker: ElementTemplate;
+  // 黑板声明的存储形状：作用域、生命周期、分类与输入投影。
+  blackboard: StorageShape;
+}
+
 interface Page<T> {
   hasMore: boolean;
   items: T[];
@@ -199,6 +226,8 @@ export const authoringApi = {
       stringifySkillJson({ type, configuration, graphId, offset: 0, limit: 128 }, '\n'), signal)) as unknown as TypeDescription,
   identities: (skill: string, signal?: AbortSignal) => allPages<IdentityItem>(`${skillPath(skill)}/queries/references`, signal),
   blackboards: (skill: string, signal?: AbortSignal) => allPages<BlackboardItem>(`${skillPath(skill)}/queries/blackboards`, signal),
+  elements: async (skill: string, signal?: AbortSignal) =>
+    parseSkillJson(await getText(`${skillPath(skill)}/queries/elements`, signal)) as unknown as SkillElements,
 };
 
 async function allPages<T>(path: string, signal?: AbortSignal): Promise<T[]> {

@@ -6,7 +6,7 @@ import {
 } from '../../api/authoring';
 import { ApiError, isAbort } from '../../api/http';
 import {
-  authoringActions, graphAuthoring, graphPath, timelinePath, useAuthoring, useCurrentDocument, type JsonKey,
+  authoringActions, graphAuthoring, graphPath, inputAuthoring, timelinePath, useAuthoring, useCurrentDocument, variableTypes, type JsonKey,
 } from '../../state/authoring';
 import { JsonFloat, cloneJson, fpRaw, fpSeconds, numberOf, stringifySkillJson, type JsonObject, type JsonValue } from '../../state/skillJson';
 import { Fold } from '../../ui/blocks';
@@ -276,7 +276,7 @@ export function NodeFields({ graphId, nodeId }: { graphId: string; nodeId: strin
         <Row label="名称"><TextValue label="名称" value={(node._name as string | undefined) ?? ''} onSet={next => set(['_name'], next)} /></Row>
         {issues.map((issue, index) => <div key={index} className={styles.issue} title={issue.path}>{issue.path ? `${issue.path}：` : ''}{issue.message}</div>)}
         {!description && !issues.length && <div className={styles.note}>读取字段</div>}
-        {description?.stored.filter(item => item.member !== '_inputPortValues').map(item => (
+        {description?.stored.filter(item => item.member !== '_inputPortValues' && !(item.member === 'm_Body' && isState(node))).map(item => (
           <StoredItem key={item.member} item={{ ...item, value: node[item.member] ?? null }} node={node} values={values}
             blackboards={blackboards} identities={listId} onSet={set} />
         ))}
@@ -301,6 +301,151 @@ export function NodeFields({ graphId, nodeId }: { graphId: string; nodeId: strin
         </Fold>
       )}
     </>
+  );
+}
+
+// 状态机的状态：状态体由检查器的“状态体”一栏新建、移除与进入，不按身份字符串编辑。
+export const isState = (node: JsonObject) => typeof node.type === 'string' && /^BtsmtlSkillNative\w*State$/.test(node.type);
+
+// ── 转移：Payload 按原 C# 存储形状编辑；条件图由检查器单独新建与移除 ──
+
+export function TransitionFields({ graphId, connectionId, shape }: { graphId: string; connectionId: string; shape: StorageShape }) {
+  const skill = useAuthoring(state => state.skill);
+  const { document } = useCurrentDocument(skill ? graphPath(graphId) : null);
+  const connection = (((document as JsonObject | null)?.allNodes as JsonObject[] | undefined) ?? [])
+    .flatMap(node => node.outConnections as JsonObject[]).find(item => item.UID === connectionId) ?? null;
+  if (!connection) return null;
+  const payload = connection.Payload as JsonObject;
+  const set: SetValue = (keys, value) => graphAuthoring.setTransitionValue(graphId, connectionId, keys, value);
+  return (
+    <Fold title="字段" kind="var(--port-enum)" defaultOpen>
+      {(shape.members ?? []).filter(member => member.member !== 'm_Condition').map(member => (
+        <ValueEditor key={member.member} label={memberLabel(member.member)} value={payload[member.member]} shape={member}
+          keys={[member.member]} onSet={set} />
+      ))}
+    </Fold>
+  );
+}
+
+// ── 黑板：每个变量一组，原生变量（名称、类型、默认值）与 BTSMTL 声明（作用域、生命周期、分类、输入投影）一起编辑 ──
+
+export function BlackboardFields({ graphId, shape, editable }: { graphId: string; shape: StorageShape | null; editable: boolean }) {
+  const skill = useAuthoring(state => state.skill);
+  const { document } = useCurrentDocument(skill ? graphPath(graphId) : null);
+  const [draft, setDraft] = useState({ name: '', varType: 'Single' });
+  const graph = document as JsonObject | null;
+  if (!graph || !Array.isArray(graph.BlackboardDeclarations)) return <div className={styles.note}>这张图没有黑板</div>;
+  const variables = Object.values(((graph.localBlackboard as JsonObject | undefined)?.variables ?? {}) as JsonObject) as JsonObject[];
+  const declarations = graph.BlackboardDeclarations as JsonObject[];
+  const members = shape?.members ?? [];
+  const member = (name: string) => members.find(item => item.member === name) ?? null;
+  const add = () => {
+    const name = draft.name.trim();
+    if (!name) return;
+    const scope = member('m_Scope')?.enumValues?.[0] ?? 'ActionInstance';
+    const lifetime = member('m_Lifetime')?.enumValues?.[0] ?? 'ActionInstance';
+    graphAuthoring.addVariable(graphId, name, draft.varType, { m_Scope: scope, m_Lifetime: lifetime, m_Category: '' });
+    setDraft({ ...draft, name: '' });
+  };
+  return (
+    <>
+      {variables.map(variable => {
+        const id = variable.ID as string;
+        const declaration = declarations.find(item => item.m_VariableId === id);
+        const setDeclaration: SetValue = (keys, value) => graphAuthoring.setDeclarationValue(graphId, id, keys, value);
+        return (
+          <div key={id} className={styles.group}>
+            <div className={styles.groupHead}>
+              {variable.name as string}<span className={styles.count}>{variable.varType as string}</span>
+              {editable && <Button variant="ghost" tip="删除变量与声明；引用它的节点保存时由编译报告" onClick={() => graphAuthoring.removeVariable(graphId, id)}>×</Button>}
+            </div>
+            {editable ? (
+              <>
+                <Row label="名称"><TextValue label="名称" value={variable.name as string} onSet={next => {
+                  if (typeof next === 'string' && next.trim()) graphAuthoring.renameVariable(graphId, id, next.trim());
+                }} /></Row>
+                <ValueEditor label="默认值" value={variable.serializedValue} shape={null} keys={[]}
+                  onSet={(keys, value) => graphAuthoring.setVariableValue(graphId, id, keys, value)} />
+                {declaration ? members.filter(item => item.member !== 'm_VariableId').map(item => (
+                  <ValueEditor key={item.member} label={memberLabel(item.member)} value={declaration[item.member]} shape={item}
+                    keys={[item.member]} onSet={setDeclaration} />
+                )) : <div className={styles.issue}>缺少 BTSMTL 声明</div>}
+              </>
+            ) : (
+              <>
+                <Row label="默认值"><span className={styles.readOnly}>{stringifySkillJson(variable.serializedValue ?? null, ' ')}</span></Row>
+                {declaration && ['m_Scope', 'm_Lifetime', 'm_Category'].map(key => (
+                  <Row key={key} label={memberLabel(key)}><span className={styles.readOnly}>{String(declaration[key] ?? '')}</span></Row>
+                ))}
+              </>
+            )}
+          </div>
+        );
+      })}
+      {!variables.length && <div className={styles.note}>没有变量</div>}
+      {editable && (
+        <div className={styles.group}>
+          <div className={styles.groupHead}>添加变量</div>
+          <Row label="名称"><TextInput aria-label="变量名称" value={draft.name} onChange={event => setDraft({ ...draft, name: event.currentTarget.value })}
+            onKeyDown={event => { if (event.key === 'Enter') add(); }} /></Row>
+          <Row label="类型"><Select label="类型" value={draft.varType} options={variableTypes.map(type => ({ value: type, label: type }))}
+            onChange={varType => setDraft({ ...draft, varType })} /></Row>
+          <Row label=""><Button variant="ghost" disabled={!draft.name.trim()} onClick={add}>添加</Button></Row>
+        </div>
+      )}
+    </>
+  );
+}
+
+// ── 预览输入方案：方案列表（所选方案、新增、删除）与所选方案的字段 ──
+
+export function InputPlanFields({ path, editable }: { path: string; editable: boolean }) {
+  const { document } = useCurrentDocument(path);
+  const plan = document as JsonObject | null;
+  if (!plan) return null;
+  const schemes = plan.Schemes as JsonObject[];
+  const selected = numberOf(plan.Selected);
+  const scheme = schemes[selected];
+  const set: SetValue = (keys, value) => inputAuthoring.setValue(path, keys, value);
+  return (
+    <>
+      <Row label="方案">
+        <Select label="方案" value={String(selected)} disabled={!editable}
+          options={schemes.map((item, index) => ({ value: String(index), label: (item.Name as string) || `方案 ${index + 1}` }))}
+          onChange={value => set(['Selected'], Number(value))} />
+      </Row>
+      {editable && (
+        <Row label="">
+          <Button variant="ghost" tip="复制所选方案的设置，配一条新的空输入 Timeline" onClick={() => inputAuthoring.addScheme(path, `方案 ${schemes.length + 1}`)}>新增方案</Button>
+          <Button variant="ghost" disabled={schemes.length < 2} tip={schemes.length < 2 ? '至少保留一个方案' : '删除所选方案；它专属的输入 Timeline 保存时删除'}
+            onClick={() => inputAuthoring.removeScheme(path, selected)}>删除方案</Button>
+        </Row>
+      )}
+      {scheme && Object.keys(scheme).filter(key => key !== 'InputTimeline').map(key => editable
+        ? <ValueEditor key={key} label={key} value={scheme[key]} shape={null} keys={['Schemes', selected, key]} onSet={set} />
+        : <Row key={key} label={key}><span className={styles.readOnly}>{stringifySkillJson(scheme[key] ?? null, ' ')}</span></Row>)}
+    </>
+  );
+}
+
+// ── 轨道字段：与片段相同按 JSON 值编辑；身份、合同与所含片段、标记不在此编辑 ──
+
+const trackFixed = new Set(['m_AuthoringId', 'ContractKind', 'm_Clips', 'm_Markers']);
+
+export function TrackFields({ documentId, trackId }: { documentId: string; trackId: string }) {
+  const skill = useAuthoring(state => state.skill);
+  const { document } = useCurrentDocument(skill ? timelinePath(documentId) : null);
+  const track = (((document as JsonObject | null)?.m_Tracks as JsonObject[] | undefined) ?? []).find(item => item.m_AuthoringId === trackId) ?? null;
+  if (!track) return null;
+  const listId = `identities-${documentId}-${trackId}`;
+  const set: SetValue = (keys, value) => authoringActions.setTrackValue(documentId, trackId, keys, value);
+  return (
+    <Fold title="字段" kind="var(--port-enum)" defaultOpen>
+      <IdentityList id={listId} />
+      {Object.keys(track).filter(key => !trackFixed.has(key)).map(key => (
+        <ValueEditor key={key} label={memberLabel(key)} value={track[key]} shape={null} keys={[key]} onSet={set} identities={listId} />
+      ))}
+    </Fold>
   );
 }
 

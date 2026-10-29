@@ -209,6 +209,20 @@
   flex: none;
 }
 
+/* 专属图与删除等操作：引用框占满，按钮靠右 */
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  min-width: 0;
+}
+
+.actions > :first-child:not(button) {
+  flex: 1;
+  min-width: 0;
+}
+
 .vector {
   display: flex;
   gap: 4px;
