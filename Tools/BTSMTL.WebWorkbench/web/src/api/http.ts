@@ -58,6 +58,17 @@ export async function postJson<T>(path: string, body: unknown, signal?: AbortSig
   return response.json() as Promise<T>;
 }
 
+// 回执原文：作者 JSON 需要保留浮点写法，由调用方按技能 JSON 规则解析。
+export async function postText(path: string, body: unknown, signal?: AbortSignal): Promise<string> {
+  const response = await send(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal,
+  });
+  return response.text();
+}
+
 export async function getBlob(path: string, signal?: AbortSignal): Promise<Response> {
   return send(path, { signal });
 }

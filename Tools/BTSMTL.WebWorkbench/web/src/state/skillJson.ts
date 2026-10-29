@@ -17,6 +17,14 @@ export function parseSkillJson(text: string): JsonValue {
   return JSON.parse(text, reviver as Parameters<typeof JSON.parse>[1]) as JsonValue;
 }
 
+// 深拷贝，保留 JsonFloat。
+export function cloneJson<T extends JsonValue>(value: T): T {
+  if (value instanceof JsonFloat) return new JsonFloat(value.value) as T;
+  if (value === null || typeof value !== 'object') return value;
+  if (Array.isArray(value)) return value.map(item => cloneJson(item)) as T;
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, cloneJson(item)])) as T;
+}
+
 export const numberOf = (value: JsonValue | undefined) => value instanceof JsonFloat ? value.value : typeof value === 'number' ? value : NaN;
 
 const floatText = (value: number) => Number.isInteger(value) ? `${value}.0` : String(value);

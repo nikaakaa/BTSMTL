@@ -1,14 +1,17 @@
 import {
   Background, BackgroundVariant, BaseEdge, EdgeLabelRenderer, getBezierPath, Handle, MiniMap, Position, ReactFlow,
   ReactFlowProvider, SelectionMode, applyNodeChanges, useInternalNode, useReactFlow, type Edge, type EdgeProps, type Node, type NodeChange,
-  type NodeProps, type Viewport,
+  type Connection, type NodeProps, type Viewport,
 } from '@xyflow/react';
 import '@xyflow/react/dist/base.css';
 import {
   createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore,
+  type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent,
 } from 'react';
 import { useShallow } from 'zustand/react/shallow';
+import { authoringApi, type NodeTypeInfo } from '../../api/authoring';
 import type { GraphDefinition, GraphEdge, GraphPort } from '../../api/types';
+import { applyGraphEdits, graphAuthoring, useAuthoring } from '../../state/authoring';
 import { openPanel } from '../../shell/layout';
 import { usePanelId, usePanelParams, usePanelVisible, usePanelWindow } from '../../shell/panel';
 import { clearRendered, frameKey, reportRendered } from '../../shell/readiness';
@@ -16,9 +19,9 @@ import {
   belongsTo, callKey, childGraphs, edgeChildGraphs, graphCrumbs, graphHierarchy, graphKey, graphName, graphRecords,
   isStateMachine, layoutGraph, nodeName, nodeSelectId, nodeTimeline, playedTimeline, portColor, type GraphHierarchy, type LaidNode,
 } from '../../state/graphModel';
-import { getState, selectionActions, useWorkbench } from '../../state/store';
+import { consoleActions, getState, selectionActions, useWorkbench } from '../../state/store';
 import { Empty, PanelBar } from '../../ui/blocks';
-import { Button, ContextMenu, MenuButton, Select, type MenuEntry } from '../../ui/controls';
+import { Button, ContextMenu, MenuButton, Select, TextInput, type MenuEntry } from '../../ui/controls';
 import { RouteStore, type RouteHistory } from './routeStore';
 import styles from './graph.module.css';
 
@@ -50,6 +53,8 @@ interface ViewOptions {
   enter(graph: GraphDefinition): void;
   hierarchy: GraphHierarchy;
   graph: GraphDefinition;
+  // 作者模式下端口可拖出连线。
+  editable?: boolean;
 }
 const ViewContext = createContext<ViewOptions | null>(null);
 const useView = () => useContext(ViewContext)!;
@@ -211,9 +216,86 @@ function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
         </div>
         {!graph.nodes.length ? <ReportEmpty text="此图未保留作者节点来源" />
           : path === null ? <ReportEmpty text="此调用未保留可显示的节点来源" />
-            : <GraphCanvas graph={graph} path={path} call={calls.includes(call!) ? call : null}
+            : <AuthoredCanvas graph={graph} path={path} call={calls.includes(call!) ? call : null}
               hierarchy={hierarchy} enter={enter} params={params} setParams={setParams} />}
       </ReactFlowProvider>
+    </div>
+  );
+}
+
+// 添加节点的类型选择：照 NodeCanvas 的右键节点浏览器，搜索宿主按实际 C# 类型发现的全部可创建类型。
+let typeCatalog: { skill: string; items: Promise<NodeTypeInfo[]> } | null = null;
+function loadTypes(skill: string) {
+  if (typeCatalog?.skill !== skill) {
+    const items = (async () => {
+      const result: NodeTypeInfo[] = [];
+      for (let offset = 0; ; offset += 128) {
+        const page = await authoringApi.types(skill, offset);
+        if (!page.availability.available) throw new Error(page.availability.reason ?? '类型查询不可用');
+        result.push(...page.items);
+        if (!page.hasMore) return result;
+      }
+    })();
+    typeCatalog = { skill, items };
+    items.catch(() => { typeCatalog = null; });
+  }
+  return typeCatalog.items;
+}
+
+function NodeTypePicker({ graph, at, onClose }: {
+  graph: GraphDefinition; at: { x: number; y: number; flow: { x: number; y: number } }; onClose(): void;
+}) {
+  const skill = useAuthoring(state => state.skill)!;
+  const [types, setTypes] = useState<NodeTypeInfo[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    loadTypes(skill).then(setTypes, (reason: unknown) => setError(reason instanceof Error ? reason.message : String(reason)));
+  }, [skill]);
+  const words = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const shown = (types ?? []).filter(item => words.every(word =>
+    `${item.type} ${item.kind ?? ''} ${item.family} ${item.timelineDomains ?? ''}`.toLowerCase().includes(word)));
+  const add = async (item: NodeTypeInfo) => {
+    setBusy(true);
+    try {
+      const description = await authoringApi.describeType(skill, item.type, graph.id);
+      if (!description.availability.available) throw new Error(description.availability.reason ?? `${item.type} 不可创建`);
+      if (!description.ports.availability.available)
+        consoleActions.log('warn', '作者', `${item.type} 的端口暂不可用：${description.ports.availability.reason ?? ''}`);
+      const ports = (description.ports.items ?? []).map(entry => ({
+        id: entry.port.ID, displayName: entry.port.name, direction: entry.direction, isTrigger: entry.port.type === 'Flow',
+      }));
+      graphAuthoring.addNode(graph.id, item.type, description.configuration, ports, at.flow);
+      onClose();
+    } catch (reason) {
+      consoleActions.error('作者', reason);
+      setBusy(false);
+    }
+  };
+  return (
+    <div className={styles.picker} style={{ left: at.x, top: at.y }} onKeyDown={event => {
+      if (event.key === 'Escape') onClose();
+      if (event.key === 'Enter' && shown[0] && !busy) void add(shown[0]);
+      event.stopPropagation();
+    }}>
+      <div className={styles.pickerHead}>
+        <TextInput autoFocus placeholder="搜索节点类型" value={search} onChange={event => setSearch(event.currentTarget.value)}
+          aria-label="搜索节点类型" className={styles.pickerSearch} />
+        <button className={styles.pickerClose} onClick={onClose} aria-label="关闭">×</button>
+      </div>
+      <div className={styles.pickerList}>
+        {error ? <div className={styles.pickerNote}>{error}</div>
+          : !types ? <div className={styles.pickerNote}>读取节点类型中</div>
+            : !shown.length ? <div className={styles.pickerNote}>没有匹配的类型</div>
+              : shown.map(item => (
+                <button key={item.type} className={styles.pickerItem} disabled={busy} title={item.clrType}
+                  onClick={() => void add(item)}>
+                  <span>{item.type}</span>
+                  <em>{[item.kind, item.timelineDomains].filter(Boolean).join(' · ')}</em>
+                </button>
+              ))}
+      </div>
     </div>
   );
 }
@@ -243,7 +325,19 @@ function isSystemNode(graph: GraphDefinition, hierarchy: GraphHierarchy, laid: L
   return !childGraphs(hierarchy, graph, laid.node.id).length && !nodeTimeline(hierarchy, graph, laid.node.id);
 }
 
-function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams }: {
+// 作者模式：当前技能的流图叠加网页中未保存的修改后显示，并可编辑。状态机编辑另做（共享文档 9.5）。
+function AuthoredCanvas(props: Omit<GraphCanvasProps, 'editable'>) {
+  const { graph, path } = props;
+  const author = useAuthoring(useShallow(state => ({
+    on: state.author && !!state.skill && state.programId === graph.programId, edited: state.edited, ports: state.addedPorts,
+  })));
+  const editable = author.on && !isStateMachine(graph);
+  const shown = useMemo(() => editable ? applyGraphEdits(graph, path, author.edited, author.ports) : graph,
+    [editable, graph, path, author.edited, author.ports]);
+  return <GraphCanvas {...props} graph={shown} editable={editable} />;
+}
+
+interface GraphCanvasProps {
   graph: GraphDefinition;
   path: string;
   call: string | null;
@@ -251,21 +345,38 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams }:
   enter(graph: GraphDefinition): void;
   params: Params;
   setParams(patch: Partial<Params>): void;
-}) {
+  editable: boolean;
+}
+
+function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, editable }: GraphCanvasProps) {
   const machine = isStateMachine(graph);
   const layout = useMemo(() => layoutGraph(graph, path), [graph, path]);
   const store = useMemo(() => new RouteStore(), []);
-  const [nodes, setNodes] = useState<FlowNode[]>(() => layout.nodes.map((laid, index) => {
-    const children = childGraphs(hierarchy, graph, laid.node.id);
-    const timeline = playedTimeline(hierarchy, graph, laid.node.id);
-    return {
-      id: laid.node.id, type: machine ? 'state' : 'flow', position: { x: laid.x, y: laid.y },
-      data: {
-        laid, index, selectId: nodeSelectId(graph, laid.node), system: machine && isSystemNode(graph, hierarchy, laid),
-        timeline, children,
-      },
-    };
-  }));
+  // 粘贴出的新节点在下次重建时选中。
+  const pendingSelect = useRef<ReadonlySet<string> | null>(null);
+  const build = useCallback((previous: FlowNode[]) => {
+    const selected = pendingSelect.current ?? new Set(previous.filter(node => node.selected).map(node => node.id));
+    pendingSelect.current = null;
+    return layout.nodes.map((laid, index): FlowNode => {
+      const children = childGraphs(hierarchy, graph, laid.node.id);
+      const timeline = playedTimeline(hierarchy, graph, laid.node.id);
+      return {
+        id: laid.node.id, type: machine ? 'state' : 'flow', position: { x: laid.x, y: laid.y }, selected: selected.has(laid.node.id),
+        data: {
+          laid, index, selectId: nodeSelectId(graph, laid.node), system: machine && isSystemNode(graph, hierarchy, laid),
+          timeline, children,
+        },
+      };
+    });
+  }, [layout, hierarchy, graph, machine]);
+  const [nodes, setNodes] = useState<FlowNode[]>(() => build([]));
+  // 作者修改后图结构变化：重建节点，保留选中。
+  const built = useRef(layout);
+  useEffect(() => {
+    if (built.current === layout) return;
+    built.current = layout;
+    setNodes(build);
+  }, [layout, build]);
   const edges = useMemo<FlowEdge[]>(() => {
     const pairs = new Map<string, number>();
     const counts = new Map<string, number>();
@@ -350,25 +461,75 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams }:
     const picked = nodes.filter(node => node.selected);
     if (picked.length) selectionActions.select({ kind: 'node', id: picked[0].data.selectId });
   }, [nodes]);
-  const { fitView } = useReactFlow();
+  const { fitView, screenToFlowPosition } = useReactFlow();
+
+  // ── 作者编辑（照 NodeCanvas）：右键添加节点、拖端口连线、Delete 删除、Ctrl+C／Ctrl+V 复制粘贴、拖动写布局 ──
+  const [selectedEdges, setSelectedEdges] = useState<ReadonlySet<string>>(() => new Set());
+  const [picker, setPicker] = useState<{ x: number; y: number; flow: { x: number; y: number } } | null>(null);
+  const menuAt = useRef({ x: 0, y: 0 });
+  const shownEdges = useMemo(() => edges.map(edge => selectedEdges.has(edge.id) ? { ...edge, selected: true } : edge), [edges, selectedEdges]);
+  const onEdgeClick = useCallback((event: ReactMouseEvent, edge: FlowEdge) => {
+    if (!editable) return;
+    setSelectedEdges(current => {
+      const next = new Set(event.ctrlKey || event.shiftKey ? current : []);
+      if (!next.delete(edge.id)) next.add(edge.id);
+      return next;
+    });
+  }, [editable]);
+  const portOf = (handle: string | null | undefined) => handle?.slice(handle.indexOf(':') + 1) ?? '';
+  const onConnect = useCallback((connection: Connection) => {
+    if (!connection.source || !connection.target) return;
+    graphAuthoring.connect(graph.id, { nodeId: connection.source, portId: portOf(connection.sourceHandle) },
+      { nodeId: connection.target, portId: portOf(connection.targetHandle) });
+  }, [graph.id]);
+  const onNodeDragStop = useCallback((_: unknown, __: FlowNode, dragged: FlowNode[]) => {
+    if (editable) graphAuthoring.move(graph.id, Object.fromEntries(dragged.map(node => [node.id, node.position])));
+  }, [editable, graph.id]);
+  const portsOf = useCallback((ids: string[]) => Object.fromEntries(ids.map(id => [id, graph.ports
+    .filter(port => port.nodeId === id && port.invocationPath === path)
+    .map(port => ({ id: port.id, displayName: port.displayName, direction: port.direction as 'input' | 'output', isTrigger: port.isTrigger }))])), [graph, path]);
+  const onKeyDown = (event: ReactKeyboardEvent) => {
+    if (!editable || (event.target as HTMLElement).closest('input, textarea')) return;
+    const picked = nodes.filter(node => node.selected);
+    if (event.key === 'Delete') {
+      if (picked.length) graphAuthoring.deleteNodes(graph.id, picked.map(node => node.id));
+      if (selectedEdges.size) graphAuthoring.disconnect(graph.id, [...selectedEdges]);
+      setSelectedEdges(new Set());
+    } else if ((event.ctrlKey || event.metaKey) && event.key === 'c' && picked.length) {
+      graphAuthoring.copy(graph.id, picked.map(node => node.id), Object.fromEntries(picked.map(node => [node.id, node.position])),
+        portsOf(picked.map(node => node.id)));
+    } else if ((event.ctrlKey || event.metaKey) && event.key === 'v') {
+      const pasted = graphAuthoring.paste(graph.id, { x: 40, y: 40 });
+      if (pasted.length) pendingSelect.current = new Set(pasted);
+    } else return;
+    event.preventDefault();
+  };
+  const blocked = machine ? '状态机的状态与转移编辑另做（共享文档 9.5）' : '进入 Timeline 编辑行的“作者”模式后可编辑当前技能的流图';
   const menu: MenuEntry[] = [
-    { label: '添加节点…', onSelect: () => {}, disabled: true, tip: '网页还没有作者写入接口；添加节点目前在 Unity 的 NodeCanvas 中进行' },
+    editable
+      ? { label: '添加节点…', onSelect: () => setPicker({ ...menuAt.current, flow: screenToFlowPosition(menuAt.current) }) }
+      : { label: '添加节点…', onSelect: () => {}, disabled: true, tip: blocked },
+    { label: '粘贴', disabled: !editable, tip: editable ? undefined : blocked, onSelect: () => graphAuthoring.paste(graph.id, { x: 40, y: 40 }) },
     { kind: 'separator' },
     { label: '全部居中', onSelect: () => void fitView({ padding: 0.12, maxZoom: 1, duration: 200 }) },
     { label: '全选', onSelect: () => setNodes(current => current.map(node => ({ ...node, selected: true }))) },
   ];
+  const viewOptions = useMemo(() => ({ ...options, editable }), [options, editable]);
 
   return (
-    <ViewContext.Provider value={options}>
+    <ViewContext.Provider value={viewOptions}>
       <ContextMenu entries={menu}>
-      <div className={styles.canvas}>
+      <div className={styles.canvas} tabIndex={-1} onKeyDown={onKeyDown} data-author={editable || undefined}
+        onContextMenuCapture={event => { menuAt.current = { x: event.clientX, y: event.clientY }; }}>
         {/* 照 NodeCanvas：中键拖动平移，左键在空白处拖出框选，滚轮缩放，Ctrl／Shift 加选 */}
-        <ReactFlow<FlowNode, FlowEdge> nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes}
+        <ReactFlow<FlowNode, FlowEdge> nodes={nodes} edges={shownEdges} nodeTypes={nodeTypes} edgeTypes={edgeTypes}
           onNodesChange={onNodesChange} onNodeClick={onNodeClick} onNodeDoubleClick={onNodeDoubleClick}
-          onEdgeDoubleClick={onEdgeDoubleClick} onMoveEnd={onMoveEnd} onSelectionEnd={onSelectionEnd} zoomOnDoubleClick={false}
+          onEdgeDoubleClick={onEdgeDoubleClick} onEdgeClick={onEdgeClick} onPaneClick={() => setSelectedEdges(new Set())}
+          onMoveEnd={onMoveEnd} onSelectionEnd={onSelectionEnd} zoomOnDoubleClick={false}
+          onConnect={onConnect} onNodeDragStop={onNodeDragStop} nodesDraggable
           panOnDrag={[1]} selectionOnDrag selectionMode={SelectionMode.Partial}
           defaultViewport={saved ?? undefined} fitView={!saved} fitViewOptions={{ padding: 0.12, maxZoom: 1 }}
-          minZoom={0.1} maxZoom={2} nodesConnectable={false} edgesFocusable={false} elementsSelectable
+          minZoom={0.1} maxZoom={2} nodesConnectable={editable} edgesFocusable={false} elementsSelectable
           deleteKeyCode={null} selectionKeyCode={null} multiSelectionKeyCode={['Control', 'Shift']} proOptions={{ hideAttribution: true }}
           colorMode="dark">
           <Background id="minor" variant={BackgroundVariant.Lines} gap={20} patternClassName={styles.gridMinor} />
@@ -381,8 +542,10 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams }:
           )}
         </ReactFlow>
         <div className={styles.hint}>
-          {machine ? '双击状态进入状态体 · 双击转移进入条件' : '双击节点进入子图或跳到 Timeline'} · 中键拖动平移 · 左键框选
+          {editable ? '作者模式 · 右键添加节点 · 从端口拖出连线 · Delete 删除 · Ctrl+C／Ctrl+V 复制粘贴 · 中键拖动平移 · 左键框选'
+            : `${machine ? '双击状态进入状态体 · 双击转移进入条件' : '双击节点进入子图或跳到 Timeline'} · 中键拖动平移 · 左键框选`}
         </div>
+        {picker && <NodeTypePicker graph={graph} at={picker} onClose={() => setPicker(null)} />}
       </div>
       </ContextMenu>
     </ViewContext.Provider>
@@ -467,8 +630,9 @@ function FlowNodeView({ data, selected: boxed }: NodeProps<FlowNode>) {
 // 执行端口画在标题两侧的箭头上，连线仍接到对应端口。
 function HiddenPort({ port }: { port: GraphPort }) {
   const input = port.direction === 'input';
+  const { editable } = useView();
   return <Handle id={`${input ? 'in' : 'out'}:${port.id}`} type={input ? 'target' : 'source'}
-    position={input ? Position.Left : Position.Right} isConnectable={false} className={input ? styles.triggerIn : styles.triggerOut} />;
+    position={input ? Position.Left : Position.Right} isConnectable={!!editable} className={input ? styles.triggerIn : styles.triggerOut} />;
 }
 
 function PortCell({ port, state, values }: {
@@ -476,6 +640,7 @@ function PortCell({ port, state, values }: {
   state: ReturnType<RouteStore['node']>;
   values: boolean;
 }) {
+  const { editable } = useView();
   if (!port) return <span className={styles.portEmpty} />;
   const input = port.direction === 'input';
   const sample = state.ports[`${port.direction}:${port.id}`];
@@ -484,7 +649,7 @@ function PortCell({ port, state, values }: {
     <span className={input ? styles.portIn : styles.portOut} title={sample ? `${port.id}\n${sample.valueType} · ${sample.value}\n${sample.sequence}` : port.id}
       style={{ ['--pc' as string]: color }}>
       <Handle id={`${input ? 'in' : 'out'}:${port.id}`} type={input ? 'target' : 'source'}
-        position={input ? Position.Left : Position.Right} isConnectable={false}
+        position={input ? Position.Left : Position.Right} isConnectable={!!editable}
         className={styles.valuePort} data-filled={sample ? true : undefined} />
       <span className={styles.portName}>{port.displayName}</span>
       {values && sample && <span className={styles.portValue}>{sample.value}</span>}
@@ -492,7 +657,7 @@ function PortCell({ port, state, values }: {
   );
 }
 
-function RouteEdgeView({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data }: EdgeProps<FlowEdge>) {
+function RouteEdgeView({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data, selected }: EdgeProps<FlowEdge>) {
   const { store, related } = useView();
   const state = useSyncExternalStore(store.subscribe(`edge:${id}`), () => store.edge(id));
   const [path] = getBezierPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition });
@@ -500,7 +665,7 @@ function RouteEdgeView({ id, sourceX, sourceY, targetX, targetY, sourcePosition,
   const faded = related !== null && !related.has(id);
   return (
     <path d={path} className={styles.edge} data-status={status} data-faded={faded || undefined}
-      data-selected={state.selected || undefined}>
+      data-selected={state.selected || undefined} data-picked={selected || undefined}>
       <title>{`${data!.edge.id} · ${data!.edge.kind}${state.occurrences ? ` · 本帧 ${state.occurrences} 次` : ''}`}</title>
     </path>
   );

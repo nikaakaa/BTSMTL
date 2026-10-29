@@ -490,3 +490,99 @@
 .edge[data-faded] {
   opacity: 0.25;
 }
+
+/* 作者模式：执行端口的连线把手覆盖标题两侧箭头，数值端口把手可拖出连线 */
+.canvas[data-author] .triggerIn, .canvas[data-author] .triggerOut {
+  width: 14px;
+  height: 14px;
+  margin-top: -7px;
+  opacity: 0;
+  cursor: crosshair;
+}
+
+.canvas[data-author] .valuePort {
+  cursor: crosshair;
+}
+
+.canvas:focus {
+  outline: none;
+}
+
+.edge[data-picked] {
+  stroke: #79aef5;
+  stroke-width: 3;
+}
+
+/* 添加节点的类型浏览器：照 NodeCanvas 右键节点菜单的搜索列表 */
+.picker {
+  position: fixed;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  width: 300px;
+  max-height: 380px;
+  background: var(--popup-bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--popup-shadow);
+}
+
+.pickerHead {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-bottom: 1px solid var(--line);
+}
+
+.pickerSearch {
+  flex: 1;
+}
+
+.pickerClose {
+  all: unset;
+  width: 18px;
+  text-align: center;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.pickerList {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 2px 0;
+}
+
+.pickerItem {
+  all: unset;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 3px 10px;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.pickerItem:hover, .pickerItem:focus-visible {
+  background: var(--select);
+}
+
+.pickerItem > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pickerItem > em {
+  margin-left: auto;
+  font-style: normal;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.pickerNote {
+  padding: 8px 10px;
+  color: var(--text-dim);
+}
