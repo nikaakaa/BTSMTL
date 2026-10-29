@@ -1,4 +1,5 @@
 import { Button as BaseButton } from '@base-ui/react/button';
+import { Checkbox as BaseCheckbox } from '@base-ui/react/checkbox';
 import { ContextMenu as BaseContextMenu } from '@base-ui/react/context-menu';
 import { Input } from '@base-ui/react/input';
 import { Menu as BaseMenu } from '@base-ui/react/menu';
@@ -207,6 +208,14 @@ export function CheckMark({ checked }: { checked: boolean }) {
   return <span className={styles.check} aria-hidden>{checked ? '✓' : ''}</span>;
 }
 
+export function Checkbox({ checked, onChange, disabled, label }: { checked: boolean; onChange(checked: boolean): void; disabled?: boolean; label: string }) {
+  return (
+    <BaseCheckbox.Root className={styles.check} checked={checked} onCheckedChange={next => onChange(next)} disabled={disabled} aria-label={label}>
+      <BaseCheckbox.Indicator>✓</BaseCheckbox.Indicator>
+    </BaseCheckbox.Root>
+  );
+}
+
 export function TextInput({ className, ...props }: Omit<ComponentProps<typeof Input>, 'className'> & { className?: string }) {
   return <Input {...props} className={join(styles.field, className)} />;
 }
@@ -219,13 +228,18 @@ export interface NumberInputProps {
   step?: number;
   disabled?: boolean;
   label: string;
+  // 占满所在格（检查器字段），否则为固定窄框。
+  wide?: boolean;
 }
 
-export function NumberInput({ value, onChange, min, max, step, disabled, label }: NumberInputProps) {
+// 按原值显示：不分组、不截断小数，避免作者数值在聚焦提交时被显示精度改写。
+const exactNumber: Intl.NumberFormatOptions = { useGrouping: false, maximumFractionDigits: 12 };
+
+export function NumberInput({ value, onChange, min, max, step, disabled, label, wide }: NumberInputProps) {
   return (
     <NumberField.Root value={value} onValueCommitted={next => onChange(next)} min={min} max={max} step={step}
-      disabled={disabled}>
-      <NumberField.Group className={styles.numberGroup}>
+      disabled={disabled} format={exactNumber}>
+      <NumberField.Group className={join(styles.numberGroup, wide && styles.numberWide)}>
         <NumberField.Input className={styles.field} aria-label={label} />
       </NumberField.Group>
     </NumberField.Root>

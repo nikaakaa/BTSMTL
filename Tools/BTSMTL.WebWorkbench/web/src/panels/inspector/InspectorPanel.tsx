@@ -16,6 +16,7 @@ import {
 import { transport } from '../../state/transport';
 import { BarLabel, BarSeparator, Empty, Fold, IdentityFold, PanelBar } from '../../ui/blocks';
 import { Button, ObjectField } from '../../ui/controls';
+import { ClipFields, NodeFields } from './FieldEditors';
 import styles from './inspector.module.css';
 
 // 检查器（D7）：按 selection 显示所选对象在当前帧的记录；不选中时显示运行摘要。
@@ -231,8 +232,10 @@ function PlayerAlignment() {
 function NodeInspector({ id, missing }: { id: string; missing: ReactNode }) {
   const { graphs, frame } = useWorkbench(useShallow(state => ({ graphs: state.graphs, frame: state.frame })));
   const found = useMemo(() => findGraphNode(graphs, id), [graphs, id]);
+  const authorProgram = useAuthoring(state => state.author && state.skill ? state.programId : null);
   if (!found) return missing;
   const { graph, node } = found;
+  const editable = authorProgram !== null && authorProgram === graph.programId;
   const records = graphRecords(frame, graph).filter(item => 'nodeId' in item && item.nodeId === node.id &&
     item.call.invocationPath === node.invocationPath);
   const events = records.filter(isNodeOccurrence).sort((left, right) => Number(left.sequence) - Number(right.sequence));
@@ -243,6 +246,7 @@ function NodeInspector({ id, missing }: { id: string; missing: ReactNode }) {
   return (
     <>
       <Head kind={kind} name={nodeName(node)} sub={`${graph.programId} · ${graphName(graph)}`} />
+      {editable && <NodeFields graphId={graph.id} nodeId={node.id} />}
       <NodeLinks graph={graph} nodeId={node.id} invocationPath={node.invocationPath} />
       <Fold title="本帧" kind={kind} defaultOpen>
         <Value label="状态" mono={false} value={events.some(item => item.result === 'Failure') ? '失败' : events.length ? '已发生' : '未发生'} />
@@ -326,7 +330,7 @@ function ClipInspector({ id, missing }: { id: string; missing: ReactNode }) {
     runId: state.runId,
   })));
   // 作者模式下未保存的片段时间同样显示在检查器里。
-  const edited = useAuthoring(state => state.edited);
+  const { edited, editable } = useAuthoring(useShallow(state => ({ edited: state.edited, editable: state.author && !!state.skill })));
   const timelines = useMemo(() => applyTimelineEdits(shownTimelines, edited), [shownTimelines, edited]);
   const found = useMemo(() => findTimelineClip(timelines, id), [timelines, id]);
   const segments = useMemo(() => found ? playSegments(routeFrames).get(found.timeline.documentId) ?? [] : [], [found, routeFrames]);
@@ -347,10 +351,11 @@ function ClipInspector({ id, missing }: { id: string; missing: ReactNode }) {
           ? <Link label="节点图" text={graphName(graph)} kind="var(--node-flow)" tip="在节点图面板打开" onOpen={() => openGraph(graph)} />
           : <Value label="节点图" mono={false} value={clip.graphId ? '本次运行没有这张图' : '无'} />}
         <Value label="合同" value={clip.contract} />
-        <Value label="起点" value={clip.startSeconds.toFixed(3)} />
-        <Value label="终点" value={clip.endSeconds.toFixed(3)} />
+        {!editable && <Value label="起点" value={clip.startSeconds.toFixed(3)} />}
+        {!editable && <Value label="终点" value={clip.endSeconds.toFixed(3)} />}
         <Value label="时长" value={(clip.endSeconds - clip.startSeconds).toFixed(3)} />
       </Fold>
+      {editable && <ClipFields documentId={timeline.documentId} clipId={clip.id} />}
       {runId && <Fold title="本次运行" kind="var(--value)" defaultOpen>
         {instances.length ? (
           <div className={styles.list}>

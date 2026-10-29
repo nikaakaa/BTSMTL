@@ -80,6 +80,17 @@
   text-align: right;
 }
 
+.numberWide {
+  display: flex;
+  min-width: 0;
+}
+
+.numberWide .field {
+  flex: 1;
+  width: auto;
+  text-align: left;
+}
+
 .trigger {
   composes: button;
   justify-content: space-between;
@@ -249,4 +260,13 @@
   font-size: 11px;
   line-height: 1;
   flex: none;
+}
+
+button.check {
+  padding: 0;
+  cursor: pointer;
+}
+
+button.check:focus-visible {
+  outline: 1px solid var(--accent);
 }

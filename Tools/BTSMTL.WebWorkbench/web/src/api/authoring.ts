@@ -1,4 +1,4 @@
-import { parseSkillJson, type JsonObject } from '../state/skillJson';
+import { parseSkillJson, stringifySkillJson, type JsonObject, type JsonValue } from '../state/skillJson';
 import type { GraphDefinition } from './types';
 import { getJson, postText, putJson, query } from './http';
 
@@ -49,12 +49,90 @@ export interface DescribedPort {
   port: { ID: string; name: string; type: string; serializedValue: unknown };
 }
 
-// 未保存节点的类型描述（原 DescribeType）：默认配置与本次配置下的实际端口。
+// 字段的存储形状（C# 存储类型逐层展开）：集合给出 element，复合类型给出 members。
+export interface StorageShape {
+  clrType: string;
+  enumValues: string[] | null;
+  elementType: string | null;
+  element?: StorageShape;
+  members?: MemberShape[];
+}
+
+export interface MemberShape extends StorageShape {
+  member: string;
+}
+
+export interface FieldReference {
+  kind: string;
+  optional: boolean;
+  objectType: string | null;
+  errorMessage: string;
+}
+
+// 节点类的作者字段合同：显示名、值种类、所在存储路径、枚举与选择器、条件显示和引用声明。
+export interface FieldMetadata {
+  fieldId: string;
+  displayName: string | null;
+  type: string;
+  clrType: string;
+  valueKind: string;
+  serializedMemberPath: string[];
+  readOnly: boolean;
+  optional: boolean;
+  allowedValues: string[] | null;
+  pickerKind: string | null;
+  pickerOwnerField: string | null;
+  objectType: string | null;
+  visibleWhenField: string | null;
+  visibleWhenValue: string | null;
+  choices: JsonValue;
+  references: FieldReference[];
+}
+
+// 节点 JSON 的一个存储成员及落在其中的作者字段；computed 为由配置推出的只读字段。
+export interface StoredField {
+  member: string;
+  value: JsonValue;
+  shape: StorageShape | null;
+  fields: FieldMetadata[];
+  computed?: undefined;
+}
+
+export interface ComputedField extends FieldMetadata {
+  computed: true;
+  value: JsonValue;
+}
+
+export type FieldItem = StoredField | ComputedField;
+
+// 未保存节点的类型描述（原 DescribeType）：默认配置，本次配置下的字段与实际端口。
 export interface TypeDescription {
   availability: QueryAvailability;
   type: string;
   configuration: JsonObject;
+  fields: { hasMore: boolean; items: FieldItem[] };
   ports: { availability: QueryAvailability; hasMore: boolean; items?: DescribedPort[] };
+}
+
+// 身份表（references.json）一项：作者 JSON 中引用的资产身份。
+export interface IdentityItem {
+  identity: string;
+  asset: { AssetPath?: string };
+  referenceCount: number;
+}
+
+export interface BlackboardItem {
+  identity: string;
+  graphId: string;
+  id: string;
+  key: string;
+  type: string;
+  category: string;
+}
+
+interface Page<T> {
+  hasMore: boolean;
+  items: T[];
 }
 
 // 保存：宿主写入文件后用正式编译器编译本技能。成功为 200 与编译回执；
@@ -115,4 +193,19 @@ export const authoringApi = {
   // 默认配置写进技能文件，按技能 JSON 规则解析以保留 1.0 这类浮点。
   describeType: async (skill: string, type: string, graphId: string, signal?: AbortSignal) =>
     parseSkillJson(await postText(`${skillPath(skill)}/queries/type`, { type, graphId, offset: 0, limit: 128 }, signal)) as unknown as TypeDescription,
+  // 按当前（可能未保存的）配置描述节点：字段值、条件字段与端口随配置变化。配置按技能 JSON 规则写出。
+  describeNode: async (skill: string, type: string, configuration: JsonObject, graphId: string, signal?: AbortSignal) =>
+    parseSkillJson(await postText(`${skillPath(skill)}/queries/type`,
+      stringifySkillJson({ type, configuration, graphId, offset: 0, limit: 128 }, '\n'), signal)) as unknown as TypeDescription,
+  identities: (skill: string, signal?: AbortSignal) => allPages<IdentityItem>(`${skillPath(skill)}/queries/references`, signal),
+  blackboards: (skill: string, signal?: AbortSignal) => allPages<BlackboardItem>(`${skillPath(skill)}/queries/blackboards`, signal),
 };
+
+async function allPages<T>(path: string, signal?: AbortSignal): Promise<T[]> {
+  const items: T[] = [];
+  for (let offset = 0; ; offset += 128) {
+    const page = await getJson<Page<T>>(`${path}${query({ offset, limit: 128 })}`, signal);
+    items.push(...page.items);
+    if (!page.hasMore) return items;
+  }
+}

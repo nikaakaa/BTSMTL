@@ -1,4 +1,6 @@
+import { useMemo } from 'react';
 import { create } from 'zustand';
+import { useShallow } from 'zustand/react/shallow';
 import { authoringApi, type SkillFormatError, type SkillSaveRejection, type SkillSnapshot } from '../api/authoring';
 import { ApiError, isAbort } from '../api/http';
 import type { AuthorTimeline, GraphDefinition, GraphNode, GraphPort } from '../api/types';
@@ -294,7 +296,42 @@ export const authoringActions = {
       clip.m_EndTimeFPRawValue = fpRaw(endSeconds);
     });
   },
+
+  // 检查器字段：片段对象内按键路径写值。
+  setClipValue(documentId: string, clipId: string, keys: JsonKey[], value: JsonValue) {
+    authoringActions.edit(timelinePath(documentId), document => {
+      const clip = findTimelineClip(document as JsonObject, clipId);
+      if (!clip) throw new Error(`Timeline ${documentId} 中没有片段 ${clipId}`);
+      setIn(clip, keys, value);
+    });
+  },
 };
+
+export type JsonKey = string | number;
+
+// 按键路径写值；路径上缺的对象按需建出。
+function setIn(target: JsonValue, keys: JsonKey[], value: JsonValue) {
+  let current = target as Record<JsonKey, JsonValue>;
+  for (const key of keys.slice(0, -1)) {
+    current[key] ??= {};
+    current = current[key] as Record<JsonKey, JsonValue>;
+  }
+  current[keys[keys.length - 1]] = value;
+}
+
+// 文件的当前内容：编辑过的取编辑版本，否则解析原文；只读使用。
+export function currentDocument(path: string): JsonValue | null {
+  const state = get();
+  return state.edited[path] ?? (state.files[path] !== undefined ? parseSkillJson(state.files[path]) : null);
+}
+
+// 编辑在原文档对象上原地修改，version 变化即重新读取。
+export function useCurrentDocument(path: string | null): { document: JsonValue | null; version: number } {
+  const { edited, text, version } = useAuthoring(useShallow(state => ({
+    edited: path ? state.edited[path] : undefined, text: path ? state.files[path] : undefined, version: state.version,
+  })));
+  return useMemo(() => ({ document: edited ?? (text !== undefined ? parseSkillJson(text) : null), version }), [edited, text, version]);
+}
 
 // ── 节点图（流图）：节点在 graphs/<图>.json 的 allNodes，连线在源节点的 outConnections，位置在 layout.json ──
 
@@ -368,6 +405,15 @@ export const graphAuthoring = {
     });
   },
 
+  // 检查器字段：节点对象内按键路径写值（成员、端口默认值或节点名）。
+  setNodeValue(graphId: string, nodeId: string, keys: JsonKey[], value: JsonValue) {
+    authoringActions.edit(graphPath(graphId), document => {
+      const node = nodesOf(document).find(item => item.UID === nodeId);
+      if (!node) throw new Error(`图 ${graphId} 中没有节点 ${nodeId}`);
+      setIn(node, keys, value);
+    });
+  },
+
   move(graphId: string, positions: Record<string, { x: number; y: number }>) {
     authoringActions.edit(layoutPath, document => {
       const nodes = layoutNodes(document, graphId);
@@ -423,10 +469,14 @@ export function applyGraphEdits(graph: GraphDefinition, path: string, edited: Re
     return position ? { x: numberOf(position.x), y: numberOf(position.y) } : fallback;
   };
   const sourceNodes = document ? nodesOf(document) : null;
-  const kept = sourceNodes ? new Set(sourceNodes.map(node => node.UID as string)) : null;
+  const sources = new Map((sourceNodes ?? []).map(node => [node.UID as string, node]));
+  const kept = sourceNodes ? new Set(sources.keys()) : null;
   const known = new Set(graph.nodes.filter(node => node.invocationPath === path).map(node => node.id));
   const nodes: GraphNode[] = graph.nodes.filter(node => node.invocationPath !== path || !kept || kept.has(node.id))
-    .map(node => node.invocationPath === path ? { ...node, position: positionOf(node.id, node.position) } : node);
+    .map(node => node.invocationPath === path ? {
+      ...node, position: positionOf(node.id, node.position),
+      displayName: (sources.get(node.id)?._name as string | undefined) || node.displayName,
+    } : node);
   const ports: GraphPort[] = graph.ports.filter(port => port.invocationPath !== path || !kept || kept.has(port.nodeId));
   for (const node of sourceNodes ?? []) {
     const id = node.UID as string;
