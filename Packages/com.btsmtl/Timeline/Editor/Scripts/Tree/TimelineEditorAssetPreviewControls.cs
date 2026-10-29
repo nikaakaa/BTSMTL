@@ -214,7 +214,7 @@ namespace BTSMTL.Timeline.Editor
         {
             CollectUnsavedAssets(TimelineAssetPreviewHost.Shared);
             foreach (UnityEngine.Object asset in m_UnsavedAssets)
-                AssetDatabase.SaveAssetIfDirty(asset);
+                TimelineAuthoringSave.Save(asset);
             RefreshSaveButton();
         }
 
