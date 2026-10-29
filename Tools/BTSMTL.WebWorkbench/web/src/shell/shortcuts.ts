@@ -5,8 +5,9 @@ import { transport } from '../state/transport';
 const bound = new Map<Window, { count: number; dispose(): void }>();
 
 function editable(target: EventTarget | null): boolean {
-  if (!(target instanceof Element)) return false;
-  return !!target.closest('input, textarea, select, [contenteditable="true"], [role="combobox"], [role="listbox"], [role="menu"]');
+  // 拆出窗口的元素属于另一个窗口的 Element，不能用 instanceof 判断。
+  if (!target || (target as Node).nodeType !== Node.ELEMENT_NODE) return false;
+  return !!(target as Element).closest('input, textarea, select, [contenteditable="true"], [role="combobox"], [role="listbox"], [role="menu"]');
 }
 
 function onKeyDown(event: KeyboardEvent) {

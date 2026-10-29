@@ -85,7 +85,8 @@ function RunMenu() {
   return <MenuButton label="运行菜单" entries={entries} caret>运行</MenuButton>;
 }
 
-function useTransportState() {
+// 播放控制可用性：主工具栏与 Timeline 工具条共用，不可用时给出原因。
+export function useTransportState() {
   return useWorkbench(useShallow(state => {
     const source = transport.source();
     const count = state.summary?.frameCount ?? 0;
@@ -95,14 +96,19 @@ function useTransportState() {
     if (off) blocked = '预览已关闭';
     else if (!source) blocked = state.runId ? (state.receipt ? stageNames[state.receipt.stage] : '读取中') : '选择一个运行';
     else if (source !== 'player-live' && !count) blocked = '还没有确认帧';
-    let next = blocked;
+    let previous = blocked, next = blocked;
     if (!blocked) {
-      if (playing) next = '需要先暂停';
-      else if (source === 'player-live') next = state.live?.player?.state === 'paused' ? null : '需要先暂停';
-      else if (state.frameIndex >= count - 1 && !(source === 'dotnet-session' && state.hostPlayback === 'paused'))
-        next = '已是最后一帧';
+      if (playing) previous = next = '需要先暂停';
+      else if (source === 'player-live') {
+        previous = '试玩不能后退';
+        next = state.live?.player?.state === 'paused' ? null : '需要先暂停';
+      } else {
+        if (state.frameIndex <= 0) previous = '已是第一帧';
+        if (state.frameIndex >= count - 1 && !(source === 'dotnet-session' && state.hostPlayback === 'paused'))
+          next = '已是最后一帧';
+      }
     }
-    return { playing, blocked, next };
+    return { playing, blocked, previous, next };
   }));
 }
 
@@ -127,7 +133,7 @@ function Transport() {
 }
 
 // 帧号框显示 SDK 帧；输入后换算成帧序号经 transport 跳转。
-function FrameField() {
+export function FrameField({ showSeconds = true }: { showSeconds?: boolean }) {
   const view = useWorkbench(useShallow(state => {
     if (transport.source() === 'player-live') {
       const player = state.live?.player;
@@ -155,7 +161,7 @@ function FrameField() {
         <NumberField.Input className={styles.frameInput} aria-label="帧号" />
       </NumberField.Root>
       <span>/ {view.last} 帧</span>
-      {view.seconds !== null && <span className={styles.seconds}>{view.seconds.toFixed(3)} s</span>}
+      {showSeconds && view.seconds !== null && <span className={styles.seconds}>{view.seconds.toFixed(3)} s</span>}
     </div>
   );
 }

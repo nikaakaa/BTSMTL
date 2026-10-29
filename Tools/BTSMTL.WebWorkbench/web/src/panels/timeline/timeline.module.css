@@ -1,0 +1,512 @@
+/* 照 Unity Timeline 窗口（D5）。 */
+.window {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--track-lane);
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: var(--panel-bar);
+  padding: 0 var(--gap-1);
+  background: var(--bg-3);
+  border-bottom: 1px solid var(--line);
+  flex: none;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.preview[aria-pressed='true'], .preview[aria-pressed='true']:hover {
+  background: var(--preview-on);
+  border-color: var(--preview-on-line);
+}
+
+.grow {
+  flex: 1;
+}
+
+.asset {
+  padding: 0 6px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.timeline {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  height: 22px;
+  flex: none;
+}
+
+.filter {
+  display: flex;
+  align-items: center;
+  width: 290px;
+  padding: 0 var(--gap-1);
+  background: var(--track-ruler);
+  border-right: 1px solid var(--seam);
+  border-bottom: 1px solid var(--seam);
+  flex: none;
+}
+
+.filterInput {
+  flex: 1;
+  height: 18px;
+}
+
+.ruler {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+  background: var(--track-ruler);
+  border-bottom: 1px solid var(--seam);
+  cursor: default;
+  touch-action: none;
+}
+
+.majorTick, .minorTick {
+  position: absolute;
+  bottom: 0;
+  width: 1px;
+  background: var(--text-disabled);
+}
+
+.majorTick {
+  height: 9px;
+}
+
+.minorTick {
+  height: 4px;
+  background: var(--button);
+}
+
+.tickLabel {
+  position: absolute;
+  top: 2px;
+  font: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  transform: translateX(3px);
+  pointer-events: none;
+}
+
+.markersRow {
+  display: flex;
+  height: 18px;
+  flex: none;
+}
+
+.markersHead {
+  display: flex;
+  align-items: center;
+  width: 290px;
+  padding: 0 var(--gap-2);
+  color: var(--text-disabled);
+  background: var(--track-markers);
+  border-right: 1px solid var(--seam);
+  border-bottom: 1px solid var(--seam);
+  flex: none;
+}
+
+.markersLane {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+  background: var(--track-markers);
+  border-bottom: 1px solid var(--seam);
+}
+
+.flag {
+  position: absolute;
+  top: 2px;
+  display: flex;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.flag i {
+  width: 9px;
+  height: 12px;
+  margin-left: -4.5px;
+  background: var(--clip-active);
+  clip-path: polygon(0 0, 100% 0, 100% 62%, 50% 100%, 0 62%);
+}
+
+.flag span {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.rows {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+  background: var(--track-lane);
+}
+
+.rows::-webkit-scrollbar {
+  display: none;
+}
+
+.line {
+  width: 100%;
+  border-bottom: 1px solid var(--track-row-line);
+}
+
+/* 轨道头 */
+.groupHead, .trackHead {
+  align-items: center;
+  gap: 6px;
+  background: var(--track-list);
+  border-right: 1px solid var(--seam);
+}
+
+.groupHead {
+  padding: 0 6px;
+  background: var(--track-group);
+}
+
+.headButton {
+  all: unset;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: 100%;
+  padding: 0 6px 0 10px;
+  box-sizing: border-box;
+  background: var(--track-head);
+  cursor: default;
+}
+
+.headButton::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--tc);
+}
+
+.headButton[data-selected] {
+  background: var(--track-head-select);
+}
+
+.headButton:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.inputHead {
+  margin-left: 14px;
+  width: calc(100% - 14px);
+}
+
+.name {
+  min-width: 64px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.binding {
+  flex: 1;
+  height: 18px;
+}
+
+.value {
+  margin-left: auto;
+  font: var(--mono);
+  color: var(--text-dim);
+}
+
+.frameValue {
+  flex: 1;
+  min-width: 0;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 5px;
+  border: 1px solid var(--field-line);
+  border-radius: var(--radius);
+  background: var(--field);
+  font: var(--mono);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.muted {
+  color: var(--text-disabled);
+}
+
+.scheme {
+  margin-left: auto;
+  min-width: 0;
+}
+
+.fold {
+  all: unset;
+  display: grid;
+  place-items: center;
+  width: 12px;
+  height: 12px;
+}
+
+.foldOpen, .foldClosed {
+  width: 0;
+  height: 0;
+}
+
+.foldOpen {
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid var(--glyph);
+}
+
+.foldClosed {
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 5px solid var(--glyph);
+}
+
+/* 时间区 */
+.lane, .groupLane {
+  overflow: hidden;
+}
+
+.groupLane {
+  background: var(--track-lane-group);
+}
+
+.segment {
+  position: absolute;
+  bottom: 3px;
+  height: 4px;
+  background: var(--button);
+}
+
+.item {
+  pointer-events: none;
+}
+
+.item > * {
+  pointer-events: auto;
+}
+
+.clip {
+  all: unset;
+  position: relative;
+  display: block;
+  box-sizing: border-box;
+  flex: 1;
+  min-width: 1px;
+  margin: 2px 0;
+  background: var(--clip);
+  border: 1px solid var(--clip-line);
+  border-radius: 2px;
+  overflow: hidden;
+  cursor: default;
+}
+
+.clip::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background: var(--tc);
+}
+
+.clip span {
+  position: absolute;
+  left: 6px;
+  top: 50%;
+  transform: translateY(calc(-50% - 1px));
+  color: var(--clip-text);
+  white-space: nowrap;
+}
+
+.clip[data-active] {
+  border-color: var(--clip-active);
+}
+
+.clip[data-selected] {
+  border-color: var(--select-graph);
+}
+
+.clip[data-cut] {
+  border-right-style: dashed;
+}
+
+.blend {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  z-index: 2;
+  background: rgb(0 0 0 / 28%);
+  border-top: 1px solid var(--clip-line);
+  border-bottom: 1px solid var(--clip-line);
+  pointer-events: none;
+}
+
+.blend svg {
+  position: absolute;
+  inset: 0 0 3px;
+  width: 100%;
+  height: calc(100% - 3px);
+}
+
+.blend path {
+  fill: none;
+  stroke: var(--clip-text);
+  stroke-width: 1.2;
+  vector-effect: non-scaling-stroke;
+}
+
+.marker {
+  position: absolute;
+  top: 3px;
+  width: 9px;
+  height: 12px;
+  margin-left: -4.5px;
+  background: var(--clip-active);
+  clip-path: polygon(0 0, 100% 0, 100% 62%, 50% 100%, 0 62%);
+  z-index: 3;
+}
+
+/* 预览输入：菱形标记，按住段 3px 色条 */
+.hold {
+  all: unset;
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: default;
+}
+
+.hold span {
+  position: absolute;
+  left: 10px;
+  top: 1px;
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.holdBar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 3px;
+  margin-top: -1.5px;
+  background: var(--input-hold);
+}
+
+.key, .keyEnd, .inputKey {
+  position: absolute;
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  margin: -4.5px 0 0 -4.5px;
+  transform: rotate(45deg);
+  background: var(--input-key);
+  border: 1px solid var(--node-line);
+}
+
+.key {
+  left: 0;
+}
+
+.keyEnd {
+  left: 100%;
+  width: 7px;
+  height: 7px;
+  margin: -3.5px 0 0 -3.5px;
+  background: var(--input-hold);
+}
+
+.hold[data-active] .key, .inputKey[data-active] {
+  background: var(--input-key-active);
+}
+
+.hold[data-selected] .key {
+  border-color: var(--select-graph);
+}
+
+.inputKey {
+  all: unset;
+  position: absolute;
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  margin: -4.5px 0 0 -4.5px;
+  transform: rotate(45deg);
+  background: var(--input-key);
+  border: 1px solid var(--node-line);
+  z-index: 3;
+}
+
+/* 覆盖层：游标与结束线 */
+.overlay {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.cursorLine, .endLine {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 1px;
+  will-change: transform;
+}
+
+.cursorLine {
+  background: var(--cursor);
+}
+
+.endLine {
+  background: var(--accent);
+}
+
+.cursorTag {
+  position: absolute;
+  top: 3px;
+  left: 0;
+  height: 16px;
+  padding: 0 4px;
+  margin-left: -1px;
+  background: var(--cursor);
+  color: var(--cursor-text);
+  font: var(--mono);
+  font-size: 11px;
+  line-height: 16px;
+  border-radius: 2px;
+  translate: -50% 0;
+  will-change: transform;
+}

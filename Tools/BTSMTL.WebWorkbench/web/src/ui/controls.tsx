@@ -76,7 +76,7 @@ export function Select<T extends string>({ value, options, onChange, placeholder
   const trigger = (
     <BaseSelect.Trigger className={styles.trigger} aria-label={label}>
       <BaseSelect.Value className={styles.triggerValue} placeholder={placeholder} />
-      <BaseSelect.Icon className={styles.caret} />
+      <span className={styles.caret} aria-hidden />
     </BaseSelect.Trigger>
   );
   return (
