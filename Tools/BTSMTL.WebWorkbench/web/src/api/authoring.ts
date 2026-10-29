@@ -1,5 +1,5 @@
 import { parseSkillJson, type JsonObject } from '../state/skillJson';
-import { getJson, postText, query } from './http';
+import { getJson, postText, putJson, query } from './http';
 
 // 技能作者 HTTP 接口（宿主以 --SkillAuthoring 启用）：技能文件夹内全部 JSON 文件原文与内容修订。
 // 文件文本原样返回，网页只在编辑的文件上解析、改写并整份写回。
@@ -56,6 +56,39 @@ export interface TypeDescription {
   ports: { availability: QueryAvailability; hasMore: boolean; items?: DescribedPort[] };
 }
 
+// 保存：宿主写入文件后用正式编译器编译本技能。成功为 200 与编译回执；
+// 严格读取或编译拒绝为 422，文件仍已保存（saved=true），附原诊断。
+export interface SkillCompilation {
+  compilationKey: string;
+  sourceRevision: string;
+  artifactReceiptPath: string;
+  reused: boolean;
+}
+
+export interface SkillSaveResult {
+  content: SkillSnapshot;
+  compilation: SkillCompilation;
+}
+
+export interface SkillFormatError {
+  code: string;
+  file?: string;
+  graphId?: string;
+  nodeId?: string;
+  path?: string;
+  message: string;
+}
+
+export interface SkillSaveRejection {
+  saved: boolean;
+  content: SkillSnapshot;
+  stage: 'source-rejected' | 'compilation-failed';
+  diagnostic?: { message: string; errors: SkillFormatError[] };
+  exitCode?: number;
+  output?: string;
+  error?: string;
+}
+
 const base = '/api/authoring/skills';
 const skillPath = (skill: string) => `${base}/${encodeURIComponent(skill)}`;
 
@@ -64,6 +97,8 @@ export const authoringApi = {
   read: (skill: string, signal?: AbortSignal) => getJson<SkillSnapshot>(skillPath(skill), signal),
   changes: (skill: string, revision: string, signal?: AbortSignal) =>
     getJson<SkillChanges>(`${skillPath(skill)}/changes?revision=${encodeURIComponent(revision)}`, signal),
+  save: (skill: string, files: SkillFile[], removedFiles: string[]) =>
+    putJson<SkillSaveResult>(skillPath(skill), { content: { files, removedFiles } }),
   types: (skill: string, offset: number, signal?: AbortSignal) =>
     getJson<TypePage>(`${skillPath(skill)}/queries/types${query({ offset, limit: 128 })}`, signal),
   // 默认配置写进技能文件，按技能 JSON 规则解析以保留 1.0 这类浮点。

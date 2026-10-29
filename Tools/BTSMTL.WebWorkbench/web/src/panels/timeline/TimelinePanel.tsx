@@ -13,7 +13,7 @@ import { clearRendered, frameKey, reportRendered } from '../../shell/readiness';
 import { FrameField, useTransportState } from '../../shell/Toolbar';
 import { openPanel } from '../../shell/layout';
 import {
-  applyTimelineEdits, authoringActions, saveBlockedReason, timelinePath, useAuthoring,
+  applyTimelineEdits, authoringActions, timelinePath, useAuthoring,
 } from '../../state/authoring';
 import {
   consoleActions, getState, inputRootKey, runActions, selectionActions, useWorkbench, type RouteFrameSpan,
@@ -352,6 +352,7 @@ function AuthoringControls({ program }: { program: string | null }) {
   const state = useAuthoring(useShallow(current => ({
     available: current.available, reason: current.unavailableReason, author: current.author, skill: current.skill,
     loading: current.loading, edited: current.edited, externalChange: current.externalChange,
+    saving: current.saving, lastSave: current.lastSave,
   })));
   const dirty = Object.keys(state.edited).length;
   // 作者模式下定时检查技能文件是否在别处（Unity、AI、编辑器）被修改。
@@ -376,8 +377,14 @@ function AuthoringControls({ program }: { program: string | null }) {
         <>
           <span className={styles.authorDirty}>{dirty} 个文件未保存</span>
           <Button variant="ghost" tip="丢弃网页中的全部未保存修改" onClick={() => authoringActions.revert()}>还原</Button>
-          <Button variant="ghost" disabled tip={saveBlockedReason}>保存</Button>
+          <Button variant="ghost" disabled={state.saving} tip="写回技能 JSON，宿主用正式编译器检查"
+            onClick={() => void authoringActions.save()}>{state.saving ? '保存中' : '保存'}</Button>
         </>
+      )}
+      {!dirty && state.lastSave && (
+        <span className={state.lastSave.ok ? styles.authorDirty : styles.authorWarn} title={state.lastSave.message}>
+          {state.lastSave.ok ? '已保存' : '编译未通过'}
+        </span>
       )}
       <Button variant="ghost" pressed={state.author} disabled={state.available === false}
         tip={state.available === false ? state.reason ?? '作者接口不可用'

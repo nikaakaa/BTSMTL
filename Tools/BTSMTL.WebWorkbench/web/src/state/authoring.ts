@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { authoringApi } from '../api/authoring';
+import { authoringApi, type SkillFormatError, type SkillSaveRejection, type SkillSnapshot } from '../api/authoring';
 import { ApiError, isAbort } from '../api/http';
 import type { AuthorTimeline, GraphDefinition, GraphNode, GraphPort } from '../api/types';
 import {
@@ -28,6 +28,15 @@ export interface AuthoringState {
   externalChange: boolean;
   // 网页新增（含粘贴）节点的端口：来自类型描述或复制源，保存并重跑前用于显示与连线。
   addedPorts: Record<string, AddedPort[]>;
+  saving: boolean;
+  // 最近一次保存的编译结论；文件写入后由正式编译器判断。
+  lastSave: SaveOutcome | null;
+}
+
+export interface SaveOutcome {
+  ok: boolean;
+  message: string;
+  errors: SkillFormatError[];
 }
 
 export interface AddedPort {
@@ -39,7 +48,7 @@ export interface AddedPort {
 
 export const useAuthoring = create<AuthoringState>()(() => ({
   available: null, unavailableReason: null, author: false, programId: null, skill: null, revision: null,
-  files: {}, edited: {}, version: 0, loading: false, externalChange: false, addedPorts: {},
+  files: {}, edited: {}, version: 0, loading: false, externalChange: false, addedPorts: {}, saving: false, lastSave: null,
 }));
 
 const get = useAuthoring.getState;
@@ -48,9 +57,6 @@ const set = useAuthoring.setState;
 const abilityOf = (programId: string) => programId.slice(programId.indexOf(':') + 1);
 
 export const timelinePath = (documentId: string) => `timelines/${documentId}.json`;
-
-// 网页还不能保存的原因：保存请求需要所属程序的 programAssetId，宿主尚未向网页提供。
-export const saveBlockedReason = '宿主还没有向网页提供程序的 programAssetId，保存请求无法组成；修改先保留在网页中';
 
 let loadController: AbortController | null = null;
 
@@ -130,6 +136,37 @@ export const authoringActions = {
     return Object.entries(state.edited).map(([path, document]) => ({
       path, content: writeSkillJson(document, shapeOf(state.files[path])),
     })).filter(file => file.content !== state.files[file.path]);
+  },
+
+  // 写回编辑过的文件；宿主保存后编译。被拒绝时文件也已写入，网页改用宿主回读的内容并列出诊断。
+  async save() {
+    const { skill, saving } = get();
+    const files = authoringActions.changedFiles();
+    if (!skill || saving || !files.length) return;
+    set({ saving: true });
+    const accept = (content: SkillSnapshot, lastSave: SaveOutcome) => set({
+      revision: content.revision, files: Object.fromEntries(content.files.map(file => [file.path, file.content])),
+      edited: {}, addedPorts: {}, externalChange: false, version: get().version + 1, saving: false, lastSave,
+    });
+    try {
+      const result = await authoringApi.save(skill, files, []);
+      accept(result.content, { ok: true, message: `已保存 ${files.length} 个文件，编译通过`, errors: [] });
+      consoleActions.log('info', '作者', `${skill} 已保存并编译：${result.compilation.sourceRevision}`);
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 422) {
+        const rejection = JSON.parse(error.raw) as SkillSaveRejection;
+        const errors = rejection.diagnostic?.errors ?? [];
+        const message = rejection.stage === 'source-rejected'
+          ? `已保存，严格读取拒绝 ${errors.length || 1} 项：${rejection.diagnostic?.message ?? rejection.error ?? ''}`
+          : `已保存，编译失败（结束代码 ${rejection.exitCode}）`;
+        accept(rejection.content, { ok: false, message, errors });
+        consoleActions.log('error', '作者', message, [...errors.map(item => `${item.file ?? ''} ${item.path ?? ''}：${item.message}`),
+          rejection.error ?? ''].filter(Boolean).join('\n'));
+        return;
+      }
+      set({ saving: false, lastSave: { ok: false, message: error instanceof Error ? error.message : String(error), errors: [] } });
+      consoleActions.error('作者', error);
+    }
   },
 
   // 外部修改检测：无本地修改时直接重读，有修改时标出冲突。
