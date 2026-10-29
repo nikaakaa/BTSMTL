@@ -119,6 +119,12 @@ async function receipt(value: unknown, commandId: string): Promise<WallSnapshot>
 }
 
 export const wallContactApi = {
+  status(rawJson: string): WallSnapshot | null {
+    const status = object(JSON.parse(rawJson));
+    if (typeof status.wallContactAvailable !== 'boolean')
+      throw new Error('当前 Player 尚未提供扶墙结果推送，请载入包含扶墙调节的新版 Player');
+    return status.wallContactAvailable ? snapshot(status.wallContact) : null;
+  },
   async command(liveId: string, command: WallCommand): Promise<WallSnapshot> {
     let response: unknown;
     try {

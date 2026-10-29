@@ -29,13 +29,14 @@ export function WallContactPanel() {
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const [observationError, setObservationError] = useState('');
   const [notice, setNotice] = useState('');
   const [source, setSource] = useState<SourceState>({ kind: 'loading' });
   const inFlight = useRef<symbol | null>(null);
   const ready = state.viewerOpen && !!state.player && ['paused', 'playing', 'stepping', 'seeking'].includes(state.player.state);
 
   useEffect(() => {
-    setData(null); setFields([]); setDraft({}); setPending(null); setError(''); setNotice('');
+    setData(null); setFields([]); setDraft({}); setPending(null); setError(''); setObservationError(''); setNotice('');
     inFlight.current = null; setBusy(false);
   }, [scope]);
 
@@ -77,6 +78,24 @@ export function WallContactPanel() {
   }, [run, state.liveId, state.actor]);
 
   const selected = data?.targets[data.selected];
+  useEffect(() => {
+    if (!data || !ready || !state.player) return;
+    try {
+      const packet = wallContactApi.status(state.player.rawJson);
+      setObservationError('');
+      if (!packet || packet.actorId !== state.actor) return;
+      setData(current => {
+        if (!current) return current;
+        if (packet.loadCommandId !== current.loadCommandId) return null;
+        const expected = current.targets[current.selected], actual = packet.targets[packet.selected];
+        if (expected.graphId !== actual.graphId || expected.nodeId !== actual.nodeId ||
+          expected.instanceId !== actual.instanceId || expected.graphRevision !== actual.graphRevision ||
+          BigInt(packet.requestedVersion) < BigInt(current.requestedVersion)) return current;
+        return packet;
+      });
+    } catch (failure) { setObservationError(messageOf(failure)); }
+  }, [state.player?.rawJson, state.actor, ready, data?.loadCommandId, selected?.instanceId, selected?.nodeId]);
+
   const sourceTarget = data && selected ? { sourceAssetId: data.sourceAssetId, graphId: selected.graphId, nodeId: selected.nodeId } : null;
   const sourceKey = sourceTarget ? `${sourceTarget.sourceAssetId}/${sourceTarget.graphId}/${sourceTarget.nodeId}` : '';
   useEffect(() => {
@@ -156,6 +175,8 @@ export function WallContactPanel() {
         <span className={styles.status}>{stale ? '参数已有新版本，请重新读取' : adopted ? 'Player 已采用' : '等待表现帧采用'}{changed ? ' · 有未应用改动' : ''}</span>
       </PanelBar>
       <Fold title="实际贴掌结果" defaultOpen>
+        {observationError && <div className={styles.error} role="alert">{observationError}</div>}
+        <div className={styles.status}>{data.completionIdentity ? `表现完成帧 ${data.completionIdentity}` : '尚无表现完成帧'}</div>
         <div className={styles.hands}><Hand title="左手" hand={data.left} /><Hand title="右手" hand={data.right} /></div>
       </Fold>
       <Fold title="预览墙面" defaultOpen>
