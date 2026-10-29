@@ -9,7 +9,7 @@ import { BarSeparator, Empty, PanelBar } from '../../ui/blocks';
 import { Button, Select } from '../../ui/controls';
 import styles from './player.module.css';
 
-// 画面面板（承接 player.js）：构建选择、启动与停止常驻播放器、载入运行或离线包、画面、键鼠和手柄接管、
+// 画面面板：构建选择、启动与停止常驻播放器、载入运行或离线包、画面、键鼠和手柄接管、
 // 环绕相机、.NET 根位置叠加、点选、截图、逐帧对照角标。播放控制统一走 transport（D6、D10）。
 
 const playerStates: Record<PlayerState, string> = {

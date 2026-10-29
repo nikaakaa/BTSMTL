@@ -3,7 +3,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { ConvexGeometry } from 'three/addons/geometries/ConvexGeometry.js';
 import type { Frame, Geometry, Pose, SweepSegment, Vec3 } from '../../api/types';
 
-// 逻辑视图的 three 场景（沿用 logic-viewport.js 的几何表示）。
+// 逻辑视图的 three 场景。
 // 世界几何只在几何数据变化时建一次；按帧只改角色与查询对象的变换，查询对象从对象池取用。
 
 const vector = (value: Vec3) => new THREE.Vector3(value[0], value[1], value[2]);

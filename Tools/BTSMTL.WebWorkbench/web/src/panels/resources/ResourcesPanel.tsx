@@ -12,7 +12,7 @@ import { VirtualList } from '../../ui/VirtualList';
 import { ResourceScene } from './resourceScene';
 import styles from './resources.module.css';
 
-// 动画资源面板（承接 resources.js）：片段搜索与列表、同版 glb、素材播放与拖动时间、适配角色、资源版本信息。
+// 动画资源面板：片段搜索与列表、同版 glb、素材播放与拖动时间、适配角色、资源版本信息。
 // 素材时间只改 resource 分片，不经过 transport、不移动运行游标（D6）；按 D8 写入 resource* 就绪标记。
 
 export function ResourcesPanel() {

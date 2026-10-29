@@ -57,7 +57,7 @@ function moveCursor(frameIndex: number) {
   }
 }
 
-// ── 已封存运行：按宿主帧秒数回看（沿用 playHistory：按真实流逝时间找到最后一个不晚于目标秒数的帧） ──
+// ── 已封存运行：按宿主帧秒数回看（按真实流逝时间找到最后一个不晚于目标秒数的帧） ──
 
 function stopReview() {
   if (!review) return;

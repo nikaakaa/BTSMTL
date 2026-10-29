@@ -3,7 +3,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { AnimationClip } from '../../api/types';
 
-// 动画资源面板的独立 three 场景（沿用 resources.js）：同版 glb 模型与动画、按素材秒数摆姿势、适配角色。
+// 动画资源面板的独立 three 场景：同版 glb 模型与动画、按素材秒数摆姿势、适配角色。
 
 export class ResourceScene {
   private renderer: THREE.WebGLRenderer;

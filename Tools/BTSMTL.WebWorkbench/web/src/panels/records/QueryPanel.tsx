@@ -9,7 +9,7 @@ import { VirtualList } from '../../ui/VirtualList';
 import { FrameSections, JsonLines } from './records';
 import styles from './records.module.css';
 
-// 记录查询面板（承接 observation-query.js）：按范围分页读取或跟随帧流；解析在后台线程，结果用虚拟列表。
+// 记录查询面板：按范围分页读取或跟随帧流；解析在后台线程，结果用虚拟列表。
 // 面板关闭时取消查询，隐藏时保持（D12）。
 
 export function QueryPanel() {

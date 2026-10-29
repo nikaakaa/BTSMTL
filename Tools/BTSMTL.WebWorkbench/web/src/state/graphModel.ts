@@ -2,7 +2,7 @@ import type {
   EdgeOccurrence, ExecutionCall, Frame, GraphDefinition, GraphEdge, GraphNode, GraphPort, NodeOccurrence, PortSample,
 } from '../api/types';
 
-// 节点图面板与检查器共用：图与调用身份、分层排布、本帧路线记录筛选（沿用 preview-graph.js）。
+// 节点图面板与检查器共用：图与调用身份、分层排布、本帧路线记录筛选。
 
 export const graphKey = (graph: GraphDefinition) => JSON.stringify([graph.actorId, graph.programId, graph.programRevision, graph.id]);
 export const callKey = (call: ExecutionCall) => JSON.stringify([call.actorId, call.programId, call.programRevision, call.invocationPath,
