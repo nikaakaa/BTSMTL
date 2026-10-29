@@ -317,7 +317,7 @@ namespace ThirdPersonSimulation
             return m_Buffer.AsSpan(0, m_Length);
         }
 
-        public ReadOnlySpan<byte> Read(in RecordedFrameSlice slice)
+        public ReadOnlySpan<byte> Read(RecordedFrameSlice slice)
         {
             int page = checked((int)(slice.Offset / PageCapacity));
             return ReadPage(page).Slice(checked((int)(slice.Offset % PageCapacity)), slice.Length);
