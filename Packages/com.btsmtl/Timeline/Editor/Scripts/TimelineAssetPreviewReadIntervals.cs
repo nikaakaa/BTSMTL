@@ -19,15 +19,16 @@ namespace BTSMTL.Timeline.Editor
         {
             m_Preferences = preferences;
             var requestInputs = requests.ToDictionary(request => request.InputId, StringComparer.Ordinal);
-            // 作者假设：方案里最早的一次动作请求起手根，被起手消耗，不再作为根内读取；起手按会话逻辑 Tick 向上取整。
+            // 作者假设：方案里最早的一次动作请求起手根，被起手消耗，不再作为根内读取。
+            // 会话按逻辑 Tick 读取请求，起手与请求成立时刻都向上取整到 Tick。
             TimelinePreviewInputPoint activation = preferences.Inputs
                 .Where(point => point.Boolean && requestInputs.ContainsKey(point.InputId))
                 .OrderBy(point => point.Time).FirstOrDefault();
             if (activation != null)
             {
-                int tickRate = requestInputs[activation.InputId].TickRate;
                 Activation = activation;
-                RootStart = OrchestrationTime.FromSeconds(Math.Ceiling(activation.Time * tickRate - 1e-6) / tickRate);
+                RootStart = OrchestrationTime.FromSeconds(
+                    TickCeiling(activation.Time, requestInputs[activation.InputId].TickRate));
             }
             foreach (var input in preferences.Inputs.GroupBy(point => point.InputId))
             {
@@ -40,8 +41,11 @@ namespace BTSMTL.Timeline.Editor
                 {
                     foreach (TimelinePreviewInputPoint point in points)
                         if (point.Boolean && !ReferenceEquals(point, Activation))
-                            intervals.Add(new TimelineStaticInterval(OrchestrationTime.FromSeconds(point.Time),
-                                OrchestrationTime.FromSeconds(point.Time + request.DurationSeconds)));
+                        {
+                            double start = TickCeiling(point.Time, request.TickRate);
+                            intervals.Add(new TimelineStaticInterval(OrchestrationTime.FromSeconds(start),
+                                OrchestrationTime.FromSeconds(start + request.DurationSeconds)));
+                        }
                 }
                 else
                     for (int i = 0; i < points.Length; i++)
@@ -51,6 +55,8 @@ namespace BTSMTL.Timeline.Editor
                 m_Intervals.Add(input.Key, intervals);
             }
         }
+
+        static double TickCeiling(double seconds, int tickRate) => Math.Ceiling(seconds * tickRate - 1e-6) / tickRate;
 
         // 起手根的请求；方案没有动作请求时为 null，根从 0 秒开始。
         public TimelinePreviewInputPoint Activation { get; }

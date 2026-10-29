@@ -84,9 +84,13 @@ namespace BTSMTL.Timeline.Editor
                     m_Segments.Add(new TimelinePreviewRealSegment(in played, source,
                         FindState(query, played.Owner.GraphAuthoringId, played.Owner.StateId)));
             double? entered = null;
+            int entryMachine = -1;
             foreach (TimelinePreviewRealSegment segment in m_Segments)
                 if (!segment.Record.IsNested && segment.State != null && (entered == null || segment.Record.Start < entered))
+                {
                     entered = segment.Record.Start;
+                    entryMachine = segment.State.MachineOperationIndex;
+                }
             if (entered != null)
                 foreach (TimelinePreviewRealSegment segment in m_Segments)
                     if (!segment.Record.IsNested && segment.State == null && segment.Record.Start >= entered &&
@@ -129,6 +133,20 @@ namespace BTSMTL.Timeline.Editor
                 m_Transitions.Add(new TimelinePreviewRealTransition(in recorded,
                     FindTransition(state, recorded.GraphId, recorded.EdgeId), state, source, (float)local, message));
             }
+            // 根的入口状态机转到出口即本次根执行结束（出口转移本身仍参与对比）；之后同一根再次起手是新的执行，
+            // 从出口后的第一次播放起不在快速档范围内。
+            double? exited = null;
+            if (entered != null)
+                foreach (TimelinePreviewRealTransition transition in m_Transitions)
+                    if (transition.Source != null && transition.Transition != null && transition.Target == null &&
+                        transition.Source.MachineOperationIndex == entryMachine && transition.Record.Time >= entered &&
+                        (exited == null || transition.Record.Time < exited))
+                        exited = transition.Record.Time;
+            if (exited != null)
+                foreach (TimelinePreviewRealSegment segment in m_Segments)
+                    if (!segment.Record.IsNested && segment.Record.Start > exited &&
+                        (LeftRootAt == null || segment.Record.Start < LeftRootAt))
+                        LeftRootAt = segment.Record.Start;
         }
 
         public void Clear()
