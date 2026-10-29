@@ -2,12 +2,11 @@ import type {
   AddPanelPositionOptions, DockviewApi, DockviewGroupPanel, IDockviewPanel, PopoutWindowFailure, SerializedDockview,
 } from 'dockview-react';
 import { consoleActions, layoutActions } from '../state/store';
-import { instanceNumber, instanceTitle, panelInfo, panelTypeOf, panelTypes, type PanelType } from './panelTypes';
+import { instanceNumber, instanceTitle, panelInfo, panelTypeOf, type PanelType } from './panelTypes';
 
 // 布局：保存、恢复、默认布局、按类型打开与多开、拆出窗口（D3、D12）。
 
 const storageKey = 'btsmtl.workbench.layout';
-const signature = panelTypes.join(',');
 const source = 'layout';
 const inspectorWidth = 372;
 
@@ -15,7 +14,6 @@ let api: DockviewApi | null = null;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 
 interface Saved {
-  signature: string;
   layout: SerializedDockview;
 }
 
@@ -114,7 +112,7 @@ function readSaved(): { layout: SerializedDockview } | { reason: string } | null
   } catch {
     return { reason: '保存的布局无法解析' };
   }
-  if (saved.signature !== signature || !saved.layout?.panels) return { reason: '保存的布局来自另一组面板类型' };
+  if (!saved.layout?.panels) return { reason: '保存的布局缺少面板数据' };
   const counts = new Map<PanelType, number>();
   for (const panel of Object.values(saved.layout.panels)) {
     const type = panelTypeOf(panel.id);
@@ -129,7 +127,7 @@ function readSaved(): { layout: SerializedDockview } | { reason: string } | null
 function save() {
   saveTimer = null;
   if (!api) return;
-  localStorage.setItem(storageKey, JSON.stringify({ signature, layout: api.toJSON() } satisfies Saved));
+  localStorage.setItem(storageKey, JSON.stringify({ layout: api.toJSON() } satisfies Saved));
 }
 
 export function requestLayoutSave() {
