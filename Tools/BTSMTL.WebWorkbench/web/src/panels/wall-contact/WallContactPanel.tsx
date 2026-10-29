@@ -125,6 +125,7 @@ export function WallContactPanel() {
 
   const changed = fields.some(field => field.value !== draft[field.id]);
   const adopted = data !== null && data.requestedVersion === data.appliedVersion;
+  const stale = data !== null && editVersion !== data.requestedVersion;
   const disabled = !ready || busy || pending !== null;
   const groups = new Map<string, WallField[]>();
   for (const field of fields) {
@@ -152,7 +153,7 @@ export function WallContactPanel() {
             loadCommandId: data.loadCommandId, ...data.targets[data.selected],
           }));
         }}>刷新结果</Button>
-        <span className={styles.status}>{adopted ? 'Player 已采用' : '等待表现帧采用'}{changed ? ' · 有未应用改动' : ''}</span>
+        <span className={styles.status}>{stale ? '参数已有新版本，请重新读取' : adopted ? 'Player 已采用' : '等待表现帧采用'}{changed ? ' · 有未应用改动' : ''}</span>
       </PanelBar>
       <Fold title="实际贴掌结果" defaultOpen>
         <div className={styles.hands}><Hand title="左手" hand={data.left} /><Hand title="右手" hand={data.right} /></div>
@@ -181,7 +182,7 @@ export function WallContactPanel() {
         </div>}
       </Fold>)}
       <PanelBar>
-        <Button disabled={disabled || !changed} onClick={apply}>应用到 Player</Button>
+        <Button disabled={disabled || !changed || stale} onClick={apply}>应用到 Player</Button>
         <Button variant="ghost" disabled={disabled || !changed} onClick={() => setDraft(Object.fromEntries(fields.map(field => [field.id, field.value])))}>还原未应用改动</Button>
       </PanelBar>
       <Fold title="正式配置" defaultOpen>

@@ -86,10 +86,12 @@ function snapshot(value: unknown): WallSnapshot {
   const targets = array(item.targets).map(target);
   const selected = number(item.selected);
   if (!Number.isInteger(selected) || selected < 0 || selected >= targets.length) throw new Error('扶墙节点选择超出回执范围');
+  const completionIdentity = text(item.completionIdentity);
   return {
     loadCommandId: text(item.loadCommandId), actorId: text(item.actorId), sourceAssetId: text(item.sourceAssetId),
-    requestedVersion: text(item.requestedVersion), appliedVersion: text(item.appliedVersion), completionIdentity: text(item.completionIdentity),
-    targets, selected, fields: array(item.fields).map(field), left: hand(item.left), right: hand(item.right),
+    requestedVersion: text(item.requestedVersion), appliedVersion: text(item.appliedVersion), completionIdentity,
+    targets, selected, fields: array(item.fields).map(field),
+    left: completionIdentity.length ? hand(item.left) : null, right: completionIdentity.length ? hand(item.right) : null,
     wall: { enabled: flag(plane.enabled), visible: flag(plane.visible), position: vector(plane.position), rotation: vector(plane.rotation), size: vector(plane.size) },
   };
 }
