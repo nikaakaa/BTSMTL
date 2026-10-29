@@ -1,4 +1,3 @@
-#if UNITY_EDITOR
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
@@ -28,14 +27,16 @@ namespace ThirdPersonSimulation
         readonly byte[][] m_Pages;
         readonly long[] m_PageOffsets;
         readonly int[] m_PageLengths;
-        readonly Queue<int> m_Available = new();
-        readonly Queue<int> m_Pending = new();
+        readonly Queue<int> m_Available;
+        readonly Queue<int> m_Pending;
         readonly List<long> m_StoredOffsets = new();
         readonly byte[] m_ReadBuffer;
         readonly byte[] m_ReadHeader = new byte[8];
         readonly byte[] m_EncodedPage;
         readonly FileStream m_Writer;
         readonly FileStream m_Reader;
+        readonly BinaryWriter m_Index;
+        readonly bool m_KeepFiles;
         readonly Thread m_Worker;
         readonly string m_Directory;
         readonly string m_Path;
@@ -47,12 +48,15 @@ namespace ThirdPersonSimulation
         bool m_Stopping;
         ExceptionDispatchInfo m_Failure;
 
-        public RecordedFrameArchive(string directory, int pageCapacity, int pageCount)
+        public RecordedFrameArchive(string directory, int pageCapacity, int pageCount, bool keepFiles = false)
         {
             m_Directory = Path.GetFullPath(directory);
             Directory.CreateDirectory(m_Directory);
             m_Path = Path.Combine(m_Directory, "frames.bin");
             m_PageCapacity = pageCapacity;
+            m_KeepFiles = keepFiles;
+            m_Available = new Queue<int>(pageCount);
+            m_Pending = new Queue<int>(pageCount);
             m_Pages = new byte[pageCount][];
             m_PageOffsets = new long[pageCount];
             m_PageLengths = new int[pageCount];
@@ -68,6 +72,13 @@ namespace ThirdPersonSimulation
                 FileShare.ReadWrite, 1, FileOptions.SequentialScan);
             m_Reader = new FileStream(m_Path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite,
                 64 * 1024, FileOptions.RandomAccess);
+            if (keepFiles)
+            {
+                m_Index = new BinaryWriter(new FileStream(Path.Combine(m_Directory, "pages.idx"),
+                    FileMode.CreateNew, FileAccess.Write, FileShare.Read));
+                m_Index.Write(1);
+                m_Index.Write(pageCapacity);
+            }
             m_Worker = new Thread(WritePages) { IsBackground = true, Name = "Recorded Frame Archive" };
             m_Worker.Start();
         }
@@ -125,28 +136,34 @@ namespace ThirdPersonSimulation
                 lock (m_Gate)
                     storedOffset = m_StoredOffsets[checked((int)(pageOffset / m_PageCapacity))];
                 m_Reader.Position = storedOffset;
-                ReadBytes(m_ReadHeader, 0, 8);
-                int pageLength = BinaryPrimitives.ReadInt32LittleEndian(m_ReadHeader.AsSpan(0, 4));
-                int blocks = BinaryPrimitives.ReadInt32LittleEndian(m_ReadHeader.AsSpan(4, 4));
-                Array.Clear(m_ReadBuffer, 0, pageLength);
-                for (int i = 0; i < blocks; i++)
-                {
-                    ReadBytes(m_ReadHeader, 0, 8);
-                    int blockOffset = BinaryPrimitives.ReadInt32LittleEndian(m_ReadHeader.AsSpan(0, 4));
-                    int blockLength = BinaryPrimitives.ReadInt32LittleEndian(m_ReadHeader.AsSpan(4, 4));
-                    ReadBytes(m_ReadBuffer, blockOffset, blockLength);
-                }
+                ReadPage(m_Reader, m_ReadBuffer, m_ReadHeader);
                 m_ReadPageOffset = pageOffset;
             }
             return m_ReadBuffer.AsSpan(checked((int)(slice.Offset - pageOffset)), length);
         }
 
-        void ReadBytes(byte[] buffer, int offset, int length)
+        internal static int ReadPage(FileStream reader, byte[] buffer, byte[] header)
+        {
+            ReadBytes(reader, header, 0, 8);
+            int length = BinaryPrimitives.ReadInt32LittleEndian(header.AsSpan(0, 4));
+            int blocks = BinaryPrimitives.ReadInt32LittleEndian(header.AsSpan(4, 4));
+            Array.Clear(buffer, 0, length);
+            for (int i = 0; i < blocks; i++)
+            {
+                ReadBytes(reader, header, 0, 8);
+                int offset = BinaryPrimitives.ReadInt32LittleEndian(header.AsSpan(0, 4));
+                int count = BinaryPrimitives.ReadInt32LittleEndian(header.AsSpan(4, 4));
+                ReadBytes(reader, buffer, offset, count);
+            }
+            return length;
+        }
+
+        static void ReadBytes(FileStream reader, byte[] buffer, int offset, int length)
         {
             int read = 0;
             while (read < length)
             {
-                int count = m_Reader.Read(buffer, offset + read, length - read);
+                int count = reader.Read(buffer, offset + read, length - read);
                 if (count == 0)
                     throw new EndOfStreamException("录制帧归档载荷尚未完整写入。");
                 read += count;
@@ -218,6 +235,11 @@ namespace ThirdPersonSimulation
                     long offset = m_Writer.Position;
                     m_Writer.Write(m_EncodedPage, 0, length);
                     m_Writer.Flush();
+                    if (m_KeepFiles)
+                    {
+                        m_Index.Write(offset);
+                        m_Index.Flush();
+                    }
                     lock (m_Gate)
                     {
                         m_StoredOffsets.Add(offset);
@@ -249,10 +271,58 @@ namespace ThirdPersonSimulation
             m_Worker.Join();
             m_Reader.Dispose();
             m_Writer.Dispose();
+            m_Index?.Dispose();
             m_Failure?.Throw();
-            File.Delete(m_Path);
-            Directory.Delete(m_Directory);
+            if (!m_KeepFiles)
+            {
+                File.Delete(m_Path);
+                Directory.Delete(m_Directory);
+            }
         }
     }
+
+    public sealed class RecordedFrameArchiveReader : IDisposable
+    {
+        readonly FileStream m_Frames;
+        readonly long[] m_Offsets;
+        readonly byte[] m_Buffer;
+        readonly byte[] m_Header = new byte[8];
+        int m_CurrentPage = -1;
+        int m_Length;
+
+        public RecordedFrameArchiveReader(string directory)
+        {
+            using var index = new BinaryReader(File.OpenRead(Path.Combine(directory, "pages.idx")));
+            if (index.ReadInt32() != 1)
+                throw new InvalidDataException("录制帧页索引版本不受支持。");
+            PageCapacity = index.ReadInt32();
+            m_Offsets = new long[(index.BaseStream.Length - 8) / sizeof(long)];
+            for (int i = 0; i < m_Offsets.Length; i++)
+                m_Offsets[i] = index.ReadInt64();
+            m_Buffer = new byte[PageCapacity];
+            m_Frames = File.OpenRead(Path.Combine(directory, "frames.bin"));
+        }
+
+        public int PageCapacity { get; }
+        public int PageCount => m_Offsets.Length;
+
+        public ReadOnlySpan<byte> ReadPage(int page)
+        {
+            if (m_CurrentPage != page)
+            {
+                m_Frames.Position = m_Offsets[page];
+                m_Length = RecordedFrameArchive.ReadPage(m_Frames, m_Buffer, m_Header);
+                m_CurrentPage = page;
+            }
+            return m_Buffer.AsSpan(0, m_Length);
+        }
+
+        public ReadOnlySpan<byte> Read(in RecordedFrameSlice slice)
+        {
+            int page = checked((int)(slice.Offset / PageCapacity));
+            return ReadPage(page).Slice(checked((int)(slice.Offset % PageCapacity)), slice.Length);
+        }
+
+        public void Dispose() => m_Frames.Dispose();
+    }
 }
-#endif
