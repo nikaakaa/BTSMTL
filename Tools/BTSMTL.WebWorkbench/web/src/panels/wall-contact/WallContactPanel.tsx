@@ -76,30 +76,6 @@ export function WallContactPanel() {
       }));
   }, [run, state.liveId, state.actor]);
 
-  useEffect(() => {
-    if (!data || !ready || pending || busy || !state.liveId) return;
-    const current = data;
-    const liveId = state.liveId;
-    let reading = false, cancelled = false;
-    const timer = setInterval(async () => {
-      if (reading || inFlight.current !== null) return;
-      reading = true;
-      try {
-        const packet = await wallContactApi.command(liveId, {
-          type: 'wall-contact', commandId: crypto.randomUUID(), operation: 'observe', focusActorId: current.actorId,
-          loadCommandId: current.loadCommandId, ...current.targets[current.selected],
-        });
-        if (!cancelled) accept(packet);
-      } catch (failure) {
-        if (!cancelled) {
-          if (failure instanceof PendingWallCommand) setPending(failure.commandId);
-          setError(messageOf(failure));
-        }
-      } finally { reading = false; }
-    }, 750);
-    return () => { cancelled = true; clearInterval(timer); };
-  }, [data, ready, pending, busy, state.liveId, accept]);
-
   const selected = data?.targets[data.selected];
   const sourceTarget = data && selected ? { sourceAssetId: data.sourceAssetId, graphId: selected.graphId, nodeId: selected.nodeId } : null;
   const sourceKey = sourceTarget ? `${sourceTarget.sourceAssetId}/${sourceTarget.graphId}/${sourceTarget.nodeId}` : '';
@@ -169,6 +145,13 @@ export function WallContactPanel() {
         <Select label="扶墙节点" value={String(data.selected)} disabled={disabled} options={data.targets.map((target, index) => ({
           value: String(index), label: `${target.graphId} / ${target.nodeId}`,
         }))} onChange={index => read(data.targets[Number(index)])} />
+        <Button variant="ghost" disabled={disabled} onClick={() => {
+          const liveId = state.liveId;
+          if (liveId) void run(() => wallContactApi.command(liveId, {
+            type: 'wall-contact', commandId: crypto.randomUUID(), operation: 'observe', focusActorId: data.actorId,
+            loadCommandId: data.loadCommandId, ...data.targets[data.selected],
+          }));
+        }}>刷新结果</Button>
         <span className={styles.status}>{adopted ? 'Player 已采用' : '等待表现帧采用'}{changed ? ' · 有未应用改动' : ''}</span>
       </PanelBar>
       <Fold title="实际贴掌结果" defaultOpen>
