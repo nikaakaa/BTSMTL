@@ -1,4 +1,4 @@
-/* 照 Unity Visual Scripting（D4）。 */
+/* 照 NodeCanvas Canvas 实际画面（D4）。 */
 .root {
   display: flex;
   flex-direction: column;
@@ -6,95 +6,377 @@
   min-height: 0;
 }
 
+.crumbs {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.crumb {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.crumb > span {
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.crumb > span[data-current] {
+  color: var(--text);
+}
+
+.crumbArrow {
+  width: 0;
+  height: 0;
+  margin: 0 6px;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 5px solid var(--text-disabled);
+  flex: none;
+}
+
+.crumbLink {
+  all: unset;
+  color: #79a6e9;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.crumbLink:hover {
+  text-decoration: underline;
+}
+
+.crumbLink:focus-visible {
+  outline: 1px solid var(--accent);
+}
+
+.title {
+  display: flex;
+  align-items: center;
+  height: 21px;
+  padding: 0 8px;
+  background: var(--bg-3);
+  border-bottom: 1px solid var(--line);
+  color: #cfcfcf;
+  font-weight: 700;
+  font-size: 13.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  flex: none;
+}
+
+.title em {
+  margin-left: auto;
+  font-style: normal;
+  font-weight: 400;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
 .canvas {
   position: relative;
   flex: 1;
   min-height: 0;
-  background: var(--graph-bg);
+  background: #222222;
 }
 
 .canvas :global(.react-flow) {
-  --xy-background-color: var(--graph-bg);
-  --xy-node-border-radius: 4px;
-  background: var(--graph-bg);
+  --xy-background-color: #222222;
+  --xy-node-border-radius: 5px;
+  background: #222222;
 }
 
 .gridMinor {
-  stroke: var(--graph-grid);
+  stroke: #1e1e1e;
 }
 
 .gridMajor {
-  stroke: var(--graph-grid-major);
+  stroke: #1a1a1a;
 }
 
 .minimap {
-  border: 1px solid var(--line);
+  border: 1px solid #444;
 }
 
+.hint {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  padding: 0 6px;
+  background: rgb(38 38 38 / 92%);
+  border-top: 1px solid #1b1b1b;
+  color: var(--text-dim);
+  font-size: 11.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 5;
+}
+
+/* 状态机的状态块 */
+.state {
+  position: relative;
+  min-width: 80px;
+  background: #c35a45;
+  border: 1px solid #7a372b;
+  border-radius: 5px;
+  box-shadow: 0 2px 4px rgb(0 0 0 / 55%);
+  color: #fff2d8;
+  font: var(--font);
+}
+
+.state[data-system] {
+  background: #5d5d5d;
+  border-color: #3a3a3a;
+  color: #ececec;
+}
+
+.state[data-visited] {
+  box-shadow: 0 0 0 2px rgb(233 196 90 / 55%), 0 2px 4px rgb(0 0 0 / 55%);
+}
+
+.state[data-selected] {
+  box-shadow: 0 0 0 2px #79aef5, 0 0 10px rgb(121 174 245 / 45%);
+}
+
+.state[data-running] {
+  border: 3px solid #ffe000;
+  margin: -2px;
+}
+
+.state[data-faded] {
+  opacity: 0.45;
+}
+
+.stateId {
+  position: absolute;
+  left: 0;
+  top: -17px;
+  color: #7d7d7d;
+  font-size: 11.5px;
+  pointer-events: none;
+}
+
+.stateTitle {
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 14px;
+  font-weight: 700;
+  font-size: 14px;
+  white-space: nowrap;
+  text-shadow: 0 1px 1px rgb(0 0 0 / 45%);
+}
+
+.stateBody {
+  margin: 0 3px 3px;
+  padding: 5px 8px 6px;
+  background: #262626;
+  border-radius: 0 0 3px 3px;
+  color: #e8e8e8;
+  font-weight: 700;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.stateCaption {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 4px);
+  color: #8c8c8c;
+  font-size: 11px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.clock {
+  position: relative;
+  width: 15px;
+  height: 15px;
+  border: 2px solid #ffd000;
+  border-radius: 50%;
+  flex: none;
+}
+
+.clock::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 0;
+  width: 4px;
+  height: 5px;
+  border-left: 2px solid #ffd000;
+  border-bottom: 2px solid #ffd000;
+}
+
+.transition :global(.react-flow__edge-path) {
+  fill: none;
+  stroke: #a6a6ee;
+  stroke-width: 2.6;
+  opacity: 0.85;
+}
+
+.arrow {
+  fill: #a6a6ee;
+  opacity: 0.85;
+}
+
+.transition[data-faded] :global(.react-flow__edge-path), .transition[data-faded] .arrow {
+  opacity: 0.18;
+}
+
+.transition[data-hi] :global(.react-flow__edge-path) {
+  stroke: #d4d4ff;
+  stroke-width: 3.4;
+  opacity: 1;
+}
+
+.transition[data-hi] .arrow {
+  fill: #d4d4ff;
+  opacity: 1;
+}
+
+.transition[data-status='route'] :global(.react-flow__edge-path) {
+  stroke: #e9c45a;
+  stroke-width: 3.2;
+  opacity: 1;
+}
+
+.transition[data-status='route'] .arrow {
+  fill: #e9c45a;
+  opacity: 1;
+}
+
+.transition[data-status='live'] :global(.react-flow__edge-path) {
+  stroke: #ffe000;
+  stroke-width: 3.2;
+  stroke-dasharray: 9 6;
+  opacity: 1;
+}
+
+.transition[data-status='live'] .arrow {
+  fill: #ffe000;
+  opacity: 1;
+}
+
+.edgeLabel {
+  position: absolute;
+  padding: 1px 6px;
+  background: rgb(30 30 30 / 90%);
+  border-radius: 2px;
+  color: #bdbdbd;
+  font-size: 11.5px;
+  white-space: nowrap;
+  pointer-events: all;
+}
+
+.edgeLabel[data-status='route'], .edgeLabel[data-status='live'] {
+  color: #f0d27c;
+}
+
+.edgeLabel[data-hi] {
+  background: #1a1a1a;
+  border: 1px solid #6a6ab0;
+  color: #fff;
+  z-index: 5;
+}
+
+/* 流图节点 */
 .node {
-  width: 200px;
-  background: var(--node-bg);
-  border: 1px solid var(--node-line);
-  border-radius: 4px;
+  position: relative;
+  min-width: 140px;
+  background: #3a3a3a;
+  border: 1px solid #5f5f5f;
+  border-radius: 6px;
+  box-shadow: 0 2px 4px rgb(0 0 0 / 45%);
   color: var(--text);
   font: var(--font);
 }
 
+.node[data-occurred] {
+  border-color: #ffe000;
+}
+
 .node[data-selected] {
-  border-color: var(--select-graph);
+  box-shadow: 0 0 0 2px #79aef5, 0 0 10px rgb(121 174 245 / 45%);
 }
 
 .node[data-faded] {
   opacity: 0.4;
 }
 
-.node[data-failed] .header {
-  box-shadow: inset 0 -2px 0 var(--reject);
+.node[data-failed] {
+  border-color: var(--reject);
 }
 
 .header {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 4px 8px 5px;
-  background: var(--node-header);
-  border-bottom: 1px solid var(--bg-0);
-  border-radius: 3px 3px 0 0;
+  justify-content: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 14px;
+  border-bottom: 1px solid #5a5a5a;
+  margin: 0 4px;
 }
 
-.glyph {
-  width: 14px;
-  height: 14px;
-  border-radius: 2px;
+.header b {
+  color: #f2dca8;
+  font-weight: 700;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.flowIn, .flowOut {
+  position: absolute;
+  top: 50%;
+  width: 0;
+  height: 0;
+  margin-top: -6px;
+  border-top: 6px solid transparent;
+  border-bottom: 6px solid transparent;
+}
+
+.flowIn {
+  left: -9px;
+  border-left: 7px solid #9a9a9a;
+}
+
+.flowOut {
+  right: -9px;
+  border-left: 7px solid #9a9a9a;
+}
+
+.node[data-occurred] .flowIn, .node[data-occurred] .flowOut {
+  border-left-color: #ffe000;
+}
+
+.subgraphMark {
+  width: 8px;
+  height: 8px;
+  border: 1.5px solid #9a9a9a;
+  border-radius: 1px;
   flex: none;
 }
 
-.titles {
-  min-width: 0;
-}
-
-.titles small {
-  display: block;
-  font-size: 10.5px;
-  line-height: 1.15;
-  color: var(--text-disabled);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.titles b {
-  display: block;
-  font-weight: 600;
-  line-height: 1.2;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .body {
-  padding: 4px 0 6px;
+  padding: 4px 4px 6px;
 }
 
 .portRow {
@@ -102,6 +384,9 @@
   justify-content: space-between;
   gap: 8px;
   height: 22px;
+  margin-top: 2px;
+  background: #2d2d2d;
+  border-radius: 3px;
 }
 
 .portIn, .portOut, .portEmpty {
@@ -110,7 +395,7 @@
   align-items: center;
   gap: 6px;
   min-width: 0;
-  padding: 0 10px;
+  padding: 0 8px;
   white-space: nowrap;
 }
 
@@ -119,34 +404,20 @@
 }
 
 .portName {
+  color: var(--pc);
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.inputValue {
-  height: 18px;
-  min-width: 40px;
-  max-width: 90px;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  padding: 0 5px;
-  border: 1px solid var(--field-line);
-  border-radius: var(--radius);
-  background: var(--field);
-  font: var(--mono);
-  overflow: hidden;
-}
-
-.outputValue {
+.portValue {
   font: var(--mono);
   color: var(--value);
+  max-width: 90px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-/* 端口：执行端口箭头，数据端口圆点（有值实心） */
-.execPort, .valuePort, .hiddenHandle {
+.valuePort, .hiddenHandle, .triggerIn, .triggerOut {
   position: absolute;
   top: 50%;
   min-width: 0;
@@ -156,33 +427,21 @@
   background: transparent;
 }
 
-.portIn .execPort, .portIn .valuePort {
-  left: -5px;
+.portIn .valuePort {
+  left: -4px;
 }
 
-.portOut .execPort, .portOut .valuePort {
-  right: -5px;
+.portOut .valuePort {
+  right: -4px;
   left: auto;
 }
 
-.execPort {
-  width: 9px;
-  height: 11px;
-  transform: translateY(-50%);
-  background: var(--port-exec);
-  clip-path: polygon(0 0, 50% 0, 100% 50%, 50% 100%, 0 100%);
-}
-
-.execPort[data-off] {
-  background: var(--port-exec-off);
-}
-
 .valuePort {
-  width: 9px;
-  height: 9px;
+  width: 10px;
+  height: 10px;
   transform: translateY(-50%);
   border-radius: 50%;
-  background: var(--node-header);
+  background: #2d2d2d;
   border: 1.5px solid var(--pc);
 }
 
@@ -196,16 +455,32 @@
   opacity: 0;
 }
 
-/* 连线：执行线 --port-exec；本帧走过 2px，其余 1.2px 灰 */
+.triggerIn, .triggerOut {
+  top: 15px;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.triggerIn {
+  left: -6px;
+}
+
+.triggerOut {
+  right: -6px;
+  left: auto;
+}
+
+/* 流图连线：灰色曲线，本帧走过为黄色 */
 .edge {
   fill: none;
-  stroke: var(--edge-idle);
-  stroke-width: 1.2;
+  stroke: #727272;
+  stroke-width: 2;
 }
 
 .edge[data-status='passed'] {
-  stroke: var(--port-exec);
-  stroke-width: 2;
+  stroke: #ffe000;
+  stroke-width: 2.6;
 }
 
 .edge[data-status='rejected'] {

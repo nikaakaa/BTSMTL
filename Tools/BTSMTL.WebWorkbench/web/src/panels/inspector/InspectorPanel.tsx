@@ -144,7 +144,7 @@ function RunSummary() {
         <Values fields={summary.fields} />
       </Fold>
       {frame && (
-        <Fold title="本帧" kind="var(--cursor)" defaultOpen>
+        <Fold title="本帧" kind="var(--value)" defaultOpen>
           <Value label="秒数" value={frame.seconds.toFixed(3)} />
           <Values fields={frame.fields} />
         </Fold>
@@ -276,7 +276,7 @@ function ClipInspector({ id, missing }: { id: string; missing: ReactNode }) {
         <Value label="时长" value={(clip.endSeconds - clip.startSeconds).toFixed(3)} />
         <Value label="节点图" mono={false} value={clip.graphId ? '有' : '无'} />
       </Fold>
-      <Fold title="本次运行" kind="var(--cursor)" defaultOpen>
+      <Fold title="本次运行" kind="var(--value)" defaultOpen>
         {instances.length ? (
           <div className={styles.list}>
             {instances.map(item => {
@@ -414,7 +414,7 @@ function ActorInspector({ id, missing }: { id: string; missing: ReactNode }) {
         <Value label="位置" value={actor.root.position.map(value => value.toFixed(3)).join(', ')} />
         <Value label="旋转" value={actor.root.rotation.map(value => value.toFixed(3)).join(', ')} />
       </Fold>
-      <Fold title="本帧" kind="var(--cursor)" defaultOpen><Values fields={actor.fields} /></Fold>
+      <Fold title="本帧" kind="var(--value)" defaultOpen><Values fields={actor.fields} /></Fold>
       <Fold title="原始记录" kind="var(--node-flow)"><Raw value={actor.rawJson} /></Fold>
       <Identity extra={[{ displayName: '角色', value: actor.id }]} />
     </>

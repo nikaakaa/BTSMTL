@@ -114,7 +114,11 @@ async function syncRoute(runId: string, summary: Summary, generation: number) {
     });
     if (!isCurrent(generation)) return;
     if (!page.items.length) break;
-    frames = [...frames, ...page.items.map(({ hostFrame, seconds, playbacks }) => ({ hostFrame, seconds, playbacks }))];
+    frames = [...frames, ...page.items.map(({ hostFrame, seconds, playbacks, nodes, edges }) => ({
+      hostFrame, seconds, playbacks,
+      enters: nodes.filter(item => item.kind === 'Enter').map(item => `${item.graphId}/${item.nodeId}`),
+      passed: edges.filter(item => item.passed).map(item => `${item.graphId}/${item.edgeId}`),
+    }))];
     availability = page.availability;
     protocol = page.protocol;
   }

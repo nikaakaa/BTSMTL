@@ -11,6 +11,8 @@ export interface PortValue {
 
 export interface NodeState {
   occurred: number;
+  // 本帧之前的路线已进入过。
+  visited: boolean;
   failed: boolean;
   // 键为 `${direction}:${portId}`，取本帧最后一个样本。
   ports: Record<string, PortValue>;
@@ -22,12 +24,19 @@ export interface EdgeState {
   occurrences: number;
   selected: boolean;
   passed: boolean;
+  // 本帧之前的路线已通过。
+  traveled: boolean;
   rejected: boolean;
   signature: string;
 }
 
-const idleNode: NodeState = { occurred: 0, failed: false, ports: {}, detail: '', signature: '' };
-const idleEdge: EdgeState = { occurrences: 0, selected: false, passed: false, rejected: false, signature: '' };
+const idleNode: NodeState = { occurred: 0, visited: false, failed: false, ports: {}, detail: '', signature: '' };
+const idleEdge: EdgeState = { occurrences: 0, selected: false, passed: false, traveled: false, rejected: false, signature: '' };
+
+export interface RouteHistory {
+  visited: Set<string>;
+  traveled: Set<string>;
+}
 
 export class RouteStore {
   private nodes = new Map<string, NodeState>();
@@ -57,7 +66,7 @@ export class RouteStore {
     this.listeners.get(key)?.forEach(listener => listener());
   }
 
-  update(nodes: LaidNode[], edges: GraphEdge[], records: RouteRecord[]) {
+  update(nodes: LaidNode[], edges: GraphEdge[], records: RouteRecord[], history: RouteHistory) {
     for (const { node } of nodes) {
       const events = records.filter((item): item is Extract<RouteRecord, { kind: string }> => isNodeOccurrence(item) && item.nodeId === node.id)
         .sort((left, right) => Number(left.sequence) - Number(right.sequence));
@@ -66,9 +75,10 @@ export class RouteStore {
         if (isPortSample(sample) && sample.nodeId === node.id)
           ports[`${sample.direction}:${sample.portId}`] = { value: sample.value, valueType: sample.valueType, sequence: sample.sequence };
       const detail = events.map(item => `${item.sequence} · ${item.kind} · ${item.result}`).join('\n');
+      const visited = history.visited.has(node.id);
       const next: NodeState = {
-        occurred: events.length, failed: events.some(item => item.result === 'Failure'), ports, detail,
-        signature: `${detail}|${Object.entries(ports).map(([key, port]) => `${key}=${port.value}`).join(',')}`,
+        occurred: events.length, visited, failed: events.some(item => item.result === 'Failure'), ports, detail,
+        signature: `${visited}|${detail}|${Object.entries(ports).map(([key, port]) => `${key}=${port.value}`).join(',')}`,
       };
       if (next.signature === this.node(node.id).signature) continue;
       this.nodes.set(node.id, next);
@@ -78,7 +88,11 @@ export class RouteStore {
       const events = records.filter(item => isEdgeOccurrence(item) && item.edgeId === edge.id) as Extract<RouteRecord, { edgeId: string }>[];
       const selected = events.some(item => item.selected), passed = events.some(item => item.passed);
       const rejected = events.length > 0 && events.every(item => !item.passed);
-      const next: EdgeState = { occurrences: events.length, selected, passed, rejected, signature: `${events.length}|${selected}|${passed}|${rejected}` };
+      const traveled = history.traveled.has(edge.id);
+      const next: EdgeState = {
+        occurrences: events.length, selected, passed, traveled, rejected,
+        signature: `${events.length}|${selected}|${passed}|${traveled}|${rejected}`,
+      };
       if (next.signature === this.edge(edge.id).signature) continue;
       this.edges.set(edge.id, next);
       this.notify(`edge:${edge.id}`);

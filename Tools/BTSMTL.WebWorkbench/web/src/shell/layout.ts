@@ -9,7 +9,7 @@ import { instanceNumber, instanceTitle, panelInfo, panelTypeOf, panelTypes, type
 const storageKey = 'btsmtl.workbench.layout';
 const signature = panelTypes.join(',');
 const source = 'layout';
-const inspectorWidth = 292;
+const inspectorWidth = 372;
 
 let api: DockviewApi | null = null;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -95,8 +95,8 @@ function buildDefault() {
     const width = dockview.width, height = dockview.height;
     if (!width || !height) return false;
     inspector.group.api.setSize({ width: inspectorWidth });
-    player.group.api.setSize({ height: Math.round(height * 0.58) });
-    player.group.api.setSize({ width: Math.round((width - inspectorWidth) * 0.52) });
+    player.group.api.setSize({ height: Math.round(height * 0.43) });
+    player.group.api.setSize({ width: Math.round((width - inspectorWidth) * 0.5) });
     return true;
   };
   if (!size()) requestAnimationFrame(() => size());

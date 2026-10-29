@@ -14,21 +14,25 @@ import {
   getState, inputRootKey, runActions, selectionActions, useWorkbench, type RouteFrameSpan,
 } from '../../state/store';
 import {
-  inputClipSelectId, inputTrackSelectId, nearestFrame, selectedInputRoot, timelineRows, trackColors,
-  type ClipInstance, type GroupRow, type TrackKind, type TrackRow,
+  inputClipSelectId, inputTrackSelectId, nearestFrame, routeSegments, segmentRows, segmentTitle, selectedInputRoot,
+  trackColors, type ClipInstance, type GroupRow, type RouteSegment, type TrackKind, type TrackRow,
 } from '../../state/timelineModel';
+import { nodeSelectId } from '../../state/graphModel';
 import { transport } from '../../state/transport';
-import { BarSeparator, Empty } from '../../ui/blocks';
-import { Button, MenuButton, ObjectField, Select, TextInput, type MenuEntry } from '../../ui/controls';
+import { Empty } from '../../ui/blocks';
+import { Button, MenuButton, Select, TextInput, type MenuEntry } from '../../ui/controls';
 import styles from './timeline.module.css';
 
-// Timeline 面板（D5）：dnd-timeline 管时间与像素换算、缩放、平移；刻度、片段、输入标记、游标自绘。
+// Timeline 面板（D5）：照 BTSMTL Timeline Editor，按路线段（状态 → Timeline）分组，每段可折叠。
+// dnd-timeline 管时间与像素换算、缩放、平移；刻度、片段、输入标记、游标自绘。
 // 游标是独立覆盖线，订阅 cursor 后直接改 transform；片段只按自身是否处于游标下切换 class。
 
-const sidebarWidth = 290;
+const sidebarWidth = 320;
 const minSpan = 0.05;
-const rowHeights = { group: 24, anim: 30, act: 24, in: 26, other: 24, inputGroup: 24 } as const;
+const rowHeights = { group: 26, anim: 40, motion: 40, act: 34, in: 36, other: 34, inputGroup: 26 } as const;
 const overscan = 120;
+// 窄于此宽度的片段把名字画在片段后面。
+const labelInside = 46;
 
 interface InputGroupRow { kind: 'inputGroup'; id: string }
 interface InputTrackRow { kind: 'inputTrack'; id: string; selectId: string; track: FrozenInputTimeline['tracks'][number] }
@@ -143,9 +147,12 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
   onRangeChanged(update: (previous: Range) => Range): void;
 }) {
   const { setTimelineRef, getValueFromScreenX } = useTimelineContext();
-  const { timelines, inputTimeline, inputRoot } = useWorkbench(useShallow(state => ({
-    timelines: state.timelines, inputTimeline: state.inputTimeline, inputRoot: state.inputRoot,
+  const { timelines, inputTimeline, inputRoot, graphs } = useWorkbench(useShallow(state => ({
+    timelines: state.timelines, inputTimeline: state.inputTimeline, inputRoot: state.inputRoot, graphs: state.graphs,
   })));
+  const segments = useMemo(() => routeSegments(frames, timelines, graphs), [frames, timelines, graphs]);
+  const graphNames = useMemo(() => new Map((graphs ?? []).filter(graph => graph.displayName && graph.displayName !== graph.id)
+    .map(graph => [graph.id, graph.displayName!])), [graphs]);
 
   const rows = useMemo(() => {
     const filter = params.filter.trim().toLowerCase();
@@ -159,24 +166,15 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
           if (!filter || track.displayName.toLowerCase().includes(filter))
             result.push({ kind: 'inputTrack', id: `input:${track.id}`, selectId: inputTrackSelectId(track.id), track });
     }
-    let group: GroupRow | null = null;
-    let groupRows: TrackRow[] = [];
-    const flush = () => {
-      if (!group) return;
+    for (const segment of segments) {
+      const group: GroupRow = { kind: 'group', id: `group:${segment.id}`, segment, title: segmentTitle(segment) };
       const titleMatched = !filter || group.title.toLowerCase().includes(filter);
-      const children = titleMatched ? groupRows : groupRows.filter(row => row.track.displayName.toLowerCase().includes(filter));
-      if (titleMatched || children.length) result.push(group, ...(collapsed.has(group.id) ? [] : children));
-    };
-    for (const row of timelineRows(frames, timelines)) {
-      if (row.kind === 'group') {
-        flush();
-        group = row;
-        groupRows = [];
-      } else groupRows.push(row);
+      const tracks = collapsed.has(group.id) ? [] : segmentRows(segment, graphNames);
+      const children = titleMatched ? tracks : tracks.filter(row => row.track.displayName.toLowerCase().includes(filter));
+      if (titleMatched || children.length) result.push(group, ...children);
     }
-    flush();
     return result;
-  }, [frames, timelines, inputTimeline, inputRoot, params.filter, params.collapsed]);
+  }, [segments, graphNames, inputTimeline, inputRoot, params.filter, params.collapsed]);
 
   const toggle = useCallback((id: string) => {
     const collapsed = new Set(params.collapsed);
@@ -189,7 +187,6 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
   }, [getValueFromScreenX]);
 
   const settings: MenuEntry[] = [
-    { label: '适配全部', onSelect: () => setParams({ range: fitRange(bounds) }) },
     { kind: 'check', label: '游标离开视图时跟随', checked: params.follow, onChange: follow => setParams({ follow }) },
     { kind: 'separator' },
     { label: '展开全部分组', onSelect: () => setParams({ collapsed: [] }) },
@@ -201,21 +198,21 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
 
   return (
     <div className={styles.window}>
-      <TimelineToolbar settings={settings} />
+      <TimelineToolbar settings={settings} fit={() => setParams({ range: fitRange(bounds) })} />
       <div className={styles.timeline} ref={setTimelineRef}>
         <div className={styles.header}>
-          <div className={styles.filter}>
-            <TextInput className={styles.filterInput} placeholder="筛选轨道" value={params.filter}
-              onChange={event => setParams({ filter: event.currentTarget.value })} aria-label="筛选轨道" />
-          </div>
+          <div className={styles.timeHead}>时间</div>
           <Ruler bounds={bounds} seekAt={seekAt} />
         </div>
-        <div className={styles.markersRow}>
-          <div className={styles.markersHead}>Markers</div>
-          <PlaybackMarkers frames={frames} timelines={timelines} />
+        <div className={styles.filterRow}>
+          <div className={styles.filter}>
+            <TextInput className={styles.filterInput} placeholder="搜索轨道" value={params.filter}
+              onChange={event => setParams({ filter: event.currentTarget.value })} aria-label="搜索轨道" />
+          </div>
+          <div className={styles.filterLane} />
         </div>
         <Rows rows={rows} collapsed={params.collapsed} toggle={toggle} seekAt={seekAt} inputRoots={inputTimeline?.roots} />
-        <Overlay bounds={bounds} follow={params.follow} onRangeChanged={onRangeChanged} />
+        <Overlay bounds={bounds} segments={segments} follow={params.follow} onRangeChanged={onRangeChanged} />
       </div>
     </div>
   );
@@ -223,36 +220,45 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
 
 // ── 窗口工具条：Preview 开关、到开头、上一帧、播放、下一帧、到结尾、帧号；右侧资产名与设置 ──
 
-function TimelineToolbar({ settings }: { settings: MenuEntry[] }) {
+// 照 Timeline Editor：上行预览档位、播放与当前秒数；下行逐帧、适配与设置。
+function TimelineToolbar({ settings, fit }: { settings: MenuEntry[]; fit(): void }) {
   const { playing, blocked, previous, next } = useTransportState();
   const { mode, modes } = useWorkbench(useShallow(state => ({ mode: state.mode, modes: state.host?.modes })));
-  const lastMode = useRef('real');
-  if (mode !== 'off') lastMode.current = mode;
-  const canToggle = !!modes?.some(item => item.id === 'off' && item.available);
-  const asset = useWorkbench(state => {
+  const seconds = useWorkbench(state => state.seconds);
+  const segment = useWorkbench(state => {
     const frame = state.routeFrames[state.frameIndex];
-    const documentId = frame?.playbacks[0]?.documentId;
-    return documentId ? state.timelines.find(item => item.documentId === documentId)?.displayName ?? '' : '';
+    const playback = frame?.playbacks[0];
+    if (!playback) return '路线未开始';
+    const name = state.timelines.find(item => item.documentId === playback.documentId)?.displayName ?? playback.documentId.slice(0, 8);
+    return `${name} · 本地 ${playback.cursorSeconds.toFixed(3)} 秒`;
   });
   return (
-    <div className={styles.toolbar}>
-      <Button variant="ghost" className={styles.preview} pressed={mode !== 'off'} disabled={!canToggle}
-        tip={canToggle ? '预览开关' : '宿主没有提供关闭档位'}
-        onClick={() => { if (mode === 'off') runActions.setMode(lastMode.current); else { transport.pause(); runActions.setMode('off'); } }}>
-        Preview
-      </Button>
-      <BarSeparator />
-      <Button variant="ghost" aria-label="到开头" tip={previous ?? '到开头（Home）'} disabled={!!previous} onClick={() => transport.home()}>⏮</Button>
-      <Button variant="ghost" aria-label="上一帧" tip={previous ?? '上一帧（←）'} disabled={!!previous} onClick={() => transport.step(-1)}>◀|</Button>
-      <Button variant="ghost" aria-label={playing ? '暂停' : '播放'} pressed={playing} tip={blocked ?? '播放／暂停（空格）'}
-        disabled={!!blocked} onClick={() => transport.toggle()}>{playing ? '❚❚' : '▶'}</Button>
-      <Button variant="ghost" aria-label="下一帧" tip={next ?? '下一帧（→）'} disabled={!!next} onClick={() => transport.step(1)}>|▶</Button>
-      <Button variant="ghost" aria-label="到结尾" tip={next ?? '到结尾（End）'} disabled={!!next} onClick={() => transport.end()}>⏭</Button>
-      <FrameField showSeconds={false} />
-      <span className={styles.grow} />
-      <span className={styles.asset}>{asset}</span>
-      <MenuButton label="Timeline 设置" variant="ghost" entries={settings}>⚙</MenuButton>
-    </div>
+    <>
+      <div className={styles.toolbar}>
+        {(modes ?? []).map(item => (
+          <Button key={item.id} variant="ghost" className={styles.mode} pressed={mode === item.id} disabled={!item.available}
+            tip={item.available ? `预览档位：${item.displayName}` : item.reason}
+            onClick={() => { if (item.id === 'off') transport.pause(); runActions.setMode(item.id); }}>
+            {item.displayName}
+          </Button>
+        ))}
+        <Button variant="ghost" aria-label={playing ? '暂停' : '播放'} pressed={playing} tip={blocked ?? '播放／暂停（空格）'}
+          disabled={!!blocked} onClick={() => transport.toggle()}>
+          <i className={playing ? styles.pauseGlyph : styles.playGlyph} />
+        </Button>
+        <span className={styles.seconds}>{seconds === null ? '—' : `${seconds.toFixed(3)} 秒`}</span>
+        <span className={styles.hint}>{segment}</span>
+        <span className={styles.grow} />
+        <FrameField showSeconds={false} />
+      </div>
+      <div className={styles.toolbar}>
+        <Button aria-label="上一帧" tip={previous ?? '上一帧（←）'} disabled={!!previous} onClick={() => transport.step(-1)}>‹</Button>
+        <Button aria-label="下一帧" tip={next ?? '下一帧（→）'} disabled={!!next} onClick={() => transport.step(1)}>›</Button>
+        <Button tip="显示整条运行" onClick={fit}>适配</Button>
+        <span className={styles.grow} />
+        <MenuButton label="Timeline 设置" caret entries={settings}>显示设置</MenuButton>
+      </div>
+    </>
   );
 }
 
@@ -274,7 +280,7 @@ function Ruler({ bounds, seekAt }: { bounds: Range; seekAt(clientX: number): voi
       const major = index % 5 === 0;
       const x = valueToPixels(value - range.start);
       ticks.push(<i key={index} className={major ? styles.majorTick : styles.minorTick} style={{ left: x }} />);
-      if (major) ticks.push(<span key={`l${index}`} className={styles.tickLabel} style={{ left: x }}>{value.toFixed(digits)}</span>);
+      if (major) ticks.push(<span key={`l${index}`} className={styles.tickLabel} style={{ left: x }}>{value.toFixed(digits)} s</span>);
     }
   }
   const drag = (event: PointerEvent<HTMLDivElement>) => {
@@ -287,32 +293,6 @@ function Ruler({ bounds, seekAt }: { bounds: Range; seekAt(clientX: number): voi
       onPointerDown={drag}
       onPointerMove={event => { if (event.currentTarget.hasPointerCapture(event.pointerId)) seekAt(event.clientX); }}>
       {ticks}
-    </div>
-  );
-}
-
-// Markers 行：每段 Timeline 播放的起点画成五边形旗。
-function PlaybackMarkers({ frames, timelines }: { frames: RouteFrameSpan[]; timelines: { documentId: string; displayName: string }[] }) {
-  const { range, valueToPixels } = useTimelineContext();
-  const names = useMemo(() => new Map(timelines.map(item => [item.documentId, item.displayName])), [timelines]);
-  const starts = useMemo(() => {
-    const result: { key: string; seconds: number; name: string }[] = [];
-    const active = new Set<string>();
-    for (const frame of frames) {
-      const now = new Set(frame.playbacks.map(playback => playback.documentId));
-      for (const id of now) if (!active.has(id)) result.push({ key: `${id}@${frame.hostFrame}`, seconds: frame.seconds, name: names.get(id) ?? id.slice(0, 8) });
-      active.clear();
-      for (const id of now) active.add(id);
-    }
-    return result;
-  }, [frames, names]);
-  return (
-    <div className={styles.markersLane}>
-      {starts.filter(item => item.seconds >= range.start && item.seconds <= range.end).map(item => (
-        <span key={item.key} className={styles.flag} style={{ left: valueToPixels(item.seconds - range.start) }} title={item.name}>
-          <i /><span>{item.name}</span>
-        </span>
-      ))}
     </div>
   );
 }
@@ -398,25 +378,43 @@ const Triangle = ({ open }: { open: boolean }) => <i className={open ? styles.fo
 const GroupLine = memo(function GroupLine({ row, open, toggle, seekAt }: {
   row: GroupRow; open: boolean; toggle(id: string): void; seekAt(clientX: number): void;
 }) {
-  const value = useWorkbench(state => {
-    const playback = state.routeFrames[state.frameIndex]?.playbacks.find(item => item.documentId === row.documentId);
-    return playback ? `${playback.cursorSeconds.toFixed(3)} s` : '';
+  const segment = row.segment;
+  const now = useWorkbench(state => state.frameIndex >= segment.firstIndex && state.frameIndex <= segment.lastIndex);
+  const stateNode = useWorkbench(state => {
+    if (!segment.state) return null;
+    for (const graph of state.graphs ?? []) {
+      if (graph.id !== segment.state.graphId) continue;
+      const node = graph.nodes.find(item => item.id === segment.state!.nodeId);
+      if (node) return nodeSelectId(graph, node);
+    }
+    return null;
   });
-  const { range, valueToPixels } = useTimelineContext();
+  const authoredEnd = segment.origin + segment.length;
   return (
     <Line id={row.id} height={rowHeights.group} seekAt={seekAt} laneClass={styles.groupLane} headClass={styles.groupHead} head={
       <>
         <button className={styles.fold} onClick={() => toggle(row.id)} aria-expanded={open} aria-label={open ? '折叠' : '展开'}>
           <Triangle open={open} />
         </button>
-        <span className={styles.name}>{row.title}</span>
-        <span className={styles.value}>{value}</span>
+        <button className={styles.segmentTitle} data-now={now || undefined}
+          title={stateNode ? '选中该状态并跳到段首' : '跳到段首'}
+          onClick={() => {
+            if (stateNode) selectionActions.select({ kind: 'node', id: stateNode });
+            transport.seek(segment.firstIndex);
+          }}>{row.title}</button>
       </>
     }>
-      {row.segments.map(segment => (
-        <span key={segment.index} className={styles.segment} title={`实际播放 ${segment.start.toFixed(3)} — ${segment.end.toFixed(3)} s`}
-          style={{ left: valueToPixels(segment.start - range.start), width: Math.max(1, valueToPixels(segment.end - segment.start)) }} />
-      ))}
+      {open
+        ? <Positioned start={segment.origin} end={authoredEnd} className={styles.segmentBracket} />
+        : (
+          <>
+            <Positioned start={segment.start} end={segment.end} className={styles.segmentPlayed}
+              title={`实际播放 ${segment.start.toFixed(3)}–${segment.end.toFixed(3)} s`} />
+            {authoredEnd > segment.end && (
+              <Positioned start={segment.end} end={authoredEnd} className={styles.segmentRest} title="离开后未播放的部分" />
+            )}
+          </>
+        )}
     </Line>
   );
 });
@@ -427,25 +425,28 @@ function useSelected(selectId: string, kind: 'clip' | 'track') {
 
 const TrackLine = memo(function TrackLine({ row, seekAt }: { row: TrackRow; seekAt(clientX: number): void }) {
   const selected = useSelected(row.selectId, 'track');
-  const value = useWorkbench(state => {
-    const seconds = state.seconds;
-    if (seconds === null) return null;
-    return row.clips.find(clip => clip.start <= seconds && (seconds < clip.end || (clip.cut && seconds <= clip.end)))?.clip.displayName ?? null;
-  });
   const { range } = useTimelineContext();
   const visible = row.clips.filter(clip => clip.end >= range.start && clip.start <= range.end);
   const blends = useMemo(() => blendRegions(row.clips), [row.clips]);
+  const segment = row.segment;
+  // 极短片段的名字画到下一个片段之前。
+  const nextStarts = useMemo(() => {
+    const starts = row.clips.map(clip => clip.start).sort((left, right) => left - right);
+    return new Map(row.clips.map(clip => [clip.key, starts.find(start => start > clip.start) ?? Infinity]));
+  }, [row.clips]);
   return (
     <Line id={row.id} height={rowHeights[row.trackKind]} seekAt={seekAt} headClass={styles.trackHead} head={
       <button className={styles.headButton} data-selected={selected || undefined}
         style={{ ['--tc' as string]: trackColors[row.trackKind] }}
         onClick={() => selectionActions.select({ kind: 'track', id: row.selectId })}>
+        <span className={styles.slot} />
         <span className={styles.name}>{row.track.displayName}</span>
-        <ObjectField className={styles.binding} kind={trackColors[row.trackKind]} text={value ?? 'None'} />
         {row.track.muted && <span className={styles.muted}>静音</span>}
       </button>
     }>
-      {visible.map(clip => <Clip key={clip.key} clip={clip} kind={row.trackKind} />)}
+      <Positioned start={segment.origin} end={segment.origin + segment.length} className={styles.authoredRange} />
+      <Positioned start={segment.start} end={segment.end} className={styles.playedRange} />
+      {visible.map(clip => <Clip key={clip.key} clip={clip} kind={row.trackKind} next={nextStarts.get(clip.key)!} />)}
       {blends.filter(blend => blend.end >= range.start && blend.start <= range.end).map(blend => (
         <Blend key={blend.key} start={blend.start} end={blend.end} />
       ))}
@@ -466,32 +467,44 @@ function blendRegions(clips: ClipInstance[]) {
   return result;
 }
 
-function Positioned({ start, end, className, children, style }: {
-  start: number; end: number; className: string; children?: ReactNode; style?: CSSProperties;
+function Positioned({ start, end, className, children, style, title }: {
+  start: number; end: number; className: string; children?: ReactNode; style?: CSSProperties; title?: string;
 }) {
   const { range, valueToPixels } = useTimelineContext();
   return (
-    <div className={className} style={{ ...style, left: valueToPixels(start - range.start), width: Math.max(1, valueToPixels(end - start)) }}>
+    <div className={className} title={title}
+      style={{ ...style, left: valueToPixels(start - range.start), width: Math.max(1, valueToPixels(end - start)) }}>
       {children}
     </div>
   );
 }
 
-const Clip = memo(function Clip({ clip, kind }: { clip: ClipInstance; kind: TrackKind }) {
+const Clip = memo(function Clip({ clip, kind, next }: { clip: ClipInstance; kind: TrackKind; next: number }) {
   const { setNodeRef, itemStyle, itemContentStyle } = useItem({ id: clip.key, span: { start: clip.start, end: clip.end }, disabled: true });
-  const active = useWorkbench(state => state.seconds !== null && clip.start <= state.seconds &&
-    (state.seconds < clip.end || (clip.cut && state.seconds <= clip.end)));
+  const { valueToPixels } = useTimelineContext();
+  const active = useWorkbench(state => state.seconds !== null && clip.start <= state.seconds && state.seconds < Math.min(clip.end, clip.exit));
   const selected = useSelected(clip.selectId, 'clip');
-  const label = kind === 'act' ? 'Active' : clip.clip.displayName ?? clip.clip.contract;
+  const width = valueToPixels(clip.end - clip.start);
+  const dimmed = clip.start >= clip.exit;
+  // 超出段离开时刻的部分压暗。
+  const cut = !dimmed && clip.end > clip.exit ? valueToPixels(clip.exit - clip.start) : null;
+  const band = kind === 'anim' || kind === 'motion';
+  const inside = band || width >= labelInside;
+  const outsideWidth = Number.isFinite(next) ? valueToPixels(next - clip.end) - 10 : 400;
   return (
     <div ref={setNodeRef} style={itemStyle} className={styles.item}>
       <div style={itemContentStyle}>
         <button className={styles.clip} data-kind={kind} data-active={active || undefined} data-selected={selected || undefined}
-          data-cut={clip.cut || undefined} style={{ ['--tc' as string]: trackColors[kind] }}
-          title={`${clip.clip.displayName ?? clip.clip.contract}\n${clip.start.toFixed(3)} — ${clip.end.toFixed(3)} s${clip.cut ? '（播放中断）' : ''}`}
+          data-dim={dimmed || undefined}
+          title={`${clip.label} · ${clip.start.toFixed(3)}–${clip.end.toFixed(3)} s${clip.end > clip.exit ? `（${clip.exit.toFixed(3)} s 离开本段）` : ''}`}
           onClick={() => selectionActions.select({ kind: 'clip', id: clip.selectId })}>
-          <span>{label}</span>
+          {inside && <span className={styles.clipLabel}>{clip.label}</span>}
+          {band && <><i className={styles.easeIn} /><i className={styles.easeOut} /></>}
+          {cut !== null && <i className={styles.clipCut} style={{ left: cut }} />}
         </button>
+        {!inside && outsideWidth > 12 && (
+          <span className={styles.clipOut} data-dim={dimmed || undefined} style={{ left: width + 5, maxWidth: outsideWidth }}>{clip.label}</span>
+        )}
       </div>
     </div>
   );
@@ -551,6 +564,7 @@ const InputTrackLine = memo(function InputTrackLine({ row, seekAt }: { row: Inpu
     <Line id={row.id} height={rowHeights.in} seekAt={seekAt} headClass={styles.trackHead} head={
       <button className={`${styles.headButton} ${styles.inputHead}`} data-selected={selected || undefined}
         style={{ ['--tc' as string]: trackColors.in }} onClick={() => selectionActions.select({ kind: 'track', id: row.selectId })}>
+        <span className={styles.slot} />
         <span className={styles.name}>{row.track.displayName}</span>
         <span className={styles.frameValue}>{value || '—'}</span>
       </button>
@@ -603,8 +617,8 @@ function InputKey({ trackId, id, seconds, title }: { trackId: string; id: string
 
 // ── 游标覆盖线与结束线：直接改 transform，不经过 React ──
 
-function Overlay({ bounds, follow, onRangeChanged }: {
-  bounds: Range; follow: boolean; onRangeChanged(update: (previous: Range) => Range): void;
+function Overlay({ bounds, segments, follow, onRangeChanged }: {
+  bounds: Range; segments: RouteSegment[]; follow: boolean; onRangeChanged(update: (previous: Range) => Range): void;
 }) {
   const { range, valueToPixels } = useTimelineContext();
   const line = useRef<HTMLDivElement>(null);
@@ -629,7 +643,7 @@ function Overlay({ bounds, follow, onRangeChanged }: {
     const x = valueToPixels(state.seconds - range.start);
     lineElement.hidden = tagElement.hidden = false;
     lineElement.style.transform = tagElement.style.transform = `translateX(${x}px)`;
-    tagElement.textContent = state.hostFrame ?? '';
+    tagElement.textContent = `${state.seconds.toFixed(3)} s`;
     // 下一次绘制后报告就绪：片段的游标 class 由 React 提交，等到绘制完成。
     if (visible && !pending.current) {
       pending.current = true;
@@ -651,10 +665,14 @@ function Overlay({ bounds, follow, onRangeChanged }: {
 
   useEffect(() => () => clearRendered(panelId), [panelId]);
 
-  const endX = valueToPixels(bounds.end - range.start);
+  const x = (seconds: number) => `translateX(${valueToPixels(seconds - range.start)}px)`;
   return (
     <div className={styles.overlay} style={{ left: sidebarWidth }}>
-      <div className={styles.endLine} style={{ transform: `translateX(${endX}px)` }} />
+      <div className={styles.startLine} style={{ transform: x(bounds.start) }} />
+      {segments.filter(segment => segment.start > range.start && segment.start < range.end).map(segment => (
+        <div key={segment.id} className={styles.segmentLine} style={{ transform: x(segment.start) }} />
+      ))}
+      <div className={styles.endLine} style={{ transform: x(bounds.end) }} />
       <div ref={line} className={styles.cursorLine} hidden />
       <div ref={tag} className={styles.cursorTag} hidden />
     </div>

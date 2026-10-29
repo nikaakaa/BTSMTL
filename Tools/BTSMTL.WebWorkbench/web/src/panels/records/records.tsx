@@ -39,7 +39,7 @@ export function FrameSections({ frame }: { frame: Frame }) {
 export function FrameFull({ frame }: { frame: Frame }) {
   return (
     <>
-      <Fold title="本帧" kind="var(--cursor)" defaultOpen>
+      <Fold title="本帧" kind="var(--value)" defaultOpen>
         <Facts fields={[{ displayName: '秒数', value: frame.seconds.toFixed(3) }, ...frame.fields]} />
       </Fold>
       {frame.actors.map(actor => (
