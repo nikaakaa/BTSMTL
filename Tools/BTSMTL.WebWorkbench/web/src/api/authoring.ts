@@ -1,5 +1,5 @@
 import { parseSkillJson, stringifySkillJson, type JsonObject, type JsonValue } from '../state/skillJson';
-import type { GraphDefinition } from './types';
+import type { GraphDefinition, LiveCommandStage, PlayerPreviewTarget } from './types';
 import { getJson, getText, postText, putJson, query } from './http';
 
 // 技能作者 HTTP 接口（宿主以 --SkillAuthoring 启用）：技能文件夹内全部 JSON 文件原文与内容修订。
@@ -173,9 +173,49 @@ export interface SkillCompilation {
 }
 
 export interface SkillSaveResult {
+  saved: true;
+  compilationState: 'succeeded';
   content: SkillSnapshot;
   compilation: SkillCompilation;
+  preview: PlayerSkillRefreshReceipt | null;
 }
+
+export type PlayerSkillRefreshTarget = Omit<PlayerPreviewTarget, 'playerBuildId'> & { requestId: string };
+
+export interface SkillSaveRequest {
+  content: { files: SkillFile[]; removedFiles: string[] };
+  preview: PlayerSkillRefreshTarget | null;
+}
+
+interface SkillRefreshPackage {
+  scenePath: string;
+  sceneRevision: string;
+  programAssetId: string;
+  skillIdentity: string;
+  programRevision: string;
+  contentHash: string;
+}
+
+interface SkillRefreshCommand {
+  stage: LiveCommandStage;
+  commandId: string | null;
+  ack: unknown;
+}
+
+interface SkillRefreshIdentity {
+  requestId: string;
+  liveId: string;
+  playerBuildId: string | null;
+  sourceRevision: string;
+  baseSceneRevision: string;
+  source: PlayerPreviewTarget['source'];
+}
+
+export type PlayerSkillRefreshReceipt = SkillRefreshIdentity & (
+  | { stage: 'accepted'; package: SkillRefreshPackage; command: SkillRefreshCommand & { stage: 'submitted' }; error: null; statusPath: string }
+  | { stage: 'adopted'; package: SkillRefreshPackage; command: SkillRefreshCommand & { stage: 'applied' }; error: null; statusPath: string }
+  | { stage: 'failed' | 'unavailable'; package: SkillRefreshPackage | null; command: SkillRefreshCommand | null; error: string; statusPath: string | null }
+);
 
 export interface SkillFormatError {
   code: string;
@@ -186,15 +226,13 @@ export interface SkillFormatError {
   message: string;
 }
 
-export interface SkillSaveRejection {
-  saved: boolean;
-  content: SkillSnapshot;
-  stage: 'source-rejected' | 'compilation-failed';
-  diagnostic?: { message: string; errors: SkillFormatError[] };
-  exitCode?: number;
-  output?: string;
-  error?: string;
-}
+export type SkillSaveRejection = { saved: true; content: SkillSnapshot } & (
+  | { stage: 'source-rejected'; compilationState: 'not-started' } & (
+    | { diagnostic: { message: string; errors: SkillFormatError[] }; error?: never }
+    | { diagnostic?: never; error: string }
+  )
+  | { stage: 'compilation-failed'; compilationState: 'failed'; diagnostic?: never; exitCode: number; output: string; error: string; outputPath: string; errorPath: string }
+);
 
 // 不经运行、按编译器同一展开得到的技能全部图实例；调用路径与运行记录同一语法。
 export interface SkillDocument {
@@ -214,8 +252,8 @@ export const authoringApi = {
   changes: (skill: string, revision: string, signal?: AbortSignal) =>
     getJson<SkillChanges>(`${skillPath(skill)}/changes?revision=${encodeURIComponent(revision)}`, signal),
   document: (skill: string, signal?: AbortSignal) => getJson<SkillDocument>(`${skillPath(skill)}/document`, signal),
-  save: (skill: string, files: SkillFile[], removedFiles: string[]) =>
-    putJson<SkillSaveResult>(skillPath(skill), { content: { files, removedFiles } }),
+  save: (skill: string, request: SkillSaveRequest) => putJson<SkillSaveResult>(skillPath(skill), request),
+  refreshStatus: (statusPath: string, signal?: AbortSignal) => getJson<PlayerSkillRefreshReceipt>(statusPath, signal),
   types: (skill: string, offset: number, signal?: AbortSignal) =>
     getJson<TypePage>(`${skillPath(skill)}/queries/types${query({ offset, limit: 128 })}`, signal),
   // 默认配置写进技能文件，按技能 JSON 规则解析以保留 1.0 这类浮点。

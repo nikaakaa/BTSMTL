@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
-import { authoringApi, type ElementTemplate, type SkillElements, type SkillFormatError, type SkillSaveRejection, type SkillSnapshot } from '../api/authoring';
+import { authoringApi, type ElementTemplate, type PlayerSkillRefreshReceipt, type PlayerSkillRefreshTarget, type SkillElements, type SkillFormatError, type SkillSaveRejection, type SkillSaveResult, type SkillSnapshot } from '../api/authoring';
 import { ApiError, isAbort } from '../api/http';
+import { playerApi } from '../api/player';
 import type { AuthorTimeline, GraphDefinition, GraphNode, GraphPort } from '../api/types';
 import {
   JsonFloat, cloneJson, fpRaw, fpSeconds, numberOf, parseSkillJson, shapeOf, writeSkillJson, type JsonObject, type JsonValue,
 } from './skillJson';
 import { consoleActions, useWorkbench } from './store';
+import { playerService } from './player';
+import { session } from './session';
 
 // 作者编辑（共享文档 9.x）：当前运行所属技能的 JSON 文件。原文按路径保存；编辑过的文件解析后改写，
 // 保存时整份写回。宿主未启用作者接口时 available=false，作者模式不可用。
@@ -46,11 +49,17 @@ export interface AuthoringState {
   tickRate: number | null;
 }
 
-export interface SaveOutcome {
+interface SaveOutcomeMessage {
   ok: boolean;
   message: string;
   errors: SkillFormatError[];
 }
+
+export type SaveOutcome = SaveOutcomeMessage & (
+  | { saved: true; compilationState: 'succeeded'; preview: PlayerSkillRefreshReceipt | null }
+  | { saved: true; compilationState: 'not-started' | 'failed'; preview: null }
+  | { saved: null; compilationState: null; preview: null }
+);
 
 export interface AddedPort {
   id: string;
@@ -74,6 +83,73 @@ const abilityOf = (programId: string) => programId.slice(programId.indexOf(':') 
 export const timelinePath = (documentId: string) => `timelines/${documentId}.json`;
 
 let loadController: AbortController | null = null;
+let previewController: AbortController | null = null;
+
+useAuthoring.subscribe((state, previous) => {
+  if (state.skill !== previous.skill) previewController?.abort();
+});
+
+type PreviewSelection = { kind: 'selected'; target: PlayerSkillRefreshTarget } | { kind: 'unavailable'; reason: string };
+type SavedCompilation = Pick<SkillSaveResult, 'saved' | 'compilationState'>;
+
+async function selectedPreview(): Promise<PreviewSelection> {
+  const liveId = useWorkbench.getState().liveId;
+  if (!liveId) return { kind: 'unavailable', reason: '未选择 Player，预览未刷新' };
+  try {
+    const live = await playerApi.live(liveId);
+    if (live.previewTarget === null)
+      return { kind: 'unavailable', reason: '所选 Player 尚无已确认载入的内容，预览未刷新' };
+    const { scene, sceneRevision, source } = live.previewTarget;
+    return { kind: 'selected', target: { requestId: crypto.randomUUID(), liveId, scene, sceneRevision, source } };
+  } catch (error) {
+    if (!(error instanceof ApiError)) throw error;
+    return { kind: 'unavailable', reason: `无法读取所选 Player，预览未刷新：${error.reason}` };
+  }
+}
+
+const previewMessages = {
+  accepted: '预览已受理，等待 Player 采用',
+  adopted: 'Player 已采用本次内容；本次运行档案尚未提供',
+  failed: 'Player 采用失败',
+  unavailable: '预览不可用',
+} satisfies Record<PlayerSkillRefreshReceipt['stage'], string>;
+
+function savedOutcome(save: SavedCompilation, preview: PlayerSkillRefreshReceipt | null, noPreviewReason: string): SaveOutcome {
+  const detail = preview === null ? noPreviewReason : `${previewMessages[preview.stage]}${preview.error === null ? '' : `：${preview.error}`}`;
+  return {
+    saved: save.saved, compilationState: save.compilationState, preview,
+    ok: preview === null || preview.stage === 'accepted' || preview.stage === 'adopted',
+    message: `已保存，编译通过；${detail}`, errors: [],
+  };
+}
+
+async function trackPreview(input: { save: SavedCompilation; receipt: PlayerSkillRefreshReceipt; controller: AbortController }) {
+  let receipt = input.receipt;
+  try {
+    while (receipt.stage === 'accepted') {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      input.controller.signal.throwIfAborted();
+      const next = await authoringApi.refreshStatus(receipt.statusPath, input.controller.signal);
+      if (next.stage !== receipt.stage) {
+        const outcome = savedOutcome(input.save, next, '');
+        set({ lastSave: outcome });
+        consoleActions.log(outcome.ok ? 'info' : 'error', '预览', outcome.message, JSON.stringify(next));
+      }
+      receipt = next;
+    }
+    if (receipt.stage === 'adopted' && useWorkbench.getState().liveId === receipt.liveId) {
+      session.selectRun(null);
+      await playerService.refresh();
+    }
+  } catch (error) {
+    if (isAbort(error)) return;
+    set({ lastSave: {
+      ...savedOutcome(input.save, receipt, ''), ok: false,
+      message: `已保存，编译通过；预览状态读取失败：${error instanceof Error ? error.message : String(error)}`,
+    } });
+    consoleActions.error('预览', error);
+  }
+}
 
 // 技能 JSON 中的 Timeline：轨道、片段与标记，时间由 FP 原始值换算；片段与标记的图为 m_AssetTree／m_Graph。
 export function documentTimelines(files: Record<string, string>): AuthorTimeline[] {
@@ -274,6 +350,7 @@ export const authoringActions = {
     const { skill, saving, removed } = get();
     const files = authoringActions.changedFiles();
     if (!skill || saving || (!files.length && !removed.length)) return;
+    previewController?.abort();
     set({ saving: true });
     const accept = (content: SkillSnapshot, lastSave: SaveOutcome) => {
       clearHistory();
@@ -284,9 +361,18 @@ export const authoringActions = {
       void reloadDocument();
     };
     try {
-      const result = await authoringApi.save(skill, files, removed);
-      accept(result.content, { ok: true, message: `已保存 ${files.length + removed.length} 个文件，编译通过`, errors: [] });
+      const selection = await selectedPreview();
+      const result = await authoringApi.save(skill, {
+        content: { files, removedFiles }, preview: selection.kind === 'selected' ? selection.target : null,
+      });
+      const outcome = savedOutcome(result, result.preview, selection.kind === 'unavailable' ? selection.reason : '');
+      accept(result.content, outcome);
       consoleActions.log('info', '作者', `${skill} 已保存并编译：${result.compilation.sourceRevision}`);
+      if (result.preview !== null) {
+        consoleActions.log(outcome.ok ? 'info' : 'error', '预览', outcome.message, JSON.stringify(result.preview));
+        const controller = previewController = new AbortController();
+        void trackPreview({ save: result, receipt: result.preview, controller });
+      }
     } catch (error) {
       if (error instanceof ApiError && error.status === 422) {
         const rejection = JSON.parse(error.raw) as SkillSaveRejection;
@@ -294,12 +380,17 @@ export const authoringActions = {
         const message = rejection.stage === 'source-rejected'
           ? `已保存，严格读取拒绝 ${errors.length || 1} 项：${rejection.diagnostic?.message ?? rejection.error ?? ''}`
           : `已保存，编译失败（结束代码 ${rejection.exitCode}）`;
-        accept(rejection.content, { ok: false, message, errors });
+        accept(rejection.content, {
+          ok: false, message, errors, saved: rejection.saved, compilationState: rejection.compilationState, preview: null,
+        });
         consoleActions.log('error', '作者', message, [...errors.map(item => `${item.file ?? ''} ${item.path ?? ''}：${item.message}`),
           rejection.error ?? ''].filter(Boolean).join('\n'));
         return;
       }
-      set({ saving: false, lastSave: { ok: false, message: error instanceof Error ? error.message : String(error), errors: [] } });
+      set({ saving: false, lastSave: {
+        ok: false, message: error instanceof Error ? error.message : String(error), errors: [],
+        saved: null, compilationState: null, preview: null,
+      } });
       consoleActions.error('作者', error);
     }
   },

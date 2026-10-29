@@ -546,6 +546,14 @@ export interface Alignment {
 
 export type LiveProcessState = 'starting' | 'running' | 'exited' | (string & {});
 
+export interface PlayerPreviewTarget {
+  liveId: string;
+  playerBuildId: string;
+  scene: string;
+  sceneRevision: string;
+  source: RunSource | { kind: 'device'; lastSdkFrame?: number };
+}
+
 // `/api/preview/live` 的进程描述；hello 与 player 为播放器原样回报。
 export interface LivePlayer {
   liveId: string;
@@ -559,6 +567,7 @@ export interface LivePlayer {
   hello: unknown;
   player: unknown;
   alignment: Alignment;
+  previewTarget: PlayerPreviewTarget | null;
   viewers: number;
   latestVideoFrame: number | null;
 }
