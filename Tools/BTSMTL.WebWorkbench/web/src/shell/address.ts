@@ -1,10 +1,11 @@
+import { authoringActions, useAuthoring } from '../state/authoring';
 import { session } from '../state/session';
 import { getState, resourceActions, selectionActions, useWorkbench, type Selection, type SelectionKind } from '../state/store';
 import { activePanelType, openPanel } from './layout';
 import { isPanelType } from './panelTypes';
 import { setAddressPanel } from './readiness';
 
-// 地址同步（D8）：/?run=&frame=&select=&panel=，资源为 /?panel=resources&resource=&time=。
+// 地址同步（D8）：/?run=&frame=&select=&panel=，不选运行时为 /?skill=&select=，资源为 /?panel=resources&resource=&time=。
 // 加载时恢复，状态变化时用 replaceState 回写。
 
 const selectionKinds: SelectionKind[] = ['node', 'edge', 'clip', 'track', 'actor'];
@@ -30,9 +31,13 @@ export function applyPanelAddress() {
 // 宿主连接后恢复运行、帧、选中对象与资源。
 export function applyStateAddress() {
   const run = initial.get('run');
+  const skill = initial.get('skill');
   if (run) {
     const frame = Number(initial.get('frame') ?? '0');
     session.selectRun(run, Number.isSafeInteger(frame) && frame >= 0 ? frame : 0);
+    selectionActions.select(parseSelection(initial.get('select')));
+  } else if (skill) {
+    void authoringActions.openSkill(skill);
     selectionActions.select(parseSelection(initial.get('select')));
   }
   const resource = initial.get('resource');
@@ -51,10 +56,11 @@ function write() {
   timer = null;
   const state = getState();
   const params = new URLSearchParams();
+  const skill = useAuthoring.getState().skill;
   if (state.runId) {
     params.set('run', state.runId);
     params.set('frame', String(state.frameIndex));
-  }
+  } else if (skill) params.set('skill', skill);
   if (state.selection) params.set('select', `${state.selection.kind}:${state.selection.id}`);
   const panel = activePanelType();
   if (panel) params.set('panel', panel);
@@ -72,4 +78,8 @@ useWorkbench.subscribe((state, previous) => {
   if (state.runId === previous.runId && state.frameIndex === previous.frameIndex && state.selection === previous.selection &&
     state.activePanel === previous.activePanel && state.identity === previous.identity && state.time === previous.time) return;
   timer ??= setTimeout(write, writeDelay);
+});
+
+useAuthoring.subscribe((state, previous) => {
+  if (writing && state.skill !== previous.skill) timer ??= setTimeout(write, writeDelay);
 });
