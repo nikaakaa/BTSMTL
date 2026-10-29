@@ -18,7 +18,7 @@ export class PreviewObservation {
     this.availability = [];
     this.definitions = [];
     this.container.innerHTML = '<section class="observed-timeline" aria-label="技能 Timeline 预览"><div class="observed-timeline-scroll"><div class="observed-timeline-content"></div></div></section><section class="observed-graph" aria-label="节点图实际运行观察"></section>';
-    this.graph = new PreviewGraph(this.container.querySelector('.observed-graph'));
+    this.graph = new PreviewGraph(this.container.querySelector('.observed-graph'), () => this.reportAvailability());
     this.mountTimeline();
     this.availabilityChanged([]);
   }
@@ -37,7 +37,6 @@ export class PreviewObservation {
       offset = page.nextOffset;
     } while (offset !== null);
     this.graph.setDefinitions(this.definitions, this.availability);
-    this.reportAvailability();
   }
 
   async sync(summary) {
@@ -51,11 +50,10 @@ export class PreviewObservation {
       this.container.dataset.routeProtocol = page.protocol;
     }
     if (before !== this.routeFrames.length) this.mountTimeline();
-    this.reportAvailability();
   }
 
   reportAvailability() {
-    this.availabilityChanged([...this.availability, ...this.definitions.flatMap(graph => graph.availability),
+    this.availabilityChanged([...this.availability, ...this.graph.availability,
       ...(this.frame ? this.frame.route.availability : [])]);
   }
 
@@ -111,7 +109,6 @@ export class PreviewObservation {
       output.closest('.observed-timeline-row').classList.toggle('active', playbacks.length > 0);
     });
     this.graph.showFrame(frame);
-    this.reportAvailability();
     this.container.dataset.observationRun = this.runId;
     this.container.dataset.observationFrame = frame.hostFrame;
   }

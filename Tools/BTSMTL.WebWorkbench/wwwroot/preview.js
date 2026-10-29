@@ -264,7 +264,8 @@ function updateCapabilities(availability) {
   }
   const names = { 'graph-definitions': '节点图', 'node-occurrences': '节点路线', 'edge-occurrences': '连线路线',
     'port-values': '端口值', 'author-layout': '作者布局', 'author-display-names': '作者名称', 'author-value-connections': '数值连线',
-    'execution-source-bindings': '节点来源', 'port-source-bindings': '端口来源', 'port-parent-invocation-generation': '父调用代次' };
+    'execution-source-bindings': '节点来源', 'port-source-bindings': '端口来源', 'port-parent-invocation-generation': '父调用代次',
+    'compiled-control-flow': '控制连线' };
   for (const channel of channels.values()) {
     if (!channel.available || !channel.complete)
       gaps.push({ name: `${names[channel.channel] ?? channel.channel}${channel.available ? '不完整' : ''}`, reason: channel.reason });

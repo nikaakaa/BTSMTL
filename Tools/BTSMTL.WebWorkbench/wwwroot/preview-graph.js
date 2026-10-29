@@ -42,8 +42,10 @@ function layout(nodes, edges, ports) {
 }
 
 export class PreviewGraph {
-  constructor(container) {
+  constructor(container, selectionChanged) {
     this.container = container;
+    this.selectionChanged = selectionChanged;
+    this.availability = [];
     this.definitions = [];
     this.selectedGraph = '';
     this.selectedCall = '';
@@ -103,7 +105,7 @@ export class PreviewGraph {
   showFrame(frame) { this.frame = frame; this.render(); }
 
   render() {
-    if (!this.definitions.length) return;
+    if (!this.definitions.length) { this.availability = []; this.selectionChanged(); return; }
     const route = this.frame?.route;
     const occurrences = route ? [...route.nodes, ...route.edges, ...route.ports.filter(sample => sample.sourceAvailable)] : [];
     if (!this.selectedGraph && occurrences.length) {
@@ -111,6 +113,8 @@ export class PreviewGraph {
       if (graph) this.selectedGraph = graphKey(graph);
     }
     const graph = this.definitions.find(graph => graphKey(graph) === this.selectedGraph) ?? this.definitions[0];
+    this.availability = graph.availability;
+    this.selectionChanged();
     const select = this.container.querySelector('[data-graph-choice]');
     select.value = graphKey(graph); select.title = `${graph.displayName}\n角色 ${graph.actorId}\n程序 ${graph.programId}`;
     if (!graph.nodes.length) {
