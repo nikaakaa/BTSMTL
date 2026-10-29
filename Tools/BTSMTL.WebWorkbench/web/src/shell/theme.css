@@ -80,6 +80,16 @@
   --port-exec-off: #626262;
 
   --viewport-bg: #111111;
+  --logic-bg: #10171d;
+  --logic-grid: #39505b;
+  --logic-grid-minor: #24323a;
+  --logic-world: #426b7c;
+  --logic-trigger: #8164ad;
+  --logic-receiver: #87cfc0;
+  --logic-sweep-start: #d49651;
+  --logic-sweep-end: #f4b963;
+  --logic-target: #719ce0;
+  --logic-contact: #fc7980;
   --overlay-bg: rgb(32 32 32 / 90%);
 
   --font: 12px 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', sans-serif;

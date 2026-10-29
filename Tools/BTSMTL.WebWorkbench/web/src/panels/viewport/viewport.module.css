@@ -1,0 +1,20 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.canvas {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--logic-bg);
+}
+
+.canvas > canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+}

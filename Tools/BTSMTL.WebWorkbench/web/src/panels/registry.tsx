@@ -8,6 +8,7 @@ import { ContentPanel } from './ContentPanel';
 import { GraphPanel } from './graph/GraphPanel';
 import { InspectorPanel } from './inspector/InspectorPanel';
 import { TimelinePanel } from './timeline/TimelinePanel';
+import { ViewportPanel } from './viewport/ViewportPanel';
 
 function Placeholder({ type }: { type: PanelType }) {
   return <Empty text={`${panelInfo[type].title}尚未接入`} />;
@@ -19,6 +20,7 @@ const contents: Partial<Record<PanelType, FunctionComponent>> = {
   timeline: TimelinePanel,
   graph: GraphPanel,
   inspector: InspectorPanel,
+  viewport: ViewportPanel,
 };
 
 export const panelComponents: Record<string, FunctionComponent<IDockviewPanelProps>> = Object.fromEntries(
