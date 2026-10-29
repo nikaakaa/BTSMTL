@@ -1,0 +1,136 @@
+.root {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+}
+
+.failure {
+  padding: var(--gap-2);
+}
+
+.side {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 2px solid var(--bg-0);
+}
+
+.search {
+  display: flex;
+  align-items: center;
+  height: var(--panel-bar);
+  padding: 0 var(--gap-1);
+  background: var(--bg-3);
+  border-bottom: 1px solid var(--line);
+  flex: none;
+}
+
+.searchInput {
+  flex: 1;
+}
+
+.list {
+  flex: 1;
+}
+
+.clip {
+  all: unset;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding: 0 var(--gap-2);
+  box-sizing: border-box;
+  cursor: default;
+  overflow: hidden;
+}
+
+.clip span, .clip small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.clip small {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.clip:hover {
+  background: var(--bg-3);
+}
+
+.clip[aria-selected='true'] {
+  background: var(--select);
+}
+
+.count {
+  padding: 2px var(--gap-2);
+  color: var(--text-dim);
+  border-top: 1px solid var(--line);
+  flex: none;
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* 滑块：细线 + 矩形滑块 */
+.slider {
+  flex: 1;
+  min-width: 80px;
+  height: 14px;
+  margin: 0 var(--gap-2);
+  background: transparent;
+  appearance: none;
+}
+
+.slider::-webkit-slider-runnable-track {
+  height: 2px;
+  background: var(--button);
+}
+
+.slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 9px;
+  height: 13px;
+  margin-top: -5.5px;
+  background: var(--text-dim);
+  border: 1px solid var(--button-line);
+  border-radius: 2px;
+}
+
+.canvasWrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.canvas {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--resource-bg);
+}
+
+.canvas > canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.details {
+  max-height: 40%;
+  overflow: auto;
+  flex: none;
+}

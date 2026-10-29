@@ -90,6 +90,11 @@
   --logic-sweep-end: #f4b963;
   --logic-target: #719ce0;
   --logic-contact: #fc7980;
+  --resource-bg: #111c25;
+  --resource-grid: #426473;
+  --resource-grid-minor: #223541;
+  --resource-sky: #ffffff;
+  --resource-ground: #334451;
   --overlay-bg: rgb(32 32 32 / 90%);
 
   --font: 12px 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', sans-serif;
