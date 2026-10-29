@@ -188,6 +188,16 @@ export const queryService = {
     return fetchParsed<Comparison>(`/api/preview/runs/${encodeURIComponent(left)}/compare/${encodeURIComponent(right)}`).result;
   },
 
+  // 长 JSON 在后台格式化为行。
+  formatJson(text: string): Promise<string[] | null> {
+    const id = nextId++;
+    const generation = getState().generation;
+    return new Promise((resolve, reject) => {
+      pending.set(id, { generation, resolve: value => resolve(value as string[]), reject });
+      send({ type: 'format', id, text });
+    });
+  },
+
   // 帧记录大页在后台解析。
   framesPage(runId: string, offset: number, limit: number) {
     return fetchParsed<{ items: Frame[]; total: number; nextOffset: number | null }>(

@@ -7,6 +7,9 @@ import { ConsolePanel } from './ConsolePanel';
 import { ContentPanel } from './ContentPanel';
 import { GraphPanel } from './graph/GraphPanel';
 import { InspectorPanel } from './inspector/InspectorPanel';
+import { ComparePanel } from './records/ComparePanel';
+import { FramesPanel } from './records/FramesPanel';
+import { QueryPanel } from './records/QueryPanel';
 import { TimelinePanel } from './timeline/TimelinePanel';
 import { ViewportPanel } from './viewport/ViewportPanel';
 
@@ -21,6 +24,9 @@ const contents: Partial<Record<PanelType, FunctionComponent>> = {
   graph: GraphPanel,
   inspector: InspectorPanel,
   viewport: ViewportPanel,
+  frames: FramesPanel,
+  query: QueryPanel,
+  compare: ComparePanel,
 };
 
 export const panelComponents: Record<string, FunctionComponent<IDockviewPanelProps>> = Object.fromEntries(

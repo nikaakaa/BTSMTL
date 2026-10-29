@@ -10,6 +10,7 @@ export interface WorkerError {
 export type WorkerRequest =
   | { type: 'fetch'; id: number; path: string }
   | { type: 'stream'; id: number; path: string; lastEventId: string | null }
+  | { type: 'format'; id: number; text: string }
   | { type: 'cancel'; id: number };
 
 export type WorkerResponse =

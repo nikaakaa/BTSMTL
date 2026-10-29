@@ -62,6 +62,17 @@ self.onmessage = (message: MessageEvent<WorkerRequest>) => {
     case 'stream':
       void run(request.id, request.path, signal => stream(request.id, request.path, request.lastEventId, signal));
       break;
+    // 长 JSON 文本格式化后按行返回，供虚拟列表显示；不是合法 JSON 时按原文分行。
+    case 'format': {
+      let lines: string[];
+      try {
+        lines = JSON.stringify(JSON.parse(request.text), null, 2).split('\n');
+      } catch {
+        lines = request.text.split(/\r?\n/);
+      }
+      post({ type: 'result', id: request.id, value: lines });
+      break;
+    }
     case 'cancel':
       reading.get(request.id)?.abort();
       reading.delete(request.id);
