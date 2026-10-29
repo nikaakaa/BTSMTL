@@ -4,40 +4,47 @@ const graphKey = graph => JSON.stringify([graph.actorId, graph.programId, graph.
 const callKey = call => JSON.stringify([call.actorId, call.programId, call.programRevision, call.invocationPath,
   call.actionId, call.executionGeneration, call.invocationGeneration, call.playbackId]);
 const belongsTo = (call, graph) => call.actorId === graph.actorId && call.programId === graph.programId && call.programRevision === graph.programRevision;
-const shortName = graph => graph.displayName === graph.id ? graph.id.slice(0, 8) : graph.displayName;
+const shortName = graph => graph.displayName === null ? '未命名图' : graph.displayName === graph.id ? graph.id.slice(0, 8) : graph.displayName;
+const nodeName = node => node.displayName === null ? '未命名节点' : node.displayName;
 
-function layout(nodes, edges, ports) {
-  const outgoing = new Map(nodes.map(node => [node.id, []]));
-  const incoming = new Set();
-  for (const edge of edges) {
-    outgoing.get(edge.source.nodeId).push(edge.target.nodeId);
-    incoming.add(edge.target.nodeId);
-  }
+function layout(nodes, edges, ports, authored) {
   const ranks = new Map();
-  const place = root => {
-    if (ranks.has(root)) return;
-    ranks.set(root, 0);
-    const queue = [root];
-    for (let cursor = 0; cursor < queue.length; cursor++) {
-      const id = queue[cursor];
-      for (const target of outgoing.get(id)) {
-        if (ranks.has(target)) continue;
-        ranks.set(target, ranks.get(id) + 1);
-        queue.push(target);
-      }
+  if (!authored) {
+    const outgoing = new Map(nodes.map(node => [node.id, []]));
+    const incoming = new Set();
+    for (const edge of edges) {
+      outgoing.get(edge.source.nodeId).push(edge.target.nodeId);
+      incoming.add(edge.target.nodeId);
     }
-  };
-  nodes.filter(node => !incoming.has(node.id)).forEach(node => place(node.id));
-  nodes.forEach(node => place(node.id));
+    const place = root => {
+      if (ranks.has(root)) return;
+      ranks.set(root, 0);
+      const queue = [root];
+      for (let cursor = 0; cursor < queue.length; cursor++) {
+        const id = queue[cursor];
+        for (const target of outgoing.get(id)) {
+          if (ranks.has(target)) continue;
+          ranks.set(target, ranks.get(id) + 1);
+          queue.push(target);
+        }
+      }
+    };
+    nodes.filter(node => !incoming.has(node.id)).forEach(node => place(node.id));
+    nodes.forEach(node => place(node.id));
+  }
   const rows = new Map();
   return nodes.map(node => {
-    const column = ranks.get(node.id);
     const inputs = ports.filter(port => port.nodeId === node.id && port.direction === 'input');
     const outputs = ports.filter(port => port.nodeId === node.id && port.direction === 'output');
     const height = 38 + Math.max(inputs.length, outputs.length) * 24;
-    const y = rows.get(column) ?? 30;
-    rows.set(column, y + height + 35);
-    return { ...node, x: 30 + column * 305, y, width: 230, height, inputs, outputs };
+    let x, y;
+    if (authored) { x = node.position.x; y = node.position.y; }
+    else {
+      const column = ranks.get(node.id);
+      x = 30 + column * 305; y = rows.get(column) ?? 30;
+      rows.set(column, y + height + 35);
+    }
+    return { ...node, x, y, width: 230, height, inputs, outputs };
   });
 }
 
@@ -94,7 +101,7 @@ export class PreviewGraph {
   setDefinitions(definitions, availability) {
     this.definitions = definitions;
     const select = this.container.querySelector('[data-graph-choice]');
-    select.innerHTML = definitions.map(graph => `<option value="${html(graphKey(graph))}" title="${html(`${graph.displayName}\n角色 ${graph.actorId}\n程序 ${graph.programId}\n版本 ${graph.programRevision}`)}">${html(graph.programId)} · ${html(shortName(graph))}</option>`).join('');
+    select.innerHTML = definitions.map(graph => `<option value="${html(graphKey(graph))}" title="${html(`${shortName(graph)}\n角色 ${graph.actorId}\n程序 ${graph.programId}\n版本 ${graph.programRevision}`)}">${html(graph.programId)} · ${html(shortName(graph))}</option>`).join('');
     select.disabled = !definitions.length;
     this.container.querySelector('[data-graph-fit]').disabled = !definitions.length;
     this.container.querySelector('.observation-empty').textContent = definitions.length ? '等待确认帧' :
@@ -120,9 +127,10 @@ export class PreviewGraph {
     this.container.dataset.graphProgram = graph.programId;
     this.container.dataset.graphRevision = graph.programRevision;
     this.container.dataset.graphCall = '';
+    this.container.dataset.graphLayout = '';
     this.container.dataset.graphFrame = this.frame?.hostFrame ?? '';
     const select = this.container.querySelector('[data-graph-choice]');
-    select.value = graphKey(graph); select.title = `${graph.displayName}\n角色 ${graph.actorId}\n程序 ${graph.programId}`;
+    select.value = graphKey(graph); select.title = `${shortName(graph)}\n角色 ${graph.actorId}\n程序 ${graph.programId}`;
     if (!graph.nodes.length) {
       this.viewKey = ''; this.selectedNode = '';
       this.inspector.hidden = true; this.inspector.replaceChildren();
@@ -156,7 +164,10 @@ export class PreviewGraph {
       const ids = new Set(nodes.map(node => node.id));
       const edges = graph.edges.filter(edge => edge.invocationPath === path && edge.available &&
         edge.source.graphId === graph.id && edge.target.graphId === graph.id && ids.has(edge.source.nodeId) && ids.has(edge.target.nodeId));
-      this.nodes = layout(nodes, edges, graph.ports.filter(port => port.invocationPath === path));
+      const authorLayout = graph.availability.find(channel => channel.channel === 'author-layout');
+      const authored = authorLayout.available && authorLayout.complete;
+      this.container.dataset.graphLayout = authored ? 'author' : 'compiled';
+      this.nodes = layout(nodes, edges, graph.ports.filter(port => port.invocationPath === path), authored);
       this.edges = edges;
       this.mount();
     }
@@ -171,8 +182,10 @@ export class PreviewGraph {
     const empty = this.container.querySelector('.observation-empty');
     empty.hidden = this.nodes.length > 0;
     empty.textContent = '此调用未保留可显示的节点来源';
-    this.width = Math.max(0, ...this.nodes.map(node => node.x + node.width)) + 30;
-    this.height = Math.max(0, ...this.nodes.map(node => node.y + node.height)) + 30;
+    this.left = Math.min(...this.nodes.map(node => node.x)) - 30;
+    this.top = Math.min(...this.nodes.map(node => node.y)) - 30;
+    this.width = Math.max(...this.nodes.map(node => node.x + node.width)) - this.left + 30;
+    this.height = Math.max(...this.nodes.map(node => node.y + node.height)) - this.top + 30;
     this.world.style.width = `${this.width}px`; this.world.style.height = `${this.height}px`;
     const nodeMap = new Map(this.nodes.map(node => [node.id, node]));
     const point = (endpoint, direction) => {
@@ -190,7 +203,7 @@ export class PreviewGraph {
     }).join('');
     const port = (item, index) => `<div class="graph-port ${item.direction}${item.isTrigger ? ' trigger' : ''}" style="top:${32 + index * 24}px" data-port-id="${html(item.id)}" data-port-direction="${item.direction}"><i></i><span>${html(item.displayName)}</span><output></output></div>`;
     this.container.querySelector('.graph-nodes').innerHTML = this.nodes.map((node, index) =>
-      `<article class="graph-node" data-graph-node="${index}" data-node-id="${html(node.id)}" style="left:${node.x}px;top:${node.y}px;width:${node.width}px;height:${node.height}px"><button class="graph-node-title" data-inspect-node="${index}" title="${html(`${node.displayName}\n${node.id}\n${node.invocationPath}`)}">${html(node.displayName)}</button>${node.inputs.map(port).join('')}${node.outputs.map(port).join('')}</article>`).join('');
+      `<article class="graph-node" data-graph-node="${index}" data-node-id="${html(node.id)}" style="left:${node.x}px;top:${node.y}px;width:${node.width}px;height:${node.height}px"><button class="graph-node-title" data-inspect-node="${index}" title="${html(`${nodeName(node)}\n${node.id}\n${node.invocationPath}`)}">${html(nodeName(node))}</button>${node.inputs.map(port).join('')}${node.outputs.map(port).join('')}</article>`).join('');
     this.container.querySelectorAll('[data-inspect-node]').forEach(button => {
       button.onclick = () => { this.selectedNode = this.nodes[Number(button.dataset.inspectNode)].id; this.highlight(); this.showInspector(); };
     });
@@ -205,7 +218,7 @@ export class PreviewGraph {
       element.classList.toggle('failed', events.some(item => item.result === 'Failure'));
       element.classList.toggle('inspected', this.selectedNode === node.id);
       element.dataset.occurrences = String(events.length);
-      element.querySelector('.graph-node-title').title = `${node.displayName}\n${node.id}\n${events.map(item => `${item.sequence} · ${item.kind} · ${item.result} · ${item.generation}`).join('\n')}`;
+      element.querySelector('.graph-node-title').title = `${nodeName(node)}\n${node.id}\n${events.map(item => `${item.sequence} · ${item.kind} · ${item.result} · ${item.generation}`).join('\n')}`;
       element.querySelectorAll('[data-port-id]').forEach(port => {
         const samples = this.records.filter(item => item.nodeId === node.id && item.portId === port.dataset.portId && item.direction === port.dataset.portDirection);
         const sample = samples.at(-1);
@@ -234,7 +247,7 @@ export class PreviewGraph {
     const events = records.filter(item => !('portId' in item)).sort((a, b) => Number(a.sequence) - Number(b.sequence));
     const ports = records.filter(item => 'portId' in item).sort((a, b) => Number(a.sequence) - Number(b.sequence));
     const details = item => `<details><summary>发生记录</summary><pre>${html(JSON.stringify(item, null, 2))}</pre></details>`;
-    this.inspector.innerHTML = `<header><strong>${html(node.displayName)}</strong><button data-inspector-close aria-label="关闭节点记录">×</button></header><div>${events.map(item =>
+    this.inspector.innerHTML = `<header><strong>${html(nodeName(node))}</strong><button data-inspector-close aria-label="关闭节点记录">×</button></header><div>${events.map(item =>
       `<article data-occurrence-sequence="${html(item.sequence)}"><strong>${html(item.kind)}</strong><output>${html(item.result)}</output>${details(item)}</article>`).join('')}${ports.map(item =>
       `<article data-port-sequence="${html(item.sequence)}"><strong>${html(item.portId)}</strong><output>${html(item.value)}</output><span>${html(item.direction)} · ${html(item.valueType)}</span>${details(item)}</article>`).join('')}${!records.length ? '<p>本帧无发生记录</p>' : ''}</div>`;
     this.inspector.querySelector('[data-inspector-close]').onclick = () => { this.selectedNode = ''; this.highlight(); this.showInspector(); };
@@ -244,15 +257,15 @@ export class PreviewGraph {
     const first = this.records.find(record => this.nodes.some(node => node.id === record.nodeId));
     const node = first ? this.nodes.find(node => node.id === first.nodeId) : this.nodes[0];
     this.scale = 1;
-    this.x = this.width <= this.canvas.clientWidth ? (this.canvas.clientWidth - this.width) / 2 : 30 - node.x;
-    this.y = this.height <= this.canvas.clientHeight ? (this.canvas.clientHeight - this.height) / 2 : 30 - node.y;
+    this.x = this.width <= this.canvas.clientWidth ? (this.canvas.clientWidth - this.width) / 2 - this.left : 30 - node.x;
+    this.y = this.height <= this.canvas.clientHeight ? (this.canvas.clientHeight - this.height) / 2 - this.top : 30 - node.y;
     this.transform();
   }
 
   fit() {
     this.scale = Math.min(1, this.canvas.clientWidth / this.width, this.canvas.clientHeight / this.height);
-    this.x = (this.canvas.clientWidth - this.width * this.scale) / 2;
-    this.y = (this.canvas.clientHeight - this.height * this.scale) / 2;
+    this.x = (this.canvas.clientWidth - this.width * this.scale) / 2 - this.left * this.scale;
+    this.y = (this.canvas.clientHeight - this.height * this.scale) / 2 - this.top * this.scale;
     this.transform();
   }
 
