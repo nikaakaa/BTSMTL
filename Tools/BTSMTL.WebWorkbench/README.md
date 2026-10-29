@@ -1,6 +1,6 @@
 # BTSMTL 网页工作台
 
-本地 .NET 服务提供预览、播放器画面与动画资源接口，网页前端由 `web/` 下的 React 工程构建到 `wwwroot/` 后作为静态文件提供。网页只查看运行结果与资源，不读写作者文档。
+本地 .NET 服务提供预览、播放器画面与动画资源接口，网页前端由 `web/` 下的 React 工程构建到 `wwwroot/` 后作为静态文件提供。网页要直接编辑技能 JSON（Inspector、节点图、FSM、Timeline、黑板与输入方案，见 3C `add-shared-document-authoring-and-web-workbench` 第 9 节），当前前端尚未接入编辑，只查看运行结果与资源；技能读取、查询与保存接口由项目宿主提供（3C 见 `Tools/CharacterWorkbench/Host/Authoring/README.md`）。
 
 ## 环境
 
