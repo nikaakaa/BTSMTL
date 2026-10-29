@@ -205,14 +205,15 @@ export function WallContactPanel() {
 
 function Hand({ title, hand }: { title: string; hand: WallHand | null }) {
   return <section><strong>{title} · {hand ? reasonLabels[hand.result] ?? hand.result : '尚无完成帧'}</strong>
-    {hand && <Facts fields={[
+    {hand && <><Facts fields={[
       { displayName: '手臂 / 手腕 / 展指', value: [hand.armWeight, hand.wristWeight, hand.fingerWeight].map(value => `${Math.round(value * 100)}%`).join(' / ') },
+    ]} />{hand.hasSolution ? <Facts fields={[
       { displayName: '位置差 / 掌面角', value: `${(hand.positionResidual * 1000).toFixed(1)} mm / ${hand.palmAngle.toFixed(1)}°` },
       { displayName: '最小净空', value: `${(hand.minimumClearance * 1000).toFixed(1)} mm` },
       { displayName: '肘角（动画 → 实际）', value: `${hand.animatedElbowAngle.toFixed(1)}° → ${hand.elbowAngle.toFixed(1)}°` },
       { displayName: '腕部屈伸 / 偏摆 / 轴转', value: `${hand.wristAngles.x.toFixed(1)}° / ${hand.wristAngles.y.toFixed(1)}° / ${hand.wristAngles.z.toFixed(1)}°` },
       { displayName: '关节越界', value: `${hand.jointLimitExcess.toFixed(2)}°` },
-    ]} />}
+    ]} /> : <small className={styles.status}>本帧没有扶墙关节结果</small>}</>}
   </section>;
 }
 
