@@ -32,9 +32,10 @@ import styles from './timeline.module.css';
 // dnd-timeline 管时间与像素换算、缩放、平移；刻度、片段、输入标记、游标自绘。
 // 游标是独立覆盖线，订阅 cursor 后直接改 transform；片段只按自身是否处于游标下切换 class。
 
-const sidebarWidth = 320;
+// 轨道头宽度，照 Timeline Editor 约占窗口三分之一；CSS 经 --sidebar 读取。
+const sidebarWidth = 380;
 const minSpan = 0.05;
-const rowHeights = { group: 26, anim: 40, motion: 40, act: 34, in: 34, other: 34, inputGroup: 26 } as const;
+const rowHeights = { group: 30, anim: 46, motion: 46, act: 42, in: 42, other: 42, inputGroup: 30 } as const;
 const overscan = 120;
 // 窄于此宽度的片段把名字画在片段后面。
 const labelInside = 46;
@@ -309,7 +310,7 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
   };
 
   return (
-    <div className={styles.window}>
+    <div className={styles.window} style={{ ['--sidebar' as string]: `${sidebarWidth}px` }}>
       <TimelineToolbar settings={settings} subject={subject}
         fit={() => setParams({ range: focused ? segmentRange(focused) : fitRange(bounds) })} />
       <div className={styles.timeline} ref={setTimelineRef}>
@@ -710,6 +711,16 @@ const GroupLine = memo(function GroupLine({ row, open, toggle, enter }: {
   );
 });
 
+// 轨道头右侧照 Timeline Editor 的锁与曲线钮；网页未接入这两项，只按 Unity 外观显示为不可用。
+function TrackTools() {
+  return (
+    <span className={styles.trackTools} title="轨道锁定与曲线编辑在 Unity Timeline Editor 中使用" aria-hidden>
+      <i className={styles.lockIcon} />
+      <span className={styles.curveButton}>∿</span>
+    </span>
+  );
+}
+
 function useSelected(selectId: string, kind: 'clip' | 'track') {
   return useWorkbench(state => state.selection?.kind === kind && state.selection.id === selectId);
 }
@@ -733,6 +744,7 @@ const TrackLine = memo(function TrackLine({ row }: { row: TrackRow }) {
         <span className={styles.slot} />
         <span className={styles.name}>{row.track.displayName}</span>
         {row.track.muted && <span className={styles.muted}>静音</span>}
+        <TrackTools />
       </button>
     }>
       <Positioned start={segment.origin} end={segment.origin + segment.length} className={styles.authoredRange} />
@@ -873,7 +885,7 @@ function InputGroupLine({ open, toggle, roots }: {
 }) {
   const inputRoot = useWorkbench(state => state.inputRoot);
   const reason = useWorkbench(state => state.inputTimeline?.availability[0]?.reason ?? '');
-  const options = (roots ?? []).map(root => ({ value: inputRootKey(root), label: root.displayName }));
+  const options = (roots ?? []).map(root => ({ value: inputRootKey(root), label: `方案：${root.displayName}` }));
   return (
     <Line id="input" height={rowHeights.inputGroup} laneClass={styles.groupLane} headClass={styles.groupHead} head={
       <>
@@ -887,6 +899,7 @@ function InputGroupLine({ open, toggle, roots }: {
             disabled={options.length < 2} tip={options.length ? undefined : reason || '本次运行没有预览输入'}
             onChange={key => runActions.selectInputRoot(key)} />
         </span>
+        <Button disabled tip="条件菜单按路线读到的条件生成输入片段，网页尚未接入">条件</Button>
       </>
     } />
   );
@@ -912,6 +925,7 @@ const InputTrackLine = memo(function InputTrackLine({ row }: { row: InputTrackRo
         style={{ ['--tc' as string]: trackColors.in }} onClick={() => selectionActions.select({ kind: 'track', id: row.selectId })}>
         <span className={styles.slot} />
         <span className={styles.name}>{row.track.displayName}</span>
+        <TrackTools />
       </button>
     }>
       {clips.filter(clip => clip.endSeconds >= range.start && clip.startSeconds <= range.end).map(clip => {
