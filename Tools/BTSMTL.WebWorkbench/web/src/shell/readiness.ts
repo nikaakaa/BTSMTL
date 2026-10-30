@@ -67,9 +67,10 @@ export function schedule() {
 function evaluate() {
   const state = getState();
   const key = frameKey(state.runId, state.frameIndex);
+  const logic = state.archiveFrame?.logic;
   const data = root();
   for (const name of Object.keys(data)) if (name.startsWith('preview')) delete data[name];
-  if (!key || !state.summary || state.frameKey !== key || !state.frame || !state.archiveFrame || !state.archiveMetadata) return;
+  if (!key || !state.summary || state.frameKey !== key || !state.frame || !logic || !state.archiveMetadata) return;
   const visible = visiblePanels();
   const required = visible.filter(id => {
     const type = panelTypeOf(id);
@@ -85,9 +86,9 @@ function evaluate() {
   const viewport = visible.map(id => panelTypeOf(id) === 'viewport' ? rendered.get(id) : undefined)
     .find(entry => entry?.key === key && entry.detail);
   data.previewRun = state.summary.runId;
-  data.previewFrame = state.archiveFrame.logic.source.sdkFrame;
+  data.previewFrame = logic.source.sdkFrame;
   data.previewFrameIndex = String(state.frameIndex);
-  data.previewConsistency = state.archiveFrame.logic.checksum;
+  data.previewConsistency = logic.checksum;
   data.previewContent = state.summary.contentRevision;
   data.previewPlayerBuild = state.summary.playerBuildId;
   data.previewSceneRevision = state.summary.sceneRevision;
