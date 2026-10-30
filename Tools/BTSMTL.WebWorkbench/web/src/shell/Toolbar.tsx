@@ -18,6 +18,7 @@ export function Toolbar() {
       <div className={styles.left}>
         <SceneChoice />
         <SkillChoice />
+        <AuthoringStatus />
         <RunMenu />
       </div>
       <div className={styles.center}>
@@ -65,6 +66,52 @@ function SkillChoice() {
   );
 }
 
+function AuthoringStatus() {
+  const state = useAuthoring(useShallow(current => ({
+    open: current.author && current.target !== null, edited: current.edited, removed: current.removed,
+    externalChange: current.externalChange, saving: current.saving, lastSave: current.lastSave,
+    undoDepth: current.undoDepth, redoDepth: current.redoDepth,
+  })));
+  useEffect(() => {
+    if (!state.open) return;
+    const timer = setInterval(() => void authoringActions.checkExternal(), 3000);
+    return () => clearInterval(timer);
+  }, [state.open]);
+  if (!state.open) return null;
+  const dirty = Object.keys(state.edited).length + state.removed.length;
+  const lastSave = state.lastSave;
+  return (
+    <div className={styles.authoring}>
+      <Button variant="ghost" aria-label="撤销" className={styles.iconButton} disabled={!state.undoDepth} tip="撤销（Ctrl+Z）"
+        onClick={() => authoringActions.undo()}>↶</Button>
+      <Button variant="ghost" aria-label="重做" className={styles.iconButton} disabled={!state.redoDepth} tip="重做（Ctrl+Y／Ctrl+Shift+Z）"
+        onClick={() => authoringActions.redo()}>↷</Button>
+      {state.externalChange && (
+        <Tip content="技能文件在别处被修改；保存会覆盖外部修改，还原会丢弃网页修改">
+          <span className={styles.warn} tabIndex={0}>外部已修改</span>
+        </Tip>
+      )}
+      {dirty > 0 ? (
+        <>
+          <Tip content={`${dirty} 个文件未保存${state.removed.length ? `（含 ${state.removed.length} 个待删除）` : ''}`}>
+            <span className={styles.dirty} tabIndex={0}>未保存</span>
+          </Tip>
+          <Button variant="ghost" tip="丢弃网页中的全部未保存修改" onClick={() => authoringActions.revert()}>还原</Button>
+          <Button disabled={state.saving} tip="保存当前内容（Ctrl+S）" onClick={() => void authoringActions.save()}>
+            {state.saving ? '保存中' : '保存'}
+          </Button>
+        </>
+      ) : lastSave && (
+        <Tip content={lastSave.message}>
+          <span className={lastSave.ok ? styles.dim : styles.warn} tabIndex={0}>
+            {lastSave.ok ? '已保存' : lastSave.compilationState === 'failed' ? '编译未通过' : lastSave.saved ? '已保存，尚未应用' : '保存未完成'}
+          </span>
+        </Tip>
+      )}
+    </div>
+  );
+}
+
 const shortTime = (job: PlayerJobReceipt) => new Date(job.acceptedAt).toLocaleString(undefined, {
   month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
 });
@@ -107,13 +154,13 @@ function RunMenu() {
   return (
     <MenuButton label="运行" variant="ghost" entries={entries} caret>
       <span className={styles.dim}>运行</span>
-      {current ? <span>{shortTime(current)} · {stageNames[receipt?.stage ?? current.stage]}</span> : <span className={styles.dim}>无</span>}
+      {current ? <span className={styles.runLabel}>{shortTime(current)} · {stageNames[receipt?.stage ?? current.stage]}</span> : <span className={styles.dim}>无</span>}
     </MenuButton>
   );
 }
 
 // 播放控制可用性：不可用时给出原因。
-export function useTransportState() {
+function useTransportState() {
   return useWorkbench(useShallow(state => {
     const source = transport.source();
     const count = state.summary?.frameCount ?? 0;
@@ -157,7 +204,7 @@ function Transport() {
   );
 }
 
-export function FrameField({ showSeconds = true }: { showSeconds?: boolean }) {
+function FrameField() {
   const view = useWorkbench(useShallow(state => {
     if (transport.source() === 'player-live') {
       const player = state.live?.player;
@@ -178,7 +225,7 @@ export function FrameField({ showSeconds = true }: { showSeconds?: boolean }) {
         <NumberField.Input className={styles.frameInput} aria-label={live ? 'SDK 帧' : '记录序号'} title={live ? 'SDK 帧' : '记录序号'} />
       </NumberField.Root>
       <span className={styles.frameLast}>/ {view.last}</span>
-      {showSeconds && view.seconds !== null && <span className={styles.seconds}>{view.seconds.toFixed(3)} s</span>}
+      {view.seconds !== null && <span className={styles.seconds}>{view.seconds.toFixed(3)} s</span>}
     </div>
   );
 }

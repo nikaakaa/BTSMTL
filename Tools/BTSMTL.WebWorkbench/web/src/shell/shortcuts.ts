@@ -11,12 +11,19 @@ function editable(target: EventTarget | null): boolean {
   return !!(target as Element).closest('input, textarea, select, [contenteditable="true"], [role="combobox"], [role="listbox"], [role="menu"]');
 }
 
-function onKeyDown(event: KeyboardEvent) {
+function onKeyDown(event: KeyboardEvent, view: Window) {
   if (event.defaultPrevented || event.altKey) return;
-  // 作者模式：Ctrl+Z 撤销，Ctrl+Y／Ctrl+Shift+Z 重做；输入框内保留文本自身的撤销。
+  // 作者模式：Ctrl+S 保存，Ctrl+Z 撤销，Ctrl+Y／Ctrl+Shift+Z 重做；输入框内保留文本自身的撤销。
   if (event.ctrlKey || event.metaKey) {
     const key = event.key.toLowerCase();
-    if (!useAuthoring.getState().author || editable(event.target) || (key !== 'z' && key !== 'y')) return;
+    const authoring = useAuthoring.getState();
+    if (key === 's' && authoring.author) {
+      event.preventDefault();
+      view.document.querySelector<HTMLElement>('input:focus, textarea:focus, [contenteditable="true"]:focus')?.blur();
+      void authoringActions.save();
+      return;
+    }
+    if (!authoring.author || editable(event.target) || (key !== 'z' && key !== 'y')) return;
     if (key === 'y' || event.shiftKey) authoringActions.redo(); else authoringActions.undo();
     event.preventDefault();
     return;
@@ -37,8 +44,9 @@ export function bindShortcuts(target: Window): () => void {
   const existing = bound.get(target);
   if (existing) existing.count++;
   else {
-    target.addEventListener('keydown', onKeyDown);
-    bound.set(target, { count: 1, dispose: () => target.removeEventListener('keydown', onKeyDown) });
+    const onKey = (event: KeyboardEvent) => onKeyDown(event, target);
+    target.addEventListener('keydown', onKey);
+    bound.set(target, { count: 1, dispose: () => target.removeEventListener('keydown', onKey) });
   }
   return () => {
     const entry = bound.get(target);

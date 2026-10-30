@@ -24,6 +24,16 @@
   gap: var(--gap-1);
 }
 
+.left > button {
+  min-width: 48px;
+}
+
+.runLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .center {
   display: flex;
   align-items: center;
@@ -45,6 +55,41 @@
   padding: 0 var(--gap-2);
   color: var(--text-strong);
   white-space: nowrap;
+}
+
+/* 技能的撤销、重做、未保存与保存 */
+.authoring {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin: 0 var(--gap-2) 0 var(--gap-1);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.iconButton {
+  width: 22px;
+  padding: 0;
+  font-size: 14px;
+}
+
+.dirty {
+  padding: 0 var(--gap-1) 0 var(--gap-2);
+  color: var(--value);
+  outline: none;
+}
+
+.dirty::before {
+  content: '●';
+  margin-right: 4px;
+  font-size: 9px;
+  vertical-align: 1px;
+}
+
+.warn {
+  padding: 0 var(--gap-1);
+  color: var(--reject);
+  outline: none;
 }
 
 /* 三个连在一起的播放按钮，播放中用 --accent */

@@ -411,20 +411,6 @@ export const authoringActions = {
     selectionActions.showTimeline(scheme.InputTimeline as string, null);
   },
 
-  async probe() {
-    try {
-      await authoringApi.list('skill');
-      set({ available: true, unavailableReason: null });
-    } catch (error) {
-      set({ available: false, unavailableReason: error instanceof ApiError && error.status === 404
-        ? '宿主未启用作者接口（启动时需 --SkillAuthoring true）' : error instanceof Error ? error.message : String(error) });
-    }
-  },
-
-  setAuthor(author: boolean) {
-    set({ author });
-  },
-
   // 取可编辑的文档：首次编辑时从原文解析。同一轮事件里的多次编辑记为一步撤销。
   edit(path: string, mutate: (document: JsonValue) => void) {
     const state = get();

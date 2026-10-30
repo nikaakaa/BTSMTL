@@ -13,7 +13,6 @@ import type { ExecutionCall, FrozenInputTimeline, InputWrite, RouteFrame } from 
 import type { PlayerDataCurve, PlayerJobId } from '../../api/playerRecords';
 import { usePanelId, usePanelParams, usePanelVisible, usePanelWindow } from '../../shell/panel';
 import { clearRendered, frameKey, reportRendered, useFrameReport } from '../../shell/readiness';
-import { FrameField, useTransportState } from '../../shell/Toolbar';
 import { openPanel } from '../../shell/layout';
 import {
   applyTimelineEdits, authoringActions, clipTemplatesFor, currentDocument, graphPath, inputAuthoring, timelinePath, trackContract, trackDomains, useAuthoring, useAuthorTimelines, useInputContext, useInputSchemes, useSkillElements, useDocumentObservationBinding,
@@ -61,7 +60,7 @@ interface Params {
   filter: string;
   // 顶栏所选技能（programId）；null 为路线上第一个技能。
   program: string | null;
-  // 双击组头进入的单个 Timeline（documentId）；null 为路线视图。
+  // 单个 Timeline 的 documentId；作者内容用 * 显示全部，运行路线用 null 显示总览。
   focus: string | null;
   // 进入单个 Timeline 前的路线视图范围，返回时恢复。
   routeRange: Range | null;
@@ -137,26 +136,16 @@ export function TimelinePanel() {
   return <DocumentTimeline />;
 }
 
-// 未打开技能时只有技能选择；打开后与运行视图同一窗口，固定为单个 Timeline。
+// 技能在顶栏选择；打开后固定看技能里的一个 Timeline（默认第一个），也可切到全部。
 function DocumentTimeline() {
-  const { skills, target, loading, available, reason, error } = useAuthoring(useShallow(state => ({
-    skills: state.skills, target: state.target, loading: state.loading, available: state.available,
+  const { target, loading, available, reason, error } = useAuthoring(useShallow(state => ({
+    target: state.target, loading: state.loading, available: state.available,
     reason: state.unavailableReason, error: state.documentError,
   })));
   const count = useAuthorTimelines().length;
-  useEffect(() => { if (skills === null) void authoringActions.listSkills(); }, [skills]);
   if (available === false) return <ReportEmpty text={reason ?? '作者接口不可用'} />;
-  if (!target || loading || !count) {
-    return (
-      <div className={styles.window}>
-        <PanelBar wrap>
-          <SkillPicker />
-        </PanelBar>
-        {loading ? <Empty text="正在读取内容" />
-          : <ReportEmpty text={error ?? (target ? '此内容没有 Timeline' : '选择要编辑的内容')} />}
-      </div>
-    );
-  }
+  if (loading) return <Empty text="正在读取内容" />;
+  if (!target || !count) return <ReportEmpty text={error ?? (target ? '此内容没有 Timeline' : '在顶栏选择技能')} />;
   return <TimelineWindow frames={null} />;
 }
 
@@ -165,16 +154,8 @@ function ReportEmpty({ text }: { text: string }) {
   return <Empty text={text} />;
 }
 
-function SkillPicker() {
-  const { skills, target } = useAuthoring(useShallow(state => ({ skills: state.skills, target: state.target })));
-  if (target?.kind === 'scenario') return <span className={styles.subject}>{target.name}</span>;
-  return (
-    <span className={styles.subject}>
-      <Select label="技能" placeholder="选择技能" value={target?.name ?? null} options={(skills ?? []).map(item => ({ value: item, label: item }))}
-        disabled={!skills?.length} tip="技能文件夹；不需要先运行" onChange={value => void authoringActions.open({ kind: 'skill', name: value })} />
-    </span>
-  );
-}
+// 下拉中的“全部 Timeline”；focus 为 null 时看第一个 Timeline。
+const allTimelines = '*';
 
 function fitRange(bounds: Range): Range {
   const pad = Math.max(minSpan, (bounds.end - bounds.start) * 0.03);
@@ -186,17 +167,18 @@ function TimelineWindow({ frames }: { frames: RouteFrame[] | null }) {
   const [params, setParams] = usePanelParams<Params>(defaults);
   const schemes = useInputSchemes();
   const authorTimelines = useAuthorTimelines();
+  const focusId = params.focus === allTimelines ? null
+    : authorTimelines.some(item => item.documentId === params.focus) ? params.focus : authorTimelines[0]?.documentId ?? null;
   const documentLength = useMemo(() => {
     if (frames) return 0;
-    const selected = authorTimelines.find(item => item.documentId === params.focus);
+    const selected = authorTimelines.find(item => item.documentId === focusId);
     return Math.max(0, ...(selected ? [selected] : authorTimelines).map(timeline =>
       Math.max(timelineLength(timeline), schemes.find(scheme => scheme.documentId === timeline.documentId)?.rangeEndSeconds ?? 0)));
-  }, [frames, authorTimelines, params.focus, schemes]);
+  }, [frames, authorTimelines, focusId, schemes]);
   const tickRate = useAuthoring(state => state.tickRate);
   const scenario = useAuthoring(state => state.target?.kind === 'scenario');
   const inputRate = useWorkbench(state => {
-    const timelineId = params.focus ?? (state.timelines.length === 1 ? state.timelines[0].documentId : null);
-    const scheme = schemes.find(item => item.documentId === timelineId);
+    const scheme = schemes.find(item => item.documentId === focusId);
     return scheme?.scene === state.scenePath && state.inputCatalog?.players.some(player => player.actorId === scheme.actorId)
       ? state.inputCatalog.tickRate : null;
   });
@@ -407,9 +389,9 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
   }), [allSegments, programOf, program]);
 
   const focusId = useWorkbench(state => params.focus ? playbackAt(segments, params.focus, state.frameIndex)?.id ?? null : null);
-  // 技能文档固定看单个 Timeline：所选的那条，否则第一条。
+  // 技能文档看单个 Timeline：所选的那条，否则第一条；选“全部 Timeline”时按组列出。
   const focused = frames ? (focusId ? segments.find(segment => segment.id === focusId) ?? null : null)
-    : segments.find(segment => segment.documentId === params.focus) ?? (segments.length === 1 ? segments[0] : null);
+    : params.focus === allTimelines ? null : segments.find(segment => segment.documentId === params.focus) ?? segments[0] ?? null;
   const inputScheme = schemes.find(scheme => scheme.documentId === focused?.documentId);
   const inputObservation = useInputObservation(inputScheme?.documentId ?? null);
   const receivedSource = useMemo(() => runId !== null && inputObservation.kind === 'ready' ? {
@@ -467,6 +449,7 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
     setParams({ focus: documentId, routeRange: params.focus ? params.routeRange : params.range, range: segmentRange(segment), call: null, pin: null, caller: null });
   }, [frames, segments, setParams, params.focus, params.routeRange, params.range]);
   const back = useCallback(() => setParams({ focus: null, range: params.routeRange, routeRange: null, call: null, pin: null, caller: null }), [setParams, params.routeRange]);
+  const showAll = useCallback(() => setParams({ focus: allTimelines, range: null, call: null, pin: null, caller: null }), [setParams]);
 
   // 节点图双击播放 Timeline 的节点时进入该 Timeline。
   const request = useWorkbench(state => state.timelineRequest);
@@ -587,9 +570,14 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
     focus: focused?.timeline?.displayName ?? (params.focus ? params.focus.slice(0, 8) : null), back, timelines: null,
   } : {
     options: [], program: null, setProgram: () => {}, focus: focused?.timeline?.displayName ?? null, back,
-    timelines: { value: focused?.documentId ?? null, options: segments.map(segment => ({
-      value: segment.documentId, label: schemes.find(scheme => scheme.documentId === segment.documentId)?.name ?? segmentTitle(segment),
-    })), select: enter },
+    timelines: { value: focused?.documentId ?? allTimelines, options: segments.map(segment => ({
+      value: segment.documentId, label: (
+        <>
+          {schemes.find(scheme => scheme.documentId === segment.documentId)?.name ?? segment.timeline?.displayName ?? segment.documentId.slice(0, 8)}
+          <span className={styles.subjectLength}>{segment.length.toFixed(2)} s</span>
+        </>
+      ),
+    })), select: documentId => documentId === allTimelines ? showAll() : enter(documentId) },
   };
   const clock = useMemo<PreviewClock>(() => frames ? { kind: 'archive' }
     : inputScheme ? { kind: 'input', documentId: inputScheme.documentId, observing: inputObservation.kind === 'ready' }
@@ -610,19 +598,15 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
         fit={() => setParams({ range: focused ? segmentRange(focused) : fitRange(bounds) })} />
       <div className={styles.timeline} ref={setTimelineRef}>
         <div className={styles.header}>
-          <div className={styles.timeHead}>时间</div>
+          <div className={styles.timeHead}>
+            <TextInput className={styles.filterInput} placeholder="搜索轨道" value={params.filter}
+              onChange={event => setParams({ filter: event.currentTarget.value })} aria-label="搜索轨道" />
+          </div>
           <div className={styles.headerLane}>
             <TimeScroller bounds={focused ? { start: focused.origin, end: focused.origin + focused.length } : bounds}
               onRangeChanged={onRangeChanged} />
             <Ruler bounds={bounds} origin={origin} marks={marks} seekAt={seekAt} />
           </div>
-        </div>
-        <div className={styles.filterRow}>
-          <div className={styles.filter}>
-            <TextInput className={styles.filterInput} placeholder="搜索轨道" value={params.filter}
-              onChange={event => setParams({ filter: event.currentTarget.value })} aria-label="搜索轨道" />
-          </div>
-          <div className={styles.filterLane} />
         </div>
         <Rows rows={rows} collapsed={params.collapsed} toggle={toggle} enter={enter} inputRoots={inputTimeline?.roots} />
         <Overlay bounds={bounds} origin={origin} seekAt={seekAt} segments={focused ? [] : segments} follow={params.follow} onRangeChanged={onRangeChanged} />
@@ -633,7 +617,7 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
   );
 }
 
-// ── 窗口工具条：Preview 开关、到开头、上一帧、播放、下一帧、到结尾、帧号；右侧资产名与设置 ──
+// ── 窗口工具条：只有一行。左侧所看的 Timeline 与实际调用，右侧添加、适配与设置；播放与保存在顶栏 ──
 
 interface Subject {
   options: { value: string; label: string }[];
@@ -642,67 +626,11 @@ interface Subject {
   // 单个 Timeline 视图的名字；路线视图为 null。
   focus: string | null;
   back(): void;
-  // 技能文档：所看的 Timeline 与技能内全部 Timeline；运行视图为 null。
-  timelines: { value: string | null; options: { value: string; label: string }[]; select(documentId: string): void } | null;
+  // 技能文档：所看的 Timeline（全部时为 allTimelines）与技能内全部 Timeline；运行视图为 null。
+  timelines: { value: string; options: { value: string; label: ReactNode }[]; select(documentId: string): void } | null;
 }
 
-// 编辑行右侧：照 Timeline Editor 的未保存提示与保存（只在有未保存修改时出现），作者／运行观察切换。
-function AuthoringControls() {
-  const state = useAuthoring(useShallow(current => ({
-    available: current.available, reason: current.unavailableReason, author: current.author, target: current.target,
-    loading: current.loading, edited: current.edited, removed: current.removed, externalChange: current.externalChange,
-    saving: current.saving, lastSave: current.lastSave, undoDepth: current.undoDepth, redoDepth: current.redoDepth,
-  })));
-  const dirty = Object.keys(state.edited).length + state.removed.length;
-  // 作者模式下定时检查技能文件是否在别处（Unity、AI、编辑器）被修改。
-  useEffect(() => {
-    if (!state.author || !state.target) return;
-    const timer = setInterval(() => void authoringActions.checkExternal(), 3000);
-    return () => clearInterval(timer);
-  }, [state.author, state.target]);
-  const enter = async () => {
-    if (state.available === null) await authoringActions.probe();
-    if (!useAuthoring.getState().available) {
-      consoleActions.log('warn', '作者', useAuthoring.getState().unavailableReason ?? '作者接口不可用');
-      return;
-    }
-    authoringActions.setAuthor(true);
-  };
-  return (
-    <>
-      {state.author && state.target && (
-        <>
-          <Button variant="ghost" aria-label="撤销" disabled={!state.undoDepth} tip="撤销（Ctrl+Z）" onClick={() => authoringActions.undo()}>↶</Button>
-          <Button variant="ghost" aria-label="重做" disabled={!state.redoDepth} tip="重做（Ctrl+Y／Ctrl+Shift+Z）" onClick={() => authoringActions.redo()}>↷</Button>
-        </>
-      )}
-      {state.externalChange && <span className={styles.authorWarn} title="技能文件在别处被修改；保存会覆盖外部修改，还原会丢弃网页修改">外部已修改</span>}
-      {dirty > 0 && (
-        <>
-          <span className={styles.authorDirty}>{dirty} 个文件未保存{state.removed.length ? `（含 ${state.removed.length} 个待删除）` : ''}</span>
-          <Button variant="ghost" tip="丢弃网页中的全部未保存修改" onClick={() => authoringActions.revert()}>还原</Button>
-          <Button variant="ghost" disabled={state.saving} tip="保存并编译当前技能"
-            onClick={() => void authoringActions.save()}>{state.saving ? '保存中' : '保存'}</Button>
-        </>
-      )}
-      {!dirty && state.lastSave && (
-        <span className={state.lastSave.ok ? styles.authorDirty : styles.authorWarn} title={state.lastSave.message}>
-          {state.lastSave.ok ? '已保存' : state.lastSave.compilationState === 'failed' ? '编译未通过'
-            : state.lastSave.saved ? '已保存，尚未应用' : '保存未完成'}
-        </span>
-      )}
-      <Button variant="ghost" pressed={state.author} disabled={state.available === false}
-        tip={state.available === false ? state.reason ?? '作者接口不可用'
-          : state.author ? (state.loading ? '正在读取内容' : `编辑 ${state.target?.name ?? '—'}：拖动片段改时间，拖两端改起止`)
-            : '进入作者模式，编辑当前技能'}
-        onClick={() => void enter()}>作者</Button>
-      <Button variant="ghost" pressed={!state.author} tip="只观察已确认的运行记录" onClick={() => authoringActions.setAuthor(false)}>运行观察</Button>
-    </>
-  );
-}
-
-// 照 Timeline Editor：编辑行返回、技能根与面包屑，右侧作者／运行观察；预览行播放、全局秒数与结论；下行逐帧、适配与设置。
-// 作者模式在所看的单个 Timeline 上添加轨道：种类与默认值取原 C# 轨道类型。
+// 在所看的单个 Timeline 上添加轨道：种类与默认值取原 C# 轨道类型。
 function AddTrack({ documentId }: { documentId: string | null }) {
   const author = useAuthoring(state => state.author && state.target !== null);
   const elements = useSkillElements(author && documentId !== null);
@@ -717,7 +645,7 @@ function AddTrack({ documentId }: { documentId: string | null }) {
       selectionActions.select({ kind: 'track', id: trackSelectId(documentId, id) });
     },
   }))) : [{ label: '读取中', disabled: true, onSelect: () => {} }];
-  return <MenuButton label="添加轨道" caret entries={entries}>添加轨道</MenuButton>;
+  return <MenuButton label="添加轨道" variant="ghost" caret entries={entries}>＋ 轨道</MenuButton>;
 }
 
 function AddInput({ documentId }: { documentId: string }) {
@@ -725,7 +653,7 @@ function AddInput({ documentId }: { documentId: string }) {
   const [pending, setPending] = useState(false);
   const clock = useContext(PreviewClockContext);
   const cursor = usePreviewSelect(clock, seconds => seconds);
-  if (context.kind !== 'ready') return <Button disabled tip={context.reason}>添加输入</Button>;
+  if (context.kind !== 'ready') return <Button variant="ghost" disabled tip={context.reason}>＋ 输入</Button>;
   const entries = context.actor.keys.flatMap<MenuEntry>(key => ([
     { kind: 'label', label: key.name },
     ...(['hold', 'press'] as const).map(operation => ({
@@ -740,7 +668,7 @@ function AddInput({ documentId }: { documentId: string }) {
       },
     })),
   ]));
-  return <MenuButton label="添加输入" caret entries={entries}>添加输入</MenuButton>;
+  return <MenuButton label="添加输入" variant="ghost" caret entries={entries}>＋ 输入</MenuButton>;
 }
 
 function TimelineToolbar({ settings, fit, subject, documentId, observations, selectCall, pinned, togglePin, parents, openParent }: {
@@ -750,82 +678,59 @@ function TimelineToolbar({ settings, fit, subject, documentId, observations, sel
   openParent: ((item: RecordedGraphCall) => void) | undefined;
 }) {
   const binding = useDocumentObservationBinding();
-  const { playing, blocked, previous, next } = useTransportState();
   const clock = useContext(PreviewClockContext);
-  const seconds = usePreviewSelect(clock, current => current);
   const input = useInputObservation(clock.kind === 'input' ? clock.documentId : null);
-  const segment = useWorkbench(state => {
-    if (clock.kind === 'input') return input.kind === 'ready'
-      ? `${input.input.actorId} · ${input.input.received ? '本帧已收到输入' : '本帧未收到输入'}` : input.reason;
-    if (binding.dirty) return '当前内容未保存，旧档案叠加已停用';
-    const route = state.frame?.route;
-    if (!route) return state.runId ? '档案播放记录尚未提供' : '';
-    const playback = documentPlayback(state, clock);
-    if (!playback) return '当前帧没有匹配来源修订与调用的 Timeline 播放记录';
-    const name = state.timelines.find(item => item.documentId === playback.documentId)?.displayName ?? playback.documentId.slice(0, 8);
-    return `${playback.call!.actorId} · ${playback.domain} · ${name} · 本地 ${playback.cursorSeconds.toFixed(3)} 秒`;
+  // 运行叠加读不到时的原因，一行；正常时不显示（游标头已给出时刻）。
+  const notice = useWorkbench(state => {
+    if (clock.kind === 'input') return input.kind === 'ready' ? null : input.reason;
+    if (!state.runId) return null;
+    if (binding.dirty) return '内容未保存，运行叠加已停用';
+    if (!state.frame?.route) return '档案播放记录尚未提供';
+    return documentPlayback(state, clock) ? null : '本帧没有这个 Timeline 的播放记录';
   });
   const root = subject.options.find(item => item.value === subject.program)?.label ?? '技能根';
+  const timelines = subject.timelines;
   return (
-    <>
-      <PanelBar wrap>
-        {subject.timelines ? (
-          <>
-            <SkillPicker />
-            <span className={styles.subject}>
-              <Select label="Timeline" placeholder="选择 Timeline" value={subject.timelines.value} options={subject.timelines.options}
-                tip="技能内的 Timeline；节点图双击播放它的节点也会切到这里" onChange={subject.timelines.select} />
-            </span>
-          </>
-        ) : subject.focus !== null && <Button variant="ghost" tip="回到技能根路线" onClick={subject.back}>‹ 返回</Button>}
-        {subject.timelines ? null : subject.focus === null ? (
-          <span className={styles.subject}>
-            <Select label="技能根" placeholder="没有技能根" value={subject.program} options={subject.options}
-              disabled={!subject.options.length} tip={subject.options.length ? '路线所属的技能根状态机' : '路线没有经过状态机'}
-              onChange={subject.setProgram} />
-          </span>
-        ) : (
-          <span className={styles.crumbs}>
-            <button className={styles.crumbLink} onClick={subject.back}>{root} ›</button>
-            <span>{subject.focus}</span>
-          </span>
-        )}
-        <span className={styles.grow} />
-        <AuthoringControls />
-        {observations.length > 1 && <Select label="实际调用" value={clock.kind === 'document' && clock.observation ? observationKey(clock.observation) : null}
-          options={observations.map(observation => ({ value: observationKey(observation), label: `${callLabel(observation.call)} · ${observation.domain}` }))}
-          placeholder="选择实际调用" onChange={selectCall} />}
-        {clock.kind === 'document' && clock.observation !== null && <>
-          <Button variant="ghost" pressed={pinned} disabled={togglePin === undefined} onClick={togglePin}
-            tip={`${pinned ? '解除固定，按当前帧选择调用' : '固定本次实际调用和执行域'}\n${callLabel(clock.observation.call)} · ${clock.observation.domain}`}>固定调用</Button>
-          {clock.observation.call.parentInvocationPath && (parents.length > 1 && openParent
-            ? <MenuButton label="选择父调用" entries={parents.map(item => ({ label: `${graphName(item.graph)} · ${callLabel(item.call)}`,
-              onSelect: () => openParent(item) }))}>上层调用</MenuButton>
-            : <Button variant="ghost" disabled={parents.length !== 1 || openParent === undefined}
-              onClick={parents.length === 1 && openParent ? () => openParent(parents[0]) : undefined}
-              tip={parents.length === 1 ? '在节点图返回同一次实际父调用'
-                : clock.observation.call.parentInvocationGeneration === null ? '本记录没有父调用代次' : '已加载记录中没有匹配的父调用'}>上层调用</Button>)}
-        </>}
-      </PanelBar>
-      <PanelBar wrap>
-        <Button variant="ghost" aria-label={playing ? '暂停' : '播放'} pressed={playing} tip={blocked ?? '播放／暂停（空格）'}
-          disabled={!!blocked} onClick={() => transport.toggle()}>
-          <i className={playing ? styles.pauseGlyph : styles.playGlyph} />
-        </Button>
-        <span className={styles.seconds}>{seconds === null ? '—' : `${seconds.toFixed(3)} 秒`}</span>
-        <span className={styles.hint}>{segment}</span>
-        <span className={styles.grow} />
-        <FrameField showSeconds={false} />
-      </PanelBar>
-      <PanelBar wrap>
-        <Button aria-label="上一帧" tip={previous ?? '上一帧（←）'} disabled={!!previous} onClick={() => transport.step(-1)}>‹</Button>
-        <Button aria-label="下一帧" tip={next ?? '下一帧（→）'} disabled={!!next} onClick={() => transport.step(1)}>›</Button>
-        <Button tip="显示整条运行" onClick={fit}>适配</Button>
-        <span className={styles.grow} />
-        <AddTrack documentId={documentId} />
-        <MenuButton label="Timeline 设置" caret entries={settings}>显示设置</MenuButton>
-      </PanelBar>
-    </>
+    <PanelBar>
+      {timelines ? (timelines.options.length > 1 ? (
+        <span className={styles.subject}>
+          <Select variant="ghost" label="Timeline" value={timelines.value} onChange={timelines.select}
+            options={[{ value: allTimelines, label: '全部 Timeline' }, ...timelines.options]}
+            tip="节点图里双击播放 Timeline 的节点也会切到这里" />
+        </span>
+      ) : <span className={styles.subjectName}>{timelines.options[0]?.label}</span>) : subject.focus === null ? (
+        <span className={styles.subject}>
+          <Select variant="ghost" label="技能根" placeholder="没有技能根" value={subject.program} options={subject.options}
+            disabled={!subject.options.length} tip={subject.options.length ? '路线所属的技能根状态机' : '路线没有经过状态机'}
+            onChange={subject.setProgram} />
+        </span>
+      ) : (
+        <span className={styles.crumbs}>
+          <button className={styles.crumbLink} onClick={subject.back}>{root}</button>
+          <span className={styles.crumbSeparator}>›</span>
+          <span>{subject.focus}</span>
+        </span>
+      )}
+      {observations.length > 1 && <Select variant="ghost" label="实际调用" placeholder="选择实际调用" onChange={selectCall}
+        value={clock.kind === 'document' && clock.observation ? observationKey(clock.observation) : null}
+        options={observations.map(observation => ({ value: observationKey(observation), label: `${callLabel(observation.call)} · ${observation.domain}` }))} />}
+      {clock.kind === 'document' && clock.observation !== null && <>
+        <Button variant="ghost" pressed={pinned} disabled={togglePin === undefined} onClick={togglePin}
+          tip={`${pinned ? '解除固定，按当前帧选择调用' : '固定本次实际调用和执行域'}\n${callLabel(clock.observation.call)} · ${clock.observation.domain}`}>固定调用</Button>
+        {clock.observation.call.parentInvocationPath && (parents.length > 1 && openParent
+          ? <MenuButton label="选择父调用" variant="ghost" entries={parents.map(item => ({ label: `${graphName(item.graph)} · ${callLabel(item.call)}`,
+            onSelect: () => openParent(item) }))}>上层调用</MenuButton>
+          : <Button variant="ghost" disabled={parents.length !== 1 || openParent === undefined}
+            onClick={parents.length === 1 && openParent ? () => openParent(parents[0]) : undefined}
+            tip={parents.length === 1 ? '在节点图返回同一次实际父调用'
+              : clock.observation.call.parentInvocationGeneration === null ? '本记录没有父调用代次' : '已加载记录中没有匹配的父调用'}>上层调用</Button>)}
+      </>}
+      {notice && <span className={styles.hint} title={notice}>{notice}</span>}
+      <span className={styles.grow} />
+      <AddTrack documentId={documentId} />
+      <Button variant="ghost" tip="显示整个 Timeline" onClick={fit}>适配</Button>
+      <MenuButton label="Timeline 显示设置" variant="ghost" caret entries={settings}>显示设置</MenuButton>
+    </PanelBar>
   );
 }
 

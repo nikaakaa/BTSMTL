@@ -12,28 +12,6 @@
   background: var(--track-lane);
 }
 
-.playGlyph {
-  width: 0;
-  height: 0;
-  border-top: 6px solid transparent;
-  border-bottom: 6px solid transparent;
-  border-left: 9px solid var(--glyph-strong);
-}
-
-.pauseGlyph {
-  width: 9px;
-  height: 11px;
-  border-left: 3px solid var(--glyph-strong);
-  border-right: 3px solid var(--glyph-strong);
-}
-
-.seconds {
-  min-width: 64px;
-  padding: 0 6px;
-  font-variant-numeric: tabular-nums;
-  border-right: 1px solid var(--line);
-}
-
 .hint {
   padding: 0 6px;
   color: var(--text-dim);
@@ -48,14 +26,30 @@
 /* 编辑行的技能根下拉：照 Timeline Editor 占编辑行左侧一大段 */
 .subject {
   display: flex;
-  flex: 0 1 340px;
-  /* 面板窄时技能与 Timeline 选择先收窄，右侧作者按钮保持完整 */
+  flex: 0 1 220px;
   min-width: 64px;
 }
 
 .subject > :first-child {
   flex: 1;
   max-width: none;
+}
+
+.subjectName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.subjectLength {
+  margin-left: 8px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.crumbSeparator {
+  color: var(--text-dim);
 }
 
 .crumbs {
@@ -215,30 +209,9 @@
   pointer-events: none;
 }
 
-.filterRow {
-  display: flex;
-  height: 26px;
-  flex: none;
-}
-
-.filter {
-  display: flex;
-  align-items: center;
-  width: var(--sidebar);
-  padding: 0 4px;
-  background: var(--track-list);
-  border-right: 1px solid var(--seam);
-  flex: none;
-}
-
 .filterInput {
   flex: 1;
   height: 18px;
-}
-
-.filterLane {
-  flex: 1;
-  background: var(--track-group);
 }
 
 .rows {
@@ -495,16 +468,6 @@
   border-top: 6px solid var(--cursor);
   border-right: 6px solid transparent;
   z-index: 1;
-}
-
-.authorDirty {
-  padding: 0 6px;
-  color: var(--cursor);
-}
-
-.authorWarn {
-  padding: 0 6px;
-  color: var(--reject);
 }
 
 .clipLabel {
