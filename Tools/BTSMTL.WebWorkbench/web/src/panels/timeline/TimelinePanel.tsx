@@ -847,7 +847,7 @@ function Rows({ rows, collapsed, toggle, enter, inputRoots }: {
 
   const boxDown = (event: PointerEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement;
-    if (event.button !== 0 || !target.closest('[data-lane]') || target.closest('button')) return;
+    if (event.button !== 0 || !target.closest('[data-lane]') || target.closest(`button, .${styles.curvePlot}`)) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     boxStart.current = { x: event.clientX, y: event.clientY };
   };
