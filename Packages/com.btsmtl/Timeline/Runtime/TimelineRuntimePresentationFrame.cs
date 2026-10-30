@@ -7,25 +7,63 @@ namespace BTSMTL.Timeline.Runtime
 {
     sealed class TimelineRuntimePresentationBuffer
     {
+        public readonly struct Capacity
+        {
+            public Capacity(int[] samples, int events, int trees, int activeTrees, int samplingClips)
+            {
+                Samples = samples;
+                Events = events;
+                Trees = trees;
+                ActiveTrees = activeTrees;
+                SamplingClips = samplingClips;
+            }
+
+            public readonly int[] Samples;
+            public readonly int Events;
+            public readonly int Trees;
+            public readonly int ActiveTrees;
+            public readonly int SamplingClips;
+        }
+
+        public TimelineRuntimePresentationBuffer()
+        {
+            Samples = Array.Empty<TimelineRuntimeSampleBuffer<TimelineRuntimeSample<Float32Scalar>>>();
+            SamplingClips = new List<int>();
+            Events = new(0);
+            TreeClips = new(0);
+            ActiveTreeClips = new(0);
+        }
+
         public TimelineRuntimePresentationBuffer(TimelineRuntimePreparedContent prepared,
             OrchestrationTimelinePreparedContent<OrchestrationTime> executionContent,
             TimelineRuntimePresentationGraphSource graphSource)
-            : this(prepared,
+            : this(CreateCapacity(prepared, executionContent, graphSource), prepared.SampleKindCount)
+        {
+        }
+
+        public TimelineRuntimePresentationBuffer(TimelineRuntimePreparedContent prepared)
+            : this(CreateCapacity(prepared, 1, 0, 0, false), prepared.SampleKindCount)
+        {
+        }
+
+        TimelineRuntimePresentationBuffer(in Capacity capacity, int sampleKindCount) : this()
+        {
+            PrepareCapacity(in capacity);
+            SampleKindCount = sampleKindCount;
+        }
+
+        public static Capacity CreateCapacity(TimelineRuntimePreparedContent prepared,
+            OrchestrationTimelinePreparedContent<OrchestrationTime> executionContent,
+            TimelineRuntimePresentationGraphSource graphSource) =>
+            CreateCapacity(prepared,
                 executionContent.Mode == OrchestrationTimelinePlaybackMode.Loop
                     ? OrchestrationTimelineLimits.MaximumCycleAdvance + 1 : 1,
                 graphSource == TimelineRuntimePresentationGraphSource.Unexecuted
                     ? checked(executionContent.TickCapacity.GraphInvocationsPerAdvance + 2 * executionContent.RequiredActiveTrees) : 0,
                 graphSource == TimelineRuntimePresentationGraphSource.Unexecuted ? executionContent.RequiredActiveTrees : 0,
-                graphSource == TimelineRuntimePresentationGraphSource.Unexecuted)
-        {
-        }
+                graphSource == TimelineRuntimePresentationGraphSource.Unexecuted);
 
-        public TimelineRuntimePresentationBuffer(TimelineRuntimePreparedContent prepared)
-            : this(prepared, 1, 0, 0, false)
-        {
-        }
-
-        TimelineRuntimePresentationBuffer(TimelineRuntimePreparedContent prepared, int traversals,
+        static Capacity CreateCapacity(TimelineRuntimePreparedContent prepared, int traversals,
             int treeCapacity, int activeTreeCapacity, bool includeMarkers)
         {
             TimelineContentUnit content = prepared.Content;
@@ -50,16 +88,33 @@ namespace BTSMTL.Timeline.Runtime
                     if (marker.ExecutionPolicy.IsPresentation && !marker.TrackMuted)
                         markers++;
                 }
-            Samples = new TimelineRuntimeSampleBuffer<TimelineRuntimeSample<Float32Scalar>>[capacities.Length];
-            for (int kindIndex = 0; kindIndex < capacities.Length; kindIndex++)
-                Samples[kindIndex] = new TimelineRuntimeSampleBuffer<TimelineRuntimeSample<Float32Scalar>>(capacities[kindIndex]);
-            SamplingClips = new List<int>(Math.Max(content.Clips.Count, content.Markers.Count));
-            Events = new(checked(markers * traversals));
-            TreeClips = new(treeCapacity);
-            ActiveTreeClips = new(activeTreeCapacity);
+            return new Capacity(capacities, checked(markers * traversals), treeCapacity,
+                activeTreeCapacity, Math.Max(content.Clips.Count, content.Markers.Count));
         }
 
-        public readonly TimelineRuntimeSampleBuffer<TimelineRuntimeSample<Float32Scalar>>[] Samples;
+        public void PrepareCapacity(in Capacity capacity)
+        {
+            int previousKinds = Samples.Length;
+            ulong version = previousKinds == 0 ? 0 : Samples[0].Version;
+            if (previousKinds < capacity.Samples.Length)
+            {
+                Array.Resize(ref Samples, capacity.Samples.Length);
+                for (int kindIndex = previousKinds; kindIndex < Samples.Length; kindIndex++)
+                {
+                    Samples[kindIndex] = new TimelineRuntimeSampleBuffer<TimelineRuntimeSample<Float32Scalar>>(0);
+                    Samples[kindIndex].RestoreRecordedState(ReadOnlySpan<TimelineRuntimeSample<Float32Scalar>>.Empty, version);
+                }
+            }
+            for (int kindIndex = 0; kindIndex < capacity.Samples.Length; kindIndex++)
+                Samples[kindIndex].PrepareCapacity(capacity.Samples[kindIndex]);
+            SamplingClips.Capacity = Math.Max(SamplingClips.Capacity, capacity.SamplingClips);
+            Events.PrepareCapacity(capacity.Events);
+            TreeClips.PrepareCapacity(capacity.Trees);
+            ActiveTreeClips.PrepareCapacity(capacity.ActiveTrees);
+        }
+
+        public int SampleKindCount;
+        public TimelineRuntimeSampleBuffer<TimelineRuntimeSample<Float32Scalar>>[] Samples;
         public readonly List<int> SamplingClips;
         public readonly TimelineRuntimeSampleBuffer<TimelineRuntimePresentationEvent> Events;
         public readonly TimelineRuntimeSampleBuffer<TimelineRuntimeTreeClipRequest> TreeClips;
@@ -78,22 +133,22 @@ namespace BTSMTL.Timeline.Runtime
 
     public readonly struct TimelineRuntimePresentationOperations
     {
-        readonly TimelineRuntimeSampleBuffer<TimelineRuntimeSample<Float32Scalar>>[] m_Samples;
+        readonly TimelineRuntimePresentationBuffer m_Buffer;
         readonly ulong m_SampleVersion;
 
         internal TimelineRuntimePresentationOperations(TimelineRuntimePresentationBuffer buffer)
         {
-            m_Samples = buffer.Samples;
-            m_SampleVersion = m_Samples.Length == 0 ? 0 : m_Samples[0].Version;
+            m_Buffer = buffer;
+            m_SampleVersion = buffer.SampleKindCount == 0 ? 0 : buffer.Samples[0].Version;
             TreeClips = buffer.TreeClips.View;
             ActiveTreeClips = buffer.ActiveTreeClips.View;
         }
 
         public TimelineRuntimeSampleView<TimelineRuntimeTreeClipRequest> TreeClips { get; }
         public TimelineRuntimeSampleView<TimelineRuntimeTreeClipRequest> ActiveTreeClips { get; }
-        public int SampleKindCount => m_Samples.Length;
+        public int SampleKindCount => m_Buffer.SampleKindCount;
         public TimelineRuntimeSampleView<TimelineRuntimeSample<Float32Scalar>> GetSamples(int kindIndex) =>
-            new(m_Samples[kindIndex], m_SampleVersion);
+            new(m_Buffer.Samples[kindIndex], m_SampleVersion);
     }
 
     public readonly struct TimelineRuntimePresentationFrame

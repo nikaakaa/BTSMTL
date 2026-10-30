@@ -136,12 +136,12 @@ namespace BTSMTL.Timeline.Runtime
         readonly int m_PlaybackCapacity;
         readonly int m_RecordedPlaybackCapacity;
         readonly int m_RecordedStateHeaderBytes;
-        int m_AllPlaybacksRecordedBytes;
-        int m_AllPlaybacksRecordedTextReferences;
-        int m_MaximumRecordedPlaybackBytes;
-        int m_MaximumRecordedPlaybackTextReferences;
+        readonly (TimelineRuntimePresentationBuffer Candidate, TimelineRuntimePresentationBuffer Accepted)[] m_BufferStorage;
+        readonly Stack<(TimelineRuntimePresentationBuffer Candidate, TimelineRuntimePresentationBuffer Accepted)> m_FreeBuffers;
+        readonly TimelineRuntimePresentationBuffer m_CapacityCandidate = new();
+        readonly TimelineRuntimePresentationBuffer m_CapacityAccepted = new();
         readonly Dictionary<OrchestrationTimelineStart<OrchestrationTime>, PresentationPlaybackState> m_Playbacks;
-        readonly Dictionary<(TimelineContentUnit Timeline, int SourceIdentityId, OrchestrationTimelinePlaybackMode Mode, TimelineRuntimePresentationGraphSource GraphSource), Stack<PresentationPlaybackState>> m_RecycledPlaybacks = new();
+        readonly Dictionary<(TimelineContentUnit Timeline, int SourceIdentityId, OrchestrationTimelinePlaybackMode Mode, TimelineRuntimePresentationGraphSource GraphSource), (Stack<PresentationPlaybackState> States, PresentationPlaybackState Template)> m_RecycledPlaybacks = new();
         TimelineSchedulingBoundary<OrchestrationTime>[] m_Boundaries = Array.Empty<TimelineSchedulingBoundary<OrchestrationTime>>();
         TimelineSchedulingBoundary<OrchestrationTime>[] m_SyntheticBoundaries = Array.Empty<TimelineSchedulingBoundary<OrchestrationTime>>();
         TimelineScheduledInvocation<OrchestrationTime>[] m_Scheduled = Array.Empty<TimelineScheduledInvocation<OrchestrationTime>>();
@@ -197,8 +197,15 @@ namespace BTSMTL.Timeline.Runtime
         {
             m_PlaybackCapacity = playbackCapacity;
             m_RecordedPlaybackCapacity = recordedPlaybackCapacity;
+            m_BufferStorage = new (TimelineRuntimePresentationBuffer, TimelineRuntimePresentationBuffer)[recordedPlaybackCapacity];
+            m_FreeBuffers = new Stack<(TimelineRuntimePresentationBuffer, TimelineRuntimePresentationBuffer)>(recordedPlaybackCapacity);
+            for (int index = 0; index < m_BufferStorage.Length; index++)
+            {
+                m_BufferStorage[index] = (new TimelineRuntimePresentationBuffer(), new TimelineRuntimePresentationBuffer());
+                m_FreeBuffers.Push(m_BufferStorage[index]);
+            }
             m_Playbacks = new Dictionary<OrchestrationTimelineStart<OrchestrationTime>, PresentationPlaybackState>(
-                playbackCapacity, OrchestrationTimelineStart<OrchestrationTime>.PlaybackComparer);
+                recordedPlaybackCapacity, OrchestrationTimelineStart<OrchestrationTime>.PlaybackComparer);
             var writer = new RecordedRuntimeStateCountingWriter();
             WriteRecordedState(ref writer);
             m_RecordedStateHeaderBytes = writer.WrittenBytes;
@@ -227,49 +234,60 @@ namespace BTSMTL.Timeline.Runtime
             }
             if (graphSource == TimelineRuntimePresentationGraphSource.Unexecuted)
                 PrepareGraphWorkspace(executionContent);
-            var recycled = new Stack<PresentationPlaybackState>(m_PlaybackCapacity);
-            for (int i = 0; i < m_PlaybackCapacity; i++)
-                recycled.Push(new PresentationPlaybackState(content, executionContent, graphSource, recycled));
-            var writer = new RecordedRuntimeStateCountingWriter();
-            if (m_PlaybackCapacity != 0)
+            TimelineRuntimePresentationBuffer.Capacity capacity =
+                TimelineRuntimePresentationBuffer.CreateCapacity(content, executionContent, graphSource);
+            foreach (var buffers in m_BufferStorage)
             {
-                WritePlayback(ref writer, default, recycled.Peek(), true);
-                writer.Write(default(OrchestrationTimelineStart<OrchestrationTime>));
+                buffers.Candidate.PrepareCapacity(in capacity);
+                buffers.Accepted.PrepareCapacity(in capacity);
             }
-            m_AllPlaybacksRecordedBytes = checked(m_AllPlaybacksRecordedBytes +
-                checked(writer.WrittenBytes * m_PlaybackCapacity));
-            m_AllPlaybacksRecordedTextReferences = checked(m_AllPlaybacksRecordedTextReferences +
-                checked(writer.TextReferenceCount * m_PlaybackCapacity));
-            m_MaximumRecordedPlaybackBytes = Math.Max(m_MaximumRecordedPlaybackBytes, writer.WrittenBytes);
-            m_MaximumRecordedPlaybackTextReferences = Math.Max(m_MaximumRecordedPlaybackTextReferences, writer.TextReferenceCount);
-            MaximumRecordedStateBytes = checked(m_RecordedStateHeaderBytes + (int)Math.Min(
-                m_AllPlaybacksRecordedBytes, (long)m_MaximumRecordedPlaybackBytes * m_RecordedPlaybackCapacity));
-            MaximumRecordedTextReferences = (int)Math.Min(m_AllPlaybacksRecordedTextReferences,
-                (long)m_MaximumRecordedPlaybackTextReferences * m_RecordedPlaybackCapacity);
-            m_RecycledPlaybacks.Add(key, recycled);
-            m_Playbacks.EnsureCapacity(checked(m_RecycledPlaybacks.Count * m_PlaybackCapacity));
+            m_CapacityCandidate.PrepareCapacity(in capacity);
+            m_CapacityAccepted.PrepareCapacity(in capacity);
+            var recycled = new Stack<PresentationPlaybackState>(m_PlaybackCapacity);
+            PresentationPlaybackState template = null;
+            for (int i = 0; i < m_PlaybackCapacity; i++)
+            {
+                template = new PresentationPlaybackState(content, executionContent, graphSource, recycled, m_FreeBuffers);
+                recycled.Push(template);
+            }
+            m_RecycledPlaybacks.Add(key, (recycled, template));
+            UpdateRecordedCapacity();
         }
 
         public void ReleasePreparedContent(TimelineRuntimePreparedContent content, int sourceIdentityId,
             OrchestrationTimelinePlaybackMode mode, TimelineRuntimePresentationGraphSource graphSource)
         {
             var key = (content.Content, sourceIdentityId, mode, graphSource);
-            Stack<PresentationPlaybackState> recycled = m_RecycledPlaybacks[key];
+            Stack<PresentationPlaybackState> recycled = m_RecycledPlaybacks[key].States;
             if (recycled.Count != m_PlaybackCapacity)
                 throw new InvalidOperationException("Timeline 时间版本仍有播放持有，不能释放其正式准备存储。");
-            var writer = new RecordedRuntimeStateCountingWriter();
-            if (m_PlaybackCapacity != 0)
-            {
-                WritePlayback(ref writer, default, recycled.Peek(), true);
-                writer.Write(default(OrchestrationTimelineStart<OrchestrationTime>));
-            }
-            m_AllPlaybacksRecordedBytes -= checked(writer.WrittenBytes * m_PlaybackCapacity);
-            m_AllPlaybacksRecordedTextReferences -= checked(writer.TextReferenceCount * m_PlaybackCapacity);
             m_RecycledPlaybacks.Remove(key);
+            UpdateRecordedCapacity();
+        }
+
+        void UpdateRecordedCapacity()
+        {
+            long allBytes = 0;
+            long allTexts = 0;
+            int maximumBytes = 0;
+            int maximumTexts = 0;
+            if (m_PlaybackCapacity != 0)
+                foreach (var pool in m_RecycledPlaybacks.Values)
+                {
+                    m_CapacityCandidate.SampleKindCount = pool.Template.Prepared.SampleKindCount;
+                    m_CapacityAccepted.SampleKindCount = pool.Template.Prepared.SampleKindCount;
+                    var writer = new RecordedRuntimeStateCountingWriter();
+                    WritePlayback(ref writer, default, pool.Template, true, m_CapacityCandidate, m_CapacityAccepted);
+                    writer.Write(default(OrchestrationTimelineStart<OrchestrationTime>));
+                    allBytes = checked(allBytes + (long)writer.WrittenBytes * m_PlaybackCapacity);
+                    allTexts = checked(allTexts + (long)writer.TextReferenceCount * m_PlaybackCapacity);
+                    maximumBytes = Math.Max(maximumBytes, writer.WrittenBytes);
+                    maximumTexts = Math.Max(maximumTexts, writer.TextReferenceCount);
+                }
             MaximumRecordedStateBytes = checked(m_RecordedStateHeaderBytes + (int)Math.Min(
-                m_AllPlaybacksRecordedBytes, (long)m_MaximumRecordedPlaybackBytes * m_RecordedPlaybackCapacity));
-            MaximumRecordedTextReferences = (int)Math.Min(m_AllPlaybacksRecordedTextReferences,
-                (long)m_MaximumRecordedPlaybackTextReferences * m_RecordedPlaybackCapacity);
+                allBytes, (long)maximumBytes * m_RecordedPlaybackCapacity));
+            MaximumRecordedTextReferences = checked((int)Math.Min(allTexts,
+                (long)maximumTexts * m_RecordedPlaybackCapacity));
         }
 
         void PrepareGraphWorkspace(OrchestrationTimelinePreparedContent<OrchestrationTime> content)
@@ -428,8 +446,9 @@ namespace BTSMTL.Timeline.Runtime
             if (!m_Playbacks.TryGetValue(start, out PresentationPlaybackState state))
             {
                 var key = (content.Content, start.SourceIdentityId, start.Mode, graphSource);
-                Stack<PresentationPlaybackState> recycled = m_RecycledPlaybacks[key];
+                Stack<PresentationPlaybackState> recycled = m_RecycledPlaybacks[key].States;
                 state = recycled.Pop();
+                state.AcquireBuffers();
                 state.Restart(startTime, cycle);
                 m_Playbacks.Add(start, state);
             }
@@ -540,13 +559,9 @@ namespace BTSMTL.Timeline.Runtime
             while (m_FirstPendingFrame != null)
                 ReleasePendingFrame(m_FirstPendingFrame);
             foreach (PresentationPlaybackState state in m_Playbacks.Values)
-                state.Clear();
+                state.Recycle();
             m_Playbacks.Clear();
             m_RecycledPlaybacks.Clear();
-            m_AllPlaybacksRecordedBytes = 0;
-            m_AllPlaybacksRecordedTextReferences = 0;
-            m_MaximumRecordedPlaybackBytes = 0;
-            m_MaximumRecordedPlaybackTextReferences = 0;
             var writer = new RecordedRuntimeStateCountingWriter();
             WriteRecordedState(ref writer);
             MaximumRecordedStateBytes = writer.WrittenBytes;
@@ -559,7 +574,8 @@ namespace BTSMTL.Timeline.Runtime
             writer.Write(m_Playbacks.Count);
             foreach (KeyValuePair<OrchestrationTimelineStart<OrchestrationTime>, PresentationPlaybackState> playback in m_Playbacks)
             {
-                WritePlayback(ref writer, CurrentStart(playback.Key, playback.Value), playback.Value, false);
+                PresentationPlaybackState state = playback.Value;
+                WritePlayback(ref writer, CurrentStart(playback.Key, state), state, false, state.Candidate, state.Accepted);
             }
             int pendingCount = 0;
             for (PresentationPlaybackState state = m_FirstPendingFrame; state != null; state = state.NextPendingFrame)
@@ -595,10 +611,11 @@ namespace BTSMTL.Timeline.Runtime
                 string contentIdentity = reader.ReadText();
                 string contentRevision = reader.ReadText();
                 TimelineRuntimePreparedContent prepared = RequireRecordedContent(contents, contentIdentity, contentRevision);
-                if (!m_RecycledPlaybacks.TryGetValue((prepared.Content, start.SourceIdentityId, start.Mode, graphSource), out Stack<PresentationPlaybackState> recycled) ||
-                    recycled.Count == 0)
+                if (!m_RecycledPlaybacks.TryGetValue((prepared.Content, start.SourceIdentityId, start.Mode, graphSource), out var pool) ||
+                    pool.States.Count == 0)
                     throw new InvalidOperationException($"Recorded Timeline '{contentIdentity}' revision '{contentRevision}' has no prepared playback capacity for '{start.Mode}'.");
-                PresentationPlaybackState state = recycled.Pop();
+                PresentationPlaybackState state = pool.States.Pop();
+                state.AcquireBuffers();
                 state.RestoreRecordedState(ref reader, in start);
                 m_Playbacks.Add(start, state);
             }
@@ -630,13 +647,15 @@ namespace BTSMTL.Timeline.Runtime
         }
 
         static void WritePlayback<TWriter>(ref TWriter writer, OrchestrationTimelineStart<OrchestrationTime> start,
-            PresentationPlaybackState state, bool maximum) where TWriter : struct, IRecordedRuntimeStateWriter
+            PresentationPlaybackState state, bool maximum,
+            TimelineRuntimePresentationBuffer candidate, TimelineRuntimePresentationBuffer accepted)
+            where TWriter : struct, IRecordedRuntimeStateWriter
         {
             writer.Write(start);
             writer.Write(state.GraphSource);
             writer.WriteText(state.Prepared.Content.Identity);
             writer.WriteText(state.Prepared.Content.Revision);
-            state.WriteRecordedState(ref writer, maximum);
+            state.WriteRecordedState(ref writer, maximum, candidate, accepted);
         }
 
         static void WriteFrame<TWriter>(ref TWriter writer, in TimelineRuntimePresentationFrame frame)
@@ -670,7 +689,7 @@ namespace BTSMTL.Timeline.Runtime
         static void WriteBuffer<TWriter>(ref TWriter writer, TimelineRuntimePresentationBuffer buffer, bool maximum)
             where TWriter : struct, IRecordedRuntimeStateWriter
         {
-            for (int index = 0; index < buffer.Samples.Length; index++)
+            for (int index = 0; index < buffer.SampleKindCount; index++)
                 WriteSamples(ref writer, buffer.Samples[index], maximum);
             WriteSamples(ref writer, buffer.Events, maximum);
             WriteSamples(ref writer, buffer.TreeClips, maximum);
@@ -683,8 +702,11 @@ namespace BTSMTL.Timeline.Runtime
 
         static void ReadBuffer(ref RecordedRuntimeStateReader reader, TimelineRuntimePresentationBuffer buffer)
         {
-            for (int index = 0; index < buffer.Samples.Length; index++)
+            for (int index = 0; index < buffer.SampleKindCount; index++)
                 ReadSamples(ref reader, buffer.Samples[index]);
+            for (int index = buffer.SampleKindCount; index < buffer.Samples.Length; index++)
+                buffer.Samples[index].RestoreRecordedState(ReadOnlySpan<TimelineRuntimeSample<Float32Scalar>>.Empty,
+                    buffer.Samples[0].Version);
             ReadSamples(ref reader, buffer.Events);
             ReadSamples(ref reader, buffer.TreeClips);
             ReadSamples(ref reader, buffer.ActiveTreeClips);
@@ -976,18 +998,19 @@ namespace BTSMTL.Timeline.Runtime
         sealed class PresentationPlaybackState
         {
             readonly Stack<PresentationPlaybackState> m_Recycled;
+            readonly Stack<(TimelineRuntimePresentationBuffer Candidate, TimelineRuntimePresentationBuffer Accepted)> m_FreeBuffers;
 
             public PresentationPlaybackState(
                 TimelineRuntimePreparedContent prepared,
                 OrchestrationTimelinePreparedContent<OrchestrationTime> executionContent,
-                TimelineRuntimePresentationGraphSource graphSource, Stack<PresentationPlaybackState> recycled)
+                TimelineRuntimePresentationGraphSource graphSource, Stack<PresentationPlaybackState> recycled,
+                Stack<(TimelineRuntimePresentationBuffer Candidate, TimelineRuntimePresentationBuffer Accepted)> freeBuffers)
             {
                 m_Recycled = recycled;
+                m_FreeBuffers = freeBuffers;
                 Prepared = prepared;
                 ExecutionContent = executionContent;
                 GraphSource = graphSource;
-                Candidate = new TimelineRuntimePresentationBuffer(prepared, executionContent, graphSource);
-                Accepted = new TimelineRuntimePresentationBuffer(prepared, executionContent, graphSource);
                 if (graphSource == TimelineRuntimePresentationGraphSource.Unexecuted)
                     Graphs = new PresentationGraphState(prepared, executionContent);
             }
@@ -1013,7 +1036,18 @@ namespace BTSMTL.Timeline.Runtime
             public ulong LastPresentationFrame;
             public bool HasCachedFrame;
 
-            public void WriteRecordedState<TWriter>(ref TWriter writer, bool maximum) where TWriter : struct, IRecordedRuntimeStateWriter
+            public void AcquireBuffers()
+            {
+                var buffers = m_FreeBuffers.Pop();
+                Candidate = buffers.Candidate;
+                Accepted = buffers.Accepted;
+                Candidate.SampleKindCount = Prepared.SampleKindCount;
+                Accepted.SampleKindCount = Prepared.SampleKindCount;
+            }
+
+            public void WriteRecordedState<TWriter>(ref TWriter writer, bool maximum,
+                TimelineRuntimePresentationBuffer candidate, TimelineRuntimePresentationBuffer accepted)
+                where TWriter : struct, IRecordedRuntimeStateWriter
             {
                 writer.Write(CursorTime);
                 writer.Write(Cycle);
@@ -1025,8 +1059,8 @@ namespace BTSMTL.Timeline.Runtime
                 writer.Write(LastPresentationFrame);
                 if (GraphSource == TimelineRuntimePresentationGraphSource.Unexecuted)
                     Graphs.WriteRecordedState(ref writer);
-                WriteBuffer(ref writer, Candidate, maximum);
-                WriteBuffer(ref writer, Accepted, maximum);
+                WriteBuffer(ref writer, candidate, maximum);
+                WriteBuffer(ref writer, accepted, maximum);
                 writer.Write(HasPendingFrame);
                 if (maximum || HasPendingFrame)
                     WriteFrame(ref writer, in PendingFrame);
@@ -1075,6 +1109,9 @@ namespace BTSMTL.Timeline.Runtime
             public void Recycle()
             {
                 Clear();
+                m_FreeBuffers.Push((Candidate, Accepted));
+                Candidate = null;
+                Accepted = null;
                 m_Recycled.Push(this);
             }
 

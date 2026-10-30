@@ -64,6 +64,9 @@ namespace BTSMTL.Timeline.Runtime
         public T this[int index] => m_Values[index];
         public TimelineRuntimeSampleView<T> View => new(this);
 
+        internal void PrepareCapacity(int capacity) =>
+            m_Values.Capacity = Math.Max(m_Values.Capacity, capacity);
+
         public void Add(T value)
         {
             if (Count == m_Values.Capacity)
