@@ -78,6 +78,28 @@ try {
 
 宿主提供输入、逻辑时间、内容和 roster 绑定，唯一执行器读写宿主提供的候选区段，由宿主采用或丢弃。历史、保存与恢复继续归实际后端；Quantum 使用 SDK Frame。动画、场景、声音和资源解析归 Unity 接入。编排与领域源码编译成功不代表产品入口、内容发布和实际运行已验收。
 
+## 宿主接入推进：普通插头与 Job／Burst
+
+推进入口只有一份：`OrchestrationExecutionCursor` 读取程序、状态布局、草稿与 Timeline 的连续内存视图，经结构体宿主插头 `IOrchestrationHost`（扩展调用、Timeline 派发、片段退出）与诊断插头工作。宿主决定线程、Job、Burst 与内存来源，BTSMTL 不提供调度或原生容器。
+
+普通插头（托管扩展照常实现 `IOrchestrationExtension`）：
+
+1. 准备期：`new OrchestrationProgram<TValue>(content)` 生成程序镜像；`OrchestrationExtensionBindings.Prepare(...)` 绑定扩展；`new OrchestrationExecutionScratchMemory<TValue>(OrchestrationExecutionScratchLayout.Prepare(program.View, frameCapacity, tickCapacity.CursorOutputs))` 准备草稿；需要 Trace 或值观察时另建 `OrchestrationWorkbenchDiagnosticStorage<TValue>`。
+2. 推进：`var host = new ManagedOrchestrationHost<...>(bindings, timelineDispatcher);`，`host.CreateCursor<TDiagnostics, TStorage>(OrchestrationStateBinding.BindCandidate(layout, memory), program.View, scratch.View, frameSlot, characterSlots, in input, identities, in context, diagnostics)`。诊断插头用 `default(OrchestrationProductDiagnostics<TValue>)`，采集时用 `new OrchestrationWorkbenchDiagnostics<TValue>(storage)`。
+3. 失败：推进路径只抛固定文字，捕获后用 `OrchestrationExecutionErrorFormatter.Describe(exception, in scratch.Error, graphId, revision)` 组织原信息。
+
+Job／Burst 宿主：
+
+1. 准备期仍用上面的托管类生成内容，把 `OrchestrationProgram.Image`、`OrchestrationPreparedStateLayout.Image`、Timeline 内容镜像与工作区、身份序号复制到原生内存，草稿按 `SizeBytes` 分配并 `Initialize`。
+2. 自写 `IOrchestrationHost` 纯数据结构体，只持原生指针与纯值（区段位置用 `OrchestrationTimelineStateRegions`）；Timeline 派发转调 `OrchestrationTimelineDispatch<...>` 静态核心，逻辑采样转调 `TimelineRuntimeLogicSampling<...>.Invoke`，扩展由插头直接实现，不经托管扩展对象。
+3. Job 内用 `new OrchestrationProgramView<TValue>(span)`、`OrchestrationStateBinding.BindCandidate<TValue>(new OrchestrationStateLayoutView(span), memory)`、`new OrchestrationExecutionScratch<TValue>(span)` 与 `new OrchestrationIdentityOrdinalView(...)` 构造游标后推进。数值目标须本身可被 Burst 编译：BTSMTL 的 Float32 受检查守护；Photon FP 读取可变静态查表，不能直接进入 Burst。Float32 在 Burst 与托管下的逐位一致未保证。
+
+`Tools/BurstCheck` 是检查专用实例（不是正式宿主），示范上述纯数据插头。解决方案构建传入 Unity 工程与 Editor 路径时自动执行，失败报告调用链与源码位置：
+
+```powershell
+dotnet build BTSMTL.sln --disable-build-servers /nr:false /p:UseSharedCompilation=false "/p:BurstCheckClientRoot=<Unity 工程根目录>" "/p:UnityEditorDataPath=<Unity Editor\Data>" "/p:BurstCheckOutput=<输出目录>\"
+```
+
 ## 源码位置与依赖
 
 | 源码位置 | 内容 |
