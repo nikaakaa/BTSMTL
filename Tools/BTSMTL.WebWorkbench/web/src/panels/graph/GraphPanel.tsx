@@ -117,6 +117,7 @@ function ReportEmpty({ text }: { text: string }) {
 }
 
 const programOf = (graph: GraphDefinition) => JSON.stringify([graph.actorId, graph.programId, graph.programRevision]);
+const graphCallKey = ({ graph, call }: RecordedGraphCall) => JSON.stringify([graphKey(graph), callKey(call)]);
 
 function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
   const binding = useDocumentObservationBinding();
@@ -139,30 +140,21 @@ function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
     return result;
   }, [graphs, hierarchy]);
 
-  const followed = useWorkbench(state => {
-    if (params.graph) return null;
-    const route = state.frame?.route;
-    if (!route) return null;
-    const items = [...route.nodes, ...route.edges];
-    const active = graphs.filter(graph => items.some(item => item.call !== null && item.graphId === graph.id && belongsTo(item.call, graph, binding)));
-    return active.length === 1 ? graphKey(active[0]) : null;
-  });
+  const currentCalls = useMemo(() => recordedGraphCalls([], observation.current, graphs, binding), [observation.current, graphs, binding]);
+  const followed = params.graph === null && currentCalls.length === 1 ? graphKey(currentCalls[0].graph) : null;
   const graph = graphs.find(item => graphKey(item) === (params.graph ?? followed)) ?? programs.values().next().value!.root;
   const key = graphKey(graph);
 
-  const calls = useWorkbench(useShallow(state => {
-    const result = new Map<string, ExecutionCall>();
-    for (const item of graphRecords(state.frame?.route, graph, binding)) {
-      result.set(callKey(item.call), item.call);
-    }
-    return [...result.values()];
-  }));
+  const calls = currentCalls.filter(item => graphKey(item.graph) === key).map(item => item.call);
   const paths = useMemo(() => [...new Set(graph.nodes.map(node => node.invocationPath))], [graph]);
   const pin = params.pin?.runId === runId && params.pin.graph === key && matchesDocumentCall(params.pin.call, binding)
     ? params.pin : null;
-  const observedCall = pin?.call ?? calls.find(item => callKey(item) === params.call) ?? (calls.length === 1 ? calls[0] : null);
-  const choices = pin && !calls.some(item => callKey(item) === callKey(pin.call)) ? [pin.call, ...calls] : calls;
-  const callOptions = choices.map(item => ({ value: callKey(item), label: callLabel(item) }));
+  const automatic = params.graph === null ? currentCalls.length === 1 ? currentCalls[0].call : null : calls.length === 1 ? calls[0] : null;
+  const observedCall = pin?.call ?? calls.find(item => callKey(item) === params.call) ?? automatic;
+  const availableCalls = params.graph === null ? currentCalls : currentCalls.filter(item => graphKey(item.graph) === key);
+  const choices = pin && !availableCalls.some(item => callKey(item.call) === callKey(pin.call)) ? [{ graph, call: pin.call }, ...availableCalls] : availableCalls;
+  const callOptions = choices.map(item => ({ value: graphCallKey(item),
+    label: `${params.graph === null ? graphName(item.graph) + ' · ' : ''}${callLabel(item.call)}` }));
   const path = observedCall?.invocationPath ?? (params.path !== null && paths.includes(params.path) ? params.path : paths.length === 1 ? paths[0] : null);
   const togglePin = pin ? () => setParams({ pin: null }) : observedCall === null || runId === null ? undefined
     : () => setParams({ graph: key, call: callKey(observedCall), pin: { runId, graph: key, call: observedCall } });
@@ -183,7 +175,8 @@ function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
     call: callKey(call), path: null, pin: { runId, graph: graphKey(graph), call }, viewport: null });
 
   const selectCall = (value: string) => {
-    setParams({ call: value, pin: null });
+    const choice = choices.find(item => graphCallKey(item) === value)!;
+    setParams({ graph: graphKey(choice.graph), call: callKey(choice.call), path: null, pin: null, viewport: null });
   };
 
   useEffect(() => {
@@ -258,7 +251,7 @@ function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
               </span>
             ))}
           </span>
-          {callOptions.length > 0 && <Select label="实际调用" value={observedCall ? callKey(observedCall) : null}
+          {callOptions.length > 0 && <Select label="实际调用" value={observedCall ? graphCallKey({ graph, call: observedCall }) : null}
             options={callOptions} placeholder="选择实际调用" disabled={callOptions.length < 2}
             tip={observedCall ? callLabel(observedCall) : '本帧有多个调用，选择要观察的实例'} onChange={selectCall} />}
           {observedCall !== null && <Button variant="ghost" pressed={pin !== null} disabled={togglePin === undefined}
