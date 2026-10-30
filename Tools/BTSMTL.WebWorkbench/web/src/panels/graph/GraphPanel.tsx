@@ -18,7 +18,7 @@ import {
 } from '../../state/authoring';
 import type { JsonObject } from '../../state/skillJson';
 import { openPanel } from '../../shell/layout';
-import { usePanelParams } from '../../shell/panel';
+import { usePanelId, usePanelParams } from '../../shell/panel';
 import { useFrameReport } from '../../shell/readiness';
 import {
   belongsTo, callKey, callLabel, childGraphs, edgeChildGraphs, edgeSelectId, graphCrumbs, graphHierarchy, graphKey, graphName, graphRecords,
@@ -438,16 +438,18 @@ interface GraphCanvasProps {
 
 function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, editable, groups, elements }: GraphCanvasProps) {
   const binding = useDocumentObservationBinding();
+  const panelId = usePanelId();
+  const view = `${graphKey(graph)}|${path}`;
+  const canvasSelection = useWorkbench(state => state.canvasSelections[panelId]);
+  const selectCanvas = useCallback((nodes: readonly string[], edges: readonly string[]) =>
+    selectionActions.selectCanvas(panelId, { view, nodes, edges }), [panelId, view]);
   const runId = useWorkbench(state => state.runId);
   const minimapWidth = useFlowStore(state => Math.min(204, state.width * 0.3, state.height * 0.3 * 204 / 104));
   const machine = isStateMachine(graph) || (currentDocument(graphPath(graph.id)) as JsonObject | null)?.Role === 'StateMachine';
   const layout = useMemo(() => layoutGraph(graph, path), [graph, path]);
   const store = useMemo(() => new RouteStore(), []);
-  // 粘贴出的新节点在下次重建时选中。
-  const pendingSelect = useRef<ReadonlySet<string> | null>(null);
   const build = useCallback((previous: CanvasNode[]) => {
-    const selected = pendingSelect.current ?? new Set(previous.filter(node => node.selected).map(node => node.id));
-    pendingSelect.current = null;
+    const selected = new Set(canvasSelection?.view === view ? canvasSelection.nodes : []);
     // 重建保留已测量的尺寸：否则节点要等重新测量才显示，连线在此之前不画。
     const measured = new Map(previous.map(node => [node.id, node.measured]));
     // 分组画在节点下面，只有标题可以拖动。
@@ -468,7 +470,7 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
         },
       };
     })];
-  }, [layout, hierarchy, graph, machine, groups]);
+  }, [layout, hierarchy, graph, machine, groups, canvasSelection, view]);
   const [nodes, setNodes] = useState<CanvasNode[]>(() => build([]));
   // 作者修改后图结构或分组变化：重建节点，保留选中。
   const built = useRef(build);
@@ -545,7 +547,18 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
   const options = useMemo<ViewOptions>(() => ({
     store, values: params.values, dim: params.dim, related, labels: params.labels, enter, hierarchy, graph,
   }), [store, params.values, params.dim, related, params.labels, enter, hierarchy, graph]);
-  const onNodesChange = useCallback((changes: NodeChange<CanvasNode>[]) => setNodes(current => applyNodeChanges(changes, current)), []);
+  const onNodesChange = useCallback((changes: NodeChange<CanvasNode>[]) => {
+    setNodes(current => applyNodeChanges(changes, current));
+    const selectionChanges = changes.filter(change => change.type === 'select');
+    if (selectionChanges.length) {
+      const current = getState().canvasSelections[panelId];
+      const selected = new Set(current?.view === view ? current.nodes : []);
+      for (const change of selectionChanges) {
+        if (change.selected) selected.add(change.id); else selected.delete(change.id);
+      }
+      selectCanvas([...selected], current?.view === view ? current.edges : []);
+    }
+  }, [panelId, selectCanvas, view]);
   const onNodeClick = useCallback((_: unknown, node: CanvasNode) => {
     if (!isGroupNode(node)) selectionActions.select({ kind: 'node', id: node.data.selectId, call: call ?? undefined });
   }, [call]);
@@ -557,7 +570,6 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
   const onEdgeDoubleClick = useCallback((_: unknown, edge: FlowEdge) => {
     if (edge.data!.conditions.length) enter(edge.data!.conditions[0]);
   }, [enter]);
-  const view = `${graphKey(graph)}|${path}`;
   const saved = params.viewport?.view === view ? params.viewport : null;
   const onMoveEnd = useCallback((_: unknown, viewport: Viewport) => setParams({ viewport: { ...viewport, view } }), [setParams, view]);
   // 框选结束：选中了一个节点时同步给检查器；框到多个时检查器显示第一个。
@@ -568,7 +580,7 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
   const { fitView, screenToFlowPosition } = useReactFlow();
 
   // ── 作者编辑（照 NodeCanvas）：右键添加节点、拖端口连线、Delete 删除、Ctrl+C／Ctrl+V 复制粘贴、拖动写布局 ──
-  const [selectedEdges, setSelectedEdges] = useState<ReadonlySet<string>>(() => new Set());
+  const selectedEdges = useMemo(() => new Set(canvasSelection?.view === view ? canvasSelection.edges : []), [canvasSelection, view]);
   const [picker, setPicker] = useState<{ x: number; y: number; flow: { x: number; y: number } } | null>(null);
   const menuAt = useRef({ x: 0, y: 0 });
   const shownEdges = useMemo(() => edges.map(edge => selectedEdges.has(edge.id) ? { ...edge, selected: true } : edge), [edges, selectedEdges]);
@@ -576,12 +588,10 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
   const onEdgeClick = useCallback((event: ReactMouseEvent, edge: FlowEdge) => {
     if (machine) selectionActions.select({ kind: 'edge', id: edgeSelectId(graph, edge.data!.edge), call: call ?? undefined });
     if (!editable) return;
-    setSelectedEdges(current => {
-      const next = new Set(event.ctrlKey || event.shiftKey ? current : []);
-      if (!next.delete(edge.id)) next.add(edge.id);
-      return next;
-    });
-  }, [editable, machine, graph, call]);
+    const next = new Set(event.ctrlKey || event.shiftKey ? selectedEdges : []);
+    if (!next.delete(edge.id)) next.add(edge.id);
+    selectCanvas(nodes.filter(node => node.selected).map(node => node.id), [...next]);
+  }, [editable, machine, graph, call, nodes, selectCanvas, selectedEdges]);
   const portOf = (handle: string | null | undefined) => handle?.slice(handle.indexOf(':') + 1) ?? '';
   const onConnect = useCallback((connection: Connection) => {
     if (!connection.source || !connection.target) return;
@@ -621,7 +631,7 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
     if (removable.length) graphAuthoring.deleteNodes(graph.id, removable);
     if (groupIndices.length) graphAuthoring.deleteGroups(graph.id, groupIndices);
     if (selectedEdges.size) graphAuthoring.disconnect(graph.id, [...selectedEdges]);
-    setSelectedEdges(new Set());
+    selectCanvas(kept, []);
   };
   const onKeyDown = (event: ReactKeyboardEvent) => {
     if (!editable || (event.target as HTMLElement).closest('input, textarea')) return;
@@ -632,7 +642,7 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
         portsOf(picked.map(node => node.id)));
     } else if ((event.ctrlKey || event.metaKey) && event.key === 'v' && !machine) {
       const pasted = graphAuthoring.paste(graph.id, { x: 40, y: 40 });
-      if (pasted.length) pendingSelect.current = new Set(pasted);
+      if (pasted.length) selectCanvas(pasted, []);
     } else return;
     event.preventDefault();
   };
@@ -643,7 +653,7 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
       const description = await authoringApi.describeType(skill, 'BtsmtlSkillNativeState', graph.id);
       if (!description.availability.available) throw new Error(description.availability.reason ?? '状态类型不可创建');
       const elementsNow = elements ?? await skillElements();
-      pendingSelect.current = new Set([graphAuthoring.addState(graph.id, elementsNow, description.configuration, position)]);
+      selectCanvas([graphAuthoring.addState(graph.id, elementsNow, description.configuration, position)], []);
     } catch (error) {
       consoleActions.error('作者', error);
     }
@@ -671,11 +681,10 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
     { label: '删除所选', disabled: !editable, tip: editable ? undefined : blocked, onSelect: deleteSelected },
     { kind: 'separator' },
     { label: '全部居中', onSelect: () => void fitView({ padding: 0.12, maxZoom: 1, duration: 200 }) },
-    { label: '全选', onSelect: () => setNodes(current => current.map(node => ({ ...node, selected: !isGroupNode(node) }))) },
+    { label: '全选', onSelect: () => selectCanvas(nodes.filter(node => !isGroupNode(node)).map(node => node.id), []) },
   ];
-  const grabGroup = useCallback((group: CanvasGroup) => setNodes(current => current.map(node => ({
-    ...node, selected: node.id === groupNodeId(group) || (!isGroupNode(node) && inside(group.rect, node.position)),
-  }))), []);
+  const grabGroup = useCallback((group: CanvasGroup) => selectCanvas(nodes.filter(node =>
+    node.id === groupNodeId(group) || (!isGroupNode(node) && inside(group.rect, node.position))).map(node => node.id), []), [nodes, selectCanvas]);
   const renameGroup = useCallback((group: CanvasGroup, name: string) => graphAuthoring.updateGroup(graph.id, group.index, { name }), [graph.id]);
   const resizeGroup = useCallback((group: CanvasGroup, rect: CanvasGroup['rect']) =>
     graphAuthoring.updateGroup(graph.id, group.index, { rect }), [graph.id]);
@@ -690,7 +699,7 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
         {/* 照 NodeCanvas：中键拖动平移，左键在空白处拖出框选，滚轮缩放，Ctrl／Shift 加选 */}
         <ReactFlow<CanvasNode, FlowEdge> nodes={nodes} edges={shownEdges} nodeTypes={nodeTypes} edgeTypes={edgeTypes}
           onNodesChange={onNodesChange} onNodeClick={onNodeClick} onNodeDoubleClick={onNodeDoubleClick}
-          onEdgeDoubleClick={onEdgeDoubleClick} onEdgeClick={onEdgeClick} onPaneClick={() => setSelectedEdges(new Set())}
+          onEdgeDoubleClick={onEdgeDoubleClick} onEdgeClick={onEdgeClick} onPaneClick={() => selectCanvas([], [])}
           onMoveEnd={onMoveEnd} onSelectionEnd={onSelectionEnd} zoomOnDoubleClick={false}
           onConnect={onConnect} onNodeDragStop={onNodeDragStop} nodesDraggable
           panOnDrag={[1]} panActivationKeyCode="Alt" selectionOnDrag selectionMode={SelectionMode.Partial}

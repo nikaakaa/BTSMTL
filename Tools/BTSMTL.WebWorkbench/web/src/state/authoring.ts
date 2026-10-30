@@ -10,7 +10,7 @@ import {
   JsonFloat, cloneJson, fpRaw, fpSeconds, numberOf, parseSkillJson, shapeOf, writeSkillJson, type JsonObject, type JsonValue,
 } from './skillJson';
 import { isWeighted, splitCurve } from './curveSplit';
-import { consoleActions, selectionActions, useWorkbench } from './store';
+import { consoleActions, selectionActions, useWorkbench, type SelectionSlice } from './store';
 import type { DocumentObservationBinding } from './graphModel';
 import { findTimelineClip as findTimelineClipInViews, findTimelineMarker, findTimelineTrack } from './timelineModel';
 import { playerService } from './player';
@@ -813,7 +813,7 @@ export const hasChanges = () => Object.keys(get().edited).length + get().removed
 
 // ── 撤销：每步前保存编辑副本、待删文件与新节点端口；编辑在文档上原地进行，快照取深拷贝 ──
 
-interface Snapshot {
+interface Snapshot extends Pick<SelectionSlice, 'selection' | 'canvasSelections'> {
   edited: Record<string, JsonValue>;
   removed: string[];
   addedPorts: Record<string, AddedPort[]>;
@@ -826,8 +826,10 @@ let recording = false;
 
 const snapshot = (): Snapshot => {
   const state = get();
+  const { selection, canvasSelections } = useWorkbench.getState();
   return { edited: Object.fromEntries(Object.entries(state.edited).map(([path, document]) => [path, cloneJson(document)])),
-    removed: [...state.removed], addedPorts: state.addedPorts };
+    removed: [...state.removed], addedPorts: state.addedPorts,
+    selection, canvasSelections };
 };
 
 function record() {
@@ -844,7 +846,9 @@ function step(from: Snapshot[], to: Snapshot[]) {
   const target = from.pop();
   if (!target) return;
   to.push(snapshot());
-  set({ ...target, version: get().version + 1, undoDepth: undoStack.length, redoDepth: redoStack.length });
+  const { selection, canvasSelections, ...content } = target;
+  set({ ...content, version: get().version + 1, undoDepth: undoStack.length, redoDepth: redoStack.length });
+  useWorkbench.setState({ selection, canvasSelections });
   reconcileSelection();
 }
 
