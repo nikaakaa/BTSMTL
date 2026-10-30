@@ -27,7 +27,7 @@ import {
 } from '../../state/timelineModel';
 import { callKey, callLabel, graphKey, graphName, matchesDocumentCall, nodeSelectId, parentCallMatches, parentGraphCalls, recordedGraphCalls, type RecordedGraphCall } from '../../state/graphModel';
 import { transport } from '../../state/transport';
-import { useInputObservation } from '../../state/inputModel';
+import { scheduleZeroFrame, useInputObservation } from '../../state/inputModel';
 import { useReceivedInput, type ReceivedInput, type ReceivedKey, type ReceivedSpan } from '../../state/inputReceipts';
 import { archive } from '../../state/archive';
 import { Empty, PanelBar } from '../../ui/blocks';
@@ -100,7 +100,7 @@ const authorCursorOf = (cursor: { documentId: string | null; seconds: number }, 
 const previewSeconds = (state: WorkbenchState, clock: PreviewClock, author: number | null): number | null => clock.kind === 'archive'
   ? state.seconds : clock.kind === 'input'
     ? author ?? (state.hostFrame !== null && state.archiveMetadata !== null
-      ? Number(BigInt(state.hostFrame) - BigInt(state.archiveMetadata.scheduleStartFrame)) / state.archiveMetadata.sdkTickRate : null)
+      ? Number(BigInt(state.hostFrame) - BigInt(scheduleZeroFrame(state.archiveMetadata))) / state.archiveMetadata.sdkTickRate : null)
     : author ?? documentPlayback(state, clock)?.cursorSeconds ?? null;
 // 游标秒数：运行档案、运行观察或编辑游标。
 function usePreviewSelect<T>(clock: PreviewClock, pick: (seconds: number | null, state: WorkbenchState) => T): T {
@@ -550,7 +550,7 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
     const seconds = step ? Math.min(focused.length, snapTo(raw, step)) : raw;
     if (inputScheme && inputObservation.kind === 'ready') {
       const metadata = inputObservation.metadata;
-      void transport.seekTime((metadata.scheduleStartFrame - metadata.firstRecordedSdkFrame) / metadata.sdkTickRate + seconds);
+      void transport.seekTime((scheduleZeroFrame(metadata) - metadata.firstRecordedSdkFrame) / metadata.sdkTickRate + seconds);
       return;
     }
     if (!observed) {
@@ -773,7 +773,7 @@ function TimelineToolbar({ settings, fit, subject, documentId, observations, sel
           <>
             <SkillPicker />
             <span className={styles.subject}>
-              <Select label="Timeline" value={subject.timelines.value} options={subject.timelines.options}
+              <Select label="Timeline" placeholder="选择 Timeline" value={subject.timelines.value} options={subject.timelines.options}
                 tip="技能内的 Timeline；节点图双击播放它的节点也会切到这里" onChange={subject.timelines.select} />
             </span>
           </>
@@ -1116,16 +1116,6 @@ const GroupLine = memo(function GroupLine({ row, open, toggle, enter }: {
   );
 });
 
-// 轨道头右侧照 Timeline Editor 的锁与曲线钮；网页未接入这两项，只按 Unity 外观显示为不可用。
-function TrackTools() {
-  return (
-    <span className={styles.trackTools} title="轨道锁定与曲线编辑在 Unity Timeline Editor 中使用" aria-hidden>
-      <i className={styles.lockIcon} />
-      <span className={styles.curveButton}>∿</span>
-    </span>
-  );
-}
-
 function useSelected(selectId: string, kind: 'clip' | 'track') {
   return useWorkbench(state => state.selection?.kind === kind && state.selection.id === selectId);
 }
@@ -1330,7 +1320,6 @@ const TrackLine = memo(function TrackLine({ row }: { row: TrackRow }) {
         <span className={styles.slot} />
         <span className={styles.name}>{row.track.displayName}</span>
         {row.track.muted && <span className={styles.muted}>静音</span>}
-        <TrackTools />
       </button>
     )}>
       <Positioned start={segment.origin} end={segment.origin + segment.length} className={styles.authoredRange} />
@@ -1689,7 +1678,6 @@ const InputTrackLine = memo(function InputTrackLine({ row }: { row: InputTrackRo
         style={{ ['--tc' as string]: trackColors.in }} onClick={() => selectionActions.select({ kind: 'track', id: row.selectId })}>
         <span className={styles.slot} />
         <span className={styles.name}>{row.track.displayName}</span>
-        <TrackTools />
       </button>
     }>
       {clips.filter(clip => clip.endSeconds >= range.start && clip.startSeconds <= range.end).map(clip => {

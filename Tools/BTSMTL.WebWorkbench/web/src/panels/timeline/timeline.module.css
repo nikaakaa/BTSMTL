@@ -331,52 +331,6 @@
   border-radius: 2px;
 }
 
-/* 轨道头右侧的锁与曲线钮（只显示外观） */
-.trackTools {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-left: auto;
-  align-self: center;
-  flex: none;
-}
-
-.lockIcon {
-  position: relative;
-  width: 11px;
-  height: 8px;
-  margin-top: 5px;
-  border-radius: 1px;
-  background: #5c5c5c;
-}
-
-.lockIcon::before {
-  content: '';
-  position: absolute;
-  left: 2px;
-  top: -6px;
-  width: 7px;
-  height: 7px;
-  box-sizing: border-box;
-  border: 2px solid #5c5c5c;
-  border-bottom: 0;
-  border-radius: 4px 4px 0 0;
-}
-
-.curveButton {
-  display: grid;
-  place-items: center;
-  width: 24px;
-  height: 24px;
-  box-sizing: border-box;
-  border: 1px solid #2c2c2c;
-  border-radius: 3px;
-  background: #343434;
-  color: #5e5e5e;
-  font-size: 16px;
-  line-height: 1;
-}
-
 .name {
   min-width: 0;
   padding-top: 8px;
