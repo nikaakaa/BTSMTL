@@ -33,8 +33,11 @@ namespace BTSMTL.Orchestration
 
         public OrchestrationOperationResult AdvanceTimeline(
             in OrchestrationTimelineInvocationFacts invocation, in TValue time,
-            in OrchestrationStopContext stopContext)
+            in OrchestrationStopContext stopContext,
+            OrchestrationWorkbenchDiagnosticStorage<TValue> contextStorage,
+            out OrchestrationTraceContext context)
         {
+            context = default;
             OrchestrationTimelineInvocationFacts previous = m_TimelineInvocation;
             TValue previousTime = m_TimelineTime;
             m_TimelineInvocation = invocation;
@@ -43,6 +46,12 @@ namespace BTSMTL.Orchestration
             try
             {
                 OrchestrationOperationResult result = Advance(invocation.Invocation.Entry);
+                if (contextStorage != null)
+                {
+                    OrchestrationExecutionEntry entry = invocation.Invocation.Entry;
+                    BindTraceInvocationScope(contextStorage, entry.OperationIndex, entry);
+                    ReadTraceContext(contextStorage, entry.OperationIndex, out context);
+                }
                 if (invocation.EndsExecutionFrame)
                 {
                     CloseExecutionFrame(in stopContext);
