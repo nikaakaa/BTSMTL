@@ -225,8 +225,8 @@ function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
     <div className={styles.root}>
       <ReactFlowProvider key={`${key}|${path}`}>
         <PanelBar>
-          <Select label="程序" value={programOf(graph)} options={programOptions}
-            onChange={value => enter(programs.get(value)!.root)} />
+          {programOptions.length > 1 && <Select label="程序" value={programOf(graph)} options={programOptions}
+            onChange={value => enter(programs.get(value)!.root)} />}
           <span className={styles.crumbs}>
             {crumbs.map((crumb, index) => (
               <span key={index} className={styles.crumb}>
@@ -237,10 +237,10 @@ function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
               </span>
             ))}
           </span>
-          <Select label="实际调用" value={call} options={callOptions} disabled={callOptions.length < 2}
+          {(calls.length > 0 || callOptions.length > 1) && <Select label={calls.length ? '实际调用' : '图实例'} value={call} options={callOptions} disabled={callOptions.length < 2}
             tip={binding.dirty ? '当前作者内容未保存，旧档案叠加已停用'
               : binding.sourceRevision === null ? '尚未读取当前内容来源修订'
-                : calls.length ? '按实际角色与调用身份观察' : '此帧没有匹配当前来源修订的调用记录'} onChange={selectCall} />
+                : calls.length ? '按实际角色与调用身份观察' : '此帧没有匹配当前来源修订的调用记录'} onChange={selectCall} />}
           <FitButton />
           <Button variant="ghost" pressed={blackboard} tip="本图的黑板变量与声明" onClick={() => setBlackboard(!blackboard)}>黑板</Button>
           <MenuButton label="显示设置" caret entries={settings}>显示设置</MenuButton>
@@ -673,19 +673,13 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
           <Background id="minor" variant={BackgroundVariant.Lines} gap={20} patternClassName={styles.gridMinor} />
           <Background id="major" variant={BackgroundVariant.Lines} gap={200} patternClassName={styles.gridMajor} />
           {params.minimap && (
-            <MiniMap className={styles.minimap} style={{ width: 204, height: 104, marginBottom: 24 }} pannable zoomable
+            <MiniMap className={styles.minimap} style={{ width: 204, height: 104 }} pannable zoomable
               bgColor="#181818" maskColor="rgb(255 255 255 / 4%)"
               maskStrokeColor="#9a9a9a" nodeColor={node => node.type === 'canvasGroup' ?'rgb(255 255 255 / 6%)'
                 : (node.data as NodeData).system ? '#8a8a8a' : machine ? '#f0634f' : '#5a5a5a'}
               nodeStrokeWidth={0} />
           )}
         </ReactFlow>
-        <div className={styles.hint}>
-          {editable ? (machine
-            ? '作者模式 · 右键添加状态或分组 · 从状态右侧圆点拖到目标状态建转移 · 单击转移在检查器编辑 · Delete 删除 · Ctrl+Z／Ctrl+Y 撤销重做'
-            : '作者模式 · 右键添加节点或分组 · 从端口拖出连线 · Delete 删除 · Ctrl+C／Ctrl+V 复制粘贴 · Ctrl+Z／Ctrl+Y 撤销重做 · 拖分组标题连同组内节点移动')
-            : `${machine ? '双击状态进入状态体 · 双击转移进入条件' : '双击节点进入子图或跳到 Timeline'} · 中键拖动平移 · 左键框选`}
-        </div>
         {picker && <NodeTypePicker graph={graph} at={picker} onClose={() => setPicker(null)} />}
       </div>
       </ContextMenu>
