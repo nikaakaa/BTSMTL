@@ -445,12 +445,20 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
 
   const step = useContext(SnapContext);
   const seekAt = useCallback((clientX: number) => {
-    if (frames) void transport.seekTime(getValueFromScreenX(clientX));
-    else if (observed) consoleActions.log('warn', 'Timeline', '游标跟随运行中的播放；停止观察后可拖动编辑游标');
-    else if (focused) {
-      const seconds = Math.max(0, Math.min(focused.length, getValueFromScreenX(clientX)));
-      useAuthorCursor.setState({ documentId: focused.documentId, seconds: step ? Math.min(focused.length, snapTo(seconds, step)) : seconds });
+    if (frames) { void transport.seekTime(getValueFromScreenX(clientX)); return; }
+    if (!focused) return;
+    const raw = Math.max(0, Math.min(focused.length, getValueFromScreenX(clientX)));
+    const seconds = step ? Math.min(focused.length, snapTo(raw, step)) : raw;
+    if (!observed) {
+      useAuthorCursor.setState({ documentId: focused.documentId, seconds });
+      return;
     }
+    // 运行观察：本次播放的起点 = 当前帧运行秒数 − 本地游标，按运行秒数跳到对应帧，画面随档案帧更新。
+    const state = getState();
+    const playback = documentPlayback(state, { kind: 'document', documentId: focused.documentId, observation: observed });
+    if (transport.source() === 'sealed' && playback && state.seconds !== null)
+      void transport.seekTime(state.seconds - playback.cursorSeconds + seconds);
+    else consoleActions.log('warn', 'Timeline', '只有已封存的运行能按 Timeline 时间跳帧');
   }, [frames, observed, focused, step, getValueFromScreenX]);
 
   const snap = params.snap ?? 'tick';
