@@ -63,7 +63,9 @@ namespace BTSMTL.Preview
             Array.Clear(texts, 0, texts.Length);
             for (int i = 0; i < m_Adapters.Length; i++)
             {
-                var writer = new PreviewStateBufferWriter(bytes, m_ByteOffsets[i], texts, m_TextOffsets[i]);
+                var writer = new PreviewStateBufferWriter(
+                    bytes.AsMemory(m_ByteOffsets[i], m_ByteOffsets[i + 1] - m_ByteOffsets[i]),
+                    texts.AsMemory(m_TextOffsets[i], m_TextOffsets[i + 1] - m_TextOffsets[i]));
                 m_Adapters[i].Write(ref writer);
             }
         }
@@ -112,18 +114,14 @@ namespace BTSMTL.Preview
 
     struct PreviewStateBufferWriter : IRecordedRuntimeStateWriter
     {
-        readonly byte[] m_Bytes;
-        readonly string[] m_Texts;
-        readonly int m_ByteStart;
-        readonly int m_TextStart;
+        readonly Memory<byte> m_Bytes;
+        readonly Memory<string> m_Texts;
         int m_TextCount;
 
-        public PreviewStateBufferWriter(byte[] bytes, int byteStart, string[] texts, int textStart)
+        public PreviewStateBufferWriter(Memory<byte> bytes, Memory<string> texts)
         {
             m_Bytes = bytes;
             m_Texts = texts;
-            m_ByteStart = byteStart;
-            m_TextStart = textStart;
             m_TextCount = 0;
             WrittenBytes = 0;
         }
@@ -132,20 +130,20 @@ namespace BTSMTL.Preview
 
         public void Write<T>(T value) where T : unmanaged
         {
-            MemoryMarshal.Write(m_Bytes.AsSpan(m_ByteStart + WrittenBytes), ref value);
+            MemoryMarshal.Write(m_Bytes.Span.Slice(WrittenBytes), ref value);
             WrittenBytes += Unsafe.SizeOf<T>();
         }
 
         public void WriteSpan<T>(ReadOnlySpan<T> values) where T : unmanaged
         {
             ReadOnlySpan<byte> bytes = MemoryMarshal.AsBytes(values);
-            bytes.CopyTo(m_Bytes.AsSpan(m_ByteStart + WrittenBytes));
+            bytes.CopyTo(m_Bytes.Span.Slice(WrittenBytes));
             WrittenBytes += bytes.Length;
         }
 
         public void WriteText(string text)
         {
-            m_Texts[m_TextStart + m_TextCount] = text;
+            m_Texts.Span[m_TextCount] = text;
             Write(m_TextCount++);
         }
     }

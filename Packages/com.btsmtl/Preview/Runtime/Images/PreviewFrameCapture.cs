@@ -39,11 +39,13 @@ namespace BTSMTL.Preview
         readonly RenderTexture m_Target;
         readonly byte[] m_Pixels;
         readonly int m_Quality;
+        readonly int m_Width;
+        readonly int m_Height;
         readonly PreviewImageEncoding m_Encoding;
         readonly bool m_FlipY;
         readonly Action<AsyncGPUReadbackRequest> m_OnReadback;
         readonly Action m_Encode;
-        AsyncGPUReadbackRequest m_Request;
+        AsyncGPUReadbackRequest? m_Request;
         Task m_EncodeTask;
         PreviewEncodedFrame m_Completed;
         Matrix4x4 m_ViewProjection;
@@ -60,6 +62,8 @@ namespace BTSMTL.Preview
             m_Target = new RenderTexture(width, height, 0, RenderTextureFormat.ARGB32);
             m_Pixels = new byte[checked(width * height * 4)];
             m_Quality = quality;
+            m_Width = width;
+            m_Height = height;
             m_Encoding = encoding;
             m_FlipY = SystemInfo.graphicsUVStartsAtTop;
             m_OnReadback = CompleteReadback;
@@ -113,10 +117,10 @@ namespace BTSMTL.Preview
             {
                 byte[] bytes = m_Encoding == PreviewImageEncoding.Jpeg
                     ? ImageConversion.EncodeArrayToJPG(m_Pixels, GraphicsFormat.R8G8B8A8_UNorm,
-                        (uint)m_Target.width, (uint)m_Target.height, 0, m_Quality)
+                        (uint)m_Width, (uint)m_Height, 0, m_Quality)
                     : ImageConversion.EncodeArrayToPNG(m_Pixels, GraphicsFormat.R8G8B8A8_UNorm,
-                        (uint)m_Target.width, (uint)m_Target.height);
-                m_Completed = new PreviewEncodedFrame(m_Frame, m_Target.width, m_Target.height,
+                        (uint)m_Width, (uint)m_Height);
+                m_Completed = new PreviewEncodedFrame(m_Frame, m_Width, m_Height,
                     m_FlipY, m_ViewProjection, m_Encoding, bytes);
                 Volatile.Write(ref m_Ready, 1);
             }
@@ -132,7 +136,8 @@ namespace BTSMTL.Preview
 
         public void Dispose()
         {
-            m_Request.WaitForCompletion();
+            if (m_Request.HasValue)
+                m_Request.Value.WaitForCompletion();
             m_EncodeTask?.GetAwaiter().GetResult();
             m_Screen.Release();
             m_Target.Release();
