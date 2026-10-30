@@ -472,7 +472,7 @@ interface Subject {
 }
 
 // 编辑行右侧：照 Timeline Editor 的未保存提示与保存（只在有未保存修改时出现），作者／运行观察切换。
-function AuthoringControls({ program }: { program: string | null }) {
+function AuthoringControls() {
   const state = useAuthoring(useShallow(current => ({
     available: current.available, reason: current.unavailableReason, author: current.author, skill: current.skill,
     loading: current.loading, edited: current.edited, removed: current.removed, externalChange: current.externalChange,
@@ -491,7 +491,6 @@ function AuthoringControls({ program }: { program: string | null }) {
       consoleActions.log('warn', '作者', useAuthoring.getState().unavailableReason ?? '作者接口不可用');
       return;
     }
-    if (program) void authoringActions.open(program);
     authoringActions.setAuthor(true);
   };
   return (
@@ -582,7 +581,7 @@ function TimelineToolbar({ settings, fit, subject, documentId }: { settings: Men
           </span>
         )}
         <span className={styles.grow} />
-        <AuthoringControls program={subject.program} />
+        <AuthoringControls />
       </div>
       <div className={styles.toolbar}>
         <Button variant="ghost" aria-label={playing ? '暂停' : '播放'} pressed={playing} tip={blocked ?? '播放／暂停（空格）'}

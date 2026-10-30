@@ -90,8 +90,6 @@ export const useDocumentObservationBinding = (): DocumentObservationBinding => u
   dirty: Object.keys(state.edited).length > 0 || state.removed.length > 0,
 })));
 
-const abilityOf = (programId: string) => programId.slice(programId.indexOf(':') + 1);
-
 export const timelinePath = (documentId: string) => `timelines/${documentId}.json`;
 
 let loadController: AbortController | null = null;
@@ -277,43 +275,6 @@ export const authoringActions = {
     } catch (error) {
       set({ available: false, unavailableReason: error instanceof ApiError && error.status === 404
         ? '宿主未启用作者接口（启动时需 --SkillAuthoring true）' : error instanceof Error ? error.message : String(error) });
-    }
-  },
-
-  // 打开运行所属技能：技能文件夹按 skill.json 的 m_AbilityId 与程序身份对应。
-  async open(programId: string) {
-    if (get().programId === programId && get().skill) return;
-    if (hasChanges()) {
-      consoleActions.log('warn', '作者', `有未保存的修改，未切换到 ${programId}`);
-      return;
-    }
-    loadController?.abort();
-    const controller = loadController = new AbortController();
-    clearHistory();
-    set({ programId, skill: null, revision: null, files: {}, edited: {}, removed: [], loading: true, externalChange: false });
-    try {
-      const ability = abilityOf(programId);
-      const folders = await authoringApi.list(controller.signal);
-      controller.signal.throwIfAborted();
-      const ordered = [...folders.filter(name => name.endsWith(ability)), ...folders.filter(name => !name.endsWith(ability))];
-      for (const folder of ordered) {
-        const snapshot = await authoringApi.read(folder, controller.signal);
-        controller.signal.throwIfAborted();
-        const root = snapshot.files.find(file => file.path === 'skill.json');
-        const declared = root ? (parseSkillJson(root.content) as JsonObject).m_AbilityId : null;
-        if (declared !== ability) continue;
-        set({
-          skill: snapshot.skill, revision: snapshot.revision, loading: false,
-          files: Object.fromEntries(snapshot.files.map(file => [file.path, file.content])),
-        });
-        return;
-      }
-      set({ loading: false });
-      consoleActions.log('warn', '作者', `没有找到 m_AbilityId 为 ${ability} 的技能文件夹`);
-    } catch (error) {
-      if (isAbort(error)) return;
-      set({ loading: false });
-      consoleActions.error('作者', error);
     }
   },
 
