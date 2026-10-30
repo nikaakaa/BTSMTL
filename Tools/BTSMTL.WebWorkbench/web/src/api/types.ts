@@ -103,73 +103,6 @@ export interface InputCatalog {
   actorTargets: string[];
 }
 
-// ── 运行 ──
-
-export type RunStage = 'accepted' | 'running' | 'completed' | 'stopped' | 'failed' | 'cancelled';
-
-export interface RunReceipt {
-  jobId: string;
-  stage: RunStage;
-  acceptedAt: string;
-  finishedAt: string | null;
-  resultPath: string | null;
-  error: string | null;
-  workerId?: string | null;
-  processId?: number | null;
-}
-
-export interface StartRunRequest {
-  requestId: string;
-  scene: string;
-  sceneRevision: string;
-  source: RunSource;
-  interactive: boolean;
-}
-
-export interface CancelResult {
-  cancellationRequested: boolean;
-  receipt: RunReceipt;
-}
-
-export type PlaybackState = 'paused' | 'playing' | 'stepping' | 'stopped' | 'completed';
-export type PlaybackCommand = 'Play' | 'Pause' | 'Step' | 'Stop' | 'Cancel';
-
-export interface PlaybackView {
-  ready: boolean;
-  receipt: RunReceipt;
-  snapshot: {
-    state: PlaybackState;
-    lastCommandId: string | null;
-    observation: { summary: Summary };
-  } | null;
-}
-
-export interface ControlRequest {
-  commandId: string;
-  command: PlaybackCommand;
-}
-
-export interface ControlResult {
-  commandId: string;
-  command: PlaybackCommand;
-  stage: 'submitted' | 'applied' | 'rejected';
-  hostFrame: string | null;
-  error: string | null;
-}
-
-export interface Summary {
-  runId: string;
-  contentRevision: string;
-  frameDisplayName: string;
-  firstFrame: string;
-  lastFrame: string;
-  frameCount: number;
-  channels: string[];
-  geometryAvailable: boolean;
-  fields: Field[];
-  rawJson: string;
-}
-
 // ── 帧记录 ──
 
 export interface AuthoringLocation {
@@ -238,24 +171,10 @@ export interface Frame {
   availability: Availability[];
 }
 
-export interface ObservationPage extends RangePage<Frame> {
-  runId: string;
-  contentRevision: string;
-  channels: string[];
-  firstFrame: string;
-  lastFrame: string;
-}
-
 export interface ObservationQuery {
   firstFrame: string;
   lastFrame: string;
-  rosterIndex?: string;
-  source?: string;
 }
-
-export type ObservationStreamEvent =
-  | { event: 'frame'; id: string; data: { runId: string; contentRevision: string; observation: Frame } }
-  | { event: 'end'; data: { runId: string; contentRevision: string; nextFrame: string } };
 
 // ── 几何 ──
 

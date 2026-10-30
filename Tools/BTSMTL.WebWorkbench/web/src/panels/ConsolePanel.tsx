@@ -8,7 +8,7 @@ import styles from './console.module.css';
 
 export const sourceNames: Record<string, string> = {
   run: '运行', connection: '连接', transport: '播放控制', layout: '布局', content: '内容', query: '记录查询',
-  compare: '比较', player: '画面', viewport: '逻辑视图', resources: '动画资源', graph: '节点图', timeline: 'Timeline',
+  player: '画面', viewport: '逻辑视图', resources: '动画资源', graph: '节点图', timeline: 'Timeline',
   frames: '帧记录', inspector: '检查器',
 };
 

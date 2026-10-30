@@ -1,8 +1,8 @@
 import { isAbort } from '../api/http';
-import { playerApi } from '../api/player';
 import type { PlayerJobId } from '../api/playerRecords';
 import type { Frame } from '../api/types';
-import { consoleActions, getState, isCurrent, useWorkbench } from './store';
+import { queryService } from './query';
+import { consoleActions, getState, isCurrent } from './store';
 
 export const frameCacheLimit = 512;
 export const framePageSize = 64;
@@ -10,7 +10,6 @@ export const framePageSize = 64;
 // 帧记录 LRU：键为"运行身份 + 帧序号"，Map 插入顺序即最近使用顺序。
 const cache = new Map<string, Frame>();
 const pending = new Map<string, Promise<void>>();
-const controllers = new Map<string, AbortController>();
 const key = (runId: string, index: number) => `${runId}:${index}`;
 
 function remember(runId: string, index: number, frame: Frame) {
@@ -34,12 +33,10 @@ function loadPage(runId: PlayerJobId, page: number, generation: number): Promise
   const id = `${generation}:${key(runId, page * framePageSize)}`;
   let request = pending.get(id);
   if (!request) {
-    const controller = new AbortController();
-    controllers.set(id, controller);
-    request = playerApi.frames(runId, page * framePageSize, framePageSize, controller.signal).then(result => {
-      if (!isCurrent(generation)) return;
+    request = queryService.framesPage(runId, page * framePageSize, framePageSize).then(result => {
+      if (!result || !isCurrent(generation)) return;
       result.items.forEach((frame, offset) => remember(runId, page * framePageSize + offset, frame));
-    }).finally(() => { pending.delete(id); controllers.delete(id); });
+    }).finally(() => pending.delete(id));
     pending.set(id, request);
   }
   return request;
@@ -61,8 +58,3 @@ export async function readFrame(index: number): Promise<Frame | null> {
       });
   return hit ?? cachedFrame(runId, index) ?? null;
 }
-
-useWorkbench.subscribe((next, previous) => {
-  if (next.generation === previous.generation) return;
-  for (const controller of controllers.values()) controller.abort();
-});
