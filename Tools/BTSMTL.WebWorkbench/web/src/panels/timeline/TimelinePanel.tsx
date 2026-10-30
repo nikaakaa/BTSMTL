@@ -179,8 +179,6 @@ function fitRange(bounds: Range): Range {
 // frames 为 null 时显示打开的技能文档：范围为所看 Timeline 的长度，按编译帧率取整。
 function TimelineWindow({ frames }: { frames: RouteFrame[] | null }) {
   const [params, setParams] = usePanelParams<Params>(defaults);
-  const runId = useWorkbench(state => state.runId);
-  const trace = useWorkbench(useShallow(state => ({ current: state.frame?.route ?? null, frames: state.routeFrames, graphs: state.graphs })));
   const schemes = useInputSchemes();
   const authorTimelines = useAuthorTimelines();
   const documentLength = useMemo(() => {
@@ -362,6 +360,8 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
   onRangeChanged(update: (previous: Range) => Range): void;
 }) {
   const binding = useDocumentObservationBinding();
+  const runId = useWorkbench(state => state.runId);
+  const trace = useWorkbench(useShallow(state => ({ current: state.frame?.route ?? null, frames: state.routeFrames })));
   const schemes = useInputSchemes();
   const { setTimelineRef, getValueFromScreenX, sidebarWidth } = useTimelineContext();
   const { inputTimeline, inputRoot, graphs, curves, selectedCurves } = useWorkbench(useShallow(state => ({
@@ -427,7 +427,7 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
     ? [pin.observation, ...observations] : observations;
   const togglePin = pin ? () => setParams({ pin: null }) : observed === null || runId === null || focused === null ? undefined
     : () => setParams({ call: observationKey(observed), pin: { runId, documentId: focused.documentId, observation: observed } });
-  const recorded = useMemo(() => recordedGraphCalls(trace.frames, trace.current, trace.graphs ?? [], binding), [trace, binding]);
+  const recorded = useMemo(() => recordedGraphCalls(trace.frames, trace.current, graphs ?? [], binding), [trace, graphs, binding]);
   const parents = useMemo(() => observed === null ? [] : parentGraphCalls(observed.call, recorded), [observed, recorded]);
   const openParent = runId === null ? undefined : ({ graph, call }: RecordedGraphCall) => {
     selectionActions.showGraph(graphKey(graph), { runId, call });
