@@ -150,7 +150,6 @@ namespace BTSMTL.Graphs
             new GraphHostValue(GraphHostValueKind.Text, false, 0, 0f, default, default, default, null, 0,
                 value);
 
-#if UNITY_EDITOR
         public void WriteRecordedFrameState<TWriter>(ref TWriter writer)
             where TWriter : struct, IRecordedRuntimeStateWriter =>
             WriteRecordedFrameState(ref writer, Kind);
@@ -225,8 +224,6 @@ namespace BTSMTL.Graphs
                     throw new InvalidOperationException("Event graph recorded value kind is not supported.");
             }
         }
-#endif
-
         public bool BoolValue
         {
             get

@@ -1,4 +1,3 @@
-#if UNITY_EDITOR
 using System;
 using System.Collections.Generic;
 using BTSMTL.Orchestration;
@@ -22,7 +21,7 @@ namespace BTSMTL.Graphs
     {
         const uint RecordedStateFormat = 0x45564752;
         const uint RecordedStateVersion = 5;
-        readonly Dictionary<(string Node, string Port, bool Input), GraphRuntimePort> m_EditorPorts = new();
+        Dictionary<(string Node, string Port, bool Input), GraphRuntimePort> m_Ports;
         GraphRuntimePort[] m_RuntimePorts;
         OrchestrationValueOverride<TValue>[] m_Overrides;
         TValue[] m_ObservedInputs;
@@ -35,10 +34,30 @@ namespace BTSMTL.Graphs
 
         public event Action<int, int> RecordedStateCapacityRequired;
 
-        public IReadOnlyList<GraphRuntimePort> RuntimePorts => m_RuntimePorts;
-        public GraphRuntimePort RequireRuntimePort(string node, string port, bool input) => m_EditorPorts[(node, port, input)];
+        public IReadOnlyList<GraphRuntimePort> RuntimePorts
+        {
+            get
+            {
+                PrepareRuntimeObservation();
+                return m_RuntimePorts;
+            }
+        }
 
-        void InitializeEditor()
+        public GraphRuntimePort RequireRuntimePort(string node, string port, bool input)
+        {
+            PrepareRuntimeObservation();
+            return m_Ports[(node, port, input)];
+        }
+
+        public void PrepareRuntimeObservation()
+        {
+            if (m_RuntimePorts != null)
+                return;
+            PrepareRuntimePorts();
+            InitializeRuntimeObservation();
+        }
+
+        void InitializeRuntimeObservation()
         {
             OrchestrationProgram<TValue> program = m_Bindings.Program;
             int overrideCapacity = m_Bindings.PublishedSlots.Length;
@@ -92,6 +111,7 @@ namespace BTSMTL.Graphs
         public void MutateRuntimeVariable(string variableId, GraphHostValue value, GraphVariableMutation operation)
         {
             RequireIdle();
+            PrepareRuntimeObservation();
             int slot = m_Bindings.PublishedSlots[VariableContract.Layout.Bind(variableId).Index];
             if (operation != GraphVariableMutation.Release)
                 RequireValue(value, m_Bindings.StateTypes[slot]);
@@ -123,8 +143,11 @@ namespace BTSMTL.Graphs
 
         bool IsVariableLocked(int slot) => FindVariableOverride(slot) >= 0;
 
-        public bool IsRuntimeVariableLocked(string variableId) =>
-            IsVariableLocked(m_Bindings.PublishedSlots[VariableContract.Layout.Bind(variableId).Index]);
+        public bool IsRuntimeVariableLocked(string variableId)
+        {
+            PrepareRuntimeObservation();
+            return IsVariableLocked(m_Bindings.PublishedSlots[VariableContract.Layout.Bind(variableId).Index]);
+        }
 
         TValue[] PortObservations(GraphRuntimePort port) => port.IsInput ? m_ObservedInputs : m_ObservedOutputs;
         TValue[] CandidatePortObservations(GraphRuntimePort port) =>
@@ -235,8 +258,9 @@ namespace BTSMTL.Graphs
                 throw new InvalidOperationException($"运行编辑值与声明类型 '{type.FullName}' 不匹配。");
         }
 
-        void PrepareEditor()
+        void PrepareRuntimePorts()
         {
+            m_Ports = new Dictionary<(string Node, string Port, bool Input), GraphRuntimePort>();
             var maps = new Dictionary<(string Node, string Port, bool Input), OrchestrationGraphPort>();
             OrchestrationIdentityTable identities = m_Bindings.Prepared.Identities.Table;
             int graphIdentity = identities.Bind(Source.AuthoringId);
@@ -251,21 +275,21 @@ namespace BTSMTL.Graphs
                 foreach (Port port in flow.GetOutputPorts())
                     Add(port, false);
             }
-            m_RuntimePorts = new GraphRuntimePort[m_EditorPorts.Count];
-            m_EditorPorts.Values.CopyTo(m_RuntimePorts, 0);
+            m_RuntimePorts = new GraphRuntimePort[m_Ports.Count];
+            m_Ports.Values.CopyTo(m_RuntimePorts, 0);
 
             void Add(Port port, bool input)
             {
                 OrchestrationGraphPort map = maps[(port.parent.UID, port.ID, input)];
                 int enumIdentity = port.type.IsEnum ? identities.Bind(port.type.AssemblyQualifiedName) : 0;
-                m_EditorPorts.Add((port.parent.UID, port.ID, input),
+                m_Ports.Add((port.parent.UID, port.ID, input),
                     new GraphRuntimePort(Source.AuthoringId, port, input, map.OperationIndex, map.ValueIndex,
                         map.CompiledPortIdentityId, enumIdentity, ReadPort, MutatePort, IsPortLocked,
                         () => QueuePortTrigger(port.parent.UID, port.ID, input), HasPendingTrigger));
             }
         }
 
-        void AdoptEditor()
+        void CompleteRuntimeOverrides()
         {
             OrchestrationValueOverride<TValue>
                 .CompleteConsumption(m_CandidateOverrides);
@@ -292,7 +316,7 @@ namespace BTSMTL.Graphs
             }
         }
 
-        void PrepareEditorCandidateState()
+        void PrepareObservationCandidateState()
         {
             m_Overrides.AsSpan().CopyTo(m_CandidateOverrides);
             for (int index = 0; index < m_CandidateOverrides.Length; index++)
@@ -311,7 +335,7 @@ namespace BTSMTL.Graphs
                 RemapValue(ref destination[i]);
         }
 
-        void AdoptEditorCandidateState()
+        void AdoptObservationCandidateState()
         {
             Swap(ref m_Overrides, ref m_CandidateOverrides);
             Swap(ref m_ObservedInputs, ref m_CandidateObservedInputs);
@@ -326,7 +350,7 @@ namespace BTSMTL.Graphs
             candidate = previous;
         }
 
-        void ClearEditorCandidateState()
+        void ClearObservationCandidateState()
         {
             Array.Clear(m_CandidateOverrides, 0, m_CandidateOverrides.Length);
             Array.Clear(m_CandidateObservedInputs, 0, m_CandidateObservedInputs.Length);
@@ -351,7 +375,7 @@ namespace BTSMTL.Graphs
             return values.AsSpan(0, length);
         }
 
-        void ResetEditor()
+        void ResetRuntimeObservation()
         {
             Array.Clear(m_Overrides, 0, m_Overrides.Length);
             Array.Clear(m_ObservedInputs, 0, m_ObservedInputs.Length);
@@ -361,6 +385,7 @@ namespace BTSMTL.Graphs
 
         public void GetRecordedStateCapacity(out int byteCapacity, out int textReferenceCapacity)
         {
+            PrepareRuntimeObservation();
             var writer = new RecordedRuntimeStateCountingWriter();
             WriteRecordedFrameState(ref writer, true);
             byteCapacity = writer.WrittenBytes;
@@ -371,6 +396,7 @@ namespace BTSMTL.Graphs
             where TWriter : struct, IRecordedRuntimeStateWriter
         {
             RequireIdle();
+            PrepareRuntimeObservation();
             WriteRecordedFrameState(ref writer, false);
         }
 
@@ -438,6 +464,7 @@ namespace BTSMTL.Graphs
         public void RestoreRecordedFrameState(ref RecordedRuntimeStateReader reader)
         {
             RequireIdle();
+            PrepareRuntimeObservation();
             try
             {
                 if (reader.Read<uint>() != RecordedStateFormat || reader.Read<uint>() != RecordedStateVersion)
@@ -517,4 +544,3 @@ namespace BTSMTL.Graphs
         }
     }
 }
-#endif

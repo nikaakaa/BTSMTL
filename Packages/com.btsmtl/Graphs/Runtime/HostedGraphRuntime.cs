@@ -107,15 +107,11 @@ namespace BTSMTL.Graphs
             m_OutputRequests = new OrchestrationOutputRequest[checked(m_Workspace.OutputRequestCapacity * 2)];
             m_OutputValues = new TValue[checked(m_Workspace.OutputValueCapacity * 2)];
 #if UNITY_EDITOR
-            PrepareEditor();
-            InitializeEditor();
+            PrepareRuntimeObservation();
 #endif
-            int textCapacity = checked(program.ValueSlotCount + m_Inputs.Length
-#if UNITY_EDITOR
-                + m_Overrides.Length
-                + m_ObservedInputs.Length + m_ObservedOutputs.Length + 1
-#endif
-                );
+            int textCapacity = checked(program.ValueSlotCount + m_Inputs.Length +
+                m_Bindings.PublishedSlots.Length + content.Ports.Length +
+                program.InputBindingCount + program.ValueEvaluationSlotCount + 1);
             m_StateTransaction = new GraphStateTransaction(m_MemoryLayout.Identity,
                 new GraphTextStorage(m_Bindings.Prepared.Identities, textCapacity),
                 new GraphTextStorage(m_Bindings.Prepared.Identities, textCapacity));
@@ -184,13 +180,12 @@ namespace BTSMTL.Graphs
 
         public void Compute(in TContext context, bool captureValues = false)
         {
+            if (captureValues)
+                PrepareRuntimeObservation();
             var input = new OrchestrationFrameInput<TValue>(tick: m_Invocation.Identity.Sequence,
                 instanceGeneration: m_ResetGeneration, hostInputs: m_Inputs, requestIdentityIds: default,
-                captureValues: captureValues
-#if UNITY_EDITOR
-                , overrides: ActiveOverrides(m_CandidateOverrides)
-#endif
-                );
+                captureValues: captureValues, overrides: m_RuntimePorts == null
+                    ? default : ActiveOverrides(m_CandidateOverrides));
             if (input.HasDiagnostics)
             {
                 if (input.CaptureValues)
@@ -225,18 +220,15 @@ namespace BTSMTL.Graphs
                     cursor.Advance(m_Bindings.Start);
                     CollectOutputs();
                 }
-#if UNITY_EDITOR
-                ExecuteTriggers(ref cursor);
-#endif
+                if (m_RuntimePorts != null)
+                    ExecuteTriggers(ref cursor);
                 cursor.Advance(m_Bindings.Update);
                 CollectOutputs();
-#if UNITY_EDITOR
                 if (input.CaptureValues)
                 {
                     CopyObserved(m_Workspace.ObservedInputs, m_Workspace.WrittenInputs, m_CandidateObservedInputs);
                     CopyObserved(m_Workspace.ObservedOutputs, m_Workspace.WrittenOutputs, m_CandidateObservedOutputs);
                 }
-#endif
                 m_CurrentOperationIndex = cursor.CurrentOperationIndex;
                 m_Status = EvaluationStatus.Succeeded;
             }
@@ -296,13 +288,10 @@ namespace BTSMTL.Graphs
                 {
                     int slot = m_Bindings.PublishedSlots[i];
                     int valueIndex = m_Bindings.Program.ExecutionStorage.Values.Span[slot].ValueIndex;
-#if UNITY_EDITOR
-                    int supplied = FindOverride(m_CandidateOverrides, OrchestrationValueOverrideKind.Blackboard, slot);
+                    int supplied = m_RuntimePorts == null ? -1 :
+                        FindOverride(m_CandidateOverrides, OrchestrationValueOverrideKind.Blackboard, slot);
                     TValue value = supplied >= 0
                         ? m_CandidateOverrides[supplied].Value : values[valueIndex];
-#else
-                    TValue value = values[valueIndex];
-#endif
                     GraphHostValue published = m_Bindings.FromState(in value, m_Bindings.StateTypes[slot], m_CandidateTexts);
                     m_Output.Write(i, in published);
                 }
@@ -312,9 +301,8 @@ namespace BTSMTL.Graphs
                 Reject(exception.Message, exception);
                 return AdoptFailure();
             }
-#if UNITY_EDITOR
-            AdoptEditor();
-#endif
+            if (m_RuntimePorts != null)
+                CompleteRuntimeOverrides();
             AdoptCandidateState();
             m_Started = true;
             m_LastInvocation = m_Invocation.Identity;
@@ -356,9 +344,8 @@ namespace BTSMTL.Graphs
                 return;
             RequireIdle();
             m_Output.Invalidate();
-#if UNITY_EDITOR
-            ResetEditor();
-#endif
+            if (m_RuntimePorts != null)
+                ResetRuntimeObservation();
             m_StateTexts.Reset();
             m_CandidateTexts.Reset();
             m_LastInvocation = default;
@@ -367,11 +354,9 @@ namespace BTSMTL.Graphs
 
         internal TValue ReadState(int slot, ReadOnlySpan<TValue> values)
         {
-#if UNITY_EDITOR
-            int supplied = FindVariableOverride(slot);
+            int supplied = m_RuntimePorts == null ? -1 : FindVariableOverride(slot);
             if (supplied >= 0)
                 return m_Overrides[supplied].Value;
-#endif
             return values[m_Bindings.Program.ExecutionStorage.Values.Span[slot].ValueIndex];
         }
 
@@ -386,9 +371,8 @@ namespace BTSMTL.Graphs
             Span<TValue> savedOutputs = frames.SavedOutputs(0);
             for (int i = 0; i < savedOutputs.Length; i++)
                 RemapValue(ref savedOutputs[i]);
-#if UNITY_EDITOR
-            PrepareEditorCandidateState();
-#endif
+            if (m_RuntimePorts != null)
+                PrepareObservationCandidateState();
         }
 
         void RemapValue(ref TValue value)
@@ -411,18 +395,16 @@ namespace BTSMTL.Graphs
         void AdoptCandidateState()
         {
             m_StateTransaction.Commit();
-#if UNITY_EDITOR
-            AdoptEditorCandidateState();
-#endif
+            if (m_RuntimePorts != null)
+                AdoptObservationCandidateState();
         }
 
         void ClearCandidateState()
         {
             Array.Clear(m_Inputs, 0, m_Inputs.Length);
             m_StateTransaction.Discard();
-#if UNITY_EDITOR
-            ClearEditorCandidateState();
-#endif
+            if (m_RuntimePorts != null)
+                ClearObservationCandidateState();
         }
 
         void ResetState()
@@ -450,9 +432,8 @@ namespace BTSMTL.Graphs
                             }
                         };
             }
-#if UNITY_EDITOR
-            ResetEditor();
-#endif
+            if (m_RuntimePorts != null)
+                ResetRuntimeObservation();
             m_Started = false;
         }
 

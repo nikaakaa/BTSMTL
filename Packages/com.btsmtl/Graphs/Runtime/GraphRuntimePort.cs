@@ -1,4 +1,3 @@
-#if UNITY_EDITOR
 using System;
 using FlowCanvas;
 using ThirdPersonSimulation;
@@ -115,4 +114,3 @@ namespace BTSMTL.Graphs
         public bool HasPendingTrigger => m_HasPendingTrigger(this);
     }
 }
-#endif
