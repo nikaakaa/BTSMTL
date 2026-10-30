@@ -10,14 +10,14 @@ namespace BTSMTL.Preview
         struct LayerState
         {
             public float Weight;
-            public double Speed;
+            public float Speed;
             public int Current;
         }
 
         struct ClipSnapshot
         {
-            public double Time;
-            public double Speed;
+            public float Time;
+            public float Speed;
             public float Weight;
             public bool Playing;
         }
