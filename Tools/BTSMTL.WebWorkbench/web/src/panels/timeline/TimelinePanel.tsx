@@ -25,7 +25,7 @@ import {
   clipGraph, clipSelectId, documentSegments, inputClipSelectId, trackSelectId, inputTrackSelectId, routeSegments, timelineLength, segmentRows, segmentTitle, selectedInputRoot,
   trackColors, type ClipInstance, type GroupRow, type RouteSegment, type TrackKind, type TrackRow,
 } from '../../state/timelineModel';
-import { callKey, callLabel, graphKey, graphName, matchesDocumentCall, nodeSelectId, parentGraphCalls, recordedGraphCalls, type RecordedGraphCall } from '../../state/graphModel';
+import { callKey, callLabel, graphKey, graphName, matchesDocumentCall, nodeSelectId, parentCallMatches, parentGraphCalls, recordedGraphCalls, type RecordedGraphCall } from '../../state/graphModel';
 import { transport } from '../../state/transport';
 import { useInputObservation } from '../../state/inputModel';
 import { archive } from '../../state/archive';
@@ -66,10 +66,11 @@ interface Params {
   snap: Snap;
   call: string | null;
   pin: { runId: PlayerJobId; documentId: string; observation: TimelineObservation } | null;
+  caller: { runId: PlayerJobId; call: ExecutionCall } | null;
 }
 type Snap = 'tick' | '0.1' | '0.01' | '0.001' | 'none';
 const defaults: Params = {
-  range: null, collapsed: [], follow: true, filter: '', program: null, focus: null, routeRange: null, snap: 'tick', call: null, pin: null,
+  range: null, collapsed: [], follow: true, filter: '', program: null, focus: null, routeRange: null, snap: 'tick', call: null, pin: null, caller: null,
 };
 
 // 吸附步长（秒）；关闭吸附时为定点时间的最小单位。没有逻辑 tick 时不能编辑。
@@ -407,15 +408,17 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
   const inputScheme = schemes.find(scheme => scheme.documentId === focused?.documentId);
   const inputObservation = useInputObservation(inputScheme?.documentId ?? null);
   const playbacks = useWorkbench(state => state.frame?.route?.playbacks);
+  const caller = params.caller?.runId === runId && matchesDocumentCall(params.caller.call, binding) ? params.caller : null;
   const observations = useMemo(() => {
     const result = new Map<string, TimelineObservation>();
     for (const playback of playbacks ?? [])
-      if (playback.documentId === focused?.documentId && playback.call !== null && playback.domain !== null && matchesDocumentCall(playback.call, binding)) {
+      if (playback.documentId === focused?.documentId && playback.call !== null && playback.domain !== null && matchesDocumentCall(playback.call, binding) &&
+        (caller === null || parentCallMatches(caller.call, playback.call))) {
         const observation = { call: playback.call, domain: playback.domain };
         result.set(observationKey(observation), observation);
       }
     return [...result.values()];
-  }, [playbacks, focused?.documentId, binding]);
+  }, [playbacks, focused?.documentId, binding, caller]);
   const pin = params.pin?.runId === runId && params.pin.documentId === focused?.documentId && matchesDocumentCall(params.pin.observation.call, binding)
     ? params.pin : null;
   const observed = pin?.observation ?? observations.find(observation => observationKey(observation) === params.call)
@@ -446,14 +449,14 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
     const segment = playbackAt(segments, documentId, getState().frameIndex);
     if (!segment) return;
     if (!frames) {
-      setParams({ focus: documentId, range: segmentRange(segment), call: null, pin: null });
+      setParams({ focus: documentId, range: segmentRange(segment), call: null, pin: null, caller: null });
       return;
     }
     const frameIndex = getState().frameIndex;
     if (frameIndex < segment.firstIndex || frameIndex > segment.lastIndex) transport.seek(segment.firstIndex);
-    setParams({ focus: documentId, routeRange: params.focus ? params.routeRange : params.range, range: segmentRange(segment), call: null, pin: null });
+    setParams({ focus: documentId, routeRange: params.focus ? params.routeRange : params.range, range: segmentRange(segment), call: null, pin: null, caller: null });
   }, [frames, segments, setParams, params.focus, params.routeRange, params.range]);
-  const back = useCallback(() => setParams({ focus: null, range: params.routeRange, routeRange: null, call: null, pin: null }), [setParams, params.routeRange]);
+  const back = useCallback(() => setParams({ focus: null, range: params.routeRange, routeRange: null, call: null, pin: null, caller: null }), [setParams, params.routeRange]);
 
   // 节点图双击播放 Timeline 的节点时进入该 Timeline。
   const request = useWorkbench(state => state.timelineRequest);
@@ -466,6 +469,7 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
     const ownerProgram = programOf(owner);
     if (ownerProgram !== null && ownerProgram !== program) setParams({ program: ownerProgram });
     enter(request.documentId);
+    setParams({ caller: request.observation });
   }, [request, allSegments, programOf, program, setParams, enter]);
 
   // 转移标记：路线上每次换段的时刻，悬停说明转移到的状态。
@@ -559,7 +563,7 @@ function TimelineBody({ params, setParams, bounds, frames, onRangeChanged }: {
   const origin = focused?.origin ?? 0;
   const subject: Subject = frames ? {
     options: programs.map(item => ({ value: item, label: `${item.slice(item.indexOf(':') + 1)} / 技能根` })),
-    program, setProgram: next => setParams({ program: next, focus: null, routeRange: null, call: null, pin: null }),
+    program, setProgram: next => setParams({ program: next, focus: null, routeRange: null, call: null, pin: null, caller: null }),
     focus: focused?.timeline?.displayName ?? (params.focus ? params.focus.slice(0, 8) : null), back, timelines: null,
   } : {
     options: [], program: null, setProgram: () => {}, focus: focused?.timeline?.displayName ?? null, back,

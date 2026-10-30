@@ -22,7 +22,7 @@ import { usePanelParams } from '../../shell/panel';
 import { useFrameReport } from '../../shell/readiness';
 import {
   belongsTo, callKey, callLabel, childGraphs, edgeChildGraphs, edgeSelectId, graphCrumbs, graphHierarchy, graphKey, graphName, graphRecords,
-  isStateMachine, layoutGraph, matchesDocumentCall, nodeName, nodeSelectId, nodeTimeline, parentGraphCalls, playedTimeline, portColor,
+  isStateMachine, layoutGraph, matchesDocumentCall, nodeName, nodeSelectId, nodeTimeline, parentCallMatches, parentGraphCalls, playedTimeline, portColor,
   recordedGraphCalls, type GraphHierarchy, type LaidNode, type RecordedGraphCall,
 } from '../../state/graphModel';
 import { consoleActions, getState, selectionActions, useWorkbench } from '../../state/store';
@@ -41,6 +41,7 @@ interface Params {
   call: string | null;
   path: string | null;
   pin: { runId: PlayerJobId; graph: string; call: ExecutionCall } | null;
+  caller: { runId: PlayerJobId; call: ExecutionCall } | null;
   // 视图位置按所看的图与图实例保存。
   viewport: (Viewport & { view: string }) | null;
   values: boolean;
@@ -50,7 +51,7 @@ interface Params {
   labels: 'brief' | 'all' | 'none';
 }
 const defaults: Params = {
-  graph: null, call: null, path: null, pin: null, viewport: null, values: true, dim: false, relations: false, minimap: true, labels: 'brief',
+  graph: null, call: null, path: null, pin: null, caller: null, viewport: null, values: true, dim: false, relations: false, minimap: true, labels: 'brief',
 };
 
 interface ViewOptions {
@@ -145,13 +146,15 @@ function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
   const graph = graphs.find(item => graphKey(item) === (params.graph ?? followed)) ?? programs.values().next().value!.root;
   const key = graphKey(graph);
 
-  const calls = currentCalls.filter(item => graphKey(item.graph) === key).map(item => item.call);
+  const caller = params.caller?.runId === runId && matchesDocumentCall(params.caller.call, binding) ? params.caller : null;
+  const graphCalls = currentCalls.filter(item => graphKey(item.graph) === key && (caller === null || parentCallMatches(caller.call, item.call)));
+  const calls = graphCalls.map(item => item.call);
   const paths = useMemo(() => [...new Set(graph.nodes.map(node => node.invocationPath))], [graph]);
   const pin = params.pin?.runId === runId && params.pin.graph === key && matchesDocumentCall(params.pin.call, binding)
     ? params.pin : null;
   const automatic = params.graph === null ? currentCalls.length === 1 ? currentCalls[0].call : null : calls.length === 1 ? calls[0] : null;
   const observedCall = pin?.call ?? calls.find(item => callKey(item) === params.call) ?? automatic;
-  const availableCalls = params.graph === null ? currentCalls : currentCalls.filter(item => graphKey(item.graph) === key);
+  const availableCalls = params.graph === null ? currentCalls : graphCalls;
   const choices = pin && !availableCalls.some(item => callKey(item.call) === callKey(pin.call)) ? [{ graph, call: pin.call }, ...availableCalls] : availableCalls;
   const callOptions = choices.map(item => ({ value: graphCallKey(item),
     label: `${params.graph === null ? graphName(item.graph) + ' · ' : ''}${callLabel(item.call)}` }));
@@ -172,7 +175,7 @@ function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
     return { items, parent: current.parentInvocationPath ? current : null, choices: parents };
   }, [graph, observedCall, recorded]);
   const enterCall = runId === null ? undefined : ({ graph, call }: RecordedGraphCall) => setParams({ graph: graphKey(graph),
-    call: callKey(call), path: null, pin: { runId, graph: graphKey(graph), call }, viewport: null });
+    call: callKey(call), path: null, pin: { runId, graph: graphKey(graph), call }, caller: null, viewport: null });
 
   const selectCall = (value: string) => {
     const choice = choices.find(item => graphCallKey(item) === value)!;
@@ -189,7 +192,9 @@ function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
     }
   }, [graph, observedCall]);
 
-  const enter = useCallback((target: GraphDefinition) => setParams({ graph: graphKey(target), call: null, path: null, pin: null, viewport: null }), [setParams]);
+  const enter = useCallback((target: GraphDefinition) => setParams({ graph: graphKey(target), call: null, path: null, pin: null,
+    caller: !author && observedCall !== null && runId !== null ? { runId, call: observedCall } : null, viewport: null }),
+  [setParams, author, observedCall, runId]);
 
   // 其它面板请求显示某张图（检查器跳转、Timeline 片段）。
   const request = useWorkbench(state => state.graphRequest);
@@ -199,14 +204,14 @@ function GraphView({ graphs }: { graphs: GraphDefinition[] }) {
     handled.current = request.sequence;
     if (graphs.some(item => graphKey(item) === request.key)) setParams({ graph: request.key,
       call: request.observation ? callKey(request.observation.call) : null, path: null,
-      pin: request.observation ? { ...request.observation, graph: request.key } : null, viewport: null });
+      pin: request.observation ? { ...request.observation, graph: request.key } : null, caller: null, viewport: null });
   }, [request, graphs, setParams]);
   const crumbs = useMemo(() => graphCrumbs(hierarchy, graph), [hierarchy, graph]);
   const [blackboard, setBlackboard] = useState(false);
   const programOptions = [...programs].map(([value, item]) => ({ value, label: item.label }));
 
   const settings: MenuEntry[] = [
-    { kind: 'check', label: '跟随当前帧', checked: params.graph === null, onChange: on => setParams({ graph: on ? null : key, call: null, path: null, pin: null }) },
+    { kind: 'check', label: '跟随当前帧', checked: params.graph === null, onChange: on => setParams({ graph: on ? null : key, call: null, path: null, pin: null, caller: null }) },
     { kind: 'separator' },
     { kind: 'check', label: '连线标签：简写', checked: params.labels === 'brief', onChange: () => setParams({ labels: 'brief' }) },
     { kind: 'check', label: '连线标签：全文', checked: params.labels === 'all', onChange: () => setParams({ labels: 'all' }) },
@@ -432,6 +437,7 @@ interface GraphCanvasProps {
 
 function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, editable, groups, elements }: GraphCanvasProps) {
   const binding = useDocumentObservationBinding();
+  const runId = useWorkbench(state => state.runId);
   const minimapWidth = useFlowStore(state => Math.min(204, state.width * 0.3, state.height * 0.3 * 204 / 104));
   const machine = isStateMachine(graph) || (currentDocument(graphPath(graph.id)) as JsonObject | null)?.Role === 'StateMachine';
   const layout = useMemo(() => layoutGraph(graph, path), [graph, path]);
@@ -545,8 +551,8 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
   const onNodeDoubleClick = useCallback((_: unknown, node: CanvasNode) => {
     if (isGroupNode(node)) return;
     if (node.data.children.length) enter(node.data.children[0]);
-    else if (node.data.timeline) showTimeline(node.data.timeline);
-  }, [enter]);
+    else if (node.data.timeline) showTimeline(node.data.timeline, !editable && call !== null && runId !== null ? { runId, call } : null);
+  }, [enter, editable, call, runId]);
   const onEdgeDoubleClick = useCallback((_: unknown, edge: FlowEdge) => {
     if (edge.data!.conditions.length) enter(edge.data!.conditions[0]);
   }, [enter]);
@@ -709,8 +715,8 @@ function GraphCanvas({ graph, path, call, hierarchy, enter, params, setParams, e
 }
 
 // 跳到该 Timeline 第一次播放的帧并显示 Timeline 面板。
-function showTimeline(documentId: string) {
-  selectionActions.showTimeline(documentId);
+function showTimeline(documentId: string, observation: { runId: PlayerJobId; call: ExecutionCall } | null) {
+  selectionActions.showTimeline(documentId, observation);
   openPanel('timeline');
 }
 

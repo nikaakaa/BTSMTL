@@ -84,12 +84,13 @@ export function recordedGraphCalls(frames: RouteFrame[], current: RouteFrame | n
   return [...calls.values()];
 }
 
-export const parentGraphCalls = (call: ExecutionCall, calls: RecordedGraphCall[]) =>
-  call.parentInvocationPath === null || call.parentInvocationPath === '' || call.parentInvocationGeneration === null ? []
-    : calls.filter(({ call: parent }) => parent.actorId === call.actorId && parent.programId === call.programId &&
-      parent.programRevision === call.programRevision && parent.actionId === call.actionId &&
-      parent.executionGeneration === call.executionGeneration && parent.invocationPath === call.parentInvocationPath &&
-      parent.invocationGeneration === call.parentInvocationGeneration);
+export const parentCallMatches = (parent: ExecutionCall, call: ExecutionCall) =>
+  call.parentInvocationPath !== null && call.parentInvocationPath !== '' && call.parentInvocationGeneration !== null &&
+  parent.actorId === call.actorId && parent.programId === call.programId && parent.programRevision === call.programRevision &&
+  parent.actionId === call.actionId && parent.executionGeneration === call.executionGeneration &&
+  parent.invocationPath === call.parentInvocationPath && parent.invocationGeneration === call.parentInvocationGeneration;
+
+export const parentGraphCalls = (call: ExecutionCall, calls: RecordedGraphCall[]) => calls.filter(item => parentCallMatches(item.call, call));
 
 export const isNodeOccurrence = (item: RouteRecord): item is NodeOccurrence & { call: ExecutionCall } => 'kind' in item && 'nodeId' in item;
 export const isEdgeOccurrence = (item: RouteRecord): item is EdgeOccurrence & { call: ExecutionCall } => 'edgeId' in item;

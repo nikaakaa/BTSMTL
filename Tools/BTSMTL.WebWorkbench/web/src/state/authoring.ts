@@ -405,7 +405,7 @@ export const authoringActions = {
     const scheme = (plan.Schemes as JsonObject[])[schemeIndex];
     set({ inputActorId: actorId });
     selectionActions.select(null);
-    selectionActions.showTimeline(scheme.InputTimeline as string);
+    selectionActions.showTimeline(scheme.InputTimeline as string, null);
   },
 
   async probe() {
@@ -1092,7 +1092,7 @@ export const inputAuthoring = {
       schemes.push(sortedObject({ ...cloneJson(source), InputTimeline: timeline, Name: name }));
       plan.Selected = schemes.length - 1;
     });
-    selectionActions.showTimeline(timeline);
+    selectionActions.showTimeline(timeline, null);
   },
 
   removeScheme(path: string, index: number) {

@@ -103,7 +103,7 @@ function openGraph(graph: GraphDefinition) {
 }
 
 function openTimeline(documentId: string) {
-  selectionActions.showTimeline(documentId);
+  selectionActions.showTimeline(documentId, null);
   openPanel('timeline');
 }
 
