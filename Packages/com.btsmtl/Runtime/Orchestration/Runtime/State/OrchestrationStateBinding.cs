@@ -42,6 +42,10 @@ namespace BTSMTL.Orchestration
             OrchestrationPreparedStateLayout<TValue> plan, ReadOnlySpan<byte> memory) where TValue : unmanaged =>
             new OrchestrationStateValidRanges<TValue>(plan.View, memory);
 
+        public static OrchestrationStateValidRanges<TValue> ValidRanges<TValue>(
+            OrchestrationStateLayoutView plan, ReadOnlySpan<byte> memory) where TValue : unmanaged =>
+            new OrchestrationStateValidRanges<TValue>(plan, memory);
+
         public static void CopyMemory<TValue>(OrchestrationPreparedStateLayout<TValue> plan,
             ReadOnlySpan<byte> source, Span<byte> destination) where TValue : unmanaged
         {
