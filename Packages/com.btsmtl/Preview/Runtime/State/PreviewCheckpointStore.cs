@@ -57,11 +57,17 @@ namespace BTSMTL.Preview
             if (m_Adapter.RestoreSupport == PreviewRestoreSupport.RestartOnly ||
                 !keyPosition && frame % m_Interval != 0)
                 return -1;
-            int slot = m_NextSlot;
+            int slot = Array.IndexOf(m_Frames, frame);
+            bool existing = slot >= 0;
+            if (existing && !keyPosition)
+                return -1;
+            if (!existing)
+                slot = m_NextSlot;
             m_Frames[slot] = -1;
             m_Adapter.Capture(slot, frame);
             m_Frames[slot] = frame;
-            m_NextSlot = (slot + 1) % m_Frames.Length;
+            if (!existing)
+                m_NextSlot = (slot + 1) % m_Frames.Length;
             return slot;
         }
 
