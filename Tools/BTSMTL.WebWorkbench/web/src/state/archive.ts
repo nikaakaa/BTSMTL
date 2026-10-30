@@ -37,10 +37,16 @@ function remember(jobId: PlayerJobId, index: number, frame: ArchiveFrame) {
     for (const oldest of cache.keys()) { cache.delete(oldest); break; }
 }
 
+function readCachedFrame(jobId: PlayerJobId, index: number) {
+  const frame = cache.get(key(jobId, index));
+  if (frame !== undefined) remember(jobId, index, frame);
+  return frame;
+}
+
 function publishFrame(context: OpenArchive) {
   const state = getState();
   if (isCurrent(context.generation) && state.runId === context.jobId) {
-    const frame = cache.get(key(context.jobId, state.frameIndex));
+    const frame = readCachedFrame(context.jobId, state.frameIndex);
     runActions.setData(context.generation, { archiveFrame: frame === undefined ? null : { ...frame } });
   }
 }
@@ -335,7 +341,7 @@ export const archive = {
       if (request === frameRequest && isCurrent(generation)) consoleActions.error(source, error);
     };
     const show = () => {
-      const archiveFrame = cache.get(frameKey);
+      const archiveFrame = readCachedFrame(runId, frameIndex);
       if (request !== frameRequest || !archiveFrame || !isCurrent(generation)) return;
       runActions.setData(generation, { archiveFrame, frameKey });
       loadVisibleCurves(context);
