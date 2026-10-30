@@ -86,7 +86,7 @@ function clearPoll() {
 async function updateRun(jobId: PlayerJobId, generation: number, signal: AbortSignal) {
   clearPoll();
   try {
-    const { receipt } = await playerApi.job(jobId, signal);
+    const { receipt, archive: manifest } = await playerApi.job(jobId, signal);
     if (!isCurrent(generation)) return;
     runActions.setReceipt(generation, receipt);
     if (receipt.stage === 'queued' || receipt.stage === 'running') {
@@ -97,7 +97,7 @@ async function updateRun(jobId: PlayerJobId, generation: number, signal: AbortSi
       const reason = receipt.error ?? stageNames[receipt.stage];
       const entryId = consoleActions.log(receipt.stage === 'failed' ? 'error' : 'warn', source, reason);
       runActions.setData(generation, { failure: { reason, entryId } });
-      return;
+      if (manifest === null || manifest.frameCount === 0) return;
     }
     if (!getState().sealed) await archive.open(receipt.jobId, generation, requestedFrame);
   } catch (error) {

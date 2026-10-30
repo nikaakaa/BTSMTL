@@ -155,7 +155,7 @@ export const readPlayerJobs = object({
   capacity: number, concurrency: number, queued: number, archiveCacheCapacity: number,
   items: array(readPlayerJobReceipt),
 });
-export const readPlayerJob = object({ receipt: readPlayerJobReceipt, archive: opaque });
+export const readPlayerJob = object({ receipt: readPlayerJobReceipt, archive: nullable(object({ frameCount: number })) });
 export const readPlayerCancellation = object({ jobId, cancellationRequested: boolean, jobStage, reason: text });
 export const readPlayerSummary = object({
   runId: jobId, contentRevision: text, frameDisplayName: text, firstFrame: text, lastFrame: text,
