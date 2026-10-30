@@ -141,27 +141,19 @@ namespace BTSMTL.Preview
         }
     }
 
-    public sealed class PreviewPngImageArchive
+    public static class PreviewPngImageArchive
     {
-        readonly string m_Directory;
-
-        public PreviewPngImageArchive(string directory)
+        public static unsafe string Write(in PreviewEncodedFrame frame, string absoluteFilePath)
         {
-            if (!Path.IsPathRooted(directory))
-                throw new ArgumentException("预览帧画面归档需要绝对输出目录。", nameof(directory));
-            m_Directory = directory;
-            Directory.CreateDirectory(directory);
-        }
-
-        public unsafe string Write(in PreviewEncodedFrame frame)
-        {
+            if (!Path.IsPathFullyQualified(absoluteFilePath))
+                throw new ArgumentException("独立截图需要绝对输出文件路径。", nameof(absoluteFilePath));
             if (frame.Encoding != PreviewImageEncoding.Png)
                 throw new ArgumentException("独立截图归档只接收 PNG，逐帧 JPEG 交运行档案写入器。", nameof(frame));
-            string path = Path.Combine(m_Directory, "frame-" + frame.Frame.ToString("D10") + ".png");
-            using var stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read);
+            Directory.CreateDirectory(Path.GetDirectoryName(absoluteFilePath));
+            using var stream = new FileStream(absoluteFilePath, FileMode.Create, FileAccess.Write, FileShare.Read);
             stream.Write(new ReadOnlySpan<byte>(
                 NativeArrayUnsafeUtility.GetUnsafeReadOnlyPtr(frame.Bytes), frame.Bytes.Length));
-            return path;
+            return absoluteFilePath;
         }
     }
 }
