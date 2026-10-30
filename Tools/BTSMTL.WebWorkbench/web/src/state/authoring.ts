@@ -14,7 +14,7 @@ import { consoleActions, selectionActions, useWorkbench } from './store';
 import type { DocumentObservationBinding } from './graphModel';
 import { findTimelineClip as findTimelineClipInViews, findTimelineMarker, findTimelineTrack } from './timelineModel';
 import { playerService } from './player';
-import { session } from './session';
+import { session, stageNames } from './session';
 
 // 作者编辑（共享文档 9.x）：当前运行所属技能的 JSON 文件。原文按路径保存；编辑过的文件解析后改写，
 // 保存时整份写回。宿主未启用作者接口时 available=false，作者模式不可用。
@@ -129,7 +129,7 @@ async function selectedPreview(): Promise<PreviewSelection> {
 
 const previewMessages = {
   accepted: '预览已受理，等待 Player 采用',
-  adopted: 'Player 已采用本次内容；本次运行档案尚未提供',
+  adopted: 'Player 已采用本次内容',
   failed: 'Player 采用失败',
   unavailable: '预览不可用',
 } satisfies Record<PlayerSkillRefreshReceipt['stage'], string>;
@@ -141,6 +141,21 @@ function savedOutcome(save: SavedCompilation, preview: PlayerSkillRefreshReceipt
     ok: preview === null || preview.stage === 'accepted' || preview.stage === 'adopted',
     message: `已保存，编译通过；${detail}`, errors: [],
   };
+}
+
+function acceptSaveJob(receipt: PlayerJobReceipt) {
+  const waiting = receipt.stage === 'queued' || receipt.stage === 'running';
+  const outcome = get().lastSave;
+  set({ saveRun: { kind: waiting ? 'waiting' : 'terminal', receipt } });
+  if (outcome) {
+    const source = outcome.compilationState === 'succeeded'
+      ? savedOutcome(outcome, outcome.preview, '').message
+      : `输入方案已保存${outcome.preview === null ? '' : `；所选 Player 重载：${outcome.preview.stage}`}`;
+    set({ lastSave: { ...outcome, ok: waiting || receipt.stage === 'completed',
+      message: `${source}；封存作业${stageNames[receipt.stage]}${receipt.error === null ? '' : `：${receipt.error}`}`,
+    } });
+  }
+  if (receipt.stage === 'completed') session.selectRun(receipt.jobId);
 }
 
 async function trackPreview(input: {
@@ -182,9 +197,8 @@ async function trackPreview(input: {
     input.controller.signal.throwIfAborted();
     const job = await playerApi.startJob(request, input.controller.signal);
     input.controller.signal.throwIfAborted();
-    set({ saveRun: { kind: 'waiting', receipt: job }, lastSave: {
-      ...savedOutcome(input.save, receipt, ''), message: '已保存、编译并采用；本次封存作业已受理，等待完成',
-    } });
+    set({ lastSave: savedOutcome(input.save, receipt, '') });
+    acceptSaveJob(job);
     await Promise.all([playerService.refresh(), session.refresh()]);
   } catch (error) {
     if (isAbort(error)) return;
@@ -284,17 +298,7 @@ useWorkbench.subscribe((state, previous) => {
   const jobId = saved.receipt.jobId;
   const receipt = state.archiveJobs.find(job => job.jobId === jobId);
   if (!receipt) return;
-  if (receipt.stage === 'queued' || receipt.stage === 'running') {
-    if (receipt.stage !== saved.receipt.stage) set({ saveRun: { kind: 'waiting', receipt } });
-    return;
-  }
-  set({ saveRun: { kind: 'terminal', receipt } });
-  const lastSave = get().lastSave;
-  if (lastSave) set({ lastSave: { ...lastSave,
-    ok: receipt.stage === 'completed', message: receipt.stage === 'completed' ? '本次保存的新档案已封存'
-      : `内容已保存；封存作业 ${receipt.stage}：${receipt.error ?? '未完成'}`,
-  } });
-  if (receipt.stage === 'completed') session.selectRun(receipt.jobId);
+  if (receipt.stage !== saved.receipt.stage) acceptSaveJob(receipt);
 });
 
 async function readDocument(target: AuthoringTarget, signal?: AbortSignal) {
@@ -514,8 +518,8 @@ export const authoringActions = {
         const currentSkill = accept(result.content, { saved: true, compilationState: 'not-required', preview,
           ok: stage !== 'rejected' && stage !== 'not-applied', message, errors: [] });
         consoleActions.log(stage === 'rejected' || stage === 'not-applied' ? 'error' : 'info', '作者', message, JSON.stringify(result));
-        if (currentSkill) set({ inputRevision: { kind: 'saved', items: result.inputs },
-          saveRun: result.job === null || controller.signal.aborted ? null : { kind: 'waiting', receipt: result.job } });
+        if (currentSkill) set({ inputRevision: { kind: 'saved', items: result.inputs } });
+        if (currentSkill && result.job !== null && !controller.signal.aborted) acceptSaveJob(result.job);
         if (currentSkill && stage === 'applied') await playerService.refresh();
         if (currentSkill) await session.loadInputs();
         if (currentSkill && result.job !== null) await session.refresh();
