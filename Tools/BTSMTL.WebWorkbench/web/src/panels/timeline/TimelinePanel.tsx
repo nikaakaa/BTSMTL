@@ -948,7 +948,6 @@ function deleteClips(selectIds: string[]) {
     byDocument.set(documentId, [...byDocument.get(documentId) ?? [], itemId]);
   }
   for (const [documentId, ids] of byDocument) authoringActions.deleteClips(documentId, ids);
-  if (byDocument.size) selectionActions.select(null);
 }
 
 function deleteSelection() {
@@ -957,7 +956,6 @@ function deleteSelection() {
   else if (selection?.kind === 'track' && !selection.id.startsWith('input/')) {
     const [documentId, trackId] = selection.id.split('/');
     authoringActions.deleteTracks(documentId, [trackId]);
-    selectionActions.select(null);
   }
 }
 
@@ -1056,7 +1054,7 @@ function useTrackMenu(row: TrackRow, at: { current: number }, rename: () => void
       label: '下移轨道', disabled: index >= row.timeline.tracks.length - 1,
       onSelect: () => authoringActions.moveTrack(documentId, row.track.id, index + 1),
     },
-    { label: '删除轨道', onSelect: () => { authoringActions.deleteTracks(documentId, [row.track.id]); selectionActions.select(null); } },
+    { label: '删除轨道', onSelect: () => authoringActions.deleteTracks(documentId, [row.track.id]) },
   ];
 }
 

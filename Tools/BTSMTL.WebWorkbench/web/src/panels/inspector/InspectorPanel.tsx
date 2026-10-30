@@ -424,7 +424,7 @@ function EdgeInspector({ id, missing }: { id: string; missing: ReactNode }) {
       {editable && (
         <div className={styles.actions}>
           <Button variant="ghost" tip="删除这条转移；不再被引用的条件图保存时删除"
-            onClick={() => { graphAuthoring.disconnect(graph.id, [edge.id]); selectionActions.select(null); }}>删除转移</Button>
+            onClick={() => graphAuthoring.disconnect(graph.id, [edge.id])}>删除转移</Button>
         </div>
       )}
       <Identity extra={[
@@ -490,7 +490,7 @@ function ClipInspector({ id, call, missing }: { id: string; call: ExecutionCall 
       {editable && (
         <div className={styles.actions}>
           <Button variant="ghost" tip="删除片段；不再被引用的片段图保存时删除"
-            onClick={() => { authoringActions.deleteClips(timeline.documentId, [clip.id]); selectionActions.select(null); }}>删除片段</Button>
+            onClick={() => authoringActions.deleteClips(timeline.documentId, [clip.id])}>删除片段</Button>
         </div>
       )}
       {runId && <Fold title="已读取的活动记录" kind="var(--value)" defaultOpen>
@@ -550,7 +550,7 @@ function MarkerInspector({ found, editable }: { found: NonNullable<ReturnType<ty
       {editable && (
         <div className={styles.actions}>
           <Button variant="ghost" tip="删除标记；不再被引用的触发图保存时删除"
-            onClick={() => { authoringActions.deleteClips(timeline.documentId, [marker.id]); selectionActions.select(null); }}>删除标记</Button>
+            onClick={() => authoringActions.deleteClips(timeline.documentId, [marker.id])}>删除标记</Button>
         </div>
       )}
       <Identity extra={[{ displayName: '标记', value: marker.id }, { displayName: 'Timeline', value: timeline.documentId }]} />
@@ -579,7 +579,7 @@ function TrackInspector({ id, call, missing }: { id: string; call: ExecutionCall
       {editable && (
         <div className={styles.actions}>
           <Button variant="ghost" tip="删除轨道及其片段与标记；不再被引用的图保存时删除"
-            onClick={() => { authoringActions.deleteTracks(timeline.documentId, [track.id]); selectionActions.select(null); }}>删除轨道</Button>
+            onClick={() => authoringActions.deleteTracks(timeline.documentId, [track.id])}>删除轨道</Button>
         </div>
       )}
       <Fold title="片段" kind={kind} defaultOpen>
