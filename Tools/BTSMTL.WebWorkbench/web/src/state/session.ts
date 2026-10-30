@@ -36,9 +36,22 @@ function selectedStart() {
   if (!state.playerViewport) return { kind: 'unavailable', reason: '打开画面面板以确定本次画面尺寸' } as const;
   const scene = state.sources?.scenes.find(item => item.path === state.scenePath);
   if (!scene) return { kind: 'unavailable', reason: '先选择内容' } as const;
-  const replay = state.sources?.replays.find(item => item.id === state.replayId);
-  if (!replay) return { kind: 'unavailable', reason: '先选择输入来源' } as const;
-  return { kind: 'selected', liveId, scene, source: replay.source, viewport: state.playerViewport } as const;
+  const selectedInput = state.inputSource;
+  if (selectedInput === null) return { kind: 'unavailable', reason: '先选择输入来源' } as const;
+  if (selectedInput.kind === 'recorded') {
+    const replay = state.sources?.replays.find(item => item.id === selectedInput.id);
+    if (!replay) return { kind: 'unavailable', reason: '输入来源已变化，请重新选择' } as const;
+    return { kind: 'selected', liveId, scene, source: replay.source, viewport: state.playerViewport } as const;
+  }
+  if (!state.inputCatalog) return { kind: 'unavailable', reason: '先读取当前场景的输入方案' } as const;
+  for (const player of state.inputCatalog.players) {
+    if (!player.localPlans.length) return { kind: 'unavailable', reason: `${player.actorId} 没有可用的本地输入方案` } as const;
+    if (!state.inputChoices.some(choice => choice.actorId === player.actorId))
+      return { kind: 'unavailable', reason: `先为 ${player.actorId} 选择输入方案` } as const;
+  }
+  if (state.localLastSdkFrame === null) return { kind: 'unavailable', reason: '填写本次结束 SDK 帧' } as const;
+  return { kind: 'selected', liveId, scene, viewport: state.playerViewport,
+    source: { kind: 'local', lastSdkFrame: state.localLastSdkFrame, players: state.inputChoices } } as const;
 }
 
 async function refresh() {
@@ -169,12 +182,12 @@ export const session = {
     }
   },
 
-  async loadInputs(): Promise<number | null> {
+  async loadInputs(signal?: AbortSignal): Promise<number | null> {
     const { sources, scenePath } = getState();
     const scene = sources?.scenes.find(item => item.path === scenePath);
     if (!scene) return null;
     try {
-      contentActions.setInputCatalog(scene.path, await previewApi.inputs(scene.path, scene.revision));
+      contentActions.setInputCatalog(scene.path, await previewApi.inputs(scene.path, scene.revision, signal));
       return null;
     } catch (error) {
       return consoleActions.error('content', error);

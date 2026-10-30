@@ -23,7 +23,8 @@ export interface ConnectionSlice {
 export interface ContentSlice {
   sources: Sources | null;
   scenePath: string | null;
-  replayId: string | null;
+  inputSource: { kind: 'recorded'; id: string } | { kind: 'local' } | null;
+  localLastSdkFrame: number | null;
   inputCatalog: InputCatalog | null;
   inputChoices: PlayerInputChoice[];
 }
@@ -185,7 +186,7 @@ export const initialPlayerTarget = {
 export const useWorkbench = create<WorkbenchState>()(() => ({
   hostAvailable: null, host: null, images: null, connected: false, lastError: null,
 
-  sources: null, scenePath: null, replayId: null, inputCatalog: null, inputChoices: [],
+  sources: null, scenePath: null, inputSource: null, localLastSdkFrame: null, inputCatalog: null, inputChoices: [],
 
   archiveJobs: [], runId: null, receipt: null, summary: null, sealed: false, reviewing: false,
   generation: 0, ...emptyRunData,
@@ -239,21 +240,35 @@ export const connectionActions = {
 
 export const contentActions = {
   setSources(sources: Sources) {
-    set({ sources });
+    const state = getState();
+    const before = state.sources?.scenes.find(scene => scene.path === state.scenePath)?.revision;
+    const after = sources.scenes.find(scene => scene.path === state.scenePath)?.revision;
+    set({ sources, ...(before === after ? {} : { inputCatalog: null, inputChoices: [] }) });
   },
   // 场景只决定新建运行的内容，不打断当前运行；输入声明按场景路径丢弃旧结果。
   selectScene(scenePath: string | null) {
     if (getState().scenePath === scenePath) return;
     set({ scenePath, inputCatalog: null, inputChoices: [] });
   },
-  selectReplay(replayId: string | null) {
-    set({ replayId });
+  selectInputSource(inputSource: ContentSlice['inputSource']) {
+    set({ inputSource });
+  },
+  setLocalLastSdkFrame(localLastSdkFrame: number | null) {
+    set({ localLastSdkFrame });
   },
   setInputCatalog(scenePath: string, inputCatalog: InputCatalog) {
-    if (getState().scenePath === scenePath) set({ inputCatalog });
+    const state = getState();
+    const scene = state.sources?.scenes.find(item => item.path === scenePath);
+    if (state.scenePath !== scenePath || scene?.revision !== inputCatalog.revision) return;
+    const inputChoices = state.inputChoices.flatMap(choice => {
+      const plan = inputCatalog.players.find(player => player.actorId === choice.actorId)?.localPlans
+        .find(item => item.path === choice.inputPlanRoot && item.schemes.some(scheme => scheme.index === choice.schemeIndex));
+      return plan ? [{ ...choice, inputPlanRevision: plan.revision }] : [];
+    });
+    set({ inputCatalog, inputChoices });
   },
-  setInputChoices(inputChoices: PlayerInputChoice[]) {
-    set({ inputChoices });
+  selectInputPlan(choice: PlayerInputChoice) {
+    set({ inputChoices: [...getState().inputChoices.filter(item => item.actorId !== choice.actorId), choice] });
   },
 };
 

@@ -92,16 +92,7 @@ export interface Sources {
   runDirectory: string;
 }
 
-export interface InputCatalog {
-  revision: string;
-  tickRate: number;
-  players: {
-    actorId: string;
-    values: { inputId: string; kind: string; encoding: string }[];
-    requests: { inputId: string; bufferTicks: number; priority: number; timingClass: number }[];
-  }[];
-  actorTargets: string[];
-}
+export type { PlayerInputCatalog as InputCatalog } from './playerRecords';
 
 // ── 帧记录 ──
 

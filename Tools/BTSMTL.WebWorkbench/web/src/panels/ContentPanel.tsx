@@ -47,14 +47,15 @@ function Scenes() {
 }
 
 function RunSources() {
-  const { replays, replayId } = useWorkbench(useShallow(state => ({
-    replays: state.sources?.replays ?? [], replayId: state.replayId,
+  const { replays, selected } = useWorkbench(useShallow(state => ({
+    replays: state.sources?.replays ?? [], selected: state.inputSource,
   })));
   return (
     <div className={styles.list} role="listbox" aria-label="运行来源">
       {replays.map(replay => (
         <button key={replay.id} className={styles.row} role="option"
-          aria-selected={replay.id === replayId} onClick={() => contentActions.selectReplay(replay.id)}>
+          aria-selected={selected?.kind === 'recorded' && replay.id === selected.id}
+          onClick={() => contentActions.selectInputSource({ kind: 'recorded', id: replay.id })}>
           <span className={styles.rowText}>{replay.displayName}</span>
           <span className={styles.rowValue}>录像</span>
         </button>

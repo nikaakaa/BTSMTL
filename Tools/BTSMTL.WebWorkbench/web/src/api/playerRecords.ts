@@ -59,6 +59,18 @@ const source = object({
 const page = <T>(item: Decoder<T>) => object({ items: array(item), total: number, nextOffset: nullable(number) });
 const observationPage = <T>(item: Decoder<T>) => object({ page: page(item), availability: array(availability) });
 const inputChoice = object({ actorId: text, inputPlanRoot: text, inputPlanRevision: text, schemeIndex: number });
+export const readPlayerInputCatalog = object({
+  revision: text, tickRate: number, actorTargets: array(text), localPlanRangeBasis: text,
+  players: array(object({
+    actorId: text,
+    localPlans: array(object({ id: text, name: text, kind: choice('skill', 'timeline', 'scene'),
+      owner: nullable(text), timeline: nullable(text), path: text, revision: text,
+      schemes: array(object({ index: number, name: text, rangeEndSeconds: number })),
+    })),
+    values: array(object({ inputId: text, kind: text, encoding: text })),
+    requests: array(object({ inputId: text, bufferTicks: number, priority: number, timingClass: number })),
+  })),
+});
 const replay = object({ kind: choice('replay'), path: text, revision: text });
 const recording = object({ kind: choice('recording'), runId: text, revision: text });
 const local = object({ kind: choice('local'), lastSdkFrame: number, players: array(inputChoice) });
@@ -247,6 +259,7 @@ export type PlayerPresentationPage = ReturnType<typeof readPlayerPresentation>;
 export type PlayerCameraPage = ReturnType<typeof readPlayerCamera>;
 export type PlayerUnavailablePage = ReturnType<typeof readPlayerUnavailable>;
 export type PlayerInputPage = ReturnType<typeof readPlayerInput>;
+export type PlayerInputCatalog = ReturnType<typeof readPlayerInputCatalog>;
 export type PlayerArchiveImage = ReturnType<typeof readPlayerArchiveImage>;
 export type PlayerFrameImage = ReturnType<typeof frameImage>;
 export type PlayerArchive = ReturnType<typeof readPlayerArchive>;

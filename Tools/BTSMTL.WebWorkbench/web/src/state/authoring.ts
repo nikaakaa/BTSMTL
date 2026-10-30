@@ -145,7 +145,7 @@ async function trackPreview(input: { save: SavedCompilation; receipt: PlayerSkil
     }
     if (receipt.stage === 'adopted' && useWorkbench.getState().liveId === receipt.liveId) {
       session.selectRun(null);
-      await playerService.refresh();
+      await Promise.all([playerService.refresh(), session.refresh()]);
     }
   } catch (error) {
     if (isAbort(error)) return;
@@ -409,6 +409,7 @@ export const authoringActions = {
           session.selectRun(null);
           await playerService.refresh();
         }
+        if (currentSkill) await session.loadInputs();
         if (currentSkill && result.job !== null) session.selectRun(result.job.jobId);
         return;
       }
